@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 
+// comment 필드를 모달 에디터로 수정할 수 있게 해 주는 셀 컴포넌트입니다.
 /** 🔹 댓글 문자열 파서 */
 function parseComment(raw) {
   const s = typeof raw === "string" ? raw : ""

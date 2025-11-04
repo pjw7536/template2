@@ -1,10 +1,7 @@
 import { DEFAULT_MIN_WIDTH } from "./constants"
 
-/**
- * Estimate the natural width of a text column using the first line of each
- * value. We treat wide unicode characters as double width so that Hangul and
- * similar scripts render comfortably.
- */
+// 각 행의 첫 줄 길이를 기준으로 텍스트 컬럼의 자연 폭을 추정합니다.
+// 한글처럼 넓은 문자는 2칸으로 계산해 가독성을 확보합니다.
 export function computeAutoTextWidthFromRows(
   rows,
   key,

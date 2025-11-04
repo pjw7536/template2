@@ -1,8 +1,4 @@
-/**
- * Base configuration that describes how each logical column should behave.
- * Users can override any piece of the structure, therefore we expose a
- * helper that merges overrides while keeping sensible defaults intact.
- */
+// 컬럼 기본 동작(순서/라벨/정렬/기본 너비 등)을 한 곳에 모아둔 객체입니다.
 export const DEFAULT_CONFIG = {
   order: [
     "created_at",
@@ -125,9 +121,7 @@ export const DEFAULT_CONFIG = {
   },
 }
 
-/**
- * Merge user provided overrides with the baseline configuration.
- */
+// 사용자가 전달한 설정을 기본값과 합쳐 안전하게 반환합니다.
 export function mergeConfig(userConfig) {
   const overrides = userConfig ?? {}
   return {

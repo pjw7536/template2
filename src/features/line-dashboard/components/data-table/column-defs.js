@@ -1,15 +1,8 @@
 "use client"
 
-/**
- * Column definition builder
- * -------------------------
- * The original implementation mixed heuristics, rendering helpers and TanStack
- * Table wiring inside a single 800+ line file. This wrapper keeps the public
- * API identical (`createColumnDefs`) but delegates the heavy lifting to small,
- * well-named modules under `column-defs/`. Each module explains one concern:
- * configuration defaults, alignment, sorting, renderer selection, dynamic
- * width hints, and process-flow specific behaviour.
- */
+// 복잡한 컬럼 정의 로직을 작은 모듈로 나눠 관리하기 위한 래퍼입니다.
+// createColumnDefs 함수는 여전히 한 번에 컬럼 배열을 만들어 주지만,
+// 세부 정렬/폭/정렬방향 계산은 column-defs 하위 파일에 위임합니다.
 
 import { mergeConfig } from "./column-defs/config"
 import { resolveAlignment } from "./column-defs/alignment"
@@ -22,9 +15,7 @@ import {
   shouldCombineSteps,
 } from "./column-defs/steps"
 
-/**
- * Create a single TanStack Table column definition.
- */
+// 단일 컬럼 정의 객체를 생성합니다.
 function makeColumnDef(colKey, config, sampleValueFromFirstRow, dynamicWidthHints) {
   const label = config.labels?.[colKey] ?? colKey
   const enableSorting =
@@ -61,9 +52,7 @@ function makeColumnDef(colKey, config, sampleValueFromFirstRow, dynamicWidthHint
   }
 }
 
-/**
- * Build the full list of column definitions used by the data table.
- */
+// 데이터 테이블에서 사용할 전체 컬럼 정의 배열을 생성합니다.
 export function createColumnDefs(rawColumns, userConfig, firstRowForTypeGuess, rowsForSizing) {
   const config = mergeConfig(userConfig)
   const dynamicWidthHints = computeDynamicWidthHints(rowsForSizing, config)

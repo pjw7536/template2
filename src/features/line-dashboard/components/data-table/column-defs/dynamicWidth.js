@@ -12,11 +12,7 @@ import { computeProcessFlowWidthFromRows } from "./processFlow"
 import { computeAutoTextWidthFromRows } from "./textWidth"
 import { isNumeric, tryDate } from "./sorting"
 
-/**
- * Gather width hints that depend on the actual data displayed in the table.
- * Process flow columns rely on total step counts, whereas selected text
- * columns scale with their first line length.
- */
+// 실 데이터(행) 기반으로 자동 폭 힌트를 계산합니다.
 export function computeDynamicWidthHints(rows, config) {
   if (!Array.isArray(rows) || rows.length === 0) return {}
   const hints = {}
@@ -45,6 +41,7 @@ export function computeDynamicWidthHints(rows, config) {
   return hints
 }
 
+// 기본적으로 어떤 폭을 줄지 간단한 규칙으로 추정합니다.
 function inferDefaultWidth(colKey, sampleValue) {
   if (colKey === "process_flow") return DEFAULT_PROCESS_FLOW_WIDTH
   if (colKey === "needtosend" || colKey === "send_jira") return DEFAULT_BOOL_ICON_WIDTH
@@ -58,11 +55,7 @@ function toSafeNumber(value, fallback) {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
-
-/**
- * Decide the final size/min/max values for a column by combining user
- * overrides, dynamic hints, and heuristics from the sample value.
- */
+// 사용자 설정 + 자동 힌트 + 샘플 값을 종합해 size/min/max를 계산합니다.
 export function resolveColumnSizes(colKey, config, sampleValue, dynamicWidthHints) {
   const dynamicWidth = dynamicWidthHints?.[colKey]
   const baseWidth = dynamicWidth !== undefined ? dynamicWidth : config.width?.[colKey]

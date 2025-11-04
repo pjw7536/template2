@@ -1,3 +1,4 @@
+// 서버 응답을 테이블 컴포넌트가 바로 쓸 수 있는 안전한 형태로 바꿔 줍니다.
 export function normalizeTablePayload(payload, defaults) {
   const { table: defaultTable, from: defaultFrom, to: defaultTo } = defaults
 
@@ -39,6 +40,7 @@ export function normalizeTablePayload(payload, defaults) {
   }
 }
 
+// 설비 ID와 챔버 ID를 보기 좋은 하나의 문자열로 합쳐 줍니다.
 export function composeEqpChamber(eqpId, chamberIds) {
   const a = (eqpId ?? "").toString().trim()
   const b = (chamberIds ?? "").toString().trim()

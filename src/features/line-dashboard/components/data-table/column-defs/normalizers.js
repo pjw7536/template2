@@ -1,8 +1,4 @@
-/**
- * Helper functions that coerce raw cell values into predictable formats.
- * Centralising them keeps rendering logic tidy and documents the various
- * shapes that arrive from the API.
- */
+// 셀 렌더러에서 공통으로 쓰는 값 정규화 유틸입니다.
 
 export function toHttpUrl(raw) {
   if (raw == null) return null

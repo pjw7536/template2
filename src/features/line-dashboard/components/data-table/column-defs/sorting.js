@@ -1,6 +1,4 @@
-/**
- * Sorting helpers keep TanStack Table sort functions small and reusable.
- */
+// 정렬 유틸 함수 모음: 숫자/문자/날짜 비교 로직을 재사용합니다.
 export function isNumeric(value) {
   if (value == null || value === "") return false
   const numeric = Number(value)
@@ -41,6 +39,7 @@ export function cmpDate(a, b) {
 }
 
 export function autoSortType(sample) {
+  // 샘플 값에 따라 number/datetime/text 중 적절한 타입을 추정합니다.
   if (sample == null) return "text"
   if (isNumeric(sample)) return "number"
   if (tryDate(sample)) return "datetime"
@@ -48,6 +47,7 @@ export function autoSortType(sample) {
 }
 
 export function getSortingFnForKey(colKey, config, sampleValue) {
+  // config에 지정된 정렬 타입이 있으면 우선 적용하고, 없으면 자동 판정합니다.
   const requestedType = config.sortTypes?.[colKey] ?? "auto"
   const sortType = requestedType === "auto" ? autoSortType(sampleValue) : requestedType
 

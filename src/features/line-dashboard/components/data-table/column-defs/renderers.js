@@ -1,3 +1,4 @@
+// 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
 import Link from "next/link"
 import { ExternalLink, Check } from "lucide-react"
 
@@ -141,10 +142,7 @@ const CellRenderers = {
   },
 }
 
-/**
- * Safely look up a renderer by column key, falling back to the standard
- * formatter so that unexpected columns still display sensible values.
- */
+// 컬럼 키에 맞는 렌더러를 찾아 실행하고, 없으면 기본 포맷터를 사용합니다.
 export function renderCellByKey(colKey, info) {
   const meta = info.table?.options?.meta
   const value = info.getValue()

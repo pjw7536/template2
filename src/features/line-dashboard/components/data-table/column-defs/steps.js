@@ -1,14 +1,17 @@
+// 스텝 관련 컬럼을 하나의 process_flow 컬럼으로 통합하기 위한 도우미입니다.
 import { STEP_COLUMN_KEY_SET } from "../utils/constants"
 import { renderMetroStepFlow } from "../utils/formatters"
 import { resolveAlignment } from "./alignment"
 import { resolveColumnSizes } from "./dynamicWidth"
 
+// 원본 컬럼 배열에서 스텝 관련 키와 인덱스를 추출합니다.
 export function pickStepColumnsWithIndex(columns) {
   return columns
     .map((key, index) => ({ key, index }))
     .filter(({ key }) => STEP_COLUMN_KEY_SET.has(key))
 }
 
+// main_step 또는 metro_steps가 있다면 통합 컬럼을 생성합니다.
 export function shouldCombineSteps(stepCols) {
   if (!stepCols.length) return false
   return (
@@ -25,6 +28,7 @@ function getSampleValueForColumns(row, columns) {
   return undefined
 }
 
+// 스텝 통합 컬럼 정의를 실제로 생성합니다.
 export function makeStepFlowColumn(stepCols, label, config, firstRow, dynamicWidthHints) {
   const sample = getSampleValueForColumns(firstRow, stepCols)
   const alignment = resolveAlignment("process_flow", config, sample)

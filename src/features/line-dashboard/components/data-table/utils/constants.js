@@ -1,8 +1,10 @@
+// 데이터 테이블 전역에서 재사용하는 상수와 포맷터들입니다.
 export const DEFAULT_TABLE = "drone_sop_v3"
 export const DEFAULT_RANGE_DAYS = 3
 
 const DAY_IN_MS = 86_400_000
 
+// Date 객체를 YYYY-MM-DD 문자열로 바꿔 폼 입력과 호환되게 만듭니다.
 export const toDateInputValue = (date) => date.toISOString().split("T")[0]
 
 export const getDefaultFromValue = () => {
@@ -13,10 +15,12 @@ export const getDefaultFromValue = () => {
 
 export const getDefaultToValue = () => toDateInputValue(new Date())
 
+// 셀 저장 인디케이터 노출 시간을 제어하는 값들입니다.
 export const SAVING_DELAY_MS = 180
 export const MIN_SAVING_VISIBLE_MS = 500
 export const SAVED_VISIBLE_MS = 800
 
+// 프로세스 플로우와 관련된 컬럼 키 목록입니다.
 export const STEP_COLUMN_KEYS = [
   "main_step",
   "metro_steps",
@@ -28,6 +32,7 @@ export const STEP_COLUMN_KEYS = [
 
 export const STEP_COLUMN_KEY_SET = new Set(STEP_COLUMN_KEYS)
 
+// UI 표시에 사용할 공통 숫자/시간 포맷터입니다.
 export const numberFormatter = new Intl.NumberFormat("en-US")
 export const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",

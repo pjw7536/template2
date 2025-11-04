@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { GlobalFilter } from "./GlobalFilter"
 import { isMultiSelectFilter } from "./quickFilters"
 
+// 여러 퀵 필터 섹션과 글로벌 검색창을 한 번에 그려주는 컴포넌트입니다.
 export function QuickFilters({
   sections,
   filters,

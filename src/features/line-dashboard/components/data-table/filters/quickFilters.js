@@ -1,3 +1,4 @@
+// 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
 const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod"])
 
 const HOUR_IN_MS = 60 * 60 * 1000
@@ -161,6 +162,7 @@ const QUICK_FILTER_DEFINITIONS = [
 
 ]
 
+// 섹션 정의에 맞춰 초기 필터 상태(단일 null, 다중 [])를 만듭니다.
 export function createInitialQuickFilters() {
   return QUICK_FILTER_DEFINITIONS.reduce((acc, definition) => {
     acc[definition.key] = MULTI_SELECT_KEYS.has(definition.key) ? [] : null
@@ -168,6 +170,7 @@ export function createInitialQuickFilters() {
   }, {})
 }
 
+// 컬럼/행 데이터를 기반으로 퀵 필터 섹션 목록을 생성합니다.
 export function createQuickFilterSections(columns, rows) {
   return QUICK_FILTER_DEFINITIONS.map((definition) => {
     if (typeof definition.buildSection === "function") {
@@ -221,6 +224,7 @@ export function createQuickFilterSections(columns, rows) {
   }).filter(Boolean)
 }
 
+// 섹션 구성 변경 시 기존 상태를 정리해 일관성을 유지합니다.
 export function syncQuickFiltersToSections(previousFilters, sections) {
   const sectionMap = new Map(sections.map((section) => [section.key, section]))
   let nextFilters = previousFilters
@@ -256,6 +260,7 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
   return nextFilters
 }
 
+// 생성된 섹션/필터를 rows 배열에 실제로 적용합니다.
 export function applyQuickFilters(rows, sections, filters) {
   if (sections.length === 0) return rows
   return rows.filter((row) =>
@@ -273,6 +278,7 @@ export function applyQuickFilters(rows, sections, filters) {
   )
 }
 
+// 현재 활성화되어 있는 필터 개수를 센 뒤 배지에 표시합니다.
 export function countActiveQuickFilters(filters) {
   return Object.entries(filters).reduce((sum, [key, value]) => {
     if (MULTI_SELECT_KEYS.has(key)) {
@@ -282,6 +288,7 @@ export function countActiveQuickFilters(filters) {
   }, 0)
 }
 
+// 해당 키가 다중 선택 옵션인지 여부를 확인합니다.
 export function isMultiSelectFilter(key) {
   return MULTI_SELECT_KEYS.has(key)
 }

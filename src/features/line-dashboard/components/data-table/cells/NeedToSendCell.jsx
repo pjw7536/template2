@@ -1,16 +1,10 @@
-// /src/features/line-dashboard/components/data-table/cells/need-to-send-cell.jsx
 "use client"
 
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
 
-/**
- * ✅ 변경 요약
- * - disabled / disabledReason props 추가
- * - 비활성화 시: 클릭 가드 + 토스트 안내 + 버튼 disabled 처리
- * - 성공 / 취소 / 실패 토스트는 기존 디자인 유지
- */
+// needtosend 필드를 토글하며 토스트와 편집 상태를 관리하는 셀 컴포넌트입니다.
 export function NeedToSendCell({
   meta,
   recordId,
