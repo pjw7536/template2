@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/utils/formatters.js
 // 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
 import { IconArrowNarrowRight } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"

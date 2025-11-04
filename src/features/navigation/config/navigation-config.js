@@ -1,3 +1,4 @@
+// src/features/navigation/config/navigation-config.js
 import { BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
 
 /**

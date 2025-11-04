@@ -1,3 +1,4 @@
+// src/features/line-dashboard/api/constants.js
 // API 유틸 전반에서 공유하는 정규식/상수 모음입니다.
 export const SAFE_IDENTIFIER = /^[A-Za-z0-9_]+$/
 

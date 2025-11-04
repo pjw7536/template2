@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs.js
 "use client"
 
 // 복잡한 컬럼 정의 로직을 작은 모듈로 나눠 관리하기 위한 래퍼입니다.

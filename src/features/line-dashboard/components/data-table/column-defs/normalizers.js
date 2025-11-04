@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/normalizers.js
 // 셀 렌더러에서 공통으로 쓰는 값 정규화 유틸입니다.
 
 export function toHttpUrl(raw) {

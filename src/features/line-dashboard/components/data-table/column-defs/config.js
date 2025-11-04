@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/config.js
 // 컬럼 기본 동작(순서/라벨/정렬/기본 너비 등)을 한 곳에 모아둔 객체입니다.
 export const DEFAULT_CONFIG = {
   order: [

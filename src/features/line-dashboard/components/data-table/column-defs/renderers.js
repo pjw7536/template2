@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/renderers.js
 // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
 import Link from "next/link"
 import { ExternalLink, Check } from "lucide-react"

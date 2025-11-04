@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/filters/GlobalFilter.jsx
 "use client"
 
 import { Input } from "@/components/ui/input"

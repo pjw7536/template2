@@ -1,3 +1,4 @@
+// src/components/theme-provider.jsx
 "use client"
 
 import { ThemeProvider as NextThemesProvider } from "next-themes"

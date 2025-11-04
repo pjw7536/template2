@@ -1,3 +1,4 @@
+// src/components/navigation/dynamic-breadcrumb.jsx
 "use client"
 
 import { Fragment, useMemo } from "react"

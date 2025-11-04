@@ -1,3 +1,4 @@
+// src/app/models/page.jsx
 export default function Page() {
   return (
     <section className="grid gap-4">

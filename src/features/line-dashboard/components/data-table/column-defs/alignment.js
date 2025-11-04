@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/alignment.js
 import { isNumeric } from "./sorting"
 
 const ALIGNMENT_VALUES = new Set(["left", "center", "right"])

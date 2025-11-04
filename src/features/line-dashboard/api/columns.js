@@ -1,3 +1,4 @@
+// src/features/line-dashboard/api/columns.js
 import { DATE_COLUMN_CANDIDATES } from "./constants"
 
 // 데이터베이스가 내려준 컬럼 이름 배열에서 원하는 키를 찾아줍니다.

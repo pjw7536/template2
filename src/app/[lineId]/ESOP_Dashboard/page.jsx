@@ -1,3 +1,4 @@
+// src/app/[lineId]/ESOP_Dashboard/page.jsx
 export default function Page({ params }) {
   const paramValue = params?.lineId
   const lineId = Array.isArray(paramValue) ? paramValue[0] : paramValue ?? ""

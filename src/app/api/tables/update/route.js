@@ -1,3 +1,4 @@
+// src/app/api/tables/update/route.js
 import { NextResponse } from "next/server"
 
 import { getPool, runQuery } from "@/lib/db"

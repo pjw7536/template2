@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/steps.js
 // 스텝 관련 컬럼을 하나의 process_flow 컬럼으로 통합하기 위한 도우미입니다.
 import { STEP_COLUMN_KEY_SET } from "../utils/constants"
 import { renderMetroStepFlow } from "../utils/formatters"

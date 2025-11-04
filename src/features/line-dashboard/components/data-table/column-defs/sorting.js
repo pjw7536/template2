@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/sorting.js
 // 정렬 유틸 함수 모음: 숫자/문자/날짜 비교 로직을 재사용합니다.
 export function isNumeric(value) {
   if (value == null || value === "") return false

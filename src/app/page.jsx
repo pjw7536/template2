@@ -1,3 +1,4 @@
+// src/app/page.jsx
 export default function Page() {
   return (
     <section className="relative h-[600px] overflow-hidden rounded-xl border shadow-sm">

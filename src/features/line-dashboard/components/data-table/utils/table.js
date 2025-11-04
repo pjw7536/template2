@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/utils/table.js
 // 셀/헤더 정렬을 Tailwind 클래스와 연결해 주는 유틸입니다.
 const TEXT_ALIGN_CLASS = {
   left: "text-left",

@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/textWidth.js
 import { DEFAULT_MIN_WIDTH } from "./constants"
 
 // 각 행의 첫 줄 길이를 기준으로 텍스트 컬럼의 자연 폭을 추정합니다.

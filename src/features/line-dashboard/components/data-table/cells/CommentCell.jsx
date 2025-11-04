@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/cells/CommentCell.jsx
 "use client"
 
 import * as React from "react"

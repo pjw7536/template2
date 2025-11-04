@@ -1,3 +1,4 @@
+// src/features/line-dashboard/api/get-line-ids.js
 import { runQuery } from "@/lib/db"
 
 // 한 곳에서만 사용하는 테이블 이름을 상수로 정의해 두면 오타를 줄일 수 있습니다.

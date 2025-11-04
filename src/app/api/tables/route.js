@@ -1,3 +1,4 @@
+// src/app/api/tables/route.js
 import { NextResponse } from "next/server"
 import { runQuery } from "@/lib/db"
 import { DEFAULT_TABLE } from "@/features/line-dashboard/components/data-table/utils/constants"

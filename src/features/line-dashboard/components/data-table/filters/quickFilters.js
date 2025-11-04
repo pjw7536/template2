@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/filters/quickFilters.js
 // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
 const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod"])
 

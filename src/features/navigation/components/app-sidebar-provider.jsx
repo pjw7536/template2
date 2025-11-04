@@ -1,3 +1,4 @@
+// src/features/navigation/components/app-sidebar-provider.jsx
 "use client"
 
 import { usePathname } from "next/navigation"

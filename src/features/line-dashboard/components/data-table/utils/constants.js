@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/utils/constants.js
 // 데이터 테이블 전역에서 재사용하는 상수와 포맷터들입니다.
 export const DEFAULT_TABLE = "drone_sop_v3"
 export const DEFAULT_RANGE_DAYS = 3

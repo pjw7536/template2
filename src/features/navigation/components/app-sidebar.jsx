@@ -1,3 +1,4 @@
+// src/features/navigation/components/app-sidebar.jsx
 "use client"
 
 import { NAVIGATION_CONFIG } from "../config/navigation-config"

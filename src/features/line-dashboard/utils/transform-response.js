@@ -1,3 +1,4 @@
+// src/features/line-dashboard/utils/transform-response.js
 // 서버 응답을 테이블 컴포넌트가 바로 쓸 수 있는 안전한 형태로 바꿔 줍니다.
 export function normalizeTablePayload(payload, defaults) {
   const { table: defaultTable, from: defaultFrom, to: defaultTo } = defaults

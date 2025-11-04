@@ -1,3 +1,4 @@
+// src/app/[lineId]/ESOP_Dashboard/status/page.jsx
 import { LineDashboardPage } from "@/features/line-dashboard/components"
 
 export default async function Page({ params }) {

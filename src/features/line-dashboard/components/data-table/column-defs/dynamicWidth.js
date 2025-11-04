@@ -1,3 +1,4 @@
+// src/features/line-dashboard/components/data-table/column-defs/dynamicWidth.js
 import {
   DEFAULT_BOOL_ICON_WIDTH,
   DEFAULT_DATE_WIDTH,
