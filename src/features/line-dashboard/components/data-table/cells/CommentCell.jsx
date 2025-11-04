@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { toast } from "sonner"
+import { CheckCircle2, XCircle } from "lucide-react"
 
 /* ============================================================================
  * 초보자용 요약
@@ -25,6 +27,36 @@ import {
 
 /** 내부 마커(보이지 않는 후행 데이터)를 분리하기 위한 상수 */
 const COMMENT_MARK = "$@$"
+
+const BASE_TOAST_STYLE = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-start",
+  gap: "20px",
+  fontWeight: 600,
+  fontSize: "14px",
+  padding: "15px 20px",
+  borderRadius: "8px",
+  backgroundColor: "#f9fafb",
+}
+
+function showCommentSavedToast() {
+  toast.success("저장 성공", {
+    description: "Comment가 저장되었습니다.",
+    icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
+    style: { ...BASE_TOAST_STYLE, color: "#065f46" },
+    duration: 2000,
+  })
+}
+
+function showCommentErrorToast(message) {
+  toast.error("저장 실패", {
+    description: message || "저장 중 오류가 발생했습니다.",
+    icon: <XCircle className="h-5 w-5 text-red-500" />,
+    style: { ...BASE_TOAST_STYLE, color: "#991b1b" },
+    duration: 3000,
+  })
+}
 
 /** comment 문자열에서 "보이는 부분"과 "마커 포함 뒤꼬리"를 분리합니다. */
 function parseComment(raw) {
@@ -128,8 +160,20 @@ export function CommentCell({ meta, recordId, baseValue }) {
     }
 
     // 서버 업데이트(상위 meta가 수행)
-    const success = await meta.handleUpdate(recordId, { comment: composed })
-    if (!success) return // 실패 시 에러 메시지는 meta.updateErrors로 렌더됨
+    try {
+      const success = await meta.handleUpdate(recordId, { comment: composed })
+      if (success) {
+        showCommentSavedToast()
+        return true
+      }
+
+      const message = meta.updateErrors?.[cellKey]
+      showCommentErrorToast(message)
+      return false
+    } catch (error) {
+      showCommentErrorToast(error?.message)
+      return false
+    }
   }
 
   /** ❌ 취소(에디팅 상태/에러/로컬표시 전부 리셋) */
