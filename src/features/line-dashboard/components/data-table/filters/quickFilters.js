@@ -1,6 +1,11 @@
 // src/features/line-dashboard/components/data-table/filters/quickFilters.js
 // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
-const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod"])
+import { STATUS_LABELS } from "../../../constants/status-labels"
+
+const STATUS_ORDER = Object.keys(STATUS_LABELS)
+const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
+
+const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod", "sample_type"])
 
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
@@ -15,7 +20,8 @@ function findMatchingColumn(columns, target) {
   if (!Array.isArray(columns)) return null
   const targetLower = target.toLowerCase()
   return (
-    columns.find((column) => typeof column === "string" && column.toLowerCase() === targetLower) ?? null
+    columns.find((column) => typeof column === "string" && column.toLowerCase() === targetLower) ??
+    null
   )
 }
 
@@ -148,6 +154,21 @@ const QUICK_FILTER_DEFINITIONS = [
     formatValue: (value) => value,
     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
   },
+
+  // 🔹 sample_type 퀵필터 (멀티 선택)
+  {
+    key: "sample_type",
+    label: "Sample Type",
+    resolveColumn: (columns) => findMatchingColumn(columns, "sample_type"),
+    normalizeValue: (value) => {
+      if (value == null) return null
+      const trimmed = String(value).trim()
+      return trimmed.length > 0 ? trimmed : null
+    },
+    formatValue: (value) => value,
+    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+  },
+
   {
     key: "status",
     label: "Status",
@@ -157,10 +178,18 @@ const QUICK_FILTER_DEFINITIONS = [
       const normalized = String(value).trim()
       return normalized.length > 0 ? normalized.toUpperCase() : null
     },
-    formatValue: (value) => value,
-    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+    formatValue: (value) => STATUS_LABELS[value] ?? value,
+    compareOptions: (a, b) => {
+      const indexA = STATUS_ORDER_INDEX.has(a.value)
+        ? STATUS_ORDER_INDEX.get(a.value)
+        : Number.POSITIVE_INFINITY
+      const indexB = STATUS_ORDER_INDEX.has(b.value)
+        ? STATUS_ORDER_INDEX.get(b.value)
+        : Number.POSITIVE_INFINITY
+      if (indexA !== indexB) return indexA - indexB
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+    },
   },
-
 ]
 
 // 섹션 정의에 맞춰 초기 필터 상태(단일 null, 다중 [])를 만듭니다.

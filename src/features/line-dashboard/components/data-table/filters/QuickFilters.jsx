@@ -133,7 +133,7 @@ export function QuickFilters({
     <fieldset
       className={cn(
         "flex flex-col rounded-lg",            // 공통
-        isCollapsed ? "p-3 border-0" : "gap-3 border p-3" // ⬅️ 접힘 상태일 때 테두리/패딩 제거
+        isCollapsed ? "px-3 border-0" : "gap-3 border p-3" // ⬅️ 접힘 상태일 때 테두리/패딩 제거
       )}
     >
       <legend className="flex items-center justify-between gap-3 px-1 text-xs font-semibold tracking-wide text-muted-foreground">

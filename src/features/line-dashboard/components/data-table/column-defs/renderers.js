@@ -5,6 +5,7 @@ import { ExternalLink, Check } from "lucide-react"
 
 import { CommentCell, NeedToSendCell } from "../cells"
 import { formatCellValue } from "../utils/formatters"
+import { STATUS_LABELS } from "../../../constants/status-labels"
 import {
   buildJiraBrowseUrl,
   getRecordId,
@@ -16,14 +17,6 @@ import {
   toHttpUrl,
 } from "./normalizers"
 import { computeMetroProgress } from "./processFlow"
-
-const STATUS_LABELS = {
-  ESOP_STARTED: "ESOP시작",
-  ESOP_STRATED: "ESOP시작",
-  MAIN_COMPLETE: "MAIN완료",
-  PARTIAL_COMPLETE: "계측중",
-  COMPLETE: "완료",
-}
 
 const CellRenderers = {
   defect_url: ({ value }) => {
