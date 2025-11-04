@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
 
+import { makeCellKey } from "../utils/cellState"
+import { buildToastOptions } from "../utils/toast"
+
 /* ============================================================================
  * NeedToSendCell
  * - needtosend(0/1) 값을 토글하는 원형 버튼 셀
@@ -23,26 +26,12 @@ function to01(v) {
   return Number.isFinite(n) && n === 1 ? 1 : 0
 }
 
-/** 토스트 공통 스타일(렌더마다 새 객체 생성 방지용으로 컴포넌트 밖에 정의) */
-const BASE_TOAST_STYLE = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-start",
-  gap: "20px",
-  fontWeight: 600,
-  fontSize: "14px",
-  padding: "15px 20px",
-  borderRadius: "8px",
-  backgroundColor: "#f9fafb",
-}
-
 /** 토스트 도우미: 성공/정보/실패 각각 간단한 헬퍼로 래핑 */
 function showReserveToast() {
   toast.success("예약 성공", {
     description: "E-SOP Inform 예약 되었습니다.",
     icon: <CalendarCheck2 className="h-5 w-5 text-blue-500" />,
-    style: { ...BASE_TOAST_STYLE, color: "#065f46" },
-    duration: 1800,
+    ...buildToastOptions({ color: "#065f46", duration: 1800 }),
   })
 }
 
@@ -50,8 +39,7 @@ function showCancelToast() {
   toast("예약 취소", {
     description: "E-SOP Inform 예약 취소 되었습니다.",
     icon: <CalendarX2 className="h-5 w-5 text-sky-600" />,
-    style: { ...BASE_TOAST_STYLE, color: "#1e40af" },
-    duration: 1800,
+    ...buildToastOptions({ color: "#1e40af", duration: 1800 }),
   })
 }
 
@@ -59,8 +47,7 @@ function showErrorToast(msg) {
   toast.error("저장 실패", {
     description: msg || "저장 중 오류가 발생했습니다.",
     icon: <XCircle className="h-5 w-5 text-red-500" />,
-    style: { ...BASE_TOAST_STYLE, color: "#991b1b" },
-    duration: 3000,
+    ...buildToastOptions({ color: "#991b1b", duration: 3000 }),
   })
 }
 
@@ -80,7 +67,7 @@ export function NeedToSendCell({
   const isChecked = to01(nextValue) === 1
 
   // 저장 중 상태: 같은 셀에 대한 동시 요청 방지
-  const savingKey = `${recordId}:needtosend`
+  const savingKey = makeCellKey(recordId, "needtosend")
   const isSaving = Boolean(meta?.updatingCells?.[savingKey])
 
   // ────────────────────────────────────────────────

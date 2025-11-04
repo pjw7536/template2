@@ -1,12 +1,6 @@
 // src/features/line-dashboard/api/get-line-ids.js
 import { runQuery } from "@/lib/db"
-
-/* ============================================================================
- * ✅ 상수 정의
- * - 테이블 이름을 상수로 지정하면 오타나 문자열 실수를 방지할 수 있습니다.
- * - 쿼리를 문자열로 작성할 때 `${}`로 상수를 안전하게 삽입합니다.
- * ========================================================================== */
-const LINE_SDWT_TABLE_NAME = "line_sdwt"
+import { LINE_SDWT_TABLE_NAME } from "./constants"
 
 // 고유 line_id 목록을 가져오는 SQL 쿼리
 const QUERY_FIND_DISTINCT_LINE_IDS = `

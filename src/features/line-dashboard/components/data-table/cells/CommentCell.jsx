@@ -14,6 +14,9 @@ import {
 import { toast } from "sonner"
 import { CheckCircle2, XCircle } from "lucide-react"
 
+import { makeCellKey } from "../utils/cellState"
+import { buildToastOptions } from "../utils/toast"
+
 /* ============================================================================
  * 초보자용 요약
  * ----------------------------------------------------------------------------
@@ -28,24 +31,11 @@ import { CheckCircle2, XCircle } from "lucide-react"
 /** 내부 마커(보이지 않는 후행 데이터)를 분리하기 위한 상수 */
 const COMMENT_MARK = "$@$"
 
-const BASE_TOAST_STYLE = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-start",
-  gap: "20px",
-  fontWeight: 600,
-  fontSize: "14px",
-  padding: "15px 20px",
-  borderRadius: "8px",
-  backgroundColor: "#f9fafb",
-}
-
 function showCommentSavedToast() {
   toast.success("저장 성공", {
     description: "Comment가 저장되었습니다.",
     icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-    style: { ...BASE_TOAST_STYLE, color: "#065f46" },
-    duration: 2000,
+    ...buildToastOptions({ color: "#065f46", duration: 2000 }),
   })
 }
 
@@ -53,8 +43,7 @@ function showCommentErrorToast(message) {
   toast.error("저장 실패", {
     description: message || "저장 중 오류가 발생했습니다.",
     icon: <XCircle className="h-5 w-5 text-red-500" />,
-    style: { ...BASE_TOAST_STYLE, color: "#991b1b" },
-    duration: 3000,
+    ...buildToastOptions({ color: "#991b1b", duration: 3000 }),
   })
 }
 
@@ -64,11 +53,6 @@ function parseComment(raw) {
   const idx = s.indexOf(COMMENT_MARK)
   if (idx === -1) return { visibleText: s, suffixWithMarker: "" }
   return { visibleText: s.slice(0, idx), suffixWithMarker: s.slice(idx) }
-}
-
-/** 셀 상태 키(레코드ID+필드명)를 일관되게 만듭니다. */
-function makeCellKey(recordId, field) {
-  return `${recordId}:${field}`
 }
 
 /** 인디케이터 상태를 안전하게 읽습니다. (없으면 undefined) */

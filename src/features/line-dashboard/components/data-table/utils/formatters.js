@@ -3,7 +3,6 @@
 import { IconArrowNarrowRight } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 
-import { STEP_COLUMN_KEY_SET } from "./constants"
 
 /* ============================================
  * 공통 상수
@@ -308,18 +307,3 @@ export function renderMetroStepFlow(rowData) {
 }
 
 
-
-
-/* ============================================
- * 컬럼 결합 여부
- * ============================================ */
-
-/**
- * 스텝 관련 컬럼을 단일 flow 컬럼으로 합칠지 결정
- * - main_step 또는 metro_steps 둘 중 하나라도 있으면 true
- */
-export function shouldCombineStepColumns(columns) {
-  return columns.some((key) =>
-    STEP_COLUMN_KEY_SET.has(key) && (key === "main_step" || key === "metro_steps")
-  )
-}
