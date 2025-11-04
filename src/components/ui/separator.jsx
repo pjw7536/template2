@@ -1,4 +1,3 @@
-// src/components/ui/separator.jsx
 "use client"
 
 import * as React from "react"
