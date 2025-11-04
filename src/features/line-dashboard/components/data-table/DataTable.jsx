@@ -175,6 +175,8 @@ export function DataTable({ lineId }) {
   const totalPages = Math.max(table.getPageCount(), 1)
   const currentPageSize = table.getRowModel().rows.length
 
+  const isRefreshing = isLoadingRows && totalLoaded > 0
+
   /* 상단 "Updated ..." 라벨 */
   const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
 
@@ -186,6 +188,11 @@ export function DataTable({ lineId }) {
     if (isLoadingRows) return
     setLastUpdatedLabel(timeFormatter.format(new Date()))
   }, [isLoadingRows])
+
+  React.useEffect(() => {
+    if (!isRefreshing) return
+    setLastUpdatedLabel("Updating…")
+  }, [isRefreshing])
 
   // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
   React.useEffect(() => {
@@ -211,7 +218,7 @@ export function DataTable({ lineId }) {
    *    - TH/TD에 width/min/max를 "px 문자열"로 지정해 colgroup과 일관 동작
    * ──────────────────────────────────────────────────────────────────────── */
   function renderTableBody() {
-    if (isLoadingRows) {
+    if (isLoadingRows && totalLoaded === 0) {
       return (
         <TableRow>
           <TableCell
@@ -327,8 +334,9 @@ export function DataTable({ lineId }) {
             className="gap-1"
             aria-label={LABELS.refresh}
             title={LABELS.refresh}
+            aria-busy={isRefreshing}
           >
-            <IconRefresh className="size-3" />
+            <IconRefresh className={cn("size-3", isRefreshing && "animate-spin")} />
             {LABELS.refresh}
           </Button>
         </div>
@@ -346,7 +354,10 @@ export function DataTable({ lineId }) {
       />
 
       {/* 테이블 */}
-      <TableContainer className="flex-1 h-[calc(100vh-3rem)] overflow-y-auto overflow-x-auto rounded-lg border px-1">
+      <TableContainer
+        className="flex-1 h-[calc(100vh-3rem)] overflow-y-auto overflow-x-auto rounded-lg border px-1"
+        aria-busy={isRefreshing}
+      >
         <Table
           className="table-fixed w-full"
           style={{ width: `${table.getTotalSize()}px`, tableLayout: "fixed" }}
