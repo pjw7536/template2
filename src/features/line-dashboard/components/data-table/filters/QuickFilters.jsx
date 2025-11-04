@@ -1,6 +1,9 @@
 // src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
 "use client"
 
+import * as React from "react"
+import { IconChevronDown } from "@tabler/icons-react"
+
 import { cn } from "@/lib/utils"
 import { GlobalFilter } from "./GlobalFilter"
 import { isMultiSelectFilter } from "./quickFilters"
@@ -20,6 +23,9 @@ export function QuickFilters({
   const showGlobalFilter = typeof onGlobalFilterChange === "function"
   const showContainer = hasSections || showGlobalFilter
   const hasGlobalValue = showGlobalFilter && Boolean(globalFilterValue)
+  const [isCollapsed, setIsCollapsed] = React.useState(false)
+
+  const handleToggleCollapse = () => setIsCollapsed((previous) => !previous)
 
   const handleClearAll = () => {
     onClear?.()
@@ -124,24 +130,46 @@ export function QuickFilters({
   }
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-lg border p-3">
-      <legend className="flex items-center gap-3 px-1 text-xs font-semibold tracking-wide text-muted-foreground">
-        <span>Quick Filters</span>
+    <fieldset
+      className={cn(
+        "flex flex-col rounded-lg",            // 공통
+        isCollapsed ? "p-3 border-0" : "gap-3 border p-3" // ⬅️ 접힘 상태일 때 테두리/패딩 제거
+      )}
+    >
+      <legend className="flex items-center justify-between gap-3 px-1 text-xs font-semibold tracking-wide text-muted-foreground">
+        <button
+          type="button"
+          onClick={handleToggleCollapse}
+          aria-expanded={!isCollapsed}
+          className="flex items-center gap-1 text-left text-xs font-semibold tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span>Quick Filters</span>
+          <IconChevronDown
+            aria-hidden
+            className={cn(
+              "size-4 transition-transform",
+              !isCollapsed ? "-rotate-180" : "rotate-0"
+            )}
+          />
+        </button>
+
         {(activeCount > 0 || hasGlobalValue) && (
           <button
             type="button"
             onClick={handleClearAll}
-            className="text-xs font-medium text-primary hover:underline"
+            className="flex items-center rounded-md  bg-background px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            Clear all
+            🧹필터초기화
           </button>
         )}
       </legend>
 
-      {/* ✅ 동일 컨테이너(한 줄/여러 줄 래핑) 안에 섹션 + 글로벌 섹션을 함께 배치 */}
-      <div className="flex flex-wrap items-start gap-2">
-        {sectionBlocks}
-      </div>
+
+      {!isCollapsed && (
+        <div className="flex flex-wrap items-start gap-2">
+          {sectionBlocks}
+        </div>
+      )}
     </fieldset>
   )
 }
