@@ -13,6 +13,17 @@ from ..models import ensure_user_profile
 class RPAuthenticationBackend(OIDCAuthenticationBackend):
     """OIDC authentication backend with development fallbacks."""
 
+    @staticmethod
+    def _is_oidc_configured() -> bool:
+        return bool(
+            getattr(settings, "OIDC_RP_CLIENT_ID", None)
+            and getattr(settings, "OIDC_OP_AUTHORIZATION_ENDPOINT", None)
+        )
+
+    @staticmethod
+    def _is_dev_login_enabled() -> bool:
+        return bool(getattr(settings, "OIDC_DEV_LOGIN_ENABLED", False))
+
     def filter_users_by_claims(self, claims: Dict[str, Any]):
         email = claims.get("email")
         if not email:
@@ -38,7 +49,7 @@ class RPAuthenticationBackend(OIDCAuthenticationBackend):
         return user
 
     def authenticate(self, request, **kwargs):
-        if settings.DEBUG and not getattr(settings, "OIDC_RP_CLIENT_ID", None):
+        if self._is_dev_login_enabled() and not self._is_oidc_configured():
             dummy_email = os.environ.get("AUTH_DUMMY_EMAIL", "demo@example.com")
             dummy_name = os.environ.get("AUTH_DUMMY_NAME", "Demo User")
             user_model = get_user_model()
@@ -58,7 +69,7 @@ class RPAuthenticationBackend(OIDCAuthenticationBackend):
         return getattr(settings, attr, default)
 
     def verify_claims(self, claims: Dict[str, Any]):
-        if settings.DEBUG and not getattr(settings, "OIDC_RP_CLIENT_ID", None):
+        if self._is_dev_login_enabled() and not self._is_oidc_configured():
             return claims
         return super().verify_claims(claims)
 

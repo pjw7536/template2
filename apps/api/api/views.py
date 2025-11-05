@@ -50,9 +50,11 @@ class HealthView(View):
 
 class AuthConfigurationView(View):
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        provider_configured = bool(getattr(settings, "OIDC_PROVIDER_CONFIGURED", False))
+        dev_login_enabled = bool(getattr(settings, "OIDC_DEV_LOGIN_ENABLED", False) and not provider_configured)
         return JsonResponse(
             {
-                "devLoginEnabled": settings.DEBUG and not settings.OIDC_RP_CLIENT_ID,
+                "devLoginEnabled": dev_login_enabled,
                 "loginUrl": settings.LOGIN_URL,
                 "frontendRedirect": settings.FRONTEND_BASE_URL,
             }

@@ -1,13 +1,20 @@
 """Django settings for the REST API backend."""
 from __future__ import annotations
 
-from pathlib import Path
 import os
+from pathlib import Path
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
-DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 INSTALLED_APPS = [
@@ -140,11 +147,14 @@ LOGOUT_REDIRECT_URL = os.environ.get("DJANGO_LOGOUT_REDIRECT_URL", "/")
 OIDC_RP_CLIENT_ID = os.environ.get("OIDC_RP_CLIENT_ID")
 OIDC_RP_CLIENT_SECRET = os.environ.get("OIDC_RP_CLIENT_SECRET")
 OIDC_RP_SCOPES = "openid profile email"
-OIDC_RP_SIGN_ALGO = os.environ.get("OIDC_RP_SIGN_ALGO", "RS256")
+OIDC_RP_SIGN_ALGO = os.environ.get("OIDC_RP_SIGN_ALGO") or "HS256"
 OIDC_OP_AUTHORIZATION_ENDPOINT = os.environ.get("OIDC_OP_AUTHORIZATION_ENDPOINT")
 OIDC_OP_TOKEN_ENDPOINT = os.environ.get("OIDC_OP_TOKEN_ENDPOINT")
 OIDC_OP_USER_ENDPOINT = os.environ.get("OIDC_OP_USER_ENDPOINT")
 OIDC_OP_JWKS_ENDPOINT = os.environ.get("OIDC_OP_JWKS_ENDPOINT")
+OIDC_AUTHENTICATE_CLASS = "api.auth.views.ConditionalOIDCAuthenticationRequestView"
+OIDC_PROVIDER_CONFIGURED = bool(OIDC_RP_CLIENT_ID and OIDC_OP_AUTHORIZATION_ENDPOINT)
+OIDC_DEV_LOGIN_ENABLED = env_bool("OIDC_DEV_LOGIN_ENABLED", DEBUG or not OIDC_PROVIDER_CONFIGURED)
 
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000")
 
