@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/apps/web/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,8 +15,8 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+/apps/web/.next/
+/apps/web/out/
 
 # production
 /build
@@ -32,10 +33,22 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 !.env.example
+/apps/api/.env
+/apps/web/.env.local
+/apps/web/.env.development.local
+/apps/web/.env.test.local
+/apps/web/.env.production.local
 
 # vercel
-.vercel
+/.vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+apps/web/next-env.d.ts
+
+# python
+*.pyc
+__pycache__/
+/apps/api/.venv/
+/apps/api/db.sqlite3
+/apps/api/staticfiles/
