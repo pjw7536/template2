@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 16, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/tailwind/middleware.js"],"sourcesContent":["export { default } from \"next-auth/middleware\"\n\nexport const config = {\n  matcher: [\"/((?!login|api/auth|api/mock|_next|static|favicon.ico|assets).*)\"],\n}\n"],"names":[],"mappings":";;;;AAAA;;AAEO,MAAM,SAAS;IACpB,SAAS;QAAC;KAAmE;AAC/E"}}]
-}

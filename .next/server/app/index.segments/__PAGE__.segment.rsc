@@ -1,5 +1,0 @@
-1:"$Sreact.fragment"
-2:I[39845,["/_next/static/chunks/cbca8c8809577cf9.js","/_next/static/chunks/7c145a491a78023c.js"],"OutletBoundary"]
-3:"$Sreact.suspense"
-0:{"buildId":"Zn-qlOwR10TqThaMQDjK3","rsc":["$","$1","c",{"children":[["$","section",null,{"className":"relative h-[600px] overflow-hidden rounded-xl border shadow-sm","children":[["$","div",null,{"aria-hidden":"true","className":"absolute inset-0 bg-[url('/images/Wow-gif.gif')] bg-cover bg-center"}],["$","div",null,{"aria-hidden":"true","className":"absolute inset-0 bg-white/70 backdrop-blur-sm dark:bg-slate-950/70"}],["$","div",null,{"className":"relative z-10 grid gap-4 p-6","children":[["$","h1",null,{"className":"text-3xl font-semibold tracking-tight","children":"Welcome"}],["$","p",null,{"className":"mt-2 text-base text-muted-foreground","children":"This is a placeholder for the main dashboard content. Replace it with your actual page components."}]]}]]}],null,["$","$L2",null,{"children":["$","$3",null,{"name":"Next.MetadataOutlet","children":"$@4"}]}]]}],"loading":null,"isPartial":false}
-4:null

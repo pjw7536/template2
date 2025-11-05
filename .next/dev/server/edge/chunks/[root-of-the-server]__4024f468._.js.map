@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 16, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/tailwind/middleware.js"],"sourcesContent":["import { withAuth } from \"next-auth/middleware\"\n\nexport default withAuth({\n  pages: {\n    signIn: \"/login\",\n  },\n})\n\nexport const config = {\n  matcher: [\n    \"/((?!api/auth|login|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|assets).*)\",\n  ],\n}\n"],"names":[],"mappings":";;;;;;AAAA;;uCAEe,IAAA,sXAAQ,EAAC;IACtB,OAAO;QACL,QAAQ;IACV;AACF;AAEO,MAAM,SAAS;IACpB,SAAS;QACP;KACD;AACH"}}]
-}

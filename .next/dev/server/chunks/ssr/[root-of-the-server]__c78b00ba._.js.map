@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 14, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/models/page.jsx"],"sourcesContent":["// src/app/models/page.jsx\nexport default function Page() {\n  return (\n    <section className=\"grid gap-4\">\n      <div className=\"rounded-xl border bg-card p-6 shadow-sm\">\n        <h1 className=\"text-2xl font-semibold tracking-tight\">Models</h1>\n        <p className=\"mt-2 text-sm text-muted-foreground\">\n          Document the AI or financial models that power your product here.\n        </p>\n      </div>\n    </section>\n  )\n}\n"],"names":[],"mappings":"AAAA,0BAA0B;;;;;;;AACX,SAAS;IACtB,qBACE,+cAAC;QAAQ,WAAU;kBACjB,cAAA,+cAAC;YAAI,WAAU;;8BACb,+cAAC;oBAAG,WAAU;8BAAwC;;;;;;8BACtD,+cAAC;oBAAE,WAAU;8BAAqC;;;;;;;;;;;;;;;;;AAM1D","debugId":null}}]
-}

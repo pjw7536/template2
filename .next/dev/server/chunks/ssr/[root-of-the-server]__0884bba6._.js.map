@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/%28app%29/page.jsx"],"sourcesContent":["// src/app/page.jsx\nexport default function Page() {\n  return (\n    <section className=\"relative h-[600px] overflow-hidden rounded-xl border shadow-sm\">\n      <div\n        aria-hidden=\"true\"\n        className=\"absolute inset-0 bg-[url('/images/Wow-gif.gif')] bg-cover bg-center\"\n      />\n      <div\n        aria-hidden=\"true\"\n        className=\"absolute inset-0 bg-white/70 backdrop-blur-sm dark:bg-slate-950/70\"\n      />\n      <div className=\"relative z-10 grid gap-4 p-6\">\n        <h1 className=\"text-3xl font-semibold tracking-tight\">Welcome</h1>\n        <p className=\"mt-2 text-base text-muted-foreground\">\n          This is a placeholder for the main dashboard content. Replace it with your\n          actual page components.\n        </p>\n      </div>\n    </section>\n  )\n}\n"],"names":[],"mappings":"AAAA,mBAAmB;;;;;;;AACJ,SAAS;IACtB,qBACE,+cAAC;QAAQ,WAAU;;0BACjB,+cAAC;gBACC,eAAY;gBACZ,WAAU;;;;;;0BAEZ,+cAAC;gBACC,eAAY;gBACZ,WAAU;;;;;;0BAEZ,+cAAC;gBAAI,WAAU;;kCACb,+cAAC;wBAAG,WAAU;kCAAwC;;;;;;kCACtD,+cAAC;wBAAE,WAAU;kCAAuC;;;;;;;;;;;;;;;;;;AAO5D","debugId":null}}]
-}

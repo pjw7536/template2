@@ -1,7 +1,0 @@
-{
-  "/(app)/[lineId]/ESOP_Dashboard/status/page": "app/(app)/[lineId]/ESOP_Dashboard/status/page.js",
-  "/(app)/page": "app/(app)/page.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/api/tables/route": "app/api/tables/route.js",
-  "/login/page": "app/login/page.js"
-}

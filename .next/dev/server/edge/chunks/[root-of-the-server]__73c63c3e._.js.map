@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 16, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/tailwind/src/middleware.js"],"sourcesContent":["import { withAuth } from \"next-auth/middleware\"\n\nconst publicPaths = [\"/login\", \"/api/auth\"]\n\nconst middleware = withAuth({\n  callbacks: {\n    authorized: ({ token, req }) => {\n      const { pathname } = req.nextUrl\n      if (publicPaths.some((path) => pathname.startsWith(path))) {\n        return true\n      }\n      return Boolean(token)\n    },\n  },\n  pages: {\n    signIn: \"/login\",\n  },\n})\n\nexport default middleware\n\nexport const config = {\n  matcher: [\"/((?!_next/|favicon.ico|assets/|.*\\\\.\\w+$).*)\"],\n}\n"],"names":[],"mappings":";;;;;;AAAA;;AAEA,MAAM,cAAc;IAAC;IAAU;CAAY;AAE3C,MAAM,aAAa,IAAA,sXAAQ,EAAC;IAC1B,WAAW;QACT,YAAY,CAAC,EAAE,KAAK,EAAE,GAAG,EAAE;YACzB,MAAM,EAAE,QAAQ,EAAE,GAAG,IAAI,OAAO;YAChC,IAAI,YAAY,IAAI,CAAC,CAAC,OAAS,SAAS,UAAU,CAAC,QAAQ;gBACzD,OAAO;YACT;YACA,OAAO,QAAQ;QACjB;IACF;IACA,OAAO;QACL,QAAQ;IACV;AACF;uCAEe;AAER,MAAM,SAAS;IACpB,SAAS;QAAC;KAAgD;AAC5D"}}]
-}

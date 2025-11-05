@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/%5BlineId%5D/page.jsx"],"sourcesContent":["import { redirect } from \"next/navigation\"\n\nexport default function Page({ params }) {\n  const { lineId } = params ?? {}\n\n  if (!lineId || Array.isArray(lineId)) {\n    redirect(\"/ESOP_Dashboard/status\")\n  }\n\n  redirect(`/${lineId}/ESOP_Dashboard/status`)\n}\n"],"names":[],"mappings":";;;;AAAA;AAAA;;AAEe,SAAS,KAAK,EAAE,MAAM,EAAE;IACrC,MAAM,EAAE,MAAM,EAAE,GAAG,UAAU,CAAC;IAE9B,IAAI,CAAC,UAAU,MAAM,OAAO,CAAC,SAAS;QACpC,IAAA,6MAAQ,EAAC;IACX;IAEA,IAAA,6MAAQ,EAAC,CAAC,CAAC,EAAE,OAAO,sBAAsB,CAAC;AAC7C","debugId":null}}]
-}
