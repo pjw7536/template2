@@ -19,11 +19,32 @@ const DIMENSION_CANDIDATES = [
 const DEFAULT_RANGE_DAYS = 14
 const MS_IN_DAY = 86_400_000
 
-function toDateString(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+function toDateString(value) {
+  if (value === null || value === undefined) {
     return null
   }
-  return date.toISOString().slice(0, 10)
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    if (trimmed.length >= 10) {
+      return trimmed.slice(0, 10)
+    }
+
+    return trimmed
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  return null
 }
 
 function resolveDateRange(fromParam, toParam, rangeParam) {
@@ -80,7 +101,7 @@ function buildWhereClause(timestampColumn, lineFilters, lineParams, from, to) {
 
 function normalizeDailyRow(row) {
   const rawDate = row?.day ?? row?.date
-  const date = rawDate instanceof Date ? toDateString(rawDate) : toDateString(new Date(rawDate))
+  const date = toDateString(rawDate)
   return {
     date,
     rowCount: Number.parseInt(row?.row_count ?? row?.rowCount ?? 0, 10) || 0,
@@ -90,7 +111,7 @@ function normalizeDailyRow(row) {
 
 function normalizeBreakdownRow(row) {
   const rawDate = row?.day ?? row?.date
-  const date = rawDate instanceof Date ? toDateString(rawDate) : toDateString(new Date(rawDate))
+  const date = toDateString(rawDate)
   const category = row?.category ?? row?.dimension ?? "Unspecified"
 
   return {
