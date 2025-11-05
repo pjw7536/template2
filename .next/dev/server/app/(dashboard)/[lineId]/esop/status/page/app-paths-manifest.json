@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/[lineId]/esop/status/page": "app/(dashboard)/[lineId]/esop/status/page.js"
+}

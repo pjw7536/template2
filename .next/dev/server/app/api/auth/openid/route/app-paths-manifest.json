@@ -1,0 +1,3 @@
+{
+  "/api/auth/openid/route": "app/api/auth/openid/route.js"
+}

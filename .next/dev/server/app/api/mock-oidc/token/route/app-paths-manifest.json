@@ -1,0 +1,3 @@
+{
+  "/api/mock-oidc/token/route": "app/api/mock-oidc/token/route.js"
+}

@@ -1,0 +1,160 @@
+/* [project]/tailwind/src/app/page.module.css [app-client] (css) */
+.page-module__hfQDWa__stage {
+  color: #0f172a;
+  isolation: isolate;
+  background-color: #0f172a;
+  place-items: center;
+  min-height: 100vh;
+  display: grid;
+  position: relative;
+  overflow: hidden;
+}
+
+.page-module__hfQDWa__carousel {
+  z-index: 0;
+  position: absolute;
+  inset: -4rem;
+}
+
+.page-module__hfQDWa__slide {
+  opacity: 0;
+  animation: 30s ease-in-out infinite page-module__hfQDWa__slideCycle;
+  animation-delay: var(--delay, 0s);
+  filter: saturate(110%) contrast(105%);
+  background-position: center;
+  background-size: cover;
+  position: absolute;
+  inset: 0;
+  transform: scale(1.05);
+}
+
+.page-module__hfQDWa__slide:first-child {
+  --delay: 0s;
+  background-image: radial-gradient(circle at 15% 20%, #5eead459, #0000 55%), radial-gradient(circle at 80% 15%, #0ea5e94d, #0000 45%), linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #155e75 100%);
+}
+
+.page-module__hfQDWa__slide:nth-child(2) {
+  --delay: 6s;
+  background-image: radial-gradient(circle at 20% 80%, #fbbf2459, #0000 50%), radial-gradient(circle at 75% 30%, #f973164d, #0000 55%), linear-gradient(145deg, #111827 0%, #1e293b 40%, #9a3412 100%);
+}
+
+.page-module__hfQDWa__slide:nth-child(3) {
+  --delay: 12s;
+  background-image: radial-gradient(circle at 35% 30%, #ef444459, #0000 55%), radial-gradient(circle at 70% 70%, #f472b647, #0000 55%), linear-gradient(120deg, #0b1120 0%, #1f2937 35%, #831843 100%);
+}
+
+.page-module__hfQDWa__slide:nth-child(4) {
+  --delay: 18s;
+  background-image: radial-gradient(circle at 25% 40%, #60a5fa59, #0000 60%), radial-gradient(circle at 70% 60%, #818cf859, #0000 55%), linear-gradient(155deg, #020617 0%, #1d4ed8 40%, #3730a3 100%);
+}
+
+.page-module__hfQDWa__slide:nth-child(5) {
+  --delay: 24s;
+  background-image: radial-gradient(circle at 30% 70%, #86efac52, #0000 55%), radial-gradient(circle at 70% 35%, #3b82f647, #0000 50%), linear-gradient(160deg, #020617 0%, #0f766e 50%, #10b981 100%);
+}
+
+.page-module__hfQDWa__slide:before {
+  content: "";
+  mix-blend-mode: overlay;
+  background: linear-gradient(120deg, #0206171a 0%, #0f172a66 100%);
+  position: absolute;
+  inset: 0;
+}
+
+.page-module__hfQDWa__blurOverlay {
+  z-index: 1;
+  -webkit-backdrop-filter: blur();
+  backdrop-filter: blur();
+  background: #0f172a2e;
+  animation: 30s ease-in-out infinite page-module__hfQDWa__blurPulse;
+  position: absolute;
+  inset: 0;
+}
+
+.page-module__hfQDWa__content {
+  z-index: 2;
+  text-align: center;
+  gap: 1.25rem;
+  padding: clamp(3rem, 8vw, 6rem);
+  display: grid;
+  position: relative;
+}
+
+.page-module__hfQDWa__word {
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #0f172a59;
+  text-shadow: 0 0 20px #94a3b840;
+  font-size: clamp(3rem, 10vw, 8rem);
+  font-weight: 700;
+  animation: 30s ease-in-out infinite page-module__hfQDWa__textReveal;
+}
+
+.page-module__hfQDWa__subtitle {
+  color: #e2e8f0bf;
+  max-width: 32ch;
+  margin-inline: auto;
+  font-size: clamp(.95rem, 2vw, 1.25rem);
+  line-height: 1.6;
+}
+
+@keyframes page-module__hfQDWa__slideCycle {
+  0%, 16% {
+    opacity: 1;
+    filter: saturate(115%) contrast(110%) brightness();
+  }
+
+  20%, 100% {
+    opacity: 0;
+    filter: saturate() contrast() brightness(.8);
+  }
+}
+
+@keyframes page-module__hfQDWa__textReveal {
+  0% {
+    color: #0f172a4d;
+    text-shadow: 0 0 10px #94a3b833;
+  }
+
+  40% {
+    color: #0f172aa6;
+    text-shadow: 0 0 30px #e2e8f066;
+  }
+
+  100% {
+    color: #0f172af2;
+    text-shadow: 0 0 45px #e2e8f08c;
+  }
+}
+
+@keyframes page-module__hfQDWa__blurPulse {
+  0% {
+    -webkit-backdrop-filter: blur();
+    backdrop-filter: blur();
+    background: #0f172a1a;
+  }
+
+  35% {
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    background: #0f172a38;
+  }
+
+  100% {
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    background: #0f172a52;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-module__hfQDWa__stage {
+    min-height: 80vh;
+  }
+
+  .page-module__hfQDWa__carousel {
+    inset: -2rem;
+  }
+}
+
+/*# sourceMappingURL=tailwind_src_app_page_module_fc118cd2.css.map*/

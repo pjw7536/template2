@@ -1,0 +1,3 @@
+{
+  "/api/mock-oidc/jwks/route": "app/api/mock-oidc/jwks/route.js"
+}

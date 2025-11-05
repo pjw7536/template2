@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/api/mock-oidc/token/route.js"],"sourcesContent":["// src/app/api/mock-oidc/token/route.js\nimport { NextResponse } from \"next/server\"\n\nasync function handle(request) {\n  let clientId = \"\"\n  try {\n    const formData = await request.formData()\n    clientId = formData.get(\"client_id\") || \"demo-client\"\n  } catch (error) {\n    // no-op, fall back to defaults\n  }\n\n  const accessToken = `mock-access-token-${Date.now()}`\n\n  return NextResponse.json({\n    access_token: accessToken,\n    token_type: \"Bearer\",\n    expires_in: 3600,\n    refresh_token: `mock-refresh-token-${Date.now()}`,\n    id_token: `mock-id-token-${clientId}`,\n  })\n}\n\nexport const POST = handle\nexport const GET = handle\n"],"names":[],"mappings":"AAAA,uCAAuC;;;;;;;AACvC;;AAEA,eAAe,OAAO,OAAO;IAC3B,IAAI,WAAW;IACf,IAAI;QACF,MAAM,WAAW,MAAM,QAAQ,QAAQ;QACvC,WAAW,SAAS,GAAG,CAAC,gBAAgB;IAC1C,EAAE,OAAO,OAAO;IACd,+BAA+B;IACjC;IAEA,MAAM,cAAc,CAAC,kBAAkB,EAAE,KAAK,GAAG,IAAI;IAErD,OAAO,iXAAY,CAAC,IAAI,CAAC;QACvB,cAAc;QACd,YAAY;QACZ,YAAY;QACZ,eAAe,CAAC,mBAAmB,EAAE,KAAK,GAAG,IAAI;QACjD,UAAU,CAAC,cAAc,EAAE,UAAU;IACvC;AACF;AAEO,MAAM,OAAO;AACb,MAAM,MAAM","debugId":null}}]
+}

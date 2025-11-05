@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/api/mock-oidc/authorize/route.js"],"sourcesContent":["// src/app/api/mock-oidc/authorize/route.js\nimport { NextResponse } from \"next/server\"\n\nexport function GET(request) {\n  const url = new URL(request.url)\n  const redirectUri = url.searchParams.get(\"redirect_uri\")\n  const state = url.searchParams.get(\"state\")\n\n  if (!redirectUri) {\n    return NextResponse.json({ error: \"missing_redirect_uri\" }, { status: 400 })\n  }\n\n  const redirectTarget = new URL(redirectUri)\n  redirectTarget.searchParams.set(\"code\", \"mock-auth-code\")\n  if (state) {\n    redirectTarget.searchParams.set(\"state\", state)\n  }\n\n  return NextResponse.redirect(redirectTarget)\n}\n"],"names":[],"mappings":"AAAA,2CAA2C;;;;;AAC3C;;AAEO,SAAS,IAAI,OAAO;IACzB,MAAM,MAAM,IAAI,IAAI,QAAQ,GAAG;IAC/B,MAAM,cAAc,IAAI,YAAY,CAAC,GAAG,CAAC;IACzC,MAAM,QAAQ,IAAI,YAAY,CAAC,GAAG,CAAC;IAEnC,IAAI,CAAC,aAAa;QAChB,OAAO,iXAAY,CAAC,IAAI,CAAC;YAAE,OAAO;QAAuB,GAAG;YAAE,QAAQ;QAAI;IAC5E;IAEA,MAAM,iBAAiB,IAAI,IAAI;IAC/B,eAAe,YAAY,CAAC,GAAG,CAAC,QAAQ;IACxC,IAAI,OAAO;QACT,eAAe,YAAY,CAAC,GAAG,CAAC,SAAS;IAC3C;IAEA,OAAO,iXAAY,CAAC,QAAQ,CAAC;AAC/B","debugId":null}}]
+}

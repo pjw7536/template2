@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 22, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/%28dashboard%29/page.jsx"],"sourcesContent":["export default function Page() {\n  return (\n    <>\n      <div className=\"grid auto-rows-min gap-4 md:grid-cols-3\">\n        <div className=\"bg-muted/50 aspect-video rounded-xl\" />\n        <div className=\"bg-muted/50 aspect-video rounded-xl\" />\n        <div className=\"bg-muted/50 aspect-video rounded-xl\" />\n      </div>\n      <div className=\"bg-muted/50 min-h-[100vh] flex-1 rounded-xl md:min-h-min\" />\n    </>\n  )\n}\n"],"names":[],"mappings":";;;;;;AAAe,SAAS;IACtB,qBACE;;0BACE,0PAAC;gBAAI,WAAU;;kCACb,0PAAC;wBAAI,WAAU;;;;;;kCACf,0PAAC;wBAAI,WAAU;;;;;;kCACf,0PAAC;wBAAI,WAAU;;;;;;;;;;;;0BAEjB,0PAAC;gBAAI,WAAU;;;;;;;;AAGrB","debugId":null}}]
+}

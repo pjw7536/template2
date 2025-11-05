@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///home/pjw75/tailwind/src/app/ESOP_Dashboard/status/page.jsx"],"sourcesContent":["import { DynamicBreadcrumb } from \"@/components/navigation/dynamic-breadcrumb\"\n\nexport default function Page() {\n  return (\n    <section className=\"grid gap-4\">\n      <div className=\"rounded-xl border bg-card p-6 shadow-sm\">\n        <h1 className=\"text-2xl font-semibold tracking-tight\">Models</h1>\n        <p className=\"mt-2 text-sm text-muted-foreground\">\n          Document the AI or financial models that power your product here.\n        </p>\n      </div>\n      <DataTable lineId=\"LINE-01\" />\n    </section>)\n}\n"],"names":[],"mappings":";;;;;AAAA;;;AAEe,SAAS;IACtB,qBACE,0PAAC;QAAQ,WAAU;;0BACjB,0PAAC;gBAAI,WAAU;;kCACb,0PAAC;wBAAG,WAAU;kCAAwC;;;;;;kCACtD,0PAAC;wBAAE,WAAU;kCAAqC;;;;;;;;;;;;0BAIpD,0PAAC;gBAAU,QAAO;;;;;;;;;;;;AAExB","debugId":null}}]
+}

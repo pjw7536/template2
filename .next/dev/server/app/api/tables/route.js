@@ -1,0 +1,10 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/tables/route.js")
+R.c("server/chunks/bb2f1_next_a08e9ed2._.js")
+R.c("server/chunks/cf673_mysql2_7c007684._.js")
+R.c("server/chunks/77770_iconv-lite_f3989640._.js")
+R.c("server/chunks/7ed52_aws-ssl-profiles_lib_5f1adddd._.js")
+R.c("server/chunks/1d595__pnpm_08e7653f._.js")
+R.c("server/chunks/[root-of-the-server]__336b0d0d._.js")
+R.c("server/chunks/tailwind__next-internal_server_app_api_tables_route_actions_90747185.js")
+R.m("[project]/tailwind/node_modules/.pnpm/next@16.0.1_@babel+core@7.28.5_babel-plugin-react-compiler@1.0.0_react-dom@19.2.0_react@19.2.0__react@19.2.0/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/tailwind/src/app/api/tables/route.js [app-route] (ecmascript)\" } [app-route] (ecmascript)")
+module.exports=R.m("[project]/tailwind/node_modules/.pnpm/next@16.0.1_@babel+core@7.28.5_babel-plugin-react-compiler@1.0.0_react-dom@19.2.0_react@19.2.0__react@19.2.0/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/tailwind/src/app/api/tables/route.js [app-route] (ecmascript)\" } [app-route] (ecmascript)").exports
