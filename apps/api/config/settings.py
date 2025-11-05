@@ -54,16 +54,37 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": os.environ.get("DJANGO_DB_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.environ.get("DJANGO_DB_NAME", BASE_DIR / "db.sqlite3"),
-        "USER": os.environ.get("DJANGO_DB_USER", ""),
-        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
-        "HOST": os.environ.get("DJANGO_DB_HOST", ""),
-        "PORT": os.environ.get("DJANGO_DB_PORT", ""),
+default_engine = (
+    os.environ.get("DJANGO_DB_ENGINE")
+    or os.environ.get("DB_ENGINE")
+    or "django.db.backends.mysql"
+)
+
+if default_engine == "django.db.backends.sqlite3":
+    default_database = {
+        "ENGINE": default_engine,
+        "NAME": os.environ.get("DJANGO_DB_NAME") or os.environ.get("DB_NAME") or (BASE_DIR / "db.sqlite3"),
     }
-}
+else:
+    default_database = {
+        "ENGINE": default_engine,
+        "NAME": os.environ.get("DJANGO_DB_NAME") or os.environ.get("DB_NAME") or "drone_sop",
+        "USER": os.environ.get("DJANGO_DB_USER") or os.environ.get("DB_USER") or "drone_user",
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD") or os.environ.get("DB_PASSWORD") or "dronepwd",
+        "HOST": os.environ.get("DJANGO_DB_HOST") or os.environ.get("DB_HOST") or "127.0.0.1",
+        "PORT": os.environ.get("DJANGO_DB_PORT") or os.environ.get("DB_PORT") or "3307",
+        "OPTIONS": {"charset": "utf8mb4"},
+    }
+
+DATABASES = {"default": default_database}
+
+if default_engine.endswith("mysql"):
+    try:  # pragma: no cover - optional dependency
+        import pymysql
+
+        pymysql.install_as_MySQLdb()
+    except ImportError:
+        pass
 
 AUTH_PASSWORD_VALIDATORS = [
     {

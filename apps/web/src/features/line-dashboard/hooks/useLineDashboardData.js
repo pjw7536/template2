@@ -3,6 +3,8 @@
 
 import * as React from "react"
 
+import { buildBackendUrl } from "@/lib/api"
+
 const createIdleStatus = () => ({ isLoading: false, error: null })
 
 /**
@@ -29,7 +31,9 @@ export function useLineDashboardData(initialLineId = "") {
       setStatus({ isLoading: true, error: null })
 
       try {
-        const endpoint = `/api/line-dashboard/summary?lineId=${encodeURIComponent(targetLine)}`
+        const endpoint = buildBackendUrl("/line-dashboard/summary", {
+          lineId: targetLine,
+        })
         const response = await fetch(endpoint)
         if (!response.ok) {
           throw new Error(`Failed to load summary (${response.status})`)

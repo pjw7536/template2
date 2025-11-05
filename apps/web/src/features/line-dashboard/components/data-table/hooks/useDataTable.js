@@ -4,6 +4,7 @@
 import * as React from "react"
 
 import { DEFAULT_TABLE, getDefaultFromValue, getDefaultToValue } from "../utils/constants"
+import { buildBackendUrl } from "@/lib/api"
 import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
 import { useCellIndicators } from "./useCellIndicators"
 
@@ -118,7 +119,8 @@ export function useDataTableState({ lineId }) {
       if (lineId) params.set("lineId", lineId)
 
       // 4) 요청(캐시 미사용)
-      const response = await fetch(`/api/tables?${params.toString()}`, { cache: "no-store" })
+      const endpoint = buildBackendUrl("/tables", params)
+      const response = await fetch(endpoint, { cache: "no-store" })
 
       // 5) JSON 파싱 시도(실패해도 빈 객체)
       let payload = {}
@@ -254,7 +256,8 @@ export function useDataTableState({ lineId }) {
 
       try {
         // 4) 서버 PATCH 호출
-        const response = await fetch("/api/tables/update", {
+        const endpoint = buildBackendUrl("/tables/update")
+        const response = await fetch(endpoint, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ table: selectedTable, id: recordId, updates }),

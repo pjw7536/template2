@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { buildBackendUrl } from "@/lib/api"
 import {
   Table,
   TableBody,
@@ -137,7 +138,8 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
     }
 
     try {
-      const response = await fetch(`/api/drone-early-inform?lineId=${encodeURIComponent(lineId)}`, {
+      const endpoint = buildBackendUrl("/drone-early-inform", { lineId })
+      const response = await fetch(endpoint, {
         cache: "no-store",
       })
 
@@ -229,7 +231,8 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       setFormError(null)
 
       try {
-        const response = await fetch("/api/drone-early-inform", {
+        const endpoint = buildBackendUrl("/drone-early-inform")
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -339,7 +342,8 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
     })
 
     try {
-      const response = await fetch("/api/drone-early-inform", {
+      const endpoint = buildBackendUrl("/drone-early-inform")
+      const response = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -402,7 +406,8 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       })
 
       try {
-        const response = await fetch(`/api/drone-early-inform?id=${encodeURIComponent(entry.id)}`, {
+        const endpoint = buildBackendUrl("/drone-early-inform", { id: entry.id })
+        const response = await fetch(endpoint, {
           method: "DELETE",
         })
 

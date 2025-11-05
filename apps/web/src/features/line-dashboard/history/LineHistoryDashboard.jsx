@@ -15,6 +15,7 @@ import { IconAlertCircle, IconRefresh } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { buildBackendUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const RANGE_OPTIONS = [
@@ -143,7 +144,8 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
 
       try {
         const params = new URLSearchParams({ lineId: String(lineId), rangeDays: String(rangeDays) })
-        const response = await fetch(`/api/line-dashboard/history?${params.toString()}`, {
+        const endpoint = buildBackendUrl("/line-dashboard/history", params)
+        const response = await fetch(endpoint, {
           signal: controller.signal,
         })
 
