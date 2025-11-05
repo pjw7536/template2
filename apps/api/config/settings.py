@@ -1,53 +1,121 @@
-"""Django settings for the REST API backend."""
+"""
+Django settings for the REST API backend
+- 가독성 향상
+- 환경변수 헬퍼 추가 (bool/int/list)
+- 운영/개발 환경에 따른 보안 옵션 안전화
+- DB 설정 정리 (SQLite/MySQL 모두 지원)
+- CORS/CSRF/프록시(HTTPS) 관련 옵션 명시적 구성
+- OIDC(SSO) 설정 가시성 및 더미 로그인 플래그
+"""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Iterable
 
 
-def env_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
+# ==============================
+# 환경변수 파서 유틸 (읽기 쉬움 & 안전)
+# ==============================
+def env(key: str, default: str | None = None) -> str | None:
+    """문자열 환경변수 읽기 (없으면 default)"""
+    return os.environ.get(key, default)
+
+
+def env_bool(key: str, default: bool = False) -> bool:
+    """불리언 환경변수 파싱: 1/true/yes/on → True"""
+    value = os.environ.get(key)
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def env_int(key: str, default: int | None = None) -> int | None:
+    """정수 환경변수 파싱 (실패 시 default)"""
+    value = os.environ.get(key)
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
+def env_list(key: str, default: str | Iterable[str] = "", sep: str = ",") -> list[str]:
+    """
+    쉼표 구분 리스트 파싱 (공백과 빈 문자열 제거)
+    예: "a, b, ,c" -> ["a","b","c"]
+    """
+    if isinstance(default, str):
+        raw = os.environ.get(key, default)
+        items = [s.strip() for s in raw.split(sep)]
+    else:
+        items = [s.strip() for s in default]  # 이미 리스트/튜플인 경우
+    return [s for s in items if s]
+
+
+# ============
+# 기본 경로 등
+# ============
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
-DEBUG = env_bool("DJANGO_DEBUG", False)
-ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+# ⚠ 개발 키는 반드시 운영에서 교체
+SECRET_KEY = env("DJANGO_SECRET_KEY", "insecure-development-key")
 
+# DEBUG는 운영에서 False 권장
+DEBUG = env_bool("DJANGO_DEBUG", False)
+
+# 예: "example.com, api.example.com, localhost, 127.0.0.1"
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+
+
+# ============
+# 애플리케이션
+# ============
 INSTALLED_APPS = [
+    # Django 기본
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # 서드파티
     "rest_framework",
     "corsheaders",
     "mozilla_django_oidc",
+    # 로컬 앱
     "api",
 ]
 
+
+# =========
+# 미들웨어
+# =========
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # CORS는 CommonMiddleware 보다 먼저
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # 사용자 활동 로깅 (커스텀)
     "api.middleware.ActivityLoggingMiddleware",
 ]
 
+
+# =========
+# URL/WSGI
+# =========
 ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [],  # 필요 시 템플릿 디렉터리 추가
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -63,30 +131,44 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
+
+# =====
+# DB 설정
+#  - SQLite(로컬) 또는 MySQL(운영/실사용) 자동 선택
+#  - 환경변수 프리픽스 DJANGO_* 또는 일반 키 모두 인식
+# =====
 default_engine = (
-    os.environ.get("DJANGO_DB_ENGINE")
-    or os.environ.get("DB_ENGINE")
+    env("DJANGO_DB_ENGINE")
+    or env("DB_ENGINE")
     or "django.db.backends.mysql"
 )
 
 if default_engine == "django.db.backends.sqlite3":
     default_database = {
         "ENGINE": default_engine,
-        "NAME": os.environ.get("DJANGO_DB_NAME") or os.environ.get("DB_NAME") or (BASE_DIR / "db.sqlite3"),
+        "NAME": env("DJANGO_DB_NAME") or env("DB_NAME") or (BASE_DIR / "db.sqlite3"),
     }
 else:
     default_database = {
         "ENGINE": default_engine,
-        "NAME": os.environ.get("DJANGO_DB_NAME") or os.environ.get("DB_NAME") or "drone_sop",
-        "USER": os.environ.get("DJANGO_DB_USER") or os.environ.get("DB_USER") or "drone_user",
-        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD") or os.environ.get("DB_PASSWORD") or "dronepwd",
-        "HOST": os.environ.get("DJANGO_DB_HOST") or os.environ.get("DB_HOST") or "127.0.0.1",
-        "PORT": os.environ.get("DJANGO_DB_PORT") or os.environ.get("DB_PORT") or "3307",
-        "OPTIONS": {"charset": "utf8mb4"},
+        "NAME": env("DJANGO_DB_NAME") or env("DB_NAME") or "drone_sop",
+        "USER": env("DJANGO_DB_USER") or env("DB_USER") or "drone_user",
+        "PASSWORD": env("DJANGO_DB_PASSWORD") or env("DB_PASSWORD") or "dronepwd",
+        "HOST": env("DJANGO_DB_HOST") or env("DB_HOST") or "127.0.0.1",
+        "PORT": env("DJANGO_DB_PORT") or env("DB_PORT") or "3307",
+        # MySQL 권장 옵션
+        "OPTIONS": {
+            "charset": "utf8mb4",
+            # 엄격 모드로 데이터 무결성 강화 (서버 설정에 따라 필요시 사용)
+            # "init_command": "SET sql_mode='STRICT_ALL_TABLES'",
+        },
+        # 커넥션 재사용(초): 운영에서 60~300 권장
+        "CONN_MAX_AGE": env_int("DJANGO_DB_CONN_MAX_AGE", 60) or 0,
     }
 
 DATABASES = {"default": default_database}
 
+# PyMySQL을 MySQLdb로 대체 (선택적 의존성)
 if default_engine.endswith("mysql"):
     try:  # pragma: no cover - optional dependency
         import pymysql
@@ -95,31 +177,39 @@ if default_engine.endswith("mysql"):
     except ImportError:
         pass
 
+
+# ===========================
+# 비밀번호 검증 (기본 정책 유지)
+# ===========================
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+
+# =======
+# 국제화 등
+# =======
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "UTC")
+TIME_ZONE = env("DJANGO_TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 
+
+# ========
+# 정적 파일
+# ========
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+
+# ==================
+# Django REST Framework
+# ==================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
@@ -130,45 +220,107 @@ REST_FRAMEWORK = {
     ],
 }
 
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
-CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
 
+# ==========================
+# CORS / CSRF 신뢰 도메인
+#  - 개발: 모든 오리진 허용 (DEBUG=True)
+#  - 운영: 환경변수 목록만 허용
+# ==========================
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", "http://localhost:3000")
+
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+# 운영 시 명시 리스트 사용 권장 (쉼표 구분)
+CORS_ALLOWED_ORIGINS = env_list(
+    "DJANGO_CORS_ALLOWED_ORIGINS",
+    FRONTEND_BASE_URL,  # 기본 프론트 URL 1개라도 허용
+)
+
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    FRONTEND_BASE_URL,
+)
+
+
+# ======================
+# 인증 백엔드 및 로그인 URL
+#  - RPAuthenticationBackend: 커스텀 권한/동기화 로직
+# ======================
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
     "api.auth.backends.RPAuthenticationBackend",
 ]
 
 LOGIN_URL = "/oidc/authenticate/"
-LOGIN_REDIRECT_URL = os.environ.get("DJANGO_LOGIN_REDIRECT_URL", "/")
-LOGOUT_REDIRECT_URL = os.environ.get("DJANGO_LOGOUT_REDIRECT_URL", "/")
+LOGIN_REDIRECT_URL = env("DJANGO_LOGIN_REDIRECT_URL", "/")
+LOGOUT_REDIRECT_URL = env("DJANGO_LOGOUT_REDIRECT_URL", "/")
 
-OIDC_RP_CLIENT_ID = os.environ.get("OIDC_RP_CLIENT_ID")
-OIDC_RP_CLIENT_SECRET = os.environ.get("OIDC_RP_CLIENT_SECRET")
+
+# ===========
+# OIDC (SSO)
+#  - 실제 IdP 연결 여부를 플래그로 파악
+#  - 개발 편의 목적의 더미 로그인 토글 지원
+# ===========
+OIDC_RP_CLIENT_ID = env("OIDC_RP_CLIENT_ID")
+OIDC_RP_CLIENT_SECRET = env("OIDC_RP_CLIENT_SECRET")
 OIDC_RP_SCOPES = "openid profile email"
-OIDC_RP_SIGN_ALGO = os.environ.get("OIDC_RP_SIGN_ALGO") or "HS256"
-OIDC_OP_AUTHORIZATION_ENDPOINT = os.environ.get("OIDC_OP_AUTHORIZATION_ENDPOINT")
-OIDC_OP_TOKEN_ENDPOINT = os.environ.get("OIDC_OP_TOKEN_ENDPOINT")
-OIDC_OP_USER_ENDPOINT = os.environ.get("OIDC_OP_USER_ENDPOINT")
-OIDC_OP_JWKS_ENDPOINT = os.environ.get("OIDC_OP_JWKS_ENDPOINT")
+OIDC_RP_SIGN_ALGO = env("OIDC_RP_SIGN_ALGO") or "HS256"
+
+OIDC_OP_AUTHORIZATION_ENDPOINT = env("OIDC_OP_AUTHORIZATION_ENDPOINT")
+OIDC_OP_TOKEN_ENDPOINT = env("OIDC_OP_TOKEN_ENDPOINT")
+OIDC_OP_USER_ENDPOINT = env("OIDC_OP_USER_ENDPOINT")
+OIDC_OP_JWKS_ENDPOINT = env("OIDC_OP_JWKS_ENDPOINT")
+
+# 인증 요청 View 커스텀 (조건부 더미/실제 전환 등)
 OIDC_AUTHENTICATE_CLASS = "api.auth.views.ConditionalOIDCAuthenticationRequestView"
+
+# 실제 프로바이더가 구성되었는지
 OIDC_PROVIDER_CONFIGURED = bool(OIDC_RP_CLIENT_ID and OIDC_OP_AUTHORIZATION_ENDPOINT)
-OIDC_DEV_LOGIN_ENABLED = env_bool("OIDC_DEV_LOGIN_ENABLED", DEBUG or not OIDC_PROVIDER_CONFIGURED)
 
-FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000")
+# 개발 더미 로그인 허용 (운영에선 False 권장)
+# - 기본값: DEBUG=True 이거나 실제 프로바이더 미구성 시 True
+OIDC_DEV_LOGIN_ENABLED = env_bool(
+    "OIDC_DEV_LOGIN_ENABLED",
+    DEBUG or not OIDC_PROVIDER_CONFIGURED,
+)
 
+
+# ===============================
+# 프록시/HTTPS 및 운영 보안 기본값
+#  - 리버스 프록시(X-Forwarded-Proto) 뒤에서 HTTPS 신뢰
+#  - 운영에서 Secure 쿠키/리다이렉트 강화
+# ===============================
+USE_X_FORWARDED_HOST = env_bool("USE_X_FORWARDED_HOST", True)
+
+# 프록시가 HTTPS 헤더를 넘기는 환경(Nginx/Caddy)에서는 아래 헤더 신뢰
+if env_bool("DJANGO_USE_PROXY_SSL_HEADER", True):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# 운영 보안 스위치 (DEBUG=False일 때 기본 True 권장)
+DJANGO_SECURE = env_bool("DJANGO_SECURE", not DEBUG)
+if DJANGO_SECURE:
+    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)  # 필요 시 프록시 레벨에서 처리 권장
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 0) or 0  # 프록시/HSTS 구성에 맞춰 단계적 적용
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
+    SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", "same-origin")
+    # X-Frame-Options는 기본 미들웨어에서 DENY
+
+
+# =========
+# 로깅 설정
+#  - DEBUG 시 콘솔에 상세 로그 출력
+# =========
 if DEBUG:
     LOGGING = {
         "version": 1,
         "disable_existing_loggers": False,
         "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-            },
+            "console": {"class": "logging.StreamHandler"},
         },
-        "root": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-        },
+        "root": {"handlers": ["console"], "level": "DEBUG"},
     }
