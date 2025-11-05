@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { getProviders, signIn } from "next-auth/react"
+import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -12,42 +12,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useAuth } from "@/components/auth"
 
 export function LoginForm({
   className,
   ...props
 }) {
   const [isLoading, setIsLoading] = useState(false)
-  const [providers, setProviders] = useState(null)
-
-  useEffect(() => {
-    let isMounted = true
-    getProviders()
-      .then((available) => {
-        if (isMounted) {
-          setProviders(available)
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setProviders(null)
-        }
-      })
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  const primaryProviderId = useMemo(() => {
-    if (providers?.oidc) return "oidc"
-    if (providers?.dummy) return "dummy"
-    return "dummy"
-  }, [providers])
+  const router = useRouter()
+  const { login, config } = useAuth()
+  const searchParams = useSearchParams()
+  const nextPath = searchParams?.get("next") || "/"
 
   const handleLogin = async () => {
     try {
       setIsLoading(true)
-      await signIn(primaryProviderId, { callbackUrl: "/" })
+      const result = await login({ next: nextPath })
+      if (result?.method === "dev") {
+        router.push(nextPath || "/")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -67,9 +50,13 @@ export function LoginForm({
             type="button"
             className="w-full"
             onClick={handleLogin}
-            disabled={isLoading || !primaryProviderId}
+            disabled={isLoading}
           >
-            {isLoading ? "Signing in..." : "SSO login"}
+            {isLoading
+              ? "Signing in..."
+              : config?.devLoginEnabled
+                ? "Development login"
+                : "SSO login"}
           </Button>
         </CardContent>
       </Card>

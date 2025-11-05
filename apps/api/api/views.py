@@ -6,12 +6,17 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from django.http import HttpRequest, JsonResponse
+import os
+
+from django.conf import settings
+from django.contrib.auth import get_user_model, login, logout
+from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from .db import execute, run_query
+from .models import ActivityLog, ensure_user_profile
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,160 @@ class HealthView(View):
                 "application": "template2-api",
             }
         )
+
+
+class AuthConfigurationView(View):
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        return JsonResponse(
+            {
+                "devLoginEnabled": settings.DEBUG and not settings.OIDC_RP_CLIENT_ID,
+                "loginUrl": settings.LOGIN_URL,
+                "frontendRedirect": settings.FRONTEND_BASE_URL,
+            }
+        )
+
+
+class FrontendRedirectView(View):
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
+        base = settings.FRONTEND_BASE_URL.rstrip("/") if settings.FRONTEND_BASE_URL else "http://localhost:3000"
+        if not base:
+            base = "http://localhost:3000"
+        next_path = request.GET.get("next")
+        if isinstance(next_path, str) and next_path.strip():
+            normalized = next_path.strip().lstrip("/")
+            if normalized:
+                return HttpResponseRedirect(f"{base}/{normalized}")
+        return HttpResponseRedirect(base)
+
+
+class CurrentUserView(View):
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+        user = request.user
+        profile = getattr(user, "profile", None)
+        role = profile.role if profile else "viewer"
+        permissions = {
+            "is_staff": user.is_staff,
+            "is_superuser": user.is_superuser,
+            "role": role,
+            "canViewActivity": user.has_perm("api.view_activitylog"),
+        }
+
+        return JsonResponse(
+            {
+                "id": user.pk,
+                "username": user.get_username(),
+                "name": user.get_full_name() or user.get_username(),
+                "email": user.email,
+                "permissions": permissions,
+            }
+        )
+
+
+class LogoutView(View):
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args: object, **kwargs: object):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        if request.user.is_authenticated:
+            logout(request)
+        response = JsonResponse({"status": "ok"})
+        response.delete_cookie(settings.SESSION_COOKIE_NAME)
+        return response
+
+
+class DevelopmentLoginView(View):
+    http_method_names = ["post"]
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args: object, **kwargs: object):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        if not settings.DEBUG or settings.OIDC_RP_CLIENT_ID:
+            return JsonResponse({"error": "Development login disabled"}, status=404)
+
+        data = _parse_json_body(request) or {}
+        email = data.get("email") or os.environ.get("AUTH_DUMMY_EMAIL", "demo@example.com")
+        if not isinstance(email, str) or "@" not in email:
+            email = "demo@example.com"
+        name = data.get("name") or os.environ.get("AUTH_DUMMY_NAME", "Demo User")
+        if not isinstance(name, str) or not name.strip():
+            name = "Demo User"
+        role = data.get("role") or "viewer"
+
+        User = get_user_model()
+        username = email.split("@")[0] if isinstance(email, str) and "@" in email else (email or "dev-user")
+
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={"username": username, "first_name": name},
+        )
+        if created:
+            user.set_unusable_password()
+            user.save()
+        else:
+            if user.first_name != name:
+                user.first_name = name
+                user.last_name = ""
+                user.save(update_fields=["first_name", "last_name"])
+
+        profile = ensure_user_profile(user)
+        if role in dict(profile.Roles.choices):
+            profile.role = role
+            profile.save(update_fields=["role"])
+
+        login(request, user)
+
+        return JsonResponse(
+            {
+                "status": "ok",
+                "user": {
+                    "id": user.pk,
+                    "username": user.get_username(),
+                    "name": user.get_full_name() or name,
+                    "email": user.email,
+                    "role": profile.role,
+                },
+            }
+        )
+
+
+class ActivityLogView(View):
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+        if not request.user.has_perm("api.view_activitylog"):
+            return JsonResponse({"error": "Forbidden"}, status=403)
+
+        limit = _to_int(request.GET.get("limit")) or 50
+        limit = max(1, min(limit, 200))
+
+        logs = (
+            ActivityLog.objects.select_related("user", "user__profile")
+            .order_by("-created_at")
+            [:limit]
+        )
+
+        payload = []
+        for entry in logs:
+            payload.append(
+                {
+                    "id": entry.id,
+                    "user": entry.user.get_username() if entry.user else None,
+                    "role": getattr(getattr(entry.user, "profile", None), "role", None) if entry.user else None,
+                    "action": entry.action,
+                    "path": entry.path,
+                    "method": entry.method,
+                    "status": entry.status_code,
+                    "metadata": entry.metadata,
+                    "timestamp": entry.created_at.isoformat(),
+                }
+            )
+
+        return JsonResponse({"results": payload})
 
 
 def sanitize_identifier(value: Any, fallback: Optional[str] = None) -> Optional[str]:

@@ -34,7 +34,7 @@ export function useLineDashboardData(initialLineId = "") {
         const endpoint = buildBackendUrl("/line-dashboard/summary", {
           lineId: targetLine,
         })
-        const response = await fetch(endpoint)
+        const response = await fetch(endpoint, { credentials: "include" })
         if (!response.ok) {
           throw new Error(`Failed to load summary (${response.status})`)
         }

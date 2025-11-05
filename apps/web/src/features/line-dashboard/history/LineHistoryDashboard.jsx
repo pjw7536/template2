@@ -147,6 +147,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
         const endpoint = buildBackendUrl("/line-dashboard/history", params)
         const response = await fetch(endpoint, {
           signal: controller.signal,
+          credentials: "include",
         })
 
         if (!response.ok) {

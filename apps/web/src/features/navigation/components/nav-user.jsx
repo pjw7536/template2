@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { signOut, useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import {
   BadgeCheck,
   Bell,
@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
+import { useAuth } from "@/components/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -79,9 +80,8 @@ export function NavUser({
   onLogout,
 }) {
   const { isMobile } = useSidebar()
-  const { data: session, status } = useSession()
-
-  const sessionUser = React.useMemo(() => session?.user ?? null, [session])
+  const router = useRouter()
+  const { user: sessionUser, isLoading, logout } = useAuth()
 
   const handleLogout = React.useCallback(() => {
     if (typeof onLogout === "function") {
@@ -89,8 +89,12 @@ export function NavUser({
       return
     }
 
-    signOut({ callbackUrl: "/login" })
-  }, [onLogout])
+    logout()
+      .catch(() => { })
+      .finally(() => {
+        router.push("/login")
+      })
+  }, [logout, onLogout, router])
 
   // 사용자 입력 정규화 (표시 가능한 값이 없으면 숨김)
   const normalized = React.useMemo(
@@ -98,7 +102,7 @@ export function NavUser({
     [sessionUser, user],
   )
 
-  if (status === "loading") {
+  if (isLoading) {
     return null
   }
   if (!normalized) return null

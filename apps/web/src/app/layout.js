@@ -1,7 +1,7 @@
 // src/app/layout.js
 import "./globals.css"
 
-import { AuthSessionProvider } from "@/components/auth/session-provider"
+import { AuthProvider } from "@/components/auth"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -14,12 +14,12 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <AuthSessionProvider>
+        <AuthProvider>
           <ThemeProvider>
             {children}
             <Toaster />
           </ThemeProvider>
-        </AuthSessionProvider>
+        </AuthProvider>
       </body>
     </html>
   )

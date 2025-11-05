@@ -120,7 +120,7 @@ export function useDataTableState({ lineId }) {
 
       // 4) 요청(캐시 미사용)
       const endpoint = buildBackendUrl("/tables", params)
-      const response = await fetch(endpoint, { cache: "no-store" })
+      const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
 
       // 5) JSON 파싱 시도(실패해도 빈 객체)
       let payload = {}
@@ -260,6 +260,7 @@ export function useDataTableState({ lineId }) {
         const response = await fetch(endpoint, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ table: selectedTable, id: recordId, updates }),
         })
 

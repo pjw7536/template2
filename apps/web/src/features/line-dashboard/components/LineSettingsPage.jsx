@@ -141,6 +141,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       const endpoint = buildBackendUrl("/drone-early-inform", { lineId })
       const response = await fetch(endpoint, {
         cache: "no-store",
+        credentials: "include",
       })
 
       let payload = {}
@@ -235,6 +236,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             lineId,
             mainStep,
@@ -346,6 +348,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       const response = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           id: Number.parseInt(entry.id, 10),
           ...updates,
@@ -409,6 +412,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         const endpoint = buildBackendUrl("/drone-early-inform", { id: entry.id })
         const response = await fetch(endpoint, {
           method: "DELETE",
+          credentials: "include",
         })
 
         let payload = {}
