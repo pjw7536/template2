@@ -2,6 +2,7 @@
 "use client"
 
 import * as React from "react"
+import { signOut, useSession } from "next-auth/react"
 import {
   BadgeCheck,
   Bell,
@@ -75,12 +76,31 @@ export function NavUser({
   onAccount = () => { },
   onBilling = () => { },
   onNotifications = () => { },
-  onLogout = () => { },
+  onLogout,
 }) {
   const { isMobile } = useSidebar()
+  const { data: session, status } = useSession()
+
+  const sessionUser = React.useMemo(() => session?.user ?? null, [session])
+
+  const handleLogout = React.useCallback(() => {
+    if (typeof onLogout === "function") {
+      onLogout()
+      return
+    }
+
+    signOut({ callbackUrl: "/login" })
+  }, [onLogout])
 
   // 사용자 입력 정규화 (표시 가능한 값이 없으면 숨김)
-  const normalized = React.useMemo(() => normalizeUser(user), [user])
+  const normalized = React.useMemo(
+    () => normalizeUser(sessionUser || user),
+    [sessionUser, user],
+  )
+
+  if (status === "loading") {
+    return null
+  }
   if (!normalized) return null
 
   const { name, email, avatar } = normalized
@@ -165,7 +185,7 @@ export function NavUser({
             <DropdownMenuSeparator />
 
             {/* 로그아웃 */}
-            <DropdownMenuItem onSelect={onLogout}>
+            <DropdownMenuItem onSelect={handleLogout}>
               <LogOut className="mr-2 size-4" aria-hidden="true" />
               Log out
             </DropdownMenuItem>

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar"
 
 export function AppSidebar({ lineOptions, ...props }) {
-  const { user, navMain, projects } = NAVIGATION_CONFIG
+  const { navMain, projects } = NAVIGATION_CONFIG
   // 라인 목록이 없으면 빈 배열로 처리
   const teams = Array.isArray(lineOptions) ? lineOptions : []
 
@@ -31,7 +31,7 @@ export function AppSidebar({ lineOptions, ...props }) {
           <NavProjects projects={projects} />
         </SidebarContent>
         <SidebarFooter>
-          <NavUser user={user} />
+          <NavUser />
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
