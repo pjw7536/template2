@@ -37,3 +37,13 @@ The Django project ships with a basic configuration, REST framework, and a `/hea
 - Connect Django authentication endpoints to the Next.js client.
 - Move any remaining API routes out of Next.js and replace them with requests to Django.
 - Expand shared tooling (ESLint, Prettier, CI) at the repository root for both apps.
+
+## Docker Deployment
+
+The repository ships with a production-ready Docker Compose stack that builds the Django API, the Next.js frontend, and an Nginx reverse proxy on a shared Docker network. The proxy exposes port `80` on the host while routing `/<api|static>` requests to the backend container and all other traffic to the frontend server.
+
+```bash
+docker compose up --build
+```
+
+The command above builds the application images, runs database migrations, collects static files, and starts all three containers. Static assets collected from Django are shared with Nginx through a named volume so they can be served directly. The frontend is compiled with `NEXT_PUBLIC_BACKEND_URL=/api`, allowing browser requests to flow through the proxy without additional configuration.

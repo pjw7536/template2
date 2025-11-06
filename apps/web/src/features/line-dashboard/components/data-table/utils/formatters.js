@@ -193,7 +193,7 @@ function uniquePreserveOrder(arr) {
  */
 function getStepPillClasses({ isMain, isCurrent }) {
   return cn(
-    "border px-2 py-0.5 text-xs font-medium leading-none",
+    "border px-2 py-0.5 text-xs font-medium leading-none dark:text-black",
     // 모서리: main이면 사각형, 아니면 pill
     isMain ? "rounded-sm" : "rounded-full",
     // 색상: 현재 스텝이면 연파랑, 아니면 기본
