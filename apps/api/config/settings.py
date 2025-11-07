@@ -131,58 +131,23 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-
 # =====
-# DB 설정
-#  - SQLite(로컬) 또는 MySQL/PostgreSQL(운영/실사용) 자동 선택
-#  - 환경변수 프리픽스 DJANGO_* 또는 일반 키 모두 인식
+# DB 설정 (PostgreSQL 전용)
+#  - 컨테이너 네트워크 기준 기본값: HOST=postgres, DB=appdb, USER=airflow, PASSWORD=airflow
+#  - 필요 시 환경변수로 덮어쓰기 가능
 # =====
-default_engine = (
-    env("DJANGO_DB_ENGINE")
-    or env("DB_ENGINE")
-    or "django.db.backends.mysql"
-)
-
-if default_engine == "django.db.backends.sqlite3":
-    default_database = {
-        "ENGINE": default_engine,
-        "NAME": env("DJANGO_DB_NAME") or env("DB_NAME") or (BASE_DIR / "db.sqlite3"),
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("DJANGO_DB_NAME") or env("DB_NAME") or "appdb",
+        "USER": env("DJANGO_DB_USER") or env("DB_USER") or "airflow",
+        "PASSWORD": env("DJANGO_DB_PASSWORD") or env("DB_PASSWORD") or "airflow",
+        "HOST": env("DJANGO_DB_HOST") or env("DB_HOST") or "airflow-postgres",
+        "PORT": env("DJANGO_DB_PORT") or env("DB_PORT") or "5432",
+        # 연결 재사용(초): 운영 60~300 권장
+        "CONN_MAX_AGE": env_int("DJANGO_DB_CONN_MAX_AGE", 60) or 0
     }
-else:
-    default_port = "3307" if "mysql" in default_engine else "5432" if "postgresql" in default_engine else ""
-    db_options = {}
-
-    if default_engine.endswith("mysql"):
-        db_options = {
-            "charset": "utf8mb4",
-            # 엄격 모드로 데이터 무결성 강화 (서버 설정에 따라 필요시 사용)
-            # "init_command": "SET sql_mode='STRICT_ALL_TABLES'",
-        }
-
-    default_database = {
-        "ENGINE": default_engine,
-        "NAME": env("DJANGO_DB_NAME") or env("DB_NAME") or "drone_sop",
-        "USER": env("DJANGO_DB_USER") or env("DB_USER") or "drone_user",
-        "PASSWORD": env("DJANGO_DB_PASSWORD") or env("DB_PASSWORD") or "dronepwd",
-        "HOST": env("DJANGO_DB_HOST") or env("DB_HOST") or "127.0.0.1",
-        "PORT": env("DJANGO_DB_PORT") or env("DB_PORT") or default_port,
-        # 커넥션 재사용(초): 운영에서 60~300 권장
-        "CONN_MAX_AGE": env_int("DJANGO_DB_CONN_MAX_AGE", 60) or 0,
-    }
-
-    if db_options:
-        default_database["OPTIONS"] = db_options
-
-DATABASES = {"default": default_database}
-
-# PyMySQL을 MySQLdb로 대체 (선택적 의존성)
-if default_engine.endswith("mysql"):
-    try:  # pragma: no cover - optional dependency
-        import pymysql
-
-        pymysql.install_as_MySQLdb()
-    except ImportError:
-        pass
+}
 
 
 # ===========================

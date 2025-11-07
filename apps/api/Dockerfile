@@ -1,7 +1,5 @@
 # syntax=docker/dockerfile:1.7
-
 FROM python:3.12-slim AS base
-
 
 # - PYTHONDONTWRITEBYTECODE=1 .pyc 캐시 파일 생성 방지 → 이미지가 깔끔해짐
 # - PYTHONUNBUFFERED=1 표준 출력 버퍼링 비활성화 → docker logs 에 즉시 표시

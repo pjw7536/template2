@@ -53,3 +53,5 @@ __pycache__/
 /apps/api/.venv/
 /apps/api/db.sqlite3
 /apps/api/staticfiles/
+
+*/logs/
