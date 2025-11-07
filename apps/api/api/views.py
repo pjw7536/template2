@@ -153,7 +153,7 @@ class DevelopmentLoginView(View):
             profile.role = role
             profile.save(update_fields=["role"])
 
-        login(request, user)
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
         return JsonResponse(
             {
@@ -238,7 +238,7 @@ def _get_user_sdwt_prod_values(line_id: str) -> List[str]:
     rows = run_query(
         """
         SELECT DISTINCT user_sdwt_prod
-        FROM `{table}`
+        FROM {table}
         WHERE line_id = %s
           AND user_sdwt_prod IS NOT NULL
           AND user_sdwt_prod <> ''
@@ -255,6 +255,30 @@ def _get_user_sdwt_prod_values(line_id: str) -> List[str]:
     return values
 
 
+def _list_table_columns(table_name: str) -> List[str]:
+    rows = run_query(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND LOWER(table_name) = %s
+        ORDER BY ordinal_position
+        """,
+        [table_name.lower()],
+    )
+    column_names: List[str] = []
+    for row in rows:
+        value: Optional[str] = None
+        for key in ("column_name", "COLUMN_NAME", "Field"):
+            raw = row.get(key)
+            if isinstance(raw, str) and raw.strip():
+                value = raw.strip()
+                break
+        if value:
+            column_names.append(value)
+    return column_names
+
+
 def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> Dict[str, Any]:
     filters: List[str] = []
     params: List[Any] = []
@@ -267,13 +291,13 @@ def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> D
         values = _get_user_sdwt_prod_values(line_id)
         if values:
             placeholders = ", ".join(["%s"] * len(values))
-            filters.append(f"`{usdwt_col}` IN ({placeholders})")
+            filters.append(f"{usdwt_col} IN ({placeholders})")
             params.extend(values)
             return {"filters": filters, "params": params}
 
     line_col = find_column(column_names, "line_id")
     if line_col:
-        filters.append(f"`{line_col}` = %s")
+        filters.append(f"{line_col} = %s")
         params.append(line_id)
 
     return {"filters": filters, "params": params}
@@ -325,8 +349,7 @@ class TablesView(View):
                 from_param, to_param = to_param, from_param
 
         try:
-            column_rows = run_query(f"SHOW COLUMNS FROM `{table_name}`")
-            column_names = [row.get("Field") for row in column_rows if isinstance(row.get("Field"), str)]
+            column_names = _list_table_columns(table_name)
 
             if not column_names:
                 return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
@@ -344,24 +367,24 @@ class TablesView(View):
             query_params = list(line_filter_result["params"])
 
             where_parts.append(
-                f"`{base_ts_col}` >= (CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', '+09:00') - INTERVAL 36 HOUR)"
+                f"{base_ts_col} >= (NOW() - INTERVAL '27 hours')"
             )
 
             if from_param:
-                where_parts.append(f"`{base_ts_col}` >= %s")
+                where_parts.append(f"{base_ts_col} >= %s")
                 query_params.append(f"{from_param} 00:00:00")
 
             if to_param:
-                where_parts.append(f"`{base_ts_col}` <= %s")
+                where_parts.append(f"{base_ts_col} <= %s")
                 query_params.append(f"{to_param} 23:59:59")
 
             where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
-            order_clause = f"ORDER BY `{base_ts_col}` DESC, `id` DESC"
+            order_clause = f"ORDER BY {base_ts_col} DESC, id DESC"
 
             rows = run_query(
                 """
                 SELECT *
-                FROM `{table}`
+                FROM {table}
                 {where_clause}
                 {order_clause}
                 """.format(table=table_name, where_clause=where_clause, order_clause=order_clause),
@@ -370,7 +393,7 @@ class TablesView(View):
 
             response_payload = {
                 "table": table_name,
-                "cutoff": "`{}` >= CONVERT_TZ(UTC_TIMESTAMP(),'UTC','+09:00') - INTERVAL 36 HOUR".format(base_ts_col),
+                "cutoff": "{} >= NOW() - INTERVAL '27 hours'".format(base_ts_col),
                 "from": from_param or None,
                 "to": to_param or None,
                 "rowCount": len(rows),
@@ -379,7 +402,8 @@ class TablesView(View):
             }
             return JsonResponse(response_payload)
         except Exception as exc:  # pragma: no cover - defensive logging
-            if getattr(exc, "code", None) == "ER_NO_SUCH_TABLE":
+            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+            if error_code in {"ER_NO_SUCH_TABLE", "42P01"}:
                 return JsonResponse({"error": f'Table "{table_name}" was not found'}, status=404)
             logger.exception("Failed to load table data")
             return JsonResponse({"error": "Failed to load table data"}, status=500)
@@ -413,8 +437,7 @@ class TableUpdateView(View):
             return JsonResponse({"error": "No valid updates provided"}, status=400)
 
         try:
-            column_rows = run_query(f"SHOW COLUMNS FROM `{table_name}`")
-            column_names = [row.get("Field") for row in column_rows if isinstance(row.get("Field"), str)]
+            column_names = _list_table_columns(table_name)
 
             id_column = find_column(column_names, "id")
             if not id_column:
@@ -427,7 +450,7 @@ class TableUpdateView(View):
                 column_name = find_column(column_names, key)
                 if not column_name:
                     continue
-                assignments.append(f"`{column_name}` = %s")
+                assignments.append(f"{column_name} = %s")
                 params.append(self._normalize_update_value(key, value))
 
             if not assignments:
@@ -436,10 +459,9 @@ class TableUpdateView(View):
             params.append(record_id)
             sql = (
                 """
-                UPDATE `{table}`
+                UPDATE {table}
                 SET {assignments}
-                WHERE `{id_column}` = %s
-                LIMIT 1
+                WHERE {id_column} = %s
                 """.format(
                     table=table_name,
                     assignments=", ".join(assignments),
@@ -453,7 +475,8 @@ class TableUpdateView(View):
 
             return JsonResponse({"success": True})
         except Exception as exc:  # pragma: no cover - defensive logging
-            if getattr(exc, "code", None) == "ER_NO_SUCH_TABLE":
+            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+            if error_code in {"ER_NO_SUCH_TABLE", "42P01"}:
                 return JsonResponse({"error": f'Table "{table_name}" was not found'}, status=404)
             logger.exception("Failed to update table record")
             return JsonResponse({"error": "Failed to update record"}, status=500)
@@ -492,8 +515,7 @@ class LineHistoryView(View):
         from_value, to_value = self._resolve_date_range(from_param, to_param, range_days)
 
         try:
-            column_rows = run_query(f"SHOW COLUMNS FROM `{table_name}`")
-            column_names = [row.get("Field") for row in column_rows if isinstance(row.get("Field"), str)]
+            column_names = _list_table_columns(table_name)
 
             if not column_names:
                 return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
@@ -588,11 +610,11 @@ class LineHistoryView(View):
         params = list(line_params)
 
         if from_value:
-            conditions.append(f"`{timestamp_column}` >= %s")
+            conditions.append(f"{timestamp_column} >= %s")
             params.append(f"{from_value} 00:00:00")
 
         if to_value:
-            conditions.append(f"`{timestamp_column}` <= %s")
+            conditions.append(f"{timestamp_column} <= %s")
             params.append(f"{to_value} 23:59:59")
 
         clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -605,10 +627,10 @@ class LineHistoryView(View):
         send_jira_column: Optional[str],
         where_clause: str,
     ) -> str:
-        totals_select = [f"DATE(`{timestamp_column}`) AS day", "COUNT(*) AS row_count"]
+        totals_select = [f"DATE({timestamp_column}) AS day", "COUNT(*) AS row_count"]
         if send_jira_column:
             totals_select.append(
-                "SUM(CASE WHEN `{col}` IS NOT NULL AND `{col}` <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} IS NOT NULL AND {col} <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
@@ -618,7 +640,7 @@ class LineHistoryView(View):
         return (
             """
             SELECT {select_clause}
-            FROM `{table}`
+            FROM {table}
             {where_clause}
             GROUP BY day
             ORDER BY day ASC
@@ -638,14 +660,14 @@ class LineHistoryView(View):
         where_clause: str,
     ) -> str:
         select_parts = [
-            f"DATE(`{timestamp_column}`) AS day",
-            f"COALESCE(CAST(`{dimension_column}` AS CHAR), 'Unspecified') AS category",
+            f"DATE({timestamp_column}) AS day",
+            f"COALESCE(CAST({dimension_column} AS TEXT), 'Unspecified') AS category",
             "COUNT(*) AS row_count",
         ]
 
         if send_jira_column:
             select_parts.append(
-                "SUM(CASE WHEN `{col}` IS NOT NULL AND `{col}` <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} IS NOT NULL AND {col} <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
@@ -655,7 +677,7 @@ class LineHistoryView(View):
         return (
             """
             SELECT {select_clause}
-            FROM `{table}`
+            FROM {table}
             {where_clause}
             GROUP BY day, category
             ORDER BY day ASC, category ASC
@@ -730,7 +752,7 @@ class DroneEarlyInformView(View):
             rows = run_query(
                 """
                 SELECT id, line_id, main_step, custom_end_step
-                FROM `{table}`
+                FROM {table}
                 WHERE line_id = %s
                 ORDER BY main_step ASC, id ASC
                 """.format(table=self.TABLE_NAME),
@@ -768,8 +790,9 @@ class DroneEarlyInformView(View):
             params = [line_id, main_step, custom_end_step]
             affected, last_row_id = execute(
                 """
-                INSERT INTO `{table}` (line_id, main_step, custom_end_step)
+                INSERT INTO {table} (line_id, main_step, custom_end_step)
                 VALUES (%s, %s, %s)
+                RETURNING id
                 """.format(table=self.TABLE_NAME),
                 params,
             )
@@ -781,7 +804,8 @@ class DroneEarlyInformView(View):
             }
             return JsonResponse({"entry": entry}, status=201)
         except Exception as exc:  # pragma: no cover - defensive logging
-            if getattr(exc, "code", None) == "ER_DUP_ENTRY":
+            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+            if error_code in {"ER_DUP_ENTRY", "23505"}:
                 return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
             logger.exception("Failed to insert drone_early_inform row")
             return JsonResponse({"error": "Failed to create entry"}, status=500)
@@ -806,7 +830,7 @@ class DroneEarlyInformView(View):
             main_step = self._sanitize_main_step(payload.get("mainStep"))
             if not main_step:
                 return JsonResponse({"error": "mainStep is required"}, status=400)
-            assignments.append("`main_step` = %s")
+            assignments.append("main_step = %s")
             params.append(main_step)
 
         if "customEndStep" in payload:
@@ -814,7 +838,7 @@ class DroneEarlyInformView(View):
                 normalized = self._normalize_custom_end_step(payload.get("customEndStep"))
             except ValueError as exc:
                 return JsonResponse({"error": str(exc)}, status=400)
-            assignments.append("`custom_end_step` = %s")
+            assignments.append("custom_end_step = %s")
             params.append(normalized)
 
         if not assignments:
@@ -824,10 +848,9 @@ class DroneEarlyInformView(View):
         try:
             affected, _ = execute(
                 """
-                UPDATE `{table}`
+                UPDATE {table}
                 SET {assignments}
                 WHERE id = %s
-                LIMIT 1
                 """.format(table=self.TABLE_NAME, assignments=", ".join(assignments)),
                 params,
             )
@@ -837,7 +860,7 @@ class DroneEarlyInformView(View):
             rows = run_query(
                 """
                 SELECT id, line_id, main_step, custom_end_step
-                FROM `{table}`
+                FROM {table}
                 WHERE id = %s
                 LIMIT 1
                 """.format(table=self.TABLE_NAME),
@@ -848,7 +871,8 @@ class DroneEarlyInformView(View):
                 return JsonResponse({"error": "Entry not found"}, status=404)
             return JsonResponse({"entry": entry})
         except Exception as exc:  # pragma: no cover - defensive logging
-            if getattr(exc, "code", None) == "ER_DUP_ENTRY":
+            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+            if error_code in {"ER_DUP_ENTRY", "23505"}:
                 return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
             logger.exception("Failed to update drone_early_inform row")
             return JsonResponse({"error": "Failed to update entry"}, status=500)
@@ -865,9 +889,8 @@ class DroneEarlyInformView(View):
         try:
             affected, _ = execute(
                 """
-                DELETE FROM `{table}`
+                DELETE FROM {table}
                 WHERE id = %s
-                LIMIT 1
                 """.format(table=self.TABLE_NAME),
                 [entry_id],
             )

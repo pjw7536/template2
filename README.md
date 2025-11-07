@@ -47,3 +47,15 @@ docker compose up --build
 ```
 
 The command above builds the application images, runs database migrations, collects static files, and starts all three containers. Static assets collected from Django are shared with Nginx through a named volume so they can be served directly. The frontend is compiled with `NEXT_PUBLIC_BACKEND_URL=/api`, allowing browser requests to flow through the proxy without additional configuration.
+
+### Hot-reload Development Stack
+
+For local development with automatic reloads inside the containers, combine the new override file with the production stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+This command keeps the production build definitions while swapping in development-friendly entrypoints. Django runs via `python manage.py runserver` with your source mounted into the container, and Next.js executes `npm run dev` after installing/updating dependencies in a dedicated `node_modules` volume. Port `8000` exposes the API with live code reloads, and port `3000` serves the Next.js dev server pointing at the API container.
+
+Nginx is also part of the override stack, so `http://localhost:8080` proxies both services (including `/static` assets) while preserving HMR and websocket upgrades from the Next.js process.

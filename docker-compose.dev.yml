@@ -2,11 +2,9 @@ services:
   api:
     build:
       context: ./apps/api
-      dockerfile: Dockerfile
     env_file:
-      - ./.env          # 👈 환경변수 한 방에 주입
+      - ./.env
     environment:
-      # 꼭 필요한 항목만 덮어쓰기가 필요하면 여기에 ${VAR} 형태로 참조 가능
       DJANGO_DB_ENGINE: ${DJANGO_DB_ENGINE}
       DJANGO_DB_NAME: ${DJANGO_DB_NAME}
       DJANGO_DB_USER: ${DJANGO_DB_USER}
@@ -17,11 +15,20 @@ services:
       DJANGO_SECURE: ${DJANGO_SECURE}
       USE_X_FORWARDED_HOST: ${USE_X_FORWARDED_HOST}
       DJANGO_USE_PROXY_SSL_HEADER: ${DJANGO_USE_PROXY_SSL_HEADER}
+      DJANGO_DEBUG: "1"
     volumes:
+      - ./apps/api:/app
       - api_data:/data
       - api_static:/app/staticfiles
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+          set -e
+          python manage.py migrate --noinput
+          python manage.py runserver 0.0.0.0:8000
     networks:
       shared-net:
         aliases:
@@ -33,12 +40,21 @@ services:
     env_file:
       - ./.env
     environment:
-      NEXT_PUBLIC_BACKEND_URL: "/api"
+      NODE_ENV: "development"
+      NPM_CONFIG_PRODUCTION: "false"
+      NEXT_PUBLIC_BACKEND_URL: "http://localhost:8000"
       BACKEND_API_URL: "http://api:8000"
+      NEXT_TELEMETRY_DISABLED: "1"
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     depends_on:
       - api
-    expose:
-      - "3000"
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
     networks:
       shared-net:
         aliases:
@@ -60,6 +76,7 @@ services:
 volumes:
   api_data:
   api_static:
+  web_node_modules:
 
 networks:
   shared-net:

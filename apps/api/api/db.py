@@ -35,5 +35,14 @@ def execute(sql: str, params: Optional[Sequence[object]] = None) -> tuple[int, O
 
     with get_cursor() as cursor:
         cursor.execute(sql, params or [])
-        lastrowid = getattr(cursor, "lastrowid", None)
+        lastrowid = None
+        if cursor.description:
+            try:
+                row = cursor.fetchone()
+            except Exception:  # pragma: no cover - defensive guard
+                row = None
+            if row:
+                lastrowid = row[0]
+        else:
+            lastrowid = getattr(cursor, "lastrowid", None)
         return cursor.rowcount, lastrowid
