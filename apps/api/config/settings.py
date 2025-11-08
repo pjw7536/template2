@@ -85,6 +85,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "mozilla_django_oidc",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     # 로컬 앱
     "api",
 ]
@@ -190,6 +192,21 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+
+# =====================
+# OpenAPI / Swagger UI
+# =====================
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Template2 API",
+    "DESCRIPTION": "자동 생성된 OpenAPI 스키마",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
+    },
 }
 
 
