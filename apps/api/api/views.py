@@ -11,9 +11,12 @@ import os
 from django.conf import settings
 from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
-from django.views import View
+from django.urls import reverse
 from django.utils.decorators import method_decorator
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .db import execute, run_query
 from .models import ActivityLog, ensure_user_profile
@@ -74,10 +77,12 @@ class AuthConfigurationView(View):
             session_max_age = int(session_max_age) if session_max_age is not None else None
         except (TypeError, ValueError):
             session_max_age = None
+        login_entry_url = reverse("auth-login")
+
         return JsonResponse(
             {
                 "devLoginEnabled": dev_login_enabled,
-                "loginUrl": settings.LOGIN_URL,
+                "loginUrl": login_entry_url,
                 "frontendRedirect": settings.FRONTEND_BASE_URL,
                 "sessionMaxAgeSeconds": session_max_age,
             }
@@ -150,56 +155,87 @@ class LogoutView(View):
 
 
 class DevelopmentLoginView(View):
-    """개발용 더미 로그인 엔드포인트(POST).
-    - settings.DEBUG가 True이고 실제 OIDC 클라이언트 설정이 없을 때만 동작
-    - body.email/name/role로 사용자 생성/로그인 (없는 경우 기본값 사용)
-    """
+    """개발용 더미 로그인 엔드포인트."""
 
-    http_method_names = ["post"]
+    http_method_names = ["get", "post"]
 
     @method_decorator(csrf_exempt)
     def dispatch(self, *args: object, **kwargs: object):
         return super().dispatch(*args, **kwargs)
 
-    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        if not settings.DEBUG or settings.OIDC_RP_CLIENT_ID:
-            return JsonResponse({"error": "Development login disabled"}, status=404)
+    def _is_enabled(self) -> bool:
+        return bool(settings.DEBUG) and not bool(settings.OIDC_RP_CLIENT_ID)
 
-        data = _parse_json_body(request) or {}
-        email = data.get("email") or os.environ.get("AUTH_DUMMY_EMAIL", "demo@example.com")
-        if not isinstance(email, str) or "@" not in email:
-            email = "demo@example.com"
-        name = data.get("name") or os.environ.get("AUTH_DUMMY_NAME", "Demo User")
-        if not isinstance(name, str) or not name.strip():
-            name = "Demo User"
-        role = data.get("role") or "viewer"
+    def _login_dummy_user(
+        self,
+        request: HttpRequest,
+        *,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+        role: Optional[str] = None,
+    ):
+        data_email = email or os.environ.get("AUTH_DUMMY_EMAIL", "demo@example.com")
+        if not isinstance(data_email, str) or "@" not in data_email:
+            data_email = "demo@example.com"
+
+        data_name = name or os.environ.get("AUTH_DUMMY_NAME", "Demo User")
+        if not isinstance(data_name, str) or not data_name.strip():
+            data_name = "Demo User"
+
+        data_role = role or "viewer"
 
         User = get_user_model()
-        username = email.split("@")[0] if isinstance(email, str) and "@" in email else (email or "dev-user")
+        username = (
+            data_email.split("@")[0]
+            if isinstance(data_email, str) and "@" in data_email
+            else (data_email or "dev-user")
+        )
 
-        # 사용자 생성 또는 가져오기
         user, created = User.objects.get_or_create(
-            email=email,
-            defaults={"username": username, "first_name": name},
+            email=data_email,
+            defaults={"username": username, "first_name": data_name},
         )
         if created:
             user.set_unusable_password()
             user.save()
         else:
-            # 이름이 바뀐 경우 업데이트
-            if user.first_name != name:
-                user.first_name = name
+            if user.first_name != data_name:
+                user.first_name = data_name
                 user.last_name = ""
                 user.save(update_fields=["first_name", "last_name"])
 
-        # 프로필 보장 및 역할 반영
         profile = ensure_user_profile(user)
-        if role in dict(profile.Roles.choices):
-            profile.role = role
+        if data_role in dict(profile.Roles.choices):
+            profile.role = data_role
             profile.save(update_fields=["role"])
 
-        # 세션 로그인
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+
+        return user, profile
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
+        if not self._is_enabled():
+            return HttpResponseRedirect(settings.LOGIN_URL)
+
+        self._login_dummy_user(request)
+        target = _resolve_frontend_target(request.GET.get("next"))
+        return HttpResponseRedirect(target)
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        if not self._is_enabled():
+            return JsonResponse({"error": "Development login disabled"}, status=404)
+
+        data = _parse_json_body(request) or {}
+        email = data.get("email") if isinstance(data.get("email"), str) else None
+        name = data.get("name") if isinstance(data.get("name"), str) else None
+        role = data.get("role") if isinstance(data.get("role"), str) else None
+
+        user, profile = self._login_dummy_user(
+            request,
+            email=email,
+            name=name,
+            role=role,
+        )
 
         return JsonResponse(
             {
@@ -207,12 +243,33 @@ class DevelopmentLoginView(View):
                 "user": {
                     "id": user.pk,
                     "username": user.get_username(),
-                    "name": user.get_full_name() or name,
+                    "name": user.get_full_name() or user.first_name,
                     "email": user.email,
                     "role": profile.role,
                 },
             }
         )
+
+
+class LoginRedirectView(View):
+    """환경에 따라 알맞은 로그인 엔드포인트로 안내."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
+        provider_configured = bool(getattr(settings, "OIDC_PROVIDER_CONFIGURED", False))
+        dev_login_enabled = bool(getattr(settings, "OIDC_DEV_LOGIN_ENABLED", False))
+
+        next_value = request.GET.get("next")
+
+        if dev_login_enabled and not provider_configured:
+            target = reverse("auth-dev-login")
+            target = _append_query_params(target, {"next": next_value})
+            return HttpResponseRedirect(target)
+
+        login_url = settings.LOGIN_URL or "/oidc/authenticate/"
+        if not login_url.startswith("http"):
+            login_url = request.build_absolute_uri(login_url)
+        target = _append_query_params(login_url, {"next": next_value})
+        return HttpResponseRedirect(target)
 
 
 # ===================================================================
@@ -376,6 +433,41 @@ def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> D
         params.append(line_id)
 
     return {"filters": filters, "params": params}
+
+
+def _resolve_frontend_target(next_value: Optional[str]) -> str:
+    base = (settings.FRONTEND_BASE_URL or "http://localhost:3000").strip() or "http://localhost:3000"
+    base = base.rstrip("/")
+    parsed_base = urlparse(base if "://" in base else f"http://{base.lstrip('/')}")
+    allowed_hosts = {parsed_base.netloc} if parsed_base.netloc else set()
+
+    if next_value:
+        candidate = str(next_value).strip()
+        if candidate:
+            if url_has_allowed_host_and_scheme(candidate, allowed_hosts=allowed_hosts, require_https=False):
+                return candidate
+            if candidate.startswith("/"):
+                trimmed = candidate.lstrip("/")
+                return f"{base}/{trimmed}" if trimmed else base
+            return urljoin(f"{base}/", candidate)
+
+    return base
+
+
+def _append_query_params(url: str, params: Dict[str, Optional[str]]) -> str:
+    if not params:
+        return url
+
+    parsed = urlparse(url)
+    existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    for key, value in params.items():
+        if value is None:
+            continue
+        existing[key] = str(value)
+
+    new_query = urlencode(existing, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
 
 
 def _to_int(value: Any) -> int:

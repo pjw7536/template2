@@ -83,7 +83,7 @@ async function fetchJson(url, options = {}) {
  * @typedef {Object} AuthContextValue
  * @property {AuthUser | null} user
  * @property {boolean} isLoading
- * @property {(options?: { next?: string }) => Promise<{ method: "dev" | "redirect"; url?: string; next?: string }>} login
+ * @property {(options?: { next?: string }) => Promise<{ method: "redirect"; url?: string }>} login
  * @property {() => Promise<void>} logout
  * @property {() => Promise<void>} refresh
  * @property {AuthConfig} config
@@ -92,7 +92,7 @@ async function fetchJson(url, options = {}) {
 // 기본 설정(백엔드가 내려주는 값으로 병합됨)
 const DEFAULT_CONFIG = /** @type {AuthConfig} */ ({
   devLoginEnabled: false,
-  loginUrl: "/oidc/authenticate/",
+  loginUrl: "/auth/login",
   frontendRedirect: "http://localhost:3000",
   sessionMaxAgeSeconds: 60 * 30,
 });
@@ -241,30 +241,8 @@ export function AuthProvider({ children }) {
     async (options = {}) => {
       const nextPath = typeof options?.next === "string" ? options.next : undefined;
       const nextAbsolute = buildNextUrl(nextPath, config.frontendRedirect);
-
-      // 1) 개발용 로그인 (백엔드가 dev-login 허용 시)
-      if (config.devLoginEnabled) {
-        try {
-          const endpoint = buildBackendUrl("/auth/dev-login");
-          const result = await fetchJson(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
-          if (result.ok) {
-            await loadUser();
-            return { method: "dev", next: nextPath };
-          }
-        } catch {
-          // 실패 시 리다이렉트 로그인으로 폴백
-        }
-      }
-
-      // 2) OIDC 등 실제 로그인 페이지로 리다이렉트
-      const rawLoginUrl = config.loginUrl || "/oidc/authenticate/";
-      const absoluteLoginUrl = rawLoginUrl.startsWith("http")
-        ? rawLoginUrl
-        : buildBackendUrl(rawLoginUrl);
+      const rawLoginUrl = config.loginUrl || "/auth/login";
+      const absoluteLoginUrl = rawLoginUrl.startsWith("http") ? rawLoginUrl : buildBackendUrl(rawLoginUrl);
       const target = appendNextParam(absoluteLoginUrl, nextAbsolute);
 
       if (typeof window !== "undefined") {
@@ -272,7 +250,7 @@ export function AuthProvider({ children }) {
       }
       return { method: "redirect", url: target };
     },
-    [config, loadUser]
+    [config]
   );
 
   /** 로그아웃 함수 */
