@@ -486,11 +486,7 @@ class TableUpdateView(View):
         if key == "comment":
             return "" if value is None else str(value)
         if key == "needtosend":
-            try:
-                numeric = float(value)
-            except (TypeError, ValueError):
-                numeric = 0
-            return 0 if numeric == 0 else 1
+            return bool(value)
         return value
 
 

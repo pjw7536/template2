@@ -9,44 +9,52 @@ import { makeCellKey } from "../utils/cellState"
 import { buildToastOptions } from "../utils/toast"
 
 /* ============================================================================
- * NeedToSendCell
- * - needtosend(0/1) 값을 토글하는 원형 버튼 셀
- * - 저장 성공/취소/실패에 따라 토스트 메시지 표시
- * - 비활성(disabled)이면 클릭/키보드 토글 차단
- * - 접근성(a11y): role="switch", aria-checked, 키보드(Enter/Space) 지원
+ * NeedToSendCell (Boolean 버전)
+ * - needtosend 값을 boolean 으로 토글/표시
+ * - 서버로는 { needtosend: true|false } 전송
+ * - 과거 0/1, "Y"/"N" 등도 안전 변환
  * ========================================================================== */
 
 /* =========================
- * 1) 공통 상수/유틸
+ * 1) 유틸
  * ======================= */
 
-/** 정수 0/1로 안전 변환 (그 외 값은 0으로 취급) */
-function to01(v) {
-  const n = Number(v)
-  return Number.isFinite(n) && n === 1 ? 1 : 0
+/** 다양한 값(0/1, "0"/"1", "Y"/"N", "true"/"false", bool)을 안전하게 boolean 으로 변환 */
+function toBool(v) {
+  if (typeof v === "boolean") return v
+  if (v == null) return false
+
+  // 숫자형
+  if (typeof v === "number") return v === 1
+
+  // 문자열형
+  const s = String(v).trim().toLowerCase()
+  if (s === "1" || s === "y" || s === "yes" || s === "true") return true
+  if (s === "0" || s === "n" || s === "no" || s === "false") return false
+
+  // 그 외는 falsy 취급
+  return false
 }
 
-/** 토스트 도우미: 성공/정보/실패 각각 간단한 헬퍼로 래핑 */
+/** 토스트 도우미 */
 function showReserveToast() {
   toast.success("예약 성공", {
     description: "E-SOP Inform 예약 되었습니다.",
-    icon: <CalendarCheck2 className="h-5 w-5 text-blue-500" />,
+    icon: <CalendarCheck2 className="h-5 w-5" />,
     ...buildToastOptions({ color: "#065f46", duration: 1800 }),
   })
 }
-
 function showCancelToast() {
   toast("예약 취소", {
     description: "E-SOP Inform 예약 취소 되었습니다.",
-    icon: <CalendarX2 className="h-5 w-5 text-sky-600" />,
+    icon: <CalendarX2 className="h-5 w-5" />,
     ...buildToastOptions({ color: "#1e40af", duration: 1800 }),
   })
 }
-
 function showErrorToast(msg) {
   toast.error("저장 실패", {
     description: msg || "저장 중 오류가 발생했습니다.",
-    icon: <XCircle className="h-5 w-5 text-red-500" />,
+    icon: <XCircle className="h-5 w-5" />,
     ...buildToastOptions({ color: "#991b1b", duration: 3000 }),
   })
 }
@@ -57,55 +65,54 @@ function showErrorToast(msg) {
 export function NeedToSendCell({
   meta,
   recordId,
-  baseValue,
+  baseValue, // 서버/테이블 원본값 (true/false 또는 과거 0/1 등)
   disabled = false,
   disabledReason = "이미 JIRA 전송됨 (needtosend 수정 불가)",
 }) {
-  // 메타에서 임시 드래프트 값(사용자가 토글했으나 서버 저장 전) 우선 사용
+  // 메타에서 임시 드래프트 값(서버 저장 전)을 우선 사용
   const draftValue = meta?.needToSendDrafts?.[recordId]
   const nextValue = draftValue ?? baseValue
-  const isChecked = to01(nextValue) === 1
 
-  // 저장 중 상태: 같은 셀에 대한 동시 요청 방지
+  // 항상 boolean 으로 표현
+  const isChecked = toBool(nextValue)
+
+  // 저장 중 상태: 같은 셀 동시 요청 방지
   const savingKey = makeCellKey(recordId, "needtosend")
   const isSaving = Boolean(meta?.updatingCells?.[savingKey])
 
   // ────────────────────────────────────────────────
-  // 토글 로직 (클릭/키보드 모두 이 로직 호출)
+  // 토글 로직 (클릭/키보드)
   // ────────────────────────────────────────────────
   const toggle = async () => {
-    // ⛔ 비활성 또는 저장 중이면 즉시 중단
     if (disabled) {
       toast.info(disabledReason)
       return
     }
     if (isSaving) return
 
-    const targetValue = isChecked ? 0 : 1
+    // boolean 토글
+    const targetValue = !isChecked
 
     // 드래프트/에러 초기화
     meta?.setNeedToSendDraftValue?.(recordId, targetValue)
     meta?.clearUpdateError?.(savingKey)
 
     try {
-      // 서버에 실제 업데이트 요청 (성공 시 true 가정)
+      // 서버에 실제 업데이트 요청 — boolean으로 전송
       const ok = await meta?.handleUpdate?.(recordId, { needtosend: targetValue })
 
-      // 성공
       if (ok) {
         meta?.removeNeedToSendDraftValue?.(recordId)
-        targetValue === 1 ? showReserveToast() : showCancelToast()
+        targetValue ? showReserveToast() : showCancelToast()
         return
       }
 
-      // 실패(명시적 false)
       const msg = meta?.updateErrors?.[savingKey]
       showErrorToast(msg)
     } catch (err) {
-      // 예외 발생 시에도 동일하게 실패 처리
       showErrorToast(err?.message)
     } finally {
-      // 실패했든 성공했든 드래프트는 정리(성공 시 위에서 이미 제거했지만 중복 제거 OK)
+      // 성공/실패와 무관하게 드래프트는 정리(성공 시 이미 제거됨)
       meta?.removeNeedToSendDraftValue?.(recordId)
     }
   }
@@ -124,7 +131,7 @@ export function NeedToSendCell({
 
   return (
     <div className="inline-flex justify-center">
-      {/* ✅ 원형 토글 버튼 (role='switch' + aria-checked로 스크린리더 친화적) */}
+      {/* ✅ 원형 토글 버튼 (role='switch' + aria-checked=true|false) */}
       <button
         type="button"
         onClick={toggle}
