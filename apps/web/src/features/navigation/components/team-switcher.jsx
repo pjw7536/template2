@@ -71,22 +71,13 @@ function getLineIdFromParams(params) {
 
 /** 현재 경로와 선택된 라인ID를 기반으로 이동할 경로를 생성 */
 function buildNextPath({ pathname, newLineId, hasLineIdInPath }) {
-  // 1) 기본 이동 경로 (라인 선택 후 최초 진입 등)
-  const DEFAULT_TARGET = `/${newLineId}/ESOP_Dashboard/status`
-
-  if (!pathname) return DEFAULT_TARGET
+  if (!pathname || !hasLineIdInPath) return null
 
   const segments = pathname.split("/").filter(Boolean)
-  if (segments.length === 0) return DEFAULT_TARGET
+  if (segments.length === 0) return null
 
-  // 2) 현재 경로가 /[lineId]/... 형태라면 첫 세그먼트를 교체
-  if (hasLineIdInPath) {
-    segments[0] = newLineId
-    return `/${segments.join("/")}`
-  }
-
-  // 3) lineId 세그먼트가 없으면 기본 진입 경로로 이동
-  return DEFAULT_TARGET
+  segments[0] = newLineId
+  return `/${segments.join("/")}`
 }
 
 /* -----------------------------------------------------------------------------
@@ -155,7 +146,9 @@ export function TeamSwitcher({ lines }) {
         newLineId: nextId,
         hasLineIdInPath: Boolean(paramLineId),
       })
-      router.push(target)
+      if (target) {
+        router.push(target)
+      }
     },
     [activeLineId, paramLineId, pathname, router, setCtxLineId]
   )

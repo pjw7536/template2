@@ -3,19 +3,8 @@ services:
     build:
       context: ./apps/api
     env_file:
-      - ./.env
-    environment:
-      DJANGO_DB_ENGINE: ${DJANGO_DB_ENGINE}
-      DJANGO_DB_NAME: ${DJANGO_DB_NAME}
-      DJANGO_DB_USER: ${DJANGO_DB_USER}
-      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD}
-      DJANGO_DB_HOST: ${DJANGO_DB_HOST}
-      DJANGO_DB_PORT: ${DJANGO_DB_PORT}
-      DJANGO_DB_CONN_MAX_AGE: ${DJANGO_DB_CONN_MAX_AGE}
-      DJANGO_SECURE: ${DJANGO_SECURE}
-      USE_X_FORWARDED_HOST: ${USE_X_FORWARDED_HOST}
-      DJANGO_USE_PROXY_SSL_HEADER: ${DJANGO_USE_PROXY_SSL_HEADER}
-      DJANGO_DEBUG: "1"
+      - ./env/api.common.env
+      - ./env/api.dev.env
     volumes:
       - ./apps/api:/app
       - api_data:/data
@@ -38,15 +27,7 @@ services:
     build:
       context: ./apps/web
     env_file:
-      - ./.env
-    environment:
-      NODE_ENV: "development"
-      NPM_CONFIG_PRODUCTION: "false"
-      NEXT_PUBLIC_BACKEND_URL: "http://localhost:8000"
-      BACKEND_API_URL: "http://api:8000"
-      NEXT_TELEMETRY_DISABLED: "1"
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
+      - ./env/web.dev.env
     depends_on:
       - api
     command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"

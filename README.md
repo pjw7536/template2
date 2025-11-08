@@ -59,3 +59,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 This command keeps the production build definitions while swapping in development-friendly entrypoints. Django runs via `python manage.py runserver` with your source mounted into the container, and Next.js executes `npm run dev` after installing/updating dependencies in a dedicated `node_modules` volume. Port `8000` exposes the API with live code reloads, and port `3000` serves the Next.js dev server pointing at the API container.
 
 Nginx is also part of the override stack, so `http://localhost:8080` proxies both services (including `/static` assets) while preserving HMR and websocket upgrades from the Next.js process.
+
+## Environment configuration
+
+Reverse proxy deployments often become hard to reason about because multiple services need to agree on the same host names. The repository now provides curated environment files under `env/` that separate shared Django defaults from stage-specific overrides and align the Next.js app with the proxy setup:
+
+- `env/api.common.env` – database, proxy, and login defaults that apply everywhere.
+- `env/api.dev.env` / `env/api.prod.env` – values that differ per environment (debug toggles, allowed hosts, and HTTPS enforcement).
+- `env/web.dev.env` / `env/web.prod.env` – frontend-specific variables such as `NEXTAUTH_URL` and the backend URL that Next.js should call.
+
+Both `docker-compose.yml` and `docker-compose.dev.yml` automatically load the correct combination of files, so switching between development and production only requires editing the stage-specific files. Update the placeholder domain (`example.com`) in the production files to match your public host and rotate `NEXTAUTH_SECRET`/`DJANGO_SECRET_KEY` with strong values before deploying.

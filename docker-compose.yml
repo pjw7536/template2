@@ -4,19 +4,8 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     env_file:
-      - ./.env          # 👈 환경변수 한 방에 주입
-    environment:
-      # 꼭 필요한 항목만 덮어쓰기가 필요하면 여기에 ${VAR} 형태로 참조 가능
-      DJANGO_DB_ENGINE: ${DJANGO_DB_ENGINE}
-      DJANGO_DB_NAME: ${DJANGO_DB_NAME}
-      DJANGO_DB_USER: ${DJANGO_DB_USER}
-      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD}
-      DJANGO_DB_HOST: ${DJANGO_DB_HOST}
-      DJANGO_DB_PORT: ${DJANGO_DB_PORT}
-      DJANGO_DB_CONN_MAX_AGE: ${DJANGO_DB_CONN_MAX_AGE}
-      DJANGO_SECURE: ${DJANGO_SECURE}
-      USE_X_FORWARDED_HOST: ${USE_X_FORWARDED_HOST}
-      DJANGO_USE_PROXY_SSL_HEADER: ${DJANGO_USE_PROXY_SSL_HEADER}
+      - ./env/api.common.env
+      - ./env/api.prod.env
     volumes:
       - api_data:/data
       - api_static:/app/staticfiles
@@ -31,10 +20,7 @@ services:
     build:
       context: ./apps/web
     env_file:
-      - ./.env
-    environment:
-      NEXT_PUBLIC_BACKEND_URL: "/api"
-      BACKEND_API_URL: "http://api:8000"
+      - ./env/web.prod.env
     depends_on:
       - api
     expose:
