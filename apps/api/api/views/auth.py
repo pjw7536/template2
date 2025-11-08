@@ -46,9 +46,11 @@ class FrontendRedirectView(APIView):
     """프론트엔드 베이스 URL로 안전하게 리다이렉트."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
-        base = settings.FRONTEND_BASE_URL.rstrip("/") if settings.FRONTEND_BASE_URL else "http://localhost:3000"
+        base = settings.FRONTEND_BASE_URL.rstrip("/") if settings.FRONTEND_BASE_URL else ""
         if not base:
-            base = "http://localhost:3000"
+            base = request.build_absolute_uri("/").rstrip("/")
+        if not base:
+            base = "http://localhost"
         next_path = request.GET.get("next")
         if isinstance(next_path, str) and next_path.strip():
             normalized = next_path.strip().lstrip("/")

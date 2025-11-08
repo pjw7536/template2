@@ -173,7 +173,7 @@ def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> D
 def resolve_frontend_target(next_value: Optional[str]) -> str:
     """프론트엔드 베이스 URL과 next 값을 조합하여 안전한 리다이렉트 주소 생성."""
 
-    base = (settings.FRONTEND_BASE_URL or "http://localhost:3000").strip() or "http://localhost:3000"
+    base = (settings.FRONTEND_BASE_URL or "http://localhost").strip() or "http://localhost"
     base = base.rstrip("/")
     parsed_base = urlparse(base if "://" in base else f"http://{base.lstrip('/')}")
     allowed_hosts = {parsed_base.netloc} if parsed_base.netloc else set()

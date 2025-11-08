@@ -186,7 +186,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ==================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "api.auth.authentication.CsrfExemptSessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -215,7 +215,7 @@ SPECTACULAR_SETTINGS = {
 #  - 개발: 모든 오리진 허용 (DEBUG=True)
 #  - 운영: 환경변수 목록만 허용
 # ==========================
-FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", "http://localhost:3000")
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", "http://localhost")
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 

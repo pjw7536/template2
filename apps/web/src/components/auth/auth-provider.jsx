@@ -93,7 +93,7 @@ async function fetchJson(url, options = {}) {
 const DEFAULT_CONFIG = /** @type {AuthConfig} */ ({
   devLoginEnabled: false,
   loginUrl: "/auth/login",
-  frontendRedirect: "http://localhost:3000",
+  frontendRedirect: "",
   sessionMaxAgeSeconds: 60 * 30,
 });
 
