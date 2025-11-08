@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # 원하는 버전
-AIRFLOW_IMG="apache/airflow:2.11.0"
+AIRFLOW_IMG="apache/airflow:2.11.0-python3.11"
 POSTGRES_IMG="postgres:16"
 CS_VER="4.105.1"
 

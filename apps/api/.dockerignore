@@ -4,4 +4,42 @@ __pycache__
 staticfiles
 .env
 venv
+
+
+# VCS
 .git
+.gitignore
+**/.git
+
+# Node / Next stuff from monorepo
+node_modules
+**/node_modules
+.next
+**/.next
+
+# Frontend outputs in repo
+apps/web/.next
+apps/web/node_modules
+apps/web/out
+apps/web/.vite
+apps/web/dist
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache
+.coverage
+htmlcov
+
+# OS/IDE
+.DS_Store
+*.swp
+*.swo
+.vscode
+.idea
+
+# Build artifacts
+dist
+build

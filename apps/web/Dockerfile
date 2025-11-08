@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Dockerfile의 구문 버전을 지정
 # (1.7 이상을 사용하면 최신 기능 지원 — 예: heredoc, 캐시 관리 등)
 

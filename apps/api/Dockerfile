@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 FROM python:3.12-slim AS base
 
 # - PYTHONDONTWRITEBYTECODE=1 .pyc 캐시 파일 생성 방지 → 이미지가 깔끔해짐

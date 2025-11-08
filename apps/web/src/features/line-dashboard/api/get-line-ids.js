@@ -9,7 +9,23 @@ import { buildBackendUrl } from "@/lib/api"
  * ========================================================================== */
 export async function getDistinctLineIds() {
   const endpoint = buildBackendUrl("/line-dashboard/line-ids")
-  const response = await fetch(endpoint, { credentials: "include" })
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 5_000)
+
+  let response
+
+  try {
+    response = await fetch(endpoint, { credentials: "include", signal: controller.signal })
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Timed out while loading line ids")
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
