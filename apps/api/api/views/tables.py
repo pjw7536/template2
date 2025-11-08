@@ -7,8 +7,8 @@ from typing import Any, List
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.views import APIView
 
 from ..db import execute, run_query
 from .constants import DATE_COLUMN_CANDIDATES, DEFAULT_TABLE
@@ -25,7 +25,7 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class TablesView(View):
+class TablesView(APIView):
     """임의 테이블을 조회하여 리스트 형태로 반환."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
@@ -107,7 +107,7 @@ class TablesView(View):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class TableUpdateView(View):
+class TableUpdateView(APIView):
     """임의 테이블의 일부분을 PATCH로 갱신."""
 
     ALLOWED_UPDATE_COLUMNS = {"comment", "needtosend"}

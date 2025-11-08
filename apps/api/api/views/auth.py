@@ -9,8 +9,8 @@ from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.views import APIView
 
 from ..models import ensure_user_profile
 from .utils import append_query_params, parse_json_body, resolve_frontend_target
@@ -19,7 +19,7 @@ from .utils import append_query_params, parse_json_body, resolve_frontend_target
 # ---------------------------------------------------------------------------
 # 설정/프론트 리다이렉트
 # ---------------------------------------------------------------------------
-class AuthConfigurationView(View):
+class AuthConfigurationView(APIView):
     """프론트엔드가 사용할 인증 관련 설정값 제공."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
@@ -42,7 +42,7 @@ class AuthConfigurationView(View):
         )
 
 
-class FrontendRedirectView(View):
+class FrontendRedirectView(APIView):
     """프론트엔드 베이스 URL로 안전하게 리다이렉트."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
@@ -60,7 +60,7 @@ class FrontendRedirectView(View):
 # ---------------------------------------------------------------------------
 # 현 사용자 정보/로그아웃
 # ---------------------------------------------------------------------------
-class CurrentUserView(View):
+class CurrentUserView(APIView):
     """현재 로그인한 사용자 정보 조회."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
@@ -87,7 +87,7 @@ class CurrentUserView(View):
         )
 
 
-class LogoutView(View):
+class LogoutView(APIView):
     """로그아웃 처리."""
 
     @method_decorator(csrf_exempt)
@@ -105,7 +105,7 @@ class LogoutView(View):
 # ---------------------------------------------------------------------------
 # 개발용 로그인 및 리다이렉트
 # ---------------------------------------------------------------------------
-class DevelopmentLoginView(View):
+class DevelopmentLoginView(APIView):
     """개발용 더미 로그인 엔드포인트."""
 
     http_method_names = ["get", "post"]
@@ -202,7 +202,7 @@ class DevelopmentLoginView(View):
         )
 
 
-class LoginRedirectView(View):
+class LoginRedirectView(APIView):
     """환경에 따라 알맞은 로그인 엔드포인트로 안내."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:

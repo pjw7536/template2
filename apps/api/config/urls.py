@@ -6,14 +6,17 @@ from django.urls import include, path
 
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+swagger_view = SpectacularSwaggerView.as_view(url_name="api-schema")
+
+schema_view = SpectacularAPIView.as_view()
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("oidc/", include("mozilla_django_oidc.urls")),
-    path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="api-schema"),
-        name="api-docs",
-    ),
+    path("api/schema/", schema_view, name="api-schema"),
+    path("schema/", schema_view, name="schema-proxied"),
+    path("api/docs/", swagger_view, name="api-docs"),
+    path("docs", swagger_view, name="docs"),
+    path("docs/", swagger_view, name="docs-slash"),
     path("", include("api.urls")),
 ]

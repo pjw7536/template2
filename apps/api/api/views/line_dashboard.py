@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 from django.http import HttpRequest, JsonResponse
-from django.views import View
+from rest_framework.views import APIView
 
 from ..db import run_query
 from .constants import (
@@ -27,7 +27,7 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class LineHistoryView(View):
+class LineHistoryView(APIView):
     """대시보드 차트용 일별 합계/분해 집계 제공."""
 
     DEFAULT_RANGE_DAYS = 14
@@ -251,7 +251,7 @@ class LineHistoryView(View):
         }
 
 
-class LineIdListView(View):
+class LineIdListView(APIView):
     """사이드바 필터용 line_id 고유값 목록 반환."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:

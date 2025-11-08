@@ -4,12 +4,12 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from django.http import HttpRequest, JsonResponse
-from django.views import View
+from rest_framework.views import APIView
 
 from ..models import ActivityLog
 
 
-class ActivityLogView(View):
+class ActivityLogView(APIView):
     """최근 액티비티 로그 조회."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:

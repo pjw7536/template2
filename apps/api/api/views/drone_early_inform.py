@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.views import APIView
 
 from ..db import execute, run_query
 from .constants import MAX_FIELD_LENGTH
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class DroneEarlyInformView(View):
+class DroneEarlyInformView(APIView):
     """drone_early_inform_v3 테이블에 대한 CRUD."""
 
     TABLE_NAME = "drone_early_inform_v3"
