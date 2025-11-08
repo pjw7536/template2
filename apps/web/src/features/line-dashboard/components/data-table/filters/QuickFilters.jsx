@@ -42,8 +42,10 @@ export function QuickFilters({
       ? Array.isArray(current)
         ? current
         : []
-      : [current].filter(Boolean)
-    const allSelected = isMulti ? selectedValues.length === 0 : current === null
+      : current === null || current === undefined
+        ? []
+        : [current]
+    const allSelected = isMulti ? selectedValues.length === 0 : current === null || current === undefined
     const legendId = `legend-${section.key}`
 
     return (
@@ -81,7 +83,7 @@ export function QuickFilters({
             const isActive = selectedValues.includes(option.value)
             return (
               <button
-                key={option.value}
+                key={`${section.key}-${String(option.value)}`}
                 type="button"
                 onClick={() => onToggle(section.key, option.value)}
                 className={cn(

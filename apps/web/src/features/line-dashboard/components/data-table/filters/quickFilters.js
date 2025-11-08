@@ -25,6 +25,28 @@ function findMatchingColumn(columns, target) {
   )
 }
 
+function normalizeBooleanValue(value) {
+  if (typeof value === "boolean") return value
+  if (value === null || value === undefined) return null
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value === 1) return true
+    if (value === 0) return false
+    return null
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return null
+    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+    return null
+  }
+  if (typeof value === "bigint") {
+    if (value === 1n) return true
+    if (value === 0n) return false
+  }
+  return null
+}
+
 function toTimestamp(value) {
   if (value == null) return null
 
@@ -94,40 +116,26 @@ const QUICK_FILTER_DEFINITIONS = [
     key: "needtosend",
     label: "예약",
     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
-    normalizeValue: (value) => {
-      if (value === 1 || value === "1") return "1"
-      if (value === 0 || value === "0") return "0"
-      if (value == null || value === "") return "0"
-      const numeric = Number(value)
-      if (Number.isFinite(numeric)) return numeric === 1 ? "1" : "0"
-      return "0"
-    },
-    formatValue: (value) => (value === "1" ? "Yes" : "No"),
+    normalizeValue: normalizeBooleanValue,
+    formatValue: (value) => (value ? "Yes" : "No"),
     compareOptions: (a, b) => {
       if (a.value === b.value) return 0
-      if (a.value === "1") return -1
-      if (b.value === "1") return 1
-      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+      if (a.value === true) return -1
+      if (b.value === true) return 1
+      return 0
     },
   },
   {
     key: "send_jira",
     label: "Jira전송완료",
     resolveColumn: (columns) => findMatchingColumn(columns, "send_jira"),
-    normalizeValue: (value) => {
-      if (value === 1 || value === "1") return "1"
-      if (value === 0 || value === "0") return "0"
-      if (value == null || value === "") return "0"
-      const numeric = Number(value)
-      if (Number.isFinite(numeric)) return numeric === 1 ? "1" : "0"
-      return "0"
-    },
-    formatValue: (value) => (value === "1" ? "Yes" : "No"),
+    normalizeValue: normalizeBooleanValue,
+    formatValue: (value) => (value ? "Yes" : "No"),
     compareOptions: (a, b) => {
       if (a.value === b.value) return 0
-      if (a.value === "1") return -1
-      if (b.value === "1") return 1
-      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+      if (a.value === true) return -1
+      if (b.value === true) return 1
+      return 0
     },
   },
   {

@@ -70,7 +70,7 @@ const CellRenderers = {
     const recordId = getRecordId(rowOriginal)
     if (!meta || !recordId) return formatCellValue(value)
     const baseValue = normalizeNeedToSend(rowOriginal?.needtosend)
-    const isLocked = Number(rowOriginal?.send_jira) === 1
+    const isLocked = normalizeBinaryFlag(rowOriginal?.send_jira)
     return (
       <NeedToSendCell
         meta={meta}

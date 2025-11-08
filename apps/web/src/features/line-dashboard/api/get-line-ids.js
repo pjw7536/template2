@@ -9,7 +9,7 @@ import { buildBackendUrl } from "@/lib/api"
  * ========================================================================== */
 export async function getDistinctLineIds() {
   const endpoint = buildBackendUrl("/line-dashboard/line-ids")
-  const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
+  const response = await fetch(endpoint, { credentials: "include" })
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))

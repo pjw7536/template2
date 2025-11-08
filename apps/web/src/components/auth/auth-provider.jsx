@@ -76,6 +76,7 @@ async function fetchJson(url, options = {}) {
  * @property {boolean} devLoginEnabled
  * @property {string} loginUrl
  * @property {string} frontendRedirect
+ * @property {number | null | undefined} [sessionMaxAgeSeconds]
  */
 
 /**
@@ -93,6 +94,7 @@ const DEFAULT_CONFIG = /** @type {AuthConfig} */ ({
   devLoginEnabled: false,
   loginUrl: "/oidc/authenticate/",
   frontendRedirect: "http://localhost:3000",
+  sessionMaxAgeSeconds: 60 * 30,
 });
 
 // Context 생성: 초기값은 undefined로 두고, 훅에서 가드
@@ -143,6 +145,23 @@ export function AuthProvider({ children }) {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [isLoading, setIsLoading] = useState(true);
   const mountedRef = useRef(false);
+  const lastRefreshRef = useRef(0);
+
+  const sessionRefreshIntervalMs = useMemo(() => {
+    const rawSeconds = Number(config.sessionMaxAgeSeconds);
+    if (!Number.isFinite(rawSeconds) || rawSeconds <= 0) {
+      return 0;
+    }
+    const halfLifeMs = Math.floor(rawSeconds * 1000 * 0.5);
+    return Math.max(60_000, halfLifeMs);
+  }, [config.sessionMaxAgeSeconds]);
+
+  const focusCooldownMs = useMemo(() => {
+    if (sessionRefreshIntervalMs > 0) {
+      return Math.max(30_000, Math.min(sessionRefreshIntervalMs / 2, 300_000));
+    }
+    return 30_000;
+  }, [sessionRefreshIntervalMs]);
 
   // 컴포넌트 마운트/언마운트 추적 (언마운트 후 setState 방지)
   useEffect(() => {
@@ -182,6 +201,7 @@ export function AuthProvider({ children }) {
       if (mountedRef.current) setUser(null);
     } finally {
       if (mountedRef.current) setIsLoading(false);
+      lastRefreshRef.current = Date.now();
     }
   }, []);
 
@@ -194,15 +214,27 @@ export function AuthProvider({ children }) {
 
   // UX 향상: 탭 포커스 복귀 시 사용자 정보 자동 새로고침(세션 만료/갱신 대응)
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
     const onFocus = () => {
-      // 즉시성보단 과도한 호출 방지를 위해 약간의 디바운스 가능
+      const now = Date.now();
+      if (now - lastRefreshRef.current < focusCooldownMs) {
+        return;
+      }
+      lastRefreshRef.current = now;
       loadUser();
     };
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", onFocus);
-      return () => window.removeEventListener("focus", onFocus);
-    }
-  }, [loadUser]);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [focusCooldownMs, loadUser]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!sessionRefreshIntervalMs) return undefined;
+    const timer = window.setInterval(() => {
+      loadUser();
+    }, sessionRefreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [loadUser, sessionRefreshIntervalMs]);
 
   /** 로그인 함수 */
   const login = useCallback(

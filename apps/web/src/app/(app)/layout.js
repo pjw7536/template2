@@ -13,9 +13,8 @@ export default async function AppLayout({ children }) {
 
   try {
     lineOptions = await getDistinctLineIds()
-    console.log("Fetched line IDs:", lineOptions)
   } catch {
-    lineOptions = ['H1']
+    lineOptions = []
   }
 
   return (

@@ -21,6 +21,22 @@ const PLACEHOLDER = {
   noSteps: <span className="text-muted-foreground">-</span>,
 }
 
+function toBooleanFlag(value) {
+  if (typeof value === "boolean") return value
+  if (value === null || value === undefined) return false
+  if (typeof value === "number" && Number.isFinite(value)) return value === 1
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return false
+    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+    const numeric = Number(normalized)
+    return Number.isFinite(numeric) ? numeric === 1 : false
+  }
+  if (typeof value === "bigint") return Number(value) === 1
+  return false
+}
+
 /* ============================================
  * 날짜/문자 유틸
  * ============================================ */
@@ -212,8 +228,8 @@ export function renderMetroStepFlow(rowData) {
   const currentStep = normalizeStepValue(rowData.metro_current_step)
   const customEndStep = normalizeStepValue(rowData.custom_end_step)
   const metroEndStep = normalizeStepValue(rowData.metro_end_step)
-  const needToSend = Number(rowData.needtosend) === 1 ? 1 : 0          // 예약(보낼 예정)
-  const sendjira = Number(rowData.send_jira) === 1 ? 1 : 0             // ✅ 실제 “인폼 완료” 플래그
+  const needToSend = toBooleanFlag(rowData.needtosend)                 // 예약(보낼 예정)
+  const sendjira = toBooleanFlag(rowData.send_jira)                    // ✅ 실제 “인폼 완료” 플래그
 
   // END 표시 후보: custom_end_step 우선 → metro_end_step
   const endStep = customEndStep || metroEndStep
@@ -236,17 +252,17 @@ export function renderMetroStepFlow(rowData) {
 
   // ─────────────────────────────────────────────────────────────
   // ✅ 인폼 라벨 결정 (완료 여부는 sendjira로만 판단)
-  // - sendjira = 1          → Inform 완료 (위치는 inform_step || endStep)
-  // - sendjira = 0, need=1  → 인폼예정   (위치는 custom_end_step || metro_end_step)
+  // - sendjira = true          → Inform 완료 (위치는 inform_step || endStep)
+  // - sendjira = false, need=1 → 인폼예정   (위치는 custom_end_step || metro_end_step)
   // - 그 외                 → 라벨 없음
   // ─────────────────────────────────────────────────────────────
   let informLabelType = "none"  // "none" | "done" | "planned"
   let informLabelStep = null
 
-  if (sendjira === 1) {
+  if (sendjira) {
     informLabelType = "done"
     informLabelStep = informStep || endStep || null
-  } else if (needToSend === 1) {
+  } else if (needToSend) {
     if (customEndStep) {
       informLabelType = "planned"
       informLabelStep = customEndStep
@@ -305,5 +321,4 @@ export function renderMetroStepFlow(rowData) {
     </div>
   )
 }
-
 

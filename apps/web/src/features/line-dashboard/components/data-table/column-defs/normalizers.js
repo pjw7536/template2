@@ -33,20 +33,36 @@ export function normalizeComment(raw) {
 }
 
 export function normalizeNeedToSend(raw) {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw
+  if (typeof raw === "boolean") return raw
+  if (raw === null || raw === undefined) return false
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw === 1
   if (typeof raw === "string") {
-    const parsed = Number.parseInt(raw, 10)
-    return Number.isFinite(parsed) ? parsed : 0
+    const normalized = raw.trim().toLowerCase()
+    if (!normalized) return false
+    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+    const parsed = Number.parseInt(normalized, 10)
+    if (Number.isFinite(parsed)) return parsed === 1
+    return false
   }
-  const coerced = Number(raw)
-  return Number.isFinite(coerced) ? coerced : 0
+  if (typeof raw === "bigint") return Number(raw) === 1
+  return false
 }
 
 export function normalizeBinaryFlag(raw) {
-  if (raw === 1 || raw === "1") return true
-  if (raw === "." || raw === "" || raw == null) return false
-  const numeric = Number(raw)
-  return Number.isFinite(numeric) ? numeric === 1 : false
+  if (typeof raw === "boolean") return raw
+  if (raw === null || raw === undefined) return false
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw === 1
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase()
+    if (!normalized || normalized === ".") return false
+    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+    const numeric = Number(normalized)
+    return Number.isFinite(numeric) ? numeric === 1 : false
+  }
+  if (typeof raw === "bigint") return Number(raw) === 1
+  return false
 }
 
 export function normalizeStatus(raw) {

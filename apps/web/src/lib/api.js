@@ -6,12 +6,14 @@ function removeTrailingSlash(value) {
 }
 
 export function getBackendBaseUrl() {
-  const envValue =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    process.env.BACKEND_API_URL ||
-    process.env.BACKEND_URL
+  const isServer = typeof window === "undefined"
 
-  const base = typeof envValue === "string" && envValue.trim().length > 0 ? envValue.trim() : DEFAULT_BACKEND_URL
+  const envCandidates = isServer
+    ? [process.env.BACKEND_API_URL, process.env.BACKEND_URL, process.env.NEXT_PUBLIC_BACKEND_URL]
+    : [process.env.NEXT_PUBLIC_BACKEND_URL, process.env.BACKEND_API_URL, process.env.BACKEND_URL]
+
+  const envValue = envCandidates.find((value) => typeof value === "string" && value.trim().length > 0)
+  const base = envValue ? envValue.trim() : DEFAULT_BACKEND_URL
   return removeTrailingSlash(base)
 }
 

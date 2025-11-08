@@ -69,7 +69,7 @@ export function useDataTableState({ lineId }) {
   const [commentEditing, setCommentEditing] = React.useState({}) // { [rowId]: true }
 
   // 셀 편집: needtosend
-  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: 0|1 }
+  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: boolean }
 
   // 업데이트 진행중/에러 상태: 키 형식은 `${rowId}:${field}`
   const [updatingCells, setUpdatingCells] = React.useState({})  // { ["1:comment"]: true, ... }
@@ -221,7 +221,7 @@ export function useDataTableState({ lineId }) {
 
   /* ────────────────────────────────────────────────────────────────────────
    * handleUpdate: 단일 레코드 부분 업데이트(PATCH)
-   *  - updates = { comment: "...", needtosend: 1 } 식으로 필드 묶음 전달
+   *  - updates = { comment: "...", needtosend: true } 식으로 필드 묶음 전달
    *  - updatingCells/indicators로 진행상태 UI 피드백
    *  - 성공 시 로컬 rows 반영 + 드래프트/편집 상태 정리
    * ──────────────────────────────────────────────────────────────────────── */

@@ -52,11 +52,17 @@ class AuthConfigurationView(View):
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         provider_configured = bool(getattr(settings, "OIDC_PROVIDER_CONFIGURED", False))
         dev_login_enabled = bool(getattr(settings, "OIDC_DEV_LOGIN_ENABLED", False) and not provider_configured)
+        session_max_age = getattr(settings, "SESSION_COOKIE_AGE", None)
+        try:
+            session_max_age = int(session_max_age) if session_max_age is not None else None
+        except (TypeError, ValueError):
+            session_max_age = None
         return JsonResponse(
             {
                 "devLoginEnabled": dev_login_enabled,
                 "loginUrl": settings.LOGIN_URL,
                 "frontendRedirect": settings.FRONTEND_BASE_URL,
+                "sessionMaxAgeSeconds": session_max_age,
             }
         )
 
@@ -486,8 +492,28 @@ class TableUpdateView(View):
         if key == "comment":
             return "" if value is None else str(value)
         if key == "needtosend":
-            return bool(value)
+            return TableUpdateView._coerce_boolean(value)
         return value
+
+    @staticmethod
+    def _coerce_boolean(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        if isinstance(value, (int, float)):
+            return int(value) == 1
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "t", "y", "yes"}:
+                return True
+            if normalized in {"0", "false", "f", "n", "no", ""}:
+                return False
+        try:
+            coerced = int(value)
+            return coerced == 1
+        except (TypeError, ValueError):
+            return False
 
 
 class LineHistoryView(View):
@@ -626,7 +652,7 @@ class LineHistoryView(View):
         totals_select = [f"DATE({timestamp_column}) AS day", "COUNT(*) AS row_count"]
         if send_jira_column:
             totals_select.append(
-                "SUM(CASE WHEN {col} IS NOT NULL AND {col} <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
@@ -663,7 +689,7 @@ class LineHistoryView(View):
 
         if send_jira_column:
             select_parts.append(
-                "SUM(CASE WHEN {col} IS NOT NULL AND {col} <> 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
