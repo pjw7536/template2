@@ -13,7 +13,12 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
 from ..models import ensure_user_profile
-from .utils import append_query_params, parse_json_body, resolve_frontend_target
+from .utils import (
+    append_query_params,
+    build_public_api_url,
+    parse_json_body,
+    resolve_frontend_target,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -214,13 +219,15 @@ class LoginRedirectView(APIView):
         next_value = request.GET.get("next")
 
         if dev_login_enabled and not provider_configured:
-            target = reverse("auth-dev-login")
+            target = build_public_api_url(
+                reverse("auth-dev-login"), request=request
+            )
             target = append_query_params(target, {"next": next_value})
             return HttpResponseRedirect(target)
 
         login_url = settings.LOGIN_URL or "/oidc/authenticate/"
         if not login_url.startswith("http"):
-            login_url = request.build_absolute_uri(login_url)
+            login_url = build_public_api_url(login_url, request=request, absolute=True)
         target = append_query_params(login_url, {"next": next_value})
         return HttpResponseRedirect(target)
 

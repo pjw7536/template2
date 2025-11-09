@@ -69,6 +69,17 @@ DEBUG = env_bool("DJANGO_DEBUG", False)
 # 예: "example.com, api.example.com, localhost, 127.0.0.1"
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,api")
 
+# 외부에서 접근 가능한 API 기본 prefix/URL (예: "/api" 혹은 "https://api.example.com")
+PUBLIC_API_BASE_URL = env("PUBLIC_API_BASE_URL") or env("DJANGO_PUBLIC_API_BASE_URL") or ""
+if isinstance(PUBLIC_API_BASE_URL, str):
+    PUBLIC_API_BASE_URL = PUBLIC_API_BASE_URL.strip()
+    if PUBLIC_API_BASE_URL and PUBLIC_API_BASE_URL != "/":
+        PUBLIC_API_BASE_URL = PUBLIC_API_BASE_URL.rstrip("/")
+    elif PUBLIC_API_BASE_URL == "/":
+        PUBLIC_API_BASE_URL = ""
+else:
+    PUBLIC_API_BASE_URL = ""
+
 
 # ============
 # 애플리케이션

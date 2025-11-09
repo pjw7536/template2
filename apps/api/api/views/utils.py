@@ -191,6 +191,29 @@ def resolve_frontend_target(next_value: Optional[str]) -> str:
     return base
 
 
+def build_public_api_url(path: str, *, request: Optional[HttpRequest] = None, absolute: bool = False) -> str:
+    """리버스 프록시 경로(/api 등)를 포함한 공개 API URL 생성."""
+
+    raw_path = str(path or "")
+    normalized_path = raw_path if raw_path.startswith("/") else f"/{raw_path}"
+
+    base = getattr(settings, "PUBLIC_API_BASE_URL", "") or ""
+    if isinstance(base, str) and base:
+        if base.startswith("http://") or base.startswith("https://"):
+            url = f"{base}{normalized_path}"
+        else:
+            prefix = base if base.startswith("/") else f"/{base}"
+            prefix = prefix.rstrip("/")
+            url = f"{prefix}{normalized_path}"
+    else:
+        url = normalized_path
+
+    if absolute and request is not None and not url.startswith(("http://", "https://")):
+        return request.build_absolute_uri(url)
+
+    return url
+
+
 def append_query_params(url: str, params: Dict[str, Optional[str]]) -> str:
     """기존 URL에 쿼리 파라미터를 병합."""
 
@@ -211,6 +234,7 @@ def append_query_params(url: str, params: Dict[str, Optional[str]]) -> str:
 
 __all__ = [
     "append_query_params",
+    "build_public_api_url",
     "build_line_filters",
     "find_column",
     "list_table_columns",
