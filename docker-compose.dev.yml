@@ -5,6 +5,8 @@ services:
     env_file:
       - ./env/api.common.env
       - ./env/api.dev.env
+    depends_on:
+      - adfs
     volumes:
       - ./apps/api:/app
       - api_data:/data
@@ -40,6 +42,21 @@ services:
       shared-net:
         aliases:
           - web
+
+  adfs:
+    build:
+      context: ./apps/adfs_dummy
+    environment:
+      DUMMY_ADFS_EMAIL: dummy.user@example.com
+      DUMMY_ADFS_NAME: Dummy User
+      DUMMY_ADFS_CLIENT_ID: dummy-client
+      DUMMY_ADFS_CLIENT_SECRET: dummy-secret
+    ports:
+      - "9000:9000"
+    networks:
+      shared-net:
+        aliases:
+          - adfs
 
   nginx:
     image: nginx:1.27-alpine

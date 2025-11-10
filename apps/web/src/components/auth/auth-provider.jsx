@@ -73,10 +73,10 @@ async function fetchJson(url, options = {}) {
 
 /**
  * @typedef {Object} AuthConfig
- * @property {boolean} devLoginEnabled
  * @property {string} loginUrl
  * @property {string} frontendRedirect
  * @property {number | null | undefined} [sessionMaxAgeSeconds]
+ * @property {boolean | undefined} [providerConfigured]
  */
 
 /**
@@ -91,7 +91,6 @@ async function fetchJson(url, options = {}) {
 
 // 기본 설정(백엔드가 내려주는 값으로 병합됨)
 const DEFAULT_CONFIG = /** @type {AuthConfig} */ ({
-  devLoginEnabled: false,
   loginUrl: "/auth/login",
   frontendRedirect: "",
   sessionMaxAgeSeconds: 60 * 30,

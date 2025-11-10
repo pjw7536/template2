@@ -258,7 +258,6 @@ LOGOUT_REDIRECT_URL = env("DJANGO_LOGOUT_REDIRECT_URL", "/")
 # ===========
 # Google OAuth (SSO)
 #  - 실제 IdP 연결 여부를 플래그로 파악
-#  - 개발 편의 목적의 더미 로그인 토글 지원
 # ===========
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_CLIENT_ID") or env("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET") or env("GOOGLE_OAUTH_CLIENT_SECRET")
@@ -284,13 +283,6 @@ GOOGLE_OIDC_CONFIGURED = bool(GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SEC
 
 # 기존 코드에서 사용하는 플래그 이름 유지
 OIDC_PROVIDER_CONFIGURED = GOOGLE_OIDC_CONFIGURED
-
-# 개발 더미 로그인 허용 (운영에선 False 권장)
-# - 기본값: DEBUG=True 이거나 실제 프로바이더 미구성 시 True
-OIDC_DEV_LOGIN_ENABLED = env_bool(
-    "OIDC_DEV_LOGIN_ENABLED",
-    DEBUG or not GOOGLE_OIDC_CONFIGURED,
-)
 
 
 # ===============================

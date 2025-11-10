@@ -6,6 +6,7 @@ This repository hosts a mono-repo that separates the customer-facing Next.js fro
 
 - `apps/web` – existing Next.js frontend (moved unchanged from the project root)
 - `apps/api` – Django backend scaffold configured for REST development
+- `apps/adfs_dummy` – FastAPI 기반의 경량 ADFS(OIDC) 더미 제공자
 - `package.json` – npm workspace definition with helper scripts for the frontend workspace
 
 ## Getting Started
@@ -40,7 +41,7 @@ The Django project ships with a basic configuration, REST framework, and a `/hea
 
 ## Docker Deployment
 
-The repository ships with a production-ready Docker Compose stack that builds the Django API, the Next.js frontend, and an Nginx reverse proxy on a shared Docker network. The proxy exposes port `80` on the host while routing `/<api|static>` requests to the backend container and all other traffic to the frontend server.
+The repository ships with a production-ready Docker Compose stack that builds the Django API, the Next.js frontend, a dummy ADFS provider, and an Nginx reverse proxy on a shared Docker network. The proxy exposes port `80` on the host while routing `/<api|static>` requests to the backend container and all other traffic to the frontend server. The FastAPI 기반 더미 ADFS 서버는 `adfs` 서비스로 구동되며 개발 시 포트 `9000`으로 접근할 수 있습니다.
 
 ```bash
 docker compose up --build

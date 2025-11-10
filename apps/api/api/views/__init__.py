@@ -5,7 +5,6 @@ from .activity import ActivityLogView
 from .auth import (
     AuthConfigurationView,
     CurrentUserView,
-    DevelopmentLoginView,
     FrontendRedirectView,
     LoginRedirectView,
     LogoutView,
@@ -19,7 +18,6 @@ __all__ = [
     "ActivityLogView",
     "AuthConfigurationView",
     "CurrentUserView",
-    "DevelopmentLoginView",
     "FrontendRedirectView",
     "LoginRedirectView",
     "LogoutView",

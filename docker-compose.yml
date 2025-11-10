@@ -11,6 +11,8 @@ services:
       - api_static:/app/staticfiles
     expose:
       - "8000"
+    depends_on:
+      - adfs
     networks:
       shared-net:
         aliases:
@@ -29,6 +31,21 @@ services:
       shared-net:
         aliases:
           - web
+
+  adfs:
+    build:
+      context: ./apps/adfs_dummy
+    environment:
+      DUMMY_ADFS_EMAIL: dummy.user@example.com
+      DUMMY_ADFS_NAME: Dummy User
+      DUMMY_ADFS_CLIENT_ID: dummy-client
+      DUMMY_ADFS_CLIENT_SECRET: dummy-secret
+    expose:
+      - "9000"
+    networks:
+      shared-net:
+        aliases:
+          - adfs
 
   nginx:
     image: nginx:1.27-alpine

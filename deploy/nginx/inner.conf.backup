@@ -48,6 +48,20 @@ server {
         proxy_read_timeout 3600s;
     }
 
+    # ===== (A-1) 인증/콜백 URL 프록시 (/auth/) =====
+    location /auth/ {
+        # OAuth 콜백과 같은 엔드포인트가 프론트엔드에서 404 대신
+        # Django 백엔드로 도달하도록 API 컨테이너로 전달합니다.
+        proxy_pass http://api:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_read_timeout 3600s;
+    }
+
     # ===== (B) 정적 파일 직접 서빙 (/static/) =====
     location /static/ {
         alias /var/www/static/;

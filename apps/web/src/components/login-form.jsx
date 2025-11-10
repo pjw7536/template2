@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -19,18 +19,16 @@ export function LoginForm({
   ...props
 }) {
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
   const { login, config } = useAuth()
   const searchParams = useSearchParams()
   const nextPath = searchParams?.get("next") || "/"
+  const providerAvailable = useMemo(() => config?.providerConfigured !== false, [config])
 
   const handleLogin = async () => {
+    if (!providerAvailable) return
     try {
       setIsLoading(true)
-      const result = await login({ next: nextPath })
-      if (result?.method === "dev") {
-        router.push(nextPath || "/")
-      }
+      await login({ next: nextPath })
     } finally {
       setIsLoading(false)
     }
@@ -42,7 +40,7 @@ export function LoginForm({
         <CardHeader>
           <CardTitle>Single Sign-On</CardTitle>
           <CardDescription>
-            회사 SSO를 통해 로그인하세요. 개발 환경에서는 더미 계정으로 로그인합니다.
+            회사 SSO를 통해 로그인하세요. 개발 환경에서는 테스트용 ADFS 제공자가 응답합니다.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -50,14 +48,17 @@ export function LoginForm({
             type="button"
             className="w-full"
             onClick={handleLogin}
-            disabled={isLoading}
+            disabled={isLoading || !providerAvailable}
           >
             {isLoading
               ? "Signing in..."
-              : config?.devLoginEnabled
-                ? "Development login"
-                : "SSO login"}
+              : "SSO login"}
           </Button>
+          {!providerAvailable && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              SSO 설정이 비활성화되어 있습니다. 관리자에게 문의하세요.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
