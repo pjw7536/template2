@@ -51,17 +51,8 @@ class FrontendRedirectView(APIView):
     """프론트엔드 베이스 URL로 안전하게 리다이렉트."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> HttpResponseRedirect:
-        base = settings.FRONTEND_BASE_URL.rstrip("/") if settings.FRONTEND_BASE_URL else ""
-        if not base:
-            base = request.build_absolute_uri("/").rstrip("/")
-        if not base:
-            base = "http://localhost"
-        next_path = request.GET.get("next")
-        if isinstance(next_path, str) and next_path.strip():
-            normalized = next_path.strip().lstrip("/")
-            if normalized:
-                return HttpResponseRedirect(f"{base}/{normalized}")
-        return HttpResponseRedirect(base)
+        target = resolve_frontend_target(request.GET.get("next"), request=request)
+        return HttpResponseRedirect(target)
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +167,7 @@ class DevelopmentLoginView(APIView):
             return HttpResponseRedirect(settings.LOGIN_URL)
 
         self._login_dummy_user(request)
-        target = resolve_frontend_target(request.GET.get("next"))
+        target = resolve_frontend_target(request.GET.get("next"), request=request)
         return HttpResponseRedirect(target)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:

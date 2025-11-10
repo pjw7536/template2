@@ -170,10 +170,17 @@ def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> D
 # ---------------------------------------------------------------------------
 # URL 헬퍼
 # ---------------------------------------------------------------------------
-def resolve_frontend_target(next_value: Optional[str]) -> str:
+def resolve_frontend_target(
+    next_value: Optional[str], *, request: Optional[HttpRequest] = None
+) -> str:
     """프론트엔드 베이스 URL과 next 값을 조합하여 안전한 리다이렉트 주소 생성."""
 
-    base = (settings.FRONTEND_BASE_URL or "http://localhost").strip() or "http://localhost"
+    base = str(getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
+    if not base and request is not None:
+        base = request.build_absolute_uri("/").rstrip("/")
+    if not base:
+        base = "http://localhost"
+
     base = base.rstrip("/")
     parsed_base = urlparse(base if "://" in base else f"http://{base.lstrip('/')}")
     allowed_hosts = {parsed_base.netloc} if parsed_base.netloc else set()
@@ -181,30 +188,33 @@ def resolve_frontend_target(next_value: Optional[str]) -> str:
     if next_value:
         candidate = str(next_value).strip()
         if candidate:
-            if url_has_allowed_host_and_scheme(candidate, allowed_hosts=allowed_hosts, require_https=False):
+            if url_has_allowed_host_and_scheme(
+                candidate, allowed_hosts=allowed_hosts, require_https=False
+            ):
                 return candidate
             if candidate.startswith("/"):
                 trimmed = candidate.lstrip("/")
                 return f"{base}/{trimmed}" if trimmed else base
-            return urljoin(f"{base}/", candidate)
+            if "://" not in candidate:
+                trimmed = candidate.lstrip("/")
+                return f"{base}/{trimmed}" if trimmed else base
 
     return base
 
 
-def build_public_api_url(path: str, *, request: Optional[HttpRequest] = None, absolute: bool = False) -> str:
+def build_public_api_url(
+    path: str, *, request: Optional[HttpRequest] = None, absolute: bool = False
+) -> str:
     """리버스 프록시 경로(/api 등)를 포함한 공개 API URL 생성."""
 
-    raw_path = str(path or "")
-    normalized_path = raw_path if raw_path.startswith("/") else f"/{raw_path}"
+    normalized_path = f"/{str(path or '').lstrip('/')}"
+    base = str(getattr(settings, "PUBLIC_API_BASE_URL", "") or "").strip()
 
-    base = getattr(settings, "PUBLIC_API_BASE_URL", "") or ""
-    if isinstance(base, str) and base:
-        if base.startswith("http://") or base.startswith("https://"):
-            url = f"{base}{normalized_path}"
+    if base:
+        if base.startswith(("http://", "https://")):
+            url = f"{base.rstrip('/')}{normalized_path}"
         else:
-            prefix = base if base.startswith("/") else f"/{base}"
-            prefix = prefix.rstrip("/")
-            url = f"{prefix}{normalized_path}"
+            url = f"/{base.strip('/')}{normalized_path}"
     else:
         url = normalized_path
 
