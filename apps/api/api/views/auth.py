@@ -129,8 +129,9 @@ class DevelopmentLoginView(APIView):
         return super().dispatch(*args, **kwargs)
 
     def _is_enabled(self) -> bool:
-        # DEBUG 이고, OIDC 클라이언트 설정이 없을 때만 활성화
-        return bool(settings.DEBUG) and not bool(settings.OIDC_RP_CLIENT_ID)
+        provider_configured = bool(getattr(settings, "GOOGLE_OIDC_CONFIGURED", False))
+        dev_login_enabled = bool(getattr(settings, "OIDC_DEV_LOGIN_ENABLED", False))
+        return dev_login_enabled and not provider_configured
 
     def _login_dummy_user(
         self,
@@ -259,8 +260,8 @@ class LoginRedirectView(APIView):
             target = append_query_params(target, {"next": next_value})
             return HttpResponseRedirect(target)
 
-        # 그 외: 운영 로그인(예: /oidc/authenticate/ 또는 settings.LOGIN_URL)로 안내
-        login_url = settings.LOGIN_URL or "/oidc/authenticate/"
+        # 그 외: 운영 로그인(예: /auth/google/authenticate/ 또는 settings.LOGIN_URL)로 안내
+        login_url = settings.LOGIN_URL or "/auth/google/authenticate/"
 
         # 절대 URL 보장(리버스 프록시 환경에서 Location 헤더 정확도↑)
         if not login_url.startswith("http"):

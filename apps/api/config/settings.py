@@ -95,7 +95,6 @@ INSTALLED_APPS = [
     # 서드파티
     "rest_framework",
     "corsheaders",
-    "mozilla_django_oidc",
     "drf_spectacular",
     "drf_spectacular_sidecar",
     # 로컬 앱
@@ -246,44 +245,51 @@ CSRF_TRUSTED_ORIGINS = env_list(
 
 # ======================
 # 인증 백엔드 및 로그인 URL
-#  - RPAuthenticationBackend: 커스텀 권한/동기화 로직
 # ======================
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
-    "api.auth.backends.RPAuthenticationBackend",
 ]
 
-LOGIN_URL = "/oidc/authenticate/"
+LOGIN_URL = "/auth/google/authenticate/"
 LOGIN_REDIRECT_URL = env("DJANGO_LOGIN_REDIRECT_URL", "/")
 LOGOUT_REDIRECT_URL = env("DJANGO_LOGOUT_REDIRECT_URL", "/")
 
 
 # ===========
-# OIDC (SSO)
+# Google OAuth (SSO)
 #  - 실제 IdP 연결 여부를 플래그로 파악
 #  - 개발 편의 목적의 더미 로그인 토글 지원
 # ===========
-OIDC_RP_CLIENT_ID = env("OIDC_RP_CLIENT_ID")
-OIDC_RP_CLIENT_SECRET = env("OIDC_RP_CLIENT_SECRET")
-OIDC_RP_SCOPES = "openid profile email"
-OIDC_RP_SIGN_ALGO = env("OIDC_RP_SIGN_ALGO") or "HS256"
-
-OIDC_OP_AUTHORIZATION_ENDPOINT = env("OIDC_OP_AUTHORIZATION_ENDPOINT")
-OIDC_OP_TOKEN_ENDPOINT = env("OIDC_OP_TOKEN_ENDPOINT")
-OIDC_OP_USER_ENDPOINT = env("OIDC_OP_USER_ENDPOINT")
-OIDC_OP_JWKS_ENDPOINT = env("OIDC_OP_JWKS_ENDPOINT")
-
-# 인증 요청 View 커스텀 (조건부 더미/실제 전환 등)
-OIDC_AUTHENTICATE_CLASS = "api.auth.views.ConditionalOIDCAuthenticationRequestView"
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_CLIENT_ID") or env("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET") or env("GOOGLE_OAUTH_CLIENT_SECRET")
+GOOGLE_OAUTH_SCOPE = env("GOOGLE_OAUTH_SCOPE", "openid email profile")
+GOOGLE_OAUTH_PROMPT = env("GOOGLE_OAUTH_PROMPT", "consent")
+GOOGLE_OAUTH_ACCESS_TYPE = env("GOOGLE_OAUTH_ACCESS_TYPE", "offline")
+GOOGLE_OAUTH_AUTH_ENDPOINT = env(
+    "GOOGLE_OAUTH_AUTH_ENDPOINT",
+    "https://accounts.google.com/o/oauth2/v2/auth",
+)
+GOOGLE_OAUTH_TOKEN_ENDPOINT = env(
+    "GOOGLE_OAUTH_TOKEN_ENDPOINT",
+    "https://oauth2.googleapis.com/token",
+)
+GOOGLE_OAUTH_USERINFO_ENDPOINT = env(
+    "GOOGLE_OAUTH_USERINFO_ENDPOINT",
+    "https://openidconnect.googleapis.com/v1/userinfo",
+)
+GOOGLE_OAUTH_REDIRECT_URI = env("GOOGLE_OAUTH_REDIRECT_URI")
 
 # 실제 프로바이더가 구성되었는지
-OIDC_PROVIDER_CONFIGURED = bool(OIDC_RP_CLIENT_ID and OIDC_OP_AUTHORIZATION_ENDPOINT)
+GOOGLE_OIDC_CONFIGURED = bool(GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
+
+# 기존 코드에서 사용하는 플래그 이름 유지
+OIDC_PROVIDER_CONFIGURED = GOOGLE_OIDC_CONFIGURED
 
 # 개발 더미 로그인 허용 (운영에선 False 권장)
 # - 기본값: DEBUG=True 이거나 실제 프로바이더 미구성 시 True
 OIDC_DEV_LOGIN_ENABLED = env_bool(
     "OIDC_DEV_LOGIN_ENABLED",
-    DEBUG or not OIDC_PROVIDER_CONFIGURED,
+    DEBUG or not GOOGLE_OIDC_CONFIGURED,
 )
 
 
