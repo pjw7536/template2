@@ -5,7 +5,7 @@ import hashlib
 import html
 import os
 import secrets
-from typing import Dict
+from typing import Any, Dict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
@@ -124,7 +124,7 @@ async def token(
     code: str = Form(...),
     client_id: str = Form(""),
     client_secret: str = Form(""),
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """authorization code를 access token으로 교환."""
 
     if grant_type != "authorization_code":
