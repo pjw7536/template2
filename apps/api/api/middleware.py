@@ -170,8 +170,14 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
     ) -> Optional[Dict[str, Dict[str, Any]]]:
         """딕셔너리 기반의 변경 사항을 계산."""
 
-        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        if not isinstance(after, Mapping):
             return None
+
+        if not isinstance(before, Mapping):
+            return {
+                key: {"old": None, "new": value}
+                for key, value in after.items()
+            } or None
 
         diff: Dict[str, Dict[str, Any]] = {}
         keys: Iterable[str] = set(before.keys()) | set(after.keys())
