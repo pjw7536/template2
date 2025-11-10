@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Mapping, Optional
 
+from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin  # Django 미들웨어 호환성 클래스
+
 from .models import ActivityLog  # 사용자 활동 로그를 저장할 모델 (프로젝트별 정의)
 
 # 현재 파일의 로거(logger) 설정
@@ -20,7 +23,20 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
     - 요청 경로, 메서드, 응답 코드, 쿼리 파라미터, 클라이언트 IP 등을 저장
     """
 
-    def process_response(self, request, response):
+    TRACKED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+    def process_request(self, request: HttpRequest) -> None:
+        """초기 컨텍스트 설정 및 요청 페이로드 스냅샷."""
+
+        context = getattr(request, "_activity_log_context", None)
+        if context is None:
+            context = {}
+            setattr(request, "_activity_log_context", context)
+
+        if request.method in self.TRACKED_METHODS:
+            context["request_payload"] = self._extract_request_payload(request)
+
+    def process_response(self, request: HttpRequest, response: HttpResponse):
         """
         🔹 응답이 만들어진 뒤 호출됨 (모든 요청이 지나감)
         - 이 시점에 로그를 DB에 저장.
@@ -36,7 +52,7 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
         # 원래의 응답 객체를 그대로 반환
         return response
 
-    def _record(self, request, response) -> None:
+    def _record(self, request: HttpRequest, response: HttpResponse) -> None:
         """
         🔹 로그 레코드 생성 (ActivityLog 테이블에 1행 추가)
         """
@@ -57,20 +73,136 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
             user = None
 
         # 요청 관련 메타데이터 (선택적으로 저장)
+        context: Dict[str, Any] = getattr(request, "_activity_log_context", {})
+
         metadata: Dict[str, Any] = {
             # GET 파라미터를 dict로 변환해 저장
             "query": request.GET.dict() if hasattr(request, "GET") else {},
             # 요청 보낸 클라이언트의 IP 주소
             "remote_addr": request.META.get("REMOTE_ADDR"),
+            "result": "ok"
+            if getattr(response, "status_code", 200) < 400
+            else "fail",
         }
+
+        extra_metadata: Mapping[str, Any] = context.get("extra_metadata") or {}
+        metadata.update(extra_metadata)
+
+        if metadata["result"] == "ok" and request.method in self.TRACKED_METHODS:
+            before = context.get("before")
+            after = context.get("after")
+            change_set = context.get("changes")
+            if not change_set:
+                change_set = self._compute_diff(before, after)
+            normalized_changes = self._normalize_change_set(change_set)
+            if normalized_changes:
+                metadata["changes"] = normalized_changes
+        elif metadata["result"] == "fail":
+            error_payload = self._extract_response_payload(response)
+            if error_payload is not None:
+                try:
+                    metadata["error"] = json.dumps(
+                        error_payload, ensure_ascii=False
+                    )
+                except TypeError:
+                    metadata["error"] = str(error_payload)
+            else:
+                status_text = getattr(response, "reason_phrase", None)
+                if status_text:
+                    metadata["error"] = status_text
 
         # 실제 ActivityLog 테이블에 로그 행 생성
         ActivityLog.objects.create(
             user=user,  # 인증된 사용자 또는 None
             # 뷰 이름 (URLconf에 name이 지정된 경우 자동 추적)
-            action=request.resolver_match.view_name if getattr(request, "resolver_match", None) else "",
+            action=context.get("summary")
+            or (
+                request.resolver_match.view_name
+                if getattr(request, "resolver_match", None)
+                else ""
+            ),
             path=path,  # 요청 경로 (예: /api/tables)
             method=getattr(request, "method", "GET"),  # 요청 HTTP 메서드
             status_code=getattr(response, "status_code", 200),  # 응답 상태 코드
             metadata=metadata,  # 부가 정보 (쿼리, IP 등)
         )
+
+    def _extract_request_payload(self, request: HttpRequest) -> Optional[Any]:
+        """요청 본문을 JSON으로 파싱하거나 텍스트로 스냅샷 저장."""
+
+        try:
+            body = request.body
+        except Exception:  # pragma: no cover - best effort
+            return None
+
+        if not body:
+            return None
+
+        try:
+            return json.loads(body.decode(request.encoding or "utf-8"))
+        except Exception:
+            try:
+                return body.decode(request.encoding or "utf-8", errors="replace")
+            except Exception:
+                return None
+
+    def _extract_response_payload(self, response: HttpResponse) -> Optional[Any]:
+        """응답 본문을 JSON으로 파싱."""
+
+        if not hasattr(response, "content"):
+            return None
+
+        try:
+            content = response.content
+        except Exception:  # pragma: no cover - best effort
+            return None
+
+        if not content:
+            return None
+
+        try:
+            return json.loads(content.decode(response.charset or "utf-8"))
+        except Exception:
+            return None
+
+    def _compute_diff(
+        self, before: Optional[Any], after: Optional[Any]
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        """딕셔너리 기반의 변경 사항을 계산."""
+
+        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+            return None
+
+        diff: Dict[str, Dict[str, Any]] = {}
+        keys: Iterable[str] = set(before.keys()) | set(after.keys())
+        for key in keys:
+            old_value = before.get(key)
+            new_value = after.get(key)
+            if old_value != new_value:
+                diff[key] = {"old": old_value, "new": new_value}
+
+        return diff or None
+
+    def _normalize_change_set(
+        self, changes: Optional[Any]
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        """변경 사항을 {old, new} 구조로 정규화."""
+
+        if not isinstance(changes, Mapping):
+            return None
+
+        normalized: Dict[str, Dict[str, Any]] = {}
+        for field, payload in changes.items():
+            if isinstance(payload, Mapping):
+                old_value = payload.get("old", payload.get("from"))
+                new_value = payload.get("new", payload.get("to"))
+            else:
+                old_value = None
+                new_value = payload
+
+            if old_value is None and new_value is None:
+                continue
+
+            normalized[field] = {"old": old_value, "new": new_value}
+
+        return normalized or None

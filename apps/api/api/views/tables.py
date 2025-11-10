@@ -10,6 +10,12 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from ..activity_logging import (
+    merge_activity_metadata,
+    set_activity_new_state,
+    set_activity_previous_state,
+    set_activity_summary,
+)
 from ..db import execute, run_query
 from .constants import DATE_COLUMN_CANDIDATES, DEFAULT_TABLE
 from .utils import (
@@ -140,6 +146,29 @@ class TableUpdateView(APIView):
             if not id_column:
                 return JsonResponse({"error": f'Table "{table_name}" does not expose an id column'}, status=400)
 
+            set_activity_summary(
+                request, f"Update {table_name} record #{record_id}"
+            )
+            merge_activity_metadata(
+                request,
+                resource=table_name,
+                entryId=record_id,
+            )
+
+            previous_rows = run_query(
+                """
+                SELECT *
+                FROM {table}
+                WHERE {id_column} = %s
+                LIMIT 1
+                """.format(table=table_name, id_column=id_column),
+                [record_id],
+            )
+            set_activity_previous_state(
+                request,
+                previous_rows[0] if previous_rows else None,
+            )
+
             assignments: List[str] = []
             params: List[Any] = []
 
@@ -169,6 +198,18 @@ class TableUpdateView(APIView):
             affected, _ = execute(sql, params)
             if affected == 0:
                 return JsonResponse({"error": "Record not found"}, status=404)
+
+            updated_rows = run_query(
+                """
+                SELECT *
+                FROM {table}
+                WHERE {id_column} = %s
+                LIMIT 1
+                """.format(table=table_name, id_column=id_column),
+                [record_id],
+            )
+            if updated_rows:
+                set_activity_new_state(request, updated_rows[0])
 
             return JsonResponse({"success": True})
         except Exception as exc:  # pragma: no cover - 방어적 로깅

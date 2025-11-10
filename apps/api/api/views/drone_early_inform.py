@@ -9,6 +9,12 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from ..activity_logging import (
+    merge_activity_metadata,
+    set_activity_new_state,
+    set_activity_previous_state,
+    set_activity_summary,
+)
 from ..db import execute, run_query
 from .constants import MAX_FIELD_LENGTH
 from .utils import parse_json_body
@@ -81,6 +87,13 @@ class DroneEarlyInformView(APIView):
                 "mainStep": main_step,
                 "customEndStep": custom_end_step,
             }
+            set_activity_summary(request, "Create drone_early_inform entry")
+            set_activity_new_state(request, entry)
+            merge_activity_metadata(
+                request,
+                resource=self.TABLE_NAME,
+                entryId=entry["id"],
+            )
             return JsonResponse({"entry": entry}, status=201)
         except Exception as exc:  # pragma: no cover - 방어적 로깅
             error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
@@ -102,6 +115,23 @@ class DroneEarlyInformView(APIView):
                 return JsonResponse({"error": "A valid id is required"}, status=400)
         if entry_id <= 0:
             return JsonResponse({"error": "A valid id is required"}, status=400)
+
+        set_activity_summary(request, f"Update drone_early_inform entry #{entry_id}")
+        merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
+
+        previous_rows = run_query(
+            """
+            SELECT id, line_id, main_step, custom_end_step
+            FROM {table}
+            WHERE id = %s
+            LIMIT 1
+            """.format(table=self.TABLE_NAME),
+            [entry_id],
+        )
+        set_activity_previous_state(
+            request,
+            self._map_row(previous_rows[0] if previous_rows else None),
+        )
 
         assignments: List[str] = []
         params: List[Any] = []
@@ -156,6 +186,7 @@ class DroneEarlyInformView(APIView):
             entry = self._map_row(rows[0] if rows else None)
             if not entry:
                 return JsonResponse({"error": "Entry not found"}, status=404)
+            set_activity_new_state(request, entry)
             return JsonResponse({"entry": entry})
         except Exception as exc:  # pragma: no cover - 방어적 로깅
             error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
@@ -173,6 +204,23 @@ class DroneEarlyInformView(APIView):
         if entry_id <= 0:
             return JsonResponse({"error": "A valid id is required"}, status=400)
 
+        set_activity_summary(request, f"Delete drone_early_inform entry #{entry_id}")
+        merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
+
+        previous_rows = run_query(
+            """
+            SELECT id, line_id, main_step, custom_end_step
+            FROM {table}
+            WHERE id = %s
+            LIMIT 1
+            """.format(table=self.TABLE_NAME),
+            [entry_id],
+        )
+        set_activity_previous_state(
+            request,
+            self._map_row(previous_rows[0] if previous_rows else None),
+        )
+
         try:
             affected, _ = execute(
                 """
@@ -183,6 +231,7 @@ class DroneEarlyInformView(APIView):
             )
             if affected == 0:
                 return JsonResponse({"error": "Entry not found"}, status=404)
+            set_activity_new_state(request, {"deleted": True})
             return JsonResponse({"success": True})
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to delete drone_early_inform row")
