@@ -14,11 +14,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # 패키지 정보 파일만 먼저 복사 (빌드 캐시 최적화용)
 
-RUN npm ci
-# npm ci:
-# - package-lock.json을 기반으로 정확히 일치하는 버전 설치
-# - CI/CD 환경에서 일관성 있게 패키지를 설치할 때 사용
-# - npm install보다 빠르고 예측 가능
+RUN npm install
 
 ###############################################
 # 2️⃣ 빌드 단계 (builder)
@@ -58,7 +54,7 @@ ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
 # 런타임 환경에서도 동일한 환경변수 적용
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 # 실행 환경에서는 devDependencies 제외
 # → 빌드 도구 등 불필요한 패키지 제거로 이미지 경량화
 

@@ -1,0 +1,79 @@
+# WebSocket 업그레이드용 (keep)
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+# --- 1) HTTP -> HTTPS 리다이렉트 ---
+server {
+    listen 80;
+    server_name _;  # 배포 시 실제 도메인으로 교체 권장 (예: plane.appleds.net)
+    return 301 https://$host$request_uri;
+}
+
+# --- 2) HTTPS 서버 ---
+server {
+    listen 443 ssl http2;
+    server_name _;  # 배포 시 실제 도메인으로 교체 권장
+
+    # TLS 인증서 경로 (./cert -> /etc/nginx/certs 로 마운트했다고 가정)
+    ssl_certificate     /etc/nginx/certs/fullchain.crt;   # fullchain (server + intermediate)
+    ssl_certificate_key /etc/nginx/certs/server.key;
+
+    # Modern TLS 기본값
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # HSTS(선택) - 이미 HTTPS인 경우 항상 HTTPS 사용 유도
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # 공통 성능/제한 (원본 설정 유지)
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    types_hash_max_size 2048;
+    client_max_body_size 10m;
+
+    # ===== (A) 백엔드 API 프록시 (/api/) =====
+    location /api/ {
+        proxy_pass http://api:8000/;          # 접두사 제거 방식
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_read_timeout 3600s;
+    }
+
+    # ===== (B) 정적 파일 직접 서빙 (/static/) =====
+    location /static/ {
+        alias /var/www/static/;
+        access_log off;
+        expires 30d;
+        add_header Cache-Control "public";
+        # add_header Cache-Control "public, max-age=2592000, immutable";
+    }
+
+    # ===== (C) 프론트엔드(Next.js 등) 프록시 (그 외 모든 경로) =====
+    location / {
+        proxy_pass http://web:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+
+        # WebSocket/HMR 업그레이드
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # 원본 클라이언트 정보 전달
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 3600s;
+        # SPA 라우팅 필요 시:
+        # try_files $uri $uri/ /index.html;
+    }
+}
