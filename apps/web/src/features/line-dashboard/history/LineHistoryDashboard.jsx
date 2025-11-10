@@ -25,12 +25,25 @@ const RANGE_OPTIONS = [
 ]
 
 const DIMENSION_OPTIONS = [
+  { value: "sdwt_prod", label: "SDWT Prod" },
+  { value: "process", label: "Process" },
+  { value: "main_step", label: "Step" },
+  { value: "ppid", label: "PPID" },
   { value: "sdwt", label: "SDWT" },
   { value: "user_sdwt", label: "User SDWT" },
   { value: "eqp_id", label: "EQP ID" },
-  { value: "main_step", label: "Main Step" },
   { value: "sample_type", label: "Sample Type" },
   { value: "line_id", label: "Line ID" },
+]
+
+const QUICK_VIEW_OPTIONS = [
+  { value: "date", label: "날짜별" },
+  { value: "sdwt_prod", label: "SDWT Prod" },
+  { value: "process", label: "Process" },
+  { value: "main_step", label: "Step" },
+  { value: "ppid", label: "PPID" },
+  { value: "sdwt", label: "SDWT" },
+  { value: "user_sdwt", label: "User SDWT" },
 ]
 
 const METRIC_OPTIONS = [
@@ -59,7 +72,7 @@ function formatDateLabel(value) {
   return new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit" }).format(date)
 }
 
-function buildCategorySeries(records, metricKey, limit = 5) {
+function buildCategorySeries(records, metricKey, limit = 5, focusCategory) {
   if (!Array.isArray(records) || records.length === 0) {
     return { data: [], categories: [], config: {} }
   }
@@ -76,10 +89,18 @@ function buildCategorySeries(records, metricKey, limit = 5) {
     totalsByCategory.set(category, (totalsByCategory.get(category) ?? 0) + value)
   }
 
-  const categories = Array.from(totalsByCategory.entries())
+  let categories = Array.from(totalsByCategory.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([category]) => category)
+
+  if (focusCategory && typeof focusCategory === "string" && totalsByCategory.has(focusCategory)) {
+    categories = [focusCategory, ...categories.filter((category) => category !== focusCategory)]
+  }
+
+  if (focusCategory) {
+    categories = categories.filter((category) => category === focusCategory)
+  }
 
   const sortedDates = Array.from(dateSet)
     .filter(Boolean)
@@ -125,6 +146,8 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
   const [dimension, setDimension] = React.useState(DIMENSION_OPTIONS[0].value)
   const [metric, setMetric] = React.useState(METRIC_OPTIONS[0].value)
   const [refreshToken, setRefreshToken] = React.useState(0)
+  const [quickView, setQuickView] = React.useState("date")
+  const [quickCategory, setQuickCategory] = React.useState(null)
   const [state, setState] = React.useState({ data: null, isLoading: false, error: null })
 
   React.useEffect(() => {
@@ -196,6 +219,74 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
     [breakdownRecords, metric]
   )
 
+  const quickViewRecords = React.useMemo(() => {
+    if (quickView === "date") return []
+    return quickView ? state.data?.breakdowns?.[quickView] ?? [] : []
+  }, [quickView, state.data])
+
+  const quickCategorySeries = React.useMemo(
+    () => buildCategorySeries(quickViewRecords, "rowCount", 5, quickCategory),
+    [quickViewRecords, quickCategory]
+  )
+
+  const quickCategoryTotals = React.useMemo(() => {
+    if (!Array.isArray(quickViewRecords) || quickViewRecords.length === 0) return []
+    const totals = new Map()
+    for (const record of quickViewRecords) {
+      const category = typeof record?.category === "string" && record.category.trim().length > 0
+        ? record.category.trim()
+        : "Unspecified"
+      const value = Number(record?.rowCount ?? 0) || 0
+      totals.set(category, (totals.get(category) ?? 0) + value)
+    }
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+  }, [quickViewRecords])
+
+  const availableQuickViews = React.useMemo(() => {
+    const available = new Set()
+    if (Array.isArray(totalsData) && totalsData.length > 0) {
+      available.add("date")
+    }
+    for (const option of QUICK_VIEW_OPTIONS) {
+      if (option.value === "date") continue
+      const rows = state.data?.breakdowns?.[option.value]
+      if (Array.isArray(rows) && rows.length > 0) {
+        available.add(option.value)
+      }
+    }
+    return available
+  }, [state.data, totalsData])
+
+  React.useEffect(() => {
+    setQuickCategory(null)
+  }, [quickView])
+
+  React.useEffect(() => {
+    if (!quickCategory) return
+    if (!quickCategoryTotals.some(([category]) => category === quickCategory)) {
+      setQuickCategory(null)
+    }
+  }, [quickCategoryTotals, quickCategory])
+
+  React.useEffect(() => {
+    if (availableQuickViews.size === 0) {
+      if (quickView !== "date") {
+        setQuickView("date")
+      }
+      return
+    }
+    if (!availableQuickViews.has(quickView)) {
+      if (availableQuickViews.has("date")) {
+        setQuickView("date")
+      } else {
+        const [firstAvailable] = availableQuickViews
+        if (firstAvailable) {
+          setQuickView(firstAvailable)
+        }
+      }
+    }
+  }, [availableQuickViews, quickView])
+
   const showSendJira = React.useMemo(
     () => hasPositiveValue(totalsData, "sendJiraCount") || hasPositiveValue(breakdownRecords, "sendJiraCount"),
     [totalsData, breakdownRecords]
@@ -215,110 +306,206 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
 
   const { data, isLoading, error } = state
 
+  const availableDimensionSet = React.useMemo(
+    () => new Set(availableDimensions.map((option) => option.value)),
+    [availableDimensions]
+  )
+
   return (
     <div className="relative flex h-full flex-col gap-4">
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+      <section className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
             <h1 className="text-2xl font-semibold tracking-tight">History · {lineId}</h1>
             <p className="text-sm text-muted-foreground">
               라인별 E-SOP 진행 추이를 일별로 확인하고 주요 분류별로 비교합니다.
             </p>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span>
+                범위: {data?.from ?? "-"} ~ {data?.to ?? "-"}
+              </span>
+              {data?.generatedAt && (
+                <span>
+                  업데이트: {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.generatedAt))}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {RANGE_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                size="sm"
-                variant={rangeDays === option.value ? "default" : "outline"}
-                onClick={() => setRangeDays(option.value)}
-                disabled={isLoading && rangeDays === option.value}
-              >
-                {option.label}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">범위 선택</span>
+              {RANGE_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  size="sm"
+                  variant={rangeDays === option.value ? "default" : "outline"}
+                  onClick={() => setRangeDays(option.value)}
+                  disabled={isLoading && rangeDays === option.value}
+                >
+                  {option.label}
+                </Button>
+              ))}
+              <Button size="icon" variant="outline" onClick={handleRefresh} disabled={isLoading}>
+                <IconRefresh className={cn("size-4", isLoading && "animate-spin")} />
               </Button>
-            ))}
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              <IconRefresh className={cn("size-4", isLoading && "animate-spin")} />
-            </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">퀵 분류</span>
+              {QUICK_VIEW_OPTIONS.filter((option) => option.value !== "date").map((option) => {
+                const isAvailable = availableDimensionSet.has(option.value)
+                return (
+                  <Button
+                    key={option.value}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    variant={dimension === option.value ? "default" : "outline"}
+                    onClick={() => setDimension(option.value)}
+                    disabled={!isAvailable}
+                  >
+                    {option.label}
+                  </Button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span>
-            범위: {data?.from ?? "-"} ~ {data?.to ?? "-"}
-          </span>
-          {data?.generatedAt && (
-            <span>
-              업데이트: {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.generatedAt))}
-            </span>
-          )}
         </div>
         {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="mt-6 flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
             <IconAlertCircle className="size-4" />
             <span>{error}</span>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-base font-semibold">일별 진행 현황</h2>
-              <p className="text-xs text-muted-foreground">Daily ESOP row count와 Send Jira 건수를 비교합니다.</p>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <div className="flex h-full flex-col gap-4 rounded-xl border bg-card p-6 shadow-sm">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-base font-semibold">빠른 추세</h2>
+                <p className="text-xs text-muted-foreground">
+                  주요 조건을 빠르게 전환하며 일별 진행 건수를 확인합니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {QUICK_VIEW_OPTIONS.map((option) => {
+                  const isAvailable = availableQuickViews.has(option.value)
+                  return (
+                    <Button
+                      key={option.value}
+                      size="sm"
+                      variant={quickView === option.value ? "default" : "outline"}
+                      onClick={() => setQuickView(option.value)}
+                      disabled={!isAvailable}
+                    >
+                      {option.label}
+                    </Button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-          <ChartContainer config={totalsChartConfig} className="h-[340px]">
-            <ResponsiveContainer>
-              <LineChart data={totalsData} margin={{ top: 12, right: 16, left: 8, bottom: 16 }}>
-                <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
-                <XAxis dataKey="date" tickFormatter={formatDateLabel} tickMargin={12} />
-                <YAxis allowDecimals={false} width={64} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Legend formatter={(value) => totalsChartConfig[value]?.label ?? value} />
-                <Line
-                  type="monotone"
-                  dataKey="rowCount"
-                  name={totalsChartConfig.rowCount.label}
-                  stroke={totalsChartConfig.rowCount.color}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 5 }}
-                />
-                {showSendJira && (
-                  <Line
-                    type="monotone"
-                    dataKey="sendJiraCount"
-                    name={totalsChartConfig.sendJiraCount.label}
-                    stroke={totalsChartConfig.sendJiraCount.color}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                  />
+
+            {quickView !== "date" && availableQuickViews.has(quickView) && quickCategoryTotals.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-muted/20 p-3">
+                <span className="text-xs font-medium text-muted-foreground">세부 필터</span>
+                {quickCategoryTotals.slice(0, 6).map(([category]) => (
+                  <Button
+                    key={category}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    variant={quickCategory === category ? "default" : "outline"}
+                    onClick={() => setQuickCategory((current) => (current === category ? null : category))}
+                  >
+                    {category}
+                  </Button>
+                ))}
+                {quickCategory && (
+                  <Button size="sm" className="h-7 px-2 text-xs" variant="ghost" onClick={() => setQuickCategory(null)}>
+                    필터 초기화
+                  </Button>
                 )}
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartContainer>
+              </div>
+            )}
+
+            {quickView === "date" ? (
+              <ChartContainer config={totalsChartConfig} className="h-[340px]">
+                <ResponsiveContainer>
+                  <LineChart data={totalsData} margin={{ top: 12, right: 16, left: 8, bottom: 16 }}>
+                    <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+                    <XAxis dataKey="date" tickFormatter={formatDateLabel} tickMargin={12} />
+                    <YAxis allowDecimals={false} width={64} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend formatter={(value) => totalsChartConfig[value]?.label ?? value} />
+                    <Line
+                      type="monotone"
+                      dataKey="rowCount"
+                      name={totalsChartConfig.rowCount.label}
+                      stroke={totalsChartConfig.rowCount.color}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5 }}
+                    />
+                    {showSendJira && (
+                      <Line
+                        type="monotone"
+                        dataKey="sendJiraCount"
+                        name={totalsChartConfig.sendJiraCount.label}
+                        stroke={totalsChartConfig.sendJiraCount.color}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 5 }}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            ) : quickCategorySeries.data.length > 0 ? (
+              <ChartContainer config={quickCategorySeries.config} className="h-[340px]">
+                <ResponsiveContainer>
+                  <LineChart data={quickCategorySeries.data} margin={{ top: 12, right: 16, left: 8, bottom: 16 }}>
+                    <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+                    <XAxis dataKey="date" tickFormatter={formatDateLabel} tickMargin={12} />
+                    <YAxis allowDecimals={false} width={64} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend formatter={(value) => quickCategorySeries.config?.[value]?.label ?? value} />
+                    {quickCategorySeries.categories.map((category) => (
+                      <Line
+                        key={category}
+                        type="monotone"
+                        dataKey={category}
+                        name={quickCategorySeries.config?.[category]?.label ?? category}
+                        stroke={quickCategorySeries.config?.[category]?.color ?? "var(--chart-1)"}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 5 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            ) : (
+              <div className="flex h-[340px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                선택한 조건에 대한 데이터가 없습니다.
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-base font-semibold">분류별 추이</h2>
-              <p className="text-xs text-muted-foreground">상위 5개 분류의 일별 트렌드를 확인합니다.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="flex h-full flex-col gap-4 rounded-xl border bg-card p-6 shadow-sm">
+          <div className="space-y-2">
+            <h2 className="text-base font-semibold">세부 분석</h2>
+            <p className="text-xs text-muted-foreground">
+              분류와 지표를 조합하여 맞춤형 비교 차트를 구성합니다.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="history-dimension">
-                분류
+                분류 선택
               </label>
               <select
                 id="history-dimension"
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus:outline-none"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus:outline-none"
                 value={dimension}
                 onChange={handleDimensionChange}
               >
@@ -329,12 +516,14 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="history-metric">
-                지표
+                지표 선택
               </label>
               <select
                 id="history-metric"
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus:outline-none"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus:outline-none"
                 value={metric}
                 onChange={handleMetricChange}
               >
@@ -348,7 +537,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
           </div>
 
           {categorySeries.data.length > 0 ? (
-            <ChartContainer config={categorySeries.config} className="h-[340px]">
+            <ChartContainer config={categorySeries.config} className="h-[300px]">
               <ResponsiveContainer>
                 <LineChart data={categorySeries.data} margin={{ top: 12, right: 16, left: 8, bottom: 16 }}>
                   <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
@@ -372,14 +561,14 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
               </ResponsiveContainer>
             </ChartContainer>
           ) : (
-            <div className="flex h-[340px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+            <div className="flex h-[300px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
               {availableDimensions.length === 0
                 ? "선택된 기간에 대한 분류 데이터가 없습니다."
                 : "선택한 분류에 대한 데이터가 없습니다."}
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {isLoading && (
         <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center">
