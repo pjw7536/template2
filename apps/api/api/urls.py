@@ -4,15 +4,11 @@ from django.urls import path
 
 from .views import (
     ActivityLogView,
-    AuthConfigurationView,
-    CurrentUserView,
     DroneEarlyInformView,
+    FrontendRedirectView,
     HealthView,
     LineHistoryView,
     LineIdListView,
-    LoginRedirectView,
-    LogoutView,
-    FrontendRedirectView,
     TableUpdateView,
     TablesView,
 )
@@ -20,10 +16,6 @@ from .views import (
 urlpatterns = [
     path("", FrontendRedirectView.as_view(), name="frontend-redirect"),
     path("health/", HealthView.as_view(), name="health"),
-    path("auth/me", CurrentUserView.as_view(), name="auth-me"),
-    path("auth/config", AuthConfigurationView.as_view(), name="auth-config"),
-    path("auth/login", LoginRedirectView.as_view(), name="auth-login"),
-    path("auth/logout", LogoutView.as_view(), name="auth-logout"),
     path("auth/activity", ActivityLogView.as_view(), name="auth-activity"),
     path("tables", TablesView.as_view(), name="tables"),
     path("tables/update", TableUpdateView.as_view(), name="tables-update"),

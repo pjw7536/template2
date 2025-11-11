@@ -6,7 +6,7 @@ from django.urls import include, path
 
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from api.auth.views import GoogleOAuthCallbackView, GoogleOAuthStartView
+from api import views_auth
 
 swagger_view = SpectacularSwaggerView.as_view(url_name="api-schema")
 
@@ -14,8 +14,11 @@ schema_view = SpectacularAPIView.as_view()
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("auth/google/authenticate/", GoogleOAuthStartView.as_view(), name="google-oauth-start"),
-    path("auth/google/callback/", GoogleOAuthCallbackView.as_view(), name="google-oauth-callback"),
+    path("auth/login", views_auth.auth_login, name="auth-login"),
+    path("auth/logout", views_auth.auth_logout, name="auth-logout"),
+    path("auth/me", views_auth.auth_me, name="auth-me"),
+    path("auth/config", views_auth.auth_config, name="auth-config"),
+    path("auth/google/callback/", views_auth.auth_callback, name="auth-callback"),
     path("api/schema/", schema_view, name="api-schema"),
     path("schema/", schema_view, name="schema-proxied"),
     path("api/docs/", swagger_view, name="api-docs"),

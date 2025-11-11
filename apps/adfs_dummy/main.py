@@ -1,39 +1,32 @@
-"""FastAPI 기반 더미 ADFS(OIDC) 제공자."""
+"""FastAPI-based dummy ADFS server that emits id_token-only OIDC responses."""
 from __future__ import annotations
 
 import hashlib
 import html
 import os
 import secrets
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from fastapi import FastAPI, Form, Header, HTTPException, Request
+import jwt
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-app = FastAPI(title="Dummy ADFS", version="1.0.0")
+app = FastAPI(title="Dummy ADFS", version="2.0.0")
 
 CLIENT_ID = os.getenv("DUMMY_ADFS_CLIENT_ID", "dummy-client")
-CLIENT_SECRET = os.getenv("DUMMY_ADFS_CLIENT_SECRET", "dummy-secret")
 DEFAULT_EMAIL = os.getenv("DUMMY_ADFS_EMAIL", "dummy.user@example.com")
 DEFAULT_NAME = os.getenv("DUMMY_ADFS_NAME", "Dummy User")
-_DEFAULT_NAME_PARTS = [part for part in DEFAULT_NAME.split() if part] or ["Dummy", "User"]
-DEFAULT_GIVEN = os.getenv("DUMMY_ADFS_GIVEN_NAME", _DEFAULT_NAME_PARTS[0])
-DEFAULT_FAMILY = os.getenv(
-    "DUMMY_ADFS_FAMILY_NAME",
-    _DEFAULT_NAME_PARTS[1] if len(_DEFAULT_NAME_PARTS) > 1 else "",
-)
+DEFAULT_DEPT = os.getenv("DUMMY_ADFS_DEPT", "Development")
+ISSUER = os.getenv("DUMMY_ADFS_ISSUER", "http://localhost:9000/adfs")
+PRIVATE_KEY_PATH = Path(os.getenv("DUMMY_ADFS_PRIVATE_KEY_PATH", "dummy_adfs_private.key")).resolve()
+LOGOUT_REDIRECT = os.getenv("DUMMY_ADFS_LOGOUT_TARGET", "http://localhost:8003")
 
-_AUTH_CODES: Dict[str, Dict[str, str]] = {}
-_ACCESS_TOKENS: Dict[str, Dict[str, str]] = {}
-
-
-def _append_params(url: str, params: Dict[str, str]) -> str:
-    parsed = urlparse(url)
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    query.update({k: v for k, v in params.items() if v is not None})
-    new_query = urlencode(query)
-    return urlunparse(parsed._replace(query=new_query))
+try:
+    PRIVATE_KEY = PRIVATE_KEY_PATH.read_text(encoding="utf-8")
+except OSError as exc:  # pragma: no cover - dev feedback
+    raise RuntimeError(f"Failed to read dummy ADFS private key: {PRIVATE_KEY_PATH}") from exc
 
 
 def _render_login_form(request: Request) -> str:
@@ -41,6 +34,7 @@ def _render_login_form(request: Request) -> str:
     email = html.escape(params.get("email") or DEFAULT_EMAIL)
     name = html.escape(params.get("name") or DEFAULT_NAME)
     state = html.escape(params.get("state") or "")
+    nonce = html.escape(params.get("nonce") or secrets.token_urlsafe(16))
     redirect_uri = html.escape(params.get("redirect_uri") or "")
     client_id = html.escape(params.get("client_id") or "")
 
@@ -67,6 +61,7 @@ def _render_login_form(request: Request) -> str:
           <label for="name">Display name</label>
           <input id="name" name="name" value="{name}" type="text" required />
           <input type="hidden" name="state" value="{state}" />
+          <input type="hidden" name="nonce" value="{nonce}" />
           <input type="hidden" name="redirect_uri" value="{redirect_uri}" />
           <input type="hidden" name="client_id" value="{client_id}" />
           <button type="submit">Sign in</button>
@@ -76,13 +71,37 @@ def _render_login_form(request: Request) -> str:
     """
 
 
+def _build_id_token(*, email: str, name: str, nonce: str) -> str:
+    now = datetime.now(timezone.utc)
+    subject = hashlib.sha256(email.encode("utf-8")).hexdigest()[:32]
+
+    payload = {
+        "aud": CLIENT_ID,
+        "iss": ISSUER,
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+        "nonce": nonce,
+        "mail": email,
+        "email": email,
+        "userid": email,
+        "upn": email,
+        "username": name,
+        "name": name,
+        "deptname": DEFAULT_DEPT,
+        "jti": secrets.token_hex(16),
+    }
+
+    return jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+
+
 @app.get("/authorize", response_class=HTMLResponse)
 async def authorize_form(request: Request) -> HTMLResponse:
-    """간단한 로그인 폼 렌더링."""
-
     redirect_uri = request.query_params.get("redirect_uri")
     if not redirect_uri:
         raise HTTPException(status_code=400, detail="missing redirect_uri")
+    if CLIENT_ID and request.query_params.get("client_id") not in {"", CLIENT_ID}:
+        raise HTTPException(status_code=400, detail="invalid_client")
     return HTMLResponse(_render_login_form(request))
 
 
@@ -91,123 +110,50 @@ async def authorize(
     email: str = Form(DEFAULT_EMAIL),
     name: str = Form(DEFAULT_NAME),
     state: str = Form(""),
+    nonce: str = Form(""),
     redirect_uri: str = Form(...),
     client_id: str = Form(""),
-) -> RedirectResponse:
-    """사용자 입력을 받아 authorization code 발급."""
-
-    expected_client = CLIENT_ID
-    if expected_client and client_id and client_id != expected_client:
+) -> HTMLResponse:
+    if CLIENT_ID and client_id and client_id != CLIENT_ID:
         raise HTTPException(status_code=400, detail="invalid_client")
+    if not redirect_uri:
+        raise HTTPException(status_code=400, detail="missing_redirect")
 
-    code = secrets.token_urlsafe(32)
-    raw_name = name or DEFAULT_NAME
-    parts = [part for part in raw_name.split() if part]
-    given = parts[0] if parts else DEFAULT_GIVEN
-    family = parts[1] if len(parts) > 1 else DEFAULT_FAMILY
-    profile = {
-        "email": email or DEFAULT_EMAIL,
-        "name": raw_name,
-        "given_name": given,
-        "family_name": family,
-    }
-    _AUTH_CODES[code] = profile
+    nonce_value = nonce or secrets.token_urlsafe(16)
+    id_token = _build_id_token(email=email or DEFAULT_EMAIL, name=name or DEFAULT_NAME, nonce=nonce_value)
 
-    params = {"code": code, "state": state or None}
-    redirect_target = _append_params(redirect_uri, params)
-    return RedirectResponse(url=redirect_target, status_code=302)
-
-
-@app.post("/token")
-async def token(
-    grant_type: str = Form("authorization_code"),
-    code: str = Form(...),
-    client_id: str = Form(""),
-    client_secret: str = Form(""),
-) -> Dict[str, Any]:
-    """authorization code를 access token으로 교환."""
-
-    if grant_type != "authorization_code":
-        raise HTTPException(status_code=400, detail="unsupported_grant_type")
-
-    expected_client = CLIENT_ID
-    if expected_client and client_id and client_id != expected_client:
-        raise HTTPException(status_code=400, detail="invalid_client")
-
-    expected_secret = CLIENT_SECRET
-    if expected_secret and client_secret and client_secret != expected_secret:
-        raise HTTPException(status_code=400, detail="invalid_client_secret")
-
-    profile = _AUTH_CODES.pop(code, None)
-    if not profile:
-        raise HTTPException(status_code=400, detail="invalid_grant")
-
-    access_token = secrets.token_urlsafe(32)
-    refresh_token = secrets.token_urlsafe(32)
-    _ACCESS_TOKENS[access_token] = profile
-
-    return {
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": 3600,
-        "refresh_token": refresh_token,
-        "id_token": secrets.token_urlsafe(48),
-    }
+    html_body = f"""
+    <html>
+      <head>
+        <title>ADFS redirect</title>
+      </head>
+      <body>
+        <form id="callback-form" method="post" action="{html.escape(redirect_uri)}">
+          <input type="hidden" name="id_token" value="{html.escape(id_token)}" />
+          <input type="hidden" name="state" value="{html.escape(state)}" />
+        </form>
+        <script>document.getElementById('callback-form').submit();</script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(content=html_body)
 
 
-@app.get("/userinfo")
-async def userinfo(authorization: str = Header("")) -> Dict[str, str]:
-    """Bearer 토큰을 검증하고 사용자 정보를 반환."""
-
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="missing_token")
-
-    token = authorization.split(" ", 1)[1]
-    profile = _ACCESS_TOKENS.get(token)
-    if not profile:
-        raise HTTPException(status_code=401, detail="invalid_token")
-
-    email = profile.get("email", DEFAULT_EMAIL)
-    name = profile.get("name", DEFAULT_NAME)
-    given = profile.get("given_name", DEFAULT_GIVEN)
-    family = profile.get("family_name", DEFAULT_FAMILY)
-    subject = hashlib.sha256(email.encode("utf-8")).hexdigest()[:32]
-
-    return {
-        "sub": subject,
-        "email": email,
-        "name": name,
-        "given_name": given,
-        "family_name": family,
-    }
+@app.get("/logout")
+async def logout() -> RedirectResponse:
+    target = LOGOUT_REDIRECT or "/"
+    return RedirectResponse(url=target, status_code=302)
 
 
 @app.get("/.well-known/openid-configuration")
-async def openid_config(request: Request) -> Dict[str, str]:
-    """기본 OIDC discovery 문서 제공."""
-
+async def openid_config(request: Request) -> Dict[str, Any]:
     base = str(request.url.replace(path="", query="", fragment=""))[:-1]
     return {
-        "issuer": base,
+        "issuer": ISSUER,
         "authorization_endpoint": f"{base}/authorize",
         "token_endpoint": f"{base}/token",
         "userinfo_endpoint": f"{base}/userinfo",
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
+        "response_types_supported": ["id_token"],
+        "grant_types_supported": ["implicit"],
         "scopes_supported": ["openid", "profile", "email"],
     }
-
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "9000"))
-    uvicorn_kwargs = {
-        "app": "main:app",
-        "host": "0.0.0.0",
-        "port": port,
-        "reload": bool(os.getenv("RELOAD", "")),
-    }
-
-    # FastAPI 앱을 직접 실행할 때 uvicorn을 동적으로 import 합니다.
-    import uvicorn  # type: ignore
-
-    uvicorn.run(**uvicorn_kwargs)

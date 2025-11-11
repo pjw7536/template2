@@ -254,13 +254,20 @@ export function AuthProvider({ children }) {
 
   /** 로그아웃 함수 */
   const logout = useCallback(async () => {
+    let redirectTarget = config.logoutUrl || "/auth/logout";
     try {
       const endpoint = buildBackendUrl("/auth/logout");
-      await fetchJson(endpoint, { method: "POST" });
+      const result = await fetchJson(endpoint, { method: "POST" });
+      if (result?.data && typeof result.data === "object" && typeof result.data.logoutUrl === "string") {
+        redirectTarget = result.data.logoutUrl;
+      }
     } finally {
       if (mountedRef.current) setUser(null);
+      if (typeof window !== "undefined" && redirectTarget) {
+        window.location.href = redirectTarget;
+      }
     }
-  }, []);
+  }, [config.logoutUrl]);
 
   /** Context value 메모이제이션 */
   const value = useMemo(

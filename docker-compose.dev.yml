@@ -50,7 +50,8 @@ services:
       DUMMY_ADFS_EMAIL: dummy.user@example.com
       DUMMY_ADFS_NAME: Dummy User
       DUMMY_ADFS_CLIENT_ID: dummy-client
-      DUMMY_ADFS_CLIENT_SECRET: dummy-secret
+      DUMMY_ADFS_PRIVATE_KEY_PATH: /app/dummy_adfs_private.key
+      DUMMY_ADFS_ISSUER: https://appleds.net:9000/adfs
     ports:
       - "9000:9000"
     networks:

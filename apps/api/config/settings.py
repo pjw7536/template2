@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 
 # ==============================
@@ -92,6 +93,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",
     # 서드파티
     "rest_framework",
     "corsheaders",
@@ -100,6 +102,10 @@ INSTALLED_APPS = [
     # 로컬 앱
     "api",
 ]
+
+
+# Django Sites 프레임워크 기본 사이트 ID
+SITE_ID = env_int("DJANGO_SITE_ID", 1) or 1
 
 
 # =========
@@ -250,39 +256,60 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-LOGIN_URL = "/auth/google/authenticate/"
+LOGIN_URL = "/auth/login"
 LOGIN_REDIRECT_URL = env("DJANGO_LOGIN_REDIRECT_URL", "/")
 LOGOUT_REDIRECT_URL = env("DJANGO_LOGOUT_REDIRECT_URL", "/")
 
 
-# ===========
-# Google OAuth (SSO)
-#  - 실제 IdP 연결 여부를 플래그로 파악
-# ===========
-GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_CLIENT_ID") or env("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET") or env("GOOGLE_OAUTH_CLIENT_SECRET")
-GOOGLE_OAUTH_SCOPE = env("GOOGLE_OAUTH_SCOPE", "openid email profile")
-GOOGLE_OAUTH_PROMPT = env("GOOGLE_OAUTH_PROMPT", "consent")
-GOOGLE_OAUTH_ACCESS_TYPE = env("GOOGLE_OAUTH_ACCESS_TYPE", "offline")
-GOOGLE_OAUTH_AUTH_ENDPOINT = env(
-    "GOOGLE_OAUTH_AUTH_ENDPOINT",
-    "https://accounts.google.com/o/oauth2/v2/auth",
-)
-GOOGLE_OAUTH_TOKEN_ENDPOINT = env(
-    "GOOGLE_OAUTH_TOKEN_ENDPOINT",
-    "https://oauth2.googleapis.com/token",
-)
-GOOGLE_OAUTH_USERINFO_ENDPOINT = env(
-    "GOOGLE_OAUTH_USERINFO_ENDPOINT",
-    "https://openidconnect.googleapis.com/v1/userinfo",
-)
-GOOGLE_OAUTH_REDIRECT_URI = env("GOOGLE_OAUTH_REDIRECT_URI")
+# ========================
+# 세션/쿠키 기본 보안 옵션
+# ========================
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", True)
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", "None")
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", True)
+SESSION_COOKIE_AGE = env_int("SESSION_COOKIE_AGE", 86400) or 86400
 
-# 실제 프로바이더가 구성되었는지
-GOOGLE_OIDC_CONFIGURED = bool(GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
 
-# 기존 코드에서 사용하는 플래그 이름 유지
-OIDC_PROVIDER_CONFIGURED = GOOGLE_OIDC_CONFIGURED
+# ==========================
+# OIDC / ADFS 프로바이더 설정
+# ==========================
+ADFS_AUTH_URL = env("ADFS_AUTH_URL", "https://adfs.example.com/adfs/oauth2/authorize/")
+ADFS_LOGOUT_URL = env("ADFS_LOGOUT_URL", "https://adfs.example.com/adfs/oauth2/logout/")
+OIDC_CLIENT_ID = (
+    env("OIDC_CLIENT_ID")
+    or env("ADFS_CLIENT_ID")
+    or env("GOOGLE_CLIENT_ID")
+    or ""
+)
+OIDC_ISSUER = env("OIDC_ISSUER") or env("ADFS_ISSUER") or "https://adfs.example.com/adfs"
+OIDC_REDIRECT_URI = (
+    env("OIDC_REDIRECT_URI")
+    or env("ADFS_REDIRECT_URI")
+    or "https://appleds.net:8003/auth/google/callback/"
+)
+ADFS_CER_PATH = env("ADFS_CER_PATH", str(BASE_DIR / "dummy_adfs_public.cer"))
+
+# 외부 IdP 구성이 완료되었는지 여부 (프론트 노출용)
+OIDC_PROVIDER_CONFIGURED = bool(
+    ADFS_AUTH_URL
+    and OIDC_CLIENT_ID
+    and OIDC_ISSUER
+    and ADFS_CER_PATH
+)
+
+
+# =====================
+# 허용된 리다이렉트 호스트
+# =====================
+_redirect_hosts = env_list("ALLOWED_REDIRECT_HOSTS", "appleds.net,appleds.net:8003")
+frontend_netloc = ""
+try:
+    frontend_netloc = urlparse(str(FRONTEND_BASE_URL)).netloc
+except ValueError:
+    frontend_netloc = ""
+if frontend_netloc:
+    _redirect_hosts.append(frontend_netloc)
+ALLOWED_REDIRECT_HOSTS = {host for host in _redirect_hosts if host}
 
 
 # ===============================
@@ -298,15 +325,12 @@ if env_bool("DJANGO_USE_PROXY_SSL_HEADER", True):
 
 # 운영 보안 스위치 (DEBUG=False일 때 기본 True 권장)
 DJANGO_SECURE = env_bool("DJANGO_SECURE", not DEBUG)
-if DJANGO_SECURE:
-    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)  # 필요 시 프록시 레벨에서 처리 권장
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 0) or 0  # 프록시/HSTS 구성에 맞춰 단계적 적용
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
-    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
-    SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", "same-origin")
-    # X-Frame-Options는 기본 미들웨어에서 DENY
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", DJANGO_SECURE)
+SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 0) or 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
+SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", "same-origin")
+# X-Frame-Options는 기본 미들웨어에서 DENY
 
 
 # =========
