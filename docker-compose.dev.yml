@@ -51,7 +51,8 @@ services:
       DUMMY_ADFS_NAME: Dummy User
       DUMMY_ADFS_CLIENT_ID: dummy-client
       DUMMY_ADFS_PRIVATE_KEY_PATH: /app/dummy_adfs_private.key
-      DUMMY_ADFS_ISSUER: https://appleds.net:9000/adfs
+      # 개발 환경에서는 더미 ADFS 서버가 HTTP로 구동되므로 issuer 도 동일하게 맞춘다
+      DUMMY_ADFS_ISSUER: http://localhost:9000/adfs
     ports:
       - "9000:9000"
     networks:

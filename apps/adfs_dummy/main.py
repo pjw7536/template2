@@ -21,7 +21,7 @@ DEFAULT_NAME = os.getenv("DUMMY_ADFS_NAME", "Dummy User")
 DEFAULT_DEPT = os.getenv("DUMMY_ADFS_DEPT", "Development")
 ISSUER = os.getenv("DUMMY_ADFS_ISSUER", "http://localhost:9000/adfs")
 PRIVATE_KEY_PATH = Path(os.getenv("DUMMY_ADFS_PRIVATE_KEY_PATH", "dummy_adfs_private.key")).resolve()
-LOGOUT_REDIRECT = os.getenv("DUMMY_ADFS_LOGOUT_TARGET", "http://localhost:8003")
+LOGOUT_REDIRECT = os.getenv("DUMMY_ADFS_LOGOUT_TARGET", "http://localhost")
 
 try:
     PRIVATE_KEY = PRIVATE_KEY_PATH.read_text(encoding="utf-8")

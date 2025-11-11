@@ -47,8 +47,14 @@ def is_allowed_redirect(url: str) -> bool:
         return False
     if not parsed.scheme or not parsed.netloc:
         return False
-    # HTTPS 강제 및 등록된 호스트만 허용
-    return parsed.scheme.lower() == "https" and parsed.netloc in settings.ALLOWED_REDIRECT_HOSTS
+
+    scheme = parsed.scheme.lower()
+    allowed_schemes = {"https"}
+    # 개발 환경(HTTP 프록시)에서는 http도 허용
+    if getattr(settings, "DJANGO_SECURE", True) is False or getattr(settings, "DEBUG", False):
+        allowed_schemes.add("http")
+
+    return scheme in allowed_schemes and parsed.netloc in settings.ALLOWED_REDIRECT_HOSTS
 
 
 def b64e(value: str) -> str:

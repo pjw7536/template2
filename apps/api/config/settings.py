@@ -281,11 +281,11 @@ OIDC_CLIENT_ID = (
     or env("GOOGLE_CLIENT_ID")
     or ""
 )
-OIDC_ISSUER = env("OIDC_ISSUER") or env("ADFS_ISSUER") or "https://adfs.example.com/adfs"
+OIDC_ISSUER = env("OIDC_ISSUER") or env("ADFS_ISSUER") or "http://localhost/api/adfs"
 OIDC_REDIRECT_URI = (
     env("OIDC_REDIRECT_URI")
     or env("ADFS_REDIRECT_URI")
-    or "https://appleds.net:8003/auth/google/callback/"
+    or "http://localhost/api/auth/google/callback/"
 )
 ADFS_CER_PATH = env("ADFS_CER_PATH", str(BASE_DIR / "dummy_adfs_public.cer"))
 
