@@ -1,5 +1,5 @@
 // src/features/navigation/config/navigation-config.js
-import { BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
+import { BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
 
 /**
  * 내비게이션 기본 구성.
@@ -35,8 +35,14 @@ export const NAVIGATION_CONFIG = Object.freeze({
           url: "/ESOP_Dashboard/settings",
           scope: "line",
         },
+        {
+          title: "Overview",
+          url: "/ESOP_Dashboard/overview",
+          icon: BarChart3,
+        },
       ],
     },
+
     {
       title: "Models",
       url: "/models",

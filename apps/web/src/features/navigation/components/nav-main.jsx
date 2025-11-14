@@ -132,16 +132,6 @@ function GroupItem({ item, resolvedLineId }) {
                 </SidebarMenuSubItem>
               )
             })}
-            {/* 부모 자체로 이동하는 "Overview" 항목 (부모 url이 있을 때만) */}
-            {parentHref !== "#" && (
-              <SidebarMenuSubItem key={`${key}-overview`}>
-                <SidebarMenuSubButton asChild>
-                  <Link href={parentHref}>
-                    <span>Overview</span>
-                  </Link>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
-            )}
           </SidebarMenuSub>
         </CollapsibleContent>
       </SidebarMenuItem>
