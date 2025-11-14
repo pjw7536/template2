@@ -1,5 +1,5 @@
 // src/app/(app)/layout.js
-import { RequireAuth } from "@/components/auth"
+import { RequireAuth } from "@/features/auth"
 import { AppShell } from "@/features/navigation"
 import { getDistinctLineIds } from "@/features/line-dashboard/api/get-line-ids"
 

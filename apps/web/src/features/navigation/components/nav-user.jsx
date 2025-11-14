@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
-import { useAuth } from "@/components/auth"
+import { useAuth } from "@/features/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -73,10 +73,10 @@ function normalizeUser(u) {
  */
 export function NavUser({
   user,
-  onUpgrade = () => { },
-  onAccount = () => { },
-  onBilling = () => { },
-  onNotifications = () => { },
+  onUpgrade = () => {},
+  onAccount = () => {},
+  onBilling = () => {},
+  onNotifications = () => {},
   onLogout,
 }) {
   const { isMobile } = useSidebar()
@@ -90,7 +90,7 @@ export function NavUser({
     }
 
     logout()
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => {
         router.push("/login")
       })

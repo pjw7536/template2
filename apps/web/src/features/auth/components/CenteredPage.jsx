@@ -1,7 +1,7 @@
-// src/components/layout/centered-page.jsx
-// 페이지 전체를 가운데 정렬된 카드 레이아웃으로 감싸는 재사용 컨테이너
-// - 인증 로딩, 로그인, 에러 등 단일 카드 UI가 필요한 화면에서 일관된 경험 제공
-// - className/containerClassName props를 통해 섬세한 커스터마이징 가능
+// src/features/auth/components/CenteredPage.jsx
+// 인증 관련 화면에서 자주 쓰이는 "가운데 정렬 카드" 레이아웃 컴포넌트입니다.
+// - 전체 화면을 중앙 정렬하고, 내부 카드 폭을 제한해 줍니다.
+// - 다른 기능에서 필요하면 재사용할 수 있도록 props 설명을 자세히 남겼습니다.
 
 import { cn } from "@/lib/utils"
 

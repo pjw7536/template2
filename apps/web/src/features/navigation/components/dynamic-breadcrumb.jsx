@@ -1,4 +1,4 @@
-// src/components/navigation/dynamic-breadcrumb.jsx
+// src/features/navigation/components/dynamic-breadcrumb.jsx
 "use client"
 
 /**
@@ -12,15 +12,7 @@
  * - includeHome: 홈 링크를 맨 앞에 추가할지 여부 (기본 true)
  * - homeLabel, homeHref: 홈 라벨/경로 커스터마이즈
  * - hide: 숨기고 싶은 세그먼트 이름 배열 (예: ["settings"])
- * - overrides: 세그먼트 라벨 대체
- *    1) 객체: { "eqp": "장비", "logs": "로그" }
- *    2) 함수: (segment, index, segments) => string | ReactNode
- *
- * 사용 예시:
- * <DynamicBreadcrumb
- *   overrides={{ "line-dashboard": "라인 대시보드" }}
- *   hide={["app"]}  // /app/line-dashboard → "라인 대시보드"만 보이게
- * />
+ * - overrides: 세그먼트 라벨 대체 (객체 또는 함수)
  */
 
 import Link from "next/link"
@@ -61,10 +53,10 @@ function toTitleCase(segment) {
  * -------------------------------------------------------------------------- */
 
 /**
- * segment 라벨을 계산
+ * segment 라벨을 계산합니다.
  * - overrides가 객체면 매핑 우선
  * - overrides가 함수면 그 반환값 사용
- * - 둘 다 아니면 기본 toTitleCase
+ * - 둘 다 아니면 기본 toTitleCase 사용
  */
 function resolveLabel(segment, index, segments, overrides) {
   if (typeof overrides === "function") {
@@ -77,31 +69,26 @@ function resolveLabel(segment, index, segments, overrides) {
 }
 
 /**
- * pathname을 "/"로 나눠 [{ href, segment, label, isLast }, ...] 모델로 변환
+ * pathname을 "/"로 나눠 breadcrumb 항목 배열로 변환합니다.
  */
 function buildBreadcrumbs(pathname, { overrides, hide, includeHome, homeLabel, homeHref }) {
   if (!pathname) return []
 
-  // "/a/b/c" → ["a","b","c"]
   const segments = pathname.split("/").filter(Boolean)
-
-  // 숨길 목록 빠르게 조회 가능하도록 Set
   const hideSet = new Set(Array.isArray(hide) ? hide : [])
 
   const items = []
 
-  // 옵션: 홈 추가
   if (includeHome) {
     items.push({
       href: homeHref,
       segment: "__home__",
       label: homeLabel,
-      isLast: segments.length === 0, // 루트("/")인 경우 홈이 곧 마지막
+      isLast: segments.length === 0,
       isHome: true,
     })
   }
 
-  // 경로 세그먼트 → breadcrumb 항목
   segments.forEach((segment, index) => {
     if (hideSet.has(segment)) return
 
@@ -120,15 +107,14 @@ function buildBreadcrumbs(pathname, { overrides, hide, includeHome, homeLabel, h
  * -------------------------------------------------------------------------- */
 
 export function DynamicBreadcrumb({
-  overrides = {},              // 라벨 대체 (객체 또는 함수)
-  hide = [],                   // 숨길 세그먼트
-  includeHome = true,          // 홈 표시 여부
-  homeLabel = "Home",          // 홈 라벨
-  homeHref = "/",              // 홈 경로
+  overrides = {},
+  hide = [],
+  includeHome = true,
+  homeLabel = "Home",
+  homeHref = "/",
 }) {
   const pathname = usePathname()
 
-  // 계산이 가볍기 때문에 별도 memo 없이 매 렌더마다 재계산해도 충분합니다.
   const crumbs = buildBreadcrumbs(pathname, {
     overrides,
     hide,
@@ -137,7 +123,6 @@ export function DynamicBreadcrumb({
     homeHref,
   })
 
-  // 루트에서 includeHome=false라면 아무것도 렌더하지 않음
   if (crumbs.length === 0) return null
 
   return (
@@ -145,17 +130,14 @@ export function DynamicBreadcrumb({
       <BreadcrumbList>
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.href}-${index}`}>
-            {/* 첫 항목 앞에는 구분자 표시 X */}
             {index > 0 && <BreadcrumbSeparator />}
 
             <BreadcrumbItem>
               {crumb.isLast ? (
-                // 마지막: 현재 페이지
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
-                // 마지막이 아니면 이동 가능한 링크
                 <BreadcrumbLink asChild>
-                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  <Link href={crumb.href}>{crumb.label}</Link>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>

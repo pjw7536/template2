@@ -1,7 +1,6 @@
 import { Suspense } from "react"
 
-import { LoginForm } from "@/components/login-form"
-import { CenteredPage } from "@/components/layout/centered-page"
+import { CenteredPage, LoginForm } from "@/features/auth"
 
 export default function Page() {
   return (

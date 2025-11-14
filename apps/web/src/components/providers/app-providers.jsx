@@ -4,7 +4,7 @@
 
 "use client"
 
-import { AuthProvider } from "@/components/auth"
+import { AuthProvider } from "@/features/auth"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 

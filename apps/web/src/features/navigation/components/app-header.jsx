@@ -6,7 +6,8 @@ import { memo } from "react"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { DynamicBreadcrumb } from "@/components/navigation/dynamic-breadcrumb"
+
+import { DynamicBreadcrumb } from "./dynamic-breadcrumb"
 
 export const AppHeader = memo(function AppHeader() {
   return (
