@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { useAuth } from "@/components/auth"
+import { CenteredPage } from "@/components/layout/centered-page"
 
 function buildNextParam(pathname, searchParams) {
   if (!pathname) {
@@ -35,9 +36,11 @@ export function RequireAuth({ children }) {
 
   if (isLoading || !user) {
     return (
-      <div className="flex min-h-svh w-full items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">인증 상태를 확인하는 중입니다...</p>
-      </div>
+      <CenteredPage>
+        <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <p className="text-sm text-muted-foreground">인증 상태를 확인하는 중입니다...</p>
+        </div>
+      </CenteredPage>
     )
   }
 

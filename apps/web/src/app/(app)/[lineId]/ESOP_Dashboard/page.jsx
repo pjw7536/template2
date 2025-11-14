@@ -1,4 +1,5 @@
-// src/app/[lineId]/ESOP_Dashboard/page.jsx
+// src/app/(app)/[lineId]/ESOP_Dashboard/page.jsx
+// 생산 라인별 ESOP 대시보드 랜딩 섹션
 export default function Page({ params }) {
   const paramValue = params?.lineId
   const lineId = Array.isArray(paramValue) ? paramValue[0] : paramValue ?? ""

@@ -7,7 +7,7 @@ import { SidebarProvider } from "@/components/ui/sidebar"
 
 export function AppSidebarProvider({ children }) {
   const pathname = usePathname()
-  // 루트 페이지("/")에서는 사이드바를 닫은 상태로 시작
+  // 첫 진입 화면("/")에서는 집중력 있는 온보딩을 위해 닫힌 상태로, 그 외 페이지는 열린 상태로 노출
   const defaultOpen = pathname !== "/"
 
   return (

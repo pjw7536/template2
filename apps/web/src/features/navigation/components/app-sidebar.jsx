@@ -17,7 +17,7 @@ import {
 
 export function AppSidebar({ lineOptions, ...props }) {
   const { navMain, projects } = NAVIGATION_CONFIG
-  // 라인 목록이 없으면 빈 배열로 처리
+  // 외부 데이터 안전 처리: null/undefined가 넘어와도 빈 배열로 대체해 안정적으로 렌더링
   const teams = Array.isArray(lineOptions) ? lineOptions : []
 
   return (

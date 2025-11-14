@@ -313,7 +313,7 @@ export function DataTable({ lineId }) {
    *    - Table 전체 width는 table.getTotalSize()로 지정 (px 문자열)
    * ──────────────────────────────────────────────────────────────────────── */
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col gap-3 px-4 lg:px-6">
+    <section className="flex h-full min-h-0 min-w-0 flex-col gap-2">
       {/* 상단: 타이틀/리프레시 */}
       <div className="flex flex-wrap justify-between items-start">
         <div className="flex flex-col gap-1">

@@ -155,7 +155,7 @@ export function DynamicBreadcrumb({
               ) : (
                 // 마지막이 아니면 이동 가능한 링크
                 <BreadcrumbLink asChild>
-                  <Link href={crumb.href}>{crumb.label}</Link>
+                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>

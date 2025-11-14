@@ -452,7 +452,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
   )
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4 px-4 pb-6 pt-4 lg:px-6">
+    <section className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-lg font-semibold">
