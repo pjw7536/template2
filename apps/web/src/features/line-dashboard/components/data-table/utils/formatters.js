@@ -1,8 +1,9 @@
 // src/features/line-dashboard/components/data-table/utils/formatters.js
 // 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
+
+import { useRef } from "react"
 import { IconArrowNarrowRight } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-
 
 /* ============================================
  * 공통 상수
@@ -20,6 +21,10 @@ const PLACEHOLDER = {
   emptyString: <span className="text-muted-foreground">{"\"\""}</span>,
   noSteps: <span className="text-muted-foreground">-</span>,
 }
+
+/* ============================================
+ * 공통 유틸
+ * ============================================ */
 
 function toBooleanFlag(value) {
   if (typeof value === "boolean") return value
@@ -202,6 +207,7 @@ function uniquePreserveOrder(arr) {
   }
   return out
 }
+
 /** 스텝 배지의 스타일 클래스를 결정
  * - main_step: 사각형 (rounded-none)
  * - current(현재 스텝): 연한 파란색 배경
@@ -218,18 +224,68 @@ function getStepPillClasses({ isMain, isCurrent }) {
       : "bg-white border-border text-foreground"
   )
 }
-// 가정: normalizeStepValue, parseMetroSteps, uniquePreserveOrder, PLACEHOLDER,
-//       getStepPillClasses, IconArrowNarrowRight 는 기존과 동일하게 존재합니다.
 
-export function renderMetroStepFlow(rowData) {
+/* ============================================
+ * Metro Step Flow 렌더링 컴포넌트
+ * - 가로 드래그(grab)로 이동
+ * - x축 스크롤바는 숨김 (scroll-x-hide 클래스 필요)
+ * - 텍스트 드래그 선택 방지 (select-none)
+ * - 한번 눌러서 잡으면, 영역 밖으로 나가도 window 기준으로 계속 드래그 유지
+ * ============================================ */
+
+function MetroStepFlowCell({ rowData }) {
+  const containerRef = useRef(null)
+
+  // 드래그 상태를 저장 (state 대신 ref 사용: 리렌더 유발 X)
+  const dragStateRef = useRef({
+    isDragging: false,
+    startX: 0,
+    scrollLeft: 0,
+  })
+
+  const handleMouseDown = (e) => {
+    const el = containerRef.current
+    if (!el) return
+    // 서버 환경 보호 (이론상 마우스 이벤트는 브라우저에서만 발생하지만, 안전하게 한 번 더 가드)
+    if (typeof window === "undefined") return
+
+    const state = dragStateRef.current
+    state.isDragging = true
+    state.startX = e.clientX
+    state.scrollLeft = el.scrollLeft
+
+    // 👉 윈도우 전체에 mousemove / mouseup 리스너 등록
+    const handleMouseMoveWindow = (moveEvent) => {
+      const dragState = dragStateRef.current
+      if (!dragState.isDragging) return
+
+      const deltaX = moveEvent.clientX - dragState.startX
+      el.scrollLeft = dragState.scrollLeft - deltaX
+      moveEvent.preventDefault() // 텍스트 선택 방지
+    }
+
+    const handleMouseUpWindow = () => {
+      dragStateRef.current.isDragging = false
+      window.removeEventListener("mousemove", handleMouseMoveWindow)
+      window.removeEventListener("mouseup", handleMouseUpWindow)
+    }
+
+    window.addEventListener("mousemove", handleMouseMoveWindow)
+    window.addEventListener("mouseup", handleMouseUpWindow)
+  }
+
+  // ─────────────────────────────────────────────
+  // 아래부터는 기존 renderMetroStepFlow 로직
+  // ─────────────────────────────────────────────
+
   const mainStep = normalizeStepValue(rowData.main_step)
   const metroSteps = parseMetroSteps(rowData.metro_steps)
-  const informStep = normalizeStepValue(rowData.inform_step)           // ✅ 위치 정보로만 사용
+  const informStep = normalizeStepValue(rowData.inform_step)           // 위치 정보로만 사용
   const currentStep = normalizeStepValue(rowData.metro_current_step)
   const customEndStep = normalizeStepValue(rowData.custom_end_step)
   const metroEndStep = normalizeStepValue(rowData.metro_end_step)
   const needToSend = toBooleanFlag(rowData.needtosend)                 // 예약(보낼 예정)
-  const sendjira = toBooleanFlag(rowData.send_jira)                    // ✅ 실제 “인폼 완료” 플래그
+  const sendjira = toBooleanFlag(rowData.send_jira)                    // 실제 “인폼 완료” 플래그
 
   // END 표시 후보: custom_end_step 우선 → metro_end_step
   const endStep = customEndStep || metroEndStep
@@ -250,12 +306,9 @@ export function renderMetroStepFlow(rowData) {
     "Inform 완료": "text-[10px] leading-none font-semibold text-blue-600",
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // ✅ 인폼 라벨 결정 (완료 여부는 sendjira로만 판단)
+  // 인폼 라벨 결정
   // - sendjira = true          → Inform 완료 (위치는 inform_step || endStep)
   // - sendjira = false, need=1 → 인폼예정   (위치는 custom_end_step || metro_end_step)
-  // - 그 외                 → 라벨 없음
-  // ─────────────────────────────────────────────────────────────
   let informLabelType = "none"  // "none" | "done" | "planned"
   let informLabelStep = null
 
@@ -273,52 +326,78 @@ export function renderMetroStepFlow(rowData) {
   }
 
   return (
-    <div className="flex flex-wrap items-start gap-1">
-      {orderedSteps.map((step, index) => {
-        const isMain = !!mainStep && step === mainStep
-        const isCurrent = !!currentStep && step === currentStep
-        const labels = new Set()
+    <div
+      ref={containerRef}
+      className="
+        max-w-full
+        overflow-x-auto
+        overflow-y-hidden
+        scroll-x-hide
+        cursor-grab
+        active:cursor-grabbing
+        select-none
+      "
+      onMouseDown={handleMouseDown}
+    >
+      <div className="flex flex-nowrap items-start gap-1">
+        {orderedSteps.map((step, index) => {
+          const isMain = !!mainStep && step === mainStep
+          const isCurrent = !!currentStep && step === currentStep
+          const labels = new Set()
 
-        if (isMain) labels.add("MAIN")
+          if (isMain) labels.add("MAIN")
 
-        // 현재 스텝에 붙일 라벨 여부
-        const isEndHere = Boolean(endStep && step === endStep)
-        const isInformHere = Boolean(
-          informLabelType !== "none" && informLabelStep && step === informLabelStep
-        )
+          // 현재 스텝에 붙일 라벨 여부
+          const isEndHere = Boolean(endStep && step === endStep)
+          const isInformHere = Boolean(
+            informLabelType !== "none" && informLabelStep && step === informLabelStep
+          )
 
-        // ✅ END/CustomEND는 Inform 라벨이 없을 때만 표기(겹침 방지)
-        if (!isInformHere && isEndHere) {
-          labels.add(customEndStep ? "CustomEND" : "END")
-        }
+          // END/CustomEND는 Inform 라벨이 없을 때만 표기(겹침 방지)
+          if (!isInformHere && isEndHere) {
+            labels.add(customEndStep ? "CustomEND" : "END")
+          }
 
-        // ✅ Inform 라벨(완료/예정)
-        if (isInformHere) {
-          labels.add(informLabelType === "done" ? "Inform 완료" : "인폼예정")
-        }
+          // Inform 라벨(완료/예정)
+          if (isInformHere) {
+            labels.add(informLabelType === "done" ? "Inform 완료" : "인폼예정")
+          }
 
-        return (
-          <div key={`${step}-${index}`} className="flex items-start gap-1">
-            {index > 0 && (
-              <IconArrowNarrowRight className="size-4 shrink-0 text-muted-foreground mt-0.5" />
-            )}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className={getStepPillClasses({ isMain, isCurrent })}>
-                {step}
-              </span>
-              {[...labels].map((label, i) => (
-                <span
-                  key={`${step}-label-${i}`}
-                  className={labelClasses[label] || "text-[10px] leading-none text-muted-foreground"}
-                >
-                  {label}
+          return (
+            <div key={`${step}-${index}`} className="flex shrink-0 items-start gap-1">
+              {index > 0 && (
+                <IconArrowNarrowRight className="size-4 shrink-0 text-muted-foreground mt-0.5" />
+              )}
+              <div className="flex flex-col items-center gap-0.5">
+                <span className={getStepPillClasses({ isMain, isCurrent })}>
+                  {step}
                 </span>
-              ))}
+                {[...labels].map((label, i) => (
+                  <span
+                    key={`${step}-label-${i}`}
+                    className={
+                      labelClasses[label] ||
+                      "text-[10px] leading-none text-muted-foreground"
+                    }
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
 
+/* ============================================
+ * 외부에서 쓰는 엔트리 포인트
+ * (TanStack Table cell 등에서 사용)
+ * ============================================ */
+
+export function renderMetroStepFlow(rowData) {
+  // React 컴포넌트를 반환해서, 훅(useRef)은 MetroStepFlowCell 안에서만 사용
+  return <MetroStepFlowCell rowData={rowData} />
+}

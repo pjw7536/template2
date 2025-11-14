@@ -7,7 +7,21 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+
+/* x축 스크롤바 숨기기 */
+.scroll-x-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-x-hide {
+  -ms-overflow-style: none;
+  /* IE */
+  scrollbar-width: none;
+  /* Firefox */
 }
