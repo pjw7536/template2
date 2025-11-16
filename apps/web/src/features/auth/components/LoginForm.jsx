@@ -5,7 +5,7 @@
 // - 상태/비즈니스 로직은 useAuth 훅에서 받아오고, 여기서는 UI에만 집중합니다.
 
 import { useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "react-router-dom"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -32,7 +32,7 @@ export function LoginForm({
 }) {
   const [isLoading, setIsLoading] = useState(false)
   const { login, config } = useAuth()
-  const searchParams = useSearchParams()
+  const [searchParams] = useSearchParams()
   const nextPath = searchParams?.get("next") || "/"
 
   // provider 설정이 없는 경우를 대비해 버튼을 비활성화합니다.

@@ -3,7 +3,7 @@
 
 import * as React from "react"
 import { ChevronsUpDown, Plus } from "lucide-react"
-import { useParams, usePathname, useRouter } from "next/navigation"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 
 import {
   DropdownMenu,
@@ -92,8 +92,8 @@ function buildNextPath({ pathname, newLineId, hasLineIdInPath }) {
  */
 export function TeamSwitcher({ lines }) {
   const { isMobile } = useSidebar()
-  const router = useRouter()
-  const pathname = usePathname()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
   const params = useParams()
   const paramLineId = getLineIdFromParams(params)
 
@@ -147,10 +147,10 @@ export function TeamSwitcher({ lines }) {
         hasLineIdInPath: Boolean(paramLineId),
       })
       if (target) {
-        router.push(target)
+        navigate(target)
       }
     },
-    [activeLineId, paramLineId, pathname, router, setCtxLineId]
+    [activeLineId, paramLineId, pathname, navigate, setCtxLineId]
   )
 
   // ❗️이전에는 옵션이 없으면 `return null`로 렌더를 생략했는데,

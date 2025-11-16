@@ -1,4 +1,6 @@
-// src/app/(app)/overview/page.jsx
+// src/routes/pages/LineDashboardOverviewPage.jsx
+import { useEffect, useMemo, useState } from "react"
+
 import {
   Card,
   CardContent,
@@ -112,14 +114,56 @@ function renderOwnerList(owners) {
   )
 }
 
-export const metadata = {
-  title: "Airflow DAG Overview",
-}
+const initialState = { status: "idle", overview: null, error: null }
 
-export default async function OverviewPage() {
-  const overview = await getAirflowDagOverview()
+export function LineDashboardOverviewPage() {
+  const [{ status, overview, error }, setState] = useState(initialState)
 
-  if (overview.error) {
+  useEffect(() => {
+    let active = true
+
+    async function loadOverview() {
+      setState({ status: "loading", overview: null, error: null })
+      try {
+        const result = await getAirflowDagOverview()
+        if (!active) return
+        if (result?.error) {
+          setState({ status: "error", overview: result, error: result.error })
+        } else {
+          setState({ status: "success", overview: result, error: null })
+        }
+      } catch (err) {
+        if (!active) return
+        setState({ status: "error", overview: null, error: err?.message ?? "Airflow DAG 정보를 불러오지 못했습니다." })
+      }
+    }
+
+    loadOverview()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const dags = useMemo(() => overview?.dags ?? [], [overview])
+  const totals = overview?.totals ?? { total: 0, active: 0, paused: 0, failed: 0 }
+
+  if (status === "loading") {
+    return (
+      <section className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Airflow DAG Overview</CardTitle>
+            <CardDescription>Loading Airflow metadata...</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">잠시만 기다려 주세요.</p>
+          </CardContent>
+        </Card>
+      </section>
+    )
+  }
+
+  if (status === "error" || overview?.error || error) {
     return (
       <section className="space-y-4">
         <Card>
@@ -130,9 +174,9 @@ export default async function OverviewPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-destructive">{overview.error}</p>
+            <p className="text-sm text-destructive">{error || overview?.error}</p>
             <p className="text-sm text-muted-foreground">
-              Airflow 이 <code className="rounded bg-muted px-1 py-0.5">{overview.baseUrl}</code>
+              Airflow 이 <code className="rounded bg-muted px-1 py-0.5">{overview?.baseUrl}</code>
               에서 실행 중인지, 필요한 경우 <code>AIRFLOW_USERNAME</code> 과 <code>AIRFLOW_PASSWORD</code>
               환경 변수가 설정되어 있는지 확인하세요.
             </p>
@@ -141,8 +185,6 @@ export default async function OverviewPage() {
       </section>
     )
   }
-
-  const { totals, dags, baseUrl, fetchedAt } = overview
 
   return (
     <section className="space-y-4">
@@ -188,7 +230,7 @@ export default async function OverviewPage() {
             </CardDescription>
           </div>
           <p className="text-xs text-muted-foreground">
-            Last updated: {formatDate(fetchedAt)}
+            Last updated: {formatDate(overview?.fetchedAt)}
           </p>
         </CardHeader>
         <CardContent className="pb-6">
@@ -214,7 +256,7 @@ export default async function OverviewPage() {
                   </TableRow>
                 ) : (
                   dags.map((dag, index) => {
-                    const airflowDagUrl = `${baseUrl}/dags/${encodeURIComponent(dag.dagId)}/grid`
+                    const airflowDagUrl = `${overview?.baseUrl}/dags/${encodeURIComponent(dag.dagId)}/grid`
                     const latestExecution = dag.latestRun?.executionDate
                     return (
                       <TableRow key={dag.dagId || `dag-${index}`}>

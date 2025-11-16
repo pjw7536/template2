@@ -5,16 +5,31 @@ function removeTrailingSlash(value) {
   return value.replace(/\/+$/, "")
 }
 
+function readEnvValue(...keys) {
+  for (const key of keys) {
+    if (!key) continue
+    if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
+      const value = import.meta.env[key]
+      if (typeof value === "string" && value.trim()) {
+        return value
+      }
+    }
+    if (typeof process !== "undefined" && process.env && key in process.env) {
+      const value = process.env[key]
+      if (typeof value === "string" && value.trim()) {
+        return value
+      }
+    }
+  }
+  return undefined
+}
+
 export function getBackendBaseUrl() {
-  const isServer = typeof window === "undefined"
+  const envValue =
+    readEnvValue("VITE_BACKEND_URL", "NEXT_PUBLIC_BACKEND_URL", "BACKEND_API_URL", "BACKEND_URL") ??
+    DEFAULT_BACKEND_URL
 
-  const envCandidates = isServer
-    ? [process.env.BACKEND_API_URL, process.env.BACKEND_URL, process.env.NEXT_PUBLIC_BACKEND_URL]
-    : [process.env.NEXT_PUBLIC_BACKEND_URL, process.env.BACKEND_API_URL, process.env.BACKEND_URL]
-
-  const envValue = envCandidates.find((value) => typeof value === "string" && value.trim().length > 0)
-  const base = envValue ? envValue.trim() : DEFAULT_BACKEND_URL
-  return removeTrailingSlash(base)
+  return removeTrailingSlash(envValue.trim())
 }
 
 export function buildBackendUrl(path, searchParams) {

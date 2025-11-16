@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { useParams } from "next/navigation"
+import { useParams } from "react-router-dom"
 
 const ActiveLineContext = React.createContext(null)
 

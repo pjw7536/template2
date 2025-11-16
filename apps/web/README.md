@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Web
 
-## Getting Started
+React 19 + React Router + Vite 기반의 프론트엔드 앱입니다. Next.js 의 App Router 구조를 걷어내고, SPA 빌드로 일관된 개발 경험을 제공합니다.
 
-First, run the development server:
+## 개발 서버 실행
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- 기본 포트: [http://localhost:3000](http://localhost:3000)
+- 환경 변수는 `.env` 또는 `.env.local` 파일에 `VITE_` 접두사로 정의합니다. (예: `VITE_BACKEND_URL`)
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 프로덕션 빌드
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
 
-## Learn More
+생성된 정적 자산은 `dist/` 디렉터리에 위치하며, `npm run preview`로 간단히 확인할 수 있습니다.
 
-To learn more about Next.js, take a look at the following resources:
+## 코드 품질
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+ESLint flat config 기반으로 React/JSX 규칙과 Hooks 검사 규칙을 수행합니다.

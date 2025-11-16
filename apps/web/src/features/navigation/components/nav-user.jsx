@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useNavigate } from "react-router-dom"
 import {
   BadgeCheck,
   Bell,
@@ -80,7 +80,7 @@ export function NavUser({
   onLogout,
 }) {
   const { isMobile } = useSidebar()
-  const router = useRouter()
+  const navigate = useNavigate()
   const { user: sessionUser, isLoading, logout } = useAuth()
 
   const handleLogout = React.useCallback(() => {
@@ -92,9 +92,9 @@ export function NavUser({
     logout()
       .catch(() => {})
       .finally(() => {
-        router.push("/login")
+        navigate("/login")
       })
-  }, [logout, onLogout, router])
+  }, [logout, onLogout, navigate])
 
   // 사용자 입력 정규화 (표시 가능한 값이 없으면 숨김)
   const normalized = React.useMemo(

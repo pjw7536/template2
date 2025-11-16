@@ -1,0 +1,22 @@
+// src/routes/pages/LineDashboardHistoryPage.jsx
+import { useMemo } from "react"
+import { useParams, useSearchParams } from "react-router-dom"
+
+import { LineHistoryDashboard } from "@/features/line-dashboard/components"
+
+export function LineDashboardHistoryPage() {
+  const { lineId = "" } = useParams()
+  const [searchParams] = useSearchParams()
+
+  const initialRangeDays = useMemo(() => {
+    const rangeParam = searchParams.get("rangeDays") ?? searchParams.get("range")
+    const parsed = Number.parseInt(rangeParam ?? "", 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+  }, [searchParams])
+
+  return (
+    <div className="h-[calc(100vh-5rem)]">
+      <LineHistoryDashboard lineId={lineId} initialRangeDays={initialRangeDays} />
+    </div>
+  )
+}

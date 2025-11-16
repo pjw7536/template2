@@ -1,10 +1,9 @@
 // src/features/line-dashboard/components/data-table/column-defs/renderers.js
 // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
-import Link from "next/link"
 import { ExternalLink, Check } from "lucide-react"
 
 import { CommentCell, NeedToSendCell } from "../cells"
-import { formatCellValue } from "../utils/formatters"
+import { formatCellValue } from "../utils/formatters.jsx"
 import { STATUS_LABELS } from "../../../constants/status-labels"
 import {
   buildJiraBrowseUrl,
@@ -23,7 +22,7 @@ const CellRenderers = {
     const href = toHttpUrl(value)
     if (!href) return null
     return (
-      <Link
+      <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
@@ -32,7 +31,7 @@ const CellRenderers = {
         title="Open defect"
       >
         <ExternalLink className="h-4 w-4" />
-      </Link>
+      </a>
     )
   },
 
@@ -41,7 +40,7 @@ const CellRenderers = {
     const href = buildJiraBrowseUrl(key)
     if (!href || !key) return null
     return (
-      <Link
+      <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
@@ -50,7 +49,7 @@ const CellRenderers = {
         title={key}
       >
         <ExternalLink className="h-4 w-4" />
-      </Link>
+      </a>
     )
   },
 

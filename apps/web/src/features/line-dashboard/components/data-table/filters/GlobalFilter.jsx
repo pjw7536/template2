@@ -3,7 +3,7 @@
 
 import { Input } from "@/components/ui/input"
 
-import { searchableValue } from "../utils/formatters"
+import { searchableValue } from "../utils/formatters.jsx"
 
 // 사용자가 입력한 키워드를 소문자 문자열로 정리합니다.
 function normalizeFilterValue(filterValue) {

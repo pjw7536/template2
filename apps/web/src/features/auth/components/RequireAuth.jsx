@@ -6,7 +6,7 @@
 // - 로딩/비인증 상태일 때는 CenteredPage 레이아웃으로 안내 메시지를 보여줍니다.
 
 import { useEffect, useMemo } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { CenteredPage } from "./CenteredPage"
 import { useAuth } from "../hooks/useAuth"
@@ -15,33 +15,31 @@ import { useAuth } from "../hooks/useAuth"
  * 현재 URL을 기반으로 로그인 후 돌아올 next 파라미터 문자열을 생성합니다.
  * 초보자 Tip: pathname + searchParams를 조합해 "원래 보고 있던 페이지" 정보를 유지합니다.
  */
-function buildNextParam(pathname, searchParams) {
-  if (!pathname) {
+function buildNextParam(location) {
+  if (!location?.pathname) {
     return ""
   }
 
-  const queryString = searchParams?.toString()
-  if (queryString) {
-    return `${pathname}?${queryString}`
+  if (location.search) {
+    return `${location.pathname}${location.search}`
   }
 
-  return pathname
+  return location.pathname
 }
 
 export function RequireAuth({ children }) {
   const { user, isLoading } = useAuth()
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  const nextParam = useMemo(() => buildNextParam(pathname, searchParams), [pathname, searchParams])
+  const nextParam = useMemo(() => buildNextParam(location), [location])
 
   useEffect(() => {
     if (!isLoading && !user) {
       const search = nextParam && nextParam !== "/" ? `?next=${encodeURIComponent(nextParam)}` : ""
-      router.replace(`/login${search}`)
+      navigate(`/login${search}`, { replace: true })
     }
-  }, [isLoading, user, router, nextParam])
+  }, [isLoading, user, navigate, nextParam])
 
   if (isLoading || !user) {
     return (

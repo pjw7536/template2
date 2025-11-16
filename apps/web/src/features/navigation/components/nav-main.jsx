@@ -11,8 +11,7 @@
 
 import { useMemo } from "react"
 import { ChevronRight } from "lucide-react"
-import Link from "next/link"
-import { useParams } from "next/navigation"
+import { Link, useParams } from "react-router-dom"
 
 import {
   Collapsible,
@@ -86,7 +85,7 @@ function LeafItem({ item, href }) {
   return (
     <SidebarMenuItem key={Key}>
       <SidebarMenuButton asChild tooltip={item.title}>
-        <Link href={href}>
+        <Link to={href}>
           {item.icon && <item.icon />}
           <span>{item.title}</span>
         </Link>
@@ -102,7 +101,6 @@ function LeafItem({ item, href }) {
  * ======================================================= */
 /** @param {{ item: NavItem, resolvedLineId: string|null }} props */
 function GroupItem({ item, resolvedLineId }) {
-  const parentHref = withLineScope(item.url, item.scope, resolvedLineId)
   const key = `${item.title}-${item.url ?? "group"}`
   const children = Array.isArray(item.items) ? item.items : []
 
@@ -125,7 +123,7 @@ function GroupItem({ item, resolvedLineId }) {
               return (
                 <SidebarMenuSubItem key={subKey}>
                   <SidebarMenuSubButton asChild>
-                    <Link href={href}>
+                    <Link to={href}>
                       <span>{sub.title}</span>
                     </Link>
                   </SidebarMenuSubButton>

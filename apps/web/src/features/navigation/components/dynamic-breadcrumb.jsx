@@ -15,9 +15,8 @@
  * - overrides: 세그먼트 라벨 대체 (객체 또는 함수)
  */
 
-import Link from "next/link"
 import { Fragment } from "react"
-import { usePathname } from "next/navigation"
+import { Link, useLocation } from "react-router-dom"
 
 import {
   Breadcrumb,
@@ -113,7 +112,7 @@ export function DynamicBreadcrumb({
   homeLabel = "Home",
   homeHref = "/",
 }) {
-  const pathname = usePathname()
+  const { pathname } = useLocation()
 
   const crumbs = buildBreadcrumbs(pathname, {
     overrides,
@@ -137,7 +136,7 @@ export function DynamicBreadcrumb({
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
-                  <Link href={crumb.href}>{crumb.label}</Link>
+                  <Link to={crumb.href}>{crumb.label}</Link>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>

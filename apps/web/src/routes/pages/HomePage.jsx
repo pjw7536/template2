@@ -1,5 +1,5 @@
-// src/app/page.jsx
-export default function Page() {
+// src/routes/pages/HomePage.jsx
+export function HomePage() {
   return (
     <section className="relative h-[600px] overflow-hidden rounded-xl border shadow-sm">
       <div
@@ -13,8 +13,7 @@ export default function Page() {
       <div className="relative z-10 grid gap-4 p-6">
         <h1 className="text-3xl font-semibold tracking-tight">Welcome</h1>
         <p className="mt-2 text-base text-muted-foreground">
-          This is a placeholder for the main dashboard content. Replace it with your
-          actual page components.
+          This is a placeholder for the main dashboard content. Replace it with your actual page components.
         </p>
       </div>
     </section>

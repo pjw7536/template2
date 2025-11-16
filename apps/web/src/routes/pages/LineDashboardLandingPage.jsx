@@ -1,9 +1,8 @@
-// src/app/(app)/[lineId]/ESOP_Dashboard/page.jsx
-// 생산 라인별 ESOP 대시보드 랜딩 섹션
-export default function Page({ params }) {
-  const paramValue = params?.lineId
-  const lineId = Array.isArray(paramValue) ? paramValue[0] : paramValue ?? ""
+// src/routes/pages/LineDashboardLandingPage.jsx
+import { useParams } from "react-router-dom"
 
+export function LineDashboardLandingPage() {
+  const { lineId = "" } = useParams()
   return (
     <section className="grid gap-4">
       <div className="rounded-xl border bg-card p-6 shadow-sm">

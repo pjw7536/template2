@@ -1,20 +1,42 @@
 // src/features/airflow/api/get-airflow-dag-overview.js
-const DEFAULT_INTERNAL_BASE_URL = "http://airflow-webserver:8080"
+const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
 const DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
+
+function readEnvValue(...keys) {
+  for (const key of keys) {
+    if (!key) continue
+    if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
+      const value = import.meta.env[key]
+      if (typeof value === "string" && value.trim()) {
+        return value
+      }
+    }
+    if (typeof process !== "undefined" && process.env && key in process.env) {
+      const value = process.env[key]
+      if (typeof value === "string" && value.trim()) {
+        return value
+      }
+    }
+  }
+  return undefined
+}
 
 function resolveBaseUrls() {
   const apiCandidate =
-    process.env.AIRFLOW_INTERNAL_BASE_URL ??
-    process.env.AIRFLOW_BASE_URL ??
-    process.env.AIRFLOW_URL ??
-    process.env.NEXT_PUBLIC_AIRFLOW_BASE_URL ??
-    DEFAULT_INTERNAL_BASE_URL
+    readEnvValue(
+      "AIRFLOW_INTERNAL_BASE_URL",
+      "AIRFLOW_BASE_URL",
+      "AIRFLOW_URL",
+      "VITE_AIRFLOW_BASE_URL",
+      "NEXT_PUBLIC_AIRFLOW_BASE_URL",
+    ) ?? DEFAULT_INTERNAL_BASE_URL
 
   const publicCandidate =
-    process.env.NEXT_PUBLIC_AIRFLOW_BASE_URL ??
-    process.env.AIRFLOW_PUBLIC_BASE_URL ??
-    apiCandidate ??
-    DEFAULT_PUBLIC_BASE_URL
+    readEnvValue(
+      "VITE_AIRFLOW_BASE_URL",
+      "NEXT_PUBLIC_AIRFLOW_BASE_URL",
+      "AIRFLOW_PUBLIC_BASE_URL",
+    ) ?? apiCandidate ?? DEFAULT_PUBLIC_BASE_URL
 
   return {
     apiBaseUrl: sanitizeBaseUrl(apiCandidate, DEFAULT_INTERNAL_BASE_URL),
@@ -24,9 +46,9 @@ function resolveBaseUrls() {
 
 function resolveCredentials() {
   const username =
-    process.env.AIRFLOW_USERNAME ?? process.env.NEXT_PUBLIC_AIRFLOW_USERNAME ?? "airflow"
+    readEnvValue("AIRFLOW_USERNAME", "VITE_AIRFLOW_USERNAME", "NEXT_PUBLIC_AIRFLOW_USERNAME") ?? "airflow"
   const password =
-    process.env.AIRFLOW_PASSWORD ?? process.env.NEXT_PUBLIC_AIRFLOW_PASSWORD ?? "airflow"
+    readEnvValue("AIRFLOW_PASSWORD", "VITE_AIRFLOW_PASSWORD", "NEXT_PUBLIC_AIRFLOW_PASSWORD") ?? "airflow"
 
   if (!username || !password) {
     return { username: "", password: "" }
@@ -48,14 +70,20 @@ function sanitizeBaseUrl(rawUrl, fallback) {
 
 function createAuthHeader(username, password) {
   if (!username || !password) return null
-  const credentials = Buffer.from(`${username}:${password}`, "utf8").toString("base64")
-  return `Basic ${credentials}`
+  const raw = `${username}:${password}`
+  if (typeof window !== "undefined" && typeof window.btoa === "function") {
+    return `Basic ${window.btoa(raw)}`
+  }
+  if (typeof Buffer !== "undefined") {
+    return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`
+  }
+  return null
 }
 
 async function safeJson(response) {
   try {
     return await response.json()
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }
@@ -121,7 +149,7 @@ async function fetchLatestDagRun(baseUrl, dagId, headers) {
       startDate: latestRun.start_date ?? null,
       endDate: latestRun.end_date ?? null,
     }
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }

@@ -8,7 +8,7 @@
 import { mergeConfig } from "./column-defs/config"
 import { resolveAlignment } from "./column-defs/alignment"
 import { getSortingFnForKey } from "./column-defs/sorting"
-import { renderCellByKey } from "./column-defs/renderers"
+import { renderCellByKey } from "./column-defs/renderers.jsx"
 import { computeDynamicWidthHints, resolveColumnSizes } from "./column-defs/dynamicWidth"
 import {
   makeStepFlowColumn,

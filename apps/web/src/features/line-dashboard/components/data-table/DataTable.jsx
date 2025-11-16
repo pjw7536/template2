@@ -137,7 +137,6 @@ export function DataTable({ lineId }) {
   const [columnSizing, setColumnSizing] = React.useState({})
 
   /* TanStack Table 인스턴스 */
-  /* eslint-disable react-hooks/incompatible-library */
   const table = useReactTable({
     data: filteredRows,               // ✅ 보이는 데이터로 테이블 구성
     columns: columnDefs,              // ✅ 동적 폭 반영된 컬럼 정의
@@ -163,7 +162,6 @@ export function DataTable({ lineId }) {
     // 드래그 중 실시간 리사이즈 반영
     columnResizeMode: "onChange",
   })
-  /* eslint-enable react-hooks/incompatible-library */
 
   /* 파생 값(렌더 편의) */
   const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
