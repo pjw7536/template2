@@ -16,6 +16,7 @@ export function QuickFilters({
   globalFilterValue,
   onGlobalFilterChange,
   globalFilterPlaceholder = "Search rows",
+  statusSidebar = null,
 }) {
   const hasSections = sections.length > 0
   const showGlobalFilter = typeof onGlobalFilterChange === "function"
@@ -46,6 +47,41 @@ export function QuickFilters({
     const allSelected = isMulti ? selectedValues.length === 0 : current === null || current === undefined
     const legendId = `legend-${section.key}`
 
+    const shouldDisplayAsDropdown =
+      section.key === "sdwt_prod" ||
+      section.key === "sample_type" ||
+      section.key === "user_sdwt_prod"
+
+    if (shouldDisplayAsDropdown) {
+      return (
+        <fieldset
+          key={section.key}
+          className="flex flex-col rounded-xl p-1 px-3"
+          aria-labelledby={legendId}
+        >
+          <legend
+            id={legendId}
+            className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            {section.label}
+          </legend>
+
+          <select
+            value={current ?? ""}
+            onChange={(event) => onToggle(section.key, event.target.value || null)}
+            className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">전체</option>
+            {section.options.map((option) => (
+              <option key={`${section.key}-${String(option.value)}`} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+      )
+    }
+
     return (
       <fieldset
         key={section.key}
@@ -60,7 +96,6 @@ export function QuickFilters({
         </legend>
 
         <div className="flex flex-wrap items-center">
-          {/* 전체 */}
           <button
             type="button"
             onClick={() => onToggle(section.key, null)}
@@ -76,7 +111,6 @@ export function QuickFilters({
             전체
           </button>
 
-          {/* 옵션들 */}
           {section.options.map((option) => {
             const isActive = selectedValues.includes(option.value)
             return (
@@ -166,8 +200,13 @@ export function QuickFilters({
 
 
       {!isCollapsed && (
-        <div className="flex flex-wrap items-start gap-2">
-          {sectionBlocks}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+          {statusSidebar ? (
+            <div className="w-full flex-shrink-0 lg:max-w-[200px]">{statusSidebar}</div>
+          ) : null}
+          <div className="flex flex-1 flex-wrap items-start gap-2">
+            {sectionBlocks}
+          </div>
         </div>
       )}
     </fieldset>

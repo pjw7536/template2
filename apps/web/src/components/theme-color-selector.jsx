@@ -1,6 +1,4 @@
 // src/components/theme-color-selector.jsx
-// 다크모드 스위치 왼쪽에 배치하는 포인트 컬러 선택 드롭다운
-
 import { Palette, Check } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -15,56 +13,57 @@ import { useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 const COLOR_OPTIONS = [
-  { value: "violet", label: "Violet", dotClass: "bg-violet-500" },
-  { value: "emerald", label: "Emerald", dotClass: "bg-emerald-500" },
-  { value: "amber", label: "Amber", dotClass: "bg-amber-500" },
-  { value: "sky", label: "Sky", dotClass: "bg-sky-500" },
-  { value: "rose", label: "Rose", dotClass: "bg-rose-500" },
+  { value: "violet", label: "Violet", iconClass: "text-violet-500" },
+  { value: "emerald", label: "Emerald", iconClass: "text-emerald-500" },
+  { value: "amber", label: "Amber", iconClass: "text-amber-500" },
+  { value: "sky", label: "Sky", iconClass: "text-sky-500" },
+  { value: "rose", label: "Rose", iconClass: "text-rose-500" },
 ]
 
 export function ThemeColorSelector({ className }) {
   const { colorScheme, setColorScheme } = useTheme()
-  const activeOption = COLOR_OPTIONS.find((option) => option.value === colorScheme) ?? COLOR_OPTIONS[0]
+  const activeOption =
+    COLOR_OPTIONS.find((option) => option.value === colorScheme) ??
+    COLOR_OPTIONS[0]
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* ▶ ThemeToggle과 동일하게 border 없는 ghost 아이콘 버튼 */}
         <Button
-          size="sm"
-          variant="outline"
+          variant="ghost"
+          size="icon"
           aria-label="Select accent color"
-          className={cn("gap-2", className)}
+          className={cn("transition-all", className)}
         >
-          <span className="flex items-center gap-1.5">
-            <Palette className="size-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Theme</span>
-          </span>
-          <span
-            className={cn("size-3 rounded-full border border-border", activeOption.dotClass)}
-            aria-hidden="true"
+          <Palette
+            className={cn(
+              "size-4 transition-colors",
+              activeOption.iconClass // 선택된 색으로 아이콘 컬러 변환
+            )}
           />
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent className="w-40" align="end">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Accent color</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">
+          Accent color
+        </DropdownMenuLabel>
+
         {COLOR_OPTIONS.map((option) => (
           <DropdownMenuItem
             key={option.value}
             className="flex items-center gap-2"
-            onSelect={() => {
-              setColorScheme(option.value)
-            }}
+            onSelect={() => setColorScheme(option.value)}
           >
-            <span
-              className={cn(
-                "size-4 rounded-full border border-border transition-colors",
-                option.dotClass
-              )}
-              aria-hidden="true"
+            <Palette
+              className={cn("size-4", option.iconClass)}
             />
             <span className="flex-1 text-sm">{option.label}</span>
-            {option.value === colorScheme ? <Check className="size-3.5" /> : null}
+
+            {option.value === colorScheme && (
+              <Check className="size-3.5" />
+            )}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

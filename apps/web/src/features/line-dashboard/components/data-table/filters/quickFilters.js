@@ -5,7 +5,7 @@ import { STATUS_LABELS } from "../../../constants/status-labels"
 const STATUS_ORDER = Object.keys(STATUS_LABELS)
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
 
-const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod", "sample_type"])
+const MULTI_SELECT_KEYS = new Set(["status"])
 
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
@@ -113,6 +113,27 @@ const QUICK_FILTER_DEFINITIONS = [
     },
   },
   {
+    key: "status",
+    label: "Status",
+    resolveColumn: (columns) => findMatchingColumn(columns, "status"),
+    normalizeValue: (value) => {
+      if (value == null) return null
+      const normalized = String(value).trim()
+      return normalized.length > 0 ? normalized.toUpperCase() : null
+    },
+    formatValue: (value) => STATUS_LABELS[value] ?? value,
+    compareOptions: (a, b) => {
+      const indexA = STATUS_ORDER_INDEX.has(a.value)
+        ? STATUS_ORDER_INDEX.get(a.value)
+        : Number.POSITIVE_INFINITY
+      const indexB = STATUS_ORDER_INDEX.has(b.value)
+        ? STATUS_ORDER_INDEX.get(b.value)
+        : Number.POSITIVE_INFINITY
+      if (indexA !== indexB) return indexA - indexB
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+    },
+  },
+  {
     key: "needtosend",
     label: "예약",
     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
@@ -177,27 +198,7 @@ const QUICK_FILTER_DEFINITIONS = [
     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
   },
 
-  {
-    key: "status",
-    label: "Status",
-    resolveColumn: (columns) => findMatchingColumn(columns, "status"),
-    normalizeValue: (value) => {
-      if (value == null) return null
-      const normalized = String(value).trim()
-      return normalized.length > 0 ? normalized.toUpperCase() : null
-    },
-    formatValue: (value) => STATUS_LABELS[value] ?? value,
-    compareOptions: (a, b) => {
-      const indexA = STATUS_ORDER_INDEX.has(a.value)
-        ? STATUS_ORDER_INDEX.get(a.value)
-        : Number.POSITIVE_INFINITY
-      const indexB = STATUS_ORDER_INDEX.has(b.value)
-        ? STATUS_ORDER_INDEX.get(b.value)
-        : Number.POSITIVE_INFINITY
-      if (indexA !== indexB) return indexA - indexB
-      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
-    },
-  },
+
 ]
 
 // 섹션 정의에 맞춰 초기 필터 상태(단일 null, 다중 [])를 만듭니다.

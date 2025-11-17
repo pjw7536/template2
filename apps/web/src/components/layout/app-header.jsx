@@ -18,9 +18,9 @@ export const AppHeader = memo(function AppHeader() {
         <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
         <DynamicBreadcrumb />
       </div>
-      <div className="flex items-center gap-2">
-        <ThemeColorSelector />
+      <div className="flex items-center">
         <ThemeToggle />
+        <ThemeColorSelector />
       </div>
     </header>
   )

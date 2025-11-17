@@ -2748,3 +2748,709 @@
 +          />
 *** End Patch
 [2m2025-11-17T11:11:10.233691Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && git status -sb"]}
+[2m2025-11-17T11:19:45.282156Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T11:20:12.326773Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T11:20:12.384969Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T11:20:12.385010Z[0m [32m INFO[0m ghost commit captured: 0f38472a9863b85e50c117f40c8c8d60a7661853
+[2m2025-11-17T11:20:12.385016Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T11:20:28.284318Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:20:53.616082Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-import {
+-  flexRender,
+-  getCoreRowModel,
+-  getFilteredRowModel,
+-  getPaginationRowModel,
+-  getSortedRowModel,
+-  useReactTable,
+-} from "@tanstack/react-table"
++import {
++  flexRender,
++  getCoreRowModel,
++  getFilteredRowModel,
++  getPaginationRowModel,
++  getSortedRowModel,
++  useReactTable,
++} from "@tanstack/react-table"
+@@
+   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 15 })
+   const [columnSizing, setColumnSizing] = React.useState({})
++  const [columnFilters, setColumnFilters] = React.useState([])
+@@
+     state: {
+       sorting,
+       globalFilter: filter,
++      columnFilters,
+       pagination,
+       columnSizing,
+     },
+     onSortingChange: setSorting,
+     onGlobalFilterChange: setFilter,
++    onColumnFiltersChange: setColumnFilters,
+     onPaginationChange: setPagination,
+     onColumnSizingChange: setColumnSizing,
+@@
+             <TableHeader>
+               {table.getHeaderGroups().map((headerGroup) => (
+                 <TableRow key={headerGroup.id}>
+                   {headerGroup.headers.map((header) => (
+                     <TableHead
+                       key={header.id}
+                       colSpan={header.colSpan}
+                       style={header.isPlaceholder ? undefined : { width: `${header.getSize()}px` }}
+                       className="align-bottom"
+                     >
+                       {header.isPlaceholder
+                         ? null
+                         : flexRender(header.column.columnDef.header, header.getContext())}
++                      {!header.isPlaceholder && header.column.getCanFilter() && (
++                        <div className="mt-1">
++                          <input
++                            value={header.column.getFilterValue() ?? ""}
++                            onChange={(event) =>
++                              header.column.setFilterValue(event.target.value || undefined)
++                            }
++                            placeholder="Filter…"
++                            className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
++                          />
++                        </div>
++                      )}
+                     </TableHead>
+                   ))}
+                 </TableRow>
+               ))}
+             </TableHeader>
+*** End Patch
+[2m2025-11-17T11:21:01.466833Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '340,420p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:21:40.511776Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs.js
+@@
+   return {
+     id: colKey,
+     header: () => label,
+     accessorFn: (row) => row?.[colKey],
+     meta: {
+       isEditable: colKey === "comment" || colKey === "needtosend",
+       alignment,
+     },
+     cell: (info) => renderCellByKey(colKey, info),
+     enableSorting,
++    enableColumnFilter: true,
++    filterFn: "auto",
+     sortingFn,
+     size,
+     minSize,
+     maxSize,
+   }
+ }
+*** End Patch
+[2m2025-11-17T11:21:47.950803Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 15 })
+   const [columnSizing, setColumnSizing] = React.useState({})
++  const [columnFilters, setColumnFilters] = React.useState([])
+@@
+     state: {
+       sorting,
+       globalFilter: filter,
++      columnFilters,
+       pagination,
+       columnSizing,
+     },
+     onSortingChange: setSorting,
+     onGlobalFilterChange: setFilter,
++    onColumnFiltersChange: setColumnFilters,
+     onPaginationChange: setPagination,
+     onColumnSizingChange: setColumnSizing,
+*** End Patch
+[2m2025-11-17T11:22:03.928203Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+                       {canSort ? (
+                         <button
+                           className={cn("flex w-full items-center gap-1", justifyClass)}
+                           onClick={header.column.getToggleSortingHandler()}
+                           aria-label={`Sort by ${String(header.column.id)}`}
+@@
+                       <span
+                         onMouseDown={header.getResizeHandler()}
+                         onTouchStart={header.getResizeHandler()}
+                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none"
+                         role="separator"
+                         aria-orientation="vertical"
+                         aria-label={`Resize column ${String(header.column.id)}`}
+                       />
++                      {header.column.getCanFilter() && !header.isPlaceholder && (
++                        <div className="mt-1">
++                          <input
++                            value={header.column.getFilterValue() ?? ""}
++                            onChange={(event) =>
++                              header.column.setFilterValue(event.target.value || undefined)
++                            }
++                            placeholder="Filter…"
++                            className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
++                          />
++                        </div>
++                      )}
+                     </TableHead>
+                   )
+                 })}
+*** End Patch
+[2m2025-11-17T11:22:10.835916Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '360,420p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"]}
+[2m2025-11-17T11:22:20.923885Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '420,470p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"]}
+[2m2025-11-17T11:22:31.456390Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+                       <span
+                         onMouseDown={header.getResizeHandler()}
+                         onTouchStart={header.getResizeHandler()}
+                         className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none"
+                         role="separator"
+                         aria-orientation="vertical"
+                         aria-label={`Resize column ${String(header.column.id)}`}
+                         tabIndex={-1}
+                       />
++                      {header.column.getCanFilter() && (
++                        <div className="mt-1">
++                          <input
++                            value={header.column.getFilterValue() ?? ""}
++                            onChange={(event) =>
++                              header.column.setFilterValue(event.target.value || undefined)
++                            }
++                            placeholder="Filter…"
++                            className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
++                          />
++                        </div>
++                      )}
+                     </TableHead>
+                   )
+                 })}
+*** End Patch
+[2m2025-11-17T11:22:44.595823Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/steps.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:22:52.040316Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/steps.js
+@@
+   return {
+     id: "process_flow",
+     header: () => label,
+     accessorFn: (row) => row?.["main_step"] ?? row?.["metro_steps"] ?? null,
+     cell: (info) => renderMetroStepFlow(info.row.original),
+     enableSorting: false,
++    enableColumnFilter: true,
++    filterFn: "auto",
+     meta: { isEditable: false, alignment },
+     size,
+     minSize,
+     maxSize,
+   }
+*** End Patch
+[2m2025-11-17T11:24:34.842039Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T11:24:35.420273Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T11:24:35.420345Z[0m [32m INFO[0m ghost commit captured: bfa225b48d6828ccbe6e84de2de9fe47990ce1a2
+[2m2025-11-17T11:24:35.420372Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T11:24:45.306684Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:24:55.596465Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+-const MULTI_SELECT_KEYS = new Set(["status", "sdwt_prod", "sample_type"])
++const MULTI_SELECT_KEYS = new Set(["status"])
+*** End Patch
+[2m2025-11-17T11:25:02.030234Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '120,220p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:25:07.719987Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+   {
+     key: "sdwt_prod",
+     label: "설비분임조",
+     resolveColumn: (columns) => findMatchingColumn(columns, "sdwt_prod"),
+@@
+     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+   },
+@@
+   {
+     key: "sample_type",
+     label: "Sample Type",
+     resolveColumn: (columns) => findMatchingColumn(columns, "sample_type"),
+@@
+     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+   },
+*** End Patch
+[2m2025-11-17T11:25:20.269515Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"QuickFilters\" -n src/features/line-dashboard/components"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:25:31.912601Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx"]}
+[2m2025-11-17T11:25:53.012892Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
+@@
+-    return (
+-      <fieldset
+-        key={section.key}
+-        className="flex flex-col rounded-xl p-1 px-3"
+-        aria-labelledby={legendId}
+-      >
+-        <legend
+-          id={legendId}
+-          className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+-        >
+-          {section.label}
+-        </legend>
+-
+-        <div className="flex flex-wrap items-center">
+-          {/* 전체 */}
+-          <button
+-            type="button"
+-            onClick={() => onToggle(section.key, null)}
+-            className={cn(
+-              "h-8 px-3 text-xs font-medium border border-input bg-background",
+-              "-ml-px first:ml-0 first:rounded-l last:rounded-r",
+-              "transition-colors",
+-              allSelected
+-                ? "relative z-[1] border-primary bg-primary/10 text-primary"
+-                : "hover:bg-muted"
+-            )}
+-          >
+-            전체
+-          </button>
+-
+-          {/* 옵션들 */}
+-          {section.options.map((option) => {
+-            const isActive = selectedValues.includes(option.value)
+-            return (
+-              <button
+-                key={`${section.key}-${String(option.value)}`}
+-                type="button"
+-                onClick={() => onToggle(section.key, option.value)}
+-                className={cn(
+-                  "h-8 px-3 text-xs font-medium border border-input bg-background",
+-                  "-ml-px first:ml-0 first:rounded-l last:rounded-r",
+-                  "transition-colors",
+-                  isActive
+-                    ? "relative z-[1] border-primary bg-primary/10 text-primary"
+-                    : "hover:bg-muted"
+-                )}
+-              >
+-                {option.label}
+-              </button>
+-            )
+-          })}
+-        </div>
+-      </fieldset>
+-    )
++    const shouldDisplayAsDropdown =
++      section.key === "sdwt_prod" || section.key === "sample_type"
++
++    if (shouldDisplayAsDropdown) {
++      return (
++        <fieldset
++          key={section.key}
++          className="flex flex-col rounded-xl p-1 px-3"
++          aria-labelledby={legendId}
++        >
++          <legend
++            id={legendId}
++            className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
++          >
++            {section.label}
++          </legend>
++
++          <select
++            value={current ?? ""}
++            onChange={(event) => onToggle(section.key, event.target.value || null)}
++            className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
++          >
++            <option value="">전체</option>
++            {section.options.map((option) => (
++              <option key={`${section.key}-${String(option.value)}`} value={option.value}>
++                {option.label}
++              </option>
++            ))}
++          </select>
++        </fieldset>
++      )
++    }
++
++    return (
++      <fieldset
++        key={section.key}
++        className="flex flex-col rounded-xl p-1 px-3"
++        aria-labelledby={legendId}
++      >
++        <legend
++          id={legendId}
++          className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
++        >
++          {section.label}
++        </legend>
++
++        <div className="flex flex-wrap items-center">
++          <button
++            type="button"
++            onClick={() => onToggle(section.key, null)}
++            className={cn(
++              "h-8 px-3 text-xs font-medium border border-input bg-background",
++              "-ml-px first:ml-0 first:rounded-l last:rounded-r",
++              "transition-colors",
++              allSelected
++                ? "relative z-[1] border-primary bg-primary/10 text-primary"
++                : "hover:bg-muted"
++            )}
++          >
++            전체
++          </button>
++
++          {section.options.map((option) => {
++            const isActive = selectedValues.includes(option.value)
++            return (
++              <button
++                key={`${section.key}-${String(option.value)}`}
++                type="button"
++                onClick={() => onToggle(section.key, option.value)}
++                className={cn(
++                  "h-8 px-3 text-xs font-medium border border-input bg-background",
++                  "-ml-px first:ml-0 first:rounded-l last:rounded-r",
++                  "transition-colors",
++                  isActive
++                    ? "relative z-[1] border-primary bg-primary/10 text-primary"
++                    : "hover:bg-muted"
++                )}
++              >
++                {option.label}
++              </button>
++            )
++          })}
++        </div>
++      </fieldset>
++    )
+   })
+*** End Patch
+[2m2025-11-17T11:26:34.057828Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T11:27:10.456109Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T11:27:10.503568Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T11:27:10.503608Z[0m [32m INFO[0m ghost commit captured: cd2ee0128f4d1b60c12765a9ee3635dcdf29927f
+[2m2025-11-17T11:27:10.503614Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T11:27:18.092443Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:27:26.896048Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js"]}
+[2m2025-11-17T11:27:33.133746Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,340p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"]}
+[2m2025-11-17T11:27:40.346222Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"statusCounts\" -n src/features/line-dashboard"]}
+[2m2025-11-17T11:27:47.345469Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"status\")\""],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:28:05.139301Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"status\" src/features/line-dashboard/components/data-table -g\"*.jsx\""]}
+[2m2025-11-17T11:28:09.808834Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"statusCounts\" -n"]}
+[2m2025-11-17T11:28:17.574594Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nfrom pathlib import Path\ntext = Path('apps/web/src/features/line-dashboard/components/data-table/quick summary?')\nPY"]}
+[2m2025-11-17T11:28:24.288325Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"status\" src/features/line-dashboard/components/data-table/hooks -g\"*.js\""]}
+[2m2025-11-17T11:28:34.494873Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nstatus = ['READY','COMPLETE','WAIT','HOLD']\nfrom collections import Counter\nrows=[{'status':'READY'},{'status':'HOLD'}]\nstatus_counts = Counter()\nfor row in rows:\n    status_counts[row.get('status')] += 1\nprint(status_counts)\nPY"]}
+[2m2025-11-17T11:28:41.401308Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"traces\" -n src/features/line-dashboard | head"]}
+[2m2025-11-17T11:28:48.316930Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"totalLoaded\" -n src/features/line-dashboard"]}
+[2m2025-11-17T11:28:58.235599Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nfrom pathlib import Path\ntext = Path('apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx').read_text()\nprint(text.count('const '))\nPY"]}
+[2m2025-11-17T11:29:12.412302Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+-import { ExternalLink, Check } from "lucide-react"
++import { ExternalLink, Check } from "lucide-react"
++import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
+@@
+-  status: ({ value, rowOriginal }) => {
+-    const status = normalizeStatus(value)
+-    const label = STATUS_LABELS[status] ?? status ?? "Unknown"
+-    const { completed, total } = computeMetroProgress(rowOriginal, status)
+-    const percent = total > 0 ? Math.min(100, Math.max(0, (completed / total) * 100)) : 0
+-
+-    return (
+-      <div className="flex w-full flex-col gap-1">
+-        <div
+-          className="h-2 w-full overflow-hidden rounded-full bg-muted"
+-          role="progressbar"
+-          aria-valuenow={Number.isFinite(percent) ? Math.round(percent) : 0}
+-          aria-valuemin={0}
+-          aria-valuemax={100}
+-          aria-valuetext={`${completed} of ${total} steps`}
+-        >
+-          <div
+-            className="h-full rounded-full bg-primary transition-all"
+-            style={{ width: `${percent}%` }}
+-            role="presentation"
+-          />
+-        </div>
+-        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+-          <span className="truncate" title={label}>
+-            {label}
+-          </span>
+-          <span>
+-            {completed}
+-            <span aria-hidden="true">/</span>
+-            {total}
+-          </span>
+-        </div>
+-      </div>
+-    )
+-  },
++  status: ({ value }) => {
++    const status = normalizeStatus(value)
++    const label = STATUS_LABELS[status] ?? status ?? "Unknown"
++    const color = statusColors[status] ?? "var(--chart-1)"
++
++    return (
++      <div className="flex items-center gap-3">
++        <div className="relative flex items-center justify-center">
++          <span className="sr-only">{label}</span>
++          <span className="text-xs font-semibold" aria-hidden="true">
++            {statusCounts?.[status] ?? 0}
++          </span>
++        </div>
++        <span className="text-xs text-muted-foreground">{label}</span>
++      </div>
++    )
++  },
+*** End Patch
+[2m2025-11-17T11:29:18.703283Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && git status -sb"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:29:51.865507Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-import {
+-  flexRender,
+-  getCoreRowModel,
+-  getFilteredRowModel,
+-  getPaginationRowModel,
+-  getSortedRowModel,
+-  useReactTable,
+-} from "@tanstack/react-table"
+-import {
+-  IconChevronDown,
+-  IconChevronLeft,
+-  IconChevronRight,
+-  IconChevronUp,
+-  IconChevronsLeft,
+-  IconChevronsRight,
+-  IconDatabase,
+-  IconRefresh,
+-} from "@tabler/icons-react"
++import {
++  flexRender,
++  getCoreRowModel,
++  getFilteredRowModel,
++  getPaginationRowModel,
++  getSortedRowModel,
++  useReactTable,
++} from "@tanstack/react-table"
++import {
++  IconChevronDown,
++  IconChevronLeft,
++  IconChevronRight,
++  IconChevronUp,
++  IconChevronsLeft,
++  IconChevronsRight,
++  IconDatabase,
++  IconRefresh,
++} from "@tabler/icons-react"
++import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as PieTooltip } from "recharts"
+@@
+-import {
+-  Table,
+-  TableBody,
+-  TableCell,
+-  TableContainer,
+-  TableHead,
+-  TableHeader,
+-  TableRow,
+-} from "@/components/ui/table"
++import {
++  Table,
++  TableBody,
++  TableCell,
++  TableContainer,
++  TableHead,
++  TableHeader,
++  TableRow,
++} from "@/components/ui/table"
+@@
+-import { createColumnDefs } from "./column-defs"
++import { createColumnDefs } from "./column-defs"
+ import { createGlobalFilterFn } from "./filters/GlobalFilter"
+ import { QuickFilters } from "./filters/QuickFilters"
+ import { useDataTableState } from "./hooks/useDataTable"
+ import { useQuickFilters } from "./hooks/useQuickFilters"
+-import { numberFormatter, timeFormatter } from "./utils/constants"
++import { numberFormatter, timeFormatter } from "./utils/constants"
++import { STATUS_LABELS } from "../../constants/status-labels"
++import { normalizeStatus } from "./column-defs/normalizers"
+@@
+-  const totalLoaded = rows.length
+-  const filteredTotal = filteredRows.length
++  const totalLoaded = rows.length
++  const filteredTotal = filteredRows.length
++  const statusCounts = React.useMemo(() => {
++    const counts = {}
++    filteredRows.forEach((row) => {
++      const status = normalizeStatus(row?.status)
++      counts[status] = (counts[status] ?? 0) + 1
++    })
++    return counts
++  }, [filteredRows])
++
++  const statusChartData = React.useMemo(
++    () =>
++      Object.entries(statusCounts)
++        .filter(([, value]) => value > 0)
++        .map(([status, count]) => ({
++          status,
++          label: STATUS_LABELS[status] ?? status ?? "Unknown",
++          value: count,
++        })),
++    [statusCounts]
++  )
++
++  const STATUS_COLOR_MAP = React.useMemo(
++    () => ({
++      READY: "var(--chart-1)",
++      WAIT: "var(--chart-2)",
++      HOLD: "var(--chart-3)",
++      COMPLETE: "var(--chart-4)",
++      DEFAULT: "var(--chart-5)",
++    }),
++    []
++  )
+@@
+-      {/* 테이블 */}
++      {/* Status 분포 차트 */}
++      {statusChartData.length > 0 && (
++        <div className="rounded-lg border bg-card p-4 shadow-sm">
++          <div className="flex items-center justify-between text-sm font-semibold text-foreground">
++            <span>Status 분포</span>
++            <span className="text-xs text-muted-foreground">총 {numberFormatter.format(filteredTotal)}건</span>
++          </div>
++          <div className="mt-2 h-48">
++            <ResponsiveContainer>
++              <PieChart>
++                <Pie
++                  data={statusChartData}
++                  dataKey="value"
++                  nameKey="label"
++                  innerRadius={50}
++                  outerRadius={80}
++                  paddingAngle={3}
++                  strokeWidth={2}
++                >
++                  {statusChartData.map((entry) => (
++                    <Cell
++                      key={entry.status}
++                      fill={STATUS_COLOR_MAP[entry.status] ?? STATUS_COLOR_MAP.DEFAULT}
++                      stroke={STATUS_COLOR_MAP[entry.status] ?? STATUS_COLOR_MAP.DEFAULT}
++                    />
++                  ))}
++                </Pie>
++                <PieTooltip
++                  formatter={(value, name) => [`${value}건`, name]}
++                  itemStyle={{ fontSize: "0.75rem" }}
++                  contentStyle={{
++                    borderRadius: "0.375rem",
++                    borderColor: "var(--border)",
++                    background: "var(--card)",
++                    color: "var(--card-foreground)",
++                  }}
++                />
++              </PieChart>
++            </ResponsiveContainer>
++          </div>
++          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
++            {statusChartData.map((entry) => (
++              <div key={`legend-${entry.status}`} className="flex items-center gap-1.5">
++                <span
++                  className="inline-block size-3 rounded-full"
++                  style={{ backgroundColor: STATUS_COLOR_MAP[entry.status] ?? STATUS_COLOR_MAP.DEFAULT }}
++                />
++                <span>
++                  {entry.label} · {numberFormatter.format(entry.value)}
++                </span>
++              </div>
++            ))}
++          </div>
++        </div>
++      )}
++
++      {/* 테이블 */}
+*** End Patch
+[2m2025-11-17T11:31:12.942472Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T11:31:13.089024Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T11:31:13.089064Z[0m [32m INFO[0m ghost commit captured: 50f8d0039d325fafc093ebae7bcd2614cfc991ef
+[2m2025-11-17T11:31:13.089088Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T11:31:41.508306Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+-import { ExternalLink, Check } from "lucide-react"
+-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
++import { ExternalLink, Check } from "lucide-react"
+ 
+ import { CommentCell, NeedToSendCell } from "../cells"
+ import { formatCellValue } from "../utils/formatters.jsx"
+ import { STATUS_LABELS } from "../../../constants/status-labels"
+@@
+-import { computeMetroProgress } from "./processFlow"
++import { computeMetroProgress } from "./processFlow"
++
++const STATUS_COLOR_MAP = Object.freeze({
++  READY: "var(--chart-1)",
++  WAIT: "var(--chart-2)",
++  HOLD: "var(--chart-3)",
++  COMPLETE: "var(--chart-4)",
++  DEFAULT: "var(--chart-5)",
++})
+@@
+-  status: ({ value }) => {
+-    const status = normalizeStatus(value)
+-    const label = STATUS_LABELS[status] ?? status ?? "Unknown"
+-    const color = statusColors[status] ?? "var(--chart-1)"
+-
+-    return (
+-      <div className="flex items-center gap-3">
+-        <div className="relative flex items-center justify-center">
+-          <span className="sr-only">{label}</span>
+-          <span className="text-xs font-semibold" aria-hidden="true">
+-            {statusCounts?.[status] ?? 0}
+-          </span>
+-        </div>
+-        <span className="text-xs text-muted-foreground">{label}</span>
+-      </div>
+-    )
+-  },
++  status: ({ value, rowOriginal }) => {
++    const status = normalizeStatus(value)
++    const label = STATUS_LABELS[status] ?? status ?? "Unknown"
++    const { completed, total } = computeMetroProgress(rowOriginal, status)
++    const percent = total > 0 ? Math.min(100, Math.max(0, (completed / total) * 100)) : 0
++    const color = STATUS_COLOR_MAP[status] ?? STATUS_COLOR_MAP.DEFAULT
++
++    return (
++      <div className="flex w-full flex-col gap-1">
++        <div
++          className="h-2 w-full overflow-hidden rounded-full bg-muted"
++          role="progressbar"
++          aria-valuenow={Number.isFinite(percent) ? Math.round(percent) : 0}
++          aria-valuemin={0}
++          aria-valuemax={100}
++          aria-valuetext={`${completed} of ${total} steps`}
++        >
++          <div
++            className="h-full rounded-full transition-all"
++            style={{ width: `${percent}%`, backgroundColor: color }}
++            role="presentation"
++          />
++        </div>
++        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
++          <span className="truncate" title={label}>
++            {label}
++          </span>
++          <span>
++            {completed}
++            <span aria-hidden="true">/</span>
++            {total}
++          </span>
++        </div>
++      </div>
++    )
++  },
+*** End Patch
+[2m2025-11-17T11:31:52.887534Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+-import { CommentCell, NeedToSendCell } from "../cells"
++import { CommentCell, NeedToSendCell } from "../cells"
+*** End Patch

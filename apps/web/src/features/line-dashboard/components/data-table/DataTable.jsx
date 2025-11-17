@@ -33,7 +33,6 @@ import {
   IconDatabase,
   IconRefresh,
 } from "@tabler/icons-react"
-
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,7 +45,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+import { STATUS_LABELS } from "../../constants/status-labels"
+import { StatusDistributionCard } from "./StatusDistributionCard"
 import { createColumnDefs } from "./column-defs"
+import { normalizeStatus } from "./column-defs/normalizers"
 import { createGlobalFilterFn } from "./filters/GlobalFilter"
 import { QuickFilters } from "./filters/QuickFilters"
 import { useDataTableState } from "./hooks/useDataTable"
@@ -87,6 +89,16 @@ const LABELS = {
   goLast: "Go to last page",
 }
 
+const STATUS_CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
+]
+const UNKNOWN_STATUS_KEY = "__UNKNOWN__"
+
 /**
  * @param {{ lineId: string }} props
  */
@@ -111,6 +123,67 @@ export function DataTable({ lineId }) {
 
   const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
     useQuickFilters(columns, rows)
+
+  const statusSection = React.useMemo(
+    () => sections.find((section) => section?.key === "status"),
+    [sections]
+  )
+
+  const statusChart = React.useMemo(() => {
+    if (!filteredRows || filteredRows.length === 0) {
+      return { data: [], config: {} }
+    }
+
+    const counts = new Map()
+    const getRowStatus =
+      typeof statusSection?.getValue === "function"
+        ? statusSection.getValue
+        : (row) =>
+          normalizeStatus(
+            row?.status ?? row?.STATUS ?? row?.Status ?? row?.StatusName ?? row?.status_label ?? null
+          )
+
+    filteredRows.forEach((row) => {
+      const normalized = getRowStatus(row)
+      const key = normalized ?? UNKNOWN_STATUS_KEY
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+
+    const statusOptions = Array.isArray(statusSection?.options) ? statusSection.options : []
+    const orderIndex = new Map(statusOptions.map((option, index) => [option.value, index]))
+    const optionLabelMap = new Map(statusOptions.map((option) => [option.value, option.label]))
+
+    const entries = Array.from(counts.entries())
+    entries.sort((a, b) => {
+      const orderA = orderIndex.has(a[0]) ? orderIndex.get(a[0]) : Number.POSITIVE_INFINITY
+      const orderB = orderIndex.has(b[0]) ? orderIndex.get(b[0]) : Number.POSITIVE_INFINITY
+      if (orderA !== orderB) return orderA - orderB
+      if (a[0] === UNKNOWN_STATUS_KEY && b[0] !== UNKNOWN_STATUS_KEY) return 1
+      if (a[0] !== UNKNOWN_STATUS_KEY && b[0] === UNKNOWN_STATUS_KEY) return -1
+      return a[0].localeCompare(b[0])
+    })
+
+    const data = entries.map(([status, value], index) => {
+      const label =
+        optionLabelMap.get(status) ??
+        (status === UNKNOWN_STATUS_KEY
+          ? "Unknown"
+          : STATUS_LABELS[status] ?? status?.replace(/_/g, " ") ?? "Unknown")
+      return {
+        status,
+        label,
+        value,
+        fill: STATUS_CHART_COLORS[index % STATUS_CHART_COLORS.length],
+      }
+    })
+
+    const config = data.reduce((acc, item) => {
+      acc[item.status] = { label: item.label, color: item.fill }
+      return acc
+    }, {})
+
+    return { data, config }
+  }, [filteredRows, statusSection])
 
   /* ──────────────────────────────────────────────────────────────────────────
    * 3) React 19 스타일: 필요한 지점만 useMemo
@@ -165,6 +238,8 @@ export function DataTable({ lineId }) {
   const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
   const totalLoaded = rows.length
   const filteredTotal = filteredRows.length
+  const statusChartData = statusChart.data ?? []
+  const statusChartConfig = statusChart.config ?? {}
   const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
 
   const currentPage = pagination.pageIndex + 1
@@ -337,18 +412,24 @@ export function DataTable({ lineId }) {
           </Button>
         </div>
       </div>
-
-      {/* 퀵 필터 */}
-      <QuickFilters
-        sections={sections}
-        filters={filters}
-        activeCount={activeCount}
-        onToggle={toggleFilter}
-        onClear={resetFilters}
-        globalFilterValue={filter}
-        onGlobalFilterChange={setFilter}
-      />
-
+      <div className="mb-2">
+        <QuickFilters
+          sections={sections}
+          filters={filters}
+          activeCount={activeCount}
+          onToggle={toggleFilter}
+          onClear={resetFilters}
+          globalFilterValue={filter}
+          onGlobalFilterChange={setFilter}
+          statusSidebar={
+            <StatusDistributionCard
+              data={statusChartData}
+              config={statusChartConfig}
+              total={filteredTotal}
+            />
+          }
+        />
+      </div>
       {/* 테이블 */}
       <TableContainer
         className="flex-1 h-[calc(100vh-3rem)] overflow-y-auto overflow-x-auto rounded-lg border px-1"
