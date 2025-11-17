@@ -1,4 +1,4 @@
-// src/features/navigation/components/app-shell.jsx
+// src/components/layout/app-shell.jsx
 // 사이드바/헤더/메인 콘텐츠 영역을 묶는 앱 공통 셸 컴포넌트
 // - AppSidebarProvider로 사이드바 상태를 제공하고
 // - AppSidebar + AppHeader 조합으로 통일된 내비게이션 UI를 구성

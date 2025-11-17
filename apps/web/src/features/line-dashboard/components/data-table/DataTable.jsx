@@ -1,7 +1,5 @@
 // src/features/line-dashboard/components/data-table/DataTable.jsx
 // /src/features/line-dashboard/components/data-table/DataTable.jsx
-"use client"
-
 /**
  * DataTable.jsx (React 19 최적화 버전)
  * ---------------------------------------------------------------------------

@@ -1,6 +1,4 @@
-// src/features/navigation/components/nav-main.jsx
-"use client"
-
+// src/components/layout/nav-main.jsx
 /**
  * NavMain (리팩토링 버전)
  * - URL 스코프(특히 line 스코프)를 일관되게 처리

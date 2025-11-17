@@ -1,10 +1,11 @@
-// src/features/navigation/components/app-header.jsx
+// src/components/layout/app-header.jsx
 // 상단 헤더(버거 버튼 + breadcrumb + 테마 토글)를 분리해 유지보수성과 재사용성을 확보
 
 import { memo } from "react"
 
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ThemeColorSelector } from "@/components/theme-color-selector"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import { DynamicBreadcrumb } from "./dynamic-breadcrumb"
@@ -17,7 +18,10 @@ export const AppHeader = memo(function AppHeader() {
         <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
         <DynamicBreadcrumb />
       </div>
-      <ThemeToggle />
+      <div className="flex items-center gap-2">
+        <ThemeColorSelector />
+        <ThemeToggle />
+      </div>
     </header>
   )
 })

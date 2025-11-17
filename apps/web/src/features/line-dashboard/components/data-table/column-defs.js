@@ -1,6 +1,4 @@
 // src/features/line-dashboard/components/data-table/column-defs.js
-"use client"
-
 // 복잡한 컬럼 정의 로직을 작은 모듈로 나눠 관리하기 위한 래퍼입니다.
 // createColumnDefs 함수는 여전히 한 번에 컬럼 배열을 만들어 주지만,
 // 세부 정렬/폭/정렬방향 계산은 column-defs 하위 파일에 위임합니다.

@@ -1,6 +1,4 @@
 // src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
-"use client"
-
 import * as React from "react"
 import { IconChevronDown } from "@tabler/icons-react"
 

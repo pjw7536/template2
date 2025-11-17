@@ -1,6 +1,4 @@
 // src/features/line-dashboard/hooks/useLineDashboardData.js
-"use client"
-
 import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"

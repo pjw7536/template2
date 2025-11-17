@@ -1,6 +1,4 @@
-// src/features/navigation/components/active-line-context.jsx
-"use client"
-
+// src/components/layout/active-line-context.jsx
 import * as React from "react"
 import { useParams } from "react-router-dom"
 

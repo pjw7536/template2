@@ -1,7 +1,5 @@
-// src/features/navigation/components/app-sidebar.jsx
-"use client"
-
-import { NAVIGATION_CONFIG } from "../config/navigation-config"
+// src/components/layout/app-sidebar.jsx
+import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
 import { NavProjects } from "./nav-projects"
 import { NavUser } from "./nav-user"
 import { TeamSwitcher } from "./team-switcher"

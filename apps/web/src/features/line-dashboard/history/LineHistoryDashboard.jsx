@@ -1,6 +1,4 @@
 // src/features/line-dashboard/history/LineHistoryDashboard.jsx
-"use client"
-
 import * as React from "react"
 import {
   CartesianGrid,

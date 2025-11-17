@@ -1,5 +1,3 @@
-"use client"
-
 // src/features/auth/context/AuthContext.jsx
 // 인증 전역 상태를 제공하는 React Context와 Provider입니다.
 // - 여기서는 상태/비즈니스 로직만 담당하고,

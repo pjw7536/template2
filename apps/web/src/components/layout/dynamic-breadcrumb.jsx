@@ -1,6 +1,4 @@
-// src/features/navigation/components/dynamic-breadcrumb.jsx
-"use client"
-
+// src/components/layout/dynamic-breadcrumb.jsx
 /**
  * DynamicBreadcrumb
  * -----------------------------------------------------------------------------

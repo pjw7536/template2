@@ -26,7 +26,7 @@ const CellRenderers = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center justify-center text-blue-600 hover:underline"
+        className="inline-flex items-center justify-center text-primary transition-colors hover:text-primary/80"
         aria-label="Open defect URL in a new tab"
         title="Open defect"
       >
@@ -44,7 +44,7 @@ const CellRenderers = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+        className="inline-flex items-center gap-1 text-primary transition-colors hover:text-primary/80"
         aria-label={`Open JIRA issue ${key} in a new tab`}
         title={key}
       >
@@ -86,14 +86,14 @@ const CellRenderers = {
     return (
       <span
         className={[
-          "inline-flex h-5 w-5 items-center justify-center rounded-full border",
-          ok ? "bg-blue-500 border-blue-500" : "border-muted-foreground/30",
+          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors",
+          ok ? "bg-primary border-primary text-primary-foreground" : "border-border",
         ].join(" ")}
         title={ok ? "Sent to JIRA" : "Not sent"}
         aria-label={ok ? "Sent to JIRA" : "Not sent"}
         role="img"
       >
-        {ok ? <Check className="h-3 w-3 text-white" strokeWidth={3} /> : null}
+        {ok ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
       </span>
     )
   },

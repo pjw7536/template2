@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 import { Outlet } from "react-router-dom"
 
 import { RequireAuth } from "@/features/auth"
-import { AppShell } from "@/features/navigation"
+import { AppShell } from "@/components/layout"
 import { getDistinctLineIds } from "@/features/line-dashboard/api/get-line-ids"
 
 export function ProtectedAppLayout() {

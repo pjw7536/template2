@@ -1,11 +1,9 @@
 // src/components/theme-toggle.jsx
-"use client"
-
-import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { MoonIcon, SunIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 export function ThemeToggle({ className, ...props }) {

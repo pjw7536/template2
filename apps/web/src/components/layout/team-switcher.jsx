@@ -1,6 +1,4 @@
-// src/features/navigation/components/team-switcher.jsx
-"use client"
-
+// src/components/layout/team-switcher.jsx
 import * as React from "react"
 import { ChevronsUpDown, Plus } from "lucide-react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"

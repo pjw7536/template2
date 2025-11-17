@@ -1,6 +1,4 @@
 // src/features/line-dashboard/components/LineSettingsPage.jsx
-"use client"
-
 import * as React from "react"
 import {
   IconDeviceFloppy,

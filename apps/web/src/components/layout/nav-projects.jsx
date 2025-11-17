@@ -1,6 +1,4 @@
-// src/features/navigation/components/nav-projects.jsx
-"use client"
-
+// src/components/layout/nav-projects.jsx
 import { Folder, Forward, MoreHorizontal, Trash2 } from "lucide-react"
 
 import {

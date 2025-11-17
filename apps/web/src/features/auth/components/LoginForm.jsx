@@ -1,5 +1,3 @@
-"use client"
-
 // src/features/auth/components/LoginForm.jsx
 // 로그인 화면에서 사용하는 폼 UI와 상호작용 로직을 담당합니다.
 // - 상태/비즈니스 로직은 useAuth 훅에서 받아오고, 여기서는 UI에만 집중합니다.

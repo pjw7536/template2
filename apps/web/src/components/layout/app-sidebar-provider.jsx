@@ -1,6 +1,4 @@
-// src/features/navigation/components/app-sidebar-provider.jsx
-"use client"
-
+// src/components/layout/app-sidebar-provider.jsx
 import { useLocation } from "react-router-dom"
 
 import { SidebarProvider } from "@/components/ui/sidebar"

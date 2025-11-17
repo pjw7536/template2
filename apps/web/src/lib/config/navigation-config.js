@@ -1,4 +1,4 @@
-// src/features/navigation/config/navigation-config.js
+// src/lib/config/navigation-config.js
 import { BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
 
 /**

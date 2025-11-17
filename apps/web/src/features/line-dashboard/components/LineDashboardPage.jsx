@@ -1,6 +1,4 @@
 // src/features/line-dashboard/components/LineDashboardPage.jsx
-"use client"
-
 import { LineDashboardProvider } from "../context/LineDashboardProvider"
 import { DataTable } from "./data-table"
 

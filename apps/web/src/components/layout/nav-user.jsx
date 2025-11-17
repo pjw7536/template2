@@ -1,6 +1,4 @@
-// src/features/navigation/components/nav-user.jsx
-"use client"
-
+// src/components/layout/nav-user.jsx
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
 import {

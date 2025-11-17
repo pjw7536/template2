@@ -1,6 +1,4 @@
 // src/features/line-dashboard/context/LineDashboardProvider.jsx
-"use client"
-
 import * as React from "react"
 
 import { useLineDashboardData } from "../hooks/useLineDashboardData"

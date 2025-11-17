@@ -1,6 +1,4 @@
 // src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx
-"use client"
-
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
@@ -143,14 +141,14 @@ export function NeedToSendCell({
         aria-label={titleText}
         title={titleText}
         className={cn(
-          "inline-flex h-5 w-5 items-center justify-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
+          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
           isChecked
-            ? "bg-blue-500 border-blue-500"
-            : "border-muted-foreground/30 hover:border-blue-300",
-          (disabled || isSaving) && "bg-gray-400 border-gray-400 cursor-not-allowed"
+            ? "bg-primary border-primary text-primary-foreground"
+            : "border-border hover:border-primary hover:text-primary",
+          (disabled || isSaving) && "cursor-not-allowed opacity-60"
         )}
       >
-        {isChecked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+        {isChecked && <Check className="h-3 w-3" strokeWidth={3} />}
       </button>
     </div>
   )
