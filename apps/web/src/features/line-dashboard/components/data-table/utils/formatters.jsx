@@ -215,13 +215,11 @@ function uniquePreserveOrder(arr) {
  */
 function getStepPillClasses({ isMain, isCurrent }) {
   return cn(
-    "border px-2 py-0.5 text-xs font-medium leading-none dark:text-black",
-    // 모서리: main이면 사각형, 아니면 pill
+    "border px-2 py-0.5 text-xs font-medium leading-none transition-colors",
     isMain ? "rounded-sm" : "rounded-full",
-    // 색상: 현재 스텝이면 연파랑, 아니면 기본
     isCurrent
-      ? "bg-blue-400 border-blue-600 text-blue-900"
-      : "bg-white border-border text-foreground"
+      ? "bg-primary border-primary text-primary-foreground"
+      : "bg-card border-border text-foreground"
   )
 }
 
@@ -301,9 +299,9 @@ function MetroStepFlowCell({ rowData }) {
   const labelClasses = {
     MAIN: "text-[10px] leading-none text-muted-foreground",
     END: "text-[10px] leading-none text-muted-foreground",
-    CustomEND: "text-[10px] leading-none font-semibold text-blue-500",
-    "인폼예정": "text-[10px] leading-none text-gray-500",
-    "Inform 완료": "text-[10px] leading-none font-semibold text-blue-600",
+    CustomEND: "text-[10px] leading-none font-semibold text-primary",
+    "인폼예정": "text-[10px] leading-none text-muted-foreground",
+    "Inform 완료": "text-[10px] leading-none font-semibold text-primary",
   }
 
   // 인폼 라벨 결정

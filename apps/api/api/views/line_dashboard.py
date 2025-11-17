@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional, Sequence
 
 from django.http import HttpRequest, JsonResponse
@@ -225,31 +225,53 @@ class LineHistoryView(APIView):
     @staticmethod
     def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
         date_value = row.get("day") or row.get("date")
-        date_str = str(date_value).strip() if isinstance(date_value, str) else None
-        if not date_str and isinstance(date_value, datetime):
+    
+        date_str: Optional[str] = None
+    
+        # 1) 문자열인 경우: 그냥 strip
+        if isinstance(date_value, str):
+            date_str = date_value.strip() or None
+    
+        # 2) datetime인 경우: 날짜만 떼어서 YYYY-MM-DD
+        elif isinstance(date_value, datetime):
             date_str = date_value.date().isoformat()
+    
+        # 3) date 인 경우: 그대로 isoformat()
+        elif isinstance(date_value, date):
+            date_str = date_value.isoformat()
+    
+        # (원한다면: else 에서 로그 찍을 수도 있음)
+    
         return {
             "date": date_str,
             "rowCount": to_int(row.get("row_count", 0)),
             "sendJiraCount": to_int(row.get("send_jira_count", 0)),
         }
-
+    
     @staticmethod
     def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
         date_value = row.get("day") or row.get("date")
-        date_str = str(date_value).strip() if isinstance(date_value, str) else None
-        if not date_str and isinstance(date_value, datetime):
+    
+        date_str: Optional[str] = None
+        if isinstance(date_value, str):
+            date_str = date_value.strip() or None
+        elif isinstance(date_value, datetime):
             date_str = date_value.date().isoformat()
+        elif isinstance(date_value, date):
+            date_str = date_value.isoformat()
+    
         category = row.get("category") or row.get("dimension") or "Unspecified"
         if not isinstance(category, str) or not category.strip():
             category = "Unspecified"
+    
         return {
             "date": date_str,
             "category": category.strip() if isinstance(category, str) else str(category),
             "rowCount": to_int(row.get("row_count", 0)),
             "sendJiraCount": to_int(row.get("send_jira_count", 0)),
         }
-
+    
+    
 
 class LineIdListView(APIView):
     """사이드바 필터용 line_id 고유값 목록 반환."""

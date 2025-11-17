@@ -10,3 +10,15 @@
 {"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763356712,"text":"violet이 black으로 적용되는데 고쳐주고, 테마 색을 더 늘려줘"}
 {"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763356788,"text":"아직 violet이 적용되지않음 black으로 보임"}
 {"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763357268,"text":"horizontal, vertical scroll bar도 현재 프로젝트의 디자인과 비슷한 테마로 변경해줘"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763357642,"text":"이 프로젝트가 constitution을 잘따르고 있는지 확인 및 리팩토링"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763366053,"text":"apps/web/src/routes/pages/LineDashboardOverviewPage.jsx 에서 차트가 제대로 나타나지 않는다 고쳐줘."}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763366236,"text":"진행건수 안보임"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763366560,"text":"apps/web/src/routes/pages/LineDashboardHistoryPage.jsx 차트에 데이터가 안나타남 해결해줘"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763367201,"text":"이 문제가 아닌것 같다 apps/web/src/routes/pages/LineDashboardStatusPage.jsx 에 나오는 row들이 apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx 에는 집계 되지 않는다"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763374953,"text":"chart color가 안보임"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763375305,"text":"/line-dashboard/history api가 제대로 동작하지 않는것 같다"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763375652,"text":"date가 null이라서 차트가 안그려짐{\n                \"date\": null,\n                \"category\": \"EQP0115\",\n                \"rowCount\": 1,\n                \"sendJiraCount\": 0\n            },"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763375883,"text":"created_at 을 사용한다. db저장형식은 TIMESTAMPTZ이다"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763376000,"text":"왜 아직 date가 null이지             {\n                \"date\": null,\n                \"category\": \"EQP0167\",\n                \"rowCount\": 1,\n                \"sendJiraCount\": 0\n            },"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763376138,"text":"backend에서 반환할때부터 null이다"}
+{"session_id":"019a8fef-e3f7-7301-8d0c-b23356ed3e06","ts":1763377729,"text":"Status bar의 color , process_flow에서 metro_current_step의 색깔에도 theme color로 적용해줘"}

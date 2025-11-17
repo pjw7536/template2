@@ -115,7 +115,7 @@ const CellRenderers = {
           aria-valuetext={`${completed} of ${total} steps`}
         >
           <div
-            className="h-full rounded-full bg-blue-500 transition-all"
+            className="h-full rounded-full bg-primary transition-all"
             style={{ width: `${percent}%` }}
             role="presentation"
           />

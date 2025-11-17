@@ -1393,3 +1393,1358 @@
 +  border-radius: 999px;
 +}
 *** End Patch
+[2m2025-11-17T05:34:02.660946Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T05:34:02.692611Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T05:34:02.692651Z[0m [32m INFO[0m ghost commit captured: 000b1db8eecc49e23fb7d47a2d105f6615cac00b
+[2m2025-11-17T05:34:02.692657Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T07:53:35.392383Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T07:54:13.387725Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T07:54:13.466013Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T07:54:13.466067Z[0m [32m INFO[0m ghost commit captured: acad071fab9887ab128ce538af32dfe63a99a314
+[2m2025-11-17T07:54:13.466073Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T07:54:21.571398Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/routes/pages/LineDashboardOverviewPage.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:54:25.861458Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,400p' apps/web/src/routes/pages/LineDashboardOverviewPage.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:54:37.801494Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"Chart\" -n src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:54:41.407459Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"rechart\" -n src"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:54:44.535059Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"chart\" src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:54:53.258697Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,240p' apps/web/src/features/airflow/api/get-airflow-dag-overview.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:54:58.507214Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/components/ui/chart.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:55:02.349445Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '400,520p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T07:55:51.457411Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardOverviewPage.jsx
+@@
+-import { useEffect, useMemo, useState } from "react"
++import { useEffect, useMemo, useState } from "react"
++import {
++  Bar,
++  BarChart,
++  CartesianGrid,
++  Cell,
++  ResponsiveContainer,
++  XAxis,
++  YAxis,
++} from "recharts"
+ 
+ import {
+   Card,
+   CardContent,
+   CardDescription,
+   CardHeader,
+   CardTitle,
+ } from "@/components/ui/card"
++import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+ import {
+   Table,
+   TableBody,
+   TableCell,
+@@
+   const dags = useMemo(() => overview?.dags ?? [], [overview])
+   const totals = overview?.totals ?? { total: 0, active: 0, paused: 0, failed: 0 }
++  const statusChartData = useMemo(
++    () => [
++      { status: "Active", count: totals.active ?? 0, fill: "var(--chart-1)" },
++      { status: "Paused", count: totals.paused ?? 0, fill: "var(--chart-2)" },
++      { status: "Failed", count: totals.failed ?? 0, fill: "var(--chart-3)" },
++    ],
++    [totals.active, totals.failed, totals.paused]
++  )
++  const hasStatusData = statusChartData.some((item) => item.count > 0)
+*** End Patch
+[2m2025-11-17T07:56:02.893409Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardOverviewPage.jsx
+@@
+       </div>
+ 
++      <Card>
++        <CardHeader>
++          <CardTitle>DAG 상태 분포</CardTitle>
++          <CardDescription>Active / Paused / Failed 상태별 DAG 개수</CardDescription>
++        </CardHeader>
++        <CardContent className="pb-6">
++          {hasStatusData ? (
++            <ChartContainer
++              config={{ count: { label: "DAGs", color: "var(--chart-1)" } }}
++              className="h-[280px]"
++            >
++              <ResponsiveContainer>
++                <BarChart
++                  data={statusChartData}
++                  margin={{ top: 12, right: 16, left: 0, bottom: 12 }}
++                >
++                  <CartesianGrid vertical={false} strokeDasharray="4 4" className="stroke-muted" />
++                  <XAxis
++                    dataKey="status"
++                    tickLine={false}
++                    axisLine={false}
++                    tick={{ fontSize: 12 }}
++                  />
++                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} />
++                  <ChartTooltip
++                    cursor={{ fill: "hsl(var(--muted) / 0.2)" }}
++                    content={<ChartTooltipContent />}
++                  />
++                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
++                    {statusChartData.map((item) => (
++                      <Cell key={item.status} fill={item.fill} />
++                    ))}
++                  </Bar>
++                </BarChart>
++              </ResponsiveContainer>
++            </ChartContainer>
++          ) : (
++            <div className="flex h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
++              상태 데이터가 없습니다.
++            </div>
++          )}
++        </CardContent>
++      </Card>
++
+       <Card className="h-full">
+*** End Patch
+[2m2025-11-17T07:56:12.053181Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardOverviewPage.jsx
+@@
+-                  <ChartTooltip
+-                    cursor={{ fill: "hsl(var(--muted) / 0.2)" }}
+-                    content={<ChartTooltipContent />}
+-                  />
++                  <ChartTooltip
++                    cursor={{ fill: "var(--muted)", fillOpacity: 0.2 }}
++                    content={<ChartTooltipContent />}
++                  />
+*** End Patch
+[2m2025-11-17T07:56:30.460903Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,120p' apps/web/src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:57:16.318549Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T07:57:16.394428Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T07:57:16.394470Z[0m [32m INFO[0m ghost commit captured: 10387f4bdec18f926381d0527cd51dd67f923dd3
+[2m2025-11-17T07:57:16.394476Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T07:57:24.880595Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"진행\" -n src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:57:30.051312Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:57:52.944777Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"진행\" -n src/routes/pages"]}
+[2m2025-11-17T07:58:00.198427Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"총\" -n src/routes/pages/LineDashboardOverviewPage.jsx"]}
+[2m2025-11-17T07:58:08.718111Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardOverviewPage.jsx
+@@
+-import {
+-  Bar,
+-  BarChart,
+-  CartesianGrid,
+-  Cell,
+-  ResponsiveContainer,
+-  XAxis,
+-  YAxis,
+-} from "recharts"
++import {
++  Bar,
++  BarChart,
++  CartesianGrid,
++  Cell,
++  LabelList,
++  ResponsiveContainer,
++  XAxis,
++  YAxis,
++} from "recharts"
+*** End Patch
+[2m2025-11-17T07:58:14.318485Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardOverviewPage.jsx
+@@
+-      <Card>
++      <Card>
+         <CardHeader>
+-          <CardTitle>DAG 상태 분포</CardTitle>
+-          <CardDescription>Active / Paused / Failed 상태별 DAG 개수</CardDescription>
++          <CardTitle>진행 건수</CardTitle>
++          <CardDescription>Active / Paused / Failed 상태별 DAG 개수</CardDescription>
+         </CardHeader>
+         <CardContent className="pb-6">
+           {hasStatusData ? (
+@@
+-                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
++                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
++                    <LabelList
++                      dataKey="count"
++                      position="top"
++                      className="text-xs font-medium fill-foreground"
++                    />
+                     {statusChartData.map((item) => (
+                       <Cell key={item.status} fill={item.fill} />
+                     ))}
+*** End Patch
+[2m2025-11-17T08:02:40.677567Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T08:02:40.750833Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T08:02:40.750874Z[0m [32m INFO[0m ghost commit captured: d20e2d4a50300332bfe887177a5181f0da50f747
+[2m2025-11-17T08:02:40.750886Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T08:02:45.170059Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/routes/pages/LineDashboardHistoryPage.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:02:51.166750Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:03:04.919746Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,520p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:03:14.949869Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '360,520p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"]}
+[2m2025-11-17T08:03:25.787645Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"rowCount\" -n src/features/line-dashboard -g\"*.js*\""]}
+[2m2025-11-17T08:03:38.825392Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"line-dashboard/history\" -n -g\"*.js*\""]}
+[2m2025-11-17T08:03:44.748066Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd /home/pjw75/tailwind && rg -n \"/line-dashboard/history\" -n"]}
+[2m2025-11-17T08:03:54.161176Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"\\.totals\" -n src/features/line-dashboard/history -g\"*.js*\""]}
+[2m2025-11-17T08:04:08.627685Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd /home/pjw75/tailwind && rg -n \"sendJiraCount\" -n"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:04:17.644208Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,320p' apps/api/api/views/line_dashboard.py"]}
+[2m2025-11-17T08:04:27.514467Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '120,220p' apps/api/api/views/line_dashboard.py"]}
+[2m2025-11-17T08:04:38.827197Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,120p' apps/api/api/views/line_dashboard.py"]}
+[2m2025-11-17T08:04:50.385551Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/index.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:04:57.332204Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,80p' apps/web/src/features/line-dashboard/history/index.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:05:46.934857Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,160p' apps/api/api/utils.py"]}
+[2m2025-11-17T08:05:53.610977Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","ls apps/api/api"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:05:58.946508Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","ls apps/api/api/views"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:06:03.430202Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/api/api/views/utils.py"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:06:46.238805Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-const totalsChartConfig = {
++const totalsChartConfig = {
+   rowCount: { label: "진행 건수", color: "var(--chart-1)" },
+   sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
+ }
++
++function coerceNumber(value) {
++  const parsed = Number(value)
++  return Number.isFinite(parsed) ? parsed : 0
++}
++
++function normalizeDailyTotals(rawTotals) {
++  if (!rawTotals) return []
++  const rows = Array.isArray(rawTotals)
++    ? rawTotals
++    : Object.entries(rawTotals).map(([date, entry]) => ({
++        date,
++        ...entry,
++      }))
++
++  return rows
++    .map((row) => {
++      const date =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      return {
++        date,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++    .sort((a, b) => a.date.localeCompare(b.date))
++}
++
++function normalizeBreakdownRecords(rawRecords) {
++  if (!rawRecords) return []
++  const rows = Array.isArray(rawRecords)
++    ? rawRecords
++    : Object.entries(rawRecords).map(([category, entry]) => ({
++        category,
++        ...entry,
++      }))
++
++  return rows
++    .map((row) => {
++      const rawDate =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      const rawCategory =
++        typeof row?.category === "string" && row.category
++          ? row.category
++          : typeof row?.dimension === "string"
++            ? row.dimension
++            : row?.category ?? "Unspecified"
++
++      return {
++        date: rawDate,
++        category: typeof rawCategory === "string" ? rawCategory : String(rawCategory ?? "Unspecified"),
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++}
+*** End Patch
+[2m2025-11-17T08:06:54.892164Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays)
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? LineHistoryDashboard.defaultRangeDays)
+@@
+-  const totalsData = React.useMemo(() => state.data?.totals ?? [], [state.data])
+-  const breakdownRecords = React.useMemo(
+-    () => (dimension ? state.data?.breakdowns?.[dimension] ?? [] : []),
+-    [state.data, dimension]
+-  )
++  const totalsData = React.useMemo(() => normalizeDailyTotals(state.data?.totals), [state.data])
++  const breakdownRecords = React.useMemo(
++    () => (dimension ? normalizeBreakdownRecords(state.data?.breakdowns?.[dimension]) : []),
++    [state.data, dimension]
++  )
+@@
+-    if (quickView === "date") return []
+-    return quickView ? state.data?.breakdowns?.[quickView] ?? [] : []
++    if (quickView === "date") return []
++    return quickView ? normalizeBreakdownRecords(state.data?.breakdowns?.[quickView]) : []
+   }, [quickView, state.data])
+*** End Patch
+[2m2025-11-17T08:07:26.261757Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-const RANGE_OPTIONS = [
++const DEFAULT_RANGE_DAYS = 14
++
++const RANGE_OPTIONS = [
+   { label: "7일", value: 7 },
+   { label: "14일", value: 14 },
+   { label: "30일", value: 30 },
+ ]
+*** End Patch
+[2m2025-11-17T08:07:38.073585Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? LineHistoryDashboard.defaultRangeDays)
++export function LineHistoryDashboard({ lineId, initialRangeDays = DEFAULT_RANGE_DAYS }) {
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
+*** End Patch
+[2m2025-11-17T08:07:48.371360Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+   const availableDimensions = React.useMemo(() => {
+     if (!state.data?.breakdowns) return []
+     return DIMENSION_OPTIONS.filter((option) => {
+-      const rows = state.data.breakdowns?.[option.value]
+-      return Array.isArray(rows) && rows.length > 0
++      const rows = normalizeBreakdownRecords(state.data.breakdowns?.[option.value])
++      return rows.length > 0
+     })
+   }, [state.data])
+*** End Patch
+[2m2025-11-17T08:08:13.302161Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+   const availableQuickViews = React.useMemo(() => {
+     const available = new Set()
+     if (Array.isArray(totalsData) && totalsData.length > 0) {
+       available.add("date")
+     }
+     for (const option of QUICK_VIEW_OPTIONS) {
+       if (option.value === "date") continue
+-      const rows = state.data?.breakdowns?.[option.value]
+-      if (Array.isArray(rows) && rows.length > 0) {
++      const rows = normalizeBreakdownRecords(state.data?.breakdowns?.[option.value])
++      if (rows.length > 0) {
+         available.add(option.value)
+       }
+     }
+     return available
+   }, [state.data, totalsData])
+*** End Patch
+[2m2025-11-17T08:13:21.394119Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T08:13:21.473710Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T08:13:21.473754Z[0m [32m INFO[0m ghost commit captured: d4147c9ff0ea95de665acc69f67637a49d4cda12
+[2m2025-11-17T08:13:21.473760Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T08:13:31.890853Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/routes/pages/LineDashboardStatusPage.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:13:42.572921Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/hooks/useLineDashboardData.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:13:52.561803Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/api/api/views/constants.py"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:13:59.152027Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd /home/pjw75/tailwind && rg -n \"line-dashboard/summary\" -n"]}
+[2m2025-11-17T08:14:08.084190Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/api && rg -n \"line-dashboard\" -n api"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:14:15.247189Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd /home/pjw75/tailwind && rg -n \"line-dashboard\" -n apps/api -g\"*.py\""]}
+[2m2025-11-17T08:14:22.461493Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,160p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:14:28.239079Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:14:42.104526Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/api && rg -n \"class Tables\" -n api"]}
+[2m2025-11-17T08:14:48.605975Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/api/api/views/tables.py"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:15:14.376357Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/constants.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:15:27.555612Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"setSelectedTable\" -n src/features/line-dashboard"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:15:33.219901Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"selectedTable\" -n src/features/line-dashboard"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:15:44.714995Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"selectedTable\" -n src/features/line-dashboard -g\"*.jsx\""]}
+[2m2025-11-17T08:16:28.155438Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"table=\" -n src/routes -g\"*.jsx\""]}
+[2m2025-11-17T08:16:36.171700Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"table select\" -n src/features/line-dashboard -g\"*.jsx\""]}
+[2m2025-11-17T08:16:42.269729Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"table\" src/features/line-dashboard/components/data-table -g\"*.jsx\" | head"]}
+[2m2025-11-17T08:16:53.716784Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"drone_sop_v3\" -n src"]}
+[2m2025-11-17T08:17:16.564657Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"테이블\" src/features/line-dashboard/components -n"]}
+[2m2025-11-17T08:17:35.437554Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useQuickFilters.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:17:51.558538Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nfrom pathlib import Path\ntext=Path('apps/api/api/views/utils.py').read_text()\nstart=text.index('def build_line_filters')\nprint(text[start:start+400])\nPY"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:18:01.727649Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nfrom pathlib import Path\ntext=Path('apps/api/api/views/utils.py').read_text()\nstart=text.index('if usdwt_col')\nprint(text[start:start+400])\nPY"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:18:07.898646Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","python3 - <<'PY'\nfrom pathlib import Path\ntext=Path('apps/api/api/views/utils.py').read_text()\nstart=text.index('line_col = find_column')\nprint(text[start:start+200])\nPY"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:18:23.121054Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,120p' apps/web/src/features/line-dashboard/components/LineDashboardPage.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T08:18:46.002110Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardHistoryPage.jsx
+@@
+ export function LineDashboardHistoryPage() {
+   const { lineId = "" } = useParams()
+   const [searchParams] = useSearchParams()
+ 
+   const initialRangeDays = useMemo(() => {
+     const rangeParam = searchParams.get("rangeDays") ?? searchParams.get("range")
+     const parsed = Number.parseInt(rangeParam ?? "", 10)
+     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+   }, [searchParams])
+ 
++  const table = useMemo(() => {
++    const param = searchParams.get("table")
++    if (!param) return undefined
++    const trimmed = param.trim()
++    return trimmed.length > 0 ? trimmed : undefined
++  }, [searchParams])
++
+   return (
+     <div className="h-[calc(100vh-5rem)]">
+-      <LineHistoryDashboard lineId={lineId} initialRangeDays={initialRangeDays} />
++      <LineHistoryDashboard lineId={lineId} initialRangeDays={initialRangeDays} tableName={table} />
+     </div>
+   )
+ }
+*** End Patch
+[2m2025-11-17T08:18:54.551230Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-const DEFAULT_RANGE_DAYS = 14
++const DEFAULT_RANGE_DAYS = 14
++const DEFAULT_TABLE = "drone_sop_v3"
+@@
+-export function LineHistoryDashboard({ lineId, initialRangeDays = DEFAULT_RANGE_DAYS }) {
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
++export function LineHistoryDashboard({ lineId, initialRangeDays = DEFAULT_RANGE_DAYS, tableName = DEFAULT_TABLE }) {
++  const [table, setTable] = React.useState(tableName ?? DEFAULT_TABLE)
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
+@@
+-  }, [lineId])
++  }, [lineId, tableName])
++
++  React.useEffect(() => {
++    setTable(tableName ?? DEFAULT_TABLE)
++  }, [tableName])
+@@
+-        const params = new URLSearchParams({ lineId: String(lineId), rangeDays: String(rangeDays) })
++        const params = new URLSearchParams({
++          lineId: String(lineId),
++          rangeDays: String(rangeDays),
++          table: table ?? DEFAULT_TABLE,
++        })
+@@
+-  }, [lineId, rangeDays, refreshToken])
++  }, [lineId, rangeDays, refreshToken, table])
+*** End Patch
+[2m2025-11-17T08:19:08.629371Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-export function LineHistoryDashboard({ lineId, initialRangeDays = DEFAULT_RANGE_DAYS, tableName = DEFAULT_TABLE }) {
+-  const [table, setTable] = React.useState(tableName ?? DEFAULT_TABLE)
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
++export function LineHistoryDashboard({ lineId, initialRangeDays = DEFAULT_RANGE_DAYS, tableName = DEFAULT_TABLE }) {
++  const resolvedTable = tableName ?? DEFAULT_TABLE
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
+@@
+-    setState({ data: null, isLoading: true, error: null })
+-  }, [lineId, tableName])
+-
+-  React.useEffect(() => {
+-    setTable(tableName ?? DEFAULT_TABLE)
+-  }, [tableName])
++    setState({ data: null, isLoading: true, error: null })
++  }, [lineId, resolvedTable])
+@@
+-        const params = new URLSearchParams({
+-          lineId: String(lineId),
+-          rangeDays: String(rangeDays),
+-          table: table ?? DEFAULT_TABLE,
+-        })
++        const params = new URLSearchParams({
++          lineId: String(lineId),
++          rangeDays: String(rangeDays),
++          table: resolvedTable,
++        })
+@@
+-  }, [lineId, rangeDays, refreshToken, table])
++  }, [lineId, rangeDays, refreshToken, resolvedTable])
+*** End Patch
+[2m2025-11-17T10:22:33.394795Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:22:33.472918Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:22:33.472959Z[0m [32m INFO[0m ghost commit captured: 6c5a858e90c39c46b37e5e5b5e96a10f3174902a
+[2m2025-11-17T10:22:33.472964Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:22:42.344634Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"chart\" src/routes/pages/LineDashboardHistoryPage.jsx"]}
+[2m2025-11-17T10:22:52.526853Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '380,480p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:23:04.495126Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,360p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"]}
+[2m2025-11-17T10:23:12.811861Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"normalizeDailyTotals\" -n src/features/line-dashboard"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:23:17.749338Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '62,156p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"]}
+[2m2025-11-17T10:23:39.297057Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,220p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"]}
+[2m2025-11-17T10:24:05.258443Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-const RANGE_OPTIONS = [
++const DEFAULT_RANGE_DAYS = 14
++const DEFAULT_TABLE = "drone_sop_v3"
++
++const RANGE_OPTIONS = [
+   { label: "7일", value: 7 },
+   { label: "14일", value: 14 },
+   { label: "30일", value: 30 },
+@@
+-const totalsChartConfig = {
++const totalsChartConfig = {
+   rowCount: { label: "진행 건수", color: "var(--chart-1)" },
+   sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
+ }
+ 
++function coerceNumber(value) {
++  const parsed = Number(value)
++  return Number.isFinite(parsed) ? parsed : 0
++}
++
++function normalizeDailyTotals(rawTotals) {
++  if (!rawTotals) return []
++  const rows = Array.isArray(rawTotals)
++    ? rawTotals
++    : Object.entries(rawTotals).map(([date, entry]) => ({ date, ...entry }))
++
++  return rows
++    .map((row) => {
++      const date =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      return {
++        date,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++    .sort((a, b) => a.date.localeCompare(b.date))
++}
++
++function normalizeBreakdownRecords(rawRecords) {
++  if (!rawRecords) return []
++  const rows = Array.isArray(rawRecords)
++    ? rawRecords
++    : Object.entries(rawRecords).map(([category, entry]) => ({
++        category,
++        ...entry,
++      }))
++
++  return rows
++    .map((row) => {
++      const date =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      const category =
++        typeof row?.category === "string" && row.category
++          ? row.category
++          : typeof row?.dimension === "string" && row.dimension
++            ? row.dimension
++            : "Unspecified"
++
++      return {
++        date,
++        category,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++}
++
+ function formatDateLabel(value) {
+@@
+-export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays)
++export function LineHistoryDashboard({
++  lineId,
++  initialRangeDays = DEFAULT_RANGE_DAYS,
++  tableName = DEFAULT_TABLE,
++}) {
++  const resolvedTable = tableName ?? DEFAULT_TABLE
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
+   const [dimension, setDimension] = React.useState(DIMENSION_OPTIONS[0].value)
+   const [metric, setMetric] = React.useState(METRIC_OPTIONS[0].value)
+   const [refreshToken, setRefreshToken] = React.useState(0)
+   const [quickView, setQuickView] = React.useState("date")
+   const [quickCategory, setQuickCategory] = React.useState(null)
+   const [state, setState] = React.useState({ data: null, isLoading: false, error: null })
+ 
+   React.useEffect(() => {
+     setState({ data: null, isLoading: true, error: null })
+-  }, [lineId])
++  }, [lineId, resolvedTable])
+ 
+   React.useEffect(() => {
+     const controller = new AbortController()
+@@
+-        const params = new URLSearchParams({ lineId: String(lineId), rangeDays: String(rangeDays) })
++        const params = new URLSearchParams({
++          lineId: String(lineId),
++          rangeDays: String(rangeDays),
++          table: resolvedTable,
++        })
+         const endpoint = buildBackendUrl("/line-dashboard/history", params)
+@@
+-  }, [lineId, rangeDays, refreshToken])
++  }, [lineId, rangeDays, refreshToken, resolvedTable])
+@@
+-    if (!state.data?.breakdowns) return []
+-    return DIMENSION_OPTIONS.filter((option) => {
+-      const rows = state.data.breakdowns?.[option.value]
+-      return Array.isArray(rows) && rows.length > 0
+-    })
++    if (!state.data?.breakdowns) return []
++    return DIMENSION_OPTIONS.filter((option) => {
++      const rows = normalizeBreakdownRecords(state.data.breakdowns?.[option.value])
++      return rows.length > 0
++    })
+   }, [state.data])
+@@
+-  const totalsData = React.useMemo(() => state.data?.totals ?? [], [state.data])
+-  const breakdownRecords = React.useMemo(
+-    () => (dimension ? state.data?.breakdowns?.[dimension] ?? [] : []),
++  const totalsData = React.useMemo(() => normalizeDailyTotals(state.data?.totals), [state.data])
++  const breakdownRecords = React.useMemo(
++    () => (dimension ? normalizeBreakdownRecords(state.data?.breakdowns?.[dimension]) : []),
+     [state.data, dimension]
+   )
+@@
+-  const quickViewRecords = React.useMemo(() => {
+-    if (quickView === "date") return []
+-    return quickView ? state.data?.breakdowns?.[quickView] ?? [] : []
+-  }, [quickView, state.data])
++  const quickViewRecords = React.useMemo(() => {
++    if (quickView === "date") return []
++    return quickView ? normalizeBreakdownRecords(state.data?.breakdowns?.[quickView]) : []
++  }, [quickView, state.data])
+@@
+-    for (const option of QUICK_VIEW_OPTIONS) {
+-      if (option.value === "date") continue
+-      const rows = state.data?.breakdowns?.[option.value]
+-      if (Array.isArray(rows) && rows.length > 0) {
+-        available.add(option.value)
+-      }
+-    }
++    state.data?.breakdowns &&
++      QUICK_VIEW_OPTIONS.forEach((option) => {
++        if (option.value === "date") return
++        const rows = normalizeBreakdownRecords(state.data.breakdowns?.[option.value])
++        if (rows.length > 0) {
++          available.add(option.value)
++        }
++      })
+     return available
+   }, [state.data, totalsData])
+*** End Patch
+[2m2025-11-17T10:28:16.532868Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T10:28:25.419557Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:28:25.500478Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:28:25.500520Z[0m [32m INFO[0m ghost commit captured: 92fd557221f97f221177adf4634dc0510be49827
+[2m2025-11-17T10:28:25.500526Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:28:47.467518Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"selectedTable\" -n src/features/line-dashboard/components/data-table -g\"*.jsx\""]}
+[2m2025-11-17T10:28:56.748558Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"Table\" src/features/line-dashboard/components/data-table -g\"*.jsx\""]}
+[2m2025-11-17T10:29:05.415998Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '430,600p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"]}
+[2m2025-11-17T10:29:18.118579Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/utils/index.js"]}
+[2m2025-11-17T10:29:28.464807Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/utils/transform-response.js"]}
+[2m2025-11-17T10:29:43.764387Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,120p' apps/api/api/urls.py"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:29:54.491984Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,60p' apps/api/api/views/line_dashboard.py"]}
+[2m2025-11-17T10:30:12.381100Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/context/LineDashboardProvider.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:30:19.334497Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"selectedTable\" -n"]}
+[2m2025-11-17T10:30:24.578355Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '320,420p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:30:58.936542Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","rg -n \"urlpatterns\" -n apps/api -g\"*urls.py\""]}
+[2m2025-11-17T10:31:03.845079Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,120p' apps/api/config/urls.py"]}
+[2m2025-11-17T10:31:31.411796Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,360p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx"]}
+[2m2025-11-17T10:32:02.325649Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && git status -sb"]}
+[2m2025-11-17T10:32:18.298141Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardHistoryPage.jsx
+@@
+ import { LineHistoryDashboard } from "@/features/line-dashboard/components"
+ 
+ export function LineDashboardHistoryPage() {
+   const { lineId = "" } = useParams()
+   const [searchParams] = useSearchParams()
+ 
+   const initialRangeDays = useMemo(() => {
+     const rangeParam = searchParams.get("rangeDays") ?? searchParams.get("range")
+     const parsed = Number.parseInt(rangeParam ?? "", 10)
+     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+   }, [searchParams])
+ 
++  const tableName = useMemo(() => {
++    const tableParam = searchParams.get("table")
++    if (!tableParam) return undefined
++    const trimmed = tableParam.trim()
++    return trimmed.length > 0 ? trimmed : undefined
++  }, [searchParams])
++
+   return (
+     <div className="h-[calc(100vh-5rem)]">
+-      <LineHistoryDashboard lineId={lineId} initialRangeDays={initialRangeDays} />
++      <LineHistoryDashboard
++        lineId={lineId}
++        initialRangeDays={initialRangeDays}
++        tableName={tableName}
++      />
+     </div>
+   )
+ }
+*** End Patch
+[2m2025-11-17T10:32:44.479938Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-import {
+-  CartesianGrid,
+-  Legend,
+-  Line,
+-  LineChart,
+-  ResponsiveContainer,
+-  XAxis,
+-  YAxis,
+-} from "recharts"
++import {
++  CartesianGrid,
++  Legend,
++  Line,
++  LineChart,
++  ResponsiveContainer,
++  XAxis,
++  YAxis,
++} from "recharts"
+ import { IconAlertCircle, IconRefresh } from "@tabler/icons-react"
+@@
+-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+-import { buildBackendUrl } from "@/lib/api"
+-import { cn } from "@/lib/utils"
+-
+-const RANGE_OPTIONS = [
++import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
++import { buildBackendUrl } from "@/lib/api"
++import { cn } from "@/lib/utils"
++
++const DEFAULT_RANGE_DAYS = 14
++const DEFAULT_TABLE = "drone_sop_v3"
++
++const RANGE_OPTIONS = [
+   { label: "7일", value: 7 },
+   { label: "14일", value: 14 },
+   { label: "30일", value: 30 },
+@@
+ const totalsChartConfig = {
+   rowCount: { label: "진행 건수", color: "var(--chart-1)" },
+   sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
+ }
+ 
++function coerceNumber(value) {
++  const parsed = Number(value)
++  return Number.isFinite(parsed) ? parsed : 0
++}
++
++function normalizeDailyTotals(rawTotals) {
++  if (!rawTotals) return []
++
++  const rows = Array.isArray(rawTotals)
++    ? rawTotals
++    : Object.entries(rawTotals).map(([date, entry]) => ({ date, ...entry }))
++
++  return rows
++    .map((row) => {
++      const date =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      return {
++        date,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++    .sort((a, b) => a.date.localeCompare(b.date))
++}
++
++function normalizeBreakdownRecords(rawRecords) {
++  if (!rawRecords) return []
++
++  const rows = Array.isArray(rawRecords)
++    ? rawRecords
++    : Object.entries(rawRecords).map(([category, entry]) => ({
++        category,
++        ...entry,
++      }))
++
++  return rows
++    .map((row) => {
++      const date =
++        typeof row?.date === "string" && row.date
++          ? row.date
++          : typeof row?.day === "string"
++            ? row.day
++            : null
++      const category =
++        typeof row?.category === "string" && row.category
++          ? row.category
++          : typeof row?.dimension === "string" && row.dimension
++            ? row.dimension
++            : "Unspecified"
++
++      return {
++        date,
++        category,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++}
++
+ function formatDateLabel(value) {
+@@
+-export function LineHistoryDashboard({ lineId, initialRangeDays = 14 }) {
+-  const [rangeDays, setRangeDays] = React.useState(initialRangeDays)
++export function LineHistoryDashboard({
++  lineId,
++  initialRangeDays = DEFAULT_RANGE_DAYS,
++  tableName = DEFAULT_TABLE,
++}) {
++  const resolvedTable = tableName ?? DEFAULT_TABLE
++  const [rangeDays, setRangeDays] = React.useState(initialRangeDays ?? DEFAULT_RANGE_DAYS)
+   const [dimension, setDimension] = React.useState(DIMENSION_OPTIONS[0].value)
+   const [metric, setMetric] = React.useState(METRIC_OPTIONS[0].value)
+   const [refreshToken, setRefreshToken] = React.useState(0)
+   const [quickView, setQuickView] = React.useState("date")
+   const [quickCategory, setQuickCategory] = React.useState(null)
+   const [state, setState] = React.useState({ data: null, isLoading: false, error: null })
+ 
+   React.useEffect(() => {
+     setState({ data: null, isLoading: true, error: null })
+-  }, [lineId])
++  }, [lineId, resolvedTable])
+@@
+-        const params = new URLSearchParams({ lineId: String(lineId), rangeDays: String(rangeDays) })
++        const params = new URLSearchParams({
++          lineId: String(lineId),
++          rangeDays: String(rangeDays),
++          table: resolvedTable,
++        })
+         const endpoint = buildBackendUrl("/line-dashboard/history", params)
+@@
+-  }, [lineId, rangeDays, refreshToken])
++  }, [lineId, rangeDays, refreshToken, resolvedTable])
+@@
+-    if (!state.data?.breakdowns) return []
+-    return DIMENSION_OPTIONS.filter((option) => {
+-      const rows = state.data.breakdowns?.[option.value]
+-      return Array.isArray(rows) && rows.length > 0
+-    })
++    if (!state.data?.breakdowns) return []
++    return DIMENSION_OPTIONS.filter((option) => {
++      const rows = normalizeBreakdownRecords(state.data.breakdowns?.[option.value])
++      return rows.length > 0
++    })
+   }, [state.data])
+@@
+-  const totalsData = React.useMemo(() => state.data?.totals ?? [], [state.data])
+-  const breakdownRecords = React.useMemo(
+-    () => (dimension ? state.data?.breakdowns?.[dimension] ?? [] : []),
++  const totalsData = React.useMemo(() => normalizeDailyTotals(state.data?.totals), [state.data])
++  const breakdownRecords = React.useMemo(
++    () => (dimension ? normalizeBreakdownRecords(state.data?.breakdowns?.[dimension]) : []),
+     [state.data, dimension]
+   )
+@@
+-  const quickViewRecords = React.useMemo(() => {
+-    if (quickView === "date") return []
+-    return quickView ? state.data?.breakdowns?.[quickView] ?? [] : []
+-  }, [quickView, state.data])
++  const quickViewRecords = React.useMemo(() => {
++    if (quickView === "date") return []
++    return quickView ? normalizeBreakdownRecords(state.data?.breakdowns?.[quickView]) : []
++  }, [quickView, state.data])
+@@
+-    for (const option of QUICK_VIEW_OPTIONS) {
+-      if (option.value === "date") continue
+-      const rows = state.data?.breakdowns?.[option.value]
+-      if (Array.isArray(rows) && rows.length > 0) {
+-        available.add(option.value)
+-      }
+-    }
++    state.data?.breakdowns &&
++      QUICK_VIEW_OPTIONS.forEach((option) => {
++        if (option.value === "date") return
++        const rows = normalizeBreakdownRecords(state.data.breakdowns?.[option.value])
++        if (rows.length > 0) {
++          available.add(option.value)
++        }
++      })
+     return available
+   }, [state.data, totalsData])
+*** End Patch
+[2m2025-11-17T10:34:12.423331Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:34:12.470906Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:34:12.470952Z[0m [32m INFO[0m ghost commit captured: cffb5cd685906c959939e30a2ae5f39ae1b6a587
+[2m2025-11-17T10:34:12.470958Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:34:47.198374Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+-const totalsChartConfig = {
+-  rowCount: { label: "진행 건수", color: "var(--chart-1)" },
+-  sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
+-}
+-
+-function coerceNumber(value) {
+-  const parsed = Number(value)
+-  return Number.isFinite(parsed) ? parsed : 0
+-}
+-
+-function normalizeDailyTotals(rawTotals) {
+-  if (!rawTotals) return []
+-
+-  const rows = Array.isArray(rawTotals)
+-    ? rawTotals
+-    : Object.entries(rawTotals).map(([date, entry]) => ({ date, ...entry }))
+-
+-  return rows
+-    .map((row) => {
+-      const date =
+-        typeof row?.date === "string" && row.date
+-          ? row.date
+-          : typeof row?.day === "string"
+-            ? row.day
+-            : null
+-      return {
+-        date,
+-        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
+-        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
+-      }
+-    })
+-    .filter((row) => typeof row.date === "string" && row.date)
+-    .sort((a, b) => a.date.localeCompare(b.date))
+-}
+-
+-function normalizeBreakdownRecords(rawRecords) {
+-  if (!rawRecords) return []
+-
+-  const rows = Array.isArray(rawRecords)
+-    ? rawRecords
+-    : Object.entries(rawRecords).map(([category, entry]) => ({
+-        category,
+-        ...entry,
+-      }))
+-
+-  return rows
+-    .map((row) => {
+-      const date =
+-        typeof row?.date === "string" && row.date
+-          ? row.date
+-          : typeof row?.day === "string"
+-            ? row.day
+-            : null
+-      const category =
+-        typeof row?.category === "string" && row.category
+-          ? row.category
+-          : typeof row?.dimension === "string" && row.dimension
+-            ? row.dimension
+-            : "Unspecified"
+-
+-      return {
+-        date,
+-        category,
+-        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
+-        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
+-      }
+-    })
+-    .filter((row) => typeof row.date === "string" && row.date)
+-}
++const totalsChartConfig = {
++  rowCount: { label: "진행 건수", color: "var(--chart-1)" },
++  sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
++}
++
++const DATE_CANDIDATE_KEYS = ["date", "day", "created_at", "updated_at", "timestamp", "ts"]
++
++function coerceNumber(value) {
++  const parsed = Number(value)
++  return Number.isFinite(parsed) ? parsed : 0
++}
++
++function normalizeDateLike(rawValue) {
++  if (!rawValue) return null
++
++  if (rawValue instanceof Date) {
++    return rawValue.toISOString().slice(0, 10)
++  }
++
++  if (typeof rawValue === "string") {
++    const trimmed = rawValue.trim()
++    if (!trimmed) return null
++
++    // Already formatted YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss
++    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
++      return trimmed.slice(0, 10)
++    }
++
++    const parsed = Date.parse(trimmed)
++    if (Number.isFinite(parsed)) {
++      return new Date(parsed).toISOString().slice(0, 10)
++    }
++  }
++
++  return null
++}
++
++function resolveRecordDate(row) {
++  if (!row || typeof row !== "object") return null
++
++  for (const key of DATE_CANDIDATE_KEYS) {
++    if (key in row) {
++      const resolved = normalizeDateLike(row[key])
++      if (resolved) return resolved
++    }
++
++    const upperKey = key.toUpperCase()
++    if (upperKey in row) {
++      const resolved = normalizeDateLike(row[upperKey])
++      if (resolved) return resolved
++    }
++  }
++
++  return null
++}
++
++function normalizeDailyTotals(rawTotals) {
++  if (!rawTotals) return []
++
++  const rows = Array.isArray(rawTotals)
++    ? rawTotals
++    : Object.entries(rawTotals).map(([date, entry]) => ({ date, ...entry }))
++
++  return rows
++    .map((row) => {
++      const date = resolveRecordDate(row)
++      return {
++        date,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++    .sort((a, b) => a.date.localeCompare(b.date))
++}
++
++function normalizeBreakdownRecords(rawRecords) {
++  if (!rawRecords) return []
++
++  const rows = Array.isArray(rawRecords)
++    ? rawRecords
++    : Object.entries(rawRecords).map(([category, entry]) => ({
++        category,
++        ...entry,
++      }))
++
++  return rows
++    .map((row) => {
++      const date = resolveRecordDate(row)
++      const category =
++        typeof row?.category === "string" && row.category
++          ? row.category
++          : typeof row?.dimension === "string" && row.dimension
++            ? row.dimension
++            : "Unspecified"
++
++      return {
++        date,
++        category,
++        rowCount: coerceNumber(row?.rowCount ?? row?.row_count),
++        sendJiraCount: coerceNumber(row?.sendJiraCount ?? row?.send_jira_count),
++      }
++    })
++    .filter((row) => typeof row.date === "string" && row.date)
++}
+*** End Patch
+[2m2025-11-17T10:37:53.520200Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T10:38:02.278999Z[0m [32m INFO[0m ERR: No such file or directory (os error 2)
+[2m2025-11-17T10:38:03.611196Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:38:03.697984Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:38:03.698031Z[0m [32m INFO[0m ghost commit captured: 2f3d70df4450f619b9ff59d4ed74d95c80690d17
+[2m2025-11-17T10:38:03.698038Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:40:00.909537Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:40:00.952029Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:40:00.952071Z[0m [32m INFO[0m ghost commit captured: 2c4d6ab6ddaba5371797b3aa23cdd6163fb404fb
+[2m2025-11-17T10:40:00.952076Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:40:15.954766Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '200,260p' apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T10:41:06.677089Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+-        try:
++        timestamp_param = sanitize_identifier(params.get("timestampColumn"))
++
++        try:
+             column_names = list_table_columns(table_name)
+             if not column_names:
+                 return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
+ 
+-            timestamp_column = pick_base_timestamp_column(column_names)
++            timestamp_column = (
++                find_column(column_names, timestamp_param) if timestamp_param else None
++            ) or pick_base_timestamp_column(column_names)
+             if not timestamp_column:
+                 return JsonResponse({"error": f'No timestamp-like column found in "{table_name}".'}, status=400)
+*** End Patch
+[2m2025-11-17T10:41:15.142590Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/pages/LineDashboardHistoryPage.jsx
+@@
+-  const tableName = useMemo(() => {
+-    const tableParam = searchParams.get("table")
+-    if (!tableParam) return undefined
+-    const trimmed = tableParam.trim()
+-    return trimmed.length > 0 ? trimmed : undefined
+-  }, [searchParams])
++  const tableName = useMemo(() => {
++    const tableParam = searchParams.get("table")
++    if (!tableParam) return undefined
++    const trimmed = tableParam.trim()
++    return trimmed.length > 0 ? trimmed : undefined
++  }, [searchParams])
++
++  const timestampColumn = useMemo(() => {
++    const param = searchParams.get("timestampColumn")
++    if (!param) return undefined
++    const trimmed = param.trim()
++    return trimmed.length > 0 ? trimmed : undefined
++  }, [searchParams])
+@@
+       <LineHistoryDashboard
+         lineId={lineId}
+         initialRangeDays={initialRangeDays}
+         tableName={tableName}
++        timestampColumn={timestampColumn}
+       />
+     </div>
+   )
+ }
+*** End Patch
+[2m2025-11-17T10:41:24.366845Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/history/LineHistoryDashboard.jsx
+@@
+ export function LineHistoryDashboard({
+   lineId,
+   initialRangeDays = DEFAULT_RANGE_DAYS,
+   tableName = DEFAULT_TABLE,
++  timestampColumn,
+ }) {
+   const resolvedTable = tableName ?? DEFAULT_TABLE
++  const resolvedTimestamp = timestampColumn?.trim() || undefined
+@@
+-        const params = new URLSearchParams({
+-          lineId: String(lineId),
+-          rangeDays: String(rangeDays),
+-          table: resolvedTable,
+-        })
++        const params = new URLSearchParams({
++          lineId: String(lineId),
++          rangeDays: String(rangeDays),
++          table: resolvedTable,
++        })
++        if (resolvedTimestamp) {
++          params.set("timestampColumn", resolvedTimestamp)
++        }
+@@
+-  }, [lineId, rangeDays, refreshToken, resolvedTable])
++  }, [lineId, rangeDays, refreshToken, resolvedTable, resolvedTimestamp])
+*** End Patch
+[2m2025-11-17T10:42:18.685816Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T10:42:18.834436Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T10:42:18.834478Z[0m [32m INFO[0m ghost commit captured: 21c153bd90a7750faced7e8d85fb9c6a100d267f
+[2m2025-11-17T10:42:18.834483Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T10:42:38.332338Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+     def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
+-        date_value = row.get("day") or row.get("date")
+-        date_str = str(date_value).strip() if isinstance(date_value, str) else None
+-        if not date_str and isinstance(date_value, datetime):
+-            date_str = date_value.date().isoformat()
++        date_str = LineHistoryView._coerce_date(row)
+         return {
+             "date": date_str,
+             "rowCount": to_int(row.get("row_count", 0)),
+             "sendJiraCount": to_int(row.get("send_jira_count", 0)),
+         }
+ 
+     @staticmethod
+     def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
+-        date_value = row.get("day") or row.get("date")
+-        date_str = str(date_value).strip() if isinstance(date_value, str) else None
+-        if not date_str and isinstance(date_value, datetime):
+-            date_str = date_value.date().isoformat()
++        date_str = LineHistoryView._coerce_date(row)
+         category = row.get("category") or row.get("dimension") or "Unspecified"
+         if not isinstance(category, str) or not category.strip():
+             category = "Unspecified"
+         return {
+             "date": date_str,
+             "category": category.strip() if isinstance(category, str) else str(category),
+             "rowCount": to_int(row.get("row_count", 0)),
+             "sendJiraCount": to_int(row.get("send_jira_count", 0)),
+         }
++
++    @staticmethod
++    def _coerce_date(row: Dict[str, Any]) -> Optional[str]:
++        """다양한 키/형태의 날짜 값을 YYYY-MM-DD 문자열로 통일."""
++
++        if not isinstance(row, dict):
++            return None
++
++        candidates = [
++            row.get("day"),
++            row.get("date"),
++            row.get("created_at"),
++            row.get("updated_at"),
++            row.get("timestamp"),
++            row.get("ts"),
++        ]
++
++        for value in candidates:
++            if isinstance(value, str) and value.strip():
++                text = value.strip()
++                if DATE_ONLY_REGEX.match(text[:10]):
++                    return text[:10]
++                try:
++                    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
++                    return parsed.date().isoformat()
++                except ValueError:
++                    continue
++            if isinstance(value, datetime):
++                return value.date().isoformat()
++
++        return None
+*** End Patch
+[2m2025-11-17T11:08:49.464330Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-17T11:08:49.511658Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-17T11:08:49.511700Z[0m [32m INFO[0m ghost commit captured: 84dde9e2add5667f8d17580dcceab11e07cb8e54
+[2m2025-11-17T11:08:49.511705Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-17T11:08:55.376011Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"metro_current_step\" -n"]}
+[2m2025-11-17T11:09:05.414520Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js"]}
+[2m2025-11-17T11:09:10.788791Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx"],"workdir":"/home/pjw75/tailwind"}
+[2m2025-11-17T11:09:24.906550Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '220,480p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx"]}
+[2m2025-11-17T11:09:31.826301Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+-const CATEGORY_COLORS = [
+-  "var(--chart-1)",
+-  "var(--chart-2)",
+-  "var(--chart-3)",
+-  "var(--chart-4)",
+-  "var(--chart-5)",
+-  "var(--primary)",
+-]
+-
+-const totalsChartConfig = {
+-  rowCount: { label: "진행 건수", color: "var(--chart-1)" },
+-  sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
+-}
++const CATEGORY_COLORS = [
++  "var(--chart-1)",
++  "var(--chart-2)",
++  "var(--chart-3)",
++  "var(--chart-4)",
++  "var(--chart-5)",
++  "var(--primary)",
++]
++
++const totalsChartConfig = {
++  rowCount: { label: "진행 건수", color: "var(--chart-1)" },
++  sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
++}
+*** End Patch
+[2m2025-11-17T11:09:43.905123Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"bg-blue\" -n src/features/line-dashboard/components/data-table/utils/formatters.jsx"]}
+[2m2025-11-17T11:09:50.187470Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+ function getStepPillClasses({ isMain, isCurrent }) {
+   return cn(
+     "px-2 py-1 text-xs font-semibold uppercase tracking-tight border transition-colors",
+     isMain ? "rounded-sm" : "rounded-full",
+     // 색상: 현재 스텝이면 연파랑, 아니면 기본
+-    isCurrent
+-      ? "bg-blue-400 border-blue-600 text-blue-900"
+-      : "bg-white border-border text-foreground"
++    isCurrent
++      ? "bg-primary/80 border-primary text-primary-foreground"
++      : "bg-card border-border text-foreground"
+   )
+ }
+@@
+   const labelClasses = {
+-    MAIN: "text-[10px] leading-none text-muted-foreground",
+-    END: "text-[10px] leading-none text-muted-foreground",
+-    CustomEND: "text-[10px] leading-none font-semibold text-blue-500",
+-    "인폼예정": "text-[10px] leading-none text-gray-500",
+-    "Inform 완료": "text-[10px] leading-none font-semibold text-blue-600",
++    MAIN: "text-[10px] leading-none text-muted-foreground",
++    END: "text-[10px] leading-none text-muted-foreground",
++    CustomEND: "text-[10px] leading-none font-semibold text-primary",
++    "인폼예정": "text-[10px] leading-none text-muted-foreground",
++    "Inform 완료": "text-[10px] leading-none font-semibold text-primary",
+   }
+*** End Patch
+[2m2025-11-17T11:09:57.797951Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","sed -n '190,250p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx"]}
+[2m2025-11-17T11:10:06.225276Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+-function getStepPillClasses({ isMain, isCurrent }) {
+-  return cn(
+-    "border px-2 py-0.5 text-xs font-medium leading-none dark:text-black",
+-    // 모서리: main이면 사각형, 아니면 pill
+-    isMain ? "rounded-sm" : "rounded-full",
+-    // 색상: 현재 스텝이면 연파랑, 아니면 기본
+-    isCurrent
+-      ? "bg-blue-400 border-blue-600 text-blue-900"
+-      : "bg-white border-border text-foreground"
+-  )
+-}
++function getStepPillClasses({ isMain, isCurrent }) {
++  return cn(
++    "border px-2 py-0.5 text-xs font-medium leading-none transition-colors",
++    isMain ? "rounded-sm" : "rounded-full",
++    isCurrent
++      ? "bg-primary border-primary text-primary-foreground"
++      : "bg-card border-border text-foreground"
++  )
++}
+*** End Patch
+[2m2025-11-17T11:10:27.800423Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"CustomEND\" src/features/line-dashboard/components/data-table/utils/formatters.jsx"]}
+[2m2025-11-17T11:10:38.057789Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+   const labelClasses = {
+     MAIN: "text-[10px] leading-none text-muted-foreground",
+     END: "text-[10px] leading-none text-muted-foreground",
+-    CustomEND: "text-[10px] leading-none font-semibold text-blue-500",
+-    "인폼예정": "text-[10px] leading-none text-gray-500",
+-    "Inform 완료": "text-[10px] leading-none font-semibold text-blue-600",
++    CustomEND: "text-[10px] leading-none font-semibold text-primary",
++    "인폼예정": "text-[10px] leading-none text-muted-foreground",
++    "Inform 완료": "text-[10px] leading-none font-semibold text-primary",
+   }
+*** End Patch
+[2m2025-11-17T11:10:53.369623Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && rg -n \"bg-blue\" src/features/line-dashboard/components/data-table/column-defs/renderers.jsx"]}
+[2m2025-11-17T11:10:58.260402Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+-          <div
+-            className="h-full rounded-full bg-blue-500 transition-all"
+-            style={{ width: `${percent}%` }}
+-            role="presentation"
+-          />
++          <div
++            className="h-full rounded-full bg-primary transition-all"
++            style={{ width: `${percent}%` }}
++            role="presentation"
++          />
+*** End Patch
+[2m2025-11-17T11:11:10.233691Z[0m [32m INFO[0m ToolCall: shell {"command":["bash","-lc","cd apps/web && git status -sb"]}
