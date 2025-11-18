@@ -1,7 +1,7 @@
 // src/features/line-dashboard/components/data-table/utils/formatters.js
 // 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
 
-import { useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { IconArrowNarrowRight } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 
@@ -241,15 +241,16 @@ function MetroStepFlowCell({ rowData }) {
     scrollLeft: 0,
   })
 
-  const handleMouseDown = (e) => {
+  const startDrag = useCallback((event) => {
     const el = containerRef.current
     if (!el) return
+    if (event.button !== 0) return
     // 서버 환경 보호 (이론상 마우스 이벤트는 브라우저에서만 발생하지만, 안전하게 한 번 더 가드)
     if (typeof window === "undefined") return
 
     const state = dragStateRef.current
     state.isDragging = true
-    state.startX = e.clientX
+    state.startX = event.clientX
     state.scrollLeft = el.scrollLeft
 
     // 👉 윈도우 전체에 mousemove / mouseup 리스너 등록
@@ -270,7 +271,33 @@ function MetroStepFlowCell({ rowData }) {
 
     window.addEventListener("mousemove", handleMouseMoveWindow)
     window.addEventListener("mouseup", handleMouseUpWindow)
-  }
+  }, [])
+
+  const handleMouseDown = useCallback(
+    (event) => {
+      startDrag(event)
+    },
+    [startDrag]
+  )
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const cell = container.closest("td")
+    if (!cell) return
+
+    const handleMouseDownOnCell = (event) => {
+      const root = containerRef.current
+      if (!root) return
+      if (root.contains(event.target)) return
+      startDrag(event)
+    }
+
+    cell.addEventListener("mousedown", handleMouseDownOnCell)
+    return () => {
+      cell.removeEventListener("mousedown", handleMouseDownOnCell)
+    }
+  }, [startDrag])
 
   // ─────────────────────────────────────────────
   // 아래부터는 기존 renderMetroStepFlow 로직

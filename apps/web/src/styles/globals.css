@@ -52,3 +52,20 @@
   scrollbar-width: none;
   /* Firefox */
 }
+
+/* Quick filter dropdown list colors follow theme tokens */
+.quick-filter-select option {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+
+.quick-filter-select option:hover,
+.quick-filter-select option:focus {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.quick-filter-select option:checked {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}

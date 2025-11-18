@@ -6,6 +6,11 @@ import { cn } from "@/lib/utils"
 import { GlobalFilter } from "./GlobalFilter"
 import { isMultiSelectFilter } from "./quickFilters"
 
+const DROPDOWN_SECTION_KEYS = new Set(["sdwt_prod", "sample_type", "user_sdwt_prod"])
+const FIELDSET_CLASS = "flex flex-col rounded-xl p-1 px-3"
+
+const isNil = (value) => value === null || value === undefined
+
 // 여러 퀵 필터 섹션과 글로벌 검색창을 한 번에 그려주는 컴포넌트입니다.
 export function QuickFilters({
   sections,
@@ -37,102 +42,31 @@ export function QuickFilters({
   const sectionBlocks = sections.map((section) => {
     const isMulti = isMultiSelectFilter(section.key)
     const current = filters[section.key]
-    const selectedValues = isMulti
-      ? Array.isArray(current)
-        ? current
-        : []
-      : current === null || current === undefined
-        ? []
-        : [current]
-    const allSelected = isMulti ? selectedValues.length === 0 : current === null || current === undefined
+    const selectedValues = getSelectedValues(isMulti, current)
+    const allSelected = isMulti ? selectedValues.length === 0 : isNil(current)
     const legendId = `legend-${section.key}`
 
-    const shouldDisplayAsDropdown =
-      section.key === "sdwt_prod" ||
-      section.key === "sample_type" ||
-      section.key === "user_sdwt_prod"
-
-    if (shouldDisplayAsDropdown) {
+    if (DROPDOWN_SECTION_KEYS.has(section.key)) {
       return (
-        <fieldset
+        <DropdownQuickFilterSection
           key={section.key}
-          className="flex flex-col rounded-xl p-1 px-3"
-          aria-labelledby={legendId}
-        >
-          <legend
-            id={legendId}
-            className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            {section.label}
-          </legend>
-
-          <select
-            value={current ?? ""}
-            onChange={(event) => onToggle(section.key, event.target.value || null)}
-            className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">전체</option>
-            {section.options.map((option) => (
-              <option key={`${section.key}-${String(option.value)}`} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </fieldset>
+          section={section}
+          legendId={legendId}
+          current={current}
+          onToggle={onToggle}
+        />
       )
     }
 
     return (
-      <fieldset
+      <ButtonQuickFilterSection
         key={section.key}
-        className="flex flex-col rounded-xl p-1 px-3"
-        aria-labelledby={legendId}
-      >
-        <legend
-          id={legendId}
-          className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {section.label}
-        </legend>
-
-        <div className="flex flex-wrap items-center">
-          <button
-            type="button"
-            onClick={() => onToggle(section.key, null)}
-            className={cn(
-              "h-8 px-3 text-xs font-medium border border-input bg-background",
-              "-ml-px first:ml-0 first:rounded-l last:rounded-r",
-              "transition-colors",
-              allSelected
-                ? "relative z-[1] border-primary bg-primary/10 text-primary"
-                : "hover:bg-muted"
-            )}
-          >
-            전체
-          </button>
-
-          {section.options.map((option) => {
-            const isActive = selectedValues.includes(option.value)
-            return (
-              <button
-                key={`${section.key}-${String(option.value)}`}
-                type="button"
-                onClick={() => onToggle(section.key, option.value)}
-                className={cn(
-                  "h-8 px-3 text-xs font-medium border border-input bg-background",
-                  "-ml-px first:ml-0 first:rounded-l last:rounded-r",
-                  "transition-colors",
-                  isActive
-                    ? "relative z-[1] border-primary bg-primary/10 text-primary"
-                    : "hover:bg-muted"
-                )}
-              >
-                {option.label}
-              </button>
-            )
-          })}
-        </div>
-      </fieldset>
+        section={section}
+        legendId={legendId}
+        allSelected={allSelected}
+        selectedValues={selectedValues}
+        onToggle={onToggle}
+      />
     )
   })
 
@@ -141,7 +75,7 @@ export function QuickFilters({
     sectionBlocks.push(
       <fieldset
         key="__global__"
-        className="flex flex-col rounded-xl p-1 px-3"
+        className={FIELDSET_CLASS}
         aria-labelledby="legend-global-filter"
       >
         <legend
@@ -209,6 +143,101 @@ export function QuickFilters({
           </div>
         </div>
       )}
+    </fieldset>
+  )
+}
+
+function getSelectedValues(isMulti, current) {
+  if (isMulti) {
+    return Array.isArray(current) ? current : []
+  }
+  return isNil(current) ? [] : [current]
+}
+
+function DropdownQuickFilterSection({ section, legendId, current, onToggle }) {
+  const hasDropdownValue = !isNil(current) && String(current).length > 0
+
+  return (
+    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
+      <legend
+        id={legendId}
+        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        {section.label}
+      </legend>
+
+      <select
+        value={current ?? ""}
+        onChange={(event) => onToggle(section.key, event.target.value || null)}
+        className={cn(
+          "quick-filter-select h-8 w-40 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          hasDropdownValue && "border-primary bg-primary/10 text-primary"
+        )}
+      >
+        <option value="">전체</option>
+        {section.options.map((option) => (
+          <option key={`${section.key}-${String(option.value)}`} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </fieldset>
+  )
+}
+
+function ButtonQuickFilterSection({
+  section,
+  legendId,
+  selectedValues,
+  allSelected,
+  onToggle,
+}) {
+  return (
+    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
+      <legend
+        id={legendId}
+        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        {section.label}
+      </legend>
+
+      <div className="flex flex-wrap items-center">
+        <button
+          type="button"
+          onClick={() => onToggle(section.key, null)}
+          className={cn(
+            "h-8 px-3 text-xs font-medium border border-input bg-background",
+            "-ml-px first:ml-0 first:rounded-l last:rounded-r",
+            "transition-colors",
+            allSelected
+              ? "relative z-[1] border-primary bg-primary/10 text-primary"
+              : "hover:bg-muted"
+          )}
+        >
+          전체
+        </button>
+
+        {section.options.map((option) => {
+          const isActive = selectedValues.includes(option.value)
+          return (
+            <button
+              key={`${section.key}-${String(option.value)}`}
+              type="button"
+              onClick={() => onToggle(section.key, option.value)}
+              className={cn(
+                "h-8 px-3 text-xs font-medium border border-input bg-background",
+                "-ml-px first:ml-0 first:rounded-l last:rounded-r",
+                "transition-colors",
+                isActive
+                  ? "relative z-[1] border-primary bg-primary/10 text-primary"
+                  : "hover:bg-muted"
+              )}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
     </fieldset>
   )
 }

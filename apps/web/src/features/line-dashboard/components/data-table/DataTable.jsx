@@ -352,6 +352,7 @@ export function DataTable({ lineId }) {
           const textAlignClass = getTextAlignClass(align)
           const width = cell.column.getSize()
           const widthPx = `${width}px`
+          const isProcessFlowCell = cell.column.id === "process_flow"
 
           const raw = cell.getValue()
           const content = isNullishDisplay(raw)
@@ -366,7 +367,8 @@ export function DataTable({ lineId }) {
               className={cn(
                 "align-center",
                 textAlignClass,
-                !isEditable && "caret-transparent focus:outline-none"
+                !isEditable && "caret-transparent focus:outline-none",
+                isProcessFlowCell && "cursor-grab select-none active:cursor-grabbing"
               )}
             >
               {/* 내부는 폭 지정 없이 텍스트 오버플로 처리 */}
