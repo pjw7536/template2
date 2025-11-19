@@ -1,4 +1,5 @@
-// src/routes/pages/NotFoundPage.jsx
+// src/features/errors/pages/NotFoundPage.jsx
+// 정의되지 않은 경로 접근 시 노출되는 404 페이지입니다.
 import { Link } from "react-router-dom"
 
 export function NotFoundPage() {

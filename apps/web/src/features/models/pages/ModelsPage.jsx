@@ -1,4 +1,5 @@
-// src/routes/pages/ModelsPage.jsx
+// src/features/models/pages/ModelsPage.jsx
+// 모델/실험 현황을 붙일 자리 표시자 페이지입니다.
 export function ModelsPage() {
   return (
     <section className="rounded-xl border bg-card p-6 shadow-sm">

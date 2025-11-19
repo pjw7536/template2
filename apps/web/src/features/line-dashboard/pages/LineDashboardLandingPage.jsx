@@ -1,4 +1,5 @@
-// src/routes/pages/LineDashboardLandingPage.jsx
+// src/features/line-dashboard/pages/LineDashboardLandingPage.jsx
+// 라인별 대시보드로 진입했을 때 기본 소개를 보여주는 페이지입니다.
 import { useParams } from "react-router-dom"
 
 export function LineDashboardLandingPage() {

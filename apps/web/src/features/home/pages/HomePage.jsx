@@ -1,4 +1,5 @@
-// src/routes/pages/HomePage.jsx
+// src/features/home/pages/HomePage.jsx
+// 홈 화면의 안내 섹션으로, AppShell 아래에서 가장 먼저 보여집니다.
 export function HomePage() {
   return (
     <section className="relative h-[600px] overflow-hidden rounded-xl border shadow-sm">

@@ -1,4 +1,4 @@
-// src/components/theme-color-selector.jsx
+// src/components/common/theme-color-selector.jsx
 import { Palette, Check } from "lucide-react"
 
 import { Button } from "@/components/ui/button"

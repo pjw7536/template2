@@ -5,8 +5,7 @@ import { memo } from "react"
 
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { ThemeColorSelector } from "@/components/theme-color-selector"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { ThemeColorSelector, ThemeToggle } from "@/components/common"
 
 import { DynamicBreadcrumb } from "./dynamic-breadcrumb"
 

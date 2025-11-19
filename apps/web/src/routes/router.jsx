@@ -2,15 +2,18 @@
 import { createBrowserRouter } from "react-router-dom"
 
 import { ProtectedAppLayout } from "./layouts/ProtectedAppLayout"
-import { HomePage } from "./pages/HomePage"
-import { LineDashboardLandingPage } from "./pages/LineDashboardLandingPage"
-import { LineDashboardOverviewPage } from "./pages/LineDashboardOverviewPage"
-import { LineDashboardHistoryPage } from "./pages/LineDashboardHistoryPage"
-import { LineDashboardSettingsPage } from "./pages/LineDashboardSettingsPage"
-import { LineDashboardStatusPage } from "./pages/LineDashboardStatusPage"
-import { LoginPage } from "./pages/LoginPage"
-import { ModelsPage } from "./pages/ModelsPage"
-import { NotFoundPage } from "./pages/NotFoundPage"
+
+import { LoginPage } from "@/features/auth"
+import { NotFoundPage } from "@/features/errors"
+import { HomePage } from "@/features/home"
+import {
+  LineDashboardHistoryPage,
+  LineDashboardLandingPage,
+  LineDashboardOverviewPage,
+  LineDashboardSettingsPage,
+  LineDashboardStatusPage,
+} from "@/features/line-dashboard"
+import { ModelsPage } from "@/features/models"
 
 export const router = createBrowserRouter([
   {

@@ -1,4 +1,5 @@
-// src/routes/pages/LineDashboardHistoryPage.jsx
+// src/features/line-dashboard/pages/LineDashboardHistoryPage.jsx
+// 과거 지표를 LineHistoryDashboard 컴포넌트로 감싸는 페이지입니다.
 import { useMemo } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 
