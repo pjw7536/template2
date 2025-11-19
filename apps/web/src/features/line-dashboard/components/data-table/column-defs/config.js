@@ -57,6 +57,7 @@ export const DEFAULT_CONFIG = {
     sample_group: 200,
     lot_id: 80,
     status: 150,
+    process_flow: 360,
     comment: 320,
     needtosend: 40,
     send_jira: 40,
@@ -110,16 +111,6 @@ export const DEFAULT_CONFIG = {
     knoxid: "left",
     user_sdwt_prod: "left",
   },
-  autoWidth: {
-    process_flow: true,
-    comment: false,
-    sdwt_prod: true,
-    ppid: true,
-    sample_type: true,
-    user_sdwt_prod: true,
-    knoxid: true,
-    knox_id: true,
-  },
 }
 
 // 사용자가 전달한 설정을 기본값과 합쳐 안전하게 반환합니다.
@@ -134,6 +125,5 @@ export function mergeConfig(userConfig) {
     processFlowHeader: overrides.processFlowHeader ?? DEFAULT_CONFIG.processFlowHeader,
     cellAlign: { ...DEFAULT_CONFIG.cellAlign, ...(overrides.cellAlign ?? {}) },
     headerAlign: { ...DEFAULT_CONFIG.headerAlign, ...(overrides.headerAlign ?? {}) },
-    autoWidth: { ...DEFAULT_CONFIG.autoWidth, ...(overrides.autoWidth ?? {}) },
   }
 }

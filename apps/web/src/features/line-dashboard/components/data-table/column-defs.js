@@ -7,7 +7,7 @@ import { mergeConfig } from "./column-defs/config"
 import { resolveAlignment } from "./column-defs/alignment"
 import { getSortingFnForKey } from "./column-defs/sorting"
 import { renderCellByKey } from "./column-defs/renderers.jsx"
-import { computeDynamicWidthHints, resolveColumnSizes } from "./column-defs/dynamicWidth"
+import { resolveColumnSizes } from "./column-defs/dynamicWidth"
 import {
   makeStepFlowColumn,
   pickStepColumnsWithIndex,
@@ -15,7 +15,7 @@ import {
 } from "./column-defs/steps"
 
 // 단일 컬럼 정의 객체를 생성합니다.
-function makeColumnDef(colKey, config, sampleValueFromFirstRow, dynamicWidthHints) {
+function makeColumnDef(colKey, config, sampleValueFromFirstRow) {
   const label = config.labels?.[colKey] ?? colKey
   const enableSorting =
     typeof config.sortable?.[colKey] === "boolean"
@@ -26,12 +26,7 @@ function makeColumnDef(colKey, config, sampleValueFromFirstRow, dynamicWidthHint
     ? getSortingFnForKey(colKey, config, sampleValueFromFirstRow)
     : undefined
 
-  const { size, minSize, maxSize } = resolveColumnSizes(
-    colKey,
-    config,
-    sampleValueFromFirstRow,
-    dynamicWidthHints
-  )
+  const { size, minSize, maxSize } = resolveColumnSizes(colKey, config)
   const alignment = resolveAlignment(colKey, config, sampleValueFromFirstRow)
 
   return {
@@ -52,9 +47,8 @@ function makeColumnDef(colKey, config, sampleValueFromFirstRow, dynamicWidthHint
 }
 
 // 데이터 테이블에서 사용할 전체 컬럼 정의 배열을 생성합니다.
-export function createColumnDefs(rawColumns, userConfig, firstRowForTypeGuess, rowsForSizing) {
+export function createColumnDefs(rawColumns, userConfig, firstRowForTypeGuess) {
   const config = mergeConfig(userConfig)
-  const dynamicWidthHints = computeDynamicWidthHints(rowsForSizing, config)
   const columns = Array.isArray(rawColumns) ? rawColumns : []
 
   const stepCols = pickStepColumnsWithIndex(columns)
@@ -65,18 +59,12 @@ export function createColumnDefs(rawColumns, userConfig, firstRowForTypeGuess, r
 
   const defs = baseKeys.map((key) => {
     const sample = firstRowForTypeGuess ? firstRowForTypeGuess?.[key] : undefined
-    return makeColumnDef(key, config, sample, dynamicWidthHints)
+    return makeColumnDef(key, config, sample)
   })
 
   if (combineSteps) {
     const headerText = config.labels?.process_flow ?? config.processFlowHeader ?? "process_flow"
-    const stepFlowCol = makeStepFlowColumn(
-      stepCols,
-      headerText,
-      config,
-      firstRowForTypeGuess,
-      dynamicWidthHints
-    )
+    const stepFlowCol = makeStepFlowColumn(stepCols, headerText, config, firstRowForTypeGuess)
 
     const insertionIndex = stepCols.length
       ? Math.min(...stepCols.map(({ index }) => index))

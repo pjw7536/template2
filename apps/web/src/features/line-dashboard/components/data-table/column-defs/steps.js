@@ -30,15 +30,10 @@ function getSampleValueForColumns(row, columns) {
 }
 
 // 스텝 통합 컬럼 정의를 실제로 생성합니다.
-export function makeStepFlowColumn(stepCols, label, config, firstRow, dynamicWidthHints) {
+export function makeStepFlowColumn(stepCols, label, config, firstRow) {
   const sample = getSampleValueForColumns(firstRow, stepCols)
   const alignment = resolveAlignment("process_flow", config, sample)
-  const { size, minSize, maxSize } = resolveColumnSizes(
-    "process_flow",
-    config,
-    sample,
-    dynamicWidthHints
-  )
+  const { size, minSize, maxSize } = resolveColumnSizes("process_flow", config)
 
   return {
     id: "process_flow",

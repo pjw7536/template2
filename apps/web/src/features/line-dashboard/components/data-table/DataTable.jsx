@@ -4,14 +4,14 @@
  * DataTable.jsx (React 19 최적화 버전)
  * ---------------------------------------------------------------------------
  * ✅ 핵심
- * 1) "현재 보이는 데이터(필터 반영 filteredRows)" 기준으로 process_flow / comment 자동폭 계산
+ * 1) 컬럼 폭은 config에서 수동으로 정의합니다. (동적 자동폭 제거)
  * 2) <colgroup> + TH/TD width 동기화 ⇒ 컬럼 전체 폭이 일관되게 변함
  * 3) TanStack Table v8: 정렬/검색/컬럼 사이징/페이지네이션/퀵필터 그대로 유지
  * 4) React 19: useMemo/useCallback 최소화 (필요한 지점만 사용)
  *
  * ⚠️ 팁
- * - auto width 계산은 column-defs.jsx 내부의 createColumnDefs가 담당합니다.
- *   여기서는 그때그때 "filteredRows"를 rowsForSizing으로 넘겨주면 끝!
+ * - 폭 설정은 column-defs.jsx 내부의 createColumnDefs가 config.width 값을 사용해 처리합니다.
+ *   화면에서 필요한 경우 config만 조정하면 됩니다.
  */
 
 import * as React from "react"
@@ -45,7 +45,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-import { STATUS_LABELS } from "../../constants/status-labels"
+import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../../constants/status-labels"
 import { StatusDistributionCard } from "./StatusDistributionCard"
 import { createColumnDefs } from "./column-defs"
 import { normalizeStatus } from "./column-defs/normalizers"
@@ -89,7 +89,8 @@ const LABELS = {
   goLast: "Go to last page",
 }
 
-const STATUS_CHART_COLORS = [
+const STATUS_ORDER_INDEX = new Map(STATUS_SEQUENCE.map((status, index) => [status, index]))
+const STATUS_CHART_FALLBACK_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
   "var(--chart-3)",
@@ -150,14 +151,27 @@ export function DataTable({ lineId }) {
     })
 
     const statusOptions = Array.isArray(statusSection?.options) ? statusSection.options : []
-    const orderIndex = new Map(statusOptions.map((option, index) => [option.value, index]))
+    const fallbackOrderIndex = new Map(statusOptions.map((option, index) => [option.value, index]))
     const optionLabelMap = new Map(statusOptions.map((option) => [option.value, option.label]))
 
     const entries = Array.from(counts.entries())
     entries.sort((a, b) => {
-      const orderA = orderIndex.has(a[0]) ? orderIndex.get(a[0]) : Number.POSITIVE_INFINITY
-      const orderB = orderIndex.has(b[0]) ? orderIndex.get(b[0]) : Number.POSITIVE_INFINITY
-      if (orderA !== orderB) return orderA - orderB
+      const statusA = a[0]
+      const statusB = b[0]
+      const seqOrderA = STATUS_ORDER_INDEX.has(statusA)
+        ? STATUS_ORDER_INDEX.get(statusA)
+        : Number.POSITIVE_INFINITY
+      const seqOrderB = STATUS_ORDER_INDEX.has(statusB)
+        ? STATUS_ORDER_INDEX.get(statusB)
+        : Number.POSITIVE_INFINITY
+      if (seqOrderA !== seqOrderB) return seqOrderA - seqOrderB
+      const fallbackOrderA = fallbackOrderIndex.has(statusA)
+        ? fallbackOrderIndex.get(statusA)
+        : Number.POSITIVE_INFINITY
+      const fallbackOrderB = fallbackOrderIndex.has(statusB)
+        ? fallbackOrderIndex.get(statusB)
+        : Number.POSITIVE_INFINITY
+      if (fallbackOrderA !== fallbackOrderB) return fallbackOrderA - fallbackOrderB
       if (a[0] === UNKNOWN_STATUS_KEY && b[0] !== UNKNOWN_STATUS_KEY) return 1
       if (a[0] !== UNKNOWN_STATUS_KEY && b[0] === UNKNOWN_STATUS_KEY) return -1
       return a[0].localeCompare(b[0])
@@ -169,11 +183,14 @@ export function DataTable({ lineId }) {
         (status === UNKNOWN_STATUS_KEY
           ? "Unknown"
           : STATUS_LABELS[status] ?? status?.replace(/_/g, " ") ?? "Unknown")
+      const fill =
+        STATUS_COLORS[status] ??
+        STATUS_CHART_FALLBACK_COLORS[index % STATUS_CHART_FALLBACK_COLORS.length]
       return {
         status,
         label,
         value,
-        fill: STATUS_CHART_COLORS[index % STATUS_CHART_COLORS.length],
+        fill,
       }
     })
 
@@ -187,15 +204,11 @@ export function DataTable({ lineId }) {
 
   /* ──────────────────────────────────────────────────────────────────────────
    * 3) React 19 스타일: 필요한 지점만 useMemo
-   *    - 자동폭 계산의 기준은 "현재 보이는 데이터"여야 체감이 좋습니다.
    * ──────────────────────────────────────────────────────────────────────── */
-  const firstVisibleRow = filteredRows[0]
-
-  // ✅ 컬럼 정의: filteredRows를 rowsForSizing으로 넘겨 "현재 보이는 데이터 기준 자동폭" 실현
-  const columnDefs = React.useMemo(
-    () => createColumnDefs(columns, undefined, firstVisibleRow, filteredRows),
-    [columns, firstVisibleRow, filteredRows]
-  )
+  const columnDefs = React.useMemo(() => {
+    const firstVisibleRow = filteredRows?.[0]
+    return createColumnDefs(columns, undefined, firstVisibleRow)
+  }, [columns, filteredRows])
 
   // 글로벌 필터 함수: 컬럼 스키마가 바뀔 때만 재생성
   const globalFilterFn = React.useMemo(
@@ -210,7 +223,7 @@ export function DataTable({ lineId }) {
   /* TanStack Table 인스턴스 */
   const table = useReactTable({
     data: filteredRows,               // ✅ 보이는 데이터로 테이블 구성
-    columns: columnDefs,              // ✅ 동적 폭 반영된 컬럼 정의
+    columns: columnDefs,              // ✅ config 기반 폭을 사용하는 컬럼 정의
     meta: tableMeta,
     state: {
       sorting,

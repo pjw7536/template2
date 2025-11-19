@@ -26,11 +26,10 @@ import { timeFormatter } from "./data-table/utils/constants"
 
 const LABELS = {
   titleSuffix: "Line E-SOP Settings",
-  subtitle: "Manage custom end step overrides for drone_early_inform_v3.",
-  addTitle: "Add override",
-  addDescription: "Leave Custom End Step empty to clear any override.",
+  subtitle: "E-SOP가 종료 되기전에 미리 Inform할 Step을 설정합니다.",
+  addTitle: "Step별 E-SOP Custom End Step 추가",
   mainStep: "Main Step",
-  customEndStep: "Custom End Step",
+  customEndStep: "Custom End Step (조기 inform 받을 Step)",
   addButton: "Add",
   refresh: "Refresh",
   updated: "Updated",
@@ -494,7 +493,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
         </div>
 
-        <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={handleCreate}>
+        <form className="flex flex-col gap-3 flex-row items-end" onSubmit={handleCreate}>
           <div className="flex-1 space-y-1">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
               {LABELS.mainStep}
@@ -524,7 +523,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
 
           <Button
             type="submit"
-            className="md:self-start"
+            className="md:self-end"
             disabled={isCreating || !lineId}
           >
             <IconPlus className="mr-1 size-4" />
@@ -541,19 +540,31 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
 
       <div className="flex-1 min-h-0 rounded-lg border bg-background">
         <TableContainer className="max-h-full overflow-auto">
-          <Table stickyHeader>
+          <Table stickyHeader className="w-full table-fixed">
+            {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+            <colgroup>
+              <col className="w-10" />  {/* ID */}
+              <col className="w-24" />  {/* Main Step */}
+              <col className="w-24" />  {/* Custom End Step */}
+              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
+            </colgroup>
+
             <TableHeader>
               <TableRow>
-                <TableHead className="w-24">ID</TableHead>
-                <TableHead>{LABELS.mainStep}</TableHead>
-                <TableHead>{LABELS.customEndStep}</TableHead>
-                <TableHead className="w-44 text-right">Actions</TableHead>
+                <TableHead className="text-center">ID</TableHead>
+                <TableHead className="text-center">{LABELS.mainStep}</TableHead>
+                <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
+                <TableHead className="text-right"></TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
               {isLoading && !hasLoadedOnce && (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="h-24 text-center text-sm text-muted-foreground"
+                  >
                     {LABELS.loading}
                   </TableCell>
                 </TableRow>
@@ -561,7 +572,10 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
 
               {!isLoading && entries.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="h-24 text-center text-sm text-muted-foreground"
+                  >
                     {lineId ? LABELS.empty : "Select a line to view overrides."}
                   </TableCell>
                 </TableRow>
@@ -575,26 +589,39 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                 return (
                   <React.Fragment key={entry.id}>
                     <TableRow>
-                      <TableCell className="font-mono text-xs text-muted-foreground">{entry.id}</TableCell>
-                      <TableCell>
+                      {/* ✅ ID 가운데 정렬 */}
+                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                        {entry.id}
+                      </TableCell>
+
+                      {/* ✅ Main Step 가운데 정렬 */}
+                      <TableCell className="text-center">
                         {isEditing ? (
                           <Input
                             value={editDraft.mainStep}
-                            onChange={(event) => handleEditChange("mainStep", event.target.value)}
+                            onChange={(event) =>
+                              handleEditChange("mainStep", event.target.value)
+                            }
                             maxLength={50}
                             disabled={isSaving}
+                            className="text-center"
                           />
                         ) : (
                           <span className="font-medium">{entry.mainStep}</span>
                         )}
                       </TableCell>
-                      <TableCell>
+
+                      {/* ✅ Custom End Step 가운데 정렬 */}
+                      <TableCell className="text-center">
                         {isEditing ? (
                           <Input
                             value={editDraft.customEndStep ?? ""}
-                            onChange={(event) => handleEditChange("customEndStep", event.target.value)}
+                            onChange={(event) =>
+                              handleEditChange("customEndStep", event.target.value)
+                            }
                             maxLength={50}
                             disabled={isSaving}
+                            className="text-center"
                           />
                         ) : entry.customEndStep && entry.customEndStep.trim().length > 0 ? (
                           entry.customEndStep
@@ -602,8 +629,10 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-2">
+
+                      {/* ✅ Actions도 가운데 정렬 */}
+                      <TableCell className="text-end">
+                        <div className="inline-flex items-center justify-ends gap-2">
                           {isEditing ? (
                             <>
                               <Button
@@ -651,9 +680,13 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                         </div>
                       </TableCell>
                     </TableRow>
+
                     {rowError && (
                       <TableRow>
-                        <TableCell colSpan={4} className="bg-destructive/5 px-4 py-2 text-xs text-destructive">
+                        <TableCell
+                          colSpan={4}
+                          className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                        >
                           {rowError}
                         </TableCell>
                       </TableRow>
@@ -665,6 +698,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           </Table>
         </TableContainer>
       </div>
+
     </section>
   )
 }

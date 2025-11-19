@@ -1,8 +1,8 @@
 // src/features/line-dashboard/components/data-table/filters/quickFilters.js
 // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
-import { STATUS_LABELS } from "../../../constants/status-labels"
+import { STATUS_LABELS, STATUS_SEQUENCE } from "../../../constants/status-labels"
 
-const STATUS_ORDER = Object.keys(STATUS_LABELS)
+const STATUS_ORDER = STATUS_SEQUENCE
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
 
 const MULTI_SELECT_KEYS = new Set(["status"])
