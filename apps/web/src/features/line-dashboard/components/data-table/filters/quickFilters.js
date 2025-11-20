@@ -10,11 +10,19 @@ const MULTI_SELECT_KEYS = new Set(["status"])
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
 
+export const RECENT_HOURS_MIN = 1
+export const RECENT_HOURS_MAX = 36
+export const RECENT_HOURS_DEFAULT = 8
+
 const RECENT_HOUR_OPTIONS = [
   { value: "12", label: "~12시간" },
   { value: "24", label: "~24시간" },
   { value: "36", label: "~36시간" },
 ]
+
+const DEFAULT_FILTER_VALUES = {
+  recent_hours: String(RECENT_HOURS_DEFAULT),
+}
 
 function findMatchingColumn(columns, target) {
   if (!Array.isArray(columns)) return null
@@ -94,6 +102,7 @@ const QUICK_FILTER_DEFINITIONS = [
       return {
         options: RECENT_HOUR_OPTIONS.map((option) => ({ ...option })),
         getValue,
+        allowCustomValue: true,
         matchRow: (row, current) => {
           if (current === null) return true
 
@@ -172,6 +181,18 @@ const QUICK_FILTER_DEFINITIONS = [
     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
   },
   {
+    key: "main_step",
+    label: "Main Step",
+    resolveColumn: (columns) => findMatchingColumn(columns, "main_step"),
+    normalizeValue: (value) => {
+      if (value == null) return null
+      const normalized = String(value).trim()
+      return normalized.length > 0 ? normalized : null
+    },
+    formatValue: (value) => value,
+    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+  },
+  {
     key: "user_sdwt_prod",
     label: "Engr분임조",
     resolveColumn: (columns) => findMatchingColumn(columns, "user_sdwt_prod"),
@@ -204,7 +225,12 @@ const QUICK_FILTER_DEFINITIONS = [
 // 섹션 정의에 맞춰 초기 필터 상태(단일 null, 다중 [])를 만듭니다.
 export function createInitialQuickFilters() {
   return QUICK_FILTER_DEFINITIONS.reduce((acc, definition) => {
-    acc[definition.key] = MULTI_SELECT_KEYS.has(definition.key) ? [] : null
+    if (MULTI_SELECT_KEYS.has(definition.key)) {
+      acc[definition.key] = []
+    } else {
+      const defaultValue = DEFAULT_FILTER_VALUES[definition.key]
+      acc[definition.key] = defaultValue ?? null
+    }
     return acc
   }, {})
 }
@@ -215,11 +241,13 @@ export function createQuickFilterSections(columns, rows) {
     if (typeof definition.buildSection === "function") {
       const section = definition.buildSection({ columns, rows })
       if (!section) return null
+      const { allowCustomValue = false, ...restSection } = section
       return {
         key: definition.key,
         label: definition.label,
         isMulti: MULTI_SELECT_KEYS.has(definition.key),
-        ...section,
+        allowCustomValue,
+        ...restSection,
       }
     }
 
@@ -252,6 +280,7 @@ export function createQuickFilterSections(columns, rows) {
       options,
       getValue,
       isMulti,
+      allowCustomValue: false,
       matchRow: (row, current) => {
         const rowValue = getValue(row)
         if (isMulti) {
@@ -282,15 +311,26 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
       return
     }
 
-    const validValues = new Set(section.options.map((option) => option.value))
+    const shouldValidate =
+      !section.allowCustomValue &&
+      Array.isArray(section.options) &&
+      section.options.length > 0
+    const validValues = shouldValidate ? new Set(section.options.map((option) => option.value)) : null
+
     if (section.isMulti) {
-      const currentArray = Array.isArray(current) ? current : []
-      const filtered = currentArray.filter((value) => validValues.has(value))
-      if (filtered.length !== currentArray.length) {
+      if (!Array.isArray(current)) {
         if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
-        nextFilters[definition.key] = filtered
+        nextFilters[definition.key] = []
+        return
       }
-    } else if (current !== null && !validValues.has(current)) {
+      if (shouldValidate) {
+        const filtered = current.filter((value) => validValues.has(value))
+        if (filtered.length !== current.length) {
+          if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
+          nextFilters[definition.key] = filtered
+        }
+      }
+    } else if (shouldValidate && current !== null && !validValues.has(current)) {
       if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
       nextFilters[definition.key] = null
     }

@@ -16,7 +16,9 @@ export const TOAST_BASE_STYLE = {
   fontSize: "14px",
   padding: "15px 20px",
   borderRadius: "8px",
-  backgroundColor: "#f9fafb",
+  backgroundColor: "var(--popover)",
+  color: "var(--popover-foreground)",
+  border: "1px solid var(--border)",
 }
 
 /**

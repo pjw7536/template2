@@ -41,14 +41,18 @@ export function useQuickFilters(columns, rows) {
   )
 
   // 단일 선택/다중 선택 필터를 구분하여 토글 동작을 정의합니다.
-  const toggleFilter = React.useCallback((key, value) => {
+  const toggleFilter = React.useCallback((key, value, options = {}) => {
     setFilters((previous) => {
       const isMulti = isMultiSelectFilter(key)
+      const forceValue = Boolean(options.forceValue)
       if (value === null) {
         return { ...previous, [key]: isMulti ? [] : null }
       }
 
       if (!isMulti) {
+        if (forceValue) {
+          return { ...previous, [key]: value }
+        }
         return { ...previous, [key]: previous[key] === value ? null : value }
       }
 

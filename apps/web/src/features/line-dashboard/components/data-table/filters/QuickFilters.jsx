@@ -3,10 +3,21 @@ import * as React from "react"
 import { IconChevronDown } from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"
+import { Slider } from "@/components/ui/slider"
 import { GlobalFilter } from "./GlobalFilter"
-import { isMultiSelectFilter } from "./quickFilters"
+import {
+  isMultiSelectFilter,
+  RECENT_HOURS_DEFAULT,
+  RECENT_HOURS_MAX,
+  RECENT_HOURS_MIN,
+} from "./quickFilters"
 
-const DROPDOWN_SECTION_KEYS = new Set(["sdwt_prod", "sample_type", "user_sdwt_prod"])
+const DROPDOWN_SECTION_KEYS = new Set([
+  "sdwt_prod",
+  "sample_type",
+  "user_sdwt_prod",
+  "main_step",
+])
 const FIELDSET_CLASS = "flex flex-col rounded-xl p-1 px-3"
 
 const isNil = (value) => value === null || value === undefined
@@ -45,6 +56,18 @@ export function QuickFilters({
     const selectedValues = getSelectedValues(isMulti, current)
     const allSelected = isMulti ? selectedValues.length === 0 : isNil(current)
     const legendId = `legend-${section.key}`
+
+    if (section.key === "recent_hours") {
+      return (
+        <RecentHoursQuickFilterSection
+          key={section.key}
+          section={section}
+          legendId={legendId}
+          current={current}
+          onToggle={onToggle}
+        />
+      )
+    }
 
     if (DROPDOWN_SECTION_KEYS.has(section.key)) {
       return (
@@ -240,4 +263,66 @@ function ButtonQuickFilterSection({
       </div>
     </fieldset>
   )
+}
+
+function RecentHoursQuickFilterSection({ section, legendId, current, onToggle }) {
+  const [sliderValue, setSliderValue] = React.useState(() => normalizeHoursValue(current))
+
+  React.useEffect(() => {
+    setSliderValue(normalizeHoursValue(current))
+  }, [current])
+
+  const handleSliderChange = React.useCallback((value) => {
+    const next = clampHours(value?.[0])
+    setSliderValue(next)
+  }, [])
+
+  const handleSliderCommit = React.useCallback(
+    (value) => {
+      const next = clampHours(value?.[0] ?? sliderValue)
+      setSliderValue(next)
+      onToggle(section.key, String(next), { forceValue: true })
+    },
+    [onToggle, sliderValue, section.key]
+  )
+
+  return (
+    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
+      <legend
+        id={legendId}
+        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        {section.label}
+      </legend>
+
+      <div className="flex flex-col w-40 rounded-lg border border border-border/40 p-3">
+        <Slider
+          min={RECENT_HOURS_MIN}
+          max={RECENT_HOURS_MAX}
+          step={5}
+          value={[sliderValue]}
+          onValueChange={handleSliderChange}
+          onValueCommit={handleSliderCommit}
+          aria-label="최근 시간 선택"
+        />
+        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span>{RECENT_HOURS_MIN}h</span>
+          <span>{RECENT_HOURS_MAX}h</span>
+        </div>
+      </div>
+    </fieldset>
+  )
+}
+
+function clampHours(value) {
+  if (!Number.isFinite(value)) return RECENT_HOURS_DEFAULT
+  return Math.min(Math.max(value, RECENT_HOURS_MIN), RECENT_HOURS_MAX)
+}
+
+function normalizeHoursValue(value) {
+  if (value === null || value === undefined) {
+    return RECENT_HOURS_DEFAULT
+  }
+  const numeric = Number(value)
+  return clampHours(numeric)
 }
