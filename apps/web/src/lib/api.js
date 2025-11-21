@@ -26,7 +26,7 @@ function readEnvValue(...keys) {
 
 export function getBackendBaseUrl() {
   const envValue =
-    readEnvValue("VITE_BACKEND_URL", "NEXT_PUBLIC_BACKEND_URL", "BACKEND_API_URL", "BACKEND_URL") ??
+    readEnvValue("VITE_BACKEND_URL", "BACKEND_API_URL", "BACKEND_URL") ??
     DEFAULT_BACKEND_URL
 
   return removeTrailingSlash(envValue.trim())

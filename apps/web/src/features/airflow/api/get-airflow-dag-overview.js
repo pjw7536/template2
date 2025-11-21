@@ -28,13 +28,11 @@ function resolveBaseUrls() {
       "AIRFLOW_BASE_URL",
       "AIRFLOW_URL",
       "VITE_AIRFLOW_BASE_URL",
-      "NEXT_PUBLIC_AIRFLOW_BASE_URL",
     ) ?? DEFAULT_INTERNAL_BASE_URL
 
   const publicCandidate =
     readEnvValue(
       "VITE_AIRFLOW_BASE_URL",
-      "NEXT_PUBLIC_AIRFLOW_BASE_URL",
       "AIRFLOW_PUBLIC_BASE_URL",
     ) ?? apiCandidate ?? DEFAULT_PUBLIC_BASE_URL
 
@@ -46,9 +44,9 @@ function resolveBaseUrls() {
 
 function resolveCredentials() {
   const username =
-    readEnvValue("AIRFLOW_USERNAME", "VITE_AIRFLOW_USERNAME", "NEXT_PUBLIC_AIRFLOW_USERNAME") ?? "airflow"
+    readEnvValue("AIRFLOW_USERNAME", "VITE_AIRFLOW_USERNAME") ?? "airflow"
   const password =
-    readEnvValue("AIRFLOW_PASSWORD", "VITE_AIRFLOW_PASSWORD", "NEXT_PUBLIC_AIRFLOW_PASSWORD") ?? "airflow"
+    readEnvValue("AIRFLOW_PASSWORD", "VITE_AIRFLOW_PASSWORD") ?? "airflow"
 
   if (!username || !password) {
     return { username: "", password: "" }
