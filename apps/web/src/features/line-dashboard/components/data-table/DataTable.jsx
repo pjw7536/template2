@@ -377,6 +377,11 @@ export function DataTable({ lineId }) {
           const content = isNullishDisplay(raw)
             ? EMPTY.text
             : flexRender(cell.column.columnDef.cell, cell.getContext())
+          const shouldTruncate = !isProcessFlowCell
+          const tooltip =
+            shouldTruncate && (typeof raw === "string" || typeof raw === "number")
+              ? String(raw)
+              : undefined
 
           return (
             <TableCell
@@ -391,7 +396,15 @@ export function DataTable({ lineId }) {
               )}
             >
               {/* 내부는 폭 지정 없이 텍스트 오버플로 처리 */}
-              <div className="truncate">{content}</div>
+              <div
+                className={cn(
+                  "max-w-full",
+                  shouldTruncate ? "truncate" : "break-words"
+                )}
+                title={tooltip}
+              >
+                {content}
+              </div>
             </TableCell>
           )
         })}

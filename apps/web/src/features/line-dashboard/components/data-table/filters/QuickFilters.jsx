@@ -300,27 +300,39 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
         id={legendId}
         className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
       >
-        {section.label}
+        <span>{section.label}</span>
       </legend>
 
-      <div className="flex flex-col w-48 rounded-lg border border border-border/40 p-3">
-        <Slider
-          min={RECENT_HOURS_MIN}
-          max={RECENT_HOURS_MAX}
-          step={1}
-          value={sliderPositions}
-          onValueChange={handleSliderChange}
-          onValueCommit={handleSliderCommit}
-          aria-label="최근 시간 범위 선택"
-        />
-        <div className="mt-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>-{RECENT_HOURS_MAX}h</span>
-          <span>현재</span>
+      <div className="flex w-60 flex-col rounded-lg border border-border/40 px-3 py-1">
+        {/* 슬라이더 라인 */}
+        <div className="flex h-3 items-start gap-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            -{RECENT_HOURS_MAX}h
+          </span>
+
+          <Slider
+            className="flex-1"
+            min={RECENT_HOURS_MIN}
+            max={RECENT_HOURS_MAX}
+            step={1}
+            value={sliderPositions}
+            onValueChange={handleSliderChange}
+            onValueCommit={handleSliderCommit}
+            aria-label="최근 시간 범위 선택"
+          />
+
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            현재
+          </span>
         </div>
-        <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-          조회 범위: {formatRecentHoursRange(rangeValue)}
+
+        {/* 조회 텍스트 — 슬라이더 아래 중앙 */}
+        <p className="mt-1 text-center text-[9px] font-medium text-muted-foreground">
+          {formatRecentHoursRange(rangeValue)}
         </p>
       </div>
+
+
     </fieldset>
   )
 }
