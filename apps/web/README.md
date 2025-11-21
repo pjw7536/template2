@@ -1,6 +1,6 @@
 # Web
 
-React 19 + React Router + Vite 기반의 프론트엔드 앱입니다. Next.js 의 App Router 구조를 걷어내고, SPA 빌드로 일관된 개발 경험을 제공합니다.
+React 19 + React Router + Vite 기반의 프론트엔드 앱입니다. SPA 빌드로 일관된 개발 경험을 제공합니다.
 
 ## 개발 서버 실행
 

@@ -19,5 +19,5 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/dist ./dist
 RUN npm install -g serve
-EXPOSE 4173
-CMD ["serve", "-s", "dist", "-l", "4173"]
+EXPOSE 3000
+CMD ["serve", "-s", "dist", "-l", "3000"]

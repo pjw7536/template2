@@ -12,7 +12,7 @@ class CsrfExemptSessionAuthentication(SessionAuthentication):
     [배경 설명]
     - 기본적으로 DRF의 SessionAuthentication은 POST/PATCH/DELETE 요청 시
       CSRF 토큰(Cross-Site Request Forgery token)이 없으면 요청을 거부합니다.
-    - 하지만 SPA(React, Next.js 등) 프론트엔드는 보통 API 서버와 같은 도메인(리버스 프록시 뒤)에서
+    - 하지만 SPA(React 등) 프론트엔드는 보통 API 서버와 같은 도메인(리버스 프록시 뒤)에서
       동작하며, 이미 세션 쿠키로 인증된 상태에서 fetch 요청을 보냅니다.
     - 이 경우 굳이 CSRF 토큰까지 확인할 필요가 없습니다.
 

@@ -1,24 +1,24 @@
 # Template2 Monorepo
 
-This repository hosts a mono-repo that separates the customer-facing Next.js frontend from a new Django-powered backend. Each application lives under the `apps/` directory and can be developed independently while sharing a single source control and deployment pipeline.
+This repository hosts a mono-repo that separates a Vite + React SPA frontend from a Django-powered backend. Each application lives under `apps/` and can be developed independently while sharing a single source control and deployment pipeline.
 
 ## Structure
 
-- `apps/web` – existing Next.js frontend (moved unchanged from the project root)
+- `apps/web` – Vite + React frontend (React Router)
 - `apps/api` – Django backend scaffold configured for REST development
 - `apps/adfs_dummy` – FastAPI 기반의 경량 ADFS(OIDC) 더미 제공자
 - `package.json` – npm workspace definition with helper scripts for the frontend workspace
 
 ## Getting Started
 
-### Frontend (Next.js)
+### Frontend (Vite SPA)
 
 ```bash
 npm install
 npm run web:dev
 ```
 
-The commands above install dependencies in workspace mode and start the Next.js development server within `apps/web`.
+The commands above install dependencies in workspace mode and start the Vite dev server within `apps/web`.
 
 ### Backend (Django)
 
@@ -35,19 +35,19 @@ The Django project ships with a basic configuration, REST framework, and a `/hea
 
 ## Next Steps
 
-- Connect Django authentication endpoints to the Next.js client.
-- Move any remaining API routes out of Next.js and replace them with requests to Django.
+- Connect Django authentication endpoints to the SPA client.
+- Move any remaining API routes out of the frontend and replace them with requests to Django.
 - Expand shared tooling (ESLint, Prettier, CI) at the repository root for both apps.
 
 ## Docker Deployment
 
-The repository ships with a production-ready Docker Compose stack that builds the Django API, the Next.js frontend, a dummy ADFS provider, and an Nginx reverse proxy on a shared Docker network. The proxy exposes port `80` on the host while routing `/<api|static>` requests to the backend container and all other traffic to the frontend server. The FastAPI 기반 더미 ADFS 서버는 `adfs` 서비스로 구동되며 개발 시 포트 `9000`으로 접근할 수 있습니다.
+The repository ships with a production-ready Docker Compose stack that builds the Django API, the Vite-built frontend, a dummy ADFS provider, and an Nginx reverse proxy on a shared Docker network. The proxy exposes port `80` on the host while routing `/<api|static>` requests to the backend container and all other traffic to the frontend server. The FastAPI 기반 더미 ADFS 서버는 `adfs` 서비스로 구동되며 개발 시 포트 `9000`으로 접근할 수 있습니다.
 
 ```bash
 docker compose up --build
 ```
 
-The command above builds the application images, runs database migrations, collects static files, and starts all three containers. Static assets collected from Django are shared with Nginx through a named volume so they can be served directly. The frontend is compiled with `NEXT_PUBLIC_BACKEND_URL=/api`, allowing browser requests to flow through the proxy without additional configuration.
+The command above builds the application images, runs database migrations, collects static files, and starts all three containers. Static assets collected from Django are shared with Nginx through a named volume so they can be served directly. The frontend is compiled with `VITE_BACKEND_URL=/api`, allowing browser requests to flow through the proxy without additional configuration.
 
 ### Hot-reload Development Stack
 
@@ -57,16 +57,16 @@ For local development with automatic reloads inside the containers, combine the 
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-This command keeps the production build definitions while swapping in development-friendly entrypoints. Django runs via `python manage.py runserver` with your source mounted into the container, and Next.js executes `npm run dev` after installing/updating dependencies in a dedicated `node_modules` volume. Port `8000` exposes the API with live code reloads, and port `3000` serves the Next.js dev server pointing at the API container.
+This command keeps the production build definitions while swapping in development-friendly entrypoints. Django runs via `python manage.py runserver` with your source mounted into the container, and Vite executes `npm run dev` after installing/updating dependencies in a dedicated `node_modules` volume. Port `8000` exposes the API with live code reloads, and port `3000` serves the Vite dev server pointing at the API container.
 
-Nginx is also part of the override stack, so `http://localhost:8080` proxies both services (including `/static` assets) while preserving HMR and websocket upgrades from the Next.js process.
+Nginx is also part of the override stack, so `http://localhost:8080` proxies both services (including `/static` assets) while preserving HMR and websocket upgrades from the Vite dev process.
 
 ## Environment configuration
 
-Reverse proxy deployments often become hard to reason about because multiple services need to agree on the same host names. The repository now provides curated environment files under `env/` that separate shared Django defaults from stage-specific overrides and align the Next.js app with the proxy setup:
+Reverse proxy deployments often become hard to reason about because multiple services need to agree on the same host names. The repository now provides curated environment files under `env/` that separate shared Django defaults from stage-specific overrides and align the SPA with the proxy setup:
 
 - `env/api.common.env` – database, proxy, and login defaults that apply everywhere.
 - `env/api.dev.env` / `env/api.prod.env` – values that differ per environment (debug toggles, allowed hosts, and HTTPS enforcement).
-- `env/web.dev.env` / `env/web.prod.env` – frontend-specific variables such as `NEXTAUTH_URL` and the backend URL that Next.js should call.
+- `env/web.dev.env` / `env/web.prod.env` – frontend-specific variables such as `VITE_BACKEND_URL` that the SPA should call.
 
-Both `docker-compose.yml` and `docker-compose.dev.yml` automatically load the correct combination of files, so switching between development and production only requires editing the stage-specific files. Update the placeholder domain (`example.com`) in the production files to match your public host and rotate `NEXTAUTH_SECRET`/`DJANGO_SECRET_KEY` with strong values before deploying.
+Both `docker-compose.yml` and `docker-compose.dev.yml` automatically load the correct combination of files, so switching between development and production only requires editing the stage-specific files. Update the placeholder domain (`example.com`) in the production files to match your public host and rotate `DJANGO_SECRET_KEY` with strong values before deploying.

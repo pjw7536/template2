@@ -1,6 +1,6 @@
 # Django API Service
 
-This directory contains the Django backend that replaces the former Next.js API routes. The project is preconfigured with Django REST Framework and CORS support so the frontend can communicate over HTTP.
+This directory contains the Django backend that serves all API routes for the SPA. The project is preconfigured with Django REST Framework and CORS support so the frontend can communicate over HTTP.
 
 ## Available commands
 
