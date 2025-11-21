@@ -6,8 +6,10 @@ import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
 import { GlobalFilter } from "./GlobalFilter"
 import {
+  clampRecentHours,
+  createRecentHoursRange,
   isMultiSelectFilter,
-  RECENT_HOURS_DEFAULT,
+  normalizeRecentHoursRange,
   RECENT_HOURS_MAX,
   RECENT_HOURS_MIN,
 } from "./quickFilters"
@@ -266,24 +268,30 @@ function ButtonQuickFilterSection({
 }
 
 function RecentHoursQuickFilterSection({ section, legendId, current, onToggle }) {
-  const [sliderValue, setSliderValue] = React.useState(() => normalizeHoursValue(current))
+  const [rangeValue, setRangeValue] = React.useState(() =>
+    normalizeRecentHoursRange(current)
+  )
 
   React.useEffect(() => {
-    setSliderValue(normalizeHoursValue(current))
+    setRangeValue(normalizeRecentHoursRange(current))
   }, [current])
 
+  const sliderPositions = React.useMemo(
+    () => rangeToSliderPositions(rangeValue),
+    [rangeValue]
+  )
+
   const handleSliderChange = React.useCallback((value) => {
-    const next = clampHours(value?.[0])
-    setSliderValue(next)
+    setRangeValue(normalizeRecentHoursRange(sliderPositionsToRange(value)))
   }, [])
 
   const handleSliderCommit = React.useCallback(
     (value) => {
-      const next = clampHours(value?.[0] ?? sliderValue)
-      setSliderValue(next)
-      onToggle(section.key, String(next), { forceValue: true })
+      const nextRange = normalizeRecentHoursRange(sliderPositionsToRange(value))
+      setRangeValue(nextRange)
+      onToggle(section.key, nextRange, { forceValue: true })
     },
-    [onToggle, sliderValue, section.key]
+    [onToggle, section.key]
   )
 
   return (
@@ -295,34 +303,69 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
         {section.label}
       </legend>
 
-      <div className="flex flex-col w-40 rounded-lg border border border-border/40 p-3">
+      <div className="flex flex-col w-48 rounded-lg border border border-border/40 p-3">
         <Slider
           min={RECENT_HOURS_MIN}
           max={RECENT_HOURS_MAX}
-          step={5}
-          value={[sliderValue]}
+          step={1}
+          value={sliderPositions}
           onValueChange={handleSliderChange}
           onValueCommit={handleSliderCommit}
-          aria-label="최근 시간 선택"
+          aria-label="최근 시간 범위 선택"
         />
-        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>{RECENT_HOURS_MIN}h</span>
-          <span>{RECENT_HOURS_MAX}h</span>
+        <div className="mt-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span>-{RECENT_HOURS_MAX}h</span>
+          <span>현재</span>
         </div>
+        <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+          조회 범위: {formatRecentHoursRange(rangeValue)}
+        </p>
       </div>
     </fieldset>
   )
 }
 
-function clampHours(value) {
-  if (!Number.isFinite(value)) return RECENT_HOURS_DEFAULT
+function rangeToSliderPositions(range) {
+  const normalized = normalizeRecentHoursRange(range)
+  return [
+    hoursToSliderPosition(normalized.start),
+    hoursToSliderPosition(normalized.end),
+  ]
+}
+
+function sliderPositionsToRange(positions) {
+  if (!Array.isArray(positions) || positions.length === 0) {
+    return createRecentHoursRange()
+  }
+  const sorted = [...positions].slice(0, 2).sort((a, b) => a - b)
+  const [left = RECENT_HOURS_MIN, right = left] = sorted
+  const startHours = sliderPositionToHours(left)
+  const endHours = sliderPositionToHours(right)
+  return createRecentHoursRange(startHours, endHours)
+}
+
+function hoursToSliderPosition(hours) {
+  const safeHours = clampRecentHours(hours)
+  return clampSliderPosition(RECENT_HOURS_MAX - safeHours)
+}
+
+function sliderPositionToHours(position) {
+  const clamped = clampSliderPosition(position)
+  return clampRecentHours(RECENT_HOURS_MAX - clamped)
+}
+
+function clampSliderPosition(value) {
+  if (!Number.isFinite(value)) return RECENT_HOURS_MIN
   return Math.min(Math.max(value, RECENT_HOURS_MIN), RECENT_HOURS_MAX)
 }
 
-function normalizeHoursValue(value) {
-  if (value === null || value === undefined) {
-    return RECENT_HOURS_DEFAULT
-  }
-  const numeric = Number(value)
-  return clampHours(numeric)
+function formatRecentHoursRange(range) {
+  const normalized = normalizeRecentHoursRange(range)
+  return `${formatHoursAgo(normalized.start)} ~ ${formatHoursAgo(normalized.end)}`
+}
+
+function formatHoursAgo(hours) {
+  const safe = clampRecentHours(hours)
+  if (safe <= 0) return "현재"
+  return `-${safe}h`
 }

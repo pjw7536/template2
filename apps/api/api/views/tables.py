@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any, List
+from datetime import datetime, timedelta
+from typing import Any, List, Tuple
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
@@ -30,6 +30,28 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
+RECENT_HOURS_MIN = 0
+RECENT_HOURS_MAX = 36
+RECENT_HOURS_DEFAULT_START = 8
+RECENT_HOURS_DEFAULT_END = 0
+RECENT_FUTURE_TOLERANCE_MINUTES = 5
+
+
+def _clamp_recent_hours(value: Any, fallback: int) -> int:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(RECENT_HOURS_MIN, min(numeric, RECENT_HOURS_MAX))
+
+
+def _resolve_recent_hours_range(params) -> Tuple[int, int]:
+    start = _clamp_recent_hours(params.get("recentHoursStart"), RECENT_HOURS_DEFAULT_START)
+    end = _clamp_recent_hours(params.get("recentHoursEnd"), RECENT_HOURS_DEFAULT_END)
+    if start < end:
+        start = end
+    return start, end
+
 
 class TablesView(APIView):
     """임의 테이블을 조회하여 리스트 형태로 반환."""
@@ -45,6 +67,7 @@ class TablesView(APIView):
         to_param = normalize_date_only(params.get("to"))
         line_id_param = params.get("lineId")
         normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
+        recent_hours_start, recent_hours_end = _resolve_recent_hours_range(params)
 
         if from_param and to_param:
             from_time = datetime.fromisoformat(f"{from_param}T00:00:00")
@@ -69,9 +92,14 @@ class TablesView(APIView):
             where_parts = list(line_filter_result["filters"])
             query_params = list(line_filter_result["params"])
 
-            where_parts.append(
-                f"{base_ts_col} >= (NOW() - INTERVAL '27 hours')"
-            )
+            now_utc = datetime.utcnow()
+            recent_start_dt = now_utc - timedelta(hours=recent_hours_start)
+            recent_end_dt = now_utc - timedelta(hours=recent_hours_end)
+            recent_end_dt += timedelta(minutes=RECENT_FUTURE_TOLERANCE_MINUTES)
+
+            where_parts.append(f"{base_ts_col} BETWEEN %s AND %s")
+            query_params.append(recent_start_dt.strftime("%Y-%m-%d %H:%M:%S"))
+            query_params.append(recent_end_dt.strftime("%Y-%m-%d %H:%M:%S"))
 
             if from_param:
                 where_parts.append(f"{base_ts_col} >= %s")
@@ -96,7 +124,9 @@ class TablesView(APIView):
 
             response_payload = {
                 "table": table_name,
-                "cutoff": "{} >= NOW() - INTERVAL '27 hours'".format(base_ts_col),
+                "cutoff": (
+                    "{col} BETWEEN NOW() - INTERVAL '{start} hours' AND NOW() - INTERVAL '{end} hours'"
+                ).format(col=base_ts_col, start=recent_hours_start, end=recent_hours_end),
                 "from": from_param or None,
                 "to": to_param or None,
                 "rowCount": len(rows),

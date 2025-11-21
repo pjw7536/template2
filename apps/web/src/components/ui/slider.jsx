@@ -1,96 +1,38 @@
 // src/components/ui/slider.jsx
 import * as React from "react"
+import * as SliderPrimitive from "@radix-ui/react-slider"
 
 import { cn } from "@/lib/utils"
 
-const clamp = (value, min, max) => {
-  if (!Number.isFinite(value)) return min
-  return Math.min(Math.max(value, min), max)
-}
-
 const Slider = React.forwardRef(
-  (
-    {
-      className,
-      value = [],
-      min = 0,
-      max = 100,
-      step = 1,
-      onValueChange,
-      onValueCommit,
-      ...props
-    },
-    ref
-  ) => {
-    const numericMin = Number.isFinite(min) ? min : 0
-    const numericMax = Number.isFinite(max) ? max : 100
-    const rawValue = Array.isArray(value) ? value[0] : value
-    const clampedValue = clamp(Number(rawValue), numericMin, numericMax)
-    const percentage =
-      numericMax === numericMin
-        ? 0
-        : clamp(((clampedValue - numericMin) / (numericMax - numericMin)) * 100, 0, 100)
-
-    const emitChange = React.useCallback(
-      (next) => {
-        if (typeof onValueChange === "function") {
-          onValueChange([next])
-        }
-      },
-      [onValueChange]
-    )
-
-    const emitCommit = React.useCallback(
-      (next) => {
-        if (typeof onValueCommit === "function") {
-          onValueCommit([next])
-        }
-      },
-      [onValueCommit]
-    )
-
-    const handleChange = (event) => {
-      const next = Number(event.target.value)
-      emitChange(clamp(next, numericMin, numericMax))
-    }
-
-    const handleCommit = (event) => {
-      const next = Number(event.target.value)
-      emitCommit(clamp(next, numericMin, numericMax))
-    }
+  ({ className, value, defaultValue, ...props }, ref) => {
+    const resolvedValues = React.useMemo(() => {
+      if (Array.isArray(value) && value.length > 0) return value
+      if (Array.isArray(defaultValue) && defaultValue.length > 0) return defaultValue
+      if (typeof value === "number") return [value]
+      if (typeof defaultValue === "number") return [defaultValue]
+      return [0]
+    }, [value, defaultValue])
+    const thumbCount = Math.max(resolvedValues.length, 1)
 
     return (
-      <div className={cn("relative flex w-full items-center", className)}>
-        <div className="relative w-full">
-          <div className="h-1.5 rounded-full bg-muted" />
-          <div
-            className="absolute inset-y-0 left-0 h-1.5 rounded-full bg-primary"
-            style={{ width: `${percentage}%` }}
+      <SliderPrimitive.Root
+        ref={ref}
+        className={cn("relative flex w-full touch-none select-none items-center", className)}
+        value={value}
+        defaultValue={defaultValue}
+        {...props}
+      >
+        <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted">
+          <SliderPrimitive.Range className="absolute h-full bg-primary" />
+        </SliderPrimitive.Track>
+        {Array.from({ length: thumbCount }).map((_, index) => (
+          <SliderPrimitive.Thumb
+            key={index}
+            className="block size-4 rounded-full border border-primary/40 bg-background shadow ring-offset-background transition-[box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
-          <div
-            className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/40 bg-background shadow ring-offset-background transition-[box-shadow,transform]"
-            style={{ left: `${percentage}%` }}
-          />
-          <input
-            ref={ref}
-            type="range"
-            min={numericMin}
-            max={numericMax}
-            step={step}
-            value={clampedValue}
-            onChange={handleChange}
-            onMouseUp={handleCommit}
-            onTouchEnd={handleCommit}
-            onKeyUp={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                handleCommit(event)
-              }
-            }}
-            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
-            {...props}
-          />
-        </div>
-      </div>
+        ))}
+      </SliderPrimitive.Root>
     )
   }
 )

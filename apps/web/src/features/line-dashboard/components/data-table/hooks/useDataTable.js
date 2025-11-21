@@ -2,6 +2,10 @@
 import * as React from "react"
 
 import { DEFAULT_TABLE, getDefaultFromValue, getDefaultToValue } from "../utils/constants"
+import {
+  createRecentHoursRange,
+  normalizeRecentHoursRange,
+} from "../filters/quickFilters"
 import { buildBackendUrl } from "@/lib/api"
 import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
 import { useCellIndicators } from "./useCellIndicators"
@@ -73,6 +77,24 @@ export function useDataTableState({ lineId }) {
   const [updatingCells, setUpdatingCells] = React.useState({})  // { ["1:comment"]: true, ... }
   const [updateErrors, setUpdateErrors] = React.useState({})    // { ["1:comment"]: "에러메시지", ... }
 
+  const [recentHoursRange, setRecentHoursRange] = React.useState(() =>
+    createRecentHoursRange()
+  )
+
+  const updateRecentHoursRange = React.useCallback((nextRange) => {
+    setRecentHoursRange((previous) => {
+      const normalized = normalizeRecentHoursRange(nextRange)
+      if (
+        previous &&
+        previous.start === normalized.start &&
+        previous.end === normalized.end
+      ) {
+        return previous
+      }
+      return normalized
+    })
+  }, [])
+
   // 로딩/에러/카운트
   const [isLoadingRows, setIsLoadingRows] = React.useState(false)
   const [rowsError, setRowsError] = React.useState(null)
@@ -115,6 +137,9 @@ export function useDataTableState({ lineId }) {
       if (effectiveFrom) params.set("from", effectiveFrom)
       if (effectiveTo) params.set("to", effectiveTo)
       if (lineId) params.set("lineId", lineId)
+      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
+      params.set("recentHoursStart", String(normalizedRecent.start))
+      params.set("recentHoursEnd", String(normalizedRecent.end))
 
       // 4) 요청(캐시 미사용)
       const endpoint = buildBackendUrl("/tables", params)
@@ -203,7 +228,7 @@ export function useDataTableState({ lineId }) {
       // 내 요청이 최신일 때만 로딩 종료
       if (rowsRequestRef.current === requestId) setIsLoadingRows(false)
     }
-  }, [fromDate, toDate, selectedTable, lineId])
+  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
 
   // 최초/의존성 변경 시 데이터 로드
   React.useEffect(() => {
@@ -391,5 +416,7 @@ export function useDataTableState({ lineId }) {
     lastFetchedCount,
     fetchRows,
     tableMeta,
+    recentHoursRange,
+    setRecentHoursRange: updateRecentHoursRange,
   }
 }

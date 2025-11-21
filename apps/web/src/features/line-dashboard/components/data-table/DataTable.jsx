@@ -120,10 +120,16 @@ export function DataTable({ lineId }) {
     rowsError,
     fetchRows,
     tableMeta,
+    setRecentHoursRange: syncRecentHoursRange,
   } = useDataTableState({ lineId })
 
   const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
     useQuickFilters(columns, rows)
+
+  React.useEffect(() => {
+    if (!syncRecentHoursRange) return
+    syncRecentHoursRange(filters?.recent_hours ?? null)
+  }, [filters?.recent_hours, syncRecentHoursRange])
 
   const statusSection = React.useMemo(
     () => sections.find((section) => section?.key === "status"),

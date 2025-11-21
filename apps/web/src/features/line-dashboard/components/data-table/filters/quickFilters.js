@@ -10,18 +10,13 @@ const MULTI_SELECT_KEYS = new Set(["status"])
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
 
-export const RECENT_HOURS_MIN = 1
+export const RECENT_HOURS_MIN = 0
 export const RECENT_HOURS_MAX = 36
-export const RECENT_HOURS_DEFAULT = 8
-
-const RECENT_HOUR_OPTIONS = [
-  { value: "12", label: "~12시간" },
-  { value: "24", label: "~24시간" },
-  { value: "36", label: "~36시간" },
-]
+export const RECENT_HOURS_DEFAULT_START = 8
+export const RECENT_HOURS_DEFAULT_END = 0
 
 const DEFAULT_FILTER_VALUES = {
-  recent_hours: String(RECENT_HOURS_DEFAULT),
+  recent_hours: () => createRecentHoursRange(),
 }
 
 function findMatchingColumn(columns, target) {
@@ -86,6 +81,66 @@ function toTimestamp(value) {
   return Number.isNaN(time) ? null : time
 }
 
+export function clampRecentHours(value) {
+  if (!Number.isFinite(value)) return RECENT_HOURS_MIN
+  return Math.min(Math.max(value, RECENT_HOURS_MIN), RECENT_HOURS_MAX)
+}
+
+export function createRecentHoursRange(
+  start = RECENT_HOURS_DEFAULT_START,
+  end = RECENT_HOURS_DEFAULT_END
+) {
+  const numericStart = Number(start)
+  const numericEnd = Number(end)
+  const safeStart = clampRecentHours(
+    Number.isFinite(numericStart) ? numericStart : RECENT_HOURS_DEFAULT_START
+  )
+  const safeEnd = clampRecentHours(
+    Number.isFinite(numericEnd) ? numericEnd : RECENT_HOURS_DEFAULT_END
+  )
+  if (safeStart < safeEnd) {
+    return { start: safeEnd, end: safeEnd }
+  }
+  return { start: safeStart, end: safeEnd }
+}
+
+export function normalizeRecentHoursRange(value) {
+  if (value === null || value === undefined) {
+    return createRecentHoursRange()
+  }
+
+  if (Array.isArray(value)) {
+    const [rawStart, rawEnd] = value
+    return createRecentHoursRange(rawStart, rawEnd === undefined ? rawStart : rawEnd)
+  }
+
+  if (typeof value === "object") {
+    const rawStart =
+      value.start ?? value.from ?? value.max ?? value.begin ?? value[0]
+    const rawEnd = value.end ?? value.to ?? value.min ?? value.finish ?? value[1]
+    return createRecentHoursRange(rawStart, rawEnd)
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return createRecentHoursRange()
+    const parts = trimmed.split(/[:,]/).map((part) => part.trim())
+    if (parts.length >= 2) {
+      return createRecentHoursRange(parts[0], parts[1])
+    }
+    const numeric = Number(trimmed)
+    if (Number.isFinite(numeric)) {
+      return createRecentHoursRange(numeric, RECENT_HOURS_DEFAULT_END)
+    }
+    return createRecentHoursRange()
+  }
+
+  const numeric = Number(value)
+  return Number.isFinite(numeric)
+    ? createRecentHoursRange(numeric, RECENT_HOURS_DEFAULT_END)
+    : createRecentHoursRange()
+}
+
 const QUICK_FILTER_DEFINITIONS = [
   {
     key: "recent_hours",
@@ -100,21 +155,19 @@ const QUICK_FILTER_DEFINITIONS = [
       const getValue = (row) => row?.[columnKey] ?? null
 
       return {
-        options: RECENT_HOUR_OPTIONS.map((option) => ({ ...option })),
+        options: [],
         getValue,
         allowCustomValue: true,
         matchRow: (row, current) => {
           if (current === null) return true
 
-          const hours = Number(current)
-          if (!Number.isFinite(hours) || hours <= 0) return true
-
+          const range = normalizeRecentHoursRange(current)
           const timestamp = toTimestamp(getValue(row))
           if (timestamp === null) return false
 
           const now = Date.now()
-          const minTimestamp = now - hours * HOUR_IN_MS
-          const maxTimestamp = now + FUTURE_TOLERANCE_MS
+          const minTimestamp = now - range.start * HOUR_IN_MS
+          const maxTimestamp = now - range.end * HOUR_IN_MS + FUTURE_TOLERANCE_MS
 
           return timestamp >= minTimestamp && timestamp <= maxTimestamp
         },
@@ -229,7 +282,11 @@ export function createInitialQuickFilters() {
       acc[definition.key] = []
     } else {
       const defaultValue = DEFAULT_FILTER_VALUES[definition.key]
-      acc[definition.key] = defaultValue ?? null
+      if (typeof defaultValue === "function") {
+        acc[definition.key] = defaultValue()
+      } else {
+        acc[definition.key] = defaultValue ?? null
+      }
     }
     return acc
   }, {})
@@ -330,7 +387,25 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
           nextFilters[definition.key] = filtered
         }
       }
-    } else if (shouldValidate && current !== null && !validValues.has(current)) {
+      return
+    }
+
+    if (definition.key === "recent_hours") {
+      if (current === null) return
+      const normalized = normalizeRecentHoursRange(current)
+      const isShallowEqual =
+        typeof current === "object" &&
+        current !== null &&
+        current.start === normalized.start &&
+        current.end === normalized.end
+      if (!isShallowEqual) {
+        if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
+        nextFilters[definition.key] = normalized
+      }
+      return
+    }
+
+    if (shouldValidate && current !== null && !validValues.has(current)) {
       if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
       nextFilters[definition.key] = null
     }
