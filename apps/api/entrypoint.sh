@@ -1,8 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 set -o errexit
 set -o nounset
 set -o pipefail
 
+python manage.py makemigrations --noinput
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 

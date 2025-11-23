@@ -1,14 +1,9 @@
 // src/features/line-dashboard/components/data-table/hooks/useDataTable.js
 import * as React from "react"
 
-import { DEFAULT_TABLE, getDefaultFromValue, getDefaultToValue } from "../utils/constants"
-import {
-  createRecentHoursRange,
-  normalizeRecentHoursRange,
-} from "../filters/quickFilters"
 import { buildBackendUrl } from "@/lib/api"
-import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
 import { useCellIndicators } from "./useCellIndicators"
+import { useTableQuery } from "./useTableQuery"
 
 /* ============================================================================
  * 작은 유틸: 객체에서 키 지우기 (불변성 유지)
@@ -38,27 +33,29 @@ function removeKey(record, key) {
  * useDataTableState
  * - 테이블 데이터/필터/정렬/편집 상태와, 서버 fetch/update를 관리하는 커스텀 훅
  * - 초보자 포인트:
- *   1) "요청 식별자(rowsRequestRef)"로 오래된 응답이 최신 상태를 덮지 않게 보호
- *   2) 날짜 유효성(from/to) 가드 + UX 친화적 기본값 적용
- *   3) 업데이트 중인 셀(skeleton/indicator)/오류 맵을 키(`rowId:field`)로 관리
+ *   1) useTableQuery가 fetch/정규화/최근시간 필터를 관리하고, 여기서는 UI 상태/업데이트만 다룹니다.
+ *   2) 업데이트 중인 셀(skeleton/indicator)/오류 맵을 키(`${rowId}:${field}`)로 관리합니다.
  * ========================================================================== */
 export function useDataTableState({ lineId }) {
-  /* ── 1) 화면 상태: 테이블 선택/컬럼/행/날짜/검색/정렬/편집 등 ─────────────── */
-  const [selectedTable, setSelectedTable] = React.useState(DEFAULT_TABLE)
-
-  // 서버가 내려주는 원시 컬럼 키 배열(가공 후 세팅)
-  const [columns, setColumns] = React.useState([])
-
-  // 실제 테이블 행 데이터
-  const [rows, setRows] = React.useState([])
-
-  // 날짜 입력 값(사용자 폼 값): 문자열(YYYY-MM-DD)
-  const [fromDate, setFromDate] = React.useState(() => getDefaultFromValue())
-  const [toDate, setToDate] = React.useState(() => getDefaultToValue())
-
-  // 실제로 서버에 적용된 날짜 범위(서버 응답으로 동기화)
-  const [appliedFrom, setAppliedFrom] = React.useState(() => getDefaultFromValue())
-  const [appliedTo, setAppliedTo] = React.useState(() => getDefaultToValue())
+  const {
+    selectedTable,
+    columns,
+    rows,
+    setRows,
+    fromDate,
+    setFromDate,
+    toDate,
+    setToDate,
+    appliedFrom,
+    appliedTo,
+    isLoadingRows,
+    rowsError,
+    lastFetchedCount,
+    fetchRows,
+    recentHoursRange,
+    setRecentHoursRange,
+    hydrationKey,
+  } = useTableQuery({ lineId })
 
   // 전역 검색(퀵필터와 별도)
   const [filter, setFilter] = React.useState("")
@@ -71,169 +68,19 @@ export function useDataTableState({ lineId }) {
   const [commentEditing, setCommentEditing] = React.useState({}) // { [rowId]: true }
 
   // 셀 편집: needtosend
-  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: boolean }
+  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: number }
 
   // 업데이트 진행중/에러 상태: 키 형식은 `${rowId}:${field}`
   const [updatingCells, setUpdatingCells] = React.useState({})  // { ["1:comment"]: true, ... }
   const [updateErrors, setUpdateErrors] = React.useState({})    // { ["1:comment"]: "에러메시지", ... }
 
-  const [recentHoursRange, setRecentHoursRange] = React.useState(() =>
-    createRecentHoursRange()
-  )
-
-  const updateRecentHoursRange = React.useCallback((nextRange) => {
-    setRecentHoursRange((previous) => {
-      const normalized = normalizeRecentHoursRange(nextRange)
-      if (
-        previous &&
-        previous.start === normalized.start &&
-        previous.end === normalized.end
-      ) {
-        return previous
-      }
-      return normalized
-    })
-  }, [])
-
-  // 로딩/에러/카운트
-  const [isLoadingRows, setIsLoadingRows] = React.useState(false)
-  const [rowsError, setRowsError] = React.useState(null)
-  const [lastFetchedCount, setLastFetchedCount] = React.useState(0)
-
-  // 가장 최근 fetch 요청 id(오래된 응답 무효화용)
-  const rowsRequestRef = React.useRef(0)
-
   // 셀 하이라이트/토스트 등 시각 피드백 훅
   const { cellIndicators, begin, finalize } = useCellIndicators()
-
-  /* ────────────────────────────────────────────────────────────────────────
-   * fetchRows: 서버에서 테이블 데이터 가져오기
-   *  - 날짜(from/to) 뒤바뀜 자동 교정
-   *  - /api/tables?table=...&from=...&to=...&lineId=...
-   *  - normalizeTablePayload로 응답을 안전하게 정규화
-   *  - 오래된 응답 방어(rowsRequestRef 활용)
-   * ──────────────────────────────────────────────────────────────────────── */
-  const fetchRows = React.useCallback(async () => {
-    const requestId = ++rowsRequestRef.current // 이 fetch의 고유 id
-    setIsLoadingRows(true)
-    setRowsError(null)
-
-    try {
-      // 1) 날짜 유효성 정리(입력값이 비어있으면 null)
-      let effectiveFrom = fromDate && fromDate.length > 0 ? fromDate : null
-      let effectiveTo = toDate && toDate.length > 0 ? toDate : null
-
-      // 2) from > to 인 경우 자동 스왑(UX 방어)
-      if (effectiveFrom && effectiveTo) {
-        const fromTime = new Date(`${effectiveFrom}T00:00:00Z`).getTime()
-        const toTime = new Date(`${effectiveTo}T23:59:59Z`).getTime()
-        if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
-          ;[effectiveFrom, effectiveTo] = [effectiveTo, effectiveFrom]
-        }
-      }
-
-      // 3) 쿼리스트링 구성
-      const params = new URLSearchParams({ table: selectedTable })
-      if (effectiveFrom) params.set("from", effectiveFrom)
-      if (effectiveTo) params.set("to", effectiveTo)
-      if (lineId) params.set("lineId", lineId)
-      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
-      params.set("recentHoursStart", String(normalizedRecent.start))
-      params.set("recentHoursEnd", String(normalizedRecent.end))
-
-      // 4) 요청(캐시 미사용)
-      const endpoint = buildBackendUrl("/tables", params)
-      const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
-
-      // 5) JSON 파싱 시도(실패해도 빈 객체)
-      let payload = {}
-      try {
-        payload = await response.json()
-      } catch {
-        payload = {}
-      }
-
-      // 6) HTTP 에러 처리(서버가 보내준 error 메시지 우선)
-      if (!response.ok) {
-        const message =
-          payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
-            ? payload.error
-            : `Request failed with status ${response.status}`
-        throw new Error(message)
-      }
-
-      // 7) 오래된 응답 무시(요청 id가 최신이 아니면 리턴)
-      if (rowsRequestRef.current !== requestId) return
-
-      // 8) 페이로드 정규화(누락 필드 기본값 채우기)
-      const defaults = { table: DEFAULT_TABLE, from: getDefaultFromValue(), to: getDefaultToValue() }
-      const {
-        columns: fetchedColumns,
-        rows: fetchedRows,
-        rowCount,
-        from: appliedFromValue,
-        to: appliedToValue,
-        table,
-      } = normalizeTablePayload(payload, defaults)
-
-      // 9) 원본 id 컬럼 숨기기(id는 내부적으로만 사용)
-      const baseColumns = fetchedColumns.filter((column) => column && column.toLowerCase() !== "id")
-
-      // 10) EQP_CB(설비+챔버 합성표시) 생성
-      const composedRows = fetchedRows.map((row) => {
-        // 들어오는 키 케이스가 들쭉날쭉할 수 있어 모두 대응
-        const eqpId = row?.eqp_id ?? row?.EQP_ID ?? row?.EqpId
-        const chamber = row?.chamber_ids ?? row?.CHAMBER_IDS ?? row?.ChamberIds
-        return { ...row, EQP_CB: composeEqpChamber(eqpId, chamber) }
-      })
-
-      // 11) 원본 eqp/chamber 컬럼 제거(EQP_CB에 집약했으므로)
-      const columnsWithoutOriginals = baseColumns.filter((column) => {
-        const normalized = column.toLowerCase()
-        return normalized !== "eqp_id" && normalized !== "chamber_ids"
-      })
-
-      // 12) EQP_CB가 없다면 선두에 삽입(가독성↑)
-      const nextColumns = columnsWithoutOriginals.includes("EQP_CB")
-        ? columnsWithoutOriginals
-        : ["EQP_CB", ...columnsWithoutOriginals]
-
-      // 13) 상태 업데이트(하위 편집 상태 초기화 포함)
-      setColumns(nextColumns)
-      setRows(composedRows)
-      setLastFetchedCount(rowCount)
-      setAppliedFrom(appliedFromValue ?? null)
-      setAppliedTo(appliedToValue ?? null)
-      setCommentDrafts({})
-      setCommentEditing({})
-      setNeedToSendDrafts({})
-
-      // 서버가 table을 교정해 내려준 경우 동기화(방어적)
-      if (table && table !== selectedTable) {
-        setSelectedTable(table)
-      }
-    } catch (error) {
-      // 요청 id가 최신이 아닐 때는 무시
-      if (rowsRequestRef.current !== requestId) return
-
-      // 사용자에게 보여줄 에러 메시지
-      const message = error instanceof Error ? error.message : "Failed to load table rows"
-
-      // 안전한 초기화
-      setRowsError(message)
-      setColumns([])
-      setRows([])
-      setLastFetchedCount(0)
-    } finally {
-      // 내 요청이 최신일 때만 로딩 종료
-      if (rowsRequestRef.current === requestId) setIsLoadingRows(false)
-    }
-  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
-
-  // 최초/의존성 변경 시 데이터 로드
   React.useEffect(() => {
-    fetchRows()
-  }, [fetchRows])
+    setCommentDrafts({})
+    setCommentEditing({})
+    setNeedToSendDrafts({})
+  }, [hydrationKey])
 
   /* ────────────────────────────────────────────────────────────────────────
    * 에러 메시지 1건 제거(셀 포커스 시 이전 에러를 치울 때 유용)
@@ -417,6 +264,6 @@ export function useDataTableState({ lineId }) {
     fetchRows,
     tableMeta,
     recentHoursRange,
-    setRecentHoursRange: updateRecentHoursRange,
+    setRecentHoursRange,
   }
 }

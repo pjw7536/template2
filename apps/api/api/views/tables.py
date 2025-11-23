@@ -17,15 +17,16 @@ from ..activity_logging import (
     set_activity_summary,
 )
 from ..db import execute, run_query
-from .constants import DATE_COLUMN_CANDIDATES, DEFAULT_TABLE
+from .constants import DEFAULT_TABLE
 from .utils import (
+    build_date_range_filters,
     build_line_filters,
+    ensure_date_bounds,
     find_column,
-    list_table_columns,
     normalize_date_only,
+    normalize_line_id,
     parse_json_body,
-    pick_base_timestamp_column,
-    sanitize_identifier,
+    resolve_table_schema,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,34 +60,23 @@ class TablesView(APIView):
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         params = request.GET
 
-        table_name = sanitize_identifier(params.get("table"), DEFAULT_TABLE)
-        if not table_name:
-            return JsonResponse({"error": "Invalid table name"}, status=400)
-
         from_param = normalize_date_only(params.get("from"))
         to_param = normalize_date_only(params.get("to"))
-        line_id_param = params.get("lineId")
-        normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
+        normalized_line_id = normalize_line_id(params.get("lineId"))
         recent_hours_start, recent_hours_end = _resolve_recent_hours_range(params)
 
         if from_param and to_param:
-            from_time = datetime.fromisoformat(f"{from_param}T00:00:00")
-            to_time = datetime.fromisoformat(f"{to_param}T23:59:59")
-            if from_time > to_time:
-                from_param, to_param = to_param, from_param
+            from_param, to_param = ensure_date_bounds(from_param, to_param)
 
         try:
-            column_names = list_table_columns(table_name)
-            if not column_names:
-                return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
-
-            base_ts_col = pick_base_timestamp_column(column_names)
-            if not base_ts_col:
-                expected = ", ".join(DATE_COLUMN_CANDIDATES)
-                return JsonResponse(
-                    {"error": f'No timestamp-like column found in "{table_name}". Expected one of: {expected}.'},
-                    status=400,
-                )
+            schema = resolve_table_schema(
+                params.get("table"),
+                default_table=DEFAULT_TABLE,
+                require_timestamp=True,
+            )
+            table_name = schema.name
+            column_names = schema.columns
+            base_ts_col = schema.timestamp_column
 
             line_filter_result = build_line_filters(column_names, normalized_line_id)
             where_parts = list(line_filter_result["filters"])
@@ -101,13 +91,9 @@ class TablesView(APIView):
             query_params.append(recent_start_dt.strftime("%Y-%m-%d %H:%M:%S"))
             query_params.append(recent_end_dt.strftime("%Y-%m-%d %H:%M:%S"))
 
-            if from_param:
-                where_parts.append(f"{base_ts_col} >= %s")
-                query_params.append(f"{from_param} 00:00:00")
-
-            if to_param:
-                where_parts.append(f"{base_ts_col} <= %s")
-                query_params.append(f"{to_param} 23:59:59")
+            date_conditions, date_params = build_date_range_filters(base_ts_col, from_param, to_param)
+            where_parts.extend(date_conditions)
+            query_params.extend(date_params)
 
             where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
             order_clause = f"ORDER BY {base_ts_col} DESC, id DESC"
@@ -134,6 +120,8 @@ class TablesView(APIView):
                 "rows": rows,
             }
             return JsonResponse(response_payload)
+        except (ValueError, LookupError) as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         except Exception as exc:  # pragma: no cover - 방어적 로깅
             error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
             if error_code in {"ER_NO_SUCH_TABLE", "42P01"}:
@@ -256,30 +244,40 @@ class TableUpdateView(APIView):
         if key == "comment":
             return "" if value is None else str(value)
         if key == "needtosend":
-            return TableUpdateView._coerce_boolean(value)
+            return TableUpdateView._coerce_smallint_flag(value)
         return value
 
     @staticmethod
-    def _coerce_boolean(value: Any) -> bool:
-        """다양한 입력을 0/1 불리언으로 안전 변환."""
+    def _coerce_smallint_flag(value: Any) -> int:
+        """다양한 입력을 tinyint 스타일(최소 음수 허용) 정수로 변환."""
+
+        TINY_MIN, TINY_MAX = -128, 127
+
+        def clamp(numeric: int) -> int:
+            return max(TINY_MIN, min(TINY_MAX, int(numeric)))
 
         if isinstance(value, bool):
-            return value
+            return 1 if value else 0
         if value is None:
-            return False
+            return 0
         if isinstance(value, (int, float)):
-            return int(value) == 1
+            return clamp(value)
         if isinstance(value, str):
             normalized = value.strip().lower()
             if normalized in {"1", "true", "t", "y", "yes"}:
-                return True
+                return 1
             if normalized in {"0", "false", "f", "n", "no", ""}:
-                return False
+                return 0
+            try:
+                parsed = int(float(normalized))
+                return clamp(parsed)
+            except (TypeError, ValueError):
+                return 0
         try:
             coerced = int(value)
-            return coerced == 1
+            return clamp(coerced)
         except (TypeError, ValueError):
-            return False
+            return 0
 
 
 __all__ = ["TableUpdateView", "TablesView"]

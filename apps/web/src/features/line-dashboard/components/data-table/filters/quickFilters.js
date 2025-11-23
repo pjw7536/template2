@@ -1,6 +1,7 @@
 // src/features/line-dashboard/components/data-table/filters/quickFilters.js
 // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
 import { STATUS_LABELS, STATUS_SEQUENCE } from "../../../constants/status-labels"
+import { deriveFlagState } from "../utils/flagState"
 
 const STATUS_ORDER = STATUS_SEQUENCE
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
@@ -28,26 +29,10 @@ function findMatchingColumn(columns, target) {
   )
 }
 
-function normalizeBooleanValue(value) {
-  if (typeof value === "boolean") return value
+function normalizeFlagState(value) {
   if (value === null || value === undefined) return null
-  if (typeof value === "number" && Number.isFinite(value)) {
-    if (value === 1) return true
-    if (value === 0) return false
-    return null
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase()
-    if (!normalized) return null
-    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
-    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
-    return null
-  }
-  if (typeof value === "bigint") {
-    if (value === 1n) return true
-    if (value === 0n) return false
-  }
-  return null
+  const { state } = deriveFlagState(value, 0)
+  return state
 }
 
 function toTimestamp(value) {
@@ -199,26 +184,37 @@ const QUICK_FILTER_DEFINITIONS = [
     key: "needtosend",
     label: "예약",
     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
-    normalizeValue: normalizeBooleanValue,
-    formatValue: (value) => (value ? "Yes" : "No"),
+    normalizeValue: normalizeFlagState,
+    formatValue: (value) => {
+      if (value === "on") return "Y"
+      if (value === "off") return "N"
+      if (value === "error") return "N"
+      return String(value)
+    },
     compareOptions: (a, b) => {
-      if (a.value === b.value) return 0
-      if (a.value === true) return -1
-      if (b.value === true) return 1
-      return 0
+      const order = { on: 0, off: 1, error: 2 }
+      const orderA = order[a.value] ?? 99
+      const orderB = order[b.value] ?? 99
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.value).localeCompare(String(b.value))
     },
   },
   {
     key: "send_jira",
     label: "Jira전송완료",
     resolveColumn: (columns) => findMatchingColumn(columns, "send_jira"),
-    normalizeValue: normalizeBooleanValue,
-    formatValue: (value) => (value ? "Yes" : "No"),
+    normalizeValue: normalizeFlagState,
+    formatValue: (value) => {
+      if (value === "on") return "Y"
+      if (value === "off") return "N"
+      return String(value)
+    },
     compareOptions: (a, b) => {
-      if (a.value === b.value) return 0
-      if (a.value === true) return -1
-      if (b.value === true) return 1
-      return 0
+      const order = { on: 0, off: 1, error: 2 }
+      const orderA = order[a.value] ?? 99
+      const orderB = order[b.value] ?? 99
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.value).localeCompare(String(b.value))
     },
   },
   {

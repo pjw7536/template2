@@ -5,34 +5,18 @@ import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
 
 import { makeCellKey } from "../utils/cellState"
 import { buildToastOptions } from "../utils/toast"
+import { deriveFlagState, describeFlagState } from "../utils/flagState"
 
 /* ============================================================================
  * NeedToSendCell (Boolean 버전)
- * - needtosend 값을 boolean 으로 토글/표시
- * - 서버로는 { needtosend: true|false } 전송
- * - 과거 0/1, "Y"/"N" 등도 안전 변환
+ * - needtosend 값을 tinyint 스타일로 표시/토글 (음수값은 오류)
+ * - 서버로는 { needtosend: number } 전송 (1/0 토글, 음수→오류 표시만)
+ * - 과거 0/1, "Y"/"N", -1 등도 안전 변환
  * ========================================================================== */
 
 /* =========================
  * 1) 유틸
  * ======================= */
-
-/** 다양한 값(0/1, "0"/"1", "Y"/"N", "true"/"false", bool)을 안전하게 boolean 으로 변환 */
-function toBool(v) {
-  if (typeof v === "boolean") return v
-  if (v == null) return false
-
-  // 숫자형
-  if (typeof v === "number") return v === 1
-
-  // 문자열형
-  const s = String(v).trim().toLowerCase()
-  if (s === "1" || s === "y" || s === "yes" || s === "true") return true
-  if (s === "0" || s === "n" || s === "no" || s === "false") return false
-
-  // 그 외는 falsy 취급
-  return false
-}
 
 /** 토스트 도우미 */
 function showReserveToast() {
@@ -63,16 +47,19 @@ function showErrorToast(msg) {
 export function NeedToSendCell({
   meta,
   recordId,
-  baseValue, // 서버/테이블 원본값 (true/false 또는 과거 0/1 등)
+  baseValue, // 서버/테이블 원본값 (숫자/불리언 등)
+  state,
   disabled = false,
   disabledReason = "이미 JIRA 전송됨 (needtosend 수정 불가)",
 }) {
+  const baseState = state ?? deriveFlagState(baseValue, 0)
+
   // 메타에서 임시 드래프트 값(서버 저장 전)을 우선 사용
   const draftValue = meta?.needToSendDrafts?.[recordId]
-  const nextValue = draftValue ?? baseValue
+  const effectiveState = draftValue === undefined ? baseState : deriveFlagState(draftValue, baseState.numericValue)
+  const { numericValue, isOn, isError } = effectiveState
 
-  // 항상 boolean 으로 표현
-  const isChecked = toBool(nextValue)
+  const isChecked = isOn
 
   // 저장 중 상태: 같은 셀 동시 요청 방지
   const savingKey = makeCellKey(recordId, "needtosend")
@@ -88,15 +75,15 @@ export function NeedToSendCell({
     }
     if (isSaving) return
 
-    // boolean 토글
-    const targetValue = !isChecked
+    // boolean 토글 기반으로 1/0 저장 (음수 상태 → 1로 복귀)
+    const targetValue = isChecked ? 0 : 1
 
     // 드래프트/에러 초기화
     meta?.setNeedToSendDraftValue?.(recordId, targetValue)
     meta?.clearUpdateError?.(savingKey)
 
     try {
-      // 서버에 실제 업데이트 요청 — boolean으로 전송
+      // 서버에 실제 업데이트 요청 — 숫자로 전송
       const ok = await meta?.handleUpdate?.(recordId, { needtosend: targetValue })
 
       if (ok) {
@@ -125,7 +112,9 @@ export function NeedToSendCell({
     }
   }
 
-  const titleText = disabled ? disabledReason : isChecked ? "Need to send" : "Not selected"
+  const titleText = disabled
+    ? disabledReason
+    : describeFlagState(numericValue)
 
   return (
     <div className="inline-flex justify-center">
@@ -142,13 +131,16 @@ export function NeedToSendCell({
         title={titleText}
         className={cn(
           "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-          isChecked
-            ? "bg-primary border-primary text-primary-foreground"
-            : "border-border hover:border-primary hover:text-primary",
+          isError
+            ? "border-destructive/60 bg-destructive/10 text-destructive"
+            : isChecked
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-border hover:border-primary hover:text-primary",
           (disabled || isSaving) && "cursor-not-allowed opacity-60"
         )}
       >
-        {isChecked && <Check className="h-3 w-3" strokeWidth={3} />}
+        {isError ? <XCircle className="h-3 w-3" strokeWidth={3} /> : null}
+        {!isError && isChecked ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
       </button>
     </div>
   )

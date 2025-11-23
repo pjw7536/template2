@@ -29,16 +29,16 @@ const PLACEHOLDER = {
 function toBooleanFlag(value) {
   if (typeof value === "boolean") return value
   if (value === null || value === undefined) return false
-  if (typeof value === "number" && Number.isFinite(value)) return value === 1
+  if (typeof value === "number" && Number.isFinite(value)) return value > 0
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase()
     if (!normalized) return false
     if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
     if (["0", "false", "f", "n", "no"].includes(normalized)) return false
     const numeric = Number(normalized)
-    return Number.isFinite(numeric) ? numeric === 1 : false
+    return Number.isFinite(numeric) ? numeric > 0 : false
   }
-  if (typeof value === "bigint") return Number(value) === 1
+  if (typeof value === "bigint") return Number(value) > 0
   return false
 }
 
@@ -46,17 +46,47 @@ function toBooleanFlag(value) {
  * 날짜/문자 유틸
  * ============================================ */
 
+const KST_TIME_ZONE = "Asia/Seoul"
+const kstPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: KST_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+})
+
+function formatKstDate(value, { withSeconds = false } = {}) {
+  const parsedDate = tryParseDate(value)
+  if (!parsedDate) return null
+  const parts = kstPartsFormatter.formatToParts(parsedDate).reduce((acc, part) => {
+    if (part.type in acc) return acc
+    acc[part.type] = part.value
+    return acc
+  }, {})
+
+  const base = `${parts.month ?? "00"}/${parts.day ?? "00"} ${parts.hour ?? "00"}:${parts.minute ?? "00"}`
+  if (withSeconds) {
+    return `${base}:${parts.second ?? "00"}`
+  }
+  return base
+}
+
 /**
- * (표시용) 짧은 날짜 포맷으로 변환: MM/DD HH:mm
- * @param {Date} date 유효한 Date 인스턴스
- * @returns {string}
+ * (표시용) 짧은 날짜 포맷: MM/DD HH:mm (KST)
  */
 function formatShortDateTime(date) {
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${month}/${day} ${hours}:${minutes}`
+  return formatKstDate(date) ?? ""
+}
+
+export function formatTooltipValue(value) {
+  const formatted = formatKstDate(value, { withSeconds: true })
+  if (formatted) return formatted
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value)
+  }
+  return undefined
 }
 
 /**

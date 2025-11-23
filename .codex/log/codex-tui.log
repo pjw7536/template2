@@ -3454,3 +3454,3038 @@
 -import { CommentCell, NeedToSendCell } from "../cells"
 +import { CommentCell, NeedToSendCell } from "../cells"
 *** End Patch
+[2m2025-11-21T06:54:11.346620Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T06:54:11.391462Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T06:54:11.391505Z[0m [32m INFO[0m ghost commit captured: 14fbe399ebc053afa5c227c1142b55fe7956a92e
+[2m2025-11-21T06:54:11.391511Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T06:54:19.927372Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:22.119749Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.dev.oidc.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:24.185035Z[0m [32m INFO[0m interrupt received: abort current task, if any
+[2m2025-11-21T06:54:26.785613Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T06:54:26.820884Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T06:54:26.820922Z[0m [32m INFO[0m ghost commit captured: 355c836ca7e1d9cfd8ab52192291fe8e5727aeb4
+[2m2025-11-21T06:54:26.820928Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T06:54:29.977026Z[0m [33m WARN[0m stream disconnected - retrying turn (1/5 in 202ms)...
+[2m2025-11-21T06:54:32.799229Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:41.569640Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' deploy/nginx/default.prod.conf","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:44.056455Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' deploy/nginx/default.conf","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:46.695536Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.dev.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:53.351075Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:55.131254Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:54:57.462009Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:55:00.153988Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:55:02.410950Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:56:27.382614Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Inspect current dev OIDC and production compose/nginx settings to understand gaps"},{"status":"pending","step":"Align docker-compose.dev.oidc.yml with production stack (nginx HTTPS, env alignment) while keeping live code reload"},{"status":"pending","step":"Summarize changes and suggest next verification steps"}]}
+[2m2025-11-21T06:56:44.038552Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+ services:
+   api:
+     build:
+       context: ./apps/api
+     env_file:
+       - ./env/api.common.env
+-      - ./env/api.oidc.dev.env
++      - ./env/api.prod.env
++      - ./env/api.oidc.dev.env
+     volumes:
+       - ./apps/api:/app
+       - api_data:/data
+       - api_static:/app/staticfiles
+-    ports:
+-      - "8000:8000"
++    expose:
++      - "8000"
+     entrypoint:
+       - /bin/sh
+       - -c
+       - |
+           set -e
+           python manage.py migrate --noinput
+           python manage.py runserver 0.0.0.0:8000
+@@
+   web:
+     build:
+       context: ./apps/web
+     env_file:
+-      - ./env/web.dev.env
++      - ./env/web.prod.env
++    environment:
++      NODE_ENV: development              # keep dev tooling active
++      NPM_CONFIG_PRODUCTION: "false"     # install dev deps for Vite
++      CHOKIDAR_USEPOLLING: "true"        # reliable hot reload in Docker
++      WATCHPACK_POLLING: "true"
+     depends_on:
+       - api
+     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+     volumes:
+       - ./apps/web:/app
+       - web_node_modules:/app/node_modules
+-    ports:
+-      - "3000:3000"
++    expose:
++      - "3000"
+     networks:
+       shared-net:
+         aliases:
+           - web
+ 
+   nginx:
+     image: nginx:1.27-alpine
+     depends_on:
+       - web
+       - api
+     ports:
+       - "80:80"
++      - "443:443"
+     volumes:
+-      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
++      - ./deploy/nginx/default.prod.conf:/etc/nginx/conf.d/default.conf:ro
+       - api_static:/var/www/static:ro
++      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+     networks:
+       - shared-net
+*** End Patch
+[2m2025-11-21T06:56:47.967301Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.dev.oidc.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T06:56:54.132508Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect current dev OIDC and production compose/nginx settings to understand gaps"},{"status":"completed","step":"Align docker-compose.dev.oidc.yml with production stack (nginx HTTPS, env alignment) while keeping live code reload"},{"status":"in_progress","step":"Summarize changes and suggest next verification steps"}]}
+[2m2025-11-21T06:57:03.932513Z[0m [32m INFO[0m ToolCall: update_plan {"explanation":"Updated compose and ready to summarize outcomes.","plan":[{"status":"completed","step":"Inspect current dev OIDC and production compose/nginx settings to understand gaps"},{"status":"completed","step":"Align docker-compose.dev.oidc.yml with production stack (nginx HTTPS, env alignment) while keeping live code reload"},{"status":"completed","step":"Summarize changes and suggest next verification steps"}]}
+[2m2025-11-21T06:58:38.418586Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T06:58:38.459655Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T06:58:38.459712Z[0m [32m INFO[0m ghost commit captured: eb6d23e9f99a81449d4af5aaa61085e73a9c0da6
+[2m2025-11-21T06:58:38.459731Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T06:58:49.726268Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+     volumes:
+       - api_data:/data
+       - api_static:/app/staticfiles
+     expose:
+       - "8000"
+-    depends_on:
+-      - adfs
+     networks:
+       shared-net:
+         aliases:
+           - api
+@@
+     depends_on:
+       - api
+     expose:
+       - "3000"
+     networks:
+       shared-net:
+         aliases:
+           - web
+-
+-  adfs:
+-    build:
+-      context: ./apps/adfs_dummy
+-    environment:
+-      DUMMY_ADFS_EMAIL: dummy.user@example.com
+-      DUMMY_ADFS_NAME: Dummy User
+-      DUMMY_ADFS_CLIENT_ID: dummy-client
+-      DUMMY_ADFS_CLIENT_SECRET: dummy-secret
+-    expose:
+-      - "9000"
+-    networks:
+-      shared-net:
+-        aliases:
+-          - adfs
+*** End Patch
+[2m2025-11-21T08:00:51.178125Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T08:00:51.334451Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T08:00:51.334496Z[0m [32m INFO[0m ghost commit captured: 31bdfbcdef664bfaa8ee97c5aeee83da90350dff
+[2m2025-11-21T08:00:51.334519Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T08:00:56.636217Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"send_jira\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:00:58.418070Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:05.933497Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:12.320141Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"needtosend\" apps","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:15.078906Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:18.027593Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,420p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:20.368960Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:24.134702Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:26.991031Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/column-defs/normalizers.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:31.414383Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:56.688595Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:01:58.580707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,400p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:02.038513Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeNeedToSend\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:04.218544Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"toBooleanFlag\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:07.063682Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '260,360p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:15.563078Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeBinaryFlag\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:18.130931Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/migrations","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:21.066301Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0003_add_dummy_drone_sop_v3_data.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:54.328771Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:56.839963Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"handleUpdate\" -n apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:02:59.182142Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,360p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:04:16.099654Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Assess current send_jira/needtosend usage across backend models, queries, and frontend components"},{"status":"pending","step":"Change backend schema/logic to tinyint-style flags and adjust queries/migrations"},{"status":"pending","step":"Update frontend handling (parsing, UI, filters) to support multi-state flags"},{"status":"pending","step":"Summarize changes and next steps"}]}
+[2m2025-11-21T08:04:21.600015Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/models.py
+@@
+     ppid = models.CharField(max_length=50, null=True, blank=True)
+     main_step = models.CharField(max_length=50, null=True, blank=True)
+     metro_current_step = models.CharField(max_length=50, null=True, blank=True)
+     metro_steps = models.CharField(max_length=100, null=True, blank=True)
+     metro_end_step = models.CharField(max_length=50, null=True, blank=True)
+     status = models.CharField(max_length=50, null=True, blank=True)
+     knoxid = models.CharField(max_length=50, null=True, blank=True)
+     comment = models.TextField(null=True, blank=True)
+     user_sdwt_prod = models.CharField(max_length=50, null=True, blank=True)
+     defect_url = models.TextField(null=True, blank=True)
+-    send_jira = models.BooleanField(default=False)
+-    needtosend = models.BooleanField(default=True)
++    send_jira = models.SmallIntegerField(default=0)
++    needtosend = models.SmallIntegerField(default=1)
+     custom_end_step = models.CharField(max_length=50, null=True, blank=True)
+     inform_step = models.CharField(max_length=50, null=True, blank=True)
+     jira_key = models.CharField(max_length=50, null=True, blank=True)
+     informed_at = models.DateTimeField(null=True, blank=True)
+     created_at = models.DateTimeField(auto_now_add=True)
+*** End Patch
+[2m2025-11-21T08:04:29.098634Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/api/api/migrations/0004_use_smallint_flags.py
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ("api", "0003_add_dummy_drone_sop_v3_data"),
++    ]
++
++    operations = [
++        migrations.AlterField(
++            model_name="dronesopv3",
++            name="send_jira",
++            field=models.SmallIntegerField(default=0),
++        ),
++        migrations.AlterField(
++            model_name="dronesopv3",
++            name="needtosend",
++            field=models.SmallIntegerField(default=1),
++        ),
++    ]
+*** End Patch
+[2m2025-11-21T08:04:34.519956Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+         totals_select = [f"DATE({timestamp_column}) AS day", "COUNT(*) AS row_count"]
+         if send_jira_column:
+             totals_select.append(
+-                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
++                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                     col=send_jira_column
+                 )
+             )
+         else:
+             totals_select.append("0 AS send_jira_count")
+@@
+ 
+         if send_jira_column:
+             select_parts.append(
+-                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
++                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
+                     col=send_jira_column
+                 )
+             )
+         else:
+             select_parts.append("0 AS send_jira_count")
+*** End Patch
+[2m2025-11-21T08:04:45.338967Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+         if key == "comment":
+             return "" if value is None else str(value)
+         if key == "needtosend":
+-            return TableUpdateView._coerce_boolean(value)
++            return TableUpdateView._coerce_smallint_flag(value)
+         return value
+ 
+     @staticmethod
+-    def _coerce_boolean(value: Any) -> bool:
+-        """다양한 입력을 0/1 불리언으로 안전 변환."""
+-
+-        if isinstance(value, bool):
+-            return value
+-        if value is None:
+-            return False
+-        if isinstance(value, (int, float)):
+-            return int(value) == 1
+-        if isinstance(value, str):
+-            normalized = value.strip().lower()
+-            if normalized in {"1", "true", "t", "y", "yes"}:
+-                return True
+-            if normalized in {"0", "false", "f", "n", "no", ""}:
+-                return False
+-        try:
+-            coerced = int(value)
+-            return coerced == 1
+-        except (TypeError, ValueError):
+-            return False
++    def _coerce_smallint_flag(value: Any) -> int:
++        """다양한 입력을 tinyint 스타일(최소 음수 허용) 정수로 변환."""
++
++        TINY_MIN, TINY_MAX = -128, 127
++
++        def clamp(numeric: int) -> int:
++            return max(TINY_MIN, min(TINY_MAX, int(numeric)))
++
++        if isinstance(value, bool):
++            return 1 if value else 0
++        if value is None:
++            return 0
++        if isinstance(value, (int, float)):
++            return clamp(value)
++        if isinstance(value, str):
++            normalized = value.strip().lower()
++            if normalized in {"1", "true", "t", "y", "yes"}:
++                return 1
++            if normalized in {"0", "false", "f", "n", "no", ""}:
++                return 0
++            try:
++                parsed = int(float(normalized))
++                return clamp(parsed)
++            except (TypeError, ValueError):
++                return 0
++        try:
++            coerced = int(value)
++            return clamp(coerced)
++        except (TypeError, ValueError):
++            return 0
+*** End Patch
+[2m2025-11-21T08:04:54.888389Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/line-dashboard/components/data-table/utils/flagState.js
++const TINY_INT_MIN = -128
++const TINY_INT_MAX = 127
++
++function clampTinyInt(value) {
++  return Math.max(TINY_INT_MIN, Math.min(TINY_INT_MAX, Math.trunc(value)))
++}
++
++export function toTinyIntFlag(rawValue, defaultValue = 0) {
++  if (rawValue === null || rawValue === undefined) return defaultValue
++
++  if (typeof rawValue === "boolean") return rawValue ? 1 : 0
++
++  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
++    return clampTinyInt(rawValue)
++  }
++
++  if (typeof rawValue === "bigint") {
++    return clampTinyInt(Number(rawValue))
++  }
++
++  const normalized = String(rawValue).trim().toLowerCase()
++  if (!normalized) return defaultValue
++
++  if (["1", "true", "t", "y", "yes", "on"].includes(normalized)) return 1
++  if (["0", "false", "f", "n", "no", "off"].includes(normalized)) return 0
++
++  const parsed = Number.parseInt(normalized, 10)
++  if (Number.isFinite(parsed)) return clampTinyInt(parsed)
++
++  return defaultValue
++}
++
++export function deriveFlagState(rawValue, defaultValue = 0) {
++  const numericValue = toTinyIntFlag(rawValue, defaultValue)
++  const isOn = numericValue > 0
++  const isError = numericValue < 0
++  const state = isError ? "error" : isOn ? "on" : "off"
++
++  return { numericValue, isOn, isError, state }
++}
++
++export function describeFlagState(rawValue, defaultValue = 0) {
++  const { numericValue, state } = deriveFlagState(rawValue, defaultValue)
++  if (state === "error") return `오류 상태 (값: ${numericValue})`
++  if (state === "on") return `활성 (값: ${numericValue})`
++  return `비활성 (값: ${numericValue})`
++}
+*** End Patch
+[2m2025-11-21T08:05:06.864609Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/normalizers.js
+@@
+ // src/features/line-dashboard/components/data-table/column-defs/normalizers.js
+ // 셀 렌더러에서 공통으로 쓰는 값 정규화 유틸입니다.
++import { deriveFlagState, toTinyIntFlag } from "../utils/flagState"
+ 
+ export function toHttpUrl(raw) {
+   if (raw == null) return null
+   const value = String(raw).trim()
+   if (!value) return null
+@@
+   if (raw == null) return ""
+   return String(raw)
+ }
+ 
+ export function normalizeNeedToSend(raw) {
+-  if (typeof raw === "boolean") return raw
+-  if (raw === null || raw === undefined) return false
+-  if (typeof raw === "number" && Number.isFinite(raw)) return raw === 1
+-  if (typeof raw === "string") {
+-    const normalized = raw.trim().toLowerCase()
+-    if (!normalized) return false
+-    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+-    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+-    const parsed = Number.parseInt(normalized, 10)
+-    if (Number.isFinite(parsed)) return parsed === 1
+-    return false
+-  }
+-  if (typeof raw === "bigint") return Number(raw) === 1
+-  return false
++  return toTinyIntFlag(raw, 0)
+ }
+ 
+ export function normalizeBinaryFlag(raw) {
+-  if (typeof raw === "boolean") return raw
+-  if (raw === null || raw === undefined) return false
+-  if (typeof raw === "number" && Number.isFinite(raw)) return raw === 1
+-  if (typeof raw === "string") {
+-    const normalized = raw.trim().toLowerCase()
+-    if (!normalized || normalized === ".") return false
+-    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+-    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+-    const numeric = Number(normalized)
+-    return Number.isFinite(numeric) ? numeric === 1 : false
+-  }
+-  if (typeof raw === "bigint") return Number(raw) === 1
+-  return false
++  return deriveFlagState(raw, 0).isOn
+ }
+ 
+ export function normalizeStatus(raw) {
+   if (raw == null) return null
+   return String(raw).trim().toUpperCase().replace(/\s+/g, "_")
+ }
+*** End Patch
+[2m2025-11-21T08:05:19.817285Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+ // src/features/line-dashboard/components/data-table/column-defs/renderers.js
+ // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
+-import { ExternalLink, Check } from "lucide-react"
++import { ExternalLink, Check, AlertTriangle } from "lucide-react"
+ 
+ import { CommentCell, NeedToSendCell } from "../cells"
+ import { formatCellValue } from "../utils/formatters.jsx"
+ import { STATUS_LABELS } from "../../../constants/status-labels"
+ import {
+@@
+   normalizeStatus,
+   toHttpUrl,
+ } from "./normalizers"
+ import { computeMetroProgress } from "./processFlow"
++import { deriveFlagState, describeFlagState } from "../utils/flagState"
+@@
+   needtosend: ({ value, rowOriginal, meta }) => {
+     const recordId = getRecordId(rowOriginal)
+     if (!meta || !recordId) return formatCellValue(value)
+-    const baseValue = normalizeNeedToSend(rowOriginal?.needtosend)
+-    const isLocked = normalizeBinaryFlag(rowOriginal?.send_jira)
++    const baseState = deriveFlagState(normalizeNeedToSend(rowOriginal?.needtosend), 0)
++    const isLocked = deriveFlagState(rowOriginal?.send_jira, 0).isOn
+     return (
+       <NeedToSendCell
+         meta={meta}
+         recordId={recordId}
+-        baseValue={baseValue}
++        baseValue={baseState.numericValue}
++        state={baseState}
+         disabled={isLocked}
+         disabledReason="이미 JIRA 전송됨 (needtosend 수정 불가)"
+       />
+     )
+   },
+ 
+   send_jira: ({ value }) => {
+-    const ok = normalizeBinaryFlag(value)
++    const { state, numericValue, isOn } = deriveFlagState(value, 0)
++    const title =
++      state === "error"
++        ? `JIRA 전송 오류 상태 (값: ${numericValue})`
++        : isOn
++          ? "Sent to JIRA"
++          : "Not sent"
+     return (
+       <span
+         className={[
+           "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors",
+-          ok ? "bg-primary border-primary text-primary-foreground" : "border-border",
++          state === "error"
++            ? "border-destructive/60 bg-destructive/10 text-destructive"
++            : isOn
++              ? "bg-primary border-primary text-primary-foreground"
++              : "border-border",
+         ].join(" ")}
+-        title={ok ? "Sent to JIRA" : "Not sent"}
+-        aria-label={ok ? "Sent to JIRA" : "Not sent"}
++        title={title}
++        aria-label={title}
+         role="img"
+       >
+-        {ok ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
++        {state === "error" ? (
++          <AlertTriangle className="h-3 w-3" strokeWidth={3} />
++        ) : isOn ? (
++          <Check className="h-3 w-3" strokeWidth={3} />
++        ) : null}
+       </span>
+     )
+   },
+*** End Patch
+[2m2025-11-21T08:05:44.500200Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx
+@@
+-import { makeCellKey } from "../utils/cellState"
++import { makeCellKey } from "../utils/cellState"
+ import { buildToastOptions } from "../utils/toast"
++import { deriveFlagState, describeFlagState } from "../utils/flagState"
+@@
+  * NeedToSendCell (Boolean 버전)
+- * - needtosend 값을 boolean 으로 토글/표시
+- * - 서버로는 { needtosend: true|false } 전송
+- * - 과거 0/1, "Y"/"N" 등도 안전 변환
++ * - needtosend 값을 tinyint 스타일로 표시/토글 (음수값은 오류)
++ * - 서버로는 { needtosend: number } 전송 (1/0 토글, 음수→오류 표시만)
++ * - 과거 0/1, "Y"/"N", -1 등도 안전 변환
+@@
+-/** 다양한 값(0/1, "0"/"1", "Y"/"N", "true"/"false", bool)을 안전하게 boolean 으로 변환 */
+-function toBool(v) {
+-  if (typeof v === "boolean") return v
+-  if (v == null) return false
+-
+-  // 숫자형
+-  if (typeof v === "number") return v === 1
+-
+-  // 문자열형
+-  const s = String(v).trim().toLowerCase()
+-  if (s === "1" || s === "y" || s === "yes" || s === "true") return true
+-  if (s === "0" || s === "n" || s === "no" || s === "false") return false
+-
+-  // 그 외는 falsy 취급
+-  return false
+-}
+-
+ /** 토스트 도우미 */
+ function showReserveToast() {
+   toast.success("예약 성공", {
+     description: "E-SOP Inform 예약 되었습니다.",
+@@
+ export function NeedToSendCell({
+   meta,
+   recordId,
+-  baseValue, // 서버/테이블 원본값 (true/false 또는 과거 0/1 등)
++  baseValue, // 서버/테이블 원본값 (숫자/불리언 등)
++  state,
+   disabled = false,
+   disabledReason = "이미 JIRA 전송됨 (needtosend 수정 불가)",
+ }) {
++  const baseState = state ?? deriveFlagState(baseValue, 0)
++
+   // 메타에서 임시 드래프트 값(서버 저장 전)을 우선 사용
+   const draftValue = meta?.needToSendDrafts?.[recordId]
+-  const nextValue = draftValue ?? baseValue
++  const effectiveState = draftValue === undefined ? baseState : deriveFlagState(draftValue, baseState.numericValue)
++  const { numericValue, isOn, isError } = effectiveState
+ 
+-  // 항상 boolean 으로 표현
+-  const isChecked = toBool(nextValue)
++  const isChecked = isOn
+ 
+   // 저장 중 상태: 같은 셀 동시 요청 방지
+   const savingKey = makeCellKey(recordId, "needtosend")
+   const isSaving = Boolean(meta?.updatingCells?.[savingKey])
+@@
+     }
+     if (isSaving) return
+ 
+-    // boolean 토글
+-    const targetValue = !isChecked
++    // boolean 토글 기반으로 1/0 저장 (음수 상태 → 1로 복귀)
++    const targetValue = isChecked ? 0 : 1
+ 
+     // 드래프트/에러 초기화
+     meta?.setNeedToSendDraftValue?.(recordId, targetValue)
+@@
+-      // 서버에 실제 업데이트 요청 — boolean으로 전송
++      // 서버에 실제 업데이트 요청 — 숫자로 전송
+       const ok = await meta?.handleUpdate?.(recordId, { needtosend: targetValue })
+@@
+   const onKeyDown = (e) => {
+     if (e.key === "Enter" || e.key === " ") {
+       e.preventDefault()
+       toggle()
+     }
+   }
+ 
+-  const titleText = disabled ? disabledReason : isChecked ? "Need to send" : "Not selected"
++  const titleText = disabled
++    ? disabledReason
++    : describeFlagState(numericValue)
+ 
+   return (
+     <div className="inline-flex justify-center">
+       {/* ✅ 원형 토글 버튼 (role='switch' + aria-checked=true|false) */}
+       <button
+@@
+-        className={cn(
+-          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+-          isChecked
+-            ? "bg-primary border-primary text-primary-foreground"
+-            : "border-border hover:border-primary hover:text-primary",
+-          (disabled || isSaving) && "cursor-not-allowed opacity-60"
+-        )}
++        className={cn(
++          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
++          isError
++            ? "border-destructive/60 bg-destructive/10 text-destructive"
++            : isChecked
++              ? "bg-primary border-primary text-primary-foreground"
++              : "border-border hover:border-primary hover:text-primary",
++          (disabled || isSaving) && "cursor-not-allowed opacity-60"
++        )}
+       >
+-        {isChecked && <Check className="h-3 w-3" strokeWidth={3} />}
++        {isError ? <XCircle className="h-3 w-3" strokeWidth={3} /> : null}
++        {!isError && isChecked ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+       </button>
+     </div>
+   )
+ }
+*** End Patch
+[2m2025-11-21T08:05:51.766892Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+ function toBooleanFlag(value) {
+   if (typeof value === "boolean") return value
+   if (value === null || value === undefined) return false
+-  if (typeof value === "number" && Number.isFinite(value)) return value === 1
++  if (typeof value === "number" && Number.isFinite(value)) return value > 0
+   if (typeof value === "string") {
+     const normalized = value.trim().toLowerCase()
+     if (!normalized) return false
+     if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+     if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+     const numeric = Number(normalized)
+-    return Number.isFinite(numeric) ? numeric === 1 : false
++    return Number.isFinite(numeric) ? numeric > 0 : false
+   }
+-  if (typeof value === "bigint") return Number(value) === 1
++  if (typeof value === "bigint") return Number(value) > 0
+   return false
+ }
+*** End Patch
+[2m2025-11-21T08:06:11.404498Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+ // src/features/line-dashboard/components/data-table/filters/quickFilters.js
+ // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
+ import { STATUS_LABELS, STATUS_SEQUENCE } from "../../../constants/status-labels"
++import { deriveFlagState } from "../utils/flagState"
+@@
+ function normalizeBooleanValue(value) {
+-  if (typeof value === "boolean") return value
+-  if (value === null || value === undefined) return null
+-  if (typeof value === "number" && Number.isFinite(value)) {
+-    if (value === 1) return true
+-    if (value === 0) return false
+-    return null
+-  }
+-  if (typeof value === "string") {
+-    const normalized = value.trim().toLowerCase()
+-    if (!normalized) return null
+-    if (["1", "true", "t", "y", "yes"].includes(normalized)) return true
+-    if (["0", "false", "f", "n", "no"].includes(normalized)) return false
+-    return null
+-  }
+-  if (typeof value === "bigint") {
+-    if (value === 1n) return true
+-    if (value === 0n) return false
+-  }
+-  return null
++  if (value === null || value === undefined) return null
++  const { state } = deriveFlagState(value, 0)
++  return state
+ }
+@@
+   {
+     key: "needtosend",
+     label: "예약",
+     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
+     normalizeValue: normalizeBooleanValue,
+-    formatValue: (value) => (value ? "Yes" : "No"),
++    formatValue: (value) => {
++      if (value === "on") return "On (>0)"
++      if (value === "off") return "Off (=0)"
++      if (value === "error") return "Error (<0)"
++      return String(value)
++    },
+     compareOptions: (a, b) => {
+-      if (a.value === b.value) return 0
+-      if (a.value === true) return -1
+-      if (b.value === true) return 1
+-      return 0
++      const order = { on: 0, off: 1, error: 2 }
++      const orderA = order[a.value] ?? 99
++      const orderB = order[b.value] ?? 99
++      if (orderA !== orderB) return orderA - orderB
++      return String(a.value).localeCompare(String(b.value))
+     },
+   },
+   {
+     key: "send_jira",
+     label: "Jira전송완료",
+     resolveColumn: (columns) => findMatchingColumn(columns, "send_jira"),
+     normalizeValue: normalizeBooleanValue,
+-    formatValue: (value) => (value ? "Yes" : "No"),
++    formatValue: (value) => {
++      if (value === "on") return "On (>0)"
++      if (value === "off") return "Off (=0)"
++      if (value === "error") return "Error (<0)"
++      return String(value)
++    },
+     compareOptions: (a, b) => {
+-      if (a.value === b.value) return 0
+-      if (a.value === true) return -1
+-      if (b.value === true) return 1
+-      return 0
++      const order = { on: 0, off: 1, error: 2 }
++      const orderA = order[a.value] ?? 99
++      const orderB = order[b.value] ?? 99
++      if (orderA !== orderB) return orderA - orderB
++      return String(a.value).localeCompare(String(b.value))
+     },
+   },
+*** End Patch
+[2m2025-11-21T08:06:16.749691Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+ import { STATUS_LABELS } from "../../../constants/status-labels"
+ import {
+   buildJiraBrowseUrl,
+   getRecordId,
+   normalizeBinaryFlag,
+@@
+   normalizeStatus,
+   toHttpUrl,
+ } from "./normalizers"
+ import { computeMetroProgress } from "./processFlow"
+-import { deriveFlagState, describeFlagState } from "../utils/flagState"
++import { deriveFlagState } from "../utils/flagState"
+*** End Patch
+[2m2025-11-21T08:06:22.685727Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"send_jira\" apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:06:43.317815Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"needtosend\" apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:06:47.625990Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeNeedToSend\" -n apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:06:49.936545Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeBinaryFlag\" apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:06:53.650402Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeBinaryFlag\" apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:06:56.900547Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx
+@@
+   getRecordId,
+-  normalizeBinaryFlag,
+   normalizeComment,
+   normalizeJiraKey,
+   normalizeNeedToSend,
+   normalizeStatus,
+   toHttpUrl,
+*** End Patch
+[2m2025-11-21T08:07:01.657128Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"send_jira\" apps/web/src/features/line-dashboard/components/data-table/column-defs/config.js -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:07:06.320193Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"NeedToSendDraft\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:07:14.703005Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+   const [commentDrafts, setCommentDrafts] = React.useState({})   // { [rowId]: "draft text" }
+   const [commentEditing, setCommentEditing] = React.useState({}) // { [rowId]: true }
+ 
+   // 셀 편집: needtosend
+-  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: boolean }
++  const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: number }
+*** End Patch
+[2m2025-11-21T08:07:21.794843Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"send_jira\" apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:07:31.884970Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"describeFlagState\" apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:07:37.386914Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+-function normalizeBooleanValue(value) {
++function normalizeFlagState(value) {
+   if (value === null || value === undefined) return null
+   const { state } = deriveFlagState(value, 0)
+   return state
+ }
+@@
+     key: "needtosend",
+     label: "예약",
+     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
+-    normalizeValue: normalizeBooleanValue,
++    normalizeValue: normalizeFlagState,
+@@
+     key: "send_jira",
+     label: "Jira전송완료",
+     resolveColumn: (columns) => findMatchingColumn(columns, "send_jira"),
+-    normalizeValue: normalizeBooleanValue,
++    normalizeValue: normalizeFlagState,
+*** End Patch
+[2m2025-11-21T08:07:55.681621Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git status --short","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:08:04.610383Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '260,340p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:08:10.685469Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Assess current send_jira/needtosend usage across backend models, queries, and frontend components"},{"status":"completed","step":"Change backend schema/logic to tinyint-style flags and adjust queries/migrations"},{"status":"completed","step":"Update frontend handling (parsing, UI, filters) to support multi-state flags"},{"status":"completed","step":"Summarize changes and next steps"}]}
+[2m2025-11-21T08:12:43.631073Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T08:12:43.695744Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T08:12:43.695792Z[0m [32m INFO[0m ghost commit captured: 40423aa597d69da590e5eccff6148e60060bd4f1
+[2m2025-11-21T08:12:43.695813Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T08:12:54.028722Z[0m [32m INFO[0m ToolCall: shell_command {"command":"docker compose run --rm api python manage.py migrate","workdir":"/home/pjw75/tailwind","timeout_ms":120000}
+[2m2025-11-21T08:12:57.982421Z[0m [32m INFO[0m ToolCall: shell_command {"command":"docker compose run --rm api python manage.py migrate","workdir":"/home/pjw75/tailwind","with_escalated_permissions":true,"justification":"Need Docker daemon access to apply Django migrations in the api container"}
+[2m2025-11-21T08:15:57.778628Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T08:15:57.826068Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T08:15:57.826113Z[0m [32m INFO[0m ghost commit captured: b68108371be08e5644aa9d2982f3ed1d72f5f8c7
+[2m2025-11-21T08:15:57.826140Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T08:16:12.717707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/oidc_utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T08:16:25.751909Z[0m [32m INFO[0m ToolCall: shell_command {"command":"docker compose run --rm -e ADFS_CER_PATH=/etc/ssl/certs/ca-certificates.crt -e OIDC_CLIENT_ID=dummy -e OIDC_ISSUER=http://example.com -e OIDC_REDIRECT_URI=http://localhost -e ADFS_AUTH_URL=http://example.com -e ADFS_LOGOUT_URL=http://example.com api python manage.py migrate","workdir":"/home/pjw75/tailwind","with_escalated_permissions":true,"justification":"Need Docker daemon access and temporary OIDC env overrides to run Django migrations"}
+[2m2025-11-21T08:16:31.266088Z[0m [32m INFO[0m interrupt received: abort current task, if any
+[2m2025-11-21T08:16:32.100966Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-21T10:44:34.916390Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T10:44:34.987314Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T10:44:34.987355Z[0m [32m INFO[0m ghost commit captured: 28cfd2f5f1d0771e2535787161cc08e8f15b9e35
+[2m2025-11-21T10:44:34.987368Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T10:44:38.388367Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:40.020531Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_sop\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:43.065692Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:45.336157Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/migrations/0001_initial.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:50.764884Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/constants.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:52.844752Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:55.229938Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/db.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:44:59.154257Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/views","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:04.938636Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:07.213674Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/constants.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:09.203292Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:13.448282Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:16.798610Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"sample_type\" apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:19.328213Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:21.583720Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/constants/status-labels.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:24.785316Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"STATUS_LABELS\" -n apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:27.615750Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/constants/status-labels.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:37.168723Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/column-defs/config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:40.076401Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:44.349459Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:45:46.677961Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:47:10.942013Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"postgres\" docker-compose*","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:47:17.172856Z[0m [32m INFO[0m ToolCall: shell_command {"command":"head -n 40 docker-compose.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:47:20.877661Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/api.common.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:53:32.732789Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T10:53:32.773067Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T10:53:32.773106Z[0m [32m INFO[0m ghost commit captured: 74f7e0694ead91b463912a21f9c9f7c70a55f307
+[2m2025-11-21T10:53:32.773112Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T10:57:50.692532Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T10:57:50.733817Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T10:57:50.733860Z[0m [32m INFO[0m ghost commit captured: cacdb2fe831acd1a5a66c53273fd7baf0286aa97
+[2m2025-11-21T10:57:50.733866Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T10:58:06.878779Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T10:58:06.918744Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T10:58:06.918784Z[0m [32m INFO[0m ghost commit captured: 0482f4f8eade18ec7cefddcb9fef0dc1cdaa6463
+[2m2025-11-21T10:58:06.918790Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T10:58:10.616057Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:12.444936Z[0m [32m INFO[0m ToolCall: shell_command {"command":"find apps/web/src/features/line-dashboard -maxdepth 3 -type f | sed 's#.*/##' | head"}
+[2m2025-11-21T10:58:16.029209Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/index.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:18.128958Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/pages/LineDashboardOverviewPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:25.359636Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/hooks/useLineDashboardData.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:27.561381Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:29.405608Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"useDataTableState\" -n apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:32.892552Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:46.095302Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/hooks/useQuickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:50.767212Z[0m [32m INFO[0m ToolCall: shell_command {"command":"find apps/web/src/features/line-dashboard/components -maxdepth 2 -type f"}
+[2m2025-11-21T10:58:57.069810Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/LineDashboardPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:58:59.525750Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/context/LineDashboardProvider.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:02.291896Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:13.255117Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"update\" apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:15.994674Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,420p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:18.322772Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '420,660p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:38.221385Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/StatusDistributionCard.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T10:59:43.181828Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Inspect current line dashboard table + quick filter state and identify refactor targets (data fetch, derived chart, UI state)."},{"status":"pending","step":"Extract fetching/derived data into focused hooks to reduce component responsibility (table query + status chart), update DataTable to use them."},{"status":"pending","step":"Smoke-check code for obvious issues and summarize changes with next steps."}]}
+[2m2025-11-21T11:00:02.222832Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"statusSection\" -n apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:00:06.406278Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,520p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:00:13.542704Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/index.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:01:23.831228Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/line-dashboard/components/data-table/hooks/useTableQuery.js
++// src/features/line-dashboard/components/data-table/hooks/useTableQuery.js
++import * as React from "react"
++
++import { buildBackendUrl } from "@/lib/api"
++
++import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
++import {
++  DEFAULT_TABLE,
++  getDefaultFromValue,
++  getDefaultToValue,
++} from "../utils/constants"
++import {
++  createRecentHoursRange,
++  normalizeRecentHoursRange,
++} from "../filters/quickFilters"
++
++/**
++ * 테이블 데이터(컬럼/행/날짜 범위) 로딩을 담당하는 훅입니다.
++ * - 날짜/최근 시간 범위를 정규화해 쿼리스트링을 만들고,
++ *   서버 응답을 normalizeTablePayload로 안전하게 정리합니다.
++ * - 오래된 응답이 최신 상태를 덮어쓰지 않도록 요청 id를 비교합니다.
++ * - rows가 외부에서 수정될 수 있도록 setRows를 함께 반환합니다.
++ */
++export function useTableQuery({ lineId }) {
++  const [selectedTable, setSelectedTable] = React.useState(DEFAULT_TABLE)
++  const [columns, setColumns] = React.useState([])
++  const [rows, setRows] = React.useState([])
++
++  const [fromDate, setFromDate] = React.useState(() => getDefaultFromValue())
++  const [toDate, setToDate] = React.useState(() => getDefaultToValue())
++
++  const [appliedFrom, setAppliedFrom] = React.useState(() => getDefaultFromValue())
++  const [appliedTo, setAppliedTo] = React.useState(() => getDefaultToValue())
++
++  const [recentHoursRange, setRecentHoursRangeState] = React.useState(() =>
++    createRecentHoursRange()
++  )
++
++  const [isLoadingRows, setIsLoadingRows] = React.useState(false)
++  const [rowsError, setRowsError] = React.useState(null)
++  const [lastFetchedCount, setLastFetchedCount] = React.useState(0)
++  const [hydrationKey, setHydrationKey] = React.useState(0)
++
++  const rowsRequestRef = React.useRef(0)
++
++  const setRecentHoursRange = React.useCallback((nextRange) => {
++    setRecentHoursRangeState((previous) => {
++      const normalized = normalizeRecentHoursRange(nextRange)
++      if (
++        previous &&
++        previous.start === normalized.start &&
++        previous.end === normalized.end
++      ) {
++        return previous
++      }
++      return normalized
++    })
++  }, [])
++
++  const fetchRows = React.useCallback(async () => {
++    const requestId = ++rowsRequestRef.current
++    setIsLoadingRows(true)
++    setRowsError(null)
++
++    try {
++      let effectiveFrom = fromDate && fromDate.length > 0 ? fromDate : null
++      let effectiveTo = toDate && toDate.length > 0 ? toDate : null
++
++      if (effectiveFrom && effectiveTo) {
++        const fromTime = new Date(`${effectiveFrom}T00:00:00Z`).getTime()
++        const toTime = new Date(`${effectiveTo}T23:59:59Z`).getTime()
++        if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
++          ;[effectiveFrom, effectiveTo] = [effectiveTo, effectiveFrom]
++        }
++      }
++
++      const params = new URLSearchParams({ table: selectedTable })
++      if (effectiveFrom) params.set("from", effectiveFrom)
++      if (effectiveTo) params.set("to", effectiveTo)
++      if (lineId) params.set("lineId", lineId)
++
++      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
++      params.set("recentHoursStart", String(normalizedRecent.start))
++      params.set("recentHoursEnd", String(normalizedRecent.end))
++
++      const endpoint = buildBackendUrl("/tables", params)
++      const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
++
++      let payload = {}
++      try {
++        payload = await response.json()
++      } catch {
++        payload = {}
++      }
++
++      if (!response.ok) {
++        const message =
++          payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
++            ? payload.error
++            : `Request failed with status ${response.status}`
++        throw new Error(message)
++      }
++
++      if (rowsRequestRef.current !== requestId) return
++
++      const defaults = { table: DEFAULT_TABLE, from: getDefaultFromValue(), to: getDefaultToValue() }
++      const {
++        columns: fetchedColumns,
++        rows: fetchedRows,
++        rowCount,
++        from: appliedFromValue,
++        to: appliedToValue,
++        table,
++      } = normalizeTablePayload(payload, defaults)
++
++      const baseColumns = fetchedColumns.filter((column) => column && column.toLowerCase() !== "id")
++
++      const composedRows = fetchedRows.map((row) => {
++        const eqpId = row?.eqp_id ?? row?.EQP_ID ?? row?.EqpId
++        const chamber = row?.chamber_ids ?? row?.CHAMBER_IDS ?? row?.ChamberIds
++        return { ...row, EQP_CB: composeEqpChamber(eqpId, chamber) }
++      })
++
++      const columnsWithoutOriginals = baseColumns.filter((column) => {
++        const normalized = column.toLowerCase()
++        return normalized !== "eqp_id" && normalized !== "chamber_ids"
++      })
++
++      const nextColumns = columnsWithoutOriginals.includes("EQP_CB")
++        ? columnsWithoutOriginals
++        : ["EQP_CB", ...columnsWithoutOriginals]
++
++      setColumns(nextColumns)
++      setRows(composedRows)
++      setLastFetchedCount(rowCount)
++      setAppliedFrom(appliedFromValue ?? null)
++      setAppliedTo(appliedToValue ?? null)
++
++      if (table && table !== selectedTable) {
++        setSelectedTable(table)
++      }
++
++      setHydrationKey((prev) => prev + 1)
++    } catch (error) {
++      if (rowsRequestRef.current !== requestId) return
++
++      const message = error instanceof Error ? error.message : "Failed to load table rows"
++      setRowsError(message)
++      setColumns([])
++      setRows([])
++      setLastFetchedCount(0)
++    } finally {
++      if (rowsRequestRef.current === requestId) {
++        setIsLoadingRows(false)
++      }
++    }
++  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
++
++  React.useEffect(() => {
++    fetchRows()
++  }, [fetchRows])
++
++  return {
++    selectedTable,
++    setSelectedTable,
++    columns,
++    rows,
++    setRows,
++    fromDate,
++    setFromDate,
++    toDate,
++    setToDate,
++    appliedFrom,
++    appliedTo,
++    recentHoursRange,
++    setRecentHoursRange,
++    isLoadingRows,
++    rowsError,
++    lastFetchedCount,
++    fetchRows,
++    hydrationKey,
++  }
++}
+*** End Patch
+[2m2025-11-21T11:02:05.695598Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+-import { DEFAULT_TABLE, getDefaultFromValue, getDefaultToValue } from "../utils/constants"
+-import {
+-  createRecentHoursRange,
+-  normalizeRecentHoursRange,
+-} from "../filters/quickFilters"
+-import { buildBackendUrl } from "@/lib/api"
+-import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
+-import { useCellIndicators } from "./useCellIndicators"
++import { buildBackendUrl } from "@/lib/api"
++
++import { useCellIndicators } from "./useCellIndicators"
++import { useTableQuery } from "./useTableQuery"
+@@
+ export function useDataTableState({ lineId }) {
+-  /* ── 1) 화면 상태: 테이블 선택/컬럼/행/날짜/검색/정렬/편집 등 ─────────────── */
+-  const [selectedTable, setSelectedTable] = React.useState(DEFAULT_TABLE)
+-
+-  // 서버가 내려주는 원시 컬럼 키 배열(가공 후 세팅)
+-  const [columns, setColumns] = React.useState([])
+-
+-  // 실제 테이블 행 데이터
+-  const [rows, setRows] = React.useState([])
+-
+-  // 날짜 입력 값(사용자 폼 값): 문자열(YYYY-MM-DD)
+-  const [fromDate, setFromDate] = React.useState(() => getDefaultFromValue())
+-  const [toDate, setToDate] = React.useState(() => getDefaultToValue())
+-
+-  // 실제로 서버에 적용된 날짜 범위(서버 응답으로 동기화)
+-  const [appliedFrom, setAppliedFrom] = React.useState(() => getDefaultFromValue())
+-  const [appliedTo, setAppliedTo] = React.useState(() => getDefaultToValue())
++  const {
++    selectedTable,
++    columns,
++    rows,
++    setRows,
++    fromDate,
++    setFromDate,
++    toDate,
++    setToDate,
++    appliedFrom,
++    appliedTo,
++    filter: _filterPassthrough, // reserved for future API compatibility
++    isLoadingRows,
++    rowsError,
++    lastFetchedCount,
++    fetchRows,
++    recentHoursRange,
++    setRecentHoursRange,
++    hydrationKey,
++  } = useTableQuery({ lineId })
+ 
+   // 전역 검색(퀵필터와 별도)
+   const [filter, setFilter] = React.useState("")
+@@
+   const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: number }
+@@
+-  const [recentHoursRange, setRecentHoursRange] = React.useState(() =>
+-    createRecentHoursRange()
+-  )
+-
+-  const updateRecentHoursRange = React.useCallback((nextRange) => {
+-    setRecentHoursRange((previous) => {
+-      const normalized = normalizeRecentHoursRange(nextRange)
+-      if (
+-        previous &&
+-        previous.start === normalized.start &&
+-        previous.end === normalized.end
+-      ) {
+-        return previous
+-      }
+-      return normalized
+-    })
+-  }, [])
+-
+-  // 로딩/에러/카운트
+-  const [isLoadingRows, setIsLoadingRows] = React.useState(false)
+-  const [rowsError, setRowsError] = React.useState(null)
+-  const [lastFetchedCount, setLastFetchedCount] = React.useState(0)
+-
+-  // 가장 최근 fetch 요청 id(오래된 응답 무효화용)
+-  const rowsRequestRef = React.useRef(0)
+-
+   // 셀 하이라이트/토스트 등 시각 피드백 훅
+   const { cellIndicators, begin, finalize } = useCellIndicators()
+ 
+-  /* ────────────────────────────────────────────────────────────────────────
+-   * fetchRows: 서버에서 테이블 데이터 가져오기
+-   *  - 날짜(from/to) 뒤바뀜 자동 교정
+-   *  - /api/tables?table=...&from=...&to=...&lineId=...
+-   *  - normalizeTablePayload로 응답을 안전하게 정규화
+-   *  - 오래된 응답 방어(rowsRequestRef 활용)
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  const fetchRows = React.useCallback(async () => {
+-    const requestId = ++rowsRequestRef.current // 이 fetch의 고유 id
+-    setIsLoadingRows(true)
+-    setRowsError(null)
+-
+-    try {
+-      // 1) 날짜 유효성 정리(입력값이 비어있으면 null)
+-      let effectiveFrom = fromDate && fromDate.length > 0 ? fromDate : null
+-      let effectiveTo = toDate && toDate.length > 0 ? toDate : null
+-
+-      // 2) from > to 인 경우 자동 스왑(UX 방어)
+-      if (effectiveFrom && effectiveTo) {
+-        const fromTime = new Date(`${effectiveFrom}T00:00:00Z`).getTime()
+-        const toTime = new Date(`${effectiveTo}T23:59:59Z`).getTime()
+-        if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
+-          ;[effectiveFrom, effectiveTo] = [effectiveTo, effectiveFrom]
+-        }
+-      }
+-
+-      // 3) 쿼리스트링 구성
+-      const params = new URLSearchParams({ table: selectedTable })
+-      if (effectiveFrom) params.set("from", effectiveFrom)
+-      if (effectiveTo) params.set("to", effectiveTo)
+-      if (lineId) params.set("lineId", lineId)
+-      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
+-      params.set("recentHoursStart", String(normalizedRecent.start))
+-      params.set("recentHoursEnd", String(normalizedRecent.end))
+-
+-      // 4) 요청(캐시 미사용)
+-      const endpoint = buildBackendUrl("/tables")
+-      const urlWithParams = `${endpoint}?${params.toString()}`
+-      const response = await fetch(urlWithParams, { cache: "no-store", credentials: "include" })
+-
+-      // 5) JSON 파싱 시도(실패해도 빈 객체)
+-      let payload = {}
+-      try {
+-        payload = await response.json()
+-      } catch {
+-        payload = {}
+-      }
+-
+-      // 6) HTTP 에러 처리(서버가 보내준 error 메시지 우선)
+-      if (!response.ok) {
+-        const message =
+-          payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+-            ? payload.error
+-            : `Request failed with status ${response.status}`
+-        throw new Error(message)
+-      }
+-
+-      // 7) 오래된 응답 무시(요청 id가 최신이 아니면 리턴)
+-      if (rowsRequestRef.current !== requestId) return
+-
+-      // 8) 페이로드 정규화(누락 필드 기본값 채우기)
+-      const defaults = { table: DEFAULT_TABLE, from: getDefaultFromValue(), to: getDefaultToValue() }
+-      const {
+-        columns: fetchedColumns,
+-        rows: fetchedRows,
+-        rowCount,
+-        from: appliedFromValue,
+-        to: appliedToValue,
+-        table,
+-      } = normalizeTablePayload(payload, defaults)
+-
+-      // 9) 원본 id 컬럼 숨기기(id는 내부적으로만 사용)
+-      const baseColumns = fetchedColumns.filter((column) => column && column.toLowerCase() !== "id")
+-
+-      // 10) EQP_CB(설비+챔버 합성표시) 생성
+-      const composedRows = fetchedRows.map((row) => {
+-        // 들어오는 키 케이스가 들쭉날쭉할 수 있어 모두 대응
+-        const eqpId = row?.eqp_id ?? row?.EQP_ID ?? row?.EqpId
+-        const chamber = row?.chamber_ids ?? row?.CHAMBER_IDS ?? row?.ChamberIds
+-        return { ...row, EQP_CB: composeEqpChamber(eqpId, chamber) }
+-      })
+-
+-      // 11) 원본 eqp/chamber 컬럼 제거(EQP_CB에 집약했으므로)
+-      const columnsWithoutOriginals = baseColumns.filter((column) => {
+-        const normalized = column.toLowerCase()
+-        return normalized !== "eqp_id" && normalized !== "chamber_ids"
+-      })
+-
+-      // 12) EQP_CB가 없다면 선두에 삽입(가독성↑)
+-      const nextColumns = columnsWithoutOriginals.includes("EQP_CB")
+-        ? columnsWithoutOriginals
+-        : ["EQP_CB", ...columnsWithoutOriginals]
+-
+-      // 13) 상태 업데이트(하위 편집 상태 초기화 포함)
+-      setColumns(nextColumns)
+-      setRows(composedRows)
+-      setLastFetchedCount(rowCount)
+-      setAppliedFrom(appliedFromValue ?? null)
+-      setAppliedTo(appliedToValue ?? null)
+-      setCommentDrafts({})
+-      setCommentEditing({})
+-      setNeedToSendDrafts({})
+-
+-      // 서버가 table을 교정해 내려준 경우 동기화(방어적)
+-      if (table && table !== selectedTable) {
+-        setSelectedTable(table)
+-      }
+-    } catch (error) {
+-      // 요청 id가 최신이 아닐 때는 무시
+-      if (rowsRequestRef.current !== requestId) return
+-
+-      // 사용자에게 보여줄 에러 메시지
+-      const message = error instanceof Error ? error.message : "Failed to load table rows"
+-
+-      // 안전한 초기화
+-      setRowsError(message)
+-      setColumns([])
+-      setRows([])
+-      setLastFetchedCount(0)
+-    } finally {
+-      // 내 요청이 최신일 때만 로딩 종료
+-      if (rowsRequestRef.current === requestId) setIsLoadingRows(false)
+-    }
+-  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
+-
+-  // 최초/의존성 변경 시 데이터 로드
+-  React.useEffect(() => {
+-    fetchRows()
+-  }, [fetchRows])
++  React.useEffect(() => {
++    // 새로 데이터를 가져온 직후에만 편집 관련 상태를 리셋합니다.
++    setCommentDrafts({})
++    setCommentEditing({})
++    setNeedToSendDrafts({})
++  }, [hydrationKey])
+@@
+-    // 4) 서버 PATCH 호출
+-    const endpoint = buildBackendUrl("/tables/update")
++    // 4) 서버 PATCH 호출
++    const endpoint = buildBackendUrl("/tables/update")
+@@
+-    isLoadingRows,
+-    rowsError,
+-    lastFetchedCount,
++    isLoadingRows,
++    rowsError,
++    lastFetchedCount,
+     fetchRows,
+     tableMeta,
+     recentHoursRange,
+-    setRecentHoursRange: updateRecentHoursRange,
++    setRecentHoursRange,
+   }
+ }
+*** End Patch
+[2m2025-11-21T11:02:09.505235Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:02:19.023860Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+-import { DEFAULT_TABLE, getDefaultFromValue, getDefaultToValue } from "../utils/constants"
+-import {
+-  createRecentHoursRange,
+-  normalizeRecentHoursRange,
+-} from "../filters/quickFilters"
+ import { buildBackendUrl } from "@/lib/api"
+-import { composeEqpChamber, normalizeTablePayload } from "../../../utils"
+ import { useCellIndicators } from "./useCellIndicators"
++import { useTableQuery } from "./useTableQuery"
+*** End Patch
+[2m2025-11-21T11:02:27.708177Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+ export function useDataTableState({ lineId }) {
+-  /* ── 1) 화면 상태: 테이블 선택/컬럼/행/날짜/검색/정렬/편집 등 ─────────────── */
+-  const [selectedTable, setSelectedTable] = React.useState(DEFAULT_TABLE)
+-
+-  // 서버가 내려주는 원시 컬럼 키 배열(가공 후 세팅)
+-  const [columns, setColumns] = React.useState([])
+-
+-  // 실제 테이블 행 데이터
+-  const [rows, setRows] = React.useState([])
+-
+-  // 날짜 입력 값(사용자 폼 값): 문자열(YYYY-MM-DD)
+-  const [fromDate, setFromDate] = React.useState(() => getDefaultFromValue())
+-  const [toDate, setToDate] = React.useState(() => getDefaultToValue())
+-
+-  // 실제로 서버에 적용된 날짜 범위(서버 응답으로 동기화)
+-  const [appliedFrom, setAppliedFrom] = React.useState(() => getDefaultFromValue())
+-  const [appliedTo, setAppliedTo] = React.useState(() => getDefaultToValue())
++  const {
++    selectedTable,
++    columns,
++    rows,
++    setRows,
++    fromDate,
++    setFromDate,
++    toDate,
++    setToDate,
++    appliedFrom,
++    appliedTo,
++    isLoadingRows,
++    rowsError,
++    lastFetchedCount,
++    fetchRows,
++    recentHoursRange,
++    setRecentHoursRange,
++    hydrationKey,
++  } = useTableQuery({ lineId })
+*** End Patch
+[2m2025-11-21T11:02:54.443898Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+-  const [recentHoursRange, setRecentHoursRange] = React.useState(() =>
+-    createRecentHoursRange()
+-  )
+-
+-  const updateRecentHoursRange = React.useCallback((nextRange) => {
+-    setRecentHoursRange((previous) => {
+-      const normalized = normalizeRecentHoursRange(nextRange)
+-      if (
+-        previous &&
+-        previous.start === normalized.start &&
+-        previous.end === normalized.end
+-      ) {
+-        return previous
+-      }
+-      return normalized
+-    })
+-  }, [])
+-
+-  // 로딩/에러/카운트
+-  const [isLoadingRows, setIsLoadingRows] = React.useState(false)
+-  const [rowsError, setRowsError] = React.useState(null)
+-  const [lastFetchedCount, setLastFetchedCount] = React.useState(0)
+-
+-  // 가장 최근 fetch 요청 id(오래된 응답 무효화용)
+-  const rowsRequestRef = React.useRef(0)
+-
+   // 셀 하이라이트/토스트 등 시각 피드백 훅
+   const { cellIndicators, begin, finalize } = useCellIndicators()
+-
+-  /* ────────────────────────────────────────────────────────────────────────
+-   * fetchRows: 서버에서 테이블 데이터 가져오기
+-   *  - 날짜(from/to) 뒤바뀜 자동 교정
+-   *  - /api/tables?table=...&from=...&to=...&lineId=...
+-   *  - normalizeTablePayload로 응답을 안전하게 정규화
+-   *  - 오래된 응답 방어(rowsRequestRef 활용)
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  const fetchRows = React.useCallback(async () => {
+-    const requestId = ++rowsRequestRef.current // 이 fetch의 고유 id
+-    setIsLoadingRows(true)
+-    setRowsError(null)
+-
+-    try {
+-      // 1) 날짜 유효성 정리(입력값이 비어있으면 null)
+-      let effectiveFrom = fromDate && fromDate.length > 0 ? fromDate : null
+-      let effectiveTo = toDate && toDate.length > 0 ? toDate : null
+-
+-      // 2) from > to 인 경우 자동 스왑(UX 방어)
+-      if (effectiveFrom && effectiveTo) {
+-        const fromTime = new Date(`${effectiveFrom}T00:00:00Z`).getTime()
+-        const toTime = new Date(`${effectiveTo}T23:59:59Z`).getTime()
+-        if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
+-          ;[effectiveFrom, effectiveTo] = [effectiveTo, effectiveFrom]
+-        }
+-      }
+-
+-      // 3) 쿼리스트링 구성
+-      const params = new URLSearchParams({ table: selectedTable })
+-      if (effectiveFrom) params.set("from", effectiveFrom)
+-      if (effectiveTo) params.set("to", effectiveTo)
+-      if (lineId) params.set("lineId", lineId)
+-      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
+-      params.set("recentHoursStart", String(normalizedRecent.start))
+-      params.set("recentHoursEnd", String(normalizedRecent.end))
+-
+-      // 4) 요청(캐시 미사용)
+-      const endpoint = buildBackendUrl("/tables", params)
+-      const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
+-
+-      // 5) JSON 파싱 시도(실패해도 빈 객체)
+-      let payload = {}
+-      try {
+-        payload = await response.json()
+-      } catch {
+-        payload = {}
+-      }
+-
+-      // 6) HTTP 에러 처리(서버가 보내준 error 메시지 우선)
+-      if (!response.ok) {
+-        const message =
+-          payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+-            ? payload.error
+-            : `Request failed with status ${response.status}`
+-        throw new Error(message)
+-      }
+-
+-      // 7) 오래된 응답 무시(요청 id가 최신이 아니면 리턴)
+-      if (rowsRequestRef.current !== requestId) return
+-
+-      // 8) 페이로드 정규화(누락 필드 기본값 채우기)
+-      const defaults = { table: DEFAULT_TABLE, from: getDefaultFromValue(), to: getDefaultToValue() }
+-      const {
+-        columns: fetchedColumns,
+-        rows: fetchedRows,
+-        rowCount,
+-        from: appliedFromValue,
+-        to: appliedToValue,
+-        table,
+-      } = normalizeTablePayload(payload, defaults)
+-
+-      // 9) 원본 id 컬럼 숨기기(id는 내부적으로만 사용)
+-      const baseColumns = fetchedColumns.filter((column) => column && column.toLowerCase() !== "id")
+-
+-      // 10) EQP_CB(설비+챔버 합성표시) 생성
+-      const composedRows = fetchedRows.map((row) => {
+-        // 들어오는 키 케이스가 들쭉날쭉할 수 있어 모두 대응
+-        const eqpId = row?.eqp_id ?? row?.EQP_ID ?? row?.EqpId
+-        const chamber = row?.chamber_ids ?? row?.CHAMBER_IDS ?? row?.ChamberIds
+-        return { ...row, EQP_CB: composeEqpChamber(eqpId, chamber) }
+-      })
+-
+-      // 11) 원본 eqp/chamber 컬럼 제거(EQP_CB에 집약했으므로)
+-      const columnsWithoutOriginals = baseColumns.filter((column) => {
+-        const normalized = column.toLowerCase()
+-        return normalized !== "eqp_id" && normalized !== "chamber_ids"
+-      })
+-
+-      // 12) EQP_CB가 없다면 선두에 삽입(가독성↑)
+-      const nextColumns = columnsWithoutOriginals.includes("EQP_CB")
+-        ? columnsWithoutOriginals
+-        : ["EQP_CB", ...columnsWithoutOriginals]
+-
+-      // 13) 상태 업데이트(하위 편집 상태 초기화 포함)
+-      setColumns(nextColumns)
+-      setRows(composedRows)
+-      setLastFetchedCount(rowCount)
+-      setAppliedFrom(appliedFromValue ?? null)
+-      setAppliedTo(appliedToValue ?? null)
+-      setCommentDrafts({})
+-      setCommentEditing({})
+-      setNeedToSendDrafts({})
+-
+-      // 서버가 table을 교정해 내려준 경우 동기화(방어적)
+-      if (table && table !== selectedTable) {
+-        setSelectedTable(table)
+-      }
+-    } catch (error) {
+-      // 요청 id가 최신이 아닐 때는 무시
+-      if (rowsRequestRef.current !== requestId) return
+-
+-      // 사용자에게 보여줄 에러 메시지
+-      const message = error instanceof Error ? error.message : "Failed to load table rows"
+-
+-      // 안전한 초기화
+-      setRowsError(message)
+-      setColumns([])
+-      setRows([])
+-      setLastFetchedCount(0)
+-    } finally {
+-      // 내 요청이 최신일 때만 로딩 종료
+-      if (rowsRequestRef.current === requestId) setIsLoadingRows(false)
+-    }
+-  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
+-
+-  // 최초/의존성 변경 시 데이터 로드
+-  React.useEffect(() => {
+-    fetchRows()
+-  }, [fetchRows])
++  React.useEffect(() => {
++    setCommentDrafts({})
++    setCommentEditing({})
++    setNeedToSendDrafts({})
++  }, [hydrationKey])
+*** End Patch
+[2m2025-11-21T11:02:57.565644Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:03:02.140721Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,400p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:03:06.054906Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+     rowsError,
+     lastFetchedCount,
+     fetchRows,
+     tableMeta,
+     recentHoursRange,
+-    setRecentHoursRange: updateRecentHoursRange,
++    setRecentHoursRange,
+   }
+ }
+*** End Patch
+[2m2025-11-21T11:03:09.666769Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+     setToDate,
+     appliedFrom,
+     appliedTo,
+     isLoadingRows,
+     rowsError,
+*** End Patch
+[2m2025-11-21T11:03:13.308739Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"lastFetchedCount\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:03:29.470948Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/line-dashboard/components/data-table/hooks/useStatusChart.js
++// src/features/line-dashboard/components/data-table/hooks/useStatusChart.js
++import * as React from "react"
++
++import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../../constants/status-labels"
++import { normalizeStatus } from "../column-defs/normalizers"
++
++const STATUS_ORDER_INDEX = new Map(STATUS_SEQUENCE.map((status, index) => [status, index]))
++const STATUS_CHART_FALLBACK_COLORS = [
++  "var(--chart-1)",
++  "var(--chart-2)",
++  "var(--chart-3)",
++  "var(--chart-4)",
++  "var(--chart-5)",
++  "var(--chart-6)",
++]
++const UNKNOWN_STATUS_KEY = "__UNKNOWN__"
++
++export function useStatusChart({ filteredRows, statusSection }) {
++  return React.useMemo(() => {
++    if (!filteredRows || filteredRows.length === 0) {
++      return { data: [], config: {} }
++    }
++
++    const counts = new Map()
++    const getRowStatus =
++      typeof statusSection?.getValue === "function"
++        ? statusSection.getValue
++        : (row) =>
++            normalizeStatus(
++              row?.status ??
++                row?.STATUS ??
++                row?.Status ??
++                row?.StatusName ??
++                row?.status_label ??
++                null
++            )
++
++    filteredRows.forEach((row) => {
++      const normalized = getRowStatus(row)
++      const key = normalized ?? UNKNOWN_STATUS_KEY
++      counts.set(key, (counts.get(key) ?? 0) + 1)
++    })
++
++    const statusOptions = Array.isArray(statusSection?.options) ? statusSection.options : []
++    const fallbackOrderIndex = new Map(statusOptions.map((option, index) => [option.value, index]))
++    const optionLabelMap = new Map(statusOptions.map((option) => [option.value, option.label]))
++
++    const entries = Array.from(counts.entries())
++    entries.sort((a, b) => {
++      const statusA = a[0]
++      const statusB = b[0]
++      const seqOrderA = STATUS_ORDER_INDEX.has(statusA)
++        ? STATUS_ORDER_INDEX.get(statusA)
++        : Number.POSITIVE_INFINITY
++      const seqOrderB = STATUS_ORDER_INDEX.has(statusB)
++        ? STATUS_ORDER_INDEX.get(statusB)
++        : Number.POSITIVE_INFINITY
++      if (seqOrderA !== seqOrderB) return seqOrderA - seqOrderB
++      const fallbackOrderA = fallbackOrderIndex.has(statusA)
++        ? fallbackOrderIndex.get(statusA)
++        : Number.POSITIVE_INFINITY
++      const fallbackOrderB = fallbackOrderIndex.has(statusB)
++        ? fallbackOrderIndex.get(statusB)
++        : Number.POSITIVE_INFINITY
++      if (fallbackOrderA !== fallbackOrderB) return fallbackOrderA - fallbackOrderB
++      if (statusA === UNKNOWN_STATUS_KEY && statusB !== UNKNOWN_STATUS_KEY) return 1
++      if (statusA !== UNKNOWN_STATUS_KEY && statusB === UNKNOWN_STATUS_KEY) return -1
++      return statusA.localeCompare(statusB)
++    })
++
++    const data = entries.map(([status, value], index) => {
++      const label =
++        optionLabelMap.get(status) ??
++        (status === UNKNOWN_STATUS_KEY
++          ? "Unknown"
++          : STATUS_LABELS[status] ?? status?.replace(/_/g, " ") ?? "Unknown")
++      const fill =
++        STATUS_COLORS[status] ??
++        STATUS_CHART_FALLBACK_COLORS[index % STATUS_CHART_FALLBACK_COLORS.length]
++      return {
++        status,
++        label,
++        value,
++        fill,
++      }
++    })
++
++    const config = data.reduce((acc, item) => {
++      acc[item.status] = { label: item.label, color: item.fill }
++      return acc
++    }, {})
++
++    return { data, config }
++  }, [filteredRows, statusSection])
++}
+*** End Patch
+[2m2025-11-21T11:03:35.583605Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../../constants/status-labels"
+ import { StatusDistributionCard } from "./StatusDistributionCard"
+ import { createColumnDefs } from "./column-defs"
+-import { normalizeStatus } from "./column-defs/normalizers"
+ import { createGlobalFilterFn } from "./filters/GlobalFilter"
+ import { QuickFilters } from "./filters/QuickFilters"
+ import { useDataTableState } from "./hooks/useDataTable"
+-import { useQuickFilters } from "./hooks/useQuickFilters"
++import { useQuickFilters } from "./hooks/useQuickFilters"
++import { useStatusChart } from "./hooks/useStatusChart"
+ import { numberFormatter, timeFormatter } from "./utils/constants"
+@@
+-const STATUS_ORDER_INDEX = new Map(STATUS_SEQUENCE.map((status, index) => [status, index]))
+-const STATUS_CHART_FALLBACK_COLORS = [
+-  "var(--chart-1)",
+-  "var(--chart-2)",
+-  "var(--chart-3)",
+-  "var(--chart-4)",
+-  "var(--chart-5)",
+-  "var(--chart-6)",
+-]
+-const UNKNOWN_STATUS_KEY = "__UNKNOWN__"
+-
+ /**
+  * @param {{ lineId: string }} props
+  */
+ export function DataTable({ lineId }) {
+*** End Patch
+[2m2025-11-21T11:03:49.533512Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+   const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
+     useQuickFilters(columns, rows)
+ 
+   React.useEffect(() => {
+     if (!syncRecentHoursRange) return
+@@
+   const statusSection = React.useMemo(
+     () => sections.find((section) => section?.key === "status"),
+     [sections]
+   )
+ 
+-  const statusChart = React.useMemo(() => {
+-    if (!filteredRows || filteredRows.length === 0) {
+-      return { data: [], config: {} }
+-    }
+-
+-    const counts = new Map()
+-    const getRowStatus =
+-      typeof statusSection?.getValue === "function"
+-        ? statusSection.getValue
+-        : (row) =>
+-          normalizeStatus(
+-            row?.status ?? row?.STATUS ?? row?.Status ?? row?.StatusName ?? row?.status_label ?? null
+-          )
+-
+-    filteredRows.forEach((row) => {
+-      const normalized = getRowStatus(row)
+-      const key = normalized ?? UNKNOWN_STATUS_KEY
+-      counts.set(key, (counts.get(key) ?? 0) + 1)
+-    })
+-
+-    const statusOptions = Array.isArray(statusSection?.options) ? statusSection.options : []
+-    const fallbackOrderIndex = new Map(statusOptions.map((option, index) => [option.value, index]))
+-    const optionLabelMap = new Map(statusOptions.map((option) => [option.value, option.label]))
+-
+-    const entries = Array.from(counts.entries())
+-    entries.sort((a, b) => {
+-      const statusA = a[0]
+-      const statusB = b[0]
+-      const seqOrderA = STATUS_ORDER_INDEX.has(statusA)
+-        ? STATUS_ORDER_INDEX.get(statusA)
+-        : Number.POSITIVE_INFINITY
+-      const seqOrderB = STATUS_ORDER_INDEX.has(statusB)
+-        ? STATUS_ORDER_INDEX.get(statusB)
+-        : Number.POSITIVE_INFINITY
+-      if (seqOrderA !== seqOrderB) return seqOrderA - seqOrderB
+-      const fallbackOrderA = fallbackOrderIndex.has(statusA)
+-        ? fallbackOrderIndex.get(statusA)
+-        : Number.POSITIVE_INFINITY
+-      const fallbackOrderB = fallbackOrderIndex.has(statusB)
+-        ? fallbackOrderIndex.get(statusB)
+-        : Number.POSITIVE_INFINITY
+-      if (fallbackOrderA !== fallbackOrderB) return fallbackOrderA - fallbackOrderB
+-      if (a[0] === UNKNOWN_STATUS_KEY && b[0] !== UNKNOWN_STATUS_KEY) return 1
+-      if (a[0] !== UNKNOWN_STATUS_KEY && b[0] === UNKNOWN_STATUS_KEY) return -1
+-      return a[0].localeCompare(b[0])
+-    })
+-
+-    const data = entries.map(([status, value], index) => {
+-      const label =
+-        optionLabelMap.get(status) ??
+-        (status === UNKNOWN_STATUS_KEY
+-          ? "Unknown"
+-          : STATUS_LABELS[status] ?? status?.replace(/_/g, " ") ?? "Unknown")
+-      const fill =
+-        STATUS_COLORS[status] ??
+-        STATUS_CHART_FALLBACK_COLORS[index % STATUS_CHART_FALLBACK_COLORS.length]
+-      return {
+-        status,
+-        label,
+-        value,
+-        fill,
+-      }
+-    })
+-
+-    const config = data.reduce((acc, item) => {
+-      acc[item.status] = { label: item.label, color: item.fill }
+-      return acc
+-    }, {})
+-
+-    return { data, config }
+-  }, [filteredRows, statusSection])
++  const statusChart = useStatusChart({ filteredRows, statusSection })
+*** End Patch
+[2m2025-11-21T11:03:55.478499Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/index.js
+@@
+ export { DataTable } from "./DataTable"
+ export { createColumnDefs } from "./column-defs"
+ export { GlobalFilter, createGlobalFilterFn } from "./filters/GlobalFilter"
+ export { QuickFilters } from "./filters/QuickFilters"
+ export { useDataTableState } from "./hooks/useDataTable"
+ export { useCellIndicators } from "./hooks/useCellIndicators"
+ export { useQuickFilters } from "./hooks/useQuickFilters"
++export { useTableQuery } from "./hooks/useTableQuery"
++export { useStatusChart } from "./hooks/useStatusChart"
+*** End Patch
+[2m2025-11-21T11:04:01.694921Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"function buildBackendUrl\" -n apps/web/src/lib/api.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:04:04.284907Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/lib/api.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:04:35.082265Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+ /* ============================================================================
+  * useDataTableState
+- * - 테이블 데이터/필터/정렬/편집 상태와, 서버 fetch/update를 관리하는 커스텀 훅
+- * - 초보자 포인트:
+- *   1) "요청 식별자(rowsRequestRef)"로 오래된 응답이 최신 상태를 덮지 않게 보호
+- *   2) 날짜 유효성(from/to) 가드 + UX 친화적 기본값 적용
+- *   3) 업데이트 중인 셀(skeleton/indicator)/오류 맵을 키(`rowId:field`)로 관리
++ * - 테이블 데이터/필터/정렬/편집 상태와, 서버 fetch/update를 관리하는 커스텀 훅
++ * - 초보자 포인트:
++ *   1) useTableQuery가 fetch/정규화/최근시간 필터를 관리하고, 여기서는 UI 상태/업데이트만 다룹니다.
++ *   2) 업데이트 중인 셀(skeleton/indicator)/오류 맵을 키(`${rowId}:${field}`)로 관리합니다.
+  * ========================================================================== */
+ export function useDataTableState({ lineId }) {
+*** End Patch
+[2m2025-11-21T11:04:39.579329Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect current line dashboard table + quick filter state and identify refactor targets (data fetch, derived chart, UI state)."},{"status":"completed","step":"Extract fetching/derived data into focused hooks to reduce component responsibility (table query + status chart), update DataTable to use them."},{"status":"in_progress","step":"Smoke-check code for obvious issues and summarize changes with next steps."}]}
+[2m2025-11-21T11:04:43.992580Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features/line-dashboard/components/data-table/column-defs","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:04:49.322466Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"numberFormatter\" apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:05:06.156886Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect current line dashboard table + quick filter state and identify refactor targets (data fetch, derived chart, UI state)."},{"status":"completed","step":"Extract fetching/derived data into focused hooks to reduce component responsibility (table query + status chart), update DataTable to use them."},{"status":"completed","step":"Smoke-check code for obvious issues and summarize changes with next steps."}]}
+[2m2025-11-21T11:06:35.512701Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:06:35.602514Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:06:35.602561Z[0m [32m INFO[0m ghost commit captured: 650dfd43e0fff0faebd9f7a32b6931b2f546a00e
+[2m2025-11-21T11:06:35.602590Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:06:50.699433Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useStatusChart.js
+@@
+-import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../../constants/status-labels"
++import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../../../constants/status-labels"
+*** End Patch
+[2m2025-11-21T11:13:09.476184Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:13:09.525908Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:13:09.526004Z[0m [32m INFO[0m ghost commit captured: adc3774c99ce4082cad115e5bd28868851c3ffc4
+[2m2025-11-21T11:13:09.526027Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:13:30.809491Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:13:30.857167Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:13:30.857214Z[0m [32m INFO[0m ghost commit captured: a440f14eb5c2743272f696f943ed44424f3e2464
+[2m2025-11-21T11:13:30.857220Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:13:41.622529Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Review tables and line_dashboard views for duplication and risk (date handling, table/column validation, filters)."},{"status":"pending","step":"Extract shared helpers (date range normalization, where clause building) and refactor views to use them, keeping behavior identical."},{"status":"pending","step":"Smoke-check for consistency and outline next steps/tests."}]}
+[2m2025-11-21T11:13:46.764201Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:13:49.460201Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '220,520p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:13:56.474578Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:13:59.268112Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,520p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:14:24.091836Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/utils.py
+@@
+-from datetime import datetime
++from datetime import datetime
+@@
+ def normalize_date_only(value: Any) -> Optional[str]:
+     """YYYY-MM-DD 형식을 만족하면 그대로, 아니면 None."""
+ 
+     if not isinstance(value, str):
+         return None
+@@
+     except (TypeError, ValueError):
+         return None
++
++
++def normalize_line_id(value: Any) -> Optional[str]:
++    """lineId 쿼리 파라미터를 트림하고 빈 문자열은 None으로 취급."""
++
++    if not isinstance(value, str):
++        return None
++    trimmed = value.strip()
++    return trimmed or None
++
++
++def ensure_date_bounds(
++    from_value: Optional[str], to_value: Optional[str]
++) -> tuple[Optional[str], Optional[str]]:
++    """
++    YYYY-MM-DD 문자열(from/to)이 뒤집혀 있으면 순서를 교체해 반환.
++    - 파싱 실패 시 원본을 그대로 돌려줍니다.
++    """
++
++    if from_value and to_value:
++        try:
++            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
++            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
++            if from_time > to_time:
++                return to_value, from_value
++        except ValueError:
++            return from_value, to_value
++    return from_value, to_value
++
++
++def build_date_range_filters(
++    timestamp_column: str, from_value: Optional[str], to_value: Optional[str]
++) -> tuple[list[str], list[str]]:
++    """
++    타임스탬프 컬럼 기준으로 from/to 조건과 파라미터 목록을 생성합니다.
++    - from → YYYY-MM-DD 00:00:00 이상
++    - to   → YYYY-MM-DD 23:59:59 이하
++    """
++
++    conditions: list[str] = []
++    params: list[str] = []
++
++    if from_value:
++        conditions.append(f"{timestamp_column} >= %s")
++        params.append(f"{from_value} 00:00:00")
++
++    if to_value:
++        conditions.append(f"{timestamp_column} <= %s")
++        params.append(f"{to_value} 23:59:59")
++
++    return conditions, params
+*** End Patch
+[2m2025-11-21T11:14:30.179820Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:14:38.874655Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/utils.py
+@@
+-import json
+-import logging
+-from datetime import datetime
+-from typing import Any, Dict, Iterable, List, Optional, Sequence
++import json
++import logging
++from datetime import datetime
++from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+@@
+ def normalize_date_only(value: Any) -> Optional[str]:
+     """YYYY-MM-DD 형식을 만족하면 그대로, 아니면 None."""
+ 
+     if not isinstance(value, str):
+         return None
+     candidate = value.strip()
+     return candidate if DATE_ONLY_REGEX.match(candidate) else None
++
++
++def normalize_line_id(value: Any) -> Optional[str]:
++    """lineId 쿼리 파라미터를 트림하고 빈 문자열은 None으로 취급."""
++
++    if not isinstance(value, str):
++        return None
++    trimmed = value.strip()
++    return trimmed or None
++
++
++def ensure_date_bounds(from_value: Optional[str], to_value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
++    """
++    YYYY-MM-DD 문자열(from/to)이 뒤집혀 있으면 순서를 교체해 반환.
++    파싱 실패 시 원본을 그대로 돌려줍니다.
++    """
++
++    if from_value and to_value:
++        try:
++          from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
++          to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
++        except ValueError:
++          return from_value, to_value
++        if from_time > to_time:
++            return to_value, from_value
++    return from_value, to_value
++
++
++def build_date_range_filters(
++    timestamp_column: str, from_value: Optional[str], to_value: Optional[str]
++) -> Tuple[List[str], List[str]]:
++    """
++    타임스탬프 컬럼 기준으로 from/to 조건과 파라미터 목록을 생성합니다.
++    - from → YYYY-MM-DD 00:00:00 이상
++    - to   → YYYY-MM-DD 23:59:59 이하
++    """
++
++    conditions: List[str] = []
++    params: List[str] = []
++
++    if from_value:
++        conditions.append(f"{timestamp_column} >= %s")
++        params.append(f"{from_value} 00:00:00")
++
++    if to_value:
++        conditions.append(f"{timestamp_column} <= %s")
++        params.append(f"{to_value} 23:59:59")
++
++    return conditions, params
+*** End Patch
+[2m2025-11-21T11:14:41.528092Z[0m [32m INFO[0m ToolCall: shell_command {"command":"python - <<'PY'\nimport inspect, textwrap\nfrom apps.api.api import views\nprint('done')\nPY","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:14:53.059919Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+ from .utils import (
+     build_line_filters,
++    ensure_date_bounds,
+     find_column,
++    build_date_range_filters,
+     list_table_columns,
++    normalize_line_id,
+     normalize_date_only,
+     pick_base_timestamp_column,
+     sanitize_identifier,
+     to_int,
+ )
+@@
+         to_param = normalize_date_only(params.get("to"))
+         range_days = params.get("rangeDays")
+-        line_id_param = params.get("lineId")
+-        normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
++        normalized_line_id = normalize_line_id(params.get("lineId"))
+ 
+         from_value, to_value = self._resolve_date_range(from_param, to_param, range_days)
+@@
+ 
+         if from_value and to_value:
+-            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
+-            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
+-            if from_time > to_time:
+-                from_value, to_value = to_value, from_value
++            from_value, to_value = ensure_date_bounds(from_value, to_value)
+ 
+         return from_value, to_value
+@@
+ 
+         conditions = list(line_filters)
+         params = list(line_params)
+ 
+-        if from_value:
+-            conditions.append(f"{timestamp_column} >= %s")
+-            params.append(f"{from_value} 00:00:00")
+-
+-        if to_value:
+-            conditions.append(f"{timestamp_column} <= %s")
+-            params.append(f"{to_value} 23:59:59")
++        date_conditions, date_params = build_date_range_filters(timestamp_column, from_value, to_value)
++        conditions.extend(date_conditions)
++        params.extend(date_params)
+ 
+         clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+         return clause, params
+*** End Patch
+[2m2025-11-21T11:14:57.162391Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"_build_where_clause\" -n apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:15:03.629172Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '120,200p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:15:10.064340Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+ from .utils import (
+     build_line_filters,
++    build_date_range_filters,
++    ensure_date_bounds,
+     find_column,
+     list_table_columns,
++    normalize_line_id,
+     normalize_date_only,
+     pick_base_timestamp_column,
+     sanitize_identifier,
+     to_int,
+ )
+@@
+-        range_days = params.get("rangeDays")
+-        line_id_param = params.get("lineId")
+-        normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
++        range_days = params.get("rangeDays")
++        normalized_line_id = normalize_line_id(params.get("lineId"))
+@@
+-        if from_value and to_value:
+-            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
+-            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
+-            if from_time > to_time:
+-                from_value, to_value = to_value, from_value
++        if from_value and to_value:
++            from_value, to_value = ensure_date_bounds(from_value, to_value)
+@@
+-        if from_value:
+-            conditions.append(f"{timestamp_column} >= %s")
+-            params.append(f"{from_value} 00:00:00")
+-
+-        if to_value:
+-            conditions.append(f"{timestamp_column} <= %s")
+-            params.append(f"{to_value} 23:59:59")
++        date_conditions, date_params = build_date_range_filters(timestamp_column, from_value, to_value)
++        conditions.extend(date_conditions)
++        params.extend(date_params)
+*** End Patch
+[2m2025-11-21T11:15:12.911019Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:15:24.847063Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+-from .utils import (
+-    build_line_filters,
+-    find_column,
+-    list_table_columns,
+-    normalize_date_only,
+-    parse_json_body,
+-    pick_base_timestamp_column,
+-    sanitize_identifier,
+-)
++from .utils import (
++    build_date_range_filters,
++    build_line_filters,
++    ensure_date_bounds,
++    find_column,
++    list_table_columns,
++    normalize_date_only,
++    normalize_line_id,
++    parse_json_body,
++    pick_base_timestamp_column,
++    sanitize_identifier,
++)
+@@
+-        line_id_param = params.get("lineId")
+-        normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
++        normalized_line_id = normalize_line_id(params.get("lineId"))
+         recent_hours_start, recent_hours_end = _resolve_recent_hours_range(params)
+ 
+-        if from_param and to_param:
+-            from_time = datetime.fromisoformat(f"{from_param}T00:00:00")
+-            to_time = datetime.fromisoformat(f"{to_param}T23:59:59")
+-            if from_time > to_time:
+-                from_param, to_param = to_param, from_param
++        if from_param and to_param:
++            from_param, to_param = ensure_date_bounds(from_param, to_param)
+@@
+-            if from_param:
+-                where_parts.append(f"{base_ts_col} >= %s")
+-                query_params.append(f"{from_param} 00:00:00")
+-
+-            if to_param:
+-                where_parts.append(f"{base_ts_col} <= %s")
+-                query_params.append(f"{to_param} 23:59:59")
++            date_conditions, date_params = build_date_range_filters(base_ts_col, from_param, to_param)
++            where_parts.extend(date_conditions)
++            query_params.extend(date_params)
+*** End Patch
+[2m2025-11-21T11:15:31.050864Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/utils.py
+@@
+-    if from_value and to_value:
+-        try:
+-          from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
+-          to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
+-        except ValueError:
+-          return from_value, to_value
+-        if from_time > to_time:
+-            return to_value, from_value
++    if from_value and to_value:
++        try:
++            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
++            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
++        except ValueError:
++            return from_value, to_value
++        if from_time > to_time:
++            return to_value, from_value
+*** End Patch
+[2m2025-11-21T11:15:39.772767Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review tables and line_dashboard views for duplication and risk (date handling, table/column validation, filters)."},{"status":"completed","step":"Extract shared helpers (date range normalization, where clause building) and refactor views to use them, keeping behavior identical."},{"status":"completed","step":"Smoke-check for consistency and outline next steps/tests."}]}
+[2m2025-11-21T11:20:48.396627Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:20:48.577563Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:20:48.577616Z[0m [32m INFO[0m ghost commit captured: 12290c45cbd8251dbd41c6c83745b79d645b2a4f
+[2m2025-11-21T11:20:48.577631Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:21:03.173813Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/constants.js
+@@
+-export const numberFormatter = new Intl.NumberFormat("en-US")
+-export const timeFormatter = new Intl.DateTimeFormat("en-US", {
++const LOCALE = "ko-KR"
++const TIME_ZONE = "Asia/Seoul"
++
++export const numberFormatter = new Intl.NumberFormat(LOCALE)
++export const timeFormatter = new Intl.DateTimeFormat(LOCALE, {
+   hour: "2-digit",
+   minute: "2-digit",
+   second: "2-digit",
++  hour12: false,
++  timeZone: TIME_ZONE,
+ })
+*** End Patch
+[2m2025-11-21T11:21:14.231836Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+-/**
+- * (표시용) 짧은 날짜 포맷으로 변환: MM/DD HH:mm
+- * @param {Date} date 유효한 Date 인스턴스
+- * @returns {string}
+- */
+-function formatShortDateTime(date) {
+-  const month = String(date.getMonth() + 1).padStart(2, "0")
+-  const day = String(date.getDate()).padStart(2, "0")
+-  const hours = String(date.getHours()).padStart(2, "0")
+-  const minutes = String(date.getMinutes()).padStart(2, "0")
+-  return `${month}/${day} ${hours}:${minutes}`
+-}
++/**
++ * (표시용) 짧은 날짜 포맷으로 변환 (한국 시간 기준, 24시간제): MM/DD HH:mm
++ * @param {Date} date 유효한 Date 인스턴스
++ * @returns {string}
++ */
++const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
++  month: "2-digit",
++  day: "2-digit",
++  hour: "2-digit",
++  minute: "2-digit",
++  hour12: false,
++  timeZone: "Asia/Seoul",
++})
++
++function formatShortDateTime(date) {
++  return shortDateFormatter.format(date)
++}
+*** End Patch
+[2m2025-11-21T11:21:18.033900Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Asia/Seoul\" apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:24:10.927649Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:24:11.013783Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:24:11.013826Z[0m [32m INFO[0m ghost commit captured: c3a489b9c18529f68bec56d60ff059b75fb2bbd7
+[2m2025-11-21T11:24:11.013832Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:24:24.926436Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+-// 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
++// 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
+@@
+-const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
++const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
+   month: "2-digit",
+   day: "2-digit",
+   hour: "2-digit",
+   minute: "2-digit",
+@@
+ function formatShortDateTime(date) {
+   return shortDateFormatter.format(date)
+ }
++
++const tooltipDateFormatter = new Intl.DateTimeFormat("ko-KR", {
++  year: "numeric",
++  month: "2-digit",
++  day: "2-digit",
++  hour: "2-digit",
++  minute: "2-digit",
++  second: "2-digit",
++  hour12: false,
++  timeZone: "Asia/Seoul",
++})
++
++export function formatTooltipValue(value) {
++  const parsedDate = tryParseDate(value)
++  if (parsedDate) {
++    return tooltipDateFormatter.format(parsedDate)
++  }
++  if (typeof value === "string" || typeof value === "number") {
++    return String(value)
++  }
++  return undefined
++}
+*** End Patch
+[2m2025-11-21T11:24:31.120951Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"formatTooltipValue\" -n apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:24:35.417483Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-import {
+-  getJustifyClass,
+-  getTextAlignClass,
+-  isNullishDisplay,
+-  resolveCellAlignment,
+-  resolveHeaderAlignment,
+-} from "./utils/table"
++import {
++  getJustifyClass,
++  getTextAlignClass,
++  isNullishDisplay,
++  resolveCellAlignment,
++  resolveHeaderAlignment,
++} from "./utils/table"
++import { formatTooltipValue } from "./utils/formatters.jsx"
+@@
+-          const tooltip =
+-            shouldTruncate && (typeof raw === "string" || typeof raw === "number")
+-              ? String(raw)
+-              : undefined
++          const tooltip = shouldTruncate ? formatTooltipValue(raw) : undefined
+*** End Patch
+[2m2025-11-21T11:24:38.191527Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-import { formatTooltipValue } from "./utils/formatters.jsx"
++import { formatTooltipValue } from "./utils/formatters.jsx"
+*** End Patch
+[2m2025-11-21T11:25:42.877708Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:25:43.052815Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:25:43.052869Z[0m [32m INFO[0m ghost commit captured: 94c14723395e9046cd2e9fdce35a0dbf7490eda6
+[2m2025-11-21T11:25:43.052882Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:26:03.037059Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx
+@@
+-/**
+- * (표시용) 짧은 날짜 포맷으로 변환 (한국 시간 기준, 24시간제): MM/DD HH:mm
+- * @param {Date} date 유효한 Date 인스턴스
+- * @returns {string}
+- */
+-const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
+-  month: "2-digit",
+-  day: "2-digit",
+-  hour: "2-digit",
+-  minute: "2-digit",
+-  hour12: false,
+-  timeZone: "Asia/Seoul",
+-})
+-
+-function formatShortDateTime(date) {
+-  return shortDateFormatter.format(date)
+-}
+-
+-const tooltipDateFormatter = new Intl.DateTimeFormat("ko-KR", {
+-  year: "numeric",
+-  month: "2-digit",
+-  day: "2-digit",
+-  hour: "2-digit",
+-  minute: "2-digit",
+-  second: "2-digit",
+-  hour12: false,
+-  timeZone: "Asia/Seoul",
+-})
+-
+-export function formatTooltipValue(value) {
+-  const parsedDate = tryParseDate(value)
+-  if (parsedDate) {
+-    return tooltipDateFormatter.format(parsedDate)
+-  }
+-  if (typeof value === "string" || typeof value === "number") {
+-    return String(value)
+-  }
+-  return undefined
+-}
++const KST_TIME_ZONE = "Asia/Seoul"
++const kstPartsFormatter = new Intl.DateTimeFormat("en-US", {
++  timeZone: KST_TIME_ZONE,
++  month: "2-digit",
++  day: "2-digit",
++  hour: "2-digit",
++  minute: "2-digit",
++  second: "2-digit",
++  hour12: false,
++})
++
++function formatKstDate(value, { withSeconds = false } = {}) {
++  const parsedDate = tryParseDate(value)
++  if (!parsedDate) return null
++  const parts = kstPartsFormatter.formatToParts(parsedDate).reduce((acc, part) => {
++    if (part.type in acc) return acc
++    acc[part.type] = part.value
++    return acc
++  }, {})
++
++  const base = `${parts.month ?? "00"}/${parts.day ?? "00"} ${parts.hour ?? "00"}:${parts.minute ?? "00"}`
++  if (withSeconds) {
++    return `${base}:${parts.second ?? "00"}`
++  }
++  return base
++}
++
++/**
++ * (표시용) 짧은 날짜 포맷: MM/DD HH:mm (KST)
++ */
++function formatShortDateTime(date) {
++  return formatKstDate(date) ?? ""
++}
++
++export function formatTooltipValue(value) {
++  const formatted = formatKstDate(value, { withSeconds: true })
++  if (formatted) return formatted
++  if (typeof value === "string" || typeof value === "number") {
++    return String(value)
++  }
++  return undefined
++}
+*** End Patch
+[2m2025-11-21T11:26:08.798175Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"formatShortDateTime\" -n apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:26:12.908325Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '140,190p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:35:48.776059Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:35:48.827416Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:35:48.827461Z[0m [32m INFO[0m ghost commit captured: 6f7e63f9ef326d66d109c9b4b282b46bde76d5bb
+[2m2025-11-21T11:35:48.827470Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:35:52.332532Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:35:54.869057Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:35:57.175032Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:35:59.158783Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat apps/api/README.md","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:01.127881Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:03.478586Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git status --short","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:09.591154Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:12.556428Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/migrations/0001_initial.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:15.667232Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:18.198103Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,480p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:20.343459Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:21.918269Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,480p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:24.909472Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:26.861350Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,480p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:29.673364Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/constants.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:35.738894Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff -- apps/api/api/views","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:38.143272Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff -- apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:44.825597Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff -- apps/api/api/migrations","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:49.725362Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:36:59.364939Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/views","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:37:03.049633Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/activity.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:37:11.754524Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff HEAD -- apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:37:21.410100Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/db.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:37:28.268161Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:37:43.762748Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/urls.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:38:24.010851Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Review backend line dashboard/table endpoints to spot shared concerns and refactor targets."},{"status":"pending","step":"Extract shared table/date parsing helpers and apply them to views to reduce duplication and tighten validation."},{"status":"pending","step":"Light sanity pass (format, run lint if feasible) and summarize changes with follow-up guidance."}]}
+[2m2025-11-21T11:38:49.106041Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/utils.py
+@@
+ """여러 뷰에서 공용으로 활용하는 유틸리티 함수 모음."""
+ from __future__ import annotations
+ 
+ import json
+ import logging
++from dataclasses import dataclass
+ from datetime import datetime
+ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+ 
+ from django.conf import settings
+@@
+ from ..db import run_query
+ from .constants import (
+     DATE_COLUMN_CANDIDATES,
+     DATE_ONLY_REGEX,
++    DEFAULT_TABLE,
+     LINE_SDWT_TABLE_NAME,
+     SAFE_IDENTIFIER,
+ )
+ 
+ logger = logging.getLogger(__name__)
+@@
+ def ensure_date_bounds(from_value: Optional[str], to_value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+     """
+     YYYY-MM-DD 문자열(from/to)이 뒤집혀 있으면 순서를 교체해 반환.
+     파싱 실패 시 원본을 그대로 돌려줍니다.
+     """
+@@
+ 
+     return conditions, params
+ 
+ 
++@dataclass(frozen=True)
++class TableSchema:
++    """테이블 이름/컬럼/타임스탬프 컬럼을 한번에 포장한 결과."""
++
++    name: str
++    columns: List[str]
++    timestamp_column: Optional[str] = None
++
++
++def resolve_table_schema(
++    table_param: Any, *, default_table: Optional[str] = DEFAULT_TABLE, require_timestamp: bool = False
++) -> TableSchema:
++    """
++    테이블 이름을 검증/정규화하고 컬럼 목록과 베이스 타임스탬프 컬럼을 반환합니다.
++
++    - 테이블명이 비어있거나 안전하지 않으면 ValueError
++    - 컬럼이 없으면 LookupError
++    - require_timestamp=True인데 타임스탬프 후보가 없으면 LookupError
++    """
++
++    table_name = sanitize_identifier(table_param, default_table)
++    if not table_name:
++        raise ValueError("Invalid table name")
++
++    columns = list_table_columns(table_name)
++    if not columns:
++        raise LookupError(f'Table "{table_name}" has no columns')
++
++    timestamp_column = None
++    if require_timestamp:
++        timestamp_column = pick_base_timestamp_column(columns)
++        if not timestamp_column:
++            expected = ", ".join(DATE_COLUMN_CANDIDATES)
++            raise LookupError(f'No timestamp-like column found in "{table_name}". Expected one of: {expected}.')
++
++    return TableSchema(name=table_name, columns=columns, timestamp_column=timestamp_column)
++
++
+ def to_int(value: Any) -> int:
+     """정수 변환 유틸(실패 시 0)."""
+ 
+     try:
+         return int(value)
+@@
+     "build_line_filters",
+     "find_column",
+     "list_table_columns",
+     "normalize_date_only",
++    "resolve_table_schema",
++    "TableSchema",
+     "parse_json_body",
+     "pick_base_timestamp_column",
+     "resolve_frontend_target",
+     "sanitize_identifier",
+     "to_int",
+*** End Patch
+[2m2025-11-21T11:39:17.371217Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+     DEFAULT_TABLE,
+     DIMENSION_CANDIDATES,
+     LINE_SDWT_TABLE_NAME,
+ )
+ from .utils import (
+     build_line_filters,
+     build_date_range_filters,
+     ensure_date_bounds,
+     find_column,
+-    list_table_columns,
+     normalize_line_id,
+     normalize_date_only,
+-    pick_base_timestamp_column,
+-    sanitize_identifier,
++    resolve_table_schema,
+     to_int,
+ )
+ 
+ logger = logging.getLogger(__name__)
+ 
+ 
++def _normalize_date_value(value: Any) -> Optional[str]:
++    """날짜/문자/None 값을 YYYY-MM-DD 문자열 또는 None으로 정규화."""
++
++    if isinstance(value, str):
++        return value.strip() or None
++    if isinstance(value, datetime):
++        return value.date().isoformat()
++    if isinstance(value, date):
++        return value.isoformat()
++    return None
++
++
+ class LineHistoryView(APIView):
+     """대시보드 차트용 일별 합계/분해 집계 제공."""
+@@
+ 
+     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+         params = request.GET
+ 
+-        table_name = sanitize_identifier(params.get("table"), DEFAULT_TABLE)
+-        if not table_name:
+-            return JsonResponse({"error": "Invalid table name"}, status=400)
+-
+         from_param = normalize_date_only(params.get("from"))
+         to_param = normalize_date_only(params.get("to"))
+         range_days = params.get("rangeDays")
+         normalized_line_id = normalize_line_id(params.get("lineId"))
+ 
+@@
+-            column_names = list_table_columns(table_name)
+-            if not column_names:
+-                return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
+-
+-            timestamp_column = pick_base_timestamp_column(column_names)
+-            if not timestamp_column:
+-                return JsonResponse({"error": f'No timestamp-like column found in "{table_name}".'}, status=400)
++            schema = resolve_table_schema(
++                params.get("table"),
++                default_table=DEFAULT_TABLE,
++                require_timestamp=True,
++            )
++            table_name = schema.name
++            column_names = schema.columns
++            timestamp_column = schema.timestamp_column
+ 
+             send_jira_column = find_column(column_names, "send_jira")
+             dimension_columns = {
+                 candidate: resolved
+                 for candidate in DIMENSION_CANDIDATES
+*** End Patch
+[2m2025-11-21T11:39:23.628595Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+-            schema = resolve_table_schema(
+-                params.get("table"),
+-                default_table=DEFAULT_TABLE,
+-                require_timestamp=True,
+-            )
+-            table_name = schema.name
+-            column_names = schema.columns
+-            timestamp_column = schema.timestamp_column
++            schema = resolve_table_schema(
++                params.get("table"),
++                default_table=DEFAULT_TABLE,
++                require_timestamp=True,
++            )
++            table_name = schema.name
++            column_names = schema.columns
++            timestamp_column = schema.timestamp_column
+@@
+-        except Exception:  # pragma: no cover - 방어적 로깅
++        except (ValueError, LookupError) as exc:
++            return JsonResponse({"error": str(exc)}, status=400)
++        except Exception:  # pragma: no cover - 방어적 로깅
+             logger.exception("Failed to load history data")
+             return JsonResponse({"error": "Failed to load history data"}, status=500)
+*** End Patch
+[2m2025-11-21T11:39:35.296996Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/line_dashboard.py
+@@
+     @staticmethod
+     def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
+-        date_value = row.get("day") or row.get("date")
+-    
+-        date_str: Optional[str] = None
+-    
+-        # 1) 문자열인 경우: 그냥 strip
+-        if isinstance(date_value, str):
+-            date_str = date_value.strip() or None
+-    
+-        # 2) datetime인 경우: 날짜만 떼어서 YYYY-MM-DD
+-        elif isinstance(date_value, datetime):
+-            date_str = date_value.date().isoformat()
+-    
+-        # 3) date 인 경우: 그대로 isoformat()
+-        elif isinstance(date_value, date):
+-            date_str = date_value.isoformat()
+-    
+-        # (원한다면: else 에서 로그 찍을 수도 있음)
+-    
++        date_str = _normalize_date_value(row.get("day") or row.get("date"))
++
+         return {
+             "date": date_str,
+             "rowCount": to_int(row.get("row_count", 0)),
+             "sendJiraCount": to_int(row.get("send_jira_count", 0)),
+         }
+@@
+     @staticmethod
+     def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
+-        date_value = row.get("day") or row.get("date")
+-    
+-        date_str: Optional[str] = None
+-        if isinstance(date_value, str):
+-            date_str = date_value.strip() or None
+-        elif isinstance(date_value, datetime):
+-            date_str = date_value.date().isoformat()
+-        elif isinstance(date_value, date):
+-            date_str = date_value.isoformat()
+-    
++        date_str = _normalize_date_value(row.get("day") or row.get("date"))
++
+         category = row.get("category") or row.get("dimension") or "Unspecified"
+         if not isinstance(category, str) or not category.strip():
+             category = "Unspecified"
+*** End Patch
+[2m2025-11-21T11:39:50.966469Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+ from ..activity_logging import (
+     merge_activity_metadata,
+     set_activity_new_state,
+     set_activity_previous_state,
+     set_activity_summary,
+ )
+ from ..db import execute, run_query
+ from .constants import DATE_COLUMN_CANDIDATES, DEFAULT_TABLE
+ from .utils import (
+     build_date_range_filters,
+     build_line_filters,
+     ensure_date_bounds,
+     find_column,
+-    list_table_columns,
+     normalize_date_only,
+     normalize_line_id,
+     parse_json_body,
+-    pick_base_timestamp_column,
+-    sanitize_identifier,
++    resolve_table_schema,
+ )
+@@
+     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+         params = request.GET
+ 
+-        table_name = sanitize_identifier(params.get("table"), DEFAULT_TABLE)
+-        if not table_name:
+-            return JsonResponse({"error": "Invalid table name"}, status=400)
+-
+         from_param = normalize_date_only(params.get("from"))
+         to_param = normalize_date_only(params.get("to"))
+         normalized_line_id = normalize_line_id(params.get("lineId"))
+         recent_hours_start, recent_hours_end = _resolve_recent_hours_range(params)
+ 
+@@
+-            column_names = list_table_columns(table_name)
+-            if not column_names:
+-                return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
+-
+-            base_ts_col = pick_base_timestamp_column(column_names)
+-            if not base_ts_col:
+-                expected = ", ".join(DATE_COLUMN_CANDIDATES)
+-                return JsonResponse(
+-                    {"error": f'No timestamp-like column found in "{table_name}". Expected one of: {expected}.'},
+-                    status=400,
+-                )
++            schema = resolve_table_schema(
++                params.get("table"),
++                default_table=DEFAULT_TABLE,
++                require_timestamp=True,
++            )
++            table_name = schema.name
++            column_names = schema.columns
++            base_ts_col = schema.timestamp_column
+ 
+             line_filter_result = build_line_filters(column_names, normalized_line_id)
+             where_parts = list(line_filter_result["filters"])
+             query_params = list(line_filter_result["params"])
+@@
+             response_payload = {
+-                "table": table_name,
++                "table": table_name,
+                 "cutoff": (
+                     "{col} BETWEEN NOW() - INTERVAL '{start} hours' AND NOW() - INTERVAL '{end} hours'"
+                 ).format(col=base_ts_col, start=recent_hours_start, end=recent_hours_end),
+                 "from": from_param or None,
+                 "to": to_param or None,
+@@
+-        except Exception as exc:  # pragma: no cover - 방어적 로깅
++        except (ValueError, LookupError) as exc:
++            return JsonResponse({"error": str(exc)}, status=400)
++        except Exception as exc:  # pragma: no cover - 방어적 로깅
+             error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+             if error_code in {"ER_NO_SUCH_TABLE", "42P01"}:
+                 return JsonResponse({"error": f'Table "{table_name}" was not found'}, status=404)
+*** End Patch
+[2m2025-11-21T11:39:56.146445Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+-from .constants import DATE_COLUMN_CANDIDATES, DEFAULT_TABLE
++from .constants import DEFAULT_TABLE
+*** End Patch
+[2m2025-11-21T11:40:02.994990Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DATE_COLUMN_CANDIDATES\" apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:40:22.842446Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review backend line dashboard/table endpoints to spot shared concerns and refactor targets."},{"status":"completed","step":"Extract shared table/date parsing helpers and apply them to views to reduce duplication and tighten validation."},{"status":"in_progress","step":"Light sanity pass (format, run lint if feasible) and summarize changes with follow-up guidance."}]}
+[2m2025-11-21T11:40:26.704618Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && python -m compileall apps/api/api","timeout_ms":120000}
+[2m2025-11-21T11:40:30.090979Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && python3 -m compileall apps/api/api","timeout_ms":120000}
+[2m2025-11-21T11:40:40.040848Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review backend line dashboard/table endpoints to spot shared concerns and refactor targets."},{"status":"completed","step":"Extract shared table/date parsing helpers and apply them to views to reduce duplication and tighten validation."},{"status":"completed","step":"Light sanity pass (format, run lint if feasible) and summarize changes with follow-up guidance."}]}
+[2m2025-11-21T11:45:48.495873Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:45:48.578633Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:45:48.578686Z[0m [32m INFO[0m ghost commit captured: e1faaa72e88d513988c17f5587ebe067ea7f74d9
+[2m2025-11-21T11:45:48.578699Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:45:51.942704Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && ls docker-compose*"}
+[2m2025-11-21T11:45:55.014729Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,220p' docker-compose.yml"}
+[2m2025-11-21T11:45:56.759522Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,220p' docker-compose.dev.yml"}
+[2m2025-11-21T11:45:59.035393Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,200p' docker-compose.dev.oidc.yml"}
+[2m2025-11-21T11:46:00.631902Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && ls env"}
+[2m2025-11-21T11:46:03.375343Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,200p' apps/api/Dockerfile"}
+[2m2025-11-21T11:46:08.848621Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,200p' apps/web/Dockerfile"}
+[2m2025-11-21T11:46:11.129853Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && ls deploy/nginx"}
+[2m2025-11-21T11:46:13.184453Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,200p' deploy/nginx/default.conf"}
+[2m2025-11-21T11:46:18.449303Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,200p' apps/api/entrypoint.sh"}
+[2m2025-11-21T11:48:11.942794Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:48:11.990767Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:48:11.990815Z[0m [32m INFO[0m ghost commit captured: e4ea77efb3697c5161a1718d2822635efd67d09d
+[2m2025-11-21T11:48:11.990828Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:48:16.509705Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '200,340p' deploy/nginx/default.conf"}
+[2m2025-11-21T11:48:26.115769Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.conf
+@@
+-        # try_files $uri $uri/ /index.html;
+-
+-            # =========================
+-    # Airflow UI / API 프록시
+-    # 예: /airflow/ 아래로 붙여서 사용
+-    # =========================
+-    location /airflow/ {
+-        # ※ 뒤에 슬래시가 있는 proxy_pass → /airflow/ prefix 제거 후 전달
+-        #   예) 클라이언트: /airflow/api/v1/dags
+-        #       업스트림:  /api/v1/dags
+-        proxy_pass http://airflow-webserver:8080/;
+-
+-        proxy_set_header Host $host;
+-        proxy_set_header X-Real-IP $remote_addr;
+-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-        proxy_set_header X-Forwarded-Proto $scheme;
+-
+-        proxy_redirect off;
+-    }
+-
+-    }
++        # try_files $uri $uri/ /index.html;
++    }
+ }
+*** End Patch
+[2m2025-11-21T11:48:28.824939Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && tail -n 40 deploy/nginx/default.conf"}
+[2m2025-11-21T11:50:04.853449Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:50:04.898966Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:50:04.899012Z[0m [32m INFO[0m ghost commit captured: c6d5af1afd0f6c9991f828e72ccfdcefe8967be8
+[2m2025-11-21T11:50:04.899019Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:50:11.359733Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+     volumes:
+-      - api_data:/data
+       - api_static:/app/staticfiles
+@@
+ volumes:
+-  api_data:
+   api_static:
+*** End Patch
+[2m2025-11-21T11:50:15.232270Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.yml
+@@
+     depends_on:
+       - adfs
+     volumes:
+       - ./apps/api:/app
+-      - api_data:/data
+       - api_static:/app/staticfiles
+@@
+ volumes:
+-  api_data:
+   api_static:
+*** End Patch
+[2m2025-11-21T11:50:18.111360Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+       - ./env/api.oidc.dev.env
+     volumes:
+       - ./apps/api:/app
+-      - api_data:/data
+       - api_static:/app/staticfiles
+@@
+ volumes:
+-  api_data:
+   api_static:
+*** End Patch
+[2m2025-11-21T11:50:20.737078Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && rg \"api_data\""}
+[2m2025-11-21T11:51:16.154844Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:51:16.200859Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:51:16.200906Z[0m [32m INFO[0m ghost commit captured: 84ee4760c783a8b4ef910538c465a174f89ad490
+[2m2025-11-21T11:51:16.200913Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:51:23.357201Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+-    volumes:
+-      - api_static:/app/staticfiles
+     expose:
+       - "8000"
+@@
+-      - api_static:/var/www/static:ro
+       - ./deploy/nginx/default.prod.conf:/etc/nginx/conf.d/default.conf:ro
+-      - ./deploy/nginx/certs:/etc/nginx/certs:ro
++      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+@@
+-volumes:
+-  api_static:
+-
+ networks:
+   shared-net:
+*** End Patch
+[2m2025-11-21T11:51:26.831188Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,140p' docker-compose.yml"}
+[2m2025-11-21T11:51:30.935876Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+-    volumes:
+-      - api_static:/app/staticfiles
+     expose:
+       - "8000"
+@@
+     ports:
+       - "80:80"
+       - "443:443"
+     volumes:
+       - ./deploy/nginx/default.prod.conf:/etc/nginx/conf.d/default.conf:ro
+-      - api_static:/var/www/static:ro
+       - ./deploy/nginx/certs:/etc/nginx/certs:ro
+@@
+-volumes:
+-  api_static:
+-
+ networks:
+   shared-net:
+*** End Patch
+[2m2025-11-21T11:51:32.764707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,160p' docker-compose.dev.yml"}
+[2m2025-11-21T11:51:36.667019Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.yml
+@@
+     depends_on:
+       - adfs
+     volumes:
+       - ./apps/api:/app
+-      - api_static:/app/staticfiles
+@@
+     ports:
+       - "80:80"
+     volumes:
+       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+-      - api_static:/var/www/static:ro
+@@
+-volumes:
+-  api_static:
+-  web_node_modules:
++volumes:
++  web_node_modules:
+*** End Patch
+[2m2025-11-21T11:51:42.627581Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && sed -n '1,160p' docker-compose.dev.oidc.yml"}
+[2m2025-11-21T11:51:46.520876Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+     env_file:
+       - ./env/api.common.env
+       - ./env/api.prod.env
+       - ./env/api.oidc.dev.env
+     volumes:
+       - ./apps/api:/app
+-      - api_static:/app/staticfiles
+@@
+     ports:
+       - "80:80"
+       - "443:443"
+     volumes:
+       - ./deploy/nginx/default.prod.conf:/etc/nginx/conf.d/default.conf:ro
+-      - api_static:/var/www/static:ro
+       - ./deploy/nginx/certs:/etc/nginx/certs:ro
+@@
+-volumes:
+-  api_static:
+-  web_node_modules:
++volumes:
++  web_node_modules:
+*** End Patch
+[2m2025-11-21T11:51:48.792588Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && rg \"api_static\""}
+[2m2025-11-21T11:56:11.798146Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:56:11.887897Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:56:11.887952Z[0m [32m INFO[0m ghost commit captured: 53c81a5ded20b7306ae5b59bb9e454205d1e30ef
+[2m2025-11-21T11:56:11.887966Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:57:55.347831Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T11:57:55.397604Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T11:57:55.397652Z[0m [32m INFO[0m ghost commit captured: 9d74108410dddd118f3a8ae30ccb86c09ec36610
+[2m2025-11-21T11:57:55.397666Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-21T11:57:57.593645Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:57:59.044317Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:03.828606Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.dev.oidc.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:05.839057Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:07.864902Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/api.common.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:09.631112Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/api.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:12.037169Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/api.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:14.102691Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/api.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:15.883030Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/web.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:18.313835Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/web.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:23.859154Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.dev.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:58:35.956222Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' deploy/nginx/default.prod.conf","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T11:59:40.930184Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Rework docker-compose.dev.oidc.yml to load dev-focused env layers instead of production overrides."},{"status":"pending","step":"Simplify OIDC dev env files and add a web-specific override to remove production duplication."},{"status":"pending","step":"Sanity review for consistency and note any manual steps to validate locally."}]}
+[2m2025-11-21T11:59:44.902210Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+     build:
+       context: ./apps/api
+     env_file:
+       - ./env/api.common.env
+-      - ./env/api.prod.env
++      - ./env/api.dev.env
+       - ./env/api.oidc.dev.env
+@@
+     build:
+       context: ./apps/web
+     env_file:
+-      - ./env/web.prod.env
++      - ./env/web.dev.env
++      - ./env/web.oidc.dev.env
+*** End Patch
+[2m2025-11-21T11:59:49.250751Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Rework docker-compose.dev.oidc.yml to load dev-focused env layers instead of production overrides."},{"status":"in_progress","step":"Simplify OIDC dev env files and add a web-specific override to remove production duplication."},{"status":"pending","step":"Sanity review for consistency and note any manual steps to validate locally."}]}
+[2m2025-11-21T12:00:31.967735Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/api.oidc.dev.env
+@@
+ # ==============================================================================
+ # Django 개발 환경(OIDC 연동) Override
+ # ------------------------------------------------------------------------------
+-# docker-compose.dev.oidc.yml 에서 api.common.env 다음 순서로 로드됩니다.
+-# - 운영과 동일한 사내 OIDC 엔드포인트를 사용하지만, 코드 변경은 runserver로 즉시 반영
+-# - 더미 ADFS 없이 실제 IdP와 통신하므로 관련 값들을 모두 채워야 합니다.
++# docker-compose.dev.oidc.yml 에서 api.common.env → api.dev.env 이후에 로드됩니다.
++# - FastAPI 더미 ADFS 설정을 덮어쓰고 실제 IdP 엔드포인트만 입력합니다.
++# - 기본 개발용 디버그/보안 값은 api.dev.env 그대로 사용합니다.
+ # ==============================================================================
+ 
+-# --- Runtime metadata --------------------------------------------------------
+-ENVIRONMENT=development
+-DJANGO_SECRET_KEY=local-dev-secret
+-DJANGO_DEBUG=1
+-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,api
+-
+-# --- Frontend ↔ Backend URL --------------------------------------------------
+-# nginx 프록시(default.conf)를 통해 / (웹) + /api (Django) 를 함께 노출합니다.
+-FRONTEND_BASE_URL=http://localhost
+-DJANGO_CORS_ALLOWED_ORIGINS=http://localhost
+-DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost
+-PUBLIC_API_BASE_URL=/api
+-
+-# --- Security toggles --------------------------------------------------------
+-# 로컬 개발용: HTTPS 강제 및 HSTS 비활성화
+-DJANGO_SECURE=0
+-SECURE_SSL_REDIRECT=0
+-SECURE_HSTS_SECONDS=0
+-SECURE_HSTS_INCLUDE_SUBDOMAINS=0
+-SECURE_HSTS_PRELOAD=0
+-
+ # --- Corporate ADFS (OIDC) ---------------------------------------------------
+ # 운영과 동일한 IdP 정보를 입력하세요. 값이 비어 있으면 OIDC가 비활성화됩니다.
+ OIDC_CLIENT_ID=
+ OIDC_ISSUER=
+*** End Patch
+[2m2025-11-21T12:00:44.081401Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: env/web.oidc.dev.env
++# ==============================================================================
++# Vite 웹 개발(OIDC) 환경 변수
++# ------------------------------------------------------------------------------
++# docker-compose.dev.oidc.yml 의 web 서비스에서 web.dev.env 다음에 로드됩니다.
++# - 실제 IdP와 연동할 때 nginx 프록시(TLS 종단)를 경유하도록 API/Airflow 엔드포인트를 교체합니다.
++# - 기본 개발용 Fast Refresh/폴링 설정은 web.dev.env 값을 그대로 사용합니다.
++# ==============================================================================
++
++# --- API endpoint wiring -----------------------------------------------------
++# 브라우저는 nginx 를 통해 /api 로 호출하고, 컨테이너 내부 요청은 서비스명을 사용합니다.
++VITE_BACKEND_URL=/api
++BACKEND_API_URL=http://api:8000
++
++# --- Airflow integration -----------------------------------------------------
++# 필요 시 Airflow UI 를 동일 프록시 경로에서 접근하도록 조정합니다.
++VITE_AIRFLOW_BASE_URL=/airflow
++AIRFLOW_BASE_URL=http://airflow-webserver:8080
+*** End Patch
+[2m2025-11-21T12:00:47.325741Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+     build:
+       context: ./apps/web
+     env_file:
+       - ./env/web.dev.env
+       - ./env/web.oidc.dev.env
+-    environment:
+-      NODE_ENV: development              # keep dev tooling active
+-      NPM_CONFIG_PRODUCTION: "false"     # install dev deps for Vite
+-      CHOKIDAR_USEPOLLING: "true"        # reliable hot reload in Docker
+-      WATCHPACK_POLLING: "true"
+     depends_on:
+       - api
+*** End Patch
+[2m2025-11-21T12:00:54.875047Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Rework docker-compose.dev.oidc.yml to load dev-focused env layers instead of production overrides."},{"status":"completed","step":"Simplify OIDC dev env files and add a web-specific override to remove production duplication."},{"status":"in_progress","step":"Sanity review for consistency and note any manual steps to validate locally."}]}
+[2m2025-11-21T12:00:59.556452Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.dev.oidc.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T12:01:10.503821Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' env/api.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T12:01:15.447008Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/web.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T12:01:30.009453Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/web.oidc.dev.env
+@@
+-# --- API endpoint wiring -----------------------------------------------------
+-# 브라우저는 nginx 를 통해 /api 로 호출하고, 컨테이너 내부 요청은 서비스명을 사용합니다.
+-VITE_BACKEND_URL=/api
+-BACKEND_API_URL=http://api:8000
+-
+-# --- Airflow integration -----------------------------------------------------
+-# 필요 시 Airflow UI 를 동일 프록시 경로에서 접근하도록 조정합니다.
+-VITE_AIRFLOW_BASE_URL=/airflow
+-AIRFLOW_BASE_URL=http://airflow-webserver:8080
++# --- API endpoint wiring -----------------------------------------------------
++# 브라우저는 nginx 를 통해 /api 로 호출하여 쿠키 및 리디렉션을 동일 출처로 유지합니다.
++VITE_BACKEND_URL=/api
++
++# --- Airflow integration -----------------------------------------------------
++# 필요 시 Airflow UI 를 동일 프록시 경로에서 접근하도록 조정합니다.
++VITE_AIRFLOW_BASE_URL=/airflow
+*** End Patch
+[2m2025-11-21T12:01:32.429429Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' env/web.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T12:01:45.017806Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff --stat","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-21T12:01:59.301963Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Rework docker-compose.dev.oidc.yml to load dev-focused env layers instead of production overrides."},{"status":"completed","step":"Simplify OIDC dev env files and add a web-specific override to remove production duplication."},{"status":"completed","step":"Sanity review for consistency and note any manual steps to validate locally."}]}
+[2m2025-11-21T12:08:33.878015Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-21T12:08:34.056191Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-21T12:08:34.056238Z[0m [32m INFO[0m ghost commit captured: ab071b9d1904a7289e76299347b96088ed898db4
+[2m2025-11-21T12:08:34.056252Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T00:12:17.593749Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T00:12:17.667801Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T00:12:17.667845Z[0m [32m INFO[0m ghost commit captured: e44887c6c0067cc6458da3b2a99b9ad3c4cb6351
+[2m2025-11-23T00:12:17.667858Z[0m [32m INFO[0m ghost snapshot gate marked ready

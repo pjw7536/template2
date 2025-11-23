@@ -16,15 +16,28 @@ from .constants import (
 )
 from .utils import (
     build_line_filters,
+    build_date_range_filters,
+    ensure_date_bounds,
     find_column,
-    list_table_columns,
+    normalize_line_id,
     normalize_date_only,
-    pick_base_timestamp_column,
-    sanitize_identifier,
+    resolve_table_schema,
     to_int,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_date_value(value: Any) -> Optional[str]:
+    """날짜/문자/None 값을 YYYY-MM-DD 문자열 또는 None으로 정규화."""
+
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return None
 
 
 class LineHistoryView(APIView):
@@ -35,26 +48,22 @@ class LineHistoryView(APIView):
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         params = request.GET
 
-        table_name = sanitize_identifier(params.get("table"), DEFAULT_TABLE)
-        if not table_name:
-            return JsonResponse({"error": "Invalid table name"}, status=400)
-
         from_param = normalize_date_only(params.get("from"))
         to_param = normalize_date_only(params.get("to"))
         range_days = params.get("rangeDays")
-        line_id_param = params.get("lineId")
-        normalized_line_id = line_id_param.strip() if isinstance(line_id_param, str) and line_id_param.strip() else None
+        normalized_line_id = normalize_line_id(params.get("lineId"))
 
         from_value, to_value = self._resolve_date_range(from_param, to_param, range_days)
 
         try:
-            column_names = list_table_columns(table_name)
-            if not column_names:
-                return JsonResponse({"error": f'Table "{table_name}" has no columns'}, status=400)
-
-            timestamp_column = pick_base_timestamp_column(column_names)
-            if not timestamp_column:
-                return JsonResponse({"error": f'No timestamp-like column found in "{table_name}".'}, status=400)
+            schema = resolve_table_schema(
+                params.get("table"),
+                default_table=DEFAULT_TABLE,
+                require_timestamp=True,
+            )
+            table_name = schema.name
+            column_names = schema.columns
+            timestamp_column = schema.timestamp_column
 
             send_jira_column = find_column(column_names, "send_jira")
             dimension_columns = {
@@ -98,6 +107,8 @@ class LineHistoryView(APIView):
                     "breakdowns": breakdowns,
                 }
             )
+        except (ValueError, LookupError) as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to load history data")
             return JsonResponse({"error": "Failed to load history data"}, status=500)
@@ -125,10 +136,7 @@ class LineHistoryView(APIView):
             from_value = from_date.date().isoformat()
 
         if from_value and to_value:
-            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
-            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
-            if from_time > to_time:
-                from_value, to_value = to_value, from_value
+            from_value, to_value = ensure_date_bounds(from_value, to_value)
 
         return from_value, to_value
 
@@ -143,13 +151,9 @@ class LineHistoryView(APIView):
         conditions = list(line_filters)
         params = list(line_params)
 
-        if from_value:
-            conditions.append(f"{timestamp_column} >= %s")
-            params.append(f"{from_value} 00:00:00")
-
-        if to_value:
-            conditions.append(f"{timestamp_column} <= %s")
-            params.append(f"{to_value} 23:59:59")
+        date_conditions, date_params = build_date_range_filters(timestamp_column, from_value, to_value)
+        conditions.extend(date_conditions)
+        params.extend(date_params)
 
         clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         return clause, params
@@ -164,7 +168,7 @@ class LineHistoryView(APIView):
         totals_select = [f"DATE({timestamp_column}) AS day", "COUNT(*) AS row_count"]
         if send_jira_column:
             totals_select.append(
-                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
@@ -201,7 +205,7 @@ class LineHistoryView(APIView):
 
         if send_jira_column:
             select_parts.append(
-                "SUM(CASE WHEN {col} IS TRUE THEN 1 ELSE 0 END) AS send_jira_count".format(
+                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
                     col=send_jira_column
                 )
             )
@@ -224,24 +228,8 @@ class LineHistoryView(APIView):
 
     @staticmethod
     def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_value = row.get("day") or row.get("date")
-    
-        date_str: Optional[str] = None
-    
-        # 1) 문자열인 경우: 그냥 strip
-        if isinstance(date_value, str):
-            date_str = date_value.strip() or None
-    
-        # 2) datetime인 경우: 날짜만 떼어서 YYYY-MM-DD
-        elif isinstance(date_value, datetime):
-            date_str = date_value.date().isoformat()
-    
-        # 3) date 인 경우: 그대로 isoformat()
-        elif isinstance(date_value, date):
-            date_str = date_value.isoformat()
-    
-        # (원한다면: else 에서 로그 찍을 수도 있음)
-    
+        date_str = _normalize_date_value(row.get("day") or row.get("date"))
+
         return {
             "date": date_str,
             "rowCount": to_int(row.get("row_count", 0)),
@@ -250,16 +238,8 @@ class LineHistoryView(APIView):
     
     @staticmethod
     def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_value = row.get("day") or row.get("date")
-    
-        date_str: Optional[str] = None
-        if isinstance(date_value, str):
-            date_str = date_value.strip() or None
-        elif isinstance(date_value, datetime):
-            date_str = date_value.date().isoformat()
-        elif isinstance(date_value, date):
-            date_str = date_value.isoformat()
-    
+        date_str = _normalize_date_value(row.get("day") or row.get("date"))
+
         category = row.get("category") or row.get("dimension") or "Unspecified"
         if not isinstance(category, str) or not category.strip():
             category = "Unspecified"

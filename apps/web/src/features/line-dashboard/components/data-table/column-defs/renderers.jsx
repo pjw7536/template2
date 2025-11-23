@@ -1,6 +1,6 @@
 // src/features/line-dashboard/components/data-table/column-defs/renderers.js
 // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
-import { ExternalLink, Check } from "lucide-react"
+import { ExternalLink, Check, AlertTriangle } from "lucide-react"
 
 import { CommentCell, NeedToSendCell } from "../cells"
 import { formatCellValue } from "../utils/formatters.jsx"
@@ -8,7 +8,6 @@ import { STATUS_LABELS } from "../../../constants/status-labels"
 import {
   buildJiraBrowseUrl,
   getRecordId,
-  normalizeBinaryFlag,
   normalizeComment,
   normalizeJiraKey,
   normalizeNeedToSend,
@@ -16,6 +15,7 @@ import {
   toHttpUrl,
 } from "./normalizers"
 import { computeMetroProgress } from "./processFlow"
+import { deriveFlagState } from "../utils/flagState"
 
 const CellRenderers = {
   defect_url: ({ value }) => {
@@ -68,13 +68,14 @@ const CellRenderers = {
   needtosend: ({ value, rowOriginal, meta }) => {
     const recordId = getRecordId(rowOriginal)
     if (!meta || !recordId) return formatCellValue(value)
-    const baseValue = normalizeNeedToSend(rowOriginal?.needtosend)
-    const isLocked = normalizeBinaryFlag(rowOriginal?.send_jira)
+    const baseState = deriveFlagState(normalizeNeedToSend(rowOriginal?.needtosend), 0)
+    const isLocked = deriveFlagState(rowOriginal?.send_jira, 0).isOn
     return (
       <NeedToSendCell
         meta={meta}
         recordId={recordId}
-        baseValue={baseValue}
+        baseValue={baseState.numericValue}
+        state={baseState}
         disabled={isLocked}
         disabledReason="이미 JIRA 전송됨 (needtosend 수정 불가)"
       />
@@ -82,18 +83,32 @@ const CellRenderers = {
   },
 
   send_jira: ({ value }) => {
-    const ok = normalizeBinaryFlag(value)
+    const { state, numericValue, isOn } = deriveFlagState(value, 0)
+    const title =
+      state === "error"
+        ? `JIRA 전송 오류 상태 (값: ${numericValue})`
+        : isOn
+          ? "Sent to JIRA"
+          : "Not sent"
     return (
       <span
         className={[
           "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors",
-          ok ? "bg-primary border-primary text-primary-foreground" : "border-border",
+          state === "error"
+            ? "border-destructive/60 bg-destructive/10 text-destructive"
+            : isOn
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-border",
         ].join(" ")}
-        title={ok ? "Sent to JIRA" : "Not sent"}
-        aria-label={ok ? "Sent to JIRA" : "Not sent"}
+        title={title}
+        aria-label={title}
         role="img"
       >
-        {ok ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+        {state === "error" ? (
+          <AlertTriangle className="h-3 w-3" strokeWidth={3} />
+        ) : isOn ? (
+          <Check className="h-3 w-3" strokeWidth={3} />
+        ) : null}
       </span>
     )
   },

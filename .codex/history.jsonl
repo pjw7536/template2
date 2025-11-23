@@ -35,3 +35,30 @@
 {"session_id":"019aa3c1-9f41-7893-b409-c8452f2e3a39","ts":1763704272,"text":"dev.oidc.yml 환경과, 운영환경에서는 https로 deploy/nginx/inner.conf.backup 여기 코드 참고해서, nginx설정"}
 {"session_id":"019aa3c1-9f41-7893-b409-c8452f2e3a39","ts":1763704640,"text":"이 프로젝트에서 코드를 작성할 때 반드시 지켜야할것?"}
 {"session_id":"019aa3c1-9f41-7893-b409-c8452f2e3a39","ts":1763704679,"text":"이 프로젝트에서 현재 필요없는 코드나, 파일 있으면 삭제해줘"}
+{"session_id":"019aa3c1-9f41-7893-b409-c8452f2e3a39","ts":1763706813,"text":"172.21.0.2 poart 5432 failed. 외부주소로 접속 하는것이 낫나?"}
+{"session_id":"019aa3c1-9f41-7893-b409-c8452f2e3a39","ts":1763706900,"text":"django 에서 shared-net airflow-postgres로 접근하려면?"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763708051,"text":"docker-compose.dev.oidc.yml 환경은 운영환경과 완전히 동일한 환경 ( nginx도 동일 https 사용도 동일 사내 oidc사용도 동일. 단 한가지 운영과의 차이점은 코드 수정시 수정내용이 바로 반영되는 개발환경)으로 변경해줘"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763708066,"text":"docker-compose.dev.oidc.yml 환경은 운영환경과 완전히 동일한 환경 ( nginx도 동일 https 사용도 동일 사내 oidc사용도 동일. 단 한가지 운영과의 차이점은 코드 수정시 수정내용이 바로 반영되는 개발환경)으로 변경해줘"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763708318,"text":"production, dev.oidc 환경에서는 dummy adfs는 사용하지 않으니까 다 지워줘"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763712051,"text":"send_jira = models.BooleanField(default=False)\n    needtosend = models.BooleanField(default=True) 이 두 컬럼을 가장작은 숫자로 변경 ( 에러 발생시 -1 등 2가지 states로는 부족하다) mysql의 tinyint처럼 사용할 예정. 변경 사항에 맞게 모든 관련 코드 ( 프론트포함) 수정해줘"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763712763,"text":"migration 해줘"}
+{"session_id":"019aa52e-dd9e-7cd1-a26c-5b02278717c2","ts":1763712957,"text":"api 앱만 따로 migrate"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763721874,"text":"이앱의 전체 동작을 잘 보고, 의도에 맞는 dummy 값들을 drone_sop_v3에 넣는 sql문 만들어줘 ( 1000개정도)"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763722412,"text":"SQL Error [42883]: ERROR: function make_interval(hours => integer, minutes => integer) does not exist\n  Hint: No function matches the given name and argument types. You might need to add explicit type casts.\n  Position: 2868"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763722670,"text":"이 앱을 종합적으로 판단해서, 리팩토링해줘 ( 헌법을지켜서)"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763722686,"text":"2"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763723195,"text":"[plugin:vite:import-analysis] Failed to resolve import \"../../constants/status-labels\" from \"src/features/line-dashboard/components/data-table/hooks/useStatusChart.js\". Does the file exist?"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763723589,"text":"이제 backend도 refactor하자"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763723610,"text":"1"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763724048,"text":"한국시간으로 표시해줘"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763724250,"text":"mouse hover시 뜨는 시간은 한국시간이 아니네"}
+{"session_id":"019aa603-856f-7ea2-90df-cd3352e881c8","ts":1763724342,"text":"포멧팅을 `${month}/${day} ${hours}:${minutes}` 이렇게해줘"}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763724948,"text":"backend 리팩토링"}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763725548,"text":"env, docker 등 앱의 인프라 관점에서 리팩토링 할게 있을까"}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763725691,"text":"- Nginx dev 설정에 주석으로 남은 Airflow 프록시 블록이 location / 내부에 중첩돼 있습니다. 필요\n    없다면 제거하고, 필요하다면 블록을 최상위 level로 빼서 의도치 않은 라우팅/구문 에러를 없애는\n    게 좋습니다 (deploy/nginx/default.conf)."}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763725804,"text":"api_data volume이 필요 없다면 지워줘"}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763725876,"text":"api_static도 필요 없지 않나?"}
+{"session_id":"019aa632-e2e7-77b2-b947-0c3c48bf0c70","ts":1763726171,"text":"env, docker compose 점검 해줘"}
+{"session_id":"019aa646-16ad-7fa3-97c0-c8c8fb59a58b","ts":1763726275,"text":"docker dev.oidc , 운영 env파일들 모두 자세히 확인 한 후 리팩토링해줘."}
+{"session_id":"019aa646-16ad-7fa3-97c0-c8c8fb59a58b","ts":1763726913,"text":"이 앱을 폐쇄망에 가져가서 dev.oidc환경에서 개발, docker-compose.yml 환경에서 운영을 바로하려고한다 어떤것을 추가 개선 해야할까"}
+{"session_id":"019aae0d-6496-7be1-b3d5-dbbcfd3610f7","ts":1763856737,"text":"이 앱에서, django model을 정의하고 운영하고 있는데, Orm을 안쓴다면 이 모델이 필요없나?"}

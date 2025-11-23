@@ -303,9 +303,9 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
         <span>{section.label}</span>
       </legend>
 
-      <div className="flex w-60 flex-col rounded-lg border border-border/40 px-3 py-1">
+      <div className="flex w-60 flex-col rounded-lg px-3 py-1">
         {/* 슬라이더 라인 */}
-        <div className="flex h-3 items-start gap-3">
+        <div className="flex mt-1 h-2 items-start gap-3">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             -{RECENT_HOURS_MAX}h
           </span>
@@ -327,7 +327,7 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
         </div>
 
         {/* 조회 텍스트 — 슬라이더 아래 중앙 */}
-        <p className="mt-1 text-center text-[9px] font-medium text-muted-foreground">
+        <p className=" text-center text-[9px] font-medium text-muted-foreground">
           {formatRecentHoursRange(rangeValue)}
         </p>
       </div>

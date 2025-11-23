@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from django.conf import settings
@@ -15,6 +16,7 @@ from ..db import run_query
 from .constants import (
     DATE_COLUMN_CANDIDATES,
     DATE_ONLY_REGEX,
+    DEFAULT_TABLE,
     LINE_SDWT_TABLE_NAME,
     SAFE_IDENTIFIER,
 )
@@ -41,6 +43,93 @@ def normalize_date_only(value: Any) -> Optional[str]:
         return None
     candidate = value.strip()
     return candidate if DATE_ONLY_REGEX.match(candidate) else None
+
+
+def normalize_line_id(value: Any) -> Optional[str]:
+    """lineId 쿼리 파라미터를 트림하고 빈 문자열은 None으로 취급."""
+
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def ensure_date_bounds(from_value: Optional[str], to_value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    YYYY-MM-DD 문자열(from/to)이 뒤집혀 있으면 순서를 교체해 반환.
+    파싱 실패 시 원본을 그대로 돌려줍니다.
+    """
+
+    if from_value and to_value:
+        try:
+            from_time = datetime.fromisoformat(f"{from_value}T00:00:00")
+            to_time = datetime.fromisoformat(f"{to_value}T00:00:00")
+        except ValueError:
+            return from_value, to_value
+        if from_time > to_time:
+            return to_value, from_value
+    return from_value, to_value
+
+
+def build_date_range_filters(
+    timestamp_column: str, from_value: Optional[str], to_value: Optional[str]
+) -> Tuple[List[str], List[str]]:
+    """
+    타임스탬프 컬럼 기준으로 from/to 조건과 파라미터 목록을 생성합니다.
+    - from → YYYY-MM-DD 00:00:00 이상
+    - to   → YYYY-MM-DD 23:59:59 이하
+    """
+
+    conditions: List[str] = []
+    params: List[str] = []
+
+    if from_value:
+        conditions.append(f"{timestamp_column} >= %s")
+        params.append(f"{from_value} 00:00:00")
+
+    if to_value:
+        conditions.append(f"{timestamp_column} <= %s")
+        params.append(f"{to_value} 23:59:59")
+
+    return conditions, params
+
+
+@dataclass(frozen=True)
+class TableSchema:
+    """테이블 이름/컬럼/타임스탬프 컬럼을 한번에 포장한 결과."""
+
+    name: str
+    columns: List[str]
+    timestamp_column: Optional[str] = None
+
+
+def resolve_table_schema(
+    table_param: Any, *, default_table: Optional[str] = DEFAULT_TABLE, require_timestamp: bool = False
+) -> TableSchema:
+    """
+    테이블 이름을 검증/정규화하고 컬럼 목록과 베이스 타임스탬프 컬럼을 반환합니다.
+
+    - 테이블명이 비어있거나 안전하지 않으면 ValueError
+    - 컬럼이 없으면 LookupError
+    - require_timestamp=True인데 타임스탬프 후보가 없으면 LookupError
+    """
+
+    table_name = sanitize_identifier(table_param, default_table)
+    if not table_name:
+        raise ValueError("Invalid table name")
+
+    columns = list_table_columns(table_name)
+    if not columns:
+        raise LookupError(f'Table "{table_name}" has no columns')
+
+    timestamp_column = None
+    if require_timestamp:
+        timestamp_column = pick_base_timestamp_column(columns)
+        if not timestamp_column:
+            expected = ", ".join(DATE_COLUMN_CANDIDATES)
+            raise LookupError(f'No timestamp-like column found in "{table_name}". Expected one of: {expected}.')
+
+    return TableSchema(name=table_name, columns=columns, timestamp_column=timestamp_column)
 
 
 def to_int(value: Any) -> int:
@@ -249,6 +338,8 @@ __all__ = [
     "find_column",
     "list_table_columns",
     "normalize_date_only",
+    "resolve_table_schema",
+    "TableSchema",
     "parse_json_body",
     "pick_base_timestamp_column",
     "resolve_frontend_target",
