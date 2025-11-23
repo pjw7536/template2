@@ -9,7 +9,10 @@ import {
   IconTrash,
   IconX,
 } from "@tabler/icons-react"
+import { AlertCircleIcon, BadgeCheckIcon } from "lucide-react"
+import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { buildBackendUrl } from "@/lib/api"
@@ -23,18 +26,94 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { timeFormatter } from "./data-table/utils/constants"
+import { buildToastOptions } from "./data-table/utils/toast"
 
 const LABELS = {
   titleSuffix: "Line E-SOP Settings",
   subtitle: "E-SOP가 종료 되기전에 미리 Inform할 Step을 설정합니다.",
-  addTitle: "Step별 E-SOP Custom End Step 추가",
+  addTitle: "E-SOP Custom End Step 추가",
   mainStep: "Main Step",
-  customEndStep: "Custom End Step (조기 inform 받을 Step)",
+  customEndStep: "Early Inform Step",
+  lineId: "Line ID",
+  updatedBy: "Updated By",
+  updatedAt: "Updated At",
   addButton: "Add",
   refresh: "Refresh",
   updated: "Updated",
   loading: "Loading entries…",
   empty: "No overrides found for this line.",
+  addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
+}
+
+function normalizeUserSdwt(values) {
+  if (!Array.isArray(values)) return []
+  const deduped = new Set()
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => {
+      if (!value) return false
+      if (deduped.has(value)) return false
+      deduped.add(value)
+      return true
+    })
+}
+
+const SUCCESS_COLOR = "#065f46"
+const INFO_COLOR = "#1e40af"
+const ERROR_COLOR = "#991b1b"
+
+function formatUpdatedAt(value) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+}
+
+function unwrapErrorMessage(message) {
+  if (typeof message === "string") {
+    try {
+      const parsed = JSON.parse(message)
+      if (parsed && typeof parsed.error === "string" && parsed.error.trim()) {
+        return parsed.error
+      }
+    } catch {
+      // noop
+    }
+    return message
+  }
+  return ""
+}
+
+function showCreateToast() {
+  toast.success("추가 완료", {
+    description: "새 조기 알림 설정이 저장되었습니다.",
+    icon: <IconPlus className="h-5 w-5" />,
+    ...buildToastOptions({ color: SUCCESS_COLOR }),
+  })
+}
+
+function showUpdateToast() {
+  toast.success("수정 완료", {
+    description: "설정이 업데이트되었습니다.",
+    icon: <IconDeviceFloppy className="h-5 w-5" />,
+    ...buildToastOptions({ color: INFO_COLOR }),
+  })
+}
+
+function showDeleteToast() {
+  toast("삭제 완료", {
+    description: "설정이 제거되었습니다.",
+    icon: <IconTrash className="h-5 w-5" />,
+    ...buildToastOptions({ color: ERROR_COLOR }),
+  })
+}
+
+function showRequestErrorToast(message) {
+  toast.error("요청 실패", {
+    description: message || "요청 처리 중 오류가 발생했습니다.",
+    icon: <IconX className="h-5 w-5" />,
+    ...buildToastOptions({ color: ERROR_COLOR, duration: 3200 }),
+  })
 }
 
 function normalizeEntry(entry, fallbackLineId = "") {
@@ -68,11 +147,28 @@ function normalizeEntry(entry, fallbackLineId = "") {
         ? customRaw
         : String(customRaw)
 
+  const updatedBy =
+    typeof entry.updatedBy === "string"
+      ? entry.updatedBy
+      : typeof entry.updated_by === "string"
+        ? entry.updated_by
+        : ""
+
+  const updatedAtRaw = entry.updatedAt ?? entry.updated_at
+  const updatedAt =
+    typeof updatedAtRaw === "string" || typeof updatedAtRaw === "number"
+      ? String(updatedAtRaw)
+      : updatedAtRaw && typeof updatedAtRaw === "object" && typeof updatedAtRaw.toString === "function"
+        ? updatedAtRaw.toString()
+        : ""
+
   return {
     id: String(rawId),
     lineId,
     mainStep: mainStepRaw,
     customEndStep,
+    updatedBy,
+    updatedAt,
   }
 }
 
@@ -82,9 +178,42 @@ function sortEntries(entries) {
   )
 }
 
+function LineUserSdwtBadges({ lineId, values }) {
+  if (!lineId) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
+        <AlertCircleIcon className="h-3 w-3" />
+        라인을 선택하면 User SDWT 목록이 표시됩니다.
+      </div>
+    )
+  }
+
+  if (!values || values.length === 0) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
+        <AlertCircleIcon className="h-3 w-3" />
+        등록된 User SDWT가 없습니다.
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-xs font-semibold text-foreground">{lineId} Line 분임조 : </span>
+      {values.map((value) => (
+        <Badge key={value} variant="secondary" className="gap-1 text-[11px] font-mono">
+          <BadgeCheckIcon className="h-3 w-3" />
+          {value}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
 export function LineSettingsPage({ lineId: initialLineId = "" }) {
   const [lineId, setLineId] = React.useState(initialLineId)
   const [entries, setEntries] = React.useState([])
+  const [userSdwtValues, setUserSdwtValues] = React.useState([])
   const [error, setError] = React.useState(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false)
@@ -113,11 +242,14 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
     setLastUpdatedLabel("-")
     setEditingId(null)
     setRowErrors({})
+    setSavingMap({})
+    setUserSdwtValues([])
   }, [lineId])
 
   const fetchEntries = React.useCallback(async () => {
     if (!lineId) {
       setEntries([])
+      setUserSdwtValues([])
       setError(null)
       setIsLoading(false)
       setLastUpdatedLabel("-")
@@ -160,13 +292,16 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       const normalized = rows
         .map((row) => normalizeEntry(row, lineId))
         .filter((row) => row !== null)
+      const normalizedUsers = normalizeUserSdwt(payload?.userSdwt)
 
       setEntries(sortEntries(normalized))
+      setUserSdwtValues(normalizedUsers)
       setLastUpdatedLabel(timeFormatter.format(new Date()))
     } catch (requestError) {
       const message =
         requestError instanceof Error ? requestError.message : "Failed to load settings"
       setError(message)
+      setUserSdwtValues([])
       if (!hasLoadedRef.current) {
         setLastUpdatedLabel("-")
       }
@@ -249,10 +384,21 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         }
 
         if (!response.ok) {
-          const message =
+          const apiMessageRaw =
             payload && typeof payload === "object" && typeof payload.error === "string"
               ? payload.error
-              : `Failed to create entry (status ${response.status})`
+              : ""
+          const apiMessage = unwrapErrorMessage(apiMessageRaw)
+          const lowerApiMessage = apiMessage.toLowerCase()
+          const isDuplicate =
+            response.status === 409 ||
+            lowerApiMessage.includes("already") ||
+            lowerApiMessage.includes("duplicate") ||
+            lowerApiMessage.includes("uniq") ||
+            lowerApiMessage.includes("main step")
+          const message = isDuplicate
+            ? "이미 등록된 스텝입니다."
+            : apiMessage || `Failed to create entry (status ${response.status})`
           throw new Error(message)
         }
 
@@ -262,10 +408,21 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           setLastUpdatedLabel(timeFormatter.format(new Date()))
         }
         resetForm()
+        showCreateToast()
       } catch (requestError) {
-        const message =
+        const rawMessage =
           requestError instanceof Error ? requestError.message : "Failed to create entry"
-        setFormError(message)
+        const lower = rawMessage.toLowerCase()
+        const isDuplicate =
+          lower.includes("already") ||
+          lower.includes("duplicate") ||
+          lower.includes("uniq") ||
+          lower.includes("main step")
+        const friendlyMessage = isDuplicate
+          ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
+          : rawMessage
+        setFormError(friendlyMessage)
+        showRequestErrorToast(friendlyMessage)
       } finally {
         setIsCreating(false)
       }
@@ -374,11 +531,13 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         )
         setLastUpdatedLabel(timeFormatter.format(new Date()))
       }
+      showUpdateToast()
       cancelEditing()
     } catch (requestError) {
       const message =
         requestError instanceof Error ? requestError.message : "Failed to update entry"
       setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
+      showRequestErrorToast(message)
     } finally {
       setSavingMap((prev) => {
         if (!(entry.id in prev)) return prev
@@ -432,10 +591,12 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           cancelEditing()
         }
         setLastUpdatedLabel(timeFormatter.format(new Date()))
+        showDeleteToast()
       } catch (requestError) {
         const message =
           requestError instanceof Error ? requestError.message : "Failed to delete entry"
         setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
+        showRequestErrorToast(message)
       } finally {
         setSavingMap((prev) => {
           if (!(entry.id in prev)) return prev
@@ -459,7 +620,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
               {LABELS.updated} {lastUpdatedLabel}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">{LABELS.subtitle}</p>
         </div>
 
         <div className="flex items-center gap-2 self-end">
@@ -488,54 +648,63 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       )}
 
       <div className="rounded-lg border bg-background p-4 shadow-sm">
-        <div className="flex flex-col gap-1 pb-3">
+
+        <div className="flex flex-col gap-1 pb-4">
           <h2 className="text-sm font-medium">{LABELS.addTitle}</h2>
           <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
         </div>
 
-        <form className="flex flex-col gap-3 flex-row items-end" onSubmit={handleCreate}>
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
-              {LABELS.mainStep}
-            </label>
-            <Input
-              id="main-step-input"
-              value={formValues.mainStep}
-              onChange={(event) => handleFormChange("mainStep", event.target.value)}
-              placeholder="ex) STEP_10"
-              required
-              maxLength={50}
-            />
-          </div>
-
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="custom-step-input">
-              {LABELS.customEndStep}
-            </label>
-            <Input
-              id="custom-step-input"
-              value={formValues.customEndStep}
-              onChange={(event) => handleFormChange("customEndStep", event.target.value)}
-              placeholder="Leave blank to remove override"
-              maxLength={50}
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="md:self-end"
-            disabled={isCreating || !lineId}
-          >
-            <IconPlus className="mr-1 size-4" />
-            {LABELS.addButton}
-          </Button>
-        </form>
-
-        {formError && (
+        {formError ? (
           <p className="pt-2 text-xs text-destructive" role="alert">
             {formError}
-          </p>
-        )}
+          </p>) :
+          (<p className="pt-2 text-xs">&nbsp;</p>)
+
+        }
+
+        <div className="flex justify-between items-end flex-wrap">
+          <form className="flex flex-row items-center gap-3 flex-wrap" onSubmit={handleCreate}>
+            <div className="w-80 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
+                {LABELS.mainStep}
+              </label>
+              <Input
+                id="main-step-input"
+                value={formValues.mainStep}
+                onChange={(event) => handleFormChange("mainStep", event.target.value)}
+                placeholder="ex) STEP_10"
+                required
+                maxLength={50}
+              />
+            </div>
+
+            <div className="w-80 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="custom-step-input">
+                {LABELS.customEndStep}
+              </label>
+              <Input
+                id="custom-step-input"
+                value={formValues.customEndStep}
+                onChange={(event) => handleFormChange("customEndStep", event.target.value)}
+                placeholder="조기 알람 받을 스텝"
+                maxLength={50}
+              />
+            </div>
+
+            <Button
+              type="submit"
+              className="md:self-end"
+              disabled={isCreating || !lineId}
+            >
+              <IconPlus className="mr-1 size-4" />
+              {LABELS.addButton}
+            </Button>
+          </form>
+
+          <div className="pt-2">
+            <LineUserSdwtBadges lineId={lineId} values={userSdwtValues} />
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 rounded-lg border bg-background">
@@ -543,17 +712,21 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           <Table stickyHeader className="w-full table-fixed">
             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
             <colgroup>
-              <col className="w-10" />  {/* ID */}
-              <col className="w-24" />  {/* Main Step */}
-              <col className="w-24" />  {/* Custom End Step */}
-              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
+              <col className="w-30" />  {/* Line ID */}
+              <col className="w-40" />  {/* Main Step */}
+              <col className="w-40" />  {/* Custom End Step */}
+              <col className="w-32" />  {/* Updated By */}
+              <col className="w-40" />  {/* Updated At */}
+              <col className="w-60" />  {/* Actions */}
             </colgroup>
 
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-muted">
               <TableRow>
-                <TableHead className="text-center">ID</TableHead>
+                <TableHead className="text-center">{LABELS.lineId}</TableHead>
                 <TableHead className="text-center">{LABELS.mainStep}</TableHead>
                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
+                <TableHead className="text-center">{LABELS.updatedBy}</TableHead>
+                <TableHead className="text-center">{LABELS.updatedAt}</TableHead>
                 <TableHead className="text-right"></TableHead>
               </TableRow>
             </TableHeader>
@@ -562,7 +735,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
               {isLoading && !hasLoadedOnce && (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={6}
                     className="h-24 text-center text-sm text-muted-foreground"
                   >
                     {LABELS.loading}
@@ -573,7 +746,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
               {!isLoading && entries.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={6}
                     className="h-24 text-center text-sm text-muted-foreground"
                   >
                     {lineId ? LABELS.empty : "Select a line to view overrides."}
@@ -589,9 +762,8 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                 return (
                   <React.Fragment key={entry.id}>
                     <TableRow>
-                      {/* ✅ ID 가운데 정렬 */}
                       <TableCell className="text-center font-mono text-xs text-muted-foreground">
-                        {entry.id}
+                        {entry.lineId || "-"}
                       </TableCell>
 
                       {/* ✅ Main Step 가운데 정렬 */}
@@ -630,9 +802,17 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                         )}
                       </TableCell>
 
+                      <TableCell className="text-center text-xs text-muted-foreground">
+                        {entry.updatedBy || "-"}
+                      </TableCell>
+
+                      <TableCell className="text-center text-xs text-muted-foreground">
+                        {formatUpdatedAt(entry.updatedAt)}
+                      </TableCell>
+
                       {/* ✅ Actions도 가운데 정렬 */}
                       <TableCell className="text-end">
-                        <div className="inline-flex items-center justify-ends gap-2">
+                        <div className="inline-flex items-center justify-end gap-2">
                           {isEditing ? (
                             <>
                               <Button
@@ -684,7 +864,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                     {rowError && (
                       <TableRow>
                         <TableCell
-                          colSpan={4}
+                          colSpan={6}
                           className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
                         >
                           {rowError}
@@ -699,6 +879,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         </TableContainer>
       </div>
 
-    </section>
+    </section >
   )
 }

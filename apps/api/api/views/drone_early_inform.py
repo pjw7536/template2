@@ -38,6 +38,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from django.http import HttpRequest, JsonResponse
+from django.db import IntegrityError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
@@ -50,9 +51,28 @@ from ..activity_logging import (
 )
 from ..db import execute, run_query
 from .constants import MAX_FIELD_LENGTH
-from .utils import parse_json_body
+from .utils import _get_user_sdwt_prod_values, parse_json_body
 
 logger = logging.getLogger(__name__)
+
+
+def _is_duplicate_error(exc: Exception) -> bool:
+    """DB 중복 에러 여부를 광범위하게 판별."""
+
+    error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+    if error_code:
+        code_str = str(error_code)
+        if code_str in {"ER_DUP_ENTRY", "23505", "1062"}:
+            return True
+
+    if isinstance(exc, IntegrityError):
+        message = str(exc).lower()
+        if any(key in message for key in ("duplicate", "unique", "uniq", "already exists")):
+            return True
+
+    # 일반 Exception의 문자열 메시지에서만 duplicate 힌트가 있는 경우
+    message = str(exc).lower()
+    return any(key in message for key in ("duplicate", "unique", "uniq", "already exists"))
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -80,7 +100,7 @@ class DroneEarlyInformView(APIView):
         try:
             rows = run_query(
                 """
-                SELECT id, line_id, main_step, custom_end_step
+                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
                 FROM {table}
                 WHERE line_id = %s
                 ORDER BY main_step ASC, id ASC
@@ -90,10 +110,12 @@ class DroneEarlyInformView(APIView):
             # DB 레코드를 API 응답 형태로 정규화
             normalized = [self._map_row(row, line_id) for row in rows]
             normalized_rows = [row for row in normalized if row is not None]
+            user_sdwt_values = _get_user_sdwt_prod_values(line_id)
             return JsonResponse({
                 "lineId": line_id,
                 "rowCount": len(normalized_rows),
                 "rows": normalized_rows,
+                "userSdwt": user_sdwt_values,
             })
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to load drone_early_inform rows")
@@ -122,22 +144,30 @@ class DroneEarlyInformView(APIView):
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
 
+        updated_by = self._resolve_updated_by(request)
+
         try:
-            params = [line_id, main_step, custom_end_step]
+            params = [line_id, main_step, custom_end_step, updated_by]
             affected, last_row_id = execute(
                 """
-                INSERT INTO {table} (line_id, main_step, custom_end_step)
-                VALUES (%s, %s, %s)
+                INSERT INTO {table} (line_id, main_step, custom_end_step, updated_by, updated_at)
+                VALUES (%s, %s, %s, %s, NOW())
                 RETURNING id
                 """.format(table=self.TABLE_NAME),
                 params,
             )
-            entry = {
-                "id": int(last_row_id or 0),
-                "lineId": line_id,
-                "mainStep": main_step,
-                "customEndStep": custom_end_step,
-            }
+            rows = run_query(
+                """
+                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
+                FROM {table}
+                WHERE id = %s
+                LIMIT 1
+                """.format(table=self.TABLE_NAME),
+                [last_row_id],
+            )
+            entry = self._map_row(rows[0] if rows else None, line_id)
+            if not entry:
+                return JsonResponse({"error": "Failed to create entry"}, status=500)
 
             # 액티비티 로그(요약 + 신규 상태 + 메타데이터)
             set_activity_summary(request, "Create drone_early_inform entry")
@@ -151,8 +181,7 @@ class DroneEarlyInformView(APIView):
 
         except Exception as exc:  # pragma: no cover - 방어적 로깅
             # MySQL/PG의 유니크 제약 위반 코드 매핑
-            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
-            if error_code in {"ER_DUP_ENTRY", "23505"}:
+            if _is_duplicate_error(exc):
                 return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
             logger.exception("Failed to create drone_early_inform row")
             return JsonResponse({"error": "Failed to create entry"}, status=500)
@@ -183,7 +212,7 @@ class DroneEarlyInformView(APIView):
         # 이전 상태 로드 → 액티비티에 보관
         previous_rows = run_query(
             """
-            SELECT id, line_id, main_step, custom_end_step
+            SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
             FROM {table}
             WHERE id = %s
             LIMIT 1
@@ -198,6 +227,8 @@ class DroneEarlyInformView(APIView):
         # 동적 UPDATE 컬럼 구성
         assignments: List[str] = []
         params: List[Any] = []
+
+        updated_by = self._resolve_updated_by(request)
 
         if "lineId" in payload:
             line_id = self._sanitize_line_id(payload.get("lineId"))
@@ -224,6 +255,11 @@ class DroneEarlyInformView(APIView):
         if not assignments:
             return JsonResponse({"error": "No valid fields to update"}, status=400)
 
+        # 항상 업데이트 메타 컬럼 갱신
+        assignments.append("updated_by = %s")
+        params.append(updated_by)
+        assignments.append("updated_at = NOW()")
+
         # WHERE id = %s
         params.append(entry_id)
         try:
@@ -241,7 +277,7 @@ class DroneEarlyInformView(APIView):
             # 변경 후 행 다시 조회 → 응답/로그에 사용
             rows = run_query(
                 """
-                SELECT id, line_id, main_step, custom_end_step
+                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
                 FROM {table}
                 WHERE id = %s
                 LIMIT 1
@@ -256,8 +292,7 @@ class DroneEarlyInformView(APIView):
             return JsonResponse({"entry": entry})
 
         except Exception as exc:  # pragma: no cover - 방어적 로깅
-            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
-            if error_code in {"ER_DUP_ENTRY", "23505"}:
+            if _is_duplicate_error(exc):
                 return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
             logger.exception("Failed to update drone_early_inform row")
             return JsonResponse({"error": "Failed to update entry"}, status=500)
@@ -352,6 +387,35 @@ class DroneEarlyInformView(APIView):
         return trimmed
 
     @staticmethod
+    def _sanitize_updated_by(value: Any) -> Optional[str]:
+        """updated_by: 문자열 공백 제거 & 길이 제한."""
+        if not isinstance(value, str):
+            return None
+        trimmed = value.strip()
+        return trimmed if trimmed and len(trimmed) <= MAX_FIELD_LENGTH else None
+
+    @staticmethod
+    def _extract_username(raw_username: str) -> str:
+        """이메일인 경우 @ 앞 로컬 파트만 추출."""
+        if "@" in raw_username:
+            local_part = raw_username.split("@", 1)[0]
+            return local_part or raw_username
+        return raw_username
+
+    def _resolve_updated_by(self, request: HttpRequest) -> Optional[str]:
+        """요청 사용자 정보를 updated_by 문자열로 정리."""
+        user = getattr(request, "user", None)
+        raw_username = None
+        if user and getattr(user, "is_authenticated", False):
+            raw_username = (
+                getattr(user, "get_username", lambda: None)() or getattr(user, "email", None) or None
+            )
+        if not raw_username:
+            raw_username = "system"
+        username = self._extract_username(str(raw_username))
+        return self._sanitize_updated_by(username)
+
+    @staticmethod
     def _map_row(row: Optional[Dict[str, Any]], fallback_line_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """DB 행(dict)을 API 응답 형식으로 매핑.
 
@@ -359,6 +423,8 @@ class DroneEarlyInformView(APIView):
         - lineId: str 또는 None (fallback_line_id로 보완)
         - mainStep: str (값이 숫자일 수도 있어 안전 문자열화)
         - customEndStep: str 또는 None
+        - updatedBy: str 또는 None
+        - updatedAt: ISO 문자열 또는 None
         """
         if not row:
             return None
@@ -369,6 +435,8 @@ class DroneEarlyInformView(APIView):
         line_id = row.get("line_id") or fallback_line_id
         main_step = row.get("main_step")
         custom_end_step = row.get("custom_end_step")
+        updated_by = row.get("updated_by")
+        updated_at = row.get("updated_at")
 
         return {
             "id": int(entry_id),
@@ -379,6 +447,14 @@ class DroneEarlyInformView(APIView):
                 else ""
             ),
             "customEndStep": custom_end_step if isinstance(custom_end_step, str) else None,
+            "updatedBy": updated_by if isinstance(updated_by, str) else None,
+            "updatedAt": (
+                updated_at.isoformat()
+                if hasattr(updated_at, "isoformat")
+                else str(updated_at)
+                if updated_at is not None
+                else None
+            ),
         }
 
 

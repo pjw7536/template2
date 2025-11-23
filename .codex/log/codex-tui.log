@@ -8082,3 +8082,1966 @@
 [2m2025-11-23T04:42:35.694008Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_TEXT_WIDTH|DEFAULT_MIN_WIDTH\" apps/web/src/features/line-dashboard/components/data-table -n","workdir":"/home/pjw75/tailwind"}
 [2m2025-11-23T04:42:42.608171Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg --files apps/web/src/features/line-dashboard/components/data-table/column-defs","workdir":"/home/pjw75/tailwind"}
 [2m2025-11-23T04:42:45.459508Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:10:16.248294Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-23T05:12:37.305419Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:12:37.348303Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:12:37.348345Z[0m [32m INFO[0m ghost commit captured: 939b21da57f8a2ef8e77d8cdab30bcdaacde7dfe
+[2m2025-11-23T05:12:37.348358Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:12:41.186514Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:43.181254Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"LineSettings\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:45.840518Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:47.485611Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '220,520p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:49.711833Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '520,980p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:56.145868Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"useToast\" apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:12:58.726977Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"useToast\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:00.769425Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"toast\" apps/web/src -n | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:02.408268Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/toast.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:04.568065Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:12.422506Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"user_sdwt\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:14.838311Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '160,260p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:18.446132Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone-early-inform\" -n apps/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:20.415255Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:26.153767Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"user_sdwt\" apps/api/api/views/drone_early_inform.py -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:29.444837Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/api/api/views/constants.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:36.856593Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '232,280p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:39.755347Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,180p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:44.382697Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"line_sdwt\" -n apps/api/api/views","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:47.846170Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"line_sdwt\" apps/web -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:50.092257Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/api/get-line-ids.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:52.603800Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"line-dashboard/line-ids\" -n apps","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:13:55.026473Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:14:06.192568Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"LineIdListView\" -n apps/api/api/views","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:14:09.681973Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '256,340p' apps/api/api/views/line_dashboard.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:14:38.636364Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"buildToastOptions\" apps/web/src/features/line-dashboard -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:15:06.387850Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/pages/LineDashboardSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:15:10.807150Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Review existing LineSettingsPage/API behavior and decide how to surface line_id and user_sdwt data"},{"status":"pending","step":"Update API/data fetching to provide user_sdwt values for the current line_id"},{"status":"pending","step":"Refactor LineSettingsPage UI: hide id, show line_id (read-only) and user_sdwt column, add toasts for add/edit/delete"},{"status":"pending","step":"Sanity-check changes and outline verification steps"}],"explanation":"Plan focuses on understanding data needs, wiring backend values, updating UI/UX, then validating."}
+[2m2025-11-23T05:15:32.990581Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+-from .utils import parse_json_body
++from .utils import _get_user_sdwt_prod_values, parse_json_body
+@@
+             rows = run_query(
+                 """
+                 SELECT id, line_id, main_step, custom_end_step
+                 FROM {table}
+                 WHERE line_id = %s
+                 ORDER BY main_step ASC, id ASC
+@@
+             )
+             # DB 레코드를 API 응답 형태로 정규화
+             normalized = [self._map_row(row, line_id) for row in rows]
+             normalized_rows = [row for row in normalized if row is not None]
++            user_sdwt_values = _get_user_sdwt_prod_values(line_id)
+             return JsonResponse({
+                 "lineId": line_id,
+                 "rowCount": len(normalized_rows),
+                 "rows": normalized_rows,
++                "userSdwt": user_sdwt_values,
+             })
+*** End Patch
+[2m2025-11-23T05:16:38.835880Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   IconRefresh,
+   IconSettings,
+   IconTrash,
+   IconX,
+ } from "@tabler/icons-react"
++import { toast } from "sonner"
+ 
+ import { Button } from "@/components/ui/button"
+ import { Input } from "@/components/ui/input"
+ import { buildBackendUrl } from "@/lib/api"
+ import {
+@@
+   TableRow,
+ } from "@/components/ui/table"
+ import { timeFormatter } from "./data-table/utils/constants"
++import { buildToastOptions } from "./data-table/utils/toast"
+*** End Patch
+[2m2025-11-23T05:16:55.376991Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   mainStep: "Main Step",
+   customEndStep: "Custom End Step (조기 inform 받을 Step)",
++  userSdwt: "User SDWT",
++  lineId: "Line ID",
+   addButton: "Add",
+   refresh: "Refresh",
+   updated: "Updated",
+   loading: "Loading entries…",
+   empty: "No overrides found for this line.",
++  addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
+ }
++
++function normalizeUserSdwt(values) {
++  if (!Array.isArray(values)) return []
++  const deduped = new Set()
++  return values
++    .map((value) => (typeof value === "string" ? value.trim() : ""))
++    .filter((value) => {
++      if (!value) return false
++      if (deduped.has(value)) return false
++      deduped.add(value)
++      return true
++    })
++}
++
++const SUCCESS_COLOR = "#065f46"
++const INFO_COLOR = "#1e40af"
++const ERROR_COLOR = "#991b1b"
++
++function showCreateToast() {
++  toast.success("추가 완료", {
++    description: "새 조기 알림 설정이 저장되었습니다.",
++    icon: <IconPlus className="h-5 w-5" />,
++    ...buildToastOptions({ color: SUCCESS_COLOR }),
++  })
++}
++
++function showUpdateToast() {
++  toast.success("수정 완료", {
++    description: "설정이 업데이트되었습니다.",
++    icon: <IconDeviceFloppy className="h-5 w-5" />,
++    ...buildToastOptions({ color: INFO_COLOR }),
++  })
++}
++
++function showDeleteToast() {
++  toast("삭제 완료", {
++    description: "설정이 제거되었습니다.",
++    icon: <IconTrash className="h-5 w-5" />,
++    ...buildToastOptions({ color: ERROR_COLOR }),
++  })
++}
++
++function showRequestErrorToast(message) {
++  toast.error("요청 실패", {
++    description: message || "요청 처리 중 오류가 발생했습니다.",
++    icon: <IconX className="h-5 w-5" />,
++    ...buildToastOptions({ color: ERROR_COLOR, duration: 3200 }),
++  })
++}
+*** End Patch
+[2m2025-11-23T05:17:03.512117Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ export function LineSettingsPage({ lineId: initialLineId = "" }) {
+   const [lineId, setLineId] = React.useState(initialLineId)
+   const [entries, setEntries] = React.useState([])
++  const [userSdwtValues, setUserSdwtValues] = React.useState([])
+   const [error, setError] = React.useState(null)
+   const [isLoading, setIsLoading] = React.useState(false)
+   const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false)
+   const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState("-")
+*** End Patch
+[2m2025-11-23T05:17:09.659792Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+     setError(null)
+     setLastUpdatedLabel("-")
+     setEditingId(null)
+     setRowErrors({})
++    setSavingMap({})
++    setUserSdwtValues([])
+   }, [lineId])
+*** End Patch
+[2m2025-11-23T05:17:18.343242Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+     if (!lineId) {
+       setEntries([])
++      setUserSdwtValues([])
+       setError(null)
+       setIsLoading(false)
+       setLastUpdatedLabel("-")
+       if (!hasLoadedRef.current) {
+         hasLoadedRef.current = true
+@@
+ 
+       const rows = Array.isArray(payload?.rows) ? payload.rows : []
+       const normalized = rows
+         .map((row) => normalizeEntry(row, lineId))
+         .filter((row) => row !== null)
++      const normalizedUsers = normalizeUserSdwt(payload?.userSdwt)
+ 
+       setEntries(sortEntries(normalized))
++      setUserSdwtValues(normalizedUsers)
+       setLastUpdatedLabel(timeFormatter.format(new Date()))
+     } catch (requestError) {
+       const message =
+         requestError instanceof Error ? requestError.message : "Failed to load settings"
+       setError(message)
++      setUserSdwtValues([])
+       if (!hasLoadedRef.current) {
+         setLastUpdatedLabel("-")
+       }
+*** End Patch
+[2m2025-11-23T05:17:28.757294Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         if (entry) {
+           setEntries((prev) => sortEntries([...prev.filter((item) => item.id !== entry.id), entry]))
+           setLastUpdatedLabel(timeFormatter.format(new Date()))
+         }
+         resetForm()
++        showCreateToast()
+       } catch (requestError) {
+         const message =
+           requestError instanceof Error ? requestError.message : "Failed to create entry"
+         setFormError(message)
++        showRequestErrorToast(message)
+       } finally {
+         setIsCreating(false)
+       }
+*** End Patch
+[2m2025-11-23T05:17:36.002933Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+       if (updated) {
+         setEntries((prev) =>
+           sortEntries(prev.map((item) => (item.id === entry.id ? updated : item)))
+         )
+         setLastUpdatedLabel(timeFormatter.format(new Date()))
+       }
++      showUpdateToast()
+       cancelEditing()
+     } catch (requestError) {
+       const message =
+         requestError instanceof Error ? requestError.message : "Failed to update entry"
+       setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
++      showRequestErrorToast(message)
+     } finally {
+       setSavingMap((prev) => {
+         if (!(entry.id in prev)) return prev
+         const next = { ...prev }
+*** End Patch
+[2m2025-11-23T05:17:41.159754Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         setEntries((prev) => prev.filter((item) => item.id !== entry.id))
+         if (editingId === entry.id) {
+           cancelEditing()
+         }
+         setLastUpdatedLabel(timeFormatter.format(new Date()))
++        showDeleteToast()
+       } catch (requestError) {
+         const message =
+           requestError instanceof Error ? requestError.message : "Failed to delete entry"
+         setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
++        showRequestErrorToast(message)
+       } finally {
+         setSavingMap((prev) => {
+           if (!(entry.id in prev)) return prev
+           const next = { ...prev }
+*** End Patch
+[2m2025-11-23T05:17:59.542351Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         <TableContainer className="max-h-full overflow-auto">
+           <Table stickyHeader className="w-full table-fixed">
+             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+             <colgroup>
+-              <col className="w-10" />  {/* ID */}
+-              <col className="w-24" />  {/* Main Step */}
+-              <col className="w-24" />  {/* Custom End Step */}
+-              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
++              <col className="w-28" />  {/* Line ID */}
++              <col className="w-28" />  {/* Main Step */}
++              <col className="w-28" />  {/* Custom End Step */}
++              <col className="w-36" />  {/* User SDWT */}
++              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
+             </colgroup>
+ 
+             <TableHeader>
+               <TableRow>
+-                <TableHead className="text-center">ID</TableHead>
++                <TableHead className="text-center">{LABELS.lineId}</TableHead>
+                 <TableHead className="text-center">{LABELS.mainStep}</TableHead>
+                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
++                <TableHead className="text-center">{LABELS.userSdwt}</TableHead>
+                 <TableHead className="text-right"></TableHead>
+               </TableRow>
+             </TableHeader>
+*** End Patch
+[2m2025-11-23T05:18:03.734202Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"colSpan={4}\" -n apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:18:06.294831Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '620,820p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:18:17.217266Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+             <TableBody>
+               {isLoading && !hasLoadedOnce && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={5}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {LABELS.loading}
+                   </TableCell>
+                 </TableRow>
+               )}
+ 
+               {!isLoading && entries.length === 0 && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={5}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {lineId ? LABELS.empty : "Select a line to view overrides."}
+                   </TableCell>
+                 </TableRow>
+               )}
+@@
+ 
+                 return (
+                   <React.Fragment key={entry.id}>
+                     <TableRow>
+-                      {/* ✅ ID 가운데 정렬 */}
+-                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
+-                        {entry.id}
++                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
++                        {entry.lineId || "-"}
+                       </TableCell>
+ 
+                       {/* ✅ Main Step 가운데 정렬 */}
+                       <TableCell className="text-center">
+                         {isEditing ? (
+@@
+                       <TableCell className="text-center">
+                         {isEditing ? (
+                           <Input
+                             value={editDraft.customEndStep ?? ""}
+                             onChange={(event) =>
+@@
+                         )}
+                       </TableCell>
+ 
++                      <TableCell className="text-center">
++                        {userSdwtDisplay}
++                      </TableCell>
++
+                       {/* ✅ Actions도 가운데 정렬 */}
+                       <TableCell className="text-end">
+                         <div className="inline-flex items-center justify-ends gap-2">
+                           {isEditing ? (
+                             <>
+@@
+                     {rowError && (
+                       <TableRow>
+                         <TableCell
+-                          colSpan={4}
++                          colSpan={5}
+                           className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                         >
+                           {rowError}
+                         </TableCell>
+                       </TableRow>
+*** End Patch
+[2m2025-11-23T05:18:25.006152Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ 
+   React.useEffect(() => {
+     fetchEntries()
+   }, [fetchEntries])
+ 
+   const isRefreshing = isLoading && hasLoadedOnce
++  const userSdwtDisplay = userSdwtValues.length > 0 ? userSdwtValues.join(", ") : "-"
+*** End Patch
+[2m2025-11-23T05:18:38.272857Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"justify-ends\" apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:18:43.223203Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+                       {/* ✅ Actions도 가운데 정렬 */}
+                       <TableCell className="text-end">
+-                        <div className="inline-flex items-center justify-ends gap-2">
++                        <div className="inline-flex items-center justify-end gap-2">
+*** End Patch
+[2m2025-11-23T05:18:47.359836Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review existing LineSettingsPage/API behavior and decide how to surface line_id and user_sdwt data"},{"status":"completed","step":"Update API/data fetching to provide user_sdwt values for the current line_id"},{"status":"in_progress","step":"Refactor LineSettingsPage UI: hide id, show line_id (read-only) and user_sdwt column, add toasts for add/edit/delete"},{"status":"pending","step":"Sanity-check changes and outline verification steps"}]}
+[2m2025-11-23T05:19:04.973944Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone-early-inform\" apps/web -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:19:15.777206Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"colSpan\" apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:19:32.723904Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:19:40.623458Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review existing LineSettingsPage/API behavior and decide how to surface line_id and user_sdwt data"},{"status":"completed","step":"Update API/data fetching to provide user_sdwt values for the current line_id"},{"status":"completed","step":"Refactor LineSettingsPage UI: hide id, show line_id (read-only) and user_sdwt column, add toasts for add/edit/delete"},{"status":"in_progress","step":"Sanity-check changes and outline verification steps"}]}
+[2m2025-11-23T05:19:49.832269Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Review existing LineSettingsPage/API behavior and decide how to surface line_id and user_sdwt data"},{"status":"completed","step":"Update API/data fetching to provide user_sdwt values for the current line_id"},{"status":"completed","step":"Refactor LineSettingsPage UI: hide id, show line_id (read-only) and user_sdwt column, add toasts for add/edit/delete"},{"status":"completed","step":"Sanity-check changes and outline verification steps"}]}
+[2m2025-11-23T05:22:22.750092Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:22:22.832596Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:22:22.832641Z[0m [32m INFO[0m ghost commit captured: 077215c72d85b29a3892aa3700e2e550e3e1e364
+[2m2025-11-23T05:22:22.832655Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:22:36.767039Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+       } catch (requestError) {
+-        const message =
+-          requestError instanceof Error ? requestError.message : "Failed to create entry"
+-        setFormError(message)
+-        showRequestErrorToast(message)
++        const rawMessage =
++          requestError instanceof Error ? requestError.message : "Failed to create entry"
++        const lower = rawMessage.toLowerCase()
++        const isDuplicate = lower.includes("already exists") || lower.includes("duplicate")
++        const friendlyMessage = isDuplicate
++          ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
++          : rawMessage
++        setFormError(friendlyMessage)
++        showRequestErrorToast(friendlyMessage)
+       } finally {
+         setIsCreating(false)
+       }
+*** End Patch
+[2m2025-11-23T05:25:37.050633Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:25:37.102832Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:25:37.102873Z[0m [32m INFO[0m ghost commit captured: 58171fde52a6053a13ce20d09455fc2e7636d2c8
+[2m2025-11-23T05:25:37.102887Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:25:48.497449Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         if (!response.ok) {
+-          const message =
+-            payload && typeof payload === "object" && typeof payload.error === "string"
+-              ? payload.error
+-              : `Failed to create entry (status ${response.status})`
+-          throw new Error(message)
++          const apiMessage =
++            payload && typeof payload === "object" && typeof payload.error === "string"
++              ? payload.error
++              : ""
++          const isDuplicate =
++            response.status === 409 || apiMessage.toLowerCase().includes("already exists")
++          const message = isDuplicate
++            ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
++            : apiMessage || `Failed to create entry (status ${response.status})`
++          throw new Error(message)
+         }
+@@
+       } catch (requestError) {
+         const rawMessage =
+           requestError instanceof Error ? requestError.message : "Failed to create entry"
+-        const lower = rawMessage.toLowerCase()
+-        const isDuplicate = lower.includes("already exists") || lower.includes("duplicate")
+-        const friendlyMessage = isDuplicate
+-          ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
+-          : rawMessage
+-        setFormError(friendlyMessage)
+-        showRequestErrorToast(friendlyMessage)
++        setFormError(rawMessage)
++        showRequestErrorToast(rawMessage)
+       } finally {
+         setIsCreating(false)
+       }
+*** End Patch
+[2m2025-11-23T05:27:20.429959Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:27:20.482330Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:27:20.482373Z[0m [32m INFO[0m ghost commit captured: abbded70a9178ac9b508d51ee6635c0ec6fd7680
+[2m2025-11-23T05:27:20.482378Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:27:38.631513Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         if (!response.ok) {
+           const apiMessage =
+             payload && typeof payload === "object" && typeof payload.error === "string"
+               ? payload.error
+               : ""
+-          const isDuplicate =
+-            response.status === 409 || apiMessage.toLowerCase().includes("already exists")
++          const lowerApiMessage = apiMessage.toLowerCase()
++          const isDuplicate =
++            response.status === 409 ||
++            lowerApiMessage.includes("already") ||
++            lowerApiMessage.includes("duplicate") ||
++            lowerApiMessage.includes("uniq") ||
++            lowerApiMessage.includes("main step")
+           const message = isDuplicate
+             ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
+             : apiMessage || `Failed to create entry (status ${response.status})`
+           throw new Error(message)
+         }
+@@
+-      } catch (requestError) {
+-        const rawMessage =
+-          requestError instanceof Error ? requestError.message : "Failed to create entry"
+-        setFormError(rawMessage)
+-        showRequestErrorToast(rawMessage)
++      } catch (requestError) {
++        const rawMessage =
++          requestError instanceof Error ? requestError.message : "Failed to create entry"
++        const lower = rawMessage.toLowerCase()
++        const isDuplicate =
++          lower.includes("already") ||
++          lower.includes("duplicate") ||
++          lower.includes("uniq") ||
++          lower.includes("main step")
++        const friendlyMessage = isDuplicate
++          ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
++          : rawMessage
++        setFormError(friendlyMessage)
++        showRequestErrorToast(friendlyMessage)
+       } finally {
+         setIsCreating(false)
+       }
+*** End Patch
+[2m2025-11-23T05:29:05.723984Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:29:05.777497Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:29:05.777561Z[0m [32m INFO[0m ghost commit captured: 71f8dd0d92856a62b1401ab705e570fe3f59da4b
+[2m2025-11-23T05:29:05.777576Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:29:18.601254Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/db.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:29:30.186440Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+ from django.http import HttpRequest, JsonResponse
++from django.db import IntegrityError
+ from django.utils.decorators import method_decorator
+ from django.views.decorators.csrf import csrf_exempt
+ from rest_framework.views import APIView
+@@
+ logger = logging.getLogger(__name__)
++
++
++def _is_duplicate_error(exc: Exception) -> bool:
++  """DB 중복 에러 여부를 광범위하게 판별."""
++
++  error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
++  if error_code:
++      code_str = str(error_code)
++      if code_str in {"ER_DUP_ENTRY", "23505", "1062"}:
++          return True
++
++  if isinstance(exc, IntegrityError):
++      message = str(exc).lower()
++      if any(key in message for key in ("duplicate", "unique", "uniq", "already exists")):
++          return True
++
++  # 일반 Exception의 문자열 메시지에서만 duplicate 힌트가 있는 경우
++  message = str(exc).lower()
++  return any(key in message for key in ("duplicate", "unique", "uniq", "already exists"))
+*** End Patch
+[2m2025-11-23T05:29:33.651124Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '30,90p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:29:41.153631Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+ def _is_duplicate_error(exc: Exception) -> bool:
+-  """DB 중복 에러 여부를 광범위하게 판별."""
++    """DB 중복 에러 여부를 광범위하게 판별."""
+ 
+-  error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+-  if error_code:
+-      code_str = str(error_code)
+-      if code_str in {"ER_DUP_ENTRY", "23505", "1062"}:
+-          return True
++    error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
++    if error_code:
++        code_str = str(error_code)
++        if code_str in {"ER_DUP_ENTRY", "23505", "1062"}:
++            return True
+ 
+-  if isinstance(exc, IntegrityError):
+-      message = str(exc).lower()
+-      if any(key in message for key in ("duplicate", "unique", "uniq", "already exists")):
+-          return True
++    if isinstance(exc, IntegrityError):
++        message = str(exc).lower()
++        if any(key in message for key in ("duplicate", "unique", "uniq", "already exists")):
++            return True
+ 
+-  # 일반 Exception의 문자열 메시지에서만 duplicate 힌트가 있는 경우
+-  message = str(exc).lower()
+-  return any(key in message for key in ("duplicate", "unique", "uniq", "already exists"))
++    # 일반 Exception의 문자열 메시지에서만 duplicate 힌트가 있는 경우
++    message = str(exc).lower()
++    return any(key in message for key in ("duplicate", "unique", "uniq", "already exists"))
+*** End Patch
+[2m2025-11-23T05:29:52.685022Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+-        except Exception as exc:  # pragma: no cover - 방어적 로깅
+-            # MySQL/PG의 유니크 제약 위반 코드 매핑
+-            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+-            if error_code in {"ER_DUP_ENTRY", "23505"}:
+-                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
++        except Exception as exc:  # pragma: no cover - 방어적 로깅
++            # MySQL/PG의 유니크 제약 위반 코드 매핑
++            if _is_duplicate_error(exc):
++                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
+             logger.exception("Failed to create drone_early_inform row")
+             return JsonResponse({"error": "Failed to create entry"}, status=500)
+@@
+-        except Exception as exc:  # pragma: no cover - 방어적 로깅
+-            error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
+-            if error_code in {"ER_DUP_ENTRY", "23505"}:
+-                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
++        except Exception as exc:  # pragma: no cover - 방어적 로깅
++            if _is_duplicate_error(exc):
++                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
+             logger.exception("Failed to update drone_early_inform row")
+             return JsonResponse({"error": "Failed to update entry"}, status=500)
+*** End Patch
+[2m2025-11-23T05:30:01.705115Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ const SUCCESS_COLOR = "#065f46"
+ const INFO_COLOR = "#1e40af"
+ const ERROR_COLOR = "#991b1b"
+ 
++function unwrapErrorMessage(message) {
++  if (typeof message === "string") {
++    try {
++      const parsed = JSON.parse(message)
++      if (parsed && typeof parsed.error === "string" && parsed.error.trim()) {
++        return parsed.error
++      }
++    } catch {
++      // noop
++    }
++    return message
++  }
++  return ""
++}
++
+ function showCreateToast() {
+   toast.success("추가 완료", {
+     description: "새 조기 알림 설정이 저장되었습니다.",
+     icon: <IconPlus className="h-5 w-5" />,
+     ...buildToastOptions({ color: SUCCESS_COLOR }),
+*** End Patch
+[2m2025-11-23T05:30:06.898970Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-          const apiMessage =
+-            payload && typeof payload === "object" && typeof payload.error === "string"
+-              ? payload.error
+-              : ""
++          const apiMessageRaw =
++            payload && typeof payload === "object" && typeof payload.error === "string"
++              ? payload.error
++              : ""
++          const apiMessage = unwrapErrorMessage(apiMessageRaw)
+           const lowerApiMessage = apiMessage.toLowerCase()
+           const isDuplicate =
+             response.status === 409 ||
+             lowerApiMessage.includes("already") ||
+             lowerApiMessage.includes("duplicate") ||
+*** End Patch
+[2m2025-11-23T05:36:04.417175Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:36:04.594698Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:36:04.594741Z[0m [32m INFO[0m ghost commit captured: 7dbe79ef3b47aa9a9f943d899c2eb5e89cdbd07a
+[2m2025-11-23T05:36:04.594747Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:36:16.844423Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   TableRow,
+ } from "@/components/ui/table"
+ import { timeFormatter } from "./data-table/utils/constants"
+ import { buildToastOptions } from "./data-table/utils/toast"
+ 
+@@
+   customEndStep: "Custom End Step (조기 inform 받을 Step)",
+-  userSdwt: "User SDWT",
+   lineId: "Line ID",
+   addButton: "Add",
+   refresh: "Refresh",
+   updated: "Updated",
+   loading: "Loading entries…",
+*** End Patch
+[2m2025-11-23T05:36:24.091973Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   const isRefreshing = isLoading && hasLoadedOnce
+-  const userSdwtDisplay = userSdwtValues.length > 0 ? userSdwtValues.join(", ") : "-"
+*** End Patch
+[2m2025-11-23T05:36:31.124369Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         <div className="flex flex-col gap-1 pb-3">
+           <h2 className="text-sm font-medium">{LABELS.addTitle}</h2>
+           <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
+         </div>
+ 
++        <div className="mb-4 rounded-md border bg-muted/20 p-3">
++          <p className="text-[11px] font-medium text-muted-foreground">라인별 User SDWT</p>
++          {lineId ? (
++            <div className="mt-2 space-y-2">
++              <div className="flex items-start gap-2">
++                <span className="mt-[2px] text-xs text-muted-foreground">└</span>
++                <div>
++                  <div className="font-mono text-xs font-semibold text-foreground">{lineId}</div>
++                  <div className="mt-1 space-y-1 pl-3">
++                    {userSdwtValues.length > 0 ? (
++                      userSdwtValues.map((value) => (
++                        <div key={value} className="flex items-center gap-2 text-[11px] text-muted-foreground">
++                          <span className="text-xs">└</span>
++                          <span className="rounded bg-background px-2 py-1 font-mono text-[11px] text-foreground">
++                            {value}
++                          </span>
++                        </div>
++                      ))
++                    ) : (
++                      <p className="text-[11px] text-muted-foreground">등록된 User SDWT가 없습니다.</p>
++                    )}
++                  </div>
++                </div>
++              </div>
++            </div>
++          ) : (
++            <p className="text-[11px] text-muted-foreground">라인을 선택하면 User SDWT 목록이 표시됩니다.</p>
++          )}
++        </div>
++
+         <form className="flex flex-col gap-3 flex-row items-end" onSubmit={handleCreate}>
+*** End Patch
+[2m2025-11-23T05:36:37.461271Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+             <colgroup>
+-              <col className="w-28" />  {/* Line ID */}
+-              <col className="w-28" />  {/* Main Step */}
+-              <col className="w-28" />  {/* Custom End Step */}
+-              <col className="w-36" />  {/* User SDWT */}
+-              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
++              <col className="w-28" />  {/* Line ID */}
++              <col className="w-28" />  {/* Main Step */}
++              <col className="w-28" />  {/* Custom End Step */}
++              <col className="w-32" />  {/* Actions (버튼이라 조금 넓게) */}
+             </colgroup>
+ 
+             <TableHeader>
+               <TableRow>
+                 <TableHead className="text-center">{LABELS.lineId}</TableHead>
+                 <TableHead className="text-center">{LABELS.mainStep}</TableHead>
+                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
+-                <TableHead className="text-center">{LABELS.userSdwt}</TableHead>
+                 <TableHead className="text-right"></TableHead>
+               </TableRow>
+             </TableHeader>
+*** End Patch
+[2m2025-11-23T05:36:42.071959Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+               {isLoading && !hasLoadedOnce && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={5}
++                    colSpan={4}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {LABELS.loading}
+                   </TableCell>
+                 </TableRow>
+@@
+               {!isLoading && entries.length === 0 && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={5}
++                    colSpan={4}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {lineId ? LABELS.empty : "Select a line to view overrides."}
+                   </TableCell>
+                 </TableRow>
+@@
+ 
+                     {rowError && (
+                       <TableRow>
+                         <TableCell
+-                          colSpan={5}
++                          colSpan={4}
+                           className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                         >
+                           {rowError}
+                         </TableCell>
+                       </TableRow>
+*** End Patch
+[2m2025-11-23T05:36:46.117994Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
+-                        {entry.lineId || "-"}
+-                      </TableCell>
+-
+-                      {/* ✅ Main Step 가운데 정렬 */}
++                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
++                        {entry.lineId || "-"}
++                      </TableCell>
++
++                      {/* ✅ Main Step 가운데 정렬 */}
+                       <TableCell className="text-center">
+                         {isEditing ? (
+                           <Input
+                             value={editDraft.mainStep}
+                             onChange={(event) =>
+*** End Patch
+[2m2025-11-23T05:37:10.532245Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:37:10.589847Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:37:10.589889Z[0m [32m INFO[0m ghost commit captured: e4f815e6e833cbe4880f5fafe5e7da73c44946ca
+[2m2025-11-23T05:37:10.589902Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:37:15.741040Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"userSdwtDisplay\" -n apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:37:18.126619Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '730,800p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T05:37:26.086575Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-                      <TableCell className="text-center">
+-                        {userSdwtDisplay}
+-                      </TableCell>
+-
+                       {/* ✅ Actions도 가운데 정렬 */}
+                       <TableCell className="text-end">
+*** End Patch
+[2m2025-11-23T05:46:20.628442Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:46:20.813279Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:46:20.813336Z[0m [32m INFO[0m ghost commit captured: 43efd6cd92d13804e76a64543d478f568e97e7d8
+[2m2025-11-23T05:46:20.813349Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:46:33.467432Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-        <div className="mb-4 rounded-md border bg-muted/20 p-3">
+-          <p className="text-[11px] font-medium text-muted-foreground">라인별 User SDWT</p>
+-          {lineId ? (
+-            <div className="mt-2 space-y-2">
+-              <div className="flex items-start gap-2">
+-                <span className="mt-[2px] text-xs text-muted-foreground">└</span>
+-                <div>
+-                  <div className="font-mono text-xs font-semibold text-foreground">{lineId}</div>
+-                  <div className="mt-1 space-y-1 pl-3">
+-                    {userSdwtValues.length > 0 ? (
+-                      userSdwtValues.map((value) => (
+-                        <div key={value} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+-                          <span className="text-xs">└</span>
+-                          <span className="rounded bg-background px-2 py-1 font-mono text-[11px] text-foreground">
+-                            {value}
+-                          </span>
+-                        </div>
+-                      ))
+-                    ) : (
+-                      <p className="text-[11px] text-muted-foreground">등록된 User SDWT가 없습니다.</p>
+-                    )}
+-                  </div>
+-                </div>
+-              </div>
+-            </div>
+-          ) : (
+-            <p className="text-[11px] text-muted-foreground">라인을 선택하면 User SDWT 목록이 표시됩니다.</p>
+-          )}
+-        </div>
++        <div className="mb-4 rounded-md border bg-muted/20 p-3">
++          <p className="text-[11px] font-medium text-muted-foreground">라인별 User SDWT</p>
++          {lineId ? (
++            <div className="mt-2 space-y-1">
++              <div className="font-mono text-xs font-semibold text-foreground">{lineId}</div>
++              {userSdwtValues.length > 0 ? (
++                <div className="flex flex-wrap gap-2">
++                  {userSdwtValues.map((value) => (
++                    <span
++                      key={value}
++                      className="inline-flex items-center rounded-full bg-background px-2 py-1 font-mono text-[11px] text-foreground shadow-sm"
++                    >
++                      {value}
++                    </span>
++                  ))}
++                </div>
++              ) : (
++                <p className="text-[11px] text-muted-foreground">등록된 User SDWT가 없습니다.</p>
++              )}
++            </div>
++          ) : (
++            <p className="text-[11px] text-muted-foreground">라인을 선택하면 User SDWT 목록이 표시됩니다.</p>
++          )}
++        </div>
+*** End Patch
+[2m2025-11-23T05:46:37.328275Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T05:46:37.382225Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T05:46:37.382273Z[0m [32m INFO[0m ghost commit captured: 170da91b68c9af1cd6867591a7a71d47edf31d33
+[2m2025-11-23T05:46:37.382279Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T05:46:46.792682Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ import {
+   IconDeviceFloppy,
+   IconPencil,
+   IconPlus,
+   IconRefresh,
+   IconSettings,
+   IconTrash,
+   IconX,
+ } from "@tabler/icons-react"
++import { AlertCircleIcon, BadgeCheckIcon } from "lucide-react"
+ import { toast } from "sonner"
+ 
++import { Badge } from "@/components/ui/badge"
+ import { Button } from "@/components/ui/button"
+ import { Input } from "@/components/ui/input"
+*** End Patch
+[2m2025-11-23T05:46:57.126457Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         <div className="mb-4 rounded-md border bg-muted/20 p-3">
+           <p className="text-[11px] font-medium text-muted-foreground">라인별 User SDWT</p>
+           {lineId ? (
+-            <div className="mt-2 space-y-1">
+-              <div className="font-mono text-xs font-semibold text-foreground">{lineId}</div>
+-              {userSdwtValues.length > 0 ? (
+-                <div className="flex flex-wrap gap-2">
+-                  {userSdwtValues.map((value) => (
+-                    <span
+-                      key={value}
+-                      className="inline-flex items-center rounded-full bg-background px-2 py-1 font-mono text-[11px] text-foreground shadow-sm"
+-                    >
+-                      {value}
+-                    </span>
+-                  ))}
+-                </div>
+-              ) : (
+-                <p className="text-[11px] text-muted-foreground">등록된 User SDWT가 없습니다.</p>
+-              )}
+-            </div>
++            <div className="mt-2 space-y-2">
++              <div className="flex items-center gap-2">
++                <Badge variant="outline" className="rounded-full border-dashed text-[11px]">
++                  Line
++                </Badge>
++                <span className="font-mono text-xs font-semibold text-foreground">{lineId}</span>
++              </div>
++              {userSdwtValues.length > 0 ? (
++                <div className="flex flex-wrap gap-2">
++                  {userSdwtValues.map((value) => (
++                    <Badge key={value} variant="secondary" className="gap-1 text-[11px] font-mono">
++                      <BadgeCheckIcon className="h-3 w-3" />
++                      {value}
++                    </Badge>
++                  ))}
++                </div>
++              ) : (
++                <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
++                  <AlertCircleIcon className="h-3 w-3" />
++                  등록된 User SDWT가 없습니다.
++                </div>
++              )}
++            </div>
+           ) : (
+-            <p className="text-[11px] text-muted-foreground">라인을 선택하면 User SDWT 목록이 표시됩니다.</p>
++            <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
++              <AlertCircleIcon className="h-3 w-3" />
++              라인을 선택하면 User SDWT 목록이 표시됩니다.
++            </div>
+           )}
+         </div>
+*** End Patch
+[2m2025-11-23T09:29:53.127776Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T09:29:53.234719Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T09:29:53.234791Z[0m [32m INFO[0m ghost commit captured: ca6c873c26acf76f345b59b12b0f94a2c45d4da2
+[2m2025-11-23T09:29:53.234805Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T09:30:00.746391Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"stickyHeader\" -n apps/web/src/components/ui/table.tsx apps/web/src/components/ui/table.jsx apps/web/src/components/ui/table.js apps/web/src/components/ui/table.ts","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:30:06.830074Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/components/ui/table.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:30:10.596801Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"data-sticky-header\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:30:16.119583Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-            <TableHeader>
++            <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+*** End Patch
+[2m2025-11-23T09:31:22.246150Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T09:31:22.301672Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T09:31:22.301734Z[0m [32m INFO[0m ghost commit captured: d612108d7f15626b287c4317d6fba9d4ee195cb8
+[2m2025-11-23T09:31:22.301748Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T09:31:24.927283Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Status\" apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:28.068981Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:30.831003Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Status\" apps/web/src -n | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:33.315291Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/routes/router.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:37.152931Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"sticky\" apps/web/src/features/line-dashboard -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:39.775607Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '400,470p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T09:31:45.213690Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-            <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
++            <TableHeader className="sticky top-0 z-10 bg-muted">
+*** End Patch
+[2m2025-11-23T10:02:43.177080Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:02:43.283749Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:02:43.283842Z[0m [32m INFO[0m ghost commit captured: 42e8ebdb75d7866e0f8d49356df61be2799e7a95
+[2m2025-11-23T10:02:43.283884Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:02:51.173119Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"justify-\" apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:02:54.892790Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '600,780p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:03:01.385509Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '780,940p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:03:07.187350Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '180,360p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:03:18.750821Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ const LABELS = {
+   titleSuffix: "Line E-SOP Settings",
+   subtitle: "E-SOP가 종료 되기전에 미리 Inform할 Step을 설정합니다.",
+   addTitle: "Step별 E-SOP Custom End Step 추가",
+   mainStep: "Main Step",
+   customEndStep: "Custom End Step (조기 inform 받을 Step)",
+   lineId: "Line ID",
+   addButton: "Add",
+   refresh: "Refresh",
+   updated: "Updated",
+   loading: "Loading entries…",
+   empty: "No overrides found for this line.",
+-  addDescription: "E-SOP가 종료 되기전에 미리 Inform할 Step을 설정합니다.",
++  addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
+ }
+*** End Patch
+[2m2025-11-23T10:03:21.643068Z[0m [32m INFO[0m ToolCall: shell_command {"command":"grep -n \"addDescription\" -n apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:03:24.912669Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   updated: "Updated",
+   loading: "Loading entries…",
+   empty: "No overrides found for this line.",
+-  addDescription: "E-SOP가 종료 되기전에 미리 Inform할 Step을 설정합니다.",
++  addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
+ }
+*** End Patch
+[2m2025-11-23T10:03:33.233150Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ function sortEntries(entries) {
+   return [...entries].sort((a, b) =>
+     a.mainStep.localeCompare(b.mainStep, undefined, { numeric: true, sensitivity: "base" })
+   )
+ }
++
++function LineUserSdwtBadges({ lineId, values }) {
++  if (!lineId) {
++    return (
++      <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
++        <AlertCircleIcon className="h-3 w-3" />
++        라인을 선택하면 User SDWT 목록이 표시됩니다.
++      </div>
++    )
++  }
++
++  if (!values || values.length === 0) {
++    return (
++      <div className="inline-flex items-center gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
++        <AlertCircleIcon className="h-3 w-3" />
++        등록된 User SDWT가 없습니다.
++      </div>
++    )
++  }
++
++  return (
++    <div className="flex flex-wrap items-center gap-2">
++      <Badge variant="outline" className="rounded-full border-dashed text-[11px]">
++        Line
++      </Badge>
++      <span className="font-mono text-xs font-semibold text-foreground">{lineId}</span>
++      {values.map((value) => (
++        <Badge key={value} variant="secondary" className="gap-1 text-[11px] font-mono">
++          <BadgeCheckIcon className="h-3 w-3" />
++          {value}
++        </Badge>
++      ))}
++    </div>
++  )
++}
+*** End Patch
+[2m2025-11-23T10:03:46.825312Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-          <div>
+-            {lineId ? (
+-              <div className="flex items-center gap-2 pt-4">
+-                {/* 왼쪽 "Line 분임조 :" 텍스트 */}
+-                <div className="flex items-end gap-2">
+-                  <span className="font-mono text-xs font-semibold text-foreground whitespace-nowrap">
+-                    {lineId} Line 분임조 :
+-                  </span>
+-                </div>
+-
+-                {/* 오른쪽 뱃지들 */}
+-                {userSdwtValues.length > 0 ? (
+-                  <div className="flex items-end gap-2">
+-                    {userSdwtValues.map((value) => (
+-                      <Badge
+-                        key={value}
+-                        variant="secondary"
+-                        className="gap-1 text-[11px] font-mono"
+-                      >
+-                        <BadgeCheckIcon className="h-3 w-3" />
+-                        {value}
+-                      </Badge>
+-                    ))}
+-                  </div>
+-                ) : (
+-                  <div className="inline-flex items-end gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
+-                    <AlertCircleIcon className="h-3 w-3" />
+-                    등록된 User SDWT가 없습니다.
+-                  </div>
+-                )}
+-              </div>
+-            ) : (
+-              <div className="inline-flex items-end gap-2 rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
+-                <AlertCircleIcon className="h-3 w-3" />
+-                라인을 선택하면 User SDWT 목록이 표시됩니다.
+-              </div>
+-            )}
+-
+-          </div>
++          <div className="pt-2">
++            <LineUserSdwtBadges lineId={lineId} values={userSdwtValues} />
++          </div>
+*** End Patch
+[2m2025-11-23T10:03:51.999573Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '540,620p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:03:59.288644Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-          <form className="flex gap-3 flex-row items-center" onSubmit={handleCreate}>
++          <form className="flex flex-row items-center gap-3" onSubmit={handleCreate}>
+             <div className="w-80 space-y-1">
+               <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
+                 {LABELS.mainStep}
+               </label>
+               <Input
+@@
+       <div className="flex-1 min-h-0 rounded-lg border bg-background">
+         <TableContainer className="max-h-full overflow-auto">
+           <Table stickyHeader className="w-full table-fixed">
+             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+             <colgroup>
+-              <col className="w-15" />  {/* Line ID */}
+-              <col className="w-30" />  {/* Main Step */}
+-              <col className="w-30" />  {/* Custom End Step */}
+-              <col className="w-50" />  {/* Actions (버튼이라 조금 넓게) */}
++              <col className="w-32" />  {/* Line ID */}
++              <col className="w-40" />  {/* Main Step */}
++              <col className="w-40" />  {/* Custom End Step */}
++              <col className="w-40" />  {/* Actions */}
+             </colgroup>
+@@
+                       {/* ✅ Actions도 가운데 정렬 */}
+                       <TableCell className="text-end">
+-                        <div className="inline-flex items-center justify-end gap-2 mr-8">
++                        <div className="inline-flex items-center justify-end gap-2">
+*** End Patch
+[2m2025-11-23T10:04:03.689613Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"flex justify-between items-end flex-wrap\" -n apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:04:07.202197Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '620,660p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:31.691735Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:23:31.894910Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:23:31.895008Z[0m [32m INFO[0m ghost commit captured: 2fd4d4bac3c256716f3b47f46cfd0f9b9f0d15e1
+[2m2025-11-23T10:23:31.895022Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:23:37.550393Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_early_inform_v3\" -n apps/api/api/migrations apps/api/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:40.747137Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,80p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:45.638564Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '90,140p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:50.075881Z[0m [32m INFO[0m ToolCall: shell_command {"command":"python - <<'PY'\nfrom pathlib import Path\nimport sys, json\nmigrations = sorted(Path('apps/api/api/migrations').glob('[0-9][0-9][0-9]*.py'))\nprint('\\n'.join(str(p.name) for p in migrations))\nPY","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:56.007539Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/migrations","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:23:59.066188Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0001_initial.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:24:06.463895Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"_map_row\" -n apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:24:09.586759Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '340,420p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:24:20.756495Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/line-dashboard/components/data-table/utils/constants.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:24:39.839343Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/models.py
+@@
+ class DroneEarlyInformV3(models.Model):
+     line_id = models.CharField(max_length=50)
+     main_step = models.CharField(max_length=50)
+     custom_end_step = models.CharField(max_length=50, null=True, blank=True)
++    updated_by = models.CharField(max_length=50, null=True, blank=True)
++    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+*** End Patch
+[2m2025-11-23T10:24:45.424823Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/api/api/migrations/0002_droneearlyinformv3_add_updated_fields.py
++# Generated manually: add updated_by/updated_at to drone_early_inform_v3
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ("api", "0001_initial"),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name="droneearlyinformv3",
++            name="updated_at",
++            field=models.DateTimeField(auto_now=True, null=True, blank=True),
++        ),
++        migrations.AddField(
++            model_name="droneearlyinformv3",
++            name="updated_by",
++            field=models.CharField(max_length=50, null=True, blank=True),
++        ),
++    ]
+*** End Patch
+[2m2025-11-23T10:24:54.335969Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+ from django.http import HttpRequest, JsonResponse
+ from django.db import IntegrityError
+ from django.utils.decorators import method_decorator
+ from django.views.decorators.csrf import csrf_exempt
+ from rest_framework.views import APIView
+@@
+     # UPDATE (partial)
+     # --------------------------------------------------------------------- #
+     def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+         """id로 지정된 행을 부분 업데이트합니다."""
+         payload = parse_json_body(request)
+@@
+         previous_rows = run_query(
+             """
+-            SELECT id, line_id, main_step, custom_end_step
++            SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
+             FROM {table}
+             WHERE id = %s
+             LIMIT 1
+             """.format(table=self.TABLE_NAME),
+             [entry_id],
+         )
+@@
+         assignments: List[str] = []
+         params: List[Any] = []
+ 
++        updated_by = self._resolve_updated_by(request)
++
+         if "lineId" in payload:
+             line_id = self._sanitize_line_id(payload.get("lineId"))
+             if not line_id:
+                 return JsonResponse({"error": "lineId is required"}, status=400)
+             assignments.append("line_id = %s")
+             params.append(line_id)
+@@
+         if not assignments:
+             return JsonResponse({"error": "No valid fields to update"}, status=400)
+ 
++        # 항상 업데이트 메타 컬럼 갱신
++        assignments.append("updated_by = %s")
++        params.append(updated_by)
++        assignments.append("updated_at = NOW()")
++
+         # WHERE id = %s
+         params.append(entry_id)
+         try:
+             affected, _ = execute(
+@@
+             # 변경 후 행 다시 조회 → 응답/로그에 사용
+             rows = run_query(
+                 """
+-                SELECT id, line_id, main_step, custom_end_step
++                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
+                 FROM {table}
+                 WHERE id = %s
+                 LIMIT 1
+                 """.format(table=self.TABLE_NAME),
+                 [entry_id],
+             )
+*** End Patch
+[2m2025-11-23T10:25:00.482682Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+         """lineId로 행 목록을 가져옵니다."""
+         line_id = self._sanitize_line_id(request.GET.get("lineId"))
+         if not line_id:
+             return JsonResponse({"error": "lineId is required"}, status=400)
+ 
+         try:
+             rows = run_query(
+                 """
+-                SELECT id, line_id, main_step, custom_end_step
++                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
+                 FROM {table}
+                 WHERE line_id = %s
+                 ORDER BY main_step ASC, id ASC
+                 """.format(table=self.TABLE_NAME),
+                 [line_id],
+*** End Patch
+[2m2025-11-23T10:25:09.891831Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+         """신규 행을 생성합니다."""
+         payload = parse_json_body(request)
+         if payload is None:
+             return JsonResponse({"error": "Invalid JSON body"}, status=400)
+@@
+         # 선택 필드 정규화(빈 문자열 → None / 길이 제한 검사)
+         try:
+             custom_end_step = self._normalize_custom_end_step(payload.get("customEndStep"))
+         except ValueError as exc:
+             return JsonResponse({"error": str(exc)}, status=400)
+ 
++        updated_by = self._resolve_updated_by(request)
++
+         try:
+-            params = [line_id, main_step, custom_end_step]
+-            affected, last_row_id = execute(
++            params = [line_id, main_step, custom_end_step, updated_by]
++            affected, last_row_id = execute(
+                 """
+-                INSERT INTO {table} (line_id, main_step, custom_end_step)
+-                VALUES (%s, %s, %s)
+-                RETURNING id
++                INSERT INTO {table} (line_id, main_step, custom_end_step, updated_by, updated_at)
++                VALUES (%s, %s, %s, %s, NOW())
++                RETURNING id, updated_by, updated_at
+                 """.format(table=self.TABLE_NAME),
+                 params,
+             )
+             entry = {
+                 "id": int(last_row_id or 0),
+                 "lineId": line_id,
+                 "mainStep": main_step,
+                 "customEndStep": custom_end_step,
++                "updatedBy": updated_by,
++                "updatedAt": (
++                    params[-1].isoformat() if hasattr(params[-1], "isoformat") else params[-1]
++                ),
+             }
+*** End Patch
+[2m2025-11-23T10:25:21.212065Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+         try:
+-            params = [line_id, main_step, custom_end_step, updated_by]
+-            affected, last_row_id = execute(
++            params = [line_id, main_step, custom_end_step, updated_by]
++            affected, last_row_id = execute(
+                 """
+                 INSERT INTO {table} (line_id, main_step, custom_end_step, updated_by, updated_at)
+                 VALUES (%s, %s, %s, %s, NOW())
+-                RETURNING id, updated_by, updated_at
++                RETURNING id
+                 """.format(table=self.TABLE_NAME),
+                 params,
+             )
+-            entry = {
+-                "id": int(last_row_id or 0),
+-                "lineId": line_id,
+-                "mainStep": main_step,
+-                "customEndStep": custom_end_step,
+-                "updatedBy": updated_by,
+-                "updatedAt": (
+-                    params[-1].isoformat() if hasattr(params[-1], "isoformat") else params[-1]
+-                ),
+-            }
++            rows = run_query(
++                """
++                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
++                FROM {table}
++                WHERE id = %s
++                LIMIT 1
++                """.format(table=self.TABLE_NAME),
++                [last_row_id],
++            )
++            entry = self._map_row(rows[0] if rows else None, line_id)
+ 
+             # 액티비티 로그(요약 + 신규 상태 + 메타데이터)
+             set_activity_summary(request, "Create drone_early_inform entry")
+             set_activity_new_state(request, entry)
+             merge_activity_metadata(
+*** End Patch
+[2m2025-11-23T10:25:35.123116Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+     def _normalize_custom_end_step(value: Any) -> Optional[str]:
+         """customEndStep: 빈 문자열은 None 처리, 길이 제한 초과 시 ValueError."""
+         if value is None:
+             return None
+         if isinstance(value, str):
+@@
+         if len(trimmed) > MAX_FIELD_LENGTH:
+             raise ValueError("customEndStep must be 50 characters or fewer")
+         return trimmed
+ 
++    @staticmethod
++    def _sanitize_updated_by(value: Any) -> Optional[str]:
++        """updated_by: 문자열 공백 제거 & 길이 제한."""
++        if not isinstance(value, str):
++            return None
++        trimmed = value.strip()
++        return trimmed if trimmed and len(trimmed) <= MAX_FIELD_LENGTH else None
++
++    def _resolve_updated_by(self, request: HttpRequest) -> Optional[str]:
++        """요청 사용자 정보를 updated_by 문자열로 정리."""
++        user = getattr(request, "user", None)
++        raw_username = None
++        if user and getattr(user, "is_authenticated", False):
++            raw_username = (
++                getattr(user, "get_username", lambda: None)() or getattr(user, "email", None) or None
++            )
++        if not raw_username:
++            raw_username = "system"
++        return self._sanitize_updated_by(str(raw_username))
++
+     @staticmethod
+     def _map_row(row: Optional[Dict[str, Any]], fallback_line_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+         """DB 행(dict)을 API 응답 형식으로 매핑.
+ 
+         - id: int로 강제
+         - lineId: str 또는 None (fallback_line_id로 보완)
+         - mainStep: str (값이 숫자일 수도 있어 안전 문자열화)
+         - customEndStep: str 또는 None
++        - updatedBy: str 또는 None
++        - updatedAt: ISO 문자열 또는 None
+         """
+         if not row:
+             return None
+         entry_id = row.get("id")
+         if entry_id is None:
+             return None
+ 
+         line_id = row.get("line_id") or fallback_line_id
+         main_step = row.get("main_step")
+         custom_end_step = row.get("custom_end_step")
++        updated_by = row.get("updated_by")
++        updated_at = row.get("updated_at")
+ 
+         return {
+             "id": int(entry_id),
+             "lineId": line_id if isinstance(line_id, str) else None,
+             "mainStep": (
+                 main_step if isinstance(main_step, str)
+                 else str(main_step) if main_step is not None
+                 else ""
+             ),
+             "customEndStep": custom_end_step if isinstance(custom_end_step, str) else None,
++            "updatedBy": updated_by if isinstance(updated_by, str) else None,
++            "updatedAt": (
++                updated_at.isoformat()
++                if hasattr(updated_at, "isoformat")
++                else str(updated_at)
++                if updated_at is not None
++                else None
++            ),
+         }
+*** End Patch
+[2m2025-11-23T10:25:39.454911Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+             entry = self._map_row(rows[0] if rows else None, line_id)
++            if not entry:
++                return JsonResponse({"error": "Failed to create entry"}, status=500)
+*** End Patch
+[2m2025-11-23T10:25:45.061602Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+   mainStep: "Main Step",
+   customEndStep: "Custom End Step (조기 inform 받을 Step)",
+   lineId: "Line ID",
++  updatedBy: "Updated By",
++  updatedAt: "Updated At",
+*** End Patch
+[2m2025-11-23T10:25:50.053787Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '30,60p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:25:56.223998Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+-  addTitle: "E-SOP Custom End Step 추가",
+-  mainStep: "Main Step",
+-  customEndStep: "Early Inform Step",
+-  lineId: "Line ID",
++  addTitle: "E-SOP Custom End Step 추가",
++  mainStep: "Main Step",
++  customEndStep: "Early Inform Step",
++  lineId: "Line ID",
++  updatedBy: "Updated By",
++  updatedAt: "Updated At",
+*** End Patch
+[2m2025-11-23T10:26:03.515097Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ function normalizeEntry(entry, fallbackLineId = "") {
+   if (!entry || typeof entry !== "object") return null
+   const rawId = entry.id ?? entry?.ID
+   if (rawId === null || rawId === undefined) return null
+ 
+@@
+   const customEndStep =
+     customRaw === null || customRaw === undefined
+       ? ""
+       : typeof customRaw === "string"
+         ? customRaw
+         : String(customRaw)
++
++  const updatedBy =
++    typeof entry.updatedBy === "string"
++      ? entry.updatedBy
++      : typeof entry.updated_by === "string"
++        ? entry.updated_by
++        : ""
++
++  const updatedAtRaw = entry.updatedAt ?? entry.updated_at
++  const updatedAt =
++    typeof updatedAtRaw === "string" || typeof updatedAtRaw === "number"
++      ? String(updatedAtRaw)
++      : updatedAtRaw && typeof updatedAtRaw === "object" && typeof updatedAtRaw.toString === "function"
++        ? updatedAtRaw.toString()
++        : ""
+ 
+   return {
+     id: String(rawId),
+     lineId,
+     mainStep: mainStepRaw,
+     customEndStep,
++    updatedBy,
++    updatedAt,
+   }
+ }
+*** End Patch
+[2m2025-11-23T10:26:08.259783Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+ const SUCCESS_COLOR = "#065f46"
+ const INFO_COLOR = "#1e40af"
+ const ERROR_COLOR = "#991b1b"
+ 
++function formatUpdatedAt(value) {
++  if (!value) return "-"
++  const date = new Date(value)
++  if (Number.isNaN(date.getTime())) return value
++  return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
++}
++
+ function unwrapErrorMessage(message) {
+   if (typeof message === "string") {
+     try {
+       const parsed = JSON.parse(message)
+*** End Patch
+[2m2025-11-23T10:26:20.864499Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+         <TableContainer className="max-h-full overflow-auto">
+           <Table stickyHeader className="w-full table-fixed">
+             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+             <colgroup>
+-              <col className="w-32" />  {/* Line ID */}
+-              <col className="w-40" />  {/* Main Step */}
+-              <col className="w-40" />  {/* Custom End Step */}
+-              <col className="w-40" />  {/* Actions */}
++              <col className="w-32" />  {/* Line ID */}
++              <col className="w-36" />  {/* Main Step */}
++              <col className="w-36" />  {/* Custom End Step */}
++              <col className="w-32" />  {/* Updated By */}
++              <col className="w-40" />  {/* Updated At */}
++              <col className="w-36" />  {/* Actions */}
+             </colgroup>
+ 
+             <TableHeader className="sticky top-0 z-10 bg-muted">
+               <TableRow>
+                 <TableHead className="text-center">{LABELS.lineId}</TableHead>
+                 <TableHead className="text-center">{LABELS.mainStep}</TableHead>
+                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
++                <TableHead className="text-center">{LABELS.updatedBy}</TableHead>
++                <TableHead className="text-center">{LABELS.updatedAt}</TableHead>
+                 <TableHead className="text-right"></TableHead>
+               </TableRow>
+             </TableHeader>
+ 
+             <TableBody>
+               {isLoading && !hasLoadedOnce && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={6}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {LABELS.loading}
+                   </TableCell>
+                 </TableRow>
+@@
+               {!isLoading && entries.length === 0 && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={6}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {lineId ? LABELS.empty : "Select a line to view overrides."}
+                   </TableCell>
+                 </TableRow>
+@@
+                       {/* ✅ Custom End Step 가운데 정렬 */}
+                       <TableCell className="text-center">
+                         {isEditing ? (
+                           <Input
+                             value={editDraft.customEndStep ?? ""}
+@@
+                       {/* ✅ Actions도 가운데 정렬 */}
++                      <TableCell className="text-center">
++                        <span className="text-xs text-muted-foreground">
++                          {entry.updatedBy || "-"}
++                        </span>
++                      </TableCell>
++
++                      <TableCell className="text-center text-xs text-muted-foreground">
++                        {formatUpdatedAt(entry.updatedAt)}
++                      </TableCell>
++
+                       <TableCell className="text-end">
+                         <div className="inline-flex items-center justify-end gap-2">
+                           {isEditing ? (
+                             <>
+@@
+                     {rowError && (
+                       <TableRow>
+                         <TableCell
+-                          colSpan={4}
++                          colSpan={6}
+                           className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                         >
+                           {rowError}
+                         </TableCell>
+                       </TableRow>
+*** End Patch
+[2m2025-11-23T10:26:24.388060Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '700,840p' apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:26:37.486923Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/LineSettingsPage.jsx
+@@
+       <div className="flex-1 min-h-0 rounded-lg border bg-background">
+         <TableContainer className="max-h-full overflow-auto">
+           <Table stickyHeader className="w-full table-fixed">
+             {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
+             <colgroup>
+-              <col className="w-1" />  {/* Line ID */}
+-              <col className="w-2" />  {/* Main Step */}
+-              <col className="w-2" />  {/* Custom End Step */}
+-              <col className="w-4" />  {/* Actions */}
++              <col className="w-32" />  {/* Line ID */}
++              <col className="w-40" />  {/* Main Step */}
++              <col className="w-40" />  {/* Custom End Step */}
++              <col className="w-32" />  {/* Updated By */}
++              <col className="w-40" />  {/* Updated At */}
++              <col className="w-36" />  {/* Actions */}
+             </colgroup>
+ 
+             <TableHeader className="sticky top-0 z-10 bg-muted">
+               <TableRow>
+                 <TableHead className="text-center">{LABELS.lineId}</TableHead>
+                 <TableHead className="text-center">{LABELS.mainStep}</TableHead>
+                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
++                <TableHead className="text-center">{LABELS.updatedBy}</TableHead>
++                <TableHead className="text-center">{LABELS.updatedAt}</TableHead>
+                 <TableHead className="text-right"></TableHead>
+               </TableRow>
+             </TableHeader>
+ 
+             <TableBody>
+               {isLoading && !hasLoadedOnce && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={6}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {LABELS.loading}
+                   </TableCell>
+                 </TableRow>
+               )}
+ 
+               {!isLoading && entries.length === 0 && (
+                 <TableRow>
+                   <TableCell
+-                    colSpan={4}
++                    colSpan={6}
+                     className="h-24 text-center text-sm text-muted-foreground"
+                   >
+                     {lineId ? LABELS.empty : "Select a line to view overrides."}
+                   </TableCell>
+                 </TableRow>
+@@
+                       </TableCell>
+ 
++                      <TableCell className="text-center text-xs text-muted-foreground">
++                        {entry.updatedBy || "-"}
++                      </TableCell>
++
++                      <TableCell className="text-center text-xs text-muted-foreground">
++                        {formatUpdatedAt(entry.updatedAt)}
++                      </TableCell>
++
+                       {/* ✅ Actions도 가운데 정렬 */}
+                       <TableCell className="text-end">
+-                        <div className="inline-flex items-center justify-end gap-2 mr-15">
++                        <div className="inline-flex items-center justify-end gap-2">
+                           {isEditing ? (
+                             <>
+                               <Button
+                                 size="sm"
+                                 onClick={handleSave}
+@@
+                     {rowError && (
+                       <TableRow>
+                         <TableCell
+-                          colSpan={4}
++                          colSpan={6}
+                           className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                         >
+                           {rowError}
+                         </TableCell>
+                       </TableRow>
+*** End Patch
+[2m2025-11-23T10:45:34.686455Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:45:34.772837Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:45:34.772885Z[0m [32m INFO[0m ghost commit captured: ef0e7a5b3b38a4a74ad0a7841ed57008dac74b5c
+[2m2025-11-23T10:45:34.772900Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:45:40.467175Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:45:43.151548Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_early\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:45:45.530818Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0002_droneearlyinformv3_add_updated_fields.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:45:49.216479Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:45:55.816334Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git status -sb","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:45:58.511156Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:46:00.347104Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '220,520p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:46:29.977692Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:46:30.032940Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:46:30.032981Z[0m [32m INFO[0m ghost commit captured: 54da1db87263fd90287cb85f9066d39bd2730c70
+[2m2025-11-23T10:46:30.032987Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:46:34.568511Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0001_initial.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:46:38.194401Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/migrations","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:46:54.645025Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/api/api/apps.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:47:04.146438Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:47:52.331840Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/migrations/0002_droneearlyinformv3_add_updated_fields.py
+@@
+-from django.db import migrations, models
++from django.db import migrations, models
++from django.db.utils import ProgrammingError, OperationalError
++
++
++def add_updated_columns(apps, schema_editor):
++    """Add updated_at/updated_by if the columns are missing (idempotent)."""
++    table_name = "drone_early_inform_v3"
++    connection = schema_editor.connection
++    try:
++        with connection.cursor() as cursor:
++            columns = {
++                col.name
++                for col in connection.introspection.get_table_description(cursor, table_name)
++            }
++    except (ProgrammingError, OperationalError):
++        # Table missing or introspection failed; let migration fail loudly
++        raise
++
++    Model = apps.get_model("api", "DroneEarlyInformV3")
++
++    if "updated_at" not in columns:
++        updated_at_field = models.DateTimeField(auto_now=True, null=True, blank=True)
++        updated_at_field.set_attributes_from_name("updated_at")
++        schema_editor.add_field(Model, updated_at_field)
++
++    if "updated_by" not in columns:
++        updated_by_field = models.CharField(max_length=50, null=True, blank=True)
++        updated_by_field.set_attributes_from_name("updated_by")
++        schema_editor.add_field(Model, updated_by_field)
+ 
+ 
+ class Migration(migrations.Migration):
+     dependencies = [
+         ("api", "0001_initial"),
+     ]
+ 
+     operations = [
+-        migrations.AddField(
+-            model_name="droneearlyinformv3",
+-            name="updated_at",
+-            field=models.DateTimeField(auto_now=True, null=True, blank=True),
+-        ),
+-        migrations.AddField(
+-            model_name="droneearlyinformv3",
+-            name="updated_by",
+-            field=models.CharField(max_length=50, null=True, blank=True),
+-        ),
++        migrations.SeparateDatabaseAndState(
++            database_operations=[
++                migrations.RunPython(
++                    add_updated_columns,
++                    reverse_code=migrations.RunPython.noop,
++                ),
++            ],
++            state_operations=[
++                migrations.AddField(
++                    model_name="droneearlyinformv3",
++                    name="updated_at",
++                    field=models.DateTimeField(auto_now=True, null=True, blank=True),
++                ),
++                migrations.AddField(
++                    model_name="droneearlyinformv3",
++                    name="updated_by",
++                    field=models.CharField(max_length=50, null=True, blank=True),
++                ),
++            ],
++        ),
+     ]
+*** End Patch
+[2m2025-11-23T10:48:57.860099Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:48:57.912331Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:48:57.912380Z[0m [32m INFO[0m ghost commit captured: 3ba1177f5a5c622f9db17037bd68ee6a2ba998f5
+[2m2025-11-23T10:48:57.912395Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:49:01.941946Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.dev.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:08.111707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DATABASES\" -n apps/api/config","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:10.728023Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '130,220p' apps/api/config/settings.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:14.471707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:16.805642Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.common.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:26.325027Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/Dockerfile","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:49:29.899908Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/entrypoint.sh","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:50:11.654181Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' docker-compose.dev.oidc.yml","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:50:22.656734Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"INSTALLED_APPS\" -n apps/api/config/settings.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:50:24.787822Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '80,120p' apps/api/config/settings.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:51:26.282160Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.yml
+@@
+     entrypoint:
+       - /bin/sh
+       - -c
+       - |
+           set -e
+-          python manage.py migrate --noinput
++          python manage.py migrate --noinput --fake-initial
+           python manage.py runserver 0.0.0.0:8000
+*** End Patch
+[2m2025-11-23T10:51:29.523495Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: docker-compose.dev.oidc.yml
+@@
+     entrypoint:
+       - /bin/sh
+       - -c
+       - |
+           set -e
+-          python manage.py migrate --noinput
++          python manage.py migrate --noinput --fake-initial
+           python manage.py runserver 0.0.0.0:8000
+*** End Patch
+[2m2025-11-23T10:51:34.717030Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/entrypoint.sh
+@@
+ set -o errexit
+ set -o nounset
+ set -o pipefail
+ 
+ python manage.py makemigrations --noinput
+-python manage.py migrate --noinput
++python manage.py migrate --noinput --fake-initial
+ python manage.py collectstatic --noinput
+*** End Patch
+[2m2025-11-23T10:52:54.323131Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:52:54.378809Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:52:54.378863Z[0m [32m INFO[0m ghost commit captured: 153948a73b01e899176614099aa24637a0aba615
+[2m2025-11-23T10:52:54.378878Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:53:10.100673Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/api/api/migrations/0003_droneearlyinformv3_fix_updated_columns.py
++# Generated manually: ensure updated_at/updated_by columns exist in drone_early_inform_v3
++from django.db import migrations
++
++
++ADD_COLUMNS_SQL = """
++ALTER TABLE drone_early_inform_v3
++    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL,
++    ADD COLUMN IF NOT EXISTS updated_by VARCHAR(50) NULL;
++"""
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ("api", "0002_droneearlyinformv3_add_updated_fields"),
++    ]
++
++    operations = [
++        migrations.RunSQL(
++            sql=ADD_COLUMNS_SQL,
++            reverse_sql=migrations.RunSQL.noop,
++        ),
++    ]
+*** End Patch
+[2m2025-11-23T10:53:12.508482Z[0m [32m INFO[0m ToolCall: shell_command {"command":"python - <<'PY'\nfrom pathlib import Path\nprint('migration files:', sorted(p.name for p in Path('apps/api/api/migrations').glob('000*.py')))\nPY","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T10:54:25.126636Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T10:54:25.181942Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T10:54:25.181992Z[0m [32m INFO[0m ghost commit captured: 4180a430087dabd04c8011e593d6812eae31af85
+[2m2025-11-23T10:54:25.181999Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T10:54:43.637061Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Delete File: apps/api/api/migrations/0003_droneearlyinformv3_fix_updated_columns.py
+*** End Patch
+[2m2025-11-23T10:54:51.371850Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/api/api/migrations/0003_droneearlyinformv3_backfill_updated_columns.py
++# Generated manually: ensure drone_early_inform_v3 has updated_at/updated_by columns even on existing DBs
++from django.db import migrations, models
++from django.db.utils import OperationalError, ProgrammingError
++
++
++def ensure_updated_columns(apps, schema_editor):
++    table_name = "drone_early_inform_v3"
++    connection = schema_editor.connection
++
++    try:
++        with connection.cursor() as cursor:
++            existing_columns = {
++                col.name
++                for col in connection.introspection.get_table_description(cursor, table_name)
++            }
++    except (ProgrammingError, OperationalError):
++        # Table missing or introspection failed; re-raise so the migration surfaces
++        raise
++
++    Model = apps.get_model("api", "DroneEarlyInformV3")
++
++    if "updated_at" not in existing_columns:
++        field = models.DateTimeField(auto_now=True, null=True, blank=True)
++        field.set_attributes_from_name("updated_at")
++        schema_editor.add_field(Model, field)
++
++    if "updated_by" not in existing_columns:
++        field = models.CharField(max_length=50, null=True, blank=True)
++        field.set_attributes_from_name("updated_by")
++        schema_editor.add_field(Model, field)
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ("api", "0002_droneearlyinformv3_add_updated_fields"),
++    ]
++
++    operations = [
++        migrations.SeparateDatabaseAndState(
++            database_operations=[
++                migrations.RunPython(
++                    ensure_updated_columns,
++                    reverse_code=migrations.RunPython.noop,
++                ),
++            ],
++            state_operations=[],
++        ),
++    ]
+*** End Patch
+[2m2025-11-23T10:54:54.986422Z[0m [32m INFO[0m ToolCall: shell_command {"command":"python - <<'PY'\nfrom pathlib import Path\nprint(sorted(p.name for p in Path('apps/api/api/migrations').glob('000*.py')))\nPY","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:06.425672Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T11:01:06.513628Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T11:01:06.513677Z[0m [32m INFO[0m ghost commit captured: 8128951b4d867d7f5a4f199fa58a0a8f368a421c
+[2m2025-11-23T11:01:06.513683Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T11:01:12.231515Z[0m [32m INFO[0m ToolCall: shell_command {"command":"pwd","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:13.777425Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:16.421923Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_early_inform_v3\"","workdir":"/home/pjw75/tailwind","timeout_ms": 120000}
+[2m2025-11-23T11:01:19.168082Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:21.336228Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '220,520p' apps/api/api/views/drone_early_inform.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:24.629937Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T11:01:37.794903Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/drone_early_inform.py
+@@
+     def _sanitize_updated_by(value: Any) -> Optional[str]:
+         """updated_by: 문자열 공백 제거 & 길이 제한."""
+         if not isinstance(value, str):
+             return None
+         trimmed = value.strip()
+         return trimmed if trimmed and len(trimmed) <= MAX_FIELD_LENGTH else None
+ 
++    @staticmethod
++    def _extract_username(raw_username: str) -> str:
++        """이메일인 경우 @ 앞 로컬 파트만 추출."""
++        if "@" in raw_username:
++            local_part = raw_username.split("@", 1)[0]
++            return local_part or raw_username
++        return raw_username
++
+     def _resolve_updated_by(self, request: HttpRequest) -> Optional[str]:
+         """요청 사용자 정보를 updated_by 문자열로 정리."""
+         user = getattr(request, "user", None)
+         raw_username = None
+         if user and getattr(user, "is_authenticated", False):
+             raw_username = (
+                 getattr(user, "get_username", lambda: None)() or getattr(user, "email", None) or None
+             )
+         if not raw_username:
+             raw_username = "system"
+-        return self._sanitize_updated_by(str(raw_username))
++        username = self._extract_username(str(raw_username))
++        return self._sanitize_updated_by(username)
+*** End Patch

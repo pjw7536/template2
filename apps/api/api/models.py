@@ -91,6 +91,8 @@ class DroneEarlyInformV3(models.Model):
     line_id = models.CharField(max_length=50)
     main_step = models.CharField(max_length=50)
     custom_end_step = models.CharField(max_length=50, null=True, blank=True)
+    updated_by = models.CharField(max_length=50, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
         db_table = "drone_early_inform_v3"
