@@ -6489,3 +6489,94 @@
 [2m2025-11-23T00:12:17.667801Z[0m [32m INFO[0m ghost snapshot blocking task finished
 [2m2025-11-23T00:12:17.667845Z[0m [32m INFO[0m ghost commit captured: e44887c6c0067cc6458da3b2a99b9ad3c4cb6351
 [2m2025-11-23T00:12:17.667858Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T00:20:12.949276Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T00:20:12.993599Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T00:20:12.993642Z[0m [32m INFO[0m ghost commit captured: 25c7f971f2ab8f869a5717374e4928b5582e5c03
+[2m2025-11-23T00:20:12.993655Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T00:20:16.411243Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:18.973506Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"sanitize_identifier\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:22.101230Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:24.010544Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,520p' apps/api/api/views/tables.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:26.356196Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:27.975943Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '240,520p' apps/api/api/views/utils.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:20:36.542860Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+ from ..activity_logging import (
+     merge_activity_metadata,
+     set_activity_new_state,
+     set_activity_previous_state,
+     set_activity_summary,
+ )
+ from ..db import execute, run_query
+ from .constants import DEFAULT_TABLE
+ from .utils import (
+     build_date_range_filters,
+     build_line_filters,
+     ensure_date_bounds,
+     find_column,
++    list_table_columns,
+     normalize_date_only,
+     normalize_line_id,
+     parse_json_body,
+     resolve_table_schema,
++    sanitize_identifier,
+ )
+*** End Patch
+[2m2025-11-23T00:26:48.939319Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T00:26:48.984861Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T00:26:48.984904Z[0m [32m INFO[0m ghost commit captured: 58168204b783c8cf6cf772b2580f34bb6aa2232f
+[2m2025-11-23T00:26:48.984910Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T00:26:53.024101Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"needtosend\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:26:56.083259Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:26:58.884755Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"deriveFlagState\" -n apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:01.117182Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/utils/flagState.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:04.758184Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '50,140p' apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:09.552050Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"normalizeNeedToSend\" -n apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:11.364794Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/web/src/features/line-dashboard/components/data-table/column-defs/normalizers.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:16.824410Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"needToSend\" -n apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:19.977002Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,320p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:22.062636Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '320,420p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:34.178331Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"function toBooleanFlag\" -n apps/web/src/features","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:27:37.591713Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,80p' apps/web/src/features/line-dashboard/components/data-table/utils/formatters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T00:28:00.155907Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/api/api/views/tables.py
+@@
+     def _coerce_smallint_flag(value: Any) -> int:
+-        """다양한 입력을 tinyint 스타일(최소 음수 허용) 정수로 변환."""
++        """다양한 입력을 tinyint 스타일(0~127) 정수로 변환."""
+ 
+-        TINY_MIN, TINY_MAX = -128, 127
++        TINY_MIN, TINY_MAX = 0, 127
+ 
+         def clamp(numeric: int) -> int:
+             return max(TINY_MIN, min(TINY_MAX, int(numeric)))
+*** End Patch
+[2m2025-11-23T00:28:04.037619Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/normalizers.js
+@@
+ export function normalizeComment(raw) {
+   if (typeof raw === "string") return raw
+   if (raw == null) return ""
+   return String(raw)
+ }
+ 
+ export function normalizeNeedToSend(raw) {
+-  return toTinyIntFlag(raw, 0)
++  // needtosend은 저장 실패 시 값이 남지 않으므로 음수 상태(-1 등)는 0으로 정리한다.
++  return Math.max(0, toTinyIntFlag(raw, 0))
+ }
+*** End Patch
+[2m2025-11-23T00:28:08.501460Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx
+@@
+ /* ============================================================================
+  * NeedToSendCell (Boolean 버전)
+- * - needtosend 값을 tinyint 스타일로 표시/토글 (음수값은 오류)
+- * - 서버로는 { needtosend: number } 전송 (1/0 토글, 음수→오류 표시만)
+- * - 과거 0/1, "Y"/"N", -1 등도 안전 변환
++ * - needtosend 값을 tinyint 스타일로 표시/토글 (현재는 0/1만 사용)
++ * - 서버로는 { needtosend: number } 전송 (1/0 토글)
++ * - 과거 0/1, "Y"/"N" 등도 안전 변환
+  * ========================================================================== */
+*** End Patch

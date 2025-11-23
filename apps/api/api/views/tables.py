@@ -23,10 +23,12 @@ from .utils import (
     build_line_filters,
     ensure_date_bounds,
     find_column,
+    list_table_columns,
     normalize_date_only,
     normalize_line_id,
     parse_json_body,
     resolve_table_schema,
+    sanitize_identifier,
 )
 
 logger = logging.getLogger(__name__)
@@ -249,9 +251,9 @@ class TableUpdateView(APIView):
 
     @staticmethod
     def _coerce_smallint_flag(value: Any) -> int:
-        """다양한 입력을 tinyint 스타일(최소 음수 허용) 정수로 변환."""
+        """다양한 입력을 tinyint 스타일(0~127) 정수로 변환."""
 
-        TINY_MIN, TINY_MAX = -128, 127
+        TINY_MIN, TINY_MAX = 0, 127
 
         def clamp(numeric: int) -> int:
             return max(TINY_MIN, min(TINY_MAX, int(numeric)))
