@@ -13,11 +13,11 @@ import {
 /**
  * 퀵 필터 섹션 상태를 생성·유지하고, 적용된 필터에 맞는 행 목록을 돌려주는 훅입니다.
  */
-export function useQuickFilters(columns, rows) {
+export function useQuickFilters(columns, rows, options = {}) {
   // 컬럼/행 데이터를 기반으로 어떤 퀵 필터 섹션이 필요한지 계산합니다.
   const sections = React.useMemo(
-    () => createQuickFilterSections(columns, rows),
-    [columns, rows]
+    () => createQuickFilterSections(columns, rows, options),
+    [columns, rows, options]
   )
 
   // 필터 상태는 섹션 구조에 맞춰 기본값을 생성해 둡니다.

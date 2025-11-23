@@ -1,11 +1,4 @@
 // src/features/line-dashboard/components/data-table/column-defs/processFlow.js
-import {
-  PROCESS_FLOW_ARROW_GAP_WIDTH,
-  PROCESS_FLOW_CELL_SIDE_PADDING,
-  PROCESS_FLOW_MAX_WIDTH,
-  PROCESS_FLOW_MIN_WIDTH,
-  PROCESS_FLOW_NODE_BLOCK_WIDTH,
-} from "./constants"
 import { normalizeStatus } from "./normalizers"
 import { normalizeStepValue, parseMetroSteps } from "../utils/formatters.jsx"
 
@@ -52,31 +45,4 @@ export function computeMetroProgress(rowOriginal, normalizedStatus) {
 
   if (normalizedStatus === "COMPLETE") completed = total
   return { completed: Math.max(0, Math.min(completed, total)), total }
-}
-
-// 스텝 개수를 기준으로 프로세스 플로우 컬럼의 폭을 추정합니다.
-export function estimateProcessFlowWidthByTotal(total) {
-  if (!Number.isFinite(total) || total <= 0) return PROCESS_FLOW_MIN_WIDTH
-  const arrowCount = Math.max(0, total - 1)
-  const width =
-    PROCESS_FLOW_CELL_SIDE_PADDING +
-    total * PROCESS_FLOW_NODE_BLOCK_WIDTH +
-    arrowCount * PROCESS_FLOW_ARROW_GAP_WIDTH
-
-  return Math.max(PROCESS_FLOW_MIN_WIDTH, Math.min(width, PROCESS_FLOW_MAX_WIDTH))
-}
-
-// 모든 행을 훑어 가장 큰 스텝 수를 찾아 폭 힌트를 계산합니다.
-export function computeProcessFlowWidthFromRows(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return null
-  let maxTotal = 0
-
-  for (const row of rows) {
-    const status = normalizeStatus(row?.status)
-    const { total } = computeMetroProgress(row, status)
-    if (Number.isFinite(total) && total > maxTotal) maxTotal = total
-  }
-
-  if (maxTotal <= 0) return null
-  return estimateProcessFlowWidthByTotal(maxTotal)
 }

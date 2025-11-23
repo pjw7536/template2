@@ -7,12 +7,12 @@ import { mergeConfig } from "./column-defs/config"
 import { resolveAlignment } from "./column-defs/alignment"
 import { getSortingFnForKey } from "./column-defs/sorting"
 import { renderCellByKey } from "./column-defs/renderers.jsx"
-import { resolveColumnSizes } from "./column-defs/dynamicWidth"
 import {
   makeStepFlowColumn,
   pickStepColumnsWithIndex,
   shouldCombineSteps,
 } from "./column-defs/steps"
+import { resolveColumnSize } from "./column-defs/width"
 
 // 단일 컬럼 정의 객체를 생성합니다.
 function makeColumnDef(colKey, config, sampleValueFromFirstRow) {
@@ -26,7 +26,7 @@ function makeColumnDef(colKey, config, sampleValueFromFirstRow) {
     ? getSortingFnForKey(colKey, config, sampleValueFromFirstRow)
     : undefined
 
-  const { size, minSize, maxSize } = resolveColumnSizes(colKey, config)
+  const { size, minSize, maxSize } = resolveColumnSize(colKey, config)
   const alignment = resolveAlignment(colKey, config, sampleValueFromFirstRow)
 
   return {

@@ -185,7 +185,17 @@ export function useDataTableState({ lineId }) {
         finalize(cellKeys, updateSucceeded ? "success" : "error")
       }
     },
-    [selectedTable, begin, finalize]
+    [
+      selectedTable,
+      begin,
+      finalize,
+      setRows,
+      setCommentDrafts,
+      setCommentEditing,
+      setNeedToSendDrafts,
+      setUpdateErrors,
+      setUpdatingCells,
+    ]
   )
 
   /* ────────────────────────────────────────────────────────────────────────

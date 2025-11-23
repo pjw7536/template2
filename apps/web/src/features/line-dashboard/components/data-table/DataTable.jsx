@@ -61,6 +61,7 @@ import {
   resolveHeaderAlignment,
 } from "./utils/table"
 import { formatTooltipValue } from "./utils/formatters.jsx"
+import { useAuth } from "@/features/auth"
 
 /* ────────────────────────────────────────────────────────────────────────────
  * 1) 라벨/문구 상수
@@ -89,6 +90,149 @@ const LABELS = {
   goLast: "Go to last page",
 }
 
+const toWidthStyle = (size) => {
+  const width = `${size}px`
+  return { width, minWidth: width, maxWidth: width }
+}
+
+function useLastUpdatedLabel(isLoadingRows, isRefreshing) {
+  const [label, setLabel] = React.useState(null)
+
+  React.useEffect(() => {
+    if (isRefreshing) {
+      setLabel("Updating…")
+      return
+    }
+    if (!isLoadingRows) {
+      setLabel(timeFormatter.format(new Date()))
+    }
+  }, [isLoadingRows, isRefreshing])
+
+  return label
+}
+
+function usePaginationGuards({ filter, sorting, filters, pageCount, setPagination }) {
+  React.useEffect(() => {
+    setPagination((previous) =>
+      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }
+    )
+  }, [filter, sorting, filters, setPagination])
+
+  React.useEffect(() => {
+    const maxIndex = Math.max(pageCount - 1, 0)
+    setPagination((previous) =>
+      previous.pageIndex > maxIndex ? { ...previous, pageIndex: maxIndex } : previous
+    )
+  }, [pageCount, setPagination])
+}
+
+function TableBodyRows({
+  table,
+  emptyStateColSpan,
+  isInitialLoading,
+  rowsError,
+  hasNoRows,
+}) {
+  if (isInitialLoading) {
+    return (
+      <TableRow>
+        <TableCell
+          colSpan={emptyStateColSpan}
+          className="h-26 text-center text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          {EMPTY.loading}
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  if (rowsError) {
+    return (
+      <TableRow>
+        <TableCell
+          colSpan={emptyStateColSpan}
+          className="h-26 text-center text-sm text-destructive"
+          role="alert"
+        >
+          {rowsError}
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  if (hasNoRows) {
+    return (
+      <TableRow>
+        <TableCell
+          colSpan={emptyStateColSpan}
+          className="h-26 text-center text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          {EMPTY.noRows}
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  const visibleRows = table.getRowModel().rows
+  if (visibleRows.length === 0) {
+    return (
+      <TableRow>
+        <TableCell
+          colSpan={emptyStateColSpan}
+          className="h-26 text-center text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          {EMPTY.noMatches}
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  return visibleRows.map((row) => (
+    <TableRow key={row.id}>
+      {row.getVisibleCells().map((cell) => {
+        const isEditable = Boolean(cell.column.columnDef.meta?.isEditable)
+        const align = resolveCellAlignment(cell.column.columnDef.meta)
+        const textAlignClass = getTextAlignClass(align)
+        const isProcessFlowCell = cell.column.id === "process_flow"
+
+        const raw = cell.getValue()
+        const content = isNullishDisplay(raw)
+          ? EMPTY.text
+          : flexRender(cell.column.columnDef.cell, cell.getContext())
+        const shouldTruncate = !isProcessFlowCell
+        const tooltip = shouldTruncate ? formatTooltipValue(raw) : undefined
+
+        return (
+          <TableCell
+            key={cell.id}
+            data-editable={isEditable ? "true" : "false"}
+            style={toWidthStyle(cell.column.getSize())}
+            className={cn(
+              "align-center",
+              textAlignClass,
+              !isEditable && "caret-transparent focus:outline-none",
+              isProcessFlowCell && "cursor-grab select-none active:cursor-grabbing"
+            )}
+          >
+            <div
+              className={cn(
+                "max-w-full",
+                shouldTruncate ? "truncate" : "break-words"
+              )}
+              title={tooltip}
+            >
+              {content}
+            </div>
+          </TableCell>
+        )
+      })}
+    </TableRow>
+  ))
+}
+
 /**
  * @param {{ lineId: string }} props
  */
@@ -111,9 +255,15 @@ export function DataTable({ lineId }) {
     tableMeta,
     setRecentHoursRange: syncRecentHoursRange,
   } = useDataTableState({ lineId })
+  const { user } = useAuth()
+
+  const quickFilterOptions = React.useMemo(
+    () => ({ currentUserEmail: user?.email ?? null }),
+    [user?.email]
+  )
 
   const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
-    useQuickFilters(columns, rows)
+    useQuickFilters(columns, rows, quickFilterOptions)
 
   React.useEffect(() => {
     if (!syncRecentHoursRange) return
@@ -173,159 +323,36 @@ export function DataTable({ lineId }) {
   })
 
   /* 파생 값(렌더 편의) */
-  const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
+  const visibleColumns = table.getVisibleLeafColumns()
+  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
   const totalLoaded = rows.length
   const filteredTotal = filteredRows.length
   const statusChartData = statusChart.data ?? []
   const statusChartConfig = statusChart.config ?? {}
   const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
 
+  const pageCount = table.getPageCount()
   const currentPage = pagination.pageIndex + 1
-  const totalPages = Math.max(table.getPageCount(), 1)
+  const totalPages = Math.max(pageCount, 1)
   const currentPageSize = table.getRowModel().rows.length
 
   const isRefreshing = isLoadingRows && totalLoaded > 0
+  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
+  const isInitialLoading = isLoadingRows && totalLoaded === 0
 
-  /* 상단 "Updated ..." 라벨 */
-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
-
-  /* ──────────────────────────────────────────────────────────────────────────
-   * 4) Effects
-   * ──────────────────────────────────────────────────────────────────────── */
-  // 로딩이 끝나면 "마지막 갱신 시각" 업데이트
-  React.useEffect(() => {
-    if (isLoadingRows) return
-    setLastUpdatedLabel(timeFormatter.format(new Date()))
-  }, [isLoadingRows])
-
-  React.useEffect(() => {
-    if (!isRefreshing) return
-    setLastUpdatedLabel("Updating…")
-  }, [isRefreshing])
-
-  // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
-  React.useEffect(() => {
-    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }))
-  }, [filter, sorting, filters])
-
-  // 페이지 수 감소 시 pageIndex 보정
-  React.useEffect(() => {
-    const maxIndex = Math.max(table.getPageCount() - 1, 0)
-    setPagination((prev) => (prev.pageIndex > maxIndex ? { ...prev, pageIndex: maxIndex } : prev))
-  }, [table, rows.length, filteredRows.length, pagination.pageSize])
+  usePaginationGuards({
+    filter,
+    sorting,
+    filters,
+    pageCount,
+    setPagination,
+  })
 
   /* ──────────────────────────────────────────────────────────────────────────
    * 5) 이벤트 핸들러
    * ──────────────────────────────────────────────────────────────────────── */
   function handleRefresh() {
     void fetchRows()
-  }
-
-  /* ──────────────────────────────────────────────────────────────────────────
-   * 6) 테이블 바디 렌더
-   *    - 상태별 분기: 로딩 → 에러 → 스키마 없음 → 필터 결과 없음 → 일반 행
-   *    - TH/TD에 width/min/max를 "px 문자열"로 지정해 colgroup과 일관 동작
-   * ──────────────────────────────────────────────────────────────────────── */
-  function renderTableBody() {
-    if (isLoadingRows && totalLoaded === 0) {
-      return (
-        <TableRow>
-          <TableCell
-            colSpan={emptyStateColSpan}
-            className="h-26 text-center text-sm text-muted-foreground"
-            aria-live="polite"
-          >
-            {EMPTY.loading}
-          </TableCell>
-        </TableRow>
-      )
-    }
-    if (rowsError) {
-      return (
-        <TableRow>
-          <TableCell
-            colSpan={emptyStateColSpan}
-            className="h-26 text-center text-sm text-destructive"
-            role="alert"
-          >
-            {rowsError}
-          </TableCell>
-        </TableRow>
-      )
-    }
-    if (hasNoRows) {
-      return (
-        <TableRow>
-          <TableCell
-            colSpan={emptyStateColSpan}
-            className="h-26 text-center text-sm text-muted-foreground"
-            aria-live="polite"
-          >
-            {EMPTY.noRows}
-          </TableCell>
-        </TableRow>
-      )
-    }
-
-    const visibleRows = table.getRowModel().rows
-    if (visibleRows.length === 0) {
-      return (
-        <TableRow>
-          <TableCell
-            colSpan={emptyStateColSpan}
-            className="h-26 text-center text-sm text-muted-foreground"
-            aria-live="polite"
-          >
-            {EMPTY.noMatches}
-          </TableCell>
-        </TableRow>
-      )
-    }
-
-    return visibleRows.map((row) => (
-      <TableRow key={row.id}>
-        {row.getVisibleCells().map((cell) => {
-          const isEditable = Boolean(cell.column.columnDef.meta?.isEditable)
-          const align = resolveCellAlignment(cell.column.columnDef.meta) // "left" | "center" | "right"
-          const textAlignClass = getTextAlignClass(align)
-          const width = cell.column.getSize()
-          const widthPx = `${width}px`
-          const isProcessFlowCell = cell.column.id === "process_flow"
-
-          const raw = cell.getValue()
-          const content = isNullishDisplay(raw)
-            ? EMPTY.text
-            : flexRender(cell.column.columnDef.cell, cell.getContext())
-          const shouldTruncate = !isProcessFlowCell
-          const tooltip = shouldTruncate ? formatTooltipValue(raw) : undefined
-
-          return (
-            <TableCell
-              key={cell.id}
-              data-editable={isEditable ? "true" : "false"}
-              style={{ width: widthPx, minWidth: widthPx, maxWidth: widthPx }}
-              className={cn(
-                "align-center",
-                textAlignClass,
-                !isEditable && "caret-transparent focus:outline-none",
-                isProcessFlowCell && "cursor-grab select-none active:cursor-grabbing"
-              )}
-            >
-              {/* 내부는 폭 지정 없이 텍스트 오버플로 처리 */}
-              <div
-                className={cn(
-                  "max-w-full",
-                  shouldTruncate ? "truncate" : "break-words"
-                )}
-                title={tooltip}
-              >
-                {content}
-              </div>
-            </TableCell>
-          )
-        })}
-      </TableRow>
-    ))
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
@@ -392,8 +419,8 @@ export function DataTable({ lineId }) {
         >
           {/* ✅ 컬럼 전체 폭 동기화: colgroup에 getVisibleLeafColumns() 사이즈를 반영 */}
           <colgroup>
-            {table.getVisibleLeafColumns().map((column) => (
-              <col key={column.id} style={{ width: `${column.getSize()}px` }} />
+            {visibleColumns.map((column) => (
+              <col key={column.id} style={toWidthStyle(column.getSize())} />
             ))}
           </colgroup>
 
@@ -407,8 +434,6 @@ export function DataTable({ lineId }) {
                   const align = resolveHeaderAlignment(meta)
                   const justifyClass = getJustifyClass(align)
                   const headerContent = flexRender(header.column.columnDef.header, header.getContext())
-                  const width = header.getSize()
-                  const widthPx = `${width}px`
 
                   const ariaSort =
                     sortDirection === "asc"
@@ -421,7 +446,7 @@ export function DataTable({ lineId }) {
                     <TableHead
                       key={header.id}
                       className={cn("relative whitespace-nowrap sticky top-0 z-10 bg-muted")}
-                      style={{ width: widthPx, minWidth: widthPx, maxWidth: widthPx }}
+                      style={toWidthStyle(header.getSize())}
                       scope="col"
                       aria-sort={ariaSort}
                     >
@@ -458,7 +483,15 @@ export function DataTable({ lineId }) {
             ))}
           </TableHeader>
 
-          <TableBody>{renderTableBody()}</TableBody>
+          <TableBody>
+            <TableBodyRows
+              table={table}
+              emptyStateColSpan={emptyStateColSpan}
+              isInitialLoading={isInitialLoading}
+              rowsError={rowsError}
+              hasNoRows={hasNoRows}
+            />
+          </TableBody>
         </Table>
       </TableContainer>
 

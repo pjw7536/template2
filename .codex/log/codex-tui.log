@@ -6580,3 +6580,1505 @@
 + * - 과거 0/1, "Y"/"N" 등도 안전 변환
   * ========================================================================== */
 *** End Patch
+[2m2025-11-23T01:32:15.682624Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T01:32:15.728587Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T01:32:15.728633Z[0m [32m INFO[0m ghost commit captured: 93e0421fba321ec14e39faa7e40d675f77d96245
+[2m2025-11-23T01:32:15.728647Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T01:32:22.319578Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' vite.config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:32:23.719381Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg --files -g \"vite.config.*\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:32:26.141551Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/vite.config.mjs","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:32:31.482484Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/vite.config.mjs
+@@
+   resolve: {
+     alias: {
+       "@": path.resolve(process.cwd(), "src"),
+     },
+   },
+   server: {
+     port: 3000,
++    // 외부 접속 호스트 화이트리스트
++    allowedHosts: ["plane.samsungds.net"],
+   },
+ })
+*** End Patch
+[2m2025-11-23T01:34:18.725522Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T01:34:18.767824Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T01:34:18.767862Z[0m [32m INFO[0m ghost commit captured: 29e0dfd218fecaee1474193429f9b606a7244d4b
+[2m2025-11-23T01:34:18.767868Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T01:34:20.540341Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"ALLOWED_HOSTS\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:34:22.185296Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '50,110p' apps/api/config/settings.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:34:27.486989Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:34:29.041431Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:34:35.637310Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/api.dev.env
+@@
+ DJANGO_SECRET_KEY=local-dev-secret
+ DJANGO_DEBUG=1
+-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,api
++DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,api,plane.samsungds.net
+*** End Patch
+[2m2025-11-23T01:34:38.479996Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/api.prod.env
+@@
+ ENVIRONMENT=production
+ DJANGO_SECRET_KEY=change-me
+ DJANGO_DEBUG=0
+ # Nginx 업스트림 호스트(web, api)와 최종 서비스 도메인 전체를 포함
+-DJANGO_ALLOWED_HOSTS=api,web,example.com
++DJANGO_ALLOWED_HOSTS=api,web,example.com,plane.samsungds.net
+*** End Patch
+[2m2025-11-23T01:36:27.839283Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T01:36:27.882285Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T01:36:27.882329Z[0m [32m INFO[0m ghost commit captured: 265001cd778baa62c293b96af4ce268c73f1c83a
+[2m2025-11-23T01:36:27.882352Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T01:36:29.946277Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg --files -g \"*.env\" env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:36:32.285227Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/api.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:36:37.744440Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T01:36:44.362711Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/api.oidc.dev.env
+@@
+ # - 기본 개발용 디버그/보안 값은 api.dev.env 그대로 사용합니다.
+ # ==============================================================================
+ 
++# Django 호스트 화이트리스트 (api.dev.env 값을 기본으로 사용하지만 dev.oidc 전용으로 명시)
++DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,api,plane.samsungds.net
++
+ # --- Corporate ADFS (OIDC) ---------------------------------------------------
+ # 운영과 동일한 IdP 정보를 입력하세요. 값이 비어 있으면 OIDC가 비활성화됩니다.
+ OIDC_CLIENT_ID=
+ OIDC_ISSUER=
+ ADFS_AUTH_URL=
+*** End Patch
+[2m2025-11-23T02:34:18.897764Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:34:19.031474Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:34:19.031517Z[0m [32m INFO[0m ghost commit captured: af0b5f5276fa61cb7ba24bbc915bb034c38ead2e
+[2m2025-11-23T02:34:19.031523Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:34:26.040716Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"plane\\.samsungds\\.net\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:29.826094Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:33.896747Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.oidc.dev.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:36.607443Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.prod.env","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:39.990720Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"server_name\" deploy -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:46.345974Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' deploy/nginx/default.conf","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:49.305296Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,80p' deploy/nginx/default.prod.conf","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:34:58.627598Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.conf
+@@
+-    # 2) 배포 시 실제 도메인으로 교체하세요. 여러 도메인을 지원하려면 공백으로 구분
+-    #    예) server_name example.com www.example.com;
+-    #    임시로 모든 Host 헤더를 허용하려면 _ 를 유지합니다.
+-    server_name _;
++    # 2) 배포 시 실제 도메인으로 교체하세요. 여러 도메인을 지원하려면 공백으로 구분
++    #    예) server_name example.com www.example.com;
++    server_name plane.samsungds.net;
+*** End Patch
+[2m2025-11-23T02:35:05.130528Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.prod.conf
+@@
+-server {
+-    listen 80;
+-    server_name _;  # 배포 시 실제 도메인으로 교체 권장 (예: plane.appleds.net)
++server {
++    listen 80;
++    server_name plane.samsungds.net;  # 배포 시 실제 도메인으로 교체
+     return 301 https://$host$request_uri;
+ }
+@@
+-server {
+-    listen 443 ssl http2;
+-    server_name _;  # 배포 시 실제 도메인으로 교체 권장
++server {
++    listen 443 ssl http2;
++    server_name plane.samsungds.net;  # 배포 시 실제 도메인으로 교체
+*** End Patch
+[2m2025-11-23T02:37:55.865888Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-23T02:41:31.635864Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:41:31.682751Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:41:31.682793Z[0m [32m INFO[0m ghost commit captured: a02f2118bcbfdf2c12d334b022b3a325d6b713fe
+[2m2025-11-23T02:41:31.682798Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:41:34.386426Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:36.261277Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"quickfilter|quick filter|QuickFilter|quick filter\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:38.559579Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"knoxid\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:40.390989Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"current user|logged in|userEmail|user email|auth\" apps/web/src | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:42.535086Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"useAuth|authContext|user.email|email\" apps/web/src/features","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:44.854333Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/auth/context/AuthContext.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:47.202352Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:41:53.369956Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '260,620p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:00.232816Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"knoxid\" apps/web/src -g\"*.jsx\" -g\"*.js\" | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:02.945302Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,180p' apps/web/src/features/line-dashboard/components/data-table/column-defs/config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:05.903235Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:07.734707Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '220,520p' apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:10.789133Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/hooks/useQuickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:13.562910Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '300,450p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:16.242793Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"line-dashboard\" -g\"*.jsx\" apps/web/src | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:18.899745Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/context/LineDashboardProvider.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:24.298476Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"quick filter|QuickFilters\" apps/web/src/routes apps/web/src/features/line-dashboard -g\"*.jsx\" | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:27.195084Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '70,160p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:42:30.550889Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"useAuth\" apps/web/src/features/line-dashboard","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:43:00.332989Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"function Checkbox|<Checkbox\" apps/web/src/components apps/web/src/features -g\"*.jsx\" | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:43:03.150519Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/components/ui","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:43:20.036496Z[0m [32m INFO[0m ToolCall: update_plan {"explanation":"Add a MySop quick filter tied to the logged-in user and wire it through the quick filter pipeline.","plan":[{"status":"in_progress","step":"Inspect quick filter pipeline and determine how to inject user context into filter creation/rendering."},{"status":"pending","step":"Implement MySop filter definition and UI handling, including user email parsing and filtering against knoxid."},{"status":"pending","step":"Verify updated quick filter wiring in DataTable and ensure default behaviors remain intact."}]}
+[2m2025-11-23T02:43:43.502145Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/auth/index.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:43:46.650399Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,80p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:44:17.242967Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"createQuickFilterSections\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:44:27.372203Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+ const MULTI_SELECT_KEYS = new Set(["status"])
+ 
+ const HOUR_IN_MS = 60 * 60 * 1000
+ const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
+@@
+ function normalizeFlagState(value) {
+   if (value === null || value === undefined) return null
+   const { state } = deriveFlagState(value, 0)
+   return state
+ }
++
++function normalizeEmailId(value) {
++  if (value == null) return ""
++  const trimmed = String(value).trim()
++  if (!trimmed) return ""
++  const lowered = trimmed.toLowerCase()
++  const withoutExample = lowered.endsWith("@example.com")
++    ? lowered.slice(0, -"@example.com".length)
++    : lowered
++  const atIndex = withoutExample.indexOf("@")
++  if (atIndex === -1) return withoutExample
++  return withoutExample.slice(0, atIndex)
++}
++
++function deriveUserIdFromEmail(email) {
++  const normalized = normalizeEmailId(email)
++  return normalized || null
++}
+ 
+ function toTimestamp(value) {
+   if (value == null) return null
+ 
+   if (value instanceof Date) {
+@@
+ }
+ 
+ const QUICK_FILTER_DEFINITIONS = [
++  {
++    key: "my_sop",
++    label: "MySop",
++    buildSection: ({ columns, options }) => {
++      const columnKey = findMatchingColumn(columns, "knoxid")
++      const userId = deriveUserIdFromEmail(options?.currentUserEmail)
++      if (!columnKey || !userId) return null
++
++      const normalizedUserId = userId.toLowerCase()
++      const getValue = (row) => row?.[columnKey] ?? null
++
++      return {
++        options: [],
++        getValue,
++        allowCustomValue: true,
++        userId: normalizedUserId,
++        matchRow: (row, current) => {
++          if (!current) return true
++          const normalizedKnoxid = normalizeEmailId(getValue(row))
++          if (!normalizedKnoxid) return false
++          return normalizedKnoxid.toLowerCase() === normalizedUserId
++        },
++      }
++    },
++  },
+   {
+     key: "recent_hours",
+     label: "최근시간",
+     resolveColumn: (columns) =>
+       findMatchingColumn(columns, "created_at") ?? findMatchingColumn(columns, "updated_at"),
+@@
+ }
+ 
+ // 컬럼/행 데이터를 기반으로 퀵 필터 섹션 목록을 생성합니다.
+-export function createQuickFilterSections(columns, rows) {
++export function createQuickFilterSections(columns, rows, options = {}) {
+   return QUICK_FILTER_DEFINITIONS.map((definition) => {
+     if (typeof definition.buildSection === "function") {
+-      const section = definition.buildSection({ columns, rows })
++      const section = definition.buildSection({ columns, rows, options })
+       if (!section) return null
+       const { allowCustomValue = false, ...restSection } = section
+       return {
+         key: definition.key,
+         label: definition.label,
+*** End Patch
+[2m2025-11-23T02:44:37.851145Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+ function normalizeEmailId(value) {
+   if (value == null) return ""
+   const trimmed = String(value).trim()
+   if (!trimmed) return ""
+   const lowered = trimmed.toLowerCase()
+-  const withoutExample = lowered.endsWith("@example.com")
+-    ? lowered.slice(0, -"@example.com".length)
++  const exampleSuffix = "@example.com"
++  const withoutExample = lowered.endsWith(exampleSuffix)
++    ? lowered.slice(0, -exampleSuffix.length)
+*** End Patch
+[2m2025-11-23T02:44:50.105392Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
+@@
+ const DROPDOWN_SECTION_KEYS = new Set([
+   "sdwt_prod",
+   "sample_type",
+   "user_sdwt_prod",
+   "main_step",
+ ])
++const CHECKBOX_SECTION_KEYS = new Set(["my_sop"])
+ const FIELDSET_CLASS = "flex flex-col rounded-xl p-1 px-3"
+ 
+ const isNil = (value) => value === null || value === undefined
+ 
+ // 여러 퀵 필터 섹션과 글로벌 검색창을 한 번에 그려주는 컴포넌트입니다.
+@@
+     if (section.key === "recent_hours") {
+       return (
+         <RecentHoursQuickFilterSection
+           key={section.key}
+           section={section}
+@@
+           onToggle={onToggle}
+         />
+       )
+     }
+ 
++    if (CHECKBOX_SECTION_KEYS.has(section.key)) {
++      return (
++        <CheckboxQuickFilterSection
++          key={section.key}
++          section={section}
++          legendId={legendId}
++          checked={Boolean(current)}
++          onToggle={onToggle}
++        />
++      )
++    }
++
+     if (DROPDOWN_SECTION_KEYS.has(section.key)) {
+       return (
+         <DropdownQuickFilterSection
+           key={section.key}
+           section={section}
+@@
+ function getSelectedValues(isMulti, current) {
+   if (isMulti) {
+     return Array.isArray(current) ? current : []
+   }
+   return isNil(current) ? [] : [current]
+ }
+ 
++function CheckboxQuickFilterSection({ section, legendId, checked, onToggle }) {
++  const inputId = `${section.key}-checkbox`
++
++  return (
++    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
++      <legend
++        id={legendId}
++        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
++      >
++        {section.label}
++      </legend>
++
++      <label
++        htmlFor={inputId}
++        className="flex items-center gap-2 px-1 text-xs font-medium text-foreground"
++      >
++        <input
++          id={inputId}
++          type="checkbox"
++          className="h-4 w-4 accent-primary"
++          checked={checked}
++          onChange={(event) =>
++            onToggle(section.key, event.target.checked ? true : null, { forceValue: true })
++          }
++        />
++        <span className="flex flex-col leading-tight">
++          <span>내 SOP만 보기</span>
++          {section.userId ? (
++            <span className="text-[11px] font-normal text-muted-foreground">
++              KnoxID: {section.userId}
++            </span>
++          ) : null}
++        </span>
++      </label>
++    </fieldset>
++  )
++}
++
+ function DropdownQuickFilterSection({ section, legendId, current, onToggle }) {
+   const hasDropdownValue = !isNil(current) && String(current).length > 0
+ 
+   return (
+     <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
+*** End Patch
+[2m2025-11-23T02:44:54.910801Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useQuickFilters.js
+@@
+  * 퀵 필터 섹션 상태를 생성·유지하고, 적용된 필터에 맞는 행 목록을 돌려주는 훅입니다.
+  */
+-export function useQuickFilters(columns, rows) {
++export function useQuickFilters(columns, rows, options = {}) {
+   // 컬럼/행 데이터를 기반으로 어떤 퀵 필터 섹션이 필요한지 계산합니다.
+   const sections = React.useMemo(
+-    () => createQuickFilterSections(columns, rows),
+-    [columns, rows]
++    () => createQuickFilterSections(columns, rows, options),
++    [columns, rows, options]
+   )
+*** End Patch
+[2m2025-11-23T02:45:00.646362Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+ import {
+   getJustifyClass,
+   getTextAlignClass,
+   isNullishDisplay,
+   resolveCellAlignment,
+   resolveHeaderAlignment,
+ } from "./utils/table"
+ import { formatTooltipValue } from "./utils/formatters.jsx"
++import { useAuth } from "@/features/auth"
+@@
+  */
+ export function DataTable({ lineId }) {
+   /* ──────────────────────────────────────────────────────────────────────────
+    * 2) 데이터/상태 훅
+    *    - rows: 서버/쿼리로 가져온 원본 데이터
+@@
+     rowsError,
+     fetchRows,
+     tableMeta,
+     setRecentHoursRange: syncRecentHoursRange,
+   } = useDataTableState({ lineId })
++  const { user } = useAuth()
++
++  const quickFilterOptions = React.useMemo(
++    () => ({ currentUserEmail: user?.email ?? null }),
++    [user?.email]
++  )
+ 
+   const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
+-    useQuickFilters(columns, rows)
++    useQuickFilters(columns, rows, quickFilterOptions)
+*** End Patch
+[2m2025-11-23T02:45:20.423030Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect quick filter pipeline and determine how to inject user context into filter creation/rendering."},{"status":"completed","step":"Implement MySop filter definition and UI handling, including user email parsing and filtering against knoxid."},{"status":"completed","step":"Verify updated quick filter wiring in DataTable and ensure default behaviors remain intact."}]}
+[2m2025-11-23T02:45:30.964977Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,60p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:45:33.886744Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '60,120p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:46:05.294256Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:46:05.339305Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:46:05.339345Z[0m [32m INFO[0m ghost commit captured: 3e7c28220ebfda6c2d85c5aea78cd4795b1cbe24
+[2m2025-11-23T02:46:05.339351Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:46:16.399662Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+ function normalizeEmailId(value) {
+   if (value == null) return ""
+   const trimmed = String(value).trim()
+   if (!trimmed) return ""
+   const lowered = trimmed.toLowerCase()
+-  const exampleSuffix = "@example.com"
+-  const withoutExample = lowered.endsWith(exampleSuffix)
+-    ? lowered.slice(0, -exampleSuffix.length)
+-    : lowered
+-  const atIndex = withoutExample.indexOf("@")
+-  if (atIndex === -1) return withoutExample
+-  return withoutExample.slice(0, atIndex)
++  const atIndex = lowered.indexOf("@")
++  if (atIndex === -1) return lowered
++  return lowered.slice(0, atIndex)
+ }
+ 
+ function deriveUserIdFromEmail(email) {
+   const normalized = normalizeEmailId(email)
+   return normalized || null
+*** End Patch
+[2m2025-11-23T02:46:19.443708Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"normalizeEmailId\" -n apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:47:18.444467Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:47:18.488532Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:47:18.488573Z[0m [32m INFO[0m ghost commit captured: b797604deeb73e4f5bf6081c15794e8d9d9423f2
+[2m2025-11-23T02:47:18.488586Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:47:22.950395Z[0m [32m INFO[0m ToolCall: shell_command {"command":"nl -ba apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js | sed -n '300,380p'","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:47:40.531197Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+-    const options = Array.from(valueMap.entries()).map(([value, label]) => ({ value, label }))
++    const sectionOptions = Array.from(valueMap.entries()).map(([value, label]) => ({
++      value,
++      label,
++    }))
+-    if (typeof definition.compareOptions === "function") {
+-      options.sort((a, b) => definition.compareOptions(a, b))
+-    }
++    if (typeof definition.compareOptions === "function") {
++      sectionOptions.sort((a, b) => definition.compareOptions(a, b))
++    }
+@@
+-    return {
+-      key: definition.key,
+-      label: definition.label,
+-      options,
+-      getValue,
+-      isMulti,
+-      allowCustomValue: false,
+-      matchRow: (row, current) => {
+-        const rowValue = getValue(row)
+-        if (isMulti) {
+-          return Array.isArray(current) && current.length > 0 ? current.includes(rowValue) : true
+-        }
+-        return current !== null ? rowValue === current : true
+-      },
+-    }
++    return {
++      key: definition.key,
++      label: definition.label,
++      options: sectionOptions,
++      getValue,
++      isMulti,
++      allowCustomValue: false,
++      matchRow: (row, current) => {
++        const rowValue = getValue(row)
++        if (isMulti) {
++          return Array.isArray(current) && current.length > 0 ? current.includes(rowValue) : true
++        }
++        return current !== null ? rowValue === current : true
++      },
++    }
+   }).filter(Boolean)
+ }
+*** End Patch
+[2m2025-11-23T02:54:08.856538Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:54:08.949782Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:54:08.949825Z[0m [32m INFO[0m ghost commit captured: 3636212acc9e2513ee41d39e07ab2e6feccd5480
+[2m2025-11-23T02:54:08.949831Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:54:12.976789Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"CheckboxQuickFilterSection\" -n apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:54:16.001507Z[0m [32m INFO[0m ToolCall: shell_command {"command":"nl -ba apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx | sed -n '180,240p'","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:54:26.121533Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
+@@
+-        <div className="flex flex-col leading-tight items-center">
++        <div className="flex flex-col items-center justify-center leading-tight">
+           {section.userId ? (
+             <div className="text-[11px] font-normal text-muted-foreground">
+               {section.userId}
+             </div>
+           ) : null}
+*** End Patch
+[2m2025-11-23T02:55:36.458855Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:55:36.510046Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:55:36.510134Z[0m [32m INFO[0m ghost commit captured: 46fcd7fd6d0784cd2956669b61bc6ee5b184153f
+[2m2025-11-23T02:55:36.510149Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:55:43.951994Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
+@@
+       <label
+         htmlFor={inputId}
+-        className="flex items-center gap-2 px-1 text-xs font-medium text-foreground"
++        className="flex h-8 items-center gap-2 px-1 text-xs font-medium text-foreground"
+       >
+*** End Patch
+[2m2025-11-23T02:57:42.785172Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:57:42.831552Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:57:42.831597Z[0m [32m INFO[0m ghost commit captured: 839526980db15511266ab0d564be6b910f079032
+[2m2025-11-23T02:57:42.831603Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:57:55.521211Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:57:55.568097Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:57:55.568144Z[0m [32m INFO[0m ghost commit captured: 761f7b7f7e5cdc9ad1b3ed3fba11cbc2607a1e9c
+[2m2025-11-23T02:57:55.568150Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:58:27.037633Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:58:27.083576Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:58:27.083636Z[0m [32m INFO[0m ghost commit captured: dfe07bebf557c8499f0501d0e143f9f3575bbe24
+[2m2025-11-23T02:58:27.083657Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:59:05.878089Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:59:05.925836Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:59:05.925878Z[0m [32m INFO[0m ghost commit captured: e3c9d43e3a22ec1ac656b32aca03da133ae42c5c
+[2m2025-11-23T02:59:05.925892Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:59:26.344300Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T02:59:26.390197Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T02:59:26.390240Z[0m [32m INFO[0m ghost commit captured: caf82390d03590c084cc2e68f10d9af9ee483b3f
+[2m2025-11-23T02:59:26.390246Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T02:59:30.618695Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat package.json","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:33.107019Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat apps/web/package.json","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:36.811132Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"mysql2\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:40.093698Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"mysql2\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:44.024642Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"lucide-react\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:45.079332Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-checkbox\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:54.149830Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-slider\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T02:59:57.942515Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-separator\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:00.206504Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-toast\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:03.840388Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"Toast\" apps/web/src/components apps/web/src/features -g\"*.jsx\" | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:09.127780Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-avatar\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:12.978210Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@radix-ui/react-slot\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:16.509919Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"tw-animate\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:23.101202Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"Tooltip\" apps/web/src/components apps/web/src/features -g\"*.jsx\" | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:27.448446Z[0m [32m INFO[0m ToolCall: shell_command {"command":"npm uninstall mysql2 @radix-ui/react-checkbox @radix-ui/react-toast --workspace web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:32.717620Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git status --short","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:00:38.081936Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat apps/web/package.json","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:01:49.167087Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:01:49.217086Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:01:49.217129Z[0m [32m INFO[0m ghost commit captured: b397c5db8ea83b15a37294ae4aaf06aa34c64cc8
+[2m2025-11-23T03:01:49.217135Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:02:02.752678Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"Avatar\" apps/web/src | head"}
+[2m2025-11-23T03:02:06.253084Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"from \\\"@/components/ui/dialog\\\"\" apps/web/src"}
+[2m2025-11-23T03:02:08.830354Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@/components/ui/label\" apps/web/src"}
+[2m2025-11-23T03:02:12.679936Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"from \\\"@/components/ui/field\\\"\" apps/web/src"}
+[2m2025-11-23T03:02:16.054655Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"@/components/ui/tooltip\" apps/web/src"}
+[2m2025-11-23T03:02:21.325316Z[0m [32m INFO[0m ToolCall: shell_command {"command":"npm run lint --workspace web","workdir":"/home/pjw75/tailwind","timeout_ms":120000}
+[2m2025-11-23T03:02:26.604031Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '150,230p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:02:29.879121Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '120,200p' apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T03:02:40.989110Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/hooks/useDataTable.js
+@@
+-    [selectedTable, begin, finalize]
++    [
++      selectedTable,
++      begin,
++      finalize,
++      setRows,
++      setCommentDrafts,
++      setCommentEditing,
++      setNeedToSendDrafts,
++      setUpdateErrors,
++      setUpdatingCells,
++    ]
+   )
+*** End Patch
+[2m2025-11-23T03:02:44.178358Z[0m [32m INFO[0m ToolCall: shell_command {"command":"npm run lint --workspace web","workdir":"/home/pjw75/tailwind","timeout_ms":120000}
+[2m2025-11-23T03:07:32.181518Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:07:32.230129Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:07:32.230170Z[0m [32m INFO[0m ghost commit captured: 8363b8f2f2847210ed92998825c3f8afacf7d720
+[2m2025-11-23T03:07:32.230175Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:07:34.221534Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":".","timeout_ms":120000}
+[2m2025-11-23T03:07:36.283176Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && ls apps","timeout_ms":120000}
+[2m2025-11-23T03:07:38.158158Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src && ls","timeout_ms":120000}
+[2m2025-11-23T03:07:40.861771Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src && rg --files | grep line-dashboard","timeout_ms":120000}
+[2m2025-11-23T03:07:43.356562Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components && sed -n '1,200p' LineDashboardPage.jsx","timeout_ms":120000}
+[2m2025-11-23T03:07:45.724091Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '1,220p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:07:47.936612Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '220,440p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:07:49.611906Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '440,880p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:07:55.657477Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Inspect existing line-dashboard implementation to identify refactor targets and pain points"},{"status":"pending","step":"Refactor code for clarity/composition and reduce duplication while keeping behaviour"},{"status":"pending","step":"Validate changes (reason through behaviour) and summarize modifications"}]}
+[2m2025-11-23T03:08:00.844803Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/hooks && sed -n '1,220p' useDataTable.js","timeout_ms":120000}
+[2m2025-11-23T03:08:03.559124Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/hooks && sed -n '220,440p' useDataTable.js","timeout_ms":120000}
+[2m2025-11-23T03:08:05.481663Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/hooks && sed -n '1,220p' useTableQuery.js","timeout_ms":120000}
+[2m2025-11-23T03:08:12.707271Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/filters && sed -n '1,200p' QuickFilters.jsx","timeout_ms":120000}
+[2m2025-11-23T03:08:22.493444Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/context && sed -n '1,200p' LineDashboardProvider.jsx","timeout_ms":120000}
+[2m2025-11-23T03:08:26.051605Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/hooks && sed -n '1,220p' useLineDashboardData.js","timeout_ms":120000}
+[2m2025-11-23T03:08:47.171598Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/hooks && sed -n '1,240p' useQuickFilters.js","timeout_ms":120000}
+[2m2025-11-23T03:09:57.516263Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+ const LABELS = {
+   titleSuffix: "Line E-SOP Status",
+   updated: "Updated",
+   refresh: "Refresh",
+@@
+   goNext: "Go to next page",
+   goLast: "Go to last page",
+ }
+ 
++const toWidthStyle = (size) => {
++  const width = `${size}px`
++  return { width, minWidth: width, maxWidth: width }
++}
++
++function useLastUpdatedLabel(isLoadingRows, isRefreshing) {
++  const [label, setLabel] = React.useState(null)
++
++  React.useEffect(() => {
++    if (isRefreshing) {
++      setLabel("Updating…")
++      return
++    }
++    if (!isLoadingRows) {
++      setLabel(timeFormatter.format(new Date()))
++    }
++  }, [isLoadingRows, isRefreshing])
++
++  return label
++}
++
++function usePaginationGuards({ filter, sorting, filters, pageCount, setPagination }) {
++  React.useEffect(() => {
++    setPagination((previous) =>
++      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }
++    )
++  }, [filter, sorting, filters, setPagination])
++
++  React.useEffect(() => {
++    const maxIndex = Math.max(pageCount - 1, 0)
++    setPagination((previous) =>
++      previous.pageIndex > maxIndex ? { ...previous, pageIndex: maxIndex } : previous
++    )
++  }, [pageCount, setPagination])
++}
++
++function TableBodyRows({
++  table,
++  emptyStateColSpan,
++  isInitialLoading,
++  rowsError,
++  hasNoRows,
++}) {
++  if (isInitialLoading) {
++    return (
++      <TableRow>
++        <TableCell
++          colSpan={emptyStateColSpan}
++          className="h-26 text-center text-sm text-muted-foreground"
++          aria-live="polite"
++        >
++          {EMPTY.loading}
++        </TableCell>
++      </TableRow>
++    )
++  }
++
++  if (rowsError) {
++    return (
++      <TableRow>
++        <TableCell
++          colSpan={emptyStateColSpan}
++          className="h-26 text-center text-sm text-destructive"
++          role="alert"
++        >
++          {rowsError}
++        </TableCell>
++      </TableRow>
++    )
++  }
++
++  if (hasNoRows) {
++    return (
++      <TableRow>
++        <TableCell
++          colSpan={emptyStateColSpan}
++          className="h-26 text-center text-sm text-muted-foreground"
++          aria-live="polite"
++        >
++          {EMPTY.noRows}
++        </TableCell>
++      </TableRow>
++    )
++  }
++
++  const visibleRows = table.getRowModel().rows
++  if (visibleRows.length === 0) {
++    return (
++      <TableRow>
++        <TableCell
++          colSpan={emptyStateColSpan}
++          className="h-26 text-center text-sm text-muted-foreground"
++          aria-live="polite"
++        >
++          {EMPTY.noMatches}
++        </TableCell>
++      </TableRow>
++    )
++  }
++
++  return visibleRows.map((row) => (
++    <TableRow key={row.id}>
++      {row.getVisibleCells().map((cell) => {
++        const isEditable = Boolean(cell.column.columnDef.meta?.isEditable)
++        const align = resolveCellAlignment(cell.column.columnDef.meta)
++        const textAlignClass = getTextAlignClass(align)
++        const isProcessFlowCell = cell.column.id === "process_flow"
++
++        const raw = cell.getValue()
++        const content = isNullishDisplay(raw)
++          ? EMPTY.text
++          : flexRender(cell.column.columnDef.cell, cell.getContext())
++        const shouldTruncate = !isProcessFlowCell
++        const tooltip = shouldTruncate ? formatTooltipValue(raw) : undefined
++
++        return (
++          <TableCell
++            key={cell.id}
++            data-editable={isEditable ? "true" : "false"}
++            style={toWidthStyle(cell.column.getSize())}
++            className={cn(
++              "align-center",
++              textAlignClass,
++              !isEditable && "caret-transparent focus:outline-none",
++              isProcessFlowCell && "cursor-grab select-none active:cursor-grabbing"
++            )}
++          >
++            <div
++              className={cn(
++                "max-w-full",
++                shouldTruncate ? "truncate" : "break-words"
++              )}
++              title={tooltip}
++            >
++              {content}
++            </div>
++          </TableCell>
++        )
++      })}
++    </TableRow>
++  ))
++}
++
+ /**
+  * @param {{ lineId: string }} props
+  */
+ export function DataTable({ lineId }) {
+*** End Patch
+[2m2025-11-23T03:10:06.196425Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '80,220p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:10:08.305795Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '220,440p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:10:13.737900Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '440,660p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:10:15.928702Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '660,880p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:10:33.818648Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+   })
+ 
+   /* 파생 값(렌더 편의) */
+-  const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
++  const visibleColumns = table.getVisibleLeafColumns()
++  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
+   const totalLoaded = rows.length
+   const filteredTotal = filteredRows.length
+   const statusChartData = statusChart.data ?? []
+   const statusChartConfig = statusChart.config ?? {}
+   const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
++  const pageCount = table.getPageCount()
+ 
+   const currentPage = pagination.pageIndex + 1
+-  const totalPages = Math.max(table.getPageCount(), 1)
++  const totalPages = Math.max(pageCount, 1)
+   const currentPageSize = table.getRowModel().rows.length
+ 
+   const isRefreshing = isLoadingRows && totalLoaded > 0
+-
+-  /* 상단 "Updated ..." 라벨 */
+-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
+-
+-  /* ────────────────────────────────────────────────────────────────────────
+-   * 4) Effects
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  // 로딩이 끝나면 "마지막 갱신 시각" 업데이트
+-  React.useEffect(() => {
+-    if (isLoadingRows) return
+-    setLastUpdatedLabel(timeFormatter.format(new Date()))
+-  }, [isLoadingRows])
+-
+-  React.useEffect(() => {
+-    if (!isRefreshing) return
+-    setLastUpdatedLabel("Updating…")
+-  }, [isRefreshing])
+-
+-  // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
+-  React.useEffect(() => {
+-    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }))
+-  }, [filter, sorting, filters])
+-
+-  // 페이지 수 감소 시 pageIndex 보정
+-  React.useEffect(() => {
+-    const maxIndex = Math.max(table.getPageCount() - 1, 0)
+-    setPagination((prev) => (prev.pageIndex > maxIndex ? { ...prev, pageIndex: maxIndex } : prev))
+-  }, [table, rows.length, filteredRows.length, pagination.pageSize])
++  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
++  const isInitialLoading = isLoadingRows && totalLoaded === 0
++
++  usePaginationGuards({
++    filter,
++    sorting,
++    filters,
++    pageCount,
++    setPagination,
++  })
+ 
+   /* ────────────────────────────────────────────────────────────────────────
+    * 5) 이벤트 핸들러
+*** End Patch
+[2m2025-11-23T03:10:37.623195Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '280,380p' DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:10:49.763824Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+   })
+ 
+   /* 파생 값(렌더 편의) */
+-  const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
++  const visibleColumns = table.getVisibleLeafColumns()
++  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
+   const totalLoaded = rows.length
+   const filteredTotal = filteredRows.length
+   const statusChartData = statusChart.data ?? []
+   const statusChartConfig = statusChart.config ?? {}
+   const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
++  const pageCount = table.getPageCount()
+ 
+   const currentPage = pagination.pageIndex + 1
+-  const totalPages = Math.max(table.getPageCount(), 1)
++  const totalPages = Math.max(pageCount, 1)
+   const currentPageSize = table.getRowModel().rows.length
+ 
+   const isRefreshing = isLoadingRows && totalLoaded > 0
+-
+-  /* 상단 "Updated ..." 라벨 */
+-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
+-
+-  /* ────────────────────────────────────────────────────────────────────────
+-   * 4) Effects
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  // 로딩이 끝나면 "마지막 갱신 시각" 업데이트
+-  React.useEffect(() => {
+-    if (isLoadingRows) return
+-    setLastUpdatedLabel(timeFormatter.format(new Date()))
+-  }, [isLoadingRows])
+-
+-  React.useEffect(() => {
+-    if (!isRefreshing) return
+-    setLastUpdatedLabel("Updating…")
+-  }, [isRefreshing])
+-
+-  // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
+-  React.useEffect(() => {
+-    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }))
+-  }, [filter, sorting, filters])
+-
+-  // 페이지 수 감소 시 pageIndex 보정
+-  React.useEffect(() => {
+-    const maxIndex = Math.max(table.getPageCount() - 1, 0)
+-    setPagination((prev) => (prev.pageIndex > maxIndex ? { ...prev, pageIndex: maxIndex } : prev))
+-  }, [table, rows.length, filteredRows.length, pagination.pageSize])
++  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
++  const isInitialLoading = isLoadingRows && totalLoaded === 0
++
++  usePaginationGuards({
++    filter,
++    sorting,
++    filters,
++    pageCount,
++    setPagination,
++  })
+ 
+   /* ────────────────────────────────────────────────────────────────────────
+    * 5) 이벤트 핸들러
+*** End Patch
+[2m2025-11-23T03:10:59.451326Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-  const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
++  const visibleColumns = table.getVisibleLeafColumns()
++  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
+@@
+-  const totalPages = Math.max(table.getPageCount(), 1)
++  const pageCount = table.getPageCount()
++  const totalPages = Math.max(pageCount, 1)
+@@
+-  const isRefreshing = isLoadingRows && totalLoaded > 0
+-
+-  /* 상단 "Updated ..." 라벨 */
+-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
+-
+-  /* ────────────────────────────────────────────────────────────────────────
+-   * 4) Effects
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  // 로딩이 끝나면 "마지막 갱신 시각" 업데이트
+-  React.useEffect(() => {
+-    if (isLoadingRows) return
+-    setLastUpdatedLabel(timeFormatter.format(new Date()))
+-  }, [isLoadingRows])
+-
+-  React.useEffect(() => {
+-    if (!isRefreshing) return
+-    setLastUpdatedLabel("Updating…")
+-  }, [isRefreshing])
+-
+-  // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
+-  React.useEffect(() => {
+-    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }))
+-  }, [filter, sorting, filters])
+-
+-  // 페이지 수 감소 시 pageIndex 보정
+-  React.useEffect(() => {
+-    const maxIndex = Math.max(table.getPageCount() - 1, 0)
+-    setPagination((prev) => (prev.pageIndex > maxIndex ? { ...prev, pageIndex: maxIndex } : prev))
+-  }, [table, rows.length, filteredRows.length, pagination.pageSize])
++  const isRefreshing = isLoadingRows && totalLoaded > 0
++  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
++  const isInitialLoading = isLoadingRows && totalLoaded === 0
++
++  usePaginationGuards({
++    filter,
++    sorting,
++    filters,
++    pageCount,
++    setPagination,
++  })
+*** End Patch
+[2m2025-11-23T03:11:02.323359Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '340,390p' DataTable.jsx | cat -n","timeout_ms":120000}
+[2m2025-11-23T03:11:06.409656Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '310,340p' DataTable.jsx | cat -n","timeout_ms":120000}
+[2m2025-11-23T03:11:12.484196Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-  /* 파생 값(렌더 편의) */
+-  const emptyStateColSpan = Math.max(table.getVisibleLeafColumns().length, 1)
++  /* 파생 값(렌더 편의) */
++  const visibleColumns = table.getVisibleLeafColumns()
++  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
+   const totalLoaded = rows.length
+   const filteredTotal = filteredRows.length
+   const statusChartData = statusChart.data ?? []
+   const statusChartConfig = statusChart.config ?? {}
+   const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
+@@
+-  const currentPage = pagination.pageIndex + 1
+-  const totalPages = Math.max(table.getPageCount(), 1)
+-  const currentPageSize = table.getRowModel().rows.length
+-
+-  const isRefreshing = isLoadingRows && totalLoaded > 0
+-
+-  /* 상단 "Updated ..." 라벨 */
+-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(null)
++  const pageCount = table.getPageCount()
++  const currentPage = pagination.pageIndex + 1
++  const totalPages = Math.max(pageCount, 1)
++  const currentPageSize = table.getRowModel().rows.length
++
++  const isRefreshing = isLoadingRows && totalLoaded > 0
++  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
++  const isInitialLoading = isLoadingRows && totalLoaded === 0
+*** End Patch
+[2m2025-11-23T03:11:18.907770Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '330,380p' DataTable.jsx | cat -n","timeout_ms":120000}
+[2m2025-11-23T03:11:38.001864Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+-  /* ──────────────────────────────────────────────────────────────────────────
+-   * 4) Effects
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  // 로딩이 끝나면 "마지막 갱신 시각" 업데이트
+-  React.useEffect(() => {
+-    if (isLoadingRows) return
+-    setLastUpdatedLabel(timeFormatter.format(new Date()))
+-  }, [isLoadingRows])
+-
+-  React.useEffect(() => {
+-    if (!isRefreshing) return
+-    setLastUpdatedLabel("Updating…")
+-  }, [isRefreshing])
+-
+-  // 필터/정렬/퀵필터가 바뀌면 1페이지로 리셋
+-  React.useEffect(() => {
+-    setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }))
+-  }, [filter, sorting, filters])
+-
+-  // 페이지 수 감소 시 pageIndex 보정
+-  React.useEffect(() => {
+-    const maxIndex = Math.max(table.getPageCount() - 1, 0)
+-    setPagination((prev) => (prev.pageIndex > maxIndex ? { ...prev, pageIndex: maxIndex } : prev))
+-  }, [table, rows.length, filteredRows.length, pagination.pageSize])
+-
+-  /* ──────────────────────────────────────────────────────────────────────────
+-   * 5) 이벤트 핸들러
+-   * ──────────────────────────────────────────────────────────────────────── */
++  usePaginationGuards({
++    filter,
++    sorting,
++    filters,
++    pageCount,
++    setPagination,
++  })
++
++  /* ──────────────────────────────────────────────────────────────────────────
++   * 5) 이벤트 핸들러
++   * ──────────────────────────────────────────────────────────────────────── */
+   function handleRefresh() {
+     void fetchRows()
+   }
+-
+-  /* ──────────────────────────────────────────────────────────────────────────
+-   * 6) 테이블 바디 렌더
+-   *    - 상태별 분기: 로딩 → 에러 → 스키마 없음 → 필터 결과 없음 → 일반 행
+-   *    - TH/TD에 width/min/max를 "px 문자열"로 지정해 colgroup과 일관 동작
+-   * ──────────────────────────────────────────────────────────────────────── */
+-  function renderTableBody() {
+-    if (isLoadingRows && totalLoaded === 0) {
+-      return (
+-        <TableRow>
+-          <TableCell
+-            colSpan={emptyStateColSpan}
+-            className="h-26 text-center text-sm text-muted-foreground"
+-            aria-live="polite"
+-          >
+-            {EMPTY.loading}
+-          </TableCell>
+-        </TableRow>
+-      )
+-    }
+-    if (rowsError) {
+-      return (
+-        <TableRow>
+-          <TableCell
+-            colSpan={emptyStateColSpan}
+-            className="h-26 text-center text-sm text-destructive"
+-            role="alert"
+-          >
+-            {rowsError}
+-          </TableCell>
+-        </TableRow>
+-      )
+-    }
+-    if (hasNoRows) {
+-      return (
+-        <TableRow>
+-          <TableCell
+-            colSpan={emptyStateColSpan}
+-            className="h-26 text-center text-sm text-muted-foreground"
+-            aria-live="polite"
+-          >
+-            {EMPTY.noRows}
+-          </TableCell>
+-        </TableRow>
+-      )
+-    }
+-
+-    const visibleRows = table.getRowModel().rows
+-    if (visibleRows.length === 0) {
+-      return (
+-        <TableRow>
+-          <TableCell
+-            colSpan={emptyStateColSpan}
+-            className="h-26 text-center text-sm text-muted-foreground"
+-            aria-live="polite"
+-          >
+-            {EMPTY.noMatches}
+-          </TableCell>
+-        </TableRow>
+-      )
+-    }
+-
+-    return visibleRows.map((row) => (
+-      <TableRow key={row.id}>
+-        {row.getVisibleCells().map((cell) => {
+-          const isEditable = Boolean(cell.column.columnDef.meta?.isEditable)
+-          const align = resolveCellAlignment(cell.column.columnDef.meta) // "left" | "center" | "right"
+-          const textAlignClass = getTextAlignClass(align)
+-          const width = cell.column.getSize()
+-          const widthPx = `${width}px`
+-          const isProcessFlowCell = cell.column.id === "process_flow"
+-
+-          const raw = cell.getValue()
+-          const content = isNullishDisplay(raw)
+-            ? EMPTY.text
+-            : flexRender(cell.column.columnDef.cell, cell.getContext())
+-          const shouldTruncate = !isProcessFlowCell
+-          const tooltip = shouldTruncate ? formatTooltipValue(raw) : undefined
+-
+-          return (
+-            <TableCell
+-              key={cell.id}
+-              data-editable={isEditable ? "true" : "false"}
+-              style={{ width: widthPx, minWidth: widthPx, maxWidth: widthPx }}
+-              className={cn(
+-                "align-center",
+-                textAlignClass,
+-                !isEditable && "caret-transparent focus:outline-none",
+-                isProcessFlowCell && "cursor-grab select-none active:cursor-grabbing"
+-              )}
+-            >
+-              {/* 내부는 폭 지정 없이 텍스트 오버플로 처리 */}
+-              <div
+-                className={cn(
+-                  "max-w-full",
+-                  shouldTruncate ? "truncate" : "break-words"
+-                )}
+-                title={tooltip}
+-              >
+-                {content}
+-              </div>
+-            </TableCell>
+-          )
+-        })}
+-      </TableRow>
+-    ))
+-  }
+*** End Patch
+[2m2025-11-23T03:11:41.527171Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && sed -n '430,520p' DataTable.jsx | cat -n","timeout_ms":120000}
+[2m2025-11-23T03:11:53.421990Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx
+@@
+           stickyHeader
+         >
+           {/* ✅ 컬럼 전체 폭 동기화: colgroup에 getVisibleLeafColumns() 사이즈를 반영 */}
+           <colgroup>
+-            {table.getVisibleLeafColumns().map((column) => (
+-              <col key={column.id} style={{ width: `${column.getSize()}px` }} />
++            {visibleColumns.map((column) => (
++              <col key={column.id} style={toWidthStyle(column.getSize())} />
+             ))}
+           </colgroup>
+ 
+           <TableHeader>
+             {table.getHeaderGroups().map((headerGroup) => (
+@@
+                   const justifyClass = getJustifyClass(align)
+                   const headerContent = flexRender(header.column.columnDef.header, header.getContext())
+-                  const width = header.getSize()
+-                  const widthPx = `${width}px`
+ 
+                   const ariaSort =
+                     sortDirection === "asc"
+                       ? "ascending"
+                       : sortDirection === "desc"
+@@
+                     <TableHead
+                       key={header.id}
+                       className={cn("relative whitespace-nowrap sticky top-0 z-10 bg-muted")}
+-                      style={{ width: widthPx, minWidth: widthPx, maxWidth: widthPx }}
++                      style={toWidthStyle(header.getSize())}
+                       scope="col"
+                       aria-sort={ariaSort}
+                     >
+@@
+-          <TableBody>{renderTableBody()}</TableBody>
++          <TableBody>
++            <TableBodyRows
++              table={table}
++              emptyStateColSpan={emptyStateColSpan}
++              isInitialLoading={isInitialLoading}
++              rowsError={rowsError}
++              hasNoRows={hasNoRows}
++            />
++          </TableBody>
+         </Table>
+       </TableContainer>
+*** End Patch
+[2m2025-11-23T03:11:58.484879Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && rg \"renderTableBody\" DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:12:01.786220Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table && rg \"lastUpdatedLabel\" DataTable.jsx","timeout_ms":120000}
+[2m2025-11-23T03:12:10.749357Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect existing line-dashboard implementation to identify refactor targets and pain points"},{"status":"completed","step":"Refactor code for clarity/composition and reduce duplication while keeping behaviour"},{"status":"in_progress","step":"Validate changes (reason through behaviour) and summarize modifications"}]}
+[2m2025-11-23T03:12:18.859298Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind && git status --short","timeout_ms":120000}
+[2m2025-11-23T03:12:28.933977Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Inspect existing line-dashboard implementation to identify refactor targets and pain points"},{"status":"completed","step":"Refactor code for clarity/composition and reduce duplication while keeping behaviour"},{"status":"completed","step":"Validate changes (reason through behaviour) and summarize modifications"}]}
+[2m2025-11-23T03:12:55.880505Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:12:56.052042Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:12:56.052082Z[0m [32m INFO[0m ghost commit captured: 10745cb3032cd1f4bfa5ea67b2037aee9829b32a
+[2m2025-11-23T03:12:56.052088Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:13:06.991357Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:13:07.036692Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:13:07.036735Z[0m [32m INFO[0m ghost commit captured: e0f4264f9b621f4f1c69754ecd19e8da1e261a18
+[2m2025-11-23T03:13:07.036741Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:13:37.209648Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:13:37.256765Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:13:37.256819Z[0m [32m INFO[0m ghost commit captured: ad0920abd8de965e14a535f2ba58be50e471a45b
+[2m2025-11-23T03:13:37.256832Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:13:52.643232Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:13:52.688966Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:13:52.689015Z[0m [32m INFO[0m ghost commit captured: 511566c54622d9544c66b454e79f863115a69e7d
+[2m2025-11-23T03:13:52.689028Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:15:59.110229Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:15:59.155153Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:15:59.155226Z[0m [32m INFO[0m ghost commit captured: d1fcc7985990909889ab8898ec21a4413f5eae3e
+[2m2025-11-23T03:15:59.155240Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:16:03.392703Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard && rg \"error\" components/data-table/filters","timeout_ms":120000}
+[2m2025-11-23T03:16:05.375888Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/filters && sed -n '1,220p' quickFilters.js","timeout_ms":120000}
+[2m2025-11-23T03:16:07.921271Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/filters && rg \"error\" quickFilters.js","timeout_ms":120000}
+[2m2025-11-23T03:16:13.404460Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/filters && sed -n '220,420p' quickFilters.js","timeout_ms":120000}
+[2m2025-11-23T03:16:24.446159Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+     normalizeValue: normalizeFlagState,
+     formatValue: (value) => {
+       if (value === "on") return "Y"
+       if (value === "off") return "N"
+-      if (value === "error") return "N"
++      if (value === "error") return "Error"
+       return String(value)
+     },
+     compareOptions: (a, b) => {
+       const order = { on: 0, off: 1, error: 2 }
+       const orderA = order[a.value] ?? 99
+@@
+     normalizeValue: normalizeFlagState,
+     formatValue: (value) => {
+       if (value === "on") return "Y"
+       if (value === "off") return "N"
++      if (value === "error") return "Error"
+       return String(value)
+     },
+     compareOptions: (a, b) => {
+       const order = { on: 0, off: 1, error: 2 }
+       const orderA = order[a.value] ?? 99
+*** End Patch
+[2m2025-11-23T03:17:11.328948Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:17:11.378868Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:17:11.378918Z[0m [32m INFO[0m ghost commit captured: 8aed9cd20397319a8e1e0c147bface4feae98c82
+[2m2025-11-23T03:17:11.378931Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:17:22.506503Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+     label: "예약",
+     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
+     normalizeValue: normalizeFlagState,
+     formatValue: (value) => {
+       if (value === "on") return "Y"
+       if (value === "off") return "N"
+-      if (value === "error") return "Error"
+       return String(value)
+     },
+     compareOptions: (a, b) => {
+-      const order = { on: 0, off: 1, error: 2 }
++      const order = { on: 0, off: 1 }
+       const orderA = order[a.value] ?? 99
+       const orderB = order[b.value] ?? 99
+       if (orderA !== orderB) return orderA - orderB
+       return String(a.value).localeCompare(String(b.value))
+     },
+*** End Patch
+[2m2025-11-23T03:27:34.877821Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T03:27:34.928146Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T03:27:34.928190Z[0m [32m INFO[0m ghost commit captured: 52d70becdf80fa272e8a35258d8510a86f2e6245
+[2m2025-11-23T03:27:34.928204Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T03:27:44.378820Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cd /home/pjw75/tailwind/apps/web/src/features/line-dashboard/components/data-table/utils && sed -n '1,200p' flagState.js","timeout_ms":120000}
+[2m2025-11-23T03:27:54.988899Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+     key: "needtosend",
+     label: "예약",
+     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
+     normalizeValue: normalizeFlagState,
+     formatValue: (value) => {
+-      if (value === "on") return "Y"
+-      if (value === "off") return "N"
+-      return String(value)
++      return value === "on" ? "Y" : "N"
+     },
+     compareOptions: (a, b) => {
+       const order = { on: 0, off: 1 }
+       const orderA = order[a.value] ?? 99
+       const orderB = order[b.value] ?? 99
+*** End Patch
+[2m2025-11-23T04:29:03.051394Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:29:03.104787Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:29:03.104845Z[0m [32m INFO[0m ghost commit captured: d2b6a9d492599f4b3fb026f86ea7199a9f8c7b04
+[2m2025-11-23T04:29:03.104858Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:29:08.327766Z[0m [32m INFO[0m ToolCall: shell_command {"command":"pwd","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:10.859783Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:16.867125Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"dynamicwidth\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:18.901373Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -i \"dynamicwidth\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:22.240278Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/dynamicWidth.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:25.457361Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:29:28.722586Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/column-defs/steps.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:16.467345Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:36:16.514874Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:36:16.514935Z[0m [32m INFO[0m ghost commit captured: 09c380c85e6089c9edc158beacdc4b7bef653aad
+[2m2025-11-23T04:36:16.514962Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:36:21.275554Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:24.774108Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_MIN_WIDTH\" -n apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:26.557861Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/textWidth.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:28.952813Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:33.787893Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"minSize\" apps/web/src/features/line-dashboard/components/data-table -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:40.203790Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"PROCESS_FLOW\" apps/web/src/features/line-dashboard/components/data-table -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:42.033811Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:47.627530Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"computeAutoTextWidthFromRows\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:55.961455Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_MAX_WIDTH\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:36:59.851935Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_TEXT_WIDTH\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:37:08.433943Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"createColumnDefs\" -n apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:37:12.277214Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:37:15.946040Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"toWidthStyle\" -n apps/web/src/features/line-dashboard/components/data-table/DataTable.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:37:32.151158Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js
+@@
+-// 테이블 컬럼 폭을 계산할 때 반복해서 쓰는 숫자 상수들입니다.
+-export const DEFAULT_MIN_WIDTH = 72
+-export const DEFAULT_MAX_WIDTH = 480
++// 테이블 컬럼 폭을 계산할 때 반복해서 쓰는 숫자 상수들입니다.
++export const DEFAULT_MIN_WIDTH = 50
+ export const DEFAULT_TEXT_WIDTH = 140
+ export const DEFAULT_NUMBER_WIDTH = 110
+ export const DEFAULT_ID_WIDTH = 130
+ export const DEFAULT_DATE_WIDTH = 100
+ export const DEFAULT_BOOL_ICON_WIDTH = 70
+*** End Patch
+[2m2025-11-23T04:37:45.360747Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/line-dashboard/components/data-table/column-defs/width.js
++// src/features/line-dashboard/components/data-table/column-defs/width.js
++import { DEFAULT_MIN_WIDTH, DEFAULT_TEXT_WIDTH } from "./constants"
++
++// config.width 값을 기반으로 컬럼 폭을 계산합니다.
++export function resolveColumnSize(colKey, config) {
++  const configuredWidth = Number(config.width?.[colKey])
++  const size =
++    Number.isFinite(configuredWidth) && configuredWidth > 0
++      ? configuredWidth
++      : DEFAULT_TEXT_WIDTH
++
++  return { size, minSize: DEFAULT_MIN_WIDTH, maxSize: Number.MAX_SAFE_INTEGER }
++}
+*** End Patch
+[2m2025-11-23T04:37:49.599626Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs.js
+@@
+-import { resolveColumnSizes } from "./column-defs/dynamicWidth"
+ import {
+   makeStepFlowColumn,
+   pickStepColumnsWithIndex,
+   shouldCombineSteps,
+ } from "./column-defs/steps"
++import { resolveColumnSize } from "./column-defs/width"
+@@
+-  const { size, minSize, maxSize } = resolveColumnSizes(colKey, config)
++  const { size, minSize, maxSize } = resolveColumnSize(colKey, config)
+@@
+     sortingFn,
+     size,
+     minSize,
+     maxSize,
+   }
+*** End Patch
+[2m2025-11-23T04:37:53.488025Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/steps.js
+@@
+ import { STEP_COLUMN_KEY_SET } from "../utils/constants"
+ import { renderMetroStepFlow } from "../utils/formatters.jsx"
+ import { resolveAlignment } from "./alignment"
+-import { resolveColumnSizes } from "./dynamicWidth"
++import { resolveColumnSize } from "./width"
+@@
+   const sample = getSampleValueForColumns(firstRow, stepCols)
+   const alignment = resolveAlignment("process_flow", config, sample)
+-  const { size, minSize, maxSize } = resolveColumnSizes("process_flow", config)
++  const { size, minSize, maxSize } = resolveColumnSize("process_flow", config)
+*** End Patch
+[2m2025-11-23T04:37:54.164032Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Delete File: apps/web/src/features/line-dashboard/components/data-table/column-defs/dynamicWidth.js
+*** End Patch
+[2m2025-11-23T04:38:01.333363Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"dynamicWidth\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:39:52.325459Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:39:52.420581Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:39:52.420622Z[0m [32m INFO[0m ghost commit captured: 1a24ae22c9c8b71401c45a84a0bc1407305b5a3e
+[2m2025-11-23T04:39:52.420628Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:39:55.701083Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_MAX_WIDTH|DEFAULT_TEXT_WIDTH|DEFAULT_NUMBER_WIDTH|DEFAULT_ID_WIDTH|DEFAULT_DATE_WIDTH|DEFAULT_BOOL_ICON_WIDTH|DEFAULT_PROCESS_FLOW_WIDTH|PROCESS_FLOW_MIN_WIDTH|PROCESS_FLOW_MAX_WIDTH\" apps/web/src/features/line-dashboard/components/data-table/column-defs -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:39:59.593481Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_NUMBER_WIDTH|DEFAULT_ID_WIDTH|DEFAULT_DATE_WIDTH|DEFAULT_BOOL_ICON_WIDTH|DEFAULT_PROCESS_FLOW_WIDTH|PROCESS_FLOW_MIN_WIDTH|PROCESS_FLOW_MAX_WIDTH\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:10.841098Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js
+@@
+ // 테이블 컬럼 폭을 계산할 때 반복해서 쓰는 숫자 상수들입니다.
+ export const DEFAULT_MIN_WIDTH = 50
+ export const DEFAULT_TEXT_WIDTH = 140
+-export const DEFAULT_NUMBER_WIDTH = 110
+-export const DEFAULT_ID_WIDTH = 130
+-export const DEFAULT_DATE_WIDTH = 100
+-export const DEFAULT_BOOL_ICON_WIDTH = 70
+-export const DEFAULT_PROCESS_FLOW_WIDTH = 360
+ 
+ // 프로세스 플로우 컬럼의 자동 폭 추정에 필요한 기준 값들입니다.
+ export const PROCESS_FLOW_NODE_BLOCK_WIDTH = 50
+ export const PROCESS_FLOW_ARROW_GAP_WIDTH = 14
+ export const PROCESS_FLOW_CELL_SIDE_PADDING = 24
+*** End Patch
+[2m2025-11-23T04:40:13.205246Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:23.320222Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js
+@@
+ // src/features/line-dashboard/components/data-table/column-defs/constants.js
+ // 테이블 컬럼 폭을 계산할 때 반복해서 쓰는 숫자 상수들입니다.
+-export const DEFAULT_MIN_WIDTH = 40
+-export const DEFAULT_TEXT_WIDTH = 140
+-export const DEFAULT_NUMBER_WIDTH = 110
+-export const DEFAULT_ID_WIDTH = 130
+-export const DEFAULT_DATE_WIDTH = 100
+-export const DEFAULT_BOOL_ICON_WIDTH = 70
+-export const DEFAULT_PROCESS_FLOW_WIDTH = 360
++export const DEFAULT_MIN_WIDTH = 50
++export const DEFAULT_TEXT_WIDTH = 140
+ 
+ // 프로세스 플로우 컬럼의 자동 폭 추정에 필요한 기준 값들입니다.
+ export const PROCESS_FLOW_NODE_BLOCK_WIDTH = 50
+ export const PROCESS_FLOW_ARROW_GAP_WIDTH = 14
+*** End Patch
+[2m2025-11-23T04:40:25.945236Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:32.443049Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:40:32.492045Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:40:32.492089Z[0m [32m INFO[0m ghost commit captured: 4a841f12aaa203c7a8b2678e1268e29367ddafe7
+[2m2025-11-23T04:40:32.492100Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:40:36.993172Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"computeProcessFlowWidthFromRows\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:39.146082Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"estimateProcessFlowWidthByTotal\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:44.742556Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"PROCESS_FLOW_MIN_WIDTH|PROCESS_FLOW_MAX_WIDTH\" apps/web/src/features/line-dashboard/components/data-table -g'*'","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:49.147105Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"processFlow\" apps/web/src/features/line-dashboard/components/data-table/column-defs -g'*.js'","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:52.674763Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"processFlow\" apps/web/src/features/line-dashboard/components/data-table -g'*.jsx'","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:40:55.561313Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/renderers.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:41:12.191001Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js
+@@
+-import {
+-  PROCESS_FLOW_ARROW_GAP_WIDTH,
+-  PROCESS_FLOW_CELL_SIDE_PADDING,
+-  PROCESS_FLOW_MAX_WIDTH,
+-  PROCESS_FLOW_MIN_WIDTH,
+-  PROCESS_FLOW_NODE_BLOCK_WIDTH,
+-} from "./constants"
+ import { normalizeStatus } from "./normalizers"
+ import { normalizeStepValue, parseMetroSteps } from "../utils/formatters.jsx"
+@@
+ export function computeMetroProgress(rowOriginal, normalizedStatus) {
+   const mainStep = normalizeStepValue(rowOriginal?.main_step)
+   const metroSteps = parseMetroSteps(rowOriginal?.metro_steps)
+@@
+   if (normalizedStatus === "COMPLETE") completed = total
+   return { completed: Math.max(0, Math.min(completed, total)), total }
+ }
+-
+-// 스텝 개수를 기준으로 프로세스 플로우 컬럼의 폭을 추정합니다.
+-export function estimateProcessFlowWidthByTotal(total) {
+-  if (!Number.isFinite(total) || total <= 0) return PROCESS_FLOW_MIN_WIDTH
+-  const arrowCount = Math.max(0, total - 1)
+-  const width =
+-    PROCESS_FLOW_CELL_SIDE_PADDING +
+-    total * PROCESS_FLOW_NODE_BLOCK_WIDTH +
+-    arrowCount * PROCESS_FLOW_ARROW_GAP_WIDTH
+-
+-  return Math.max(PROCESS_FLOW_MIN_WIDTH, Math.min(width, PROCESS_FLOW_MAX_WIDTH))
+-}
+-
+-// 모든 행을 훑어 가장 큰 스텝 수를 찾아 폭 힌트를 계산합니다.
+-export function computeProcessFlowWidthFromRows(rows) {
+-  if (!Array.isArray(rows) || rows.length === 0) return null
+-  let maxTotal = 0
+-
+-  for (const row of rows) {
+-    const status = normalizeStatus(row?.status)
+-    const { total } = computeMetroProgress(row, status)
+-    if (Number.isFinite(total) && total > maxTotal) maxTotal = total
+-  }
+-
+-  if (maxTotal <= 0) return null
+-  return estimateProcessFlowWidthByTotal(maxTotal)
+-}
+*** End Patch
+[2m2025-11-23T04:41:17.877696Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/column-defs/constants.js
+@@
+ 
+-// 프로세스 플로우 컬럼의 자동 폭 추정에 필요한 기준 값들입니다.
+-export const PROCESS_FLOW_NODE_BLOCK_WIDTH = 50
+-export const PROCESS_FLOW_ARROW_GAP_WIDTH = 14
+-export const PROCESS_FLOW_CELL_SIDE_PADDING = 24
+-export const PROCESS_FLOW_MIN_WIDTH = Math.max(DEFAULT_MIN_WIDTH, 220)
+-export const PROCESS_FLOW_MAX_WIDTH = 1200
+-
+*** End Patch
+[2m2025-11-23T04:41:20.184423Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"PROCESS_FLOW_NODE_BLOCK_WIDTH|PROCESS_FLOW_ARROW_GAP_WIDTH|PROCESS_FLOW_CELL_SIDE_PADDING|PROCESS_FLOW_MIN_WIDTH|PROCESS_FLOW_MAX_WIDTH\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:41:22.071783Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"estimateProcessFlowWidthByTotal|computeProcessFlowWidthFromRows\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:41:54.832220Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:41:54.876533Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:41:54.876575Z[0m [32m INFO[0m ghost commit captured: b8fddece1262e2cdf73c19265b406b85bb1c7ab1
+[2m2025-11-23T04:41:54.876588Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:41:56.976885Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"textWidth\" apps/web/src/features/line-dashboard -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:42:00.291280Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Delete File: apps/web/src/features/line-dashboard/components/data-table/column-defs/textWidth.js
+*** End Patch
+[2m2025-11-23T04:42:29.940127Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-23T04:42:29.986030Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-23T04:42:29.986073Z[0m [32m INFO[0m ghost commit captured: fd6d7f1126250ec78d94c565cfaab69571e40276
+[2m2025-11-23T04:42:29.986079Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-23T04:42:33.026440Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"column-defs/textWidth|computeAutoTextWidthFromRows\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:42:35.694008Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"DEFAULT_TEXT_WIDTH|DEFAULT_MIN_WIDTH\" apps/web/src/features/line-dashboard/components/data-table -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:42:42.608171Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg --files apps/web/src/features/line-dashboard/components/data-table/column-defs","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-23T04:42:45.459508Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/processFlow.js","workdir":"/home/pjw75/tailwind"}

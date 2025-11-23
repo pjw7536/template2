@@ -20,6 +20,7 @@ const DROPDOWN_SECTION_KEYS = new Set([
   "user_sdwt_prod",
   "main_step",
 ])
+const CHECKBOX_SECTION_KEYS = new Set(["my_sop"])
 const FIELDSET_CLASS = "flex flex-col rounded-xl p-1 px-3"
 
 const isNil = (value) => value === null || value === undefined
@@ -66,6 +67,18 @@ export function QuickFilters({
           section={section}
           legendId={legendId}
           current={current}
+          onToggle={onToggle}
+        />
+      )
+    }
+
+    if (CHECKBOX_SECTION_KEYS.has(section.key)) {
+      return (
+        <CheckboxQuickFilterSection
+          key={section.key}
+          section={section}
+          legendId={legendId}
+          checked={Boolean(current)}
           onToggle={onToggle}
         />
       )
@@ -177,6 +190,43 @@ function getSelectedValues(isMulti, current) {
     return Array.isArray(current) ? current : []
   }
   return isNil(current) ? [] : [current]
+}
+
+function CheckboxQuickFilterSection({ section, legendId, checked, onToggle }) {
+  const inputId = `${section.key}-checkbox`
+
+  return (
+    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
+      <legend
+        id={legendId}
+        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        {section.label}
+      </legend>
+
+      <label
+        htmlFor={inputId}
+        className="flex h-8 items-center gap-2 text-xs font-medium text-foreground"
+      >
+        <input
+          id={inputId}
+          type="checkbox"
+          className="h-4 w-4 accent-primary"
+          checked={checked}
+          onChange={(event) =>
+            onToggle(section.key, event.target.checked ? true : null, { forceValue: true })
+          }
+        />
+        <div className="flex flex-col items-center justify-center leading-tight">
+          {section.userId ? (
+            <div className="text-[11px] font-normal text-muted-foreground">
+              {section.userId}
+            </div>
+          ) : null}
+        </div>
+      </label>
+    </fieldset>
+  )
 }
 
 function DropdownQuickFilterSection({ section, legendId, current, onToggle }) {

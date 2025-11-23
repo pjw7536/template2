@@ -35,6 +35,21 @@ function normalizeFlagState(value) {
   return state
 }
 
+function normalizeEmailId(value) {
+  if (value == null) return ""
+  const trimmed = String(value).trim()
+  if (!trimmed) return ""
+  const lowered = trimmed.toLowerCase()
+  const atIndex = lowered.indexOf("@")
+  if (atIndex === -1) return lowered
+  return lowered.slice(0, atIndex)
+}
+
+function deriveUserIdFromEmail(email) {
+  const normalized = normalizeEmailId(email)
+  return normalized || null
+}
+
 function toTimestamp(value) {
   if (value == null) return null
 
@@ -159,6 +174,32 @@ const QUICK_FILTER_DEFINITIONS = [
       }
     },
   },
+
+  {
+    key: "my_sop",
+    label: "MySop",
+    buildSection: ({ columns, options }) => {
+      const columnKey = findMatchingColumn(columns, "knoxid")
+      const userId = deriveUserIdFromEmail(options?.currentUserEmail)
+      if (!columnKey || !userId) return null
+
+      const normalizedUserId = userId.toLowerCase()
+      const getValue = (row) => row?.[columnKey] ?? null
+
+      return {
+        options: [],
+        getValue,
+        allowCustomValue: true,
+        userId: normalizedUserId,
+        matchRow: (row, current) => {
+          if (!current) return true
+          const normalizedKnoxid = normalizeEmailId(getValue(row))
+          if (!normalizedKnoxid) return false
+          return normalizedKnoxid.toLowerCase() === normalizedUserId
+        },
+      }
+    },
+  },
   {
     key: "status",
     label: "Status",
@@ -186,13 +227,10 @@ const QUICK_FILTER_DEFINITIONS = [
     resolveColumn: (columns) => findMatchingColumn(columns, "needtosend"),
     normalizeValue: normalizeFlagState,
     formatValue: (value) => {
-      if (value === "on") return "Y"
-      if (value === "off") return "N"
-      if (value === "error") return "N"
-      return String(value)
+      return value === "on" ? "Y" : "N"
     },
     compareOptions: (a, b) => {
-      const order = { on: 0, off: 1, error: 2 }
+      const order = { on: 0, off: 1 }
       const orderA = order[a.value] ?? 99
       const orderB = order[b.value] ?? 99
       if (orderA !== orderB) return orderA - orderB
@@ -207,6 +245,7 @@ const QUICK_FILTER_DEFINITIONS = [
     formatValue: (value) => {
       if (value === "on") return "Y"
       if (value === "off") return "N"
+      if (value === "error") return "Error"
       return String(value)
     },
     compareOptions: (a, b) => {
@@ -289,10 +328,10 @@ export function createInitialQuickFilters() {
 }
 
 // 컬럼/행 데이터를 기반으로 퀵 필터 섹션 목록을 생성합니다.
-export function createQuickFilterSections(columns, rows) {
+export function createQuickFilterSections(columns, rows, options = {}) {
   return QUICK_FILTER_DEFINITIONS.map((definition) => {
     if (typeof definition.buildSection === "function") {
-      const section = definition.buildSection({ columns, rows })
+      const section = definition.buildSection({ columns, rows, options })
       if (!section) return null
       const { allowCustomValue = false, ...restSection } = section
       return {
@@ -319,9 +358,12 @@ export function createQuickFilterSections(columns, rows) {
 
     if (valueMap.size === 0) return null
 
-    const options = Array.from(valueMap.entries()).map(([value, label]) => ({ value, label }))
+    const sectionOptions = Array.from(valueMap.entries()).map(([value, label]) => ({
+      value,
+      label,
+    }))
     if (typeof definition.compareOptions === "function") {
-      options.sort((a, b) => definition.compareOptions(a, b))
+      sectionOptions.sort((a, b) => definition.compareOptions(a, b))
     }
 
     const isMulti = MULTI_SELECT_KEYS.has(definition.key)
@@ -330,7 +372,7 @@ export function createQuickFilterSections(columns, rows) {
     return {
       key: definition.key,
       label: definition.label,
-      options,
+      options: sectionOptions,
       getValue,
       isMulti,
       allowCustomValue: false,

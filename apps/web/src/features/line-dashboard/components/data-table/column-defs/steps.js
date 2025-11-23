@@ -3,7 +3,7 @@
 import { STEP_COLUMN_KEY_SET } from "../utils/constants"
 import { renderMetroStepFlow } from "../utils/formatters.jsx"
 import { resolveAlignment } from "./alignment"
-import { resolveColumnSizes } from "./dynamicWidth"
+import { resolveColumnSize } from "./width"
 
 // 원본 컬럼 배열에서 스텝 관련 키와 인덱스를 추출합니다.
 export function pickStepColumnsWithIndex(columns) {
@@ -33,7 +33,7 @@ function getSampleValueForColumns(row, columns) {
 export function makeStepFlowColumn(stepCols, label, config, firstRow) {
   const sample = getSampleValueForColumns(firstRow, stepCols)
   const alignment = resolveAlignment("process_flow", config, sample)
-  const { size, minSize, maxSize } = resolveColumnSizes("process_flow", config)
+  const { size, minSize, maxSize } = resolveColumnSize("process_flow", config)
 
   return {
     id: "process_flow",

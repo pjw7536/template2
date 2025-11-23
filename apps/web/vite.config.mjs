@@ -12,5 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // 외부 접속 호스트 화이트리스트
+    allowedHosts: ["plane.samsungds.net"],
   },
 })
