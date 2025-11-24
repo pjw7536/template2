@@ -103,6 +103,9 @@ INSTALLED_APPS = [
     "api",
 ]
 
+# 커스텀 사용자 모델 (api.User)
+AUTH_USER_MODEL = "api.User"
+
 
 # Django Sites 프레임워크 기본 사이트 ID
 SITE_ID = env_int("DJANGO_SITE_ID", 1) or 1

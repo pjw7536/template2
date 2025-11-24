@@ -32,13 +32,14 @@ import {
  * 유틸: 사용자 표기 처리
  * ---------------------------------------------------------------------------*/
 
-/** 이름에서 이니셜(머리글자) 추출: 'Jane Doe' -> 'JD', 'LINE-01' -> 'L1' 등 */
-function getInitials(name) {
+/** 이름에서 머리글자 한 글자 추출: 'Jane Doe' -> 'J', 'LINE-01' -> 'L' 등 */
+function getInitial(name) {
   if (!name) return "?" // 이름이 비어있을 때 안전 폴백
-  const parts = String(name).trim().split(/[\s-_]+/).filter(Boolean)
-  if (parts.length === 0) return name.slice(0, 2).toUpperCase()
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+  const trimmed = String(name).trim()
+  if (!trimmed) return "?"
+  const parts = trimmed.split(/[\s-_]+/).filter(Boolean)
+  const firstChunk = parts[0] || trimmed
+  return firstChunk[0]?.toUpperCase() || "?"
 }
 
 /** 다양한 형태의 user 입력을 화면 렌더에 필요한 구조로 정규화 */
@@ -71,10 +72,10 @@ function normalizeUser(u) {
  */
 export function NavUser({
   user,
-  onUpgrade = () => {},
-  onAccount = () => {},
-  onBilling = () => {},
-  onNotifications = () => {},
+  onUpgrade = () => { },
+  onAccount = () => { },
+  onBilling = () => { },
+  onNotifications = () => { },
   onLogout,
 }) {
   const { isMobile } = useSidebar()
@@ -88,7 +89,7 @@ export function NavUser({
     }
 
     logout()
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         navigate("/login")
       })
@@ -106,7 +107,7 @@ export function NavUser({
   if (!normalized) return null
 
   const { name, email, avatar } = normalized
-  const initials = getInitials(name || email || "U") // 이름 없으면 이메일에서라도 생성
+  const initial = getInitial(name || email || "U") // 이름 없으면 이메일에서라도 생성
 
   return (
     <SidebarMenu>
@@ -122,7 +123,7 @@ export function NavUser({
               <Avatar className="h-8 w-8 rounded-lg">
                 {/* 아바타 이미지 로딩 실패 시 AvatarFallback이 자동으로 노출 */}
                 <AvatarImage src={avatar} alt={name || email || "User avatar"} />
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                <AvatarFallback className="rounded-lg">{initial}</AvatarFallback>
               </Avatar>
 
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -147,7 +148,7 @@ export function NavUser({
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={avatar} alt={name || email || "User avatar"} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">{initial}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   {name ? <span className="truncate font-medium">{name}</span> : null}
@@ -176,7 +177,7 @@ export function NavUser({
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onBilling}>
                 <CreditCard className="mr-2 size-4" aria-hidden="true" />
-                Billing
+                Settings
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onNotifications}>
                 <Bell className="mr-2 size-4" aria-hidden="true" />

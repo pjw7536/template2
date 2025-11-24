@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { MoonIcon, SunIcon } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import { useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 

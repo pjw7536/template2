@@ -79,7 +79,7 @@ export function StatusDistributionCard({ data, config, total }) {
           </ResponsiveContainer>
         </ChartContainer>
       ) : (
-        <div className="flex h-[150px] w-[150px] items-center justify-center text-xs text-muted-foreground">
+        <div className="flex h-[130px] w-[150px] items-center justify-center text-xs text-muted-foreground">
           현재 필터된 행이 없습니다.
         </div>
       )}

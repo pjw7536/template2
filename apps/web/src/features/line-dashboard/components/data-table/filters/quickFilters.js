@@ -20,6 +20,12 @@ const DEFAULT_FILTER_VALUES = {
   recent_hours: () => createRecentHoursRange(),
 }
 
+function isDefaultRecentHours(value) {
+  const normalized = normalizeRecentHoursRange(value)
+  const defaults = createRecentHoursRange()
+  return normalized.start === defaults.start && normalized.end === defaults.end
+}
+
 function findMatchingColumn(columns, target) {
   if (!Array.isArray(columns)) return null
   const targetLower = target.toLowerCase()
@@ -473,6 +479,9 @@ export function applyQuickFilters(rows, sections, filters) {
 // 현재 활성화되어 있는 필터 개수를 센 뒤 배지에 표시합니다.
 export function countActiveQuickFilters(filters) {
   return Object.entries(filters).reduce((sum, [key, value]) => {
+    if (key === "recent_hours") {
+      return sum + (value !== null && !isDefaultRecentHours(value) ? 1 : 0)
+    }
     if (MULTI_SELECT_KEYS.has(key)) {
       return sum + (Array.isArray(value) ? value.length : 0)
     }

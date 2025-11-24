@@ -239,6 +239,10 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "name": user.first_name or user.get_username(),
         "email": user.email,
         "roles": [],  # 필요 시 롤/권한 매핑
+        "department": getattr(user, "department", None),
+        "line": getattr(user, "line", None),
+        "sdwt": getattr(user, "sdwt", None),
+        "sabun": getattr(user, "sabun", None),
     }
     return JsonResponse(payload)
 

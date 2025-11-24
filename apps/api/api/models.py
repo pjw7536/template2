@@ -1,8 +1,22 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+
+
+class User(AbstractUser):
+    department = models.CharField(max_length=128, null=True, blank=True)
+    line = models.CharField(max_length=64, null=True, blank=True)
+    sdwt = models.CharField(max_length=64, null=True, blank=True)
+    sabun = models.CharField(max_length=64, null=True, blank=True)
+
+    class Meta:
+        db_table = "api_user"
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return self.get_username()
 
 
 class UserProfile(models.Model):
@@ -81,6 +95,10 @@ class DroneSOPV3(models.Model):
         indexes = [
             models.Index(fields=["send_jira", "needtosend"], name="send_jira_needtosend"),
             models.Index(fields=["sdwt_prod"], name="sdwt_prod"),
+            models.Index(fields=["created_at", "id"], name="drone_sop_v3_created_at_id"),
+            models.Index(fields=["user_sdwt_prod", "created_at", "id"], name="dsopv3_usr_sdwt_created_id"),
+            models.Index(fields=["send_jira"], name="drone_sop_v3_send_jira"),
+            models.Index(fields=["knoxid"], name="drone_sop_v3_knoxid"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - helpful for admin/debugging
@@ -113,6 +131,9 @@ class LineSDWT(models.Model):
 
     class Meta:
         db_table = "line_sdwt"
+        indexes = [
+            models.Index(fields=["line_id", "user_sdwt_prod"], name="line_sdwt_line_user_sdwt"),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
         return f"{self.line_id or 'Unknown'} -> {self.user_sdwt_prod or 'N/A'}"

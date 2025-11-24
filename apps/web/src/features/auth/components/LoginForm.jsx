@@ -6,7 +6,7 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import {
   Card,
   CardContent,

@@ -13,7 +13,7 @@ import { AlertCircleIcon, BadgeCheckIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import { Input } from "@/components/ui/input"
 import { buildBackendUrl } from "@/lib/api"
 import {
@@ -610,15 +610,15 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
   )
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
+    <section className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-lg font-semibold">
             <IconSettings className="size-5" />
             {lineId ? `${lineId} ${LABELS.titleSuffix}` : LABELS.titleSuffix}
-            <span className="ml-2 text-[10px] font-normal text-muted-foreground" aria-live="polite">
+            <div className="ml-2 self-end text-[10px] font-normal text-muted-foreground" aria-live="polite">
               {LABELS.updated} {lastUpdatedLabel}
-            </span>
+            </div>
           </div>
         </div>
 
@@ -647,22 +647,22 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         </div>
       )}
 
-      <div className="rounded-lg border bg-background p-4 shadow-sm">
+      <div className="rounded-lg border bg-background px-4 py-2 shadow-sm">
 
         <div className="flex flex-col gap-1 pb-4">
-          <h2 className="text-sm font-medium">{LABELS.addTitle}</h2>
+          <h2 className="text-md font-medium">{LABELS.addTitle}</h2>
           <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
         </div>
 
         {formError ? (
-          <p className="pt-2 text-xs text-destructive" role="alert">
+          <p className="text-xs text-destructive" role="alert">
             {formError}
           </p>) :
-          (<p className="pt-2 text-xs">&nbsp;</p>)
+          (<p className="text-xs">&nbsp;</p>)
 
         }
 
-        <div className="flex justify-between items-end flex-wrap">
+        <div className="flex justify-between items-end flex-wrap mb-2">
           <form className="flex flex-row items-center gap-3 flex-wrap" onSubmit={handleCreate}>
             <div className="w-80 space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">

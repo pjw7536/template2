@@ -19,8 +19,10 @@ DATE_COLUMN_CANDIDATES = [
 DEFAULT_TABLE = "drone_sop_v3"
 LINE_SDWT_TABLE_NAME = "line_sdwt"
 DIMENSION_CANDIDATES = [
-    "sdwt",
-    "user_sdwt",
+    "sdwt_prod",
+    "proc_id",
+    "ppid",
+    "user_sdwt_prod",
     "eqp_id",
     "main_step",
     "sample_type",
