@@ -1,5 +1,4 @@
 // src/features/line-dashboard/components/data-table/column-defs/processFlow.js
-import { normalizeStatus } from "./normalizers"
 import { normalizeStepValue, parseMetroSteps } from "../utils/formatters.jsx"
 
 // 한 행의 프로세스 플로우에서 완료된 단계 수를 계산합니다.

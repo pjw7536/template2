@@ -24,9 +24,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { buildBackendUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { timeFormatter } from "../components/data-table/utils/constants"
+import { useLineHistoryData } from "./useLineHistoryData"
 
 const DIMENSION_OPTIONS = [
   { value: "sdwt_prod", label: "SDWT Prod" },
@@ -249,13 +249,6 @@ function buildTotals(records) {
   return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
 }
 
-function hasPositiveValue(records, key) {
-  return (
-    Array.isArray(records) &&
-    records.some((record) => (Number(record?.[key] ?? 0) || 0) > 0)
-  )
-}
-
 function resolveDimensionRecords(breakdownsByDimension, dimensionKey) {
   if (!breakdownsByDimension || typeof breakdownsByDimension !== "object") {
     return { key: dimensionKey, records: [] }
@@ -309,86 +302,15 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   const [hiddenRowSeries, setHiddenRowSeries] = React.useState([])
   const [hiddenJiraSeries, setHiddenJiraSeries] = React.useState([])
 
-  const [refreshToken, setRefreshToken] = React.useState(0)
-
-  const [state, setState] = React.useState({
-    data: null,
-    isLoading: false,
-    error: null,
-  })
-
-  // lineId가 바뀌면 로딩 상태 초기화
-  React.useEffect(() => {
-    setState({ data: null, isLoading: true, error: null })
-  }, [lineId])
-
-  const rangeDays = React.useMemo(() => {
-    const { from, to } = dateRange ?? {}
-    if (!from || !to) return null
-    const start = new Date(from)
-    const end = new Date(to)
-    const diff = Math.max(
-      1,
-      Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1
-    )
-    return diff
-  }, [dateRange])
-
-  // 데이터 로딩
-  React.useEffect(() => {
-    const controller = new AbortController()
-
-    async function load() {
-      if (!lineId || !dateRange?.from || !dateRange?.to || !rangeDays) {
-        setState((prev) => ({ ...prev, isLoading: false }))
-        return
-      }
-
-      setState((previous) => ({ ...previous, isLoading: true, error: null }))
-
-      try {
-        const params = new URLSearchParams({ lineId: String(lineId) })
-        params.set("rangeDays", String(rangeDays))
-        params.set("from", dateRange.from.toISOString().slice(0, 10))
-        params.set("to", dateRange.to.toISOString().slice(0, 10))
-
-        const endpoint = buildBackendUrl("/line-dashboard/history", params)
-        const response = await fetch(endpoint, {
-          signal: controller.signal,
-          credentials: "include",
-        })
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const message =
-            typeof payload?.error === "string"
-              ? payload.error
-              : "Failed to load history data"
-          throw new Error(message)
-        }
-
-        const payload = await response.json()
-        setState({ data: payload, isLoading: false, error: null })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        const message =
-          error instanceof Error ? error.message : "Failed to load history data"
-        setState({ data: null, isLoading: false, error: message })
-      }
-    }
-
-    load()
-
-    return () => controller.abort()
-  }, [lineId, dateRange, rangeDays, refreshToken])
-
-  const { data, isLoading, error } = state
-
-  const totalsData = React.useMemo(() => data?.totals ?? [], [data])
-  const breakdownRecordsByDimension = React.useMemo(
-    () => data?.breakdowns ?? {},
-    [data]
-  )
+  const {
+    data,
+    isLoading,
+    error,
+    totalsData,
+    breakdownRecordsByDimension,
+    hasSendJiraData,
+    refresh,
+  } = useLineHistoryData({ lineId, dateRange })
 
   // 차원별 레코드/토탈 계산
   const dimensionRecords = React.useMemo(() => {
@@ -451,16 +373,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       setActiveDimension(null)
     }
   }, [activeDimension, dimensionRecords])
-
-  // Send Jira 데이터 존재 여부
-  const hasSendJiraData = React.useMemo(
-    () =>
-      hasPositiveValue(totalsData, "sendJiraCount") ||
-      Object.values(breakdownRecordsByDimension).some((records) =>
-        hasPositiveValue(records, "sendJiraCount")
-      ),
-    [totalsData, breakdownRecordsByDimension]
-  )
 
   const activeDimensionLabel = activeDimension
     ? DIMENSION_LABELS[activeDimension] ?? activeDimension
@@ -567,8 +479,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   }, [jiraBreakdownSeries.seriesKeys])
 
   const handleRefresh = React.useCallback(() => {
-    setRefreshToken((value) => value + 1)
-  }, [])
+    if (!lineId) return
+    refresh()
+  }, [lineId, refresh])
 
   // 지표 표시 토글 (차트 on/off)
   const handleMetricVisibilityToggle = React.useCallback((metricKey, enabled) => {
