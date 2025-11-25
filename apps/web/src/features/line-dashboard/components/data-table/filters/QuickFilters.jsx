@@ -17,6 +17,7 @@ import {
 const DROPDOWN_SECTION_KEYS = new Set([
   "sdwt_prod",
   "sample_type",
+  "sample_group",
   "user_sdwt_prod",
   "main_step",
 ])

@@ -1,5 +1,5 @@
 // src/lib/config/navigation-config.js
-import { BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
+import { AppWindow, BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
 
 /**
  * 내비게이션 기본 구성.
@@ -43,6 +43,11 @@ export const NAVIGATION_CONFIG = Object.freeze({
       ],
     },
 
+    {
+      title: "Appstore",
+      url: "/appstore",
+      icon: AppWindow,
+    },
     {
       title: "Models",
       url: "/models",

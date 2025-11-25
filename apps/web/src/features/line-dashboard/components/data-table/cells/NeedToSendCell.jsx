@@ -136,6 +136,7 @@ export function NeedToSendCell({
             : isChecked
               ? "bg-primary border-primary text-primary-foreground"
               : "border-border hover:border-primary hover:text-primary",
+          !disabled && !isSaving && "cursor-pointer",
           (disabled || isSaving) && "cursor-not-allowed opacity-60"
         )}
       >

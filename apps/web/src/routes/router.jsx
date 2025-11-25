@@ -13,6 +13,7 @@ import {
   LineDashboardSettingsPage,
   LineDashboardStatusPage,
 } from "@/features/line-dashboard"
+import { AppstorePage } from "@/features/appstore"
 import { ModelsPage } from "@/features/models"
 
 export const router = createBrowserRouter([
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
     element: <ProtectedAppLayout />, 
     children: [
       { index: true, element: <HomePage /> },
+      { path: "appstore", element: <AppstorePage /> },
       { path: "models", element: <ModelsPage /> },
       { path: ":lineId/ESOP_Dashboard", element: <LineDashboardLandingPage /> },
       { path: ":lineId/ESOP_Dashboard/status", element: <LineDashboardStatusPage /> },

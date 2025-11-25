@@ -312,6 +312,18 @@ const QUICK_FILTER_DEFINITIONS = [
     formatValue: (value) => value,
     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
   },
+  {
+    key: "sample_group",
+    label: "Sample Group",
+    resolveColumn: (columns) => findMatchingColumn(columns, "sample_group"),
+    normalizeValue: (value) => {
+      if (value == null) return null
+      const trimmed = String(value).trim()
+      return trimmed.length > 0 ? trimmed : null
+    },
+    formatValue: (value) => value,
+    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+  },
 
 
 ]

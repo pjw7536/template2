@@ -1,6 +1,6 @@
 // src/features/airflow/api/get-airflow-dag-overview.js
 const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
-const DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
+const DEFAULT_PUBLIC_BASE_URL = "http://localhost/airflow"
 
 function readEnvValue(...keys) {
   for (const key of keys) {

@@ -16721,3 +16721,761 @@
 [2m2025-11-25T01:43:44.951709Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/dist","workdir":"/home/pjw75/tailwind"}
 [2m2025-11-25T01:43:47.387530Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rm -rf apps/web/dist","workdir":"/home/pjw75/tailwind"}
 [2m2025-11-25T01:43:54.352812Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git status --short","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:22:01.856431Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T03:24:17.650316Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T03:24:17.861747Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T03:24:17.861794Z[0m [32m INFO[0m ghost commit captured: 46ebe6f270d6776600b99eaa91faa2d2bafcfcc2
+[2m2025-11-25T03:24:17.861800Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T03:24:24.337115Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:27.210990Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_sop_v3\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:33.610018Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"drone_early_inform_v3\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:35.535162Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/models.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:38.963397Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/api/api/migrations/0001_initial.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:43.768191Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api/api/migrations","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:50.246643Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0004_add_db_timestamp_defaults.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:24:58.665502Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/api/api/migrations/0002_add_drone_sop_v3_indexes.py","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:25:37.947533Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/api/api/migrations/0005_add_ids_to_drone_tables.py
++from django.db import migrations
++
++
++ADD_DRONE_SOP_ID = """
++DO $$
++BEGIN
++    IF NOT EXISTS (
++        SELECT 1
++        FROM information_schema.columns
++        WHERE table_schema = current_schema()
++          AND table_name = 'drone_sop_v3'
++          AND column_name = 'id'
++    ) THEN
++        ALTER TABLE drone_sop_v3 ADD COLUMN id BIGSERIAL PRIMARY KEY;
++    END IF;
++END;
++$$;
++"""
++
++DROP_DRONE_SOP_ID = """
++DO $$
++BEGIN
++    IF EXISTS (
++        SELECT 1
++        FROM information_schema.columns
++        WHERE table_schema = current_schema()
++          AND table_name = 'drone_sop_v3'
++          AND column_name = 'id'
++    ) THEN
++        ALTER TABLE drone_sop_v3 DROP COLUMN id;
++    END IF;
++END;
++$$;
++"""
++
++ADD_EARLY_INFORM_ID = """
++DO $$
++BEGIN
++    IF NOT EXISTS (
++        SELECT 1
++        FROM information_schema.columns
++        WHERE table_schema = current_schema()
++          AND table_name = 'drone_early_inform_v3'
++          AND column_name = 'id'
++    ) THEN
++        ALTER TABLE drone_early_inform_v3 ADD COLUMN id BIGSERIAL PRIMARY KEY;
++    END IF;
++END;
++$$;
++"""
++
++DROP_EARLY_INFORM_ID = """
++DO $$
++BEGIN
++    IF EXISTS (
++        SELECT 1
++        FROM information_schema.columns
++        WHERE table_schema = current_schema()
++          AND table_name = 'drone_early_inform_v3'
++          AND column_name = 'id'
++    ) THEN
++        ALTER TABLE drone_early_inform_v3 DROP COLUMN id;
++    END IF;
++END;
++$$;
++"""
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ("api", "0004_add_db_timestamp_defaults"),
++    ]
++
++    operations = [
++        migrations.RunSQL(ADD_DRONE_SOP_ID, DROP_DRONE_SOP_ID),
++        migrations.RunSQL(ADD_EARLY_INFORM_ID, DROP_EARLY_INFORM_ID),
++    ]
+*** End Patch
+[2m2025-11-25T03:25:42.475558Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/api","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:37:49.398576Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T03:38:29.377304Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T03:38:29.581370Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T03:38:29.581416Z[0m [32m INFO[0m ghost commit captured: 09f005293bd3ff689da22ce9849c7e0f6372ddc3
+[2m2025-11-25T03:38:29.581429Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T03:38:37.338251Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:38:39.178854Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"needtosend\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:38:43.714173Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:38:54.727764Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/cells/NeedToSendCell.jsx
+@@
+         className={cn(
+           "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+           isError
+             ? "border-destructive/60 bg-destructive/10 text-destructive"
+             : isChecked
+               ? "bg-primary border-primary text-primary-foreground"
+               : "border-border hover:border-primary hover:text-primary",
++          !disabled && !isSaving && "cursor-pointer",
+           (disabled || isSaving) && "cursor-not-allowed opacity-60"
+         )}
+       >
+         {isError ? <XCircle className="h-3 w-3" strokeWidth={3} /> : null}
+         {!isError && isChecked ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+*** End Patch
+[2m2025-11-25T03:42:15.147895Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T03:42:15.225660Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T03:42:15.225707Z[0m [32m INFO[0m ghost commit captured: c3e9ab0d0ea2b779d5cda7112b01279a12e334f7
+[2m2025-11-25T03:42:15.225713Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T03:42:18.853590Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/web/src/features/line-dashboard/components/data-table/utils/flagState.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:42:20.852331Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features/line-dashboard/components/data-table/utils","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:42:23.122640Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/web/src/features/line-dashboard/components/data-table/utils/flagState.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:42:28.935781Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"describeFlagState\" apps/web/src/features/line-dashboard/components/data-table","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T03:42:45.187086Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/utils/flagState.js
+@@
+ export function describeFlagState(rawValue, defaultValue = 0) {
+-  const { numericValue, state } = deriveFlagState(rawValue, defaultValue)
+-  if (state === "error") return `오류 상태 (값: ${numericValue})`
+-  if (state === "on") return `활성 (값: ${numericValue})`
+-  return `비활성 (값: ${numericValue})`
++  const { state } = deriveFlagState(rawValue, defaultValue)
++  if (state === "error") return "예약오류"
++  if (state === "on") return "예약완료"
++  return "예약안됨"
+ }
+*** End Patch
+[2m2025-11-25T03:53:43.169005Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T03:54:21.634263Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T03:54:21.849574Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T03:54:21.849627Z[0m [32m INFO[0m ghost commit captured: 16c5c697e45a5b30445d6b3eba389b17a3080f65
+[2m2025-11-25T03:54:21.849640Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T03:54:30.271564Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:32.731661Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"airflow\"","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:36.189820Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls deploy","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:38.389347Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls deploy/nginx","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:40.548351Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat deploy/nginx/default.conf","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:43.112118Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat deploy/nginx/default.prod.conf","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:48.009810Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"airflow\" docker-compose* deploy -g\"*.yml\"","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:52.011344Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"airflow\" -g\"*.yml\"","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:53.780465Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.yml","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:54:56.977568Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.dev.yml","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:03.231427Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"8080\"","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:05.819724Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' README.md","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:12.410353Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.dev.env","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:16.562430Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.prod.env","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:27.091772Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/airflow/api/get-airflow-dag-overview.js","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:55:30.404764Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,400p' apps/web/src/features/airflow/api/get-airflow-dag-overview.js","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:56:32.697418Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat apps/web/vite.config.js","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:56:35.644596Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:56:41.613818Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat apps/web/vite.config.mjs","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:57:04.451459Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat env/web.oidc.dev.env","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:57:14.135312Z[0m [32m INFO[0m ToolCall: shell_command {"command":"cat docker-compose.dev.oidc.yml","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:57:32.851569Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.conf
+@@
+     # 인증 콜백 등 Django에 직접 전달 (/auth/)
+     # =========================
+     location /auth/ {
+         # Google OAuth 콜백(/auth/google/callback 등)이 프론트엔드에서 404가 나지 않고
+         # Django 백엔드로 도달하도록 API 컨테이너로 프록시합니다.
+@@
+         proxy_set_header X-Forwarded-Proto $scheme;
+ 
+         proxy_redirect off;
+     }
+ 
++    # =========================
++    # Airflow UI 프록시 (/airflow/)
++    # =========================
++    location /airflow/ {
++        # Airflow 웹서버(8080)로 전달하며 접두사(/airflow/)는 제거
++        proxy_pass http://airflow-webserver:8080/;
++
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_set_header X-Forwarded-Prefix /airflow;
++
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection "upgrade";
++
++        # Airflow가 반환하는 Location 헤더를 /airflow/ 경로로 맞춤
++        proxy_redirect http://airflow-webserver:8080/ /airflow/;
++    }
++
+     # =========================
+     # 정적 파일 직접 서빙 (/static/)
+     # =========================
+     location /static/ {
+         # alias는 요청 경로의 접두사(/static/)를 실제 디렉토리로 치환
+*** End Patch
+[2m2025-11-25T03:57:48.039147Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.prod.conf
+@@
+     location /auth/ {
+         # OAuth 콜백과 같은 엔드포인트가 프론트엔드에서 404 대신
+         # Django 백엔드로 도달하도록 API 컨테이너로 전달합니다.
+         proxy_pass http://api:8000;
+         proxy_http_version 1.1;
+@@
+         proxy_set_header X-Forwarded-Proto $scheme;
+         proxy_redirect off;
+         proxy_read_timeout 3600s;
+     }
+ 
++    # ===== (A-2) Airflow UI 프록시 (/airflow/) =====
++    location /airflow/ {
++        # Airflow 웹서버(8080)로 전달하며 접두사(/airflow/)는 제거합니다.
++        proxy_pass http://airflow-webserver:8080/;
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_set_header X-Forwarded-Prefix /airflow;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection $connection_upgrade;
++        proxy_redirect http://airflow-webserver:8080/ /airflow/;
++        proxy_read_timeout 3600s;
++    }
++
+     # ===== (B) 정적 파일 직접 서빙 (/static/) =====
+     location /static/ {
+         alias /var/www/static/;
+         access_log off;
+         expires 30d;
+*** End Patch
+[2m2025-11-25T03:57:56.910402Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.conf
+@@
+         proxy_set_header Upgrade $http_upgrade;
+         proxy_set_header Connection "upgrade";
+ 
+         # Airflow가 반환하는 Location 헤더를 /airflow/ 경로로 맞춤
+         proxy_redirect http://airflow-webserver:8080/ /airflow/;
++        proxy_redirect http://airflow-webserver:8080 /airflow;
+     }
+*** End Patch
+[2m2025-11-25T03:57:59.967745Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: deploy/nginx/default.prod.conf
+@@
+         proxy_set_header X-Forwarded-Prefix /airflow;
+         proxy_set_header Upgrade $http_upgrade;
+         proxy_set_header Connection $connection_upgrade;
+         proxy_redirect http://airflow-webserver:8080/ /airflow/;
++        proxy_redirect http://airflow-webserver:8080 /airflow;
+         proxy_read_timeout 3600s;
+     }
+*** End Patch
+[2m2025-11-25T03:58:04.967659Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/web.dev.env
+@@
+ # --- Airflow integration -----------------------------------------------------
+ # 내부 호출은 Docker 네트워크의 서비스명을 사용, 브라우저는 호스트 포트를 봅니다.
+ AIRFLOW_BASE_URL=http://airflow-webserver:8080
+-VITE_AIRFLOW_BASE_URL=http://localhost:8080
++VITE_AIRFLOW_BASE_URL=/airflow
+ AIRFLOW_USERNAME=airflow
+ AIRFLOW_PASSWORD=airflow
+*** End Patch
+[2m2025-11-25T03:58:10.692760Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: env/web.dev.env
+@@
+-# --- Airflow integration -----------------------------------------------------
+-# 내부 호출은 Docker 네트워크의 서비스명을 사용, 브라우저는 호스트 포트를 봅니다.
++# --- Airflow integration -----------------------------------------------------
++# 내부 호출은 Docker 네트워크의 서비스명을 사용하고, 브라우저는 nginx의 /airflow 경로를 사용합니다.
+ AIRFLOW_BASE_URL=http://airflow-webserver:8080
+ VITE_AIRFLOW_BASE_URL=/airflow
+ AIRFLOW_USERNAME=airflow
+ AIRFLOW_PASSWORD=airflow
+*** End Patch
+[2m2025-11-25T03:58:36.727210Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/airflow/api/get-airflow-dag-overview.js
+@@
+-const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
+-const DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
++const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
++const DEFAULT_PUBLIC_BASE_URL = "http://localhost/airflow"
+*** End Patch
+[2m2025-11-25T03:58:41.375379Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg -n \"VITE_AIRFLOW_BASE_URL\" env","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:58:46.190400Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff --stat","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:58:56.103484Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff deploy/nginx/default.conf","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:58:58.318422Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff deploy/nginx/default.prod.conf","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:59:01.731399Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff apps/web/src/features/airflow/api/get-airflow-dag-overview.js","workdir":".","timeout_ms":120000}
+[2m2025-11-25T03:59:05.505243Z[0m [32m INFO[0m ToolCall: shell_command {"command":"git diff env/web.dev.env","workdir":".","timeout_ms":120000}
+[2m2025-11-25T04:06:10.035500Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T04:06:10.251117Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T04:06:10.251160Z[0m [32m INFO[0m ghost commit captured: 4d0236efe8811536b00bc0cb502a3c47eee5dc48
+[2m2025-11-25T04:06:10.251167Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T04:48:44.048728Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T04:48:44.165446Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T04:48:44.165488Z[0m [32m INFO[0m ghost commit captured: 28cf1ec4e7a1b52f16070270a6c650f8280ab59e
+[2m2025-11-25T04:48:44.165501Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T04:58:22.235004Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T04:59:20.618812Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T04:59:20.817334Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T04:59:20.817377Z[0m [32m INFO[0m ghost commit captured: dbab93d8b471825ae461f7652484f6f749813ea9
+[2m2025-11-25T04:59:20.817383Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T04:59:22.678621Z[0m [32m INFO[0m ToolCall: shell_command {"command":"pwd"}
+[2m2025-11-25T04:59:24.751936Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:27.277910Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/pages/LineDashboardStatusPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:29.118612Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"quickfilter\" apps/web/src/features/line-dashboard -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:33.918358Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"quick\" apps/web/src/features/line-dashboard -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:35.891182Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:38.997257Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '200,400p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:40.635671Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '400,800p' apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:44.379032Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"sample_group\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:45.941619Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/components/data-table/column-defs/config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T04:59:51.591525Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,220p' apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:00:01.510377Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/quickFilters.js
+@@
+   {
+     key: "sample_type",
+     label: "Sample Type",
+     resolveColumn: (columns) => findMatchingColumn(columns, "sample_type"),
+     normalizeValue: (value) => {
+@@
+     },
+     formatValue: (value) => value,
+     compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+   },
++  {
++    key: "sample_group",
++    label: "Sample Group",
++    resolveColumn: (columns) => findMatchingColumn(columns, "sample_group"),
++    normalizeValue: (value) => {
++      if (value == null) return null
++      const trimmed = String(value).trim()
++      return trimmed.length > 0 ? trimmed : null
++    },
++    formatValue: (value) => value,
++    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
++  },
+ 
+ 
+ ]
+*** End Patch
+[2m2025-11-25T05:00:08.393301Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/line-dashboard/components/data-table/filters/QuickFilters.jsx
+@@
+ const DROPDOWN_SECTION_KEYS = new Set([
+   "sdwt_prod",
+   "sample_type",
++  "sample_group",
+   "user_sdwt_prod",
+   "main_step",
+ ])
+*** End Patch
+[2m2025-11-25T05:02:02.134386Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T05:02:02.254823Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T05:02:02.254874Z[0m [32m INFO[0m ghost commit captured: ae503a6e4f3e3e88fd48ea6b0e406aa2288bffa9
+[2m2025-11-25T05:02:02.254881Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T05:02:04.145699Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"apple\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:06.781478Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"logo\" apps/web/src -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:08.688706Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"login\" apps/web/src -g\"*.jsx\" -n","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:10.810315Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/auth/components/LoginForm.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:26.788461Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls public","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:35.956776Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:37.652217Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/public","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:40.133918Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/public/images","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:02:48.501670Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Samsung\" node_modules/@tabler/icons-react -g\"*.js\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:03:03.208326Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Samsungpass\" node_modules/@tabler/icons-react -g\"*.js\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:03:06.545326Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"samsung\" node_modules/@tabler/icons-react -g\"*.mjs\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:03:16.094326Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/auth/components/LoginForm.jsx
+@@
+ import {
+   Card,
+   CardContent,
+   CardDescription,
+   CardHeader,
+   CardTitle,
+ } from "@/components/ui/card"
++import { IconBrandSamsungpass } from "@tabler/icons-react"
+ import {
+   Field,
+   FieldDescription,
+   FieldGroup,
+   FieldLabel,
+   FieldSeparator,
+ } from "@/components/ui/field"
+@@
+                   type="button"
+                   onClick={handleLogin}
+                   disabled={isLoading || !providerAvailable}
+                 >
+-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+-                    <path
+-                      d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
+-                      fill="currentColor"
+-                    />
+-                  </svg>
++                  <IconBrandSamsungpass className="mr-2 h-5 w-5" aria-hidden />
+                   Login with SSO
+                 </Button>
+               </Field>
+*** End Patch
+[2m2025-11-25T05:13:25.553296Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T05:14:16.049471Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T05:14:16.165043Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T05:14:16.165088Z[0m [32m INFO[0m ghost commit captured: e1aa3533830f16b365af4c652ddd161b5cba74e1
+[2m2025-11-25T05:14:16.165102Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T05:14:21.722412Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:29.070288Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/auth/components/LoginForm.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:32.172290Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Samsung\" -n apps/web/src || true","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:34.358428Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls public | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:36.392775Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/public | head","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:38.771362Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/public/images","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:42.464221Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"dark:\" apps/web/src/features/auth/components/LoginForm.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:44.704576Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"useTheme\" apps/web/src -g\"*.js\" -g\"*.jsx\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:47.200739Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/lib/theme/theme-provider.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:50.987427Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"systemTheme\" apps/web/src -g\"*.jsx\" -g\"*.js\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:14:54.005212Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/components/ui/sonner.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T05:15:17.521370Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/features/auth/components/LoginForm.jsx
+@@
+-import { useMemo, useState } from "react"
++import { useMemo, useState } from "react"
+ import { useSearchParams } from "react-router-dom"
+ 
+ import { cn } from "@/lib/utils"
++import { useTheme } from "@/lib/theme"
+ import { Button } from "components/ui/button"
+ import {
+   Card,
+   CardContent,
+   CardDescription,
+@@
+ export function LoginForm({
+   className,
+   ...props
+ }) {
+   const [isLoading, setIsLoading] = useState(false)
++  const { theme = "system", systemTheme } = useTheme()
+   const { login, config } = useAuth()
+   const [searchParams] = useSearchParams()
+   const nextPath = searchParams?.get("next") || "/"
+ 
+   // provider 설정이 없는 경우를 대비해 버튼을 비활성화합니다.
+   const providerAvailable = useMemo(() => config?.providerConfigured !== false, [config])
++  const resolvedTheme = theme === "system" ? systemTheme : theme
++  const logoSrc = resolvedTheme === "dark" ? "/images/Samsung_WHITE.png" : "/images/Samsung_BLUE.png"
+ 
+   const handleLogin = async () => {
+     if (!providerAvailable) return
+     try {
+       setIsLoading(true)
+@@
+                   type="button"
+                   onClick={handleLogin}
+                   disabled={isLoading || !providerAvailable}
+                 >
+-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+-                    <path
+-                      d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
+-                      fill="currentColor"
+-                    />
+-                  </svg>
++                  <img
++                    src={logoSrc}
++                    alt="Samsung logo"
++                    className="mr-2 h-5 w-auto"
++                  />
+                   Login with SSO
+                 </Button>
+               </Field>
+               <FieldSeparator className="sr-only" />
+             </FieldGroup>
+*** End Patch
+[2m2025-11-25T06:07:52.514379Z[0m [32m INFO[0m Shutting down Codex instance
+[2m2025-11-25T06:08:23.657566Z[0m [32m INFO[0m spawning ghost snapshot task
+[2m2025-11-25T06:08:23.770907Z[0m [32m INFO[0m ghost snapshot blocking task finished
+[2m2025-11-25T06:08:23.770973Z[0m [32m INFO[0m ghost commit captured: 60d5484178961bb1d736597f02e3934a76a46153
+[2m2025-11-25T06:08:23.770988Z[0m [32m INFO[0m ghost snapshot gate marked ready
+[2m2025-11-25T06:08:28.203742Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:31.799443Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Appstore\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:34.658736Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Apps\" apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:37.379818Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:40.886633Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/routes","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:43.425315Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/routes/layouts","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:45.662951Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/routes/router.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:51.013112Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:53.488764Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features/home","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:08:56.820288Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/features/home/pages","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:01.541547Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/home/pages/HomePage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:05.064418Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/routes/layouts/ProtectedAppLayout.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:08.265657Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/components","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:14.032145Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/components/layout","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:17.150658Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/components/layout/app-shell.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:20.045052Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/web/src/components/layout/app-sidebar.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:26.087089Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/lib/config/navigation-config.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:30.543175Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,260p' apps/web/src/components/layout/nav-main.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:32.902065Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/features/models/pages/ModelsPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:35.271174Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/features/line-dashboard/pages/LineDashboardLandingPage.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:41.644230Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/components/layout/app-header.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:44.518356Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/components/layout/nav-projects.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:09:47.704288Z[0m [32m INFO[0m ToolCall: shell_command {"command":"rg \"Appstore\"","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:03.057160Z[0m [32m INFO[0m ToolCall: shell_command {"command":"ls apps/web/src/components/ui","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:05.366095Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/web/src/components/ui/input.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:10.183478Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"in_progress","step":"Scan existing layout/navigation patterns to add a new Appstore entry without breaking design consistency."},{"status":"pending","step":"Create the Appstore page with an apps grid matching project styling and sample data."},{"status":"pending","step":"Wire the new page into routing and navigation, ensuring links work with the sidebar."}],"explanation":"Adding a new Appstore tab requires a new page plus navigation and route wiring; laying out the work keeps changes organized."}
+[2m2025-11-25T06:10:14.862406Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Scan existing layout/navigation patterns to add a new Appstore entry without breaking design consistency."},{"status":"in_progress","step":"Create the Appstore page with an apps grid matching project styling and sample data."},{"status":"pending","step":"Wire the new page into routing and navigation, ensuring links work with the sidebar."}]}
+[2m2025-11-25T06:10:18.918234Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/home/index.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:21.365122Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,120p' apps/web/src/features/models/index.js","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:26.663036Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,200p' apps/web/src/components/ui/card.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:38.632539Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/web/src/components/ui/button.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:10:44.949482Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,240p' apps/web/src/components/layout/dynamic-breadcrumb.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:11:09.451928Z[0m [32m INFO[0m ToolCall: shell_command {"command":"sed -n '1,160p' apps/web/src/components/ui/badge.jsx","workdir":"/home/pjw75/tailwind"}
+[2m2025-11-25T06:11:38.870003Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/appstore/pages/AppstorePage.jsx
++// src/features/appstore/pages/AppstorePage.jsx
++// 사이드바에서 이동할 수 있는 Appstore 탭 화면입니다. 기존 카드/톤앤매너에 맞춰 검색과 카테고리 필터를 제공합니다.
++import { useMemo, useState } from "react"
++import { ArrowUpRight, Bookmark, Search, Sparkles } from "lucide-react"
++
++import { Badge } from "@/components/ui/badge"
++import { Button } from "@/components/ui/button"
++import {
++  Card,
++  CardContent,
++  CardDescription,
++  CardFooter,
++  CardHeader,
++  CardTitle,
++} from "@/components/ui/card"
++import { Input } from "@/components/ui/input"
++
++const APPS = [
++  {
++    name: "Hunter",
++    category: "Data access",
++    description: "Find or verify professional email addresses easily.",
++  },
++  {
++    name: "Twilio",
++    category: "Messaging",
++    description: "Send and receive SMS and MMS messages via API.",
++  },
++  {
++    name: "WhatsApp Business",
++    category: "Messaging",
++    description: "Business messaging with WhatsApp API.",
++  },
++  {
++    name: "Slack Platform",
++    category: "Collaboration",
++    description: "Automate channels, slash commands, and workflows.",
++  },
++  {
++    name: "Notion",
++    category: "Productivity",
++    description: "Sync databases, pages, and comments programmatically.",
++  },
++  {
++    name: "Airtable",
++    category: "Data access",
++    description: "Work with bases, tables, and views through REST.",
++  },
++  {
++    name: "Stripe",
++    category: "Payments",
++    description: "Accept payments and manage subscriptions securely.",
++  },
++  {
++    name: "Linear",
++    category: "Productivity",
++    description: "Ship faster with issue tracking and automations.",
++  },
++  {
++    name: "Figma",
++    category: "Design",
++    description: "Pull design assets, components, and comments via API.",
++  },
++]
++
++export function AppstorePage() {
++  const [query, setQuery] = useState("")
++  const [category, setCategory] = useState("all")
++
++  const categories = useMemo(
++    () => ["all", ...new Set(APPS.map((app) => app.category))],
++    []
++  )
++
++  const filteredApps = useMemo(() => {
++    const normalizedQuery = query.trim().toLowerCase()
++    return APPS.filter((app) => {
++      const matchesCategory = category === "all" || app.category === category
++      const matchesQuery =
++        normalizedQuery.length === 0 ||
++        app.name.toLowerCase().includes(normalizedQuery) ||
++        app.description.toLowerCase().includes(normalizedQuery) ||
++        app.category.toLowerCase().includes(normalizedQuery)
++      return matchesCategory && matchesQuery
++    })
++  }, [category, query])
++
++  return (
++    <section className="grid gap-4">
++      <div className="relative overflow-hidden rounded-xl border bg-card p-6 shadow-sm">
++        <div
++          aria-hidden="true"
++          className="absolute inset-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent"
++        />
++        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
++          <div className="space-y-3">
++            <Badge variant="outline" className="gap-1 bg-background/70 backdrop-blur">
++              <Sparkles className="size-3" />
++              Curated integrations
++            </Badge>
++            <div className="space-y-1">
++              <h1 className="text-2xl font-semibold tracking-tight">Appstore</h1>
++              <p className="text-sm text-muted-foreground">
++                Discover vetted tools to connect messaging, data, and automation workflows.
++              </p>
++            </div>
++          </div>
++
++          <div className="w-full max-w-md rounded-lg border bg-background/80 p-3 shadow-xs backdrop-blur">
++            <div className="flex items-center gap-2">
++              <Search className="size-4 text-muted-foreground" />
++              <Input
++                value={query}
++                onChange={(event) => setQuery(event.target.value)}
++                placeholder="Search by name, category, or use case"
++                className="h-9 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
++              />
++            </div>
++          </div>
++        </div>
++
++        <div className="relative mt-4 flex flex-wrap items-center gap-2">
++          {categories.map((option) => (
++            <Button
++              key={option}
++              variant={option === category ? "default" : "outline"}
++              size="sm"
++              className="rounded-full"
++              onClick={() => setCategory(option)}
++              type="button"
++            >
++              {option === "all" ? "All apps" : option}
++            </Button>
++          ))}
++        </div>
++      </div>
++
++      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
++        {filteredApps.map((app) => (
++          <Card key={app.name} className="h-full">
++            <CardHeader className="flex flex-row items-start gap-3">
++              <div className="space-y-1">
++                <CardTitle className="text-base">{app.name}</CardTitle>
++                <CardDescription>{app.description}</CardDescription>
++              </div>
++              <Badge variant="secondary" className="ml-auto">
++                {app.category}
++              </Badge>
++            </CardHeader>
++            <CardContent className="space-y-3">
++              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
++                <Badge variant="outline">Fast setup</Badge>
++                <Badge variant="outline">Secure</Badge>
++                <Badge variant="outline">Docs available</Badge>
++              </div>
++            </CardContent>
++            <CardFooter className="flex items-center gap-2 border-t pt-4">
++              <Button variant="ghost" size="sm" className="rounded-full">
++                <Bookmark className="size-4" />
++                Bookmark
++              </Button>
++              <Button variant="outline" size="sm" className="rounded-full">
++                View docs
++                <ArrowUpRight className="size-4" />
++              </Button>
++            </CardFooter>
++          </Card>
++        ))}
++
++        {filteredApps.length === 0 && (
++          <Card className="md:col-span-2 xl:col-span-3">
++            <CardHeader>
++              <CardTitle className="text-base">No matches found</CardTitle>
++              <CardDescription>
++                Try a different keyword or reset the category filter.
++              </CardDescription>
++            </CardHeader>
++          </Card>
++        )}
++      </div>
++    </section>
++  )
++}
+*** End Patch
+[2m2025-11-25T06:11:44.271990Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Add File: apps/web/src/features/appstore/index.js
++// src/features/appstore/index.js
++// Appstore 관련 페이지를 외부로 노출하는 엔트리 포인트입니다.
++export { AppstorePage } from "./pages/AppstorePage"
+*** End Patch
+[2m2025-11-25T06:11:50.159246Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/routes/router.jsx
+@@
+ import { LoginPage } from "@/features/auth"
+ import { NotFoundPage } from "@/features/errors"
+ import { HomePage } from "@/features/home"
+ import {
+   LineDashboardHistoryPage,
+   LineDashboardLandingPage,
+   LineDashboardOverviewPage,
+   LineDashboardSettingsPage,
+   LineDashboardStatusPage,
+ } from "@/features/line-dashboard"
++import { AppstorePage } from "@/features/appstore"
+ import { ModelsPage } from "@/features/models"
+@@
+     children: [
+       { index: true, element: <HomePage /> },
++      { path: "appstore", element: <AppstorePage /> },
+       { path: "models", element: <ModelsPage /> },
+*** End Patch
+[2m2025-11-25T06:11:57.491252Z[0m [32m INFO[0m ToolCall: apply_patch *** Begin Patch
+*** Update File: apps/web/src/lib/config/navigation-config.js
+@@
+-import { BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
++import { AppWindow, BarChart3, BookOpen, Bot, Frame, Settings2, SquareTerminal } from "lucide-react"
+@@
+     },
+ 
++    {
++      title: "Appstore",
++      url: "/appstore",
++      icon: AppWindow,
++    },
+     {
+       title: "Models",
+       url: "/models",
+       icon: Bot,
+*** End Patch
+[2m2025-11-25T06:12:00.737276Z[0m [32m INFO[0m ToolCall: update_plan {"plan":[{"status":"completed","step":"Scan existing layout/navigation patterns to add a new Appstore entry without breaking design consistency."},{"status":"completed","step":"Create the Appstore page with an apps grid matching project styling and sample data."},{"status":"completed","step":"Wire the new page into routing and navigation, ensuring links work with the sidebar."}]}

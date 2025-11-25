@@ -40,8 +40,8 @@ export function deriveFlagState(rawValue, defaultValue = 0) {
 }
 
 export function describeFlagState(rawValue, defaultValue = 0) {
-  const { numericValue, state } = deriveFlagState(rawValue, defaultValue)
-  if (state === "error") return `오류 상태 (값: ${numericValue})`
-  if (state === "on") return `활성 (값: ${numericValue})`
-  return `비활성 (값: ${numericValue})`
+  const { state } = deriveFlagState(rawValue, defaultValue)
+  if (state === "error") return "예약오류"
+  if (state === "on") return "예약완료"
+  return "예약안됨"
 }
