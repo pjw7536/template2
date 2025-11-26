@@ -10,7 +10,6 @@ class User(AbstractUser):
     department = models.CharField(max_length=128, null=True, blank=True)
     line = models.CharField(max_length=64, null=True, blank=True)
     sdwt = models.CharField(max_length=64, null=True, blank=True)
-    sabun = models.CharField(max_length=64, null=True, blank=True)
 
     class Meta:
         db_table = "api_user"

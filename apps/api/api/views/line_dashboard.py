@@ -28,20 +28,44 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-def _normalize_date_value(value: Any) -> Optional[str]:
-    """날짜/문자/None 값을 YYYY-MM-DD 문자열 또는 None으로 정규화."""
+def _normalize_bucket_value(value: Any) -> Optional[str]:
+    """
+    날짜/시간 버킷 값을 ISO-like 문자열로 정규화합니다.
+
+    - 문자열: 공백을 T로 치환해 Date 파서 친화적으로 정규화
+    - datetime/date: 시/분/초를 0으로 맞춰 문자열 변환
+    - 실패 시 원본 문자열을 그대로 반환
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value.replace(minute=0, second=0, microsecond=0).isoformat()
+
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time()).isoformat()
 
     if isinstance(value, str):
-        return value.strip() or None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+
+        candidate = cleaned
+        if " " in candidate and "T" not in candidate:
+            candidate = candidate.replace(" ", "T")
+
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            return parsed.replace(minute=0, second=0, microsecond=0).isoformat()
+        except ValueError:
+            return cleaned
+
     return None
 
 
 class LineHistoryView(APIView):
-    """대시보드 차트용 일별 합계/분해 집계 제공."""
+    """대시보드 차트용 시간 단위 합계/분해 집계 제공."""
 
     DEFAULT_RANGE_DAYS = 14
 
@@ -165,7 +189,8 @@ class LineHistoryView(APIView):
         send_jira_column: Optional[str],
         where_clause: str,
     ) -> str:
-        totals_select = [f"DATE({timestamp_column}) AS day", "COUNT(*) AS row_count"]
+        bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
+        totals_select = [f"{bucket_expr} AS bucket", "COUNT(*) AS row_count"]
         if send_jira_column:
             totals_select.append(
                 "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(
@@ -180,8 +205,8 @@ class LineHistoryView(APIView):
             SELECT {select_clause}
             FROM {table}
             {where_clause}
-            GROUP BY day
-            ORDER BY day ASC
+            GROUP BY bucket
+            ORDER BY bucket ASC
             """.format(
                 select_clause=", ".join(totals_select),
                 table=table_name,
@@ -197,8 +222,9 @@ class LineHistoryView(APIView):
         send_jira_column: Optional[str],
         where_clause: str,
     ) -> str:
+        bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
         select_parts = [
-            f"DATE({timestamp_column}) AS day",
+            f"{bucket_expr} AS bucket",
             f"COALESCE(CAST({dimension_column} AS TEXT), 'Unspecified') AS category",
             "COUNT(*) AS row_count",
         ]
@@ -217,8 +243,8 @@ class LineHistoryView(APIView):
             SELECT {select_clause}
             FROM {table}
             {where_clause}
-            GROUP BY day, category
-            ORDER BY day ASC, category ASC
+            GROUP BY bucket, category
+            ORDER BY bucket ASC, category ASC
             """.format(
                 select_clause=", ".join(select_parts),
                 table=table_name,
@@ -228,7 +254,7 @@ class LineHistoryView(APIView):
 
     @staticmethod
     def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_str = _normalize_date_value(row.get("day") or row.get("date"))
+        date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
 
         return {
             "date": date_str,
@@ -238,7 +264,7 @@ class LineHistoryView(APIView):
     
     @staticmethod
     def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_str = _normalize_date_value(row.get("day") or row.get("date"))
+        date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
 
         category = row.get("category") or row.get("dimension") or "Unspecified"
         if not isinstance(category, str) or not category.strip():

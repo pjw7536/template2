@@ -2,7 +2,6 @@
 import * as React from "react"
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -14,7 +13,11 @@ import { CalendarIcon, FilterIcon } from "lucide-react"
 
 import { Button } from "components/ui/button"
 import { Calendar } from "components/ui/calendar"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -68,6 +71,32 @@ const CATEGORY_COLORS = [
   "var(--primary)",
 ]
 
+const GRID_STROKE = "#9ca3af" // 슬레이트 계열 회색 (눈에 잘 보이는 색)
+const GRID_OPACITY = 0.65
+const LEGEND_PRESET_COLORS = [
+  "#1f77b4",
+  "#ff7f0e",
+  "#2ca02c",
+  "#d62728",
+  "#9467bd",
+  "#8c564b",
+  "#e377c2",
+  "#7f7f7f",
+  "#bcbd22",
+  "#17becf",
+  "#005f73",
+  "#9a3412",
+  "#2563eb",
+  "#c026d3",
+  "#0f766e",
+  "#b91c1c",
+  "#6d28d9",
+  "#15803d",
+  "#d97706",
+  "#0891b2",
+]
+const THEME_LINE_COLOR = "var(--primary)"
+
 const LABELS = {
   titleSuffix: "Line E-SOP History",
   updated: "Updated",
@@ -78,14 +107,62 @@ const totalsChartConfig = {
   sendJiraCount: { label: "Send Jira", color: "var(--chart-2)" },
 }
 
-function formatDateLabel(value) {
-  if (!value) return ""
-  const date = new Date(`${value}T00:00:00Z`)
-  if (!Number.isFinite(date.getTime())) return value
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
+// KST 기준, 2자리 연도 포맷터
+const KST_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  year: "2-digit",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hour12: false,
+  timeZone: "Asia/Seoul",
+})
+
+function parseDateTime(value) {
+  if (!value) return null
+  if (value instanceof Date) return value
+
+  const normalized =
+    typeof value === "string" && value.includes("T")
+      ? value
+      : typeof value === "string"
+        ? value.replace(" ", "T")
+        : String(value)
+
+  const parsed = new Date(normalized)
+  return Number.isFinite(parsed.getTime()) ? parsed : null
+}
+
+// X축 라벨용 (MM/DD HH:00)
+function formatKstDateTimeLabel(value) {
+  const date = parseDateTime(value)
+  if (!date) return typeof value === "string" ? value : String(value ?? "")
+
+  const parts = Object.fromEntries(
+    KST_FORMATTER.formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  const month = parts.month ?? ""
+  const day = parts.day ?? ""
+  const hour = parts.hour ?? ""
+
+  return `${month}/${day} ${hour}:00`
+}
+
+// Tooltip 라벨용 (yy/mm/dd HH:00)
+function formatKstTooltipTime(value) {
+  const date = parseDateTime(value)
+  if (!date) return typeof value === "string" ? value : String(value ?? "")
+
+  const parts = Object.fromEntries(
+    KST_FORMATTER.formatToParts(date).map((part) => [part.type, part.value]),
+  )
+
+  const year = parts.year ?? "" // "25" 같은 2자리 연도
+  const month = parts.month ?? ""
+  const day = parts.day ?? ""
+  const hour = parts.hour ?? ""
+
+  // yy/mm/dd 23:00 형식
+  return `${year}/${month}/${day} ${hour}:00`
 }
 
 function getDefaultDateRange(days = 30) {
@@ -103,6 +180,15 @@ function formatRangeLabel(range) {
 }
 
 /**
+ * Tooltip 내용에서 label(시간)을 직접 포맷팅해 주는 래퍼
+ */
+function KstTooltipContent(props) {
+  const { label, ...rest } = props
+  const formattedLabel = formatKstTooltipTime(label)
+  return <ChartTooltipContent {...rest} label={formattedLabel} />
+}
+
+/**
  * 분류(차원)별 라인 시리즈 생성
  * - metrics.length === 1 인 경우: 레전드 라벨을 "카테고리 이름"만 사용 (지표는 차트 제목으로 구분)
  */
@@ -112,7 +198,8 @@ function buildBreakdownSeries(
   limit = 5,
   selectedCategories = [],
   dimensionKey = "",
-  dimensionLabel = ""
+  dimensionLabel = "",
+  colorOverrides = {},
 ) {
   if (
     !Array.isArray(records) ||
@@ -133,12 +220,18 @@ function buildBreakdownSeries(
         safeKeyCache.set(key, sanitized)
       } else {
         const hash = Math.abs(
-          Array.from(key).reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) | 0, 0)
+          Array.from(key).reduce(
+            (acc, char) => (acc * 31 + char.charCodeAt(0)) | 0,
+            0,
+          ),
         ).toString(36)
         const trimmed = sanitized
           .slice(0, Math.max(12, 64 - hash.length - 1))
           .replace(/_+$/g, "")
-        safeKeyCache.set(key, [trimmed || "series", hash].filter(Boolean).join("_"))
+        safeKeyCache.set(
+          key,
+          [trimmed || "series", hash].filter(Boolean).join("_"),
+        )
       }
     }
     return safeKeyCache.get(key)
@@ -177,7 +270,9 @@ function buildBreakdownSeries(
   const seriesKeyMap = new Map()
   categories.forEach((category) => {
     metrics.forEach((metricKey) => {
-      const rawKey = [dimensionKey || "dim", category, metricKey].filter(Boolean).join("__")
+      const rawKey = [dimensionKey || "dim", category, metricKey]
+        .filter(Boolean)
+        .join("__")
       seriesKeyMap.set(rawKey, getSafeKey(rawKey))
     })
   })
@@ -198,12 +293,16 @@ function buildBreakdownSeries(
         ? record.category.trim()
         : "Unspecified"
     if (!categories.includes(category)) continue
+
     const date = record?.date
     if (!date || !pointsByDate.has(date)) continue
+
     const point = pointsByDate.get(date)
     for (const metricKey of metrics) {
       const value = Number(record?.[metricKey] ?? 0) || 0
-      const rawKey = [dimensionKey || "dim", category, metricKey].filter(Boolean).join("__")
+      const rawKey = [dimensionKey || "dim", category, metricKey]
+        .filter(Boolean)
+        .join("__")
       const safeKey = seriesKeyMap.get(rawKey) ?? getSafeKey(rawKey)
       point[safeKey] = (point[safeKey] ?? 0) + value
     }
@@ -213,10 +312,14 @@ function buildBreakdownSeries(
   const seriesKeys = []
   categories.forEach((category, categoryIndex) => {
     metrics.forEach((metricKey, metricIndex) => {
-      const rawKey = [dimensionKey || "dim", category, metricKey].filter(Boolean).join("__")
+      const rawKey = [dimensionKey || "dim", category, metricKey]
+        .filter(Boolean)
+        .join("__")
       const seriesKey = seriesKeyMap.get(rawKey) ?? getSafeKey(rawKey)
-      const paletteIndex = (categoryIndex * metrics.length + metricIndex) % CATEGORY_COLORS.length
-      const color = CATEGORY_COLORS[paletteIndex]
+      const paletteIndex =
+        (categoryIndex * metrics.length + metricIndex) % CATEGORY_COLORS.length
+      const color =
+        colorOverrides?.[category] ?? CATEGORY_COLORS[paletteIndex]
       const dimensionLabelText = dimensionLabel || dimensionKey || "분류"
 
       let label
@@ -228,7 +331,7 @@ function buildBreakdownSeries(
           }`
       }
 
-      config[seriesKey] = { label, color }
+      config[seriesKey] = { label, color, category }
       seriesKeys.push(seriesKey)
     })
   })
@@ -254,7 +357,9 @@ function resolveDimensionRecords(breakdownsByDimension, dimensionKey) {
     return { key: dimensionKey, records: [] }
   }
 
-  const candidates = [dimensionKey, ...(DIMENSION_ALIASES[dimensionKey] ?? [])].filter(Boolean)
+  const candidates = [dimensionKey, ...(DIMENSION_ALIASES[dimensionKey] ?? [])].filter(
+    Boolean,
+  )
   const lowerCandidates = new Set(candidates.map((key) => key.toLowerCase()))
 
   for (const [rawKey, rawRecords] of Object.entries(breakdownsByDimension)) {
@@ -270,10 +375,108 @@ function resolveDimensionRecords(breakdownsByDimension, dimensionKey) {
   return { key: dimensionKey, records: [] }
 }
 
+function LegendLabel({
+  label,
+  color,
+  category,
+  onSelectColor,
+  onResetColor,
+  hasOverride,
+  disabled,
+}) {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button
+          type="button"
+          onClick={(event) => event.stopPropagation()}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-md px-2 py-1 ring-offset-background transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-1 ring-border",
+          )}
+          aria-label="레전드 색상 변경"
+        >
+          <span
+            className="inline-flex h-3 w-3 rounded-full ring-1 ring-inset ring-border"
+            style={{ backgroundColor: color }}
+            aria-hidden="true"
+          />
+          <span className="whitespace-nowrap">{label}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        className="w-60"
+        sideOffset={6}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="grid grid-cols-5 gap-2 p-2">
+          {LEGEND_PRESET_COLORS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onSelectColor(preset)
+                setOpen(false)
+              }}
+              className="h-8 rounded-md border ring-offset-background transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              style={{ backgroundColor: preset }}
+              aria-label={`색상 ${preset}`}
+            />
+          ))}
+        </div>
+        {hasOverride && (
+          <>
+            <DropdownMenuSeparator />
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onResetColor?.()
+                setOpen(false)
+              }}
+              className="w-full px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted"
+            >
+              기본 색상으로 되돌리기
+            </button>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function ColorLegend({ payload = [], seriesConfig, renderItem }) {
+  if (!renderItem) return null
+  return (
+    <ul className="flex flex-wrap justify-end gap-3 text-[11px]">
+      {payload.map((entry) => {
+        const key = entry?.dataKey ?? entry?.value
+        if (!key) return null
+        const configEntry = seriesConfig?.[key]
+
+        return (
+          <li key={key}>
+            {renderItem(
+              key,
+              configEntry && {
+                ...configEntry,
+                color: configEntry.color ?? entry?.color,
+              },
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   const defaultRange = React.useMemo(
     () => getDefaultDateRange(initialRangeDays),
-    [initialRangeDays]
+    [initialRangeDays],
   )
 
   const today = React.useMemo(() => {
@@ -285,22 +488,24 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   // 날짜 범위 (일반적인 range UX)
   const [dateRange, setDateRange] = React.useState(defaultRange)
 
-  // 지표 표시 여부 (각각 차트 하나씩)
-  const [visibleMetrics, setVisibleMetrics] = React.useState(
-    METRIC_OPTIONS.map((option) => option.value)
-  )
-
   // 분류 기준(레전드 기준): 처음엔 null, 데이터 들어오면 첫 사용가능 차원으로 자동 설정
   const [activeDimension, setActiveDimension] = React.useState(null)
 
   // 차원별 카테고리 선택 상태 (차트에는 activeDimension만 적용)
-  const [selectedCategoriesByDimension, setSelectedCategoriesByDimension] = React.useState(() =>
-    DIMENSION_OPTIONS.reduce((acc, option) => ({ ...acc, [option.value]: [] }), {})
-  )
+  const [selectedCategoriesByDimension, setSelectedCategoriesByDimension] =
+    React.useState(() =>
+      DIMENSION_OPTIONS.reduce(
+        (acc, option) => ({ ...acc, [option.value]: [] }),
+        {},
+      ),
+    )
 
-  // 브레이크다운 차트에서 숨긴 시리즈 (진행 건수 / Send Jira 별로 따로 관리)
-  const [hiddenRowSeries, setHiddenRowSeries] = React.useState([])
-  const [hiddenJiraSeries, setHiddenJiraSeries] = React.useState([])
+  const [legendColorOverrides, setLegendColorOverrides] = React.useState(() =>
+    DIMENSION_OPTIONS.reduce(
+      (acc, option) => ({ ...acc, [option.value]: {} }),
+      {},
+    ),
+  )
 
   const {
     data,
@@ -318,7 +523,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     for (const option of DIMENSION_OPTIONS) {
       resolved[option.value] = resolveDimensionRecords(
         breakdownRecordsByDimension,
-        option.value
+        option.value,
       )
     }
     return resolved
@@ -340,7 +545,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       for (const option of DIMENSION_OPTIONS) {
         const current = prev[option.value] ?? []
         const available = new Set(
-          (dimensionTotals[option.value] ?? []).map(([category]) => category)
+          (dimensionTotals[option.value] ?? []).map(([category]) => category),
         )
         next[option.value] = current.filter((category) => available.has(category))
       }
@@ -379,15 +584,14 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     : "선택 안됨"
 
   const activeDimensionTotals = React.useMemo(
-    () =>
-      activeDimension ? dimensionTotals[activeDimension] ?? [] : [],
-    [activeDimension, dimensionTotals]
+    () => (activeDimension ? dimensionTotals[activeDimension] ?? [] : []),
+    [activeDimension, dimensionTotals],
   )
 
   const activeCategories = React.useMemo(
     () =>
       activeDimension ? selectedCategoriesByDimension[activeDimension] ?? [] : [],
-    [activeDimension, selectedCategoriesByDimension]
+    [activeDimension, selectedCategoriesByDimension],
   )
 
   const activeDimensionRecords = React.useMemo(
@@ -395,12 +599,17 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       activeDimension
         ? dimensionRecords?.[activeDimension]?.records ?? []
         : [],
-    [activeDimension, dimensionRecords]
+    [activeDimension, dimensionRecords],
   )
 
   const hasFilterSelection = React.useMemo(
     () => Array.isArray(activeCategories) && activeCategories.length > 0,
-    [activeCategories]
+    [activeCategories],
+  )
+
+  const activeLegendOverrides = React.useMemo(
+    () => (activeDimension ? legendColorOverrides[activeDimension] ?? {} : {}),
+    [activeDimension, legendColorOverrides],
   )
 
   // 진행 건수 브레이크다운 시리즈
@@ -424,13 +633,15 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       10,
       activeCategories,
       resolvedKey,
-      label
+      label,
+      activeLegendOverrides,
     )
   }, [
     activeDimension,
     activeDimensionRecords,
     activeCategories,
     dimensionRecords,
+    activeLegendOverrides,
   ])
 
   // Send Jira 브레이크다운 시리즈
@@ -455,7 +666,8 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       10,
       activeCategories,
       resolvedKey,
-      label
+      label,
+      activeLegendOverrides,
     )
   }, [
     hasSendJiraData,
@@ -463,104 +675,108 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     activeDimensionRecords,
     activeCategories,
     dimensionRecords,
+    activeLegendOverrides,
   ])
-
-  // 숨김 시리즈 정리
-  React.useEffect(() => {
-    setHiddenRowSeries((prev) =>
-      prev.filter((key) => rowBreakdownSeries.seriesKeys.includes(key))
-    )
-  }, [rowBreakdownSeries.seriesKeys])
-
-  React.useEffect(() => {
-    setHiddenJiraSeries((prev) =>
-      prev.filter((key) => jiraBreakdownSeries.seriesKeys.includes(key))
-    )
-  }, [jiraBreakdownSeries.seriesKeys])
 
   const handleRefresh = React.useCallback(() => {
     if (!lineId) return
     refresh()
   }, [lineId, refresh])
 
-  // 지표 표시 토글 (차트 on/off)
-  const handleMetricVisibilityToggle = React.useCallback((metricKey, enabled) => {
-    setVisibleMetrics((prev) => {
-      if (enabled) {
-        return Array.from(new Set([...prev, metricKey]))
-      }
-      return prev.filter((metric) => metric !== metricKey)
-    })
-  }, [])
-
   // 카테고리 선택 토글
-  const handleCategoryToggle = React.useCallback((dimension, category, checked) => {
-    setSelectedCategoriesByDimension((prev) => {
-      const current = prev[dimension] ?? []
-      const next =
-        checked === true
-          ? Array.from(new Set([...current, category]))
-          : current.filter((item) => item !== category)
-      return { ...prev, [dimension]: next }
-    })
-  }, [])
-
-  // 레전드 클릭: 진행 건수
-  const handleRowLegendClick = React.useCallback((payload) => {
-    const key = payload?.dataKey ?? payload?.value
-    if (!key) return
-    setHiddenRowSeries((prev) =>
-      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
-    )
-  }, [])
-
-  // 레전드 클릭: Send Jira
-  const handleJiraLegendClick = React.useCallback((payload) => {
-    const key = payload?.dataKey ?? payload?.value
-    if (!key) return
-    setHiddenJiraSeries((prev) =>
-      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
-    )
-  }, [])
-
-  // 레전드 포맷터: 진행 건수
-  const formatRowLegend = React.useCallback(
-    (value, entry) => {
-      const key = entry?.dataKey ?? value
-      const label = rowBreakdownSeries.config?.[key]?.label ?? value
-      const isHidden = hiddenRowSeries.includes(key)
-      return (
-        <span
-          className={cn(
-            "cursor-pointer select-none",
-            isHidden && "line-through text-muted-foreground"
-          )}
-        >
-          {label}
-        </span>
-      )
+  const handleCategoryToggle = React.useCallback(
+    (dimension, category, checked) => {
+      setSelectedCategoriesByDimension((prev) => {
+        const current = prev[dimension] ?? []
+        const next =
+          checked === true
+            ? Array.from(new Set([...current, category]))
+            : current.filter((item) => item !== category)
+        return { ...prev, [dimension]: next }
+      })
     },
-    [hiddenRowSeries, rowBreakdownSeries]
+    [],
   )
 
-  // 레전드 포맷터: Send Jira
-  const formatJiraLegend = React.useCallback(
-    (value, entry) => {
-      const key = entry?.dataKey ?? value
-      const label = jiraBreakdownSeries.config?.[key]?.label ?? value
-      const isHidden = hiddenJiraSeries.includes(key)
+  // 레전드 색상 변경
+  const handleLegendColorChange = React.useCallback(
+    (dimension, category, color) => {
+      if (!dimension || !category || !color) return
+      setLegendColorOverrides((prev) => ({
+        ...prev,
+        [dimension]: {
+          ...(prev[dimension] ?? {}),
+          [category]: color,
+        },
+      }))
+    },
+    [],
+  )
+
+  const handleLegendColorReset = React.useCallback((dimension, category) => {
+    setLegendColorOverrides((prev) => {
+      const prevDimension = prev[dimension] ?? {}
+      if (!prevDimension[category]) return prev
+      const { [category]: _removed, ...rest } = prevDimension
+      return { ...prev, [dimension]: rest }
+    })
+  }, [])
+
+  const combinedLegendEntries = React.useMemo(() => {
+    if (!hasFilterSelection) return []
+    const entriesByCategory = new Map()
+
+    const collectEntries = (series) => {
+      if (!series || !Array.isArray(series.seriesKeys)) return
+      for (const key of series.seriesKeys) {
+        const configEntry = series.config?.[key]
+        if (!configEntry?.category) continue
+        if (entriesByCategory.has(configEntry.category)) continue
+        entriesByCategory.set(configEntry.category, {
+          key,
+          label: configEntry.label ?? configEntry.category,
+          category: configEntry.category,
+          color: configEntry.color,
+        })
+      }
+    }
+
+    collectEntries(rowBreakdownSeries)
+    collectEntries(jiraBreakdownSeries)
+
+    return Array.from(entriesByCategory.values())
+  }, [hasFilterSelection, rowBreakdownSeries, jiraBreakdownSeries])
+
+  const renderLegendLabel = React.useCallback(
+    (key, configEntry) => {
+      if (!configEntry) return null
+      const label = configEntry.label ?? key
+      const category = configEntry.category
+      const color = configEntry.color ?? "var(--chart-1)"
+      const overrideColor = category ? activeLegendOverrides?.[category] : null
+
       return (
-        <span
-          className={cn(
-            "cursor-pointer select-none",
-            isHidden && "line-through text-muted-foreground"
-          )}
-        >
-          {label}
-        </span>
+        <LegendLabel
+          label={label}
+          color={color}
+          category={category}
+          disabled={!activeDimension || !category}
+          hasOverride={Boolean(overrideColor)}
+          onResetColor={() =>
+            handleLegendColorReset(activeDimension, category)
+          }
+          onSelectColor={(selected) =>
+            handleLegendColorChange(activeDimension, category, selected)
+          }
+        />
       )
     },
-    [hiddenJiraSeries, jiraBreakdownSeries]
+    [
+      activeDimension,
+      activeLegendOverrides,
+      handleLegendColorChange,
+      handleLegendColorReset,
+    ],
   )
 
   const lastUpdatedLabel = React.useMemo(() => {
@@ -572,11 +788,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     return timeFormatter.format(parsed)
   }, [data?.generatedAt, isLoading])
 
-  const showRowChart = visibleMetrics.includes("rowCount")
-  const showJiraChart = visibleMetrics.includes("sendJiraCount")
-
   const hasTotalsRowData = Array.isArray(totalsData) && totalsData.length > 0
-  const hasTotalsJiraData = hasSendJiraData && Array.isArray(totalsData) && totalsData.length > 0
+  const hasTotalsJiraData =
+    hasSendJiraData && Array.isArray(totalsData) && totalsData.length > 0
 
   // 전체 필터가 하나라도 변경되었는지 여부 (버튼 활성화용)
   const hasAnyActiveFilter = React.useMemo(() => {
@@ -595,22 +809,11 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       currentToKey !== defaultToKey
 
     const hasCategoryFilter = Object.values(selectedCategoriesByDimension).some(
-      (categories) => Array.isArray(categories) && categories.length > 0
+      (categories) => Array.isArray(categories) && categories.length > 0,
     )
 
-    const hasMetricFilter = visibleMetrics.length !== METRIC_OPTIONS.length
-    const hasHiddenSeriesFilter =
-      hiddenRowSeries.length > 0 || hiddenJiraSeries.length > 0
-
-    return hasDateFilter || hasCategoryFilter || hasMetricFilter || hasHiddenSeriesFilter
-  }, [
-    dateRange,
-    defaultRange,
-    selectedCategoriesByDimension,
-    visibleMetrics,
-    hiddenRowSeries,
-    hiddenJiraSeries,
-  ])
+    return hasDateFilter || hasCategoryFilter
+  }, [dateRange, defaultRange, selectedCategoriesByDimension])
 
   // 필터 전체 초기화
   const handleResetAllFilters = React.useCallback(() => {
@@ -619,11 +822,11 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
     // 카테고리 필터 초기화
     setSelectedCategoriesByDimension(
-      DIMENSION_OPTIONS.reduce((acc, option) => ({ ...acc, [option.value]: [] }), {})
+      DIMENSION_OPTIONS.reduce(
+        (acc, option) => ({ ...acc, [option.value]: [] }),
+        {},
+      ),
     )
-
-    // 지표 표시 기본값 (둘 다 표시)
-    setVisibleMetrics(METRIC_OPTIONS.map((option) => option.value))
 
     // 숨긴 시리즈 초기화
     setHiddenRowSeries([])
@@ -634,7 +837,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   const renderRowChart = () => {
     if (!hasTotalsRowData && rowBreakdownSeries.data.length === 0) {
       return (
-        <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+        <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
           진행 건수 데이터가 없습니다.
         </div>
       )
@@ -645,34 +848,45 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
     if (showBreakdown) {
       return (
-        <ChartContainer config={rowBreakdownSeries.config} className="h-[260px]">
-          <ResponsiveContainer>
+        <ChartContainer
+          config={rowBreakdownSeries.config}
+          className="flex-1 min-h-[180px]"
+        >
+          <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={rowBreakdownSeries.data}
-              margin={{ top: 28, right: 16, left: 8, bottom: 16 }}
+              margin={{ top: 16, right: 8, left: 0, bottom: 56 }}
             >
-              <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+              <CartesianGrid
+                horizontal
+                vertical={false}              // 세로선은 숨기고
+                stroke={GRID_STROKE}
+                strokeDasharray="4 4"         // 가로선을 점선으로
+                strokeOpacity={GRID_OPACITY}
+              />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatDateLabel}
+                tickFormatter={formatKstDateTimeLabel}
                 tickMargin={12}
+                minTickGap={12}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+                tick={{ fontSize: 15 }}
               />
               <YAxis allowDecimals={false} width={64} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Legend
-                onClick={handleRowLegendClick}
-                formatter={formatRowLegend}
-                wrapperStyle={{ cursor: "pointer" }}
-                verticalAlign="top"
-                align="right"
-                iconType="circle"
+              <ChartTooltip
+                isAnimationActive={false}
+                content={<KstTooltipContent />}
               />
               {rowBreakdownSeries.seriesKeys.map((seriesKey) => (
                 <Line
                   key={seriesKey}
                   type="monotone"
                   dataKey={seriesKey}
-                  name={rowBreakdownSeries.config?.[seriesKey]?.label ?? seriesKey}
+                  name={
+                    rowBreakdownSeries.config?.[seriesKey]?.label ?? seriesKey
+                  }
                   stroke={
                     rowBreakdownSeries.config?.[seriesKey]?.color ??
                     "var(--chart-1)"
@@ -680,7 +894,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 5 }}
-                  hide={hiddenRowSeries.includes(seriesKey)}
                 />
               ))}
             </LineChart>
@@ -690,23 +903,44 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     }
 
     // 브레이크다운이 없으면 토탈 차트 (단일 라인)
-    const rowTotalsConfig = { rowCount: totalsChartConfig.rowCount }
+    const rowTotalsConfig = {
+      rowCount: hasFilterSelection
+        ? totalsChartConfig.rowCount
+        : { ...totalsChartConfig.rowCount, color: THEME_LINE_COLOR },
+    }
 
     return (
-      <ChartContainer config={rowTotalsConfig} className="h-[260px]">
-        <ResponsiveContainer>
+      <ChartContainer
+        config={rowTotalsConfig}
+        className="flex-1 min-h-[180px]"
+      >
+        <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={totalsData}
-            margin={{ top: 28, right: 16, left: 8, bottom: 16 }}
+            margin={{ top: 16, right: 8, left: 0, bottom: 56 }}
           >
-            <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+            <CartesianGrid
+              horizontal
+              vertical={false}              // 세로선은 숨기고
+              stroke={GRID_STROKE}
+              strokeDasharray="4 4"         // 가로선을 점선으로
+              strokeOpacity={GRID_OPACITY}
+            />
             <XAxis
               dataKey="date"
-              tickFormatter={formatDateLabel}
-              tickMargin={12}
+              tickFormatter={formatKstDateTimeLabel}
+              tickMargin={8}
+              minTickGap={12}
+              angle={-45}
+              textAnchor="end"
+              height={56}
+              tick={{ fontSize: 15 }}
             />
             <YAxis allowDecimals={false} width={64} />
-            <ChartTooltip content={<ChartTooltipContent />} />
+            <ChartTooltip
+              isAnimationActive={false}
+              content={<KstTooltipContent />}
+            />
             <Line
               type="monotone"
               dataKey="rowCount"
@@ -726,7 +960,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   const renderJiraChart = () => {
     if (!hasSendJiraData) {
       return (
-        <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+        <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
           Send Jira 데이터가 없습니다.
         </div>
       )
@@ -737,34 +971,45 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
     if (showBreakdown) {
       return (
-        <ChartContainer config={jiraBreakdownSeries.config} className="h-[260px]">
-          <ResponsiveContainer>
+        <ChartContainer
+          config={jiraBreakdownSeries.config}
+          className="flex-1 min-h-[180px]"
+        >
+          <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={jiraBreakdownSeries.data}
-              margin={{ top: 28, right: 16, left: 8, bottom: 16 }}
+              margin={{ top: 16, right: 8, left: 0, bottom: 56 }}
             >
-              <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+              <CartesianGrid
+                horizontal
+                vertical={false}              // 세로선은 숨기고
+                stroke={GRID_STROKE}
+                strokeDasharray="4 4"         // 가로선을 점선으로
+                strokeOpacity={GRID_OPACITY}
+              />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatDateLabel}
-                tickMargin={12}
+                tickFormatter={formatKstDateTimeLabel}
+                tickMargin={16}
+                minTickGap={12}
+                angle={-45}
+                textAnchor="end"
+                height={56}
+                tick={{ fontSize: 15 }}
               />
               <YAxis allowDecimals={false} width={64} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Legend
-                onClick={handleJiraLegendClick}
-                formatter={formatJiraLegend}
-                wrapperStyle={{ cursor: "pointer" }}
-                verticalAlign="top"
-                align="right"
-                iconType="circle"
+              <ChartTooltip
+                isAnimationActive={false}
+                content={<KstTooltipContent />}
               />
               {jiraBreakdownSeries.seriesKeys.map((seriesKey) => (
                 <Line
                   key={seriesKey}
                   type="monotone"
                   dataKey={seriesKey}
-                  name={jiraBreakdownSeries.config?.[seriesKey]?.label ?? seriesKey}
+                  name={
+                    jiraBreakdownSeries.config?.[seriesKey]?.label ?? seriesKey
+                  }
                   stroke={
                     jiraBreakdownSeries.config?.[seriesKey]?.color ??
                     "var(--chart-2)"
@@ -772,7 +1017,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 5 }}
-                  hide={hiddenJiraSeries.includes(seriesKey)}
                 />
               ))}
             </LineChart>
@@ -783,29 +1027,50 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
     if (!hasTotalsJiraData) {
       return (
-        <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
-          Send Jira 데이터가 없습니다.
+        <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+          Jira 인폼 데이터가 없습니다.
         </div>
       )
     }
 
-    const jiraTotalsConfig = { sendJiraCount: totalsChartConfig.sendJiraCount }
+    const jiraTotalsConfig = {
+      sendJiraCount: hasFilterSelection
+        ? totalsChartConfig.sendJiraCount
+        : { ...totalsChartConfig.sendJiraCount, color: THEME_LINE_COLOR },
+    }
 
     return (
-      <ChartContainer config={jiraTotalsConfig} className="h-[260px]">
-        <ResponsiveContainer>
+      <ChartContainer
+        config={jiraTotalsConfig}
+        className="flex-1 min-h-[180px]"
+      >
+        <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={totalsData}
-            margin={{ top: 28, right: 16, left: 8, bottom: 16 }}
+            margin={{ top: 16, right: 8, left: 0, bottom: 56 }}
           >
-            <CartesianGrid strokeDasharray="4 4" className="stroke-muted" />
+            <CartesianGrid
+              horizontal
+              vertical={false}              // 세로선은 숨기고
+              stroke={GRID_STROKE}
+              strokeDasharray="4 4"         // 가로선을 점선으로
+              strokeOpacity={GRID_OPACITY}
+            />
             <XAxis
               dataKey="date"
-              tickFormatter={formatDateLabel}
-              tickMargin={12}
+              tickFormatter={formatKstDateTimeLabel}
+              tickMargin={16}
+              minTickGap={12}
+              angle={-45}
+              textAnchor="end"
+              height={56}
+              tick={{ fontSize: 15 }}
             />
             <YAxis allowDecimals={false} width={64} />
-            <ChartTooltip content={<ChartTooltipContent />} />
+            <ChartTooltip
+              isAnimationActive={false}
+              content={<KstTooltipContent />}
+            />
             <Line
               type="monotone"
               dataKey="sendJiraCount"
@@ -837,7 +1102,8 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
-          라인별 E-SOP 진행 추이를 일별로 확인하고, 선택한 분류 기준에 따라 카테고리별로 비교합니다.
+          라인별 E-SOP 진행 추이를 날짜/시간 단위로 확인하고, 선택한 분류 기준에 따라
+          카테고리별로 비교합니다.
         </p>
       </div>
 
@@ -853,7 +1119,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                   size="sm"
                   className="h-8 min-w-[220px] justify-between px-3 text-xs"
                 >
-                  <span className="text-[11px] text-muted-foreground">조회 기간</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    조회 기간
+                  </span>
                   <span className="flex items-center gap-2">
                     <CalendarIcon className="size-4" />
                     {formatRangeLabel(dateRange)}
@@ -889,7 +1157,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
             {/* 분류 기준 선택 (레전드 기준) */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-muted-foreground">분류 기준</span>
+              <span className="text-[11px] text-muted-foreground">
+                분류 기준
+              </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -913,7 +1183,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                       <DropdownMenuItem
                         key={option.value}
                         disabled={!hasRecords}
-                        className={!hasRecords ? "cursor-not-allowed opacity-60" : ""}
+                        className={
+                          !hasRecords ? "cursor-not-allowed opacity-60" : ""
+                        }
                         onSelect={(event) => {
                           event.preventDefault()
                           if (!hasRecords) return
@@ -960,11 +1232,12 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                     <DropdownMenuCheckboxItem
                       key={category}
                       checked={activeCategories.includes(category)}
+                      onSelect={(event) => event.preventDefault()}
                       onCheckedChange={(checked) =>
                         handleCategoryToggle(
                           activeDimension,
                           category,
-                          checked === true
+                          checked === true,
                         )
                       }
                     >
@@ -990,50 +1263,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-
-            {/* 지표 표시(어떤 차트를 그릴지) */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2"
-                >
-                  <FilterIcon className="size-4" />
-                  <span>지표 표시</span>
-                  {visibleMetrics.length > 0 && (
-                    <span className="rounded bg-muted px-1 text-[11px] text-muted-foreground">
-                      {visibleMetrics.length}
-                    </span>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-44">
-                <DropdownMenuLabel>지표 선택</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {METRIC_OPTIONS.map((option) => {
-                  const isDisabled =
-                    option.value === "sendJiraCount" && !hasSendJiraData
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={option.value}
-                      checked={visibleMetrics.includes(option.value)}
-                      disabled={isDisabled}
-                      onCheckedChange={(checked) =>
-                        handleMetricVisibilityToggle(option.value, checked === true)
-                      }
-                    >
-                      {option.label}
-                      {isDisabled && (
-                        <span className="ml-1 text-[10px] text-muted-foreground">
-                          (데이터 없음)
-                        </span>
-                      )}
-                    </DropdownMenuCheckboxItem>
-                  )
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
           {/* 필터 전체 초기화 + 새로고침 버튼 */}
@@ -1045,7 +1274,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               disabled={!hasAnyActiveFilter || isLoading}
               className="gap-1 text-xs"
               aria-label="필터 전체 초기화"
-              title="날짜 / 카테고리 / 지표 / 숨김 시리즈 모두 초기화"
+              title="날짜 / 카테고리 / 숨김 시리즈 모두 초기화"
             >
               <FilterIcon className="size-4" />
               필터 전체 초기화
@@ -1060,7 +1289,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               aria-label="데이터 새로고침"
               title="데이터 새로고침"
             >
-              <IconRefresh className={cn("size-4", isLoading && "animate-spin")} />
+              <IconRefresh
+                className={cn("size-4", isLoading && "animate-spin")}
+              />
               새로고침
             </Button>
           </div>
@@ -1078,15 +1309,16 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       )}
 
       {/* 메인 차트 섹션 */}
-      <section className="flex flex-col gap-6 rounded-lg border bg-background p-4">
+      <section className="flex flex-1 min-h-0 flex-col gap-6 rounded-lg border bg-background p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold">E-SOP Trend</h2>
             <p className="text-xs text-muted-foreground">
-              날짜별 진행 건수 / Send Jira 추이를, 선택한 분류 기준에 따라 카테고리별로 비교합니다.
+              날짜/시간별 E-SOP진행 건수 Jira인폼 건수 Trend Monitoring
             </p>
+
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
             {activeDimension && (
               <span className="rounded-md bg-muted px-2 py-1">
                 분류 기준: {activeDimensionLabel}
@@ -1100,38 +1332,50 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
           </div>
         </div>
 
-        {/* 지표가 하나도 선택되지 않은 경우 */}
-        {visibleMetrics.length === 0 ? (
-          <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-            표시할 지표를 선택해 주세요.
+        {combinedLegendEntries.length > 0 && (
+          <div className="flex justify-end">
+            <ColorLegend
+              payload={combinedLegendEntries.map((entry) => ({
+                dataKey: entry.key,
+                value: entry.label,
+                color: entry.color,
+              }))}
+              seriesConfig={Object.fromEntries(
+                combinedLegendEntries.map((entry) => [
+                  entry.key,
+                  {
+                    label: entry.label,
+                    category: entry.category,
+                    color: entry.color,
+                  },
+                ]),
+              )}
+              renderItem={(key, configEntry) => renderLegendLabel(key, configEntry)}
+            />
           </div>
-        ) : (
-          <>
-            {/* 진행 건수 차트 */}
-            {showRowChart && (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    진행 건수
-                  </h3>
-                </div>
-                {renderRowChart()}
-              </div>
-            )}
-
-            {/* Send Jira 차트 */}
-            {showJiraChart && (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Send Jira
-                  </h3>
-                </div>
-                {renderJiraChart()}
-              </div>
-            )}
-          </>
         )}
+
+        <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2 lg:auto-rows-fr">
+          {/* 진행 건수 차트 */}
+          <div className="flex h-full min-h-0 flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-md font-semibold uppercase tracking-wide text-muted-foreground">
+                진행 건수
+              </h3>
+            </div>
+            {renderRowChart()}
+          </div>
+
+          {/* Send Jira 차트 */}
+          <div className="flex h-full min-h-0 flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-md font-semibold uppercase tracking-wide text-muted-foreground">
+                Jira 인폼 건수
+              </h3>
+            </div>
+            {renderJiraChart()}
+          </div>
+        </div>
       </section>
 
       {/* 로딩 인디케이터 */}

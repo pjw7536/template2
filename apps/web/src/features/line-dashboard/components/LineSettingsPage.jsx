@@ -672,7 +672,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                 id="main-step-input"
                 value={formValues.mainStep}
                 onChange={(event) => handleFormChange("mainStep", event.target.value)}
-                placeholder="ex) STEP_10"
+                placeholder="ex) AB123456"
                 required
                 maxLength={50}
               />
