@@ -1138,6 +1138,10 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                     // 일반적인 range UX: 첫 클릭(from), 두 번째 클릭(to), 세 번째 클릭 새 범위
                     onSelect={setDateRange}
                     numberOfMonths={2}
+                    classNames={{
+                      today:
+                        "!bg-transparent !text-foreground data-[selected=true]:!bg-primary data-[selected=true]:!text-primary-foreground",
+                    }}
                     disabled={{ after: today }}
                   />
                   <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">

@@ -364,7 +364,6 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "department": getattr(user, "department", None),
         "line": getattr(user, "line", None),
         "sdwt": getattr(user, "sdwt", None),
-        "sabun": user.get_username(),      # 별도 컬럼 없이 username = 사번
     }
     return JsonResponse(payload)
 

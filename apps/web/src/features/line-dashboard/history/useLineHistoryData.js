@@ -3,11 +3,26 @@ import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"
 
+const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
+
 function hasPositiveValue(records, key) {
   return (
     Array.isArray(records) &&
     records.some((record) => (Number(record?.[key] ?? 0) || 0) > 0)
   )
+}
+
+function formatKstDateOnly(value) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  const time = date.getTime()
+  if (Number.isNaN(time)) return null
+  return DATE_ONLY_FORMATTER.format(date)
 }
 
 function calcRangeDays(dateRange) {
@@ -37,7 +52,10 @@ export function useLineHistoryData({ lineId, dateRange }) {
     const controller = new AbortController()
 
     async function load() {
-      if (!lineId || !dateRange?.from || !dateRange?.to || !rangeDays) {
+      const fromValue = formatKstDateOnly(dateRange?.from)
+      const toValue = formatKstDateOnly(dateRange?.to)
+
+      if (!lineId || !fromValue || !toValue || !rangeDays) {
         setState((prev) => ({ ...prev, isLoading: false }))
         return
       }
@@ -47,8 +65,8 @@ export function useLineHistoryData({ lineId, dateRange }) {
       try {
         const params = new URLSearchParams({ lineId: String(lineId) })
         params.set("rangeDays", String(rangeDays))
-        params.set("from", dateRange.from.toISOString().slice(0, 10))
-        params.set("to", dateRange.to.toISOString().slice(0, 10))
+        params.set("from", fromValue)
+        params.set("to", toValue)
 
         const endpoint = buildBackendUrl("/line-dashboard/history", params)
         const response = await fetch(endpoint, {
