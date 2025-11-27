@@ -19,6 +19,7 @@ CLIENT_ID = os.getenv("DUMMY_ADFS_CLIENT_ID", "dummy-client")
 DEFAULT_EMAIL = os.getenv("DUMMY_ADFS_EMAIL", "dummy.user@example.com")
 DEFAULT_NAME = os.getenv("DUMMY_ADFS_NAME", "Dummy User")
 DEFAULT_DEPT = os.getenv("DUMMY_ADFS_DEPT", "Development")
+DEFAULT_SABUN = os.getenv("DUMMY_ADFS_SABUN", "S000001")
 ISSUER = os.getenv("DUMMY_ADFS_ISSUER", "http://localhost:9000/adfs")
 PRIVATE_KEY_PATH = Path(os.getenv("DUMMY_ADFS_PRIVATE_KEY_PATH", "dummy_adfs_private.key")).resolve()
 LOGOUT_REDIRECT = os.getenv("DUMMY_ADFS_LOGOUT_TARGET", "http://localhost")
@@ -33,6 +34,7 @@ def _render_login_form(request: Request) -> str:
     params = request.query_params
     email = html.escape(params.get("email") or DEFAULT_EMAIL)
     name = html.escape(params.get("name") or DEFAULT_NAME)
+    sabun = html.escape(params.get("sabun") or DEFAULT_SABUN)
     state = html.escape(params.get("state") or "")
     nonce = html.escape(params.get("nonce") or secrets.token_urlsafe(16))
     redirect_uri = html.escape(params.get("redirect_uri") or "")
@@ -60,6 +62,8 @@ def _render_login_form(request: Request) -> str:
           <input id="email" name="email" value="{email}" type="email" required />
           <label for="name">Display name</label>
           <input id="name" name="name" value="{name}" type="text" required />
+          <label for="sabun">Sabun (사번)</label>
+          <input id="sabun" name="sabun" value="{sabun}" type="text" required />
           <input type="hidden" name="state" value="{state}" />
           <input type="hidden" name="nonce" value="{nonce}" />
           <input type="hidden" name="redirect_uri" value="{redirect_uri}" />
@@ -71,9 +75,10 @@ def _render_login_form(request: Request) -> str:
     """
 
 
-def _build_id_token(*, email: str, name: str, nonce: str) -> str:
+def _build_id_token(*, email: str, name: str, sabun: str, nonce: str) -> str:
     now = datetime.now(timezone.utc)
-    subject = hashlib.sha256(email.encode("utf-8")).hexdigest()[:32]
+    stable_id = sabun or email
+    subject = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()[:32]
 
     payload = {
         "aud": CLIENT_ID,
@@ -89,6 +94,7 @@ def _build_id_token(*, email: str, name: str, nonce: str) -> str:
         "username": name,
         "name": name,
         "deptname": DEFAULT_DEPT,
+        "sabun": sabun,
         "jti": secrets.token_hex(16),
     }
 
@@ -109,6 +115,7 @@ async def authorize_form(request: Request) -> HTMLResponse:
 async def authorize(
     email: str = Form(DEFAULT_EMAIL),
     name: str = Form(DEFAULT_NAME),
+    sabun: str = Form(DEFAULT_SABUN),
     state: str = Form(""),
     nonce: str = Form(""),
     redirect_uri: str = Form(...),
@@ -120,7 +127,12 @@ async def authorize(
         raise HTTPException(status_code=400, detail="missing_redirect")
 
     nonce_value = nonce or secrets.token_urlsafe(16)
-    id_token = _build_id_token(email=email or DEFAULT_EMAIL, name=name or DEFAULT_NAME, nonce=nonce_value)
+    id_token = _build_id_token(
+        email=email or DEFAULT_EMAIL,
+        name=name or DEFAULT_NAME,
+        sabun=sabun or DEFAULT_SABUN,
+        nonce=nonce_value,
+    )
 
     html_body = f"""
     <html>

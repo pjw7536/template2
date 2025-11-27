@@ -68,15 +68,19 @@ def _decode_state_to_str(state: str, request: HttpRequest) -> str:
     - 디코드 실패 시: 안전한 기본 프론트엔드 경로로 폴백.
     """
     try:
-        target_bytes = b64d(state)
-        try:
-            return target_bytes.decode("utf-8")
-        except Exception:
-            # 인코딩 문제 시 최대한 복구
-            return str(target_bytes, "utf-8", errors="ignore")
+        decoded_state = b64d(state)
     except Exception:
         # state 자체가 깨졌다면 기본 프론트엔드로
         return resolve_frontend_target(None, request=request)
+
+    if isinstance(decoded_state, str):
+        return decoded_state
+
+    try:
+        return decoded_state.decode("utf-8")
+    except Exception:
+        # 인코딩 문제 시 최대한 복구
+        return str(decoded_state, "utf-8", errors="ignore")
 
 
 def _safe_redirect_target(target: Optional[str], request: HttpRequest) -> str:

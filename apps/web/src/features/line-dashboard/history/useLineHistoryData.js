@@ -9,6 +9,7 @@ const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 })
+const KST_OFFSET = "+09:00"
 
 function hasPositiveValue(records, key) {
   return (
@@ -25,12 +26,14 @@ function formatKstDateOnly(value) {
   return DATE_ONLY_FORMATTER.format(date)
 }
 
-function calcRangeDays(dateRange) {
-  const { from, to } = dateRange ?? {}
-  if (!from || !to) return null
-  const start = new Date(from)
-  const end = new Date(to)
-  const diff = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1)
+function calcRangeDays(fromValue, toValue) {
+  if (!fromValue || !toValue) return null
+  const start = new Date(`${fromValue}T00:00:00${KST_OFFSET}`)
+  const end = new Date(`${toValue}T00:00:00${KST_OFFSET}`)
+  const startMs = start.getTime()
+  const endMs = end.getTime()
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null
+  const diff = Math.max(1, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1)
   return diff
 }
 
@@ -42,7 +45,15 @@ export function useLineHistoryData({ lineId, dateRange }) {
   })
   const [refreshToken, setRefreshToken] = React.useState(0)
 
-  const rangeDays = React.useMemo(() => calcRangeDays(dateRange), [dateRange])
+  const { fromValue, toValue, rangeDays } = React.useMemo(() => {
+    const normalizedFrom = formatKstDateOnly(dateRange?.from)
+    const normalizedTo = formatKstDateOnly(dateRange?.to)
+    return {
+      fromValue: normalizedFrom,
+      toValue: normalizedTo,
+      rangeDays: calcRangeDays(normalizedFrom, normalizedTo),
+    }
+  }, [dateRange])
 
   React.useEffect(() => {
     setState({ data: null, isLoading: true, error: null })
@@ -51,10 +62,17 @@ export function useLineHistoryData({ lineId, dateRange }) {
   React.useEffect(() => {
     const controller = new AbortController()
 
-    async function load() {
-      const fromValue = formatKstDateOnly(dateRange?.from)
-      const toValue = formatKstDateOnly(dateRange?.to)
+    const isWithinRange = (value) => {
+      if (!fromValue || !toValue) return true
+      const key = formatKstDateOnly(value)
+      if (!key) return false
+      return key >= fromValue && key <= toValue
+    }
 
+    const filterRecords = (records) =>
+      Array.isArray(records) ? records.filter((record) => isWithinRange(record?.date)) : []
+
+    async function load() {
       if (!lineId || !fromValue || !toValue || !rangeDays) {
         setState((prev) => ({ ...prev, isLoading: false }))
         return
@@ -84,7 +102,26 @@ export function useLineHistoryData({ lineId, dateRange }) {
         }
 
         const payload = await response.json()
-        setState({ data: payload, isLoading: false, error: null })
+        const filteredTotals = filterRecords(payload?.totals)
+        const filteredBreakdowns =
+          payload?.breakdowns && typeof payload.breakdowns === "object"
+            ? Object.fromEntries(
+                Object.entries(payload.breakdowns).map(([key, records]) => [
+                  key,
+                  filterRecords(records),
+                ]),
+              )
+            : {}
+
+        setState({
+          data: {
+            ...payload,
+            totals: filteredTotals,
+            breakdowns: filteredBreakdowns,
+          },
+          isLoading: false,
+          error: null,
+        })
       } catch (error) {
         if (controller.signal.aborted) return
         const message =
@@ -96,7 +133,7 @@ export function useLineHistoryData({ lineId, dateRange }) {
     load()
 
     return () => controller.abort()
-  }, [lineId, dateRange, rangeDays, refreshToken])
+  }, [lineId, fromValue, toValue, rangeDays, refreshToken])
 
   const refresh = React.useCallback(() => {
     setRefreshToken((value) => value + 1)
