@@ -160,12 +160,12 @@ export function NavUser({
             <DropdownMenuSeparator />
 
             {/* 업그레이드 섹션: 필요 없으면 상위에서 onUpgrade 미전달 후 숨기고 싶다면 아래 map 방식으로 제어 가능 */}
-            <DropdownMenuGroup>
+            {/* <DropdownMenuGroup>
               <DropdownMenuItem onSelect={onUpgrade}>
                 <Sparkles className="mr-2 size-4" aria-hidden="true" />
                 Upgrade to Pro
               </DropdownMenuItem>
-            </DropdownMenuGroup>
+            </DropdownMenuGroup> */}
 
             <DropdownMenuSeparator />
 

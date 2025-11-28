@@ -1290,13 +1290,13 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               onClick={handleRefresh}
               disabled={isLoading}
               className="gap-1"
-              aria-label="데이터 새로고침"
-              title="데이터 새로고침"
+              aria-label="refresh"
+              title="refresh"
             >
               <IconRefresh
                 className={cn("size-4", isLoading && "animate-spin")}
               />
-              새로고침
+              Refresh
             </Button>
           </div>
         </div>

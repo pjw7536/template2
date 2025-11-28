@@ -6,7 +6,7 @@ import { deriveFlagState } from "../utils/flagState"
 const STATUS_ORDER = STATUS_SEQUENCE
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
 
-const MULTI_SELECT_KEYS = new Set(["status"])
+const MULTI_SELECT_KEYS = new Set(["status", "sample_type", "sample_group"])
 
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
@@ -374,14 +374,17 @@ export function createQuickFilterSections(columns, rows, options = {}) {
       }
     })
 
-    if (valueMap.size === 0) return null
+    let sectionOptions = []
 
-    const sectionOptions = Array.from(valueMap.entries()).map(([value, label]) => ({
-      value,
-      label,
-    }))
-    if (typeof definition.compareOptions === "function") {
-      sectionOptions.sort((a, b) => definition.compareOptions(a, b))
+    if (valueMap.size > 0) {
+      sectionOptions = Array.from(valueMap.entries()).map(([value, label]) => ({
+        value,
+        label,
+      }))
+
+      if (typeof definition.compareOptions === "function") {
+        sectionOptions.sort((a, b) => definition.compareOptions(a, b))
+      }
     }
 
     const isMulti = MULTI_SELECT_KEYS.has(definition.key)
@@ -406,7 +409,8 @@ export function createQuickFilterSections(columns, rows, options = {}) {
 }
 
 // 섹션 구성 변경 시 기존 상태를 정리해 일관성을 유지합니다.
-export function syncQuickFiltersToSections(previousFilters, sections) {
+export function syncQuickFiltersToSections(previousFilters, sections, options = {}) {
+  const preserveMissing = Boolean(options?.preserveMissing)
   const sectionMap = new Map(sections.map((section) => [section.key, section]))
   let nextFilters = previousFilters
 
@@ -416,6 +420,7 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
     const shouldBeMulti = MULTI_SELECT_KEYS.has(definition.key)
 
     if (!section) {
+      if (preserveMissing) return
       const resetValue = shouldBeMulti ? [] : null
       if (JSON.stringify(current) !== JSON.stringify(resetValue)) {
         if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
@@ -424,24 +429,11 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
       return
     }
 
-    const shouldValidate =
-      !section.allowCustomValue &&
-      Array.isArray(section.options) &&
-      section.options.length > 0
-    const validValues = shouldValidate ? new Set(section.options.map((option) => option.value)) : null
-
     if (section.isMulti) {
       if (!Array.isArray(current)) {
         if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
         nextFilters[definition.key] = []
         return
-      }
-      if (shouldValidate) {
-        const filtered = current.filter((value) => validValues.has(value))
-        if (filtered.length !== current.length) {
-          if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
-          nextFilters[definition.key] = filtered
-        }
       }
       return
     }
@@ -461,10 +453,6 @@ export function syncQuickFiltersToSections(previousFilters, sections) {
       return
     }
 
-    if (shouldValidate && current !== null && !validValues.has(current)) {
-      if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
-      nextFilters[definition.key] = null
-    }
   })
 
   return nextFilters
@@ -489,8 +477,13 @@ export function applyQuickFilters(rows, sections, filters) {
 }
 
 // 현재 활성화되어 있는 필터 개수를 센 뒤 배지에 표시합니다.
-export function countActiveQuickFilters(filters) {
+export function countActiveQuickFilters(filters, sections = null) {
+  const allowedKeys =
+    Array.isArray(sections) && sections.length > 0 ? new Set(sections.map((section) => section.key)) : null
+
   return Object.entries(filters).reduce((sum, [key, value]) => {
+    if (allowedKeys && !allowedKeys.has(key)) return sum
+
     if (key === "recent_hours") {
       return sum + (value !== null && !isDefaultRecentHours(value) ? 1 : 0)
     }

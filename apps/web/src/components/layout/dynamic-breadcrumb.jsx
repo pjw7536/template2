@@ -4,7 +4,7 @@
  * -----------------------------------------------------------------------------
  * - 현재 URL 경로를 "/" 기준으로 잘라 "홈 > 섹션 > 상세" 형태의 breadcrumb를 만들어 줍니다.
  * - 마지막 항목은 현재 페이지이므로 <BreadcrumbPage>로 표시하고,
- *   마지막이 아닌 항목들은 <BreadcrumbLink>로 이동 가능하게 렌더링합니다.
+ *   마지막이 아닌 항목들도 링크 없이 텍스트로만 렌더링합니다.
  *
  * ✅ 유연한 옵션
  * - includeHome: 홈 링크를 맨 앞에 추가할지 여부 (기본 true)
@@ -14,7 +14,7 @@
  */
 
 import { Fragment } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 
 import {
   Breadcrumb,
@@ -22,7 +22,6 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-  BreadcrumbLink,
 } from "@/components/ui/breadcrumb"
 
 /* -----------------------------------------------------------------------------
@@ -133,9 +132,7 @@ export function DynamicBreadcrumb({
               {crumb.isLast ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink asChild>
-                  <Link to={crumb.href}>{crumb.label}</Link>
-                </BreadcrumbLink>
+                <span className="transition-colors">{crumb.label}</span>
               )}
             </BreadcrumbItem>
           </Fragment>

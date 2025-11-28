@@ -48,9 +48,10 @@ import {
 import { StatusDistributionCard } from "./StatusDistributionCard"
 import { createColumnDefs } from "./column-defs"
 import { createGlobalFilterFn } from "./filters/GlobalFilter"
-import { QuickFilters } from "./filters/QuickFilters"
+import { QuickFilterFavorites, QuickFilters } from "./filters/QuickFilters"
 import { useDataTableState } from "./hooks/useDataTable"
 import { useQuickFilters } from "./hooks/useQuickFilters"
+import { useQuickFilterFavorites } from "./hooks/useQuickFilterFavorites"
 import { useStatusChart } from "./hooks/useStatusChart"
 import { numberFormatter, timeFormatter } from "./utils/constants"
 import {
@@ -262,8 +263,29 @@ export function DataTable({ lineId }) {
     [user?.email]
   )
 
-  const { sections, filters, filteredRows, activeCount, toggleFilter, resetFilters } =
-    useQuickFilters(columns, rows, quickFilterOptions)
+  const {
+    sections,
+    filters,
+    filteredRows,
+    activeCount,
+    toggleFilter,
+    resetFilters,
+    replaceFilters,
+  } = useQuickFilters(columns, rows, quickFilterOptions)
+
+  const {
+    favorites,
+    saveFavorite,
+    updateFavorite,
+    applyFavorite,
+    deleteFavorite,
+  } = useQuickFilterFavorites({
+    filters,
+    sections,
+    replaceFilters,
+    ownerId: user?.email ?? null,
+  })
+  const [favoriteResetSignal, setFavoriteResetSignal] = React.useState(0)
 
   React.useEffect(() => {
     if (!syncRecentHoursRange) return
@@ -351,6 +373,11 @@ export function DataTable({ lineId }) {
   /* ──────────────────────────────────────────────────────────────────────────
    * 5) 이벤트 핸들러
    * ──────────────────────────────────────────────────────────────────────── */
+  const handleClearFilters = React.useCallback(() => {
+    resetFilters()
+    setFavoriteResetSignal((previous) => previous + 1)
+  }, [resetFilters])
+
   function handleRefresh() {
     void fetchRows()
   }
@@ -363,7 +390,7 @@ export function DataTable({ lineId }) {
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col gap-2">
       {/* 상단: 타이틀/리프레시 */}
-      <div className="flex flex-wrap justify-between items-start">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-lg font-semibold">
             <IconDatabase className="size-5" />
@@ -374,7 +401,16 @@ export function DataTable({ lineId }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end mr-3">
+        <div className="ml-auto flex flex-wrap items-end gap-2">
+          <QuickFilterFavorites
+            filters={filters}
+            favorites={favorites}
+            onSaveFavorite={saveFavorite}
+            onUpdateFavorite={updateFavorite}
+            onApplyFavorite={applyFavorite}
+            onDeleteFavorite={deleteFavorite}
+            resetSignal={favoriteResetSignal}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -395,7 +431,7 @@ export function DataTable({ lineId }) {
           filters={filters}
           activeCount={activeCount}
           onToggle={toggleFilter}
-          onClear={resetFilters}
+          onClear={handleClearFilters}
           globalFilterValue={filter}
           onGlobalFilterChange={setFilter}
           statusSidebar={

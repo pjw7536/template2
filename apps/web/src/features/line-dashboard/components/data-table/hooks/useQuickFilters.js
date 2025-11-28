@@ -25,7 +25,9 @@ export function useQuickFilters(columns, rows, options = {}) {
 
   // 컬럼이 바뀌면 섹션도 바뀌므로, 기존 상태를 새 구조에 맞춰 정리합니다.
   React.useEffect(() => {
-    setFilters((previous) => syncQuickFiltersToSections(previous, sections))
+    setFilters((previous) =>
+      syncQuickFiltersToSections(previous, sections, { preserveMissing: true })
+    )
   }, [sections])
 
   // 실제로 퀵 필터를 적용한 행 목록입니다.
@@ -36,8 +38,8 @@ export function useQuickFilters(columns, rows, options = {}) {
 
   // 현재 몇 개의 필터가 활성화되어 있는지 카운트합니다.
   const activeCount = React.useMemo(
-    () => countActiveQuickFilters(filters),
-    [filters]
+    () => countActiveQuickFilters(filters, sections),
+    [filters, sections]
   )
 
   // 단일 선택/다중 선택 필터를 구분하여 토글 동작을 정의합니다.
@@ -56,6 +58,11 @@ export function useQuickFilters(columns, rows, options = {}) {
         return { ...previous, [key]: previous[key] === value ? null : value }
       }
 
+      if (forceValue) {
+        const nextValues = Array.isArray(value) ? value : []
+        return { ...previous, [key]: nextValues }
+      }
+
       const currentValues = Array.isArray(previous[key]) ? previous[key] : []
       const exists = currentValues.includes(value)
       const nextValues = exists
@@ -71,6 +78,20 @@ export function useQuickFilters(columns, rows, options = {}) {
     []
   )
 
+  const replaceFilters = React.useCallback(
+    (nextFilters, options = { preserveMissing: true }) => {
+      setFilters((previous) => {
+        const base = createInitialQuickFilters()
+        const merged = { ...base, ...(nextFilters ?? {}) }
+        const hasSections = Array.isArray(sections) && sections.length > 0
+        return hasSections
+          ? syncQuickFiltersToSections(merged, sections, options)
+          : merged
+      })
+    },
+    [sections]
+  )
+
   return {
     sections,
     filters,
@@ -78,5 +99,6 @@ export function useQuickFilters(columns, rows, options = {}) {
     activeCount,
     toggleFilter,
     resetFilters,
+    replaceFilters,
   }
 }
