@@ -80,7 +80,7 @@ export function useQuickFilters(columns, rows, options = {}) {
 
   const replaceFilters = React.useCallback(
     (nextFilters, options = { preserveMissing: true }) => {
-      setFilters((previous) => {
+      setFilters(() => {
         const base = createInitialQuickFilters()
         const merged = { ...base, ...(nextFilters ?? {}) }
         const hasSections = Array.isArray(sections) && sections.length > 0

@@ -1,14 +1,7 @@
 // src/components/layout/nav-user.jsx
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  BadgeCheck,
-  Bell,
-  ChevronsUpDown,
-  CreditCard,
-  LogOut,
-  Sparkles,
-} from "lucide-react"
+import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut } from "lucide-react"
 
 import { useAuth } from "@/features/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -64,7 +57,6 @@ function normalizeUser(u) {
  *
  * @param {Object} props
  * @param {Object} props.user               - 사용자 객체 { name, email, avatar } (느슨히 수용, normalizeUser에서 정규화)
- * @param {Function} [props.onUpgrade]      - "Upgrade to Pro" 클릭 콜백
  * @param {Function} [props.onAccount]      - "Account" 클릭 콜백
  * @param {Function} [props.onBilling]      - "Billing" 클릭 콜백
  * @param {Function} [props.onNotifications]- "Notifications" 클릭 콜백
@@ -72,7 +64,6 @@ function normalizeUser(u) {
  */
 export function NavUser({
   user,
-  onUpgrade = () => { },
   onAccount = () => { },
   onBilling = () => { },
   onNotifications = () => { },

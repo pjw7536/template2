@@ -378,7 +378,6 @@ function resolveDimensionRecords(breakdownsByDimension, dimensionKey) {
 function LegendLabel({
   label,
   color,
-  category,
   onSelectColor,
   onResetColor,
   hasOverride,
@@ -541,15 +540,23 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   // 선택된 카테고리 중, 실제 존재하지 않는 카테고리는 정리
   React.useEffect(() => {
     setSelectedCategoriesByDimension((prev) => {
+      let changed = false
       const next = { ...prev }
+
       for (const option of DIMENSION_OPTIONS) {
         const current = prev[option.value] ?? []
         const available = new Set(
           (dimensionTotals[option.value] ?? []).map(([category]) => category),
         )
-        next[option.value] = current.filter((category) => available.has(category))
+        const filtered = current.filter((category) => available.has(category))
+        const isSameLength = filtered.length === current.length
+        const isSameOrder = isSameLength && filtered.every((value, index) => value === current[index])
+
+        next[option.value] = filtered
+        if (!isSameOrder) changed = true
       }
-      return next
+
+      return changed ? next : prev
     })
   }, [dimensionTotals])
 
@@ -717,8 +724,9 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     setLegendColorOverrides((prev) => {
       const prevDimension = prev[dimension] ?? {}
       if (!prevDimension[category]) return prev
-      const { [category]: _removed, ...rest } = prevDimension
-      return { ...prev, [dimension]: rest }
+      const nextDimension = { ...prevDimension }
+      delete nextDimension[category]
+      return { ...prev, [dimension]: nextDimension }
     })
   }, [])
 
@@ -827,10 +835,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
         {},
       ),
     )
-
-    // 숨긴 시리즈 초기화
-    setHiddenRowSeries([])
-    setHiddenJiraSeries([])
   }, [defaultRange])
 
   // 진행 건수 차트 렌더러
