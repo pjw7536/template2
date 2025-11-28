@@ -227,9 +227,7 @@ export function QuickFilterFavorites({
   resetSignal,
   className,
 }) {
-  const [selectedFavoriteId, setSelectedFavoriteId] = React.useState(
-    () => favorites?.[0]?.id ?? ""
-  )
+  const [selectedFavoriteId, setSelectedFavoriteId] = React.useState("")
   const hasMountedRef = React.useRef(false)
   const selectedFavorite = React.useMemo(
     () => favorites.find((favorite) => favorite.id === selectedFavoriteId),

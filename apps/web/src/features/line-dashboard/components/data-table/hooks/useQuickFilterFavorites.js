@@ -8,12 +8,18 @@ import {
 
 const STORAGE_KEY_PREFIX = "line-dashboard:quick-filter-favorites"
 const DEFAULT_OWNER = "anonymous"
+const DEFAULT_LINE = "__default-line__"
 
 const hasWindow = typeof window !== "undefined"
 
 function makeStorageKey(ownerId) {
   const safeOwner = ownerId ? String(ownerId).trim().toLowerCase() : DEFAULT_OWNER
   return `${STORAGE_KEY_PREFIX}:${safeOwner}`
+}
+
+function normalizeLineId(lineId) {
+  const raw = lineId == null ? "" : String(lineId).trim()
+  return raw ? raw.toLowerCase() : DEFAULT_LINE
 }
 
 function sanitizeFilters(rawFilters, sections) {
@@ -26,7 +32,7 @@ function sanitizeFilters(rawFilters, sections) {
   return syncQuickFiltersToSections(merged, sections, { preserveMissing: true })
 }
 
-function loadFavorites(storageKey, sections) {
+function loadFavorites(storageKey, sections, defaultLineId) {
   if (!hasWindow) return []
   try {
     const raw = window.localStorage.getItem(storageKey)
@@ -39,7 +45,12 @@ function loadFavorites(storageKey, sections) {
         const name = typeof entry.name === "string" ? entry.name.trim() : ""
         const id = typeof entry.id === "string" ? entry.id : null
         if (!name || !id) return null
-        return { id, name, filters: sanitizeFilters(entry.filters, sections) }
+        return {
+          id,
+          name,
+          lineId: normalizeLineId(entry.lineId ?? defaultLineId),
+          filters: sanitizeFilters(entry.filters, sections),
+        }
       })
       .filter(Boolean)
   } catch (error) {
@@ -61,16 +72,23 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function useQuickFilterFavorites({ filters, sections, replaceFilters, ownerId }) {
+export function useQuickFilterFavorites({
+  filters,
+  sections,
+  replaceFilters,
+  ownerId,
+  lineId,
+}) {
   const storageKey = React.useMemo(() => makeStorageKey(ownerId), [ownerId])
+  const normalizedLineId = React.useMemo(() => normalizeLineId(lineId), [lineId])
 
   const [favorites, setFavorites] = React.useState(() =>
-    loadFavorites(storageKey, sections)
+    loadFavorites(storageKey, sections, normalizedLineId)
   )
 
   React.useEffect(() => {
-    setFavorites(loadFavorites(storageKey, sections))
-  }, [storageKey, sections])
+    setFavorites(loadFavorites(storageKey, sections, normalizedLineId))
+  }, [storageKey, sections, normalizedLineId])
 
   React.useEffect(() => {
     setFavorites((previous) => {
@@ -78,14 +96,20 @@ export function useQuickFilterFavorites({ filters, sections, replaceFilters, own
       if (!shouldSanitize) return previous
       return previous.map((favorite) => ({
         ...favorite,
+        lineId: normalizeLineId(favorite.lineId ?? normalizedLineId),
         filters: sanitizeFilters(favorite.filters, sections),
       }))
     })
-  }, [sections])
+  }, [sections, normalizedLineId])
 
   React.useEffect(() => {
     persistFavorites(storageKey, favorites)
   }, [favorites, storageKey])
+
+  const favoritesByLine = React.useMemo(
+    () => favorites.filter((favorite) => favorite.lineId === normalizedLineId),
+    [favorites, normalizedLineId]
+  )
 
   const saveFavorite = React.useCallback(
     (name) => {
@@ -96,17 +120,21 @@ export function useQuickFilterFavorites({ filters, sections, replaceFilters, own
       let createdId = null
 
       setFavorites((previous) => {
-        const existingIndex = previous.findIndex(
-          (favorite) => favorite.name.toLowerCase() === trimmed.toLowerCase()
+        const normalizedName = trimmed.toLowerCase()
+        const hasDuplicateInLine = previous.some(
+          (favorite) =>
+            favorite.lineId === normalizedLineId &&
+            favorite.name.toLowerCase() === normalizedName
         )
 
-        if (existingIndex >= 0) {
+        if (hasDuplicateInLine) {
           return previous
         }
 
         const nextFavorite = {
           id: createId(),
           name: trimmed,
+          lineId: normalizedLineId,
           filters: sanitizedFilters,
         }
 
@@ -117,7 +145,7 @@ export function useQuickFilterFavorites({ filters, sections, replaceFilters, own
 
       return createdId
     },
-    [filters, sections]
+    [filters, sections, normalizedLineId]
   )
 
   const updateFavorite = React.useCallback(
@@ -130,23 +158,28 @@ export function useQuickFilterFavorites({ filters, sections, replaceFilters, own
       setFavorites((previous) => {
         const target = previous.find((favorite) => favorite.id === id)
         if (!target) return previous
-        const updated = { ...target, name: trimmed, filters: sanitizedFilters }
+        const updated = {
+          ...target,
+          name: trimmed,
+          filters: sanitizedFilters,
+          lineId: target.lineId ?? normalizedLineId,
+        }
         return previous.map((favorite) => (favorite.id === id ? updated : favorite))
       })
 
       return id
     },
-    [filters, sections]
+    [filters, sections, normalizedLineId]
   )
 
   const applyFavorite = React.useCallback(
     (id) => {
-      const target = favorites.find((favorite) => favorite.id === id)
+      const target = favoritesByLine.find((favorite) => favorite.id === id)
       if (!target) return
       const sanitizedFilters = sanitizeFilters(target.filters, sections)
       replaceFilters(sanitizedFilters)
     },
-    [favorites, sections, replaceFilters]
+    [favoritesByLine, sections, replaceFilters]
   )
 
   const deleteFavorite = React.useCallback((id) => {
@@ -154,7 +187,7 @@ export function useQuickFilterFavorites({ filters, sections, replaceFilters, own
   }, [])
 
   return {
-    favorites,
+    favorites: favoritesByLine,
     saveFavorite,
     updateFavorite,
     applyFavorite,

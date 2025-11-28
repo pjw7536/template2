@@ -284,6 +284,7 @@ export function DataTable({ lineId }) {
     sections,
     replaceFilters,
     ownerId: user?.email ?? null,
+    lineId,
   })
   const [favoriteResetSignal, setFavoriteResetSignal] = React.useState(0)
 
@@ -388,7 +389,7 @@ export function DataTable({ lineId }) {
    *    - Table 전체 width는 table.getTotalSize()로 지정 (px 문자열)
    * ──────────────────────────────────────────────────────────────────────── */
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col gap-2">
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
       {/* 상단: 타이틀/리프레시 */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
