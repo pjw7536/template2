@@ -1,0 +1,145 @@
+/* src/styles/quill.css */
+.qna-quill {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  border-radius: 0.75rem;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.qna-quill .ql-toolbar {
+  border-color: var(--input);
+  border-radius: 0.75rem 0.75rem 0 0;
+  background-color: var(--muted);
+}
+
+.qna-quill .ql-toolbar button,
+.qna-quill .ql-toolbar .ql-picker,
+.qna-quill .ql-toolbar .ql-picker-item {
+  color: var(--foreground);
+}
+
+.qna-quill .ql-toolbar .ql-stroke {
+  stroke: currentColor;
+}
+
+.qna-quill .ql-toolbar .ql-fill {
+  fill: currentColor;
+}
+
+.qna-quill .ql-toolbar button:hover,
+.qna-quill .ql-toolbar button.ql-active,
+.qna-quill .ql-toolbar button:focus,
+.qna-quill .ql-toolbar .ql-picker-label:hover,
+.qna-quill .ql-toolbar .ql-picker-label:focus,
+.qna-quill .ql-toolbar .ql-picker-label.ql-active,
+.qna-quill .ql-toolbar .ql-picker-item:hover,
+.qna-quill .ql-toolbar .ql-picker-item.ql-selected,
+.qna-quill .ql-toolbar .ql-picker-item.ql-selected:hover {
+  color: var(--primary);
+}
+
+.qna-quill .ql-toolbar .ql-picker-options {
+  background-color: var(--popover);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.qna-quill .ql-container {
+  width: 500px;
+  min-width: 100%;
+  max-width: 100%;
+  border-color: var(--input);
+  border-radius: 0 0 0.75rem 0.75rem;
+  background-color: var(--background);
+  font-size: 0.95rem;
+  min-height: 50vh;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.qna-quill .ql-editor {
+  min-height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: visible;
+  width: 100%;
+  max-width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+  color: var(--foreground);
+}
+
+.qna-quill .ql-editor.ql-blank::before {
+  color: var(--muted-foreground);
+}
+
+.qna-quill:focus-within .ql-toolbar,
+.qna-quill:focus-within .ql-container {
+  border-color: var(--ring);
+}
+
+.qna-post-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  line-height: 1.6;
+  word-break: break-word;
+  color: var(--foreground);
+}
+
+.qna-post-body p {
+  margin: 0;
+}
+
+.qna-post-body ul,
+.qna-post-body ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.qna-post-body blockquote {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.qna-post-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+  padding: 0.25rem;
+  object-fit: contain;
+}
+
+.qna-post-body--resizable img {
+  resize: both;
+  overflow: auto;
+  min-width: 160px;
+  min-height: 140px;
+}
+
+.qna-post-body a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+.qna-post-body .ql-align-center {
+  text-align: center;
+}
+
+.qna-post-body .ql-align-right {
+  text-align: right;
+}
+
+.qna-post-body .ql-align-justify {
+  text-align: justify;
+}

@@ -6,7 +6,6 @@ services:
       context: ./apps/api
     env_file:
       - ./env/api.common.env
-      - ./env/api.dev.env
       - ./env/api.oidc.dev.env
     volumes:
       - ./apps/api:/app
@@ -30,7 +29,6 @@ services:
     build:
       context: ./apps/web
     env_file:
-      - ./env/web.dev.env
       - ./env/web.oidc.dev.env
     depends_on:
       - api

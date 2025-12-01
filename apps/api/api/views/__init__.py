@@ -7,6 +7,7 @@ from .drone_early_inform import DroneEarlyInformView
 from .health import HealthView
 from .line_dashboard import LineHistoryView, LineIdListView
 from .tables import TableUpdateView, TablesView
+from .voc import VocPostDetailView, VocPostsView, VocReplyView
 
 __all__ = [
     "ActivityLogView",
@@ -17,4 +18,7 @@ __all__ = [
     "LineIdListView",
     "TableUpdateView",
     "TablesView",
+    "VocPostDetailView",
+    "VocPostsView",
+    "VocReplyView",
 ]

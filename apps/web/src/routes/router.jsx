@@ -3,41 +3,27 @@ import { createBrowserRouter } from "react-router-dom"
 
 import { ProtectedAppLayout } from "./layouts/ProtectedAppLayout"
 
-import { LoginPage } from "@/features/auth"
-import { NotFoundPage } from "@/features/errors"
-import { HomePage } from "@/features/home"
-import {
-  LineDashboardHistoryPage,
-  LineDashboardLandingPage,
-  LineDashboardOverviewPage,
-  LineDashboardSettingsPage,
-  LineDashboardStatusPage,
-} from "@/features/line-dashboard"
-import { AppstorePage } from "@/features/appstore"
-import { ModelsPage } from "@/features/models"
+import { appstoreRoutes } from "@/features/appstore"
+import { authRoutes } from "@/features/auth"
+import { errorRoutes } from "@/features/errors"
+import { homeRoutes } from "@/features/home"
+import { lineDashboardRoutes } from "@/features/line-dashboard"
+import { modelsRoutes } from "@/features/models"
+import { vocRoutes } from "@/features/voc"
 
 export const router = createBrowserRouter([
-  {
-    path: "/login",
-    element: <LoginPage />, 
-  },
+  ...authRoutes,
   {
     path: "/",
-    element: <ProtectedAppLayout />, 
+    element: <ProtectedAppLayout />,
     children: [
-      { index: true, element: <HomePage /> },
-      { path: "appstore", element: <AppstorePage /> },
-      { path: "models", element: <ModelsPage /> },
-      { path: ":lineId/ESOP_Dashboard", element: <LineDashboardLandingPage /> },
-      { path: ":lineId/ESOP_Dashboard/status", element: <LineDashboardStatusPage /> },
-      { path: ":lineId/ESOP_Dashboard/history", element: <LineDashboardHistoryPage /> },
-      { path: ":lineId/ESOP_Dashboard/settings", element: <LineDashboardSettingsPage /> },
-      { path: ":lineId/ESOP_Dashboard/overview", element: <LineDashboardOverviewPage /> },
-      { path: "*", element: <NotFoundPage /> },
+      ...homeRoutes,
+      ...appstoreRoutes,
+      ...modelsRoutes,
+      ...lineDashboardRoutes,
+      ...vocRoutes,
+      ...errorRoutes,
     ],
   },
-  {
-    path: "*",
-    element: <NotFoundPage />,
-  },
+  ...errorRoutes,
 ])

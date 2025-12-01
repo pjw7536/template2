@@ -1,0 +1,678 @@
+// src/features/voc/pages/QnaBoardPage.jsx
+// Q&A 게시판: 새 글 작성, 답변, 상태 관리, 권한 기반 삭제를 제공하는 클라이언트 사이드 UI
+import * as React from "react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  MessageSquare,
+  Pencil,
+  PlusCircle,
+  Reply,
+  Trash2,
+} from "lucide-react"
+import ReactQuill from "react-quill"
+
+import { useAuth } from "@/lib/auth"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { STATUS_OPTIONS } from "../constants"
+import { useQnaBoardState } from "../hooks"
+import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"
+import "@/styles/quill.css"
+import "react-quill/dist/quill.snow.css"
+
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ["bold", "italic", "underline", "strike"],
+    [{ color: [] }, { background: [] }],
+    [{ list: "ordered" }, { list: "bullet" }],
+    [{ align: [] }],
+    ["link", "image"],
+  ],
+  clipboard: {
+    matchVisual: false,
+  },
+}
+
+const QUILL_FORMATS = [
+  "header",
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "color",
+  "background",
+  "list",
+  "bullet",
+  "align",
+  "link",
+  "image",
+]
+
+function StatusBadge({ status }) {
+  const tone = STATUS_OPTIONS.find((option) => option.value === status)?.tone
+  return (
+    <Badge className={["border", tone].filter(Boolean).join(" ")}>
+      {status || "상태 미정"}
+    </Badge>
+  )
+}
+
+function PostContent({ content, className = "", allowResize = false }) {
+  const safeHtml = React.useMemo(() => sanitizeContentHtml(content), [content])
+  const containerClassName = [
+    "overflow-x-auto overflow-y-auto rounded-md border border-input bg-muted/20 px-3 py-3 shadow-xs min-w-full max-w-full",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  const bodyClassName = [
+    "qna-post-body",
+    allowResize ? "qna-post-body--resizable" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  return (
+    <div className={containerClassName}>
+      {safeHtml ? (
+        <div className={bodyClassName} dangerouslySetInnerHTML={{ __html: safeHtml }} />
+      ) : (
+        <p className="text-sm text-muted-foreground">내용이 없습니다.</p>
+      )}
+    </div>
+  )
+}
+
+export function QnaBoardPage() {
+  const { user } = useAuth()
+  const currentUser = React.useMemo(() => {
+    const name = user?.name || user?.email || "로그인 사용자"
+    const id = user?.id || user?.email || name
+    const roles = Array.isArray(user?.roles) ? user.roles : []
+    return { id, name, roles }
+  }, [user])
+
+  const isAdmin = React.useMemo(
+    () =>
+      currentUser.roles.some((role) => {
+        if (typeof role !== "string") return false
+        const lower = role.toLowerCase()
+        return lower === "admin" || lower === "administrator"
+      }),
+    [currentUser.roles],
+  )
+
+  const {
+    statusCounts,
+    statusFilter,
+    filteredPosts,
+    visiblePosts,
+    pagination,
+    selectedPost,
+    clearSelection,
+    isCreateOpen,
+    setIsCreateOpen,
+    isDetailOpen,
+    setIsDetailOpen,
+    replyDrafts,
+    updateReplyDraft,
+    form,
+    updateForm,
+    resetForm,
+    createPost,
+    deletePost,
+    addReply,
+    updateStatus,
+    selectPost,
+    toggleStatusFilter,
+    changePageSize,
+    nextPage,
+    prevPage,
+    firstPage,
+    lastPage,
+    canDeletePost,
+    updatePost,
+    isLoading,
+    error,
+    reload,
+    isSubmitting,
+    isUpdating,
+  } = useQnaBoardState({ currentUser, isAdmin })
+
+  const handleCreatePost = React.useCallback(
+    async (event) => {
+      event.preventDefault()
+      await createPost()
+    },
+    [createPost],
+  )
+
+  const [deleteTarget, setDeleteTarget] = React.useState(null)
+  const [isEditing, setIsEditing] = React.useState(false)
+  const [editForm, setEditForm] = React.useState({ title: "", content: "" })
+
+  const handleDetailOpenChange = React.useCallback(
+    (open) => {
+      setIsDetailOpen(open)
+      if (!open) {
+        clearSelection()
+        setIsEditing(false)
+      }
+    },
+    [clearSelection, setIsDetailOpen],
+  )
+
+  React.useEffect(() => {
+    if (selectedPost) {
+      setEditForm({
+        title: selectedPost.title || "",
+        content: selectedPost.content || "",
+      })
+      setIsEditing(false)
+    } else {
+      setEditForm({ title: "", content: "" })
+      setIsEditing(false)
+    }
+  }, [selectedPost])
+
+  const handleRequestDelete = React.useCallback((post) => {
+    if (!post) return
+    setDeleteTarget({ id: post.id, title: post.title })
+  }, [])
+
+  const handleDeleteDialogOpenChange = React.useCallback((open) => {
+    if (!open) setDeleteTarget(null)
+  }, [])
+
+  const handleConfirmDelete = React.useCallback(() => {
+    if (!deleteTarget?.id) return
+    deletePost(deleteTarget.id)
+    setDeleteTarget(null)
+  }, [deletePost, deleteTarget])
+
+  const sanitizedDraft = React.useMemo(
+    () => sanitizeContentHtml(form.content),
+    [form.content],
+  )
+
+  const hasDraftContent = React.useMemo(
+    () => hasMeaningfulContent(sanitizedDraft, { skipSanitize: true }),
+    [sanitizedDraft],
+  )
+
+  const isSubmitDisabled = isSubmitting || !form.title.trim() || !hasDraftContent
+  const canEditSelected = selectedPost ? canDeletePost(selectedPost) : false
+
+  const handleSaveEdit = React.useCallback(async () => {
+    if (!selectedPost) return
+    const updated = await updatePost(selectedPost.id, {
+      title: editForm.title,
+      content: editForm.content,
+    })
+    if (updated) {
+      setIsEditing(false)
+    }
+  }, [editForm.content, editForm.title, selectedPost, updatePost])
+
+  const handleCancelEdit = React.useCallback(() => {
+    if (!selectedPost) {
+      setIsEditing(false)
+      setEditForm({ title: "", content: "" })
+      return
+    }
+    setEditForm({ title: selectedPost.title || "", content: selectedPost.content || "" })
+    setIsEditing(false)
+  }, [selectedPost])
+
+  return (
+    <div className="flex min-h-[calc(100vh-5rem)] flex-col gap-2 px-2">
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-5">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <MessageSquare className="size-5" aria-hidden="true" />
+              </div>
+              <div>
+                <CardTitle>Q&amp;A 게시판</CardTitle>
+                <CardDescription>
+                  문의사항 남겨 주시면 빠르게 답변드리겠습니다.
+                </CardDescription>
+              </div>
+            </div>
+          </div>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="self-start sm:ml-auto">
+                <PlusCircle className="size-4" aria-hidden="true" />
+                새 글 작성
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[min(1100px,calc(100%-2rem))] min-w-[min(1100px,calc(100%-2rem))] max-w-[min(1100px,calc(100%-2rem))] h-[80vh] min-h-[80vh] max-h-[80vh] overflow-y-auto overflow-x-hidden">
+              <DialogHeader>
+                <DialogTitle>새 글 작성</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={handleCreatePost}>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="qna-title">
+                    제목
+                  </label>
+                  <Input
+                    id="qna-title"
+                    value={form.title}
+                    onChange={(event) => updateForm("title", event.target.value)}
+                    placeholder="무엇을 도와드릴까요?"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium text-foreground"
+                    id="qna-content-label"
+                    htmlFor="qna-content-editor"
+                  >
+                    내용
+                  </label>
+                  <ReactQuill
+                    id="qna-content-editor"
+                    theme="snow"
+                    value={form.content}
+                    onChange={(value) => updateForm("content", value)}
+                    modules={QUILL_MODULES}
+                    formats={QUILL_FORMATS}
+                    placeholder="상세한 내용을 적어 주세요."
+                    aria-labelledby="qna-content-label"
+                    className="qna-quill"
+                  />
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={resetForm} disabled={isSubmitting}>
+                    초기화
+                  </Button>
+                  <Button type="submit" disabled={isSubmitDisabled}>
+                    <PlusCircle className="size-4" aria-hidden="true" />
+                    {isSubmitting ? "등록 중..." : "등록"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {error ? (
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <span>{error}</span>
+              <Button size="sm" variant="outline" onClick={reload}>
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {STATUS_OPTIONS.map((option) => (
+              <button
+                type="button"
+                key={option.value}
+                onClick={() => toggleStatusFilter(option.value)}
+                className={`rounded-lg border px-4 py-2 text-left shadow-xs transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${statusFilter === option.value ? "border-primary bg-primary/10" : "bg-muted/40"
+                  }`}
+                aria-pressed={statusFilter === option.value}
+              >
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{option.value}</span>
+                  <StatusBadge status={option.value} />
+                </div>
+                <div className="mt-2 text-2xl font-semibold">
+                  {statusCounts[option.value] ?? 0}
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <section className="flex w-full flex-1 flex-col gap-2">
+        <TableContainer className="w-full flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-lg border bg-background">
+          <Table stickyHeader className="table-fixed [&_th]:text-center [&_td]:text-center">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[70px]">No</TableHead>
+                <TableHead className="w-[42%] min-w-[240px]">제목</TableHead>
+                <TableHead className="w-[120px]">상태</TableHead>
+                <TableHead className="w-[140px]">작성자</TableHead>
+                <TableHead className="w-[160px]">작성일</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    데이터를 불러오는 중입니다...
+                  </TableCell>
+                </TableRow>
+              ) : filteredPosts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    {statusFilter ? "선택한 상태의 글이 없습니다." : "아직 등록된 글이 없습니다. 첫 문의를 남겨보세요."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                visiblePosts.map((post, index) => {
+                  const isSelected = post.id === selectedPost?.id
+                  const displayNumber = Math.max(
+                    pagination.totalRows - (pagination.pageIndex * pagination.pageSize + index),
+                    1,
+                  )
+                  return (
+                    <TableRow
+                      key={post.id}
+                      onClick={() => selectPost(post.id)}
+                      className={`cursor-pointer ${isSelected ? "bg-muted/60" : "hover:bg-muted/40"}`}
+                      data-selected={isSelected ? "true" : undefined}
+                    >
+                      <TableCell className="w-[90px] text-sm font-semibold text-muted-foreground">
+                        {displayNumber}
+                      </TableCell>
+                      <TableCell className="w-[42%] min-w-[240px] font-medium">
+                        {post.title}
+                      </TableCell>
+                      <TableCell className="w-[120px]">
+                        <StatusBadge status={post.status} />
+                      </TableCell>
+                      <TableCell className="w-[140px]">{post.author?.name || "작성자"}</TableCell>
+                      <TableCell className="w-[160px] text-xs text-muted-foreground">
+                        {formatTimestamp(post.createdAt)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span aria-live="polite">
+              {isLoading
+                ? "Loading VOC posts..."
+                : `Showing ${visiblePosts.length} rows of ${filteredPosts.length} rows`}
+            </span>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={firstPage}
+                disabled={pagination.currentPage <= 1}
+                aria-label="Go to first page"
+                title="Go to first page"
+              >
+                <ChevronsLeft className="size-4" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={prevPage}
+                disabled={pagination.currentPage <= 1}
+                aria-label="Go to previous page"
+                title="Go to previous page"
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </Button>
+              <span className="px-2 text-sm font-medium" aria-live="polite">
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={nextPage}
+                disabled={pagination.currentPage >= pagination.totalPages}
+                aria-label="Go to next page"
+                title="Go to next page"
+              >
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={lastPage}
+                disabled={pagination.currentPage >= pagination.totalPages}
+                aria-label="Go to last page"
+                title="Go to last page"
+              >
+                <ChevronsRight className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-xs text-muted-foreground">Rows per page</span>
+              <select
+                value={pagination.pageSize}
+                onChange={(event) => changePageSize(Number(event.target.value))}
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+                aria-label="Rows per page"
+                title="Rows per page"
+              >
+                {[5, 8, 10, 15, 20].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <Dialog
+        open={Boolean(isDetailOpen && selectedPost)}
+        onOpenChange={handleDetailOpenChange}
+      >
+        <DialogContent className="w-[min(1100px,calc(100%-2rem))] min-h-[50vh] sm:max-w-5xl">
+          {selectedPost ? (
+            <>
+              <div className="flex justify-between">
+                <DialogHeader className="items-start">
+                  <DialogTitle className="flex items-center gap-2">
+                    <MessageSquare className="size-5" aria-hidden="true" />
+                    {selectedPost.title}
+                  </DialogTitle>
+                  <DialogDescription className="flex flex-wrap items-center gap-2">
+                    {selectedPost.author?.name || "작성자"} · {formatTimestamp(selectedPost.createdAt)}
+                    <StatusBadge status={selectedPost.status} />
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex items-end">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-muted-foreground" htmlFor={`${selectedPost.id}-status-modal`}>
+                      상태
+                    </label>
+                    <select
+                      id={`${selectedPost.id}-status-modal`}
+                      value={selectedPost.status}
+                      onChange={(event) => updateStatus(selectedPost.id, event.target.value)}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                      disabled={!canDeletePost(selectedPost)}
+                      title={
+                        !canDeletePost(selectedPost)
+                          ? "작성자 또는 관리자만 상태를 바꿀 수 있습니다."
+                          : undefined
+                      }
+                    >
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isEditing ? "secondary" : "outline"}
+                      onClick={isEditing ? handleSaveEdit : () => setIsEditing(true)}
+                      disabled={!canEditSelected || isUpdating}
+                      title={
+                        !canEditSelected
+                          ? "작성자 또는 관리자만 수정할 수 있습니다."
+                          : isEditing
+                            ? "수정 내용을 저장합니다."
+                            : "제목과 내용을 수정합니다."
+                      }
+                    >
+                      <Pencil className="mr-1 size-4" aria-hidden="true" />
+                      {isEditing ? (isUpdating ? "저장 중..." : "저장") : "수정"}
+                    </Button>
+                    {isEditing ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleCancelEdit}
+                        disabled={isUpdating}
+                      >
+                        취소
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="destructive"
+                      onClick={() => handleRequestDelete(selectedPost)}
+                      disabled={!canDeletePost(selectedPost)}
+                      title={
+                        !canDeletePost(selectedPost)
+                          ? "작성자 또는 관리자만 삭제할 수 있습니다."
+                          : "글을 삭제합니다."
+                      }
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {isEditing ? (
+                <div className="space-y-3">
+                  <Input
+                    value={editForm.title}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({ ...prev, title: event.target.value }))
+                    }
+                    placeholder="제목을 입력하세요"
+                    disabled={isUpdating}
+                  />
+                  <ReactQuill
+                    id="qna-edit-editor"
+                    theme="snow"
+                    value={editForm.content}
+                    onChange={(value) => setEditForm((prev) => ({ ...prev, content: value }))}
+                    modules={QUILL_MODULES}
+                    formats={QUILL_FORMATS}
+                    aria-label="게시글 내용 수정"
+                    className="qna-quill"
+                    readOnly={isUpdating}
+                  />
+                </div>
+              ) : (
+                <PostContent
+                  content={selectedPost.content}
+                  className="min-h-[160px] max-h-[60vh]"
+                />
+              )}
+              <div className="space-y-7 rounded-md bg-muted/30 px-3 py-1">
+                {selectedPost.replies.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">아직 답변이 없습니다.</p>
+                ) : (
+                  selectedPost.replies.map((reply) => (
+                    <div key={reply.id} className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="outline">답변</Badge>
+                        <span className="font-medium text-foreground">{reply.author?.name || "응답자"}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatTimestamp(reply.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-foreground/90">{reply.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  value={replyDrafts[selectedPost.id] || ""}
+                  onChange={(event) => updateReplyDraft(selectedPost.id, event.target.value)}
+                  placeholder="답변을 남겨주세요"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => addReply(selectedPost.id)}
+                >
+                  <Reply className="size-4" aria-hidden="true" />
+                  답변 등록
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={handleDeleteDialogOpenChange}>
+        <DialogContent className="sm:max-w-sm" aria-describedby="qna-delete-description">
+          <DialogHeader>
+            <DialogTitle>게시글 삭제</DialogTitle>
+            <DialogDescription id="qna-delete-description">
+              {`"${deleteTarget?.title || "선택한 게시글"}"을(를) 삭제할까요?`}
+              <br />
+              답변을 포함해 게시글의 모든 내용이 사라집니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            {deleteTarget?.title || deleteTarget?.id || "선택한 게시글"}
+          </div>
+          <DialogFooter className="sm:justify-end">
+            <Button type="button" variant="ghost" onClick={() => setDeleteTarget(null)}>
+              취소
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleConfirmDelete}>
+              삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

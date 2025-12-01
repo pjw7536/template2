@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getAirflowDagOverview } from "@/features/airflow/api/get-airflow-dag-overview"
+import { getAirflowDagOverview } from "@/features/line-dashboard/api/get-airflow-dag-overview"
 
 function formatDate(dateLike) {
   if (!dateLike) return "—"

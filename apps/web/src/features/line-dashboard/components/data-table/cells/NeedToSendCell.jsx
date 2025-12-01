@@ -7,6 +7,10 @@ import { makeCellKey } from "../utils/cellState"
 import { buildToastOptions } from "../utils/toast"
 import { deriveFlagState, describeFlagState } from "../utils/flagState"
 
+const SUCCESS_TOAST_COLOR = "var(--chart-2)"
+const INFO_TOAST_COLOR = "var(--chart-3)"
+const ERROR_TOAST_COLOR = "var(--destructive)"
+
 /* ============================================================================
  * NeedToSendCell (Boolean 버전)
  * - needtosend 값을 tinyint 스타일로 표시/토글 (현재는 0/1만 사용)
@@ -23,21 +27,21 @@ function showReserveToast() {
   toast.success("예약 성공", {
     description: "E-SOP Inform 예약 되었습니다.",
     icon: <CalendarCheck2 className="h-5 w-5" />,
-    ...buildToastOptions({ color: "#065f46", duration: 1800 }),
+    ...buildToastOptions({ color: SUCCESS_TOAST_COLOR, duration: 1800 }),
   })
 }
 function showCancelToast() {
   toast("예약 취소", {
     description: "E-SOP Inform 예약 취소 되었습니다.",
     icon: <CalendarX2 className="h-5 w-5" />,
-    ...buildToastOptions({ color: "#1e40af", duration: 1800 }),
+    ...buildToastOptions({ color: INFO_TOAST_COLOR, duration: 1800 }),
   })
 }
 function showErrorToast(msg) {
   toast.error("저장 실패", {
     description: msg || "저장 중 오류가 발생했습니다.",
     icon: <XCircle className="h-5 w-5" />,
-    ...buildToastOptions({ color: "#991b1b", duration: 3000 }),
+    ...buildToastOptions({ color: ERROR_TOAST_COLOR, duration: 3000 }),
   })
 }
 

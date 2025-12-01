@@ -6,7 +6,7 @@ import { deriveFlagState } from "../utils/flagState"
 const STATUS_ORDER = STATUS_SEQUENCE
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
 
-const MULTI_SELECT_KEYS = new Set(["status", "sample_type", "sample_group"])
+const MULTI_SELECT_KEYS = new Set(["status", "sample_type", "sample_group", "main_step"])
 
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
@@ -54,6 +54,72 @@ function normalizeEmailId(value) {
 function deriveUserIdFromEmail(email) {
   const normalized = normalizeEmailId(email)
   return normalized || null
+}
+
+function normalizeMainStep(value) {
+  if (value == null) return null
+  const trimmed = String(value).trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function parseMainStepParts(value) {
+  const normalized = normalizeMainStep(value) ?? ""
+  const prefix = normalized.slice(0, 2)
+  const numericPart = normalized.slice(2)
+  const number = Number.parseInt(numericPart, 10)
+  return {
+    prefix,
+    number: Number.isFinite(number) ? number : Number.POSITIVE_INFINITY,
+    raw: normalized,
+  }
+}
+
+function compareMainStepOptions(a, b) {
+  const left = parseMainStepParts(a.value)
+  const right = parseMainStepParts(b.value)
+
+  if (left.number !== right.number) {
+    return left.number - right.number
+  }
+
+  const prefixCompare = left.prefix.localeCompare(right.prefix, undefined, { sensitivity: "base" })
+  if (prefixCompare !== 0) return prefixCompare
+
+  return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+}
+
+function sanitizeMainStepFilters(values, section) {
+  const normalizedArray = Array.isArray(values)
+    ? values
+    : values === null || values === undefined
+      ? []
+      : [values]
+
+  const options = Array.isArray(section?.options) ? section.options : []
+  const optionValues = options.map((option) => option.value)
+  const optionSet = new Set(optionValues)
+  const resolved = []
+
+  normalizedArray.forEach((value) => {
+    const normalized = normalizeMainStep(value)
+    if (!normalized) return
+
+    if (optionSet.size === 0 || optionSet.has(normalized)) {
+      resolved.push(normalized)
+    }
+  })
+
+  return Array.from(new Set(resolved))
+}
+
+function arraysShallowEqual(a, b) {
+  if (a === b) return true
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
 }
 
 function toTimestamp(value) {
@@ -277,14 +343,33 @@ const QUICK_FILTER_DEFINITIONS = [
   {
     key: "main_step",
     label: "Main Step",
-    resolveColumn: (columns) => findMatchingColumn(columns, "main_step"),
-    normalizeValue: (value) => {
-      if (value == null) return null
-      const normalized = String(value).trim()
-      return normalized.length > 0 ? normalized : null
+    buildSection: ({ columns, rows }) => {
+      const columnKey = findMatchingColumn(columns, "main_step")
+      if (!columnKey) return null
+
+      const valueSet = new Set()
+      rows.forEach((row) => {
+        const normalized = normalizeMainStep(row?.[columnKey])
+        if (normalized) {
+          valueSet.add(normalized)
+        }
+      })
+
+      const options = Array.from(valueSet).map((value) => ({
+        value,
+        label: value,
+      }))
+
+      options.sort(compareMainStepOptions)
+
+      const getValue = (row) => normalizeMainStep(row?.[columnKey])
+
+      return {
+        options,
+        getValue,
+        allowCustomValue: false,
+      }
     },
-    formatValue: (value) => value,
-    compareOptions: (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
   },
   {
     key: "user_sdwt_prod",
@@ -430,10 +515,20 @@ export function syncQuickFiltersToSections(previousFilters, sections, options = 
     }
 
     if (section.isMulti) {
-      if (!Array.isArray(current)) {
+      const normalizedArray = Array.isArray(current)
+        ? current
+        : current === null || current === undefined
+          ? []
+          : [current]
+
+      const finalValues =
+        definition.key === "main_step"
+          ? sanitizeMainStepFilters(normalizedArray, section)
+          : normalizedArray
+
+      if (!arraysShallowEqual(finalValues, current)) {
         if (nextFilters === previousFilters) nextFilters = { ...previousFilters }
-        nextFilters[definition.key] = []
-        return
+        nextFilters[definition.key] = finalValues
       }
       return
     }

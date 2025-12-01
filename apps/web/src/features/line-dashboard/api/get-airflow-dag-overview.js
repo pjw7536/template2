@@ -1,4 +1,4 @@
-// src/features/airflow/api/get-airflow-dag-overview.js
+// src/features/line-dashboard/api/get-airflow-dag-overview.js
 const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
 const DEFAULT_PUBLIC_BASE_URL = "http://localhost/airflow"
 

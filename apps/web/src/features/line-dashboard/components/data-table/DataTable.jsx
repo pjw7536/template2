@@ -34,7 +34,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { Button } from "components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -62,7 +62,7 @@ import {
   resolveHeaderAlignment,
 } from "./utils/table"
 import { formatTooltipValue } from "./utils/formatters.jsx"
-import { useAuth } from "@/features/auth"
+import { useAuth } from "@/lib/auth"
 
 /* ────────────────────────────────────────────────────────────────────────────
  * 1) 라벨/문구 상수
@@ -533,7 +533,7 @@ export function DataTable({ lineId }) {
       </TableContainer>
 
       {/* 하단: 요약/페이지네이션 */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex mt-2 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span aria-live="polite">
             {LABELS.showing} {numberFormatter.format(currentPageSize)} {LABELS.rows}

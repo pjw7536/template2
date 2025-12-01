@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { Outlet } from "react-router-dom"
 
-import { RequireAuth } from "@/features/auth"
+import { RequireAuth } from "@/lib/auth"
 import { AppShell } from "@/components/layout"
 import { getDistinctLineIds } from "@/features/line-dashboard/api/get-line-ids"
 

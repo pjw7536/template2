@@ -33,15 +33,4 @@ export const STEP_COLUMN_KEYS = [
 
 export const STEP_COLUMN_KEY_SET = new Set(STEP_COLUMN_KEYS)
 
-// UI 표시에 사용할 공통 숫자/시간 포맷터입니다.
-const LOCALE = "ko-KR"
-const TIME_ZONE = "Asia/Seoul"
-
-export const numberFormatter = new Intl.NumberFormat(LOCALE)
-export const timeFormatter = new Intl.DateTimeFormat(LOCALE, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-  timeZone: TIME_ZONE,
-})
+export { numberFormatter, timeFormatter } from "../../../utils/formatters"

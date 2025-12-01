@@ -13,9 +13,8 @@ import { AlertCircleIcon, BadgeCheckIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { buildBackendUrl } from "@/lib/api"
 import {
   Table,
   TableBody,
@@ -25,8 +24,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { timeFormatter } from "./data-table/utils/constants"
+import { useLineSettings } from "../hooks"
 import { buildToastOptions } from "./data-table/utils/toast"
+import {
+  formatUpdatedAt,
+  isDuplicateMessage,
+  normalizeDraft,
+} from "../utils/line-settings"
 
 const LABELS = {
   titleSuffix: "Line E-SOP Settings",
@@ -45,44 +49,10 @@ const LABELS = {
   addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
 }
 
-function normalizeUserSdwt(values) {
-  if (!Array.isArray(values)) return []
-  const deduped = new Set()
-  return values
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter((value) => {
-      if (!value) return false
-      if (deduped.has(value)) return false
-      deduped.add(value)
-      return true
-    })
-}
-
-const SUCCESS_COLOR = "#065f46"
-const INFO_COLOR = "#1e40af"
-const ERROR_COLOR = "#991b1b"
-
-function formatUpdatedAt(value) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-}
-
-function unwrapErrorMessage(message) {
-  if (typeof message === "string") {
-    try {
-      const parsed = JSON.parse(message)
-      if (parsed && typeof parsed.error === "string" && parsed.error.trim()) {
-        return parsed.error
-      }
-    } catch {
-      // noop
-    }
-    return message
-  }
-  return ""
-}
+const SUCCESS_COLOR = "var(--chart-2)"
+const INFO_COLOR = "var(--chart-3)"
+const ERROR_COLOR = "var(--destructive)"
+const DUPLICATE_MESSAGE = "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
 
 function showCreateToast() {
   toast.success("추가 완료", {
@@ -114,68 +84,6 @@ function showRequestErrorToast(message) {
     icon: <IconX className="h-5 w-5" />,
     ...buildToastOptions({ color: ERROR_COLOR, duration: 3200 }),
   })
-}
-
-function normalizeEntry(entry, fallbackLineId = "") {
-  if (!entry || typeof entry !== "object") return null
-  const rawId = entry.id ?? entry?.ID
-  if (rawId === null || rawId === undefined) return null
-
-  const lineId =
-    typeof entry.lineId === "string"
-      ? entry.lineId
-      : typeof entry.line_id === "string"
-        ? entry.line_id
-        : fallbackLineId
-
-  const mainStepRaw =
-    typeof entry.mainStep === "string"
-      ? entry.mainStep
-      : typeof entry.main_step === "string"
-        ? entry.main_step
-        : ""
-
-  const customRaw =
-    entry.customEndStep !== undefined
-      ? entry.customEndStep
-      : entry.custom_end_step
-
-  const customEndStep =
-    customRaw === null || customRaw === undefined
-      ? ""
-      : typeof customRaw === "string"
-        ? customRaw
-        : String(customRaw)
-
-  const updatedBy =
-    typeof entry.updatedBy === "string"
-      ? entry.updatedBy
-      : typeof entry.updated_by === "string"
-        ? entry.updated_by
-        : ""
-
-  const updatedAtRaw = entry.updatedAt ?? entry.updated_at
-  const updatedAt =
-    typeof updatedAtRaw === "string" || typeof updatedAtRaw === "number"
-      ? String(updatedAtRaw)
-      : updatedAtRaw && typeof updatedAtRaw === "object" && typeof updatedAtRaw.toString === "function"
-        ? updatedAtRaw.toString()
-        : ""
-
-  return {
-    id: String(rawId),
-    lineId,
-    mainStep: mainStepRaw,
-    customEndStep,
-    updatedBy,
-    updatedAt,
-  }
-}
-
-function sortEntries(entries) {
-  return [...entries].sort((a, b) =>
-    a.mainStep.localeCompare(b.mainStep, undefined, { numeric: true, sensitivity: "base" })
-  )
 }
 
 function LineUserSdwtBadges({ lineId, values }) {
@@ -210,14 +118,19 @@ function LineUserSdwtBadges({ lineId, values }) {
   )
 }
 
-export function LineSettingsPage({ lineId: initialLineId = "" }) {
-  const [lineId, setLineId] = React.useState(initialLineId)
-  const [entries, setEntries] = React.useState([])
-  const [userSdwtValues, setUserSdwtValues] = React.useState([])
-  const [error, setError] = React.useState(null)
-  const [isLoading, setIsLoading] = React.useState(false)
-  const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false)
-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState("-")
+export function LineSettingsPage({ lineId = "" }) {
+  const {
+    entries,
+    userSdwtValues,
+    error,
+    isLoading,
+    hasLoadedOnce,
+    lastUpdatedLabel,
+    refresh,
+    createEntry,
+    updateEntry,
+    deleteEntry,
+  } = useLineSettings(lineId)
 
   const [formValues, setFormValues] = React.useState({ mainStep: "", customEndStep: "" })
   const [formError, setFormError] = React.useState(null)
@@ -228,102 +141,12 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
   const [rowErrors, setRowErrors] = React.useState({})
   const [savingMap, setSavingMap] = React.useState({})
 
-  const hasLoadedRef = React.useRef(false)
-
-  React.useEffect(() => {
-    setLineId(initialLineId)
-  }, [initialLineId])
-
-  React.useEffect(() => {
-    hasLoadedRef.current = false
-    setHasLoadedOnce(false)
-    setEntries([])
-    setError(null)
-    setLastUpdatedLabel("-")
-    setEditingId(null)
-    setRowErrors({})
-    setSavingMap({})
-    setUserSdwtValues([])
-  }, [lineId])
-
-  const fetchEntries = React.useCallback(async () => {
-    if (!lineId) {
-      setEntries([])
-      setUserSdwtValues([])
-      setError(null)
-      setIsLoading(false)
-      setLastUpdatedLabel("-")
-      if (!hasLoadedRef.current) {
-        hasLoadedRef.current = true
-        setHasLoadedOnce(true)
-      }
-      return
-    }
-
-    setIsLoading(true)
-    setError(null)
-    if (hasLoadedRef.current) {
-      setLastUpdatedLabel("Updating…")
-    }
-
-    try {
-      const endpoint = buildBackendUrl("/drone-early-inform", { lineId })
-      const response = await fetch(endpoint, {
-        cache: "no-store",
-        credentials: "include",
-      })
-
-      let payload = {}
-      try {
-        payload = await response.json()
-      } catch {
-        payload = {}
-      }
-
-      if (!response.ok) {
-        const message =
-          payload && typeof payload === "object" && typeof payload.error === "string"
-            ? payload.error
-            : `Failed to load settings (status ${response.status})`
-        throw new Error(message)
-      }
-
-      const rows = Array.isArray(payload?.rows) ? payload.rows : []
-      const normalized = rows
-        .map((row) => normalizeEntry(row, lineId))
-        .filter((row) => row !== null)
-      const normalizedUsers = normalizeUserSdwt(payload?.userSdwt)
-
-      setEntries(sortEntries(normalized))
-      setUserSdwtValues(normalizedUsers)
-      setLastUpdatedLabel(timeFormatter.format(new Date()))
-    } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "Failed to load settings"
-      setError(message)
-      setUserSdwtValues([])
-      if (!hasLoadedRef.current) {
-        setLastUpdatedLabel("-")
-      }
-    } finally {
-      setIsLoading(false)
-      if (!hasLoadedRef.current) {
-        hasLoadedRef.current = true
-        setHasLoadedOnce(true)
-      }
-    }
-  }, [lineId])
-
-  React.useEffect(() => {
-    fetchEntries()
-  }, [fetchEntries])
-
   const isRefreshing = isLoading && hasLoadedOnce
 
   const handleRefresh = React.useCallback(() => {
     if (!lineId) return
-    fetchEntries()
-  }, [fetchEntries, lineId])
+    refresh()
+  }, [lineId, refresh])
 
   const handleFormChange = React.useCallback((key, value) => {
     setFormValues((prev) => ({ ...prev, [key]: value }))
@@ -333,8 +156,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
     setFormValues({ mainStep: "", customEndStep: "" })
     setFormError(null)
   }, [])
-
-  const normalizeDraft = React.useCallback((value) => value.trim(), [])
 
   const handleCreate = React.useCallback(
     async (event) => {
@@ -364,70 +185,28 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       setFormError(null)
 
       try {
-        const endpoint = buildBackendUrl("/drone-early-inform")
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            lineId,
-            mainStep,
-            customEndStep: customEndStep.length > 0 ? customEndStep : null,
-          }),
+        const entry = await createEntry({
+          mainStep,
+          customEndStep: customEndStep.length > 0 ? customEndStep : null,
         })
-
-        let payload = {}
-        try {
-          payload = await response.json()
-        } catch {
-          payload = {}
-        }
-
-        if (!response.ok) {
-          const apiMessageRaw =
-            payload && typeof payload === "object" && typeof payload.error === "string"
-              ? payload.error
-              : ""
-          const apiMessage = unwrapErrorMessage(apiMessageRaw)
-          const lowerApiMessage = apiMessage.toLowerCase()
-          const isDuplicate =
-            response.status === 409 ||
-            lowerApiMessage.includes("already") ||
-            lowerApiMessage.includes("duplicate") ||
-            lowerApiMessage.includes("uniq") ||
-            lowerApiMessage.includes("main step")
-          const message = isDuplicate
-            ? "이미 등록된 스텝입니다."
-            : apiMessage || `Failed to create entry (status ${response.status})`
-          throw new Error(message)
-        }
-
-        const entry = normalizeEntry(payload?.entry, lineId)
         if (entry) {
-          setEntries((prev) => sortEntries([...prev.filter((item) => item.id !== entry.id), entry]))
-          setLastUpdatedLabel(timeFormatter.format(new Date()))
+          resetForm()
+          showCreateToast()
         }
-        resetForm()
-        showCreateToast()
       } catch (requestError) {
-        const rawMessage =
+        const message =
           requestError instanceof Error ? requestError.message : "Failed to create entry"
-        const lower = rawMessage.toLowerCase()
-        const isDuplicate =
-          lower.includes("already") ||
-          lower.includes("duplicate") ||
-          lower.includes("uniq") ||
-          lower.includes("main step")
-        const friendlyMessage = isDuplicate
-          ? "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
-          : rawMessage
+        const friendlyMessage =
+          requestError?.status === 409 || isDuplicateMessage(message)
+            ? DUPLICATE_MESSAGE
+            : message
         setFormError(friendlyMessage)
         showRequestErrorToast(friendlyMessage)
       } finally {
         setIsCreating(false)
       }
     },
-    [formValues, lineId, normalizeDraft, resetForm]
+    [createEntry, formValues.customEndStep, formValues.mainStep, lineId, resetForm],
   )
 
   const startEditing = React.useCallback((entry) => {
@@ -471,7 +250,10 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       return
     }
     if (nextCustom.length > 50) {
-      setRowErrors((prev) => ({ ...prev, [entry.id]: "Custom end step must be 50 characters or fewer" }))
+      setRowErrors((prev) => ({
+        ...prev,
+        [entry.id]: "Custom end step must be 50 characters or fewer",
+      }))
       return
     }
 
@@ -498,39 +280,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
     })
 
     try {
-      const endpoint = buildBackendUrl("/drone-early-inform")
-      const response = await fetch(endpoint, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          id: Number.parseInt(entry.id, 10),
-          ...updates,
-        }),
-      })
-
-      let payload = {}
-      try {
-        payload = await response.json()
-      } catch {
-        payload = {}
-      }
-
-      if (!response.ok) {
-        const message =
-          payload && typeof payload === "object" && typeof payload.error === "string"
-            ? payload.error
-            : `Failed to update entry (status ${response.status})`
-        throw new Error(message)
-      }
-
-      const updated = normalizeEntry(payload?.entry, entry.lineId)
-      if (updated) {
-        setEntries((prev) =>
-          sortEntries(prev.map((item) => (item.id === entry.id ? updated : item)))
-        )
-        setLastUpdatedLabel(timeFormatter.format(new Date()))
-      }
+      await updateEntry({ id: entry.id, ...updates })
       showUpdateToast()
       cancelEditing()
     } catch (requestError) {
@@ -546,13 +296,13 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         return next
       })
     }
-  }, [cancelEditing, editDraft, editingId, entries, normalizeDraft])
+  }, [cancelEditing, editDraft.customEndStep, editDraft.mainStep, editingId, entries, updateEntry])
 
   const handleDelete = React.useCallback(
     async (entry) => {
       if (!entry) return
       const confirmed = window.confirm(
-        `Delete override for main step "${entry.mainStep}"? This action cannot be undone.`
+        `Delete override for main step "${entry.mainStep}"? This action cannot be undone.`,
       )
       if (!confirmed) return
 
@@ -565,32 +315,10 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       })
 
       try {
-        const endpoint = buildBackendUrl("/drone-early-inform", { id: entry.id })
-        const response = await fetch(endpoint, {
-          method: "DELETE",
-          credentials: "include",
-        })
-
-        let payload = {}
-        try {
-          payload = await response.json()
-        } catch {
-          payload = {}
-        }
-
-        if (!response.ok) {
-          const message =
-            payload && typeof payload === "object" && typeof payload.error === "string"
-              ? payload.error
-              : `Failed to delete entry (status ${response.status})`
-          throw new Error(message)
-        }
-
-        setEntries((prev) => prev.filter((item) => item.id !== entry.id))
+        await deleteEntry({ id: entry.id })
         if (editingId === entry.id) {
           cancelEditing()
         }
-        setLastUpdatedLabel(timeFormatter.format(new Date()))
         showDeleteToast()
       } catch (requestError) {
         const message =
@@ -606,7 +334,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         })
       }
     },
-    [cancelEditing, editingId]
+    [cancelEditing, deleteEntry, editingId],
   )
 
   return (
@@ -648,7 +376,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
       )}
 
       <div className="rounded-lg border bg-background px-4 py-2 shadow-sm">
-
         <div className="flex flex-col gap-1 pb-4">
           <h2 className="text-md font-medium">{LABELS.addTitle}</h2>
           <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
@@ -657,13 +384,13 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         {formError ? (
           <p className="text-xs text-destructive" role="alert">
             {formError}
-          </p>) :
-          (<p className="text-xs">&nbsp;</p>)
+          </p>
+        ) : (
+          <p className="text-xs">&nbsp;</p>
+        )}
 
-        }
-
-        <div className="flex justify-between items-end flex-wrap mb-2">
-          <form className="flex flex-row items-center gap-3 flex-wrap" onSubmit={handleCreate}>
+        <div className="mb-2 flex flex-wrap items-end justify-between">
+          <form className="flex flex-row flex-wrap items-center gap-3" onSubmit={handleCreate}>
             <div className="w-80 space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
                 {LABELS.mainStep}
@@ -691,11 +418,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
               />
             </div>
 
-            <Button
-              type="submit"
-              className="md:self-end"
-              disabled={isCreating || !lineId}
-            >
+            <Button type="submit" className="md:self-end" disabled={isCreating || !lineId}>
               <IconPlus className="mr-1 size-4" />
               {LABELS.addButton}
             </Button>
@@ -707,17 +430,16 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 rounded-lg border bg-background">
+      <div className="min-h-0 flex-1 rounded-lg border bg-background">
         <TableContainer className="max-h-full overflow-auto">
           <Table stickyHeader className="w-full table-fixed">
-            {/* ✅ colgroup으로 컬럼 폭을 한 번에 관리 */}
             <colgroup>
-              <col className="w-30" />  {/* Line ID */}
-              <col className="w-40" />  {/* Main Step */}
-              <col className="w-40" />  {/* Custom End Step */}
-              <col className="w-32" />  {/* Updated By */}
-              <col className="w-40" />  {/* Updated At */}
-              <col className="w-60" />  {/* Actions */}
+              <col className="w-30" />
+              <col className="w-40" />
+              <col className="w-40" />
+              <col className="w-32" />
+              <col className="w-40" />
+              <col className="w-60" />
             </colgroup>
 
             <TableHeader className="sticky top-0 z-10 bg-muted">
@@ -727,17 +449,14 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                 <TableHead className="text-center">{LABELS.customEndStep}</TableHead>
                 <TableHead className="text-center">{LABELS.updatedBy}</TableHead>
                 <TableHead className="text-center">{LABELS.updatedAt}</TableHead>
-                <TableHead className="text-right"></TableHead>
+                <TableHead className="text-right" />
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {isLoading && !hasLoadedOnce && (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="h-24 text-center text-sm text-muted-foreground"
-                  >
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
                     {LABELS.loading}
                   </TableCell>
                 </TableRow>
@@ -745,10 +464,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
 
               {!isLoading && entries.length === 0 && (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="h-24 text-center text-sm text-muted-foreground"
-                  >
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
                     {lineId ? LABELS.empty : "Select a line to view overrides."}
                   </TableCell>
                 </TableRow>
@@ -766,14 +482,11 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                         {entry.lineId || "-"}
                       </TableCell>
 
-                      {/* ✅ Main Step 가운데 정렬 */}
                       <TableCell className="text-center">
                         {isEditing ? (
                           <Input
                             value={editDraft.mainStep}
-                            onChange={(event) =>
-                              handleEditChange("mainStep", event.target.value)
-                            }
+                            onChange={(event) => handleEditChange("mainStep", event.target.value)}
                             maxLength={50}
                             disabled={isSaving}
                             className="text-center"
@@ -783,7 +496,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                         )}
                       </TableCell>
 
-                      {/* ✅ Custom End Step 가운데 정렬 */}
                       <TableCell className="text-center">
                         {isEditing ? (
                           <Input
@@ -810,17 +522,11 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                         {formatUpdatedAt(entry.updatedAt)}
                       </TableCell>
 
-                      {/* ✅ Actions도 가운데 정렬 */}
                       <TableCell className="text-end">
                         <div className="inline-flex items-center justify-end gap-2">
                           {isEditing ? (
                             <>
-                              <Button
-                                size="sm"
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className="gap-1"
-                              >
+                              <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-1">
                                 <IconDeviceFloppy className="size-4" />
                                 Save
                               </Button>
@@ -865,7 +571,7 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
                       <TableRow>
                         <TableCell
                           colSpan={6}
-                          className="bg-destructive/5 px-4 py-2 text-xs text-destructive text-center"
+                          className="bg-destructive/5 px-4 py-2 text-center text-xs text-destructive"
                         >
                           {rowError}
                         </TableCell>
@@ -878,7 +584,6 @@ export function LineSettingsPage({ lineId: initialLineId = "" }) {
           </Table>
         </TableContainer>
       </div>
-
-    </section >
+    </section>
   )
 }

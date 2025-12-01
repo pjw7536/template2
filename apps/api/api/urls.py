@@ -11,6 +11,9 @@ from .views import (
     LineIdListView,
     TableUpdateView,
     TablesView,
+    VocPostDetailView,
+    VocPostsView,
+    VocReplyView,
 )
 
 urlpatterns = [
@@ -22,4 +25,7 @@ urlpatterns = [
     path("line-dashboard/history", LineHistoryView.as_view(), name="line-dashboard-history"),
     path("line-dashboard/line-ids", LineIdListView.as_view(), name="line-dashboard-line-ids"),
     path("drone-early-inform", DroneEarlyInformView.as_view(), name="drone-early-inform"),
+    path("voc/posts", VocPostsView.as_view(), name="voc-posts"),
+    path("voc/posts/<int:post_id>", VocPostDetailView.as_view(), name="voc-post-detail"),
+    path("voc/posts/<int:post_id>/replies", VocReplyView.as_view(), name="voc-post-reply"),
 ]

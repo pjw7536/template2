@@ -11,8 +11,8 @@ import {
 import { IconAlertCircle, IconRefresh } from "@tabler/icons-react"
 import { CalendarIcon, FilterIcon } from "lucide-react"
 
-import { Button } from "components/ui/button"
-import { Calendar } from "components/ui/calendar"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   ChartContainer,
   ChartTooltip,
@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { timeFormatter } from "../components/data-table/utils/constants"
+import { timeFormatter } from "../utils/formatters"
 import { useLineHistoryData } from "./useLineHistoryData"
 
 const DIMENSION_OPTIONS = [
@@ -62,6 +62,22 @@ const METRIC_LABELS = METRIC_OPTIONS.reduce(
   {}
 )
 
+const BIN_OPTIONS = [
+  { value: "hour", label: "시간별" },
+  { value: "day", label: "일별" },
+  { value: "week", label: "주별" },
+  { value: "month", label: "월별" },
+]
+
+const BIN_LABELS = BIN_OPTIONS.reduce(
+  (labels, option) => ({ ...labels, [option.value]: option.label }),
+  {}
+)
+
+const DEFAULT_BIN = BIN_OPTIONS[0].value
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+const KST_OFFSET = "+09:00"
+
 const CATEGORY_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -69,31 +85,18 @@ const CATEGORY_COLORS = [
   "var(--chart-4)",
   "var(--chart-5)",
   "var(--primary)",
+  "var(--secondary)",
+  "var(--accent)",
+  "var(--muted-foreground)",
+  "var(--foreground)",
 ]
 
-const GRID_STROKE = "#9ca3af" // 슬레이트 계열 회색 (눈에 잘 보이는 색)
+const GRID_STROKE = "var(--border)" // 테마 토큰 기반 선 색상
 const GRID_OPACITY = 0.65
 const LEGEND_PRESET_COLORS = [
-  "#1f77b4",
-  "#ff7f0e",
-  "#2ca02c",
-  "#d62728",
-  "#9467bd",
-  "#8c564b",
-  "#e377c2",
-  "#7f7f7f",
-  "#bcbd22",
-  "#17becf",
-  "#005f73",
-  "#9a3412",
-  "#2563eb",
-  "#c026d3",
-  "#0f766e",
-  "#b91c1c",
-  "#6d28d9",
-  "#15803d",
-  "#d97706",
-  "#0891b2",
+  ...CATEGORY_COLORS,
+  "var(--primary-foreground)",
+  "var(--secondary-foreground)",
 ]
 const THEME_LINE_COLOR = "var(--primary)"
 
@@ -115,6 +118,34 @@ const KST_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   hour: "2-digit",
   hour12: false,
   timeZone: "Asia/Seoul",
+})
+
+const KST_PARTS_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hour12: false,
+})
+
+const KST_DATE_LABEL_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  month: "2-digit",
+  day: "2-digit",
+})
+
+const KST_YEAR_MONTH_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  year: "2-digit",
+  month: "2-digit",
+})
+
+const KST_FULL_DATE_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  year: "2-digit",
+  month: "2-digit",
+  day: "2-digit",
 })
 
 function parseDateTime(value) {
@@ -165,6 +196,188 @@ function formatKstTooltipTime(value) {
   return `${year}/${month}/${day} ${hour}:00`
 }
 
+function pad2(value) {
+  return String(value ?? "").padStart(2, "0")
+}
+
+function getKstParts(value) {
+  const date = parseDateTime(value)
+  if (!date) return null
+
+  const parts = Object.fromEntries(
+    KST_PARTS_FORMATTER.formatToParts(date).map((part) => [part.type, part.value]),
+  )
+
+  const year = Number(parts.year)
+  const month = Number(parts.month)
+  const day = Number(parts.day)
+  const hour = Number(parts.hour)
+
+  if (![year, month, day, hour].every((value) => Number.isFinite(value))) return null
+  return { year, month, day, hour }
+}
+
+function buildKstIsoDate({ year, month, day, hour = 0 }) {
+  return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:00:00${KST_OFFSET}`
+}
+
+function getBucketInfo(value, bin = DEFAULT_BIN) {
+  const parts = getKstParts(value)
+  if (!parts) return null
+
+  let { year, month, day, hour } = parts
+  let startHour = bin === "hour" ? hour : 0
+
+  if (bin === "week") {
+    const baseDate = new Date(Date.UTC(year, month - 1, day))
+    const dayOfWeek = baseDate.getUTCDay() // 0=Sunday
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    baseDate.setUTCDate(baseDate.getUTCDate() + diffToMonday)
+    year = baseDate.getUTCFullYear()
+    month = baseDate.getUTCMonth() + 1
+    day = baseDate.getUTCDate()
+  } else if (bin === "month") {
+    day = 1
+  }
+
+  const bucketDate = buildKstIsoDate({ year, month, day, hour: startHour })
+  const startDate = parseDateTime(bucketDate)
+  if (!startDate) return null
+
+  let endDate = startDate
+  if (bin === "week") {
+    endDate = new Date(startDate.getTime() + 6 * MS_PER_DAY)
+  } else if (bin === "month") {
+    const daysInMonth = new Date(year, month, 0).getDate()
+    const endDateString = buildKstIsoDate({
+      year,
+      month,
+      day: daysInMonth,
+      hour: startHour,
+    })
+    endDate = parseDateTime(endDateString) ?? startDate
+  }
+
+  return { key: bucketDate, startDate, endDate }
+}
+
+const METRIC_KEYS = METRIC_OPTIONS.map((option) => option.value)
+
+const sortByDateValue = (a, b) => {
+  if (a?.date < b?.date) return -1
+  if (a?.date > b?.date) return 1
+  return 0
+}
+
+function aggregateTotalsByBin(records, bin = DEFAULT_BIN) {
+  if (!Array.isArray(records)) return []
+  if (bin === "hour") return [...records].sort(sortByDateValue)
+
+  const bucketMap = new Map()
+  for (const record of records) {
+    const bucket = getBucketInfo(record?.date, bin)
+    if (!bucket) continue
+    const existing = bucketMap.get(bucket.key) ?? { date: bucket.key }
+    for (const metricKey of METRIC_KEYS) {
+      const value = Number(record?.[metricKey] ?? 0) || 0
+      existing[metricKey] = (existing[metricKey] ?? 0) + value
+    }
+    bucketMap.set(bucket.key, existing)
+  }
+
+  return Array.from(bucketMap.keys())
+    .sort()
+    .map((key) => bucketMap.get(key))
+}
+
+function aggregateBreakdownRecordsByBin(records, bin = DEFAULT_BIN) {
+  if (!Array.isArray(records)) return []
+  if (bin === "hour") return [...records].sort(sortByDateValue)
+
+  const bucketMap = new Map()
+
+  for (const record of records) {
+    const bucket = getBucketInfo(record?.date, bin)
+    if (!bucket) continue
+    const category =
+      typeof record?.category === "string" && record.category.trim().length > 0
+        ? record.category.trim()
+        : "Unspecified"
+    const bucketKey = `${bucket.key}__${category}`
+    const existing = bucketMap.get(bucketKey) ?? {
+      date: bucket.key,
+      category,
+    }
+
+    for (const metricKey of METRIC_KEYS) {
+      const value = Number(record?.[metricKey] ?? 0) || 0
+      existing[metricKey] = (existing[metricKey] ?? 0) + value
+    }
+
+    bucketMap.set(bucketKey, existing)
+  }
+
+  return Array.from(bucketMap.values()).sort((a, b) => {
+    if (a.date < b.date) return -1
+    if (a.date > b.date) return 1
+    return String(a.category).localeCompare(String(b.category))
+  })
+}
+
+function aggregateBreakdownsByBin(breakdowns, bin = DEFAULT_BIN) {
+  if (!breakdowns || typeof breakdowns !== "object") return {}
+  if (bin === "hour") return breakdowns
+
+  return Object.fromEntries(
+    Object.entries(breakdowns).map(([dimensionKey, records]) => [
+      dimensionKey,
+      aggregateBreakdownRecordsByBin(records, bin),
+    ]),
+  )
+}
+
+function formatAxisLabelByBin(value, bin = DEFAULT_BIN) {
+  if (bin === "hour") return formatKstDateTimeLabel(value)
+  const bucket = getBucketInfo(value, bin)
+  if (!bucket?.startDate) return typeof value === "string" ? value : String(value ?? "")
+
+  if (bin === "day") {
+    return KST_DATE_LABEL_FORMATTER.format(bucket.startDate)
+  }
+
+  if (bin === "week") {
+    return `${KST_DATE_LABEL_FORMATTER.format(bucket.startDate)}~${KST_DATE_LABEL_FORMATTER.format(bucket.endDate)}`
+  }
+
+  if (bin === "month") {
+    return KST_YEAR_MONTH_FORMATTER.format(bucket.startDate)
+  }
+
+  return formatKstDateTimeLabel(value)
+}
+
+function formatTooltipLabelByBin(value, bin = DEFAULT_BIN) {
+  if (bin === "hour") return formatKstTooltipTime(value)
+  const bucket = getBucketInfo(value, bin)
+  if (!bucket?.startDate) return typeof value === "string" ? value : String(value ?? "")
+
+  if (bin === "day") {
+    return KST_FULL_DATE_FORMATTER.format(bucket.startDate)
+  }
+
+  if (bin === "week") {
+    return `${KST_FULL_DATE_FORMATTER.format(bucket.startDate)} ~ ${KST_FULL_DATE_FORMATTER.format(bucket.endDate)}`
+  }
+
+  if (bin === "month") {
+    const monthLabel = KST_YEAR_MONTH_FORMATTER.format(bucket.startDate)
+    const rangeLabel = `${KST_DATE_LABEL_FORMATTER.format(bucket.startDate)}~${KST_DATE_LABEL_FORMATTER.format(bucket.endDate)}`
+    return `${monthLabel} (${rangeLabel})`
+  }
+
+  return formatKstTooltipTime(value)
+}
+
 function getDefaultDateRange(days = 30) {
   const to = new Date()
   const from = new Date()
@@ -183,8 +396,8 @@ function formatRangeLabel(range) {
  * Tooltip 내용에서 label(시간)을 직접 포맷팅해 주는 래퍼
  */
 function KstTooltipContent(props) {
-  const { label, ...rest } = props
-  const formattedLabel = formatKstTooltipTime(label)
+  const { label, bin = DEFAULT_BIN, ...rest } = props
+  const formattedLabel = formatTooltipLabelByBin(label, bin)
   return <ChartTooltipContent {...rest} label={formattedLabel} />
 }
 
@@ -487,6 +700,12 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   // 날짜 범위 (일반적인 range UX)
   const [dateRange, setDateRange] = React.useState(defaultRange)
 
+  // X축 집계 단위
+  const [binMode, setBinMode] = React.useState(DEFAULT_BIN)
+
+  // 날짜 선택 팝오버 열림 상태
+  const [isCalendarOpen, setIsCalendarOpen] = React.useState(false)
+
   // 분류 기준(레전드 기준): 처음엔 null, 데이터 들어오면 첫 사용가능 차원으로 자동 설정
   const [activeDimension, setActiveDimension] = React.useState(null)
 
@@ -506,15 +725,61 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     ),
   )
 
+  const calendarButtonRef = React.useRef(null)
+  const calendarPopoverRef = React.useRef(null)
+
   const {
     data,
     isLoading,
     error,
-    totalsData,
-    breakdownRecordsByDimension,
+    totalsData: rawTotalsData,
+    breakdownRecordsByDimension: rawBreakdownRecordsByDimension,
     hasSendJiraData,
     refresh,
   } = useLineHistoryData({ lineId, dateRange })
+
+  const totalsData = React.useMemo(
+    () => aggregateTotalsByBin(rawTotalsData, binMode),
+    [rawTotalsData, binMode],
+  )
+
+  const breakdownRecordsByDimension = React.useMemo(
+    () => aggregateBreakdownsByBin(rawBreakdownRecordsByDimension, binMode),
+    [rawBreakdownRecordsByDimension, binMode],
+  )
+
+  React.useEffect(() => {
+    if (!isCalendarOpen) return
+    const handleClick = (event) => {
+      const target = event.target
+      if (
+        calendarPopoverRef.current?.contains(target) ||
+        calendarButtonRef.current?.contains(target)
+      ) {
+        return
+      }
+      setIsCalendarOpen(false)
+    }
+    const handleKey = (event) => {
+      if (event.key === "Escape") setIsCalendarOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    document.addEventListener("keydown", handleKey)
+    return () => {
+      document.removeEventListener("mousedown", handleClick)
+      document.removeEventListener("keydown", handleKey)
+    }
+  }, [isCalendarOpen])
+
+  const tooltipContent = React.useMemo(
+    () => (props) => <KstTooltipContent {...props} bin={binMode} />,
+    [binMode],
+  )
+
+  const axisTickFormatter = React.useCallback(
+    (value) => formatAxisLabelByBin(value, binMode),
+    [binMode],
+  )
 
   // 차원별 레코드/토탈 계산
   const dimensionRecords = React.useMemo(() => {
@@ -690,6 +955,18 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     refresh()
   }, [lineId, refresh])
 
+  const handleDateRangeSelect = React.useCallback((range) => {
+    setDateRange(range)
+    if (range?.from && range?.to) {
+      setIsCalendarOpen(false)
+    }
+  }, [])
+
+  const handleBinChange = React.useCallback((value) => {
+    const isValid = BIN_OPTIONS.some((option) => option.value === value)
+    setBinMode(isValid ? value : DEFAULT_BIN)
+  }, [])
+
   // 카테고리 선택 토글
   const handleCategoryToggle = React.useCallback(
     (dimension, category, checked) => {
@@ -820,13 +1097,21 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
       (categories) => Array.isArray(categories) && categories.length > 0,
     )
 
-    return hasDateFilter || hasCategoryFilter
-  }, [dateRange, defaultRange, selectedCategoriesByDimension])
+    const hasBinSelection = binMode !== DEFAULT_BIN
+
+    return hasDateFilter || hasCategoryFilter || hasBinSelection
+  }, [binMode, dateRange, defaultRange, selectedCategoriesByDimension])
 
   // 필터 전체 초기화
   const handleResetAllFilters = React.useCallback(() => {
     // 날짜 범위 기본값
     setDateRange(defaultRange)
+
+    // 집계 단위 기본값
+    setBinMode(DEFAULT_BIN)
+
+    // 달력 닫기
+    setIsCalendarOpen(false)
 
     // 카테고리 필터 초기화
     setSelectedCategoriesByDimension(
@@ -870,7 +1155,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatKstDateTimeLabel}
+                tickFormatter={axisTickFormatter}
                 tickMargin={12}
                 minTickGap={12}
                 angle={-45}
@@ -881,7 +1166,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               <YAxis allowDecimals={false} width={64} />
               <ChartTooltip
                 isAnimationActive={false}
-                content={<KstTooltipContent />}
+                content={tooltipContent}
               />
               {rowBreakdownSeries.seriesKeys.map((seriesKey) => (
                 <Line
@@ -932,7 +1217,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
             />
             <XAxis
               dataKey="date"
-              tickFormatter={formatKstDateTimeLabel}
+              tickFormatter={axisTickFormatter}
               tickMargin={8}
               minTickGap={12}
               angle={-45}
@@ -943,7 +1228,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
             <YAxis allowDecimals={false} width={64} />
             <ChartTooltip
               isAnimationActive={false}
-              content={<KstTooltipContent />}
+              content={tooltipContent}
             />
             <Line
               type="monotone"
@@ -993,7 +1278,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatKstDateTimeLabel}
+                tickFormatter={axisTickFormatter}
                 tickMargin={16}
                 minTickGap={12}
                 angle={-45}
@@ -1004,7 +1289,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               <YAxis allowDecimals={false} width={64} />
               <ChartTooltip
                 isAnimationActive={false}
-                content={<KstTooltipContent />}
+                content={tooltipContent}
               />
               {jiraBreakdownSeries.seriesKeys.map((seriesKey) => (
                 <Line
@@ -1062,7 +1347,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
             />
             <XAxis
               dataKey="date"
-              tickFormatter={formatKstDateTimeLabel}
+              tickFormatter={axisTickFormatter}
               tickMargin={16}
               minTickGap={12}
               angle={-45}
@@ -1073,7 +1358,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
             <YAxis allowDecimals={false} width={64} />
             <ChartTooltip
               isAnimationActive={false}
-              content={<KstTooltipContent />}
+              content={tooltipContent}
             />
             <Line
               type="monotone"
@@ -1116,31 +1401,35 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {/* 날짜 범위 선택 */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 min-w-[220px] justify-between px-3 text-xs"
+            <div className="relative">
+              <Button
+                ref={calendarButtonRef}
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-[220px] justify-between px-3 text-xs"
+                onClick={() => setIsCalendarOpen((prev) => !prev)}
+                aria-expanded={isCalendarOpen}
+                aria-haspopup="dialog"
+              >
+                <span className="text-[11px] text-muted-foreground">
+                  조회 기간
+                </span>
+                <span className="flex items-center gap-2">
+                  <CalendarIcon className="size-4" />
+                  {formatRangeLabel(dateRange)}
+                </span>
+              </Button>
+              {isCalendarOpen && (
+                <div
+                  ref={calendarPopoverRef}
+                  className="absolute left-0 top-full z-50 mt-2 rounded-lg border bg-popover p-3 shadow-lg"
                 >
-                  <span className="text-[11px] text-muted-foreground">
-                    조회 기간
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <CalendarIcon className="size-4" />
-                    {formatRangeLabel(dateRange)}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="p-0">
-                <div className="p-3">
                   <Calendar
                     mode="range"
                     captionLayout="dropdown"
                     selected={dateRange}
                     defaultMonth={dateRange?.from ?? today}
-                    // 일반적인 range UX: 첫 클릭(from), 두 번째 클릭(to), 세 번째 클릭 새 범위
-                    onSelect={setDateRange}
+                    onSelect={handleDateRangeSelect}
                     numberOfMonths={2}
                     classNames={{
                       today:
@@ -1148,20 +1437,53 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                     }}
                     disabled={{ after: today }}
                   />
-                  <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>기본값: 최근 한 달</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setDateRange(defaultRange)}
-                    >
-                      기간 초기화
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => handleDateRangeSelect(defaultRange)}
+                      >
+                        기간 초기화
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setIsCalendarOpen(false)}
+                      >
+                        닫기
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            </div>
+
+            {/* X축 집계 단위 */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                X축 Bin
+              </span>
+              <div className="flex items-center gap-[2px] rounded-md border bg-muted/60 p-[2px]">
+                {BIN_OPTIONS.map((option) => {
+                  const isActive = binMode === option.value
+                  return (
+                    <Button
+                      key={option.value}
+                      size="sm"
+                      variant={isActive ? "secondary" : "ghost"}
+                      className="h-8 px-3 text-xs"
+                      onClick={() => handleBinChange(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
 
             {/* 분류 기준 선택 (레전드 기준) */}
             <div className="flex items-center gap-1">
@@ -1282,7 +1604,7 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
               disabled={!hasAnyActiveFilter || isLoading}
               className="gap-1 text-xs"
               aria-label="필터 전체 초기화"
-              title="날짜 / 카테고리 / 숨김 시리즈 모두 초기화"
+              title="날짜 / 집계 단위 / 카테고리 / 숨김 시리즈 모두 초기화"
             >
               <FilterIcon className="size-4" />
               필터 전체 초기화
@@ -1324,9 +1646,11 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
             <p className="text-xs text-muted-foreground">
               날짜/시간별 E-SOP진행 건수 Jira인폼 건수 Trend Monitoring
             </p>
-
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
+            <span className="rounded-md bg-muted px-2 py-1">
+              X축 Bin: {BIN_LABELS[binMode] ?? binMode}
+            </span>
             {activeDimension && (
               <span className="rounded-md bg-muted px-2 py-1">
                 분류 기준: {activeDimensionLabel}

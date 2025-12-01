@@ -1,6 +1,6 @@
 // src/features/line-dashboard/components/data-table/cells/CommentCell.jsx
 import * as React from "react"
-import { Button } from "components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -28,12 +28,14 @@ import { buildToastOptions } from "../utils/toast"
 
 /** 내부 마커(보이지 않는 후행 데이터)를 분리하기 위한 상수 */
 const COMMENT_MARK = "$@$"
+const SUCCESS_TOAST_COLOR = "var(--chart-2)"
+const ERROR_TOAST_COLOR = "var(--destructive)"
 
 function showCommentSavedToast() {
   toast.success("저장 성공", {
     description: "Comment가 저장되었습니다.",
     icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-    ...buildToastOptions({ color: "#065f46", duration: 2000 }),
+    ...buildToastOptions({ color: SUCCESS_TOAST_COLOR, duration: 2000 }),
   })
 }
 
@@ -41,7 +43,7 @@ function showCommentErrorToast(message) {
   toast.error("저장 실패", {
     description: message || "저장 중 오류가 발생했습니다.",
     icon: <XCircle className="h-5 w-5 text-red-500" />,
-    ...buildToastOptions({ color: "#991b1b", duration: 3000 }),
+    ...buildToastOptions({ color: ERROR_TOAST_COLOR, duration: 3000 }),
   })
 }
 
