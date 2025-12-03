@@ -5,6 +5,7 @@
 export { AuthProvider } from "./context/AuthContext"
 export { useAuth } from "./hooks/useAuth"
 export { RequireAuth } from "./components/RequireAuth"
+export { AuthAutoLoginGate } from "./components/AuthAutoLoginGate"
 export { LoginForm } from "./components/LoginForm"
 export { CenteredPage } from "./components/CenteredPage"
 export * from "./pages"

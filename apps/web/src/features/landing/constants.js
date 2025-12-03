@@ -10,7 +10,8 @@ export const navigationItems = [
     title: 'Apps',
     icon: LayoutGridIcon,
     items: [
-      { title: 'ESOP Dashboard', href: '/ESOP_Dashboard' }
+      { title: 'ESOP Dashboard', href: '/ESOP_Dashboard' },
+      { title: 'Appstore', href: '/appstore' }
     ]
   },
   {

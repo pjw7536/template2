@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ChevronRightIcon } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -79,8 +80,8 @@ const AppIntegration = ({ partnerApps }) => {
           <p className='text-muted-foreground text-xl'>
             Explore integrated apps that enhance productivity, streamline workflows, and simplify collaboration effortlessly.
           </p>
-          <Button size='lg' className='rounded-lg text-base'>
-            Browse All Apps
+          <Button size='lg' asChild className='rounded-lg text-base'>
+            <Link to='/appstore'>Browse All Apps</Link>
           </Button>
         </div>
 

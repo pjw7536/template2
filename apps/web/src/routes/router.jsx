@@ -1,6 +1,7 @@
 // src/routes/router.jsx
 import { createBrowserRouter } from "react-router-dom"
 
+import { AuthAutoLoginGate } from "@/lib/auth"
 import { ProtectedAppLayout } from "./layouts/ProtectedAppLayout"
 
 import { appstoreRoutes } from "@/features/appstore"
@@ -13,19 +14,25 @@ import { modelsRoutes } from "@/features/models"
 import { vocRoutes } from "@/features/voc"
 
 export const router = createBrowserRouter([
-  ...landingRoutes,
-  ...authRoutes,
   {
     path: "/",
-    element: <ProtectedAppLayout />,
+    element: <AuthAutoLoginGate />,
     children: [
-      ...homeRoutes,
+      ...landingRoutes,
+      ...authRoutes,
       ...appstoreRoutes,
-      ...modelsRoutes,
-      ...lineDashboardRoutes,
-      ...vocRoutes,
+      {
+        path: "/",
+        element: <ProtectedAppLayout />,
+        children: [
+          ...homeRoutes,
+          ...modelsRoutes,
+          ...lineDashboardRoutes,
+          ...vocRoutes,
+          ...errorRoutes,
+        ],
+      },
       ...errorRoutes,
     ],
   },
-  ...errorRoutes,
 ])
