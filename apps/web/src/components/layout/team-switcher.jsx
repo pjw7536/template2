@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "components/ui/dropdown-menu"
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -58,7 +58,7 @@ function toLineOption(line) {
   return { id, label, description }
 }
 
-/** URL params에서 lineId 추출 (동적 라우트 /[lineId]/...) */
+/** URL params에서 lineId 추출 (동적 라우트 /ESOP_Dashboard/:lineId/...) */
 function getLineIdFromParams(params) {
   if (!params) return null
   const raw = params.lineId
@@ -68,14 +68,25 @@ function getLineIdFromParams(params) {
 }
 
 /** 현재 경로와 선택된 라인ID를 기반으로 이동할 경로를 생성 */
-function buildNextPath({ pathname, newLineId, hasLineIdInPath }) {
-  if (!pathname || !hasLineIdInPath) return null
+function buildNextPath({ pathname, newLineId, currentLineId }) {
+  if (!pathname || !newLineId) return null
 
   const segments = pathname.split("/").filter(Boolean)
   if (segments.length === 0) return null
 
-  segments[0] = newLineId
-  return `/${segments.join("/")}`
+  const currentIndex = currentLineId ? segments.indexOf(currentLineId) : -1
+  const esopIndex = segments.indexOf("ESOP_Dashboard")
+  if (currentIndex === -1 && esopIndex === -1) return null
+
+  if (currentIndex !== -1) {
+    segments[currentIndex] = newLineId
+    return `/${segments.join("/")}`
+  }
+
+  // /ESOP_Dashboard 경로에서 라인 ID를 두 번째 세그먼트로 교체/삽입
+  const before = segments.slice(0, esopIndex + 1)
+  const after = segments.slice(esopIndex + 2) // 기존 세그먼트(홈/이전 라인ID 등)는 건너뜁니다.
+  return `/${[...before, newLineId, ...after].join("/")}`
 }
 
 /* -----------------------------------------------------------------------------
@@ -142,7 +153,7 @@ export function TeamSwitcher({ lines }) {
       const target = buildNextPath({
         pathname,
         newLineId: nextId,
-        hasLineIdInPath: Boolean(paramLineId),
+        currentLineId: paramLineId,
       })
       if (target) {
         navigate(target)

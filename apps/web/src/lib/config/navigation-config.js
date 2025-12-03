@@ -15,7 +15,7 @@ export const NAVIGATION_CONFIG = Object.freeze({
   navMain: [
     {
       title: "E-SOP Dashboard",
-      url: "/E-SOP_Dashboard",
+      url: "/ESOP_Dashboard",
       icon: SquareTerminal,
       isActive: true,
       scope: "line",

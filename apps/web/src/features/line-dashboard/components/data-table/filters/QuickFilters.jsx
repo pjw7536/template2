@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { BookmarkCheck, BookmarkPlus, BookmarkX } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "components/ui/dropdown-menu"
 import { GlobalFilter } from "./GlobalFilter"
 import {
   clampRecentHours,

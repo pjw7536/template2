@@ -34,7 +34,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import {
   Table,
   TableBody,

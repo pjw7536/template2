@@ -3,4 +3,4 @@
 export { LineDashboardPage } from "./LineDashboardPage"
 export { LineSettingsPage } from "./LineSettingsPage"
 export { DataTable } from "./data-table"
-export { LineHistoryDashboard } from "../history"
+export { LineHistoryDashboard } from "./history/LineHistoryDashboard"

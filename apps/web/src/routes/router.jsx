@@ -7,11 +7,13 @@ import { appstoreRoutes } from "@/features/appstore"
 import { authRoutes } from "@/features/auth"
 import { errorRoutes } from "@/features/errors"
 import { homeRoutes } from "@/features/home"
+import { landingRoutes } from "@/features/landing"
 import { lineDashboardRoutes } from "@/features/line-dashboard"
 import { modelsRoutes } from "@/features/models"
 import { vocRoutes } from "@/features/voc"
 
 export const router = createBrowserRouter([
+  ...landingRoutes,
   ...authRoutes,
   {
     path: "/",

@@ -1,40 +1,24 @@
 // src/routes/layouts/ProtectedAppLayout.jsx
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Outlet } from "react-router-dom"
 
 import { RequireAuth } from "@/lib/auth"
 import { AppShell } from "@/components/layout"
-import { getDistinctLineIds } from "@/features/line-dashboard/api/get-line-ids"
+import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
+import { useLineOptionsQuery } from "@/features/line-dashboard"
 
 export function ProtectedAppLayout() {
-  const [lineOptions, setLineOptions] = useState([])
+  const { data: lineOptions = [], isError, error } = useLineOptionsQuery()
 
   useEffect(() => {
-    let active = true
-
-    async function loadLineOptions() {
-      try {
-        const result = await getDistinctLineIds()
-        if (!active) return
-        if (Array.isArray(result)) {
-          setLineOptions(result)
-        }
-      } catch (error) {
-        console.warn("Failed to load line options", error)
-        if (!active) return
-        setLineOptions([])
-      }
+    if (isError) {
+      console.warn("Failed to load line options", error)
     }
-
-    loadLineOptions()
-    return () => {
-      active = false
-    }
-  }, [])
+  }, [isError, error])
 
   return (
     <RequireAuth>
-      <AppShell lineOptions={lineOptions}>
+      <AppShell lineOptions={lineOptions} navigation={NAVIGATION_CONFIG}>
         <Outlet />
       </AppShell>
     </RequireAuth>

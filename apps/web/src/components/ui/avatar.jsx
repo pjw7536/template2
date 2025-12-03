@@ -1,4 +1,3 @@
-// src/components/ui/avatar.jsx
 import * as React from "react"
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
@@ -36,7 +35,7 @@ function AvatarFallback({
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
-        "bg-primary text-primary-foreground flex size-full items-center justify-center rounded-full",
+        "bg-muted flex size-full items-center justify-center rounded-full",
         className
       )}
       {...props} />

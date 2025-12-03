@@ -15,7 +15,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+} from "components/ui/collapsible"
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -50,18 +50,24 @@ import { useActiveLine } from "./active-line-context"
 
 /* =========================================
  * 유틸: URL 스코프(line) 접두어 붙이기
- *  - scope === "line" 이고 lineId가 있으면 `/{lineId}/...` 형태로 변환
- *  - url이 절대경로/상대경로 모두 안전처리
+ *  - scope === "line" 이면 첫 세그먼트 뒤에 lineId 삽입 (/ESOP_Dashboard/:lineId/..)
+ *  - url이 절대경로/상대경로 모두 정규화
  *  - url이 비어있으면 "#" 반환
  * ======================================= */
 /** @param {string|undefined} url @param {Scope} scope @param {string|null} lineId */
 function withLineScope(url, scope, lineId) {
   if (!url) return "#"
-  if (scope !== "line" || !lineId) return url
-
-  // 앞의 슬래시를 정규화하여 중복 슬래시 방지
   const normalized = url.startsWith("/") ? url.replace(/^\/+/, "") : url
-  return `/${lineId}/${normalized}`
+  const basePath = `/${normalized}`
+
+  if (scope !== "line" || !lineId) return basePath
+
+  const segments = normalized.split("/").filter(Boolean)
+  if (!segments.length) return basePath
+
+  const [root, ...rest] = segments
+  const scopedPath = [root, lineId, ...rest].join("/")
+  return `/${scopedPath}`
 }
 
 /* =========================================

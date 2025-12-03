@@ -6,14 +6,14 @@
 
 import { SidebarInset } from "@/components/ui/sidebar"
 
-import { AppSidebar } from "./app-sidebar"
 import { AppSidebarProvider } from "./app-sidebar-provider"
 import { AppHeader } from "./app-header"
+import { AppSidebar } from "./app-sidebar"
 
-export function AppShell({ lineOptions, children }) {
+export function AppShell({ lineOptions, navigation, children }) {
   return (
     <AppSidebarProvider>
-      <AppSidebar lineOptions={lineOptions} />
+      <AppSidebar lineOptions={lineOptions} navigation={navigation} />
       <SidebarInset>
         <AppHeader />
         <main className="flex-1 min-h-0 min-w-0 overflow-auto px-4 pb-6 pt-2">

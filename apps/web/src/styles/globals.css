@@ -3,6 +3,8 @@
 @import "tw-animate-css";
 @import "./tokens.css";
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -69,3 +71,95 @@
   background-color: var(--popover);
   color: var(--popover-foreground);
 }
+
+@layer utilities {
+
+  /* Heartbeat animation is defined here to avoid @theme tooling errors */
+  @keyframes heartbeat {
+    0% {
+      box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
+      transform: scale(1);
+    }
+
+    50% {
+      box-shadow: 0 0 0 7px transparent;
+      transform: scale(1.05);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+      transform: scale(1);
+    }
+  }
+
+  .animate-heartbeat {
+    animation: heartbeat 2s infinite ease-in-out;
+  }
+}
+
+@theme inline {
+  --animate-heartbeat: heartbeat 2s infinite ease-in-out;
+
+  @keyframes heartbeat {
+    0% {
+      box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
+      transform: scale(1);
+    }
+
+    50% {
+      box-shadow: 0 0 0 7px transparent;
+      transform: scale(1.05);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+      transform: scale(1);
+    }
+  }
+  @keyframes heartbeat {
+  0% {
+    box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
+    transform: scale(1);
+    }
+  50% {
+    box-shadow: 0 0 0 7px transparent;
+    transform: scale(1.05);
+    }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    transform: scale(1);
+    }
+  }
+  @keyframes heartbeat {
+  0% {
+    box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
+    transform: scale(1);
+    }
+  50% {
+    box-shadow: 0 0 0 7px transparent;
+    transform: scale(1.05);
+    }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    transform: scale(1);
+    }
+  }
+  --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear
+;
+  @keyframes marquee-horizontal {
+  from {
+    transform: translateX(0);
+    }
+  to {
+    transform: translateX(calc(-100% - var(--marquee-gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+    }
+  to {
+    transform: translateY(calc(-100% - var(--marquee-gap)));
+    }
+  }}

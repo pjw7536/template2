@@ -1,6 +1,7 @@
 // src/features/line-dashboard/routes.jsx
 // 라인 대시보드에서 제공하는 페이지 라우트 정의를 모아둡니다.
 import {
+  LineDashboardEntryPage,
   LineDashboardHistoryPage,
   LineDashboardLandingPage,
   LineDashboardOverviewPage,
@@ -10,23 +11,27 @@ import {
 
 export const lineDashboardRoutes = [
   {
-    path: ":lineId/ESOP_Dashboard",
+    path: "ESOP_Dashboard",
+    element: <LineDashboardEntryPage />,
+  },
+  {
+    path: "ESOP_Dashboard/:lineId",
     element: <LineDashboardLandingPage />,
   },
   {
-    path: ":lineId/ESOP_Dashboard/status",
+    path: "ESOP_Dashboard/:lineId/status",
     element: <LineDashboardStatusPage />,
   },
   {
-    path: ":lineId/ESOP_Dashboard/history",
+    path: "ESOP_Dashboard/:lineId/history",
     element: <LineDashboardHistoryPage />,
   },
   {
-    path: ":lineId/ESOP_Dashboard/settings",
+    path: "ESOP_Dashboard/:lineId/settings",
     element: <LineDashboardSettingsPage />,
   },
   {
-    path: ":lineId/ESOP_Dashboard/overview",
+    path: "ESOP_Dashboard/:lineId/overview",
     element: <LineDashboardOverviewPage />,
   },
 ]

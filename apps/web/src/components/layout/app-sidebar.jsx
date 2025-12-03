@@ -1,5 +1,4 @@
 // src/components/layout/app-sidebar.jsx
-import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
 import { NavProjects } from "./nav-projects"
 import { NavUser } from "./nav-user"
 import { TeamSwitcher } from "./team-switcher"
@@ -13,9 +12,9 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export function AppSidebar({ lineOptions, ...props }) {
-  const { navMain, projects } = NAVIGATION_CONFIG
-  // 외부 데이터 안전 처리: null/undefined가 넘어와도 빈 배열로 대체해 안정적으로 렌더링
+export function AppSidebar({ lineOptions, navigation, ...props }) {
+  const navMain = Array.isArray(navigation?.navMain) ? navigation.navMain : []
+  const projects = Array.isArray(navigation?.projects) ? navigation.projects : []
   const teams = Array.isArray(lineOptions) ? lineOptions : []
 
   return (

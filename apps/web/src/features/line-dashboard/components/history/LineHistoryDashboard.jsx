@@ -1,4 +1,4 @@
-// src/features/line-dashboard/history/LineHistoryDashboard.jsx
+// src/features/line-dashboard/components/history/LineHistoryDashboard.jsx
 import * as React from "react"
 import {
   CartesianGrid,
@@ -11,7 +11,7 @@ import {
 import { IconAlertCircle, IconRefresh } from "@tabler/icons-react"
 import { CalendarIcon, FilterIcon } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import {
   ChartContainer,
@@ -26,10 +26,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { timeFormatter } from "../utils/formatters"
-import { useLineHistoryData } from "./useLineHistoryData"
+import { timeFormatter } from "@/features/line-dashboard/utils/formatters"
+import { useLineHistoryData } from "@/features/line-dashboard/hooks/useLineHistoryData"
 
 const DIMENSION_OPTIONS = [
   { value: "sdwt_prod", label: "SDWT Prod" },
@@ -771,8 +771,10 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
     }
   }, [isCalendarOpen])
 
-  const tooltipContent = React.useMemo(
-    () => (props) => <KstTooltipContent {...props} bin={binMode} />,
+  const tooltipContent = React.useCallback(
+    function HistoryTooltipContent(props) {
+      return <KstTooltipContent {...props} bin={binMode} />
+    },
     [binMode],
   )
 

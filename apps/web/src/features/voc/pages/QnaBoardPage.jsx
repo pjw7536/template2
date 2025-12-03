@@ -12,11 +12,10 @@ import {
   Reply,
   Trash2,
 } from "lucide-react"
-import ReactQuill from "react-quill"
 
 import { useAuth } from "@/lib/auth"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Badge } from "components/ui/badge"
+import { Button } from "components/ui/button"
 import {
   Card,
   CardContent,
@@ -24,7 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { Input } from "components/ui/input"
 import {
   Table,
   TableBody,
@@ -44,10 +43,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { STATUS_OPTIONS } from "../constants"
+import { RichTextEditor } from "../components/RichTextEditor"
 import { useQnaBoardState } from "../hooks"
 import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"
 import "@/styles/quill.css"
-import "react-quill/dist/quill.snow.css"
+import "quill/dist/quill.snow.css"
 
 const QUILL_MODULES = {
   toolbar: [
@@ -304,16 +304,14 @@ export function QnaBoardPage() {
                   >
                     내용
                   </label>
-                  <ReactQuill
+                  <RichTextEditor
                     id="qna-content-editor"
-                    theme="snow"
                     value={form.content}
                     onChange={(value) => updateForm("content", value)}
                     modules={QUILL_MODULES}
                     formats={QUILL_FORMATS}
                     placeholder="상세한 내용을 적어 주세요."
-                    aria-labelledby="qna-content-label"
-                    className="qna-quill"
+                    ariaLabelledby="qna-content-label"
                   />
                 </div>
 
@@ -593,15 +591,13 @@ export function QnaBoardPage() {
                     placeholder="제목을 입력하세요"
                     disabled={isUpdating}
                   />
-                  <ReactQuill
+                  <RichTextEditor
                     id="qna-edit-editor"
-                    theme="snow"
                     value={editForm.content}
                     onChange={(value) => setEditForm((prev) => ({ ...prev, content: value }))}
                     modules={QUILL_MODULES}
                     formats={QUILL_FORMATS}
-                    aria-label="게시글 내용 수정"
-                    className="qna-quill"
+                    ariaLabel="게시글 내용 수정"
                     readOnly={isUpdating}
                   />
                 </div>

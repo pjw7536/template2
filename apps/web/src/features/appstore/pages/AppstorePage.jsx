@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react"
 import { ArrowUpRight, Bookmark, Search, Sparkles } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Badge } from "components/ui/badge"
+import { Button } from "components/ui/button"
 import {
   Card,
   CardContent,
@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { Input } from "components/ui/input"
 
 const APPS = [
   {
