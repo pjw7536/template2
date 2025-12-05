@@ -40,7 +40,7 @@ const TeamMemberCard = ({ member, index, isWide }) => {
       }}
       className={cn(
         // pt를 줄여서 전체 카드 높이 살짝 축소
-        'group relative border-none pt-20 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
+        'group relative border-none pt-16 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
         isWide && 'sm:max-lg:col-span-3',
         member.bgColor,
         !isVisible && 'opacity-0 translate-y-6',
@@ -52,7 +52,7 @@ const TeamMemberCard = ({ member, index, isWide }) => {
       >
         <div
           // 아바타 사이즈와 안쪽 패딩 줄이기
-          className={cn('size-24 overflow-hidden rounded-full pt-3', member.avatarBg)}
+          className={cn('size-24 overflow-hidden rounded-full', member.avatarBg)}
         >
           <img src={member.image} alt={member.alt} className='h-auto w-full' />
         </div>
@@ -76,7 +76,7 @@ const TeamMemberCard = ({ member, index, isWide }) => {
 const Team = ({ teamMembers }) => {
   return (
     <section className='py-8 sm:py-16 lg:py-24'>
-      <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
+      <div className='mx-auto max-w-5xl px-4 sm:px-6 lg:px-8'>
         <div className='mb-20 space-y-4 text-center lg:mb-24'>
           <div>
             <Badge variant='outline' className='text-sm font-normal'>

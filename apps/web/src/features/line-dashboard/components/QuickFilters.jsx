@@ -1,6 +1,6 @@
 // src/features/line-dashboard/components/QuickFilters.jsx
 import * as React from "react"
-import { IconChevronDown } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { BookmarkCheck, BookmarkPlus, BookmarkX } from "lucide-react"
 
@@ -33,6 +33,8 @@ import {
   RECENT_HOURS_DAY_MODE_THRESHOLD,
   RECENT_HOURS_DAY_STEP,
   RECENT_HOURS_MAX,
+  buildMainStepToken,
+  parseMainStepToken,
   snapRecentHours,
 } from "../utils/dataTableQuickFilters"
 import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
@@ -53,6 +55,35 @@ const RECENT_SLIDER_STEP = 1
 const DAY_SEGMENT_MAX_POSITION = RECENT_SLIDER_SPLIT - RECENT_SLIDER_STEP
 
 const isNil = (value) => value === null || value === undefined
+
+function QuickFilterFieldset({
+  legendId,
+  label,
+  children,
+  className,
+  legendClassName,
+  isLegendHidden = false,
+}) {
+  return (
+    <fieldset
+      className={cn(FIELDSET_CLASS, className)}
+      aria-labelledby={legendId}
+    >
+      <legend
+        id={legendId}
+        className={cn(
+          isLegendHidden
+            ? "sr-only"
+            : "text-[9px] font-semibold uppercase tracking-wide text-muted-foreground",
+          legendClassName
+        )}
+      >
+        {label}
+      </legend>
+      {children}
+    </fieldset>
+  )
+}
 
 function buildDefaultFavoriteName() {
   const now = new Date()
@@ -88,10 +119,7 @@ export function QuickFilters({
     if (showGlobalFilter) onGlobalFilterChange?.("")
   }
 
-  if (!showContainer) return null
-
-  // ✅ 섹션 블록들(각 fieldset) 생성
-  const sectionBlocks = sections.map((section) => {
+  const renderSection = (section) => {
     const isMulti = isMultiSelectFilter(section.key)
     const current = filters[section.key]
     const selectedValues = getSelectedValues(isMulti, current)
@@ -123,6 +151,17 @@ export function QuickFilters({
     }
 
     if (DROPDOWN_SECTION_KEYS.has(section.key)) {
+      if (section.key === "main_step") {
+        return (
+          <MainStepDropdownSection
+            key={section.key}
+            section={section}
+            legendId={legendId}
+            current={current}
+            onToggle={onToggle}
+          />
+        )
+      }
       return (
         <DropdownQuickFilterSection
           key={section.key}
@@ -146,23 +185,20 @@ export function QuickFilters({
         onToggle={onToggle}
       />
     )
-  })
+  }
+
+  if (!showContainer) return null
+
+  const sectionBlocks = sections.map(renderSection)
 
   // ✅ 글로벌 필터도 “같은 줄의 섹션”으로 추가
   if (showGlobalFilter) {
     sectionBlocks.push(
-      <fieldset
+      <QuickFilterFieldset
         key="__global__"
-        className={FIELDSET_CLASS}
-        aria-labelledby="legend-global-filter"
+        legendId="legend-global-filter"
+        label="검색"
       >
-        <legend
-          id="legend-global-filter"
-          className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          검색
-        </legend>
-
         {/* 입력 너비를 버튼 그룹과 균형 잡히게 고정 폭 부여 */}
         <div className="w-52 sm:w-64 lg:w-80">
           <GlobalFilter
@@ -171,7 +207,7 @@ export function QuickFilters({
             placeholder={globalFilterPlaceholder}
           />
         </div>
-      </fieldset>
+      </QuickFilterFieldset>
     )
   }
 
@@ -237,17 +273,12 @@ export function QuickFilterFavorites({
 }) {
   const [selectedFavoriteId, setSelectedFavoriteId] = React.useState("")
   const hasMountedRef = React.useRef(false)
-  const selectedFavorite = React.useMemo(
-    () => favorites.find((favorite) => favorite.id === selectedFavoriteId),
-    [favorites, selectedFavoriteId]
-  )
-  const hasFavoriteChanges = React.useMemo(
-    () =>
-      selectedFavorite
-        ? !areFiltersEqual(filters, selectedFavorite.filters)
-        : false,
-    [filters, selectedFavorite]
-  )
+  const selectedFavorite =
+    selectedFavoriteId && Array.isArray(favorites)
+      ? favorites.find((favorite) => favorite.id === selectedFavoriteId)
+      : undefined
+  const hasFavoriteChanges =
+    Boolean(selectedFavorite) && !areFiltersEqual(filters, selectedFavorite.filters)
 
   React.useEffect(() => {
     if (!Array.isArray(favorites) || favorites.length === 0) {
@@ -363,18 +394,79 @@ function getSelectedValues(isMulti, current) {
   return isNil(current) ? [] : [current]
 }
 
+function buildMainStepSelectionMap(tokens) {
+  const map = new Map()
+  const normalizedTokens = Array.isArray(tokens) ? tokens : []
+  normalizedTokens.forEach((token) => {
+    const parsed = parseMainStepToken(token)
+    if (!parsed?.suffix) return
+    const prefix = parsed.prefix && parsed.prefix !== "" ? parsed.prefix : "*"
+    const set = map.get(parsed.suffix) ?? new Set()
+    set.add(prefix)
+    map.set(parsed.suffix, set)
+  })
+  return map
+}
+
+function buildMainStepTokensFromSelection(selectionMap) {
+  const tokens = []
+  selectionMap.forEach((prefixes, suffix) => {
+    if (!prefixes || prefixes.size === 0) return
+    const normalizedPrefixes = prefixes.has("*") ? ["*"] : Array.from(prefixes)
+    normalizedPrefixes.forEach((prefix) => {
+      const token = buildMainStepToken(suffix, prefix)
+      if (token) tokens.push(token)
+    })
+  })
+  return tokens
+}
+
+function toggleMainStepPrefix(currentPrefixes, prefix) {
+  const nextPrefixes = new Set(currentPrefixes)
+
+  if (prefix === "*") {
+    if (nextPrefixes.has("*")) {
+      nextPrefixes.delete("*")
+    } else {
+      nextPrefixes.clear()
+      nextPrefixes.add("*")
+    }
+    return normalizePrefixSelection(nextPrefixes)
+  }
+
+  if (nextPrefixes.has("*")) {
+    nextPrefixes.delete("*")
+  }
+
+  if (nextPrefixes.has(prefix)) {
+    nextPrefixes.delete(prefix)
+  } else {
+    nextPrefixes.add(prefix)
+  }
+
+  return normalizePrefixSelection(nextPrefixes)
+}
+
+function normalizePrefixSelection(prefixes) {
+  if (!prefixes || prefixes.size === 0) return new Set(["*"])
+  return prefixes
+}
+
+function getMainStepDisplayValue(selectionMap) {
+  if (selectionMap.size === 0) return "전체"
+  if (selectionMap.size === 1) {
+    const [suffix, prefixes] = Array.from(selectionMap.entries())[0]
+    if (!prefixes || prefixes.size === 0 || prefixes.has("*")) return suffix
+    return `${suffix} (${Array.from(prefixes).join(", ")})`
+  }
+  return `${selectionMap.size}개 선택`
+}
+
 function CheckboxQuickFilterSection({ section, legendId, checked, onToggle }) {
   const inputId = `${section.key}-checkbox`
 
   return (
-    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
-      <legend
-        id={legendId}
-        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-      >
-        {section.label}
-      </legend>
-
+    <QuickFilterFieldset legendId={legendId} label={section.label}>
       <label
         htmlFor={inputId}
         className="flex h-8 items-center gap-2 text-xs font-medium text-foreground"
@@ -396,7 +488,7 @@ function CheckboxQuickFilterSection({ section, legendId, checked, onToggle }) {
           ) : null}
         </div>
       </label>
-    </fieldset>
+    </QuickFilterFieldset>
   )
 }
 
@@ -418,14 +510,7 @@ function DropdownQuickFilterSection({
         : `${resolvedSelectedValues.length}개 선택`
 
     return (
-      <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
-        <legend
-          id={legendId}
-          className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {section.label}
-        </legend>
-
+      <QuickFilterFieldset legendId={legendId} label={section.label}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -470,7 +555,7 @@ function DropdownQuickFilterSection({
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-      </fieldset>
+      </QuickFilterFieldset>
     )
   }
 
@@ -481,14 +566,7 @@ function DropdownQuickFilterSection({
   }
 
   return (
-    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
-      <legend
-        id={legendId}
-        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-      >
-        {section.label}
-      </legend>
-
+    <QuickFilterFieldset legendId={legendId} label={section.label}>
       <select
         value={current ?? ""}
         onChange={handleChange}
@@ -504,7 +582,185 @@ function DropdownQuickFilterSection({
           </option>
         ))}
       </select>
-    </fieldset>
+    </QuickFilterFieldset>
+  )
+}
+
+function MainStepDropdownSection({ section, legendId, current, onToggle }) {
+  const selectionMap = buildMainStepSelectionMap(current)
+  const suffixOptions = Array.isArray(section?.options) ? section.options : []
+  const firstSelectedSuffix = selectionMap.size > 0 ? Array.from(selectionMap.keys())[0] : null
+  const initialSuffix = firstSelectedSuffix ?? null
+  const [activeSuffix, setActiveSuffix] = React.useState(initialSuffix)
+
+  React.useEffect(() => {
+    if (!suffixOptions.length) {
+      setActiveSuffix(null)
+      return
+    }
+    if (activeSuffix && suffixOptions.some((option) => option.value === activeSuffix)) return
+    setActiveSuffix(firstSelectedSuffix ?? null)
+  }, [activeSuffix, suffixOptions, firstSelectedSuffix])
+
+  const persistSelection = (nextMap) => {
+    const tokens = buildMainStepTokensFromSelection(nextMap)
+    onToggle(section.key, tokens, { forceValue: true })
+  }
+
+  const handleSelectSuffix = (suffix) => {
+    const nextMap = new Map(selectionMap)
+    const wasSelected = selectionMap.has(suffix)
+    if (wasSelected) {
+      nextMap.delete(suffix)
+    } else {
+      nextMap.set(suffix, new Set(["*"]))
+    }
+
+    const remainingSuffixes = Array.from(nextMap.keys())
+    const nextActive = wasSelected ? remainingSuffixes[0] ?? null : suffix
+    setActiveSuffix(nextActive)
+    persistSelection(nextMap)
+  }
+
+  const handleTogglePrefix = (suffix, prefix) => {
+    const nextMap = new Map(selectionMap)
+    const currentPrefixes = new Set(nextMap.get(suffix) ?? [])
+    const normalizedPrefixes = toggleMainStepPrefix(currentPrefixes, prefix)
+    nextMap.set(suffix, normalizedPrefixes)
+
+    persistSelection(nextMap)
+  }
+
+  const handleClearAll = () => {
+    onToggle(section.key, [], { forceValue: true })
+    setActiveSuffix(null)
+  }
+
+  const displayValue = getMainStepDisplayValue(selectionMap)
+
+  const activeOption = suffixOptions.find((option) => option.value === activeSuffix)
+  const prefixOptions = Array.isArray(activeOption?.prefixes)
+    ? [...activeOption.prefixes].sort((a, b) => a.localeCompare(b))
+    : []
+  const activePrefixes = selectionMap.get(activeSuffix) ?? new Set()
+  const hasSelection = selectionMap.size > 0
+
+  return (
+    <QuickFilterFieldset legendId={legendId} label={section.label}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex h-8 w-48 items-center justify-between rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+              hasSelection && "border-primary bg-primary/10 text-primary"
+            )}
+          >
+            <span className="truncate">{displayValue}</span>
+            <IconChevronDown className="size-4 shrink-0" />
+          </button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent align="start" className="w-80 p-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md border p-1">
+              <div className="px-1 pb-1 text-[10px] font-semibold text-muted-foreground">
+                Step선택
+              </div>
+              <div className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
+                {suffixOptions.map((option) => {
+                  const isActive = option.value === activeSuffix
+                  const isSelected = selectionMap.has(option.value)
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        handleSelectSuffix(option.value)
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-xs transition-colors",
+                        isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                      )}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center">
+                        {isSelected ? <IconCheck className="size-4 text-primary" aria-hidden /> : null}
+                      </span>
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-md border p-1">
+              <div className="flex items-center justify-between px-1 pb-1 text-[10px] font-semibold text-muted-foreground">
+                <span>PRC선택</span>
+                <span
+                  className={cn(
+                    "rounded px-1 py-[2px] text-[10px] font-medium",
+                    activeSuffix ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {activeSuffix ? `STEP ${activeOption?.label ?? activeSuffix}` : "Step 미선택"}
+                </span>
+              </div>
+              {activeSuffix ? (
+                <div className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
+                  <DropdownMenuCheckboxItem
+                    className={cn(
+                      "text-xs",
+                      "data-[state=checked]:bg-primary/10 data-[state=checked]:text-primary"
+                    )}
+                    checked={activePrefixes.has("*")}
+                    onCheckedChange={() => handleTogglePrefix(activeSuffix, "*")}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    전체선택
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  {prefixOptions.length === 0 ? (
+                    <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                      선택 가능한 접두사가 없습니다.
+                    </div>
+                  ) : (
+                    prefixOptions.map((prefix) => (
+                      <DropdownMenuCheckboxItem
+                        key={`${activeSuffix}-${prefix}`}
+                        className={cn(
+                          "text-xs",
+                          "data-[state=checked]:bg-primary/10 data-[state=checked]:text-primary"
+                        )}
+                        checked={activePrefixes.has(prefix)}
+                        onCheckedChange={() => handleTogglePrefix(activeSuffix, prefix)}
+                        onSelect={(event) => event.preventDefault()}
+                      >
+                        {prefix}
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                  Step을 먼저 선택하세요.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-end">
+            <button
+              type="button"
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+              onClick={handleClearAll}
+            >
+              전체 해제
+            </button>
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </QuickFilterFieldset>
   )
 }
 
@@ -516,14 +772,7 @@ function ButtonQuickFilterSection({
   onToggle,
 }) {
   return (
-    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
-      <legend
-        id={legendId}
-        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-      >
-        {section.label}
-      </legend>
-
+    <QuickFilterFieldset legendId={legendId} label={section.label}>
       <div className="flex flex-wrap items-center">
         <button
           type="button"
@@ -561,7 +810,7 @@ function ButtonQuickFilterSection({
           )
         })}
       </div>
-    </fieldset>
+    </QuickFilterFieldset>
   )
 }
 
@@ -607,14 +856,12 @@ function FavoriteFiltersSection({
   }
 
   return (
-    <fieldset
-      className={cn(FIELDSET_CLASS, className)}
-      aria-labelledby="legend-favorites"
+    <QuickFilterFieldset
+      legendId="legend-favorites"
+      label="즐겨찾기"
+      className={className}
+      isLegendHidden
     >
-      <legend id="legend-favorites" className="sr-only">
-        즐겨찾기
-      </legend>
-
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end gap-2">
           {canUpdate ? (
@@ -754,7 +1001,7 @@ function FavoriteFiltersSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </fieldset>
+    </QuickFilterFieldset>
   )
 }
 
@@ -767,33 +1014,20 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
     setRangeValue(normalizeRecentHoursRange(current))
   }, [current])
 
-  const sliderPositions = React.useMemo(
-    () => rangeToSliderPositions(rangeValue),
-    [rangeValue]
-  )
+  const sliderPositions = rangeToSliderPositions(rangeValue)
 
-  const handleSliderChange = React.useCallback((value) => {
+  const handleSliderChange = (value) => {
     setRangeValue(normalizeRecentHoursRange(sliderPositionsToRange(value)))
-  }, [])
+  }
 
-  const handleSliderCommit = React.useCallback(
-    (value) => {
-      const nextRange = normalizeRecentHoursRange(sliderPositionsToRange(value))
-      setRangeValue(nextRange)
-      onToggle(section.key, nextRange, { forceValue: true })
-    },
-    [onToggle, section.key]
-  )
+  const handleSliderCommit = (value) => {
+    const nextRange = normalizeRecentHoursRange(sliderPositionsToRange(value))
+    setRangeValue(nextRange)
+    onToggle(section.key, nextRange, { forceValue: true })
+  }
 
   return (
-    <fieldset className={FIELDSET_CLASS} aria-labelledby={legendId}>
-      <legend
-        id={legendId}
-        className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-      >
-        <span>{section.label}</span>
-      </legend>
-
+    <QuickFilterFieldset legendId={legendId} label={section.label}>
       <div className="flex w-60 flex-col rounded-lg px-3 py-1">
         {/* 슬라이더 라인 */}
         <div className="flex mt-1 h-2 items-start gap-3">
@@ -822,7 +1056,7 @@ function RecentHoursQuickFilterSection({ section, legendId, current, onToggle })
           {formatRecentHoursRange(rangeValue)}
         </p>
       </div>
-    </fieldset>
+    </QuickFilterFieldset>
   )
 }
 

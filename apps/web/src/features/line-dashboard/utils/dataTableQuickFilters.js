@@ -6,7 +6,14 @@ import { deriveFlagState } from "./dataTableFlagState"
 const STATUS_ORDER = STATUS_SEQUENCE
 const STATUS_ORDER_INDEX = new Map(STATUS_ORDER.map((status, index) => [status, index]))
 
-const MULTI_SELECT_KEYS = new Set(["status", "sample_type", "sample_group", "main_step"])
+const MULTI_SELECT_KEYS = new Set([
+  "status",
+  "sdwt_prod",
+  "user_sdwt_prod",
+  "sample_type",
+  "sample_group",
+  "main_step",
+])
 
 const HOUR_IN_MS = 60 * 60 * 1000
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
@@ -66,15 +73,75 @@ function normalizeMainStep(value) {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function extractMainStepSuffix(value) {
+  const normalized = normalizeMainStep(value)
+  if (!normalized) return null
+  const match = normalized.match(/(\d+)\s*$/)
+  return match ? match[1] : null
+}
+
+function extractMainStepPrefix(value) {
+  const normalized = normalizeMainStep(value)
+  if (!normalized) return ""
+  const match = normalized.match(/^([A-Za-z]+)/)
+  return match ? match[1] : ""
+}
+
+function toMainStepFilterValue(value) {
+  const normalized = normalizeMainStep(value)
+  if (!normalized) return null
+  return extractMainStepSuffix(normalized) ?? normalized
+}
+
+function buildMainStepToken(suffix, prefix = "*") {
+  const normalizedSuffix = toMainStepFilterValue(suffix)
+  if (!normalizedSuffix) return null
+  const normalizedPrefix =
+    prefix === null || prefix === undefined || prefix === "" ? "*" : String(prefix).trim()
+  return `${normalizedSuffix}|${normalizedPrefix || "*"}`
+}
+
+function parseMainStepToken(token) {
+  if (token === null || token === undefined) return null
+
+  if (typeof token === "object" && "suffix" in token) {
+    const suffix = toMainStepFilterValue(token.suffix)
+    if (!suffix) return null
+    const prefix =
+      token.prefix === undefined || token.prefix === null || token.prefix === ""
+        ? "*"
+        : String(token.prefix).trim()
+    return { suffix, prefix }
+  }
+
+  const raw = typeof token === "string" ? token.trim() : String(token)
+  if (!raw) return null
+
+  const [maybeSuffix, maybePrefix] = raw.split("|")
+  const suffix = toMainStepFilterValue(maybeSuffix)
+  if (!suffix) return null
+
+  const prefix =
+    maybePrefix === undefined || maybePrefix === null || maybePrefix === ""
+      ? "*"
+      : maybePrefix === "*"
+        ? "*"
+        : String(maybePrefix).trim()
+
+  return { suffix, prefix }
+}
+
 function parseMainStepParts(value) {
   const normalized = normalizeMainStep(value) ?? ""
-  const prefix = normalized.slice(0, 2)
-  const numericPart = normalized.slice(2)
-  const number = Number.parseInt(numericPart, 10)
+  const suffix = extractMainStepSuffix(normalized)
+  const prefix = suffix ? normalized.slice(0, normalized.length - suffix.length) : ""
+  const numericSource = suffix ?? normalized
+  const number = Number.parseInt(numericSource, 10)
   return {
-    prefix,
+    prefix: prefix || "",
     number: Number.isFinite(number) ? number : Number.POSITIVE_INFINITY,
     raw: normalized,
+    suffix,
   }
 }
 
@@ -92,7 +159,11 @@ function compareMainStepOptions(a, b) {
   return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
 }
 
-function sanitizeMainStepFilters(values, section) {
+function buildMainStepOptionLabel(value, prefixes, hasSuffix) {
+  return value
+}
+
+function sanitizeMainStepFilters(values, section, preserveMissing = false) {
   const normalizedArray = Array.isArray(values)
     ? values
     : values === null || values === undefined
@@ -102,14 +173,26 @@ function sanitizeMainStepFilters(values, section) {
   const options = Array.isArray(section?.options) ? section.options : []
   const optionValues = options.map((option) => option.value)
   const optionSet = new Set(optionValues)
+  const availablePrefixes = new Map(
+    options.map((option) => [option.value, new Set(option.prefixes ?? [])])
+  )
   const resolved = []
 
   normalizedArray.forEach((value) => {
-    const normalized = normalizeMainStep(value)
-    if (!normalized) return
+    const parsed = parseMainStepToken(value)
+    if (!parsed?.suffix) return
 
-    if (optionSet.size === 0 || optionSet.has(normalized)) {
-      resolved.push(normalized)
+    const suffixAllowed = optionSet.size === 0 || optionSet.has(parsed.suffix) || preserveMissing
+    if (!suffixAllowed) return
+
+    const prefixSet = availablePrefixes.get(parsed.suffix) ?? new Set()
+    const hasPrefix = parsed.prefix && parsed.prefix !== "*"
+    const prefixAllowed =
+      !hasPrefix || prefixSet.size === 0 || prefixSet.has(parsed.prefix) || preserveMissing
+
+    if (prefixAllowed) {
+      const token = buildMainStepToken(parsed.suffix, hasPrefix ? parsed.prefix : "*")
+      if (token) resolved.push(token)
     }
   })
 
@@ -366,27 +449,65 @@ const QUICK_FILTER_DEFINITIONS = [
       const columnKey = findMatchingColumn(columns, "main_step")
       if (!columnKey) return null
 
-      const valueSet = new Set()
+      const optionMap = new Map()
       rows.forEach((row) => {
         const normalized = normalizeMainStep(row?.[columnKey])
-        if (normalized) {
-          valueSet.add(normalized)
+        if (!normalized) return
+        const filterValue = toMainStepFilterValue(normalized)
+        if (!filterValue) return
+
+        const prefix = extractMainStepPrefix(normalized)
+        const hasSuffix = Boolean(extractMainStepSuffix(normalized))
+        const existing = optionMap.get(filterValue)
+        if (existing) {
+          if (prefix) existing.prefixes.add(prefix)
+          existing.hasSuffix = existing.hasSuffix || hasSuffix
+          return
         }
+
+        optionMap.set(filterValue, {
+          prefixes: prefix ? new Set([prefix]) : new Set(),
+          hasSuffix,
+        })
       })
 
-      const options = Array.from(valueSet).map((value) => ({
+      const options = Array.from(optionMap.entries()).map(([value, meta]) => ({
         value,
-        label: value,
+        label: buildMainStepOptionLabel(value, meta.prefixes, meta.hasSuffix),
+        prefixes: Array.from(meta.prefixes),
       }))
 
       options.sort(compareMainStepOptions)
 
-      const getValue = (row) => normalizeMainStep(row?.[columnKey])
+      const getValue = (row) => toMainStepFilterValue(row?.[columnKey])
 
       return {
         options,
         getValue,
         allowCustomValue: false,
+        matchRow: (row, current) => {
+          const tokens = sanitizeMainStepFilters(current, { options }, true)
+          if (tokens.length === 0) return true
+
+          const normalized = normalizeMainStep(row?.[columnKey])
+          const suffix = extractMainStepSuffix(normalized)
+          if (!suffix) return false
+          const prefix = extractMainStepPrefix(normalized)
+
+          const tokenMap = new Map()
+          tokens.forEach((token) => {
+            const parsed = parseMainStepToken(token)
+            if (!parsed?.suffix) return
+            const prefixSet = tokenMap.get(parsed.suffix) ?? new Set()
+            prefixSet.add(parsed.prefix || "*")
+            tokenMap.set(parsed.suffix, prefixSet)
+          })
+
+          const prefixes = tokenMap.get(suffix)
+          if (!prefixes) return false
+          if (prefixes.has("*")) return true
+          return prefixes.has(prefix)
+        },
       }
     },
   },
@@ -542,7 +663,7 @@ export function syncQuickFiltersToSections(previousFilters, sections, options = 
 
       const finalValues =
         definition.key === "main_step"
-          ? sanitizeMainStepFilters(normalizedArray, section)
+          ? sanitizeMainStepFilters(normalizedArray, section, preserveMissing)
           : normalizedArray
 
       if (!arraysShallowEqual(finalValues, current)) {
@@ -613,4 +734,10 @@ export function isMultiSelectFilter(key) {
   return MULTI_SELECT_KEYS.has(key)
 }
 
-export { QUICK_FILTER_DEFINITIONS }
+export {
+  QUICK_FILTER_DEFINITIONS,
+  buildMainStepToken,
+  parseMainStepToken,
+  extractMainStepPrefix,
+  extractMainStepSuffix,
+}
