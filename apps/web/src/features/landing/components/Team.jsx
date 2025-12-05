@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { FacebookIcon, GithubIcon, InstagramIcon, TwitterIcon } from 'lucide-react'
-
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle
 } from '@/components/ui/card'
@@ -39,10 +36,11 @@ const TeamMemberCard = ({ member, index, isWide }) => {
     <Card
       ref={ref}
       style={{
-        transitionDelay: `${index * 0.1}s` // ⭐ index 기반 stagger
+        transitionDelay: `${index * 0.1}s`
       }}
       className={cn(
-        'group relative border-none pt-24 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
+        // pt를 줄여서 전체 카드 높이 살짝 축소
+        'group relative border-none pt-20 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
         isWide && 'sm:max-lg:col-span-3',
         member.bgColor,
         !isVisible && 'opacity-0 translate-y-6',
@@ -50,51 +48,30 @@ const TeamMemberCard = ({ member, index, isWide }) => {
       )}
     >
       <CardContent
-        className='border-card bg-card absolute -top-15 left-1/2 w-fit -translate-x-1/2 rounded-full border-6 p-0 transition-all duration-300 group-hover:shadow-xl'
+        className='border-card bg-card absolute -top-12 left-1/2 w-fit -translate-x-1/2 rounded-full border-4 p-0 transition-all duration-300 group-hover:shadow-xl'
       >
         <div
-          className={cn('size-30 overflow-hidden rounded-full pt-4', member.avatarBg)}
+          // 아바타 사이즈와 안쪽 패딩 줄이기
+          className={cn('size-24 overflow-hidden rounded-full pt-3', member.avatarBg)}
         >
           <img src={member.image} alt={member.alt} className='h-auto w-full' />
         </div>
       </CardContent>
 
       <CardHeader className='text-center'>
-        <CardTitle className='text-lg'>{member.name}</CardTitle>
-        <CardDescription className='text-base font-medium'>
+        {/* 이름 폰트 한 단계 축소 */}
+        <CardTitle className='text-base font-semibold'>
+          {member.name}
+        </CardTitle>
+        {/* 역할 폰트도 한 단계 축소 */}
+        <CardDescription className='text-sm font-medium'>
           {member.role}
         </CardDescription>
       </CardHeader>
-
-      <CardFooter className='flex h-5.5 justify-center gap-3'>
-        <a
-          href={member.socialLinks.facebook}
-          className={cn('transition-colors duration-300', member.socialLinkColor)}
-        >
-          <FacebookIcon className='size-5' />
-        </a>
-        <a
-          href={member.socialLinks.twitter}
-          className={cn('transition-colors duration-300', member.socialLinkColor)}
-        >
-          <TwitterIcon className='size-5' />
-        </a>
-        <a
-          href={member.socialLinks.github}
-          className={cn('transition-colors duration-300', member.socialLinkColor)}
-        >
-          <GithubIcon className='size-5' />
-        </a>
-        <a
-          href={member.socialLinks.instagram}
-          className={cn('transition-colors duration-300', member.socialLinkColor)}
-        >
-          <InstagramIcon className='size-5' />
-        </a>
-      </CardFooter>
     </Card>
   )
 }
+
 
 const Team = ({ teamMembers }) => {
   return (
@@ -110,7 +87,7 @@ const Team = ({ teamMembers }) => {
             Meet the Brilliant Minds Behind Our Success
           </h2>
           <p className='text-muted-foreground text-xl'>
-            A passionate team of innovators, creators, and problem-solvers working together to make an impact.
+            서로의 아이디어를 연결해, 작은 변화도 의미 있게 만드는 일을 이어가고 있습니다.
           </p>
         </div>
 

@@ -1,22 +1,22 @@
-import HeroSection from '../components/HeroSection'
-import Navbar from '../components/Navbar'
-import Team from '../components/Team'
-import AppIntegration from '../components/AppIntegration'
-import AppIntegrationMarquee from '../components/AppIntegrationMarquee'
-import { marqueeApps, navigationItems, partnerApps, teamMembers } from '../constants'
+import HeroSection from "../components/HeroSection"
+import AppIntegrationMarquee from "../components/AppIntegrationMarquee"
+import Team from "../components/Team"
+import { PopularServicesSection } from "../components/PopularSection"
+import { marqueeApps, teamMembers } from "../constants"
 
+const DEFAULT_HERO_ACTIONS = [
+  { label: "대시보드로 이동", href: "/ESOP_Dashboard" },
+  { label: "Appstore 둘러보기", href: "/landing/appstore", variant: "outline" },
+]
 
-const LandingPage = () => {
+const LandingPage = ({ heroActions = DEFAULT_HERO_ACTIONS }) => {
   return (
-    <div className='bg-background min-h-screen'>
-      <Navbar navigationItems={navigationItems} />
-      <main>
-        <HeroSection />
-        <AppIntegration partnerApps={partnerApps} />
-        <Team teamMembers={teamMembers} />
-        <AppIntegrationMarquee apps={marqueeApps} />
-      </main>
-    </div>
+    <>
+      <HeroSection actions={heroActions} />
+      <PopularServicesSection />
+      <Team teamMembers={teamMembers} />
+      <AppIntegrationMarquee apps={marqueeApps} />
+    </>
   )
 }
 

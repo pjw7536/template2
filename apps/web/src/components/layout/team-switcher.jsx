@@ -58,7 +58,7 @@ function toLineOption(line) {
   return { id, label, description }
 }
 
-/** URL params에서 lineId 추출 (동적 라우트 /ESOP_Dashboard/:lineId/...) */
+/** URL params에서 lineId 추출 (동적 라우트 /ESOP_Dashboard/.../:lineId) */
 function getLineIdFromParams(params) {
   if (!params) return null
   const raw = params.lineId
@@ -74,19 +74,19 @@ function buildNextPath({ pathname, newLineId, currentLineId }) {
   const segments = pathname.split("/").filter(Boolean)
   if (segments.length === 0) return null
 
-  const currentIndex = currentLineId ? segments.indexOf(currentLineId) : -1
   const esopIndex = segments.indexOf("ESOP_Dashboard")
-  if (currentIndex === -1 && esopIndex === -1) return null
+  if (esopIndex === -1) return null
+
+  const currentIndex = currentLineId ? segments.lastIndexOf(currentLineId) : -1
 
   if (currentIndex !== -1) {
-    segments[currentIndex] = newLineId
-    return `/${segments.join("/")}`
+    const next = [...segments]
+    next[currentIndex] = newLineId
+    return `/${next.join("/")}`
   }
 
-  // /ESOP_Dashboard 경로에서 라인 ID를 두 번째 세그먼트로 교체/삽입
-  const before = segments.slice(0, esopIndex + 1)
-  const after = segments.slice(esopIndex + 2) // 기존 세그먼트(홈/이전 라인ID 등)는 건너뜁니다.
-  return `/${[...before, newLineId, ...after].join("/")}`
+  // 라인 파라미터가 없으면 기본적으로 라인 랜딩으로 연결한다.
+  return `/ESOP_Dashboard/${newLineId}`
 }
 
 /* -----------------------------------------------------------------------------

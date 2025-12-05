@@ -39,66 +39,10 @@ export const NAVIGATION_CONFIG = Object.freeze({
           title: "System현황",
           url: "/ESOP_Dashboard/overview",
           icon: BarChart3,
+          scope: "global",
         },
       ],
     },
-
-    // {
-    //   title: "Appstore",
-    //   url: "/appstore",
-    //   icon: AppWindow,
-    // },
-    // {
-    //   title: "Models",
-    //   url: "/models",
-    //   icon: Bot,
-    // },
-    // {
-    //   title: "Documentation",
-    //   url: "#",
-    //   icon: BookOpen,
-    //   items: [
-    //     {
-    //       title: "Introduction",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Get Started",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Tutorials",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Changelog",
-    //       url: "#",
-    //     },
-    //   ],
-    // },
-    // {
-    //   title: "Settings",
-    //   url: "#",
-    //   icon: Settings2,
-    //   items: [
-    //     {
-    //       title: "General",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Team",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Billing",
-    //       url: "#",
-    //     },
-    //     {
-    //       title: "Limits",
-    //       url: "#",
-    //     },
-    //   ],
-    // },
   ],
   projects: [
     // {

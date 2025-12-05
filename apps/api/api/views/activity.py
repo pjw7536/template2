@@ -92,6 +92,10 @@ class ActivityLogView(APIView):
             # user.profile.role 안전 접근(getattr 체인)
             role = getattr(getattr(user, "profile", None), "role", None) if user else None
 
+            metadata = entry.metadata or {}
+            if isinstance(metadata, dict) and metadata.get("remote_addr") == "172.18.0.1":
+                metadata = {k: v for k, v in metadata.items() if k != "remote_addr"}
+
             payload.append(
                 {
                     "id": entry.id,
@@ -101,7 +105,7 @@ class ActivityLogView(APIView):
                     "path": entry.path,
                     "method": entry.method,
                     "status": entry.status_code,
-                    "metadata": entry.metadata,  # JSONField 혹은 dict/None
+                    "metadata": metadata,  # JSONField 혹은 dict/None
                     "timestamp": entry.created_at.isoformat(),  # timezone aware 가정
                 }
             )

@@ -3,7 +3,7 @@
 // - 인증 상태는 useAuth 훅에서 가져오고,
 // - 로딩/비인증 상태일 때는 CenteredPage 레이아웃으로 안내 메시지를 보여줍니다.
 
-import { useEffect, useMemo } from "react"
+import { useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { CenteredPage } from "./CenteredPage"
@@ -30,14 +30,14 @@ export function RequireAuth({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const nextParam = useMemo(() => buildNextParam(location), [location])
+  const nextParam = buildNextParam(location)
 
   useEffect(() => {
     if (!isLoading && !user) {
       const search = nextParam && nextParam !== "/" ? `?next=${encodeURIComponent(nextParam)}` : ""
       navigate(`/login${search}`, { replace: true })
     }
-  }, [isLoading, user, navigate, nextParam])
+  }, [isLoading, location.pathname, location.search, navigate, nextParam, user])
 
   if (isLoading || !user) {
     return (

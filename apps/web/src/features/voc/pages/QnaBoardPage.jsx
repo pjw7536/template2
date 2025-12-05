@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/dialog"
 import { STATUS_OPTIONS } from "../constants"
 import { RichTextEditor } from "../components/RichTextEditor"
-import { useQnaBoardState } from "../hooks"
+import { useQnaBoardState } from "../hooks/useQnaBoardState"
 import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"
 import "@/styles/quill.css"
 import "quill/dist/quill.snow.css"

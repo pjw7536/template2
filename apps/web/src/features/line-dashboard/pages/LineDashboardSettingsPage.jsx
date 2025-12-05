@@ -2,7 +2,7 @@
 // 라인 대시보드 설정 UI가 들어갈 자리입니다.
 import { useParams } from "react-router-dom"
 
-import { LineSettingsPage } from "@/features/line-dashboard/components"
+import { LineSettingsPage } from "../components/LineSettingsPage"
 
 export function LineDashboardSettingsPage() {
   const { lineId = "" } = useParams()

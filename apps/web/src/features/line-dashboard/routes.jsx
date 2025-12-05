@@ -19,19 +19,19 @@ export const lineDashboardRoutes = [
     element: <LineDashboardLandingPage />,
   },
   {
-    path: "ESOP_Dashboard/:lineId/status",
+    path: "ESOP_Dashboard/status/:lineId",
     element: <LineDashboardStatusPage />,
   },
   {
-    path: "ESOP_Dashboard/:lineId/history",
+    path: "ESOP_Dashboard/history/:lineId",
     element: <LineDashboardHistoryPage />,
   },
   {
-    path: "ESOP_Dashboard/:lineId/settings",
+    path: "ESOP_Dashboard/settings/:lineId",
     element: <LineDashboardSettingsPage />,
   },
   {
-    path: "ESOP_Dashboard/:lineId/overview",
+    path: "ESOP_Dashboard/overview",
     element: <LineDashboardOverviewPage />,
   },
 ]

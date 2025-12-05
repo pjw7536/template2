@@ -67,7 +67,7 @@ class DroneSOPV3(models.Model):
     ppid = models.CharField(max_length=50, null=True, blank=True)
     main_step = models.CharField(max_length=50, null=True, blank=True)
     metro_current_step = models.CharField(max_length=50, null=True, blank=True)
-    metro_steps = models.CharField(max_length=100, null=True, blank=True)
+    metro_steps = models.CharField(max_length=1000, null=True, blank=True)
     metro_end_step = models.CharField(max_length=50, null=True, blank=True)
     status = models.CharField(max_length=50, null=True, blank=True)
     knoxid = models.CharField(max_length=50, null=True, blank=True)

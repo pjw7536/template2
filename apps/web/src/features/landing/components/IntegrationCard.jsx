@@ -13,7 +13,7 @@ const IntegrationCard = ({
             className='flex size-17 shrink-0 items-center justify-center rounded-md border'>
             <img src={app.image} alt={app.name} className='size-9' />
           </div>
-          <div className='bg-muted rounded-md p-2.5'>
+          <div className='rounded-md p-2.5'>
             <p className='text-wrap'>{app.description}</p>
           </div>
         </div>

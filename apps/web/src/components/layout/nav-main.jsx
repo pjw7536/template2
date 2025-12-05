@@ -50,7 +50,7 @@ import { useActiveLine } from "./active-line-context"
 
 /* =========================================
  * 유틸: URL 스코프(line) 접두어 붙이기
- *  - scope === "line" 이면 첫 세그먼트 뒤에 lineId 삽입 (/ESOP_Dashboard/:lineId/..)
+ *  - scope === "line" 이면 마지막 세그먼트로 lineId를 붙인다 (/ESOP_Dashboard/status/:lineId)
  *  - url이 절대경로/상대경로 모두 정규화
  *  - url이 비어있으면 "#" 반환
  * ======================================= */
@@ -65,9 +65,17 @@ function withLineScope(url, scope, lineId) {
   const segments = normalized.split("/").filter(Boolean)
   if (!segments.length) return basePath
 
-  const [root, ...rest] = segments
-  const scopedPath = [root, lineId, ...rest].join("/")
-  return `/${scopedPath}`
+  const placeholderIndex = segments.findIndex((segment) => segment.startsWith(":"))
+  if (placeholderIndex !== -1) {
+    const next = [...segments]
+    next[placeholderIndex] = lineId
+    return `/${next.join("/")}`
+  }
+
+  if (segments[segments.length - 1] !== lineId) {
+    segments.push(lineId)
+  }
+  return `/${segments.join("/")}`
 }
 
 /* =========================================

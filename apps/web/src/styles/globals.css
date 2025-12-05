@@ -93,73 +93,66 @@
   }
 
   .animate-heartbeat {
-    animation: heartbeat 2s infinite ease-in-out;
+    animation: var(--animate-heartbeat, heartbeat 2s infinite ease-in-out);
   }
 }
 
 @theme inline {
   --animate-heartbeat: heartbeat 2s infinite ease-in-out;
 
-  @keyframes heartbeat {
-    0% {
-      box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
-      transform: scale(1);
-    }
-
-    50% {
-      box-shadow: 0 0 0 7px transparent;
-      transform: scale(1.05);
-    }
-
-    100% {
-      box-shadow: 0 0 0 0 transparent;
-      transform: scale(1);
-    }
-  }
-  @keyframes heartbeat {
-  0% {
-    box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
-    transform: scale(1);
-    }
-  50% {
-    box-shadow: 0 0 0 7px transparent;
-    transform: scale(1.05);
-    }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    transform: scale(1);
-    }
-  }
-  @keyframes heartbeat {
-  0% {
-    box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
-    transform: scale(1);
-    }
-  50% {
-    box-shadow: 0 0 0 7px transparent;
-    transform: scale(1.05);
-    }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    transform: scale(1);
-    }
-  }
   --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;
-  --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear
-;
+  --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear;
+
   @keyframes marquee-horizontal {
-  from {
-    transform: translateX(0);
+    from {
+      transform: translateX(0);
     }
-  to {
-    transform: translateX(calc(-100% - var(--marquee-gap)));
+
+    to {
+      transform: translateX(calc(-100% - var(--marquee-gap)));
     }
   }
+
   @keyframes marquee-vertical {
-  from {
-    transform: translateY(0);
+    from {
+      transform: translateY(0);
     }
-  to {
-    transform: translateY(calc(-100% - var(--marquee-gap)));
+
+    to {
+      transform: translateY(calc(-100% - var(--marquee-gap)));
     }
-  }}
+  }
+}
+
+
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-text {
+  display: inline-block;
+  /* 텍스트 클립 안정적으로 적용되도록 */
+
+  background: linear-gradient(90deg,
+      var(--primary) 0%,
+      var(--primary) 25%,
+      color-mix(in oklch, var(--primary) 70%, var(--primary-foreground) 30%) 50%,
+      var(--primary) 75%,
+      var(--primary) 100%);
+  background-size: 220% 100%;
+  background-repeat: repeat-x;
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+
+  animation: shimmer 3.5s linear infinite;
+}

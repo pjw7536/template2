@@ -2,7 +2,7 @@
 // 라인 별 현재 상태를 요약할 페이지입니다.
 import { useParams } from "react-router-dom"
 
-import { LineDashboardPage } from "@/features/line-dashboard/components"
+import { LineDashboardPage } from "../components/LineDashboardPage"
 
 export function LineDashboardStatusPage() {
   const { lineId = "" } = useParams()

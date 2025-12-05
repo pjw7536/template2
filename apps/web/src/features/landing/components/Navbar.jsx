@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 
 import LogoSvg from '@/assets/svg/logo'
 import NotificationDropdown from './NotificationDropdown'
+import { LandingNavLink } from './LandingNavLink'
 import ProfileDropdown from './ProfileDropdown'
 import MenuSheet from './MenuSheet'
 
@@ -43,12 +44,12 @@ const Navbar = ({
                   <span className='sr-only'>Menu</span>
                 </Button>
               } />
-            <a href='#'>
+            <LandingNavLink href='/' className='flex items-center'>
               <div className='flex items-center'>
                 <LogoSvg className='size-8' />
-                <span className='ml-3 hidden text-xl font-semibold sm:block'>Etch기술팀</span>
+                <span className='ml-3 hidden text-xl font-semibold sm:block'>Etch AX Portal</span>
               </div>
-            </a>
+            </LandingNavLink>
           </div>
           <div
             className='mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-1.5 sm:px-6'>
@@ -61,10 +62,12 @@ const Navbar = ({
                     return (
                       <NavigationMenuItem key={navItem.title}>
                         <NavigationMenuLink
-                          href={navItem.href}
+                          asChild
                           className={cn(navigationMenuTriggerStyle(), 'flex flex-row items-center gap-1.5')}>
-                          {renderIcon(Icon)}
-                          {navItem.title}
+                          <LandingNavLink href={navItem.href}>
+                            {renderIcon(Icon)}
+                            {navItem.title}
+                          </LandingNavLink>
                         </NavigationMenuLink>
                       </NavigationMenuItem>
                     );
@@ -82,8 +85,10 @@ const Navbar = ({
                         <ul className='grid w-38 gap-4'>
                           <li>
                             {navItem.items?.map(item => (
-                              <NavigationMenuLink key={item.title} href={item.href}>
-                                {item.title}
+                              <NavigationMenuLink key={item.title} asChild>
+                                <LandingNavLink href={item.href} className="block px-3 py-1.5">
+                                  {item.title}
+                                </LandingNavLink>
                               </NavigationMenuLink>
                             ))}
                           </li>

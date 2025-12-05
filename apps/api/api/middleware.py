@@ -78,12 +78,15 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
         metadata: Dict[str, Any] = {
             # GET 파라미터를 dict로 변환해 저장
             "query": request.GET.dict() if hasattr(request, "GET") else {},
-            # 요청 보낸 클라이언트의 IP 주소
-            "remote_addr": request.META.get("REMOTE_ADDR"),
             "result": "ok"
             if getattr(response, "status_code", 200) < 400
             else "fail",
         }
+
+        # 내부 컨테이너 IP(172.18.0.1)는 저장하지 않음
+        remote_addr = request.META.get("REMOTE_ADDR")
+        if remote_addr and remote_addr != "172.18.0.1":
+            metadata["remote_addr"] = remote_addr
 
         extra_metadata: Mapping[str, Any] = context.get("extra_metadata") or {}
         metadata.update(extra_metadata)

@@ -1,13 +1,13 @@
+import { useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   UserIcon,
   SettingsIcon,
-  CreditCardIcon,
   UsersIcon,
-  SquarePenIcon,
-  CirclePlusIcon,
   LogOutIcon
 } from 'lucide-react'
 
+import { useAuth } from '@/lib/auth'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -24,6 +24,25 @@ const ProfileDropdown = ({
   defaultOpen,
   align = 'end'
 }) => {
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+
+  const displayName = user?.name || 'John Doe'
+  const email = user?.email || 'john.doe@example.com'
+  const avatar =
+    user?.avatar ||
+    user?.photoUrl ||
+    'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png'
+  const initials = (displayName || email || 'JD').slice(0, 2).toUpperCase()
+
+  const handleLogout = useCallback(() => {
+    logout()
+      .catch(() => { })
+      .finally(() => {
+        navigate('/login')
+      })
+  }, [logout, navigate])
+
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
@@ -32,16 +51,16 @@ const ProfileDropdown = ({
           <div className='relative'>
             <Avatar className='size-10'>
               <AvatarImage
-                src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png'
-                alt='John Doe' />
-              <AvatarFallback>JD</AvatarFallback>
+                src={avatar}
+                alt={displayName} />
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <span
               className='ring-card absolute right-0 bottom-0 block size-2 rounded-full bg-green-600 ring-2' />
           </div>
           <div className='flex flex-1 flex-col items-start'>
-            <span className='text-foreground text-lg font-semibold'>John Doe</span>
-            <span className='text-muted-foreground text-base'>john.doe@example.com</span>
+            <span className='text-foreground text-lg font-semibold'>{displayName}</span>
+            <span className='text-muted-foreground text-base'>{email}</span>
           </div>
         </DropdownMenuLabel>
 
@@ -56,10 +75,6 @@ const ProfileDropdown = ({
             <SettingsIcon className='text-foreground size-5' />
             <span>Settings</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
-            <CreditCardIcon className='text-foreground size-5' />
-            <span>Billing</span>
-          </DropdownMenuItem>
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator />
@@ -69,19 +84,15 @@ const ProfileDropdown = ({
             <UsersIcon className='text-foreground size-5' />
             <span>Manage team</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
-            <SquarePenIcon className='text-foreground size-5' />
-            <span>Customization</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
-            <CirclePlusIcon className='text-foreground size-5' />
-            <span>Add team account</span>
-          </DropdownMenuItem>
+
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem variant='destructive' className='px-4 py-2.5 text-base'>
+        <DropdownMenuItem
+          variant='destructive'
+          className='px-4 py-2.5 text-base'
+          onSelect={handleLogout}>
           <LogOutIcon className='size-5' />
           <span>Logout</span>
         </DropdownMenuItem>

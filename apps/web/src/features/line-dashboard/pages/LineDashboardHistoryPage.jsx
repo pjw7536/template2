@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 
-import { LineHistoryDashboard } from "@/features/line-dashboard/components"
+import { LineHistoryDashboard } from "../components/LineHistoryDashboard"
 
 export function LineDashboardHistoryPage() {
   const { lineId = "" } = useParams()

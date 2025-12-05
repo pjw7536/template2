@@ -4,8 +4,7 @@ import { AlertCircle, Loader2 } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 
 import { Button } from "components/ui/button"
-
-import { useLineOptionsQuery } from "../hooks/useLineOptionsQuery"
+import { useLineOptionsQuery } from "@/features/line-dashboard/hooks/useLineOptionsQuery"
 
 function getFirstLineId(lineOptions) {
   if (!Array.isArray(lineOptions)) return null

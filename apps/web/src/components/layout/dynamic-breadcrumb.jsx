@@ -14,12 +14,13 @@
  */
 
 import { Fragment } from "react"
-import { useLocation } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
+  BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
@@ -129,7 +130,11 @@ export function DynamicBreadcrumb({
             {index > 0 && <BreadcrumbSeparator />}
 
             <BreadcrumbItem>
-              {crumb.isLast ? (
+              {crumb.isHome ? (
+                <BreadcrumbLink asChild>
+                  <Link to={crumb.href ?? "/"}>{crumb.label}</Link>
+                </BreadcrumbLink>
+              ) : crumb.isLast ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
                 <span className="transition-colors">{crumb.label}</span>

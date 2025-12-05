@@ -1,19 +1,12 @@
-// src/features/errors/pages/NotFoundPage.jsx
-// 정의되지 않은 경로 접근 시 노출되는 404 페이지입니다.
-import { Link } from "react-router-dom"
+import ErrorPage04 from "@/features/errors/components/ErrorPage04"
 
 export function NotFoundPage() {
   return (
-    <section className="rounded-xl border bg-card p-6 text-center shadow-sm">
-      <h1 className="text-2xl font-semibold">Page not found</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        The page you are looking for does not exist.
-      </p>
-      <div className="mt-4">
-        <Link className="text-sm font-medium text-primary hover:underline" to="/">
-          Go back home
-        </Link>
-      </div>
-    </section>
+    <ErrorPage04
+      title="Page not found"
+      description="The page you are looking for does not exist or has been moved."
+      actionLabel="Back to home page"
+      homeHref="/"
+    />
   )
 }

@@ -34,18 +34,35 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 RECENT_HOURS_MIN = 0
-RECENT_HOURS_MAX = 36
+RECENT_HOURS_DAY_STEP = 24
+RECENT_HOURS_DAY_MODE_MIN_DAYS = 2
+RECENT_HOURS_DAY_MODE_MAX_DAYS = 7
+RECENT_HOURS_DAY_MODE_THRESHOLD = 24
+RECENT_HOURS_MAX = RECENT_HOURS_DAY_MODE_MAX_DAYS * RECENT_HOURS_DAY_STEP
 RECENT_HOURS_DEFAULT_START = 8
 RECENT_HOURS_DEFAULT_END = 0
 RECENT_FUTURE_TOLERANCE_MINUTES = 5
+
+
+def _snap_recent_hours(value: int) -> int:
+    clamped = max(RECENT_HOURS_MIN, min(value, RECENT_HOURS_MAX))
+    if clamped <= RECENT_HOURS_DAY_MODE_THRESHOLD:
+        return clamped
+
+    days = (clamped + RECENT_HOURS_DAY_STEP - 1) // RECENT_HOURS_DAY_STEP
+    bounded_days = max(
+        RECENT_HOURS_DAY_MODE_MIN_DAYS,
+        min(days, RECENT_HOURS_DAY_MODE_MAX_DAYS),
+    )
+    return bounded_days * RECENT_HOURS_DAY_STEP
 
 
 def _clamp_recent_hours(value: Any, fallback: int) -> int:
     try:
         numeric = int(value)
     except (TypeError, ValueError):
-        return fallback
-    return max(RECENT_HOURS_MIN, min(numeric, RECENT_HOURS_MAX))
+        numeric = fallback
+    return _snap_recent_hours(numeric)
 
 
 def _resolve_recent_hours_range(params) -> Tuple[int, int]:

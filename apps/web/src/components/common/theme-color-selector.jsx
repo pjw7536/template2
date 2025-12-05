@@ -13,11 +13,16 @@ import { useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 const COLOR_OPTIONS = [
+  { value: "sky", label: "Sky", iconClass: "text-sky-500" },
   { value: "violet", label: "Violet", iconClass: "text-violet-500" },
   { value: "emerald", label: "Emerald", iconClass: "text-emerald-500" },
   { value: "amber", label: "Amber", iconClass: "text-amber-500" },
-  { value: "sky", label: "Sky", iconClass: "text-sky-500" },
   { value: "rose", label: "Rose", iconClass: "text-rose-500" },
+  { value: "gray", label: "Gray", iconClass: "text-gray-500" },
+  { value: "indigo", label: "Indigo", iconClass: "text-indigo-500" },
+  { value: "teal", label: "Teal", iconClass: "text-teal-500" },
+  { value: "lime", label: "Lime", iconClass: "text-lime-500" },
+  { value: "cyan", label: "Cyan", iconClass: "text-cyan-500" },
 ]
 
 export function ThemeColorSelector({ className }) {

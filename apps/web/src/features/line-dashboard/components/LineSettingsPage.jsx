@@ -24,13 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useLineSettings } from "../hooks"
-import { buildToastOptions } from "./data-table/utils/toast"
-import {
-  formatUpdatedAt,
-  isDuplicateMessage,
-  normalizeDraft,
-} from "../utils/line-settings"
+import { useLineSettings } from "@/features/line-dashboard/hooks"
+import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
+import { formatUpdatedAt, isDuplicateMessage, normalizeDraft } from "@/features/line-dashboard/utils/line-settings"
 
 const LABELS = {
   titleSuffix: "Line E-SOP Settings",

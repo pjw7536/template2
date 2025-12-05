@@ -8,7 +8,18 @@ const COLOR_STORAGE_KEY = "app-theme-color"
 const DEFAULT_THEME = "system"
 const DEFAULT_COLOR = "violet"
 const VALID_THEMES = new Set(["light", "dark", "system"])
-const VALID_COLORS = new Set(["violet", "emerald", "amber", "sky", "rose"])
+const VALID_COLORS = new Set([
+  "violet",
+  "emerald",
+  "amber",
+  "sky",
+  "rose",
+  "gray",
+  "indigo",
+  "teal",
+  "lime",
+  "cyan",
+])
 
 function readStoredTheme(defaultTheme) {
   if (typeof window === "undefined") return defaultTheme

@@ -1,2 +1,6 @@
-export { default as LandingPage } from "./pages/LandingPage";
-export { landingRoutes } from "./routes";
+export { LandingLayout } from "./components/LandingLayout"
+export { default as LandingEsopDashboardPage } from "./pages/LandingEsopDashboardPage"
+export { default as LandingAppstorePage } from "./pages/LandingAppstorePage"
+export { default as LandingPage } from "./pages/LandingPage"
+export { default as LandingQnaPage } from "./pages/LandingQnaPage"
+export { landingRoutes } from "./routes"

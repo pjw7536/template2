@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sheet'
 
 import LogoSvg from '@/assets/svg/logo'
+import { LandingNavLink } from './LandingNavLink'
 
 const MenuSheet = ({
   trigger,
@@ -40,26 +41,26 @@ const MenuSheet = ({
         <SheetHeader className='p-4'>
           <SheetTitle hidden />
           <SheetDescription hidden />
-          <a href='#' onClick={handleLinkClick} className='self-start'>
+          <LandingNavLink href='/' onNavigate={handleLinkClick} className='self-start'>
             <div className='flex items-center'>
               <LogoSvg className='size-8.5' />
               <span className='ml-2.5 text-xl font-semibold'>{logoName}</span>
             </div>
-          </a>
+          </LandingNavLink>
         </SheetHeader>
         <div className='overflow-y-auto py-2'>
           {navigationItems.map(navItem => {
             const Icon = navItem.icon
             if (navItem.href) {
               return (
-                <a
+                <LandingNavLink
                   key={navItem.title}
                   href={navItem.href}
                   className='hover:bg-accent flex items-center gap-2 px-4 py-2 text-sm'
-                  onClick={handleLinkClick}>
+                  onNavigate={handleLinkClick}>
                   {Icon && <Icon className='size-4' />}
                   {navItem.title}
-                </a>
+                </LandingNavLink>
               );
             }
 
@@ -77,14 +78,14 @@ const MenuSheet = ({
                 <CollapsibleContent
                   className='data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden transition-all duration-300'>
                   {navItem.items?.map(item => (
-                    <a
+                    <LandingNavLink
                       key={item.title}
                       href={item.href}
                       className='hover:bg-accent flex items-center gap-2 px-4 py-2 text-sm'
-                      onClick={handleLinkClick}>
+                      onNavigate={handleLinkClick}>
                       <CircleSmallIcon className='ml-2 size-4' />
                       {item.title}
-                    </a>
+                    </LandingNavLink>
                   ))}
                 </CollapsibleContent>
               </Collapsible>
