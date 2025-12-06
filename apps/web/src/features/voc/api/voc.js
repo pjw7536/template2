@@ -1,4 +1,4 @@
-// VOC(Q&A) API 래퍼
+// VOC API 래퍼
 import { buildBackendUrl } from "@/lib/api"
 
 async function safeParseJson(response) {

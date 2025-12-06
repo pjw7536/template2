@@ -2,11 +2,6 @@
 // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
 import { ExternalLink, Check, AlertTriangle } from "lucide-react"
 
-import { CommentCell } from "./CommentCell"
-import { NeedToSendCell } from "./NeedToSendCell"
-import { InstantInformCell } from "./InstantInformCell"
-import { formatCellValue } from "../utils/dataTableFormatters"
-import { STATUS_LABELS } from "../utils/statusLabels"
 import {
   buildJiraBrowseUrl,
   getRecordId,
@@ -17,7 +12,15 @@ import {
   normalizeStatus,
   toHttpUrl,
 } from "../utils/dataTableColumnNormalizers"
-import { computeMetroProgress } from "../utils/dataTableColumnProcessFlow"
+import {
+  formatCellValue,
+  normalizeStepValue,
+  parseMetroSteps,
+} from "../utils/dataTableFormatters"
+import { STATUS_LABELS } from "../utils/statusLabels"
+import { CommentCell } from "./CommentCell"
+import { InstantInformCell } from "./InstantInformCell"
+import { NeedToSendCell } from "./NeedToSendCell"
 import { deriveFlagState } from "../utils/dataTableFlagState"
 
 const CellRenderers = {
@@ -178,6 +181,50 @@ const CellRenderers = {
       </div>
     )
   },
+}
+
+function computeMetroProgress(rowOriginal, normalizedStatus) {
+  const mainStep = normalizeStepValue(rowOriginal?.main_step)
+  const metroSteps = parseMetroSteps(rowOriginal?.metro_steps)
+  const customEndStep = normalizeStepValue(rowOriginal?.custom_end_step)
+  const currentStep = normalizeStepValue(rowOriginal?.metro_current_step)
+
+  const effectiveMetroSteps = (() => {
+    if (!metroSteps.length) return []
+    if (!customEndStep) return metroSteps
+    const endIndex = metroSteps.findIndex((step) => step === customEndStep)
+    return endIndex >= 0 ? metroSteps.slice(0, endIndex + 1) : metroSteps
+  })()
+
+  const orderedSteps = []
+  if (mainStep && !metroSteps.includes(mainStep)) orderedSteps.push(mainStep)
+  orderedSteps.push(...effectiveMetroSteps)
+
+  const total = orderedSteps.length
+  if (total === 0) return { completed: 0, total: 0 }
+
+  let completed = 0
+  if (!currentStep) {
+    completed = 0
+  } else {
+    const currentIndex = orderedSteps.findIndex((step) => step === currentStep)
+
+    if (customEndStep) {
+      const currentIndexInFull = metroSteps.findIndex((step) => step === currentStep)
+      const endIndexInFull = metroSteps.findIndex((step) => step === customEndStep)
+
+      if (currentIndexInFull >= 0 && endIndexInFull >= 0 && currentIndexInFull > endIndexInFull) {
+        completed = total
+      } else if (currentIndex >= 0) {
+        completed = currentIndex + 1
+      }
+    } else if (currentIndex >= 0) {
+      completed = currentIndex + 1
+    }
+  }
+
+  if (normalizedStatus === "COMPLETE") completed = total
+  return { completed: Math.max(0, Math.min(completed, total)), total }
 }
 
 // 컬럼 키에 맞는 렌더러를 찾아 실행하고, 없으면 기본 포맷터를 사용합니다.

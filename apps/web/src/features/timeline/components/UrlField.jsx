@@ -9,13 +9,13 @@ export default function UrlField({ url }) {
 
   return (
     <>
-      <div className="font-semibold text-slate-700 dark:text-slate-200">
+      <div className="font-semibold text-foreground">
         URL
       </div>
       <div>
         <a
           href={url}
-          className="text-blue-600 dark:text-blue-400 underline break-all"
+          className="text-primary underline break-all"
           target="_blank"
           rel="noopener noreferrer"
         >

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .activity import ActivityLogView
+from .assistant import AssistantChatView
 from .auth import FrontendRedirectView
 from .drone_early_inform import DroneEarlyInformView
 from .health import HealthView
@@ -24,6 +25,7 @@ from .voc import VocPostDetailView, VocPostsView, VocReplyView
 
 __all__ = [
     "ActivityLogView",
+    "AssistantChatView",
     "FrontendRedirectView",
     "DroneEarlyInformView",
     "HealthView",

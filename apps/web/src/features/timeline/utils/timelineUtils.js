@@ -2,28 +2,28 @@
 // 미사용 함수 제거하고 필요한 것만 남김
 import { groupConfig } from "./timelineMeta";
 
+const FALLBACK_CLASS = "timeline-color-fallback";
+
 /** ➜ vis-timeline 아이템 변환 */
 export const processData = (logType, data, makeRangeContinuous = false) => {
   const cfg = groupConfig[logType];
   if (!cfg) return [];
 
-  // 데이터를 eventTime 순으로 정렬
+  const typeClass = `timeline-type-${String(logType || "").toLowerCase()}`;
+
   const sortedData = data
     .filter((l) => l && l.eventTime)
     .sort((a, b) => new Date(a.eventTime) - new Date(b.eventTime));
 
   return sortedData.map((l, index) => {
     const start = new Date(l.eventTime);
-    let end = start; // 기본값은 point 형태
+    let end = start;
     let isRange = false;
 
-    // makeRangeContinuous가 true인 경우 range로 만들기
     if (makeRangeContinuous) {
       if (index < sortedData.length - 1) {
-        // 다음 로그의 eventTime을 현재 로그의 endTime으로 설정
         end = new Date(sortedData[index + 1].eventTime);
       } else {
-        // 마지막 로그인 경우
         const now = new Date();
         const todayMidnight = new Date(
           now.getFullYear(),
@@ -36,38 +36,28 @@ export const processData = (logType, data, makeRangeContinuous = false) => {
         );
 
         if (start < todayMidnight) {
-          // eventTime이 오늘 00:00:00보다 이전이면, 오늘 00:00:00으로 설정
           end = todayMidnight;
         } else {
-          // eventTime이 오늘 00:00:00보다 이후면, eventTime + 1시간으로 설정
-          end = new Date(start.getTime() + 60 * 60 * 1000); // 1시간 추가
+          end = new Date(start.getTime() + 60 * 60 * 1000);
         }
       }
       isRange = true;
     }
 
-    const colorCls = cfg.stateColors[l.eventType] || "bg-gray-300";
+    const stateClass =
+      (cfg.stateClasses && cfg.stateClasses[l.eventType]) || FALLBACK_CLASS;
 
-    // 폰트 크기를 logType에 따라 다르게 설정
-    const fontSize =
-      {
-        EQP: "12px",
-        TIP: "11px",
-        CTTTM: "10px",
-        RACB: "10px",
-        JIRA: "10px",
-      }[logType] || "11px";
+    const labelClass = `timeline-item-label ${typeClass}`;
+    const content = `<span class="${labelClass}">${l.eventType || ""}</span>`;
 
     return {
       id: l.id,
       group: logType,
-      content: `<span style="font-size: ${fontSize}; font-weight: 500;">${
-        l.eventType || ""
-      }</span>`,
+      content,
       start,
       end,
       type: isRange ? "range" : "point",
-      className: colorCls,
+      className: `timeline-item ${typeClass} ${stateClass}`,
       title: [
         l.comment,
         l.operator ? `👤 ${l.operator}` : null,
@@ -152,5 +142,24 @@ export const addBuffer = (min, max) => {
   return {
     min: new Date(min - buffer),
     max: new Date(effectiveMax + buffer),
+  };
+};
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+export const buildFixedHeightOptions = (range, height, overrides = {}) => {
+  const { minHeight, maxHeight, ...rest } = overrides;
+
+  return {
+    stack: false,
+    min: range.min,
+    max: range.max,
+    zoomMin: ONE_HOUR_MS,
+    height,
+    minHeight: minHeight ?? height,
+    maxHeight: maxHeight ?? height,
+    verticalScroll: false,
+    horizontalScroll: false,
+    ...rest,
   };
 };

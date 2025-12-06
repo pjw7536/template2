@@ -15,14 +15,14 @@ export function makeGroupLegend(type) {
     CLOSE: "🟥CLOSE ",
     ALARM: "🟥ALARM ",
     WARN: "🟧WARN ",
-    TTM_FAIL: "🟥TTM_FAIL ",
-    TTM_WARN: "🟨TTM_WARN ",
+    CBM: "🟦CBM ",
+    NSP: "🟩NSP ",
     ISSUED: "🟦ISSUED ",
     CLOSED: "🟪CLOSED ",
   };
   const config = groupConfig[type];
   if (!config) return `<div style="width:240px"></div>`;
-  const legendHtml = Object.keys(config.stateColors)
+  const legendHtml = Object.keys(config.stateClasses || {})
     .map((state) => `<span>${EMOJI[state] || "▪️"}</span>`)
     .join(" ");
   return `<div style="width:240px;">${legendHtml}</div>`;

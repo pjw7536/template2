@@ -6,11 +6,15 @@ import { RequireAuth } from "@/lib/auth"
 import { AppShell } from "@/components/layout"
 import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
 import { useLineOptionsQuery } from "@/features/line-dashboard"
+import { ChatWidget } from "@/features/assistant"
 
 export function ProtectedAppLayout() {
   const location = useLocation()
   const { data: lineOptions = [], isError, error } = useLineOptionsQuery()
-  const isVocRoute = typeof location?.pathname === "string" && location.pathname.includes("/qna")
+  // VOC 화면은 글/리스트 동시 표시를 위해 레이아웃 폭을 확장
+  const isVocRoute =
+    typeof location?.pathname === "string" &&
+    (/\/voc(\/|$)|\/qna(\/|$)/).test(location.pathname)
 
   useEffect(() => {
     if (isError) {
@@ -28,6 +32,7 @@ export function ProtectedAppLayout() {
       >
         <Outlet />
       </AppShell>
+      <ChatWidget />
     </RequireAuth>
   )
 }

@@ -75,12 +75,17 @@ function FilterCheckboxes({ typeFilters, handleFilter }) {
   );
 }
 
-function DataRow({ row, isSelected, onSelect }) {
+const fallbackLogTypeBadgeClass = () => "bg-muted text-foreground";
+
+function DataRow({ row, isSelected, onSelect, getLogTypeBadgeClass }) {
   const baseClasses =
     "flex items-center cursor-pointer border-b border-border hover:bg-muted";
   const selectionClasses = isSelected
-    ? "bg-yellow-200 dark:bg-yellow-800 dark:ring-yellow-700 transition-all duration-200"
+    ? "bg-primary/10 transition-colors duration-200"
     : "bg-card transition-colors duration-150";
+  const resolveLogTypeBadgeClass =
+    getLogTypeBadgeClass || fallbackLogTypeBadgeClass;
+  const logTypeClass = resolveLogTypeBadgeClass(row.logType);
 
   const handleRowClick = () => {
     onSelect(isSelected ? null : row.id);
@@ -101,62 +106,33 @@ function DataRow({ row, isSelected, onSelect }) {
     >
       <div
         style={{ width: `${columnWidths.time}px` }}
-        className="px-2 py-2 text-xs text-center text-gray-800 dark:text-gray-200 flex-shrink-0"
+        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
       >
         {row.displayTimestamp}
       </div>
       <div
         style={{ width: `${columnWidths.logType}px` }}
-        className="px-2 py-2 text-xs text-center text-gray-800 dark:text-gray-200 flex-shrink-0"
+        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
       >
-        <span
-          className={`
-           inline-block px-2 py-1 text-xs font-medium rounded
-           ${
-             row.logType === "EQP"
-               ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-               : ""
-           }
-           ${
-             row.logType === "TIP"
-               ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-               : ""
-           }
-           ${
-             row.logType === "RACB"
-               ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-               : ""
-           }
-           ${
-             row.logType === "CTTTM"
-               ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-               : ""
-           }
-           ${
-             row.logType === "JIRA"
-               ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-               : ""
-           }
-         `}
-        >
+        <span className={`inline-block rounded px-2 py-1 text-xs ${logTypeClass}`}>
           {row.logType}
         </span>
       </div>
       <div
         style={{ width: `${columnWidths.changeType}px` }}
-        className="px-2 py-2 text-xs text-center text-gray-800 dark:text-gray-200 flex-shrink-0"
+        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
       >
         {row.info1}
       </div>
       <div
         style={{ width: `${columnWidths.operator}px` }}
-        className="px-2 py-2 text-xs text-center text-gray-800 dark:text-gray-200 flex-shrink-0"
+        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
       >
         {row.info2}
       </div>
       <div
         style={{ width: `${columnWidths.duration}px` }}
-        className="px-2 py-2 text-xs text-center text-gray-800 dark:text-gray-200 flex-shrink-0"
+        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
       >
         {row.duration}
       </div>
@@ -167,22 +143,29 @@ function DataRow({ row, isSelected, onSelect }) {
         {row.url ? (
           <button
             onClick={handleUrlClick}
-            className="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+            className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
             title="Open URL"
           >
-            <LinkIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <LinkIcon className="h-4 w-4 text-primary" />
           </button>
         ) : (
-          <span className="text-gray-400 dark:text-gray-600">-</span>
+          <span className="text-muted-foreground">-</span>
         )}
       </div>
     </div>
   );
 }
 
-export default function TimelineDataTable({ data, typeFilters, handleFilter }) {
+export default function TimelineDataTable({
+  data,
+  typeFilters,
+  handleFilter,
+  getLogTypeBadgeClass,
+}) {
   const { selectedRow, source, setSelectedRow } = useTimelineSelectionStore();
   const scrollContainerRef = useRef(null);
+  const resolveLogTypeBadgeClass =
+    getLogTypeBadgeClass || fallbackLogTypeBadgeClass;
 
   useEffect(() => {
     if (source !== "timeline" || !selectedRow) return;
@@ -218,7 +201,7 @@ export default function TimelineDataTable({ data, typeFilters, handleFilter }) {
 
       <div className="flex-1 overflow-hidden">
         {data.length === 0 ? (
-          <div className="text-center text-sm text-gray-500 dark:text-gray-400 p-4">
+          <div className="p-4 text-center text-sm text-muted-foreground">
             표시할 데이터가 없습니다.
           </div>
         ) : (
@@ -235,6 +218,7 @@ export default function TimelineDataTable({ data, typeFilters, handleFilter }) {
                   row={row}
                   isSelected={String(row.id) === String(selectedRow)}
                   onSelect={handleSelect}
+                  getLogTypeBadgeClass={resolveLogTypeBadgeClass}
                 />
               ))}
             </div>

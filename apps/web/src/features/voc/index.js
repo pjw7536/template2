@@ -1,4 +1,4 @@
 // src/features/voc/index.js
-// VOC(Q&A) 게시판 엔트리 포인트
-export { QnaBoardPage } from "./pages/QnaBoardPage"
+// VOC 게시판 엔트리 포인트
+export { VocBoardPage } from "./pages/VocBoardPage"
 export { vocRoutes } from "./routes"

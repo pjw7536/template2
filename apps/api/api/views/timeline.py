@@ -199,7 +199,7 @@ LOGS: Dict[str, Dict[str, List[Dict[str, object]]]] = {
             {
                 "id": "CTTTM-ALPHA-001",
                 "logType": "CTTTM",
-                "eventType": "TTM_WARN",
+                "eventType": "CBM",
                 "eventTime": "2024-07-15T03:45:00Z",
                 "operator": "kim",
                 "recipe": "ALP-ETCH-05",
@@ -211,7 +211,7 @@ LOGS: Dict[str, Dict[str, List[Dict[str, object]]]] = {
             {
                 "id": "CTTTM-ALPHA-002",
                 "logType": "CTTTM",
-                "eventType": "TTM_FAIL",
+                "eventType": "NSP",
                 "eventTime": "2024-07-15T07:15:00Z",
                 "operator": "lee",
                 "recipe": "ALP-ETCH-05",
@@ -349,7 +349,7 @@ LOGS: Dict[str, Dict[str, List[Dict[str, object]]]] = {
             {
                 "id": "CTTTM-BRAVO-001",
                 "logType": "CTTTM",
-                "eventType": "TTM_WARN",
+                "eventType": "NSP",
                 "eventTime": "2024-07-15T05:40:00Z",
                 "operator": "park",
                 "recipe": "BRV-ETCH-03",

@@ -1,6 +1,39 @@
 // src/features/timeline/components/BaseTimeline.jsx
-import React, { useRef, useMemo } from "react";
+import React, { useRef } from "react";
+import moment from "moment";
+import "moment/locale/ko";
 import { useVisTimeline } from "../hooks/useVisTimeline";
+
+const KOREAN_TIMELINE_LOCALE = {
+  current: "현재",
+  time: "시간",
+  deleteSelected: "선택 항목 삭제",
+};
+
+const toKoreanMoment = (date) => moment(date).locale("ko");
+
+const KOREAN_AXIS_FORMAT = {
+  minorLabels: {
+    millisecond: "HH:mm:ss.SSS",
+    second: "HH:mm:ss",
+    minute: "HH:mm",
+    hour: "HH:mm",
+    weekday: "MM/DD",
+    day: "MM/DD",
+    month: "MM/DD",
+    year: "YY",
+  },
+  majorLabels: {
+    millisecond: "MM월 DD일",
+    second: "MM월 DD일",
+    minute: "MM월 DD일",
+    hour: "MM월 DD일",
+    weekday: "MM월 DD일",
+    day: "YY년 MM월",
+    month: "YYYY",
+    year: "",
+  },
+};
 
 /**
  * 재사용 가능한 기본 Timeline 컴포넌트
@@ -27,30 +60,31 @@ export default function BaseTimeline({
 }) {
   const containerRef = useRef(null);
 
-  const mergedOptions = useMemo(
-    () => ({
-      margin: { item: 0, axis: 0 },
-      groupOrder: "order",
-      selectable: true,
-      verticalScroll:
-        options.verticalScroll !== undefined ? options.verticalScroll : true,
-      tooltip: {
-        followMouse: true,
-        overflowMethod: "flip",
-      },
-      showMajorLabels: showTimeAxis,
-      showMinorLabels: showTimeAxis,
-      align: "center",
-      orientation: {
-        item: "top",
-      },
-      ...(height !== undefined && { height }),
-      ...(minHeight !== undefined && { minHeight }),
-      ...(maxHeight !== undefined && { maxHeight }),
-      ...options,
-    }),
-    [options, showTimeAxis, height, minHeight, maxHeight]
-  );
+  const mergedOptions = {
+    margin: { item: 0, axis: 0 },
+    groupOrder: "order",
+    selectable: true,
+    locale: "ko",
+    locales: { ko: KOREAN_TIMELINE_LOCALE },
+    moment: toKoreanMoment,
+    verticalScroll:
+      options.verticalScroll !== undefined ? options.verticalScroll : true,
+    tooltip: {
+      followMouse: true,
+      overflowMethod: "flip",
+    },
+    showMajorLabels: showTimeAxis,
+    showMinorLabels: showTimeAxis,
+    format: KOREAN_AXIS_FORMAT,
+    align: "center",
+    orientation: {
+      item: "top",
+    },
+    ...(height !== undefined && { height }),
+    ...(minHeight !== undefined && { minHeight }),
+    ...(maxHeight !== undefined && { maxHeight }),
+    ...options,
+  };
 
   useVisTimeline({
     containerRef,
@@ -67,14 +101,13 @@ export default function BaseTimeline({
 
   return (
     <div
-      className={`timeline-container relative ${className} ${
-        !showTimeAxis ? "no-time-axis" : ""
-      }`}
+      className={`timeline-container relative ${className} ${!showTimeAxis ? "no-time-axis" : ""
+        }`}
     >
       {(title || headerExtra) && (
         <div className="flex items-center justify-between">
           {title && (
-            <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+            <h3 className="text-sm font-semibold text-foreground">
               {title}
             </h3>
           )}

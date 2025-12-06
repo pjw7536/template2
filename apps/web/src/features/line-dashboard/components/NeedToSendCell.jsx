@@ -139,7 +139,7 @@ export function NeedToSendCell({
         aria-label={titleText}
         title={titleText}
         className={cn(
-          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "inline-flex h-5 w-5 items-center justify-center rounded-full border text-muted-foreground transition-colors focus:outline-none ",
           isError
             ? "border-destructive/60 bg-destructive/10 text-destructive"
             : isChecked

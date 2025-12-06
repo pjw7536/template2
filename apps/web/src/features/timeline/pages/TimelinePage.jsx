@@ -1,24 +1,28 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useParams } from "react-router-dom";
 import { AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
 import { LoadingSpinner } from "../components/Loaders";
-import { useTimelineSelectionStore } from "../store/useTimelineSelectionStore";
-import { DEFAULT_TYPE_FILTERS } from "../utils/constants";
-import { useTimelineStore } from "../store/timelineStore";
 import TimelineBoard from "../components/TimelineBoard";
 import DataLogSection from "../components/DataLogSection";
 import LogViewerSection from "../components/LogViewerSection";
 import ShareButton from "../components/ShareButton";
 import LogDetailSection from "../components/LogDetailSection";
 import TimelineSettings from "../components/TimelineSettings";
-import { useUrlValidation } from "../hooks/useUrlValidation";
-import { useUrlSync } from "../hooks/useUrlSync";
-import { useTimelineLogs } from "../hooks/useTimelineLogs";
+import { useTimelinePageState } from "../hooks/useTimelinePageState";
 
 export default function TimelinePage() {
   const params = useParams();
+  const {
+    selection,
+    timelinePrefs,
+    filters,
+    settings,
+    validation,
+    logs,
+    selectedLog,
+    timelineReady,
+  } = useTimelinePageState(params); // 복잡한 상태를 한 곳에서 준비해 UI 단을 단순화
 
-  // Selection Store (드릴다운 상태와 선택 상태)
   const {
     lineId,
     sdwtId,
@@ -28,59 +32,20 @@ export default function TimelinePage() {
     setSdwt,
     setPrcGroup,
     setEqp,
-    selectedRow,
-  } = useTimelineSelectionStore();
-
-  // Timeline Store (timeline 전용 상태)
-  const { showLegend, selectedTipGroups, setShowLegend, setSelectedTipGroups } =
-    useTimelineStore();
-
-  // URL 검증
-  const { isValidating, validationError, isUrlInitialized } = useUrlValidation(
-    params,
-    lineId,
-    eqpId,
-    setLine,
-    setSdwt,
-    setPrcGroup,
-    setEqp
-  );
-
-  // useEffect를 추가하여 eqpId가 변경될 때마다 selectedTipGroups를 초기화
-  useEffect(() => {
-    if (eqpId) {
-      // eqpId가 변경될 때마다 TIP 그룹을 전체 선택 상태로 초기화
-      setSelectedTipGroups(["__ALL__"]);
-    }
-  }, [eqpId, setSelectedTipGroups]);
-
-  // URL 동기화
-  useUrlSync(lineId, eqpId, isValidating, isUrlInitialized);
-
-  // 로컬 상태 (timeline과 관련 없는 상태들)
-  const [typeFilters, setTypeFilters] = useState(() => ({
-    ...DEFAULT_TYPE_FILTERS,
-  }));
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  // 필터 핸들러
-  const handleFilter = (e) =>
-    setTypeFilters((prev) => ({ ...prev, [e.target.name]: e.target.checked }));
+  } = selection;
 
   const {
-    logsLoading,
-    logsWithDuration,
-    mergedLogs,
-    tableData,
-    filteredTipLogs,
-  } = useTimelineLogs(eqpId, typeFilters, selectedTipGroups);
+    showLegend,
+    selectedTipGroups,
+    setShowLegend,
+    setSelectedTipGroups,
+  } = timelinePrefs;
 
-  // 선택된 로그 (병합된 로그에서 찾기)
-  const selectedLog = mergedLogs.find(
-    (log) => String(log.id) === String(selectedRow)
-  );
+  const { typeFilters, handleFilterChange } = filters;
+  const { isSettingsOpen, setIsSettingsOpen } = settings;
 
-  const timelineReady = Boolean(eqpId);
+  const { isValidating, validationError } = validation;
+  const { logsLoading, logsWithDuration, tableData, filteredTipLogs } = logs;
 
   // 검증 중일 때 로딩 표시
   if (isValidating) {
@@ -97,7 +62,9 @@ export default function TimelinePage() {
       <div className="flex items-center justify-center h-[80vh]">
         <div className="text-center">
           <p className="text-red-500 mb-2">{validationError}</p>
-          <p className="text-gray-500">잠시 후 메인 페이지로 이동합니다...</p>
+          <p className="text-muted-foreground">
+            잠시 후 메인 페이지로 이동합니다...
+          </p>
         </div>
       </div>
     );
@@ -124,7 +91,7 @@ export default function TimelinePage() {
             logsLoading={logsLoading}
             tableData={tableData}
             typeFilters={typeFilters}
-            handleFilter={handleFilter}
+            handleFilter={handleFilterChange}
           />
 
           <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex-[1] min-h-0 flex flex-col overflow-auto min-h-[180px] max-h-[320px]">
@@ -141,7 +108,7 @@ export default function TimelinePage() {
       <div className="flex flex-row h-full w-[65%]">
         {/* 타임라인 패널 */}
         <div className="flex flex-col flex-1 overflow-hidden border border-border bg-card shadow-sm rounded-xl pl-4 pr-1 transition-all duration-300 ease-in-out">
-          <div className="flex items-center justify-between my-5">
+          <div className="flex items-center justify-between my-3">
             <div className="flex items-center gap-2">
               <h2 className="text-md font-bold text-foreground">
                 📊 Timeline
@@ -164,7 +131,7 @@ export default function TimelinePage() {
 
           {!eqpId && !logsLoading ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-center text-slate-600 dark:text-slate-400">
+              <p className="text-center text-muted-foreground">
                 EQP를 선택하세요.
               </p>
             </div>
@@ -174,8 +141,6 @@ export default function TimelinePage() {
             </div>
           ) : (
             <TimelineBoard
-              lineId={lineId}
-              eqpId={eqpId}
               showLegend={showLegend}
               selectedTipGroups={selectedTipGroups}
               eqpLogs={logsWithDuration.eqpLogs}

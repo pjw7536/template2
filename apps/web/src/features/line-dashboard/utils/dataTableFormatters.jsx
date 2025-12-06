@@ -245,7 +245,7 @@ function uniquePreserveOrder(arr) {
  */
 function getStepPillClasses({ isMain, isCurrent }) {
   return cn(
-    "border px-2 py-0.5 text-xs font-medium leading-none transition-colors",
+    "border px-2 py-0.5 text-xs font-light leading-none transition-colors",
     isMain ? "rounded-sm" : "rounded-full",
     isCurrent
       ? "bg-primary border-primary text-primary-foreground"

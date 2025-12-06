@@ -54,7 +54,7 @@ export function RichTextEditor({
   }, [quill, readOnly])
 
   return (
-    <div className={["qna-quill", className].filter(Boolean).join(" ")}>
+    <div className={["voc-quill", className].filter(Boolean).join(" ")}>
       <div
         id={id}
         ref={quillRef}

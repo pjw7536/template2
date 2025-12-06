@@ -6,10 +6,10 @@ export function LoadingSpinner({ label, size = "md" }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2">
       <div
-        className={`animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 ${dimension}`}
+        className={`animate-spin rounded-full border-2 border-muted border-t-primary ${dimension}`}
       />
       {label ? (
-        <span className="text-xs text-slate-600 dark:text-slate-300">
+        <span className="text-xs text-muted-foreground">
           {label}
         </span>
       ) : null}

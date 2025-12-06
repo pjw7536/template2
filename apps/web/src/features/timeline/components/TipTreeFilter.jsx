@@ -1,8 +1,14 @@
 // src/features/timeline/components/TipTreeFilter.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronRightIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
 import { buildTipGroupTree } from "../utils/tipTreeUtils";
 
+/**
+ * TIP 그룹 필터 트리
+ * - isAllSelected / selectedPpids / excludePwq 세 상태를 조합해 필터링 로직을 표현
+ * - 부모 노드 선택 시 하위 PPID 전체를 토글
+ * - PWQ 제외 옵션이 활성화되면 선택된 집합에서 PWQ만 제거
+ */
 export default function TipTreeFilter({
   tipLogs,
   onFilterChange,
@@ -13,7 +19,7 @@ export default function TipTreeFilter({
   const [excludePwq, setExcludePwq] = useState(false);
 
   // 트리 구조 생성
-  const tree = useMemo(() => buildTipGroupTree(tipLogs), [tipLogs]);
+  const tree = buildTipGroupTree(tipLogs);
 
   // 초기 선택 상태를 selectedTipGroups 기반으로 설정
   const [selectedPpids, setSelectedPpids] = useState(() => {
@@ -303,22 +309,22 @@ export default function TipTreeFilter({
   const getLevelStyle = (level) => {
     const styles = {
       line: {
-        color: "text-blue-800 dark:text-blue-400",
+        color: "text-primary",
         indent: 0,
         icon: "📍",
       },
       process: {
-        color: "text-blue-800 dark:text-blue-400",
+        color: "text-primary",
         indent: 10,
         icon: "⚙️",
       },
       step: {
-        color: "text-blue-800 dark:text-blue-400",
+        color: "text-primary",
         indent: 20,
         icon: "📋",
       },
       ppid: {
-        color: "text-blue-800 dark:text-blue-400",
+        color: "text-primary",
         indent: 30,
         icon: "🔧",
       },
@@ -336,13 +342,13 @@ export default function TipTreeFilter({
     return (
       <div key={node.key} className="select-none">
         <div
-          className="flex items-center gap-1 py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="flex items-center gap-1 rounded px-2 py-1.5 hover:bg-muted"
           style={{ paddingLeft: `${levelStyle.indent + 8}px` }}
         >
           {hasChildren ? (
             <button
               onClick={() => toggleExpand(node.key)}
-              className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+              className="rounded p-0.5 hover:bg-muted"
             >
               {isExpanded ? (
                 <ChevronDownIcon className="w-4 h-4" />
@@ -364,20 +370,22 @@ export default function TipTreeFilter({
                 }
               }}
               onChange={(e) => handleNodeSelect(node, e.target.checked)}
-              className="rounded text-blue-600"
+              className="rounded text-primary"
             />
             <span
-              className={`text-sm ${levelStyle.color} font-medium flex items-center gap-1`}
+              className={`text-sm ${levelStyle.color} flex items-center gap-1`}
             >
               <span>{levelStyle.icon}</span>
               <span>{node.name}</span>
-              <span className="text-xs text-gray-500 ml-1">({node.count})</span>
+              <span className="text-xs text-muted-foreground ml-1">
+                ({node.count})
+              </span>
             </span>
           </label>
         </div>
 
         {hasChildren && isExpanded && (
-          <div className="ml-2 border-l-2 border-gray-200 dark:border-gray-700">
+          <div className="ml-2 border-l-2 border-border">
             {Object.values(node.children).map((child) => renderTreeNode(child))}
           </div>
         )}
@@ -391,7 +399,7 @@ export default function TipTreeFilter({
     >
       <div className="flex items-center justify-between mb-3">
         {!inDrawer && (
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+          <h4 className="text-sm font-semibold text-foreground">
             TIP 그룹 필터
           </h4>
         )}
@@ -399,7 +407,7 @@ export default function TipTreeFilter({
           {/* 왼쪽: 전체 선택 */}
           <button
             onClick={handleSelectAll}
-            className="text-xs text-blue-700 dark:text-blue-300 hover:underline"
+            className="text-xs text-primary hover:underline"
           >
             {isAllSelected ? "전체 해제" : "전체 선택"}
           </button>
@@ -410,9 +418,9 @@ export default function TipTreeFilter({
               type="checkbox"
               checked={excludePwq}
               onChange={(e) => handleExcludePwqChange(e.target.checked)}
-              className="rounded text-blue-600"
+              className="rounded text-primary"
             />
-            <span className="text-xs text-gray-700 dark:text-gray-300">
+            <span className="text-xs text-muted-foreground">
               PWQ 필터
             </span>
           </label>

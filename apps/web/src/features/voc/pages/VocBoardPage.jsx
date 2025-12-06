@@ -1,5 +1,5 @@
-// src/features/voc/pages/QnaBoardPage.jsx
-// Q&A 게시판: 새 글 작성, 답변, 상태 관리, 권한 기반 삭제를 제공하는 클라이언트 사이드 UI
+// src/features/voc/pages/VocBoardPage.jsx
+// VOC 게시판: 새 글 작성, 답변, 상태 관리, 권한 기반 삭제를 제공하는 클라이언트 사이드 UI
 import * as React from "react"
 import {
   ChevronLeft,
@@ -46,11 +46,12 @@ import {
 } from "@/components/ui/dialog"
 import { STATUS_OPTIONS } from "../constants"
 import { RichTextEditor } from "../components/RichTextEditor"
-import { useQnaBoardState } from "../hooks/useQnaBoardState"
+import { useVocBoardState } from "../hooks/useVocBoardState"
 import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"
 import "@/styles/quill.css"
 import "quill/dist/quill.snow.css"
 
+// 리치 텍스트 에디터 설정: 모듈/포맷은 VOC 화면만을 위한 최소 구성이며, 필요 시 확장 가능
 const QUILL_MODULES = {
   toolbar: [
     [{ header: [1, 2, 3, false] }],
@@ -99,8 +100,8 @@ function PostContent({ content, className = "", allowResize = false }) {
     .join(" ")
 
   const bodyClassName = [
-    "qna-post-body",
-    allowResize ? "qna-post-body--resizable" : "",
+    "voc-post-body",
+    allowResize ? "voc-post-body--resizable" : "",
   ]
     .filter(Boolean)
     .join(" ")
@@ -116,7 +117,7 @@ function PostContent({ content, className = "", allowResize = false }) {
   )
 }
 
-export function QnaBoardPage() {
+export function VocBoardPage() {
   const { user } = useAuth()
   const currentUserName = user?.name || user?.email || "로그인 사용자"
   const currentUserRoles = Array.isArray(user?.roles) ? user.roles : []
@@ -168,7 +169,7 @@ export function QnaBoardPage() {
     isUpdating,
     isRefreshing,
     isReplying,
-  } = useQnaBoardState({ currentUser, isAdmin })
+  } = useVocBoardState({ currentUser, isAdmin }) // 데이터 로직은 훅으로 모아 UI는 렌더링에 집중
 
   const totalPosts = Object.values(statusCounts || {}).reduce(
     (sum, count) => sum + (Number.isFinite(count) ? count : 0),
@@ -275,18 +276,18 @@ export function QnaBoardPage() {
       <Card className="flex-shrink-0">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <MessageSquare className="size-5" aria-hidden="true" />
+              <div className="flex items-center gap-3">
+                <div className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <MessageSquare className="size-5" aria-hidden="true" />
+                </div>
+                <div className="space-y-1">
+                  <CardTitle>VOC 게시판</CardTitle>
+                  <CardDescription className="text-sm text-muted-foreground">
+                    고객의 목소리를 남겨 주시면 빠르게 답변드리겠습니다.
+                  </CardDescription>
+                </div>
               </div>
-              <div className="space-y-1">
-                <CardTitle>Q&amp;A 게시판</CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">
-                  문의사항 남겨 주시면 빠르게 답변드리겠습니다.
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="rounded-full bg-muted px-2 py-1 text-foreground shadow-xs">
                 총 {totalPosts}건의 문의
               </span>
@@ -326,11 +327,11 @@ export function QnaBoardPage() {
                 </DialogHeader>
                 <form className="space-y-4" onSubmit={handleCreatePost}>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="qna-title">
+                    <label className="text-sm font-medium text-foreground" htmlFor="voc-title">
                       제목
                     </label>
                     <Input
-                      id="qna-title"
+                      id="voc-title"
                       value={form.title}
                       onChange={(event) => updateForm("title", event.target.value)}
                       placeholder="무엇을 도와드릴까요?"
@@ -340,19 +341,19 @@ export function QnaBoardPage() {
                   <div className="space-y-2">
                     <label
                       className="text-sm font-medium text-foreground"
-                      id="qna-content-label"
-                      htmlFor="qna-content-editor"
+                      id="voc-content-label"
+                      htmlFor="voc-content-editor"
                     >
                       내용
                     </label>
                     <RichTextEditor
-                      id="qna-content-editor"
+                      id="voc-content-editor"
                       value={form.content}
                       onChange={(value) => updateForm("content", value)}
                       modules={QUILL_MODULES}
                       formats={QUILL_FORMATS}
                       placeholder="상세한 내용을 적어 주세요."
-                      ariaLabelledby="qna-content-label"
+                      ariaLabelledby="voc-content-label"
                     />
                   </div>
 
@@ -453,17 +454,17 @@ export function QnaBoardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                      <span>VOC 게시글을 불러오는 중입니다...</span>
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ) : filteredPosts.length === 0 ? (
-                <TableRow>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                          <span>VOC 게시글을 불러오는 중입니다...</span>
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredPosts.length === 0 ? (
+                    <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                     {statusFilter ? "선택한 상태의 글이 없습니다." : "아직 등록된 글이 없습니다. 첫 문의를 남겨보세요."}
                   </TableCell>
@@ -686,7 +687,7 @@ export function QnaBoardPage() {
                     disabled={isUpdating}
                   />
                   <RichTextEditor
-                    id="qna-edit-editor"
+                    id="voc-edit-editor"
                     value={editForm.content}
                     onChange={(value) => setEditForm((prev) => ({ ...prev, content: value }))}
                     modules={QUILL_MODULES}
@@ -748,10 +749,10 @@ export function QnaBoardPage() {
       </Dialog>
 
       <Dialog open={Boolean(deleteTarget)} onOpenChange={handleDeleteDialogOpenChange}>
-        <DialogContent className="sm:max-w-sm" aria-describedby="qna-delete-description">
+        <DialogContent className="sm:max-w-sm" aria-describedby="voc-delete-description">
           <DialogHeader>
             <DialogTitle>게시글 삭제</DialogTitle>
-            <DialogDescription id="qna-delete-description">
+            <DialogDescription id="voc-delete-description">
               {`"${deleteTarget?.title || "선택한 게시글"}"을(를) 삭제할까요?`}
               <br />
               답변을 포함해 게시글의 모든 내용이 사라집니다.

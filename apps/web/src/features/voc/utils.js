@@ -1,12 +1,12 @@
 // src/features/voc/utils.js
-// VOC(Q&A) 화면 전용 헬퍼
+// VOC 화면 전용 헬퍼
 import DOMPurify from "dompurify"
 
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]]*)\]\((data:image\/[^)]+)\)/g
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 
 export function createId() {
-  return `qna-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  return `voc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function formatTimestamp(value) {

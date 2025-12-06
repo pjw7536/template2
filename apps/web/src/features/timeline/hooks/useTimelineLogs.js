@@ -22,6 +22,8 @@ export function useTimelineLogs(
   const logsLoading =
     eqpLoading || tipLoading || ctttmLoading || racbLoading || jiraLoading;
 
+  // Heavy transforms (sorting + duration calc) stay memoized to avoid recomputing
+  // on every minor UI toggle.
   const logsWithDuration = useMemo(
     () => ({
       eqpLogs: addDurationToLogs(eqpLogs, "EQP"),
@@ -33,10 +35,10 @@ export function useTimelineLogs(
     [eqpLogs, tipLogs, ctttmLogs, racbLogs, jiraLogs]
   );
 
-  const mergedLogs = useMemo(() => {
-    if (!eqpId) return [];
-    return mergeLogsByTime(logsWithDuration);
-  }, [eqpId, logsWithDuration]);
+  const mergedLogs = useMemo(
+    () => (eqpId ? mergeLogsByTime(logsWithDuration) : []),
+    [eqpId, logsWithDuration]
+  );
 
   const tableData = useMemo(() => {
     if (!eqpId || logsLoading) return [];

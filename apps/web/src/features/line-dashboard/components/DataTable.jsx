@@ -24,16 +24,9 @@ import {
 } from "@tanstack/react-table"
 import {
   IconChevronDown,
-  IconChevronLeft,
-  IconChevronRight,
   IconChevronUp,
-  IconChevronsLeft,
-  IconChevronsRight,
-  IconDatabase,
-  IconRefresh,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { Button } from "components/ui/button"
 import {
   Table,
   TableBody,
@@ -44,15 +37,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+import { DataTablePagination } from "./DataTablePagination"
+import { DataTableToolbar } from "./DataTableToolbar"
 import { StatusDistributionCard } from "./StatusDistributionCard"
 import { createColumnDefs } from "../utils/dataTableColumnDefs"
 import { createGlobalFilterFn } from "./GlobalFilter"
-import { QuickFilterFavorites, QuickFilters } from "./QuickFilters"
+import { QuickFilters } from "./QuickFilters"
 import { useDataTableState } from "../hooks/useDataTable"
+import { useDataTablePresentation } from "../hooks/useDataTablePresentation"
 import { useQuickFilters } from "../hooks/useQuickFilters"
 import { useQuickFilterFavorites } from "../hooks/useQuickFilterFavorites"
 import { useStatusChart } from "../hooks/useStatusChart"
-import { numberFormatter, timeFormatter } from "../utils/dataTableConstants"
+import { numberFormatter } from "../utils/dataTableConstants"
 import {
   getJustifyClass,
   getTextAlignClass,
@@ -93,37 +89,6 @@ const LABELS = {
 const toWidthStyle = (size) => {
   const width = `${size}px`
   return { width, minWidth: width, maxWidth: width }
-}
-
-function useLastUpdatedLabel(isLoadingRows, isRefreshing) {
-  const [label, setLabel] = React.useState(null)
-
-  React.useEffect(() => {
-    if (isRefreshing) {
-      setLabel("Updating…")
-      return
-    }
-    if (!isLoadingRows) {
-      setLabel(timeFormatter.format(new Date()))
-    }
-  }, [isLoadingRows, isRefreshing])
-
-  return label
-}
-
-function usePaginationGuards({ filter, sorting, filters, pageCount, setPagination }) {
-  React.useEffect(() => {
-    setPagination((previous) =>
-      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }
-    )
-  }, [filter, sorting, filters, setPagination])
-
-  React.useEffect(() => {
-    const maxIndex = Math.max(pageCount - 1, 0)
-    setPagination((previous) =>
-      previous.pageIndex > maxIndex ? { ...previous, pageIndex: maxIndex } : previous
-    )
-  }, [pageCount, setPagination])
 }
 
 function TableBodyRows({
@@ -345,28 +310,30 @@ export function DataTable({ lineId }) {
   })
 
   /* 파생 값(렌더 편의) */
-  const visibleColumns = table.getVisibleLeafColumns()
-  const emptyStateColSpan = Math.max(visibleColumns.length, 1)
-  const totalLoaded = rows.length
-  const filteredTotal = filteredRows.length
   const statusChartData = statusChart.data ?? []
   const statusChartConfig = statusChart.config ?? {}
-  const hasNoRows = !isLoadingRows && rowsError === null && columns.length === 0
-
-  const pageCount = table.getPageCount()
-  const currentPage = pagination.pageIndex + 1
-  const totalPages = Math.max(pageCount, 1)
-  const currentPageSize = table.getRowModel().rows.length
-
-  const isRefreshing = isLoadingRows && totalLoaded > 0
-  const lastUpdatedLabel = useLastUpdatedLabel(isLoadingRows, isRefreshing)
-  const isInitialLoading = isLoadingRows && totalLoaded === 0
-
-  usePaginationGuards({
+  const {
+    visibleColumns,
+    emptyStateColSpan,
+    totalLoaded,
+    filteredTotal,
+    hasNoRows,
+    currentPage,
+    totalPages,
+    currentPageSize,
+    isRefreshing,
+    isInitialLoading,
+    lastUpdatedLabel,
+  } = useDataTablePresentation({
+    table,
+    columns,
+    rows,
+    filteredRows,
+    filters,
     filter,
     sorting,
-    filters,
-    pageCount,
+    isLoadingRows,
+    rowsError,
     setPagination,
   })
 
@@ -390,41 +357,22 @@ export function DataTable({ lineId }) {
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col">
       {/* 상단: 타이틀/리프레시 */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-lg font-semibold">
-            <IconDatabase className="size-5" />
-            {lineId} {LABELS.titleSuffix}
-            <span className="ml-2 text-[10px] font-normal text-muted-foreground self-end" aria-live="polite">
-              {LABELS.updated} {lastUpdatedLabel || "-"}
-            </span>
-          </div>
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-end gap-2">
-          <QuickFilterFavorites
-            filters={filters}
-            favorites={favorites}
-            onSaveFavorite={saveFavorite}
-            onUpdateFavorite={updateFavorite}
-            onApplyFavorite={applyFavorite}
-            onDeleteFavorite={deleteFavorite}
-            resetSignal={favoriteResetSignal}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="gap-1"
-            aria-label={LABELS.refresh}
-            title={LABELS.refresh}
-            aria-busy={isRefreshing}
-          >
-            <IconRefresh className={cn("size-3", isRefreshing && "animate-spin")} />
-            {LABELS.refresh}
-          </Button>
-        </div>
-      </div>
+      <DataTableToolbar
+        lineId={lineId}
+        labels={LABELS}
+        lastUpdatedLabel={lastUpdatedLabel}
+        isRefreshing={isRefreshing}
+        onRefresh={handleRefresh}
+        favorites={{
+          filters,
+          favorites,
+          onSaveFavorite: saveFavorite,
+          onUpdateFavorite: updateFavorite,
+          onApplyFavorite: applyFavorite,
+          onDeleteFavorite: deleteFavorite,
+          resetSignal: favoriteResetSignal,
+        }}
+      />
       <div className="mb-2">
         <QuickFilters
           sections={sections}
@@ -449,7 +397,7 @@ export function DataTable({ lineId }) {
         aria-busy={isRefreshing}
       >
         <Table
-          className="table-fixed w-full"
+          className="table-fixed w-full font-light"
           style={{ width: `${table.getTotalSize()}px`, tableLayout: "fixed" }}
           stickyHeader
         >
@@ -481,7 +429,7 @@ export function DataTable({ lineId }) {
                   return (
                     <TableHead
                       key={header.id}
-                      className={cn("relative whitespace-nowrap sticky top-0 z-10 bg-muted")}
+                      className={cn("relative whitespace-nowrap sticky top-0 z-10 bg-muted ")}
                       style={toWidthStyle(header.getSize())}
                       scope="col"
                       aria-sort={ariaSort}
@@ -532,82 +480,17 @@ export function DataTable({ lineId }) {
       </TableContainer>
 
       {/* 하단: 요약/페이지네이션 */}
-      <div className="flex mt-2 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span aria-live="polite">
-            {LABELS.showing} {numberFormatter.format(currentPageSize)} {LABELS.rows}
-            {" of "} {numberFormatter.format(filteredTotal)} {LABELS.rows}
-            {filteredTotal !== totalLoaded
-              ? `${LABELS.filteredFrom}${numberFormatter.format(totalLoaded)}${LABELS.filteredFromSuffix}`
-              : ""}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
-              aria-label={LABELS.goFirst}
-              title={LABELS.goFirst}
-            >
-              <IconChevronsLeft className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              aria-label={LABELS.goPrev}
-              title={LABELS.goPrev}
-            >
-              <IconChevronLeft className="size-4" />
-            </Button>
-            <span className="px-2 text-sm font-medium" aria-live="polite">
-              {LABELS.page} {numberFormatter.format(currentPage)} {LABELS.of} {numberFormatter.format(totalPages)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              aria-label={LABELS.goNext}
-              title={LABELS.goNext}
-            >
-              <IconChevronRight className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.setPageIndex(totalPages - 1)}
-              disabled={!table.getCanNextPage()}
-              aria-label={LABELS.goLast}
-              title={LABELS.goLast}
-            >
-              <IconChevronsRight className="size-4" />
-            </Button>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-xs text-muted-foreground">{LABELS.rowsPerPage}</span>
-            <select
-              value={pagination.pageSize}
-              onChange={(event) => table.setPageSize(Number(event.target.value))}
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
-              aria-label={LABELS.rowsPerPage}
-              title={LABELS.rowsPerPage}
-            >
-              {[15, 25, 30, 40, 50].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
+      <DataTablePagination
+        labels={LABELS}
+        numberFormatter={numberFormatter}
+        table={table}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        currentPageSize={currentPageSize}
+        filteredTotal={filteredTotal}
+        totalLoaded={totalLoaded}
+        pagination={pagination}
+      />
     </section>
   )
 }

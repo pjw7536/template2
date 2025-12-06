@@ -1,5 +1,5 @@
 /* src/styles/quill.css */
-.qna-quill {
+.voc-quill {
   width: 100%;
   min-width: 100%;
   max-width: 100%;
@@ -8,45 +8,45 @@
   overflow-y: visible;
 }
 
-.qna-quill .ql-toolbar {
+.voc-quill .ql-toolbar {
   border-color: var(--input);
   border-radius: 0.75rem 0.75rem 0 0;
   background-color: var(--muted);
 }
 
-.qna-quill .ql-toolbar button,
-.qna-quill .ql-toolbar .ql-picker,
-.qna-quill .ql-toolbar .ql-picker-item {
+.voc-quill .ql-toolbar button,
+.voc-quill .ql-toolbar .ql-picker,
+.voc-quill .ql-toolbar .ql-picker-item {
   color: var(--foreground);
 }
 
-.qna-quill .ql-toolbar .ql-stroke {
+.voc-quill .ql-toolbar .ql-stroke {
   stroke: currentColor;
 }
 
-.qna-quill .ql-toolbar .ql-fill {
+.voc-quill .ql-toolbar .ql-fill {
   fill: currentColor;
 }
 
-.qna-quill .ql-toolbar button:hover,
-.qna-quill .ql-toolbar button.ql-active,
-.qna-quill .ql-toolbar button:focus,
-.qna-quill .ql-toolbar .ql-picker-label:hover,
-.qna-quill .ql-toolbar .ql-picker-label:focus,
-.qna-quill .ql-toolbar .ql-picker-label.ql-active,
-.qna-quill .ql-toolbar .ql-picker-item:hover,
-.qna-quill .ql-toolbar .ql-picker-item.ql-selected,
-.qna-quill .ql-toolbar .ql-picker-item.ql-selected:hover {
+.voc-quill .ql-toolbar button:hover,
+.voc-quill .ql-toolbar button.ql-active,
+.voc-quill .ql-toolbar button:focus,
+.voc-quill .ql-toolbar .ql-picker-label:hover,
+.voc-quill .ql-toolbar .ql-picker-label:focus,
+.voc-quill .ql-toolbar .ql-picker-label.ql-active,
+.voc-quill .ql-toolbar .ql-picker-item:hover,
+.voc-quill .ql-toolbar .ql-picker-item.ql-selected,
+.voc-quill .ql-toolbar .ql-picker-item.ql-selected:hover {
   color: var(--primary);
 }
 
-.qna-quill .ql-toolbar .ql-picker-options {
+.voc-quill .ql-toolbar .ql-picker-options {
   background-color: var(--popover);
   border-color: var(--border);
   color: var(--foreground);
 }
 
-.qna-quill .ql-container {
+.voc-quill .ql-container {
   width: 500px;
   min-width: 100%;
   max-width: 100%;
@@ -61,7 +61,7 @@
   overscroll-behavior-x: contain;
 }
 
-.qna-quill .ql-editor {
+.voc-quill .ql-editor {
   min-height: 100%;
   max-height: 100%;
   overflow-y: auto;
@@ -73,16 +73,16 @@
   color: var(--foreground);
 }
 
-.qna-quill .ql-editor.ql-blank::before {
+.voc-quill .ql-editor.ql-blank::before {
   color: var(--muted-foreground);
 }
 
-.qna-quill:focus-within .ql-toolbar,
-.qna-quill:focus-within .ql-container {
+.voc-quill:focus-within .ql-toolbar,
+.voc-quill:focus-within .ql-container {
   border-color: var(--ring);
 }
 
-.qna-post-body {
+.voc-post-body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -91,24 +91,24 @@
   color: var(--foreground);
 }
 
-.qna-post-body p {
+.voc-post-body p {
   margin: 0;
 }
 
-.qna-post-body ul,
-.qna-post-body ol {
+.voc-post-body ul,
+.voc-post-body ol {
   margin: 0;
   padding-left: 1.25rem;
 }
 
-.qna-post-body blockquote {
+.voc-post-body blockquote {
   margin: 0;
   padding-left: 0.75rem;
   border-left: 3px solid var(--border);
   color: var(--muted-foreground);
 }
 
-.qna-post-body img {
+.voc-post-body img {
   display: block;
   max-width: 100%;
   height: auto;
@@ -119,27 +119,27 @@
   object-fit: contain;
 }
 
-.qna-post-body--resizable img {
+.voc-post-body--resizable img {
   resize: both;
   overflow: auto;
   min-width: 160px;
   min-height: 140px;
 }
 
-.qna-post-body a {
+.voc-post-body a {
   color: var(--primary);
   text-decoration: underline;
   text-decoration-thickness: 1px;
 }
 
-.qna-post-body .ql-align-center {
+.voc-post-body .ql-align-center {
   text-align: center;
 }
 
-.qna-post-body .ql-align-right {
+.voc-post-body .ql-align-right {
   text-align: right;
 }
 
-.qna-post-body .ql-align-justify {
+.voc-post-body .ql-align-justify {
   text-align: justify;
 }

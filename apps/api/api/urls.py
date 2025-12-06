@@ -4,6 +4,7 @@ from django.urls import path
 
 from .views import (
     ActivityLogView,
+    AssistantChatView,
     DroneEarlyInformView,
     FrontendRedirectView,
     HealthView,
@@ -36,6 +37,7 @@ urlpatterns = [
     path("line-dashboard/history", LineHistoryView.as_view(), name="line-dashboard-history"),
     path("line-dashboard/line-ids", LineIdListView.as_view(), name="line-dashboard-line-ids"),
     path("drone-early-inform", DroneEarlyInformView.as_view(), name="drone-early-inform"),
+    path("api/v1/assistant/chat", AssistantChatView.as_view(), name="assistant-chat"),
     path("api/v1/timeline/lines", TimelineLinesView.as_view(), name="timeline-lines"),
     path("api/v1/timeline/sdwts", TimelineSdwtView.as_view(), name="timeline-sdwts"),
     path("api/v1/timeline/prc-groups", TimelinePrcGroupView.as_view(), name="timeline-prc-groups"),

@@ -6,10 +6,9 @@ import CtttmTimeline from "./CtttmTimeline";
 import RacbTimeline from "./RacbTimeline";
 import JiraTimeline from "./JiraTimeline";
 import { useTimelineRange } from "../hooks/useTimelineRange";
+import { filterTipLogsByGroups } from "../utils/tipUtils";
 
 export default function TimelineBoard({
-  lineId,
-  eqpId,
   showLegend,
   selectedTipGroups,
   eqpLogs = [],
@@ -19,21 +18,24 @@ export default function TimelineBoard({
   jiraLogs = [],
   typeFilters,
 }) {
-  // 모든 로그를 합쳐서 range 계산
-  const allLogs = [
-    ...eqpLogs,
-    ...tipLogs,
-    ...ctttmLogs,
-    ...racbLogs,
-    ...jiraLogs,
+  const visibleTipLogs = filterTipLogsByGroups(tipLogs, selectedTipGroups);
+
+  const visibleLogs = [
+    ...(typeFilters?.EQP ? eqpLogs : []),
+    ...(typeFilters?.TIP ? visibleTipLogs : []),
+    ...(typeFilters?.CTTTM ? ctttmLogs : []),
+    ...(typeFilters?.RACB ? racbLogs : []),
+    ...(typeFilters?.JIRA ? jiraLogs : []),
   ];
-  const range = useTimelineRange(allLogs);
+
+  const range = useTimelineRange(visibleLogs);
+  const hasVisibleLogs = visibleLogs.length > 0;
 
   // 아무 데이터도 없는 경우
-  if (allLogs.length === 0) {
+  if (!hasVisibleLogs) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-500 dark:text-slate-400">
-        표시할 로그 데이터가 없습니다.
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        표시할 로그 데이터가 없습니다. 필터를 확인해주세요.
       </div>
     );
   }
@@ -45,8 +47,6 @@ export default function TimelineBoard({
         {/* EQP 타임라인 */}
         {typeFilters?.EQP && (
           <EqpTimeline
-            lineId={lineId}
-            eqpId={eqpId}
             range={range}
             showLegend={showLegend}
             showTimeAxis={true}
@@ -57,21 +57,17 @@ export default function TimelineBoard({
         {/* TIP 타임라인 */}
         {typeFilters?.TIP && (
           <TipTimeline
-            lineId={lineId}
-            eqpId={eqpId}
             range={range}
             showLegend={showLegend}
-            selectedTipGroups={selectedTipGroups}
             showTimeAxis={true}
-            tipLogs={tipLogs}
+            totalTipLogCount={tipLogs.length}
+            tipLogs={visibleTipLogs}
           />
         )}
 
         {/* CTTTM 타임라인 */}
         {typeFilters?.CTTTM && (
           <CtttmTimeline
-            lineId={lineId}
-            eqpId={eqpId}
             range={range}
             showLegend={showLegend}
             showTimeAxis={true}
@@ -82,8 +78,6 @@ export default function TimelineBoard({
         {/* RACB 타임라인 */}
         {typeFilters?.RACB && (
           <RacbTimeline
-            lineId={lineId}
-            eqpId={eqpId}
             range={range}
             showLegend={showLegend}
             showTimeAxis={true}
@@ -94,8 +88,6 @@ export default function TimelineBoard({
         {/* JIRA 타임라인 */}
         {typeFilters?.JIRA && (
           <JiraTimeline
-            lineId={lineId}
-            eqpId={eqpId}
             range={range}
             showLegend={showLegend}
             showTimeAxis={true}

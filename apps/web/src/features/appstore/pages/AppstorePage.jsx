@@ -114,7 +114,7 @@ export function AppstorePage() {
   return (
     <section className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-6 pb-6">
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-4">
+        <aside className="flex h-full flex-col gap-4">
           <Card className="rounded-2xl border bg-card shadow-sm">
             <CardHeader className="pb-2 space-y-2">
               <Badge variant="secondary" className="w-fit rounded-full bg-primary/10 text-primary">
@@ -133,12 +133,12 @@ export function AppstorePage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border bg-card shadow-sm">
+          <Card className="flex-1 rounded-2xl border bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">검색 및 필터</CardTitle>
               <CardDescription>필요한 커넥터를 빠르게 찾으세요.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex h-full flex-col gap-4">
               <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
                 <Search className="size-4 text-muted-foreground" />
                 <Input
@@ -223,7 +223,7 @@ export function AppstorePage() {
             </CardHeader>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredApps.map((app) => (
               <Card
                 key={app.name}
@@ -249,7 +249,7 @@ export function AppstorePage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-4 pt-2">
+                <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-1 pt-2">
                   <p className="text-sm leading-relaxed text-muted-foreground">{app.description}</p>
                   <div className="flex flex-wrap gap-2">
                     {app.tags.map((tag) => (
@@ -258,8 +258,7 @@ export function AppstorePage() {
                       </Badge>
                     ))}
                   </div>
-                  <div className="mt-auto flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="truncate text-muted-foreground">링크로 이동</span>
+                  <div className="mt-auto flex items-center justify-end text-xs text-muted-foreground">
                     <Button
                       asChild
                       variant="ghost"

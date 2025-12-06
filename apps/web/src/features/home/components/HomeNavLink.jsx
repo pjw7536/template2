@@ -15,7 +15,7 @@ const isExternalHref = (href) => {
   )
 }
 
-export const LandingNavLink = forwardRef(function LandingNavLink(
+export const HomeNavLink = forwardRef(function HomeNavLink(
   { href, className, onNavigate, children, target, rel, ...props },
   ref,
 ) {

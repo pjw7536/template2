@@ -1,5 +1,5 @@
-// src/features/voc/hooks/useQnaBoardState.js
-// Q&A 게시판 상태/동작을 캡슐화한 훅 (React Query 기반 데이터 소스)
+// src/features/voc/hooks/useVocBoardState.js
+// VOC 게시판 상태/동작을 캡슐화한 훅 (React Query 기반 데이터 소스)
 import * as React from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -56,7 +56,7 @@ function buildStatusCounts(posts, providedCounts) {
   }, { ...EMPTY_STATUS_COUNTS })
 }
 
-export function useQnaBoardState({ currentUser, isAdmin }) {
+export function useVocBoardState({ currentUser, isAdmin }) {
   const queryClient = useQueryClient()
 
   const [statusFilter, setStatusFilter] = React.useState(null)
@@ -68,6 +68,7 @@ export function useQnaBoardState({ currentUser, isAdmin }) {
   const [isDetailOpen, setIsDetailOpen] = React.useState(false)
   const [error, setError] = React.useState(null)
 
+  // 서버에서 VOC 글 목록과 상태 집계를 받아 클라이언트에서 정규화
   const postsQuery = useQuery({
     queryKey: vocQueryKeys.posts(),
     queryFn: fetchVocPosts,
@@ -154,6 +155,7 @@ export function useQnaBoardState({ currentUser, isAdmin }) {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }
 
+  // React Query 캐시를 한 지점에서만 갱신해 리스트/집계의 일관성을 보장
   const updatePostsCache = (updater, nextStatusCounts) => {
     queryClient.setQueryData(vocQueryKeys.posts(), (previous) => {
       const base = previous?.posts ?? posts

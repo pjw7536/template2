@@ -1,5 +1,5 @@
 // src/features/voc/constants.js
-// VOC(Q&A) 화면에서 공유하는 상태 상수
+// VOC 화면에서 공유하는 상태 상수
 
 export const STATUS_OPTIONS = [
   {

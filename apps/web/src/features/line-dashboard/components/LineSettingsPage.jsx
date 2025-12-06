@@ -471,7 +471,7 @@ export function LineSettingsPage({ lineId = "" }) {
                 return (
                   <React.Fragment key={entry.id}>
                     <TableRow>
-                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                      <TableCell className="text-center font-light">
                         {entry.lineId || "-"}
                       </TableCell>
 
@@ -485,11 +485,11 @@ export function LineSettingsPage({ lineId = "" }) {
                             className="text-center"
                           />
                         ) : (
-                          <span className="font-medium">{entry.mainStep}</span>
+                          <span className="font-light">{entry.mainStep}</span>
                         )}
                       </TableCell>
 
-                      <TableCell className="text-center">
+                      <TableCell className="text-center font-light ">
                         {isEditing ? (
                           <Input
                             value={editDraft.customEndStep ?? ""}

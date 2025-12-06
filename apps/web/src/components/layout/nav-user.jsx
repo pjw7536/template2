@@ -58,7 +58,7 @@ function normalizeUser(u) {
  * @param {Object} props
  * @param {Object} props.user               - 사용자 객체 { name, email, avatar } (느슨히 수용, normalizeUser에서 정규화)
  * @param {Function} [props.onAccount]      - "Account" 클릭 콜백
- * @param {Function} [props.onQna]          - "Q&A" 클릭 콜백
+ * @param {Function} [props.onVoc]          - "VOC" 클릭 콜백
  * @param {Function} [props.onNotifications]- "Notifications" 클릭 콜백
  * @param {Function} [props.onLogout]       - "Log out" 클릭 콜백
  * @param {Function} [props.onBilling]      - (호환성용) 구 Settings 핸들러
@@ -66,7 +66,7 @@ function normalizeUser(u) {
 export function NavUser({
   user,
   onAccount = () => { },
-  onQna,
+  onVoc,
   onNotifications = () => { },
   onLogout,
   onBilling,
@@ -88,17 +88,17 @@ export function NavUser({
       })
   }, [logout, onLogout, navigate])
 
-  const handleQna = React.useCallback(() => {
-    if (typeof onQna === "function") {
-      onQna()
+  const handleVoc = React.useCallback(() => {
+    if (typeof onVoc === "function") {
+      onVoc()
       return
     }
     if (typeof onBilling === "function") {
       onBilling()
       return
     }
-    navigate("/qna")
-  }, [navigate, onBilling, onQna])
+    navigate("/voc")
+  }, [navigate, onBilling, onVoc])
 
   // 사용자 입력 정규화 (표시 가능한 값이 없으면 숨김)
   const normalized = React.useMemo(
@@ -180,9 +180,9 @@ export function NavUser({
                 <BadgeCheck className="mr-2 size-4" aria-hidden="true" />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleQna}>
+              <DropdownMenuItem onSelect={handleVoc}>
                 <MessageSquare className="mr-2 size-4" aria-hidden="true" />
-                Q&amp;A
+                VOC
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onNotifications}>
                 <Bell className="mr-2 size-4" aria-hidden="true" />

@@ -1,15 +1,17 @@
 import { Outlet } from "react-router-dom"
 
-import Navbar from "./Navbar"
+import { ChatWidget } from "@/features/assistant"
 import { navigationItems } from "../constants"
+import HomeNavbar from "./Navbar"
 
-export function LandingLayout() {
+export function HomeLayout() {
   return (
     <div className="min-h-screen bg-background">
-      <Navbar navigationItems={navigationItems} />
+      <HomeNavbar navigationItems={navigationItems} />
       <main>
         <Outlet />
       </main>
+      <ChatWidget />
     </div>
   )
 }

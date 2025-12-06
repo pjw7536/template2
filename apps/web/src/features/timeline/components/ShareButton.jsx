@@ -39,7 +39,7 @@ export default function ShareButton() {
       <div className="relative inline-block">
         <svg
           onClick={handleShare}
-          className="w-5 h-5 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+          className="w-5 h-5 cursor-pointer text-primary transition-colors hover:text-primary/80"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -56,17 +56,15 @@ export default function ShareButton() {
 
         {/* 툴팁 */}
         {showTooltip && (
-          <div className="absolute top-1/2 left-full transform -translate-y-1/2 ml-2 px-2 py-1 text-xs text-white bg-gray-800 rounded-md whitespace-nowrap pointer-events-none">
+          <div className="pointer-events-none absolute top-1/2 left-full ml-2 -translate-y-1/2 transform whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-sm">
             URL 복사
-            {/* 툴팁 화살표 추가 (선택사항) */}
-            <div className="absolute top-1/2 right-full transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-gray-800"></div>
           </div>
         )}
       </div>
 
       {/* 토스트 메시지 */}
       {showToast && (
-        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in z-50">
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground shadow-lg animate-fade-in">
           URL이 클립보드에 복사되었습니다!
         </div>
       )}

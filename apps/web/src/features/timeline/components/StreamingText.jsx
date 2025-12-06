@@ -28,7 +28,7 @@ export default function StreamingText({ text, speed = 30 }) {
     <span className="inline-block">
       {displayedText}
       {currentIndex < text.length && (
-        <span className="inline-block w-2 h-4 bg-slate-600 dark:bg-slate-400 animate-pulse ml-0.5" />
+        <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted-foreground" />
       )}
     </span>
   );

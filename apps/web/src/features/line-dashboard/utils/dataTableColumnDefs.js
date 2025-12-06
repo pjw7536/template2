@@ -1,18 +1,143 @@
 // src/features/line-dashboard/utils/dataTableColumnDefs.js
-// 복잡한 컬럼 정의 로직을 작은 모듈로 나눠 관리하기 위한 래퍼입니다.
-// createColumnDefs 함수는 여전히 한 번에 컬럼 배열을 만들어 주지만,
-// 세부 정렬/폭/정렬방향 계산은 column-defs 하위 파일에 위임합니다.
-
 import { mergeConfig } from "./dataTableColumnConfig"
-import { resolveAlignment } from "./dataTableColumnAlignment"
-import { getSortingFnForKey } from "./dataTableColumnSorting"
 import { renderCellByKey } from "../components/DataTableColumnRenderers"
-import {
-  makeStepFlowColumn,
-  pickStepColumnsWithIndex,
-  shouldCombineSteps,
-} from "./dataTableColumnSteps"
-import { resolveColumnSize } from "./dataTableColumnWidth"
+import { renderMetroStepFlow } from "./dataTableFormatters"
+import { STEP_COLUMN_KEY_SET } from "./dataTableConstants"
+
+const ALIGNMENT_VALUES = new Set(["left", "center", "right"])
+const DEFAULT_MIN_WIDTH = 50
+const DEFAULT_WIDTH = 140
+
+function normalizeAlignment(value, fallback = "left") {
+  if (typeof value !== "string") return fallback
+  const lowered = value.toLowerCase()
+  return ALIGNMENT_VALUES.has(lowered) ? lowered : fallback
+}
+
+function inferDefaultAlignment(colKey, sampleValue) {
+  if (typeof sampleValue === "number") return "right"
+  if (isNumeric(sampleValue)) return "right"
+  if (colKey && /(_?id|count|qty|amount|number)$/i.test(colKey)) return "right"
+  return "left"
+}
+
+function resolveAlignment(colKey, config, sampleValue) {
+  const inferred = inferDefaultAlignment(colKey, sampleValue)
+  const cellAlignment = normalizeAlignment(config.cellAlign?.[colKey], inferred)
+  const headerAlignment = normalizeAlignment(config.headerAlign?.[colKey], cellAlignment)
+  return { cell: cellAlignment, header: headerAlignment }
+}
+
+function resolveColumnSize(colKey, config) {
+  const configuredWidth = Number(config.width?.[colKey])
+  const size =
+    Number.isFinite(configuredWidth) && configuredWidth > 0
+      ? configuredWidth
+      : DEFAULT_WIDTH
+
+  return { size, minSize: DEFAULT_MIN_WIDTH, maxSize: Number.MAX_SAFE_INTEGER }
+}
+
+function isNumeric(value) {
+  if (value == null || value === "") return false
+  const numeric = Number(value)
+  return Number.isFinite(numeric)
+}
+
+function tryDate(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value === "string") {
+    const timestamp = Date.parse(value)
+    return Number.isNaN(timestamp) ? null : new Date(timestamp)
+  }
+  return null
+}
+
+function cmpText(a, b) {
+  const left = a == null ? "" : String(a)
+  const right = b == null ? "" : String(b)
+  return left.localeCompare(right)
+}
+
+function cmpNumber(a, b) {
+  const left = Number(a)
+  const right = Number(b)
+  if (!Number.isFinite(left) && !Number.isFinite(right)) return 0
+  if (!Number.isFinite(left)) return -1
+  if (!Number.isFinite(right)) return 1
+  return left - right
+}
+
+function cmpDate(a, b) {
+  const left = tryDate(a)
+  const right = tryDate(b)
+  if (!left && !right) return 0
+  if (!left) return -1
+  if (!right) return 1
+  return left.getTime() - right.getTime()
+}
+
+function autoSortType(sample) {
+  if (sample == null) return "text"
+  if (isNumeric(sample)) return "number"
+  if (tryDate(sample)) return "datetime"
+  return "text"
+}
+
+function getSortingFnForKey(colKey, config, sampleValue) {
+  const requestedType = config.sortTypes?.[colKey] ?? "auto"
+  const sortType = requestedType === "auto" ? autoSortType(sampleValue) : requestedType
+
+  if (sortType === "number") {
+    return (rowA, rowB) => cmpNumber(rowA.getValue(colKey), rowB.getValue(colKey))
+  }
+
+  if (sortType === "datetime") {
+    return (rowA, rowB) => cmpDate(rowA.getValue(colKey), rowB.getValue(colKey))
+  }
+
+  return (rowA, rowB) => cmpText(rowA.getValue(colKey), rowB.getValue(colKey))
+}
+
+function pickStepColumnsWithIndex(columns) {
+  return columns
+    .map((key, index) => ({ key, index }))
+    .filter(({ key }) => STEP_COLUMN_KEY_SET.has(key))
+}
+
+function shouldCombineSteps(stepCols) {
+  if (!stepCols.length) return false
+  return (
+    stepCols.some(({ key }) => key === "main_step") ||
+    stepCols.some(({ key }) => key === "metro_steps")
+  )
+}
+
+function getSampleValueForColumns(row, columns) {
+  if (!row || typeof row !== "object" || !Array.isArray(columns)) return undefined
+  for (const { key } of columns) {
+    if (row[key] !== undefined) return row[key]
+  }
+  return undefined
+}
+
+function makeStepFlowColumn(stepCols, label, config, firstRow) {
+  const sample = getSampleValueForColumns(firstRow, stepCols)
+  const alignment = resolveAlignment("process_flow", config, sample)
+  const { size, minSize, maxSize } = resolveColumnSize("process_flow", config)
+
+  return {
+    id: "process_flow",
+    header: () => label,
+    accessorFn: (row) => row?.["main_step"] ?? row?.["metro_steps"] ?? null,
+    cell: (info) => renderMetroStepFlow(info.row.original),
+    enableSorting: false,
+    meta: { isEditable: false, alignment },
+    size,
+    minSize,
+    maxSize,
+  }
+}
 
 // 단일 컬럼 정의 객체를 생성합니다.
 function makeColumnDef(colKey, config, sampleValueFromFirstRow) {

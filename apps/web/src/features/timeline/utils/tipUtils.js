@@ -5,3 +5,16 @@ export function getTipGroupKey(log) {
     log.step || "unknown"
   }_${log.ppid || "unknown"}`;
 }
+
+export function filterTipLogsByGroups(
+  tipLogs = [],
+  selectedTipGroups = ["__ALL__"]
+) {
+  if (!Array.isArray(tipLogs) || tipLogs.length === 0) return [];
+  if (!selectedTipGroups || selectedTipGroups.includes("__ALL__")) {
+    return tipLogs;
+  }
+
+  const selectedSet = new Set(selectedTipGroups);
+  return tipLogs.filter((log) => selectedSet.has(getTipGroupKey(log)));
+}

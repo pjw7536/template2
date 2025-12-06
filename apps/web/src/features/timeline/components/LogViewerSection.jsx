@@ -69,18 +69,16 @@ export default function LogViewerSection({
   return (
     <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-md font-bold text-slate-900 dark:text-white">
+        <h2 className="text-md font-bold text-foreground">
           📊 Log Viewer
         </h2>
         <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <span className="text-slate-600 dark:text-slate-400">
-            EQPID 바로조회
-          </span>
+          <span className="text-muted-foreground">EQPID 바로조회</span>
           <input
             type="checkbox"
             checked={isDirectQuery}
             onChange={(e) => handleToggleChange(e.target.checked)}
-            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            className="h-4 w-4 rounded text-primary focus:ring-primary"
           />
         </label>
       </div>
@@ -136,12 +134,12 @@ export default function LogViewerSection({
               placeholder="EQP ID 입력..."
               disabled={isLoading}
               autoFocus
-              className="flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-xs dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-50 h-8"
+              className="flex-1 h-8 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50"
             />
             <button
               onClick={handleDirectQuery}
               disabled={isLoading || !inputEqpId.trim()}
-              className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap h-8"
+              className="h-8 whitespace-nowrap rounded-lg bg-primary px-4 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "조회중" : "조회"}
             </button>

@@ -4,6 +4,12 @@ import { DataSet } from "vis-data";
 import { useTimelineSelectionStore } from "../store/useTimelineSelectionStore";
 import { useTimelineStore } from "../store/timelineStore";
 
+/**
+ * vis-timeline 라이프사이클을 래핑하는 훅.
+ * - 한 번 만든 Timeline/DataSet 인스턴스를 재사용
+ * - 다른 타임라인들과 범위를 동기화
+ * - 전역 선택 상태와 연결
+ */
 export function useVisTimeline({ containerRef, groups, items, options }) {
   const tlRef = useRef(null);
   const currentRangeRef = useRef(null);

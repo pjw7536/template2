@@ -9,7 +9,7 @@ const DEFAULT_HERO_ACTIONS = [
   { label: "Appstore 둘러보기", href: "/appstore", variant: "outline" },
 ]
 
-const LandingPage = ({ heroActions = DEFAULT_HERO_ACTIONS }) => {
+const HomePage = ({ heroActions = DEFAULT_HERO_ACTIONS }) => {
   return (
     <>
       <HeroSection actions={heroActions} />
@@ -20,4 +20,4 @@ const LandingPage = ({ heroActions = DEFAULT_HERO_ACTIONS }) => {
   )
 }
 
-export default LandingPage
+export default HomePage

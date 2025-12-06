@@ -1,7 +1,7 @@
 import { RequireAuth } from "@/lib/auth"
 import { LineDashboardEntryPage } from "@/features/line-dashboard"
 
-const LandingEsopDashboardPage = () => {
+const HomeEsopDashboardPage = () => {
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="space-y-6">
@@ -23,4 +23,4 @@ const LandingEsopDashboardPage = () => {
   )
 }
 
-export default LandingEsopDashboardPage
+export default HomeEsopDashboardPage

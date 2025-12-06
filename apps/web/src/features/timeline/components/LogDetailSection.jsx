@@ -14,7 +14,7 @@ import JiraDetail from "./JiraDetail";
 export default function LogDetailSection({ log }) {
   if (!log) {
     return (
-      <div className="text-sm text-slate-500 dark:text-slate-400 text-center py-17">
+      <div className="text-sm text-muted-foreground text-center py-17">
         테이블이나 타임라인에서 로그를 선택하면 상세정보가 표시됩니다.
       </div>
     );
@@ -35,7 +35,7 @@ export default function LogDetailSection({ log }) {
         return <JiraDetail log={log} />;
       default:
         return (
-          <div className="col-span-2 text-slate-500 dark:text-slate-400 py-2">
+          <div className="col-span-2 text-muted-foreground py-2">
             알 수 없는 로그 타입입니다.
           </div>
         );
@@ -45,8 +45,8 @@ export default function LogDetailSection({ log }) {
   return (
     <div
       className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs
-      bg-muted border border-border rounded-lg p-2
-      text-slate-800 dark:text-slate-100 overflow-auto"
+       rounded-lg p-2
+      text-foreground overflow-auto"
     >
       {renderDetailComponent()}
     </div>

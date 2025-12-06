@@ -84,11 +84,6 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
             else "fail",
         }
 
-        # 내부 컨테이너 IP(172.18.0.1)는 저장하지 않음
-        remote_addr = request.META.get("REMOTE_ADDR")
-        if remote_addr and remote_addr != "172.18.0.1":
-            metadata["remote_addr"] = remote_addr
-
         extra_metadata: Mapping[str, Any] = context.get("extra_metadata") or {}
         metadata.update(extra_metadata)
 
