@@ -6,7 +6,7 @@ import { marqueeApps, teamMembers } from "../constants"
 
 const DEFAULT_HERO_ACTIONS = [
   { label: "대시보드로 이동", href: "/ESOP_Dashboard" },
-  { label: "Appstore 둘러보기", href: "/landing/appstore", variant: "outline" },
+  { label: "Appstore 둘러보기", href: "/appstore", variant: "outline" },
 ]
 
 const LandingPage = ({ heroActions = DEFAULT_HERO_ACTIONS }) => {

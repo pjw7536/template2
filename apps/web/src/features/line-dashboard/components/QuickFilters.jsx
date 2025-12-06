@@ -320,8 +320,8 @@ export function QuickFilterFavorites({
       setSelectedFavoriteId(nextId)
       toast.success("즐겨찾기를 업데이트했어요", {
         description: "현재 필터설정이 즐겨찾기에 저장되었습니다.",
-        icon: <BookmarkCheck className="h-5 w-5" />,
-        ...buildToastOptions({ color: "var(--primary)", duration: 1800 }),
+        icon: <BookmarkCheck className="h-5 w-5 text-[var(--normal-text)]" />,
+        ...buildToastOptions({ intent: "success", duration: 1800 }),
       })
     }
   }
@@ -339,10 +339,10 @@ export function QuickFilterFavorites({
       })
 
     if (isDuplicateName) {
-      toast.error("중복된 즐겨찾기 이름이에요", {
+      toast.warning("중복된 즐겨찾기 이름이에요", {
         description: "다른 이름으로 저장해주세요.",
-        icon: <BookmarkX className="h-5 w-5" />,
-        ...buildToastOptions({ color: "var(--destructive)", duration: 2000 }),
+        icon: <BookmarkX className="h-5 w-5 text-[var(--normal-text)]" />,
+        ...buildToastOptions({ intent: "warning", duration: 2000 }),
       })
       return
     }
@@ -352,8 +352,8 @@ export function QuickFilterFavorites({
       setSelectedFavoriteId(id)
       toast.success("즐겨찾기를 추가했어요", {
         description: "현재 필터설정이 새 즐겨찾기에 저장되었습니다.",
-        icon: <BookmarkPlus className="h-5 w-5" />,
-        ...buildToastOptions({ color: "var(--primary)", duration: 1800 }),
+        icon: <BookmarkPlus className="h-5 w-5 text-[var(--normal-text)]" />,
+        ...buildToastOptions({ intent: "success", duration: 1800 }),
       })
     }
   }

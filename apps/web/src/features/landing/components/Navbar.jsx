@@ -31,10 +31,10 @@ const Navbar = ({
 
   return (
     <header className='bg-background sticky top-0 z-50 border-b'>
-      <div className='border-b'>
+      <div className='border-b px-8'>
         <div
-          className='mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-3 sm:px-6'>
-          <div className='flex items-center gap-4'>
+          className='mx-auto flex max-w-8xl items-center justify-between gap-8 px-4 py-3 sm:px-6'>
+          <div className='flex items-center gap-4 flex-1'>
             <MenuSheet
               logoName='Job Management'
               navigationItems={navigationItems}
@@ -100,7 +100,7 @@ const Navbar = ({
               </NavigationMenuList>
             </NavigationMenu>
           </div>
-          <div className='flex items-center gap-1.5 md:gap-4'>
+          <div className='flex items-center gap-1.5 md:gap-4 flex-1 justify-end'>
             <Button variant='ghost' size='icon' className='flex md:hidden'>
               <SearchIcon />
             </Button>

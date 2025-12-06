@@ -1,5 +1,5 @@
 // src/lib/config/navigation-config.js
-import { BarChart3, SquareTerminal } from "lucide-react"
+import { BarChart3, Clock, SquareTerminal } from "lucide-react"
 
 /**
  * 내비게이션 기본 구성.

@@ -1,3 +1,5 @@
+import { Navigate } from "react-router-dom"
+
 import LandingAppstorePage from "./pages/LandingAppstorePage"
 import LandingEsopDashboardPage from "./pages/LandingEsopDashboardPage"
 import LandingPage from "./pages/LandingPage"
@@ -21,8 +23,12 @@ export const landingRoutes = [
         element: <LandingEsopDashboardPage />,
       },
       {
-        path: "landing/appstore",
+        path: "appstore",
         element: <LandingAppstorePage />,
+      },
+      {
+        path: "landing/appstore",
+        element: <Navigate to="/appstore" replace />,
       },
       {
         path: "landing/qna",

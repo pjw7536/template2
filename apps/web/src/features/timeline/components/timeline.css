@@ -1,0 +1,220 @@
+/* ───────────────────────────────────────────────
+   📅 vis-timeline 커스터마이징
+─────────────────────────────────────────────── */
+
+:root {
+  --timeline-text: rgb(var(--color-slate-800, 30 41 59));
+  --timeline-text-strong: rgb(var(--color-slate-700, 51 65 85));
+  --timeline-text-dark: rgb(var(--color-slate-50, 248 250 252));
+  --timeline-selected: rgb(var(--color-amber-400, 251 191 36));
+  --timeline-selected-soft: color-mix(
+    in srgb,
+    rgb(var(--color-amber-400, 251 191 36)) 20%,
+    transparent
+  );
+  --timeline-tooltip-bg: color-mix(
+    in srgb,
+    rgb(var(--color-slate-950, 2 6 23)) 90%,
+    transparent
+  );
+  --timeline-tooltip-text: rgb(var(--color-slate-50, 248 250 252));
+  --timeline-surface: var(--card);
+  --timeline-border: var(--border);
+}
+
+.timeline {
+  background-color: var(--timeline-surface);
+}
+
+.timeline .vis-timeline {
+  background-color: var(--timeline-surface) !important;
+  border-color: var(--timeline-border) !important;
+}
+
+.timeline .vis-panel.vis-left,
+.timeline .vis-panel.vis-center,
+.timeline .vis-panel.vis-right,
+.timeline .vis-panel.vis-bottom,
+.timeline .vis-panel.vis-top,
+.timeline .vis-labelset,
+.timeline .vis-itemset .vis-background,
+.timeline .vis-itemset .vis-foreground {
+  background-color: var(--timeline-surface) !important;
+}
+
+.timeline .vis-labelset .vis-label,
+.timeline .vis-foreground .vis-group {
+  border-color: var(--timeline-border) !important;
+}
+
+.timeline .vis-time-axis {
+  background-color: var(--timeline-surface) !important;
+}
+
+.timeline .vis-time-axis .vis-grid.vis-minor {
+  border-color: color-mix(in srgb, var(--timeline-border) 80%, transparent);
+}
+
+.timeline .vis-time-axis .vis-grid.vis-major {
+  border-color: color-mix(in srgb, var(--timeline-border) 60%, transparent);
+}
+
+.timeline .vis-label.vis-nested-group.vis-group-level-0,
+.timeline .vis-label.vis-nested-group {
+  background-color: var(--timeline-surface) !important;
+}
+
+.timeline .vis-timeline .vis-legend-background {
+  fill: var(--timeline-surface);
+  stroke: var(--timeline-border);
+}
+
+/* 공통 아이템 스타일 */
+.vis-item {
+  color: var(--timeline-text);
+  height: 100% !important;
+  box-shadow: none !important;
+  pointer-events: all !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+}
+.dark .vis-item {
+  color: var(--timeline-text-dark);
+}
+
+/* 아이템 콘텐츠 스타일 */
+.vis-item .vis-item-content {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  text-align: center;
+}
+
+/* 선택된 아이템 강조 */
+.vis-item.vis-selected {
+  outline: 1px dashed var(--timeline-selected) !important;
+  outline-offset: 0px !important;
+  background-color: var(--timeline-selected-soft) !important;
+  filter: brightness(1.1) !important;
+  z-index: 10 !important;
+}
+
+/* 상태 색상 (Tailwind 스타일 차용) */
+.vis-item.bg-red-500 {
+  background-color: rgb(var(--color-red-500));
+  border-color: rgb(var(--color-red-600));
+}
+.vis-item.bg-red-600 {
+  background-color: rgb(var(--color-red-600));
+  border-color: rgb(var(--color-red-700));
+}
+
+.vis-item.bg-green-500 {
+  background-color: rgb(var(--color-green-500));
+  border-color: rgb(var(--color-green-600));
+}
+.vis-item.bg-green-600 {
+  background-color: rgb(var(--color-green-600));
+  border-color: rgb(var(--color-green-700));
+}
+
+.vis-item.bg-blue-500 {
+  background-color: rgb(var(--color-blue-500));
+  border-color: rgb(var(--color-blue-600));
+}
+.vis-item.bg-blue-600 {
+  background-color: rgb(var(--color-blue-600));
+  border-color: rgb(var(--color-blue-700));
+}
+
+.vis-item.bg-yellow-500 {
+  background-color: rgb(var(--color-yellow-500));
+  border-color: rgb(var(--color-yellow-600));
+}
+.vis-item.bg-yellow-600 {
+  background-color: rgb(var(--color-yellow-600));
+  border-color: rgb(var(--color-yellow-700));
+}
+
+.vis-item.bg-gray-300 {
+  background-color: rgb(var(--color-gray-300));
+  border-color: rgb(var(--color-gray-400));
+}
+.vis-item.bg-gray-600 {
+  background-color: rgb(var(--color-gray-600));
+  border-color: rgb(var(--color-gray-700));
+}
+
+.vis-item.bg-amber-600 {
+  background-color: rgb(var(--color-amber-600));
+  border-color: rgb(var(--color-amber-700));
+}
+.vis-item.bg-purple-600 {
+  background-color: rgb(var(--color-purple-600));
+  border-color: rgb(var(--color-purple-700));
+}
+.vis-item.bg-orange-600 {
+  background-color: rgb(var(--color-orange-600));
+  border-color: rgb(var(--color-orange-700));
+}
+
+/* 그룹 라벨 스타일 */
+.vis-label.custom-group-label {
+  font-size: 12px !important;
+  width: 150px !important;
+  min-width: 150px !important;
+  max-width: 150px !important;
+  color: var(--timeline-text-strong);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dark .vis-label.custom-group-label {
+  color: var(--timeline-text-dark) !important;
+}
+
+/* 시간축 텍스트 스타일 */
+.vis-time-axis .vis-text,
+.vis-time-axis .vis-label {
+  font-size: 11px !important;
+  color: var(--timeline-text-strong);
+}
+.dark .vis-time-axis .vis-text,
+.dark .vis-time-axis .vis-label {
+  color: var(--timeline-text-dark) !important;
+}
+
+/* 툴팁 스타일 */
+.vis-tooltip {
+  background-color: var(--timeline-tooltip-bg) !important;
+  color: var(--timeline-tooltip-text) !important;
+  font-size: 11px !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  position: absolute !important;
+  pointer-events: none !important;
+}
+
+/* x축 없는 타임라인 */
+.no-time-axis .vis-panel.vis-bottom {
+  display: none !important;
+}
+.timeline-container.no-time-axis {
+  margin-bottom: 10px !important;
+}
+
+/* 타임라인 간격 정리 */
+.timeline-container {
+  margin-bottom: 15px !important;
+}
+.timeline-container:last-child {
+  margin-bottom: 10px !important;
+}

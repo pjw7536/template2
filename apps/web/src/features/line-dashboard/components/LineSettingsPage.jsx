@@ -45,40 +45,37 @@ const LABELS = {
   addDescription: "line_id는 선택한 값으로 자동 저장되며 수정할 수 없습니다.",
 }
 
-const SUCCESS_COLOR = "var(--chart-2)"
-const INFO_COLOR = "var(--chart-3)"
-const ERROR_COLOR = "var(--destructive)"
 const DUPLICATE_MESSAGE = "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
 
 function showCreateToast() {
   toast.success("추가 완료", {
     description: "새 조기 알림 설정이 저장되었습니다.",
-    icon: <IconPlus className="h-5 w-5" />,
-    ...buildToastOptions({ color: SUCCESS_COLOR }),
+    icon: <IconPlus className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success" }),
   })
 }
 
 function showUpdateToast() {
   toast.success("수정 완료", {
     description: "설정이 업데이트되었습니다.",
-    icon: <IconDeviceFloppy className="h-5 w-5" />,
-    ...buildToastOptions({ color: INFO_COLOR }),
+    icon: <IconDeviceFloppy className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success" }),
   })
 }
 
 function showDeleteToast() {
-  toast("삭제 완료", {
+  toast.warning("삭제 완료", {
     description: "설정이 제거되었습니다.",
-    icon: <IconTrash className="h-5 w-5" />,
-    ...buildToastOptions({ color: ERROR_COLOR }),
+    icon: <IconTrash className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "warning" }),
   })
 }
 
 function showRequestErrorToast(message) {
   toast.error("요청 실패", {
     description: message || "요청 처리 중 오류가 발생했습니다.",
-    icon: <IconX className="h-5 w-5" />,
-    ...buildToastOptions({ color: ERROR_COLOR, duration: 3200 }),
+    icon: <IconX className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "destructive", duration: 3200 }),
   })
 }
 

@@ -24,7 +24,7 @@ export function normalizeJiraKey(raw) {
 
 export function buildJiraBrowseUrl(jiraKey) {
   const key = normalizeJiraKey(jiraKey)
-  return key ? `https://jira.apple.net/browse/${key}` : null
+  return key ? `https://jira.samsungds.net/browse/${key}` : null
 }
 
 export function normalizeComment(raw) {
@@ -35,6 +35,10 @@ export function normalizeComment(raw) {
 
 export function normalizeNeedToSend(raw) {
   // needtosend은 저장 실패 시 값이 남지 않으므로 음수 상태(-1 등)는 0으로 정리한다.
+  return Math.max(0, toTinyIntFlag(raw, 0))
+}
+
+export function normalizeInstantInform(raw) {
   return Math.max(0, toTinyIntFlag(raw, 0))
 }
 

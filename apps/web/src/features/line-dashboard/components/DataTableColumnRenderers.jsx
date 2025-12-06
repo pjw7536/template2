@@ -4,12 +4,14 @@ import { ExternalLink, Check, AlertTriangle } from "lucide-react"
 
 import { CommentCell } from "./CommentCell"
 import { NeedToSendCell } from "./NeedToSendCell"
+import { InstantInformCell } from "./InstantInformCell"
 import { formatCellValue } from "../utils/dataTableFormatters"
 import { STATUS_LABELS } from "../utils/statusLabels"
 import {
   buildJiraBrowseUrl,
   getRecordId,
   normalizeComment,
+  normalizeInstantInform,
   normalizeJiraKey,
   normalizeNeedToSend,
   normalizeStatus,
@@ -66,19 +68,46 @@ const CellRenderers = {
     )
   },
 
+  instant_inform: ({ value, rowOriginal, meta }) => {
+    const recordId = getRecordId(rowOriginal)
+    if (!meta || !recordId) return formatCellValue(value)
+    const baseState = deriveFlagState(normalizeInstantInform(rowOriginal?.instant_inform), 0)
+    const isLocked = deriveFlagState(rowOriginal?.send_jira, 0).isOn
+    return (
+      <InstantInformCell
+        meta={meta}
+        recordId={recordId}
+        baseValue={baseState.numericValue}
+        rowOriginal={rowOriginal}
+        disabled={isLocked}
+        disabledReason="이미 JIRA 전송됨 (즉시인폼 불가)"
+      />
+    )
+  },
+
   needtosend: ({ value, rowOriginal, meta }) => {
     const recordId = getRecordId(rowOriginal)
     if (!meta || !recordId) return formatCellValue(value)
     const baseState = deriveFlagState(normalizeNeedToSend(rowOriginal?.needtosend), 0)
-    const isLocked = deriveFlagState(rowOriginal?.send_jira, 0).isOn
+    const sendJiraState = deriveFlagState(rowOriginal?.send_jira, 0)
+    const instantInformState = deriveFlagState(normalizeInstantInform(rowOriginal?.instant_inform), 0)
+    const isSendJiraComplete = sendJiraState.numericValue === 1
+    const isInstantInformComplete = instantInformState.numericValue === 1
+    const disabledReason = isSendJiraComplete
+      ? "이미 JIRA 전송됨 (needtosend 수정 불가)"
+      : isInstantInformComplete
+        ? "이미 즉시 인폼됨 (needtosend 수정 불가)"
+        : "needtosend 수정 불가"
     return (
       <NeedToSendCell
         meta={meta}
         recordId={recordId}
         baseValue={baseState.numericValue}
         state={baseState}
-        disabled={isLocked}
-        disabledReason="이미 JIRA 전송됨 (needtosend 수정 불가)"
+        sendJiraValue={sendJiraState.numericValue}
+        instantInformValue={instantInformState.numericValue}
+        disabled={isSendJiraComplete || isInstantInformComplete}
+        disabledReason={disabledReason}
       />
     )
   },

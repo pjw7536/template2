@@ -304,7 +304,7 @@ OIDC_PROVIDER_CONFIGURED = bool(
 # =====================
 # 허용된 리다이렉트 호스트
 # =====================
-_redirect_hosts = env_list("ALLOWED_REDIRECT_HOSTS", "appleds.net,appleds.net:8003")
+_redirect_hosts = env_list("ALLOWED_REDIRECT_HOSTS", "samsungds.net,samsungds.net:8003")
 frontend_netloc = ""
 try:
     frontend_netloc = urlparse(str(FRONTEND_BASE_URL)).netloc

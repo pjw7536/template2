@@ -10,14 +10,14 @@ export const navigationItems = [
     icon: LayoutGridIcon,
     items: [
       { title: 'ESOP Dashboard', href: '/landing/esop-dashboard' },
-      { title: 'Appstore', href: '/landing/appstore' }
+      { title: 'Timeline(개발중)', href: '/timeline' },
+      { title: 'Appstore(개발중)', href: '/appstore' },
     ]
   },
   {
     title: 'About Us',
     icon: BookOpenIcon,
     items: [
-      { title: 'Our Story', href: '#' },
       { title: 'Team', href: '#' }
     ]
   },
@@ -26,9 +26,8 @@ export const navigationItems = [
     icon: MessageSquareIcon,
     items: [
       { title: 'Q&A', href: '/landing/qna' },
-      { title: 'Sales Inquiry', href: '#' },
-      { title: 'Help Center', href: '#' },
-      { title: 'Live Chat', href: '#' }
+      { title: 'Etch Confluence', href: '#' },
+
     ]
   }
 ]
@@ -36,7 +35,7 @@ export const navigationItems = [
 
 export const teamMembers = [
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-6.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png',
     alt: 'Phillip Rothman',
     name: 'Phillip Rothman',
     role: 'Founder & CEO',
@@ -45,7 +44,7 @@ export const teamMembers = [
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
   },
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-2.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-2.png',
     alt: 'James Kenter',
     name: 'James Kenter',
     role: 'Engineering Manager',
@@ -54,7 +53,7 @@ export const teamMembers = [
     socialLinkColor: 'group-hover:text-primary',
   },
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-4.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-3.png',
     alt: 'Alena Lubin',
     name: 'Alena Lubin',
     role: 'Frontend Developer',
@@ -63,7 +62,7 @@ export const teamMembers = [
     socialLinkColor: 'group-hover:text-green-600 dark:group-hover:text-green-400',
   },
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-3.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-4.png',
     alt: 'Cristofer Kenter',
     name: 'Cristofer Kenter',
     role: 'Product Designer',
@@ -72,7 +71,7 @@ export const teamMembers = [
     socialLinkColor: 'group-hover:text-destructive',
   },
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-2.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-5.png',
     alt: 'Minji Choi',
     name: 'Minji Choi',
     role: 'Data Strategist',
@@ -81,7 +80,7 @@ export const teamMembers = [
     socialLinkColor: 'group-hover:text-amber-500 dark:group-hover:text-amber-400',
   },
   {
-    image: 'https://cdn.shadcnstudio.com/ss-assets/blocks/marketing/team/image-4.png',
+    image: 'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-6.png',
     alt: 'Ethan Moore',
     name: 'Ethan Moore',
     role: 'Solutions Architect',

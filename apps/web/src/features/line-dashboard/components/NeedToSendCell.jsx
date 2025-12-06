@@ -3,13 +3,9 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
 
-import { makeCellKey } from "../utils/dataTableCellState"
 import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
+import { makeCellKey } from "../utils/dataTableCellState"
 import { deriveFlagState, describeFlagState } from "../utils/dataTableFlagState"
-
-const SUCCESS_TOAST_COLOR = "var(--chart-2)"
-const INFO_TOAST_COLOR = "var(--chart-3)"
-const ERROR_TOAST_COLOR = "var(--destructive)"
 
 /* ============================================================================
  * NeedToSendCell (Boolean 버전)
@@ -26,22 +22,22 @@ const ERROR_TOAST_COLOR = "var(--destructive)"
 function showReserveToast() {
   toast.success("예약 성공", {
     description: "E-SOP Inform 예약 되었습니다.",
-    icon: <CalendarCheck2 className="h-5 w-5" />,
-    ...buildToastOptions({ color: SUCCESS_TOAST_COLOR, duration: 1800 }),
+    icon: <CalendarCheck2 className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success", duration: 1800 }),
   })
 }
 function showCancelToast() {
-  toast("예약 취소", {
+  toast.success("예약 취소", {
     description: "E-SOP Inform 예약 취소 되었습니다.",
-    icon: <CalendarX2 className="h-5 w-5" />,
-    ...buildToastOptions({ color: INFO_TOAST_COLOR, duration: 1800 }),
+    icon: <CalendarX2 className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success", duration: 1800 }),
   })
 }
 function showErrorToast(msg) {
   toast.error("저장 실패", {
     description: msg || "저장 중 오류가 발생했습니다.",
-    icon: <XCircle className="h-5 w-5" />,
-    ...buildToastOptions({ color: ERROR_TOAST_COLOR, duration: 3000 }),
+    icon: <XCircle className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "destructive", duration: 3000 }),
   })
 }
 
@@ -53,10 +49,17 @@ export function NeedToSendCell({
   recordId,
   baseValue, // 서버/테이블 원본값 (숫자/불리언 등)
   state,
+  sendJiraValue,
+  instantInformValue,
   disabled = false,
   disabledReason = "이미 JIRA 전송됨 (needtosend 수정 불가)",
 }) {
   const baseState = state ?? deriveFlagState(baseValue, 0)
+  const sendJiraState = deriveFlagState(sendJiraValue, 0)
+  const instantInformState = deriveFlagState(instantInformValue, 0)
+  const isLockedBySendJira = sendJiraState.numericValue === 1
+  const isLockedByInstantInform = instantInformState.numericValue === 1
+  const isDisabled = disabled || isLockedBySendJira || isLockedByInstantInform
 
   // 메타에서 임시 드래프트 값(서버 저장 전)을 우선 사용
   const draftValue = meta?.needToSendDrafts?.[recordId]
@@ -73,8 +76,10 @@ export function NeedToSendCell({
   // 토글 로직 (클릭/키보드)
   // ────────────────────────────────────────────────
   const toggle = async () => {
-    if (disabled) {
-      toast.info(disabledReason)
+    if (isDisabled) {
+      toast.info(disabledReason, {
+        ...buildToastOptions({ intent: "info", duration: 2400 }),
+      })
       return
     }
     if (isSaving) return
@@ -116,7 +121,7 @@ export function NeedToSendCell({
     }
   }
 
-  const titleText = disabled
+  const titleText = isDisabled
     ? disabledReason
     : describeFlagState(numericValue)
 
@@ -127,10 +132,10 @@ export function NeedToSendCell({
         type="button"
         onClick={toggle}
         onKeyDown={onKeyDown}
-        disabled={disabled || isSaving}
+        disabled={isDisabled || isSaving}
         role="switch"
         aria-checked={isChecked}
-        aria-disabled={disabled || isSaving}
+        aria-disabled={isDisabled || isSaving}
         aria-label={titleText}
         title={titleText}
         className={cn(
@@ -140,8 +145,8 @@ export function NeedToSendCell({
             : isChecked
               ? "bg-primary border-primary text-primary-foreground"
               : "border-border hover:border-primary hover:text-primary",
-          !disabled && !isSaving && "cursor-pointer",
-          (disabled || isSaving) && "cursor-not-allowed opacity-60"
+          !isDisabled && !isSaving && "cursor-pointer",
+          (isDisabled || isSaving) && "cursor-not-allowed opacity-60"
         )}
       >
         {isError ? <XCircle className="h-3 w-3" strokeWidth={3} /> : null}

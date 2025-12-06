@@ -70,6 +70,9 @@ export function useDataTableState({ lineId }) {
   // 셀 편집: needtosend
   const [needToSendDrafts, setNeedToSendDrafts] = React.useState({}) // { [rowId]: number }
 
+  // 셀 편집: instant_inform
+  const [instantInformDrafts, setInstantInformDrafts] = React.useState({}) // { [rowId]: number }
+
   // 업데이트 진행중/에러 상태: 키 형식은 `${rowId}:${field}`
   const [updatingCells, setUpdatingCells] = React.useState({})  // { ["1:comment"]: true, ... }
   const [updateErrors, setUpdateErrors] = React.useState({})    // { ["1:comment"]: "에러메시지", ... }
@@ -80,6 +83,7 @@ export function useDataTableState({ lineId }) {
     setCommentDrafts({})
     setCommentEditing({})
     setNeedToSendDrafts({})
+    setInstantInformDrafts({})
   }, [hydrationKey])
 
   /* ────────────────────────────────────────────────────────────────────────
@@ -167,6 +171,9 @@ export function useDataTableState({ lineId }) {
         if ("needtosend" in updates) {
           setNeedToSendDrafts((prev) => removeKey(prev, recordId))
         }
+        if ("instant_inform" in updates) {
+          setInstantInformDrafts((prev) => removeKey(prev, recordId))
+        }
 
         updateSucceeded = true
         return true
@@ -230,6 +237,19 @@ export function useDataTableState({ lineId }) {
   }, [])
 
   /* ────────────────────────────────────────────────────────────────────────
+   * instant_inform 드래프트 값 컨트롤러
+   * ──────────────────────────────────────────────────────────────────────── */
+  const setInstantInformDraftValue = React.useCallback((recordId, value) => {
+    if (!recordId) return
+    setInstantInformDrafts((prev) => ({ ...prev, [recordId]: value }))
+  }, [])
+
+  const removeInstantInformDraftValue = React.useCallback((recordId) => {
+    if (!recordId) return
+    setInstantInformDrafts((prev) => removeKey(prev, recordId))
+  }, [])
+
+  /* ────────────────────────────────────────────────────────────────────────
    * TanStack Table의 meta로 내려줄 컨트롤/상태 모음
    * - 셀 컴포넌트(CommentCell/NeedToSendCell)가 이 객체의 함수를 직접 호출
    * ──────────────────────────────────────────────────────────────────────── */
@@ -237,6 +257,7 @@ export function useDataTableState({ lineId }) {
     commentDrafts,
     commentEditing,
     needToSendDrafts,
+    instantInformDrafts,
     updatingCells,
     updateErrors,
     cellIndicators,
@@ -246,6 +267,8 @@ export function useDataTableState({ lineId }) {
     setCommentEditingState,
     setNeedToSendDraftValue,
     removeNeedToSendDraftValue,
+    setInstantInformDraftValue,
+    removeInstantInformDraftValue,
     handleUpdate,
   }
 

@@ -12,26 +12,32 @@ import {
 export const lineDashboardRoutes = [
   {
     path: "ESOP_Dashboard",
+    caseSensitive: false,
     element: <LineDashboardEntryPage />,
   },
   {
     path: "ESOP_Dashboard/:lineId",
+    caseSensitive: false,
     element: <LineDashboardLandingPage />,
   },
   {
     path: "ESOP_Dashboard/status/:lineId",
+    caseSensitive: false,
     element: <LineDashboardStatusPage />,
   },
   {
     path: "ESOP_Dashboard/history/:lineId",
+    caseSensitive: false,
     element: <LineDashboardHistoryPage />,
   },
   {
     path: "ESOP_Dashboard/settings/:lineId",
+    caseSensitive: false,
     element: <LineDashboardSettingsPage />,
   },
   {
     path: "ESOP_Dashboard/overview",
+    caseSensitive: false,
     element: <LineDashboardOverviewPage />,
   },
 ]

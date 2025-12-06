@@ -75,6 +75,7 @@ class DroneSOPV3(models.Model):
     user_sdwt_prod = models.CharField(max_length=50, null=True, blank=True)
     defect_url = models.TextField(null=True, blank=True)
     send_jira = models.SmallIntegerField(default=0)
+    instant_inform = models.SmallIntegerField(default=0)
     needtosend = models.SmallIntegerField(default=1)
     custom_end_step = models.CharField(max_length=50, null=True, blank=True)
     inform_step = models.CharField(max_length=50, null=True, blank=True)

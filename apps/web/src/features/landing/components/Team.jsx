@@ -92,7 +92,7 @@ const Team = ({ teamMembers }) => {
         </div>
 
         {/* Team Members */}
-        <div className='grid gap-x-6 gap-y-20 sm:grid-cols-6 lg:grid-cols-5'>
+        <div className='grid gap-x-6 gap-y-20 sm:grid-cols-6 lg:grid-cols-7'>
           {teamMembers.map((member, index) => {
             const isWide = index >= teamMembers.length - 2
             return (

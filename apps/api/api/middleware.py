@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import Any, Dict, Iterable, Mapping, Optional
 
 from django.http import HttpRequest, HttpResponse
@@ -212,6 +213,31 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
             if old_value is None and new_value is None:
                 continue
 
-            normalized[field] = {"old": old_value, "new": new_value}
+            normalized[field] = {
+                "old": self._sanitize_json_value(old_value),
+                "new": self._sanitize_json_value(new_value),
+            }
 
         return normalized or None
+
+    def _sanitize_json_value(self, value: Any) -> Any:
+        """ActivityLog 메타데이터에 저장하기 위해 JSON 직렬화 가능한 값으로 변환."""
+
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8")
+            except Exception:
+                return value.decode("utf-8", errors="replace")
+        if isinstance(value, Mapping):
+            return {k: self._sanitize_json_value(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._sanitize_json_value(v) for v in value]
+
+        # json.dumps 가능 여부를 검사하여 불가능하면 문자열로 변환
+        try:
+            json.dumps(value)
+            return value
+        except TypeError:
+            return str(value)

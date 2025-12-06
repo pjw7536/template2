@@ -10,6 +10,7 @@ import { RouteErrorPage, errorRoutes } from "@/features/errors"
 import { landingRoutes } from "@/features/landing"
 import { lineDashboardRoutes } from "@/features/line-dashboard"
 import { modelsRoutes } from "@/features/models"
+import { TimelineLayout, timelineRoutes } from "@/features/timeline"
 import { vocRoutes } from "@/features/voc"
 
 const protectedAppRoutes = {
@@ -27,6 +28,16 @@ const protectedAppRoutes = {
   ],
 }
 
+const timelineProtectedRoutes = {
+  element: <AuthAutoLoginGate />,
+  children: [
+    {
+      element: <TimelineLayout />,
+      children: timelineRoutes,
+    },
+  ],
+}
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -35,6 +46,7 @@ export const router = createBrowserRouter([
       ...landingRoutes,
       ...authRoutes,
       protectedAppRoutes,
+      timelineProtectedRoutes,
       ...errorRoutes,
     ],
   },

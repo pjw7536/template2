@@ -153,7 +153,7 @@ class TablesView(APIView):
 class TableUpdateView(APIView):
     """임의 테이블의 일부분을 PATCH로 갱신."""
 
-    ALLOWED_UPDATE_COLUMNS = {"comment", "needtosend"}
+    ALLOWED_UPDATE_COLUMNS = {"comment", "needtosend", "instant_inform", "status"}
 
     def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         payload = parse_json_body(request)
@@ -264,6 +264,10 @@ class TableUpdateView(APIView):
             return "" if value is None else str(value)
         if key == "needtosend":
             return TableUpdateView._coerce_smallint_flag(value)
+        if key == "instant_inform":
+            return TableUpdateView._coerce_smallint_flag(value)
+        if key == "status":
+            return "" if value is None else str(value)
         return value
 
     @staticmethod

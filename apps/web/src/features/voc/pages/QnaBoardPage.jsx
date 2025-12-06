@@ -6,9 +6,11 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Loader2,
   MessageSquare,
   Pencil,
   PlusCircle,
+  RefreshCw,
   Reply,
   Trash2,
 } from "lucide-react"
@@ -116,22 +118,18 @@ function PostContent({ content, className = "", allowResize = false }) {
 
 export function QnaBoardPage() {
   const { user } = useAuth()
-  const currentUser = React.useMemo(() => {
-    const name = user?.name || user?.email || "로그인 사용자"
-    const id = user?.id || user?.email || name
-    const roles = Array.isArray(user?.roles) ? user.roles : []
-    return { id, name, roles }
-  }, [user])
-
-  const isAdmin = React.useMemo(
-    () =>
-      currentUser.roles.some((role) => {
-        if (typeof role !== "string") return false
-        const lower = role.toLowerCase()
-        return lower === "admin" || lower === "administrator"
-      }),
-    [currentUser.roles],
-  )
+  const currentUserName = user?.name || user?.email || "로그인 사용자"
+  const currentUserRoles = Array.isArray(user?.roles) ? user.roles : []
+  const currentUser = {
+    id: user?.id || user?.email || currentUserName,
+    name: currentUserName,
+    roles: currentUserRoles,
+  }
+  const isAdmin = currentUserRoles.some((role) => {
+    if (typeof role !== "string") return false
+    const lower = role.toLowerCase()
+    return lower === "admin" || lower === "administrator"
+  })
 
   const {
     statusCounts,
@@ -168,7 +166,14 @@ export function QnaBoardPage() {
     reload,
     isSubmitting,
     isUpdating,
+    isRefreshing,
+    isReplying,
   } = useQnaBoardState({ currentUser, isAdmin })
+
+  const totalPosts = Object.values(statusCounts || {}).reduce(
+    (sum, count) => sum + (Number.isFinite(count) ? count : 0),
+    0,
+  )
 
   const handleCreatePost = React.useCallback(
     async (event) => {
@@ -221,6 +226,12 @@ export function QnaBoardPage() {
     setDeleteTarget(null)
   }, [deletePost, deleteTarget])
 
+  const clearStatusFilter = React.useCallback(() => {
+    if (statusFilter) {
+      toggleStatusFilter(statusFilter)
+    }
+  }, [statusFilter, toggleStatusFilter])
+
   const sanitizedDraft = React.useMemo(
     () => sanitizeContentHtml(form.content),
     [form.content],
@@ -233,6 +244,8 @@ export function QnaBoardPage() {
 
   const isSubmitDisabled = isSubmitting || !form.title.trim() || !hasDraftContent
   const canEditSelected = selectedPost ? canDeletePost(selectedPost) : false
+  const replyDraftValue = selectedPost ? replyDrafts[selectedPost.id] || "" : ""
+  const isReplyDisabled = !replyDraftValue.trim() || isReplying
 
   const handleSaveEdit = React.useCallback(async () => {
     if (!selectedPost) return
@@ -256,77 +269,106 @@ export function QnaBoardPage() {
   }, [selectedPost])
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)] flex-col gap-2 px-2">
-      <Card>
+    <div
+      className="flex min-h-[calc(100vh-110px)] flex-1 flex-col gap-3 overflow-hidden px-1 sm:px-2"
+    >
+      <Card className="flex-shrink-0">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-5">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <MessageSquare className="size-5" aria-hidden="true" />
               </div>
-              <div>
+              <div className="space-y-1">
                 <CardTitle>Q&amp;A 게시판</CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm text-muted-foreground">
                   문의사항 남겨 주시면 빠르게 답변드리겠습니다.
                 </CardDescription>
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full bg-muted px-2 py-1 text-foreground shadow-xs">
+                총 {totalPosts}건의 문의
+              </span>
+              {isRefreshing ? (
+                <span className="inline-flex items-center gap-1 text-primary">
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  최신 상태로 동기화 중
+                </span>
+              ) : null}
+            </div>
           </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="self-start sm:ml-auto">
-                <PlusCircle className="size-4" aria-hidden="true" />
-                새 글 작성
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="w-[min(1100px,calc(100%-2rem))] min-w-[min(1100px,calc(100%-2rem))] max-w-[min(1100px,calc(100%-2rem))] h-[80vh] min-h-[80vh] max-h-[80vh] overflow-y-auto overflow-x-hidden">
-              <DialogHeader>
-                <DialogTitle>새 글 작성</DialogTitle>
-              </DialogHeader>
-              <form className="space-y-4" onSubmit={handleCreatePost}>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="qna-title">
-                    제목
-                  </label>
-                  <Input
-                    id="qna-title"
-                    value={form.title}
-                    onChange={(event) => updateForm("title", event.target.value)}
-                    placeholder="무엇을 도와드릴까요?"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    className="text-sm font-medium text-foreground"
-                    id="qna-content-label"
-                    htmlFor="qna-content-editor"
-                  >
-                    내용
-                  </label>
-                  <RichTextEditor
-                    id="qna-content-editor"
-                    value={form.content}
-                    onChange={(value) => updateForm("content", value)}
-                    modules={QUILL_MODULES}
-                    formats={QUILL_FORMATS}
-                    placeholder="상세한 내용을 적어 주세요."
-                    ariaLabelledby="qna-content-label"
-                  />
-                </div>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:ml-auto">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => reload()}
+              disabled={isLoading || isRefreshing}
+              aria-label="VOC 게시판 새로고침"
+              title="새로고침"
+            >
+              {isRefreshing ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="size-4" aria-hidden="true" />
+              )}
+            </Button>
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="self-start sm:ml-auto">
+                  <PlusCircle className="size-4" aria-hidden="true" />
+                  새 글 작성
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[min(1100px,calc(100%-2rem))] min-w-[min(1100px,calc(100%-2rem))] max-w-[min(1100px,calc(100%-2rem))] h-[80vh] min-h-[80vh] max-h-[80vh] overflow-y-auto overflow-x-hidden">
+                <DialogHeader>
+                  <DialogTitle>새 글 작성</DialogTitle>
+                </DialogHeader>
+                <form className="space-y-4" onSubmit={handleCreatePost}>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="qna-title">
+                      제목
+                    </label>
+                    <Input
+                      id="qna-title"
+                      value={form.title}
+                      onChange={(event) => updateForm("title", event.target.value)}
+                      placeholder="무엇을 도와드릴까요?"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      className="text-sm font-medium text-foreground"
+                      id="qna-content-label"
+                      htmlFor="qna-content-editor"
+                    >
+                      내용
+                    </label>
+                    <RichTextEditor
+                      id="qna-content-editor"
+                      value={form.content}
+                      onChange={(value) => updateForm("content", value)}
+                      modules={QUILL_MODULES}
+                      formats={QUILL_FORMATS}
+                      placeholder="상세한 내용을 적어 주세요."
+                      ariaLabelledby="qna-content-label"
+                    />
+                  </div>
 
-                <DialogFooter>
-                  <Button type="button" variant="ghost" onClick={resetForm} disabled={isSubmitting}>
-                    초기화
-                  </Button>
-                  <Button type="submit" disabled={isSubmitDisabled}>
-                    <PlusCircle className="size-4" aria-hidden="true" />
-                    {isSubmitting ? "등록 중..." : "등록"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={resetForm} disabled={isSubmitting}>
+                      초기화
+                    </Button>
+                    <Button type="submit" disabled={isSubmitDisabled}>
+                      <PlusCircle className="size-4" aria-hidden="true" />
+                      {isSubmitting ? "등록 중..." : "등록"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           {error ? (
@@ -337,7 +379,42 @@ export function QnaBoardPage() {
               </Button>
             </div>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>상태별 문의 현황</span>
+              <span className="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground shadow-xs">
+                {statusFilter ? `${statusFilter}만 보기` : "전체 보기"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearStatusFilter}
+                disabled={!statusFilter}
+              >
+                필터 해제
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <button
+              type="button"
+              onClick={clearStatusFilter}
+              className={`rounded-lg border px-4 py-2 text-left shadow-xs transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${!statusFilter ? "border-primary bg-primary/10" : "bg-muted/40"
+                }`}
+              aria-pressed={!statusFilter}
+              aria-label="모든 상태 보기"
+            >
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>전체</span>
+                <Badge variant="outline" className="border-primary/40 text-[11px]">
+                  all
+                </Badge>
+              </div>
+              <div className="mt-2 text-2xl font-semibold">{totalPosts}</div>
+            </button>
             {STATUS_OPTIONS.map((option) => (
               <button
                 type="button"
@@ -360,23 +437,29 @@ export function QnaBoardPage() {
         </CardContent>
       </Card>
 
-      <section className="flex w-full flex-1 flex-col gap-2">
-        <TableContainer className="w-full flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-lg border bg-background">
+      <section className="flex w-full flex-1 min-h-0 flex-col gap-3 overflow-hidden">
+        <TableContainer
+          className="w-full flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-lg border bg-background"
+          aria-busy={isLoading || isRefreshing}
+        >
           <Table stickyHeader className="table-fixed [&_th]:text-center [&_td]:text-center">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[70px]">No</TableHead>
-                <TableHead className="w-[42%] min-w-[240px]">제목</TableHead>
+                <TableHead className="w-[50%] min-w-[280px]">제목</TableHead>
                 <TableHead className="w-[120px]">상태</TableHead>
-                <TableHead className="w-[140px]">작성자</TableHead>
-                <TableHead className="w-[160px]">작성일</TableHead>
+                <TableHead className="w-[120px]">작성자</TableHead>
+                <TableHead className="w-[150px]">작성일</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
-                    데이터를 불러오는 중입니다...
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      <span>VOC 게시글을 불러오는 중입니다...</span>
+                    </span>
                   </TableCell>
                 </TableRow>
               ) : filteredPosts.length === 0 ? (
@@ -402,14 +485,14 @@ export function QnaBoardPage() {
                       <TableCell className="w-[90px] text-sm font-semibold text-muted-foreground">
                         {displayNumber}
                       </TableCell>
-                      <TableCell className="w-[42%] min-w-[240px] font-medium">
+                      <TableCell className="w-[50%] min-w-[280px] font-medium">
                         {post.title}
                       </TableCell>
                       <TableCell className="w-[120px]">
                         <StatusBadge status={post.status} />
                       </TableCell>
-                      <TableCell className="w-[140px]">{post.author?.name || "작성자"}</TableCell>
-                      <TableCell className="w-[160px] text-xs text-muted-foreground">
+                      <TableCell className="w-[120px]">{post.author?.name || "작성자"}</TableCell>
+                      <TableCell className="w-[150px] text-xs text-muted-foreground">
                         {formatTimestamp(post.createdAt)}
                       </TableCell>
                     </TableRow>
@@ -424,9 +507,20 @@ export function QnaBoardPage() {
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">
               {isLoading
-                ? "Loading VOC posts..."
-                : `Showing ${visiblePosts.length} rows of ${filteredPosts.length} rows`}
+                ? "VOC 게시글을 불러오는 중입니다..."
+                : `총 ${filteredPosts.length}건 중 ${visiblePosts.length}건 표시`}
             </span>
+            {statusFilter ? (
+              <Badge variant="secondary" className="text-[11px]">
+                {statusFilter} 상태
+              </Badge>
+            ) : null}
+            {isRefreshing ? (
+              <span className="inline-flex items-center gap-1 text-primary">
+                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                새로고침 중
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <div className="flex items-center gap-1">
@@ -605,6 +699,7 @@ export function QnaBoardPage() {
                 <PostContent
                   content={selectedPost.content}
                   className="min-h-[160px] max-h-[60vh]"
+                  allowResize
                 />
               )}
               <div className="space-y-7 rounded-md bg-muted/30 px-3 py-1">
@@ -627,18 +722,24 @@ export function QnaBoardPage() {
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Input
-                  value={replyDrafts[selectedPost.id] || ""}
+                  value={replyDraftValue}
                   onChange={(event) => updateReplyDraft(selectedPost.id, event.target.value)}
                   placeholder="답변을 남겨주세요"
+                  disabled={isReplying}
                 />
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   onClick={() => addReply(selectedPost.id)}
+                  disabled={isReplyDisabled}
                 >
-                  <Reply className="size-4" aria-hidden="true" />
-                  답변 등록
+                  {isReplying ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Reply className="size-4" aria-hidden="true" />
+                  )}
+                  {isReplying ? "등록 중..." : "답변 등록"}
                 </Button>
               </div>
             </>

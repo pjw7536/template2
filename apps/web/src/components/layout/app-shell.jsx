@@ -10,14 +10,34 @@ import { AppSidebarProvider } from "./app-sidebar-provider"
 import { AppHeader } from "./app-header"
 import { AppSidebar } from "./app-sidebar"
 
-export function AppShell({ lineOptions, navigation, children }) {
+export function AppShell({
+  lineOptions,
+  navigation,
+  children,
+  contentMaxWidthClass = "max-w-10xl",
+  mainOverflowClass = "overflow-auto",
+}) {
   return (
     <AppSidebarProvider>
       <AppSidebar lineOptions={lineOptions} navigation={navigation} />
       <SidebarInset>
         <AppHeader />
-        <main className="flex-1 min-h-0 min-w-0 overflow-auto px-4 pb-6 pt-2">
-          <div className="mx-auto flex h-full w-full max-w-10xl flex-col gap-4">
+        <main
+          className={[
+            "flex-1 min-h-0 min-w-0 px-4 pb-6 pt-2",
+            mainOverflowClass,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <div
+            className={[
+              "mx-auto flex h-full w-full flex-col gap-4",
+              contentMaxWidthClass,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             {children}
           </div>
         </main>

@@ -40,7 +40,7 @@ const HeroSection = () => {
       <div
         className='mx-auto flex max-w-7xl flex-col items-center gap-8 px-4 sm:gap-16 sm:px-6 lg:gap-18 lg:px-8'>
         {/* Hero Content */}
-        <div className='flex flex-col items-center gap-4 text-center'>
+        <div className='flex flex-col items-center gap-5 text-center'>
           <Badge variant='outline' className='text-sm font-normal'>
             Our Solution
           </Badge>
@@ -58,8 +58,7 @@ const HeroSection = () => {
 
         </div>
         <div ref={containerRef} className='relative flex w-full flex-col items-center'>
-          <div
-            className='flex w-full max-w-4xl items-center justify-between max-md:hidden'>
+          <div className='flex w-full max-w-4xl items-start justify-between max-md:hidden h-18'>
             <div className='flex items-center gap-30'>
               <div
                 ref={iconRef1}
@@ -68,24 +67,24 @@ const HeroSection = () => {
               </div>
               <span ref={spanRef1} className='size-0.5 max-md:hidden'></span>
               <div className="flex flex-col items-center gap-4 text-xl font-semibold text-foreground">
-                <div className="flex items-start justify-center gap-8 text-lg font-semibold">
+                <div className="flex items-center pl-7 gap-10 text-lg font-semibold">
 
                   {/* 사람존중 */}
                   <div className="flex flex-col items-center gap-1">
                     <HeartHandshake className="w-6 h-6" style={{ color: "var(--primary)" }} />
-                    <span>사람존중</span>
+                    <span className='text-sm'>사람존중</span>
                   </div>
 
                   {/* 다름의인정 */}
                   <div className="flex flex-col items-center gap-1">
                     <Puzzle className="w-6 h-6" style={{ color: "var(--primary)" }} />
-                    <span>다름의인정</span>
+                    <span className='text-sm'>다름의인정</span>
                   </div>
 
                   {/* Again열정 */}
                   <div className="flex flex-col items-center gap-1">
                     <Flame className="w-6 h-6" style={{ color: "var(--primary)" }} />
-                    <span>Again열정</span>
+                    <span className='text-sm'>Again열정</span>
                   </div>
 
                 </div>
@@ -135,7 +134,7 @@ const HeroSection = () => {
             </div>
           </div>
           <div
-            className='flex w-full max-w-4xl items-center justify-between max-md:hidden'>
+            className='flex w-full max-w-4xl items-center justify-between max-md:hidden h-18'>
             <div className='flex items-center gap-30'>
               <div
                 ref={iconRef6}

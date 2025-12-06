@@ -22,5 +22,8 @@ export function useLineOptionsQuery() {
     queryKey: lineDashboardQueryKeys.lineOptions(),
     queryFn: getDistinctLineIds,
     select: toLineOptions,
+    // Keep the landing entry page from "refreshing" when returning to the tab
+    // by disabling automatic refetch on window focus.
+    refetchOnWindowFocus: false,
   })
 }

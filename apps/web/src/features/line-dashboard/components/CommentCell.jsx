@@ -12,8 +12,9 @@ import {
 import { toast } from "sonner"
 import { CheckCircle2, XCircle } from "lucide-react"
 
-import { makeCellKey } from "../utils/dataTableCellState"
 import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
+import { makeCellKey } from "../utils/dataTableCellState"
+import { composeComment, splitComment } from "../utils/commentUtils"
 
 /* ============================================================================
  * 초보자용 요약
@@ -26,33 +27,20 @@ import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
  * - meta.*(상위 훅/컨텍스트에서 내려온 API)를 사용해 상태/업데이트를 처리합니다.
  * ========================================================================== */
 
-/** 내부 마커(보이지 않는 후행 데이터)를 분리하기 위한 상수 */
-const COMMENT_MARK = "$@$"
-const SUCCESS_TOAST_COLOR = "var(--chart-2)"
-const ERROR_TOAST_COLOR = "var(--destructive)"
-
 function showCommentSavedToast() {
   toast.success("저장 성공", {
     description: "Comment가 저장되었습니다.",
-    icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-    ...buildToastOptions({ color: SUCCESS_TOAST_COLOR, duration: 2000 }),
+    icon: <CheckCircle2 className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success", duration: 2000 }),
   })
 }
 
 function showCommentErrorToast(message) {
   toast.error("저장 실패", {
     description: message || "저장 중 오류가 발생했습니다.",
-    icon: <XCircle className="h-5 w-5 text-red-500" />,
-    ...buildToastOptions({ color: ERROR_TOAST_COLOR, duration: 3000 }),
+    icon: <XCircle className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "destructive", duration: 3000 }),
   })
-}
-
-/** comment 문자열에서 "보이는 부분"과 "마커 포함 뒤꼬리"를 분리합니다. */
-function parseComment(raw) {
-  const s = typeof raw === "string" ? raw : ""
-  const idx = s.indexOf(COMMENT_MARK)
-  if (idx === -1) return { visibleText: s, suffixWithMarker: "" }
-  return { visibleText: s.slice(0, idx), suffixWithMarker: s.slice(idx) }
 }
 
 /** 인디케이터 상태를 안전하게 읽습니다. (없으면 undefined) */
@@ -68,7 +56,7 @@ function getIndicatorStatus(meta, recordId, field) {
  */
 export function CommentCell({ meta, recordId, baseValue }) {
   // 원본 값에서 보이는 텍스트와 suffix(마커 포함)를 분리
-  const { visibleText: baseVisibleText, suffixWithMarker } = parseComment(baseValue)
+  const { visibleText: baseVisibleText, suffixWithMarker } = splitComment(baseValue)
 
   // 편집 중 여부 / 드래프트 값(입력값)
   const isEditing = Boolean(meta.commentEditing[recordId])
@@ -134,7 +122,7 @@ export function CommentCell({ meta, recordId, baseValue }) {
   /** 💾 저장(보이는 텍스트 + suffix 재조합) */
   const handleSave = async () => {
     const nextVisible = draftValue ?? baseVisibleText
-    const composed = `${nextVisible}${suffixWithMarker}`
+    const composed = composeComment(nextVisible, suffixWithMarker)
 
     // 값이 실제로 바뀌지 않았다면 서버 호출 없이 그냥 닫기
     const original = typeof baseValue === "string" ? baseValue : ""

@@ -34,7 +34,7 @@ function makeColumnDef(colKey, config, sampleValueFromFirstRow) {
     header: () => label,
     accessorFn: (row) => row?.[colKey],
     meta: {
-      isEditable: colKey === "comment" || colKey === "needtosend",
+      isEditable: colKey === "comment" || colKey === "needtosend" || colKey === "instant_inform",
       alignment,
     },
     cell: (info) => renderCellByKey(colKey, info),
