@@ -76,7 +76,7 @@ const TeamMemberCard = ({ member, index, isWide }) => {
 const Team = ({ teamMembers }) => {
   return (
     <section className='py-8 sm:py-16 lg:py-24'>
-      <div className='mx-auto max-w-5xl px-4 sm:px-6 lg:px-8'>
+      <div className='mx-auto max-w-6xl px-4 sm:px-6 lg:px-8'>
         <div className='mb-20 space-y-4 text-center lg:mb-24'>
           <div>
             <Badge variant='outline' className='text-sm font-normal'>

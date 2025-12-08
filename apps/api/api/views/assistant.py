@@ -124,6 +124,16 @@ class AssistantChatView(APIView):
         if not isinstance(username, str) or not username.strip():
             return JsonResponse({"error": "username이 필요합니다."}, status=400)
 
+        email_raw = getattr(request.user, "email", "")
+        if not isinstance(email_raw, str) or not email_raw.strip():
+            return JsonResponse({"error": "email이 필요합니다."}, status=400)
+
+        email_local_part = email_raw.strip().split("@", 1)[0].strip()
+        if not email_local_part:
+            return JsonResponse({"error": "email이 필요합니다."}, status=400)
+
+        user_header_id = email_local_part
+
         room_id_raw = payload.get("roomId") or payload.get("room_id")
         room_id = _normalize_room_id(room_id_raw)
 
@@ -148,7 +158,10 @@ class AssistantChatView(APIView):
         contexts_used: List[str] = []
         is_dummy = False
         try:
-            chat_result = assistant_chat_service.generate_reply(prompt_clean)
+            chat_result = assistant_chat_service.generate_reply(
+                prompt_clean,
+                user_header_id=user_header_id,
+            )
             reply = chat_result.reply.strip() if isinstance(chat_result.reply, str) else ""
             contexts_used = chat_result.contexts
             is_dummy = getattr(chat_result, "is_dummy", False)

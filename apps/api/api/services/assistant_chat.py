@@ -324,7 +324,13 @@ class AssistantChatService:
         except (KeyError, IndexError, TypeError) as exc:
             raise AssistantRequestError(f"LLM 응답 포맷이 기대와 다릅니다. raw={resp_json!r}") from exc
 
-    def _call_llm(self, session: requests.Session, question: str, contexts: List[str]) -> Tuple[str, Dict[str, Any]]:
+    def _call_llm(
+        self,
+        session: requests.Session,
+        question: str,
+        contexts: List[str],
+        user_header_id: Optional[str] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
         if not self.config.llm_url:
             raise AssistantConfigError("LLM URL 설정이 비어 있습니다.")
         if not self.config.llm_credential:
@@ -337,13 +343,15 @@ class AssistantChatService:
             "Prompt-Msg-Id": str(uuid.uuid4()),
             "Completion-Msg-Id": str(uuid.uuid4()),
         }
+        if user_header_id:
+            headers["User-Id"] = user_header_id
 
         payload = self._generate_llm_payload(question, contexts)
         resp_json = self._post(session, self.config.llm_url, headers, payload)
         reply = self._extract_llm_reply(resp_json)
         return reply, resp_json
 
-    def generate_reply(self, question: str) -> AssistantChatResult:
+    def generate_reply(self, question: str, *, user_header_id: Optional[str] = None) -> AssistantChatResult:
         normalized_question = question.strip()
         if not normalized_question:
             raise AssistantRequestError("질문이 비어 있습니다.")
@@ -353,7 +361,12 @@ class AssistantChatService:
 
         with requests.Session() as session:
             contexts, rag_response = self._retrieve_documents(session, normalized_question)
-            reply, llm_response = self._call_llm(session, normalized_question, contexts)
+            reply, llm_response = self._call_llm(
+                session,
+                normalized_question,
+                contexts,
+                user_header_id=user_header_id,
+            )
 
         return AssistantChatResult(
             reply=reply,

@@ -330,9 +330,9 @@ export function ChatWidget() {
                     key={message.id}
                     className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}
                   >
-                    <div
+                    <pre
                       className={[
-                        "max-w-[80%] rounded-2xl px-4 py-2 text-sm shadow-sm",
+                        "m-0 max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-sm shadow-sm font-mono",
                         isUser
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted text-foreground",
@@ -341,7 +341,7 @@ export function ChatWidget() {
                         .join(" ")}
                     >
                       {message.content}
-                    </div>
+                    </pre>
                   </div>
                 )
               })}
