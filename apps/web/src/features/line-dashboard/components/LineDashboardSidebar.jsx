@@ -1,4 +1,4 @@
-// src/components/layout/app-sidebar.jsx
+// src/features/line-dashboard/components/LineDashboardSidebar.jsx
 import { NavProjects } from "./nav-projects"
 import { NavUser } from "./nav-user"
 import { TeamSwitcher } from "./team-switcher"
@@ -12,7 +12,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export function AppSidebar({ lineOptions, navigation, ...props }) {
+export function LineDashboardSidebar({ lineOptions, navigation, ...props }) {
   const navMain = Array.isArray(navigation?.navMain) ? navigation.navMain : []
   const projects = Array.isArray(navigation?.projects) ? navigation.projects : []
   const teams = Array.isArray(lineOptions) ? lineOptions : []

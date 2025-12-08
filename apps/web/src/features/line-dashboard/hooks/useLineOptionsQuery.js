@@ -17,7 +17,9 @@ function toLineOptions(rawLineIds) {
   return Array.from(new Set(normalized))
 }
 
-export function useLineOptionsQuery() {
+export function useLineOptionsQuery(options = {}) {
+  const { enabled = true } = options
+
   return useQuery({
     queryKey: lineDashboardQueryKeys.lineOptions(),
     queryFn: getDistinctLineIds,
@@ -25,5 +27,6 @@ export function useLineOptionsQuery() {
     // Keep the home entry page from "refreshing" when returning to the tab
     // by disabling automatic refetch on window focus.
     refetchOnWindowFocus: false,
+    enabled,
   })
 }

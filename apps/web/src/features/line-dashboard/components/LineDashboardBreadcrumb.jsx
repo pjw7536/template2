@@ -1,35 +1,16 @@
-// src/components/layout/dynamic-breadcrumb.jsx
-/**
- * DynamicBreadcrumb
- * -----------------------------------------------------------------------------
- * - 현재 URL 경로를 "/" 기준으로 잘라 "홈 > 섹션 > 상세" 형태의 breadcrumb를 만들어 줍니다.
- * - 마지막 항목은 현재 페이지이므로 <BreadcrumbPage>로 표시하고,
- *   마지막이 아닌 항목들도 링크 없이 텍스트로만 렌더링합니다.
- *
- * ✅ 유연한 옵션
- * - includeHome: 홈 링크를 맨 앞에 추가할지 여부 (기본 true)
- * - homeLabel, homeHref: 홈 라벨/경로 커스터마이즈
- * - hide: 숨기고 싶은 세그먼트 이름 배열 (예: ["settings"])
- * - overrides: 세그먼트 라벨 대체 (객체 또는 함수)
- */
-
+// src/features/line-dashboard/components/LineDashboardBreadcrumb.jsx
 import { Fragment } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbList,
   BreadcrumbLink,
+  BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
-/* -----------------------------------------------------------------------------
- * 유틸: 안전 디코딩 + 보기 좋은 문자열로 변환
- * -------------------------------------------------------------------------- */
-
-/** decodeURIComponent 사용 시 에러가 날 수 있어 try/catch로 안전 처리 */
 function safeDecodeURIComponent(value) {
   try {
     return decodeURIComponent(value)
@@ -38,23 +19,12 @@ function safeDecodeURIComponent(value) {
   }
 }
 
-/** "my-page-id" → "My Page Id" 로 보기 좋게 변경 */
 function toTitleCase(segment) {
   return safeDecodeURIComponent(String(segment ?? ""))
     .replace(/-/g, " ")
     .replace(/\b\w/g, (ch) => ch.toUpperCase())
 }
 
-/* -----------------------------------------------------------------------------
- * 핵심: pathname → breadcrumb 모델로 변환
- * -------------------------------------------------------------------------- */
-
-/**
- * segment 라벨을 계산합니다.
- * - overrides가 객체면 매핑 우선
- * - overrides가 함수면 그 반환값 사용
- * - 둘 다 아니면 기본 toTitleCase 사용
- */
 function resolveLabel(segment, index, segments, overrides) {
   if (typeof overrides === "function") {
     return overrides(segment, index, segments) ?? toTitleCase(segment)
@@ -65,15 +35,11 @@ function resolveLabel(segment, index, segments, overrides) {
   return toTitleCase(segment)
 }
 
-/**
- * pathname을 "/"로 나눠 breadcrumb 항목 배열로 변환합니다.
- */
 function buildBreadcrumbs(pathname, { overrides, hide, includeHome, homeLabel, homeHref }) {
   if (!pathname) return []
 
   const segments = pathname.split("/").filter(Boolean)
   const hideSet = new Set(Array.isArray(hide) ? hide : [])
-
   const items = []
 
   if (includeHome) {
@@ -99,11 +65,7 @@ function buildBreadcrumbs(pathname, { overrides, hide, includeHome, homeLabel, h
   return items
 }
 
-/* -----------------------------------------------------------------------------
- * 컴포넌트
- * -------------------------------------------------------------------------- */
-
-export function DynamicBreadcrumb({
+export function LineDashboardBreadcrumb({
   overrides = {},
   hide = [],
   includeHome = true,
@@ -111,7 +73,6 @@ export function DynamicBreadcrumb({
   homeHref = "/",
 }) {
   const { pathname } = useLocation()
-
   const crumbs = buildBreadcrumbs(pathname, {
     overrides,
     hide,
@@ -128,7 +89,6 @@ export function DynamicBreadcrumb({
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.href}-${index}`}>
             {index > 0 && <BreadcrumbSeparator />}
-
             <BreadcrumbItem>
               {crumb.isHome ? (
                 <BreadcrumbLink asChild>

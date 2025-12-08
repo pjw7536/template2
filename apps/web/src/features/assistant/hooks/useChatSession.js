@@ -1,13 +1,19 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 
 import { sendChatMessage } from "../api/send-chat-message"
 
-const DEFAULT_ROOM_ID = "default"
+const LEGACY_DEFAULT_ROOM_ID = "default"
 const MAX_HISTORY = 20
+const CHAT_STORAGE_KEY = "assistant:chat-session"
+const hasWindow = typeof window !== "undefined"
 
 function createMessageId(role) {
   return `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function generateRoomId() {
+  return `room-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 }
 
 function normalizeMessages(messages) {
@@ -52,6 +58,84 @@ function trimMessages(messages, limit = MAX_HISTORY) {
   return messages.slice(-limit)
 }
 
+function persistChatSession({ rooms, messagesByRoom, activeRoomId }) {
+  if (!hasWindow) return
+
+  try {
+    const trimmedMessagesByRoom = rooms.reduce((acc, room) => {
+      const roomMessages = messagesByRoom?.[room.id]
+      acc[room.id] = trimMessages(normalizeMessages(roomMessages))
+      return acc
+    }, {})
+
+    const payload = {
+      rooms,
+      messagesByRoom: trimmedMessagesByRoom,
+      activeRoomId,
+      version: 1,
+    }
+
+    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(payload))
+  } catch (error) {
+    console.error("Failed to persist assistant chat session", error)
+  }
+}
+
+function loadPersistedSession() {
+  if (!hasWindow) return null
+
+  try {
+    const raw = window.localStorage.getItem(CHAT_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return null
+
+    const rooms = normalizeRooms(parsed.rooms)
+    if (rooms.length === 0) return null
+
+    const storedMessagesByRoom =
+      parsed.messagesByRoom && typeof parsed.messagesByRoom === "object"
+        ? parsed.messagesByRoom
+        : {}
+
+    const messagesByRoom = rooms.reduce((acc, room) => {
+      acc[room.id] = buildInitialMessages(storedMessagesByRoom[room.id])
+      return acc
+    }, {})
+
+    const activeRoomId = rooms.some((room) => room.id === parsed.activeRoomId)
+      ? parsed.activeRoomId
+      : rooms[0].id
+
+    return {
+      initialRooms: rooms,
+      initialMessagesByRoom: messagesByRoom,
+      initialActiveRoomId: activeRoomId,
+    }
+  } catch (error) {
+    console.error("Failed to load assistant chat session", error)
+    return null
+  }
+}
+
+function mergeInitialOptions(persisted, provided) {
+  const base = persisted && typeof persisted === "object" ? persisted : {}
+  if (!provided || typeof provided !== "object") {
+    return { ...base }
+  }
+
+  const merged = { ...base }
+  const keys = ["initialRooms", "initialMessages", "initialMessagesByRoom", "initialActiveRoomId"]
+  keys.forEach((key) => {
+    if (provided[key] !== undefined) {
+      merged[key] = provided[key]
+    }
+  })
+
+  return merged
+}
+
 function normalizeRooms(rawRooms) {
   if (!Array.isArray(rawRooms)) return []
 
@@ -69,28 +153,48 @@ function normalizeRooms(rawRooms) {
 }
 
 function buildInitialState(options = {}) {
-  const { initialRooms, initialMessages, initialMessagesByRoom, initialActiveRoomId } = options
-  const defaultRoom = { id: DEFAULT_ROOM_ID, name: "기본 대화" }
+  const persisted = loadPersistedSession()
+  const resolvedOptions = mergeInitialOptions(persisted, options)
+  const { initialRooms, initialMessages, initialMessagesByRoom, initialActiveRoomId } = resolvedOptions
 
-  const rooms = normalizeRooms(initialRooms)
-  const hasDefault = rooms.some((room) => room.id === defaultRoom.id)
-  const normalizedRooms = hasDefault ? rooms : [defaultRoom, ...rooms]
+  const messagesMap =
+    initialMessagesByRoom && typeof initialMessagesByRoom === "object" ? initialMessagesByRoom : {}
+
+  const normalizedRooms = normalizeRooms(initialRooms).filter((room) => room.id !== LEGACY_DEFAULT_ROOM_ID)
 
   const messagesByRoom = {}
-  const messagesMap = initialMessagesByRoom && typeof initialMessagesByRoom === "object" ? initialMessagesByRoom : {}
 
   normalizedRooms.forEach((room) => {
-    const roomMessages = messagesMap[room.id]
-    const seed = room.id === DEFAULT_ROOM_ID ? roomMessages ?? initialMessages : roomMessages
+    const seed = messagesMap[room.id] ?? initialMessages
     messagesByRoom[room.id] = buildInitialMessages(seed)
   })
 
-  const candidateActiveRoom =
+  const legacyDefaultMessages = normalizeMessages(messagesMap[LEGACY_DEFAULT_ROOM_ID])
+  const hasLegacyConversation = legacyDefaultMessages.some((message) => message.role === "user")
+  const normalizedInitialMessages = normalizeMessages(initialMessages)
+  const hasInitialMessages = normalizedInitialMessages.length > 0
+
+  if (normalizedRooms.length === 0 && (hasLegacyConversation || hasInitialMessages)) {
+    const migratedRoomId = generateRoomId()
+    normalizedRooms.push({
+      id: migratedRoomId,
+      name: hasLegacyConversation ? "이전 대화" : "새 대화",
+    })
+    messagesByRoom[migratedRoomId] = buildInitialMessages(
+      hasLegacyConversation ? legacyDefaultMessages : normalizedInitialMessages,
+    )
+  } else if (hasLegacyConversation) {
+    const migratedRoomId = generateRoomId()
+    normalizedRooms.push({ id: migratedRoomId, name: "이전 대화" })
+    messagesByRoom[migratedRoomId] = buildInitialMessages(legacyDefaultMessages)
+  }
+
+  const activeRoomId =
     typeof initialActiveRoomId === "string" && normalizedRooms.some((room) => room.id === initialActiveRoomId)
       ? initialActiveRoomId
-      : normalizedRooms[0].id
+      : normalizedRooms[0]?.id || null
 
-  return { rooms: normalizedRooms, messagesByRoom, activeRoomId: candidateActiveRoom }
+  return { rooms: normalizedRooms, messagesByRoom, activeRoomId }
 }
 
 export function useChatSession(options = {}) {
@@ -111,6 +215,8 @@ export function useChatSession(options = {}) {
   const isSending = mutation.isPending
 
   const messages = messagesByRoom[activeRoomId] || buildInitialMessages()
+
+  const roomExists = (roomId) => rooms.some((room) => room.id === roomId)
 
   const ensureRoomExists = (roomId) => {
     if (!roomId) return
@@ -137,7 +243,7 @@ export function useChatSession(options = {}) {
 
   const createRoom = (label) => {
     const fallbackName = typeof label === "string" && label.trim() ? label.trim() : null
-    const id = `room-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const id = generateRoomId()
     setRooms((prev) => {
       const name = fallbackName || `새 대화 ${prev.length + 1}`
       return [...prev, { id, name }]
@@ -145,11 +251,31 @@ export function useChatSession(options = {}) {
     setMessagesByRoom((prev) => ({ ...prev, [id]: buildInitialMessages() }))
     setActiveRoomId(id)
     setErrorMessage("")
+    return id
+  }
+
+  const getOrCreateActiveRoomId = (preferredRoomId) => {
+    if (preferredRoomId) {
+      ensureRoomExists(preferredRoomId)
+      setActiveRoomId(preferredRoomId)
+      return preferredRoomId
+    }
+
+    if (activeRoomId && roomExists(activeRoomId)) {
+      return activeRoomId
+    }
+
+    if (rooms.length > 0) {
+      const fallbackId = rooms[0].id
+      setActiveRoomId(fallbackId)
+      return fallbackId
+    }
+
+    return createRoom()
   }
 
   const resetConversation = (roomId = activeRoomId) => {
-    const targetRoomId = roomId || DEFAULT_ROOM_ID
-    ensureRoomExists(targetRoomId)
+    const targetRoomId = getOrCreateActiveRoomId(roomId)
     setMessagesByRoom((prev) => ({ ...prev, [targetRoomId]: buildInitialMessages() }))
     setErrorMessage("")
     mutation.reset()
@@ -167,7 +293,7 @@ export function useChatSession(options = {}) {
 
     setErrorMessage("")
 
-    const roomId = activeRoomId || DEFAULT_ROOM_ID
+    const roomId = getOrCreateActiveRoomId()
     let historyForRequest = []
     setMessagesByRoom((prev) => {
       const current = prev[roomId] ?? buildInitialMessages()
@@ -200,6 +326,10 @@ export function useChatSession(options = {}) {
       setErrorMessage(error?.message || "메시지를 전송하지 못했어요.")
     }
   }
+
+  useEffect(() => {
+    persistChatSession({ rooms, messagesByRoom, activeRoomId })
+  }, [rooms, messagesByRoom, activeRoomId])
 
   return {
     rooms,

@@ -101,9 +101,15 @@ export function ChatWidget() {
 
   useEffect(() => {
     if (initializedSessionRef.current) return
-    createRoom("새 대화")
+    const hasPreviousConversation = Object.values(messagesByRoom || {}).some((roomMessages) =>
+      Array.isArray(roomMessages) && roomMessages.some((message) => message?.role === "user")
+    )
+    const hasExistingRooms = Array.isArray(rooms) && rooms.length > 0
+    if (!hasPreviousConversation && !hasExistingRooms) {
+      createRoom("새 대화")
+    }
     initializedSessionRef.current = true
-  }, [])
+  }, [createRoom, messagesByRoom, rooms])
 
   if (isChatPage) {
     return null

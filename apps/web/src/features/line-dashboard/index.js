@@ -5,3 +5,10 @@ export * from "./hooks"
 export * from "./utils"
 export * from "./pages"
 export { lineDashboardRoutes } from "./routes"
+export {
+  LineDashboardShell,
+  LineDashboardHeader,
+  LineDashboardSidebarProvider,
+  LineDashboardBreadcrumb,
+  LineDashboardSidebar,
+} from "./components"
