@@ -2,7 +2,6 @@ import { buildBackendUrl, getBackendBaseUrl } from "@/lib/api"
 
 const DEFAULT_CHAT_PATH = "/api/v1/assistant/chat"
 const REQUEST_TIMEOUT_MS = 15000
-const DEFAULT_DUMMY_REPLY = "테스트용 더미 응답입니다. 실제 LLM API 연결 전 테스트하세요."
 
 function removeTrailingSlash(value) {
   return value.replace(/\/+$/, "")
@@ -39,23 +38,6 @@ function resolveChatEndpoint() {
   }
 
   return `${getBackendBaseUrl()}${DEFAULT_CHAT_PATH}`
-}
-
-function readDummyConfig() {
-  const rawEnabled = readEnvValue([
-    "VITE_ASSISTANT_USE_DUMMY",
-    "VITE_USE_DUMMY_ASSISTANT",
-    "ASSISTANT_USE_DUMMY",
-  ])
-  const enabled =
-    typeof rawEnabled === "string" &&
-    ["1", "true", "yes", "on"].includes(rawEnabled.toLowerCase())
-
-  const reply =
-    readEnvValue(["VITE_ASSISTANT_DUMMY_REPLY", "VITE_LLM_DUMMY_REPLY", "ASSISTANT_DUMMY_REPLY"]) ||
-    DEFAULT_DUMMY_REPLY
-
-  return { enabled, reply }
 }
 
 function normalizeHistory(history) {
@@ -100,25 +82,16 @@ function extractAssistantReply(payload) {
   return assistantMessage.trim()
 }
 
-export async function sendChatMessage({ prompt, history = [] }) {
+export async function sendChatMessage({ prompt, history = [], roomId }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
-  }
-
-  const { enabled: isDummyEnabled, reply: dummyReply } = readDummyConfig()
-
-  if (isDummyEnabled) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ reply: dummyReply, raw: { dummy: true, reply: dummyReply } })
-      }, 250)
-    })
   }
 
   const endpoint = resolveChatEndpoint()
   const payload = {
     prompt: prompt.trim(),
     history: normalizeHistory(history),
+    roomId,
   }
 
   const controller = new AbortController()

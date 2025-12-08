@@ -8,7 +8,7 @@ export function AssistantLayout() {
     <RequireAuth>
       <div className="min-h-screen bg-background text-foreground">
         <HomeNavbar navigationItems={homeNavigationItems} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+        <main className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6">
           <Outlet />
         </main>
       </div>
