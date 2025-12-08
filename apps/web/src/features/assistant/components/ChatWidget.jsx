@@ -5,6 +5,7 @@ import { Bot, Loader2, Minus, PanelLeft, RefreshCw, Send, SquareArrowOutUpRight 
 import { Button } from "@/components/ui/button"
 import { AssistantStatusIndicator } from "./AssistantStatusIndicator"
 import { useChatSession } from "../hooks/useChatSession"
+import { formatAssistantMessage } from "../utils/formatAssistantMessage"
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
@@ -35,6 +36,7 @@ export function ChatWidget() {
   const dragStartRef = useRef({ x: 0, y: 0 })
   const chatContainerRef = useRef(null)
   const initializedSessionRef = useRef(false)
+  const wasSendingRef = useRef(false)
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || rooms[0] || { name: "대화방" }
   const getMessageTimestamp = (message) => {
     if (!message?.id) return 0
@@ -110,6 +112,19 @@ export function ChatWidget() {
     }
     initializedSessionRef.current = true
   }, [createRoom, messagesByRoom, rooms])
+
+  useEffect(() => {
+    if (!isOpen) {
+      wasSendingRef.current = isSending
+      return
+    }
+
+    if (!isSending && wasSendingRef.current && inputRef.current) {
+      inputRef.current.focus()
+    }
+
+    wasSendingRef.current = isSending
+  }, [isSending, isOpen])
 
   if (isChatPage) {
     return null
@@ -331,23 +346,36 @@ export function ChatWidget() {
             <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
               {messages.map((message) => {
                 const isUser = message.role === "user"
+                const baseBubbleClasses = ["max-w-[80%]", "rounded-2xl", "px-4", "py-2", "text-sm", "shadow-sm"]
                 return (
                   <div
                     key={message.id}
                     className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}
                   >
-                    <pre
-                      className={[
-                        "m-0 max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-sm shadow-sm font-mono",
-                        isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-foreground",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      {message.content}
-                    </pre>
+                    {isUser ? (
+                      <pre
+                        className={[
+                          ...baseBubbleClasses,
+                          "m-0 whitespace-pre-wrap break-words font-mono",
+                          "bg-primary text-primary-foreground",
+                        ].join(" ")}
+                      >
+                        {message.content}
+                      </pre>
+                    ) : (
+                      <div
+                        className={[
+                          ...baseBubbleClasses,
+                          "bg-muted text-foreground leading-relaxed break-words space-y-2",
+                          "[&_p]:my-2",
+                          "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1",
+                          "[&_table]:w-full [&_table]:border-collapse [&_th]:border [&_td]:border [&_th]:bg-muted/80 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_tr:nth-child(even)]:bg-muted/50",
+                          "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5",
+                          "[&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:overflow-x-auto",
+                        ].join(" ")}
+                        dangerouslySetInnerHTML={{ __html: formatAssistantMessage(message.content) }}
+                      />
+                    )}
                   </div>
                 )
               })}
