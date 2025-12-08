@@ -9,7 +9,7 @@ export const navigationItems = [
     title: 'Apps',
     icon: LayoutGridIcon,
     items: [
-      { title: 'ESOP Dashboard', href: '/home/esop-dashboard' },
+      { title: 'ESOP Dashboard', href: '/esop_dashboard' },
       { title: 'Timeline(개발중)', href: '/timeline' },
       { title: 'Appstore(개발중)', href: '/appstore' },
     ]
@@ -25,7 +25,7 @@ export const navigationItems = [
     title: 'Contacts',
     icon: MessageSquareIcon,
     items: [
-      { title: 'VOC', href: '/home/voc' },
+      { title: 'VOC', href: '/voc' },
       { title: 'Etch Confluence', href: '#' },
 
     ]

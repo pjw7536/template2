@@ -5,7 +5,7 @@ import { PopularServicesSection } from "../components/PopularSection"
 import { marqueeApps, teamMembers } from "../constants"
 
 const DEFAULT_HERO_ACTIONS = [
-  { label: "대시보드로 이동", href: "/ESOP_Dashboard" },
+  { label: "대시보드로 이동", href: "/esop_dashboard" },
   { label: "Appstore 둘러보기", href: "/appstore", variant: "outline" },
 ]
 
