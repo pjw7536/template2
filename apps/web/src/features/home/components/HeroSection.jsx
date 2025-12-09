@@ -11,13 +11,14 @@ import {
   HeartHandshake,
 } from 'lucide-react'
 
-
 import { Badge } from '@/components/ui/badge'
+import { useTheme } from '@/lib/theme'
 
 import LogoVector from '@/assets/svg/logo-vector'
 import { StraightBeam } from './StraightBeam'
 
 const HeroSection = () => {
+  const { theme = 'system', systemTheme } = useTheme()
   const containerRef = useRef(null)
   const iconRef1 = useRef(null)
   const iconRef2 = useRef(null)
@@ -34,6 +35,8 @@ const HeroSection = () => {
   const spanRef6 = useRef(null)
   const spanRef7 = useRef(null)
   const spanRef8 = useRef(null)
+  const resolvedTheme = theme === 'system' ? systemTheme : theme
+  const videoSrc = resolvedTheme === 'dark' ? '/assets/video2.mp4' : '/assets/video.mp4'
 
   return (
     <section className='flex-1 overflow-hidden py-12 sm:py-8 lg:py-8'>
@@ -117,7 +120,7 @@ const HeroSection = () => {
                 <div className='bg-secondary relative flex h-50 w-50 items-center justify-center overflow-hidden rounded-xl border-[1.5px] shadow-xl'>
                   <video
                     className='aspect-video h-full w-full object-cover'
-                    src='/assets/video.mp4'
+                    src={videoSrc}
                     autoPlay
                     loop
                     muted
