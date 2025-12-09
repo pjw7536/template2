@@ -7,10 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 import NotificationStack from './NotificationStack'
+import { StraightBeam } from './StraightBeam'
 
 import { MotionPreset } from '@/components/ui/motion-preset'
 import { Cursor, CursorFollow, CursorProvider } from '@/components/ui/cursor'
-import { AnimatedBeam } from '@/components/ui/animated-beam'
 
 import { cn } from '@/lib/utils'
 
@@ -286,7 +286,7 @@ const FeaturesSection = ({
           </div>
           {/* Top */}
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={div1Ref}
             toRef={span2Ref}
@@ -295,7 +295,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             reverse />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={div1Ref}
             toRef={span5Ref}
@@ -303,7 +303,7 @@ const FeaturesSection = ({
             duration={4.5}
             className='-z-1 max-lg:hidden' />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span2Ref}
             toRef={span1Ref}
@@ -312,7 +312,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             reverse />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span1Ref}
             toRef={div2Ref}
@@ -321,7 +321,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             reverse />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span2Ref}
             toRef={span3Ref}
@@ -330,7 +330,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             reverse />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span3Ref}
             toRef={div3Ref}
@@ -339,7 +339,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             reverse />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span5Ref}
             toRef={span4Ref}
@@ -347,7 +347,7 @@ const FeaturesSection = ({
             duration={4.5}
             className='-z-1 max-lg:hidden' />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span4Ref}
             toRef={div4Ref}
@@ -355,7 +355,7 @@ const FeaturesSection = ({
             duration={4.5}
             className='-z-1 max-lg:hidden' />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span5Ref}
             toRef={span6Ref}
@@ -363,7 +363,7 @@ const FeaturesSection = ({
             duration={4.5}
             className='-z-1 max-lg:hidden' />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span6Ref}
             toRef={div5Ref}
@@ -372,7 +372,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden' />
 
           {/* Bottom Beam */}
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={div1Ref}
             toRef={span8Ref}
@@ -381,7 +381,7 @@ const FeaturesSection = ({
             className='-z-1 max-lg:hidden'
             startXOffset={5}
             startYOffset={20} />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span8Ref}
             toRef={span7Ref}
@@ -389,21 +389,21 @@ const FeaturesSection = ({
             duration={4.5}
             reverse
             className='-z-1 max-lg:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span8Ref}
             toRef={span9Ref}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='-z-1 max-lg:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span8Ref}
             toRef={div7Ref}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='-z-1 max-lg:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span7Ref}
             toRef={div6Ref}
@@ -411,7 +411,7 @@ const FeaturesSection = ({
             duration={4.5}
             reverse
             className='-z-1 max-lg:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={span9Ref}
             toRef={div8Ref}

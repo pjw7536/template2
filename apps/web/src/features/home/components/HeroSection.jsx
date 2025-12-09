@@ -14,8 +14,8 @@ import {
 
 import { Badge } from '@/components/ui/badge'
 
-import { AnimatedBeam } from '@/components/ui/animated-beam'
 import LogoVector from '@/assets/svg/logo-vector'
+import { StraightBeam } from './StraightBeam'
 
 const HeroSection = () => {
   const containerRef = useRef(null)
@@ -114,11 +114,17 @@ const HeroSection = () => {
               <div
                 ref={iconRef4}
                 className='bg-background relative z-20 flex items-center justify-center rounded-xl border p-2'>
-                <div
-                  className='bg-secondary flex size-16 items-center justify-center rounded-xl border-[1.5px] shadow-xl md:size-23'>
-                  <div
-                    className='flex size-10 items-center justify-center rounded-xl bg-black md:size-16'>
-                    <LogoVector className='size-10 text-white md:size-16' />
+                <div className='bg-secondary relative flex h-50 w-50 items-center justify-center overflow-hidden rounded-xl border-[1.5px] shadow-xl'>
+                  <video
+                    className='aspect-video h-full w-full object-cover'
+                    src='/assets/video.mp4'
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                  />
+                  <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
+                    <LogoVector className='h-50 w-50 text-white' />
                   </div>
                 </div>
               </div>
@@ -155,81 +161,77 @@ const HeroSection = () => {
             </div>
           </div>
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef1}
             toRef={spanRef1}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef1}
             toRef={spanRef3}
             gradientStartColor='var(--primary)'
             duration={4.5}
-            curvature={-45}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef2}
             toRef={spanRef2}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef2}
             toRef={spanRef6}
             gradientStartColor='var(--primary)'
             duration={4.5}
-            curvature={-45}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef6}
             toRef={spanRef7}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef7}
             toRef={spanRef4}
             gradientStartColor='var(--primary)'
             duration={4.5}
-            curvature={40}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef7}
             toRef={spanRef8}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef8}
             toRef={spanRef5}
             gradientStartColor='var(--primary)'
             duration={4.5}
-            curvature={40}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef3}
             toRef={spanRef3}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef3}
             toRef={spanRef4}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef4}
             toRef={iconRef4}
@@ -237,21 +239,21 @@ const HeroSection = () => {
             duration={4.5}
             className='max-md:hidden' />
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef4}
             toRef={spanRef5}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef5}
             toRef={spanRef6}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='max-md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={spanRef6}
             toRef={iconRef5}
@@ -261,14 +263,14 @@ const HeroSection = () => {
 
           {/* Smaller screen */}
 
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef3}
             toRef={iconRef4}
             gradientStartColor='var(--primary)'
             duration={4.5}
             className='md:hidden' />
-          <AnimatedBeam
+          <StraightBeam
             containerRef={containerRef}
             fromRef={iconRef4}
             toRef={iconRef5}

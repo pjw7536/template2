@@ -356,7 +356,7 @@ export function ChatWidget() {
                       <pre
                         className={[
                           ...baseBubbleClasses,
-                          "m-0 whitespace-pre-wrap break-words font-mono",
+                          "m-0 whitespace-pre-wrap break-words font-sans leading-relaxed",
                           "bg-primary text-primary-foreground",
                         ].join(" ")}
                       >
