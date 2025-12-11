@@ -12,7 +12,6 @@ import { IconAlertCircle, IconRefresh } from "@tabler/icons-react"
 import { CalendarIcon, FilterIcon } from "lucide-react"
 
 import { Button } from "components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import {
   ChartContainer,
   ChartTooltip,
@@ -27,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "components/ui/dropdown-menu"
+import { DateRangeCalendar } from "@/components/common"
 import { cn } from "@/lib/utils"
 import { timeFormatter } from "../utils/formatters"
 import { useLineHistoryData } from "../hooks/useLineHistoryData"
@@ -959,9 +959,6 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
   const handleDateRangeSelect = React.useCallback((range) => {
     setDateRange(range)
-    if (range?.from && range?.to) {
-      setIsCalendarOpen(false)
-    }
   }, [])
 
   const handleBinChange = React.useCallback((value) => {
@@ -1426,18 +1423,11 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
                   ref={calendarPopoverRef}
                   className="absolute left-0 top-full z-50 mt-2 rounded-lg border bg-popover p-3 shadow-lg"
                 >
-                  <Calendar
-                    mode="range"
-                    captionLayout="dropdown"
+                  <DateRangeCalendar
                     selected={dateRange}
                     defaultMonth={dateRange?.from ?? today}
                     onSelect={handleDateRangeSelect}
-                    numberOfMonths={2}
-                    classNames={{
-                      today:
-                        "!bg-transparent !text-foreground data-[selected=true]:!bg-primary data-[selected=true]:!text-primary-foreground",
-                    }}
-                    disabled={{ after: today }}
+                    disableAfter={today}
                   />
                   <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>기본값: 최근 한 달</span>

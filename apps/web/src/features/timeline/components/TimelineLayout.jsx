@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom"
 
 import { RequireAuth } from "@/lib/auth"
+import { AppLayout } from "@/components/layout"
 import {
   HomeNavbar,
   navigationItems as homeNavigationItems,
@@ -10,13 +11,16 @@ import { ChatWidget } from "@/features/assistant"
 export default function TimelineLayout() {
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background text-foreground">
-        <HomeNavbar navigationItems={homeNavigationItems} />
-        <main className="mx-auto w-full max-w-full px-4 py-1 sm:px-6">
+      <>
+        <AppLayout
+          header={<HomeNavbar navigationItems={homeNavigationItems} />}
+          contentMaxWidthClass="max-w-full"
+          scrollAreaClassName="overflow-hidden"
+        >
           <Outlet />
-        </main>
+        </AppLayout>
         <ChatWidget />
-      </div>
+      </>
     </RequireAuth>
   )
 }

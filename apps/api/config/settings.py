@@ -214,6 +214,15 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
+# =============
+# RAG (Email)
+# =============
+RAG_INSERT_URL = env("RAG_INSERT_URL", "")
+RAG_DELETE_URL = env("RAG_DELETE_URL", "")
+RAG_INDEX_NAME = env("RAG_INDEX_NAME", "emails")
+RAG_PASS_KEY = env("RAG_PASS_KEY", "")
+RAG_API_KEY = env("RAG_API_KEY", "")
+
 
 # =====================
 # OpenAPI / Swagger UI

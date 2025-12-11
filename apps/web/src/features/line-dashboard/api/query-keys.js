@@ -7,4 +7,26 @@ const ROOT_KEY = ["line-dashboard"]
 export const lineDashboardQueryKeys = {
   all: ROOT_KEY,
   lineOptions: () => [...ROOT_KEY, "line-options"],
+  summary: (lineId) => [...ROOT_KEY, "summary", lineId ?? null],
+  history: (lineId, range = {}) => [
+    ...ROOT_KEY,
+    "history",
+    {
+      lineId: lineId ?? null,
+      from: range.from ?? null,
+      to: range.to ?? null,
+    },
+  ],
+  table: (params = {}) => [
+    ...ROOT_KEY,
+    "table",
+    {
+      table: params.table ?? null,
+      lineId: params.lineId ?? null,
+      from: params.from ?? null,
+      to: params.to ?? null,
+      recentHoursStart: params.recentHoursStart ?? null,
+      recentHoursEnd: params.recentHoursEnd ?? null,
+    },
+  ],
 }

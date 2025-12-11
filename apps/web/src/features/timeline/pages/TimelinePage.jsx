@@ -71,9 +71,8 @@ export default function TimelinePage() {
   }
 
   return (
-    <div className="flex flex-row h-[calc(100vh-100px)] mt-3 gap-2">
-      {/* 왼쪽 패널 */}
-      <div className="flex flex-col h-full min-h-0 w-[35%] gap-2">
+    <div className="grid h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[2fr_3fr]">
+      <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2">
         <LogViewerSection
           lineId={lineId}
           sdwtId={sdwtId}
@@ -85,7 +84,7 @@ export default function TimelinePage() {
           setEqp={setEqp}
         />
 
-        <div className="flex-1 min-h-0 flex flex-col gap-2">
+        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2">
           <DataLogSection
             eqpId={eqpId}
             logsLoading={logsLoading}
@@ -94,77 +93,71 @@ export default function TimelinePage() {
             handleFilter={handleFilterChange}
           />
 
-          <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex-[1] min-h-0 flex flex-col overflow-auto min-h-[180px] max-h-[320px]">
-            <h2 className="text-md font-bold text-foreground pb-1">
-              📝 Log Detail
-            </h2>
-            <hr className="my-2 border-border" />
-            <LogDetailSection log={selectedLog} />
+          <section className="grid min-h-0 grid-rows-[auto_1fr] gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-md font-bold text-foreground">📝 Log Detail</h2>
+            </div>
+            <div className="min-h-0 overflow-y-auto">
+              <LogDetailSection log={selectedLog} />
+            </div>
           </section>
         </div>
       </div>
 
-      {/* 오른쪽 패널 + 설정 패널 포함 */}
-      <div className="flex flex-row h-full w-[65%]">
-        {/* 타임라인 패널 */}
-        <div className="flex flex-col flex-1 overflow-hidden border border-border bg-card shadow-sm rounded-xl pl-4 pr-1 transition-all duration-300 ease-in-out">
-          <div className="flex items-center justify-between my-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-md font-bold text-foreground">
-                📊 Timeline
-              </h2>
-              {lineId && eqpId && <ShareButton />}
-            </div>
+      <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3">
+        <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <h2 className="text-md font-bold text-foreground">📊 Timeline</h2>
+            {lineId && eqpId && <ShareButton />}
+          </div>
 
-            {eqpId && !logsLoading && (
-              <button
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className="mr-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-              >
-                <AdjustmentsHorizontalIcon className="h-4 w-4" />
-                설정
-              </button>
+          {eqpId && !logsLoading ? (
+            <button
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+            >
+              <AdjustmentsHorizontalIcon className="h-4 w-4" />
+              설정
+            </button>
+          ) : null}
+        </div>
+
+        <div className="grid min-h-0 grid-cols-1 gap-2 lg:grid-cols-[1fr_auto]">
+          <div className="relative min-h-0 overflow-hidden rounded-xl border bg-card shadow-sm">
+            {!eqpId && !logsLoading ? (
+              <div className="flex h-full items-center justify-center px-6 text-center text-muted-foreground">
+                EQP를 선택하세요.
+              </div>
+            ) : logsLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <TimelineBoard
+                showLegend={showLegend}
+                selectedTipGroups={selectedTipGroups}
+                eqpLogs={logsWithDuration.eqpLogs}
+                tipLogs={logsWithDuration.tipLogs}
+                ctttmLogs={logsWithDuration.ctttmLogs}
+                racbLogs={logsWithDuration.racbLogs}
+                jiraLogs={logsWithDuration.jiraLogs}
+                typeFilters={typeFilters}
+              />
             )}
           </div>
 
-          <hr className="border-border" />
-
-          {!eqpId && !logsLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-center text-muted-foreground">
-                EQP를 선택하세요.
-              </p>
-            </div>
-          ) : logsLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <LoadingSpinner />
-            </div>
-          ) : (
-            <TimelineBoard
+          {timelineReady && !logsLoading ? (
+            <TimelineSettings
+              isOpen={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
               showLegend={showLegend}
               selectedTipGroups={selectedTipGroups}
-              eqpLogs={logsWithDuration.eqpLogs}
-              tipLogs={logsWithDuration.tipLogs}
-              ctttmLogs={logsWithDuration.ctttmLogs}
-              racbLogs={logsWithDuration.racbLogs}
-              jiraLogs={logsWithDuration.jiraLogs}
-              typeFilters={typeFilters}
+              onLegendToggle={(e) => setShowLegend(e.target.checked)} // 수정
+              onTipFilterChange={setSelectedTipGroups}
+              tipLogs={filteredTipLogs}
             />
-          )}
+          ) : null}
         </div>
-
-        {/* 설정 패널 */}
-        {timelineReady && !logsLoading && (
-          <TimelineSettings
-            isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
-            showLegend={showLegend}
-            selectedTipGroups={selectedTipGroups}
-            onLegendToggle={(e) => setShowLegend(e.target.checked)} // 수정
-            onTipFilterChange={setSelectedTipGroups}
-            tipLogs={filteredTipLogs}
-          />
-        )}
       </div>
     </div>
   );

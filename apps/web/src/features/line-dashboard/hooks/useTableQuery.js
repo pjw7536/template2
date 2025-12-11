@@ -1,7 +1,9 @@
 // src/features/line-dashboard/hooks/useTableQuery.js
-import * as React from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
+import { lineDashboardQueryKeys } from "../api/query-keys"
 
 import { composeEqpChamber, normalizeTablePayload } from "@/features/line-dashboard/utils"
 import {
@@ -22,77 +24,84 @@ import {
  * - rows가 외부에서 수정될 수 있도록 setRows를 함께 반환합니다.
  */
 export function useTableQuery({ lineId }) {
-  const [selectedTable, setSelectedTable] = React.useState(DEFAULT_TABLE)
-  const [columns, setColumns] = React.useState([])
-  const [rows, setRows] = React.useState([])
+  const [selectedTable, setSelectedTable] = useState(DEFAULT_TABLE)
+  const [fromDate, setFromDate] = useState(() => getDefaultFromValue())
+  const [toDate, setToDate] = useState(() => getDefaultToValue())
 
-  const [fromDate, setFromDate] = React.useState(() => getDefaultFromValue())
-  const [toDate, setToDate] = React.useState(() => getDefaultToValue())
+  const [recentHoursRange, setRecentHoursRangeState] = useState(() => createRecentHoursRange())
+  const [hydrationKey, setHydrationKey] = useState(0)
+  const queryClient = useQueryClient()
 
-  const [appliedFrom, setAppliedFrom] = React.useState(() => getDefaultFromValue())
-  const [appliedTo, setAppliedTo] = React.useState(() => getDefaultToValue())
-
-  const [recentHoursRange, setRecentHoursRangeState] = React.useState(() =>
-    createRecentHoursRange()
-  )
-
-  const [isLoadingRows, setIsLoadingRows] = React.useState(false)
-  const [rowsError, setRowsError] = React.useState(null)
-  const [lastFetchedCount, setLastFetchedCount] = React.useState(0)
-  const [hydrationKey, setHydrationKey] = React.useState(0)
-
-  const rowsRequestRef = React.useRef(0)
-
-  const setRecentHoursRange = React.useCallback((nextRange) => {
+  const setRecentHoursRange = useCallback((nextRange) => {
     setRecentHoursRangeState((previous) => {
       const normalized = normalizeRecentHoursRange(nextRange)
-      if (
-        previous &&
-        previous.start === normalized.start &&
-        previous.end === normalized.end
-      ) {
+      if (previous && previous.start === normalized.start && previous.end === normalized.end) {
         return previous
       }
       return normalized
     })
   }, [])
 
-  const fetchRows = React.useCallback(async () => {
-    const requestId = ++rowsRequestRef.current
-    setIsLoadingRows(true)
-    setRowsError(null)
+  const normalizedRecent = useMemo(
+    () => normalizeRecentHoursRange(recentHoursRange),
+    [recentHoursRange]
+  )
 
-    try {
-      let effectiveFrom = fromDate && fromDate.length > 0 ? fromDate : null
-      let effectiveTo = toDate && toDate.length > 0 ? toDate : null
+  const { effectiveFrom, effectiveTo } = useMemo(() => {
+    let normalizedFrom = fromDate && fromDate.length > 0 ? fromDate : null
+    let normalizedTo = toDate && toDate.length > 0 ? toDate : null
 
-      if (effectiveFrom && effectiveTo) {
-        const fromTime = new Date(`${effectiveFrom}T00:00:00Z`).getTime()
-        const toTime = new Date(`${effectiveTo}T23:59:59Z`).getTime()
-        if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
-          ;[effectiveFrom, effectiveTo] = [effectiveTo, effectiveFrom]
-        }
+    if (normalizedFrom && normalizedTo) {
+      const fromTime = new Date(`${normalizedFrom}T00:00:00Z`).getTime()
+      const toTime = new Date(`${normalizedTo}T23:59:59Z`).getTime()
+      if (Number.isFinite(fromTime) && Number.isFinite(toTime) && fromTime > toTime) {
+        ;[normalizedFrom, normalizedTo] = [normalizedTo, normalizedFrom]
       }
+    }
 
+    return { effectiveFrom: normalizedFrom, effectiveTo: normalizedTo }
+  }, [fromDate, toDate])
+
+  const tableParams = useMemo(
+    () => ({
+      table: selectedTable,
+      lineId: lineId ?? null,
+      from: effectiveFrom,
+      to: effectiveTo,
+      recentHoursStart: normalizedRecent.start,
+      recentHoursEnd: normalizedRecent.end,
+    }),
+    [
+      effectiveFrom,
+      effectiveTo,
+      lineId,
+      normalizedRecent.end,
+      normalizedRecent.start,
+      selectedTable,
+    ]
+  )
+
+  const tableQueryKey = useMemo(
+    () => lineDashboardQueryKeys.table(tableParams),
+    [tableParams]
+  )
+
+  const tableQuery = useQuery({
+    queryKey: tableQueryKey,
+    keepPreviousData: true,
+    queryFn: async () => {
       const params = new URLSearchParams({ table: selectedTable })
       if (effectiveFrom) params.set("from", effectiveFrom)
       if (effectiveTo) params.set("to", effectiveTo)
       if (lineId) params.set("lineId", lineId)
 
-      const normalizedRecent = normalizeRecentHoursRange(recentHoursRange)
       params.set("recentHoursStart", String(normalizedRecent.start))
       params.set("recentHoursEnd", String(normalizedRecent.end))
 
       const endpoint = buildBackendUrl("/tables", params)
       const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
 
-      let payload = {}
-      try {
-        payload = await response.json()
-      } catch {
-        payload = {}
-      }
-
+      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         const message =
           payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
@@ -101,9 +110,11 @@ export function useTableQuery({ lineId }) {
         throw new Error(message)
       }
 
-      if (rowsRequestRef.current !== requestId) return
-
-      const defaults = { table: DEFAULT_TABLE, from: getDefaultFromValue(), to: getDefaultToValue() }
+      const defaults = {
+        table: DEFAULT_TABLE,
+        from: getDefaultFromValue(),
+        to: getDefaultToValue(),
+      }
       const {
         columns: fetchedColumns,
         rows: fetchedRows,
@@ -130,41 +141,56 @@ export function useTableQuery({ lineId }) {
         ? columnsWithoutOriginals
         : ["EQP_CB", ...columnsWithoutOriginals]
 
-      setColumns(nextColumns)
-      setRows(composedRows)
-      setLastFetchedCount(rowCount)
-      setAppliedFrom(appliedFromValue ?? null)
-      setAppliedTo(appliedToValue ?? null)
-
-      if (table && table !== selectedTable) {
-        setSelectedTable(table)
+      return {
+        columns: nextColumns,
+        rows: composedRows,
+        rowCount,
+        appliedFrom: appliedFromValue ?? null,
+        appliedTo: appliedToValue ?? null,
+        table: table ?? selectedTable,
       }
+    },
+    onSuccess: () => {
+      setHydrationKey((previous) => previous + 1)
+    },
+  })
 
-      setHydrationKey((prev) => prev + 1)
-    } catch (error) {
-      if (rowsRequestRef.current !== requestId) return
+  const setRows = useCallback(
+    (updater) => {
+      queryClient.setQueryData(tableQueryKey, (previous) => {
+        const base = previous ?? {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          appliedFrom: null,
+          appliedTo: null,
+          table: selectedTable,
+        }
+        const nextRows = typeof updater === "function" ? updater(base.rows ?? []) : updater ?? []
+        return { ...base, rows: nextRows }
+      })
+    },
+    [queryClient, selectedTable, tableQueryKey]
+  )
 
-      const message = error instanceof Error ? error.message : "Failed to load table rows"
-      setRowsError(message)
-      setColumns([])
-      setRows([])
-      setLastFetchedCount(0)
-    } finally {
-      if (rowsRequestRef.current === requestId) {
-        setIsLoadingRows(false)
-      }
+  const appliedFrom = tableQuery.data?.appliedFrom ?? null
+  const appliedTo = tableQuery.data?.appliedTo ?? null
+
+  const responseTable = tableQuery.data?.table ?? null
+
+  useEffect(() => {
+    if (responseTable && responseTable !== selectedTable) {
+      setSelectedTable(responseTable)
     }
-  }, [fromDate, toDate, selectedTable, lineId, recentHoursRange])
+  }, [responseTable, selectedTable])
 
-  React.useEffect(() => {
-    fetchRows()
-  }, [fetchRows])
+  const fetchRows = useCallback(() => tableQuery.refetch(), [tableQuery])
 
   return {
     selectedTable,
     setSelectedTable,
-    columns,
-    rows,
+    columns: tableQuery.data?.columns ?? [],
+    rows: tableQuery.data?.rows ?? [],
     setRows,
     fromDate,
     setFromDate,
@@ -174,9 +200,13 @@ export function useTableQuery({ lineId }) {
     appliedTo,
     recentHoursRange,
     setRecentHoursRange,
-    isLoadingRows,
-    rowsError,
-    lastFetchedCount,
+    isLoadingRows: tableQuery.isFetching,
+    rowsError: tableQuery.error
+      ? tableQuery.error instanceof Error
+        ? tableQuery.error.message
+        : String(tableQuery.error)
+      : null,
+    lastFetchedCount: tableQuery.data?.rowCount ?? 0,
     fetchRows,
     hydrationKey,
   }

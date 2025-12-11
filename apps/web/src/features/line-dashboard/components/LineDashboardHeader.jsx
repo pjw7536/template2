@@ -7,7 +7,7 @@ import { LineDashboardBreadcrumb } from "./LineDashboardBreadcrumb"
 
 export function LineDashboardHeader({ showSidebarTrigger = true }) {
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+    <div className="flex h-full items-center justify-between gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-full">
       <div className="flex items-center gap-2">
         {showSidebarTrigger ? (
           <>
@@ -21,6 +21,6 @@ export function LineDashboardHeader({ showSidebarTrigger = true }) {
         <ThemeToggle />
         <ThemeColorSelector />
       </div>
-    </header>
+    </div>
   )
 }

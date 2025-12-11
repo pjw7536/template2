@@ -14,18 +14,24 @@ import { Button, buttonVariants } from "components/ui/button"
 function Calendar({
   className,
   classNames,
-  showOutsideDays = true,
+  showOutsideDays,
   captionLayout = "label",
   buttonVariant = "ghost",
   formatters,
   components,
+  numberOfMonths = 1,
   ...props
 }) {
   const defaultClassNames = getDefaultClassNames()
+  const resolvedShowOutsideDays =
+    typeof showOutsideDays === "boolean"
+      ? showOutsideDays
+      : numberOfMonths === 1
 
   return (
     <DayPicker
-      showOutsideDays={showOutsideDays}
+      showOutsideDays={resolvedShowOutsideDays}
+      numberOfMonths={numberOfMonths}
       className={cn(
         "bg-background group/calendar p-3 [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,

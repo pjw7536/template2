@@ -12,14 +12,19 @@ export function CenteredPage({
   ...props
 }) {
   return (
-    <div
-      className={cn(
-        "flex min-h-svh w-full items-center justify-center bg-background px-6 py-10 md:px-10",
-        className,
-      )}
-      {...props}
-    >
-      <div className={cn("w-full max-w-md", containerClassName)}>{children}</div>
+    <div className="h-screen flex flex-col bg-background">
+      <header className="h-16 shrink-0 border-b bg-background" />
+      <main className="flex-1 min-h-0 overflow-hidden">
+        <div
+          className={cn(
+            "flex h-full min-h-0 w-full items-center justify-center overflow-y-auto px-6 py-10 md:px-10",
+            className,
+          )}
+          {...props}
+        >
+          <div className={cn("w-full max-w-md", containerClassName)}>{children}</div>
+        </div>
+      </main>
     </div>
   )
 }

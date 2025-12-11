@@ -1,62 +1,64 @@
 // src/routes/layouts/ProtectedAppLayout.jsx
-import { useEffect } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 
 import { RequireAuth } from "@/lib/auth"
 import { AppLayout } from "@/components/layout"
-import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
-import {
-  LineDashboardShell,
-  LineDashboardSidebar,
-  useLineOptionsQuery,
-} from "@/features/line-dashboard"
+import { HomeNavbar, navigationItems as homeNavigationItems } from "@/features/home"
+import { LineDashboardLayout } from "@/features/line-dashboard"
 import { ChatWidget } from "@/features/assistant"
+
+const LINE_DASHBOARD_PREFIX = "/esop_dashboard"
+const VOC_ROUTE_PATTERN = /\/voc(\/|$)|\/qna(\/|$)/
+const INTERNAL_SCROLL_PREFIXES = ["/mailbox", "/emails"]
+const LAYOUT_VARIANTS = {
+  DEFAULT: "default",
+  LINE_DASHBOARD: "line-dashboard",
+}
+
+function normalizePathname(pathname) {
+  return typeof pathname === "string" ? pathname : ""
+}
+
+function getLayoutConfig(pathname) {
+  const normalizedPath = normalizePathname(pathname).toLowerCase()
+  const isLineDashboardRoute = normalizedPath.startsWith(LINE_DASHBOARD_PREFIX)
+  const isVocRoute = VOC_ROUTE_PATTERN.test(normalizedPath)
+  const isInternalScrollRoute = INTERNAL_SCROLL_PREFIXES.some((prefix) =>
+    normalizedPath.startsWith(prefix),
+  )
+
+  return {
+    variant: isLineDashboardRoute ? LAYOUT_VARIANTS.LINE_DASHBOARD : LAYOUT_VARIANTS.DEFAULT,
+    contentMaxWidthClass: isVocRoute ? "max-w-screen-2xl" : undefined,
+    scrollAreaClassName: isVocRoute || isInternalScrollRoute ? "overflow-hidden" : undefined,
+  }
+}
 
 export function ProtectedAppLayout() {
   const location = useLocation()
-  const pathname = typeof location?.pathname === "string" ? location.pathname : ""
-  const normalizedPath = pathname.toLowerCase()
-  const isLineDashboardRoute = normalizedPath.startsWith("/esop_dashboard")
-  const isVocRoute = typeof pathname === "string" && (/\/voc(\/|$)|\/qna(\/|$)/).test(pathname)
-  const contentMaxWidthClass = isVocRoute ? "max-w-screen-2xl" : undefined
-  const mainOverflowClass = isVocRoute ? "overflow-hidden" : undefined
+  const { variant, contentMaxWidthClass, scrollAreaClassName } = getLayoutConfig(location?.pathname)
+  const isLineDashboardRoute = variant === LAYOUT_VARIANTS.LINE_DASHBOARD
 
-  const {
-    data: lineOptions = [],
-    isError,
-    error,
-  } = useLineOptionsQuery({ enabled: isLineDashboardRoute })
-
-  const navigation = isLineDashboardRoute ? NAVIGATION_CONFIG : null
-  const sidebarLineOptions = isLineDashboardRoute ? lineOptions : []
-  const sidebar = isLineDashboardRoute ? (
-    <LineDashboardSidebar lineOptions={sidebarLineOptions} navigation={navigation} />
-  ) : null
-
-  useEffect(() => {
-    if (isError) {
-      console.warn("Failed to load line options", error)
-    }
-  }, [isError, error])
+  const layout = isLineDashboardRoute ? (
+    <LineDashboardLayout
+      contentMaxWidthClass={contentMaxWidthClass}
+      scrollAreaClassName={scrollAreaClassName}
+    >
+      <Outlet />
+    </LineDashboardLayout>
+  ) : (
+    <AppLayout
+      contentMaxWidthClass={contentMaxWidthClass}
+      scrollAreaClassName={scrollAreaClassName}
+      header={<HomeNavbar navigationItems={homeNavigationItems} />}
+    >
+      <Outlet />
+    </AppLayout>
+  )
 
   return (
     <RequireAuth>
-      {isLineDashboardRoute ? (
-        <LineDashboardShell
-          sidebar={sidebar}
-          contentMaxWidthClass={contentMaxWidthClass}
-          mainOverflowClass={mainOverflowClass}
-        >
-          <Outlet />
-        </LineDashboardShell>
-      ) : (
-        <AppLayout
-          contentMaxWidthClass={contentMaxWidthClass}
-          mainOverflowClass={mainOverflowClass}
-        >
-          <Outlet />
-        </AppLayout>
-      )}
+      {layout}
       <ChatWidget />
     </RequireAuth>
   )

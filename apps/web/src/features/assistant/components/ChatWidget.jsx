@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Bot, Loader2, Minus, PanelLeft, RefreshCw, Send, SquareArrowOutUpRight } from "lucide-react"
+import { Bot, Minus, PanelLeft, SquareArrowOutUpRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { AssistantStatusIndicator } from "./AssistantStatusIndicator"
+import { ChatComposer } from "./ChatComposer"
+import { ChatErrorBanner } from "./ChatErrorBanner"
+import { ChatMessages } from "./ChatMessages"
+import { RoomList } from "./RoomList"
 import { useChatSession } from "../hooks/useChatSession"
-import { formatAssistantMessage } from "../utils/formatAssistantMessage"
+import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
@@ -24,11 +27,9 @@ export function ChatWidget() {
     errorMessage,
     clearError,
     sendMessage,
-    resetConversation,
     selectRoom,
     createRoom,
   } = useChatSession()
-  const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const floatingButtonRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
@@ -37,32 +38,10 @@ export function ChatWidget() {
   const chatContainerRef = useRef(null)
   const initializedSessionRef = useRef(false)
   const wasSendingRef = useRef(false)
-  const activeRoom = rooms.find((room) => room.id === activeRoomId) || rooms[0] || { name: "대화방" }
-  const getMessageTimestamp = (message) => {
-    if (!message?.id) return 0
-    const parts = String(message.id).split("-")
-    const ts = Number(parts[1])
-    return Number.isFinite(ts) ? ts : 0
-  }
-  const getLastQuestionTimestamp = (roomId) => {
-    const roomMessages = messagesByRoom[roomId] || []
-    const lastUser = [...roomMessages].reverse().find((msg) => msg.role === "user")
-    if (lastUser) return getMessageTimestamp(lastUser)
-    const lastMessage = roomMessages[roomMessages.length - 1]
-    return getMessageTimestamp(lastMessage)
-  }
-  const sortedRooms = [...rooms].sort(
-    (a, b) => getLastQuestionTimestamp(b.id) - getLastQuestionTimestamp(a.id),
-  )
+  const sortedRooms = sortRoomsByRecentQuestion(rooms, messagesByRoom)
 
   const isChatPage =
     typeof location?.pathname === "string" && location.pathname.startsWith("/assistant")
-
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
-    }
-  }, [messages, isSending])
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -269,12 +248,11 @@ export function ChatWidget() {
               <PanelLeft className="h-3 w-3" />
             </Button>
 
-            <div className="flex items-center gap-3 mx-3">
+            <div className="mx-3 flex items-center gap-3">
               <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
               <p className="text-sm font-semibold leading-tight">
                 Etch AI Assistant
               </p>
-
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -307,132 +285,37 @@ export function ChatWidget() {
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>
                   <p className="text-sm font-semibold text-foreground">최근 {rooms.length}개</p>
                 </div>
-                <Button variant="secondary" size="sm" className="h-8 px-3 text-xs" onClick={() => createRoom()}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => createRoom()}
+                >
                   새 대화
                 </Button>
               </div>
-              <div className="flex items-center justify-between px-3 pb-2 border-b mb-2">
-
-
-              </div>
+              <div className="mb-2 flex items-center justify-between border-b px-3 pb-2" />
               <div className="space-y-1 overflow-y-auto px-2 pb-3">
-                {sortedRooms.map((room) => (
-                  <Button
-                    key={room.id}
-                    variant={room.id === activeRoomId ? "secondary" : "ghost"}
-                    size="sm"
-                    className="w-full justify-between truncate"
-                    onClick={() => selectRoom(room.id)}
-                  >
-                    <span className="truncate text-left text-sm">{room.name}</span>
-                    {room.id === activeRoomId ? (
-                      <span className="text-[10px] text-primary">현재</span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground"></span>
-                    )}
-                  </Button>
-                ))}
-                {rooms.length === 0 && (
-                  <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                    아직 대화방이 없습니다.
-                  </div>
-                )}
+                <RoomList rooms={sortedRooms} activeRoomId={activeRoomId} onSelectRoom={selectRoom} />
               </div>
             </aside>
           )}
 
           <div className="flex flex-1 flex-col overflow-hidden">
+            <ChatMessages messages={messages} isSending={isSending} />
 
-            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {messages.map((message) => {
-                const isUser = message.role === "user"
-                const baseBubbleClasses = ["max-w-[80%]", "rounded-2xl", "px-4", "py-2", "text-sm", "shadow-sm"]
-                return (
-                  <div
-                    key={message.id}
-                    className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}
-                  >
-                    {isUser ? (
-                      <pre
-                        className={[
-                          ...baseBubbleClasses,
-                          "m-0 whitespace-pre-wrap break-words",
-                          "bg-primary text-primary-foreground font-sans leading-relaxed text-xs",
-                        ].join(" ")}
-                      >
-                        {message.content}
-                      </pre>
-                    ) : (
-                      <div
-                        className={[
-                          ...baseBubbleClasses,
-                          "bg-muted text-foreground leading-relaxed break-words space-y-2",
-                          "[&_p]:my-2",
-                          "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1",
-                          "[&_table]:w-full [&_table]:border-collapse [&_th]:border [&_td]:border [&_th]:bg-muted/80 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_tr:nth-child(even)]:bg-muted/50",
-                          "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5",
-                          "[&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:overflow-x-auto",
-                        ].join(" ")}
-                        dangerouslySetInnerHTML={{ __html: formatAssistantMessage(message.content) }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-              <AssistantStatusIndicator isSending={isSending} />
-              <div ref={messagesEndRef} />
-            </div>
+            <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
 
-            {errorMessage && (
-              <div className="mx-4 shrink-0 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                <div className="flex items-center justify-between gap-2">
-                  <span>{errorMessage}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-destructive underline underline-offset-4"
-                    onClick={clearError}
-                  >
-                    닫기
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <form
+            <ChatComposer
+              inputId="chat-widget-input"
+              label="어시스턴트에게 질문하기"
+              inputRef={inputRef}
+              inputValue={input}
+              onInputChange={(event) => setInput(event.target.value)}
               onSubmit={handleSubmit}
-              className="shrink-0 border-t bg-background px-3 pb-3 pt-2"
-            >
-              <label className="sr-only" htmlFor="chat-widget-input">
-                어시스턴트에게 질문하기
-              </label>
-              <div className="flex items-end gap-2 rounded-xl border bg-muted/40 p-2">
-                <textarea
-                  id="chat-widget-input"
-                  ref={inputRef}
-                  className="min-h-[60px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-60"
-                  placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault()
-                      handleSubmit(event)
-                    }
-                  }}
-                  disabled={isSending}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isSending || !input.trim()}
-                  className="h-10 w-10 flex-none"
-                >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="sr-only">Send message</span>
-                </Button>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+              isSending={isSending}
+              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
+              footerLeft={
                 <button
                   type="button"
                   className="text-primary underline underline-offset-4"
@@ -440,12 +323,12 @@ export function ChatWidget() {
                 >
                   전체 화면에서 이어서 보기
                 </button>
-                <span>베타 · LLM API 연결</span>
-              </div>
-            </form>
+              }
+              footerRight="베타 · LLM API 연결"
+            />
           </div>
         </div>
       </div>
-    </div >
+    </div>
   )
 }

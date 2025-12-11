@@ -393,7 +393,7 @@ export function DataTable({ lineId }) {
       </div>
       {/* 테이블 */}
       <TableContainer
-        className="flex-1 h-[calc(100vh-3rem)] overflow-y-auto overflow-x-auto rounded-lg border bg-background"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-lg border bg-background"
         aria-busy={isRefreshing}
       >
         <Table

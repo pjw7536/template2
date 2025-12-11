@@ -16,7 +16,7 @@ export function LineDashboardHistoryPage() {
   }, [searchParams])
 
   return (
-    <div className="h-[calc(100vh-5rem)] px-2">
+    <div className="flex h-full min-h-0 flex-col">
       <LineHistoryDashboard lineId={lineId} initialRangeDays={initialRangeDays} />
     </div>
   )

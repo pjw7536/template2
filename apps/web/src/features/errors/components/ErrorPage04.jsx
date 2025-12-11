@@ -10,15 +10,20 @@ function ErrorPage04({
   homeHref = "/",
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-12 px-8 py-8 sm:py-16 lg:justify-between lg:py-24">
-      <Error04Illustration aria-hidden="true" className="h-[clamp(300px,50vh,600px)]" />
-      <div className="text-center">
-        <h1 className="mb-1.5 text-2xl font-semibold">{title}</h1>
-        <p className="mb-5 text-muted-foreground">{description}</p>
-        <Button size="lg" className="rounded-lg text-base" asChild>
-          <Link to={homeHref}>{actionLabel}</Link>
-        </Button>
-      </div>
+    <div className="h-screen flex flex-col bg-background">
+      <header className="h-16 shrink-0 border-b bg-background" />
+      <main className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col items-center justify-center gap-12 overflow-y-auto px-8 py-8 sm:py-16 lg:justify-between lg:py-24">
+          <Error04Illustration aria-hidden="true" className="h-[clamp(300px,50vh,600px)]" />
+          <div className="text-center">
+            <h1 className="mb-1.5 text-2xl font-semibold">{title}</h1>
+            <p className="mb-5 text-muted-foreground">{description}</p>
+            <Button size="lg" className="rounded-lg text-base" asChild>
+              <Link to={homeHref}>{actionLabel}</Link>
+            </Button>
+          </div>
+        </div>
+      </main>
     </div>
   )
 }

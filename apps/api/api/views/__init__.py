@@ -5,6 +5,12 @@ from .activity import ActivityLogView
 from .assistant import AssistantChatView
 from .auth import FrontendRedirectView
 from .drone_early_inform import DroneEarlyInformView
+from .emails import (
+    EmailBulkDeleteView,
+    EmailDetailView,
+    EmailHtmlView,
+    EmailListView,
+)
 from .health import HealthView
 from .line_dashboard import LineHistoryView, LineIdListView
 from .timeline import (
@@ -28,6 +34,10 @@ __all__ = [
     "AssistantChatView",
     "FrontendRedirectView",
     "DroneEarlyInformView",
+    "EmailBulkDeleteView",
+    "EmailDetailView",
+    "EmailHtmlView",
+    "EmailListView",
     "HealthView",
     "LineHistoryView",
     "LineIdListView",

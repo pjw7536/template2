@@ -185,3 +185,27 @@ class VocReply(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
         return f"Reply to {self.post_id}"
+
+
+class Email(models.Model):
+    """수신 메일 저장 모델 (RAG doc 연동)."""
+
+    message_id = models.CharField(max_length=255, unique=True)
+    received_at = models.DateTimeField()
+    subject = models.TextField()
+    sender = models.TextField()
+    recipient = models.TextField()
+
+    body_text = models.TextField(blank=True)  # RAG 검색/스니펫용 텍스트
+    body_html_gzip = models.BinaryField(null=True, blank=True)  # UI 렌더용 gzip HTML
+
+    rag_doc_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "email"
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.subject[:40]} ({self.sender} -> {self.recipient})"

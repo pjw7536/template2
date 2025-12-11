@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Bot, Loader2, PanelLeft, Plus, RefreshCw, Send } from "lucide-react"
+import { Bot, PanelLeft, Plus, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { AssistantStatusIndicator } from "../components/AssistantStatusIndicator"
+import { ChatComposer } from "../components/ChatComposer"
+import { ChatErrorBanner } from "../components/ChatErrorBanner"
+import { ChatMessages } from "../components/ChatMessages"
+import { RoomList } from "../components/RoomList"
 import { useChatSession } from "../hooks/useChatSession"
-import { formatAssistantMessage } from "../utils/formatAssistantMessage"
+import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatPage() {
   const location = useLocation()
@@ -45,33 +48,11 @@ export function ChatPage() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [input, setInput] = useState("")
-  const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const wasSendingRef = useRef(false)
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || rooms[0] || { name: "대화방" }
 
-  const getMessageTimestamp = (message) => {
-    if (!message?.id) return 0
-    const parts = String(message.id).split("-")
-    const ts = Number(parts[1])
-    return Number.isFinite(ts) ? ts : 0
-  }
-
-  const getLastQuestionTimestamp = (roomId) => {
-    const roomMessages = messagesByRoom[roomId] || []
-    const lastUser = [...roomMessages].reverse().find((msg) => msg.role === "user")
-    if (lastUser) return getMessageTimestamp(lastUser)
-    const lastMessage = roomMessages[roomMessages.length - 1]
-    return getMessageTimestamp(lastMessage)
-  }
-
-  const sortedRooms = [...rooms].sort(
-    (a, b) => getLastQuestionTimestamp(b.id) - getLastQuestionTimestamp(a.id),
-  )
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isSending])
+  const sortedRooms = sortRoomsByRecentQuestion(rooms, messagesByRoom)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -96,7 +77,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-8xl flex-col gap-4 px-4 py-3">
+    <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-4 overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -113,7 +94,7 @@ export function ChatPage() {
         </div>
       </header>
 
-      <div className="flex h-[720px] max-h-[80vh] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3 rounded-xl border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             <Button
@@ -155,9 +136,9 @@ export function ChatPage() {
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          {isSidebarOpen && (
-            <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/40">
+        <div className="grid min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[280px_1fr]">
+          {isSidebarOpen ? (
+            <aside className="flex min-h-0 flex-col border-r bg-muted/40">
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="space-y-0.5">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>
@@ -175,127 +156,29 @@ export function ChatPage() {
               <div className="mb-2 flex items-center justify-between border-b px-3 pb-2">
                 <span className="text-[11px] text-muted-foreground">방을 선택하세요</span>
               </div>
-              <div className="space-y-1 overflow-y-auto px-2 pb-3">
-                {sortedRooms.map((room) => (
-                  <Button
-                    key={room.id}
-                    variant={room.id === activeRoomId ? "secondary" : "ghost"}
-                    size="sm"
-                    className="w-full justify-between truncate"
-                    onClick={() => selectRoom(room.id)}
-                  >
-                    <span className="truncate text-left text-sm">{room.name}</span>
-                    {room.id === activeRoomId ? (
-                      <span className="text-[10px] text-primary">현재</span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground" />
-                    )}
-                  </Button>
-                ))}
-                {rooms.length === 0 && (
-                  <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                    아직 대화방이 없습니다.
-                  </div>
-                )}
+              <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+                <RoomList rooms={sortedRooms} activeRoomId={activeRoomId} onSelectRoom={selectRoom} />
               </div>
             </aside>
-          )}
+          ) : null}
 
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {messages.map((message) => {
-                const isUser = message.role === "user"
-                const baseBubbleClasses = ["max-w-[80%]", "rounded-2xl", "px-4", "py-2", "text-sm", "shadow-sm"]
-                return (
-                  <div
-                    key={message.id}
-                    className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}
-                  >
-                    {isUser ? (
-                      <pre
-                        className={[
-                          ...baseBubbleClasses,
-                          "m-0 whitespace-pre-wrap break-words font-mono",
-                          "bg-primary text-primary-foreground",
-                        ].join(" ")}
-                      >
-                        {message.content}
-                      </pre>
-                    ) : (
-                      <div
-                        className={[
-                          ...baseBubbleClasses,
-                          "bg-muted text-foreground leading-relaxed break-words space-y-2",
-                          "[&_p]:my-2",
-                          "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1",
-                          "[&_table]:w-full [&_table]:border-collapse [&_th]:border [&_td]:border [&_th]:bg-muted/80 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_tr:nth-child(even)]:bg-muted/50",
-                          "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5",
-                          "[&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:overflow-x-auto",
-                        ].join(" ")}
-                        dangerouslySetInnerHTML={{ __html: formatAssistantMessage(message.content) }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-              <AssistantStatusIndicator isSending={isSending} />
-              <div ref={messagesEndRef} />
-            </div>
+          <div className="flex min-h-0 flex-col">
+            <ChatMessages messages={messages} isSending={isSending} />
 
-            {errorMessage && (
-              <div className="mx-4 shrink-0 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                <div className="flex items-center justify-between gap-2">
-                  <span>{errorMessage}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-destructive underline underline-offset-4"
-                    onClick={clearError}
-                  >
-                    닫기
-                  </Button>
-                </div>
-              </div>
-            )}
+            <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
 
-            <form
+            <ChatComposer
+              inputId="assistant-page-input"
+              label="어시스턴트에게 질문하기"
+              inputRef={inputRef}
+              inputValue={input}
+              onInputChange={(event) => setInput(event.target.value)}
               onSubmit={handleSubmit}
-              className="shrink-0 border-t bg-background px-3 pb-3 pt-2"
-            >
-              <label className="sr-only" htmlFor="assistant-page-input">
-                어시스턴트에게 질문하기
-              </label>
-              <div className="flex items-end gap-2 rounded-xl border bg-muted/40 p-2">
-                <textarea
-                  id="assistant-page-input"
-                  ref={inputRef}
-                  className="min-h-[60px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-60"
-                  placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault()
-                      handleSubmit(event)
-                    }
-                  }}
-                  disabled={isSending}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isSending || !input.trim()}
-                  className="h-10 w-10 flex-none"
-                >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="sr-only">Send message</span>
-                </Button>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>베타 · LLM API 연결</span>
-                <span>Shift+Enter로 줄바꿈</span>
-              </div>
-            </form>
+              isSending={isSending}
+              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
+              footerLeft="베타 · LLM API 연결"
+              footerRight="Shift+Enter로 줄바꿈"
+            />
           </div>
         </div>
       </div>

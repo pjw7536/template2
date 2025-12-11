@@ -5,6 +5,14 @@ import IntegrationCard from './IntegrationCard'
 const AppIntegrationMarquee = ({
   apps
 }) => {
+  const midpoint = Math.ceil(apps.length / 2)
+  const topApps = apps.slice(0, midpoint)
+  const bottomApps = apps.slice(midpoint)
+
+  const baseDuration = 50
+  const topCount = Math.max(topApps.length, 1)
+  const getDurationForCount = (count) => baseDuration * (count / topCount)
+
   return (
     <section className='py-8 sm:py-16 lg:py-24'>
       <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
@@ -16,15 +24,15 @@ const AppIntegrationMarquee = ({
       </div>
       {/* Marquee */}
       <div className='w-full overflow-hidden'>
-        <Marquee pauseOnHover duration={25} gap={1.5}>
-          {apps.slice(0, 5).map((app, index) => (
+        <Marquee pauseOnHover duration={baseDuration} gap={1.5}>
+          {topApps.map((app, index) => (
             <IntegrationCard key={index} app={app} />
           ))}
         </Marquee>
       </div>
       <div className='w-full overflow-hidden'>
-        <Marquee pauseOnHover duration={25} gap={1.5} reverse>
-          {apps.slice(5).map((app, index) => (
+        <Marquee pauseOnHover duration={getDurationForCount(bottomApps.length)} gap={1.5} reverse>
+          {bottomApps.map((app, index) => (
             <IntegrationCard key={index} app={app} />
           ))}
         </Marquee>

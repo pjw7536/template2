@@ -1,0 +1,230 @@
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronsLeft,
+  IconChevronsRight,
+} from "@tabler/icons-react"
+import { Mail, Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+const DEFAULT_PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
+const pillBaseClass =
+  "inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold leading-none"
+const pillInteractiveClass =
+  "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
+const deletePillClass = "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
+const countPillClass = "border-primary/20 bg-primary/10 text-primary"
+
+function formatDate(value) {
+  if (!value) return ""
+  try {
+    return new Date(value).toLocaleString()
+  } catch {
+    return value
+  }
+}
+
+function SelectionCheckbox({ checked, onCheckedChange, className, ...props }) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(event) => {
+        event.stopPropagation()
+        onCheckedChange?.(event.target.checked)
+      }}
+      onClick={(event) => event.stopPropagation()}
+      className={cn(
+        "h-4 w-4 cursor-pointer rounded border border-input bg-background text-primary shadow-sm",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export function EmailList({
+  emails = [],
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
+  onSelectEmail,
+  onDeleteEmail,
+  isLoading,
+  onBulkDelete,
+  isBulkDeleting = false,
+  currentPage = 1,
+  totalPages = 1,
+  pageSize = 20,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  onPageChange,
+  onPageSizeChange,
+}) {
+  const allSelected = emails.length > 0 && emails.every((email) => selectedIds.includes(email.id))
+  const hasSelection = selectedIds.length > 0
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border bg-card/60 shadow-sm p-2">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex items-center gap-3">
+          <SelectionCheckbox
+            checked={allSelected}
+            onCheckedChange={onToggleSelectAll}
+            aria-label="전체 선택"
+          />
+          <div>
+            <p className="text-sm font-semibold leading-tight">메일함</p>
+            <p className="text-xs text-muted-foreground">최신순으로 정렬됩니다</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasSelection && onBulkDelete ? (
+            <button
+              type="button"
+              className={cn(pillBaseClass, pillInteractiveClass, deletePillClass, "gap-1")}
+              onClick={onBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              선택 삭제
+            </button>
+          ) : null}
+          <span className={cn(pillBaseClass, countPillClass)} aria-live="polite">
+            {emails.length}개 표시
+          </span>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            메일을 불러오는 중입니다...
+          </div>
+        ) : emails.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
+            <Mail className="h-8 w-8" />
+            <p className="text-sm">표시할 메일이 없습니다.</p>
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {emails.map((email) => {
+              const isSelected = selectedIds.includes(email.id)
+              return (
+                <li
+                  key={email.id}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-muted/60",
+                    isSelected ? "bg-muted/60" : ""
+                  )}
+                  onClick={() => onSelectEmail?.(email.id)}
+                >
+                  <div className="pt-1">
+                    <SelectionCheckbox
+                      checked={isSelected}
+                      onCheckedChange={() => onToggleSelect?.(email.id)}
+                      aria-label={`${email.subject} 선택`}
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1" onClick={() => onSelectEmail?.(email.id)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold">{email.subject || "(제목 없음)"}</p>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {formatDate(email.receivedAt)}
+                      </span>
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">From: {email.sender}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {email.ragDocId ? (
+                      <Badge variant="outline" className="text-[10px] uppercase">
+                        RAG
+                      </Badge>
+                    ) : null}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onDeleteEmail?.(email.id)
+                      }}
+                      aria-label="메일 삭제"
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange?.(1)}
+            aria-label="첫 페이지"
+            title="첫 페이지"
+          >
+            <IconChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange?.(currentPage - 1)}
+            aria-label="이전 페이지"
+            title="이전 페이지"
+          >
+            <IconChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="px-2 text-xs text-muted-foreground" aria-live="polite">
+            페이지 {currentPage} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange?.(currentPage + 1)}
+            aria-label="다음 페이지"
+            title="다음 페이지"
+          >
+            <IconChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange?.(totalPages)}
+            aria-label="마지막 페이지"
+            title="마지막 페이지"
+          >
+            <IconChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-xs text-muted-foreground">페이지당</span>
+          <select
+            value={pageSize}
+            onChange={(event) => onPageSizeChange?.(event.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+            aria-label="페이지당 표시 개수"
+          >
+            {pageSizeOptions.map((size) => (
+              <option key={size} value={size}>
+                {size}개
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  )
+}

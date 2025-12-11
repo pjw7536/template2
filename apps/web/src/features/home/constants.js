@@ -12,6 +12,7 @@ export const navigationItems = [
       { title: 'ESOP Dashboard', href: '/esop_dashboard' },
       { title: 'Timeline(개발중)', href: '/timeline' },
       { title: 'Appstore(개발중)', href: '/appstore' },
+      { title: '메일함', href: '/emails' },
     ]
   },
   {
@@ -39,6 +40,7 @@ export const teamMembers = [
     alt: 'Phillip Rothman',
     name: 'Phillip Rothman',
     role: 'Founder & CEO',
+    link: 'mysingleim://ids=phillip-rothman',
     bgColor: 'bg-sky-600/10 dark:bg-sky-600/10',
     avatarBg: 'bg-sky-600/40 dark:bg-sky-600/40',
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
@@ -48,6 +50,7 @@ export const teamMembers = [
     alt: 'James Kenter',
     name: 'James Kenter',
     role: 'Engineering Manager',
+    link: 'mysingleim://ids=james-kenter',
     bgColor: 'bg-primary/10',
     avatarBg: 'bg-primary/40',
     socialLinkColor: 'group-hover:text-primary',
@@ -57,6 +60,7 @@ export const teamMembers = [
     alt: 'Alena Lubin',
     name: 'Alena Lubin',
     role: 'Frontend Developer',
+    link: 'mysingleim://ids=alena-lubin',
     bgColor: 'bg-green-600/10 dark:bg-green-600/10',
     avatarBg: 'bg-green-600/40 dark:bg-green-600/40',
     socialLinkColor: 'group-hover:text-green-600 dark:group-hover:text-green-400',
@@ -66,6 +70,7 @@ export const teamMembers = [
     alt: 'Cristofer Kenter',
     name: 'Cristofer Kenter',
     role: 'Product Designer',
+    link: 'mysingleim://ids=cristofer-kenter',
     bgColor: 'bg-destructive/10',
     avatarBg: 'bg-destructive/40',
     socialLinkColor: 'group-hover:text-destructive',
@@ -75,6 +80,7 @@ export const teamMembers = [
     alt: 'Minji Choi',
     name: 'Minji Choi',
     role: 'Data Strategist',
+    link: 'mysingleim://ids=minji-choi',
     bgColor: 'bg-amber-500/10 dark:bg-amber-500/15',
     avatarBg: 'bg-amber-500/40 dark:bg-amber-500/40',
     socialLinkColor: 'group-hover:text-amber-500 dark:group-hover:text-amber-400',
@@ -84,6 +90,7 @@ export const teamMembers = [
     alt: 'Lila Gomez',
     name: 'Lila Gomez',
     role: 'Product Marketing Lead',
+    link: 'mysingleim://ids=lila-gomez',
     bgColor: 'bg-indigo-500/10 dark:bg-indigo-500/15',
     avatarBg: 'bg-indigo-500/40 dark:bg-indigo-500/40',
     socialLinkColor: 'group-hover:text-indigo-500 dark:group-hover:text-indigo-400',
@@ -93,6 +100,7 @@ export const teamMembers = [
     alt: 'Samuel Wright',
     name: 'Samuel Wright',
     role: 'Customer Success Lead',
+    link: 'mysingleim://ids=samuel-wright',
     bgColor: 'bg-sky-600/10 dark:bg-sky-600/10',
     avatarBg: 'bg-sky-600/40 dark:bg-sky-600/40',
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
@@ -102,6 +110,7 @@ export const teamMembers = [
     alt: 'Priya Nair',
     name: 'Priya Nair',
     role: 'Data Scientist',
+    link: 'mysingleim://ids=priya-nair',
     bgColor: 'bg-green-600/10 dark:bg-green-600/10',
     avatarBg: 'bg-green-600/40 dark:bg-green-600/40',
     socialLinkColor: 'group-hover:text-green-600 dark:group-hover:text-green-400',
@@ -111,6 +120,7 @@ export const teamMembers = [
     alt: 'Ethan Moore',
     name: 'Ethan Moore',
     role: 'Solutions Architect',
+    link: 'mysingleim://ids=ethan-moore',
     bgColor: 'bg-indigo-500/10 dark:bg-indigo-500/15',
     avatarBg: 'bg-indigo-500/40 dark:bg-indigo-500/40',
     socialLinkColor: 'group-hover:text-indigo-500 dark:group-hover:text-indigo-400',
@@ -120,6 +130,7 @@ export const teamMembers = [
     alt: 'Hana Suzuki',
     name: 'Hana Suzuki',
     role: 'Backend Engineer',
+    link: 'mysingleim://ids=hana-suzuki',
     bgColor: 'bg-primary/10',
     avatarBg: 'bg-primary/40',
     socialLinkColor: 'group-hover:text-primary',
@@ -129,6 +140,7 @@ export const teamMembers = [
     alt: 'Marco Silva',
     name: 'Marco Silva',
     role: 'Mobile Engineer',
+    link: 'mysingleim://ids=marco-silva',
     bgColor: 'bg-destructive/10',
     avatarBg: 'bg-destructive/40',
     socialLinkColor: 'group-hover:text-destructive',
@@ -138,6 +150,7 @@ export const teamMembers = [
     alt: 'Ava Bennett',
     name: 'Ava Bennett',
     role: 'People Operations Manager',
+    link: 'mysingleim://ids=ava-bennett',
     bgColor: 'bg-amber-500/10 dark:bg-amber-500/15',
     avatarBg: 'bg-amber-500/40 dark:bg-amber-500/40',
     socialLinkColor: 'group-hover:text-amber-500 dark:group-hover:text-amber-400',
@@ -147,6 +160,7 @@ export const teamMembers = [
     alt: 'Nora Park',
     name: 'Nora Park',
     role: 'Product Operations',
+    link: 'mysingleim://ids=nora-park',
     bgColor: 'bg-sky-600/10 dark:bg-sky-600/10',
     avatarBg: 'bg-sky-600/40 dark:bg-sky-600/40',
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
@@ -156,6 +170,7 @@ export const teamMembers = [
     alt: 'Felix Lange',
     name: 'Felix Lange',
     role: 'Security Engineer',
+    link: 'mysingleim://ids=felix-lange',
     bgColor: 'bg-indigo-500/10 dark:bg-indigo-500/15',
     avatarBg: 'bg-indigo-500/40 dark:bg-indigo-500/40',
     socialLinkColor: 'group-hover:text-indigo-500 dark:group-hover:text-indigo-400',
@@ -165,6 +180,7 @@ export const teamMembers = [
     alt: 'Sara Idris',
     name: 'Sara Idris',
     role: 'QA Lead',
+    link: 'mysingleim://ids=sara-idris',
     bgColor: 'bg-green-600/10 dark:bg-green-600/10',
     avatarBg: 'bg-green-600/40 dark:bg-green-600/40',
     socialLinkColor: 'group-hover:text-green-600 dark:group-hover:text-green-400',
@@ -174,6 +190,7 @@ export const teamMembers = [
     alt: 'Leo Martin',
     name: 'Leo Martin',
     role: 'Growth Strategist',
+    link: 'mysingleim://ids=leo-martin',
     bgColor: 'bg-primary/10',
     avatarBg: 'bg-primary/40',
     socialLinkColor: 'group-hover:text-primary',
@@ -183,6 +200,7 @@ export const teamMembers = [
     alt: 'Bianca Russo',
     name: 'Bianca Russo',
     role: 'Creative Director',
+    link: 'mysingleim://ids=bianca-russo',
     bgColor: 'bg-amber-500/10 dark:bg-amber-500/15',
     avatarBg: 'bg-amber-500/40 dark:bg-amber-500/40',
     socialLinkColor: 'group-hover:text-amber-500 dark:group-hover:text-amber-400',
@@ -192,6 +210,7 @@ export const teamMembers = [
     alt: 'Omar Farouk',
     name: 'Omar Farouk',
     role: 'Platform Engineer',
+    link: 'mysingleim://ids=omar-farouk',
     bgColor: 'bg-destructive/10',
     avatarBg: 'bg-destructive/40',
     socialLinkColor: 'group-hover:text-destructive',
@@ -201,6 +220,7 @@ export const teamMembers = [
     alt: 'Chloe Nguyen',
     name: 'Chloe Nguyen',
     role: 'Design Technologist',
+    link: 'mysingleim://ids=chloe-nguyen',
     bgColor: 'bg-sky-600/10 dark:bg-sky-600/10',
     avatarBg: 'bg-sky-600/40 dark:bg-sky-600/40',
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
@@ -210,6 +230,7 @@ export const teamMembers = [
     alt: 'Daniel Rivera',
     name: 'Daniel Rivera',
     role: 'Finance Lead',
+    link: 'mysingleim://ids=daniel-rivera',
     bgColor: 'bg-primary/10',
     avatarBg: 'bg-primary/40',
     socialLinkColor: 'group-hover:text-primary',
@@ -219,61 +240,84 @@ export const teamMembers = [
     alt: 'Jisoo Han',
     name: 'Jisoo Han',
     role: 'Chief of Staff',
+    link: 'mysingleim://ids=jisoo-han',
     bgColor: 'bg-sky-600/10 dark:bg-sky-600/10',
     avatarBg: 'bg-sky-600/40 dark:bg-sky-600/40',
     socialLinkColor: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
   }
 ]
 
+import {
+  IoAnalyticsOutline,
+  IoGitMergeOutline,
+  IoGridOutline,
+  IoHardwareChipOutline,
+  IoLayersOutline,
+  IoPulseOutline,
+  IoShareSocialOutline,
+  IoShieldCheckmarkOutline,
+  IoSwapHorizontalOutline
+} from 'react-icons/io5'
+
 export const marqueeApps = [
   {
     name: 'Ola',
     description: 'Ola Tech reshapes our access to information.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/ola-icon.png'
+    icon: IoHardwareChipOutline,
+    connectUrl: 'https://olaelectric.com/'
   },
   {
     name: 'Apple',
     description: 'Apple has transformed our tech connections.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/apple-icon.png'
+    icon: IoHardwareChipOutline,
+    connectUrl: 'https://www.apple.com/'
   },
   {
     name: 'Notion',
     description: 'Google changed how we find information.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/notion-white.png'
+    icon: IoGridOutline,
+    connectUrl: 'https://www.notion.so/'
   },
   {
     name: 'Meta',
     description: 'Meta changed how we connect.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/meta-icon.png'
+    icon: IoShareSocialOutline,
+    connectUrl: 'https://about.meta.com/'
   },
   {
     name: 'Zoom',
     description: 'Zoom changed how we connect.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/camera-icon.png'
+    icon: IoSwapHorizontalOutline,
+    connectUrl: 'https://zoom.us/'
   },
   {
     name: 'Framer',
     description: 'Framer revolutionized our data collection.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/framer-logo.png'
+    icon: IoLayersOutline,
+    connectUrl: 'https://www.framer.com/'
   },
   {
     name: 'Slack',
     description: 'Team collaboration tool.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/slack-icon.png'
+    icon: IoPulseOutline,
+    connectUrl: 'https://slack.com/'
   },
   {
     name: 'Github',
     description: 'GitHub enhances collaboration.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/github-white.png'
+    icon: IoGitMergeOutline,
+    connectUrl: 'https://github.com/'
   },
   {
     name: 'Discord',
     description: 'Discord transforms our connections.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/discord-icon.png'
+    icon: IoShieldCheckmarkOutline,
+    connectUrl: 'https://discord.com/'
   },
   {
     name: 'Figma',
     description: 'Figma transformed our connections.',
-    image: 'https://cdn.shadcnstudio.com/ss-assets/brand-logo/figma-icon.png'
+    icon: IoAnalyticsOutline,
+    connectUrl: 'https://www.figma.com/'
   }
 ]

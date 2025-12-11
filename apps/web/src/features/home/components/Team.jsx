@@ -33,42 +33,50 @@ const TeamMemberCard = ({ member, index, isWide }) => {
   }, [])
 
   return (
-    <Card
-      ref={ref}
-      style={{
-        transitionDelay: `${index * 0.1}s`
-      }}
-      className={cn(
-        // pt를 줄여서 전체 카드 높이 살짝 축소
-        'group relative border-none pt-16 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
-        isWide && 'sm:max-lg:col-span-3',
-        member.bgColor,
-        !isVisible && 'opacity-0 translate-y-6',
-        isVisible && 'opacity-100 translate-y-0'
-      )}
+    <a
+      href={member.link}
+      target='_blank'
+      rel='noopener noreferrer'
+      className='block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+      aria-label={`${member.name} 프로필로 이동`}
     >
-      <CardContent
-        className='border-card bg-card absolute -top-12 left-1/2 w-fit -translate-x-1/2 rounded-full border-4 p-0 transition-all duration-300 group-hover:shadow-xl'
+      <Card
+        ref={ref}
+        style={{
+          transitionDelay: `${index * 0.1}s`
+        }}
+        className={cn(
+          // pt를 줄여서 전체 카드 높이 살짝 축소
+          'group relative h-full border-none pt-16 shadow-none sm:max-lg:col-span-2 transition-all duration-700 ease-out',
+          isWide && 'sm:max-lg:col-span-3',
+          member.bgColor,
+          !isVisible && 'opacity-0 translate-y-6',
+          isVisible && 'opacity-100 translate-y-0'
+        )}
       >
-        <div
-          // 아바타 사이즈와 안쪽 패딩 줄이기
-          className={cn('size-24 overflow-hidden rounded-full', member.avatarBg)}
+        <CardContent
+          className='border-card bg-card absolute -top-12 left-1/2 w-fit -translate-x-1/2 rounded-full border-4 p-0 transition-all duration-300 group-hover:shadow-xl'
         >
-          <img src={member.image} alt={member.alt} className='h-auto w-full' />
-        </div>
-      </CardContent>
+          <div
+            // 아바타 사이즈와 안쪽 패딩 줄이기
+            className={cn('size-24 overflow-hidden rounded-full', member.avatarBg)}
+          >
+            <img src={member.image} alt={member.alt} className='h-auto w-full' />
+          </div>
+        </CardContent>
 
-      <CardHeader className='text-center'>
-        {/* 이름 폰트 한 단계 축소 */}
-        <CardTitle className='text-base font-semibold'>
-          {member.name}
-        </CardTitle>
-        {/* 역할 폰트도 한 단계 축소 */}
-        <CardDescription className='text-sm font-medium'>
-          {member.role}
-        </CardDescription>
-      </CardHeader>
-    </Card>
+        <CardHeader className='text-center'>
+          {/* 이름 폰트 한 단계 축소 */}
+          <CardTitle className='text-base font-semibold'>
+            {member.name}
+          </CardTitle>
+          {/* 역할 폰트도 한 단계 축소 */}
+          <CardDescription className='text-sm font-medium'>
+            {member.role}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </a>
   )
 }
 

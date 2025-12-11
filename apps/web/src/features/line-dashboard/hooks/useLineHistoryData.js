@@ -1,7 +1,9 @@
 // src/features/line-dashboard/hooks/useLineHistoryData.js
-import * as React from "react"
+import { useMemo, useCallback } from "react"
+import { useQuery } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
+import { lineDashboardQueryKeys } from "../api/query-keys"
 
 const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
@@ -38,14 +40,7 @@ function calcRangeDays(fromValue, toValue) {
 }
 
 export function useLineHistoryData({ lineId, dateRange }) {
-  const [state, setState] = React.useState({
-    data: null,
-    isLoading: false,
-    error: null,
-  })
-  const [refreshToken, setRefreshToken] = React.useState(0)
-
-  const { fromValue, toValue, rangeDays } = React.useMemo(() => {
+  const { fromValue, toValue, rangeDays } = useMemo(() => {
     const normalizedFrom = formatKstDateOnly(dateRange?.from)
     const normalizedTo = formatKstDateOnly(dateRange?.to)
     return {
@@ -55,97 +50,73 @@ export function useLineHistoryData({ lineId, dateRange }) {
     }
   }, [dateRange])
 
-  React.useEffect(() => {
-    setState({ data: null, isLoading: true, error: null })
-  }, [lineId])
-
-  React.useEffect(() => {
-    const controller = new AbortController()
-
-    const isWithinRange = (value) => {
-      if (!fromValue || !toValue) return true
-      const key = formatKstDateOnly(value)
-      if (!key) return false
-      return key >= fromValue && key <= toValue
-    }
-
-    const filterRecords = (records) =>
-      Array.isArray(records) ? records.filter((record) => isWithinRange(record?.date)) : []
-
-    async function load() {
-      if (!lineId || !fromValue || !toValue || !rangeDays) {
-        setState((prev) => ({ ...prev, isLoading: false }))
-        return
+  const historyQuery = useQuery({
+    queryKey: lineDashboardQueryKeys.history(lineId ?? null, {
+      from: fromValue,
+      to: toValue,
+    }),
+    enabled: Boolean(lineId && fromValue && toValue && rangeDays),
+    queryFn: async () => {
+      const isWithinRange = (value) => {
+        if (!fromValue || !toValue) return true
+        const key = formatKstDateOnly(value)
+        if (!key) return false
+        return key >= fromValue && key <= toValue
       }
 
-      setState((previous) => ({ ...previous, isLoading: true, error: null }))
+      const filterRecords = (records) =>
+        Array.isArray(records) ? records.filter((record) => isWithinRange(record?.date)) : []
 
-      try {
-        const params = new URLSearchParams({ lineId: String(lineId) })
-        params.set("rangeDays", String(rangeDays))
-        params.set("from", fromValue)
-        params.set("to", toValue)
+      const params = new URLSearchParams({ lineId: String(lineId) })
+      params.set("rangeDays", String(rangeDays))
+      params.set("from", fromValue)
+      params.set("to", toValue)
 
-        const endpoint = buildBackendUrl("/line-dashboard/history", params)
-        const response = await fetch(endpoint, {
-          signal: controller.signal,
-          credentials: "include",
-        })
+      const endpoint = buildBackendUrl("/line-dashboard/history", params)
+      const response = await fetch(endpoint, { credentials: "include" })
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const message =
-            typeof payload?.error === "string"
-              ? payload.error
-              : "Failed to load history data"
-          throw new Error(message)
-        }
-
-        const payload = await response.json()
-        const filteredTotals = filterRecords(payload?.totals)
-        const filteredBreakdowns =
-          payload?.breakdowns && typeof payload.breakdowns === "object"
-            ? Object.fromEntries(
-                Object.entries(payload.breakdowns).map(([key, records]) => [
-                  key,
-                  filterRecords(records),
-                ]),
-              )
-            : {}
-
-        setState({
-          data: {
-            ...payload,
-            totals: filteredTotals,
-            breakdowns: filteredBreakdowns,
-          },
-          isLoading: false,
-          error: null,
-        })
-      } catch (error) {
-        if (controller.signal.aborted) return
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
         const message =
-          error instanceof Error ? error.message : "Failed to load history data"
-        setState({ data: null, isLoading: false, error: message })
+          typeof payload?.error === "string"
+            ? payload.error
+            : "Failed to load history data"
+        throw new Error(message)
       }
+
+      const filteredTotals = filterRecords(payload?.totals)
+      const filteredBreakdowns =
+        payload?.breakdowns && typeof payload.breakdowns === "object"
+          ? Object.fromEntries(
+              Object.entries(payload.breakdowns).map(([key, records]) => [
+                key,
+                filterRecords(records),
+              ]),
+            )
+          : {}
+
+      return {
+        ...payload,
+        totals: filteredTotals,
+        breakdowns: filteredBreakdowns,
+      }
+    },
+  })
+
+  const refresh = useCallback(() => {
+    if (!lineId || !fromValue || !toValue || !rangeDays) {
+      return Promise.resolve({ data: null })
     }
+    return historyQuery.refetch()
+  }, [historyQuery, lineId, fromValue, toValue, rangeDays])
 
-    load()
-
-    return () => controller.abort()
-  }, [lineId, fromValue, toValue, rangeDays, refreshToken])
-
-  const refresh = React.useCallback(() => {
-    setRefreshToken((value) => value + 1)
-  }, [])
-
-  const totalsData = React.useMemo(() => state.data?.totals ?? [], [state.data])
-  const breakdownRecordsByDimension = React.useMemo(
-    () => state.data?.breakdowns ?? {},
-    [state.data]
+  const totalsData = useMemo(() => historyQuery.data?.totals ?? [], [historyQuery.data])
+  const breakdownRecordsByDimension = useMemo(
+    () => historyQuery.data?.breakdowns ?? {},
+    [historyQuery.data]
   )
 
-  const hasSendJiraData = React.useMemo(
+  const hasSendJiraData = useMemo(
     () =>
       hasPositiveValue(totalsData, "sendJiraCount") ||
       Object.values(breakdownRecordsByDimension).some((records) =>
@@ -155,9 +126,9 @@ export function useLineHistoryData({ lineId, dateRange }) {
   )
 
   return {
-    data: state.data,
-    isLoading: state.isLoading,
-    error: state.error,
+    data: historyQuery.data ?? null,
+    isLoading: historyQuery.isFetching,
+    error: historyQuery.error ? (historyQuery.error instanceof Error ? historyQuery.error.message : String(historyQuery.error)) : null,
     totalsData,
     breakdownRecordsByDimension,
     hasSendJiraData,

@@ -1,35 +1,418 @@
-## Core Principles
+# 🧭 agents.md — Ultra-Optimized Constitution for LLM Agents
 
-### I. Vertical Slice Feature Isolation
-모든 feature는 가능한 한 “작은 독립 제품”처럼 설계한다. apps/web/src/features/<feature>와 대응하는 Django app 단위로 페이지·컴포넌트·상태·API·타입을 자급자족하게 유지하고, import는 `src/components/ui/*`, `src/components/layout/*`, `src/components/common/*`, `src/lib/*`, 자기 자신의 `src/features/<feature>/*`로만 제한한다. 다른 feature의 query key, hook, 타입, 컴포넌트 사용은 금지하며 필요 시 중복 구현을 우선하고, 반복이 2회 이상이면 common 또는 lib로 승격한다. 목표는 feature 폴더를 통째로 복사해도 최소 수정으로 동작할 수준의 독립성이다.
+### (Strict, Unambiguous, Machine-Executable Rules)
 
-### II. Radical Simplicity Over Abstraction
-초보자도 이해할 수 있는 구조를 1순위로 두고, 복잡한 추상화·과도한 전역 상태를 피한다. “단순하지만 중복된 코드”를 “어렵고 복잡한 추상화”보다 우선한다. 헷갈릴 수 있는 부분에는 짧은 한글 주석을 남기고, 설계가 어려워지면 feature 경계를 다시 확인한다. 전역 공유가 필요해 보이면 우선 feature 내부에 가두고, 정말 반복되는 순간에만 common/lib로 승격한다.
+이 문서는 LLM 에이전트가 반드시 따라야 하는 **절대 규칙(Constitution)**을 정의한다.
+모든 규칙은 모호함 없이 실행 가능해야 하며, 생성되는 아키텍처가 항상 일관되고 재현 가능하도록 한다.
 
-### III. UI Stack & Theme Integrity
-UI는 shadcn 기반 primitives(`src/components/ui`) → 레이아웃(`src/components/layout`) → 공통 조합형 UI(`src/components/common`) → feature별 컴포넌트 순서로 쌓는다. raw hex 색상은 금지하고 Tailwind 토큰 또는 CSS 변수만 사용하며, AppShell/Sidebar/Header/PageContainer 등 레이아웃은 도메인 의존성을 최소화하고 props로 주입한다. ThemeProvider는 light | dark | system을 지원하고, shadcn vendor 코드는 직접 수정하지 말고 토큰/변수로 override한다.
+LLM 에이전트는 **이 문서의 모든 규칙을 100% 준수해야 한다.**
+조금이라도 불확실한 경우, 에이전트는 반드시 인간에게 질문해야 한다.
 
-### IV. Routing as a Glue Layer
-라우트는 오직 `src/routes`에서만 최종 정의되고, 각 feature는 `routes.tsx` 또는 `index.ts`로 자신이 제공하는 routes를 export한다. 라우트는 “어떤 path에 어떤 페이지” 정도만 알며 내부 비즈니스 로직, hooks, store를 직접 들여다보지 않는다. 중첩 깊이는 최대 2~3단으로 제한하고, loader/action은 URL 파라미터 검증·간단한 redirect·prefetch처럼 라우팅에 강하게 결합된 작업에만 쓴다. 모든 페이지는 AppShell 아래에서 렌더링한다.
+---
 
-### V. Data, State, and UX Discipline
-서버 상태는 React Query가 책임지고, UI 상태는 useState/useReducer 등 지역 상태로 처리한다. Query key는 `["feature", "resource"]`, `["feature", "resource", { filters }]` 패턴을 따르며, invalidate는 관련 key만 정확히 지정하고 가능하면 feature 내부 api/ 모듈에서 캡슐화한다. loader 상태와 Query 캐시를 중복 관리하지 않으며, 로딩에는 skeleton/spinner를 feature가 책임지고 200+ row 리스트는 virtualization이나 pagination/infinite scroll을 고려한다. 전역 상태는 최후의 수단이다.
+# 1. Global Execution Rules
 
-## Architecture & File System Contract
+## 1-1. Deterministic Behavior
 
-- Stack: React 19 + Vite + React Router + React Compiler + Tailwind + shadcn/ui (frontend) + Django + PostgreSQL (backend).  
-- Frontend layout: `apps/web/src/components/ui`(primitives, 도메인 없음) / `components/layout`(AppShell/Sidebar/Header/PageContainer, 최소한의 도메인) / `components/common`(도메인 독립 조합형 UI).  
-- Features: `apps/web/src/features/<feature>/` 안에 api/, components/, hooks/, pages/, store/, types/, utils/, routes.tsx, index.ts를 둔다. feature 외부에서 사용할 때는 루트 index/routes export만 import한다.  
-- Routing glue: `apps/web/src/routes`가 각 feature routes를 합쳐서 정의하며, 다른 곳에서 라우트를 정의하지 않는다.  
-- Theming: 색상/간격/타이포그라피 등은 Tailwind 토큰과 `src/styles/tokens.css`로 관리하고 raw hex는 금지한다.  
-- Env: Vite 전역 환경 변수는 `VITE_` prefix 사용.  
-- Backend: Django 앱을 feature와 1:1로 대응시키고 `/api/v1/<feature>` 네임스페이스를 따른다. 다른 app 모델 접근 시 serializer/service 레이어로 캡슐화하고 cross-app 쿼리는 최소화한다. DB는 UTC 저장, 프론트에서만 KST로 변환한다.
+LLM 에이전트는 반드시:
 
-## Delivery Workflow & Quality Gates
+* 모든 규칙을 정확히 따르고, 추측이나 창작을 하지 않는다.
+* 폴더 경로, 컴포넌트 구조, 네이밍을 일관되게 유지한다.
+* 명시되지 않은 패턴을 새로 발명하지 않는다.
+* 세부사항이 불분명하면 무조건 질문한다.
 
-- 단순성 유지: React + Tailwind + shadcn 조합으로 먼저 해결하고, 실제 문제 확인 전까지 과도한 최적화/추상화를 피한다.  
-- UX & 접근성: AppShell 기반 일관 레이아웃, ARIA/키보드 내비게이션 준수, 반응형 고려. 로딩 skeleton/spinner와 pagination/virtualization을 feature 내부에서 책임진다.  
-- Testing & validation: lint 통과가 필수(`npm run lint`). 자동 테스트가 부족한 경우 PR에서 수동 검증 단계를 기록한다. 중요한 흐름은 스냅샷/렌더링 테스트, 서버 상태 로직은 단위 테스트를 우선 고려한다.  
-- Performance: 실제 성능 문제가 드러나기 전까지는 간결한 구현을 우선하고, 큰 데이터 화면에 대해서만 skeleton + pagination/infinite scroll/virtualization을 적용한다.  
-- Migrations: 불필요하게 잘게 쪼개지 말고, 삭제 작업에는 롤백 전략을 포함한다. env 비밀은 `.env.local` 등에 두고 VCS에 커밋하지 않는다.
+## 1-2. Output Format Rules
 
+* 코드는 항상 문법적으로 유효해야 한다.
+* 파일 경로는 반드시 `/` 를 사용한다.
+* import 경로는 실제로 존재해야 한다.
+* 컴포넌트: PascalCase
+* 훅(hook): camelCase
+* 유틸 함수: camelCase
+* Feature export는 항상 해당 feature의 `index.js`를 통한다.
+
+---
+
+# 2. Architectural Rules (LLM-Strict)
+
+## 2-1. Vertical Slice Isolation
+
+모든 기능은 완전한 Vertical Slice로 구성해야 한다.
+
+### Feature Path
+
+```
+apps/web/src/features/<feature>
+```
+
+### Allowed Subfolders
+
+```
+pages/
+components/
+hooks/
+api/
+store/
+utils/
+routes.jsx
+index.js
+```
+
+### MUST obey
+
+* 새로운 폴더는 생성 불가.
+* 2단계보다 깊은 폴더 구조는 금지.
+* 다른 feature 내부 경로로 import 금지.
+
+### Allowed Imports
+
+* `apps/web/src/components/ui/*`
+* `apps/web/src/components/layout/*`
+* `apps/web/src/components/common/*`
+* `apps/web/src/lib/*`
+* `apps/web/src/features/<otherFeature>/index.js` (최상위만)
+
+그 외 import는 **INVALID**.
+
+---
+
+# 3. UI Stack Rules
+
+## 3-1. Immutable UI Layer
+
+LLM 에이전트는 다음 경로를 절대 수정할 수 없다:
+
+```
+apps/web/src/components/ui/**/*
+```
+
+새로운 UI primitive는 반드시 shadcn CLI를 사용해 추가한다.
+
+## 3-2. UI Assembly Hierarchy
+
+UI는 반드시 아래 계층 구조를 따른다.
+
+1. UI primitives (`components/ui/*`)
+2. Layout components (`components/layout/*`)
+3. Common shared components (`components/common/*`)
+4. Feature-specific UI (`features/<feature>/components/*`)
+
+이 계층 구조를 바꾸는 것은 금지한다.
+
+---
+
+# 4. Routing Rules
+
+## 4-1. Feature Route Export
+
+각 feature는 반드시 `routes.jsx`를 포함하고 route 설정을 export해야 한다.
+
+## 4-2. Global Routes
+
+전역 라우팅은 오직:
+
+```
+apps/web/src/routes/*
+```
+
+에만 존재한다.
+
+## 4-3. No Business Logic in Routes
+
+Routes는 다음만 가능:
+
+* 구조 정의
+* element 지정
+* param validation
+* redirect
+
+Routes 내부에 다음은 **절대 금지**:
+
+* 비즈니스 로직
+* 데이터 로직
+* UI 상태 계산
+
+---
+
+# 5. State & Data Rules
+
+## 5-1. React Query
+
+React Query는 유일한 서버 데이터 출처이다.
+
+LLM MUST:
+
+* 배열 기반 Query Key 사용
+* 중복된 키 사용 금지
+* 최소 단위 invalidation
+* Zustand에 서버 데이터 저장 금지
+
+## 5-2. Zustand
+
+Zustand는 다음 목적에만 사용 가능:
+
+* UI 상태
+* Interaction Flow
+* Multi-step form
+* 임시 공유 상태
+
+Zustand에 다음은 금지:
+
+* 서버 데이터
+* Redux 스타일 mega-store
+* 전역 비즈니스 상태
+
+Store path 규칙:
+
+```
+apps/web/src/features/<feature>/store/useSomethingStore.js
+```
+
+---
+
+# 6. Coding Rules
+
+## 6-1. Naming
+
+* Components → PascalCase
+* Hooks → camelCase
+* Utilities → camelCase
+* Zustand store → useSomethingStore
+* Pages → PascalCase
+* API modules → camelCase
+
+## 6-2. Styling
+
+LLM MUST:
+
+* Tailwind classnames 사용
+* design tokens (`text-primary`, `bg-muted` 등)만 사용
+* dark mode는 `dark:` prefix
+
+LLM MUST NOT:
+
+* 임의의 HEX 값 사용
+* inline 스타일 사용 (필요 시 예외)
+
+---
+
+# 7. React 19 Rules
+
+LLM MUST NOT:
+
+* 불필요한 useMemo
+* 불필요한 useCallback
+* 불필요한 React.memo
+
+Allowed only when:
+
+* 무거운 계산이 존재함
+* 라이브러리가 stable identity 요구
+
+---
+
+# 8. Backend / Django Rules
+
+LLM MUST:
+
+* API prefix는 `/api/v1/<feature>`
+* 앱 간 모델 import 금지
+* 도메인 로직은 service 계층에 존재해야 함
+* 모든 timestamp는 UTC
+
+---
+
+# 9. File Generation Rules
+
+새 파일 생성 시:
+
+1. 전체 경로 출력
+2. 파일 내용 전체 출력
+3. import 유효성 보장
+4. 아키텍처 규칙 준수
+5. 일관된 naming 적용
+
+기존 파일 수정 시:
+
+* 구조 보존
+* export 유지
+* 요청 범위 외 변경 금지
+
+---
+
+# 10. LLM Error Handling Rules
+
+LLM MUST ask for clarification when:
+
+* 폴더명 모호
+* 파일 위치 불명확
+* API schema 없음
+* 복수 해석 가능
+
+LLM MUST NOT guess.
+
+---
+
+# 11. Layout Rules (Strict for All Features)
+
+## 11-1. Layout Philosophy
+
+레이아웃은 다음 두 원칙을 따른다:
+
+1. 바깥 컨테이너는 고정 높이 또는 구조적 Flex/Grid를 제공한다.
+2. **스크롤은 한 축에서 단 하나의 요소에서만 발생한다.**
+
+스크롤이 여러 곳에서 동시에 발생하면 INVALID.
+
+---
+
+## 11-2. Global Page Skeleton Rule
+
+모든 페이지는 다음 기본 골격을 따라야 한다:
+
+```tsx
+<div class="h-screen flex flex-col">
+  <header class="h-16 shrink-0"> ... </header>
+
+  <main class="flex-1 min-h-0 overflow-hidden">
+    {children}
+  </main>
+</div>
+```
+
+LLM MUST:
+
+* `h-screen flex flex-col` 사용
+* Header는 고정 높이 + `shrink-0`
+* Content는 `flex-1 min-h-0 overflow-hidden`
+* 스크롤은 main 내부에서만 발생
+
+---
+
+## 11-3. Flex vs Grid Rules
+
+### Flex MUST be used for:
+
+* 단방향 정렬 (row/col)
+* 버튼·툴바 정렬
+* 가운데 정렬
+* 작은 UI 구성
+
+### Grid MUST be used for:
+
+* 2~3개 영역 분리 (리스트/상세)
+* 상단 고정 + 아래 스크롤 분리
+* 고정/비율 row 구성
+
+---
+
+## 11-4. Scroll Rules
+
+### Rule A — 스크롤은 한 요소에서만 발생
+
+```tsx
+<div class="min-h-0 overflow-y-auto">...</div>
+```
+
+### Rule B — 스크롤 부모는 반드시 min-h-0
+
+### Rule C — 위는 고정, 아래는 스크롤 패턴은 아래만 허용
+
+```tsx
+<div class="grid h-full min-h-0 grid-rows-[auto,1fr]">
+  <div>고정영역</div>
+  <div class="min-h-0 overflow-y-auto">스크롤영역</div>
+</div>
+```
+
+---
+
+## 11-5. Two-Pane Layout Rule
+
+(왼쪽 리스트 + 오른쪽 상세)
+
+```tsx
+<div class="grid flex-1 min-h-0 gap-4 md:grid-cols-2">
+  <div class="grid min-h-0 grid-rows-[auto,1fr] gap-2">
+    <div class="h-[고정높이 또는 auto] overflow-hidden">{filters}</div>
+    <div class="min-h-0 overflow-y-auto">{list}</div>
+  </div>
+
+  <div class="min-h-0 overflow-y-auto">{detail}</div>
+</div>
+```
+
+LLM MUST:
+
+* 필터는 고정 or auto 높이
+* 리스트는 반드시 단독 스크롤
+* 상세뷰도 단독 스크롤
+
+---
+
+## 11-6. Padding Responsibility Rules (상·하위 패딩 규칙)
+
+### Layout(상위 컨테이너)의 책임
+
+* 페이지 전체 좌우 padding (`px-4 md:px-6`)
+* 섹션 간 gap
+* 전체 스크롤 구조
+* 작업 공간 여백 (work area padding)
+
+### Component(하위 컴포넌트)의 책임
+
+* 자체 내부 콘텐츠 padding (`p-4`, `p-3` 등)
+* 컴포넌트 내부 spacing
+
+### STRICT RULES
+
+LLM MUST NOT:
+
+* 상위가 하위 내부 padding을 조절하게 만들지 말 것
+* 하위가 페이지 전체 padding을 설정하지 말 것
+* 여러 레벨에서 padding이 중복되게 만들지 말 것
+
+**상위는 외부 여백, 하위는 내부 여백.**
+섞이면 INVALID.
+
+---
+
+## 11-7. Spacing Rules
+
+* Page padding: `p-4 md:p-6`
+* Section gaps: `gap-4`
+* Internal component spacing: `gap-2` or `gap-3`
+* 대형 레이아웃 구분: `gap-6`
+
+임의 spacing 값 사용은 금지.
+
+---
+
+## 11-8. Layout Componentization Rule
+
+레이아웃 패턴이 2회 이상 반복되면, LLM MUST 생성:
+
+```
+apps/web/src/components/layout/<LayoutName>.jsx
+```
+
+Feature 내부에는 레이아웃 컴포넌트를 절대 생성하지 않는다.
+
+---
+
+## 11-9. Layout & Feature Boundary
+
+LLM MUST:
+
+* 레이아웃 → `components/layout/*`
+* 공용 UI → `components/common/*`
+* 개별 feature UI → `features/<feature>/components/*`
+
+레이아웃과 feature UI가 결합되면 INVALID.
+
+---
+
+# ✔ End of Ultra-Optimized LLM Constitution
+
+이 문서는 프로젝트 전체의 헌법이며,
+LLM은 코드를 생성하거나 수정할 때 **항상 이 규칙을 기반으로 수행해야 한다.**

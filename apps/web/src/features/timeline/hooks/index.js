@@ -6,5 +6,6 @@ export { useCtttmLogs } from "./useCtttmLogs";
 export { useRacbLogs } from "./useRacbLogs";
 export { useJiraLogs } from "./useJiraLogs";
 export { useTimelineLogs } from "./useTimelineLogs";
+export { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
 export { useLines, useSDWT, usePrcGroups, useEquipments } from "./useLineQueries";
 export { useTimelinePageState } from "./useTimelinePageState";

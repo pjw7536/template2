@@ -112,9 +112,9 @@ export function AppstorePage() {
   }
 
   return (
-    <section className="flex min-h-[calc(100dvh-7.5rem)] flex-col gap-6 pb-6">
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <aside className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="grid min-h-0 gap-6 lg:grid-cols-[320px_1fr]">
+        <aside className="flex h-full min-h-0 flex-col gap-4">
           <Card className="rounded-2xl border bg-card shadow-sm">
             <CardHeader className="pb-2 space-y-2">
               <Badge variant="secondary" className="w-fit rounded-full bg-primary/10 text-primary">
@@ -288,6 +288,6 @@ export function AppstorePage() {
           </div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }

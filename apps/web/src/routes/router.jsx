@@ -13,6 +13,8 @@ import { modelsRoutes } from "@/features/models"
 import { TimelineLayout, timelineRoutes } from "@/features/timeline"
 import { vocRoutes } from "@/features/voc"
 import { AssistantLayout, assistantRoutes } from "@/features/assistant"
+import { emailsRoutes } from "@/features/emails"
+import { mailboxRoutes } from "@/features/mailbox"
 
 const protectedAppRoutes = {
   element: <AuthAutoLoginGate />,
@@ -23,6 +25,8 @@ const protectedAppRoutes = {
         ...modelsRoutes,
         ...lineDashboardRoutes,
         ...appstoreRoutes,
+        ...mailboxRoutes,
+        ...emailsRoutes,
         ...vocRoutes,
       ],
     },

@@ -4,7 +4,7 @@ import { DEFAULT_TYPE_FILTERS } from "../utils/constants";
 import { useTimelineSelectionStore } from "../store/useTimelineSelectionStore";
 import { useTimelineStore } from "../store/timelineStore";
 import { useTimelineLogs } from "./useTimelineLogs";
-import { timelineApi } from "../api/timelineApi";
+import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
 
 /**
  * TimelinePage에서 흩어져 있던 상태/파생 데이터를 한 곳에 모아둔 훅.
@@ -38,62 +38,59 @@ export function useTimelinePageState(params) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // URL 파라미터 검증 및 상태 반영 (과도한 파일 분리를 줄이기 위해 이 훅 안에서 처리)
-  const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState(null);
-  const [isUrlInitialized, setIsUrlInitialized] = useState(false);
+  const shouldValidateEqpOnly = Boolean(params.eqpId && !params.lineId);
+  const {
+    data: equipmentInfo,
+    isFetching: isEquipmentInfoFetching,
+    isError: isEquipmentInfoError,
+    error: equipmentInfoError,
+  } = useEquipmentInfoQuery(params.eqpId, { enabled: shouldValidateEqpOnly });
+
+  const isValidating = shouldValidateEqpOnly && isEquipmentInfoFetching;
+  const hasValidationResult = !shouldValidateEqpOnly || !isEquipmentInfoFetching;
 
   useEffect(() => {
-    const validateAndSetParams = async () => {
-      // URL에 eqpId만 있는 경우
-      if (params.eqpId && !params.lineId) {
-        setIsValidating(true);
-        setValidationError(null);
-        setIsUrlInitialized(true);
+    if (!shouldValidateEqpOnly) {
+      setValidationError(null);
+      return;
+    }
 
-        try {
-          const eqpInfo = await timelineApi.fetchEquipmentInfoByEqpId(
-            params.eqpId
-          );
+    if (equipmentInfo) {
+      setValidationError(null);
+      setLine(equipmentInfo.lineId);
+      setSdwt(equipmentInfo.sdwtId);
+      setPrcGroup(equipmentInfo.prcGroup);
+      setEqp(params.eqpId);
+      return;
+    }
 
-          if (!eqpInfo) {
-            setValidationError("유효하지 않은 EQP ID입니다.");
-            setTimeout(() => navigate("/timeline"), 1500);
-            return;
-          }
-
-          // 상태 업데이트
-          setLine(eqpInfo.lineId);
-          setSdwt(eqpInfo.sdwtId);
-          setPrcGroup(eqpInfo.prcGroup);
-          setEqp(params.eqpId);
-        } catch {
-          setValidationError("데이터 검증 중 오류가 발생했습니다.");
-          setTimeout(() => navigate("/timeline"), 1500);
-        } finally {
-          setIsValidating(false);
-        }
-      } else {
-        setIsUrlInitialized(true);
-      }
-    };
-
-    if (!isUrlInitialized) {
-      validateAndSetParams();
+    if (isEquipmentInfoError || (!equipmentInfo && !isEquipmentInfoFetching)) {
+      const message =
+        equipmentInfoError instanceof Error
+          ? equipmentInfoError.message
+          : "유효하지 않은 EQP ID입니다.";
+      setValidationError(message);
+      const timeoutId = setTimeout(() => navigate("/timeline"), 1500);
+      return () => clearTimeout(timeoutId);
     }
   }, [
-    params.eqpId,
-    isUrlInitialized,
+    equipmentInfo,
+    equipmentInfoError,
+    isEquipmentInfoError,
+    isEquipmentInfoFetching,
     navigate,
-    setLine,
-    setSdwt,
-    setPrcGroup,
+    params.eqpId,
     setEqp,
-    params.lineId,
+    setLine,
+    setPrcGroup,
+    setSdwt,
+    shouldValidateEqpOnly,
   ]);
 
   // 선택한 eqpId와 URL을 동기화
   useEffect(() => {
-    if (isValidating || !isUrlInitialized) return;
+    if (isValidating || !hasValidationResult) return;
 
     const currentPath = window.location.pathname;
     const isParamRoute =
@@ -107,7 +104,7 @@ export function useTimelinePageState(params) {
     } else if (isParamRoute) {
       navigate("/timeline", { replace: true });
     }
-  }, [eqpId, navigate, isValidating, isUrlInitialized]);
+  }, [eqpId, navigate, isValidating, hasValidationResult]);
 
   // EQP가 바뀔 때마다 TIP 필터를 초기화하여 예전 선택이 남지 않도록 한다.
   useEffect(() => {

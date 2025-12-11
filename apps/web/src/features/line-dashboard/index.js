@@ -6,6 +6,7 @@ export * from "./utils"
 export * from "./pages"
 export { lineDashboardRoutes } from "./routes"
 export {
+  LineDashboardLayout,
   LineDashboardShell,
   LineDashboardHeader,
   LineDashboardSidebarProvider,

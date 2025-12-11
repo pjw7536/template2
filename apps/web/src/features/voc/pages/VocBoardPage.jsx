@@ -270,9 +270,7 @@ export function VocBoardPage() {
   }, [selectedPost])
 
   return (
-    <div
-      className="flex min-h-[calc(100vh-110px)] flex-1 flex-col gap-3 overflow-hidden px-1 sm:px-2"
-    >
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden px-1 sm:px-2">
       <Card className="flex-shrink-0">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-2">

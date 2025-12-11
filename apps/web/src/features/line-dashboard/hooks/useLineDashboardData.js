@@ -1,54 +1,58 @@
 // src/features/line-dashboard/hooks/useLineDashboardData.js
-import * as React from "react"
+import { useEffect, useState, useCallback } from "react"
+import { useQuery } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
+import { lineDashboardQueryKeys } from "../api/query-keys"
 
-const createIdleStatus = () => ({ isLoading: false, error: null })
+function normalizeError(error) {
+  if (!error) return null
+  if (error instanceof Error) return error.message
+  return String(error)
+}
 
-/**
- * 라인 대시보드 페이지에서 공통으로 사용하는 요약 데이터를 관리합니다.
- * - lineId가 바뀌면 내부 상태를 초기화하고
- * - refresh( ) 호출 시 최신 요약 정보를 /api에서 받아옵니다.
- */
 export function useLineDashboardData(initialLineId = "") {
-  const [lineId, setLineId] = React.useState(initialLineId)
-  const [status, setStatus] = React.useState(createIdleStatus)
-  const [summary, setSummary] = React.useState(null)
+  const [lineId, setLineId] = useState(initialLineId ?? "")
 
-  React.useEffect(() => {
-    setLineId(initialLineId)
-    setSummary(null)
-    setStatus(createIdleStatus())
+  useEffect(() => {
+    setLineId(initialLineId ?? "")
   }, [initialLineId])
 
-  const refresh = React.useCallback(
-    async (overrideLineId) => {
-      const targetLine = overrideLineId ?? lineId
-      if (!targetLine) return
+  const summaryQuery = useQuery({
+    queryKey: lineDashboardQueryKeys.summary(lineId || null),
+    queryFn: async () => {
+      const endpoint = buildBackendUrl("/line-dashboard/summary", { lineId })
+      const response = await fetch(endpoint, { credentials: "include" })
+      const payload = await response.json().catch(() => ({}))
 
-      setStatus({ isLoading: true, error: null })
-
-      try {
-        const endpoint = buildBackendUrl("/line-dashboard/summary", {
-          lineId: targetLine,
-        })
-        const response = await fetch(endpoint, { credentials: "include" })
-        if (!response.ok) {
-          throw new Error(`Failed to load summary (${response.status})`)
-        }
-        const payload = await response.json()
-        setSummary(payload)
-        setStatus(createIdleStatus())
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error"
-        setStatus({ isLoading: false, error: message })
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === "string"
+            ? payload.error
+            : `Failed to load summary (${response.status})`
+        throw new Error(message)
       }
-    },
-    [lineId]
-  )
 
-  return React.useMemo(
-    () => ({ lineId, setLineId, summary, refresh, status }),
-    [lineId, summary, refresh, status]
-  )
+      return payload
+    },
+    enabled: Boolean(lineId),
+  })
+
+  const refresh = useCallback(() => {
+    if (!lineId) return Promise.resolve({ data: null })
+    return summaryQuery.refetch()
+  }, [lineId, summaryQuery])
+
+  const status = {
+    isLoading: summaryQuery.isFetching && Boolean(lineId),
+    error: normalizeError(summaryQuery.error),
+  }
+
+  return {
+    lineId,
+    setLineId,
+    summary: summaryQuery.data ?? null,
+    refresh,
+    status,
+  }
 }

@@ -7,10 +7,10 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import jwt
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import Body, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 app = FastAPI(title="Dummy ADFS", version="2.0.0")
@@ -28,6 +28,91 @@ try:
     PRIVATE_KEY = PRIVATE_KEY_PATH.read_text(encoding="utf-8")
 except OSError as exc:  # pragma: no cover - dev feedback
     raise RuntimeError(f"Failed to read dummy ADFS private key: {PRIVATE_KEY_PATH}") from exc
+
+MAILBOX: Dict[int, Dict[str, Any]] = {}
+MAIL_ID_SEQ = 1
+DEFAULT_PERMISSION_GROUPS: List[str] = ["rag-public"]
+RAG_DOCS: Dict[str, Dict[str, Any]] = {}
+
+
+def _merge_title_content(title: str, content: str) -> str:
+    parts = [piece.strip() for piece in [title or "", content or ""] if piece and piece.strip()]
+    return "\n\n".join(parts)
+
+
+def _store_rag_doc(
+    *,
+    doc_id: str,
+    title: str,
+    content: str,
+    permission_groups: List[str],
+    metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    merged = _merge_title_content(title, content)
+    stored = {
+        "doc_id": doc_id,
+        "title": title,
+        "content": content,
+        "merge_title_content": merged,
+        "permission_groups": permission_groups or list(DEFAULT_PERMISSION_GROUPS),
+        "metadata": metadata or {},
+    }
+    RAG_DOCS[doc_id] = stored
+    return stored
+
+
+def _seed_dummy_state() -> None:
+    """Reset dummy mail + RAG stores with predictable data."""
+    global MAIL_ID_SEQ
+    MAILBOX.clear()
+    RAG_DOCS.clear()
+    MAIL_ID_SEQ = 1
+
+    now = datetime.now(timezone.utc)
+    samples = [
+        {
+            "subject": "[더미] 생산 라인 점검 알림",
+            "sender": "alerts@example.com",
+            "recipient": DEFAULT_EMAIL,
+            "body_text": "주간 생산 라인 점검 예정입니다. 안전 수칙을 확인해주세요.",
+            "received_at": now.isoformat(),
+        },
+        {
+            "subject": "[더미] 장비 교체 일정 안내",
+            "sender": "maintenance@example.com",
+            "recipient": DEFAULT_EMAIL,
+            "body_text": "Etch 장비 교체 작업이 예정되어 있습니다. 관련 문서를 확인해주세요.",
+            "received_at": (now - timedelta(hours=4)).isoformat(),
+        },
+    ]
+
+    for sample in samples:
+        mail_id = MAIL_ID_SEQ
+        MAIL_ID_SEQ += 1
+        entry = {
+            "id": mail_id,
+            "message_id": f"msg-{mail_id:04d}",
+            **sample,
+        }
+        MAILBOX[mail_id] = entry
+        doc_id = f"email-{mail_id}"
+        entry["rag_doc_id"] = doc_id
+        _store_rag_doc(
+            doc_id=doc_id,
+            title=entry["subject"],
+            content=entry["body_text"],
+            permission_groups=list(DEFAULT_PERMISSION_GROUPS),
+            metadata={
+                "email_id": mail_id,
+                "message_id": entry["message_id"],
+                "sender": entry["sender"],
+                "recipient": entry["recipient"],
+                "received_at": entry["received_at"],
+            },
+        )
+
+
+_seed_dummy_state()
 
 
 def _render_login_form(request: Request) -> str:
@@ -168,4 +253,161 @@ async def openid_config(request: Request) -> Dict[str, Any]:
         "response_types_supported": ["id_token"],
         "grant_types_supported": ["implicit"],
         "scopes_supported": ["openid", "profile", "email"],
+    }
+
+
+@app.get("/mail/messages")
+async def list_dummy_mail() -> Dict[str, Any]:
+    """Return all dummy mail messages for quick manual testing."""
+    return {"count": len(MAILBOX), "messages": list(MAILBOX.values())}
+
+
+@app.post("/mail/messages")
+async def create_dummy_mail(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Create a dummy mail entry and optionally register it to the dummy RAG store."""
+    global MAIL_ID_SEQ
+
+    subject = str(payload.get("subject") or "로컬 더미 메일").strip()
+    sender = str(payload.get("sender") or "sender@example.com").strip()
+    recipient = str(payload.get("recipient") or DEFAULT_EMAIL).strip()
+    body_text = str(payload.get("body") or payload.get("content") or "본문이 비어 있습니다.").strip()
+    message_id = str(payload.get("message_id") or f"msg-{MAIL_ID_SEQ:04d}").strip()
+    received_at = str(payload.get("received_at") or datetime.now(timezone.utc).isoformat())
+    register_to_rag = bool(payload.get("register_to_rag", True))
+
+    mail_id = MAIL_ID_SEQ
+    MAIL_ID_SEQ += 1
+
+    entry = {
+        "id": mail_id,
+        "message_id": message_id,
+        "subject": subject,
+        "sender": sender,
+        "recipient": recipient,
+        "body_text": body_text,
+        "received_at": received_at,
+    }
+    MAILBOX[mail_id] = entry
+
+    if register_to_rag:
+        doc_id = f"email-{mail_id}"
+        entry["rag_doc_id"] = doc_id
+        _store_rag_doc(
+            doc_id=doc_id,
+            title=subject,
+            content=body_text,
+            permission_groups=list(DEFAULT_PERMISSION_GROUPS),
+            metadata={
+                "email_id": mail_id,
+                "message_id": message_id,
+                "sender": sender,
+                "recipient": recipient,
+                "received_at": received_at,
+            },
+        )
+
+    return {"status": "ok", "message": entry}
+
+
+@app.delete("/mail/messages/{mail_id}")
+async def delete_dummy_mail(mail_id: int) -> Dict[str, Any]:
+    """Remove a dummy mail entry and its paired RAG doc if present."""
+    removed = MAILBOX.pop(mail_id, None)
+    doc_id = f"email-{mail_id}"
+    rag_removed = RAG_DOCS.pop(doc_id, None)
+    return {"status": "ok", "deleted": bool(removed), "docIdRemoved": doc_id if rag_removed else None}
+
+
+@app.post("/mail/reset")
+async def reset_dummy_mail() -> Dict[str, Any]:
+    """Reset mailbox and RAG docs to the default seed data."""
+    _seed_dummy_state()
+    return {"status": "ok", "seeded": len(MAILBOX)}
+
+
+@app.get("/rag/docs")
+async def list_rag_docs() -> Dict[str, Any]:
+    """List stored dummy RAG documents."""
+    return {"count": len(RAG_DOCS), "docs": list(RAG_DOCS.values())}
+
+
+@app.post("/rag/insert")
+async def rag_insert(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Accept insert requests that mimic the real RAG API and store them in memory."""
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="data field is required")
+
+    doc_id = str(data.get("doc_id") or data.get("id") or secrets.token_hex(8))
+    title = str(data.get("title") or "").strip()
+    content = str(data.get("content") or "").strip()
+    permission_groups = data.get("permission_groups") or payload.get("permission_groups") or list(DEFAULT_PERMISSION_GROUPS)
+    if not isinstance(permission_groups, list):
+        permission_groups = list(DEFAULT_PERMISSION_GROUPS)
+
+    stored = _store_rag_doc(
+        doc_id=doc_id,
+        title=title,
+        content=content,
+        permission_groups=[str(item) for item in permission_groups if str(item).strip()],
+        metadata={
+            "index_name": payload.get("index_name") or "",
+            "chunk_factor": payload.get("chunk_factor") or {},
+        },
+    )
+
+    return {"status": "ok", "doc_id": doc_id, "stored": stored}
+
+
+@app.post("/rag/delete")
+async def rag_delete(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Delete a stored dummy RAG document by doc_id."""
+    doc_id = str(payload.get("doc_id") or "").strip()
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id is required")
+
+    existed = doc_id in RAG_DOCS
+    RAG_DOCS.pop(doc_id, None)
+    return {"status": "ok", "doc_id": doc_id, "deleted": existed}
+
+
+@app.post("/rag/search")
+async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Return dummy RAG search results shaped like the real service."""
+    query = str(payload.get("query_text") or "").strip()
+    limit_raw = payload.get("num_result_doc") or 5
+    try:
+        limit = max(1, int(limit_raw))
+    except (TypeError, ValueError):
+        limit = 5
+
+    docs = list(RAG_DOCS.values())
+    if query:
+        lowered = query.lower()
+        docs = [doc for doc in docs if lowered in doc["merge_title_content"].lower()]
+        if not docs:
+            docs = list(RAG_DOCS.values())
+
+    hits = []
+    for doc in docs[:limit]:
+        hits.append(
+            {
+                "_id": doc["doc_id"],
+                "_source": {
+                    "merge_title_content": doc["merge_title_content"],
+                    "title": doc["title"],
+                    "content": doc["content"],
+                    "permission_groups": doc.get("permission_groups", []),
+                    "metadata": doc.get("metadata", {}),
+                },
+            }
+        )
+
+    return {
+        "mode": "dummy",
+        "query": query,
+        "hits": {
+            "total": {"value": len(docs)},
+            "hits": hits,
+        },
     }

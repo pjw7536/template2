@@ -8,7 +8,7 @@ export function LineDashboardSettingsPage() {
   const { lineId = "" } = useParams()
 
   return (
-    <div className="h-[calc(100vh-5rem)] px-2">
+    <div className="flex h-full min-h-0 flex-col">
       <LineSettingsPage lineId={lineId} />
     </div>
   )
