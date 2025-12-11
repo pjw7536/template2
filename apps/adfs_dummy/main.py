@@ -1,19 +1,40 @@
-"""FastAPI-based dummy ADFS server that emits id_token-only OIDC responses."""
+"""FastAPI-based dummy ADFS/RAG sandbox for external development."""
 from __future__ import annotations
 
 import hashlib
 import html
+import json
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 import jwt
 from fastapi import Body, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-app = FastAPI(title="Dummy ADFS", version="2.0.0")
+app = FastAPI(title="Dummy ADFS", version="2.1.0")
+
+
+def _parse_env_list(name: str, fallback: Sequence[str]) -> List[str]:
+    raw = os.getenv(name)
+    if not raw:
+        return list(fallback)
+    parsed: Any = None
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+
+    if isinstance(parsed, Sequence) and not isinstance(parsed, (str, bytes, bytearray)):
+        values = [str(item).strip() for item in parsed if str(item).strip()]
+        if values:
+            return values
+
+    values = [item.strip() for item in str(raw).split(",") if item.strip()]
+    return values or list(fallback)
+
 
 CLIENT_ID = os.getenv("DUMMY_ADFS_CLIENT_ID", "dummy-client")
 DEFAULT_EMAIL = os.getenv("DUMMY_ADFS_EMAIL", "dummy.user@example.com")
@@ -23,16 +44,27 @@ DEFAULT_SABUN = os.getenv("DUMMY_ADFS_SABUN", "S000001")
 ISSUER = os.getenv("DUMMY_ADFS_ISSUER", "http://localhost:9000/adfs")
 PRIVATE_KEY_PATH = Path(os.getenv("DUMMY_ADFS_PRIVATE_KEY_PATH", "dummy_adfs_private.key")).resolve()
 LOGOUT_REDIRECT = os.getenv("DUMMY_ADFS_LOGOUT_TARGET", "http://localhost")
+DEFAULT_PERMISSION_GROUPS = _parse_env_list("DUMMY_RAG_PERMISSION_GROUPS", ["rag-public"])
+
+PRIMARY_RAG_INDEX = os.getenv("DUMMY_RAG_INDEX_NAME") or os.getenv("RAG_INDEX_NAME") or "rp-unclassified"
+ASSISTANT_RAG_INDEX = os.getenv("DUMMY_ASSISTANT_RAG_INDEX") or os.getenv("ASSISTANT_RAG_INDEX_NAME") or "emails"
+EXTRA_RAG_INDEXES = _parse_env_list("DUMMY_RAG_INDEXES", [])
+
+INDEX_NAMES: List[str] = []
+for name in [PRIMARY_RAG_INDEX, ASSISTANT_RAG_INDEX, *EXTRA_RAG_INDEXES]:
+    if name and name not in INDEX_NAMES:
+        INDEX_NAMES.append(name)
+if not INDEX_NAMES:
+    INDEX_NAMES.append("emails")
+
+MAILBOX_RAG_INDEX = os.getenv("DUMMY_MAIL_RAG_INDEX") or PRIMARY_RAG_INDEX or INDEX_NAMES[0]
+if MAILBOX_RAG_INDEX not in INDEX_NAMES:
+    INDEX_NAMES.append(MAILBOX_RAG_INDEX)
 
 try:
     PRIVATE_KEY = PRIVATE_KEY_PATH.read_text(encoding="utf-8")
 except OSError as exc:  # pragma: no cover - dev feedback
     raise RuntimeError(f"Failed to read dummy ADFS private key: {PRIVATE_KEY_PATH}") from exc
-
-MAILBOX: Dict[int, Dict[str, Any]] = {}
-MAIL_ID_SEQ = 1
-DEFAULT_PERMISSION_GROUPS: List[str] = ["rag-public"]
-RAG_DOCS: Dict[str, Dict[str, Any]] = {}
 
 
 def _merge_title_content(title: str, content: str) -> str:
@@ -40,79 +72,249 @@ def _merge_title_content(title: str, content: str) -> str:
     return "\n\n".join(parts)
 
 
-def _store_rag_doc(
-    *,
-    doc_id: str,
-    title: str,
-    content: str,
-    permission_groups: List[str],
-    metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    merged = _merge_title_content(title, content)
-    stored = {
-        "doc_id": doc_id,
-        "title": title,
-        "content": content,
-        "merge_title_content": merged,
-        "permission_groups": permission_groups or list(DEFAULT_PERMISSION_GROUPS),
-        "metadata": metadata or {},
-    }
-    RAG_DOCS[doc_id] = stored
-    return stored
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-def _seed_dummy_state() -> None:
-    """Reset dummy mail + RAG stores with predictable data."""
-    global MAIL_ID_SEQ
-    MAILBOX.clear()
-    RAG_DOCS.clear()
-    MAIL_ID_SEQ = 1
+class RagStore:
+    def __init__(self, index_names: List[str], default_permission_groups: List[str]) -> None:
+        self.default_permission_groups = list(default_permission_groups)
+        self.index_docs: Dict[str, Dict[str, Dict[str, Any]]] = {name: {} for name in index_names}
 
-    now = datetime.now(timezone.utc)
-    samples = [
-        {
-            "subject": "[더미] 생산 라인 점검 알림",
-            "sender": "alerts@example.com",
-            "recipient": DEFAULT_EMAIL,
-            "body_text": "주간 생산 라인 점검 예정입니다. 안전 수칙을 확인해주세요.",
-            "received_at": now.isoformat(),
-        },
-        {
-            "subject": "[더미] 장비 교체 일정 안내",
-            "sender": "maintenance@example.com",
-            "recipient": DEFAULT_EMAIL,
-            "body_text": "Etch 장비 교체 작업이 예정되어 있습니다. 관련 문서를 확인해주세요.",
-            "received_at": (now - timedelta(hours=4)).isoformat(),
-        },
-    ]
+    def _ensure_index(self, index_name: str) -> Dict[str, Dict[str, Any]]:
+        if index_name not in self.index_docs:
+            self.index_docs[index_name] = {}
+        return self.index_docs[index_name]
 
-    for sample in samples:
-        mail_id = MAIL_ID_SEQ
-        MAIL_ID_SEQ += 1
+    def reset(self) -> None:
+        for docs in self.index_docs.values():
+            docs.clear()
+
+    def seed_base_docs(self, base_docs: List[Dict[str, Any]]) -> None:
+        self.reset()
+        for entry in base_docs:
+            index_name = entry.get("index_name") or INDEX_NAMES[0]
+            self.upsert(
+                index_name=index_name,
+                doc_id=str(entry.get("doc_id") or secrets.token_hex(8)),
+                title=entry.get("title") or "",
+                content=entry.get("content") or "",
+                permission_groups=entry.get("permission_groups") or self.default_permission_groups,
+                metadata=entry.get("metadata") or {},
+            )
+
+    def upsert(
+        self,
+        *,
+        index_name: str,
+        doc_id: str,
+        title: str,
+        content: str,
+        permission_groups: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        index = self._ensure_index(index_name)
+        groups = permission_groups or list(self.default_permission_groups)
+        stored = {
+            "index_name": index_name,
+            "doc_id": doc_id,
+            "title": title,
+            "content": content,
+            "merge_title_content": _merge_title_content(title, content),
+            "permission_groups": groups,
+            "metadata": metadata or {},
+        }
+        index[doc_id] = stored
+        return stored
+
+    def delete(self, index_name: str, doc_id: str) -> Optional[Dict[str, Any]]:
+        return self.index_docs.get(index_name, {}).pop(doc_id, None)
+
+    def _normalize_meta_set(self, value: Any) -> set[str]:
+        if isinstance(value, (list, tuple, set)):
+            return {str(item).strip() for item in value if str(item).strip()}
+        if value is None:
+            return set()
+        return {str(value).strip()}
+
+    def _apply_filters(self, docs: List[Dict[str, Any]], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        filtered = docs
+        dept_codes = filters.get("department_code") or []
+        if isinstance(dept_codes, str):
+            dept_codes = [dept_codes]
+        dept_set = {str(code).strip() for code in dept_codes if str(code).strip()}
+        if dept_set:
+            filtered = [
+                doc
+                for doc in filtered
+                if dept_set.intersection(self._normalize_meta_set(doc.get("metadata", {}).get("department_code")))
+            ]
+        return filtered
+
+    def search(
+        self,
+        *,
+        index_name: str,
+        query: str,
+        limit: int,
+        permission_groups: Optional[List[str]],
+        filters: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        docs = list(self.index_docs.get(index_name, {}).values())
+
+        if permission_groups:
+            allowed = {str(item).strip() for item in permission_groups if str(item).strip()}
+            if allowed:
+                docs = [doc for doc in docs if set(doc.get("permission_groups", [])) & allowed]
+
+        if filters:
+            docs = self._apply_filters(docs, filters)
+
+        if query:
+            lowered = query.lower()
+            matched = [doc for doc in docs if lowered in doc["merge_title_content"].lower()]
+            if matched:
+                docs = matched
+
+        docs.sort(key=lambda doc: doc.get("metadata", {}).get("received_at", ""), reverse=True)
+        return docs[:limit]
+
+    def all_docs(self) -> List[Dict[str, Any]]:
+        all_docs: List[Dict[str, Any]] = []
+        for docs in self.index_docs.values():
+            all_docs.extend(docs.values())
+        return all_docs
+
+    def index_counts(self) -> Dict[str, int]:
+        return {index: len(docs) for index, docs in self.index_docs.items()}
+
+    def total_count(self) -> int:
+        return sum(self.index_counts().values())
+
+
+class MailStore:
+    def __init__(self, rag_store: RagStore, rag_index: str) -> None:
+        self.mailbox: Dict[int, Dict[str, Any]] = {}
+        self._seq = 1
+        self.rag_store = rag_store
+        self.rag_index = rag_index
+
+    def reset(self) -> None:
+        self.mailbox.clear()
+        self._seq = 1
+        now = datetime.now(timezone.utc)
+        samples = [
+            {
+                "subject": "[더미] 생산 라인 점검 알림",
+                "sender": "alerts@example.com",
+                "recipient": DEFAULT_EMAIL,
+                "body_text": "주간 생산 라인 점검 예정입니다. 안전 수칙을 확인해주세요.",
+                "received_at": now.isoformat(),
+            },
+            {
+                "subject": "[더미] 장비 교체 일정 안내",
+                "sender": "maintenance@example.com",
+                "recipient": DEFAULT_EMAIL,
+                "body_text": "Etch 장비 교체 작업이 예정되어 있습니다. 관련 문서를 확인해주세요.",
+                "received_at": (now - timedelta(hours=4)).isoformat(),
+            },
+        ]
+        for sample in samples:
+            self.create_mail(register_to_rag=True, **sample)
+
+    def create_mail(
+        self,
+        *,
+        subject: str,
+        sender: str,
+        recipient: str,
+        body_text: str,
+        message_id: Optional[str] = None,
+        received_at: Optional[str] = None,
+        register_to_rag: bool = True,
+        permission_groups: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        mail_id = self._seq
+        self._seq += 1
+        message_id_value = message_id or f"msg-{mail_id:04d}"
+        received_at_value = received_at or _now_iso()
+
         entry = {
             "id": mail_id,
-            "message_id": f"msg-{mail_id:04d}",
-            **sample,
+            "message_id": message_id_value,
+            "subject": subject,
+            "sender": sender,
+            "recipient": recipient,
+            "body_text": body_text,
+            "received_at": received_at_value,
         }
-        MAILBOX[mail_id] = entry
-        doc_id = f"email-{mail_id}"
-        entry["rag_doc_id"] = doc_id
-        _store_rag_doc(
-            doc_id=doc_id,
-            title=entry["subject"],
-            content=entry["body_text"],
-            permission_groups=list(DEFAULT_PERMISSION_GROUPS),
-            metadata={
+        self.mailbox[mail_id] = entry
+
+        if register_to_rag:
+            doc_id = f"email-{mail_id}"
+            entry["rag_doc_id"] = doc_id
+            rag_metadata = {
                 "email_id": mail_id,
-                "message_id": entry["message_id"],
-                "sender": entry["sender"],
-                "recipient": entry["recipient"],
-                "received_at": entry["received_at"],
-            },
-        )
+                "message_id": message_id_value,
+                "sender": sender,
+                "recipient": recipient,
+                "received_at": received_at_value,
+            }
+            rag_metadata.update(metadata or {})
+            self.rag_store.upsert(
+                index_name=self.rag_index,
+                doc_id=doc_id,
+                title=subject,
+                content=body_text,
+                permission_groups=permission_groups,
+                metadata=rag_metadata,
+            )
+
+        return entry
+
+    def delete_mail(self, mail_id: int) -> Dict[str, Any]:
+        removed = self.mailbox.pop(mail_id, None)
+        rag_removed = None
+        if removed and removed.get("rag_doc_id"):
+            rag_removed = self.rag_store.delete(self.rag_index, removed["rag_doc_id"])
+        return {
+            "status": "ok",
+            "deleted": bool(removed),
+            "docIdRemoved": removed.get("rag_doc_id") if rag_removed else None if removed else None,
+        }
 
 
-_seed_dummy_state()
+rag_store = RagStore(INDEX_NAMES, DEFAULT_PERMISSION_GROUPS)
+mail_store = MailStore(rag_store, MAILBOX_RAG_INDEX)
+
+BASE_RAG_DOCS = [
+    {
+        "index_name": PRIMARY_RAG_INDEX,
+        "doc_id": "procedure-change",
+        "title": "[더미] 공정 변경 보고 절차",
+        "content": "공정 변경 시 보고 대상, 타임라인, 승인 흐름을 정리한 더미 문서입니다.",
+        "permission_groups": DEFAULT_PERMISSION_GROUPS,
+        "metadata": {"department_code": "FAB-OPS", "source": "dummy-rag"},
+    },
+    {
+        "index_name": ASSISTANT_RAG_INDEX,
+        "doc_id": "safety-checklist",
+        "title": "[더미] 안전 점검 체크리스트",
+        "content": "Etch 설비 점검 시 확인해야 할 항목과 안전 수칙을 정리했습니다.",
+        "permission_groups": DEFAULT_PERMISSION_GROUPS,
+        "metadata": {"department_code": "SAFETY", "source": "dummy-rag"},
+    },
+]
+
+
+def _seed_all() -> None:
+    """Reset RAG + mailbox stores for deterministic external dev runs."""
+    rag_store.seed_base_docs(BASE_RAG_DOCS)
+    mail_store.reset()
+
+
+_seed_all()
 
 
 def _render_login_form(request: Request) -> str:
@@ -259,52 +461,36 @@ async def openid_config(request: Request) -> Dict[str, Any]:
 @app.get("/mail/messages")
 async def list_dummy_mail() -> Dict[str, Any]:
     """Return all dummy mail messages for quick manual testing."""
-    return {"count": len(MAILBOX), "messages": list(MAILBOX.values())}
+    return {"count": len(mail_store.mailbox), "messages": list(mail_store.mailbox.values())}
 
 
 @app.post("/mail/messages")
 async def create_dummy_mail(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Create a dummy mail entry and optionally register it to the dummy RAG store."""
-    global MAIL_ID_SEQ
-
     subject = str(payload.get("subject") or "로컬 더미 메일").strip()
     sender = str(payload.get("sender") or "sender@example.com").strip()
     recipient = str(payload.get("recipient") or DEFAULT_EMAIL).strip()
     body_text = str(payload.get("body") or payload.get("content") or "본문이 비어 있습니다.").strip()
-    message_id = str(payload.get("message_id") or f"msg-{MAIL_ID_SEQ:04d}").strip()
-    received_at = str(payload.get("received_at") or datetime.now(timezone.utc).isoformat())
+    message_id = str(payload.get("message_id") or "").strip() or None
+    received_at = str(payload.get("received_at") or "").strip() or None
+    permission_groups = payload.get("permission_groups")
     register_to_rag = bool(payload.get("register_to_rag", True))
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
 
-    mail_id = MAIL_ID_SEQ
-    MAIL_ID_SEQ += 1
+    if permission_groups and not isinstance(permission_groups, list):
+        permission_groups = None
 
-    entry = {
-        "id": mail_id,
-        "message_id": message_id,
-        "subject": subject,
-        "sender": sender,
-        "recipient": recipient,
-        "body_text": body_text,
-        "received_at": received_at,
-    }
-    MAILBOX[mail_id] = entry
-
-    if register_to_rag:
-        doc_id = f"email-{mail_id}"
-        entry["rag_doc_id"] = doc_id
-        _store_rag_doc(
-            doc_id=doc_id,
-            title=subject,
-            content=body_text,
-            permission_groups=list(DEFAULT_PERMISSION_GROUPS),
-            metadata={
-                "email_id": mail_id,
-                "message_id": message_id,
-                "sender": sender,
-                "recipient": recipient,
-                "received_at": received_at,
-            },
-        )
+    entry = mail_store.create_mail(
+        subject=subject,
+        sender=sender,
+        recipient=recipient,
+        body_text=body_text,
+        message_id=message_id,
+        received_at=received_at,
+        register_to_rag=register_to_rag,
+        permission_groups=permission_groups,
+        metadata=metadata,
+    )
 
     return {"status": "ok", "message": entry}
 
@@ -312,23 +498,43 @@ async def create_dummy_mail(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
 @app.delete("/mail/messages/{mail_id}")
 async def delete_dummy_mail(mail_id: int) -> Dict[str, Any]:
     """Remove a dummy mail entry and its paired RAG doc if present."""
-    removed = MAILBOX.pop(mail_id, None)
-    doc_id = f"email-{mail_id}"
-    rag_removed = RAG_DOCS.pop(doc_id, None)
-    return {"status": "ok", "deleted": bool(removed), "docIdRemoved": doc_id if rag_removed else None}
+    return mail_store.delete_mail(mail_id)
 
 
 @app.post("/mail/reset")
 async def reset_dummy_mail() -> Dict[str, Any]:
     """Reset mailbox and RAG docs to the default seed data."""
-    _seed_dummy_state()
-    return {"status": "ok", "seeded": len(MAILBOX)}
+    _seed_all()
+    return {
+        "status": "ok",
+        "seeded": {
+            "mail": len(mail_store.mailbox),
+            "rag": rag_store.total_count(),
+            "indexes": rag_store.index_counts(),
+        },
+    }
 
 
 @app.get("/rag/docs")
 async def list_rag_docs() -> Dict[str, Any]:
     """List stored dummy RAG documents."""
-    return {"count": len(RAG_DOCS), "docs": list(RAG_DOCS.values())}
+    return {
+        "count": rag_store.total_count(),
+        "indexes": rag_store.index_counts(),
+        "docs": rag_store.all_docs(),
+    }
+
+
+@app.get("/rag/index-info")
+async def rag_index_info() -> Dict[str, Any]:
+    """Provide simple index metadata for external dev without hitting corporate RAG."""
+    return {
+        "indexes": [
+            {"name": name, "docs": rag_store.index_counts().get(name, 0), "permission_groups": DEFAULT_PERMISSION_GROUPS}
+            for name in INDEX_NAMES
+        ],
+        "total": rag_store.total_count(),
+    }
 
 
 @app.post("/rag/insert")
@@ -338,6 +544,10 @@ async def rag_insert(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="data field is required")
 
+    index_name = str(payload.get("index_name") or payload.get("target_index") or "").strip()
+    if not index_name:
+        raise HTTPException(status_code=400, detail="index_name is required")
+
     doc_id = str(data.get("doc_id") or data.get("id") or secrets.token_hex(8))
     title = str(data.get("title") or "").strip()
     content = str(data.get("content") or "").strip()
@@ -345,35 +555,45 @@ async def rag_insert(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     if not isinstance(permission_groups, list):
         permission_groups = list(DEFAULT_PERMISSION_GROUPS)
 
-    stored = _store_rag_doc(
+    metadata: Dict[str, Any] = {}
+    metadata.update(payload.get("metadata") or {})
+    metadata.update(data.get("metadata") or {})
+    for key, value in data.items():
+        if key in {"doc_id", "id", "title", "content", "permission_groups", "metadata"}:
+            continue
+        metadata[key] = value
+    if payload.get("chunk_factor"):
+        metadata["chunk_factor"] = payload["chunk_factor"]
+    stored = rag_store.upsert(
         doc_id=doc_id,
         title=title,
         content=content,
+        index_name=index_name,
         permission_groups=[str(item) for item in permission_groups if str(item).strip()],
-        metadata={
-            "index_name": payload.get("index_name") or "",
-            "chunk_factor": payload.get("chunk_factor") or {},
-        },
+        metadata=metadata,
     )
 
-    return {"status": "ok", "doc_id": doc_id, "stored": stored}
+    return {"status": "ok", "index_name": index_name, "doc_id": doc_id, "stored": stored}
 
 
 @app.post("/rag/delete")
 async def rag_delete(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Delete a stored dummy RAG document by doc_id."""
+    index_name = str(payload.get("index_name") or "").strip()
+    if not index_name:
+        raise HTTPException(status_code=400, detail="index_name is required")
     doc_id = str(payload.get("doc_id") or "").strip()
     if not doc_id:
         raise HTTPException(status_code=400, detail="doc_id is required")
 
-    existed = doc_id in RAG_DOCS
-    RAG_DOCS.pop(doc_id, None)
-    return {"status": "ok", "doc_id": doc_id, "deleted": existed}
+    existed = rag_store.delete(index_name, doc_id)
+    return {"status": "ok", "doc_id": doc_id, "index_name": index_name, "deleted": bool(existed)}
 
 
 @app.post("/rag/search")
 async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Return dummy RAG search results shaped like the real service."""
+    index_name = str(payload.get("index_name") or "").strip() or INDEX_NAMES[0]
     query = str(payload.get("query_text") or "").strip()
     limit_raw = payload.get("num_result_doc") or 5
     try:
@@ -381,18 +601,22 @@ async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     except (TypeError, ValueError):
         limit = 5
 
-    docs = list(RAG_DOCS.values())
-    if query:
-        lowered = query.lower()
-        docs = [doc for doc in docs if lowered in doc["merge_title_content"].lower()]
-        if not docs:
-            docs = list(RAG_DOCS.values())
+    permission_groups = payload.get("permission_groups")
+    filters = payload.get("filter") if isinstance(payload.get("filter"), dict) else None
+    docs = rag_store.search(
+        index_name=index_name,
+        query=query,
+        limit=limit,
+        permission_groups=permission_groups if isinstance(permission_groups, list) else None,
+        filters=filters,
+    )
 
     hits = []
     for doc in docs[:limit]:
         hits.append(
             {
                 "_id": doc["doc_id"],
+                "_index": doc["index_name"],
                 "_source": {
                     "merge_title_content": doc["merge_title_content"],
                     "title": doc["title"],
@@ -400,11 +624,13 @@ async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                     "permission_groups": doc.get("permission_groups", []),
                     "metadata": doc.get("metadata", {}),
                 },
+                "_score": 1.0,
             }
         )
 
     return {
         "mode": "dummy",
+        "index_name": index_name,
         "query": query,
         "hits": {
             "total": {"value": len(docs)},

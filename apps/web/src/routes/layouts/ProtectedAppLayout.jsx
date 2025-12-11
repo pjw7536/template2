@@ -9,7 +9,7 @@ import { ChatWidget } from "@/features/assistant"
 
 const LINE_DASHBOARD_PREFIX = "/esop_dashboard"
 const VOC_ROUTE_PATTERN = /\/voc(\/|$)|\/qna(\/|$)/
-const INTERNAL_SCROLL_PREFIXES = ["/mailbox", "/emails"]
+const INTERNAL_SCROLL_PREFIXES = ["/mailbox", "/emails", "/appstore"]
 const LAYOUT_VARIANTS = {
   DEFAULT: "default",
   LINE_DASHBOARD: "line-dashboard",

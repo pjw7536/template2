@@ -224,6 +224,7 @@ RAG_INDEX_NAME = env("RAG_INDEX_NAME", "rp-unclassified")
 RAG_INDEX_INFO_URL = env("RAG_INDEX_INFO_URL", "")
 RAG_PASS_KEY = env("RAG_PASS_KEY", "")
 RAG_API_KEY = env("RAG_API_KEY", "")
+RAG_ERROR_LOG_PATH = env("RAG_ERROR_LOG_PATH", str(BASE_DIR / "logs" / "rag_errors.log"))
 
 
 # =========================

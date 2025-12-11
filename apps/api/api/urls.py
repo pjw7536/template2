@@ -3,6 +3,14 @@ from __future__ import annotations
 from django.urls import path
 
 from api.activity.views import ActivityLogView
+from api.appstore.views import (
+    AppStoreAppDetailView,
+    AppStoreAppsView,
+    AppStoreCommentDetailView,
+    AppStoreCommentsView,
+    AppStoreLikeToggleView,
+    AppStoreViewIncrementView,
+)
 from api.assistant.views import AssistantChatView
 from api.auth.views import FrontendRedirectView
 from api.drone.views import DroneEarlyInformView
@@ -66,6 +74,20 @@ urlpatterns = [
     path("api/v1/emails/bulk-delete/", EmailBulkDeleteView.as_view(), name="emails-bulk-delete"),
     path("api/v1/emails/<int:email_id>/", EmailDetailView.as_view(), name="emails-detail"),
     path("api/v1/emails/<int:email_id>/html/", EmailHtmlView.as_view(), name="emails-html"),
+    path("api/v1/appstore/apps", AppStoreAppsView.as_view(), name="appstore-apps"),
+    path("api/v1/appstore/apps/<int:app_id>", AppStoreAppDetailView.as_view(), name="appstore-app-detail"),
+    path("api/v1/appstore/apps/<int:app_id>/like", AppStoreLikeToggleView.as_view(), name="appstore-app-like"),
+    path("api/v1/appstore/apps/<int:app_id>/view", AppStoreViewIncrementView.as_view(), name="appstore-app-view"),
+    path(
+        "api/v1/appstore/apps/<int:app_id>/comments",
+        AppStoreCommentsView.as_view(),
+        name="appstore-app-comments",
+    ),
+    path(
+        "api/v1/appstore/apps/<int:app_id>/comments/<int:comment_id>",
+        AppStoreCommentDetailView.as_view(),
+        name="appstore-app-comment-detail",
+    ),
     path("voc/posts", VocPostsView.as_view(), name="voc-posts"),
     path("voc/posts/<int:post_id>", VocPostDetailView.as_view(), name="voc-post-detail"),
     path("voc/posts/<int:post_id>/replies", VocReplyView.as_view(), name="voc-post-reply"),
