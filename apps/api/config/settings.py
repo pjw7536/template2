@@ -225,6 +225,12 @@ RAG_PASS_KEY = env("RAG_PASS_KEY", "")
 RAG_API_KEY = env("RAG_API_KEY", "")
 
 
+# =========================
+# Email ingest trigger auth
+# =========================
+EMAIL_INGEST_TRIGGER_TOKEN = env("EMAIL_INGEST_TRIGGER_TOKEN", "")
+
+
 # =====================
 # OpenAPI / Swagger UI
 # =====================

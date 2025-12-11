@@ -106,10 +106,10 @@ export function EmailFilters({ filters, onChange, onReset }) {
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 h-8">
+        <div className="flex h-8 flex-1 items-center gap-2 rounded-md border bg-background px-3">
           <Search className="h-4 w-4 text-muted-foreground" />
           <Input
-            className="border-0 p-0 focus-visible:ring-0"
+            className="h-8 border-0 p-0 text-sm focus-visible:ring-0"
             placeholder="제목, 본문, 발신자 검색"
             value={filters.q || ""}
             onChange={(e) => handleChange("q", e.target.value)}

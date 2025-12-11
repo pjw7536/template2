@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, time
 from typing import Any, Dict, List
 
+from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -74,6 +75,19 @@ def _serialize_detail(email: Email) -> Dict[str, Any]:
         "createdAt": email.created_at.isoformat(),
         "updatedAt": email.updated_at.isoformat(),
     }
+
+
+def _extract_bearer_token(request: HttpRequest) -> str:
+    """Authorization 헤더에서 Bearer 토큰을 추출."""
+
+    auth_header = request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION") or ""
+    if not isinstance(auth_header, str):
+        return ""
+
+    normalized = auth_header.strip()
+    if normalized.lower().startswith("bearer "):
+        return normalized[7:].strip()
+    return normalized
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -208,7 +222,18 @@ class EmailBulkDeleteView(APIView):
 class EmailIngestTriggerView(APIView):
     """POP3 메일 수집을 백엔드에서 실행하도록 트리거."""
 
+    permission_classes: tuple = ()
+
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        expected_token = getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "") or ""
+        provided_token = _extract_bearer_token(request)
+
+        if expected_token:
+            if provided_token != expected_token and not request.user.is_authenticated:
+                return JsonResponse({"error": "Unauthorized"}, status=401)
+        elif not request.user.is_authenticated:
+            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+
         try:
             result = run_pop3_ingest_from_env() or {}
             return JsonResponse({"deleted": result.get("deleted", 0)})
