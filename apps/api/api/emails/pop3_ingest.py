@@ -20,7 +20,24 @@ from .services import register_email_to_rag, save_parsed_email
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_SUBJECT_PREFIXES = ("[drone_esop_v3]", "[test]")
+DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop_v3]", "[test]")
+
+
+def _load_excluded_subject_prefixes() -> tuple[str, ...]:
+    raw = os.getenv("EMAIL_EXCLUDED_SUBJECT_PREFIXES", "")
+    if not raw:
+        return DEFAULT_EXCLUDED_SUBJECT_PREFIXES
+
+    prefixes: List[str] = []
+    for item in raw.split(","):
+        cleaned = item.strip().strip("\"'").lower()
+        if cleaned:
+            prefixes.append(cleaned)
+
+    return tuple(prefixes) if prefixes else DEFAULT_EXCLUDED_SUBJECT_PREFIXES
+
+
+EXCLUDED_SUBJECT_PREFIXES = _load_excluded_subject_prefixes()
 
 
 def is_excluded_subject(subject: str) -> bool:
