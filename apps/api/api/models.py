@@ -187,6 +187,26 @@ class VocReply(models.Model):
         return f"Reply to {self.post_id}"
 
 
+class UserDepartmentHistory(models.Model):
+    """발신자 부서 이력 (수동 입력 가능)."""
+
+    employee_id = models.CharField(max_length=50, db_index=True)  # Email.sender_id 와 동일 키
+    department_code = models.CharField(max_length=50)
+    effective_from = models.DateTimeField()  # 이 시점부터 department_code 적용
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=50)
+
+    class Meta:
+        db_table = "user_department_history"
+        indexes = [
+            models.Index(fields=["employee_id", "effective_from"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.employee_id} -> {self.department_code} ({self.effective_from.isoformat()})"
+
+
 class Email(models.Model):
     """수신 메일 저장 모델 (RAG doc 연동)."""
 
@@ -194,7 +214,11 @@ class Email(models.Model):
     received_at = models.DateTimeField()
     subject = models.TextField()
     sender = models.TextField()
+    sender_id = models.CharField(max_length=50, db_index=True)  # 사번/계정 ID 등 식별자
     recipient = models.TextField()
+
+    # 메일 수신 시점의 부서 스냅샷
+    department_code = models.CharField(max_length=50, db_index=True)
 
     body_text = models.TextField(blank=True)  # RAG 검색/스니펫용 텍스트
     body_html_gzip = models.BinaryField(null=True, blank=True)  # UI 렌더용 gzip HTML
@@ -208,4 +232,4 @@ class Email(models.Model):
         db_table = "email"
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
-        return f"{self.subject[:40]} ({self.sender} -> {self.recipient})"
+        return f"{self.subject[:40]} ({self.sender} -> {self.recipient}) [{self.department_code}]"

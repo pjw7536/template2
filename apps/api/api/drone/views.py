@@ -43,6 +43,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from api.common.constants import MAX_FIELD_LENGTH
+from api.common.utils import _get_user_sdwt_prod_values, parse_json_body
+
 from ..activity_logging import (
     merge_activity_metadata,
     set_activity_new_state,
@@ -50,8 +53,6 @@ from ..activity_logging import (
     set_activity_summary,
 )
 from ..db import execute, run_query
-from .constants import MAX_FIELD_LENGTH
-from .utils import _get_user_sdwt_prod_values, parse_json_body
 
 logger = logging.getLogger(__name__)
 

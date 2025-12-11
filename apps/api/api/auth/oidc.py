@@ -17,7 +17,8 @@ from django.http import (
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 
-from .oidc_utils import (
+from api.common.utils import resolve_frontend_target
+from api.oidc_utils import (
     ADFS_AUTH_URL,       # ADFS authorize endpoint (…/adfs/oauth2/authorize)
     ADFS_LOGOUT_URL,     # ADFS logout endpoint
     ISSUER,              # 토큰 발급자(iss)
@@ -30,7 +31,6 @@ from .oidc_utils import (
     pop_nonce,           # 세션에서 nonce pop
     save_nonce,          # 세션에 nonce 저장
 )
-from .views.utils import resolve_frontend_target
 
 
 # =============================================================================

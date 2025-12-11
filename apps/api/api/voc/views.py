@@ -17,6 +17,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from api.common.utils import parse_json_body
+
 from ..activity_logging import (
     merge_activity_metadata,
     set_activity_new_state,
@@ -24,7 +26,6 @@ from ..activity_logging import (
     set_activity_summary,
 )
 from ..models import UserProfile, VocPost, VocReply
-from .utils import parse_json_body
 
 logger = logging.getLogger(__name__)
 

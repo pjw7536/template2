@@ -10,15 +10,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from ..activity_logging import (
-    merge_activity_metadata,
-    set_activity_new_state,
-    set_activity_previous_state,
-    set_activity_summary,
-)
-from ..db import execute, run_query
-from .constants import DEFAULT_TABLE
-from .utils import (
+from api.common.constants import DEFAULT_TABLE
+from api.common.utils import (
     build_date_range_filters,
     build_line_filters,
     ensure_date_bounds,
@@ -30,6 +23,14 @@ from .utils import (
     resolve_table_schema,
     sanitize_identifier,
 )
+
+from ..activity_logging import (
+    merge_activity_metadata,
+    set_activity_new_state,
+    set_activity_previous_state,
+    set_activity_summary,
+)
+from ..db import execute, run_query
 
 logger = logging.getLogger(__name__)
 

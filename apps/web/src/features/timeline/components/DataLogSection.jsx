@@ -12,7 +12,7 @@ export default function DataLogSection({
   handleFilter,
 }) {
   return (
-    <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex-[2] min-h-0 flex flex-col overflow-hidden">
+    <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex-[2] h-120 min-h-0 flex flex-col overflow-hidden">
       {!eqpId && !logsLoading ? (
         <p className="text-center text-sm text-muted-foreground py-4">
           EQP를 선택하세요.

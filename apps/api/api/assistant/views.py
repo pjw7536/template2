@@ -11,9 +11,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.services.assistant_chat import AssistantConfigError, AssistantRequestError, assistant_chat_service
-
-from .utils import parse_json_body
+from api.assistant.service import AssistantConfigError, AssistantRequestError, assistant_chat_service
+from api.common.utils import parse_json_body
 
 logger = logging.getLogger(__name__)
 

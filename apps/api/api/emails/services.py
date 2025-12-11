@@ -9,13 +9,23 @@ from ..models import Email
 from ..rag.client import delete_rag_doc, insert_email_to_rag
 
 
+def gzip_body(body_html: str | None) -> bytes | None:
+    """HTML 문자열을 gzip 압축하여 BinaryField에 저장 가능하도록 변환."""
+
+    if not body_html:
+        return None
+    return gzip.compress(body_html.encode("utf-8"))
+
+
 def save_parsed_email(
     *,
     message_id,
     received_at,
     subject,
     sender,
+    sender_id,
     recipient,
+    department_code,
     body_html,
     body_text,
 ) -> Email:
@@ -27,11 +37,23 @@ def save_parsed_email(
             "received_at": received_at or timezone.now(),
             "subject": subject,
             "sender": sender,
+            "sender_id": sender_id,
             "recipient": recipient,
+            "department_code": department_code,
             "body_text": body_text or "",
-            "body_html_gzip": gzip.compress(body_html.encode("utf-8")) if body_html else None,
+            "body_html_gzip": gzip_body(body_html),
         },
     )
+    if not _created:
+        fields_to_update = []
+        if not email.sender_id:
+            email.sender_id = sender_id
+            fields_to_update.append("sender_id")
+        if not email.department_code:
+            email.department_code = department_code
+            fields_to_update.append("department_code")
+        if fields_to_update:
+            email.save(update_fields=fields_to_update)
     return email
 
 
@@ -42,11 +64,17 @@ def register_email_to_rag(email: Email) -> Email:
     - 실패 시 예외를 발생시켜 호출 측에서 재시도 가능.
     """
 
+    update_fields = []
+    if not email.department_code:
+        email.department_code = "UNKNOWN"
+        update_fields.append("department_code")
     if not email.rag_doc_id:
         email.rag_doc_id = f"email-{email.id}"
+        update_fields.append("rag_doc_id")
 
     insert_email_to_rag(email)
-    email.save(update_fields=["rag_doc_id"])
+    if update_fields:
+        email.save(update_fields=update_fields)
     return email
 
 

@@ -1,0 +1,292 @@
+from __future__ import annotations
+
+import email
+import hashlib
+import logging
+import os
+import poplib
+import re
+from email.header import decode_header, make_header
+from email.message import Message
+from email.utils import parseaddr, parsedate_to_datetime
+from typing import Any, Dict, Iterable, List, Tuple
+
+from django.utils import timezone
+
+from .department import get_department_for
+from .services import register_email_to_rag, save_parsed_email
+
+logger = logging.getLogger(__name__)
+
+EXCLUDED_SUBJECT_PREFIXES = ("[drone_esop_v3]", "[test]")
+
+
+def is_excluded_subject(subject: str) -> bool:
+    normalized = (subject or "").strip().lower()
+    return any(normalized.startswith(prefix) for prefix in EXCLUDED_SUBJECT_PREFIXES)
+
+
+def _decode_header_value(raw_value: str | None) -> str:
+    if not raw_value:
+        return ""
+    try:
+        return str(make_header(decode_header(raw_value)))
+    except Exception:
+        return raw_value
+
+
+def _coerce_html_to_text(html: str) -> str:
+    if not html:
+        return ""
+    # 간단한 태그 제거로 텍스트를 추출 (정확도보다는 안전한 fallback)
+    text = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _decode_part(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if payload is None:
+        return ""
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
+def _extract_bodies(msg: Message) -> Tuple[str, str]:
+    text_body = ""
+    html_body = ""
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            disposition = (part.get("Content-Disposition") or "").lower()
+            if disposition.startswith("attachment"):
+                continue
+
+            if content_type == "text/plain" and not text_body:
+                text_body = _decode_part(part)
+            elif content_type == "text/html" and not html_body:
+                html_body = _decode_part(part)
+    else:
+        content_type = msg.get_content_type()
+        if content_type == "text/plain":
+            text_body = _decode_part(msg)
+        elif content_type == "text/html":
+            html_body = _decode_part(msg)
+
+    if not text_body and html_body:
+        text_body = _coerce_html_to_text(html_body)
+
+    return text_body or "", html_body or ""
+
+
+def _parse_received_at(msg: Message):
+    raw_date = msg.get("Date")
+    if raw_date:
+        try:
+            parsed = parsedate_to_datetime(raw_date)
+            if parsed and timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed, timezone.utc)
+            return parsed
+        except Exception:
+            logger.exception("Failed to parse email Date header: %s", raw_date)
+    return timezone.now()
+
+
+def extract_subject_header(msg: Message) -> str:
+    return _decode_header_value(msg.get("Subject"))
+
+
+def extract_sender_id(sender: str) -> str:
+    """
+    발신자 문자열에서 계정 ID/사번 등을 추출.
+    - 이메일 주소일 경우 local-part를 사용
+    - 그 외에는 원본 문자열을 이용하며, 비어 있으면 UNKNOWN 반환
+    """
+
+    address = parseaddr(sender or "")[1]
+    if address and "@" in address:
+        local = address.split("@", 1)[0].strip()
+        if local:
+            return local
+    normalized = (sender or "").strip()
+    return normalized or "UNKNOWN"
+
+
+def parse_message_to_fields(msg: Message) -> Dict[str, Any]:
+    subject = extract_subject_header(msg)
+    sender = _decode_header_value(msg.get("From"))
+    recipient = _decode_header_value(msg.get("To") or msg.get("Delivered-To") or "")
+    message_id = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
+    if not message_id:
+        # POP3 메시지가 message-id를 제공하지 않는 경우 내용 해시로 결정론적 ID 생성
+        content_hash = hashlib.sha256(msg.as_bytes()).hexdigest()
+        message_id = f"generated-{content_hash}"
+
+    body_text, body_html = _extract_bodies(msg)
+    received_at = _parse_received_at(msg)
+    sender_id = extract_sender_id(sender)
+
+    return {
+        "message_id": message_id,
+        "received_at": received_at,
+        "subject": subject,
+        "sender": sender,
+        "sender_id": sender_id,
+        "recipient": recipient,
+        "body_text": body_text,
+        "body_html": body_html,
+    }
+
+
+def _iter_pop3_messages(session: Any) -> Iterable[Tuple[int, Message]]:
+    """poplib.POP3 호환 세션에서 메시지를 순회."""
+
+    if hasattr(session, "iter_messages"):
+        yield from session.iter_messages()
+        return
+
+    resp, items, _ = session.list()
+    if not items:
+        return
+
+    for item in items:
+        raw = item.decode() if isinstance(item, (bytes, bytearray)) else str(item)
+        msg_num = int(raw.split()[0])
+        _resp, lines, _ = session.retr(msg_num)
+        raw_msg = b"\n".join(lines)
+        msg = email.message_from_bytes(raw_msg)
+        yield msg_num, msg
+
+
+def _delete_pop3_messages(session: Any, message_numbers: List[int]):
+    if not message_numbers:
+        return
+
+    for msg_num in message_numbers:
+        try:
+            session.dele(msg_num)
+        except Exception:
+            logger.exception("Failed to delete POP3 message #%s", msg_num)
+    # poplib의 경우 session.quit() 호출 시 실제 삭제가 커밋됨 (호출자는 책임 있게 종료 처리 필요)
+
+
+def ingest_pop3_mailbox(session: Any) -> List[int]:
+    """
+    POP3 메일함을 순회하며 Email + RAG 등록 후 삭제 대상 번호를 반환.
+    - 제목 제외 규칙을 최상단에서 처리
+    - DB 저장 성공 시에만 POP3 삭제
+    - RAG 등록 실패는 POP3 삭제 여부에 영향을 주지 않음
+    """
+
+    to_delete: List[int] = []
+
+    for msg_num, msg in _iter_pop3_messages(session):
+        try:
+            subject = extract_subject_header(msg)
+            if is_excluded_subject(subject):
+                logger.info("Skipping excluded email subject: %s", subject)
+                continue
+
+            fields = parse_message_to_fields(msg)
+            sender_id = fields["sender_id"]
+            received_at = fields["received_at"]
+            department_code = get_department_for(sender_id, received_at)
+
+            email_obj = save_parsed_email(
+                message_id=fields["message_id"],
+                received_at=received_at,
+                subject=fields["subject"],
+                sender=fields["sender"],
+                sender_id=sender_id,
+                recipient=fields["recipient"],
+                department_code=department_code,
+                body_text=fields.get("body_text") or "",
+                body_html=fields.get("body_html"),
+            )
+
+            to_delete.append(msg_num)
+
+            # RAG 등록 (중복 등록 방지)
+            if not email_obj.rag_doc_id:
+                try:
+                    register_email_to_rag(email_obj)
+                except Exception:
+                    logger.exception("RAG insert failed for email %s, will retry later", email_obj.id)
+
+        except Exception as exc:
+            logger.exception("Failed to process POP3 message #%s: %s", msg_num, exc)
+            continue
+
+    _delete_pop3_messages(session, to_delete)
+    return to_delete
+
+
+def run_pop3_ingest(host: str, port: int, username: str, password: str, use_ssl: bool = True, timeout: int = 60):
+    """
+    POP3 세션 생성/정리까지 포함한 전체 ingest 진입점.
+    Airflow 등 외부 오케스트레이터는 이 함수만 호출하면 된다.
+    """
+
+    if not host or not username or not password:
+        raise ValueError("POP3 connection info is incomplete (host/username/password required)")
+
+    client_cls = poplib.POP3_SSL if use_ssl else poplib.POP3
+    client = client_cls(host, port, timeout=timeout)
+    deleted: List[int] = []
+    try:
+        client.user(username)
+        client.pass_(password)
+        logger.info("POP3 login succeeded: host=%s port=%s ssl=%s", host, port, use_ssl)
+
+        deleted = ingest_pop3_mailbox(client) or []
+        logger.info("Ingest complete; marked %s messages for deletion", len(deleted))
+
+        client.quit()  # commit deletions
+        logger.info("POP3 session closed (quit)")
+    except Exception:
+        logger.exception("POP3 ingest failed; rolling back via rset()")
+        try:
+            client.rset()
+        except Exception:
+            logger.debug("POP3 rset failed")
+        raise
+    finally:
+        try:
+            client.quit()
+        except Exception:
+            pass
+
+    return {"deleted": len(deleted)}
+
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def run_pop3_ingest_from_env():
+    """
+    환경 변수 기반으로 POP3 연결 정보를 읽어 ingest를 실행.
+    Airflow DAG는 이 함수를 직접 호출한다.
+    """
+
+    host = os.getenv("EMAIL_POP3_HOST") or os.getenv("POP3_HOST") or ""
+    port = int(os.getenv("EMAIL_POP3_PORT") or os.getenv("POP3_PORT") or "995")
+    username = os.getenv("EMAIL_POP3_USERNAME") or os.getenv("POP3_USERNAME") or ""
+    password = os.getenv("EMAIL_POP3_PASSWORD") or os.getenv("POP3_PASSWORD") or ""
+    use_ssl = _env_bool("EMAIL_POP3_USE_SSL", _env_bool("POP3_USE_SSL", True))
+    timeout = int(os.getenv("EMAIL_POP3_TIMEOUT") or os.getenv("POP3_TIMEOUT") or "60")
+
+    return run_pop3_ingest(
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        use_ssl=use_ssl,
+        timeout=timeout,
+    )

@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from django.urls import path
 
-from .views import (
-    ActivityLogView,
-    AssistantChatView,
-    DroneEarlyInformView,
+from api.activity.views import ActivityLogView
+from api.assistant.views import AssistantChatView
+from api.auth.views import FrontendRedirectView
+from api.drone.views import DroneEarlyInformView
+from api.emails.views import (
     EmailBulkDeleteView,
     EmailDetailView,
     EmailHtmlView,
+    EmailIngestTriggerView,
     EmailListView,
-    FrontendRedirectView,
-    HealthView,
-    LineHistoryView,
-    LineIdListView,
+)
+from api.health.views import HealthView
+from api.line_dashboard.views import LineHistoryView, LineIdListView
+from api.tables.views import TableUpdateView, TablesView
+from api.timeline.views import (
     TimelineCtttmLogsView,
     TimelineEqpLogsView,
     TimelineEquipmentInfoView,
@@ -25,12 +28,8 @@ from .views import (
     TimelineSdwtView,
     TimelineTipLogsView,
     TimelineEquipmentsView,
-    TableUpdateView,
-    TablesView,
-    VocPostDetailView,
-    VocPostsView,
-    VocReplyView,
 )
+from api.voc.views import VocPostDetailView, VocPostsView, VocReplyView
 
 urlpatterns = [
     path("", FrontendRedirectView.as_view(), name="frontend-redirect"),
@@ -63,6 +62,7 @@ urlpatterns = [
     path("api/v1/timeline/logs/racb", TimelineRacbLogsView.as_view(), name="timeline-logs-racb"),
     path("api/v1/timeline/logs/jira", TimelineJiraLogsView.as_view(), name="timeline-logs-jira"),
     path("api/v1/emails/", EmailListView.as_view(), name="emails-list"),
+    path("api/v1/emails/ingest/", EmailIngestTriggerView.as_view(), name="emails-ingest"),
     path("api/v1/emails/bulk-delete/", EmailBulkDeleteView.as_view(), name="emails-bulk-delete"),
     path("api/v1/emails/<int:email_id>/", EmailDetailView.as_view(), name="emails-detail"),
     path("api/v1/emails/<int:email_id>/html/", EmailHtmlView.as_view(), name="emails-html"),

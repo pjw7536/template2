@@ -43,7 +43,7 @@ export default function TimelineBoard({
   return (
     <div className="w-full h-full relative">
       {/* 타임라인이 많아질 때를 위한 스크롤 컨테이너 - absolute로 부모의 전체 영역을 차지 */}
-      <div className="absolute inset-0 overflow-y-auto space-y-0 scroll-smooth pr-5 mt-5 mb-10 z-[1]">
+      <div className="absolute inset-0 overflow-y-auto space-y-0 scroll-smooth px-3 mt-5 mb-10 z-[1]">
         {/* EQP 타임라인 */}
         {typeFilters?.EQP && (
           <EqpTimeline

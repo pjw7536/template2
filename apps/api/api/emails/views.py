@@ -15,9 +15,11 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.exceptions import NotFound
 from rest_framework.views import APIView
 
-from ..emails.services import bulk_delete_emails, delete_single_email
+from api.common.utils import parse_json_body
+
+from .services import bulk_delete_emails, delete_single_email
+from .pop3_ingest import run_pop3_ingest_from_env
 from ..models import Email
-from .utils import parse_json_body
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,9 @@ def _serialize_email(email: Email) -> Dict[str, Any]:
         "receivedAt": email.received_at.isoformat(),
         "subject": email.subject,
         "sender": email.sender,
+        "senderId": email.sender_id,
         "recipient": email.recipient,
+        "departmentCode": email.department_code,
         "snippet": snippet,
         "ragDocId": email.rag_doc_id,
     }
@@ -82,6 +86,7 @@ class EmailListView(APIView):
         search = (request.GET.get("q") or "").strip()
         sender = (request.GET.get("sender") or "").strip()
         recipient = (request.GET.get("recipient") or "").strip()
+        department_code = (request.GET.get("departmentCode") or request.GET.get("department_code") or "").strip()
         date_from = _parse_datetime(request.GET.get("date_from"))
         date_to = _parse_datetime(request.GET.get("date_to"))
 
@@ -95,6 +100,8 @@ class EmailListView(APIView):
             qs = qs.filter(sender__icontains=sender)
         if recipient:
             qs = qs.filter(recipient__icontains=recipient)
+        if department_code:
+            qs = qs.filter(department_code=department_code)
         if date_from:
             qs = qs.filter(received_at__gte=date_from)
         if date_to:
@@ -195,3 +202,18 @@ class EmailBulkDeleteView(APIView):
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to bulk delete emails")
             return JsonResponse({"error": "Failed to delete emails"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailIngestTriggerView(APIView):
+    """POP3 메일 수집을 백엔드에서 실행하도록 트리거."""
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        try:
+            result = run_pop3_ingest_from_env() or {}
+            return JsonResponse({"deleted": result.get("deleted", 0)})
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except Exception:
+            logger.exception("Failed to trigger POP3 ingest")
+            return JsonResponse({"error": "POP3 ingest failed"}, status=500)

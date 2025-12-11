@@ -12,14 +12,14 @@ from django.conf import settings
 from django.http import HttpRequest
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from ..db import run_query
-from .constants import (
+from api.common.constants import (
     DATE_COLUMN_CANDIDATES,
     DATE_ONLY_REGEX,
     DEFAULT_TABLE,
     LINE_SDWT_TABLE_NAME,
     SAFE_IDENTIFIER,
 )
+from api.db import run_query
 
 logger = logging.getLogger(__name__)
 

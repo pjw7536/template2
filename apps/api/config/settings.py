@@ -217,6 +217,7 @@ REST_FRAMEWORK = {
 # =============
 # RAG (Email)
 # =============
+RAG_SEARCH_URL = env("RAG_SEARCH_URL", "")
 RAG_INSERT_URL = env("RAG_INSERT_URL", "")
 RAG_DELETE_URL = env("RAG_DELETE_URL", "")
 RAG_INDEX_NAME = env("RAG_INDEX_NAME", "emails")

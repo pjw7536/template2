@@ -4,7 +4,7 @@ from __future__ import annotations
 from django.http import HttpRequest, HttpResponseRedirect
 from rest_framework.views import APIView
 
-from .utils import resolve_frontend_target
+from api.common.utils import resolve_frontend_target
 
 
 class FrontendRedirectView(APIView):

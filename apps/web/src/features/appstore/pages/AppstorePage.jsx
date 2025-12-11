@@ -223,19 +223,19 @@ export function AppstorePage() {
             </CardHeader>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             {filteredApps.map((app) => (
               <Card
                 key={app.name}
                 className="flex h-full flex-col overflow-hidden border bg-card shadow-sm transition hover:-translate-y-1 hover:border-primary/30 hover:shadow-md"
               >
-                <CardHeader className="flex flex-row items-start gap-3 p-4 pb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary ring-1 ring-primary/20">
+                <CardHeader className="flex flex-row items-start gap-2 p-3 pb-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/20">
                     {app.name.charAt(0)}
                   </div>
                   <div className="flex flex-1 flex-col gap-1">
                     <div className="flex items-start gap-2">
-                      <CardTitle className="text-base leading-tight">{app.name}</CardTitle>
+                      <CardTitle className="text-sm leading-tight">{app.name}</CardTitle>
                       {app.badge ? (
                         <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary">
                           {app.badge}
@@ -249,8 +249,10 @@ export function AppstorePage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-1 pt-2">
-                  <p className="text-sm leading-relaxed text-muted-foreground">{app.description}</p>
+                <CardContent className="flex flex-1 flex-col gap-2 px-3 pb-2 pt-1">
+                  <p className="text-sm leading-relaxed text-muted-foreground line-clamp-2">
+                    {app.description}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {app.tags.map((tag) => (
                       <Badge key={`${app.name}-${tag}`} variant="outline" className="rounded-full bg-background/70">
