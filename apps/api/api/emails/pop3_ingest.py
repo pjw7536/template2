@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import email
+import base64
 import hashlib
 import logging
 import os
 import poplib
-import re
 from email.header import decode_header, make_header
 from email.message import Message
+from email.parser import BytesParser
+from email.policy import default
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Tuple
 
+from bs4 import BeautifulSoup
 from django.utils import timezone
 
 from .department import get_department_for
@@ -35,12 +37,42 @@ def _decode_header_value(raw_value: str | None) -> str:
         return raw_value
 
 
-def _coerce_html_to_text(html: str) -> str:
-    if not html:
-        return ""
-    # 간단한 태그 제거로 텍스트를 추출 (정확도보다는 안전한 fallback)
-    text = re.sub(r"<[^>]+>", " ", html)
-    return re.sub(r"\s+", " ", text).strip()
+def replace_cid_images(soup: BeautifulSoup, cid_map: Dict[str, Dict[str, Any]]) -> None:
+    """
+    cid 기반 이미지를 base64 data URI로 변환한다.
+    """
+
+    for img in soup.find_all("img"):
+        src = img.get("src", "")
+        if not src.startswith("cid:"):
+            continue
+        cid = src[4:]
+        if cid not in cid_map:
+            continue
+        data = cid_map[cid].get("data")
+        img_type = cid_map[cid].get("type") or "png"
+        if not data:
+            continue
+        b64 = base64.b64encode(data).decode("utf-8")
+        img["src"] = f"data:image/{img_type};base64,{b64}"
+
+
+def replace_mosaic_embeds(soup: BeautifulSoup) -> None:
+    """
+    mosaic embed 태그를 링크로 교체한다.
+    """
+
+    for embed in soup.find_all("embed"):
+        src = embed.get("src", "")
+        if not src.startswith("https://mosaic"):
+            continue
+        parent_div = embed.find_parent("div")
+        if parent_div:
+            span_tag = soup.new_tag("span")
+            a_tag = soup.new_tag("a", href=src)
+            a_tag.string = "모자이크 링크"
+            span_tag.append(a_tag)
+            parent_div.replace_with(span_tag)
 
 
 def _decode_part(part: Message) -> str:
@@ -56,30 +88,69 @@ def _decode_part(part: Message) -> str:
 
 def _extract_bodies(msg: Message) -> Tuple[str, str]:
     text_body = ""
-    html_body = ""
+    html_content = ""
+    cid_map: Dict[str, Dict[str, Any]] = {}
 
     if msg.is_multipart():
         for part in msg.walk():
+            if part.is_multipart():
+                continue
             content_type = part.get_content_type()
             disposition = (part.get("Content-Disposition") or "").lower()
+            content_id = part.get("Content-ID")
+
+            if content_type.startswith("image/") and content_id:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    cid_map[content_id.strip("<>")] = {
+                        "data": payload,
+                        "type": part.get_content_subtype(),
+                    }
+                continue
+
             if disposition.startswith("attachment"):
                 continue
 
             if content_type == "text/plain" and not text_body:
                 text_body = _decode_part(part)
-            elif content_type == "text/html" and not html_body:
-                html_body = _decode_part(part)
+            elif content_type == "text/html" and not html_content:
+                html_content = _decode_part(part)
     else:
         content_type = msg.get_content_type()
-        if content_type == "text/plain":
-            text_body = _decode_part(msg)
-        elif content_type == "text/html":
-            html_body = _decode_part(msg)
+        disposition = (msg.get("Content-Disposition") or "").lower()
+        content_id = msg.get("Content-ID")
 
-    if not text_body and html_body:
-        text_body = _coerce_html_to_text(html_body)
+        if content_type.startswith("image/") and content_id:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                cid_map[content_id.strip("<>")] = {
+                    "data": payload,
+                    "type": msg.get_content_subtype(),
+                }
 
-    return text_body or "", html_body or ""
+        if not disposition.startswith("attachment"):
+            if content_type == "text/plain":
+                text_body = _decode_part(msg)
+            elif content_type == "text/html":
+                html_content = _decode_part(msg)
+
+    if html_content:
+        soup = BeautifulSoup(html_content, "lxml")
+        replace_cid_images(soup, cid_map)
+        replace_mosaic_embeds(soup)
+        body_html = soup.prettify()
+        body_text = soup.get_text()
+        return body_text, body_html
+
+    if not text_body and hasattr(msg, "get_body"):
+        try:
+            fallback = msg.get_body(preferencelist=("plain", "html"))
+            if fallback:
+                text_body = _decode_part(fallback)
+        except Exception:
+            pass
+
+    return text_body or "", ""
 
 
 def _parse_received_at(msg: Message):
@@ -157,7 +228,7 @@ def _iter_pop3_messages(session: Any) -> Iterable[Tuple[int, Message]]:
         msg_num = int(raw.split()[0])
         _resp, lines, _ = session.retr(msg_num)
         raw_msg = b"\n".join(lines)
-        msg = email.message_from_bytes(raw_msg)
+        msg = BytesParser(policy=default).parsebytes(raw_msg)
         yield msg_num, msg
 
 

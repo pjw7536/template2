@@ -1,13 +1,14 @@
 import json
+import os
 from typing import List
 
 import requests
 from django.conf import settings
 
-RAG_SEARCH_URL = getattr(settings, "RAG_SEARCH_URL", "")
-RAG_INSERT_URL = getattr(settings, "RAG_INSERT_URL", "")
-RAG_DELETE_URL = getattr(settings, "RAG_DELETE_URL", "")
-RAG_INDEX_NAME = getattr(settings, "RAG_INDEX_NAME", "")
+RAG_SEARCH_URL = os.environ.get("RAG_SEARCH_URL") or getattr(settings, "RAG_SEARCH_URL", "")
+RAG_INSERT_URL = os.environ.get("RAG_INSERT_URL") or getattr(settings, "RAG_INSERT_URL", "")
+RAG_DELETE_URL = os.environ.get("RAG_DELETE_URL") or getattr(settings, "RAG_DELETE_URL", "")
+RAG_INDEX_NAME = os.environ.get("RAG_INDEX_NAME") or getattr(settings, "RAG_INDEX_NAME", "")
 RAG_HEADERS = {
     "Content-Type": "application/json",
     "x-dep-ticket": getattr(settings, "RAG_PASS_KEY", ""),
