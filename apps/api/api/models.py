@@ -9,7 +9,7 @@ from django.utils import timezone
 class User(AbstractUser):
     department = models.CharField(max_length=128, null=True, blank=True)
     line = models.CharField(max_length=64, null=True, blank=True)
-    sdwt = models.CharField(max_length=64, null=True, blank=True)
+    user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
 
     class Meta:
         db_table = "api_user"
@@ -53,6 +53,86 @@ def ensure_user_profile(user=None) -> UserProfile:
         raise ValueError("user is required to ensure a profile exists")
     profile, _ = UserProfile.objects.get_or_create(user=user)
     return profile
+
+
+class AffiliationHierarchy(models.Model):
+    department = models.CharField(max_length=128)
+    line = models.CharField(max_length=64)
+    user_sdwt_prod = models.CharField(max_length=64)
+
+    class Meta:
+        db_table = "affiliation_hierarchy"
+        unique_together = ("department", "line", "user_sdwt_prod")
+        indexes = [
+            models.Index(fields=["department"], name="aff_hier_department"),
+            models.Index(fields=["line"], name="aff_hier_line"),
+            models.Index(fields=["user_sdwt_prod"], name="aff_hier_user_sdwt_prod"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.department} / {self.line} / {self.user_sdwt_prod}"
+
+
+class UserSdwtProdAccess(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sdwt_prod_access",
+    )
+    user_sdwt_prod = models.CharField(max_length=64)
+    can_manage = models.BooleanField(default=False)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sdwt_prod_grants",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "user_sdwt_prod_access"
+        unique_together = ("user", "user_sdwt_prod")
+        indexes = [
+            models.Index(fields=["user"], name="user_sdwt_access_user"),
+            models.Index(fields=["user_sdwt_prod"], name="user_sdwt_access_prod"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.user_id} -> {self.user_sdwt_prod} ({'manager' if self.can_manage else 'member'})"
+
+
+class UserSdwtProdChange(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sdwt_prod_changes",
+    )
+    department = models.CharField(max_length=128, null=True, blank=True)
+    line = models.CharField(max_length=64, null=True, blank=True)
+    from_user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
+    to_user_sdwt_prod = models.CharField(max_length=64)
+    effective_from = models.DateTimeField()
+    applied = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sdwt_prod_changes_created",
+    )
+
+    class Meta:
+        db_table = "user_sdwt_prod_change"
+        ordering = ["-effective_from", "-id"]
+        indexes = [
+            models.Index(fields=["user", "effective_from"], name="user_sdwt_change_user_effective"),
+            models.Index(fields=["applied"], name="user_sdwt_change_applied"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.user_id} {self.from_user_sdwt_prod or '-'} -> {self.to_user_sdwt_prod} at {self.effective_from}"
 
 
 class DroneSOPV3(models.Model):
@@ -187,26 +267,6 @@ class VocReply(models.Model):
         return f"Reply to {self.post_id}"
 
 
-class UserDepartmentHistory(models.Model):
-    """발신자 부서 이력 (수동 입력 가능)."""
-
-    employee_id = models.CharField(max_length=50, db_index=True)  # Email.sender_id 와 동일 키
-    department_code = models.CharField(max_length=50)
-    effective_from = models.DateTimeField()  # 이 시점부터 department_code 적용
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.CharField(max_length=50)
-
-    class Meta:
-        db_table = "user_department_history"
-        indexes = [
-            models.Index(fields=["employee_id", "effective_from"]),
-        ]
-
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
-        return f"{self.employee_id} -> {self.department_code} ({self.effective_from.isoformat()})"
-
-
 class Email(models.Model):
     """수신 메일 저장 모델 (RAG doc 연동)."""
 
@@ -217,8 +277,7 @@ class Email(models.Model):
     sender_id = models.CharField(max_length=50, db_index=True)  # 사번/계정 ID 등 식별자
     recipient = models.TextField()
 
-    # 메일 수신 시점의 부서 스냅샷
-    department_code = models.CharField(max_length=50, db_index=True)
+    user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     body_text = models.TextField(blank=True)  # RAG 검색/스니펫용 텍스트
     body_html_gzip = models.BinaryField(null=True, blank=True)  # UI 렌더용 gzip HTML
@@ -232,7 +291,31 @@ class Email(models.Model):
         db_table = "email"
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
-        return f"{self.subject[:40]} ({self.sender} -> {self.recipient}) [{self.department_code}]"
+        return f"{self.subject[:40]} ({self.sender} -> {self.recipient}) [{self.user_sdwt_prod or ''}]"
+
+
+class SenderSdwtHistory(models.Model):
+    """sender_id 기준 소속 이력 (시점별 line/user_sdwt_prod)."""
+
+    sender_id = models.CharField(max_length=50, db_index=True)
+    effective_from = models.DateTimeField()  # 이 시점부터 line/user_sdwt_prod 적용
+    department = models.CharField(max_length=50, null=True, blank=True)
+    line = models.CharField(max_length=64, null=True, blank=True)
+    user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.CharField(max_length=50, default="")
+
+    class Meta:
+        db_table = "sender_sdwt_history"
+        indexes = [
+            models.Index(fields=["sender_id", "effective_from"], name="sender_sdwt_effective"),
+            models.Index(fields=["user_sdwt_prod"], name="sender_sdwt_user_sdwt"),
+        ]
+        unique_together = ("sender_id", "effective_from")
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.sender_id} -> {self.user_sdwt_prod or ''} ({self.effective_from.isoformat()})"
 
 
 class AppStoreApp(models.Model):

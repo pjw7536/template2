@@ -11,6 +11,12 @@ from api.appstore.views import (
     AppStoreLikeToggleView,
     AppStoreViewIncrementView,
 )
+from api.account.views import (
+    AccountAffiliationView,
+    AccountGrantListView,
+    AccountGrantView,
+    LineSdwtOptionsView,
+)
 from api.assistant.views import AssistantChatView
 from api.auth.views import FrontendRedirectView
 from api.drone.views import DroneEarlyInformView
@@ -88,6 +94,10 @@ urlpatterns = [
         AppStoreCommentDetailView.as_view(),
         name="appstore-app-comment-detail",
     ),
+    path("api/v1/account/affiliation", AccountAffiliationView.as_view(), name="account-affiliation"),
+    path("api/v1/account/access/grants", AccountGrantView.as_view(), name="account-access-grant"),
+    path("api/v1/account/access/manageable", AccountGrantListView.as_view(), name="account-access-manageable"),
+    path("api/v1/account/line-sdwt-options", LineSdwtOptionsView.as_view(), name="account-line-sdwt-options"),
     path("voc/posts", VocPostsView.as_view(), name="voc-posts"),
     path("voc/posts/<int:post_id>", VocPostDetailView.as_view(), name="voc-post-detail"),
     path("voc/posts/<int:post_id>/replies", VocReplyView.as_view(), name="voc-post-reply"),

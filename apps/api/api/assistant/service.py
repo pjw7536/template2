@@ -139,6 +139,7 @@ class AssistantChatConfig:
     dummy_reply: str = DEFAULT_DUMMY_REPLY
     dummy_contexts: List[str] = field(default_factory=list)
     dummy_delay_ms: int = DEFAULT_DUMMY_DELAY_MS
+    dummy_use_rag: bool = False
     rag_url: str = ""
     rag_index_name: str = ""
     rag_permission_groups: List[str] = field(default_factory=list)
@@ -160,6 +161,7 @@ class AssistantChatConfig:
         if not dummy_contexts:
             dummy_contexts = DEFAULT_DUMMY_CONTEXTS
         dummy_delay_ms = _parse_int(_read_setting("ASSISTANT_DUMMY_DELAY_MS"), DEFAULT_DUMMY_DELAY_MS)
+        dummy_use_rag = _parse_bool(_read_setting("ASSISTANT_DUMMY_USE_RAG"), False)
 
         rag_url = (_read_setting("ASSISTANT_RAG_URL") or "").strip()
         rag_index_name = (_read_setting("ASSISTANT_RAG_INDEX_NAME") or "").strip()
@@ -198,6 +200,7 @@ class AssistantChatConfig:
             dummy_reply=dummy_reply,
             dummy_contexts=dummy_contexts,
             dummy_delay_ms=dummy_delay_ms,
+            dummy_use_rag=dummy_use_rag,
         )
 
 
@@ -207,6 +210,7 @@ class AssistantChatResult:
     contexts: List[str]
     llm_response: Dict[str, Any]
     rag_response: Optional[Dict[str, Any]] = None
+    sources: List[Dict[str, Any]] = field(default_factory=list)
     is_dummy: bool = False
 
 
@@ -214,8 +218,16 @@ class AssistantChatService:
     def __init__(self, config: Optional[AssistantChatConfig] = None) -> None:
         self.config = config or AssistantChatConfig.from_settings()
 
-    def _generate_dummy_result(self, question: str) -> AssistantChatResult:
-        contexts = list(self.config.dummy_contexts)[: max(1, self.config.rag_num_docs)]
+    def _generate_dummy_result(
+        self,
+        question: str,
+        *,
+        contexts: Optional[List[str]] = None,
+        sources: Optional[List[Dict[str, Any]]] = None,
+        rag_response: Optional[Dict[str, Any]] = None,
+    ) -> AssistantChatResult:
+        resolved_contexts = contexts or list(self.config.dummy_contexts)
+        trimmed_contexts = resolved_contexts[: max(1, self.config.rag_num_docs)] if resolved_contexts else []
         reply_template = self.config.dummy_reply or DEFAULT_DUMMY_REPLY
         reply = reply_template.replace("{question}", question)
 
@@ -225,18 +237,20 @@ class AssistantChatService:
 
         return AssistantChatResult(
             reply=reply,
-            contexts=contexts,
+            contexts=trimmed_contexts,
             llm_response={
                 "mode": "dummy",
                 "echo": question,
                 "model": self.config.model,
                 "temperature": self.config.temperature,
             },
-            rag_response={
+            rag_response=rag_response
+            or {
                 "mode": "dummy",
-                "contexts": contexts,
-                "count": len(contexts),
+                "contexts": trimmed_contexts,
+                "count": len(trimmed_contexts),
             },
+            sources=sources or [],
             is_dummy=True,
         )
 
@@ -265,9 +279,36 @@ class AssistantChatService:
         except requests.RequestException as exc:
             raise AssistantRequestError(f"요청 중 오류 발생 (url={url}): {exc}") from exc
 
-    def _retrieve_documents(self, session: requests.Session, question: str) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+    def _extract_sources(self, hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        sources: List[Dict[str, Any]] = []
+        for hit in hits:
+            if not isinstance(hit, dict):
+                continue
+            source = hit.get("_source") or {}
+            if not isinstance(source, dict):
+                continue
+            raw_doc_id = source.get("doc_id") or hit.get("_id")
+            doc_id = str(raw_doc_id).strip() if raw_doc_id is not None else ""
+            if not doc_id:
+                continue
+            title_raw = source.get("title")
+            title = str(title_raw).strip() if isinstance(title_raw, str) else ""
+            merged = source.get("merge_title_content")
+            snippet = str(merged).strip() if isinstance(merged, str) and merged.strip() else ""
+            sources.append(
+                {
+                    "doc_id": doc_id,
+                    "title": title,
+                    "snippet": snippet,
+                }
+            )
+        return sources
+
+    def _retrieve_documents(
+        self, session: requests.Session, question: str
+    ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
         if not self.config.rag_url or not self.config.rag_index_name:
-            return [], None
+            return [], None, []
 
         payload: Dict[str, Any] = {
             "index_name": self.config.rag_index_name,
@@ -280,7 +321,7 @@ class AssistantChatService:
 
         hits = data.get("hits", {}).get("hits", [])
         if not isinstance(hits, list):
-            return [], data
+            return [], data, []
 
         documents: List[str] = []
         for hit in hits:
@@ -289,7 +330,8 @@ class AssistantChatService:
             if isinstance(merged, str) and merged.strip():
                 documents.append(merged)
 
-        return documents, data
+        sources = self._extract_sources(hits)
+        return documents, data, sources
 
     def _generate_llm_payload(self, question: str, contexts: List[str]) -> Dict[str, Any]:
         context_str = "\n".join(contexts) if contexts else NO_CONTEXT_MESSAGE
@@ -357,10 +399,22 @@ class AssistantChatService:
             raise AssistantRequestError("질문이 비어 있습니다.")
 
         if self.config.use_dummy:
+            if self.config.dummy_use_rag and self.config.rag_url and self.config.rag_index_name:
+                try:
+                    with requests.Session() as session:
+                        contexts, rag_response, sources = self._retrieve_documents(session, normalized_question)
+                except AssistantRequestError:
+                    contexts, rag_response, sources = [], None, []
+                return self._generate_dummy_result(
+                    normalized_question,
+                    contexts=contexts,
+                    sources=sources,
+                    rag_response=rag_response,
+                )
             return self._generate_dummy_result(normalized_question)
 
         with requests.Session() as session:
-            contexts, rag_response = self._retrieve_documents(session, normalized_question)
+            contexts, rag_response, sources = self._retrieve_documents(session, normalized_question)
             reply, llm_response = self._call_llm(
                 session,
                 normalized_question,
@@ -373,6 +427,7 @@ class AssistantChatService:
             contexts=contexts,
             llm_response=llm_response,
             rag_response=rag_response,
+            sources=sources,
         )
 
 

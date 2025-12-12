@@ -39,6 +39,7 @@ export function ChatPage() {
     resetConversation,
     selectRoom,
     createRoom,
+    removeRoom,
   } = useChatSession({
     initialMessages: handoffMessages,
     initialRooms,
@@ -74,6 +75,10 @@ export function ChatPage() {
     } finally {
       inputRef.current?.focus()
     }
+  }
+
+  const handleDeleteRoom = (roomId) => {
+    removeRoom(roomId)
   }
 
   return (
@@ -157,7 +162,12 @@ export function ChatPage() {
                 <span className="text-[11px] text-muted-foreground">방을 선택하세요</span>
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
-                <RoomList rooms={sortedRooms} activeRoomId={activeRoomId} onSelectRoom={selectRoom} />
+                <RoomList
+                  rooms={sortedRooms}
+                  activeRoomId={activeRoomId}
+                  onSelectRoom={selectRoom}
+                  onDeleteRoom={handleDeleteRoom}
+                />
               </div>
             </aside>
           ) : null}

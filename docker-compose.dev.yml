@@ -19,6 +19,7 @@ services:
       - |
           set -e
           python manage.py migrate --noinput
+          python manage.py seed_dummy_emails || true
           python manage.py runserver 0.0.0.0:8000
     networks:
       shared-net:
@@ -53,6 +54,10 @@ services:
       DUMMY_ADFS_PRIVATE_KEY_PATH: /app/dummy_adfs_private.key
       # 개발 환경에서는 더미 ADFS 서버가 HTTP로 구동되므로 issuer 도 동일하게 맞춘다
       DUMMY_ADFS_ISSUER: http://localhost:9000/adfs
+      DUMMY_RAG_INDEX_NAME: emails
+      DUMMY_ASSISTANT_RAG_INDEX: emails
+      DUMMY_MAIL_RAG_INDEX: emails
+      DUMMY_RAG_PERMISSION_GROUPS: '["rag-public"]'
     ports:
       - "9000:9000"
     networks:

@@ -15,8 +15,8 @@ from typing import Any, Dict, Iterable, List, Tuple
 from bs4 import BeautifulSoup
 from django.utils import timezone
 
-from .department import get_department_for
-from .services import register_email_to_rag, save_parsed_email
+from .affiliation import resolve_email_affiliation
+from .services import register_email_to_rag, register_missing_rag_docs, save_parsed_email
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +281,8 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
             fields = parse_message_to_fields(msg)
             sender_id = fields["sender_id"]
             received_at = fields["received_at"]
-            department_code = get_department_for(sender_id, received_at)
+            affiliation = resolve_email_affiliation(sender_id, received_at)
+            user_sdwt_prod = affiliation["user_sdwt_prod"]
 
             email_obj = save_parsed_email(
                 message_id=fields["message_id"],
@@ -290,7 +291,7 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
                 sender=fields["sender"],
                 sender_id=sender_id,
                 recipient=fields["recipient"],
-                department_code=department_code,
+                user_sdwt_prod=user_sdwt_prod,
                 body_text=fields.get("body_text") or "",
                 body_html=fields.get("body_html"),
             )
@@ -324,12 +325,19 @@ def run_pop3_ingest(host: str, port: int, username: str, password: str, use_ssl:
     client_cls = poplib.POP3_SSL if use_ssl else poplib.POP3
     client = client_cls(host, port, timeout=timeout)
     deleted: List[int] = []
+    reindexed = 0
     try:
         client.user(username)
         client.pass_(password)
         logger.info("POP3 login succeeded: host=%s port=%s ssl=%s", host, port, use_ssl)
 
         deleted = ingest_pop3_mailbox(client) or []
+        try:
+            reindexed = register_missing_rag_docs()
+            if reindexed:
+                logger.info("RAG backfill attempted for %s emails without rag_doc_id", reindexed)
+        except Exception:
+            logger.exception("RAG backfill failed after POP3 ingest")
         logger.info("Ingest complete; marked %s messages for deletion", len(deleted))
 
         client.quit()  # commit deletions
@@ -347,7 +355,7 @@ def run_pop3_ingest(host: str, port: int, username: str, password: str, use_ssl:
         except Exception:
             pass
 
-    return {"deleted": len(deleted)}
+    return {"deleted": len(deleted), "reindexed": reindexed}
 
 
 def _env_bool(key: str, default: bool = False) -> bool:

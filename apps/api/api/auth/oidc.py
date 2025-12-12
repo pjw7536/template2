@@ -367,7 +367,7 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "roles": [],  # 필요 시 롤/권한 매핑 로직 추가
         "department": getattr(user, "department", None),
         "line": getattr(user, "line", None),
-        "sdwt": getattr(user, "sdwt", None),
+        "user_sdwt_prod": getattr(user, "user_sdwt_prod", None),
     }
     return JsonResponse(payload)
 

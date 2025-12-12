@@ -67,7 +67,7 @@ export function EmailDetail({ email, isLoading, html, isHtmlLoading }) {
         </div>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full overflow-auto rounded-lg border bg-background">
+        <div className="h-full min-w-0 overflow-auto overflow-x-auto rounded-lg border bg-background">
           {hasHtml ? (
             <div
               className="space-y-4 p-3 text-sm leading-relaxed text-foreground"

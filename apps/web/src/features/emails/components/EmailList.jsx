@@ -4,9 +4,18 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
 } from "@tabler/icons-react"
-import { Mail, Trash2 } from "lucide-react"
+import { Mail, RefreshCcw, Trash2 } from "lucide-react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
@@ -62,9 +71,42 @@ export function EmailList({
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   onPageChange,
   onPageSizeChange,
+  onReload,
+  isReloading = false,
+  activeEmailId = null,
 }) {
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const allSelected = emails.length > 0 && emails.every((email) => selectedIds.includes(email.id))
   const hasSelection = selectedIds.length > 0
+  const isDeleteDialogOpen = Boolean(deleteTarget)
+  const deleteTargetLabel =
+    deleteTarget?.type === "bulk"
+      ? `${deleteTarget?.count ?? selectedIds.length}개의 메일`
+      : deleteTarget?.subject?.trim() || "이 메일"
+
+  const handleRequestSingleDelete = (email) => {
+    if (!email?.id) return
+    setDeleteTarget({ type: "single", emailId: email.id, subject: email.subject })
+  }
+
+  const handleRequestBulkDelete = () => {
+    if (!hasSelection) return
+    setDeleteTarget({ type: "bulk", count: selectedIds.length })
+  }
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteTarget(null)
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    if (deleteTarget.type === "single" && deleteTarget.emailId) {
+      onDeleteEmail?.(deleteTarget.emailId)
+    } else if (deleteTarget.type === "bulk" && hasSelection) {
+      onBulkDelete?.()
+    }
+    setDeleteTarget(null)
+  }
 
   return (
     <div className="flex h-full flex-col rounded-xl border bg-card/60 shadow-sm p-2">
@@ -81,11 +123,23 @@ export function EmailList({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onReload ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              onClick={onReload}
+              disabled={isReloading}
+            >
+              <RefreshCcw className={cn("h-4 w-4", isReloading ? "animate-spin" : "")} />
+              새로고침
+            </Button>
+          ) : null}
           {hasSelection && onBulkDelete ? (
             <button
               type="button"
               className={cn(pillBaseClass, pillInteractiveClass, deletePillClass, "gap-1")}
-              onClick={onBulkDelete}
+              onClick={handleRequestBulkDelete}
               disabled={isBulkDeleting}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -112,14 +166,17 @@ export function EmailList({
           <ul className="divide-y">
             {emails.map((email) => {
               const isSelected = selectedIds.includes(email.id)
+              const isActive = activeEmailId === email.id
               return (
                 <li
                   key={email.id}
                   className={cn(
                     "flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-muted/60",
-                    isSelected ? "bg-muted/60" : ""
+                    isSelected ? "bg-muted/60" : "",
+                    isActive ? "ring-1 ring-primary/40 bg-muted/50" : ""
                   )}
                   onClick={() => onSelectEmail?.(email.id)}
+                  aria-current={isActive ? "true" : undefined}
                 >
                   <div className="pt-1">
                     <SelectionCheckbox
@@ -149,7 +206,7 @@ export function EmailList({
                       className="h-8 w-8"
                       onClick={(event) => {
                         event.stopPropagation()
-                        onDeleteEmail?.(email.id)
+                        handleRequestSingleDelete(email)
                       }}
                       aria-label="메일 삭제"
                     >
@@ -225,6 +282,37 @@ export function EmailList({
           </select>
         </label>
       </div>
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseDeleteDialog()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>메일 삭제</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.type === "bulk"
+                ? `${deleteTargetLabel}을(를) 삭제할까요? 선택한 메일은 복구할 수 없습니다.`
+                : `"${deleteTargetLabel}"을 삭제할까요? 삭제 후에는 복구할 수 없습니다.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleCloseDeleteDialog}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleteTarget?.type === "bulk" && isBulkDeleting}
+            >
+              삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

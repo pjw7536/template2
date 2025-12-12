@@ -151,7 +151,7 @@ def _log_rag_failure(action: str, payload: Dict[str, Any] | None, error: Excepti
         "index_name": payload.get("index_name") if isinstance(payload, dict) else None,
         "doc_id": payload_data.get("doc_id"),
         "email_id": payload_data.get("email_id"),
-        "department_code": payload_data.get("department_code"),
+        "department": payload_data.get("department"),
         **_safe_response_details(getattr(error, "response", None)),
     }
     try:
@@ -160,17 +160,32 @@ def _log_rag_failure(action: str, payload: Dict[str, Any] | None, error: Excepti
         logger.error("RAG request failed | error=%s", error)
 
 
-def _build_insert_payload(email) -> Dict[str, Any]:
+def resolve_rag_index_name(user_sdwt_prod: str | None) -> str:
+    """
+    Decide RAG 인덱스명.
+    - user_sdwt_prod가 주어지면 그 값을 사용
+    - 없으면 settings/env에 정의된 기본값 사용
+    """
+
+    if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
+        return user_sdwt_prod.strip()
+    return RAG_INDEX_NAME
+
+
+def _build_insert_payload(email, index_name: str | None = None) -> Dict[str, Any]:
+    resolved_index_name = resolve_rag_index_name(index_name or getattr(email, "user_sdwt_prod", None))
     created_time = getattr(email, "received_at", None) or timezone.now()
     payload: Dict[str, Any] = {
-        "index_name": RAG_INDEX_NAME,
+        "index_name": resolved_index_name,
         "data": {
             "doc_id": getattr(email, "rag_doc_id", None),
             "title": email.subject,
             "content": email.body_text or "",
             "permission_groups": RAG_PERMISSION_GROUPS,
             "created_time": created_time.isoformat(),
-            "department_code": email.department_code,
+            "department": getattr(email, "department", None),
+            "line": getattr(email, "line", None),
+            "user_sdwt_prod": getattr(email, "user_sdwt_prod", None),
             "email_id": email.id,
             "sender": email.sender,
             "recipient": email.recipient,
@@ -182,24 +197,27 @@ def _build_insert_payload(email) -> Dict[str, Any]:
     return payload
 
 
-def _build_delete_payload(doc_id: str) -> Dict[str, Any]:
+def _build_delete_payload(doc_id: str, index_name: str | None = None) -> Dict[str, Any]:
+    resolved_index_name = resolve_rag_index_name(index_name)
     return {
-        "index_name": RAG_INDEX_NAME,
+        "index_name": resolved_index_name,
         "permission_groups": RAG_PERMISSION_GROUPS,
         "doc_id": doc_id,
     }
 
 
-def insert_email_to_rag(email):
+def insert_email_to_rag(email, index_name: str | None = None):
     """Email 모델을 RAG 인덱스에 등록."""
 
-    payload = _build_insert_payload(email)
+    payload = _build_insert_payload(email, index_name=index_name)
+
+    resolved_index_name = payload.get("index_name")
 
     if not RAG_INSERT_URL:
         error = ValueError("RAG_INSERT_URL is not configured")
         _log_rag_failure("insert", payload, error)
         raise error
-    if not RAG_INDEX_NAME:
+    if not resolved_index_name:
         error = ValueError("RAG_INDEX_NAME is not configured")
         _log_rag_failure("insert", payload, error)
         raise error
@@ -212,16 +230,18 @@ def insert_email_to_rag(email):
         raise
 
 
-def delete_rag_doc(doc_id: str):
+def delete_rag_doc(doc_id: str, index_name: str | None = None):
     """RAG에서 doc_id에 해당하는 문서를 삭제."""
 
-    payload = _build_delete_payload(doc_id)
+    payload = _build_delete_payload(doc_id, index_name=index_name)
+
+    resolved_index_name = payload.get("index_name")
 
     if not RAG_DELETE_URL:
         error = ValueError("RAG_DELETE_URL is not configured")
         _log_rag_failure("delete", payload, error)
         raise error
-    if not RAG_INDEX_NAME:
+    if not resolved_index_name:
         error = ValueError("RAG_INDEX_NAME is not configured")
         _log_rag_failure("delete", payload, error)
         raise error
@@ -234,10 +254,10 @@ def delete_rag_doc(doc_id: str):
         raise
 
 
-def search_rag_by_department(query_text: str, department_codes: List[str], num_result_doc: int = 5):
+def search_rag_by_department(query_text: str, departments: List[str], num_result_doc: int = 5):
     """
-    department_code 필터를 적용하여 RAG 문서를 검색하는 예시 함수.
-    - 모든 검색 요청은 department_code 필터를 포함해야 한다.
+    department 필터를 적용하여 RAG 문서를 검색하는 예시 함수.
+    - 모든 검색 요청은 department 필터를 포함해야 한다.
     """
 
     if not RAG_SEARCH_URL:
@@ -251,7 +271,7 @@ def search_rag_by_department(query_text: str, department_codes: List[str], num_r
         "query_text": query_text,
         "num_result_doc": num_result_doc,
         "filter": {
-            "department_code": department_codes,
+            "department": departments,
         },
     }
     resp = requests.post(RAG_SEARCH_URL, headers=RAG_HEADERS, json=payload, timeout=30)

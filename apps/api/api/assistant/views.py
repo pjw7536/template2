@@ -75,6 +75,34 @@ def _append_user_prompt(history: List[Dict[str, str]], prompt: str, *, limit: in
     return normalized_history
 
 
+def _normalize_sources(raw_sources: object) -> List[Dict[str, str]]:
+    """RAG 검색 결과에서 프론트에 전달할 출처 리스트를 정규화."""
+
+    normalized: List[Dict[str, str]] = []
+    if not isinstance(raw_sources, list):
+        return normalized
+
+    for entry in raw_sources:
+        if not isinstance(entry, dict):
+            continue
+        doc_id = entry.get("doc_id") or entry.get("docId")
+        if not isinstance(doc_id, str) or not doc_id.strip():
+            continue
+        doc_id_clean = doc_id.strip()
+        title_raw = entry.get("title")
+        title = title_raw.strip() if isinstance(title_raw, str) else ""
+        snippet_raw = entry.get("snippet")
+        snippet = snippet_raw.strip() if isinstance(snippet_raw, str) else ""
+        normalized.append(
+            {
+                "docId": doc_id_clean,
+                "title": title,
+                "snippet": snippet,
+            }
+        )
+    return normalized
+
+
 class ConversationMemory:
     """사용자별 대화 이력을 캐시에 저장/슬라이딩 윈도우로 관리."""
 
@@ -155,6 +183,7 @@ class AssistantChatView(APIView):
 
         reply = ""
         contexts_used: List[str] = []
+        sources_used: List[Dict[str, str]] = []
         is_dummy = False
         try:
             chat_result = assistant_chat_service.generate_reply(
@@ -163,6 +192,7 @@ class AssistantChatView(APIView):
             )
             reply = chat_result.reply.strip() if isinstance(chat_result.reply, str) else ""
             contexts_used = chat_result.contexts
+            sources_used = _normalize_sources(getattr(chat_result, "sources", []))
             is_dummy = getattr(chat_result, "is_dummy", False)
         except AssistantConfigError as exc:
             logger.error(
@@ -208,6 +238,7 @@ class AssistantChatView(APIView):
                 "llmConfigured": bool(assistant_chat_service.config.llm_url) or is_dummy,
                 "ragConfigured": bool(assistant_chat_service.config.rag_url) or is_dummy or bool(contexts_used),
                 "contextCount": len(contexts_used),
+                "sourceCount": len(sources_used),
                 "isDummy": is_dummy,
             },
         )
@@ -216,6 +247,7 @@ class AssistantChatView(APIView):
             {
                 "reply": reply,
                 "contexts": contexts_used,
+                "sources": sources_used,
                 "meta": {
                     "isDummy": is_dummy,
                     "llmConfigured": bool(assistant_chat_service.config.llm_url) or is_dummy,

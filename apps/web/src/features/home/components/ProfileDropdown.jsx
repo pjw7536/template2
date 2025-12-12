@@ -43,6 +43,10 @@ const ProfileDropdown = ({
       })
   }, [logout, navigate])
 
+  const handleMyAccount = useCallback(() => {
+    navigate('/account')
+  }, [navigate])
+
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
@@ -67,7 +71,12 @@ const ProfileDropdown = ({
         <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
+          <DropdownMenuItem
+            className='px-4 py-2.5 text-base'
+            onSelect={(event) => {
+              event.preventDefault()
+              handleMyAccount()
+            }}>
             <UserIcon className='text-foreground size-5' />
             <span>My account</span>
           </DropdownMenuItem>

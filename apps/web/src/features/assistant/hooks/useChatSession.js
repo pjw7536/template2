@@ -12,6 +12,23 @@ function createMessageId(role) {
   return `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+function normalizeSources(rawSources) {
+  if (!Array.isArray(rawSources)) return []
+
+  return rawSources
+    .map((item) => {
+      if (!item || typeof item !== "object") return null
+      const docId =
+        (typeof item.docId === "string" && item.docId.trim()) ||
+        (typeof item.doc_id === "string" && item.doc_id.trim())
+      if (!docId) return null
+      const title = typeof item.title === "string" ? item.title.trim() : ""
+      const snippet = typeof item.snippet === "string" ? item.snippet.trim() : ""
+      return { docId, title, snippet }
+    })
+    .filter(Boolean)
+}
+
 function generateRoomId() {
   return `room-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 }
@@ -34,6 +51,7 @@ function normalizeMessages(messages) {
         id: message.id || createMessageId(role),
         role,
         content,
+        sources: normalizeSources(message.sources),
       }
     })
     .filter(Boolean)
@@ -337,17 +355,53 @@ export function useChatSession(options = {}) {
         typeof result?.reply === "string" && result.reply.trim()
           ? result.reply.trim()
           : "답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
+      const sources = normalizeSources(result?.sources)
 
       setMessagesByRoom((prev) => ({
         ...prev,
         [roomId]: trimMessages([
           ...(prev[roomId] ?? []),
-          { id: createMessageId("assistant"), role: "assistant", content: reply },
+          {
+            id: createMessageId("assistant"),
+            role: "assistant",
+            content: reply,
+            sources,
+          },
         ]),
       }))
     } catch (error) {
       setErrorMessage(error?.message || "메시지를 전송하지 못했어요.")
     }
+  }
+
+  const removeRoom = (roomId) => {
+    if (!roomId) return
+
+    setRooms((prevRooms) => {
+      const remainingRooms = prevRooms.filter((room) => room.id !== roomId)
+      if (remainingRooms.length === prevRooms.length) return prevRooms
+
+      if (remainingRooms.length === 0) {
+        const fallbackId = generateRoomId()
+        const fallbackRoom = { id: fallbackId, name: "새 대화" }
+        setMessagesByRoom((prevMessages) => {
+          const nextMessages = { ...prevMessages }
+          delete nextMessages[roomId]
+          nextMessages[fallbackId] = buildInitialMessages()
+          return nextMessages
+        })
+        setActiveRoomId(fallbackId)
+        return [fallbackRoom]
+      }
+
+      setMessagesByRoom((prevMessages) => {
+        const nextMessages = { ...prevMessages }
+        delete nextMessages[roomId]
+        return nextMessages
+      })
+      setActiveRoomId((prevActive) => (prevActive === roomId ? remainingRooms[0].id : prevActive))
+      return remainingRooms
+    })
   }
 
   useEffect(() => {
@@ -366,5 +420,6 @@ export function useChatSession(options = {}) {
     resetConversation,
     selectRoom,
     createRoom,
+    removeRoom,
   }
 }

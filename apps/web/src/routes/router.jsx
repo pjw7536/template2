@@ -15,6 +15,7 @@ import { vocRoutes } from "@/features/voc"
 import { AssistantLayout, assistantRoutes } from "@/features/assistant"
 import { emailsRoutes } from "@/features/emails"
 import { mailboxRoutes } from "@/features/mailbox"
+import { accountRoutes } from "@/features/account"
 
 const protectedAppRoutes = {
   element: <AuthAutoLoginGate />,
@@ -28,6 +29,7 @@ const protectedAppRoutes = {
         ...mailboxRoutes,
         ...emailsRoutes,
         ...vocRoutes,
+        ...accountRoutes,
       ],
     },
   ],
