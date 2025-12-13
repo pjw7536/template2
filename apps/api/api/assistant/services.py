@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import requests
 from django.conf import settings
 
+from ..rag.client import resolve_rag_index_name
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_NUM_DOCS = 5
@@ -335,9 +337,11 @@ class AssistantChatService:
     def _retrieve_documents(
         self, session: requests.Session, question: str, index_name: Optional[str] = None
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
-        target_index = (index_name or "").strip() or self.config.rag_index_name
-        if not self.config.rag_url or not target_index:
+        target_index_raw = (index_name or "").strip() or self.config.rag_index_name
+        if not self.config.rag_url or not target_index_raw:
             return [], None, []
+
+        target_index = resolve_rag_index_name(target_index_raw)
 
         payload: Dict[str, Any] = {
             "index_name": target_index,

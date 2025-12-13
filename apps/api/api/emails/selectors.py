@@ -78,6 +78,23 @@ def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -
     resolved = (affiliation.get("user_sdwt_prod") or "").strip()
     return {"user_sdwt_prod": resolved or UNASSIGNED_USER_SDWT_PROD}
 
+def _unassigned_mailbox_query() -> Q:
+    """UNASSIGNED(미분류) 메일함 조건(Q)을 반환합니다.
+
+    Return a reusable Q object that matches unassigned mailboxes.
+
+    Notes:
+        We keep legacy fallbacks ("rp-unclassified", NULL/empty) so the policy
+        works even before the normalization migration is applied.
+    """
+
+    return (
+        Q(user_sdwt_prod__isnull=True)
+        | Q(user_sdwt_prod__exact="")
+        | Q(user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD)
+        | Q(user_sdwt_prod="rp-unclassified")
+    )
+
 
 def count_unassigned_emails_for_sender_id(*, sender_id: str) -> int:
     """발신자(sender_id)의 UNASSIGNED 메일 개수를 반환합니다.
@@ -94,12 +111,7 @@ def count_unassigned_emails_for_sender_id(*, sender_id: str) -> int:
     normalized = sender_id.strip()
     return (
         Email.objects.filter(sender_id=normalized)
-        .filter(
-            Q(user_sdwt_prod__isnull=True)
-            | Q(user_sdwt_prod__exact="")
-            | Q(user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD)
-            | Q(user_sdwt_prod="rp-unclassified")
-        )
+        .filter(_unassigned_mailbox_query())
         .count()
     )
 
@@ -119,15 +131,24 @@ def list_unassigned_email_ids_for_sender_id(*, sender_id: str) -> list[int]:
     normalized = sender_id.strip()
     return list(
         Email.objects.filter(sender_id=normalized)
-        .filter(
-            Q(user_sdwt_prod__isnull=True)
-            | Q(user_sdwt_prod__exact="")
-            | Q(user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD)
-            | Q(user_sdwt_prod="rp-unclassified")
-        )
+        .filter(_unassigned_mailbox_query())
         .order_by("id")
         .values_list("id", flat=True)
     )
+
+def contains_unassigned_emails(*, email_ids: list[int]) -> bool:
+    """email_ids 중 UNASSIGNED(미분류) 메일이 포함되는지 확인합니다.
+
+    Return whether any of the given Email ids are UNASSIGNED.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not email_ids:
+        return False
+
+    return Email.objects.filter(id__in=email_ids).filter(_unassigned_mailbox_query()).exists()
 
 
 def list_emails_by_ids(*, email_ids: list[int]) -> QuerySet[Email]:
@@ -166,6 +187,7 @@ def get_filtered_emails(
     *,
     accessible_user_sdwt_prods: set[str],
     is_privileged: bool,
+    can_view_unassigned: bool,
     mailbox_user_sdwt_prod: str,
     search: str,
     sender: str,
@@ -197,6 +219,9 @@ def get_filtered_emails(
     queryset = Email.objects.order_by("-received_at", "-id")
     if not is_privileged:
         queryset = queryset.filter(user_sdwt_prod__in=accessible_user_sdwt_prods)
+
+    if not can_view_unassigned:
+        queryset = queryset.exclude(_unassigned_mailbox_query())
 
     if mailbox_user_sdwt_prod:
         queryset = queryset.filter(user_sdwt_prod=mailbox_user_sdwt_prod)
@@ -255,6 +280,7 @@ def list_privileged_email_mailboxes() -> list[str]:
 
     known = set(list_distinct_user_sdwt_prod_values())
     known.update(list_distinct_email_mailboxes())
+    known.add(UNASSIGNED_USER_SDWT_PROD)
     return sorted({val for val in known if isinstance(val, str) and val.strip()})
 
 

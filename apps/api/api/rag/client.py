@@ -178,11 +178,24 @@ def resolve_rag_index_name(user_sdwt_prod: str | None) -> str:
     Decide RAG 인덱스명.
     - user_sdwt_prod가 주어지면 그 값을 사용
     - 없으면 settings/env에 정의된 기본값 사용
+    - 최종 요청 시에는 "rp-" prefix를 붙여 전송 (이미 prefix가 있으면 유지)
     """
 
+    prefix = "rp-"
+
+    resolved = ""
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
-        return user_sdwt_prod.strip()
-    return RAG_INDEX_NAME
+        resolved = user_sdwt_prod.strip()
+    else:
+        resolved = (RAG_INDEX_NAME or "").strip()
+
+    if not resolved:
+        return resolved
+
+    if resolved.lower().startswith(prefix):
+        return resolved
+
+    return f"{prefix}{resolved}"
 
 
 def _build_insert_payload(email, index_name: str | None = None) -> Dict[str, Any]:

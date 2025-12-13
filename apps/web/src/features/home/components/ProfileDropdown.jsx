@@ -4,6 +4,7 @@ import {
   UserIcon,
   SettingsIcon,
   UsersIcon,
+  ShieldIcon,
   LogOutIcon
 } from 'lucide-react'
 
@@ -45,6 +46,10 @@ const ProfileDropdown = ({
 
   const handleMyAccount = useCallback(() => {
     navigate('/account')
+  }, [navigate])
+
+  const handleAdmin = useCallback(() => {
+    navigate('/admin')
   }, [navigate])
 
   return (
@@ -95,6 +100,23 @@ const ProfileDropdown = ({
           </DropdownMenuItem>
 
         </DropdownMenuGroup>
+
+        {user?.is_superuser ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                className='px-4 py-2.5 text-base'
+                onSelect={(event) => {
+                  event.preventDefault()
+                  handleAdmin()
+                }}>
+                <ShieldIcon className='text-foreground size-5' />
+                <span>Admin</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        ) : null}
 
         <DropdownMenuSeparator />
 

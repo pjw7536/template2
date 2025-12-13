@@ -513,6 +513,8 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "username": user.get_username(),   # = 사번
         "name": (user.first_name or "") + (user.last_name or ""),
         "email": user.email,
+        "is_superuser": bool(getattr(user, "is_superuser", False)),
+        "is_staff": bool(getattr(user, "is_staff", False)),
         "roles": [],  # 필요 시 롤/권한 매핑 로직 추가
         "department": getattr(user, "department", None),
         "line": getattr(user, "line", None),

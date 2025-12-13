@@ -99,6 +99,31 @@ export function EmailInboxPage() {
   const currentUserSdwtProd =
     typeof user?.user_sdwt_prod === "string" ? user.user_sdwt_prod.trim() : ""
 
+  const mailboxParam = (
+    searchParams.get("mailbox") ||
+    searchParams.get("userSdwtProd") ||
+    searchParams.get("user_sdwt_prod") ||
+    ""
+  ).trim()
+
+  useEffect(() => {
+    if (!mailboxParam) return
+    if (didUserSelectMailboxRef.current) return
+    if (selectedMailbox === mailboxParam) return
+
+    didUserSelectMailboxRef.current = true
+    setSelectedMailbox(mailboxParam)
+    setFilters((prev) => ({ ...prev, page: 1 }))
+    setSelectedIds([])
+    setActiveEmailId(null)
+
+    if (searchParams.has("emailId")) {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete("emailId")
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [mailboxParam, searchParams, selectedMailbox, setSearchParams])
+
   useEffect(() => {
     if (!currentUserSdwtProd) return
     if (didUserSelectMailboxRef.current) return

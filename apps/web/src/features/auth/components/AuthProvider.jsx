@@ -23,7 +23,10 @@ import { appendNextParam, buildNextUrl } from "../utils/url"
  * @property {string} id
  * @property {string} [email]
  * @property {string} [name]
+ * @property {boolean} [is_superuser]
+ * @property {boolean} [is_staff]
  * @property {string[]} [roles]
+ * @property {string | null} [user_sdwt_prod]
  */
 
 /**

@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from api.common.utils import parse_json_body
 
 from .selectors import (
+    contains_unassigned_emails,
     count_unassigned_emails_for_sender_id,
     get_accessible_user_sdwt_prods_for_user,
     get_email_by_id,
@@ -38,6 +39,24 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+
+
+def _user_can_view_unassigned(user: Any) -> bool:
+    """UNASSIGNED(미분류) 메일함 조회 가능 여부를 반환합니다."""
+
+    return bool(user and getattr(user, "is_superuser", False))
+
+
+def _email_is_unassigned(email: Any) -> bool:
+    """Email 인스턴스가 UNASSIGNED(미분류) 메일인지 판별합니다."""
+
+    raw = getattr(email, "user_sdwt_prod", None)
+    if raw is None:
+        return True
+    if not isinstance(raw, str):
+        return False
+    normalized = raw.strip()
+    return normalized in {"", UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
 
 
 def _parse_int(value: Any, default: int) -> int:
@@ -163,6 +182,9 @@ class EmailListView(APIView):
             return JsonResponse({"error": "forbidden"}, status=403)
 
         mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
+        can_view_unassigned = _user_can_view_unassigned(request.user)
+        if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not can_view_unassigned:
+            return JsonResponse({"error": "forbidden"}, status=403)
         if mailbox_user_sdwt_prod and not is_privileged:
             if mailbox_user_sdwt_prod not in accessible:
                 return JsonResponse({"error": "forbidden"}, status=403)
@@ -176,6 +198,7 @@ class EmailListView(APIView):
         qs = get_filtered_emails(
             accessible_user_sdwt_prods=accessible,
             is_privileged=is_privileged,
+            can_view_unassigned=can_view_unassigned,
             mailbox_user_sdwt_prod=mailbox_user_sdwt_prod,
             search=search,
             sender=sender,
@@ -216,7 +239,14 @@ class EmailMailboxListView(APIView):
             return JsonResponse({"error": "unauthorized"}, status=401)
 
         if is_privileged:
-            return JsonResponse({"results": list_privileged_email_mailboxes()})
+            results = list_privileged_email_mailboxes()
+            if not _user_can_view_unassigned(request.user):
+                results = [
+                    mailbox
+                    for mailbox in results
+                    if mailbox not in {UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
+                ]
+            return JsonResponse({"results": results})
 
         if not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
@@ -270,6 +300,9 @@ class EmailDetailView(APIView):
         if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
 
+        if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+            return JsonResponse({"error": "forbidden"}, status=403)
+
         if not is_privileged:
             if not accessible or not _user_can_access_email(request.user, email, accessible):
                 return JsonResponse({"error": "forbidden"}, status=403)
@@ -284,7 +317,13 @@ class EmailDetailView(APIView):
             email = get_email_by_id(email_id=email_id)
             if email is None:
                 return JsonResponse({"error": "Email not found"}, status=404)
+            if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+                return JsonResponse({"error": "forbidden"}, status=403)
             if not accessible or not _user_can_access_email(request.user, email, accessible):
+                return JsonResponse({"error": "forbidden"}, status=403)
+        else:
+            email = get_email_by_id(email_id=email_id)
+            if email is not None and _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
                 return JsonResponse({"error": "forbidden"}, status=403)
         try:
             delete_single_email(email_id)
@@ -307,6 +346,9 @@ class EmailHtmlView(APIView):
         email = get_email_by_id(email_id=email_id)
         if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
+
+        if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+            return JsonResponse({"error": "forbidden"}, status=403)
 
         if not is_privileged:
             if not accessible or not _user_can_access_email(request.user, email, accessible):
@@ -354,6 +396,11 @@ class EmailBulkDeleteView(APIView):
             if not user_can_bulk_delete_emails(
                 email_ids=normalized_ids,
                 accessible_user_sdwt_prods=accessible,
+            ):
+                return JsonResponse({"error": "forbidden"}, status=403)
+        else:
+            if not _user_can_view_unassigned(request.user) and contains_unassigned_emails(
+                email_ids=normalized_ids
             ):
                 return JsonResponse({"error": "forbidden"}, status=403)
 

@@ -16,6 +16,7 @@ import { AssistantLayout, assistantRoutes } from "@/features/assistant"
 import { emailsRoutes } from "@/features/emails"
 import { mailboxRoutes } from "@/features/mailbox"
 import { accountRoutes } from "@/features/account"
+import { adminRoutes } from "@/features/admin"
 
 const protectedAppRoutes = {
   element: <AuthAutoLoginGate />,
@@ -30,6 +31,7 @@ const protectedAppRoutes = {
         ...emailsRoutes,
         ...vocRoutes,
         ...accountRoutes,
+        ...adminRoutes,
       ],
     },
   ],

@@ -14,6 +14,7 @@ from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email
 from api.emails.selectors import resolve_email_affiliation
 from api.emails.services import MailSendError, reclassify_emails_for_user_sdwt_change, send_knox_mail_api
+from api.rag.client import resolve_rag_index_name
 
 
 class EmailAffiliationTests(TestCase):
@@ -182,7 +183,7 @@ class EmailMailboxAccessViewTests(TestCase):
         forbidden = self.client.get(reverse("emails-list"), {"user_sdwt_prod": "group-c"})
         self.assertEqual(forbidden.status_code, 403)
 
-    def test_staff_mailboxes_list_includes_distinct_values(self) -> None:
+    def test_staff_mailboxes_list_excludes_unassigned(self) -> None:
         User = get_user_model()
         staff = User.objects.create_user(sabun="S33333", password="test-password", is_staff=True)
 
@@ -208,7 +209,7 @@ class EmailMailboxAccessViewTests(TestCase):
             user_sdwt_prod="group-b",
             body_text="Body B3",
         )
-        Email.objects.create(
+        unassigned_email = Email.objects.create(
             message_id="msg-staff-unassigned",
             received_at=timezone.now(),
             subject="U",
@@ -226,12 +227,64 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-b", mailbox_list.json()["results"])
         self.assertIn("group-empty", mailbox_list.json()["results"])
-        self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
+        self.assertNotIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
+        self.assertNotIn("rp-unclassified", mailbox_list.json()["results"])
+
+        response = self.client.get(reverse("emails-list"))
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        self.assertEqual({item["userSdwtProd"] for item in results}, {"group-a", "group-b"})
+
+        forbidden = self.client.get(reverse("emails-list"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
+        self.assertEqual(forbidden.status_code, 403)
+
+        detail = self.client.get(reverse("emails-detail", kwargs={"email_id": unassigned_email.id}))
+        self.assertEqual(detail.status_code, 403)
 
         filtered = self.client.get(reverse("emails-list"), {"user_sdwt_prod": "group-b"})
         self.assertEqual(filtered.status_code, 200)
         results = filtered.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
+
+    def test_superuser_mailboxes_list_includes_unassigned(self) -> None:
+        User = get_user_model()
+        superuser = User.objects.create_superuser(sabun="S33334", password="test-password")
+
+        Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-empty")
+
+        Email.objects.create(
+            message_id="msg-su-a",
+            received_at=timezone.now(),
+            subject="A4",
+            sender="a@example.com",
+            sender_id="a",
+            recipient="dest@example.com",
+            user_sdwt_prod="group-a",
+            body_text="Body A4",
+        )
+        Email.objects.create(
+            message_id="msg-su-unassigned",
+            received_at=timezone.now(),
+            subject="U4",
+            sender="u@example.com",
+            sender_id="u",
+            recipient="dest@example.com",
+            user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD,
+            body_text="Body U4",
+        )
+
+        self.client.force_login(superuser)
+
+        mailbox_list = self.client.get(reverse("emails-mailboxes"))
+        self.assertEqual(mailbox_list.status_code, 200)
+        self.assertIn("group-a", mailbox_list.json()["results"])
+        self.assertIn("group-empty", mailbox_list.json()["results"])
+        self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
+
+        unassigned_list = self.client.get(reverse("emails-list"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
+        self.assertEqual(unassigned_list.status_code, 200)
+        results = unassigned_list.json()["results"]
+        self.assertEqual({item["userSdwtProd"] for item in results}, {UNASSIGNED_USER_SDWT_PROD})
 
     def test_user_can_claim_unassigned_emails(self) -> None:
         User = get_user_model()
@@ -300,6 +353,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.client.force_login(user)
         claimed = self.client.post(reverse("emails-unassigned-claim"))
         self.assertEqual(claimed.status_code, 400)
+
+
+class RagIndexNameTests(SimpleTestCase):
+    def test_resolve_rag_index_name_prefixes_user_sdwt_prod(self) -> None:
+        self.assertEqual(resolve_rag_index_name("FAB-OPS"), "rp-FAB-OPS")
+
+    def test_resolve_rag_index_name_is_idempotent_for_prefixed_values(self) -> None:
+        self.assertEqual(resolve_rag_index_name("rp-FAB-OPS"), "rp-FAB-OPS")
+
+    def test_resolve_rag_index_name_falls_back_to_default_and_prefixes(self) -> None:
+        with patch("api.rag.client.RAG_INDEX_NAME", "unclassified"):
+            self.assertEqual(resolve_rag_index_name(None), "rp-unclassified")
 
 
 class KnoxMailApiTests(SimpleTestCase):
