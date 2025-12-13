@@ -435,18 +435,26 @@ LOGS: Dict[str, Dict[str, List[Dict[str, object]]]] = {
 
 
 def _normalize_id(value: str | None) -> str:
+    """입력 ID를 공백 제거 후 대문자로 정규화합니다."""
+
     return (value or "").strip().upper()
 
 
 class TimelineLinesView(APIView):
-    """Returns dummy line data."""
+    """더미 라인 목록을 반환합니다.
+
+    Returns dummy line data.
+    """
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         return JsonResponse(LINE_LIST, safe=False)
 
 
 class TimelineSdwtView(APIView):
-    """Returns SDWT list for a line."""
+    """라인 기준 SDWT 목록을 반환합니다.
+
+    Returns SDWT list for a line.
+    """
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         line_id = _normalize_id(request.GET.get("lineId"))
@@ -457,7 +465,10 @@ class TimelineSdwtView(APIView):
 
 
 class TimelinePrcGroupView(APIView):
-    """Returns PRC group list for a line/SDWT pair."""
+    """라인/SDWT 조합 기준 PRC 그룹 목록을 반환합니다.
+
+    Returns PRC group list for a line/SDWT pair.
+    """
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         line_id = _normalize_id(request.GET.get("lineId"))
@@ -470,7 +481,10 @@ class TimelinePrcGroupView(APIView):
 
 
 class TimelineEquipmentsView(APIView):
-    """Returns equipment list for a line/SDWT/PRC group."""
+    """라인/SDWT/PRC 그룹 조합 기준 설비 목록을 반환합니다.
+
+    Returns equipment list for a line/SDWT/PRC group.
+    """
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         line_id = _normalize_id(request.GET.get("lineId"))
@@ -486,7 +500,10 @@ class TimelineEquipmentsView(APIView):
 
 
 class TimelineEquipmentInfoView(APIView):
-    """Returns equipment metadata by eqpId, optionally scoped by line."""
+    """eqpId 기준 설비 메타데이터를 반환합니다(선택적으로 line 범위 제한).
+
+    Returns equipment metadata by eqpId, optionally scoped by line.
+    """
 
     def get(
         self,
@@ -511,6 +528,8 @@ class TimelineEquipmentInfoView(APIView):
 
 
 class _TimelineLogsByTypeView(APIView):
+    """log_key에 해당하는 더미 로그 배열을 반환하는 베이스 뷰입니다."""
+
     log_key: str = ""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
@@ -523,7 +542,10 @@ class _TimelineLogsByTypeView(APIView):
 
 
 class TimelineLogsView(_TimelineLogsByTypeView):
-    """Returns merged logs for an equipment."""
+    """설비의 전체 로그를 타입별로 합쳐 반환합니다.
+
+    Returns merged logs for an equipment.
+    """
 
     log_key = ""
 
@@ -542,20 +564,30 @@ class TimelineLogsView(_TimelineLogsByTypeView):
 
 
 class TimelineEqpLogsView(_TimelineLogsByTypeView):
+    """설비(EQP) 타입 로그만 반환합니다."""
+
     log_key = "eqp"
 
 
 class TimelineTipLogsView(_TimelineLogsByTypeView):
+    """TIP 타입 로그만 반환합니다."""
+
     log_key = "tip"
 
 
 class TimelineCtttmLogsView(_TimelineLogsByTypeView):
+    """CTTTM 타입 로그만 반환합니다."""
+
     log_key = "ctttm"
 
 
 class TimelineRacbLogsView(_TimelineLogsByTypeView):
+    """RACB 타입 로그만 반환합니다."""
+
     log_key = "racb"
 
 
 class TimelineJiraLogsView(_TimelineLogsByTypeView):
+    """Jira 타입 로그만 반환합니다."""
+
     log_key = "jira"

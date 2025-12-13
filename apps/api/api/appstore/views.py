@@ -17,16 +17,31 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from django.db import transaction
-from django.db.models import Count, F
-from django.db.models.functions import Greatest
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
 from api.common.utils import parse_json_body
-from api.models import AppStoreApp, AppStoreComment, AppStoreLike
+
+from .selectors import (
+    get_app_by_id,
+    get_app_detail,
+    get_app_list,
+    get_comment_by_id,
+    get_comments_for_app,
+    get_liked_app_ids_for_user,
+)
+from .services import (
+    create_app,
+    create_comment,
+    delete_app,
+    delete_comment,
+    increment_view_count,
+    toggle_like,
+    update_app,
+    update_comment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +53,8 @@ MAX_CONTACT_LENGTH = 255
 
 
 def _user_display_name(user) -> str:
+    """사용자 표시 이름(이름/username/email)을 계산합니다."""
+
     if not user:
         return ""
     full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
@@ -50,6 +67,8 @@ def _user_display_name(user) -> str:
 
 
 def _user_knoxid(user) -> str:
+    """사용자의 knox id(이메일 로컬파트 등)를 추출합니다."""
+
     if not user:
         return ""
     email = getattr(user, "email", "")
@@ -59,6 +78,8 @@ def _user_knoxid(user) -> str:
 
 
 def _user_payload(user) -> Optional[Dict[str, Any]]:
+    """사용자 정보를 API 응답 형태로 직렬화합니다."""
+
     if not user:
         return None
     return {
@@ -69,10 +90,14 @@ def _user_payload(user) -> Optional[Dict[str, Any]]:
 
 
 def _default_contact(user) -> Tuple[str, str]:
+    """연락처 기본값(contact_name, contact_knoxid)을 계산합니다."""
+
     return (_user_display_name(user) or "사용자").strip(), _user_knoxid(user)
 
 
 def _sanitize_tags(tags: Any) -> List[str]:
+    """태그 목록을 길이/개수 제한에 맞게 정규화합니다."""
+
     if not isinstance(tags, Iterable) or isinstance(tags, (str, bytes)):
         return []
     cleaned: List[str] = []
@@ -93,7 +118,9 @@ def _sanitize_tags(tags: Any) -> List[str]:
     return cleaned
 
 
-def _can_manage_app(user, app: AppStoreApp) -> bool:
+def _can_manage_app(user, app: Any) -> bool:
+    """현재 사용자가 앱을 수정/삭제할 수 있는지 검사합니다."""
+
     if not user or not getattr(user, "is_authenticated", False):
         return False
     if getattr(user, "is_superuser", False):
@@ -101,7 +128,9 @@ def _can_manage_app(user, app: AppStoreApp) -> bool:
     return getattr(user, "pk", None) is not None and app.owner_id == user.pk
 
 
-def _can_manage_comment(user, comment: AppStoreComment) -> bool:
+def _can_manage_comment(user, comment: Any) -> bool:
+    """현재 사용자가 댓글을 수정/삭제할 수 있는지 검사합니다."""
+
     if not user or not getattr(user, "is_authenticated", False):
         return False
     if getattr(user, "is_superuser", False):
@@ -109,7 +138,9 @@ def _can_manage_comment(user, comment: AppStoreComment) -> bool:
     return getattr(user, "pk", None) is not None and comment.user_id == user.pk
 
 
-def _comment_payload(comment: AppStoreComment, current_user) -> Dict[str, Any]:
+def _comment_payload(comment: Any, current_user) -> Dict[str, Any]:
+    """댓글을 API 응답 형태로 직렬화합니다."""
+
     author = getattr(comment, "user", None)
     return {
         "id": comment.pk,
@@ -124,26 +155,28 @@ def _comment_payload(comment: AppStoreComment, current_user) -> Dict[str, Any]:
 
 
 def _app_payload(
-    app: AppStoreApp,
+    app: Any,
     current_user,
-    liked_app_ids: Optional[Sequence[int]] = None,
+    liked_app_ids: Sequence[int],
     *,
     include_comments: bool = False,
 ) -> Dict[str, Any]:
+    """앱을 API 응답 형태로 직렬화합니다(선호 시 댓글 포함)."""
+
     liked = False
     if current_user and getattr(current_user, "is_authenticated", False):
-        if liked_app_ids is not None:
-            liked = app.id in liked_app_ids
-        else:
-            liked = AppStoreLike.objects.filter(app=app, user=current_user).exists()
+        liked = app.id in liked_app_ids
 
     comments: Optional[List[Dict[str, Any]]] = None
     if include_comments:
         related = getattr(app, "comments", None)
-        comments_qs = related.all() if related is not None else AppStoreComment.objects.filter(app=app)
-        comments = [_comment_payload(comment, current_user) for comment in comments_qs]
+        if related is not None:
+            comments = [_comment_payload(comment, current_user) for comment in related.all()]
+        else:
+            comments = []
 
     owner_payload = _user_payload(getattr(app, "owner", None))
+    comment_count = getattr(app, "comment_count", 0) or 0
 
     return {
         "id": app.pk,
@@ -157,9 +190,7 @@ def _app_payload(
         "contactKnoxid": app.contact_knoxid,
         "viewCount": app.view_count,
         "likeCount": app.like_count,
-        "commentCount": getattr(app, "comment_count", None)
-        if getattr(app, "comment_count", None) is not None
-        else app.comments.count(),
+        "commentCount": int(comment_count),
         "createdAt": app.created_at.isoformat(),
         "updatedAt": app.updated_at.isoformat(),
         "owner": owner_payload,
@@ -170,15 +201,10 @@ def _app_payload(
     }
 
 
-def _load_app(app_id: int) -> Optional[AppStoreApp]:
-    try:
-        return (
-            AppStoreApp.objects.select_related("owner")
-            .annotate(comment_count=Count("comments"))
-            .get(pk=app_id)
-        )
-    except AppStoreApp.DoesNotExist:
-        return None
+def _load_app(app_id: int) -> Any | None:
+    """앱 id로 AppStoreApp을 조회합니다."""
+
+    return get_app_by_id(app_id=app_id)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -186,17 +212,11 @@ class AppStoreAppsView(APIView):
     """앱 목록 조회 및 신규 등록."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        queryset = (
-            AppStoreApp.objects.select_related("owner")
-            .annotate(comment_count=Count("comments"))
-            .order_by("-created_at", "-id")
-        )
+        queryset = get_app_list()
         liked_ids: Sequence[int] = []
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
         if user:
-            liked_ids = list(
-                AppStoreLike.objects.filter(user=user).values_list("app_id", flat=True)
-            )
+            liked_ids = get_liked_app_ids_for_user(user=user)
 
         apps = [_app_payload(app, user, liked_ids) for app in queryset]
         return JsonResponse({"results": apps, "total": len(apps)})
@@ -231,7 +251,8 @@ class AppStoreAppsView(APIView):
             contact_knoxid = contact_knoxid or default_knoxid
 
         try:
-            app = AppStoreApp.objects.create(
+            app = create_app(
+                owner=request.user,
                 name=name,
                 category=category,
                 description=description,
@@ -240,11 +261,9 @@ class AppStoreAppsView(APIView):
                 tags=tags,
                 contact_name=contact_name,
                 contact_knoxid=contact_knoxid,
-                owner=request.user,
             )
-            app.refresh_from_db()
-            app.comment_count = 0
-            return JsonResponse({"app": _app_payload(app, request.user)}, status=201)
+            liked_ids = get_liked_app_ids_for_user(user=request.user)
+            return JsonResponse({"app": _app_payload(app, request.user, liked_ids)}, status=201)
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to create appstore app")
             return JsonResponse({"error": "Failed to create app"}, status=500)
@@ -255,21 +274,13 @@ class AppStoreAppDetailView(APIView):
     """앱 단건 조회/수정/삭제."""
 
     def get(self, request: HttpRequest, app_id: int, *args: object, **kwargs: object) -> JsonResponse:
-        try:
-            app = (
-                AppStoreApp.objects.select_related("owner")
-                .prefetch_related("comments__user")
-                .annotate(comment_count=Count("comments"))
-                .get(pk=app_id)
-            )
-        except AppStoreApp.DoesNotExist:
+        app = get_app_detail(app_id=app_id)
+        if not app:
             return JsonResponse({"error": "App not found"}, status=404)
         liked_ids: Sequence[int] = []
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
         if user:
-            liked_ids = list(
-                AppStoreLike.objects.filter(user=user).values_list("app_id", flat=True)
-            )
+            liked_ids = get_liked_app_ids_for_user(user=user)
 
         return JsonResponse({"app": _app_payload(app, user, liked_ids, include_comments=True)})
 
@@ -288,57 +299,48 @@ class AppStoreAppDetailView(APIView):
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
-        updated = False
+        updates: Dict[str, Any] = {}
 
         if "name" in payload:
             name = str(payload.get("name") or "").strip()
             if not name:
                 return JsonResponse({"error": "name is required"}, status=400)
-            app.name = name
-            updated = True
+            updates["name"] = name
 
         if "category" in payload:
             category = str(payload.get("category") or "").strip()[:MAX_CATEGORY_LENGTH]
             if not category:
                 return JsonResponse({"error": "category is required"}, status=400)
-            app.category = category
-            updated = True
+            updates["category"] = category
 
         if "description" in payload:
-            app.description = str(payload.get("description") or "").strip()
-            updated = True
+            updates["description"] = str(payload.get("description") or "").strip()
 
         if "url" in payload:
             url = str(payload.get("url") or "").strip()
             if not url:
                 return JsonResponse({"error": "url is required"}, status=400)
-            app.url = url
-            updated = True
+            updates["url"] = url
 
         if "badge" in payload:
-            app.badge = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
-            updated = True
+            updates["badge"] = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
 
         if "tags" in payload:
-            app.tags = _sanitize_tags(payload.get("tags"))
-            updated = True
+            updates["tags"] = _sanitize_tags(payload.get("tags"))
 
         if "contactName" in payload:
-            app.contact_name = str(payload.get("contactName") or "").strip()[:MAX_CONTACT_LENGTH]
-            updated = True
+            updates["contact_name"] = str(payload.get("contactName") or "").strip()[:MAX_CONTACT_LENGTH]
 
         if "contactKnoxid" in payload:
-            app.contact_knoxid = str(payload.get("contactKnoxid") or "").strip()[:MAX_CONTACT_LENGTH]
-            updated = True
+            updates["contact_knoxid"] = str(payload.get("contactKnoxid") or "").strip()[:MAX_CONTACT_LENGTH]
 
-        if not updated:
+        if not updates:
             return JsonResponse({"error": "No changes provided"}, status=400)
 
         try:
-            app.save()
-            app.refresh_from_db()
-            app.comment_count = app.comments.count()
-            return JsonResponse({"app": _app_payload(app, request.user)})
+            app = update_app(app=app, updates=updates)
+            liked_ids = get_liked_app_ids_for_user(user=request.user)
+            return JsonResponse({"app": _app_payload(app, request.user, liked_ids)})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update appstore app")
             return JsonResponse({"error": "Failed to update app"}, status=500)
@@ -355,7 +357,7 @@ class AppStoreAppDetailView(APIView):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         try:
-            app.delete()
+            delete_app(app=app)
             return JsonResponse({"success": True})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to delete appstore app")
@@ -375,23 +377,9 @@ class AppStoreLikeToggleView(APIView):
             return JsonResponse({"error": "App not found"}, status=404)
 
         try:
-            with transaction.atomic():
-                like, created = AppStoreLike.objects.select_for_update().get_or_create(
-                    app=app, user=request.user
-                )
-                if created:
-                    AppStoreApp.objects.filter(pk=app.pk).update(like_count=F("like_count") + 1)
-                    liked = True
-                else:
-                    like.delete()
-                    AppStoreApp.objects.filter(pk=app.pk).update(
-                        like_count=Greatest(F("like_count") - 1, 0)
-                    )
-                    liked = False
-
-            app.refresh_from_db(fields=["like_count"])
+            liked, like_count = toggle_like(app=app, user=request.user)
             return JsonResponse(
-                {"liked": liked, "likeCount": app.like_count, "appId": app.pk},
+                {"liked": liked, "likeCount": like_count, "appId": app.pk},
                 status=200,
             )
         except Exception:  # pragma: no cover - defensive logging
@@ -408,9 +396,8 @@ class AppStoreViewIncrementView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        AppStoreApp.objects.filter(pk=app.pk).update(view_count=F("view_count") + 1)
-        app.refresh_from_db(fields=["view_count"])
-        return JsonResponse({"viewCount": app.view_count, "appId": app.pk})
+        view_count = increment_view_count(app=app)
+        return JsonResponse({"viewCount": view_count, "appId": app.pk})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -422,11 +409,7 @@ class AppStoreCommentsView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        comments = (
-            AppStoreComment.objects.filter(app=app)
-            .select_related("user")
-            .order_by("created_at", "id")
-        )
+        comments = get_comments_for_app(app_id=app.pk)
         payload = [_comment_payload(comment, request.user) for comment in comments]
         return JsonResponse({"comments": payload, "total": len(payload)})
 
@@ -447,7 +430,7 @@ class AppStoreCommentsView(APIView):
             return JsonResponse({"error": "content is required"}, status=400)
 
         try:
-            comment = AppStoreComment.objects.create(app=app, user=request.user, content=content)
+            comment = create_comment(app=app, user=request.user, content=content)
             return JsonResponse(
                 {"comment": _comment_payload(comment, request.user)},
                 status=201,
@@ -471,11 +454,8 @@ class AppStoreCommentDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        try:
-            comment = AppStoreComment.objects.select_related("user", "app").get(
-                pk=comment_id, app_id=app.pk
-            )
-        except AppStoreComment.DoesNotExist:
+        comment = get_comment_by_id(app_id=app.pk, comment_id=comment_id)
+        if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
         if not _can_manage_comment(request.user, comment):
@@ -493,9 +473,7 @@ class AppStoreCommentDetailView(APIView):
             return JsonResponse({"error": "content is required"}, status=400)
 
         try:
-            comment.content = content
-            comment.save(update_fields=["content", "updated_at"])
-            comment.refresh_from_db()
+            comment = update_comment(comment=comment, content=content)
             return JsonResponse({"comment": _comment_payload(comment, request.user)})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update appstore comment %s", comment_id)
@@ -511,16 +489,15 @@ class AppStoreCommentDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        try:
-            comment = AppStoreComment.objects.get(pk=comment_id, app_id=app.pk)
-        except AppStoreComment.DoesNotExist:
+        comment = get_comment_by_id(app_id=app.pk, comment_id=comment_id)
+        if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
         if not _can_manage_comment(request.user, comment):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         try:
-            comment.delete()
+            delete_comment(comment=comment)
             return JsonResponse({"success": True})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to delete appstore comment %s", comment_id)

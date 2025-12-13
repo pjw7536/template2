@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { buildBackendUrl } from "@/lib/api"
 import { lineDashboardQueryKeys } from "../api/query-keys"
 
-import { composeEqpChamber, normalizeTablePayload } from "@/features/line-dashboard/utils"
+import { composeEqpChamber, normalizeTablePayload } from "../utils"
 import {
   DEFAULT_TABLE,
   getDefaultFromValue,
@@ -98,7 +98,7 @@ export function useTableQuery({ lineId }) {
       params.set("recentHoursStart", String(normalizedRecent.start))
       params.set("recentHoursEnd", String(normalizedRecent.end))
 
-      const endpoint = buildBackendUrl("/tables", params)
+      const endpoint = buildBackendUrl("/api/v1/tables/", params)
       const response = await fetch(endpoint, { cache: "no-store", credentials: "include" })
 
       const payload = await response.json().catch(() => ({}))

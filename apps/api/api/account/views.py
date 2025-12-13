@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import logging
-from typing import Dict, List, Optional
+from datetime import timezone as dt_timezone
+from typing import Optional
 from zoneinfo import ZoneInfo
 
-from django.contrib.auth import get_user_model
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -12,19 +11,19 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.affiliations import get_affiliation_option
 from api.common.utils import parse_json_body
-from api.emails.reclassify import reclassify_emails_for_user_sdwt_change
-from api.models import AffiliationHierarchy, LineSDWT, UserSdwtProdAccess, UserSdwtProdChange
 
-User = get_user_model()
+from . import selectors, services
+
 KST = ZoneInfo("Asia/Seoul")
 TIMEZONE_NAME = "Asia/Seoul"
-logger = logging.getLogger(__name__)
 
 
 def _parse_effective_from(value: Optional[str]):
-    """Parse the input datetime string and return a UTC-aware datetime."""
+    """입력 문자열을 파싱해 UTC timezone-aware datetime으로 변환합니다.
+
+    Parse the input datetime string and return a UTC-aware datetime.
+    """
     if not value:
         return None
     parsed = parse_datetime(str(value))
@@ -32,69 +31,7 @@ def _parse_effective_from(value: Optional[str]):
         return None
     if timezone.is_naive(parsed):
         parsed = parsed.replace(tzinfo=KST)
-    return parsed.astimezone(timezone.utc)
-
-
-def _ensure_self_access(user) -> UserSdwtProdAccess | None:
-    """
-    Ensure the user has an access row for their own user_sdwt_prod.
-    Grants manage permission by default so each group has at least one manager.
-    """
-    if not user.user_sdwt_prod:
-        return None
-    access, _ = UserSdwtProdAccess.objects.get_or_create(
-        user=user,
-        user_sdwt_prod=user.user_sdwt_prod,
-        defaults={"can_manage": True, "granted_by": None},
-    )
-    if not access.can_manage:
-        access.can_manage = True
-        access.save(update_fields=["can_manage"])
-    return access
-
-
-def _apply_pending_change_if_due(user) -> None:
-    """Pending-change flow removed; kept as a no-op for compatibility."""
-    return
-
-
-def _serialize_access(access: UserSdwtProdAccess, source: str) -> Dict[str, object]:
-    return {
-        "userSdwtProd": access.user_sdwt_prod,
-        "canManage": access.can_manage,
-        "source": source,
-        "grantedBy": access.granted_by_id,
-        "grantedAt": access.created_at.isoformat(),
-    }
-
-
-def _serialize_member(access: UserSdwtProdAccess) -> Dict[str, object]:
-    user = access.user
-    return {
-        "userId": user.id,
-        "username": user.get_username(),
-        "name": (user.first_name or "") + (user.last_name or ""),
-        "userSdwtProd": access.user_sdwt_prod,
-        "canManage": access.can_manage,
-        "grantedBy": access.granted_by_id,
-        "grantedAt": access.created_at.isoformat(),
-    }
-
-
-def _current_access_list(user) -> List[Dict[str, object]]:
-    rows = list(UserSdwtProdAccess.objects.filter(user=user).order_by("user_sdwt_prod", "id"))
-    access_map = {row.user_sdwt_prod: row for row in rows}
-
-    # Ensure base membership exists.
-    base_access = _ensure_self_access(user)
-    if base_access:
-        access_map.setdefault(base_access.user_sdwt_prod, base_access)
-
-    result: List[Dict[str, object]] = []
-    for prod, entry in sorted(access_map.items()):
-        source = "self" if prod == user.user_sdwt_prod else "grant"
-        result.append(_serialize_access(entry, source))
-    return result
+    return parsed.astimezone(dt_timezone.utc)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -106,34 +43,15 @@ class AccountAffiliationView(APIView):
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
-        _ensure_self_access(user)
-
-        access_list = _current_access_list(user)
-        manageable = [entry["userSdwtProd"] for entry in access_list if entry["canManage"]]
-        options = list(
-            AffiliationHierarchy.objects.all()
-            .order_by("department", "line", "user_sdwt_prod")
-            .values("department", "line", "user_sdwt_prod")
-        )
-
-        return JsonResponse(
-            {
-                "currentUserSdwtProd": user.user_sdwt_prod,
-                "currentDepartment": user.department,
-                "currentLine": user.line,
-                "timezone": TIMEZONE_NAME,
-                "accessibleUserSdwtProds": access_list,
-                "manageableUserSdwtProds": manageable,
-                "affiliationOptions": options,
-            }
-        )
+        payload = services.get_affiliation_overview(user=user, timezone_name=TIMEZONE_NAME)
+        return JsonResponse(payload)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
-        _ensure_self_access(user)
+        services.ensure_self_access(user, as_manager=False)
 
         payload = parse_json_body(request)
         if payload is None:
@@ -145,17 +63,9 @@ class AccountAffiliationView(APIView):
         if not new_value:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
 
-        option = get_affiliation_option(department, line, new_value)
+        option = selectors.get_affiliation_option(department, line, new_value)
         if option is None:
             return JsonResponse({"error": "Invalid department/line/user_sdwt_prod combination"}, status=400)
-
-        # 이동하려는 소속에 대한 관리자 승인 필요 (superuser는 예외)
-        if not user.is_superuser:
-            has_manage_permission = UserSdwtProdAccess.objects.filter(
-                user=user, user_sdwt_prod=new_value, can_manage=True
-            ).exists()
-            if not has_manage_permission:
-                return JsonResponse({"error": "forbidden"}, status=403)
 
         effective_from_raw = payload.get("effective_from") or payload.get("effectiveFrom")
         effective_from = _parse_effective_from(effective_from_raw)
@@ -164,78 +74,54 @@ class AccountAffiliationView(APIView):
         if not effective_from:
             effective_from = timezone.now()
 
-        UserSdwtProdChange.objects.create(
+        response_payload, status_code = services.request_affiliation_change(
             user=user,
-            department=option.department,
-            line=option.line,
-            from_user_sdwt_prod=user.user_sdwt_prod,
+            option=option,
             to_user_sdwt_prod=new_value,
             effective_from=effective_from,
-            applied=True,
-            created_by=user,
+            timezone_name=TIMEZONE_NAME,
         )
+        return JsonResponse(response_payload, status=status_code)
 
-        previous_user_sdwt = user.user_sdwt_prod
-        user.user_sdwt_prod = new_value
-        user.department = option.department
-        user.line = option.line
-        user.save(update_fields=["user_sdwt_prod", "department", "line"])
 
-        _ensure_self_access(user)
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountAffiliationApprovalView(APIView):
+    """슈퍼유저/스태프가 소속 변경 요청을 승인한다."""
 
-        # 이전 소속 관리 권한 회수
-        if previous_user_sdwt and previous_user_sdwt != new_value:
-            UserSdwtProdAccess.objects.filter(
-                user=user, user_sdwt_prod=previous_user_sdwt, can_manage=True
-            ).update(can_manage=False)
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        if not (user.is_superuser or user.is_staff):
+            return JsonResponse({"error": "forbidden"}, status=403)
 
-        # 메일/RAG 재분류 (시점 기준)
+        payload = parse_json_body(request)
+        if payload is None:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        change_raw = payload.get("changeId") or payload.get("id")
         try:
-            reclassify_emails_for_user_sdwt_change(user, effective_from)
-        except Exception:
-            logger.exception("Failed to reclassify emails for user %s", user.username)
+            change_id = int(change_raw)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid changeId"}, status=400)
 
-        return self.get(request, *args, **kwargs)
+        response_payload, status_code = services.approve_affiliation_change(
+            approver=user,
+            change_id=change_id,
+        )
+        return JsonResponse(response_payload, status=status_code)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountGrantView(APIView):
     """user_sdwt_prod 그룹 접근 권한 부여/회수."""
 
-    def _require_manage_permission(self, user, user_sdwt_prod: str) -> Optional[JsonResponse]:
-        if not user or not user.is_authenticated:
-            return JsonResponse({"error": "unauthorized"}, status=401)
-        if user.is_superuser or user.is_staff:
-            return None
-        has_permission = UserSdwtProdAccess.objects.filter(
-            user=user, user_sdwt_prod=user_sdwt_prod, can_manage=True
-        ).exists()
-        if has_permission:
-            return None
-        return JsonResponse({"error": "forbidden"}, status=403)
-
-    def _resolve_target_user(self, payload: Dict[str, object]) -> Optional[User]:
-        target_id = payload.get("userId") or payload.get("user_id")
-        target_username = payload.get("username")
-        user_qs = User.objects.all()
-        target: Optional[User] = None
-        if target_id:
-            try:
-                target = user_qs.get(id=int(target_id))
-            except (User.DoesNotExist, ValueError, TypeError):
-                target = None
-        if not target and target_username:
-            try:
-                target = user_qs.get(username=str(target_username))
-            except User.DoesNotExist:
-                target = None
-        return target
-
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
-        _ensure_self_access(user)
+
+        services.ensure_self_access(user, as_manager=False)
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
@@ -244,44 +130,24 @@ class AccountGrantView(APIView):
         if not target_group:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
 
-        permission_error = self._require_manage_permission(user, target_group)
-        if permission_error:
-            return permission_error
-
-        target_user = self._resolve_target_user(payload)
+        target_user = services.resolve_target_user(
+            target_id=payload.get("userId") or payload.get("user_id"),
+            target_username=payload.get("username"),
+        )
         if not target_user:
             return JsonResponse({"error": "Target user not found"}, status=404)
 
         action = (payload.get("action") or "grant").lower()
         can_manage = bool(payload.get("canManage") or payload.get("can_manage"))
 
-        if action == "revoke":
-            access = UserSdwtProdAccess.objects.filter(user=target_user, user_sdwt_prod=target_group).first()
-            if not access:
-                return JsonResponse({"status": "ok", "deleted": 0})
-
-            if access.can_manage:
-                remaining_managers = UserSdwtProdAccess.objects.filter(
-                    user_sdwt_prod=target_group,
-                    can_manage=True,
-                ).exclude(user=target_user)
-                if not remaining_managers.exists():
-                    return JsonResponse({"error": "Cannot remove the last manager for this group"}, status=400)
-
-            access.delete()
-            return JsonResponse({"status": "ok", "deleted": 1})
-
-        access, created = UserSdwtProdAccess.objects.get_or_create(
-            user=target_user,
-            user_sdwt_prod=target_group,
-            defaults={"can_manage": can_manage, "granted_by": user},
+        response_payload, status_code = services.grant_or_revoke_access(
+            grantor=user,
+            target_group=target_group,
+            target_user=target_user,
+            action=action,
+            can_manage=can_manage,
         )
-        if not created and (access.can_manage != can_manage or access.granted_by_id != user.id):
-            access.can_manage = can_manage
-            access.granted_by = user
-            access.save(update_fields=["can_manage", "granted_by"])
-
-        return JsonResponse(_serialize_member(access))
+        return JsonResponse(response_payload, status=status_code)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -293,33 +159,8 @@ class AccountGrantListView(APIView):
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
-        _ensure_self_access(user)
-
-        manageable_rows = UserSdwtProdAccess.objects.filter(user=user, can_manage=True).values_list(
-            "user_sdwt_prod", flat=True
-        )
-        manageable_set = set(manageable_rows)
-        if user.user_sdwt_prod:
-            manageable_set.add(user.user_sdwt_prod)
-
-        groups: List[Dict[str, object]] = []
-        if not manageable_set:
-            return JsonResponse({"groups": groups})
-
-        members = (
-            UserSdwtProdAccess.objects.filter(user_sdwt_prod__in=manageable_set)
-            .select_related("user")
-            .order_by("user_sdwt_prod", "user_id")
-        )
-
-        members_by_group: Dict[str, List[Dict[str, object]]] = {prod: [] for prod in manageable_set}
-        for access in members:
-            members_by_group.setdefault(access.user_sdwt_prod, []).append(_serialize_member(access))
-
-        for prod in sorted(manageable_set):
-            groups.append({"userSdwtProd": prod, "members": members_by_group.get(prod, [])})
-
-        return JsonResponse({"groups": groups})
+        payload = services.get_manageable_groups_with_members(user=user)
+        return JsonResponse(payload)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -331,24 +172,6 @@ class LineSdwtOptionsView(APIView):
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
-        rows = (
-            LineSDWT.objects.filter(line_id__isnull=False, line_id__gt="")
-            .exclude(user_sdwt_prod__isnull=True)
-            .exclude(user_sdwt_prod__exact="")
-            .order_by("line_id", "user_sdwt_prod")
-            .values("line_id", "user_sdwt_prod")
-        )
-
-        grouped: Dict[str, List[str]] = {}
-        for row in rows:
-            line = row["line_id"]
-            usdwt = row["user_sdwt_prod"]
-            grouped.setdefault(line, []).append(usdwt)
-
-        lines = [
-            {"lineId": line_id, "userSdwtProds": sorted(list(set(user_sdwt_list)))}  # dedupe per line
-            for line_id, user_sdwt_list in grouped.items()
-        ]
-        all_user_sdwt = sorted({usdwt for user_sdwt_list in grouped.values() for usdwt in user_sdwt_list})
-
-        return JsonResponse({"lines": lines, "userSdwtProds": all_user_sdwt})
+        pairs = selectors.list_line_sdwt_pairs()
+        payload = services.get_line_sdwt_options_payload(pairs=pairs)
+        return JsonResponse(payload)

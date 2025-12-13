@@ -12,6 +12,8 @@ from django.utils import timezone
 
 
 def _read_setting(name: str, default: str | None = None) -> str | None:
+    """환경변수/설정에서 값을 읽어 문자열로 반환합니다."""
+
     value = os.environ.get(name)
     if value is None:
         value = getattr(settings, name, default)
@@ -23,6 +25,8 @@ def _read_setting(name: str, default: str | None = None) -> str | None:
 
 
 def _parse_headers(raw: str | None) -> Dict[str, str]:
+    """JSON 문자열로 된 헤더 설정을 dict[str, str]로 파싱합니다."""
+
     if not raw:
         return {}
     try:
@@ -40,6 +44,8 @@ def _parse_headers(raw: str | None) -> Dict[str, str]:
 
 
 def _parse_permission_groups(raw: str | None) -> List[str]:
+    """권한 그룹 설정(JSON 배열 또는 CSV)을 문자열 리스트로 정규화합니다."""
+
     if not raw:
         return []
     try:
@@ -57,6 +63,8 @@ def _parse_permission_groups(raw: str | None) -> List[str]:
 
 
 def _parse_chunk_factor(raw: str | None) -> Dict[str, str | int] | None:
+    """chunk_factor 설정(JSON 객체)을 정상화해 dict로 반환합니다."""
+
     if not raw:
         return None
     try:
@@ -99,7 +107,8 @@ _rag_logger = logging.getLogger("api.rag")
 
 
 def _ensure_rag_error_logger() -> logging.Logger:
-    """
+    """RAG 실패 로그를 파일로 남기기 위한 로거 핸들러를 보장합니다.
+
     Attach a file handler for RAG failures so we can inspect errors after POP3 ingest.
     """
 
@@ -127,6 +136,8 @@ def _ensure_rag_error_logger() -> logging.Logger:
 
 
 def _safe_response_details(response: requests.Response | None) -> Dict[str, Any]:
+    """예외 객체에 담긴 Response 정보를 안전하게 요약합니다."""
+
     if response is None:
         return {}
     try:
@@ -144,6 +155,8 @@ def _safe_response_details(response: requests.Response | None) -> Dict[str, Any]
 
 
 def _log_rag_failure(action: str, payload: Dict[str, Any] | None, error: Exception) -> None:
+    """RAG 요청 실패를 파일/표준 로거에 구조화된 형태로 기록합니다."""
+
     logger = _ensure_rag_error_logger()
     payload_data = payload.get("data", {}) if isinstance(payload, dict) else {}
     context = {
@@ -173,6 +186,8 @@ def resolve_rag_index_name(user_sdwt_prod: str | None) -> str:
 
 
 def _build_insert_payload(email, index_name: str | None = None) -> Dict[str, Any]:
+    """이메일 객체를 RAG insert 요청 payload로 변환합니다."""
+
     resolved_index_name = resolve_rag_index_name(index_name or getattr(email, "user_sdwt_prod", None))
     created_time = getattr(email, "received_at", None) or timezone.now()
     payload: Dict[str, Any] = {
@@ -198,6 +213,8 @@ def _build_insert_payload(email, index_name: str | None = None) -> Dict[str, Any
 
 
 def _build_delete_payload(doc_id: str, index_name: str | None = None) -> Dict[str, Any]:
+    """doc_id 기반 RAG delete 요청 payload를 생성합니다."""
+
     resolved_index_name = resolve_rag_index_name(index_name)
     return {
         "index_name": resolved_index_name,
@@ -252,28 +269,3 @@ def delete_rag_doc(doc_id: str, index_name: str | None = None):
     except Exception as exc:
         _log_rag_failure("delete", payload, exc)
         raise
-
-
-def search_rag_by_department(query_text: str, departments: List[str], num_result_doc: int = 5):
-    """
-    department 필터를 적용하여 RAG 문서를 검색하는 예시 함수.
-    - 모든 검색 요청은 department 필터를 포함해야 한다.
-    """
-
-    if not RAG_SEARCH_URL:
-        raise ValueError("RAG_SEARCH_URL is not configured")
-    if not RAG_INDEX_NAME:
-        raise ValueError("RAG_INDEX_NAME is not configured")
-
-    payload = {
-        "index_name": RAG_INDEX_NAME,
-        "permission_groups": RAG_PERMISSION_GROUPS,
-        "query_text": query_text,
-        "num_result_doc": num_result_doc,
-        "filter": {
-            "department": departments,
-        },
-    }
-    resp = requests.post(RAG_SEARCH_URL, headers=RAG_HEADERS, json=payload, timeout=30)
-    resp.raise_for_status()
-    return resp.json()

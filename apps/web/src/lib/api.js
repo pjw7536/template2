@@ -57,3 +57,11 @@ export function buildBackendUrl(path, searchParams) {
 
   return query ? `${url}?${query}` : url
 }
+
+export async function safeParseJson(response) {
+  try {
+    return await response.json()
+  } catch {
+    return {}
+  }
+}

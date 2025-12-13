@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom"
 
-import Error04Illustration from "@/assets/svg/error-04-illustration"
 import { Button } from "@/components/ui/button"
+import { Error04Illustration } from "@/components/common"
 
 function ErrorPage04({
   title = "Page not found",

@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
-from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -18,9 +17,13 @@ from rest_framework.views import APIView
 
 from api.common.utils import parse_json_body
 
-from .services import bulk_delete_emails, delete_single_email
-from .pop3_ingest import run_pop3_ingest_from_env
-from ..models import Email, UserSdwtProdAccess
+from .selectors import (
+    get_accessible_user_sdwt_prods_for_user,
+    get_email_by_id,
+    get_filtered_emails,
+    user_can_bulk_delete_emails,
+)
+from .services import bulk_delete_emails, delete_single_email, run_pop3_ingest_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,8 @@ MAX_PAGE_SIZE = 100
 
 
 def _parse_int(value: Any, default: int) -> int:
+    """입력 값을 정수로 파싱하고 실패/0 이하일 때 기본값을 반환합니다."""
+
     try:
         parsed = int(value)
         if parsed <= 0:
@@ -39,19 +44,14 @@ def _parse_int(value: Any, default: int) -> int:
 
 
 def _resolve_accessible_user_sdwt_prods(user) -> Set[str]:
-    if not user or not user.is_authenticated:
-        return set()
+    """사용자가 접근 가능한 user_sdwt_prod 목록(집합)을 조회합니다."""
 
-    values = set(
-        UserSdwtProdAccess.objects.filter(user=user).values_list("user_sdwt_prod", flat=True)
-    )
-    if user.user_sdwt_prod:
-        values.add(user.user_sdwt_prod)
-
-    return {val for val in values if isinstance(val, str) and val.strip()}
+    return get_accessible_user_sdwt_prods_for_user(user)
 
 
-def _user_can_access_email(user, email: Email, accessible: Optional[Set[str]]) -> bool:
+def _user_can_access_email(user, email: Any, accessible: Optional[Set[str]]) -> bool:
+    """일반 사용자 기준으로 특정 이메일 접근 권한을 검사합니다."""
+
     if user.is_superuser or user.is_staff:
         return True
     if accessible is None:
@@ -60,6 +60,8 @@ def _user_can_access_email(user, email: Email, accessible: Optional[Set[str]]) -
 
 
 def _parse_datetime(value: str):
+    """날짜/일시 문자열을 timezone-aware datetime(UTC)으로 파싱합니다."""
+
     if not value:
         return None
     dt = parse_datetime(value)
@@ -71,7 +73,9 @@ def _parse_datetime(value: str):
     return None
 
 
-def _serialize_email(email: Email) -> Dict[str, Any]:
+def _serialize_email(email: Any) -> Dict[str, Any]:
+    """Email 인스턴스를 목록 응답용 dict로 직렬화합니다."""
+
     snippet = (email.body_text or "").strip()
     if len(snippet) > 180:
         snippet = snippet[:177] + "..."
@@ -89,7 +93,9 @@ def _serialize_email(email: Email) -> Dict[str, Any]:
     }
 
 
-def _serialize_detail(email: Email) -> Dict[str, Any]:
+def _serialize_detail(email: Any) -> Dict[str, Any]:
+    """Email 인스턴스를 상세 응답용 dict로 직렬화합니다."""
+
     return {
         **_serialize_email(email),
         "bodyText": email.body_text,
@@ -140,30 +146,21 @@ class EmailListView(APIView):
         if not is_privileged and not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
 
-        qs = Email.objects.order_by("-received_at", "-id")
-        if not is_privileged:
-            qs = qs.filter(user_sdwt_prod__in=accessible)
-
         search = (request.GET.get("q") or "").strip()
         sender = (request.GET.get("sender") or "").strip()
         recipient = (request.GET.get("recipient") or "").strip()
         date_from = _parse_datetime(request.GET.get("date_from"))
         date_to = _parse_datetime(request.GET.get("date_to"))
 
-        if search:
-            qs = qs.filter(
-                Q(subject__icontains=search)
-                | Q(body_text__icontains=search)
-                | Q(sender__icontains=search)
-            )
-        if sender:
-            qs = qs.filter(sender__icontains=sender)
-        if recipient:
-            qs = qs.filter(recipient__icontains=recipient)
-        if date_from:
-            qs = qs.filter(received_at__gte=date_from)
-        if date_to:
-            qs = qs.filter(received_at__lte=date_to)
+        qs = get_filtered_emails(
+            accessible_user_sdwt_prods=accessible,
+            is_privileged=is_privileged,
+            search=search,
+            sender=sender,
+            recipient=recipient,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
         page = _parse_int(request.GET.get("page"), 1)
         page_size = min(_parse_int(request.GET.get("page_size"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE)
@@ -195,9 +192,8 @@ class EmailDetailView(APIView):
         is_authenticated, is_privileged, accessible = _resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
-        try:
-            email = Email.objects.get(id=email_id)
-        except Email.DoesNotExist:
+        email = get_email_by_id(email_id=email_id)
+        if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
 
         if not is_privileged:
@@ -211,9 +207,8 @@ class EmailDetailView(APIView):
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         if not is_privileged:
-            try:
-                email = Email.objects.get(id=email_id)
-            except Email.DoesNotExist:
+            email = get_email_by_id(email_id=email_id)
+            if email is None:
                 return JsonResponse({"error": "Email not found"}, status=404)
             if not accessible or not _user_can_access_email(request.user, email, accessible):
                 return JsonResponse({"error": "forbidden"}, status=403)
@@ -235,9 +230,8 @@ class EmailHtmlView(APIView):
         is_authenticated, is_privileged, accessible = _resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
-        try:
-            email = Email.objects.get(id=email_id)
-        except Email.DoesNotExist:
+        email = get_email_by_id(email_id=email_id)
+        if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
 
         if not is_privileged:
@@ -283,8 +277,10 @@ class EmailBulkDeleteView(APIView):
                 return JsonResponse({"error": "email_ids must contain numeric values"}, status=400)
 
         if not is_privileged:
-            owned_count = Email.objects.filter(id__in=normalized_ids, user_sdwt_prod__in=accessible).count()
-            if owned_count != len(normalized_ids):
+            if not user_can_bulk_delete_emails(
+                email_ids=normalized_ids,
+                accessible_user_sdwt_prods=accessible,
+            ):
                 return JsonResponse({"error": "forbidden"}, status=403)
 
         try:

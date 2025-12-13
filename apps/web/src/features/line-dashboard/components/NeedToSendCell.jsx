@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Check, CalendarCheck2, CalendarX2, XCircle } from "lucide-react"
 
-import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
+import { buildToastOptions } from "../utils/toast"
 import { makeCellKey } from "../utils/dataTableCellState"
 import { deriveFlagState, describeFlagState } from "../utils/dataTableFlagState"
 

@@ -24,13 +24,13 @@ from api.common.utils import (
     sanitize_identifier,
 )
 
-from ..activity_logging import (
+from api.common.activity_logging import (
     merge_activity_metadata,
     set_activity_new_state,
     set_activity_previous_state,
     set_activity_summary,
 )
-from ..db import execute, run_query
+from api.common.db import execute, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,8 @@ RECENT_FUTURE_TOLERANCE_MINUTES = 5
 
 
 def _snap_recent_hours(value: int) -> int:
+    """recentHours 값을 허용 범위/단위(일 단위)로 스냅(보정)합니다."""
+
     clamped = max(RECENT_HOURS_MIN, min(value, RECENT_HOURS_MAX))
     if clamped <= RECENT_HOURS_DAY_MODE_THRESHOLD:
         return clamped
@@ -59,6 +61,8 @@ def _snap_recent_hours(value: int) -> int:
 
 
 def _clamp_recent_hours(value: Any, fallback: int) -> int:
+    """입력값을 정수로 파싱해 recentHours 규칙에 맞게 보정합니다."""
+
     try:
         numeric = int(value)
     except (TypeError, ValueError):
@@ -67,6 +71,8 @@ def _clamp_recent_hours(value: Any, fallback: int) -> int:
 
 
 def _resolve_recent_hours_range(params) -> Tuple[int, int]:
+    """쿼리 파라미터에서 recentHoursStart/End 범위를 계산합니다."""
+
     start = _clamp_recent_hours(params.get("recentHoursStart"), RECENT_HOURS_DEFAULT_START)
     end = _clamp_recent_hours(params.get("recentHoursEnd"), RECENT_HOURS_DEFAULT_END)
     if start < end:

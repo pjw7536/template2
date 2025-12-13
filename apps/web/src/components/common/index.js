@@ -3,3 +3,6 @@
 export { DateRangeCalendar } from "./date-range-calendar"
 export { ThemeToggle } from "./theme-toggle"
 export { ThemeColorSelector } from "./theme-color-selector"
+export { Logo } from "./logo"
+export { LogoVector } from "./logo-vector"
+export { Error04Illustration } from "./error-04-illustration"

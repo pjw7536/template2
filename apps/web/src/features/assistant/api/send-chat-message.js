@@ -27,7 +27,7 @@ function readEnvValue(keys) {
 }
 
 function resolveChatEndpoint() {
-  const envEndpoint = readEnvValue(["VITE_LLM_API_URL", "VITE_ASSISTANT_API_URL"])
+  const envEndpoint = readEnvValue(["VITE_ASSISTANT_API_URL", "VITE_LLM_API_URL"])
 
   if (typeof envEndpoint === "string" && envEndpoint.trim()) {
     if (envEndpoint.startsWith("http")) {

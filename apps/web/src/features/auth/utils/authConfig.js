@@ -18,8 +18,8 @@
  * @type {AuthConfig}
  */
 export const DEFAULT_AUTH_CONFIG = {
-  loginUrl: "/auth/login",
-  logoutUrl: "/auth/logout",
+  loginUrl: "/api/v1/auth/login",
+  logoutUrl: "/api/v1/auth/logout",
   frontendRedirect: "",
   sessionMaxAgeSeconds: 60 * 30,
 }

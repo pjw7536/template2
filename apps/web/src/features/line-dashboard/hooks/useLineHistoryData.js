@@ -72,7 +72,7 @@ export function useLineHistoryData({ lineId, dateRange }) {
       params.set("from", fromValue)
       params.set("to", toValue)
 
-      const endpoint = buildBackendUrl("/line-dashboard/history", params)
+      const endpoint = buildBackendUrl("/api/v1/line-dashboard/history", params)
       const response = await fetch(endpoint, { credentials: "include" })
 
       const payload = await response.json().catch(() => ({}))

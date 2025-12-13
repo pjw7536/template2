@@ -31,7 +31,7 @@ from typing import Any, Dict, List
 from django.http import HttpRequest, JsonResponse
 from rest_framework.views import APIView
 
-from ..models import ActivityLog
+from .selectors import get_recent_activity_logs
 
 # 조회 건수 관련 상수(한 곳에서 관리)
 DEFAULT_LIMIT: int = 50
@@ -61,7 +61,11 @@ class ActivityLogView(APIView):
 
         # 권한 이름은 앱 라벨 + 권한 코드 문자열로 구성됩니다.
         # e.g. <app_label>.view_<modelname>
-        if not request.user.has_perm("api.view_activitylog"):
+        # (리팩토링 과정에서 ActivityLog 앱 라벨이 api -> activity 로 변경될 수 있으므로 둘 다 허용)
+        if not (
+            request.user.has_perm("activity.view_activitylog")
+            or request.user.has_perm("api.view_activitylog")
+        ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # 2) limit 파라미터 파싱/정규화 ------------------------------------------
@@ -78,10 +82,7 @@ class ActivityLogView(APIView):
         # 3) 쿼리셋 조회 ---------------------------------------------------------
         # - select_related("user", "user__profile")로 N+1 방지
         # - 최신순 정렬
-        logs = (
-            ActivityLog.objects.select_related("user", "user__profile")
-            .order_by("-created_at")[:limit]
-        )
+        logs = get_recent_activity_logs(limit=limit)
 
         # 4) 직렬화(최소 필드만 hand-written serialize) ---------------------------
         payload: List[Dict[str, Any]] = []

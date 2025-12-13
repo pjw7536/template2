@@ -13,6 +13,21 @@ function toTags(value) {
     .filter(Boolean)
 }
 
+function getFirstClipboardImageFile(clipboardData) {
+  const items = Array.from(clipboardData?.items ?? [])
+  const imageItem = items.find((item) => item.kind === "file" && item.type?.startsWith("image/"))
+  return imageItem ? imageItem.getAsFile() : null
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "")
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"))
+    reader.readAsDataURL(file)
+  })
+}
+
 export function AppFormDialog({
   open,
   onOpenChange,
@@ -31,6 +46,7 @@ export function AppFormDialog({
   const [contactName, setContactName] = useState("")
   const [contactKnoxid, setContactKnoxid] = useState("")
   const [screenshotUrl, setScreenshotUrl] = useState("")
+  const [screenshotError, setScreenshotError] = useState("")
 
   useEffect(() => {
     if (!open) return
@@ -44,6 +60,7 @@ export function AppFormDialog({
       setContactName(initialData.contactName || "")
       setContactKnoxid(initialData.contactKnoxid || "")
       setScreenshotUrl(initialData.screenshotUrl || "")
+      setScreenshotError("")
     } else {
       setName("")
       setCategory("")
@@ -51,9 +68,10 @@ export function AppFormDialog({
       setDescription("")
       setTagsText("")
       setBadge("")
-      setContactName(defaultContactName || "")
-      setContactKnoxid(defaultContactKnoxid || "")
+      setContactName("")
+      setContactKnoxid("")
       setScreenshotUrl("")
+      setScreenshotError("")
     }
   }, [initialData, open])
 
@@ -82,6 +100,24 @@ export function AppFormDialog({
       screenshotUrl: screenshotUrl.trim(),
     }
     await onSubmit(payload)
+  }
+
+  const handleScreenshotPaste = async (event) => {
+    const file = getFirstClipboardImageFile(event.clipboardData)
+    if (!file) {
+      setScreenshotError("이미지(스크린샷)만 붙여넣을 수 있어요.")
+      return
+    }
+
+    event.preventDefault()
+    setScreenshotError("")
+
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      setScreenshotUrl(dataUrl)
+    } catch {
+      setScreenshotError("스크린샷을 읽지 못했습니다. 다시 시도해 주세요.")
+    }
   }
 
   return (
@@ -154,13 +190,53 @@ export function AppFormDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="app-screenshot">스크린샷 URL</Label>
-              <Input
-                id="app-screenshot"
-                value={screenshotUrl}
-                onChange={(event) => setScreenshotUrl(event.target.value)}
-                placeholder="https://example.com/screenshot.png"
-              />
+              <Label id="app-screenshot-label">스크린샷 (클립보드 붙여넣기)</Label>
+              <div className="grid gap-2">
+                <div
+                  id="app-screenshot"
+                  aria-labelledby="app-screenshot-label"
+                  tabIndex={0}
+                  onPaste={handleScreenshotPaste}
+                  className="grid min-h-[140px] place-items-center rounded-md border bg-muted/40 p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                >
+                  {screenshotUrl ? (
+                    <img
+                      src={screenshotUrl}
+                      alt="스크린샷 미리보기"
+                      className="max-h-56 w-full rounded-md object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="grid gap-2 text-center">
+                      <p className="text-sm font-medium text-foreground">여기에 스크린샷을 붙여넣어 주세요</p>
+                      <p className="text-xs text-muted-foreground">Ctrl+V / ⌘V</p>
+                    </div>
+                  )}
+                </div>
+
+                {screenshotError ? (
+                  <p className="text-xs text-destructive">{screenshotError}</p>
+                ) : null}
+
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    {screenshotUrl ? "붙여넣은 이미지가 저장됩니다." : "클릭 후 붙여넣기(Ctrl+V)를 사용하세요."}
+                  </p>
+                  {screenshotUrl ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setScreenshotUrl("")
+                        setScreenshotError("")
+                      }}
+                      type="button"
+                    >
+                      삭제
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="app-contact-name">담당자 이름</Label>

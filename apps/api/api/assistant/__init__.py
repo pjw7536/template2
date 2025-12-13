@@ -1,4 +1,4 @@
-from .service import AssistantChatService, AssistantConfigError, AssistantRequestError, assistant_chat_service
+from .services import AssistantChatService, AssistantConfigError, AssistantRequestError, assistant_chat_service
 
 __all__ = [
     "AssistantChatService",

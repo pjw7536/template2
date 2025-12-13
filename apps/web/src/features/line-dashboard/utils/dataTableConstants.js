@@ -33,4 +33,4 @@ export const STEP_COLUMN_KEYS = [
 
 export const STEP_COLUMN_KEY_SET = new Set(STEP_COLUMN_KEYS)
 
-export { numberFormatter, timeFormatter } from "@/features/line-dashboard/utils/formatters"
+export { numberFormatter, timeFormatter } from "./formatters"

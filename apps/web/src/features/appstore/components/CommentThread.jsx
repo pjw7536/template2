@@ -5,7 +5,6 @@ import { MessageSquare, Send, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { cn } from "@/lib/utils"
 
 function CommentItem({
   comment,
@@ -152,6 +151,23 @@ export function CommentThread({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="space-y-3">
+          {comments?.length ? (
+            comments.map((comment) => (
+              <CommentItem
+                key={comment.id}
+                comment={comment}
+                isUpdating={updatingCommentId === comment.id}
+                isDeleting={deletingCommentId === comment.id}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">아직 댓글이 없습니다.</p>
+          )}
+        </div>
+
         <div className="rounded-lg border bg-muted/40 p-3">
           <textarea
             value={draft}
@@ -171,23 +187,6 @@ export function CommentThread({
               등록
             </Button>
           </div>
-        </div>
-
-        <div className="space-y-3">
-          {comments?.length ? (
-            comments.map((comment) => (
-              <CommentItem
-                key={comment.id}
-                comment={comment}
-                isUpdating={updatingCommentId === comment.id}
-                isDeleting={deletingCommentId === comment.id}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-              />
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">아직 댓글이 없습니다.</p>
-          )}
         </div>
       </CardContent>
     </Card>

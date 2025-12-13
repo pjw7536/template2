@@ -6,12 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('api', '0004_add_db_timestamp_defaults'),
+        ("api", "0004_add_db_timestamp_defaults"),
     ]
 
-    operations = [
-        migrations.RemoveField(
-            model_name='user',
-            name='sabun',
-        ),
-    ]
+    operations = []

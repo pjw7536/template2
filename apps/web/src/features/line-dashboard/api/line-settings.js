@@ -1,20 +1,12 @@
 // src/features/line-dashboard/api/line-settings.js
 // 라인 조기 알림 설정 CRUD API 래퍼
-import { buildBackendUrl } from "@/lib/api"
+import { buildBackendUrl, safeParseJson } from "@/lib/api"
 
 import {
   normalizeEntry,
   normalizeUserSdwt,
   unwrapErrorMessage,
 } from "../utils/line-settings"
-
-async function safeParseJson(response) {
-  try {
-    return await response.json()
-  } catch {
-    return {}
-  }
-}
 
 function buildApiError(response, payload, fallbackMessage) {
   const apiMessage =
@@ -32,7 +24,7 @@ export async function fetchLineSettings(lineId) {
     return { entries: [], userSdwtValues: [] }
   }
 
-  const endpoint = buildBackendUrl("/drone-early-inform", { lineId })
+  const endpoint = buildBackendUrl("/api/v1/drone/early-inform", { lineId })
   const response = await fetch(endpoint, {
     cache: "no-store",
     credentials: "include",
@@ -56,7 +48,7 @@ export async function fetchLineSettings(lineId) {
 }
 
 export async function createLineSetting({ lineId, mainStep, customEndStep }) {
-  const endpoint = buildBackendUrl("/drone-early-inform")
+  const endpoint = buildBackendUrl("/api/v1/drone/early-inform")
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,7 +74,7 @@ export async function createLineSetting({ lineId, mainStep, customEndStep }) {
 }
 
 export async function updateLineSetting({ id, lineId, mainStep, customEndStep }) {
-  const endpoint = buildBackendUrl("/drone-early-inform")
+  const endpoint = buildBackendUrl("/api/v1/drone/early-inform")
   const response = await fetch(endpoint, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -108,7 +100,7 @@ export async function updateLineSetting({ id, lineId, mainStep, customEndStep })
 }
 
 export async function deleteLineSetting({ id }) {
-  const endpoint = buildBackendUrl("/drone-early-inform", { id })
+  const endpoint = buildBackendUrl("/api/v1/drone/early-inform", { id })
   const response = await fetch(endpoint, {
     method: "DELETE",
     credentials: "include",

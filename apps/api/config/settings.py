@@ -101,10 +101,16 @@ INSTALLED_APPS = [
     "drf_spectacular_sidecar",
     # 로컬 앱
     "api",
+    "api.account",
+    "api.activity",
+    "api.appstore",
+    "api.drone",
+    "api.emails",
+    "api.voc",
 ]
 
-# 커스텀 사용자 모델 (api.User)
-AUTH_USER_MODEL = "api.User"
+# 커스텀 사용자 모델 (account.User)
+AUTH_USER_MODEL = "account.User"
 
 
 # Django Sites 프레임워크 기본 사이트 ID
@@ -124,7 +130,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # 사용자 활동 로깅 (커스텀)
-    "api.middleware.ActivityLoggingMiddleware",
+    "api.common.middleware.ActivityLoggingMiddleware",
 ]
 
 
@@ -277,7 +283,7 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-LOGIN_URL = "/auth/login"
+LOGIN_URL = "/api/v1/auth/login"
 LOGIN_REDIRECT_URL = env("DJANGO_LOGIN_REDIRECT_URL", "/")
 LOGOUT_REDIRECT_URL = env("DJANGO_LOGOUT_REDIRECT_URL", "/")
 
@@ -306,7 +312,7 @@ OIDC_ISSUER = env("OIDC_ISSUER") or env("ADFS_ISSUER") or "http://localhost/api/
 OIDC_REDIRECT_URI = (
     env("OIDC_REDIRECT_URI")
     or env("ADFS_REDIRECT_URI")
-    or "http://localhost/api/auth/google/callback/"
+    or "http://localhost/auth/google/callback/"
 )
 ADFS_CER_PATH = env("ADFS_CER_PATH", str(BASE_DIR / "dummy_adfs_public.cer"))
 

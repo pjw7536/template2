@@ -9,11 +9,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameField(
-            model_name="user",
-            old_name="sdwt",
-            new_name="user_sdwt_prod",
-        ),
         migrations.CreateModel(
             name="UserSdwtProdAccess",
             fields=[
@@ -83,7 +78,7 @@ class Migration(migrations.Migration):
                 "db_table": "user_sdwt_prod_change",
                 "ordering": ["-effective_from", "-id"],
                 "indexes": [
-                    models.Index(fields=["user", "effective_from"], name="user_sdwt_change_user_effective"),
+                    models.Index(fields=["user", "effective_from"], name="user_sdwt_change_eff"),
                     models.Index(fields=["applied"], name="user_sdwt_change_applied"),
                 ],
             },

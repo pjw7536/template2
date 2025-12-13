@@ -92,30 +92,28 @@ export default function AccountPage() {
             </p>
           </div>
         ) : isLoadingPage ? (
-          <div className="grid h-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[2fr,3fr]">
+          <div className="grid h-full min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
             <Skeleton className="h-96 w-full" />
             <Skeleton className="h-96 w-full" />
+            <Skeleton className="h-72 w-full md:col-span-2" />
           </div>
         ) : (
-          <div className="grid h-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[2fr,3fr]">
-            <div className="grid h-full min-h-0 grid-rows-[auto_auto] gap-4">
-              <AffiliationCard
-                data={affiliation}
-                onSubmit={handleAffiliationSubmit}
-                isSubmitting={updateAffiliation.isPending}
-                error={affiliationError}
-              />
+          <div className="grid h-full min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
+            <AffiliationCard
+              data={affiliation}
+              onSubmit={handleAffiliationSubmit}
+              isSubmitting={updateAffiliation.isPending}
+              error={affiliationError}
+            />
+            <ManageGrantsCard
+              manageableGroups={manageableGroups}
+              onGrant={handleGrant}
+              onRevoke={handleRevoke}
+              isSubmitting={updateGrant.isPending}
+              error={grantError}
+            />
+            <div className="md:col-span-2">
               <AccessListCard data={affiliation} />
-            </div>
-
-            <div className="grid h-full min-h-0 grid-rows-[auto] gap-4">
-              <ManageGrantsCard
-                manageableGroups={manageableGroups}
-                onGrant={handleGrant}
-                onRevoke={handleRevoke}
-                isSubmitting={updateGrant.isPending}
-                error={grantError}
-              />
             </div>
           </div>
         )}

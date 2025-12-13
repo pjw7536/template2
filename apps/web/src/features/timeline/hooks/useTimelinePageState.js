@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DEFAULT_TYPE_FILTERS } from "../utils/constants";
 import { useTimelineSelectionStore } from "../store/useTimelineSelectionStore";
-import { useTimelineStore } from "../store/timelineStore";
+import { useTimelineStore } from "../store/useTimelineStore";
 import { useTimelineLogs } from "./useTimelineLogs";
 import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
 

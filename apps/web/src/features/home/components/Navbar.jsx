@@ -12,10 +12,9 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 
-import { ThemeColorSelector, ThemeToggle } from "@/components/common"
+import { Logo, ThemeColorSelector, ThemeToggle } from "@/components/common"
 import { cn } from "@/lib/utils"
 
-import LogoSvg from "@/assets/svg/logo"
 import NotificationDropdown from "./NotificationDropdown"
 import { HomeNavLink } from "./HomeNavLink"
 import ProfileDropdown from "./ProfileDropdown"
@@ -41,7 +40,7 @@ const HomeNavbar = ({ navigationItems }) => {
           }
         />
         <HomeNavLink href="/" className="flex items-center gap-3">
-          <LogoSvg className="size-8" />
+          <Logo className="size-8" />
           <span className="hidden text-xl font-semibold sm:block">Etch AX Portal</span>
         </HomeNavLink>
       </div>

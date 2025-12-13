@@ -8,14 +8,18 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from api.emails.services import register_email_to_rag
-from api.models import Email
+from api.emails.models import Email
 
 
 def _default_recipient() -> str:
+    """더미 메일 수신자 주소를 환경변수에서 읽어 기본값을 반환합니다."""
+
     return os.getenv("DUMMY_ADFS_EMAIL", "dummy.user@example.com")
 
 
 class Command(BaseCommand):
+    """로컬 개발용 더미 이메일을 생성하고 더미 RAG에 등록하는 커맨드입니다."""
+
     help = "Seed deterministic dummy emails for local dev and register them to the dummy RAG."
 
     def handle(self, *args: Any, **options: Any) -> None:

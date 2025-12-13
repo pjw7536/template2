@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { isRouteErrorResponse, useRouteError } from "react-router-dom"
 
-import ErrorPage04 from "@/features/errors/components/ErrorPage04"
+import ErrorPage04 from "../components/ErrorPage04"
 
 export function RouteErrorPage() {
   const error = useRouteError()

@@ -95,10 +95,10 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  /** 서버에서 인증 설정을 로드 (/auth/config) */
+  /** 서버에서 인증 설정을 로드 (/api/v1/auth/config) */
   const loadConfig = useCallback(async () => {
     try {
-      const endpoint = buildBackendUrl("/auth/config")
+      const endpoint = buildBackendUrl("/api/v1/auth/config")
       const result = await fetchJson(endpoint, { cache: "no-store" })
       if (result.ok && result.data && mountedRef.current) {
         setConfig((prev) => ({ ...prev, ...(/** @type {Partial<AuthConfig>} */ (result.data)) }))
@@ -108,11 +108,11 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  /** 현재 사용자 정보를 가져오는 함수 (/auth/me) */
+  /** 현재 사용자 정보를 가져오는 함수 (/api/v1/auth/me) */
   const loadUser = useCallback(async () => {
     if (mountedRef.current) setIsLoading(true)
     try {
-      const endpoint = buildBackendUrl("/auth/me")
+      const endpoint = buildBackendUrl("/api/v1/auth/me")
       const result = await fetchJson(endpoint, { cache: "no-store" })
       if (!mountedRef.current) return
       if (result.ok && result.data) {
@@ -168,7 +168,7 @@ export function AuthProvider({ children }) {
     async (options = {}) => {
       const nextPath = typeof options?.next === "string" ? options.next : undefined
       const nextAbsolute = buildNextUrl(nextPath, config.frontendRedirect)
-      const rawLoginUrl = config.loginUrl || "/auth/login"
+      const rawLoginUrl = config.loginUrl || "/api/v1/auth/login"
       const absoluteLoginUrl = rawLoginUrl.startsWith("http") ? rawLoginUrl : buildBackendUrl(rawLoginUrl)
       const target = appendNextParam(absoluteLoginUrl, nextAbsolute)
 
@@ -183,9 +183,9 @@ export function AuthProvider({ children }) {
 
   /** 로그아웃: 서버에 로그아웃을 요청하고, 받은 redirect URL로 이동 */
   const logout = useCallback(async () => {
-    let redirectTarget = config.logoutUrl || "/auth/logout"
+    let redirectTarget = config.logoutUrl || "/api/v1/auth/logout"
     try {
-      const endpoint = buildBackendUrl("/auth/logout")
+      const endpoint = buildBackendUrl("/api/v1/auth/logout")
       const result = await fetchJson(endpoint, { method: "POST" })
       if (result?.data && typeof result.data === "object" && typeof result.data.logoutUrl === "string") {
         redirectTarget = result.data.logoutUrl

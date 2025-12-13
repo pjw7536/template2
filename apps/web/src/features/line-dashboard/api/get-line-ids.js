@@ -8,7 +8,7 @@ import { buildBackendUrl } from "@/lib/api"
  * - 문자열이 아닌 타입(숫자, null 등)이 섞여 있을 가능성도 대비합니다.
  * ========================================================================== */
 export async function getDistinctLineIds() {
-  const endpoint = buildBackendUrl("/line-dashboard/line-ids")
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/line-ids")
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 5_000)

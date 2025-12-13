@@ -353,7 +353,7 @@ const QUICK_FILTER_DEFINITIONS = [
     key: "my_sop",
     label: "MySop",
     buildSection: ({ columns, options }) => {
-      const columnKey = findMatchingColumn(columns, "knoxid")
+      const columnKey = findMatchingColumn(columns, "knox_id")
       const userId = deriveUserIdFromEmail(options?.currentUserEmail)
       if (!columnKey || !userId) return null
 
@@ -367,9 +367,9 @@ const QUICK_FILTER_DEFINITIONS = [
         userId: normalizedUserId,
         matchRow: (row, current) => {
           if (!current) return true
-          const normalizedKnoxid = normalizeEmailId(getValue(row))
-          if (!normalizedKnoxid) return false
-          return normalizedKnoxid.toLowerCase() === normalizedUserId
+          const normalizedKnoxId = normalizeEmailId(getValue(row))
+          if (!normalizedKnoxId) return false
+          return normalizedKnoxId.toLowerCase() === normalizedUserId
         },
       }
     },

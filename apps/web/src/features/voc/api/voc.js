@@ -1,13 +1,5 @@
 // VOC API 래퍼
-import { buildBackendUrl } from "@/lib/api"
-
-async function safeParseJson(response) {
-  try {
-    return await response.json()
-  } catch {
-    return {}
-  }
-}
+import { buildBackendUrl, safeParseJson } from "@/lib/api"
 
 function buildApiError(response, payload, fallbackMessage) {
   const apiMessage =
@@ -90,7 +82,7 @@ function normalizePost(raw) {
 }
 
 export async function fetchVocPosts() {
-  const endpoint = buildBackendUrl("/voc/posts")
+  const endpoint = buildBackendUrl("/api/v1/voc/posts")
   const response = await fetch(endpoint, {
     cache: "no-store",
     credentials: "include",
@@ -115,7 +107,7 @@ export async function fetchVocPosts() {
 }
 
 export async function createVocPost({ title, content, status }) {
-  const endpoint = buildBackendUrl("/voc/posts")
+  const endpoint = buildBackendUrl("/api/v1/voc/posts")
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -140,7 +132,7 @@ export async function createVocPost({ title, content, status }) {
 }
 
 export async function updateVocPost(postId, updates = {}) {
-  const endpoint = buildBackendUrl(`/voc/posts/${postId}`)
+  const endpoint = buildBackendUrl(`/api/v1/voc/posts/${postId}`)
   const body = {}
   if ("title" in updates) body.title = updates.title
   if ("content" in updates) body.content = updates.content
@@ -166,7 +158,7 @@ export async function updateVocPost(postId, updates = {}) {
 }
 
 export async function deleteVocPost(postId) {
-  const endpoint = buildBackendUrl(`/voc/posts/${postId}`)
+  const endpoint = buildBackendUrl(`/api/v1/voc/posts/${postId}`)
   const response = await fetch(endpoint, {
     method: "DELETE",
     credentials: "include",
@@ -185,7 +177,7 @@ export async function deleteVocPost(postId) {
 }
 
 export async function createVocReply({ postId, content }) {
-  const endpoint = buildBackendUrl(`/voc/posts/${postId}/replies`)
+  const endpoint = buildBackendUrl(`/api/v1/voc/posts/${postId}/replies`)
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

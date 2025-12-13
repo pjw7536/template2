@@ -13,7 +13,7 @@ import {
   SheetTrigger
 } from '@/components/ui/sheet'
 
-import LogoSvg from '@/assets/svg/logo'
+import { Logo } from "@/components/common"
 import { HomeNavLink } from './HomeNavLink'
 
 const MenuSheet = ({
@@ -43,7 +43,7 @@ const MenuSheet = ({
           <SheetDescription hidden />
           <HomeNavLink href='/' onNavigate={handleLinkClick} className='self-start'>
             <div className='flex items-center'>
-              <LogoSvg className='size-8.5' />
+              <Logo className='size-8.5' />
               <span className='ml-2.5 text-xl font-semibold'>{logoName}</span>
             </div>
           </HomeNavLink>

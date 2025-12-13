@@ -12,4 +12,4 @@ python manage.py createsuperuser     # Create an admin user
 
 The default database is SQLite, but you can override the engine and connection settings via the `DJANGO_DB_*` environment variables defined in `config/settings.py`.
 
-A simple `GET /health/` endpoint is provided for monitoring and for wiring up the frontend during the migration period.
+A simple `GET /api/v1/health/` endpoint is provided for monitoring and for wiring up the frontend during the migration period.

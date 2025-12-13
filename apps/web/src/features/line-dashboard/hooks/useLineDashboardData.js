@@ -21,7 +21,7 @@ export function useLineDashboardData(initialLineId = "") {
   const summaryQuery = useQuery({
     queryKey: lineDashboardQueryKeys.summary(lineId || null),
     queryFn: async () => {
-      const endpoint = buildBackendUrl("/line-dashboard/summary", { lineId })
+      const endpoint = buildBackendUrl("/api/v1/line-dashboard/summary", { lineId })
       const response = await fetch(endpoint, { credentials: "include" })
       const payload = await response.json().catch(() => ({}))
 

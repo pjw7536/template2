@@ -29,6 +29,7 @@ LLM agents MUST:
 * Components MUST use PascalCase.
 * Hooks MUST use camelCase.
 * Feature exports MUST be routed through each feature’s `index.js`.
+* In `apps/web/src`, files that render JSX MUST use `.jsx` (non‑JSX modules MUST use `.js`).
 
 ---
 
@@ -63,13 +64,25 @@ index.js
 * NO nesting deeper than 2 levels.
 * NO cross‑feature imports (except from another feature’s index.js).
 
-### Allowed Imports ONLY:
+### Allowed Imports (project‑internal only)
 
-* `apps/web/src/components/ui/*`
-* `apps/web/src/components/layout/*`
-* `apps/web/src/components/common/*`
-* `apps/web/src/lib/*`
-* `apps/web/src/features/<otherFeature>/index.js`
+This rule applies to **project‑internal absolute imports**. It does NOT restrict:
+
+* npm package imports (e.g. `react`, `react-router-dom`, `@tanstack/react-query`)
+* relative imports inside the same feature (e.g. `./components/Foo.jsx`, `../utils/dateUtils.js`)
+
+Project‑internal absolute imports MUST resolve under:
+
+* `apps/web/src/components/ui/*` (e.g. `@/components/ui/*`, `components/ui/*`)
+* `apps/web/src/components/layout/*` (e.g. `@/components/layout/*`, `components/layout/*`)
+* `apps/web/src/components/common/*` (e.g. `@/components/common/*`, `components/common/*`)
+* `apps/web/src/lib/*` (e.g. `@/lib/*`)
+* `apps/web/src/features/<otherFeature>/index.js` (e.g. `@/features/<otherFeature>`)
+
+Forbidden examples (must go through `<otherFeature>/index.js`):
+
+* `apps/web/src/features/<otherFeature>/components/*`
+* `apps/web/src/features/<otherFeature>/pages/*`
 
 Anything else is **INVALID**.
 
@@ -79,13 +92,13 @@ Anything else is **INVALID**.
 
 ## 3‑1. Immutable UI Layer
 
-LLM agents MUST NOT modify:
+LLM agents MUST NOT manually edit:
 
 ```
 apps/web/src/components/ui/**/*
 ```
 
-All new UI primitives MUST come from shadcn CLI.
+UI primitives may only be added/updated via the shadcn CLI (and only when explicitly requested).
 
 ## 3‑2. UI Assembly Hierarchy
 
@@ -210,16 +223,168 @@ Allowed only when:
 
 ---
 
-# 8. Backend / Django Rules
+# 8. Backend / Django Rules (LLM‑Strict)
+
+## 8‑1. Domain App (Feature) Isolation
+
+Backend MUST be organized by business‑domain Django apps (“features”).
+
+### Domain App Path
+
+```
+apps/api/api/<feature>
+```
+
+Each `<feature>` is a real Django app installed as `api.<feature>`.
+
+### Allowed Files / Folders (max depth 2)
+
+```
+apps.py
+models.py
+urls.py
+views.py
+serializers.py
+services.py
+selectors.py
+permissions.py
+admin.py
+tests.py
+migrations/
+management/commands/   (optional)
+```
+
+Infrastructure / shared packages are allowed only at:
+
+```
+apps/api/api/common
+apps/api/api/auth
+apps/api/api/rag
+apps/api/api/management
+```
+
+LLM MUST obey:
+
+* NO new backend folders outside the paths above.
+* NO nesting deeper than 2 levels (except `migrations/` and `management/commands/`).
+* NO cross‑feature imports except through another feature’s public `services.py` or `selectors.py`.
+* Every concrete DB model MUST live in exactly one `<feature>/models.py`. Creating new models in `apps/api/api/models.py` is **FORBIDDEN**.
+* Shared base classes/mixins MAY live in `apps/api/api/common/models.py` and MUST be `abstract = True`.
+* When touching legacy root models, LLM MUST migrate them into the correct feature app (with a new migration) instead of extending the root file.
+
+---
+
+## 8‑2. Layer Responsibilities & Dependency Direction
+
+The backend follows a strict, beginner‑friendly service/selector architecture.
+
+### Responsibility
+
+* `views.py` → HTTP only: auth/permissions, param parsing, serializer validation, calling services/selectors, returning responses.
+* `serializers.py` → input/output schema + validation only.
+* `permissions.py` → DRF permission classes only.
+* `services.py` → **ALL** business logic and write operations (create/update/delete), transactions, external API calls.
+* `selectors.py` → read‑only ORM queries (filtering, ordering, annotation). **NO side effects.**
+* Views/services MUST NOT run read ORM queries directly; they MUST call selectors instead.
+* `models.py` → schema + pure domain rules. **NO queries or business workflows.**
+
+### Allowed Imports (one‑way)
+
+This rule applies to **project‑internal imports**. Python stdlib, Django (`django.*`), and DRF (`rest_framework.*`) imports are always allowed.
+
+* `views.py` may import: `serializers`, `permissions`, `services`, `selectors`, `api.common.*`
+* `services.py` may import: `selectors`, `models`, `api.common.*`, `api.<otherFeature>.services`
+* `selectors.py` may import: `models`, `api.common.*`, `api.<otherFeature>.selectors`
+* `models.py` may import: Django/stdlib only, plus `api.common.*` for shared types/constants
+
+Anything else is **INVALID**.
+
+---
+
+## 8‑3. Routing & API Shape
 
 LLM MUST:
 
-* Use `/api/v1/<feature>` prefix
-* Never import models across Django apps
-* Place business logic inside service layer
-* Store timestamps in UTC
+* Use versioned prefixes: `/api/v1/<feature>/...`
+* Keep feature routes inside `apps/api/api/<feature>/urls.py`.
+* Keep global routing ONLY in `apps/api/api/urls.py` using `include()`; global `urls.py` must NOT import feature views directly.
+* `apps/api/api/urls.py` MUST be a registry only, e.g.:
+  * `path("api/v1/emails/", include("api.emails.urls"))`
+  * `path("api/v1/appstore/", include("api.appstore.urls"))`
+* Feature `urls.py` MUST define **relative** paths (no leading `/api/v1/<feature>` inside a feature).
+* Ensure routes contain **no business logic** (delegate to services/selectors).
+* Name endpoints with nouns, collections plural: `emails/`, `appstore/apps/`.
 
 ---
+
+## 8‑4. Database & Model Naming
+
+LLM MUST:
+
+* Use **snake_case** for fields/columns: `created_at`, `user_sdwt_prod`.
+* Use singular PascalCase for model classes: `Email`, `AppStoreComment`.
+* Use per‑domain table prefixes for clarity:
+  * `db_table = "<feature>_<entity>"` (snake_case, singular or clear noun)
+  * Examples: `emails_email`, `appstore_comment`, `account_affiliation_hierarchy`
+* Set `db_table` on **every** model to enforce the prefix rule (no mixed naming).
+* Primary key is `id` (BigAutoField). UUID only when an external identifier is required.
+* Timestamps are UTC, timezone‑aware:
+  * required: `created_at`
+  * optional: `updated_at`, `deleted_at`
+* Index / constraint naming:
+  * `idx_<table>_<cols>`
+  * `uniq_<table>_<cols>`
+
+---
+
+## 8‑5. Transactions & Side Effects
+
+LLM MUST:
+
+* Wrap multi‑step writes in `transaction.atomic()`.
+* Keep external calls (RAG, email servers, etc.) inside `services.py`.
+* Never perform writes inside `selectors.py` or `models.py`.
+
+---
+
+## 8‑6. Readability / Beginner Rules
+
+LLM MUST:
+
+* Prefer explicit, linear code over clever abstractions.
+* Avoid metaprogramming, dynamic imports, or hidden magic.
+* Keep functions/classes small and single‑purpose (≈30–50 lines max).
+* Use descriptive names; avoid non‑standard abbreviations.
+* Add type hints to public services and selectors.
+* Put docstrings on every public service/selector explaining inputs/outputs and side effects.
+
+---
+
+## 8‑7. Testing & Migrations
+
+LLM MUST:
+
+* Add or update tests when changing business logic.
+* Prefer unit tests for `services.py` and `selectors.py`; keep view tests minimal (happy + main error cases).
+* Never edit an already‑applied migration; always create a new one.
+
+---
+
+## 8‑8. New Feature Checklist (Beginner‑Friendly)
+
+When adding a new backend feature, LLM MUST follow this exact flow to keep code easy to read and maintain:
+
+1. Create `apps/api/api/<feature>/` as a Django app with `__init__.py` and `apps.py` (`name = "api.<feature>"`).
+2. Register the app in `apps/api/config/settings.py` → `INSTALLED_APPS`.
+3. Add `models.py` with `db_table = "<feature>_<entity>"` prefixes, then create a new migration.
+4. Add `serializers.py` for all request/response shapes.
+5. Add `selectors.py` for all read queries.
+6. Add `services.py` for all business logic and writes.
+7. Add `views.py` that only wires HTTP → serializers → services/selectors.
+8. Add `urls.py` with relative routes, then include it in `apps/api/api/urls.py` under `/api/v1/<feature>/`.
+9. Add `tests.py` focusing on services/selectors first.
+
+Skipping or re‑ordering these steps is **INVALID**.
 
 # 9. File Generation Rules
 
@@ -259,9 +424,9 @@ LLM MUST NOT guess.
 Layout follows two universal principles:
 
 1. Outer containers define **structure and fixed height**.
-2. **Scroll MUST occur in exactly one element per axis.**
+2. Avoid **nested scroll regions** on the same axis.
 
-If multiple scroll regions appear on the same axis → **INVALID**.
+If multiple scroll regions are nested on the same axis → **INVALID**.
 
 ---
 
@@ -269,11 +434,11 @@ If multiple scroll regions appear on the same axis → **INVALID**.
 
 Every page MUST follow this layout skeleton:
 
-```tsx
-<div class="h-screen flex flex-col">
-  <header class="h-16 shrink-0">...</header>
+```jsx
+<div className="h-screen flex flex-col">
+  <header className="h-16 shrink-0">...</header>
 
-  <main class="flex-1 min-h-0 overflow-hidden">
+  <main className="flex-1 min-h-0 overflow-hidden">
     {children}
   </main>
 </div>
@@ -306,20 +471,22 @@ LLM MUST:
 
 ## 11‑4. Scroll Rules
 
-### Rule A — Only ONE scroll container per axis
+### Rule A — Only ONE scroll container per axis, per region (no nested scroll)
 
-```tsx
-<div class="min-h-0 overflow-y-auto">...</div>
+```jsx
+<div className="min-h-0 overflow-y-auto">...</div>
 ```
+
+Sibling panes may each be scrollable (see §11‑5).
 
 ### Rule B — Scrollable elements MUST have `min-h-0`
 
 ### Rule C — The official top-fixed/bottom-scroll pattern:
 
-```tsx
-<div class="grid h-full min-h-0 grid-rows-[auto,1fr]">
+```jsx
+<div className="grid h-full min-h-0 grid-rows-[auto,1fr]">
   <div>Fixed Area</div>
-  <div class="min-h-0 overflow-y-auto">Scrollable Area</div>
+  <div className="min-h-0 overflow-y-auto">Scrollable Area</div>
 </div>
 ```
 
@@ -329,20 +496,20 @@ LLM MUST:
 
 (Left list + Right detail)
 
-```tsx
-<div class="grid flex-1 min-h-0 gap-4 md:grid-cols-2">
-  <div class="grid min-h-0 grid-rows-[auto,1fr] gap-2">
-    <div class="h-[auto or fixed] overflow-hidden">{filters}</div>
-    <div class="min-h-0 overflow-y-auto">{list}</div>
+```jsx
+<div className="grid flex-1 min-h-0 gap-4 md:grid-cols-2">
+  <div className="grid min-h-0 grid-rows-[auto,1fr] gap-2">
+    <div className="h-auto overflow-hidden">{filters}</div>
+    <div className="min-h-0 overflow-y-auto">{list}</div>
   </div>
 
-  <div class="min-h-0 overflow-y-auto">{detail}</div>
+  <div className="min-h-0 overflow-y-auto">{detail}</div>
 </div>
 ```
 
 LLM MUST:
 
-* Keep filter section fixed or auto
+* Keep filter section fixed (e.g. `h-16`) or auto (`h-auto`)
 * Ensure the list scrolls independently
 * Ensure the detail pane scrolls independently
 
@@ -408,6 +575,31 @@ LLM MUST:
 * Place feature‑specific UI in `features/<feature>/components/*`
 
 Mixing layout with feature UI → **INVALID**.
+
+---
+
+# 12. Development Environment Rules
+
+## 12‑1. Offsite (External Network) Development
+
+When developing outside the corporate network, some dependencies are not reachable (e.g. ADFS/OIDC, RAG, internal LLM API, POP3/mailbox).
+This project supports offsite development by running a local mock via Docker Compose.
+
+### How it works
+
+* Use `docker-compose.dev.yml` for offsite development.
+* The `adfs` service is built from `apps/adfs_dummy` (FastAPI) and provides dummy endpoints for:
+  * ADFS/OIDC login/logout + discovery
+  * RAG operations (`/rag/search`, `/rag/insert`, `/rag/delete`, `/rag/index-info`)
+  * Mail sandbox endpoints (`/mail/*`) for local testing
+* The Django `api` service loads `env/api.dev.env` to rewire auth/RAG URLs to the dummy service and to enable assistant dummy mode (`ASSISTANT_DUMMY_MODE=1`).
+* Compose files expect the external Docker network `shared-net` (create once with `docker network create shared-net`).
+
+### Agent requirements
+
+* Do not assume corporate network connectivity for local development/tests.
+* Do not hardcode intranet URLs; keep all external dependency URLs configurable via env vars.
+* If you change any contract used by auth/RAG/assistant/mail flows, update the mock (`apps/adfs_dummy`) and/or the dev wiring (`env/api.dev.env`) so `docker-compose.dev.yml` remains runnable.
 
 ---
 

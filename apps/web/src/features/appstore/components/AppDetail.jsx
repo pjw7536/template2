@@ -18,6 +18,29 @@ import { cn } from "@/lib/utils"
 
 import { CommentThread } from "./CommentThread"
 
+const KST_TIME_ZONE = "Asia/Seoul"
+const commentTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: KST_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+})
+
+function formatCommentTimeToKst(value) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  const parts = commentTimePartsFormatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type in acc) return acc
+    acc[part.type] = part.value
+    return acc
+  }, {})
+  return `${parts.year ?? "0000"}-${parts.month ?? "00"}-${parts.day ?? "00"} ${parts.hour ?? "00"}:${parts.minute ?? "00"}`
+}
+
 function InfoRow({ icon: Icon, label, value, muted }) {
   return (
     <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2">
@@ -195,7 +218,10 @@ export function AppDetail({
       </Card>
 
       <CommentThread
-        comments={app.comments ?? []}
+        comments={(app.comments ?? []).map((comment) => ({
+          ...comment,
+          createdAt: formatCommentTimeToKst(comment.createdAt) || comment.createdAt,
+        }))}
         onAdd={(content) => onAddComment?.(app.id, content)}
         onUpdate={(commentId, content) => onUpdateComment?.(app.id, commentId, content)}
         onDelete={(commentId) => onDeleteComment?.(app.id, commentId)}

@@ -48,7 +48,7 @@ import { STATUS_OPTIONS } from "../constants"
 import { RichTextEditor } from "../components/RichTextEditor"
 import { useVocBoardState } from "../hooks/useVocBoardState"
 import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"
-import "@/styles/quill.css"
+import "../utils/quill.css"
 import "quill/dist/quill.snow.css"
 
 // 리치 텍스트 에디터 설정: 모듈/포맷은 VOC 화면만을 위한 최소 구성이며, 필요 시 확장 가능

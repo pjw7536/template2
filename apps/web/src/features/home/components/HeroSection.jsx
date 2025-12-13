@@ -12,9 +12,9 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { LogoVector } from "@/components/common"
 import { useTheme } from '@/lib/theme'
 
-import LogoVector from '@/assets/svg/logo-vector'
 import { StraightBeam } from './StraightBeam'
 
 const HeroSection = () => {

@@ -19,7 +19,7 @@ from api.common.constants import (
     LINE_SDWT_TABLE_NAME,
     SAFE_IDENTIFIER,
 )
-from api.db import run_query
+from .db import run_query
 
 logger = logging.getLogger(__name__)
 

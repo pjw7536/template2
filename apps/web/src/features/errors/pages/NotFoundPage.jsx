@@ -1,4 +1,4 @@
-import ErrorPage04 from "@/features/errors/components/ErrorPage04"
+import ErrorPage04 from "../components/ErrorPage04"
 
 export function NotFoundPage() {
   return (

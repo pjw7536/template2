@@ -20,7 +20,7 @@ export const DEFAULT_CONFIG = {
     "informed_at",
     "jira_key",
     "defect_url",
-    "knoxid",
+    "knox_id",
     "user_sdwt_prod",
   ],
   labels: {
@@ -31,7 +31,7 @@ export const DEFAULT_CONFIG = {
     needtosend: "예약",
     send_jira: "JIRA",
     status: "Status",
-    knoxid: "KnoxID",
+    knox_id: "KnoxID",
     process_flow: "Process Flow",
   },
   sortable: {
@@ -69,7 +69,7 @@ export const DEFAULT_CONFIG = {
     informed_at: 100,
     jira_key: 40,
     defect_url: 60,
-    knoxid: 100,
+    knox_id: 100,
     user_sdwt_prod: 120,
     updated_at: 100,
   },
@@ -93,7 +93,7 @@ export const DEFAULT_CONFIG = {
     informed_at: "center",
     jira_key: "center",
     defect_url: "center",
-    knoxid: "center",
+    knox_id: "center",
     user_sdwt_prod: "center",
   },
   headerAlign: {
@@ -115,7 +115,7 @@ export const DEFAULT_CONFIG = {
     informed_at: "center",
     jira_key: "center",
     defect_url: "center",
-    knoxid: "center",
+    knox_id: "center",
     user_sdwt_prod: "center",
   },
 }

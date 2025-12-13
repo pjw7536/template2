@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import { DataSet } from "vis-data";
 import { useTimelineSelectionStore } from "../store/useTimelineSelectionStore";
-import { useTimelineStore } from "../store/timelineStore";
+import { useTimelineStore } from "../store/useTimelineStore";
 
 /**
  * vis-timeline 라이프사이클을 래핑하는 훅.

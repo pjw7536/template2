@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner"
 import { CheckCircle2, XCircle } from "lucide-react"
 
-import { buildToastOptions } from "@/features/line-dashboard/utils/toast"
+import { buildToastOptions } from "../utils/toast"
 import { makeCellKey } from "../utils/dataTableCellState"
 import { composeComment, splitComment } from "../utils/commentUtils"
 

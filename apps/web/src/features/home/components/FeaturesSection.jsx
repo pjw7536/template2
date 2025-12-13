@@ -12,9 +12,8 @@ import { StraightBeam } from './StraightBeam'
 import { MotionPreset } from '@/components/ui/motion-preset'
 import { Cursor, CursorFollow, CursorProvider } from '@/components/ui/cursor'
 
+import { LogoVector } from "@/components/common"
 import { cn } from '@/lib/utils'
-
-import LogoVector from '@/assets/svg/logo-vector'
 
 const FeaturesSection = ({
   notifications,

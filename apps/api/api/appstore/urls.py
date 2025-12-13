@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+from django.urls import path
+
+from .views import (
+    AppStoreAppDetailView,
+    AppStoreAppsView,
+    AppStoreCommentDetailView,
+    AppStoreCommentsView,
+    AppStoreLikeToggleView,
+    AppStoreViewIncrementView,
+)
+
+urlpatterns = [
+    path("apps", AppStoreAppsView.as_view(), name="appstore-apps"),
+    path("apps/<int:app_id>", AppStoreAppDetailView.as_view(), name="appstore-app-detail"),
+    path(
+        "apps/<int:app_id>/like",
+        AppStoreLikeToggleView.as_view(),
+        name="appstore-app-like",
+    ),
+    path(
+        "apps/<int:app_id>/view",
+        AppStoreViewIncrementView.as_view(),
+        name="appstore-app-view",
+    ),
+    path(
+        "apps/<int:app_id>/comments",
+        AppStoreCommentsView.as_view(),
+        name="appstore-app-comments",
+    ),
+    path(
+        "apps/<int:app_id>/comments/<int:comment_id>",
+        AppStoreCommentDetailView.as_view(),
+        name="appstore-app-comment-detail",
+    ),
+]
+

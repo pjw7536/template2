@@ -11,7 +11,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.assistant.service import AssistantConfigError, AssistantRequestError, assistant_chat_service
+from .services import AssistantConfigError, AssistantRequestError, assistant_chat_service
 from api.common.utils import parse_json_body
 
 logger = logging.getLogger(__name__)
@@ -166,6 +166,15 @@ class AssistantChatView(APIView):
 
         username_clean = username.strip()
         prompt_clean = prompt.strip()
+        rag_index_name = ""
+        try:
+            raw_user_sdwt = getattr(request.user, "user_sdwt_prod", "")
+            if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
+                rag_index_name = raw_user_sdwt.strip()
+        except Exception:
+            rag_index_name = ""
+        if not rag_index_name:
+            rag_index_name = assistant_chat_service.config.rag_index_name
 
         incoming_history = _normalize_history(
             payload.get("history"),
@@ -189,6 +198,7 @@ class AssistantChatView(APIView):
             chat_result = assistant_chat_service.generate_reply(
                 prompt_clean,
                 user_header_id=user_header_id,
+                rag_index_name=rag_index_name,
             )
             reply = chat_result.reply.strip() if isinstance(chat_result.reply, str) else ""
             contexts_used = chat_result.contexts
