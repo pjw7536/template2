@@ -18,12 +18,21 @@ from rest_framework.views import APIView
 from api.common.utils import parse_json_body
 
 from .selectors import (
+    count_unassigned_emails_for_sender_id,
     get_accessible_user_sdwt_prods_for_user,
     get_email_by_id,
     get_filtered_emails,
+    list_privileged_email_mailboxes,
     user_can_bulk_delete_emails,
 )
-from .services import bulk_delete_emails, delete_single_email, run_pop3_ingest_from_env
+from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+
+from .services import (
+    bulk_delete_emails,
+    claim_unassigned_emails_for_user,
+    delete_single_email,
+    run_pop3_ingest_from_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +127,14 @@ def _resolve_access_control(request: HttpRequest) -> tuple:
         return True, True, set()
 
     accessible = _resolve_accessible_user_sdwt_prods(user)
-    return True, bool(accessible), accessible
+    return True, False, accessible
+
+
+def _parse_mailbox_user_sdwt_prod(request: HttpRequest) -> str:
+    """요청 쿼리에서 mailbox(user_sdwt_prod) 값을 추출/정규화합니다."""
+
+    raw = request.GET.get("user_sdwt_prod") or request.GET.get("userSdwtProd") or ""
+    return raw.strip() if isinstance(raw, str) else ""
 
 
 def _extract_bearer_token(request: HttpRequest) -> str:
@@ -146,6 +162,11 @@ class EmailListView(APIView):
         if not is_privileged and not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
 
+        mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
+        if mailbox_user_sdwt_prod and not is_privileged:
+            if mailbox_user_sdwt_prod not in accessible:
+                return JsonResponse({"error": "forbidden"}, status=403)
+
         search = (request.GET.get("q") or "").strip()
         sender = (request.GET.get("sender") or "").strip()
         recipient = (request.GET.get("recipient") or "").strip()
@@ -155,6 +176,7 @@ class EmailListView(APIView):
         qs = get_filtered_emails(
             accessible_user_sdwt_prods=accessible,
             is_privileged=is_privileged,
+            mailbox_user_sdwt_prod=mailbox_user_sdwt_prod,
             search=search,
             sender=sender,
             recipient=recipient,
@@ -182,6 +204,58 @@ class EmailListView(APIView):
                 "totalPages": paginator.num_pages,
             }
         )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailMailboxListView(APIView):
+    """현재 사용자가 접근 가능한 메일함(user_sdwt_prod) 목록을 반환합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        if not is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        if is_privileged:
+            return JsonResponse({"results": list_privileged_email_mailboxes()})
+
+        if not accessible:
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+        return JsonResponse({"results": sorted(accessible)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailUnassignedSummaryView(APIView):
+    """현재 사용자(sender_id=knox_id)의 UNASSIGNED 메일 개수를 반환합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        sender_id = getattr(user, "knox_id", None) or ""
+        count = count_unassigned_emails_for_sender_id(sender_id=sender_id)
+        return JsonResponse({"mailbox": UNASSIGNED_USER_SDWT_PROD, "count": count})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailUnassignedClaimView(APIView):
+    """현재 사용자(sender_id=knox_id)의 UNASSIGNED 메일을 현재 user_sdwt_prod로 귀속(옮김)합니다."""
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        try:
+            payload = claim_unassigned_emails_for_user(user=user)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to claim UNASSIGNED emails for user_id=%s", getattr(user, "id", None))
+            return JsonResponse({"error": "Failed to claim emails"}, status=500)
+
+        return JsonResponse(payload)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

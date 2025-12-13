@@ -28,6 +28,7 @@ export async function fetchEmails(params = {}) {
   const searchParams = {}
   if (params.page) searchParams.page = params.page
   if (params.pageSize) searchParams.page_size = params.pageSize
+  if (params.userSdwtProd) searchParams.user_sdwt_prod = params.userSdwtProd
   if (params.q) searchParams.q = params.q
   if (params.sender) searchParams.sender = params.sender
   if (params.recipient) searchParams.recipient = params.recipient
@@ -35,6 +36,14 @@ export async function fetchEmails(params = {}) {
   if (params.dateTo) searchParams.date_to = params.dateTo
 
   const response = await fetch(buildBackendUrl(`${BASE_PATH}/`, searchParams), {
+    credentials: "include",
+  })
+
+  return handleJsonResponse(response)
+}
+
+export async function fetchEmailMailboxes() {
+  const response = await fetch(buildBackendUrl(`${BASE_PATH}/mailboxes/`), {
     credentials: "include",
   })
 

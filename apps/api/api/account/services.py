@@ -101,7 +101,6 @@ def request_affiliation_change(
     Side effects:
         - Writes UserSdwtProdChange and user fields.
         - May delete old UserSdwtProdAccess rows.
-        - For staff users, triggers email reclassification (best-effort).
     """
 
     ensure_self_access(user, as_manager=False)
@@ -141,15 +140,9 @@ def request_affiliation_change(
                     user_sdwt_prod=previous_user_sdwt,
                 ).delete()
 
-        try:
-            from api.emails.services import reclassify_emails_for_user_sdwt_change
-
-            reclassify_emails_for_user_sdwt_change(user, effective_from)
-        except Exception:
-            logger.exception("Failed to reclassify emails for user %s", getattr(user, "username", ""))
-
         return get_affiliation_overview(user=user, timezone_name=timezone_name), 200
 
+    effective_from = timezone.now()
     change = UserSdwtProdChange.objects.create(
         user=user,
         department=getattr(option, "department", None),
@@ -189,12 +182,18 @@ def approve_affiliation_change(
         - Updates the target user's affiliation fields.
         - Updates UserSdwtProdChange flags.
         - Ensures self-access row exists for the new user_sdwt_prod.
-        - Best-effort email reclassification.
     """
 
     change = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
     if change is None:
         return {"error": "Change not found"}, 404
+
+    if not (
+        getattr(approver, "is_superuser", False)
+        or getattr(approver, "is_staff", False)
+        or selectors.user_has_manage_permission(user=approver, user_sdwt_prod=change.to_user_sdwt_prod)
+    ):
+        return {"error": "forbidden"}, 403
 
     if change.approved or change.applied:
         return {"error": "already applied"}, 400
@@ -202,6 +201,7 @@ def approve_affiliation_change(
     target_user = change.user
     previous_user_sdwt = getattr(target_user, "user_sdwt_prod", None)
 
+    now = timezone.now()
     with transaction.atomic():
         target_user.user_sdwt_prod = change.to_user_sdwt_prod
         target_user.department = change.department
@@ -210,9 +210,10 @@ def approve_affiliation_change(
 
         change.approved = True
         change.approved_by = approver
-        change.approved_at = timezone.now()
+        change.approved_at = now
+        change.effective_from = now
         change.applied = True
-        change.save(update_fields=["approved", "approved_by", "approved_at", "applied"])
+        change.save(update_fields=["approved", "approved_by", "approved_at", "effective_from", "applied"])
 
         ensure_self_access(target_user, as_manager=False)
 
@@ -225,16 +226,6 @@ def approve_affiliation_change(
                 user=target_user,
                 user_sdwt_prod=previous_user_sdwt,
             ).delete()
-
-    try:
-        from api.emails.services import reclassify_emails_for_user_sdwt_change
-
-        reclassify_emails_for_user_sdwt_change(target_user, change.effective_from)
-    except Exception:
-        logger.exception(
-            "Failed to reclassify emails for user %s",
-            getattr(target_user, "username", ""),
-        )
 
     return (
         {

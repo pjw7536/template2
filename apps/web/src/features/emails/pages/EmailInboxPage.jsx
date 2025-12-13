@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
+import { useAuth } from "@/lib/auth"
+
 import { EmailDetail } from "../components/EmailDetail"
 import { EmailFilters } from "../components/EmailFilters"
 import { EmailList } from "../components/EmailList"
+import { EmailMailboxSidebar } from "../components/EmailMailboxSidebar"
 import { useBulkDeleteEmails, useDeleteEmail } from "../hooks/useEmailActions"
 import { useEmailDetail, useEmailHtml } from "../hooks/useEmailDetail"
 import { useEmailList } from "../hooks/useEmailList"
+import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
 
 const INITIAL_FILTERS = {
   page: 1,
@@ -36,7 +40,9 @@ const clampListWidth = (nextWidth, container) => {
 }
 
 export function EmailInboxPage() {
+  const { user } = useAuth()
   const [filters, setFilters] = useState(INITIAL_FILTERS)
+  const [selectedMailbox, setSelectedMailbox] = useState("")
   const [selectedIds, setSelectedIds] = useState([])
   const [activeEmailId, setActiveEmailId] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -44,6 +50,17 @@ export function EmailInboxPage() {
   const [isDragging, setIsDragging] = useState(false)
   const splitPaneRef = useRef(null)
   const dragCleanupRef = useRef(null)
+  const didUserSelectMailboxRef = useRef(false)
+
+  const {
+    data: mailboxData,
+    isLoading: isMailboxLoading,
+    isError: isMailboxError,
+    error: mailboxError,
+  } = useEmailMailboxes()
+  const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
+  const listEnabled = Boolean(selectedMailbox)
+  const listFilters = { ...filters, userSdwtProd: selectedMailbox }
 
   const {
     data: listData,
@@ -52,7 +69,7 @@ export function EmailInboxPage() {
     isError: isListError,
     error: listError,
     refetch,
-  } = useEmailList(filters)
+  } = useEmailList(listFilters, { enabled: listEnabled })
   const emails = listData?.results || []
 
   const {
@@ -72,6 +89,43 @@ export function EmailInboxPage() {
       toast.error(listError?.message || "메일 목록을 불러오지 못했습니다.")
     }
   }, [isListError, listError])
+
+  useEffect(() => {
+    if (isMailboxError && mailboxError) {
+      toast.error(mailboxError?.message || "메일함 목록을 불러오지 못했습니다.")
+    }
+  }, [isMailboxError, mailboxError])
+
+  const currentUserSdwtProd =
+    typeof user?.user_sdwt_prod === "string" ? user.user_sdwt_prod.trim() : ""
+
+  useEffect(() => {
+    if (!currentUserSdwtProd) return
+    if (didUserSelectMailboxRef.current) return
+    if (selectedMailbox === currentUserSdwtProd) return
+    setSelectedMailbox(currentUserSdwtProd)
+  }, [currentUserSdwtProd, selectedMailbox])
+
+  useEffect(() => {
+    if (selectedMailbox) return
+    if (didUserSelectMailboxRef.current) return
+    const firstMailbox = typeof mailboxes[0] === "string" ? mailboxes[0].trim() : ""
+    if (!firstMailbox) return
+    setSelectedMailbox(firstMailbox)
+  }, [selectedMailbox, mailboxes])
+
+  const handleSelectMailbox = (mailbox) => {
+    const nextMailbox = typeof mailbox === "string" ? mailbox.trim() : ""
+    if (!nextMailbox || nextMailbox === selectedMailbox) return
+    didUserSelectMailboxRef.current = true
+    setSelectedMailbox(nextMailbox)
+    setFilters((prev) => ({ ...prev, page: 1 }))
+    setSelectedIds([])
+    setActiveEmailId(null)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete("emailId")
+    setSearchParams(nextParams)
+  }
 
   const handleToggleSelectAll = () => {
     if (emails.length === 0) return
@@ -163,10 +217,6 @@ export function EmailInboxPage() {
   const effectivePageSize = Math.max(1, pageSize || 1)
   const totalPages =
     listData?.totalPages ?? Math.max(1, Math.ceil(totalCount / effectivePageSize))
-  const currentPageSize = emails.length
-  const startIndex = totalCount === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1
-  const endIndex =
-    totalCount === 0 ? 0 : Math.min(totalCount, startIndex + currentPageSize - 1)
 
   const handleExactPageChange = (nextPage) => {
     setFilters((prev) => {
@@ -182,6 +232,7 @@ export function EmailInboxPage() {
   }
 
   const handleReload = () => {
+    if (!selectedMailbox) return
     refetch()
   }
 
@@ -257,58 +308,75 @@ export function EmailInboxPage() {
     "--email-list-width": `${listWidth}px`,
     "--email-handle-offset": `${listWidth + GRID_GAP_PX / 2}px`,
   }
+  const activeMailboxSdwtProd = selectedMailbox || currentUserSdwtProd
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div
-        ref={splitPaneRef}
-        style={splitPaneStyles}
-        className="relative grid flex-1 min-h-0 grid-cols-1 gap-4 md:[grid-template-columns:var(--email-list-width)_1fr]"
-      >
-        <div className="grid min-h-0 min-w-0 grid-rows-[auto_1fr] gap-3">
-          <EmailFilters filters={filters} onChange={setFilters} onReset={handleResetFilters} />
-          <div className="min-h-0">
-            <EmailList
-              emails={emails}
-              selectedIds={selectedIds}
-              activeEmailId={activeEmailId}
-              onToggleSelect={handleToggleSelect}
-              onToggleSelectAll={handleToggleSelectAll}
-              onSelectEmail={handleSelectEmail}
-              onDeleteEmail={handleDeleteEmail}
-              isLoading={isListLoading}
-              onBulkDelete={handleBulkDelete}
-              isBulkDeleting={bulkDeleteMutation.isPending}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              pageSize={pageSize}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              onPageChange={handleExactPageChange}
-              onPageSizeChange={handlePageSizeChange}
-              onReload={handleReload}
-              isReloading={isReloading}
+      <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
+        <EmailMailboxSidebar
+          mailboxes={mailboxes}
+          activeMailbox={activeMailboxSdwtProd}
+          currentUserSdwtProd={currentUserSdwtProd}
+          onSelectMailbox={handleSelectMailbox}
+          isLoading={isMailboxLoading}
+          errorMessage={
+            isMailboxError ? mailboxError?.message || "메일함 목록을 불러오지 못했습니다." : ""
+          }
+        />
+
+        <div
+          ref={splitPaneRef}
+          style={splitPaneStyles}
+          className="relative grid flex-1 min-h-0 min-w-0 grid-cols-1 gap-4 md:[grid-template-columns:var(--email-list-width)_1fr]"
+        >
+          <div className="grid min-h-0 min-w-0 grid-rows-[auto_1fr] gap-3">
+            <EmailFilters filters={filters} onChange={setFilters} onReset={handleResetFilters} />
+            <div className="min-h-0">
+              <EmailList
+                emails={emails}
+                selectedIds={selectedIds}
+                activeEmailId={activeEmailId}
+                onToggleSelect={handleToggleSelect}
+                onToggleSelectAll={handleToggleSelectAll}
+                onSelectEmail={handleSelectEmail}
+                onDeleteEmail={handleDeleteEmail}
+                isLoading={isListLoading}
+                onBulkDelete={handleBulkDelete}
+                isBulkDeleting={bulkDeleteMutation.isPending}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={handleExactPageChange}
+                onPageSizeChange={handlePageSizeChange}
+                onReload={handleReload}
+                isReloading={isReloading}
+              />
+            </div>
+          </div>
+          <div className="min-h-0 min-w-0 overflow-hidden">
+            <EmailDetail
+              email={detailData}
+              html={htmlData}
+              isLoading={isDetailLoading}
+              isHtmlLoading={isHtmlLoading}
             />
           </div>
+          <button
+            type="button"
+            className={`absolute top-0 z-10 hidden h-full w-3 -translate-x-1/2 cursor-col-resize select-none rounded-sm border border-transparent bg-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:block ${
+              isDragging ? "bg-primary/10" : "hover:bg-primary/5"
+            }`}
+            style={{ left: "var(--email-handle-offset)" }}
+            onPointerDown={handleResizeStart}
+            aria-label="메일 목록과 상세 너비 조절"
+          >
+            <span
+              className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border"
+              aria-hidden
+            />
+          </button>
         </div>
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          <EmailDetail
-            email={detailData}
-            html={htmlData}
-            isLoading={isDetailLoading}
-            isHtmlLoading={isHtmlLoading}
-          />
-        </div>
-        <button
-          type="button"
-          className={`absolute top-0 z-10 hidden h-full w-3 -translate-x-1/2 cursor-col-resize select-none rounded-sm border border-transparent bg-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:block ${
-            isDragging ? "bg-primary/10" : "hover:bg-primary/5"
-          }`}
-          style={{ left: "var(--email-handle-offset)" }}
-          onPointerDown={handleResizeStart}
-          aria-label="메일 목록과 상세 너비 조절"
-        >
-          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" aria-hidden />
-        </button>
       </div>
     </div>
   )

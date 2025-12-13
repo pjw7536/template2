@@ -14,7 +14,8 @@ from email.policy import default
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from api.common.affiliations import UNCLASSIFIED_USER_SDWT_PROD
+import requests
+from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 from django.db import models
 from django.db import transaction
 from django.utils import timezone
@@ -22,13 +23,81 @@ from rest_framework.exceptions import NotFound
 
 from .selectors import (
     get_next_user_sdwt_prod_change_effective_from,
+    list_emails_by_ids,
+    list_unassigned_email_ids_for_sender_id,
     resolve_email_affiliation,
     resolve_user_affiliation,
 )
-from .models import Email, SenderSdwtHistory
+from .models import Email
 from ..rag.client import delete_rag_doc, insert_email_to_rag, resolve_rag_index_name
 
 logger = logging.getLogger(__name__)
+
+
+class MailSendError(Exception):
+    """사내 메일 발신 API 호출 실패 예외."""
+
+
+def send_knox_mail_api(
+    sender_email: str,
+    receiver_emails: Sequence[str],
+    subject: str,
+    html_content: str,
+) -> Dict[str, Any]:
+    """사내 Knox 메일 발신 API를 호출해 메일을 발송합니다.
+
+    Env:
+    - MAIL_API_URL: 발신 API URL (예: https://.../send)
+    - MAIL_API_KEY: x-dep-ticket 값
+    - MAIL_API_SYSTEM_ID: systemId (default: plane)
+    - MAIL_API_KNOX_ID: loginUser.login 값
+
+    Returns:
+    - API가 JSON을 반환하면 해당 dict
+    - JSON이 아니면 {"ok": True}
+
+    Side effects:
+    - 외부 메일 발신 API에 HTTP 요청을 전송합니다.
+    """
+
+    url = (os.getenv("MAIL_API_URL") or "").strip()
+    prod_key = (os.getenv("MAIL_API_KEY") or "").strip()
+    system_id = (os.getenv("MAIL_API_SYSTEM_ID") or "plane").strip()
+    knox_id = (os.getenv("MAIL_API_KNOX_ID") or "").strip()
+
+    if not url:
+        raise MailSendError("MAIL_API_URL 미설정")
+    if not prod_key or not knox_id:
+        raise MailSendError("MAIL_API_KEY / MAIL_API_KNOX_ID 미설정")
+
+    normalized_receivers = [str(email).strip() for email in receiver_emails if str(email).strip()]
+    if not normalized_receivers:
+        raise MailSendError("수신자 없음")
+
+    params = {"systemId": system_id, "loginUser.login": knox_id}
+    headers = {"x-dep-ticket": prod_key}
+    payload = {
+        "receiverList": [{"email": email, "recipientType": "TO"} for email in normalized_receivers],
+        "title": subject,
+        "content": html_content,
+        "senderMailAddress": sender_email,
+    }
+
+    try:
+        response = requests.post(url, params=params, headers=headers, json=payload, timeout=10)
+        if not response.ok:
+            raise MailSendError(f"메일 API 오류 {response.status_code}: {response.text[:300]}")
+        content_type = response.headers.get("content-type", "")
+        if content_type.startswith("application/json"):
+            data = response.json()
+            if isinstance(data, dict):
+                return data
+            return {"data": data}
+        return {"ok": True}
+    except requests.Timeout as exc:
+        raise MailSendError("메일 API 타임아웃") from exc
+    except requests.RequestException as exc:
+        raise MailSendError(f"메일 API 요청 실패: {exc}") from exc
 
 
 def gzip_body(body_html: str | None) -> bytes | None:
@@ -53,7 +122,7 @@ def save_parsed_email(
 ) -> Email:
     """POP3 파서에서 호출하는 저장 함수 (message_id 중복 방지)."""
 
-    user_sdwt_prod = user_sdwt_prod or UNCLASSIFIED_USER_SDWT_PROD
+    user_sdwt_prod = user_sdwt_prod or UNASSIGNED_USER_SDWT_PROD
 
     email, _created = Email.objects.get_or_create(
         message_id=message_id,
@@ -94,8 +163,11 @@ def register_email_to_rag(
     """
 
     update_fields = []
-    if not email.user_sdwt_prod:
-        email.user_sdwt_prod = UNCLASSIFIED_USER_SDWT_PROD
+    normalized_user_sdwt = (email.user_sdwt_prod or "").strip()
+    if not normalized_user_sdwt or normalized_user_sdwt == UNASSIGNED_USER_SDWT_PROD:
+        raise ValueError("Cannot register an UNASSIGNED email to RAG")
+    if normalized_user_sdwt != email.user_sdwt_prod:
+        email.user_sdwt_prod = normalized_user_sdwt
         update_fields.append("user_sdwt_prod")
     if not email.rag_doc_id:
         email.rag_doc_id = f"email-{email.id}"
@@ -221,7 +293,7 @@ def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime |
         return 0
 
     affiliation = resolve_user_affiliation(user, effective_from)
-    user_sdwt_prod = affiliation.get("user_sdwt_prod") or UNCLASSIFIED_USER_SDWT_PROD
+    user_sdwt_prod = affiliation.get("user_sdwt_prod") or UNASSIGNED_USER_SDWT_PROD
 
     with transaction.atomic():
         Email.objects.filter(id__in=ids).update(
@@ -242,78 +314,64 @@ def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime |
     return len(ids)
 
 
-def reclassify_emails_for_sender_history_change(
-    *,
-    sender_id: str,
-    effective_from: datetime,
-) -> int:
-    """Reclassify emails after SenderSdwtHistory changes.
+def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
+    """사용자의 UNASSIGNED 메일을 현재 user_sdwt_prod로 귀속(옮김)합니다.
 
-    대상:
-    - sender_id가 일치하는 메일
-    범위:
-    - effective_from 이상, 다음 SenderSdwtHistory 변경 시점 이전(있으면)
+    Claim UNASSIGNED inbox emails for the given user into the user's current user_sdwt_prod.
+
+    Rules:
+    - Only emails with user_sdwt_prod not set (NULL/blank/UNASSIGNED) are eligible.
+    - Previously classified emails are NOT moved.
 
     Returns:
-        Reclassified email count.
+        Dict with moved count and best-effort RAG indexing stats.
 
     Side effects:
         - Updates Email.user_sdwt_prod in DB.
-        - Re-indexes RAG documents per email (best-effort).
+        - Attempts to index claimed emails into RAG (best-effort).
     """
 
-    history: SenderSdwtHistory | None = (
-        SenderSdwtHistory.objects.filter(sender_id=sender_id, effective_from=effective_from)
-        .order_by("-id")
-        .first()
-    )
-    if not history:
-        raise ValueError("해당 소속 이력 row를 찾을 수 없습니다.")
+    sender_id = getattr(user, "knox_id", None)
+    if not isinstance(sender_id, str) or not sender_id.strip():
+        raise ValueError("knox_id is required to claim unassigned emails")
 
-    user_sdwt_prod = history.user_sdwt_prod or UNCLASSIFIED_USER_SDWT_PROD
+    target_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+    if not isinstance(target_user_sdwt_prod, str) or not target_user_sdwt_prod.strip():
+        raise ValueError("user_sdwt_prod must be set to claim unassigned emails")
 
-    next_history: SenderSdwtHistory | None = (
-        SenderSdwtHistory.objects.filter(sender_id=sender_id, effective_from__gt=effective_from)
-        .order_by("effective_from", "id")
-        .first()
-    )
+    target_user_sdwt_prod = target_user_sdwt_prod.strip()
+    if target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
+        raise ValueError("Cannot claim emails into the UNASSIGNED mailbox")
 
-    start = effective_from
-    end = next_history.effective_from if next_history else None
+    email_ids = list_unassigned_email_ids_for_sender_id(sender_id=sender_id)
+    if not email_ids:
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
 
-    queryset = Email.objects.filter(sender_id=sender_id, received_at__gte=start)
-    if end is not None:
-        queryset = queryset.filter(received_at__lt=end)
+    with transaction.atomic():
+        Email.objects.filter(id__in=email_ids).update(user_sdwt_prod=target_user_sdwt_prod)
 
-    previous_user_sdwt: Dict[int, str | None] = {
-        row["id"]: row["user_sdwt_prod"] for row in queryset.values("id", "user_sdwt_prod")
-    }
-    ids = list(previous_user_sdwt.keys())
-    if not ids:
-        return 0
-
-    Email.objects.filter(id__in=ids).update(
-        user_sdwt_prod=user_sdwt_prod,
-    )
-
-    for email in Email.objects.filter(id__in=ids).iterator():
-        email.user_sdwt_prod = user_sdwt_prod
+    rag_registered = 0
+    rag_failed = 0
+    for email in list_emails_by_ids(email_ids=email_ids).iterator():
+        email.user_sdwt_prod = target_user_sdwt_prod
         try:
             register_email_to_rag(
                 email,
-                previous_user_sdwt_prod=previous_user_sdwt.get(email.id),
+                previous_user_sdwt_prod=None,
                 persist_fields=["user_sdwt_prod", "rag_doc_id"],
             )
+            rag_registered += 1
         except Exception:
-            logger.exception("Failed to reinsert RAG for email id=%s", email.id)
+            rag_failed += 1
+            logger.exception("Failed to register RAG for claimed email id=%s", email.id)
             if not email.rag_doc_id:
                 email.rag_doc_id = f"email-{email.id}"
             try:
                 email.save(update_fields=["user_sdwt_prod", "rag_doc_id"])
             except Exception:
-                logger.exception("Failed to persist email after RAG failure id=%s", email.id)
+                logger.exception("Failed to persist claimed email after RAG failure id=%s", email.id)
 
-    return len(ids)
+    return {"moved": len(email_ids), "ragRegistered": rag_registered, "ragFailed": rag_failed}
 
 
 DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop_v3]", "[test]")
@@ -605,7 +663,7 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
 
             to_delete.append(msg_num)
 
-            if not email_obj.rag_doc_id:
+            if not email_obj.rag_doc_id and email_obj.user_sdwt_prod != UNASSIGNED_USER_SDWT_PROD:
                 try:
                     register_email_to_rag(email_obj)
                 except Exception:

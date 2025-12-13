@@ -733,9 +733,9 @@ class LineIdListView(APIView):
         try:
             rows = run_query(
                 """
-                SELECT DISTINCT line_id
+                SELECT DISTINCT line AS line_id
                 FROM {table}
-                WHERE line_id IS NOT NULL AND line_id <> ''
+                WHERE line IS NOT NULL AND line <> ''
                 ORDER BY line_id
                 """.format(table=LINE_SDWT_TABLE_NAME)
             )

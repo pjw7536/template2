@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Header, Query
 
 from adfs_settings import DEFAULT_EMAIL
 from adfs_stores import mail_store, rag_store, seed_all
@@ -49,6 +49,56 @@ async def create_dummy_mail(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
     return {"status": "ok", "message": entry}
 
 
+@router.post("/mail/send")
+async def send_dummy_mail(
+    payload: Dict[str, Any] = Body(...),
+    system_id: str | None = Query(None, alias="systemId"),
+    login_user_login: str | None = Query(None, alias="loginUser.login"),
+    dep_ticket: str | None = Header(None, alias="x-dep-ticket"),
+) -> Dict[str, Any]:
+    """Simulate the corporate Knox mail send API for local testing."""
+
+    title = str(payload.get("title") or payload.get("subject") or "로컬 더미 발신").strip()
+    sender = str(payload.get("senderMailAddress") or payload.get("sender") or DEFAULT_EMAIL).strip()
+    content = str(payload.get("content") or payload.get("body") or "").strip()
+
+    receiver_list = payload.get("receiverList")
+    receivers: list[str] = []
+    if isinstance(receiver_list, list):
+        for entry in receiver_list:
+            if not isinstance(entry, dict):
+                continue
+            email = str(entry.get("email") or "").strip()
+            if email:
+                receivers.append(email)
+
+    if not receivers:
+        fallback = str(payload.get("recipient") or payload.get("receiver") or DEFAULT_EMAIL).strip()
+        if fallback:
+            receivers.append(fallback)
+
+    metadata = {
+        "system_id": system_id,
+        "login_user_login": login_user_login,
+        "has_dep_ticket": bool(dep_ticket),
+    }
+
+    sent: list[Dict[str, Any]] = []
+    for recipient in receivers:
+        sent.append(
+            mail_store.create_mail(
+                subject=title,
+                sender=sender,
+                recipient=recipient,
+                body_text=content or "(empty)",
+                register_to_rag=False,
+                metadata=metadata,
+            )
+        )
+
+    return {"status": "ok", "sent": len(sent), "messages": sent}
+
+
 @router.delete("/mail/messages/{mail_id}")
 async def delete_dummy_mail(mail_id: int) -> Dict[str, Any]:
     """Remove a dummy mail entry and its paired RAG doc if present."""
@@ -67,4 +117,3 @@ async def reset_dummy_mail() -> Dict[str, Any]:
             "indexes": rag_store.index_counts(),
         },
     }
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import models
+from django.db.models.functions import Now
 
 
 class DroneSOPV3(models.Model):
@@ -24,15 +25,15 @@ class DroneSOPV3(models.Model):
     comment = models.TextField(null=True, blank=True)
     user_sdwt_prod = models.CharField(max_length=50, null=True, blank=True)
     defect_url = models.TextField(null=True, blank=True)
-    send_jira = models.SmallIntegerField(default=0)
+    send_jira = models.SmallIntegerField(null=True, blank=True, default=0, db_default=0)
     instant_inform = models.SmallIntegerField(default=0)
     needtosend = models.SmallIntegerField(default=1)
     custom_end_step = models.CharField(max_length=50, null=True, blank=True)
     inform_step = models.CharField(max_length=50, null=True, blank=True)
     jira_key = models.CharField(max_length=50, null=True, blank=True)
     informed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_default=Now())
+    updated_at = models.DateTimeField(auto_now=True, db_default=Now())
 
     class Meta:
         db_table = "drone_sop_v3"

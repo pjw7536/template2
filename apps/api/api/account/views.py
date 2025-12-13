@@ -36,7 +36,7 @@ def _parse_effective_from(value: Optional[str]):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationView(APIView):
-    """현재 사용자의 user_sdwt_prod 소속 관리 (실제 변경 시점 입력)."""
+    """현재 사용자의 user_sdwt_prod 소속 변경을 신청합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         user = request.user
@@ -68,10 +68,12 @@ class AccountAffiliationView(APIView):
             return JsonResponse({"error": "Invalid department/line/user_sdwt_prod combination"}, status=400)
 
         effective_from_raw = payload.get("effective_from") or payload.get("effectiveFrom")
-        effective_from = _parse_effective_from(effective_from_raw)
-        if effective_from_raw and effective_from is None:
-            return JsonResponse({"error": "Invalid effective_from"}, status=400)
-        if not effective_from:
+        effective_from = None
+        if user.is_superuser or user.is_staff:
+            effective_from = _parse_effective_from(effective_from_raw)
+            if effective_from_raw and effective_from is None:
+                return JsonResponse({"error": "Invalid effective_from"}, status=400)
+        if effective_from is None:
             effective_from = timezone.now()
 
         response_payload, status_code = services.request_affiliation_change(
@@ -86,14 +88,12 @@ class AccountAffiliationView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationApprovalView(APIView):
-    """슈퍼유저/스태프가 소속 변경 요청을 승인한다."""
+    """해당 소속 관리자(그룹 매니저)/슈퍼유저가 소속 변경 요청을 승인한다."""
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
-        if not (user.is_superuser or user.is_staff):
-            return JsonResponse({"error": "forbidden"}, status=403)
 
         payload = parse_json_body(request)
         if payload is None:

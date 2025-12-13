@@ -91,15 +91,15 @@ class UserProfile(models.Model):
         return f"{self.user.get_username()} ({self.get_role_display()})"
 
 
-class AffiliationHierarchy(models.Model):
-    """department/line/user_sdwt_prod 조합의 허용 목록을 저장하는 모델입니다."""
+class Affiliation(models.Model):
+    """department/line/user_sdwt_prod 조합의 허용 목록(소속 hierarchy)을 저장하는 모델입니다."""
 
     department = models.CharField(max_length=128)
     line = models.CharField(max_length=64)
     user_sdwt_prod = models.CharField(max_length=64)
 
     class Meta:
-        db_table = "account_affiliation_hierarchy"
+        db_table = "account_affiliation"
         unique_together = ("department", "line", "user_sdwt_prod")
         indexes = [
             models.Index(fields=["department"], name="aff_hier_department"),
@@ -186,25 +186,8 @@ class UserSdwtProdChange(models.Model):
         return f"{self.user_id} {self.from_user_sdwt_prod or '-'} -> {self.to_user_sdwt_prod} at {self.effective_from}"
 
 
-class LineSDWT(models.Model):
-    """line_id와 user_sdwt_prod 매핑(선택지)을 저장하는 모델입니다."""
-
-    line_id = models.CharField(max_length=50, null=True, blank=True)
-    user_sdwt_prod = models.CharField(max_length=50, null=True, blank=True)
-
-    class Meta:
-        db_table = "account_line_sdwt"
-        indexes = [
-            models.Index(fields=["line_id", "user_sdwt_prod"], name="line_sdwt_line_user_sdwt"),
-        ]
-
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
-        return f"{self.line_id or 'Unknown'} -> {self.user_sdwt_prod or 'N/A'}"
-
-
 __all__ = [
-    "AffiliationHierarchy",
-    "LineSDWT",
+    "Affiliation",
     "User",
     "UserProfile",
     "UserSdwtProdAccess",

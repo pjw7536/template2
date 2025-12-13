@@ -2,28 +2,7 @@ import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-function formatLocalDateTime(value) {
-  if (!value) return ""
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ""
-  const pad = (n) => String(n).padStart(2, "0")
-  const year = date.getFullYear()
-  const month = pad(date.getMonth() + 1)
-  const day = pad(date.getDate())
-  const hour = pad(date.getHours())
-  const minute = pad(date.getMinutes())
-  return `${year}-${month}-${day}T${hour}:${minute}`
-}
-
-function isoFromLocalInput(value) {
-  if (!value) return null
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toISOString()
-}
 
 function optionKey(opt) {
   return `${opt.department}||${opt.line}||${opt.user_sdwt_prod}`
@@ -36,9 +15,7 @@ export function AffiliationCard({
   error,
 }) {
   const [selectedKey, setSelectedKey] = useState("")
-  const [effectiveFrom, setEffectiveFrom] = useState("")
 
-  const timezoneName = data?.timezone || "Asia/Seoul"
   const options = data?.affiliationOptions || []
 
   const selected = options.find((opt) => optionKey(opt) === selectedKey)
@@ -65,11 +42,9 @@ export function AffiliationCard({
       userSdwtProd: target.user_sdwt_prod,
       department: target.department,
       line: target.line,
-      effectiveFrom: isoFromLocalInput(effectiveFrom),
     }
     onSubmit(payload, () => {
       setSelectedKey("")
-      setEffectiveFrom("")
     })
   }
 
@@ -78,7 +53,7 @@ export function AffiliationCard({
       <CardHeader className="pb-2">
         <CardTitle>My affiliation</CardTitle>
         <CardDescription>
-          실제 변경된 user_sdwt_prod와 변경 시점을 입력하세요. 시간은 {timezoneName} 기준입니다.
+          소속 변경을 신청하면 해당 소속 관리자 또는 슈퍼유저가 승인할 수 있습니다. 적용 시점은 승인 시점으로 고정됩니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -122,20 +97,9 @@ export function AffiliationCard({
             ) : null}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="effectiveFrom">
-              실제 변경 시점 (선택, {timezoneName})
-            </Label>
-            <Input
-              id="effectiveFrom"
-              type="datetime-local"
-              value={effectiveFrom}
-              onChange={(e) => setEffectiveFrom(e.target.value)}
-            />
-            <p className="text-sm text-muted-foreground">
-              비워두면 지금 시점으로 적용됩니다. 과거 시점을 입력하면 그 이후 메일과 RAG가 새 소속으로 분류되도록 기록됩니다.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            실제 이동 날짜를 기준으로 메일/RAG 인덱스를 재분류하는 작업은 시스템 운영자 권한으로만 처리됩니다.
+          </p>
 
           {error ? (
             <p className="text-destructive text-sm">{error}</p>
@@ -143,7 +107,7 @@ export function AffiliationCard({
 
           <div className="flex justify-end">
             <Button type="submit" disabled={isSubmitting || !options.length || !selectedKey}>
-              {isSubmitting ? "저장 중..." : "변경 저장"}
+              {isSubmitting ? "요청 중..." : "변경 신청"}
             </Button>
           </div>
         </form>

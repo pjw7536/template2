@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 UNKNOWN = "UNKNOWN"
-UNCLASSIFIED_USER_SDWT_PROD = "rp-unclassified"
+UNASSIGNED_USER_SDWT_PROD = "UNASSIGNED"
+# Backward-compatible alias (legacy naming).
+UNCLASSIFIED_USER_SDWT_PROD = UNASSIGNED_USER_SDWT_PROD
 
 
-__all__ = ["UNKNOWN", "UNCLASSIFIED_USER_SDWT_PROD"]
+__all__ = ["UNKNOWN", "UNASSIGNED_USER_SDWT_PROD", "UNCLASSIFIED_USER_SDWT_PROD"]

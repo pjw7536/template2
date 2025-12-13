@@ -182,13 +182,13 @@ def pick_base_timestamp_column(column_names: Sequence[str]) -> Optional[str]:
 
 
 def _get_user_sdwt_prod_values(line_id: str) -> List[str]:
-    """line_sdwt 테이블에서 line_id에 해당하는 user_sdwt_prod 목록 조회."""
+    """affiliation 테이블에서 line(line_id)에 해당하는 user_sdwt_prod 목록 조회."""
 
     rows = run_query(
         """
         SELECT DISTINCT user_sdwt_prod
         FROM {table}
-        WHERE line_id = %s
+        WHERE line = %s
           AND user_sdwt_prod IS NOT NULL
           AND user_sdwt_prod <> ''
         """.format(table=LINE_SDWT_TABLE_NAME),

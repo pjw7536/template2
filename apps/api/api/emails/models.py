@@ -30,28 +30,4 @@ class Email(models.Model):
         return f"{self.subject[:40]} ({self.sender} -> {self.recipient}) [{self.user_sdwt_prod or ''}]"
 
 
-class SenderSdwtHistory(models.Model):
-    """sender_id 기준 소속 이력 (시점별 line/user_sdwt_prod)."""
-
-    sender_id = models.CharField(max_length=50, db_index=True)
-    effective_from = models.DateTimeField()  # 이 시점부터 line/user_sdwt_prod 적용
-    department = models.CharField(max_length=50, null=True, blank=True)
-    line = models.CharField(max_length=64, null=True, blank=True)
-    user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.CharField(max_length=50, default="")
-
-    class Meta:
-        db_table = "emails_sender_sdwt_history"
-        indexes = [
-            models.Index(fields=["sender_id", "effective_from"], name="sender_sdwt_effective"),
-            models.Index(fields=["user_sdwt_prod"], name="sender_sdwt_user_sdwt"),
-        ]
-        unique_together = ("sender_id", "effective_from")
-
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
-        return f"{self.sender_id} -> {self.user_sdwt_prod or ''} ({self.effective_from.isoformat()})"
-
-
-__all__ = ["Email", "SenderSdwtHistory"]
+__all__ = ["Email"]

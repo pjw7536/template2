@@ -9,12 +9,7 @@ from django.utils import timezone
 
 from api.common.affiliations import UNKNOWN, UNCLASSIFIED_USER_SDWT_PROD
 
-from .models import (
-    AffiliationHierarchy,
-    LineSDWT,
-    UserSdwtProdAccess,
-    UserSdwtProdChange,
-)
+from .models import Affiliation, UserSdwtProdAccess, UserSdwtProdChange
 
 
 def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
@@ -46,6 +41,37 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     return {val for val in values if isinstance(val, str) and val.strip()}
 
 
+def list_distinct_user_sdwt_prod_values() -> set[str]:
+    """시스템에서 '알려진' user_sdwt_prod 값 집합을 조회합니다.
+
+    Return known user_sdwt_prod values across the system.
+
+    Sources:
+        - Affiliation.user_sdwt_prod
+        - UserSdwtProdAccess.user_sdwt_prod
+
+    Returns:
+        Set of non-empty user_sdwt_prod strings.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    affiliation_values = set(
+        Affiliation.objects.exclude(user_sdwt_prod="")
+        .values_list("user_sdwt_prod", flat=True)
+        .distinct()
+    )
+    access_values = set(
+        UserSdwtProdAccess.objects.exclude(user_sdwt_prod="")
+        .values_list("user_sdwt_prod", flat=True)
+        .distinct()
+    )
+
+    combined = affiliation_values | access_values
+    return {val.strip() for val in combined if isinstance(val, str) and val.strip()}
+
+
 def list_affiliation_options() -> list[dict[str, str]]:
     """소속 선택 옵션(부서/라인/user_sdwt_prod) 전체를 조회합니다.
 
@@ -59,7 +85,7 @@ def list_affiliation_options() -> list[dict[str, str]]:
     """
 
     return list(
-        AffiliationHierarchy.objects.all()
+        Affiliation.objects.all()
         .order_by("department", "line", "user_sdwt_prod")
         .values("department", "line", "user_sdwt_prod")
     )
@@ -200,13 +226,16 @@ def list_line_sdwt_pairs() -> list[dict[str, str]]:
     Return all available (line_id, user_sdwt_prod) pairs for selection.
     """
 
-    return list(
-        LineSDWT.objects.filter(line_id__isnull=False, line_id__gt="")
+    pairs = (
+        Affiliation.objects.filter(line__isnull=False)
+        .exclude(line__exact="")
         .exclude(user_sdwt_prod__isnull=True)
         .exclude(user_sdwt_prod__exact="")
-        .order_by("line_id", "user_sdwt_prod")
-        .values("line_id", "user_sdwt_prod")
+        .values("line", "user_sdwt_prod")
+        .distinct()
+        .order_by("line", "user_sdwt_prod")
     )
+    return [{"line_id": row["line"], "user_sdwt_prod": row["user_sdwt_prod"]} for row in pairs]
 
 
 def get_next_user_sdwt_prod_change(
@@ -228,7 +257,7 @@ def get_next_user_sdwt_prod_change(
         effective_from = timezone.make_aware(effective_from, timezone.utc)
 
     return (
-        UserSdwtProdChange.objects.filter(user=user, effective_from__gt=effective_from)
+        UserSdwtProdChange.objects.filter(user=user, approved=True, effective_from__gt=effective_from)
         .order_by("effective_from", "id")
         .first()
     )
@@ -249,7 +278,7 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
         at_time = timezone.make_aware(at_time, timezone.utc)
 
     change = (
-        UserSdwtProdChange.objects.filter(user=user, effective_from__lte=at_time)
+        UserSdwtProdChange.objects.filter(user=user, approved=True, effective_from__lte=at_time)
         .order_by("-effective_from", "-id")
         .first()
     )
@@ -263,10 +292,22 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
             or UNCLASSIFIED_USER_SDWT_PROD,
         }
 
+    next_change = (
+        UserSdwtProdChange.objects.filter(user=user, approved=True, effective_from__gt=at_time)
+        .order_by("effective_from", "id")
+        .first()
+    )
+
+    before_user_sdwt_prod = None
+    if next_change:
+        before_user_sdwt_prod = next_change.from_user_sdwt_prod
+
     return {
         "department": getattr(user, "department", None) or UNKNOWN,
         "line": getattr(user, "line", None) or "",
-        "user_sdwt_prod": getattr(user, "user_sdwt_prod", None) or UNCLASSIFIED_USER_SDWT_PROD,
+        "user_sdwt_prod": before_user_sdwt_prod
+        or getattr(user, "user_sdwt_prod", None)
+        or UNCLASSIFIED_USER_SDWT_PROD,
     }
 
 
@@ -274,7 +315,7 @@ def get_affiliation_option(
     department: str,
     line: str,
     user_sdwt_prod: str,
-) -> AffiliationHierarchy | None:
+) -> Affiliation | None:
     """부서/라인/user_sdwt_prod 조합에 해당하는 소속 옵션 행을 조회합니다.
 
     Return a single affiliation option row, or None when missing.
@@ -284,10 +325,10 @@ def get_affiliation_option(
         return None
 
     try:
-        return AffiliationHierarchy.objects.get(
+        return Affiliation.objects.get(
             department=department.strip(),
             line=line.strip(),
             user_sdwt_prod=user_sdwt_prod.strip(),
         )
-    except AffiliationHierarchy.DoesNotExist:
+    except Affiliation.DoesNotExist:
         return None

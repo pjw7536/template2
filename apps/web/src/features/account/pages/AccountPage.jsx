@@ -81,7 +81,7 @@ export default function AccountPage() {
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold text-foreground">{pageTitle}</h1>
           <p className="text-muted-foreground text-sm">
-            소속(user_sdwt_prod)과 접근 권한을 관리합니다. 실제 변경된 시점을 입력하면 그 이후 메일과 RAG 인덱스가 새 소속으로 분류되도록 기록합니다.
+            소속(user_sdwt_prod) 변경을 신청하고 접근 권한을 관리합니다. 소속 변경은 해당 소속 관리자 또는 슈퍼유저 승인 시점으로 적용됩니다.
           </p>
         </div>
 
