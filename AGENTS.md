@@ -603,6 +603,17 @@ This project supports offsite development by running a local mock via Docker Com
 
 ---
 
+# 12‑2. Container‑First Testing (Mandatory)
+
+LLM MUST:
+
+* Run backend (Django) tests inside the Docker Compose `api` container (not the host Python environment).
+* Use `docker compose -f docker-compose.dev.yml exec -T api python manage.py test ...` for Django tests.
+* Use `docker compose -f docker-compose.dev.yml exec -T api python manage.py ...` for Django management commands.
+* Avoid installing Python dependencies on the host; backend deps MUST be managed via `apps/api/requirements.txt` and baked into the `apps/api` image.
+
+---
+
 # ✔ End of Ultra‑Optimized LLM Constitution (English Edition)
 
 All LLM‑generated output MUST comply with these rules, without exception.

@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -20,8 +19,6 @@ from api.common.constants import (
     SAFE_IDENTIFIER,
 )
 from .db import run_query
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

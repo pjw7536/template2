@@ -1,9 +1,9 @@
 // src/features/line-dashboard/components/LineDashboardShell.jsx
-import { SidebarInset } from "@/components/ui/sidebar"
-import { ContentLayout } from "@/components/layout"
+import { useLocation } from "react-router-dom"
+
+import { SidebarLayout } from "@/components/layout"
 
 import { LineDashboardHeader } from "./LineDashboardHeader"
-import { LineDashboardSidebarProvider } from "./LineDashboardSidebarProvider"
 
 export function LineDashboardShell({
   sidebar,
@@ -14,28 +14,24 @@ export function LineDashboardShell({
   innerClassName = "mx-auto flex h-full w-full flex-col gap-4",
   header,
 }) {
+  const { pathname } = useLocation()
+  const defaultOpen = pathname !== "/"
   const headerNode = header ?? (
     <LineDashboardHeader showSidebarTrigger={Boolean(sidebar)} />
   )
 
   return (
-    <LineDashboardSidebarProvider>
-      {sidebar ?? null}
-      <SidebarInset className="h-screen">
-        <header className="h-16 shrink-0 bg-background">
-          <div className="h-full">{headerNode}</div>
-        </header>
-        <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          <ContentLayout
-            contentMaxWidthClass={contentMaxWidthClass}
-            scrollAreaClassName={scrollAreaClassName}
-            paddingClassName={paddingClassName}
-            innerClassName={innerClassName}
-          >
-            {children}
-          </ContentLayout>
-        </main>
-      </SidebarInset>
-    </LineDashboardSidebarProvider>
+    <SidebarLayout
+      providerKey={pathname}
+      defaultOpen={defaultOpen}
+      sidebar={sidebar}
+      header={headerNode}
+      contentMaxWidthClass={contentMaxWidthClass}
+      scrollAreaClassName={scrollAreaClassName}
+      paddingClassName={paddingClassName}
+      innerClassName={innerClassName}
+    >
+      {children}
+    </SidebarLayout>
   )
 }

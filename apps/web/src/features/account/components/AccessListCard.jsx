@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 
-function AccessList({ title, items }) {
+function AccessList({ items }) {
   if (!items?.length) {
     return <p className="text-sm text-muted-foreground">권한이 없습니다.</p>
   }
@@ -41,7 +41,7 @@ export function AccessListCard({ data }) {
       <CardContent className="flex flex-col gap-4">
         <div className="grid gap-2">
           <h3 className="text-sm font-semibold text-foreground">접근 가능 목록</h3>
-          <AccessList title="접근 가능" items={data?.accessibleUserSdwtProds} />
+          <AccessList items={data?.accessibleUserSdwtProds} />
         </div>
 
         <Separator />

@@ -6,6 +6,7 @@ from .views import (
     AppStoreAppDetailView,
     AppStoreAppsView,
     AppStoreCommentDetailView,
+    AppStoreCommentLikeToggleView,
     AppStoreCommentsView,
     AppStoreLikeToggleView,
     AppStoreViewIncrementView,
@@ -34,5 +35,9 @@ urlpatterns = [
         AppStoreCommentDetailView.as_view(),
         name="appstore-app-comment-detail",
     ),
+    path(
+        "apps/<int:app_id>/comments/<int:comment_id>/like",
+        AppStoreCommentLikeToggleView.as_view(),
+        name="appstore-app-comment-like",
+    ),
 ]
-

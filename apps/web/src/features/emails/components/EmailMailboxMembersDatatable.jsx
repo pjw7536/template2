@@ -1,0 +1,375 @@
+import { useId, useState } from "react"
+
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  CrownIcon,
+  UserRoundIcon,
+} from "lucide-react"
+
+import {
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table"
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+} from "@/components/ui/pagination"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+import { cn } from "@/lib/utils"
+
+const COLUMNS = [
+  {
+    header: "사용자",
+    accessorKey: "user",
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2">
+        <Avatar className="size-9">
+          <AvatarFallback className="text-xs">{row.original.fallback}</AvatarFallback>
+        </Avatar>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{row.getValue("user")}</span>
+          {row.original.secondary ? (
+            <span className="truncate text-xs text-muted-foreground">{row.original.secondary}</span>
+          ) : null}
+        </div>
+      </div>
+    ),
+    size: 360,
+  },
+  {
+    header: "권한",
+    accessorKey: "permission",
+    cell: ({ row }) => {
+      const permission = row.getValue("permission")
+      const isAdmin = permission === "admin"
+
+      return (
+        <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <CrownIcon className="size-4 text-primary" aria-hidden="true" />
+          ) : (
+            <UserRoundIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+          )}
+          <Badge variant={isAdmin ? "default" : "outline"}>
+            {isAdmin ? "관리자" : "멤버"}
+          </Badge>
+        </div>
+      )
+    },
+    size: 180,
+  },
+  {
+    id: "emailCount",
+    header: () => <div className="text-right">메일 수</div>,
+    accessorKey: "emailCount",
+    cell: ({ row }) => {
+      const value = row.getValue("emailCount")
+      const safeNumber = typeof value === "number" ? value : 0
+
+      return <div className="text-right tabular-nums">{safeNumber.toLocaleString()}</div>
+    },
+    size: 140,
+  },
+]
+
+function getPagination({
+  currentPage,
+  totalPages,
+  paginationItemsToDisplay,
+}) {
+  const safeTotalPages = Number.isFinite(totalPages) ? Math.max(0, totalPages) : 0
+  const safeCurrentPage = Number.isFinite(currentPage) ? Math.max(1, currentPage) : 1
+  const safeDisplay = Number.isFinite(paginationItemsToDisplay)
+    ? Math.max(1, paginationItemsToDisplay)
+    : 1
+
+  if (safeTotalPages <= safeDisplay) {
+    const pages = Array.from({ length: safeTotalPages }, (_, index) => index + 1)
+    return { pages, showLeftEllipsis: false, showRightEllipsis: false }
+  }
+
+  const halfDisplay = Math.floor(safeDisplay / 2)
+  const initialRange = {
+    start: safeCurrentPage - halfDisplay,
+    end: safeCurrentPage + halfDisplay,
+  }
+
+  const adjustedRange = {
+    start: Math.max(1, initialRange.start),
+    end: Math.min(safeTotalPages, initialRange.end),
+  }
+
+  if (adjustedRange.start === 1) {
+    adjustedRange.end = Math.min(safeDisplay, safeTotalPages)
+  }
+
+  if (adjustedRange.end === safeTotalPages) {
+    adjustedRange.start = Math.max(1, safeTotalPages - safeDisplay + 1)
+  }
+
+  const pages = Array.from(
+    { length: adjustedRange.end - adjustedRange.start + 1 },
+    (_, index) => adjustedRange.start + index,
+  )
+
+  const showLeftEllipsis = pages.length > 0 && pages[0] > 2
+  const showRightEllipsis = pages.length > 0 && pages[pages.length - 1] < safeTotalPages - 1
+
+  return { pages, showLeftEllipsis, showRightEllipsis }
+}
+
+function PermissionFilter({ column }) {
+  const id = useId()
+  const filterValue = column?.getFilterValue()
+  const value = typeof filterValue === "string" ? filterValue : "all"
+
+  return (
+    <div className="w-full space-y-2">
+      <Label htmlFor={`${id}-permission`}>권한</Label>
+      <Select
+        value={value}
+        onValueChange={(nextValue) => {
+          if (!column) return
+          column.setFilterValue(nextValue === "all" ? undefined : nextValue)
+        }}
+      >
+        <SelectTrigger id={`${id}-permission`} className="w-full">
+          <SelectValue placeholder="권한 선택" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">전체</SelectItem>
+          <SelectItem value="admin">관리자</SelectItem>
+          <SelectItem value="member">멤버</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+export function EmailMailboxMembersDatatable({ data }) {
+  const safeData = Array.isArray(data) ? data : []
+
+  const [columnFilters, setColumnFilters] = useState([])
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+  })
+
+  const table = useReactTable({
+    data: safeData,
+    columns: COLUMNS,
+    getRowId: (row) => row.id,
+    state: {
+      columnFilters,
+      pagination,
+    },
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    enableSortingRemoval: false,
+    onPaginationChange: setPagination,
+  })
+
+  const { pageIndex, pageSize } = table.getState().pagination
+  const totalRows = table.getRowCount()
+  const totalPages = table.getPageCount()
+  const start = totalRows === 0 ? 0 : pageIndex * pageSize + 1
+  const end = totalRows === 0 ? 0 : Math.min(start + pageSize - 1, totalRows)
+
+  const { pages, showLeftEllipsis, showRightEllipsis } = getPagination({
+    currentPage: pageIndex + 1,
+    totalPages,
+    paginationItemsToDisplay: 2,
+  })
+
+  const permissionColumn = table.getColumn("permission")
+
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto,1fr,auto]">
+      <div className="border-b">
+        <div className="flex flex-col gap-3 p-4">
+          <span className="text-lg font-semibold text-foreground">필터</span>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <PermissionFilter column={permissionColumn} />
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 overflow-y-auto">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="h-14 border-t">
+                {headerGroup.headers.map((header) => {
+                  const isEmailCount = header.column.id === "emailCount"
+                  const canSort = header.column.getCanSort()
+
+                  return (
+                    <TableHead
+                      key={header.id}
+                      style={{ width: `${header.getSize()}px` }}
+                      className={cn(
+                        "text-muted-foreground first:pl-4 last:pr-4",
+                        isEmailCount && "text-right",
+                      )}
+                    >
+                      {header.isPlaceholder ? null : canSort ? (
+                        <div
+                          className={cn(
+                            "flex h-full cursor-pointer items-center gap-2 select-none",
+                            isEmailCount ? "justify-end" : "justify-between",
+                          )}
+                          onClick={header.column.getToggleSortingHandler()}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return
+                            event.preventDefault()
+                            header.column.getToggleSortingHandler()?.(event)
+                          }}
+                          tabIndex={0}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {{
+                            asc: (
+                              <ChevronUpIcon
+                                className="shrink-0 opacity-60"
+                                size={16}
+                                aria-hidden="true"
+                              />
+                            ),
+                            desc: (
+                              <ChevronDownIcon
+                                className="shrink-0 opacity-60"
+                                size={16}
+                                aria-hidden="true"
+                              />
+                            ),
+                          }[header.column.getIsSorted()] ?? null}
+                        </div>
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                    </TableHead>
+                  )
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} className="hover:bg-transparent">
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="h-14 first:pl-4 last:pr-4">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={COLUMNS.length}
+                  className="h-24 text-center text-sm text-muted-foreground"
+                >
+                  멤버가 없습니다.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t p-4 max-sm:flex-col">
+        <p className="text-sm text-muted-foreground whitespace-nowrap" aria-live="polite">
+          표시 {start}–{end} / 총 {totalRows}명
+        </p>
+
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <Button
+                className="disabled:pointer-events-none disabled:opacity-50"
+                variant="ghost"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                aria-label="이전 페이지"
+              >
+                <ChevronLeftIcon aria-hidden="true" />
+                이전
+              </Button>
+            </PaginationItem>
+
+            {showLeftEllipsis ? (
+              <PaginationItem>
+                <PaginationEllipsis />
+              </PaginationItem>
+            ) : null}
+
+            {pages.map((page) => {
+              const isActive = page === pageIndex + 1
+
+              return (
+                <PaginationItem key={page}>
+                  <Button
+                    size="icon"
+                    className={cn(
+                      !isActive &&
+                        "bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary/20 dark:focus-visible:ring-primary/40",
+                    )}
+                    onClick={() => table.setPageIndex(page - 1)}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {page}
+                  </Button>
+                </PaginationItem>
+              )
+            })}
+
+            {showRightEllipsis ? (
+              <PaginationItem>
+                <PaginationEllipsis />
+              </PaginationItem>
+            ) : null}
+
+            <PaginationItem>
+              <Button
+                className="disabled:pointer-events-none disabled:opacity-50"
+                variant="ghost"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                aria-label="다음 페이지"
+              >
+                다음
+                <ChevronRightIcon aria-hidden="true" />
+              </Button>
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      </div>
+    </div>
+  )
+}

@@ -6,7 +6,7 @@ export function AppLayout({
   header,
   contentMaxWidthClass = "max-w-10xl",
   scrollAreaClassName = "overflow-y-auto",
-  paddingClassName = "p-4 md:p-6",
+  paddingClassName = "p-3 md:p-3",
   innerClassName = "mx-auto flex h-full w-full flex-col gap-4",
 }) {
   return (

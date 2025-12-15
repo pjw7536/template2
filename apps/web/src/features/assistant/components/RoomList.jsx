@@ -6,7 +6,7 @@ export function RoomList({ rooms = [], activeRoomId, onSelectRoom, onDeleteRoom 
   const hasRooms = Array.isArray(rooms) && rooms.length > 0
 
   return (
-    <div className="space-y-1 overflow-y-auto px-2 pb-3">
+    <div className="space-y-1">
       {hasRooms &&
         rooms.map((room) => (
           <div key={room.id} className="flex items-center gap-2">

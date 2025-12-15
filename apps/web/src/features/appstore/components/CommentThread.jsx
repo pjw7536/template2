@@ -1,20 +1,64 @@
 // src/features/appstore/components/CommentThread.jsx
 import { useState } from "react"
-import { MessageSquare, Send, Trash2 } from "lucide-react"
+import { Heart, MessageSquare, Send, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
+
+function buildCommentTree(comments) {
+  const nodesById = new Map()
+  const roots = []
+
+    ; (comments ?? []).forEach((comment) => {
+      if (!comment?.id) return
+      nodesById.set(comment.id, { ...comment, replies: [] })
+    })
+
+  nodesById.forEach((node) => {
+    const parentId = node.parentCommentId
+    const parent = parentId != null ? nodesById.get(parentId) : null
+    if (parent) {
+      parent.replies.push(node)
+      return
+    }
+    roots.push(node)
+  })
+
+  const sortById = (a, b) => {
+    if (a.id === b.id) return 0
+    if (a.id == null) return -1
+    if (b.id == null) return 1
+    return a.id - b.id
+  }
+
+  const sortTree = (nodes) => {
+    nodes.sort(sortById)
+    nodes.forEach((node) => sortTree(node.replies))
+  }
+
+  sortTree(roots)
+  return roots
+}
 
 function CommentItem({
   comment,
+  depth,
   isUpdating,
   isDeleting,
+  isAdding,
+  onAdd,
+  onToggleLike,
+  isTogglingLike,
+  togglingLikeId,
   onUpdate,
   onDelete,
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(comment.content)
+  const [isReplying, setIsReplying] = useState(false)
+  const [replyDraft, setReplyDraft] = useState("")
 
   const startEdit = () => {
     setDraft(comment.content)
@@ -36,19 +80,64 @@ function CommentItem({
     }
   }
 
+  const startReply = () => {
+    setReplyDraft("")
+    setIsReplying(true)
+  }
+
+  const cancelReply = () => {
+    setReplyDraft("")
+    setIsReplying(false)
+  }
+
+  const submitReply = async () => {
+    if (!replyDraft.trim()) return
+    if (!onAdd) return
+    try {
+      await onAdd(replyDraft.trim(), comment.id)
+      cancelReply()
+    } catch {
+      // 오류는 상위에서 처리
+    }
+  }
+
   return (
-    <div className="rounded-lg border bg-card/50 p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-1">
+    <div className={cn("rounded-lg border p-3", depth > 0 ? "bg-muted/40" : "bg-card/50")}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex w-full justify-between gap-1">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <span>{comment.author?.name || "익명"}</span>
+            <span>{comment.author?.name || "사용자"}</span>
             {comment.author?.knoxid ? (
               <span className="text-xs text-muted-foreground">({comment.author.knoxid})</span>
             ) : null}
           </div>
-          <div className="text-[11px] text-muted-foreground">{comment.createdAt}</div>
+          <div className="text-[11px] text-muted-foreground self-end">{comment.createdAt}</div>
+
         </div>
         <div className="flex items-center gap-1">
+          {onToggleLike ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1 px-2 text-xs"
+              onClick={() => onToggleLike(comment.id)}
+              disabled={isTogglingLike && togglingLikeId === comment.id}
+              type="button"
+            >
+              <Heart className={cn("size-4", comment.liked && "fill-primary text-primary")} />
+              {comment.likeCount ?? 0}
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={isReplying ? cancelReply : startReply}
+            disabled={isAdding || isEditing}
+            type="button"
+          >
+            {isReplying ? "닫기" : "답글"}
+          </Button>
           {comment.canEdit ? (
             <Button
               variant="ghost"
@@ -112,6 +201,32 @@ function CommentItem({
       ) : (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{comment.content}</p>
       )}
+
+      {isReplying ? (
+        <div className="mt-3 space-y-2 rounded-lg border bg-muted/40 p-3">
+          <textarea
+            value={replyDraft}
+            onChange={(event) => setReplyDraft(event.target.value)}
+            placeholder="답글을 입력하세요"
+            className="min-h-[120px] w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              className="gap-1"
+              onClick={submitReply}
+              disabled={isAdding}
+              type="button"
+            >
+              <Send className="size-4" />
+              등록
+            </Button>
+            <Button variant="ghost" size="sm" onClick={cancelReply} type="button">
+              취소
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -121,16 +236,50 @@ export function CommentThread({
   onAdd,
   onUpdate,
   onDelete,
+  onToggleLike,
   isAdding,
   updatingCommentId,
   deletingCommentId,
+  togglingLikeId,
+  isTogglingLike,
 }) {
   const [draft, setDraft] = useState("")
+  const tree = buildCommentTree(comments)
+
+  const renderNode = (commentNode, depth) => {
+    return (
+      <div
+        key={commentNode.id}
+        className={cn("grid gap-3", depth > 0 && "border-l border-border/60 pl-4")}
+      >
+        <CommentItem
+          comment={commentNode}
+          depth={depth}
+          isUpdating={updatingCommentId === commentNode.id}
+          isDeleting={deletingCommentId === commentNode.id}
+          isAdding={isAdding}
+          onAdd={onAdd}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onToggleLike={onToggleLike}
+          isTogglingLike={isTogglingLike}
+          togglingLikeId={togglingLikeId}
+        />
+
+        {commentNode.replies?.length ? (
+          <div className="grid gap-3">
+            {commentNode.replies.map((child) => renderNode(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   const handleAdd = async () => {
     if (!draft.trim()) return
+    if (!onAdd) return
     try {
-      await onAdd(draft.trim())
+      await onAdd(draft.trim(), null)
       setDraft("")
     } catch {
       // 오류는 상위에서 처리
@@ -146,23 +295,14 @@ export function CommentThread({
           </div>
           <div>
             <CardTitle className="text-base">댓글</CardTitle>
-            <p className="text-xs text-muted-foreground">피드백과 연락처 메모를 남겨주세요.</p>
+            <p className="text-xs text-muted-foreground">자유롭게 의견을 남겨주세요.</p>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-3">
-          {comments?.length ? (
-            comments.map((comment) => (
-              <CommentItem
-                key={comment.id}
-                comment={comment}
-                isUpdating={updatingCommentId === comment.id}
-                isDeleting={deletingCommentId === comment.id}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-              />
-            ))
+          {tree?.length ? (
+            tree.map((node) => renderNode(node, 0))
           ) : (
             <p className="text-sm text-muted-foreground">아직 댓글이 없습니다.</p>
           )}

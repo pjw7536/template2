@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 
 import { sendChatMessage } from "../api/send-chat-message"
+import { normalizeChatSources } from "../utils/normalizeChatSources"
 
 const LEGACY_DEFAULT_ROOM_ID = "default"
 const MAX_HISTORY = 20
@@ -10,23 +11,6 @@ const hasWindow = typeof window !== "undefined"
 
 function createMessageId(role) {
   return `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
-
-function normalizeSources(rawSources) {
-  if (!Array.isArray(rawSources)) return []
-
-  return rawSources
-    .map((item) => {
-      if (!item || typeof item !== "object") return null
-      const docId =
-        (typeof item.docId === "string" && item.docId.trim()) ||
-        (typeof item.doc_id === "string" && item.doc_id.trim())
-      if (!docId) return null
-      const title = typeof item.title === "string" ? item.title.trim() : ""
-      const snippet = typeof item.snippet === "string" ? item.snippet.trim() : ""
-      return { docId, title, snippet }
-    })
-    .filter(Boolean)
 }
 
 function generateRoomId() {
@@ -51,7 +35,7 @@ function normalizeMessages(messages) {
         id: message.id || createMessageId(role),
         role,
         content,
-        sources: normalizeSources(message.sources),
+        sources: normalizeChatSources(message.sources),
       }
     })
     .filter(Boolean)
@@ -355,7 +339,7 @@ export function useChatSession(options = {}) {
         typeof result?.reply === "string" && result.reply.trim()
           ? result.reply.trim()
           : "답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
-      const sources = normalizeSources(result?.sources)
+      const sources = normalizeChatSources(result?.sources)
 
       setMessagesByRoom((prev) => ({
         ...prev,

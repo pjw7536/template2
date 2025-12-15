@@ -79,6 +79,7 @@ def _normalize_sources(raw_sources: object) -> List[Dict[str, str]]:
     """RAG 검색 결과에서 프론트에 전달할 출처 리스트를 정규화."""
 
     normalized: List[Dict[str, str]] = []
+    seen_doc_ids: set[str] = set()
     if not isinstance(raw_sources, list):
         return normalized
 
@@ -89,6 +90,9 @@ def _normalize_sources(raw_sources: object) -> List[Dict[str, str]]:
         if not isinstance(doc_id, str) or not doc_id.strip():
             continue
         doc_id_clean = doc_id.strip()
+        if doc_id_clean in seen_doc_ids:
+            continue
+        seen_doc_ids.add(doc_id_clean)
         title_raw = entry.get("title")
         title = title_raw.strip() if isinstance(title_raw, str) else ""
         snippet_raw = entry.get("snippet")

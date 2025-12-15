@@ -161,7 +161,7 @@ export function ChatPage() {
               <div className="mb-2 flex items-center justify-between border-b px-3 pb-2">
                 <span className="text-[11px] text-muted-foreground">방을 선택하세요</span>
               </div>
-              <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+              <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
                 <RoomList
                   rooms={sortedRooms}
                   activeRoomId={activeRoomId}

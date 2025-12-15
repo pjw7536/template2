@@ -188,3 +188,36 @@ class AffiliationChangeRequestTests(TestCase):
         self.assertNotEqual(change.effective_from, requested_effective_from)
         self.assertGreaterEqual(change.effective_from, before)
         self.assertLessEqual(change.effective_from, after)
+
+    def test_request_affiliation_change_applies_immediately_for_first_affiliation(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S50001", password="test-password")
+
+        option = Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-new")
+
+        before = timezone.now()
+        payload, status_code = request_affiliation_change(
+            user=user,
+            option=option,
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now() - timedelta(days=30),
+            timezone_name="Asia/Seoul",
+        )
+        after = timezone.now()
+
+        self.assertEqual(status_code, 200)
+
+        user.refresh_from_db()
+        self.assertEqual(user.user_sdwt_prod, "group-new")
+        self.assertEqual(payload["currentUserSdwtProd"], "group-new")
+
+        access = UserSdwtProdAccess.objects.get(user=user, user_sdwt_prod="group-new")
+        self.assertFalse(access.can_manage)
+
+        change = UserSdwtProdChange.objects.get(user=user, to_user_sdwt_prod="group-new")
+        self.assertTrue(change.approved)
+        self.assertTrue(change.applied)
+        self.assertEqual(change.approved_by_id, user.id)
+        self.assertIsNone(change.from_user_sdwt_prod)
+        self.assertGreaterEqual(change.effective_from, before)
+        self.assertLessEqual(change.effective_from, after)

@@ -17,6 +17,7 @@ import { buildBackendUrl } from "@/lib/api"
 import { DEFAULT_AUTH_CONFIG } from "../utils/authConfig"
 import { fetchJson } from "../utils/fetch-json"
 import { appendNextParam, buildNextUrl } from "../utils/url"
+import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
 
 /**
  * @typedef {Object} AuthUser
@@ -214,5 +215,10 @@ export function AuthProvider({ children }) {
     [user, isLoading, login, logout, loadUser, config],
   )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <UserSdwtProdOnboardingDialog user={user} onCompleted={loadUser} />
+    </AuthContext.Provider>
+  )
 }

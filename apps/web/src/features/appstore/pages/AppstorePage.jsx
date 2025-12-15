@@ -20,6 +20,7 @@ export function AppstorePage() {
   const [editingApp, setEditingApp] = useState(null)
   const [updatingCommentId, setUpdatingCommentId] = useState(null)
   const [deletingCommentId, setDeletingCommentId] = useState(null)
+  const [togglingCommentLikeId, setTogglingCommentLikeId] = useState(null)
 
   const appsQuery = useAppsQuery()
   const apps = appsQuery.data?.apps ?? []
@@ -30,6 +31,7 @@ export function AppstorePage() {
     updateAppMutation,
     deleteAppMutation,
     toggleLikeMutation,
+    toggleCommentLikeMutation,
     viewMutation,
     createCommentMutation,
     updateCommentMutation,
@@ -162,12 +164,23 @@ export function AppstorePage() {
     }
   }
 
-  const handleAddComment = async (appId, content) => {
+  const handleAddComment = async (appId, content, parentCommentId) => {
     try {
-      await createCommentMutation.mutateAsync({ appId, content })
+      await createCommentMutation.mutateAsync({ appId, content, parentCommentId })
       toast.success("댓글을 추가했어요.")
     } catch (error) {
       toast.error(error?.message || "댓글을 추가하지 못했습니다.")
+    }
+  }
+
+  const handleToggleCommentLike = async (appId, commentId) => {
+    setTogglingCommentLikeId(commentId)
+    try {
+      await toggleCommentLikeMutation.mutateAsync({ appId, commentId })
+    } catch (error) {
+      toast.error(error?.message || "댓글 좋아요 토글에 실패했습니다.")
+    } finally {
+      setTogglingCommentLikeId(null)
     }
   }
 
@@ -202,8 +215,8 @@ export function AppstorePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[360px_1fr]">
-        <div className="h-full min-h-0 space-y-4">
+      <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[280px_1fr]">
+        <div className="h-full min-h-0">
           <AppFilters
             totalApps={apps.length}
             query={query}
@@ -221,7 +234,7 @@ export function AppstorePage() {
           />
         </div>
 
-        <div className="min-h-0 overflow-y-auto">
+        <div className="min-h-0 overflow-y-auto pt-0.5">
           <AppList
             apps={filteredApps}
             selectedAppId={selectedAppId}
@@ -264,10 +277,13 @@ export function AppstorePage() {
                   onAddComment={handleAddComment}
                   onUpdateComment={handleUpdateComment}
                   onDeleteComment={handleDeleteComment}
+                  onToggleCommentLike={handleToggleCommentLike}
                   isLiking={toggleLikeMutation.isPending}
                   isAddingComment={createCommentMutation.isPending}
                   updatingCommentId={updatingCommentId}
                   deletingCommentId={deletingCommentId}
+                  togglingCommentLikeId={togglingCommentLikeId}
+                  isTogglingCommentLike={toggleCommentLikeMutation.isPending}
                 />
               </div>
             </div>

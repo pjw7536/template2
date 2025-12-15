@@ -10,7 +10,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableHeader,
   TableRow,
@@ -29,7 +28,7 @@ function MembersTable({ groups, onRevoke }) {
             <h4 className="text-sm font-semibold text-foreground">{group.userSdwtProd}</h4>
             <Badge variant="secondary">관리</Badge>
           </div>
-          <TableContainer className="rounded-lg border">
+          <div className="rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -77,7 +76,7 @@ function MembersTable({ groups, onRevoke }) {
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </div>
         </div>
       ))}
     </div>

@@ -5,7 +5,6 @@ import {
   RECENT_HOURS_DAY_MODE_MIN_DAYS,
   RECENT_HOURS_DAY_MODE_THRESHOLD,
   RECENT_HOURS_DAY_STEP,
-  RECENT_HOURS_MAX,
   clampRecentHours,
   createRecentHoursRange,
   normalizeRecentHoursRange,

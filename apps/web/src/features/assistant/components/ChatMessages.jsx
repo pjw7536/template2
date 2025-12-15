@@ -4,7 +4,7 @@ import { Link } from "react-router-dom"
 import { AssistantStatusIndicator } from "./AssistantStatusIndicator"
 import { formatAssistantMessage } from "../utils/formatAssistantMessage"
 
-export function ChatMessages({ messages = [], isSending }) {
+export function ChatMessages({ messages = [], isSending, fillBubbles = false }) {
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -12,18 +12,18 @@ export function ChatMessages({ messages = [], isSending }) {
   }, [messages, isSending])
 
   return (
-    <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+    <div className="flex-1 min-h-0 space-y-3 overflow-y-auto px-4 py-3">
       {messages.map((message) => {
         const isUser = message.role === "user"
         const sources = Array.isArray(message.sources) ? message.sources : []
         const baseBubbleClasses = [
-          "max-w-[80%]",
+          "max-w-[90%]",
           "rounded-2xl",
           "px-4",
           "py-2",
           "text-sm",
           "shadow-sm",
-        ]
+        ].filter(Boolean)
 
         return (
           <div
@@ -41,7 +41,7 @@ export function ChatMessages({ messages = [], isSending }) {
                 {message.content}
               </pre>
             ) : (
-              <div className="space-y-2">
+              <div className={["space-y-2", fillBubbles ? "w-full" : null].filter(Boolean).join(" ")}>
                 <div
                   className={[
                     ...baseBubbleClasses,
@@ -55,7 +55,15 @@ export function ChatMessages({ messages = [], isSending }) {
                   dangerouslySetInnerHTML={{ __html: formatAssistantMessage(message.content) }}
                 />
                 {sources.length > 0 ? (
-                  <div className="inline-flex max-w-[80%] flex-wrap items-center gap-2 rounded-xl border bg-background px-3 py-2 text-[11px] text-muted-foreground shadow-sm">
+                  <div
+                    className={[
+                      "inline-flex",
+                      "max-w-[80%]",
+                      "flex-wrap items-center gap-2 rounded-xl border bg-background px-3 py-2 text-[11px] text-muted-foreground shadow-sm",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
                     <span className="text-xs font-semibold text-foreground">관련 메일</span>
                     <div className="flex flex-wrap gap-1">
                       {sources.map((source) => (

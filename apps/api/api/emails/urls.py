@@ -9,6 +9,7 @@ from .views import (
     EmailIngestTriggerView,
     EmailListView,
     EmailMailboxListView,
+    EmailMailboxMembersView,
     EmailUnassignedClaimView,
     EmailUnassignedSummaryView,
 )
@@ -16,6 +17,7 @@ from .views import (
 urlpatterns = [
     path("", EmailListView.as_view(), name="emails-list"),
     path("mailboxes/", EmailMailboxListView.as_view(), name="emails-mailboxes"),
+    path("mailboxes/members/", EmailMailboxMembersView.as_view(), name="emails-mailbox-members"),
     path("unassigned/", EmailUnassignedSummaryView.as_view(), name="emails-unassigned-summary"),
     path("unassigned/claim/", EmailUnassignedClaimView.as_view(), name="emails-unassigned-claim"),
     path("ingest/", EmailIngestTriggerView.as_view(), name="emails-ingest"),

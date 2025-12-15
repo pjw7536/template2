@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from django.db import transaction
 from django.utils import timezone
@@ -10,7 +9,19 @@ from django.utils import timezone
 from .models import UserProfile, UserSdwtProdAccess, UserSdwtProdChange
 from . import selectors
 
-logger = logging.getLogger(__name__)
+
+def _is_privileged_user(user: Any) -> bool:
+    """superuser/staff 여부를 반환합니다."""
+
+    return bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+
+
+def _user_can_manage_user_sdwt_prod(*, user: Any, user_sdwt_prod: str) -> bool:
+    """사용자가 user_sdwt_prod 그룹을 관리할 권한이 있는지 반환합니다."""
+
+    if _is_privileged_user(user):
+        return True
+    return selectors.user_has_manage_permission(user=user, user_sdwt_prod=user_sdwt_prod)
 
 
 def ensure_user_profile(user: Any) -> UserProfile:
@@ -95,6 +106,9 @@ def request_affiliation_change(
 
     Request (or immediately apply) a user_sdwt_prod affiliation change.
 
+    - superuser/staff는 즉시 적용합니다.
+    - user.user_sdwt_prod가 비어있는 최초 설정(onboarding)도 즉시 적용합니다.
+
     Returns:
         (payload, http_status)
 
@@ -105,8 +119,17 @@ def request_affiliation_change(
 
     ensure_self_access(user, as_manager=False)
 
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-        previous_user_sdwt = getattr(user, "user_sdwt_prod", None)
+    current_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+    has_current_user_sdwt_prod = bool(
+        isinstance(current_user_sdwt_prod, str) and current_user_sdwt_prod.strip()
+    )
+    is_privileged = _is_privileged_user(user)
+    is_first_affiliation = not has_current_user_sdwt_prod
+
+    if is_privileged or is_first_affiliation:
+        now = timezone.now()
+        previous_user_sdwt = current_user_sdwt_prod if has_current_user_sdwt_prod else None
+        applied_effective_from = effective_from if is_privileged else now
 
         with transaction.atomic():
             UserSdwtProdChange.objects.create(
@@ -115,11 +138,11 @@ def request_affiliation_change(
                 line=getattr(option, "line", None),
                 from_user_sdwt_prod=previous_user_sdwt,
                 to_user_sdwt_prod=to_user_sdwt_prod,
-                effective_from=effective_from,
+                effective_from=applied_effective_from,
                 applied=True,
                 approved=True,
                 approved_by=user,
-                approved_at=timezone.now(),
+                approved_at=now,
                 created_by=user,
             )
 
@@ -128,16 +151,12 @@ def request_affiliation_change(
             user.line = getattr(option, "line", None)
             user.save(update_fields=["user_sdwt_prod", "department", "line"])
 
-            ensure_self_access(user, as_manager=True)
+            ensure_self_access(user, as_manager=is_privileged)
 
-            if (
-                isinstance(previous_user_sdwt, str)
-                and previous_user_sdwt
-                and previous_user_sdwt != to_user_sdwt_prod
-            ):
+            if has_current_user_sdwt_prod and current_user_sdwt_prod != to_user_sdwt_prod:
                 UserSdwtProdAccess.objects.filter(
                     user=user,
-                    user_sdwt_prod=previous_user_sdwt,
+                    user_sdwt_prod=current_user_sdwt_prod,
                 ).delete()
 
         return get_affiliation_overview(user=user, timezone_name=timezone_name), 200
@@ -188,11 +207,7 @@ def approve_affiliation_change(
     if change is None:
         return {"error": "Change not found"}, 404
 
-    if not (
-        getattr(approver, "is_superuser", False)
-        or getattr(approver, "is_staff", False)
-        or selectors.user_has_manage_permission(user=approver, user_sdwt_prod=change.to_user_sdwt_prod)
-    ):
+    if not _user_can_manage_user_sdwt_prod(user=approver, user_sdwt_prod=change.to_user_sdwt_prod):
         return {"error": "forbidden"}, 403
 
     if change.approved or change.applied:
@@ -257,9 +272,8 @@ def grant_or_revoke_access(
 
     ensure_self_access(grantor, as_manager=False)
 
-    if not (getattr(grantor, "is_superuser", False) or getattr(grantor, "is_staff", False)):
-        if not selectors.user_has_manage_permission(user=grantor, user_sdwt_prod=target_group):
-            return {"error": "forbidden"}, 403
+    if not _user_can_manage_user_sdwt_prod(user=grantor, user_sdwt_prod=target_group):
+        return {"error": "forbidden"}, 403
 
     normalized_action = (action or "grant").lower()
     if normalized_action == "revoke":

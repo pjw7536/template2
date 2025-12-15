@@ -606,9 +606,9 @@ export function ChatWidget() {
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {isSidebarOpen && (
-            <aside className="flex w-52 shrink-0 flex-col border-r bg-muted/40">
+            <aside className="flex w-52 shrink-0 min-h-0 flex-col border-r bg-muted/40">
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="space-y-0.5">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>
@@ -624,7 +624,7 @@ export function ChatWidget() {
                 </Button>
               </div>
               <div className="mb-2 flex items-center justify-between border-b px-3 pb-2" />
-              <div className="space-y-1 overflow-y-auto px-2 pb-3">
+              <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
                 <RoomList
                   rooms={sortedRooms}
                   activeRoomId={activeRoomId}
@@ -635,8 +635,8 @@ export function ChatWidget() {
             </aside>
           )}
 
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <ChatMessages messages={messages} isSending={isSending} />
+          <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+            <ChatMessages messages={messages} isSending={isSending} fillBubbles />
 
             <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
 

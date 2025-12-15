@@ -13,7 +13,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableHeader,
   TableRow,
@@ -235,77 +234,75 @@ export function LineDashboardOverviewPage() {
           </p>
         </CardHeader>
         <CardContent className="pb-6">
-          <TableContainer>
-            <Table stickyHeader>
-              <TableHeader>
+          <Table stickyHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead>DAG</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Latest Run</TableHead>
+                <TableHead>Schedule</TableHead>
+                <TableHead>Owners</TableHead>
+                <TableHead>Tags</TableHead>
+                <TableHead>Next Run</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dags.length === 0 ? (
                 <TableRow>
-                  <TableHead>DAG</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Latest Run</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Owners</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead>Next Run</TableHead>
+                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    등록된 DAG 가 없습니다.
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dags.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                      등록된 DAG 가 없습니다.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  dags.map((dag, index) => {
-                    const airflowDagUrl = `${overview?.baseUrl}/dags/${encodeURIComponent(dag.dagId)}/grid`
-                    const latestExecution = dag.latestRun?.executionDate
-                    return (
-                      <TableRow key={dag.dagId || `dag-${index}`}>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <a
-                              href={airflowDagUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-primary hover:underline"
-                            >
-                              {dag.dagId || "(unnamed)"}
-                            </a>
-                            {dag.description && (
-                              <span className="text-xs text-muted-foreground">{dag.description}</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>{getStatusBadge(dag)}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            {getRunBadge(dag.latestRun)}
-                            {latestExecution && (
-                              <span className="text-xs text-muted-foreground">
-                                {formatDate(latestExecution)}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-xs text-muted-foreground">
-                            {dag.timetable || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell>{renderOwnerList(dag.owners)}</TableCell>
-                        <TableCell>{renderTagList(dag.tags)}</TableCell>
-                        <TableCell>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(dag.nextRun) || "—"}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+              ) : (
+                dags.map((dag, index) => {
+                  const airflowDagUrl = `${overview?.baseUrl}/dags/${encodeURIComponent(dag.dagId)}/grid`
+                  const latestExecution = dag.latestRun?.executionDate
+                  return (
+                    <TableRow key={dag.dagId || `dag-${index}`}>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <a
+                            href={airflowDagUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {dag.dagId || "(unnamed)"}
+                          </a>
+                          {dag.description && (
+                            <span className="text-xs text-muted-foreground">{dag.description}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(dag)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {getRunBadge(dag.latestRun)}
+                          {latestExecution && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatDate(latestExecution)}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {dag.timetable || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>{renderOwnerList(dag.owners)}</TableCell>
+                      <TableCell>{renderTagList(dag.tags)}</TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(dag.nextRun) || "—"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </section>

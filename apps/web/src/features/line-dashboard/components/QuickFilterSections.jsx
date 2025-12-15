@@ -394,17 +394,16 @@ function MainStepDropdownSection({ section, legendId, current, onToggle }) {
 
         <DropdownMenuContent align="start" className="w-80 p-2">
           <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-md border p-1">
-              <div className="px-1 pb-1 text-[10px] font-semibold text-muted-foreground">
-                Step선택
-              </div>
-              <div className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
-                {suffixOptions.map((option) => {
-                  const isActive = option.value === activeSuffix
-                  const isSelected = selectionMap.has(option.value)
-                  return (
-                    <button
-                      key={option.value}
+	            <div className="rounded-md border p-1">
+	              <div className="px-1 pb-1 text-[10px] font-semibold text-muted-foreground">
+	                Step선택
+	              </div>
+	              <div className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
+	                {suffixOptions.map((option) => {
+	                  const isSelected = selectionMap.has(option.value)
+	                  return (
+	                    <button
+	                      key={option.value}
                       type="button"
                       onClick={(event) => {
                         event.preventDefault()

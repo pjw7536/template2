@@ -1,4 +1,4 @@
-import { BellIcon, MenuIcon, SearchIcon } from "lucide-react"
+import { BellIcon, SearchIcon } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils"
 import NotificationDropdown from "./NotificationDropdown"
 import { HomeNavLink } from "./HomeNavLink"
 import ProfileDropdown from "./ProfileDropdown"
-import MenuSheet from "./MenuSheet"
 
 const HomeNavbar = ({ navigationItems }) => {
   const renderIcon = (Icon) => {
@@ -29,16 +28,6 @@ const HomeNavbar = ({ navigationItems }) => {
   return (
     <div className="flex h-full w-full items-center gap-6 px-4 md:px-6">
       <div className="flex flex-1 items-center gap-4">
-        <MenuSheet
-          logoName="Job Management"
-          navigationItems={navigationItems}
-          trigger={
-            <Button variant="outline" size="icon" className="inline-flex lg:hidden">
-              <MenuIcon />
-              <span className="sr-only">Menu</span>
-            </Button>
-          }
-        />
         <HomeNavLink href="/" className="flex items-center gap-3">
           <Logo className="size-8" />
           <span className="hidden text-xl font-semibold sm:block">Etch AX Portal</span>
@@ -46,7 +35,7 @@ const HomeNavbar = ({ navigationItems }) => {
       </div>
 
       <NavigationMenu viewport={false} className="hidden flex-1 justify-center lg:flex">
-        <NavigationMenuList className="flex-wrap justify-center gap-1">
+        <NavigationMenuList className="justify-center gap-1">
           {navigationItems.map((navItem) => {
             const Icon = navItem.icon
             if (navItem.href) {

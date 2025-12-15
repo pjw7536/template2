@@ -75,10 +75,13 @@ export function AppDetail({
   onAddComment,
   onUpdateComment,
   onDeleteComment,
+  onToggleCommentLike,
   isLiking,
   isAddingComment,
   updatingCommentId,
   deletingCommentId,
+  togglingCommentLikeId,
+  isTogglingCommentLike,
 }) {
   if (isLoading) {
     return (
@@ -164,46 +167,30 @@ export function AppDetail({
               ) : null}
             </div>
           </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <InfoRow icon={User} label="담당자 이름" value={app.contactName} />
+            <InfoRow icon={Shield} label="담당자 Knox ID" value={app.contactKnoxid} />
+            <InfoRow icon={ArrowUpRight} label="접속 URL" value={app.url} muted />
+          </div>
+          <Separator className="bg-border" />
           <CardDescription className="text-sm leading-relaxed text-foreground">
             {app.description || "설명이 없습니다."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="overflow-hidden rounded-xl border bg-muted">
+          <div className="grid h-56 place-items-center overflow-hidden rounded-xl border bg-muted sm:h-64 md:h-72">
             {app.screenshotUrl ? (
               <img
                 src={app.screenshotUrl}
                 alt={`${app.name} 스크린샷`}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 loading="lazy"
               />
             ) : (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                 등록된 스크린샷이 없습니다.
               </div>
             )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {app.tags?.length ? (
-              app.tags.map((tag) => (
-                <Badge
-                  key={`${app.id}-${tag}`}
-                  variant="outline"
-                  className="rounded-full bg-background/70 px-3 py-1 text-xs"
-                >
-                  {tag}
-                </Badge>
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">등록된 태그가 없습니다.</span>
-            )}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <InfoRow icon={User} label="담당자 이름" value={app.contactName} />
-            <InfoRow icon={Shield} label="담당자 Knox ID" value={app.contactKnoxid} />
-            <InfoRow icon={ArrowUpRight} label="접속 URL" value={app.url} muted />
           </div>
 
           <Separator className="bg-border" />
@@ -222,12 +209,15 @@ export function AppDetail({
           ...comment,
           createdAt: formatCommentTimeToKst(comment.createdAt) || comment.createdAt,
         }))}
-        onAdd={(content) => onAddComment?.(app.id, content)}
+        onAdd={(content, parentCommentId) => onAddComment?.(app.id, content, parentCommentId)}
         onUpdate={(commentId, content) => onUpdateComment?.(app.id, commentId, content)}
         onDelete={(commentId) => onDeleteComment?.(app.id, commentId)}
+        onToggleLike={(commentId) => onToggleCommentLike?.(app.id, commentId)}
         isAdding={isAddingComment}
         updatingCommentId={updatingCommentId}
         deletingCommentId={deletingCommentId}
+        togglingLikeId={togglingCommentLikeId}
+        isTogglingLike={isTogglingCommentLike}
       />
     </div>
   )

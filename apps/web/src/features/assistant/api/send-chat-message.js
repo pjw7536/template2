@@ -1,5 +1,7 @@
 import { buildBackendUrl, getBackendBaseUrl } from "@/lib/api"
 
+import { normalizeChatSources } from "../utils/normalizeChatSources"
+
 const DEFAULT_CHAT_PATH = "/api/v1/assistant/chat"
 const REQUEST_TIMEOUT_MS = 15000
 
@@ -82,23 +84,6 @@ function extractAssistantReply(payload) {
   return assistantMessage.trim()
 }
 
-function normalizeSources(raw) {
-  if (!Array.isArray(raw)) return []
-
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null
-      const docId =
-        (typeof item.docId === "string" && item.docId.trim()) ||
-        (typeof item.doc_id === "string" && item.doc_id.trim())
-      if (!docId) return null
-      const title = typeof item.title === "string" ? item.title.trim() : ""
-      const snippet = typeof item.snippet === "string" ? item.snippet.trim() : ""
-      return { docId, title, snippet }
-    })
-    .filter(Boolean)
-}
-
 export async function sendChatMessage({ prompt, history = [], roomId }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
@@ -150,7 +135,7 @@ export async function sendChatMessage({ prompt, history = [], roomId }) {
 
   data = await response.json().catch(() => ({}))
   const reply = extractAssistantReply(data)
-  const sources = normalizeSources(data.sources)
+  const sources = normalizeChatSources(data.sources)
 
   return {
     reply,

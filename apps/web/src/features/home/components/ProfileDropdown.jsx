@@ -1,4 +1,3 @@
-import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   UserIcon,
@@ -9,6 +8,7 @@ import {
 } from 'lucide-react'
 
 import { useAuth } from '@/lib/auth'
+import { buildBackendUrl } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -36,21 +36,21 @@ const ProfileDropdown = ({
     'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png'
   const initials = (displayName || email || 'JD').slice(0, 2).toUpperCase()
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = () => {
     logout()
       .catch(() => { })
       .finally(() => {
         navigate('/login')
       })
-  }, [logout, navigate])
+  }
 
-  const handleMyAccount = useCallback(() => {
+  const handleMyAccount = () => {
     navigate('/account')
-  }, [navigate])
+  }
 
-  const handleAdmin = useCallback(() => {
-    navigate('/admin')
-  }, [navigate])
+  const handleAdmin = () => {
+    window.location.assign(buildBackendUrl('/admin/'))
+  }
 
   return (
     <DropdownMenu defaultOpen={defaultOpen}>

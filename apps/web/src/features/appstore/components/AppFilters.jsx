@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 
 export function AppFilters({
   totalApps,
@@ -19,38 +20,50 @@ export function AppFilters({
   isCreating,
 }) {
   return (
-    <div className="grid gap-4">
-      <Card className="rounded-2xl border bg-card shadow-sm">
+    <div className="grid h-full min-h-0 grid-rows-[190px_1fr] gap-2">
+      <Card className="rounded-2xl border bg-card shadow-sm gap-0">
         <CardHeader className="space-y-2 pb-3">
           <Badge variant="secondary" className="w-fit rounded-full bg-primary/10 text-primary">
             Appstore
           </Badge>
           <CardTitle className="text-base">앱 등록 및 탐색</CardTitle>
-          <CardDescription>연결 정보를 모으고 담당자 정보를 함께 관리하세요.</CardDescription>
+          <CardDescription>Etch기술팀 Appstore입니다</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
-            {totalApps}개 앱
-          </span>
-          <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
-            {Math.max(categories.length - 1, 0)}개 카테고리
-          </span>
+        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCreate}
+            disabled={isCreating}
+            className="gap-1"
+            type="button"
+          >
+            <Plus className="size-4" />
+            앱 등록
+          </Button>
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border bg-card shadow-sm">
+      <Card className="min-h-0 rounded-2xl border bg-card shadow-sm flex flex-col gap-0">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">검색 및 필터</CardTitle>
-          <CardDescription>카테고리/검색어로 빠르게 찾고 정리하세요.</CardDescription>
+          <CardDescription>
+            <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
+              {totalApps}개 앱
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
+              {Math.max(categories.length - 1, 0)}개 카테고리
+            </span>
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent className="flex flex-1 min-h-0 flex-col gap-4">
           <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
             <Search className="size-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="앱 이름, 설명, 태그 검색"
-              className="h-9 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="h-6 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             {query && (
               <Button
@@ -65,36 +78,21 @@ export function AppFilters({
             )}
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium">카테고리</div>
-              <p className="text-xs text-muted-foreground">업무 영역별로 좁혀보세요.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onCreate}
-                disabled={isCreating}
-                className="gap-1"
-                type="button"
-              >
-                <Plus className="size-4" />
-                앱 등록
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onReset}
-                type="button"
-                className="text-xs text-muted-foreground"
-              >
-                초기화
-              </Button>
-            </div>
+          <Separator className="bg-border" />
+          <div className="flex justify-between">
+            <div className="text-sm font-medium">카테고리</div>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={onReset}
+              type="button"
+              className="text-xs text-muted-foreground"
+            >
+              필터초기화
+            </Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid flex-1 min-h-0 grid-cols-2 gap-2 overflow-y-auto">
             {categories.map((option) => (
               <Button
                 key={option}

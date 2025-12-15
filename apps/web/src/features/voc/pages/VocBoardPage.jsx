@@ -30,7 +30,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableHeader,
   TableRow,
@@ -437,8 +436,8 @@ export function VocBoardPage() {
       </Card>
 
       <section className="flex w-full flex-1 min-h-0 flex-col gap-3 overflow-hidden">
-        <TableContainer
-          className="w-full flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-lg border bg-background"
+        <div
+          className="w-full flex-1 min-h-0 overflow-y-auto rounded-lg border bg-background"
           aria-busy={isLoading || isRefreshing}
         >
           <Table stickyHeader className="table-fixed [&_th]:text-center [&_td]:text-center">
@@ -500,7 +499,7 @@ export function VocBoardPage() {
               )}
             </TableBody>
           </Table>
-        </TableContainer>
+        </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

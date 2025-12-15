@@ -19,7 +19,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableHeader,
   TableRow,
@@ -424,7 +423,7 @@ export function LineSettingsPage({ lineId = "" }) {
       </div>
 
       <div className="min-h-0 flex-1 rounded-lg border bg-background">
-        <TableContainer className="max-h-full overflow-auto">
+        <div className="max-h-full min-h-0 overflow-y-auto">
           <Table stickyHeader className="w-full table-fixed">
             <colgroup>
               <col className="w-30" />
@@ -575,7 +574,7 @@ export function LineSettingsPage({ lineId = "" }) {
               })}
             </TableBody>
           </Table>
-        </TableContainer>
+        </div>
       </div>
     </section>
   )

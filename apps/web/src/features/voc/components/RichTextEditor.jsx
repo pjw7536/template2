@@ -26,6 +26,24 @@ export function RichTextEditor({
     return html
   }, [])
 
+  const handleWrapperPointerDown = (event) => {
+    if (readOnly || !quill) return
+    if (event.pointerType === "mouse" && event.button !== 0) return
+
+    const target = event.target
+    if (target && typeof target.closest === "function") {
+      if (target.closest(".ql-toolbar")) return
+      const clickedEditor = target.closest(".ql-editor")
+      quill.focus()
+      if (!clickedEditor) {
+        quill.setSelection(quill.getLength(), 0, "silent")
+      }
+      return
+    }
+
+    quill.focus()
+  }
+
   React.useEffect(() => {
     if (!quill) return undefined
     const handleChange = () => {
@@ -54,7 +72,10 @@ export function RichTextEditor({
   }, [quill, readOnly])
 
   return (
-    <div className={["voc-quill", className].filter(Boolean).join(" ")}>
+    <div
+      className={["voc-quill", className].filter(Boolean).join(" ")}
+      onPointerDownCapture={handleWrapperPointerDown}
+    >
       <div
         id={id}
         ref={quillRef}

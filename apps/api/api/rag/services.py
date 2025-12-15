@@ -1,3 +1,5 @@
+"""RAG integration services (index naming, search, insert, delete)."""
+
 from __future__ import annotations
 
 import json
@@ -90,7 +92,9 @@ RAG_PERMISSION_GROUPS = (
     _parse_permission_groups(_read_setting("ASSISTANT_RAG_PERMISSION_GROUPS"))
     or _parse_permission_groups(_read_setting("RAG_PERMISSION_GROUPS"))
 )
-RAG_CHUNK_FACTOR = _parse_chunk_factor(_read_setting("ASSISTANT_RAG_CHUNK_FACTOR") or _read_setting("RAG_CHUNK_FACTOR"))
+RAG_CHUNK_FACTOR = _parse_chunk_factor(
+    _read_setting("ASSISTANT_RAG_CHUNK_FACTOR") or _read_setting("RAG_CHUNK_FACTOR")
+)
 RAG_ERROR_LOG_PATH = _read_setting("RAG_ERROR_LOG_PATH") or str(Path(settings.BASE_DIR) / "logs" / "rag_errors.log")
 
 _custom_headers = _parse_headers(_read_setting("ASSISTANT_RAG_HEADERS")) or _parse_headers(_read_setting("RAG_HEADERS"))
@@ -154,18 +158,50 @@ def _safe_response_details(response: requests.Response | None) -> Dict[str, Any]
     }
 
 
-def _log_rag_failure(action: str, payload: Dict[str, Any] | None, error: Exception) -> None:
+def _log_rag_failure(
+    action: str,
+    payload: Dict[str, Any] | None,
+    error: Exception,
+    *,
+    response: requests.Response | None = None,
+) -> None:
     """RAG 요청 실패를 파일/표준 로거에 구조화된 형태로 기록합니다."""
 
     logger = _ensure_rag_error_logger()
     payload_data = payload.get("data", {}) if isinstance(payload, dict) else {}
+    if not isinstance(payload_data, dict):
+        payload_data = {}
+
+    doc_id = payload_data.get("doc_id")
+    if not doc_id and isinstance(payload, dict):
+        doc_id = payload.get("doc_id")
+
+    email_id = payload_data.get("email_id")
+    if not email_id and isinstance(payload, dict):
+        email_id = payload.get("email_id")
+
+    department = payload_data.get("department")
+    if not department and isinstance(payload, dict):
+        department = payload.get("department")
+
+    query_text_preview = None
+    if isinstance(payload, dict):
+        query_text = payload.get("query_text")
+        if isinstance(query_text, str):
+            normalized = query_text.strip()
+            if len(normalized) > 200:
+                normalized = f"{normalized[:200]}...(truncated)"
+            query_text_preview = normalized or None
+
     context = {
         "action": action,
         "index_name": payload.get("index_name") if isinstance(payload, dict) else None,
-        "doc_id": payload_data.get("doc_id"),
-        "email_id": payload_data.get("email_id"),
-        "department": payload_data.get("department"),
-        **_safe_response_details(getattr(error, "response", None)),
+        "doc_id": doc_id,
+        "email_id": email_id,
+        "department": department,
+        "query_text_preview": query_text_preview,
+        "num_result_doc": payload.get("num_result_doc") if isinstance(payload, dict) else None,
+        **_safe_response_details(getattr(error, "response", None) or response),
     }
     try:
         logger.error("RAG request failed | context=%s | error=%s", context, error)
@@ -198,7 +234,7 @@ def resolve_rag_index_name(user_sdwt_prod: str | None) -> str:
     return f"{prefix}{resolved}"
 
 
-def _build_insert_payload(email, index_name: str | None = None) -> Dict[str, Any]:
+def _build_insert_payload(email: Any, index_name: str | None = None) -> Dict[str, Any]:
     """이메일 객체를 RAG insert 요청 payload로 변환합니다."""
 
     resolved_index_name = resolve_rag_index_name(index_name or getattr(email, "user_sdwt_prod", None))
@@ -236,7 +272,92 @@ def _build_delete_payload(doc_id: str, index_name: str | None = None) -> Dict[st
     }
 
 
-def insert_email_to_rag(email, index_name: str | None = None):
+def _build_search_payload(
+    query_text: str,
+    *,
+    index_name: str | None = None,
+    num_result_doc: int = 5,
+    permission_groups: Sequence[str] | None = None,
+) -> Dict[str, Any]:
+    """RAG search 요청 payload를 생성합니다."""
+
+    resolved_index_name = resolve_rag_index_name(index_name)
+
+    normalized_query = str(query_text).strip()
+    normalized_num = int(num_result_doc) if isinstance(num_result_doc, int) else 5
+    if normalized_num <= 0:
+        normalized_num = 5
+
+    return {
+        "index_name": resolved_index_name,
+        "permission_groups": list(permission_groups) if permission_groups is not None else RAG_PERMISSION_GROUPS,
+        "query_text": normalized_query,
+        "num_result_doc": normalized_num,
+    }
+
+
+def search_rag(
+    query_text: str,
+    *,
+    index_name: str | None = None,
+    num_result_doc: int = 5,
+    permission_groups: Sequence[str] | None = None,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """RAG에서 query_text 기반으로 문서 검색.
+
+    Args:
+        query_text: 검색 질의문
+        index_name: 기본 인덱스명을 override 할 값 (없으면 settings/env 기본값 사용)
+        num_result_doc: 반환 문서 개수
+        permission_groups: 권한 그룹 override (없으면 기본값 사용)
+        timeout: HTTP timeout (seconds)
+
+    Returns:
+        RAG 서버의 JSON 응답 dict
+
+    Raises:
+        ValueError: 필수 설정이 누락된 경우
+        requests.RequestException: 네트워크/HTTP 오류
+        json.JSONDecodeError: JSON 파싱 실패
+    """
+
+    payload = _build_search_payload(
+        query_text,
+        index_name=index_name,
+        num_result_doc=num_result_doc,
+        permission_groups=permission_groups,
+    )
+
+    resolved_index_name = payload.get("index_name")
+
+    if not RAG_SEARCH_URL:
+        error = ValueError("RAG_SEARCH_URL is not configured")
+        _log_rag_failure("search", payload, error)
+        raise error
+    if not resolved_index_name:
+        error = ValueError("RAG_INDEX_NAME is not configured")
+        _log_rag_failure("search", payload, error)
+        raise error
+    if not payload.get("query_text"):
+        error = ValueError("query_text is empty")
+        _log_rag_failure("search", payload, error)
+        raise error
+
+    try:
+        resp = requests.post(RAG_SEARCH_URL, headers=RAG_HEADERS, json=payload, timeout=max(1, int(timeout)))
+        resp.raise_for_status()
+        try:
+            return resp.json()
+        except (json.JSONDecodeError, ValueError) as exc:
+            _log_rag_failure("search", payload, exc, response=resp)
+            raise
+    except Exception as exc:
+        _log_rag_failure("search", payload, exc)
+        raise
+
+
+def insert_email_to_rag(email: Any, index_name: str | None = None) -> None:
     """Email 모델을 RAG 인덱스에 등록."""
 
     payload = _build_insert_payload(email, index_name=index_name)
@@ -260,7 +381,7 @@ def insert_email_to_rag(email, index_name: str | None = None):
         raise
 
 
-def delete_rag_doc(doc_id: str, index_name: str | None = None):
+def delete_rag_doc(doc_id: str, index_name: str | None = None) -> None:
     """RAG에서 doc_id에 해당하는 문서를 삭제."""
 
     payload = _build_delete_payload(doc_id, index_name=index_name)
@@ -282,3 +403,18 @@ def delete_rag_doc(doc_id: str, index_name: str | None = None):
     except Exception as exc:
         _log_rag_failure("delete", payload, exc)
         raise
+
+
+__all__ = [
+    "RAG_CHUNK_FACTOR",
+    "RAG_DELETE_URL",
+    "RAG_HEADERS",
+    "RAG_INDEX_NAME",
+    "RAG_INSERT_URL",
+    "RAG_PERMISSION_GROUPS",
+    "RAG_SEARCH_URL",
+    "delete_rag_doc",
+    "insert_email_to_rag",
+    "search_rag",
+    "resolve_rag_index_name",
+]

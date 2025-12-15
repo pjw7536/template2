@@ -46,7 +46,7 @@ export function AppList({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-5">
+    <div className="grid grid-cols-[repeat(auto-fit,280px)] gap-3">
       {apps.map((app) => {
         const isSelected = selectedAppId === app.id
 
@@ -55,14 +55,21 @@ export function AppList({
             key={app.id}
             onClick={() => onSelect(app.id)}
             className={cn(
-              "flex h-full min-h-[200px] cursor-pointer flex-col overflow-hidden border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+              "flex h-full min-h-[200px] cursor-pointer flex-col gap-0 py-3 overflow-hidden border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
               isSelected && "border-primary/60 ring-1 ring-primary/30",
             )}
           >
             {/* ✅ 상단을 2컬럼(Grid)로 분리 */}
-            <div className="grid grid-cols-[64px_1fr] gap-3 p-3 pb-2">
+            {/* 예: 뱃지(선택) */}
+            <div className="flex justify-start px-5 pb-2">
+              <Badge variant="secondary" className="shrink-0 text-[11px]">
+                {app.category || "기타"}
+              </Badge>
+            </div>
+            <Separator className="bg-border" />
+            <div className="grid grid-cols-[128px_1fr] gap-3 px-3 py-2">
               {/* 왼쪽: 스크린샷 */}
-              <div className="relative h-16 w-16 overflow-hidden rounded-md bg-muted ring-1 ring-border">
+              <div className="relative h-28 w-32 overflow-hidden rounded-md bg-muted ring-1 ring-border">
                 {app.screenshotUrl ? (
                   <img
                     src={app.screenshotUrl}
@@ -79,17 +86,12 @@ export function AppList({
 
               {/* 오른쪽: 앱 이름 */}
               <CardHeader className="p-0">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-center gap-2">
                   <div className="min-w-0">
-                    <CardTitle className="truncate text-sm leading-tight">{app.name}</CardTitle>
+                    <CardTitle className="truncate text-lg leading-tight">{app.name}</CardTitle>
                     {/* 필요하면 한 줄 서브 텍스트/카테고리 */}
                     {/* <p className="mt-0.5 truncate text-xs text-muted-foreground">{app.category}</p> */}
                   </div>
-
-                  {/* 예: 뱃지(선택) */}
-                  <Badge variant="secondary" className="shrink-0 text-[11px]">
-                    App
-                  </Badge>
                 </div>
               </CardHeader>
             </div>

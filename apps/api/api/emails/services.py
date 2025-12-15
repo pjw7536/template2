@@ -29,7 +29,7 @@ from .selectors import (
     resolve_user_affiliation,
 )
 from .models import Email
-from ..rag.client import delete_rag_doc, insert_email_to_rag, resolve_rag_index_name
+from api.rag.services import delete_rag_doc, insert_email_to_rag, resolve_rag_index_name
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +314,59 @@ def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime |
     return len(ids)
 
 
+def _register_emails_to_rag_best_effort(
+    *,
+    email_ids: list[int],
+    target_user_sdwt_prod: str,
+    previous_user_sdwt_prod_by_email_id: Dict[int, str | None] | None,
+) -> Dict[str, int]:
+    """메일함 이동 이후 RAG 등록을 베스트 에포트로 수행합니다.
+
+    Args:
+        email_ids: 대상 Email id 목록.
+        target_user_sdwt_prod: 이동된 메일함(user_sdwt_prod).
+        previous_user_sdwt_prod_by_email_id: 이전 user_sdwt_prod 매핑(없으면 삭제 없이 insert).
+
+    Returns:
+        Dict with ragRegistered/ragFailed counts.
+
+    Side effects:
+        - Calls external RAG insert/delete endpoints.
+        - Persists `rag_doc_id` even on failure (for deterministic doc ids).
+    """
+
+    if not email_ids:
+        return {"ragRegistered": 0, "ragFailed": 0}
+
+    rag_registered = 0
+    rag_failed = 0
+    for email in list_emails_by_ids(email_ids=email_ids).iterator():
+        email.user_sdwt_prod = target_user_sdwt_prod
+        previous_user_sdwt_prod = (
+            previous_user_sdwt_prod_by_email_id.get(email.id)
+            if previous_user_sdwt_prod_by_email_id is not None
+            else None
+        )
+        try:
+            register_email_to_rag(
+                email,
+                previous_user_sdwt_prod=previous_user_sdwt_prod,
+                persist_fields=["user_sdwt_prod", "rag_doc_id"],
+            )
+            rag_registered += 1
+        except Exception:
+            rag_failed += 1
+            logger.exception("Failed to register RAG for email id=%s", email.id)
+            if not email.rag_doc_id:
+                email.rag_doc_id = f"email-{email.id}"
+            try:
+                email.save(update_fields=["user_sdwt_prod", "rag_doc_id"])
+            except Exception:
+                logger.exception("Failed to persist email after RAG failure id=%s", email.id)
+
+    return {"ragRegistered": rag_registered, "ragFailed": rag_failed}
+
+
 def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     """사용자의 UNASSIGNED 메일을 현재 user_sdwt_prod로 귀속(옮김)합니다.
 
@@ -350,28 +403,101 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     with transaction.atomic():
         Email.objects.filter(id__in=email_ids).update(user_sdwt_prod=target_user_sdwt_prod)
 
-    rag_registered = 0
-    rag_failed = 0
-    for email in list_emails_by_ids(email_ids=email_ids).iterator():
-        email.user_sdwt_prod = target_user_sdwt_prod
-        try:
-            register_email_to_rag(
-                email,
-                previous_user_sdwt_prod=None,
-                persist_fields=["user_sdwt_prod", "rag_doc_id"],
-            )
-            rag_registered += 1
-        except Exception:
-            rag_failed += 1
-            logger.exception("Failed to register RAG for claimed email id=%s", email.id)
-            if not email.rag_doc_id:
-                email.rag_doc_id = f"email-{email.id}"
-            try:
-                email.save(update_fields=["user_sdwt_prod", "rag_doc_id"])
-            except Exception:
-                logger.exception("Failed to persist claimed email after RAG failure id=%s", email.id)
+    rag_result = _register_emails_to_rag_best_effort(
+        email_ids=email_ids,
+        target_user_sdwt_prod=target_user_sdwt_prod,
+        previous_user_sdwt_prod_by_email_id=None,
+    )
 
-    return {"moved": len(email_ids), "ragRegistered": rag_registered, "ragFailed": rag_failed}
+    return {"moved": len(email_ids), **rag_result}
+
+
+def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod: str) -> Dict[str, int]:
+    """지정한 Email id들을 다른 user_sdwt_prod 메일함으로 이동합니다.
+
+    Args:
+        email_ids: 이동할 Email id 목록.
+        to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
+
+    Returns:
+        Dict with moved count and best-effort RAG indexing stats.
+
+    Side effects:
+        - Updates Email.user_sdwt_prod in DB.
+        - Attempts to re-index RAG documents per email (best-effort).
+    """
+
+    target_user_sdwt_prod = (to_user_sdwt_prod or "").strip()
+    if not target_user_sdwt_prod:
+        raise ValueError("to_user_sdwt_prod is required")
+    if target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
+        raise ValueError("Cannot move emails into the UNASSIGNED mailbox")
+
+    ids = [int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()]
+    if not ids:
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
+
+    previous_user_sdwt = {
+        row["id"]: row["user_sdwt_prod"]
+        for row in Email.objects.filter(id__in=ids).values("id", "user_sdwt_prod")
+    }
+    resolved_ids = list(previous_user_sdwt.keys())
+    if not resolved_ids:
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
+
+    moved_count = 0
+    for previous in previous_user_sdwt.values():
+        if (previous or "").strip() != target_user_sdwt_prod:
+            moved_count += 1
+
+    with transaction.atomic():
+        Email.objects.filter(id__in=resolved_ids).update(user_sdwt_prod=target_user_sdwt_prod)
+
+    rag_result = _register_emails_to_rag_best_effort(
+        email_ids=resolved_ids,
+        target_user_sdwt_prod=target_user_sdwt_prod,
+        previous_user_sdwt_prod_by_email_id=previous_user_sdwt,
+    )
+
+    return {"moved": moved_count, **rag_result}
+
+
+def move_sender_emails_after(
+    *,
+    sender_id: str,
+    received_at_gte: datetime,
+    to_user_sdwt_prod: str,
+) -> Dict[str, int]:
+    """발신자(sender_id)의 특정 시각 이후 메일을 다른 메일함으로 이동합니다.
+
+    Args:
+        sender_id: Email.sender_id (KNOX ID).
+        received_at_gte: 기준 시각(이 시각 이상 수신된 메일만).
+        to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
+
+    Returns:
+        Dict with moved count and best-effort RAG indexing stats.
+
+    Side effects:
+        - Updates Email.user_sdwt_prod in DB.
+        - Attempts to re-index RAG documents per email (best-effort).
+    """
+
+    normalized_sender_id = (sender_id or "").strip()
+    if not normalized_sender_id:
+        raise ValueError("sender_id is required")
+
+    when = received_at_gte
+    if timezone.is_naive(when):
+        when = timezone.make_aware(when, timezone.get_current_timezone())
+
+    email_ids = list(
+        Email.objects.filter(sender_id=normalized_sender_id, received_at__gte=when)
+        .values_list("id", flat=True)
+        .order_by("id")
+    )
+
+    return move_emails_to_user_sdwt_prod(email_ids=email_ids, to_user_sdwt_prod=to_user_sdwt_prod)
 
 
 DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop_v3]", "[test]")

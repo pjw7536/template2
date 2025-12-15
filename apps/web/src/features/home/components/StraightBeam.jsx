@@ -65,11 +65,8 @@ function StraightBeam(props) {
       }
     }
 
-    const resizeObserver = new ResizeObserver(entries => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for (const entry of entries) {
-        updatePath()
-      }
+    const resizeObserver = new ResizeObserver(() => {
+      updatePath()
     })
 
     if (containerRef.current) {

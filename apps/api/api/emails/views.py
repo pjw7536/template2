@@ -3,7 +3,7 @@ from __future__ import annotations
 import gzip
 import logging
 from datetime import datetime, time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
@@ -17,12 +17,19 @@ from rest_framework.views import APIView
 
 from api.common.utils import parse_json_body
 
+from .permissions import (
+    email_is_unassigned,
+    extract_bearer_token,
+    resolve_access_control,
+    user_can_access_email,
+    user_can_view_unassigned,
+)
 from .selectors import (
     contains_unassigned_emails,
     count_unassigned_emails_for_sender_id,
-    get_accessible_user_sdwt_prods_for_user,
     get_email_by_id,
     get_filtered_emails,
+    list_mailbox_members,
     list_privileged_email_mailboxes,
     user_can_bulk_delete_emails,
 )
@@ -41,24 +48,6 @@ DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
 
-def _user_can_view_unassigned(user: Any) -> bool:
-    """UNASSIGNED(미분류) 메일함 조회 가능 여부를 반환합니다."""
-
-    return bool(user and getattr(user, "is_superuser", False))
-
-
-def _email_is_unassigned(email: Any) -> bool:
-    """Email 인스턴스가 UNASSIGNED(미분류) 메일인지 판별합니다."""
-
-    raw = getattr(email, "user_sdwt_prod", None)
-    if raw is None:
-        return True
-    if not isinstance(raw, str):
-        return False
-    normalized = raw.strip()
-    return normalized in {"", UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
-
-
 def _parse_int(value: Any, default: int) -> int:
     """입력 값을 정수로 파싱하고 실패/0 이하일 때 기본값을 반환합니다."""
 
@@ -69,22 +58,6 @@ def _parse_int(value: Any, default: int) -> int:
         return parsed
     except (TypeError, ValueError):
         return default
-
-
-def _resolve_accessible_user_sdwt_prods(user) -> Set[str]:
-    """사용자가 접근 가능한 user_sdwt_prod 목록(집합)을 조회합니다."""
-
-    return get_accessible_user_sdwt_prods_for_user(user)
-
-
-def _user_can_access_email(user, email: Any, accessible: Optional[Set[str]]) -> bool:
-    """일반 사용자 기준으로 특정 이메일 접근 권한을 검사합니다."""
-
-    if user.is_superuser or user.is_staff:
-        return True
-    if accessible is None:
-        return False
-    return bool(email.user_sdwt_prod and email.user_sdwt_prod in accessible)
 
 
 def _parse_datetime(value: str):
@@ -132,23 +105,6 @@ def _serialize_detail(email: Any) -> Dict[str, Any]:
     }
 
 
-def _resolve_access_control(request: HttpRequest) -> tuple:
-    """
-    공통 권한 처리: 인증 여부, 접근 가능한 user_sdwt_prod 목록 반환.
-    superuser/staff는 무제한 접근을 허용한다.
-    """
-
-    user = request.user
-    if not user or not user.is_authenticated:
-        return False, False, set()
-
-    if user.is_superuser or user.is_staff:
-        return True, True, set()
-
-    accessible = _resolve_accessible_user_sdwt_prods(user)
-    return True, False, accessible
-
-
 def _parse_mailbox_user_sdwt_prod(request: HttpRequest) -> str:
     """요청 쿼리에서 mailbox(user_sdwt_prod) 값을 추출/정규화합니다."""
 
@@ -156,25 +112,12 @@ def _parse_mailbox_user_sdwt_prod(request: HttpRequest) -> str:
     return raw.strip() if isinstance(raw, str) else ""
 
 
-def _extract_bearer_token(request: HttpRequest) -> str:
-    """Authorization 헤더에서 Bearer 토큰을 추출."""
-
-    auth_header = request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION") or ""
-    if not isinstance(auth_header, str):
-        return ""
-
-    normalized = auth_header.strip()
-    if normalized.lower().startswith("bearer "):
-        return normalized[7:].strip()
-    return normalized
-
-
 @method_decorator(csrf_exempt, name="dispatch")
 class EmailListView(APIView):
     """메일 리스트 조회."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
@@ -182,7 +125,7 @@ class EmailListView(APIView):
             return JsonResponse({"error": "forbidden"}, status=403)
 
         mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
-        can_view_unassigned = _user_can_view_unassigned(request.user)
+        can_view_unassigned = user_can_view_unassigned(request.user)
         if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not can_view_unassigned:
             return JsonResponse({"error": "forbidden"}, status=403)
         if mailbox_user_sdwt_prod and not is_privileged:
@@ -234,13 +177,13 @@ class EmailMailboxListView(APIView):
     """현재 사용자가 접근 가능한 메일함(user_sdwt_prod) 목록을 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
         if is_privileged:
             results = list_privileged_email_mailboxes()
-            if not _user_can_view_unassigned(request.user):
+            if not user_can_view_unassigned(request.user):
                 results = [
                     mailbox
                     for mailbox in results
@@ -252,6 +195,33 @@ class EmailMailboxListView(APIView):
             return JsonResponse({"error": "forbidden"}, status=403)
 
         return JsonResponse({"results": sorted(accessible)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailMailboxMembersView(APIView):
+    """메일함(user_sdwt_prod)에 접근 가능한 멤버 목록을 반환합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
+        if not is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        if not is_privileged and not accessible:
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+        mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
+        if not mailbox_user_sdwt_prod:
+            return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
+
+        can_view_unassigned = user_can_view_unassigned(request.user)
+        if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not can_view_unassigned:
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+        if not is_privileged and mailbox_user_sdwt_prod not in accessible:
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+        members = list_mailbox_members(mailbox_user_sdwt_prod=mailbox_user_sdwt_prod)
+        return JsonResponse({"userSdwtProd": mailbox_user_sdwt_prod, "members": members})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -293,37 +263,37 @@ class EmailDetailView(APIView):
     """단일 메일 상세 조회 (텍스트)."""
 
     def get(self, request: HttpRequest, email_id: int, *args: object, **kwargs: object) -> JsonResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         email = get_email_by_id(email_id=email_id)
         if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
 
-        if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+        if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
             return JsonResponse({"error": "forbidden"}, status=403)
 
         if not is_privileged:
-            if not accessible or not _user_can_access_email(request.user, email, accessible):
+            if not accessible or not user_can_access_email(request.user, email, accessible):
                 return JsonResponse({"error": "forbidden"}, status=403)
 
         return JsonResponse(_serialize_detail(email))
 
     def delete(self, request: HttpRequest, email_id: int, *args: object, **kwargs: object) -> JsonResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         if not is_privileged:
             email = get_email_by_id(email_id=email_id)
             if email is None:
                 return JsonResponse({"error": "Email not found"}, status=404)
-            if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+            if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
                 return JsonResponse({"error": "forbidden"}, status=403)
-            if not accessible or not _user_can_access_email(request.user, email, accessible):
+            if not accessible or not user_can_access_email(request.user, email, accessible):
                 return JsonResponse({"error": "forbidden"}, status=403)
         else:
             email = get_email_by_id(email_id=email_id)
-            if email is not None and _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+            if email is not None and email_is_unassigned(email) and not user_can_view_unassigned(request.user):
                 return JsonResponse({"error": "forbidden"}, status=403)
         try:
             delete_single_email(email_id)
@@ -340,18 +310,18 @@ class EmailHtmlView(APIView):
     """gzip 저장된 HTML 본문 복원."""
 
     def get(self, request: HttpRequest, email_id: int, *args: object, **kwargs: object) -> HttpResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         email = get_email_by_id(email_id=email_id)
         if email is None:
             return JsonResponse({"error": "Email not found"}, status=404)
 
-        if _email_is_unassigned(email) and not _user_can_view_unassigned(request.user):
+        if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
             return JsonResponse({"error": "forbidden"}, status=403)
 
         if not is_privileged:
-            if not accessible or not _user_can_access_email(request.user, email, accessible):
+            if not accessible or not user_can_access_email(request.user, email, accessible):
                 return JsonResponse({"error": "forbidden"}, status=403)
 
         if not email.body_html_gzip:
@@ -371,7 +341,7 @@ class EmailBulkDeleteView(APIView):
     """여러 메일 삭제 (모두 성공 시 반영)."""
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        is_authenticated, is_privileged, accessible = _resolve_access_control(request)
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         if not is_privileged and not accessible:
@@ -399,7 +369,7 @@ class EmailBulkDeleteView(APIView):
             ):
                 return JsonResponse({"error": "forbidden"}, status=403)
         else:
-            if not _user_can_view_unassigned(request.user) and contains_unassigned_emails(
+            if not user_can_view_unassigned(request.user) and contains_unassigned_emails(
                 email_ids=normalized_ids
             ):
                 return JsonResponse({"error": "forbidden"}, status=403)
@@ -422,7 +392,7 @@ class EmailIngestTriggerView(APIView):
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         expected_token = getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "") or ""
-        provided_token = _extract_bearer_token(request)
+        provided_token = extract_bearer_token(request)
 
         if expected_token:
             if provided_token != expected_token and not request.user.is_authenticated:

@@ -146,6 +146,22 @@ def get_user_by_username(*, username: str) -> Any | None:
         return None
 
 
+def get_user_by_knox_id(*, knox_id: str) -> Any | None:
+    """knox_id로 사용자를 조회하고 없으면 None을 반환합니다.
+
+    Return a user by knox_id, or None if missing.
+    """
+
+    if not isinstance(knox_id, str) or not knox_id.strip():
+        return None
+
+    UserModel = get_user_model()
+    if not hasattr(UserModel, "knox_id"):
+        return None
+
+    return UserModel.objects.filter(knox_id=knox_id.strip()).first()
+
+
 def get_user_sdwt_prod_change_by_id(*, change_id: int) -> UserSdwtProdChange | None:
     """id로 UserSdwtProdChange를 조회하고 없으면 None을 반환합니다.
 
@@ -156,6 +172,30 @@ def get_user_sdwt_prod_change_by_id(*, change_id: int) -> UserSdwtProdChange | N
         return UserSdwtProdChange.objects.select_related("user").get(id=change_id)
     except UserSdwtProdChange.DoesNotExist:
         return None
+
+
+def get_current_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
+    """현재 사용자의 user_sdwt_prod에 해당하는 승인된 변경 이력을 반환합니다.
+
+    Return the latest approved UserSdwtProdChange matching the user's current user_sdwt_prod.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not user:
+        return None
+
+    current_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+    if not isinstance(current_user_sdwt_prod, str) or not current_user_sdwt_prod.strip():
+        return None
+
+    normalized = current_user_sdwt_prod.strip()
+    return (
+        UserSdwtProdChange.objects.filter(user=user, approved=True, to_user_sdwt_prod=normalized)
+        .order_by("-effective_from", "-id")
+        .first()
+    )
 
 
 def get_access_row_for_user_and_prod(

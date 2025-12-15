@@ -31,7 +31,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableHeader,
   TableRow,
@@ -103,7 +102,7 @@ function TableBodyRows({
       <TableRow>
         <TableCell
           colSpan={emptyStateColSpan}
-          className="h-26 text-center text-sm text-muted-foreground"
+          className="h-24 text-center text-sm text-muted-foreground"
           aria-live="polite"
         >
           {EMPTY.loading}
@@ -117,7 +116,7 @@ function TableBodyRows({
       <TableRow>
         <TableCell
           colSpan={emptyStateColSpan}
-          className="h-26 text-center text-sm text-destructive"
+          className="h-24 text-center text-sm text-destructive"
           role="alert"
         >
           {rowsError}
@@ -131,7 +130,7 @@ function TableBodyRows({
       <TableRow>
         <TableCell
           colSpan={emptyStateColSpan}
-          className="h-26 text-center text-sm text-muted-foreground"
+          className="h-24 text-center text-sm text-muted-foreground"
           aria-live="polite"
         >
           {EMPTY.noRows}
@@ -146,7 +145,7 @@ function TableBodyRows({
       <TableRow>
         <TableCell
           colSpan={emptyStateColSpan}
-          className="h-26 text-center text-sm text-muted-foreground"
+          className="h-24 text-center text-sm text-muted-foreground"
           aria-live="polite"
         >
           {EMPTY.noMatches}
@@ -392,8 +391,8 @@ export function DataTable({ lineId }) {
         />
       </div>
       {/* 테이블 */}
-      <TableContainer
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-lg border bg-background"
+      <div
+        className="flex-1 min-h-0 overflow-y-auto rounded-lg border bg-background"
         aria-busy={isRefreshing}
       >
         <Table
@@ -477,7 +476,7 @@ export function DataTable({ lineId }) {
             />
           </TableBody>
         </Table>
-      </TableContainer>
+      </div>
 
       {/* 하단: 요약/페이지네이션 */}
       <DataTablePagination

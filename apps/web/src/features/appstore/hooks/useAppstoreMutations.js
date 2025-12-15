@@ -9,6 +9,7 @@ import {
   deleteApp,
   deleteComment,
   incrementView,
+  toggleCommentLike,
   toggleLike,
   updateApp,
   updateComment,
@@ -33,6 +34,23 @@ function updateDetail(queryClient, appId, updater) {
     const nextApp = updater(previous.app)
     return { app: nextApp }
   })
+}
+
+function collectDescendantCommentIds(comments, rootId) {
+  const ids = new Set([rootId])
+  let changed = true
+  while (changed) {
+    changed = false
+    comments.forEach((comment) => {
+      const parentId = comment.parentCommentId
+      if (parentId == null) return
+      if (!ids.has(parentId)) return
+      if (ids.has(comment.id)) return
+      ids.add(comment.id)
+      changed = true
+    })
+  }
+  return ids
 }
 
 export function useAppstoreMutations() {
@@ -111,7 +129,7 @@ export function useAppstoreMutations() {
   })
 
   const createCommentMutation = useMutation({
-    mutationFn: ({ appId, content }) => createComment(appId, content),
+    mutationFn: ({ appId, content, parentCommentId }) => createComment(appId, content, parentCommentId),
     onSuccess: (comment, variables) => {
       updateDetail(queryClient, variables.appId, (app) => {
         const nextComments = [...(app.comments ?? []), comment]
@@ -157,24 +175,53 @@ export function useAppstoreMutations() {
   const deleteCommentMutation = useMutation({
     mutationFn: ({ appId, commentId }) => deleteComment(appId, commentId),
     onSuccess: (_result, variables) => {
+      let removedCount = 1
       updateDetail(queryClient, variables.appId, (app) => {
-        const nextComments = (app.comments ?? []).filter((item) => item.id !== variables.commentId)
+        const currentComments = app.comments ?? []
+        const idsToRemove = collectDescendantCommentIds(currentComments, variables.commentId)
+        removedCount = idsToRemove.size
+        const nextComments = currentComments.filter((item) => !idsToRemove.has(item.id))
         return { ...app, comments: nextComments, commentCount: nextComments.length }
+      })
+      queryClient.setQueryData(appstoreQueryKeys.comments(variables.appId), (previous) => {
+        if (!previous?.comments) return previous
+        const idsToRemove = collectDescendantCommentIds(previous.comments, variables.commentId)
+        removedCount = Math.max(removedCount, idsToRemove.size)
+        const filtered = previous.comments.filter((item) => !idsToRemove.has(item.id))
+        return {
+          ...previous,
+          comments: filtered,
+          total: Math.max((previous.total ?? filtered.length) - idsToRemove.size, filtered.length),
+        }
       })
       updateList(queryClient, (apps) =>
         apps.map((item) =>
           item.id === variables.appId
-            ? { ...item, commentCount: Math.max((item.commentCount ?? 1) - 1, 0) }
+            ? { ...item, commentCount: Math.max((item.commentCount ?? 0) - removedCount, 0) }
             : item,
         ),
       )
-      queryClient.setQueryData(appstoreQueryKeys.comments(variables.appId), (previous) => {
+    },
+  })
+
+  const toggleCommentLikeMutation = useMutation({
+    mutationFn: ({ appId, commentId }) => toggleCommentLike(appId, commentId),
+    onSuccess: (result) => {
+      const updateLike = (comment) =>
+        comment.id === result.commentId
+          ? { ...comment, liked: result.liked, likeCount: result.likeCount }
+          : comment
+
+      updateDetail(queryClient, result.appId, (app) => ({
+        ...app,
+        comments: (app.comments ?? []).map(updateLike),
+      }))
+
+      queryClient.setQueryData(appstoreQueryKeys.comments(result.appId), (previous) => {
         if (!previous?.comments) return previous
-        const filtered = previous.comments.filter((item) => item.id !== variables.commentId)
         return {
           ...previous,
-          comments: filtered,
-          total: Math.max((previous.total ?? filtered.length) - 1, filtered.length),
+          comments: previous.comments.map(updateLike),
         }
       })
     },
@@ -189,5 +236,6 @@ export function useAppstoreMutations() {
     createCommentMutation,
     updateCommentMutation,
     deleteCommentMutation,
+    toggleCommentLikeMutation,
   }
 }

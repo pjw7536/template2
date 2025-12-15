@@ -87,7 +87,7 @@ else:
 # ============
 INSTALLED_APPS = [
     # Django 기본
-    "django.contrib.admin",
+    "config.admin.SuperuserAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

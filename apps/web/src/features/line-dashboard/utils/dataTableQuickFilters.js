@@ -159,7 +159,7 @@ function compareMainStepOptions(a, b) {
   return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
 }
 
-function buildMainStepOptionLabel(value, prefixes, hasSuffix) {
+function buildMainStepOptionLabel(value, _prefixes, _hasSuffix) {
   return value
 }
 

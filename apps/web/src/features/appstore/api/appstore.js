@@ -51,10 +51,13 @@ function normalizeComment(raw) {
   return {
     id,
     appId: raw.appId ?? raw.app_id ?? null,
+    parentCommentId: raw.parentCommentId ?? raw.parent_comment_id ?? raw.parentId ?? raw.parent_id ?? null,
     content: ensureString(raw.content),
     createdAt: ensureString(raw.createdAt || raw.created_at),
     updatedAt: ensureString(raw.updatedAt || raw.updated_at || raw.createdAt || raw.created_at),
     author: normalizeUser(raw.author),
+    likeCount: Number(raw.likeCount ?? raw.like_count ?? 0) || 0,
+    liked: Boolean(raw.liked),
     canEdit: Boolean(raw.canEdit),
     canDelete: Boolean(raw.canDelete),
   }
@@ -174,11 +177,15 @@ export async function fetchComments(appId) {
   }
 }
 
-export async function createComment(appId, content) {
+export async function createComment(appId, content, parentCommentId) {
+  const body = { content }
+  if (parentCommentId != null) {
+    body.parentCommentId = parentCommentId
+  }
   const payload = await request(`/api/v1/appstore/apps/${appId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   })
   const comment = normalizeComment(payload?.comment)
   if (!comment) {
@@ -205,4 +212,16 @@ export async function deleteComment(appId, commentId) {
     method: "DELETE",
   })
   return { appId, commentId }
+}
+
+export async function toggleCommentLike(appId, commentId) {
+  const payload = await request(`/api/v1/appstore/apps/${appId}/comments/${commentId}/like`, {
+    method: "POST",
+  })
+  return {
+    appId,
+    commentId,
+    liked: Boolean(payload?.liked),
+    likeCount: Number(payload?.likeCount ?? 0) || 0,
+  }
 }

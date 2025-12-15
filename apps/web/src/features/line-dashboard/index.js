@@ -12,4 +12,5 @@ export {
   LineDashboardSidebarProvider,
   LineDashboardBreadcrumb,
   LineDashboardSidebar,
+  NavUser,
 } from "./components"

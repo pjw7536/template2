@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import requests
 from django.conf import settings
 
-from ..rag.client import resolve_rag_index_name
+from api.rag import services as rag_services
 
 logger = logging.getLogger(__name__)
 
@@ -90,26 +90,6 @@ def _parse_bool(value: Optional[str], default: bool = False) -> bool:
     return normalized in {"1", "true", "yes", "on"}
 
 
-def _parse_permission_groups(raw: Optional[str]) -> List[str]:
-    """권한 그룹 설정(JSON 배열 또는 CSV)을 문자열 리스트로 정규화합니다."""
-
-    if not raw:
-        return []
-
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        parsed = None
-
-    if isinstance(parsed, Sequence) and not isinstance(parsed, (str, bytes)):
-        return [str(item).strip() for item in parsed if str(item).strip()]
-
-    if isinstance(raw, str):
-        return [item.strip() for item in raw.split(",") if item.strip()]
-
-    return []
-
-
 def _parse_string_list(raw: Optional[str]) -> List[str]:
     """JSON 배열/개행 문자열 등을 문자열 리스트로 정규화합니다."""
 
@@ -168,9 +148,7 @@ class AssistantChatConfig:
     dummy_use_rag: bool = False
     rag_url: str = ""
     rag_index_name: str = ""
-    rag_permission_groups: List[str] = field(default_factory=list)
     rag_num_docs: int = DEFAULT_NUM_DOCS
-    rag_headers: Dict[str, str] = field(default_factory=dict)
     llm_url: str = ""
     llm_headers: Dict[str, str] = field(default_factory=dict)
     llm_credential: str = ""
@@ -189,10 +167,8 @@ class AssistantChatConfig:
         dummy_delay_ms = _parse_int(_read_setting("ASSISTANT_DUMMY_DELAY_MS"), DEFAULT_DUMMY_DELAY_MS)
         dummy_use_rag = _parse_bool(_read_setting("ASSISTANT_DUMMY_USE_RAG"), False)
 
-        rag_url = (_read_setting("ASSISTANT_RAG_URL") or "").strip()
-        rag_index_name = (_read_setting("ASSISTANT_RAG_INDEX_NAME") or "").strip()
-        rag_permission_groups = _parse_permission_groups(_read_setting("ASSISTANT_RAG_PERMISSION_GROUPS"))
-        rag_headers = _parse_headers(_read_setting("ASSISTANT_RAG_HEADERS"), "ASSISTANT_RAG_HEADERS")
+        rag_url = (rag_services.RAG_SEARCH_URL or "").strip()
+        rag_index_name = (rag_services.RAG_INDEX_NAME or "").strip()
         rag_num_docs = _parse_int(_read_setting("ASSISTANT_RAG_NUM_DOCS"), DEFAULT_NUM_DOCS)
 
         llm_url = (_read_setting("ASSISTANT_LLM_URL") or _read_setting("LLM_API_URL") or "").strip()
@@ -212,9 +188,7 @@ class AssistantChatConfig:
         return cls(
             rag_url=rag_url,
             rag_index_name=rag_index_name,
-            rag_permission_groups=rag_permission_groups,
             rag_num_docs=rag_num_docs,
-            rag_headers=rag_headers,
             llm_url=llm_url,
             llm_headers=llm_headers,
             llm_credential=llm_credential,
@@ -338,19 +312,25 @@ class AssistantChatService:
         self, session: requests.Session, question: str, index_name: Optional[str] = None
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
         target_index_raw = (index_name or "").strip() or self.config.rag_index_name
-        if not self.config.rag_url or not target_index_raw:
+        if not rag_services.RAG_SEARCH_URL or not target_index_raw:
             return [], None, []
 
-        target_index = resolve_rag_index_name(target_index_raw)
-
-        payload: Dict[str, Any] = {
-            "index_name": target_index,
-            "permission_groups": self.config.rag_permission_groups,
-            "query_text": question,
-            "num_result_doc": self.config.rag_num_docs,
-        }
-
-        data = self._post(session, self.config.rag_url, self.config.rag_headers, payload)
+        try:
+            data = rag_services.search_rag(
+                question,
+                index_name=target_index_raw,
+                num_result_doc=self.config.rag_num_docs,
+                timeout=self.config.request_timeout,
+            )
+        except requests.HTTPError as exc:
+            resp = exc.response
+            status = resp.status_code if resp is not None else "unknown"
+            text_preview = (getattr(resp, "text", "") or "")[:500]
+            raise AssistantRequestError(f"RAG HTTP 오류 [{status}]: {text_preview!r}") from exc
+        except requests.RequestException as exc:
+            raise AssistantRequestError(f"RAG 요청 중 오류 발생: {exc}") from exc
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise AssistantRequestError(f"RAG 응답 처리 실패: {exc}") from exc
 
         hits = data.get("hits", {}).get("hits", [])
         if not isinstance(hits, list):
@@ -434,7 +414,7 @@ class AssistantChatService:
             raise AssistantRequestError("질문이 비어 있습니다.")
 
         if self.config.use_dummy:
-            if self.config.dummy_use_rag and self.config.rag_url and self.config.rag_index_name:
+            if self.config.dummy_use_rag:
                 try:
                     with requests.Session() as session:
                         contexts, rag_response, sources = self._retrieve_documents(

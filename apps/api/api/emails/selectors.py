@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
+from api.account import selectors as account_selectors
 from api.account.selectors import (
-    get_accessible_user_sdwt_prods_for_user as get_accessible_user_sdwt_prods_for_user,
+    get_next_user_sdwt_prod_change,
+    list_distinct_user_sdwt_prod_values,
+    resolve_user_affiliation,
 )
-from api.account.selectors import get_next_user_sdwt_prod_change as get_next_user_sdwt_prod_change
-from api.account.selectors import list_distinct_user_sdwt_prod_values as list_distinct_user_sdwt_prod_values
-from api.account.selectors import resolve_user_affiliation as resolve_user_affiliation
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 
 from .models import Email
@@ -47,6 +47,104 @@ def _get_user_by_knox_id(sender_id: str):
     return UserModel.objects.filter(knox_id=sender_id).first()
 
 
+def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
+    """사용자가 접근 가능한 user_sdwt_prod 값 집합을 조회합니다.
+
+    Delegates to api.account.selectors.get_accessible_user_sdwt_prods_for_user.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    return account_selectors.get_accessible_user_sdwt_prods_for_user(user)
+
+
+def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, object]]:
+    """메일함(user_sdwt_prod)에 접근 가능한 사용자 목록을 반환합니다.
+
+    The result includes:
+    - Users whose `user_sdwt_prod` equals the mailbox (implicit access)
+    - Users who were granted access via `UserSdwtProdAccess` (explicit access)
+    - `emailCount`: Emails in the mailbox where Email.sender_id matches the user (knox_id fallback to sabun)
+
+    Args:
+        mailbox_user_sdwt_prod: The mailbox user_sdwt_prod value.
+
+    Returns:
+        List of member dicts aligned with account access payloads.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    normalized = mailbox_user_sdwt_prod.strip() if isinstance(mailbox_user_sdwt_prod, str) else ""
+    if not normalized:
+        return []
+
+    access_rows = list(account_selectors.list_group_members(user_sdwt_prods={normalized}))
+    access_by_user_id = {row.user_id: row for row in access_rows}
+
+    UserModel = get_user_model()
+    affiliated_users = list(UserModel.objects.filter(user_sdwt_prod=normalized).order_by("id"))
+
+    members: list[dict[str, object]] = []
+    seen_user_ids: set[int] = set()
+    sender_id_by_user_id: dict[int, str] = {}
+
+    def resolve_sender_id(user: Any) -> str:
+        sender_id = getattr(user, "knox_id", None)
+        if isinstance(sender_id, str) and sender_id.strip():
+            return sender_id.strip()
+
+        sender_id = getattr(user, "sabun", None)
+        if isinstance(sender_id, str) and sender_id.strip():
+            return sender_id.strip()
+
+        sender_id = getattr(user, "get_username", lambda: "")()
+        return sender_id.strip() if isinstance(sender_id, str) else ""
+
+    def serialize_user(user: Any, access: Any | None) -> dict[str, object]:
+        sender_id_by_user_id[user.id] = resolve_sender_id(user)
+        return {
+            "userId": user.id,
+            "username": user.get_username(),
+            "name": (getattr(user, "first_name", "") or "") + (getattr(user, "last_name", "") or ""),
+            "userSdwtProd": normalized,
+            "canManage": bool(getattr(access, "can_manage", False)) if access else False,
+            "grantedBy": getattr(access, "granted_by_id", None) if access else None,
+            "grantedAt": access.created_at.isoformat() if access else None,
+            "emailCount": 0,
+        }
+
+    for user in affiliated_users:
+        access = access_by_user_id.get(user.id)
+        members.append(serialize_user(user, access))
+        seen_user_ids.add(user.id)
+
+    for access in access_rows:
+        if access.user_id in seen_user_ids:
+            continue
+        members.append(serialize_user(access.user, access))
+        seen_user_ids.add(access.user_id)
+
+    sender_ids = sorted({value for value in sender_id_by_user_id.values() if value})
+    if sender_ids:
+        email_count_rows = (
+            Email.objects.filter(user_sdwt_prod=normalized, sender_id__in=sender_ids)
+            .values("sender_id")
+            .annotate(email_count=Count("id"))
+        )
+        count_by_sender_id = {row["sender_id"]: row["email_count"] for row in email_count_rows}
+
+        for member in members:
+            user_id = member.get("userId")
+            sender_id = sender_id_by_user_id.get(user_id) if isinstance(user_id, int) else ""
+            member["emailCount"] = int(count_by_sender_id.get(sender_id, 0)) if sender_id else 0
+
+    members.sort(key=lambda member: (not member.get("canManage", False), str(member.get("username", ""))))
+    return members
+
+
 def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -> EmailAffiliation:
     """이메일 발신자/수신 시각 기준으로 user_sdwt_prod 소속을 판별합니다.
 
@@ -77,6 +175,7 @@ def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -
     affiliation = resolve_user_affiliation(user, when)
     resolved = (affiliation.get("user_sdwt_prod") or "").strip()
     return {"user_sdwt_prod": resolved or UNASSIGNED_USER_SDWT_PROD}
+
 
 def _unassigned_mailbox_query() -> Q:
     """UNASSIGNED(미분류) 메일함 조건(Q)을 반환합니다.
@@ -135,6 +234,7 @@ def list_unassigned_email_ids_for_sender_id(*, sender_id: str) -> list[int]:
         .order_by("id")
         .values_list("id", flat=True)
     )
+
 
 def contains_unassigned_emails(*, email_ids: list[int]) -> bool:
     """email_ids 중 UNASSIGNED(미분류) 메일이 포함되는지 확인합니다.

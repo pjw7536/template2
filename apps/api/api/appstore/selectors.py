@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.db.models import Count, QuerySet
 
-from .models import AppStoreApp, AppStoreComment, AppStoreLike
+from .models import AppStoreApp, AppStoreComment, AppStoreCommentLike, AppStoreLike
 
 
 def get_app_list() -> QuerySet[AppStoreApp]:
@@ -91,6 +91,27 @@ def get_liked_app_ids_for_user(*, user) -> list[int]:
     """
 
     return list(AppStoreLike.objects.filter(user=user).values_list("app_id", flat=True))
+
+
+def get_liked_comment_ids_for_user(*, user, app_id: int) -> list[int]:
+    """사용자가 좋아요한 댓글 id 목록을 반환합니다.
+
+    Return liked comment ids for user within an app.
+
+    Args:
+        user: Django user instance.
+        app_id: Parent app id.
+
+    Returns:
+        List of comment ids liked by the user for the given app.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    return list(
+        AppStoreCommentLike.objects.filter(user=user, comment__app_id=app_id).values_list("comment_id", flat=True)
+    )
 
 
 def get_comments_for_app(*, app_id: int) -> QuerySet[AppStoreComment]:

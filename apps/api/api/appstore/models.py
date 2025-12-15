@@ -11,6 +11,9 @@ class AppStoreApp(models.Model):
     category = models.CharField(max_length=100)
     description = models.TextField(blank=True, default="")
     url = models.TextField()
+    screenshot_url = models.TextField(blank=True, default="")
+    screenshot_base64 = models.TextField(blank=True, default="")
+    screenshot_mime_type = models.CharField(max_length=100, blank=True, default="")
     tags = models.JSONField(default=list, blank=True)
     badge = models.CharField(max_length=64, blank=True, default="")
     contact_name = models.CharField(max_length=255, blank=True, default="")
@@ -37,6 +40,17 @@ class AppStoreApp(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
         return self.name
+
+    @property
+    def screenshot_src(self) -> str:
+        """스크린샷 표시용 src(data url 또는 외부 URL)를 반환합니다."""
+
+        if self.screenshot_url:
+            return self.screenshot_url
+        if self.screenshot_base64:
+            mime_type = self.screenshot_mime_type or "image/png"
+            return f"data:{mime_type};base64,{self.screenshot_base64}"
+        return ""
 
 
 class AppStoreLike(models.Model):
@@ -74,6 +88,13 @@ class AppStoreComment(models.Model):
         on_delete=models.CASCADE,
         related_name="comments",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -82,6 +103,7 @@ class AppStoreComment(models.Model):
         related_name="appstore_comments",
     )
     content = models.TextField()
+    like_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,15 +113,48 @@ class AppStoreComment(models.Model):
         indexes = [
             models.Index(fields=["app"], name="appstore_comment_app_idx"),
             models.Index(fields=["app", "created_at"], name="appstore_comment_created_idx"),
+            models.Index(fields=["parent"], name="appstore_comment_parent_idx"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
         return f"Comment {self.pk} on app {self.app_id}"
 
 
+class AppStoreCommentLike(models.Model):
+    """댓글 좋아요(토글) 기록."""
+
+    comment = models.ForeignKey(
+        AppStoreComment,
+        on_delete=models.CASCADE,
+        related_name="likes",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="appstore_comment_likes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "appstore_comment_like"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comment", "user"],
+                name="uniq_appstore_cmtlike_cmt_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_appstore_cmtlike_user"),
+            models.Index(fields=["comment"], name="idx_appstore_cmtlike_comment"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.user_id} -> {self.comment_id}"
+
+
 __all__ = [
     "AppStoreApp",
     "AppStoreComment",
+    "AppStoreCommentLike",
     "AppStoreLike",
 ]
-

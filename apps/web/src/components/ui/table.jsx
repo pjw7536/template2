@@ -1,35 +1,20 @@
-// src/components/ui/table.jsx
+"use client"
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function TableContainer({
-  className,
-  children,
-  ...props
-}) {
-  return (
-    <div
-      data-slot="table-container"
-      className={cn("relative w-full overflow-x-auto", className)}
-      {...props}
-    >
-      {children}
-    </div>
-  );
-}
-
 function Table({
   className,
-  stickyHeader,
   ...props
 }) {
   return (
-    <table
-      data-slot="table"
-      data-sticky-header={stickyHeader ? "true" : undefined}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props} />
+    <div data-slot="table-container" className="relative h-full w-full overflow-x-auto">
+      <table
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props} />
+    </div>
   );
 }
 
@@ -92,7 +77,7 @@ function TableHead({
     <th
       data-slot="table-head"
       className={cn(
-        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap first:rounded-tl-lg last:rounded-tr-lg [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props} />
@@ -128,7 +113,6 @@ function TableCaption({
 
 export {
   Table,
-  TableContainer,
   TableHeader,
   TableBody,
   TableFooter,
