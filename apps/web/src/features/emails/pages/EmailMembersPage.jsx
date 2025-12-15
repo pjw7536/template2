@@ -57,10 +57,8 @@ export function EmailMembersPage() {
             </p>
           </div>
         ) : (
-          <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 rounded-lg border bg-card">
-            <div className="min-h-0 overflow-hidden">
-              <EmailMailboxMembersDatatable key={mailboxParam} data={safeMembers} />
-            </div>
+          <div className="h-full min-h-0 overflow-hidden rounded-lg border bg-card">
+            <EmailMailboxMembersDatatable key={mailboxParam} data={safeMembers} />
           </div>
         )}
       </div>

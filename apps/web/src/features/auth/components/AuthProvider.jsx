@@ -52,6 +52,8 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
 /** @type {React.Context<AuthContextValue | undefined>} */
 export const AuthContext = createContext(undefined)
 
+const POST_LOGIN_ATTENTION_TOOLTIP_KEY = "auth:post-login-attention-tooltip"
+
 function getSessionRefreshIntervalMs(sessionMaxAgeSeconds) {
   const rawSeconds = Number(sessionMaxAgeSeconds)
   if (!Number.isFinite(rawSeconds) || rawSeconds <= 0) {
@@ -177,6 +179,11 @@ export function AuthProvider({ children }) {
       const target = appendNextParam(absoluteLoginUrl, nextAbsolute)
 
       if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(POST_LOGIN_ATTENTION_TOOLTIP_KEY, "1")
+        } catch {
+          // storage 접근 실패 시 무시
+        }
         window.location.href = target
       }
 
@@ -196,6 +203,13 @@ export function AuthProvider({ children }) {
       }
     } finally {
       if (mountedRef.current) setUser(null)
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.removeItem(POST_LOGIN_ATTENTION_TOOLTIP_KEY)
+        } catch {
+          // storage 접근 실패 시 무시
+        }
+      }
       if (typeof window !== "undefined" && redirectTarget) {
         window.location.href = redirectTarget
       }

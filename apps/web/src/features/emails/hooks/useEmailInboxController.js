@@ -5,11 +5,12 @@ import { toast } from "sonner"
 import { useBulkDeleteEmails, useDeleteEmail } from "./useEmailActions"
 import { useEmailDetail, useEmailHtml } from "./useEmailDetail"
 import { useEmailList } from "./useEmailList"
+import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
 import { getMailboxFromSearchParams } from "../utils/mailbox"
 
 const INITIAL_FILTERS = {
   page: 1,
-  pageSize: 20,
+  pageSize: DEFAULT_EMAIL_PAGE_SIZE,
   q: "",
   sender: "",
   recipient: "",
@@ -17,7 +18,6 @@ const INITIAL_FILTERS = {
   dateTo: "",
 }
 
-const PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
 const MIN_LIST_WIDTH = 385
 const MIN_DETAIL_WIDTH = 420
 const DEFAULT_LIST_RATIO = 0.45
@@ -132,7 +132,6 @@ export function useEmailInboxController() {
         next.delete("emailId")
         setSearchParams(next)
       }
-      refetch()
     } catch (error) {
       toast.error(error?.message || "메일 삭제에 실패했습니다.")
     }
@@ -150,7 +149,6 @@ export function useEmailInboxController() {
         next.delete("emailId")
         setSearchParams(next)
       }
-      refetch()
     } catch (error) {
       toast.error(
         error?.message || "RAG 삭제 실패 등으로 메일 삭제에 실패했습니다. 다시 시도해주세요.",
@@ -301,7 +299,7 @@ export function useEmailInboxController() {
     currentPage,
     totalPages,
     pageSize,
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    pageSizeOptions: EMAIL_PAGE_SIZE_OPTIONS,
     handleExactPageChange,
     handlePageSizeChange,
     handleReload,

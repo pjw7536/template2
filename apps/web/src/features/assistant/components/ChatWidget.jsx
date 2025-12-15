@@ -1,58 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Bot, Minus, PanelLeft, SquareArrowOutUpRight } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { ChatComposer } from "./ChatComposer"
-import { ChatErrorBanner } from "./ChatErrorBanner"
-import { ChatMessages } from "./ChatMessages"
-import { RoomList } from "./RoomList"
+import { ChatWidgetLauncher } from "./ChatWidgetLauncher"
+import { ChatWidgetPanel } from "./ChatWidgetPanel"
+import { useAttentionTooltip } from "../hooks/useAttentionTooltip"
 import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
-
-const DEFAULT_CHAT_WIDTH = 480
-const DEFAULT_CHAT_HEIGHT = 520
-const MIN_CHAT_WIDTH = 360
-const MIN_CHAT_HEIGHT = 420
-const MAX_CHAT_WIDTH = 1000
-const MAX_CHAT_HEIGHT = 1500
-const VIEWPORT_PADDING = 24
-const DEFAULT_FLOATING_BUTTON_SIZE = 48
-
-const clampPosition = (x, y, width, height) => {
-  if (typeof window === "undefined") return { x, y }
-  return {
-    x: Math.min(Math.max(x, 8), window.innerWidth - width - 8),
-    y: Math.min(Math.max(y, 8), window.innerHeight - height - 8),
-  }
-}
-
-const clampSize = (width, height) => {
-  if (typeof window === "undefined") {
-    return { width, height }
-  }
-
-  const maxAllowedWidth = Math.max(window.innerWidth - VIEWPORT_PADDING, 240)
-  const maxAllowedHeight = Math.max(window.innerHeight - VIEWPORT_PADDING, 320)
-  const minAllowedWidth = Math.min(MIN_CHAT_WIDTH, maxAllowedWidth)
-  const minAllowedHeight = Math.min(MIN_CHAT_HEIGHT, maxAllowedHeight)
-  const maxWidth = Math.max(minAllowedWidth, Math.min(MAX_CHAT_WIDTH, maxAllowedWidth))
-  const maxHeight = Math.max(minAllowedHeight, Math.min(MAX_CHAT_HEIGHT, maxAllowedHeight))
-
-  return {
-    width: Math.min(Math.max(width, minAllowedWidth), maxWidth),
-    height: Math.min(Math.max(height, minAllowedHeight), maxHeight),
-  }
-}
+import {
+  DEFAULT_CHAT_HEIGHT,
+  DEFAULT_CHAT_WIDTH,
+  DEFAULT_FLOATING_BUTTON_SIZE,
+  clampPosition,
+  clampSize,
+} from "../utils/chatWidgetBounds"
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
@@ -109,6 +70,11 @@ export function ChatWidget() {
 
   const isChatPage =
     typeof location?.pathname === "string" && location.pathname.startsWith("/assistant")
+
+  const { isAttentionTooltipVisible, attentionTooltipText } = useAttentionTooltip({
+    isOpen,
+    isChatPage,
+  })
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -296,8 +262,8 @@ export function ChatWidget() {
     floatingButtonSizeRef.current = { width: rect.width, height: rect.height }
     const offset = 16
     setButtonPosition({
-      x: window.innerWidth - rect.width - offset,
-      y: window.innerHeight - rect.height - offset,
+      x: window.innerWidth - rect.width - offset - 32,
+      y: window.innerHeight - rect.height - offset - 5,
     })
   }, [buttonPosition.x, buttonPosition.y])
 
@@ -353,6 +319,10 @@ export function ChatWidget() {
     if (inputRef.current) {
       inputRef.current.focus()
     }
+  }
+
+  const handleInputChange = (event) => {
+    setInput(event.target.value)
   }
 
   const handleSubmit = async (event) => {
@@ -491,244 +461,55 @@ export function ChatWidget() {
     setIsResizing(true)
   }
 
-  const handleDeleteRoom = (roomId) => {
-    removeRoom(roomId)
-  }
-
   if (!isOpen) {
-    const isPositioned = buttonPosition.x !== null && buttonPosition.y !== null
-
     return (
-      <div
-        className={[
-          "fixed z-50",
-          isPositioned ? "cursor-grab active:cursor-grabbing" : "bottom-4 right-4",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={
-          isPositioned
-            ? { left: buttonPosition.x, top: buttonPosition.y }
-            : undefined
-        }
+      <ChatWidgetLauncher
+        buttonPosition={buttonPosition}
         onPointerDown={handleFloatingButtonPointerDown}
         onPointerMove={handleFloatingButtonPointerMove}
         onPointerUp={handleFloatingButtonPointerUp}
-      >
-        <Button
-          size="icon"
-          className="h-12 w-12 rounded-full shadow-lg"
-          onClick={handleFloatingButtonClick}
-          aria-label="Open assistant chat"
-          ref={floatingButtonRef}
-        >
-          <Bot className="size-8" />
-          <span className="sr-only">도움받기</span>
-        </Button>
-      </div>
+        onClick={handleFloatingButtonClick}
+        floatingButtonRef={floatingButtonRef}
+        isAttentionTooltipVisible={isAttentionTooltipVisible}
+        attentionTooltipText={attentionTooltipText}
+      />
     )
   }
 
   return (
-    <div
-      ref={chatContainerRef}
-      className="fixed z-50"
-      style={{
-        left: widgetPosition.x,
-        top: widgetPosition.y,
-        width: size.width,
-        maxWidth: "calc(100vw - 16px)",
+    <ChatWidgetPanel
+      containerRef={chatContainerRef}
+      widgetPosition={widgetPosition}
+      size={size}
+      onResizePointerDown={handleResizePointerDown}
+      onHeaderPointerDown={handleWidgetHeaderPointerDown}
+      isSidebarOpen={isSidebarOpen}
+      onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+      ragIndex={{
+        userSdwtProd,
+        setUserSdwtProd,
+        options: userSdwtProdOptions,
+        isLoading: isUserSdwtProdLoading,
+        isError: isUserSdwtProdError,
+        errorMessage: userSdwtProdErrorMessage,
+        canSelect: canSelectUserSdwtProd,
       }}
-    >
-      <div
-        className="relative flex max-h-[80vh] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
-        style={{ height: size.height }}
-      >
-        <div className="pointer-events-none absolute inset-0">
-          <div
-            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("w")}
-            role="presentation"
-          />
-          <div
-            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("e")}
-            role="presentation"
-          />
-          <div
-            className="absolute inset-x-0 top-0 h-2 cursor-ns-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("n")}
-            role="presentation"
-          />
-          <div
-            className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("s")}
-            role="presentation"
-          />
-          <div
-            className="absolute left-0 top-0 h-3 w-3 cursor-nwse-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("nw")}
-            role="presentation"
-          />
-          <div
-            className="absolute right-0 top-0 h-3 w-3 cursor-nesw-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("ne")}
-            role="presentation"
-          />
-          <div
-            className="absolute bottom-0 left-0 h-3 w-3 cursor-nesw-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("sw")}
-            role="presentation"
-          />
-          <div
-            className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize pointer-events-auto"
-            onPointerDown={handleResizePointerDown("se")}
-            role="presentation"
-          />
-        </div>
-
-        <div
-          className="flex shrink-0 touch-none items-center justify-between border-b bg-card px-4 py-3 cursor-grab active:cursor-grabbing"
-          onPointerDown={handleWidgetHeaderPointerDown}
-          role="presentation"
-        >
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              aria-label={isSidebarOpen ? "대화방 목록 닫기" : "대화방 목록 열기"}
-            >
-              <PanelLeft className="h-3 w-3" />
-            </Button>
-
-            <div className="mx-3 flex items-center gap-3">
-              <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
-              <p className="text-sm font-semibold leading-tight">
-                Etch AI Assistant
-              </p>
-
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <div
-              className="flex items-center gap-2 cursor-default"
-              data-chat-widget-no-drag="true"
-            >
-              <span className="text-xs text-muted-foreground">지식</span>
-              {canSelectUserSdwtProd ? (
-                <Select value={userSdwtProd} onValueChange={setUserSdwtProd}>
-                  <SelectTrigger
-                    className="h-6 w-32 text-xs cursor-pointer"
-                    aria-label="assistant 배경지식(user_sdwt_prod) 선택"
-                  >
-                    <SelectValue
-                      placeholder={isUserSdwtProdLoading ? "불러오는 중" : "선택"}
-                    />
-                  </SelectTrigger>
-                  <SelectContent data-chat-widget-portal="true">
-                    {userSdwtProdOptions.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Badge
-                  variant={isUserSdwtProdError ? "destructive" : "secondary"}
-                  className="h-7 px-2 text-xs"
-                  title={
-                    isUserSdwtProdError
-                      ? userSdwtProdErrorMessage || "분임조 목록을 불러오지 못했어요."
-                      : userSdwtProd || undefined
-                  }
-                >
-                  {userSdwtProd || (isUserSdwtProdLoading ? "…" : "—")}
-                </Badge>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleOpenFullChat}
-              aria-label="Open full chat page"
-            >
-              <SquareArrowOutUpRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={closeWidget}
-              aria-label="Minimize chat widget"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {isSidebarOpen && (
-            <aside className="flex w-52 shrink-0 min-h-0 flex-col border-r bg-muted/40">
-              <div className="flex items-center justify-between px-3 py-2">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>
-                  <p className="text-sm font-semibold text-foreground">최근 {rooms.length}개</p>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => createRoom()}
-                >
-                  새 대화
-                </Button>
-              </div>
-              <div className="mb-2 flex items-center justify-between border-b px-3 pb-2" />
-              <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
-                <RoomList
-                  rooms={sortedRooms}
-                  activeRoomId={activeRoomId}
-                  onSelectRoom={selectRoom}
-                  onDeleteRoom={handleDeleteRoom}
-                />
-              </div>
-            </aside>
-          )}
-
-          <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-            <ChatMessages messages={messages} isSending={isSending} fillBubbles />
-
-            <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
-
-            <ChatComposer
-              inputId="chat-widget-input"
-              label="어시스턴트에게 질문하기"
-              inputRef={inputRef}
-              inputValue={input}
-              onInputChange={(event) => setInput(event.target.value)}
-              onSubmit={handleSubmit}
-              isSending={isSending}
-              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-              footerLeft={
-                <button
-                  type="button"
-                  className="text-primary underline underline-offset-4"
-                  onClick={handleOpenFullChat}
-                >
-                  전체 화면에서 이어서 보기
-                </button>
-              }
-              footerRight="베타 · LLM API 연결"
-            />
-          </div>
-        </div>
-
-      </div>
-    </div>
+      rooms={rooms}
+      sortedRooms={sortedRooms}
+      activeRoomId={activeRoomId}
+      onSelectRoom={selectRoom}
+      onDeleteRoom={removeRoom}
+      onCreateRoom={createRoom}
+      messages={messages}
+      isSending={isSending}
+      errorMessage={errorMessage}
+      onClearError={clearError}
+      inputRef={inputRef}
+      inputValue={input}
+      onInputChange={handleInputChange}
+      onSubmit={handleSubmit}
+      onOpenFullChat={handleOpenFullChat}
+      onClose={closeWidget}
+    />
   )
 }

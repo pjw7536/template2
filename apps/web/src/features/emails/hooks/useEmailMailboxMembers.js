@@ -1,13 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 
+import { emailQueryKeys } from "../api/emailQueryKeys"
 import { fetchEmailMailboxMembers } from "../api/emails"
+import { normalizeMailbox } from "../utils/mailbox"
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : ""
-}
-
-function normalizeMailbox(value) {
-  return normalizeText(value)
 }
 
 function getAvatarFallback(value) {
@@ -57,7 +55,7 @@ export function useEmailMailboxMembers(mailbox, options = {}) {
   const enabled = options.enabled ?? Boolean(mailboxUserSdwtProd)
 
   const query = useQuery({
-    queryKey: ["emails", "mailboxMembers", mailboxUserSdwtProd],
+    queryKey: emailQueryKeys.mailboxMembers(mailboxUserSdwtProd),
     queryFn: () => fetchEmailMailboxMembers(mailboxUserSdwtProd),
     enabled,
     staleTime: 60 * 1000,

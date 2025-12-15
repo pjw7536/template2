@@ -1,0 +1,3 @@
+export const DEFAULT_EMAIL_PAGE_SIZE = 20
+export const EMAIL_PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
+

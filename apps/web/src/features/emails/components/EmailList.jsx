@@ -17,9 +17,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+
+import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
 import { formatEmailDate } from "../utils/date"
 
-const DEFAULT_PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
 const pillBaseClass =
   "inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold leading-none"
 const pillInteractiveClass =
@@ -59,8 +60,8 @@ export function EmailList({
   isBulkDeleting = false,
   currentPage = 1,
   totalPages = 1,
-  pageSize = 20,
-  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  pageSize = DEFAULT_EMAIL_PAGE_SIZE,
+  pageSizeOptions = EMAIL_PAGE_SIZE_OPTIONS,
   onPageChange,
   onPageSizeChange,
   onReload,
@@ -123,7 +124,7 @@ export function EmailList({
               onClick={onReload}
               disabled={isReloading}
             >
-              <RefreshCcw className={cn("h-2 w-2", isReloading ? "animate-spin" : "")} />
+              <RefreshCcw className={cn("h-4 w-4", isReloading ? "animate-spin" : "")} />
               새로고침
             </Button>
           ) : null}
@@ -157,6 +158,8 @@ export function EmailList({
         ) : (
           <ul className="divide-y">
             {emails.map((email) => {
+              const emailSubject =
+                typeof email.subject === "string" && email.subject.trim() ? email.subject : "메일"
               const isSelected = selectedIds.includes(email.id)
               const isActive = activeEmailId === email.id
               return (
@@ -174,10 +177,10 @@ export function EmailList({
                     <SelectionCheckbox
                       checked={isSelected}
                       onCheckedChange={() => onToggleSelect?.(email.id)}
-                      aria-label={`${email.subject} 선택`}
+                      aria-label={`${emailSubject} 선택`}
                     />
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1" onClick={() => onSelectEmail?.(email.id)}>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <p className="min-w-0 flex-1 truncate text-sm font-semibold">
                         {email.subject || "(제목 없음)"}
