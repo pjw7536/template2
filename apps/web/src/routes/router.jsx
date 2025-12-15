@@ -14,7 +14,6 @@ import { TimelineLayout, timelineRoutes } from "@/features/timeline"
 import { vocRoutes } from "@/features/voc"
 import { AssistantLayout, assistantRoutes } from "@/features/assistant"
 import { emailsRoutes } from "@/features/emails"
-import { mailboxRoutes } from "@/features/mailbox"
 import { accountRoutes } from "@/features/account"
 
 const protectedAppRoutes = {
@@ -26,7 +25,6 @@ const protectedAppRoutes = {
         ...modelsRoutes,
         ...lineDashboardRoutes,
         ...appstoreRoutes,
-        ...mailboxRoutes,
         ...emailsRoutes,
         ...vocRoutes,
         ...accountRoutes,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Iterable, Tuple
 
 from django.db import transaction
 from django.db.models import F
@@ -33,6 +33,50 @@ def _normalize_screenshot_input(value: str) -> tuple[str, str, str]:
     return "", data, mime_type
 
 
+def _sanitize_screenshot_urls(values: Iterable[Any] | None) -> list[str]:
+    """스크린샷 입력을 문자열 배열로 정규화합니다."""
+
+    if not values:
+        return []
+
+    cleaned: list[str] = []
+    for raw in values:
+        if not isinstance(raw, str):
+            continue
+        value = raw.strip()
+        if not value:
+            continue
+        cleaned.append(value)
+    return cleaned
+
+
+def _normalize_screenshot_gallery(values: list[str]) -> list[dict[str, str]]:
+    """갤러리(추가 스크린샷) 입력을 저장 형태로 정규화합니다."""
+
+    normalized: list[dict[str, str]] = []
+    for value in values:
+        url, base64_value, mime_type = _normalize_screenshot_input(value)
+        if not url and not base64_value:
+            continue
+        normalized.append(
+            {
+                "url": url,
+                "base64": base64_value,
+                "mime_type": mime_type,
+            }
+        )
+    return normalized
+
+
+def _split_cover_and_gallery(screenshot_urls: list[str]) -> tuple[str, list[str]]:
+    """대표 이미지(첫번째)와 갤러리(나머지)로 분리합니다."""
+
+    cleaned = _sanitize_screenshot_urls(screenshot_urls)
+    if not cleaned:
+        return "", []
+    return cleaned[0], cleaned[1:]
+
+
 def create_app(
     *,
     owner,
@@ -42,6 +86,7 @@ def create_app(
     url: str,
     badge: str,
     tags: list[str],
+    screenshot_urls: list[str] | None = None,
     screenshot_url: str,
     contact_name: str,
     contact_knoxid: str,
@@ -58,6 +103,7 @@ def create_app(
         url: App URL.
         badge: Optional badge label.
         tags: Tag list.
+        screenshot_urls: Screenshot list (cover first). Each item may be an external URL or data URL (base64).
         screenshot_url: Screenshot external URL or data URL (base64).
         contact_name: Contact person name.
         contact_knoxid: Contact knoxid.
@@ -69,7 +115,12 @@ def create_app(
         Inserts a new AppStoreApp row.
     """
 
-    normalized_url, screenshot_base64, screenshot_mime_type = _normalize_screenshot_input(screenshot_url)
+    cover_input, gallery_inputs = _split_cover_and_gallery(screenshot_urls or [])
+    if not cover_input:
+        cover_input = (screenshot_url or "").strip()
+
+    normalized_url, screenshot_base64, screenshot_mime_type = _normalize_screenshot_input(cover_input)
+    screenshot_gallery = _normalize_screenshot_gallery(gallery_inputs)
     app = AppStoreApp.objects.create(
         name=name,
         category=category,
@@ -78,6 +129,7 @@ def create_app(
         screenshot_url=normalized_url,
         screenshot_base64=screenshot_base64,
         screenshot_mime_type=screenshot_mime_type,
+        screenshot_gallery=screenshot_gallery,
         badge=badge,
         tags=tags,
         contact_name=contact_name,
@@ -104,17 +156,30 @@ def update_app(*, app: AppStoreApp, updates: Dict[str, Any]) -> AppStoreApp:
     """
 
     screenshot_input: str | None = None
+    screenshot_urls_input: list[str] | None = None
     if "screenshot_url" in updates:
         screenshot_input = str(updates.pop("screenshot_url") or "")
+    if "screenshot_urls" in updates:
+        raw = updates.pop("screenshot_urls")
+        screenshot_urls_input = raw if isinstance(raw, list) else []
 
     for field, value in updates.items():
         setattr(app, field, value)
 
-    if screenshot_input is not None:
+    if screenshot_urls_input is not None:
+        cover_input, gallery_inputs = _split_cover_and_gallery(screenshot_urls_input)
+        normalized_url, screenshot_base64, screenshot_mime_type = _normalize_screenshot_input(cover_input)
+        app.screenshot_url = normalized_url
+        app.screenshot_base64 = screenshot_base64
+        app.screenshot_mime_type = screenshot_mime_type
+        app.screenshot_gallery = _normalize_screenshot_gallery(gallery_inputs)
+    elif screenshot_input is not None:
         normalized_url, screenshot_base64, screenshot_mime_type = _normalize_screenshot_input(screenshot_input)
         app.screenshot_url = normalized_url
         app.screenshot_base64 = screenshot_base64
         app.screenshot_mime_type = screenshot_mime_type
+        if not (normalized_url or screenshot_base64):
+            app.screenshot_gallery = []
 
     app.save()
     return get_app_by_id(app_id=app.pk) or app

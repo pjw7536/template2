@@ -121,6 +121,45 @@ def _sanitize_tags(tags: Any) -> List[str]:
     return cleaned
 
 
+def _sanitize_screenshot_urls(value: Any) -> List[str]:
+    """스크린샷 URL 목록을 정규화합니다."""
+
+    if not isinstance(value, list):
+        return []
+
+    cleaned: List[str] = []
+    for raw in value:
+        if not isinstance(raw, str):
+            continue
+        url = raw.strip()
+        if not url:
+            continue
+        cleaned.append(url)
+    return cleaned
+
+
+def _apply_cover_index(screenshot_urls: List[str], cover_index: Any) -> List[str]:
+    """cover_index를 반영해 대표 이미지를 0번으로 이동합니다."""
+
+    if not screenshot_urls:
+        return []
+
+    try:
+        index = int(cover_index)
+    except (TypeError, ValueError):
+        return screenshot_urls
+
+    if index < 0 or index >= len(screenshot_urls):
+        return screenshot_urls
+
+    if index == 0:
+        return screenshot_urls
+
+    cover = screenshot_urls[index]
+    remaining = [item for i, item in enumerate(screenshot_urls) if i != index]
+    return [cover, *remaining]
+
+
 def _can_manage_app(user, app: Any) -> bool:
     """현재 사용자가 앱을 수정/삭제할 수 있는지 검사합니다."""
 
@@ -169,6 +208,7 @@ def _app_payload(
     liked_app_ids: Sequence[int],
     *,
     include_comments: bool = False,
+    include_screenshots: bool = False,
     liked_comment_ids: set[int] | None = None,
 ) -> Dict[str, Any]:
     """앱을 API 응답 형태로 직렬화합니다(선호 시 댓글 포함)."""
@@ -190,7 +230,7 @@ def _app_payload(
     owner_payload = _user_payload(getattr(app, "owner", None))
     comment_count = getattr(app, "comment_count", 0) or 0
 
-    return {
+    payload: Dict[str, Any] = {
         "id": app.pk,
         "name": app.name,
         "category": app.category,
@@ -212,6 +252,18 @@ def _app_payload(
         "canDelete": _can_manage_app(current_user, app),
         **({"comments": comments} if comments is not None else {}),
     }
+
+    if include_screenshots:
+        screenshot_srcs = []
+        screenshot_srcs_raw = getattr(app, "screenshot_srcs", None)
+        if callable(screenshot_srcs_raw):
+            screenshot_srcs = screenshot_srcs_raw()
+        if not isinstance(screenshot_srcs, list):
+            screenshot_srcs = []
+        payload["screenshotUrls"] = screenshot_srcs
+        payload["coverScreenshotIndex"] = 0
+
+    return payload
 
 
 def _load_app(app_id: int) -> Any | None:
@@ -248,6 +300,11 @@ class AppStoreAppsView(APIView):
         url = str(payload.get("url") or "").strip()
         badge = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
         tags = _sanitize_tags(payload.get("tags"))
+        screenshot_urls = _sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
+        screenshot_urls = _apply_cover_index(
+            screenshot_urls,
+            payload.get("coverScreenshotIndex") or payload.get("cover_screenshot_index"),
+        )
         screenshot_url = str(payload.get("screenshotUrl") or payload.get("screenshot_url") or "").strip()
         contact_name = str(payload.get("contactName") or "").strip()[:MAX_CONTACT_LENGTH]
         contact_knoxid = str(payload.get("contactKnoxid") or "").strip()[:MAX_CONTACT_LENGTH]
@@ -273,12 +330,16 @@ class AppStoreAppsView(APIView):
                 url=url,
                 badge=badge,
                 tags=tags,
+                screenshot_urls=screenshot_urls,
                 screenshot_url=screenshot_url,
                 contact_name=contact_name,
                 contact_knoxid=contact_knoxid,
             )
             liked_ids = get_liked_app_ids_for_user(user=request.user)
-            return JsonResponse({"app": _app_payload(app, request.user, liked_ids)}, status=201)
+            return JsonResponse(
+                {"app": _app_payload(app, request.user, liked_ids, include_screenshots=True)},
+                status=201,
+            )
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to create appstore app")
             return JsonResponse({"error": "Failed to create app"}, status=500)
@@ -306,6 +367,7 @@ class AppStoreAppDetailView(APIView):
                     user,
                     liked_ids,
                     include_comments=True,
+                    include_screenshots=True,
                     liked_comment_ids=liked_comment_ids,
                 )
             }
@@ -352,6 +414,16 @@ class AppStoreAppDetailView(APIView):
         if "screenshotUrl" in payload or "screenshot_url" in payload:
             updates["screenshot_url"] = str(payload.get("screenshotUrl") or payload.get("screenshot_url") or "").strip()
 
+        screenshot_urls = None
+        if "screenshotUrls" in payload or "screenshot_urls" in payload:
+            screenshot_urls = _sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
+            screenshot_urls = _apply_cover_index(
+                screenshot_urls,
+                payload.get("coverScreenshotIndex") or payload.get("cover_screenshot_index"),
+            )
+            updates.pop("screenshot_url", None)
+            updates["screenshot_urls"] = screenshot_urls
+
         if "badge" in payload:
             updates["badge"] = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
 
@@ -370,7 +442,7 @@ class AppStoreAppDetailView(APIView):
         try:
             app = update_app(app=app, updates=updates)
             liked_ids = get_liked_app_ids_for_user(user=request.user)
-            return JsonResponse({"app": _app_payload(app, request.user, liked_ids)})
+            return JsonResponse({"app": _app_payload(app, request.user, liked_ids, include_screenshots=True)})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update appstore app")
             return JsonResponse({"error": "Failed to update app"}, status=500)

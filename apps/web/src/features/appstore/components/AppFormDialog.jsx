@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 
 function toTags(value) {
   if (!value?.trim()) return []
@@ -13,10 +14,12 @@ function toTags(value) {
     .filter(Boolean)
 }
 
-function getFirstClipboardImageFile(clipboardData) {
+function getClipboardImageFiles(clipboardData) {
   const items = Array.from(clipboardData?.items ?? [])
-  const imageItem = items.find((item) => item.kind === "file" && item.type?.startsWith("image/"))
-  return imageItem ? imageItem.getAsFile() : null
+  return items
+    .filter((item) => item.kind === "file" && item.type?.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
 }
 
 function fileToDataUrl(file) {
@@ -45,7 +48,8 @@ export function AppFormDialog({
   const [badge, setBadge] = useState("")
   const [contactName, setContactName] = useState("")
   const [contactKnoxid, setContactKnoxid] = useState("")
-  const [screenshotUrl, setScreenshotUrl] = useState("")
+  const [screenshotUrls, setScreenshotUrls] = useState([])
+  const [coverScreenshotIndex, setCoverScreenshotIndex] = useState(0)
   const [screenshotError, setScreenshotError] = useState("")
 
   useEffect(() => {
@@ -59,7 +63,21 @@ export function AppFormDialog({
       setBadge(initialData.badge || "")
       setContactName(initialData.contactName || "")
       setContactKnoxid(initialData.contactKnoxid || "")
-      setScreenshotUrl(initialData.screenshotUrl || "")
+      const urls = Array.isArray(initialData.screenshotUrls)
+        ? initialData.screenshotUrls.filter((value) => typeof value === "string" && value.trim())
+        : []
+      const resolvedUrls =
+        urls.length > 0
+          ? urls
+          : typeof initialData.screenshotUrl === "string" && initialData.screenshotUrl.trim()
+            ? [initialData.screenshotUrl.trim()]
+            : []
+      const coverIndexRaw = initialData.coverScreenshotIndex ?? 0
+      const coverIndex = Number.isFinite(Number(coverIndexRaw)) ? Number(coverIndexRaw) : 0
+      setScreenshotUrls(resolvedUrls)
+      setCoverScreenshotIndex(
+        Number.isInteger(coverIndex) && coverIndex >= 0 && coverIndex < resolvedUrls.length ? coverIndex : 0,
+      )
       setScreenshotError("")
     } else {
       setName("")
@@ -70,7 +88,8 @@ export function AppFormDialog({
       setBadge("")
       setContactName("")
       setContactKnoxid("")
-      setScreenshotUrl("")
+      setScreenshotUrls([])
+      setCoverScreenshotIndex(0)
       setScreenshotError("")
     }
   }, [initialData, open])
@@ -88,6 +107,16 @@ export function AppFormDialog({
 
   const handleSubmit = async () => {
     if (!name.trim() || !category.trim() || !url.trim()) return
+    const normalizedScreenshotUrls = screenshotUrls
+      .filter((value) => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)
+    const normalizedCoverIndex =
+      Number.isInteger(coverScreenshotIndex) &&
+      coverScreenshotIndex >= 0 &&
+      coverScreenshotIndex < normalizedScreenshotUrls.length
+        ? coverScreenshotIndex
+        : 0
     const payload = {
       name: name.trim(),
       category: category.trim(),
@@ -97,14 +126,16 @@ export function AppFormDialog({
       badge: badge.trim(),
       contactName: contactName.trim(),
       contactKnoxid: contactKnoxid.trim(),
-      screenshotUrl: screenshotUrl.trim(),
+      screenshotUrl: normalizedScreenshotUrls[normalizedCoverIndex] || "",
+      screenshotUrls: normalizedScreenshotUrls,
+      coverScreenshotIndex: normalizedCoverIndex,
     }
     await onSubmit(payload)
   }
 
   const handleScreenshotPaste = async (event) => {
-    const file = getFirstClipboardImageFile(event.clipboardData)
-    if (!file) {
+    const files = getClipboardImageFiles(event.clipboardData)
+    if (!files.length) {
       setScreenshotError("이미지(스크린샷)만 붙여넣을 수 있어요.")
       return
     }
@@ -113,12 +144,15 @@ export function AppFormDialog({
     setScreenshotError("")
 
     try {
-      const dataUrl = await fileToDataUrl(file)
-      setScreenshotUrl(dataUrl)
+      const dataUrls = await Promise.all(files.map((file) => fileToDataUrl(file)))
+      const nextUrls = dataUrls.filter(Boolean)
+      setScreenshotUrls((prev) => [...prev, ...nextUrls])
     } catch {
       setScreenshotError("스크린샷을 읽지 못했습니다. 다시 시도해 주세요.")
     }
   }
+
+  const coverSrc = screenshotUrls[coverScreenshotIndex] || ""
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -190,7 +224,7 @@ export function AppFormDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label id="app-screenshot-label">스크린샷 (클립보드 붙여넣기)</Label>
+              <Label id="app-screenshot-label">스크린샷 (여러 장 붙여넣기)</Label>
               <div className="grid gap-2">
                 <div
                   id="app-screenshot"
@@ -199,10 +233,10 @@ export function AppFormDialog({
                   onPaste={handleScreenshotPaste}
                   className="grid min-h-[140px] place-items-center rounded-md border bg-muted/40 p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
-                  {screenshotUrl ? (
+                  {coverSrc ? (
                     <img
-                      src={screenshotUrl}
-                      alt="스크린샷 미리보기"
+                      src={coverSrc}
+                      alt="대표 스크린샷 미리보기"
                       className="max-h-56 w-full rounded-md object-cover"
                       loading="lazy"
                     />
@@ -218,21 +252,72 @@ export function AppFormDialog({
                   <p className="text-xs text-destructive">{screenshotError}</p>
                 ) : null}
 
+                {screenshotUrls.length ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {screenshotUrls.map((src, index) => {
+                      const isCover = index === coverScreenshotIndex
+                      return (
+                        <div key={`${index}-${src.slice(0, 24)}`} className="grid gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setCoverScreenshotIndex(index)}
+                            className={cn(
+                              "relative overflow-hidden rounded-md border bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                              isCover && "ring-2 ring-primary/40",
+                            )}
+                          >
+                            <img
+                              src={src}
+                              alt={`스크린샷 ${index + 1}`}
+                              className="h-20 w-full object-cover"
+                              loading="lazy"
+                            />
+                            {isCover ? (
+                              <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                                대표
+                              </div>
+                            ) : null}
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              setScreenshotUrls((prev) => prev.filter((_, i) => i !== index))
+                              setCoverScreenshotIndex((prevIndex) => {
+                                if (index === prevIndex) return 0
+                                if (index < prevIndex) return Math.max(prevIndex - 1, 0)
+                                return prevIndex
+                              })
+                            }}
+                            type="button"
+                          >
+                            삭제
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
-                    {screenshotUrl ? "붙여넣은 이미지가 저장됩니다." : "클릭 후 붙여넣기(Ctrl+V)를 사용하세요."}
+                    {screenshotUrls.length
+                      ? `${screenshotUrls.length}장 등록됨 · 대표 이미지를 선택하세요.`
+                      : "클릭 후 붙여넣기(Ctrl+V)를 사용하세요."}
                   </p>
-                  {screenshotUrl ? (
+                  {screenshotUrls.length ? (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setScreenshotUrl("")
+                        setScreenshotUrls([])
+                        setCoverScreenshotIndex(0)
                         setScreenshotError("")
                       }}
                       type="button"
                     >
-                      삭제
+                      전체 삭제
                     </Button>
                   ) : null}
                 </div>

@@ -70,6 +70,31 @@ function normalizeApp(raw) {
   const comments = Array.isArray(raw.comments)
     ? raw.comments.map(normalizeComment).filter(Boolean)
     : undefined
+
+  const screenshotUrl = ensureString(raw.screenshotUrl || raw.screenshot_url)
+  const screenshotUrlsRaw = raw.screenshotUrls || raw.screenshot_urls
+  const screenshotUrls = Array.isArray(screenshotUrlsRaw)
+    ? screenshotUrlsRaw
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim())
+    : []
+  const coverScreenshotIndexRaw = raw.coverScreenshotIndex ?? raw.cover_screenshot_index ?? 0
+  const coverScreenshotIndex = Number.isFinite(Number(coverScreenshotIndexRaw))
+    ? Number(coverScreenshotIndexRaw)
+    : 0
+
+  const resolvedScreenshotUrls = screenshotUrls.length
+    ? screenshotUrls
+    : screenshotUrl
+      ? [screenshotUrl]
+      : []
+  const resolvedCoverIndex =
+    Number.isInteger(coverScreenshotIndex) &&
+    coverScreenshotIndex >= 0 &&
+    coverScreenshotIndex < resolvedScreenshotUrls.length
+      ? coverScreenshotIndex
+      : 0
+
   return {
     id,
     name: ensureString(raw.name),
@@ -80,7 +105,9 @@ function normalizeApp(raw) {
     badge: ensureString(raw.badge),
     contactName: ensureString(raw.contactName || raw.contact_name),
     contactKnoxid: ensureString(raw.contactKnoxid || raw.contact_knoxid),
-    screenshotUrl: ensureString(raw.screenshotUrl || raw.screenshot_url),
+    screenshotUrl,
+    screenshotUrls: resolvedScreenshotUrls,
+    coverScreenshotIndex: resolvedCoverIndex,
     viewCount: Number(raw.viewCount ?? raw.view_count ?? 0) || 0,
     likeCount: Number(raw.likeCount ?? raw.like_count ?? 0) || 0,
     commentCount: Number(raw.commentCount ?? raw.comment_count ?? comments?.length ?? 0) || 0,

@@ -32,6 +32,7 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(app.screenshot_url, "")
         self.assertEqual(app.screenshot_base64, "AAA=")
         self.assertEqual(app.screenshot_mime_type, "image/png")
+        self.assertEqual(app.screenshot_gallery, [])
 
     def test_create_app_keeps_external_screenshot_url(self) -> None:
         User = get_user_model()
@@ -55,6 +56,41 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(app.screenshot_url, screenshot_url)
         self.assertEqual(app.screenshot_base64, "")
         self.assertEqual(app.screenshot_mime_type, "")
+        self.assertEqual(app.screenshot_gallery, [])
+
+    def test_create_app_stores_gallery_items(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S77777", password="test-password")
+
+        cover = "data:image/png;base64,COVER="
+        extra_url = "https://example.com/extra.png"
+        extra_data = "data:image/png;base64,EXTRA="
+
+        app = create_app(
+            owner=user,
+            name="Test App",
+            category="Tools",
+            description="",
+            url="https://example.com",
+            badge="",
+            tags=[],
+            screenshot_urls=[cover, extra_url, extra_data],
+            screenshot_url="",
+            contact_name="홍길동",
+            contact_knoxid="hong",
+        )
+
+        app.refresh_from_db()
+        self.assertEqual(app.screenshot_url, "")
+        self.assertEqual(app.screenshot_base64, "COVER=")
+        self.assertEqual(app.screenshot_mime_type, "image/png")
+        self.assertEqual(
+            app.screenshot_gallery,
+            [
+                {"url": extra_url, "base64": "", "mime_type": ""},
+                {"url": "", "base64": "EXTRA=", "mime_type": "image/png"},
+            ],
+        )
 
     def test_update_app_allows_clearing_screenshot(self) -> None:
         User = get_user_model()
@@ -77,6 +113,7 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(updated.screenshot_url, "")
         self.assertEqual(updated.screenshot_base64, "")
         self.assertEqual(updated.screenshot_mime_type, "")
+        self.assertEqual(updated.screenshot_gallery, [])
 
     def test_detail_payload_includes_screenshot_url(self) -> None:
         User = get_user_model()
@@ -99,6 +136,8 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["app"]["screenshotUrl"], screenshot_url)
+        self.assertEqual(payload["app"]["screenshotUrls"], [screenshot_url])
+        self.assertEqual(payload["app"]["coverScreenshotIndex"], 0)
 
 
 class AppstoreCommentReplyLikeTests(TestCase):

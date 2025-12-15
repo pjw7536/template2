@@ -152,7 +152,7 @@ export function EmailList({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             메일을 불러오는 중입니다...
@@ -186,8 +186,10 @@ export function EmailList({
                     />
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col gap-1" onClick={() => onSelectEmail?.(email.id)}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold">{email.subject || "(제목 없음)"}</p>
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {email.subject || "(제목 없음)"}
+                      </p>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
                         {formatDate(email.receivedAt)}
                       </span>

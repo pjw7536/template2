@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 
 import { CommentThread } from "./CommentThread"
+import { ScreenshotCarousel } from "./ScreenshotCarousel"
 
 const KST_TIME_ZONE = "Asia/Seoul"
 const commentTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
@@ -101,6 +102,14 @@ export function AppDetail({
     )
   }
 
+  const screenshotUrls =
+    Array.isArray(app.screenshotUrls) && app.screenshotUrls.length
+      ? app.screenshotUrls
+      : app.screenshotUrl
+        ? [app.screenshotUrl]
+        : []
+  const coverIndex = Number.isInteger(app.coverScreenshotIndex) ? app.coverScreenshotIndex : 0
+
   return (
     <div className="flex flex-col gap-4">
       <Card className="border bg-card shadow-sm">
@@ -178,20 +187,11 @@ export function AppDetail({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid h-56 place-items-center overflow-hidden rounded-xl border bg-muted sm:h-64 md:h-72">
-            {app.screenshotUrl ? (
-              <img
-                src={app.screenshotUrl}
-                alt={`${app.name} 스크린샷`}
-                className="h-full w-full object-contain"
-                loading="lazy"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                등록된 스크린샷이 없습니다.
-              </div>
-            )}
-          </div>
+          <ScreenshotCarousel
+            images={screenshotUrls}
+            altBase={`${app.name || "앱"} 스크린샷`}
+            initialIndex={coverIndex}
+          />
 
           <Separator className="bg-border" />
 

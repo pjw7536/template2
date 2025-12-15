@@ -14,6 +14,7 @@ class AppStoreApp(models.Model):
     screenshot_url = models.TextField(blank=True, default="")
     screenshot_base64 = models.TextField(blank=True, default="")
     screenshot_mime_type = models.CharField(max_length=100, blank=True, default="")
+    screenshot_gallery = models.JSONField(default=list, blank=True)
     tags = models.JSONField(default=list, blank=True)
     badge = models.CharField(max_length=64, blank=True, default="")
     contact_name = models.CharField(max_length=255, blank=True, default="")
@@ -51,6 +52,41 @@ class AppStoreApp(models.Model):
             mime_type = self.screenshot_mime_type or "image/png"
             return f"data:{mime_type};base64,{self.screenshot_base64}"
         return ""
+
+    def screenshot_gallery_srcs(self) -> list[str]:
+        """갤러리(추가 스크린샷) 표시용 src 목록을 반환합니다."""
+
+        raw = self.screenshot_gallery
+        if not isinstance(raw, list):
+            return []
+
+        srcs: list[str] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            url = item.get("url")
+            if isinstance(url, str) and url.strip():
+                srcs.append(url.strip())
+                continue
+
+            base64_value = item.get("base64")
+            if isinstance(base64_value, str) and base64_value.strip():
+                mime_type = item.get("mime_type")
+                if not isinstance(mime_type, str) or not mime_type.strip():
+                    mime_type = "image/png"
+                srcs.append(f"data:{mime_type};base64,{base64_value.strip()}")
+
+        return srcs
+
+    def screenshot_srcs(self) -> list[str]:
+        """대표 스크린샷 + 갤러리 스크린샷 src 목록을 반환합니다."""
+
+        cover = self.screenshot_src
+        gallery = self.screenshot_gallery_srcs()
+        if cover:
+            return [cover, *gallery]
+        return gallery
 
 
 class AppStoreLike(models.Model):

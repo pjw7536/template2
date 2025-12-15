@@ -22,9 +22,9 @@ export function AppList({
   selectedAppId,
   onSelect,
   onOpenLink,
-  onToggleLike,
-  onEdit,
-  onDelete,
+  onToggleLike: _onToggleLike,
+  onEdit: _onEdit,
+  onDelete: _onDelete,
   isLoading,
 }) {
   if (isLoading) {
@@ -49,6 +49,9 @@ export function AppList({
     <div className="grid grid-cols-[repeat(auto-fit,280px)] gap-3">
       {apps.map((app) => {
         const isSelected = selectedAppId === app.id
+        const coverSrc =
+          app.screenshotUrl ||
+          (Array.isArray(app.screenshotUrls) ? app.screenshotUrls[app.coverScreenshotIndex ?? 0] : "")
 
         return (
           <Card
@@ -70,9 +73,9 @@ export function AppList({
             <div className="grid grid-cols-[128px_1fr] gap-3 px-3 py-2">
               {/* 왼쪽: 스크린샷 */}
               <div className="relative h-28 w-32 overflow-hidden rounded-md bg-muted ring-1 ring-border">
-                {app.screenshotUrl ? (
+                {coverSrc ? (
                   <img
-                    src={app.screenshotUrl}
+                    src={coverSrc}
                     alt={`${app.name} 스크린샷`}
                     className="h-full w-full object-cover"
                     loading="lazy"

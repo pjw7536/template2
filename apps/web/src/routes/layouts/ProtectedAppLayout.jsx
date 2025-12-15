@@ -11,7 +11,7 @@ import { EmailsLayout } from "@/features/emails"
 const LINE_DASHBOARD_PREFIX = "/esop_dashboard"
 const EMAILS_PREFIX = "/emails"
 const VOC_ROUTE_PATTERN = /\/voc(\/|$)|\/qna(\/|$)/
-const INTERNAL_SCROLL_PREFIXES = ["/mailbox", "/emails", "/appstore"]
+const INTERNAL_SCROLL_PREFIXES = ["/emails", "/appstore"]
 const LAYOUT_VARIANTS = {
   DEFAULT: "default",
   LINE_DASHBOARD: "line-dashboard",
