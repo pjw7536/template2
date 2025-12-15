@@ -15,10 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-
-function normalizeMailbox(value) {
-  return typeof value === "string" ? value.trim() : ""
-}
+import { normalizeMailbox } from "../utils/mailbox"
 
 function getInitials(label) {
   if (!label) return "?"
@@ -147,4 +144,3 @@ export function SdwtSwitcher({
     </SidebarMenu>
   )
 }
-

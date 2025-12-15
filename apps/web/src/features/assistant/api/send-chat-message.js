@@ -84,16 +84,18 @@ function extractAssistantReply(payload) {
   return assistantMessage.trim()
 }
 
-export async function sendChatMessage({ prompt, history = [], roomId }) {
+export async function sendChatMessage({ prompt, history = [], roomId, userSdwtProd }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
   }
 
   const endpoint = resolveChatEndpoint()
+  const normalizedUserSdwtProd = typeof userSdwtProd === "string" ? userSdwtProd.trim() : ""
   const payload = {
     prompt: prompt.trim(),
     history: normalizeHistory(history),
     roomId,
+    ...(normalizedUserSdwtProd ? { userSdwtProd: normalizedUserSdwtProd } : {}),
   }
 
   const controller = new AbortController()

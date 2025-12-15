@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
 from .services import AssistantConfigError, AssistantRequestError, assistant_chat_service
+from . import selectors
 from api.common.utils import parse_json_body
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,26 @@ conversation_memory = ConversationMemory()
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class AssistantRagIndexListView(APIView):
+    """현재 사용자가 선택 가능한 RAG(user_sdwt_prod) 목록을 반환합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
+        current_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+
+        return JsonResponse(
+            {
+                "results": sorted(accessible),
+                "currentUserSdwtProd": current_user_sdwt_prod,
+            }
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class AssistantChatView(APIView):
     """프론트엔드 어시스턴트 위젯에서 사용하는 채팅 엔드포인트."""
 
@@ -179,6 +200,31 @@ class AssistantChatView(APIView):
             rag_index_name = ""
         if not rag_index_name:
             rag_index_name = assistant_chat_service.config.rag_index_name
+
+        requested_index_raw = (
+            payload.get("userSdwtProd")
+            or payload.get("user_sdwt_prod")
+            or payload.get("ragIndexName")
+            or payload.get("rag_index_name")
+        )
+        requested_index = requested_index_raw.strip() if isinstance(requested_index_raw, str) else ""
+        if requested_index:
+            accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=request.user)
+            requested_no_prefix = (
+                requested_index[3:].strip()
+                if requested_index.lower().startswith("rp-")
+                else ""
+            )
+
+            if requested_index in accessible:
+                rag_index_name = requested_index
+            elif requested_no_prefix and requested_no_prefix in accessible:
+                rag_index_name = requested_no_prefix
+            else:
+                return JsonResponse(
+                    {"error": "해당 user_sdwt_prod에 대한 접근 권한이 없습니다."},
+                    status=403,
+                )
 
         incoming_history = _normalize_history(
             payload.get("history"),

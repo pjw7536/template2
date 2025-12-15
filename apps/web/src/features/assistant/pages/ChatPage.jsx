@@ -2,16 +2,34 @@ import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { Bot, PanelLeft, Plus, RefreshCw } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"
 import { RoomList } from "../components/RoomList"
+import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatPage() {
   const location = useLocation()
+  const {
+    userSdwtProd,
+    setUserSdwtProd,
+    options: userSdwtProdOptions,
+    isLoading: isUserSdwtProdLoading,
+    isError: isUserSdwtProdError,
+    errorMessage: userSdwtProdErrorMessage,
+    canSelect: canSelectUserSdwtProd,
+  } = useAssistantRagIndex()
   const handoffMessages = Array.isArray(location?.state?.initialMessages)
     ? location.state.initialMessages
     : undefined
@@ -45,6 +63,7 @@ export function ChatPage() {
     initialRooms,
     initialMessagesByRoom,
     initialActiveRoomId,
+    userSdwtProd,
   })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -115,6 +134,40 @@ export function ChatPage() {
             <div className="flex items-center gap-3">
               <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
               <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">분임조</span>
+                {canSelectUserSdwtProd ? (
+                  <Select value={userSdwtProd} onValueChange={setUserSdwtProd}>
+                    <SelectTrigger
+                      className="h-8 w-36 text-xs"
+                      aria-label="assistant 배경지식(user_sdwt_prod) 선택"
+                    >
+                      <SelectValue
+                        placeholder={isUserSdwtProdLoading ? "불러오는 중" : "선택"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userSdwtProdOptions.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge
+                    variant={isUserSdwtProdError ? "destructive" : "secondary"}
+                    className="h-7 px-2 text-xs"
+                    title={
+                      isUserSdwtProdError
+                        ? userSdwtProdErrorMessage || "분임조 목록을 불러오지 못했어요."
+                        : userSdwtProd || undefined
+                    }
+                  >
+                    {userSdwtProd || (isUserSdwtProdLoading ? "…" : "—")}
+                  </Badge>
+                )}
+              </div>
               <span className="text-xs text-muted-foreground">실시간 상담</span>
             </div>
           </div>

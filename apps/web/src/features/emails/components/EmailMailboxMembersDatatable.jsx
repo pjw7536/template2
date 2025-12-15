@@ -209,7 +209,7 @@ export function EmailMailboxMembersDatatable({ data }) {
   const permissionColumn = table.getColumn("permission")
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto,1fr,auto]">
+    <div className="grid h-full min-h-0 grid-rows-[150px_1fr]">
       <div className="border-b">
         <div className="flex flex-col gap-3 p-4">
           <span className="text-lg font-semibold text-foreground">필터</span>
@@ -338,7 +338,7 @@ export function EmailMailboxMembersDatatable({ data }) {
                     size="icon"
                     className={cn(
                       !isActive &&
-                        "bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary/20 dark:focus-visible:ring-primary/40",
+                      "bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary/20 dark:focus-visible:ring-primary/40",
                     )}
                     onClick={() => table.setPageIndex(page - 1)}
                     aria-current={isActive ? "page" : undefined}

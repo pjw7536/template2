@@ -4,15 +4,7 @@ import { Inbox, Loader2, MailOpen, User } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-
-function formatDate(value) {
-  if (!value) return ""
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return value
-  }
-}
+import { formatEmailDate } from "../utils/date"
 
 export function EmailDetail({ email, isLoading, html, isHtmlLoading }) {
   if (isLoading) {
@@ -42,14 +34,14 @@ export function EmailDetail({ email, isLoading, html, isHtmlLoading }) {
           <MailOpen className="h-4 w-4" />
           <span>수신</span>
           <span>·</span>
-          <span>{formatDate(email.receivedAt)}</span>
+          <span>{formatEmailDate(email.receivedAt)}</span>
           {email.ragDocId ? (
             <Badge variant="outline" className="ml-2 text-[10px] uppercase">
               RAG 연동
             </Badge>
           ) : null}
         </div>
-        <CardTitle className="text-lg font-semibold leading-tight">
+        <CardTitle className="break-words text-lg font-semibold leading-tight">
           {email.subject || "(제목 없음)"}
         </CardTitle>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">

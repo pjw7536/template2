@@ -2,11 +2,20 @@ import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Bot, Minus, PanelLeft, SquareArrowOutUpRight } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ChatComposer } from "./ChatComposer"
 import { ChatErrorBanner } from "./ChatErrorBanner"
 import { ChatMessages } from "./ChatMessages"
 import { RoomList } from "./RoomList"
+import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
@@ -58,6 +67,15 @@ export function ChatWidget() {
   const navigate = useNavigate()
   const location = useLocation()
   const {
+    userSdwtProd,
+    setUserSdwtProd,
+    options: userSdwtProdOptions,
+    isLoading: isUserSdwtProdLoading,
+    isError: isUserSdwtProdError,
+    errorMessage: userSdwtProdErrorMessage,
+    canSelect: canSelectUserSdwtProd,
+  } = useAssistantRagIndex()
+  const {
     rooms,
     activeRoomId,
     messages,
@@ -69,7 +87,7 @@ export function ChatWidget() {
     selectRoom,
     createRoom,
     removeRoom,
-  } = useChatSession()
+  } = useChatSession({ userSdwtProd })
   const inputRef = useRef(null)
   const floatingButtonRef = useRef(null)
   const floatingButtonSizeRef = useRef({
@@ -117,6 +135,11 @@ export function ChatWidget() {
     if (!isOpen || typeof document === "undefined") return
 
     const handlePointerDown = (event) => {
+      const target = event.target
+      const targetElement = target instanceof Element ? target : target?.parentElement
+      if (targetElement?.closest('[data-chat-widget-portal="true"]')) {
+        return
+      }
       if (chatContainerRef.current && !chatContainerRef.current.contains(event.target)) {
         if (typeof window !== "undefined") {
           const rect = chatContainerRef.current?.getBoundingClientRect()
@@ -429,7 +452,11 @@ export function ChatWidget() {
   const handleWidgetHeaderPointerDown = (event) => {
     if (!chatContainerRef.current || isResizing) return
 
-    const isInteractiveElement = event.target.closest?.("button, a, input, textarea, select")
+    const target = event.target
+    const targetElement = target instanceof Element ? target : target?.parentElement
+    const isInteractiveElement = targetElement?.closest?.(
+      "button, a, input, textarea, select, [data-chat-widget-no-drag=\"true\"]",
+    )
     if (isInteractiveElement) return
 
     event.preventDefault()
@@ -582,9 +609,47 @@ export function ChatWidget() {
               <p className="text-sm font-semibold leading-tight">
                 Etch AI Assistant
               </p>
+
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <div
+              className="flex items-center gap-2 cursor-default"
+              data-chat-widget-no-drag="true"
+            >
+              <span className="text-xs text-muted-foreground">지식</span>
+              {canSelectUserSdwtProd ? (
+                <Select value={userSdwtProd} onValueChange={setUserSdwtProd}>
+                  <SelectTrigger
+                    className="h-6 w-32 text-xs cursor-pointer"
+                    aria-label="assistant 배경지식(user_sdwt_prod) 선택"
+                  >
+                    <SelectValue
+                      placeholder={isUserSdwtProdLoading ? "불러오는 중" : "선택"}
+                    />
+                  </SelectTrigger>
+                  <SelectContent data-chat-widget-portal="true">
+                    {userSdwtProdOptions.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge
+                  variant={isUserSdwtProdError ? "destructive" : "secondary"}
+                  className="h-7 px-2 text-xs"
+                  title={
+                    isUserSdwtProdError
+                      ? userSdwtProdErrorMessage || "분임조 목록을 불러오지 못했어요."
+                      : userSdwtProd || undefined
+                  }
+                >
+                  {userSdwtProd || (isUserSdwtProdLoading ? "…" : "—")}
+                </Badge>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="icon"

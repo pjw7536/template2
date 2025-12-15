@@ -6,21 +6,9 @@ import { SidebarLayout } from "@/components/layout"
 import { useAuth } from "@/lib/auth"
 
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
+import { getMailboxFromSearchParams, normalizeMailbox } from "../utils/mailbox"
 import { EmailMailboxSidebar } from "./EmailMailboxSidebar"
 import { EmailsHeader } from "./EmailsHeader"
-
-function normalizeMailbox(value) {
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function getMailboxParam(searchParams) {
-  return normalizeMailbox(
-    searchParams.get("mailbox") ||
-      searchParams.get("userSdwtProd") ||
-      searchParams.get("user_sdwt_prod") ||
-      ""
-  )
-}
 
 export function EmailsLayout({
   children,
@@ -39,7 +27,7 @@ export function EmailsLayout({
   } = useEmailMailboxes()
 
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
-  const mailboxParam = getMailboxParam(searchParams)
+  const mailboxParam = getMailboxFromSearchParams(searchParams)
   const currentUserSdwtProd = normalizeMailbox(user?.user_sdwt_prod)
   const firstMailbox = normalizeMailbox(mailboxes[0])
   const fallbackMailbox = mailboxParam || currentUserSdwtProd || firstMailbox

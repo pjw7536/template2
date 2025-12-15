@@ -223,6 +223,7 @@ function buildInitialState(options = {}) {
 }
 
 export function useChatSession(options = {}) {
+  const userSdwtProd = typeof options?.userSdwtProd === "string" ? options.userSdwtProd.trim() : ""
   const initialRef = useRef(null)
   if (!initialRef.current) {
     initialRef.current = buildInitialState(options)
@@ -333,6 +334,7 @@ export function useChatSession(options = {}) {
         prompt: text,
         history: historyForRequest.map(({ role, content }) => ({ role, content })),
         roomId,
+        userSdwtProd,
       })
 
       const reply =

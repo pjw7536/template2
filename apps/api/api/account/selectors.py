@@ -17,6 +17,10 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
 
     Return user_sdwt_prod values the user is allowed to access.
 
+    Notes:
+        - Regular users: include their own `user_sdwt_prod` plus explicit grants from `UserSdwtProdAccess`.
+        - Superusers: return all known `user_sdwt_prod` values across the system (used for global browsing).
+
     Args:
         user: Django user instance (may be anonymous / unauthenticated).
 
@@ -29,6 +33,17 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
 
     if not user or not getattr(user, "is_authenticated", False):
         return set()
+
+    if getattr(user, "is_superuser", False):
+        UserModel = get_user_model()
+        values = set(list_distinct_user_sdwt_prod_values())
+        values.update(
+            UserModel.objects.exclude(user_sdwt_prod__isnull=True)
+            .exclude(user_sdwt_prod="")
+            .values_list("user_sdwt_prod", flat=True)
+            .distinct()
+        )
+        return {val.strip() for val in values if isinstance(val, str) and val.strip()}
 
     values = set(
         UserSdwtProdAccess.objects.filter(user=user).values_list("user_sdwt_prod", flat=True)

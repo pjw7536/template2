@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { formatEmailDate } from "../utils/date"
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [15, 20, 25, 30, 40, 50]
 const pillBaseClass =
@@ -25,15 +26,6 @@ const pillInteractiveClass =
   "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-60"
 const deletePillClass = "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
 const countPillClass = "border-primary/20 bg-primary/10 text-primary"
-
-function formatDate(value) {
-  if (!value) return ""
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return value
-  }
-}
 
 function SelectionCheckbox({ checked, onCheckedChange, className, ...props }) {
   return (
@@ -109,7 +101,7 @@ export function EmailList({
   }
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-card/60 shadow-sm p-2">
+    <div className="flex h-full min-w-0 flex-col rounded-xl border bg-card/60 p-2 shadow-sm">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
           <SelectionCheckbox
@@ -152,7 +144,7 @@ export function EmailList({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             메일을 불러오는 중입니다...
@@ -171,7 +163,7 @@ export function EmailList({
                 <li
                   key={email.id}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-muted/60",
+                    "flex min-w-0 cursor-pointer items-start gap-3 overflow-hidden px-4 py-3 transition hover:bg-muted/60",
                     isSelected ? "bg-muted/60" : "",
                     isActive ? "ring-1 ring-primary/40 bg-muted/50" : ""
                   )}
@@ -191,7 +183,7 @@ export function EmailList({
                         {email.subject || "(제목 없음)"}
                       </p>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {formatDate(email.receivedAt)}
+                        {formatEmailDate(email.receivedAt)}
                       </span>
                     </div>
                     <p className="truncate text-xs text-muted-foreground">From: {email.sender}</p>

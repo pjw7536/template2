@@ -11,22 +11,7 @@ import { NavUser } from "@/features/line-dashboard"
 
 import { NavMain } from "./nav-main"
 import { SdwtSwitcher } from "./SdwtSwitcher"
-
-function normalizeMailbox(value) {
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function buildMailboxUrl(mailbox) {
-  const trimmed = normalizeMailbox(mailbox)
-  if (!trimmed) return "/emails"
-  return `/emails?mailbox=${encodeURIComponent(trimmed)}`
-}
-
-function buildMembersUrl(mailbox) {
-  const trimmed = normalizeMailbox(mailbox)
-  if (!trimmed) return "/emails/members"
-  return `/emails/members?mailbox=${encodeURIComponent(trimmed)}`
-}
+import { buildMailboxUrl, buildMembersUrl, normalizeMailbox } from "../utils/mailbox"
 
 export function EmailMailboxSidebar({
   mailboxes = [],
