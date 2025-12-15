@@ -139,6 +139,24 @@ class AssistantRagIndexViewsTests(TestCase):
 
 
 class AssistantChatServiceSourceFilteringTests(TestCase):
+    def test_generate_llm_payload_sets_temperature_zero_when_background_knowledge_exists(self) -> None:
+        service = AssistantChatService(
+            config=AssistantChatConfig(
+                use_dummy=False,
+                llm_url="http://example.com",
+                llm_credential="token",
+                temperature=0.7,
+            )
+        )
+
+        payload_with_context = service._generate_llm_payload("질문입니다", ["context"], email_ids=["E1"])
+        self.assertEqual(payload_with_context.get("temperature"), 0.0)
+        messages = payload_with_context.get("messages")
+        self.assertEqual([entry.get("role") for entry in messages], ["system", "system", "system", "user"])
+
+        payload_without_context = service._generate_llm_payload("질문입니다", [], email_ids=["E1"])
+        self.assertEqual(payload_without_context.get("temperature"), 0.7)
+
     def test_generate_reply_builds_segments_and_filters_sources(self) -> None:
         service = AssistantChatService(
             config=AssistantChatConfig(
