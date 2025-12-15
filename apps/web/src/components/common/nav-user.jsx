@@ -1,5 +1,4 @@
-// src/components/layout/nav-user.jsx
-import * as React from "react"
+// src/components/common/nav-user.jsx
 import { useNavigate } from "react-router-dom"
 import { BadgeCheck, Bell, ChevronsUpDown, LogOut, MessageSquare } from "lucide-react"
 
@@ -65,9 +64,9 @@ function normalizeUser(u) {
  */
 export function NavUser({
   user,
-  onAccount = () => { },
+  onAccount = () => {},
   onVoc,
-  onNotifications = () => { },
+  onNotifications = () => {},
   onLogout,
   onBilling,
 }) {
@@ -75,20 +74,20 @@ export function NavUser({
   const navigate = useNavigate()
   const { user: sessionUser, isLoading, logout } = useAuth()
 
-  const handleLogout = React.useCallback(() => {
+  const handleLogout = () => {
     if (typeof onLogout === "function") {
       onLogout()
       return
     }
 
     logout()
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => {
         navigate("/login")
       })
-  }, [logout, onLogout, navigate])
+  }
 
-  const handleVoc = React.useCallback(() => {
+  const handleVoc = () => {
     if (typeof onVoc === "function") {
       onVoc()
       return
@@ -98,13 +97,10 @@ export function NavUser({
       return
     }
     navigate("/voc")
-  }, [navigate, onBilling, onVoc])
+  }
 
   // 사용자 입력 정규화 (표시 가능한 값이 없으면 숨김)
-  const normalized = React.useMemo(
-    () => normalizeUser(sessionUser || user),
-    [sessionUser, user],
-  )
+  const normalized = normalizeUser(sessionUser || user)
 
   if (isLoading) {
     return null

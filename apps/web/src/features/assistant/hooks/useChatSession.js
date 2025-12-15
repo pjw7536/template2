@@ -342,19 +342,44 @@ export function useChatSession(options = {}) {
           ? result.reply.trim()
           : "답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
       const sources = normalizeChatSources(result?.sources)
-
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [roomId]: trimMessages([
-          ...(prev[roomId] ?? []),
-          {
+      const segments = Array.isArray(result?.segments) ? result.segments : []
+      const normalizedSegments = segments
+        .map((segment) => {
+          if (!segment || typeof segment !== "object") return null
+          const segmentReply =
+            typeof segment.reply === "string" && segment.reply.trim() ? segment.reply.trim() : null
+          if (!segmentReply) return null
+          return {
             id: createMessageId("assistant"),
             role: "assistant",
-            content: reply,
-            sources,
-          },
-        ]),
-      }))
+            content: segmentReply,
+            sources: normalizeChatSources(segment.sources),
+          }
+        })
+        .filter(Boolean)
+
+      setMessagesByRoom((prev) => {
+        const baseMessages = prev[roomId] ?? []
+        if (normalizedSegments.length > 0) {
+          return {
+            ...prev,
+            [roomId]: trimMessages([...baseMessages, ...normalizedSegments]),
+          }
+        }
+
+        return {
+          ...prev,
+          [roomId]: trimMessages([
+            ...baseMessages,
+            {
+              id: createMessageId("assistant"),
+              role: "assistant",
+              content: reply,
+              sources,
+            },
+          ]),
+        }
+      })
     } catch (error) {
       setErrorMessage(error?.message || "메시지를 전송하지 못했어요.")
     }

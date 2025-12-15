@@ -66,6 +66,7 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
     - Users whose `user_sdwt_prod` equals the mailbox (implicit access)
     - Users who were granted access via `UserSdwtProdAccess` (explicit access)
     - `emailCount`: Emails in the mailbox where Email.sender_id matches the user (knox_id fallback to sabun)
+    - `knoxId`: User.knox_id (loginid)
 
     Args:
         mailbox_user_sdwt_prod: The mailbox user_sdwt_prod value.
@@ -105,10 +106,15 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
 
     def serialize_user(user: Any, access: Any | None) -> dict[str, object]:
         sender_id_by_user_id[user.id] = resolve_sender_id(user)
+        knox_id = getattr(user, "knox_id", None)
+        knox_id_value = knox_id.strip() if isinstance(knox_id, str) else ""
+        display_username = getattr(user, "username", None)
+        display_username_value = display_username.strip() if isinstance(display_username, str) else ""
         return {
             "userId": user.id,
-            "username": user.get_username(),
+            "username": display_username_value,
             "name": (getattr(user, "first_name", "") or "") + (getattr(user, "last_name", "") or ""),
+            "knoxId": knox_id_value,
             "userSdwtProd": normalized,
             "canManage": bool(getattr(access, "can_manage", False)) if access else False,
             "grantedBy": getattr(access, "granted_by_id", None) if access else None,

@@ -261,16 +261,22 @@ class EmailMailboxAccessViewTests(TestCase):
     def test_user_can_view_mailbox_members_for_accessible_mailbox(self) -> None:
         User = get_user_model()
         requester = User.objects.create_user(sabun="S33333", password="test-password")
+        requester.username = "홍길동"
+        requester.knox_id = "loginid-requester"
         requester.user_sdwt_prod = "group-a"
-        requester.save(update_fields=["user_sdwt_prod"])
+        requester.save(update_fields=["username", "knox_id", "user_sdwt_prod"])
 
         affiliated = User.objects.create_user(sabun="S33334", password="test-password")
+        affiliated.username = "김철수"
+        affiliated.knox_id = "loginid-affiliated"
         affiliated.user_sdwt_prod = "group-a"
-        affiliated.save(update_fields=["user_sdwt_prod"])
+        affiliated.save(update_fields=["username", "knox_id", "user_sdwt_prod"])
 
         granted = User.objects.create_user(sabun="S33335", password="test-password")
+        granted.username = "이영희"
+        granted.knox_id = "loginid-granted"
         granted.user_sdwt_prod = "group-b"
-        granted.save(update_fields=["user_sdwt_prod"])
+        granted.save(update_fields=["username", "knox_id", "user_sdwt_prod"])
         UserSdwtProdAccess.objects.create(user=granted, user_sdwt_prod="group-a", can_manage=True)
 
         Email.objects.create(
@@ -278,7 +284,7 @@ class EmailMailboxAccessViewTests(TestCase):
             received_at=timezone.now(),
             subject="Requester mail 1",
             sender="requester@example.com",
-            sender_id=requester.get_username(),
+            sender_id=requester.knox_id,
             recipient="dest@example.com",
             user_sdwt_prod="group-a",
             body_text="Body",
@@ -288,7 +294,7 @@ class EmailMailboxAccessViewTests(TestCase):
             received_at=timezone.now(),
             subject="Requester mail 2",
             sender="requester@example.com",
-            sender_id=requester.get_username(),
+            sender_id=requester.knox_id,
             recipient="dest@example.com",
             user_sdwt_prod="group-a",
             body_text="Body",
@@ -298,7 +304,7 @@ class EmailMailboxAccessViewTests(TestCase):
             received_at=timezone.now(),
             subject="Affiliated mail 1",
             sender="affiliated@example.com",
-            sender_id=affiliated.get_username(),
+            sender_id=affiliated.knox_id,
             recipient="dest@example.com",
             user_sdwt_prod="group-a",
             body_text="Body",
@@ -308,7 +314,7 @@ class EmailMailboxAccessViewTests(TestCase):
             received_at=timezone.now(),
             subject="Outside mailbox",
             sender="requester@example.com",
-            sender_id=requester.get_username(),
+            sender_id=requester.knox_id,
             recipient="dest@example.com",
             user_sdwt_prod="group-b",
             body_text="Body",
@@ -325,13 +331,19 @@ class EmailMailboxAccessViewTests(TestCase):
 
         requester_member = next(item for item in members if item["userId"] == requester.id)
         self.assertEqual(requester_member["emailCount"], 2)
+        self.assertEqual(requester_member["username"], requester.username)
+        self.assertEqual(requester_member["knoxId"], requester.knox_id)
 
         affiliated_member = next(item for item in members if item["userId"] == affiliated.id)
         self.assertEqual(affiliated_member["emailCount"], 1)
+        self.assertEqual(affiliated_member["username"], affiliated.username)
+        self.assertEqual(affiliated_member["knoxId"], affiliated.knox_id)
 
         granted_member = next(item for item in members if item["userId"] == granted.id)
         self.assertTrue(granted_member["canManage"])
         self.assertEqual(granted_member["emailCount"], 0)
+        self.assertEqual(granted_member["username"], granted.username)
+        self.assertEqual(granted_member["knoxId"], granted.knox_id)
 
     def test_user_cannot_view_mailbox_members_for_ungranted_mailbox(self) -> None:
         User = get_user_model()

@@ -31,6 +31,17 @@ LLM agents MUST:
 * Feature exports MUST be routed through each feature’s `index.js`.
 * In `apps/web/src`, files that render JSX MUST use `.jsx` (non‑JSX modules MUST use `.js`).
 
+## 1‑3. User Request Understanding Gate (Mandatory)
+
+Before ANY implementation work (writing/editing files, running commands/tools, proposing file/folder locations), the LLM MUST:
+
+1. Summarize the user request in TWO versions:
+   * `Summary (EN): ...`
+   * `요약 (KR): ...`
+2. List all ambiguities / decisions that must be confirmed as questions (APIs, file locations, naming, scope boundaries, UI behavior, acceptance criteria, etc.). If there are none, explicitly write `Questions: none` / `질문: 없음`.
+3. Ask the user to confirm/correct the summaries and answer the questions.
+4. STOP and wait for the user’s confirmation/answers before implementing.
+
 ---
 
 # 2. Architectural Rules (LLM‑Strict)

@@ -62,12 +62,12 @@ function GroupItem({ item }) {
   )
 }
 
-export function NavMain({ items, label = "Emails" }) {
+export function SidebarNavMain({ items, label }) {
   const safeItems = Array.isArray(items) ? items : []
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      {label ? <SidebarGroupLabel>{label}</SidebarGroupLabel> : null}
       <SidebarMenu>
         {safeItems.map((item) => {
           const hasChildren = Array.isArray(item.items) && item.items.length > 0
@@ -80,4 +80,3 @@ export function NavMain({ items, label = "Emails" }) {
     </SidebarGroup>
   )
 }
-

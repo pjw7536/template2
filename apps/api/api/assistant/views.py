@@ -108,6 +108,31 @@ def _normalize_sources(raw_sources: object) -> List[Dict[str, str]]:
     return normalized
 
 
+def _normalize_segments(raw_segments: object) -> List[Dict[str, object]]:
+    """LLM 응답 segment 목록을 프론트 전달용으로 정규화합니다."""
+
+    normalized: List[Dict[str, object]] = []
+    if not isinstance(raw_segments, list):
+        return normalized
+
+    for entry in raw_segments:
+        if not isinstance(entry, dict):
+            continue
+
+        reply_raw = entry.get("reply") or entry.get("answer") or entry.get("content")
+        reply = reply_raw.strip() if isinstance(reply_raw, str) else ""
+        if not reply:
+            continue
+
+        sources = _normalize_sources(entry.get("sources"))
+        if not sources:
+            continue
+
+        normalized.append({"reply": reply, "sources": sources})
+
+    return normalized
+
+
 class ConversationMemory:
     """사용자별 대화 이력을 캐시에 저장/슬라이딩 윈도우로 관리."""
 
@@ -243,6 +268,7 @@ class AssistantChatView(APIView):
         reply = ""
         contexts_used: List[str] = []
         sources_used: List[Dict[str, str]] = []
+        segments_used: List[Dict[str, object]] = []
         is_dummy = False
         try:
             chat_result = assistant_chat_service.generate_reply(
@@ -253,6 +279,7 @@ class AssistantChatView(APIView):
             reply = chat_result.reply.strip() if isinstance(chat_result.reply, str) else ""
             contexts_used = chat_result.contexts
             sources_used = _normalize_sources(getattr(chat_result, "sources", []))
+            segments_used = _normalize_segments(getattr(chat_result, "segments", []))
             is_dummy = getattr(chat_result, "is_dummy", False)
         except AssistantConfigError as exc:
             logger.error(
@@ -283,11 +310,12 @@ class AssistantChatView(APIView):
             )
             return JsonResponse({"error": "어시스턴트 응답이 비어 있습니다. 관리자에게 문의해주세요."}, status=502)
 
-        updated_history = conversation_memory.append(
-            username_clean,
-            room_id,
-            [{"role": "assistant", "content": reply}],
+        assistant_history_payload = (
+            [{"role": "assistant", "content": segment["reply"]} for segment in segments_used]
+            if segments_used
+            else [{"role": "assistant", "content": reply}]
         )
+        updated_history = conversation_memory.append(username_clean, room_id, assistant_history_payload)
 
         logger.debug(
             "Assistant chat request received",
@@ -308,6 +336,7 @@ class AssistantChatView(APIView):
                 "reply": reply,
                 "contexts": contexts_used,
                 "sources": sources_used,
+                "segments": segments_used,
                 "meta": {
                     "isDummy": is_dummy,
                     "llmConfigured": bool(assistant_chat_service.config.llm_url) or is_dummy,

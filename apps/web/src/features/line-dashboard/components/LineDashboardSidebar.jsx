@@ -1,9 +1,9 @@
 // src/features/line-dashboard/components/LineDashboardSidebar.jsx
 import { NavProjects } from "./nav-projects"
-import { NavUser } from "./nav-user"
 import { TeamSwitcher } from "./team-switcher"
 import { ActiveLineProvider } from "./active-line-context"
 import { NavMain } from "./nav-main"
+import { NavUser } from "@/components/common"
 import {
   Sidebar,
   SidebarContent,

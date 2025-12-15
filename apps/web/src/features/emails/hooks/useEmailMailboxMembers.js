@@ -10,16 +10,12 @@ function normalizeMailbox(value) {
   return normalizeText(value)
 }
 
-function getInitials(value) {
+function getAvatarFallback(value) {
   const trimmed = normalizeText(value)
   if (!trimmed) return "?"
 
-  const parts = trimmed.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) {
-    return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`.toUpperCase()
-  }
-
-  return trimmed.slice(0, 2).toUpperCase()
+  const firstChar = Array.from(trimmed)[0] || "?"
+  return /[a-z]/i.test(firstChar) ? firstChar.toUpperCase() : firstChar
 }
 
 function toSafeNumber(value) {
@@ -32,13 +28,13 @@ function buildMemberRow(member) {
   const userId = member?.userId ?? member?.user_id ?? ""
   const name = normalizeText(member?.name)
   const username = normalizeText(member?.username)
+  const knoxId = normalizeText(member?.knoxId ?? member?.knox_id)
   const userSdwtProd = normalizeText(member?.userSdwtProd ?? member?.user_sdwt_prod)
 
-  const primary = name || username || userSdwtProd || "Unknown"
-  const secondaryCandidates = [username, userSdwtProd].filter(Boolean).filter((item) => item !== primary)
-  const secondary = secondaryCandidates[0] || ""
+  const primary = username || name || userSdwtProd || "Unknown"
+  const secondary = knoxId
 
-  const idParts = [userId, userSdwtProd, username].map((value) => String(value || "").trim()).filter(Boolean)
+  const idParts = [userId, knoxId, userSdwtProd].map((value) => String(value || "").trim()).filter(Boolean)
   const id = idParts.join("-") || primary
 
   return {
@@ -47,9 +43,10 @@ function buildMemberRow(member) {
     userSdwtProd,
     name,
     username,
+    knoxId,
     user: primary,
     secondary,
-    fallback: getInitials(primary),
+    fallback: getAvatarFallback(username || primary),
     permission: member?.canManage || member?.can_manage ? "admin" : "member",
     emailCount: toSafeNumber(member?.emailCount),
   }

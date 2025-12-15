@@ -42,20 +42,29 @@ import { cn } from "@/lib/utils"
 const COLUMNS = [
   {
     header: "사용자",
-    accessorKey: "user",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <Avatar className="size-9">
-          <AvatarFallback className="text-xs">{row.original.fallback}</AvatarFallback>
-        </Avatar>
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-medium">{row.getValue("user")}</span>
-          {row.original.secondary ? (
-            <span className="truncate text-xs text-muted-foreground">{row.original.secondary}</span>
-          ) : null}
+    accessorKey: "username",
+    cell: ({ row }) => {
+      const username = row.getValue("username")
+      const primary =
+        typeof username === "string" && username.trim()
+          ? username
+          : row.original.user || row.original.name || "Unknown"
+      const knoxId = row.original.knoxId || row.original.knox_id || row.original.secondary || ""
+
+      return (
+        <div className="flex items-center gap-2">
+          <Avatar className="size-9">
+            <AvatarFallback className="text-xs">{row.original.fallback}</AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{primary}</span>
+            {knoxId ? (
+              <span className="truncate text-xs text-muted-foreground">knox_id: {knoxId}</span>
+            ) : null}
+          </div>
         </div>
-      </div>
-    ),
+      )
+    },
     size: 360,
   },
   {

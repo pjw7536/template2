@@ -84,6 +84,29 @@ function extractAssistantReply(payload) {
   return assistantMessage.trim()
 }
 
+function extractAssistantSegments(payload) {
+  if (!payload || typeof payload !== "object") return []
+
+  const rawSegments = Array.isArray(payload.segments) ? payload.segments : []
+
+  return rawSegments
+    .map((segment) => {
+      if (!segment || typeof segment !== "object") return null
+      const reply =
+        (typeof segment.reply === "string" && segment.reply.trim()) ||
+        (typeof segment.answer === "string" && segment.answer.trim()) ||
+        (typeof segment.message === "string" && segment.message.trim())
+
+      if (!reply) return null
+
+      return {
+        reply: reply.trim(),
+        sources: normalizeChatSources(segment.sources),
+      }
+    })
+    .filter(Boolean)
+}
+
 export async function sendChatMessage({ prompt, history = [], roomId, userSdwtProd }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
@@ -138,10 +161,12 @@ export async function sendChatMessage({ prompt, history = [], roomId, userSdwtPr
   data = await response.json().catch(() => ({}))
   const reply = extractAssistantReply(data)
   const sources = normalizeChatSources(data.sources)
+  const segments = extractAssistantSegments(data)
 
   return {
     reply,
     sources,
+    segments,
     raw: data,
   }
 }

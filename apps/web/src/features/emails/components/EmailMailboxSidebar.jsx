@@ -7,9 +7,9 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar"
-import { NavUser } from "@/features/line-dashboard"
+import { NavUser } from "@/components/common"
+import { SidebarNavMain } from "@/components/layout"
 
-import { NavMain } from "./nav-main"
 import { SdwtSwitcher } from "./SdwtSwitcher"
 import { buildMailboxUrl, buildMembersUrl, normalizeMailbox } from "../utils/mailbox"
 
@@ -53,7 +53,7 @@ export function EmailMailboxSidebar({
         />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navMain} />
+        <SidebarNavMain items={navMain} label="Emails" />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

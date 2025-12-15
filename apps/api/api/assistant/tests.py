@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from api.account.models import UserSdwtProdAccess
+from api.assistant.services import AssistantChatConfig, AssistantChatService
 
 
 class AssistantRagIndexViewsTests(TestCase):
@@ -135,3 +136,114 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         kwargs = mocked_generate.call_args.kwargs
         self.assertEqual(kwargs.get("rag_index_name"), "group-c")
+
+
+class AssistantChatServiceSourceFilteringTests(TestCase):
+    def test_generate_reply_builds_segments_and_filters_sources(self) -> None:
+        service = AssistantChatService(
+            config=AssistantChatConfig(
+                use_dummy=False,
+                llm_url="http://example.com",
+                llm_credential="token",
+            )
+        )
+
+        contexts = ["[emailId: E1]\ncontext 1", "[emailId: E2]\ncontext 2"]
+        sources = [
+            {"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"},
+            {"doc_id": "E2", "title": "메일 2", "snippet": "내용 2"},
+        ]
+
+        with patch.object(service, "_retrieve_documents", return_value=(contexts, {"hits": {}}, sources)):
+            with patch.object(
+                service,
+                "_call_llm",
+                return_value=(
+                    json.dumps(
+                        {
+                            "answer": "통합 답변입니다",
+                            "segments": [
+                                {"answer": "메일 2 기반 답변", "usedEmailIds": ["E2"]},
+                                {"answer": "메일 1+2 기반 답변", "usedEmailIds": ["E1", "E2", "E3"]},
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    {"choices": []},
+                ),
+            ):
+                result = service.generate_reply("질문입니다")
+
+        self.assertEqual(result.reply, "통합 답변입니다")
+        self.assertEqual(len(result.segments), 2)
+        self.assertEqual(result.segments[0]["reply"], "메일 2 기반 답변")
+        self.assertEqual([entry["doc_id"] for entry in result.segments[0]["sources"]], ["E2"])
+        self.assertEqual(result.segments[1]["reply"], "메일 1+2 기반 답변")
+        self.assertEqual([entry["doc_id"] for entry in result.segments[1]["sources"]], ["E1", "E2"])
+        self.assertEqual([entry["doc_id"] for entry in result.sources], ["E1", "E2"])
+
+    def test_generate_reply_hides_sources_on_unparseable_reply(self) -> None:
+        service = AssistantChatService(
+            config=AssistantChatConfig(
+                use_dummy=False,
+                llm_url="http://example.com",
+                llm_credential="token",
+            )
+        )
+
+        sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"}]
+
+        with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
+            with patch.object(service, "_call_llm", return_value=("그냥 텍스트 응답", {"choices": []})):
+                result = service.generate_reply("질문입니다")
+
+        self.assertEqual(result.reply, "그냥 텍스트 응답")
+        self.assertEqual(result.sources, [])
+        self.assertEqual(result.segments, [])
+
+    def test_generate_reply_treats_empty_segments_as_no_sources(self) -> None:
+        service = AssistantChatService(
+            config=AssistantChatConfig(
+                use_dummy=False,
+                llm_url="http://example.com",
+                llm_credential="token",
+            )
+        )
+
+        sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"}]
+
+        with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
+            with patch.object(service, "_call_llm", return_value=('{"answer":"OK","segments":[]}', {"choices": []})):
+                result = service.generate_reply("질문입니다")
+
+        self.assertEqual(result.reply, "OK")
+        self.assertEqual(result.sources, [])
+        self.assertEqual(result.segments, [])
+
+    def test_generate_reply_supports_legacy_used_email_ids_format(self) -> None:
+        service = AssistantChatService(
+            config=AssistantChatConfig(
+                use_dummy=False,
+                llm_url="http://example.com",
+                llm_credential="token",
+            )
+        )
+
+        sources = [
+            {"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"},
+            {"doc_id": "E2", "title": "메일 2", "snippet": "내용 2"},
+        ]
+
+        with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
+            with patch.object(
+                service,
+                "_call_llm",
+                return_value=('{"answer":"OK","usedEmailIds":["E2","E3"]}', {"choices": []}),
+            ):
+                result = service.generate_reply("질문입니다")
+
+        self.assertEqual(result.reply, "OK")
+        self.assertEqual(len(result.segments), 1)
+        self.assertEqual(result.segments[0]["reply"], "OK")
+        self.assertEqual([entry["doc_id"] for entry in result.segments[0]["sources"]], ["E2"])
+        self.assertEqual([entry["doc_id"] for entry in result.sources], ["E2"])

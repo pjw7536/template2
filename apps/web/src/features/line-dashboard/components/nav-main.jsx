@@ -7,25 +7,9 @@
  * - 키/접근성/방어코드 강화
  */
 
-import { useMemo } from "react"
-import { ChevronRight } from "lucide-react"
-import { Link, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "components/ui/collapsible"
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-} from "@/components/ui/sidebar"
+import { SidebarNavMain } from "@/components/layout"
 import { useActiveLine } from "./active-line-context"
 
 /* =========================================================
@@ -89,67 +73,6 @@ function extractLineIdFromParams(params) {
 }
 
 /* =========================================================
- * 하위 컴포넌트: 단일 메뉴 항목 (children 없음)
- * ======================================================= */
-/** @param {{ item: NavItem, href: string }} props */
-function LeafItem({ item, href }) {
-  const Key = useMemo(() => `${item.title}-${item.url ?? "leaf"}`, [item.title, item.url])
-  return (
-    <SidebarMenuItem key={Key}>
-      <SidebarMenuButton asChild tooltip={item.title}>
-        <Link to={href}>
-          {item.icon && <item.icon />}
-          <span>{item.title}</span>
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
-
-/* =========================================================
- * 하위 컴포넌트: 자식이 있는 그룹 항목 (Collapsible)
- *  - 부모 scope를 자식이 기본 상속 (subItem.scope ?? item.scope)
- *  - Overview 링크(부모 url) 옵션 제공
- * ======================================================= */
-/** @param {{ item: NavItem, resolvedLineId: string|null }} props */
-function GroupItem({ item, resolvedLineId }) {
-  const key = `${item.title}-${item.url ?? "group"}`
-  const children = Array.isArray(item.items) ? item.items : []
-
-  return (
-    <Collapsible asChild defaultOpen={!!item.isActive} className="group/collapsible" key={key}>
-      <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton tooltip={item.title}>
-            {item.icon && <item.icon />}
-            <span>{item.title}</span>
-            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <SidebarMenuSub>
-            {children.map((sub) => {
-              const href = withLineScope(sub.url, sub.scope ?? item.scope, resolvedLineId)
-              const subKey = `${key}-sub-${sub.title}-${sub.url ?? "no-url"}`
-              return (
-                <SidebarMenuSubItem key={subKey}>
-                  <SidebarMenuSubButton asChild>
-                    <Link to={href}>
-                      <span>{sub.title}</span>
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              )
-            })}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </SidebarMenuItem>
-    </Collapsible>
-  )
-}
-
-/* =========================================================
  * 최상위 컴포넌트: NavMain
  *  - lineId 우선순위: URL 파라미터 > ActiveLine 컨텍스트
  *  - 각 item에 대해 LeafItem 또는 GroupItem으로 분기 렌더
@@ -160,28 +83,22 @@ export function NavMain({ items }) {
   const { lineId: activeLineId } = useActiveLine()
 
   // URL 파라미터 우선, 없다면 컨텍스트의 선택 라인 사용
-  const resolvedLineId = useMemo(
-    () => extractLineIdFromParams(params) ?? activeLineId ?? null,
-    [params, activeLineId]
-  )
+  const resolvedLineId = extractLineIdFromParams(params) ?? activeLineId ?? null
 
   const safeItems = Array.isArray(items) ? items : []
 
-  return (
-    <SidebarGroup>
-      {/* 필요 시 라벨 문구를 props로 받도록 확장 가능 */}
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+  const resolvedItems = safeItems.map((item) => {
+    const next = { ...item, url: withLineScope(item.url, item.scope, resolvedLineId) }
+    if (!Array.isArray(item.items)) return next
 
-      <SidebarMenu>
-        {safeItems.map((item) => {
-          const hasChildren = Array.isArray(item.items) && item.items.length > 0
-          if (hasChildren) {
-            return <GroupItem key={`${item.title}-${item.url ?? "group"}`} item={item} resolvedLineId={resolvedLineId} />
-          }
-          const href = withLineScope(item.url, item.scope, resolvedLineId)
-          return <LeafItem key={`${item.title}-${item.url ?? "leaf"}`} item={item} href={href} />
-        })}
-      </SidebarMenu>
-    </SidebarGroup>
-  )
+    return {
+      ...next,
+      items: item.items.map((sub) => ({
+        ...sub,
+        url: withLineScope(sub.url, sub.scope ?? item.scope, resolvedLineId),
+      })),
+    }
+  })
+
+  return <SidebarNavMain items={resolvedItems} label="Platform" />
 }

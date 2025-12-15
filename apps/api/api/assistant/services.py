@@ -29,6 +29,17 @@ DEFAULT_DUMMY_CONTEXTS = [
     "RAG 개발용 더미 문서: 공정 변경 시 보고 절차와 협업 흐름을 설명합니다.",
 ]
 DEFAULT_DUMMY_DELAY_MS = 0
+STRUCTURED_REPLY_SYSTEM_MESSAGE = (
+    "너는 반드시 JSON 객체 1개만 출력한다. 마크다운, 코드펜스, 설명 문장, 추가 텍스트는 금지다."
+)
+
+
+@dataclass(frozen=True)
+class AssistantStructuredSegment:
+    """LLM 구조화 응답에서 segment 1개를 표현합니다."""
+
+    answer: str
+    used_email_ids: List[str]
 
 
 class AssistantConfigError(RuntimeError):
@@ -110,6 +121,114 @@ def _parse_string_list(raw: Optional[str]) -> List[str]:
         return [raw.strip()]
 
     return []
+
+
+def _strip_markdown_code_fence(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned.startswith("```"):
+        return cleaned
+
+    lines = cleaned.splitlines()
+    if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
+        return "\n".join(lines[1:-1]).strip()
+
+    return cleaned
+
+
+def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, Optional[List[AssistantStructuredSegment]]]:
+    """LLM 응답(JSON)을 파싱해 answer/segments를 추출합니다.
+
+    반환:
+      - answer(표시용 문자열)
+      - segments (형식이 유효할 때만 list[AssistantStructuredSegment], 그 외 None)
+
+    지원 형식:
+      - 최신: {"answer": string, "segments": [{"answer": string, "usedEmailIds": string[]}]}
+      - 레거시: {"answer": string, "usedEmailIds": string[]}
+    """
+
+    fallback_answer = _strip_markdown_code_fence(raw_reply)
+    if not fallback_answer:
+        return "", None
+
+    candidates = [fallback_answer]
+    first_brace = fallback_answer.find("{")
+    last_brace = fallback_answer.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        candidates.append(fallback_answer[first_brace : last_brace + 1].strip())
+
+    parsed: Optional[Dict[str, Any]] = None
+    for candidate in candidates:
+        try:
+            loaded = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if isinstance(loaded, dict):
+            parsed = loaded
+            break
+
+    if not parsed:
+        return fallback_answer, None
+
+    segments: List[AssistantStructuredSegment] = []
+    segments_raw = parsed.get("segments")
+    if segments_raw is not None:
+        if not isinstance(segments_raw, list):
+            answer_raw = parsed.get("answer")
+            answer = (
+                answer_raw.strip() if isinstance(answer_raw, str) and answer_raw.strip() else fallback_answer
+            )
+            return answer, None
+
+        for entry in segments_raw:
+            if not isinstance(entry, dict):
+                continue
+            segment_answer_raw = entry.get("answer")
+            segment_answer = (
+                segment_answer_raw.strip()
+                if isinstance(segment_answer_raw, str) and segment_answer_raw.strip()
+                else ""
+            )
+            used_raw = entry.get("usedEmailIds")
+            if not segment_answer or not isinstance(used_raw, list):
+                continue
+
+            used_ids: List[str] = []
+            for item in used_raw:
+                if isinstance(item, str) and item.strip():
+                    used_ids.append(item.strip())
+
+            deduped_used_ids = list(dict.fromkeys(used_ids))
+            segments.append(
+                AssistantStructuredSegment(answer=segment_answer, used_email_ids=deduped_used_ids)
+            )
+
+        answer_raw = parsed.get("answer")
+        if isinstance(answer_raw, str) and answer_raw.strip():
+            answer = answer_raw.strip()
+        elif segments:
+            answer = "\n\n".join(segment.answer for segment in segments).strip() or fallback_answer
+        else:
+            answer = fallback_answer
+
+        return answer, segments
+
+    used_raw = parsed.get("usedEmailIds")
+    answer_raw = parsed.get("answer")
+    answer = answer_raw.strip() if isinstance(answer_raw, str) and answer_raw.strip() else fallback_answer
+    if not isinstance(used_raw, list):
+        return answer, None
+
+    used_ids: List[str] = []
+    for item in used_raw:
+        if isinstance(item, str) and item.strip():
+            used_ids.append(item.strip())
+
+    deduped_used_ids = list(dict.fromkeys(used_ids))
+    if deduped_used_ids:
+        segments.append(AssistantStructuredSegment(answer=answer, used_email_ids=deduped_used_ids))
+
+    return answer, segments
 
 
 def _parse_headers(raw: Optional[str], source: str) -> Dict[str, str]:
@@ -213,6 +332,7 @@ class AssistantChatResult:
     llm_response: Dict[str, Any]
     rag_response: Optional[Dict[str, Any]] = None
     sources: List[Dict[str, Any]] = field(default_factory=list)
+    segments: List[Dict[str, Any]] = field(default_factory=list)
     is_dummy: bool = False
 
 
@@ -221,6 +341,77 @@ class AssistantChatService:
 
     def __init__(self, config: Optional[AssistantChatConfig] = None) -> None:
         self.config = config or AssistantChatConfig.from_settings()
+
+    def _filter_sources_by_used_email_ids(self, sources: List[Dict[str, Any]], used_email_ids: List[str]) -> List[Dict[str, Any]]:
+        """출처 목록에서 사용된 emailId(doc_id)만 남깁니다."""
+
+        if not used_email_ids:
+            return []
+
+        allowed_ids = {
+            entry.get("doc_id").strip()
+            for entry in sources
+            if isinstance(entry, dict)
+            and isinstance(entry.get("doc_id"), str)
+            and entry.get("doc_id").strip()
+        }
+        used_set = {email_id for email_id in used_email_ids if email_id in allowed_ids}
+        if not used_set:
+            return []
+
+        return [
+            entry
+            for entry in sources
+            if isinstance(entry, dict)
+            and isinstance(entry.get("doc_id"), str)
+            and entry.get("doc_id").strip() in used_set
+        ]
+
+    def _build_segments(
+        self,
+        sources: List[Dict[str, Any]],
+        segments: List[AssistantStructuredSegment],
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """LLM segment 목록을 기반으로 segment별 출처와 전체 출처를 계산합니다.
+
+        반환:
+          - segments: [{"reply": str, "sources": list[dict]}]
+          - sources: 전체 segment에서 사용된 출처(중복 제거)
+        """
+
+        allowed_ids = {
+            entry.get("doc_id").strip()
+            for entry in sources
+            if isinstance(entry, dict)
+            and isinstance(entry.get("doc_id"), str)
+            and entry.get("doc_id").strip()
+        }
+
+        normalized_segments: List[Dict[str, Any]] = []
+        used_ids_union: List[str] = []
+
+        for segment in segments:
+            used_ids = [email_id for email_id in segment.used_email_ids if email_id in allowed_ids]
+            if not used_ids:
+                continue
+
+            segment_sources = self._filter_sources_by_used_email_ids(sources, used_ids)
+            if not segment_sources:
+                continue
+
+            normalized_segments.append(
+                {
+                    "reply": segment.answer,
+                    "sources": segment_sources,
+                }
+            )
+
+            for email_id in used_ids:
+                if email_id not in used_ids_union:
+                    used_ids_union.append(email_id)
+
+        filtered_sources = self._filter_sources_by_used_email_ids(sources, used_ids_union)
+        return normalized_segments, filtered_sources
 
     def _generate_dummy_result(
         self,
@@ -338,29 +529,74 @@ class AssistantChatService:
 
         documents: List[str] = []
         for hit in hits:
+            if not isinstance(hit, dict):
+                continue
             source = hit.get("_source") or {}
+            if not isinstance(source, dict):
+                continue
             merged = source.get("merge_title_content")
-            if isinstance(merged, str) and merged.strip():
-                documents.append(merged)
+            if not isinstance(merged, str) or not merged.strip():
+                continue
+
+            raw_doc_id = source.get("doc_id") or hit.get("_id")
+            doc_id = str(raw_doc_id).strip() if raw_doc_id is not None else ""
+            title_raw = source.get("title")
+            title = str(title_raw).strip() if isinstance(title_raw, str) else ""
+            merged_clean = merged.strip()
+
+            if doc_id:
+                header_bits = [f"emailId: {doc_id}"]
+                if title:
+                    header_bits.append(f"title: {title}")
+                header = " | ".join(header_bits)
+                documents.append(f"[{header}]\n{merged_clean}")
+            else:
+                documents.append(merged_clean)
 
         sources = self._extract_sources(hits)
         return documents, data, sources
 
-    def _generate_llm_payload(self, question: str, contexts: List[str]) -> Dict[str, Any]:
+    def _generate_llm_payload(self, question: str, contexts: List[str], *, email_ids: List[str]) -> Dict[str, Any]:
         context_str = "\n".join(contexts) if contexts else NO_CONTEXT_MESSAGE
+        email_id_list = "\n".join(f"- {email_id}" for email_id in email_ids) if email_ids else "- (없음)"
 
         system_msg = {
             "role": "system",
             "content": self.config.system_message,
         }
+        format_msg = {
+            "role": "system",
+            "content": STRUCTURED_REPLY_SYSTEM_MESSAGE,
+        }
         user_msg = {
             "role": "user",
-            "content": f"질문: {question}\n\n[배경지식]\n{context_str}",
+            "content": "\n".join(
+                [
+                    "아래 규칙을 반드시 지켜서 JSON으로만 답해.",
+                    "",
+                    '[응답 형식] {"answer": string, "segments": {"answer": string, "usedEmailIds": string[]}[]}',
+                    "- answer: 통합 답변(출처가 없을 때만 화면에 표시됨)",
+                    "- segments: 출처(메일) 기반 답변 블록 목록",
+                    "- segments의 각 항목은 반드시 usedEmailIds를 포함해야 함",
+                    "- 출처를 1개 이상 사용했다면 segments는 반드시 1개 이상이어야 함",
+                    "- 사용한 메일이 없거나 질문과 무관하면 segments는 빈 배열([])",
+                    "- 가능하면 메일별로 segments를 분리하되, 여러 메일을 함께 사용하면 한 segment에 usedEmailIds 여러 개를 넣어도 됨",
+                    "- 위 목록에 없는 emailId를 새로 만들거나 추측하지 말 것",
+                    "",
+                    "[사용 가능한 emailId 목록]",
+                    email_id_list,
+                    "",
+                    f"질문: {question}",
+                    "",
+                    "[배경지식]",
+                    context_str,
+                ]
+            ),
         }
 
         payload: Dict[str, Any] = {
             "model": self.config.model,
-            "messages": [system_msg, user_msg],
+            "messages": [system_msg, format_msg, user_msg],
             "temperature": self.config.temperature,
             "stream": False,
         }
@@ -384,6 +620,7 @@ class AssistantChatService:
         session: requests.Session,
         question: str,
         contexts: List[str],
+        sources: List[Dict[str, Any]],
         user_header_id: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         if not self.config.llm_url:
@@ -401,7 +638,14 @@ class AssistantChatService:
         if user_header_id:
             headers["User-Id"] = user_header_id
 
-        payload = self._generate_llm_payload(question, contexts)
+        email_ids: List[str] = []
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            doc_id = entry.get("doc_id")
+            if isinstance(doc_id, str) and doc_id.strip():
+                email_ids.append(doc_id.strip())
+        payload = self._generate_llm_payload(question, contexts, email_ids=list(dict.fromkeys(email_ids)))
         resp_json = self._post(session, self.config.llm_url, headers, payload)
         reply = self._extract_llm_reply(resp_json)
         return reply, resp_json
@@ -422,13 +666,29 @@ class AssistantChatService:
                         )
                 except AssistantRequestError:
                     contexts, rag_response, sources = [], None, []
-                return self._generate_dummy_result(
+                dummy_result = self._generate_dummy_result(
                     normalized_question,
                     contexts=contexts,
                     sources=sources,
                     rag_response=rag_response,
                 )
-            return self._generate_dummy_result(normalized_question)
+            else:
+                dummy_result = self._generate_dummy_result(normalized_question)
+
+            answer, segments = _parse_structured_llm_reply(dummy_result.reply)
+            dummy_result.reply = answer
+            if segments is None:
+                dummy_result.sources = []
+                dummy_result.segments = []
+                return dummy_result
+
+            built_segments, filtered_sources = self._build_segments(
+                list(getattr(dummy_result, "sources", [])),
+                segments,
+            )
+            dummy_result.segments = built_segments
+            dummy_result.sources = filtered_sources
+            return dummy_result
 
         with requests.Session() as session:
             contexts, rag_response, sources = self._retrieve_documents(
@@ -438,15 +698,30 @@ class AssistantChatService:
                 session,
                 normalized_question,
                 contexts,
+                sources,
                 user_header_id=user_header_id,
             )
 
+        answer, segments = _parse_structured_llm_reply(reply)
+        if segments is None:
+            return AssistantChatResult(
+                reply=answer,
+                contexts=contexts,
+                llm_response=llm_response,
+                rag_response=rag_response,
+                sources=[],
+                segments=[],
+            )
+
+        built_segments, filtered_sources = self._build_segments(sources, segments)
+
         return AssistantChatResult(
-            reply=reply,
+            reply=answer,
             contexts=contexts,
             llm_response=llm_response,
             rag_response=rag_response,
-            sources=sources,
+            sources=filtered_sources,
+            segments=built_segments,
         )
 
 
