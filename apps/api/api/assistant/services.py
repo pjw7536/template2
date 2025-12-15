@@ -589,6 +589,8 @@ class AssistantChatService:
                     "- 출처를 1개 이상 실제로 사용했다면 segments는 반드시 1개 이상이어야 한다.",
                     "- 사용한 메일이 없거나 질문과 무관하면 segments는 빈 배열([])로 둔다.",
                     "- 가능하면 메일별로 segments를 분리하되, 여러 메일을 함께 사용했다면 한 segment에 usedEmailIds 여러 개를 넣어도 된다.",
+                    "- answer/segments[i].answer 텍스트에는 emailId 값을 직접 출력하지 말 것(출처 표기는 usedEmailIds 배열로만 한다).",
+                    "- answer/segments[i].answer 텍스트에 '/emails?emailId=' 형태의 URL을 포함하지 말 것.",
                     "- 아래 '사용 가능한 emailId 목록'에 없는 emailId를 새로 만들거나 추측하지 말 것.",
                     "",
                     "[근거(배경지식) 규칙]",

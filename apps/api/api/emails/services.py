@@ -11,7 +11,7 @@ from email.header import decode_header, make_header
 from email.message import Message
 from email.parser import BytesParser
 from email.policy import default
-from email.utils import parseaddr, parsedate_to_datetime
+from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import requests
@@ -115,7 +115,8 @@ def save_parsed_email(
     subject: str,
     sender: str,
     sender_id: str,
-    recipient: str,
+    recipient: Sequence[str] | None,
+    cc: Sequence[str] | None,
     user_sdwt_prod: str | None,
     body_html: str | None,
     body_text: str | None,
@@ -124,6 +125,10 @@ def save_parsed_email(
 
     user_sdwt_prod = user_sdwt_prod or UNASSIGNED_USER_SDWT_PROD
 
+    normalized_recipient = _normalize_participants(recipient)
+    normalized_cc = _normalize_participants(cc)
+    participants_search = _build_participants_search(recipient=normalized_recipient, cc=normalized_cc)
+
     email, _created = Email.objects.get_or_create(
         message_id=message_id,
         defaults={
@@ -131,7 +136,9 @@ def save_parsed_email(
             "subject": subject,
             "sender": sender,
             "sender_id": sender_id,
-            "recipient": recipient,
+            "recipient": normalized_recipient or None,
+            "cc": normalized_cc or None,
+            "participants_search": participants_search,
             "user_sdwt_prod": user_sdwt_prod,
             "body_text": body_text or "",
             "body_html_gzip": gzip_body(body_html),
@@ -540,6 +547,60 @@ def _decode_header_value(raw_value: str | None) -> str:
         return raw_value
 
 
+def _format_display_address(*, name: str, address: str) -> str:
+    """(name, address) 튜플을 사람이 읽기 좋은 "Name <addr>" 형식 문자열로 정규화합니다."""
+
+    normalized_name = " ".join(str(name or "").split()).strip()
+    normalized_address = str(address or "").strip()
+    if normalized_name and normalized_address:
+        return f"{normalized_name} <{normalized_address}>"
+    return normalized_address or normalized_name
+
+
+def _normalize_participants(values: Sequence[str] | None) -> list[str]:
+    """참여자(수신/참조) 문자열 리스트를 trim/dedup하여 반환합니다."""
+
+    if not values:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = " ".join(str(value or "").split()).strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(cleaned)
+    return normalized
+
+
+def _build_participants_search(*, recipient: Sequence[str] | None, cc: Sequence[str] | None) -> str | None:
+    """recipient/cc를 합쳐 부분검색용 텍스트를 생성합니다(소문자 정규화)."""
+
+    combined = _normalize_participants(list(recipient or []) + list(cc or []))
+    if not combined:
+        return None
+    return "\n".join([value.lower() for value in combined])
+
+
+def _extract_participants(msg: Message, header_name: str) -> list[str]:
+    """메일 헤더(To/Cc 등)에서 수신자 리스트를 파싱해 반환합니다."""
+
+    raw_values = msg.get_all(header_name, []) or []
+    decoded_values = [_decode_header_value(value) for value in raw_values if value]
+    parsed = getaddresses(decoded_values)
+
+    results: list[str] = []
+    for name, address in parsed:
+        formatted = _format_display_address(name=name, address=address)
+        if formatted:
+            results.append(formatted)
+    return _normalize_participants(results)
+
+
 def _decode_part(part: Message) -> str:
     """메일 MIME 파트의 payload를 charset 기반으로 문자열 디코딩합니다."""
 
@@ -697,7 +758,8 @@ def _parse_message_to_fields(msg: Message) -> Dict[str, Any]:
 
     subject = _extract_subject_header(msg)
     sender = _decode_header_value(msg.get("From"))
-    recipient = _decode_header_value(msg.get("To") or msg.get("Delivered-To") or "")
+    recipient = _extract_participants(msg, "To") or _extract_participants(msg, "Delivered-To")
+    cc = _extract_participants(msg, "Cc")
     message_id = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
     if not message_id:
         content_hash = hashlib.sha256(msg.as_bytes()).hexdigest()
@@ -714,6 +776,7 @@ def _parse_message_to_fields(msg: Message) -> Dict[str, Any]:
         "sender": sender,
         "sender_id": sender_id,
         "recipient": recipient,
+        "cc": cc,
         "body_text": body_text,
         "body_html": body_html,
     }
@@ -782,6 +845,7 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
                 sender=fields["sender"],
                 sender_id=sender_id,
                 recipient=fields["recipient"],
+                cc=fields["cc"],
                 user_sdwt_prod=user_sdwt_prod,
                 body_text=fields.get("body_text") or "",
                 body_html=fields.get("body_html"),

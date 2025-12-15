@@ -31,11 +31,17 @@ function normalizeMessages(messages) {
 
       if (!role || !content) return null
 
+      const userSdwtProd =
+        typeof message.userSdwtProd === "string" && message.userSdwtProd.trim()
+          ? message.userSdwtProd.trim()
+          : ""
+
       return {
         id: message.id || createMessageId(role),
         role,
         content,
         sources: normalizeChatSources(message.sources),
+        ...(userSdwtProd ? { userSdwtProd } : {}),
       }
     })
     .filter(Boolean)
@@ -354,6 +360,7 @@ export function useChatSession(options = {}) {
             role: "assistant",
             content: segmentReply,
             sources: normalizeChatSources(segment.sources),
+            ...(userSdwtProd ? { userSdwtProd } : {}),
           }
         })
         .filter(Boolean)
@@ -376,6 +383,7 @@ export function useChatSession(options = {}) {
               role: "assistant",
               content: reply,
               sources,
+              ...(userSdwtProd ? { userSdwtProd } : {}),
             },
           ]),
         }

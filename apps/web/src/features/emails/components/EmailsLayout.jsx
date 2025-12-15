@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -18,6 +18,7 @@ export function EmailsLayout({
   const { pathname } = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
+  const invalidMailboxRef = useRef("")
 
   const {
     data: mailboxData,
@@ -32,12 +33,50 @@ export function EmailsLayout({
   const firstMailbox = normalizeMailbox(mailboxes[0])
   const fallbackMailbox = mailboxParam || currentUserSdwtProd || firstMailbox
   const activeMailbox = mailboxParam || fallbackMailbox
+  const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
 
   useEffect(() => {
     if (isMailboxError && mailboxError) {
       toast.error(mailboxError?.message || "메일함 목록을 불러오지 못했습니다.")
     }
   }, [isMailboxError, mailboxError])
+
+  useEffect(() => {
+    if (!mailboxParam) return
+    if (isMailboxLoading) return
+    if (isMailboxError) return
+    if (normalizedMailboxes.length === 0) return
+    if (normalizedMailboxes.includes(mailboxParam)) {
+      invalidMailboxRef.current = ""
+      return
+    }
+
+    if (invalidMailboxRef.current === mailboxParam) return
+    invalidMailboxRef.current = mailboxParam
+    toast.error("권한이 없는 메일함 입니다.")
+
+    const nextMailbox =
+      (currentUserSdwtProd && normalizedMailboxes.includes(currentUserSdwtProd) && currentUserSdwtProd) ||
+      normalizedMailboxes[0] ||
+      ""
+
+    if (!nextMailbox) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set("mailbox", nextMailbox)
+    nextParams.delete("userSdwtProd")
+    nextParams.delete("user_sdwt_prod")
+    nextParams.delete("emailId")
+    setSearchParams(nextParams, { replace: true })
+  }, [
+    mailboxParam,
+    currentUserSdwtProd,
+    isMailboxError,
+    isMailboxLoading,
+    normalizedMailboxes,
+    searchParams,
+    setSearchParams,
+  ])
 
   useEffect(() => {
     if (mailboxParam) return

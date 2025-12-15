@@ -56,10 +56,10 @@ const COLUMNS = [
           <Avatar className="size-9">
             <AvatarFallback className="text-xs">{row.original.fallback}</AvatarFallback>
           </Avatar>
-          <div className="flex min-w-0 flex-col">
+          <div className="flex min-w-0 gap-2">
             <span className="truncate font-medium">{primary}</span>
             {knoxId ? (
-              <span className="truncate text-xs text-muted-foreground">knox_id: {knoxId}</span>
+              <span className="truncate text-muted-foreground">({knoxId})</span>
             ) : null}
           </div>
         </div>

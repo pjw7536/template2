@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from email.message import EmailMessage
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -12,9 +13,10 @@ from django.utils import timezone
 from api.account.models import Affiliation, UserSdwtProdAccess, UserSdwtProdChange
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email
-from api.emails.selectors import resolve_email_affiliation
+from api.emails.selectors import get_filtered_emails, resolve_email_affiliation
 from api.emails.services import (
     MailSendError,
+    _parse_message_to_fields,
     move_emails_to_user_sdwt_prod,
     move_sender_emails_after,
     reclassify_emails_for_user_sdwt_change,
@@ -77,7 +79,7 @@ class EmailAffiliationTests(TestCase):
             subject="Subject",
             sender="loginid2@example.com",
             sender_id="loginid2",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-old",
             body_text="Body",
         )
@@ -99,7 +101,7 @@ class EmailMoveServiceTests(TestCase):
             subject="A",
             sender="a@example.com",
             sender_id="loginid-move",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body A",
         )
@@ -109,7 +111,7 @@ class EmailMoveServiceTests(TestCase):
             subject="B",
             sender="a@example.com",
             sender_id="loginid-move",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body B",
         )
@@ -134,7 +136,7 @@ class EmailMoveServiceTests(TestCase):
             subject="Old",
             sender="a@example.com",
             sender_id=sender_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body Old",
         )
@@ -144,7 +146,7 @@ class EmailMoveServiceTests(TestCase):
             subject="New",
             sender="a@example.com",
             sender_id=sender_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body New",
         )
@@ -178,7 +180,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="A",
             sender="a@example.com",
             sender_id="a",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body A",
         )
@@ -188,7 +190,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="B",
             sender="b@example.com",
             sender_id="b",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body B",
         )
@@ -232,7 +234,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="A2",
             sender="a@example.com",
             sender_id="a",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body A2",
         )
@@ -242,7 +244,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="B2",
             sender="b@example.com",
             sender_id="b",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body B2",
         )
@@ -285,7 +287,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="Requester mail 1",
             sender="requester@example.com",
             sender_id=requester.knox_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body",
         )
@@ -295,7 +297,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="Requester mail 2",
             sender="requester@example.com",
             sender_id=requester.knox_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body",
         )
@@ -305,7 +307,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="Affiliated mail 1",
             sender="affiliated@example.com",
             sender_id=affiliated.knox_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body",
         )
@@ -315,7 +317,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="Outside mailbox",
             sender="requester@example.com",
             sender_id=requester.knox_id,
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body",
         )
@@ -394,7 +396,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="A3",
             sender="a@example.com",
             sender_id="a",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body A3",
         )
@@ -404,7 +406,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="B3",
             sender="b@example.com",
             sender_id="b",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body B3",
         )
@@ -414,7 +416,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="U",
             sender="u@example.com",
             sender_id="u",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD,
             body_text="Body U",
         )
@@ -457,7 +459,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="A4",
             sender="a@example.com",
             sender_id="a",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body A4",
         )
@@ -467,7 +469,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="U4",
             sender="u@example.com",
             sender_id="u",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD,
             body_text="Body U4",
         )
@@ -498,7 +500,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="U",
             sender="loginid-claim@example.com",
             sender_id="loginid-claim",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD,
             body_text="Body U",
         )
@@ -508,7 +510,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="C",
             sender="loginid-claim@example.com",
             sender_id="loginid-claim",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod="group-b",
             body_text="Body C",
         )
@@ -544,7 +546,7 @@ class EmailMailboxAccessViewTests(TestCase):
             subject="U2",
             sender="loginid-no-sdwt@example.com",
             sender_id="loginid-no-sdwt",
-            recipient="dest@example.com",
+            recipient=["dest@example.com"],
             user_sdwt_prod=UNASSIGNED_USER_SDWT_PROD,
             body_text="Body U2",
         )
@@ -683,3 +685,73 @@ class KnoxMailApiTests(SimpleTestCase):
                     subject="Subject",
                     html_content="<p>Hello</p>",
                 )
+
+
+class EmailParsingTests(SimpleTestCase):
+    def test_parse_message_to_fields_includes_cc_and_recipient_lists(self) -> None:
+        msg = EmailMessage()
+        msg["Subject"] = "Test"
+        msg["From"] = "Sender <sender@example.com>"
+        msg["To"] = "Jane <jane@x.com>, Bob <bob@y.com>"
+        msg["Cc"] = "Team <team@corp.com>"
+        msg["Date"] = "Mon, 01 Jan 2024 00:00:00 +0000"
+        msg["Message-ID"] = "<msg-parse-1>"
+        msg.set_content("Hello")
+
+        fields = _parse_message_to_fields(msg)
+
+        self.assertEqual(fields["recipient"], ["Jane <jane@x.com>", "Bob <bob@y.com>"])
+        self.assertEqual(fields["cc"], ["Team <team@corp.com>"])
+
+
+class EmailSearchSelectorTests(TestCase):
+    def test_get_filtered_emails_search_includes_to_and_cc(self) -> None:
+        Email.objects.create(
+            message_id="search-1",
+            received_at=timezone.now(),
+            subject="Subject",
+            sender="sender@example.com",
+            sender_id="sender",
+            recipient=["Jane <jane@x.com>"],
+            cc=["Team <team@corp.com>"],
+            participants_search="jane <jane@x.com>\nteam <team@corp.com>",
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+        Email.objects.create(
+            message_id="search-2",
+            received_at=timezone.now(),
+            subject="Other",
+            sender="other@example.com",
+            sender_id="other",
+            recipient=["Alice <alice@z.com>"],
+            participants_search="alice <alice@z.com>",
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        by_name = get_filtered_emails(
+            accessible_user_sdwt_prods=set(),
+            is_privileged=True,
+            can_view_unassigned=True,
+            mailbox_user_sdwt_prod="",
+            search="JANE",
+            sender="",
+            recipient="",
+            date_from=None,
+            date_to=None,
+        )
+        self.assertEqual(set(by_name.values_list("message_id", flat=True)), {"search-1"})
+
+        by_cc = get_filtered_emails(
+            accessible_user_sdwt_prods=set(),
+            is_privileged=True,
+            can_view_unassigned=True,
+            mailbox_user_sdwt_prod="",
+            search="",
+            sender="",
+            recipient="TEAM@corp.com",
+            date_from=None,
+            date_to=None,
+        )
+        self.assertEqual(set(by_cc.values_list("message_id", flat=True)), {"search-1"})

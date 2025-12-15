@@ -309,9 +309,9 @@ def get_filtered_emails(
         accessible_user_sdwt_prods: Allowed user_sdwt_prod values for the caller.
         is_privileged: When True, bypass user_sdwt_prod filtering.
         mailbox_user_sdwt_prod: When set, filter to the selected mailbox user_sdwt_prod.
-        search: Free-text query (subject/body/sender).
+        search: Free-text query (subject/body/sender/participants).
         sender: Sender substring filter.
-        recipient: Recipient substring filter.
+        recipient: Recipient substring filter (searches To/Cc).
         date_from: Minimum received_at (inclusive).
         date_to: Maximum received_at (inclusive).
 
@@ -333,15 +333,17 @@ def get_filtered_emails(
         queryset = queryset.filter(user_sdwt_prod=mailbox_user_sdwt_prod)
 
     if search:
+        normalized_participant_search = search.lower()
         queryset = queryset.filter(
             Q(subject__icontains=search)
             | Q(body_text__icontains=search)
             | Q(sender__icontains=search)
+            | Q(participants_search__contains=normalized_participant_search)
         )
     if sender:
         queryset = queryset.filter(sender__icontains=sender)
     if recipient:
-        queryset = queryset.filter(recipient__icontains=recipient)
+        queryset = queryset.filter(participants_search__contains=recipient.lower())
     if date_from:
         queryset = queryset.filter(received_at__gte=date_from)
     if date_to:

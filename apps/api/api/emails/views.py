@@ -88,6 +88,7 @@ def _serialize_email(email: Any) -> Dict[str, Any]:
         "sender": email.sender,
         "senderId": email.sender_id,
         "recipient": email.recipient,
+        "cc": email.cc,
         "userSdwtProd": email.user_sdwt_prod,
         "snippet": snippet,
         "ragDocId": email.rag_doc_id,

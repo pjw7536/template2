@@ -25,6 +25,8 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: Any) -> None:
         now = timezone.now()
         recipient = _default_recipient()
+        recipients = [recipient]
+        participants_search = recipient.lower()
         samples = [
             {
                 "message_id": "msg-0001",
@@ -32,7 +34,9 @@ class Command(BaseCommand):
                 "subject": "[샘플] 생산 라인 점검 알림",
                 "sender": "alerts@example.com",
                 "sender_id": "alerts",
-                "recipient": recipient,
+                "recipient": recipients,
+                "cc": None,
+                "participants_search": participants_search,
                 "user_sdwt_prod": "FAB-OPS",
                 "body_text": "주간 생산 라인 점검 예정입니다. 안전 수칙을 확인해주세요.",
                 "received_at": now,
@@ -43,7 +47,9 @@ class Command(BaseCommand):
                 "subject": "[샘플] 장비 교체 일정 안내",
                 "sender": "maintenance@example.com",
                 "sender_id": "maintenance",
-                "recipient": recipient,
+                "recipient": recipients,
+                "cc": None,
+                "participants_search": participants_search,
                 "user_sdwt_prod": "MAINT",
                 "body_text": "Etch 장비 교체 작업이 예정되어 있습니다. 관련 문서를 확인해주세요.",
                 "received_at": now - timedelta(hours=4),
@@ -61,6 +67,8 @@ class Command(BaseCommand):
                 "sender": sample["sender"],
                 "sender_id": sample["sender_id"],
                 "recipient": sample["recipient"],
+                "cc": sample["cc"],
+                "participants_search": sample["participants_search"],
                 "user_sdwt_prod": sample["user_sdwt_prod"],
                 "body_text": sample["body_text"],
                 "received_at": sample["received_at"],

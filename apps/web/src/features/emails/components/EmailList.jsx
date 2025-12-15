@@ -123,7 +123,7 @@ export function EmailList({
               onClick={onReload}
               disabled={isReloading}
             >
-              <RefreshCcw className={cn("h-4 w-4", isReloading ? "animate-spin" : "")} />
+              <RefreshCcw className={cn("h-2 w-2", isReloading ? "animate-spin" : "")} />
               새로고침
             </Button>
           ) : null}

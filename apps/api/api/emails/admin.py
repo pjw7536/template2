@@ -21,14 +21,14 @@ class EmailActionForm(ActionForm):
 
 @admin.register(Email)
 class EmailAdmin(admin.ModelAdmin):
-    list_display = ("id", "received_at", "user_sdwt_prod", "sender_id", "sender", "recipient", "subject")
+    list_display = ("id", "received_at", "user_sdwt_prod", "sender_id", "sender", "recipient", "cc", "subject")
     list_filter = ("user_sdwt_prod",)
-    search_fields = ("subject", "sender", "recipient", "message_id", "rag_doc_id", "sender_id")
+    search_fields = ("subject", "sender", "participants_search", "message_id", "rag_doc_id", "sender_id")
     date_hierarchy = "received_at"
     ordering = ("-received_at", "-id")
 
     fieldsets = (
-        (None, {"fields": ("message_id", "received_at", "subject", "sender", "sender_id", "recipient")}),
+        (None, {"fields": ("message_id", "received_at", "subject", "sender", "sender_id", "recipient", "cc")}),
         ("Mailbox", {"fields": ("user_sdwt_prod", "rag_doc_id")}),
         ("Content", {"classes": ("collapse",), "fields": ("body_text",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),

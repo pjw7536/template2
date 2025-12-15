@@ -43,6 +43,7 @@ export function useEmailInboxController() {
   const splitPaneRef = useRef(null)
   const dragCleanupRef = useRef(null)
   const mailboxChangeRef = useRef("")
+  const mailboxInitializedRef = useRef(false)
 
   const mailboxParam = getMailboxFromSearchParams(searchParams)
   const listEnabled = Boolean(mailboxParam)
@@ -84,6 +85,11 @@ export function useEmailInboxController() {
     setFilters((prev) => ({ ...prev, page: 1 }))
     setSelectedIds([])
     setActiveEmailId(null)
+
+    if (!mailboxInitializedRef.current) {
+      mailboxInitializedRef.current = true
+      return
+    }
 
     if (searchParams.has("emailId")) {
       const nextParams = new URLSearchParams(searchParams)
@@ -306,4 +312,3 @@ export function useEmailInboxController() {
     handleResizeStart,
   }
 }
-

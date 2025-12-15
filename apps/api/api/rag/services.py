@@ -239,6 +239,11 @@ def _build_insert_payload(email: Any, index_name: str | None = None) -> Dict[str
 
     resolved_index_name = resolve_rag_index_name(index_name or getattr(email, "user_sdwt_prod", None))
     created_time = getattr(email, "received_at", None) or timezone.now()
+    recipient_value = getattr(email, "recipient", None)
+    if isinstance(recipient_value, (list, tuple)):
+        recipient = ", ".join([str(item).strip() for item in recipient_value if str(item).strip()])
+    else:
+        recipient = recipient_value
     payload: Dict[str, Any] = {
         "index_name": resolved_index_name,
         "data": {
@@ -252,7 +257,7 @@ def _build_insert_payload(email: Any, index_name: str | None = None) -> Dict[str
             "user_sdwt_prod": getattr(email, "user_sdwt_prod", None),
             "email_id": email.id,
             "sender": email.sender,
-            "recipient": email.recipient,
+            "recipient": recipient,
             "received_at": created_time.isoformat(),
         },
     }

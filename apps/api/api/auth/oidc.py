@@ -507,11 +507,12 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"detail": "unauthorized"}, status=401)
 
     user = request.user
+    username = user.username if isinstance(getattr(user, "username", None), str) else ""
     payload = {
         "id": user.pk,
-        "usr_id": user.get_username(),     # = 사번
-        "username": user.get_username(),   # = 사번
-        "name": (user.first_name or "") + (user.last_name or ""),
+        "usr_id": getattr(user, "knox_id", None),  # = 고유값(User.knox_id)
+        "username": username,  # = 사용자 표시용 이름(User.username)
+        "name": username,  # = 화면 표시용 이름(프론트 호환)
         "email": user.email,
         "is_superuser": bool(getattr(user, "is_superuser", False)),
         "is_staff": bool(getattr(user, "is_staff", False)),
