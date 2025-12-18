@@ -16,7 +16,7 @@ DATE_COLUMN_CANDIDATES = [
     "date",
 ]  # 베이스 타임스탬프 후보
 
-DEFAULT_TABLE = "drone_sop_v3"
+DEFAULT_TABLE = "drone_sop"
 LINE_SDWT_TABLE_NAME = "account_affiliation"
 DIMENSION_CANDIDATES = [
     "sdwt_prod",

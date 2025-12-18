@@ -16,17 +16,17 @@ urlpatterns = [
     path("history", LineHistoryView.as_view(), name="line-dashboard-history"),
     path("line-ids", LineIdListView.as_view(), name="line-dashboard-line-ids"),
     path(
-        "sop-v3/<int:sop_id>/instant-inform",
+        "sop/<int:sop_id>/instant-inform",
         DroneSopInstantInformView.as_view(),
         name="drone-sop-instant-inform",
     ),
     path(
-        "sop-v3/ingest/pop3/trigger",
+        "sop/ingest/pop3/trigger",
         DroneSopPop3IngestTriggerView.as_view(),
         name="drone-sop-pop3-ingest-trigger",
     ),
     path(
-        "sop-v3/jira/trigger",
+        "sop/jira/trigger",
         DroneSopJiraTriggerView.as_view(),
         name="drone-sop-jira-trigger",
     ),

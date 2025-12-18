@@ -4,8 +4,8 @@ from django.db import models
 from django.db.models.functions import Now
 
 
-class DroneSOPV3(models.Model):
-    """Drone SOP v3 관련 데이터(알림/상태/지라 연동 등)를 저장하는 모델입니다."""
+class DroneSOP(models.Model):
+    """Drone SOP 관련 데이터(알림/상태/지라 연동 등)를 저장하는 모델입니다."""
 
     line_id = models.CharField(max_length=50, null=True, blank=True)
     sdwt_prod = models.CharField(max_length=50, null=True, blank=True)
@@ -36,7 +36,7 @@ class DroneSOPV3(models.Model):
     updated_at = models.DateTimeField(auto_now=True, db_default=Now())
 
     class Meta:
-        db_table = "drone_sop_v3"
+        db_table = "drone_sop"
         constraints = [
             models.UniqueConstraint(
                 fields=["line_id", "eqp_id", "chamber_ids", "lot_id", "main_step"],
@@ -46,17 +46,17 @@ class DroneSOPV3(models.Model):
         indexes = [
             models.Index(fields=["send_jira", "needtosend"], name="send_jira_needtosend"),
             models.Index(fields=["sdwt_prod"], name="sdwt_prod"),
-            models.Index(fields=["created_at", "id"], name="drone_sop_v3_created_at_id"),
-            models.Index(fields=["user_sdwt_prod", "created_at", "id"], name="dsopv3_usr_sdwt_created_id"),
-            models.Index(fields=["send_jira"], name="drone_sop_v3_send_jira"),
-            models.Index(fields=["knox_id"], name="drone_sop_v3_knoxid"),
+            models.Index(fields=["created_at", "id"], name="drone_sop_created_at_id"),
+            models.Index(fields=["user_sdwt_prod", "created_at", "id"], name="dsop_usr_sdwt_created_id"),
+            models.Index(fields=["send_jira"], name="drone_sop_send_jira"),
+            models.Index(fields=["knox_id"], name="drone_sop_knoxid"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - helpful for admin/debugging
         return f"SOP {self.line_id or '-'} {self.main_step or '-'}"
 
 
-class DroneEarlyInformV3(models.Model):
+class DroneEarlyInform(models.Model):
     """Drone 조기 알림 설정(라인/스텝 기준)을 저장하는 모델입니다."""
 
     line_id = models.CharField(max_length=50)
@@ -66,7 +66,7 @@ class DroneEarlyInformV3(models.Model):
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
-        db_table = "drone_early_inform_v3"
+        db_table = "drone_early_inform"
         constraints = [
             models.UniqueConstraint(
                 fields=["line_id", "main_step"],
@@ -78,4 +78,4 @@ class DroneEarlyInformV3(models.Model):
         return f"{self.line_id} - {self.main_step}"
 
 
-__all__ = ["DroneEarlyInformV3", "DroneSOPV3"]
+__all__ = ["DroneEarlyInform", "DroneSOP"]

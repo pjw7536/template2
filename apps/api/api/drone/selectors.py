@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
+from django.db import connection
 from django.db.models import QuerySet
 
-from api.common.constants import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME
+from api.common.constants import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME, SAFE_IDENTIFIER
 from api.common.db import run_query
 from api.common.utils import (
     _get_user_sdwt_prod_values,
@@ -21,33 +22,33 @@ from api.common.utils import (
     to_int,
 )
 
-from .models import DroneEarlyInformV3, DroneSOPV3
+from .models import DroneEarlyInform, DroneSOP
 
 
-def list_early_inform_entries(*, line_id: str) -> QuerySet[DroneEarlyInformV3]:
+def list_early_inform_entries(*, line_id: str) -> QuerySet[DroneEarlyInform]:
     """조기 알림 설정을 라인 기준으로 조회합니다.
 
     Side effects:
         None. Read-only query.
     """
 
-    return DroneEarlyInformV3.objects.filter(line_id=line_id).order_by("main_step", "id")
+    return DroneEarlyInform.objects.filter(line_id=line_id).order_by("main_step", "id")
 
 
-def get_early_inform_entry_by_id(*, entry_id: int) -> DroneEarlyInformV3 | None:
+def get_early_inform_entry_by_id(*, entry_id: int) -> DroneEarlyInform | None:
     """id로 조기 알림 설정을 조회합니다.
 
     Side effects:
         None. Read-only query.
     """
 
-    return DroneEarlyInformV3.objects.filter(id=entry_id).first()
+    return DroneEarlyInform.objects.filter(id=entry_id).first()
 
 
 def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
     """(user_sdwt_prod, main_step) → custom_end_step 맵을 로드합니다.
 
-    drone_early_inform_v3(line_id, main_step) 설정을 account_affiliation(line, user_sdwt_prod)와 조인해,
+    drone_early_inform(line_id, main_step) 설정을 account_affiliation(line, user_sdwt_prod)와 조인해,
     Drone SOP 수집 시 custom_end_step 계산에 사용할 캐시 dict를 구성합니다.
 
     Side effects:
@@ -60,7 +61,7 @@ def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
             aff.user_sdwt_prod AS user_sdwt_prod,
             ei.main_step AS main_step,
             ei.custom_end_step AS custom_end_step
-        FROM drone_early_inform_v3 AS ei
+        FROM drone_early_inform AS ei
         JOIN {table} AS aff
           ON aff.line = ei.line_id
         """.format(table=LINE_SDWT_TABLE_NAME)
@@ -85,7 +86,7 @@ def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
 
 
 def list_drone_sop_jira_candidates(*, limit: int | None = None) -> list[dict[str, Any]]:
-    """Jira 전송 대상 DroneSOPV3 로우를 조회합니다.
+    """Jira 전송 대상 DroneSOP 로우를 조회합니다.
 
     조건:
         - send_jira = 0
@@ -96,7 +97,7 @@ def list_drone_sop_jira_candidates(*, limit: int | None = None) -> list[dict[str
         None. Read-only query.
     """
 
-    qs = DroneSOPV3.objects.filter(send_jira=0, needtosend=1, status="COMPLETE").order_by("id")
+    qs = DroneSOP.objects.filter(send_jira=0, needtosend=1, status="COMPLETE").order_by("id")
     if isinstance(limit, int) and limit > 0:
         qs = qs[:limit]
 
@@ -125,6 +126,112 @@ def list_drone_sop_jira_candidates(*, limit: int | None = None) -> list[dict[str
     ]
 
     return list(qs.values(*fields))
+
+
+def load_drone_sop_ctttm_workorders_map(
+    *,
+    sop_ids: Sequence[int],
+    ctttm_table: str,
+) -> dict[int, list[dict[str, str]]]:
+    """Drone SOP row id 목록에 대해 CTTTM 최신 workorder 정보를 조회합니다.
+
+    Returns:
+        { sop_id: [{"eqp_id": "...", "workorder_id": "...", "line_id": "..."}, ...], ... }
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not sop_ids:
+        return {}
+    if connection.vendor != "postgresql":
+        return {}
+
+    table_name = str(ctttm_table or "").strip()
+    if not table_name:
+        return {}
+    if not SAFE_IDENTIFIER.match(table_name):
+        raise ValueError("CTTTM table name must match ^[A-Za-z0-9_]+$")
+
+    normalized_ids: list[int] = []
+    for raw_id in sop_ids:
+        try:
+            parsed = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            normalized_ids.append(parsed)
+    if not normalized_ids:
+        return {}
+
+    unique_ids = sorted(set(normalized_ids))
+
+    rows = run_query(
+        """
+        WITH RECURSIVE seq AS (
+            SELECT 1 AS n
+            UNION ALL
+            SELECT n + 1 FROM seq WHERE n < 100
+        ),
+        eqp_list_cte AS (
+            SELECT
+                sop.id AS sop_id,
+                CONCAT(sop.eqp_id, '-', SUBSTRING(COALESCE(sop.chamber_ids, ''), n, 1)) AS eqp_list
+            FROM drone_sop AS sop
+            JOIN seq ON n <= CHAR_LENGTH(COALESCE(sop.chamber_ids, ''))
+            WHERE sop.id = ANY(%s)
+              AND sop.eqp_id IS NOT NULL
+              AND sop.eqp_id <> ''
+        ),
+        latest_list AS (
+            SELECT DISTINCT ON (eqp_id)
+                eqp_id,
+                inprg_date,
+                workorder_id,
+                line_id
+            FROM {ctttm_table}
+            WHERE eqp_id IN (SELECT eqp_list FROM eqp_list_cte)
+            ORDER BY eqp_id, inprg_date DESC
+        )
+        SELECT
+            eqp_list_cte.sop_id AS sop_id,
+            latest_list.eqp_id AS eqp_id,
+            latest_list.workorder_id AS workorder_id,
+            latest_list.line_id AS line_id
+        FROM latest_list
+        JOIN eqp_list_cte ON eqp_list_cte.eqp_list = latest_list.eqp_id
+        ORDER BY eqp_list_cte.sop_id ASC
+        """.format(ctttm_table=table_name),
+        [unique_ids],
+    )
+
+    mapping: dict[int, list[dict[str, str]]] = {}
+    for row in rows:
+        sop_id = row.get("sop_id")
+        if not isinstance(sop_id, int):
+            try:
+                sop_id = int(sop_id)
+            except (TypeError, ValueError):
+                continue
+        if sop_id <= 0:
+            continue
+
+        eqp_id = row.get("eqp_id")
+        workorder_id = row.get("workorder_id")
+        line_id = row.get("line_id")
+
+        if eqp_id is None or workorder_id is None or line_id is None:
+            continue
+
+        mapping.setdefault(sop_id, []).append(
+            {
+                "eqp_id": str(eqp_id).strip(),
+                "workorder_id": str(workorder_id).strip(),
+                "line_id": str(line_id).strip(),
+            }
+        )
+
+    return mapping
 
 
 def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:

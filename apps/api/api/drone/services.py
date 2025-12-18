@@ -2,8 +2,8 @@
 
 Implementation is split by functional area for readability:
  - Early inform CRUD: `services_early_inform.py`
- - Drone SOP v3 POP3 ingest: `services_sop_pop3.py`
- - Drone SOP v3 Jira integration: `services_sop_jira.py`
+ - Drone SOP POP3 ingest: `services_sop_pop3.py`
+ - Drone SOP Jira integration: `services_sop_jira.py`
  - Shared helpers: `services_utils.py`
 
 This module acts as a stable import facade (e.g. `from api.drone import services`).
@@ -68,4 +68,3 @@ __all__ = [
     "run_drone_sop_pop3_ingest_from_env",
     "update_early_inform_entry",
 ]
-

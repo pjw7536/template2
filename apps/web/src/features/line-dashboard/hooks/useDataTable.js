@@ -2,7 +2,7 @@
 import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"
-import { instantInformDroneSopV3 } from "../api/instant-inform"
+import { instantInformDroneSop } from "../api/instant-inform"
 import { useCellIndicators } from "./useCellIndicators"
 import { useTableQuery } from "./useTableQuery"
 
@@ -235,7 +235,7 @@ export function useDataTableState({ lineId }) {
       let updateSucceeded = false
 
       try {
-        const payload = await instantInformDroneSopV3({ id: recordId, comment })
+        const payload = await instantInformDroneSop({ id: recordId, comment })
         const updated = payload?.updated
         const nextUpdates =
           updated && typeof updated === "object" && !Array.isArray(updated) ? updated : {}

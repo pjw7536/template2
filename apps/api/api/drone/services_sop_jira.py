@@ -1,14 +1,18 @@
-"""Jira integration helpers for Drone SOP v3 pipelines."""
+"""Jira integration helpers for Drone SOP pipelines."""
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Sequence
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from django.conf import settings
 from django.db import transaction
@@ -16,7 +20,7 @@ from django.db.models import Case, CharField, DateTimeField, F, Value, When
 from django.utils import timezone
 
 from . import selectors
-from .models import DroneSOPV3
+from .models import DroneSOP
 from .services_utils import (
     _lock_key,
     _parse_bool,
@@ -30,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class DroneSopJiraCreateResult:
-    """Drone SOP v3 Jira 생성 실행 결과."""
+    """Drone SOP Jira 생성 실행 결과."""
 
     candidates: int = 0
     created: int = 0
@@ -41,7 +45,7 @@ class DroneSopJiraCreateResult:
 
 @dataclass(frozen=True)
 class DroneSopInstantInformResult:
-    """Drone SOP v3 단건 즉시인폼(Jira 생성) 결과."""
+    """Drone SOP 단건 즉시인폼(Jira 생성) 결과."""
 
     created: bool = False
     already_informed: bool = False
@@ -63,11 +67,18 @@ class DroneJiraConfig:
     connect_timeout: int = 5
     read_timeout: int = 20
     project_key_by_line: dict[str, str] = field(default_factory=dict)
+    verify_ssl: bool = True
+    user: str = ""
 
     @classmethod
     def from_settings(cls) -> "DroneJiraConfig":
         base_url = (getattr(settings, "DRONE_JIRA_BASE_URL", "") or os.getenv("DRONE_JIRA_BASE_URL") or "").strip()
         token = (getattr(settings, "DRONE_JIRA_TOKEN", "") or os.getenv("DRONE_JIRA_TOKEN") or "").strip()
+        user = (getattr(settings, "DRONE_JIRA_USER", "") or os.getenv("DRONE_JIRA_USER") or "").strip()
+        verify_ssl = _parse_bool(
+            getattr(settings, "DRONE_JIRA_VERIFY_SSL", None) or os.getenv("DRONE_JIRA_VERIFY_SSL"),
+            True,
+        )
         issue_type = (
             getattr(settings, "DRONE_JIRA_ISSUE_TYPE", "") or os.getenv("DRONE_JIRA_ISSUE_TYPE") or "Task"
         ).strip() or "Task"
@@ -98,15 +109,39 @@ class DroneJiraConfig:
             connect_timeout=max(1, connect_timeout),
             read_timeout=max(1, read_timeout),
             project_key_by_line=project_key_by_line,
+            verify_ssl=verify_ssl,
+            user=user,
         )
 
     @property
     def create_url(self) -> str:
-        return f"{self.base_url.rstrip('/')}/rest/api/2/issue"
+        return f"{self.base_url.rstrip('/')}/rest/api/2/issue?sendEvent=true"
 
     @property
     def bulk_url(self) -> str:
-        return f"{self.base_url.rstrip('/')}/rest/api/2/issue/bulk"
+        return f"{self.base_url.rstrip('/')}/rest/api/2/issue/bulk?sendEvent=true"
+
+
+@dataclass(frozen=True)
+class DroneCtttmConfig:
+    """CTTTM 조회 및 URL 생성 설정."""
+
+    table_name: str = ""
+    base_url: str = ""
+
+    @classmethod
+    def from_settings(cls) -> "DroneCtttmConfig":
+        table_name = (
+            getattr(settings, "DRONE_CTTTM_TABLE_NAME", "")
+            or os.getenv("DRONE_CTTTM_TABLE_NAME")
+            or ""
+        ).strip()
+        base_url = (
+            getattr(settings, "DRONE_CTTTM_BASE_URL", "")
+            or os.getenv("DRONE_CTTTM_BASE_URL")
+            or ""
+        ).strip()
+        return cls(table_name=table_name, base_url=base_url)
 
 
 def _truncate(value: str, max_len: int) -> str:
@@ -118,65 +153,235 @@ def _truncate(value: str, max_len: int) -> str:
 
 
 def _build_jira_summary(row: dict[str, Any]) -> str:
-    parts = [
-        "[drone_sop_v3]",
-        str(row.get("line_id") or "-"),
-        str(row.get("eqp_id") or "-"),
-        str(row.get("chamber_ids") or "-"),
-        str(row.get("lot_id") or "-"),
-        str(row.get("main_step") or "-"),
-        str(row.get("metro_current_step") or "-"),
-    ]
-    return _truncate(" ".join(parts), 255)
+    sdwt = str(row.get("sdwt_prod") or "?").strip() or "?"
+    step = str(row.get("main_step") or "??").strip() or "??"
+    normalized_step = step[2:].upper() if len(step) >= 3 else step.upper()
+    return _truncate(f"{sdwt[:1]} {normalized_step}", 255)
 
 
-def _build_jira_description(row: dict[str, Any]) -> str:
-    lines: list[str] = []
-    for key in (
-        "line_id",
-        "sdwt_prod",
-        "sample_type",
-        "sample_group",
-        "eqp_id",
-        "chamber_ids",
-        "lot_id",
-        "proc_id",
-        "ppid",
-        "main_step",
-        "metro_current_step",
-        "metro_steps",
-        "metro_end_step",
-        "status",
-        "knox_id",
-        "user_sdwt_prod",
-        "custom_end_step",
-        "needtosend",
-    ):
-        value = row.get(key)
-        if value is None:
+def esc(x: Any) -> str:
+    """HTML 안전 이스케이프 (None/빈문자 처리 포함)."""
+
+    s = "" if x is None else str(x)
+    s = s.strip()
+    return html.escape(s) if s else "-"
+
+
+def make_html_table(headers: Sequence[Any], rows: Sequence[Sequence[Any]], caption_text: str | None = None) -> str:
+    """Jira HTML 테이블 생성기."""
+
+    header_html = "".join(
+        f'<th style="border:1px solid #ccc; background-color:#F2F2F2; text-align:center; padding:4px; '
+        f'padding-left:8px; padding-right:8px; font-size:12px;">{html.escape(str(h))}</th>'
+        for h in headers
+    )
+
+    body_html = ""
+    for row in rows:
+        cells = "".join(
+            f'<td style="border:1px solid #ccc; text-align:center; padding:4px; padding-left:8px; '
+            f'padding-right:8px; font-size:14px;">{html.escape(str(c))}</td>'
+            for c in row
+        )
+        body_html += f"<tr>{cells}</tr>\n"
+
+    caption_html = ""
+    if caption_text:
+        caption_html = (
+            '<caption style="caption-side:bottom; text-align:right; font-size:11px; color:#888; '
+            f'margin:0; padding:0;">{html.escape(caption_text)}</caption>'
+        )
+
+    return (
+        '<table style="border:1px solid #ccc; border-collapse:collapse; width:auto;">\n'
+        f"{caption_html}"
+        f"<thead><tr>{header_html}</tr></thead>\n"
+        f"<tbody>\n{body_html}</tbody>\n</table>"
+    )
+
+
+def build_url_html(url_value: Any) -> str:
+    """CTTTM URL: 문자열 또는 List[Dict[str, str]]를 HTML 링크로 변환합니다."""
+
+    html_parts: list[str] = []
+    if isinstance(url_value, str):
+        if url_value.strip():
+            html_parts.append(
+                f'<a href="{html.escape(url_value)}" target="_blank" rel="noopener noreferrer" '
+                f'style="font-size:14px;">{html.escape(url_value)}</a>'
+            )
+
+    elif isinstance(url_value, list):
+        for item in url_value:
+            if not isinstance(item, dict):
+                continue
+            link = item.get("url")
+            label = item.get("eqp_id") or link
+            if link:
+                html_parts.append(
+                    f'<a href="{html.escape(str(link))}" target="_blank" rel="noopener noreferrer" '
+                    f'style="font-size:14px;">{html.escape(str(label))}</a>'
+                )
+
+    return ",".join(html_parts)
+
+
+def _build_desc_html(r: dict[str, Any]) -> str:
+    """Description을 HTML로 구성합니다."""
+
+    knoxid = esc(r.get("knox_id") or r.get("knoxid"))
+    user_sdwt_prod = esc(r.get("user_sdwt_prod"))
+
+    table_html = make_html_table(
+        headers=["Step_seq", "PPID", "EQP_CB", "Lot_id"],
+        rows=[
+            [
+                r.get("main_step"),
+                r.get("ppid"),
+                f"{(str(r.get('eqp_id') or '-') or '-').strip()}-{(str(r.get('chamber_ids') or '-') or '-').strip()}",
+                r.get("lot_id"),
+            ]
+        ],
+        caption_text=f"SOP by : {knoxid} ({user_sdwt_prod})",
+    )
+
+    ctttm_url = r.get("url")
+    ctttm_url_html = (
+        '<div style="margin:4px 0;">'
+        '<div style="font-size:14px;">📄 CTTTM URL : '
+        '<span style="font-size:14px; color:#999;">-</span>'
+        "</div>"
+        "</div>"
+    )
+
+    if ctttm_url:
+        ctttm_url_html = (
+            '<div style="margin:4px 0;">'
+            '<div style="font-size:14px;">📄 CTTTM URL : '
+            f"{build_url_html(ctttm_url)}"
+            "</div>"
+            "</div>"
+        )
+
+    defect_url = r.get("defect_url")
+    lot_id = esc(r.get("lot_id"))
+    defect_html = (
+        '<div style="margin:4px 0;">'
+        '<div style="font-size:14px; margin-top:12px;">💿 Defect URL : '
+        '<span style="font-size:14px; color:#999;">-</span>'
+        "</div>"
+        "</div>"
+    )
+
+    if defect_url:
+        defect_html = (
+            '<div style="margin:4px 0;">'
+            '<div style="font-size:14px; margin-top:12px;">💿 Defect URL : '
+            f'<a href="{html.escape(str(defect_url))}" target="_blank" rel="noopener noreferrer" '
+            f'style="font-size:14px;">{lot_id}</a>'
+            "</div>"
+            "</div>"
+        )
+
+    comment_raw = str(r.get("comment") or "").split("$@$", 1)[0]
+    comment_html = ""
+    if comment_raw:
+        comment_html = (
+            '<div style="margin:4px 0;">'
+            f'<div style="font-size:14px; margin-top:12px; white-space:pre-wrap;">🎨 Comment : {esc(comment_raw)}</div>'
+            '<div style="font-size:14px; margin-top:12px; white-space:pre-wrap;">💬 답변  :&nbsp; </div>'
+            "</div>"
+        )
+
+    return (
+        "<div>"
+        f'<div style="margin:8px 0;">{table_html}</div>'
+        f"{ctttm_url_html}"
+        f"{defect_html}"
+        f"{comment_html}"
+        "</div>"
+    )
+
+
+def _build_jira_description_html(row: dict[str, Any]) -> str:
+    return _build_desc_html(row)
+
+
+def _build_ctttm_url(*, base_url: str, workorder_id: str, line_id: str) -> str:
+    parsed = urlparse(base_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.update({"wono": workorder_id, "lineId": line_id})
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def _enrich_rows_with_ctttm_urls(*, rows: Sequence[dict[str, Any]], config: DroneCtttmConfig) -> None:
+    if not rows:
+        return
+    if not config.table_name or not config.base_url:
+        return
+
+    sop_ids: list[int] = []
+    for row in rows:
+        rid = row.get("id")
+        if isinstance(rid, int) and rid > 0:
+            sop_ids.append(rid)
+    if not sop_ids:
+        return
+
+    try:
+        workorders_by_id = selectors.load_drone_sop_ctttm_workorders_map(sop_ids=sop_ids, ctttm_table=config.table_name)
+    except Exception:
+        logger.exception("Failed to load CTTTM workorders (table=%r)", config.table_name)
+        return
+
+    for row in rows:
+        rid = row.get("id")
+        if not isinstance(rid, int) or rid <= 0:
             continue
-        lines.append(f"{key}: {value}")
-
-    comment = row.get("comment")
-    if isinstance(comment, str) and comment.strip():
-        lines.append("")
-        lines.append("comment:")
-        lines.append(comment.strip())
-
-    defect_url = row.get("defect_url")
-    if isinstance(defect_url, str) and defect_url.strip():
-        lines.append("")
-        lines.append(f"defect_url: {defect_url.strip()}")
-
-    return "\n".join(lines) if lines else "(empty)"
+        entries = workorders_by_id.get(rid) or []
+        url_entries: list[dict[str, str]] = []
+        for entry in entries:
+            eqp_id = str(entry.get("eqp_id") or "").strip()
+            workorder_id = str(entry.get("workorder_id") or "").strip()
+            line_id = str(entry.get("line_id") or "").strip()
+            if not eqp_id or not workorder_id or not line_id:
+                continue
+            url_entries.append(
+                {
+                    "eqp_id": eqp_id,
+                    "url": _build_ctttm_url(base_url=config.base_url, workorder_id=workorder_id, line_id=line_id),
+                }
+            )
+        if url_entries:
+            row["url"] = url_entries
 
 
 def _jira_session(config: DroneJiraConfig) -> requests.Session:
     sess = requests.Session()
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    if config.token:
+    sess.trust_env = False
+    sess.proxies = {}
+    sess.verify = bool(config.verify_ssl)
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-Atlassian-Token": "no-check",
+    }
+    if config.user and config.token:
+        sess.auth = (config.user, config.token)
+    elif config.token:
         headers["Authorization"] = f"Bearer {config.token}"
     sess.headers.update(headers)
+
+    retry = Retry(
+        total=5,
+        connect=5,
+        read=3,
+        backoff_factor=2,
+        status_forcelist=[403, 502, 503, 504],
+        allowed_methods=frozenset({"POST"}),
+    )
+    sess.mount("https://", HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=20))
     return sess
 
 
@@ -318,8 +523,8 @@ def _build_jira_issue_fields(*, row: dict[str, Any], project_key: str, config: D
         "project": {"key": project_key},
         "issuetype": {"name": config.issue_type},
         "summary": _build_jira_summary(row),
-        "description": _build_jira_description(row),
-        "labels": ["drone", "drone_sop_v3"],
+        "description": _build_jira_description_html(row),
+        "labels": ["drone", "drone_sop"],
     }
 
 
@@ -359,11 +564,11 @@ def _update_drone_sop_jira_status(
         updates["jira_key"] = Case(*key_whens, default=F("jira_key"), output_field=CharField())
 
     with transaction.atomic():
-        updated = DroneSOPV3.objects.filter(id__in=list(done_ids)).update(**updates)
+        updated = DroneSOP.objects.filter(id__in=list(done_ids)).update(**updates)
     return int(updated or 0)
 
 
-def _drone_sop_model_to_row(sop: DroneSOPV3) -> dict[str, Any]:
+def _drone_sop_model_to_row(sop: DroneSOP) -> dict[str, Any]:
     return {
         "id": int(sop.id),
         "line_id": sop.line_id,
@@ -394,13 +599,13 @@ def run_drone_sop_jira_instant_inform(
     sop_id: int,
     comment: str | None = None,
 ) -> DroneSopInstantInformResult:
-    """DroneSOPV3 단건에 대해 조건 무시하고 Jira 이슈를 즉시 생성합니다.
+    """DroneSOP 단건에 대해 조건 무시하고 Jira 이슈를 즉시 생성합니다.
 
     - needtosend/status 조건을 검사하지 않습니다.
     - Jira 생성에 성공하면 send_jira=1로 업데이트하여 배치 파이프라인에서 재생성되지 않게 합니다.
 
     Side effects:
-        - drone_sop_v3 레코드 comment/instant_inform/send_jira/jira_key/inform_step/informed_at 업데이트
+        - drone_sop 레코드 comment/instant_inform/send_jira/jira_key/inform_step/informed_at 업데이트
         - Jira API 호출
     """
 
@@ -420,9 +625,9 @@ def run_drone_sop_jira_instant_inform(
 
     try:
         with transaction.atomic():
-            sop = DroneSOPV3.objects.select_for_update().filter(id=sop_id).first()
+            sop = DroneSOP.objects.select_for_update().filter(id=sop_id).first()
             if sop is None:
-                raise ValueError("DroneSOPV3 not found")
+                raise ValueError("DroneSOP not found")
 
             if comment is not None:
                 sop.comment = comment
@@ -446,6 +651,8 @@ def run_drone_sop_jira_instant_inform(
                 )
 
             row_payload = _drone_sop_model_to_row(sop)
+
+        _enrich_rows_with_ctttm_urls(rows=[row_payload], config=DroneCtttmConfig.from_settings())
 
         line_id = row_payload.get("line_id")
         if not isinstance(line_id, str) or not line_id.strip():
@@ -476,7 +683,7 @@ def run_drone_sop_jira_instant_inform(
         )
         if resp.status_code != 201:
             with transaction.atomic():
-                DroneSOPV3.objects.filter(id=sop_id).update(instant_inform=-1)
+                DroneSOP.objects.filter(id=sop_id).update(instant_inform=-1)
             raise RuntimeError(f"Jira create failed ({resp.status_code})")
 
         data = _safe_json(resp)
@@ -485,9 +692,9 @@ def run_drone_sop_jira_instant_inform(
 
         now = timezone.now()
         with transaction.atomic():
-            sop = DroneSOPV3.objects.select_for_update().filter(id=sop_id).first()
+            sop = DroneSOP.objects.select_for_update().filter(id=sop_id).first()
             if sop is None:
-                raise ValueError("DroneSOPV3 not found")
+                raise ValueError("DroneSOP not found")
 
             send_jira_value = int(sop.send_jira or 0)
             if send_jira_value > 0:
@@ -550,7 +757,7 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
 
     Side effects:
         - Jira API 호출
-        - drone_sop_v3 상태 컬럼(send_jira/inform_step/jira_key/informed_at) 업데이트
+        - drone_sop 상태 컬럼(send_jira/inform_step/jira_key/informed_at) 업데이트
     """
 
     config = DroneJiraConfig.from_settings()
@@ -582,16 +789,18 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
                 }
             )
             logger.warning(
-                "Missing Jira project key mapping for %s drone_sop_v3 rows (line_ids=%s)",
+                "Missing Jira project key mapping for %s drone_sop rows (line_ids=%s)",
                 len(missing_ids),
                 ",".join(missing_line_ids[:10]) if missing_line_ids else "-",
             )
             with transaction.atomic():
-                DroneSOPV3.objects.filter(id__in=missing_ids).update(send_jira=-1)
+                DroneSOP.objects.filter(id__in=missing_ids).update(send_jira=-1)
 
         rows_to_send = [row for row in rows if isinstance(row.get("id"), int) and row.get("id") in project_key_by_id]
         if not rows_to_send:
             return DroneSopJiraCreateResult(candidates=len(rows), created=0, updated_rows=0)
+
+        _enrich_rows_with_ctttm_urls(rows=rows_to_send, config=DroneCtttmConfig.from_settings())
 
         sess = _jira_session(config)
         if config.use_bulk_api:
@@ -625,7 +834,7 @@ def _resolve_project_keys_for_rows(
     rows: Sequence[dict[str, Any]],
     config: DroneJiraConfig,
 ) -> tuple[dict[int, str], list[int]]:
-    """DroneSOPV3 row 목록에 대해 Jira project key를 해석합니다.
+    """DroneSOP row 목록에 대해 Jira project key를 해석합니다.
 
     - account_affiliation(user_sdwt_prod == sdwt_prod) 매핑이 존재하고,
       row.line_id가 해당 user_sdwt_prod의 라인 목록에 포함되어야 합니다.
@@ -666,7 +875,7 @@ def _resolve_project_key_for_row(
     config: DroneJiraConfig,
     lines_by_sdwt_prod: dict[str, set[str]] | None = None,
 ) -> str | None:
-    """단일 DroneSOPV3 row에 대한 Jira project key를 반환합니다."""
+    """단일 DroneSOP row에 대한 Jira project key를 반환합니다."""
 
     line_id = row.get("line_id")
     sdwt_prod = row.get("sdwt_prod")

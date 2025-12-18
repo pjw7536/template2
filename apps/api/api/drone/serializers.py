@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import DroneEarlyInformV3
+from .models import DroneEarlyInform
 
 
-def serialize_early_inform_entry(entry: DroneEarlyInformV3) -> dict[str, Any]:
-    """DroneEarlyInformV3 모델을 API 응답 형태로 직렬화합니다."""
+def serialize_early_inform_entry(entry: DroneEarlyInform) -> dict[str, Any]:
+    """DroneEarlyInform 모델을 API 응답 형태로 직렬화합니다."""
 
     updated_at = entry.updated_at
     return {
@@ -17,4 +17,3 @@ def serialize_early_inform_entry(entry: DroneEarlyInformV3) -> dict[str, Any]:
         "updatedBy": entry.updated_by,
         "updatedAt": updated_at.isoformat() if hasattr(updated_at, "isoformat") and updated_at else None,
     }
-

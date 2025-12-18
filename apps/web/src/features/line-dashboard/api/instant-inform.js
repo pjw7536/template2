@@ -1,12 +1,12 @@
 import { buildBackendUrl } from "@/lib/api"
 
-export async function instantInformDroneSopV3({ id, comment }) {
+export async function instantInformDroneSop({ id, comment }) {
   if (!id) {
     throw new Error("id is required")
   }
 
   const endpoint = buildBackendUrl(
-    `/api/v1/line-dashboard/sop-v3/${encodeURIComponent(String(id))}/instant-inform`
+    `/api/v1/line-dashboard/sop/${encodeURIComponent(String(id))}/instant-inform`
   )
 
   const response = await fetch(endpoint, {
@@ -24,4 +24,3 @@ export async function instantInformDroneSopV3({ id, comment }) {
 
   return payload
 }
-

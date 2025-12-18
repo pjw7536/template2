@@ -507,7 +507,7 @@ def move_sender_emails_after(
     return move_emails_to_user_sdwt_prod(email_ids=email_ids, to_user_sdwt_prod=to_user_sdwt_prod)
 
 
-DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop_v3]", "[test]")
+DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop]", "[test]")
 
 
 def _load_excluded_subject_prefixes() -> tuple[str, ...]:

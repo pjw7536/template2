@@ -9,7 +9,9 @@ from django.urls import reverse
 
 from api.account.models import Affiliation
 from api.drone import selectors, services
-from api.drone.models import DroneSOPV3
+from api.drone.models import DroneSOP
+from api.drone.services_sop_jira import DroneJiraConfig
+from api.drone.services_sop_pop3 import NeedToSendRule
 
 
 class DroneSopPop3ParsingTests(TestCase):
@@ -51,6 +53,19 @@ class DroneSopPop3ParsingTests(TestCase):
         self.assertEqual(row["defect_url"], "https://example.com")
         self.assertEqual(row["custom_end_step"], "ST002")
 
+    def test_build_drone_sop_row_applies_needtosend_override_rule(self) -> None:
+        html = """
+        <data>
+          <sample_type>NORMAL</sample_type>
+          <user_sdwt_prod>prod-1</user_sdwt_prod>
+          <comment>hello@$abc</comment>
+        </data>
+        """
+        rules = [NeedToSendRule(pattern="prod-*", comment_last_at="$abc", ignore_sample_type=False)]
+        row = services._build_drone_sop_row(html=html, early_inform_map={}, needtosend_rules=rules)
+        assert row is not None
+        self.assertEqual(row["needtosend"], 1)
+
     def test_build_drone_sop_row_needtosend_zero_for_engr_production(self) -> None:
         html = """
         <data>
@@ -65,7 +80,7 @@ class DroneSopPop3ParsingTests(TestCase):
 
 class DroneSopUpsertTests(TestCase):
     def test_upsert_does_not_update_comment_or_needtosend_on_conflict(self) -> None:
-        existing = DroneSOPV3.objects.create(
+        existing = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
             chamber_ids="1",
@@ -93,7 +108,7 @@ class DroneSopUpsertTests(TestCase):
             ]
         )
 
-        refreshed = DroneSOPV3.objects.get(id=existing.id)
+        refreshed = DroneSOP.objects.get(id=existing.id)
         self.assertEqual(refreshed.comment, "old")
         self.assertEqual(refreshed.needtosend, 0)
         self.assertEqual(refreshed.status, "COMPLETE")
@@ -102,7 +117,7 @@ class DroneSopUpsertTests(TestCase):
 
 class DroneSopJiraCandidateTests(TestCase):
     def test_list_drone_sop_jira_candidates_filters_rows(self) -> None:
-        DroneSOPV3.objects.create(
+        DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
             chamber_ids="1",
@@ -112,7 +127,7 @@ class DroneSopJiraCandidateTests(TestCase):
             needtosend=1,
             send_jira=0,
         )
-        DroneSOPV3.objects.create(
+        DroneSOP.objects.create(
             line_id="L2",
             eqp_id="EQP2",
             chamber_ids="1",
@@ -130,7 +145,7 @@ class DroneSopJiraCandidateTests(TestCase):
 
 class DroneSopJiraUpdateTests(TestCase):
     def test_update_drone_sop_jira_status_sets_send_jira_and_key(self) -> None:
-        row = DroneSOPV3.objects.create(
+        row = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
             chamber_ids="1",
@@ -149,7 +164,7 @@ class DroneSopJiraUpdateTests(TestCase):
         )
         self.assertEqual(updated, 1)
 
-        refreshed = DroneSOPV3.objects.get(id=row.id)
+        refreshed = DroneSOP.objects.get(id=row.id)
         self.assertEqual(refreshed.send_jira, 1)
         self.assertEqual(refreshed.inform_step, "ST003")
         self.assertEqual(refreshed.jira_key, "DUMMY-1")
@@ -171,7 +186,7 @@ class DroneSopInstantInformTests(TestCase):
         mock_session.return_value = session
 
         Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT")
-        row = DroneSOPV3.objects.create(
+        row = DroneSOP.objects.create(
             line_id="L1",
             sdwt_prod="SDWT",
             eqp_id="EQP1",
@@ -192,7 +207,7 @@ class DroneSopInstantInformTests(TestCase):
         sent_payload = session.post.call_args.kwargs.get("json") or {}
         self.assertEqual(sent_payload.get("fields", {}).get("project", {}).get("key"), "DUMMY")
 
-        refreshed = DroneSOPV3.objects.get(id=row.id)
+        refreshed = DroneSOP.objects.get(id=row.id)
         self.assertEqual(refreshed.send_jira, 1)
         self.assertEqual(refreshed.instant_inform, 1)
         self.assertEqual(refreshed.jira_key, "DUMMY-123")
@@ -205,7 +220,7 @@ class DroneSopInstantInformTests(TestCase):
     )
     @patch("api.drone.services_sop_jira._jira_session")
     def test_instant_inform_does_not_create_duplicate(self, mock_session: Mock) -> None:
-        row = DroneSOPV3.objects.create(
+        row = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
             chamber_ids="1",
@@ -222,7 +237,7 @@ class DroneSopInstantInformTests(TestCase):
         self.assertEqual(result.jira_key, "DUMMY-9")
         mock_session.assert_not_called()
 
-        refreshed = DroneSOPV3.objects.get(id=row.id)
+        refreshed = DroneSOP.objects.get(id=row.id)
         self.assertEqual(refreshed.send_jira, 1)
         self.assertEqual(refreshed.jira_key, "DUMMY-9")
         self.assertEqual(refreshed.comment, "updated")
@@ -247,7 +262,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT")
         Affiliation.objects.create(department="D", line="L3", user_sdwt_prod="SDWT")
 
-        sop1 = DroneSOPV3.objects.create(
+        sop1 = DroneSOP.objects.create(
             line_id="L1",
             sdwt_prod="SDWT",
             eqp_id="EQP1",
@@ -259,7 +274,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
             send_jira=0,
             metro_current_step="ST001",
         )
-        sop2 = DroneSOPV3.objects.create(
+        sop2 = DroneSOP.objects.create(
             line_id="L2",
             sdwt_prod="SDWT",
             eqp_id="EQP2",
@@ -271,7 +286,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
             send_jira=0,
             metro_current_step="ST002",
         )
-        sop_missing = DroneSOPV3.objects.create(
+        sop_missing = DroneSOP.objects.create(
             line_id="L3",
             sdwt_prod="SDWT",
             eqp_id="EQP3",
@@ -295,9 +310,9 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         self.assertEqual(updates[0].get("fields", {}).get("project", {}).get("key"), "PROJ1")
         self.assertEqual(updates[1].get("fields", {}).get("project", {}).get("key"), "PROJ2")
 
-        refreshed1 = DroneSOPV3.objects.get(id=sop1.id)
-        refreshed2 = DroneSOPV3.objects.get(id=sop2.id)
-        refreshed_missing = DroneSOPV3.objects.get(id=sop_missing.id)
+        refreshed1 = DroneSOP.objects.get(id=sop1.id)
+        refreshed2 = DroneSOP.objects.get(id=sop2.id)
+        refreshed_missing = DroneSOP.objects.get(id=sop_missing.id)
 
         self.assertEqual(refreshed1.send_jira, 1)
         self.assertEqual(refreshed1.jira_key, "PROJ1-1")
@@ -307,7 +322,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
 
 
 class DroneTriggerAuthTests(TestCase):
-    @override_settings(EMAIL_INGEST_TRIGGER_TOKEN="expected-token")
+    @override_settings(DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
     def test_pop3_ingest_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
         mock_run.return_value = SimpleNamespace(
@@ -334,7 +349,7 @@ class DroneTriggerAuthTests(TestCase):
         self.assertEqual(resp.json()["matched"], 1)
         self.assertEqual(mock_run.call_count, 1)
 
-    @override_settings(EMAIL_INGEST_TRIGGER_TOKEN="expected-token")
+    @override_settings(DRONE_SOP_JIRA_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
     def test_jira_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
         mock_run.return_value = SimpleNamespace(
@@ -355,3 +370,106 @@ class DroneTriggerAuthTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["created"], 1)
         mock_run.assert_called_once_with(limit=None)
+
+
+class DroneSopPop3DummyModeDeleteTests(TestCase):
+    @override_settings(DRONE_SOP_DUMMY_MODE=True, DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages")
+    @patch("api.drone.services_sop_pop3._delete_dummy_mail_messages")
+    @patch("api.drone.services_sop_pop3._upsert_drone_sop_rows")
+    @patch("api.drone.services_sop_pop3._list_dummy_mail_messages")
+    @patch("api.drone.services_sop_pop3.selectors.load_drone_sop_custom_end_step_map", return_value={})
+    def test_dummy_mode_deletes_only_successfully_upserted_mails(
+        self,
+        _mock_end_step: Mock,
+        mock_list: Mock,
+        mock_upsert: Mock,
+        mock_delete: Mock,
+    ) -> None:
+        mock_list.return_value = [
+            {"id": 1, "subject": "[drone_sop] a", "body_html": "<data><lot_id>LOT-1</lot_id></data>"},
+            {"id": 2, "subject": "[drone_sop] b", "body_html": "<data><lot_id>LOT-FAIL</lot_id></data>"},
+            {"id": 3, "subject": "[drone_sop] c", "body_html": "<data><lot_id>LOT-3</lot_id></data>"},
+        ]
+
+        def upsert_side_effect(*, rows: list[dict[str, object]]) -> int:
+            lot_id = rows[0].get("lot_id") if rows else None
+            if lot_id == "LOT-FAIL":
+                raise RuntimeError("upsert failed")
+            return 1
+
+        mock_upsert.side_effect = upsert_side_effect
+        mock_delete.side_effect = lambda *, url, mail_ids, timeout: len(mail_ids)
+
+        result = services.run_drone_sop_pop3_ingest_from_env()
+        self.assertEqual(result.matched_mails, 3)
+        self.assertEqual(result.upserted_rows, 2)
+        self.assertEqual(result.deleted_mails, 2)
+
+        called_mail_ids = mock_delete.call_args.kwargs.get("mail_ids")
+        self.assertEqual(called_mail_ids, [1, 3])
+
+
+class DroneSopJiraHtmlDescriptionTests(TestCase):
+    def test_build_jira_issue_fields_uses_html(self) -> None:
+        from api.drone import services_sop_jira
+
+        config = DroneJiraConfig(
+            base_url="http://example.local/jira",
+            token="dummy-token",
+            issue_type="Task",
+            use_bulk_api=False,
+            bulk_size=20,
+            connect_timeout=5,
+            read_timeout=20,
+            project_key_by_line={},
+        )
+        row = {
+            "sdwt_prod": "SDWT",
+            "main_step": "ST003",
+            "ppid": "PPID",
+            "eqp_id": "EQP",
+            "chamber_ids": "1",
+            "lot_id": "LOT.1",
+            "knox_id": "knox",
+            "user_sdwt_prod": "prod",
+            "comment": "hello",
+            "defect_url": "https://example.com/defect",
+        }
+
+        fields = services_sop_jira._build_jira_issue_fields(row=row, project_key="DUMMY", config=config)
+        description = fields.get("description") or ""
+        self.assertIn("<table", description)
+        self.assertIn("CTTTM URL", description)
+        self.assertIn("Defect URL", description)
+        self.assertIn("https://example.com/defect", description)
+
+    def test_build_jira_issue_fields_renders_ctttm_links(self) -> None:
+        from api.drone import services_sop_jira
+
+        config = DroneJiraConfig(
+            base_url="http://example.local/jira",
+            token="dummy-token",
+            issue_type="Task",
+            use_bulk_api=False,
+            bulk_size=20,
+            connect_timeout=5,
+            read_timeout=20,
+            project_key_by_line={},
+        )
+        row = {
+            "sdwt_prod": "SDWT",
+            "main_step": "ST003",
+            "ppid": "PPID",
+            "eqp_id": "EQP",
+            "chamber_ids": "1",
+            "lot_id": "LOT.1",
+            "knox_id": "knox",
+            "user_sdwt_prod": "prod",
+            "comment": "hello",
+            "url": [{"eqp_id": "EQP-1", "url": "https://example.com/ctttm"}],
+        }
+
+        fields = services_sop_jira._build_jira_issue_fields(row=row, project_key="DUMMY", config=config)
+        description = fields.get("description") or ""
+        self.assertIn("https://example.com/ctttm", description)
+        self.assertIn(">EQP-1<", description)

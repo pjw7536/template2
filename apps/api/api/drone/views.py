@@ -1,6 +1,6 @@
 """Drone 조기 알림 설정 및 라인 대시보드 집계 엔드포인트.
 
-Early inform 설정은 DroneEarlyInformV3 ORM 모델을 통해 처리하고,
+Early inform 설정은 DroneEarlyInform ORM 모델을 통해 처리하고,
 라인 대시보드 집계/옵션 조회는 selectors에서 raw SQL로 처리합니다.
 
 # 엔드포인트 요약
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneEarlyInformView(APIView):
-    """drone_early_inform_v3 테이블에 대한 CRUD.
+    """drone_early_inform 테이블에 대한 CRUD.
 
     - GET: lineId로 행 목록 조회(최신 정렬 기준: main_step ASC, id ASC)
     - POST: 신규 행 추가(중복 main_step 방지 가정)
@@ -70,7 +70,7 @@ class DroneEarlyInformView(APIView):
     """
 
     # 한 곳에서만 테이블명을 관리해 실수 방지
-    TABLE_NAME = "drone_early_inform_v3"
+    TABLE_NAME = "drone_early_inform"
 
     # --------------------------------------------------------------------- #
     # READ
@@ -350,7 +350,7 @@ class LineIdListView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneSopInstantInformView(APIView):
-    """Line dashboard에서 호출하는 Drone SOP v3 단건 즉시인폼(=Jira 강제 생성)."""
+    """Line dashboard에서 호출하는 Drone SOP 단건 즉시인폼(=Jira 강제 생성)."""
 
     permission_classes: tuple = ()
 
@@ -364,8 +364,8 @@ class DroneSopInstantInformView(APIView):
             return JsonResponse({"error": "comment must be a string"}, status=400)
         comment = raw_comment.strip() if isinstance(raw_comment, str) else None
 
-        set_activity_summary(request, f"Instant inform drone_sop_v3 #{sop_id}")
-        merge_activity_metadata(request, resource="drone_sop_v3", action="instant_inform", sop_id=sop_id)
+        set_activity_summary(request, f"Instant inform drone_sop #{sop_id}")
+        merge_activity_metadata(request, resource="drone_sop", action="instant_inform", sop_id=sop_id)
         if comment is not None:
             merge_activity_metadata(request, comment_length=len(comment))
 
@@ -409,12 +409,16 @@ class DroneSopInstantInformView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneSopPop3IngestTriggerView(APIView):
-    """외부 Airflow에서 호출하는 Drone SOP v3 POP3 수집 트리거."""
+    """외부 Airflow에서 호출하는 Drone SOP POP3 수집 트리거."""
 
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        expected_token = getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "") or ""
+        expected_token = (
+            getattr(settings, "DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN", "")
+            or getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "")
+            or ""
+        )
         provided_token = extract_bearer_token(request)
 
         if expected_token:
@@ -423,8 +427,8 @@ class DroneSopPop3IngestTriggerView(APIView):
         elif not request.user.is_authenticated:
             return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
 
-        set_activity_summary(request, "Trigger drone_sop_v3 POP3 ingest")
-        merge_activity_metadata(request, resource="drone_sop_v3", pipeline="pop3_ingest")
+        set_activity_summary(request, "Trigger drone_sop POP3 ingest")
+        merge_activity_metadata(request, resource="drone_sop", pipeline="pop3_ingest")
 
         try:
             result = services.run_drone_sop_pop3_ingest_from_env()
@@ -458,12 +462,16 @@ class DroneSopPop3IngestTriggerView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneSopJiraTriggerView(APIView):
-    """외부 Airflow에서 호출하는 Drone SOP v3 Jira 생성 트리거."""
+    """외부 Airflow에서 호출하는 Drone SOP Jira 생성 트리거."""
 
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        expected_token = getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "") or ""
+        expected_token = (
+            getattr(settings, "DRONE_SOP_JIRA_TRIGGER_TOKEN", "")
+            or getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "")
+            or ""
+        )
         provided_token = extract_bearer_token(request)
 
         if expected_token:
@@ -483,8 +491,8 @@ class DroneSopJiraTriggerView(APIView):
             if limit <= 0:
                 limit = None
 
-        set_activity_summary(request, "Trigger drone_sop_v3 Jira create")
-        merge_activity_metadata(request, resource="drone_sop_v3", pipeline="jira_create", limit=limit)
+        set_activity_summary(request, "Trigger drone_sop Jira create")
+        merge_activity_metadata(request, resource="drone_sop", pipeline="jira_create", limit=limit)
 
         try:
             result = services.run_drone_sop_jira_create_from_env(limit=limit)

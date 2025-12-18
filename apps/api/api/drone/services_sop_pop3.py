@@ -1,7 +1,9 @@
-"""POP3 ingestion helpers for Drone SOP v3."""
+"""POP3 ingestion helpers for Drone SOP."""
 
 from __future__ import annotations
 
+import fnmatch
+import json
 import logging
 import os
 import poplib
@@ -19,7 +21,7 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from . import selectors
-from .models import DroneSOPV3
+from .models import DroneSOP
 from .services_utils import (
     _lock_key,
     _parse_bool,
@@ -63,11 +65,90 @@ def _as_int_bool(value: Any) -> int:
     return 1 if bool(value) else 0
 
 
-def _compute_needtosend(row: dict[str, Any]) -> int:
+@dataclass(frozen=True)
+class NeedToSendRule:
+    """needtosend 계산을 user_sdwt_prod 패턴 기준으로 오버라이드하는 규칙."""
+
+    pattern: str
+    comment_last_at: str
+    ignore_sample_type: bool = False
+
+    def matches(self, user_sdwt_prod: str) -> bool:
+        return fnmatch.fnmatch(user_sdwt_prod, self.pattern)
+
+    def compute(self, row: dict[str, Any]) -> int:
+        comment = str(row.get("comment") or "").strip()
+        last_at = comment.split("@")[-1] if comment else ""
+        if not self.ignore_sample_type:
+            sample_type = str(row.get("sample_type") or "").strip()
+            if sample_type == "ENGR_PRODUCTION":
+                return 0
+        return _as_int_bool(last_at == self.comment_last_at)
+
+
+def _parse_needtosend_rules(value: Any) -> list[NeedToSendRule]:
+    """DRONE_SOP_NEEDTOSEND_RULES 설정을 파싱합니다.
+
+    Supports:
+        - JSON string: [{"pattern":"aaa*","commentLastAt":"$abc","ignoreSampleType":true}, ...]
+        - python list of dicts (tests / settings overrides)
+    """
+
+    if value is None:
+        return []
+
+    parsed: Any = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("DRONE_SOP_NEEDTOSEND_RULES must be a valid JSON array") from exc
+
+    if not isinstance(parsed, list):
+        raise ValueError("DRONE_SOP_NEEDTOSEND_RULES must be a JSON array of objects")
+
+    rules: list[NeedToSendRule] = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        pattern = str(entry.get("pattern") or entry.get("glob") or "").strip()
+        comment_last_at = str(
+            entry.get("comment_last_at")
+            or entry.get("commentLastAt")
+            or entry.get("lastAt")
+            or entry.get("expected")
+            or ""
+        ).strip()
+        if not pattern or not comment_last_at:
+            continue
+        ignore_sample_type = bool(entry.get("ignore_sample_type") or entry.get("ignoreSampleType") or False)
+        rules.append(
+            NeedToSendRule(
+                pattern=pattern,
+                comment_last_at=comment_last_at,
+                ignore_sample_type=ignore_sample_type,
+            )
+        )
+    return rules
+
+
+def _compute_needtosend_default(row: dict[str, Any]) -> int:
     sample_type = str(row.get("sample_type") or "").strip()
     comment = str(row.get("comment") or "").strip()
     last_at = comment.split("@")[-1] if comment else ""
     return _as_int_bool((sample_type != "ENGR_PRODUCTION") and (last_at == "$SETUP_EQP"))
+
+
+def _compute_needtosend(*, row: dict[str, Any], rules: Sequence[NeedToSendRule]) -> int:
+    user_sdwt_prod = str(row.get("user_sdwt_prod") or "").strip()
+    if user_sdwt_prod and rules:
+        for rule in rules:
+            if rule.matches(user_sdwt_prod):
+                return rule.compute(row)
+    return _compute_needtosend_default(row)
 
 
 def _extract_html_from_email(msg: Any) -> Optional[str]:
@@ -83,7 +164,10 @@ def _extract_html_from_email(msg: Any) -> Optional[str]:
 
 
 def _build_drone_sop_row(
-    *, html: str, early_inform_map: dict[tuple[str, str], Optional[str]]
+    *,
+    html: str,
+    early_inform_map: dict[tuple[str, str], Optional[str]],
+    needtosend_rules: Sequence[NeedToSendRule] | None = None,
 ) -> Optional[dict[str, Any]]:
     data = _extract_first_data_tag(html)
     if not data:
@@ -126,13 +210,13 @@ def _build_drone_sop_row(
         if current_num is not None and end_num is not None and current_num >= end_num:
             row["status"] = "COMPLETE"
 
-    row["needtosend"] = _compute_needtosend(row)
+    row["needtosend"] = _compute_needtosend(row=row, rules=needtosend_rules or ())
     return row
 
 
 @dataclass(frozen=True)
 class DroneSopPop3IngestResult:
-    """Drone SOP v3 POP3 수집 실행 결과."""
+    """Drone SOP POP3 수집 실행 결과."""
 
     matched_mails: int = 0
     upserted_rows: int = 0
@@ -144,7 +228,7 @@ class DroneSopPop3IngestResult:
 
 @dataclass(frozen=True)
 class DroneSopPop3Config:
-    """Drone SOP v3 POP3 수집 설정."""
+    """Drone SOP POP3 수집 설정."""
 
     host: str
     port: int
@@ -152,9 +236,10 @@ class DroneSopPop3Config:
     password: str
     use_ssl: bool = True
     timeout: int = 60
-    subject_contains: str = "[drone_sop_v3]"
+    subject_contains: str = "[drone_sop]"
     dummy_mode: bool = False
     dummy_mail_messages_url: str = ""
+    needtosend_rules: tuple[NeedToSendRule, ...] = ()
 
     @classmethod
     def from_settings(cls) -> "DroneSopPop3Config":
@@ -200,6 +285,11 @@ class DroneSopPop3Config:
             or ""
         ).strip()
 
+        needtosend_rules_raw = getattr(settings, "DRONE_SOP_NEEDTOSEND_RULES", None)
+        if needtosend_rules_raw is None:
+            needtosend_rules_raw = os.getenv("DRONE_SOP_NEEDTOSEND_RULES")
+        needtosend_rules = tuple(_parse_needtosend_rules(needtosend_rules_raw))
+
         return cls(
             host=host,
             port=port,
@@ -209,6 +299,7 @@ class DroneSopPop3Config:
             timeout=timeout,
             dummy_mode=dummy_mode,
             dummy_mail_messages_url=dummy_mail_messages_url,
+            needtosend_rules=needtosend_rules,
         )
 
 
@@ -267,7 +358,7 @@ def _upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
     exclude_update_cols = {"needtosend", "comment", "instant_inform"}
 
     placeholders = ",".join(["%s"] * len(insert_cols))
-    quoted_table = f'"{DroneSOPV3._meta.db_table}"'
+    quoted_table = f'"{DroneSOP._meta.db_table}"'
     quoted_insert_cols = ", ".join(f'"{col}"' for col in insert_cols)
     conflict_target = ", ".join(f'"{col}"' for col in conflict_cols)
 
@@ -303,16 +394,16 @@ def _upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
 
 def _prune_old_drone_sop_rows(*, days: int) -> int:
     cutoff = timezone.now() - timedelta(days=days)
-    deleted, _ = DroneSOPV3.objects.filter(created_at__lt=cutoff).delete()
+    deleted, _ = DroneSOP.objects.filter(created_at__lt=cutoff).delete()
     return int(deleted or 0)
 
 
 def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
-    """Drone SOP v3 POP3 수집을 실행합니다.
+    """Drone SOP POP3 수집을 실행합니다.
 
     Side effects:
         - POP3(또는 더미 메일 API)에서 메일을 읽고 삭제합니다.
-        - drone_sop_v3 테이블에 upsert 합니다.
+        - drone_sop 테이블에 upsert 합니다.
         - 90일 초과 데이터는 정리합니다.
     """
 
@@ -330,8 +421,8 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
                 raise ValueError("DRONE_SOP_DUMMY_MAIL_MESSAGES_URL 미설정")
 
             matched = 0
+            upserted = 0
             delete_targets: list[int] = []
-            rows: list[dict[str, Any]] = []
             messages = _list_dummy_mail_messages(url=config.dummy_mail_messages_url, timeout=config.timeout)
             for message in messages:
                 subject = str(message.get("subject") or "")
@@ -341,20 +432,30 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
                 if not body_html:
                     continue
                 try:
-                    parsed = _build_drone_sop_row(html=body_html, early_inform_map=early_inform_map)
+                    parsed = _build_drone_sop_row(
+                        html=body_html,
+                        early_inform_map=early_inform_map,
+                        needtosend_rules=config.needtosend_rules,
+                    )
                 except Exception:
                     logger.exception("Failed to parse dummy mail id=%s subject=%r", message.get("id"), subject)
                     continue
                 if not parsed:
                     continue
                 matched += 1
-                rows.append(parsed)
+
+                try:
+                    upserted += _upsert_drone_sop_rows(rows=[parsed])
+                except Exception:
+                    logger.exception("Failed to upsert dummy mail id=%s subject=%r", message.get("id"), subject)
+                    continue
+
                 try:
                     delete_targets.append(int(message.get("id")))
                 except (TypeError, ValueError):
                     continue
 
-            if not rows:
+            if matched == 0:
                 return DroneSopPop3IngestResult(
                     matched_mails=matched,
                     upserted_rows=0,
@@ -362,15 +463,14 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
                     pruned_rows=0,
                 )
 
-            upserted = _upsert_drone_sop_rows(rows=rows)
             pruned = 0
             try:
                 pruned = _prune_old_drone_sop_rows(days=90)
             except Exception:
-                logger.exception("Failed to prune old DroneSOPV3 rows")
+                logger.exception("Failed to prune old DroneSOP rows")
 
             deleted = 0
-            if upserted:
+            if delete_targets:
                 deleted = _delete_dummy_mail_messages(
                     url=config.dummy_mail_messages_url,
                     mail_ids=delete_targets,
@@ -390,19 +490,16 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
         client_cls = poplib.POP3_SSL if config.use_ssl else poplib.POP3
         client = client_cls(config.host, config.port, timeout=config.timeout)
         matched = 0
-        delete_targets: list[int] = []
-        rows: list[dict[str, Any]] = []
+        upserted = 0
+        deleted = 0
 
         try:
             client.user(config.username)
             client.pass_(config.password)
-            messages: list[tuple[int, Any]] = []
-            for msg_num, _ in enumerate(client.list()[1], start=1):
+            num_msgs = len(client.list()[1])
+            for msg_num in range(1, num_msgs + 1):
                 _, lines, _ = client.retr(msg_num)
                 msg = BytesParser(policy=default).parsebytes(b"\r\n".join(lines))
-                messages.append((msg_num, msg))
-
-            for msg_num, msg in sorted(messages, key=lambda item: item[0]):
                 subject = msg.get("Subject") or ""
                 if config.subject_contains not in subject:
                     continue
@@ -410,37 +507,40 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
                 if not html:
                     continue
                 try:
-                    parsed = _build_drone_sop_row(html=html, early_inform_map=early_inform_map)
+                    parsed = _build_drone_sop_row(
+                        html=html,
+                        early_inform_map=early_inform_map,
+                        needtosend_rules=config.needtosend_rules,
+                    )
                 except Exception:
                     logger.exception("Failed to parse POP3 message #%s subject=%r", msg_num, subject)
                     continue
                 if not parsed:
                     continue
                 matched += 1
-                rows.append(parsed)
-                delete_targets.append(msg_num)
-
-            if rows:
-                upserted = _upsert_drone_sop_rows(rows=rows)
-            else:
-                upserted = 0
+                try:
+                    upserted += _upsert_drone_sop_rows(rows=[parsed])
+                except Exception:
+                    logger.exception("Failed to upsert POP3 message #%s subject=%r", msg_num, subject)
+                    continue
+                try:
+                    client.dele(msg_num)
+                    deleted += 1
+                except Exception:
+                    logger.exception("Failed to mark POP3 message #%s for deletion", msg_num)
 
             pruned = 0
             try:
                 if upserted:
                     pruned = _prune_old_drone_sop_rows(days=90)
             except Exception:
-                logger.exception("Failed to prune old DroneSOPV3 rows")
-
-            if upserted:
-                for msg_num in delete_targets:
-                    client.dele(msg_num)
+                logger.exception("Failed to prune old DroneSOP rows")
 
             client.quit()
             return DroneSopPop3IngestResult(
                 matched_mails=matched,
                 upserted_rows=upserted,
-                deleted_mails=len(delete_targets) if upserted else 0,
+                deleted_mails=deleted,
                 pruned_rows=pruned,
             )
         except Exception:
@@ -458,4 +558,3 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
     finally:
         if acquired:
             _release_advisory_lock(lock_id)
-

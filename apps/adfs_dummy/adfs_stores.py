@@ -176,7 +176,7 @@ class MailStore:
         self.ensure_drone_sop_mail()
 
     def ensure_drone_sop_mail(self) -> None:
-        """Drone SOP v3 더미 메일을 항상 1개 유지합니다.
+        """Drone SOP 더미 메일을 항상 1개 유지합니다.
 
         - drone POP3 ingest 더미 모드에서 호출되는 /mail/messages 조회 시,
           매 호출마다 metro_current_step 이 증가하는 메일이 생성되도록 보장합니다.
@@ -184,7 +184,7 @@ class MailStore:
 
         for entry in self.mailbox.values():
             subject = entry.get("subject") or ""
-            if isinstance(subject, str) and "[drone_sop_v3]" in subject:
+            if isinstance(subject, str) and "[drone_sop]" in subject:
                 return
 
         self._drone_sop_step += 1
@@ -217,7 +217,7 @@ class MailStore:
         )
 
         self.create_mail(
-            subject=f"[drone_sop_v3] Dummy step={step}",
+            subject=f"[drone_sop] Dummy step={step}",
             sender="drone@example.com",
             recipient=DEFAULT_EMAIL,
             body_text=html,

@@ -43,16 +43,15 @@ default_args = {
 }
 
 with DAG(
-    dag_id="drone_sop_v3_pop3_ingest",
+    dag_id="drone_sop_pop3_ingest",
     default_args=default_args,
     schedule=DRONE_SOP_POP3_INGEST_SCHEDULE,
     start_date=days_ago(1),
     catchup=False,
     max_active_runs=1,
-    tags=["drone", "sop-v3", "pop3"],
+    tags=["drone", "sop", "pop3"],
 ) as dag:
     ingest_pop3 = PythonOperator(
-        task_id="ingest_pop3_drone_sop_v3",
+        task_id="ingest_pop3_drone_sop",
         python_callable=run_drone_sop_pop3_ingest,
     )
-
