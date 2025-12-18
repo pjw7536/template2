@@ -239,6 +239,41 @@ RAG_ERROR_LOG_PATH = env("RAG_ERROR_LOG_PATH", str(BASE_DIR / "logs" / "rag_erro
 EMAIL_INGEST_TRIGGER_TOKEN = env("EMAIL_INGEST_TRIGGER_TOKEN", "")
 
 
+# ==============================
+# Drone SOP v3 trigger auth (API)
+# ==============================
+DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN = env("DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN", "")
+DRONE_SOP_JIRA_TRIGGER_TOKEN = env("DRONE_SOP_JIRA_TRIGGER_TOKEN", "")
+
+
+# ============================
+# Drone SOP v3 POP3 ingest env
+# ============================
+DRONE_SOP_POP3_HOST = env("DRONE_SOP_POP3_HOST", "")
+DRONE_SOP_POP3_PORT = env_int("DRONE_SOP_POP3_PORT", 995) or 995
+DRONE_SOP_POP3_USERNAME = env("DRONE_SOP_POP3_USERNAME", "")
+DRONE_SOP_POP3_PASSWORD = env("DRONE_SOP_POP3_PASSWORD", "")
+DRONE_SOP_POP3_USE_SSL = env_bool("DRONE_SOP_POP3_USE_SSL", True)
+DRONE_SOP_POP3_TIMEOUT = env_int("DRONE_SOP_POP3_TIMEOUT", 60) or 60
+
+DRONE_SOP_DUMMY_MODE = env_bool("DRONE_SOP_DUMMY_MODE", False)
+DRONE_SOP_DUMMY_MAIL_MESSAGES_URL = env("DRONE_SOP_DUMMY_MAIL_MESSAGES_URL", "")
+
+
+# ======================
+# Drone SOP v3 Jira env
+# ======================
+DRONE_JIRA_BASE_URL = env("DRONE_JIRA_BASE_URL", "")
+DRONE_JIRA_TOKEN = env("DRONE_JIRA_TOKEN", "")
+DRONE_JIRA_PROJECT_KEY = env("DRONE_JIRA_PROJECT_KEY", "")
+DRONE_JIRA_ISSUE_TYPE = env("DRONE_JIRA_ISSUE_TYPE", "Task")
+
+DRONE_JIRA_USE_BULK_API = env_bool("DRONE_JIRA_USE_BULK_API", True)
+DRONE_JIRA_BULK_SIZE = env_int("DRONE_JIRA_BULK_SIZE", 20) or 20
+DRONE_JIRA_CONNECT_TIMEOUT = env_int("DRONE_JIRA_CONNECT_TIMEOUT", 5) or 5
+DRONE_JIRA_READ_TIMEOUT = env_int("DRONE_JIRA_READ_TIMEOUT", 20) or 20
+
+
 # =====================
 # OpenAPI / Swagger UI
 # =====================

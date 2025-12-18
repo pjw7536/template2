@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from adfs_jira import router as jira_router
 from adfs_llm import router as llm_router
 from adfs_mail import router as mail_router
 from adfs_oidc import router as oidc_router
@@ -17,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(oidc_router)
     app.include_router(llm_router)
     app.include_router(mail_router)
+    app.include_router(jira_router)
     app.include_router(rag_router)
     seed_all()
     return app

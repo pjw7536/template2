@@ -39,7 +39,7 @@ export function normalizeNeedToSend(raw) {
 }
 
 export function normalizeInstantInform(raw) {
-  return Math.max(0, toTinyIntFlag(raw, 0))
+  return toTinyIntFlag(raw, 0)
 }
 
 export function normalizeBinaryFlag(raw) {

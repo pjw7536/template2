@@ -1,14 +1,13 @@
-"""드론 조기 알림(Drone Early Inform) 설정 CRUD 뷰.
+"""Drone 조기 알림 설정 및 라인 대시보드 집계 엔드포인트.
 
-이 모듈은 drone_early_inform_v3 테이블을 직접 SQL로 조회/수정합니다.
-요청 → 파라미터 정규화/검증 → DB쿼리 → 액티비티 로깅(이전/신규 상태) → JSON 응답
-순서로 동작합니다.
+Early inform 설정은 DroneEarlyInformV3 ORM 모델을 통해 처리하고,
+라인 대시보드 집계/옵션 조회는 selectors에서 raw SQL로 처리합니다.
 
 # 엔드포인트 요약
-- GET    /api/v1/drone/early-inform?lineId=L1
-- POST   /api/v1/drone/early-inform { lineId, mainStep, customEndStep? }
-- PATCH  /api/v1/drone/early-inform { id, lineId?, mainStep?, customEndStep? }
-- DELETE /api/v1/drone/early-inform?id=123
+- GET    /api/v1/line-dashboard/early-inform?lineId=L1
+- POST   /api/v1/line-dashboard/early-inform { lineId, mainStep, customEndStep? }
+- PATCH  /api/v1/line-dashboard/early-inform { id, lineId?, mainStep?, customEndStep? }
+- DELETE /api/v1/line-dashboard/early-inform?id=123
 
 # 응답(예시)
 GET:
@@ -35,28 +34,16 @@ DELETE:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Optional
 
+from django.conf import settings
 from django.http import HttpRequest, JsonResponse
-from django.db import IntegrityError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.constants import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME, MAX_FIELD_LENGTH
-from api.common.utils import (
-    _get_user_sdwt_prod_values,
-    build_date_range_filters,
-    build_line_filters,
-    ensure_date_bounds,
-    find_column,
-    normalize_date_only,
-    normalize_line_id,
-    parse_json_body,
-    resolve_table_schema,
-    to_int,
-)
+from api.common.constants import MAX_FIELD_LENGTH
+from api.common.utils import parse_json_body
 
 from api.common.activity_logging import (
     merge_activity_metadata,
@@ -64,28 +51,12 @@ from api.common.activity_logging import (
     set_activity_previous_state,
     set_activity_summary,
 )
-from api.common.db import execute, run_query
+
+from . import selectors, services
+from .permissions import extract_bearer_token
+from .serializers import serialize_early_inform_entry
 
 logger = logging.getLogger(__name__)
-
-
-def _is_duplicate_error(exc: Exception) -> bool:
-    """DB 중복 에러 여부를 광범위하게 판별."""
-
-    error_code = getattr(exc, "code", None) or getattr(exc, "pgcode", None)
-    if error_code:
-        code_str = str(error_code)
-        if code_str in {"ER_DUP_ENTRY", "23505", "1062"}:
-            return True
-
-    if isinstance(exc, IntegrityError):
-        message = str(exc).lower()
-        if any(key in message for key in ("duplicate", "unique", "uniq", "already exists")):
-            return True
-
-    # 일반 Exception의 문자열 메시지에서만 duplicate 힌트가 있는 경우
-    message = str(exc).lower()
-    return any(key in message for key in ("duplicate", "unique", "uniq", "already exists"))
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -111,19 +82,11 @@ class DroneEarlyInformView(APIView):
             return JsonResponse({"error": "lineId is required"}, status=400)
 
         try:
-            rows = run_query(
-                """
-                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
-                FROM {table}
-                WHERE line_id = %s
-                ORDER BY main_step ASC, id ASC
-                """.format(table=self.TABLE_NAME),
-                [line_id],
-            )
-            # DB 레코드를 API 응답 형태로 정규화
-            normalized = [self._map_row(row, line_id) for row in rows]
-            normalized_rows = [row for row in normalized if row is not None]
-            user_sdwt_values = _get_user_sdwt_prod_values(line_id)
+            normalized_rows = [
+                serialize_early_inform_entry(entry)
+                for entry in selectors.list_early_inform_entries(line_id=line_id)
+            ]
+            user_sdwt_values = selectors.list_user_sdwt_prod_values_for_line(line_id=line_id)
             return JsonResponse({
                 "lineId": line_id,
                 "rowCount": len(normalized_rows),
@@ -160,42 +123,27 @@ class DroneEarlyInformView(APIView):
         updated_by = self._resolve_updated_by(request)
 
         try:
-            params = [line_id, main_step, custom_end_step, updated_by]
-            affected, last_row_id = execute(
-                """
-                INSERT INTO {table} (line_id, main_step, custom_end_step, updated_by, updated_at)
-                VALUES (%s, %s, %s, %s, NOW())
-                RETURNING id
-                """.format(table=self.TABLE_NAME),
-                params,
+            entry = services.create_early_inform_entry(
+                line_id=line_id,
+                main_step=main_step,
+                custom_end_step=custom_end_step,
+                updated_by=updated_by,
             )
-            rows = run_query(
-                """
-                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
-                FROM {table}
-                WHERE id = %s
-                LIMIT 1
-                """.format(table=self.TABLE_NAME),
-                [last_row_id],
-            )
-            entry = self._map_row(rows[0] if rows else None, line_id)
-            if not entry:
-                return JsonResponse({"error": "Failed to create entry"}, status=500)
+            entry_payload = serialize_early_inform_entry(entry)
 
             # 액티비티 로그(요약 + 신규 상태 + 메타데이터)
             set_activity_summary(request, "Create drone_early_inform entry")
-            set_activity_new_state(request, entry)
+            set_activity_new_state(request, entry_payload)
             merge_activity_metadata(
                 request,
                 resource=self.TABLE_NAME,
-                entryId=entry["id"],
+                entryId=entry_payload["id"],
             )
-            return JsonResponse({"entry": entry}, status=201)
+            return JsonResponse({"entry": entry_payload}, status=201)
 
-        except Exception as exc:  # pragma: no cover - 방어적 로깅
-            # MySQL/PG의 유니크 제약 위반 코드 매핑
-            if _is_duplicate_error(exc):
-                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
+        except services.DroneEarlyInformDuplicateError as exc:
+            return JsonResponse({"error": str(exc)}, status=409)
+        except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to create drone_early_inform row")
             return JsonResponse({"error": "Failed to create entry"}, status=500)
 
@@ -222,91 +170,47 @@ class DroneEarlyInformView(APIView):
         set_activity_summary(request, f"Update drone_early_inform entry #{entry_id}")
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
-        # 이전 상태 로드 → 액티비티에 보관
-        previous_rows = run_query(
-            """
-            SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
-            FROM {table}
-            WHERE id = %s
-            LIMIT 1
-            """.format(table=self.TABLE_NAME),
-            [entry_id],
-        )
-        set_activity_previous_state(
-            request,
-            self._map_row(previous_rows[0] if previous_rows else None),
-        )
-
-        # 동적 UPDATE 컬럼 구성
-        assignments: List[str] = []
-        params: List[Any] = []
-
+        updates: dict[str, Any] = {}
         updated_by = self._resolve_updated_by(request)
 
         if "lineId" in payload:
             line_id = self._sanitize_line_id(payload.get("lineId"))
             if not line_id:
                 return JsonResponse({"error": "lineId is required"}, status=400)
-            assignments.append("line_id = %s")
-            params.append(line_id)
+            updates["line_id"] = line_id
 
         if "mainStep" in payload:
             main_step = self._sanitize_main_step(payload.get("mainStep"))
             if not main_step:
                 return JsonResponse({"error": "mainStep is required"}, status=400)
-            assignments.append("main_step = %s")
-            params.append(main_step)
+            updates["main_step"] = main_step
 
         if "customEndStep" in payload:
             try:
                 normalized = self._normalize_custom_end_step(payload.get("customEndStep"))
             except ValueError as exc:
                 return JsonResponse({"error": str(exc)}, status=400)
-            assignments.append("custom_end_step = %s")
-            params.append(normalized)
+            updates["custom_end_step"] = normalized
 
-        if not assignments:
+        if not updates:
             return JsonResponse({"error": "No valid fields to update"}, status=400)
 
-        # 항상 업데이트 메타 컬럼 갱신
-        assignments.append("updated_by = %s")
-        params.append(updated_by)
-        assignments.append("updated_at = NOW()")
-
-        # WHERE id = %s
-        params.append(entry_id)
         try:
-            affected, _ = execute(
-                """
-                UPDATE {table}
-                SET {assignments}
-                WHERE id = %s
-                """.format(table=self.TABLE_NAME, assignments=", ".join(assignments)),
-                params,
+            result = services.update_early_inform_entry(
+                entry_id=entry_id,
+                updates=updates,
+                updated_by=updated_by,
             )
-            if affected == 0:
-                return JsonResponse({"error": "Entry not found"}, status=404)
+            set_activity_previous_state(request, serialize_early_inform_entry(result.previous_entry))
+            entry_payload = serialize_early_inform_entry(result.entry)
+            set_activity_new_state(request, entry_payload)
+            return JsonResponse({"entry": entry_payload})
 
-            # 변경 후 행 다시 조회 → 응답/로그에 사용
-            rows = run_query(
-                """
-                SELECT id, line_id, main_step, custom_end_step, updated_by, updated_at
-                FROM {table}
-                WHERE id = %s
-                LIMIT 1
-                """.format(table=self.TABLE_NAME),
-                [entry_id],
-            )
-            entry = self._map_row(rows[0] if rows else None)
-            if not entry:
-                return JsonResponse({"error": "Entry not found"}, status=404)
-
-            set_activity_new_state(request, entry)
-            return JsonResponse({"entry": entry})
-
-        except Exception as exc:  # pragma: no cover - 방어적 로깅
-            if _is_duplicate_error(exc):
-                return JsonResponse({"error": "An entry for this main step already exists"}, status=409)
+        except services.DroneEarlyInformNotFoundError as exc:
+            return JsonResponse({"error": str(exc)}, status=404)
+        except services.DroneEarlyInformDuplicateError as exc:
+            return JsonResponse({"error": str(exc)}, status=409)
+        except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to update drone_early_inform row")
             return JsonResponse({"error": "Failed to update entry"}, status=500)
 
@@ -327,35 +231,16 @@ class DroneEarlyInformView(APIView):
         set_activity_summary(request, f"Delete drone_early_inform entry #{entry_id}")
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
-        previous_rows = run_query(
-            """
-            SELECT id, line_id, main_step, custom_end_step
-            FROM {table}
-            WHERE id = %s
-            LIMIT 1
-            """.format(table=self.TABLE_NAME),
-            [entry_id],
-        )
-        set_activity_previous_state(
-            request,
-            self._map_row(previous_rows[0] if previous_rows else None),
-        )
-
         try:
-            affected, _ = execute(
-                """
-                DELETE FROM {table}
-                WHERE id = %s
-                """.format(table=self.TABLE_NAME),
-                [entry_id],
-            )
-            if affected == 0:
-                return JsonResponse({"error": "Entry not found"}, status=404)
+            deleted_entry = services.delete_early_inform_entry(entry_id=entry_id)
+            set_activity_previous_state(request, serialize_early_inform_entry(deleted_entry))
 
             # 삭제 성공도 신규 상태로 간단히 표기
             set_activity_new_state(request, {"deleted": True})
             return JsonResponse({"success": True})
 
+        except services.DroneEarlyInformNotFoundError as exc:
+            return JsonResponse({"error": str(exc)}, status=404)
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to delete drone_early_inform row")
             return JsonResponse({"error": "Failed to delete entry"}, status=500)
@@ -428,84 +313,6 @@ class DroneEarlyInformView(APIView):
         username = self._extract_username(str(raw_username))
         return self._sanitize_updated_by(username)
 
-    @staticmethod
-    def _map_row(row: Optional[Dict[str, Any]], fallback_line_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """DB 행(dict)을 API 응답 형식으로 매핑.
-
-        - id: int로 강제
-        - lineId: str 또는 None (fallback_line_id로 보완)
-        - mainStep: str (값이 숫자일 수도 있어 안전 문자열화)
-        - customEndStep: str 또는 None
-        - updatedBy: str 또는 None
-        - updatedAt: ISO 문자열 또는 None
-        """
-        if not row:
-            return None
-        entry_id = row.get("id")
-        if entry_id is None:
-            return None
-
-        line_id = row.get("line_id") or fallback_line_id
-        main_step = row.get("main_step")
-        custom_end_step = row.get("custom_end_step")
-        updated_by = row.get("updated_by")
-        updated_at = row.get("updated_at")
-
-        return {
-            "id": int(entry_id),
-            "lineId": line_id if isinstance(line_id, str) else None,
-            "mainStep": (
-                main_step if isinstance(main_step, str)
-                else str(main_step) if main_step is not None
-                else ""
-            ),
-            "customEndStep": custom_end_step if isinstance(custom_end_step, str) else None,
-            "updatedBy": updated_by if isinstance(updated_by, str) else None,
-            "updatedAt": (
-                updated_at.isoformat()
-                if hasattr(updated_at, "isoformat")
-                else str(updated_at)
-                if updated_at is not None
-                else None
-            ),
-        }
-
-
-def _normalize_bucket_value(value: Any) -> Optional[str]:
-    """
-    날짜/시간 버킷 값을 ISO-like 문자열로 정규화합니다.
-
-    - 문자열: 공백을 T로 치환해 Date 파서 친화적으로 정규화
-    - datetime/date: 시/분/초를 0으로 맞춰 문자열 변환
-    - 실패 시 원본 문자열을 그대로 반환
-    """
-
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        return value.replace(minute=0, second=0, microsecond=0).isoformat()
-
-    if isinstance(value, date):
-        return datetime.combine(value, datetime.min.time()).isoformat()
-
-    if isinstance(value, str):
-        cleaned = value.strip()
-        if not cleaned:
-            return None
-
-        candidate = cleaned
-        if " " in candidate and "T" not in candidate:
-            candidate = candidate.replace(" ", "T")
-
-        try:
-            parsed = datetime.fromisoformat(candidate)
-            return parsed.replace(minute=0, second=0, microsecond=0).isoformat()
-        except ValueError:
-            return cleaned
-
-    return None
-
 
 class LineHistoryView(APIView):
     """라인 대시보드 차트용 시간 단위 합계/분해 집계 제공."""
@@ -513,217 +320,21 @@ class LineHistoryView(APIView):
     DEFAULT_RANGE_DAYS = 14
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        params = request.GET
-
-        from_param = normalize_date_only(params.get("from"))
-        to_param = normalize_date_only(params.get("to"))
-        range_days = params.get("rangeDays")
-        normalized_line_id = normalize_line_id(params.get("lineId"))
-
-        from_value, to_value = self._resolve_date_range(from_param, to_param, range_days)
-
         try:
-            schema = resolve_table_schema(
-                params.get("table"),
-                default_table=DEFAULT_TABLE,
-                require_timestamp=True,
+            payload = selectors.get_line_history_payload(
+                table_param=request.GET.get("table"),
+                line_id_param=request.GET.get("lineId"),
+                from_param=request.GET.get("from"),
+                to_param=request.GET.get("to"),
+                range_days_param=request.GET.get("rangeDays"),
+                default_range_days=self.DEFAULT_RANGE_DAYS,
             )
-            table_name = schema.name
-            column_names = schema.columns
-            timestamp_column = schema.timestamp_column
-
-            send_jira_column = find_column(column_names, "send_jira")
-            dimension_columns = {
-                candidate: resolved
-                for candidate in DIMENSION_CANDIDATES
-                if (resolved := find_column(column_names, candidate))
-            }
-
-            line_filter_result = build_line_filters(column_names, normalized_line_id)
-            where_clause, query_params = self._build_where_clause(
-                timestamp_column,
-                line_filter_result["filters"],
-                line_filter_result["params"],
-                from_value,
-                to_value,
-            )
-
-            totals_rows = run_query(
-                self._build_totals_query(table_name, timestamp_column, send_jira_column, where_clause),
-                query_params,
-            )
-            totals = [self._normalize_daily_row(row) for row in totals_rows]
-
-            breakdowns: Dict[str, List[Dict[str, Any]]] = {}
-            for dimension_key, column_name in dimension_columns.items():
-                rows = run_query(
-                    self._build_breakdown_query(
-                        table_name,
-                        timestamp_column,
-                        column_name,
-                        send_jira_column,
-                        where_clause,
-                    ),
-                    query_params,
-                )
-                breakdowns[dimension_key] = [self._normalize_breakdown_row(row) for row in rows]
-
-            return JsonResponse(
-                {
-                    "table": table_name,
-                    "from": from_value,
-                    "to": to_value,
-                    "lineId": normalized_line_id,
-                    "timestampColumn": timestamp_column,
-                    "generatedAt": datetime.utcnow().isoformat() + "Z",
-                    "totals": totals,
-                    "breakdowns": breakdowns,
-                }
-            )
+            return JsonResponse(payload)
         except (ValueError, LookupError) as exc:
             return JsonResponse({"error": str(exc)}, status=400)
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to load history data")
             return JsonResponse({"error": "Failed to load history data"}, status=500)
-
-    def _resolve_date_range(
-        self,
-        from_param: Optional[str],
-        to_param: Optional[str],
-        range_param: Optional[str],
-    ) -> tuple[Optional[str], Optional[str]]:
-        """from/to/rangeDays 조합을 최종 from/to(YYYY-MM-DD)로 정리."""
-
-        from_value = from_param
-        to_value = to_param
-
-        parsed_range = None
-        if isinstance(range_param, str) and range_param.isdigit():
-            parsed_range = int(range_param)
-        range_days = parsed_range if parsed_range and parsed_range > 0 else self.DEFAULT_RANGE_DAYS
-
-        if not to_value:
-            today = datetime.utcnow().date()
-            to_value = today.isoformat()
-
-        if not from_value and to_value:
-            to_date = datetime.fromisoformat(f"{to_value}T00:00:00")
-            from_date = to_date - timedelta(days=range_days - 1)
-            from_value = from_date.date().isoformat()
-
-        if from_value and to_value:
-            from_value, to_value = ensure_date_bounds(from_value, to_value)
-
-        return from_value, to_value
-
-    def _build_where_clause(
-        self,
-        timestamp_column: str,
-        line_filters: Sequence[str],
-        line_params: Sequence[Any],
-        from_value: Optional[str],
-        to_value: Optional[str],
-    ) -> tuple[str, List[Any]]:
-        conditions = list(line_filters)
-        params = list(line_params)
-
-        date_conditions, date_params = build_date_range_filters(timestamp_column, from_value, to_value)
-        conditions.extend(date_conditions)
-        params.extend(date_params)
-
-        clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        return clause, params
-
-    def _build_totals_query(
-        self,
-        table_name: str,
-        timestamp_column: str,
-        send_jira_column: Optional[str],
-        where_clause: str,
-    ) -> str:
-        bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
-        totals_select = [f"{bucket_expr} AS bucket", "COUNT(*) AS row_count"]
-        if send_jira_column:
-            totals_select.append(
-                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(col=send_jira_column)
-            )
-        else:
-            totals_select.append("0 AS send_jira_count")
-
-        return (
-            """
-            SELECT {select_clause}
-            FROM {table}
-            {where_clause}
-            GROUP BY bucket
-            ORDER BY bucket ASC
-            """.format(
-                select_clause=", ".join(totals_select),
-                table=table_name,
-                where_clause=where_clause,
-            )
-        )
-
-    def _build_breakdown_query(
-        self,
-        table_name: str,
-        timestamp_column: str,
-        dimension_column: str,
-        send_jira_column: Optional[str],
-        where_clause: str,
-    ) -> str:
-        bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
-        select_parts = [
-            f"{bucket_expr} AS bucket",
-            f"COALESCE(CAST({dimension_column} AS TEXT), 'Unspecified') AS category",
-            "COUNT(*) AS row_count",
-        ]
-
-        if send_jira_column:
-            select_parts.append(
-                "SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END) AS send_jira_count".format(col=send_jira_column)
-            )
-        else:
-            select_parts.append("0 AS send_jira_count")
-
-        return (
-            """
-            SELECT {select_clause}
-            FROM {table}
-            {where_clause}
-            GROUP BY bucket, category
-            ORDER BY bucket ASC, category ASC
-            """.format(
-                select_clause=", ".join(select_parts),
-                table=table_name,
-                where_clause=where_clause,
-            )
-        )
-
-    @staticmethod
-    def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
-
-        return {
-            "date": date_str,
-            "rowCount": to_int(row.get("row_count", 0)),
-            "sendJiraCount": to_int(row.get("send_jira_count", 0)),
-        }
-
-    @staticmethod
-    def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
-
-        category = row.get("category") or row.get("dimension") or "Unspecified"
-        if not isinstance(category, str) or not category.strip():
-            category = "Unspecified"
-
-        return {
-            "date": date_str,
-            "category": category.strip() if isinstance(category, str) else str(category),
-            "rowCount": to_int(row.get("row_count", 0)),
-            "sendJiraCount": to_int(row.get("send_jira_count", 0)),
-        }
 
 
 class LineIdListView(APIView):
@@ -731,27 +342,183 @@ class LineIdListView(APIView):
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         try:
-            rows = run_query(
-                """
-                SELECT DISTINCT line AS line_id
-                FROM {table}
-                WHERE line IS NOT NULL AND line <> ''
-                ORDER BY line_id
-                """.format(table=LINE_SDWT_TABLE_NAME)
-            )
-            line_ids = [
-                row["line_id"].strip()
-                for row in rows
-                if isinstance(row.get("line_id"), str) and row.get("line_id").strip()
-            ]
-            return JsonResponse({"lineIds": line_ids})
+            return JsonResponse({"lineIds": selectors.list_distinct_line_ids()})
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to load distinct line ids")
             return JsonResponse({"error": "Failed to load line options"}, status=500)
 
 
+@method_decorator(csrf_exempt, name="dispatch")
+class DroneSopInstantInformView(APIView):
+    """Line dashboard에서 호출하는 Drone SOP v3 단건 즉시인폼(=Jira 강제 생성)."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, sop_id: int, *args: object, **kwargs: object) -> JsonResponse:
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+
+        payload = parse_json_body(request) or {}
+        raw_comment = payload.get("comment")
+        if raw_comment is not None and not isinstance(raw_comment, str):
+            return JsonResponse({"error": "comment must be a string"}, status=400)
+        comment = raw_comment.strip() if isinstance(raw_comment, str) else None
+
+        set_activity_summary(request, f"Instant inform drone_sop_v3 #{sop_id}")
+        merge_activity_metadata(request, resource="drone_sop_v3", action="instant_inform", sop_id=sop_id)
+        if comment is not None:
+            merge_activity_metadata(request, comment_length=len(comment))
+
+        try:
+            result = services.run_drone_sop_jira_instant_inform(sop_id=sop_id, comment=comment)
+            set_activity_new_state(
+                request,
+                {
+                    "created": result.created,
+                    "already_informed": result.already_informed,
+                    "jira_key": result.jira_key,
+                    "skipped": result.skipped,
+                    "skip_reason": result.skip_reason,
+                },
+            )
+
+            status = 200
+            if result.skipped and result.skip_reason == "already_running":
+                status = 409
+            payload = {
+                "created": result.created,
+                "alreadyInformed": result.already_informed,
+                "jiraKey": result.jira_key,
+                "updated": result.updated_fields,
+                "skipped": result.skipped,
+                "skipReason": result.skip_reason,
+            }
+            if status != 200:
+                payload["error"] = "Jira pipeline is already running"
+
+            return JsonResponse(payload, status=status)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except RuntimeError as exc:
+            logger.exception("Drone SOP instant inform failed")
+            return JsonResponse({"error": str(exc) or "Jira create failed"}, status=502)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Drone SOP instant inform failed")
+            return JsonResponse({"error": "Drone SOP instant inform failed"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DroneSopPop3IngestTriggerView(APIView):
+    """외부 Airflow에서 호출하는 Drone SOP v3 POP3 수집 트리거."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        expected_token = getattr(settings, "DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN", "") or ""
+        provided_token = extract_bearer_token(request)
+
+        if expected_token:
+            if provided_token != expected_token and not request.user.is_authenticated:
+                return JsonResponse({"error": "Unauthorized"}, status=401)
+        elif not request.user.is_authenticated:
+            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+
+        set_activity_summary(request, "Trigger drone_sop_v3 POP3 ingest")
+        merge_activity_metadata(request, resource="drone_sop_v3", pipeline="pop3_ingest")
+
+        try:
+            result = services.run_drone_sop_pop3_ingest_from_env()
+            set_activity_new_state(
+                request,
+                {
+                    "matched": result.matched_mails,
+                    "upserted": result.upserted_rows,
+                    "deleted": result.deleted_mails,
+                    "pruned": result.pruned_rows,
+                    "skipped": result.skipped,
+                    "skip_reason": result.skip_reason,
+                },
+            )
+            return JsonResponse(
+                {
+                    "matched": result.matched_mails,
+                    "upserted": result.upserted_rows,
+                    "deleted": result.deleted_mails,
+                    "pruned": result.pruned_rows,
+                    "skipped": result.skipped,
+                    "skipReason": result.skip_reason,
+                }
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to trigger drone SOP POP3 ingest")
+            return JsonResponse({"error": "Drone SOP POP3 ingest failed"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DroneSopJiraTriggerView(APIView):
+    """외부 Airflow에서 호출하는 Drone SOP v3 Jira 생성 트리거."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        expected_token = getattr(settings, "DRONE_SOP_JIRA_TRIGGER_TOKEN", "") or ""
+        provided_token = extract_bearer_token(request)
+
+        if expected_token:
+            if provided_token != expected_token and not request.user.is_authenticated:
+                return JsonResponse({"error": "Unauthorized"}, status=401)
+        elif not request.user.is_authenticated:
+            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+
+        payload = parse_json_body(request) or {}
+        raw_limit = payload.get("limit") or request.GET.get("limit")
+        limit = None
+        if raw_limit is not None:
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "limit must be an integer"}, status=400)
+            if limit <= 0:
+                limit = None
+
+        set_activity_summary(request, "Trigger drone_sop_v3 Jira create")
+        merge_activity_metadata(request, resource="drone_sop_v3", pipeline="jira_create", limit=limit)
+
+        try:
+            result = services.run_drone_sop_jira_create_from_env(limit=limit)
+            set_activity_new_state(
+                request,
+                {
+                    "candidates": result.candidates,
+                    "created": result.created,
+                    "updated_rows": result.updated_rows,
+                    "skipped": result.skipped,
+                    "skip_reason": result.skip_reason,
+                },
+            )
+            return JsonResponse(
+                {
+                    "candidates": result.candidates,
+                    "created": result.created,
+                    "updated": result.updated_rows,
+                    "skipped": result.skipped,
+                    "skipReason": result.skip_reason,
+                }
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to trigger drone SOP Jira create")
+            return JsonResponse({"error": "Drone SOP Jira create failed"}, status=500)
+
+
 __all__ = [
     "DroneEarlyInformView",
+    "DroneSopInstantInformView",
+    "DroneSopJiraTriggerView",
+    "DroneSopPop3IngestTriggerView",
     "LineHistoryView",
     "LineIdListView",
 ]

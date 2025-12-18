@@ -15,6 +15,7 @@ router = APIRouter()
 @router.get("/mail/messages")
 async def list_dummy_mail() -> Dict[str, Any]:
     """Return all dummy mail messages for quick manual testing."""
+    mail_store.ensure_drone_sop_mail()
     return {"count": len(mail_store.mailbox), "messages": list(mail_store.mailbox.values())}
 
 

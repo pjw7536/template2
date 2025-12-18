@@ -16,9 +16,9 @@ import { makeCellKey } from "../utils/dataTableCellState"
 import { composeComment, splitComment } from "../utils/commentUtils"
 import { deriveFlagState } from "../utils/dataTableFlagState"
 
-function showInstantInformSuccessToast() {
+function showInstantInformSuccessToast(jiraKey) {
   toast.success("즉시 인폼 완료", {
-    description: "코멘트와 상태가 업데이트되었습니다.",
+    description: jiraKey ? `Jira 이슈가 생성되었습니다. (${jiraKey})` : "Jira 이슈가 생성되었습니다.",
     ...buildToastOptions({ intent: "success", duration: 2000 }),
   })
 }
@@ -33,12 +33,6 @@ function showInstantInformErrorToast(message) {
 
 function showAlreadyInformedToast() {
   toast.info("이미 Inform 되었습니다.", {
-    ...buildToastOptions({ intent: "info", duration: 2400 }),
-  })
-}
-
-function showQueuedInstantInformToast() {
-  toast.info("Inform Queue에 등록되어 해제 불가 합니다 (1~2분 내 인폼 예정)", {
     ...buildToastOptions({ intent: "info", duration: 2400 }),
   })
 }
@@ -72,14 +66,10 @@ export function InstantInformCell({
 
   const instantInformKey = makeCellKey(recordId, "instant_inform")
   const commentKey = makeCellKey(recordId, "comment")
-  const needToSendKey = makeCellKey(recordId, "needtosend")
-  const statusKey = makeCellKey(recordId, "status")
 
   const isSaving =
     Boolean(meta?.updatingCells?.[instantInformKey]) ||
-    Boolean(meta?.updatingCells?.[commentKey]) ||
-    Boolean(meta?.updatingCells?.[needToSendKey]) ||
-    Boolean(meta?.updatingCells?.[statusKey])
+    Boolean(meta?.updatingCells?.[commentKey])
 
   const errorMessage = meta?.updateErrors?.[instantInformKey] ?? meta?.updateErrors?.[commentKey]
 
@@ -91,12 +81,8 @@ export function InstantInformCell({
 
   const openDialog = () => {
     if (isSaving) return
-    if (isChecked) {
-      if (sendJiraState.isOn) {
-        showAlreadyInformedToast()
-        return
-      }
-      showQueuedInstantInformToast()
+    if (sendJiraState.isOn) {
+      showAlreadyInformedToast()
       return
     }
     if (isLocked) {
@@ -110,24 +96,18 @@ export function InstantInformCell({
   }
 
   const handleConfirm = async () => {
-    if (!recordId || typeof meta?.handleUpdate !== "function") return
+    if (!recordId || typeof meta?.handleInstantInform !== "function") return
 
     meta?.setInstantInformDraftValue?.(recordId, 1)
     meta?.clearUpdateError?.(instantInformKey)
     meta?.clearUpdateError?.(commentKey)
 
     const composedComment = composeComment(commentDraft ?? baseVisibleText, suffixWithMarker)
-    const updates = {
-      comment: composedComment,
-      instant_inform: 1,
-      needtosend: 1,
-      status: "COMPLETE",
-    }
 
     try {
-      const ok = await meta.handleUpdate(recordId, updates)
-      if (ok) {
-        showInstantInformSuccessToast()
+      const result = await meta.handleInstantInform(recordId, { comment: composedComment })
+      if (result) {
+        showInstantInformSuccessToast(result?.jiraKey)
         setIsDialogOpen(false)
         return
       }
@@ -215,7 +195,7 @@ export function InstantInformCell({
           <DialogFooter className="flex items-start gap-2">
             <div className="flex flex-col mr-auto text-[11px] text-muted-foreground">
               <span>Enter: 저장  |  Shift+Enter: 줄바꿈</span>
-              <span className="text-primary">ESOP종료 여부 상관 없이 즉시인폼 합니다. (1~2분 소요)</span>
+              <span className="text-primary">조건과 무관하게 Jira 이슈를 즉시 생성합니다.</span>
             </div>
 
             <Button onClick={() => void handleConfirm()} disabled={isSaving}>

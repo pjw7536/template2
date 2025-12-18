@@ -24,7 +24,7 @@ export async function fetchLineSettings(lineId) {
     return { entries: [], userSdwtValues: [] }
   }
 
-  const endpoint = buildBackendUrl("/api/v1/drone/early-inform", { lineId })
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/early-inform", { lineId })
   const response = await fetch(endpoint, {
     cache: "no-store",
     credentials: "include",
@@ -48,7 +48,7 @@ export async function fetchLineSettings(lineId) {
 }
 
 export async function createLineSetting({ lineId, mainStep, customEndStep }) {
-  const endpoint = buildBackendUrl("/api/v1/drone/early-inform")
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/early-inform")
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,7 +74,7 @@ export async function createLineSetting({ lineId, mainStep, customEndStep }) {
 }
 
 export async function updateLineSetting({ id, lineId, mainStep, customEndStep }) {
-  const endpoint = buildBackendUrl("/api/v1/drone/early-inform")
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/early-inform")
   const response = await fetch(endpoint, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -100,7 +100,7 @@ export async function updateLineSetting({ id, lineId, mainStep, customEndStep })
 }
 
 export async function deleteLineSetting({ id }) {
-  const endpoint = buildBackendUrl("/api/v1/drone/early-inform", { id })
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/early-inform", { id })
   const response = await fetch(endpoint, {
     method: "DELETE",
     credentials: "include",

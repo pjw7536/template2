@@ -2,6 +2,7 @@
 import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"
+import { instantInformDroneSopV3 } from "../api/instant-inform"
 import { useCellIndicators } from "./useCellIndicators"
 import { useTableQuery } from "./useTableQuery"
 
@@ -206,6 +207,67 @@ export function useDataTableState({ lineId }) {
   )
 
   /* ────────────────────────────────────────────────────────────────────────
+   * handleInstantInform: 단건 즉시인폼(=Jira 강제 생성)
+   *  - comment는 저장하고, Jira 생성 성공 시 send_jira/jira_key 등 서버 업데이트 값을 반영합니다.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const handleInstantInform = React.useCallback(
+    async (recordId, { comment }) => {
+      if (!recordId) return null
+
+      const cellKeys = [`${recordId}:instant_inform`, `${recordId}:comment`]
+
+      setUpdatingCells((prev) => {
+        const next = { ...prev }
+        for (const key of cellKeys) next[key] = true
+        return next
+      })
+
+      setUpdateErrors((prev) => {
+        const next = { ...prev }
+        for (const key of cellKeys) {
+          if (key in next) delete next[key]
+        }
+        return next
+      })
+
+      begin(cellKeys)
+
+      let updateSucceeded = false
+
+      try {
+        const payload = await instantInformDroneSopV3({ id: recordId, comment })
+        const updated = payload?.updated
+        const nextUpdates =
+          updated && typeof updated === "object" && !Array.isArray(updated) ? updated : {}
+
+        setRows((previousRows) =>
+          previousRows.map((row) => {
+            const rowId = String(row?.id ?? "")
+            return rowId === recordId ? { ...row, ...nextUpdates } : row
+          })
+        )
+
+        setInstantInformDrafts((prev) => removeKey(prev, recordId))
+
+        updateSucceeded = true
+        return payload
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to instant-inform"
+        setUpdateErrors((prev) => {
+          const next = { ...prev }
+          for (const key of cellKeys) next[key] = message
+          return next
+        })
+        return null
+      } finally {
+        setUpdatingCells((prev) => deleteKeys(prev, cellKeys))
+        finalize(cellKeys, updateSucceeded ? "success" : "error")
+      }
+    },
+    [begin, finalize, setRows, setInstantInformDrafts, setUpdateErrors, setUpdatingCells]
+  )
+
+  /* ────────────────────────────────────────────────────────────────────────
    * comment 편집 상태/드래프트 값 컨트롤러 (셀 컴포넌트가 호출)
    * ──────────────────────────────────────────────────────────────────────── */
   const setCommentEditingState = React.useCallback((recordId, editing) => {
@@ -270,6 +332,7 @@ export function useDataTableState({ lineId }) {
     setInstantInformDraftValue,
     removeInstantInformDraftValue,
     handleUpdate,
+    handleInstantInform,
   }
 
   /* ────────────────────────────────────────────────────────────────────────

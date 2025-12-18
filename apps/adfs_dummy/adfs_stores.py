@@ -145,12 +145,14 @@ class MailStore:
     def __init__(self, rag_store: RagStore, rag_index: str) -> None:
         self.mailbox: Dict[int, Dict[str, Any]] = {}
         self._seq = 1
+        self._drone_sop_step = 0
         self.rag_store = rag_store
         self.rag_index = rag_index
 
     def reset(self) -> None:
         self.mailbox.clear()
         self._seq = 1
+        self._drone_sop_step = 0
         now = datetime.now(timezone.utc)
         samples = [
             {
@@ -170,6 +172,57 @@ class MailStore:
         ]
         for sample in samples:
             self.create_mail(register_to_rag=True, **sample)
+
+        self.ensure_drone_sop_mail()
+
+    def ensure_drone_sop_mail(self) -> None:
+        """Drone SOP v3 더미 메일을 항상 1개 유지합니다.
+
+        - drone POP3 ingest 더미 모드에서 호출되는 /mail/messages 조회 시,
+          매 호출마다 metro_current_step 이 증가하는 메일이 생성되도록 보장합니다.
+        """
+
+        for entry in self.mailbox.values():
+            subject = entry.get("subject") or ""
+            if isinstance(subject, str) and "[drone_sop_v3]" in subject:
+                return
+
+        self._drone_sop_step += 1
+        step = f"ST{self._drone_sop_step:03d}"
+        status = "COMPLETE" if self._drone_sop_step >= 5 else "IN_PROGRESS"
+
+        html = "\n".join(
+            [
+                "<data>",
+                f"  <line_id>L1</line_id>",
+                f"  <sdwt_prod>DUMMY</sdwt_prod>",
+                f"  <sample_type>NORMAL</sample_type>",
+                f"  <sample_group>DUMMY</sample_group>",
+                f"  <eqp_id>EQP1</eqp_id>",
+                f"  <chamber_ids>1</chamber_ids>",
+                f"  <lot_id>LOT.1</lot_id>",
+                f"  <proc_id>PROC</proc_id>",
+                f"  <ppid>PPID</ppid>",
+                f"  <main_step>MS</main_step>",
+                f"  <metro_current_step>{step}</metro_current_step>",
+                f"  <metro_steps>{step}</metro_steps>",
+                f"  <metro_end_step>ST010</metro_end_step>",
+                f"  <status>{status}</status>",
+                f"  <knoxid>dummy-knox</knoxid>",
+                f"  <user_sdwt_prod>dummy-prod</user_sdwt_prod>",
+                f"  <comment>demo@$SETUP_EQP</comment>",
+                f"  <defect_url>https://example.com/defect</defect_url>",
+                "</data>",
+            ]
+        )
+
+        self.create_mail(
+            subject=f"[drone_sop_v3] Dummy step={step}",
+            sender="drone@example.com",
+            recipient=DEFAULT_EMAIL,
+            body_text=html,
+            register_to_rag=False,
+        )
 
     def create_mail(
         self,
@@ -237,6 +290,33 @@ class MailStore:
 rag_store = RagStore(INDEX_NAMES, DEFAULT_PERMISSION_GROUPS)
 mail_store = MailStore(rag_store, MAILBOX_RAG_INDEX)
 
+
+class JiraStore:
+    def __init__(self) -> None:
+        self._seq = 1
+        self.issues: Dict[str, Dict[str, Any]] = {}
+
+    def reset(self) -> None:
+        self._seq = 1
+        self.issues.clear()
+
+    def create_issue(self, *, project_key: str, fields: Dict[str, Any]) -> Dict[str, Any]:
+        key = f"{project_key}-{self._seq}"
+        issue_id = str(self._seq)
+        self._seq += 1
+
+        issue = {
+            "id": issue_id,
+            "key": key,
+            "self": f"http://dummy-jira/rest/api/2/issue/{issue_id}",
+            "fields": fields,
+        }
+        self.issues[key] = issue
+        return issue
+
+
+jira_store = JiraStore()
+
 BASE_RAG_DOCS = [
     {
         "index_name": PRIMARY_RAG_INDEX,
@@ -261,3 +341,4 @@ def seed_all() -> None:
     """Reset RAG + mailbox stores for deterministic external dev runs."""
     rag_store.seed_base_docs(BASE_RAG_DOCS)
     mail_store.reset()
+    jira_store.reset()
