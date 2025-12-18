@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from django.core.cache import cache
 from django.http import HttpRequest, JsonResponse
@@ -11,8 +11,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from .services import AssistantConfigError, AssistantRequestError, assistant_chat_service
 from . import selectors
+from .services import AssistantConfigError, AssistantRequestError, assistant_chat_service
 from api.common.utils import parse_json_body
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,69 @@ def _normalize_history(raw_history: object, *, limit: int = DEFAULT_HISTORY_LIMI
             break
 
     return normalized
+
+
+def _validate_user_identity(user: object) -> Tuple[str, str]:
+    """사용자 객체에서 username / email 로컬파트를 추출한다.
+
+    - username, email 이 모두 채워져 있어야 downstream 서비스 호출 시 User-Id 헤더를 안전하게 보낼 수 있다.
+    - 모든 검증 오류는 (메시지, status) 형태로 처리하기 위해 예외 대신 빈 문자열 반환을 사용하지 않는다.
+    """
+
+    username = getattr(user, "get_username", lambda: "")()
+    if not isinstance(username, str) or not username.strip():
+        raise AssistantRequestError("username이 필요합니다.")
+
+    email_raw = getattr(user, "email", "")
+    if not isinstance(email_raw, str) or not email_raw.strip():
+        raise AssistantRequestError("email이 필요합니다.")
+
+    email_local_part = email_raw.strip().split("@", 1)[0].strip()
+    if not email_local_part:
+        raise AssistantRequestError("email이 필요합니다.")
+
+    return username.strip(), email_local_part
+
+
+def _resolve_rag_index(payload: Dict[str, object], user: object) -> str:
+    """요청 페이로드와 사용자 정보로 RAG index를 선택한다.
+
+    - 프론트에서 넘어온 override(userSdwtProd 등)가 접근 가능한지 먼저 확인한다.
+    - override가 없으면 사용자 기본값(user.user_sdwt_prod) → 설정 기본값 순으로 사용한다.
+    """
+
+    rag_index_name = ""
+
+    try:
+        raw_user_sdwt = getattr(user, "user_sdwt_prod", "")
+        if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
+            rag_index_name = raw_user_sdwt.strip()
+    except Exception:
+        rag_index_name = ""
+
+    if not rag_index_name:
+        rag_index_name = assistant_chat_service.config.rag_index_name
+
+    requested_index_raw = (
+        payload.get("userSdwtProd")
+        or payload.get("user_sdwt_prod")
+        or payload.get("ragIndexName")
+        or payload.get("rag_index_name")
+    )
+    requested_index = requested_index_raw.strip() if isinstance(requested_index_raw, str) else ""
+
+    if not requested_index:
+        return rag_index_name
+
+    accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
+    requested_no_prefix = requested_index[3:].strip() if requested_index.lower().startswith("rp-") else ""
+
+    if requested_index in accessible:
+        return requested_index
+    if requested_no_prefix and requested_no_prefix in accessible:
+        return requested_no_prefix
+
+    raise AssistantRequestError("해당 user_sdwt_prod에 대한 접근 권한이 없습니다.")
 
 
 def _normalize_room_id(room_id: object) -> str:
@@ -197,59 +260,19 @@ class AssistantChatView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
 
-        username = request.user.get_username()
-        if not isinstance(username, str) or not username.strip():
-            return JsonResponse({"error": "username이 필요합니다."}, status=400)
-
-        email_raw = getattr(request.user, "email", "")
-        if not isinstance(email_raw, str) or not email_raw.strip():
-            return JsonResponse({"error": "email이 필요합니다."}, status=400)
-
-        email_local_part = email_raw.strip().split("@", 1)[0].strip()
-        if not email_local_part:
-            return JsonResponse({"error": "email이 필요합니다."}, status=400)
-
-        user_header_id = email_local_part
+        try:
+            username_clean, user_header_id = _validate_user_identity(request.user)
+        except AssistantRequestError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
 
         room_id_raw = payload.get("roomId") or payload.get("room_id")
         room_id = _normalize_room_id(room_id_raw)
 
-        username_clean = username.strip()
         prompt_clean = prompt.strip()
-        rag_index_name = ""
         try:
-            raw_user_sdwt = getattr(request.user, "user_sdwt_prod", "")
-            if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
-                rag_index_name = raw_user_sdwt.strip()
-        except Exception:
-            rag_index_name = ""
-        if not rag_index_name:
-            rag_index_name = assistant_chat_service.config.rag_index_name
-
-        requested_index_raw = (
-            payload.get("userSdwtProd")
-            or payload.get("user_sdwt_prod")
-            or payload.get("ragIndexName")
-            or payload.get("rag_index_name")
-        )
-        requested_index = requested_index_raw.strip() if isinstance(requested_index_raw, str) else ""
-        if requested_index:
-            accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=request.user)
-            requested_no_prefix = (
-                requested_index[3:].strip()
-                if requested_index.lower().startswith("rp-")
-                else ""
-            )
-
-            if requested_index in accessible:
-                rag_index_name = requested_index
-            elif requested_no_prefix and requested_no_prefix in accessible:
-                rag_index_name = requested_no_prefix
-            else:
-                return JsonResponse(
-                    {"error": "해당 user_sdwt_prod에 대한 접근 권한이 없습니다."},
-                    status=403,
-                )
+            rag_index_name = _resolve_rag_index(payload, request.user)
+        except AssistantRequestError as exc:
+            return JsonResponse({"error": str(exc)}, status=403)
 
         incoming_history = _normalize_history(
             payload.get("history"),

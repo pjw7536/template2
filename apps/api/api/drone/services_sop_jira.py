@@ -1,3 +1,5 @@
+"""Jira integration helpers for Drone SOP v3 pipelines."""
+
 from __future__ import annotations
 
 import logging

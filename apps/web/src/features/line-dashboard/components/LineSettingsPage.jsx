@@ -45,6 +45,28 @@ const LABELS = {
 }
 
 const DUPLICATE_MESSAGE = "이미 등록된 스텝입니다. 다른 스텝을 입력해주세요."
+const MAX_FIELD_LENGTH = 50
+
+function validateStepDraft({ mainStep, customEndStep }) {
+  const normalizedMainStep = normalizeDraft(mainStep)
+  const normalizedCustom = normalizeDraft(customEndStep ?? "")
+
+  if (!normalizedMainStep) {
+    return { error: "Main step is required" }
+  }
+  if (normalizedMainStep.length > MAX_FIELD_LENGTH) {
+    return { error: `Main step must be ${MAX_FIELD_LENGTH} characters or fewer` }
+  }
+  if (normalizedCustom.length > MAX_FIELD_LENGTH) {
+    return { error: `Custom end step must be ${MAX_FIELD_LENGTH} characters or fewer` }
+  }
+
+  return {
+    normalizedMainStep,
+    normalizedCustom,
+    error: null,
+  }
+}
 
 function showCreateToast() {
   toast.success("추가 완료", {
@@ -157,19 +179,12 @@ export function LineSettingsPage({ lineId = "" }) {
         return
       }
 
-      const mainStep = normalizeDraft(formValues.mainStep)
-      const customEndStep = normalizeDraft(formValues.customEndStep)
-
-      if (!mainStep) {
-        setFormError("Main step is required")
-        return
-      }
-      if (mainStep.length > 50) {
-        setFormError("Main step must be 50 characters or fewer")
-        return
-      }
-      if (customEndStep.length > 50) {
-        setFormError("Custom end step must be 50 characters or fewer")
+      const { normalizedMainStep, normalizedCustom, error: draftError } = validateStepDraft({
+        mainStep: formValues.mainStep,
+        customEndStep: formValues.customEndStep,
+      })
+      if (draftError) {
+        setFormError(draftError)
         return
       }
 
@@ -178,8 +193,8 @@ export function LineSettingsPage({ lineId = "" }) {
 
       try {
         const entry = await createEntry({
-          mainStep,
-          customEndStep: customEndStep.length > 0 ? customEndStep : null,
+          mainStep: normalizedMainStep,
+          customEndStep: normalizedCustom.length > 0 ? normalizedCustom : null,
         })
         if (entry) {
           resetForm()
@@ -229,33 +244,24 @@ export function LineSettingsPage({ lineId = "" }) {
       return
     }
 
-    const nextMainStep = normalizeDraft(editDraft.mainStep)
-    const nextCustom = normalizeDraft(editDraft.customEndStep ?? "")
+    const { normalizedMainStep, normalizedCustom, error: draftError } = validateStepDraft({
+      mainStep: editDraft.mainStep,
+      customEndStep: editDraft.customEndStep,
+    })
     const updates = {}
 
-    if (!nextMainStep) {
-      setRowErrors((prev) => ({ ...prev, [entry.id]: "Main step is required" }))
-      return
-    }
-    if (nextMainStep.length > 50) {
-      setRowErrors((prev) => ({ ...prev, [entry.id]: "Main step must be 50 characters or fewer" }))
-      return
-    }
-    if (nextCustom.length > 50) {
-      setRowErrors((prev) => ({
-        ...prev,
-        [entry.id]: "Custom end step must be 50 characters or fewer",
-      }))
+    if (draftError) {
+      setRowErrors((prev) => ({ ...prev, [entry.id]: draftError }))
       return
     }
 
-    if (nextMainStep !== entry.mainStep) {
-      updates.mainStep = nextMainStep
+    if (normalizedMainStep !== entry.mainStep) {
+      updates.mainStep = normalizedMainStep
     }
 
     const normalizedOriginal = (entry.customEndStep ?? "").trim()
-    if (nextCustom !== normalizedOriginal) {
-      updates.customEndStep = nextCustom.length > 0 ? nextCustom : null
+    if (normalizedCustom !== normalizedOriginal) {
+      updates.customEndStep = normalizedCustom.length > 0 ? normalizedCustom : null
     }
 
     if (Object.keys(updates).length === 0) {
@@ -393,7 +399,7 @@ export function LineSettingsPage({ lineId = "" }) {
                 onChange={(event) => handleFormChange("mainStep", event.target.value)}
                 placeholder="ex) AB123456"
                 required
-                maxLength={50}
+                maxLength={MAX_FIELD_LENGTH}
               />
             </div>
 
@@ -406,7 +412,7 @@ export function LineSettingsPage({ lineId = "" }) {
                 value={formValues.customEndStep}
                 onChange={(event) => handleFormChange("customEndStep", event.target.value)}
                 placeholder="조기 알람 받을 스텝"
-                maxLength={50}
+                maxLength={MAX_FIELD_LENGTH}
               />
             </div>
 
@@ -479,7 +485,7 @@ export function LineSettingsPage({ lineId = "" }) {
                           <Input
                             value={editDraft.mainStep}
                             onChange={(event) => handleEditChange("mainStep", event.target.value)}
-                            maxLength={50}
+                            maxLength={MAX_FIELD_LENGTH}
                             disabled={isSaving}
                             className="text-center"
                           />
@@ -495,7 +501,7 @@ export function LineSettingsPage({ lineId = "" }) {
                             onChange={(event) =>
                               handleEditChange("customEndStep", event.target.value)
                             }
-                            maxLength={50}
+                            maxLength={MAX_FIELD_LENGTH}
                             disabled={isSaving}
                             className="text-center"
                           />

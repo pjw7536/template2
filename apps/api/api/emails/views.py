@@ -74,6 +74,51 @@ def _parse_datetime(value: str):
     return None
 
 
+def _build_email_filters(request: HttpRequest) -> Dict[str, Any]:
+    """이메일 목록 필터 값을 일관되게 정규화합니다.
+
+    - 쿼리 파라미터 파싱 로직을 한곳으로 모아 중복을 줄입니다.
+    - view 내부 가독성을 높이고, 향후 필터 추가 시 변경 지점을 최소화합니다.
+    """
+
+    return {
+        "mailbox_user_sdwt_prod": _parse_mailbox_user_sdwt_prod(request),
+        "search": (request.GET.get("q") or "").strip(),
+        "sender": (request.GET.get("sender") or "").strip(),
+        "recipient": (request.GET.get("recipient") or "").strip(),
+        "date_from": _parse_datetime(request.GET.get("date_from")),
+        "date_to": _parse_datetime(request.GET.get("date_to")),
+        "page": _parse_int(request.GET.get("page"), 1),
+        "page_size": min(_parse_int(request.GET.get("page_size"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE),
+    }
+
+
+def _check_email_access(
+    *,
+    request: HttpRequest,
+    email: Any,
+    is_privileged: bool,
+    accessible: Optional[set[str]],
+) -> Optional[JsonResponse]:
+    """공통 이메일 접근 검증을 수행하고, 문제 시 JsonResponse를 반환합니다.
+
+    - 세부 view에서 동일한 권한 체크를 반복하지 않도록 캡슐화했습니다.
+    - 반환값이 None이면 접근 가능하다는 의미입니다.
+    """
+
+    if email is None:
+        return JsonResponse({"error": "Email not found"}, status=404)
+
+    if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    if not is_privileged:
+        if not accessible or not user_can_access_email(request.user, email, accessible):
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+    return None
+
+
 def _serialize_email(email: Any) -> Dict[str, Any]:
     """Email 인스턴스를 목록 응답용 dict로 직렬화합니다."""
 
@@ -125,7 +170,8 @@ class EmailListView(APIView):
         if not is_privileged and not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
 
-        mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
+        filters = _build_email_filters(request)
+        mailbox_user_sdwt_prod = filters["mailbox_user_sdwt_prod"]
         can_view_unassigned = user_can_view_unassigned(request.user)
         if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not can_view_unassigned:
             return JsonResponse({"error": "forbidden"}, status=403)
@@ -133,26 +179,20 @@ class EmailListView(APIView):
             if mailbox_user_sdwt_prod not in accessible:
                 return JsonResponse({"error": "forbidden"}, status=403)
 
-        search = (request.GET.get("q") or "").strip()
-        sender = (request.GET.get("sender") or "").strip()
-        recipient = (request.GET.get("recipient") or "").strip()
-        date_from = _parse_datetime(request.GET.get("date_from"))
-        date_to = _parse_datetime(request.GET.get("date_to"))
-
         qs = get_filtered_emails(
             accessible_user_sdwt_prods=accessible,
             is_privileged=is_privileged,
             can_view_unassigned=can_view_unassigned,
             mailbox_user_sdwt_prod=mailbox_user_sdwt_prod,
-            search=search,
-            sender=sender,
-            recipient=recipient,
-            date_from=date_from,
-            date_to=date_to,
+            search=filters["search"],
+            sender=filters["sender"],
+            recipient=filters["recipient"],
+            date_from=filters["date_from"],
+            date_to=filters["date_to"],
         )
 
-        page = _parse_int(request.GET.get("page"), 1)
-        page_size = min(_parse_int(request.GET.get("page_size"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE)
+        page = filters["page"]
+        page_size = filters["page_size"]
 
         paginator = Paginator(qs, page_size)
         try:
@@ -268,15 +308,14 @@ class EmailDetailView(APIView):
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         email = get_email_by_id(email_id=email_id)
-        if email is None:
-            return JsonResponse({"error": "Email not found"}, status=404)
-
-        if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
-            return JsonResponse({"error": "forbidden"}, status=403)
-
-        if not is_privileged:
-            if not accessible or not user_can_access_email(request.user, email, accessible):
-                return JsonResponse({"error": "forbidden"}, status=403)
+        access_error = _check_email_access(
+            request=request,
+            email=email,
+            is_privileged=is_privileged,
+            accessible=accessible,
+        )
+        if access_error:
+            return access_error
 
         return JsonResponse(_serialize_detail(email))
 
@@ -284,18 +323,15 @@ class EmailDetailView(APIView):
         is_authenticated, is_privileged, accessible = resolve_access_control(request)
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
-        if not is_privileged:
-            email = get_email_by_id(email_id=email_id)
-            if email is None:
-                return JsonResponse({"error": "Email not found"}, status=404)
-            if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
-                return JsonResponse({"error": "forbidden"}, status=403)
-            if not accessible or not user_can_access_email(request.user, email, accessible):
-                return JsonResponse({"error": "forbidden"}, status=403)
-        else:
-            email = get_email_by_id(email_id=email_id)
-            if email is not None and email_is_unassigned(email) and not user_can_view_unassigned(request.user):
-                return JsonResponse({"error": "forbidden"}, status=403)
+        email = get_email_by_id(email_id=email_id)
+        access_error = _check_email_access(
+            request=request,
+            email=email,
+            is_privileged=is_privileged,
+            accessible=accessible,
+        )
+        if access_error:
+            return access_error
         try:
             delete_single_email(email_id)
             return JsonResponse({"status": "ok"})
@@ -315,15 +351,14 @@ class EmailHtmlView(APIView):
         if not is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
         email = get_email_by_id(email_id=email_id)
-        if email is None:
-            return JsonResponse({"error": "Email not found"}, status=404)
-
-        if email_is_unassigned(email) and not user_can_view_unassigned(request.user):
-            return JsonResponse({"error": "forbidden"}, status=403)
-
-        if not is_privileged:
-            if not accessible or not user_can_access_email(request.user, email, accessible):
-                return JsonResponse({"error": "forbidden"}, status=403)
+        access_error = _check_email_access(
+            request=request,
+            email=email,
+            is_privileged=is_privileged,
+            accessible=accessible,
+        )
+        if access_error:
+            return access_error
 
         if not email.body_html_gzip:
             return HttpResponse("", status=204)

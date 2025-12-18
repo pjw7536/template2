@@ -1,3 +1,5 @@
+"""CRUD service helpers for DroneEarlyInformV3 with defensive validations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

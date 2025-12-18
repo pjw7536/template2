@@ -1,5 +1,7 @@
 import { buildBackendUrl } from "@/lib/api"
 
+import { normalizeEmailListFilters } from "../utils/filters"
+
 const BASE_PATH = "/api/v1/emails"
 
 async function handleJsonResponse(response) {
@@ -25,15 +27,16 @@ async function handleJsonResponse(response) {
 }
 
 export async function fetchEmails(params = {}) {
+  const filters = normalizeEmailListFilters(params)
   const searchParams = {}
-  if (params.page) searchParams.page = params.page
-  if (params.pageSize) searchParams.page_size = params.pageSize
-  if (params.userSdwtProd) searchParams.user_sdwt_prod = params.userSdwtProd
-  if (params.q) searchParams.q = params.q
-  if (params.sender) searchParams.sender = params.sender
-  if (params.recipient) searchParams.recipient = params.recipient
-  if (params.dateFrom) searchParams.date_from = params.dateFrom
-  if (params.dateTo) searchParams.date_to = params.dateTo
+  if (filters.page) searchParams.page = filters.page
+  if (filters.pageSize) searchParams.page_size = filters.pageSize
+  if (filters.userSdwtProd) searchParams.user_sdwt_prod = filters.userSdwtProd
+  if (filters.q) searchParams.q = filters.q
+  if (filters.sender) searchParams.sender = filters.sender
+  if (filters.recipient) searchParams.recipient = filters.recipient
+  if (filters.dateFrom) searchParams.date_from = filters.dateFrom
+  if (filters.dateTo) searchParams.date_to = filters.dateTo
 
   const response = await fetch(buildBackendUrl(`${BASE_PATH}/`, searchParams), {
     credentials: "include",

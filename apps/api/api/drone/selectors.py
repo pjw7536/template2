@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Read-only query helpers for the Drone feature (ORM + SQL mix)."""
+
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 

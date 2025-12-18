@@ -1,10 +1,12 @@
+"""POP3 ingestion helpers for Drone SOP v3."""
+
 from __future__ import annotations
 
 import logging
 import os
 import poplib
-from datetime import timedelta
 from dataclasses import dataclass
+from datetime import timedelta
 from email.parser import BytesParser
 from email.policy import default
 from typing import Any, Optional, Sequence

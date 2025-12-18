@@ -4,6 +4,10 @@ import { useMutation } from "@tanstack/react-query"
 import { sendChatMessage } from "../api/send-chat-message"
 import { normalizeChatSources } from "../utils/normalizeChatSources"
 
+// 어시스턴트 위젯 전역 상태(방 목록, 메시지 이력, 전송 상태)를 관리하는 커스텀 훅
+// - 로컬스토리지에 직렬화하여 새로고침 후에도 유지
+// - API 호출 성공 시 메시지/출처를 안전하게 정규화하여 UI에서 그대로 사용 가능
+
 const LEGACY_DEFAULT_ROOM_ID = "default"
 const MAX_HISTORY = 20
 const CHAT_STORAGE_KEY = "assistant:chat-session"
@@ -93,6 +97,7 @@ function persistChatSession({ rooms, messagesByRoom, activeRoomId }) {
   if (!hasWindow) return
 
   try {
+    // history를 직렬화하기 전에 불필요한 메시지는 제거하여 로컬스토리지 부담을 최소화한다.
     const trimmedMessagesByRoom = rooms.reduce((acc, room) => {
       const roomMessages = messagesByRoom?.[room.id]
       acc[room.id] = trimMessages(normalizeMessages(roomMessages))
@@ -325,6 +330,9 @@ export function useChatSession(options = {}) {
 
     setErrorMessage("")
 
+    // 1) UI에서 즉시 사용자 메시지를 반영하고, 동일한 정규화된 history를 API로 전달한다.
+    // 2) 서버 응답에 따라 segment 기반 메시지 또는 통합 메시지를 추가한다.
+    // 3) 실패 시 에러 배너에만 메시지를 표시하고 history는 보존한다.
     const roomId = getOrCreateActiveRoomId()
     let historyForRequest = []
     setMessagesByRoom((prev) => {
@@ -424,6 +432,7 @@ export function useChatSession(options = {}) {
   }
 
   useEffect(() => {
+    // 상태가 변할 때마다 최신 채팅 세션을 저장하여 새로고침 후에도 동일한 목록을 복원한다.
     persistChatSession({ rooms, messagesByRoom, activeRoomId })
   }, [rooms, messagesByRoom, activeRoomId])
 

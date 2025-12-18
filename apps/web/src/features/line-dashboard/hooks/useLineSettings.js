@@ -1,5 +1,5 @@
 // src/features/line-dashboard/hooks/useLineSettings.js
-// 라인 조기 알림 설정 데이터를 관리하는 전용 훅
+// 라인 조기 알림 설정 데이터를 관리하는 전용 훅 (비동기 로딩 + CRUD 포함)
 import * as React from "react"
 
 import {
@@ -11,31 +11,38 @@ import {
 import { timeFormatter } from "../utils/formatters"
 import { sortEntries } from "../utils/line-settings"
 
+const EMPTY_TIMESTAMP = "-"
+
+const normalizeId = (value) => String(value ?? "")
+const nowLabel = () => timeFormatter.format(new Date())
+
 export function useLineSettings(lineId) {
   const [entries, setEntries] = React.useState([])
   const [userSdwtValues, setUserSdwtValues] = React.useState([])
   const [error, setError] = React.useState(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false)
-  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState("-")
+  const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(EMPTY_TIMESTAMP)
 
   const hasLoadedRef = React.useRef(false)
 
-  React.useEffect(() => {
+  const resetForLineChange = React.useCallback(() => {
     setEntries([])
     setUserSdwtValues([])
     setError(null)
-    setLastUpdatedLabel("-")
+    setLastUpdatedLabel(EMPTY_TIMESTAMP)
     setHasLoadedOnce(false)
     hasLoadedRef.current = false
-  }, [lineId])
+  }, [])
+
+  React.useEffect(() => {
+    resetForLineChange()
+  }, [lineId, resetForLineChange])
 
   const refresh = React.useCallback(async () => {
+    // 라인을 선택하지 않은 경우: 네트워크 호출을 생략하고 초기 상태만 반환
     if (!lineId) {
-      setEntries([])
-      setUserSdwtValues([])
-      setError(null)
-      setLastUpdatedLabel("-")
+      resetForLineChange()
       if (!hasLoadedRef.current) {
         hasLoadedRef.current = true
         setHasLoadedOnce(true)
@@ -53,7 +60,7 @@ export function useLineSettings(lineId) {
       const { entries: loadedEntries, userSdwtValues: loadedUsers } = await fetchLineSettings(lineId)
       setEntries(sortEntries(loadedEntries || []))
       setUserSdwtValues(loadedUsers || [])
-      setLastUpdatedLabel(timeFormatter.format(new Date()))
+      setLastUpdatedLabel(nowLabel())
       return { ok: true }
     } catch (requestError) {
       const message =
@@ -61,7 +68,7 @@ export function useLineSettings(lineId) {
       setError(message)
       setUserSdwtValues([])
       if (!hasLoadedRef.current) {
-        setLastUpdatedLabel("-")
+        setLastUpdatedLabel(EMPTY_TIMESTAMP)
       }
       return { ok: false, error: requestError }
     } finally {
@@ -71,7 +78,7 @@ export function useLineSettings(lineId) {
         setHasLoadedOnce(true)
       }
     }
-  }, [lineId])
+  }, [lineId, resetForLineChange])
 
   React.useEffect(() => {
     refresh()
@@ -81,8 +88,10 @@ export function useLineSettings(lineId) {
     async ({ mainStep, customEndStep }) => {
       const { entry } = await createLineSetting({ lineId, mainStep, customEndStep })
       if (entry) {
-        setEntries((prev) => sortEntries([...prev.filter((item) => item.id !== entry.id), entry]))
-        setLastUpdatedLabel(timeFormatter.format(new Date()))
+        setEntries((prev) =>
+          sortEntries([...prev.filter((item) => item.id !== entry.id), entry]),
+        )
+        setLastUpdatedLabel(nowLabel())
       }
       return entry
     },
@@ -96,7 +105,7 @@ export function useLineSettings(lineId) {
         setEntries((prev) =>
           sortEntries(prev.map((item) => (item.id === entry.id ? entry : item))),
         )
-        setLastUpdatedLabel(timeFormatter.format(new Date()))
+        setLastUpdatedLabel(nowLabel())
       }
       return entry
     },
@@ -105,8 +114,9 @@ export function useLineSettings(lineId) {
 
   const deleteEntry = React.useCallback(async ({ id }) => {
     await deleteLineSetting({ id })
-    setEntries((prev) => prev.filter((item) => item.id !== String(id)))
-    setLastUpdatedLabel(timeFormatter.format(new Date()))
+    const normalizedId = normalizeId(id)
+    setEntries((prev) => prev.filter((item) => normalizeId(item.id) !== normalizedId))
+    setLastUpdatedLabel(nowLabel())
     return { ok: true }
   }, [])
 
