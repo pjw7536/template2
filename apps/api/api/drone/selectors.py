@@ -137,6 +137,34 @@ def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:
     return _get_user_sdwt_prod_values(line_id)
 
 
+def list_line_ids_for_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:
+    """user_sdwt_prod에 매핑되는 line_id 목록을 조회합니다.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
+        return []
+
+    rows = run_query(
+        """
+        SELECT DISTINCT line AS line_id
+        FROM {table}
+        WHERE user_sdwt_prod = %s
+          AND line IS NOT NULL
+          AND line <> ''
+        ORDER BY line_id
+        """.format(table=LINE_SDWT_TABLE_NAME),
+        [user_sdwt_prod.strip()],
+    )
+    return [
+        row["line_id"].strip()
+        for row in rows
+        if isinstance(row.get("line_id"), str) and row.get("line_id").strip()
+    ]
+
+
 def list_distinct_line_ids() -> list[str]:
     """사이드바 필터용 line_id 고유값 목록을 조회합니다.
 

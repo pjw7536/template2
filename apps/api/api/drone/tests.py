@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
 from django.test.utils import override_settings
+from django.urls import reverse
 
+from api.account.models import Affiliation
 from api.drone import selectors, services
 from api.drone.models import DroneSOPV3
 
@@ -156,7 +159,7 @@ class DroneSopJiraUpdateTests(TestCase):
 class DroneSopInstantInformTests(TestCase):
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
-        DRONE_JIRA_PROJECT_KEY="DUMMY",
+        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "DUMMY"},
         DRONE_JIRA_USE_BULK_API=False,
     )
     @patch("api.drone.services_sop_jira._jira_session")
@@ -167,8 +170,10 @@ class DroneSopInstantInformTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT")
         row = DroneSOPV3.objects.create(
             line_id="L1",
+            sdwt_prod="SDWT",
             eqp_id="EQP1",
             chamber_ids="1",
             lot_id="LOT.1",
@@ -183,6 +188,10 @@ class DroneSopInstantInformTests(TestCase):
         self.assertTrue(result.created)
         self.assertEqual(result.jira_key, "DUMMY-123")
 
+        session.post.assert_called_once()
+        sent_payload = session.post.call_args.kwargs.get("json") or {}
+        self.assertEqual(sent_payload.get("fields", {}).get("project", {}).get("key"), "DUMMY")
+
         refreshed = DroneSOPV3.objects.get(id=row.id)
         self.assertEqual(refreshed.send_jira, 1)
         self.assertEqual(refreshed.instant_inform, 1)
@@ -191,7 +200,7 @@ class DroneSopInstantInformTests(TestCase):
 
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
-        DRONE_JIRA_PROJECT_KEY="DUMMY",
+        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "DUMMY"},
         DRONE_JIRA_USE_BULK_API=False,
     )
     @patch("api.drone.services_sop_jira._jira_session")
@@ -217,3 +226,132 @@ class DroneSopInstantInformTests(TestCase):
         self.assertEqual(refreshed.send_jira, 1)
         self.assertEqual(refreshed.jira_key, "DUMMY-9")
         self.assertEqual(refreshed.comment, "updated")
+
+
+class DroneSopJiraCreateProjectKeyTests(TestCase):
+    @override_settings(
+        DRONE_JIRA_BASE_URL="http://example.local/jira",
+        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "PROJ1", "L2": "PROJ2"},
+        DRONE_JIRA_USE_BULK_API=True,
+        DRONE_JIRA_BULK_SIZE=50,
+    )
+    @patch("api.drone.services_sop_jira._jira_session")
+    def test_jira_create_uses_project_key_per_line_and_marks_missing_as_failed(self, mock_session: Mock) -> None:
+        session = Mock()
+        resp = Mock(status_code=201)
+        resp.json.return_value = {"issues": [{"key": "PROJ1-1"}, {"key": "PROJ2-2"}]}
+        session.post.return_value = resp
+        mock_session.return_value = session
+
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT")
+        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT")
+        Affiliation.objects.create(department="D", line="L3", user_sdwt_prod="SDWT")
+
+        sop1 = DroneSOPV3.objects.create(
+            line_id="L1",
+            sdwt_prod="SDWT",
+            eqp_id="EQP1",
+            chamber_ids="1",
+            lot_id="LOT.1",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST001",
+        )
+        sop2 = DroneSOPV3.objects.create(
+            line_id="L2",
+            sdwt_prod="SDWT",
+            eqp_id="EQP2",
+            chamber_ids="1",
+            lot_id="LOT.2",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST002",
+        )
+        sop_missing = DroneSOPV3.objects.create(
+            line_id="L3",
+            sdwt_prod="SDWT",
+            eqp_id="EQP3",
+            chamber_ids="1",
+            lot_id="LOT.3",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST003",
+        )
+
+        result = services.run_drone_sop_jira_create_from_env()
+        self.assertEqual(result.candidates, 3)
+        self.assertEqual(result.created, 2)
+
+        session.post.assert_called_once()
+        sent_payload = session.post.call_args.kwargs.get("json") or {}
+        updates = sent_payload.get("issueUpdates") or []
+        self.assertEqual(len(updates), 2)
+        self.assertEqual(updates[0].get("fields", {}).get("project", {}).get("key"), "PROJ1")
+        self.assertEqual(updates[1].get("fields", {}).get("project", {}).get("key"), "PROJ2")
+
+        refreshed1 = DroneSOPV3.objects.get(id=sop1.id)
+        refreshed2 = DroneSOPV3.objects.get(id=sop2.id)
+        refreshed_missing = DroneSOPV3.objects.get(id=sop_missing.id)
+
+        self.assertEqual(refreshed1.send_jira, 1)
+        self.assertEqual(refreshed1.jira_key, "PROJ1-1")
+        self.assertEqual(refreshed2.send_jira, 1)
+        self.assertEqual(refreshed2.jira_key, "PROJ2-2")
+        self.assertEqual(refreshed_missing.send_jira, -1)
+
+
+class DroneTriggerAuthTests(TestCase):
+    @override_settings(EMAIL_INGEST_TRIGGER_TOKEN="expected-token")
+    @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
+    def test_pop3_ingest_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
+        mock_run.return_value = SimpleNamespace(
+            matched_mails=1,
+            upserted_rows=2,
+            deleted_mails=3,
+            pruned_rows=4,
+            skipped=False,
+            skip_reason=None,
+        )
+
+        url = reverse("drone-sop-pop3-ingest-trigger")
+
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(mock_run.call_count, 0)
+
+        resp = self.client.post(url, HTTP_AUTHORIZATION="Bearer wrong-token")
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(mock_run.call_count, 0)
+
+        resp = self.client.post(url, HTTP_AUTHORIZATION="Bearer expected-token")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["matched"], 1)
+        self.assertEqual(mock_run.call_count, 1)
+
+    @override_settings(EMAIL_INGEST_TRIGGER_TOKEN="expected-token")
+    @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
+    def test_jira_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
+        mock_run.return_value = SimpleNamespace(
+            candidates=1,
+            created=1,
+            updated_rows=0,
+            skipped=False,
+            skip_reason=None,
+        )
+
+        url = reverse("drone-sop-jira-trigger")
+
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(mock_run.call_count, 0)
+
+        resp = self.client.post(url, HTTP_AUTHORIZATION="Bearer expected-token")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["created"], 1)
+        mock_run.assert_called_once_with(limit=None)

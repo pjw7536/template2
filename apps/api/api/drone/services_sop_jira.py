@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -56,20 +57,17 @@ class DroneJiraConfig:
 
     base_url: str
     token: str
-    project_key: str
     issue_type: str = "Task"
     use_bulk_api: bool = True
     bulk_size: int = 20
     connect_timeout: int = 5
     read_timeout: int = 20
+    project_key_by_line: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_settings(cls) -> "DroneJiraConfig":
         base_url = (getattr(settings, "DRONE_JIRA_BASE_URL", "") or os.getenv("DRONE_JIRA_BASE_URL") or "").strip()
         token = (getattr(settings, "DRONE_JIRA_TOKEN", "") or os.getenv("DRONE_JIRA_TOKEN") or "").strip()
-        project_key = (
-            getattr(settings, "DRONE_JIRA_PROJECT_KEY", "") or os.getenv("DRONE_JIRA_PROJECT_KEY") or ""
-        ).strip()
         issue_type = (
             getattr(settings, "DRONE_JIRA_ISSUE_TYPE", "") or os.getenv("DRONE_JIRA_ISSUE_TYPE") or "Task"
         ).strip() or "Task"
@@ -86,16 +84,20 @@ class DroneJiraConfig:
             getattr(settings, "DRONE_JIRA_READ_TIMEOUT", None) or os.getenv("DRONE_JIRA_READ_TIMEOUT"),
             20,
         )
+        project_key_by_line_raw = getattr(settings, "DRONE_JIRA_PROJECT_KEY_BY_LINE", None)
+        if project_key_by_line_raw is None:
+            project_key_by_line_raw = os.getenv("DRONE_JIRA_PROJECT_KEY_BY_LINE") or ""
+        project_key_by_line = _parse_project_key_by_line(project_key_by_line_raw)
 
         return cls(
             base_url=base_url,
             token=token,
-            project_key=project_key,
             issue_type=issue_type,
             use_bulk_api=use_bulk_api,
             bulk_size=max(1, bulk_size),
             connect_timeout=max(1, connect_timeout),
             read_timeout=max(1, read_timeout),
+            project_key_by_line=project_key_by_line,
         )
 
     @property
@@ -186,18 +188,66 @@ def _safe_json(response: requests.Response) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _parse_project_key_by_line(value: Any) -> dict[str, str]:
+    """DRONE_JIRA_PROJECT_KEY_BY_LINE을 dict[str, str]로 파싱합니다.
+
+    Accepts either:
+        - JSON object string (env var): {"LINE1":"PROJ", "LINE2":"PROJ2"}
+        - dict (Django settings override / tests)
+    """
+
+    if value is None:
+        return {}
+
+    parsed: Any = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("DRONE_JIRA_PROJECT_KEY_BY_LINE must be a valid JSON object") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError("DRONE_JIRA_PROJECT_KEY_BY_LINE must be a JSON object mapping line_id to project_key")
+
+    mapping: dict[str, str] = {}
+    for line_id, project_key in parsed.items():
+        if not isinstance(line_id, str) or not line_id.strip():
+            raise ValueError("DRONE_JIRA_PROJECT_KEY_BY_LINE has an invalid line_id key")
+        if not isinstance(project_key, str) or not project_key.strip():
+            raise ValueError(f"DRONE_JIRA_PROJECT_KEY_BY_LINE has an invalid project_key for line_id={line_id!r}")
+        mapping[line_id.strip()] = project_key.strip()
+
+    return mapping
+
+
 def _bulk_create_jira_issues(
     *,
     rows: Sequence[dict[str, Any]],
     config: DroneJiraConfig,
     session: requests.Session,
+    project_key_by_id: dict[int, str],
 ) -> tuple[list[int], dict[int, str]]:
     done_ids: list[int] = []
     key_by_id: dict[int, str] = {}
 
     for st in range(0, len(rows), config.bulk_size):
         chunk = list(rows[st : st + config.bulk_size])
-        issue_updates = [{"fields": _build_jira_issue_fields(row, config)} for row in chunk]
+        issue_updates: list[dict[str, Any]] = []
+        valid_chunk: list[dict[str, Any]] = []
+        for row in chunk:
+            rid = row.get("id")
+            if not isinstance(rid, int):
+                continue
+            project_key = project_key_by_id.get(rid)
+            if not project_key:
+                continue
+            issue_updates.append({"fields": _build_jira_issue_fields(row=row, project_key=project_key, config=config)})
+            valid_chunk.append(row)
+        if not issue_updates:
+            continue
         resp = session.post(
             config.bulk_url,
             json={"issueUpdates": issue_updates},
@@ -212,7 +262,7 @@ def _bulk_create_jira_issues(
         if not isinstance(issues, list):
             continue
 
-        for index, row in enumerate(chunk):
+        for index, row in enumerate(valid_chunk):
             rid = row.get("id")
             if not isinstance(rid, int):
                 continue
@@ -234,6 +284,7 @@ def _single_create_jira_issues(
     rows: Sequence[dict[str, Any]],
     config: DroneJiraConfig,
     session: requests.Session,
+    project_key_by_id: dict[int, str],
 ) -> tuple[list[int], dict[int, str]]:
     done_ids: list[int] = []
     key_by_id: dict[int, str] = {}
@@ -242,9 +293,12 @@ def _single_create_jira_issues(
         rid = row.get("id")
         if not isinstance(rid, int):
             continue
+        project_key = project_key_by_id.get(rid)
+        if not project_key:
+            continue
         resp = session.post(
             config.create_url,
-            json={"fields": _build_jira_issue_fields(row, config)},
+            json={"fields": _build_jira_issue_fields(row=row, project_key=project_key, config=config)},
             timeout=(config.connect_timeout, config.read_timeout),
         )
         if resp.status_code != 201:
@@ -259,9 +313,9 @@ def _single_create_jira_issues(
     return done_ids, key_by_id
 
 
-def _build_jira_issue_fields(row: dict[str, Any], config: DroneJiraConfig) -> dict[str, Any]:
+def _build_jira_issue_fields(*, row: dict[str, Any], project_key: str, config: DroneJiraConfig) -> dict[str, Any]:
     return {
-        "project": {"key": config.project_key},
+        "project": {"key": project_key},
         "issuetype": {"name": config.issue_type},
         "summary": _build_jira_summary(row),
         "description": _build_jira_description(row),
@@ -356,8 +410,8 @@ def run_drone_sop_jira_instant_inform(
     config = DroneJiraConfig.from_settings()
     if not config.base_url:
         raise ValueError("DRONE_JIRA_BASE_URL 미설정")
-    if not config.project_key:
-        raise ValueError("DRONE_JIRA_PROJECT_KEY 미설정")
+    if not config.project_key_by_line:
+        raise ValueError("DRONE_JIRA_PROJECT_KEY_BY_LINE 미설정")
 
     lock_id = _lock_key("drone_sop_jira_create")
     acquired = _try_advisory_lock(lock_id)
@@ -393,10 +447,31 @@ def run_drone_sop_jira_instant_inform(
 
             row_payload = _drone_sop_model_to_row(sop)
 
+        line_id = row_payload.get("line_id")
+        if not isinstance(line_id, str) or not line_id.strip():
+            raise ValueError("line_id is required to resolve Jira project key")
+        normalized_line_id = line_id.strip()
+
+        sdwt_prod = row_payload.get("sdwt_prod")
+        if not isinstance(sdwt_prod, str) or not sdwt_prod.strip():
+            raise ValueError("sdwt_prod is required to resolve Jira project key")
+        normalized_sdwt_prod = sdwt_prod.strip()
+
+        valid_lines = set(selectors.list_line_ids_for_user_sdwt_prod(user_sdwt_prod=normalized_sdwt_prod))
+        if normalized_line_id not in valid_lines:
+            raise ValueError(
+                f"account_affiliation mapping missing for sdwt_prod={normalized_sdwt_prod!r} line_id={normalized_line_id!r}"
+            )
+
+        project_key = config.project_key_by_line.get(normalized_line_id)
+        if not isinstance(project_key, str) or not project_key.strip():
+            raise ValueError(f"DRONE_JIRA_PROJECT_KEY_BY_LINE missing for line_id={normalized_line_id!r}")
+        project_key = project_key.strip()
+
         sess = _jira_session(config)
         resp = sess.post(
             config.create_url,
-            json={"fields": _build_jira_issue_fields(row_payload, config)},
+            json={"fields": _build_jira_issue_fields(row=row_payload, project_key=project_key, config=config)},
             timeout=(config.connect_timeout, config.read_timeout),
         )
         if resp.status_code != 201:
@@ -481,8 +556,8 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
     config = DroneJiraConfig.from_settings()
     if not config.base_url:
         raise ValueError("DRONE_JIRA_BASE_URL 미설정")
-    if not config.project_key:
-        raise ValueError("DRONE_JIRA_PROJECT_KEY 미설정")
+    if not config.project_key_by_line:
+        raise ValueError("DRONE_JIRA_PROJECT_KEY_BY_LINE 미설정")
 
     lock_id = _lock_key("drone_sop_jira_create")
     acquired = _try_advisory_lock(lock_id)
@@ -494,13 +569,47 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
         if not rows:
             return DroneSopJiraCreateResult(candidates=0, created=0, updated_rows=0)
 
+        project_key_by_id, missing_ids = _resolve_project_keys_for_rows(rows=rows, config=config)
+        if missing_ids:
+            missing_id_set = set(missing_ids)
+            missing_line_ids = sorted(
+                {
+                    row.get("line_id", "").strip()
+                    for row in rows
+                    if row.get("id") in missing_id_set
+                    and isinstance(row.get("line_id"), str)
+                    and row.get("line_id").strip()
+                }
+            )
+            logger.warning(
+                "Missing Jira project key mapping for %s drone_sop_v3 rows (line_ids=%s)",
+                len(missing_ids),
+                ",".join(missing_line_ids[:10]) if missing_line_ids else "-",
+            )
+            with transaction.atomic():
+                DroneSOPV3.objects.filter(id__in=missing_ids).update(send_jira=-1)
+
+        rows_to_send = [row for row in rows if isinstance(row.get("id"), int) and row.get("id") in project_key_by_id]
+        if not rows_to_send:
+            return DroneSopJiraCreateResult(candidates=len(rows), created=0, updated_rows=0)
+
         sess = _jira_session(config)
         if config.use_bulk_api:
-            done_ids, key_by_id = _bulk_create_jira_issues(rows=rows, config=config, session=sess)
+            done_ids, key_by_id = _bulk_create_jira_issues(
+                rows=rows_to_send,
+                config=config,
+                session=sess,
+                project_key_by_id=project_key_by_id,
+            )
         else:
-            done_ids, key_by_id = _single_create_jira_issues(rows=rows, config=config, session=sess)
+            done_ids, key_by_id = _single_create_jira_issues(
+                rows=rows_to_send,
+                config=config,
+                session=sess,
+                project_key_by_id=project_key_by_id,
+            )
 
-        updated = _update_drone_sop_jira_status(done_ids=done_ids, rows=rows, key_by_id=key_by_id)
+        updated = _update_drone_sop_jira_status(done_ids=done_ids, rows=rows_to_send, key_by_id=key_by_id)
         return DroneSopJiraCreateResult(
             candidates=len(rows),
             created=len(done_ids),
@@ -510,3 +619,73 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
         if acquired:
             _release_advisory_lock(lock_id)
 
+
+def _resolve_project_keys_for_rows(
+    *,
+    rows: Sequence[dict[str, Any]],
+    config: DroneJiraConfig,
+) -> tuple[dict[int, str], list[int]]:
+    """DroneSOPV3 row 목록에 대해 Jira project key를 해석합니다.
+
+    - account_affiliation(user_sdwt_prod == sdwt_prod) 매핑이 존재하고,
+      row.line_id가 해당 user_sdwt_prod의 라인 목록에 포함되어야 합니다.
+    - project key는 DRONE_JIRA_PROJECT_KEY_BY_LINE[line_id]에서 가져옵니다.
+    - 매핑이 없으면 해당 row id를 missing_ids로 반환합니다.
+    """
+
+    sdwt_prod_values: set[str] = set()
+    for row in rows:
+        sdwt_prod = row.get("sdwt_prod")
+        if isinstance(sdwt_prod, str) and sdwt_prod.strip():
+            sdwt_prod_values.add(sdwt_prod.strip())
+
+    lines_by_sdwt_prod: dict[str, set[str]] = {}
+    for sdwt_prod in sorted(sdwt_prod_values):
+        lines = selectors.list_line_ids_for_user_sdwt_prod(user_sdwt_prod=sdwt_prod)
+        lines_by_sdwt_prod[sdwt_prod] = {line.strip() for line in lines if isinstance(line, str) and line.strip()}
+
+    project_key_by_id: dict[int, str] = {}
+    missing_ids: list[int] = []
+
+    for row in rows:
+        rid = row.get("id")
+        if not isinstance(rid, int):
+            continue
+        project_key = _resolve_project_key_for_row(row=row, config=config, lines_by_sdwt_prod=lines_by_sdwt_prod)
+        if not project_key:
+            missing_ids.append(rid)
+            continue
+        project_key_by_id[rid] = project_key
+
+    return project_key_by_id, missing_ids
+
+
+def _resolve_project_key_for_row(
+    *,
+    row: dict[str, Any],
+    config: DroneJiraConfig,
+    lines_by_sdwt_prod: dict[str, set[str]] | None = None,
+) -> str | None:
+    """단일 DroneSOPV3 row에 대한 Jira project key를 반환합니다."""
+
+    line_id = row.get("line_id")
+    sdwt_prod = row.get("sdwt_prod")
+    if not isinstance(line_id, str) or not line_id.strip():
+        return None
+    if not isinstance(sdwt_prod, str) or not sdwt_prod.strip():
+        return None
+
+    normalized_line_id = line_id.strip()
+    normalized_sdwt_prod = sdwt_prod.strip()
+    valid_lines = None
+    if lines_by_sdwt_prod is not None:
+        valid_lines = lines_by_sdwt_prod.get(normalized_sdwt_prod)
+    if valid_lines is None:
+        valid_lines = set(selectors.list_line_ids_for_user_sdwt_prod(user_sdwt_prod=normalized_sdwt_prod))
+    if normalized_line_id not in valid_lines:
+        return None
+
+    project_key = config.project_key_by_line.get(normalized_line_id)
+    if not isinstance(project_key, str) or not project_key.strip():
+        return None
+    return project_key.strip()
