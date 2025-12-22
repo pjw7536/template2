@@ -206,3 +206,94 @@ class AppstoreCommentReplyLikeTests(TestCase):
         second_payload = second.json()
         self.assertFalse(second_payload["liked"])
         self.assertEqual(second_payload["likeCount"], 0)
+
+
+class AppstoreEndpointTests(TestCase):
+    def setUp(self) -> None:
+        User = get_user_model()
+        self.user = User.objects.create_user(sabun="S33333", password="test-password", email="s33333@example.com")
+        self.client.force_login(self.user)
+        self.app = create_app(
+            owner=self.user,
+            name="Test App",
+            category="Tools",
+            description="",
+            url="https://example.com",
+            badge="",
+            tags=[],
+            screenshot_url="",
+            contact_name="홍길동",
+            contact_knoxid="hong",
+        )
+
+    def test_appstore_apps_list_and_create(self) -> None:
+        list_response = self.client.get(reverse("appstore-apps"))
+        self.assertEqual(list_response.status_code, 200)
+
+        create_response = self.client.post(
+            reverse("appstore-apps"),
+            data=(
+                '{"name":"New App","category":"Tools","description":"desc","url":"https://new.app",'
+                '"tags":["tag1"],"contactName":"User","contactKnoxid":"user1"}'
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+
+    def test_appstore_detail_update_delete_and_view_like(self) -> None:
+        detail = self.client.get(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
+        self.assertEqual(detail.status_code, 200)
+
+        update_response = self.client.patch(
+            reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}),
+            data='{"description":"updated","badge":"New"}',
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        like_response = self.client.post(reverse("appstore-app-like", kwargs={"app_id": self.app.pk}))
+        self.assertEqual(like_response.status_code, 200)
+
+        view_response = self.client.post(reverse("appstore-app-view", kwargs={"app_id": self.app.pk}))
+        self.assertEqual(view_response.status_code, 200)
+
+        delete_response = self.client.delete(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
+        self.assertEqual(delete_response.status_code, 200)
+
+    def test_appstore_comments_endpoints(self) -> None:
+        list_response = self.client.get(reverse("appstore-app-comments", kwargs={"app_id": self.app.pk}))
+        self.assertEqual(list_response.status_code, 200)
+
+        create_response = self.client.post(
+            reverse("appstore-app-comments", kwargs={"app_id": self.app.pk}),
+            data='{"content":"comment"}',
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        comment_id = create_response.json()["comment"]["id"]
+
+        update_response = self.client.patch(
+            reverse(
+                "appstore-app-comment-detail",
+                kwargs={"app_id": self.app.pk, "comment_id": comment_id},
+            ),
+            data='{"content":"updated"}',
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        like_response = self.client.post(
+            reverse(
+                "appstore-app-comment-like",
+                kwargs={"app_id": self.app.pk, "comment_id": comment_id},
+            )
+        )
+        self.assertEqual(like_response.status_code, 200)
+
+        delete_response = self.client.delete(
+            reverse(
+                "appstore-app-comment-detail",
+                kwargs={"app_id": self.app.pk, "comment_id": comment_id},
+            )
+        )
+        self.assertEqual(delete_response.status_code, 200)

@@ -21,15 +21,26 @@ class EmailActionForm(ActionForm):
 
 @admin.register(Email)
 class EmailAdmin(admin.ModelAdmin):
-    list_display = ("id", "received_at", "user_sdwt_prod", "sender_id", "sender", "recipient", "cc", "subject")
-    list_filter = ("user_sdwt_prod",)
+    list_display = (
+        "id",
+        "received_at",
+        "user_sdwt_prod",
+        "classification_source",
+        "rag_index_status",
+        "sender_id",
+        "sender",
+        "recipient",
+        "cc",
+        "subject",
+    )
+    list_filter = ("user_sdwt_prod", "classification_source", "rag_index_status")
     search_fields = ("subject", "sender", "participants_search", "message_id", "rag_doc_id", "sender_id")
     date_hierarchy = "received_at"
     ordering = ("-received_at", "-id")
 
     fieldsets = (
         (None, {"fields": ("message_id", "received_at", "subject", "sender", "sender_id", "recipient", "cc")}),
-        ("Mailbox", {"fields": ("user_sdwt_prod", "rag_doc_id")}),
+        ("Mailbox", {"fields": ("user_sdwt_prod", "classification_source", "rag_index_status", "rag_doc_id")}),
         ("Content", {"classes": ("collapse",), "fields": ("body_text",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
@@ -39,7 +50,9 @@ class EmailAdmin(admin.ModelAdmin):
     action_form = EmailActionForm
     actions = ("move_selected_emails_to_mailbox", "move_emails_after_sender_affiliation_change")
 
-    @admin.action(description="선택한 메일을 지정한 user_sdwt_prod로 이동 (RAG 재색인)")
+    @admin.action(
+        description="선택한 메일을 지정한 user_sdwt_prod로 이동 (RAG 재색인, 누락=요청했지만 DB에 없는 ID)"
+    )
     def move_selected_emails_to_mailbox(self, request, queryset):  # type: ignore[override]
         target = (request.POST.get("to_user_sdwt_prod") or "").strip()
         if not target:
@@ -56,13 +69,17 @@ class EmailAdmin(admin.ModelAdmin):
         self.message_user(
             request,
             f"이동된 메일: {result['moved']}개 → {target}. "
-            f"RAG 등록 성공={result['ragRegistered']}, 실패={result['ragFailed']}.",
+            f"RAG 큐 적재={result['ragRegistered']}, 실패={result['ragFailed']}, "
+            f"누락={result.get('ragMissing', 0)} (요청했지만 DB에 없는 ID).",
             level=messages.SUCCESS,
         )
         return None
 
     @admin.action(
-        description="발신자 소속 변경 시각 이후 메일을 현재 user_sdwt_prod로 이동 (RAG 재색인)"
+        description=(
+            "발신자 소속 변경 시각 이후 메일을 현재 user_sdwt_prod로 이동 "
+            "(RAG 재색인, 누락=요청했지만 DB에 없는 ID)"
+        )
     )
     def move_emails_after_sender_affiliation_change(self, request, queryset):  # type: ignore[override]
         sender_ids = sorted(
@@ -75,6 +92,7 @@ class EmailAdmin(admin.ModelAdmin):
         total_moved = 0
         total_rag_registered = 0
         total_rag_failed = 0
+        total_rag_missing = 0
         failures: list[str] = []
 
         for sender_id in sender_ids:
@@ -106,6 +124,7 @@ class EmailAdmin(admin.ModelAdmin):
             total_moved += result.get("moved", 0)
             total_rag_registered += result.get("ragRegistered", 0)
             total_rag_failed += result.get("ragFailed", 0)
+            total_rag_missing += result.get("ragMissing", 0)
 
         level = messages.SUCCESS if not failures else messages.WARNING
         details = ""
@@ -116,7 +135,8 @@ class EmailAdmin(admin.ModelAdmin):
 
         self.message_user(
             request,
-            f"이동된 메일: {total_moved}개. RAG 등록 성공={total_rag_registered}, 실패={total_rag_failed}."
+            f"이동된 메일: {total_moved}개. RAG 큐 적재={total_rag_registered}, "
+            f"실패={total_rag_failed}, 누락={total_rag_missing} (요청했지만 DB에 없는 ID)."
             + (f" 실패: {details}" if details else ""),
             level=level,
         )

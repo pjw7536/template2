@@ -37,8 +37,8 @@ function getInitial(name) {
 /** 다양한 형태의 user 입력을 화면 렌더에 필요한 구조로 정규화 */
 function normalizeUser(u) {
   if (!u || typeof u !== "object") return null
-  const name = u.name ?? u.displayName ?? u.username ?? ""
-  const email = u.email ?? u.mail ?? ""
+  const name = u.username ?? u.displayName ?? ""
+  const email = u.email ?? ""
   const avatar = u.avatar ?? u.photoUrl ?? u.image ?? ""
   // name/email 둘 다 없으면 렌더 의미가 낮으므로 null 처리
   if (!name && !email) return null
@@ -55,7 +55,7 @@ function normalizeUser(u) {
  * - 클릭 핸들러는 props 콜백으로 주입 가능 (미제공 시 no-op)
  *
  * @param {Object} props
- * @param {Object} props.user               - 사용자 객체 { name, email, avatar } (느슨히 수용, normalizeUser에서 정규화)
+ * @param {Object} props.user               - 사용자 객체 { username, email, avatar } (느슨히 수용, normalizeUser에서 정규화)
  * @param {Function} [props.onAccount]      - "Account" 클릭 콜백
  * @param {Function} [props.onVoc]          - "VOC" 클릭 콜백
  * @param {Function} [props.onNotifications]- "Notifications" 클릭 콜백

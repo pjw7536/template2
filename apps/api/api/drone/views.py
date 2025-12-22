@@ -34,6 +34,7 @@ DELETE:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 
 from django.conf import settings
@@ -53,10 +54,39 @@ from api.common.activity_logging import (
 )
 
 from . import selectors, services
-from .permissions import extract_bearer_token
 from .serializers import serialize_early_inform_entry
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_authenticated(request: HttpRequest) -> JsonResponse | None:
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+    return None
+
+
+def _extract_bearer_token(request: HttpRequest) -> str | None:
+    auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+    if not isinstance(auth_header, str) or not auth_header:
+        return None
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    return parts[1].strip() or None
+
+
+def _ensure_airflow_token(request: HttpRequest) -> JsonResponse | None:
+    expected = (
+        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+    ).strip()
+    if not expected:
+        return JsonResponse({"error": "AIRFLOW_TRIGGER_TOKEN not configured"}, status=500)
+
+    provided = _extract_bearer_token(request)
+    if provided != expected:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+    return None
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -77,6 +107,10 @@ class DroneEarlyInformView(APIView):
     # --------------------------------------------------------------------- #
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """lineId로 행 목록을 가져옵니다."""
+        auth_response = _ensure_authenticated(request)
+        if auth_response is not None:
+            return auth_response
+
         line_id = self._sanitize_line_id(request.GET.get("lineId"))
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
@@ -102,6 +136,10 @@ class DroneEarlyInformView(APIView):
     # --------------------------------------------------------------------- #
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """신규 행을 생성합니다."""
+        auth_response = _ensure_authenticated(request)
+        if auth_response is not None:
+            return auth_response
+
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
@@ -120,7 +158,11 @@ class DroneEarlyInformView(APIView):
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
 
-        updated_by = self._resolve_updated_by(request)
+        user = getattr(request, "user", None)
+        knox_id = None
+        if user and getattr(user, "is_authenticated", False):
+            knox_id = getattr(user, "knox_id", None)
+        updated_by = self._sanitize_updated_by(knox_id or "system")
 
         try:
             entry = services.create_early_inform_entry(
@@ -152,6 +194,10 @@ class DroneEarlyInformView(APIView):
     # --------------------------------------------------------------------- #
     def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """id로 지정된 행을 부분 업데이트합니다."""
+        auth_response = _ensure_authenticated(request)
+        if auth_response is not None:
+            return auth_response
+
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
@@ -171,7 +217,11 @@ class DroneEarlyInformView(APIView):
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
         updates: dict[str, Any] = {}
-        updated_by = self._resolve_updated_by(request)
+        user = getattr(request, "user", None)
+        knox_id = None
+        if user and getattr(user, "is_authenticated", False):
+            knox_id = getattr(user, "knox_id", None)
+        updated_by = self._sanitize_updated_by(knox_id or "system")
 
         if "lineId" in payload:
             line_id = self._sanitize_line_id(payload.get("lineId"))
@@ -219,6 +269,10 @@ class DroneEarlyInformView(APIView):
     # --------------------------------------------------------------------- #
     def delete(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """id로 지정된 행을 삭제합니다."""
+        auth_response = _ensure_authenticated(request)
+        if auth_response is not None:
+            return auth_response
+
         raw_id = request.GET.get("id")
         try:
             entry_id = int(raw_id)
@@ -292,27 +346,6 @@ class DroneEarlyInformView(APIView):
         trimmed = value.strip()
         return trimmed if trimmed and len(trimmed) <= MAX_FIELD_LENGTH else None
 
-    @staticmethod
-    def _extract_username(raw_username: str) -> str:
-        """이메일인 경우 @ 앞 로컬 파트만 추출."""
-        if "@" in raw_username:
-            local_part = raw_username.split("@", 1)[0]
-            return local_part or raw_username
-        return raw_username
-
-    def _resolve_updated_by(self, request: HttpRequest) -> Optional[str]:
-        """요청 사용자 정보를 updated_by 문자열로 정리."""
-        user = getattr(request, "user", None)
-        raw_username = None
-        if user and getattr(user, "is_authenticated", False):
-            raw_username = (
-                getattr(user, "get_username", lambda: None)() or getattr(user, "email", None) or None
-            )
-        if not raw_username:
-            raw_username = "system"
-        username = self._extract_username(str(raw_username))
-        return self._sanitize_updated_by(username)
-
 
 class LineHistoryView(APIView):
     """라인 대시보드 차트용 시간 단위 합계/분해 집계 제공."""
@@ -355,8 +388,9 @@ class DroneSopInstantInformView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, sop_id: int, *args: object, **kwargs: object) -> JsonResponse:
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+        auth_response = _ensure_authenticated(request)
+        if auth_response is not None:
+            return auth_response
 
         payload = parse_json_body(request) or {}
         raw_comment = payload.get("comment")
@@ -414,18 +448,9 @@ class DroneSopPop3IngestTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        expected_token = (
-            getattr(settings, "DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN", "")
-            or getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "")
-            or ""
-        )
-        provided_token = extract_bearer_token(request)
-
-        if expected_token:
-            if provided_token != expected_token and not request.user.is_authenticated:
-                return JsonResponse({"error": "Unauthorized"}, status=401)
-        elif not request.user.is_authenticated:
-            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+        auth_response = _ensure_airflow_token(request)
+        if auth_response is not None:
+            return auth_response
 
         set_activity_summary(request, "Trigger drone_sop POP3 ingest")
         merge_activity_metadata(request, resource="drone_sop", pipeline="pop3_ingest")
@@ -467,21 +492,14 @@ class DroneSopJiraTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        expected_token = (
-            getattr(settings, "DRONE_SOP_JIRA_TRIGGER_TOKEN", "")
-            or getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "")
-            or ""
-        )
-        provided_token = extract_bearer_token(request)
-
-        if expected_token:
-            if provided_token != expected_token and not request.user.is_authenticated:
-                return JsonResponse({"error": "Unauthorized"}, status=401)
-        elif not request.user.is_authenticated:
-            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+        auth_response = _ensure_airflow_token(request)
+        if auth_response is not None:
+            return auth_response
 
         payload = parse_json_body(request) or {}
-        raw_limit = payload.get("limit") or request.GET.get("limit")
+        raw_limit = payload.get("limit")
+        if raw_limit is None:
+            raw_limit = request.GET.get("limit")
         limit = None
         if raw_limit is not None:
             try:

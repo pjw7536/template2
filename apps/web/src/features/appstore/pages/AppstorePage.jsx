@@ -50,7 +50,7 @@ export function AppstorePage() {
   })
 
   const defaultContactName = useMemo(() => {
-    return user?.name || (user?.email ? user.email.split("@")[0] : "")
+    return user?.username || (user?.email ? user.email.split("@")[0] : "")
   }, [user])
 
   const defaultContactKnoxid = useMemo(() => {

@@ -19,6 +19,7 @@ class CsrfExemptSessionAuthentication(SessionAuthentication):
     [이 클래스의 역할]
     - CSRF 검사를 완전히 우회(bypass)하여,
       세션 쿠키 기반 인증은 유지하면서 CSRF 에러 없이 API 요청을 허용합니다.
+    - 사내망 전용 서비스라 외부 공격면이 제한적이므로 CSRF 방어 부담을 낮춘 설계입니다.
     """
 
     def enforce_csrf(self, request):

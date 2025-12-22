@@ -4,6 +4,7 @@ import { ContentLayout } from "./content-layout"
 export function AppLayout({
   children,
   header,
+  headerClassName = "relative z-30 h-16 shrink-0 border-b bg-background",
   contentMaxWidthClass = "max-w-10xl",
   scrollAreaClassName = "overflow-y-auto",
   paddingClassName = "p-3 md:p-3",
@@ -11,7 +12,7 @@ export function AppLayout({
 }) {
   return (
     <div className="h-screen flex flex-col bg-background">
-      <header className="relative z-30 h-16 shrink-0 border-b bg-background">
+      <header className={headerClassName}>
         <div className="h-full">{header ?? null}</div>
       </header>
       <main className="flex-1 min-h-0 min-w-0 overflow-hidden">

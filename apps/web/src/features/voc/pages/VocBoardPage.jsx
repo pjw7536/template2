@@ -118,7 +118,7 @@ function PostContent({ content, className = "", allowResize = false }) {
 
 export function VocBoardPage() {
   const { user } = useAuth()
-  const currentUserName = user?.name || user?.email || "로그인 사용자"
+  const currentUserName = user?.username || user?.email || "로그인 사용자"
   const currentUserRoles = Array.isArray(user?.roles) ? user.roles : []
   const currentUser = {
     id: user?.id || user?.email || currentUserName,

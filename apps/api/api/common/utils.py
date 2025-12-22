@@ -238,12 +238,16 @@ def build_line_filters(column_names: Sequence[str], line_id: Optional[str]) -> D
 
     usdwt_col = find_column(column_names, "user_sdwt_prod")
     if usdwt_col:
-        values = _get_user_sdwt_prod_values(line_id)
-        if values:
-            placeholders = ", ".join(["%s"] * len(values))
-            filters.append(f"{usdwt_col} IN ({placeholders})")
-            params.extend(values)
-            return {"filters": filters, "params": params}
+        filters.append(
+            "{col} IN ("
+            "SELECT user_sdwt_prod FROM {table} "
+            "WHERE line = %s "
+            "AND user_sdwt_prod IS NOT NULL "
+            "AND user_sdwt_prod <> ''"
+            ")".format(col=usdwt_col, table=LINE_SDWT_TABLE_NAME)
+        )
+        params.append(line_id)
+        return {"filters": filters, "params": params}
 
     line_col = find_column(column_names, "line_id")
     if line_col:

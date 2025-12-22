@@ -8,6 +8,16 @@ function optionKey(opt) {
   return `${opt.department}||${opt.line}||${opt.user_sdwt_prod}`
 }
 
+function formatDateTimeLocal(date) {
+  const pad = (value) => String(value).padStart(2, "0")
+  const year = date.getFullYear()
+  const month = pad(date.getMonth() + 1)
+  const day = pad(date.getDate())
+  const hours = pad(date.getHours())
+  const minutes = pad(date.getMinutes())
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 export function AffiliationCard({
   data,
   onSubmit,
@@ -15,6 +25,7 @@ export function AffiliationCard({
   error,
 }) {
   const [selectedKey, setSelectedKey] = useState("")
+  const [effectiveFrom, setEffectiveFrom] = useState(() => formatDateTimeLocal(new Date()))
 
   const options = data?.affiliationOptions || []
 
@@ -43,6 +54,9 @@ export function AffiliationCard({
       department: target.department,
       line: target.line,
     }
+    if (effectiveFrom) {
+      payload.effectiveFrom = effectiveFrom
+    }
     onSubmit(payload, () => {
       setSelectedKey("")
     })
@@ -53,7 +67,7 @@ export function AffiliationCard({
       <CardHeader className="pb-2">
         <CardTitle>My affiliation</CardTitle>
         <CardDescription>
-          소속 변경을 신청하면 해당 소속 관리자 또는 슈퍼유저가 승인할 수 있습니다. 적용 시점은 승인 시점으로 고정됩니다.
+          소속 변경은 승인 이후에만 적용됩니다. 메일 재분류는 선택한 기준 시각 이후 수신분부터 반영됩니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -97,8 +111,22 @@ export function AffiliationCard({
             ) : null}
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="effectiveFromInput">소속 변경 기준 시각 (KST)</Label>
+            <input
+              id="effectiveFromInput"
+              type="datetime-local"
+              className="bg-background border-input focus-visible:ring-ring/50 focus-visible:ring-[3px] h-10 rounded-md border px-3 text-sm outline-none"
+              value={effectiveFrom}
+              onChange={(e) => setEffectiveFrom(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              승인 전에는 메일함이 변경되지 않으며, 승인 후 기준 시각 이후 메일부터 새 소속으로 이동합니다.
+            </p>
+          </div>
+
           <p className="text-sm text-muted-foreground">
-            실제 이동 날짜를 기준으로 메일/RAG 인덱스를 재분류하는 작업은 시스템 운영자 권한으로만 처리됩니다.
+            소속 변경 요청 후에는 승인이 완료되어야 메일함과 RAG 인덱스가 반영됩니다.
           </p>
 
           {error ? (

@@ -92,7 +92,7 @@ export function ManageGrantsCard({
 }) {
   const groupOptions = useMemo(() => manageableGroups?.groups || [], [manageableGroups?.groups])
   const [selectedGroup, setSelectedGroup] = useState("")
-  const [username, setUsername] = useState("")
+  const [knoxId, setKnoxId] = useState("")
   const [canManage, setCanManage] = useState(false)
   const hasGroups = groupOptions.length > 0
 
@@ -104,15 +104,15 @@ export function ManageGrantsCard({
 
   const handleGrant = (e) => {
     e.preventDefault()
-    if (!selectedGroup || !username) return
+    if (!selectedGroup || !knoxId) return
     onGrant(
       {
         userSdwtProd: selectedGroup,
-        username,
+        knox_id: knoxId,
         canManage,
       },
       () => {
-        setUsername("")
+        setKnoxId("")
         setCanManage(false)
       },
     )
@@ -146,16 +146,16 @@ export function ManageGrantsCard({
             </datalist>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="grantUser">사용자 ID (username)</Label>
+            <Label htmlFor="grantUser">사용자 ID (knox_id)</Label>
             <Input
               id="grantUser"
-              placeholder="예: employee_id"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              placeholder="예: KNOX-12345"
+              value={knoxId}
+              onChange={(e) => setKnoxId(e.target.value)}
               required
               disabled={!hasGroups}
             />
-            <p className="text-sm text-muted-foreground">사번/username 기준으로 권한을 부여합니다.</p>
+            <p className="text-sm text-muted-foreground">knox_id 기준으로 권한을 부여합니다.</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -178,7 +178,7 @@ export function ManageGrantsCard({
           {error ? <p className="text-destructive text-sm">{error}</p> : null}
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting || !selectedGroup || !username || !hasGroups}>
+            <Button type="submit" disabled={isSubmitting || !selectedGroup || !knoxId || !hasGroups}>
               {isSubmitting ? "저장 중..." : "권한 부여/업데이트"}
             </Button>
           </div>

@@ -12,7 +12,10 @@ from .selectors import get_accessible_user_sdwt_prods_for_user
 def user_can_view_unassigned(user: Any) -> bool:
     """UNASSIGNED(미분류) 메일함 조회 가능 여부를 반환합니다."""
 
-    return bool(user and getattr(user, "is_superuser", False))
+    return bool(
+        user
+        and (getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+    )
 
 
 def email_is_unassigned(email: Any) -> bool:
@@ -85,4 +88,3 @@ __all__ = [
     "user_can_access_email",
     "user_can_view_unassigned",
 ]
-

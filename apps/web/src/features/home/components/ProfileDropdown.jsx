@@ -28,7 +28,7 @@ const ProfileDropdown = ({
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
-  const displayName = user?.name || 'John Doe'
+  const displayName = user?.username || 'John Doe'
   const email = user?.email || 'john.doe@example.com'
   const avatar =
     user?.avatar ||
@@ -46,6 +46,10 @@ const ProfileDropdown = ({
 
   const handleMyAccount = () => {
     navigate('/account')
+  }
+
+  const handleManageTeam = () => {
+    navigate('/members')
   }
 
   const handleAdmin = () => {
@@ -94,7 +98,12 @@ const ProfileDropdown = ({
         <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
+          <DropdownMenuItem
+            className='px-4 py-2.5 text-base'
+            onSelect={(event) => {
+              event.preventDefault()
+              handleManageTeam()
+            }}>
             <UsersIcon className='text-foreground size-5' />
             <span>Manage team</span>
           </DropdownMenuItem>

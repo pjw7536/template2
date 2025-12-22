@@ -5,8 +5,10 @@ import * as React from "react"
 import {
   createLineSetting,
   deleteLineSetting,
+  fetchLineJiraKey,
   fetchLineSettings,
   updateLineSetting,
+  updateLineJiraKey,
 } from "../api"
 import { timeFormatter } from "../utils/formatters"
 import { sortEntries } from "../utils/line-settings"
@@ -19,8 +21,11 @@ const nowLabel = () => timeFormatter.format(new Date())
 export function useLineSettings(lineId) {
   const [entries, setEntries] = React.useState([])
   const [userSdwtValues, setUserSdwtValues] = React.useState([])
+  const [jiraKey, setJiraKey] = React.useState("")
+  const [jiraKeyError, setJiraKeyError] = React.useState(null)
   const [error, setError] = React.useState(null)
   const [isLoading, setIsLoading] = React.useState(false)
+  const [isJiraKeyLoading, setIsJiraKeyLoading] = React.useState(false)
   const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false)
   const [lastUpdatedLabel, setLastUpdatedLabel] = React.useState(EMPTY_TIMESTAMP)
 
@@ -29,7 +34,11 @@ export function useLineSettings(lineId) {
   const resetForLineChange = React.useCallback(() => {
     setEntries([])
     setUserSdwtValues([])
+    setJiraKey("")
+    setJiraKeyError(null)
     setError(null)
+    setIsLoading(false)
+    setIsJiraKeyLoading(false)
     setLastUpdatedLabel(EMPTY_TIMESTAMP)
     setHasLoadedOnce(false)
     hasLoadedRef.current = false
@@ -51,28 +60,54 @@ export function useLineSettings(lineId) {
     }
 
     setIsLoading(true)
+    setIsJiraKeyLoading(true)
     setError(null)
+    setJiraKeyError(null)
     if (hasLoadedRef.current) {
       setLastUpdatedLabel("Updating…")
     }
 
     try {
-      const { entries: loadedEntries, userSdwtValues: loadedUsers } = await fetchLineSettings(lineId)
-      setEntries(sortEntries(loadedEntries || []))
-      setUserSdwtValues(loadedUsers || [])
-      setLastUpdatedLabel(nowLabel())
-      return { ok: true }
-    } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "Failed to load settings"
-      setError(message)
-      setUserSdwtValues([])
-      if (!hasLoadedRef.current) {
-        setLastUpdatedLabel(EMPTY_TIMESTAMP)
+      const [settingsResult, jiraResult] = await Promise.allSettled([
+        fetchLineSettings(lineId),
+        fetchLineJiraKey(lineId),
+      ])
+
+      let ok = true
+      if (settingsResult.status === "fulfilled") {
+        const { entries: loadedEntries, userSdwtValues: loadedUsers } = settingsResult.value
+        setEntries(sortEntries(loadedEntries || []))
+        setUserSdwtValues(loadedUsers || [])
+        setLastUpdatedLabel(nowLabel())
+      } else {
+        const message =
+          settingsResult.reason instanceof Error
+            ? settingsResult.reason.message
+            : "Failed to load settings"
+        setError(message)
+        setUserSdwtValues([])
+        if (!hasLoadedRef.current) {
+          setLastUpdatedLabel(EMPTY_TIMESTAMP)
+        }
+        ok = false
       }
-      return { ok: false, error: requestError }
+
+      if (jiraResult.status === "fulfilled") {
+        setJiraKey(jiraResult.value?.jiraKey || "")
+      } else {
+        const message =
+          jiraResult.reason instanceof Error
+            ? jiraResult.reason.message
+            : "Failed to load Jira key"
+        setJiraKeyError(message)
+        setJiraKey("")
+        ok = false
+      }
+
+      return { ok }
     } finally {
       setIsLoading(false)
+      setIsJiraKeyLoading(false)
       if (!hasLoadedRef.current) {
         hasLoadedRef.current = true
         setHasLoadedOnce(true)
@@ -120,16 +155,34 @@ export function useLineSettings(lineId) {
     return { ok: true }
   }, [])
 
+  const updateJiraKey = React.useCallback(
+    async ({ jiraKey: nextJiraKey }) => {
+      if (!lineId) {
+        throw new Error("Select a line to update Jira key")
+      }
+      const { jiraKey: savedKey } = await updateLineJiraKey({ lineId, jiraKey: nextJiraKey })
+      setJiraKey(savedKey || "")
+      setJiraKeyError(null)
+      setLastUpdatedLabel(nowLabel())
+      return savedKey
+    },
+    [lineId],
+  )
+
   return {
     entries,
     userSdwtValues,
+    jiraKey,
+    jiraKeyError,
     error,
     isLoading,
+    isJiraKeyLoading,
     hasLoadedOnce,
     lastUpdatedLabel,
     refresh,
     createEntry,
     updateEntry,
     deleteEntry,
+    updateJiraKey,
   }
 }

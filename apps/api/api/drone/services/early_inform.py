@@ -7,7 +7,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from .models import DroneEarlyInform
+from ..models import DroneEarlyInform
 
 
 class DroneEarlyInformDuplicateError(RuntimeError):

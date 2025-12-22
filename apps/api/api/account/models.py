@@ -40,13 +40,9 @@ class User(AbstractUser):
     username = models.CharField(max_length=150, null=True, blank=True)
     sabun = models.CharField(max_length=50, unique=True)
     knox_id = models.CharField(max_length=150, null=True, blank=True, unique=True)
-    firstname = models.CharField(max_length=150, null=True, blank=True)
-    lastname = models.CharField(max_length=150, null=True, blank=True)
     username_en = models.CharField(max_length=150, null=True, blank=True)
     givenname = models.CharField(max_length=150, null=True, blank=True)
     surname = models.CharField(max_length=150, null=True, blank=True)
-    mail = models.EmailField(null=True, blank=True)
-    deptname = models.CharField(max_length=128, null=True, blank=True)
     deptid = models.CharField(max_length=50, null=True, blank=True)
     grd_name = models.CharField(max_length=150, null=True, blank=True)
     grdname_en = models.CharField(max_length=150, null=True, blank=True)
@@ -55,10 +51,11 @@ class User(AbstractUser):
     intname = models.CharField(max_length=150, null=True, blank=True)
     origincomp = models.CharField(max_length=150, null=True, blank=True)
     employeetype = models.CharField(max_length=150, null=True, blank=True)
-    x_ms_forwarded_client_ip = models.CharField(max_length=45, null=True, blank=True)
     department = models.CharField(max_length=128, null=True, blank=True)
     line = models.CharField(max_length=64, null=True, blank=True)
     user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
+    requires_affiliation_reconfirm = models.BooleanField(default=False)
+    affiliation_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "account_user"
@@ -96,14 +93,19 @@ class Affiliation(models.Model):
     department = models.CharField(max_length=128)
     line = models.CharField(max_length=64)
     user_sdwt_prod = models.CharField(max_length=64)
+    jira_key = models.CharField(max_length=64, null=True, blank=True)
 
     class Meta:
         db_table = "account_affiliation"
         unique_together = ("department", "line", "user_sdwt_prod")
+        constraints = [
+            models.UniqueConstraint(fields=["line", "user_sdwt_prod"], name="uniq_aff_line_user_sdwt"),
+        ]
         indexes = [
             models.Index(fields=["department"], name="aff_hier_department"),
             models.Index(fields=["line"], name="aff_hier_line"),
             models.Index(fields=["user_sdwt_prod"], name="aff_hier_user_sdwt_prod"),
+            models.Index(fields=["line", "user_sdwt_prod"], name="aff_line_user_sdwt"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - human readable representation
@@ -144,6 +146,11 @@ class UserSdwtProdAccess(models.Model):
 class UserSdwtProdChange(models.Model):
     """사용자 소속(user_sdwt_prod) 변경 요청/승인/적용 이력을 저장하는 모델입니다."""
 
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -154,6 +161,7 @@ class UserSdwtProdChange(models.Model):
     from_user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
     to_user_sdwt_prod = models.CharField(max_length=64)
     effective_from = models.DateTimeField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     applied = models.BooleanField(default=False)
     approved = models.BooleanField(default=False)
     approved_by = models.ForeignKey(
@@ -185,8 +193,35 @@ class UserSdwtProdChange(models.Model):
         return f"{self.user_id} {self.from_user_sdwt_prod or '-'} -> {self.to_user_sdwt_prod} at {self.effective_from}"
 
 
+class ExternalAffiliationSnapshot(models.Model):
+    """외부 DB에서 가져온 예측 소속(user_sdwt_prod) 스냅샷을 저장합니다."""
+
+    knox_id = models.CharField(max_length=150, unique=True)
+    predicted_user_sdwt_prod = models.CharField(max_length=64)
+    source_updated_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "account_external_affiliation_snapshot"
+        indexes = [
+            models.Index(
+                fields=["predicted_user_sdwt_prod"],
+                name="idx_ext_aff_snap_sdwt",
+            ),
+            models.Index(
+                fields=["source_updated_at"],
+                name="idx_ext_aff_snap_src_upd",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable representation
+        return f"{self.knox_id} -> {self.predicted_user_sdwt_prod}"
+
+
 __all__ = [
     "Affiliation",
+    "ExternalAffiliationSnapshot",
     "User",
     "UserProfile",
     "UserSdwtProdAccess",

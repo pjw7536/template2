@@ -15,7 +15,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from adfs_settings import (
     CLIENT_ID,
     DEFAULT_BUSNAME,
-    DEFAULT_CLIENT_IP,
     DEFAULT_DEPT,
     DEFAULT_DEPTID,
     DEFAULT_EMAIL,
@@ -58,9 +57,6 @@ def render_login_form(request: Request) -> str:
     intname = html.escape(params.get("intname") or DEFAULT_INTNAME)
     origincomp = html.escape(params.get("origincomp") or DEFAULT_ORIGINCOMP)
     employeetype = html.escape(params.get("employeetype") or DEFAULT_EMPLOYEETYPE)
-    x_ms_forwarded_client_ip = html.escape(
-        params.get("x_ms_forwarded_client_ip") or DEFAULT_CLIENT_IP
-    )
     state = html.escape(params.get("state") or "")
     nonce = html.escape(params.get("nonce") or secrets.token_urlsafe(16))
     redirect_uri = html.escape(params.get("redirect_uri") or "")
@@ -121,8 +117,6 @@ def render_login_form(request: Request) -> str:
             <input id="origincomp" name="origincomp" value="{origincomp}" type="text" />
             <label for="employeetype">Employee type (employeetype)</label>
             <input id="employeetype" name="employeetype" value="{employeetype}" type="text" />
-            <label for="x_ms_forwarded_client_ip">Client IP (x-ms-forwarded-client-ip)</label>
-            <input id="x_ms_forwarded_client_ip" name="x_ms_forwarded_client_ip" value="{x_ms_forwarded_client_ip}" type="text" />
           </details>
 
           <input type="hidden" name="state" value="{state}" />
@@ -155,7 +149,6 @@ def build_id_token(
     intname: str = DEFAULT_INTNAME,
     origincomp: str = DEFAULT_ORIGINCOMP,
     employeetype: str = DEFAULT_EMPLOYEETYPE,
-    x_ms_forwarded_client_ip: str = DEFAULT_CLIENT_IP,
 ) -> str:
     now = datetime.now(timezone.utc)
     stable_id = sabun or loginid or email
@@ -186,7 +179,6 @@ def build_id_token(
         "surname": surname,
         "intcode": intcode,
         "intname": intname,
-        "x-ms-forwarded-client-ip": x_ms_forwarded_client_ip,
         "origincomp": origincomp,
         "employeetype": employeetype,
         "jti": secrets.token_hex(16),
@@ -223,7 +215,6 @@ async def authorize(
     intname: str = Form(DEFAULT_INTNAME),
     origincomp: str = Form(DEFAULT_ORIGINCOMP),
     employeetype: str = Form(DEFAULT_EMPLOYEETYPE),
-    x_ms_forwarded_client_ip: str = Form(DEFAULT_CLIENT_IP),
     state: str = Form(""),
     nonce: str = Form(""),
     redirect_uri: str = Form(...),
@@ -252,7 +243,6 @@ async def authorize(
         intname=intname,
         origincomp=origincomp,
         employeetype=employeetype,
-        x_ms_forwarded_client_ip=x_ms_forwarded_client_ip,
         nonce=nonce_value,
     )
 
@@ -291,4 +281,3 @@ async def openid_config(request: Request) -> Dict[str, Any]:
         "grant_types_supported": ["implicit"],
         "scopes_supported": ["openid", "profile", "email"],
     }
-

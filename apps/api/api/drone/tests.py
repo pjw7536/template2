@@ -1,17 +1,33 @@
 from __future__ import annotations
 
+import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
 from api.account.models import Affiliation
 from api.drone import selectors, services
-from api.drone.models import DroneSOP
-from api.drone.services_sop_jira import DroneJiraConfig
-from api.drone.services_sop_pop3 import NeedToSendRule
+from api.drone.models import DroneEarlyInform, DroneSOP, DroneSopJiraTemplate, DroneSopJiraUserTemplate
+from api.drone.services.sop_jira import DroneJiraConfig
+from api.drone.services.sop_pop3 import NeedToSendRule
+
+_PREVIOUS_LOGGING_DISABLE: int | None = None
+
+
+def setUpModule() -> None:
+    global _PREVIOUS_LOGGING_DISABLE
+    _PREVIOUS_LOGGING_DISABLE = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+
+
+def tearDownModule() -> None:
+    if _PREVIOUS_LOGGING_DISABLE is not None:
+        logging.disable(_PREVIOUS_LOGGING_DISABLE)
 
 
 class DroneSopPop3ParsingTests(TestCase):
@@ -174,10 +190,9 @@ class DroneSopJiraUpdateTests(TestCase):
 class DroneSopInstantInformTests(TestCase):
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
-        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "DUMMY"},
         DRONE_JIRA_USE_BULK_API=False,
     )
-    @patch("api.drone.services_sop_jira._jira_session")
+    @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_creates_jira_even_when_not_candidate(self, mock_session: Mock) -> None:
         session = Mock()
         resp = Mock(status_code=201)
@@ -185,7 +200,8 @@ class DroneSopInstantInformTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT")
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
         row = DroneSOP.objects.create(
             line_id="L1",
             sdwt_prod="SDWT",
@@ -213,12 +229,168 @@ class DroneSopInstantInformTests(TestCase):
         self.assertEqual(refreshed.jira_key, "DUMMY-123")
         self.assertEqual(refreshed.comment, "hello")
 
+
+class DroneEndpointTests(TestCase):
+    def setUp(self) -> None:
+        User = get_user_model()
+        self.user = User.objects.create_user(sabun="S60000", password="test-password")
+        self.client.force_login(self.user)
+
+    @patch("api.drone.views.services.delete_early_inform_entry")
+    @patch("api.drone.views.selectors.list_user_sdwt_prod_values_for_line", return_value=[])
+    def test_drone_early_inform_crud(self, _mock_user_sdwt, mock_delete) -> None:
+        create_response = self.client.post(
+            reverse("drone-early-inform"),
+            data='{"lineId":"L1","mainStep":"STEP1","customEndStep":"STEP2"}',
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        entry_id = create_response.json()["entry"]["id"]
+
+        list_response = self.client.get(reverse("drone-early-inform"), {"lineId": "L1"})
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json()["rowCount"], 1)
+
+        update_response = self.client.patch(
+            reverse("drone-early-inform"),
+            data='{"id": %d, "customEndStep": "STEP3"}' % entry_id,
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        mock_delete.return_value = DroneEarlyInform.objects.get(id=entry_id)
+        delete_response = self.client.delete(f"{reverse('drone-early-inform')}?id={entry_id}")
+        self.assertEqual(delete_response.status_code, 200)
+
+    @patch("api.drone.views.selectors.get_line_history_payload", return_value={"rows": []})
+    def test_drone_line_history(self, _mock_history) -> None:
+        response = self.client.get(reverse("line-dashboard-history"))
+        self.assertEqual(response.status_code, 200)
+
+    @patch("api.drone.views.selectors.list_distinct_line_ids", return_value=["L1"])
+    def test_drone_line_ids(self, _mock_lines) -> None:
+        response = self.client.get(reverse("line-dashboard-line-ids"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["lineIds"], ["L1"])
+
+    @patch("api.drone.views.services.run_drone_sop_jira_instant_inform")
+    def test_drone_sop_instant_inform(self, mock_service) -> None:
+        mock_service.return_value = SimpleNamespace(
+            created=True,
+            already_informed=False,
+            jira_key="JIRA-1",
+            updated_fields=[],
+            skipped=False,
+            skip_reason=None,
+        )
+        response = self.client.post(
+            reverse("drone-sop-instant-inform", kwargs={"sop_id": 123}),
+            data='{"comment":"test"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
+    @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
+    def test_drone_sop_pop3_trigger(self, mock_service) -> None:
+        mock_service.return_value = SimpleNamespace(
+            matched_mails=1,
+            upserted_rows=1,
+            deleted_mails=0,
+            pruned_rows=0,
+            skipped=False,
+            skip_reason=None,
+        )
+        response = self.client.post(
+            reverse("drone-sop-pop3-ingest-trigger"),
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
+    @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
+    def test_drone_sop_jira_trigger(self, mock_service) -> None:
+        mock_service.return_value = SimpleNamespace(
+            candidates=1,
+            created=1,
+            updated_rows=0,
+            skipped=False,
+            skip_reason=None,
+        )
+        response = self.client.post(
+            reverse("drone-sop-jira-trigger"),
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
-        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "DUMMY"},
         DRONE_JIRA_USE_BULK_API=False,
     )
-    @patch("api.drone.services_sop_jira._jira_session")
+    @patch("api.drone.services.sop_jira._jira_session")
+    def test_instant_inform_marks_missing_template_as_failed(self, mock_session: Mock) -> None:
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        row = DroneSOP.objects.create(
+            line_id="L1",
+            sdwt_prod="SDWT",
+            eqp_id="EQP1",
+            chamber_ids="1",
+            lot_id="LOT.1",
+            main_step="MS",
+            status="IN_PROGRESS",
+            needtosend=0,
+            send_jira=0,
+            metro_current_step="ST001",
+        )
+
+        result = services.run_drone_sop_jira_instant_inform(sop_id=int(row.id))
+        self.assertTrue(result.skipped)
+        self.assertEqual(result.skip_reason, "template_missing")
+        mock_session.assert_not_called()
+
+        refreshed = DroneSOP.objects.get(id=row.id)
+        self.assertEqual(refreshed.send_jira, -1)
+
+    @override_settings(
+        DRONE_JIRA_BASE_URL="http://example.local/jira",
+        DRONE_JIRA_USE_BULK_API=False,
+    )
+    @patch("api.drone.services.sop_jira._jira_session")
+    def test_instant_inform_uses_user_template_override(self, mock_session: Mock) -> None:
+        session = Mock()
+        resp = Mock(status_code=201)
+        resp.json.return_value = {"key": "DUMMY-321"}
+        session.post.return_value = resp
+        mock_session.return_value = session
+
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        DroneSopJiraUserTemplate.objects.create(user_sdwt_prod="SDWT", template_key="line_a")
+        row = DroneSOP.objects.create(
+            line_id="L1",
+            sdwt_prod="SDWT",
+            user_sdwt_prod="SDWT",
+            eqp_id="EQP1",
+            chamber_ids="1",
+            lot_id="LOT.1",
+            main_step="MS",
+            status="IN_PROGRESS",
+            needtosend=0,
+            send_jira=0,
+            metro_current_step="ST001",
+        )
+
+        result = services.run_drone_sop_jira_instant_inform(sop_id=int(row.id))
+        self.assertTrue(result.created)
+        self.assertEqual(result.jira_key, "DUMMY-321")
+
+        refreshed = DroneSOP.objects.get(id=row.id)
+        self.assertEqual(refreshed.send_jira, 1)
+
+    @override_settings(
+        DRONE_JIRA_BASE_URL="http://example.local/jira",
+        DRONE_JIRA_USE_BULK_API=False,
+    )
+    @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_does_not_create_duplicate(self, mock_session: Mock) -> None:
         row = DroneSOP.objects.create(
             line_id="L1",
@@ -246,11 +418,10 @@ class DroneSopInstantInformTests(TestCase):
 class DroneSopJiraCreateProjectKeyTests(TestCase):
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
-        DRONE_JIRA_PROJECT_KEY_BY_LINE={"L1": "PROJ1", "L2": "PROJ2"},
         DRONE_JIRA_USE_BULK_API=True,
         DRONE_JIRA_BULK_SIZE=50,
     )
-    @patch("api.drone.services_sop_jira._jira_session")
+    @patch("api.drone.services.sop_jira._jira_session")
     def test_jira_create_uses_project_key_per_line_and_marks_missing_as_failed(self, mock_session: Mock) -> None:
         session = Mock()
         resp = Mock(status_code=201)
@@ -258,9 +429,11 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT")
-        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT")
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
+        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT", jira_key="PROJ2")
         Affiliation.objects.create(department="D", line="L3", user_sdwt_prod="SDWT")
+        DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
+        DroneSopJiraTemplate.objects.create(line_id="L2", template_key="line_b")
 
         sop1 = DroneSOP.objects.create(
             line_id="L1",
@@ -320,11 +493,100 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         self.assertEqual(refreshed2.jira_key, "PROJ2-2")
         self.assertEqual(refreshed_missing.send_jira, -1)
 
+    @override_settings(
+        DRONE_JIRA_BASE_URL="http://example.local/jira",
+        DRONE_JIRA_USE_BULK_API=True,
+        DRONE_JIRA_BULK_SIZE=50,
+    )
+    @patch("api.drone.services.sop_jira._jira_session")
+    def test_jira_create_uses_user_template_override(self, mock_session: Mock) -> None:
+        session = Mock()
+        resp = Mock(status_code=201)
+        resp.json.return_value = {"issues": [{"key": "PROJ1-1"}]}
+        session.post.return_value = resp
+        mock_session.return_value = session
+
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
+        DroneSopJiraUserTemplate.objects.create(user_sdwt_prod="SDWT", template_key="line_a")
+
+        sop1 = DroneSOP.objects.create(
+            line_id="L1",
+            sdwt_prod="SDWT",
+            user_sdwt_prod="SDWT",
+            eqp_id="EQP1",
+            chamber_ids="1",
+            lot_id="LOT.1",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST001",
+        )
+
+        result = services.run_drone_sop_jira_create_from_env()
+        self.assertEqual(result.candidates, 1)
+        self.assertEqual(result.created, 1)
+
+        refreshed = DroneSOP.objects.get(id=sop1.id)
+        self.assertEqual(refreshed.send_jira, 1)
+
+    @override_settings(
+        DRONE_JIRA_BASE_URL="http://example.local/jira",
+        DRONE_JIRA_USE_BULK_API=False,
+    )
+    @patch("api.drone.services.sop_jira._jira_session")
+    def test_jira_create_marks_missing_template_as_failed(self, mock_session: Mock) -> None:
+        session = Mock()
+        resp = Mock(status_code=201)
+        resp.json.return_value = {"key": "PROJ1-1"}
+        session.post.return_value = resp
+        mock_session.return_value = session
+
+        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
+        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT", jira_key="PROJ2")
+        DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
+
+        sop1 = DroneSOP.objects.create(
+            line_id="L1",
+            sdwt_prod="SDWT",
+            eqp_id="EQP1",
+            chamber_ids="1",
+            lot_id="LOT.1",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST001",
+        )
+        sop2 = DroneSOP.objects.create(
+            line_id="L2",
+            sdwt_prod="SDWT",
+            eqp_id="EQP2",
+            chamber_ids="1",
+            lot_id="LOT.2",
+            main_step="MS",
+            status="COMPLETE",
+            needtosend=1,
+            send_jira=0,
+            metro_current_step="ST002",
+        )
+
+        result = services.run_drone_sop_jira_create_from_env()
+        self.assertEqual(result.candidates, 2)
+        self.assertEqual(result.created, 1)
+
+        session.post.assert_called_once()
+
+        refreshed1 = DroneSOP.objects.get(id=sop1.id)
+        refreshed2 = DroneSOP.objects.get(id=sop2.id)
+
+        self.assertEqual(refreshed1.send_jira, 1)
+        self.assertEqual(refreshed2.send_jira, -1)
 
 class DroneTriggerAuthTests(TestCase):
-    @override_settings(DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN="expected-token")
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
-    def test_pop3_ingest_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
+    def test_pop3_ingest_trigger_requires_token(self, mock_run: Mock) -> None:
         mock_run.return_value = SimpleNamespace(
             matched_mails=1,
             upserted_rows=2,
@@ -349,9 +611,9 @@ class DroneTriggerAuthTests(TestCase):
         self.assertEqual(resp.json()["matched"], 1)
         self.assertEqual(mock_run.call_count, 1)
 
-    @override_settings(DRONE_SOP_JIRA_TRIGGER_TOKEN="expected-token")
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
-    def test_jira_trigger_uses_email_ingest_trigger_token(self, mock_run: Mock) -> None:
+    def test_jira_trigger_requires_token(self, mock_run: Mock) -> None:
         mock_run.return_value = SimpleNamespace(
             candidates=1,
             created=1,
@@ -371,13 +633,43 @@ class DroneTriggerAuthTests(TestCase):
         self.assertEqual(resp.json()["created"], 1)
         mock_run.assert_called_once_with(limit=None)
 
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
+    @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
+    def test_jira_trigger_prefers_payload_limit_over_query_param(self, mock_run: Mock) -> None:
+        mock_run.return_value = SimpleNamespace(
+            candidates=1,
+            created=1,
+            updated_rows=0,
+            skipped=False,
+            skip_reason=None,
+        )
+
+        url = reverse("drone-sop-jira-trigger") + "?limit=5"
+        payload = json.dumps({"limit": 2})
+        resp = self.client.post(
+            url,
+            data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer expected-token",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        mock_run.assert_called_once_with(limit=2)
+
+
+class DroneEarlyInformAuthTests(TestCase):
+    def test_early_inform_requires_login(self) -> None:
+        url = reverse("drone-early-inform")
+        resp = self.client.get(url, data={"lineId": "L1"})
+        self.assertEqual(resp.status_code, 401)
+
 
 class DroneSopPop3DummyModeDeleteTests(TestCase):
     @override_settings(DRONE_SOP_DUMMY_MODE=True, DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages")
-    @patch("api.drone.services_sop_pop3._delete_dummy_mail_messages")
-    @patch("api.drone.services_sop_pop3._upsert_drone_sop_rows")
-    @patch("api.drone.services_sop_pop3._list_dummy_mail_messages")
-    @patch("api.drone.services_sop_pop3.selectors.load_drone_sop_custom_end_step_map", return_value={})
+    @patch("api.drone.services.sop_pop3._delete_dummy_mail_messages")
+    @patch("api.drone.services.sop_pop3._upsert_drone_sop_rows")
+    @patch("api.drone.services.sop_pop3._list_dummy_mail_messages")
+    @patch("api.drone.services.sop_pop3.selectors.load_drone_sop_custom_end_step_map", return_value={})
     def test_dummy_mode_deletes_only_successfully_upserted_mails(
         self,
         _mock_end_step: Mock,
@@ -411,7 +703,7 @@ class DroneSopPop3DummyModeDeleteTests(TestCase):
 
 class DroneSopJiraHtmlDescriptionTests(TestCase):
     def test_build_jira_issue_fields_uses_html(self) -> None:
-        from api.drone import services_sop_jira
+        from api.drone.services import sop_jira
 
         config = DroneJiraConfig(
             base_url="http://example.local/jira",
@@ -421,7 +713,6 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
             bulk_size=20,
             connect_timeout=5,
             read_timeout=20,
-            project_key_by_line={},
         )
         row = {
             "sdwt_prod": "SDWT",
@@ -436,7 +727,12 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
             "defect_url": "https://example.com/defect",
         }
 
-        fields = services_sop_jira._build_jira_issue_fields(row=row, project_key="DUMMY", config=config)
+        fields = sop_jira._build_jira_issue_fields(
+            row=row,
+            project_key="DUMMY",
+            template_key="line_a",
+            config=config,
+        )
         description = fields.get("description") or ""
         self.assertIn("<table", description)
         self.assertIn("CTTTM URL", description)
@@ -444,7 +740,7 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
         self.assertIn("https://example.com/defect", description)
 
     def test_build_jira_issue_fields_renders_ctttm_links(self) -> None:
-        from api.drone import services_sop_jira
+        from api.drone.services import sop_jira
 
         config = DroneJiraConfig(
             base_url="http://example.local/jira",
@@ -454,7 +750,6 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
             bulk_size=20,
             connect_timeout=5,
             read_timeout=20,
-            project_key_by_line={},
         )
         row = {
             "sdwt_prod": "SDWT",
@@ -469,7 +764,12 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
             "url": [{"eqp_id": "EQP-1", "url": "https://example.com/ctttm"}],
         }
 
-        fields = services_sop_jira._build_jira_issue_fields(row=row, project_key="DUMMY", config=config)
+        fields = sop_jira._build_jira_issue_fields(
+            row=row,
+            project_key="DUMMY",
+            template_key="line_a",
+            config=config,
+        )
         description = fields.get("description") or ""
         self.assertIn("https://example.com/ctttm", description)
         self.assertIn(">EQP-1<", description)

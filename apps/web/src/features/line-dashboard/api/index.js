@@ -10,3 +10,4 @@ export {
   fetchLineSettings,
   updateLineSetting,
 } from "./line-settings"
+export { fetchLineJiraKey, updateLineJiraKey } from "./line-jira-key"

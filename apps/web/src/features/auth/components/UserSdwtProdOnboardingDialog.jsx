@@ -107,7 +107,7 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
         <div className="grid gap-4">
           <div className="rounded-lg border bg-card p-3">
             <p className="text-sm text-muted-foreground">현재 사용자</p>
-            <p className="text-sm font-medium text-foreground">{user?.name || user?.username || user?.email || "-"}</p>
+            <p className="text-sm font-medium text-foreground">{user?.username || user?.email || "-"}</p>
             {user?.department ? (
               <p className="mt-1 text-xs text-muted-foreground">부서(Claim): {user.department}</p>
             ) : null}
@@ -172,4 +172,3 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
     </Dialog>
   )
 }
-

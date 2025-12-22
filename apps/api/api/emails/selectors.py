@@ -11,17 +11,17 @@ from api.account import selectors as account_selectors
 from api.account.selectors import (
     get_next_user_sdwt_prod_change,
     list_distinct_user_sdwt_prod_values,
-    resolve_user_affiliation,
 )
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 
-from .models import Email
+from .models import Email, EmailOutbox
 
 
 class EmailAffiliation(TypedDict):
-    """이메일 발신자 소속 판별 결과(user_sdwt_prod)를 담는 타입입니다."""
+    """이메일 발신자 소속 판별 결과를 담는 타입입니다."""
 
     user_sdwt_prod: str
+    classification_source: str
 
 
 def _normalize_time(value: datetime | None) -> datetime:
@@ -32,19 +32,6 @@ def _normalize_time(value: datetime | None) -> datetime:
     if timezone.is_naive(value):
         return timezone.make_aware(value, timezone.utc)
     return value
-
-
-def _get_user_by_knox_id(sender_id: str):
-    """sender_id(knox_id)로 User 모델을 조회합니다."""
-
-    if not sender_id:
-        return None
-
-    UserModel = get_user_model()
-    if not hasattr(UserModel, "knox_id"):
-        return None
-
-    return UserModel.objects.filter(knox_id=sender_id).first()
 
 
 def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
@@ -152,18 +139,18 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
 
 
 def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -> EmailAffiliation:
-    """이메일 발신자/수신 시각 기준으로 user_sdwt_prod 소속을 판별합니다.
+    """이메일 발신자 기준으로 user_sdwt_prod 소속을 판별합니다.
 
-    Determine the affiliation snapshot for an email based on sender and received time.
+    Determine the affiliation snapshot for an email based on sender.
 
     Priority:
-    - UserSdwtProdChange (approved, time-based)
-    - User.user_sdwt_prod
+    - User.user_sdwt_prod (current)
+    - ExternalAffiliationSnapshot.predicted_user_sdwt_prod
     - UNASSIGNED_USER_SDWT_PROD fallback
 
     Args:
         sender_id: Parsed sender identifier (username/local-part).
-        received_at: Email received time.
+        received_at: Email received time. (unused for current-only policy)
 
     Returns:
         Dict containing resolved user_sdwt_prod.
@@ -172,15 +159,28 @@ def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -
         None. Read-only query.
     """
 
-    when = _normalize_time(received_at)
+    user = account_selectors.get_user_by_knox_id(knox_id=sender_id)
+    if user is not None:
+        resolved = (getattr(user, "user_sdwt_prod", None) or "").strip()
+        if resolved and resolved != UNASSIGNED_USER_SDWT_PROD:
+            return {
+                "user_sdwt_prod": resolved,
+                "classification_source": Email.ClassificationSource.CONFIRMED_USER,
+            }
 
-    user = _get_user_by_knox_id(sender_id)
-    if user is None:
-        return {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD}
+    snapshot = account_selectors.get_external_affiliation_snapshot_by_knox_id(knox_id=sender_id)
+    if snapshot is not None:
+        predicted = (snapshot.predicted_user_sdwt_prod or "").strip()
+        if predicted:
+            return {
+                "user_sdwt_prod": predicted,
+                "classification_source": Email.ClassificationSource.PREDICTED_EXTERNAL,
+            }
 
-    affiliation = resolve_user_affiliation(user, when)
-    resolved = (affiliation.get("user_sdwt_prod") or "").strip()
-    return {"user_sdwt_prod": resolved or UNASSIGNED_USER_SDWT_PROD}
+    return {
+        "user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD,
+        "classification_source": Email.ClassificationSource.UNASSIGNED,
+    }
 
 
 def _unassigned_mailbox_query() -> Q:
@@ -239,6 +239,125 @@ def list_unassigned_email_ids_for_sender_id(*, sender_id: str) -> list[int]:
         .filter(_unassigned_mailbox_query())
         .order_by("id")
         .values_list("id", flat=True)
+    )
+
+
+def list_pending_rag_emails(*, limit: int) -> list[Email]:
+    """rag_doc_id가 없는 이메일 목록을 limit 만큼 반환합니다.
+
+    Return emails missing rag_doc_id for backfill.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if limit <= 0:
+        return []
+
+    queryset = (
+        Email.objects.filter(
+            Q(rag_doc_id__isnull=True) | Q(rag_doc_id=""),
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
+        )
+        .order_by("id")[:limit]
+    )
+    return list(queryset)
+
+
+def list_pending_email_outbox(
+    *,
+    limit: int,
+    ready_before: datetime | None = None,
+    for_update: bool = False,
+    skip_locked: bool = True,
+) -> list[EmailOutbox]:
+    """처리 대기 중인 EmailOutbox 항목을 반환합니다.
+
+    Return pending outbox items that are ready to be processed.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if limit <= 0:
+        return []
+
+    when = _normalize_time(ready_before)
+    queryset = EmailOutbox.objects.filter(
+        status=EmailOutbox.Status.PENDING,
+        available_at__lte=when,
+    ).order_by("id")
+    if for_update:
+        queryset = queryset.select_for_update(skip_locked=skip_locked)
+    queryset = queryset[:limit]
+    return list(queryset)
+
+
+def list_email_id_user_sdwt_by_ids(*, email_ids: list[int]) -> dict[int, str | None]:
+    """Email id 목록으로 (id -> user_sdwt_prod) 매핑을 반환합니다.
+
+    Return mapping for Email.user_sdwt_prod by ids.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not email_ids:
+        return {}
+
+    rows = Email.objects.filter(id__in=email_ids).values("id", "user_sdwt_prod")
+    return {row["id"]: row["user_sdwt_prod"] for row in rows}
+
+
+def list_email_id_user_sdwt_by_sender_id(
+    *,
+    sender_id: str,
+    received_at_gte: datetime | None = None,
+    received_at_lt: datetime | None = None,
+) -> dict[int, str | None]:
+    """sender_id + 기간 조건으로 Email (id -> user_sdwt_prod) 매핑을 반환합니다.
+
+    Return mapping for Email.user_sdwt_prod by sender and time window.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not isinstance(sender_id, str) or not sender_id.strip():
+        return {}
+
+    queryset = Email.objects.filter(sender_id=sender_id.strip())
+    if received_at_gte is not None:
+        queryset = queryset.filter(received_at__gte=received_at_gte)
+    if received_at_lt is not None:
+        queryset = queryset.filter(received_at__lt=received_at_lt)
+
+    rows = queryset.values("id", "user_sdwt_prod")
+    return {row["id"]: row["user_sdwt_prod"] for row in rows}
+
+
+def list_email_ids_by_sender_after(
+    *,
+    sender_id: str,
+    received_at_gte: datetime,
+) -> list[int]:
+    """sender_id의 특정 시각 이후 이메일 id 목록을 반환합니다.
+
+    Return Email ids for sender_id after received_at_gte.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not isinstance(sender_id, str) or not sender_id.strip():
+        return []
+
+    normalized = sender_id.strip()
+    return list(
+        Email.objects.filter(sender_id=normalized, received_at__gte=received_at_gte)
+        .values_list("id", flat=True)
+        .order_by("id")
     )
 
 
@@ -321,6 +440,9 @@ def get_filtered_emails(
     Side effects:
         None. Read-only query.
     """
+
+    if not is_privileged and not accessible_user_sdwt_prods:
+        return Email.objects.none()
 
     queryset = Email.objects.order_by("-received_at", "-id")
     if not is_privileged:

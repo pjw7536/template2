@@ -23,7 +23,7 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
  * @typedef {Object} AuthUser
  * @property {string} id
  * @property {string} [email]
- * @property {string} [name]
+ * @property {string} [username]
  * @property {boolean} [is_superuser]
  * @property {boolean} [is_staff]
  * @property {string[]} [roles]

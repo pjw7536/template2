@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 import jwt
@@ -127,6 +127,7 @@ def _decode_id_token(raw_id_token: str) -> Dict[str, Any]:
         options={
             # TODO: 운영 환경에서는 아래 옵션들을 True로 설정하고
             #       적절한 leeway/clock_skew 조정 및 iss/aud 검증을 켜는 것이 안전함.
+            # 사내 시스템 전용이라 토큰 검증은 의도적으로 비활성화함.
             "verify_signature": False,
             "verify_exp": False,
             "verify_aud": False,
@@ -135,89 +136,68 @@ def _decode_id_token(raw_id_token: str) -> Dict[str, Any]:
     )
 
 
-def _split_display_name(display_name: str) -> Tuple[str, str]:
-    """
-    '홍길동' 같은 값을 (family_name='홍', given_name='길동') 으로 잘라주는 함수.
-
-    - 공백이 있을 경우: 첫 토큰을 family_name, 나머지를 given_name.
-    - 공백이 없을 경우: 첫 글자(성)를 family_name, 나머지를 given_name.
-    """
-    name = (display_name or "").strip()
-    if not name:
-        return "", ""
-
-    if " " in name:
-        parts = name.split()
-        if len(parts) == 1:
-            return parts[0], ""
-        return parts[0], " ".join(parts[1:])
-
-    # 공백이 없는 경우(예: 홍길동)
-    if len(name) == 1:
-        return name, ""
-    return name[0], name[1:]
-
-
 def _extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """
-    IdP(ADFS)에서 내려주는 고정 클레임 패턴 기반으로 사용자 정보 추출.
+    IdP(ADFS)에서 내려주는 클레임을 모델 필드로 매핑해 반환합니다.
 
-    - loginid  : 로그인 ID (KNOX ID) → User.knox_id
-    - sabun    : 사번 → User.sabun
-    - username : 한글 이름(예: 홍길동) → User.username / User.firstname / User.lastname
-    - deptname : 부서명 → User.department + User.deptname
-    - mail     : 이메일 → User.email + User.mail
+    Claims -> User fields:
+        loginid     -> knox_id
+        sabun       -> sabun
+        username    -> username (또한 first_name/last_name 계산에 사용)
+        username_en -> username_en
+        first_name  -> first_name
+        last_name   -> last_name
+        givenname   -> givenname
+        surname     -> surname
+        deptname    -> department
+        deptid      -> deptid
+        mail        -> email
+        grdName     -> grd_name
+        grdname_en  -> grdname_en
+        busname     -> busname
+        intcode     -> intcode
+        intname     -> intname
+        origincomp  -> origincomp
+        employeetype-> employeetype
     """
-    knox_id = str(claims.get("loginid") or "").strip()
-    sabun = str(claims.get("sabun") or "").strip()
-
-    username = str(claims.get("username") or "").strip()
-    deptname = str(claims.get("deptname") or "").strip()
-    deptid = str(claims.get("deptid") or "").strip()
-    mail = str(claims.get("mail") or "").strip()
-
-    grd_name = str(claims.get("grdName") or "").strip()
-    grdname_en = str(claims.get("grdname_en") or "").strip()
-    busname = str(claims.get("busname") or "").strip()
-    username_en = str(claims.get("username_en") or "").strip()
-
-    givenname = str(claims.get("givenname") or "").strip()
-    surname = str(claims.get("surname") or "").strip()
-
-    intcode = str(claims.get("intcode") or "").strip()
-    intname = str(claims.get("intname") or "").strip()
-
-    x_ms_forwarded_client_ip = str(claims.get("x-ms-forwarded-client-ip") or "").strip()
-    origincomp = str(claims.get("origincomp") or "").strip()
-    employeetype = str(claims.get("employeetype") or "").strip()
-
-    lastname_ko, firstname_ko = _split_display_name(username)
-    first_name = givenname or firstname_ko
-    last_name = surname or lastname_ko
-
-    return {
-        "knox_id": knox_id or None,
-        "sabun": sabun or None,
-        "username": username or None,
-        "firstname": firstname_ko or None,
-        "lastname": lastname_ko or None,
-        "deptname": deptname or None,
-        "deptid": deptid or None,
-        "mail": mail or None,
-        "grd_name": grd_name or None,
-        "grdname_en": grdname_en or None,
-        "busname": busname or None,
-        "username_en": username_en or None,
-        "givenname": givenname or None,
-        "surname": surname or None,
-        "intcode": intcode or None,
-        "intname": intname or None,
-        "x_ms_forwarded_client_ip": x_ms_forwarded_client_ip or None,
-        "origincomp": origincomp or None,
-        "employeetype": employeetype or None,
-        "first_name": first_name or None,
-        "last_name": last_name or None,
+    claim_to_field = {
+        "loginid": "knox_id",
+        "sabun": "sabun",
+        "username": "username",
+        "username_en": "username_en",
+        "first_name": "first_name",
+        "last_name": "last_name",
+        "givenname": "givenname",
+        "surname": "surname",
+        "deptname": "department",
+        "deptid": "deptid",
+        "mail": "email",
+        "grdName": "grd_name",
+        "grdname_en": "grdname_en",
+        "busname": "busname",
+        "intcode": "intcode",
+        "intname": "intname",
+        "origincomp": "origincomp",
+        "employeetype": "employeetype",
     }
+
+    info: Dict[str, Optional[str]] = {}
+    for claim_key, field_name in claim_to_field.items():
+        raw = claims.get(claim_key)
+        value = str(raw).strip() if raw is not None else ""
+        info[field_name] = value or None
+
+    username = info.get("username") or ""
+    if username and (not info.get("first_name") or not info.get("last_name")):
+        trimmed = username.strip()
+        if trimmed:
+            if len(trimmed) >= 2:
+                info["last_name"] = info.get("last_name") or trimmed[:1]
+                info["first_name"] = info.get("first_name") or trimmed[1:]
+            else:
+                info["first_name"] = info.get("first_name") or trimmed
+
+    return info
 
 
 # =============================================================================
@@ -288,7 +268,7 @@ def auth_callback(request: HttpRequest) -> HttpResponse:
     3. state 복원 → target 문자열 → 안전한 redirect 타깃으로 정규화
     4. 세션 nonce vs id_token.nonce 비교
     5. id_token 디코드 (현재 verify 옵션은 False 상태)
-    6. username / deptname / sabun / mail 기반으로 유저 매핑
+    6. username / department / sabun / email 기반으로 유저 매핑
     7. Django 세션 로그인 후 target으로 리다이렉트
     """
     if request.method != "POST":
@@ -330,29 +310,10 @@ def auth_callback(request: HttpRequest) -> HttpResponse:
     if expected_nonce is None or decoded.get("nonce") != expected_nonce:
         return _redirect_with_error(target, "invalid_nonce")
 
-    # loginid / sabun / deptname / mail 기반 사용자 정보 추출
+    # loginid / sabun / department / email 기반 사용자 정보 추출
     info = _extract_user_info_from_claims(decoded)
-    first_name = info.get("first_name") or ""
-    last_name = info.get("last_name") or ""
-    deptname = info.get("deptname")
-    deptid = info.get("deptid")
     sabun = info.get("sabun")
     knox_id = info.get("knox_id")
-    mail = info.get("mail") or ""
-    username = info.get("username")
-    firstname = info.get("firstname")
-    lastname = info.get("lastname")
-    grd_name = info.get("grd_name")
-    grdname_en = info.get("grdname_en")
-    busname = info.get("busname")
-    username_en = info.get("username_en")
-    givenname = info.get("givenname")
-    surname = info.get("surname")
-    intcode = info.get("intcode")
-    intname = info.get("intname")
-    x_ms_forwarded_client_ip = info.get("x_ms_forwarded_client_ip")
-    origincomp = info.get("origincomp")
-    employeetype = info.get("employeetype")
 
     # Django username 필드는 sabun을 사용 (항상 온다고 가정)
     if not sabun:
@@ -362,133 +323,23 @@ def auth_callback(request: HttpRequest) -> HttpResponse:
 
     # Django 유저 생성/업데이트
     UserModel = get_user_model()
-    user, created = UserModel.objects.get_or_create(
-        sabun=str(sabun),
-        defaults={
-            "email": mail,
-            "first_name": first_name,
-            "last_name": last_name,
-            "username": username,
-            "knox_id": str(knox_id),
-            "firstname": firstname,
-            "lastname": lastname,
-            "mail": mail or None,
-            "department": deptname,
-            "deptname": deptname,
-            "deptid": deptid,
-            "grd_name": grd_name,
-            "grdname_en": grdname_en,
-            "busname": busname,
-            "username_en": username_en,
-            "givenname": givenname,
-            "surname": surname,
-            "intcode": intcode,
-            "intname": intname,
-            "x_ms_forwarded_client_ip": x_ms_forwarded_client_ip,
-            "origincomp": origincomp,
-            "employeetype": employeetype,
-        },
-    )
+    defaults = {key: value for key, value in info.items() if key != "sabun"}
+    user, created = UserModel.objects.get_or_create(sabun=str(sabun), defaults=defaults)
 
     update_fields = []
 
-    # 이름 / 이메일 갱신
-    if first_name and user.first_name != first_name:
-        user.first_name = first_name
-        update_fields.append("first_name")
+    candidate_updates = {**info, "knox_id": str(knox_id)}
+    candidate_updates.pop("sabun", None)
 
-    if last_name and getattr(user, "last_name", None) != last_name:
-        try:
-            user.last_name = last_name
-            update_fields.append("last_name")
-        except Exception:
-            # CustomUser에 last_name 이 없을 수도 있으니 방어적으로 처리
-            pass
-
-    if mail and user.email != mail:
-        user.email = mail
-        update_fields.append("email")
-
-    # deptname 필드가 User 모델에 있다면 같이 업데이트
-    if hasattr(user, "department") and deptname and user.department != deptname:
-        user.department = deptname
-        update_fields.append("department")
-
-    if hasattr(user, "username") and username and user.username != username:
-        user.username = username
-        update_fields.append("username")
-
-    if hasattr(user, "deptname") and deptname and user.deptname != deptname:
-        user.deptname = deptname
-        update_fields.append("deptname")
-
-    if hasattr(user, "deptid") and deptid and user.deptid != deptid:
-        user.deptid = deptid
-        update_fields.append("deptid")
-
-    if hasattr(user, "knox_id") and user.knox_id != str(knox_id):
-        user.knox_id = str(knox_id)
-        update_fields.append("knox_id")
-
-    if hasattr(user, "firstname") and firstname and user.firstname != firstname:
-        user.firstname = firstname
-        update_fields.append("firstname")
-
-    if hasattr(user, "lastname") and lastname and user.lastname != lastname:
-        user.lastname = lastname
-        update_fields.append("lastname")
-
-    if hasattr(user, "mail") and mail and user.mail != mail:
-        user.mail = mail
-        update_fields.append("mail")
-
-    if hasattr(user, "grd_name") and grd_name and user.grd_name != grd_name:
-        user.grd_name = grd_name
-        update_fields.append("grd_name")
-
-    if hasattr(user, "grdname_en") and grdname_en and user.grdname_en != grdname_en:
-        user.grdname_en = grdname_en
-        update_fields.append("grdname_en")
-
-    if hasattr(user, "busname") and busname and user.busname != busname:
-        user.busname = busname
-        update_fields.append("busname")
-
-    if hasattr(user, "username_en") and username_en and user.username_en != username_en:
-        user.username_en = username_en
-        update_fields.append("username_en")
-
-    if hasattr(user, "givenname") and givenname and user.givenname != givenname:
-        user.givenname = givenname
-        update_fields.append("givenname")
-
-    if hasattr(user, "surname") and surname and user.surname != surname:
-        user.surname = surname
-        update_fields.append("surname")
-
-    if hasattr(user, "intcode") and intcode and user.intcode != intcode:
-        user.intcode = intcode
-        update_fields.append("intcode")
-
-    if hasattr(user, "intname") and intname and user.intname != intname:
-        user.intname = intname
-        update_fields.append("intname")
-
-    if (
-        hasattr(user, "x_ms_forwarded_client_ip")
-        and x_ms_forwarded_client_ip
-        and user.x_ms_forwarded_client_ip != x_ms_forwarded_client_ip
-    ):
-        user.x_ms_forwarded_client_ip = x_ms_forwarded_client_ip
-        update_fields.append("x_ms_forwarded_client_ip")
-
-    if hasattr(user, "origincomp") and origincomp and user.origincomp != origincomp:
-        user.origincomp = origincomp
-        update_fields.append("origincomp")
-
-    if hasattr(user, "employeetype") and employeetype and user.employeetype != employeetype:
-        user.employeetype = employeetype
-        update_fields.append("employeetype")
+    for field_name, value in candidate_updates.items():
+        if not value:
+            continue
+        if not hasattr(user, field_name):
+            continue
+        if getattr(user, field_name) == value:
+            continue
+        setattr(user, field_name, value)
+        update_fields.append(field_name)
 
     if created or update_fields:
         user.save(update_fields=update_fields or None)
@@ -512,7 +363,6 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "id": user.pk,
         "usr_id": getattr(user, "knox_id", None),  # = 고유값(User.knox_id)
         "username": username,  # = 사용자 표시용 이름(User.username)
-        "name": username,  # = 화면 표시용 이름(프론트 호환)
         "email": user.email,
         "is_superuser": bool(getattr(user, "is_superuser", False)),
         "is_staff": bool(getattr(user, "is_staff", False)),

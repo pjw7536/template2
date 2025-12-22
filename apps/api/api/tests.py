@@ -26,22 +26,23 @@ class OidcClaimExtractionTests(SimpleTestCase):
         info = _extract_user_info_from_claims(claims)
         self.assertEqual(info["knox_id"], "knox-user")
         self.assertEqual(info["sabun"], "12345")
-        self.assertEqual(info["deptname"], "Engineering")
-        self.assertEqual(info["mail"], "user@example.com")
+        self.assertEqual(info["department"], "Engineering")
+        self.assertEqual(info["email"], "user@example.com")
 
-    def test_extract_user_info_prefers_givenname_surname(self) -> None:
+    def test_extract_user_info_sets_korean_and_english_names(self) -> None:
         claims = {
             "loginid": "knox-user",
             "sabun": "12345",
+            "username": "홍길동",
             "givenname": "John",
             "surname": "Doe",
-            "deptname": "Engineering",
-            "mail": "user@example.com",
         }
 
         info = _extract_user_info_from_claims(claims)
-        self.assertEqual(info["first_name"], "John")
-        self.assertEqual(info["last_name"], "Doe")
+        self.assertEqual(info["first_name"], "길동")
+        self.assertEqual(info["last_name"], "홍")
+        self.assertEqual(info["givenname"], "John")
+        self.assertEqual(info["surname"], "Doe")
 
 
 class AssistantSourceNormalizationTests(SimpleTestCase):
@@ -131,8 +132,14 @@ class AssistantRagIntegrationTests(SimpleTestCase):
 
         search_mock.assert_called_once_with("hello", index_name="idx-user", num_result_doc=5, timeout=30)
         self.assertTrue(result.is_dummy)
-        self.assertEqual(result.contexts, ["컨텍스트1", "컨텍스트2"])
-        self.assertEqual([source["doc_id"] for source in result.sources], ["email-1", "email-2"])
+        self.assertEqual(
+            result.contexts,
+            [
+                "[emailId: email-1 | title: 첫번째]\n컨텍스트1",
+                "[emailId: email-2 | title: 두번째]\n컨텍스트2",
+            ],
+        )
+        self.assertEqual(result.sources, [])
         self.assertEqual(result.rag_response, rag_response)
 
 

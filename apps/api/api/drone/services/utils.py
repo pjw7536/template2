@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import logging
 import zlib
 from typing import Any
 
@@ -58,3 +57,9 @@ def _parse_int(value: Any, default: int) -> int:
         return default
     return parsed
 
+
+def _first_defined(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None

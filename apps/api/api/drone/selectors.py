@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from django.db import connection
 from django.db.models import QuerySet
 
+from api.account import selectors as account_selectors
 from api.common.constants import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME, SAFE_IDENTIFIER
 from api.common.db import run_query
 from api.common.utils import (
@@ -22,7 +23,7 @@ from api.common.utils import (
     to_int,
 )
 
-from .models import DroneEarlyInform, DroneSOP
+from .models import DroneEarlyInform, DroneSOP, DroneSopJiraTemplate, DroneSopJiraUserTemplate
 
 
 def list_early_inform_entries(*, line_id: str) -> QuerySet[DroneEarlyInform]:
@@ -35,14 +36,73 @@ def list_early_inform_entries(*, line_id: str) -> QuerySet[DroneEarlyInform]:
     return DroneEarlyInform.objects.filter(line_id=line_id).order_by("main_step", "id")
 
 
-def get_early_inform_entry_by_id(*, entry_id: int) -> DroneEarlyInform | None:
-    """id로 조기 알림 설정을 조회합니다.
+def list_drone_sop_jira_templates_by_line_ids(
+    *,
+    line_ids: set[str] | list[str],
+) -> dict[str, str]:
+    """line_id별 Jira 템플릿 키 맵을 조회합니다.
+
+    Returns:
+        {line_id: template_key}
 
     Side effects:
         None. Read-only query.
     """
 
-    return DroneEarlyInform.objects.filter(id=entry_id).first()
+    normalized_lines = [line.strip() for line in line_ids if isinstance(line, str) and line.strip()]
+    if not normalized_lines:
+        return {}
+
+    rows = DroneSopJiraTemplate.objects.filter(line_id__in=normalized_lines).values("line_id", "template_key")
+    mapping: dict[str, str] = {}
+    for row in rows:
+        line_id = row.get("line_id")
+        template_key = row.get("template_key")
+        if not isinstance(line_id, str) or not line_id.strip():
+            continue
+        if not isinstance(template_key, str) or not template_key.strip():
+            continue
+        mapping[line_id.strip()] = template_key.strip()
+
+    return mapping
+
+
+def list_drone_sop_jira_templates_by_user_sdwt_prods(
+    *,
+    user_sdwt_prod_values: set[str] | list[str],
+) -> dict[str, str]:
+    """user_sdwt_prod별 Jira 템플릿 키 맵을 조회합니다.
+
+    Returns:
+        {user_sdwt_prod: template_key}
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    normalized_users = [
+        user_sdwt_prod.strip()
+        for user_sdwt_prod in user_sdwt_prod_values
+        if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip()
+    ]
+    if not normalized_users:
+        return {}
+
+    rows = DroneSopJiraUserTemplate.objects.filter(user_sdwt_prod__in=normalized_users).values(
+        "user_sdwt_prod",
+        "template_key",
+    )
+    mapping: dict[str, str] = {}
+    for row in rows:
+        user_sdwt_prod = row.get("user_sdwt_prod")
+        template_key = row.get("template_key")
+        if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
+            continue
+        if not isinstance(template_key, str) or not template_key.strip():
+            continue
+        mapping[user_sdwt_prod.strip()] = template_key.strip()
+
+    return mapping
 
 
 def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
@@ -242,6 +302,36 @@ def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:
     """
 
     return _get_user_sdwt_prod_values(line_id)
+
+
+def get_affiliation_jira_key_for_line_and_sdwt(*, line_id: str, user_sdwt_prod: str) -> str | None:
+    """line_id + user_sdwt_prod 조합의 Jira project key를 조회합니다.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    return account_selectors.get_affiliation_jira_key(
+        line_id=line_id,
+        user_sdwt_prod=user_sdwt_prod,
+    )
+
+
+def list_affiliation_jira_keys_by_line_and_sdwt(
+    *,
+    line_ids: set[str] | list[str],
+    user_sdwt_prod_values: set[str] | list[str],
+) -> dict[tuple[str, str], str | None]:
+    """line_id + user_sdwt_prod 조합별 Jira project key 맵을 조회합니다.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    return account_selectors.list_affiliation_jira_keys_by_line_and_sdwt(
+        line_ids=line_ids,
+        user_sdwt_prod_values=user_sdwt_prod_values,
+    )
 
 
 def list_line_ids_for_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:

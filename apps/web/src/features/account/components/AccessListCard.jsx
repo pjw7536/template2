@@ -2,6 +2,13 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 
+function formatDate(value) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString("ko-KR")
+}
+
 function AccessList({ items }) {
   if (!items?.length) {
     return <p className="text-sm text-muted-foreground">권한이 없습니다.</p>
@@ -12,17 +19,24 @@ function AccessList({ items }) {
       {items.map((item) => (
         <div
           key={`${item.userSdwtProd}-${item.source}`}
-          className="flex items-center justify-between rounded-md border px-3 py-2"
+          className="flex flex-col gap-1 rounded-md border px-3 py-2"
         >
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{item.userSdwtProd}</span>
-            {item.source === "self" ? (
-              <Badge variant="secondary">내 소속</Badge>
-            ) : (
-              <Badge variant="outline">부여됨</Badge>
-            )}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{item.userSdwtProd}</span>
+              {item.source === "self" ? (
+                <Badge variant="secondary">내 소속</Badge>
+              ) : (
+                <Badge variant="outline">부여됨</Badge>
+              )}
+            </div>
+            {item.canManage ? <Badge variant="default">관리자</Badge> : null}
           </div>
-          {item.canManage ? <Badge variant="default">관리자</Badge> : null}
+          {item.grantedAt ? (
+            <span className="text-xs text-muted-foreground">
+              부여 시각: {formatDate(item.grantedAt)}
+            </span>
+          ) : null}
         </div>
       ))}
     </div>

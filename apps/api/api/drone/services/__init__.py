@@ -1,17 +1,17 @@
 """Drone feature service layer.
 
 Implementation is split by functional area for readability:
- - Early inform CRUD: `services_early_inform.py`
- - Drone SOP POP3 ingest: `services_sop_pop3.py`
- - Drone SOP Jira integration: `services_sop_jira.py`
- - Shared helpers: `services_utils.py`
+ - Early inform CRUD: `services/early_inform.py`
+ - Drone SOP POP3 ingest: `services/sop_pop3.py`
+ - Drone SOP Jira integration: `services/sop_jira.py`
+ - Shared helpers: `services/utils.py`
 
 This module acts as a stable import facade (e.g. `from api.drone import services`).
 """
 
 from __future__ import annotations
 
-from .services_early_inform import (
+from .early_inform import (
     DroneEarlyInformDuplicateError,
     DroneEarlyInformNotFoundError,
     DroneEarlyInformUpdateResult,
@@ -19,7 +19,7 @@ from .services_early_inform import (
     delete_early_inform_entry,
     update_early_inform_entry,
 )
-from .services_sop_jira import (
+from .sop_jira import (
     DroneJiraConfig,
     DroneSopInstantInformResult,
     DroneSopJiraCreateResult,
@@ -28,14 +28,14 @@ from .services_sop_jira import (
     run_drone_sop_jira_create_from_env,
     run_drone_sop_jira_instant_inform,
 )
-from .services_sop_pop3 import (
+from .sop_pop3 import (
     DroneSopPop3Config,
     DroneSopPop3IngestResult,
     _build_drone_sop_row,
     _upsert_drone_sop_rows,
     run_drone_sop_pop3_ingest_from_env,
 )
-from .services_utils import (
+from .utils import (
     _lock_key,
     _parse_bool,
     _parse_int,

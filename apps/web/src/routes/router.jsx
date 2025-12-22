@@ -16,19 +16,21 @@ import { AssistantLayout, assistantRoutes } from "@/features/assistant"
 import { emailsRoutes } from "@/features/emails"
 import { accountRoutes } from "@/features/account"
 
+const protectedFeatureRoutes = [
+  ...modelsRoutes,
+  ...lineDashboardRoutes,
+  ...appstoreRoutes,
+  ...emailsRoutes,
+  ...vocRoutes,
+  ...accountRoutes,
+]
+
 const protectedAppRoutes = {
   element: <AuthAutoLoginGate />,
   children: [
     {
       element: <ProtectedAppLayout />,
-      children: [
-        ...modelsRoutes,
-        ...lineDashboardRoutes,
-        ...appstoreRoutes,
-        ...emailsRoutes,
-        ...vocRoutes,
-        ...accountRoutes,
-      ],
+      children: protectedFeatureRoutes,
     },
   ],
 }

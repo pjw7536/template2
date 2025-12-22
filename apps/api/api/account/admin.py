@@ -11,6 +11,7 @@ from django.utils import timezone
 from api.account.selectors import get_current_user_sdwt_prod_change
 from api.account.models import (
     Affiliation,
+    ExternalAffiliationSnapshot,
     User,
     UserProfile,
     UserSdwtProdAccess,
@@ -69,16 +70,27 @@ class AccountUserAdmin(DjangoUserAdmin):
     list_display = (
         "sabun",
         "knox_id",
-        "mail",
-        "deptname",
+        "email",
+        "department",
         "line",
         "user_sdwt_prod",
+        "requires_affiliation_reconfirm",
         "is_staff",
         "is_superuser",
         "is_active",
     )
-    list_filter = ("is_staff", "is_superuser", "is_active", "line")
-    search_fields = ("sabun", "knox_id", "mail", "firstname", "lastname", "deptname", "line", "user_sdwt_prod")
+    list_filter = ("is_staff", "is_superuser", "is_active", "line", "requires_affiliation_reconfirm")
+    search_fields = (
+        "sabun",
+        "knox_id",
+        "email",
+        "username",
+        "first_name",
+        "last_name",
+        "department",
+        "line",
+        "user_sdwt_prod",
+    )
 
     fieldsets = (
         (None, {"fields": ("sabun", "password")}),
@@ -95,17 +107,18 @@ class AccountUserAdmin(DjangoUserAdmin):
             },
         ),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
-        ("Identity", {"fields": ("knox_id", "mail")}),
-        ("Names", {"fields": ("firstname", "lastname", "username_en", "givenname", "surname")}),
+        ("Identity", {"fields": ("knox_id", "email")}),
+        ("Names", {"fields": ("username", "first_name", "last_name", "username_en", "givenname", "surname")}),
         (
             "Organization",
             {
                 "fields": (
-                    "deptname",
                     "deptid",
                     "department",
                     "line",
                     "user_sdwt_prod",
+                    "requires_affiliation_reconfirm",
+                    "affiliation_confirmed_at",
                     "user_sdwt_prod_effective_from",
                     "grd_name",
                     "grdname_en",
@@ -135,11 +148,17 @@ class AccountUserAdmin(DjangoUserAdmin):
         ),
     )
 
-    @admin.action(description="UNASSIGNED(미분류) 메일을 사용자 현재 메일함으로 가져오기 (RAG 베스트에포트)")
+    @admin.action(
+        description=(
+            "UNASSIGNED(미분류) 메일을 사용자 현재 메일함으로 가져오기 "
+            "(RAG 베스트에포트, 누락=요청했지만 DB에 없는 ID)"
+        )
+    )
     def claim_unassigned_emails(self, request, queryset):  # type: ignore[override]
         total_moved = 0
         total_rag_registered = 0
         total_rag_failed = 0
+        total_rag_missing = 0
         failures: list[str] = []
 
         for user in queryset.iterator():
@@ -152,6 +171,7 @@ class AccountUserAdmin(DjangoUserAdmin):
             total_moved += result.get("moved", 0)
             total_rag_registered += result.get("ragRegistered", 0)
             total_rag_failed += result.get("ragFailed", 0)
+            total_rag_missing += result.get("ragMissing", 0)
 
         if failures:
             details = " | ".join(failures[:5])
@@ -159,7 +179,8 @@ class AccountUserAdmin(DjangoUserAdmin):
                 details = f"{details} | (+{len(failures) - 5} more)"
             self.message_user(
                 request,
-                f"가져온 메일: {total_moved}개. RAG 등록 성공={total_rag_registered}, 실패={total_rag_failed}. "
+                f"가져온 메일: {total_moved}개. RAG 등록 성공={total_rag_registered}, "
+                f"실패={total_rag_failed}, 누락={total_rag_missing} (요청했지만 DB에 없는 ID). "
                 f"실패: {details}",
                 level=messages.WARNING,
             )
@@ -167,7 +188,8 @@ class AccountUserAdmin(DjangoUserAdmin):
 
         self.message_user(
             request,
-            f"가져온 메일: {total_moved}개. RAG 등록 성공={total_rag_registered}, 실패={total_rag_failed}.",
+            f"가져온 메일: {total_moved}개. RAG 등록 성공={total_rag_registered}, "
+            f"실패={total_rag_failed}, 누락={total_rag_missing} (요청했지만 DB에 없는 ID).",
             level=messages.SUCCESS,
         )
         return None
@@ -210,7 +232,7 @@ class AccountUserAdmin(DjangoUserAdmin):
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "role")
     list_filter = ("role",)
-    search_fields = ("user__sabun", "user__knox_id", "user__mail")
+    search_fields = ("user__sabun", "user__knox_id", "user__email")
     autocomplete_fields = ("user",)
 
 
@@ -229,10 +251,11 @@ class UserSdwtProdAccessAdmin(admin.ModelAdmin):
     search_fields = (
         "user__sabun",
         "user__knox_id",
-        "user__mail",
+        "user__email",
         "user_sdwt_prod",
         "granted_by__sabun",
         "granted_by__knox_id",
+        "granted_by__email",
     )
     autocomplete_fields = ("user", "granted_by")
     ordering = ("-created_at", "-id")
@@ -245,12 +268,13 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
         "from_user_sdwt_prod",
         "to_user_sdwt_prod",
         "effective_from",
+        "status",
         "approved",
         "applied",
         "approved_by",
         "approved_at",
     )
-    list_filter = ("approved", "applied", "to_user_sdwt_prod")
+    list_filter = ("status", "approved", "applied", "to_user_sdwt_prod")
     search_fields = (
         "user__sabun",
         "user__knox_id",
@@ -258,5 +282,15 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
         "to_user_sdwt_prod",
     )
     autocomplete_fields = ("user", "approved_by", "created_by")
-    date_hierarchy = "effective_from"
-    ordering = ("-effective_from", "-id")
+
+
+@admin.register(ExternalAffiliationSnapshot)
+class ExternalAffiliationSnapshotAdmin(admin.ModelAdmin):
+    list_display = (
+        "knox_id",
+        "predicted_user_sdwt_prod",
+        "source_updated_at",
+        "last_seen_at",
+    )
+    search_fields = ("knox_id", "predicted_user_sdwt_prod")
+    ordering = ("-last_seen_at", "-id")

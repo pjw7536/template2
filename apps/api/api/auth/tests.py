@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 
@@ -11,7 +12,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json(), {"detail": "unauthorized"})
 
-    def test_auth_me_returns_username_as_name_and_knox_id_as_usr_id(self) -> None:
+    def test_auth_me_returns_username_and_knox_id(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S12345", password="test-password")
         user.knox_id = "KNOX-12345"
@@ -29,5 +30,30 @@ class AuthMeTests(TestCase):
 
         self.assertEqual(payload["usr_id"], "KNOX-12345")
         self.assertEqual(payload["username"], "홍길동")
-        self.assertEqual(payload["name"], "홍길동")
+        self.assertNotIn("name", payload)
         self.assertEqual(payload["email"], "hong@example.com")
+
+
+class AuthEndpointTests(TestCase):
+    @override_settings(OIDC_PROVIDER_CONFIGURED=False)
+    def test_auth_login_returns_bad_request_when_not_configured(self) -> None:
+        response = self.client.get(reverse("auth-login"))
+        self.assertEqual(response.status_code, 400)
+
+    def test_auth_logout_returns_logout_url(self) -> None:
+        response = self.client.post(reverse("auth-logout"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("logoutUrl", response.json())
+
+    def test_auth_config_returns_fields(self) -> None:
+        response = self.client.get(reverse("auth-config"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("clientId", payload)
+        self.assertIn("loginUrl", payload)
+
+    @override_settings(FRONTEND_BASE_URL="http://frontend.local")
+    def test_frontend_redirect_uses_base_url(self) -> None:
+        response = self.client.get(reverse("frontend-redirect"))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith("http://frontend.local"))

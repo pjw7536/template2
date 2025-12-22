@@ -20,9 +20,10 @@ from django.conf import settings
 from django.db import connection, transaction
 from django.utils import timezone
 
-from . import selectors
-from .models import DroneSOP
-from .services_utils import (
+from .. import selectors
+from ..models import DroneSOP, build_sop_key
+from .utils import (
+    _first_defined,
     _lock_key,
     _parse_bool,
     _parse_int,
@@ -39,6 +40,13 @@ def _normalize_blank(value: Any) -> Any:
     if isinstance(value, str) and not value.strip():
         return None
     return value
+
+
+def _sanitize_defect_url(value: Any) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).replace('"', "").strip()
+    return cleaned or None
 
 
 def _extract_first_data_tag(html: str) -> dict[str, str]:
@@ -194,11 +202,16 @@ def _build_drone_sop_row(
         "knox_id": knox_value,
         "user_sdwt_prod": normalized.get("user_sdwt_prod"),
         "comment": normalized.get("comment"),
-        "defect_url": (lambda x: str(x).replace('\"', "") if x is not None else None)(
-            normalized.get("defect_url")
-        ),
+        "defect_url": _sanitize_defect_url(normalized.get("defect_url")),
         "instant_inform": 0,
     }
+    row["sop_key"] = build_sop_key(
+        line_id=row.get("line_id"),
+        eqp_id=row.get("eqp_id"),
+        chamber_ids=row.get("chamber_ids"),
+        lot_id=row.get("lot_id"),
+        main_step=row.get("main_step"),
+    )
 
     user_sdwt_prod = str(row.get("user_sdwt_prod") or "").strip()
     main_step = str(row.get("main_step") or "").strip()
@@ -249,9 +262,11 @@ class DroneSopPop3Config:
             or ""
         ).strip()
         port = _parse_int(
-            getattr(settings, "DRONE_SOP_POP3_PORT", None)
-            or getattr(settings, "EMAIL_POP3_PORT", None)
-            or 995,
+            _first_defined(
+                getattr(settings, "DRONE_SOP_POP3_PORT", None),
+                getattr(settings, "EMAIL_POP3_PORT", None),
+                995,
+            ),
             995,
         )
         username = (
@@ -265,18 +280,25 @@ class DroneSopPop3Config:
             or ""
         ).strip()
         use_ssl = _parse_bool(
-            getattr(settings, "DRONE_SOP_POP3_USE_SSL", None)
-            or getattr(settings, "EMAIL_POP3_USE_SSL", None),
+            _first_defined(
+                getattr(settings, "DRONE_SOP_POP3_USE_SSL", None),
+                getattr(settings, "EMAIL_POP3_USE_SSL", None),
+            ),
             True,
         )
         timeout = _parse_int(
-            getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None)
-            or getattr(settings, "EMAIL_POP3_TIMEOUT", None)
-            or 60,
+            _first_defined(
+                getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None),
+                getattr(settings, "EMAIL_POP3_TIMEOUT", None),
+                60,
+            ),
             60,
         )
         dummy_mode = _parse_bool(
-            getattr(settings, "DRONE_SOP_DUMMY_MODE", None) or os.getenv("DRONE_SOP_DUMMY_MODE"),
+            _first_defined(
+                getattr(settings, "DRONE_SOP_DUMMY_MODE", None),
+                os.getenv("DRONE_SOP_DUMMY_MODE"),
+            ),
             False,
         )
         dummy_mail_messages_url = (
@@ -332,6 +354,7 @@ def _upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
         return 0
 
     insert_cols = [
+        "sop_key",
         "line_id",
         "sdwt_prod",
         "sample_type",
@@ -354,8 +377,8 @@ def _upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
         "needtosend",
         "custom_end_step",
     ]
-    conflict_cols = ["line_id", "eqp_id", "chamber_ids", "lot_id", "main_step"]
-    exclude_update_cols = {"needtosend", "comment", "instant_inform"}
+    conflict_cols = ["sop_key"]
+    exclude_update_cols = {"needtosend", "comment", "instant_inform", "sop_key"}
 
     placeholders = ",".join(["%s"] * len(insert_cols))
     quoted_table = f'"{DroneSOP._meta.db_table}"'
@@ -379,6 +402,14 @@ def _upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
     args = []
     for row in rows:
         values: list[Any] = []
+        if not row.get("sop_key"):
+            row["sop_key"] = build_sop_key(
+                line_id=row.get("line_id"),
+                eqp_id=row.get("eqp_id"),
+                chamber_ids=row.get("chamber_ids"),
+                lot_id=row.get("lot_id"),
+                main_step=row.get("main_step"),
+            )
         for col in insert_cols:
             value = row.get(col)
             if value is None and col == "instant_inform":

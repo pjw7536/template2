@@ -6,7 +6,7 @@ import gzip
 import logging
 import os
 import poplib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as dt_timezone
 from email.header import decode_header, make_header
 from email.message import Message
 from email.parser import BytesParser
@@ -16,22 +16,45 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import requests
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from django.db import models
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import NotFound
 
 from .selectors import (
+    get_accessible_user_sdwt_prods_for_user,
     get_next_user_sdwt_prod_change_effective_from,
+    list_email_id_user_sdwt_by_ids,
+    list_email_id_user_sdwt_by_sender_id,
+    list_email_ids_by_sender_after,
     list_emails_by_ids,
+    list_mailbox_members,
+    list_pending_email_outbox,
+    list_pending_rag_emails,
+    list_privileged_email_mailboxes,
     list_unassigned_email_ids_for_sender_id,
     resolve_email_affiliation,
-    resolve_user_affiliation,
 )
-from .models import Email
+from .models import Email, EmailOutbox
+from api.account.selectors import resolve_user_affiliation
 from api.rag.services import delete_rag_doc, insert_email_to_rag, resolve_rag_index_name
+from .permissions import user_can_view_unassigned
 
 logger = logging.getLogger(__name__)
+
+OUTBOX_MAX_RETRIES = 5
+OUTBOX_RETRY_BASE_SECONDS = 30
+OUTBOX_RETRY_MAX_SECONDS = 3600
+
+
+def _compute_outbox_backoff_seconds(retry_count: int) -> int:
+    """재시도 횟수에 따른 백오프(초)를 계산합니다."""
+
+    if retry_count <= 0:
+        return OUTBOX_RETRY_BASE_SECONDS
+    seconds = OUTBOX_RETRY_BASE_SECONDS * (2**retry_count)
+    return min(seconds, OUTBOX_RETRY_MAX_SECONDS)
 
 
 class MailSendError(Exception):
@@ -108,6 +131,76 @@ def gzip_body(body_html: str | None) -> bytes | None:
     return gzip.compress(body_html.encode("utf-8"))
 
 
+def _resolve_sender_id_from_user(user: Any) -> str | None:
+    """사용자에서 sender_id(knox_id -> sabun -> username)를 우선순위로 추출합니다."""
+
+    knox_id = getattr(user, "knox_id", None)
+    if isinstance(knox_id, str) and knox_id.strip():
+        return knox_id.strip()
+
+    sabun = getattr(user, "sabun", None)
+    if isinstance(sabun, str) and sabun.strip():
+        return sabun.strip()
+
+    username = getattr(user, "get_username", lambda: "")()
+    if isinstance(username, str) and username.strip():
+        return username.strip()
+
+    return None
+
+
+def get_mailbox_access_summary_for_user(*, user: Any) -> list[dict[str, object]]:
+    """현재 사용자 기준 메일함 접근 요약을 반환합니다.
+
+    Returns:
+        List of dicts with mailbox membership stats.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+
+    is_privileged = bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+    if is_privileged:
+        mailboxes = list_privileged_email_mailboxes()
+        if not user_can_view_unassigned(user):
+            mailboxes = [
+                mailbox
+                for mailbox in mailboxes
+                if mailbox not in {UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
+            ]
+    else:
+        mailboxes = sorted(get_accessible_user_sdwt_prods_for_user(user))
+
+    summaries: list[dict[str, object]] = []
+    user_id = getattr(user, "id", None)
+
+    for mailbox in mailboxes:
+        members = list_mailbox_members(mailbox_user_sdwt_prod=mailbox)
+        member_count = len(members)
+        current_member = None
+        if isinstance(user_id, int):
+            for member in members:
+                if member.get("userId") == user_id:
+                    current_member = member
+                    break
+
+        summaries.append(
+            {
+                "userSdwtProd": mailbox,
+                "memberCount": member_count,
+                "myEmailCount": int(current_member.get("emailCount", 0)) if current_member else 0,
+                "myCanManage": bool(current_member.get("canManage", False)) if current_member else False,
+                "myGrantedAt": current_member.get("grantedAt") if current_member else None,
+                "myGrantedBy": current_member.get("grantedBy") if current_member else None,
+            }
+        )
+
+    return summaries
+
+
 def save_parsed_email(
     *,
     message_id: str,
@@ -118,6 +211,8 @@ def save_parsed_email(
     recipient: Sequence[str] | None,
     cc: Sequence[str] | None,
     user_sdwt_prod: str | None,
+    classification_source: str,
+    rag_index_status: str,
     body_html: str | None,
     body_text: str | None,
 ) -> Email:
@@ -140,6 +235,8 @@ def save_parsed_email(
             "cc": normalized_cc or None,
             "participants_search": participants_search,
             "user_sdwt_prod": user_sdwt_prod,
+            "classification_source": classification_source,
+            "rag_index_status": rag_index_status,
             "body_text": body_text or "",
             "body_html_gzip": gzip_body(body_html),
         },
@@ -152,9 +249,152 @@ def save_parsed_email(
         if not email.user_sdwt_prod and user_sdwt_prod:
             email.user_sdwt_prod = user_sdwt_prod
             fields_to_update.append("user_sdwt_prod")
+        if classification_source and email.classification_source != classification_source:
+            email.classification_source = classification_source
+            fields_to_update.append("classification_source")
+        if rag_index_status and email.rag_index_status != rag_index_status:
+            email.rag_index_status = rag_index_status
+            fields_to_update.append("rag_index_status")
         if fields_to_update:
             email.save(update_fields=fields_to_update)
     return email
+
+
+def _ensure_email_rag_doc_id(email: Email) -> None:
+    """Email.rag_doc_id가 비어있으면 기본 규칙으로 채웁니다."""
+
+    if email.rag_doc_id:
+        return
+    email.rag_doc_id = f"email-{email.id}"
+    email.save(update_fields=["rag_doc_id"])
+
+
+def enqueue_email_outbox(
+    *,
+    email: Email | None,
+    action: str,
+    payload: dict[str, Any] | None = None,
+) -> EmailOutbox:
+    """이메일 RAG 작업을 Outbox로 적재합니다."""
+
+    return EmailOutbox.objects.create(
+        email=email,
+        action=action,
+        payload=payload or {},
+        status=EmailOutbox.Status.PENDING,
+        available_at=timezone.now(),
+    )
+
+
+def enqueue_rag_index(*, email: Email, previous_user_sdwt_prod: str | None = None) -> EmailOutbox:
+    """RAG 인덱싱 요청을 Outbox에 적재합니다."""
+
+    _ensure_email_rag_doc_id(email)
+    payload = {}
+    if previous_user_sdwt_prod is not None:
+        payload["previous_user_sdwt_prod"] = previous_user_sdwt_prod
+    return enqueue_email_outbox(email=email, action=EmailOutbox.Action.INDEX, payload=payload)
+
+
+def enqueue_rag_delete(*, email: Email) -> EmailOutbox | None:
+    """RAG 삭제 요청을 Outbox에 적재합니다."""
+
+    if not email.rag_doc_id:
+        return None
+    payload = {
+        "rag_doc_id": email.rag_doc_id,
+        "index_name": resolve_rag_index_name(email.user_sdwt_prod),
+    }
+    return enqueue_email_outbox(email=email, action=EmailOutbox.Action.DELETE, payload=payload)
+
+
+def _serialize_outbox_datetime(value: datetime) -> str:
+    """Outbox payload에 넣을 ISO8601 문자열을 생성합니다."""
+
+    return value.astimezone(dt_timezone.utc).isoformat()
+
+
+def _parse_outbox_datetime(value: object) -> datetime | None:
+    """Outbox payload의 날짜 문자열을 datetime으로 파싱합니다."""
+
+    if not value:
+        return None
+    parsed = parse_datetime(str(value))
+    if not parsed:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, dt_timezone.utc)
+    return parsed.astimezone(dt_timezone.utc)
+
+
+def _get_user_by_id(user_id: int) -> Any | None:
+    """user id로 사용자 인스턴스를 조회합니다."""
+
+    UserModel = get_user_model()
+    try:
+        return UserModel.objects.get(id=user_id)
+    except UserModel.DoesNotExist:
+        return None
+
+
+def enqueue_reclassify_emails_for_user_sdwt_change(
+    *,
+    user_id: int,
+    effective_from: datetime,
+) -> EmailOutbox:
+    """소속 변경 기준으로 메일 재분류 작업을 Outbox에 적재합니다."""
+
+    if not isinstance(user_id, int):
+        raise ValueError("user_id must be an integer")
+    if effective_from is None:
+        raise ValueError("effective_from is required")
+    payload = {"user_id": user_id, "effective_from": _serialize_outbox_datetime(effective_from)}
+    return enqueue_email_outbox(email=None, action=EmailOutbox.Action.RECLASSIFY, payload=payload)
+
+
+def enqueue_reclassify_emails_for_confirmed_user(*, user_id: int) -> EmailOutbox:
+    """확정 소속 기준 메일 재분류 작업을 Outbox에 적재합니다."""
+
+    if not isinstance(user_id, int):
+        raise ValueError("user_id must be an integer")
+    payload = {"user_id": user_id}
+    return enqueue_email_outbox(email=None, action=EmailOutbox.Action.RECLASSIFY_ALL, payload=payload)
+
+
+def enqueue_rag_index_for_emails(
+    *,
+    email_ids: list[int],
+    target_user_sdwt_prod: str,
+    previous_user_sdwt_prod_by_email_id: Dict[int, str | None] | None,
+) -> Dict[str, int]:
+    """메일 목록의 RAG 인덱싱을 Outbox에 적재합니다.
+
+    Returns:
+        Dict with ragRegistered/ragFailed/ragMissing counts.
+    """
+
+    if not email_ids:
+        return {"ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
+
+    requested_ids = [
+        int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()
+    ]
+    requested_set = set(requested_ids)
+    resolved_ids = []
+
+    for email in list_emails_by_ids(email_ids=requested_ids).iterator():
+        resolved_ids.append(email.id)
+        previous_user_sdwt_prod = (
+            previous_user_sdwt_prod_by_email_id.get(email.id)
+            if previous_user_sdwt_prod_by_email_id is not None
+            else None
+        )
+        enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt_prod)
+
+    resolved_set = set(resolved_ids)
+    rag_missing = len(requested_set - resolved_set)
+
+    return {"ragRegistered": len(resolved_ids), "ragFailed": 0, "ragMissing": rag_missing}
 
 
 def register_email_to_rag(
@@ -170,6 +410,9 @@ def register_email_to_rag(
     """
 
     update_fields = []
+    if email.classification_source != Email.ClassificationSource.CONFIRMED_USER:
+        raise ValueError("Cannot register a non-confirmed email to RAG")
+
     normalized_user_sdwt = (email.user_sdwt_prod or "").strip()
     if not normalized_user_sdwt or normalized_user_sdwt == UNASSIGNED_USER_SDWT_PROD:
         raise ValueError("Cannot register an UNASSIGNED email to RAG")
@@ -197,6 +440,9 @@ def register_email_to_rag(
 
     target_index = new_index
     insert_email_to_rag(email, index_name=target_index)
+    if email.rag_index_status != Email.RagIndexStatus.INDEXED:
+        email.rag_index_status = Email.RagIndexStatus.INDEXED
+        update_fields.append("rag_index_status")
     if persist_fields:
         update_fields.extend(list(persist_fields))
     if update_fields:
@@ -204,38 +450,123 @@ def register_email_to_rag(
     return email
 
 
+def _process_outbox_item(item: EmailOutbox) -> None:
+    """단일 Outbox 항목을 처리합니다."""
+
+    if item.action == EmailOutbox.Action.INDEX:
+        if item.email is None:
+            raise ValueError("Email not found for outbox item")
+        previous_user_sdwt_prod = item.payload.get("previous_user_sdwt_prod")
+        register_email_to_rag(item.email, previous_user_sdwt_prod=previous_user_sdwt_prod)
+        return
+
+    if item.action == EmailOutbox.Action.DELETE:
+        rag_doc_id = item.payload.get("rag_doc_id")
+        index_name = item.payload.get("index_name")
+        if not rag_doc_id or not index_name:
+            raise ValueError("rag_doc_id or index_name missing for delete outbox item")
+        delete_rag_doc(rag_doc_id, index_name=index_name)
+        return
+
+    if item.action == EmailOutbox.Action.RECLASSIFY:
+        user_id = item.payload.get("user_id")
+        effective_from = _parse_outbox_datetime(item.payload.get("effective_from"))
+        if not isinstance(user_id, int) or effective_from is None:
+            raise ValueError("user_id or effective_from missing for reclassify outbox item")
+        user = _get_user_by_id(user_id)
+        if user is None:
+            raise ValueError("User not found for reclassify outbox item")
+        reclassify_emails_for_user_sdwt_change(user, effective_from)
+        return
+
+    if item.action == EmailOutbox.Action.RECLASSIFY_ALL:
+        user_id = item.payload.get("user_id")
+        if not isinstance(user_id, int):
+            raise ValueError("user_id missing for reclassify-all outbox item")
+        user = _get_user_by_id(user_id)
+        if user is None:
+            raise ValueError("User not found for reclassify-all outbox item")
+        reclassify_emails_for_confirmed_user(user)
+        return
+
+    raise ValueError(f"Unsupported outbox action: {item.action}")
+
+
+def process_email_outbox_batch(*, limit: int = 100) -> Dict[str, int]:
+    """Outbox 항목을 처리하고 결과 통계를 반환합니다."""
+
+    if limit <= 0:
+        return {"processed": 0, "succeeded": 0, "failed": 0}
+
+    with transaction.atomic():
+        pending = list_pending_email_outbox(limit=limit, for_update=True)
+        if not pending:
+            return {"processed": 0, "succeeded": 0, "failed": 0}
+        EmailOutbox.objects.filter(id__in=[item.id for item in pending]).update(
+            status=EmailOutbox.Status.PROCESSING,
+        )
+
+    succeeded = 0
+    failed = 0
+    for item in pending:
+        try:
+            _process_outbox_item(item)
+            EmailOutbox.objects.filter(id=item.id).update(
+                status=EmailOutbox.Status.DONE,
+                last_error="",
+            )
+            succeeded += 1
+        except Exception as exc:
+            logger.exception("Failed to process email outbox item id=%s", item.id)
+            retry_count = item.retry_count + 1
+            if retry_count >= OUTBOX_MAX_RETRIES:
+                EmailOutbox.objects.filter(id=item.id).update(
+                    status=EmailOutbox.Status.FAILED,
+                    retry_count=retry_count,
+                    last_error=str(exc),
+                )
+            else:
+                delay = _compute_outbox_backoff_seconds(retry_count)
+                EmailOutbox.objects.filter(id=item.id).update(
+                    status=EmailOutbox.Status.PENDING,
+                    retry_count=retry_count,
+                    last_error=str(exc),
+                    available_at=timezone.now() + timedelta(seconds=delay),
+                )
+            failed += 1
+
+    return {"processed": len(pending), "succeeded": succeeded, "failed": failed}
+
+
 def register_missing_rag_docs(limit: int = 500) -> int:
     """
-    rag_doc_id가 없는 이메일을 다시 RAG에 등록 시도한다.
+    rag_doc_id가 없는 이메일을 Outbox에 적재합니다.
     - POP3 삭제 이후 RAG 등록 실패 건을 재시도하기 위한 백필용.
     """
 
-    pending = list(
-        Email.objects.filter(models.Q(rag_doc_id__isnull=True) | models.Q(rag_doc_id="")).order_by("id")[:limit]
-    )
-    registered = 0
+    pending = list_pending_rag_emails(limit=limit)
+    enqueued = 0
 
     for email in pending:
         try:
-            register_email_to_rag(email)
-            registered += 1
+            enqueue_rag_index(email=email)
+            enqueued += 1
         except Exception:
-            logger.exception("Failed to register missing RAG doc for email id=%s", email.id)
+            logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
 
-    return registered
+    return enqueued
 
 
 @transaction.atomic
 def delete_single_email(email_id: int) -> Email:
-    """단일 메일 삭제 (RAG 삭제 실패 시 전체 롤백)."""
+    """단일 메일 삭제 (RAG 삭제는 Outbox로 비동기 처리)."""
 
     try:
         email = Email.objects.select_for_update().get(id=email_id)
     except Email.DoesNotExist:
         raise NotFound("Email not found")
 
-    if email.rag_doc_id:
-        delete_rag_doc(email.rag_doc_id, index_name=resolve_rag_index_name(email.user_sdwt_prod))  # 실패 시 예외 발생 → 트랜잭션 롤백
+    enqueue_rag_delete(email=email)
 
     email.delete()
     return email
@@ -243,15 +574,14 @@ def delete_single_email(email_id: int) -> Email:
 
 @transaction.atomic
 def bulk_delete_emails(email_ids: List[int]) -> int:
-    """여러 메일을 한 번에 삭제 (all-or-nothing)."""
+    """여러 메일을 한 번에 삭제 (RAG 삭제는 Outbox로 비동기 처리)."""
 
     emails = list(Email.objects.select_for_update().filter(id__in=email_ids))
     if not emails:
         raise NotFound("No emails found to delete")
 
     for email in emails:
-        if email.rag_doc_id:
-            delete_rag_doc(email.rag_doc_id, index_name=resolve_rag_index_name(email.user_sdwt_prod))  # 실패 시 예외 → 전체 롤백
+        enqueue_rag_delete(email=email)
 
     target_ids = [email.id for email in emails]
     Email.objects.filter(id__in=target_ids).delete()
@@ -281,20 +611,15 @@ def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime |
     start = effective_from
     end = get_next_user_sdwt_prod_change_effective_from(user=user, effective_from=effective_from)
 
-    resolved_sender_id = getattr(user, "knox_id", None)
-    if not isinstance(resolved_sender_id, str) or not resolved_sender_id.strip():
-        resolved_sender_id = getattr(user, "sabun", None) or getattr(user, "get_username", lambda: None)()
-
-    if not isinstance(resolved_sender_id, str) or not resolved_sender_id.strip():
+    resolved_sender_id = _resolve_sender_id_from_user(user)
+    if not resolved_sender_id:
         return 0
 
-    queryset = Email.objects.filter(sender_id=resolved_sender_id, received_at__gte=start)
-    if end is not None:
-        queryset = queryset.filter(received_at__lt=end)
-
-    previous_user_sdwt = {
-        row["id"]: row["user_sdwt_prod"] for row in queryset.values("id", "user_sdwt_prod")
-    }
+    previous_user_sdwt = list_email_id_user_sdwt_by_sender_id(
+        sender_id=resolved_sender_id,
+        received_at_gte=start,
+        received_at_lt=end,
+    )
     ids = list(previous_user_sdwt.keys())
     if not ids:
         return 0
@@ -305,73 +630,61 @@ def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime |
     with transaction.atomic():
         Email.objects.filter(id__in=ids).update(
             user_sdwt_prod=user_sdwt_prod,
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
         )
 
-        for email in Email.objects.filter(id__in=ids).iterator():
-            email.user_sdwt_prod = user_sdwt_prod
+        for email in list_emails_by_ids(email_ids=ids).iterator():
             try:
-                register_email_to_rag(
-                    email,
-                    previous_user_sdwt_prod=previous_user_sdwt.get(email.id),
-                    persist_fields=["user_sdwt_prod", "rag_doc_id"],
-                )
+                enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt.get(email.id))
             except Exception:
-                logger.exception("Failed to reinsert RAG for email id=%s", email.id)
+                logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
 
     return len(ids)
 
 
-def _register_emails_to_rag_best_effort(
-    *,
-    email_ids: list[int],
-    target_user_sdwt_prod: str,
-    previous_user_sdwt_prod_by_email_id: Dict[int, str | None] | None,
-) -> Dict[str, int]:
-    """메일함 이동 이후 RAG 등록을 베스트 에포트로 수행합니다.
+def reclassify_emails_for_confirmed_user(user: Any) -> int:
+    """사용자 확정 소속 기준으로 발신자 메일 전체를 재분류합니다.
 
-    Args:
-        email_ids: 대상 Email id 목록.
-        target_user_sdwt_prod: 이동된 메일함(user_sdwt_prod).
-        previous_user_sdwt_prod_by_email_id: 이전 user_sdwt_prod 매핑(없으면 삭제 없이 insert).
+    대상:
+    - sender_id == user.knox_id (없으면 user.sabun) 인 모든 메일
 
     Returns:
-        Dict with ragRegistered/ragFailed counts.
+        Reclassified email count.
 
     Side effects:
-        - Calls external RAG insert/delete endpoints.
-        - Persists `rag_doc_id` even on failure (for deterministic doc ids).
+        - Updates Email.user_sdwt_prod in DB.
+        - Sets classification_source/rag_index_status to confirmed/pending.
+        - Re-indexes RAG documents per email.
     """
 
-    if not email_ids:
-        return {"ragRegistered": 0, "ragFailed": 0}
+    resolved_sender_id = _resolve_sender_id_from_user(user)
+    if not resolved_sender_id:
+        return 0
 
-    rag_registered = 0
-    rag_failed = 0
-    for email in list_emails_by_ids(email_ids=email_ids).iterator():
-        email.user_sdwt_prod = target_user_sdwt_prod
-        previous_user_sdwt_prod = (
-            previous_user_sdwt_prod_by_email_id.get(email.id)
-            if previous_user_sdwt_prod_by_email_id is not None
-            else None
+    target_user_sdwt = (getattr(user, "user_sdwt_prod", None) or "").strip()
+    if not target_user_sdwt or target_user_sdwt == UNASSIGNED_USER_SDWT_PROD:
+        return 0
+
+    previous_user_sdwt = list_email_id_user_sdwt_by_sender_id(sender_id=resolved_sender_id)
+    ids = list(previous_user_sdwt.keys())
+    if not ids:
+        return 0
+
+    with transaction.atomic():
+        Email.objects.filter(id__in=ids).update(
+            user_sdwt_prod=target_user_sdwt,
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
         )
-        try:
-            register_email_to_rag(
-                email,
-                previous_user_sdwt_prod=previous_user_sdwt_prod,
-                persist_fields=["user_sdwt_prod", "rag_doc_id"],
-            )
-            rag_registered += 1
-        except Exception:
-            rag_failed += 1
-            logger.exception("Failed to register RAG for email id=%s", email.id)
-            if not email.rag_doc_id:
-                email.rag_doc_id = f"email-{email.id}"
-            try:
-                email.save(update_fields=["user_sdwt_prod", "rag_doc_id"])
-            except Exception:
-                logger.exception("Failed to persist email after RAG failure id=%s", email.id)
 
-    return {"ragRegistered": rag_registered, "ragFailed": rag_failed}
+        for email in list_emails_by_ids(email_ids=ids).iterator():
+            try:
+                enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt.get(email.id))
+            except Exception:
+                logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
+
+    return len(ids)
 
 
 def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
@@ -384,11 +697,11 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     - Previously classified emails are NOT moved.
 
     Returns:
-        Dict with moved count and best-effort RAG indexing stats.
+        Dict with moved count and outbox enqueue stats.
 
     Side effects:
         - Updates Email.user_sdwt_prod in DB.
-        - Attempts to index claimed emails into RAG (best-effort).
+        - Enqueues RAG indexing requests.
     """
 
     sender_id = getattr(user, "knox_id", None)
@@ -405,12 +718,16 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
 
     email_ids = list_unassigned_email_ids_for_sender_id(sender_id=sender_id)
     if not email_ids:
-        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
 
     with transaction.atomic():
-        Email.objects.filter(id__in=email_ids).update(user_sdwt_prod=target_user_sdwt_prod)
+        Email.objects.filter(id__in=email_ids).update(
+            user_sdwt_prod=target_user_sdwt_prod,
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
+        )
 
-    rag_result = _register_emails_to_rag_best_effort(
+    rag_result = enqueue_rag_index_for_emails(
         email_ids=email_ids,
         target_user_sdwt_prod=target_user_sdwt_prod,
         previous_user_sdwt_prod_by_email_id=None,
@@ -427,11 +744,11 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
         to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
 
     Returns:
-        Dict with moved count and best-effort RAG indexing stats.
+        Dict with moved count and outbox enqueue stats.
 
     Side effects:
         - Updates Email.user_sdwt_prod in DB.
-        - Attempts to re-index RAG documents per email (best-effort).
+        - Enqueues RAG indexing requests.
     """
 
     target_user_sdwt_prod = (to_user_sdwt_prod or "").strip()
@@ -442,15 +759,12 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
 
     ids = [int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()]
     if not ids:
-        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
 
-    previous_user_sdwt = {
-        row["id"]: row["user_sdwt_prod"]
-        for row in Email.objects.filter(id__in=ids).values("id", "user_sdwt_prod")
-    }
+    previous_user_sdwt = list_email_id_user_sdwt_by_ids(email_ids=ids)
     resolved_ids = list(previous_user_sdwt.keys())
     if not resolved_ids:
-        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0}
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
 
     moved_count = 0
     for previous in previous_user_sdwt.values():
@@ -458,10 +772,14 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
             moved_count += 1
 
     with transaction.atomic():
-        Email.objects.filter(id__in=resolved_ids).update(user_sdwt_prod=target_user_sdwt_prod)
+        Email.objects.filter(id__in=resolved_ids).update(
+            user_sdwt_prod=target_user_sdwt_prod,
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
+        )
 
-    rag_result = _register_emails_to_rag_best_effort(
-        email_ids=resolved_ids,
+    rag_result = enqueue_rag_index_for_emails(
+        email_ids=ids,
         target_user_sdwt_prod=target_user_sdwt_prod,
         previous_user_sdwt_prod_by_email_id=previous_user_sdwt,
     )
@@ -483,11 +801,11 @@ def move_sender_emails_after(
         to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
 
     Returns:
-        Dict with moved count and best-effort RAG indexing stats.
+        Dict with moved count and outbox enqueue stats.
 
     Side effects:
         - Updates Email.user_sdwt_prod in DB.
-        - Attempts to re-index RAG documents per email (best-effort).
+        - Enqueues RAG indexing requests.
     """
 
     normalized_sender_id = (sender_id or "").strip()
@@ -498,11 +816,7 @@ def move_sender_emails_after(
     if timezone.is_naive(when):
         when = timezone.make_aware(when, timezone.get_current_timezone())
 
-    email_ids = list(
-        Email.objects.filter(sender_id=normalized_sender_id, received_at__gte=when)
-        .values_list("id", flat=True)
-        .order_by("id")
-    )
+    email_ids = list_email_ids_by_sender_after(sender_id=normalized_sender_id, received_at_gte=when)
 
     return move_emails_to_user_sdwt_prod(email_ids=email_ids, to_user_sdwt_prod=to_user_sdwt_prod)
 
@@ -837,6 +1151,12 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
             received_at = fields["received_at"]
             affiliation = resolve_email_affiliation(sender_id=sender_id, received_at=received_at)
             user_sdwt_prod = affiliation["user_sdwt_prod"]
+            classification_source = affiliation["classification_source"]
+            rag_index_status = (
+                Email.RagIndexStatus.PENDING
+                if classification_source == Email.ClassificationSource.CONFIRMED_USER
+                else Email.RagIndexStatus.SKIPPED
+            )
 
             email_obj = save_parsed_email(
                 message_id=fields["message_id"],
@@ -847,17 +1167,24 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
                 recipient=fields["recipient"],
                 cc=fields["cc"],
                 user_sdwt_prod=user_sdwt_prod,
+                classification_source=classification_source,
+                rag_index_status=rag_index_status,
                 body_text=fields.get("body_text") or "",
                 body_html=fields.get("body_html"),
             )
 
             to_delete.append(msg_num)
 
-            if not email_obj.rag_doc_id and email_obj.user_sdwt_prod != UNASSIGNED_USER_SDWT_PROD:
+            if (
+                not email_obj.rag_doc_id
+                and email_obj.user_sdwt_prod != UNASSIGNED_USER_SDWT_PROD
+                and email_obj.classification_source == Email.ClassificationSource.CONFIRMED_USER
+                and email_obj.rag_index_status == Email.RagIndexStatus.PENDING
+            ):
                 try:
-                    register_email_to_rag(email_obj)
+                    enqueue_rag_index(email=email_obj)
                 except Exception:
-                    logger.exception("RAG insert failed for email %s, will retry later", email_obj.id)
+                    logger.exception("Failed to enqueue RAG outbox for email %s", email_obj.id)
 
         except Exception as exc:
             logger.exception("Failed to process POP3 message #%s: %s", msg_num, exc)
