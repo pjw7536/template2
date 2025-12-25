@@ -39,8 +39,8 @@ Before ANY implementation work (writing/editing files, running commands/tools, p
    - `Summary (EN): ...`
    - `요약 (KR): ...`
 2. List all ambiguities / decisions that must be confirmed as questions (APIs, file locations, naming, scope boundaries, UI behavior, acceptance criteria, etc.). If there are none, explicitly write `Questions: none` / `질문: 없음`.
-3. Ask the user to confirm/correct the summaries and answer the questions.
-4. STOP and wait for the user’s confirmation/answers before implementing.
+3. If there are questions, ask the user to confirm/correct the summaries and answer the questions.
+4. If there are questions, STOP and wait for the user’s confirmation/answers before implementing. If there are no questions, proceed immediately without waiting for confirmation.
 
 ---
 
@@ -137,6 +137,8 @@ Global routing ONLY exists under:
 ```
 apps/web/src/routes/*
 ```
+
+Routes MAY compose layout components from `apps/web/src/components/layout/*`, but MUST NOT define layout components under `apps/web/src/routes/*`.
 
 ## 4‑3. No Business Logic in Routes
 

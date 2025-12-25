@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useAuth } from "@/lib/auth"
 import { useLineSettings } from "../hooks"
 import { buildToastOptions } from "../utils/toast"
 import { formatUpdatedAt, isDuplicateMessage, normalizeDraft } from "../utils/line-settings"
@@ -147,6 +148,7 @@ function LineUserSdwtBadges({ lineId, values }) {
 }
 
 export function LineSettingsPage({ lineId = "" }) {
+  const { user } = useAuth()
   const {
     entries,
     userSdwtValues,
@@ -176,6 +178,7 @@ export function LineSettingsPage({ lineId = "" }) {
   const [jiraKeyFormError, setJiraKeyFormError] = React.useState(null)
   const [isSavingJiraKey, setIsSavingJiraKey] = React.useState(false)
 
+  const isSuperuser = Boolean(user?.is_superuser)
   const isRefreshing = isLoading && hasLoadedOnce
 
   const handleRefresh = React.useCallback(() => {
@@ -431,109 +434,125 @@ export function LineSettingsPage({ lineId = "" }) {
         </div>
       )}
 
-      <div className="grid flex-1 min-h-0 gap-4 md:grid-cols-2">
-        <div className="grid min-h-0 grid-rows-[auto,1fr] gap-2">
-          <div className="rounded-lg border bg-background px-4 py-3 shadow-sm">
-            <div className="flex flex-col gap-1 pb-3">
-              <h2 className="text-md font-medium">{LABELS.jiraTitle}</h2>
-              <p className="text-xs text-muted-foreground">{LABELS.jiraDescription}</p>
-            </div>
+      <div className="grid flex-1 min-h-0 gap-4">
+        <div className="grid min-h-0 grid-rows-[160px_1fr] gap-2">
+          <div className="grid min-h-0 grid-cols-4 gap-2">
+            <div className="col-span-3 rounded-lg border bg-background px-4 py-2 shadow-sm">
+              <div className="flex justify-between">
+                <div className="flex flex-col gap-1 pb-4">
+                  <h2 className="text-md font-medium">{LABELS.addTitle}</h2>
+                  <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
+                </div>
 
-            {jiraKeyFormError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {jiraKeyFormError}
-              </p>
-            ) : jiraKeyError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {jiraKeyError}
-              </p>
-            ) : (
-              <p className="text-xs">&nbsp;</p>
-            )}
-
-            <form className="flex flex-wrap items-end gap-3" onSubmit={handleJiraKeySave}>
-              <div className="w-72 space-y-1">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="jira-key-input">
-                  {LABELS.jiraTitle}
-                </label>
-                <Input
-                  id="jira-key-input"
-                  value={jiraKeyDraft}
-                  onChange={(event) => setJiraKeyDraft(event.target.value)}
-                  placeholder={LABELS.jiraPlaceholder}
-                  maxLength={MAX_JIRA_KEY_LENGTH}
-                  disabled={!lineId || isJiraKeyLoading || isSavingJiraKey}
-                />
+                <div className="flex flex-col gap-2 ">
+                  <LineUserSdwtBadges lineId={lineId} values={userSdwtValues} />
+                </div>
               </div>
-              <Button
-                type="submit"
-                className="md:self-end"
-                disabled={!lineId || isJiraKeyLoading || isSavingJiraKey}
-              >
-                <IconDeviceFloppy className="mr-1 size-4" />
-                {LABELS.jiraSave}
-              </Button>
-            </form>
-            <p className="mt-2 text-xs text-muted-foreground">{LABELS.jiraHelper}</p>
-          </div>
 
-          <div className="min-h-0 overflow-y-auto rounded-lg border bg-background px-4 py-3 shadow-sm">
-            <div className="flex flex-col gap-2">
-              <div className="text-xs font-medium text-muted-foreground">Line User SDWT</div>
-              <LineUserSdwtBadges lineId={lineId} values={userSdwtValues} />
+              {formError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {formError}
+                </p>
+              ) : (
+                <p className="text-xs">&nbsp;</p>
+              )}
+
+              <div className="mb-2 flex flex-wrap items-end justify-between">
+                <form className="flex flex-row flex-wrap items-center gap-3" onSubmit={handleCreate}>
+                  <div className="w-48 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
+                      {LABELS.mainStep}
+                    </label>
+                    <Input
+                      id="main-step-input"
+                      value={formValues.mainStep}
+                      onChange={(event) => handleFormChange("mainStep", event.target.value)}
+                      placeholder="ex) AB123456"
+                      required
+                      maxLength={MAX_FIELD_LENGTH}
+                    />
+                  </div>
+
+                  <div className="w-48 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground" htmlFor="custom-step-input">
+                      {LABELS.customEndStep}
+                    </label>
+                    <Input
+                      id="custom-step-input"
+                      value={formValues.customEndStep}
+                      onChange={(event) => handleFormChange("customEndStep", event.target.value)}
+                      placeholder="조기 알람 받을 스텝"
+                      maxLength={MAX_FIELD_LENGTH}
+                    />
+
+                  </div>
+
+                  <Button type="submit" className="md:self-end" disabled={isCreating || !lineId}>
+                    <IconPlus className="mr-1 size-4" />
+                    {LABELS.addButton}
+                  </Button>
+                </form>
+
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="grid min-h-0 grid-rows-[auto,1fr] gap-2">
-          <div className="rounded-lg border bg-background px-4 py-2 shadow-sm">
-            <div className="flex flex-col gap-1 pb-4">
-              <h2 className="text-md font-medium">{LABELS.addTitle}</h2>
-              <p className="text-xs text-muted-foreground">{LABELS.addDescription}</p>
-            </div>
+            <div className="rounded-lg border bg-background px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-1 pb-3">
+                <h2 className="text-md font-medium">{LABELS.jiraTitle}</h2>
+                <p className="text-xs text-muted-foreground">{LABELS.jiraDescription}</p>
+              </div>
 
-            {formError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {formError}
-              </p>
-            ) : (
-              <p className="text-xs">&nbsp;</p>
-            )}
+              {jiraKeyFormError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {jiraKeyFormError}
+                </p>
+              ) : jiraKeyError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {jiraKeyError}
+                </p>
+              ) : (
+                <p className="text-xs">&nbsp;</p>
+              )}
 
-            <div className="mb-2 flex flex-wrap items-end justify-between">
-              <form className="flex flex-row flex-wrap items-center gap-3" onSubmit={handleCreate}>
-                <div className="w-80 space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground" htmlFor="main-step-input">
-                    {LABELS.mainStep}
+              {isSuperuser ? (
+                <form className="flex flex-wrap items-end gap-3" onSubmit={handleJiraKeySave}>
+                  <div className="w-36 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground" htmlFor="jira-key-input">
+                      {LABELS.jiraTitle}
+                    </label>
+                    <Input
+                      id="jira-key-input"
+                      value={jiraKeyDraft}
+                      onChange={(event) => setJiraKeyDraft(event.target.value)}
+                      placeholder={LABELS.jiraPlaceholder}
+                      maxLength={MAX_JIRA_KEY_LENGTH}
+                      disabled={!lineId || isJiraKeyLoading || isSavingJiraKey}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="md:self-end"
+                    disabled={!lineId || isJiraKeyLoading || isSavingJiraKey}
+                  >
+                    <IconDeviceFloppy className="mr-1 size-4" />
+                    {LABELS.jiraSave}
+                  </Button>
+                </form>
+              ) : (
+                <div className="w-36 space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground" htmlFor="jira-key-input">
+                    {LABELS.jiraTitle}
                   </label>
                   <Input
-                    id="main-step-input"
-                    value={formValues.mainStep}
-                    onChange={(event) => handleFormChange("mainStep", event.target.value)}
-                    placeholder="ex) AB123456"
-                    required
-                    maxLength={MAX_FIELD_LENGTH}
+                    id="jira-key-input"
+                    value={jiraKeyDraft}
+                    placeholder={LABELS.jiraPlaceholder}
+                    maxLength={MAX_JIRA_KEY_LENGTH}
+                    disabled
                   />
                 </div>
+              )}
 
-                <div className="w-80 space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground" htmlFor="custom-step-input">
-                    {LABELS.customEndStep}
-                  </label>
-                  <Input
-                    id="custom-step-input"
-                    value={formValues.customEndStep}
-                    onChange={(event) => handleFormChange("customEndStep", event.target.value)}
-                    placeholder="조기 알람 받을 스텝"
-                    maxLength={MAX_FIELD_LENGTH}
-                  />
-                </div>
-
-                <Button type="submit" className="md:self-end" disabled={isCreating || !lineId}>
-                  <IconPlus className="mr-1 size-4" />
-                  {LABELS.addButton}
-                </Button>
-              </form>
             </div>
           </div>
 

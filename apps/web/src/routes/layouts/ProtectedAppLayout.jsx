@@ -37,14 +37,12 @@ export function ProtectedAppLayout() {
     )
   } else if (variant === LAYOUT_VARIANTS.MODELS) {
     layout = (
-      <AppLayout
+      <LineDashboardLayout
         contentMaxWidthClass={contentMaxWidthClass}
         scrollAreaClassName={scrollAreaClassName}
-        header={null}
-        headerClassName="hidden"
       >
         <Outlet />
-      </AppLayout>
+      </LineDashboardLayout>
     )
   } else {
     layout = (

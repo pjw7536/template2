@@ -1,52 +1,31 @@
-import { SidebarHeaderBar, SidebarLayout } from "@/components/layout"
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarSeparator,
-} from "@/components/ui/sidebar"
-
 export function ModelsPage() {
-  const sidebar = (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="h-12" />
-
-      <SidebarContent />
-      <SidebarFooter className="h-12" />
-    </Sidebar>
-  )
-
-  const header = (
-    <SidebarHeaderBar>
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbPage className="inline-block h-5 w-32" />
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-    </SidebarHeaderBar>
-  )
-
   return (
-    <SidebarLayout
-      providerKey="models"
-      defaultOpen
-      sidebar={sidebar}
-      header={header}
-      headerClassName="h-16 shrink-0 border-b bg-background"
-      paddingClassName="p-4 md:p-6"
-      scrollAreaClassName="overflow-hidden"
-    >
-      <div className="grid flex-1 min-h-0 gap-4 md:grid-cols-2">
-        <div className="grid min-h-0 grid-rows-[auto,1fr] gap-2">
-          <div className="h-10" />
-          <div className="min-h-0 overflow-y-auto" />
+    // 페이지 루트 (스크롤 차단)
+    <div className="flex h-full min-h-0 flex-col overflow-hidden gap-2">
+
+      {/* ───────────────── 상단: 3개 flex 영역 ───────────────── */}
+      <div className="flex h-28 gap-1 shrink-0">
+        <div className="flex-1 bg-red-200 rounded-md p-2">
+          Top Flex 1
         </div>
-        <div className="min-h-0 overflow-y-auto" />
+        <div className="flex-1 bg-red-200 rounded-md p-2">
+          Top Flex 2
+        </div>
+        <div className="flex-1 bg-red-200 rounded-md p-2">
+          Top Flex 3
+        </div>
       </div>
-    </SidebarLayout>
+      <div className="flex gap-2 shrink-0">
+        <div className="flex-1 bg-red-200 rounded-md p-2">
+          Top Flex 1
+        </div>
+      </div>
+      {/* ───────────────── 하단: 여기만 스크롤 ───────────────── */}
+      <div className="flex-1 min-h-0 overflow-y-auto bg-blue-200 rounded-md p-2">
+        Bottom scroll area
+        <div className="h-[700px]" />
+      </div>
+
+    </div>
   )
 }
