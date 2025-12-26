@@ -9,6 +9,7 @@ import os
 import poplib
 from dataclasses import dataclass
 from datetime import timedelta
+from email.header import decode_header, make_header
 from email.parser import BytesParser
 from email.policy import default
 from typing import Any, Optional, Sequence
@@ -171,6 +172,23 @@ def _extract_html_from_email(msg: Any) -> Optional[str]:
     return None
 
 
+def _decode_header_value(raw_value: Any) -> str:
+    if raw_value is None:
+        return ""
+    try:
+        return str(make_header(decode_header(str(raw_value))))
+    except Exception:
+        return str(raw_value)
+
+
+def _subject_matches(subject: str, subject_contains: str) -> bool:
+    normalized_subject = subject.strip().lower()
+    normalized_filter = (subject_contains or "").strip().lower()
+    if not normalized_filter:
+        return False
+    return normalized_filter in normalized_subject
+
+
 def _build_drone_sop_row(
     *,
     html: str,
@@ -294,6 +312,14 @@ class DroneSopPop3Config:
             ),
             60,
         )
+        subject_contains_raw = _first_defined(
+            getattr(settings, "DRONE_SOP_POP3_SUBJECT_CONTAINS", None),
+            os.getenv("DRONE_SOP_POP3_SUBJECT_CONTAINS"),
+            "[drone_sop]",
+        )
+        subject_contains = str(subject_contains_raw or "").strip()
+        if not subject_contains:
+            subject_contains = "[drone_sop]"
         dummy_mode = _parse_bool(
             _first_defined(
                 getattr(settings, "DRONE_SOP_DUMMY_MODE", None),
@@ -319,6 +345,7 @@ class DroneSopPop3Config:
             password=password,
             use_ssl=use_ssl,
             timeout=timeout,
+            subject_contains=subject_contains,
             dummy_mode=dummy_mode,
             dummy_mail_messages_url=dummy_mail_messages_url,
             needtosend_rules=needtosend_rules,
@@ -456,8 +483,8 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
             delete_targets: list[int] = []
             messages = _list_dummy_mail_messages(url=config.dummy_mail_messages_url, timeout=config.timeout)
             for message in messages:
-                subject = str(message.get("subject") or "")
-                if config.subject_contains not in subject:
+                subject = _decode_header_value(message.get("subject"))
+                if not _subject_matches(subject, config.subject_contains):
                     continue
                 body_html = str(message.get("body_html") or message.get("body_text") or "")
                 if not body_html:
@@ -531,8 +558,8 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
             for msg_num in range(1, num_msgs + 1):
                 _, lines, _ = client.retr(msg_num)
                 msg = BytesParser(policy=default).parsebytes(b"\r\n".join(lines))
-                subject = msg.get("Subject") or ""
-                if config.subject_contains not in subject:
+                subject = _decode_header_value(msg.get("Subject"))
+                if not _subject_matches(subject, config.subject_contains):
                     continue
                 html = _extract_html_from_email(msg)
                 if not html:

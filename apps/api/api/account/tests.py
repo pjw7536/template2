@@ -16,6 +16,7 @@ from api.account.models import (
     UserSdwtProdChange,
 )
 from api.account.selectors import (
+    get_accessible_user_sdwt_prods_for_user,
     get_next_user_sdwt_prod_change,
     get_affiliation_jira_key_for_line,
     list_affiliation_options,
@@ -191,6 +192,51 @@ class AffiliationSelectorTests(TestCase):
                 {"line_id": "L2", "user_sdwt_prod": "S0"},
             ],
         )
+
+
+class AccessibleUserSdwtProdTests(TestCase):
+    def test_pending_change_included_when_no_current_affiliation(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S42000", password="test-password")
+
+        UserSdwtProdChange.objects.create(
+            user=user,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod=None,
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=user,
+        )
+
+        accessible = get_accessible_user_sdwt_prods_for_user(user)
+        self.assertEqual(accessible, {"group-new"})
+
+    def test_pending_change_ignored_when_current_affiliation_exists(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S42001", password="test-password")
+        user.user_sdwt_prod = "group-old"
+        user.save(update_fields=["user_sdwt_prod"])
+
+        UserSdwtProdChange.objects.create(
+            user=user,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=user,
+        )
+
+        accessible = get_accessible_user_sdwt_prods_for_user(user)
+        self.assertIn("group-old", accessible)
+        self.assertNotIn("group-new", accessible)
 
 
 class AffiliationChangeApprovalTests(TestCase):

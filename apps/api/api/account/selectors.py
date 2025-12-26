@@ -25,6 +25,7 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
 
     Notes:
         - Regular users: include their own `user_sdwt_prod` plus explicit grants from `UserSdwtProdAccess`.
+        - If no current user_sdwt_prod is set, include the pending change target for first-time onboarding.
         - Superusers: return all known `user_sdwt_prod` values across the system (used for global browsing).
 
     Args:
@@ -58,6 +59,11 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
         values.add(user_sdwt_prod)
+    else:
+        pending_change = get_pending_user_sdwt_prod_change(user=user)
+        pending_user_sdwt_prod = getattr(pending_change, "to_user_sdwt_prod", None)
+        if isinstance(pending_user_sdwt_prod, str) and pending_user_sdwt_prod.strip():
+            values.add(pending_user_sdwt_prod.strip())
 
     return {val for val in values if isinstance(val, str) and val.strip()}
 

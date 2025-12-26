@@ -28,6 +28,7 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
  * @property {boolean} [is_staff]
  * @property {string[]} [roles]
  * @property {string | null} [user_sdwt_prod]
+ * @property {string | null} [pending_user_sdwt_prod]
  */
 
 /**

@@ -17,6 +17,7 @@ from django.http import (
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 
+from api.account import selectors as account_selectors
 from api.common.utils import resolve_frontend_target
 from .oidc_utils import (
     ADFS_AUTH_URL,       # ADFS authorize endpoint (…/adfs/oauth2/authorize)
@@ -359,6 +360,11 @@ def auth_me(request: HttpRequest) -> JsonResponse:
 
     user = request.user
     username = user.username if isinstance(getattr(user, "username", None), str) else ""
+    pending_user_sdwt_prod = None
+    raw_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+    if not (isinstance(raw_user_sdwt_prod, str) and raw_user_sdwt_prod.strip()):
+        pending_change = account_selectors.get_pending_user_sdwt_prod_change(user=user)
+        pending_user_sdwt_prod = pending_change.to_user_sdwt_prod if pending_change else None
     payload = {
         "id": user.pk,
         "usr_id": getattr(user, "knox_id", None),  # = 고유값(User.knox_id)
@@ -370,6 +376,7 @@ def auth_me(request: HttpRequest) -> JsonResponse:
         "department": getattr(user, "department", None),
         "line": getattr(user, "line", None),
         "user_sdwt_prod": getattr(user, "user_sdwt_prod", None),
+        "pending_user_sdwt_prod": pending_user_sdwt_prod,
     }
     return JsonResponse(payload)
 

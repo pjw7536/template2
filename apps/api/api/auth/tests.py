@@ -3,7 +3,10 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.test.utils import override_settings
+from django.utils import timezone
 from django.urls import reverse
+
+from api.account.models import UserSdwtProdChange
 
 
 class AuthMeTests(TestCase):
@@ -32,6 +35,30 @@ class AuthMeTests(TestCase):
         self.assertEqual(payload["username"], "홍길동")
         self.assertNotIn("name", payload)
         self.assertEqual(payload["email"], "hong@example.com")
+
+    def test_auth_me_includes_pending_user_sdwt_prod(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S12346", password="test-password")
+        UserSdwtProdChange.objects.create(
+            user=user,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod=None,
+            to_user_sdwt_prod="group-pending",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=user,
+        )
+
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("auth-me"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["pending_user_sdwt_prod"], "group-pending")
 
 
 class AuthEndpointTests(TestCase):

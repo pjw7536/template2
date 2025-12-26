@@ -51,7 +51,8 @@ async function updateAffiliation(payload) {
 }
 
 export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
-  const needsOnboarding = Boolean(user && isBlank(user.user_sdwt_prod))
+  const hasPendingAffiliation = Boolean(user && !isBlank(user.pending_user_sdwt_prod))
+  const needsOnboarding = Boolean(user && isBlank(user.user_sdwt_prod) && !hasPendingAffiliation)
   const queryClient = useQueryClient()
   const [selectedKey, setSelectedKey] = useState("")
   const [submitError, setSubmitError] = useState("")

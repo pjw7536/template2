@@ -701,6 +701,41 @@ class DroneSopPop3DummyModeDeleteTests(TestCase):
         self.assertEqual(called_mail_ids, [1, 3])
 
 
+class DroneSopPop3SubjectFilterTests(TestCase):
+    @override_settings(
+        DRONE_SOP_DUMMY_MODE=True,
+        DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages",
+        DRONE_SOP_POP3_SUBJECT_CONTAINS="[DRONE_SOP]",
+    )
+    @patch("api.drone.services.sop_pop3._delete_dummy_mail_messages")
+    @patch("api.drone.services.sop_pop3._upsert_drone_sop_rows")
+    @patch("api.drone.services.sop_pop3._list_dummy_mail_messages")
+    @patch("api.drone.services.sop_pop3.selectors.load_drone_sop_custom_end_step_map", return_value={})
+    def test_dummy_mode_filters_subject_case_insensitive(
+        self,
+        _mock_end_step: Mock,
+        mock_list: Mock,
+        mock_upsert: Mock,
+        mock_delete: Mock,
+    ) -> None:
+        mock_list.return_value = [
+            {"id": 1, "subject": "[drone_sop] a", "body_html": "<data><lot_id>LOT-1</lot_id></data>"},
+            {"id": 2, "subject": "other", "body_html": "<data><lot_id>LOT-2</lot_id></data>"},
+            {"id": 3, "subject": "[DRONE_SOP] c", "body_html": "<data><lot_id>LOT-3</lot_id></data>"},
+        ]
+        mock_upsert.return_value = 1
+        mock_delete.side_effect = lambda *, url, mail_ids, timeout: len(mail_ids)
+
+        result = services.run_drone_sop_pop3_ingest_from_env()
+
+        self.assertEqual(result.matched_mails, 2)
+        self.assertEqual(result.upserted_rows, 2)
+        self.assertEqual(result.deleted_mails, 2)
+
+        called_mail_ids = mock_delete.call_args.kwargs.get("mail_ids")
+        self.assertEqual(called_mail_ids, [1, 3])
+
+
 class DroneSopJiraHtmlDescriptionTests(TestCase):
     def test_build_jira_issue_fields_uses_html(self) -> None:
         from api.drone.services import sop_jira
