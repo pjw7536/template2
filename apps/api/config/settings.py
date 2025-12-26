@@ -217,7 +217,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
     ],
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "api.common.schema.FeatureAutoSchema",
 }
 
 # =============
@@ -233,17 +233,10 @@ RAG_API_KEY = env("RAG_API_KEY", "")
 RAG_ERROR_LOG_PATH = env("RAG_ERROR_LOG_PATH", str(BASE_DIR / "logs" / "rag_errors.log"))
 
 
-# =========================
-# Email ingest trigger auth
-# =========================
-EMAIL_INGEST_TRIGGER_TOKEN = env("EMAIL_INGEST_TRIGGER_TOKEN", "")
-
-
-# ===========================
-# Drone SOP trigger auth (API)
-# ===========================
-DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN = env("DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN", "")
-DRONE_SOP_JIRA_TRIGGER_TOKEN = env("DRONE_SOP_JIRA_TRIGGER_TOKEN", "")
+# =============================
+# Airflow trigger auth (shared)
+# =============================
+AIRFLOW_TRIGGER_TOKEN = env("AIRFLOW_TRIGGER_TOKEN", "")
 
 
 # =========================

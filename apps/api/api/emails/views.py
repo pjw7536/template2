@@ -427,7 +427,7 @@ class EmailIngestTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        expected_token = getattr(settings, "EMAIL_INGEST_TRIGGER_TOKEN", "") or ""
+        expected_token = getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or ""
         provided_token = extract_bearer_token(request)
 
         if expected_token:

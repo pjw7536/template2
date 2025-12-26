@@ -4,6 +4,7 @@ import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
 
 import { LineDashboardShell } from "./LineDashboardShell"
 import { LineDashboardSidebar } from "./LineDashboardSidebar"
+import { ActiveLineProvider } from "./active-line-context"
 import { useLineOptionsQuery } from "../hooks/useLineOptionsQuery"
 
 export function LineDashboardLayout({
@@ -28,12 +29,14 @@ export function LineDashboardLayout({
   )
 
   return (
-    <LineDashboardShell
-      sidebar={sidebar}
-      contentMaxWidthClass={contentMaxWidthClass}
-      scrollAreaClassName={scrollAreaClassName}
-    >
-      {children}
-    </LineDashboardShell>
+    <ActiveLineProvider lineOptions={lineOptions}>
+      <LineDashboardShell
+        sidebar={sidebar}
+        contentMaxWidthClass={contentMaxWidthClass}
+        scrollAreaClassName={scrollAreaClassName}
+      >
+        {children}
+      </LineDashboardShell>
+    </ActiveLineProvider>
   )
 }

@@ -274,44 +274,12 @@ class DroneSopPop3Config:
 
     @classmethod
     def from_settings(cls) -> "DroneSopPop3Config":
-        host = (
-            getattr(settings, "DRONE_SOP_POP3_HOST", "")
-            or getattr(settings, "EMAIL_POP3_HOST", "")
-            or ""
-        ).strip()
-        port = _parse_int(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_POP3_PORT", None),
-                getattr(settings, "EMAIL_POP3_PORT", None),
-                995,
-            ),
-            995,
-        )
-        username = (
-            getattr(settings, "DRONE_SOP_POP3_USERNAME", "")
-            or getattr(settings, "EMAIL_POP3_USERNAME", "")
-            or ""
-        ).strip()
-        password = (
-            getattr(settings, "DRONE_SOP_POP3_PASSWORD", "")
-            or getattr(settings, "EMAIL_POP3_PASSWORD", "")
-            or ""
-        ).strip()
-        use_ssl = _parse_bool(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_POP3_USE_SSL", None),
-                getattr(settings, "EMAIL_POP3_USE_SSL", None),
-            ),
-            True,
-        )
-        timeout = _parse_int(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None),
-                getattr(settings, "EMAIL_POP3_TIMEOUT", None),
-                60,
-            ),
-            60,
-        )
+        host = (getattr(settings, "DRONE_SOP_POP3_HOST", "") or "").strip()
+        port = _parse_int(getattr(settings, "DRONE_SOP_POP3_PORT", None), 995)
+        username = (getattr(settings, "DRONE_SOP_POP3_USERNAME", "") or "").strip()
+        password = (getattr(settings, "DRONE_SOP_POP3_PASSWORD", "") or "").strip()
+        use_ssl = _parse_bool(getattr(settings, "DRONE_SOP_POP3_USE_SSL", None), True)
+        timeout = _parse_int(getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None), 60)
         subject_contains_raw = _first_defined(
             getattr(settings, "DRONE_SOP_POP3_SUBJECT_CONTAINS", None),
             os.getenv("DRONE_SOP_POP3_SUBJECT_CONTAINS"),

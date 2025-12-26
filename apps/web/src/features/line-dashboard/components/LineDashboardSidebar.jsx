@@ -1,7 +1,6 @@
 // src/features/line-dashboard/components/LineDashboardSidebar.jsx
 import { NavProjects } from "./nav-projects"
 import { TeamSwitcher } from "./team-switcher"
-import { ActiveLineProvider } from "./active-line-context"
 import { NavMain } from "./nav-main"
 import { NavUser } from "@/components/common"
 import {
@@ -18,20 +17,18 @@ export function LineDashboardSidebar({ lineOptions, navigation, ...props }) {
   const teams = Array.isArray(lineOptions) ? lineOptions : []
 
   return (
-    <ActiveLineProvider lineOptions={teams}>
-      <Sidebar collapsible="icon" {...props}>
-        <SidebarHeader>
-          <TeamSwitcher lines={teams} />
-        </SidebarHeader>
-        <SidebarContent>
-          <NavMain items={navMain} />
-          <NavProjects projects={projects} />
-        </SidebarContent>
-        <SidebarFooter>
-          <NavUser />
-        </SidebarFooter>
-        <SidebarRail />
-      </Sidebar>
-    </ActiveLineProvider>
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader>
+        <TeamSwitcher lines={teams} />
+      </SidebarHeader>
+      <SidebarContent>
+        <NavMain items={navMain} />
+        <NavProjects projects={projects} />
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }
