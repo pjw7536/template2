@@ -50,25 +50,18 @@ def _normalize_history(raw_history: object, *, limit: int = DEFAULT_HISTORY_LIMI
 
 
 def _validate_user_identity(user: object) -> Tuple[str, str]:
-    """사용자 객체에서 username / email 로컬파트를 추출한다.
+    """사용자 객체에서 knox_id를 추출한다.
 
-    - username, email 이 모두 채워져 있어야 downstream 서비스 호출 시 User-Id 헤더를 안전하게 보낼 수 있다.
-    - 모든 검증 오류는 (메시지, status) 형태로 처리하기 위해 예외 대신 빈 문자열 반환을 사용하지 않는다.
+    - knox_id가 있어야 downstream 서비스 호출 시 User-Id 헤더를 보낼 수 있다.
+    - 모든 검증 오류는 예외로 처리한다.
     """
 
-    username = getattr(user, "get_username", lambda: "")()
-    if not isinstance(username, str) or not username.strip():
-        raise AssistantRequestError("username이 필요합니다.")
+    knox_id = getattr(user, "knox_id", None)
+    if not isinstance(knox_id, str) or not knox_id.strip():
+        raise AssistantRequestError("knox_id가 필요합니다.")
 
-    email_raw = getattr(user, "email", "")
-    if not isinstance(email_raw, str) or not email_raw.strip():
-        raise AssistantRequestError("email이 필요합니다.")
-
-    email_local_part = email_raw.strip().split("@", 1)[0].strip()
-    if not email_local_part:
-        raise AssistantRequestError("email이 필요합니다.")
-
-    return username.strip(), email_local_part
+    normalized = knox_id.strip()
+    return normalized, normalized
 
 
 def _normalize_string_list(raw: object) -> List[str]:
@@ -95,6 +88,15 @@ def _normalize_csv_string(raw: str) -> List[str]:
     return list(dict.fromkeys(normalized))
 
 
+def _resolve_sender_id(user: object) -> str | None:
+    """사용자에서 sender_id(knox_id)를 추출합니다."""
+
+    knox_id = getattr(user, "knox_id", None)
+    if isinstance(knox_id, str) and knox_id.strip():
+        return knox_id.strip()
+    return None
+
+
 def _default_permission_groups(user: object) -> List[str]:
     """기본 permission_groups 값을 계산합니다."""
 
@@ -102,6 +104,9 @@ def _default_permission_groups(user: object) -> List[str]:
     raw_user_sdwt = getattr(user, "user_sdwt_prod", "")
     if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
         groups.append(raw_user_sdwt.strip())
+    sender_id = _resolve_sender_id(user)
+    if sender_id:
+        groups.append(sender_id)
     groups.append(rag_services.RAG_PUBLIC_GROUP)
     return list(dict.fromkeys(groups))
 
@@ -119,6 +124,9 @@ def _resolve_permission_groups(payload: Dict[str, object], user: object) -> List
 
     accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
     allowed = set(accessible)
+    sender_id = _resolve_sender_id(user)
+    if sender_id:
+        allowed.add(sender_id)
     allowed.add(rag_services.RAG_PUBLIC_GROUP)
     invalid = [group for group in normalized if group not in allowed]
     if invalid:
@@ -276,6 +284,10 @@ class AssistantRagIndexListView(APIView):
         accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
         current_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
         permission_groups = set(accessible)
+        sender_id = _resolve_sender_id(user)
+        if not sender_id:
+            return JsonResponse({"error": "forbidden"}, status=403)
+        permission_groups.add(sender_id)
         permission_groups.add(rag_services.RAG_PUBLIC_GROUP)
 
         return JsonResponse(
@@ -307,9 +319,9 @@ class AssistantChatView(APIView):
             return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
 
         try:
-            username_clean, user_header_id = _validate_user_identity(request.user)
+            user_key, user_header_id = _validate_user_identity(request.user)
         except AssistantRequestError as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
+            return JsonResponse({"error": str(exc)}, status=403)
 
         room_id_raw = payload.get("roomId") or payload.get("room_id")
         room_id = _normalize_room_id(room_id_raw)
@@ -331,7 +343,7 @@ class AssistantChatView(APIView):
             payload.get("history"),
             limit=conversation_memory.max_messages,
         )
-        stored_history = conversation_memory.load(username_clean, room_id)
+        stored_history = conversation_memory.load(user_key, room_id)
         base_history = stored_history if stored_history else incoming_history
 
         history_with_prompt = _append_user_prompt(
@@ -339,7 +351,7 @@ class AssistantChatView(APIView):
             prompt_clean,
             limit=conversation_memory.max_messages,
         )
-        conversation_memory.save(username_clean, room_id, history_with_prompt)
+        conversation_memory.save(user_key, room_id, history_with_prompt)
 
         reply = ""
         contexts_used: List[str] = []
@@ -362,7 +374,7 @@ class AssistantChatView(APIView):
             logger.error(
                 "Assistant service configuration is missing required values.",
                 extra={
-                    "username": username_clean,
+                    "username": user_key,
                     "roomId": room_id,
                     "llmConfigured": bool(assistant_chat_service.config.llm_url),
                     "ragConfigured": bool(assistant_chat_service.config.rag_url),
@@ -376,14 +388,14 @@ class AssistantChatView(APIView):
         except AssistantRequestError as exc:
             logger.exception(
                 "Assistant upstream request failed",
-                extra={"username": username_clean, "roomId": room_id},
+                extra={"username": user_key, "roomId": room_id},
             )
             return JsonResponse({"error": str(exc)}, status=502)
 
         if not reply:
             logger.error(
                 "Assistant reply is empty despite successful upstream call.",
-                extra={"username": username_clean, "roomId": room_id, "contextCount": len(contexts_used)},
+                extra={"username": user_key, "roomId": room_id, "contextCount": len(contexts_used)},
             )
             return JsonResponse({"error": "어시스턴트 응답이 비어 있습니다. 관리자에게 문의해주세요."}, status=502)
 
@@ -392,13 +404,13 @@ class AssistantChatView(APIView):
             if segments_used
             else [{"role": "assistant", "content": reply}]
         )
-        updated_history = conversation_memory.append(username_clean, room_id, assistant_history_payload)
+        updated_history = conversation_memory.append(user_key, room_id, assistant_history_payload)
 
         logger.debug(
             "Assistant chat request received",
             extra={
                 "historyCount": len(updated_history),
-                "username": username_clean,
+                "username": user_key,
                 "roomId": room_id,
                 "llmConfigured": bool(assistant_chat_service.config.llm_url) or is_dummy,
                 "ragConfigured": bool(assistant_chat_service.config.rag_url) or is_dummy or bool(contexts_used),
@@ -422,7 +434,7 @@ class AssistantChatView(APIView):
                 "echo": {
                     "prompt": prompt_clean,
                     "historyCount": len(updated_history),
-                    "username": username_clean,
+                    "username": user_key,
                     "roomId": room_id,
                 },
             }

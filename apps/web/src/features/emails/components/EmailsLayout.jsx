@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { AppLayout, AppSidebar } from "@/components/layout"
@@ -13,8 +13,21 @@ import {
 } from "@/features/line-dashboard"
 
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
-import { getMailboxFromSearchParams, normalizeMailbox } from "../utils/mailbox"
+import {
+  buildMailboxUrl,
+  buildMembersUrl,
+  buildSentUrl,
+  getMailboxFromSearchParams,
+  isSentMailbox,
+  normalizeMailbox,
+  SENT_MAILBOX_ID,
+  SENT_MAILBOX_LABEL,
+} from "../utils/mailbox"
 import { EmailsHeader } from "./EmailsHeader"
+
+const INBOX_PREFIX = "/emails/inbox"
+const SENT_PREFIX = "/emails/sent"
+const MEMBERS_PREFIX = "/emails/members"
 
 function normalizeLineId(value) {
   return typeof value === "string" ? value.trim() : ""
@@ -28,11 +41,11 @@ function buildLineOptions(lineSdwtOptions) {
   return Array.from(new Set(lineIds))
 }
 
-function buildAffiliationOptions(lineSdwtOptions, mailboxes) {
+function buildAffiliationOptions(lineSdwtOptions, mailboxes, { includeSent = false } = {}) {
   const lines = Array.isArray(lineSdwtOptions?.lines) ? lineSdwtOptions.lines : []
   const mailboxSet = new Set(mailboxes)
 
-  return lines.flatMap((line) => {
+  const options = lines.flatMap((line) => {
     const lineId = normalizeLineId(line?.lineId)
     if (!lineId) return []
 
@@ -45,8 +58,20 @@ function buildAffiliationOptions(lineSdwtOptions, mailboxes) {
         id: userSdwtProd,
         label: `${lineId} / ${userSdwtProd}`,
         lineId,
+        userSdwtProd,
       }))
   })
+
+  if (includeSent) {
+    options.unshift({
+      id: SENT_MAILBOX_ID,
+      label: SENT_MAILBOX_LABEL,
+      lineId: null,
+      userSdwtProd: null,
+    })
+  }
+
+  return options
 }
 
 export function EmailsLayout({
@@ -54,7 +79,9 @@ export function EmailsLayout({
   contentMaxWidthClass,
   scrollAreaClassName,
 }) {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const invalidMailboxRef = useRef("")
 
@@ -72,13 +99,25 @@ export function EmailsLayout({
 
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
   const mailboxParam = getMailboxFromSearchParams(searchParams)
+  const normalizedMailboxParam = normalizeMailbox(mailboxParam)
   const currentUserSdwtProd = normalizeMailbox(user?.user_sdwt_prod)
-  const firstMailbox = normalizeMailbox(mailboxes[0])
-  const fallbackMailbox = mailboxParam || currentUserSdwtProd || firstMailbox
-  const activeMailbox = mailboxParam || fallbackMailbox
   const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
+  const validMailboxes = normalizedMailboxes.filter((mailbox) => !isSentMailbox(mailbox))
+  const firstMailbox = validMailboxes[0] || ""
+
+  const isSentRoute = pathname.startsWith(SENT_PREFIX)
+  const isMembersRoute = pathname.startsWith(MEMBERS_PREFIX)
+  const isInboxRoute = pathname.startsWith(INBOX_PREFIX)
+  const isMailboxRoute = isMembersRoute || isInboxRoute
+
+  const fallbackMailbox = normalizedMailboxParam || currentUserSdwtProd || firstMailbox
+  const activeMailbox = isSentRoute ? SENT_MAILBOX_ID : fallbackMailbox
+  const navigationMailbox = fallbackMailbox
+
   const lineOptions = buildLineOptions(lineSdwtOptions)
-  const affiliationOptions = buildAffiliationOptions(lineSdwtOptions, normalizedMailboxes)
+  const affiliationOptions = buildAffiliationOptions(lineSdwtOptions, validMailboxes, {
+    includeSent: true,
+  })
 
   useEffect(() => {
     if (isMailboxError && mailboxError) {
@@ -93,66 +132,65 @@ export function EmailsLayout({
   }, [isLineSdwtError, lineSdwtError])
 
   useEffect(() => {
-    if (!mailboxParam) return
+    if (!isMailboxRoute) return
+    if (!normalizedMailboxParam) return
     if (isMailboxLoading) return
     if (isMailboxError) return
-    if (normalizedMailboxes.length === 0) return
-    if (normalizedMailboxes.includes(mailboxParam)) {
+    if (validMailboxes.length === 0) return
+    if (validMailboxes.includes(normalizedMailboxParam)) {
       invalidMailboxRef.current = ""
       return
     }
 
-    if (invalidMailboxRef.current === mailboxParam) return
-    invalidMailboxRef.current = mailboxParam
+    if (invalidMailboxRef.current === normalizedMailboxParam) return
+    invalidMailboxRef.current = normalizedMailboxParam
     toast.error("권한이 없는 메일함 입니다.")
 
     const nextMailbox =
-      (currentUserSdwtProd && normalizedMailboxes.includes(currentUserSdwtProd) && currentUserSdwtProd) ||
-      normalizedMailboxes[0] ||
+      (currentUserSdwtProd && validMailboxes.includes(currentUserSdwtProd) && currentUserSdwtProd) ||
+      validMailboxes[0] ||
       ""
 
     if (!nextMailbox) return
 
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.set("mailbox", nextMailbox)
-    nextParams.delete("userSdwtProd")
-    nextParams.delete("user_sdwt_prod")
-    nextParams.delete("emailId")
-    setSearchParams(nextParams, { replace: true })
+    const nextUrl = isMembersRoute ? buildMembersUrl(nextMailbox) : buildMailboxUrl(nextMailbox)
+    navigate(nextUrl, { replace: true })
   }, [
-    mailboxParam,
     currentUserSdwtProd,
     isMailboxError,
     isMailboxLoading,
-    normalizedMailboxes,
-    searchParams,
-    setSearchParams,
+    isMailboxRoute,
+    isMembersRoute,
+    navigate,
+    normalizedMailboxParam,
+    validMailboxes,
   ])
 
   useEffect(() => {
-    if (mailboxParam) return
+    if (!isMailboxRoute) return
+    if (normalizedMailboxParam) return
     if (!fallbackMailbox) return
 
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.set("mailbox", fallbackMailbox)
-    nextParams.delete("userSdwtProd")
-    nextParams.delete("user_sdwt_prod")
-    setSearchParams(nextParams, { replace: true })
-  }, [fallbackMailbox, mailboxParam, searchParams, setSearchParams])
+    const nextUrl = isMembersRoute ? buildMembersUrl(fallbackMailbox) : buildMailboxUrl(fallbackMailbox)
+    navigate(nextUrl, { replace: true })
+  }, [fallbackMailbox, isMailboxRoute, isMembersRoute, navigate, normalizedMailboxParam])
 
   const handleSelectMailbox = (mailbox) => {
     const nextMailbox = normalizeMailbox(mailbox)
-    if (!nextMailbox || nextMailbox === mailboxParam) return
+    if (!nextMailbox) return
 
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.set("mailbox", nextMailbox)
-    nextParams.delete("emailId")
-    nextParams.delete("userSdwtProd")
-    nextParams.delete("user_sdwt_prod")
-    setSearchParams(nextParams)
+    if (isSentMailbox(nextMailbox)) {
+      navigate(buildSentUrl())
+      return
+    }
+
+    if (isMailboxRoute && nextMailbox === normalizedMailboxParam) return
+
+    const nextUrl = isMembersRoute ? buildMembersUrl(nextMailbox) : buildMailboxUrl(nextMailbox)
+    navigate(nextUrl)
   }
 
-  const navigation = buildNavigationConfig({ mailbox: activeMailbox })
+  const navigation = buildNavigationConfig({ mailbox: navigationMailbox })
   const nav = <NavMain items={navigation.navMain} />
   const sidebar = (
     <AppSidebar

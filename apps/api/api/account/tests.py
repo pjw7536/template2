@@ -33,7 +33,7 @@ from api.account.services import (
     sync_external_affiliations,
     update_affiliation_jira_key,
 )
-from api.emails.models import Email, EmailOutbox
+from api.emails.models import Email
 
 
 class AccountEndpointTests(TestCase):
@@ -46,11 +46,19 @@ class AccountEndpointTests(TestCase):
         self.user.line = "L1"
         self.user.save(update_fields=["knox_id", "user_sdwt_prod", "department", "line"])
 
-        self.manager = User.objects.create_user(sabun="S50001", password="test-password")
+        self.manager = User.objects.create_user(
+            sabun="S50001",
+            password="test-password",
+            knox_id="knox-50001",
+        )
         UserSdwtProdAccess.objects.create(user=self.manager, user_sdwt_prod="group-a", can_manage=True)
         UserSdwtProdAccess.objects.create(user=self.manager, user_sdwt_prod="group-b", can_manage=True)
 
-        self.superuser = User.objects.create_superuser(sabun="S50002", password="test-password")
+        self.superuser = User.objects.create_superuser(
+            sabun="S50002",
+            password="test-password",
+            knox_id="knox-50002",
+        )
 
         Affiliation.objects.create(department="Dept", line="L1", user_sdwt_prod="group-a")
         Affiliation.objects.create(department="Dept", line="L1", user_sdwt_prod="group-b")
@@ -197,7 +205,11 @@ class AffiliationSelectorTests(TestCase):
 class AccessibleUserSdwtProdTests(TestCase):
     def test_pending_change_included_when_no_current_affiliation(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S42000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S42000",
+            password="test-password",
+            knox_id="knox-42000",
+        )
 
         UserSdwtProdChange.objects.create(
             user=user,
@@ -217,7 +229,11 @@ class AccessibleUserSdwtProdTests(TestCase):
 
     def test_pending_change_ignored_when_current_affiliation_exists(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S42001", password="test-password")
+        user = User.objects.create_user(
+            sabun="S42001",
+            password="test-password",
+            knox_id="knox-42001",
+        )
         user.user_sdwt_prod = "group-old"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -242,11 +258,19 @@ class AccessibleUserSdwtProdTests(TestCase):
 class AffiliationChangeApprovalTests(TestCase):
     def test_manager_can_approve_and_preserves_effective_from(self) -> None:
         User = get_user_model()
-        requester = User.objects.create_user(sabun="S10000", password="test-password")
+        requester = User.objects.create_user(
+            sabun="S10000",
+            password="test-password",
+            knox_id="knox-10000",
+        )
         requester.user_sdwt_prod = "group-old"
         requester.save(update_fields=["user_sdwt_prod"])
 
-        manager = User.objects.create_user(sabun="S20000", password="test-password")
+        manager = User.objects.create_user(
+            sabun="S20000",
+            password="test-password",
+            knox_id="knox-20000",
+        )
         UserSdwtProdAccess.objects.create(user=manager, user_sdwt_prod="group-new", can_manage=True)
 
         past = timezone.now() - timedelta(days=7)
@@ -277,17 +301,21 @@ class AffiliationChangeApprovalTests(TestCase):
         self.assertIsNotNone(change.approved_at)
         self.assertEqual(change.effective_from, past)
 
-        outbox_item = EmailOutbox.objects.get()
-        self.assertEqual(outbox_item.action, EmailOutbox.Action.RECLASSIFY)
-        self.assertEqual(outbox_item.payload.get("user_id"), requester.id)
-
     def test_non_manager_cannot_approve(self) -> None:
         User = get_user_model()
-        requester = User.objects.create_user(sabun="S10001", password="test-password")
+        requester = User.objects.create_user(
+            sabun="S10001",
+            password="test-password",
+            knox_id="knox-10001",
+        )
         requester.user_sdwt_prod = "group-old"
         requester.save(update_fields=["user_sdwt_prod"])
 
-        other = User.objects.create_user(sabun="S30000", password="test-password")
+        other = User.objects.create_user(
+            sabun="S30000",
+            password="test-password",
+            knox_id="knox-30000",
+        )
 
         change = UserSdwtProdChange.objects.create(
             user=requester,
@@ -311,7 +339,11 @@ class AffiliationChangeApprovalTests(TestCase):
 class AffiliationChangeSelectorTests(TestCase):
     def test_resolve_user_affiliation_ignores_unapproved_change(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S40000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S40000",
+            password="test-password",
+            knox_id="knox-40000",
+        )
         user.user_sdwt_prod = "group-a"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -329,7 +361,11 @@ class AffiliationChangeSelectorTests(TestCase):
 
     def test_get_next_user_sdwt_prod_change_ignores_unapproved_change(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S40001", password="test-password")
+        user = User.objects.create_user(
+            sabun="S40001",
+            password="test-password",
+            knox_id="knox-40001",
+        )
         user.user_sdwt_prod = "group-a"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -360,11 +396,23 @@ class AffiliationChangeSelectorTests(TestCase):
 class AffiliationChangeRequestListTests(TestCase):
     def test_manager_only_sees_manageable_groups(self) -> None:
         User = get_user_model()
-        manager = User.objects.create_user(sabun="S90000", password="test-password")
+        manager = User.objects.create_user(
+            sabun="S90000",
+            password="test-password",
+            knox_id="knox-90000",
+        )
         UserSdwtProdAccess.objects.create(user=manager, user_sdwt_prod="group-a", can_manage=True)
 
-        requester_a = User.objects.create_user(sabun="S90001", password="test-password")
-        requester_b = User.objects.create_user(sabun="S90002", password="test-password")
+        requester_a = User.objects.create_user(
+            sabun="S90001",
+            password="test-password",
+            knox_id="knox-90001",
+        )
+        requester_b = User.objects.create_user(
+            sabun="S90002",
+            password="test-password",
+            knox_id="knox-90002",
+        )
 
         change_a = UserSdwtProdChange.objects.create(
             user=requester_a,
@@ -401,10 +449,18 @@ class AffiliationChangeRequestListTests(TestCase):
 
     def test_search_filters_by_sabun(self) -> None:
         User = get_user_model()
-        manager = User.objects.create_user(sabun="S91000", password="test-password")
+        manager = User.objects.create_user(
+            sabun="S91000",
+            password="test-password",
+            knox_id="knox-91000",
+        )
         UserSdwtProdAccess.objects.create(user=manager, user_sdwt_prod="group-c", can_manage=True)
 
-        requester = User.objects.create_user(sabun="S91001", password="test-password")
+        requester = User.objects.create_user(
+            sabun="S91001",
+            password="test-password",
+            knox_id="knox-91001",
+        )
         change = UserSdwtProdChange.objects.create(
             user=requester,
             to_user_sdwt_prod="group-c",
@@ -430,7 +486,11 @@ class AffiliationChangeRequestListTests(TestCase):
 
     def test_non_manager_is_forbidden(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S92000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S92000",
+            password="test-password",
+            knox_id="knox-92000",
+        )
 
         payload, status_code = get_affiliation_change_requests(
             user=user,
@@ -446,7 +506,11 @@ class AffiliationChangeRequestListTests(TestCase):
 
     def test_non_manager_can_view_own_group_requests(self) -> None:
         User = get_user_model()
-        requester = User.objects.create_user(sabun="S93000", password="test-password")
+        requester = User.objects.create_user(
+            sabun="S93000",
+            password="test-password",
+            knox_id="knox-93000",
+        )
         requester.user_sdwt_prod = "group-own"
         requester.save(update_fields=["user_sdwt_prod"])
 
@@ -477,7 +541,11 @@ class AffiliationChangeRequestListTests(TestCase):
 class AffiliationChangeRequestTests(TestCase):
     def test_request_affiliation_change_respects_effective_from_for_all(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S50000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S50000",
+            password="test-password",
+            knox_id="knox-50000",
+        )
         user.user_sdwt_prod = "group-old"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -501,7 +569,11 @@ class AffiliationChangeRequestTests(TestCase):
 class AccountOverviewTests(TestCase):
     def test_account_overview_includes_profile_history_and_mailbox(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S90000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S90000",
+            password="test-password",
+            knox_id="knox-90000",
+        )
         user.username = "Tester"
         user.knox_id = "KNOX-90000"
         user.user_sdwt_prod = "group-a"
@@ -554,7 +626,12 @@ class AccountOverviewTests(TestCase):
 
     def test_request_affiliation_change_defaults_to_request_time(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S50001", password="test-password", is_staff=True)
+        user = User.objects.create_user(
+            sabun="S50001",
+            password="test-password",
+            is_staff=True,
+            knox_id="knox-50001",
+        )
         user.user_sdwt_prod = "group-old"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -580,7 +657,11 @@ class AccountOverviewTests(TestCase):
 class AffiliationOverviewTests(TestCase):
     def test_get_affiliation_overview_does_not_create_access_row(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S60000", password="test-password")
+        user = User.objects.create_user(
+            sabun="S60000",
+            password="test-password",
+            knox_id="knox-60000",
+        )
         user.user_sdwt_prod = "group-a"
         user.save(update_fields=["user_sdwt_prod"])
 
@@ -598,8 +679,16 @@ class AffiliationJiraKeyPermissionTests(TestCase):
 
     def test_jira_key_update_requires_superuser(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S60001", password="test-password")
-        superuser = User.objects.create_superuser(sabun="S60002", password="test-password")
+        user = User.objects.create_user(
+            sabun="S60001",
+            password="test-password",
+            knox_id="knox-60001",
+        )
+        superuser = User.objects.create_superuser(
+            sabun="S60002",
+            password="test-password",
+            knox_id="knox-60002",
+        )
 
         url = reverse("account-affiliation-jira-key")
 
@@ -614,7 +703,11 @@ class AffiliationJiraKeyPermissionTests(TestCase):
 
     def test_request_affiliation_change_creates_pending_for_first_affiliation(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S50001", password="test-password")
+        user = User.objects.create_user(
+            sabun="S50001",
+            password="test-password",
+            knox_id="knox-50001",
+        )
 
         option = Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-new")
 

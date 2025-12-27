@@ -11,6 +11,8 @@ import { AppFilters } from "../components/AppFilters"
 import { AppFormDialog } from "../components/AppFormDialog"
 import { AppList } from "../components/AppList"
 
+const EMPTY_APPS = []
+
 export function AppstorePage() {
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState("all")
@@ -23,7 +25,7 @@ export function AppstorePage() {
   const [togglingCommentLikeId, setTogglingCommentLikeId] = useState(null)
 
   const appsQuery = useAppsQuery()
-  const apps = appsQuery.data?.apps ?? []
+  const apps = appsQuery.data?.apps ?? EMPTY_APPS
   const { user } = useAuth()
 
   const {

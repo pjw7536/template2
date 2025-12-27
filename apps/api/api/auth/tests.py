@@ -39,6 +39,8 @@ class AuthMeTests(TestCase):
     def test_auth_me_includes_pending_user_sdwt_prod(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S12346", password="test-password")
+        user.knox_id = "KNOX-12346"
+        user.save(update_fields=["knox_id"])
         UserSdwtProdChange.objects.create(
             user=user,
             department="Dept",

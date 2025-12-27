@@ -188,9 +188,15 @@ RAG_INDEX_LIST = _resolved_index_list
 def _resolve_email_permission_groups(email: Any) -> List[str]:
     """이메일의 user_sdwt_prod 값을 permission_groups로 변환합니다."""
 
+    groups: List[str] = []
     raw_group = getattr(email, "user_sdwt_prod", None)
     if isinstance(raw_group, str) and raw_group.strip():
-        return [raw_group.strip()]
+        groups.append(raw_group.strip())
+    raw_sender_id = getattr(email, "sender_id", None)
+    if isinstance(raw_sender_id, str) and raw_sender_id.strip():
+        groups.append(raw_sender_id.strip())
+    if groups:
+        return list(dict.fromkeys(groups))
     return _normalize_permission_groups(RAG_PERMISSION_GROUPS) or [RAG_PUBLIC_GROUP]
 
 

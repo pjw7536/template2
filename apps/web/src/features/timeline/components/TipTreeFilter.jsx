@@ -1,7 +1,38 @@
 // src/features/timeline/components/TipTreeFilter.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronRightIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
 import { buildTipGroupTree } from "../utils/tipTreeUtils";
+
+function getAllPpidKeys(tree) {
+  const ppids = [];
+  Object.values(tree).forEach((lineNode) => {
+    Object.values(lineNode.children).forEach((processNode) => {
+      Object.values(processNode.children).forEach((stepNode) => {
+        Object.values(stepNode.children).forEach((ppidNode) => {
+          ppids.push(ppidNode.key);
+        });
+      });
+    });
+  });
+  return ppids;
+}
+
+function getPwqPpidKeys(tree) {
+  const pwqPpids = [];
+  Object.values(tree).forEach((lineNode) => {
+    Object.values(lineNode.children).forEach((processNode) => {
+      Object.values(processNode.children).forEach((stepNode) => {
+        Object.values(stepNode.children).forEach((ppidNode) => {
+          // ppid name이 pwq로 시작하는지 확인
+          if (ppidNode.name.toLowerCase().startsWith("pwq")) {
+            pwqPpids.push(ppidNode.key);
+          }
+        });
+      });
+    });
+  });
+  return pwqPpids;
+}
 
 /**
  * TIP 그룹 필터 트리
@@ -19,7 +50,7 @@ export default function TipTreeFilter({
   const [excludePwq, setExcludePwq] = useState(false);
 
   // 트리 구조 생성
-  const tree = buildTipGroupTree(tipLogs);
+  const tree = useMemo(() => buildTipGroupTree(tipLogs), [tipLogs]);
 
   // 초기 선택 상태를 selectedTipGroups 기반으로 설정
   const [selectedPpids, setSelectedPpids] = useState(() => {
@@ -43,53 +74,20 @@ export default function TipTreeFilter({
       setIsAllSelected(false);
       setSelectedPpids(new Set(selectedTipGroups));
       // PWQ 항목이 선택되어 있는지 확인
-      const pwqKeys = getPwqPpidKeys();
+      const pwqKeys = getPwqPpidKeys(tree);
       const hasPwqSelected = pwqKeys.some((key) =>
         selectedTipGroups.includes(key)
       );
       setExcludePwq(!hasPwqSelected && selectedTipGroups.length > 0);
     }
-  }, [selectedTipGroups]);
-
-  // 모든 ppid 키 가져오기
-  const getAllPpidKeys = () => {
-    const ppids = [];
-    Object.values(tree).forEach((lineNode) => {
-      Object.values(lineNode.children).forEach((processNode) => {
-        Object.values(processNode.children).forEach((stepNode) => {
-          Object.values(stepNode.children).forEach((ppidNode) => {
-            ppids.push(ppidNode.key);
-          });
-        });
-      });
-    });
-    return ppids;
-  };
-
-  // PWQ로 시작하는 ppid 키들 가져오기
-  const getPwqPpidKeys = () => {
-    const pwqPpids = [];
-    Object.values(tree).forEach((lineNode) => {
-      Object.values(lineNode.children).forEach((processNode) => {
-        Object.values(processNode.children).forEach((stepNode) => {
-          Object.values(stepNode.children).forEach((ppidNode) => {
-            // ppid name이 pwq로 시작하는지 확인
-            if (ppidNode.name.toLowerCase().startsWith("pwq")) {
-              pwqPpids.push(ppidNode.key);
-            }
-          });
-        });
-      });
-    });
-    return pwqPpids;
-  };
+  }, [selectedTipGroups, tree]);
 
   // PWQ 미포함 체크박스 핸들러
   const handleExcludePwqChange = (checked) => {
     setExcludePwq(checked);
 
-    const allPpidKeys = getAllPpidKeys();
-    const pwqPpidKeys = getPwqPpidKeys();
+    const allPpidKeys = getAllPpidKeys(tree);
+    const pwqPpidKeys = getPwqPpidKeys(tree);
     const newSelectedPpids = new Set(selectedPpids);
     let newIsAllSelected = isAllSelected;
 

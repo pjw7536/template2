@@ -6,7 +6,7 @@ from api.emails.services import process_email_outbox_batch
 
 
 class Command(BaseCommand):
-    help = "Process pending email outbox items for RAG operations and reclassification."
+    help = "Process pending email outbox items for RAG operations."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("--limit", type=int, default=100, help="Max outbox items to process in one run.")

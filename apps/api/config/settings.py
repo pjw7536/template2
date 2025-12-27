@@ -131,6 +131,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # 사용자 활동 로깅 (커스텀)
     "api.common.middleware.ActivityLoggingMiddleware",
+    "api.common.middleware.KnoxIdRequiredMiddleware",
 ]
 
 

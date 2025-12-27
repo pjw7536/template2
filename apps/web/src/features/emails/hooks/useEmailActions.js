@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { emailQueryKeys } from "../api/emailQueryKeys"
-import { bulkDeleteEmails, deleteEmail } from "../api/emails"
+import { bulkDeleteEmails, deleteEmail, moveEmails } from "../api/emails"
 
 export function useDeleteEmail() {
   const queryClient = useQueryClient()
@@ -31,6 +31,17 @@ export function useBulkDeleteEmails() {
         queryClient.removeQueries({ queryKey: emailQueryKeys.detail(emailId), exact: true })
         queryClient.removeQueries({ queryKey: emailQueryKeys.html(emailId), exact: true })
       })
+    },
+  })
+}
+
+export function useMoveEmails() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ emailIds, toUserSdwtProd }) => moveEmails(emailIds, toUserSdwtProd),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: emailQueryKeys.listPrefix })
     },
   })
 }

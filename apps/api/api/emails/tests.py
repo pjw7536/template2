@@ -20,13 +20,11 @@ from api.emails.services import (
     _parse_message_to_fields,
     claim_unassigned_emails_for_user,
     delete_single_email,
-    enqueue_reclassify_emails_for_user_sdwt_change,
     enqueue_rag_index_for_emails,
     enqueue_rag_index,
     move_emails_to_user_sdwt_prod,
     move_sender_emails_after,
     process_email_outbox_batch,
-    reclassify_emails_for_user_sdwt_change,
     send_knox_mail_api,
 )
 from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
@@ -83,36 +81,10 @@ class EmailAffiliationTests(TestCase):
         after = resolve_email_affiliation(sender_id="loginid3", received_at=effective_from + timedelta(hours=1))
         self.assertEqual(after["user_sdwt_prod"], "group-new")
 
-    def test_reclassify_emails_for_user_sdwt_change_targets_knox_id(self) -> None:
-        User = get_user_model()
-        user = User.objects.create_user(sabun="S99999", password="test-password")
-        user.knox_id = "loginid2"
-        user.user_sdwt_prod = "group-b"
-        user.save(update_fields=["knox_id", "user_sdwt_prod"])
-
-        received_at = timezone.now()
-        email = Email.objects.create(
-            message_id="msg-1",
-            received_at=received_at,
-            subject="Subject",
-            sender="loginid2@example.com",
-            sender_id="loginid2",
-            recipient=["dest@example.com"],
-            user_sdwt_prod="group-old",
-            body_text="Body",
-        )
-
-        updated = reclassify_emails_for_user_sdwt_change(
-            user,
-            effective_from=received_at - timedelta(days=1),
-        )
-        self.assertEqual(updated, 1)
-        email.refresh_from_db()
-        self.assertEqual(email.user_sdwt_prod, "group-b")
-
 
 class EmailMoveServiceTests(TestCase):
-    def test_enqueue_rag_index_for_emails_reports_missing_ids(self) -> None:
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_enqueue_rag_index_for_emails_reports_missing_ids(self, _mock_insert: Mock) -> None:
         email = Email.objects.create(
             message_id="rag-missing-msg",
             received_at=timezone.now(),
@@ -121,6 +93,8 @@ class EmailMoveServiceTests(TestCase):
             sender_id="loginid-missing",
             recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.PENDING,
             body_text="Body",
         )
 
@@ -133,9 +107,10 @@ class EmailMoveServiceTests(TestCase):
         self.assertEqual(result["ragRegistered"], 1)
         self.assertEqual(result["ragMissing"], 1)
         self.assertEqual(result["ragFailed"], 0)
-        self.assertEqual(EmailOutbox.objects.count(), 1)
+        self.assertEqual(EmailOutbox.objects.count(), 0)
 
-    def test_move_emails_to_user_sdwt_prod_updates_rows(self) -> None:
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_move_emails_to_user_sdwt_prod_updates_rows(self, _mock_insert: Mock) -> None:
         email_a = Email.objects.create(
             message_id="move-msg-a",
             received_at=timezone.now(),
@@ -169,7 +144,8 @@ class EmailMoveServiceTests(TestCase):
         self.assertEqual(email_b.user_sdwt_prod, "group-new")
         self.assertTrue(bool(email_a.rag_doc_id))
 
-    def test_move_emails_to_user_sdwt_prod_reports_missing_ids(self) -> None:
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_move_emails_to_user_sdwt_prod_reports_missing_ids(self, _mock_insert: Mock) -> None:
         email = Email.objects.create(
             message_id="move-missing-msg",
             received_at=timezone.now(),
@@ -194,7 +170,8 @@ class EmailMoveServiceTests(TestCase):
         email.refresh_from_db()
         self.assertEqual(email.user_sdwt_prod, "group-b")
 
-    def test_move_sender_emails_after_filters_by_time(self) -> None:
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_move_sender_emails_after_filters_by_time(self, _mock_insert: Mock) -> None:
         sender_id = "loginid-time"
         old = Email.objects.create(
             message_id="move-time-old",
@@ -230,7 +207,8 @@ class EmailMoveServiceTests(TestCase):
         self.assertEqual(old.user_sdwt_prod, "group-a")
         self.assertEqual(new.user_sdwt_prod, "group-b")
 
-    def test_claim_unassigned_emails_for_user_includes_missing_count(self) -> None:
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_claim_unassigned_emails_for_user_includes_missing_count(self, _mock_insert: Mock) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S22222", password="test-password")
         user.knox_id = "loginid-claim"
@@ -287,7 +265,7 @@ class EmailOutboxTests(TestCase):
         args, kwargs = mock_insert.call_args
         self.assertEqual(args[0].id, email.id)
         self.assertEqual(kwargs.get("index_name"), resolve_rag_index_name(RAG_INDEX_EMAILS))
-        self.assertEqual(kwargs.get("permission_groups"), ["group-a"])
+        self.assertEqual(kwargs.get("permission_groups"), ["group-a", "sender"])
 
     @patch("api.emails.services.delete_rag_doc")
     def test_delete_email_enqueues_outbox(self, mock_delete: Mock) -> None:
@@ -316,43 +294,8 @@ class EmailOutboxTests(TestCase):
         mock_delete.assert_called_once_with(
             "email-outbox-2",
             index_name=resolve_rag_index_name(RAG_INDEX_EMAILS),
-            permission_groups=["group-a"],
+            permission_groups=["group-a", "sender"],
         )
-
-    def test_reclassify_outbox_updates_email(self) -> None:
-        User = get_user_model()
-        user = User.objects.create_user(sabun="S33333", password="test-password")
-        user.knox_id = "reclassify-user"
-        user.user_sdwt_prod = "group-new"
-        user.save(update_fields=["knox_id", "user_sdwt_prod"])
-
-        email = Email.objects.create(
-            message_id="reclassify-msg-1",
-            received_at=timezone.now() - timedelta(hours=1),
-            subject="Reclassify",
-            sender="sender@example.com",
-            sender_id="reclassify-user",
-            recipient=["dest@example.com"],
-            user_sdwt_prod="group-old",
-            body_text="Body",
-        )
-
-        effective_from = timezone.now() - timedelta(days=1)
-        enqueue_reclassify_emails_for_user_sdwt_change(
-            user_id=user.id,
-            effective_from=effective_from,
-        )
-
-        result = process_email_outbox_batch(limit=10)
-        self.assertEqual(result["processed"], 1)
-        self.assertEqual(result["succeeded"], 1)
-
-        email.refresh_from_db()
-        self.assertEqual(email.user_sdwt_prod, "group-new")
-
-        outbox_actions = list(EmailOutbox.objects.values_list("action", flat=True))
-        self.assertIn(EmailOutbox.Action.RECLASSIFY, outbox_actions)
-        self.assertIn(EmailOutbox.Action.INDEX, outbox_actions)
 
 
 class EmailMailboxAccessViewTests(TestCase):
@@ -361,8 +304,9 @@ class EmailMailboxAccessViewTests(TestCase):
     def test_user_only_sees_own_mailbox_by_default(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S11111", password="test-password")
+        user.knox_id = "knox-11111"
         user.user_sdwt_prod = "group-a"
-        user.save(update_fields=["user_sdwt_prod"])
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         Email.objects.create(
             message_id="msg-a",
@@ -387,7 +331,7 @@ class EmailMailboxAccessViewTests(TestCase):
 
         self.client.force_login(user)
 
-        response = self.client.get(reverse("emails-list"))
+        response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(response.status_code, 200)
         results = response.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-a"})
@@ -395,11 +339,63 @@ class EmailMailboxAccessViewTests(TestCase):
         detail = self.client.get(reverse("emails-detail", kwargs={"email_id": Email.objects.get(message_id="msg-b").id}))
         self.assertEqual(detail.status_code, 403)
 
+    def test_missing_knox_id_is_forbidden(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S11110", password="test-password")
+        user.user_sdwt_prod = "group-a"
+        user.save(update_fields=["user_sdwt_prod"])
+
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("emails-inbox"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_sender_can_access_sent_email_without_mailbox_access(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S11113", password="test-password")
+        user.knox_id = "loginid-sender"
+        user.user_sdwt_prod = "group-a"
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
+
+        sent_email = Email.objects.create(
+            message_id="msg-sent-1",
+            received_at=timezone.now(),
+            subject="Sent",
+            sender="sender@example.com",
+            sender_id="loginid-sender",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-b",
+            body_text="Body",
+        )
+
+        self.client.force_login(user)
+
+        detail = self.client.get(reverse("emails-detail", kwargs={"email_id": sent_email.id}))
+        self.assertEqual(detail.status_code, 200)
+
+        sent_list = self.client.get(reverse("emails-sent"))
+        self.assertEqual(sent_list.status_code, 200)
+        results = sent_list.json()["results"]
+        self.assertTrue(any(item["id"] == sent_email.id for item in results))
+
+    def test_sent_rejects_knox_id_query_param(self) -> None:
+        User = get_user_model()
+        user = User.objects.create_user(sabun="S11114", password="test-password")
+        user.knox_id = "loginid-sender"
+        user.user_sdwt_prod = "group-a"
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
+
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("emails-sent"), {"knox_id": "loginid-sender"})
+        self.assertEqual(response.status_code, 400)
+
     def test_mailbox_list_includes_empty_granted_mailbox(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S11112", password="test-password")
+        user.knox_id = "knox-11112"
         user.user_sdwt_prod = "group-a"
-        user.save(update_fields=["user_sdwt_prod"])
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-empty")
 
@@ -407,14 +403,16 @@ class EmailMailboxAccessViewTests(TestCase):
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
+        self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-empty", mailbox_list.json()["results"])
 
     def test_user_can_select_granted_mailbox(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S22222", password="test-password")
+        user.knox_id = "knox-22222"
         user.user_sdwt_prod = "group-a"
-        user.save(update_fields=["user_sdwt_prod"])
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-b")
 
@@ -443,9 +441,9 @@ class EmailMailboxAccessViewTests(TestCase):
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
-        self.assertEqual(mailbox_list.json()["results"], ["group-a", "group-b"])
+        self.assertEqual(mailbox_list.json()["results"], ["__sent__", "group-a", "group-b"])
 
-        response = self.client.get(reverse("emails-list"), {"user_sdwt_prod": "group-b"})
+        response = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": "group-b"})
         self.assertEqual(response.status_code, 200)
         results = response.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
@@ -540,12 +538,14 @@ class EmailMailboxAccessViewTests(TestCase):
     def test_user_cannot_view_mailbox_members_for_ungranted_mailbox(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S44444", password="test-password")
+        user.knox_id = "knox-44444"
         user.user_sdwt_prod = "group-a"
-        user.save(update_fields=["user_sdwt_prod"])
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         other = User.objects.create_user(sabun="S44445", password="test-password")
+        other.knox_id = "knox-44445"
         other.user_sdwt_prod = "group-b"
-        other.save(update_fields=["user_sdwt_prod"])
+        other.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         self.client.force_login(user)
 
@@ -555,12 +555,14 @@ class EmailMailboxAccessViewTests(TestCase):
     def test_user_can_view_mailbox_members_for_granted_mailbox(self) -> None:
         User = get_user_model()
         user = User.objects.create_user(sabun="S55555", password="test-password")
+        user.knox_id = "knox-55555"
         user.user_sdwt_prod = "group-a"
-        user.save(update_fields=["user_sdwt_prod"])
+        user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         mailbox_owner = User.objects.create_user(sabun="S55556", password="test-password")
+        mailbox_owner.knox_id = "knox-55556"
         mailbox_owner.user_sdwt_prod = "group-b"
-        mailbox_owner.save(update_fields=["user_sdwt_prod"])
+        mailbox_owner.save(update_fields=["knox_id", "user_sdwt_prod"])
 
         UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-b")
 
@@ -571,12 +573,14 @@ class EmailMailboxAccessViewTests(TestCase):
         members = response.json()["members"]
         self.assertIn(mailbox_owner.id, {item["userId"] for item in members})
 
-        forbidden = self.client.get(reverse("emails-list"), {"user_sdwt_prod": "group-c"})
+        forbidden = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": "group-c"})
         self.assertEqual(forbidden.status_code, 403)
 
     def test_staff_mailboxes_list_includes_unassigned(self) -> None:
         User = get_user_model()
         staff = User.objects.create_user(sabun="S33333", password="test-password", is_staff=True)
+        staff.knox_id = "knox-33333"
+        staff.save(update_fields=["knox_id"])
 
         Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-empty")
 
@@ -615,23 +619,24 @@ class EmailMailboxAccessViewTests(TestCase):
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
+        self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-b", mailbox_list.json()["results"])
         self.assertIn("group-empty", mailbox_list.json()["results"])
         self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
 
-        response = self.client.get(reverse("emails-list"))
+        response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(response.status_code, 200)
         results = response.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-a", "group-b", UNASSIGNED_USER_SDWT_PROD})
 
-        unassigned_list = self.client.get(reverse("emails-list"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
+        unassigned_list = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
         self.assertEqual(unassigned_list.status_code, 200)
 
         detail = self.client.get(reverse("emails-detail", kwargs={"email_id": unassigned_email.id}))
         self.assertEqual(detail.status_code, 200)
 
-        filtered = self.client.get(reverse("emails-list"), {"user_sdwt_prod": "group-b"})
+        filtered = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": "group-b"})
         self.assertEqual(filtered.status_code, 200)
         results = filtered.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
@@ -639,6 +644,8 @@ class EmailMailboxAccessViewTests(TestCase):
     def test_superuser_mailboxes_list_includes_unassigned(self) -> None:
         User = get_user_model()
         superuser = User.objects.create_superuser(sabun="S33334", password="test-password")
+        superuser.knox_id = "knox-33334"
+        superuser.save(update_fields=["knox_id"])
 
         Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-empty")
 
@@ -667,11 +674,12 @@ class EmailMailboxAccessViewTests(TestCase):
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
+        self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-empty", mailbox_list.json()["results"])
         self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
 
-        unassigned_list = self.client.get(reverse("emails-list"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
+        unassigned_list = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD})
         self.assertEqual(unassigned_list.status_code, 200)
         results = unassigned_list.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {UNASSIGNED_USER_SDWT_PROD})
@@ -1007,7 +1015,7 @@ class EmailEndpointTests(TestCase):
         self.client.force_login(self.user)
 
     def test_email_list_detail_html_and_delete(self) -> None:
-        list_response = self.client.get(reverse("emails-list"))
+        list_response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(list_response.status_code, 200)
 
         detail_response = self.client.get(reverse("emails-detail", kwargs={"email_id": self.email.id}))
@@ -1019,6 +1027,12 @@ class EmailEndpointTests(TestCase):
 
         delete_response = self.client.delete(reverse("emails-detail", kwargs={"email_id": self.email.id}))
         self.assertEqual(delete_response.status_code, 200)
+
+    def test_email_sent_list(self) -> None:
+        sent_response = self.client.get(reverse("emails-sent"))
+        self.assertEqual(sent_response.status_code, 200)
+        results = sent_response.json()["results"]
+        self.assertTrue(any(item["id"] == self.email.id for item in results))
 
     def test_email_mailboxes_and_members(self) -> None:
         mailbox_response = self.client.get(reverse("emails-mailboxes"))
@@ -1054,6 +1068,31 @@ class EmailEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
+
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_email_move_endpoint(self, _mock_insert: Mock) -> None:
+        UserSdwtProdAccess.objects.create(user=self.user, user_sdwt_prod="group-b")
+
+        email = Email.objects.create(
+            message_id="msg-move",
+            received_at=timezone.now(),
+            subject="Move",
+            sender="sender@example.com",
+            sender_id="knox-11111",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        response = self.client.post(
+            reverse("emails-move"),
+            data='{"email_ids":[%d],"to_user_sdwt_prod":"group-b"}' % email.id,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        email.refresh_from_db()
+        self.assertEqual(email.user_sdwt_prod, "group-b")
 
     @patch("api.emails.views.run_pop3_ingest_from_env", return_value={"deleted": 1, "reindexed": 2})
     def test_email_ingest_trigger(self, _mock_ingest) -> None:

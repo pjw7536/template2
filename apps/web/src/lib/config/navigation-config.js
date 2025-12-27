@@ -1,5 +1,5 @@
 // src/lib/config/navigation-config.js
-import { BarChart3, Mail, SquareTerminal, Users } from "lucide-react"
+import { BarChart3, Mail, Send, SquareTerminal, Users } from "lucide-react"
 
 /**
  * 내비게이션 기본 구성.
@@ -41,8 +41,14 @@ const LINE_DASHBOARD_GROUP = Object.freeze({
 const EMAIL_NAV_ITEMS = Object.freeze([
   {
     title: "Inbox",
-    url: "/emails",
+    url: "/emails/inbox",
     icon: Mail,
+    scope: "global",
+  },
+  {
+    title: "Sent",
+    url: "/emails/sent",
+    icon: Send,
     scope: "global",
   },
   {
@@ -56,7 +62,7 @@ const EMAIL_NAV_ITEMS = Object.freeze([
 const EMAILS_GROUP_BASE = Object.freeze({
   key: "emails",
   title: "Emails",
-  url: "/emails",
+  url: "/emails/inbox",
   icon: Mail,
   isActive: true,
   scope: "global",
@@ -69,14 +75,14 @@ function normalizeMailbox(value) {
 
 function buildMailboxUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
-  if (!trimmed) return "/emails"
-  return `/emails?mailbox=${encodeURIComponent(trimmed)}`
+  if (!trimmed) return "/emails/inbox"
+  return `/emails/inbox?user_sdwt_prod=${encodeURIComponent(trimmed)}`
 }
 
 function buildMembersUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/members"
-  return `/emails/members?mailbox=${encodeURIComponent(trimmed)}`
+  return `/emails/members?user_sdwt_prod=${encodeURIComponent(trimmed)}`
 }
 
 export const NAVIGATION_CONFIG = Object.freeze({
@@ -107,7 +113,8 @@ export function buildNavigationConfig({ mailbox } = {}) {
     url: inboxUrl,
     items: [
       { ...EMAIL_NAV_ITEMS[0], url: inboxUrl },
-      { ...EMAIL_NAV_ITEMS[1], url: membersUrl },
+      EMAIL_NAV_ITEMS[1],
+      { ...EMAIL_NAV_ITEMS[2], url: membersUrl },
     ],
   }
 

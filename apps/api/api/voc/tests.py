@@ -10,7 +10,11 @@ from api.voc.models import VocPost
 class VocEndpointTests(TestCase):
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S80000", password="test-password")
+        self.user = User.objects.create_user(
+            sabun="S80000",
+            password="test-password",
+            knox_id="knox-80000",
+        )
         self.client.force_login(self.user)
 
     def test_voc_posts_list_returns_results(self) -> None:

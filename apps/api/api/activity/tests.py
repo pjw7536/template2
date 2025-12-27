@@ -11,7 +11,11 @@ from api.activity.models import ActivityLog
 class ActivityLogEndpointTests(TestCase):
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S70000", password="test-password")
+        self.user = User.objects.create_user(
+            sabun="S70000",
+            password="test-password",
+            knox_id="knox-70000",
+        )
 
     def test_activity_logs_requires_auth(self) -> None:
         response = self.client.get(reverse("activity-logs"))

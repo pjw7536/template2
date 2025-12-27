@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any, Dict, Iterable, Mapping, Optional
 
 from django.apps import apps as django_apps
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin  # Django 미들웨어 호환성 클래스
 
 # 현재 파일의 로거(logger) 설정
@@ -229,3 +229,57 @@ class ActivityLoggingMiddleware(MiddlewareMixin):
             return value
         except TypeError:
             return str(value)
+
+
+class KnoxIdRequiredMiddleware(MiddlewareMixin):
+    """Ensure authenticated users always have knox_id unless path is exempt."""
+
+    EXEMPT_PATH_PREFIXES = (
+        "/auth/",
+        "/api/v1/auth/",
+        "/api/v1/health/",
+        "/api/schema/",
+        "/schema/",
+        "/api/docs/",
+        "/docs/",
+        "/admin/",
+        "/static/",
+        "/media/",
+        "/metrics/",
+        "/webhooks/",
+    )
+    EXEMPT_PATHS = {
+        "/admin",
+        "/api/docs",
+        "/api/schema",
+        "/api/v1/auth",
+        "/api/v1/health",
+        "/auth",
+        "/docs",
+        "/metrics",
+        "/schema",
+        "/static",
+        "/media",
+    }
+
+    def process_request(self, request: HttpRequest) -> HttpResponse | None:
+        path = getattr(request, "path", "") or ""
+        if self._is_exempt_path(path):
+            return None
+
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+
+        knox_id = getattr(user, "knox_id", None)
+        if not isinstance(knox_id, str) or not knox_id.strip():
+            return JsonResponse({"error": "knox_id is required"}, status=403)
+
+        return None
+
+    def _is_exempt_path(self, path: str) -> bool:
+        if not path:
+            return False
+        if path in self.EXEMPT_PATHS:
+            return True
+        return any(path.startswith(prefix) for prefix in self.EXEMPT_PATH_PREFIXES)

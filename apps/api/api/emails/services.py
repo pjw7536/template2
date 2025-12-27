@@ -6,7 +6,7 @@ import gzip
 import logging
 import os
 import poplib
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
 from email.header import decode_header, make_header
 from email.message import Message
 from email.parser import BytesParser
@@ -16,17 +16,13 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import requests
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import NotFound
 
 from .selectors import (
     get_accessible_user_sdwt_prods_for_user,
-    get_next_user_sdwt_prod_change_effective_from,
     list_email_id_user_sdwt_by_ids,
-    list_email_id_user_sdwt_by_sender_id,
     list_email_ids_by_sender_after,
     list_emails_by_ids,
     list_mailbox_members,
@@ -35,9 +31,9 @@ from .selectors import (
     list_privileged_email_mailboxes,
     list_unassigned_email_ids_for_sender_id,
     resolve_email_affiliation,
+    user_can_bulk_delete_emails,
 )
 from .models import Email, EmailOutbox
-from api.account.selectors import resolve_user_affiliation
 from api.rag.services import (
     RAG_INDEX_EMAILS,
     RAG_PUBLIC_GROUP,
@@ -52,6 +48,7 @@ logger = logging.getLogger(__name__)
 OUTBOX_MAX_RETRIES = 5
 OUTBOX_RETRY_BASE_SECONDS = 30
 OUTBOX_RETRY_MAX_SECONDS = 3600
+SENT_MAILBOX_ID = "__sent__"
 
 
 def _compute_outbox_backoff_seconds(retry_count: int) -> int:
@@ -138,20 +135,11 @@ def gzip_body(body_html: str | None) -> bytes | None:
 
 
 def _resolve_sender_id_from_user(user: Any) -> str | None:
-    """사용자에서 sender_id(knox_id -> sabun -> username)를 우선순위로 추출합니다."""
+    """사용자에서 sender_id(knox_id)를 추출합니다."""
 
     knox_id = getattr(user, "knox_id", None)
     if isinstance(knox_id, str) and knox_id.strip():
         return knox_id.strip()
-
-    sabun = getattr(user, "sabun", None)
-    if isinstance(sabun, str) and sabun.strip():
-        return sabun.strip()
-
-    username = getattr(user, "get_username", lambda: "")()
-    if isinstance(username, str) and username.strip():
-        return username.strip()
-
     return None
 
 
@@ -279,8 +267,14 @@ def _resolve_email_permission_groups(email: Email) -> list[str] | None:
     """이메일의 user_sdwt_prod 값을 permission_groups로 변환합니다."""
 
     user_sdwt_prod = (email.user_sdwt_prod or "").strip()
+    sender_id = (email.sender_id or "").strip()
+    groups: list[str] = []
     if user_sdwt_prod:
-        return [user_sdwt_prod]
+        groups.append(user_sdwt_prod)
+    if sender_id:
+        groups.append(sender_id)
+    if groups:
+        return list(dict.fromkeys(groups))
     return [RAG_PUBLIC_GROUP]
 
 
@@ -325,66 +319,13 @@ def enqueue_rag_delete(*, email: Email) -> EmailOutbox | None:
     return enqueue_email_outbox(email=email, action=EmailOutbox.Action.DELETE, payload=payload)
 
 
-def _serialize_outbox_datetime(value: datetime) -> str:
-    """Outbox payload에 넣을 ISO8601 문자열을 생성합니다."""
-
-    return value.astimezone(dt_timezone.utc).isoformat()
-
-
-def _parse_outbox_datetime(value: object) -> datetime | None:
-    """Outbox payload의 날짜 문자열을 datetime으로 파싱합니다."""
-
-    if not value:
-        return None
-    parsed = parse_datetime(str(value))
-    if not parsed:
-        return None
-    if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, dt_timezone.utc)
-    return parsed.astimezone(dt_timezone.utc)
-
-
-def _get_user_by_id(user_id: int) -> Any | None:
-    """user id로 사용자 인스턴스를 조회합니다."""
-
-    UserModel = get_user_model()
-    try:
-        return UserModel.objects.get(id=user_id)
-    except UserModel.DoesNotExist:
-        return None
-
-
-def enqueue_reclassify_emails_for_user_sdwt_change(
-    *,
-    user_id: int,
-    effective_from: datetime,
-) -> EmailOutbox:
-    """소속 변경 기준으로 메일 재분류 작업을 Outbox에 적재합니다."""
-
-    if not isinstance(user_id, int):
-        raise ValueError("user_id must be an integer")
-    if effective_from is None:
-        raise ValueError("effective_from is required")
-    payload = {"user_id": user_id, "effective_from": _serialize_outbox_datetime(effective_from)}
-    return enqueue_email_outbox(email=None, action=EmailOutbox.Action.RECLASSIFY, payload=payload)
-
-
-def enqueue_reclassify_emails_for_confirmed_user(*, user_id: int) -> EmailOutbox:
-    """확정 소속 기준 메일 재분류 작업을 Outbox에 적재합니다."""
-
-    if not isinstance(user_id, int):
-        raise ValueError("user_id must be an integer")
-    payload = {"user_id": user_id}
-    return enqueue_email_outbox(email=None, action=EmailOutbox.Action.RECLASSIFY_ALL, payload=payload)
-
-
 def enqueue_rag_index_for_emails(
     *,
     email_ids: list[int],
     target_user_sdwt_prod: str,
     previous_user_sdwt_prod_by_email_id: Dict[int, str | None] | None,
 ) -> Dict[str, int]:
-    """메일 목록의 RAG 인덱싱을 Outbox에 적재합니다.
+    """메일 목록의 RAG 인덱싱을 즉시 시도하고 실패 시 Outbox에 적재합니다.
 
     Returns:
         Dict with ragRegistered/ragFailed/ragMissing counts.
@@ -397,7 +338,9 @@ def enqueue_rag_index_for_emails(
         int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()
     ]
     requested_set = set(requested_ids)
-    resolved_ids = []
+    resolved_ids: list[int] = []
+    rag_registered = 0
+    rag_failed = 0
 
     for email in list_emails_by_ids(email_ids=requested_ids).iterator():
         resolved_ids.append(email.id)
@@ -406,12 +349,21 @@ def enqueue_rag_index_for_emails(
             if previous_user_sdwt_prod_by_email_id is not None
             else None
         )
-        enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt_prod)
+        try:
+            register_email_to_rag(email, previous_user_sdwt_prod=previous_user_sdwt_prod)
+            rag_registered += 1
+        except Exception:
+            logger.exception("Failed to register email to RAG id=%s", email.id)
+            try:
+                enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt_prod)
+            except Exception:
+                logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
+                rag_failed += 1
 
     resolved_set = set(resolved_ids)
     rag_missing = len(requested_set - resolved_set)
 
-    return {"ragRegistered": len(resolved_ids), "ragFailed": 0, "ragMissing": rag_missing}
+    return {"ragRegistered": rag_registered, "ragFailed": rag_failed, "ragMissing": rag_missing}
 
 
 def register_email_to_rag(
@@ -472,25 +424,8 @@ def _process_outbox_item(item: EmailOutbox) -> None:
         delete_rag_doc(rag_doc_id, index_name=index_name, permission_groups=permission_groups)
         return
 
-    if item.action == EmailOutbox.Action.RECLASSIFY:
-        user_id = item.payload.get("user_id")
-        effective_from = _parse_outbox_datetime(item.payload.get("effective_from"))
-        if not isinstance(user_id, int) or effective_from is None:
-            raise ValueError("user_id or effective_from missing for reclassify outbox item")
-        user = _get_user_by_id(user_id)
-        if user is None:
-            raise ValueError("User not found for reclassify outbox item")
-        reclassify_emails_for_user_sdwt_change(user, effective_from)
-        return
-
-    if item.action == EmailOutbox.Action.RECLASSIFY_ALL:
-        user_id = item.payload.get("user_id")
-        if not isinstance(user_id, int):
-            raise ValueError("user_id missing for reclassify-all outbox item")
-        user = _get_user_by_id(user_id)
-        if user is None:
-            raise ValueError("User not found for reclassify-all outbox item")
-        reclassify_emails_for_confirmed_user(user)
+    if item.action in {EmailOutbox.Action.RECLASSIFY, EmailOutbox.Action.RECLASSIFY_ALL}:
+        logger.info("Skipping deprecated outbox action=%s id=%s", item.action, item.id)
         return
 
     raise ValueError(f"Unsupported outbox action: {item.action}")
@@ -593,104 +528,6 @@ def bulk_delete_emails(email_ids: List[int]) -> int:
     return len(emails)
 
 
-def reclassify_emails_for_user_sdwt_change(user: Any, effective_from: datetime | None) -> int:
-    """Reclassify emails after a user's user_sdwt_prod changes.
-
-    대상:
-    - sender_id == user.knox_id (없으면 user.sabun) 인 메일
-    범위:
-    - effective_from 이상, 다음 변경 시점 이전(있으면)
-
-    Returns:
-        Reclassified email count.
-
-    Side effects:
-        - Updates Email.user_sdwt_prod in DB.
-        - Re-indexes RAG documents per email.
-    """
-
-    if effective_from is None:
-        effective_from = timezone.now()
-
-    start = effective_from
-    end = get_next_user_sdwt_prod_change_effective_from(user=user, effective_from=effective_from)
-
-    resolved_sender_id = _resolve_sender_id_from_user(user)
-    if not resolved_sender_id:
-        return 0
-
-    previous_user_sdwt = list_email_id_user_sdwt_by_sender_id(
-        sender_id=resolved_sender_id,
-        received_at_gte=start,
-        received_at_lt=end,
-    )
-    ids = list(previous_user_sdwt.keys())
-    if not ids:
-        return 0
-
-    affiliation = resolve_user_affiliation(user, effective_from)
-    user_sdwt_prod = affiliation.get("user_sdwt_prod") or UNASSIGNED_USER_SDWT_PROD
-
-    with transaction.atomic():
-        Email.objects.filter(id__in=ids).update(
-            user_sdwt_prod=user_sdwt_prod,
-            classification_source=Email.ClassificationSource.CONFIRMED_USER,
-            rag_index_status=Email.RagIndexStatus.PENDING,
-        )
-
-        for email in list_emails_by_ids(email_ids=ids).iterator():
-            try:
-                enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt.get(email.id))
-            except Exception:
-                logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
-
-    return len(ids)
-
-
-def reclassify_emails_for_confirmed_user(user: Any) -> int:
-    """사용자 확정 소속 기준으로 발신자 메일 전체를 재분류합니다.
-
-    대상:
-    - sender_id == user.knox_id (없으면 user.sabun) 인 모든 메일
-
-    Returns:
-        Reclassified email count.
-
-    Side effects:
-        - Updates Email.user_sdwt_prod in DB.
-        - Sets classification_source/rag_index_status to confirmed/pending.
-        - Re-indexes RAG documents per email.
-    """
-
-    resolved_sender_id = _resolve_sender_id_from_user(user)
-    if not resolved_sender_id:
-        return 0
-
-    target_user_sdwt = (getattr(user, "user_sdwt_prod", None) or "").strip()
-    if not target_user_sdwt or target_user_sdwt == UNASSIGNED_USER_SDWT_PROD:
-        return 0
-
-    previous_user_sdwt = list_email_id_user_sdwt_by_sender_id(sender_id=resolved_sender_id)
-    ids = list(previous_user_sdwt.keys())
-    if not ids:
-        return 0
-
-    with transaction.atomic():
-        Email.objects.filter(id__in=ids).update(
-            user_sdwt_prod=target_user_sdwt,
-            classification_source=Email.ClassificationSource.CONFIRMED_USER,
-            rag_index_status=Email.RagIndexStatus.PENDING,
-        )
-
-        for email in list_emails_by_ids(email_ids=ids).iterator():
-            try:
-                enqueue_rag_index(email=email, previous_user_sdwt_prod=previous_user_sdwt.get(email.id))
-            except Exception:
-                logger.exception("Failed to enqueue RAG outbox for email id=%s", email.id)
-
-    return len(ids)
-
-
 def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     """사용자의 UNASSIGNED 메일을 현재 user_sdwt_prod로 귀속(옮김)합니다.
 
@@ -708,9 +545,9 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
         - Enqueues RAG indexing requests.
     """
 
-    sender_id = getattr(user, "knox_id", None)
-    if not isinstance(sender_id, str) or not sender_id.strip():
-        raise ValueError("knox_id is required to claim unassigned emails")
+    sender_id = _resolve_sender_id_from_user(user)
+    if not sender_id:
+        raise PermissionError("knox_id is required to claim unassigned emails")
 
     target_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
     if not isinstance(target_user_sdwt_prod, str) or not target_user_sdwt_prod.strip():
@@ -758,8 +595,8 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
     target_user_sdwt_prod = (to_user_sdwt_prod or "").strip()
     if not target_user_sdwt_prod:
         raise ValueError("to_user_sdwt_prod is required")
-    if target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
-        raise ValueError("Cannot move emails into the UNASSIGNED mailbox")
+    if target_user_sdwt_prod in {UNASSIGNED_USER_SDWT_PROD, SENT_MAILBOX_ID}:
+        raise ValueError("Cannot move emails into the target mailbox")
 
     ids = [int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()]
     if not ids:
@@ -789,6 +626,53 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
     )
 
     return {"moved": moved_count, **rag_result}
+
+
+def move_emails_for_user(
+    *,
+    user: Any,
+    email_ids: Sequence[int],
+    to_user_sdwt_prod: str,
+) -> Dict[str, int]:
+    """현재 사용자 권한을 확인한 뒤 메일을 다른 메일함으로 이동합니다.
+
+    Rules:
+    - 일반 사용자는 자신이 접근 가능한 메일함으로만 이동 가능.
+    - 본인이 보낸 메일(sender_id)도 이동 가능.
+    - 이동 대상은 UNASSIGNED/보낸메일함 sentinel이 될 수 없음.
+    """
+
+    if not user or not getattr(user, "is_authenticated", False):
+        raise PermissionError("unauthorized")
+
+    sender_id = _resolve_sender_id_from_user(user)
+    if not sender_id:
+        raise PermissionError("forbidden")
+
+    target_user_sdwt_prod = (to_user_sdwt_prod or "").strip()
+    if not target_user_sdwt_prod:
+        raise ValueError("to_user_sdwt_prod is required")
+    if target_user_sdwt_prod in {UNASSIGNED_USER_SDWT_PROD, SENT_MAILBOX_ID}:
+        raise ValueError("Cannot move emails into the target mailbox")
+
+    normalized_ids = [int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()]
+    if not normalized_ids:
+        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
+
+    is_privileged = bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+    accessible = get_accessible_user_sdwt_prods_for_user(user) if not is_privileged else set()
+    if not is_privileged and target_user_sdwt_prod not in accessible:
+        raise PermissionError("forbidden")
+
+    if not is_privileged:
+        if not user_can_bulk_delete_emails(
+            email_ids=normalized_ids,
+            accessible_user_sdwt_prods=accessible,
+            sender_id=sender_id,
+        ):
+            raise PermissionError("forbidden")
+
+    return move_emails_to_user_sdwt_prod(email_ids=normalized_ids, to_user_sdwt_prod=target_user_sdwt_prod)
 
 
 def move_sender_emails_after(

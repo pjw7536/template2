@@ -12,7 +12,7 @@ export const navigationItems = [
       { title: 'ESOP Dashboard', href: '/esop_dashboard' },
       { title: 'Timeline(개발중)', href: '/timeline' },
       { title: 'Appstore(개발중)', href: '/appstore' },
-      { title: '메일함', href: '/emails' },
+      { title: '메일함', href: '/emails/inbox' },
     ]
   },
   {

@@ -1,3 +1,8 @@
+export const SENT_MAILBOX_ID = "__sent__"
+export const SENT_MAILBOX_LABEL = "Sent"
+export const UNASSIGNED_MAILBOX_ID = "UNASSIGNED"
+export const LEGACY_UNASSIGNED_MAILBOX_ID = "rp-unclassified"
+
 export function normalizeMailbox(value) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -6,22 +11,34 @@ export function getMailboxFromSearchParams(searchParams) {
   if (!searchParams) return ""
 
   return normalizeMailbox(
-    searchParams.get("mailbox") ||
+    searchParams.get("user_sdwt_prod") ||
       searchParams.get("userSdwtProd") ||
-      searchParams.get("user_sdwt_prod") ||
+      searchParams.get("mailbox") ||
       "",
   )
 }
 
 export function buildMailboxUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
-  if (!trimmed) return "/emails"
-  return `/emails?mailbox=${encodeURIComponent(trimmed)}`
+  if (!trimmed) return "/emails/inbox"
+  return `/emails/inbox?user_sdwt_prod=${encodeURIComponent(trimmed)}`
+}
+
+export function buildSentUrl() {
+  return "/emails/sent"
 }
 
 export function buildMembersUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/members"
-  return `/emails/members?mailbox=${encodeURIComponent(trimmed)}`
+  return `/emails/members?user_sdwt_prod=${encodeURIComponent(trimmed)}`
 }
 
+export function isSentMailbox(value) {
+  return normalizeMailbox(value) === SENT_MAILBOX_ID
+}
+
+export function isUnassignedMailbox(value) {
+  const normalized = normalizeMailbox(value)
+  return normalized === UNASSIGNED_MAILBOX_ID || normalized === LEGACY_UNASSIGNED_MAILBOX_ID
+}

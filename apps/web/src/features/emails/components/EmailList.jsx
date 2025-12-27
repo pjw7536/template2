@@ -4,8 +4,8 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
 } from "@tabler/icons-react"
-import { Mail, RefreshCcw, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { ArrowRightLeft, Mail, RefreshCcw, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
@@ -58,6 +65,9 @@ export function EmailList({
   isLoading,
   onBulkDelete,
   isBulkDeleting = false,
+  onMoveEmails,
+  moveTargets = [],
+  isMoving = false,
   currentPage = 1,
   totalPages = 1,
   pageSize = DEFAULT_EMAIL_PAGE_SIZE,
@@ -69,9 +79,11 @@ export function EmailList({
   activeEmailId = null,
 }) {
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [moveTarget, setMoveTarget] = useState("")
   const allSelected = emails.length > 0 && emails.every((email) => selectedIds.includes(email.id))
   const hasSelection = selectedIds.length > 0
   const isDeleteDialogOpen = Boolean(deleteTarget)
+  const canMove = Boolean(onMoveEmails && hasSelection && moveTarget)
   const deleteTargetLabel =
     deleteTarget?.type === "bulk"
       ? `${deleteTarget?.count ?? selectedIds.length}개의 메일`
@@ -100,6 +112,16 @@ export function EmailList({
     }
     setDeleteTarget(null)
   }
+
+  useEffect(() => {
+    if (!moveTarget) return
+    const exists = Array.isArray(moveTargets)
+      ? moveTargets.some((target) => target?.value === moveTarget)
+      : false
+    if (!exists) {
+      setMoveTarget("")
+    }
+  }, [moveTarget, moveTargets])
 
   return (
     <div className="flex h-full min-w-0 flex-col rounded-xl border bg-card/60 p-2 shadow-sm">
@@ -138,6 +160,32 @@ export function EmailList({
               <Trash2 className="h-3.5 w-3.5" />
               선택 삭제
             </button>
+          ) : null}
+          {onMoveEmails && moveTargets.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <Select value={moveTarget} onValueChange={setMoveTarget}>
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue placeholder="이동할 메일함" />
+                </SelectTrigger>
+                <SelectContent>
+                  {moveTargets.map((target) => (
+                    <SelectItem key={target.value} value={target.value}>
+                      {target.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => onMoveEmails(moveTarget)}
+                disabled={!canMove || isMoving}
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                이동
+              </Button>
+            </div>
           ) : null}
           <span className={cn(pillBaseClass, countPillClass)} aria-live="polite">
             {emails.length}개 표시

@@ -18,6 +18,8 @@ function formatDateTimeLocal(date) {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
+const EMPTY_OPTIONS = []
+
 export function AffiliationCard({
   data,
   onSubmit,
@@ -27,7 +29,7 @@ export function AffiliationCard({
   const [selectedKey, setSelectedKey] = useState("")
   const [effectiveFrom, setEffectiveFrom] = useState(() => formatDateTimeLocal(new Date()))
 
-  const options = data?.affiliationOptions || []
+  const options = data?.affiliationOptions ?? EMPTY_OPTIONS
 
   const selected = options.find((opt) => optionKey(opt) === selectedKey)
 

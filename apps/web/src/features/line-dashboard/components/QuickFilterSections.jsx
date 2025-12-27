@@ -39,6 +39,7 @@ const DROPDOWN_SECTION_KEYS = new Set([
 ])
 const CHECKBOX_SECTION_KEYS = new Set(["my_sop"])
 const FIELDSET_CLASS = "flex flex-col rounded-xl px-2"
+const EMPTY_OPTIONS = []
 
 const isNil = (value) => value === null || value === undefined
 
@@ -319,7 +320,7 @@ function DropdownQuickFilterSection({
 
 function MainStepDropdownSection({ section, legendId, current, onToggle }) {
   const selectionMap = buildMainStepSelectionMap(current)
-  const suffixOptions = Array.isArray(section?.options) ? section.options : []
+  const suffixOptions = Array.isArray(section?.options) ? section.options : EMPTY_OPTIONS
   const firstSelectedSuffix = selectionMap.size > 0 ? Array.from(selectionMap.keys())[0] : null
   const initialSuffix = firstSelectedSuffix ?? null
   const [activeSuffix, setActiveSuffix] = React.useState(initialSuffix)

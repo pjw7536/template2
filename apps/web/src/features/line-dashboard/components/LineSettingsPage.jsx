@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/common"
 import { useAuth } from "@/lib/auth"
-import { useLineSettings } from "../hooks"
+import { useLineSettings } from "../hooks/useLineSettings"
 import { buildToastOptions } from "../utils/toast"
 import { formatUpdatedAt, isDuplicateMessage, normalizeDraft } from "../utils/line-settings"
 

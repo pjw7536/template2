@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -292,49 +292,7 @@ def resolve_frontend_target(
     return base
 
 
-def build_public_api_url(
-    path: str, *, request: Optional[HttpRequest] = None, absolute: bool = False
-) -> str:
-    """리버스 프록시 경로(/api 등)를 포함한 공개 API URL 생성."""
-
-    normalized_path = f"/{str(path or '').lstrip('/')}"
-    base = str(getattr(settings, "PUBLIC_API_BASE_URL", "") or "").strip()
-
-    if base:
-        if base.startswith(("http://", "https://")):
-            url = f"{base.rstrip('/')}{normalized_path}"
-        else:
-            url = f"/{base.strip('/')}{normalized_path}"
-    else:
-        url = normalized_path
-
-    if absolute and request is not None and not url.startswith(("http://", "https://")):
-        return request.build_absolute_uri(url)
-
-    return url
-
-
-def append_query_params(url: str, params: Dict[str, Optional[str]]) -> str:
-    """기존 URL에 쿼리 파라미터를 병합."""
-
-    if not params:
-        return url
-
-    parsed = urlparse(url)
-    existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
-
-    for key, value in params.items():
-        if value is None:
-            continue
-        existing[key] = str(value)
-
-    new_query = urlencode(existing, doseq=True)
-    return urlunparse(parsed._replace(query=new_query))
-
-
 __all__ = [
-    "append_query_params",
-    "build_public_api_url",
     "build_line_filters",
     "find_column",
     "list_table_columns",

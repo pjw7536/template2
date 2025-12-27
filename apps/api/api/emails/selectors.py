@@ -8,10 +8,7 @@ from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
 from api.account import selectors as account_selectors
-from api.account.selectors import (
-    get_next_user_sdwt_prod_change,
-    list_distinct_user_sdwt_prod_values,
-)
+from api.account.selectors import list_distinct_user_sdwt_prod_values
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 
 from .models import Email, EmailOutbox
@@ -52,7 +49,7 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
     The result includes:
     - Users whose `user_sdwt_prod` equals the mailbox (implicit access)
     - Users who were granted access via `UserSdwtProdAccess` (explicit access)
-    - `emailCount`: Emails in the mailbox where Email.sender_id matches the user (knox_id fallback to sabun)
+    - `emailCount`: Emails in the mailbox where Email.sender_id matches the user (knox_id)
     - `knoxId`: User.knox_id (loginid)
 
     Args:
@@ -81,15 +78,7 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
 
     def resolve_sender_id(user: Any) -> str:
         sender_id = getattr(user, "knox_id", None)
-        if isinstance(sender_id, str) and sender_id.strip():
-            return sender_id.strip()
-
-        sender_id = getattr(user, "sabun", None)
-        if isinstance(sender_id, str) and sender_id.strip():
-            return sender_id.strip()
-
-        sender_id = getattr(user, "get_username", lambda: "")()
-        return sender_id.strip() if isinstance(sender_id, str) else ""
+        return sender_id.strip() if isinstance(sender_id, str) and sender_id.strip() else ""
 
     def serialize_user(user: Any, access: Any | None) -> dict[str, object]:
         sender_id_by_user_id[user.id] = resolve_sender_id(user)
@@ -310,33 +299,6 @@ def list_email_id_user_sdwt_by_ids(*, email_ids: list[int]) -> dict[int, str | N
     return {row["id"]: row["user_sdwt_prod"] for row in rows}
 
 
-def list_email_id_user_sdwt_by_sender_id(
-    *,
-    sender_id: str,
-    received_at_gte: datetime | None = None,
-    received_at_lt: datetime | None = None,
-) -> dict[int, str | None]:
-    """sender_id + 기간 조건으로 Email (id -> user_sdwt_prod) 매핑을 반환합니다.
-
-    Return mapping for Email.user_sdwt_prod by sender and time window.
-
-    Side effects:
-        None. Read-only query.
-    """
-
-    if not isinstance(sender_id, str) or not sender_id.strip():
-        return {}
-
-    queryset = Email.objects.filter(sender_id=sender_id.strip())
-    if received_at_gte is not None:
-        queryset = queryset.filter(received_at__gte=received_at_gte)
-    if received_at_lt is not None:
-        queryset = queryset.filter(received_at__lt=received_at_lt)
-
-    rows = queryset.values("id", "user_sdwt_prod")
-    return {row["id"]: row["user_sdwt_prod"] for row in rows}
-
-
 def list_email_ids_by_sender_after(
     *,
     sender_id: str,
@@ -390,24 +352,6 @@ def list_emails_by_ids(*, email_ids: list[int]) -> QuerySet[Email]:
     return Email.objects.filter(id__in=email_ids).order_by("id")
 
 
-def get_next_user_sdwt_prod_change_effective_from(
-    *,
-    user,
-    effective_from: datetime,
-) -> datetime | None:
-    """effective_from 이후 예정된 다음 소속 변경 시각을 반환합니다.
-
-    Return the next affiliation change timestamp after effective_from.
-
-    Side effects:
-        None. Read-only query.
-    """
-
-    when = _normalize_time(effective_from)
-    change = get_next_user_sdwt_prod_change(user=user, effective_from=when)
-    return change.effective_from if change else None
-
-
 def get_filtered_emails(
     *,
     accessible_user_sdwt_prods: set[str],
@@ -453,6 +397,57 @@ def get_filtered_emails(
 
     if mailbox_user_sdwt_prod:
         queryset = queryset.filter(user_sdwt_prod=mailbox_user_sdwt_prod)
+
+    if search:
+        normalized_participant_search = search.lower()
+        queryset = queryset.filter(
+            Q(subject__icontains=search)
+            | Q(body_text__icontains=search)
+            | Q(sender__icontains=search)
+            | Q(participants_search__contains=normalized_participant_search)
+        )
+    if sender:
+        queryset = queryset.filter(sender__icontains=sender)
+    if recipient:
+        queryset = queryset.filter(participants_search__contains=recipient.lower())
+    if date_from:
+        queryset = queryset.filter(received_at__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(received_at__lte=date_to)
+
+    return queryset
+
+
+def get_sent_emails(
+    *,
+    sender_id: str,
+    search: str,
+    sender: str,
+    recipient: str,
+    date_from: datetime | None,
+    date_to: datetime | None,
+) -> QuerySet[Email]:
+    """발신자(sender_id) 기준으로 보낸 메일 QuerySet을 반환합니다.
+
+    Args:
+        sender_id: Email.sender_id (KNOX ID).
+        search: Free-text query (subject/body/sender/participants).
+        sender: Sender substring filter.
+        recipient: Recipient substring filter (searches To/Cc).
+        date_from: Minimum received_at (inclusive).
+        date_to: Maximum received_at (inclusive).
+
+    Returns:
+        QuerySet ordered by newest first.
+
+    Side effects:
+        None. Read-only query.
+    """
+
+    if not isinstance(sender_id, str) or not sender_id.strip():
+        return Email.objects.none()
+
+    queryset = Email.objects.filter(sender_id=sender_id.strip()).order_by("-received_at", "-id")
 
     if search:
         normalized_participant_search = search.lower()
@@ -539,10 +534,11 @@ def user_can_bulk_delete_emails(
     *,
     email_ids: list[int],
     accessible_user_sdwt_prods: set[str],
+    sender_id: str | None = None,
 ) -> bool:
     """요청한 email_ids가 모두 접근 가능한 user_sdwt_prod 범위인지 검사합니다.
 
-    Return whether all email_ids are within accessible_user_sdwt_prods.
+    Return whether all email_ids are within accessible_user_sdwt_prods or sender_id scope.
 
     Args:
         email_ids: List of email IDs requested for deletion.
@@ -558,8 +554,10 @@ def user_can_bulk_delete_emails(
     if not email_ids:
         return False
 
-    owned_count = Email.objects.filter(
-        id__in=email_ids,
-        user_sdwt_prod__in=accessible_user_sdwt_prods,
-    ).count()
+    mailbox_filter = Q(user_sdwt_prod__in=accessible_user_sdwt_prods)
+    normalized_sender_id = sender_id.strip() if isinstance(sender_id, str) else ""
+    if normalized_sender_id:
+        mailbox_filter |= Q(sender_id=normalized_sender_id)
+
+    owned_count = Email.objects.filter(id__in=email_ids).filter(mailbox_filter).count()
     return owned_count == len(email_ids)

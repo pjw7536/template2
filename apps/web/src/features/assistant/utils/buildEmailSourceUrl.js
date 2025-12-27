@@ -4,7 +4,7 @@ function normalizeValue(value) {
 
 export function buildEmailSourceUrl(emailId, userSdwtProd) {
   const normalizedEmailId = normalizeValue(emailId)
-  if (!normalizedEmailId) return "/emails"
+  if (!normalizedEmailId) return "/emails/inbox"
 
   const mailbox = normalizeValue(userSdwtProd)
   const params = new URLSearchParams()
@@ -14,6 +14,8 @@ export function buildEmailSourceUrl(emailId, userSdwtProd) {
   }
 
   params.set("emailId", normalizedEmailId)
-  return `/emails?${params.toString()}`
+  if (mailbox) {
+    return `/emails/inbox?${params.toString()}`
+  }
+  return `/emails/sent?${params.toString()}`
 }
-

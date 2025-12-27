@@ -2,22 +2,8 @@
 // 라인 조기 알림 설정 CRUD API 래퍼
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 
-import {
-  normalizeEntry,
-  normalizeUserSdwt,
-  unwrapErrorMessage,
-} from "../utils/line-settings"
-
-function buildApiError(response, payload, fallbackMessage) {
-  const apiMessage =
-    payload && typeof payload === "object" && typeof payload.error === "string"
-      ? payload.error
-      : ""
-  const message = unwrapErrorMessage(apiMessage) || fallbackMessage
-  const error = new Error(message)
-  error.status = response.status
-  return error
-}
+import { buildApiError } from "./api-error"
+import { normalizeEntry, normalizeUserSdwt } from "../utils/line-settings"
 
 export async function fetchLineSettings(lineId) {
   if (!lineId) {

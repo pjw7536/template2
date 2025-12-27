@@ -2,18 +2,7 @@
 // 라인별 Jira project key 조회/저장 API 래퍼
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 
-import { unwrapErrorMessage } from "../utils/line-settings"
-
-function buildApiError(response, payload, fallbackMessage) {
-  const apiMessage =
-    payload && typeof payload === "object" && typeof payload.error === "string"
-      ? payload.error
-      : ""
-  const message = unwrapErrorMessage(apiMessage) || fallbackMessage
-  const error = new Error(message)
-  error.status = response.status
-  return error
-}
+import { buildApiError } from "./api-error"
 
 export async function fetchLineJiraKey(lineId) {
   if (!lineId) {

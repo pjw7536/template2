@@ -12,7 +12,11 @@ class TablesEndpointTests(TestCase):
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S40000", password="test-password")
+        self.user = User.objects.create_user(
+            sabun="S40000",
+            password="test-password",
+            knox_id="knox-40000",
+        )
         self.client.force_login(self.user)
 
     @patch("api.tables.views.run_query")

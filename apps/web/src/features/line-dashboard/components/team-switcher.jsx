@@ -24,10 +24,11 @@ import { useActiveLine } from "./active-line-context"
  * 유틸: 라인 옵션/표기 처리
  * ---------------------------------------------------------------------------*/
 
-/** 라인 ID를 문자열로 정규화 (null/undefined는 null 유지) */
+/** 라인 ID를 문자열로 정규화 (빈 문자열은 null 처리) */
 function normalizeLineId(value) {
   if (value === null || value === undefined) return null
-  return typeof value === "string" ? value : String(value)
+  const normalized = typeof value === "string" ? value.trim() : String(value).trim()
+  return normalized ? normalized : null
 }
 
 /** 라벨에서 머리글자(이니셜) 추출: 'LINE-01' -> 'L1' 등 */
@@ -39,29 +40,21 @@ function getInitials(label) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 }
 
-/** 다양한 입력 형태를 { id, label, description, lineId }로 통일 */
-function toSwitcherOption(item) {
-  if (!item) return null
+function normalizeOption(option) {
+  if (!option || typeof option !== "object") return null
 
-  if (typeof item === "string") {
-    const id = normalizeLineId(item)
-    return id ? { id, label: item, description: "", lineId: id } : null
-  }
-
-  const rawId = item.id ?? item.value ?? item.userSdwtProd ?? item.label ?? item.name ?? item.lineId
-  const id = normalizeLineId(rawId)
+  const id = normalizeLineId(option.id)
   if (!id) return null
 
-  const rawLineId = item.lineId ?? item.line ?? null
-  const lineId = normalizeLineId(rawLineId) || id
-  const userSdwtProd = typeof item.userSdwtProd === "string" ? item.userSdwtProd.trim() : ""
-
   const label =
-    item.label ??
-    item.name ??
-    (lineId && userSdwtProd ? `${lineId} / ${userSdwtProd}` : id)
-  const description = item.description ?? ""
-  if (!label) return null
+    typeof option.label === "string" && option.label.trim()
+      ? option.label.trim()
+      : id
+  const description = typeof option.description === "string" ? option.description : ""
+  const hasLineId = Object.prototype.hasOwnProperty.call(option, "lineId")
+  const lineId = hasLineId ? normalizeLineId(option.lineId) : null
+  const userSdwtProd =
+    typeof option.userSdwtProd === "string" ? option.userSdwtProd.trim() : ""
 
   return { id, label, description, lineId, userSdwtProd }
 }
@@ -108,7 +101,6 @@ function buildNextPath({ pathname, newLineId, currentLineId }) {
  * - 우선순위(선택 라인 결정): 컨텍스트 값 > URL 파라미터 > 첫 옵션 > 'unknown'
  */
 export function TeamSwitcher({
-  lines,
   options: optionsProp,
   activeId,
   onSelect,
@@ -126,12 +118,11 @@ export function TeamSwitcher({
   // 전역(컨텍스트)에서 현재 선택된 라인ID와 setter 획득
   const { lineId: ctxLineId, setLineId: setCtxLineId } = useActiveLine()
 
-  // 1) 입력 받은 lines를 화면 렌더용 옵션 배열로 정규화
+  // 1) 입력 받은 options를 화면 렌더용 옵션 배열로 정규화
   const options = React.useMemo(() => {
-    const source = Array.isArray(optionsProp) ? optionsProp : lines
-    if (!Array.isArray(source)) return []
-    return source.map(toSwitcherOption).filter(Boolean)
-  }, [lines, optionsProp])
+    const source = Array.isArray(optionsProp) ? optionsProp : []
+    return source.map(normalizeOption).filter(Boolean)
+  }, [optionsProp])
 
   // 2) 옵션 유무 판단 + 폴백(Unknown) 정의
   const hasOptions = options.length > 0

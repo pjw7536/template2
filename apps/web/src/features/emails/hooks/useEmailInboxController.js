@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
-import { useBulkDeleteEmails, useDeleteEmail } from "./useEmailActions"
+import { useBulkDeleteEmails, useDeleteEmail, useMoveEmails } from "./useEmailActions"
 import { useEmailDetail, useEmailHtml } from "./useEmailDetail"
 import { useEmailList } from "./useEmailList"
+import { useEmailMailboxes } from "./useEmailMailboxes"
 import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
-import { getMailboxFromSearchParams } from "../utils/mailbox"
+import {
+  getMailboxFromSearchParams,
+  isSentMailbox,
+  isUnassignedMailbox,
+  normalizeMailbox,
+  SENT_MAILBOX_ID,
+} from "../utils/mailbox"
 
 const INITIAL_FILTERS = {
   page: 1,
@@ -23,6 +30,7 @@ const MIN_DETAIL_WIDTH = 420
 const DEFAULT_LIST_RATIO = 0.45
 const GRID_GAP_PX = 16
 const EMPTY_EMAILS = []
+const EMPTY_MAILBOXES = []
 
 function clampListWidth(nextWidth, container) {
   if (!container) return nextWidth
@@ -33,11 +41,22 @@ function clampListWidth(nextWidth, container) {
   return Math.min(Math.max(nextWidth, MIN_LIST_WIDTH), maxWidth)
 }
 
-export function useEmailInboxController() {
+function buildMoveTargets(mailboxes, activeMailbox) {
+  const normalizedActive = normalizeMailbox(activeMailbox)
+  const options = (Array.isArray(mailboxes) ? mailboxes : EMPTY_MAILBOXES)
+    .map(normalizeMailbox)
+    .filter(Boolean)
+    .filter((mailbox) => !isSentMailbox(mailbox) && !isUnassignedMailbox(mailbox))
+    .filter((mailbox) => mailbox !== normalizedActive)
+
+  const unique = Array.from(new Set(options))
+  return unique.map((mailbox) => ({ value: mailbox, label: mailbox }))
+}
+
+function useEmailListController({ scope, mailboxParam, searchParams, setSearchParams }) {
   const [filters, setFilters] = useState(INITIAL_FILTERS)
   const [selectedIds, setSelectedIds] = useState([])
   const [activeEmailId, setActiveEmailId] = useState(null)
-  const [searchParams, setSearchParams] = useSearchParams()
   const [listWidth, setListWidth] = useState(420)
   const [isDragging, setIsDragging] = useState(false)
   const splitPaneRef = useRef(null)
@@ -45,9 +64,13 @@ export function useEmailInboxController() {
   const mailboxChangeRef = useRef("")
   const mailboxInitializedRef = useRef(false)
 
-  const mailboxParam = getMailboxFromSearchParams(searchParams)
-  const listEnabled = Boolean(mailboxParam)
-  const listFilters = { ...filters, userSdwtProd: mailboxParam }
+  const normalizedMailbox = normalizeMailbox(mailboxParam)
+  const listEnabled = scope === "sent" ? true : Boolean(normalizedMailbox)
+  const listFilters = {
+    ...filters,
+    scope,
+    userSdwtProd: scope === "sent" ? "" : normalizedMailbox,
+  }
 
   const {
     data: listData,
@@ -70,6 +93,11 @@ export function useEmailInboxController() {
 
   const deleteMutation = useDeleteEmail()
   const bulkDeleteMutation = useBulkDeleteEmails()
+  const moveMutation = useMoveEmails()
+
+  const { data: mailboxData } = useEmailMailboxes()
+  const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : EMPTY_MAILBOXES
+  const moveTargets = buildMoveTargets(mailboxes, normalizedMailbox)
 
   useEffect(() => {
     if (isListError && listError) {
@@ -78,10 +106,11 @@ export function useEmailInboxController() {
   }, [isListError, listError])
 
   useEffect(() => {
-    if (mailboxChangeRef.current === mailboxParam) return
-    mailboxChangeRef.current = mailboxParam
+    if (scope !== "inbox") return
+    if (mailboxChangeRef.current === normalizedMailbox) return
+    mailboxChangeRef.current = normalizedMailbox
 
-    if (!mailboxParam) return
+    if (!normalizedMailbox) return
     setFilters((prev) => ({ ...prev, page: 1 }))
     setSelectedIds([])
     setActiveEmailId(null)
@@ -96,7 +125,7 @@ export function useEmailInboxController() {
       nextParams.delete("emailId")
       setSearchParams(nextParams, { replace: true })
     }
-  }, [mailboxParam, searchParams, setSearchParams])
+  }, [normalizedMailbox, scope, searchParams, setSearchParams])
 
   const handleToggleSelectAll = () => {
     if (emails.length === 0) return
@@ -121,6 +150,13 @@ export function useEmailInboxController() {
     setSearchParams(next)
   }
 
+  const clearActiveEmailParam = () => {
+    if (!searchParams.has("emailId")) return
+    const next = new URLSearchParams(searchParams)
+    next.delete("emailId")
+    setSearchParams(next)
+  }
+
   const handleDeleteEmail = async (emailId) => {
     try {
       await deleteMutation.mutateAsync(emailId)
@@ -128,9 +164,7 @@ export function useEmailInboxController() {
       setSelectedIds((prev) => prev.filter((id) => id !== emailId))
       if (activeEmailId === emailId) {
         setActiveEmailId(null)
-        const next = new URLSearchParams(searchParams)
-        next.delete("emailId")
-        setSearchParams(next)
+        clearActiveEmailParam()
       }
     } catch (error) {
       toast.error(error?.message || "메일 삭제에 실패했습니다.")
@@ -145,14 +179,41 @@ export function useEmailInboxController() {
       setSelectedIds([])
       if (selectedIds.includes(activeEmailId)) {
         setActiveEmailId(null)
-        const next = new URLSearchParams(searchParams)
-        next.delete("emailId")
-        setSearchParams(next)
+        clearActiveEmailParam()
       }
     } catch (error) {
       toast.error(
         error?.message || "RAG 삭제 실패 등으로 메일 삭제에 실패했습니다. 다시 시도해주세요.",
       )
+    }
+  }
+
+  const handleMoveEmails = async (targetMailbox) => {
+    if (selectedIds.length === 0) return
+
+    const normalizedTarget = normalizeMailbox(targetMailbox)
+    if (!normalizedTarget) {
+      toast.error("이동할 메일함을 선택해주세요.")
+      return
+    }
+    if (normalizedTarget === normalizedMailbox) {
+      toast.error("이미 선택한 메일함입니다.")
+      return
+    }
+
+    try {
+      await moveMutation.mutateAsync({
+        emailIds: selectedIds,
+        toUserSdwtProd: normalizedTarget,
+      })
+      toast.success(`${selectedIds.length}개의 메일을 이동했습니다.`)
+      setSelectedIds([])
+      if (selectedIds.includes(activeEmailId)) {
+        setActiveEmailId(null)
+        clearActiveEmailParam()
+      }
+    } catch (error) {
+      toast.error(error?.message || "메일 이동에 실패했습니다. 다시 시도해주세요.")
     }
   }
 
@@ -200,7 +261,7 @@ export function useEmailInboxController() {
   }
 
   const handleReload = () => {
-    if (!mailboxParam) return
+    if (!listEnabled) return
     refetch()
   }
 
@@ -281,7 +342,7 @@ export function useEmailInboxController() {
     filters,
     setFilters,
     handleResetFilters,
-    mailboxParam,
+    mailboxParam: normalizedMailbox,
     emails,
     selectedIds,
     activeEmailId,
@@ -295,7 +356,10 @@ export function useEmailInboxController() {
     handleSelectEmail,
     handleDeleteEmail,
     handleBulkDelete,
+    handleMoveEmails,
+    moveTargets,
     isBulkDeleting: bulkDeleteMutation.isPending,
+    isMoving: moveMutation.isPending,
     currentPage,
     totalPages,
     pageSize,
@@ -309,4 +373,27 @@ export function useEmailInboxController() {
     isDragging,
     handleResizeStart,
   }
+}
+
+export function useEmailInboxController() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const mailboxParam = getMailboxFromSearchParams(searchParams)
+
+  return useEmailListController({
+    scope: "inbox",
+    mailboxParam,
+    searchParams,
+    setSearchParams,
+  })
+}
+
+export function useEmailSentController() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  return useEmailListController({
+    scope: "sent",
+    mailboxParam: SENT_MAILBOX_ID,
+    searchParams,
+    setSearchParams,
+  })
 }

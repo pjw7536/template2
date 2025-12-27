@@ -10,9 +10,11 @@ import {
 } from "@/components/ui/breadcrumb"
 import { ThemeControls } from "@/components/common"
 import { SidebarHeaderBar } from "@/components/layout"
+import { isSentMailbox, SENT_MAILBOX_LABEL } from "../utils/mailbox"
 
 export function EmailsHeader({ activeMailbox = "" }) {
   const trimmedMailbox = typeof activeMailbox === "string" ? activeMailbox.trim() : ""
+  const displayMailbox = isSentMailbox(trimmedMailbox) ? SENT_MAILBOX_LABEL : trimmedMailbox
 
   return (
     <SidebarHeaderBar right={<ThemeControls />}>
@@ -27,11 +29,11 @@ export function EmailsHeader({ activeMailbox = "" }) {
           <BreadcrumbItem>
             <BreadcrumbPage>Emails</BreadcrumbPage>
           </BreadcrumbItem>
-          {trimmedMailbox ? (
+          {displayMailbox ? (
             <>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage className="max-w-64 truncate">{trimmedMailbox}</BreadcrumbPage>
+                <BreadcrumbPage className="max-w-64 truncate">{displayMailbox}</BreadcrumbPage>
               </BreadcrumbItem>
             </>
           ) : null}

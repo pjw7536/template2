@@ -1,4 +1,5 @@
 export { EmailInboxPage } from "./pages/EmailInboxPage"
 export { EmailMembersPage } from "./pages/EmailMembersPage"
+export { EmailSentPage } from "./pages/EmailSentPage"
 export { EmailsLayout } from "./components/EmailsLayout"
 export { emailsRoutes } from "./routes"

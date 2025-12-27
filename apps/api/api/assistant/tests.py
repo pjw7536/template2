@@ -21,7 +21,8 @@ class AssistantRagIndexViewsTests(TestCase):
             email="s90000@example.com",
         )
         self.user.user_sdwt_prod = "group-a"
-        self.user.save(update_fields=["user_sdwt_prod"])
+        self.user.knox_id = "knox-90000"
+        self.user.save(update_fields=["user_sdwt_prod", "knox_id"])
 
         UserSdwtProdAccess.objects.create(user=self.user, user_sdwt_prod="group-b", can_manage=False)
 
@@ -33,7 +34,10 @@ class AssistantRagIndexViewsTests(TestCase):
 
         payload = response.json()
         self.assertEqual(payload.get("currentUserSdwtProd"), "group-a")
-        self.assertEqual(payload.get("permissionGroups"), ["group-a", "group-b", rag_services.RAG_PUBLIC_GROUP])
+        self.assertEqual(
+            set(payload.get("permissionGroups", [])),
+            {"group-a", "group-b", "knox-90000", rag_services.RAG_PUBLIC_GROUP},
+        )
         self.assertEqual(payload.get("ragIndexes"), rag_services.get_rag_index_candidates())
         self.assertEqual(payload.get("defaultRagIndex"), rag_services.resolve_rag_index_name(None))
         self.assertEqual(
@@ -92,7 +96,8 @@ class AssistantRagIndexViewsTests(TestCase):
             email="s90001@example.com",
         )
         superuser.user_sdwt_prod = "group-admin"
-        superuser.save(update_fields=["user_sdwt_prod"])
+        superuser.knox_id = "knox-super"
+        superuser.save(update_fields=["user_sdwt_prod", "knox_id"])
 
         other_user = User.objects.create_user(
             sabun="S90002",
@@ -114,7 +119,15 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertEqual(permission_groups, sorted(permission_groups))
         self.assertEqual(
             set(permission_groups),
-            {"group-a", "group-b", "group-c", "group-d", "group-admin", rag_services.RAG_PUBLIC_GROUP},
+            {
+                "group-a",
+                "group-b",
+                "group-c",
+                "group-d",
+                "group-admin",
+                "knox-super",
+                rag_services.RAG_PUBLIC_GROUP,
+            },
         )
 
     def test_chat_accepts_user_sdwt_prod_override_for_superuser(self) -> None:
@@ -125,7 +138,8 @@ class AssistantRagIndexViewsTests(TestCase):
             email="s90001@example.com",
         )
         superuser.user_sdwt_prod = "group-admin"
-        superuser.save(update_fields=["user_sdwt_prod"])
+        superuser.knox_id = "knox-super"
+        superuser.save(update_fields=["user_sdwt_prod", "knox_id"])
 
         other_user = User.objects.create_user(
             sabun="S90002",

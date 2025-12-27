@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 
 import { AppLayout, AppSidebar } from "@/components/layout"
 import { buildNavigationConfig } from "@/lib/config/navigation-config"
@@ -27,11 +27,19 @@ export function LineDashboardLayout({
     }
   }, [isError, error])
 
+  const lineSwitcherOptions = useMemo(() => {
+    if (!Array.isArray(lineOptions)) return []
+    return lineOptions
+      .map((lineId) => (typeof lineId === "string" ? lineId.trim() : ""))
+      .filter(Boolean)
+      .map((lineId) => ({ id: lineId, label: lineId, lineId }))
+  }, [lineOptions])
+
   const navigation = buildNavigationConfig()
   const nav = <NavMain items={navigation.navMain} />
   const sidebar = (
     <AppSidebar
-      header={<TeamSwitcher lines={lineOptions} />}
+      header={<TeamSwitcher options={lineSwitcherOptions} />}
       nav={nav}
       secondary={<NavProjects projects={navigation.projects} />}
     />

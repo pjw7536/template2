@@ -52,16 +52,6 @@ def set_activity_new_state(request: HttpRequest, data: Optional[Any]) -> None:
     context["after"] = data
 
 
-def set_activity_changes(request: HttpRequest, changes: Optional[Dict[str, Any]]) -> None:
-    """변경점(changes) 정보를 활동 로그에 추가합니다.
-
-    Attach an explicit change set for the current request.
-    """
-
-    context = _ensure_context(request)
-    context["changes"] = changes
-
-
 def merge_activity_metadata(request: HttpRequest, **extra: Any) -> None:
     """활동 로그에 저장할 추가 메타데이터를 병합합니다.
 
@@ -75,7 +65,6 @@ def merge_activity_metadata(request: HttpRequest, **extra: Any) -> None:
 
 __all__ = [
     "merge_activity_metadata",
-    "set_activity_changes",
     "set_activity_new_state",
     "set_activity_previous_state",
     "set_activity_summary",

@@ -14,12 +14,17 @@ import {
 export function LineDashboardSidebar({ lineOptions, navigation, ...props }) {
   const navMain = Array.isArray(navigation?.navMain) ? navigation.navMain : []
   const projects = Array.isArray(navigation?.projects) ? navigation.projects : []
-  const teams = Array.isArray(lineOptions) ? lineOptions : []
+  const teamOptions = Array.isArray(lineOptions)
+    ? lineOptions
+      .map((lineId) => (typeof lineId === "string" ? lineId.trim() : ""))
+      .filter(Boolean)
+      .map((lineId) => ({ id: lineId, label: lineId, lineId }))
+    : []
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher lines={teams} />
+        <TeamSwitcher options={teamOptions} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

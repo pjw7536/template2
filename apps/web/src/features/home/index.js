@@ -1,8 +1,5 @@
 export { HomeLayout } from "./components/HomeLayout"
 export { default as HomeNavbar } from "./components/Navbar"
-export { default as HomeEsopDashboardPage } from "./pages/HomeEsopDashboardPage"
-export { default as HomeAppstorePage } from "./pages/HomeAppstorePage"
 export { default as HomePage } from "./pages/HomePage"
-export { default as HomeVocPage } from "./pages/HomeVocPage"
 export { homeRoutes } from "./routes"
 export { navigationItems } from "./constants"

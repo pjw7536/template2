@@ -18,8 +18,10 @@ export function normalizeEmailListFilters(rawFilters = {}) {
   }
 
   const trim = (value) => (typeof value === "string" ? value.trim() : "")
+  const scope = trim(rawFilters.scope)
 
   return {
+    scope: scope === "sent" ? "sent" : "inbox",
     page: parsePage(rawFilters.page),
     pageSize: safePageSize,
     userSdwtProd: trim(rawFilters.userSdwtProd),

@@ -66,15 +66,14 @@ function buildMatches(text, docId) {
 
   const addRegexMatches = (regex) => {
     let match
-    // eslint-disable-next-line no-cond-assign
     while ((match = regex.exec(text))) {
       matches.push({ start: match.index, end: match.index + match[0].length, docId })
     }
   }
 
-  addRegexMatches(
-    new RegExp(`https?:\\/\\/[^\\s)]+\\/emails\\?[^\\s)]*emailId=${escapedDocId}[^\\s)]*`, "g"),
-  )
+  const scopedEmailRoute = `\\/emails\\/(?:inbox|sent)\\?[^\\s)]*emailId=${escapedDocId}[^\\s)]*`
+  addRegexMatches(new RegExp(`https?:\\/\\/[^\\s)]+${scopedEmailRoute}`, "g"))
+  addRegexMatches(new RegExp(scopedEmailRoute, "g"))
   addRegexMatches(new RegExp(`\\/emails\\?[^\\s)]*emailId=${escapedDocId}[^\\s)]*`, "g"))
   addRegexMatches(new RegExp(`emailId\\s*[:=]\\s*${escapedDocId}`, "g"))
 

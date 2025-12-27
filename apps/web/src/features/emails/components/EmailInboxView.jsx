@@ -16,6 +16,9 @@ export function EmailInboxView({
   isListLoading,
   handleBulkDelete,
   isBulkDeleting,
+  handleMoveEmails,
+  moveTargets,
+  isMoving,
   currentPage,
   totalPages,
   pageSize,
@@ -54,6 +57,9 @@ export function EmailInboxView({
               isLoading={isListLoading}
               onBulkDelete={handleBulkDelete}
               isBulkDeleting={isBulkDeleting}
+              onMoveEmails={handleMoveEmails}
+              moveTargets={moveTargets}
+              isMoving={isMoving}
               currentPage={currentPage}
               totalPages={totalPages}
               pageSize={pageSize}
@@ -89,4 +95,3 @@ export function EmailInboxView({
     </div>
   )
 }
-

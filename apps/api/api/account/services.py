@@ -414,14 +414,6 @@ def approve_affiliation_change(
 
         # Keep any existing access rows even when affiliation changes.
 
-    if had_previous_affiliation:
-        email_services.enqueue_reclassify_emails_for_user_sdwt_change(
-            user_id=target_user.id,
-            effective_from=change.effective_from,
-        )
-    else:
-        email_services.enqueue_reclassify_emails_for_confirmed_user(user_id=target_user.id)
-
     return (
         {
             "status": "approved",

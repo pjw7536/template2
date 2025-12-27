@@ -424,10 +424,10 @@ export function LineDashboardOverviewPage() {
                   pageIndex: Math.min(Math.max(pageIndex, 0), totalPages - 1),
                 })),
               setPageSize: (pageSize) =>
-                setPagination((previous) => ({
+                setPagination({
                   pageIndex: 0,
                   pageSize,
-                })),
+                }),
             }}
             currentPage={currentPage}
             totalPages={totalPages}

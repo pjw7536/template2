@@ -233,7 +233,11 @@ class DroneSopInstantInformTests(TestCase):
 class DroneEndpointTests(TestCase):
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S60000", password="test-password")
+        self.user = User.objects.create_user(
+            sabun="S60000",
+            password="test-password",
+            knox_id="knox-60000",
+        )
         self.client.force_login(self.user)
 
     @patch("api.drone.views.services.delete_early_inform_entry")

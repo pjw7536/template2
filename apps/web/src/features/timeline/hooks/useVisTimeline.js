@@ -15,6 +15,9 @@ export function useVisTimeline({ containerRef, groups, items, options }) {
   const currentRangeRef = useRef(null);
   const previousHeightRef = useRef(null); // 이전 높이를 저장
   const datasetRef = useRef(null); // DataSet 인스턴스 재사용을 위한 ref
+  const itemsRef = useRef(items);
+  const groupsRef = useRef(groups);
+  const optionsRef = useRef(options);
 
   const { setSelectedRow, selectedRow } = useTimelineSelectionStore();
   const { register, unregister, syncRange } = useTimelineStore();
@@ -26,12 +29,12 @@ export function useVisTimeline({ containerRef, groups, items, options }) {
       const { Timeline } = await import("vis-timeline/standalone");
       if (!mounted || !containerRef.current) return;
 
-      datasetRef.current = new DataSet(items);
+      datasetRef.current = new DataSet(itemsRef.current ?? []);
       tlRef.current = new Timeline(
         containerRef.current,
         datasetRef.current,
-        groups,
-        options
+        groupsRef.current,
+        optionsRef.current
       );
 
       register(tlRef.current);
@@ -65,10 +68,11 @@ export function useVisTimeline({ containerRef, groups, items, options }) {
       }
       datasetRef.current = null;
     };
-  }, [register, unregister, syncRange, setSelectedRow]);
+  }, [containerRef, register, unregister, syncRange, setSelectedRow]);
 
   // 2. 아이템 배열이 바뀌면 데이터셋 업데이트
   useEffect(() => {
+    itemsRef.current = items;
     if (tlRef.current && datasetRef.current) {
       datasetRef.current.clear();
       datasetRef.current.add(items);
@@ -78,6 +82,7 @@ export function useVisTimeline({ containerRef, groups, items, options }) {
 
   // 3. 그룹 정보 변경 시 갱신
   useEffect(() => {
+    groupsRef.current = groups;
     if (tlRef.current && groups) {
       const updatedGroups = groups.map((g) => ({
         ...g,
@@ -89,6 +94,7 @@ export function useVisTimeline({ containerRef, groups, items, options }) {
 
   // 4. 옵션 변경 시 업데이트 (특히 높이)
   useEffect(() => {
+    optionsRef.current = options;
     if (tlRef.current && options) {
       const heightChanged = previousHeightRef.current !== options.height;
 

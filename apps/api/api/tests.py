@@ -182,7 +182,8 @@ class AssistantChatViewTests(TestCase):
             email="dummy.user@example.com",
         )
         self.user.user_sdwt_prod = "group-a"
-        self.user.save(update_fields=["user_sdwt_prod"])
+        self.user.knox_id = "knox-77777"
+        self.user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
     def test_chat_view_returns_response_without_rag_url_attribute_error(self) -> None:
         request = self.factory.post(

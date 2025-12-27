@@ -18,6 +18,7 @@ const EMPTY_STATUS_COUNTS = STATUS_OPTIONS.reduce(
   (acc, option) => ({ ...acc, [option.value]: 0 }),
   {},
 )
+const EMPTY_POSTS = []
 
 function sanitizePost(post) {
   if (!post || post.id == null) return null
@@ -93,7 +94,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     }
   }, [postsQuery.isSuccess])
 
-  const posts = postsQuery.data?.posts ?? []
+  const posts = postsQuery.data?.posts ?? EMPTY_POSTS
   const statusCounts = postsQuery.data?.statusCounts ?? buildStatusCounts(posts)
 
   const filteredPosts = statusFilter ? posts.filter((post) => post.status === statusFilter) : posts

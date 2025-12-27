@@ -36,6 +36,15 @@ def resolve_accessible_user_sdwt_prods(user: Any) -> Set[str]:
     return get_accessible_user_sdwt_prods_for_user(user)
 
 
+def _resolve_sender_id_from_user(user: Any) -> str | None:
+    """사용자에서 sender_id(knox_id)를 추출합니다."""
+
+    knox_id = getattr(user, "knox_id", None)
+    if isinstance(knox_id, str) and knox_id.strip():
+        return knox_id.strip()
+    return None
+
+
 def user_can_access_email(
     user: Any,
     email: Any,
@@ -47,6 +56,9 @@ def user_can_access_email(
         return True
     if accessible is None:
         return False
+    sender_id = _resolve_sender_id_from_user(user)
+    if sender_id and getattr(email, "sender_id", None) == sender_id:
+        return True
     return bool(getattr(email, "user_sdwt_prod", None) and email.user_sdwt_prod in accessible)
 
 
@@ -59,6 +71,9 @@ def resolve_access_control(request: HttpRequest) -> tuple[bool, bool, Set[str]]:
     user = getattr(request, "user", None)
     if not user or not getattr(user, "is_authenticated", False):
         return False, False, set()
+
+    if not _resolve_sender_id_from_user(user):
+        return True, False, set()
 
     if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True, True, set()

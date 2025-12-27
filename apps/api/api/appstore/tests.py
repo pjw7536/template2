@@ -12,7 +12,11 @@ class AppstoreScreenshotTests(TestCase):
 
     def test_create_app_stores_data_url_as_base64(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S12345", password="test-password")
+        user = User.objects.create_user(
+            sabun="S12345",
+            password="test-password",
+            knox_id="knox-12345",
+        )
         screenshot_url = "data:image/png;base64,AAA="
 
         app = create_app(
@@ -36,7 +40,11 @@ class AppstoreScreenshotTests(TestCase):
 
     def test_create_app_keeps_external_screenshot_url(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S88888", password="test-password")
+        user = User.objects.create_user(
+            sabun="S88888",
+            password="test-password",
+            knox_id="knox-88888",
+        )
         screenshot_url = "https://example.com/screenshot.png"
 
         app = create_app(
@@ -60,7 +68,11 @@ class AppstoreScreenshotTests(TestCase):
 
     def test_create_app_stores_gallery_items(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S77777", password="test-password")
+        user = User.objects.create_user(
+            sabun="S77777",
+            password="test-password",
+            knox_id="knox-77777",
+        )
 
         cover = "data:image/png;base64,COVER="
         extra_url = "https://example.com/extra.png"
@@ -94,7 +106,11 @@ class AppstoreScreenshotTests(TestCase):
 
     def test_update_app_allows_clearing_screenshot(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S99999", password="test-password")
+        user = User.objects.create_user(
+            sabun="S99999",
+            password="test-password",
+            knox_id="knox-99999",
+        )
         app = create_app(
             owner=user,
             name="Test App",
@@ -117,7 +133,11 @@ class AppstoreScreenshotTests(TestCase):
 
     def test_detail_payload_includes_screenshot_url(self) -> None:
         User = get_user_model()
-        user = User.objects.create_user(sabun="S54321", password="test-password")
+        user = User.objects.create_user(
+            sabun="S54321",
+            password="test-password",
+            knox_id="knox-54321",
+        )
         screenshot_url = "data:image/png;base64,CCC="
         app = create_app(
             owner=user,
@@ -145,7 +165,11 @@ class AppstoreCommentReplyLikeTests(TestCase):
 
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S22222", password="test-password")
+        self.user = User.objects.create_user(
+            sabun="S22222",
+            password="test-password",
+            knox_id="knox-22222",
+        )
         self.client.force_login(self.user)
         self.app = create_app(
             owner=self.user,
@@ -211,7 +235,12 @@ class AppstoreCommentReplyLikeTests(TestCase):
 class AppstoreEndpointTests(TestCase):
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S33333", password="test-password", email="s33333@example.com")
+        self.user = User.objects.create_user(
+            sabun="S33333",
+            password="test-password",
+            email="s33333@example.com",
+            knox_id="knox-33333",
+        )
         self.client.force_login(self.user)
         self.app = create_app(
             owner=self.user,
