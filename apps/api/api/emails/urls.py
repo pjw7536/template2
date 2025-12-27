@@ -10,6 +10,7 @@ from .views import (
     EmailListView,
     EmailMailboxListView,
     EmailMailboxMembersView,
+    EmailOutboxProcessTriggerView,
     EmailUnassignedClaimView,
     EmailUnassignedSummaryView,
 )
@@ -21,6 +22,7 @@ urlpatterns = [
     path("unassigned/", EmailUnassignedSummaryView.as_view(), name="emails-unassigned-summary"),
     path("unassigned/claim/", EmailUnassignedClaimView.as_view(), name="emails-unassigned-claim"),
     path("ingest/", EmailIngestTriggerView.as_view(), name="emails-ingest"),
+    path("outbox/process/", EmailOutboxProcessTriggerView.as_view(), name="emails-outbox-process"),
     path("bulk-delete/", EmailBulkDeleteView.as_view(), name="emails-bulk-delete"),
     path("<int:email_id>/", EmailDetailView.as_view(), name="emails-detail"),
     path("<int:email_id>/html/", EmailHtmlView.as_view(), name="emails-html"),

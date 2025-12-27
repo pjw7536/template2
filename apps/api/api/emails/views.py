@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import logging
+import os
 from datetime import datetime, time
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +40,7 @@ from .services import (
     bulk_delete_emails,
     claim_unassigned_emails_for_user,
     delete_single_email,
+    process_email_outbox_batch,
     run_pop3_ingest_from_env,
 )
 
@@ -46,6 +48,19 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+
+
+def _ensure_airflow_token(request: HttpRequest) -> JsonResponse | None:
+    expected = (
+        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+    ).strip()
+    if not expected:
+        return JsonResponse({"error": "AIRFLOW_TRIGGER_TOKEN not configured"}, status=500)
+
+    provided = extract_bearer_token(request)
+    if provided != expected:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+    return None
 
 
 def _parse_int(value: Any, default: int) -> int:
@@ -444,3 +459,39 @@ class EmailIngestTriggerView(APIView):
         except Exception:
             logger.exception("Failed to trigger POP3 ingest")
             return JsonResponse({"error": "POP3 ingest failed"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailOutboxProcessTriggerView(APIView):
+    """Process pending email outbox items (RAG operations)."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        auth_response = _ensure_airflow_token(request)
+        if auth_response is not None:
+            return auth_response
+
+        payload = parse_json_body(request) or {}
+        raw_limit = payload.get("limit")
+        if raw_limit is None:
+            raw_limit = request.GET.get("limit")
+
+        limit = None
+        if raw_limit is not None:
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "limit must be an integer"}, status=400)
+            if limit <= 0:
+                limit = None
+
+        try:
+            if limit is None:
+                result = process_email_outbox_batch()
+            else:
+                result = process_email_outbox_batch(limit=limit)
+            return JsonResponse(result)
+        except Exception:
+            logger.exception("Failed to process email outbox")
+            return JsonResponse({"error": "Email outbox processing failed"}, status=500)

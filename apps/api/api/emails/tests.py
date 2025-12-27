@@ -7,7 +7,7 @@ from email.message import EmailMessage
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1059,3 +1059,41 @@ class EmailEndpointTests(TestCase):
     def test_email_ingest_trigger(self, _mock_ingest) -> None:
         response = self.client.post(reverse("emails-ingest"))
         self.assertEqual(response.status_code, 200)
+
+
+class EmailOutboxTriggerAuthTests(TestCase):
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
+    @patch("api.emails.views.process_email_outbox_batch")
+    def test_outbox_trigger_requires_token(self, mock_process: Mock) -> None:
+        mock_process.return_value = {"processed": 1, "succeeded": 1, "failed": 0}
+
+        url = reverse("emails-outbox-process")
+
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(mock_process.call_count, 0)
+
+        resp = self.client.post(url, HTTP_AUTHORIZATION="Bearer wrong-token")
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(mock_process.call_count, 0)
+
+        resp = self.client.post(url, HTTP_AUTHORIZATION="Bearer expected-token")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json().get("processed"), 1)
+        mock_process.assert_called_once_with()
+
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
+    @patch("api.emails.views.process_email_outbox_batch")
+    def test_outbox_trigger_accepts_limit(self, mock_process: Mock) -> None:
+        mock_process.return_value = {"processed": 0, "succeeded": 0, "failed": 0}
+
+        url = reverse("emails-outbox-process")
+
+        resp = self.client.post(
+            url,
+            data='{"limit": 123}',
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer expected-token",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_process.assert_called_once_with(limit=123)
