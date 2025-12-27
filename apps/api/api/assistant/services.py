@@ -123,6 +123,29 @@ def _parse_string_list(raw: Optional[str]) -> List[str]:
     return []
 
 
+def _normalize_string_list(raw: Optional[Sequence[str] | str]) -> List[str]:
+    """문자열 또는 문자열 리스트를 정규화합니다."""
+
+    if not raw:
+        return []
+
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, Sequence):
+        values = list(raw)
+    else:
+        return []
+
+    normalized: List[str] = []
+    for item in values:
+        if item is None:
+            continue
+        cleaned = str(item).strip()
+        if cleaned:
+            normalized.append(cleaned)
+    return list(dict.fromkeys(normalized))
+
+
 def _strip_markdown_code_fence(text: str) -> str:
     cleaned = text.strip()
     if not cleaned.startswith("```"):
@@ -266,7 +289,7 @@ class AssistantChatConfig:
     dummy_delay_ms: int = DEFAULT_DUMMY_DELAY_MS
     dummy_use_rag: bool = False
     rag_url: str = ""
-    rag_index_name: str = ""
+    rag_index_names: List[str] = field(default_factory=list)
     rag_num_docs: int = DEFAULT_NUM_DOCS
     llm_url: str = ""
     llm_headers: Dict[str, str] = field(default_factory=dict)
@@ -287,7 +310,7 @@ class AssistantChatConfig:
         dummy_use_rag = _parse_bool(_read_setting("ASSISTANT_DUMMY_USE_RAG"), False)
 
         rag_url = (rag_services.RAG_SEARCH_URL or "").strip()
-        rag_index_name = (rag_services.RAG_INDEX_NAME or "").strip()
+        rag_index_names = rag_services.resolve_rag_index_names(None)
         rag_num_docs = _parse_int(_read_setting("ASSISTANT_RAG_NUM_DOCS"), DEFAULT_NUM_DOCS)
 
         llm_url = (_read_setting("ASSISTANT_LLM_URL") or _read_setting("LLM_API_URL") or "").strip()
@@ -306,7 +329,7 @@ class AssistantChatConfig:
 
         return cls(
             rag_url=rag_url,
-            rag_index_name=rag_index_name,
+            rag_index_names=rag_index_names,
             rag_num_docs=rag_num_docs,
             llm_url=llm_url,
             llm_headers=llm_headers,
@@ -500,19 +523,29 @@ class AssistantChatService:
         return sources
 
     def _retrieve_documents(
-        self, session: requests.Session, question: str, index_name: Optional[str] = None
+        self,
+        session: requests.Session,
+        question: str,
+        *,
+        permission_groups: Optional[Sequence[str]] = None,
+        rag_index_names: Optional[Sequence[str]] = None,
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
-        target_index_raw = (index_name or "").strip() or self.config.rag_index_name
-        if not rag_services.RAG_SEARCH_URL or not target_index_raw:
+        target_indexes = rag_services.resolve_rag_index_names(
+            rag_index_names if rag_index_names is not None else self.config.rag_index_names
+        )
+        if not rag_services.RAG_SEARCH_URL or not target_indexes:
             return [], None, []
 
         try:
-            data = rag_services.search_rag(
-                question,
-                index_name=target_index_raw,
-                num_result_doc=self.config.rag_num_docs,
-                timeout=self.config.request_timeout,
-            )
+            search_kwargs: Dict[str, Any] = {
+                "index_name": target_indexes,
+                "num_result_doc": self.config.rag_num_docs,
+                "timeout": self.config.request_timeout,
+            }
+            normalized_permission_groups = _normalize_string_list(permission_groups)
+            if normalized_permission_groups:
+                search_kwargs["permission_groups"] = normalized_permission_groups
+            data = rag_services.search_rag(question, **search_kwargs)
         except requests.HTTPError as exc:
             resp = exc.response
             status = resp.status_code if resp is not None else "unknown"
@@ -675,7 +708,12 @@ class AssistantChatService:
         return reply, resp_json
 
     def generate_reply(
-        self, question: str, *, user_header_id: Optional[str] = None, rag_index_name: Optional[str] = None
+        self,
+        question: str,
+        *,
+        user_header_id: Optional[str] = None,
+        rag_index_names: Optional[Sequence[str]] = None,
+        permission_groups: Optional[Sequence[str]] = None,
     ) -> AssistantChatResult:
         normalized_question = question.strip()
         if not normalized_question:
@@ -686,7 +724,10 @@ class AssistantChatService:
                 try:
                     with requests.Session() as session:
                         contexts, rag_response, sources = self._retrieve_documents(
-                            session, normalized_question, rag_index_name
+                            session,
+                            normalized_question,
+                            permission_groups=permission_groups,
+                            rag_index_names=rag_index_names,
                         )
                 except AssistantRequestError:
                     contexts, rag_response, sources = [], None, []
@@ -716,7 +757,10 @@ class AssistantChatService:
 
         with requests.Session() as session:
             contexts, rag_response, sources = self._retrieve_documents(
-                session, normalized_question, rag_index_name
+                session,
+                normalized_question,
+                permission_groups=permission_groups,
+                rag_index_names=rag_index_names,
             )
             reply, llm_response = self._call_llm(
                 session,

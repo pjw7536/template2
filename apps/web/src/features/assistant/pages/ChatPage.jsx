@@ -1,35 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Bot, PanelLeft, Plus, RefreshCw } from "lucide-react"
+import { Bot, PanelLeft, Plus, RefreshCw, Settings } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"
 import { RoomList } from "../components/RoomList"
+import { RagIndexMultiSelect } from "../components/RagIndexMultiSelect"
 import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatPage() {
   const location = useLocation()
-  const {
-    userSdwtProd,
-    setUserSdwtProd,
-    options: userSdwtProdOptions,
-    isLoading: isUserSdwtProdLoading,
-    isError: isUserSdwtProdError,
-    errorMessage: userSdwtProdErrorMessage,
-    canSelect: canSelectUserSdwtProd,
-  } = useAssistantRagIndex()
+  const ragSettings = useAssistantRagIndex()
   const handoffMessages = Array.isArray(location?.state?.initialMessages)
     ? location.state.initialMessages
     : undefined
@@ -63,10 +49,12 @@ export function ChatPage() {
     initialRooms,
     initialMessagesByRoom,
     initialActiveRoomId,
-    userSdwtProd,
+    permissionGroups: ragSettings.permissionGroups,
+    ragIndexNames: ragSettings.ragIndexNames,
   })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [input, setInput] = useState("")
   const inputRef = useRef(null)
   const wasSendingRef = useRef(false)
@@ -100,6 +88,25 @@ export function ChatPage() {
     removeRoom(roomId)
   }
 
+  const handleSelectRoom = (roomId) => {
+    setIsSettingsOpen(false)
+    selectRoom(roomId)
+  }
+
+  const handleCreateRoom = () => {
+    setIsSettingsOpen(false)
+    createRoom()
+  }
+
+  const handleResetConversation = () => {
+    setIsSettingsOpen(false)
+    resetConversation(activeRoomId)
+  }
+
+  const handleToggleSettings = () => {
+    setIsSettingsOpen((prev) => !prev)
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-4 overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -119,78 +126,65 @@ export function ChatPage() {
       </header>
 
       <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3 rounded-xl border bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b bg-card px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant={isSidebarOpen ? "secondary" : "outline"}
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              aria-label={isSidebarOpen ? "대화방 목록 닫기" : "대화방 목록 열기"}
-            >
-              <PanelLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-3">
-              <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
-              <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">분임조</span>
-                {canSelectUserSdwtProd ? (
-                  <Select value={userSdwtProd} onValueChange={setUserSdwtProd}>
-                    <SelectTrigger
-                      className="h-8 w-36 text-xs"
-                      aria-label="assistant 배경지식(user_sdwt_prod) 선택"
-                    >
-                      <SelectValue
-                        placeholder={isUserSdwtProdLoading ? "불러오는 중" : "선택"}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {userSdwtProdOptions.map((value) => (
-                        <SelectItem key={value} value={value}>
-                          {value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Badge
-                    variant={isUserSdwtProdError ? "destructive" : "secondary"}
-                    className="h-7 px-2 text-xs"
-                    title={
-                      isUserSdwtProdError
-                        ? userSdwtProdErrorMessage || "분임조 목록을 불러오지 못했어요."
-                        : userSdwtProd || undefined
-                    }
-                  >
-                    {userSdwtProd || (isUserSdwtProdLoading ? "…" : "—")}
-                  </Badge>
-                )}
+        <div className="flex flex-col gap-2 border-b bg-card px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={isSidebarOpen ? "secondary" : "outline"}
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                aria-label={isSidebarOpen ? "대화방 목록 닫기" : "대화방 목록 열기"}
+              >
+                <PanelLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-3">
+                <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
+                <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
+                <span className="text-xs text-muted-foreground">실시간 상담</span>
               </div>
-              <span className="text-xs text-muted-foreground">실시간 상담</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={handleCreateRoom}
+                aria-label="새 대화방 만들기"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={handleResetConversation}
+                disabled={isSending}
+                aria-label="현재 대화 초기화"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => createRoom()}
-              aria-label="새 대화방 만들기"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => resetConversation(activeRoomId)}
-              disabled={isSending}
-              aria-label="현재 대화 초기화"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1">
+              <span>RAG 인덱스</span>
+              {ragSettings.ragIndexNames.map((value) => (
+                <Badge key={value} variant="secondary" className="text-[11px]">
+                  {value}
+                </Badge>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <span>권한 그룹</span>
+              {ragSettings.permissionGroups.map((value) => (
+                <Badge key={value} variant="secondary" className="text-[11px]">
+                  {value}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -206,7 +200,7 @@ export function ChatPage() {
                   variant="secondary"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  onClick={() => createRoom()}
+                  onClick={handleCreateRoom}
                 >
                   새 대화
                 </Button>
@@ -218,30 +212,79 @@ export function ChatPage() {
                 <RoomList
                   rooms={sortedRooms}
                   activeRoomId={activeRoomId}
-                  onSelectRoom={selectRoom}
+                  onSelectRoom={handleSelectRoom}
                   onDeleteRoom={handleDeleteRoom}
                 />
+              </div>
+              <div className="border-t px-3 py-3">
+                <Button
+                  variant={isSettingsOpen ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-9 w-full justify-between"
+                  onClick={handleToggleSettings}
+                >
+                  <span className="text-xs font-semibold">설정</span>
+                  <Settings className="h-4 w-4" />
+                </Button>
               </div>
             </aside>
           ) : null}
 
           <div className="flex min-h-0 flex-col">
-            <ChatMessages messages={messages} isSending={isSending} />
+            {isSettingsOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex items-center gap-2 border-b px-4 py-3">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-semibold">RAG 설정</p>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+                  <div className="grid gap-3">
+                    <RagIndexMultiSelect
+                      label="RAG 인덱스"
+                      values={ragSettings.ragIndexNames}
+                      onChange={ragSettings.setRagIndexNames}
+                      placeholder="rp-unclassified"
+                      helperText="목록에서 선택 · 최소 1개 필수"
+                      options={ragSettings.ragIndexOptions}
+                      isDisabled={ragSettings.isLoading}
+                    />
+                    <RagIndexMultiSelect
+                      label="권한 그룹"
+                      values={ragSettings.permissionGroups}
+                      onChange={ragSettings.setPermissionGroups}
+                      placeholder="rag-public"
+                      helperText="목록에서 선택 · 최소 1개 필수"
+                      options={ragSettings.permissionGroupOptions}
+                      isDisabled={ragSettings.isLoading}
+                    />
+                    {ragSettings.isError ? (
+                      <p className="text-[11px] text-destructive">
+                        {ragSettings.errorMessage || "RAG 설정을 불러오지 못했어요."}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ChatMessages messages={messages} isSending={isSending} />
 
-            <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
+                <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
 
-            <ChatComposer
-              inputId="assistant-page-input"
-              label="어시스턴트에게 질문하기"
-              inputRef={inputRef}
-              inputValue={input}
-              onInputChange={(event) => setInput(event.target.value)}
-              onSubmit={handleSubmit}
-              isSending={isSending}
-              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-              footerLeft="베타 · LLM API 연결"
-              footerRight="Shift+Enter로 줄바꿈"
-            />
+                <ChatComposer
+                  inputId="assistant-page-input"
+                  label="어시스턴트에게 질문하기"
+                  inputRef={inputRef}
+                  inputValue={input}
+                  onInputChange={(event) => setInput(event.target.value)}
+                  onSubmit={handleSubmit}
+                  isSending={isSending}
+                  placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
+                  footerLeft="베타 · LLM API 연결"
+                  footerRight="Shift+Enter로 줄바꿈"
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -181,12 +181,30 @@ def _decode_header_value(raw_value: Any) -> str:
         return str(raw_value)
 
 
-def _subject_matches(subject: str, subject_contains: str) -> bool:
+DEFAULT_DRONE_INCLUDE_SUBJECTS = ("[drone_sop]",)
+
+
+def _load_include_subjects(raw: Any) -> tuple[str, ...]:
+    """환경변수 기반 Drone SOP 메일 제목 포함 목록을 로드합니다."""
+
+    text = str(raw or "").strip()
+    if not text:
+        return DEFAULT_DRONE_INCLUDE_SUBJECTS
+
+    subjects: list[str] = []
+    for item in text.split(","):
+        cleaned = item.strip().strip("\"'").lower()
+        if cleaned:
+            subjects.append(cleaned)
+
+    return tuple(subjects) if subjects else DEFAULT_DRONE_INCLUDE_SUBJECTS
+
+
+def _subject_matches(subject: str, include_subjects: Sequence[str]) -> bool:
     normalized_subject = subject.strip().lower()
-    normalized_filter = (subject_contains or "").strip().lower()
-    if not normalized_filter:
+    if not normalized_subject:
         return False
-    return normalized_filter in normalized_subject
+    return normalized_subject in include_subjects
 
 
 def _build_drone_sop_row(
@@ -267,7 +285,7 @@ class DroneSopPop3Config:
     password: str
     use_ssl: bool = True
     timeout: int = 60
-    subject_contains: str = "[drone_sop]"
+    include_subjects: tuple[str, ...] = DEFAULT_DRONE_INCLUDE_SUBJECTS
     dummy_mode: bool = False
     dummy_mail_messages_url: str = ""
     needtosend_rules: tuple[NeedToSendRule, ...] = ()
@@ -280,14 +298,14 @@ class DroneSopPop3Config:
         password = (getattr(settings, "DRONE_SOP_POP3_PASSWORD", "") or "").strip()
         use_ssl = _parse_bool(getattr(settings, "DRONE_SOP_POP3_USE_SSL", None), True)
         timeout = _parse_int(getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None), 60)
-        subject_contains_raw = _first_defined(
-            getattr(settings, "DRONE_SOP_POP3_SUBJECT_CONTAINS", None),
-            os.getenv("DRONE_SOP_POP3_SUBJECT_CONTAINS"),
+        include_subjects_raw = _first_defined(
+            (getattr(settings, "DRONE_INCLUDE_SUBJECT_PREFIXES", None) or None),
+            (os.getenv("DRONE_INCLUDE_SUBJECT_PREFIXES") or None),
+            (getattr(settings, "DRONE_SOP_POP3_SUBJECT_CONTAINS", None) or None),
+            (os.getenv("DRONE_SOP_POP3_SUBJECT_CONTAINS") or None),
             "[drone_sop]",
         )
-        subject_contains = str(subject_contains_raw or "").strip()
-        if not subject_contains:
-            subject_contains = "[drone_sop]"
+        include_subjects = _load_include_subjects(include_subjects_raw)
         dummy_mode = _parse_bool(
             _first_defined(
                 getattr(settings, "DRONE_SOP_DUMMY_MODE", None),
@@ -313,7 +331,7 @@ class DroneSopPop3Config:
             password=password,
             use_ssl=use_ssl,
             timeout=timeout,
-            subject_contains=subject_contains,
+            include_subjects=include_subjects,
             dummy_mode=dummy_mode,
             dummy_mail_messages_url=dummy_mail_messages_url,
             needtosend_rules=needtosend_rules,
@@ -452,7 +470,7 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
             messages = _list_dummy_mail_messages(url=config.dummy_mail_messages_url, timeout=config.timeout)
             for message in messages:
                 subject = _decode_header_value(message.get("subject"))
-                if not _subject_matches(subject, config.subject_contains):
+                if not _subject_matches(subject, config.include_subjects):
                     continue
                 body_html = str(message.get("body_html") or message.get("body_text") or "")
                 if not body_html:
@@ -527,7 +545,7 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
                 _, lines, _ = client.retr(msg_num)
                 msg = BytesParser(policy=default).parsebytes(b"\r\n".join(lines))
                 subject = _decode_header_value(msg.get("Subject"))
-                if not _subject_matches(subject, config.subject_contains):
+                if not _subject_matches(subject, config.include_subjects):
                     continue
                 html = _extract_html_from_email(msg)
                 if not html:

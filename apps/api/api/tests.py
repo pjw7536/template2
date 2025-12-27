@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from unittest.mock import Mock, patch
 
-from django.test import RequestFactory, SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from api.auth.oidc import _extract_user_info_from_claims
 from api.assistant.services import AssistantChatConfig, AssistantChatService, AssistantConfigError
@@ -74,8 +75,8 @@ class RagSearchServiceTests(SimpleTestCase):
         with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
             "api.rag.services.RAG_HEADERS", {"Content-Type": "application/json"}
         ), patch("api.rag.services.RAG_PERMISSION_GROUPS", ["group-a"]), patch(
-            "api.rag.services.RAG_INDEX_NAME", "idx-default"
-        ), patch(
+            "api.rag.services.RAG_INDEX_DEFAULT", "rp-idx-default"
+        ), patch("api.rag.services.RAG_INDEX_LIST", []), patch(
             "api.rag.services.requests.post", return_value=response
         ) as post:
             result = search_rag("hello", num_result_doc=3, timeout=12)
@@ -88,7 +89,7 @@ class RagSearchServiceTests(SimpleTestCase):
         self.assertEqual(
             kwargs["json"],
             {
-                "index_name": "rp-idx-default",
+                "index_name": ["rp-idx-default"],
                 "permission_groups": ["group-a"],
                 "query_text": "hello",
                 "num_result_doc": 3,
@@ -122,7 +123,12 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             }
         }
 
-        config = AssistantChatConfig(use_dummy=True, dummy_use_rag=True, rag_index_name="idx-user", rag_num_docs=5)
+        config = AssistantChatConfig(
+            use_dummy=True,
+            dummy_use_rag=True,
+            rag_index_names=["idx-user"],
+            rag_num_docs=5,
+        )
 
         with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
             "api.rag.services.search_rag", return_value=rag_response
@@ -130,7 +136,7 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             service = AssistantChatService(config=config)
             result = service.generate_reply("hello")
 
-        search_mock.assert_called_once_with("hello", index_name="idx-user", num_result_doc=5, timeout=30)
+        search_mock.assert_called_once_with("hello", index_name=["idx-user"], num_result_doc=5, timeout=30)
         self.assertTrue(result.is_dummy)
         self.assertEqual(
             result.contexts,
@@ -139,29 +145,52 @@ class AssistantRagIntegrationTests(SimpleTestCase):
                 "[emailId: email-2 | title: 두번째]\n컨텍스트2",
             ],
         )
+
+    def test_generate_reply_passes_permission_group_override(self) -> None:
+        rag_response = {"hits": {"hits": []}}
+        config = AssistantChatConfig(
+            use_dummy=True,
+            dummy_use_rag=True,
+            rag_index_names=["idx-default"],
+            rag_num_docs=5,
+        )
+
+        with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
+            "api.rag.services.search_rag", return_value=rag_response
+        ) as search_mock:
+            service = AssistantChatService(config=config)
+            result = service.generate_reply("hello", permission_groups=["group-a"])
+
+        search_mock.assert_called_once_with(
+            "hello",
+            index_name=["idx-default"],
+            num_result_doc=5,
+            timeout=30,
+            permission_groups=["group-a"],
+        )
         self.assertEqual(result.sources, [])
         self.assertEqual(result.rag_response, rag_response)
 
 
-class AssistantChatViewTests(SimpleTestCase):
+class AssistantChatViewTests(TestCase):
     def setUp(self) -> None:
         self.factory = RequestFactory()
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S77777",
+            password="test-password",
+            email="dummy.user@example.com",
+        )
+        self.user.user_sdwt_prod = "group-a"
+        self.user.save(update_fields=["user_sdwt_prod"])
 
     def test_chat_view_returns_response_without_rag_url_attribute_error(self) -> None:
-        class DummyUser:
-            is_authenticated = True
-            email = "dummy.user@example.com"
-            user_sdwt_prod = ""
-
-            def get_username(self) -> str:
-                return "dummy"
-
         request = self.factory.post(
             "/api/v1/assistant/chat",
             data=json.dumps({"prompt": "hello"}),
             content_type="application/json",
         )
-        request.user = DummyUser()
+        request.user = self.user
 
         with patch(
             "api.assistant.views.assistant_chat_service.generate_reply",
@@ -175,20 +204,12 @@ class AssistantChatViewTests(SimpleTestCase):
         self.assertIn("meta", payload)
 
     def test_chat_view_returns_503_when_assistant_config_error(self) -> None:
-        class DummyUser:
-            is_authenticated = True
-            email = "dummy.user@example.com"
-            user_sdwt_prod = ""
-
-            def get_username(self) -> str:
-                return "dummy"
-
         request = self.factory.post(
             "/api/v1/assistant/chat",
             data=json.dumps({"prompt": "hello"}),
             content_type="application/json",
         )
-        request.user = DummyUser()
+        request.user = self.user
 
         with patch(
             "api.assistant.views.assistant_chat_service.generate_reply",

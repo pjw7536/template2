@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from . import selectors
 from .services import AssistantConfigError, AssistantRequestError, assistant_chat_service
 from api.common.utils import parse_json_body
+from api.rag import services as rag_services
 
 logger = logging.getLogger(__name__)
 
@@ -70,45 +71,71 @@ def _validate_user_identity(user: object) -> Tuple[str, str]:
     return username.strip(), email_local_part
 
 
-def _resolve_rag_index(payload: Dict[str, object], user: object) -> str:
-    """요청 페이로드와 사용자 정보로 RAG index를 선택한다.
+def _normalize_string_list(raw: object) -> List[str]:
+    """문자열 리스트를 정규화합니다."""
 
-    - 프론트에서 넘어온 override(userSdwtProd 등)가 접근 가능한지 먼저 확인한다.
-    - override가 없으면 사용자 기본값(user.user_sdwt_prod) → 설정 기본값 순으로 사용한다.
-    """
+    if not isinstance(raw, list):
+        return []
+    normalized: List[str] = []
+    for item in raw:
+        if item is None:
+            continue
+        cleaned = str(item).strip()
+        if cleaned:
+            normalized.append(cleaned)
+    return list(dict.fromkeys(normalized))
 
-    rag_index_name = ""
 
-    try:
-        raw_user_sdwt = getattr(user, "user_sdwt_prod", "")
-        if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
-            rag_index_name = raw_user_sdwt.strip()
-    except Exception:
-        rag_index_name = ""
+def _default_permission_groups(user: object) -> List[str]:
+    """기본 permission_groups 값을 계산합니다."""
 
-    if not rag_index_name:
-        rag_index_name = assistant_chat_service.config.rag_index_name
+    groups: List[str] = []
+    raw_user_sdwt = getattr(user, "user_sdwt_prod", "")
+    if isinstance(raw_user_sdwt, str) and raw_user_sdwt.strip():
+        groups.append(raw_user_sdwt.strip())
+    groups.append(rag_services.RAG_PUBLIC_GROUP)
+    return list(dict.fromkeys(groups))
 
-    requested_index_raw = (
-        payload.get("userSdwtProd")
-        or payload.get("user_sdwt_prod")
-        or payload.get("ragIndexName")
-        or payload.get("rag_index_name")
-    )
-    requested_index = requested_index_raw.strip() if isinstance(requested_index_raw, str) else ""
 
-    if not requested_index:
-        return rag_index_name
+def _resolve_permission_groups(payload: Dict[str, object], user: object) -> List[str]:
+    """요청/사용자 정보로 permission_groups를 결정합니다."""
+
+    raw_groups = payload.get("permission_groups") or payload.get("permissionGroups")
+    if raw_groups is not None and not isinstance(raw_groups, list):
+        raise ValueError("permission_groups must be an array")
+
+    normalized = _normalize_string_list(raw_groups)
+    if not normalized:
+        normalized = _default_permission_groups(user)
 
     accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
-    requested_no_prefix = requested_index[3:].strip() if requested_index.lower().startswith("rp-") else ""
+    allowed = set(accessible)
+    allowed.add(rag_services.RAG_PUBLIC_GROUP)
+    invalid = [group for group in normalized if group not in allowed]
+    if invalid:
+        raise AssistantRequestError("해당 permission_groups에 대한 접근 권한이 없습니다.")
 
-    if requested_index in accessible:
-        return requested_index
-    if requested_no_prefix and requested_no_prefix in accessible:
-        return requested_no_prefix
+    return normalized
 
-    raise AssistantRequestError("해당 user_sdwt_prod에 대한 접근 권한이 없습니다.")
+
+def _resolve_rag_index_names(payload: Dict[str, object]) -> List[str]:
+    """요청 페이로드로 RAG 인덱스 목록을 결정합니다."""
+
+    raw_indexes = payload.get("rag_index_name") or payload.get("ragIndexName")
+    if raw_indexes is not None and not isinstance(raw_indexes, list):
+        raise ValueError("rag_index_name must be an array")
+
+    normalized = _normalize_string_list(raw_indexes)
+    if not normalized:
+        return rag_services.resolve_rag_index_names(None)
+
+    candidates = rag_services.get_rag_index_candidates()
+    if candidates:
+        invalid = [value for value in normalized if value not in candidates]
+        if invalid:
+            raise ValueError("rag_index_name contains invalid index")
+
+    return normalized
 
 
 def _normalize_room_id(room_id: object) -> str:
@@ -226,7 +253,7 @@ conversation_memory = ConversationMemory()
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AssistantRagIndexListView(APIView):
-    """현재 사용자가 선택 가능한 RAG(user_sdwt_prod) 목록을 반환합니다."""
+    """현재 사용자가 선택 가능한 RAG 인덱스/권한 그룹 정보를 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         user = request.user
@@ -235,11 +262,17 @@ class AssistantRagIndexListView(APIView):
 
         accessible = selectors.get_accessible_user_sdwt_prods_for_user(user=user)
         current_user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
+        permission_groups = set(accessible)
+        permission_groups.add(rag_services.RAG_PUBLIC_GROUP)
 
         return JsonResponse(
             {
-                "results": sorted(accessible),
+                "ragIndexes": rag_services.get_rag_index_candidates(),
+                "defaultRagIndex": rag_services.resolve_rag_index_name(None),
+                "emailRagIndex": rag_services.resolve_rag_index_name(rag_services.RAG_INDEX_EMAILS),
+                "permissionGroups": sorted(permission_groups),
                 "currentUserSdwtProd": current_user_sdwt_prod,
+                "ragPublicGroup": rag_services.RAG_PUBLIC_GROUP,
             }
         )
 
@@ -270,9 +303,16 @@ class AssistantChatView(APIView):
 
         prompt_clean = prompt.strip()
         try:
-            rag_index_name = _resolve_rag_index(payload, request.user)
+            permission_groups = _resolve_permission_groups(payload, request.user)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         except AssistantRequestError as exc:
             return JsonResponse({"error": str(exc)}, status=403)
+
+        try:
+            rag_index_names = _resolve_rag_index_names(payload)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
 
         incoming_history = _normalize_history(
             payload.get("history"),
@@ -297,7 +337,8 @@ class AssistantChatView(APIView):
             chat_result = assistant_chat_service.generate_reply(
                 prompt_clean,
                 user_header_id=user_header_id,
-                rag_index_name=rag_index_name,
+                rag_index_names=rag_index_names,
+                permission_groups=permission_groups,
             )
             reply = chat_result.reply.strip() if isinstance(chat_result.reply, str) else ""
             contexts_used = chat_result.contexts

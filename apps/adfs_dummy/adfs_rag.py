@@ -91,7 +91,15 @@ async def rag_delete(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 @router.post("/rag/search")
 async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Return dummy RAG search results shaped like the real service."""
-    index_name = str(payload.get("index_name") or "").strip() or INDEX_NAMES[0]
+    index_names_raw = payload.get("index_name") or payload.get("index_names")
+    if isinstance(index_names_raw, list):
+        index_names = [str(item).strip() for item in index_names_raw if str(item).strip()]
+    else:
+        index_name_value = str(index_names_raw or "").strip()
+        index_names = [index_name_value] if index_name_value else []
+    if not index_names:
+        index_names = [INDEX_NAMES[0]]
+
     query = str(payload.get("query_text") or "").strip()
     limit_raw = payload.get("num_result_doc") or 5
     try:
@@ -101,17 +109,29 @@ async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
     permission_groups = payload.get("permission_groups")
     filters = payload.get("filter") if isinstance(payload.get("filter"), dict) else None
-    docs = rag_store.search(
-        index_name=index_name,
-        query=query,
-        limit=limit,
-        permission_groups=permission_groups if isinstance(permission_groups, list) else None,
-        filters=filters,
-    )
+    docs: list[dict[str, Any]] = []
+    for index_name in index_names:
+        docs_for_index = rag_store.search(
+            index_name=index_name,
+            query=query,
+            limit=limit,
+            permission_groups=permission_groups if isinstance(permission_groups, list) else None,
+            filters=filters,
+        )
+        pinned_doc = rag_store.index_docs.get(index_name, {}).get("email-1")
+        if pinned_doc:
+            docs_for_index = [pinned_doc, *[doc for doc in docs_for_index if doc.get("doc_id") != "email-1"]]
+        docs.extend(docs_for_index)
 
-    pinned_doc = rag_store.index_docs.get(index_name, {}).get("email-1")
-    if pinned_doc:
-        docs = [pinned_doc, *[doc for doc in docs if doc.get("doc_id") != "email-1"]]
+    deduped: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    for doc in docs:
+        key = (doc.get("index_name", ""), doc.get("doc_id", ""))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(doc)
+    docs = deduped
 
     hits = []
     for doc in docs[:limit]:
@@ -133,7 +153,7 @@ async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
     return {
         "mode": "dummy",
-        "index_name": index_name,
+        "index_name": index_names,
         "query": query,
         "hits": {
             "total": {"value": len(docs)},

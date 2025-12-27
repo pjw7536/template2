@@ -1,19 +1,14 @@
-import { Minus, PanelLeft, SquareArrowOutUpRight } from "lucide-react"
+import { useState } from "react"
+import { Minus, PanelLeft, Settings, SquareArrowOutUpRight } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 import { ChatComposer } from "./ChatComposer"
 import { ChatErrorBanner } from "./ChatErrorBanner"
 import { ChatMessages } from "./ChatMessages"
 import { RoomList } from "./RoomList"
+import { RagIndexMultiSelect } from "./RagIndexMultiSelect"
 
 export function ChatWidgetPanel({
   containerRef,
@@ -23,7 +18,7 @@ export function ChatWidgetPanel({
   onHeaderPointerDown,
   isSidebarOpen,
   onToggleSidebar,
-  ragIndex,
+  ragSettings,
   rooms,
   sortedRooms,
   activeRoomId,
@@ -41,15 +36,32 @@ export function ChatWidgetPanel({
   onOpenFullChat,
   onClose,
 }) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const {
-    userSdwtProd,
-    setUserSdwtProd,
-    options: userSdwtProdOptions,
-    isLoading: isUserSdwtProdLoading,
-    isError: isUserSdwtProdError,
-    errorMessage: userSdwtProdErrorMessage,
-    canSelect: canSelectUserSdwtProd,
-  } = ragIndex
+    permissionGroups,
+    setPermissionGroups,
+    ragIndexNames,
+    setRagIndexNames,
+    permissionGroupOptions,
+    ragIndexOptions,
+    isLoading: isRagSettingsLoading,
+    isError: isRagSettingsError,
+    errorMessage: ragSettingsErrorMessage,
+  } = ragSettings
+
+  const handleSelectRoom = (roomId) => {
+    setIsSettingsOpen(false)
+    onSelectRoom(roomId)
+  }
+
+  const handleCreateRoom = () => {
+    setIsSettingsOpen(false)
+    onCreateRoom()
+  }
+
+  const handleToggleSettings = () => {
+    setIsSettingsOpen((prev) => !prev)
+  }
 
   return (
     <div
@@ -110,86 +122,69 @@ export function ChatWidgetPanel({
         </div>
 
         <div
-          className="flex shrink-0 touch-none items-center justify-between border-b bg-card px-4 py-3 cursor-grab active:cursor-grabbing"
+          className="flex shrink-0 touch-none flex-col gap-2 border-b bg-card px-4 py-3 cursor-grab active:cursor-grabbing"
           onPointerDown={onHeaderPointerDown}
           role="presentation"
         >
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onToggleSidebar}
-              aria-label={isSidebarOpen ? "대화방 목록 닫기" : "대화방 목록 열기"}
-            >
-              <PanelLeft className="h-3 w-3" />
-            </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onToggleSidebar}
+                aria-label={isSidebarOpen ? "대화방 목록 닫기" : "대화방 목록 열기"}
+              >
+                <PanelLeft className="h-3 w-3" />
+              </Button>
 
-            <div className="mx-3 flex items-center gap-3">
-              <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
-              <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
+              <div className="mx-3 flex items-center gap-3">
+                <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
+                <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onOpenFullChat}
+                aria-label="Open full chat page"
+              >
+                <SquareArrowOutUpRight className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onClose}
+                aria-label="Minimize chat widget"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            <div
-              className="flex items-center gap-2 cursor-default"
-              data-chat-widget-no-drag="true"
-            >
-              <span className="text-xs text-muted-foreground">지식</span>
-              {canSelectUserSdwtProd ? (
-                <Select value={userSdwtProd} onValueChange={setUserSdwtProd}>
-                  <SelectTrigger
-                    className="h-6 w-32 text-xs cursor-pointer"
-                    aria-label="assistant 배경지식(user_sdwt_prod) 선택"
-                  >
-                    <SelectValue
-                      placeholder={isUserSdwtProdLoading ? "불러오는 중" : "선택"}
-                    />
-                  </SelectTrigger>
-                  <SelectContent data-chat-widget-portal="true">
-                    {userSdwtProdOptions.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Badge
-                  variant={isUserSdwtProdError ? "destructive" : "secondary"}
-                  className="h-7 px-2 text-xs"
-                  title={
-                    isUserSdwtProdError
-                      ? userSdwtProdErrorMessage || "분임조 목록을 불러오지 못했어요."
-                      : userSdwtProd || undefined
-                  }
-                >
-                  {userSdwtProd || (isUserSdwtProdLoading ? "…" : "—")}
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1">
+              <span>RAG 인덱스</span>
+              {ragIndexNames.map((value) => (
+                <Badge key={value} variant="secondary" className="text-[11px]">
+                  {value}
                 </Badge>
-              )}
+              ))}
             </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onOpenFullChat}
-              aria-label="Open full chat page"
-            >
-              <SquareArrowOutUpRight className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onClose}
-              aria-label="Minimize chat widget"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-wrap items-center gap-1">
+              <span>권한 그룹</span>
+              {permissionGroups.map((value) => (
+                <Badge key={value} variant="secondary" className="text-[11px]">
+                  {value}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -205,7 +200,7 @@ export function ChatWidgetPanel({
                   variant="secondary"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  onClick={() => onCreateRoom()}
+                  onClick={handleCreateRoom}
                 >
                   새 대화
                 </Button>
@@ -215,38 +210,87 @@ export function ChatWidgetPanel({
                 <RoomList
                   rooms={sortedRooms}
                   activeRoomId={activeRoomId}
-                  onSelectRoom={onSelectRoom}
+                  onSelectRoom={handleSelectRoom}
                   onDeleteRoom={onDeleteRoom}
                 />
+              </div>
+              <div className="border-t px-3 py-3">
+                <Button
+                  variant={isSettingsOpen ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-9 w-full justify-between"
+                  onClick={handleToggleSettings}
+                >
+                  <span className="text-xs font-semibold">설정</span>
+                  <Settings className="h-4 w-4" />
+                </Button>
               </div>
             </aside>
           ) : null}
 
           <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-            <ChatMessages messages={messages} isSending={isSending} fillBubbles />
+            {isSettingsOpen ? (
+              <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+                <div className="flex items-center gap-2 border-b px-4 py-3">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-semibold">RAG 설정</p>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+                  <div className="grid gap-3">
+                    <RagIndexMultiSelect
+                      label="RAG 인덱스"
+                      values={ragIndexNames}
+                      onChange={setRagIndexNames}
+                      placeholder="rp-unclassified"
+                      helperText="목록에서 선택 · 최소 1개 필수"
+                      options={ragIndexOptions}
+                      isDisabled={isRagSettingsLoading}
+                    />
+                    <RagIndexMultiSelect
+                      label="권한 그룹"
+                      values={permissionGroups}
+                      onChange={setPermissionGroups}
+                      placeholder="rag-public"
+                      helperText="목록에서 선택 · 최소 1개 필수"
+                      options={permissionGroupOptions}
+                      isDisabled={isRagSettingsLoading}
+                    />
+                    {isRagSettingsError ? (
+                      <p className="text-[11px] text-destructive">
+                        {ragSettingsErrorMessage || "RAG 설정을 불러오지 못했어요."}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ChatMessages messages={messages} isSending={isSending} fillBubbles />
 
-            <ChatErrorBanner message={errorMessage} onDismiss={onClearError} />
+                <ChatErrorBanner message={errorMessage} onDismiss={onClearError} />
 
-            <ChatComposer
-              inputId="chat-widget-input"
-              label="어시스턴트에게 질문하기"
-              inputRef={inputRef}
-              inputValue={inputValue}
-              onInputChange={onInputChange}
-              onSubmit={onSubmit}
-              isSending={isSending}
-              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-              footerLeft={
-                <button
-                  type="button"
-                  className="text-primary underline underline-offset-4"
-                  onClick={onOpenFullChat}
-                >
-                  전체 화면에서 이어서 보기
-                </button>
-              }
-              footerRight="베타 · LLM API 연결"
-            />
+                <ChatComposer
+                  inputId="chat-widget-input"
+                  label="어시스턴트에게 질문하기"
+                  inputRef={inputRef}
+                  inputValue={inputValue}
+                  onInputChange={onInputChange}
+                  onSubmit={onSubmit}
+                  isSending={isSending}
+                  placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
+                  footerLeft={
+                    <button
+                      type="button"
+                      className="text-primary underline underline-offset-4"
+                      onClick={onOpenFullChat}
+                    >
+                      전체 화면에서 이어서 보기
+                    </button>
+                  }
+                  footerRight="베타 · LLM API 연결"
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

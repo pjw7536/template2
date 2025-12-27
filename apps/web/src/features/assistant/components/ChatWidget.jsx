@@ -27,15 +27,8 @@ export function ChatWidget() {
   const [size, setSize] = useState(() => clampSize(DEFAULT_CHAT_WIDTH, DEFAULT_CHAT_HEIGHT))
   const navigate = useNavigate()
   const location = useLocation()
-  const {
-    userSdwtProd,
-    setUserSdwtProd,
-    options: userSdwtProdOptions,
-    isLoading: isUserSdwtProdLoading,
-    isError: isUserSdwtProdError,
-    errorMessage: userSdwtProdErrorMessage,
-    canSelect: canSelectUserSdwtProd,
-  } = useAssistantRagIndex()
+  const sizeRef = useRef(size)
+  const ragSettings = useAssistantRagIndex()
   const {
     rooms,
     activeRoomId,
@@ -48,7 +41,10 @@ export function ChatWidget() {
     selectRoom,
     createRoom,
     removeRoom,
-  } = useChatSession({ userSdwtProd })
+  } = useChatSession({
+    permissionGroups: ragSettings.permissionGroups,
+    ragIndexNames: ragSettings.ragIndexNames,
+  })
   const inputRef = useRef(null)
   const floatingButtonRef = useRef(null)
   const floatingButtonSizeRef = useRef({
@@ -103,10 +99,19 @@ export function ChatWidget() {
     const handlePointerDown = (event) => {
       const target = event.target
       const targetElement = target instanceof Element ? target : target?.parentElement
-      if (targetElement?.closest('[data-chat-widget-portal="true"]')) {
-        return
-      }
-      if (chatContainerRef.current && !chatContainerRef.current.contains(event.target)) {
+      const eventPath = typeof event.composedPath === "function" ? event.composedPath() : []
+      const clickedInsideWidget =
+        chatContainerRef.current &&
+        (chatContainerRef.current.contains(targetElement) || eventPath.includes(chatContainerRef.current))
+      if (clickedInsideWidget) return
+
+      const hasPortalTarget =
+        eventPath.some(
+          (node) => node instanceof Element && node.hasAttribute?.("data-chat-widget-portal"),
+        ) || targetElement?.closest?.("[data-chat-widget-portal]")
+      if (hasPortalTarget) return
+
+      if (chatContainerRef.current && !chatContainerRef.current.contains(targetElement)) {
         if (typeof window !== "undefined") {
           const rect = chatContainerRef.current?.getBoundingClientRect()
           if (rect) {
@@ -127,8 +132,8 @@ export function ChatWidget() {
       }
     }
 
-    document.addEventListener("pointerdown", handlePointerDown)
-    return () => document.removeEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("pointerdown", handlePointerDown, true)
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true)
   }, [isOpen])
 
   useEffect(() => {
@@ -137,6 +142,7 @@ export function ChatWidget() {
     const ensureWidgetWithinBounds = () => {
       setSize((prevSize) => {
         const nextSize = clampSize(prevSize.width, prevSize.height)
+        sizeRef.current = nextSize
         setWidgetPosition((prevPosition) => {
           if (prevPosition.x === null || prevPosition.y === null) return prevPosition
           const nextPosition = clampPosition(
@@ -183,6 +189,10 @@ export function ChatWidget() {
       if (isResizingNorth) nextHeight = resizeStartRef.current.height - deltaY
 
       const nextSize = clampSize(nextWidth, nextHeight)
+      const prevSize = sizeRef.current
+      const sizeUnchanged =
+        nextSize.width === prevSize.width && nextSize.height === prevSize.height
+      if (sizeUnchanged) return
       const nextPosition = clampPosition(
         isResizingWest ? resizeStartRef.current.right - nextSize.width : resizeStartRef.current.left,
         isResizingNorth ? resizeStartRef.current.bottom - nextSize.height : resizeStartRef.current.top,
@@ -190,6 +200,7 @@ export function ChatWidget() {
         nextSize.height,
       )
 
+      sizeRef.current = nextSize
       setSize(nextSize)
       setWidgetPosition(nextPosition)
     }
@@ -485,15 +496,7 @@ export function ChatWidget() {
       onHeaderPointerDown={handleWidgetHeaderPointerDown}
       isSidebarOpen={isSidebarOpen}
       onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-      ragIndex={{
-        userSdwtProd,
-        setUserSdwtProd,
-        options: userSdwtProdOptions,
-        isLoading: isUserSdwtProdLoading,
-        isError: isUserSdwtProdError,
-        errorMessage: userSdwtProdErrorMessage,
-        canSelect: canSelectUserSdwtProd,
-      }}
+      ragSettings={ragSettings}
       rooms={rooms}
       sortedRooms={sortedRooms}
       activeRoomId={activeRoomId}

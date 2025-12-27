@@ -107,21 +107,32 @@ function extractAssistantSegments(payload) {
     .filter(Boolean)
 }
 
-export async function sendChatMessage({ prompt, history = [], roomId, userSdwtProd }) {
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+}
+
+export async function sendChatMessage({ prompt, history = [], roomId, permissionGroups, ragIndexNames }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
   }
 
   // 1) 실행 환경별로 최적화된 엔드포인트를 선택한다.(VITE_*, proxy, backend URL 순)
-  // 2) 서버가 기대하는 최소 필드(prompt, history, roomId, userSdwtProd)를 정규화한다.
+  // 2) 서버가 기대하는 최소 필드(prompt, history, roomId)를 정규화한다.
   // 3) 네트워크/타임아웃/응답 포맷 오류를 한국어 에러 메시지로 래핑한다.
   const endpoint = resolveChatEndpoint()
-  const normalizedUserSdwtProd = typeof userSdwtProd === "string" ? userSdwtProd.trim() : ""
+  const normalizedPermissionGroups = normalizeStringList(permissionGroups)
+  const normalizedRagIndexNames = normalizeStringList(ragIndexNames)
   const payload = {
     prompt: prompt.trim(),
     history: normalizeHistory(history),
     roomId,
-    ...(normalizedUserSdwtProd ? { userSdwtProd: normalizedUserSdwtProd } : {}),
+    ...(normalizedPermissionGroups.length
+      ? { permission_groups: normalizedPermissionGroups }
+      : {}),
+    ...(normalizedRagIndexNames.length ? { rag_index_name: normalizedRagIndexNames } : {}),
   }
 
   const controller = new AbortController()

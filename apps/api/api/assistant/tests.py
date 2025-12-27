@@ -9,6 +9,7 @@ from django.test import TestCase
 
 from api.account.models import UserSdwtProdAccess
 from api.assistant.services import AssistantChatConfig, AssistantChatService
+from api.rag import services as rag_services
 
 
 class AssistantRagIndexViewsTests(TestCase):
@@ -32,7 +33,13 @@ class AssistantRagIndexViewsTests(TestCase):
 
         payload = response.json()
         self.assertEqual(payload.get("currentUserSdwtProd"), "group-a")
-        self.assertEqual(payload.get("results"), ["group-a", "group-b"])
+        self.assertEqual(payload.get("permissionGroups"), ["group-a", "group-b", rag_services.RAG_PUBLIC_GROUP])
+        self.assertEqual(payload.get("ragIndexes"), rag_services.get_rag_index_candidates())
+        self.assertEqual(payload.get("defaultRagIndex"), rag_services.resolve_rag_index_name(None))
+        self.assertEqual(
+            payload.get("emailRagIndex"),
+            rag_services.resolve_rag_index_name(rag_services.RAG_INDEX_EMAILS),
+        )
 
     def test_chat_accepts_accessible_user_sdwt_prod_override(self) -> None:
         self.client.force_login(self.user)
@@ -44,24 +51,32 @@ class AssistantRagIndexViewsTests(TestCase):
                 sources=[],
                 is_dummy=True,
             )
+            default_index = rag_services.resolve_rag_index_name(None)
 
             response = self.client.post(
                 "/api/v1/assistant/chat",
-                data=json.dumps({"prompt": "hello", "userSdwtProd": "group-b"}),
+                data=json.dumps(
+                    {
+                        "prompt": "hello",
+                        "permission_groups": ["group-b"],
+                        "rag_index_name": [default_index],
+                    }
+                ),
                 content_type="application/json",
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mocked_generate.call_count, 1)
         kwargs = mocked_generate.call_args.kwargs
-        self.assertEqual(kwargs.get("rag_index_name"), "group-b")
+        self.assertEqual(kwargs.get("permission_groups"), ["group-b"])
+        self.assertEqual(kwargs.get("rag_index_names"), [default_index])
 
     def test_chat_rejects_inaccessible_user_sdwt_prod_override(self) -> None:
         self.client.force_login(self.user)
 
         response = self.client.post(
             "/api/v1/assistant/chat",
-            data=json.dumps({"prompt": "hello", "userSdwtProd": "group-x"}),
+            data=json.dumps({"prompt": "hello", "permission_groups": ["group-x"]}),
             content_type="application/json",
         )
 
@@ -95,9 +110,12 @@ class AssistantRagIndexViewsTests(TestCase):
 
         payload = response.json()
         self.assertEqual(payload.get("currentUserSdwtProd"), "group-admin")
-        results = payload.get("results")
-        self.assertEqual(results, sorted(results))
-        self.assertEqual(set(results), {"group-a", "group-b", "group-c", "group-d", "group-admin"})
+        permission_groups = payload.get("permissionGroups")
+        self.assertEqual(permission_groups, sorted(permission_groups))
+        self.assertEqual(
+            set(permission_groups),
+            {"group-a", "group-b", "group-c", "group-d", "group-admin", rag_services.RAG_PUBLIC_GROUP},
+        )
 
     def test_chat_accepts_user_sdwt_prod_override_for_superuser(self) -> None:
         User = get_user_model()
@@ -126,16 +144,24 @@ class AssistantRagIndexViewsTests(TestCase):
                 sources=[],
                 is_dummy=True,
             )
+            default_index = rag_services.resolve_rag_index_name(None)
 
             response = self.client.post(
                 "/api/v1/assistant/chat",
-                data=json.dumps({"prompt": "hello", "userSdwtProd": "group-c"}),
+                data=json.dumps(
+                    {
+                        "prompt": "hello",
+                        "permission_groups": ["group-c"],
+                        "rag_index_name": [default_index],
+                    }
+                ),
                 content_type="application/json",
             )
 
         self.assertEqual(response.status_code, 200)
         kwargs = mocked_generate.call_args.kwargs
-        self.assertEqual(kwargs.get("rag_index_name"), "group-c")
+        self.assertEqual(kwargs.get("permission_groups"), ["group-c"])
+        self.assertEqual(kwargs.get("rag_index_names"), [default_index])
 
 
 class AssistantChatServiceSourceFilteringTests(TestCase):

@@ -1,88 +1,99 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 
 import { useAuth } from "@/lib/auth"
 
 import { useAssistantRagIndexes } from "./useAssistantRagIndexes"
 import { useAssistantRagIndexStore } from "../store/useAssistantRagIndexStore"
 
-function normalizeUserSdwtProd(value) {
+const DEFAULT_RAG_PUBLIC_GROUP = "rag-public"
+const DEFAULT_RAG_INDEX = "rp-unclassified"
+
+function normalizeString(value) {
   return typeof value === "string" ? value.trim() : ""
 }
 
-function buildOptions({ fetched = [], fallbackValue = "" }) {
-  const normalized = []
+function normalizeList(values) {
+  if (!Array.isArray(values)) return []
+  const normalized = values
+    .map((value) => normalizeString(value))
+    .filter(Boolean)
+  return Array.from(new Set(normalized))
+}
 
-  fetched.forEach((value) => {
-    const trimmed = normalizeUserSdwtProd(value)
-    if (!trimmed) return
-    normalized.push(trimmed)
-  })
-
-  const fallbackTrimmed = normalizeUserSdwtProd(fallbackValue)
-  if (fallbackTrimmed) {
-    normalized.push(fallbackTrimmed)
-  }
-
-  return Array.from(new Set(normalized)).sort((a, b) => a.localeCompare(b))
+function buildSortedOptions(values) {
+  return normalizeList(values).sort((a, b) => a.localeCompare(b))
 }
 
 export function useAssistantRagIndex() {
   const { user } = useAuth()
-  const currentUserSdwtProd = normalizeUserSdwtProd(user?.user_sdwt_prod)
-
   const ragIndexesQuery = useAssistantRagIndexes()
-  const fetchedResults = Array.isArray(ragIndexesQuery.data?.results)
-    ? ragIndexesQuery.data.results
-    : []
-  const options = buildOptions({ fetched: fetchedResults, fallbackValue: currentUserSdwtProd })
+  const ragData = ragIndexesQuery.data || {}
+  const currentUserSdwtProd =
+    normalizeString(user?.user_sdwt_prod) || normalizeString(ragData.currentUserSdwtProd)
 
-  const userSdwtProd = useAssistantRagIndexStore((state) => state.userSdwtProd)
-  const setUserSdwtProd = useAssistantRagIndexStore((state) => state.setUserSdwtProd)
+  const ragPublicGroup = normalizeString(ragData.ragPublicGroup) || DEFAULT_RAG_PUBLIC_GROUP
+  const rawRagIndexes = normalizeList(ragData.ragIndexes)
+  const permissionGroupOptions = buildSortedOptions([
+    ...normalizeList(ragData.permissionGroups),
+    ragPublicGroup,
+    currentUserSdwtProd,
+  ])
+  const defaultRagIndex =
+    normalizeString(ragData.defaultRagIndex) || rawRagIndexes[0] || DEFAULT_RAG_INDEX
+  const ragIndexOptions = buildSortedOptions([...rawRagIndexes, defaultRagIndex])
 
-  const resolvedUserSdwtProd =
-    normalizeUserSdwtProd(userSdwtProd) ||
-    currentUserSdwtProd ||
-    options[0] ||
-    ""
+  const defaultPermissionGroups = useMemo(() => {
+    const base = []
+    if (currentUserSdwtProd) {
+      base.push(currentUserSdwtProd)
+    }
+    base.push(ragPublicGroup)
+    return normalizeList(base)
+  }, [currentUserSdwtProd, ragPublicGroup])
+
+  const defaultRagIndexNames = useMemo(() => {
+    return normalizeList([defaultRagIndex])
+  }, [defaultRagIndex])
+
+  const permissionGroups = useAssistantRagIndexStore((state) => state.permissionGroups)
+  const ragIndexNames = useAssistantRagIndexStore((state) => state.ragIndexNames)
+  const permissionGroupsSource = useAssistantRagIndexStore((state) => state.permissionGroupsSource)
+  const ragIndexNamesSource = useAssistantRagIndexStore((state) => state.ragIndexNamesSource)
+  const setPermissionGroups = useAssistantRagIndexStore((state) => state.setPermissionGroups)
+  const setRagIndexNames = useAssistantRagIndexStore((state) => state.setRagIndexNames)
 
   useEffect(() => {
-    if (!resolvedUserSdwtProd) return
-    if (!options.length) {
-      if (userSdwtProd !== resolvedUserSdwtProd) {
-        setUserSdwtProd(resolvedUserSdwtProd)
-      }
-      return
-    }
+    if (permissionGroupsSource === "user") return
+    setPermissionGroups(defaultPermissionGroups, "default")
+  }, [defaultPermissionGroups, permissionGroupsSource, setPermissionGroups])
 
-    if (!options.includes(resolvedUserSdwtProd)) {
-      const fallback = currentUserSdwtProd && options.includes(currentUserSdwtProd)
-        ? currentUserSdwtProd
-        : options[0]
-      if (fallback && fallback !== userSdwtProd) {
-        setUserSdwtProd(fallback)
-      }
-      return
-    }
+  useEffect(() => {
+    if (ragIndexNamesSource === "user") return
+    setRagIndexNames(defaultRagIndexNames, "default")
+  }, [defaultRagIndexNames, ragIndexNamesSource, setRagIndexNames])
 
-    if (resolvedUserSdwtProd !== userSdwtProd) {
-      setUserSdwtProd(resolvedUserSdwtProd)
-    }
-  }, [
-    currentUserSdwtProd,
-    options.join("|"),
-    resolvedUserSdwtProd,
-    setUserSdwtProd,
-    userSdwtProd,
-  ])
+  const resolvedPermissionGroups = permissionGroups.length
+    ? permissionGroups
+    : defaultPermissionGroups
+  const candidateRagIndexNames = ragIndexNames.length ? ragIndexNames : defaultRagIndexNames
+  let resolvedRagIndexNames = normalizeList(candidateRagIndexNames).filter((value) =>
+    ragIndexOptions.includes(value),
+  )
+  if (!resolvedRagIndexNames.length && ragIndexOptions.length) {
+    resolvedRagIndexNames = [ragIndexOptions[0]]
+  }
 
   return {
-    userSdwtProd: resolvedUserSdwtProd,
-    setUserSdwtProd,
-    options,
+    permissionGroups: resolvedPermissionGroups,
+    setPermissionGroups,
+    ragIndexNames: resolvedRagIndexNames,
+    setRagIndexNames,
+    permissionGroupOptions,
+    ragIndexOptions,
+    defaultPermissionGroups,
+    defaultRagIndexNames,
     isLoading: ragIndexesQuery.isLoading,
     isError: ragIndexesQuery.isError,
     errorMessage: ragIndexesQuery.isError ? ragIndexesQuery.error?.message || "" : "",
-    canSelect: options.length > 1,
   }
 }
-

@@ -64,6 +64,12 @@ def _parse_permission_groups(raw: str | None) -> List[str]:
     return []
 
 
+def _parse_index_list(raw: str | None) -> List[str]:
+    """인덱스 목록 설정(JSON 배열 또는 CSV)을 문자열 리스트로 정규화합니다."""
+
+    return _parse_permission_groups(raw)
+
+
 def _parse_chunk_factor(raw: str | None) -> Dict[str, str | int] | None:
     """chunk_factor 설정(JSON 객체)을 정상화해 dict로 반환합니다."""
 
@@ -84,14 +90,73 @@ def _parse_chunk_factor(raw: str | None) -> Dict[str, str | int] | None:
     return normalized or None
 
 
+def _normalize_permission_groups(groups: Sequence[str] | str | None) -> List[str]:
+    """permission_groups 입력을 문자열 리스트로 정규화합니다."""
+
+    if not groups:
+        return []
+    if isinstance(groups, str):
+        values = [groups]
+    elif isinstance(groups, Sequence):
+        values = list(groups)
+    else:
+        return []
+
+    normalized: List[str] = []
+    for value in values:
+        if value is None:
+            continue
+        cleaned = str(value).strip()
+        if cleaned:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _normalize_index_names(index_names: Sequence[str] | str | None) -> List[str]:
+    """index_name 입력을 문자열 리스트로 정규화합니다."""
+
+    if not index_names:
+        return []
+    if isinstance(index_names, str):
+        values = [index_names]
+    elif isinstance(index_names, Sequence):
+        values = list(index_names)
+    else:
+        return []
+
+    normalized: List[str] = []
+    for value in values:
+        if value is None:
+            continue
+        cleaned = str(value).strip()
+        if cleaned:
+            normalized.append(cleaned)
+    return list(dict.fromkeys(normalized))
+
+
 RAG_SEARCH_URL = _read_setting("ASSISTANT_RAG_URL") or _read_setting("RAG_SEARCH_URL", "")
 RAG_INSERT_URL = _read_setting("ASSISTANT_RAG_INSERT_URL") or _read_setting("RAG_INSERT_URL", "")
 RAG_DELETE_URL = _read_setting("ASSISTANT_RAG_DELETE_URL") or _read_setting("RAG_DELETE_URL", "")
 RAG_INDEX_NAME = _read_setting("ASSISTANT_RAG_INDEX_NAME") or _read_setting("RAG_INDEX_NAME", "")
+RAG_INDEX_DEFAULT = (
+    _read_setting("ASSISTANT_RAG_INDEX_DEFAULT")
+    or _read_setting("RAG_INDEX_DEFAULT")
+    or RAG_INDEX_NAME
+    or ""
+)
+RAG_INDEX_EMAILS = (
+    _read_setting("ASSISTANT_RAG_INDEX_EMAILS")
+    or _read_setting("RAG_INDEX_EMAILS")
+    or ""
+)
+RAG_INDEX_LIST = _parse_index_list(
+    _read_setting("ASSISTANT_RAG_INDEX_LIST") or _read_setting("RAG_INDEX_LIST")
+)
 RAG_PERMISSION_GROUPS = (
     _parse_permission_groups(_read_setting("ASSISTANT_RAG_PERMISSION_GROUPS"))
     or _parse_permission_groups(_read_setting("RAG_PERMISSION_GROUPS"))
 )
+RAG_PUBLIC_GROUP = "rag-public"
 RAG_CHUNK_FACTOR = _parse_chunk_factor(
     _read_setting("ASSISTANT_RAG_CHUNK_FACTOR") or _read_setting("RAG_CHUNK_FACTOR")
 )
@@ -108,6 +173,25 @@ else:
     }
 
 _rag_logger = logging.getLogger("api.rag")
+
+if not RAG_PERMISSION_GROUPS:
+    RAG_PERMISSION_GROUPS = [RAG_PUBLIC_GROUP]
+
+_resolved_index_list: List[str] = []
+for value in [*RAG_INDEX_LIST, RAG_INDEX_DEFAULT, RAG_INDEX_EMAILS]:
+    cleaned = str(value).strip() if isinstance(value, str) else ""
+    if cleaned and cleaned not in _resolved_index_list:
+        _resolved_index_list.append(cleaned)
+RAG_INDEX_LIST = _resolved_index_list
+
+
+def _resolve_email_permission_groups(email: Any) -> List[str]:
+    """이메일의 user_sdwt_prod 값을 permission_groups로 변환합니다."""
+
+    raw_group = getattr(email, "user_sdwt_prod", None)
+    if isinstance(raw_group, str) and raw_group.strip():
+        return [raw_group.strip()]
+    return _normalize_permission_groups(RAG_PERMISSION_GROUPS) or [RAG_PUBLIC_GROUP]
 
 
 def _ensure_rag_error_logger() -> logging.Logger:
@@ -209,48 +293,63 @@ def _log_rag_failure(
         logger.error("RAG request failed | error=%s", error)
 
 
-def resolve_rag_index_name(user_sdwt_prod: str | None) -> str:
-    """
-    Decide RAG 인덱스명.
-    - user_sdwt_prod가 주어지면 그 값을 사용
-    - 없으면 settings/env에 정의된 기본값 사용
-    - 최종 요청 시에는 "rp-" prefix를 붙여 전송 (이미 prefix가 있으면 유지)
-    """
+def get_rag_index_candidates() -> List[str]:
+    """허용 가능한 RAG 인덱스 후보 목록을 반환합니다."""
 
-    prefix = "rp-"
+    return list(RAG_INDEX_LIST)
 
-    resolved = ""
-    if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
-        resolved = user_sdwt_prod.strip()
-    else:
-        resolved = (RAG_INDEX_NAME or "").strip()
 
-    if not resolved:
+def resolve_rag_index_name(index_name: str | None) -> str:
+    """RAG 인덱스명을 결정합니다."""
+
+    resolved = index_name.strip() if isinstance(index_name, str) else ""
+    if resolved:
         return resolved
 
-    if resolved.lower().startswith(prefix):
+    default_index = str(RAG_INDEX_DEFAULT or "").strip()
+    if default_index:
+        return default_index
+    if RAG_INDEX_LIST:
+        return RAG_INDEX_LIST[0]
+    return ""
+
+
+def resolve_rag_index_names(index_names: Sequence[str] | str | None) -> List[str]:
+    """RAG 인덱스 목록을 정규화하고 기본값을 보정합니다."""
+
+    resolved = _normalize_index_names(index_names)
+    if resolved:
         return resolved
+    fallback = resolve_rag_index_name(None)
+    return [fallback] if fallback else []
 
-    return f"{prefix}{resolved}"
 
-
-def _build_insert_payload(email: Any, index_name: str | None = None) -> Dict[str, Any]:
+def _build_insert_payload(
+    email: Any,
+    index_name: str | None = None,
+    permission_groups: Sequence[str] | None = None,
+) -> Dict[str, Any]:
     """이메일 객체를 RAG insert 요청 payload로 변환합니다."""
 
-    resolved_index_name = resolve_rag_index_name(index_name or getattr(email, "user_sdwt_prod", None))
+    resolved_index_name = resolve_rag_index_name(index_name)
     created_time = getattr(email, "received_at", None) or timezone.now()
     recipient_value = getattr(email, "recipient", None)
     if isinstance(recipient_value, (list, tuple)):
         recipient = ", ".join([str(item).strip() for item in recipient_value if str(item).strip()])
     else:
         recipient = recipient_value
+    resolved_permission_groups = (
+        _normalize_permission_groups(permission_groups)
+        if permission_groups is not None
+        else _normalize_permission_groups(RAG_PERMISSION_GROUPS)
+    )
     payload: Dict[str, Any] = {
         "index_name": resolved_index_name,
         "data": {
             "doc_id": getattr(email, "rag_doc_id", None),
             "title": email.subject,
             "content": email.body_text or "",
-            "permission_groups": RAG_PERMISSION_GROUPS,
+            "permission_groups": resolved_permission_groups,
             "created_time": created_time.isoformat(),
             "department": getattr(email, "department", None),
             "line": getattr(email, "line", None),
@@ -266,13 +365,22 @@ def _build_insert_payload(email: Any, index_name: str | None = None) -> Dict[str
     return payload
 
 
-def _build_delete_payload(doc_id: str, index_name: str | None = None) -> Dict[str, Any]:
+def _build_delete_payload(
+    doc_id: str,
+    index_name: str | None = None,
+    permission_groups: Sequence[str] | None = None,
+) -> Dict[str, Any]:
     """doc_id 기반 RAG delete 요청 payload를 생성합니다."""
 
     resolved_index_name = resolve_rag_index_name(index_name)
+    resolved_permission_groups = (
+        _normalize_permission_groups(permission_groups)
+        if permission_groups is not None
+        else _normalize_permission_groups(RAG_PERMISSION_GROUPS)
+    )
     return {
         "index_name": resolved_index_name,
-        "permission_groups": RAG_PERMISSION_GROUPS,
+        "permission_groups": resolved_permission_groups,
         "doc_id": doc_id,
     }
 
@@ -280,13 +388,13 @@ def _build_delete_payload(doc_id: str, index_name: str | None = None) -> Dict[st
 def _build_search_payload(
     query_text: str,
     *,
-    index_name: str | None = None,
+    index_name: Sequence[str] | str | None = None,
     num_result_doc: int = 5,
     permission_groups: Sequence[str] | None = None,
 ) -> Dict[str, Any]:
     """RAG search 요청 payload를 생성합니다."""
 
-    resolved_index_name = resolve_rag_index_name(index_name)
+    resolved_index_names = resolve_rag_index_names(index_name)
 
     normalized_query = str(query_text).strip()
     normalized_num = int(num_result_doc) if isinstance(num_result_doc, int) else 5
@@ -294,8 +402,10 @@ def _build_search_payload(
         normalized_num = 5
 
     return {
-        "index_name": resolved_index_name,
-        "permission_groups": list(permission_groups) if permission_groups is not None else RAG_PERMISSION_GROUPS,
+        "index_name": resolved_index_names,
+        "permission_groups": _normalize_permission_groups(permission_groups)
+        if permission_groups is not None
+        else _normalize_permission_groups(RAG_PERMISSION_GROUPS),
         "query_text": normalized_query,
         "num_result_doc": normalized_num,
     }
@@ -304,7 +414,7 @@ def _build_search_payload(
 def search_rag(
     query_text: str,
     *,
-    index_name: str | None = None,
+    index_name: Sequence[str] | str | None = None,
     num_result_doc: int = 5,
     permission_groups: Sequence[str] | None = None,
     timeout: int = 30,
@@ -313,7 +423,7 @@ def search_rag(
 
     Args:
         query_text: 검색 질의문
-        index_name: 기본 인덱스명을 override 할 값 (없으면 settings/env 기본값 사용)
+        index_name: 인덱스명 또는 인덱스명 리스트 (없으면 기본값 사용)
         num_result_doc: 반환 문서 개수
         permission_groups: 권한 그룹 override (없으면 기본값 사용)
         timeout: HTTP timeout (seconds)
@@ -341,7 +451,7 @@ def search_rag(
         _log_rag_failure("search", payload, error)
         raise error
     if not resolved_index_name:
-        error = ValueError("RAG_INDEX_NAME is not configured")
+        error = ValueError("RAG_INDEX_DEFAULT is not configured")
         _log_rag_failure("search", payload, error)
         raise error
     if not payload.get("query_text"):
@@ -362,10 +472,23 @@ def search_rag(
         raise
 
 
-def insert_email_to_rag(email: Any, index_name: str | None = None) -> None:
+def insert_email_to_rag(
+    email: Any,
+    index_name: str | None = None,
+    permission_groups: Sequence[str] | None = None,
+) -> None:
     """Email 모델을 RAG 인덱스에 등록."""
 
-    payload = _build_insert_payload(email, index_name=index_name)
+    resolved_permission_groups = (
+        _resolve_email_permission_groups(email)
+        if permission_groups is None
+        else _normalize_permission_groups(permission_groups)
+    )
+    payload = _build_insert_payload(
+        email,
+        index_name=index_name,
+        permission_groups=resolved_permission_groups,
+    )
 
     resolved_index_name = payload.get("index_name")
 
@@ -374,7 +497,7 @@ def insert_email_to_rag(email: Any, index_name: str | None = None) -> None:
         _log_rag_failure("insert", payload, error)
         raise error
     if not resolved_index_name:
-        error = ValueError("RAG_INDEX_NAME is not configured")
+        error = ValueError("RAG_INDEX_DEFAULT is not configured")
         _log_rag_failure("insert", payload, error)
         raise error
 
@@ -386,10 +509,14 @@ def insert_email_to_rag(email: Any, index_name: str | None = None) -> None:
         raise
 
 
-def delete_rag_doc(doc_id: str, index_name: str | None = None) -> None:
+def delete_rag_doc(
+    doc_id: str,
+    index_name: str | None = None,
+    permission_groups: Sequence[str] | None = None,
+) -> None:
     """RAG에서 doc_id에 해당하는 문서를 삭제."""
 
-    payload = _build_delete_payload(doc_id, index_name=index_name)
+    payload = _build_delete_payload(doc_id, index_name=index_name, permission_groups=permission_groups)
 
     resolved_index_name = payload.get("index_name")
 
@@ -398,7 +525,7 @@ def delete_rag_doc(doc_id: str, index_name: str | None = None) -> None:
         _log_rag_failure("delete", payload, error)
         raise error
     if not resolved_index_name:
-        error = ValueError("RAG_INDEX_NAME is not configured")
+        error = ValueError("RAG_INDEX_DEFAULT is not configured")
         _log_rag_failure("delete", payload, error)
         raise error
 
@@ -414,12 +541,18 @@ __all__ = [
     "RAG_CHUNK_FACTOR",
     "RAG_DELETE_URL",
     "RAG_HEADERS",
+    "RAG_INDEX_DEFAULT",
+    "RAG_INDEX_EMAILS",
+    "RAG_INDEX_LIST",
     "RAG_INDEX_NAME",
     "RAG_INSERT_URL",
+    "RAG_PUBLIC_GROUP",
     "RAG_PERMISSION_GROUPS",
     "RAG_SEARCH_URL",
     "delete_rag_doc",
     "insert_email_to_rag",
+    "get_rag_index_candidates",
     "search_rag",
     "resolve_rag_index_name",
+    "resolve_rag_index_names",
 ]

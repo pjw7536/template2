@@ -665,7 +665,11 @@ class DroneEarlyInformAuthTests(TestCase):
 
 
 class DroneSopPop3DummyModeDeleteTests(TestCase):
-    @override_settings(DRONE_SOP_DUMMY_MODE=True, DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages")
+    @override_settings(
+        DRONE_SOP_DUMMY_MODE=True,
+        DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages",
+        DRONE_INCLUDE_SUBJECT_PREFIXES="[drone_sop] a,[drone_sop] b,[drone_sop] c",
+    )
     @patch("api.drone.services.sop_pop3._delete_dummy_mail_messages")
     @patch("api.drone.services.sop_pop3._upsert_drone_sop_rows")
     @patch("api.drone.services.sop_pop3._list_dummy_mail_messages")
@@ -705,7 +709,7 @@ class DroneSopPop3SubjectFilterTests(TestCase):
     @override_settings(
         DRONE_SOP_DUMMY_MODE=True,
         DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages",
-        DRONE_SOP_POP3_SUBJECT_CONTAINS="[DRONE_SOP]",
+        DRONE_INCLUDE_SUBJECT_PREFIXES="[DRONE_SOP] A,[drone_sop] c",
     )
     @patch("api.drone.services.sop_pop3._delete_dummy_mail_messages")
     @patch("api.drone.services.sop_pop3._upsert_drone_sop_rows")

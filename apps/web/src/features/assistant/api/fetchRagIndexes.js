@@ -13,10 +13,9 @@ export async function fetchRagIndexes() {
     const message =
       typeof data?.error === "string" && data.error.trim()
         ? data.error.trim()
-        : "분임조 목록을 불러오지 못했어요."
+        : "RAG 인덱스/권한 정보를 불러오지 못했어요."
     throw new Error(message)
   }
 
   return data
 }
-

@@ -13,6 +13,21 @@ const MAX_HISTORY = 20
 const CHAT_STORAGE_KEY = "assistant:chat-session"
 const hasWindow = typeof window !== "undefined"
 
+function normalizeList(values) {
+  if (!Array.isArray(values)) return []
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+  return Array.from(new Set(normalized))
+}
+
+function resolvePrimaryMailbox(permissionGroups) {
+  const normalized = normalizeList(permissionGroups)
+  if (normalized.length === 0) return ""
+  const nonPublic = normalized.find((group) => group !== "rag-public")
+  return nonPublic || normalized[0] || ""
+}
+
 function createMessageId(role) {
   return `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
@@ -234,7 +249,9 @@ function buildInitialState(options = {}) {
 }
 
 export function useChatSession(options = {}) {
-  const userSdwtProd = typeof options?.userSdwtProd === "string" ? options.userSdwtProd.trim() : ""
+  const permissionGroups = normalizeList(options?.permissionGroups)
+  const ragIndexNames = normalizeList(options?.ragIndexNames)
+  const mailbox = resolvePrimaryMailbox(permissionGroups)
   const initialRef = useRef(null)
   if (!initialRef.current) {
     initialRef.current = buildInitialState(options)
@@ -348,7 +365,8 @@ export function useChatSession(options = {}) {
         prompt: text,
         history: historyForRequest.map(({ role, content }) => ({ role, content })),
         roomId,
-        userSdwtProd,
+        permissionGroups,
+        ragIndexNames,
       })
 
       const reply =
@@ -368,7 +386,7 @@ export function useChatSession(options = {}) {
             role: "assistant",
             content: segmentReply,
             sources: normalizeChatSources(segment.sources),
-            ...(userSdwtProd ? { userSdwtProd } : {}),
+            ...(mailbox ? { userSdwtProd: mailbox } : {}),
           }
         })
         .filter(Boolean)
@@ -391,7 +409,7 @@ export function useChatSession(options = {}) {
               role: "assistant",
               content: reply,
               sources,
-              ...(userSdwtProd ? { userSdwtProd } : {}),
+              ...(mailbox ? { userSdwtProd: mailbox } : {}),
             },
           ]),
         }

@@ -29,7 +29,7 @@ from api.emails.services import (
     reclassify_emails_for_user_sdwt_change,
     send_knox_mail_api,
 )
-from api.rag.services import resolve_rag_index_name
+from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 
 
 class EmailAffiliationTests(TestCase):
@@ -284,6 +284,10 @@ class EmailOutboxTests(TestCase):
         self.assertEqual(email.rag_index_status, Email.RagIndexStatus.INDEXED)
         self.assertTrue(bool(email.rag_doc_id))
         mock_insert.assert_called_once()
+        args, kwargs = mock_insert.call_args
+        self.assertEqual(args[0].id, email.id)
+        self.assertEqual(kwargs.get("index_name"), resolve_rag_index_name(RAG_INDEX_EMAILS))
+        self.assertEqual(kwargs.get("permission_groups"), ["group-a"])
 
     @patch("api.emails.services.delete_rag_doc")
     def test_delete_email_enqueues_outbox(self, mock_delete: Mock) -> None:
@@ -309,7 +313,11 @@ class EmailOutboxTests(TestCase):
 
         outbox_item.refresh_from_db()
         self.assertEqual(outbox_item.status, EmailOutbox.Status.DONE)
-        mock_delete.assert_called_once_with("email-outbox-2", index_name=resolve_rag_index_name("group-a"))
+        mock_delete.assert_called_once_with(
+            "email-outbox-2",
+            index_name=resolve_rag_index_name(RAG_INDEX_EMAILS),
+            permission_groups=["group-a"],
+        )
 
     def test_reclassify_outbox_updates_email(self) -> None:
         User = get_user_model()
@@ -738,15 +746,18 @@ class EmailMailboxAccessViewTests(TestCase):
 
 
 class RagIndexNameTests(SimpleTestCase):
-    def test_resolve_rag_index_name_prefixes_user_sdwt_prod(self) -> None:
-        self.assertEqual(resolve_rag_index_name("FAB-OPS"), "rp-FAB-OPS")
+    def test_resolve_rag_index_name_returns_explicit_value(self) -> None:
+        self.assertEqual(resolve_rag_index_name("rp-emails"), "rp-emails")
 
-    def test_resolve_rag_index_name_is_idempotent_for_prefixed_values(self) -> None:
-        self.assertEqual(resolve_rag_index_name("rp-FAB-OPS"), "rp-FAB-OPS")
-
-    def test_resolve_rag_index_name_falls_back_to_default_and_prefixes(self) -> None:
-        with patch("api.rag.services.RAG_INDEX_NAME", "unclassified"):
+    def test_resolve_rag_index_name_falls_back_to_default(self) -> None:
+        with patch("api.rag.services.RAG_INDEX_DEFAULT", "rp-unclassified"):
             self.assertEqual(resolve_rag_index_name(None), "rp-unclassified")
+
+    def test_resolve_rag_index_name_uses_first_index_list_when_default_missing(self) -> None:
+        with patch("api.rag.services.RAG_INDEX_DEFAULT", ""), patch(
+            "api.rag.services.RAG_INDEX_LIST", ["rp-a", "rp-b"]
+        ):
+            self.assertEqual(resolve_rag_index_name(None), "rp-a")
 
 
 class KnoxMailApiTests(SimpleTestCase):

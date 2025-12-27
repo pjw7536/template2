@@ -38,7 +38,13 @@ from .selectors import (
 )
 from .models import Email, EmailOutbox
 from api.account.selectors import resolve_user_affiliation
-from api.rag.services import delete_rag_doc, insert_email_to_rag, resolve_rag_index_name
+from api.rag.services import (
+    RAG_INDEX_EMAILS,
+    RAG_PUBLIC_GROUP,
+    delete_rag_doc,
+    insert_email_to_rag,
+    resolve_rag_index_name,
+)
 from .permissions import user_can_view_unassigned
 
 logger = logging.getLogger(__name__)
@@ -269,6 +275,15 @@ def _ensure_email_rag_doc_id(email: Email) -> None:
     email.save(update_fields=["rag_doc_id"])
 
 
+def _resolve_email_permission_groups(email: Email) -> list[str] | None:
+    """이메일의 user_sdwt_prod 값을 permission_groups로 변환합니다."""
+
+    user_sdwt_prod = (email.user_sdwt_prod or "").strip()
+    if user_sdwt_prod:
+        return [user_sdwt_prod]
+    return [RAG_PUBLIC_GROUP]
+
+
 def enqueue_email_outbox(
     *,
     email: Email | None,
@@ -301,9 +316,11 @@ def enqueue_rag_delete(*, email: Email) -> EmailOutbox | None:
 
     if not email.rag_doc_id:
         return None
+    permission_groups = _resolve_email_permission_groups(email)
     payload = {
         "rag_doc_id": email.rag_doc_id,
-        "index_name": resolve_rag_index_name(email.user_sdwt_prod),
+        "index_name": resolve_rag_index_name(RAG_INDEX_EMAILS),
+        "permission_groups": permission_groups,
     }
     return enqueue_email_outbox(email=email, action=EmailOutbox.Action.DELETE, payload=payload)
 
@@ -406,7 +423,7 @@ def register_email_to_rag(
     이메일을 RAG에 등록하고 rag_doc_id를 저장.
     - 이미 rag_doc_id가 있으면 그대로 사용.
     - 실패 시 예외를 발생시켜 호출 측에서 재시도 가능.
-    - previous_user_sdwt_prod가 주어지면, 인덱스가 달라진 경우 이전 인덱스 문서를 삭제 후 재삽입
+    - 이전 user_sdwt_prod가 주어져도 단일 인덱스에서 doc_id 재등록으로 권한을 갱신한다.
     """
 
     update_fields = []
@@ -423,23 +440,9 @@ def register_email_to_rag(
         email.rag_doc_id = f"email-{email.id}"
         update_fields.append("rag_doc_id")
 
-    new_index = resolve_rag_index_name(email.user_sdwt_prod)
-    previous_index = (
-        resolve_rag_index_name(previous_user_sdwt_prod)
-        if previous_user_sdwt_prod is not None
-        else new_index
-    )
-
-    if email.rag_doc_id and previous_user_sdwt_prod is not None and previous_index != new_index:
-        try:
-            delete_rag_doc(email.rag_doc_id, index_name=previous_index)
-        except Exception:
-            logger.exception(
-                "Failed to delete previous RAG doc for email id=%s (index=%s)", email.id, previous_index
-            )
-
-    target_index = new_index
-    insert_email_to_rag(email, index_name=target_index)
+    permission_groups = _resolve_email_permission_groups(email)
+    target_index = resolve_rag_index_name(RAG_INDEX_EMAILS)
+    insert_email_to_rag(email, index_name=target_index, permission_groups=permission_groups)
     if email.rag_index_status != Email.RagIndexStatus.INDEXED:
         email.rag_index_status = Email.RagIndexStatus.INDEXED
         update_fields.append("rag_index_status")
@@ -463,9 +466,10 @@ def _process_outbox_item(item: EmailOutbox) -> None:
     if item.action == EmailOutbox.Action.DELETE:
         rag_doc_id = item.payload.get("rag_doc_id")
         index_name = item.payload.get("index_name")
+        permission_groups = item.payload.get("permission_groups")
         if not rag_doc_id or not index_name:
             raise ValueError("rag_doc_id or index_name missing for delete outbox item")
-        delete_rag_doc(rag_doc_id, index_name=index_name)
+        delete_rag_doc(rag_doc_id, index_name=index_name, permission_groups=permission_groups)
         return
 
     if item.action == EmailOutbox.Action.RECLASSIFY:
