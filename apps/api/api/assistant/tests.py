@@ -59,7 +59,7 @@ class AssistantRagIndexViewsTests(TestCase):
                     {
                         "prompt": "hello",
                         "permission_groups": ["group-b"],
-                        "rag_index_name": [default_index],
+                        "rag_index_name": default_index,
                     }
                 ),
                 content_type="application/json",

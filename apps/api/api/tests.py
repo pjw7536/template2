@@ -89,7 +89,7 @@ class RagSearchServiceTests(SimpleTestCase):
         self.assertEqual(
             kwargs["json"],
             {
-                "index_name": ["rp-idx-default"],
+                "index_name": "rp-idx-default",
                 "permission_groups": ["group-a"],
                 "query_text": "hello",
                 "num_result_doc": 3,

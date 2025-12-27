@@ -94,6 +94,8 @@ async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     index_names_raw = payload.get("index_name") or payload.get("index_names")
     if isinstance(index_names_raw, list):
         index_names = [str(item).strip() for item in index_names_raw if str(item).strip()]
+    elif isinstance(index_names_raw, str):
+        index_names = [item.strip() for item in index_names_raw.split(",") if item.strip()]
     else:
         index_name_value = str(index_names_raw or "").strip()
         index_names = [index_name_value] if index_name_value else []

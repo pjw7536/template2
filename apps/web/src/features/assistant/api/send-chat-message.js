@@ -125,6 +125,7 @@ export async function sendChatMessage({ prompt, history = [], roomId, permission
   const endpoint = resolveChatEndpoint()
   const normalizedPermissionGroups = normalizeStringList(permissionGroups)
   const normalizedRagIndexNames = normalizeStringList(ragIndexNames)
+  const ragIndexNameValue = normalizedRagIndexNames.join(",")
   const payload = {
     prompt: prompt.trim(),
     history: normalizeHistory(history),
@@ -132,7 +133,7 @@ export async function sendChatMessage({ prompt, history = [], roomId, permission
     ...(normalizedPermissionGroups.length
       ? { permission_groups: normalizedPermissionGroups }
       : {}),
-    ...(normalizedRagIndexNames.length ? { rag_index_name: normalizedRagIndexNames } : {}),
+    ...(ragIndexNameValue ? { rag_index_name: ragIndexNameValue } : {}),
   }
 
   const controller = new AbortController()

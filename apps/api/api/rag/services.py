@@ -118,7 +118,7 @@ def _normalize_index_names(index_names: Sequence[str] | str | None) -> List[str]
     if not index_names:
         return []
     if isinstance(index_names, str):
-        values = [index_names]
+        values = index_names.split(",")
     elif isinstance(index_names, Sequence):
         values = list(index_names)
     else:
@@ -395,6 +395,7 @@ def _build_search_payload(
     """RAG search 요청 payload를 생성합니다."""
 
     resolved_index_names = resolve_rag_index_names(index_name)
+    resolved_index_name = ",".join(resolved_index_names)
 
     normalized_query = str(query_text).strip()
     normalized_num = int(num_result_doc) if isinstance(num_result_doc, int) else 5
@@ -402,7 +403,7 @@ def _build_search_payload(
         normalized_num = 5
 
     return {
-        "index_name": resolved_index_names,
+        "index_name": resolved_index_name,
         "permission_groups": _normalize_permission_groups(permission_groups)
         if permission_groups is not None
         else _normalize_permission_groups(RAG_PERMISSION_GROUPS),

@@ -86,6 +86,15 @@ def _normalize_string_list(raw: object) -> List[str]:
     return list(dict.fromkeys(normalized))
 
 
+def _normalize_csv_string(raw: str) -> List[str]:
+    """comma-separated 문자열을 리스트로 정규화합니다."""
+
+    if not raw:
+        return []
+    normalized = [value.strip() for value in raw.split(",") if value.strip()]
+    return list(dict.fromkeys(normalized))
+
+
 def _default_permission_groups(user: object) -> List[str]:
     """기본 permission_groups 값을 계산합니다."""
 
@@ -122,10 +131,14 @@ def _resolve_rag_index_names(payload: Dict[str, object]) -> List[str]:
     """요청 페이로드로 RAG 인덱스 목록을 결정합니다."""
 
     raw_indexes = payload.get("rag_index_name") or payload.get("ragIndexName")
-    if raw_indexes is not None and not isinstance(raw_indexes, list):
-        raise ValueError("rag_index_name must be an array")
-
-    normalized = _normalize_string_list(raw_indexes)
+    if raw_indexes is None:
+        normalized: List[str] = []
+    elif isinstance(raw_indexes, str):
+        normalized = _normalize_csv_string(raw_indexes)
+    elif isinstance(raw_indexes, list):
+        normalized = _normalize_string_list(raw_indexes)
+    else:
+        raise ValueError("rag_index_name must be a comma-separated string or array")
     if not normalized:
         return rag_services.resolve_rag_index_names(None)
 
