@@ -8,6 +8,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import BaseUserCreationForm, SetUnusablePasswordMixin, UserChangeForm, UsernameField
 from django.utils import timezone
 
+from api.account import services
 from api.account.selectors import get_current_user_sdwt_prod_change
 from api.account.models import (
     Affiliation,
@@ -263,6 +264,7 @@ class UserSdwtProdAccessAdmin(admin.ModelAdmin):
 
 @admin.register(UserSdwtProdChange)
 class UserSdwtProdChangeAdmin(admin.ModelAdmin):
+    actions = ("approve_affiliation_changes",)
     list_display = (
         "user",
         "from_user_sdwt_prod",
@@ -282,6 +284,47 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
         "to_user_sdwt_prod",
     )
     autocomplete_fields = ("user", "approved_by", "created_by")
+
+    @admin.action(description="선택한 소속 변경 요청 승인")
+    def approve_affiliation_changes(self, request, queryset):  # type: ignore[override]
+        if not request.user or not request.user.is_authenticated:
+            self.message_user(request, "승인 권한이 없습니다.", level=messages.ERROR)
+            return None
+
+        approved_count = 0
+        failed_count = 0
+        failures: list[str] = []
+
+        for change in queryset.iterator():
+            payload, status_code = services.approve_affiliation_change(
+                approver=request.user,
+                change_id=change.id,
+            )
+            if status_code == 200:
+                approved_count += 1
+                continue
+
+            failed_count += 1
+            error_message = payload.get("error") if isinstance(payload, dict) else None
+            failures.append(f"{change.id}: {error_message or 'unknown error'}")
+
+        if failed_count:
+            details = " | ".join(failures[:5])
+            if len(failures) > 5:
+                details = f"{details} | (+{len(failures) - 5} more)"
+            self.message_user(
+                request,
+                f"승인 완료: {approved_count}건, 실패: {failed_count}건. 실패: {details}",
+                level=messages.WARNING,
+            )
+            return None
+
+        self.message_user(
+            request,
+            f"승인 완료: {approved_count}건.",
+            level=messages.SUCCESS,
+        )
+        return None
 
 
 @admin.register(ExternalAffiliationSnapshot)

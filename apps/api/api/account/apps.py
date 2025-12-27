@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 from django.apps import AppConfig
+from django.db import IntegrityError, OperationalError, ProgrammingError, connection
 
 
 class AccountConfig(AppConfig):
@@ -24,3 +27,38 @@ class AccountConfig(AppConfig):
             sender=get_user_model(),
             dispatch_uid="account_create_profile",
         )
+
+        self._ensure_default_superuser()
+
+    def _ensure_default_superuser(self) -> None:
+        from django.contrib.auth import get_user_model
+
+        def env_or_default(key: str, default: str) -> str:
+            value = os.environ.get(key)
+            if value is None:
+                return default
+            value = value.strip()
+            return value or default
+
+        UserModel = get_user_model()
+        try:
+            table_names = connection.introspection.table_names()
+        except (OperationalError, ProgrammingError):
+            return
+
+        if UserModel._meta.db_table not in table_names:
+            return
+
+        sabun = env_or_default("DJANGO_SUPERUSER_SABUN", "00000000")
+        if UserModel.objects.filter(sabun=sabun).exists():
+            return
+
+        try:
+            UserModel.objects.create_superuser(
+                sabun=sabun,
+                password=env_or_default("DJANGO_SUPERUSER_PASSWORD", "dkssud123!"),
+                username=env_or_default("DJANGO_SUPERUSER_USERNAME", "admin"),
+                email=env_or_default("DJANGO_SUPERUSER_EMAIL", "etch_mail_collector@samsung.com"),
+            )
+        except IntegrityError:
+            return
