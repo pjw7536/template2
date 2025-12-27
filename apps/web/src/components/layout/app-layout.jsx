@@ -1,30 +1,35 @@
 // src/components/layout/app-layout.jsx
-import { ContentLayout } from "./content-layout"
+import { useLocation } from "react-router-dom"
+
+import { SidebarLayout } from "./sidebar-layout"
 
 export function AppLayout({
   children,
+  sidebar,
   header,
-  headerClassName = "relative z-30 h-16 shrink-0 border-b bg-background",
+  providerKey,
+  defaultOpen,
   contentMaxWidthClass = "max-w-10xl",
   scrollAreaClassName = "overflow-y-auto",
-  paddingClassName = "p-3 md:p-3",
+  paddingClassName = "px-4 pb-3",
   innerClassName = "mx-auto flex h-full w-full flex-col gap-4",
 }) {
+  const { pathname } = useLocation()
+  const resolvedProviderKey = providerKey ?? pathname
+  const resolvedDefaultOpen = defaultOpen ?? pathname !== "/"
+
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <header className={headerClassName}>
-        <div className="h-full">{header ?? null}</div>
-      </header>
-      <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
-        <ContentLayout
-          contentMaxWidthClass={contentMaxWidthClass}
-          scrollAreaClassName={scrollAreaClassName}
-          paddingClassName={paddingClassName}
-          innerClassName={innerClassName}
-        >
-          {children}
-        </ContentLayout>
-      </main>
-    </div>
+    <SidebarLayout
+      providerKey={resolvedProviderKey}
+      defaultOpen={resolvedDefaultOpen}
+      sidebar={sidebar}
+      header={header}
+      contentMaxWidthClass={contentMaxWidthClass}
+      scrollAreaClassName={scrollAreaClassName}
+      paddingClassName={paddingClassName}
+      innerClassName={innerClassName}
+    >
+      {children}
+    </SidebarLayout>
   )
 }

@@ -1,5 +1,7 @@
 // src/components/layout/index.js
 export { AppLayout } from "./app-layout"
+export { AppSidebar } from "./app-sidebar"
+export { HomeLayout } from "./home-layout"
 export { ContentLayout } from "./content-layout"
 export { SidebarHeaderBar } from "./sidebar-header-bar"
 export { SidebarLayout } from "./sidebar-layout"

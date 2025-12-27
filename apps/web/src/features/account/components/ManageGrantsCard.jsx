@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/common"
 
 function MembersTable({ groups, onRevoke }) {
   if (!groups?.length) {

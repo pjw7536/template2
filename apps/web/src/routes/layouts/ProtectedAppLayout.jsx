@@ -2,7 +2,7 @@
 import { Outlet, useLocation } from "react-router-dom"
 
 import { RequireAuth } from "@/lib/auth"
-import { AppLayout } from "@/components/layout"
+import { HomeLayout } from "@/components/layout"
 import { HomeNavbar, navigationItems as homeNavigationItems } from "@/features/home"
 import { LineDashboardLayout } from "@/features/line-dashboard"
 import { ChatWidget } from "@/features/assistant"
@@ -46,13 +46,13 @@ export function ProtectedAppLayout() {
     )
   } else {
     layout = (
-      <AppLayout
+      <HomeLayout
         contentMaxWidthClass={contentMaxWidthClass}
         scrollAreaClassName={scrollAreaClassName}
         header={<HomeNavbar navigationItems={homeNavigationItems} />}
       >
         <Outlet />
-      </AppLayout>
+      </HomeLayout>
     )
   }
 

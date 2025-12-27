@@ -16,7 +16,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/common"
 import { DataTablePagination } from "../components/DataTablePagination"
 import { getAirflowDagOverview } from "../api/get-airflow-dag-overview"
 import { numberFormatter } from "../utils/dataTableConstants"

@@ -1,7 +1,5 @@
 // src/features/line-dashboard/components/LineDashboardShell.jsx
-import { useLocation } from "react-router-dom"
-
-import { SidebarLayout } from "@/components/layout"
+import { AppLayout } from "@/components/layout"
 
 import { LineDashboardHeader } from "./LineDashboardHeader"
 
@@ -14,16 +12,12 @@ export function LineDashboardShell({
   innerClassName = "mx-auto flex h-full w-full flex-col gap-4",
   header,
 }) {
-  const { pathname } = useLocation()
-  const defaultOpen = pathname !== "/"
   const headerNode = header ?? (
     <LineDashboardHeader showSidebarTrigger={Boolean(sidebar)} />
   )
 
   return (
-    <SidebarLayout
-      providerKey={pathname}
-      defaultOpen={defaultOpen}
+    <AppLayout
       sidebar={sidebar}
       header={headerNode}
       contentMaxWidthClass={contentMaxWidthClass}
@@ -32,6 +26,6 @@ export function LineDashboardShell({
       innerClassName={innerClassName}
     >
       {children}
-    </SidebarLayout>
+    </AppLayout>
   )
 }

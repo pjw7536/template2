@@ -8,3 +8,13 @@ export { NavUser } from "./nav-user"
 export { Logo } from "./logo"
 export { LogoVector } from "./logo-vector"
 export { Error04Illustration } from "./error-04-illustration"
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+} from "./table"

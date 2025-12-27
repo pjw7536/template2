@@ -9,7 +9,7 @@
 
 import { useParams } from "react-router-dom"
 
-import { SidebarNavMain } from "@/components/layout"
+import { SidebarNavMain } from "@/components/layout/sidebar-nav-main"
 import { useActiveLine } from "./active-line-context"
 
 /* =========================================================

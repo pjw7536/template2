@@ -12,5 +12,8 @@ export {
   LineDashboardSidebarProvider,
   LineDashboardBreadcrumb,
   LineDashboardSidebar,
+  ActiveLineProvider,
+  TeamSwitcher,
+  NavMain,
 } from "./components"
 export { NavUser } from "@/components/common"

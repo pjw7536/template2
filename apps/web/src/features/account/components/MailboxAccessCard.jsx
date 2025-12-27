@@ -7,7 +7,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/common"
 
 const SOURCE_LABELS = {
   self: "내 소속",

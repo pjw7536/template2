@@ -3,5 +3,6 @@
 export { useLineDashboardData } from "./useLineDashboardData"
 export { useLineSettings } from "./useLineSettings"
 export { useLineOptionsQuery } from "./useLineOptionsQuery"
+export { useLineSdwtOptionsQuery } from "./useLineSdwtOptionsQuery"
 export { useLineHistoryData } from "./useLineHistoryData"
 export { useDataTablePresentation } from "./useDataTablePresentation"

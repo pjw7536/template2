@@ -1,21 +1,59 @@
 import { useEffect, useRef } from "react"
-import { useLocation, useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
-import { SidebarLayout } from "@/components/layout"
+import { AppLayout, AppSidebar } from "@/components/layout"
 import { useAuth } from "@/lib/auth"
+import { buildNavigationConfig } from "@/lib/config/navigation-config"
+import {
+  ActiveLineProvider,
+  NavMain,
+  TeamSwitcher,
+  useLineSdwtOptionsQuery,
+} from "@/features/line-dashboard"
 
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
 import { getMailboxFromSearchParams, normalizeMailbox } from "../utils/mailbox"
-import { EmailMailboxSidebar } from "./EmailMailboxSidebar"
 import { EmailsHeader } from "./EmailsHeader"
+
+function normalizeLineId(value) {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function buildLineOptions(lineSdwtOptions) {
+  const lines = Array.isArray(lineSdwtOptions?.lines) ? lineSdwtOptions.lines : []
+  const lineIds = lines
+    .map((line) => normalizeLineId(line?.lineId))
+    .filter(Boolean)
+  return Array.from(new Set(lineIds))
+}
+
+function buildAffiliationOptions(lineSdwtOptions, mailboxes) {
+  const lines = Array.isArray(lineSdwtOptions?.lines) ? lineSdwtOptions.lines : []
+  const mailboxSet = new Set(mailboxes)
+
+  return lines.flatMap((line) => {
+    const lineId = normalizeLineId(line?.lineId)
+    if (!lineId) return []
+
+    const userSdwtProds = Array.isArray(line?.userSdwtProds) ? line.userSdwtProds : []
+
+    return userSdwtProds
+      .map((value) => normalizeMailbox(value))
+      .filter((value) => value && mailboxSet.has(value))
+      .map((userSdwtProd) => ({
+        id: userSdwtProd,
+        label: `${lineId} / ${userSdwtProd}`,
+        lineId,
+      }))
+  })
+}
 
 export function EmailsLayout({
   children,
   contentMaxWidthClass,
   scrollAreaClassName,
 }) {
-  const { pathname } = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const invalidMailboxRef = useRef("")
@@ -26,6 +64,11 @@ export function EmailsLayout({
     isError: isMailboxError,
     error: mailboxError,
   } = useEmailMailboxes()
+  const {
+    data: lineSdwtOptions,
+    isError: isLineSdwtError,
+    error: lineSdwtError,
+  } = useLineSdwtOptionsQuery()
 
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
   const mailboxParam = getMailboxFromSearchParams(searchParams)
@@ -34,12 +77,20 @@ export function EmailsLayout({
   const fallbackMailbox = mailboxParam || currentUserSdwtProd || firstMailbox
   const activeMailbox = mailboxParam || fallbackMailbox
   const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
+  const lineOptions = buildLineOptions(lineSdwtOptions)
+  const affiliationOptions = buildAffiliationOptions(lineSdwtOptions, normalizedMailboxes)
 
   useEffect(() => {
     if (isMailboxError && mailboxError) {
       toast.error(mailboxError?.message || "메일함 목록을 불러오지 못했습니다.")
     }
   }, [isMailboxError, mailboxError])
+
+  useEffect(() => {
+    if (isLineSdwtError) {
+      console.warn("Failed to load line SDWT options", lineSdwtError)
+    }
+  }, [isLineSdwtError, lineSdwtError])
 
   useEffect(() => {
     if (!mailboxParam) return
@@ -101,28 +152,35 @@ export function EmailsLayout({
     setSearchParams(nextParams)
   }
 
+  const navigation = buildNavigationConfig({ mailbox: activeMailbox })
+  const nav = <NavMain items={navigation.navMain} />
   const sidebar = (
-    <EmailMailboxSidebar
-      mailboxes={mailboxes}
-      activeMailbox={activeMailbox}
-      onSelectMailbox={handleSelectMailbox}
-      isLoading={isMailboxLoading}
-      errorMessage={
-        isMailboxError ? mailboxError?.message || "메일함 목록을 불러오지 못했습니다." : ""
+    <AppSidebar
+      header={
+        <TeamSwitcher
+          options={affiliationOptions}
+          activeId={activeMailbox}
+          onSelect={handleSelectMailbox}
+          menuLabel="Line / SDWT"
+          manageLabel="Manage mailboxes"
+          ariaLabel="메일함(SDWT) 선택"
+          mode="affiliation"
+        />
       }
+      nav={nav}
     />
   )
 
   return (
-    <SidebarLayout
-      providerKey={pathname}
-      defaultOpen
-      sidebar={sidebar}
-      header={<EmailsHeader activeMailbox={activeMailbox} />}
-      contentMaxWidthClass={contentMaxWidthClass}
-      scrollAreaClassName={scrollAreaClassName}
-    >
-      {children}
-    </SidebarLayout>
+    <ActiveLineProvider lineOptions={lineOptions}>
+      <AppLayout
+        sidebar={sidebar}
+        header={<EmailsHeader activeMailbox={activeMailbox} />}
+        contentMaxWidthClass={contentMaxWidthClass}
+        scrollAreaClassName={scrollAreaClassName}
+      >
+        {children}
+      </AppLayout>
+    </ActiveLineProvider>
   )
 }

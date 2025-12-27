@@ -39,23 +39,31 @@ function getInitials(label) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 }
 
-/** 다양한 입력 형태(lines 배열 요소)를 { id, label, description }로 통일 */
-function toLineOption(line) {
-  if (!line) return null
+/** 다양한 입력 형태를 { id, label, description, lineId }로 통일 */
+function toSwitcherOption(item) {
+  if (!item) return null
 
-  // 문자열만 넘어오면 label=id로 취급
-  if (typeof line === "string") {
-    const id = normalizeLineId(line)
-    return id ? { id, label: line, description: "" } : null
+  if (typeof item === "string") {
+    const id = normalizeLineId(item)
+    return id ? { id, label: item, description: "", lineId: id } : null
   }
 
-  // 객체 형태일 때: id/label/description 우선순위 지정
-  const rawId = line.id ?? line.label ?? line.name
+  const rawId = item.id ?? item.value ?? item.userSdwtProd ?? item.label ?? item.name ?? item.lineId
   const id = normalizeLineId(rawId)
-  const label = line.label ?? line.name ?? id
-  const description = line.description ?? ""
-  if (!id || !label) return null
-  return { id, label, description }
+  if (!id) return null
+
+  const rawLineId = item.lineId ?? item.line ?? null
+  const lineId = normalizeLineId(rawLineId) || id
+  const userSdwtProd = typeof item.userSdwtProd === "string" ? item.userSdwtProd.trim() : ""
+
+  const label =
+    item.label ??
+    item.name ??
+    (lineId && userSdwtProd ? `${lineId} / ${userSdwtProd}` : id)
+  const description = item.description ?? ""
+  if (!label) return null
+
+  return { id, label, description, lineId, userSdwtProd }
 }
 
 /** URL params에서 lineId 추출 (동적 라우트 /ESOP_Dashboard/.../:lineId) */
@@ -99,7 +107,16 @@ function buildNextPath({ pathname, newLineId, currentLineId }) {
  * - 옵션이 없어도 항상 렌더링되며, 'Unknown'을 표시
  * - 우선순위(선택 라인 결정): 컨텍스트 값 > URL 파라미터 > 첫 옵션 > 'unknown'
  */
-export function TeamSwitcher({ lines }) {
+export function TeamSwitcher({
+  lines,
+  options: optionsProp,
+  activeId,
+  onSelect,
+  menuLabel = "Production Lines",
+  manageLabel = "Manage lines",
+  ariaLabel,
+  mode = "line",
+}) {
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -111,9 +128,10 @@ export function TeamSwitcher({ lines }) {
 
   // 1) 입력 받은 lines를 화면 렌더용 옵션 배열로 정규화
   const options = React.useMemo(() => {
-    if (!Array.isArray(lines)) return []
-    return lines.map(toLineOption).filter(Boolean)
-  }, [lines])
+    const source = Array.isArray(optionsProp) ? optionsProp : lines
+    if (!Array.isArray(source)) return []
+    return source.map(toSwitcherOption).filter(Boolean)
+  }, [lines, optionsProp])
 
   // 2) 옵션 유무 판단 + 폴백(Unknown) 정의
   const hasOptions = options.length > 0
@@ -121,45 +139,64 @@ export function TeamSwitcher({ lines }) {
   const fallbackActiveLine = { id: UNKNOWN_ID, label: "Unknown", description: "" }
 
   // 3) 활성 라인ID 결정: 컨텍스트 > URL 파라미터 > 첫 옵션 > 'unknown'
-  const activeLineId = React.useMemo(() => {
-    if (ctxLineId) return ctxLineId
-    if (paramLineId) return paramLineId
+  const derivedActiveId = React.useMemo(() => {
+    if (mode === "line") {
+      if (ctxLineId) return ctxLineId
+      if (paramLineId) return paramLineId
+    }
     if (hasOptions) return options[0].id
     return UNKNOWN_ID
-  }, [ctxLineId, paramLineId, hasOptions, options])
+  }, [ctxLineId, hasOptions, mode, options, paramLineId])
+
+  const resolvedActiveId = normalizeLineId(activeId) || derivedActiveId
 
   // 4) 활성 라인 객체 (라벨/설명 표시용) — 없으면 Unknown으로 대체
-  const activeLine =
-    options.find((o) => o.id === activeLineId) ?? (hasOptions ? options[0] : fallbackActiveLine)
+  const activeOption =
+    options.find((o) => o.id === resolvedActiveId) ??
+    (hasOptions ? options[0] : fallbackActiveLine)
+  const activeAvatarLabel =
+    mode === "affiliation" ? (activeOption.lineId || activeOption.label) : activeOption.label
 
   // 5) 활성 라인ID가 바뀌면 컨텍스트 동기화
   //    단, 'unknown'일 땐 굳이 전역 상태를 unknown으로 덮어쓰지 않음(노이즈 방지)
   React.useEffect(() => {
-    if (activeLineId && activeLineId !== ctxLineId && activeLineId !== UNKNOWN_ID) {
-      setCtxLineId(activeLineId)
+    const nextLineId = mode === "line" ? resolvedActiveId : activeOption?.lineId ?? null
+    if (nextLineId && nextLineId !== ctxLineId && nextLineId !== UNKNOWN_ID) {
+      setCtxLineId(nextLineId)
     }
-  }, [activeLineId, ctxLineId, setCtxLineId])
+  }, [activeOption, ctxLineId, mode, resolvedActiveId, setCtxLineId])
 
   // 6) 드롭다운에서 라인 선택 시 실행할 라우팅/상태 업데이트
   const handleSelect = React.useCallback(
     (nextId) => {
+      const normalizedNextId = normalizeLineId(nextId)
       // 선택 불가/중복/Unknown(폴백)일 때는 무시
-      if (!nextId || nextId === activeLineId || nextId === UNKNOWN_ID) return
-
-      // (a) 먼저 컨텍스트 갱신 → UI 즉시 반영
-      setCtxLineId(nextId)
-
-      // (b) 경로 재구성 후 이동
-      const target = buildNextPath({
-        pathname,
-        newLineId: nextId,
-        currentLineId: paramLineId,
-      })
-      if (target) {
-        navigate(target)
+      if (!normalizedNextId || normalizedNextId === resolvedActiveId || normalizedNextId === UNKNOWN_ID) {
+        return
       }
+
+      const nextOption = options.find((option) => option.id === normalizedNextId)
+
+      if (mode === "line") {
+        // (a) 먼저 컨텍스트 갱신 → UI 즉시 반영
+        setCtxLineId(normalizedNextId)
+
+        // (b) 경로 재구성 후 이동
+        const target = buildNextPath({
+          pathname,
+          newLineId: normalizedNextId,
+          currentLineId: paramLineId,
+        })
+        if (target) {
+          navigate(target)
+        }
+      } else if (nextOption?.lineId && nextOption.lineId !== ctxLineId) {
+        setCtxLineId(nextOption.lineId)
+      }
+
+      onSelect?.(normalizedNextId, nextOption)
     },
-    [activeLineId, paramLineId, pathname, navigate, setCtxLineId]
+    [ctxLineId, mode, navigate, onSelect, options, paramLineId, pathname, resolvedActiveId, setCtxLineId]
   )
 
   // ❗️이전에는 옵션이 없으면 `return null`로 렌더를 생략했는데,
@@ -174,18 +211,19 @@ export function TeamSwitcher({ lines }) {
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              aria-label={ariaLabel}
             >
               {/* 왼쪽 원형 배지: 이니셜 */}
               <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg font-semibold">
-                {getInitials(activeLine.label)}
+                {getInitials(activeAvatarLabel)}
               </div>
 
               {/* 가운데: 라벨 + 서브텍스트(설명) */}
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{activeLine.label}</span>
-                {activeLine.description ? (
+                <span className="truncate font-medium">{activeOption.label}</span>
+                {activeOption.description ? (
                   <span className="truncate text-xs text-muted-foreground">
-                    {activeLine.description}
+                    {activeOption.description}
                   </span>
                 ) : null}
               </div>
@@ -203,13 +241,15 @@ export function TeamSwitcher({ lines }) {
             sideOffset={4}
           >
             <DropdownMenuLabel className="text-muted-foreground text-xs">
-              Production Lines
+              {menuLabel}
             </DropdownMenuLabel>
 
             {/* 라인 목록: 옵션이 있으면 실제 목록, 없으면 Unknown 1개(비활성화) */}
             {hasOptions
               ? options.map((line) => {
-                const isActive = line.id === activeLineId
+                const isActive = line.id === resolvedActiveId
+                const avatarLabel =
+                  mode === "affiliation" ? (line.lineId || line.label) : line.label
                 return (
                   <DropdownMenuItem
                     key={line.id}
@@ -221,7 +261,7 @@ export function TeamSwitcher({ lines }) {
                   >
                     {/* 좌측 작은 배지(이니셜) */}
                     <div className="flex size-6 items-center justify-center rounded-md border text-xs font-semibold">
-                      {getInitials(line.label)}
+                      {getInitials(avatarLabel)}
                     </div>
 
                     {/* 라벨/설명 */}
@@ -259,7 +299,7 @@ export function TeamSwitcher({ lines }) {
               <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                 <Plus className="size-4" />
               </div>
-              <div className="text-muted-foreground font-medium">Manage lines</div>
+              <div className="text-muted-foreground font-medium">{manageLabel}</div>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

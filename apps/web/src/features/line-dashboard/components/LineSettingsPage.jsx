@@ -22,7 +22,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/common"
 import { useAuth } from "@/lib/auth"
 import { useLineSettings } from "../hooks"
 import { buildToastOptions } from "../utils/toast"

@@ -1,9 +1,12 @@
 import { useEffect } from "react"
 
-import { NAVIGATION_CONFIG } from "@/lib/config/navigation-config"
+import { AppLayout, AppSidebar } from "@/components/layout"
+import { buildNavigationConfig } from "@/lib/config/navigation-config"
 
-import { LineDashboardShell } from "./LineDashboardShell"
-import { LineDashboardSidebar } from "./LineDashboardSidebar"
+import { LineDashboardHeader } from "./LineDashboardHeader"
+import { NavMain } from "./nav-main"
+import { NavProjects } from "./nav-projects"
+import { TeamSwitcher } from "./team-switcher"
 import { ActiveLineProvider } from "./active-line-context"
 import { useLineOptionsQuery } from "../hooks/useLineOptionsQuery"
 
@@ -24,19 +27,27 @@ export function LineDashboardLayout({
     }
   }, [isError, error])
 
+  const navigation = buildNavigationConfig()
+  const nav = <NavMain items={navigation.navMain} />
   const sidebar = (
-    <LineDashboardSidebar lineOptions={lineOptions} navigation={NAVIGATION_CONFIG} />
+    <AppSidebar
+      header={<TeamSwitcher lines={lineOptions} />}
+      nav={nav}
+      secondary={<NavProjects projects={navigation.projects} />}
+    />
   )
+  const header = <LineDashboardHeader showSidebarTrigger={Boolean(sidebar)} />
 
   return (
     <ActiveLineProvider lineOptions={lineOptions}>
-      <LineDashboardShell
+      <AppLayout
         sidebar={sidebar}
+        header={header}
         contentMaxWidthClass={contentMaxWidthClass}
         scrollAreaClassName={scrollAreaClassName}
       >
         {children}
-      </LineDashboardShell>
+      </AppLayout>
     </ActiveLineProvider>
   )
 }

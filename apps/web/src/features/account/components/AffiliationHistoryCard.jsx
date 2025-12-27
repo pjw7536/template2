@@ -7,7 +7,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/common"
 
 const STATUS_LABELS = {
   PENDING: { label: "대기", variant: "secondary" },
