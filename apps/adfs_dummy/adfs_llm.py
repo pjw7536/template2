@@ -1,7 +1,7 @@
-"""Dummy LLM endpoints (OpenAI-compatible chat completions).
+"""더미 LLM 엔드포인트(OpenAI 호환 chat completions)입니다.
 
-This exists so the Django assistant service can be exercised in docker-compose.dev.yml
-without calling the real corporate LLM gateway.
+docker-compose.dev.yml에서 Django assistant 서비스를
+실제 사내 LLM 게이트웨이를 호출하지 않고도 검증할 수 있도록 제공합니다.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _build_chat_completion(model: str, reply: str) -> Dict[str, Any]:
 @router.post("/v1/chat/completions")
 @router.post("/{prefix:path}/v1/chat/completions")
 async def chat_completions(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Return a deterministic chat completion response."""
+    """결정적인 chat completion 응답을 반환합니다."""
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="invalid JSON body")
 

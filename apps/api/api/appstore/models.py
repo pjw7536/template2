@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈 설명: AppStore 도메인 모델을 정의합니다.
+# - 주요 클래스: AppStoreApp, AppStoreLike, AppStoreComment, AppStoreCommentLike
+# - 불변 조건: 스크린샷은 외부 URL 또는 base64 data URL 형식을 사용합니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.conf import settings
@@ -39,27 +44,71 @@ class AppStoreApp(models.Model):
             models.Index(fields=["name"], name="appstore_app_name_idx"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽기 쉬운 표현(커버리지 제외): pragma: no cover
+        """앱 표시용 문자열을 반환합니다."""
         return self.name
 
     @property
     def screenshot_src(self) -> str:
-        """스크린샷 표시용 src(data url 또는 외부 URL)를 반환합니다."""
+        """스크린샷 표시용 src(data URL 또는 외부 URL)를 반환합니다.
 
+        입력:
+            없음(self 사용).
+
+        반환:
+            화면 표시용 스크린샷 src 문자열.
+
+        부작용:
+            없음. 읽기 전용 계산입니다.
+
+        오류:
+            없음.
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 외부 URL 우선 사용
+        # -----------------------------------------------------------------------------
         if self.screenshot_url:
             return self.screenshot_url
+
+        # -----------------------------------------------------------------------------
+        # 2) base64 데이터 URL 처리
+        # -----------------------------------------------------------------------------
         if self.screenshot_base64:
             mime_type = self.screenshot_mime_type or "image/png"
             return f"data:{mime_type};base64,{self.screenshot_base64}"
+
+        # -----------------------------------------------------------------------------
+        # 3) 기본값
+        # -----------------------------------------------------------------------------
         return ""
 
     def screenshot_gallery_srcs(self) -> list[str]:
-        """갤러리(추가 스크린샷) 표시용 src 목록을 반환합니다."""
+        """갤러리(추가 스크린샷) 표시용 src 목록을 반환합니다.
 
+        입력:
+            없음(self 사용).
+
+        반환:
+            갤러리 스크린샷 src 목록.
+
+        부작용:
+            없음. 읽기 전용 계산입니다.
+
+        오류:
+            없음.
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 저장된 갤러리 데이터 확인
+        # -----------------------------------------------------------------------------
         raw = self.screenshot_gallery
         if not isinstance(raw, list):
             return []
 
+        # -----------------------------------------------------------------------------
+        # 2) 항목별 URL/base64 정규화
+        # -----------------------------------------------------------------------------
         srcs: list[str] = []
         for item in raw:
             if not isinstance(item, dict):
@@ -77,11 +126,30 @@ class AppStoreApp(models.Model):
                     mime_type = "image/png"
                 srcs.append(f"data:{mime_type};base64,{base64_value.strip()}")
 
+        # -----------------------------------------------------------------------------
+        # 3) 결과 반환
+        # -----------------------------------------------------------------------------
         return srcs
 
     def screenshot_srcs(self) -> list[str]:
-        """대표 스크린샷 + 갤러리 스크린샷 src 목록을 반환합니다."""
+        """대표 스크린샷 + 갤러리 스크린샷 src 목록을 반환합니다.
 
+        입력:
+            없음(self 사용).
+
+        반환:
+            대표 이미지 포함 스크린샷 src 목록.
+
+        부작용:
+            없음. 읽기 전용 계산입니다.
+
+        오류:
+            없음.
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 대표/갤러리 결합
+        # -----------------------------------------------------------------------------
         cover = self.screenshot_src
         gallery = self.screenshot_gallery_srcs()
         if cover:
@@ -112,7 +180,8 @@ class AppStoreLike(models.Model):
             models.Index(fields=["app"], name="appstore_like_app_idx"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽기 쉬운 표현(커버리지 제외): pragma: no cover
+        """좋아요 표시용 문자열을 반환합니다."""
         return f"{self.user_id} -> {self.app_id}"
 
 
@@ -152,7 +221,8 @@ class AppStoreComment(models.Model):
             models.Index(fields=["parent"], name="appstore_comment_parent_idx"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽기 쉬운 표현(커버리지 제외): pragma: no cover
+        """댓글 표시용 문자열을 반환합니다."""
         return f"Comment {self.pk} on app {self.app_id}"
 
 
@@ -184,7 +254,8 @@ class AppStoreCommentLike(models.Model):
             models.Index(fields=["comment"], name="idx_appstore_cmtlike_comment"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽기 쉬운 표현(커버리지 제외): pragma: no cover
+        """댓글 좋아요 표시용 문자열을 반환합니다."""
         return f"{self.user_id} -> {self.comment_id}"
 
 

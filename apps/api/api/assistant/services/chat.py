@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: 어시스턴트 채팅 서비스(RAG + LLM)
+# 주요 구성: AssistantChatService, AssistantChatResult
+# 주요 가정: RAG/LLM 호출 실패는 AssistantRequestError로 변환합니다.
+# =============================================================================
 from __future__ import annotations
 
 import json
@@ -31,14 +36,38 @@ class AssistantChatResult:
 
 
 class AssistantChatService:
-    """RAG 검색 결과를 바탕으로 LLM 답변을 생성하는 서비스입니다."""
+    """RAG 검색 결과를 바탕으로 LLM 답변을 생성하는 서비스입니다.
+
+    부작용:
+        외부 RAG/LLM API 호출이 발생할 수 있습니다.
+    """
 
     def __init__(self, config: Optional[AssistantChatConfig] = None) -> None:
+        """서비스 설정을 초기화합니다.
+
+        인자:
+            config: 주입할 설정(없으면 settings/env에서 로드).
+        """
+
         self.config = config or AssistantChatConfig.from_settings()
 
     def _filter_sources_by_used_email_ids(self, sources: List[Dict[str, Any]], used_email_ids: List[str]) -> List[Dict[str, Any]]:
-        """출처 목록에서 사용된 emailId(doc_id)만 남깁니다."""
+        """출처 목록에서 사용된 emailId(doc_id)만 남깁니다.
 
+        인자:
+            sources: 원본 출처 목록.
+            used_email_ids: 사용된 emailId 목록.
+
+        반환:
+            used_email_ids에 포함된 doc_id만 남긴 출처 목록.
+
+        부작용:
+            없음. 순수 필터링입니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 입력 유효성 및 허용 doc_id 집합 계산
+        # -------------------------------------------------------------------------
         if not used_email_ids:
             return []
 
@@ -53,6 +82,9 @@ class AssistantChatService:
         if not used_set:
             return []
 
+        # -------------------------------------------------------------------------
+        # 2) 허용된 doc_id만 필터링
+        # -------------------------------------------------------------------------
         return [
             entry
             for entry in sources
@@ -68,11 +100,22 @@ class AssistantChatService:
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """LLM segment 목록을 기반으로 segment별 출처와 전체 출처를 계산합니다.
 
+        인자:
+            sources: 원본 출처 목록.
+            segments: LLM 구조화 응답의 segment 목록.
+
         반환:
-          - segments: [{"reply": str, "sources": list[dict]}]
-          - sources: 전체 segment에서 사용된 출처(중복 제거)
+            (segments, sources) 튜플.
+            - segments: [{"reply": str, "sources": list[dict]}] (세그먼트별 응답/출처)
+            - sources: 전체 segment에서 사용된 출처(중복 제거)
+
+        부작용:
+            없음. 순수 계산입니다.
         """
 
+        # -------------------------------------------------------------------------
+        # 1) 허용 doc_id 집합 계산
+        # -------------------------------------------------------------------------
         allowed_ids = {
             entry.get("doc_id").strip()
             for entry in sources
@@ -84,6 +127,9 @@ class AssistantChatService:
         normalized_segments: List[Dict[str, Any]] = []
         used_ids_union: List[str] = []
 
+        # -------------------------------------------------------------------------
+        # 2) segment별 출처 필터링
+        # -------------------------------------------------------------------------
         for segment in segments:
             used_ids = [email_id for email_id in segment.used_email_ids if email_id in allowed_ids]
             if not used_ids:
@@ -104,6 +150,9 @@ class AssistantChatService:
                 if email_id not in used_ids_union:
                     used_ids_union.append(email_id)
 
+        # -------------------------------------------------------------------------
+        # 3) 전체 출처 집합 생성
+        # -------------------------------------------------------------------------
         filtered_sources = self._filter_sources_by_used_email_ids(sources, used_ids_union)
         return normalized_segments, filtered_sources
 
@@ -115,15 +164,39 @@ class AssistantChatService:
         sources: Optional[List[Dict[str, Any]]] = None,
         rag_response: Optional[Dict[str, Any]] = None,
     ) -> AssistantChatResult:
+        """더미 모드 응답을 생성합니다.
+
+        인자:
+            question: 사용자 질문 문자열.
+            contexts: 더미 컨텍스트 목록(없으면 기본값 사용).
+            sources: 더미 출처 목록.
+            rag_response: 더미 RAG 응답(raw).
+
+        반환:
+            AssistantChatResult 더미 응답.
+
+        부작용:
+            더미 지연(delay) 설정에 따라 sleep이 발생할 수 있습니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 컨텍스트/응답 문자열 준비
+        # -------------------------------------------------------------------------
         resolved_contexts = contexts or list(self.config.dummy_contexts)
         trimmed_contexts = resolved_contexts[: max(1, self.config.rag_num_docs)] if resolved_contexts else []
         reply_template = self.config.dummy_reply or ""
         reply = reply_template.replace("{question}", question)
 
+        # -------------------------------------------------------------------------
+        # 2) 더미 지연 처리
+        # -------------------------------------------------------------------------
         delay_ms = max(0, int(self.config.dummy_delay_ms))
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
 
+        # -------------------------------------------------------------------------
+        # 3) 결과 DTO 반환
+        # -------------------------------------------------------------------------
         return AssistantChatResult(
             reply=reply,
             contexts=trimmed_contexts,
@@ -150,9 +223,33 @@ class AssistantChatService:
         headers: Dict[str, str],
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
+        """POST 요청을 수행하고 JSON 응답을 반환합니다.
+
+        인자:
+            session: requests 세션.
+            url: 요청 URL.
+            headers: 요청 헤더.
+            payload: JSON 바디.
+
+        반환:
+            응답 JSON dict.
+
+        부작용:
+            외부 HTTP 요청이 발생합니다.
+
+        오류:
+            요청/응답 오류는 AssistantRequestError로 래핑됩니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) HTTP 요청 및 상태 코드 검증
+        # -------------------------------------------------------------------------
         try:
             resp = session.post(url, headers=headers, json=payload, timeout=self.config.request_timeout)
             resp.raise_for_status()
+            # ---------------------------------------------------------------------
+            # 2) JSON 응답 파싱
+            # ---------------------------------------------------------------------
             try:
                 return resp.json()
             except (json.JSONDecodeError, ValueError) as exc:
@@ -160,6 +257,9 @@ class AssistantChatService:
                     f"응답을 JSON 으로 파싱하는데 실패했습니다. (url={url}, status={resp.status_code}, text={resp.text[:500]!r})"
                 ) from exc
 
+        # -------------------------------------------------------------------------
+        # 3) HTTP/네트워크 오류 변환
+        # -------------------------------------------------------------------------
         except requests.HTTPError as exc:
             status = resp.status_code if "resp" in locals() else "unknown"
             text_preview = getattr(resp, "text", "")[:500]
@@ -169,6 +269,21 @@ class AssistantChatService:
             raise AssistantRequestError(f"요청 중 오류 발생 (url={url}): {exc}") from exc
 
     def _extract_sources(self, hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """RAG 검색 hits에서 출처 정보를 추출합니다.
+
+        인자:
+            hits: RAG 검색 결과 hits 목록.
+
+        반환:
+            {"doc_id","title","snippet"} 형태의 출처 목록.
+
+        부작용:
+            없음. 순수 추출입니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) hits 순회 및 출처 필드 추출
+        # -------------------------------------------------------------------------
         sources: List[Dict[str, Any]] = []
         for hit in hits:
             if not isinstance(hit, dict):
@@ -201,12 +316,36 @@ class AssistantChatService:
         permission_groups: Optional[Sequence[str]] = None,
         rag_index_names: Optional[Sequence[str]] = None,
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+        """RAG에서 문서를 검색하고 컨텍스트/출처 목록을 반환합니다.
+
+        인자:
+            session: requests 세션.
+            question: 질문 문자열.
+            permission_groups: 권한 그룹 목록.
+            rag_index_names: 사용할 RAG 인덱스 목록.
+
+        반환:
+            (documents, rag_response, sources) 튜플.
+
+        부작용:
+            외부 RAG API 호출이 발생합니다.
+
+        오류:
+            RAG 호출 실패/응답 오류는 AssistantRequestError로 변환됩니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 인덱스/URL 유효성 확인
+        # -------------------------------------------------------------------------
         target_indexes = rag_services.resolve_rag_index_names(
             rag_index_names if rag_index_names is not None else self.config.rag_index_names
         )
         if not rag_services.RAG_SEARCH_URL or not target_indexes:
             return [], None, []
 
+        # -------------------------------------------------------------------------
+        # 2) RAG 검색 요청
+        # -------------------------------------------------------------------------
         try:
             search_kwargs: Dict[str, Any] = {
                 "index_name": target_indexes,
@@ -227,6 +366,9 @@ class AssistantChatService:
         except (json.JSONDecodeError, ValueError) as exc:
             raise AssistantRequestError(f"RAG 응답 처리 실패: {exc}") from exc
 
+        # -------------------------------------------------------------------------
+        # 3) hits 파싱
+        # -------------------------------------------------------------------------
         hits = data.get("hits", {}).get("hits", [])
         if not isinstance(hits, list):
             return [], data, []
@@ -257,14 +399,37 @@ class AssistantChatService:
             else:
                 documents.append(merged_clean)
 
+        # -------------------------------------------------------------------------
+        # 4) 출처 목록 추출
+        # -------------------------------------------------------------------------
         sources = self._extract_sources(hits)
         return documents, data, sources
 
     def _generate_llm_payload(self, question: str, contexts: List[str], *, email_ids: List[str]) -> Dict[str, Any]:
+        """LLM 호출용 payload를 구성합니다.
+
+        인자:
+            question: 사용자 질문 문자열.
+            contexts: RAG에서 얻은 컨텍스트 목록.
+            email_ids: 컨텍스트에 포함된 emailId 목록.
+
+        반환:
+            LLM API 요청 payload dict.
+
+        부작용:
+            없음. 순수 구성입니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 배경지식 여부 및 문자열 준비
+        # -------------------------------------------------------------------------
         has_background_knowledge = bool(contexts)
         context_str = "\n".join(contexts) if has_background_knowledge else NO_CONTEXT_MESSAGE
         email_id_list = "\n".join(f"- {email_id}" for email_id in email_ids) if email_ids else "- (없음)"
 
+        # -------------------------------------------------------------------------
+        # 2) 시스템/포맷/제약 메시지 구성
+        # -------------------------------------------------------------------------
         system_msg = {
             "role": "system",
             "content": self.config.system_message,
@@ -310,6 +475,10 @@ class AssistantChatService:
                 ]
             ),
         }
+
+        # -------------------------------------------------------------------------
+        # 3) 사용자 메시지 구성
+        # -------------------------------------------------------------------------
         user_msg = {
             "role": "user",
             "content": "\n".join(
@@ -322,6 +491,9 @@ class AssistantChatService:
             ),
         }
 
+        # -------------------------------------------------------------------------
+        # 4) payload 반환
+        # -------------------------------------------------------------------------
         payload: Dict[str, Any] = {
             "model": self.config.model,
             "messages": [system_msg, format_msg, constraints_msg, user_msg],
@@ -331,6 +503,24 @@ class AssistantChatService:
         return payload
 
     def _extract_llm_reply(self, resp_json: Dict[str, Any]) -> str:
+        """LLM 응답 JSON에서 content 문자열을 추출합니다.
+
+        인자:
+            resp_json: LLM 응답 JSON dict.
+
+        반환:
+            message.content 문자열.
+
+        부작용:
+            없음. 순수 추출입니다.
+
+        오류:
+            응답 포맷이 다르면 AssistantRequestError를 발생시킵니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 필수 필드 접근 및 검증
+        # -------------------------------------------------------------------------
         try:
             choices = resp_json["choices"]
             if not choices:
@@ -351,11 +541,36 @@ class AssistantChatService:
         sources: List[Dict[str, Any]],
         user_header_id: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
+        """LLM을 호출하고 답변/응답 JSON을 반환합니다.
+
+        인자:
+            session: requests 세션.
+            question: 질문 문자열.
+            contexts: 컨텍스트 목록.
+            sources: 출처 목록.
+            user_header_id: User-Id 헤더 값(옵션).
+
+        반환:
+            (reply, resp_json) 튜플.
+
+        부작용:
+            외부 LLM API 호출이 발생합니다.
+
+        오류:
+            설정 누락 또는 응답 오류 시 AssistantConfigError/AssistantRequestError를 발생시킵니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 필수 설정 검증
+        # -------------------------------------------------------------------------
         if not self.config.llm_url:
             raise AssistantConfigError("LLM URL 설정이 비어 있습니다.")
         if not self.config.llm_credential:
             raise AssistantConfigError("LLM 인증 토큰이 비어 있습니다.")
 
+        # -------------------------------------------------------------------------
+        # 2) 요청 헤더 구성
+        # -------------------------------------------------------------------------
         headers = {
             "Content-Type": "application/json",
             **self.config.llm_headers,
@@ -366,6 +581,9 @@ class AssistantChatService:
         if user_header_id:
             headers["User-Id"] = user_header_id
 
+        # -------------------------------------------------------------------------
+        # 3) emailId 목록/페이로드 구성 및 호출
+        # -------------------------------------------------------------------------
         email_ids: List[str] = []
         for entry in sources:
             if not isinstance(entry, dict):
@@ -386,10 +604,34 @@ class AssistantChatService:
         rag_index_names: Optional[Sequence[str]] = None,
         permission_groups: Optional[Sequence[str]] = None,
     ) -> AssistantChatResult:
+        """질문에 대한 어시스턴트 답변을 생성합니다.
+
+        인자:
+            question: 사용자 질문 문자열.
+            user_header_id: LLM 호출 시 User-Id 헤더 값(옵션).
+            rag_index_names: 사용할 RAG 인덱스 목록(옵션).
+            permission_groups: 검색 권한 그룹 목록(옵션).
+
+        반환:
+            AssistantChatResult 응답 DTO.
+
+        부작용:
+            외부 RAG/LLM API 호출이 발생할 수 있습니다.
+
+        오류:
+            질문이 비어 있거나 상위 호출 오류 시 AssistantRequestError를 발생시킵니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 질문 문자열 검증
+        # -------------------------------------------------------------------------
         normalized_question = question.strip()
         if not normalized_question:
             raise AssistantRequestError("질문이 비어 있습니다.")
 
+        # -------------------------------------------------------------------------
+        # 2) 더미 모드 처리
+        # -------------------------------------------------------------------------
         if self.config.use_dummy:
             if self.config.dummy_use_rag:
                 try:
@@ -426,6 +668,9 @@ class AssistantChatService:
             dummy_result.sources = filtered_sources
             return dummy_result
 
+        # -------------------------------------------------------------------------
+        # 3) RAG/LLM 호출
+        # -------------------------------------------------------------------------
         with requests.Session() as session:
             contexts, rag_response, sources = self._retrieve_documents(
                 session,
@@ -441,6 +686,9 @@ class AssistantChatService:
                 user_header_id=user_header_id,
             )
 
+        # -------------------------------------------------------------------------
+        # 4) 구조화 응답 파싱 및 결과 구성
+        # -------------------------------------------------------------------------
         answer, segments = _parse_structured_llm_reply(reply)
         if segments is None:
             return AssistantChatResult(

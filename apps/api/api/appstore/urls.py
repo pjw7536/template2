@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈 설명: appstore 도메인 라우팅을 제공합니다.
+# - 주요 경로: apps, apps/<id>, comments, like/view
+# - 불변 조건: 상위 URLConf에서 /api/v1/appstore/ 프리픽스를 제공합니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.urls import path

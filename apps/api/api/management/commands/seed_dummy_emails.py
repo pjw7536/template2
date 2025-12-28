@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: 로컬 개발용 더미 이메일 생성/등록 커맨드를 제공합니다.
+# - 주요 대상: seed_dummy_emails 관리 명령
+# - 불변 조건: 더미 RAG 엔드포인트가 활성화되어 있어야 합니다.
+# =============================================================================
+
+"""로컬 개발용 더미 이메일을 생성하고 RAG에 등록하는 커맨드.
+
+- 주요 대상: seed_dummy_emails 관리 명령
+- 주요 엔드포인트/클래스: Command
+- 가정/불변 조건: 더미 RAG 엔드포인트가 활성화되어 있음
+"""
 from __future__ import annotations
 
 import os
@@ -12,17 +24,48 @@ from api.emails.models import Email
 
 
 def _default_recipient() -> str:
-    """더미 메일 수신자 주소를 환경변수에서 읽어 기본값을 반환합니다."""
+    """더미 메일 수신자 주소를 환경변수에서 읽어 반환합니다.
+
+    입력:
+    - 없음
+
+    반환:
+    - str: 수신자 이메일 주소
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     return os.getenv("DUMMY_ADFS_EMAIL", "dummy.user@example.com")
 
 
 class Command(BaseCommand):
-    """로컬 개발용 더미 이메일을 생성하고 더미 RAG에 등록하는 커맨드입니다."""
+    """로컬 개발용 더미 이메일을 생성하고 더미 RAG에 등록합니다."""
 
     help = "Seed deterministic dummy emails for local dev and register them to the dummy RAG."
 
     def handle(self, *args: Any, **options: Any) -> None:
+        """더미 이메일을 생성/갱신하고 RAG 등록을 수행합니다.
+
+        입력:
+        - args/options: Django management command 인자
+
+        반환:
+        - 없음
+
+        부작용:
+        - Email 모델에 DB 쓰기
+        - RAG 등록 API 호출
+
+        오류:
+        - 없음(개별 실패는 로그로 수집)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 기본 값 및 샘플 데이터 준비
+        # -----------------------------------------------------------------------------
         now = timezone.now()
         recipient = _default_recipient()
         recipients = [recipient]
@@ -56,11 +99,17 @@ class Command(BaseCommand):
             },
         ]
 
+        # -----------------------------------------------------------------------------
+        # 2) 결과 카운터 초기화
+        # -----------------------------------------------------------------------------
         created = 0
         updated = 0
         rag_synced = 0
         rag_failures: List[str] = []
 
+        # -----------------------------------------------------------------------------
+        # 3) 샘플 업서트 및 RAG 등록
+        # -----------------------------------------------------------------------------
         for sample in samples:
             defaults = {
                 "subject": sample["subject"],
@@ -88,6 +137,9 @@ class Command(BaseCommand):
             except Exception as exc:
                 rag_failures.append(f"{email_obj.message_id}: {exc}")
 
+        # -----------------------------------------------------------------------------
+        # 4) 처리 결과 출력
+        # -----------------------------------------------------------------------------
         self.stdout.write(
             self.style.SUCCESS(
                 f"Seeded dummy emails - created: {created}, updated: {updated}, rag_synced: {rag_synced}"

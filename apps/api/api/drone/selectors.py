@@ -1,6 +1,9 @@
+# =============================================================================
+# 모듈: 드론 셀렉터
+# 주요 함수: list_early_inform_entries, list_drone_sop_jira_candidates, get_line_history_payload
+# 주요 가정: 읽기 전용 쿼리만 수행합니다.
+# =============================================================================
 from __future__ import annotations
-
-"""Read-only query helpers for the Drone feature (ORM + SQL mix)."""
 
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
@@ -29,8 +32,14 @@ from .models import DroneEarlyInform, DroneSOP, DroneSopJiraTemplate, DroneSopJi
 def list_early_inform_entries(*, line_id: str) -> QuerySet[DroneEarlyInform]:
     """조기 알림 설정을 라인 기준으로 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        line_id: 라인 ID.
+
+    반환:
+        DroneEarlyInform QuerySet(조기 알림 목록).
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
     return DroneEarlyInform.objects.filter(line_id=line_id).order_by("main_step", "id")
@@ -42,17 +51,26 @@ def list_drone_sop_jira_templates_by_line_ids(
 ) -> dict[str, str]:
     """line_id별 Jira 템플릿 키 맵을 조회합니다.
 
-    Returns:
-        {line_id: template_key}
+    인자:
+        line_ids: line_id 집합 또는 리스트.
 
-    Side effects:
-        None. Read-only query.
+    반환:
+        {line_id: template_key} 형태의 dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화
+    # -----------------------------------------------------------------------------
     normalized_lines = [line.strip() for line in line_ids if isinstance(line, str) and line.strip()]
     if not normalized_lines:
         return {}
 
+    # -----------------------------------------------------------------------------
+    # 2) 템플릿 조회 및 매핑 구성
+    # -----------------------------------------------------------------------------
     rows = DroneSopJiraTemplate.objects.filter(line_id__in=normalized_lines).values("line_id", "template_key")
     mapping: dict[str, str] = {}
     for row in rows:
@@ -73,13 +91,19 @@ def list_drone_sop_jira_templates_by_user_sdwt_prods(
 ) -> dict[str, str]:
     """user_sdwt_prod별 Jira 템플릿 키 맵을 조회합니다.
 
-    Returns:
-        {user_sdwt_prod: template_key}
+    인자:
+        user_sdwt_prod_values: user_sdwt_prod 집합 또는 리스트.
 
-    Side effects:
-        None. Read-only query.
+    반환:
+        {user_sdwt_prod: template_key} 형태의 dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화
+    # -----------------------------------------------------------------------------
     normalized_users = [
         user_sdwt_prod.strip()
         for user_sdwt_prod in user_sdwt_prod_values
@@ -88,6 +112,9 @@ def list_drone_sop_jira_templates_by_user_sdwt_prods(
     if not normalized_users:
         return {}
 
+    # -----------------------------------------------------------------------------
+    # 2) 템플릿 조회 및 매핑 구성
+    # -----------------------------------------------------------------------------
     rows = DroneSopJiraUserTemplate.objects.filter(user_sdwt_prod__in=normalized_users).values(
         "user_sdwt_prod",
         "template_key",
@@ -111,10 +138,16 @@ def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
     drone_early_inform(line_id, main_step) 설정을 account_affiliation(line, user_sdwt_prod)와 조인해,
     Drone SOP 수집 시 custom_end_step 계산에 사용할 캐시 dict를 구성합니다.
 
-    Side effects:
-        None. Read-only query.
+    반환:
+        {(user_sdwt_prod, main_step): custom_end_step} 형태의 dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 조기 알림 + 소속 매핑 조인 조회
+    # -----------------------------------------------------------------------------
     rows = run_query(
         """
         SELECT
@@ -127,6 +160,9 @@ def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
         """.format(table=LINE_SDWT_TABLE_NAME)
     )
 
+    # -----------------------------------------------------------------------------
+    # 2) 결과 매핑 구성
+    # -----------------------------------------------------------------------------
     mapping: dict[tuple[str, str], str | None] = {}
     for row in rows:
         user_sdwt_prod = row.get("user_sdwt_prod")
@@ -149,18 +185,30 @@ def list_drone_sop_jira_candidates(*, limit: int | None = None) -> list[dict[str
     """Jira 전송 대상 DroneSOP 로우를 조회합니다.
 
     조건:
-        - send_jira = 0
-        - needtosend = 1
-        - status = 'COMPLETE'
+        - send_jira = 0 (미전송)
+        - needtosend = 1 (전송 필요)
+        - status = 'COMPLETE' (완료 상태)
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        limit: 최대 조회 건수(옵션).
+
+    반환:
+        DroneSOP row dict 리스트.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 대상 쿼리 구성
+    # -----------------------------------------------------------------------------
     qs = DroneSOP.objects.filter(send_jira=0, needtosend=1, status="COMPLETE").order_by("id")
     if isinstance(limit, int) and limit > 0:
         qs = qs[:limit]
 
+    # -----------------------------------------------------------------------------
+    # 2) 필요한 컬럼만 반환
+    # -----------------------------------------------------------------------------
     fields = [
         "id",
         "line_id",
@@ -195,18 +243,31 @@ def load_drone_sop_ctttm_workorders_map(
 ) -> dict[int, list[dict[str, str]]]:
     """Drone SOP row id 목록에 대해 CTTTM 최신 workorder 정보를 조회합니다.
 
-    Returns:
-        { sop_id: [{"eqp_id": "...", "workorder_id": "...", "line_id": "..."}, ...], ... }
+    인자:
+        sop_ids: Drone SOP ID 목록.
+        ctttm_table: CTTTM 테이블명.
 
-    Side effects:
-        None. Read-only query.
+    반환:
+        {sop_id: [{"eqp_id": "...", "workorder_id": "...", "line_id": "..."}]} 형태의 dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
+
+    오류:
+        테이블명이 허용된 패턴이 아니면 ValueError를 발생시킵니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력/환경 검증
+    # -----------------------------------------------------------------------------
     if not sop_ids:
         return {}
     if connection.vendor != "postgresql":
         return {}
 
+    # -----------------------------------------------------------------------------
+    # 2) 테이블명/ID 정규화
+    # -----------------------------------------------------------------------------
     table_name = str(ctttm_table or "").strip()
     if not table_name:
         return {}
@@ -226,6 +287,9 @@ def load_drone_sop_ctttm_workorders_map(
 
     unique_ids = sorted(set(normalized_ids))
 
+    # -----------------------------------------------------------------------------
+    # 3) SQL 조회
+    # -----------------------------------------------------------------------------
     rows = run_query(
         """
         WITH RECURSIVE seq AS (
@@ -265,6 +329,9 @@ def load_drone_sop_ctttm_workorders_map(
         [unique_ids],
     )
 
+    # -----------------------------------------------------------------------------
+    # 4) 결과 매핑 구성
+    # -----------------------------------------------------------------------------
     mapping: dict[int, list[dict[str, str]]] = {}
     for row in rows:
         sop_id = row.get("sop_id")
@@ -297,8 +364,14 @@ def load_drone_sop_ctttm_workorders_map(
 def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:
     """라인 ID에 매핑되는 user_sdwt_prod 값을 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        line_id: 라인 ID.
+
+    반환:
+        user_sdwt_prod 문자열 리스트.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
     return _get_user_sdwt_prod_values(line_id)
@@ -307,8 +380,15 @@ def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:
 def get_affiliation_jira_key_for_line_and_sdwt(*, line_id: str, user_sdwt_prod: str) -> str | None:
     """line_id + user_sdwt_prod 조합의 Jira project key를 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        line_id: 라인 ID.
+        user_sdwt_prod: 사용자 소속 값.
+
+    반환:
+        Jira project key 문자열 또는 None.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
     return account_selectors.get_affiliation_jira_key(
@@ -324,8 +404,15 @@ def list_affiliation_jira_keys_by_line_and_sdwt(
 ) -> dict[tuple[str, str], str | None]:
     """line_id + user_sdwt_prod 조합별 Jira project key 맵을 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        line_ids: line_id 집합 또는 리스트.
+        user_sdwt_prod_values: user_sdwt_prod 집합 또는 리스트.
+
+    반환:
+        {(line_id, user_sdwt_prod): jira_key} 형태의 dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
     return account_selectors.list_affiliation_jira_keys_by_line_and_sdwt(
@@ -337,13 +424,25 @@ def list_affiliation_jira_keys_by_line_and_sdwt(
 def list_line_ids_for_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:
     """user_sdwt_prod에 매핑되는 line_id 목록을 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        user_sdwt_prod: 사용자 소속 값.
+
+    반환:
+        line_id 문자열 리스트.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 검증
+    # -----------------------------------------------------------------------------
     if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
         return []
 
+    # -----------------------------------------------------------------------------
+    # 2) 쿼리 실행 및 결과 정리
+    # -----------------------------------------------------------------------------
     rows = run_query(
         """
         SELECT DISTINCT line AS line_id
@@ -365,8 +464,11 @@ def list_line_ids_for_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:
 def list_distinct_line_ids() -> list[str]:
     """사이드바 필터용 line_id 고유값 목록을 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    반환:
+        line_id 문자열 리스트.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
     """
 
     rows = run_query(
@@ -385,17 +487,36 @@ def list_distinct_line_ids() -> list[str]:
 
 
 def _normalize_bucket_value(value: Any) -> Optional[str]:
-    """날짜/시간 버킷 값을 ISO-like 문자열로 정규화합니다."""
+    """날짜/시간 버킷 값을 ISO-like 문자열로 정규화합니다.
 
+    인자:
+        value: datetime/date/str/기타 입력.
+
+    반환:
+        ISO-like 문자열 또는 None.
+
+    부작용:
+        없음. 순수 정규화입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) None 처리
+    # -----------------------------------------------------------------------------
     if value is None:
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) datetime/date 타입 처리
+    # -----------------------------------------------------------------------------
     if isinstance(value, datetime):
         return value.replace(minute=0, second=0, microsecond=0).isoformat()
 
     if isinstance(value, date):
         return datetime.combine(value, datetime.min.time()).isoformat()
 
+    # -----------------------------------------------------------------------------
+    # 3) 문자열 처리 및 ISO 변환 시도
+    # -----------------------------------------------------------------------------
     if isinstance(value, str):
         cleaned = value.strip()
         if not cleaned:
@@ -425,10 +546,27 @@ def get_line_history_payload(
 ) -> dict[str, Any]:
     """라인 대시보드 차트용 시간 단위 합계/분해 집계를 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    인자:
+        table_param: 테이블 파라미터.
+        line_id_param: 라인 ID 파라미터.
+        from_param: 시작 날짜 파라미터.
+        to_param: 종료 날짜 파라미터.
+        range_days_param: 기간 일수 파라미터.
+        default_range_days: 기본 기간 일수.
+
+    반환:
+        라인 히스토리 집계 payload dict.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
+
+    오류:
+        테이블/컬럼 검증 실패 시 ValueError/LookupError가 발생할 수 있습니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 날짜/라인 파라미터 정규화
+    # -----------------------------------------------------------------------------
     from_value = normalize_date_only(from_param)
     to_value = normalize_date_only(to_param)
     normalized_line_id = normalize_line_id(line_id_param)
@@ -450,6 +588,9 @@ def get_line_history_payload(
     if from_value and to_value:
         from_value, to_value = ensure_date_bounds(from_value, to_value)
 
+    # -----------------------------------------------------------------------------
+    # 2) 테이블 스키마/컬럼 해석
+    # -----------------------------------------------------------------------------
     schema = resolve_table_schema(
         table_param,
         default_table=DEFAULT_TABLE,
@@ -466,6 +607,9 @@ def get_line_history_payload(
         if (resolved := find_column(column_names, candidate))
     }
 
+    # -----------------------------------------------------------------------------
+    # 3) WHERE 절 구성
+    # -----------------------------------------------------------------------------
     line_filter_result = build_line_filters(column_names, normalized_line_id)
     where_clause, query_params = _build_where_clause(
         timestamp_column,
@@ -475,12 +619,18 @@ def get_line_history_payload(
         to_value,
     )
 
+    # -----------------------------------------------------------------------------
+    # 4) 합계(총합) 조회
+    # -----------------------------------------------------------------------------
     totals_rows = run_query(
         _build_totals_query(table_name, timestamp_column, send_jira_column, where_clause),
         query_params,
     )
     totals = [_normalize_daily_row(row) for row in totals_rows]
 
+    # -----------------------------------------------------------------------------
+    # 5) 분해(차원별) 조회
+    # -----------------------------------------------------------------------------
     breakdowns: Dict[str, List[Dict[str, Any]]] = {}
     for dimension_key, column_name in dimension_columns.items():
         rows = run_query(
@@ -495,6 +645,9 @@ def get_line_history_payload(
         )
         breakdowns[dimension_key] = [_normalize_breakdown_row(row) for row in rows]
 
+    # -----------------------------------------------------------------------------
+    # 6) 응답 payload 구성
+    # -----------------------------------------------------------------------------
     return {
         "table": table_name,
         "from": from_value,
@@ -514,13 +667,38 @@ def _build_where_clause(
     from_value: Optional[str],
     to_value: Optional[str],
 ) -> tuple[str, List[Any]]:
+    """라인/날짜 조건을 합쳐 WHERE 절을 구성합니다.
+
+    인자:
+        timestamp_column: 타임스탬프 컬럼명.
+        line_filters: 라인 필터 조건 문자열 목록.
+        line_params: 라인 필터 바인드 파라미터 목록.
+        from_value: 시작 날짜(ISO).
+        to_value: 종료 날짜(ISO).
+
+    반환:
+        (where_clause, params) 튜플.
+
+    부작용:
+        없음. 순수 문자열/파라미터 구성입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 기본 조건/파라미터 구성
+    # -----------------------------------------------------------------------------
     conditions = list(line_filters)
     params = list(line_params)
 
+    # -----------------------------------------------------------------------------
+    # 2) 날짜 조건 추가
+    # -----------------------------------------------------------------------------
     date_conditions, date_params = build_date_range_filters(timestamp_column, from_value, to_value)
     conditions.extend(date_conditions)
     params.extend(date_params)
 
+    # -----------------------------------------------------------------------------
+    # 3) WHERE 절 문자열 생성
+    # -----------------------------------------------------------------------------
     clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return clause, params
 
@@ -531,6 +709,24 @@ def _build_totals_query(
     send_jira_column: Optional[str],
     where_clause: str,
 ) -> str:
+    """시간 단위 합계 쿼리를 생성합니다.
+
+    인자:
+        table_name: 대상 테이블명.
+        timestamp_column: 타임스탬프 컬럼명.
+        send_jira_column: send_jira 컬럼명(없으면 None).
+        where_clause: WHERE 절 문자열.
+
+    반환:
+        SQL 문자열.
+
+    부작용:
+        없음. 순수 문자열 생성입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) SELECT 컬럼 구성
+    # -----------------------------------------------------------------------------
     bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
     totals_select = [f"{bucket_expr} AS bucket", "COUNT(*) AS row_count"]
     if send_jira_column:
@@ -540,6 +736,9 @@ def _build_totals_query(
     else:
         totals_select.append("0 AS send_jira_count")
 
+    # -----------------------------------------------------------------------------
+    # 2) SQL 문자열 반환
+    # -----------------------------------------------------------------------------
     return """
         SELECT {select_clause}
         FROM {table}
@@ -560,6 +759,25 @@ def _build_breakdown_query(
     send_jira_column: Optional[str],
     where_clause: str,
 ) -> str:
+    """시간 단위 분해(차원별) 쿼리를 생성합니다.
+
+    인자:
+        table_name: 대상 테이블명.
+        timestamp_column: 타임스탬프 컬럼명.
+        dimension_column: 분해 기준 컬럼명.
+        send_jira_column: send_jira 컬럼명(없으면 None).
+        where_clause: WHERE 절 문자열.
+
+    반환:
+        SQL 문자열.
+
+    부작용:
+        없음. 순수 문자열 생성입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) SELECT 컬럼 구성
+    # -----------------------------------------------------------------------------
     bucket_expr = f"DATE_TRUNC('hour', {timestamp_column})"
     select_parts = [
         f"{bucket_expr} AS bucket",
@@ -574,6 +792,9 @@ def _build_breakdown_query(
     else:
         select_parts.append("0 AS send_jira_count")
 
+    # -----------------------------------------------------------------------------
+    # 2) SQL 문자열 반환
+    # -----------------------------------------------------------------------------
     return """
         SELECT {select_clause}
         FROM {table}
@@ -588,6 +809,21 @@ def _build_breakdown_query(
 
 
 def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """합계 row를 응답 형식으로 정규화합니다.
+
+    인자:
+        row: 원본 row dict.
+
+    반환:
+        정규화된 합계 dict.
+
+    부작용:
+        없음. 순수 변환입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 버킷/카운트 정규화
+    # -----------------------------------------------------------------------------
     date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
     return {
         "date": date_str,
@@ -597,8 +833,26 @@ def _normalize_daily_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _normalize_breakdown_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """분해 row를 응답 형식으로 정규화합니다.
+
+    인자:
+        row: 원본 row dict.
+
+    반환:
+        정규화된 분해 dict.
+
+    부작용:
+        없음. 순수 변환입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 날짜 버킷 정규화
+    # -----------------------------------------------------------------------------
     date_str = _normalize_bucket_value(row.get("bucket") or row.get("day") or row.get("date"))
 
+    # -----------------------------------------------------------------------------
+    # 2) 카테고리 정규화
+    # -----------------------------------------------------------------------------
     category = row.get("category") or row.get("dimension") or "Unspecified"
     if not isinstance(category, str) or not category.strip():
         category = "Unspecified"

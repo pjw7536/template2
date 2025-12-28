@@ -1,4 +1,4 @@
-"""FastAPI app assembly (routers + shared state)."""
+"""FastAPI 앱 구성(라우터 + 공용 상태) 모듈입니다."""
 
 from __future__ import annotations
 

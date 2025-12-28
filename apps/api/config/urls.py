@@ -1,4 +1,4 @@
-"""URL configuration for the Django backend."""
+"""Django 백엔드 URL 설정입니다."""
 from __future__ import annotations
 
 from django.contrib import admin

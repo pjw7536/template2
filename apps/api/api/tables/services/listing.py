@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: tables 조회 payload 구성 로직을 제공합니다.
+# - 주요 함수: get_table_list_payload
+# - 불변 조건: recentHours 규칙과 날짜 범위를 준수합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -15,6 +21,9 @@ from api.common.utils import (
 from .. import selectors
 from .utils import _raise_if_table_missing
 
+# =============================================================================
+# 상수: recentHours 기본/범위 설정
+# =============================================================================
 RECENT_HOURS_MIN = 0
 RECENT_HOURS_DAY_STEP = 24
 RECENT_HOURS_DAY_MODE_MIN_DAYS = 2
@@ -27,12 +36,31 @@ RECENT_FUTURE_TOLERANCE_MINUTES = 5
 
 
 def _snap_recent_hours(value: int) -> int:
-    """recentHours 값을 허용 범위/단위(일 단위)로 스냅(보정)합니다."""
+    """recentHours 값을 허용 범위/단위(일 단위)로 스냅(보정)합니다.
 
+    입력:
+    - value: recentHours 입력 값
+
+    반환:
+    - int: 보정된 recentHours 값
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 범위 클램프
+    # -----------------------------------------------------------------------------
     clamped = max(RECENT_HOURS_MIN, min(value, RECENT_HOURS_MAX))
     if clamped <= RECENT_HOURS_DAY_MODE_THRESHOLD:
         return clamped
 
+    # -----------------------------------------------------------------------------
+    # 2) 일 단위 스냅 및 상한/하한 보정
+    # -----------------------------------------------------------------------------
     days = (clamped + RECENT_HOURS_DAY_STEP - 1) // RECENT_HOURS_DAY_STEP
     bounded_days = max(
         RECENT_HOURS_DAY_MODE_MIN_DAYS,
@@ -42,20 +70,59 @@ def _snap_recent_hours(value: int) -> int:
 
 
 def _clamp_recent_hours(value: Any, fallback: int) -> int:
-    """입력값을 정수로 파싱해 recentHours 규칙에 맞게 보정합니다."""
+    """입력값을 정수로 파싱해 recentHours 규칙에 맞게 보정합니다.
 
+    입력:
+    - value: recentHours 후보 값
+    - fallback: 파싱 실패 시 기본값
+
+    반환:
+    - int: 보정된 recentHours 값
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 정수 파싱 시도
+    # -----------------------------------------------------------------------------
     try:
         numeric = int(value)
     except (TypeError, ValueError):
         numeric = fallback
+    # -----------------------------------------------------------------------------
+    # 2) 스냅 규칙 적용
+    # -----------------------------------------------------------------------------
     return _snap_recent_hours(numeric)
 
 
 def _resolve_recent_hours_range(params: Mapping[str, Any]) -> tuple[int, int]:
-    """쿼리 파라미터에서 recentHoursStart/End 범위를 계산합니다."""
+    """쿼리 파라미터에서 recentHoursStart/End 범위를 계산합니다.
 
+    입력:
+    - params: 요청 파라미터 맵
+
+    반환:
+    - tuple[int, int]: (recentHoursStart, recentHoursEnd) (조회 범위)
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) start/end 파싱
+    # -----------------------------------------------------------------------------
     start = _clamp_recent_hours(params.get("recentHoursStart"), RECENT_HOURS_DEFAULT_START)
     end = _clamp_recent_hours(params.get("recentHoursEnd"), RECENT_HOURS_DEFAULT_END)
+    # -----------------------------------------------------------------------------
+    # 2) 역전 보정
+    # -----------------------------------------------------------------------------
     if start < end:
         start = end
     return start, end
@@ -64,24 +131,37 @@ def _resolve_recent_hours_range(params: Mapping[str, Any]) -> tuple[int, int]:
 def get_table_list_payload(*, params: Mapping[str, Any]) -> dict[str, Any]:
     """테이블 조회 결과를 응답 payload로 구성합니다.
 
-    Args:
-        params: request.GET 기반 파라미터 맵.
+    입력:
+    - params: request.GET 기반 파라미터 맵
 
-    Returns:
-        테이블 조회 응답 payload.
+    반환:
+    - dict[str, Any]: 테이블 조회 응답 payload
 
-    Side effects:
-        None. Read-only query.
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - TableNotFoundError: 테이블이 없을 때
+    - LookupError/ValueError: 컬럼/입력 오류
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 날짜/라인/최근 범위 파라미터 정규화
+    # -----------------------------------------------------------------------------
     from_param = normalize_date_only(params.get("from"))
     to_param = normalize_date_only(params.get("to"))
     normalized_line_id = normalize_line_id(params.get("lineId"))
     recent_hours_start, recent_hours_end = _resolve_recent_hours_range(params)
 
+    # -----------------------------------------------------------------------------
+    # 2) 날짜 범위 역전 보정
+    # -----------------------------------------------------------------------------
     if from_param and to_param:
         from_param, to_param = ensure_date_bounds(from_param, to_param)
 
+    # -----------------------------------------------------------------------------
+    # 3) 테이블 스키마/컬럼 정보 조회
+    # -----------------------------------------------------------------------------
     from api.tables import services as table_services
 
     schema = table_services.resolve_table_schema(
@@ -93,6 +173,9 @@ def get_table_list_payload(*, params: Mapping[str, Any]) -> dict[str, Any]:
     column_names = schema.columns
     base_ts_col = schema.timestamp_column
 
+    # -----------------------------------------------------------------------------
+    # 4) 필터/파라미터 구성
+    # -----------------------------------------------------------------------------
     line_filter_result = build_line_filters(column_names, normalized_line_id)
     where_parts = list(line_filter_result["filters"])
     query_params = list(line_filter_result["params"])
@@ -110,9 +193,15 @@ def get_table_list_payload(*, params: Mapping[str, Any]) -> dict[str, Any]:
     where_parts.extend(date_conditions)
     query_params.extend(date_params)
 
+    # -----------------------------------------------------------------------------
+    # 5) SQL WHERE/ORDER 구성
+    # -----------------------------------------------------------------------------
     where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
     order_clause = f"ORDER BY {base_ts_col} DESC, id DESC"
 
+    # -----------------------------------------------------------------------------
+    # 6) SQL 실행 및 테이블 누락 보정
+    # -----------------------------------------------------------------------------
     try:
         rows = selectors.fetch_rows(
             sql=(
@@ -125,10 +214,13 @@ def get_table_list_payload(*, params: Mapping[str, Any]) -> dict[str, Any]:
             ).format(table=table_name, where_clause=where_clause, order_clause=order_clause),
             params=query_params,
         )
-    except Exception as exc:  # pragma: no cover - defensive handling
+    except Exception as exc:  # 방어적 처리(커버리지 제외): pragma: no cover
         _raise_if_table_missing(exc, table_name)
         raise
 
+    # -----------------------------------------------------------------------------
+    # 7) 응답 페이로드 반환
+    # -----------------------------------------------------------------------------
     return {
         "table": table_name,
         "cutoff": (

@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: 이메일 조회용 쿼리 파라미터를 정규화합니다.
+# - 주요 함수: parse_int, parse_datetime_value, build_email_filters
+# - 불변 조건: 날짜는 timezone-aware(UTC)로 정규화됩니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,10 +16,20 @@ from django.utils.dateparse import parse_date, parse_datetime
 def parse_int(value: Any, default: int) -> int:
     """입력 값을 정수로 파싱하고 실패/0 이하일 때 기본값을 반환합니다.
 
-    Side effects:
-        None. Pure parsing.
+    입력:
+        value: 정수로 변환할 값.
+        default: 변환 실패 또는 0 이하일 때 사용할 기본값.
+    반환:
+        유효한 양의 정수 또는 기본값.
+    부작용:
+        없음.
+    오류:
+        변환 실패 시 기본값 반환.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 정수 변환 및 범위 확인
+    # -----------------------------------------------------------------------------
     try:
         parsed = int(value)
         if parsed <= 0:
@@ -26,15 +42,28 @@ def parse_int(value: Any, default: int) -> int:
 def parse_datetime_value(value: str | None) -> datetime | None:
     """날짜/일시 문자열을 timezone-aware datetime(UTC)으로 파싱합니다.
 
-    Side effects:
-        None. Pure parsing.
+    입력:
+        value: ISO 날짜/시간 문자열 또는 None.
+    반환:
+        timezone-aware datetime 또는 None.
+    부작용:
+        없음.
+    오류:
+        파싱 실패 시 None 반환.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) datetime 파싱 우선 시도
+    # -----------------------------------------------------------------------------
     if not value:
         return None
     dt = parse_datetime(value)
     if dt:
         return dt
+
+    # -----------------------------------------------------------------------------
+    # 2) date 단독 입력 처리
+    # -----------------------------------------------------------------------------
     date_only = parse_date(value)
     if date_only:
         return datetime.combine(date_only, datetime.min.time(), tzinfo=timezone.utc)
@@ -44,10 +73,19 @@ def parse_datetime_value(value: str | None) -> datetime | None:
 def parse_mailbox_user_sdwt_prod(params: Mapping[str, Any]) -> str:
     """요청 쿼리에서 mailbox(user_sdwt_prod) 값을 추출/정규화합니다.
 
-    Side effects:
-        None. Pure parsing.
+    입력:
+        params: 요청 쿼리 매핑.
+    반환:
+        정규화된 user_sdwt_prod 문자열(없으면 빈 문자열).
+    부작용:
+        없음.
+    오류:
+        없음.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) snake_case/camelCase 키 모두 허용
+    # -----------------------------------------------------------------------------
     raw = params.get("user_sdwt_prod") or params.get("userSdwtProd") or ""
     return raw.strip() if isinstance(raw, str) else ""
 
@@ -57,10 +95,21 @@ def build_email_filters(
 ) -> Dict[str, Any]:
     """이메일 목록 필터 값을 일관되게 정규화합니다.
 
-    Side effects:
-        None. Pure normalization.
+    입력:
+        params: 요청 쿼리 매핑.
+        default_page_size: 기본 페이지 크기.
+        max_page_size: 최대 페이지 크기 상한.
+    반환:
+        필터 dict (mailbox_user_sdwt_prod, search, sender, recipient, date_from/date_to, page, page_size).
+    부작용:
+        없음.
+    오류:
+        없음.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 파라미터 정규화
+    # -----------------------------------------------------------------------------
     return {
         "mailbox_user_sdwt_prod": parse_mailbox_user_sdwt_prod(params),
         "search": (params.get("q") or "").strip(),

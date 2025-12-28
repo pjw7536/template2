@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: 어시스턴트 기능 테스트
+# 주요 대상: RAG 인덱스 조회, 채팅 권한 검증, 응답/정규화 처리
+# 주요 가정: 외부 호출은 mock으로 대체합니다.
+# =============================================================================
 from __future__ import annotations
 
 import json
@@ -14,7 +19,10 @@ from api.rag import services as rag_services
 
 
 class AssistantRagIndexViewsTests(TestCase):
+    """RAG 인덱스/권한 그룹 API 동작을 검증합니다."""
+
     def setUp(self) -> None:
+        """테스트용 사용자/권한 데이터를 준비합니다."""
         User = get_user_model()
         self.user = User.objects.create_user(
             sabun="S90000",
@@ -28,6 +36,7 @@ class AssistantRagIndexViewsTests(TestCase):
         UserSdwtProdAccess.objects.create(user=self.user, user_sdwt_prod="group-b", can_manage=False)
 
     def test_rag_index_list_returns_accessible_user_sdwt_prods(self) -> None:
+        """접근 가능한 user_sdwt_prod가 응답에 포함되는지 확인합니다."""
         self.client.force_login(self.user)
 
         response = self.client.get("/api/v1/assistant/rag-indexes")
@@ -47,6 +56,7 @@ class AssistantRagIndexViewsTests(TestCase):
         )
 
     def test_chat_accepts_accessible_user_sdwt_prod_override(self) -> None:
+        """접근 가능한 permission_groups override가 허용되는지 확인합니다."""
         self.client.force_login(self.user)
 
         with patch("api.assistant.views.assistant_chat_service.generate_reply") as mocked_generate:
@@ -77,6 +87,7 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertEqual(kwargs.get("rag_index_names"), [default_index])
 
     def test_chat_rejects_inaccessible_user_sdwt_prod_override(self) -> None:
+        """접근 불가능한 permission_groups override는 거부되는지 확인합니다."""
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -90,6 +101,7 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertIn("error", payload)
 
     def test_rag_index_list_returns_all_known_user_sdwt_prods_for_superuser(self) -> None:
+        """슈퍼유저는 모든 user_sdwt_prod가 노출되는지 확인합니다."""
         User = get_user_model()
         superuser = User.objects.create_superuser(
             sabun="S90001",
@@ -132,6 +144,7 @@ class AssistantRagIndexViewsTests(TestCase):
         )
 
     def test_chat_accepts_user_sdwt_prod_override_for_superuser(self) -> None:
+        """슈퍼유저는 permission_groups override가 허용되는지 확인합니다."""
         User = get_user_model()
         superuser = User.objects.create_superuser(
             sabun="S90001",
@@ -180,7 +193,10 @@ class AssistantRagIndexViewsTests(TestCase):
 
 
 class AssistantChatServiceSourceFilteringTests(TestCase):
+    """LLM 응답/출처 필터링 동작을 검증합니다."""
+
     def test_generate_llm_payload_sets_temperature_zero_when_background_knowledge_exists(self) -> None:
+        """배경지식이 있으면 temperature가 0으로 설정되는지 확인합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
@@ -199,6 +215,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(payload_without_context.get("temperature"), 0.7)
 
     def test_generate_reply_builds_segments_and_filters_sources(self) -> None:
+        """segments 기반 출처 필터링이 올바른지 확인합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
@@ -242,6 +259,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual([entry["doc_id"] for entry in result.sources], ["E1", "E2"])
 
     def test_generate_reply_hides_sources_on_unparseable_reply(self) -> None:
+        """파싱 불가 응답일 때 출처가 숨겨지는지 확인합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
@@ -261,6 +279,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(result.segments, [])
 
     def test_generate_reply_treats_empty_segments_as_no_sources(self) -> None:
+        """segments가 비어 있으면 출처가 비워지는지 확인합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
@@ -280,6 +299,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(result.segments, [])
 
     def test_generate_reply_supports_legacy_used_email_ids_format(self) -> None:
+        """레거시 usedEmailIds 포맷을 처리하는지 확인합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
@@ -309,14 +329,19 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
 
 
 class AssistantNormalizationTests(TestCase):
+    """정규화 유틸 동작을 검증합니다."""
+
     def test_normalize_room_id_defaults_to_default(self) -> None:
+        """room_id가 비면 기본값으로 대체되는지 확인합니다."""
         self.assertEqual(assistant_services.normalize_room_id(None), "default")
         self.assertEqual(assistant_services.normalize_room_id(""), "default")
 
     def test_normalize_room_id_sanitizes(self) -> None:
+        """room_id가 허용 문자로 정규화되는지 확인합니다."""
         self.assertEqual(assistant_services.normalize_room_id(" room$% "), "room--")
 
     def test_normalize_sources_dedupes(self) -> None:
+        """normalize_sources가 doc_id 기준으로 중복 제거하는지 확인합니다."""
         sources = [
             {"doc_id": "DOC1", "title": "T1", "snippet": "S1"},
             {"docId": "DOC1", "title": "T1b", "snippet": "S1b"},

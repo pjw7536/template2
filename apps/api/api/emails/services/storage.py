@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: 이메일 저장/압축 유틸을 제공합니다.
+# - 주요 함수: gzip_body, save_parsed_email
+# - 불변 조건: message_id는 중복 방지 키로 사용됩니다.
+# =============================================================================
+
 from __future__ import annotations
 
 import gzip
@@ -13,8 +19,21 @@ from .utils import _build_participants_search, _normalize_participants
 
 
 def gzip_body(body_html: str | None) -> bytes | None:
-    """HTML 문자열을 gzip 압축하여 BinaryField에 저장 가능하도록 변환."""
+    """HTML 문자열을 gzip 압축하여 BinaryField 저장 형식으로 변환합니다.
 
+    입력:
+        body_html: HTML 문자열 또는 None.
+    반환:
+        gzip 압축 바이트 또는 None.
+    부작용:
+        없음.
+    오류:
+        없음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 입력 검증 및 압축 수행
+    # -----------------------------------------------------------------------------
     if not body_html:
         return None
     return gzip.compress(body_html.encode("utf-8"))
@@ -35,14 +54,37 @@ def save_parsed_email(
     body_html: str | None,
     body_text: str | None,
 ) -> Email:
-    """POP3 파서에서 호출하는 저장 함수 (message_id 중복 방지)."""
+    """POP3 파서에서 호출하는 저장 함수입니다(message_id 중복 방지).
 
+    입력:
+        message_id: 이메일 고유 식별자.
+        received_at: 수신 시각(없으면 현재 시각).
+        subject/sender/sender_id: 제목/발신자 정보.
+        recipient/cc: 수신/참조 목록.
+        user_sdwt_prod: 메일함 식별자.
+        classification_source: 분류 출처 코드.
+        rag_index_status: RAG 인덱싱 상태.
+        body_html/body_text: 본문 데이터.
+    반환:
+        저장/갱신된 Email 인스턴스.
+    부작용:
+        Email 테이블에 insert/update 수행.
+    오류:
+        ORM 예외가 발생할 수 있음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 기본값/참여자 정규화
+    # -----------------------------------------------------------------------------
     user_sdwt_prod = user_sdwt_prod or UNASSIGNED_USER_SDWT_PROD
 
     normalized_recipient = _normalize_participants(recipient)
     normalized_cc = _normalize_participants(cc)
     participants_search = _build_participants_search(recipient=normalized_recipient, cc=normalized_cc)
 
+    # -----------------------------------------------------------------------------
+    # 2) message_id 기준 upsert
+    # -----------------------------------------------------------------------------
     email, _created = Email.objects.get_or_create(
         message_id=message_id,
         defaults={
@@ -60,6 +102,10 @@ def save_parsed_email(
             "body_html_gzip": gzip_body(body_html),
         },
     )
+
+    # -----------------------------------------------------------------------------
+    # 3) 기존 레코드 보정 업데이트
+    # -----------------------------------------------------------------------------
     if not _created:
         fields_to_update = []
         if not email.sender_id:

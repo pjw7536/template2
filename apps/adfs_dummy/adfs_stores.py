@@ -1,4 +1,4 @@
-"""In-memory stores for the dummy ADFS/RAG FastAPI server."""
+"""더미 ADFS/RAG FastAPI 서버용 인메모리 스토어입니다."""
 
 from __future__ import annotations
 
@@ -338,7 +338,7 @@ BASE_RAG_DOCS = [
 
 
 def seed_all() -> None:
-    """Reset RAG + mailbox stores for deterministic external dev runs."""
+    """외부 개발 환경의 결정적 실행을 위해 RAG/메일박스 스토어를 초기화합니다."""
     rag_store.seed_base_docs(BASE_RAG_DOCS)
     mail_store.reset()
     jira_store.reset()

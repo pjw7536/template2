@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: 소속 변경 요청/승인/거절 서비스 로직을 제공합니다.
+# - 주요 대상: request_affiliation_change, approve_affiliation_change, reject_affiliation_change
+# - 불변 조건: 승인/거절은 권한 검증 후 처리합니다.
+# =============================================================================
+
+"""소속 변경 요청/승인/거절 서비스 모음.
+
+- 주요 대상: 변경 요청 조회/생성/승인/거절
+- 주요 엔드포인트/클래스: request_affiliation_change 등
+- 가정/불변 조건: 승인/거절은 권한 검증 후 처리됨
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -16,7 +28,20 @@ from .utils import _is_privileged_user, _user_can_manage_user_sdwt_prod
 
 
 def _serialize_actor(user: Any) -> dict[str, object] | None:
-    """승인/요청 사용자 정보를 직렬화합니다."""
+    """승인/요청 사용자 정보를 직렬화합니다.
+
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - dict[str, object] | None: 직렬화 결과 또는 None
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     if not user:
         return None
@@ -25,7 +50,20 @@ def _serialize_actor(user: Any) -> dict[str, object] | None:
 
 
 def _serialize_affiliation_change(change: UserSdwtProdChange) -> dict[str, object]:
-    """UserSdwtProdChange를 응답용 dict로 직렬화합니다."""
+    """UserSdwtProdChange를 응답용 dict로 직렬화합니다.
+
+    입력:
+    - change: UserSdwtProdChange 객체
+
+    반환:
+    - dict[str, object]: 직렬화 결과
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     return {
         "id": change.id,
@@ -43,7 +81,20 @@ def _serialize_affiliation_change(change: UserSdwtProdChange) -> dict[str, objec
 
 
 def _serialize_affiliation_change_request(change: UserSdwtProdChange) -> dict[str, object]:
-    """승인 요청용 UserSdwtProdChange 응답 payload를 구성합니다."""
+    """승인 요청용 UserSdwtProdChange 응답 payload를 구성합니다.
+
+    입력:
+    - change: UserSdwtProdChange 객체
+
+    반환:
+    - dict[str, object]: 승인 요청용 payload
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     user = change.user
     user_payload = {
@@ -74,13 +125,24 @@ def get_affiliation_change_requests(
 ) -> Tuple[dict[str, object], int]:
     """승인 가능한 소속 변경 요청 목록을 페이지 단위로 조회합니다.
 
-    Returns:
-        (payload, http_status)
+    입력:
+    - user: Django 사용자 객체
+    - status/search/user_sdwt_prod: 필터 조건
+    - page/page_size: 페이지네이션 값
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 403: 조회 권한 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 권한 범위 산정
+    # -----------------------------------------------------------------------------
     is_privileged = _is_privileged_user(user)
     manageable_user_sdwt_prods = None
     can_manage = False
@@ -100,6 +162,9 @@ def get_affiliation_change_requests(
     else:
         can_manage = True
 
+    # -----------------------------------------------------------------------------
+    # 2) 변경 요청 목록 조회
+    # -----------------------------------------------------------------------------
     qs = selectors.list_affiliation_change_requests(
         manageable_user_sdwt_prods=manageable_user_sdwt_prods,
         status=status,
@@ -107,12 +172,18 @@ def get_affiliation_change_requests(
         user_sdwt_prod=user_sdwt_prod,
     )
 
+    # -----------------------------------------------------------------------------
+    # 3) 페이지네이션 처리
+    # -----------------------------------------------------------------------------
     paginator = Paginator(qs, page_size)
     try:
         page_obj = paginator.page(page)
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages or 1)
 
+    # -----------------------------------------------------------------------------
+    # 4) 응답 구성 및 반환
+    # -----------------------------------------------------------------------------
     results = [_serialize_affiliation_change_request(change) for change in page_obj.object_list]
 
     return (
@@ -138,25 +209,45 @@ def request_affiliation_change(
 ) -> Tuple[dict[str, object], int]:
     """user_sdwt_prod 소속 변경을 요청합니다.
 
-    Request a user_sdwt_prod affiliation change.
+    입력:
+    - user: Django 사용자 객체
+    - option: 소속 옵션 객체
+    - to_user_sdwt_prod: 대상 소속
+    - effective_from: 효력 시작 시각
+    - timezone_name: 시간대 이름
 
-    Returns:
-        (payload, http_status)
+    반환:
+    - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
 
-    Side effects:
-        - Writes UserSdwtProdChange rows.
+    부작용:
+    - UserSdwtProdChange 생성
+
+    오류:
+    - 409: 대기 중 요청 존재
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 자기 접근 권한 보장
+    # -----------------------------------------------------------------------------
     ensure_self_access(user, as_manager=False)
 
+    # -----------------------------------------------------------------------------
+    # 2) 기존 대기 요청 확인
+    # -----------------------------------------------------------------------------
     existing_pending = selectors.get_pending_user_sdwt_prod_change(user=user)
     if existing_pending is not None:
         return {"error": "pending change exists", "changeId": existing_pending.id}, 409
 
+    # -----------------------------------------------------------------------------
+    # 3) effective_from 보정
+    # -----------------------------------------------------------------------------
     if effective_from is None:
         effective_from = timezone.now()
     elif timezone.is_naive(effective_from):
         effective_from = timezone.make_aware(effective_from, timezone.utc)
+    # -----------------------------------------------------------------------------
+    # 4) 변경 요청 생성
+    # -----------------------------------------------------------------------------
     change = UserSdwtProdChange.objects.create(
         user=user,
         department=getattr(option, "department", None),
@@ -170,6 +261,9 @@ def request_affiliation_change(
         created_by=user,
     )
 
+    # -----------------------------------------------------------------------------
+    # 5) 응답 반환
+    # -----------------------------------------------------------------------------
     return (
         {
             "status": "pending",
@@ -186,31 +280,50 @@ def approve_affiliation_change(
     approver: Any,
     change_id: int,
 ) -> Tuple[dict[str, object], int]:
-    """대기 중인 UserSdwtProdChange를 승인하고 실제 사용자 정보에 반영합니다.
+    """대기 중인 UserSdwtProdChange를 승인하고 사용자 정보에 반영합니다.
 
-    Approve a pending UserSdwtProdChange and apply it.
+    입력:
+    - approver: 승인자 사용자
+    - change_id: 변경 요청 id
 
-    Returns:
-        (payload, http_status)
+    반환:
+    - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
 
-    Side effects:
-        - Updates the target user's affiliation fields.
-        - Updates UserSdwtProdChange flags.
-        - Ensures self-access row exists for the new user_sdwt_prod.
+    부작용:
+    - 사용자 소속 필드 업데이트
+    - UserSdwtProdChange 상태 업데이트
+    - 접근 권한 행 보장
+
+    오류:
+    - 403: 권한 없음
+    - 404: 변경 요청 없음
+    - 400: 이미 처리됨
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 변경 요청 조회
+    # -----------------------------------------------------------------------------
     change = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
     if change is None:
         return {"error": "Change not found"}, 404
 
+    # -----------------------------------------------------------------------------
+    # 2) 권한 검증
+    # -----------------------------------------------------------------------------
     if not _user_can_manage_user_sdwt_prod(user=approver, user_sdwt_prod=change.to_user_sdwt_prod):
         return {"error": "forbidden"}, 403
 
+    # -----------------------------------------------------------------------------
+    # 3) 상태 검증
+    # -----------------------------------------------------------------------------
     if change.status == UserSdwtProdChange.Status.APPROVED or change.approved or change.applied:
         return {"error": "already applied"}, 400
     if change.status == UserSdwtProdChange.Status.REJECTED:
         return {"error": "already rejected"}, 400
 
+    # -----------------------------------------------------------------------------
+    # 4) 대상 사용자 및 이전 소속 준비
+    # -----------------------------------------------------------------------------
     target_user = change.user
     previous_user_sdwt = getattr(target_user, "user_sdwt_prod", None)
     had_previous_affiliation = bool(
@@ -219,6 +332,9 @@ def approve_affiliation_change(
         and previous_user_sdwt.strip() != UNASSIGNED_USER_SDWT_PROD
     )
 
+    # -----------------------------------------------------------------------------
+    # 5) 트랜잭션 내 승인/적용 처리
+    # -----------------------------------------------------------------------------
     now = timezone.now()
     with transaction.atomic():
         target_user.user_sdwt_prod = change.to_user_sdwt_prod
@@ -253,8 +369,11 @@ def approve_affiliation_change(
 
         ensure_self_access(target_user, as_manager=False)
 
-        # Keep any existing access rows even when affiliation changes.
+        # 소속 변경 시 기존 접근 권한 행은 유지합니다.
 
+    # -----------------------------------------------------------------------------
+    # 6) 응답 반환
+    # -----------------------------------------------------------------------------
     return (
         {
             "status": "approved",
@@ -274,27 +393,46 @@ def reject_affiliation_change(
 ) -> Tuple[dict[str, object], int]:
     """대기 중인 UserSdwtProdChange를 거절 처리합니다.
 
-    Reject a pending UserSdwtProdChange.
+    입력:
+    - approver: 승인자 사용자
+    - change_id: 변경 요청 id
 
-    Returns:
-        (payload, http_status)
+    반환:
+    - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
 
-    Side effects:
-        - Updates UserSdwtProdChange status to REJECTED.
+    부작용:
+    - UserSdwtProdChange 상태를 REJECTED로 업데이트
+
+    오류:
+    - 403: 권한 없음
+    - 404: 변경 요청 없음
+    - 400: 이미 처리됨
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 변경 요청 조회
+    # -----------------------------------------------------------------------------
     change = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
     if change is None:
         return {"error": "Change not found"}, 404
 
+    # -----------------------------------------------------------------------------
+    # 2) 권한 검증
+    # -----------------------------------------------------------------------------
     if not _user_can_manage_user_sdwt_prod(user=approver, user_sdwt_prod=change.to_user_sdwt_prod):
         return {"error": "forbidden"}, 403
 
+    # -----------------------------------------------------------------------------
+    # 3) 상태 검증
+    # -----------------------------------------------------------------------------
     if change.status == UserSdwtProdChange.Status.REJECTED:
         return {"error": "already rejected"}, 400
     if change.status == UserSdwtProdChange.Status.APPROVED or change.approved or change.applied:
         return {"error": "already applied"}, 400
 
+    # -----------------------------------------------------------------------------
+    # 4) 거절 처리 및 저장
+    # -----------------------------------------------------------------------------
     change.status = UserSdwtProdChange.Status.REJECTED
     change.approved = False
     change.approved_by = approver

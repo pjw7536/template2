@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: timeline 더미 엔드포인트 라우팅을 정의합니다.
+# - 주요 경로: lines, sdwts, prc-groups, equipments, logs
+# - 불변 조건: 상대 경로만 선언합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from django.urls import path
@@ -38,4 +44,3 @@ urlpatterns = [
     path("logs/racb", TimelineRacbLogsView.as_view(), name="timeline-logs-racb"),
     path("logs/jira", TimelineJiraLogsView.as_view(), name="timeline-logs-jira"),
 ]
-

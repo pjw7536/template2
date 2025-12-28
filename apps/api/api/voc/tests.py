@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: voc 엔드포인트 테스트를 제공합니다.
+# - 주요 클래스: VocEndpointTests
+# - 불변 조건: URL 네임(voc-*)이 등록되어 있어야 합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
@@ -24,6 +30,9 @@ class VocEndpointTests(TestCase):
         self.assertEqual(response.json()["total"], 1)
 
     def test_voc_posts_create_update_delete_and_reply(self) -> None:
+        # -----------------------------------------------------------------------------
+        # 1) 게시글 생성
+        # -----------------------------------------------------------------------------
         create_response = self.client.post(
             reverse("voc-posts"),
             data='{"title":"Title","content":"Body","status":"접수"}',
@@ -32,6 +41,9 @@ class VocEndpointTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         post_id = create_response.json()["post"]["id"]
 
+        # -----------------------------------------------------------------------------
+        # 2) 게시글 수정
+        # -----------------------------------------------------------------------------
         update_response = self.client.patch(
             reverse("voc-post-detail", kwargs={"post_id": post_id}),
             data='{"status":"진행중","title":"Updated"}',
@@ -40,6 +52,9 @@ class VocEndpointTests(TestCase):
         self.assertEqual(update_response.status_code, 200)
         self.assertEqual(update_response.json()["post"]["status"], "진행중")
 
+        # -----------------------------------------------------------------------------
+        # 3) 답변 추가
+        # -----------------------------------------------------------------------------
         reply_response = self.client.post(
             reverse("voc-post-reply", kwargs={"post_id": post_id}),
             data='{"content":"Reply"}',
@@ -47,6 +62,9 @@ class VocEndpointTests(TestCase):
         )
         self.assertEqual(reply_response.status_code, 201)
 
+        # -----------------------------------------------------------------------------
+        # 4) 게시글 삭제
+        # -----------------------------------------------------------------------------
         delete_response = self.client.delete(reverse("voc-post-detail", kwargs={"post_id": post_id}))
         self.assertEqual(delete_response.status_code, 200)
         self.assertTrue(delete_response.json()["success"])

@@ -1,4 +1,9 @@
-"""Jira integration helpers for Drone SOP pipelines."""
+# =============================================================================
+# 모듈: Drone SOP Jira 연동 서비스
+# 주요 기능: Jira 이슈 생성(배치/즉시), 템플릿 렌더링
+# 주요 가정: Jira/CTTTM 설정은 settings/env에서 주입됩니다.
+# =============================================================================
+"""Drone SOP Jira 연동 헬퍼 모듈입니다."""
 
 from __future__ import annotations
 import logging
@@ -71,6 +76,18 @@ class DroneJiraConfig:
 
     @classmethod
     def from_settings(cls) -> "DroneJiraConfig":
+        """settings/env에서 Jira 연동 설정을 로드합니다.
+
+        반환:
+            DroneJiraConfig 인스턴스.
+
+        부작용:
+            settings/env 값을 조회합니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 기본 설정 값 로드
+        # -------------------------------------------------------------------------
         base_url = (getattr(settings, "DRONE_JIRA_BASE_URL", "") or os.getenv("DRONE_JIRA_BASE_URL") or "").strip()
         token = (getattr(settings, "DRONE_JIRA_TOKEN", "") or os.getenv("DRONE_JIRA_TOKEN") or "").strip()
         user = (getattr(settings, "DRONE_JIRA_USER", "") or os.getenv("DRONE_JIRA_USER") or "").strip()
@@ -112,6 +129,9 @@ class DroneJiraConfig:
             ),
             20,
         )
+        # -------------------------------------------------------------------------
+        # 2) 최소값 보정 후 반환
+        # -------------------------------------------------------------------------
         return cls(
             base_url=base_url,
             token=token,
@@ -126,10 +146,14 @@ class DroneJiraConfig:
 
     @property
     def create_url(self) -> str:
+        """Jira 단건 생성 URL을 반환합니다."""
+
         return f"{self.base_url.rstrip('/')}/rest/api/2/issue?sendEvent=true"
 
     @property
     def bulk_url(self) -> str:
+        """Jira 벌크 생성 URL을 반환합니다."""
+
         return f"{self.base_url.rstrip('/')}/rest/api/2/issue/bulk?sendEvent=true"
 
 
@@ -142,6 +166,18 @@ class DroneCtttmConfig:
 
     @classmethod
     def from_settings(cls) -> "DroneCtttmConfig":
+        """settings/env에서 CTTTM 설정을 로드합니다.
+
+        반환:
+            DroneCtttmConfig 인스턴스.
+
+        부작용:
+            settings/env 값을 조회합니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) 테이블/URL 설정 로드
+        # -------------------------------------------------------------------------
         table_name = (
             getattr(settings, "DRONE_CTTTM_TABLE_NAME", "")
             or os.getenv("DRONE_CTTTM_TABLE_NAME")
@@ -156,6 +192,22 @@ class DroneCtttmConfig:
 
 
 def _truncate(value: str, max_len: int) -> str:
+    """문자열을 최대 길이로 자릅니다.
+
+    인자:
+        value: 원본 문자열.
+        max_len: 최대 길이.
+
+    반환:
+        제한 길이를 적용한 문자열.
+
+    부작용:
+        없음. 순수 문자열 처리입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 길이 조건에 따라 자르기
+    # -------------------------------------------------------------------------
     if len(value) <= max_len:
         return value
     if max_len <= 3:
@@ -164,21 +216,57 @@ def _truncate(value: str, max_len: int) -> str:
 
 
 def _build_jira_summary(row: dict[str, Any]) -> str:
+    """Jira 이슈 요약(summary)을 생성합니다.
+
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+
+    반환:
+        summary 문자열.
+
+    부작용:
+        없음. 순수 문자열 구성입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 주요 필드 정규화
+    # -------------------------------------------------------------------------
     sdwt = str(row.get("sdwt_prod") or "?").strip() or "?"
     step = str(row.get("main_step") or "??").strip() or "??"
     normalized_step = step[2:].upper() if len(step) >= 3 else step.upper()
+    # -------------------------------------------------------------------------
+    # 2) 길이 제한 적용
+    # -------------------------------------------------------------------------
     return _truncate(f"{sdwt[:1]} {normalized_step}", 255)
 
 
+# =============================================================================
+# 템플릿/렌더링 상수
+# =============================================================================
 _TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 _TEMPLATE_ENGINE = Engine(autoescape=True)
 _TEMPLATE_CACHE: dict[str, str] = {}
 
 
 def _load_template_files() -> dict[str, str]:
+    """템플릿 디렉터리에서 HTML 템플릿 파일을 스캔합니다.
+
+    반환:
+        {template_key: filename} 형태의 dict.
+
+    부작용:
+        파일 시스템을 읽습니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 디렉터리 존재 여부 확인
+    # -------------------------------------------------------------------------
     template_files: dict[str, str] = {}
     if not _TEMPLATE_DIR.exists():
         return template_files
+    # -------------------------------------------------------------------------
+    # 2) 템플릿 파일 목록 스캔
+    # -------------------------------------------------------------------------
     for path in sorted(_TEMPLATE_DIR.glob("*.html")):
         key = path.stem.strip()
         if not key:
@@ -191,17 +279,50 @@ _TEMPLATE_FILES: dict[str, str] = _load_template_files()
 
 
 def _build_eqp_cb(row: dict[str, Any]) -> str:
+    """장비/챔버 식별 문자열을 생성합니다.
+
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+
+    반환:
+        "eqp_id-chamber_ids" 형태의 문자열.
+
+    부작용:
+        없음. 순수 문자열 구성입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 장비/챔버 값 정규화
+    # -------------------------------------------------------------------------
     eqp_id = (str(row.get("eqp_id") or "-") or "-").strip()
     chamber_ids = (str(row.get("chamber_ids") or "-") or "-").strip()
     return f"{eqp_id}-{chamber_ids}"
 
 
 def _normalize_ctttm_urls(value: Any) -> list[dict[str, str]]:
+    """CTTTM URL 입력을 통일된 리스트 형태로 정규화합니다.
+
+    인자:
+        value: 문자열 또는 dict 리스트 입력.
+
+    반환:
+        {"url","label"} 형태의 리스트.
+
+    부작용:
+        없음. 순수 정규화입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 문자열 입력 처리
+    # -------------------------------------------------------------------------
     urls: list[dict[str, str]] = []
     if isinstance(value, str):
         if value.strip():
             urls.append({"url": value.strip(), "label": value.strip()})
         return urls
+    # -------------------------------------------------------------------------
+    # 2) 리스트 입력 처리
+    # -------------------------------------------------------------------------
     if isinstance(value, list):
         for item in value:
             if not isinstance(item, dict):
@@ -215,9 +336,27 @@ def _normalize_ctttm_urls(value: Any) -> list[dict[str, str]]:
 
 
 def _build_template_context(row: dict[str, Any]) -> dict[str, Any]:
+    """Jira 템플릿 렌더링에 사용할 컨텍스트를 구성합니다.
+
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+
+    반환:
+        템플릿 컨텍스트 dict.
+
+    부작용:
+        없음. 순수 구성입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 주요 필드 정규화
+    # -------------------------------------------------------------------------
     knoxid = str(row.get("knox_id") or row.get("knoxid") or "").strip()
     user_sdwt_prod = str(row.get("user_sdwt_prod") or "").strip()
     comment_raw = str(row.get("comment") or "").split("$@$", 1)[0]
+    # -------------------------------------------------------------------------
+    # 2) 템플릿 컨텍스트 구성
+    # -------------------------------------------------------------------------
     return {
         "main_step": row.get("main_step"),
         "ppid": row.get("ppid"),
@@ -232,11 +371,35 @@ def _build_template_context(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_template_source(template_key: str) -> str:
+    """템플릿 키에 해당하는 HTML 소스를 로드합니다.
+
+    인자:
+        template_key: 템플릿 키.
+
+    반환:
+        템플릿 소스 문자열.
+
+    부작용:
+        파일 시스템을 읽고 캐시를 갱신할 수 있습니다.
+
+    오류:
+        지원하지 않는 키이면 ValueError를 발생시킵니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 템플릿 파일명 확인
+    # -------------------------------------------------------------------------
     filename = _TEMPLATE_FILES.get(template_key)
     if not filename:
         raise ValueError(f"Unsupported Jira template key: {template_key!r}")
+    # -------------------------------------------------------------------------
+    # 2) 캐시 확인
+    # -------------------------------------------------------------------------
     if template_key in _TEMPLATE_CACHE:
         return _TEMPLATE_CACHE[template_key]
+    # -------------------------------------------------------------------------
+    # 3) 파일 읽기 및 캐시 저장
+    # -------------------------------------------------------------------------
     path = _TEMPLATE_DIR / filename
     source = path.read_text(encoding="utf-8")
     _TEMPLATE_CACHE[template_key] = source
@@ -244,16 +407,62 @@ def _load_template_source(template_key: str) -> str:
 
 
 def _render_line_template(*, template_key: str, row: dict[str, Any]) -> str:
+    """라인 템플릿을 렌더링합니다.
+
+    인자:
+        template_key: 템플릿 키.
+        row: Drone SOP 행 dict(행 데이터).
+
+    반환:
+        렌더링된 HTML 문자열.
+
+    부작용:
+        템플릿 파일을 읽을 수 있습니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 템플릿 소스/컨텍스트 구성
+    # -------------------------------------------------------------------------
     source = _load_template_source(template_key)
     context = Context(_build_template_context(row))
     return _TEMPLATE_ENGINE.from_string(source).render(context)
 
 
 def _build_jira_description_html(*, row: dict[str, Any], template_key: str) -> str:
+    """Jira description HTML을 생성합니다.
+
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+        template_key: 템플릿 키.
+
+    반환:
+        HTML 문자열.
+
+    부작용:
+        템플릿 렌더링이 발생합니다.
+    """
+
     return _render_line_template(template_key=template_key, row=row)
 
 
 def _build_ctttm_url(*, base_url: str, workorder_id: str, line_id: str) -> str:
+    """CTTTM URL을 구성합니다.
+
+    인자:
+        base_url: 기본 URL.
+        workorder_id: 작업 지시 ID.
+        line_id: 라인 ID.
+
+    반환:
+        쿼리 파라미터가 반영된 URL 문자열.
+
+    부작용:
+        없음. 순수 문자열 구성입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 쿼리 파라미터 병합
+    # -------------------------------------------------------------------------
     parsed = urlparse(base_url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     query.update({"wono": workorder_id, "lineId": line_id})
@@ -261,11 +470,27 @@ def _build_ctttm_url(*, base_url: str, workorder_id: str, line_id: str) -> str:
 
 
 def _enrich_rows_with_ctttm_urls(*, rows: Sequence[dict[str, Any]], config: DroneCtttmConfig) -> None:
+    """rows에 CTTTM URL 정보를 보강합니다.
+
+    인자:
+        rows: Drone SOP row 목록.
+        config: CTTTM 설정.
+
+    부작용:
+        rows dict에 "url" 필드를 추가할 수 있습니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 입력/설정 확인
+    # -------------------------------------------------------------------------
     if not rows:
         return
     if not config.table_name or not config.base_url:
         return
 
+    # -------------------------------------------------------------------------
+    # 2) sop_id 목록 구성
+    # -------------------------------------------------------------------------
     sop_ids: list[int] = []
     for row in rows:
         rid = row.get("id")
@@ -274,12 +499,18 @@ def _enrich_rows_with_ctttm_urls(*, rows: Sequence[dict[str, Any]], config: Dron
     if not sop_ids:
         return
 
+    # -------------------------------------------------------------------------
+    # 3) workorder 맵 로드
+    # -------------------------------------------------------------------------
     try:
         workorders_by_id = selectors.load_drone_sop_ctttm_workorders_map(sop_ids=sop_ids, ctttm_table=config.table_name)
     except Exception:
         logger.exception("Failed to load CTTTM workorders (table=%r)", config.table_name)
         return
 
+    # -------------------------------------------------------------------------
+    # 4) row별 URL 항목 보강
+    # -------------------------------------------------------------------------
     for row in rows:
         rid = row.get("id")
         if not isinstance(rid, int) or rid <= 0:
@@ -303,11 +534,29 @@ def _enrich_rows_with_ctttm_urls(*, rows: Sequence[dict[str, Any]], config: Dron
 
 
 def _jira_session(config: DroneJiraConfig) -> requests.Session:
+    """Jira API 호출용 requests.Session을 구성합니다.
+
+    인자:
+        config: Jira 설정.
+
+    반환:
+        requests.Session 인스턴스.
+
+    부작용:
+        세션 객체가 생성됩니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 세션 기본 설정
+    # -------------------------------------------------------------------------
     sess = requests.Session()
     sess.trust_env = False
     sess.proxies = {}
     sess.verify = bool(config.verify_ssl)
 
+    # -------------------------------------------------------------------------
+    # 2) 인증 헤더/인증 정보 설정
+    # -------------------------------------------------------------------------
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -319,6 +568,9 @@ def _jira_session(config: DroneJiraConfig) -> requests.Session:
         headers["Authorization"] = f"Bearer {config.token}"
     sess.headers.update(headers)
 
+    # -------------------------------------------------------------------------
+    # 3) 재시도 정책 설정
+    # -------------------------------------------------------------------------
     retry = Retry(
         total=5,
         connect=5,
@@ -332,6 +584,21 @@ def _jira_session(config: DroneJiraConfig) -> requests.Session:
 
 
 def _safe_json(response: requests.Response) -> dict[str, Any]:
+    """응답을 안전하게 JSON dict로 변환합니다.
+
+    인자:
+        response: requests.Response 객체.
+
+    반환:
+        dict 형태의 JSON(실패 시 빈 dict).
+
+    부작용:
+        없음. 순수 파싱입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) JSON 파싱 시도
+    # -------------------------------------------------------------------------
     try:
         parsed = response.json()
     except Exception:
@@ -347,6 +614,25 @@ def _bulk_create_jira_issues(
     project_key_by_id: dict[int, str],
     template_key_by_id: dict[int, str],
 ) -> tuple[list[int], dict[int, str]]:
+    """Jira 벌크 생성 API로 이슈를 생성합니다.
+
+    인자:
+        rows: Drone SOP row 목록.
+        config: Jira 설정.
+        session: Jira 세션.
+        project_key_by_id: sop_id → project_key (SOP ID별 프로젝트 키).
+        template_key_by_id: sop_id → template_key (SOP ID별 템플릿 키).
+
+    반환:
+        (완료된 sop_id 목록, sop_id → jira_key 매핑) 튜플.
+
+    부작용:
+        Jira API 호출이 발생합니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 청크 단위로 요청 구성
+    # -------------------------------------------------------------------------
     done_ids: list[int] = []
     key_by_id: dict[int, str] = {}
 
@@ -377,6 +663,9 @@ def _bulk_create_jira_issues(
             valid_chunk.append(row)
         if not issue_updates:
             continue
+        # ---------------------------------------------------------------------
+        # 2) Jira 벌크 API 호출
+        # ---------------------------------------------------------------------
         resp = session.post(
             config.bulk_url,
             json={"issueUpdates": issue_updates},
@@ -386,6 +675,9 @@ def _bulk_create_jira_issues(
             logger.error("Jira bulk create failed %s: %s", resp.status_code, resp.text[:300])
             continue
 
+        # ---------------------------------------------------------------------
+        # 3) 응답 파싱 및 결과 매핑
+        # ---------------------------------------------------------------------
         data = _safe_json(resp)
         issues = data.get("issues") or []
         if not isinstance(issues, list):
@@ -416,6 +708,25 @@ def _single_create_jira_issues(
     project_key_by_id: dict[int, str],
     template_key_by_id: dict[int, str],
 ) -> tuple[list[int], dict[int, str]]:
+    """Jira 단건 생성 API로 이슈를 생성합니다.
+
+    인자:
+        rows: Drone SOP row 목록.
+        config: Jira 설정.
+        session: Jira 세션.
+        project_key_by_id: sop_id → project_key (SOP ID별 프로젝트 키).
+        template_key_by_id: sop_id → template_key (SOP ID별 템플릿 키).
+
+    반환:
+        (완료된 sop_id 목록, sop_id → jira_key 매핑) 튜플.
+
+    부작용:
+        Jira API 호출이 발생합니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) row 단위로 요청 수행
+    # -------------------------------------------------------------------------
     done_ids: list[int] = []
     key_by_id: dict[int, str] = {}
 
@@ -444,6 +755,9 @@ def _single_create_jira_issues(
         if resp.status_code != 201:
             logger.error("Jira create failed id=%s %s: %s", rid, resp.status_code, resp.text[:300])
             continue
+        # ---------------------------------------------------------------------
+        # 2) 응답 파싱 및 결과 매핑
+        # ---------------------------------------------------------------------
         data = _safe_json(resp)
         key = data.get("key")
         if isinstance(key, str) and key.strip():
@@ -460,6 +774,21 @@ def _build_jira_issue_fields(
     template_key: str,
     config: DroneJiraConfig,
 ) -> dict[str, Any]:
+    """Jira 이슈 fields payload를 구성합니다.
+
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+        project_key: Jira 프로젝트 키.
+        template_key: 템플릿 키.
+        config: Jira 설정.
+
+    반환:
+        Jira API fields dict(Jira 필드 맵).
+
+    부작용:
+        없음. 순수 구성입니다.
+    """
+
     return {
         "project": {"key": project_key},
         "issuetype": {"name": config.issue_type},
@@ -475,9 +804,29 @@ def _update_drone_sop_jira_status(
     rows: Sequence[dict[str, Any]],
     key_by_id: dict[int, str],
 ) -> int:
+    """Jira 생성 완료된 DroneSOP 상태를 업데이트합니다.
+
+    인자:
+        done_ids: Jira 생성 성공 SOP ID 목록.
+        rows: 원본 row 목록.
+        key_by_id: sop_id → jira_key 매핑.
+
+    반환:
+        업데이트된 row 수.
+
+    부작용:
+        drone_sop 테이블 업데이트가 발생합니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 업데이트 대상 확인
+    # -------------------------------------------------------------------------
     if not done_ids:
         return 0
 
+    # -------------------------------------------------------------------------
+    # 2) 단계/키 매핑 구성
+    # -------------------------------------------------------------------------
     step_by_id: dict[int, str] = {}
     for row in rows:
         rid = row.get("id")
@@ -491,6 +840,9 @@ def _update_drone_sop_jira_status(
     step_whens = [When(id=rid, then=Value(step)) for rid, step in sorted(step_by_id.items())]
     key_whens = [When(id=rid, then=Value(key)) for rid, key in sorted(key_by_id.items())]
 
+    # -------------------------------------------------------------------------
+    # 3) 업데이트 절 구성
+    # -------------------------------------------------------------------------
     updates: dict[str, Any] = {
         "send_jira": 1,
         "informed_at": Case(
@@ -504,12 +856,27 @@ def _update_drone_sop_jira_status(
     if key_whens:
         updates["jira_key"] = Case(*key_whens, default=F("jira_key"), output_field=CharField())
 
+    # -------------------------------------------------------------------------
+    # 4) DB 업데이트 실행
+    # -------------------------------------------------------------------------
     with transaction.atomic():
         updated = DroneSOP.objects.filter(id__in=list(done_ids)).update(**updates)
     return int(updated or 0)
 
 
 def _drone_sop_model_to_row(sop: DroneSOP) -> dict[str, Any]:
+    """DroneSOP 모델을 dict 형태로 변환합니다.
+
+    인자:
+        sop: DroneSOP 인스턴스.
+
+    반환:
+        Jira 생성에 필요한 필드를 담은 dict.
+
+    부작용:
+        없음. 읽기 전용 변환입니다.
+    """
+
     return {
         "id": int(sop.id),
         "line_id": sop.line_id,
@@ -545,11 +912,24 @@ def run_drone_sop_jira_instant_inform(
     - needtosend/status 조건을 검사하지 않습니다.
     - Jira 생성에 성공하면 send_jira=1로 업데이트하여 배치 파이프라인에서 재생성되지 않게 합니다.
 
-    Side effects:
-        - drone_sop 레코드 comment/instant_inform/send_jira/jira_key/inform_step/informed_at 업데이트
+    인자:
+        sop_id: DroneSOP ID(드론 SOP ID).
+        comment: 덮어쓸 코멘트(옵션).
+
+    반환:
+        DroneSopInstantInformResult 결과 객체.
+
+    부작용:
+        - drone_sop 레코드(comment/instant_inform/send_jira/jira_key/inform_step/informed_at) 업데이트
         - Jira API 호출
+
+    오류:
+        입력 검증 실패/매핑 누락/요청 실패 시 ValueError 또는 RuntimeError를 발생시킵니다.
     """
 
+    # -------------------------------------------------------------------------
+    # 1) 입력/설정 검증
+    # -------------------------------------------------------------------------
     if sop_id <= 0:
         raise ValueError("sop_id must be a positive integer")
 
@@ -557,12 +937,18 @@ def run_drone_sop_jira_instant_inform(
     if not config.base_url:
         raise ValueError("DRONE_JIRA_BASE_URL 미설정")
 
+    # -------------------------------------------------------------------------
+    # 2) advisory lock 획득
+    # -------------------------------------------------------------------------
     lock_id = _lock_key("drone_sop_jira_create")
     acquired = _try_advisory_lock(lock_id)
     if not acquired:
         return DroneSopInstantInformResult(skipped=True, skip_reason="already_running")
 
     try:
+        # ---------------------------------------------------------------------
+        # 3) 대상 레코드 조회 및 이미 처리 여부 확인
+        # ---------------------------------------------------------------------
         with transaction.atomic():
             sop = DroneSOP.objects.select_for_update().filter(id=sop_id).first()
             if sop is None:
@@ -589,8 +975,14 @@ def run_drone_sop_jira_instant_inform(
                     updated_fields=updated_fields,
                 )
 
+            # -----------------------------------------------------------------
+            # 4) Jira 요청에 사용할 row payload 구성
+            # -----------------------------------------------------------------
             row_payload = _drone_sop_model_to_row(sop)
 
+        # ---------------------------------------------------------------------
+        # 5) CTTTM URL 보강 및 프로젝트/템플릿 결정
+        # ---------------------------------------------------------------------
         _enrich_rows_with_ctttm_urls(rows=[row_payload], config=DroneCtttmConfig.from_settings())
 
         line_id = row_payload.get("line_id")
@@ -637,6 +1029,9 @@ def run_drone_sop_jira_instant_inform(
                 DroneSOP.objects.filter(id=sop_id).update(send_jira=-1)
             return DroneSopInstantInformResult(skipped=True, skip_reason="template_missing")
 
+        # ---------------------------------------------------------------------
+        # 6) Jira API 호출
+        # ---------------------------------------------------------------------
         sess = _jira_session(config)
         resp = sess.post(
             config.create_url,
@@ -660,6 +1055,9 @@ def run_drone_sop_jira_instant_inform(
         jira_key = key.strip() if isinstance(key, str) and key.strip() else None
 
         now = timezone.now()
+        # ---------------------------------------------------------------------
+        # 7) 생성 결과 반영 및 상태 업데이트
+        # ---------------------------------------------------------------------
         with transaction.atomic():
             sop = DroneSOP.objects.select_for_update().filter(id=sop_id).first()
             if sop is None:
@@ -717,6 +1115,9 @@ def run_drone_sop_jira_instant_inform(
             updated_fields=updated_fields,
         )
     finally:
+        # ---------------------------------------------------------------------
+        # 8) advisory lock 해제
+        # ---------------------------------------------------------------------
         if acquired:
             _release_advisory_lock(lock_id)
 
@@ -724,11 +1125,23 @@ def run_drone_sop_jira_instant_inform(
 def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJiraCreateResult:
     """send_jira=0 & needtosend=1 & status=COMPLETE 대상 Jira 이슈를 생성합니다.
 
-    Side effects:
+    인자:
+        limit: 최대 처리 건수(옵션).
+
+    반환:
+        DroneSopJiraCreateResult 결과 객체.
+
+    부작용:
         - Jira API 호출
         - drone_sop 상태 컬럼(send_jira/inform_step/jira_key/informed_at) 업데이트
+
+    오류:
+        설정 누락 시 ValueError가 발생할 수 있습니다.
     """
 
+    # -------------------------------------------------------------------------
+    # 1) 설정/락 검증
+    # -------------------------------------------------------------------------
     config = DroneJiraConfig.from_settings()
     if not config.base_url:
         raise ValueError("DRONE_JIRA_BASE_URL 미설정")
@@ -739,10 +1152,16 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
         return DroneSopJiraCreateResult(skipped=True, skip_reason="already_running")
 
     try:
+        # ---------------------------------------------------------------------
+        # 2) 대상 row 조회
+        # ---------------------------------------------------------------------
         rows = selectors.list_drone_sop_jira_candidates(limit=limit)
         if not rows:
             return DroneSopJiraCreateResult(candidates=0, created=0, updated_rows=0)
 
+        # ---------------------------------------------------------------------
+        # 3) 프로젝트 키/템플릿 키 해석
+        # ---------------------------------------------------------------------
         project_key_by_id, missing_ids = _resolve_project_keys_for_rows(rows=rows)
         if missing_ids:
             missing_id_set = set(missing_ids)
@@ -783,6 +1202,9 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
             with transaction.atomic():
                 DroneSOP.objects.filter(id__in=missing_template_ids).update(send_jira=-1)
 
+        # ---------------------------------------------------------------------
+        # 4) 전송 대상 필터링 및 CTTTM URL 보강
+        # ---------------------------------------------------------------------
         rows_to_send = [
             row
             for row in rows
@@ -795,6 +1217,9 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
 
         _enrich_rows_with_ctttm_urls(rows=rows_to_send, config=DroneCtttmConfig.from_settings())
 
+        # ---------------------------------------------------------------------
+        # 5) Jira API 호출(벌크/단건)
+        # ---------------------------------------------------------------------
         sess = _jira_session(config)
         if config.use_bulk_api:
             done_ids, key_by_id = _bulk_create_jira_issues(
@@ -813,6 +1238,9 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
                 template_key_by_id=template_key_by_id,
             )
 
+        # ---------------------------------------------------------------------
+        # 6) 상태 업데이트 및 결과 반환
+        # ---------------------------------------------------------------------
         updated = _update_drone_sop_jira_status(done_ids=done_ids, rows=rows_to_send, key_by_id=key_by_id)
         return DroneSopJiraCreateResult(
             candidates=len(rows),
@@ -820,6 +1248,9 @@ def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJ
             updated_rows=updated,
         )
     finally:
+        # ---------------------------------------------------------------------
+        # 7) advisory lock 해제
+        # ---------------------------------------------------------------------
         if acquired:
             _release_advisory_lock(lock_id)
 
@@ -835,6 +1266,9 @@ def _resolve_project_keys_for_rows(
     - 매핑이 없으면 해당 row id를 missing_ids로 반환합니다.
     """
 
+    # -------------------------------------------------------------------------
+    # 1) 입력 값 수집
+    # -------------------------------------------------------------------------
     sdwt_prod_values: set[str] = set()
     for row in rows:
         sdwt_prod = row.get("sdwt_prod")
@@ -847,6 +1281,9 @@ def _resolve_project_keys_for_rows(
         if isinstance(line_id, str) and line_id.strip():
             line_ids.add(line_id.strip())
 
+    # -------------------------------------------------------------------------
+    # 2) 소속 매핑 조회
+    # -------------------------------------------------------------------------
     jira_keys_by_line_sdwt = selectors.list_affiliation_jira_keys_by_line_and_sdwt(
         line_ids=line_ids,
         user_sdwt_prod_values=sdwt_prod_values,
@@ -855,6 +1292,9 @@ def _resolve_project_keys_for_rows(
     project_key_by_id: dict[int, str] = {}
     missing_ids: list[int] = []
 
+    # -------------------------------------------------------------------------
+    # 3) row별 project_key 해석
+    # -------------------------------------------------------------------------
     for row in rows:
         rid = row.get("id")
         if not isinstance(rid, int):
@@ -877,6 +1317,9 @@ def _resolve_template_keys_for_rows(
 ) -> tuple[dict[int, str], list[int]]:
     """DroneSOP row 목록에 대해 Jira 템플릿 키를 해석합니다."""
 
+    # -------------------------------------------------------------------------
+    # 1) 입력 값 수집
+    # -------------------------------------------------------------------------
     line_ids: set[str] = set()
     user_sdwt_prod_values: set[str] = set()
     for row in rows:
@@ -887,6 +1330,9 @@ def _resolve_template_keys_for_rows(
         if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
             user_sdwt_prod_values.add(user_sdwt_prod.strip())
 
+    # -------------------------------------------------------------------------
+    # 2) 템플릿 매핑 조회
+    # -------------------------------------------------------------------------
     template_keys_by_line = selectors.list_drone_sop_jira_templates_by_line_ids(line_ids=line_ids)
     template_keys_by_user_sdwt = selectors.list_drone_sop_jira_templates_by_user_sdwt_prods(
         user_sdwt_prod_values=user_sdwt_prod_values,
@@ -895,6 +1341,9 @@ def _resolve_template_keys_for_rows(
     template_key_by_id: dict[int, str] = {}
     missing_ids: list[int] = []
 
+    # -------------------------------------------------------------------------
+    # 3) row별 템플릿 키 해석
+    # -------------------------------------------------------------------------
     for row in rows:
         rid = row.get("id")
         if not isinstance(rid, int):
@@ -918,8 +1367,23 @@ def _resolve_template_key_for_row(
     template_keys_by_user_sdwt: dict[str, str],
     template_keys_by_line: dict[str, str],
 ) -> str | None:
-    """단일 DroneSOP row에 대한 Jira 템플릿 키를 반환합니다."""
+    """단일 DroneSOP row에 대한 Jira 템플릿 키를 반환합니다.
 
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+        template_keys_by_user_sdwt: user_sdwt_prod → template_key (소속별 템플릿 키).
+        template_keys_by_line: line_id → template_key (라인별 템플릿 키).
+
+    반환:
+        template_key 문자열 또는 None.
+
+    부작용:
+        없음. 순수 조회입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) user_sdwt_prod 우선 적용
+    # -------------------------------------------------------------------------
     user_sdwt_prod = row.get("user_sdwt_prod")
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
         normalized_user = user_sdwt_prod.strip()
@@ -930,6 +1394,9 @@ def _resolve_template_key_for_row(
                 return normalized_key
             return None
 
+    # -------------------------------------------------------------------------
+    # 2) line_id 기반 fallback
+    # -------------------------------------------------------------------------
     line_id = row.get("line_id")
     if not isinstance(line_id, str) or not line_id.strip():
         return None
@@ -949,8 +1416,22 @@ def _resolve_project_key_for_row(
     row: dict[str, Any],
     jira_keys_by_line_sdwt: dict[tuple[str, str], str | None],
 ) -> str | None:
-    """단일 DroneSOP row에 대한 Jira project key를 반환합니다."""
+    """단일 DroneSOP row에 대한 Jira project key를 반환합니다.
 
+    인자:
+        row: Drone SOP 행 dict(행 데이터).
+        jira_keys_by_line_sdwt: (line_id, user_sdwt_prod) → jira_key (라인/소속 Jira 키).
+
+    반환:
+        jira_key 문자열 또는 None.
+
+    부작용:
+        없음. 순수 조회입니다.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1) 필수 필드 검증
+    # -------------------------------------------------------------------------
     line_id = row.get("line_id")
     sdwt_prod = row.get("sdwt_prod")
     if not isinstance(line_id, str) or not line_id.strip():
@@ -958,6 +1439,9 @@ def _resolve_project_key_for_row(
     if not isinstance(sdwt_prod, str) or not sdwt_prod.strip():
         return None
 
+    # -------------------------------------------------------------------------
+    # 2) 매핑 조회
+    # -------------------------------------------------------------------------
     normalized_line_id = line_id.strip()
     normalized_sdwt_prod = sdwt_prod.strip()
     project_key = jira_keys_by_line_sdwt.get((normalized_line_id, normalized_sdwt_prod))

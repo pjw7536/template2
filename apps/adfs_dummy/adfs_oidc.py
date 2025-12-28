@@ -1,4 +1,4 @@
-"""OIDC/ADFS dummy endpoints."""
+"""OIDC/ADFS 더미 엔드포인트입니다."""
 
 from __future__ import annotations
 

@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: account 도메인의 읽기 전용 셀렉터를 제공합니다.
+# - 주요 대상: 소속/권한/변경 요청 조회 함수
+# - 불변 조건: 모든 조회는 부작용 없는 ORM 읽기만 수행합니다.
+# =============================================================================
+
+"""계정 도메인의 읽기 전용 셀렉터 모음.
+
+- 주요 대상: 소속/권한/변경 요청 조회 함수
+- 주요 엔드포인트/클래스: 없음(셀렉터 함수 제공)
+- 가정/불변 조건: 모든 조회는 부작용 없는 ORM 읽기만 수행함
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -21,26 +33,28 @@ from .models import (
 def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     """사용자가 접근 가능한 user_sdwt_prod 값 집합을 조회합니다.
 
-    Return user_sdwt_prod values the user is allowed to access.
+    입력:
+    - user: Django 사용자 객체(비인증 가능)
 
-    Notes:
-        - Regular users: include their own `user_sdwt_prod` plus explicit grants from `UserSdwtProdAccess`.
-        - If no current user_sdwt_prod is set, include the pending change target for first-time onboarding.
-        - Superusers: return all known `user_sdwt_prod` values across the system (used for global browsing).
+    반환:
+    - set[str]: 접근 가능한 user_sdwt_prod 집합
 
-    Args:
-        user: Django user instance (may be anonymous / unauthenticated).
+    부작용:
+    - 없음(읽기 전용)
 
-    Returns:
-        Set of non-empty user_sdwt_prod strings the user can access.
-
-    Side effects:
-        None. Read-only query.
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 인증 여부 확인
+    # -----------------------------------------------------------------------------
     if not user or not getattr(user, "is_authenticated", False):
         return set()
 
+    # -----------------------------------------------------------------------------
+    # 2) 슈퍼유저는 전체 집합 반환
+    # -----------------------------------------------------------------------------
     if getattr(user, "is_superuser", False):
         UserModel = get_user_model()
         values = set(list_distinct_user_sdwt_prod_values())
@@ -52,6 +66,9 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
         )
         return {val.strip() for val in values if isinstance(val, str) and val.strip()}
 
+    # -----------------------------------------------------------------------------
+    # 3) 접근 권한 및 본인 소속 포함
+    # -----------------------------------------------------------------------------
     values = set(
         UserSdwtProdAccess.objects.filter(user=user).values_list("user_sdwt_prod", flat=True)
     )
@@ -60,28 +77,34 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
         values.add(user_sdwt_prod)
     else:
+        # -----------------------------------------------------------------------------
+        # 4) 초기 소속이 없으면 대기 변경 대상 포함
+        # -----------------------------------------------------------------------------
         pending_change = get_pending_user_sdwt_prod_change(user=user)
         pending_user_sdwt_prod = getattr(pending_change, "to_user_sdwt_prod", None)
         if isinstance(pending_user_sdwt_prod, str) and pending_user_sdwt_prod.strip():
             values.add(pending_user_sdwt_prod.strip())
 
+    # -----------------------------------------------------------------------------
+    # 5) 최종 정제 및 반환
+    # -----------------------------------------------------------------------------
     return {val for val in values if isinstance(val, str) and val.strip()}
 
 
 def list_distinct_user_sdwt_prod_values() -> set[str]:
-    """시스템에서 '알려진' user_sdwt_prod 값 집합을 조회합니다.
+    """시스템에 등록된 user_sdwt_prod 값 집합을 조회합니다.
 
-    Return known user_sdwt_prod values across the system.
+    입력:
+    - 없음
 
-    Sources:
-        - Affiliation.user_sdwt_prod
-        - UserSdwtProdAccess.user_sdwt_prod
+    반환:
+    - set[str]: 중복 제거된 user_sdwt_prod 집합
 
-    Returns:
-        Set of non-empty user_sdwt_prod strings.
+    부작용:
+    - 없음(읽기 전용)
 
-    Side effects:
-        None. Read-only query.
+    오류:
+    - 없음
     """
 
     affiliation_values = set(
@@ -102,13 +125,17 @@ def list_distinct_user_sdwt_prod_values() -> set[str]:
 def list_affiliation_options() -> list[dict[str, str]]:
     """소속 선택 옵션(부서/라인/user_sdwt_prod) 전체를 조회합니다.
 
-    Return all affiliation options.
+    입력:
+    - 없음
 
-    Returns:
-        List of dicts with keys: department, line, user_sdwt_prod.
+    반환:
+    - list[dict[str, str]]: 소속 옵션 목록
 
-    Side effects:
-        None. Read-only query.
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return list(
@@ -119,29 +146,57 @@ def list_affiliation_options() -> list[dict[str, str]]:
 
 
 def affiliation_exists_for_line(*, line_id: str) -> bool:
-    """line_id에 대응하는 Affiliation이 존재하는지 확인합니다.
+    """line_id에 대응하는 Affiliation 존재 여부를 확인합니다.
 
-    Side effects:
-        None. Read-only query.
+    입력:
+    - line_id: 라인 식별자
+
+    반환:
+    - bool: 존재 여부
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(line_id, str) or not line_id.strip():
         return False
+    # -----------------------------------------------------------------------------
+    # 2) 존재 여부 조회
+    # -----------------------------------------------------------------------------
     return Affiliation.objects.filter(line=line_id.strip()).exists()
 
 
 def get_affiliation_jira_key_for_line(*, line_id: str) -> str | None:
     """line_id에 해당하는 Jira project key를 조회합니다.
 
-    여러 Affiliation이 같은 line_id를 공유할 수 있으므로, 비어있지 않은 key 중 하나를 반환합니다.
+    입력:
+    - line_id: 라인 식별자
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - str | None: Jira key 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(line_id, str) or not line_id.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 비어있지 않은 키 조회
+    # -----------------------------------------------------------------------------
     key = (
         Affiliation.objects.filter(line=line_id.strip())
         .exclude(jira_key__isnull=True)
@@ -152,21 +207,40 @@ def get_affiliation_jira_key_for_line(*, line_id: str) -> str | None:
     )
     if isinstance(key, str) and key.strip():
         return key.strip()
+    # -----------------------------------------------------------------------------
+    # 3) 기본값 반환
+    # -----------------------------------------------------------------------------
     return None
 
 
 def get_affiliation_jira_key(*, line_id: str, user_sdwt_prod: str) -> str | None:
     """line_id + user_sdwt_prod 조합의 Jira project key를 조회합니다.
 
-    Side effects:
-        None. Read-only query.
+    입력:
+    - line_id: 라인 식별자
+    - user_sdwt_prod: 소속 식별자
+
+    반환:
+    - str | None: Jira key 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(line_id, str) or not line_id.strip():
         return None
     if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 키 조회
+    # -----------------------------------------------------------------------------
     key = (
         Affiliation.objects.filter(line=line_id.strip(), user_sdwt_prod=user_sdwt_prod.strip())
         .values_list("jira_key", flat=True)
@@ -174,6 +248,9 @@ def get_affiliation_jira_key(*, line_id: str, user_sdwt_prod: str) -> str | None
     )
     if isinstance(key, str) and key.strip():
         return key.strip()
+    # -----------------------------------------------------------------------------
+    # 3) 기본값 반환
+    # -----------------------------------------------------------------------------
     return None
 
 
@@ -182,15 +259,25 @@ def list_affiliation_jira_keys_by_line_and_sdwt(
     line_ids: set[str] | list[str],
     user_sdwt_prod_values: set[str] | list[str],
 ) -> dict[tuple[str, str], str | None]:
-    """line_id + user_sdwt_prod 조합별 Jira project key 맵을 조회합니다.
+    """line_id + user_sdwt_prod 조합별 Jira key 맵을 조회합니다.
 
-    Returns:
-        {(line_id, user_sdwt_prod): jira_key_or_none}
+    입력:
+    - line_ids: 라인 식별자 목록
+    - user_sdwt_prod_values: 소속 식별자 목록
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - dict[tuple[str, str], str | None]: (line_id, user_sdwt_prod) → jira_key (라인+소속 기준 키 맵)
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화
+    # -----------------------------------------------------------------------------
     normalized_lines = [line.strip() for line in line_ids if isinstance(line, str) and line.strip()]
     normalized_sdwt = [
         value.strip() for value in user_sdwt_prod_values if isinstance(value, str) and value.strip()
@@ -198,6 +285,9 @@ def list_affiliation_jira_keys_by_line_and_sdwt(
     if not normalized_lines or not normalized_sdwt:
         return {}
 
+    # -----------------------------------------------------------------------------
+    # 2) 조회 및 매핑 생성
+    # -----------------------------------------------------------------------------
     rows = (
         Affiliation.objects.filter(line__in=normalized_lines, user_sdwt_prod__in=normalized_sdwt)
         .values("line", "user_sdwt_prod", "jira_key")
@@ -218,12 +308,19 @@ def list_affiliation_jira_keys_by_line_and_sdwt(
 
 
 def list_user_sdwt_prod_access_rows(*, user: Any) -> list[UserSdwtProdAccess]:
-    """사용자에 대한 접근 권한(UserSdwtProdAccess) 행 목록을 조회합니다.
+    """사용자의 접근 권한(UserSdwtProdAccess) 행 목록을 조회합니다.
 
-    Return access rows for the given user.
+    입력:
+    - user: Django 사용자 객체
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - list[UserSdwtProdAccess]: 접근 권한 행 목록
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return list(
@@ -234,16 +331,28 @@ def list_user_sdwt_prod_access_rows(*, user: Any) -> list[UserSdwtProdAccess]:
 def get_user_profile_role(*, user: Any) -> str:
     """사용자 프로필(role) 값을 조회합니다.
 
-    Returns:
-        역할 문자열. 프로필이 없으면 기본값("viewer")을 반환합니다.
+    입력:
+    - user: Django 사용자 객체
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - str: 역할 문자열(없으면 viewer)
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 유효성 확인
+    # -----------------------------------------------------------------------------
     if not user:
         return UserProfile.Roles.VIEWER
 
+    # -----------------------------------------------------------------------------
+    # 2) 프로필 조회
+    # -----------------------------------------------------------------------------
     profile = UserProfile.objects.filter(user=user).only("role").first()
     if profile is None:
         return UserProfile.Roles.VIEWER
@@ -255,20 +364,29 @@ def list_user_sdwt_prod_changes(
 ) -> list[UserSdwtProdChange]:
     """사용자의 user_sdwt_prod 변경 히스토리를 최신순으로 반환합니다.
 
-    Args:
-        user: Django user instance.
-        limit: 최대 반환 개수.
+    입력:
+    - user: Django 사용자 객체
+    - limit: 최대 반환 개수
 
-    Returns:
-        UserSdwtProdChange 리스트.
+    반환:
+    - list[UserSdwtProdChange]: 변경 이력 목록
 
-    Side effects:
-        None. Read-only query.
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 유효성 확인
+    # -----------------------------------------------------------------------------
     if not user:
         return []
 
+    # -----------------------------------------------------------------------------
+    # 2) 조회 개수 보정 및 조회
+    # -----------------------------------------------------------------------------
     normalized_limit = max(1, int(limit or 50))
     return list(
         UserSdwtProdChange.objects.filter(user=user)
@@ -280,7 +398,18 @@ def list_user_sdwt_prod_changes(
 def user_has_manage_permission(*, user: Any, user_sdwt_prod: str) -> bool:
     """사용자가 특정 user_sdwt_prod 그룹을 관리할 권한이 있는지 확인합니다.
 
-    Return whether user can manage the given user_sdwt_prod.
+    입력:
+    - user: Django 사용자 객체
+    - user_sdwt_prod: 소속 식별자
+
+    반환:
+    - bool: 관리 권한 여부
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return UserSdwtProdAccess.objects.filter(
@@ -293,22 +422,51 @@ def user_has_manage_permission(*, user: Any, user_sdwt_prod: str) -> bool:
 def get_user_by_id(*, user_id: int) -> Any | None:
     """id로 사용자를 조회하고 없으면 None을 반환합니다.
 
-    Return a user by id, or None if missing.
+    입력:
+    - user_id: 사용자 id
+
+    반환:
+    - Any | None: 사용자 객체 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 조회 시도
+    # -----------------------------------------------------------------------------
     UserModel = get_user_model()
     try:
         return UserModel.objects.get(id=user_id)
     except UserModel.DoesNotExist:
+        # -----------------------------------------------------------------------------
+        # 2) 미존재 처리
+        # -----------------------------------------------------------------------------
         return None
 
 
 def get_user_by_knox_id(*, knox_id: str) -> Any | None:
     """knox_id로 사용자를 조회하고 없으면 None을 반환합니다.
 
-    Return a user by knox_id, or None if missing.
+    입력:
+    - knox_id: 사용자 knox_id
+
+    반환:
+    - Any | None: 사용자 객체 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(knox_id, str) or not knox_id.strip():
         return None
 
@@ -316,18 +474,37 @@ def get_user_by_knox_id(*, knox_id: str) -> Any | None:
     if not hasattr(UserModel, "knox_id"):
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 사용자 조회
+    # -----------------------------------------------------------------------------
     return UserModel.objects.filter(knox_id=knox_id.strip()).first()
 
 
 def get_user_sdwt_prod_change_by_id(*, change_id: int) -> UserSdwtProdChange | None:
     """id로 UserSdwtProdChange를 조회하고 없으면 None을 반환합니다.
 
-    Return a UserSdwtProdChange by id, or None if missing.
+    입력:
+    - change_id: 변경 요청 id
+
+    반환:
+    - UserSdwtProdChange | None: 변경 요청 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 변경 요청 조회 시도
+    # -----------------------------------------------------------------------------
     try:
         return UserSdwtProdChange.objects.select_related("user").get(id=change_id)
     except UserSdwtProdChange.DoesNotExist:
+        # -----------------------------------------------------------------------------
+        # 2) 미존재 처리
+        # -----------------------------------------------------------------------------
         return None
 
 
@@ -337,12 +514,28 @@ def get_external_affiliation_snapshot_by_knox_id(
 ) -> ExternalAffiliationSnapshot | None:
     """knox_id로 외부 예측 소속 스냅샷을 조회합니다.
 
-    Return ExternalAffiliationSnapshot by knox_id, or None if missing.
+    입력:
+    - knox_id: 사용자 knox_id
+
+    반환:
+    - ExternalAffiliationSnapshot | None: 스냅샷 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(knox_id, str) or not knox_id.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 스냅샷 조회
+    # -----------------------------------------------------------------------------
     return ExternalAffiliationSnapshot.objects.filter(knox_id=knox_id.strip()).first()
 
 
@@ -352,30 +545,52 @@ def get_external_affiliation_snapshots_by_knox_ids(
 ) -> dict[str, ExternalAffiliationSnapshot]:
     """knox_id 목록으로 외부 예측 소속 스냅샷을 조회해 dict로 반환합니다.
 
-    Returns:
-        Dict keyed by knox_id with ExternalAffiliationSnapshot values.
+    입력:
+    - knox_ids: knox_id 목록
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - dict[str, ExternalAffiliationSnapshot]: knox_id → 스냅샷 매핑
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화
+    # -----------------------------------------------------------------------------
     normalized_ids = [value.strip() for value in knox_ids if isinstance(value, str) and value.strip()]
     if not normalized_ids:
         return {}
 
+    # -----------------------------------------------------------------------------
+    # 2) 스냅샷 조회 및 매핑
+    # -----------------------------------------------------------------------------
     snapshots = ExternalAffiliationSnapshot.objects.filter(knox_id__in=normalized_ids)
     return {snapshot.knox_id: snapshot for snapshot in snapshots}
 
 
 def get_current_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
-    """현재 사용자의 user_sdwt_prod에 해당하는 승인된 변경 이력을 반환합니다.
+    """현재 user_sdwt_prod에 해당하는 승인 변경 이력을 반환합니다.
 
-    Return the latest approved UserSdwtProdChange matching the user's current user_sdwt_prod.
+    입력:
+    - user: Django 사용자 객체
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - UserSdwtProdChange | None: 승인된 변경 이력 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 및 현재 소속 확인
+    # -----------------------------------------------------------------------------
     if not user:
         return None
 
@@ -383,6 +598,9 @@ def get_current_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None
     if not isinstance(current_user_sdwt_prod, str) or not current_user_sdwt_prod.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 승인된 변경 이력 조회
+    # -----------------------------------------------------------------------------
     normalized = current_user_sdwt_prod.strip()
     return (
         UserSdwtProdChange.objects.filter(user=user, to_user_sdwt_prod=normalized)
@@ -393,14 +611,30 @@ def get_current_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None
 
 
 def get_pending_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
-    """현재 사용자의 PENDING 상태 user_sdwt_prod 변경 요청을 조회합니다.
+    """현재 사용자의 PENDING 상태 변경 요청을 조회합니다.
 
-    Return the latest pending UserSdwtProdChange for the given user.
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - UserSdwtProdChange | None: 대기 변경 요청 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 유효성 확인
+    # -----------------------------------------------------------------------------
     if not user:
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 대기 상태 조회
+    # -----------------------------------------------------------------------------
     return (
         UserSdwtProdChange.objects.filter(user=user)
         .filter(
@@ -417,9 +651,20 @@ def get_access_row_for_user_and_prod(
     user: Any,
     user_sdwt_prod: str,
 ) -> UserSdwtProdAccess | None:
-    """(user, user_sdwt_prod)에 대한 접근 권한 행을 조회하고 없으면 None을 반환합니다.
+    """(user, user_sdwt_prod)에 대한 접근 권한 행을 조회합니다.
 
-    Return the access row for (user, user_sdwt_prod), or None.
+    입력:
+    - user: Django 사용자 객체
+    - user_sdwt_prod: 소속 식별자
+
+    반환:
+    - UserSdwtProdAccess | None: 접근 권한 행 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return (
@@ -436,7 +681,18 @@ def other_manager_exists(
 ) -> bool:
     """그룹에 현재 사용자 외 다른 관리자(can_manage)가 존재하는지 확인합니다.
 
-    Return whether there is any other manager for the group.
+    입력:
+    - user_sdwt_prod: 소속 식별자
+    - exclude_user: 제외할 사용자
+
+    반환:
+    - bool: 다른 관리자 존재 여부
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return (
@@ -449,7 +705,17 @@ def other_manager_exists(
 def list_manageable_user_sdwt_prod_values(*, user: Any) -> set[str]:
     """사용자가 관리(can_manage)할 수 있는 user_sdwt_prod 값 집합을 조회합니다.
 
-    Return user_sdwt_prod values the user can manage (can_manage=True).
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - set[str]: 관리 가능한 user_sdwt_prod 집합
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     values = set(
@@ -470,26 +736,38 @@ def list_affiliation_change_requests(
 ) -> QuerySet[UserSdwtProdChange]:
     """승인 대상 소속 변경 요청 목록을 필터링하여 조회합니다.
 
-    Args:
-        manageable_user_sdwt_prods: 관리 가능한 user_sdwt_prod 집합. None이면 전체 접근.
-        status: 상태 필터(PENDING/APPROVED/REJECTED). None이면 필터 미적용.
-        search: 사용자 정보 검색어.
-        user_sdwt_prod: to_user_sdwt_prod 필터.
+    입력:
+    - manageable_user_sdwt_prods: 관리 가능한 user_sdwt_prod 집합(None이면 전체)
+    - status: 상태 필터(PENDING/APPROVED/REJECTED)
+    - search: 사용자 정보 검색어
+    - user_sdwt_prod: to_user_sdwt_prod 필터
 
-    Returns:
-        필터링된 UserSdwtProdChange QuerySet.
+    반환:
+    - QuerySet[UserSdwtProdChange]: 필터링된 변경 요청 목록
 
-    Side effects:
-        None. Read-only query.
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 기본 쿼리셋(QuerySet) 준비
+    # -----------------------------------------------------------------------------
     qs = UserSdwtProdChange.objects.select_related("user", "created_by", "approved_by")
 
+    # -----------------------------------------------------------------------------
+    # 2) 관리 가능 범위 필터
+    # -----------------------------------------------------------------------------
     if manageable_user_sdwt_prods is not None:
         if not manageable_user_sdwt_prods:
             return UserSdwtProdChange.objects.none()
         qs = qs.filter(to_user_sdwt_prod__in=manageable_user_sdwt_prods)
 
+    # -----------------------------------------------------------------------------
+    # 3) 상태 필터
+    # -----------------------------------------------------------------------------
     if isinstance(status, str) and status.strip():
         normalized_status = status.strip().upper()
         if normalized_status == UserSdwtProdChange.Status.PENDING:
@@ -506,9 +784,15 @@ def list_affiliation_change_requests(
         elif normalized_status == UserSdwtProdChange.Status.REJECTED:
             qs = qs.filter(status=UserSdwtProdChange.Status.REJECTED)
 
+    # -----------------------------------------------------------------------------
+    # 4) 소속 필터
+    # -----------------------------------------------------------------------------
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
         qs = qs.filter(to_user_sdwt_prod=user_sdwt_prod.strip())
 
+    # -----------------------------------------------------------------------------
+    # 5) 검색어 필터
+    # -----------------------------------------------------------------------------
     if isinstance(search, str) and search.strip():
         keyword = search.strip()
         qs = qs.filter(
@@ -520,13 +804,26 @@ def list_affiliation_change_requests(
             | Q(user__surname__icontains=keyword)
         )
 
+    # -----------------------------------------------------------------------------
+    # 6) 정렬 및 반환
+    # -----------------------------------------------------------------------------
     return qs.order_by("-created_at", "-id")
 
 
 def list_group_members(*, user_sdwt_prods: set[str]) -> QuerySet[UserSdwtProdAccess]:
-    """지정한 user_sdwt_prods 그룹들에 속한 멤버 접근 권한 행을 조회합니다.
+    """지정한 user_sdwt_prods 그룹에 속한 멤버 접근 권한 행을 조회합니다.
 
-    Return access rows for members in the given user_sdwt_prods.
+    입력:
+    - user_sdwt_prods: 소속 식별자 집합
+
+    반환:
+    - QuerySet[UserSdwtProdAccess]: 멤버 접근 권한 행 목록
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
     return (
@@ -539,9 +836,22 @@ def list_group_members(*, user_sdwt_prods: set[str]) -> QuerySet[UserSdwtProdAcc
 def list_line_sdwt_pairs() -> list[dict[str, str]]:
     """선택 가능한 (line_id, user_sdwt_prod) 쌍 목록을 조회합니다.
 
-    Return all available (line_id, user_sdwt_prod) pairs for selection.
+    입력:
+    - 없음
+
+    반환:
+    - list[dict[str, str]]: line_id/user_sdwt_prod 쌍 목록
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 라인/소속 값 조회 및 정제
+    # -----------------------------------------------------------------------------
     pairs = (
         Affiliation.objects.filter(line__isnull=False)
         .exclude(line__exact="")
@@ -551,6 +861,9 @@ def list_line_sdwt_pairs() -> list[dict[str, str]]:
         .distinct()
         .order_by("line", "user_sdwt_prod")
     )
+    # -----------------------------------------------------------------------------
+    # 2) 응답 형식 변환
+    # -----------------------------------------------------------------------------
     return [{"line_id": row["line"], "user_sdwt_prod": row["user_sdwt_prod"]} for row in pairs]
 
 
@@ -559,19 +872,33 @@ def get_next_user_sdwt_prod_change(
     user: Any,
     effective_from: datetime,
 ) -> UserSdwtProdChange | None:
-    """effective_from 이후 예정된 다음 소속 변경(UserSdwtProdChange)을 조회합니다.
+    """effective_from 이후 예정된 다음 소속 변경을 조회합니다.
 
-    Return the next UserSdwtProdChange after effective_from for the given user.
+    입력:
+    - user: Django 사용자 객체
+    - effective_from: 기준 시각
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - UserSdwtProdChange | None: 다음 변경 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 기준 시각 보정
+    # -----------------------------------------------------------------------------
     if effective_from is None:
         effective_from = timezone.now()
     if timezone.is_naive(effective_from):
         effective_from = timezone.make_aware(effective_from, timezone.utc)
 
+    # -----------------------------------------------------------------------------
+    # 2) 다음 승인 변경 조회
+    # -----------------------------------------------------------------------------
     return (
         UserSdwtProdChange.objects.filter(user=user, effective_from__gt=effective_from)
         .filter(Q(status=UserSdwtProdChange.Status.APPROVED) | Q(approved=True))
@@ -581,19 +908,33 @@ def get_next_user_sdwt_prod_change(
 
 
 def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, str]:
-    """지정 시점의 사용자 소속(부서/라인/user_sdwt_prod) 스냅샷을 계산합니다.
+    """지정 시점의 사용자 소속 스냅샷을 계산합니다.
 
-    Resolve a user's affiliation snapshot at a given time.
+    입력:
+    - user: Django 사용자 객체
+    - at_time: 기준 시각(없으면 현재 시각)
 
-    Side effects:
-        None. Read-only query.
+    반환:
+    - dict[str, str]: 부서/라인/user_sdwt_prod 스냅샷
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 기준 시각 보정
+    # -----------------------------------------------------------------------------
     if at_time is None:
         at_time = timezone.now()
     if timezone.is_naive(at_time):
         at_time = timezone.make_aware(at_time, timezone.utc)
 
+    # -----------------------------------------------------------------------------
+    # 2) 기준 시각까지 승인된 변경 조회
+    # -----------------------------------------------------------------------------
     change = (
         UserSdwtProdChange.objects.filter(user=user, effective_from__lte=at_time)
         .filter(Q(status=UserSdwtProdChange.Status.APPROVED) | Q(approved=True))
@@ -601,6 +942,9 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
         .first()
     )
 
+    # -----------------------------------------------------------------------------
+    # 3) 변경 이력이 있으면 해당 스냅샷 반환
+    # -----------------------------------------------------------------------------
     if change:
         return {
             "department": change.department or getattr(user, "department", None) or UNKNOWN,
@@ -610,6 +954,9 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
             or UNCLASSIFIED_USER_SDWT_PROD,
         }
 
+    # -----------------------------------------------------------------------------
+    # 4) 다음 변경이 있는 경우 이전 소속 추정
+    # -----------------------------------------------------------------------------
     next_change = (
         UserSdwtProdChange.objects.filter(user=user, effective_from__gt=at_time)
         .filter(Q(status=UserSdwtProdChange.Status.APPROVED) | Q(approved=True))
@@ -621,6 +968,9 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
     if next_change:
         before_user_sdwt_prod = next_change.from_user_sdwt_prod
 
+    # -----------------------------------------------------------------------------
+    # 5) 기본 스냅샷 반환
+    # -----------------------------------------------------------------------------
     return {
         "department": getattr(user, "department", None) or UNKNOWN,
         "line": getattr(user, "line", None) or "",
@@ -637,12 +987,30 @@ def get_affiliation_option(
 ) -> Affiliation | None:
     """부서/라인/user_sdwt_prod 조합에 해당하는 소속 옵션 행을 조회합니다.
 
-    Return a single affiliation option row, or None when missing.
+    입력:
+    - department: 부서명
+    - line: 라인 식별자
+    - user_sdwt_prod: 소속 식별자
+
+    반환:
+    - Affiliation | None: 소속 옵션 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not department or not line or not user_sdwt_prod:
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 단일 행 조회
+    # -----------------------------------------------------------------------------
     try:
         return Affiliation.objects.get(
             department=department.strip(),
@@ -656,12 +1024,28 @@ def get_affiliation_option(
 def get_affiliation_option_by_user_sdwt_prod(*, user_sdwt_prod: str) -> Affiliation | None:
     """user_sdwt_prod로 단일 Affiliation 옵션을 조회합니다.
 
-    Return an Affiliation when only one row matches the given user_sdwt_prod.
+    입력:
+    - user_sdwt_prod: 소속 식별자
+
+    반환:
+    - Affiliation | None: 단일 옵션 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 단일 행 여부 확인
+    # -----------------------------------------------------------------------------
     normalized = user_sdwt_prod.strip()
     rows = list(Affiliation.objects.filter(user_sdwt_prod=normalized).order_by("id")[:2])
     if len(rows) != 1:

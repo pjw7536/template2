@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈 설명: 활동 로그 모델을 정의합니다.
+# - 주요 클래스: ActivityLog
+# - 불변 조건: created_at은 타임존 인식(UTC) 값입니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.conf import settings
@@ -20,7 +25,8 @@ class ActivityLog(models.Model):
         db_table = "activity_log"
         ordering = ["-created_at"]
 
-    def __str__(self) -> str:  # pragma: no cover - debugging helper
+    def __str__(self) -> str:  # 디버깅용 문자열(커버리지 제외): pragma: no cover
+        """디버깅용 표시 문자열을 반환합니다."""
         username = self.user.get_username() if self.user else "anonymous"
         return f"{self.method} {self.path} by {username} -> {self.status_code}"
 

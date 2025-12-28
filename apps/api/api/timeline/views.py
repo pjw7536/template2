@@ -1,4 +1,10 @@
-"""Dummy timeline endpoints used by the frontend timeline feature."""
+# =============================================================================
+# 모듈 설명: timeline 더미 엔드포인트를 제공합니다.
+# - 주요 클래스: TimelineLinesView, TimelineEquipmentInfoView, TimelineLogsView 등
+# - 불변 조건: 더미 데이터만 반환하며 외부 호출은 없습니다.
+# =============================================================================
+
+"""타임라인 더미 뷰."""
 from __future__ import annotations
 
 from django.http import HttpRequest, JsonResponse
@@ -8,22 +14,58 @@ from . import selectors
 
 
 class TimelineLinesView(APIView):
-    """더미 라인 목록을 반환합니다.
-
-    Returns dummy line data.
-    """
+    """더미 라인 목록을 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """라인 목록을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 라인 목록 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 없음
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/lines
+
+        snake/camel 호환:
+        - 해당 없음(쿼리/바디 없음)
+        """
         return JsonResponse(selectors.list_lines(), safe=False)
 
 
 class TimelineSdwtView(APIView):
-    """라인 기준 SDWT 목록을 반환합니다.
-
-    Returns SDWT list for a line.
-    """
+    """라인 기준 SDWT 목록을 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """라인 기준 SDWT 목록을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: SDWT 목록 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: lineId 누락
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/sdwts?lineId=LINE-A
+
+        snake/camel 호환:
+        - lineId만 지원(snake_case 미지원)
+        """
         line_id = selectors.normalize_id(request.GET.get("lineId"))
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
@@ -32,12 +74,30 @@ class TimelineSdwtView(APIView):
 
 
 class TimelinePrcGroupView(APIView):
-    """라인/SDWT 조합 기준 PRC 그룹 목록을 반환합니다.
-
-    Returns PRC group list for a line/SDWT pair.
-    """
+    """라인/SDWT 조합 기준 PRC 그룹 목록을 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """라인/SDWT 기준 PRC 그룹 목록을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: PRC 그룹 목록 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: lineId 또는 sdwtId 누락
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/prc-groups?lineId=LINE-A&sdwtId=SD-10
+
+        snake/camel 호환:
+        - lineId/sdwtId만 지원(snake_case 미지원)
+        """
         line_id = selectors.normalize_id(request.GET.get("lineId"))
         sdwt_id = selectors.normalize_id(request.GET.get("sdwtId"))
 
@@ -48,12 +108,30 @@ class TimelinePrcGroupView(APIView):
 
 
 class TimelineEquipmentsView(APIView):
-    """라인/SDWT/PRC 그룹 조합 기준 설비 목록을 반환합니다.
-
-    Returns equipment list for a line/SDWT/PRC group.
-    """
+    """라인/SDWT/PRC 그룹 조합 기준 설비 목록을 반환합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """라인/SDWT/PRC 그룹 기준 설비 목록을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 설비 목록 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: lineId, sdwtId, prcGroup 누락
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/equipments?lineId=LINE-A&sdwtId=SD-10&prcGroup=ETCH
+
+        snake/camel 호환:
+        - lineId/sdwtId/prcGroup만 지원(snake_case 미지원)
+        """
         line_id = selectors.normalize_id(request.GET.get("lineId"))
         sdwt_id = selectors.normalize_id(request.GET.get("sdwtId"))
         prc_group = selectors.normalize_id(request.GET.get("prcGroup"))
@@ -70,10 +148,7 @@ class TimelineEquipmentsView(APIView):
 
 
 class TimelineEquipmentInfoView(APIView):
-    """eqpId 기준 설비 메타데이터를 반환합니다(선택적으로 line 범위 제한).
-
-    Returns equipment metadata by eqpId, optionally scoped by line.
-    """
+    """eqpId 기준 설비 메타데이터를 반환합니다(선택적으로 line 범위 제한)."""
 
     def get(
         self,
@@ -83,17 +158,54 @@ class TimelineEquipmentInfoView(APIView):
         *args: object,
         **kwargs: object,
     ) -> JsonResponse:
+        """eqpId 기준 설비 메타데이터를 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - line_id: 라인 ID(선택, 경로 파라미터)
+        - eqp_id: 설비 ID(경로 파라미터)
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 설비 메타데이터
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: eqpId 누락
+        - 404: 설비 미존재 또는 라인 범위 불일치
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/equipment-info/EQP-ALPHA
+        - 예시 요청: GET /api/v1/timeline/equipment-info/LINE-A/EQP-ALPHA
+
+        snake/camel 호환:
+        - 해당 없음(경로 파라미터만 사용)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) eqpId 유효성 확인
+        # -----------------------------------------------------------------------------
         eqp_key = selectors.normalize_id(eqp_id)
         if not eqp_key:
             return JsonResponse({"error": "eqpId is required"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 2) 설비 메타데이터 조회
+        # -----------------------------------------------------------------------------
         info = selectors.get_equipment_info(eqp_id=eqp_key)
         if not info:
             return JsonResponse({"error": "Equipment not found"}, status=404)
 
+        # -----------------------------------------------------------------------------
+        # 3) 라인 범위 제한 확인
+        # -----------------------------------------------------------------------------
         if line_id and selectors.normalize_id(line_id) != selectors.normalize_id(info["lineId"]):
             return JsonResponse({"error": "Equipment not found for line"}, status=404)
 
+        # -----------------------------------------------------------------------------
+        # 4) 응답 반환
+        # -----------------------------------------------------------------------------
         return JsonResponse(info)
 
 
@@ -103,6 +215,27 @@ class _TimelineLogsByTypeView(APIView):
     log_key: str = ""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """설비 로그 중 지정된 타입 로그를 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 타입별 로그 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: eqpId 누락
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/logs/eqp?eqpId=EQP-ALPHA
+
+        snake/camel 호환:
+        - eqpId만 지원(snake_case 미지원)
+        """
         eqp_id = selectors.normalize_id(request.GET.get("eqpId"))
         if not eqp_id:
             return JsonResponse({"error": "eqpId is required"}, status=400)
@@ -111,14 +244,32 @@ class _TimelineLogsByTypeView(APIView):
 
 
 class TimelineLogsView(_TimelineLogsByTypeView):
-    """설비의 전체 로그를 타입별로 합쳐 반환합니다.
-
-    Returns merged logs for an equipment.
-    """
+    """설비의 전체 로그를 타입별로 합쳐 반환합니다."""
 
     log_key = ""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """설비의 전체 로그를 합쳐 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 통합 로그 배열
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: eqpId 누락
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/timeline/logs?eqpId=EQP-ALPHA
+
+        snake/camel 호환:
+        - eqpId만 지원(snake_case 미지원)
+        """
         eqp_id = selectors.normalize_id(request.GET.get("eqpId"))
         if not eqp_id:
             return JsonResponse({"error": "eqpId is required"}, status=400)

@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: emails 기능의 라우팅을 정의합니다.
+# - 주요 엔드포인트: inbox, sent, mailboxes, members, unassigned, ingest, outbox, bulk-delete, move, detail, html
+# - 불변 조건: 비즈니스 로직 없이 View에 위임합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from django.urls import path

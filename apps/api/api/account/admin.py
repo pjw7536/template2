@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: account 도메인의 Django Admin 설정을 제공합니다.
+# - 주요 대상: 사용자/소속/권한/변경 요청 관리 화면
+# - 불변 조건: 관리자 작업은 서비스 정책을 따라야 합니다.
+# =============================================================================
+
+"""계정 도메인 Django Admin 설정 모음.
+
+- 주요 대상: 사용자/소속/권한/변경 요청 관리 화면
+- 주요 엔드포인트/클래스: AccountUserAdmin, UserSdwtProdChangeAdmin 등
+- 가정/불변 조건: 관리 화면에서의 변경은 서비스 정책을 준수해야 함
+"""
 from __future__ import annotations
 
 from django import forms
@@ -23,6 +35,8 @@ from api.emails.services import claim_unassigned_emails_for_user
 
 
 class AccountUserCreationForm(SetUnusablePasswordMixin, BaseUserCreationForm):
+    """관리자 사용자 생성을 위한 커스텀 폼입니다."""
+
     usable_password = SetUnusablePasswordMixin.create_usable_password_field()
 
     class Meta(BaseUserCreationForm.Meta):
@@ -31,12 +45,31 @@ class AccountUserCreationForm(SetUnusablePasswordMixin, BaseUserCreationForm):
         field_classes = {"sabun": UsernameField}
 
     def __init__(self, *args, **kwargs):
+        """비밀번호 입력을 선택 사항으로 변경합니다.
+
+        입력:
+        - *args, **kwargs: Django 폼 초기화 인자
+
+        반환:
+        - 없음
+
+        부작용:
+        - password 필드의 required 속성을 변경
+
+        오류:
+        - 없음
+        """
         super().__init__(*args, **kwargs)
+        # -----------------------------------------------------------------------------
+        # 1) 비밀번호 필드 필수 해제
+        # -----------------------------------------------------------------------------
         self.fields["password1"].required = False
         self.fields["password2"].required = False
 
 
 class AccountUserChangeForm(UserChangeForm):
+    """관리자 사용자 변경을 위한 커스텀 폼입니다."""
+
     user_sdwt_prod_effective_from = forms.SplitDateTimeField(
         required=False,
         label="user_sdwt_prod 변경 시각",
@@ -51,10 +84,30 @@ class AccountUserChangeForm(UserChangeForm):
         field_classes = {"sabun": UsernameField}
 
     def __init__(self, *args, **kwargs):
+        """현재 user_sdwt_prod 변경 시각을 초기값으로 채웁니다.
+
+        입력:
+        - *args, **kwargs: Django 폼 초기화 인자
+
+        반환:
+        - 없음
+
+        부작용:
+        - user_sdwt_prod_effective_from 초기값 설정
+
+        오류:
+        - 없음
+        """
         super().__init__(*args, **kwargs)
+        # -----------------------------------------------------------------------------
+        # 1) 신규 객체는 초기값 설정 없이 종료
+        # -----------------------------------------------------------------------------
         if not getattr(self.instance, "pk", None):
             return
 
+        # -----------------------------------------------------------------------------
+        # 2) 현재 변경 이력 조회 및 초기값 설정
+        # -----------------------------------------------------------------------------
         change = get_current_user_sdwt_prod_change(user=self.instance)
         if change is None:
             return
@@ -64,6 +117,8 @@ class AccountUserChangeForm(UserChangeForm):
 
 @admin.register(User)
 class AccountUserAdmin(DjangoUserAdmin):
+    """사용자(User) 관리 화면 설정입니다."""
+
     form = AccountUserChangeForm
     add_form = AccountUserCreationForm
     actions = ("claim_unassigned_emails",)
@@ -155,13 +210,35 @@ class AccountUserAdmin(DjangoUserAdmin):
             "(RAG 베스트에포트, 누락=요청했지만 DB에 없는 ID)"
         )
     )
-    def claim_unassigned_emails(self, request, queryset):  # type: ignore[override]
+    def claim_unassigned_emails(self, request, queryset):  # 타입 검사 생략: type: ignore[override]
+        """미분류 메일을 사용자 메일함으로 이동하고 RAG 등록을 시도합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - queryset: 선택된 사용자 QuerySet
+
+        반환:
+        - 없음
+
+        부작용:
+        - 이메일 이동 및 RAG 등록 시도
+        - 관리자 메시지 출력
+
+        오류:
+        - 없음(개별 실패는 메시지로 집계)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 결과 카운터 초기화
+        # -----------------------------------------------------------------------------
         total_moved = 0
         total_rag_registered = 0
         total_rag_failed = 0
         total_rag_missing = 0
         failures: list[str] = []
 
+        # -----------------------------------------------------------------------------
+        # 2) 사용자별 처리
+        # -----------------------------------------------------------------------------
         for user in queryset.iterator():
             try:
                 result = claim_unassigned_emails_for_user(user=user)
@@ -174,6 +251,9 @@ class AccountUserAdmin(DjangoUserAdmin):
             total_rag_failed += result.get("ragFailed", 0)
             total_rag_missing += result.get("ragMissing", 0)
 
+        # -----------------------------------------------------------------------------
+        # 3) 처리 결과 메시지 출력
+        # -----------------------------------------------------------------------------
         if failures:
             details = " | ".join(failures[:5])
             if len(failures) > 5:
@@ -195,20 +275,53 @@ class AccountUserAdmin(DjangoUserAdmin):
         )
         return None
 
-    def save_model(self, request, obj, form, change):  # type: ignore[override]
+    def save_model(self, request, obj, form, change):  # 타입 검사 생략: type: ignore[override]
+        """관리자 저장 시 user_sdwt_prod 변경 시각을 동기화합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - obj: 저장 대상 User 객체
+        - form: 변경 폼
+        - change: 변경 여부 플래그
+
+        반환:
+        - 없음
+
+        부작용:
+        - UserSdwtProdChange.effective_from 갱신 가능
+        - 관리자 메시지 출력
+
+        오류:
+        - 없음
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 기본 저장 처리
+        # -----------------------------------------------------------------------------
         super().save_model(request, obj, form, change)
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 시각 값 확인
+        # -----------------------------------------------------------------------------
         effective_from = form.cleaned_data.get("user_sdwt_prod_effective_from")
         if effective_from is None:
             return
 
+        # -----------------------------------------------------------------------------
+        # 3) 타임존 보정
+        # -----------------------------------------------------------------------------
         if timezone.is_naive(effective_from):
             effective_from = timezone.make_aware(effective_from, timezone.get_current_timezone())
 
+        # -----------------------------------------------------------------------------
+        # 4) 현재 user_sdwt_prod 유효성 확인
+        # -----------------------------------------------------------------------------
         current_user_sdwt_prod = (getattr(obj, "user_sdwt_prod", None) or "").strip()
         if not current_user_sdwt_prod or current_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
             return
 
+        # -----------------------------------------------------------------------------
+        # 5) 변경 이력 조회
+        # -----------------------------------------------------------------------------
         change_row = get_current_user_sdwt_prod_change(user=obj)
         if change_row is None:
             self.message_user(
@@ -219,6 +332,9 @@ class AccountUserAdmin(DjangoUserAdmin):
             )
             return
 
+        # -----------------------------------------------------------------------------
+        # 6) 변경 시각 업데이트
+        # -----------------------------------------------------------------------------
         if change_row.effective_from != effective_from:
             change_row.effective_from = effective_from
             change_row.save(update_fields=["effective_from"])
@@ -231,6 +347,8 @@ class AccountUserAdmin(DjangoUserAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
+    """UserProfile 관리 화면 설정입니다."""
+
     list_display = ("user", "role")
     list_filter = ("role",)
     search_fields = ("user__sabun", "user__knox_id", "user__email")
@@ -239,6 +357,8 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Affiliation)
 class AffiliationAdmin(admin.ModelAdmin):
+    """Affiliation 관리 화면 설정입니다."""
+
     list_display = ("department", "line", "user_sdwt_prod")
     search_fields = ("department", "line", "user_sdwt_prod")
     list_filter = ("line",)
@@ -247,6 +367,8 @@ class AffiliationAdmin(admin.ModelAdmin):
 
 @admin.register(UserSdwtProdAccess)
 class UserSdwtProdAccessAdmin(admin.ModelAdmin):
+    """UserSdwtProdAccess 관리 화면 설정입니다."""
+
     list_display = ("user", "user_sdwt_prod", "can_manage", "granted_by", "created_at")
     list_filter = ("can_manage", "user_sdwt_prod")
     search_fields = (
@@ -264,6 +386,8 @@ class UserSdwtProdAccessAdmin(admin.ModelAdmin):
 
 @admin.register(UserSdwtProdChange)
 class UserSdwtProdChangeAdmin(admin.ModelAdmin):
+    """UserSdwtProdChange 관리 화면 설정입니다."""
+
     actions = ("approve_affiliation_changes",)
     list_display = (
         "user",
@@ -286,11 +410,33 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
     autocomplete_fields = ("user", "approved_by", "created_by")
 
     @admin.action(description="선택한 소속 변경 요청 승인")
-    def approve_affiliation_changes(self, request, queryset):  # type: ignore[override]
+    def approve_affiliation_changes(self, request, queryset):  # 타입 검사 생략: type: ignore[override]
+        """선택된 소속 변경 요청을 승인 처리합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - queryset: 선택된 변경 요청 QuerySet
+
+        반환:
+        - 없음
+
+        부작용:
+        - 서비스 승인 로직 호출
+        - 관리자 메시지 출력
+
+        오류:
+        - 없음(실패 건은 메시지로 집계)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 사용자 인증 확인
+        # -----------------------------------------------------------------------------
         if not request.user or not request.user.is_authenticated:
             self.message_user(request, "승인 권한이 없습니다.", level=messages.ERROR)
             return None
 
+        # -----------------------------------------------------------------------------
+        # 2) 승인 처리 수행
+        # -----------------------------------------------------------------------------
         approved_count = 0
         failed_count = 0
         failures: list[str] = []
@@ -308,6 +454,9 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
             error_message = payload.get("error") if isinstance(payload, dict) else None
             failures.append(f"{change.id}: {error_message or 'unknown error'}")
 
+        # -----------------------------------------------------------------------------
+        # 3) 결과 메시지 출력
+        # -----------------------------------------------------------------------------
         if failed_count:
             details = " | ".join(failures[:5])
             if len(failures) > 5:
@@ -329,6 +478,8 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
 
 @admin.register(ExternalAffiliationSnapshot)
 class ExternalAffiliationSnapshotAdmin(admin.ModelAdmin):
+    """ExternalAffiliationSnapshot 관리 화면 설정입니다."""
+
     list_display = (
         "knox_id",
         "predicted_user_sdwt_prod",

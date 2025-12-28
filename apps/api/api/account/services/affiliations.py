@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: 소속 관련 서비스 로직을 제공합니다.
+# - 주요 대상: get_affiliation_overview, submit_affiliation_reconfirm_response, update_affiliation_jira_key
+# - 불변 조건: 모든 쓰기 작업은 서비스 레이어에서 수행합니다.
+# =============================================================================
+
+"""소속 관련 서비스 로직 모음.
+
+- 주요 대상: 소속 개요, 재확인 처리, Jira Key 갱신, 옵션 페이로드
+- 주요 엔드포인트/클래스: get_affiliation_overview 등
+- 가정/불변 조건: 모든 쓰기 작업은 서비스 레이어에서 수행됨
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,7 +27,18 @@ from .affiliation_requests import request_affiliation_change
 def get_affiliation_overview(*, user: Any, timezone_name: str) -> dict[str, object]:
     """AccountAffiliationView(GET) 응답 payload를 구성합니다.
 
-    Build the AccountAffiliationView GET response payload.
+    입력:
+    - user: Django 사용자 객체
+    - timezone_name: 시간대 이름
+
+    반환:
+    - dict[str, object]: 소속 개요 payload
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
     """
 
     access_list = _current_access_list(user)
@@ -36,8 +59,17 @@ def get_affiliation_overview(*, user: Any, timezone_name: str) -> dict[str, obje
 def get_affiliation_reconfirm_status(*, user: Any) -> dict[str, object]:
     """사용자의 소속 재확인 상태와 예측값을 반환합니다.
 
-    Returns:
-        Dict with requiresReconfirm, predictedUserSdwtProd, currentUserSdwtProd.
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - dict[str, object]: 재확인 상태/예측 소속 정보
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
     """
 
     if not user:
@@ -65,13 +97,33 @@ def submit_affiliation_reconfirm_response(
 ) -> Tuple[dict[str, object], int]:
     """재확인 응답을 처리해 소속 변경 요청을 생성합니다.
 
-    Returns:
-        (payload, http_status)
+    입력:
+    - user: Django 사용자 객체
+    - accepted: 재확인 수락 여부
+    - department/line/user_sdwt_prod: 선택된 소속 정보
+    - timezone_name: 시간대 이름
+
+    반환:
+    - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
+
+    부작용:
+    - UserSdwtProdChange 생성
+    - 사용자 재확인 플래그 해제 가능
+
+    오류:
+    - 400: 입력 오류
+    - 401: 미인증
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 인증 확인
+    # -----------------------------------------------------------------------------
     if not user:
         return {"error": "unauthorized"}, 401
 
+    # -----------------------------------------------------------------------------
+    # 2) user_sdwt_prod 결정
+    # -----------------------------------------------------------------------------
     selected_user_sdwt = (user_sdwt_prod or "").strip()
     if accepted and not selected_user_sdwt:
         snapshot = selectors.get_external_affiliation_snapshot_by_knox_id(
@@ -83,6 +135,9 @@ def submit_affiliation_reconfirm_response(
     if not selected_user_sdwt:
         return {"error": "user_sdwt_prod is required"}, 400
 
+    # -----------------------------------------------------------------------------
+    # 3) 소속 옵션 검증
+    # -----------------------------------------------------------------------------
     option = None
     if department and line:
         option = selectors.get_affiliation_option(
@@ -97,6 +152,9 @@ def submit_affiliation_reconfirm_response(
     if option is None:
         return {"error": "Invalid department/line/user_sdwt_prod combination"}, 400
 
+    # -----------------------------------------------------------------------------
+    # 4) 변경 요청 생성
+    # -----------------------------------------------------------------------------
     response_payload, status_code = request_affiliation_change(
         user=user,
         option=option,
@@ -104,6 +162,9 @@ def submit_affiliation_reconfirm_response(
         effective_from=timezone.now(),
         timezone_name=timezone_name,
     )
+    # -----------------------------------------------------------------------------
+    # 5) 재확인 플래그 해제
+    # -----------------------------------------------------------------------------
     if status_code in (200, 202):
         user.requires_affiliation_reconfirm = False
         user.save(update_fields=["requires_affiliation_reconfirm"])
@@ -114,20 +175,29 @@ def submit_affiliation_reconfirm_response(
 def update_affiliation_jira_key(*, line_id: str, jira_key: str | None) -> int:
     """line_id에 해당하는 Affiliation의 jira_key를 업데이트합니다.
 
-    Args:
-        line_id: 대상 line_id 문자열.
-        jira_key: Jira 프로젝트 키(없으면 None).
+    입력:
+    - line_id: 대상 line_id 문자열
+    - jira_key: Jira 프로젝트 키(없으면 None)
 
-    Returns:
-        업데이트된 row 개수.
+    반환:
+    - int: 업데이트된 행 개수
 
-    Side effects:
-        Updates Affiliation.jira_key rows.
+    부작용:
+    - Affiliation.jira_key 업데이트
+
+    오류:
+    - ValueError: line_id 누락
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not isinstance(line_id, str) or not line_id.strip():
         raise ValueError("line_id is required")
 
+    # -----------------------------------------------------------------------------
+    # 2) 키 정규화 및 업데이트
+    # -----------------------------------------------------------------------------
     normalized = jira_key.strip() if isinstance(jira_key, str) and jira_key.strip() else None
     with transaction.atomic():
         updated = Affiliation.objects.filter(line=line_id.strip()).update(jira_key=normalized)
@@ -137,15 +207,31 @@ def update_affiliation_jira_key(*, line_id: str, jira_key: str | None) -> int:
 def get_line_sdwt_options_payload(*, pairs: list[dict[str, str]]) -> dict[str, object]:
     """(line_id, user_sdwt_prod) 목록으로 LineSdwtOptionsView 응답 payload를 구성합니다.
 
-    Build LineSdwtOptionsView response payload from (line_id, user_sdwt_prod) rows.
+    입력:
+    - pairs: line_id/user_sdwt_prod 쌍 목록
+
+    반환:
+    - dict[str, object]: 옵션 페이로드
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 라인별 그룹화
+    # -----------------------------------------------------------------------------
     grouped: Dict[str, List[str]] = {}
     for row in pairs:
         line_id = row["line_id"]
         user_sdwt_prod = row["user_sdwt_prod"]
         grouped.setdefault(line_id, []).append(user_sdwt_prod)
 
+    # -----------------------------------------------------------------------------
+    # 2) 라인별 옵션 구성
+    # -----------------------------------------------------------------------------
     lines = [
         {
             "lineId": line_id,
@@ -153,8 +239,14 @@ def get_line_sdwt_options_payload(*, pairs: list[dict[str, str]]) -> dict[str, o
         }
         for line_id, user_sdwt_list in grouped.items()
     ]
+    # -----------------------------------------------------------------------------
+    # 3) 전체 user_sdwt_prod 집합 구성
+    # -----------------------------------------------------------------------------
     all_user_sdwt = sorted(
         {usdwt for user_sdwt_list in grouped.values() for usdwt in user_sdwt_list}
     )
 
+    # -----------------------------------------------------------------------------
+    # 4) 페이로드 반환
+    # -----------------------------------------------------------------------------
     return {"lines": lines, "userSdwtProds": all_user_sdwt}

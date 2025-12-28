@@ -1,35 +1,40 @@
+# =============================================================================
+# 모듈: 드론 API 뷰
+# 주요 엔드포인트: DroneEarlyInformView, LineHistoryView, DroneSop*TriggerView
+# 주요 가정: 외부 트리거는 Airflow 토큰으로 보호합니다.
+# =============================================================================
 """Drone 조기 알림 설정 및 라인 대시보드 집계 엔드포인트.
 
-Early inform 설정은 DroneEarlyInform ORM 모델을 통해 처리하고,
-라인 대시보드 집계/옵션 조회는 selectors에서 raw SQL로 처리합니다.
+조기 알림 설정은 DroneEarlyInform ORM 모델을 통해 처리하고,
+라인 대시보드 집계/옵션 조회는 selectors에서 원시 SQL로 처리합니다.
 
 # 엔드포인트 요약
-- GET    /api/v1/line-dashboard/early-inform?lineId=L1
-- POST   /api/v1/line-dashboard/early-inform { lineId, mainStep, customEndStep? }
-- PATCH  /api/v1/line-dashboard/early-inform { id, lineId?, mainStep?, customEndStep? }
-- DELETE /api/v1/line-dashboard/early-inform?id=123
+- 예시 요청: GET    /api/v1/line-dashboard/early-inform?lineId=L1
+- 예시 요청: POST   /api/v1/line-dashboard/early-inform { lineId, mainStep, customEndStep? }
+- 예시 요청: PATCH  /api/v1/line-dashboard/early-inform { id, lineId?, mainStep?, customEndStep? }
+- 예시 요청: DELETE /api/v1/line-dashboard/early-inform?id=123
 
 # 응답(예시)
-GET:
+GET 예시:
 {
-  "lineId": "L1",
-  "rowCount": 2,
-  "rows": [
-    { "id": 1, "lineId": "L1", "mainStep": "ETCH", "customEndStep": "ETCH-9" },
-    { "id": 2, "lineId": "L1", "mainStep": "PR",   "customEndStep": null }
+  예시 "lineId": "L1",
+  예시 "rowCount": 2,
+  예시 "rows": [
+    예시 { "id": 1, "lineId": "L1", "mainStep": "ETCH", "customEndStep": "ETCH-9" },
+    예시 { "id": 2, "lineId": "L1", "mainStep": "PR",   "customEndStep": null }
   ]
 }
 
-POST/PATCH:
-{ "entry": { "id": 3, "lineId": "L1", "mainStep": "CMP", "customEndStep": null } }
+POST/PATCH 예시:
+예시 { "entry": { "id": 3, "lineId": "L1", "mainStep": "CMP", "customEndStep": null } }
 
-DELETE:
-{ "success": true }
+DELETE 예시:
+예시 { "success": true }
 
 # 유의사항
 - CSRF 예외(@csrf_exempt)를 적용했으므로, 외부 호출 노출 시 토큰/인증 등 별도 방어가 필수입니다.
 - 값 길이 제한은 MAX_FIELD_LENGTH(예: 50) 기준으로 검증합니다.
-- 중복키(ER_DUP_ENTRY/MySQL, 23505/PostgreSQL)는 409 Conflict로 응답합니다.
+- 중복키(ER_DUP_ENTRY/MySQL, 23505/PostgreSQL)는 409 Conflict(충돌)로 응답합니다.
 """
 from __future__ import annotations
 
@@ -58,6 +63,21 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_authenticated(request: HttpRequest) -> JsonResponse | None:
+    """인증 여부를 확인하고 실패 시 JsonResponse를 반환합니다.
+
+    인자:
+        요청: Django HttpRequest 객체.
+
+    반환:
+        인증 실패 시 JsonResponse, 성공 시 None.
+
+    부작용:
+        없음. 순수 검사입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 사용자 인증 확인
+    # -----------------------------------------------------------------------------
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
         return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
@@ -66,9 +86,9 @@ def _ensure_authenticated(request: HttpRequest) -> JsonResponse | None:
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneEarlyInformView(APIView):
-    """drone_early_inform 테이블에 대한 CRUD.
+    """drone_early_inform 테이블 CRUD(생성/조회/수정/삭제) 엔드포인트입니다.
 
-    - GET: lineId로 행 목록 조회(최신 정렬 기준: main_step ASC, id ASC)
+    - GET: lineId로 행 목록 조회(정렬: main_step ASC, id ASC)
     - POST: 신규 행 추가(중복 main_step 방지 가정)
     - PATCH: 부분 업데이트(id 필수)
     - DELETE: 행 삭제(id 쿼리 파라미터)
@@ -78,48 +98,105 @@ class DroneEarlyInformView(APIView):
     TABLE_NAME = "drone_early_inform"
 
     # --------------------------------------------------------------------- #
-    # READ
+    # 조회
     # --------------------------------------------------------------------- #
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """lineId로 행 목록을 가져옵니다."""
+        """lineId로 행 목록을 가져옵니다.
+
+        요청 예시:
+            예시 요청: GET /api/v1/line-dashboard/early-inform?lineId=L1
+
+        반환:
+            예시 응답: 200 {"lineId": "...", "rowCount": 1, "rows": [...], "userSdwt": [...]}
+
+        부작용:
+            없음. 읽기 전용 조회입니다.
+
+        오류:
+            400: lineId 누락/형식 오류
+            401: 비인증
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            query 파라미터는 lineId만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         auth_response = _ensure_authenticated(request)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) 파라미터 검증
+        # -----------------------------------------------------------------------------
         line_id = self._sanitize_line_id(request.GET.get("lineId"))
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 조회 및 응답 반환
+        # -----------------------------------------------------------------------------
         try:
             normalized_rows = [
                 serialize_early_inform_entry(entry)
                 for entry in selectors.list_early_inform_entries(line_id=line_id)
             ]
             user_sdwt_values = selectors.list_user_sdwt_prod_values_for_line(line_id=line_id)
-            return JsonResponse({
-                "lineId": line_id,
-                "rowCount": len(normalized_rows),
-                "rows": normalized_rows,
-                "userSdwt": user_sdwt_values,
-            })
+            return JsonResponse(
+                {
+                    "lineId": line_id,
+                    "rowCount": len(normalized_rows),
+                    "rows": normalized_rows,
+                    "userSdwt": user_sdwt_values,
+                }
+            )
         except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to load drone_early_inform rows")
             return JsonResponse({"error": "Failed to load settings"}, status=500)
 
     # --------------------------------------------------------------------- #
-    # CREATE
+    # 생성
     # --------------------------------------------------------------------- #
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """신규 행을 생성합니다."""
+        """신규 행을 생성합니다.
+
+        요청 예시:
+            예시 요청: POST /api/v1/line-dashboard/early-inform
+            예시 바디: {"lineId":"L1","mainStep":"STEP1","customEndStep":"STEP2"}
+
+        반환:
+            예시 응답: 201 {"entry": {...}}
+
+        부작용:
+            DroneEarlyInform 레코드가 생성됩니다.
+
+        오류:
+            400: JSON/필드 검증 오류
+            401: 비인증
+            409: 중복 키
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            요청 본문은 camelCase(lineId/mainStep/customEndStep)만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         auth_response = _ensure_authenticated(request)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
-        # 필수 필드 검증
+        # -----------------------------------------------------------------------------
+        # 3) 필수/선택 필드 검증
+        # -----------------------------------------------------------------------------
         line_id = self._sanitize_line_id(payload.get("lineId"))
         main_step = self._sanitize_main_step(payload.get("mainStep"))
         if not line_id:
@@ -127,18 +204,23 @@ class DroneEarlyInformView(APIView):
         if not main_step:
             return JsonResponse({"error": "mainStep is required"}, status=400)
 
-        # 선택 필드 정규화(빈 문자열 → None / 길이 제한 검사)
         try:
             custom_end_step = self._normalize_custom_end_step(payload.get("customEndStep"))
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 4) updated_by 계산
+        # -----------------------------------------------------------------------------
         user = getattr(request, "user", None)
         knox_id = None
         if user and getattr(user, "is_authenticated", False):
             knox_id = getattr(user, "knox_id", None)
         updated_by = self._sanitize_updated_by(knox_id or "system")
 
+        # -----------------------------------------------------------------------------
+        # 5) 서비스 호출 및 액티비티 로그 기록
+        # -----------------------------------------------------------------------------
         try:
             entry = services.create_early_inform_entry(
                 line_id=line_id,
@@ -148,7 +230,6 @@ class DroneEarlyInformView(APIView):
             )
             entry_payload = serialize_early_inform_entry(entry)
 
-            # 액티비티 로그(요약 + 신규 상태 + 메타데이터)
             set_activity_summary(request, "Create drone_early_inform entry")
             set_activity_new_state(request, entry_payload)
             merge_activity_metadata(
@@ -165,19 +246,48 @@ class DroneEarlyInformView(APIView):
             return JsonResponse({"error": "Failed to create entry"}, status=500)
 
     # --------------------------------------------------------------------- #
-    # UPDATE (partial)
+    # 수정(부분)
     # --------------------------------------------------------------------- #
     def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """id로 지정된 행을 부분 업데이트합니다."""
+        """id로 지정된 행을 부분 업데이트합니다.
+
+        요청 예시:
+            예시 요청: PATCH /api/v1/line-dashboard/early-inform
+            예시 바디: {"id": 123, "customEndStep": "STEP2"}
+
+        반환:
+            예시 응답: 200 {"entry": {...}}
+
+        부작용:
+            DroneEarlyInform 레코드가 수정됩니다.
+
+        오류:
+            400: JSON/필드 검증 오류
+            401: 비인증
+            404: 대상 없음
+            409: 중복 키
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            요청 본문은 camelCase(lineId/mainStep/customEndStep)만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         auth_response = _ensure_authenticated(request)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
-        # id 정수 검증
+        # -----------------------------------------------------------------------------
+        # 3) id 검증
+        # -----------------------------------------------------------------------------
         entry_id = payload.get("id")
         if not isinstance(entry_id, int):
             try:
@@ -187,7 +297,9 @@ class DroneEarlyInformView(APIView):
         if entry_id <= 0:
             return JsonResponse({"error": "A valid id is required"}, status=400)
 
-        # 액티비티 로그(요약/리소스 메타)
+        # -----------------------------------------------------------------------------
+        # 4) 액티비티 로그 및 업데이트 필드 수집
+        # -----------------------------------------------------------------------------
         set_activity_summary(request, f"Update drone_early_inform entry #{entry_id}")
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
@@ -220,6 +332,9 @@ class DroneEarlyInformView(APIView):
         if not updates:
             return JsonResponse({"error": "No valid fields to update"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 5) 서비스 호출 및 응답 구성
+        # -----------------------------------------------------------------------------
         try:
             result = services.update_early_inform_entry(
                 entry_id=entry_id,
@@ -240,14 +355,39 @@ class DroneEarlyInformView(APIView):
             return JsonResponse({"error": "Failed to update entry"}, status=500)
 
     # --------------------------------------------------------------------- #
-    # DELETE
+    # 삭제
     # --------------------------------------------------------------------- #
     def delete(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """id로 지정된 행을 삭제합니다."""
+        """id로 지정된 행을 삭제합니다.
+
+        요청 예시:
+            예시 요청: DELETE /api/v1/line-dashboard/early-inform?id=123
+
+        반환:
+            예시 응답: 200 {"success": true}
+
+        부작용:
+            DroneEarlyInform 레코드가 삭제됩니다.
+
+        오류:
+            400: id 검증 오류
+            401: 비인증
+            404: 대상 없음
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            query 파라미터는 id만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         auth_response = _ensure_authenticated(request)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) id 검증
+        # -----------------------------------------------------------------------------
         raw_id = request.GET.get("id")
         try:
             entry_id = int(raw_id)
@@ -256,7 +396,9 @@ class DroneEarlyInformView(APIView):
         if entry_id <= 0:
             return JsonResponse({"error": "A valid id is required"}, status=400)
 
-        # 액티비티 로그 요약/메타 + 이전 상태 보관
+        # -----------------------------------------------------------------------------
+        # 3) 액티비티 로그 및 삭제 수행
+        # -----------------------------------------------------------------------------
         set_activity_summary(request, f"Delete drone_early_inform entry #{entry_id}")
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
@@ -264,7 +406,6 @@ class DroneEarlyInformView(APIView):
             deleted_entry = services.delete_early_inform_entry(entry_id=entry_id)
             set_activity_previous_state(request, serialize_early_inform_entry(deleted_entry))
 
-            # 삭제 성공도 신규 상태로 간단히 표기
             set_activity_new_state(request, {"deleted": True})
             return JsonResponse({"success": True})
 
@@ -275,11 +416,24 @@ class DroneEarlyInformView(APIView):
             return JsonResponse({"error": "Failed to delete entry"}, status=500)
 
     # --------------------------------------------------------------------- #
-    # 밸리데이션/정규화/매퍼 유틸
+    # 검증/정규화 유틸
     # --------------------------------------------------------------------- #
     @staticmethod
     def _sanitize_line_id(value: Any) -> Optional[str]:
-        """lineId: 문자열 & 공백 제거 & 길이 제한."""
+        """lineId 값을 정규화합니다.
+
+        인자:
+            value: 원본 입력 값.
+
+        반환:
+            정규화된 문자열 또는 None.
+
+        부작용:
+            없음. 순수 검증입니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 타입/길이 검증
+        # -----------------------------------------------------------------------------
         if not isinstance(value, str):
             return None
         trimmed = value.strip()
@@ -287,20 +441,52 @@ class DroneEarlyInformView(APIView):
 
     @staticmethod
     def _sanitize_main_step(value: Any) -> Optional[str]:
-        """mainStep: None/빈값 불가, 문자열화 후 공백 제거 & 길이 제한."""
+        """mainStep 값을 정규화합니다.
+
+        인자:
+            value: 원본 입력 값.
+
+        반환:
+            정규화된 문자열 또는 None.
+
+        부작용:
+            없음. 순수 검증입니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 문자열화 및 공백 제거
+        # -----------------------------------------------------------------------------
         if isinstance(value, str):
             trimmed = value.strip()
         elif value is None:
             trimmed = ""
         else:
             trimmed = str(value).strip()
+        # -----------------------------------------------------------------------------
+        # 2) 필수/길이 검증
+        # -----------------------------------------------------------------------------
         if not trimmed:
             return None
         return trimmed if len(trimmed) <= MAX_FIELD_LENGTH else None
 
     @staticmethod
     def _normalize_custom_end_step(value: Any) -> Optional[str]:
-        """customEndStep: 빈 문자열은 None 처리, 길이 제한 초과 시 ValueError."""
+        """customEndStep 값을 정규화합니다.
+
+        인자:
+            value: 원본 입력 값.
+
+        반환:
+            정규화된 문자열 또는 None.
+
+        부작용:
+            없음. 순수 검증입니다.
+
+        오류:
+            길이 제한 초과 시 ValueError를 발생시킵니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 문자열화 및 빈값 처리
+        # -----------------------------------------------------------------------------
         if value is None:
             return None
         if isinstance(value, str):
@@ -309,13 +495,29 @@ class DroneEarlyInformView(APIView):
             trimmed = str(value).strip()
         if not trimmed:
             return None
+        # -----------------------------------------------------------------------------
+        # 2) 길이 제한 검증
+        # -----------------------------------------------------------------------------
         if len(trimmed) > MAX_FIELD_LENGTH:
             raise ValueError("customEndStep must be 50 characters or fewer")
         return trimmed
 
     @staticmethod
     def _sanitize_updated_by(value: Any) -> Optional[str]:
-        """updated_by: 문자열 공백 제거 & 길이 제한."""
+        """updated_by 값을 정규화합니다.
+
+        인자:
+            value: 원본 입력 값.
+
+        반환:
+            정규화된 문자열 또는 None.
+
+        부작용:
+            없음. 순수 검증입니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 타입/길이 검증
+        # -----------------------------------------------------------------------------
         if not isinstance(value, str):
             return None
         trimmed = value.strip()
@@ -328,6 +530,27 @@ class LineHistoryView(APIView):
     DEFAULT_RANGE_DAYS = 14
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """라인 대시보드 히스토리 집계를 반환합니다.
+
+        요청 예시:
+            예시 요청: GET /api/v1/line-dashboard/history?lineId=L1&rangeDays=14
+
+        반환:
+            예시 응답: 200 {"table": "...", "from": "...", "to": "...", "totals": [...], "breakdowns": {...}}
+
+        부작용:
+            없음. 읽기 전용 조회입니다.
+
+        오류:
+            400: 파라미터 검증 오류
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            query 파라미터는 lineId/rangeDays 등 camelCase만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 집계 payload 구성
+        # -----------------------------------------------------------------------------
         try:
             payload = selectors.get_line_history_payload(
                 table_param=request.GET.get("table"),
@@ -349,6 +572,26 @@ class LineIdListView(APIView):
     """사이드바 필터용 line_id 고유값 목록 반환."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """line_id 고유값 목록을 반환합니다.
+
+        요청 예시:
+            예시 요청: GET /api/v1/line-dashboard/line-ids
+
+        반환:
+            예시 응답: 200 {"lineIds": ["L1", "L2"]}
+
+        부작용:
+            없음. 읽기 전용 조회입니다.
+
+        오류:
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            입력 파라미터는 없습니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 목록 조회
+        # -----------------------------------------------------------------------------
         try:
             return JsonResponse({"lineIds": selectors.list_distinct_line_ids()})
         except Exception:  # pragma: no cover - 방어적 로깅
@@ -363,21 +606,54 @@ class DroneSopInstantInformView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, sop_id: int, *args: object, **kwargs: object) -> JsonResponse:
+        """Drone SOP 단건 Jira 즉시 생성 요청을 처리합니다.
+
+        요청 예시:
+            예시 요청: POST /api/v1/line-dashboard/sop/123/instant-inform
+            예시 바디: {"comment":"추가 코멘트"}
+
+        반환:
+            예시 응답: 200 {"created": true, "alreadyInformed": false, "jiraKey": "...", ...}
+
+        부작용:
+            Jira 생성 및 drone_sop 상태 업데이트가 발생합니다.
+
+        오류:
+            400: 입력 검증 오류
+            401: 비인증
+            502: Jira 생성 실패
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            요청 본문은 comment만 사용하며 camelCase만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         auth_response = _ensure_authenticated(request)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 파싱 및 comment 검증
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request) or {}
         raw_comment = payload.get("comment")
         if raw_comment is not None and not isinstance(raw_comment, str):
             return JsonResponse({"error": "comment must be a string"}, status=400)
         comment = raw_comment.strip() if isinstance(raw_comment, str) else None
 
+        # -----------------------------------------------------------------------------
+        # 3) 액티비티 로그 기록
+        # -----------------------------------------------------------------------------
         set_activity_summary(request, f"Instant inform drone_sop #{sop_id}")
         merge_activity_metadata(request, resource="drone_sop", action="instant_inform", sop_id=sop_id)
         if comment is not None:
             merge_activity_metadata(request, comment_length=len(comment))
 
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 응답 구성
+        # -----------------------------------------------------------------------------
         try:
             result = services.run_drone_sop_jira_instant_inform(sop_id=sop_id, comment=comment)
             set_activity_new_state(
@@ -411,7 +687,7 @@ class DroneSopInstantInformView(APIView):
         except RuntimeError as exc:
             logger.exception("Drone SOP instant inform failed")
             return JsonResponse({"error": str(exc) or "Jira create failed"}, status=502)
-        except Exception:  # pragma: no cover - defensive logging
+        except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Drone SOP instant inform failed")
             return JsonResponse({"error": "Drone SOP instant inform failed"}, status=500)
 
@@ -423,13 +699,42 @@ class DroneSopPop3IngestTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """POP3 수집 트리거를 실행합니다.
+
+        요청 예시:
+            예시 요청: POST /api/v1/line-dashboard/sop/ingest/pop3/trigger
+            헤더 예시: Authorization: Bearer <token>
+
+        반환:
+            예시 응답: 200 {"matched": 1, "upserted": 1, "deleted": 0, "pruned": 0, "skipped": false}
+
+        부작용:
+            POP3 수집 및 DB upsert가 발생합니다.
+
+        오류:
+            401: 토큰 인증 실패
+            400: 입력 검증 오류
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            입력 파라미터는 없습니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) Airflow 토큰 검증
+        # -----------------------------------------------------------------------------
         auth_response = ensure_airflow_token(request, require_bearer=True)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) 액티비티 로그 기록
+        # -----------------------------------------------------------------------------
         set_activity_summary(request, "Trigger drone_sop POP3 ingest")
         merge_activity_metadata(request, resource="drone_sop", pipeline="pop3_ingest")
 
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출 및 응답 구성
+        # -----------------------------------------------------------------------------
         try:
             result = services.run_drone_sop_pop3_ingest_from_env()
             set_activity_new_state(
@@ -455,7 +760,7 @@ class DroneSopPop3IngestTriggerView(APIView):
             )
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
-        except Exception:  # pragma: no cover - defensive logging
+        except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to trigger drone SOP POP3 ingest")
             return JsonResponse({"error": "Drone SOP POP3 ingest failed"}, status=500)
 
@@ -467,10 +772,37 @@ class DroneSopJiraTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """Jira 생성 트리거를 실행합니다.
+
+        요청 예시:
+            예시 요청: POST /api/v1/line-dashboard/sop/jira/trigger
+            헤더 예시: Authorization: Bearer <token>
+            예시 바디: {"limit": 100}
+
+        반환:
+            예시 응답: 200 {"candidates": 10, "created": 9, "updated": 9, "skipped": false}
+
+        부작용:
+            Jira 생성 및 drone_sop 업데이트가 발생합니다.
+
+        오류:
+            401: 토큰 인증 실패
+            400: limit 검증 오류
+            500: 서버 오류
+
+        snake_case/camelCase 호환:
+            요청 본문은 limit만 사용하며 camelCase만 지원합니다.
+        """
+        # -----------------------------------------------------------------------------
+        # 1) Airflow 토큰 검증
+        # -----------------------------------------------------------------------------
         auth_response = ensure_airflow_token(request, require_bearer=True)
         if auth_response is not None:
             return auth_response
 
+        # -----------------------------------------------------------------------------
+        # 2) limit 파라미터 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request) or {}
         raw_limit = payload.get("limit")
         if raw_limit is None:
@@ -484,9 +816,15 @@ class DroneSopJiraTriggerView(APIView):
             if limit <= 0:
                 limit = None
 
+        # -----------------------------------------------------------------------------
+        # 3) 액티비티 로그 기록
+        # -----------------------------------------------------------------------------
         set_activity_summary(request, "Trigger drone_sop Jira create")
         merge_activity_metadata(request, resource="drone_sop", pipeline="jira_create", limit=limit)
 
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 응답 구성
+        # -----------------------------------------------------------------------------
         try:
             result = services.run_drone_sop_jira_create_from_env(limit=limit)
             set_activity_new_state(
@@ -510,7 +848,7 @@ class DroneSopJiraTriggerView(APIView):
             )
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
-        except Exception:  # pragma: no cover - defensive logging
+        except Exception:  # pragma: no cover - 방어적 로깅
             logger.exception("Failed to trigger drone SOP Jira create")
             return JsonResponse({"error": "Drone SOP Jira create failed"}, status=500)
 

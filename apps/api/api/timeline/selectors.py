@@ -1,8 +1,16 @@
-"""Read-only selectors for the dummy timeline feature."""
+# =============================================================================
+# 모듈 설명: timeline 더미 데이터 셀렉터를 제공합니다.
+# - 주요 함수: list_lines, list_sdwt_for_line, get_merged_logs 등
+# - 불변 조건: 더미 데이터만 반환하며 DB 조회는 없습니다.
+# =============================================================================
 
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
+
+# =============================================================================
+# 상수: 더미 라인/설비/로그 데이터
+# =============================================================================
 
 LINE_LIST: List[Dict[str, str]] = [
     {"id": "LINE-A", "name": "Line A"},
@@ -346,8 +354,17 @@ LOGS: Dict[str, Dict[str, List[Dict[str, object]]]] = {
 def normalize_id(value: str | None) -> str:
     """입력 ID를 공백 제거 후 대문자로 정규화합니다.
 
-    Side effects:
-        None. Pure normalization.
+    입력:
+    - value: 원본 ID(None 허용)
+
+    반환:
+    - str: 정규화된 ID(없으면 빈 문자열)
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
     """
 
     return (value or "").strip().upper()
@@ -356,8 +373,17 @@ def normalize_id(value: str | None) -> str:
 def list_lines() -> List[Dict[str, str]]:
     """라인 목록을 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - 없음
+
+    반환:
+    - List[Dict[str, str]]: 라인 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return LINE_LIST
@@ -366,8 +392,17 @@ def list_lines() -> List[Dict[str, str]]:
 def list_sdwt_for_line(*, line_id: str) -> List[Dict[str, str]]:
     """라인 기준 SDWT 목록을 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - line_id: 라인 ID
+
+    반환:
+    - List[Dict[str, str]]: SDWT 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return SDWT_MAP.get(line_id, [])
@@ -376,8 +411,18 @@ def list_sdwt_for_line(*, line_id: str) -> List[Dict[str, str]]:
 def list_prc_groups(*, line_id: str, sdwt_id: str) -> List[Dict[str, str]]:
     """라인/SDWT 조합 기준 PRC 그룹 목록을 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - line_id: 라인 ID
+    - sdwt_id: SDWT ID(설비/공정 식별자)
+
+    반환:
+    - List[Dict[str, str]]: PRC 그룹 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return PRC_GROUPS.get((line_id, sdwt_id), [])
@@ -386,8 +431,19 @@ def list_prc_groups(*, line_id: str, sdwt_id: str) -> List[Dict[str, str]]:
 def list_equipments(*, line_id: str, sdwt_id: str, prc_group: str) -> List[Dict[str, str]]:
     """라인/SDWT/PRC 조합 기준 설비 목록을 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - line_id: 라인 ID
+    - sdwt_id: SDWT ID(설비/공정 식별자)
+    - prc_group: PRC 그룹 코드
+
+    반환:
+    - List[Dict[str, str]]: 설비 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return EQUIPMENTS.get((line_id, sdwt_id, prc_group), [])
@@ -396,8 +452,17 @@ def list_equipments(*, line_id: str, sdwt_id: str, prc_group: str) -> List[Dict[
 def get_equipment_info(*, eqp_id: str) -> Dict[str, str] | None:
     """eqpId 기준 설비 메타데이터를 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - eqp_id: 설비 ID
+
+    반환:
+    - Dict[str, str] | None: 설비 메타데이터(없으면 None)
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return EQUIPMENT_INFO.get(eqp_id)
@@ -406,8 +471,17 @@ def get_equipment_info(*, eqp_id: str) -> Dict[str, str] | None:
 def get_logs_for_equipment(*, eqp_id: str) -> Dict[str, List[Dict[str, object]]]:
     """설비 로그(타입별)를 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - eqp_id: 설비 ID
+
+    반환:
+    - Dict[str, List[Dict[str, object]]]: 타입별 로그 묶음
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return LOGS.get(eqp_id, {})
@@ -416,8 +490,18 @@ def get_logs_for_equipment(*, eqp_id: str) -> Dict[str, List[Dict[str, object]]]
 def get_logs_by_type(*, eqp_id: str, log_key: str) -> List[Dict[str, object]]:
     """특정 타입 로그만 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - eqp_id: 설비 ID
+    - log_key: 로그 타입 키(eqp, tip 등)
+
+    반환:
+    - List[Dict[str, object]]: 타입별 로그 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     return get_logs_for_equipment(eqp_id=eqp_id).get(log_key, [])
@@ -426,8 +510,17 @@ def get_logs_by_type(*, eqp_id: str, log_key: str) -> List[Dict[str, object]]:
 def get_merged_logs(*, eqp_id: str) -> List[Dict[str, object]]:
     """모든 타입 로그를 합쳐 정렬된 목록으로 반환합니다.
 
-    Side effects:
-        None. Read-only.
+    입력:
+    - eqp_id: 설비 ID
+
+    반환:
+    - List[Dict[str, object]]: eventTime 기준 정렬된 로그 목록
+
+    부작용:
+    - 없음(더미 데이터)
+
+    오류:
+    - 없음
     """
 
     eqp_logs = get_logs_for_equipment(eqp_id=eqp_id)

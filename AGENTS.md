@@ -42,6 +42,14 @@ Before ANY implementation work (writing/editing files, running commands/tools, p
 3. If there are questions, ask the user to confirm/correct the summaries and answer the questions.
 4. If there are questions, STOP and wait for the user’s confirmation/answers before implementing. If there are no questions, proceed immediately without waiting for confirmation.
 
+## 1‑4. Comment Language Rules (Mandatory)
+
+LLM agents MUST:
+
+- Write all comments and docstrings in Korean (한글).
+- When editing a file, translate any existing English comments/docstrings in that file to Korean.
+- If English is strictly required by a tool or specification, include Korean alongside the required English (Korean-first).
+
 ---
 
 # 2. Architectural Rules (LLM‑Strict)
@@ -410,6 +418,92 @@ When adding a new backend feature, LLM MUST follow this exact flow to keep code 
 9. Add `tests.py` focusing on services/selectors first.
 
 Skipping or re‑ordering these steps is **INVALID**.
+
+---
+
+## 8‑9. Commenting & Documentation Rules (Mandatory)
+
+Readability is a first‑class requirement. For any backend code the LLM writes or rewrites,
+the LLM MUST produce "step‑by‑step explainable code" with detailed comments.
+All required comments and docstrings MUST be written in Korean (한글) per §1‑4.
+
+### 8‑9‑1. When Detailed Comments Are REQUIRED
+
+The LLM MUST add detailed comments in the following cases:
+
+- The user asks for: "전체 코드", "다시 줘", "주석 달아줘", "설명 포함", or similar.
+- The file contains request parsing, validation, permission checks, or multiple branches.
+- The logic has non‑trivial rules (upsert rules, dedup rules, timezone conversion, pagination).
+- Any function/class is >= 25 lines OR has 2+ conditional branches.
+
+### 8‑9‑2. Required Comment Structure (Python)
+
+When detailed comments are required, the LLM MUST follow this structure:
+
+1. Module header comment describing:
+
+   - purpose of the module
+   - main endpoints/classes in the file
+   - key invariants/assumptions (e.g. timezones, auth model)
+
+2. For every public function/service/selector/view method:
+
+   - MUST include a docstring with:
+
+     - What it does (one paragraph)
+     - Inputs (key fields + accepted formats)
+     - Returns (shape + meaning)
+     - Side effects (DB writes / external calls)
+     - Error conditions (what returns 400/401/403/404 etc.)
+
+3. For long/complex functions (>= 25 lines or 2+ branches):
+
+   - MUST add step markers as section comments:
+
+     - e.g. "# 1) 요청 파싱", "# 2) 입력 검증", "# 3) 서비스 호출", "# 4) 응답 반환"
+   - MUST explain "why" for non‑obvious decisions (e.g. dedupe strategy, timezone assumptions).
+
+4. Inline comments:
+
+   - MUST explain intent, not restate the code.
+   - Avoid comments that only repeat the code ("x를 y로 설정").
+   - Prefer explaining business meaning and constraints.
+
+### 8‑9‑3. Comment Density Rules
+
+- Target: one meaningful comment per logical block (roughly 5–15 lines).
+- Too sparse is INVALID (code becomes hard to follow).
+- Too verbose is also INVALID if it drowns the code.
+- Comments MUST be accurate and updated when code changes.
+
+### 8‑9‑4. Request/Response Examples (Mandatory for Views)
+
+For any APIView/endpoint:
+
+- MUST include at least one example request payload / query params in the method docstring.
+- MUST document snake_case + camelCase compatibility if supported.
+
+### 8‑9‑5. Forbidden Comment Patterns
+
+- Comments that contradict the code.
+- Comments that mention internal tool output or "the assistant" meta commentary.
+- Comments that explain implementation history instead of current behavior.
+
+### 8‑9‑6. Standard Template (Python)
+
+For complex functions/methods, the LLM MUST use this block layout:
+
+- "# -----------------------------------------------------------------------------"
+- "# 1) <단계 제목>"
+- "# -----------------------------------------------------------------------------"
+- code...
+
+Repeat per step.
+
+Additionally:
+
+- Constants MUST be grouped and labeled (timezone/constants/pagination/etc.).
+- Major sections of a file SHOULD be separated with "# =============================================================================".
 
 # 9. File Generation Rules
 

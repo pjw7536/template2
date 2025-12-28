@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: account 도메인 모델을 정의합니다.
+# - 주요 대상: User, UserProfile, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
+# - 불변 조건: sabun은 사용자 고유키이며 각 모델은 db_table을 명시합니다.
+# =============================================================================
+
+"""계정/소속 도메인 모델 정의 모음.
+
+- 주요 대상: User, UserProfile, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
+- 주요 엔드포인트/클래스: 각 모델 클래스
+- 가정/불변 조건: sabun은 사용자 고유키이며 각 모델은 db_table을 명시함
+"""
 from __future__ import annotations
 
 from django.contrib.auth.models import AbstractUser
@@ -12,25 +24,90 @@ class UserManager(BaseUserManager):
     use_in_migrations = True
 
     def _create_user(self, sabun: str, password: str | None, **extra_fields) -> "User":
+        """sabun 기반 사용자 생성 공통 로직을 수행합니다.
+
+        입력:
+        - sabun: 사용자 사번
+        - password: 초기 비밀번호(없으면 unusable)
+        - **extra_fields: 추가 필드 값
+
+        반환:
+        - User: 생성된 사용자 인스턴스
+
+        부작용:
+        - 사용자 레코드 생성(DB 쓰기)
+
+        오류:
+        - ValueError: sabun이 비어있을 때
+        """
+        # -----------------------------------------------------------------------------
+        # 1) sabun 검증
+        # -----------------------------------------------------------------------------
         if not sabun:
             raise ValueError("sabun is required")
+        # -----------------------------------------------------------------------------
+        # 2) 사용자 생성 및 저장
+        # -----------------------------------------------------------------------------
         user = self.model(sabun=str(sabun).strip(), **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
     def create_user(self, sabun: str, password: str | None = None, **extra_fields) -> "User":
+        """일반 사용자 계정을 생성합니다.
+
+        입력:
+        - sabun: 사용자 사번
+        - password: 초기 비밀번호(선택)
+        - **extra_fields: 추가 필드 값
+
+        반환:
+        - User: 생성된 사용자 인스턴스
+
+        부작용:
+        - 사용자 레코드 생성(DB 쓰기)
+
+        오류:
+        - ValueError: sabun이 비어있을 때
+        """
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)
         return self._create_user(sabun, password, **extra_fields)
 
     def create_superuser(self, sabun: str, password: str | None = None, **extra_fields) -> "User":
+        """슈퍼유저 계정을 생성합니다.
+
+        입력:
+        - sabun: 사용자 사번
+        - password: 초기 비밀번호(선택)
+        - **extra_fields: 추가 필드 값
+
+        반환:
+        - User: 생성된 슈퍼유저 인스턴스
+
+        부작용:
+        - 사용자 레코드 생성(DB 쓰기)
+
+        오류:
+        - ValueError: 필수 플래그가 올바르지 않을 때
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 기본 플래그 설정
+        # -----------------------------------------------------------------------------
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+
+        # -----------------------------------------------------------------------------
+        # 2) 플래그 유효성 검증
+        # -----------------------------------------------------------------------------
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("Superuser must have is_superuser=True.")
+
+        # -----------------------------------------------------------------------------
+        # 3) 공통 생성 로직 호출
+        # -----------------------------------------------------------------------------
         return self._create_user(sabun, password, **extra_fields)
 
 
@@ -65,7 +142,8 @@ class User(AbstractUser):
     USERNAME_FIELD = "sabun"
     REQUIRED_FIELDS: list[str] = []
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """사용자 표시용 문자열을 반환합니다."""
         return self.get_username()
 
 
@@ -83,7 +161,8 @@ class UserProfile(models.Model):
     class Meta:
         db_table = "account_user_profile"
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """프로필 표시용 문자열을 반환합니다."""
         return f"{self.user.get_username()} ({self.get_role_display()})"
 
 
@@ -108,7 +187,8 @@ class Affiliation(models.Model):
             models.Index(fields=["line", "user_sdwt_prod"], name="aff_line_user_sdwt"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """소속 표시용 문자열을 반환합니다."""
         return f"{self.department} / {self.line} / {self.user_sdwt_prod}"
 
 
@@ -139,7 +219,8 @@ class UserSdwtProdAccess(models.Model):
             models.Index(fields=["user_sdwt_prod"], name="user_sdwt_access_prod"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """접근 권한 표시용 문자열을 반환합니다."""
         return f"{self.user_id} -> {self.user_sdwt_prod} ({'manager' if self.can_manage else 'member'})"
 
 
@@ -189,7 +270,8 @@ class UserSdwtProdChange(models.Model):
             models.Index(fields=["applied"], name="user_sdwt_change_applied"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """소속 변경 표시용 문자열을 반환합니다."""
         return f"{self.user_id} {self.from_user_sdwt_prod or '-'} -> {self.to_user_sdwt_prod} at {self.effective_from}"
 
 
@@ -215,7 +297,8 @@ class ExternalAffiliationSnapshot(models.Model):
             ),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """외부 소속 스냅샷 표시용 문자열을 반환합니다."""
         return f"{self.knox_id} -> {self.predicted_user_sdwt_prod}"
 
 

@@ -1,21 +1,27 @@
-"""액티비티 로그 관련 뷰.
+# =============================================================================
+# 모듈 설명: 활동 로그 조회 APIView를 제공합니다.
+# - 주요 클래스: ActivityLogView
+# - 불변 조건: 권한 확인 후 최근 로그만 반환합니다.
+# =============================================================================
 
-이 모듈은 최근 ActivityLog 레코드를 조회해서 간단한 JSON으로 반환합니다.
-권한 체크 → 파라미터 정규화(limit) → 쿼리셋 조회(select_related) → 직렬화 → 응답 순으로 동작합니다.
+"""액티비티 로그 조회 엔드포인트를 제공합니다.
+
+이 모듈은 최근 ActivityLog 레코드를 조회해 간단한 JSON으로 반환합니다.
+처리 흐름은 권한 확인 → limit 파라미터 정규화 → 조회/직렬화 → 응답 순서로 진행됩니다.
 
 # 응답 포맷(예시)
 {
-  "results": [
+  예시 "results": [
     {
-      "id": 123,
-      "user": "alice",
-      "role": "admin",
-      "action": "UPDATE",
-      "path": "/api/tables",
-      "method": "PATCH",
-      "status": 200,
-      "metadata": {...},
-      "timestamp": "2025-11-10T12:34:56.789+09:00"
+      예시 "id": 123,
+      예시 "user": "alice",
+      예시 "role": "admin",
+      예시 "action": "UPDATE",
+      예시 "path": "/api/tables",
+      예시 "method": "PATCH",
+      예시 "status": 200,
+      예시 "metadata": {...},
+      예시 "timestamp": "2025-11-10T12:34:56.789+09:00"
     }
   ]
 }
@@ -47,26 +53,49 @@ class ActivityLogView(APIView):
     """
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """최근 로그를 최대 limit개까지 반환.
+        """최근 로그를 최대 limit개까지 반환합니다.
 
-        반환 필드:
-          id, user(사용자명), role(프로필의 role), action, path, method,
-          status(HTTP status code), metadata(임의 JSON), timestamp(ISO8601)
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: {"results": [...]} 형태의 응답
+
+        부작용:
+        - 없음(읽기 전용)
+
+        오류:
+        - 401: 인증 실패
+        - 403: 권한 없음
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/activity/logs?limit=50
+
+        응답 필드:
+        - 필드: id, user, role, action, path, method, status, metadata, timestamp
+
+        snake/camel 호환:
+        - 해당 없음(쿼리 파라미터 limit만 사용)
         """
-        # 1) 인증/권한 체크 ------------------------------------------------------
+        # -----------------------------------------------------------------------------
+        # 1) 인증/권한 체크
+        # -----------------------------------------------------------------------------
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
         # 권한 이름은 앱 라벨 + 권한 코드 문자열로 구성됩니다.
-        # e.g. <app_label>.view_<modelname>
-        # (리팩토링 과정에서 ActivityLog 앱 라벨이 api -> activity 로 변경될 수 있으므로 둘 다 허용)
+        # 예: <app_label>.view_<modelname>
+        # 리팩토링 과정에서 앱 라벨이 api -> activity로 변경될 수 있어 둘 다 허용합니다.
         if not (
             request.user.has_perm("activity.view_activitylog")
             or request.user.has_perm("api.view_activitylog")
         ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
-        # 2) limit 파라미터 파싱/정규화 ------------------------------------------
+        # -----------------------------------------------------------------------------
+        # 2) limit 파라미터 파싱/정규화
+        # -----------------------------------------------------------------------------
         limit_param = request.GET.get("limit")
         try:
             limit = int(limit_param) if limit_param is not None else DEFAULT_LIMIT
@@ -77,10 +106,14 @@ class ActivityLogView(APIView):
         # 허용 범위 강제(1 ~ 200)
         limit = max(MIN_LIMIT, min(limit, MAX_LIMIT))
 
-        # 3) payload 생성 -------------------------------------------------------
+        # -----------------------------------------------------------------------------
+        # 3) payload 생성
+        # -----------------------------------------------------------------------------
         payload = get_recent_activity_payload(limit=limit)
 
-        # 4) 응답 ---------------------------------------------------------------
+        # -----------------------------------------------------------------------------
+        # 4) 응답 반환
+        # -----------------------------------------------------------------------------
         return JsonResponse({"results": payload})
 
 

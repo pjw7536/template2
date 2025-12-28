@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: tables 엔드포인트 테스트를 제공합니다.
+# - 주요 클래스: TablesEndpointTests
+# - 불변 조건: URL 네임(tables, tables-update)이 등록되어 있어야 합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: 외부 예측 소속 스냅샷 동기화 서비스를 제공합니다.
+# - 주요 대상: sync_external_affiliations
+# - 불변 조건: knox_id는 외부 예측 소속의 고유 키로 사용합니다.
+# =============================================================================
+
+"""외부 예측 소속 스냅샷 동기화 서비스 모음.
+
+- 주요 대상: sync_external_affiliations
+- 주요 엔드포인트/클래스: 없음(서비스 함수 제공)
+- 가정/불변 조건: knox_id는 외부 예측 소속의 고유 키로 사용됨
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,19 +25,25 @@ def sync_external_affiliations(
     *,
     records: Iterable[dict[str, object]],
 ) -> dict[str, int]:
-    """외부 DB 예측 소속 스냅샷을 업서트하고 변경 시 재확인 플래그를 세웁니다.
+    """외부 예측 소속 스냅샷을 업서트하고 변경 시 재확인 플래그를 세웁니다.
 
-    Args:
-        records: Iterable of dicts with knox_id, user_sdwt_prod, source_updated_at.
+    입력:
+    - records: knox_id/user_sdwt_prod/source_updated_at을 포함한 레코드 목록
 
-    Returns:
-        Dict with created/updated/unchanged/flagged counts.
+    반환:
+    - dict[str, int]: created/updated/unchanged/flagged 카운트
 
-    Side effects:
-        - Upserts ExternalAffiliationSnapshot rows.
-        - Updates User.requires_affiliation_reconfirm when predicted values change.
+    부작용:
+    - ExternalAffiliationSnapshot 업서트
+    - 사용자 requires_affiliation_reconfirm 갱신
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 카운터 및 입력 정규화
+    # -----------------------------------------------------------------------------
     now = timezone.now()
     created = 0
     updated = 0
@@ -33,16 +51,22 @@ def sync_external_affiliations(
     flagged = 0
 
     record_list = [record for record in records if isinstance(record, dict)]
-    # 동일 knox_id 중복 입력으로 인한 unique 충돌을 피하려고 마지막 레코드로 정규화합니다.
+    # 동일 knox_id 중복 입력으로 인한 고유 제약 충돌을 피하려고 마지막 레코드로 정규화합니다.
     normalized_records: dict[str, dict[str, object]] = {}
     for record in record_list:
         knox_id = record.get("knox_id")
         if isinstance(knox_id, str) and knox_id.strip():
             normalized_records[knox_id.strip()] = record
 
+    # -----------------------------------------------------------------------------
+    # 2) 기존 스냅샷 조회
+    # -----------------------------------------------------------------------------
     knox_ids = list(normalized_records.keys())
     existing = selectors.get_external_affiliation_snapshots_by_knox_ids(knox_ids=knox_ids)
 
+    # -----------------------------------------------------------------------------
+    # 3) 레코드별 업서트 처리
+    # -----------------------------------------------------------------------------
     for record in normalized_records.values():
         knox_id = (record.get("knox_id") or "").strip()
         predicted = (record.get("user_sdwt_prod") or record.get("predicted_user_sdwt_prod") or "").strip()
@@ -66,6 +90,9 @@ def sync_external_affiliations(
             existing[knox_id] = snapshot
             continue
 
+        # -----------------------------------------------------------------------------
+        # 4) 변경 여부 판단 및 갱신
+        # -----------------------------------------------------------------------------
         changed = snapshot.predicted_user_sdwt_prod != predicted
         if changed or snapshot.source_updated_at != source_updated_at:
             snapshot.predicted_user_sdwt_prod = predicted
@@ -78,6 +105,9 @@ def sync_external_affiliations(
             snapshot.save(update_fields=["last_seen_at"])
             unchanged += 1
 
+        # -----------------------------------------------------------------------------
+        # 5) 사용자 재확인 플래그 갱신
+        # -----------------------------------------------------------------------------
         if changed:
             user = selectors.get_user_by_knox_id(knox_id=knox_id)
             if user is not None:
@@ -85,4 +115,7 @@ def sync_external_affiliations(
                 user.save(update_fields=["requires_affiliation_reconfirm"])
                 flagged += 1
 
+    # -----------------------------------------------------------------------------
+    # 6) 결과 반환
+    # -----------------------------------------------------------------------------
     return {"created": created, "updated": updated, "unchanged": unchanged, "flagged": flagged}

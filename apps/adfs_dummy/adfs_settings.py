@@ -1,6 +1,6 @@
-"""Shared settings for the dummy ADFS/RAG FastAPI server.
+"""더미 ADFS/RAG FastAPI 서버를 위한 공용 설정입니다.
 
-Keep all environment parsing here so feature routers can stay focused on request handling.
+환경변수 파싱을 이곳에 모아 두어 각 라우터가 요청 처리에 집중하도록 합니다.
 """
 
 from __future__ import annotations
@@ -102,5 +102,5 @@ if MAILBOX_RAG_INDEX not in INDEX_NAMES:
 
 try:
     PRIVATE_KEY = PRIVATE_KEY_PATH.read_text(encoding="utf-8")
-except OSError as exc:  # pragma: no cover - dev feedback
+except OSError as exc:  # 개발용 피드백(커버리지 제외): pragma: no cover
     raise RuntimeError(f"Failed to read dummy ADFS private key: {PRIVATE_KEY_PATH}") from exc

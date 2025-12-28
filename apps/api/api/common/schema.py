@@ -1,4 +1,15 @@
-"""OpenAPI schema helpers."""
+# =============================================================================
+# 모듈 설명: OpenAPI 스키마 태깅 헬퍼를 제공합니다.
+# - 주요 클래스: FeatureAutoSchema
+# - 불변 조건: view 모듈 경로가 api.<feature> 구조를 따른다고 가정합니다.
+# =============================================================================
+
+"""OpenAPI 스키마 태깅을 돕는 헬퍼 모음.
+
+- 주요 대상: FeatureAutoSchema
+- 주요 엔드포인트/클래스: FeatureAutoSchema
+- 가정/불변 조건: view 모듈 경로가 `api.<feature>...` 구조를 따름
+"""
 from __future__ import annotations
 
 from typing import Optional
@@ -7,21 +18,64 @@ from drf_spectacular.openapi import AutoSchema
 
 
 class FeatureAutoSchema(AutoSchema):
-    """Group OpenAPI operations by Django app (api.<feature>)."""
+    """OpenAPI 작업을 Django 앱(api.<feature>) 기준으로 그룹화합니다."""
 
     def get_tags(self) -> list[str]:
+        """뷰 모듈명을 기반으로 태그 목록을 반환합니다.
+
+        입력:
+        - 없음(self.view 사용)
+
+        반환:
+        - list[str]: 태그 목록
+
+        부작용:
+        - 없음
+
+        오류:
+        - 없음
+        """
+        # -----------------------------------------------------------------------------
+        # 1) feature 태그 추출
+        # -----------------------------------------------------------------------------
         feature_tag = self._get_feature_tag()
         if feature_tag:
             return [feature_tag]
+        # -----------------------------------------------------------------------------
+        # 2) 기본 태그 반환
+        # -----------------------------------------------------------------------------
         return super().get_tags()
 
     def _get_feature_tag(self) -> Optional[str]:
+        """뷰 모듈 경로에서 feature 태그를 추출합니다.
+
+        입력:
+        - 없음(self.view 사용)
+
+        반환:
+        - Optional[str]: feature 태그 또는 None
+
+        부작용:
+        - 없음
+
+        오류:
+        - 없음
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 모듈 경로 확보
+        # -----------------------------------------------------------------------------
         module = getattr(self.view, "__module__", "") or getattr(
             getattr(self.view, "__class__", None), "__module__", ""
         )
         if not module:
             return None
+        # -----------------------------------------------------------------------------
+        # 2) 모듈 경로 분해 및 규칙 적용
+        # -----------------------------------------------------------------------------
         parts = module.split(".")
         if len(parts) >= 2 and parts[0] == "api":
             return parts[1]
+        # -----------------------------------------------------------------------------
+        # 3) 실패 시 None 반환
+        # -----------------------------------------------------------------------------
         return None

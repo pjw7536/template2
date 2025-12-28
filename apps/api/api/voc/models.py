@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: voc 게시글/답변 모델을 정의합니다.
+# - 주요 클래스: VocPost, VocReply
+# - 불변 조건: db_table 접두사 규칙(voc_*)을 유지합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from django.conf import settings
@@ -30,7 +36,8 @@ class VocPost(models.Model):
         db_table = "voc_post"
         ordering = ["-created_at"]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현: pragma: no cover
+        """사람이 읽기 쉬운 게시글 문자열 표현을 반환합니다."""
         return f"[{self.status}] {self.title}"
 
 
@@ -52,7 +59,8 @@ class VocReply(models.Model):
         db_table = "voc_reply"
         ordering = ["created_at"]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # 사람이 읽는 표현: pragma: no cover
+        """사람이 읽기 쉬운 답변 문자열 표현을 반환합니다."""
         return f"Reply to {self.post_id}"
 
 

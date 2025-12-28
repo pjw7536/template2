@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: account 도메인 요청/응답 스키마를 정의합니다.
+# - 주요 대상: 외부 소속 동기화, 소속 재확인/승인 입력 스키마
+# - 불변 조건: 필드명은 클라이언트 계약과 호환되어야 합니다.
+# =============================================================================
+
+"""계정 도메인 요청/응답 스키마 정의 모음.
+
+- 주요 대상: 외부 소속 동기화, 소속 재확인/승인 입력 스키마
+- 주요 엔드포인트/클래스: ExternalAffiliationSyncSerializer 등
+- 가정/불변 조건: 필드명은 클라이언트 계약에 맞춰 유지됨
+"""
 from __future__ import annotations
 
 from rest_framework import serializers
@@ -31,4 +43,3 @@ class AffiliationApprovalSerializer(serializers.Serializer):
 
     changeId = serializers.IntegerField()
     decision = serializers.ChoiceField(choices=["approve", "reject"], required=False)
-

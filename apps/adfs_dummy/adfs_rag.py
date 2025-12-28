@@ -1,4 +1,4 @@
-"""RAG dummy endpoints used for offsite development."""
+"""오프사이트 개발에 쓰는 RAG 더미 엔드포인트입니다."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.get("/rag/docs")
 async def list_rag_docs() -> Dict[str, Any]:
-    """List stored dummy RAG documents."""
+    """저장된 더미 RAG 문서를 조회합니다."""
     return {
         "count": rag_store.total_count(),
         "indexes": rag_store.index_counts(),
@@ -25,7 +25,7 @@ async def list_rag_docs() -> Dict[str, Any]:
 
 @router.get("/rag/index-info")
 async def rag_index_info() -> Dict[str, Any]:
-    """Provide simple index metadata for external dev without hitting corporate RAG."""
+    """실제 RAG를 호출하지 않고 외부 개발용 인덱스 메타데이터를 제공합니다."""
     return {
         "indexes": [
             {"name": name, "docs": rag_store.index_counts().get(name, 0), "permission_groups": DEFAULT_PERMISSION_GROUPS}
@@ -37,7 +37,7 @@ async def rag_index_info() -> Dict[str, Any]:
 
 @router.post("/rag/insert")
 async def rag_insert(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Accept insert requests that mimic the real RAG API and store them in memory."""
+    """실제 RAG API와 유사한 insert 요청을 받아 메모리에 저장합니다."""
     data = payload.get("data")
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="data field is required")
@@ -76,7 +76,7 @@ async def rag_insert(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @router.post("/rag/delete")
 async def rag_delete(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Delete a stored dummy RAG document by doc_id."""
+    """doc_id로 저장된 더미 RAG 문서를 삭제합니다."""
     index_name = str(payload.get("index_name") or "").strip()
     if not index_name:
         raise HTTPException(status_code=400, detail="index_name is required")
@@ -90,7 +90,7 @@ async def rag_delete(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @router.post("/rag/search")
 async def rag_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Return dummy RAG search results shaped like the real service."""
+    """실제 서비스와 동일한 형태의 더미 RAG 검색 결과를 반환합니다."""
     index_names_raw = payload.get("index_name") or payload.get("index_names")
     if isinstance(index_names_raw, list):
         index_names = [str(item).strip() for item in index_names_raw if str(item).strip()]

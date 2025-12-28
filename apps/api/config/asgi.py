@@ -1,4 +1,4 @@
-"""ASGI config for the Django project."""
+"""Django 프로젝트를 위한 ASGI 설정입니다."""
 from __future__ import annotations
 
 import os

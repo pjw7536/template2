@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: tables 서비스용 타입/예외 정의를 제공합니다.
+# - 주요 대상: TableNotFoundError, TableRecordNotFoundError, TableUpdateResult
+# - 불변 조건: 예외 메시지는 테이블/레코드 식별 정보를 포함합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from dataclasses import dataclass

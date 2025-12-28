@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: 드론 SOP/조기 알림 모델
+# 주요 구성: DroneSOP, DroneEarlyInform, Jira 템플릿 모델
+# 주요 가정: sop_key는 필드 조합으로 생성합니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.db import models
@@ -13,11 +18,33 @@ def build_sop_key(
     lot_id: str | None,
     main_step: str | None,
 ) -> str:
+    """Drone SOP 식별용 sop_key를 생성합니다.
+
+    인자:
+        line_id: 라인 ID.
+        eqp_id: 장비 ID.
+        chamber_ids: 챔버 ID 문자열.
+        lot_id: LOT ID(로트 ID).
+        main_step: 메인 스텝.
+
+    반환:
+        "|" 구분자를 사용한 결합 문자열.
+
+    부작용:
+        없음. 순수 문자열 조합입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화 헬퍼
+    # -----------------------------------------------------------------------------
     def _normalize(value: str | None) -> str:
         if value is None:
             return ""
         return str(value).strip()
 
+    # -----------------------------------------------------------------------------
+    # 2) 필드 결합
+    # -----------------------------------------------------------------------------
     return "|".join(
         [
             _normalize(line_id),
@@ -83,10 +110,21 @@ class DroneSOP(models.Model):
             ),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - helpful for admin/debugging
+    def __str__(self) -> str:  # pragma: no cover - 관리자/디버깅용 문자열 표현
+        """관리자/디버깅용 문자열 표현을 반환합니다."""
+
         return f"SOP {self.line_id or '-'} {self.main_step or '-'}"
 
     def save(self, *args: object, **kwargs: object) -> None:
+        """sop_key가 없으면 생성 후 저장합니다.
+
+        부작용:
+            DB 저장이 발생합니다.
+        """
+
+        # -------------------------------------------------------------------------
+        # 1) sop_key 생성(없을 때만)
+        # -------------------------------------------------------------------------
         if not self.sop_key:
             self.sop_key = build_sop_key(
                 line_id=self.line_id,
@@ -95,6 +133,9 @@ class DroneSOP(models.Model):
                 lot_id=self.lot_id,
                 main_step=self.main_step,
             )
+        # -------------------------------------------------------------------------
+        # 2) 저장 호출
+        # -------------------------------------------------------------------------
         super().save(*args, **kwargs)
 
 
@@ -112,7 +153,9 @@ class DroneSopJiraTemplate(models.Model):
             models.Index(fields=["line_id"], name="drone_jira_tpl_line"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # pragma: no cover - 관리자/디버깅용 문자열 표현
+        """관리자/디버깅용 문자열 표현을 반환합니다."""
+
         return f"{self.line_id} -> {self.template_key}"
 
 
@@ -130,7 +173,9 @@ class DroneSopJiraUserTemplate(models.Model):
             models.Index(fields=["user_sdwt_prod"], name="drone_jira_tpl_user"),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # pragma: no cover - 관리자/디버깅용 문자열 표현
+        """관리자/디버깅용 문자열 표현을 반환합니다."""
+
         return f"{self.user_sdwt_prod} -> {self.template_key}"
 
 
@@ -152,7 +197,9 @@ class DroneEarlyInform(models.Model):
             )
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    def __str__(self) -> str:  # pragma: no cover - 관리자/디버깅용 문자열 표현
+        """관리자/디버깅용 문자열 표현을 반환합니다."""
+
         return f"{self.line_id} - {self.main_step}"
 
 

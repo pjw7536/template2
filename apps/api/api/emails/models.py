@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: 이메일 도메인 모델을 정의합니다.
+# - 주요 클래스: Email, EmailOutbox
+# - 불변 조건: db_table은 emails_* 접두어를 사용하며, 시간은 timezone-aware입니다.
+# =============================================================================
+
 from __future__ import annotations
 
 from django.contrib.postgres.fields import ArrayField
@@ -60,9 +66,23 @@ class Email(models.Model):
             ),
         ]
 
-    def __str__(self) -> str:  # pragma: no cover - human readable representation
+    # 사람이 읽기 위한 표현이므로 커버리지 제외
+    def __str__(self) -> str:  # pragma: no cover  테스트 제외
+        """메일의 주요 필드를 간단한 문자열로 반환합니다.
+
+        입력:
+            없음(self만 사용).
+        반환:
+            제목/발신자/수신자/메일함 요약 문자열.
+        부작용:
+            없음.
+        오류:
+            없음.
+        """
+
         recipient_text = ", ".join(self.recipient or [])
         return f"{self.subject[:40]} ({self.sender} -> {recipient_text}) [{self.user_sdwt_prod or ''}]"
+
 
 class EmailOutbox(models.Model):
     """RAG 인덱싱/삭제 요청을 비동기 처리하기 위한 Outbox 모델."""

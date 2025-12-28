@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: 드론 기능 테스트
+# 주요 대상: POP3 파싱/업서트, Jira 생성, API 엔드포인트
+# 주요 가정: 외부 호출은 mock으로 대체합니다.
+# =============================================================================
 from __future__ import annotations
 
 import json
@@ -20,18 +25,25 @@ _PREVIOUS_LOGGING_DISABLE: int | None = None
 
 
 def setUpModule() -> None:
+    """테스트 실행 중 로그 출력을 최소화합니다."""
+
     global _PREVIOUS_LOGGING_DISABLE
     _PREVIOUS_LOGGING_DISABLE = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
 
 
 def tearDownModule() -> None:
+    """테스트 종료 후 로깅 설정을 복구합니다."""
+
     if _PREVIOUS_LOGGING_DISABLE is not None:
         logging.disable(_PREVIOUS_LOGGING_DISABLE)
 
 
 class DroneSopPop3ParsingTests(TestCase):
+    """POP3 HTML 파싱 로직을 검증합니다."""
+
     def test_build_drone_sop_row_parses_html_data_tag(self) -> None:
+        """data 태그에서 필드를 추출하는지 확인합니다."""
         html = """
         <html><body>
           <data>
@@ -70,6 +82,7 @@ class DroneSopPop3ParsingTests(TestCase):
         self.assertEqual(row["custom_end_step"], "ST002")
 
     def test_build_drone_sop_row_applies_needtosend_override_rule(self) -> None:
+        """needtosend 룰 오버라이드가 적용되는지 확인합니다."""
         html = """
         <data>
           <sample_type>NORMAL</sample_type>
@@ -83,6 +96,7 @@ class DroneSopPop3ParsingTests(TestCase):
         self.assertEqual(row["needtosend"], 1)
 
     def test_build_drone_sop_row_needtosend_zero_for_engr_production(self) -> None:
+        """ENGR_PRODUCTION 샘플 타입의 needtosend가 0인지 확인합니다."""
         html = """
         <data>
           <sample_type>ENGR_PRODUCTION</sample_type>
@@ -95,7 +109,10 @@ class DroneSopPop3ParsingTests(TestCase):
 
 
 class DroneSopUpsertTests(TestCase):
+    """UPSERT 동작을 검증합니다."""
+
     def test_upsert_does_not_update_comment_or_needtosend_on_conflict(self) -> None:
+        """충돌 시 comment/needtosend가 덮어쓰이지 않는지 확인합니다."""
         existing = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
@@ -132,7 +149,10 @@ class DroneSopUpsertTests(TestCase):
 
 
 class DroneSopJiraCandidateTests(TestCase):
+    """Jira 후보 조회 로직을 검증합니다."""
+
     def test_list_drone_sop_jira_candidates_filters_rows(self) -> None:
+        """send_jira/needtosend/status 조건이 반영되는지 확인합니다."""
         DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
@@ -160,7 +180,10 @@ class DroneSopJiraCandidateTests(TestCase):
 
 
 class DroneSopJiraUpdateTests(TestCase):
+    """Jira 상태 업데이트 로직을 검증합니다."""
+
     def test_update_drone_sop_jira_status_sets_send_jira_and_key(self) -> None:
+        """send_jira/jira_key/inform_step이 갱신되는지 확인합니다."""
         row = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
@@ -188,12 +211,14 @@ class DroneSopJiraUpdateTests(TestCase):
 
 
 class DroneSopInstantInformTests(TestCase):
+    """즉시 인폼(Jira 강제 생성) 로직을 검증합니다."""
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
         DRONE_JIRA_USE_BULK_API=False,
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_creates_jira_even_when_not_candidate(self, mock_session: Mock) -> None:
+        """후보 조건을 무시하고 Jira가 생성되는지 확인합니다."""
         session = Mock()
         resp = Mock(status_code=201)
         resp.json.return_value = {"key": "DUMMY-123"}
@@ -231,7 +256,10 @@ class DroneSopInstantInformTests(TestCase):
 
 
 class DroneEndpointTests(TestCase):
+    """드론 API 엔드포인트 동작을 검증합니다."""
+
     def setUp(self) -> None:
+        """테스트용 사용자/클라이언트를 준비합니다."""
         User = get_user_model()
         self.user = User.objects.create_user(
             sabun="S60000",
@@ -243,6 +271,7 @@ class DroneEndpointTests(TestCase):
     @patch("api.drone.views.services.delete_early_inform_entry")
     @patch("api.drone.views.selectors.list_user_sdwt_prod_values_for_line", return_value=[])
     def test_drone_early_inform_crud(self, _mock_user_sdwt, mock_delete) -> None:
+        """조기 알림 CRUD 플로우가 동작하는지 확인합니다."""
         create_response = self.client.post(
             reverse("drone-early-inform"),
             data='{"lineId":"L1","mainStep":"STEP1","customEndStep":"STEP2"}',
@@ -268,17 +297,20 @@ class DroneEndpointTests(TestCase):
 
     @patch("api.drone.views.selectors.get_line_history_payload", return_value={"rows": []})
     def test_drone_line_history(self, _mock_history) -> None:
+        """라인 히스토리 API가 정상 응답하는지 확인합니다."""
         response = self.client.get(reverse("line-dashboard-history"))
         self.assertEqual(response.status_code, 200)
 
     @patch("api.drone.views.selectors.list_distinct_line_ids", return_value=["L1"])
     def test_drone_line_ids(self, _mock_lines) -> None:
+        """라인 ID 목록 API가 정상 응답하는지 확인합니다."""
         response = self.client.get(reverse("line-dashboard-line-ids"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["lineIds"], ["L1"])
 
     @patch("api.drone.views.services.run_drone_sop_jira_instant_inform")
     def test_drone_sop_instant_inform(self, mock_service) -> None:
+        """즉시 인폼 API가 정상 응답하는지 확인합니다."""
         mock_service.return_value = SimpleNamespace(
             created=True,
             already_informed=False,
@@ -297,6 +329,7 @@ class DroneEndpointTests(TestCase):
     @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
     @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
     def test_drone_sop_pop3_trigger(self, mock_service) -> None:
+        """POP3 트리거 API가 정상 응답하는지 확인합니다."""
         mock_service.return_value = SimpleNamespace(
             matched_mails=1,
             upserted_rows=1,
@@ -314,6 +347,7 @@ class DroneEndpointTests(TestCase):
     @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
     @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
     def test_drone_sop_jira_trigger(self, mock_service) -> None:
+        """Jira 트리거 API가 정상 응답하는지 확인합니다."""
         mock_service.return_value = SimpleNamespace(
             candidates=1,
             created=1,
@@ -333,6 +367,7 @@ class DroneEndpointTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_marks_missing_template_as_failed(self, mock_session: Mock) -> None:
+        """템플릿 누락 시 실패로 마킹되는지 확인합니다."""
         Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
         row = DroneSOP.objects.create(
             line_id="L1",
@@ -361,6 +396,7 @@ class DroneEndpointTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_uses_user_template_override(self, mock_session: Mock) -> None:
+        """사용자 템플릿 오버라이드가 적용되는지 확인합니다."""
         session = Mock()
         resp = Mock(status_code=201)
         resp.json.return_value = {"key": "DUMMY-321"}
@@ -396,6 +432,7 @@ class DroneEndpointTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_does_not_create_duplicate(self, mock_session: Mock) -> None:
+        """이미 생성된 이슈는 중복 생성하지 않는지 확인합니다."""
         row = DroneSOP.objects.create(
             line_id="L1",
             eqp_id="EQP1",
@@ -420,6 +457,7 @@ class DroneEndpointTests(TestCase):
 
 
 class DroneSopJiraCreateProjectKeyTests(TestCase):
+    """Jira 생성 시 프로젝트/템플릿 매핑을 검증합니다."""
     @override_settings(
         DRONE_JIRA_BASE_URL="http://example.local/jira",
         DRONE_JIRA_USE_BULK_API=True,
@@ -427,6 +465,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_jira_create_uses_project_key_per_line_and_marks_missing_as_failed(self, mock_session: Mock) -> None:
+        """라인별 프로젝트 키가 적용되고 누락은 실패 처리되는지 확인합니다."""
         session = Mock()
         resp = Mock(status_code=201)
         resp.json.return_value = {"issues": [{"key": "PROJ1-1"}, {"key": "PROJ2-2"}]}
@@ -504,6 +543,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_jira_create_uses_user_template_override(self, mock_session: Mock) -> None:
+        """사용자 템플릿 오버라이드가 적용되는지 확인합니다."""
         session = Mock()
         resp = Mock(status_code=201)
         resp.json.return_value = {"issues": [{"key": "PROJ1-1"}]}
@@ -540,6 +580,7 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
     )
     @patch("api.drone.services.sop_jira._jira_session")
     def test_jira_create_marks_missing_template_as_failed(self, mock_session: Mock) -> None:
+        """템플릿 누락 시 실패로 마킹되는지 확인합니다."""
         session = Mock()
         resp = Mock(status_code=201)
         resp.json.return_value = {"key": "PROJ1-1"}
@@ -588,9 +629,11 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         self.assertEqual(refreshed2.send_jira, -1)
 
 class DroneTriggerAuthTests(TestCase):
+    """트리거 엔드포인트 인증을 검증합니다."""
     @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_pop3_ingest_from_env")
     def test_pop3_ingest_trigger_requires_token(self, mock_run: Mock) -> None:
+        """POP3 트리거가 토큰을 요구하는지 확인합니다."""
         mock_run.return_value = SimpleNamespace(
             matched_mails=1,
             upserted_rows=2,
@@ -618,6 +661,7 @@ class DroneTriggerAuthTests(TestCase):
     @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
     def test_jira_trigger_requires_token(self, mock_run: Mock) -> None:
+        """Jira 트리거가 토큰을 요구하는지 확인합니다."""
         mock_run.return_value = SimpleNamespace(
             candidates=1,
             created=1,
@@ -640,6 +684,7 @@ class DroneTriggerAuthTests(TestCase):
     @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.drone.views.services.run_drone_sop_jira_create_from_env")
     def test_jira_trigger_prefers_payload_limit_over_query_param(self, mock_run: Mock) -> None:
+        """payload limit가 query param보다 우선되는지 확인합니다."""
         mock_run.return_value = SimpleNamespace(
             candidates=1,
             created=1,
@@ -662,13 +707,17 @@ class DroneTriggerAuthTests(TestCase):
 
 
 class DroneEarlyInformAuthTests(TestCase):
+    """조기 알림 API 인증을 검증합니다."""
+
     def test_early_inform_requires_login(self) -> None:
+        """로그인 없이 접근 시 401을 반환하는지 확인합니다."""
         url = reverse("drone-early-inform")
         resp = self.client.get(url, data={"lineId": "L1"})
         self.assertEqual(resp.status_code, 401)
 
 
 class DroneSopPop3DummyModeDeleteTests(TestCase):
+    """더미 모드 삭제 조건을 검증합니다."""
     @override_settings(
         DRONE_SOP_DUMMY_MODE=True,
         DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages",
@@ -685,6 +734,7 @@ class DroneSopPop3DummyModeDeleteTests(TestCase):
         mock_upsert: Mock,
         mock_delete: Mock,
     ) -> None:
+        """업서트 성공한 메일만 삭제되는지 확인합니다."""
         mock_list.return_value = [
             {"id": 1, "subject": "[drone_sop] a", "body_html": "<data><lot_id>LOT-1</lot_id></data>"},
             {"id": 2, "subject": "[drone_sop] b", "body_html": "<data><lot_id>LOT-FAIL</lot_id></data>"},
@@ -710,6 +760,7 @@ class DroneSopPop3DummyModeDeleteTests(TestCase):
 
 
 class DroneSopPop3SubjectFilterTests(TestCase):
+    """제목 필터 동작을 검증합니다."""
     @override_settings(
         DRONE_SOP_DUMMY_MODE=True,
         DRONE_SOP_DUMMY_MAIL_MESSAGES_URL="http://example.local/mail/messages",
@@ -726,6 +777,7 @@ class DroneSopPop3SubjectFilterTests(TestCase):
         mock_upsert: Mock,
         mock_delete: Mock,
     ) -> None:
+        """제목 필터가 대소문자를 무시하는지 확인합니다."""
         mock_list.return_value = [
             {"id": 1, "subject": "[drone_sop] a", "body_html": "<data><lot_id>LOT-1</lot_id></data>"},
             {"id": 2, "subject": "other", "body_html": "<data><lot_id>LOT-2</lot_id></data>"},
@@ -745,7 +797,10 @@ class DroneSopPop3SubjectFilterTests(TestCase):
 
 
 class DroneSopJiraHtmlDescriptionTests(TestCase):
+    """Jira 설명 HTML 렌더링을 검증합니다."""
+
     def test_build_jira_issue_fields_uses_html(self) -> None:
+        """HTML 템플릿이 포함되는지 확인합니다."""
         from api.drone.services import sop_jira
 
         config = DroneJiraConfig(
@@ -783,6 +838,7 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
         self.assertIn("https://example.com/defect", description)
 
     def test_build_jira_issue_fields_renders_ctttm_links(self) -> None:
+        """CTTTM 링크가 렌더링되는지 확인합니다."""
         from api.drone.services import sop_jira
 
         config = DroneJiraConfig(

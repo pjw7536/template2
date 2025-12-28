@@ -1,9 +1,21 @@
+# =============================================================================
+# 모듈 설명: account 도메인 서비스/셀렉터/엔드포인트 테스트를 제공합니다.
+# - 주요 대상: 소속 변경, 접근 권한, 외부 동기화, 개요 응답
+# - 불변 조건: 테스트는 등록된 URL 네임을 기준으로 수행합니다.
+# =============================================================================
+
+"""계정 도메인 서비스/셀렉터/엔드포인트 테스트 모음.
+
+- 주요 대상: 소속 변경, 접근 권한, 외부 동기화, 개요 응답
+- 주요 엔드포인트/클래스: AccountEndpointTests 등
+- 가정/불변 조건: 테스트는 기본 URL 네임이 등록되어 있음
+"""
 from __future__ import annotations
 
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -37,7 +49,13 @@ from api.emails.models import Email
 
 
 class AccountEndpointTests(TestCase):
+    """계정 관련 엔드포인트의 기본 흐름을 검증합니다."""
+
     def setUp(self) -> None:
+        """테스트에 필요한 사용자/권한/소속 데이터를 준비합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 기본 사용자 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         self.user = User.objects.create_user(sabun="S50000", password="test-password")
         self.user.knox_id = "knox-50000"
@@ -46,6 +64,9 @@ class AccountEndpointTests(TestCase):
         self.user.line = "L1"
         self.user.save(update_fields=["knox_id", "user_sdwt_prod", "department", "line"])
 
+        # -----------------------------------------------------------------------------
+        # 2) 매니저/접근 권한 준비
+        # -----------------------------------------------------------------------------
         self.manager = User.objects.create_user(
             sabun="S50001",
             password="test-password",
@@ -54,6 +75,9 @@ class AccountEndpointTests(TestCase):
         UserSdwtProdAccess.objects.create(user=self.manager, user_sdwt_prod="group-a", can_manage=True)
         UserSdwtProdAccess.objects.create(user=self.manager, user_sdwt_prod="group-b", can_manage=True)
 
+        # -----------------------------------------------------------------------------
+        # 3) 슈퍼유저/소속 옵션 준비
+        # -----------------------------------------------------------------------------
         self.superuser = User.objects.create_superuser(
             sabun="S50002",
             password="test-password",
@@ -64,20 +88,37 @@ class AccountEndpointTests(TestCase):
         Affiliation.objects.create(department="Dept", line="L1", user_sdwt_prod="group-b")
 
     def test_account_overview_and_affiliation_endpoints(self) -> None:
+        """개요/소속/옵션 엔드포인트가 정상 응답하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 로그인
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.user)
 
+        # -----------------------------------------------------------------------------
+        # 2) 개요 조회 및 검증
+        # -----------------------------------------------------------------------------
         overview = self.client.get(reverse("account-overview"))
         self.assertEqual(overview.status_code, 200)
         self.assertEqual(overview.json()["user"]["userSdwtProd"], "group-a")
 
+        # -----------------------------------------------------------------------------
+        # 3) 소속 조회 및 검증
+        # -----------------------------------------------------------------------------
         affiliation = self.client.get(reverse("account-affiliation"))
         self.assertEqual(affiliation.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 4) 옵션 조회 및 검증
+        # -----------------------------------------------------------------------------
         options = self.client.get(reverse("account-line-sdwt-options"))
         self.assertEqual(options.status_code, 200)
         self.assertIn("lines", options.json())
 
     def test_account_affiliation_request_and_approval_flow(self) -> None:
+        """소속 변경 요청과 승인 플로우가 정상 동작하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 소속 변경 요청 생성
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.user)
 
         create_response = self.client.post(
@@ -88,10 +129,16 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(create_response.status_code, 202)
         change_id = create_response.json()["changeId"]
 
+        # -----------------------------------------------------------------------------
+        # 2) 요청 목록 조회
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.manager)
         list_response = self.client.get(reverse("account-affiliation-requests"))
         self.assertEqual(list_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 3) 승인 요청
+        # -----------------------------------------------------------------------------
         approve_response = self.client.post(
             reverse("account-affiliation-approve"),
             data='{"changeId": %d, "decision": "approve"}' % change_id,
@@ -100,6 +147,7 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(approve_response.status_code, 200)
 
     def test_account_affiliation_rejects_non_string_user_sdwt_prod(self) -> None:
+        """user_sdwt_prod 타입 오류는 400을 반환해야 합니다."""
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -111,6 +159,10 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(response.json().get("error"), "user_sdwt_prod is required")
 
     def test_account_affiliation_reconfirm(self) -> None:
+        """소속 재확인 플로우가 정상 응답하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 외부 예측/재확인 데이터 준비
+        # -----------------------------------------------------------------------------
         ExternalAffiliationSnapshot.objects.create(
             knox_id="knox-50000",
             predicted_user_sdwt_prod="group-b",
@@ -120,12 +172,18 @@ class AccountEndpointTests(TestCase):
         self.user.requires_affiliation_reconfirm = True
         self.user.save(update_fields=["requires_affiliation_reconfirm"])
 
+        # -----------------------------------------------------------------------------
+        # 2) 상태 조회
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.user)
 
         status_response = self.client.get(reverse("account-affiliation-reconfirm"))
         self.assertEqual(status_response.status_code, 200)
         self.assertTrue(status_response.json()["requiresReconfirm"])
 
+        # -----------------------------------------------------------------------------
+        # 3) 재확인 응답 전송
+        # -----------------------------------------------------------------------------
         confirm_response = self.client.post(
             reverse("account-affiliation-reconfirm"),
             data='{"accepted": true, "user_sdwt_prod": "group-b"}',
@@ -133,7 +191,12 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(confirm_response.status_code, 202)
 
+    @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
     def test_account_jira_key_sync_and_grants(self) -> None:
+        """JIRA 키 동기화/외부 동기화/권한 부여 흐름을 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 슈퍼유저로 Jira 키 조회/갱신
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.superuser)
 
         jira_get = self.client.get(reverse("account-affiliation-jira-key"), {"lineId": "L1"})
@@ -146,13 +209,20 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(jira_post.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 2) 외부 소속 동기화 호출
+        # -----------------------------------------------------------------------------
         sync_response = self.client.post(
             reverse("account-external-affiliation-sync"),
             data='{"records":[{"knox_id":"knox-50000","user_sdwt_prod":"group-a"}]}',
             content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(sync_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 3) 매니저 권한 부여 및 조회
+        # -----------------------------------------------------------------------------
         self.client.force_login(self.manager)
         grant_response = self.client.post(
             reverse("account-access-grant"),
@@ -166,7 +236,10 @@ class AccountEndpointTests(TestCase):
 
 
 class AffiliationSelectorTests(TestCase):
+    """소속 셀렉터 로직을 검증합니다."""
+
     def test_list_affiliation_options_orders_rows(self) -> None:
+        """소속 옵션이 정렬된 순서로 반환되는지 확인합니다."""
         Affiliation.objects.create(department="DeptB", line="L2", user_sdwt_prod="S1")
         Affiliation.objects.create(department="DeptA", line="L2", user_sdwt_prod="S2")
         Affiliation.objects.create(department="DeptA", line="L1", user_sdwt_prod="S1")
@@ -182,6 +255,7 @@ class AffiliationSelectorTests(TestCase):
         )
 
     def test_update_affiliation_jira_key_updates_all_line_rows(self) -> None:
+        """JIRA 키 업데이트가 동일 라인 전체에 적용되는지 확인합니다."""
         Affiliation.objects.create(department="DeptA", line="L1", user_sdwt_prod="S1")
         Affiliation.objects.create(department="DeptB", line="L1", user_sdwt_prod="S2")
 
@@ -191,6 +265,7 @@ class AffiliationSelectorTests(TestCase):
         self.assertEqual(get_affiliation_jira_key_for_line(line_id="L1"), "PROJ")
 
     def test_list_line_sdwt_pairs_dedupes_across_departments(self) -> None:
+        """라인-소속 쌍이 부서 중복 없이 반환되는지 확인합니다."""
         Affiliation.objects.bulk_create(
             [
                 Affiliation(department="DeptA", line="L1", user_sdwt_prod="S1"),
@@ -214,7 +289,10 @@ class AffiliationSelectorTests(TestCase):
 
 
 class AccessibleUserSdwtProdTests(TestCase):
+    """사용자 접근 가능한 user_sdwt_prod 계산을 검증합니다."""
+
     def test_pending_change_included_when_no_current_affiliation(self) -> None:
+        """현재 소속이 없을 때 대기 변경이 포함되는지 확인합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S42000",
@@ -239,6 +317,7 @@ class AccessibleUserSdwtProdTests(TestCase):
         self.assertEqual(accessible, {"group-new"})
 
     def test_pending_change_ignored_when_current_affiliation_exists(self) -> None:
+        """현재 소속이 있으면 대기 변경이 제외되는지 확인합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S42001",
@@ -267,7 +346,13 @@ class AccessibleUserSdwtProdTests(TestCase):
 
 
 class AffiliationChangeApprovalTests(TestCase):
+    """소속 변경 승인 로직을 검증합니다."""
+
     def test_manager_can_approve_and_preserves_effective_from(self) -> None:
+        """관리자 승인이 적용 시각을 유지하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/관리자 및 권한 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         requester = User.objects.create_user(
             sabun="S10000",
@@ -284,6 +369,9 @@ class AffiliationChangeApprovalTests(TestCase):
         )
         UserSdwtProdAccess.objects.create(user=manager, user_sdwt_prod="group-new", can_manage=True)
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 요청 생성
+        # -----------------------------------------------------------------------------
         past = timezone.now() - timedelta(days=7)
         change = UserSdwtProdChange.objects.create(
             user=requester,
@@ -298,8 +386,14 @@ class AffiliationChangeApprovalTests(TestCase):
             created_by=requester,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 승인 처리 실행
+        # -----------------------------------------------------------------------------
         _payload, status_code = approve_affiliation_change(approver=manager, change_id=change.id)
 
+        # -----------------------------------------------------------------------------
+        # 4) 승인 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(status_code, 200)
         change.refresh_from_db()
         requester.refresh_from_db()
@@ -313,6 +407,10 @@ class AffiliationChangeApprovalTests(TestCase):
         self.assertEqual(change.effective_from, past)
 
     def test_non_manager_cannot_approve(self) -> None:
+        """비관리자는 승인할 수 없음을 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 요청자/비관리자 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         requester = User.objects.create_user(
             sabun="S10001",
@@ -328,6 +426,9 @@ class AffiliationChangeApprovalTests(TestCase):
             knox_id="knox-30000",
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 요청 생성
+        # -----------------------------------------------------------------------------
         change = UserSdwtProdChange.objects.create(
             user=requester,
             department="Dept",
@@ -341,6 +442,9 @@ class AffiliationChangeApprovalTests(TestCase):
             created_by=requester,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 승인 시도 및 결과 검증
+        # -----------------------------------------------------------------------------
         _payload, status_code = approve_affiliation_change(approver=other, change_id=change.id)
         self.assertEqual(status_code, 403)
         requester.refresh_from_db()
@@ -348,7 +452,10 @@ class AffiliationChangeApprovalTests(TestCase):
 
 
 class AffiliationChangeSelectorTests(TestCase):
+    """소속 변경 셀렉터 동작을 검증합니다."""
+
     def test_resolve_user_affiliation_ignores_unapproved_change(self) -> None:
+        """미승인 변경은 현재 소속 계산에 반영되지 않아야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S40000",
@@ -371,6 +478,7 @@ class AffiliationChangeSelectorTests(TestCase):
         self.assertEqual(affiliation["user_sdwt_prod"], "group-a")
 
     def test_get_next_user_sdwt_prod_change_ignores_unapproved_change(self) -> None:
+        """다음 변경 조회에서 미승인 변경은 제외되어야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S40001",
@@ -405,7 +513,13 @@ class AffiliationChangeSelectorTests(TestCase):
 
 
 class AffiliationChangeRequestListTests(TestCase):
+    """소속 변경 요청 목록 조회를 검증합니다."""
+
     def test_manager_only_sees_manageable_groups(self) -> None:
+        """관리자는 관리 가능한 그룹만 조회해야 합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 관리자/요청자 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         manager = User.objects.create_user(
             sabun="S90000",
@@ -425,6 +539,9 @@ class AffiliationChangeRequestListTests(TestCase):
             knox_id="knox-90002",
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 요청 생성
+        # -----------------------------------------------------------------------------
         change_a = UserSdwtProdChange.objects.create(
             user=requester_a,
             to_user_sdwt_prod="group-a",
@@ -444,6 +561,9 @@ class AffiliationChangeRequestListTests(TestCase):
             created_by=requester_b,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출
+        # -----------------------------------------------------------------------------
         payload, status_code = get_affiliation_change_requests(
             user=manager,
             status="pending",
@@ -453,12 +573,19 @@ class AffiliationChangeRequestListTests(TestCase):
             page_size=20,
         )
 
+        # -----------------------------------------------------------------------------
+        # 4) 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(status_code, 200)
         ids = [entry["id"] for entry in payload["results"]]
         self.assertIn(change_a.id, ids)
         self.assertEqual(len(ids), 1)
 
     def test_search_filters_by_sabun(self) -> None:
+        """검색 조건이 사번 필터에 적용되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 관리자/요청자 및 권한 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         manager = User.objects.create_user(
             sabun="S91000",
@@ -472,6 +599,10 @@ class AffiliationChangeRequestListTests(TestCase):
             password="test-password",
             knox_id="knox-91001",
         )
+
+        # -----------------------------------------------------------------------------
+        # 2) 변경 요청 생성
+        # -----------------------------------------------------------------------------
         change = UserSdwtProdChange.objects.create(
             user=requester,
             to_user_sdwt_prod="group-c",
@@ -482,6 +613,9 @@ class AffiliationChangeRequestListTests(TestCase):
             created_by=requester,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출
+        # -----------------------------------------------------------------------------
         payload, status_code = get_affiliation_change_requests(
             user=manager,
             status="pending",
@@ -491,11 +625,15 @@ class AffiliationChangeRequestListTests(TestCase):
             page_size=20,
         )
 
+        # -----------------------------------------------------------------------------
+        # 4) 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["results"][0]["id"], change.id)
         self.assertEqual(payload["results"][0]["user"]["sabun"], "S91001")
 
     def test_non_manager_is_forbidden(self) -> None:
+        """비관리자는 요청 목록 조회가 거부되어야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S92000",
@@ -516,6 +654,10 @@ class AffiliationChangeRequestListTests(TestCase):
         self.assertEqual(payload["error"], "forbidden")
 
     def test_non_manager_can_view_own_group_requests(self) -> None:
+        """비관리자는 자신의 그룹 요청만 조회 가능해야 합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 요청자 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         requester = User.objects.create_user(
             sabun="S93000",
@@ -525,6 +667,9 @@ class AffiliationChangeRequestListTests(TestCase):
         requester.user_sdwt_prod = "group-own"
         requester.save(update_fields=["user_sdwt_prod"])
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 요청 생성
+        # -----------------------------------------------------------------------------
         change = UserSdwtProdChange.objects.create(
             user=requester,
             to_user_sdwt_prod="group-own",
@@ -535,6 +680,9 @@ class AffiliationChangeRequestListTests(TestCase):
             created_by=requester,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출
+        # -----------------------------------------------------------------------------
         payload, status_code = get_affiliation_change_requests(
             user=requester,
             status="pending",
@@ -544,13 +692,19 @@ class AffiliationChangeRequestListTests(TestCase):
             page_size=20,
         )
 
+        # -----------------------------------------------------------------------------
+        # 4) 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["results"][0]["id"], change.id)
         self.assertFalse(payload["canManage"])
 
 
 class AffiliationChangeRequestTests(TestCase):
+    """소속 변경 요청 서비스 로직을 검증합니다."""
+
     def test_request_affiliation_change_respects_effective_from_for_all(self) -> None:
+        """요청 시각이 관리자/일반 사용자 모두에 적용되는지 확인합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S50000",
@@ -578,7 +732,13 @@ class AffiliationChangeRequestTests(TestCase):
 
 
 class AccountOverviewTests(TestCase):
+    """계정 개요 응답을 검증합니다."""
+
     def test_account_overview_includes_profile_history_and_mailbox(self) -> None:
+        """프로필/소속 이력/메일함 정보 포함을 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/프로필/권한 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S90000",
@@ -595,6 +755,9 @@ class AccountOverviewTests(TestCase):
         profile.save(update_fields=["role"])
         UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-b", can_manage=True)
 
+        # -----------------------------------------------------------------------------
+        # 2) 변경 이력/메일 데이터 준비
+        # -----------------------------------------------------------------------------
         change = UserSdwtProdChange.objects.create(
             user=user,
             department="Dept",
@@ -622,6 +785,9 @@ class AccountOverviewTests(TestCase):
             body_text="hello",
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출 및 결과 검증
+        # -----------------------------------------------------------------------------
         payload = get_account_overview(user=user, timezone_name="Asia/Seoul")
 
         self.assertEqual(payload["user"]["role"], UserProfile.Roles.MANAGER)
@@ -636,6 +802,7 @@ class AccountOverviewTests(TestCase):
         self.assertEqual(group_a_row["myEmailCount"], 1)
 
     def test_request_affiliation_change_defaults_to_request_time(self) -> None:
+        """effective_from이 없으면 요청 시각이 사용되는지 확인합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S50001",
@@ -666,7 +833,10 @@ class AccountOverviewTests(TestCase):
 
 
 class AffiliationOverviewTests(TestCase):
+    """소속 개요 응답을 검증합니다."""
+
     def test_get_affiliation_overview_does_not_create_access_row(self) -> None:
+        """개요 조회가 접근 권한 행을 생성하지 않는지 확인합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S60000",
@@ -685,10 +855,14 @@ class AffiliationOverviewTests(TestCase):
 
 
 class AffiliationJiraKeyPermissionTests(TestCase):
+    """JIRA 키 권한 및 소속 변경 요청을 검증합니다."""
+
     def setUp(self) -> None:
+        """테스트용 소속 데이터를 준비합니다."""
         Affiliation.objects.create(department="Dept", line="L1", user_sdwt_prod="S1")
 
     def test_jira_key_update_requires_superuser(self) -> None:
+        """JIRA 키 업데이트는 슈퍼유저만 가능해야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S60001",
@@ -713,6 +887,7 @@ class AffiliationJiraKeyPermissionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_request_affiliation_change_creates_pending_for_first_affiliation(self) -> None:
+        """첫 소속 변경 요청은 승인 대기 상태로 생성되어야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S50001",
@@ -742,12 +917,21 @@ class AffiliationJiraKeyPermissionTests(TestCase):
 
 
 class ExternalAffiliationSyncTests(TestCase):
+    """외부 소속 동기화/재확인 흐름을 검증합니다."""
+
     def test_sync_external_affiliations_flags_user_on_change(self) -> None:
+        """예측 소속 변경 시 재확인 플래그가 켜지는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(sabun="S70001", password="test-password")
         user.knox_id = "loginid-ext-1"
         user.save(update_fields=["knox_id"])
 
+        # -----------------------------------------------------------------------------
+        # 2) 초기 동기화(변경 없음)
+        # -----------------------------------------------------------------------------
         sync_external_affiliations(
             records=[
                 {"knox_id": "loginid-ext-1", "user_sdwt_prod": "group-a", "source_updated_at": timezone.now()}
@@ -756,6 +940,9 @@ class ExternalAffiliationSyncTests(TestCase):
         user.refresh_from_db()
         self.assertFalse(user.requires_affiliation_reconfirm)
 
+        # -----------------------------------------------------------------------------
+        # 3) 변경 동기화 및 결과 검증
+        # -----------------------------------------------------------------------------
         result = sync_external_affiliations(
             records=[
                 {"knox_id": "loginid-ext-1", "user_sdwt_prod": "group-b", "source_updated_at": timezone.now()}
@@ -767,6 +954,10 @@ class ExternalAffiliationSyncTests(TestCase):
         self.assertTrue(user.requires_affiliation_reconfirm)
 
     def test_sync_external_affiliations_dedupes_knox_ids(self) -> None:
+        """동일 knox_id가 중복되면 최신 값만 반영되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/스냅샷 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(sabun="S70003", password="test-password")
         user.knox_id = "loginid-ext-3"
@@ -779,6 +970,9 @@ class ExternalAffiliationSyncTests(TestCase):
             last_seen_at=timezone.now(),
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 중복 knox_id 동기화 호출
+        # -----------------------------------------------------------------------------
         result = sync_external_affiliations(
             records=[
                 {"knox_id": "loginid-ext-3", "user_sdwt_prod": "group-b", "source_updated_at": timezone.now()},
@@ -786,6 +980,9 @@ class ExternalAffiliationSyncTests(TestCase):
             ]
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(result["updated"], 1)
         user.refresh_from_db()
         self.assertTrue(user.requires_affiliation_reconfirm)
@@ -793,6 +990,10 @@ class ExternalAffiliationSyncTests(TestCase):
         self.assertEqual(snapshot.predicted_user_sdwt_prod, "group-c")
 
     def test_reconfirm_response_creates_pending_change(self) -> None:
+        """재확인 응답이 승인 대기 변경을 생성하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/소속 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(sabun="S70002", password="test-password")
         user.knox_id = "loginid-ext-2"
@@ -801,6 +1002,9 @@ class ExternalAffiliationSyncTests(TestCase):
 
         Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-a")
 
+        # -----------------------------------------------------------------------------
+        # 2) 외부 동기화 및 재확인 요청
+        # -----------------------------------------------------------------------------
         sync_external_affiliations(
             records=[
                 {"knox_id": "loginid-ext-2", "user_sdwt_prod": "group-a", "source_updated_at": timezone.now()}
@@ -815,6 +1019,10 @@ class ExternalAffiliationSyncTests(TestCase):
             user_sdwt_prod="group-a",
             timezone_name="Asia/Seoul",
         )
+
+        # -----------------------------------------------------------------------------
+        # 3) 결과 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(status_code, 202)
         self.assertEqual(payload["status"], "pending")
 

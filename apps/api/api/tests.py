@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: api 패키지의 공통 테스트를 제공합니다.
+# - 주요 대상: OIDC 클레임 파싱, Assistant/RAG 연동, AssistantChatView
+# - 불변 조건: 외부 API 호출은 patch로 대체하여 순수 로직만 검증합니다.
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -13,9 +19,10 @@ from api.rag.services import search_rag
 
 
 class OidcClaimExtractionTests(SimpleTestCase):
-    """OIDC 클레임에서 사용자 정보 추출 로직을 검증합니다."""
+    """OIDC 클레임 파싱 로직을 검증합니다."""
 
     def test_extract_user_info_maps_loginid_to_knox_id(self) -> None:
+        """loginid가 knox_id로 매핑되는지 확인합니다."""
         claims = {
             "loginid": "knox-user",
             "sabun": "12345",
@@ -31,6 +38,7 @@ class OidcClaimExtractionTests(SimpleTestCase):
         self.assertEqual(info["email"], "user@example.com")
 
     def test_extract_user_info_sets_korean_and_english_names(self) -> None:
+        """한글/영문 이름 필드가 기대대로 채워지는지 확인합니다."""
         claims = {
             "loginid": "knox-user",
             "sabun": "12345",
@@ -47,7 +55,10 @@ class OidcClaimExtractionTests(SimpleTestCase):
 
 
 class AssistantSourceNormalizationTests(SimpleTestCase):
+    """Assistant 소스 정규화 로직을 검증합니다."""
+
     def test_normalize_sources_deduplicates_doc_ids_preserving_first_hit(self) -> None:
+        """doc_id 중복 제거 시 최초 항목이 유지되는지 확인합니다."""
         raw_sources = [
             {"doc_id": "email-1", "title": "첫번째"},
             {"doc_id": "email-1", "title": "두번째"},
@@ -67,11 +78,20 @@ class AssistantSourceNormalizationTests(SimpleTestCase):
 
 
 class RagSearchServiceTests(SimpleTestCase):
+    """RAG 검색 서비스의 요청 페이로드를 검증합니다."""
+
     def test_search_rag_posts_expected_payload(self) -> None:
+        """RAG 검색 요청이 기대 페이로드로 전송되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 응답 Mock 준비
+        # -----------------------------------------------------------------------------
         response = Mock()
         response.raise_for_status = Mock()
         response.json.return_value = {"hits": {"hits": []}}
 
+        # -----------------------------------------------------------------------------
+        # 2) 설정/HTTP 호출 patch 및 실행
+        # -----------------------------------------------------------------------------
         with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
             "api.rag.services.RAG_HEADERS", {"Content-Type": "application/json"}
         ), patch("api.rag.services.RAG_PERMISSION_GROUPS", ["group-a"]), patch(
@@ -81,6 +101,9 @@ class RagSearchServiceTests(SimpleTestCase):
         ) as post:
             result = search_rag("hello", num_result_doc=3, timeout=12)
 
+        # -----------------------------------------------------------------------------
+        # 3) 응답/요청 페이로드 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(result, {"hits": {"hits": []}})
 
         args, kwargs = post.call_args
@@ -99,7 +122,13 @@ class RagSearchServiceTests(SimpleTestCase):
 
 
 class AssistantRagIntegrationTests(SimpleTestCase):
+    """Assistant와 RAG 연동 경로를 검증합니다."""
+
     def test_generate_reply_uses_rag_services_search(self) -> None:
+        """generate_reply가 RAG 검색을 호출하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) RAG 응답 더미 준비
+        # -----------------------------------------------------------------------------
         rag_response = {
             "hits": {
                 "hits": [
@@ -123,6 +152,9 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             }
         }
 
+        # -----------------------------------------------------------------------------
+        # 2) Assistant 설정 구성
+        # -----------------------------------------------------------------------------
         config = AssistantChatConfig(
             use_dummy=True,
             dummy_use_rag=True,
@@ -130,12 +162,18 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             rag_num_docs=5,
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) RAG 검색 patch 및 호출
+        # -----------------------------------------------------------------------------
         with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
             "api.rag.services.search_rag", return_value=rag_response
         ) as search_mock:
             service = AssistantChatService(config=config)
             result = service.generate_reply("hello")
 
+        # -----------------------------------------------------------------------------
+        # 4) 호출 파라미터/응답 검증
+        # -----------------------------------------------------------------------------
         search_mock.assert_called_once_with("hello", index_name=["idx-user"], num_result_doc=5, timeout=30)
         self.assertTrue(result.is_dummy)
         self.assertEqual(
@@ -147,6 +185,10 @@ class AssistantRagIntegrationTests(SimpleTestCase):
         )
 
     def test_generate_reply_passes_permission_group_override(self) -> None:
+        """permission_groups 오버라이드가 전달되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) RAG 응답/설정 준비
+        # -----------------------------------------------------------------------------
         rag_response = {"hits": {"hits": []}}
         config = AssistantChatConfig(
             use_dummy=True,
@@ -155,12 +197,18 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             rag_num_docs=5,
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) RAG 검색 patch 및 호출
+        # -----------------------------------------------------------------------------
         with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
             "api.rag.services.search_rag", return_value=rag_response
         ) as search_mock:
             service = AssistantChatService(config=config)
             result = service.generate_reply("hello", permission_groups=["group-a"])
 
+        # -----------------------------------------------------------------------------
+        # 3) 호출 파라미터/응답 검증
+        # -----------------------------------------------------------------------------
         search_mock.assert_called_once_with(
             "hello",
             index_name=["idx-default"],
@@ -173,7 +221,10 @@ class AssistantRagIntegrationTests(SimpleTestCase):
 
 
 class AssistantChatViewTests(TestCase):
+    """AssistantChatView API 응답을 검증합니다."""
+
     def setUp(self) -> None:
+        """테스트용 사용자/요청 팩토리를 준비합니다."""
         self.factory = RequestFactory()
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -186,6 +237,10 @@ class AssistantChatViewTests(TestCase):
         self.user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
     def test_chat_view_returns_response_without_rag_url_attribute_error(self) -> None:
+        """정상 요청 시 응답 페이로드가 생성되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 요청 객체 구성
+        # -----------------------------------------------------------------------------
         request = self.factory.post(
             "/api/v1/assistant/chat",
             data=json.dumps({"prompt": "hello"}),
@@ -193,18 +248,28 @@ class AssistantChatViewTests(TestCase):
         )
         request.user = self.user
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 응답 patch 및 호출
+        # -----------------------------------------------------------------------------
         with patch(
             "api.assistant.views.assistant_chat_service.generate_reply",
             return_value=Mock(reply="안녕", contexts=[], sources=[], is_dummy=True),
         ):
             response = AssistantChatView().post(request)
 
+        # -----------------------------------------------------------------------------
+        # 3) 응답 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content.decode("utf-8"))
         self.assertEqual(payload["reply"], "안녕")
         self.assertIn("meta", payload)
 
     def test_chat_view_returns_503_when_assistant_config_error(self) -> None:
+        """설정 오류 발생 시 503을 반환하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 요청 객체 구성
+        # -----------------------------------------------------------------------------
         request = self.factory.post(
             "/api/v1/assistant/chat",
             data=json.dumps({"prompt": "hello"}),
@@ -212,10 +277,16 @@ class AssistantChatViewTests(TestCase):
         )
         request.user = self.user
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 오류 patch 및 호출
+        # -----------------------------------------------------------------------------
         with patch(
             "api.assistant.views.assistant_chat_service.generate_reply",
             side_effect=AssistantConfigError("missing config"),
         ):
             response = AssistantChatView().post(request)
 
+        # -----------------------------------------------------------------------------
+        # 3) 응답 코드 검증
+        # -----------------------------------------------------------------------------
         self.assertEqual(response.status_code, 503)

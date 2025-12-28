@@ -1,4 +1,9 @@
-"""CRUD service helpers for DroneEarlyInform with defensive validations."""
+# =============================================================================
+# 모듈: DroneEarlyInform 서비스
+# 주요 기능: 생성/수정/삭제, 중복/미존재 예외 처리
+# 주요 가정: 유니크 제약 위반 시 중복 오류로 처리합니다.
+# =============================================================================
+"""DroneEarlyInform CRUD 서비스 모듈입니다."""
 
 from __future__ import annotations
 
@@ -35,10 +40,25 @@ def create_early_inform_entry(
 ) -> DroneEarlyInform:
     """조기 알림 설정을 생성합니다.
 
-    Side effects:
-        Inserts a DroneEarlyInform row.
+    인자:
+        line_id: 라인 ID.
+        main_step: 메인 스텝.
+        custom_end_step: 커스텀 종료 스텝(옵션).
+        updated_by: 수정자 식별자.
+
+    반환:
+        생성된 DroneEarlyInform 인스턴스.
+
+    부작용:
+        DroneEarlyInform 레코드가 생성됩니다.
+
+    오류:
+        중복 키 충돌 시 DroneEarlyInformDuplicateError를 발생시킵니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 트랜잭션 내 레코드 생성
+    # -----------------------------------------------------------------------------
     try:
         with transaction.atomic():
             return DroneEarlyInform.objects.create(
@@ -59,16 +79,35 @@ def update_early_inform_entry(
 ) -> DroneEarlyInformUpdateResult:
     """조기 알림 설정을 부분 업데이트합니다.
 
-    Side effects:
-        Updates a DroneEarlyInform row.
+    인자:
+        entry_id: 업데이트 대상 ID.
+        updates: 업데이트할 필드 dict.
+        updated_by: 수정자 식별자.
+
+    반환:
+        업데이트 결과(현재/이전 스냅샷 포함).
+
+    부작용:
+        DroneEarlyInform 레코드가 수정됩니다.
+
+    오류:
+        유효한 필드가 없으면 ValueError,
+        레코드가 없으면 DroneEarlyInformNotFoundError,
+        중복 키 충돌 시 DroneEarlyInformDuplicateError를 발생시킵니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 허용 필드 필터링
+    # -----------------------------------------------------------------------------
     allowed_fields = {"line_id", "main_step", "custom_end_step"}
     filtered_updates = {key: value for key, value in updates.items() if key in allowed_fields}
 
     if not filtered_updates and updated_by is None:
         raise ValueError("No valid fields to update")
 
+    # -----------------------------------------------------------------------------
+    # 2) 트랜잭션 내 조회/업데이트
+    # -----------------------------------------------------------------------------
     try:
         with transaction.atomic():
             entry = DroneEarlyInform.objects.select_for_update().filter(id=entry_id).first()
@@ -97,10 +136,22 @@ def update_early_inform_entry(
 def delete_early_inform_entry(*, entry_id: int) -> DroneEarlyInform:
     """조기 알림 설정을 삭제합니다.
 
-    Side effects:
-        Deletes a DroneEarlyInform row.
+    인자:
+        entry_id: 삭제 대상 ID.
+
+    반환:
+        삭제된 DroneEarlyInform 인스턴스.
+
+    부작용:
+        DroneEarlyInform 레코드가 삭제됩니다.
+
+    오류:
+        레코드가 없으면 DroneEarlyInformNotFoundError를 발생시킵니다.
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 트랜잭션 내 조회/삭제
+    # -----------------------------------------------------------------------------
     with transaction.atomic():
         entry = DroneEarlyInform.objects.select_for_update().filter(id=entry_id).first()
         if entry is None:

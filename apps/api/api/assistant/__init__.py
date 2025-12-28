@@ -1,1 +1,1 @@
-"""Assistant feature package."""
+"""어시스턴트 도메인 패키지입니다."""

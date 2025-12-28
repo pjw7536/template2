@@ -1,1 +1,1 @@
-# Email feature package
+"""emails 도메인 패키지."""

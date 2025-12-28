@@ -1,3 +1,9 @@
+# =============================================================================
+# 모듈 설명: emails 도메인의 서비스/셀렉터/뷰 동작을 검증합니다.
+# - 주요 범위: 소속 판별, 이동/삭제, Outbox 처리, API 엔드포인트
+# - 불변 조건: 테스트는 DB 트랜잭션을 사용하며 시간은 timezone-aware입니다.
+# =============================================================================
+
 from __future__ import annotations
 
 import os
@@ -34,6 +40,18 @@ class EmailAffiliationTests(TestCase):
     """emails.selectors / emails.services의 소속 판별/재분류 동작을 검증합니다."""
 
     def test_resolve_email_affiliation_uses_user_knox_id(self) -> None:
+        """사용자 knox_id 기반 소속 판별이 우선 적용되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/소속 데이터 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S12345", password="test-password")
         user.knox_id = "loginid1"
@@ -44,10 +62,34 @@ class EmailAffiliationTests(TestCase):
         self.assertEqual(affiliation["user_sdwt_prod"], "group-a")
 
     def test_resolve_email_affiliation_unknown_sender_defaults_to_unassigned(self) -> None:
+        """미확인 발신자는 UNASSIGNED로 분류되는지 확인합니다.
+
+        입력:
+            없음.
+        반환:
+            없음.
+        부작용:
+            없음.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         affiliation = resolve_email_affiliation(sender_id="unknown-sender", received_at=timezone.now())
         self.assertEqual(affiliation["user_sdwt_prod"], UNASSIGNED_USER_SDWT_PROD)
 
     def test_resolve_email_affiliation_uses_external_prediction(self) -> None:
+        """외부 예측 소속이 있는 경우 해당 값을 사용하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 예측 스냅샷 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         ExternalAffiliationSnapshot.objects.create(
             knox_id="loginid-ext",
             predicted_user_sdwt_prod="group-pred",
@@ -59,6 +101,18 @@ class EmailAffiliationTests(TestCase):
         self.assertEqual(affiliation["user_sdwt_prod"], "group-pred")
 
     def test_resolve_email_affiliation_uses_current_user_sdwt_prod(self) -> None:
+        """현재 user_sdwt_prod가 최우선으로 유지되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/변경 이력 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S77777", password="test-password")
         user.knox_id = "loginid3"
@@ -83,8 +137,22 @@ class EmailAffiliationTests(TestCase):
 
 
 class EmailMoveServiceTests(TestCase):
+    """emails.services 이동/삭제 관련 동작을 검증합니다."""
+
     @patch("api.emails.services.insert_email_to_rag")
     def test_enqueue_rag_index_for_emails_reports_missing_ids(self, _mock_insert: Mock) -> None:
+        """존재하지 않는 id가 ragMissing으로 집계되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email = Email.objects.create(
             message_id="rag-missing-msg",
             received_at=timezone.now(),
@@ -111,6 +179,18 @@ class EmailMoveServiceTests(TestCase):
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_move_emails_to_user_sdwt_prod_updates_rows(self, _mock_insert: Mock) -> None:
+        """메일함 이동 시 user_sdwt_prod가 갱신되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성/수정.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email_a = Email.objects.create(
             message_id="move-msg-a",
             received_at=timezone.now(),
@@ -146,6 +226,18 @@ class EmailMoveServiceTests(TestCase):
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_move_emails_to_user_sdwt_prod_reports_missing_ids(self, _mock_insert: Mock) -> None:
+        """존재하지 않는 id가 ragMissing으로 집계되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성/수정.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email = Email.objects.create(
             message_id="move-missing-msg",
             received_at=timezone.now(),
@@ -172,6 +264,18 @@ class EmailMoveServiceTests(TestCase):
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_move_sender_emails_after_filters_by_time(self, _mock_insert: Mock) -> None:
+        """기준 시각 이후 메일만 이동되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성/수정.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         sender_id = "loginid-time"
         old = Email.objects.create(
             message_id="move-time-old",
@@ -209,6 +313,18 @@ class EmailMoveServiceTests(TestCase):
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_claim_unassigned_emails_for_user_includes_missing_count(self, _mock_insert: Mock) -> None:
+        """UNASSIGNED 메일 귀속 결과 집계가 올바른지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S22222", password="test-password")
         user.knox_id = "loginid-claim"
@@ -235,8 +351,22 @@ class EmailMoveServiceTests(TestCase):
 
 
 class EmailOutboxTests(TestCase):
+    """emails.services RAG Outbox 처리 동작을 검증합니다."""
+
     @patch("api.emails.services.insert_email_to_rag")
     def test_process_outbox_index_updates_email(self, mock_insert: Mock) -> None:
+        """Outbox 인덱싱 처리 후 상태가 업데이트되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email/Outbox 생성 및 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email = Email.objects.create(
             message_id="outbox-msg-1",
             received_at=timezone.now(),
@@ -269,6 +399,18 @@ class EmailOutboxTests(TestCase):
 
     @patch("api.emails.services.delete_rag_doc")
     def test_delete_email_enqueues_outbox(self, mock_delete: Mock) -> None:
+        """삭제 시 Outbox가 적재되고 처리되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email/Outbox 생성 및 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email = Email.objects.create(
             message_id="outbox-msg-2",
             received_at=timezone.now(),
@@ -302,6 +444,18 @@ class EmailMailboxAccessViewTests(TestCase):
     """emails 뷰에서 user_sdwt_prod 기반 접근 제어를 검증합니다."""
 
     def test_user_only_sees_own_mailbox_by_default(self) -> None:
+        """일반 사용자가 기본적으로 자신의 메일함만 보는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S11111", password="test-password")
         user.knox_id = "knox-11111"
@@ -340,6 +494,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(detail.status_code, 403)
 
     def test_missing_knox_id_is_forbidden(self) -> None:
+        """knox_id가 없으면 접근이 거부되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S11110", password="test-password")
         user.user_sdwt_prod = "group-a"
@@ -351,6 +517,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_sender_can_access_sent_email_without_mailbox_access(self) -> None:
+        """발신자는 메일함 접근 권한 없이도 보낸메일 접근이 가능한지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S11113", password="test-password")
         user.knox_id = "loginid-sender"
@@ -379,6 +557,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertTrue(any(item["id"] == sent_email.id for item in results))
 
     def test_sent_rejects_knox_id_query_param(self) -> None:
+        """보낸메일 조회에서 knox_id 파라미터가 거부되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S11114", password="test-password")
         user.knox_id = "loginid-sender"
@@ -391,6 +581,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_mailbox_list_includes_empty_granted_mailbox(self) -> None:
+        """접근 권한만 있는 빈 메일함도 목록에 포함되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/접근 권한 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S11112", password="test-password")
         user.knox_id = "knox-11112"
@@ -408,6 +610,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertIn("group-empty", mailbox_list.json()["results"])
 
     def test_user_can_select_granted_mailbox(self) -> None:
+        """접근 권한이 있는 메일함을 선택해 조회할 수 있는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email/권한 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S22222", password="test-password")
         user.knox_id = "knox-22222"
@@ -449,6 +663,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
 
     def test_user_can_view_mailbox_members_for_accessible_mailbox(self) -> None:
+        """접근 가능한 메일함의 멤버 목록을 조회할 수 있는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email/권한 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         requester = User.objects.create_user(sabun="S33333", password="test-password")
         requester.username = "홍길동"
@@ -536,6 +762,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(granted_member["knoxId"], granted.knox_id)
 
     def test_user_cannot_view_mailbox_members_for_ungranted_mailbox(self) -> None:
+        """권한 없는 메일함의 멤버 목록은 거부되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S44444", password="test-password")
         user.knox_id = "knox-44444"
@@ -553,6 +791,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_user_can_view_mailbox_members_for_granted_mailbox(self) -> None:
+        """권한이 있는 메일함의 멤버 목록을 조회할 수 있는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/권한 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S55555", password="test-password")
         user.knox_id = "knox-55555"
@@ -577,6 +827,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(forbidden.status_code, 403)
 
     def test_staff_mailboxes_list_includes_unassigned(self) -> None:
+        """스태프가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         staff = User.objects.create_user(sabun="S33333", password="test-password", is_staff=True)
         staff.knox_id = "knox-33333"
@@ -642,6 +904,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
 
     def test_superuser_mailboxes_list_includes_unassigned(self) -> None:
+        """슈퍼유저가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         superuser = User.objects.create_superuser(sabun="S33334", password="test-password")
         superuser.knox_id = "knox-33334"
@@ -685,6 +959,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual({item["userSdwtProd"] for item in results}, {UNASSIGNED_USER_SDWT_PROD})
 
     def test_user_can_claim_unassigned_emails(self) -> None:
+        """UNASSIGNED 메일 귀속 처리 플로우가 동작하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성 및 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S44444", password="test-password")
         user.knox_id = "loginid-claim"
@@ -732,6 +1018,18 @@ class EmailMailboxAccessViewTests(TestCase):
         self.assertEqual(after_summary.json()["count"], 0)
 
     def test_claim_unassigned_requires_user_sdwt_prod(self) -> None:
+        """user_sdwt_prod 미설정 시 귀속이 실패하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         User = get_user_model()
         user = User.objects.create_user(sabun="S55555", password="test-password")
         user.knox_id = "loginid-no-sdwt"
@@ -754,14 +1052,52 @@ class EmailMailboxAccessViewTests(TestCase):
 
 
 class RagIndexNameTests(SimpleTestCase):
+    """RAG 인덱스 이름 해석 규칙을 검증합니다."""
+
     def test_resolve_rag_index_name_returns_explicit_value(self) -> None:
+        """명시 값이 있으면 그대로 반환하는지 확인합니다.
+
+        입력:
+            없음.
+        반환:
+            없음.
+        부작용:
+            없음.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         self.assertEqual(resolve_rag_index_name("rp-emails"), "rp-emails")
 
     def test_resolve_rag_index_name_falls_back_to_default(self) -> None:
+        """기본 인덱스로 폴백하는지 확인합니다.
+
+        입력:
+            없음(설정 패치).
+        반환:
+            없음.
+        부작용:
+            모듈 상수 패치.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         with patch("api.rag.services.RAG_INDEX_DEFAULT", "rp-unclassified"):
             self.assertEqual(resolve_rag_index_name(None), "rp-unclassified")
 
     def test_resolve_rag_index_name_uses_first_index_list_when_default_missing(self) -> None:
+        """기본값이 없으면 목록 첫 항목으로 폴백하는지 확인합니다.
+
+        입력:
+            없음(설정 패치).
+        반환:
+            없음.
+        부작용:
+            모듈 상수 패치.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         with patch("api.rag.services.RAG_INDEX_DEFAULT", ""), patch(
             "api.rag.services.RAG_INDEX_LIST", ["rp-a", "rp-b"]
         ):
@@ -783,6 +1119,18 @@ class KnoxMailApiTests(SimpleTestCase):
     )
     @patch("api.emails.services.requests.post")
     def test_send_knox_mail_api_returns_json(self, mock_post: Mock) -> None:
+        """JSON 응답이 dict로 반환되는지 확인합니다.
+
+        입력:
+            없음(환경변수/응답 모킹).
+        반환:
+            없음.
+        부작용:
+            외부 요청 모킹.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         response = Mock()
         response.ok = True
         response.status_code = 200
@@ -825,6 +1173,18 @@ class KnoxMailApiTests(SimpleTestCase):
     )
     @patch("api.emails.services.requests.post")
     def test_send_knox_mail_api_returns_ok_for_non_json(self, mock_post: Mock) -> None:
+        """비 JSON 응답은 ok=True로 처리되는지 확인합니다.
+
+        입력:
+            없음(환경변수/응답 모킹).
+        반환:
+            없음.
+        부작용:
+            외부 요청 모킹.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         response = Mock()
         response.ok = True
         response.status_code = 204
@@ -851,6 +1211,18 @@ class KnoxMailApiTests(SimpleTestCase):
     )
     @patch("api.emails.services.requests.post")
     def test_send_knox_mail_api_raises_on_http_error(self, mock_post: Mock) -> None:
+        """HTTP 오류 응답 시 예외가 발생하는지 확인합니다.
+
+        입력:
+            없음(환경변수/응답 모킹).
+        반환:
+            없음.
+        부작용:
+            외부 요청 모킹.
+        오류:
+            MailSendError 발생.
+        """
+
         response = Mock()
         response.ok = False
         response.status_code = 500
@@ -868,6 +1240,18 @@ class KnoxMailApiTests(SimpleTestCase):
         self.assertIn("메일 API 오류 500", str(ctx.exception))
 
     def test_send_knox_mail_api_raises_when_missing_env(self) -> None:
+        """환경변수 누락 시 예외가 발생하는지 확인합니다.
+
+        입력:
+            없음(환경변수 패치).
+        반환:
+            없음.
+        부작용:
+            환경변수 패치.
+        오류:
+            MailSendError 발생.
+        """
+
         with patch.dict(
             os.environ,
             {
@@ -888,7 +1272,21 @@ class KnoxMailApiTests(SimpleTestCase):
 
 
 class EmailParsingTests(SimpleTestCase):
+    """메일 파싱 유틸 동작을 검증합니다."""
+
     def test_parse_message_to_fields_includes_cc_and_recipient_lists(self) -> None:
+        """To/Cc가 리스트로 파싱되는지 확인합니다.
+
+        입력:
+            없음(테스트 메시지 생성).
+        반환:
+            없음.
+        부작용:
+            없음.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         msg = EmailMessage()
         msg["Subject"] = "Test"
         msg["From"] = "Sender <sender@example.com>"
@@ -905,7 +1303,21 @@ class EmailParsingTests(SimpleTestCase):
 
 
 class EmailSearchSelectorTests(TestCase):
+    """메일 검색 필터 동작을 검증합니다."""
+
     def test_get_filtered_emails_search_includes_to_and_cc(self) -> None:
+        """검색이 To/Cc에도 적용되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         Email.objects.create(
             message_id="search-1",
             received_at=timezone.now(),
@@ -957,6 +1369,18 @@ class EmailSearchSelectorTests(TestCase):
         self.assertEqual(set(by_cc.values_list("message_id", flat=True)), {"search-1"})
 
     def test_get_filtered_emails_returns_none_for_empty_accessible_set(self) -> None:
+        """접근 가능 집합이 비어 있으면 결과가 없는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         Email.objects.create(
             message_id="search-guard-1",
             received_at=timezone.now(),
@@ -983,7 +1407,21 @@ class EmailSearchSelectorTests(TestCase):
 
 
 class EmailEndpointTests(TestCase):
+    """emails API 엔드포인트의 기본 동작을 검증합니다."""
+
     def setUp(self) -> None:
+        """공통 테스트 데이터와 로그인 상태를 준비합니다.
+
+        입력:
+            없음.
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 사용자/Email 생성, 클라이언트 로그인.
+        오류:
+            없음.
+        """
+
         User = get_user_model()
         self.user = User.objects.create_user(sabun="S11111", password="test-password")
         self.user.knox_id = "knox-11111"
@@ -1015,6 +1453,18 @@ class EmailEndpointTests(TestCase):
         self.client.force_login(self.user)
 
     def test_email_list_detail_html_and_delete(self) -> None:
+        """목록/상세/HTML/삭제 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(사전 데이터 사용).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청 및 DB 삭제.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         list_response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(list_response.status_code, 200)
 
@@ -1029,12 +1479,36 @@ class EmailEndpointTests(TestCase):
         self.assertEqual(delete_response.status_code, 200)
 
     def test_email_sent_list(self) -> None:
+        """보낸메일 목록 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(사전 데이터 사용).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         sent_response = self.client.get(reverse("emails-sent"))
         self.assertEqual(sent_response.status_code, 200)
         results = sent_response.json()["results"]
         self.assertTrue(any(item["id"] == self.email.id for item in results))
 
     def test_email_mailboxes_and_members(self) -> None:
+        """메일함 목록/멤버 조회가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(사전 데이터 사용).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         mailbox_response = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_response.status_code, 200)
 
@@ -1045,6 +1519,18 @@ class EmailEndpointTests(TestCase):
         self.assertEqual(members_response.status_code, 200)
 
     def test_email_unassigned_summary_and_claim(self) -> None:
+        """UNASSIGNED 요약/귀속 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(사전 데이터 사용).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청 및 DB 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         summary = self.client.get(reverse("emails-unassigned-summary"))
         self.assertEqual(summary.status_code, 200)
 
@@ -1052,6 +1538,18 @@ class EmailEndpointTests(TestCase):
         self.assertEqual(claim.status_code, 200)
 
     def test_email_bulk_delete(self) -> None:
+        """일괄 삭제 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성 및 삭제.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         email = Email.objects.create(
             message_id="msg-bulk",
             received_at=timezone.now(),
@@ -1071,6 +1569,18 @@ class EmailEndpointTests(TestCase):
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_email_move_endpoint(self, _mock_insert: Mock) -> None:
+        """메일 이동 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성/수정.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         UserSdwtProdAccess.objects.create(user=self.user, user_sdwt_prod="group-b")
 
         email = Email.objects.create(
@@ -1096,14 +1606,40 @@ class EmailEndpointTests(TestCase):
 
     @patch("api.emails.views.run_pop3_ingest_from_env", return_value={"deleted": 1, "reindexed": 2})
     def test_email_ingest_trigger(self, _mock_ingest) -> None:
+        """POP3 수집 트리거 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(서비스 모킹).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         response = self.client.post(reverse("emails-ingest"))
         self.assertEqual(response.status_code, 200)
 
 
 class EmailOutboxTriggerAuthTests(TestCase):
+    """Outbox 트리거 인증/파라미터 동작을 검증합니다."""
+
     @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.emails.views.process_email_outbox_batch")
     def test_outbox_trigger_requires_token(self, mock_process: Mock) -> None:
+        """토큰 인증이 필수로 적용되는지 확인합니다.
+
+        입력:
+            없음(토큰/서비스 모킹).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         mock_process.return_value = {"processed": 1, "succeeded": 1, "failed": 0}
 
         url = reverse("emails-outbox-process")
@@ -1124,6 +1660,18 @@ class EmailOutboxTriggerAuthTests(TestCase):
     @override_settings(AIRFLOW_TRIGGER_TOKEN="expected-token")
     @patch("api.emails.views.process_email_outbox_batch")
     def test_outbox_trigger_accepts_limit(self, mock_process: Mock) -> None:
+        """limit 파라미터가 전달되는지 확인합니다.
+
+        입력:
+            없음(토큰/서비스 모킹).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
         mock_process.return_value = {"processed": 0, "succeeded": 0, "failed": 0}
 
         url = reverse("emails-outbox-process")

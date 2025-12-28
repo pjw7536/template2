@@ -1,12 +1,17 @@
-"""Drone feature service layer.
+# =============================================================================
+# 모듈: 드론 서비스 파사드
+# 주요 구성: early_inform/sop_pop3/sop_jira/utils
+# 주요 가정: 외부에서는 api.drone.services를 통해 접근합니다.
+# =============================================================================
+"""드론 서비스 레이어 모듈입니다.
 
-Implementation is split by functional area for readability:
- - Early inform CRUD: `services/early_inform.py`
- - Drone SOP POP3 ingest: `services/sop_pop3.py`
- - Drone SOP Jira integration: `services/sop_jira.py`
- - Shared helpers: `services/utils.py`
+기능 영역별로 모듈을 분리했습니다:
+ - 조기 알림 CRUD: `services/early_inform.py`
+ - Drone SOP POP3 수집: `services/sop_pop3.py`
+ - Drone SOP Jira 연동: `services/sop_jira.py`
+ - 공통 유틸: `services/utils.py`
 
-This module acts as a stable import facade (e.g. `from api.drone import services`).
+이 모듈은 안정적인 import 파사드 역할을 합니다(예: `from api.drone import services`).
 """
 
 from __future__ import annotations

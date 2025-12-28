@@ -1,4 +1,4 @@
-"""FastAPI-based dummy ADFS/RAG sandbox for external development."""
+"""외부 개발을 위한 FastAPI 기반 더미 ADFS/RAG 샌드박스입니다."""
 
 from __future__ import annotations
 

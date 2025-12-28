@@ -1,4 +1,4 @@
-"""Mail sandbox endpoints for local testing."""
+"""로컬 테스트를 위한 메일 샌드박스 엔드포인트입니다."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ router = APIRouter()
 
 @router.get("/mail/messages")
 async def list_dummy_mail() -> Dict[str, Any]:
-    """Return all dummy mail messages for quick manual testing."""
+    """수동 점검을 위한 더미 메일 메시지를 모두 반환합니다."""
     mail_store.ensure_drone_sop_mail()
     return {"count": len(mail_store.mailbox), "messages": list(mail_store.mailbox.values())}
 
 
 @router.post("/mail/messages")
 async def create_dummy_mail(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Create a dummy mail entry and optionally register it to the dummy RAG store."""
+    """더미 메일 항목을 생성하고 필요 시 더미 RAG 스토어에 등록합니다."""
     subject = str(payload.get("subject") or "로컬 더미 메일").strip()
     sender = str(payload.get("sender") or "sender@example.com").strip()
     recipient = str(payload.get("recipient") or DEFAULT_EMAIL).strip()
@@ -57,7 +57,7 @@ async def send_dummy_mail(
     login_user_login: str | None = Query(None, alias="loginUser.login"),
     dep_ticket: str | None = Header(None, alias="x-dep-ticket"),
 ) -> Dict[str, Any]:
-    """Simulate the corporate Knox mail send API for local testing."""
+    """로컬 테스트용 Knox 메일 발송 API를 모사합니다."""
 
     title = str(payload.get("title") or payload.get("subject") or "로컬 더미 발신").strip()
     sender = str(payload.get("senderMailAddress") or payload.get("sender") or DEFAULT_EMAIL).strip()
@@ -102,13 +102,13 @@ async def send_dummy_mail(
 
 @router.delete("/mail/messages/{mail_id}")
 async def delete_dummy_mail(mail_id: int) -> Dict[str, Any]:
-    """Remove a dummy mail entry and its paired RAG doc if present."""
+    """더미 메일 항목과 연결된 RAG 문서가 있으면 함께 삭제합니다."""
     return mail_store.delete_mail(mail_id)
 
 
 @router.post("/mail/reset")
 async def reset_dummy_mail() -> Dict[str, Any]:
-    """Reset mailbox and RAG docs to the default seed data."""
+    """메일함과 RAG 문서를 기본 시드 데이터로 초기화합니다."""
     seed_all()
     return {
         "status": "ok",

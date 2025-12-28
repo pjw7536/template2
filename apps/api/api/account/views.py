@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: account 도메인 APIView를 제공합니다.
+# - 주요 대상: 소속 변경/승인/재확인, 권한 부여, 외부 동기화
+# - 불변 조건: 비즈니스 로직은 서비스/셀렉터로 위임합니다.
+# =============================================================================
+
+"""계정 도메인 APIView 모음.
+
+- 주요 대상: 소속 변경, 개요 조회, 승인/목록, 외부 동기화, 권한 부여
+- 주요 엔드포인트/클래스: AccountAffiliationView 등
+- 가정/불변 조건: 모든 날짜는 UTC 기준으로 처리되며 입력이 없으면 KST로 해석함
+"""
 from __future__ import annotations
 
 from datetime import timezone as dt_timezone
@@ -11,7 +23,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.utils import normalize_text, parse_json_body
+from api.common.utils import ensure_airflow_token, normalize_text, parse_json_body
 
 from . import selectors, services
 from .serializers import (
@@ -20,42 +32,110 @@ from .serializers import (
     ExternalAffiliationSyncSerializer,
 )
 
-KST = ZoneInfo("Asia/Seoul")
-TIMEZONE_NAME = "Asia/Seoul"
+# -----------------------------------------------------------------------------
+# 시간대/페이지네이션 상수
+# -----------------------------------------------------------------------------
+KST = ZoneInfo("Asia/Seoul")          # 타임존 없는 datetime을 KST로 해석할 때 사용할 tzinfo
+TIMEZONE_NAME = "Asia/Seoul"         # 서비스 레이어에 전달할 시간대 이름
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
 
 def _parse_effective_from(value: Optional[str]):
-    """입력 문자열을 파싱해 UTC timezone-aware datetime으로 변환합니다.
+    """effective_from 입력 문자열을 UTC timezone-aware datetime으로 변환합니다.
 
-    Parse the input datetime string and return a UTC-aware datetime.
+    입력:
+    - value: ISO 형식 날짜 문자열
+
+    반환:
+    - datetime | None: UTC 기준 datetime 또는 None
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음(파싱 실패 시 None 반환)
+
+    허용 예시:
+    - 예시: "2025-12-28T10:30:00+09:00"
+    - 예시: "2025-12-28T01:30:00Z"
+    - "2025-12-28T10:30:00" (타임존 정보 없으면 KST로 간주)
     """
+    # -----------------------------------------------------------------------------
+    # 1) 입력 유효성 확인
+    # -----------------------------------------------------------------------------
     if not value:
         return None
+
+    # -----------------------------------------------------------------------------
+    # 2) ISO 문자열 파싱
+    # -----------------------------------------------------------------------------
     parsed = parse_datetime(str(value))
     if not parsed:
         return None
+
+    # -----------------------------------------------------------------------------
+    # 3) 타임존 정보 보정(KST 가정)
+    # -----------------------------------------------------------------------------
     if timezone.is_naive(parsed):
         parsed = parsed.replace(tzinfo=KST)
+
+    # -----------------------------------------------------------------------------
+    # 4) UTC로 변환
+    # -----------------------------------------------------------------------------
     return parsed.astimezone(dt_timezone.utc)
 
 
 def _get_authenticated_user(request: HttpRequest):
+    """DRF/Django 요청에서 인증된 사용자를 안전하게 얻습니다.
+
+    입력:
+    - 요청: Django HttpRequest 또는 DRF Request
+
+    반환:
+    - user | None: 인증된 사용자 또는 None
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+    # -----------------------------------------------------------------------------
+    # 1) DRF 요청이 감싼 Django 요청 확인
+    # -----------------------------------------------------------------------------
     django_request = getattr(request, "_request", None)
     if django_request is not None:
         user = getattr(django_request, "user", None)
         if user and getattr(user, "is_authenticated", False):
             return user
+
+    # -----------------------------------------------------------------------------
+    # 2) 일반 요청의 user 확인
+    # -----------------------------------------------------------------------------
     user = getattr(request, "user", None)
     if user and getattr(user, "is_authenticated", False):
         return user
+
     return None
 
 
 def _parse_int(value: object, default: int) -> int:
-    """입력 값을 정수로 파싱하고 실패/0 이하일 때 기본값을 반환합니다."""
+    """입력 값을 int로 파싱하며 실패 시 기본값을 반환합니다.
 
+    입력:
+    - value: 변환 대상 값
+    - default: 기본값
+
+    반환:
+    - int: 파싱된 값 또는 기본값
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
     try:
         parsed = int(value)
         if parsed <= 0:
@@ -65,44 +145,123 @@ def _parse_int(value: object, default: int) -> int:
         return default
 
 
+# =============================================================================
+# 1) 사용자: 내 소속 확인/변경 신청
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationView(APIView):
     """현재 사용자의 user_sdwt_prod 소속 변경을 신청합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """로그인 사용자 기준 소속 개요 데이터를 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 소속 개요 데이터
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/affiliation
+
+        예시 응답:
+        - 예시 응답: 200 {"currentUserSdwtProd": "...", "accessibleUserSdwtProds": [...]}
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디 없음)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         payload = services.get_affiliation_overview(user=user, timezone_name=TIMEZONE_NAME)
         return JsonResponse(payload)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """소속 변경 요청을 생성합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 변경 요청 결과
+
+        부작용:
+        - 변경 요청 생성(서비스 레이어)
+
+        오류:
+        - 400: 입력 오류
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/affiliation
+          요청 바디 예시: {"department":"ETCH","line":"LINE_01","user_sdwt_prod":"SDWT_A","effective_from":"2025-12-28T10:00:00+09:00"}
+
+        snake/camel 호환:
+        - user_sdwt_prod / userSdwtProd (키 매핑)
+        - effective_from / effectiveFrom (키 매핑)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 입력 정규화
+        # -----------------------------------------------------------------------------
         department = normalize_text(payload.get("department"))
         line = normalize_text(payload.get("line"))
+
+        # -----------------------------------------------------------------------------
+        # 4) user_sdwt_prod 추출(호환 키 포함)
+        # -----------------------------------------------------------------------------
         new_value = normalize_text(payload.get("user_sdwt_prod"))
         if not new_value:
             new_value = normalize_text(payload.get("userSdwtProd"))
         if not new_value:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 5) 소속 옵션 유효성 검증
+        # -----------------------------------------------------------------------------
         option = selectors.get_affiliation_option(department, line, new_value)
         if option is None:
             return JsonResponse({"error": "Invalid department/line/user_sdwt_prod combination"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 6) effective_from 파싱
+        # -----------------------------------------------------------------------------
         effective_from_raw = payload.get("effective_from") or payload.get("effectiveFrom")
         effective_from = _parse_effective_from(effective_from_raw)
         if effective_from_raw and effective_from is None:
             return JsonResponse({"error": "Invalid effective_from"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 7) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         response_payload, status_code = services.request_affiliation_change(
             user=user,
             option=option,
@@ -113,35 +272,106 @@ class AccountAffiliationView(APIView):
         return JsonResponse(response_payload, status=status_code)
 
 
+# =============================================================================
+# 2) 사용자: 계정 화면 한 번에 로딩할 개요
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountOverviewView(APIView):
     """계정 화면에서 필요한 데이터를 한번에 제공합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """계정 화면 구성에 필요한 데이터를 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 계정 개요 데이터
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/overview
+
+        예시 응답:
+        - 예시 응답: 200 {"user": {...}, "affiliationHistory": [...], "mailboxAccess": [...]}
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디 없음)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         payload = services.get_account_overview(user=user, timezone_name=TIMEZONE_NAME)
         return JsonResponse(payload)
 
 
+# =============================================================================
+# 3) 관리자(그룹 매니저/슈퍼유저): 소속 변경 요청 승인/거절
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationApprovalView(APIView):
     """해당 소속 관리자(그룹 매니저)/슈퍼유저가 소속 변경 요청을 승인한다."""
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """소속 변경 요청을 승인/거절합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 승인/거절 결과
+
+        부작용:
+        - 변경 요청 승인/거절 처리
+
+        오류:
+        - 400: 입력 오류
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/affiliation/approve
+          요청 바디 예시: {"changeId":123,"decision":"approve"}
+
+        snake/camel 호환:
+        - 해당 없음(레거시 id는 changeId로 보정)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 하위 호환 키 보정
+        # -----------------------------------------------------------------------------
         if "changeId" not in payload and "id" in payload:
             payload = {**payload, "changeId": payload.get("id")}
 
+        # -----------------------------------------------------------------------------
+        # 4) 입력 검증
+        # -----------------------------------------------------------------------------
         serializer = AffiliationApprovalSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse(serializer.errors, status=400)
@@ -149,6 +379,9 @@ class AccountAffiliationApprovalView(APIView):
         change_id = serializer.validated_data["changeId"]
         decision = (serializer.validated_data.get("decision") or "approve").lower()
 
+        # -----------------------------------------------------------------------------
+        # 5) 의사결정에 따른 서비스 호출
+        # -----------------------------------------------------------------------------
         if decision == "reject":
             response_payload, status_code = services.reject_affiliation_change(
                 approver=user,
@@ -162,28 +395,74 @@ class AccountAffiliationApprovalView(APIView):
         return JsonResponse(response_payload, status=status_code)
 
 
+# =============================================================================
+# 4) 관리자/사용자: 소속 변경 요청 목록 조회 (검색/필터/페이지네이션)
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationRequestListView(APIView):
     """소속 변경 요청 목록을 조회합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """소속 변경 요청 목록을 검색/필터링하여 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 변경 요청 목록 및 페이지 정보
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/affiliation/requests?status=pending&q=kim&userSdwtProd=SDWT_A&page=2&pageSize=50
+
+        snake/camel 호환:
+        - user_sdwt_prod / userSdwtProd (키 매핑)
+        - page_size / pageSize (키 매핑)
+
+        기타 호환:
+        - q / search (검색 키)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 상태/검색/그룹 필터 추출
+        # -----------------------------------------------------------------------------
         status = (request.GET.get("status") or "pending").strip()
+
         search = (request.GET.get("q") or request.GET.get("search") or "").strip()
+
         user_sdwt_prod = (
             request.GET.get("user_sdwt_prod")
             or request.GET.get("userSdwtProd")
             or ""
         ).strip()
+
+        # -----------------------------------------------------------------------------
+        # 3) 페이지네이션 파라미터 보정
+        # -----------------------------------------------------------------------------
         page = _parse_int(request.GET.get("page"), 1)
         page_size = min(
-            _parse_int(request.GET.get("page_size") or request.GET.get("pageSize"), DEFAULT_PAGE_SIZE),
+            _parse_int(
+                request.GET.get("page_size") or request.GET.get("pageSize"),
+                DEFAULT_PAGE_SIZE,
+            ),
             MAX_PAGE_SIZE,
         )
 
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         payload, status_code = services.get_affiliation_change_requests(
             user=user,
             status=status if status and status.lower() != "all" else None,
@@ -195,31 +474,96 @@ class AccountAffiliationRequestListView(APIView):
         return JsonResponse(payload, status=status_code)
 
 
+# =============================================================================
+# 5) 사용자: 외부 예측 소속 변경 시 "재확인" 상태 조회/응답
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationReconfirmView(APIView):
     """외부 예측 소속 변경 시 사용자 재확인 여부를 조회/응답합니다."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """재확인 대상 여부와 관련 정보를 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 재확인 상태 정보
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/affiliation/reconfirm
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디 없음)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         payload = services.get_affiliation_reconfirm_status(user=user)
         return JsonResponse(payload)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """사용자가 재확인 응답을 제출합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 처리 결과
+
+        부작용:
+        - 소속 변경 요청 생성 가능
+
+        오류:
+        - 400: 입력 오류
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/affiliation/reconfirm
+          요청 바디 예시: {"accepted": true, "department": "D", "line": "L1", "user_sdwt_prod": "G1"}
+
+        snake/camel 호환:
+        - user_sdwt_prod / userSdwtProd (키 매핑)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 입력 검증
+        # -----------------------------------------------------------------------------
         serializer = AffiliationReconfirmResponseSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse(serializer.errors, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         validated = serializer.validated_data
         response_payload, status_code = services.submit_affiliation_reconfirm_response(
             user=user,
@@ -232,30 +576,74 @@ class AccountAffiliationReconfirmView(APIView):
         return JsonResponse(response_payload, status=status_code)
 
 
+# =============================================================================
+# 6) Airflow(또는 외부 배치): 외부 예측 소속 스냅샷 동기화 엔드포인트
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountExternalAffiliationSyncView(APIView):
-    """외부 DB 예측 소속 스냅샷을 동기화합니다 (superuser 전용)."""
+    """외부 DB 예측 소속 스냅샷을 동기화합니다 (Airflow 토큰 인증)."""
+
+    # DRF의 기본 권한(permission, 예: IsAuthenticated)을 끄고,
+    # 아래 ensure_airflow_token으로 별도 인증을 적용하려는 의도입니다.
+    permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        user = request.user
-        if not user or not user.is_authenticated:
-            return JsonResponse({"error": "unauthorized"}, status=401)
-        if not user.is_superuser:
-            return JsonResponse({"error": "forbidden"}, status=403)
+        """Airflow 토큰 인증 후 외부 소속 스냅샷을 동기화합니다.
 
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 동기화 결과
+
+        부작용:
+        - 외부 소속 스냅샷 업데이트
+
+        오류:
+        - 400: 입력 오류
+        - 401/403: 토큰 인증 실패
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/external-affiliations/sync
+          헤더 예시: Authorization: Bearer <token>
+          요청 바디 예시: {"records":[{"knox_id":"K1","user_sdwt_prod":"G1","source_updated_at":"2025-01-01T00:00:00Z"}]}
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디는 snake_case만 허용)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) Airflow 토큰 검증
+        # -----------------------------------------------------------------------------
+        auth_response = ensure_airflow_token(request, require_bearer=True)
+        if auth_response is not None:
+            return auth_response
+
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 입력 검증
+        # -----------------------------------------------------------------------------
         serializer = ExternalAffiliationSyncSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse(serializer.errors, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         records = serializer.validated_data.get("records") or []
         result = services.sync_external_affiliations(records=records)
         return JsonResponse(result)
 
 
+# =============================================================================
+# 7) Jira 키 조회/갱신 (라인 단위)
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationJiraKeyView(APIView):
     """Affiliation Jira project key를 조회/갱신합니다."""
@@ -263,66 +651,185 @@ class AccountAffiliationJiraKeyView(APIView):
     MAX_KEY_LENGTH = 64
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """lineId에 해당하는 Jira Key를 조회합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: Jira Key 정보
+
+        부작용:
+        - 없음
+
+        오류:
+        - 400: lineId 누락
+        - 401: 미인증
+        - 404: lineId 없음
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/affiliation/jira-key?lineId=LINE_01
+
+        snake/camel 호환:
+        - 해당 없음(쿼리 파라미터 lineId만 지원)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) lineId 검증
+        # -----------------------------------------------------------------------------
         line_id = (request.GET.get("lineId") or "").strip()
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) lineId 존재 확인
+        # -----------------------------------------------------------------------------
         if not selectors.affiliation_exists_for_line(line_id=line_id):
             return JsonResponse({"error": "lineId not found"}, status=404)
 
+        # -----------------------------------------------------------------------------
+        # 4) Jira 키 조회 및 응답 반환
+        # -----------------------------------------------------------------------------
         jira_key = selectors.get_affiliation_jira_key_for_line(line_id=line_id)
         return JsonResponse({"lineId": line_id, "jiraKey": jira_key})
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """슈퍼유저가 lineId에 대한 jiraKey를 갱신합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 갱신 결과
+
+        부작용:
+        - Jira Key 갱신
+
+        오류:
+        - 400: 입력 오류
+        - 401: 미인증
+        - 403: 권한 없음
+        - 404: lineId 없음
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/affiliation/jira-key
+          요청 바디 예시: {"lineId":"LINE_01","jiraKey":"ABC"}
+
+        snake/camel 호환:
+        - lineId / line_id (키 매핑)
+        - jiraKey / jira_key (키 매핑)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증/권한 확인
+        # -----------------------------------------------------------------------------
         user = _get_authenticated_user(request)
         if not user:
             return JsonResponse({"error": "unauthorized"}, status=401)
         if not user.is_superuser:
             return JsonResponse({"error": "forbidden"}, status=403)
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) lineId/jiraKey 추출 및 검증
+        # -----------------------------------------------------------------------------
         line_id = (payload.get("lineId") or payload.get("line_id") or "").strip()
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
 
         jira_key_value = payload.get("jiraKey") if "jiraKey" in payload else payload.get("jira_key")
         jira_key = jira_key_value.strip() if isinstance(jira_key_value, str) else ""
+
+        # -----------------------------------------------------------------------------
+        # 4) 길이 제한 확인
+        # -----------------------------------------------------------------------------
         if jira_key and len(jira_key) > self.MAX_KEY_LENGTH:
             return JsonResponse(
                 {"error": f"jiraKey must be {self.MAX_KEY_LENGTH} characters or fewer"},
                 status=400,
             )
 
+        # -----------------------------------------------------------------------------
+        # 5) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         updated = services.update_affiliation_jira_key(
             line_id=line_id,
             jira_key=jira_key or None,
         )
+
+        # -----------------------------------------------------------------------------
+        # 6) lineId 미존재 처리
+        # -----------------------------------------------------------------------------
         if updated == 0:
             return JsonResponse({"error": "lineId not found"}, status=404)
 
         return JsonResponse({"lineId": line_id, "jiraKey": jira_key or None, "updated": updated})
 
 
+# =============================================================================
+# 8) 그룹 접근 권한 부여/회수
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountGrantView(APIView):
     """user_sdwt_prod 그룹 접근 권한 부여/회수."""
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """특정 유저에게 그룹 권한을 grant/revoke 합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 권한 변경 결과
+
+        부작용:
+        - 접근 권한 부여/회수
+
+        오류:
+        - 400: 입력 오류
+        - 401: 미인증
+        - 404: 대상 사용자 없음
+
+        예시 요청:
+        - 예시 요청: POST /api/v1/account/access/grants
+          요청 바디 예시: {"user_sdwt_prod":"SDWT_A","userId":123,"action":"grant","canManage":true}
+
+        snake/camel 호환:
+        - user_sdwt_prod / userSdwtProd (키 매핑)
+        - userId / user_id (키 매핑)
+        - canManage / can_manage (키 매핑)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) JSON 바디 파싱
+        # -----------------------------------------------------------------------------
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        # -----------------------------------------------------------------------------
+        # 3) 대상 그룹/사용자 추출
+        # -----------------------------------------------------------------------------
         target_group = (payload.get("user_sdwt_prod") or payload.get("userSdwtProd") or "").strip()
         if not target_group:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
@@ -334,9 +841,16 @@ class AccountGrantView(APIView):
         if not target_user:
             return JsonResponse({"error": "Target user not found"}, status=404)
 
+        # -----------------------------------------------------------------------------
+        # 4) 액션/권한 플래그 정규화
+        # -----------------------------------------------------------------------------
         action = (payload.get("action") or "grant").lower()
+
         can_manage = bool(payload.get("canManage") or payload.get("can_manage"))
 
+        # -----------------------------------------------------------------------------
+        # 5) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         response_payload, status_code = services.grant_or_revoke_access(
             grantor=user,
             target_group=target_group,
@@ -347,28 +861,88 @@ class AccountGrantView(APIView):
         return JsonResponse(response_payload, status=status_code)
 
 
+# =============================================================================
+# 9) 내가 관리 가능한 그룹 + 멤버 목록 조회
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountGrantListView(APIView):
     """요청 사용자가 관리할 수 있는 user_sdwt_prod 그룹 멤버 목록 조회."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """관리 가능한 그룹과 해당 멤버 목록을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 그룹/멤버 목록
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/access/manageable
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디 없음)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 서비스 호출 및 응답 반환
+        # -----------------------------------------------------------------------------
         payload = services.get_manageable_groups_with_members(user=user)
         return JsonResponse(payload)
 
 
+# =============================================================================
+# 10) line/user_sdwt_prod 선택 옵션 조회 (DB에 존재하는 조합만)
+# =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class LineSdwtOptionsView(APIView):
     """사용자가 선택할 수 있는 line/user_sdwt_prod 조합을 DB 값으로 한정해 제공."""
 
     def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """선택 가능한 line/user_sdwt_prod 조합을 반환합니다.
+
+        입력:
+        - 요청: Django HttpRequest
+        - args/kwargs: URL 라우팅 인자
+
+        반환:
+        - JsonResponse: 옵션 페이로드
+
+        부작용:
+        - 없음
+
+        오류:
+        - 401: 미인증
+
+        예시 요청:
+        - 예시 요청: GET /api/v1/account/line-sdwt-options
+
+        snake/camel 호환:
+        - 해당 없음(요청 바디 없음)
+        """
+        # -----------------------------------------------------------------------------
+        # 1) 인증 확인
+        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
+        # -----------------------------------------------------------------------------
+        # 2) 옵션 조회 및 응답 반환
+        # -----------------------------------------------------------------------------
         pairs = selectors.list_line_sdwt_pairs()
         payload = services.get_line_sdwt_options_payload(pairs=pairs)
         return JsonResponse(payload)

@@ -1,5 +1,5 @@
 """
-Django settings for the REST API backend
+REST API 백엔드용 Django 설정
 - 가독성 향상
 - 환경변수 헬퍼 추가 (bool/int/list)
 - 운영/개발 환경에 따른 보안 옵션 안전화
@@ -136,7 +136,7 @@ MIDDLEWARE = [
 
 
 # =========
-# URL/WSGI
+# URL/WSGI 설정
 # =========
 ROOT_URLCONF = "config.urls"
 
@@ -208,7 +208,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # ==================
-# Django REST Framework
+# Django REST Framework 설정
 # ==================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -222,7 +222,7 @@ REST_FRAMEWORK = {
 }
 
 # =============
-# RAG (Email)
+# RAG(이메일) 설정
 # =============
 RAG_SEARCH_URL = env("RAG_SEARCH_URL", "")
 RAG_INSERT_URL = env("RAG_INSERT_URL", "")
@@ -238,13 +238,13 @@ RAG_ERROR_LOG_PATH = env("RAG_ERROR_LOG_PATH", str(BASE_DIR / "logs" / "rag_erro
 
 
 # =============================
-# Airflow trigger auth (shared)
+# Airflow 트리거 인증(공통)
 # =============================
 AIRFLOW_TRIGGER_TOKEN = env("AIRFLOW_TRIGGER_TOKEN", "")
 
 
 # =========================
-# Drone SOP POP3 ingest env
+# Drone SOP POP3 수집 환경변수
 # =========================
 DRONE_SOP_POP3_HOST = env("DRONE_SOP_POP3_HOST", "")
 DRONE_SOP_POP3_PORT = env_int("DRONE_SOP_POP3_PORT", 995) or 995
@@ -260,7 +260,7 @@ DRONE_SOP_DUMMY_MAIL_MESSAGES_URL = env("DRONE_SOP_DUMMY_MAIL_MESSAGES_URL", "")
 
 
 # ===================
-# Drone SOP Jira env
+# Drone SOP Jira 환경변수
 # ===================
 DRONE_JIRA_BASE_URL = env("DRONE_JIRA_BASE_URL", "")
 DRONE_JIRA_USER = env("DRONE_JIRA_USER", "")
@@ -275,14 +275,14 @@ DRONE_JIRA_READ_TIMEOUT = env_int("DRONE_JIRA_READ_TIMEOUT", 20) or 20
 
 
 # ====================
-# Drone SOP CTTTM env
+# Drone SOP CTTTM 환경변수
 # ====================
 DRONE_CTTTM_TABLE_NAME = env("DRONE_CTTTM_TABLE_NAME", "")
 DRONE_CTTTM_BASE_URL = env("DRONE_CTTTM_BASE_URL", "")
 
 
 # =====================
-# OpenAPI / Swagger UI
+# OpenAPI/Swagger UI 설정
 # =====================
 SPECTACULAR_SETTINGS = {
     "TITLE": "Template2 API",

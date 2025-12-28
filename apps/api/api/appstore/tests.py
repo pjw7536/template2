@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈 설명: AppStore 서비스/엔드포인트 테스트를 제공합니다.
+# - 주요 대상: 스크린샷 처리, 댓글/좋아요, 생성/조회/수정/삭제 흐름
+# - 불변 조건: URL 네임(appstore-*)이 등록되어 있어야 합니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
@@ -11,6 +16,10 @@ class AppstoreScreenshotTests(TestCase):
     """appstore 스크린샷 저장/응답 동작을 검증합니다."""
 
     def test_create_app_stores_data_url_as_base64(self) -> None:
+        """data URL이 base64 필드로 저장되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/입력 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S12345",
@@ -19,6 +28,9 @@ class AppstoreScreenshotTests(TestCase):
         )
         screenshot_url = "data:image/png;base64,AAA="
 
+        # -----------------------------------------------------------------------------
+        # 2) 앱 생성
+        # -----------------------------------------------------------------------------
         app = create_app(
             owner=user,
             name="Test App",
@@ -32,6 +44,9 @@ class AppstoreScreenshotTests(TestCase):
             contact_knoxid="hong",
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 저장 결과 검증
+        # -----------------------------------------------------------------------------
         app.refresh_from_db()
         self.assertEqual(app.screenshot_url, "")
         self.assertEqual(app.screenshot_base64, "AAA=")
@@ -39,6 +54,10 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(app.screenshot_gallery, [])
 
     def test_create_app_keeps_external_screenshot_url(self) -> None:
+        """외부 URL이 screenshot_url로 유지되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/입력 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S88888",
@@ -47,6 +66,9 @@ class AppstoreScreenshotTests(TestCase):
         )
         screenshot_url = "https://example.com/screenshot.png"
 
+        # -----------------------------------------------------------------------------
+        # 2) 앱 생성
+        # -----------------------------------------------------------------------------
         app = create_app(
             owner=user,
             name="Test App",
@@ -60,6 +82,9 @@ class AppstoreScreenshotTests(TestCase):
             contact_knoxid="hong",
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 저장 결과 검증
+        # -----------------------------------------------------------------------------
         app.refresh_from_db()
         self.assertEqual(app.screenshot_url, screenshot_url)
         self.assertEqual(app.screenshot_base64, "")
@@ -67,6 +92,10 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(app.screenshot_gallery, [])
 
     def test_create_app_stores_gallery_items(self) -> None:
+        """갤러리 스크린샷이 올바르게 저장되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/입력 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S77777",
@@ -78,6 +107,9 @@ class AppstoreScreenshotTests(TestCase):
         extra_url = "https://example.com/extra.png"
         extra_data = "data:image/png;base64,EXTRA="
 
+        # -----------------------------------------------------------------------------
+        # 2) 앱 생성
+        # -----------------------------------------------------------------------------
         app = create_app(
             owner=user,
             name="Test App",
@@ -92,6 +124,9 @@ class AppstoreScreenshotTests(TestCase):
             contact_knoxid="hong",
         )
 
+        # -----------------------------------------------------------------------------
+        # 3) 저장 결과 검증
+        # -----------------------------------------------------------------------------
         app.refresh_from_db()
         self.assertEqual(app.screenshot_url, "")
         self.assertEqual(app.screenshot_base64, "COVER=")
@@ -105,6 +140,10 @@ class AppstoreScreenshotTests(TestCase):
         )
 
     def test_update_app_allows_clearing_screenshot(self) -> None:
+        """스크린샷 초기화(빈 값)가 허용되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/기존 앱 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S99999",
@@ -124,7 +163,14 @@ class AppstoreScreenshotTests(TestCase):
             contact_knoxid="hong",
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 스크린샷 초기화 업데이트
+        # -----------------------------------------------------------------------------
         updated = update_app(app=app, updates={"screenshot_url": ""})
+
+        # -----------------------------------------------------------------------------
+        # 3) 저장 결과 검증
+        # -----------------------------------------------------------------------------
         updated.refresh_from_db()
         self.assertEqual(updated.screenshot_url, "")
         self.assertEqual(updated.screenshot_base64, "")
@@ -132,6 +178,10 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(updated.screenshot_gallery, [])
 
     def test_detail_payload_includes_screenshot_url(self) -> None:
+        """상세 응답에 screenshotUrl/Urls가 포함되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 사용자/앱 준비
+        # -----------------------------------------------------------------------------
         User = get_user_model()
         user = User.objects.create_user(
             sabun="S54321",
@@ -152,8 +202,15 @@ class AppstoreScreenshotTests(TestCase):
             contact_knoxid="hong",
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 상세 조회 요청
+        # -----------------------------------------------------------------------------
         response = self.client.get(reverse("appstore-app-detail", kwargs={"app_id": app.pk}))
         self.assertEqual(response.status_code, 200)
+
+        # -----------------------------------------------------------------------------
+        # 3) 응답 페이로드 검증
+        # -----------------------------------------------------------------------------
         payload = response.json()
         self.assertEqual(payload["app"]["screenshotUrl"], screenshot_url)
         self.assertEqual(payload["app"]["screenshotUrls"], [screenshot_url])
@@ -164,6 +221,7 @@ class AppstoreCommentReplyLikeTests(TestCase):
     """appstore 댓글 대댓글/좋아요 동작을 검증합니다."""
 
     def setUp(self) -> None:
+        """댓글/좋아요 테스트용 사용자와 앱을 준비합니다."""
         User = get_user_model()
         self.user = User.objects.create_user(
             sabun="S22222",
@@ -185,17 +243,32 @@ class AppstoreCommentReplyLikeTests(TestCase):
         )
 
     def test_create_reply_comment_sets_parent_comment_id(self) -> None:
+        """대댓글 생성 시 parentCommentId가 설정되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 부모 댓글 생성
+        # -----------------------------------------------------------------------------
         parent = create_comment(app=self.app, user=self.user, content="부모 댓글")
         url = reverse("appstore-app-comments", kwargs={"app_id": self.app.pk})
+
+        # -----------------------------------------------------------------------------
+        # 2) 대댓글 생성 요청
+        # -----------------------------------------------------------------------------
         response = self.client.post(
             url,
             data='{"content":"대댓글","parentCommentId":%d}' % parent.pk,
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201)
+
+        # -----------------------------------------------------------------------------
+        # 3) 응답 페이로드 검증
+        # -----------------------------------------------------------------------------
         payload = response.json()
         self.assertEqual(payload["comment"]["parentCommentId"], parent.pk)
 
+        # -----------------------------------------------------------------------------
+        # 4) 상세 조회에서 댓글 포함 여부 확인
+        # -----------------------------------------------------------------------------
         detail_response = self.client.get(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
         self.assertEqual(detail_response.status_code, 200)
         detail_payload = detail_response.json()
@@ -204,18 +277,28 @@ class AppstoreCommentReplyLikeTests(TestCase):
         self.assertIn(payload["comment"]["id"], comment_ids)
 
     def test_toggle_comment_like_updates_like_count_and_liked(self) -> None:
+        """댓글 좋아요 토글이 상태/카운트를 갱신하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 댓글 생성 및 좋아요 URL 준비
+        # -----------------------------------------------------------------------------
         comment = create_comment(app=self.app, user=self.user, content="좋아요 테스트")
         like_url = reverse(
             "appstore-app-comment-like",
             kwargs={"app_id": self.app.pk, "comment_id": comment.pk},
         )
 
+        # -----------------------------------------------------------------------------
+        # 2) 첫 번째 토글 결과 검증
+        # -----------------------------------------------------------------------------
         first = self.client.post(like_url)
         self.assertEqual(first.status_code, 200)
         first_payload = first.json()
         self.assertTrue(first_payload["liked"])
         self.assertEqual(first_payload["likeCount"], 1)
 
+        # -----------------------------------------------------------------------------
+        # 3) 상세 조회에서 반영 여부 확인
+        # -----------------------------------------------------------------------------
         detail_response = self.client.get(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
         self.assertEqual(detail_response.status_code, 200)
         detail_payload = detail_response.json()
@@ -225,6 +308,9 @@ class AppstoreCommentReplyLikeTests(TestCase):
         self.assertTrue(liked_comment["liked"])
         self.assertEqual(liked_comment["likeCount"], 1)
 
+        # -----------------------------------------------------------------------------
+        # 4) 두 번째 토글 결과 검증
+        # -----------------------------------------------------------------------------
         second = self.client.post(like_url)
         self.assertEqual(second.status_code, 200)
         second_payload = second.json()
@@ -233,7 +319,10 @@ class AppstoreCommentReplyLikeTests(TestCase):
 
 
 class AppstoreEndpointTests(TestCase):
+    """AppStore 엔드포인트 기본 흐름 테스트."""
+
     def setUp(self) -> None:
+        """엔드포인트 테스트용 사용자와 기본 앱을 생성합니다."""
         User = get_user_model()
         self.user = User.objects.create_user(
             sabun="S33333",
@@ -256,9 +345,16 @@ class AppstoreEndpointTests(TestCase):
         )
 
     def test_appstore_apps_list_and_create(self) -> None:
+        """앱 목록 조회 및 생성 API가 정상 동작하는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 목록 조회
+        # -----------------------------------------------------------------------------
         list_response = self.client.get(reverse("appstore-apps"))
         self.assertEqual(list_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 2) 앱 생성
+        # -----------------------------------------------------------------------------
         create_response = self.client.post(
             reverse("appstore-apps"),
             data=(
@@ -270,9 +366,16 @@ class AppstoreEndpointTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
 
     def test_appstore_detail_update_delete_and_view_like(self) -> None:
+        """상세 조회/수정/삭제 및 좋아요/조회수 API를 검증합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 상세 조회
+        # -----------------------------------------------------------------------------
         detail = self.client.get(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
         self.assertEqual(detail.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 2) 상세 수정
+        # -----------------------------------------------------------------------------
         update_response = self.client.patch(
             reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}),
             data='{"description":"updated","badge":"New"}',
@@ -280,19 +383,32 @@ class AppstoreEndpointTests(TestCase):
         )
         self.assertEqual(update_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 3) 좋아요/조회수 증가
+        # -----------------------------------------------------------------------------
         like_response = self.client.post(reverse("appstore-app-like", kwargs={"app_id": self.app.pk}))
         self.assertEqual(like_response.status_code, 200)
 
         view_response = self.client.post(reverse("appstore-app-view", kwargs={"app_id": self.app.pk}))
         self.assertEqual(view_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 4) 삭제
+        # -----------------------------------------------------------------------------
         delete_response = self.client.delete(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
         self.assertEqual(delete_response.status_code, 200)
 
     def test_appstore_comments_endpoints(self) -> None:
+        """댓글 목록/생성/수정/삭제/좋아요 API를 검증합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 댓글 목록 조회
+        # -----------------------------------------------------------------------------
         list_response = self.client.get(reverse("appstore-app-comments", kwargs={"app_id": self.app.pk}))
         self.assertEqual(list_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 2) 댓글 생성
+        # -----------------------------------------------------------------------------
         create_response = self.client.post(
             reverse("appstore-app-comments", kwargs={"app_id": self.app.pk}),
             data='{"content":"comment"}',
@@ -301,6 +417,9 @@ class AppstoreEndpointTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         comment_id = create_response.json()["comment"]["id"]
 
+        # -----------------------------------------------------------------------------
+        # 3) 댓글 수정
+        # -----------------------------------------------------------------------------
         update_response = self.client.patch(
             reverse(
                 "appstore-app-comment-detail",
@@ -311,6 +430,9 @@ class AppstoreEndpointTests(TestCase):
         )
         self.assertEqual(update_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 4) 댓글 좋아요
+        # -----------------------------------------------------------------------------
         like_response = self.client.post(
             reverse(
                 "appstore-app-comment-like",
@@ -319,6 +441,9 @@ class AppstoreEndpointTests(TestCase):
         )
         self.assertEqual(like_response.status_code, 200)
 
+        # -----------------------------------------------------------------------------
+        # 5) 댓글 삭제
+        # -----------------------------------------------------------------------------
         delete_response = self.client.delete(
             reverse(
                 "appstore-app-comment-detail",

@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: Activity 앱 설정
+# 주요 클래스: ActivityConfig
+# 주요 가정: Django 앱 라벨은 api.activity로 유지합니다.
+# =============================================================================
 from __future__ import annotations
 
 from django.apps import AppConfig

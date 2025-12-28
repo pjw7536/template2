@@ -1,3 +1,15 @@
+# =============================================================================
+# 모듈 설명: 접근 권한(UserSdwtProdAccess) 서비스 로직을 제공합니다.
+# - 주요 대상: ensure_self_access, grant_or_revoke_access, get_manageable_groups_with_members
+# - 불변 조건: 권한 부여/회수는 서비스 레이어에서만 처리합니다.
+# =============================================================================
+
+"""접근 권한(UserSdwtProdAccess) 관련 서비스 모음.
+
+- 주요 대상: 접근 권한 보장, 부여/회수, 관리 그룹 조회
+- 주요 엔드포인트/클래스: ensure_self_access, grant_or_revoke_access 등
+- 가정/불변 조건: 권한 부여/회수는 서비스 레이어에서만 처리됨
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -8,25 +20,32 @@ from .utils import _user_can_manage_user_sdwt_prod
 
 
 def ensure_self_access(user: Any, *, as_manager: bool = False) -> UserSdwtProdAccess | None:
-    """사용자 본인의 user_sdwt_prod 접근 권한 행을 보장(생성/업데이트)합니다.
+    """사용자 본인의 user_sdwt_prod 접근 권한 행을 보장합니다.
 
-    Ensure the user has an access row for their own user_sdwt_prod.
+    입력:
+    - user: Django 사용자 객체
+    - as_manager: True면 can_manage 권한 부여
 
-    Args:
-        user: Authenticated Django user.
-        as_manager: When True, grants can_manage=True for the self row.
+    반환:
+    - UserSdwtProdAccess | None: 접근 권한 행 또는 None
 
-    Returns:
-        The access row when user.user_sdwt_prod is set, otherwise None.
+    부작용:
+    - UserSdwtProdAccess 생성/업데이트
 
-    Side effects:
-        Creates/updates UserSdwtProdAccess rows.
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 현재 소속 유효성 확인
+    # -----------------------------------------------------------------------------
     user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
     if not isinstance(user_sdwt_prod, str) or not user_sdwt_prod.strip():
         return None
 
+    # -----------------------------------------------------------------------------
+    # 2) 접근 권한 행 생성/업데이트
+    # -----------------------------------------------------------------------------
     access, created = UserSdwtProdAccess.objects.get_or_create(
         user=user,
         user_sdwt_prod=user_sdwt_prod,
@@ -48,17 +67,38 @@ def grant_or_revoke_access(
 ) -> tuple[dict[str, object], int]:
     """사용자의 user_sdwt_prod 그룹 접근 권한을 부여/회수합니다.
 
-    Grant or revoke a user's access to a user_sdwt_prod group.
+    입력:
+    - grantor: 권한을 부여/회수하는 사용자
+    - target_group: 대상 그룹
+    - target_user: 대상 사용자
+    - action: grant/revoke (부여/회수)
+    - can_manage: 관리 권한 부여 여부
 
-    Side effects:
-        Creates/updates/deletes UserSdwtProdAccess rows.
+    반환:
+    - tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
+
+    부작용:
+    - UserSdwtProdAccess 생성/업데이트/삭제
+
+    오류:
+    - 403: 권한 없음
+    - 400: 마지막 관리자 제거 시도
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 부여자 기본 접근 권한 보장
+    # -----------------------------------------------------------------------------
     ensure_self_access(grantor, as_manager=False)
 
+    # -----------------------------------------------------------------------------
+    # 2) 권한 검증
+    # -----------------------------------------------------------------------------
     if not _user_can_manage_user_sdwt_prod(user=grantor, user_sdwt_prod=target_group):
         return {"error": "forbidden"}, 403
 
+    # -----------------------------------------------------------------------------
+    # 3) 액션 분기 처리
+    # -----------------------------------------------------------------------------
     normalized_action = (action or "grant").lower()
     if normalized_action == "revoke":
         access = selectors.get_access_row_for_user_and_prod(
@@ -78,6 +118,9 @@ def grant_or_revoke_access(
         access.delete()
         return {"status": "ok", "deleted": 1}, 200
 
+    # -----------------------------------------------------------------------------
+    # 4) 부여 처리
+    # -----------------------------------------------------------------------------
     access, created = UserSdwtProdAccess.objects.get_or_create(
         user=target_user,
         user_sdwt_prod=target_group,
@@ -88,15 +131,31 @@ def grant_or_revoke_access(
         access.granted_by = grantor
         access.save(update_fields=["can_manage", "granted_by"])
 
+    # -----------------------------------------------------------------------------
+    # 5) 결과 반환
+    # -----------------------------------------------------------------------------
     return _serialize_member(access), 200
 
 
 def get_manageable_groups_with_members(*, user: Any) -> dict[str, object]:
-    """사용자가 관리 가능한 user_sdwt_prod 그룹과 멤버 목록을 반환합니다.
+    """사용자가 관리 가능한 그룹과 멤버 목록을 반환합니다.
 
-    Return manageable user_sdwt_prod groups and member lists.
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - dict[str, object]: 그룹/멤버 목록
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 관리 가능한 그룹 집합 계산
+    # -----------------------------------------------------------------------------
     manageable_set = selectors.list_manageable_user_sdwt_prod_values(user=user)
     user_sdwt_prod = getattr(user, "user_sdwt_prod", None)
     if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
@@ -106,10 +165,16 @@ def get_manageable_groups_with_members(*, user: Any) -> dict[str, object]:
     if not manageable_set:
         return {"groups": groups}
 
+    # -----------------------------------------------------------------------------
+    # 2) 멤버 목록 구성
+    # -----------------------------------------------------------------------------
     members_by_group: Dict[str, List[Dict[str, object]]] = {prod: [] for prod in manageable_set}
     for access in selectors.list_group_members(user_sdwt_prods=manageable_set):
         members_by_group.setdefault(access.user_sdwt_prod, []).append(_serialize_member(access))
 
+    # -----------------------------------------------------------------------------
+    # 3) 응답 정렬 및 반환
+    # -----------------------------------------------------------------------------
     for prod in sorted(manageable_set):
         groups.append({"userSdwtProd": prod, "members": members_by_group.get(prod, [])})
 
@@ -117,7 +182,21 @@ def get_manageable_groups_with_members(*, user: Any) -> dict[str, object]:
 
 
 def _serialize_access(access: UserSdwtProdAccess, source: str) -> Dict[str, object]:
-    """UserSdwtProdAccess 행을 API 응답용 dict로 직렬화합니다."""
+    """UserSdwtProdAccess 행을 API 응답용 dict로 직렬화합니다.
+
+    입력:
+    - access: 접근 권한 행
+    - source: 권한 출처 문자열
+
+    반환:
+    - Dict[str, object]: 직렬화 결과
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     return {
         "userSdwtProd": access.user_sdwt_prod,
@@ -129,7 +208,21 @@ def _serialize_access(access: UserSdwtProdAccess, source: str) -> Dict[str, obje
 
 
 def _serialize_access_fallback(*, user_sdwt_prod: str, source: str) -> Dict[str, object]:
-    """DB row가 없는 경우를 위한 access 응답 기본값."""
+    """DB row가 없는 경우를 위한 접근 권한 기본값을 생성합니다.
+
+    입력:
+    - user_sdwt_prod: 소속 식별자
+    - source: 권한 출처 문자열
+
+    반환:
+    - Dict[str, object]: 기본값 응답
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     return {
         "userSdwtProd": user_sdwt_prod,
@@ -141,7 +234,20 @@ def _serialize_access_fallback(*, user_sdwt_prod: str, source: str) -> Dict[str,
 
 
 def _serialize_member(access: UserSdwtProdAccess) -> Dict[str, object]:
-    """그룹 멤버(access + user)를 API 응답용 dict로 직렬화합니다."""
+    """그룹 멤버(access + user)를 API 응답용 dict로 직렬화합니다.
+
+    입력:
+    - access: 접근 권한 행
+
+    반환:
+    - Dict[str, object]: 멤버 응답
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
 
     user = access.user
     return {
@@ -156,15 +262,37 @@ def _serialize_member(access: UserSdwtProdAccess) -> Dict[str, object]:
 
 
 def _current_access_list(user: Any) -> List[Dict[str, object]]:
-    """현재 사용자 기준 접근 가능한 그룹 목록을 응답 형식으로 구성합니다."""
+    """현재 사용자 기준 접근 가능한 그룹 목록을 구성합니다.
 
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - List[Dict[str, object]]: 접근 가능한 그룹 목록
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 접근 권한 행 조회
+    # -----------------------------------------------------------------------------
     rows = selectors.list_user_sdwt_prod_access_rows(user=user)
     access_map = {row.user_sdwt_prod: row for row in rows}
 
+    # -----------------------------------------------------------------------------
+    # 2) 현재 소속 포함
+    # -----------------------------------------------------------------------------
     current_user_sdwt = getattr(user, "user_sdwt_prod", None)
     if isinstance(current_user_sdwt, str) and current_user_sdwt.strip():
         access_map.setdefault(current_user_sdwt, None)
 
+    # -----------------------------------------------------------------------------
+    # 3) 응답 목록 구성
+    # -----------------------------------------------------------------------------
     result: List[Dict[str, object]] = []
     for prod, entry in sorted(access_map.items()):
         source = "self" if prod == current_user_sdwt else "grant"

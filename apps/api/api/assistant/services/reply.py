@@ -1,3 +1,8 @@
+# =============================================================================
+# 모듈: LLM 구조화 응답 파싱
+# 주요 구성: AssistantStructuredSegment, _parse_structured_llm_reply
+# 주요 가정: 응답은 JSON 객체 1개 또는 레거시 usedEmailIds 형태입니다.
+# =============================================================================
 from __future__ import annotations
 
 import json
@@ -14,10 +19,28 @@ class AssistantStructuredSegment:
 
 
 def _strip_markdown_code_fence(text: str) -> str:
+    """마크다운 코드펜스를 제거한 문자열을 반환합니다.
+
+    인자:
+        text: 원본 문자열.
+
+    반환:
+        코드펜스가 제거된 문자열.
+
+    부작용:
+        없음. 순수 문자열 처리입니다.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정리 및 코드펜스 여부 확인
+    # -----------------------------------------------------------------------------
     cleaned = text.strip()
     if not cleaned.startswith("```"):
         return cleaned
 
+    # -----------------------------------------------------------------------------
+    # 2) 코드펜스 블록 해제
+    # -----------------------------------------------------------------------------
     lines = cleaned.splitlines()
     if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
         return "\n".join(lines[1:-1]).strip()
@@ -28,25 +51,41 @@ def _strip_markdown_code_fence(text: str) -> str:
 def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, Optional[List[AssistantStructuredSegment]]]:
     """LLM 응답(JSON)을 파싱해 answer/segments를 추출합니다.
 
+    인자:
+        raw_reply: LLM 원본 응답 문자열.
+
     반환:
-      - answer(표시용 문자열)
-      - segments (형식이 유효할 때만 list[AssistantStructuredSegment], 그 외 None)
+        (answer, segments) 튜플.
+        - answer: 표시용 문자열
+        - segments: 형식이 유효할 때 list[AssistantStructuredSegment], 아니면 None
+
+    부작용:
+        없음. 순수 파싱입니다.
 
     지원 형식:
-      - 최신: {"answer": string, "segments": [{"answer": string, "usedEmailIds": string[]}]}
-      - 레거시: {"answer": string, "usedEmailIds": string[]}
+        - 최신: {"answer": string, "segments": [{"answer": string, "usedEmailIds": string[]}]}
+        - 레거시: {"answer": string, "usedEmailIds": string[]}
     """
 
+    # -----------------------------------------------------------------------------
+    # 1) 기본 문자열 정리
+    # -----------------------------------------------------------------------------
     fallback_answer = _strip_markdown_code_fence(raw_reply)
     if not fallback_answer:
         return "", None
 
+    # -----------------------------------------------------------------------------
+    # 2) JSON 후보 문자열 추출
+    # -----------------------------------------------------------------------------
     candidates = [fallback_answer]
     first_brace = fallback_answer.find("{")
     last_brace = fallback_answer.rfind("}")
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
         candidates.append(fallback_answer[first_brace : last_brace + 1].strip())
 
+    # -----------------------------------------------------------------------------
+    # 3) JSON 파싱 시도
+    # -----------------------------------------------------------------------------
     parsed: Optional[Dict[str, Any]] = None
     for candidate in candidates:
         try:
@@ -60,6 +99,9 @@ def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, Optional[List[Assi
     if not parsed:
         return fallback_answer, None
 
+    # -----------------------------------------------------------------------------
+    # 4) 최신 segments 스키마 처리
+    # -----------------------------------------------------------------------------
     segments: List[AssistantStructuredSegment] = []
     segments_raw = parsed.get("segments")
     if segments_raw is not None:
@@ -103,6 +145,9 @@ def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, Optional[List[Assi
 
         return answer, segments
 
+    # -----------------------------------------------------------------------------
+    # 5) 레거시 usedEmailIds 스키마 처리
+    # -----------------------------------------------------------------------------
     used_raw = parsed.get("usedEmailIds")
     answer_raw = parsed.get("answer")
     answer = answer_raw.strip() if isinstance(answer_raw, str) and answer_raw.strip() else fallback_answer
