@@ -258,7 +258,7 @@ models.py
 urls.py
 views.py
 serializers.py
-services.py
+services/   (required; includes `services/__init__.py` facade)
 selectors.py
 permissions.py
 admin.py
@@ -280,10 +280,21 @@ LLM MUST obey:
 
 - NO new backend folders outside the paths above.
 - NO nesting deeper than 2 levels (except `migrations/` and `management/commands/`).
-- NO cross‑feature imports except through another feature’s public `services.py` or `selectors.py`.
+- NO cross‑feature imports except through another feature’s public `services/__init__.py` (facade) or `selectors.py`.
 - Every concrete DB model MUST live in exactly one `<feature>/models.py`. Creating new models in `apps/api/api/models.py` is **FORBIDDEN**.
 - Shared base classes/mixins MAY live in `apps/api/api/common/models.py` and MUST be `abstract = True`.
 - When touching legacy root models, LLM MUST migrate them into the correct feature app (with a new migration) instead of extending the root file.
+
+### Service Module Split (Standard)
+
+Each feature MUST use `apps/api/api/<feature>/services/` and may split by workflow as needed.
+
+LLM MUST:
+
+- Keep `services/__init__.py` as the public facade and re-export all service functions/classes.
+- Avoid circular imports between modules under `services/`.
+- Keep read-only ORM queries in `selectors.py` (service modules call selectors for reads).
+- Keep tests importing from `services/__init__.py` (facade), not from `services/*`.
 
 ---
 
@@ -296,7 +307,7 @@ The backend follows a strict, beginner‑friendly service/selector architecture.
 - `views.py` → HTTP only: auth/permissions, param parsing, serializer validation, calling services/selectors, returning responses.
 - `serializers.py` → input/output schema + validation only.
 - `permissions.py` → DRF permission classes only.
-- `services.py` → **ALL** business logic and write operations (create/update/delete), transactions, external API calls.
+- `services/__init__.py` (facade) and `services/*` → **ALL** business logic and write operations (create/update/delete), transactions, external API calls.
 - `selectors.py` → read‑only ORM queries (filtering, ordering, annotation). **NO side effects.**
 - Views/services MUST NOT run read ORM queries directly; they MUST call selectors instead.
 - `models.py` → schema + pure domain rules. **NO queries or business workflows.**
@@ -306,7 +317,8 @@ The backend follows a strict, beginner‑friendly service/selector architecture.
 This rule applies to **project‑internal imports**. Python stdlib, Django (`django.*`), and DRF (`rest_framework.*`) imports are always allowed.
 
 - `views.py` may import: `serializers`, `permissions`, `services`, `selectors`, `api.common.*`
-- `services.py` may import: `selectors`, `models`, `api.common.*`, `api.<otherFeature>.services`
+- `services/__init__.py` may import: `services/*`
+- `services/*` may import: `selectors`, `models`, `api.common.*`, `api.<otherFeature>.services`
 - `selectors.py` may import: `models`, `api.common.*`, `api.<otherFeature>.selectors`
 - `models.py` may import: Django/stdlib only, plus `api.common.*` for shared types/constants
 
@@ -355,7 +367,7 @@ LLM MUST:
 LLM MUST:
 
 - Wrap multi‑step writes in `transaction.atomic()`.
-- Keep external calls (RAG, email servers, etc.) inside `services.py`.
+- Keep external calls (RAG, email servers, etc.) inside `services/__init__.py` (facade) or `services/*`.
 - Never perform writes inside `selectors.py` or `models.py`.
 
 ---
@@ -378,7 +390,7 @@ LLM MUST:
 LLM MUST:
 
 - Add or update tests when changing business logic.
-- Prefer unit tests for `services.py` and `selectors.py`; keep view tests minimal (happy + main error cases).
+- Prefer unit tests for `services/__init__.py` (facade) and `selectors.py`; keep view tests minimal (happy + main error cases).
 - Never edit an already‑applied migration; always create a new one.
 
 ---
@@ -392,7 +404,7 @@ When adding a new backend feature, LLM MUST follow this exact flow to keep code 
 3. Add `models.py` with `db_table = "<feature>_<entity>"` prefixes, then create a new migration.
 4. Add `serializers.py` for all request/response shapes.
 5. Add `selectors.py` for all read queries.
-6. Add `services.py` for all business logic and writes.
+6. Add `services/__init__.py` (facade) for all business logic and writes (implementations in `services/*`).
 7. Add `views.py` that only wires HTTP → serializers → services/selectors.
 8. Add `urls.py` with relative routes, then include it in `apps/api/api/urls.py` under `/api/v1/<feature>/`.
 9. Add `tests.py` focusing on services/selectors first.

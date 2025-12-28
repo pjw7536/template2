@@ -99,6 +99,17 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(approve_response.status_code, 200)
 
+    def test_account_affiliation_rejects_non_string_user_sdwt_prod(self) -> None:
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("account-affiliation"),
+            data='{"department":"Dept","line":"L1","user_sdwt_prod":123}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json().get("error"), "user_sdwt_prod is required")
+
     def test_account_affiliation_reconfirm(self) -> None:
         ExternalAffiliationSnapshot.objects.create(
             knox_id="knox-50000",

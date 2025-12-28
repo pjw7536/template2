@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
@@ -34,236 +34,33 @@ from .selectors import (
     get_liked_app_ids_for_user,
     get_liked_comment_ids_for_user,
 )
+from .serializers import (
+    apply_cover_index,
+    can_manage_app,
+    can_manage_comment,
+    default_contact,
+    sanitize_screenshot_urls,
+    sanitize_tags,
+    serialize_app,
+    serialize_comment,
+)
 from .services import (
     create_app,
     create_comment,
     delete_app,
     delete_comment,
     increment_view_count,
-    toggle_like,
     toggle_comment_like,
+    toggle_like,
     update_app,
     update_comment,
 )
 
 logger = logging.getLogger(__name__)
 
-MAX_TAGS = 20
-MAX_TAG_LENGTH = 64
 MAX_BADGE_LENGTH = 64
 MAX_CATEGORY_LENGTH = 100
 MAX_CONTACT_LENGTH = 255
-
-
-def _user_display_name(user) -> str:
-    """사용자 표시 이름(이름/username/email)을 계산합니다."""
-
-    if not user:
-        return ""
-    full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
-    if full_name:
-        return full_name
-    username = getattr(user, "username", "") or ""
-    if username:
-        return username
-    return getattr(user, "email", "").split("@")[0]
-
-
-def _user_knoxid(user) -> str:
-    """사용자의 knox id(이메일 로컬파트 등)를 추출합니다."""
-
-    if not user:
-        return ""
-    email = getattr(user, "email", "")
-    if isinstance(email, str) and "@" in email:
-        return email.split("@", 1)[0]
-    return getattr(user, "username", "") or ""
-
-
-def _user_payload(user) -> Optional[Dict[str, Any]]:
-    """사용자 정보를 API 응답 형태로 직렬화합니다."""
-
-    if not user:
-        return None
-    return {
-        "id": user.pk,
-        "name": _user_display_name(user) or "사용자",
-        "knoxid": _user_knoxid(user),
-    }
-
-
-def _default_contact(user) -> Tuple[str, str]:
-    """연락처 기본값(contact_name, contact_knoxid)을 계산합니다."""
-
-    return (_user_display_name(user) or "사용자").strip(), _user_knoxid(user)
-
-
-def _sanitize_tags(tags: Any) -> List[str]:
-    """태그 목록을 길이/개수 제한에 맞게 정규화합니다."""
-
-    if not isinstance(tags, Iterable) or isinstance(tags, (str, bytes)):
-        return []
-    cleaned: List[str] = []
-    seen = set()
-    for raw in tags:
-        if not isinstance(raw, str):
-            continue
-        tag = raw.strip()
-        if not tag:
-            continue
-        normalized = tag[:MAX_TAG_LENGTH]
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        cleaned.append(normalized)
-        if len(cleaned) >= MAX_TAGS:
-            break
-    return cleaned
-
-
-def _sanitize_screenshot_urls(value: Any) -> List[str]:
-    """스크린샷 URL 목록을 정규화합니다."""
-
-    if not isinstance(value, list):
-        return []
-
-    cleaned: List[str] = []
-    for raw in value:
-        if not isinstance(raw, str):
-            continue
-        url = raw.strip()
-        if not url:
-            continue
-        cleaned.append(url)
-    return cleaned
-
-
-def _apply_cover_index(screenshot_urls: List[str], cover_index: Any) -> List[str]:
-    """cover_index를 반영해 대표 이미지를 0번으로 이동합니다."""
-
-    if not screenshot_urls:
-        return []
-
-    try:
-        index = int(cover_index)
-    except (TypeError, ValueError):
-        return screenshot_urls
-
-    if index < 0 or index >= len(screenshot_urls):
-        return screenshot_urls
-
-    if index == 0:
-        return screenshot_urls
-
-    cover = screenshot_urls[index]
-    remaining = [item for i, item in enumerate(screenshot_urls) if i != index]
-    return [cover, *remaining]
-
-
-def _can_manage_app(user, app: Any) -> bool:
-    """현재 사용자가 앱을 수정/삭제할 수 있는지 검사합니다."""
-
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "is_superuser", False):
-        return True
-    return getattr(user, "pk", None) is not None and app.owner_id == user.pk
-
-
-def _can_manage_comment(user, comment: Any) -> bool:
-    """현재 사용자가 댓글을 수정/삭제할 수 있는지 검사합니다."""
-
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "is_superuser", False):
-        return True
-    return getattr(user, "pk", None) is not None and comment.user_id == user.pk
-
-
-def _comment_payload(comment: Any, current_user, liked_comment_ids: set[int]) -> Dict[str, Any]:
-    """댓글을 API 응답 형태로 직렬화합니다."""
-
-    author = getattr(comment, "user", None)
-    liked = False
-    if current_user and getattr(current_user, "is_authenticated", False):
-        liked = comment.pk in liked_comment_ids
-    return {
-        "id": comment.pk,
-        "appId": comment.app_id,
-        "parentCommentId": getattr(comment, "parent_id", None),
-        "content": comment.content,
-        "createdAt": comment.created_at.isoformat(),
-        "updatedAt": comment.updated_at.isoformat(),
-        "author": _user_payload(author),
-        "likeCount": int(getattr(comment, "like_count", 0) or 0),
-        "liked": liked,
-        "canEdit": _can_manage_comment(current_user, comment),
-        "canDelete": _can_manage_comment(current_user, comment),
-    }
-
-
-def _app_payload(
-    app: Any,
-    current_user,
-    liked_app_ids: Sequence[int],
-    *,
-    include_comments: bool = False,
-    include_screenshots: bool = False,
-    liked_comment_ids: set[int] | None = None,
-) -> Dict[str, Any]:
-    """앱을 API 응답 형태로 직렬화합니다(선호 시 댓글 포함)."""
-
-    liked = False
-    if current_user and getattr(current_user, "is_authenticated", False):
-        liked = app.id in liked_app_ids
-
-    liked_comment_ids = liked_comment_ids or set()
-
-    comments: Optional[List[Dict[str, Any]]] = None
-    if include_comments:
-        related = getattr(app, "comments", None)
-        if related is not None:
-            comments = [_comment_payload(comment, current_user, liked_comment_ids) for comment in related.all()]
-        else:
-            comments = []
-
-    owner_payload = _user_payload(getattr(app, "owner", None))
-    comment_count = getattr(app, "comment_count", 0) or 0
-
-    payload: Dict[str, Any] = {
-        "id": app.pk,
-        "name": app.name,
-        "category": app.category,
-        "description": app.description,
-        "url": app.url,
-        "screenshotUrl": getattr(app, "screenshot_src", ""),
-        "tags": app.tags if isinstance(app.tags, list) else [],
-        "badge": app.badge,
-        "contactName": app.contact_name,
-        "contactKnoxid": app.contact_knoxid,
-        "viewCount": app.view_count,
-        "likeCount": app.like_count,
-        "commentCount": int(comment_count),
-        "createdAt": app.created_at.isoformat(),
-        "updatedAt": app.updated_at.isoformat(),
-        "owner": owner_payload,
-        "liked": liked,
-        "canEdit": _can_manage_app(current_user, app),
-        "canDelete": _can_manage_app(current_user, app),
-        **({"comments": comments} if comments is not None else {}),
-    }
-
-    if include_screenshots:
-        screenshot_srcs = []
-        screenshot_srcs_raw = getattr(app, "screenshot_srcs", None)
-        if callable(screenshot_srcs_raw):
-            screenshot_srcs = screenshot_srcs_raw()
-        if not isinstance(screenshot_srcs, list):
-            screenshot_srcs = []
-        payload["screenshotUrls"] = screenshot_srcs
-        payload["coverScreenshotIndex"] = 0
-
-    return payload
 
 
 def _load_app(app_id: int) -> Any | None:
@@ -283,7 +80,7 @@ class AppStoreAppsView(APIView):
         if user:
             liked_ids = get_liked_app_ids_for_user(user=user)
 
-        apps = [_app_payload(app, user, liked_ids) for app in queryset]
+        apps = [serialize_app(app, user, liked_ids) for app in queryset]
         return JsonResponse({"results": apps, "total": len(apps)})
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
@@ -299,9 +96,9 @@ class AppStoreAppsView(APIView):
         description = str(payload.get("description") or "").strip()
         url = str(payload.get("url") or "").strip()
         badge = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
-        tags = _sanitize_tags(payload.get("tags"))
-        screenshot_urls = _sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
-        screenshot_urls = _apply_cover_index(
+        tags = sanitize_tags(payload.get("tags"))
+        screenshot_urls = sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
+        screenshot_urls = apply_cover_index(
             screenshot_urls,
             payload.get("coverScreenshotIndex") or payload.get("cover_screenshot_index"),
         )
@@ -317,7 +114,7 @@ class AppStoreAppsView(APIView):
             return JsonResponse({"error": "url is required"}, status=400)
 
         if not contact_name or not contact_knoxid:
-            default_name, default_knoxid = _default_contact(request.user)
+            default_name, default_knoxid = default_contact(request.user)
             contact_name = contact_name or default_name
             contact_knoxid = contact_knoxid or default_knoxid
 
@@ -337,7 +134,7 @@ class AppStoreAppsView(APIView):
             )
             liked_ids = get_liked_app_ids_for_user(user=request.user)
             return JsonResponse(
-                {"app": _app_payload(app, request.user, liked_ids, include_screenshots=True)},
+                {"app": serialize_app(app, request.user, liked_ids, include_screenshots=True)},
                 status=201,
             )
         except Exception:  # pragma: no cover - defensive logging
@@ -362,7 +159,7 @@ class AppStoreAppDetailView(APIView):
 
         return JsonResponse(
             {
-                "app": _app_payload(
+                "app": serialize_app(
                     app,
                     user,
                     liked_ids,
@@ -381,14 +178,14 @@ class AppStoreAppDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        if not _can_manage_app(request.user, app):
+        if not can_manage_app(request.user, app):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         payload = parse_json_body(request)
         if payload is None:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
-        updates: Dict[str, Any] = {}
+        updates: dict[str, Any] = {}
 
         if "name" in payload:
             name = str(payload.get("name") or "").strip()
@@ -416,8 +213,8 @@ class AppStoreAppDetailView(APIView):
 
         screenshot_urls = None
         if "screenshotUrls" in payload or "screenshot_urls" in payload:
-            screenshot_urls = _sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
-            screenshot_urls = _apply_cover_index(
+            screenshot_urls = sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
+            screenshot_urls = apply_cover_index(
                 screenshot_urls,
                 payload.get("coverScreenshotIndex") or payload.get("cover_screenshot_index"),
             )
@@ -428,7 +225,7 @@ class AppStoreAppDetailView(APIView):
             updates["badge"] = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
 
         if "tags" in payload:
-            updates["tags"] = _sanitize_tags(payload.get("tags"))
+            updates["tags"] = sanitize_tags(payload.get("tags"))
 
         if "contactName" in payload:
             updates["contact_name"] = str(payload.get("contactName") or "").strip()[:MAX_CONTACT_LENGTH]
@@ -442,7 +239,7 @@ class AppStoreAppDetailView(APIView):
         try:
             app = update_app(app=app, updates=updates)
             liked_ids = get_liked_app_ids_for_user(user=request.user)
-            return JsonResponse({"app": _app_payload(app, request.user, liked_ids, include_screenshots=True)})
+            return JsonResponse({"app": serialize_app(app, request.user, liked_ids, include_screenshots=True)})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update appstore app")
             return JsonResponse({"error": "Failed to update app"}, status=500)
@@ -455,7 +252,7 @@ class AppStoreAppDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        if not _can_manage_app(request.user, app):
+        if not can_manage_app(request.user, app):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         try:
@@ -515,7 +312,7 @@ class AppStoreCommentsView(APIView):
         liked_comment_ids: set[int] = set()
         if request.user.is_authenticated:
             liked_comment_ids = set(get_liked_comment_ids_for_user(user=request.user, app_id=app.pk))
-        payload = [_comment_payload(comment, request.user, liked_comment_ids) for comment in comments]
+        payload = [serialize_comment(comment, request.user, liked_comment_ids) for comment in comments]
         return JsonResponse({"comments": payload, "total": len(payload)})
 
     def post(self, request: HttpRequest, app_id: int, *args: object, **kwargs: object) -> JsonResponse:
@@ -549,7 +346,7 @@ class AppStoreCommentsView(APIView):
         try:
             comment = create_comment(app=app, user=request.user, content=content, parent_comment=parent_comment)
             return JsonResponse(
-                {"comment": _comment_payload(comment, request.user, set())},
+                {"comment": serialize_comment(comment, request.user, set())},
                 status=201,
             )
         except Exception:  # pragma: no cover - defensive logging
@@ -575,7 +372,7 @@ class AppStoreCommentDetailView(APIView):
         if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
-        if not _can_manage_comment(request.user, comment):
+        if not can_manage_comment(request.user, comment):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         payload = parse_json_body(request)
@@ -594,7 +391,7 @@ class AppStoreCommentDetailView(APIView):
             liked_comment_ids: set[int] = set()
             if request.user.is_authenticated:
                 liked_comment_ids = set(get_liked_comment_ids_for_user(user=request.user, app_id=app.pk))
-            return JsonResponse({"comment": _comment_payload(comment, request.user, liked_comment_ids)})
+            return JsonResponse({"comment": serialize_comment(comment, request.user, liked_comment_ids)})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update appstore comment %s", comment_id)
             return JsonResponse({"error": "Failed to update comment"}, status=500)
@@ -613,7 +410,7 @@ class AppStoreCommentDetailView(APIView):
         if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
-        if not _can_manage_comment(request.user, comment):
+        if not can_manage_comment(request.user, comment):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         try:

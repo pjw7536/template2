@@ -11,7 +11,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.utils import parse_json_body
+from api.common.utils import normalize_text, parse_json_body
 
 from . import selectors, services
 from .serializers import (
@@ -86,9 +86,11 @@ class AccountAffiliationView(APIView):
         if payload is None:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
-        department = (payload.get("department") or "").strip()
-        line = (payload.get("line") or "").strip()
-        new_value = (payload.get("user_sdwt_prod") or payload.get("userSdwtProd") or "").strip()
+        department = normalize_text(payload.get("department"))
+        line = normalize_text(payload.get("line"))
+        new_value = normalize_text(payload.get("user_sdwt_prod"))
+        if not new_value:
+            new_value = normalize_text(payload.get("userSdwtProd"))
         if not new_value:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
 

@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, Optional
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
@@ -30,81 +29,14 @@ from .selectors import (
     get_post_list,
     get_status_counts,
     get_valid_post_statuses,
-    is_admin_user,
 )
-from .services import add_reply, create_post, delete_post, update_post
+from .serializers import serialize_post, serialize_reply
+from .services import add_reply, can_manage_post, create_post, delete_post, update_post
 
 logger = logging.getLogger(__name__)
 
 STATUS_SET = get_valid_post_statuses()
 MAX_TITLE_LENGTH = 255
-
-
-def _user_payload(user) -> Optional[Dict[str, Any]]:
-    """작성자 정보를 API 응답 형태로 직렬화."""
-
-    if not user:
-        return None
-    name = (user.get_full_name() or "").strip() or user.get_username() or user.email
-    payload = {"id": user.pk, "name": name or "사용자"}
-    if user.email:
-        payload["email"] = user.email
-    return payload
-
-
-def _reply_payload(reply: Any) -> Dict[str, Any]:
-    """답변(VocReply)을 API 응답 형태로 직렬화합니다."""
-
-    return {
-        "id": reply.pk,
-        "postId": reply.post_id,
-        "content": reply.content,
-        "createdAt": reply.created_at.isoformat(),
-        "author": _user_payload(getattr(reply, "author", None)),
-    }
-
-
-def _post_payload(post: Any) -> Dict[str, Any]:
-    """게시글(VocPost)을 API 응답 형태로 직렬화합니다."""
-
-    replies = [*_prefetched_replies(post)]
-    return {
-        "id": post.pk,
-        "title": post.title,
-        "content": post.content,
-        "status": post.status,
-        "createdAt": post.created_at.isoformat(),
-        "updatedAt": post.updated_at.isoformat(),
-        "author": _user_payload(getattr(post, "author", None)),
-        "replies": replies,
-    }
-
-
-def _prefetched_replies(post: Any) -> Iterable[Dict[str, Any]]:
-    """prefetch_related 결과를 활용해 답변을 직렬화."""
-
-    related = getattr(post, "replies", None)
-    if related is None:
-        return []
-    return [_reply_payload(reply) for reply in related.all()]
-
-
-def _status_counts() -> Dict[str, int]:
-    """VOC 게시글 상태별 개수를 조회합니다."""
-
-    return get_status_counts()
-
-
-def _is_admin(user) -> bool:
-    """사용자가 VOC 관리자 권한을 갖는지 판별합니다."""
-
-    return is_admin_user(user=user)
-
-
-def _can_manage_post(user, post: Any) -> bool:
-    """게시글 수정/삭제 가능 여부(관리자 또는 작성자)를 판별합니다."""
-
-    return _is_admin(user) or (user and getattr(user, "pk", None) == post.author_id)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -118,12 +50,12 @@ class VocPostsView(APIView):
                 return JsonResponse({"error": "Invalid status value"}, status=400)
         queryset = get_post_list(status=status_filter)
 
-        posts = [_post_payload(post) for post in queryset]
+        posts = [serialize_post(post) for post in queryset]
         return JsonResponse(
             {
                 "results": posts,
                 "total": len(posts),
-                "statusCounts": _status_counts(),
+                "statusCounts": get_status_counts(),
             }
         )
 
@@ -157,11 +89,11 @@ class VocPostsView(APIView):
             )
 
             set_activity_summary(request, "Create VOC post")
-            set_activity_new_state(request, _post_payload(post))
+            set_activity_new_state(request, serialize_post(post))
             merge_activity_metadata(request, resource="voc_post", entryId=post.pk)
 
             return JsonResponse(
-                {"post": _post_payload(post), "statusCounts": _status_counts()}, status=201
+                {"post": serialize_post(post), "statusCounts": get_status_counts()}, status=201
             )
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to create VOC post")
@@ -187,7 +119,7 @@ class VocPostDetailView(APIView):
         if not post:
             return JsonResponse({"error": "Post not found"}, status=404)
 
-        if not _can_manage_post(request.user, post):
+        if not can_manage_post(user=request.user, post=post):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         updates = {}
@@ -215,15 +147,15 @@ class VocPostDetailView(APIView):
             return JsonResponse({"error": "No changes provided"}, status=400)
 
         try:
-            before = _post_payload(post)
+            before = serialize_post(post)
             post = update_post(post=post, updates=updates)
 
             set_activity_summary(request, "Update VOC post")
             set_activity_previous_state(request, before)
-            set_activity_new_state(request, _post_payload(post))
+            set_activity_new_state(request, serialize_post(post))
             merge_activity_metadata(request, resource="voc_post", entryId=post.pk)
 
-            return JsonResponse({"post": _post_payload(post), "statusCounts": _status_counts()})
+            return JsonResponse({"post": serialize_post(post), "statusCounts": get_status_counts()})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to update VOC post")
             return JsonResponse({"error": "Failed to update post"}, status=500)
@@ -239,18 +171,18 @@ class VocPostDetailView(APIView):
         if not post:
             return JsonResponse({"error": "Post not found"}, status=404)
 
-        if not _can_manage_post(request.user, post):
+        if not can_manage_post(user=request.user, post=post):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         try:
-            before = _post_payload(post)
+            before = serialize_post(post)
             delete_post(post=post)
 
             set_activity_summary(request, "Delete VOC post")
             set_activity_previous_state(request, before)
             merge_activity_metadata(request, resource="voc_post", entryId=post_id)
 
-            return JsonResponse({"success": True, "statusCounts": _status_counts()})
+            return JsonResponse({"success": True, "statusCounts": get_status_counts()})
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to delete VOC post")
             return JsonResponse({"error": "Failed to delete post"}, status=500)
@@ -280,10 +212,12 @@ class VocReplyView(APIView):
             reply, refreshed_post = add_reply(post=post, author=request.user, content=content)
 
             set_activity_summary(request, "Add VOC reply")
-            set_activity_new_state(request, _reply_payload(reply))
+            set_activity_new_state(request, serialize_reply(reply))
             merge_activity_metadata(request, resource="voc_reply", entryId=reply.pk, postId=post_id)
 
-            return JsonResponse({"reply": _reply_payload(reply), "post": _post_payload(refreshed_post)}, status=201)
+            return JsonResponse(
+                {"reply": serialize_reply(reply), "post": serialize_post(refreshed_post)}, status=201
+            )
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to add VOC reply")
             return JsonResponse({"error": "Failed to add reply"}, status=500)

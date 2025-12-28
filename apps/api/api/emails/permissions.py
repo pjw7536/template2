@@ -5,6 +5,7 @@ from typing import Any, Optional, Set
 from django.http import HttpRequest
 
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.utils import extract_bearer_token
 
 from .selectors import get_accessible_user_sdwt_prods_for_user
 
@@ -80,19 +81,6 @@ def resolve_access_control(request: HttpRequest) -> tuple[bool, bool, Set[str]]:
 
     accessible = resolve_accessible_user_sdwt_prods(user)
     return True, False, accessible
-
-
-def extract_bearer_token(request: HttpRequest) -> str:
-    """Authorization 헤더에서 Bearer 토큰을 추출."""
-
-    auth_header = request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION") or ""
-    if not isinstance(auth_header, str):
-        return ""
-
-    normalized = auth_header.strip()
-    if normalized.lower().startswith("bearer "):
-        return normalized[7:].strip()
-    return normalized
 
 
 __all__ = [

@@ -2,21 +2,17 @@ from __future__ import annotations
 
 import gzip
 import logging
-import os
-from datetime import datetime, time
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.exceptions import NotFound
 from rest_framework.views import APIView
 
-from api.common.utils import parse_json_body
+from api.common.utils import ensure_airflow_token, parse_json_body
 
 from .permissions import (
     email_is_unassigned,
@@ -38,11 +34,14 @@ from .selectors import (
 )
 from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 
+from .serializers import serialize_email_detail, serialize_email_summary
 from .services import (
     bulk_delete_emails,
+    build_email_filters,
     claim_unassigned_emails_for_user,
     delete_single_email,
     move_emails_for_user,
+    parse_mailbox_user_sdwt_prod,
     process_email_outbox_batch,
     run_pop3_ingest_from_env,
     SENT_MAILBOX_ID,
@@ -52,64 +51,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
-
-
-def _ensure_airflow_token(request: HttpRequest) -> JsonResponse | None:
-    expected = (
-        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
-    ).strip()
-    if not expected:
-        return JsonResponse({"error": "AIRFLOW_TRIGGER_TOKEN not configured"}, status=500)
-
-    provided = extract_bearer_token(request)
-    if provided != expected:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-    return None
-
-
-def _parse_int(value: Any, default: int) -> int:
-    """입력 값을 정수로 파싱하고 실패/0 이하일 때 기본값을 반환합니다."""
-
-    try:
-        parsed = int(value)
-        if parsed <= 0:
-            return default
-        return parsed
-    except (TypeError, ValueError):
-        return default
-
-
-def _parse_datetime(value: str):
-    """날짜/일시 문자열을 timezone-aware datetime(UTC)으로 파싱합니다."""
-
-    if not value:
-        return None
-    dt = parse_datetime(value)
-    if dt:
-        return dt
-    date_only = parse_date(value)
-    if date_only:
-        return datetime.combine(date_only, time.min, tzinfo=timezone.utc)
-    return None
-
-
-def _build_email_filters(request: HttpRequest) -> Dict[str, Any]:
-    """이메일 목록 필터 값을 일관되게 정규화합니다.
-
-    - 쿼리 파라미터 파싱 로직을 한곳으로 모아 중복을 줄입니다.
-    - view 내부 가독성을 높이고, 향후 필터 추가 시 변경 지점을 최소화합니다.
-    """
-
-    return {
-        "mailbox_user_sdwt_prod": _parse_mailbox_user_sdwt_prod(request),
-        "search": (request.GET.get("q") or "").strip(),
-        "sender": (request.GET.get("sender") or "").strip(),
-        "recipient": (request.GET.get("recipient") or "").strip(),
-        "date_from": _parse_datetime(request.GET.get("date_from")),
-        "date_to": _parse_datetime(request.GET.get("date_to")),
-        "page": _parse_int(request.GET.get("page"), 1),
-        "page_size": min(_parse_int(request.GET.get("page_size"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE),
-    }
 
 
 def _check_email_access(
@@ -139,43 +80,25 @@ def _check_email_access(
     return None
 
 
-def _serialize_email(email: Any) -> Dict[str, Any]:
-    """Email 인스턴스를 목록 응답용 dict로 직렬화합니다."""
+def _build_email_list_response(qs: Any, page: int, page_size: int) -> JsonResponse:
+    paginator = Paginator(qs, page_size)
+    try:
+        page_obj = paginator.page(page)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages or 1)
 
-    snippet = (email.body_text or "").strip()
-    if len(snippet) > 180:
-        snippet = snippet[:177] + "..."
-    return {
-        "id": email.id,
-        "messageId": email.message_id,
-        "receivedAt": email.received_at.isoformat(),
-        "subject": email.subject,
-        "sender": email.sender,
-        "senderId": email.sender_id,
-        "recipient": email.recipient,
-        "cc": email.cc,
-        "userSdwtProd": email.user_sdwt_prod,
-        "snippet": snippet,
-        "ragDocId": email.rag_doc_id,
-    }
+    results = [serialize_email_summary(email) for email in page_obj.object_list]
 
+    return JsonResponse(
+        {
+            "results": results,
+            "page": page_obj.number,
+            "pageSize": page_size,
+            "total": paginator.count,
+            "totalPages": paginator.num_pages,
+        }
+    )
 
-def _serialize_detail(email: Any) -> Dict[str, Any]:
-    """Email 인스턴스를 상세 응답용 dict로 직렬화합니다."""
-
-    return {
-        **_serialize_email(email),
-        "bodyText": email.body_text,
-        "createdAt": email.created_at.isoformat(),
-        "updatedAt": email.updated_at.isoformat(),
-    }
-
-
-def _parse_mailbox_user_sdwt_prod(request: HttpRequest) -> str:
-    """요청 쿼리에서 mailbox(user_sdwt_prod) 값을 추출/정규화합니다."""
-
-    raw = request.GET.get("user_sdwt_prod") or request.GET.get("userSdwtProd") or ""
-    return raw.strip() if isinstance(raw, str) else ""
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -190,7 +113,11 @@ class EmailInboxListView(APIView):
         if not is_privileged and not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
 
-        filters = _build_email_filters(request)
+        filters = build_email_filters(
+            params=request.GET,
+            default_page_size=DEFAULT_PAGE_SIZE,
+            max_page_size=MAX_PAGE_SIZE,
+        )
         mailbox_user_sdwt_prod = filters["mailbox_user_sdwt_prod"]
         can_view_unassigned = user_can_view_unassigned(request.user)
         if mailbox_user_sdwt_prod == SENT_MAILBOX_ID:
@@ -216,23 +143,7 @@ class EmailInboxListView(APIView):
         page = filters["page"]
         page_size = filters["page_size"]
 
-        paginator = Paginator(qs, page_size)
-        try:
-            page_obj = paginator.page(page)
-        except EmptyPage:
-            page_obj = paginator.page(paginator.num_pages or 1)
-
-        results = [_serialize_email(email) for email in page_obj.object_list]
-
-        return JsonResponse(
-            {
-                "results": results,
-                "page": page_obj.number,
-                "pageSize": page_size,
-                "total": paginator.count,
-                "totalPages": paginator.num_pages,
-            }
-        )
+        return _build_email_list_response(qs, page, page_size)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -251,7 +162,11 @@ class EmailSentListView(APIView):
         if not sender_id:
             return JsonResponse({"error": "forbidden"}, status=403)
 
-        filters = _build_email_filters(request)
+        filters = build_email_filters(
+            params=request.GET,
+            default_page_size=DEFAULT_PAGE_SIZE,
+            max_page_size=MAX_PAGE_SIZE,
+        )
 
         qs = get_sent_emails(
             sender_id=sender_id,
@@ -265,23 +180,7 @@ class EmailSentListView(APIView):
         page = filters["page"]
         page_size = filters["page_size"]
 
-        paginator = Paginator(qs, page_size)
-        try:
-            page_obj = paginator.page(page)
-        except EmptyPage:
-            page_obj = paginator.page(paginator.num_pages or 1)
-
-        results = [_serialize_email(email) for email in page_obj.object_list]
-
-        return JsonResponse(
-            {
-                "results": results,
-                "page": page_obj.number,
-                "pageSize": page_size,
-                "total": paginator.count,
-                "totalPages": paginator.num_pages,
-            }
-        )
+        return _build_email_list_response(qs, page, page_size)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -324,7 +223,7 @@ class EmailMailboxMembersView(APIView):
         if not is_privileged and not accessible:
             return JsonResponse({"error": "forbidden"}, status=403)
 
-        mailbox_user_sdwt_prod = _parse_mailbox_user_sdwt_prod(request)
+        mailbox_user_sdwt_prod = parse_mailbox_user_sdwt_prod(request.GET)
         if not mailbox_user_sdwt_prod:
             return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
         if mailbox_user_sdwt_prod == SENT_MAILBOX_ID:
@@ -397,7 +296,7 @@ class EmailDetailView(APIView):
         if access_error:
             return access_error
 
-        return JsonResponse(_serialize_detail(email))
+        return JsonResponse(serialize_email_detail(email))
 
     def delete(self, request: HttpRequest, email_id: int, *args: object, **kwargs: object) -> JsonResponse:
         is_authenticated, is_privileged, accessible = resolve_access_control(request)
@@ -579,7 +478,7 @@ class EmailOutboxProcessTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        auth_response = _ensure_airflow_token(request)
+        auth_response = ensure_airflow_token(request)
         if auth_response is not None:
             return auth_response
 

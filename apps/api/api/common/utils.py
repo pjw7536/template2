@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 from django.conf import settings
-from django.http import HttpRequest
+from django.http import HttpRequest, JsonResponse
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from api.common.constants import (
@@ -49,6 +50,14 @@ def normalize_line_id(value: Any) -> Optional[str]:
         return None
     trimmed = value.strip()
     return trimmed or None
+
+
+def normalize_text(value: Any) -> str:
+    """Trim a text field. Non-string values become empty."""
+
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
 
 
 def ensure_date_bounds(from_value: Optional[str], to_value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -153,6 +162,41 @@ def parse_json_body(request: HttpRequest) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def extract_bearer_token(request: HttpRequest) -> str:
+    """Authorization header to token. Supports 'Bearer <token>' or raw token."""
+
+    auth_header = request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION") or ""
+    if not isinstance(auth_header, str):
+        return ""
+
+    normalized = auth_header.strip()
+    if normalized.lower().startswith("bearer "):
+        return normalized[7:].strip()
+    return normalized
+
+
+def ensure_airflow_token(request: HttpRequest, *, require_bearer: bool = False) -> JsonResponse | None:
+    """Validate AIRFLOW_TRIGGER_TOKEN. Returns JsonResponse on error."""
+
+    expected = (
+        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+    ).strip()
+    if not expected:
+        return JsonResponse({"error": "AIRFLOW_TRIGGER_TOKEN not configured"}, status=500)
+
+    if require_bearer:
+        auth_header = request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION") or ""
+        if isinstance(auth_header, str) and auth_header.strip().lower().startswith("bearer "):
+            provided = auth_header.strip()[7:].strip()
+        else:
+            provided = ""
+    else:
+        provided = extract_bearer_token(request)
+    if provided != expected:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+    return None
 
 
 # ---------------------------------------------------------------------------

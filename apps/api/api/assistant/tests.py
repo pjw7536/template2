@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from api.account.models import UserSdwtProdAccess
+from api.assistant import services as assistant_services
 from api.assistant.services import AssistantChatConfig, AssistantChatService
 from api.rag import services as rag_services
 
@@ -305,3 +306,22 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(result.segments[0]["reply"], "OK")
         self.assertEqual([entry["doc_id"] for entry in result.segments[0]["sources"]], ["E2"])
         self.assertEqual([entry["doc_id"] for entry in result.sources], ["E2"])
+
+
+class AssistantNormalizationTests(TestCase):
+    def test_normalize_room_id_defaults_to_default(self) -> None:
+        self.assertEqual(assistant_services.normalize_room_id(None), "default")
+        self.assertEqual(assistant_services.normalize_room_id(""), "default")
+
+    def test_normalize_room_id_sanitizes(self) -> None:
+        self.assertEqual(assistant_services.normalize_room_id(" room$% "), "room--")
+
+    def test_normalize_sources_dedupes(self) -> None:
+        sources = [
+            {"doc_id": "DOC1", "title": "T1", "snippet": "S1"},
+            {"docId": "DOC1", "title": "T1b", "snippet": "S1b"},
+            {"doc_id": "DOC2", "title": "T2", "snippet": "S2"},
+        ]
+        normalized = assistant_services.normalize_sources(sources)
+        self.assertEqual(len(normalized), 2)
+        self.assertEqual({item["docId"] for item in normalized}, {"DOC1", "DOC2"})

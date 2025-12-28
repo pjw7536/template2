@@ -34,17 +34,15 @@ DELETE:
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
-from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
 from api.common.constants import MAX_FIELD_LENGTH
-from api.common.utils import parse_json_body
+from api.common.utils import ensure_airflow_token, parse_json_body
 
 from api.common.activity_logging import (
     merge_activity_metadata,
@@ -63,29 +61,6 @@ def _ensure_authenticated(request: HttpRequest) -> JsonResponse | None:
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
         return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
-    return None
-
-
-def _extract_bearer_token(request: HttpRequest) -> str | None:
-    auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-    if not isinstance(auth_header, str) or not auth_header:
-        return None
-    parts = auth_header.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return None
-    return parts[1].strip() or None
-
-
-def _ensure_airflow_token(request: HttpRequest) -> JsonResponse | None:
-    expected = (
-        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
-    ).strip()
-    if not expected:
-        return JsonResponse({"error": "AIRFLOW_TRIGGER_TOKEN not configured"}, status=500)
-
-    provided = _extract_bearer_token(request)
-    if provided != expected:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
     return None
 
 
@@ -448,7 +423,7 @@ class DroneSopPop3IngestTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        auth_response = _ensure_airflow_token(request)
+        auth_response = ensure_airflow_token(request, require_bearer=True)
         if auth_response is not None:
             return auth_response
 
@@ -492,7 +467,7 @@ class DroneSopJiraTriggerView(APIView):
     permission_classes: tuple = ()
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        auth_response = _ensure_airflow_token(request)
+        auth_response = ensure_airflow_token(request, require_bearer=True)
         if auth_response is not None:
             return auth_response
 

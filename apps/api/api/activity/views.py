@@ -26,12 +26,10 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
-
 from django.http import HttpRequest, JsonResponse
 from rest_framework.views import APIView
 
-from .selectors import get_recent_activity_logs
+from .services import get_recent_activity_payload
 
 # 조회 건수 관련 상수(한 곳에서 관리)
 DEFAULT_LIMIT: int = 50
@@ -79,39 +77,10 @@ class ActivityLogView(APIView):
         # 허용 범위 강제(1 ~ 200)
         limit = max(MIN_LIMIT, min(limit, MAX_LIMIT))
 
-        # 3) 쿼리셋 조회 ---------------------------------------------------------
-        # - select_related("user", "user__profile")로 N+1 방지
-        # - 최신순 정렬
-        logs = get_recent_activity_logs(limit=limit)
+        # 3) payload 생성 -------------------------------------------------------
+        payload = get_recent_activity_payload(limit=limit)
 
-        # 4) 직렬화(최소 필드만 hand-written serialize) ---------------------------
-        payload: List[Dict[str, Any]] = []
-        for entry in logs:
-            user = entry.user  # Optional[User]
-            username = user.get_username() if user else None
-
-            # user.profile.role 안전 접근(getattr 체인)
-            role = getattr(getattr(user, "profile", None), "role", None) if user else None
-
-            metadata = entry.metadata or {}
-            if isinstance(metadata, dict) and metadata.get("remote_addr") == "172.18.0.1":
-                metadata = {k: v for k, v in metadata.items() if k != "remote_addr"}
-
-            payload.append(
-                {
-                    "id": entry.id,
-                    "user": username,
-                    "role": role,
-                    "action": entry.action,
-                    "path": entry.path,
-                    "method": entry.method,
-                    "status": entry.status_code,
-                    "metadata": metadata,  # JSONField 혹은 dict/None
-                    "timestamp": entry.created_at.isoformat(),  # timezone aware 가정
-                }
-            )
-
-        # 5) 응답 ---------------------------------------------------------------
+        # 4) 응답 ---------------------------------------------------------------
         return JsonResponse({"results": payload})
 
 

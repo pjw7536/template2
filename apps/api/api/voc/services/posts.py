@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-from .selectors import get_post_detail, get_reply_by_id
-from .models import VocPost, VocReply
+from ..selectors import get_post_detail, get_reply_by_id, is_admin_user
+from ..models import VocPost, VocReply
 
 
 def create_post(*, author, title: str, content: str, status: str) -> VocPost:
@@ -64,3 +64,13 @@ def add_reply(*, post: VocPost, author, content: str) -> Tuple[VocReply, VocPost
     loaded_reply = get_reply_by_id(reply_id=reply.pk) or reply
     refreshed_post = get_post_detail(post_id=post.pk) or post
     return loaded_reply, refreshed_post
+
+
+def can_manage_post(*, user: Any, post: VocPost) -> bool:
+    """게시글 수정/삭제 가능 여부(관리자 또는 작성자)를 판별합니다.
+
+    Side effects:
+        None. Pure calculation.
+    """
+
+    return is_admin_user(user=user) or (user and getattr(user, "pk", None) == post.author_id)
