@@ -94,7 +94,7 @@ function buildMatches(text, docId) {
   return matches
 }
 
-function buildReplacementFragment(doc, text, sourceLookup, mailbox) {
+function buildReplacementFragment(doc, text, sourceLookup, mailbox, availableMailboxes) {
   const docIds = Array.from(sourceLookup.keys())
   if (docIds.length === 0) return null
 
@@ -126,7 +126,10 @@ function buildReplacementFragment(doc, text, sourceLookup, mailbox) {
     const source = sourceLookup.get(match.docId)
     const label = source?.label || match.docId
     const anchor = doc.createElement("a")
-    anchor.setAttribute("href", buildEmailSourceUrl(match.docId, mailbox))
+    anchor.setAttribute(
+      "href",
+      buildEmailSourceUrl(match.docId, mailbox, { availableMailboxes }),
+    )
     anchor.setAttribute("data-email-source", "true")
     anchor.textContent = label
     fragment.appendChild(anchor)
@@ -141,7 +144,7 @@ function buildReplacementFragment(doc, text, sourceLookup, mailbox) {
   return fragment
 }
 
-function injectEmailSourceLinks(rawHtml, sources, mailbox) {
+function injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes) {
   const sourceLookup = buildSourceLookup(sources)
   if (sourceLookup.size === 0) return rawHtml
 
@@ -163,7 +166,7 @@ function injectEmailSourceLinks(rawHtml, sources, mailbox) {
     const parentElement = node.parentElement
     if (parentElement?.closest?.("a")) return
 
-    const fragment = buildReplacementFragment(doc, text, sourceLookup, mailbox)
+    const fragment = buildReplacementFragment(doc, text, sourceLookup, mailbox, availableMailboxes)
     if (!fragment) return
 
     node.parentNode?.replaceChild(fragment, node)
@@ -172,11 +175,11 @@ function injectEmailSourceLinks(rawHtml, sources, mailbox) {
   return container.innerHTML
 }
 
-export function formatAssistantMessage(content, sources = [], mailbox = "") {
+export function formatAssistantMessage(content, sources = [], mailbox = "", availableMailboxes = []) {
   if (!content || typeof content !== "string") return ""
 
   const rawHtml = marked.parse(content, markedOptions)
-  const htmlWithSources = injectEmailSourceLinks(rawHtml, sources, mailbox)
+  const htmlWithSources = injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes)
   return DOMPurify.sanitize(htmlWithSources, {
     USE_PROFILES: { html: true },
     ADD_ATTR: ["data-email-source"],

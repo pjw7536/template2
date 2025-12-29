@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
+import { useEmailMailboxes } from "@/features/emails"
 
 import { AssistantStatusIndicator } from "./AssistantStatusIndicator"
 import { formatAssistantMessage } from "../utils/formatAssistantMessage"
@@ -10,6 +11,8 @@ import { buildEmailSourceUrl } from "../utils/buildEmailSourceUrl"
 export function ChatMessages({ messages = [], isSending, fillBubbles = false }) {
   const messagesEndRef = useRef(null)
   const navigate = useNavigate()
+  const { data: mailboxesData } = useEmailMailboxes()
+  const availableMailboxes = Array.isArray(mailboxesData?.results) ? mailboxesData.results : []
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -73,7 +76,12 @@ export function ChatMessages({ messages = [], isSending, fillBubbles = false }) 
                   <div
                     onClick={handleEmailSourceClick}
                     dangerouslySetInnerHTML={{
-                      __html: formatAssistantMessage(message.content, sources, messageMailbox),
+                      __html: formatAssistantMessage(
+                        message.content,
+                        sources,
+                        messageMailbox,
+                        availableMailboxes,
+                      ),
                     }}
                   />
                   {sources.length > 0 ? (
@@ -85,7 +93,11 @@ export function ChatMessages({ messages = [], isSending, fillBubbles = false }) 
                           variant="outline"
                           className="max-w-60"
                         >
-                          <Link to={buildEmailSourceUrl(source.docId, messageMailbox)}>
+                          <Link
+                            to={buildEmailSourceUrl(source.docId, messageMailbox, {
+                              availableMailboxes,
+                            })}
+                          >
                             <span className="truncate">{source.title || source.docId}</span>
                           </Link>
                         </Badge>
