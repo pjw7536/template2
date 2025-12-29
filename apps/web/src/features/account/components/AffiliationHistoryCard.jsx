@@ -51,13 +51,14 @@ export function AffiliationHistoryCard({ history }) {
                 <TableHead>상태</TableHead>
                 <TableHead>변경</TableHead>
                 <TableHead>조직</TableHead>
-                <TableHead>적용 시점</TableHead>
-                <TableHead>요청 시점</TableHead>
-                <TableHead>승인자</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {history.map((item) => {
+              <TableHead>적용 시점</TableHead>
+              <TableHead>요청 시점</TableHead>
+              <TableHead>승인자</TableHead>
+              <TableHead>거절 사유</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {history.map((item) => {
                 const status = STATUS_LABELS[item.status] || {
                   label: item.status || "미지정",
                   variant: "outline",
@@ -81,6 +82,9 @@ export function AffiliationHistoryCard({ history }) {
                     </TableCell>
                     <TableCell className="text-sm">
                       {item.approvedBy?.username || "-"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.rejectionReason || "-"}
                     </TableCell>
                   </TableRow>
                 )

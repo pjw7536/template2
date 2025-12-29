@@ -1,28 +1,14 @@
-# Emails 백엔드 로직 (feature: emails)
+# Emails 백엔드 문서
 
 ## 개요
 - POP3 메일 수집 → DB 저장 → RAG 인덱싱/삭제를 관리합니다.
 - 메일함 접근 권한(user_sdwt_prod + sender_id)을 기반으로 조회/이동/삭제를 제한합니다.
 - RAG 작업은 EmailOutbox로 비동기 처리합니다.
 
-## 핵심 모델/상태
-- `Email` (`emails_inbox`)
-  - `classification_source`: `CONFIRMED_USER | PREDICTED_EXTERNAL | UNASSIGNED`
-  - `rag_index_status`: `PENDING | INDEXED | SKIPPED`
-  - `rag_doc_id`: RAG 문서 ID (기본 `email-{id}`)
-- `EmailOutbox` (`emails_outbox`)
-  - `action`: `INDEX | DELETE | RECLASSIFY | RECLASSIFY_ALL`
-  - `status`: `PENDING | PROCESSING | DONE | FAILED`
-
-## 주요 설정/환경변수
-- POP3 수집
-  - `EMAIL_POP3_HOST`, `EMAIL_POP3_PORT`
-  - `EMAIL_POP3_USERNAME`, `EMAIL_POP3_PASSWORD`
-  - `EMAIL_POP3_USE_SSL`, `EMAIL_POP3_TIMEOUT`
-  - `EMAIL_EXCLUDED_SUBJECT_PREFIXES`
-- Mail API 발신
-  - `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID`
-- RAG 연계 설정은 `api.rag` 설정을 사용합니다.
+## 책임 범위
+- 메일함/메일 조회 및 접근 제어
+- 메일 이동/삭제 및 RAG 인덱싱 큐 처리
+- POP3 수집 및 메일 분류/저장
 
 ## 엔드포인트
 - `GET /api/v1/emails/inbox/`
@@ -33,13 +19,27 @@
 - `POST /api/v1/emails/unassigned/claim/`
 - `POST /api/v1/emails/move/`
 - `POST /api/v1/emails/bulk-delete/`
-- `GET /api/v1/emails/<id>/`
-- `DELETE /api/v1/emails/<id>/`
-- `GET /api/v1/emails/<id>/html/`
+- `GET /api/v1/emails/<email_id>/`
+- `DELETE /api/v1/emails/<email_id>/`
+- `GET /api/v1/emails/<email_id>/html/`
 - `POST /api/v1/emails/ingest/`
 - `POST /api/v1/emails/outbox/process/`
 
-## 상세 흐름
+## 핵심 모델/상태
+- `Email` (`emails_inbox`)
+  - `classification_source`: `CONFIRMED_USER | PREDICTED_EXTERNAL | UNASSIGNED`
+  - `rag_index_status`: `PENDING | INDEXED | SKIPPED`
+  - `rag_doc_id`: RAG 문서 ID (기본 `email-{id}`)
+- `EmailOutbox` (`emails_outbox`)
+  - `action`: `INDEX | DELETE | RECLASSIFY | RECLASSIFY_ALL`
+  - `status`: `PENDING | PROCESSING | DONE | FAILED`
+
+## 주요 규칙/정책
+- staff/superuser는 전체 메일함 접근이 가능하며, 일반 사용자는 접근 가능한 user_sdwt_prod와 sender_id 기준으로 제한됩니다.
+- UNASSIGNED 메일함은 staff/superuser만 조회 가능합니다.
+- 메일 이동/삭제는 권한 검증 후 RAG Outbox에 작업을 적재합니다.
+
+## 주요 흐름
 
 ### 1) 메일함 목록/접근 요약
 `GET /api/v1/emails/mailboxes/`
@@ -61,10 +61,10 @@
 `GET /api/v1/emails/sent/`
 1. sender_id(knox_id) 기준 본인이 보낸 메일만 조회.
 
-`GET /api/v1/emails/<id>/`
+`GET /api/v1/emails/<email_id>/`
 1. 메일 접근 권한 확인 후 상세 반환.
 
-`GET /api/v1/emails/<id>/html/`
+`GET /api/v1/emails/<email_id>/html/`
 1. gzip 압축된 HTML 본문 복원 후 반환.
 
 ### 3) UNASSIGNED 메일 처리
@@ -87,7 +87,7 @@
 1. 접근 권한 검증 (메일 소유 또는 sender_id).
 2. Email 삭제 + RAG 삭제 요청 큐 적재.
 
-`DELETE /api/v1/emails/<id>/`
+`DELETE /api/v1/emails/<email_id>/`
 1. 단건 삭제 + RAG 삭제 요청 큐 적재.
 
 ### 5) POP3 수집 → RAG 등록
@@ -110,6 +110,16 @@
 2. INDEX → RAG insert.
 3. DELETE → RAG delete.
 4. 실패 시 backoff 재시도, 최대 초과 시 FAILED.
+
+## 설정/환경변수
+- POP3 수집
+  - `EMAIL_POP3_HOST`, `EMAIL_POP3_PORT`
+  - `EMAIL_POP3_USERNAME`, `EMAIL_POP3_PASSWORD`
+  - `EMAIL_POP3_USE_SSL`, `EMAIL_POP3_TIMEOUT`
+  - `EMAIL_EXCLUDED_SUBJECT_PREFIXES`
+- Mail API 발신
+  - `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID`
+- RAG 연계 설정은 `api.rag` 설정을 사용합니다.
 
 ## 시퀀스 다이어그램
 

@@ -1,10 +1,18 @@
-# Common 백엔드 로직 (feature: common)
+# Common 백엔드 문서
 
 ## 개요
 - 여러 기능에서 공통으로 사용하는 유틸리티, 미들웨어, DB 헬퍼를 제공합니다.
 - Activity 로그 기록, knox_id 필수 검사, 안전한 SQL/테이블 처리 유틸이 포함됩니다.
 
-## 주요 구성요소
+## 책임 범위
+- 공통 미들웨어(ActivityLogging, KnoxIdRequired) 제공
+- DB 헬퍼 및 테이블/날짜 유틸 제공
+- Airflow 트리거 토큰 검증 유틸 제공
+
+## 엔드포인트
+- 없음 (공통 유틸/미들웨어만 제공)
+
+## 핵심 구성 요소
 - `ActivityLoggingMiddleware`
   - 변경 요청(POST/PUT/PATCH/DELETE)을 ActivityLog로 기록
 - `KnoxIdRequiredMiddleware`
@@ -16,13 +24,13 @@
 - 인증 보조
   - `extract_bearer_token`, `ensure_airflow_token`
 
-## 공통 상수
-- `DEFAULT_TABLE = drone_sop`
-- `LINE_SDWT_TABLE_NAME = account_affiliation`
-- `SAFE_IDENTIFIER` 정규식
-- `DATE_COLUMN_CANDIDATES`
+## 주요 규칙/정책
+- 기본 테이블: `DEFAULT_TABLE = drone_sop`
+- 라인/SDWT 테이블: `LINE_SDWT_TABLE_NAME = account_affiliation`
+- 식별자 안전성: `SAFE_IDENTIFIER` 정규식 통과 필수
+- 타임스탬프 후보: `DATE_COLUMN_CANDIDATES`
 
-## 상세 흐름
+## 주요 흐름
 
 ### 1) ActivityLoggingMiddleware
 1. 요청 시작 시 변경 요청의 payload 스냅샷 저장.
@@ -43,6 +51,9 @@
 1. `sanitize_identifier`로 안전한 테이블명 검증.
 2. `list_table_columns`로 컬럼 목록 조회.
 3. `pick_base_timestamp_column`로 타임스탬프 후보 결정.
+
+## 설정/환경변수
+- `AIRFLOW_TRIGGER_TOKEN`
 
 ## 시퀀스 다이어그램
 

@@ -8,20 +8,21 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
-EMAIL_OUTBOX_PROCESS_TRIGGER_URL = os.getenv("EMAIL_OUTBOX_PROCESS_TRIGGER_URL") or ""
-EMAIL_OUTBOX_PROCESS_TRIGGER_TOKEN = os.getenv("EMAIL_OUTBOX_PROCESS_TRIGGER_TOKEN") or ""
+AIRFLOW_API_BASE_URL = (os.getenv("AIRFLOW_API_BASE_URL") or "http://api:8000").strip().rstrip("/")
+AIRFLOW_TRIGGER_TOKEN = os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+EMAIL_OUTBOX_PROCESS_TRIGGER_URL = f"{AIRFLOW_API_BASE_URL}/api/v1/emails/outbox/process/"
 EMAIL_OUTBOX_PROCESS_HTTP_TIMEOUT = int(os.getenv("EMAIL_OUTBOX_PROCESS_HTTP_TIMEOUT") or "60")
 EMAIL_OUTBOX_PROCESS_SCHEDULE = os.getenv("EMAIL_OUTBOX_PROCESS_SCHEDULE") or "*/5 * * * *"
 EMAIL_OUTBOX_PROCESS_LIMIT = int(os.getenv("EMAIL_OUTBOX_PROCESS_LIMIT") or "1000")
 
 
 def run_email_outbox_process(**_context):
-    if not EMAIL_OUTBOX_PROCESS_TRIGGER_URL:
-        raise ValueError("EMAIL_OUTBOX_PROCESS_TRIGGER_URL is not set")
+    if not AIRFLOW_API_BASE_URL:
+        raise ValueError("AIRFLOW_API_BASE_URL is not set")
 
     headers = {"Accept": "application/json"}
-    if EMAIL_OUTBOX_PROCESS_TRIGGER_TOKEN:
-        headers["Authorization"] = f"Bearer {EMAIL_OUTBOX_PROCESS_TRIGGER_TOKEN}"
+    if AIRFLOW_TRIGGER_TOKEN:
+        headers["Authorization"] = f"Bearer {AIRFLOW_TRIGGER_TOKEN}"
 
     request_kwargs = {
         "url": EMAIL_OUTBOX_PROCESS_TRIGGER_URL,

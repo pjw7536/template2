@@ -21,6 +21,7 @@ export function useUpdateAffiliation() {
     mutationFn: accountApi.updateAffiliation,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: AFFILIATION_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY })
     },
   })
 }

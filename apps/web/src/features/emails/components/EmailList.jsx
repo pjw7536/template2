@@ -76,6 +76,7 @@ export function EmailList({
   onPageSizeChange,
   onReload,
   isReloading = false,
+  showAffiliationBadge = false,
   activeEmailId = null,
 }) {
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -210,6 +211,9 @@ export function EmailList({
                 typeof email.subject === "string" && email.subject.trim() ? email.subject : "메일"
               const isSelected = selectedIds.includes(email.id)
               const isActive = activeEmailId === email.id
+              const rawAffiliation =
+                typeof email.userSdwtProd === "string" ? email.userSdwtProd.trim() : ""
+              const affiliationLabel = rawAffiliation || "미분류"
               return (
                 <li
                   key={email.id}
@@ -240,6 +244,11 @@ export function EmailList({
                     <p className="truncate text-xs text-muted-foreground">From: {email.sender}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {showAffiliationBadge ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        {affiliationLabel}
+                      </Badge>
+                    ) : null}
                     {email.ragDocId ? (
                       <Badge variant="outline" className="text-[10px] uppercase">
                         RAG

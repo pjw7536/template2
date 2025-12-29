@@ -345,9 +345,11 @@ class AccountAffiliationApprovalView(APIView):
         예시 요청:
         - 예시 요청: POST /api/v1/account/affiliation/approve
           요청 바디 예시: {"changeId":123,"decision":"approve"}
+          요청 바디 예시: {"changeId":123,"decision":"reject","rejectionReason":"소속 정보 불일치"}
 
         snake/camel 호환:
-        - 해당 없음(레거시 id는 changeId로 보정)
+        - rejection_reason / rejectionReason (키 매핑)
+        - changeId (레거시 id 보정 지원)
         """
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
@@ -368,6 +370,8 @@ class AccountAffiliationApprovalView(APIView):
         # -----------------------------------------------------------------------------
         if "changeId" not in payload and "id" in payload:
             payload = {**payload, "changeId": payload.get("id")}
+        if "rejectionReason" not in payload and "rejection_reason" in payload:
+            payload = {**payload, "rejectionReason": payload.get("rejection_reason")}
 
         # -----------------------------------------------------------------------------
         # 4) 입력 검증
@@ -378,6 +382,7 @@ class AccountAffiliationApprovalView(APIView):
 
         change_id = serializer.validated_data["changeId"]
         decision = (serializer.validated_data.get("decision") or "approve").lower()
+        rejection_reason = (serializer.validated_data.get("rejectionReason") or "").strip() or None
 
         # -----------------------------------------------------------------------------
         # 5) 의사결정에 따른 서비스 호출
@@ -386,6 +391,7 @@ class AccountAffiliationApprovalView(APIView):
             response_payload, status_code = services.reject_affiliation_change(
                 approver=user,
                 change_id=change_id,
+                rejection_reason=rejection_reason,
             )
         else:
             response_payload, status_code = services.approve_affiliation_change(

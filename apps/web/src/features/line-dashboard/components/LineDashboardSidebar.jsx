@@ -1,8 +1,7 @@
-// src/features/line-dashboard/components/LineDashboardSidebar.jsx
 import { NavProjects } from "./nav-projects"
-import { TeamSwitcher } from "./team-switcher"
-import { NavMain } from "./nav-main"
-import { NavUser } from "@/components/common"
+import { TeamSwitcher, NavUser } from "@/components/common"
+import { NavMain } from "@/components/layout"
+import { buildLineSwitcherOptions, useLineSwitcher } from "@/lib/affiliation"
 import {
   Sidebar,
   SidebarContent,
@@ -14,17 +13,13 @@ import {
 export function LineDashboardSidebar({ lineOptions, navigation, ...props }) {
   const navMain = Array.isArray(navigation?.navMain) ? navigation.navMain : []
   const projects = Array.isArray(navigation?.projects) ? navigation.projects : []
-  const teamOptions = Array.isArray(lineOptions)
-    ? lineOptions
-      .map((lineId) => (typeof lineId === "string" ? lineId.trim() : ""))
-      .filter(Boolean)
-      .map((lineId) => ({ id: lineId, label: lineId, lineId }))
-    : []
+  const teamOptions = buildLineSwitcherOptions(lineOptions)
+  const { activeLineId, onSelect } = useLineSwitcher()
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher options={teamOptions} />
+        <TeamSwitcher options={teamOptions} activeId={activeLineId} onSelect={onSelect} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

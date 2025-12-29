@@ -8,19 +8,22 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
-DRONE_SOP_POP3_INGEST_TRIGGER_URL = os.getenv("DRONE_SOP_POP3_INGEST_TRIGGER_URL") or ""
-DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN = os.getenv("DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN") or ""
+AIRFLOW_API_BASE_URL = (os.getenv("AIRFLOW_API_BASE_URL") or "http://api:8000").strip().rstrip("/")
+AIRFLOW_TRIGGER_TOKEN = os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+DRONE_SOP_POP3_INGEST_TRIGGER_URL = (
+    f"{AIRFLOW_API_BASE_URL}/api/v1/line-dashboard/sop/ingest/pop3/trigger"
+)
 DRONE_SOP_POP3_INGEST_HTTP_TIMEOUT = int(os.getenv("DRONE_SOP_POP3_INGEST_HTTP_TIMEOUT") or "60")
 DRONE_SOP_POP3_INGEST_SCHEDULE = os.getenv("DRONE_SOP_POP3_INGEST_SCHEDULE") or None
 
 
 def run_drone_sop_pop3_ingest(**_context):
-    if not DRONE_SOP_POP3_INGEST_TRIGGER_URL:
-        raise ValueError("DRONE_SOP_POP3_INGEST_TRIGGER_URL is not set")
+    if not AIRFLOW_API_BASE_URL:
+        raise ValueError("AIRFLOW_API_BASE_URL is not set")
 
     headers = {"Accept": "application/json"}
-    if DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN:
-        headers["Authorization"] = f"Bearer {DRONE_SOP_POP3_INGEST_TRIGGER_TOKEN}"
+    if AIRFLOW_TRIGGER_TOKEN:
+        headers["Authorization"] = f"Bearer {AIRFLOW_TRIGGER_TOKEN}"
 
     response = requests.post(
         DRONE_SOP_POP3_INGEST_TRIGGER_URL,

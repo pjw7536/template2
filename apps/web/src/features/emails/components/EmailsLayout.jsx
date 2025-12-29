@@ -2,15 +2,18 @@ import { useEffect, useRef } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
-import { AppLayout, AppSidebar } from "@/components/layout"
 import { useAuth } from "@/lib/auth"
+import { AppShellLayout } from "@/components/layout"
+import { TeamSwitcher } from "@/components/common"
 import { buildNavigationConfig } from "@/lib/config/navigation-config"
 import {
   ActiveLineProvider,
-  NavMain,
-  TeamSwitcher,
+  DepartmentProvider,
+  SdwtProvider,
+  getStoredMailboxId,
+  useActiveLineOptional,
   useLineSdwtOptionsQuery,
-} from "@/features/line-dashboard"
+} from "@/lib/affiliation"
 
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
 import {
@@ -79,10 +82,46 @@ export function EmailsLayout({
   contentMaxWidthClass,
   scrollAreaClassName,
 }) {
+  const {
+    data: lineSdwtOptions,
+    isError: isLineSdwtError,
+    error: lineSdwtError,
+  } = useLineSdwtOptionsQuery()
+
+  const lineOptions = buildLineOptions(lineSdwtOptions)
+
+  useEffect(() => {
+    if (isLineSdwtError) {
+      console.warn("Failed to load line SDWT options", lineSdwtError)
+    }
+  }, [isLineSdwtError, lineSdwtError])
+
+  return (
+    <DepartmentProvider>
+      <ActiveLineProvider lineOptions={lineOptions}>
+        <EmailsShell
+          lineSdwtOptions={lineSdwtOptions}
+          contentMaxWidthClass={contentMaxWidthClass}
+          scrollAreaClassName={scrollAreaClassName}
+        >
+          {children}
+        </EmailsShell>
+      </ActiveLineProvider>
+    </DepartmentProvider>
+  )
+}
+
+function EmailsShell({
+  children,
+  lineSdwtOptions,
+  contentMaxWidthClass,
+  scrollAreaClassName,
+}) {
   const [searchParams] = useSearchParams()
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const lineContext = useActiveLineOptional()
   const invalidMailboxRef = useRef("")
 
   const {
@@ -91,11 +130,6 @@ export function EmailsLayout({
     isError: isMailboxError,
     error: mailboxError,
   } = useEmailMailboxes()
-  const {
-    data: lineSdwtOptions,
-    isError: isLineSdwtError,
-    error: lineSdwtError,
-  } = useLineSdwtOptionsQuery()
 
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
   const mailboxParam = getMailboxFromSearchParams(searchParams)
@@ -110,14 +144,22 @@ export function EmailsLayout({
   const isInboxRoute = pathname.startsWith(INBOX_PREFIX)
   const isMailboxRoute = isMembersRoute || isInboxRoute
 
+  const storedMailboxCandidate = normalizeMailbox(getStoredMailboxId() || "")
+  const storedMailbox =
+    storedMailboxCandidate && validMailboxes.includes(storedMailboxCandidate)
+      ? storedMailboxCandidate
+      : ""
+
   const fallbackMailbox = normalizedMailboxParam || currentUserSdwtProd || firstMailbox
   const activeMailbox = isSentRoute ? SENT_MAILBOX_ID : fallbackMailbox
-  const navigationMailbox = fallbackMailbox
+  const navigationMailbox = isSentRoute ? (storedMailbox || fallbackMailbox) : fallbackMailbox
+  const switcherMailbox = isSentRoute ? (storedMailbox || fallbackMailbox) : activeMailbox
 
-  const lineOptions = buildLineOptions(lineSdwtOptions)
-  const affiliationOptions = buildAffiliationOptions(lineSdwtOptions, validMailboxes, {
-    includeSent: true,
-  })
+  const affiliationOptions = buildAffiliationOptions(lineSdwtOptions, validMailboxes)
+  const currentLineId = lineContext?.lineId ?? null
+  const setLineId = lineContext?.setLineId
+  const switcherOption = affiliationOptions.find((item) => item.id === switcherMailbox)
+  const switcherLineId = switcherOption?.lineId ?? null
 
   useEffect(() => {
     if (isMailboxError && mailboxError) {
@@ -126,10 +168,10 @@ export function EmailsLayout({
   }, [isMailboxError, mailboxError])
 
   useEffect(() => {
-    if (isLineSdwtError) {
-      console.warn("Failed to load line SDWT options", lineSdwtError)
-    }
-  }, [isLineSdwtError, lineSdwtError])
+    if (!switcherLineId || !setLineId) return
+    if (switcherLineId === currentLineId) return
+    setLineId(switcherLineId)
+  }, [currentLineId, setLineId, switcherLineId])
 
   useEffect(() => {
     if (!isMailboxRoute) return
@@ -191,34 +233,28 @@ export function EmailsLayout({
   }
 
   const navigation = buildNavigationConfig({ mailbox: navigationMailbox })
-  const nav = <NavMain items={navigation.navMain} />
-  const sidebar = (
-    <AppSidebar
-      header={
-        <TeamSwitcher
-          options={affiliationOptions}
-          activeId={activeMailbox}
-          onSelect={handleSelectMailbox}
-          menuLabel="Line / SDWT"
-          manageLabel="Manage mailboxes"
-          ariaLabel="메일함(SDWT) 선택"
-          mode="affiliation"
-        />
-      }
-      nav={nav}
-    />
-  )
 
   return (
-    <ActiveLineProvider lineOptions={lineOptions}>
-      <AppLayout
-        sidebar={sidebar}
+    <SdwtProvider userSdwtProd={activeMailbox} onChange={handleSelectMailbox}>
+      <AppShellLayout
+        navItems={navigation.navMain}
         header={<EmailsHeader activeMailbox={activeMailbox} />}
+        sidebarHeader={(
+          <TeamSwitcher
+            options={affiliationOptions}
+            activeId={switcherMailbox}
+            onSelect={handleSelectMailbox}
+            menuLabel="Line / SDWT"
+            manageLabel="Manage mailboxes"
+            ariaLabel="메일함(SDWT) 선택"
+            disabled={isSentRoute}
+          />
+        )}
         contentMaxWidthClass={contentMaxWidthClass}
         scrollAreaClassName={scrollAreaClassName}
       >
         {children}
-      </AppLayout>
-    </ActiveLineProvider>
+      </AppShellLayout>
+    </SdwtProvider>
   )
 }

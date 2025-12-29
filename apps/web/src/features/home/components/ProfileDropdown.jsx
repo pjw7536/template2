@@ -45,11 +45,15 @@ const ProfileDropdown = ({
   }
 
   const handleMyAccount = () => {
-    navigate('/account')
+    navigate('/settings/account')
   }
 
   const handleManageTeam = () => {
-    navigate('/members')
+    navigate('/settings/members')
+  }
+
+  const handleSettings = () => {
+    navigate('/settings/account')
   }
 
   const handleAdmin = () => {
@@ -89,7 +93,12 @@ const ProfileDropdown = ({
             <UserIcon className='text-foreground size-5' />
             <span>My account</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className='px-4 py-2.5 text-base'>
+          <DropdownMenuItem
+            className='px-4 py-2.5 text-base'
+            onSelect={(event) => {
+              event.preventDefault()
+              handleSettings()
+            }}>
             <SettingsIcon className='text-foreground size-5' />
             <span>Settings</span>
           </DropdownMenuItem>

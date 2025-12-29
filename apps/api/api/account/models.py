@@ -253,6 +253,7 @@ class UserSdwtProdChange(models.Model):
         related_name="sdwt_prod_changes_approved",
     )
     approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

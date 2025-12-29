@@ -1,8 +1,11 @@
-# Timeline 백엔드 로직 (feature: timeline)
+# Timeline 백엔드 문서
 
 ## 개요
 - 프론트 타임라인 기능을 위한 더미 데이터 API입니다.
 - DB 없이 in-memory 샘플 데이터를 반환합니다.
+
+## 책임 범위
+- 라인/SDWT/공정/설비/로그 더미 데이터 제공
 
 ## 엔드포인트
 - `GET /api/v1/timeline/lines`
@@ -18,7 +21,14 @@
 - `GET /api/v1/timeline/logs/racb?eqpId=...`
 - `GET /api/v1/timeline/logs/jira?eqpId=...`
 
-## 상세 흐름
+## 핵심 구성 요소
+- in-memory map 기반 더미 데이터
+
+## 주요 규칙/정책
+- lineId/sdwtId/prcGroup는 대문자로 정규화합니다.
+- 필수 파라미터 누락 시 400을 반환합니다.
+
+## 주요 흐름
 
 ### 1) 라인/SDWT/공정/설비 목록
 1. `lineId/sdwtId/prcGroup` 파라미터를 정규화(대문자).
@@ -33,6 +43,9 @@
 1. `eqpId` 필수.
 2. 타입별 또는 전체 로그를 in-memory map에서 반환.
 3. 전체 로그는 eventTime 기준 정렬.
+
+## 설정/환경변수
+- 없음
 
 ## 시퀀스 다이어그램
 

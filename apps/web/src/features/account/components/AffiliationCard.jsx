@@ -25,6 +25,7 @@ export function AffiliationCard({
   onSubmit,
   isSubmitting,
   error,
+  successMessage,
 }) {
   const [selectedKey, setSelectedKey] = useState("")
   const [effectiveFrom, setEffectiveFrom] = useState(() => formatDateTimeLocal(new Date()))
@@ -67,7 +68,7 @@ export function AffiliationCard({
   return (
     <Card className="h-full">
       <CardHeader className="pb-2">
-        <CardTitle>My affiliation</CardTitle>
+        <CardTitle>소속 변경 요청</CardTitle>
         <CardDescription>
           소속 변경은 승인 이후에만 적용됩니다. 메일 재분류는 선택한 기준 시각 이후 수신분부터 반영됩니다.
         </CardDescription>
@@ -75,15 +76,8 @@ export function AffiliationCard({
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-3 rounded-lg border p-3">
           <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">현재 user_sdwt_prod</span>
-            <span className="text-lg font-semibold text-foreground">
-              {data?.currentUserSdwtProd || "미지정"}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">현재 Department / Line</span>
-            <span className="text-sm text-foreground">
-              {(data?.currentDepartment || "미지정") + " / " + (data?.currentLine || "미지정")}
+            <span className="text-sm text-muted-foreground">현재 소속 :
+              <span className="text-lg font-semibold text-foreground"> {(data?.currentDepartment || "미지정") + " / " + (data?.currentLine || "미지정") + " / " + (data?.currentUserSdwtProd || "미지정")}</span>
             </span>
           </div>
         </div>
@@ -123,7 +117,7 @@ export function AffiliationCard({
               onChange={(e) => setEffectiveFrom(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              승인 전에는 메일함이 변경되지 않으며, 승인 후 기준 시각 이후 메일부터 새 소속으로 이동합니다.
+              관리자 승인 후, 소속 변경됩니다.
             </p>
           </div>
 
@@ -134,6 +128,7 @@ export function AffiliationCard({
           {error ? (
             <p className="text-destructive text-sm">{error}</p>
           ) : null}
+          {successMessage ? <p className="text-sm text-primary">{successMessage}</p> : null}
 
           <div className="flex justify-end">
             <Button type="submit" disabled={isSubmitting || !options.length || !selectedKey}>

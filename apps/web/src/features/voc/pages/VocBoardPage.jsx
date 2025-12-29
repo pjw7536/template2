@@ -1,4 +1,4 @@
-// src/features/voc/pages/VocBoardPage.jsx
+// 파일 경로: src/features/voc/pages/VocBoardPage.jsx
 // VOC 게시판: 새 글 작성, 답변, 상태 관리, 권한 기반 삭제를 제공하는 클라이언트 사이드 UI
 import * as React from "react"
 import {
@@ -269,7 +269,7 @@ export function VocBoardPage() {
   }, [selectedPost])
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden px-1 sm:px-2">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <Card className="flex-shrink-0">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-2">

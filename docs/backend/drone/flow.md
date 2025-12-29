@@ -1,9 +1,25 @@
-# Drone 백엔드 로직 (feature: drone)
+# Drone 백엔드 문서
 
 ## 개요
 - Line Dashboard용 데이터 집계, Drone SOP 수집/관리, Jira 연동을 담당합니다.
 - POP3(또는 더미 메일 API)에서 SOP 메일을 읽어 `drone_sop`에 업서트합니다.
 - Jira 이슈를 자동 생성하거나 단건 즉시 인폼을 제공합니다.
+
+## 책임 범위
+- Early Inform CRUD 및 라인 히스토리 집계
+- SOP POP3 수집 및 정규화 업서트
+- Jira 이슈 생성(배치/단건) 및 상태 갱신
+
+## 엔드포인트
+- `GET /api/v1/line-dashboard/early-inform`
+- `POST /api/v1/line-dashboard/early-inform`
+- `PATCH /api/v1/line-dashboard/early-inform`
+- `DELETE /api/v1/line-dashboard/early-inform`
+- `GET /api/v1/line-dashboard/history`
+- `GET /api/v1/line-dashboard/line-ids`
+- `POST /api/v1/line-dashboard/sop/<sop_id>/instant-inform`
+- `POST /api/v1/line-dashboard/sop/ingest/pop3/trigger`
+- `POST /api/v1/line-dashboard/sop/jira/trigger`
 
 ## 핵심 모델
 - `DroneSOP` (`drone_sop`)
@@ -17,36 +33,12 @@
 - `DroneEarlyInform` (`drone_early_inform`)
   - 조기 알림 기준(라인/스텝) 및 custom_end_step
 
-## 주요 설정/환경변수
-- POP3 수집
-  - `DRONE_SOP_POP3_HOST`, `DRONE_SOP_POP3_PORT`
-  - `DRONE_SOP_POP3_USERNAME`, `DRONE_SOP_POP3_PASSWORD`
-  - `DRONE_SOP_POP3_USE_SSL`, `DRONE_SOP_POP3_TIMEOUT`
-  - `DRONE_INCLUDE_SUBJECT_PREFIXES` / `DRONE_SOP_POP3_SUBJECT_CONTAINS`
-  - `DRONE_SOP_DUMMY_MODE`
-  - `DRONE_SOP_DUMMY_MAIL_MESSAGES_URL`
-  - `DRONE_SOP_NEEDTOSEND_RULES`
-- Jira 연동
-  - `DRONE_JIRA_BASE_URL`, `DRONE_JIRA_TOKEN`, `DRONE_JIRA_USER`
-  - `DRONE_JIRA_ISSUE_TYPE`
-  - `DRONE_JIRA_USE_BULK_API`, `DRONE_JIRA_BULK_SIZE`
-  - `DRONE_JIRA_CONNECT_TIMEOUT`, `DRONE_JIRA_READ_TIMEOUT`
-  - `DRONE_JIRA_VERIFY_SSL`
-- CTTTM 연동
-  - `DRONE_CTTTM_TABLE_NAME`, `DRONE_CTTTM_BASE_URL`
+## 주요 규칙/정책
+- Airflow 트리거 엔드포인트는 `ensure_airflow_token(require_bearer=True)`가 필요합니다.
+- POP3 수집은 advisory lock으로 중복 실행을 방지합니다.
+- Jira 템플릿은 user_sdwt_prod 우선, 없으면 line 기준을 사용합니다.
 
-## 엔드포인트
-- `GET /api/v1/line-dashboard/early-inform`
-- `POST /api/v1/line-dashboard/early-inform`
-- `PATCH /api/v1/line-dashboard/early-inform`
-- `DELETE /api/v1/line-dashboard/early-inform`
-- `GET /api/v1/line-dashboard/history`
-- `GET /api/v1/line-dashboard/line-ids`
-- `POST /api/v1/line-dashboard/sop/<id>/instant-inform`
-- `POST /api/v1/line-dashboard/sop/ingest/pop3/trigger`
-- `POST /api/v1/line-dashboard/sop/jira/trigger`
-
-## 상세 흐름
+## 주요 흐름
 
 ### 1) Early Inform CRUD
 `/line-dashboard/early-inform`
@@ -95,11 +87,29 @@
 8. 성공 row는 `send_jira=1`, `jira_key`, `inform_step`, `informed_at` 업데이트.
 
 ### 6) SOP 즉시 인폼(단건)
-`POST /line-dashboard/sop/<id>/instant-inform`
+`POST /line-dashboard/sop/<sop_id>/instant-inform`
 1. 인증 확인.
 2. `sop_id` 로우 조회 후 즉시 Jira 생성 실행.
 3. 이미 `send_jira>0`이면 `already_informed` 응답.
 4. 성공 시 `send_jira=1`, `instant_inform=1` 업데이트.
+
+## 설정/환경변수
+- POP3 수집
+  - `DRONE_SOP_POP3_HOST`, `DRONE_SOP_POP3_PORT`
+  - `DRONE_SOP_POP3_USERNAME`, `DRONE_SOP_POP3_PASSWORD`
+  - `DRONE_SOP_POP3_USE_SSL`, `DRONE_SOP_POP3_TIMEOUT`
+  - `DRONE_INCLUDE_SUBJECT_PREFIXES` / `DRONE_SOP_POP3_SUBJECT_CONTAINS`
+  - `DRONE_SOP_DUMMY_MODE`
+  - `DRONE_SOP_DUMMY_MAIL_MESSAGES_URL`
+  - `DRONE_SOP_NEEDTOSEND_RULES`
+- Jira 연동
+  - `DRONE_JIRA_BASE_URL`, `DRONE_JIRA_TOKEN`, `DRONE_JIRA_USER`
+  - `DRONE_JIRA_ISSUE_TYPE`
+  - `DRONE_JIRA_USE_BULK_API`, `DRONE_JIRA_BULK_SIZE`
+  - `DRONE_JIRA_CONNECT_TIMEOUT`, `DRONE_JIRA_READ_TIMEOUT`
+  - `DRONE_JIRA_VERIFY_SSL`
+- CTTTM 연동
+  - `DRONE_CTTTM_TABLE_NAME`, `DRONE_CTTTM_BASE_URL`
 
 ## 시퀀스 다이어그램
 

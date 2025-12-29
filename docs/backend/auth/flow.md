@@ -1,24 +1,14 @@
-# Auth 백엔드 로직 (feature: auth)
+# Auth 백엔드 문서
 
 ## 개요
 - ADFS/OIDC 기반 세션 로그인 흐름을 제공합니다.
 - 로그인/콜백/로그아웃/현재 사용자 정보 조회 API를 제공합니다.
 - state/nonce 검증과 리다이렉트 화이트리스트로 보안을 강화합니다.
 
-## 주요 설정/환경변수
-- OIDC/ADFS
-  - `ADFS_AUTH_URL`
-  - `ADFS_LOGOUT_URL`
-  - `OIDC_CLIENT_ID`
-  - `OIDC_ISSUER`
-  - `OIDC_REDIRECT_URI`
-  - `ADFS_CER_PATH`
-  - `ALLOWED_REDIRECT_HOSTS`
-  - `OIDC_PROVIDER_CONFIGURED`
-- 세션
-  - `SESSION_COOKIE_AGE`
-- 프론트 리다이렉트
-  - `FRONTEND_BASE_URL`
+## 책임 범위
+- OIDC 로그인 시작/콜백 처리
+- 세션 로그인/로그아웃 및 현재 사용자 조회
+- 프론트 리다이렉트 엔드포인트 제공
 
 ## 엔드포인트
 - `GET /api/v1/auth/config`
@@ -29,7 +19,17 @@
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/` (FrontendRedirectView)
 
-## 상세 흐름
+## 핵심 구성 요소
+- OIDC 설정 로더 및 서명 검증 옵션
+- state/nonce 인코딩/검증 로직
+- 리다이렉트 화이트리스트 검사 (`ALLOWED_REDIRECT_HOSTS`)
+
+## 주요 규칙/정책
+- `OIDC_PROVIDER_CONFIGURED`가 false면 로그인 요청을 차단합니다.
+- 콜백 state는 허용된 리다이렉트 호스트인지 검증합니다.
+- 세션 nonce와 `id_token.nonce`가 일치해야 합니다.
+
+## 주요 흐름
 
 ### 1) 설정 조회
 `GET /api/v1/auth/config`
@@ -64,6 +64,21 @@
 2. 세션 쿠키 제거.
 3. POST는 로그아웃 URL JSON 반환.
 4. GET은 IdP 로그아웃 URL로 즉시 리다이렉트.
+
+## 설정/환경변수
+- OIDC/ADFS
+  - `ADFS_AUTH_URL`
+  - `ADFS_LOGOUT_URL`
+  - `OIDC_CLIENT_ID`
+  - `OIDC_ISSUER`
+  - `OIDC_REDIRECT_URI`
+  - `ADFS_CER_PATH`
+  - `ALLOWED_REDIRECT_HOSTS`
+  - `OIDC_PROVIDER_CONFIGURED`
+- 세션
+  - `SESSION_COOKIE_AGE`
+- 프론트 리다이렉트
+  - `FRONTEND_BASE_URL`
 
 ## 시퀀스 다이어그램
 

@@ -77,6 +77,7 @@ def _serialize_affiliation_change(change: UserSdwtProdChange) -> dict[str, objec
         "requestedAt": change.created_at.isoformat(),
         "approvedBy": _serialize_actor(change.approved_by),
         "requestedBy": _serialize_actor(change.created_by),
+        "rejectionReason": change.rejection_reason,
     }
 
 
@@ -357,6 +358,7 @@ def approve_affiliation_change(
         change.approved_at = now
         change.applied = True
         change.status = UserSdwtProdChange.Status.APPROVED
+        change.rejection_reason = None
         change.save(
             update_fields=[
                 "approved",
@@ -364,6 +366,7 @@ def approve_affiliation_change(
                 "approved_at",
                 "applied",
                 "status",
+                "rejection_reason",
             ]
         )
 
@@ -390,18 +393,21 @@ def reject_affiliation_change(
     *,
     approver: Any,
     change_id: int,
+    rejection_reason: str | None,
 ) -> Tuple[dict[str, object], int]:
     """대기 중인 UserSdwtProdChange를 거절 처리합니다.
 
     입력:
     - approver: 승인자 사용자
     - change_id: 변경 요청 id
+    - rejection_reason: 거절 사유(없으면 None)
 
     반환:
     - Tuple[dict[str, object], int]: (payload, status_code) (응답 본문, 상태 코드)
 
     부작용:
     - UserSdwtProdChange 상태를 REJECTED로 업데이트
+    - 거절 사유 저장
 
     오류:
     - 403: 권한 없음
@@ -433,11 +439,23 @@ def reject_affiliation_change(
     # -----------------------------------------------------------------------------
     # 4) 거절 처리 및 저장
     # -----------------------------------------------------------------------------
+    normalized_reason = rejection_reason.strip() if isinstance(rejection_reason, str) else ""
+    rejection_reason_value = normalized_reason or None
     change.status = UserSdwtProdChange.Status.REJECTED
     change.approved = False
     change.approved_by = approver
     change.approved_at = timezone.now()
     change.applied = False
-    change.save(update_fields=["status", "approved", "approved_by", "approved_at", "applied"])
+    change.rejection_reason = rejection_reason_value
+    change.save(
+        update_fields=[
+            "status",
+            "approved",
+            "approved_by",
+            "approved_at",
+            "applied",
+            "rejection_reason",
+        ]
+    )
 
     return {"status": "rejected", "changeId": change.id}, 200

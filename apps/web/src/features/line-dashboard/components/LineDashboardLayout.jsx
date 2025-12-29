@@ -1,13 +1,17 @@
-import { useEffect, useMemo } from "react"
+import { useEffect } from "react"
 
-import { AppLayout, AppSidebar } from "@/components/layout"
+import { AppShellLayout } from "@/components/layout"
+import { TeamSwitcher } from "@/components/common"
 import { buildNavigationConfig } from "@/lib/config/navigation-config"
+import {
+  ActiveLineProvider,
+  DepartmentProvider,
+  buildLineSwitcherOptions,
+  useLineSwitcher,
+} from "@/lib/affiliation"
 
 import { LineDashboardHeader } from "./LineDashboardHeader"
-import { NavMain } from "./nav-main"
 import { NavProjects } from "./nav-projects"
-import { TeamSwitcher } from "./team-switcher"
-import { ActiveLineProvider } from "./active-line-context"
 import { useLineOptionsQuery } from "../hooks/useLineOptionsQuery"
 
 export function LineDashboardLayout({
@@ -27,35 +31,53 @@ export function LineDashboardLayout({
     }
   }, [isError, error])
 
-  const lineSwitcherOptions = useMemo(() => {
-    if (!Array.isArray(lineOptions)) return []
-    return lineOptions
-      .map((lineId) => (typeof lineId === "string" ? lineId.trim() : ""))
-      .filter(Boolean)
-      .map((lineId) => ({ id: lineId, label: lineId, lineId }))
-  }, [lineOptions])
-
   const navigation = buildNavigationConfig()
-  const nav = <NavMain items={navigation.navMain} />
-  const sidebar = (
-    <AppSidebar
-      header={<TeamSwitcher options={lineSwitcherOptions} />}
-      nav={nav}
-      secondary={<NavProjects projects={navigation.projects} />}
-    />
-  )
-  const header = <LineDashboardHeader showSidebarTrigger={Boolean(sidebar)} />
+  const header = <LineDashboardHeader showSidebarTrigger />
 
   return (
-    <ActiveLineProvider lineOptions={lineOptions}>
-      <AppLayout
-        sidebar={sidebar}
-        header={header}
-        contentMaxWidthClass={contentMaxWidthClass}
-        scrollAreaClassName={scrollAreaClassName}
-      >
-        {children}
-      </AppLayout>
-    </ActiveLineProvider>
+    <DepartmentProvider>
+      <ActiveLineProvider lineOptions={lineOptions}>
+        <LineDashboardShell
+          navigation={navigation}
+          header={header}
+          lineOptions={lineOptions}
+          contentMaxWidthClass={contentMaxWidthClass}
+          scrollAreaClassName={scrollAreaClassName}
+        >
+          {children}
+        </LineDashboardShell>
+      </ActiveLineProvider>
+    </DepartmentProvider>
+  )
+}
+
+function LineDashboardShell({
+  children,
+  navigation,
+  header,
+  lineOptions,
+  contentMaxWidthClass,
+  scrollAreaClassName,
+}) {
+  const { activeLineId, onSelect } = useLineSwitcher()
+  const lineSwitcherOptions = buildLineSwitcherOptions(lineOptions)
+
+  return (
+    <AppShellLayout
+      navItems={navigation.navMain}
+      header={header}
+      sidebarHeader={(
+        <TeamSwitcher
+          options={lineSwitcherOptions}
+          activeId={activeLineId}
+          onSelect={onSelect}
+        />
+      )}
+      sidebarSecondary={<NavProjects projects={navigation.projects} />}
+      contentMaxWidthClass={contentMaxWidthClass}
+      scrollAreaClassName={scrollAreaClassName}
+    >
+      {children}
+    </AppShellLayout>
   )
 }

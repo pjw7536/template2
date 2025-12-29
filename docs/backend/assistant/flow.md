@@ -1,38 +1,32 @@
-# Assistant 백엔드 로직 (feature: assistant)
+# Assistant 백엔드 문서
 
 ## 개요
 - RAG 검색 결과를 바탕으로 LLM 응답을 생성하는 채팅 API를 제공합니다.
 - permission_groups를 검증해 접근 가능한 RAG 문서만 조회하도록 제한합니다.
 - 사용자별 대화 이력을 캐시에 저장해 최근 히스토리를 유지합니다.
 
-## 핵심 구성요소
+## 책임 범위
+- RAG 검색 + LLM 호출을 조합한 답변 생성
+- permission_groups 및 인덱스 선택 검증
+- 사용자/room 단위 대화 히스토리 캐시 관리
+
+## 엔드포인트
+- `GET /api/v1/assistant/rag-indexes`
+- `POST /api/v1/assistant/chat`
+
+## 핵심 구성 요소
 - `AssistantChatService`: RAG 검색 → LLM 호출 → 구조화 응답 파싱
 - `ConversationMemory`: 사용자/room 단위 캐시 저장
 - `resolve_permission_groups`: 접근 가능한 그룹만 허용
 - `resolve_rag_index_names`: RAG 인덱스 선택 검증
 - `build_rag_index_list_payload`: 사용자 기준 선택 가능 인덱스/권한 그룹 제공
 
-## 주요 설정/환경변수
-- LLM
-  - `ASSISTANT_LLM_URL` (또는 `LLM_API_URL`)
-  - `ASSISTANT_LLM_CREDENTIAL` (또는 `LLM_API_KEY`)
-  - `ASSISTANT_LLM_MODEL`
-  - `ASSISTANT_LLM_TEMPERATURE`
-  - `ASSISTANT_LLM_COMMON_HEADERS`
-  - `ASSISTANT_REQUEST_TIMEOUT`
-- 더미 모드
-  - `ASSISTANT_DUMMY_MODE`
-  - `ASSISTANT_DUMMY_REPLY`
-  - `ASSISTANT_DUMMY_CONTEXTS`
-  - `ASSISTANT_DUMMY_DELAY_MS`
-  - `ASSISTANT_DUMMY_USE_RAG`
-- RAG 연계는 `api.rag` 설정을 사용합니다.
+## 주요 규칙/정책
+- 요청 permission_groups는 접근 가능한 그룹 집합에 포함되어야 합니다.
+- history는 요청값과 캐시값을 합쳐 최근 히스토리만 유지합니다.
+- knox_id가 없는 인증 사용자는 접근이 제한됩니다.
 
-## 엔드포인트
-- `GET /api/v1/assistant/rag-indexes`
-- `POST /api/v1/assistant/chat`
-
-## 상세 흐름
+## 주요 흐름
 
 ### 1) RAG 인덱스/권한 그룹 목록
 `GET /api/v1/assistant/rag-indexes`
@@ -55,6 +49,28 @@
    - LLM 호출 → 구조화 응답 파싱
    - segment별 출처 필터링
 8. 응답 payload(`reply/contexts/sources/segments/meta`) 반환.
+
+## 설정/환경변수
+- LLM
+  - `ASSISTANT_LLM_URL` (또는 `LLM_API_URL`)
+  - `ASSISTANT_LLM_CREDENTIAL` (또는 `LLM_API_KEY`)
+  - `ASSISTANT_LLM_MODEL`
+  - `ASSISTANT_LLM_TEMPERATURE`
+  - `ASSISTANT_LLM_COMMON_HEADERS`
+  - `ASSISTANT_REQUEST_TIMEOUT`
+- 더미 모드
+  - `ASSISTANT_DUMMY_MODE`
+  - `ASSISTANT_DUMMY_REPLY`
+  - `ASSISTANT_DUMMY_CONTEXTS`
+  - `ASSISTANT_DUMMY_DELAY_MS`
+  - `ASSISTANT_DUMMY_USE_RAG`
+- RAG 연계는 `api.rag` 설정을 사용합니다.
+
+## 에러/예외 처리
+- 잘못된 입력: 400 (prompt/permission_groups/rag_index_name 형식 오류)
+- 접근 불가: 403 (permission_groups 미허용 또는 knox_id 없음)
+- 설정 누락: 503 (LLM/RAG 설정 미비)
+- 외부 호출 실패: 502 (RAG/LLM 요청 실패)
 
 ## 시퀀스 다이어그램
 
@@ -91,12 +107,6 @@ sequenceDiagram
     API->>RAG: get_rag_index_candidates
     API-->>User: ragIndexes + permissionGroups
 ```
-
-## 에러/예외 처리
-- 잘못된 입력: 400 (prompt/permission_groups/rag_index_name 형식 오류)
-- 접근 불가: 403 (permission_groups 미허용 또는 knox_id 없음)
-- 설정 누락: 503 (LLM/RAG 설정 미비)
-- 외부 호출 실패: 502 (RAG/LLM 요청 실패)
 
 ## 관련 코드 경로
 - `apps/api/api/assistant/views.py`

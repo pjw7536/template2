@@ -8,6 +8,8 @@ export { NavUser } from "./nav-user"
 export { Logo } from "./logo"
 export { LogoVector } from "./logo-vector"
 export { Error04Illustration } from "./error-04-illustration"
+export { TeamSwitcher } from "./team-switcher"
+export { LineSwitcherHeader } from "./line-switcher-header"
 export {
   Table,
   TableHeader,

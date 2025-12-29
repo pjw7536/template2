@@ -8,19 +8,20 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
-EMAIL_INGEST_TRIGGER_URL = os.getenv("EMAIL_INGEST_TRIGGER_URL") or ""
-EMAIL_INGEST_TRIGGER_TOKEN = os.getenv("EMAIL_INGEST_TRIGGER_TOKEN") or ""
+AIRFLOW_API_BASE_URL = (os.getenv("AIRFLOW_API_BASE_URL") or "http://api:8000").strip().rstrip("/")
+AIRFLOW_TRIGGER_TOKEN = os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+EMAIL_INGEST_TRIGGER_URL = f"{AIRFLOW_API_BASE_URL}/api/v1/emails/ingest/"
 EMAIL_INGEST_HTTP_TIMEOUT = int(os.getenv("EMAIL_INGEST_HTTP_TIMEOUT") or "60")
 EMAIL_INGEST_SCHEDULE = os.getenv("EMAIL_INGEST_SCHEDULE") or None
 
 
 def run_email_ingest(**_context):
-    if not EMAIL_INGEST_TRIGGER_URL:
-        raise ValueError("EMAIL_INGEST_TRIGGER_URL is not set")
+    if not AIRFLOW_API_BASE_URL:
+        raise ValueError("AIRFLOW_API_BASE_URL is not set")
 
     headers = {"Accept": "application/json"}
-    if EMAIL_INGEST_TRIGGER_TOKEN:
-        headers["Authorization"] = f"Bearer {EMAIL_INGEST_TRIGGER_TOKEN}"
+    if AIRFLOW_TRIGGER_TOKEN:
+        headers["Authorization"] = f"Bearer {AIRFLOW_TRIGGER_TOKEN}"
 
     response = requests.post(
         EMAIL_INGEST_TRIGGER_URL,

@@ -1,9 +1,30 @@
-# Account 백엔드 로직 (feature: account)
+# Account 백엔드 문서
 
 ## 개요
-- 사용자 프로필, 소속(user_sdwt_prod) 변경 요청/승인, 접근 권한 부여/회수를 담당합니다.
-- 외부 예측 소속 스냅샷을 동기화하고 사용자 재확인 플로우를 제공합니다.
-- 다른 기능(Emails/Assistant/Drone 등)의 권한 계산에 필요한 접근 가능한 user_sdwt_prod 집합을 제공합니다.
+- 사용자 프로필과 소속(user_sdwt_prod) 변경 요청/승인을 담당합니다.
+- 접근 권한 부여/회수와 외부 예측 소속 동기화를 처리합니다.
+- 다른 기능(Emails/Assistant/Drone)의 권한 계산에 필요한 접근 가능한 user_sdwt_prod 집합을 제공합니다.
+
+## 책임 범위
+- 소속 변경 요청/승인/재확인 흐름
+- user_sdwt_prod 접근 권한 및 관리 권한 부여/회수
+- 외부 소속 스냅샷 동기화 및 재확인 플래그 관리
+- 라인/SDWT 선택 옵션 데이터 제공
+
+## 엔드포인트
+- `GET /api/v1/account/overview`
+- `GET /api/v1/account/affiliation`
+- `POST /api/v1/account/affiliation`
+- `POST /api/v1/account/affiliation/approve`
+- `GET /api/v1/account/affiliation/requests`
+- `GET /api/v1/account/affiliation/reconfirm`
+- `POST /api/v1/account/affiliation/reconfirm`
+- `GET /api/v1/account/affiliation/jira-key`
+- `POST /api/v1/account/affiliation/jira-key` (superuser 전용)
+- `POST /api/v1/account/external-affiliations/sync` (Airflow 토큰 전용)
+- `POST /api/v1/account/access/grants`
+- `GET /api/v1/account/access/manageable`
+- `GET /api/v1/account/line-sdwt-options`
 
 ## 핵심 모델/상태
 - `User` (`account_user`)
@@ -20,27 +41,12 @@
 - `ExternalAffiliationSnapshot` (`account_external_affiliation_snapshot`)
   - 외부 예측 소속 스냅샷
 
-## 권한/접근 규칙
+## 주요 규칙/정책
 - `is_superuser` 또는 `is_staff`는 대부분의 접근 제약을 우회합니다.
 - 일반 사용자는 `UserSdwtProdAccess` + 본인 `user_sdwt_prod` 범위에서만 관리/조회가 가능합니다.
 - `ensure_self_access`로 본인 소속 접근 행을 항상 보장합니다.
 
-## 엔드포인트
-- `GET /api/v1/account/overview`
-- `GET /api/v1/account/affiliation`
-- `POST /api/v1/account/affiliation`
-- `POST /api/v1/account/affiliation/approve`
-- `GET /api/v1/account/affiliation/requests`
-- `GET /api/v1/account/affiliation/reconfirm`
-- `POST /api/v1/account/affiliation/reconfirm`
-- `GET /api/v1/account/affiliation/jira-key`
-- `POST /api/v1/account/affiliation/jira-key` (superuser 전용)
-- `POST /api/v1/account/external-affiliations/sync` (superuser 전용)
-- `POST /api/v1/account/access/grants`
-- `GET /api/v1/account/access/manageable`
-- `GET /api/v1/account/line-sdwt-options`
-
-## 상세 흐름
+## 주요 흐름
 
 ### 1) 계정 요약 조회
 `GET /api/v1/account/overview`
@@ -93,7 +99,7 @@
 
 ### 6) 외부 예측 소속 동기화
 `POST /api/v1/account/external-affiliations/sync`
-1. superuser 인증 확인.
+1. Airflow 토큰 인증 확인.
 2. `ExternalAffiliationSnapshot` 업서트.
 3. 예측 소속 변화 발생 시 사용자 `requires_affiliation_reconfirm=True` 설정.
 
@@ -122,10 +128,13 @@
 2. lineId/jiraKey 유효성 검사.
 3. lineId에 해당하는 모든 `Affiliation.jira_key` 갱신.
 
-### 10) Line-SDWT 선택 옵션
+### 10) Line/SDWT 선택 옵션
 `GET /api/v1/account/line-sdwt-options`
 1. 인증 확인.
 2. `(line_id, user_sdwt_prod)` 목록 조회 후 그룹화 응답.
+
+## 설정/환경변수
+- 없음
 
 ## 시퀀스 다이어그램
 
@@ -167,16 +176,16 @@ sequenceDiagram
 ### 외부 소속 스냅샷 동기화 → 재확인
 ```mermaid
 sequenceDiagram
-    actor Admin
+    actor Airflow
     participant API as Account API
     participant SVC as external_sync
     participant DB as DB
 
-    Admin->>API: POST /account/external-affiliations/sync
+    Airflow->>API: POST /account/external-affiliations/sync
     API->>SVC: sync_external_affiliations
     SVC->>DB: ExternalAffiliationSnapshot upsert
     SVC->>DB: User.requires_affiliation_reconfirm 업데이트
-    API-->>Admin: 처리 건수 반환
+    API-->>Airflow: 처리 건수 반환
 ```
 
 ## 관련 코드 경로

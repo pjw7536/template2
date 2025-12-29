@@ -146,6 +146,44 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(approve_response.status_code, 200)
 
+    def test_account_affiliation_rejection_reason_is_exposed(self) -> None:
+        """거절 사유가 히스토리에 노출되는지 확인합니다."""
+        # -----------------------------------------------------------------------------
+        # 1) 소속 변경 요청 생성
+        # -----------------------------------------------------------------------------
+        self.client.force_login(self.user)
+
+        create_response = self.client.post(
+            reverse("account-affiliation"),
+            data='{"department":"Dept","line":"L1","user_sdwt_prod":"group-b"}',
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 202)
+        change_id = create_response.json()["changeId"]
+
+        # -----------------------------------------------------------------------------
+        # 2) 관리자 거절 처리(거절 사유 포함)
+        # -----------------------------------------------------------------------------
+        self.client.force_login(self.manager)
+        reject_response = self.client.post(
+            reverse("account-affiliation-approve"),
+            data='{"changeId": %d, "decision": "reject", "rejectionReason": "사유 확인 필요"}'
+            % change_id,
+            content_type="application/json",
+        )
+        self.assertEqual(reject_response.status_code, 200)
+
+        # -----------------------------------------------------------------------------
+        # 3) 요청자 히스토리 확인
+        # -----------------------------------------------------------------------------
+        self.client.force_login(self.user)
+        overview_response = self.client.get(reverse("account-overview"))
+        self.assertEqual(overview_response.status_code, 200)
+        history = overview_response.json()["affiliationHistory"]
+        self.assertTrue(history)
+        self.assertEqual(history[0]["status"], "REJECTED")
+        self.assertEqual(history[0]["rejectionReason"], "사유 확인 필요")
+
     def test_account_affiliation_rejects_non_string_user_sdwt_prod(self) -> None:
         """user_sdwt_prod 타입 오류는 400을 반환해야 합니다."""
         self.client.force_login(self.user)

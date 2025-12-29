@@ -1,10 +1,7 @@
-// src/features/line-dashboard/components/index.js
+// 파일 경로: src/features/line-dashboard/components/index.js
 export { LineDashboardShell } from "./LineDashboardShell"
 export { LineDashboardHeader } from "./LineDashboardHeader"
 export { LineDashboardSidebarProvider } from "./LineDashboardSidebarProvider"
 export { LineDashboardBreadcrumb } from "./LineDashboardBreadcrumb"
 export { LineDashboardSidebar } from "./LineDashboardSidebar"
 export { LineDashboardLayout } from "./LineDashboardLayout"
-export { TeamSwitcher } from "./team-switcher"
-export { ActiveLineProvider } from "./active-line-context"
-export { NavMain } from "./nav-main"

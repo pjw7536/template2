@@ -8,10 +8,5 @@ export const vocRoutes = [
   {
     path: "voc",
     element: <VocBoardPage />,
-  },
-  // 기존 /qna 링크 호환을 위한 리다이렉트
-  {
-    path: "qna",
-    element: <Navigate to="/voc" replace />,
-  },
+  }
 ]

@@ -9,8 +9,9 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
-DRONE_SOP_JIRA_TRIGGER_URL = os.getenv("DRONE_SOP_JIRA_TRIGGER_URL") or ""
-DRONE_SOP_JIRA_TRIGGER_TOKEN = os.getenv("DRONE_SOP_JIRA_TRIGGER_TOKEN") or ""
+AIRFLOW_API_BASE_URL = (os.getenv("AIRFLOW_API_BASE_URL") or "http://api:8000").strip().rstrip("/")
+AIRFLOW_TRIGGER_TOKEN = os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+DRONE_SOP_JIRA_TRIGGER_URL = f"{AIRFLOW_API_BASE_URL}/api/v1/line-dashboard/sop/jira/trigger"
 DRONE_SOP_JIRA_HTTP_TIMEOUT = int(os.getenv("DRONE_SOP_JIRA_HTTP_TIMEOUT") or "60")
 DRONE_SOP_JIRA_SCHEDULE = os.getenv("DRONE_SOP_JIRA_SCHEDULE") or None
 
@@ -28,12 +29,12 @@ def _parse_optional_int(value: Any) -> int | None:
 
 
 def run_drone_sop_jira_create(**_context):
-    if not DRONE_SOP_JIRA_TRIGGER_URL:
-        raise ValueError("DRONE_SOP_JIRA_TRIGGER_URL is not set")
+    if not AIRFLOW_API_BASE_URL:
+        raise ValueError("AIRFLOW_API_BASE_URL is not set")
 
     headers = {"Accept": "application/json"}
-    if DRONE_SOP_JIRA_TRIGGER_TOKEN:
-        headers["Authorization"] = f"Bearer {DRONE_SOP_JIRA_TRIGGER_TOKEN}"
+    if AIRFLOW_TRIGGER_TOKEN:
+        headers["Authorization"] = f"Bearer {AIRFLOW_TRIGGER_TOKEN}"
 
     payload = {}
     limit = _parse_optional_int(os.getenv("DRONE_SOP_JIRA_LIMIT"))

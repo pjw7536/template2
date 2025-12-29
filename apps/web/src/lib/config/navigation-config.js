@@ -1,5 +1,12 @@
-// src/lib/config/navigation-config.js
-import { BarChart3, Mail, Send, SquareTerminal, Users } from "lucide-react"
+// 파일 경로: src/lib/config/navigation-config.js
+import {
+  BarChart3,
+  Mail,
+  Send,
+  Settings,
+  SquareTerminal,
+  Users,
+} from "lucide-react"
 
 /**
  * 내비게이션 기본 구성.
@@ -69,6 +76,29 @@ const EMAILS_GROUP_BASE = Object.freeze({
   items: EMAIL_NAV_ITEMS,
 })
 
+const SETTINGS_NAV_ITEMS = Object.freeze([
+  {
+    title: "Account",
+    url: "/settings/account",
+    scope: "global",
+  },
+  {
+    title: "Members",
+    url: "/settings/members",
+    scope: "global",
+  },
+])
+
+const SETTINGS_GROUP = Object.freeze({
+  key: "settings",
+  title: "Settings",
+  url: "/settings/account",
+  icon: Settings,
+  isActive: true,
+  scope: "global",
+  items: SETTINGS_NAV_ITEMS,
+})
+
 function normalizeMailbox(value) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -91,10 +121,10 @@ export const NAVIGATION_CONFIG = Object.freeze({
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-  navMain: [LINE_DASHBOARD_GROUP, EMAILS_GROUP_BASE],
+  navMain: [LINE_DASHBOARD_GROUP, EMAILS_GROUP_BASE, SETTINGS_GROUP],
   projects: [
     // {
-    //   name: "Design Engineering",
+    //   name: "디자인 엔지니어링",
     //   url: "#",
     //   icon: Frame,
     // },
@@ -120,6 +150,8 @@ export function buildNavigationConfig({ mailbox } = {}) {
 
   return {
     ...NAVIGATION_CONFIG,
-    navMain: [LINE_DASHBOARD_GROUP, emailsGroup],
+    navMain: NAVIGATION_CONFIG.navMain.map((item) =>
+      item?.key === EMAILS_GROUP_BASE.key ? emailsGroup : item,
+    ),
   }
 }

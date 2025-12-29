@@ -1,8 +1,27 @@
-# AppStore 백엔드 로직 (feature: appstore)
+# AppStore 백엔드 문서
 
 ## 개요
 - 내부 AppStore 앱 등록/조회, 좋아요, 댓글 기능을 제공합니다.
 - 앱의 스크린샷은 URL 또는 data URL(base64)로 저장 가능합니다.
+
+## 책임 범위
+- 앱 CRUD, 조회수/좋아요 관리
+- 댓글/대댓글 CRUD 및 좋아요 토글
+- 스크린샷 입력 정규화(cover + gallery)
+
+## 엔드포인트
+- `GET /api/v1/appstore/apps`
+- `POST /api/v1/appstore/apps`
+- `GET /api/v1/appstore/apps/<app_id>`
+- `PATCH /api/v1/appstore/apps/<app_id>`
+- `DELETE /api/v1/appstore/apps/<app_id>`
+- `POST /api/v1/appstore/apps/<app_id>/like`
+- `POST /api/v1/appstore/apps/<app_id>/view`
+- `GET /api/v1/appstore/apps/<app_id>/comments`
+- `POST /api/v1/appstore/apps/<app_id>/comments`
+- `PATCH /api/v1/appstore/apps/<app_id>/comments/<comment_id>`
+- `DELETE /api/v1/appstore/apps/<app_id>/comments/<comment_id>`
+- `POST /api/v1/appstore/apps/<app_id>/comments/<comment_id>/like`
 
 ## 핵심 모델
 - `AppStoreApp` (`appstore_app`)
@@ -14,21 +33,12 @@
 - `AppStoreCommentLike` (`appstore_comment_like`)
   - 댓글 좋아요 토글 기록
 
-## 엔드포인트
-- `GET /api/v1/appstore/apps`
-- `POST /api/v1/appstore/apps`
-- `GET /api/v1/appstore/apps/<id>`
-- `PATCH /api/v1/appstore/apps/<id>`
-- `DELETE /api/v1/appstore/apps/<id>`
-- `POST /api/v1/appstore/apps/<id>/like`
-- `POST /api/v1/appstore/apps/<id>/view`
-- `GET /api/v1/appstore/apps/<id>/comments`
-- `POST /api/v1/appstore/apps/<id>/comments`
-- `PATCH /api/v1/appstore/apps/<id>/comments/<cid>`
-- `DELETE /api/v1/appstore/apps/<id>/comments/<cid>`
-- `POST /api/v1/appstore/apps/<id>/comments/<cid>/like`
+## 주요 규칙/정책
+- 앱 수정/삭제는 작성자 또는 관리자 권한이 필요합니다.
+- 댓글 수정/삭제는 작성자 또는 관리자 권한이 필요합니다.
+- 좋아요는 토글 방식으로 `like_count`를 증감합니다.
 
-## 상세 흐름
+## 주요 흐름
 
 ### 1) 앱 목록 조회
 `GET /api/v1/appstore/apps`
@@ -45,54 +55,57 @@
 5. 201 응답 + 생성된 앱 반환.
 
 ### 3) 앱 상세 조회
-`GET /api/v1/appstore/apps/<id>`
+`GET /api/v1/appstore/apps/<app_id>`
 1. 앱 + 댓글 prefetch 조회.
 2. 로그인 사용자면 앱/댓글 좋아요 여부 계산.
 3. 댓글 포함 payload 반환.
 
 ### 4) 앱 수정/삭제
-`PATCH /api/v1/appstore/apps/<id>`
+`PATCH /api/v1/appstore/apps/<app_id>`
 1. 인증 확인 + 소유자(superuser 포함) 권한 검사.
 2. 업데이트 필드 정규화 + 스크린샷 입력 처리.
 3. 저장 후 최신 앱 반환.
 
-`DELETE /api/v1/appstore/apps/<id>`
+`DELETE /api/v1/appstore/apps/<app_id>`
 1. 인증 확인 + 소유자 권한 검사.
 2. 앱 삭제.
 
 ### 5) 앱 좋아요/조회수
-`POST /api/v1/appstore/apps/<id>/like`
+`POST /api/v1/appstore/apps/<app_id>/like`
 1. 인증 확인.
 2. `AppStoreLike` 토글 + `like_count` 증감.
 
-`POST /api/v1/appstore/apps/<id>/view`
+`POST /api/v1/appstore/apps/<app_id>/view`
 1. 조회수 증가.
 
 ### 6) 댓글/대댓글
-`GET /api/v1/appstore/apps/<id>/comments`
+`GET /api/v1/appstore/apps/<app_id>/comments`
 1. 댓글 목록 조회(오래된 순).
 2. 로그인 사용자면 좋아요 여부 표시.
 
-`POST /api/v1/appstore/apps/<id>/comments`
+`POST /api/v1/appstore/apps/<app_id>/comments`
 1. 인증 확인.
 2. `content` 필수 확인.
 3. parentCommentId가 있으면 동일 앱인지 검증.
 4. 댓글 생성 후 반환.
 
 ### 7) 댓글 수정/삭제/좋아요
-`PATCH /api/v1/appstore/apps/<id>/comments/<cid>`
+`PATCH /api/v1/appstore/apps/<app_id>/comments/<comment_id>`
 1. 인증 확인.
 2. 작성자/관리자 권한 검사.
 3. 내용 업데이트 후 반환.
 
-`DELETE /api/v1/appstore/apps/<id>/comments/<cid>`
+`DELETE /api/v1/appstore/apps/<app_id>/comments/<comment_id>`
 1. 인증 확인.
 2. 작성자/관리자 권한 검사.
 3. 삭제 후 성공 응답.
 
-`POST /api/v1/appstore/apps/<id>/comments/<cid>/like`
+`POST /api/v1/appstore/apps/<app_id>/comments/<comment_id>/like`
 1. 인증 확인.
 2. `AppStoreCommentLike` 토글 + `like_count` 증감.
+
+## 설정/환경변수
+- 없음
 
 ## 시퀀스 다이어그램
 

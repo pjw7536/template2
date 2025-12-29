@@ -1,6 +1,7 @@
 const LINE_DASHBOARD_PREFIX = "/esop_dashboard"
 const EMAILS_PREFIX = "/emails"
 const MODELS_PREFIX = "/models"
+const SETTINGS_PREFIX = "/settings"
 const VOC_ROUTE_PATTERN = /\/voc(\/|$)|\/qna(\/|$)/
 const INTERNAL_SCROLL_PREFIXES = ["/emails", "/appstore"]
 
@@ -9,9 +10,11 @@ export const LAYOUT_VARIANTS = {
   LINE_DASHBOARD: "line-dashboard",
   EMAILS: "emails",
   MODELS: "models",
+  SETTINGS: "settings",
+  VOC: "voc",
 }
 
-// Order matters: first match wins.
+// 순서 중요: 먼저 매칭되는 규칙을 사용한다.
 const ROUTE_LAYOUT_RULES = [
   {
     name: "line-dashboard",
@@ -27,6 +30,16 @@ const ROUTE_LAYOUT_RULES = [
     name: "models",
     variant: LAYOUT_VARIANTS.MODELS,
     matches: (pathname) => pathname.startsWith(MODELS_PREFIX),
+  },
+  {
+    name: "settings",
+    variant: LAYOUT_VARIANTS.SETTINGS,
+    matches: (pathname) => pathname.startsWith(SETTINGS_PREFIX),
+  },
+  {
+    name: "voc",
+    variant: LAYOUT_VARIANTS.VOC,
+    matches: (pathname) => VOC_ROUTE_PATTERN.test(pathname),
   },
 ]
 
@@ -49,7 +62,6 @@ export function getProtectedLayoutConfig(pathname) {
 
   return {
     variant: getLayoutVariant(normalizedPath),
-    contentMaxWidthClass: isVocRoute ? "max-w-screen-2xl" : undefined,
     scrollAreaClassName: isVocRoute || isInternalScrollRoute ? "overflow-hidden" : undefined,
   }
 }

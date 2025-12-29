@@ -43,3 +43,9 @@ class AffiliationApprovalSerializer(serializers.Serializer):
 
     changeId = serializers.IntegerField()
     decision = serializers.ChoiceField(choices=["approve", "reject"], required=False)
+    rejectionReason = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )

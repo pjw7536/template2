@@ -3,6 +3,7 @@ import { EmailFilters } from "./EmailFilters"
 import { EmailList } from "./EmailList"
 
 export function EmailInboxView({
+  scope,
   filters,
   setFilters,
   handleResetFilters,
@@ -50,6 +51,7 @@ export function EmailInboxView({
               emails={emails}
               selectedIds={selectedIds}
               activeEmailId={activeEmailId}
+              showAffiliationBadge={scope === "sent"}
               onToggleSelect={handleToggleSelect}
               onToggleSelectAll={handleToggleSelectAll}
               onSelectEmail={handleSelectEmail}

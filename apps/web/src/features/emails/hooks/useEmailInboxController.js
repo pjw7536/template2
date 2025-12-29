@@ -25,7 +25,7 @@ const INITIAL_FILTERS = {
   dateTo: "",
 }
 
-const MIN_LIST_WIDTH = 385
+const MIN_LIST_WIDTH = 600
 const MIN_DETAIL_WIDTH = 420
 const DEFAULT_LIST_RATIO = 0.45
 const GRID_GAP_PX = 16
@@ -339,6 +339,7 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
   }
 
   return {
+    scope,
     filters,
     setFilters,
     handleResetFilters,

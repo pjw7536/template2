@@ -1,19 +1,27 @@
-# Tables 백엔드 로직 (feature: tables)
+# Tables 백엔드 문서
 
 ## 개요
 - 지정한 테이블을 조회하거나 부분 업데이트하는 범용 API를 제공합니다.
 - 안전한 식별자 검증과 제한된 컬럼 업데이트를 적용합니다.
 
-## 주요 설정/규칙
-- 기본 테이블: `DEFAULT_TABLE = drone_sop`
-- 식별자 안전성: `SAFE_IDENTIFIER` 정규식 통과 필수
-- 업데이트 허용 컬럼: `comment`, `needtosend`, `instant_inform`, `status`
+## 책임 범위
+- 테이블 조회(필터/기간/lineId)
+- 허용 컬럼 범위 내 부분 업데이트
 
 ## 엔드포인트
 - `GET /api/v1/tables/`
 - `PATCH /api/v1/tables/update`
 
-## 상세 흐름
+## 핵심 구성 요소
+- `resolve_table_schema` / `build_date_range_filters`
+- raw SQL 조회/업데이트 유틸
+
+## 주요 규칙/정책
+- 기본 테이블: `DEFAULT_TABLE = drone_sop`
+- 식별자 안전성: `SAFE_IDENTIFIER` 정규식 통과 필수
+- 업데이트 허용 컬럼: `comment`, `needtosend`, `instant_inform`, `status`
+
+## 주요 흐름
 
 ### 1) 테이블 조회
 `GET /api/v1/tables/`
@@ -28,6 +36,9 @@
 3. 허용 컬럼만 UPDATE 대상으로 선택.
 4. UPDATE 실행 후 업데이트 전/후 row 재조회.
 5. ActivityLog에 변경 내용 기록.
+
+## 설정/환경변수
+- 없음
 
 ## 시퀀스 다이어그램
 
