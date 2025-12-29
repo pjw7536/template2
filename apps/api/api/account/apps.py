@@ -140,6 +140,7 @@ class AccountConfig(AppConfig):
                 sabun=sabun,
                 password=env_or_default("DJANGO_SUPERUSER_PASSWORD", "dkssud123!"),
                 username=env_or_default("DJANGO_SUPERUSER_USERNAME", "admin"),
+                knox_id="admin",
                 email=env_or_default("DJANGO_SUPERUSER_EMAIL", "etch_mail_collector@samsung.com"),
             )
         except IntegrityError:

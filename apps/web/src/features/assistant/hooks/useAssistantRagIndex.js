@@ -72,8 +72,19 @@ export function useAssistantRagIndex() {
     setRagIndexNames(defaultRagIndexNames, "default")
   }, [defaultRagIndexNames, ragIndexNamesSource, setRagIndexNames])
 
-  const resolvedPermissionGroups = permissionGroups.length
-    ? permissionGroups
+  const normalizedPermissionGroups = normalizeList(permissionGroups)
+  const filteredPermissionGroups = normalizedPermissionGroups.filter((value) =>
+    permissionGroupOptions.includes(value),
+  )
+
+  useEffect(() => {
+    if (!normalizedPermissionGroups.length) return
+    if (filteredPermissionGroups.length === normalizedPermissionGroups.length) return
+    setPermissionGroups(filteredPermissionGroups, "user")
+  }, [filteredPermissionGroups, normalizedPermissionGroups, setPermissionGroups])
+
+  const resolvedPermissionGroups = filteredPermissionGroups.length
+    ? filteredPermissionGroups
     : defaultPermissionGroups
   const candidateRagIndexNames = ragIndexNames.length ? ragIndexNames : defaultRagIndexNames
   let resolvedRagIndexNames = normalizeList(candidateRagIndexNames).filter((value) =>

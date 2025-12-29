@@ -683,8 +683,8 @@ def auth_logout(request: HttpRequest) -> HttpResponse:
         오류:
         - 없음
         """
-        resp.delete_cookie(settings.SESSION_COOKIE_NAME)
-        return resp
+        응답.delete_cookie(settings.SESSION_COOKIE_NAME)
+        return 응답
 
     # -----------------------------------------------------------------------------
     # 3) 요청 메서드에 따른 분기 처리
