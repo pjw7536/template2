@@ -1,4 +1,4 @@
-// src/features/line-dashboard/components/LineSettingsPage.jsx
+// 파일 경로: src/features/line-dashboard/components/LineSettingsPage.jsx
 import * as React from "react"
 import {
   IconDeviceFloppy,
@@ -26,7 +26,7 @@ import {
 import { useAuth } from "@/lib/auth"
 import { useLineSettings } from "../hooks/useLineSettings"
 import { buildToastOptions } from "../utils/toast"
-import { formatUpdatedAt, isDuplicateMessage, normalizeDraft } from "../utils/line-settings"
+import { formatUpdatedAt, isDuplicateMessage, normalizeDraft } from "../utils/lineSettings"
 
 const LABELS = {
   titleSuffix: "Line E-SOP Settings",

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
-from api.rag import services as rag_services
+import api.rag.services as rag_services
 
 from .config import AssistantChatConfig
 from .constants import NO_CONTEXT_MESSAGE, STRUCTURED_REPLY_SYSTEM_MESSAGE

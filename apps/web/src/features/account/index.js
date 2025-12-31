@@ -1,5 +1,4 @@
 export { accountRoutes } from "./routes"
 export { AccessListCard } from "./components/AccessListCard"
 export { MailboxAccessCard } from "./components/MailboxAccessCard"
-export { SettingsHeader } from "./components/SettingsHeader"
-export { useAccountOverview, useManageableGroups } from "./hooks/useAccountData"
+export { useAccountOverview } from "./hooks/useAccountData"

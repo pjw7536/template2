@@ -5,8 +5,14 @@ services:
     env_file:
       - ./env/api.common.env
       - ./env/api.dev.env
+      - ./minio.env
     depends_on:
       - adfs
+      - minio
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: emails
+      MINIO_REGION: us-east-1
     volumes:
       - ./apps/api:/app
       - api_data:/data
@@ -52,8 +58,8 @@ services:
       DUMMY_ADFS_NAME: Dummy User
       DUMMY_ADFS_CLIENT_ID: dummy-client
       DUMMY_ADFS_PRIVATE_KEY_PATH: /app/dummy_adfs_private.key
-      # 개발 환경에서는 더미 ADFS 서버가 HTTP로 구동되므로 issuer 도 동일하게 맞춘다
-      DUMMY_ADFS_ISSUER: http://localhost:9000/adfs
+      # 개발 환경에서는 더미 ADFS 서버가 HTTP로 구동되므로 발급자도 동일하게 맞춘다
+      DUMMY_ADFS_ISSUER: http://localhost:9102/adfs
       DUMMY_LLM_REPLY_TEMPLATE: '개발용 더미 응답입니다. 질문 "{question}" 에 대한 테스트 답변입니다.'
       DUMMY_LLM_DELAY_MS: "1200"
       DUMMY_RAG_INDEX_NAME: emails
@@ -61,11 +67,47 @@ services:
       DUMMY_MAIL_RAG_INDEX: emails
       DUMMY_RAG_PERMISSION_GROUPS: '["rag-public"]'
     ports:
-      - "9000:9000"
+      - "9102:9000"
     networks:
       shared-net:
         aliases:
           - adfs
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    env_file:
+      - ./minio.env
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      shared-net:
+        aliases:
+          - minio
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    env_file:
+      - ./minio.env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+          set -e
+          until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+            sleep 1
+          done
+          mc mb -p local/emails || true
+          mc mb -p local/profile || true
+    networks:
+      shared-net:
+        aliases:
+          - minio-init
 
   nginx:
     image: nginx:1.27-alpine
@@ -83,6 +125,7 @@ services:
 volumes:
   api_data:
   api_static:
+  minio_data:
   web_node_modules:
 
 networks:

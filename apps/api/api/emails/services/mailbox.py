@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 from ..selectors import (
     get_accessible_user_sdwt_prods_for_user,

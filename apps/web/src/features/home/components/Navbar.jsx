@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/navigation-menu"
 
 import { Logo, ThemeColorSelector, ThemeToggle } from "@/components/common"
+import { useAuth } from "@/lib/auth"
+import { buildProfileImageUrl, resolveProfileUserId } from "@/lib/profileImage"
 import { cn } from "@/lib/utils"
 
 import NotificationDropdown from "./NotificationDropdown"
@@ -20,6 +22,12 @@ import { HomeNavLink } from "./HomeNavLink"
 import ProfileDropdown from "./ProfileDropdown"
 
 const HomeNavbar = ({ navigationItems }) => {
+  const { user } = useAuth()
+  const profileUserId = resolveProfileUserId(user)
+  const avatarSrc = buildProfileImageUrl(profileUserId)
+  const displayName = user?.username || user?.email || "U"
+  const initials = displayName.slice(0, 2).toUpperCase()
+
   const renderIcon = (Icon) => {
     if (!Icon) return null
     return <Icon className="size-4" />
@@ -100,8 +108,8 @@ const HomeNavbar = ({ navigationItems }) => {
           trigger={
             <Button variant="ghost" className="h-full p-0">
               <Avatar className="size-9.5 rounded-md">
-                <AvatarImage src="https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png" />
-                <AvatarFallback>JD</AvatarFallback>
+                <AvatarImage src={avatarSrc || undefined} alt={displayName} />
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
             </Button>
           }

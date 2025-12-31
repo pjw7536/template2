@@ -1,18 +1,10 @@
-// src/features/appstore/components/AppFormDialog.jsx
+// 앱스토어 앱 등록/수정 다이얼로그
 import { useEffect, useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-
-function toTags(value) {
-  if (!value?.trim()) return []
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-}
 
 function getClipboardImageFiles(clipboardData) {
   const items = Array.from(clipboardData?.items ?? [])
@@ -44,8 +36,6 @@ export function AppFormDialog({
   const [category, setCategory] = useState("")
   const [url, setUrl] = useState("")
   const [description, setDescription] = useState("")
-  const [tagsText, setTagsText] = useState("")
-  const [badge, setBadge] = useState("")
   const [contactName, setContactName] = useState("")
   const [contactKnoxid, setContactKnoxid] = useState("")
   const [screenshotUrls, setScreenshotUrls] = useState([])
@@ -59,8 +49,6 @@ export function AppFormDialog({
       setCategory(initialData.category || "")
       setUrl(initialData.url || "")
       setDescription(initialData.description || "")
-      setTagsText(initialData.tags?.join(", ") || "")
-      setBadge(initialData.badge || "")
       setContactName(initialData.contactName || "")
       setContactKnoxid(initialData.contactKnoxid || "")
       const urls = Array.isArray(initialData.screenshotUrls)
@@ -84,8 +72,6 @@ export function AppFormDialog({
       setCategory("")
       setUrl("")
       setDescription("")
-      setTagsText("")
-      setBadge("")
       setContactName("")
       setContactKnoxid("")
       setScreenshotUrls([])
@@ -122,8 +108,6 @@ export function AppFormDialog({
       category: category.trim(),
       url: url.trim(),
       description: description.trim(),
-      tags: toTags(tagsText),
-      badge: badge.trim(),
       contactName: contactName.trim(),
       contactKnoxid: contactKnoxid.trim(),
       screenshotUrl: normalizedScreenshotUrls[normalizedCoverIndex] || "",
@@ -203,27 +187,8 @@ export function AppFormDialog({
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="app-tags">태그 (쉼표 구분)</Label>
-            <Input
-              id="app-tags"
-              value={tagsText}
-              onChange={(event) => setTagsText(event.target.value)}
-              placeholder="예: Messaging, Collaboration"
-            />
-          </div>
-
           <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="app-badge">배지</Label>
-              <Input
-                id="app-badge"
-                value={badge}
-                onChange={(event) => setBadge(event.target.value)}
-                placeholder="예: Popular, Beta"
-              />
-            </div>
-            <div className="grid gap-2">
+            <div className="grid gap-2 sm:col-span-2">
               <Label id="app-screenshot-label">스크린샷 (여러 장 붙여넣기)</Label>
               <div className="grid gap-2">
                 <div

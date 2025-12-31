@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from api.rag import services as rag_services
+import api.rag.services as rag_services
 
 from .constants import (
     DEFAULT_DUMMY_CONTEXTS,

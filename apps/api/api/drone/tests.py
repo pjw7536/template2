@@ -15,11 +15,9 @@ from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
-from api.account.models import Affiliation
+import api.account.services as account_services
 from api.drone import selectors, services
 from api.drone.models import DroneEarlyInform, DroneSOP, DroneSopJiraTemplate, DroneSopJiraUserTemplate
-from api.drone.services.sop_jira import DroneJiraConfig
-from api.drone.services.sop_pop3 import NeedToSendRule
 
 _PREVIOUS_LOGGING_DISABLE: int | None = None
 
@@ -90,7 +88,7 @@ class DroneSopPop3ParsingTests(TestCase):
           <comment>hello@$abc</comment>
         </data>
         """
-        rules = [NeedToSendRule(pattern="prod-*", comment_last_at="$abc", ignore_sample_type=False)]
+        rules = [services.NeedToSendRule(pattern="prod-*", comment_last_at="$abc", ignore_sample_type=False)]
         row = services._build_drone_sop_row(html=html, early_inform_map={}, needtosend_rules=rules)
         assert row is not None
         self.assertEqual(row["needtosend"], 1)
@@ -225,7 +223,12 @@ class DroneSopInstantInformTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="DUMMY",
+        )
         DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
         row = DroneSOP.objects.create(
             line_id="L1",
@@ -368,7 +371,12 @@ class DroneEndpointTests(TestCase):
     @patch("api.drone.services.sop_jira._jira_session")
     def test_instant_inform_marks_missing_template_as_failed(self, mock_session: Mock) -> None:
         """템플릿 누락 시 실패로 마킹되는지 확인합니다."""
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="DUMMY",
+        )
         row = DroneSOP.objects.create(
             line_id="L1",
             sdwt_prod="SDWT",
@@ -403,7 +411,12 @@ class DroneEndpointTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="DUMMY")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="DUMMY",
+        )
         DroneSopJiraUserTemplate.objects.create(user_sdwt_prod="SDWT", template_key="line_a")
         row = DroneSOP.objects.create(
             line_id="L1",
@@ -472,9 +485,23 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
-        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT", jira_key="PROJ2")
-        Affiliation.objects.create(department="D", line="L3", user_sdwt_prod="SDWT")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="PROJ1",
+        )
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L2",
+            user_sdwt_prod="SDWT",
+            jira_key="PROJ2",
+        )
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L3",
+            user_sdwt_prod="SDWT",
+        )
         DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
         DroneSopJiraTemplate.objects.create(line_id="L2", template_key="line_b")
 
@@ -550,7 +577,12 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="PROJ1",
+        )
         DroneSopJiraUserTemplate.objects.create(user_sdwt_prod="SDWT", template_key="line_a")
 
         sop1 = DroneSOP.objects.create(
@@ -587,8 +619,18 @@ class DroneSopJiraCreateProjectKeyTests(TestCase):
         session.post.return_value = resp
         mock_session.return_value = session
 
-        Affiliation.objects.create(department="D", line="L1", user_sdwt_prod="SDWT", jira_key="PROJ1")
-        Affiliation.objects.create(department="D", line="L2", user_sdwt_prod="SDWT", jira_key="PROJ2")
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L1",
+            user_sdwt_prod="SDWT",
+            jira_key="PROJ1",
+        )
+        account_services.ensure_affiliation_option(
+            department="D",
+            line="L2",
+            user_sdwt_prod="SDWT",
+            jira_key="PROJ2",
+        )
         DroneSopJiraTemplate.objects.create(line_id="L1", template_key="line_a")
 
         sop1 = DroneSOP.objects.create(
@@ -803,7 +845,7 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
         """HTML 템플릿이 포함되는지 확인합니다."""
         from api.drone.services import sop_jira
 
-        config = DroneJiraConfig(
+        config = services.DroneJiraConfig(
             base_url="http://example.local/jira",
             token="dummy-token",
             issue_type="Task",
@@ -841,7 +883,7 @@ class DroneSopJiraHtmlDescriptionTests(TestCase):
         """CTTTM 링크가 렌더링되는지 확인합니다."""
         from api.drone.services import sop_jira
 
-        config = DroneJiraConfig(
+        config = services.DroneJiraConfig(
             base_url="http://example.local/jira",
             token="dummy-token",
             issue_type="Task",

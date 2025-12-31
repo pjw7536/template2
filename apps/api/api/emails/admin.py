@@ -11,10 +11,11 @@ from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.helpers import ActionForm
 
-from api.account.selectors import get_current_user_sdwt_prod_change, get_user_by_knox_id
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email
-from api.emails.services import move_emails_to_user_sdwt_prod, move_sender_emails_after
+from api.emails.services import (
+    move_emails_after_sender_affiliation_change,
+    move_emails_to_user_sdwt_prod,
+)
 
 
 class EmailActionForm(ActionForm):
@@ -141,50 +142,17 @@ class EmailAdmin(admin.ModelAdmin):
             return None
 
         # -----------------------------------------------------------------------------
-        # 2) 결과 집계 준비
+        # 2) 서비스 호출 및 결과 집계
         # -----------------------------------------------------------------------------
-        total_moved = 0
-        total_rag_registered = 0
-        total_rag_failed = 0
-        total_rag_missing = 0
-        failures: list[str] = []
-
-        # -----------------------------------------------------------------------------
-        # 3) 발신자별 이동 처리
-        # -----------------------------------------------------------------------------
-        for sender_id in sender_ids:
-            user = get_user_by_knox_id(knox_id=sender_id)
-            if user is None:
-                failures.append(f"{sender_id}: 사용자 없음")
-                continue
-
-            target_user_sdwt_prod = (getattr(user, "user_sdwt_prod", None) or "").strip()
-            if not target_user_sdwt_prod or target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
-                failures.append(f"{sender_id}: user_sdwt_prod 없음/UNASSIGNED")
-                continue
-
-            change = get_current_user_sdwt_prod_change(user=user)
-            if change is None:
-                failures.append(f"{sender_id}: 소속 변경 이력(UserSdwtProdChange) 없음")
-                continue
-
-            try:
-                result = move_sender_emails_after(
-                    sender_id=sender_id,
-                    received_at_gte=change.effective_from,
-                    to_user_sdwt_prod=target_user_sdwt_prod,
-                )
-            except Exception as exc:
-                failures.append(f"{sender_id}: {exc}")
-                continue
-
-            total_moved += result.get("moved", 0)
-            total_rag_registered += result.get("ragRegistered", 0)
-            total_rag_failed += result.get("ragFailed", 0)
-            total_rag_missing += result.get("ragMissing", 0)
+        result = move_emails_after_sender_affiliation_change(sender_ids=sender_ids)
+        total_moved = result.get("moved", 0)
+        total_rag_registered = result.get("ragRegistered", 0)
+        total_rag_failed = result.get("ragFailed", 0)
+        total_rag_missing = result.get("ragMissing", 0)
+        failures = result.get("failures", [])
 
         # -----------------------------------------------------------------------------
-        # 4) 결과 메시지 구성 및 반환
+        # 3) 결과 메시지 구성 및 반환
         # -----------------------------------------------------------------------------
         level = messages.SUCCESS if not failures else messages.WARNING
         details = ""

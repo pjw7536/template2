@@ -10,8 +10,8 @@ from typing import Any, Optional, Set
 
 from django.http import HttpRequest
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from api.common.utils import extract_bearer_token
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import extract_bearer_token
 
 from .selectors import get_accessible_user_sdwt_prods_for_user
 

@@ -14,9 +14,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.constants import DEFAULT_TABLE
-from api.common.utils import parse_json_body, sanitize_identifier
-from api.common.activity_logging import (
+from api.common.services import DEFAULT_TABLE
+from api.common.services import parse_json_body, sanitize_identifier
+from api.common.services import (
     merge_activity_metadata,
     set_activity_new_state,
     set_activity_previous_state,

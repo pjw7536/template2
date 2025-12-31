@@ -1,5 +1,5 @@
-// src/features/appstore/components/AppFilters.jsx
-import { Plus, Search } from "lucide-react"
+// 앱스토어 필터 패널
+import { Plus, Search, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,98 +19,140 @@ export function AppFilters({
   onCreate,
   isCreating,
 }) {
+  const categoryLabel = (option) => (option === "all" ? "전체" : option)
+  const categoryCount = (option) => (option === "all" ? totalApps : categoryCounts?.[option] ?? 0)
+
   return (
-    <div className="grid h-full min-h-0 grid-rows-[190px_1fr] gap-2">
-      <Card className="rounded-2xl border bg-card shadow-sm gap-0">
-        <CardHeader className="space-y-2 pb-3">
-          <Badge variant="secondary" className="w-fit rounded-full bg-primary/10 text-primary">
-            Appstore
-          </Badge>
-          <CardTitle className="text-base">앱 등록 및 탐색</CardTitle>
-          <CardDescription>Etch기술팀 Appstore입니다</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCreate}
-            disabled={isCreating}
-            className="gap-1"
-            type="button"
-          >
-            <Plus className="size-4" />
-            앱 등록
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-2">
+      {/* 상단: 요약 + 주요 액션 */}
+      <Card className="rounded-2xl border bg-card shadow-sm">
+        <CardHeader className="space-y-1 pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="rounded-full">
+                Appstore
+              </Badge>
+              <span className="text-xs text-muted-foreground">{totalApps} apps</span>
+            </div>
 
-      <Card className="min-h-0 rounded-2xl border bg-card shadow-sm flex flex-col gap-0">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">검색 및 필터</CardTitle>
-          <CardDescription>
-            <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
-              {totalApps}개 앱
-            </span>
-            <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1">
-              {Math.max(categories.length - 1, 0)}개 카테고리
-            </span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-1 min-h-0 flex-col gap-4">
-          <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
-            <Search className="size-4 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="앱 이름, 설명, 태그 검색"
-              className="h-6 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-            {query && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={() => onQueryChange("")}
-                type="button"
-              >
-                지우기
-              </Button>
-            )}
-          </div>
-
-          <Separator className="bg-border" />
-          <div className="flex justify-between">
-            <div className="text-sm font-medium">카테고리</div>
             <Button
-              variant="ghost"
-              size="xs"
-              onClick={onReset}
+              variant="default"
+              size="sm"
+              onClick={onCreate}
+              disabled={isCreating}
+              className="gap-1"
               type="button"
-              className="text-xs text-muted-foreground"
             >
-              필터초기화
+              <Plus className="size-4" />
+              앱 등록
             </Button>
           </div>
 
-          <div className="grid flex-1 min-h-0 grid-cols-2 gap-2 overflow-y-auto">
-            {categories.map((option) => (
+          <CardTitle className="text-base">앱 등록 및 탐색</CardTitle>
+          <CardDescription className="text-sm">
+            Etch 기술팀에서 사용하는 앱을 빠르게 찾고 관리합니다.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      {/* 하단: 검색 + 필터 */}
+      <Card className="min-h-0 rounded-2xl border bg-card shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-base">검색 및 필터</CardTitle>
+              <CardDescription className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                  {totalApps}개 앱
+                </span>
+                <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                  {Math.max(categories.length - 1, 0)}개 카테고리
+                </span>
+              </CardDescription>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onReset}
+              type="button"
+              className="h-8 px-2 text-xs text-muted-foreground"
+            >
+              초기화
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
+          {/* 검색 */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="앱 이름, 설명, 카테고리 검색"
+              className="h-10 pl-9 pr-9"
+            />
+            {query ? (
               <Button
-                key={option}
-                variant={option === category ? "secondary" : "outline"}
-                size="sm"
-                className="justify-between rounded-lg"
-                onClick={() => onCategoryChange(option)}
+                variant="ghost"
+                size="icon"
+                onClick={() => onQueryChange("")}
                 type="button"
+                className="absolute right-1 top-1/2 size-8 -translate-y-1/2 text-muted-foreground"
+                aria-label="검색어 지우기"
               >
-                <span>{option === "all" ? "전체" : option}</span>
-                <Badge
-                  variant="secondary"
-                  className="ml-2 rounded-full bg-background/70 px-2 text-[11px]"
-                >
-                  {option === "all" ? totalApps : categoryCounts[option] ?? 0}
-                </Badge>
+                <X className="size-4" />
               </Button>
-            ))}
+            ) : null}
+          </div>
+
+          <Separator />
+
+          {/* 카테고리 목록 */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">카테고리</div>
+            <div className="text-xs text-muted-foreground">선택: {categoryLabel(category)}</div>
+          </div>
+
+          <div className="min-h-0 overflow-y-auto rounded-lg border bg-background">
+            <ul className="divide-y">
+              {categories.map((option) => {
+                const isActive = option === category
+                return (
+                  <li key={option}>
+                    <button
+                      type="button"
+                      onClick={() => onCategoryChange(option)}
+                      className={[
+                        "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm",
+                        "transition-colors",
+                        isActive
+                          ? "bg-muted/60"
+                          : "hover:bg-muted/40",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={[
+                            "h-4 w-1 rounded-full",
+                            isActive ? "bg-primary" : "bg-transparent",
+                          ].join(" ")}
+                          aria-hidden="true"
+                        />
+                        <span className={isActive ? "font-medium text-foreground" : "text-foreground"}>
+                          {categoryLabel(option)}
+                        </span>
+                      </div>
+
+                      <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {categoryCount(option)}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         </CardContent>
       </Card>

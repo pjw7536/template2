@@ -117,6 +117,7 @@ class User(AbstractUser):
     username = models.CharField(max_length=150, null=True, blank=True)
     sabun = models.CharField(max_length=50, unique=True)
     knox_id = models.CharField(max_length=150, null=True, blank=True, unique=True)
+    userid = models.CharField(max_length=50, null=True, blank=True)
     username_en = models.CharField(max_length=150, null=True, blank=True)
     givenname = models.CharField(max_length=150, null=True, blank=True)
     surname = models.CharField(max_length=150, null=True, blank=True)

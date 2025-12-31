@@ -1,9 +1,9 @@
-// src/features/line-dashboard/hooks/useLineDashboardData.js
+// 파일 경로: src/features/line-dashboard/hooks/useLineDashboardData.js
 import { useEffect, useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
-import { lineDashboardQueryKeys } from "../api/query-keys"
+import { lineDashboardQueryKeys } from "../api/queryKeys"
 
 function normalizeError(error) {
   if (!error) return null

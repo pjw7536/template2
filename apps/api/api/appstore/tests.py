@@ -37,8 +37,6 @@ class AppstoreScreenshotTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url=screenshot_url,
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -75,8 +73,6 @@ class AppstoreScreenshotTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url=screenshot_url,
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -116,8 +112,6 @@ class AppstoreScreenshotTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_urls=[cover, extra_url, extra_data],
             screenshot_url="",
             contact_name="홍길동",
@@ -156,8 +150,6 @@ class AppstoreScreenshotTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url="data:image/png;base64,BBB=",
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -195,8 +187,6 @@ class AppstoreScreenshotTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url=screenshot_url,
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -235,8 +225,6 @@ class AppstoreCommentReplyLikeTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url="",
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -337,8 +325,6 @@ class AppstoreEndpointTests(TestCase):
             category="Tools",
             description="",
             url="https://example.com",
-            badge="",
-            tags=[],
             screenshot_url="",
             contact_name="홍길동",
             contact_knoxid="hong",
@@ -359,7 +345,7 @@ class AppstoreEndpointTests(TestCase):
             reverse("appstore-apps"),
             data=(
                 '{"name":"New App","category":"Tools","description":"desc","url":"https://new.app",'
-                '"tags":["tag1"],"contactName":"User","contactKnoxid":"user1"}'
+                '"contactName":"User","contactKnoxid":"user1"}'
             ),
             content_type="application/json",
         )
@@ -378,7 +364,7 @@ class AppstoreEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         update_response = self.client.patch(
             reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}),
-            data='{"description":"updated","badge":"New"}',
+            data='{"description":"updated"}',
             content_type="application/json",
         )
         self.assertEqual(update_response.status_code, 200)

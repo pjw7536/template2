@@ -24,6 +24,7 @@ function toSafeNumber(value) {
 
 function buildMemberRow(member) {
   const userId = member?.userId ?? member?.user_id ?? ""
+  const userid = normalizeText(member?.userid ?? member?.userId ?? member?.user_id)
   const name = normalizeText(member?.name)
   const username = normalizeText(member?.username)
   const knoxId = normalizeText(member?.knoxId ?? member?.knox_id)
@@ -38,6 +39,7 @@ function buildMemberRow(member) {
   return {
     id,
     userId,
+    userid,
     userSdwtProd,
     name,
     username,

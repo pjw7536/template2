@@ -9,6 +9,7 @@ import {
 
 import { useAuth } from '@/lib/auth'
 import { buildBackendUrl } from '@/lib/api'
+import { buildProfileImageUrl, resolveProfileUserId } from '@/lib/profileImage'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -30,10 +31,8 @@ const ProfileDropdown = ({
 
   const displayName = user?.username || 'John Doe'
   const email = user?.email || 'john.doe@example.com'
-  const avatar =
-    user?.avatar ||
-    user?.photoUrl ||
-    'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-1.png'
+  const profileUserId = resolveProfileUserId(user)
+  const avatarSrc = buildProfileImageUrl(profileUserId)
   const initials = (displayName || email || 'JD').slice(0, 2).toUpperCase()
 
   const handleLogout = () => {
@@ -68,7 +67,7 @@ const ProfileDropdown = ({
           <div className='relative'>
             <Avatar className='size-10'>
               <AvatarImage
-                src={avatar}
+                src={avatarSrc || undefined}
                 alt={displayName} />
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>

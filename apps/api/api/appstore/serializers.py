@@ -5,14 +5,7 @@
 # =============================================================================
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-
-# =============================================================================
-# 상수: 태그 길이/개수 제한
-# =============================================================================
-
-MAX_TAGS = 20
-MAX_TAG_LENGTH = 64
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 def _user_display_name(user) -> str:
@@ -124,48 +117,6 @@ def default_contact(user) -> Tuple[str, str]:
     """
 
     return (_user_display_name(user) or "사용자").strip(), _user_knoxid(user)
-
-
-def sanitize_tags(tags: Any) -> List[str]:
-    """태그 목록을 길이/개수 제한에 맞게 정규화합니다.
-
-    인자:
-        tags: 원본 태그 입력(리스트 형태 기대).
-
-    반환:
-        정규화된 태그 문자열 리스트.
-
-    부작용:
-        없음. 읽기 전용 정규화입니다.
-
-    오류:
-        없음.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 타입 검증
-    # -----------------------------------------------------------------------------
-    if not isinstance(tags, Iterable) or isinstance(tags, (str, bytes)):
-        return []
-    # -----------------------------------------------------------------------------
-    # 2) 중복 제거 및 길이/개수 제한 적용
-    # -----------------------------------------------------------------------------
-    cleaned: List[str] = []
-    seen = set()
-    for raw in tags:
-        if not isinstance(raw, str):
-            continue
-        tag = raw.strip()
-        if not tag:
-            continue
-        normalized = tag[:MAX_TAG_LENGTH]
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        cleaned.append(normalized)
-        if len(cleaned) >= MAX_TAGS:
-            break
-    return cleaned
 
 
 def sanitize_screenshot_urls(value: Any) -> List[str]:
@@ -417,8 +368,6 @@ def serialize_app(
         "description": app.description,
         "url": app.url,
         "screenshotUrl": getattr(app, "screenshot_src", ""),
-        "tags": app.tags if isinstance(app.tags, list) else [],
-        "badge": app.badge,
         "contactName": app.contact_name,
         "contactKnoxid": app.contact_knoxid,
         "viewCount": app.view_count,
@@ -458,7 +407,6 @@ __all__ = [
     "can_manage_comment",
     "default_contact",
     "sanitize_screenshot_urls",
-    "sanitize_tags",
     "serialize_app",
     "serialize_comment",
     "serialize_user",

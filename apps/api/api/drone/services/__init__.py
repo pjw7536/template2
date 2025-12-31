@@ -36,6 +36,7 @@ from .sop_jira import (
 from .sop_pop3 import (
     DroneSopPop3Config,
     DroneSopPop3IngestResult,
+    NeedToSendRule,
     _build_drone_sop_row,
     _upsert_drone_sop_rows,
     run_drone_sop_pop3_ingest_from_env,
@@ -57,6 +58,7 @@ __all__ = [
     "DroneSopJiraCreateResult",
     "DroneSopPop3Config",
     "DroneSopPop3IngestResult",
+    "NeedToSendRule",
     "_build_drone_sop_row",
     "_jira_session",
     "_lock_key",

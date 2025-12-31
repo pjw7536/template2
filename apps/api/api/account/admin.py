@@ -30,8 +30,7 @@ from api.account.models import (
     UserSdwtProdAccess,
     UserSdwtProdChange,
 )
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from api.emails.services import claim_unassigned_emails_for_user
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 
 class AccountUserCreationForm(SetUnusablePasswordMixin, BaseUserCreationForm):
@@ -319,7 +318,7 @@ class AccountUserAdmin(DjangoUserAdmin):
         # -----------------------------------------------------------------------------
         for user in queryset.iterator():
             try:
-                result = claim_unassigned_emails_for_user(user=user)
+                result = services.claim_unassigned_emails_for_user(user=user)
             except Exception as exc:
                 failures.append(f"{getattr(user, 'knox_id', None) or getattr(user, 'pk', user)}: {exc}")
                 continue

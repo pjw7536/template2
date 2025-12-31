@@ -11,7 +11,6 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
-from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -33,6 +32,7 @@ from .utils import (
     _release_advisory_lock,
     _try_advisory_lock,
 )
+from .jira_templates import TEMPLATE_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -243,39 +243,8 @@ def _build_jira_summary(row: dict[str, Any]) -> str:
 # =============================================================================
 # 템플릿/렌더링 상수
 # =============================================================================
-_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 _TEMPLATE_ENGINE = Engine(autoescape=True)
 _TEMPLATE_CACHE: dict[str, str] = {}
-
-
-def _load_template_files() -> dict[str, str]:
-    """템플릿 디렉터리에서 HTML 템플릿 파일을 스캔합니다.
-
-    반환:
-        {template_key: filename} 형태의 dict.
-
-    부작용:
-        파일 시스템을 읽습니다.
-    """
-
-    # -------------------------------------------------------------------------
-    # 1) 디렉터리 존재 여부 확인
-    # -------------------------------------------------------------------------
-    template_files: dict[str, str] = {}
-    if not _TEMPLATE_DIR.exists():
-        return template_files
-    # -------------------------------------------------------------------------
-    # 2) 템플릿 파일 목록 스캔
-    # -------------------------------------------------------------------------
-    for path in sorted(_TEMPLATE_DIR.glob("*.html")):
-        key = path.stem.strip()
-        if not key:
-            continue
-        template_files[key] = path.name
-    return template_files
-
-
-_TEMPLATE_FILES: dict[str, str] = _load_template_files()
 
 
 def _build_eqp_cb(row: dict[str, Any]) -> str:
@@ -380,28 +349,26 @@ def _load_template_source(template_key: str) -> str:
         템플릿 소스 문자열.
 
     부작용:
-        파일 시스템을 읽고 캐시를 갱신할 수 있습니다.
+        내부 캐시를 갱신할 수 있습니다.
 
     오류:
         지원하지 않는 키이면 ValueError를 발생시킵니다.
     """
 
     # -------------------------------------------------------------------------
-    # 1) 템플릿 파일명 확인
-    # -------------------------------------------------------------------------
-    filename = _TEMPLATE_FILES.get(template_key)
-    if not filename:
-        raise ValueError(f"Unsupported Jira template key: {template_key!r}")
-    # -------------------------------------------------------------------------
-    # 2) 캐시 확인
+    # 1) 캐시 확인
     # -------------------------------------------------------------------------
     if template_key in _TEMPLATE_CACHE:
         return _TEMPLATE_CACHE[template_key]
     # -------------------------------------------------------------------------
-    # 3) 파일 읽기 및 캐시 저장
+    # 2) 템플릿 소스 확보
     # -------------------------------------------------------------------------
-    path = _TEMPLATE_DIR / filename
-    source = path.read_text(encoding="utf-8")
+    source = TEMPLATE_SOURCES.get(template_key)
+    if not source:
+        raise ValueError(f"Unsupported Jira template key: {template_key!r}")
+    # -------------------------------------------------------------------------
+    # 3) 캐시 저장 및 반환
+    # -------------------------------------------------------------------------
     _TEMPLATE_CACHE[template_key] = source
     return source
 
@@ -417,7 +384,7 @@ def _render_line_template(*, template_key: str, row: dict[str, Any]) -> str:
         렌더링된 HTML 문자열.
 
     부작용:
-        템플릿 파일을 읽을 수 있습니다.
+        템플릿 캐시를 갱신할 수 있습니다.
     """
 
     # -------------------------------------------------------------------------
@@ -1390,7 +1357,7 @@ def _resolve_template_key_for_row(
         template_key = template_keys_by_user_sdwt.get(normalized_user)
         if isinstance(template_key, str) and template_key.strip():
             normalized_key = template_key.strip()
-            if normalized_key in _TEMPLATE_FILES:
+            if normalized_key in TEMPLATE_SOURCES:
                 return normalized_key
             return None
 
@@ -1406,7 +1373,7 @@ def _resolve_template_key_for_row(
     if not isinstance(template_key, str) or not template_key.strip():
         return None
     normalized_key = template_key.strip()
-    if normalized_key not in _TEMPLATE_FILES:
+    if normalized_key not in TEMPLATE_SOURCES:
         return None
     return normalized_key
 

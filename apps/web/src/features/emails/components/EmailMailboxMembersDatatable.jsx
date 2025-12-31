@@ -18,7 +18,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -38,6 +38,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/common"
 
 import { cn } from "@/lib/utils"
+import { buildProfileImageUrl, resolveProfileUserId } from "@/lib/profileImage"
 
 const COLUMNS = [
   {
@@ -50,10 +51,13 @@ const COLUMNS = [
           ? username
           : row.original.user || row.original.name || "Unknown"
       const knoxId = row.original.knoxId || row.original.knox_id || row.original.secondary || ""
+      const profileUserId = resolveProfileUserId(row.original)
+      const avatarSrc = buildProfileImageUrl(profileUserId)
 
       return (
         <div className="flex items-center gap-2">
           <Avatar className="size-9">
+            <AvatarImage src={avatarSrc || undefined} alt={primary} />
             <AvatarFallback className="text-xs">{row.original.fallback}</AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 gap-2">

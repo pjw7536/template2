@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any, Dict, Sequence
 
 from django.db import transaction
 from django.utils import timezone
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from api.rag import services as rag_services
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
+import api.rag.services as rag_services
 
 from ..models import Email, EmailOutbox
 from ..selectors import (
+    build_email_ocr_text,
     list_emails_by_ids,
     list_pending_email_outbox,
     list_pending_rag_emails,
@@ -110,6 +112,71 @@ def _resolve_email_permission_groups(email: Email) -> list[str] | None:
     if groups:
         return list(dict.fromkeys(groups))
     return [rag_services.RAG_PUBLIC_GROUP]
+
+
+def _build_email_rag_content(email: Email) -> str:
+    """이메일 본문 텍스트와 OCR 결과를 결합해 RAG content를 생성합니다.
+
+    입력:
+        email: Email 인스턴스.
+    반환:
+        결합된 content 문자열.
+    부작용:
+        없음. 조회 전용.
+    오류:
+        없음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 기본 본문 텍스트 구성
+    # -----------------------------------------------------------------------------
+    base_text = (email.body_text or "").strip()
+
+    # -----------------------------------------------------------------------------
+    # 2) OCR 텍스트 결합
+    # -----------------------------------------------------------------------------
+    ocr_text = build_email_ocr_text(email_id=email.id)
+    if not ocr_text:
+        return base_text
+
+    # -----------------------------------------------------------------------------
+    # 3) 최종 문자열 반환
+    # -----------------------------------------------------------------------------
+    if base_text:
+        return f"{base_text}\n{ocr_text}"
+    return ocr_text
+
+
+def _build_email_payload_for_rag(email: Email, content: str) -> Any:
+    """RAG 삽입에 사용할 이메일 payload 객체를 구성합니다.
+
+    입력:
+        email: Email 인스턴스.
+        content: RAG content 문자열.
+    반환:
+        RAG insert에 사용할 객체(SimpleNamespace).
+    부작용:
+        없음.
+    오류:
+        없음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 필수 필드 매핑
+    # -----------------------------------------------------------------------------
+    return SimpleNamespace(
+        id=email.id,
+        subject=email.subject,
+        body_text=content,
+        received_at=email.received_at,
+        recipient=email.recipient,
+        sender=email.sender,
+        user_sdwt_prod=email.user_sdwt_prod,
+        sender_id=email.sender_id,
+        rag_doc_id=email.rag_doc_id,
+        department=getattr(email, "department", None),
+        line=getattr(email, "line", None),
+    )
 
 
 def enqueue_email_outbox(
@@ -218,8 +285,10 @@ def _call_insert_email_to_rag(
 
     from api.emails import services as email_services
 
+    content = _build_email_rag_content(email)
+    payload_email = _build_email_payload_for_rag(email, content)
     email_services.insert_email_to_rag(
-        email,
+        payload_email,
         index_name=index_name,
         permission_groups=permission_groups,
     )

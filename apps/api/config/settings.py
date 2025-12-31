@@ -104,8 +104,16 @@ INSTALLED_APPS = [
     "api.account",
     "api.activity",
     "api.appstore",
+    "api.assistant",
+    "api.auth.apps.AuthConfig",
+    "api.common",
     "api.drone",
     "api.emails",
+    "api.health",
+    "api.management",
+    "api.rag",
+    "api.tables",
+    "api.timeline",
     "api.voc",
 ]
 
@@ -130,8 +138,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # 사용자 활동 로깅 (커스텀)
-    "api.common.middleware.ActivityLoggingMiddleware",
-    "api.common.middleware.KnoxIdRequiredMiddleware",
+    "api.common.services.middleware.ActivityLoggingMiddleware",
+    "api.common.services.middleware.KnoxIdRequiredMiddleware",
 ]
 
 
@@ -212,13 +220,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ==================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "api.auth.authentication.CsrfExemptSessionAuthentication",
+        "api.auth.services.authentication.CsrfExemptSessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
     ],
-    "DEFAULT_SCHEMA_CLASS": "api.common.schema.FeatureAutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "api.common.services.schema.FeatureAutoSchema",
 }
 
 # =============
@@ -237,10 +245,29 @@ RAG_API_KEY = env("RAG_API_KEY", "")
 RAG_ERROR_LOG_PATH = env("RAG_ERROR_LOG_PATH", str(BASE_DIR / "logs" / "rag_errors.log"))
 
 
+# =====================
+# MinIO 오브젝트 스토리지
+# =====================
+MINIO_ENDPOINT = env("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = env("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = env("MINIO_BUCKET", "emails")
+MINIO_REGION = env("MINIO_REGION", "us-east-1")
+
+
 # =============================
 # Airflow 트리거 인증(공통)
 # =============================
 AIRFLOW_TRIGGER_TOKEN = env("AIRFLOW_TRIGGER_TOKEN", "")
+
+
+# =============================
+# OCR 작업 관리(이메일 자산)
+# =============================
+EMAIL_OCR_INTERNAL_TOKEN = env("EMAIL_OCR_INTERNAL_TOKEN", "")
+EMAIL_OCR_CLAIM_LIMIT = env_int("EMAIL_OCR_CLAIM_LIMIT", 50) or 50
+EMAIL_OCR_LEASE_SECONDS = env_int("EMAIL_OCR_LEASE_SECONDS", 1800) or 1800
+EMAIL_OCR_MAX_ATTEMPTS = env_int("EMAIL_OCR_MAX_ATTEMPTS", 3) or 3
 
 
 # =========================

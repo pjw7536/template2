@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { buildProfileImageUrl } from '@/lib/profileImage'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +53,7 @@ const NotificationDropdown = ({
           <TabsContent value='inbox'>
             <DropdownMenuItem className='gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-19.png' />
+                <AvatarImage src={buildProfileImageUrl('mark.bush') || undefined} />
                 <AvatarFallback>MB</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -71,7 +72,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-5.png' />
+                <AvatarImage src={buildProfileImageUrl('aaron.black') || undefined} />
                 <AvatarFallback>AB</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -90,7 +91,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='items-start gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-2.png' />
+                <AvatarImage src={buildProfileImageUrl('anna') || undefined} />
                 <AvatarFallback>A</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -111,7 +112,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='items-start gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-3.png' />
+                <AvatarImage src={buildProfileImageUrl('jason') || undefined} />
                 <AvatarFallback>J</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -132,7 +133,7 @@ const NotificationDropdown = ({
           <TabsContent value='general'>
             <DropdownMenuItem className='gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-7.png' />
+                <AvatarImage src={buildProfileImageUrl('fred.campbell') || undefined} />
                 <AvatarFallback>FC</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -151,7 +152,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='items-start gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-15.png' />
+                <AvatarImage src={buildProfileImageUrl('scott') || undefined} />
                 <AvatarFallback>S</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -170,7 +171,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-11.png' />
+                <AvatarImage src={buildProfileImageUrl('harold.larson') || undefined} />
                 <AvatarFallback>HL</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>
@@ -189,7 +190,7 @@ const NotificationDropdown = ({
             <DropdownMenuSeparator />
             <DropdownMenuItem className='items-start gap-3 px-2 py-3 text-base'>
               <Avatar className='size-9.5'>
-                <AvatarImage src='https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-6.png' />
+                <AvatarImage src={buildProfileImageUrl('rosie') || undefined} />
                 <AvatarFallback>R</AvatarFallback>
               </Avatar>
               <div className='flex w-full flex-col items-start'>

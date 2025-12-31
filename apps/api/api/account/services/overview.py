@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.emails import services as email_services
+import api.emails.services as email_services
 
 from .. import selectors
 from .access import _current_access_list, get_manageable_groups_with_members

@@ -1,10 +1,10 @@
-// src/features/appstore/hooks/useAppstoreQueries.js
+// 파일 경로: src/features/appstore/hooks/useAppstoreQueries.js
 // Appstore 전용 React Query 훅 모음
 
 import { useQuery } from "@tanstack/react-query"
 
 import { fetchApp, fetchApps, fetchComments } from "../api/appstore"
-import { appstoreQueryKeys } from "../api/query-keys"
+import { appstoreQueryKeys } from "../api/queryKeys"
 
 export function useAppsQuery() {
   return useQuery({

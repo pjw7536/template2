@@ -1,5 +1,4 @@
-// src/features/appstore/api/appstore.js
-// Appstore 백엔드 연동 유틸 (React Query 전용)
+// 앱스토어 API 요청 유틸 (React Query 전용)
 
 import { buildBackendUrl } from "@/lib/api"
 
@@ -29,10 +28,6 @@ async function request(path, options = {}) {
 
 function ensureString(value) {
   return typeof value === "string" ? value : ""
-}
-
-function normalizeTags(tags) {
-  return Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string" && tag.trim()).map((tag) => tag.trim()) : []
 }
 
 function normalizeUser(rawUser) {
@@ -101,8 +96,6 @@ function normalizeApp(raw) {
     category: ensureString(raw.category),
     description: ensureString(raw.description),
     url: ensureString(raw.url),
-    tags: normalizeTags(raw.tags),
-    badge: ensureString(raw.badge),
     contactName: ensureString(raw.contactName || raw.contact_name),
     contactKnoxid: ensureString(raw.contactKnoxid || raw.contact_knoxid),
     screenshotUrl,

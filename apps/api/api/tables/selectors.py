@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from api.common.db import run_query
-from api.common.utils import list_table_columns
+from api.common.services import run_query
+from api.common.selectors import list_table_columns
 
 
 def list_columns(*, table_name: str) -> list[str]:

@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
+import base64
 import os
-import gzip
 from datetime import timedelta
 from email.message import EmailMessage
 from unittest.mock import Mock, patch
@@ -17,9 +17,9 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from api.account.models import Affiliation, ExternalAffiliationSnapshot, UserSdwtProdAccess, UserSdwtProdChange
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
-from api.emails.models import Email, EmailOutbox
+import api.account.services as account_services
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
+from api.emails.models import Email, EmailAsset, EmailOutbox
 from api.emails.selectors import get_filtered_emails, resolve_email_affiliation
 from api.emails.services import (
     MailSendError,
@@ -28,10 +28,12 @@ from api.emails.services import (
     delete_single_email,
     enqueue_rag_index_for_emails,
     enqueue_rag_index,
+    ingest_pop3_mailbox,
     move_emails_to_user_sdwt_prod,
     move_sender_emails_after,
     process_email_outbox_batch,
     send_knox_mail_api,
+    store_email_html_and_assets,
 )
 from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 
@@ -90,11 +92,14 @@ class EmailAffiliationTests(TestCase):
             조건 불일치 시 assertion 실패.
         """
 
-        ExternalAffiliationSnapshot.objects.create(
-            knox_id="loginid-ext",
-            predicted_user_sdwt_prod="group-pred",
-            source_updated_at=timezone.now(),
-            last_seen_at=timezone.now(),
+        account_services.sync_external_affiliations(
+            records=[
+                {
+                    "knox_id": "loginid-ext",
+                    "user_sdwt_prod": "group-pred",
+                    "source_updated_at": timezone.now(),
+                }
+            ]
         )
 
         affiliation = resolve_email_affiliation(sender_id="loginid-ext", received_at=timezone.now())
@@ -119,15 +124,37 @@ class EmailAffiliationTests(TestCase):
         user.user_sdwt_prod = "group-new"
         user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
+        # -------------------------------------------------------------------------
+        # 1) 소속 옵션 및 변경 요청 준비
+        # -------------------------------------------------------------------------
         effective_from = timezone.now()
-        UserSdwtProdChange.objects.create(
+        option = account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="group-new",
+        )
+        payload, status_code = account_services.request_affiliation_change(
             user=user,
-            from_user_sdwt_prod="group-old",
+            option=option,
             to_user_sdwt_prod="group-new",
             effective_from=effective_from,
-            applied=True,
-            approved=True,
+            timezone_name="Asia/Seoul",
         )
+        self.assertEqual(status_code, 202)
+
+        # -------------------------------------------------------------------------
+        # 2) 승인 권한 보장 및 승인 처리
+        # -------------------------------------------------------------------------
+        approver = User.objects.create_user(sabun="S77778", password="test-password")
+        approver.user_sdwt_prod = "group-new"
+        approver.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(approver, as_manager=True)
+        approve_payload, approve_status = account_services.approve_affiliation_change(
+            approver=approver,
+            change_id=payload["changeId"],
+        )
+        self.assertEqual(approve_status, 200)
+        self.assertEqual(approve_payload.get("status"), "approved")
 
         before = resolve_email_affiliation(sender_id="loginid3", received_at=effective_from - timedelta(hours=1))
         self.assertEqual(before["user_sdwt_prod"], "group-new")
@@ -398,7 +425,8 @@ class EmailOutboxTests(TestCase):
         self.assertEqual(kwargs.get("permission_groups"), ["group-a", "sender"])
 
     @patch("api.emails.services.delete_rag_doc")
-    def test_delete_email_enqueues_outbox(self, mock_delete: Mock) -> None:
+    @patch("api.emails.services.mutations.delete_email_objects")
+    def test_delete_email_enqueues_outbox(self, _mock_delete_objects: Mock, mock_delete: Mock) -> None:
         """삭제 시 Outbox가 적재되고 처리되는지 확인합니다.
 
         입력:
@@ -599,7 +627,18 @@ class EmailMailboxAccessViewTests(TestCase):
         user.user_sdwt_prod = "group-a"
         user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
-        UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-empty")
+        manager = User.objects.create_user(sabun="S11113", password="test-password")
+        manager.user_sdwt_prod = "group-empty"
+        manager.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(manager, as_manager=True)
+        _, status_code = account_services.grant_or_revoke_access(
+            grantor=manager,
+            target_group="group-empty",
+            target_user=user,
+            action="grant",
+            can_manage=False,
+        )
+        self.assertEqual(status_code, 200)
 
         self.client.force_login(user)
 
@@ -628,7 +667,18 @@ class EmailMailboxAccessViewTests(TestCase):
         user.user_sdwt_prod = "group-a"
         user.save(update_fields=["knox_id", "user_sdwt_prod"])
 
-        UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-b")
+        manager = User.objects.create_user(sabun="S22223", password="test-password")
+        manager.user_sdwt_prod = "group-b"
+        manager.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(manager, as_manager=True)
+        _, status_code = account_services.grant_or_revoke_access(
+            grantor=manager,
+            target_group="group-b",
+            target_user=user,
+            action="grant",
+            can_manage=False,
+        )
+        self.assertEqual(status_code, 200)
 
         Email.objects.create(
             message_id="msg-a2",
@@ -693,7 +743,18 @@ class EmailMailboxAccessViewTests(TestCase):
         granted.knox_id = "loginid-granted"
         granted.user_sdwt_prod = "group-b"
         granted.save(update_fields=["username", "knox_id", "user_sdwt_prod"])
-        UserSdwtProdAccess.objects.create(user=granted, user_sdwt_prod="group-a", can_manage=True)
+        manager = User.objects.create_user(sabun="S33336", password="test-password")
+        manager.user_sdwt_prod = "group-a"
+        manager.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(manager, as_manager=True)
+        _, status_code = account_services.grant_or_revoke_access(
+            grantor=manager,
+            target_group="group-a",
+            target_user=granted,
+            action="grant",
+            can_manage=True,
+        )
+        self.assertEqual(status_code, 200)
 
         Email.objects.create(
             message_id="mailbox-members-1",
@@ -814,7 +875,18 @@ class EmailMailboxAccessViewTests(TestCase):
         mailbox_owner.user_sdwt_prod = "group-b"
         mailbox_owner.save(update_fields=["knox_id", "user_sdwt_prod"])
 
-        UserSdwtProdAccess.objects.create(user=user, user_sdwt_prod="group-b")
+        manager = User.objects.create_user(sabun="S55557", password="test-password")
+        manager.user_sdwt_prod = "group-b"
+        manager.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(manager, as_manager=True)
+        _, status_code = account_services.grant_or_revoke_access(
+            grantor=manager,
+            target_group="group-b",
+            target_user=user,
+            action="grant",
+            can_manage=False,
+        )
+        self.assertEqual(status_code, 200)
 
         self.client.force_login(user)
 
@@ -844,7 +916,11 @@ class EmailMailboxAccessViewTests(TestCase):
         staff.knox_id = "knox-33333"
         staff.save(update_fields=["knox_id"])
 
-        Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-empty")
+        account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="group-empty",
+        )
 
         Email.objects.create(
             message_id="msg-staff-a",
@@ -921,7 +997,11 @@ class EmailMailboxAccessViewTests(TestCase):
         superuser.knox_id = "knox-33334"
         superuser.save(update_fields=["knox_id"])
 
-        Affiliation.objects.create(department="Dept", line="Line", user_sdwt_prod="group-empty")
+        account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="group-empty",
+        )
 
         Email.objects.create(
             message_id="msg-su-a",
@@ -1301,6 +1381,86 @@ class EmailParsingTests(SimpleTestCase):
         self.assertEqual(fields["recipient"], ["Jane <jane@x.com>", "Bob <bob@y.com>"])
         self.assertEqual(fields["cc"], ["Team <team@corp.com>"])
 
+    def test_parse_message_to_fields_strips_signature_elements_from_html(self) -> None:
+        """HTML 본문에서 제외 대상 서명 요소가 제거되는지 확인합니다.
+
+        입력:
+            없음(HTML 메시지 생성).
+        반환:
+            없음.
+        부작용:
+            없음.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        msg = EmailMessage()
+        msg["Subject"] = "Test"
+        msg["From"] = "Sender <sender@example.com>"
+        msg["To"] = "Receiver <receiver@example.com>"
+        msg["Date"] = "Mon, 01 Jan 2024 00:00:00 +0000"
+        msg["Message-ID"] = "<msg-parse-html-1>"
+        msg.set_content("Plain")
+
+        html = (
+            "<html><body>"
+            "<p>Hello</p>"
+            "<img id='standardSignature' src='cid:sig'>"
+            "<table id='bannersignImg'><tr><td>Banner</td></tr></table>"
+            "<table id='confidentialsignimg'><tr><td>Confidential</td></tr></table>"
+            "<p>Bye</p>"
+            "</body></html>"
+        )
+        msg.add_alternative(html, subtype="html")
+
+        fields = _parse_message_to_fields(msg)
+
+        self.assertIn("Hello", fields["body_text"])
+        self.assertIn("Bye", fields["body_text"])
+        self.assertNotIn("Banner", fields["body_text"])
+        self.assertNotIn("Confidential", fields["body_text"])
+        self.assertNotIn("standardSignature", fields["body_html"])
+        self.assertNotIn("bannersignImg", fields["body_html"])
+        self.assertNotIn("confidentialsignimg", fields["body_html"])
+
+    def test_parse_message_to_fields_strips_signature_markers_from_text(self) -> None:
+        """텍스트 본문에서 제외 대상 서명 마커가 제거되는지 확인합니다.
+
+        입력:
+            없음(텍스트 메시지 생성).
+        반환:
+            없음.
+        부작용:
+            없음.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        msg = EmailMessage()
+        msg["Subject"] = "Test"
+        msg["From"] = "Sender <sender@example.com>"
+        msg["To"] = "Receiver <receiver@example.com>"
+        msg["Date"] = "Mon, 01 Jan 2024 00:00:00 +0000"
+        msg["Message-ID"] = "<msg-parse-text-1>"
+        msg.set_content(
+            "Hello\n"
+            "<img id='standardSignature'>\n"
+            "Keep\n"
+            "<table id=\"bannersignImg\"></table>\n"
+            "<table id=\"confidentialsignimg\"></table>\n"
+            "Bye\n"
+        )
+
+        fields = _parse_message_to_fields(msg)
+        lowered = fields["body_text"].lower()
+
+        self.assertIn("Hello", fields["body_text"])
+        self.assertIn("Bye", fields["body_text"])
+        self.assertIn("Keep", fields["body_text"])
+        self.assertNotIn("standardsignature", lowered)
+        self.assertNotIn("bannersignimg", lowered)
+        self.assertNotIn("confidentialsignimg", lowered)
+
 
 class EmailSearchSelectorTests(TestCase):
     """메일 검색 필터 동작을 검증합니다."""
@@ -1437,7 +1597,7 @@ class EmailEndpointTests(TestCase):
             recipient=["dest@example.com"],
             user_sdwt_prod="group-a",
             body_text="Body",
-            body_html_gzip=gzip.compress(b"<html>body</html>"),
+            body_html_object_key="html/1.html",
         )
         Email.objects.create(
             message_id="msg-unassigned",
@@ -1465,19 +1625,49 @@ class EmailEndpointTests(TestCase):
             조건 불일치 시 assertion 실패.
         """
 
-        list_response = self.client.get(reverse("emails-inbox"))
-        self.assertEqual(list_response.status_code, 200)
+        with patch("api.emails.views.load_email_html", return_value=b"<html>body</html>"), patch(
+            "api.emails.services.mutations.delete_email_objects"
+        ):
+            list_response = self.client.get(reverse("emails-inbox"))
+            self.assertEqual(list_response.status_code, 200)
 
-        detail_response = self.client.get(reverse("emails-detail", kwargs={"email_id": self.email.id}))
-        self.assertEqual(detail_response.status_code, 200)
+            detail_response = self.client.get(reverse("emails-detail", kwargs={"email_id": self.email.id}))
+            self.assertEqual(detail_response.status_code, 200)
 
-        html_response = self.client.get(reverse("emails-html", kwargs={"email_id": self.email.id}))
-        self.assertEqual(html_response.status_code, 200)
-        self.assertIn("<html>", html_response.content.decode("utf-8"))
+            html_response = self.client.get(reverse("emails-html", kwargs={"email_id": self.email.id}))
+            self.assertEqual(html_response.status_code, 200)
+            self.assertIn("<html>", html_response.content.decode("utf-8"))
 
-        delete_response = self.client.delete(reverse("emails-detail", kwargs={"email_id": self.email.id}))
-        self.assertEqual(delete_response.status_code, 200)
+            delete_response = self.client.delete(reverse("emails-detail", kwargs={"email_id": self.email.id}))
+            self.assertEqual(delete_response.status_code, 200)
 
+    def test_email_asset_endpoint(self) -> None:
+        """이미지 자산 엔드포인트가 정상 동작하는지 확인합니다.
+
+        입력:
+            없음(사전 데이터 사용).
+        반환:
+            없음.
+        부작용:
+            테스트 클라이언트 요청.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        EmailAsset.objects.create(
+            email=self.email,
+            sequence=1,
+            object_key="assets/1/1.png",
+            content_type="image/png",
+            source=EmailAsset.Source.CID,
+        )
+
+        with patch("api.emails.views.load_email_asset", return_value=b"png-data"):
+            response = self.client.get(
+                reverse("emails-asset", kwargs={"email_id": self.email.id, "sequence": 1})
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "image/png")
     def test_email_sent_list(self) -> None:
         """보낸메일 목록 엔드포인트가 정상 동작하는지 확인합니다.
 
@@ -1560,12 +1750,13 @@ class EmailEndpointTests(TestCase):
             user_sdwt_prod="group-a",
             body_text="Body",
         )
-        response = self.client.post(
-            reverse("emails-bulk-delete"),
-            data='{"email_ids":[%d]}' % email.id,
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
+        with patch("api.emails.services.mutations.delete_email_objects"):
+            response = self.client.post(
+                reverse("emails-bulk-delete"),
+                data='{"email_ids":[%d]}' % email.id,
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_email_move_endpoint(self, _mock_insert: Mock) -> None:
@@ -1581,7 +1772,18 @@ class EmailEndpointTests(TestCase):
             조건 불일치 시 assertion 실패.
         """
 
-        UserSdwtProdAccess.objects.create(user=self.user, user_sdwt_prod="group-b")
+        manager = User.objects.create_user(sabun="S77779", password="test-password")
+        manager.user_sdwt_prod = "group-b"
+        manager.save(update_fields=["user_sdwt_prod"])
+        account_services.ensure_self_access(manager, as_manager=True)
+        _, status_code = account_services.grant_or_revoke_access(
+            grantor=manager,
+            target_group="group-b",
+            target_user=self.user,
+            action="grant",
+            can_manage=False,
+        )
+        self.assertEqual(status_code, 200)
 
         email = Email.objects.create(
             message_id="msg-move",
@@ -1620,6 +1822,122 @@ class EmailEndpointTests(TestCase):
 
         response = self.client.post(reverse("emails-ingest"))
         self.assertEqual(response.status_code, 200)
+
+
+class EmailAssetOcrClaimViewTests(TestCase):
+    """OCR 작업 클레임 엔드포인트 동작을 검증합니다."""
+
+    @override_settings(
+        EMAIL_OCR_INTERNAL_TOKEN="expected-token",
+        EMAIL_OCR_CLAIM_LIMIT=50,
+        EMAIL_OCR_LEASE_SECONDS=1800,
+        EMAIL_OCR_MAX_ATTEMPTS=3,
+    )
+    def test_ocr_claim_assigns_lock(self) -> None:
+        """OCR 클레임 시 자산 락이 부여되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            EmailAsset OCR 상태/락 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        email = Email.objects.create(
+            message_id="ocr-claim-1",
+            received_at=timezone.now(),
+            subject="OCR Claim",
+            sender="sender@example.com",
+            sender_id="sender",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.INDEXED,
+            body_text="Body",
+        )
+        asset = EmailAsset.objects.create(
+            email=email,
+            sequence=1,
+            object_key="assets/1/1.png",
+            content_type="image/png",
+            source=EmailAsset.Source.CID,
+        )
+
+        response = self.client.post(
+            reverse("emails-assets-ocr-claim"),
+            data="{}",
+            content_type="application/json",
+            HTTP_X_INTERNAL_TOKEN="expected-token",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload.get("tasks", [])), 1)
+        self.assertEqual(payload["tasks"][0]["asset_id"], asset.id)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.ocr_status, EmailAsset.OcrStatus.PROCESSING)
+        self.assertIsNotNone(asset.ocr_lock_token)
+        self.assertIsNotNone(asset.ocr_lock_expires_at)
+        self.assertEqual(asset.ocr_attempt_count, 1)
+
+
+class EmailAssetOcrUpdateViewTests(TestCase):
+    """OCR 결과 업데이트 엔드포인트 동작을 검증합니다."""
+
+    @override_settings(EMAIL_OCR_INTERNAL_TOKEN="expected-token", EMAIL_OCR_MAX_ATTEMPTS=3)
+    def test_ocr_update_enqueues_rag(self) -> None:
+        """OCR 결과가 반영되고 RAG 재인덱싱이 요청되는지 확인합니다.
+
+        입력:
+            없음(테스트 데이터 생성).
+        반환:
+            없음.
+        부작용:
+            EmailAsset/Outbox 업데이트.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        email = Email.objects.create(
+            message_id="ocr-msg-1",
+            received_at=timezone.now(),
+            subject="OCR",
+            sender="sender@example.com",
+            sender_id="sender",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            classification_source=Email.ClassificationSource.CONFIRMED_USER,
+            rag_index_status=Email.RagIndexStatus.INDEXED,
+            body_text="Body",
+        )
+        asset = EmailAsset.objects.create(
+            email=email,
+            sequence=1,
+            object_key="assets/1/1.png",
+            content_type="image/png",
+            source=EmailAsset.Source.CID,
+            ocr_status=EmailAsset.OcrStatus.PROCESSING,
+            ocr_lock_token="lock-token",
+            ocr_lock_expires_at=timezone.now() + timedelta(minutes=30),
+            ocr_attempt_count=1,
+        )
+
+        response = self.client.post(
+            reverse("emails-assets-ocr-update"),
+            data='{"results":[{"asset_id":%d,"lock_token":"lock-token","status":"DONE","text":"ocr-text"}]}'
+            % asset.id,
+            content_type="application/json",
+            HTTP_X_INTERNAL_TOKEN="expected-token",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.ocr_status, EmailAsset.OcrStatus.DONE)
+        self.assertEqual(asset.ocr_text, "ocr-text")
+        self.assertEqual(EmailOutbox.objects.filter(action=EmailOutbox.Action.INDEX).count(), 1)
 
 
 class EmailOutboxTriggerAuthTests(TestCase):
@@ -1684,3 +2002,128 @@ class EmailOutboxTriggerAuthTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         mock_process.assert_called_once_with(limit=123)
+
+
+class EmailHtmlStorageTests(TestCase):
+    """HTML/이미지 자산 저장 규칙을 검증합니다."""
+
+    @patch("api.emails.services.storage.upload_bytes")
+    def test_store_email_html_preserves_external_urls(self, mock_upload: Mock) -> None:
+        """외부 URL 이미지는 원문 유지되고 자산으로 기록되는지 확인합니다.
+
+        입력:
+            없음(테스트 Email/HTML 준비).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email/EmailAsset 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        email = Email.objects.create(
+            message_id="msg-html-1",
+            received_at=timezone.now(),
+            subject="Subject",
+            sender="sender@example.com",
+            sender_id="knox-html-1",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        external_url = "https://example.com/external.png"
+        payload = base64.b64encode(b"image-bytes").decode("ascii")
+        body_html = (
+            f"<html><body><img src=\"{external_url}\" />"
+            f"<img src=\"data:image/png;base64,{payload}\" /></body></html>"
+        )
+
+        store_email_html_and_assets(email=email, body_html=body_html, cid_map={})
+
+        html_uploads = [
+            call.kwargs
+            for call in mock_upload.call_args_list
+            if str(call.kwargs.get("content_type", "")).startswith("text/html")
+        ]
+        self.assertEqual(len(html_uploads), 1)
+        uploaded_html = html_uploads[0]["data"].decode("utf-8")
+        self.assertIn(external_url, uploaded_html)
+        self.assertIn(f"/api/v1/emails/{email.id}/assets/", uploaded_html)
+        self.assertNotIn("data:image/png;base64", uploaded_html)
+
+        external_asset = EmailAsset.objects.get(email=email, source=EmailAsset.Source.EXTERNAL_URL)
+        self.assertEqual(external_asset.original_url, external_url)
+        self.assertIsNone(external_asset.object_key)
+
+        data_asset = EmailAsset.objects.get(email=email, source=EmailAsset.Source.DATA_URL)
+        self.assertIsNotNone(data_asset.object_key)
+
+
+class EmailIngestHtmlRetryTests(TestCase):
+    """POP3 수집 시 HTML 저장 재시도 조건을 검증합니다."""
+
+    def test_ingest_calls_store_when_html_key_missing(self) -> None:
+        """HTML 키가 비어 있으면 생성 여부와 무관하게 저장을 시도하는지 확인합니다.
+
+        입력:
+            없음(세션/서비스 모킹).
+        반환:
+            없음.
+        부작용:
+            테스트 DB에 Email 생성.
+        오류:
+            조건 불일치 시 assertion 실패.
+        """
+
+        email = Email.objects.create(
+            message_id="msg-pop3-1",
+            received_at=timezone.now(),
+            subject="Subject",
+            sender="sender@example.com",
+            sender_id="knox-pop3-1",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        fields = {
+            "message_id": email.message_id,
+            "received_at": email.received_at,
+            "subject": email.subject,
+            "sender": email.sender,
+            "sender_id": email.sender_id,
+            "recipient": email.recipient,
+            "cc": [],
+            "body_text": email.body_text,
+            "body_html": "<html><body>Body</body></html>",
+            "cid_map": {},
+        }
+
+        session = Mock()
+
+        with patch("api.emails.services.ingest._iter_pop3_messages", return_value=[(1, Mock())]), patch(
+            "api.emails.services.ingest._extract_subject_header", return_value=email.subject
+        ), patch("api.emails.services.ingest._is_excluded_subject", return_value=False), patch(
+            "api.emails.services.ingest._parse_message_to_fields", return_value=fields
+        ), patch(
+            "api.emails.services.ingest.resolve_email_affiliation",
+            return_value={
+                "user_sdwt_prod": "group-a",
+                "classification_source": Email.ClassificationSource.UNASSIGNED,
+            },
+        ), patch(
+            "api.emails.services.ingest.save_parsed_email", return_value=(email, False)
+        ), patch(
+            "api.emails.services.ingest.store_email_html_and_assets"
+        ) as mock_store, patch(
+            "api.emails.services.ingest._delete_pop3_messages"
+        ) as mock_delete:
+            ingest_pop3_mailbox(session)
+
+        mock_store.assert_called_once_with(
+            email=email,
+            body_html=fields["body_html"],
+            cid_map=fields["cid_map"],
+        )
+        mock_delete.assert_called_once_with(session, [1])

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { timelineQueryKeys } from "../api/query-keys"
+import { timelineQueryKeys } from "../api/queryKeys"
 import { timelineApi } from "../api/timelineApi"
 
 export function useEquipmentInfoQuery(eqpId, options = {}) {

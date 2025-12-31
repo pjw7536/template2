@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from api.common.db import execute
-from api.common.utils import resolve_table_schema
+from api.common.services import execute
+from api.common.services import resolve_table_schema
 
 from .. import selectors
 

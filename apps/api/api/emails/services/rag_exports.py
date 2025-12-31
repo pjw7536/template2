@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from api.rag import services as rag_services
+import api.rag.services as rag_services
 
 insert_email_to_rag = rag_services.insert_email_to_rag
 delete_rag_doc = rag_services.delete_rag_doc

@@ -1,5 +1,3 @@
-export { HomeLayout } from "./components/HomeLayout"
 export { default as HomeNavbar } from "./components/Navbar"
-export { default as HomePage } from "./pages/HomePage"
 export { homeRoutes } from "./routes"
-export { navigationItems } from "./constants"
+export { navigationItems } from "./utils/constants"

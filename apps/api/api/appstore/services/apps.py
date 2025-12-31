@@ -23,8 +23,6 @@ def create_app(
     category: str,
     description: str,
     url: str,
-    badge: str,
-    tags: list[str],
     screenshot_urls: list[str] | None = None,
     screenshot_url: str,
     contact_name: str,
@@ -38,8 +36,6 @@ def create_app(
         category: 앱 카테고리.
         description: 앱 설명.
         url: 앱 URL.
-        badge: 뱃지 라벨(선택).
-        tags: 태그 목록.
         screenshot_urls: 스크린샷 목록(대표가 첫 번째). URL 또는 data URL.
         screenshot_url: 스크린샷 URL 또는 data URL.
         contact_name: 담당자 이름.
@@ -77,8 +73,6 @@ def create_app(
         screenshot_base64=screenshot_base64,
         screenshot_mime_type=screenshot_mime_type,
         screenshot_gallery=screenshot_gallery,
-        badge=badge,
-        tags=tags,
         contact_name=contact_name,
         contact_knoxid=contact_knoxid,
         owner=owner,

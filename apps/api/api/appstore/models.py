@@ -20,8 +20,6 @@ class AppStoreApp(models.Model):
     screenshot_base64 = models.TextField(blank=True, default="")
     screenshot_mime_type = models.CharField(max_length=100, blank=True, default="")
     screenshot_gallery = models.JSONField(default=list, blank=True)
-    tags = models.JSONField(default=list, blank=True)
-    badge = models.CharField(max_length=64, blank=True, default="")
     contact_name = models.CharField(max_length=255, blank=True, default="")
     contact_knoxid = models.CharField(max_length=255, blank=True, default="")
     owner = models.ForeignKey(

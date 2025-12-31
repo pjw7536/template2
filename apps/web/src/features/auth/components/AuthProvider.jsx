@@ -1,4 +1,4 @@
-// src/features/auth/components/AuthProvider.jsx
+// 파일 경로: src/features/auth/components/AuthProvider.jsx
 // 인증 전역 상태를 제공하는 React Context와 Provider입니다.
 // - 여기서는 상태/비즈니스 로직만 담당하고,
 // - 공용 가드 UI(RequireAuth 등)는 components 폴더, 페이지 전용 UI는 각 page 폴더에 둡니다.
@@ -15,11 +15,12 @@ import React, {
 import { buildBackendUrl } from "@/lib/api"
 
 import { DEFAULT_AUTH_CONFIG } from "../utils/authConfig"
-import { fetchJson } from "../utils/fetch-json"
+import { fetchJson } from "../utils/fetchJson"
 import { appendNextParam, buildNextUrl } from "../utils/url"
 import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
 
 /**
+ * 인증 사용자 타입 정의
  * @typedef {Object} AuthUser
  * @property {string} id
  * @property {string} [email]
@@ -32,6 +33,7 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
  */
 
 /**
+ * 인증 설정 타입 정의
  * @typedef {Object} AuthConfig
  * @property {string} loginUrl
  * @property {string} logoutUrl
@@ -41,6 +43,7 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
  */
 
 /**
+ * 인증 컨텍스트 값 타입 정의
  * @typedef {Object} AuthContextValue
  * @property {AuthUser | null} user
  * @property {boolean} isLoading
@@ -50,7 +53,10 @@ import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
  * @property {AuthConfig} config
  */
 
-/** @type {React.Context<AuthContextValue | undefined>} */
+/**
+ * 타입: 인증 컨텍스트
+ * @type {React.Context<AuthContextValue | undefined>}
+ */
 export const AuthContext = createContext(undefined)
 
 const POST_LOGIN_ATTENTION_TOOLTIP_KEY = "auth:post-login-attention-tooltip"
@@ -79,9 +85,15 @@ function getFocusCooldownMs(sessionRefreshIntervalMs) {
  * - 중요한 포인트마다 한글 주석을 추가해 초보자도 흐름을 따라가기 쉽게 했습니다.
  */
 export function AuthProvider({ children }) {
-  /** @type {[AuthUser|null, React.Dispatch<React.SetStateAction<AuthUser|null>>]} */
+  /**
+   * 타입: 사용자 상태
+   * @type {[AuthUser|null, React.Dispatch<React.SetStateAction<AuthUser|null>>]}
+   */
   const [user, setUser] = useState(null)
-  /** @type {[AuthConfig, React.Dispatch<React.SetStateAction<AuthConfig>>]} */
+  /**
+   * 타입: 인증 설정 상태
+   * @type {[AuthConfig, React.Dispatch<React.SetStateAction<AuthConfig>>]}
+   */
   const [config, setConfig] = useState(DEFAULT_AUTH_CONFIG)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -108,7 +120,7 @@ export function AuthProvider({ children }) {
       const endpoint = buildBackendUrl("/api/v1/auth/config")
       const result = await fetchJson(endpoint, { cache: "no-store" })
       if (result.ok && result.data && mountedRef.current) {
-        setConfig((prev) => ({ ...prev, ...(/** @type {Partial<AuthConfig>} */ (result.data)) }))
+        setConfig((prev) => ({ ...prev, ...(/** 타입: Partial<AuthConfig> @type {Partial<AuthConfig>} */ (result.data)) }))
       }
     } catch {
       // 설정 로드 실패 시 기본값을 그대로 유지합니다.
@@ -123,7 +135,7 @@ export function AuthProvider({ children }) {
       const result = await fetchJson(endpoint, { cache: "no-store" })
       if (!mountedRef.current) return
       if (result.ok && result.data) {
-        setUser(/** @type {AuthUser} */ (result.data))
+        setUser(/** 타입: AuthUser @type {AuthUser} */ (result.data))
       } else {
         setUser(null)
       }

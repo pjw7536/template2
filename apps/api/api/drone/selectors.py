@@ -11,11 +11,10 @@ from typing import Any, Dict, List, Optional, Sequence
 from django.db import connection
 from django.db.models import QuerySet
 
-from api.account import selectors as account_selectors
-from api.common.constants import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME, SAFE_IDENTIFIER
-from api.common.db import run_query
-from api.common.utils import (
-    _get_user_sdwt_prod_values,
+import api.account.selectors as account_selectors
+from api.common.services import DEFAULT_TABLE, DIMENSION_CANDIDATES, LINE_SDWT_TABLE_NAME, SAFE_IDENTIFIER
+from api.common.services import run_query
+from api.common.services import (
     build_date_range_filters,
     build_line_filters,
     ensure_date_bounds,
@@ -25,6 +24,7 @@ from api.common.utils import (
     resolve_table_schema,
     to_int,
 )
+from api.common.selectors import _get_user_sdwt_prod_values
 
 from .models import DroneEarlyInform, DroneSOP, DroneSopJiraTemplate, DroneSopJiraUserTemplate
 

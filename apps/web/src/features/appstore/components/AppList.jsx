@@ -1,4 +1,4 @@
-// src/features/appstore/components/AppList.jsx
+// 앱 목록 컴포넌트
 import { ArrowUpRight, Eye, Heart, MessageSquare } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -62,34 +62,30 @@ export function AppList({
               isSelected && "border-primary/60 ring-1 ring-primary/30",
             )}
           >
-            {/* ✅ 상단을 2컬럼(Grid)로 분리 */}
+            {/* ✅ 상단을 2컬럼(그리드)로 분리 */}
             {/* 예: 뱃지(선택) */}
-            <div className="flex justify-between px-5 pb-2">
-
-              <CardHeader className="p-0">
-                <div className="flex items-start justify-center gap-2">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate text-lg leading-tight">{app.name}</CardTitle>
-                    {/* 필요하면 한 줄 서브 텍스트/카테고리 */}
-                    {/* <p className="mt-0.5 truncate text-xs text-muted-foreground">{app.category}</p> */}
-                  </div>
+            <div className="flex items-center justify-between px-5 py-1">
+              <div className="min-w-0">
+                <div className="truncate text-lg font-semibold leading-none">
+                  {app.name}
                 </div>
-              </CardHeader>
-              <Badge variant="secondary" className="shrink-0 text-[11px]">
+              </div>
+
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-[11px] leading-none"
+              >
                 {app.category || "기타"}
               </Badge>
-
-
             </div>
-            <Separator className="bg-border" />
             <div className="flex justify-center px-3 py-2">
               {/* 왼쪽: 스크린샷 */}
-              <div className="relative h-32 w-50 overflow-hidden rounded-md bg-muted ring-1 ring-border">
+              <div className="relative h-32 w-60 overflow-hidden rounded-md bg-muted ring-1 ring-border">
                 {coverSrc ? (
                   <img
                     src={coverSrc}
                     alt={`${app.name} 스크린샷`}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                     loading="lazy"
                   />
                 ) : (
@@ -103,10 +99,8 @@ export function AppList({
 
             </div>
 
-            <CardContent className="flex flex-1 flex-col gap-2 px-3 pb-3">
-              <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                {app.description || "설명이 없습니다."}
-              </p>
+            <CardContent className="flex flex-1 flex-col gap-2 px-3 py-1">
+
 
               <Separator className="bg-border" />
 
@@ -126,7 +120,7 @@ export function AppList({
                     onOpenLink?.(app)
                   }}
                 >
-                  바로가기
+                  Link
                   <ArrowUpRight className="size-3" />
                 </Button>
               </div>

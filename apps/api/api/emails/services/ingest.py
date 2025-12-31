@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import os
@@ -21,12 +20,12 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from django.utils import timezone
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 from ..models import Email
 from ..selectors import resolve_email_affiliation
 from .rag import enqueue_rag_index, register_missing_rag_docs
-from .storage import save_parsed_email
+from .storage import save_parsed_email, store_email_html_and_assets
 from .utils import _normalize_participants
 
 # =============================================================================
@@ -38,6 +37,11 @@ logger = logging.getLogger(__name__)
 # 상수
 # =============================================================================
 DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop]", "[test]")
+EXCLUDED_BODY_ELEMENT_IDS = {
+    "standardsignature",
+    "bannersignimg",
+    "confidentialsignimg",
+}
 
 
 def _load_excluded_subject_prefixes() -> tuple[str, ...]:
@@ -213,38 +217,6 @@ def _decode_part(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
-def _replace_cid_images(soup: Any, cid_map: Dict[str, Dict[str, Any]]) -> None:
-    """HTML 본문 내 cid: 이미지 참조를 data URI로 치환합니다.
-
-    입력:
-        soup: BeautifulSoup 객체.
-        cid_map: CID -> 이미지 데이터 매핑.
-    반환:
-        없음.
-    부작용:
-        soup 객체를 직접 수정.
-    오류:
-        없음.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) img 태그 순회 및 cid 치환
-    # -----------------------------------------------------------------------------
-    for img in soup.find_all("img"):
-        src = img.get("src", "")
-        if not src.startswith("cid:"):
-            continue
-        cid = src[4:]
-        if cid not in cid_map:
-            continue
-        data = cid_map[cid].get("data")
-        img_type = cid_map[cid].get("type") or "png"
-        if not data:
-            continue
-        b64 = base64.b64encode(data).decode("utf-8")
-        img["src"] = f"data:image/{img_type};base64,{b64}"
-
-
 def _replace_mosaic_embeds(soup: Any) -> None:
     """모자이크(https://mosaic...) embed를 링크로 치환해 렌더링 문제를 완화합니다.
 
@@ -274,13 +246,70 @@ def _replace_mosaic_embeds(soup: Any) -> None:
             parent_div.replace_with(span_tag)
 
 
-def _extract_bodies(msg: Message) -> Tuple[str, str]:
+def _remove_excluded_body_elements(soup: Any) -> None:
+    """HTML 본문에서 제외 대상 요소를 제거합니다.
+
+    입력:
+        soup: BeautifulSoup 객체.
+    반환:
+        없음.
+    부작용:
+        soup 객체에서 제외 대상 요소를 제거.
+    오류:
+        없음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) ID 기준 제거
+    # -----------------------------------------------------------------------------
+    for element in soup.find_all(attrs={"id": True}):
+        element_id = str(element.get("id") or "").strip().lower()
+        if element_id in EXCLUDED_BODY_ELEMENT_IDS:
+            element.decompose()
+
+
+def _remove_excluded_markers_from_text(text: str) -> str:
+    """본문 텍스트에서 제외 대상 ID 문자열이 포함된 라인을 제거합니다.
+
+    입력:
+        text: 본문 텍스트 문자열.
+    반환:
+        제외 대상 라인이 제거된 텍스트.
+    부작용:
+        없음.
+    오류:
+        없음.
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 빈 값 처리
+    # -----------------------------------------------------------------------------
+    if not text:
+        return ""
+
+    # -----------------------------------------------------------------------------
+    # 2) 라인 필터링
+    # -----------------------------------------------------------------------------
+    cleaned_lines: List[str] = []
+    for line in text.splitlines():
+        lowered = line.lower()
+        if any(marker in lowered for marker in EXCLUDED_BODY_ELEMENT_IDS):
+            continue
+        cleaned_lines.append(line)
+
+    # -----------------------------------------------------------------------------
+    # 3) 결과 반환
+    # -----------------------------------------------------------------------------
+    return "\n".join(cleaned_lines)
+
+
+def _extract_bodies(msg: Message) -> Tuple[str, str, Dict[str, Dict[str, Any]]]:
     """메일 메시지에서 텍스트/HTML 본문을 추출하고 정규화합니다.
 
     입력:
         msg: 이메일 Message 객체.
     반환:
-        (body_text, body_html) 튜플.
+        (body_text, body_html, cid_map) 튜플.
     부작용:
         없음.
     오류:
@@ -310,7 +339,7 @@ def _extract_bodies(msg: Message) -> Tuple[str, str]:
                 if payload:
                     cid_map[content_id.strip("<>")] = {
                         "data": payload,
-                        "type": part.get_content_subtype(),
+                        "content_type": content_type,
                     }
                 continue
 
@@ -335,7 +364,7 @@ def _extract_bodies(msg: Message) -> Tuple[str, str]:
             if payload:
                 cid_map[content_id.strip("<>")] = {
                     "data": payload,
-                    "type": msg.get_content_subtype(),
+                    "content_type": content_type,
                 }
 
         if not disposition.startswith("attachment"):
@@ -351,11 +380,11 @@ def _extract_bodies(msg: Message) -> Tuple[str, str]:
         from bs4 import BeautifulSoup  # 인제스트 전용 의존성
 
         soup = BeautifulSoup(html_content, "lxml")
-        _replace_cid_images(soup, cid_map)
+        _remove_excluded_body_elements(soup)
         _replace_mosaic_embeds(soup)
         body_html = soup.prettify()
-        body_text = soup.get_text()
-        return body_text, body_html
+        body_text = _remove_excluded_markers_from_text(soup.get_text())
+        return body_text, body_html, cid_map
 
     # -----------------------------------------------------------------------------
     # 5) 텍스트 본문 폴백 처리
@@ -371,7 +400,7 @@ def _extract_bodies(msg: Message) -> Tuple[str, str]:
     # -----------------------------------------------------------------------------
     # 6) 기본 반환
     # -----------------------------------------------------------------------------
-    return text_body or "", ""
+    return _remove_excluded_markers_from_text(text_body or ""), "", cid_map
 
 
 def _parse_received_at(msg: Message) -> datetime:
@@ -461,7 +490,7 @@ def _parse_message_to_fields(msg: Message) -> Dict[str, Any]:
     입력:
         msg: 이메일 Message 객체.
     반환:
-        Email 저장에 필요한 필드 dict.
+        Email 저장에 필요한 필드 dict(cid_map 포함).
     부작용:
         없음.
     오류:
@@ -483,7 +512,7 @@ def _parse_message_to_fields(msg: Message) -> Dict[str, Any]:
     # -----------------------------------------------------------------------------
     # 2) 본문/시각/발신자 정보 추출
     # -----------------------------------------------------------------------------
-    body_text, body_html = _extract_bodies(msg)
+    body_text, body_html, cid_map = _extract_bodies(msg)
     received_at = _parse_received_at(msg)
     sender_id = _extract_sender_id(sender)
 
@@ -500,6 +529,7 @@ def _parse_message_to_fields(msg: Message) -> Dict[str, Any]:
         "cc": cc,
         "body_text": body_text,
         "body_html": body_html,
+        "cid_map": cid_map,
     }
 
 
@@ -610,7 +640,7 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
                 else Email.RagIndexStatus.SKIPPED
             )
 
-            email_obj = save_parsed_email(
+            email_obj, created = save_parsed_email(
                 message_id=fields["message_id"],
                 received_at=received_at,
                 subject=fields["subject"],
@@ -622,10 +652,20 @@ def ingest_pop3_mailbox(session: Any) -> List[int]:
                 classification_source=classification_source,
                 rag_index_status=rag_index_status,
                 body_text=fields.get("body_text") or "",
-                body_html=fields.get("body_html"),
             )
 
             to_delete.append(msg_num)
+
+            # 신규 저장이거나 HTML 키가 없으면 MinIO 저장을 재시도합니다.
+            if created or not email_obj.body_html_object_key:
+                try:
+                    store_email_html_and_assets(
+                        email=email_obj,
+                        body_html=fields.get("body_html"),
+                        cid_map=fields.get("cid_map"),
+                    )
+                except Exception:
+                    logger.exception("Failed to store email HTML/assets (id=%s)", email_obj.id)
 
             if (
                 not email_obj.rag_doc_id

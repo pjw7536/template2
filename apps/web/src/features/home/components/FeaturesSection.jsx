@@ -1,4 +1,4 @@
-// React Imports
+// 리액트 임포트
 import { useRef } from 'react'
 
 import { FileInputIcon, RepeatIcon, UserIcon } from 'lucide-react'
@@ -13,6 +13,7 @@ import { MotionPreset } from '@/components/ui/motion-preset'
 import { Cursor, CursorFollow, CursorProvider } from '@/components/ui/cursor'
 
 import { LogoVector } from "@/components/common"
+import { buildProfileImageUrl, resolveProfileUserId } from '@/lib/profileImage'
 import { cn } from '@/lib/utils'
 
 const FeaturesSection = ({
@@ -41,7 +42,7 @@ const FeaturesSection = ({
   return (
     <section className='py-8 sm:py-16 lg:py-24'>
       <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
-        {/* Header */}
+        {/* 헤더 */}
         <div className='mb-12 space-y-4 text-center sm:mb-16 lg:mb-24'>
           <MotionPreset
             fade
@@ -251,39 +252,44 @@ const FeaturesSection = ({
                   <div
                     className='flex h-63 w-full items-center justify-center bg-green-600/10 sm:rounded-tl-md dark:bg-green-400/40'>
                     <div className='flex min-h-20 flex-1 items-center justify-center -space-x-4'>
-                      {avatarData.map(item => (
-                        <div key={item.name}>
-                          <Avatar className={cn('ring-ring ring-2', item.size)}>
-                            <AvatarImage src={item.src} alt={item.name} />
-                            <AvatarFallback>{item.fallback}</AvatarFallback>
-                          </Avatar>
-                          <CursorProvider>
-                            <Cursor>
-                              <svg
-                                className='size-6 text-sky-600 dark:text-sky-400'
-                                xmlns='http://www.w3.org/2000/svg'
-                                viewBox='0 0 40 40'>
-                                <path
-                                  fill='currentColor'
-                                  d='M1.8 4.4 7 36.2c.3 1.8 2.6 2.3 3.6.8l3.9-5.7c1.7-2.5 4.5-4.1 7.5-4.3l6.9-.5c1.8-.1 2.5-2.4 1.1-3.5L5 2.5c-1.4-1.1-3.5 0-3.3 1.9Z' />
-                              </svg>
-                            </Cursor>
-                            <CursorFollow>
-                              <div
-                                className='w-fit rounded-lg bg-sky-600 px-2 py-1 text-sm text-nowrap text-white shadow-lg dark:bg-sky-400'>
-                                {item.name}
-                              </div>
-                            </CursorFollow>
-                          </CursorProvider>
-                        </div>
-                      ))}
+                      {avatarData.map(item => {
+                        const profileUserId = resolveProfileUserId(item)
+                        const avatarSrc = buildProfileImageUrl(profileUserId)
+
+                        return (
+                          <div key={item.name}>
+                            <Avatar className={cn('ring-ring ring-2', item.size)}>
+                              <AvatarImage src={avatarSrc || undefined} alt={item.name} />
+                              <AvatarFallback>{item.fallback}</AvatarFallback>
+                            </Avatar>
+                            <CursorProvider>
+                              <Cursor>
+                                <svg
+                                  className='size-6 text-sky-600 dark:text-sky-400'
+                                  xmlns='http://www.w3.org/2000/svg'
+                                  viewBox='0 0 40 40'>
+                                  <path
+                                    fill='currentColor'
+                                    d='M1.8 4.4 7 36.2c.3 1.8 2.6 2.3 3.6.8l3.9-5.7c1.7-2.5 4.5-4.1 7.5-4.3l6.9-.5c1.8-.1 2.5-2.4 1.1-3.5L5 2.5c-1.4-1.1-3.5 0-3.3 1.9Z' />
+                                </svg>
+                              </Cursor>
+                              <CursorFollow>
+                                <div
+                                  className='w-fit rounded-lg bg-sky-600 px-2 py-1 text-sm text-nowrap text-white shadow-lg dark:bg-sky-400'>
+                                  {item.name}
+                                </div>
+                              </CursorFollow>
+                            </CursorProvider>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
               </div>
             </MotionPreset>
           </div>
-          {/* Top */}
+          {/* 상단 */}
 
           <StraightBeam
             containerRef={containerRef}
@@ -370,7 +376,7 @@ const FeaturesSection = ({
             duration={4.5}
             className='-z-1 max-lg:hidden' />
 
-          {/* Bottom Beam */}
+          {/* 하단 빔 */}
           <StraightBeam
             containerRef={containerRef}
             fromRef={div1Ref}

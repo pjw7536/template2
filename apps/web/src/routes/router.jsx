@@ -1,8 +1,7 @@
-// src/routes/router.jsx
+// 파일 경로: src/routes/router.jsx
 import { createBrowserRouter } from "react-router-dom"
 
 import { AuthAutoLoginGate } from "@/lib/auth"
-import { ProtectedAppLayout } from "./layouts/ProtectedAppLayout"
 
 import { appstoreRoutes } from "@/features/appstore"
 import { authRoutes } from "@/features/auth"
@@ -10,9 +9,9 @@ import { RouteErrorPage, errorRoutes } from "@/features/errors"
 import { homeRoutes } from "@/features/home"
 import { lineDashboardRoutes } from "@/features/line-dashboard"
 import { modelsRoutes } from "@/features/models"
-import { TimelineLayout, timelineRoutes } from "@/features/timeline"
+import { timelineRoutes } from "@/features/timeline"
 import { vocRoutes } from "@/features/voc"
-import { AssistantLayout, assistantRoutes } from "@/features/assistant"
+import { assistantRoutes } from "@/features/assistant"
 import { emailsRoutes } from "@/features/emails"
 import { accountRoutes } from "@/features/account"
 
@@ -27,32 +26,17 @@ const protectedFeatureRoutes = [
 
 const protectedAppRoutes = {
   element: <AuthAutoLoginGate />,
-  children: [
-    {
-      element: <ProtectedAppLayout />,
-      children: protectedFeatureRoutes,
-    },
-  ],
+  children: protectedFeatureRoutes,
 }
 
 const timelineProtectedRoutes = {
   element: <AuthAutoLoginGate />,
-  children: [
-    {
-      element: <TimelineLayout />,
-      children: timelineRoutes,
-    },
-  ],
+  children: timelineRoutes,
 }
 
 const assistantProtectedRoutes = {
   element: <AuthAutoLoginGate />,
-  children: [
-    {
-      element: <AssistantLayout />,
-      children: assistantRoutes,
-    },
-  ],
+  children: assistantRoutes,
 }
 
 export const router = createBrowserRouter([

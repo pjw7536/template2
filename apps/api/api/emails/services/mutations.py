@@ -13,17 +13,20 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
+import api.account.services as account_services
 
 from ..models import Email
 from ..selectors import (
     get_accessible_user_sdwt_prods_for_user,
+    list_email_asset_keys_by_email_ids,
     list_email_id_user_sdwt_by_ids,
     list_email_ids_by_sender_after,
     list_unassigned_email_ids_for_sender_id,
     user_can_bulk_delete_emails,
 )
 from .rag import enqueue_rag_delete, enqueue_rag_index_for_emails
+from .storage import delete_email_objects
 
 # =============================================================================
 # 상수
@@ -78,6 +81,8 @@ def delete_single_email(email_id: int) -> Email:
     # -----------------------------------------------------------------------------
     # 2) RAG 삭제 요청 및 삭제 실행
     # -----------------------------------------------------------------------------
+    asset_keys = list_email_asset_keys_by_email_ids(email_ids=[email.id])
+    delete_email_objects(html_key=email.body_html_object_key, asset_keys=asset_keys)
     enqueue_rag_delete(email=email)
 
     email.delete()
@@ -112,9 +117,17 @@ def bulk_delete_emails(email_ids: List[int]) -> int:
         enqueue_rag_delete(email=email)
 
     # -----------------------------------------------------------------------------
-    # 3) 일괄 삭제 수행
+    # 3) MinIO 오브젝트 삭제
     # -----------------------------------------------------------------------------
     target_ids = [email.id for email in emails]
+    asset_keys = list_email_asset_keys_by_email_ids(email_ids=target_ids)
+    for email in emails:
+        delete_email_objects(html_key=email.body_html_object_key, asset_keys=[])
+    delete_email_objects(html_key=None, asset_keys=asset_keys)
+
+    # -----------------------------------------------------------------------------
+    # 4) 일괄 삭제 수행
+    # -----------------------------------------------------------------------------
     Email.objects.filter(id__in=target_ids).delete()
 
     return len(emails)
@@ -342,3 +355,89 @@ def move_sender_emails_after(
     email_ids = list_email_ids_by_sender_after(sender_id=normalized_sender_id, received_at_gte=when)
 
     return move_emails_to_user_sdwt_prod(email_ids=email_ids, to_user_sdwt_prod=to_user_sdwt_prod)
+
+
+def move_emails_after_sender_affiliation_change(
+    *,
+    sender_ids: Sequence[str],
+) -> Dict[str, object]:
+    """발신자 소속 변경 이후 메일을 현재 소속 메일함으로 이동합니다.
+
+    입력:
+        sender_ids: Email.sender_id 목록.
+    반환:
+        moved/ragRegistered/ragFailed/ragMissing/failures 집계 dict.
+    부작용:
+        Email.user_sdwt_prod 업데이트 및 RAG 인덱싱 Outbox 적재.
+    오류:
+        - 없음(개별 발신자 실패는 failures에 기록).
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 입력 정규화
+    # -----------------------------------------------------------------------------
+    normalized_sender_ids = sorted(
+        {sender_id.strip() for sender_id in sender_ids if isinstance(sender_id, str) and sender_id.strip()}
+    )
+    if not normalized_sender_ids:
+        return {
+            "moved": 0,
+            "ragRegistered": 0,
+            "ragFailed": 0,
+            "ragMissing": 0,
+            "failures": [],
+        }
+
+    # -----------------------------------------------------------------------------
+    # 2) 결과 집계 준비
+    # -----------------------------------------------------------------------------
+    total_moved = 0
+    total_rag_registered = 0
+    total_rag_failed = 0
+    total_rag_missing = 0
+    failures: list[str] = []
+
+    # -----------------------------------------------------------------------------
+    # 3) 발신자별 이동 처리
+    # -----------------------------------------------------------------------------
+    for sender_id in normalized_sender_ids:
+        user = account_services.get_user_by_knox_id(knox_id=sender_id)
+        if user is None:
+            failures.append(f"{sender_id}: 사용자 없음")
+            continue
+
+        target_user_sdwt_prod = (getattr(user, "user_sdwt_prod", None) or "").strip()
+        if not target_user_sdwt_prod or target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
+            failures.append(f"{sender_id}: user_sdwt_prod 없음/UNASSIGNED")
+            continue
+
+        change = account_services.get_current_user_sdwt_prod_change(user=user)
+        if change is None:
+            failures.append(f"{sender_id}: 소속 변경 이력(UserSdwtProdChange) 없음")
+            continue
+
+        try:
+            result = move_sender_emails_after(
+                sender_id=sender_id,
+                received_at_gte=change.effective_from,
+                to_user_sdwt_prod=target_user_sdwt_prod,
+            )
+        except Exception as exc:
+            failures.append(f"{sender_id}: {exc}")
+            continue
+
+        total_moved += result.get("moved", 0)
+        total_rag_registered += result.get("ragRegistered", 0)
+        total_rag_failed += result.get("ragFailed", 0)
+        total_rag_missing += result.get("ragMissing", 0)
+
+    # -----------------------------------------------------------------------------
+    # 4) 결과 반환
+    # -----------------------------------------------------------------------------
+    return {
+        "moved": total_moved,
+        "ragRegistered": total_rag_registered,
+        "ragFailed": total_rag_failed,
+        "ragMissing": total_rag_missing,
+        "failures": failures,
+    }

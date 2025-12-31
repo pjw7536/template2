@@ -2,10 +2,10 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import { RouterProvider } from "react-router-dom"
 
-import { AppProviders } from "@/components/providers/app-providers"
-import { router } from "@/routes/router"
+import { AppProviders } from "@/components/common"
+import { router } from "./routes/router"
 
-import "@/styles/globals.css"
+import "./styles/globals.css"
 
 const rootElement = document.getElementById("root")
 

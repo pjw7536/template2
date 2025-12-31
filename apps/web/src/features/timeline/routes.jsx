@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from "react";
+import { TimelineShell } from "./components/TimelineShell";
 import { PageLoader } from "./components/Loaders";
 
 const TimelinePage = lazy(() => import("./pages/TimelinePage"));
@@ -10,6 +11,12 @@ const TimelineRoute = () => (
 );
 
 export const timelineRoutes = [
-  { path: "timeline", element: <TimelineRoute /> },
-  { path: "timeline/:eqpId", element: <TimelineRoute /> },
+  {
+    path: "timeline",
+    element: <TimelineShell />,
+    children: [
+      { index: true, element: <TimelineRoute /> },
+      { path: ":eqpId", element: <TimelineRoute /> },
+    ],
+  },
 ];

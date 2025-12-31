@@ -1,8 +1,8 @@
-// src/features/line-dashboard/hooks/useDataTable.js
+// 파일 경로: src/features/line-dashboard/hooks/useDataTable.js
 import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"
-import { instantInformDroneSop } from "../api/instant-inform"
+import { instantInformDroneSop } from "../api/instantInform"
 import { useCellIndicators } from "./useCellIndicators"
 import { useTableQuery } from "./useTableQuery"
 

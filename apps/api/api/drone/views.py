@@ -46,10 +46,10 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.constants import MAX_FIELD_LENGTH
-from api.common.utils import ensure_airflow_token, parse_json_body
+from api.common.services import MAX_FIELD_LENGTH
+from api.common.services import ensure_airflow_token, parse_json_body
 
-from api.common.activity_logging import (
+from api.common.services import (
     merge_activity_metadata,
     set_activity_new_state,
     set_activity_previous_state,

@@ -1,4 +1,4 @@
-# 🧭 agents.md — Ultra‑Optimized Constitution for LLM Agents (English Edition)
+# 🧭 agents.md — Ultra‑Optimized Constitution for LLM Agents (Improved v2)
 
 ### (Strict, Unambiguous, Machine‑Executable Rules)
 
@@ -19,7 +19,7 @@ LLM agents MUST:
 - Produce deterministic folder paths, naming, and architecture.
 - Never invent new patterns unless explicitly ordered.
 - Prefer explicitness over cleverness.
-- Ask whenever **any** detail is unspecified.
+- Ask whenever **any** detail is unspecified **unless** it is classified as a Soft Assumption (see §1‑3‑2).
 
 ## 1‑2. Output Format Rules
 
@@ -33,28 +33,77 @@ LLM agents MUST:
 
 ## 1‑3. User Request Understanding Gate (Mandatory)
 
+### 1‑3‑1. Before any implementation
+
 Before ANY implementation work (writing/editing files, running commands/tools, proposing file/folder locations), the LLM MUST:
 
 1. Summarize the user request in TWO versions:
    - `Summary (EN): ...`
    - `요약 (KR): ...`
-2. List all ambiguities / decisions that must be confirmed as questions (APIs, file locations, naming, scope boundaries, UI behavior, acceptance criteria, etc.). If there are none, explicitly write `Questions: none` / `질문: 없음`.
-3. If there are questions, ask the user to confirm/correct the summaries and answer the questions.
-4. If there are questions, STOP and wait for the user’s confirmation/answers before implementing. If there are no questions, proceed immediately without waiting for confirmation.
+2. List all ambiguities / decisions as questions.
+3. Classify questions into:
+   - **Hard‑Block Questions (must be answered to proceed)**
+   - **Soft Questions (safe defaults allowed; proceed with assumptions)**
+
+If there are **Hard‑Block Questions**, the LLM MUST:
+
+- Ask the user to confirm/correct the summaries and answer the Hard‑Block Questions.
+- STOP and wait for answers.
+
+If there are **no Hard‑Block Questions**, the LLM MUST:
+
+- Proceed immediately.
+- Clearly state any Soft Assumptions being used.
+
+### 1‑3‑2. Soft Assumption Defaults (Allowed)
+
+The LLM MAY proceed without asking when ONLY these are unclear:
+
+- Copy text/labels/placeholder wording
+- Spacing, minor UI layout details, icon choice
+- Default sorting when not specified
+- Empty/loading state UX (sensible minimal patterns)
+
+Soft Assumptions MUST be:
+
+- Explicitly listed before implementation
+- Easy to change later
+
+### 1‑3‑3. Hard‑Block Criteria (Always Ask)
+
+These MUST be Hard‑Block Questions:
+
+- API schema/contract, request/response shape, pagination rules
+- Database schema/migrations, unique constraints, indexes
+- Auth/permissions and role rules
+- Business rules that affect correctness (billing, coupon rules, scheduling rules, etc.)
+- Cross‑feature dependency direction when ambiguous
 
 ## 1‑4. Comment Language Rules (Mandatory)
 
 LLM agents MUST:
 
 - Write all comments and docstrings in Korean (한글).
+- Proper nouns MUST remain in their original form; do not translate them into Korean.
 - When editing a file, translate any existing English comments/docstrings in that file to Korean.
-- If English is strictly required by a tool or specification, include Korean alongside the required English (Korean-first).
+- If English is strictly required by a tool or specification, include Korean alongside the required English (Korean‑first).
 
 ---
 
 # 2. Architectural Rules (LLM‑Strict)
 
-## 2‑1. Vertical Slice Isolation
+## 2‑0. Modular Monolith (Single Deployment)
+
+This codebase is a modular monolith: one deployable unit with strict domain/feature separation.
+
+### LLM MUST obey:
+
+- Keep a single deployment artifact and runtime boundary (no microservices) unless explicitly instructed.
+- Enforce feature boundaries using the vertical slice rules below.
+- Cross‑feature access must go through public facades only (frontend `features/<feature>/index.js`, backend `api.<feature>.services` or `selectors.py`).
+- Shared code must live only in approved shared locations; do not move domain logic into shared modules.
+
+## 2‑1. Vertical Slice Isolation (Frontend)
 
 Each feature MUST be a fully isolated vertical slice.
 
@@ -77,13 +126,54 @@ routes.jsx
 index.js
 ```
 
+### Folder Depth Rule
+
+- Default: NO nesting deeper than 2 levels.
+- Optional exception: one extra level under `components/` is allowed only when:
+  - the feature already contains 12+ component files, OR the user explicitly requests grouping
+  - the subfolder name is one of: `list`, `detail`, `form`, `dialog`, `table`, `chart`, `filters`, `cards`, `sections`
+  - no further nesting is allowed
+- If a different subfolder name is needed, ask (Hard‑Block).
+
 ### LLM MUST obey:
 
-- NO new folders unless explicitly allowed.
-- NO nesting deeper than 2 levels.
-- NO cross‑feature imports (except from another feature’s index.js).
+- NO new folders unless explicitly allowed above.
+- NO cross‑feature imports (except from another feature’s public facade).
 
-### Allowed Imports (project‑internal only)
+## 2‑2. Public Facade Contract (Frontend)
+
+Each feature’s `index.js` is the **only** public surface.
+
+`index.js` MAY export:
+
+- `routes` (from `routes.jsx`)
+- route‑level pages (Page components used by `routes.jsx`)
+- public hooks
+- public API helpers
+- public, reusable feature components intended for external use
+
+`index.js` MUST NOT export:
+
+- internal/private components used only inside the feature
+- internal‑only pages (non‑route or helper pages)
+
+`index.js` SHOULD:
+
+- keep exports explicit and minimal (use named exports only)
+
+### 2‑2‑1. Facade Export Rules (Frontend)
+
+LLM MUST obey:
+
+- `apps/web/src/features/*/index.js` MUST NOT use `export *`.
+- `index.js` MUST export only modules intended for cross‑feature use (documented or explicitly requested).
+- If the intended public surface is unclear, ask (Hard‑Block).
+
+---
+
+# 3. Frontend Import Rules (Strict)
+
+## 3‑1. Allowed Imports (project‑internal absolute imports only)
 
 This rule applies to **project‑internal absolute imports**. It does NOT restrict:
 
@@ -96,30 +186,50 @@ Project‑internal absolute imports MUST resolve under:
 - `apps/web/src/components/layout/*` (e.g. `@/components/layout/*`, `components/layout/*`)
 - `apps/web/src/components/common/*` (e.g. `@/components/common/*`, `components/common/*`)
 - `apps/web/src/lib/*` (e.g. `@/lib/*`)
-- `apps/web/src/features/<otherFeature>/index.js` (e.g. `@/features/<otherFeature>`)
+- `apps/web/src/features/<otherFeature>` (facade only)
 
-Forbidden examples (must go through `<otherFeature>/index.js`):
+## 3‑2. Import Style Rules (Repo‑Specific)
 
-- `apps/web/src/features/<otherFeature>/components/*`
-- `apps/web/src/features/<otherFeature>/pages/*`
+- Prefer `@/` for project‑internal absolute imports.
+- The `components/*` alias is allowed **only** for `components/...` paths.
+- Do not mix `@/components/...` and `components/...` within the same file.
+- When editing an existing file, keep its current alias style to avoid churn.
+- Outside `components/layout` and `components/common`, import via their `index.js` (e.g. `@/components/layout`, `@/components/common`).
+
+## 3‑3. Cross‑Feature Import Format (Single Standard)
+
+Cross‑feature imports MUST use exactly this form:
+
+```js
+import { something } from "@/features/<otherFeature>"
+```
+
+- The bundler MUST resolve this to `features/<otherFeature>/index.js`.
+- Importing `@/features/<otherFeature>/index.js` explicitly is NOT allowed.
+
+### Forbidden examples
+
+- `@/features/<otherFeature>/components/*`
+- `@/features/<otherFeature>/pages/*`
+- `@/features/<otherFeature>/api/*`
 
 Anything else is **INVALID**.
 
 ---
 
-# 3. UI Stack Rules
+# 4. UI Stack Rules
 
-## 3‑1. Immutable UI Layer
+## 4‑1. Immutable UI Layer
 
 LLM agents MUST NOT manually edit:
 
 ```
-apps/web/src/components/ui/**/*
+apps/web/src/components/ui/**
 ```
 
 UI primitives may only be added/updated via the shadcn CLI (and only when explicitly requested).
 
-## 3‑2. UI Assembly Hierarchy
+## 4‑2. UI Assembly Hierarchy
 
 LLM MUST assemble UI in the following order:
 
@@ -132,13 +242,13 @@ Hierarchy inversion is forbidden.
 
 ---
 
-# 4. Routing Rules
+# 5. Routing Rules
 
-## 4‑1. Feature Route Export
+## 5‑1. Feature Route Export
 
 Every feature MUST expose a `routes.jsx`.
 
-## 4‑2. Global Routes
+## 5‑2. Global Routes
 
 Global routing ONLY exists under:
 
@@ -148,7 +258,7 @@ apps/web/src/routes/*
 
 Routes MAY compose layout components from `apps/web/src/components/layout/*`, but MUST NOT define layout components under `apps/web/src/routes/*`.
 
-## 4‑3. No Business Logic in Routes
+## 5‑3. No Business Logic in Routes
 
 Routes MAY:
 
@@ -165,9 +275,9 @@ Routes MUST NOT contain:
 
 ---
 
-# 5. State & Data Rules
+# 6. State & Data Rules
 
-## 5‑1. React Query Rules
+## 6‑1. React Query Rules
 
 React Query is the ONLY source of truth for server data.
 
@@ -178,14 +288,14 @@ LLM MUST:
 - Invalidate the smallest necessary scope.
 - NEVER mirror server data into Zustand.
 
-## 5‑2. Zustand Rules
+## 6‑2. Zustand Rules
 
 Zustand is ONLY allowed for:
 
 - UI state
 - Interaction flows
 - Multi‑step forms
-- Temporary shared state
+- Temporary shared state (within the same feature)
 
 Forbidden:
 
@@ -201,9 +311,9 @@ apps/web/src/features/<feature>/store/useSomethingStore.js
 
 ---
 
-# 6. Coding Rules
+# 7. Coding Rules
 
-## 6‑1. Naming
+## 7‑1. Naming
 
 - Components → PascalCase
 - Hooks → camelCase
@@ -212,7 +322,7 @@ apps/web/src/features/<feature>/store/useSomethingStore.js
 - Pages → PascalCase
 - API modules → camelCase
 
-## 6‑2. Styling
+## 7‑2. Styling
 
 LLM MUST:
 
@@ -227,7 +337,7 @@ LLM MUST NOT:
 
 ---
 
-# 7. React 19 Rules
+# 8. React 19 Rules
 
 LLM MUST avoid premature optimization.
 
@@ -244,9 +354,9 @@ Allowed only when:
 
 ---
 
-# 8. Backend / Django Rules (LLM‑Strict)
+# 9. Backend / Django Rules (LLM‑Strict)
 
-## 8‑1. Domain App (Feature) Isolation
+## 9‑1. Domain App (Feature) Isolation
 
 Backend MUST be organized by business‑domain Django apps (“features”).
 
@@ -264,6 +374,7 @@ Each `<feature>` is a real Django app installed as `api.<feature>`.
 apps.py
 models.py
 urls.py
+callback_urls.py   (auth only; OIDC form_post callback)
 views.py
 serializers.py
 services/   (required; includes `services/__init__.py` facade)
@@ -292,33 +403,19 @@ LLM MUST obey:
 - Every concrete DB model MUST live in exactly one `<feature>/models.py`. Creating new models in `apps/api/api/models.py` is **FORBIDDEN**.
 - Shared base classes/mixins MAY live in `apps/api/api/common/models.py` and MUST be `abstract = True`.
 - When touching legacy root models, LLM MUST migrate them into the correct feature app (with a new migration) instead of extending the root file.
+- Extra URL modules are allowed only when strictly necessary; name them `<purpose>_urls.py` and include them from the feature `urls.py` (exception: `api.auth.callback_urls` is included directly at `/auth/`).
 
-### Service Module Split (Standard)
-
-Each feature MUST use `apps/api/api/<feature>/services/` and may split by workflow as needed.
-
-LLM MUST:
-
-- Keep `services/__init__.py` as the public facade and re-export all service functions/classes.
-- Avoid circular imports between modules under `services/`.
-- Keep read-only ORM queries in `selectors.py` (service modules call selectors for reads).
-- Keep tests importing from `services/__init__.py` (facade), not from `services/*`.
-
----
-
-## 8‑2. Layer Responsibilities & Dependency Direction
-
-The backend follows a strict, beginner‑friendly service/selector architecture.
+## 9‑2. Service/Selector Architecture
 
 ### Responsibility
 
 - `views.py` → HTTP only: auth/permissions, param parsing, serializer validation, calling services/selectors, returning responses.
 - `serializers.py` → input/output schema + validation only.
 - `permissions.py` → DRF permission classes only.
-- `services/__init__.py` (facade) and `services/*` → **ALL** business logic and write operations (create/update/delete), transactions, external API calls.
-- `selectors.py` → read‑only ORM queries (filtering, ordering, annotation). **NO side effects.**
+- `services/__init__.py` (facade) and `services/*` → ALL business logic and write operations (create/update/delete), transactions, external API calls.
+- `selectors.py` → read‑only ORM queries (filtering, ordering, annotation). NO side effects.
+- `models.py` → schema + pure domain rules. NO queries or business workflows.
 - Views/services MUST NOT run read ORM queries directly; they MUST call selectors instead.
-- `models.py` → schema + pure domain rules. **NO queries or business workflows.**
 
 ### Allowed Imports (one‑way)
 
@@ -332,34 +429,31 @@ This rule applies to **project‑internal imports**. Python stdlib, Django (`dja
 
 Anything else is **INVALID**.
 
----
-
-## 8‑3. Routing & API Shape
+## 9‑3. Routing & API Shape
 
 LLM MUST:
 
-- Use versioned prefixes: `/api/v1/<feature>/...`
+- Use versioned prefixes: `/api/v1/<route-scope>/...` for API endpoints.
+- Exception: OIDC callbacks under `/auth/` (non‑versioned) are allowed only in `api.auth.callback_urls`.
 - Keep feature routes inside `apps/api/api/<feature>/urls.py`.
 - Keep global routing ONLY in `apps/api/api/urls.py` using `include()`; global `urls.py` must NOT import feature views directly.
 - `apps/api/api/urls.py` MUST be a registry only, e.g.:
   - `path("api/v1/emails/", include("api.emails.urls"))`
   - `path("api/v1/appstore/", include("api.appstore.urls"))`
-- Feature `urls.py` MUST define **relative** paths (no leading `/api/v1/<feature>` inside a feature).
-- Ensure routes contain **no business logic** (delegate to services/selectors).
+- Feature `urls.py` MUST define relative paths (no leading `/api/v1/<feature>` inside a feature).
+- Route scope SHOULD match the feature domain slug; legacy mismatches (e.g. `api.drone` → `/api/v1/line-dashboard/`) are allowed but must not be expanded without explicit instruction.
+- Ensure routes contain no business logic (delegate to services/selectors).
 - Name endpoints with nouns, collections plural: `emails/`, `appstore/apps/`.
 
----
-
-## 8‑4. Database & Model Naming
+## 9‑4. Database & Model Naming
 
 LLM MUST:
 
-- Use **snake_case** for fields/columns: `created_at`, `user_sdwt_prod`.
+- Use snake_case for fields/columns: `created_at`, `user_sdwt_prod`.
 - Use singular PascalCase for model classes: `Email`, `AppStoreComment`.
-- Use per‑domain table prefixes for clarity:
-  - `db_table = "<feature>_<entity>"` (snake_case, singular or clear noun)
-  - Examples: `emails_email`, `appstore_comment`, `account_affiliation_hierarchy`
-- Set `db_table` on **every** model to enforce the prefix rule (no mixed naming).
+- Use per‑domain table prefixes:
+  - `db_table = "<feature>_<entity>"`
+- Set `db_table` on every model.
 - Primary key is `id` (BigAutoField). UUID only when an external identifier is required.
 - Timestamps are UTC, timezone‑aware:
   - required: `created_at`
@@ -368,9 +462,7 @@ LLM MUST:
   - `idx_<table>_<cols>`
   - `uniq_<table>_<cols>`
 
----
-
-## 8‑5. Transactions & Side Effects
+## 9‑5. Transactions & Side Effects
 
 LLM MUST:
 
@@ -378,9 +470,7 @@ LLM MUST:
 - Keep external calls (RAG, email servers, etc.) inside `services/__init__.py` (facade) or `services/*`.
 - Never perform writes inside `selectors.py` or `models.py`.
 
----
-
-## 8‑6. Readability / Beginner Rules
+## 9‑6. Readability / Beginner Rules
 
 LLM MUST:
 
@@ -391,9 +481,7 @@ LLM MUST:
 - Add type hints to public services and selectors.
 - Put docstrings on every public service/selector explaining inputs/outputs and side effects.
 
----
-
-## 8‑7. Testing & Migrations
+## 9‑7. Testing & Migrations
 
 LLM MUST:
 
@@ -401,11 +489,18 @@ LLM MUST:
 - Prefer unit tests for `services/__init__.py` (facade) and `selectors.py`; keep view tests minimal (happy + main error cases).
 - Never edit an already‑applied migration; always create a new one.
 
----
+## 9‑7‑1. 테스트/커맨드 경계 규칙 (추가)
 
-## 8‑8. New Feature Checklist (Beginner‑Friendly)
+LLM MUST:
 
-When adding a new backend feature, LLM MUST follow this exact flow to keep code easy to read and maintain:
+- 테스트 코드에서 다른 도메인의 `models` 직접 import 금지 (예외: `migrations/`).
+- 테스트 코드에서 다른 도메인의 내부 모듈(`api.<feature>.services.*` 등) 직접 import 금지; 반드시 `services/__init__.py` 파사드를 사용.
+- 도메인 전용 관리 커맨드는 해당 도메인 앱 경로(`apps/api/api/<feature>/management/commands/`)에만 위치.
+- 공용 관리 커맨드(`apps/api/api/management/commands/`)는 다른 도메인의 `models`/ORM 직접 접근 금지, `services`/`selectors` 파사드만 사용.
+
+## 9‑8. New Feature Checklist (Beginner‑Friendly)
+
+When adding a new backend feature, LLM MUST follow this exact flow:
 
 1. Create `apps/api/api/<feature>/` as a Django app with `__init__.py` and `apps.py` (`name = "api.<feature>"`).
 2. Register the app in `apps/api/config/settings.py` → `INSTALLED_APPS`.
@@ -417,86 +512,64 @@ When adding a new backend feature, LLM MUST follow this exact flow to keep code 
 8. Add `urls.py` with relative routes, then include it in `apps/api/api/urls.py` under `/api/v1/<feature>/`.
 9. Add `tests.py` focusing on services/selectors first.
 
-Skipping or re‑ordering these steps is **INVALID**.
+Skipping or re‑ordering these steps is INVALID.
 
----
+## 9‑9. Commenting & Documentation Rules (Mandatory)
 
-## 8‑9. Commenting & Documentation Rules (Mandatory)
+Readability is first‑class. Backend code MUST be step‑by‑step explainable with detailed comments.
+All required comments/docstrings MUST be Korean (한글) per §1‑4.
 
-Readability is a first‑class requirement. For any backend code the LLM writes or rewrites,
-the LLM MUST produce "step‑by‑step explainable code" with detailed comments.
-All required comments and docstrings MUST be written in Korean (한글) per §1‑4.
-
-### 8‑9‑1. When Detailed Comments Are REQUIRED
-
-The LLM MUST add detailed comments in the following cases:
+### 9‑9‑1. When Detailed Comments Are REQUIRED
 
 - The user asks for: "전체 코드", "다시 줘", "주석 달아줘", "설명 포함", or similar.
 - The file contains request parsing, validation, permission checks, or multiple branches.
-- The logic has non‑trivial rules (upsert rules, dedup rules, timezone conversion, pagination).
+- The logic has non‑trivial rules (upsert, dedupe, timezone conversion, pagination).
 - Any function/class is >= 25 lines OR has 2+ conditional branches.
 
-### 8‑9‑2. Required Comment Structure (Python)
+### 9‑9‑2. Required Comment Structure (Python)
 
-When detailed comments are required, the LLM MUST follow this structure:
+1. Module header comment:
 
-1. Module header comment describing:
-
-   - purpose of the module
-   - main endpoints/classes in the file
-   - key invariants/assumptions (e.g. timezones, auth model)
-
+   - purpose
+   - main endpoints/classes
+   - key invariants/assumptions
 2. For every public function/service/selector/view method:
 
-   - MUST include a docstring with:
+   - docstring: what/inputs/returns/side‑effects/errors
+3. For long/complex functions:
 
-     - What it does (one paragraph)
-     - Inputs (key fields + accepted formats)
-     - Returns (shape + meaning)
-     - Side effects (DB writes / external calls)
-     - Error conditions (what returns 400/401/403/404 etc.)
-
-3. For long/complex functions (>= 25 lines or 2+ branches):
-
-   - MUST add step markers as section comments:
-
-     - e.g. "# 1) 요청 파싱", "# 2) 입력 검증", "# 3) 서비스 호출", "# 4) 응답 반환"
-   - MUST explain "why" for non‑obvious decisions (e.g. dedupe strategy, timezone assumptions).
-
+   - step markers: `# 1) 요청 파싱` ...
+   - explain why for non‑obvious decisions
 4. Inline comments:
 
-   - MUST explain intent, not restate the code.
-   - Avoid comments that only repeat the code ("x를 y로 설정").
-   - Prefer explaining business meaning and constraints.
+   - explain intent, not restate code
 
-### 8‑9‑3. Comment Density Rules
+### 9‑9‑3. Comment Density
 
-- Target: one meaningful comment per logical block (roughly 5–15 lines).
-- Too sparse is INVALID (code becomes hard to follow).
-- Too verbose is also INVALID if it drowns the code.
-- Comments MUST be accurate and updated when code changes.
+- Target: one meaningful comment per logical block (≈5–15 lines).
+- Too sparse is INVALID.
+- Too verbose is INVALID if it drowns the code.
 
-### 8‑9‑4. Request/Response Examples (Mandatory for Views)
+### 9‑9‑4. Request/Response Examples (Views)
 
 For any APIView/endpoint:
 
-- MUST include at least one example request payload / query params in the method docstring.
+- MUST include at least one example request payload / query params in the docstring.
 - MUST document snake_case + camelCase compatibility if supported.
 
-### 8‑9‑5. Forbidden Comment Patterns
+### 9‑9‑5. Forbidden Comment Patterns
 
-- Comments that contradict the code.
-- Comments that mention internal tool output or "the assistant" meta commentary.
-- Comments that explain implementation history instead of current behavior.
+- Comments that contradict the code
+- Comments that mention internal tool output or assistant meta commentary
+- Comments that explain history instead of current behavior
 
-### 8‑9‑6. Standard Template (Python)
+### 9‑9‑6. Standard Template (Python)
 
-For complex functions/methods, the LLM MUST use this block layout:
+For complex functions/methods:
 
-- "# -----------------------------------------------------------------------------"
-- "# 1) <단계 제목>"
-- "# -----------------------------------------------------------------------------"
-- code...
+- `# -----------------------------------------------------------------------------`
+- `# 1) <단계 제목>`
+- `# -----------------------------------------------------------------------------`
 
 Repeat per step.
 
@@ -505,7 +578,9 @@ Additionally:
 - Constants MUST be grouped and labeled (timezone/constants/pagination/etc.).
 - Major sections of a file SHOULD be separated with "# =============================================================================".
 
-# 9. File Generation Rules
+---
+
+# 10. File Generation Rules
 
 When generating files, LLM MUST:
 
@@ -523,9 +598,9 @@ When updating files:
 
 ---
 
-# 10. Error Handling Rules
+# 11. Error Handling Rules
 
-The LLM MUST ask for clarification when:
+The LLM MUST ask for clarification (Hard‑Block) when:
 
 - A folder name is ambiguous
 - File location is unclear
@@ -536,20 +611,24 @@ LLM MUST NOT guess.
 
 ---
 
-# 11. Layout Rules (Strict for All Features)
+# 12. Layout Rules (Strict for All Features)
 
-## 11‑1. Layout Philosophy
+## 12‑1. Layout Philosophy
 
 Layout follows two universal principles:
 
-1. Outer containers define **structure and fixed height**.
-2. Avoid **nested scroll regions** on the same axis.
+1. Outer containers define structure and fixed height.
+2. Avoid nested scroll regions on the same axis **within the same region**.
 
-If multiple scroll regions are nested on the same axis → **INVALID**.
+A "region" is a single scroll context (page main, a pane, or an overlay body).
+If multiple scroll regions are nested on the same axis in the same region → INVALID.
 
----
+### Overlay Exception (Modal/Popover)
 
-## 11‑2. Global Page Skeleton Rule
+- Scroll inside overlays (modal/popover/drawer) is allowed.
+- Overlay scroll is considered a separate region from page scroll.
+
+## 12‑2. Global Page Skeleton Rule
 
 Every page MUST follow this layout skeleton:
 
@@ -566,41 +645,37 @@ Every page MUST follow this layout skeleton:
 LLM MUST:
 
 - Use `h-screen flex flex-col`
-- Keep header at fixed height with `shrink-0`
+- Keep header fixed height with `shrink-0`
 - Wrap content in `flex-1 min-h-0 overflow-hidden`
-- Ensure scrolling happens **inside main**, not outside
+- Ensure scrolling happens inside main, not outside
 
----
-
-## 11‑3. Flex vs Grid Rules
+## 12‑3. Flex vs Grid Rules
 
 ### Flex MUST be used for:
 
-- One‑direction layout (row/col)
+- One-direction layout (row/col)
 - Toolbars, buttons, headers
 - Alignment and distribution
 
 ### Grid MUST be used for:
 
-- Multi‑region layouts (e.g., list + detail)
-- Top‑fixed + bottom‑scroll structures
+- Multi-region layouts (list + detail)
+- Top-fixed + bottom-scroll structures
 - Mixed row/column ratio layouts
 
----
+## 12‑4. Scroll Rules
 
-## 11‑4. Scroll Rules
-
-### Rule A — Only ONE scroll container per axis, per region (no nested scroll)
+### Rule A — Only ONE scroll container per axis, per region
 
 ```jsx
 <div className="min-h-0 overflow-y-auto">...</div>
 ```
 
-Sibling panes may each be scrollable (see §11‑5).
+Sibling panes may each be scrollable.
 
 ### Rule B — Scrollable elements MUST have `min-h-0`
 
-### Rule C — The official top-fixed/bottom-scroll pattern:
+### Rule C — Official top-fixed/bottom-scroll pattern
 
 ```jsx
 <div className="grid h-full min-h-0 grid-rows-[auto,1fr]">
@@ -609,9 +684,7 @@ Sibling panes may each be scrollable (see §11‑5).
 </div>
 ```
 
----
-
-## 11‑5. Two‑Pane Layout Rule
+## 12‑5. Two‑Pane Layout Rule
 
 (Left list + Right detail)
 
@@ -626,54 +699,37 @@ Sibling panes may each be scrollable (see §11‑5).
 </div>
 ```
 
-LLM MUST:
-
-- Keep filter section fixed (e.g. `h-16`) or auto (`h-auto`)
-- Ensure the list scrolls independently
-- Ensure the detail pane scrolls independently
-
----
-
-## 11‑6. Padding Responsibility Rules
+## 12‑6. Padding Responsibility Rules
 
 ### Layout components control:
 
-- Page‑level padding (`px-4 md:px-6`)
+- Page-level padding (use layout defaults like `p-4 md:p-6` or `px-4 pb-3`)
 - Section spacing (`gap-*`)
 - Outer structure
-- Work‑area padding
+- Work-area padding
 
 ### Components control:
 
 - Internal padding (`p-4`, `p-3`, etc.)
 - Internal spacing (`gap-2`, `gap-3`)
 
-### STRICT RULES:
+STRICT RULES:
 
-LLM MUST NOT:
+- Parent MUST NOT adjust child internal padding
+- Child MUST NOT define page-level padding
+- Avoid duplicated padding across layers
+- Keep existing layout-provided padding unless explicitly requested to change it
 
-- Allow parent components to adjust child internal padding
-- Allow child components to define page‑level padding
-- Create duplicated padding across multiple layers
+## 12‑7. Spacing Rules
 
-**Parent = external spacing.
-Child = internal spacing.**
-Mixing these responsibilities → **INVALID**.
-
----
-
-## 11‑7. Spacing Rules
-
-- Page padding: `p-4 md:p-6`
+- Page padding: `p-4 md:p-6` (ContentLayout default) OR `px-4 pb-3` (AppLayout default)
 - Section gaps: `gap-4`
 - Internal content spacing: `gap-2` or `gap-3`
-- Large layout segmentation: `gap-6`
+- Large segmentation: `gap-6`
 
 Arbitrary spacing values are forbidden.
 
----
-
-## 11‑8. Layout Componentization Rule
+## 12‑8. Layout Componentization Rule
 
 Patterns reused 2+ times MUST become a layout component:
 
@@ -685,21 +741,9 @@ Feature folders MUST NOT contain layout components.
 
 ---
 
-## 11‑9. Layout & Feature Boundary
+# 13. Development Environment Rules
 
-LLM MUST:
-
-- Place layout components in `components/layout/*`
-- Place shared UI in `components/common/*`
-- Place feature‑specific UI in `features/<feature>/components/*`
-
-Mixing layout with feature UI → **INVALID**.
-
----
-
-# 12. Development Environment Rules
-
-## 12‑1. Offsite (External Network) Development
+## 13‑1. Offsite (External Network) Development
 
 When developing outside the corporate network, some dependencies are not reachable (e.g. ADFS/OIDC, RAG, internal LLM API, POP3/mailbox).
 This project supports offsite development by running a local mock via Docker Compose.
@@ -720,19 +764,18 @@ This project supports offsite development by running a local mock via Docker Com
 - Do not hardcode intranet URLs; keep all external dependency URLs configurable via env vars.
 - If you change any contract used by auth/RAG/assistant/mail flows, update the mock (`apps/adfs_dummy`) and/or the dev wiring (`env/api.dev.env`) so `docker-compose.dev.yml` remains runnable.
 
----
-
-# 12‑2. Container‑First Testing (Mandatory)
+## 13‑2. Container‑First Testing (Mandatory)
 
 LLM MUST:
 
-- Run backend (Django) tests inside the Docker Compose `api` container (not the host Python environment).
-- Use `docker compose -f docker-compose.dev.yml exec -T api python manage.py test ...` for Django tests.
-- Use `docker compose -f docker-compose.dev.yml exec -T api python manage.py ...` for Django management commands.
+- Run backend (Django) tests inside the Docker Compose `api` container.
+- Use:
+  - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test ...`
+  - `docker compose -f docker-compose.dev.yml exec -T api python manage.py ...`
 - Avoid installing Python dependencies on the host; backend deps MUST be managed via `apps/api/requirements.txt` and baked into the `apps/api` image.
 
 ---
 
-# ✔ End of Ultra‑Optimized LLM Constitution (English Edition)
+# ✔ End of Ultra‑Optimized LLM Constitution (Improved v2)
 
 All LLM‑generated output MUST comply with these rules, without exception.

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from api.rag import services as rag_services
+import api.rag.services as rag_services
 
 from .. import selectors
 from .constants import DEFAULT_HISTORY_LIMIT, DEFAULT_ROOM_ID

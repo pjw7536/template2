@@ -1,4 +1,4 @@
-/* src/styles/globals.css */
+/* 파일 경로: src/styles/globals.css */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css");
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
@@ -52,12 +52,12 @@
 
 .scroll-x-hide {
   -ms-overflow-style: none;
-  /* IE */
+  /* IE 대응 */
   scrollbar-width: none;
-  /* Firefox */
+  /* Firefox 대응 */
 }
 
-/* Quick filter dropdown list colors follow theme tokens */
+/* Quick filter 드롭다운 목록 색상은 테마 토큰을 따릅니다. */
 .quick-filter-select option {
   background-color: var(--popover);
   color: var(--popover-foreground);
@@ -76,7 +76,7 @@
 
 @layer utilities {
 
-  /* Heartbeat animation is defined here to avoid @theme tooling errors */
+  /* @theme 도구 에러를 피하기 위해 Heartbeat 애니메이션을 여기서 정의합니다. */
   @keyframes heartbeat {
     0% {
       box-shadow: 0 0 0 0 var(--heartbeat-color, var(--destructive));
@@ -104,6 +104,14 @@
 
   --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;
   --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
 
   @keyframes marquee-horizontal {
     from {
@@ -125,8 +133,6 @@
     }
   }
 }
-
-
 
 @keyframes shimmer {
   0% {
@@ -157,4 +163,26 @@
   -webkit-text-fill-color: transparent;
 
   animation: shimmer 3.5s linear infinite;
+}
+
+:root {
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+
+.dark {
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }

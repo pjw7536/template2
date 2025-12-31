@@ -1,13 +1,13 @@
-export { ActiveLineProvider, useActiveLine, useActiveLineOptional } from "./line-context"
-export { DepartmentProvider, useDepartment } from "./department-context"
-export { SdwtProvider, useSdwt } from "./sdwt-context"
-export { useLineSwitcher } from "./line-switcher"
+export { ActiveLineProvider, useActiveLine, useActiveLineOptional } from "./lineContext"
+export { DepartmentProvider, useDepartment } from "./departmentContext"
+export { SdwtProvider, useSdwt } from "./sdwtContext"
+export { useLineSwitcher } from "./lineSwitcher"
 export {
   buildLineSwitcherOptions,
   getLineSdwtOptions,
   useLineOptionsQuery,
   useLineSdwtOptionsQuery,
-} from "./line-sdwt-options"
+} from "./lineSdwtOptions"
 export {
   getStoredLineId,
   getStoredMailboxId,
@@ -16,4 +16,4 @@ export {
   normalizeTeamOption,
   readStoredTeamOption,
   writeStoredTeamOption,
-} from "./team-selection"
+} from "./teamSelection"

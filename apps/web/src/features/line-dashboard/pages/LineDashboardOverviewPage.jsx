@@ -1,4 +1,4 @@
-// src/features/line-dashboard/pages/LineDashboardOverviewPage.jsx
+// 파일 경로: src/features/line-dashboard/pages/LineDashboardOverviewPage.jsx
 // 공정 요약을 붙일 개요 페이지입니다.
 import {
   useEffect,
@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/common"
 import { DataTablePagination } from "../components/DataTablePagination"
-import { getAirflowDagOverview } from "../api/get-airflow-dag-overview"
+import { getAirflowDagOverview } from "../api/getAirflowDagOverview"
 import { numberFormatter } from "../utils/dataTableConstants"
 
 function formatDate(dateLike) {

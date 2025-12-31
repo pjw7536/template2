@@ -1,9 +1,9 @@
-// src/features/line-dashboard/hooks/useLineHistoryData.js
+// 파일 경로: src/features/line-dashboard/hooks/useLineHistoryData.js
 import { useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
-import { lineDashboardQueryKeys } from "../api/query-keys"
+import { lineDashboardQueryKeys } from "../api/queryKeys"
 
 const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",

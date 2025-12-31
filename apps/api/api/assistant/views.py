@@ -14,7 +14,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.utils import parse_json_body
+from api.common.services import parse_json_body
 
 from .services import (
     AssistantConfigError,

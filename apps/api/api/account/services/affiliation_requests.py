@@ -19,7 +19,7 @@ from django.core.paginator import EmptyPage, Paginator
 from django.db import transaction
 from django.utils import timezone
 
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 from ..models import UserSdwtProdChange
 from .. import selectors
@@ -113,6 +113,44 @@ def _serialize_affiliation_change_request(change: UserSdwtProdChange) -> dict[st
         **_serialize_affiliation_change(change),
         "user": user_payload,
     }
+
+
+def get_pending_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
+    """대기 중인 user_sdwt_prod 변경 요청을 조회합니다.
+
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - UserSdwtProdChange | None: 대기 중인 변경 요청 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
+    """
+
+    return selectors.get_pending_user_sdwt_prod_change(user=user)
+
+
+def get_current_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
+    """현재 적용 중인 user_sdwt_prod 변경 이력을 조회합니다.
+
+    입력:
+    - user: Django 사용자 객체
+
+    반환:
+    - UserSdwtProdChange | None: 가장 최근 변경 이력 또는 None
+
+    부작용:
+    - 없음(읽기 전용)
+
+    오류:
+    - 없음
+    """
+
+    return selectors.get_current_user_sdwt_prod_change(user=user)
 
 
 def get_affiliation_change_requests(

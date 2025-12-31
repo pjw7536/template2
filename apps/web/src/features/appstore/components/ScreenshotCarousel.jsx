@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
 function clampIndex(value, length) {
   if (!length) return 0
@@ -30,7 +29,7 @@ export function ScreenshotCarousel({ images, altBase = "스크린샷", initialIn
 
   if (!total) {
     return (
-      <div className="grid h-56 place-items-center overflow-hidden rounded-xl border bg-muted sm:h-64 md:h-72">
+      <div className="grid w-full aspect-[4/3] place-items-center overflow-hidden rounded-xl border bg-muted">
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           등록된 스크린샷이 없습니다.
         </div>
@@ -48,7 +47,7 @@ export function ScreenshotCarousel({ images, altBase = "스크린샷", initialIn
 
   return (
     <div className="grid gap-3">
-      <div className="relative grid h-56 place-items-center overflow-hidden rounded-xl border bg-muted sm:h-64 md:h-72">
+      <div className="relative grid w-full aspect-[4/3] place-items-center overflow-hidden rounded-xl border bg-muted">
         <img
           src={safeImages[activeIndex]}
           alt={`${altBase} ${activeIndex + 1}`}
@@ -84,26 +83,6 @@ export function ScreenshotCarousel({ images, altBase = "스크린샷", initialIn
           </>
         ) : null}
       </div>
-
-      {total > 1 ? (
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-          {safeImages.map((src, index) => (
-            <button
-              key={`${index}-${src.slice(0, 24)}`}
-              type="button"
-              onClick={() => setActiveIndex(index)}
-              className={cn(
-                "overflow-hidden rounded-md border bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-                index === activeIndex && "ring-2 ring-primary/40",
-              )}
-              aria-label={`${altBase} ${index + 1} 선택`}
-            >
-              <img src={src} alt={`${altBase} 썸네일 ${index + 1}`} className="h-14 w-full object-cover" />
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   )
 }
-

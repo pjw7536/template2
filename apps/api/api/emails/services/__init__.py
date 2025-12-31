@@ -8,14 +8,17 @@
 
 from __future__ import annotations
 
+from ..models import Email
 from .ingest import _parse_message_to_fields, ingest_pop3_mailbox, run_pop3_ingest, run_pop3_ingest_from_env
 from .mail_api import MailSendError, requests, send_knox_mail_api
 from .mailbox import get_mailbox_access_summary_for_user
+from .ocr import claim_email_asset_ocr_tasks, update_email_asset_ocr_results
 from .mutations import (
     SENT_MAILBOX_ID,
     bulk_delete_emails,
     claim_unassigned_emails_for_user,
     delete_single_email,
+    move_emails_after_sender_affiliation_change,
     move_emails_for_user,
     move_emails_to_user_sdwt_prod,
     move_sender_emails_after,
@@ -42,16 +45,34 @@ from .rag_exports import (
     insert_email_to_rag,
     resolve_rag_index_name,
 )
-from .storage import gzip_body, save_parsed_email
+from .storage import (
+    delete_email_objects,
+    load_email_asset,
+    load_email_html,
+    save_parsed_email,
+    store_email_html_and_assets,
+)
+
+EMAIL_CLASSIFICATION_CONFIRMED_USER = Email.ClassificationSource.CONFIRMED_USER
+EMAIL_CLASSIFICATION_UNASSIGNED = Email.ClassificationSource.UNASSIGNED
+EMAIL_RAG_INDEX_STATUS_INDEXED = Email.RagIndexStatus.INDEXED
+EMAIL_RAG_INDEX_STATUS_PENDING = Email.RagIndexStatus.PENDING
+EMAIL_RAG_INDEX_STATUS_SKIPPED = Email.RagIndexStatus.SKIPPED
 
 __all__ = [
     "MailSendError",
+    "EMAIL_CLASSIFICATION_CONFIRMED_USER",
+    "EMAIL_CLASSIFICATION_UNASSIGNED",
+    "EMAIL_RAG_INDEX_STATUS_INDEXED",
+    "EMAIL_RAG_INDEX_STATUS_PENDING",
+    "EMAIL_RAG_INDEX_STATUS_SKIPPED",
     "RAG_INDEX_EMAILS",
     "RAG_PUBLIC_GROUP",
     "SENT_MAILBOX_ID",
     "_parse_message_to_fields",
     "bulk_delete_emails",
     "build_email_filters",
+    "claim_email_asset_ocr_tasks",
     "claim_unassigned_emails_for_user",
     "delete_rag_doc",
     "delete_single_email",
@@ -60,9 +81,11 @@ __all__ = [
     "enqueue_rag_index",
     "enqueue_rag_index_for_emails",
     "get_mailbox_access_summary_for_user",
-    "gzip_body",
     "ingest_pop3_mailbox",
     "insert_email_to_rag",
+    "load_email_asset",
+    "load_email_html",
+    "move_emails_after_sender_affiliation_change",
     "move_emails_for_user",
     "move_emails_to_user_sdwt_prod",
     "move_sender_emails_after",
@@ -77,5 +100,8 @@ __all__ = [
     "run_pop3_ingest",
     "run_pop3_ingest_from_env",
     "save_parsed_email",
+    "store_email_html_and_assets",
+    "update_email_asset_ocr_results",
+    "delete_email_objects",
     "send_knox_mail_api",
 ]

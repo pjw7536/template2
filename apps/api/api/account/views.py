@@ -23,7 +23,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.utils import ensure_airflow_token, normalize_text, parse_json_body
+from api.common.services import ensure_airflow_token, normalize_text, parse_json_body
 
 from . import selectors, services
 from .serializers import (

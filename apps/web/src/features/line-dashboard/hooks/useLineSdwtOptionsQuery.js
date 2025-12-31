@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { lineDashboardQueryKeys } from "../api/query-keys"
-import { getLineSdwtOptions } from "../api/get-line-sdwt-options"
+import { lineDashboardQueryKeys } from "../api/queryKeys"
+import { getLineSdwtOptions } from "../api/getLineSdwtOptions"
 
 export function useLineSdwtOptionsQuery(options = {}) {
   const { enabled = true } = options

@@ -40,6 +40,28 @@ def ensure_user_profile(user: Any) -> UserProfile:
     return profile
 
 
+def get_user_by_knox_id(*, knox_id: str) -> Any | None:
+    """knox_id로 사용자를 조회합니다.
+
+    입력:
+    - knox_id: 사용자 knox_id 문자열
+
+    반환:
+    - Any | None: 사용자 객체 또는 None
+
+    부작용:
+    - 없음
+
+    오류:
+    - 없음
+    """
+
+    normalized_knox_id = (knox_id or "").strip()
+    if not normalized_knox_id:
+        return None
+    return selectors.get_user_by_knox_id(knox_id=normalized_knox_id)
+
+
 def resolve_target_user(
     *,
     target_id: object,

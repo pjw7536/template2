@@ -21,7 +21,7 @@
 
 주의:
 - 요청/응답 키는 카멜 케이스를 기본으로 하며, 일부 입력은 스네이크 케이스도 허용합니다.
-- 길이 제한은 MAX_BADGE_LENGTH / MAX_CATEGORY_LENGTH / MAX_CONTACT_LENGTH 기준입니다.
+- 길이 제한은 MAX_CATEGORY_LENGTH / MAX_CONTACT_LENGTH 기준입니다.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.utils import parse_json_body
+from api.common.services import parse_json_body
 
 from .selectors import (
     get_app_by_id,
@@ -50,7 +50,6 @@ from .serializers import (
     can_manage_comment,
     default_contact,
     sanitize_screenshot_urls,
-    sanitize_tags,
     serialize_app,
     serialize_comment,
 )
@@ -71,7 +70,6 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 상수: 입력 길이 제한
 # =============================================================================
-MAX_BADGE_LENGTH = 64
 MAX_CATEGORY_LENGTH = 100
 MAX_CONTACT_LENGTH = 255
 
@@ -155,8 +153,6 @@ class AppStoreAppsView(APIView):
               예시 "category": "Tools",
               예시 "description": "desc",
               예시 "url": "https://example.com",
-              예시 "badge": "NEW",
-              예시 "tags": ["tag1"],
               예시 "screenshotUrls": ["https://example.com/cover.png"],
               예시 "coverScreenshotIndex": 0,
               예시 "screenshotUrl": "",
@@ -200,8 +196,6 @@ class AppStoreAppsView(APIView):
         category = str(payload.get("category") or "").strip()[:MAX_CATEGORY_LENGTH]
         description = str(payload.get("description") or "").strip()
         url = str(payload.get("url") or "").strip()
-        badge = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
-        tags = sanitize_tags(payload.get("tags"))
         screenshot_urls = sanitize_screenshot_urls(payload.get("screenshotUrls") or payload.get("screenshot_urls"))
         screenshot_urls = apply_cover_index(
             screenshot_urls,
@@ -239,8 +233,6 @@ class AppStoreAppsView(APIView):
                 category=category,
                 description=description,
                 url=url,
-                badge=badge,
-                tags=tags,
                 screenshot_urls=screenshot_urls,
                 screenshot_url=screenshot_url,
                 contact_name=contact_name,
@@ -325,7 +317,7 @@ class AppStoreAppDetailView(APIView):
 
         요청 예시:
           - 예시 요청: PATCH /api/v1/appstore/apps/123
-            예시 바디: {"description": "updated", "badge": "NEW"}
+            예시 바디: {"description": "updated"}
 
         snake/camel 호환:
           - screenshotUrls / screenshot_urls (키 매핑)
@@ -406,12 +398,6 @@ class AppStoreAppDetailView(APIView):
             )
             updates.pop("screenshot_url", None)
             updates["screenshot_urls"] = screenshot_urls
-
-        if "badge" in payload:
-            updates["badge"] = str(payload.get("badge") or "").strip()[:MAX_BADGE_LENGTH]
-
-        if "tags" in payload:
-            updates["tags"] = sanitize_tags(payload.get("tags"))
 
         if "contactName" in payload:
             updates["contact_name"] = str(payload.get("contactName") or "").strip()[:MAX_CONTACT_LENGTH]

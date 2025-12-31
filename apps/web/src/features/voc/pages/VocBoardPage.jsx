@@ -43,7 +43,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { STATUS_OPTIONS } from "../constants"
+import { STATUS_OPTIONS } from "../utils/constants"
 import { RichTextEditor } from "../components/RichTextEditor"
 import { useVocBoardState } from "../hooks/useVocBoardState"
 import { formatTimestamp, sanitizeContentHtml, hasMeaningfulContent } from "../utils"

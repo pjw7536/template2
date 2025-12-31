@@ -1,12 +1,11 @@
 # =============================================================================
 # 모듈 설명: emails API 엔드포인트를 제공합니다.
-# - 주요 뷰: EmailInboxListView, EmailDetailView, EmailMoveView, EmailOutboxProcessTriggerView
+# - 주요 뷰: EmailInboxListView, EmailDetailView, EmailMoveView, EmailHtmlView, EmailAssetView, EmailOutboxProcessTriggerView, EmailAssetOcrClaimView, EmailAssetOcrUpdateView
 # - 불변 조건: 권한 검증 후 서비스/셀렉터에 위임하며 비즈니스 로직은 포함하지 않습니다.
 # =============================================================================
 
 from __future__ import annotations
 
-import gzip
 import logging
 from typing import Any, List, Optional
 
@@ -18,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.exceptions import NotFound
 from rest_framework.views import APIView
 
-from api.common.utils import ensure_airflow_token, parse_json_body
+from api.common.services import ensure_airflow_token, parse_json_body
 
 from .permissions import (
     email_is_unassigned,
@@ -31,6 +30,7 @@ from .permissions import (
 from .selectors import (
     contains_unassigned_emails,
     count_unassigned_emails_for_sender_id,
+    get_email_asset_by_email_and_sequence,
     get_email_by_id,
     get_filtered_emails,
     get_sent_emails,
@@ -38,19 +38,28 @@ from .selectors import (
     list_privileged_email_mailboxes,
     user_can_bulk_delete_emails,
 )
-from api.common.affiliations import UNASSIGNED_USER_SDWT_PROD
+from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
-from .serializers import serialize_email_detail, serialize_email_summary
+from .serializers import (
+    EmailAssetOcrClaimSerializer,
+    EmailAssetOcrUpdateSerializer,
+    serialize_email_detail,
+    serialize_email_summary,
+)
 from .services import (
     bulk_delete_emails,
     build_email_filters,
+    claim_email_asset_ocr_tasks,
     claim_unassigned_emails_for_user,
     delete_single_email,
+    load_email_asset,
+    load_email_html,
     move_emails_for_user,
     parse_mailbox_user_sdwt_prod,
     process_email_outbox_batch,
     run_pop3_ingest_from_env,
     SENT_MAILBOX_ID,
+    update_email_asset_ocr_results,
 )
 
 # =============================================================================
@@ -63,6 +72,42 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+
+
+def _ensure_internal_token(request: HttpRequest) -> JsonResponse | None:
+    """내부 OCR 토큰을 검증하고 실패 시 JsonResponse를 반환합니다.
+
+    입력:
+        요청: Django HttpRequest.
+    반환:
+        JsonResponse | None: 오류 시 JsonResponse, 정상 시 None.
+    부작용:
+        없음.
+    오류:
+        - 500: 설정에 토큰이 없을 때
+        - 401: 제공된 토큰이 기대값과 다를 때
+    """
+
+    # -----------------------------------------------------------------------------
+    # 1) 기대 토큰 준비
+    # -----------------------------------------------------------------------------
+    expected = (getattr(settings, "EMAIL_OCR_INTERNAL_TOKEN", "") or "").strip()
+    if not expected:
+        return JsonResponse({"error": "EMAIL_OCR_INTERNAL_TOKEN not configured"}, status=500)
+
+    # -----------------------------------------------------------------------------
+    # 2) 제공된 토큰 추출
+    # -----------------------------------------------------------------------------
+    provided = request.headers.get("X-Internal-Token") or request.META.get("HTTP_X_INTERNAL_TOKEN") or ""
+    if not isinstance(provided, str):
+        provided = ""
+
+    # -----------------------------------------------------------------------------
+    # 3) 비교 및 결과 반환
+    # -----------------------------------------------------------------------------
+    if provided.strip() != expected:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+    return None
 
 
 def _check_email_access(
@@ -608,10 +653,10 @@ class EmailDetailView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class EmailHtmlView(APIView):
-    """gzip 저장된 HTML 본문 복원."""
+    """MinIO 저장된 HTML 본문을 반환합니다."""
 
     def get(self, request: HttpRequest, email_id: int, *args: object, **kwargs: object) -> HttpResponse:
-        """gzip 저장된 HTML 본문을 복원해 반환합니다.
+        """MinIO에 저장된 HTML 본문을 반환합니다.
 
         입력:
             경로:
@@ -624,7 +669,7 @@ class EmailHtmlView(APIView):
             - 401: 인증 실패
             - 403: 접근 권한 없음
             - 404: 메일 없음
-            - 500: HTML 디코딩 실패
+            - 500: HTML 로드 실패
         예시 요청:
             예시 요청: GET /api/v1/emails/123/html/
         snake/camel 호환:
@@ -648,22 +693,96 @@ class EmailHtmlView(APIView):
             return access_error
 
         # -----------------------------------------------------------------------------
-        # 2) 본문 존재 여부 확인
-        # -----------------------------------------------------------------------------
-        if not email.body_html_gzip:
-            return HttpResponse("", status=204)
-
-        # -----------------------------------------------------------------------------
-        # 3) gzip 해제 및 응답
+        # 2) HTML 로드 및 응답
         # -----------------------------------------------------------------------------
         try:
-            html = gzip.decompress(email.body_html_gzip).decode("utf-8")
+            html_bytes = load_email_html(email=email)
         except Exception:  # pragma: no cover  테스트 제외
-            # 방어적 로깅
-            logger.exception("Failed to decompress email HTML (id=%s)", email_id)
-            return JsonResponse({"error": "Failed to decode HTML body"}, status=500)
+            logger.exception("Failed to load email HTML (id=%s)", email_id)
+            return JsonResponse({"error": "Failed to load HTML body"}, status=500)
 
-        return HttpResponse(html, content_type="text/html; charset=utf-8")
+        if not html_bytes:
+            return HttpResponse("", status=204)
+
+        response = HttpResponse(html_bytes, content_type="text/html; charset=utf-8")
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, max-age=300"
+        return response
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailAssetView(APIView):
+    """MinIO에 저장된 이메일 이미지 자산을 반환합니다."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        email_id: int,
+        sequence: int,
+        *args: object,
+        **kwargs: object,
+    ) -> HttpResponse:
+        """이메일 이미지 자산을 반환합니다.
+
+        입력:
+            경로:
+                - email_id: 메일 PK
+                - sequence: 이미지 순번
+        반환:
+            이미지(HttpResponse) 또는 404 응답.
+        부작용:
+            없음. 조회 전용.
+        오류:
+            - 401: 인증 실패
+            - 403: 접근 권한 없음
+            - 404: 메일/자산/오브젝트 없음
+            - 500: 자산 로드 실패
+        예시 요청:
+            예시 요청: GET /api/v1/emails/123/assets/1/
+        snake/camel 호환:
+            해당 없음(경로 파라미터만 사용).
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 인증/권한 확인
+        # -----------------------------------------------------------------------------
+        is_authenticated, is_privileged, accessible = resolve_access_control(request)
+        if not is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        email = get_email_by_id(email_id=email_id)
+        access_error = _check_email_access(
+            request=request,
+            email=email,
+            is_privileged=is_privileged,
+            accessible=accessible,
+        )
+        if access_error:
+            return access_error
+
+        # -----------------------------------------------------------------------------
+        # 2) 자산 조회
+        # -----------------------------------------------------------------------------
+        asset = get_email_asset_by_email_and_sequence(email_id=email_id, sequence=sequence)
+        if asset is None:
+            return JsonResponse({"error": "Email asset not found"}, status=404)
+
+        # -----------------------------------------------------------------------------
+        # 3) MinIO 로드 및 응답
+        # -----------------------------------------------------------------------------
+        try:
+            asset_bytes = load_email_asset(asset=asset)
+        except Exception:  # pragma: no cover  테스트 제외
+            logger.exception("Failed to load email asset (email_id=%s sequence=%s)", email_id, sequence)
+            return JsonResponse({"error": "Failed to load email asset"}, status=500)
+
+        if not asset_bytes:
+            return JsonResponse({"error": "Email asset not found"}, status=404)
+
+        content_type = asset.content_type or "application/octet-stream"
+        response = HttpResponse(asset_bytes, content_type=content_type)
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, max-age=3600"
+        return response
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -947,3 +1066,141 @@ class EmailOutboxProcessTriggerView(APIView):
         except Exception:
             logger.exception("Failed to process email outbox")
             return JsonResponse({"error": "Email outbox processing failed"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailAssetOcrClaimView(APIView):
+    """OCR 작업 클레임을 제공합니다."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """OCR 작업을 클레임합니다.
+
+        입력:
+            헤더:
+                - X-Internal-Token: 내부 OCR 인증 토큰
+            바디 예시(JSON):
+                - limit: 최대 클레임 개수(옵션)
+                - lease_seconds: 잠금 유지 시간(초, 옵션)
+                - worker_id: 작업자 식별자(옵션)
+        반환:
+            예시 응답: {"tasks":[{"asset_id":1,"email_id":10,"sequence":1,"source_type":"CID","object_key":"...","bucket":"...","external_url":null,"content_type":"image/png","size_bytes":1234,"lock_token":"...","lock_expires_at":"...","attempt_count":1}]}
+        부작용:
+            EmailAsset 락 및 상태 갱신.
+        오류:
+            - 401: 내부 토큰 인증 실패
+            - 400: 요청 본문 오류
+        예시 요청:
+            예시 요청: POST /api/v1/emails/assets/ocr/claim/
+            예시 바디: {"limit":50,"lease_seconds":1800,"worker_id":"gpu-01"}
+        snake/camel 호환:
+            snake_case만 사용합니다.
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 내부 토큰 검증
+        # -----------------------------------------------------------------------------
+        auth_response = _ensure_internal_token(request)
+        if auth_response is not None:
+            return auth_response
+
+        # -----------------------------------------------------------------------------
+        # 2) 요청 본문 파싱 및 검증
+        # -----------------------------------------------------------------------------
+        payload = parse_json_body(request)
+        if payload is None:
+            if not request.body:
+                payload = {}
+            else:
+                return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+        serializer = EmailAssetOcrClaimSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+
+        # -----------------------------------------------------------------------------
+        # 3) 기본값 준비
+        # -----------------------------------------------------------------------------
+        default_limit = getattr(settings, "EMAIL_OCR_CLAIM_LIMIT", 50) or 50
+        default_lease_seconds = getattr(settings, "EMAIL_OCR_LEASE_SECONDS", 1800) or 1800
+        max_attempts = getattr(settings, "EMAIL_OCR_MAX_ATTEMPTS", 3) or 3
+
+        limit = serializer.validated_data.get("limit") or default_limit
+        lease_seconds = serializer.validated_data.get("lease_seconds") or default_lease_seconds
+        worker_id = serializer.validated_data.get("worker_id")
+
+        # -----------------------------------------------------------------------------
+        # 4) 서비스 호출 및 결과 반환
+        # -----------------------------------------------------------------------------
+        tasks = claim_email_asset_ocr_tasks(
+            limit=limit,
+            lease_seconds=lease_seconds,
+            max_attempts=max_attempts,
+            worker_id=worker_id,
+        )
+        return JsonResponse({"tasks": tasks})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EmailAssetOcrUpdateView(APIView):
+    """OCR 결과를 EmailAsset에 반영하고 RAG 재인덱싱을 요청합니다."""
+
+    permission_classes: tuple = ()
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """OCR 결과 업데이트를 처리합니다.
+
+        입력:
+            헤더:
+                - X-Internal-Token: 내부 OCR 인증 토큰
+            바디 예시(JSON):
+                - results: OCR 결과 목록
+                    - asset_id: EmailAsset 기본 키
+                    - lock_token: 클레임 시 받은 토큰
+                    - status: DONE | FAILED 상태
+                    - text: OCR 텍스트(옵션)
+                    - error_code: 실패 코드(옵션)
+                    - error_message: 실패 사유(옵션)
+                    - ocr_model: 사용 모델(옵션)
+                    - ocr_duration_ms: 처리 시간(ms, 옵션)
+                    - processed_at: 처리 완료 시각(옵션, ISO)
+        반환:
+            예시 응답: {"updated": int, "rejected": int, "ragQueued": int, "ragFailed": int, "ragSkipped": int}
+        부작용:
+            EmailAsset 업데이트 및 RAG Outbox 적재.
+        오류:
+            - 401: 내부 토큰 인증 실패
+            - 400: 요청 본문 오류
+        예시 요청:
+            예시 요청: POST /api/v1/emails/assets/ocr/update/
+            예시 바디: {"results":[{"asset_id":1,"lock_token":"token","status":"DONE","text":"..."}]}
+        snake/camel 호환:
+            snake_case만 사용합니다.
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 내부 토큰 검증
+        # -----------------------------------------------------------------------------
+        auth_response = _ensure_internal_token(request)
+        if auth_response is not None:
+            return auth_response
+
+        # -----------------------------------------------------------------------------
+        # 2) 요청 본문 파싱 및 검증
+        # -----------------------------------------------------------------------------
+        payload = parse_json_body(request)
+        if payload is None:
+            return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+        serializer = EmailAssetOcrUpdateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+
+        # -----------------------------------------------------------------------------
+        # 3) 서비스 호출 및 결과 반환
+        # -----------------------------------------------------------------------------
+        max_attempts = getattr(settings, "EMAIL_OCR_MAX_ATTEMPTS", 3) or 3
+        results = serializer.validated_data.get("results") or []
+        result = update_email_asset_ocr_results(results=results, max_attempts=max_attempts)
+        return JsonResponse(result)

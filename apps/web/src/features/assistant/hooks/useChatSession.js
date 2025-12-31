@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 
-import { sendChatMessage } from "../api/send-chat-message"
+import { sendChatMessage } from "../api/sendChatMessage"
 import { normalizeChatSources } from "../utils/normalizeChatSources"
 
 // 어시스턴트 위젯 전역 상태(방 목록, 메시지 이력, 전송 상태)를 관리하는 커스텀 훅

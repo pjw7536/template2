@@ -1,15 +1,16 @@
-// src/components/common/index.js
+// 파일 경로: src/components/common/index.js
 // 여러 기능에서 재사용되는 조합형 UI 컴포넌트를 모아 export합니다.
-export { DateRangeCalendar } from "./date-range-calendar"
-export { ThemeToggle } from "./theme-toggle"
-export { ThemeColorSelector } from "./theme-color-selector"
-export { ThemeControls } from "./theme-controls"
-export { NavUser } from "./nav-user"
+export { DateRangeCalendar } from "./DateRangeCalendar"
+export { ThemeToggle } from "./ThemeToggle"
+export { ThemeColorSelector } from "./ThemeColorSelector"
+export { ThemeControls } from "./ThemeControls"
+export { NavUser } from "./NavUser"
 export { Logo } from "./logo"
-export { LogoVector } from "./logo-vector"
-export { Error04Illustration } from "./error-04-illustration"
-export { TeamSwitcher } from "./team-switcher"
-export { LineSwitcherHeader } from "./line-switcher-header"
+export { LogoVector } from "./LogoVector"
+export { Error04Illustration } from "./Error04Illustration"
+export { TeamSwitcher } from "./TeamSwitcher"
+export { LineSwitcherHeader } from "./LineSwitcherHeader"
+export { AppProviders } from "./AppProviders"
 export {
   Table,
   TableHeader,

@@ -47,7 +47,7 @@ class Email(models.Model):
     )
 
     body_text = models.TextField(blank=True)  # RAG 검색/스니펫용 텍스트
-    body_html_gzip = models.BinaryField(null=True, blank=True)  # UI 렌더용 gzip HTML
+    body_html_object_key = models.CharField(max_length=512, null=True, blank=True)  # MinIO HTML 오브젝트 키
 
     rag_doc_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
 
@@ -117,4 +117,56 @@ class EmailOutbox(models.Model):
         ]
 
 
-__all__ = ["Email", "EmailOutbox"]
+class EmailAsset(models.Model):
+    """이메일 HTML 내 이미지 자산 정보를 저장합니다."""
+
+    class Source(models.TextChoices):
+        CID = "CID", "CID"
+        DATA_URL = "DATA_URL", "Data URL"
+        EXTERNAL_URL = "EXTERNAL_URL", "External URL"
+
+    class OcrStatus(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROCESSING = "PROCESSING", "Processing"
+        DONE = "DONE", "Done"
+        FAILED = "FAILED", "Failed"
+
+    email = models.ForeignKey(Email, on_delete=models.CASCADE, related_name="assets")
+    sequence = models.PositiveIntegerField()
+    object_key = models.CharField(max_length=512, null=True, blank=True)
+    content_type = models.CharField(max_length=128, null=True, blank=True)
+    byte_size = models.PositiveIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    original_url = models.TextField(null=True, blank=True)
+    ocr_status = models.CharField(max_length=16, choices=OcrStatus.choices, default=OcrStatus.PENDING)
+    ocr_lock_token = models.CharField(max_length=64, null=True, blank=True)
+    ocr_lock_expires_at = models.DateTimeField(null=True, blank=True)
+    ocr_worker_id = models.CharField(max_length=64, null=True, blank=True)
+    ocr_attempt_count = models.PositiveIntegerField(default=0)
+    ocr_attempted_at = models.DateTimeField(null=True, blank=True)
+    ocr_completed_at = models.DateTimeField(null=True, blank=True)
+    ocr_text = models.TextField(blank=True)
+    ocr_error_code = models.CharField(max_length=64, null=True, blank=True)
+    ocr_error_message = models.TextField(blank=True, default="")
+    ocr_error = models.TextField(blank=True)  # 레거시 호환용
+    ocr_model = models.CharField(max_length=64, null=True, blank=True)
+    ocr_duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "emails_email_asset"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["email", "sequence"],
+                name="uniq_emails_email_asset_email_sequence",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["email"], name="idx_emails_email_asset_email"),
+            models.Index(fields=["ocr_status"], name="idx_emails_asset_ocr_status"),
+            models.Index(fields=["ocr_lock_expires_at"], name="idx_emails_asset_ocr_lock"),
+        ]
+
+
+__all__ = ["Email", "EmailAsset", "EmailOutbox"]

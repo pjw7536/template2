@@ -45,7 +45,7 @@ from api.account.services import (
     sync_external_affiliations,
     update_affiliation_jira_key,
 )
-from api.emails.models import Email
+import api.emails.services as email_services
 
 
 class AccountEndpointTests(TestCase):
@@ -810,16 +810,17 @@ class AccountOverviewTests(TestCase):
             approved_by=user,
         )
 
-        Email.objects.create(
+        email_services.save_parsed_email(
             message_id="msg-90000",
             received_at=timezone.now(),
             subject="Test",
             sender="tester@example.com",
             sender_id="KNOX-90000",
             recipient=["target@example.com"],
+            cc=None,
             user_sdwt_prod="group-a",
-            classification_source=Email.ClassificationSource.CONFIRMED_USER,
-            rag_index_status=Email.RagIndexStatus.INDEXED,
+            classification_source=email_services.EMAIL_CLASSIFICATION_CONFIRMED_USER,
+            rag_index_status=email_services.EMAIL_RAG_INDEX_STATUS_INDEXED,
             body_text="hello",
         )
 

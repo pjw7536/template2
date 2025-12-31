@@ -48,4 +48,17 @@ export default defineConfig([
       ],
     },
   },
+  {
+    files: ["src/features/*/index.js"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ExportAllDeclaration",
+          message:
+            "Feature facades must use explicit exports instead of export *.",
+        },
+      ],
+    },
+  },
 ])

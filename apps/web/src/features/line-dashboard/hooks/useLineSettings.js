@@ -1,4 +1,4 @@
-// src/features/line-dashboard/hooks/useLineSettings.js
+// 파일 경로: src/features/line-dashboard/hooks/useLineSettings.js
 // 라인 조기 알림 설정 데이터를 관리하는 전용 훅 (비동기 로딩 + CRUD 포함)
 import * as React from "react"
 
@@ -11,7 +11,7 @@ import {
   updateLineJiraKey,
 } from "../api"
 import { timeFormatter } from "../utils/formatters"
-import { sortEntries } from "../utils/line-settings"
+import { sortEntries } from "../utils/lineSettings"
 
 const EMPTY_TIMESTAMP = "-"
 

@@ -1,4 +1,3 @@
-// src/features/models/index.js
-// 모델 관련 페이지들을 외부에서 쉽게 import할 수 있도록 묶어둡니다.
-export { ModelsPage } from "./pages/ModelsPage"
+// 파일 경로: src/features/models/index.js
+// 모델 라우트 정보를 외부로 노출합니다.
 export { modelsRoutes } from "./routes"

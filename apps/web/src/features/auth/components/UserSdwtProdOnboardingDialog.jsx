@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { buildBackendUrl } from "@/lib/api"
 
-import { fetchJson } from "../utils/fetch-json"
+import { fetchJson } from "../utils/fetchJson"
 
 const AFFILIATION_QUERY_KEY = ["account", "affiliation"]
 

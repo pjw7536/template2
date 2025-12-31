@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from django.urls import path
 
-from api.auth import oidc
+from .views import auth_callback
 
 urlpatterns = [
-    path("google/callback/", oidc.auth_callback, name="auth-callback"),
+    path("google/callback/", auth_callback, name="auth-callback"),
 ]

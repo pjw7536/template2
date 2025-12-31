@@ -1,10 +1,10 @@
-// src/features/voc/hooks/useVocBoardState.js
+// 파일 경로: src/features/voc/hooks/useVocBoardState.js
 // VOC 게시판 상태/동작을 캡슐화한 훅 (React Query 기반 데이터 소스)
 import * as React from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { DEFAULT_STATUS, STATUS_OPTIONS } from "../constants"
-import { vocQueryKeys } from "../api/query-keys"
+import { DEFAULT_STATUS, STATUS_OPTIONS } from "../utils/constants"
+import { vocQueryKeys } from "../api/queryKeys"
 import {
   createVocPost,
   createVocReply,
@@ -272,7 +272,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     try {
       await deletePostMutation.mutateAsync(postId)
     } catch {
-      // mutateAsync already sets error message
+      // mutateAsync에서 에러 메시지를 이미 설정합니다.
     }
   }
 
@@ -292,7 +292,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     try {
       await updatePostMutation.mutateAsync({ postId, updates: { status } })
     } catch {
-      // handled by mutation onError
+      // mutation onError에서 처리합니다.
     }
   }
 

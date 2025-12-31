@@ -1,31 +1,97 @@
-// src/features/line-dashboard/components/LineDashboardShell.jsx
-import { AppLayout } from "@/components/layout"
+// 파일 경로: src/features/line-dashboard/components/LineDashboardShell.jsx
+import { useEffect } from "react"
+import { Outlet } from "react-router-dom"
+
+import { TeamSwitcher } from "@/components/common"
+import { AppShellLayout } from "@/components/layout"
+import { ChatWidget } from "@/features/assistant"
+import { RequireAuth } from "@/lib/auth"
+import { buildNavigationConfig } from "@/lib/config/navigationConfig"
+import {
+  ActiveLineProvider,
+  DepartmentProvider,
+  buildLineSwitcherOptions,
+  useLineSwitcher,
+} from "@/lib/affiliation"
 
 import { LineDashboardHeader } from "./LineDashboardHeader"
+import { NavProjects } from "./NavProjects"
+import { useLineOptionsQuery } from "../hooks/useLineOptionsQuery"
 
 export function LineDashboardShell({
-  sidebar,
-  children,
   contentMaxWidthClass = "max-w-10xl",
   scrollAreaClassName = "overflow-y-auto",
-  paddingClassName = "px-4 pb-3",
-  innerClassName = "mx-auto flex h-full w-full flex-col gap-4",
-  header,
 }) {
-  const headerNode = header ?? (
-    <LineDashboardHeader showSidebarTrigger={Boolean(sidebar)} />
+  return (
+    <RequireAuth>
+      <>
+        <LineDashboardShellContent
+          contentMaxWidthClass={contentMaxWidthClass}
+          scrollAreaClassName={scrollAreaClassName}
+        />
+        <ChatWidget />
+      </>
+    </RequireAuth>
   )
+}
+
+function LineDashboardShellContent({ contentMaxWidthClass, scrollAreaClassName }) {
+  const {
+    data: lineOptions = [],
+    isError,
+    error,
+  } = useLineOptionsQuery()
+
+  useEffect(() => {
+    if (isError) {
+      console.warn("Failed to load line options", error)
+    }
+  }, [isError, error])
+
+  const navigation = buildNavigationConfig()
+  const header = <LineDashboardHeader showSidebarTrigger />
 
   return (
-    <AppLayout
-      sidebar={sidebar}
-      header={headerNode}
+    <DepartmentProvider>
+      <ActiveLineProvider lineOptions={lineOptions}>
+        <LineDashboardShellLayout
+          navigation={navigation}
+          header={header}
+          lineOptions={lineOptions}
+          contentMaxWidthClass={contentMaxWidthClass}
+          scrollAreaClassName={scrollAreaClassName}
+        />
+      </ActiveLineProvider>
+    </DepartmentProvider>
+  )
+}
+
+function LineDashboardShellLayout({
+  navigation,
+  header,
+  lineOptions,
+  contentMaxWidthClass,
+  scrollAreaClassName,
+}) {
+  const { activeLineId, onSelect } = useLineSwitcher()
+  const lineSwitcherOptions = buildLineSwitcherOptions(lineOptions)
+
+  return (
+    <AppShellLayout
+      navItems={navigation.navMain}
+      header={header}
+      sidebarHeader={(
+        <TeamSwitcher
+          options={lineSwitcherOptions}
+          activeId={activeLineId}
+          onSelect={onSelect}
+        />
+      )}
+      sidebarSecondary={<NavProjects projects={navigation.projects} />}
       contentMaxWidthClass={contentMaxWidthClass}
       scrollAreaClassName={scrollAreaClassName}
-      paddingClassName={paddingClassName}
-      innerClassName={innerClassName}
     >
-      {children}
-    </AppLayout>
+      <Outlet />
+    </AppShellLayout>
   )
 }

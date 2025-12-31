@@ -1,4 +1,4 @@
-// src/features/appstore/pages/AppstorePage.jsx
+// 앱스토어 메인 페이지
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -90,13 +90,11 @@ export function AppstorePage() {
       const name = (app.name || "").toLowerCase()
       const description = (app.description || "").toLowerCase()
       const categoryValue = categoryValueRaw.toLowerCase()
-      const tags = Array.isArray(app.tags) ? app.tags : []
       const matchesQuery =
         !normalizedQuery ||
         name.includes(normalizedQuery) ||
         description.includes(normalizedQuery) ||
-        categoryValue.includes(normalizedQuery) ||
-        tags.some((tag) => (tag || "").toLowerCase().includes(normalizedQuery))
+        categoryValue.includes(normalizedQuery)
       return matchesCategory && matchesQuery
     })
   }, [apps, category, normalizedQuery])
@@ -168,10 +166,12 @@ export function AppstorePage() {
 
   const handleAddComment = async (appId, content, parentCommentId) => {
     try {
-      await createCommentMutation.mutateAsync({ appId, content, parentCommentId })
+      const result = await createCommentMutation.mutateAsync({ appId, content, parentCommentId })
       toast.success("댓글을 추가했어요.")
+      return result
     } catch (error) {
       toast.error(error?.message || "댓글을 추가하지 못했습니다.")
+      throw error
     }
   }
 
@@ -189,10 +189,12 @@ export function AppstorePage() {
   const handleUpdateComment = async (appId, commentId, content) => {
     setUpdatingCommentId(commentId)
     try {
-      await updateCommentMutation.mutateAsync({ appId, commentId, content })
+      const result = await updateCommentMutation.mutateAsync({ appId, commentId, content })
       toast.success("댓글을 수정했어요.")
+      return result
     } catch (error) {
       toast.error(error?.message || "댓글을 수정하지 못했습니다.")
+      throw error
     } finally {
       setUpdatingCommentId(null)
     }

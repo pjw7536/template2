@@ -6,6 +6,13 @@ services:
     env_file:
       - ./env/api.common.env
       - ./env/api.prod.env
+      - ./minio.env
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: emails
+      MINIO_REGION: us-east-1
+    depends_on:
+      - minio
     volumes:
       - api_data:/data
       - api_static:/app/staticfiles
@@ -50,9 +57,46 @@ services:
     networks:
       - shared-net
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    env_file:
+      - ./minio.env
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      shared-net:
+        aliases:
+          - minio
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    env_file:
+      - ./minio.env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+          set -e
+          until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+            sleep 1
+          done
+          mc mb -p local/emails || true
+          mc mb -p local/profile || true
+    networks:
+      shared-net:
+        aliases:
+          - minio-init
+
 volumes:
   api_data:
   api_static:
+  minio_data:
 
 networks:
   shared-net:

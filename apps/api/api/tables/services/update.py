@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from api.common.constants import DEFAULT_TABLE
-from api.common.utils import find_column, sanitize_identifier
+from api.common.services import DEFAULT_TABLE
+from api.common.services import find_column, sanitize_identifier
 
 from .. import selectors
 from .types import TableRecordNotFoundError, TableUpdateResult

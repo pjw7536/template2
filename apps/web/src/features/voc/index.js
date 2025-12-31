@@ -1,5 +1,3 @@
 // 파일 경로: src/features/voc/index.js
-// VOC 게시판 엔트리 포인트
-export { VocBoardPage } from "./pages/VocBoardPage"
-export { VocHeader } from "./components/VocHeader"
+// VOC 라우트 정보를 외부로 노출합니다.
 export { vocRoutes } from "./routes"

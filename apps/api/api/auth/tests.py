@@ -18,7 +18,8 @@ from django.test.utils import override_settings
 from django.utils import timezone
 from django.urls import reverse
 
-from api.account.models import UserSdwtProdChange
+import api.account.services as account_services
+from api.auth.services import _extract_user_info_from_claims
 
 
 class AuthMeTests(TestCase):
@@ -61,18 +62,20 @@ class AuthMeTests(TestCase):
         user = User.objects.create_user(sabun="S12346", password="test-password")
         user.knox_id = "KNOX-12346"
         user.save(update_fields=["knox_id"])
-        UserSdwtProdChange.objects.create(
-            user=user,
+        option = account_services.ensure_affiliation_option(
             department="Dept",
             line="Line",
-            from_user_sdwt_prod=None,
+            user_sdwt_prod="group-pending",
+        )
+        payload, status_code = account_services.request_affiliation_change(
+            user=user,
+            option=option,
             to_user_sdwt_prod="group-pending",
             effective_from=timezone.now(),
-            status=UserSdwtProdChange.Status.PENDING,
-            applied=False,
-            approved=False,
-            created_by=user,
+            timezone_name="Asia/Seoul",
         )
+        self.assertEqual(status_code, 202)
+        self.assertIn("changeId", payload)
 
         # -----------------------------------------------------------------------------
         # 2) 로그인 및 API 호출
@@ -118,3 +121,57 @@ class AuthEndpointTests(TestCase):
         response = self.client.get(reverse("frontend-redirect"))
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response["Location"].startswith("http://frontend.local"))
+
+
+class AuthOidcClaimMappingTests(TestCase):
+    """OIDC 클레임 매핑 로직을 검증합니다."""
+
+    def test_extract_user_info_maps_userid(self) -> None:
+        """userid 클레임이 사용자 필드로 매핑되어야 합니다."""
+        claims = {
+            "loginid": "KNOX-123",
+            "sabun": "S12345",
+            "username": "홍길동",
+            "mail": "hong@example.com",
+            "userid": "U-12345",
+        }
+
+        info = _extract_user_info_from_claims(claims)
+
+        self.assertEqual(info.get("userid"), "U-12345")
+
+
+class AuthOidcClaimExtractionTests(TestCase):
+    """OIDC 클레임 파싱 로직을 검증합니다."""
+
+    def test_extract_user_info_maps_loginid_to_knox_id(self) -> None:
+        """loginid가 knox_id로 매핑되는지 확인합니다."""
+        claims = {
+            "loginid": "knox-user",
+            "sabun": "12345",
+            "username": "홍길동",
+            "deptname": "Engineering",
+            "mail": "user@example.com",
+        }
+
+        info = _extract_user_info_from_claims(claims)
+        self.assertEqual(info["knox_id"], "knox-user")
+        self.assertEqual(info["sabun"], "12345")
+        self.assertEqual(info["department"], "Engineering")
+        self.assertEqual(info["email"], "user@example.com")
+
+    def test_extract_user_info_sets_korean_and_english_names(self) -> None:
+        """한글/영문 이름 필드가 기대대로 채워지는지 확인합니다."""
+        claims = {
+            "loginid": "knox-user",
+            "sabun": "12345",
+            "username": "홍길동",
+            "givenname": "John",
+            "surname": "Doe",
+        }
+
+        info = _extract_user_info_from_claims(claims)
+        self.assertEqual(info["first_name"], "길동")
+        self.assertEqual(info["last_name"], "홍")
+        self.assertEqual(info["givenname"], "John")
+        self.assertEqual(info["surname"], "Doe")

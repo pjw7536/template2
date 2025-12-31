@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from rest_framework import serializers
+
+from .models import EmailAsset
+
 
 def serialize_email_summary(email: Any) -> Dict[str, Any]:
     """Email 인스턴스를 목록 응답용 dict로 직렬화합니다.
@@ -71,4 +75,38 @@ def serialize_email_detail(email: Any) -> Dict[str, Any]:
     }
 
 
-__all__ = ["serialize_email_detail", "serialize_email_summary"]
+class EmailAssetOcrClaimSerializer(serializers.Serializer):
+    """OCR 작업 클레임 요청을 검증합니다."""
+
+    limit = serializers.IntegerField(min_value=1, required=False)
+    lease_seconds = serializers.IntegerField(min_value=1, required=False)
+    worker_id = serializers.CharField(required=False, allow_blank=True)
+
+
+class EmailAssetOcrUpdateItemSerializer(serializers.Serializer):
+    """OCR 결과 단일 항목을 검증합니다."""
+
+    asset_id = serializers.IntegerField(min_value=1)
+    lock_token = serializers.CharField()
+    status = serializers.ChoiceField(choices=[EmailAsset.OcrStatus.DONE, EmailAsset.OcrStatus.FAILED])
+    text = serializers.CharField(required=False, allow_blank=True)
+    error_code = serializers.CharField(required=False, allow_blank=True)
+    error_message = serializers.CharField(required=False, allow_blank=True)
+    ocr_model = serializers.CharField(required=False, allow_blank=True)
+    ocr_duration_ms = serializers.IntegerField(min_value=0, required=False)
+    processed_at = serializers.DateTimeField(required=False)
+
+
+class EmailAssetOcrUpdateSerializer(serializers.Serializer):
+    """OCR 결과 업데이트 요청을 검증합니다."""
+
+    results = EmailAssetOcrUpdateItemSerializer(many=True)
+
+
+__all__ = [
+    "EmailAssetOcrClaimSerializer",
+    "EmailAssetOcrUpdateSerializer",
+    "EmailAssetOcrUpdateItemSerializer",
+    "serialize_email_detail",
+    "serialize_email_summary",
+]

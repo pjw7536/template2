@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
-from api.common.affiliations import UNKNOWN, UNCLASSIFIED_USER_SDWT_PROD
+from api.common.services import UNKNOWN, UNCLASSIFIED_USER_SDWT_PROD
 
 from .models import (
     Affiliation,

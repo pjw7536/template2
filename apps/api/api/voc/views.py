@@ -21,13 +21,13 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.activity_logging import (
+from api.common.services import (
     merge_activity_metadata,
     set_activity_new_state,
     set_activity_previous_state,
     set_activity_summary,
 )
-from api.common.utils import parse_json_body
+from api.common.services import parse_json_body
 
 from .selectors import (
     get_default_post_status,

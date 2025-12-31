@@ -2,7 +2,7 @@ import HeroSection from "../components/HeroSection"
 import AppIntegrationMarquee from "../components/AppIntegrationMarquee"
 import Team from "../components/Team"
 import { PopularServicesSection } from "../components/PopularSection"
-import { marqueeApps, teamMembers } from "../constants"
+import { marqueeApps, teamMembers } from "../utils/constants"
 
 const DEFAULT_HERO_ACTIONS = [
   { label: "대시보드로 이동", href: "/esop_dashboard" },

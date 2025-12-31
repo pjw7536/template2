@@ -1,9 +1,9 @@
-// src/features/line-dashboard/hooks/useTableQuery.js
+// 파일 경로: src/features/line-dashboard/hooks/useTableQuery.js
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { buildBackendUrl } from "@/lib/api"
-import { lineDashboardQueryKeys } from "../api/query-keys"
+import { lineDashboardQueryKeys } from "../api/queryKeys"
 
 import { composeEqpChamber, normalizeTablePayload } from "../utils"
 import {
@@ -124,7 +124,10 @@ export function useTableQuery({ lineId }) {
         table,
       } = normalizeTablePayload(payload, defaults)
 
-      const baseColumns = fetchedColumns.filter((column) => column && column.toLowerCase() !== "id")
+      const baseColumns = fetchedColumns.filter((column) => {
+        const normalized = column ? column.toLowerCase() : ""
+        return normalized !== "id" && normalized !== "sop_key"
+      })
 
       const composedRows = fetchedRows.map((row) => {
         const eqpId = row?.eqp_id ?? row?.EQP_ID ?? row?.EqpId

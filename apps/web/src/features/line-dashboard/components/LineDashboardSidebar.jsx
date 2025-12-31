@@ -1,4 +1,4 @@
-import { NavProjects } from "./nav-projects"
+import { NavProjects } from "./NavProjects"
 import { TeamSwitcher, NavUser } from "@/components/common"
 import { NavMain } from "@/components/layout"
 import { buildLineSwitcherOptions, useLineSwitcher } from "@/lib/affiliation"

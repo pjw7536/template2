@@ -1,4 +1,4 @@
-// src/features/appstore/hooks/useAppstoreMutations.js
+// 파일 경로: src/features/appstore/hooks/useAppstoreMutations.js
 // Appstore 전용 React Query mutation 훅
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
@@ -14,7 +14,7 @@ import {
   updateApp,
   updateComment,
 } from "../api/appstore"
-import { appstoreQueryKeys } from "../api/query-keys"
+import { appstoreQueryKeys } from "../api/queryKeys"
 
 function updateList(queryClient, updater) {
   queryClient.setQueryData(appstoreQueryKeys.apps(), (previous) => {
