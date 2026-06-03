@@ -38,6 +38,7 @@ import { ChartTooltip } from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
 
 import {
+  FDC_LINES,
   SPIDER_FILE_PATHS,
   getHardSpecRows,
   getRecipientRows,
@@ -45,6 +46,7 @@ import {
   getSpiderCommonalityRows,
   getSpiderHistoryRows,
   getSpiderSummaryRows,
+  getTeamsByLine,
   getYieldSpecRows,
 } from "../utils/fdcTrendMockData"
 
@@ -102,8 +104,13 @@ const PAGE_META = {
 }
 
 const STEP_SEQ_OPTIONS = ["CR380250", "CR580250", "CR590180", "CR610200", "CU380250", "CU580250", "CU590180", "CU610200"]
-const SDWT_OPTIONS = ["Lambda_H1L", "Dreams_H1L", "TERA_H1L"]
+const DEFAULT_LINE = FDC_LINES[0]
+const SDWT_OPTIONS = FDC_LINES.flatMap((lineId) => getTeamsByLine(lineId))
 const PRIORITY_OPTIONS = ["A", "B", "D", "M", "N"]
+
+function getSdwtOptionsByLine(line) {
+  return getTeamsByLine(line)
+}
 
 function PageShell({ children, description, title, category }) {
   return (
@@ -270,11 +277,22 @@ function TrendPreviewChart({ row }) {
 
 function MatchingPage({ common = false }) {
   const rows = common ? getSpiderCommonalityRows() : getSpiderAnomalyRows()
-  const [line, setLine] = useState("H1L")
-  const [sdwt, setSdwt] = useState(SDWT_OPTIONS[0])
+  const [line, setLine] = useState(DEFAULT_LINE)
+  const sdwtOptions = getSdwtOptionsByLine(line)
+  const [sdwt, setSdwt] = useState(sdwtOptions[0] ?? "")
   const [selectedId, setSelectedId] = useState(rows[0]?.id ?? "")
-  const selectedRow = rows.find((row) => row.id === selectedId) ?? rows[0]
-  const filteredRows = rows.filter((row) => row.sdwt === sdwt)
+  const filteredRows = rows.filter((row) => row.line_id === line && row.sdwt === sdwt)
+  const selectedRow = filteredRows.find((row) => row.id === selectedId) ?? filteredRows[0]
+  const handleLineChange = (nextLine) => {
+    const nextSdwtOptions = getSdwtOptionsByLine(nextLine)
+    setLine(nextLine)
+    setSdwt(nextSdwtOptions[0] ?? "")
+    setSelectedId("")
+  }
+  const handleSdwtChange = (nextSdwt) => {
+    setSdwt(nextSdwt)
+    setSelectedId("")
+  }
   const columns = common
     ? [
         { key: "priority", label: "priority" },
@@ -293,7 +311,13 @@ function MatchingPage({ common = false }) {
 
   return (
     <>
-      <FilterBar line={line} sdwt={sdwt} onLineChange={setLine} onSdwtChange={setSdwt} />
+      <FilterBar
+        line={line}
+        sdwt={sdwt}
+        sdwtOptions={sdwtOptions}
+        onLineChange={handleLineChange}
+        onSdwtChange={handleSdwtChange}
+      />
       <div className="grid grid-cols-[minmax(0,1fr)_420px] gap-4">
         <section className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
@@ -325,7 +349,7 @@ function MatchingPage({ common = false }) {
   )
 }
 
-function FilterBar({ line, sdwt, onLineChange, onSdwtChange }) {
+function FilterBar({ line, sdwt, sdwtOptions = getSdwtOptionsByLine(line), onLineChange, onSdwtChange }) {
   return (
     <section className="grid gap-3 rounded-2xl border bg-card p-4">
       <h2 className="text-sm font-semibold">조회조건 설정</h2>
@@ -334,7 +358,9 @@ function FilterBar({ line, sdwt, onLineChange, onSdwtChange }) {
           <Label className="text-xs">라인 선택</Label>
           <Tabs value={line} onValueChange={onLineChange}>
             <TabsList>
-              <TabsTrigger value="H1L">H1L</TabsTrigger>
+              {FDC_LINES.map((lineId) => (
+                <TabsTrigger key={lineId} value={lineId}>{lineId}</TabsTrigger>
+              ))}
             </TabsList>
           </Tabs>
         </div>
@@ -342,7 +368,7 @@ function FilterBar({ line, sdwt, onLineChange, onSdwtChange }) {
           <Label className="text-xs">분임조 선택</Label>
           <Tabs value={sdwt} onValueChange={onSdwtChange}>
             <TabsList>
-              {SDWT_OPTIONS.map((option) => (
+              {sdwtOptions.map((option) => (
                 <TabsTrigger key={option} value={option}>{option}</TabsTrigger>
               ))}
             </TabsList>
@@ -360,7 +386,7 @@ function HistoryPage() {
 
   return (
     <>
-      <FilterBar line="H1L" sdwt="Lambda_H1L" onLineChange={() => {}} onSdwtChange={() => {}} />
+      <FilterBar line={DEFAULT_LINE} sdwt={getSdwtOptionsByLine(DEFAULT_LINE)[0]} onLineChange={() => {}} onSdwtChange={() => {}} />
       <div className="grid grid-cols-[minmax(0,1fr)_420px] gap-4">
         <SimpleTable
           columns={[
@@ -419,6 +445,9 @@ function ManualPage() {
 
 function HardSpecPage() {
   const rows = getHardSpecRows()
+  const [line, setLine] = useState(DEFAULT_LINE)
+  const sdwtOptions = getSdwtOptionsByLine(line)
+  const [sdwt, setSdwt] = useState(sdwtOptions[1] ?? sdwtOptions[0] ?? "")
   const [selectedRows, setSelectedRows] = useState(() => new Set(rows.slice(0, 2).map((row) => row.id)))
   const chartRows = rows.filter((row) => selectedRows.has(row.id)).slice(0, 5)
 
@@ -439,14 +468,23 @@ function HardSpecPage() {
       return next
     })
   }
+  const handleLineChange = (nextLine) => {
+    const nextSdwtOptions = getSdwtOptionsByLine(nextLine)
+    setLine(nextLine)
+    setSdwt(nextSdwtOptions[1] ?? nextSdwtOptions[0] ?? "")
+  }
 
   return (
     <>
       <section className="grid gap-4 rounded-2xl border bg-card p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <Select defaultValue="H1L">
+          <Select value={line} onValueChange={handleLineChange}>
             <SelectTrigger className="w-[180px]"><SelectValue placeholder="라인ID 선택해주세요" /></SelectTrigger>
-            <SelectContent><SelectItem value="H1L">H1L</SelectItem></SelectContent>
+            <SelectContent>
+              {FDC_LINES.map((lineId) => (
+                <SelectItem key={lineId} value={lineId}>{lineId}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           <Select defaultValue="CR380250">
             <SelectTrigger className="w-[180px]"><SelectValue placeholder="step_seq 선택해주세요" /></SelectTrigger>
@@ -456,9 +494,9 @@ function HardSpecPage() {
             <SelectTrigger className="w-[180px]"><SelectValue placeholder="RecipeID 선택해주세요" /></SelectTrigger>
             <SelectContent><SelectItem value="RCP-4100">RCP-4100</SelectItem></SelectContent>
           </Select>
-          <Select defaultValue="Dreams_H1L">
+          <Select value={sdwt} onValueChange={setSdwt}>
             <SelectTrigger className="w-[180px]"><SelectValue placeholder="FDC Model 선택해주세요" /></SelectTrigger>
-            <SelectContent>{SDWT_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+            <SelectContent>{sdwtOptions.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
           </Select>
           <Button type="button">
             <Search className="size-4" aria-hidden="true" />

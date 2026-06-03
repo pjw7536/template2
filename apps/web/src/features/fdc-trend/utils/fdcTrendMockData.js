@@ -1,30 +1,60 @@
 export const FDC_LINES = Object.freeze([
-  "H1",
+  "H1L",
   "15L",
   "16L",
   "17L",
-  "P1D",
   "P1F",
-  "P2D",
+  "P1D",
   "P23F",
+  "P2D",
   "P3D",
   "P3D2",
-  "EndFab",
 ])
 
-const LINE_TEAMS = Object.freeze({
-  H1: ["H1-A", "H1-B", "H1-C"],
-  "15L": ["15L-A", "15L-B"],
-  "16L": ["16L-A", "16L-B", "16L-C"],
-  "17L": ["17L-A", "17L-B"],
-  P1D: ["P1D-Etch", "P1D-CVD", "P1D-Diff"],
-  P1F: ["P1F-CMP", "P1F-Metal"],
-  P2D: ["P2D-Photo", "P2D-Implant"],
-  P23F: ["P23F-CVD", "P23F-Wet", "P23F-Metal"],
-  P3D: ["P3D-Etch", "P3D-Photo"],
-  P3D2: ["P3D2-CMP", "P3D2-Wet"],
-  EndFab: ["EndFab-Final", "EndFab-Pack"],
+export const SPIDER_LINE_REV = Object.freeze({
+  Lambda_H1L: "H1L",
+  Dreams_H1L: "H1L",
+  TERA_H1L: "H1L",
+  Lambda_15L: "15L",
+  Dreams_15L: "15L",
+  TERA_15L: "15L",
+  Lambda_16L: "16L",
+  Dreams_16L: "16L",
+  TERA_16L: "16L",
+  Lambda_17L: "17L",
+  Dreams_17L: "17L",
+  TERA_17L: "17L",
+  Lambda_P1D: "P1D",
+  Dreams_P1D: "P1D",
+  TERA_P1D: "P1D",
+  Lambda_P1F: "P1F",
+  Dreams_P1F: "P1F",
+  TERA_P1F: "P1F",
+  Lambda_P23F: "P23F",
+  Dreams_P23F: "P23F",
+  TERA_P23F: "P23F",
+  Lambda_P2D: "P2D",
+  Dreams_P2D: "P2D",
+  TERA_P2D: "P2D",
+  Lambda_P3D: "P3D",
+  Dreams_P3D: "P3D",
+  TERA_P3D: "P3D",
+  Lambda_P3D2: "P3D2",
+  Dreams_P3D2: "P3D2",
+  TERA_P3D2: "P3D2",
+  Lambda_U: "EndFab",
+  Dreams_U: "EndFab",
+  TERA_U: "EndFab",
 })
+
+const LINE_TEAMS = Object.freeze(
+  FDC_LINES.reduce((lines, lineId) => {
+    lines[lineId] = Object.entries(SPIDER_LINE_REV)
+      .filter(([, mappedLineId]) => mappedLineId === lineId)
+      .map(([sdwt]) => sdwt)
+    return lines
+  }, {}),
+)
 
 const STEP_NAMES = [
   "1.0 MASK ETCH",
@@ -72,19 +102,7 @@ export const SPIDER_FILE_PATHS = Object.freeze({
   mErdRoot: "/appdata/m_erdtsum_data_agg",
   backupRoot: "/appdata/abnormal_trend/pic/backup/",
 })
-const LINE_FACTORS = Object.freeze({
-  H1: 0,
-  "15L": 1,
-  "16L": 2,
-  "17L": 3,
-  P1D: 4,
-  P1F: 5,
-  P2D: 6,
-  P23F: 7,
-  P3D: 8,
-  P3D2: 9,
-  EndFab: 10,
-})
+const LINE_FACTORS = Object.freeze(Object.fromEntries(FDC_LINES.map((lineId, index) => [lineId, index])))
 
 function getLineFactor(lineId) {
   return LINE_FACTORS[lineId] ?? 0
@@ -212,7 +230,7 @@ export function getSeverityLabel(severity) {
 }
 
 export function getSpiderSummaryRows() {
-  const lineRows = FDC_LINES.slice(0, 7).map((lineId, index) => {
+  const lineRows = FDC_LINES.map((lineId, index) => {
     const ng = 18 + index * 7
     const ok = 460 + index * 64
 
@@ -252,38 +270,42 @@ export function getSpiderSummaryRows() {
 }
 
 export function getSpiderAnomalyRows() {
-  const steps = getTrendSteps({ lineId: "H1", teamId: "H1-A" }).slice(0, 10)
+  const date = "2026-05-29"
 
-  return steps.flatMap((step, stepIndex) =>
-    step.equipments.slice(0, 3).flatMap((equipment) =>
-      equipment.sensors.slice(0, 2).map((sensor, sensorIndex) => {
-        const sensorPath = sensor.sensorName.replaceAll(" ", "_")
-        const eqpFile = `${equipment.equipmentName}.png`
-        const date = "2026-05-29"
+  return FDC_LINES.flatMap((lineId, lineIndex) =>
+    getTeamsByLine(lineId).flatMap((teamId, teamIndex) =>
+      getTrendSteps({ lineId, teamId }).slice(0, 10).flatMap((step, stepIndex) =>
+        step.equipments.slice(0, 3).flatMap((equipment) =>
+          equipment.sensors.slice(0, 2).map((sensor, sensorIndex) => {
+            const sensorPath = sensor.sensorName.replaceAll(" ", "_")
+            const eqpFile = `${equipment.equipmentName}.png`
+            const recipeOffset = lineIndex * 300 + teamIndex * 70 + stepIndex * 17
 
-        return {
-          id: `${step.id}-${equipment.id}-${sensorIndex}`,
-          line_id: "H1L",
-          sdwt: "Lambda_H1L",
-          desc: step.stepName,
-          ver: `V${1 + (stepIndex % 3)}`,
-          recipe_id: `RCP-${4100 + stepIndex * 17}`,
-          date,
-          grade: sensor.grade,
-          sensor: sensor.sensorName,
-          eqp: eqpFile,
-          file_path: `${SPIDER_FILE_PATHS.dataRoot}erd/${date}/Lambda_H1L/${step.stepName}/${sensor.grade}/${sensorPath}/${eqpFile}`,
-          abnormalCount: sensor.abnormalCount,
-          latestAt: sensor.latestAt,
-          points: sensor.points,
-        }
-      }),
+            return {
+              id: `${step.id}-${equipment.id}-${sensorIndex}`,
+              line_id: lineId,
+              sdwt: teamId,
+              desc: step.stepName,
+              ver: `V${1 + (stepIndex % 3)}`,
+              recipe_id: `RCP-${4100 + recipeOffset}`,
+              date,
+              grade: sensor.grade,
+              sensor: sensor.sensorName,
+              eqp: eqpFile,
+              file_path: `${SPIDER_FILE_PATHS.dataRoot}erd/${date}/${teamId}/${step.stepName}/${sensor.grade}/${sensorPath}/${eqpFile}`,
+              abnormalCount: sensor.abnormalCount,
+              latestAt: sensor.latestAt,
+              points: sensor.points,
+            }
+          }),
+        ),
+      ),
     ),
   )
 }
 
 export function getSpiderCommonalityRows() {
-  return getSpiderAnomalyRows().slice(0, 12).map((row, index) => ({
+  return getSpiderAnomalyRows().map((row, index) => ({
     ...row,
     priority: index % 2 === 0 ? "A(c)" : "B(c)",
     step_seq: `CR${380250 + index * 100}`,

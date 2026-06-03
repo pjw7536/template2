@@ -1035,756 +1035,6 @@ if __name__ == '__main__':
 
 # ===== START: plotly_to_hard_spec_section.py =====
 
-                                                            # st.write(img_path_result)
-                                                           
-
-
-                                                        elif st.session_state.output_type == bt_key+"plotly":
-                                                            start = datetime.now()
-                                                            sp = img_path_result.split('/')
-                                                            folder_path = '/'+'/'.join(sp[1:-1])
-                                                            file_path =  folder_path + '/data.parquet'
-                                                            eqp_ch = sp[-1].split('.')[0]
-
-                                                            img_data = pd.read_parquet(file_path)
-                                                            if 'eqp_cb' in img_data.columns: img_data.drop(columns=['eqp_cb'], inplace=True)
-                                                            drawing_df = img_data[(img_data['eqp_id']==eqp_ch.split('-')[0])&(img_data['disp_name']==eqp_ch.split('-')[1])]
-                                                            fig = px.scatter(
-                                                                                drawing_df,
-                                                                                x="act_time",
-                                                                                y=img_data.columns[-1],
-                                                                                hover_data=[img_data.columns[-1],'root_lot_id','wafer_id']
-                                                                                )
-
-                                                            fig.update_layout(width=400, height=300)
-                                                            st.plotly_chart(fig, use_container_width=True)
-
-                                # ============================    Skip버튼 미설정 Drwing      =============================================
-
-
-
-
-
-
-                                # ===========================================================================================================================
-
-                                for_enu_true = st.session_state.common_history[common_grade][st.session_state.common_history[common_grade]['check'] == True]
-                                #print(for_enu_true[['file_path','check']].values)
-                                #skip체크있는 최종 이상감지 리스트(file_path_df)에 선택한 센서, skip유무, eqp까지 필터 후 변수에 저장 (for문에 직접 넣으려니 너무 길어서....)
-                                with st.expander(f'Skip 리스트 ({len(for_enu_true)} 건)', expanded=False):
-
-                                    with st.container(border=True):
-                                        cols = st.columns(2)
-                                        for i, path_values in enumerate(for_enu_true[['file_path','comment','knox_id','check']].values):
-                                            img_path = path_values[0]
-                                            img_path_sp = img_path.split('/')
-                                            img_path_comment = path_values[1]
-                                            img_path_knoxid = path_values[2]
-
-                                            with cols[i % 2]:
-                                                with st.container(border=True):
-                                                    img_path_result = img_path.replace('pic_server2', 'pic')
-                                                    st.markdown(img_path_sp[6] + ' / ' + img_path_sp[7] + ' / ' + img_path_sp[8] + ' / ' + img_path_sp[9] + ' / ' + img_path_sp[10] + ' / ' + img_path_sp[-1].split('.')[0])
-                                                    st.markdown(f'skip사유 (등록자) : {img_path_comment} / {img_path_knoxid}')
-
-                                                    ###########################
-                                                    # toggle dict 데이터 확인 #
-                                                    ###########################
-
-                                                    _key=f'skip_toggle_{str(common_grade)}_{str(i)}_{path_values}_{st.session_state.common_last_filter}'
-
-                                                    if _key not in st.session_state.common_skip_toggle_dict:
-                                                        check_value = path_values[1]
-                                                        st.session_state.common_skip_toggle_dict_before[_key] = check_value
-                                                        common_on = st.toggle('Skip (Skip 리스트로 이동하여 3일간 동일 이상건 제외)', key=_key, value=check_value, on_change=commonSkipToggleChange, args=(_key,))
-                                                        st.session_state.common_skip_toggle_dict[_key] = check_value
-                                                    else:
-                                                        check_value = st.session_state.common_skip_toggle_dict_before[_key]
-                                                        common_on = st.toggle('Skip (Skip 리스트로 이동하여 3일간 동일 이상건 제외)', key=_key, value=check_value, on_change=commonSkipToggleChange, args=(_key,))
-
-                                                        if st.session_state.skip_toggle_dict[_key] != common_on:
-                                                            data = [('-','-',img_path_sp[6],img_path_sp[7],
-                                                                        '-',img_path_sp[5],img_path_sp[8],img_path_sp[9],
-                                                                        img_path_sp[10],img_path_sp[11].split('.')[0],st.session_state.user,datetime.now())]
-                                                            # print(data)
-                                                            if  common_on == False:
-                                                                # print('on → off')
-                                                                data = data[0]
-                                                                if DBDataDelete(data[0],data[1],data[2],data[4],data[7],data[8],data[9]):
-                                                                    st.write('관리자 문의 필요')
-
-                                                            elif common_on == True:
-                                                                # print('off → on')
-                                                                if DBDataUpLoad(data):
-                                                                    st.write('관리자 문의 필요')
-
-                                                        st.session_state.common_skip_toggle_dict[_key] = common_on
-                                                        st.session_state.common_skip_toggle_dict_before[_key] = common_on
-                                                    # # # # # # # # # # # # # #
-
-                                                    # if on:
-                                                        # st.write(img_path)
-                                                        # print(img_path[0]) 
-                                                    st.image(img_path_result)
-
-
-                                                    bt_key = key=f'butt_{common_grade}_{path_values}_{str(i)}_{st.session_state.common_last_filter}'
-
-                                                    col1, col2, col4, col5 = st.columns(4)
-
-
-                                                    with col1:                                                
-                                                        if st.button('동일성차트', bt_key):
-                                                            if st.session_state.all_chart != bt_key:
-                                                                    st.session_state.all_chart = bt_key
-                                                            else:
-                                                                st.session_state.all_chart = None
-
-                                                            if st.session_state.output_type != bt_key+"matplotlib":
-                                                                st.session_state.output_type = bt_key+"matplotlib"
-                                                            else:
-                                                                st.session_state.output_type = None
-
-
-
-                                                    with col2:
-                                                        if st.button('자설비 Chart', bt_key+'_single_chart'):                                               
-                                                            if st.session_state.single_chart != bt_key+'_single_chart':
-                                                                st.session_state.single_chart = bt_key+'_single_chart'
-                                                            else:
-                                                                st.session_state.single_chart = None
-
-                                                            if st.session_state.output_type != bt_key+"plotly":
-                                                                st.session_state.output_type = bt_key+"plotly"
-                                                            else:
-                                                                st.session_state.output_type = None
-
-
-
-                                                    with col4:
-                                                        st.markdown('')
-                                                    with col5:
-                                                        st.markdown('')
-
-
-                                                    if st.session_state.output_type == bt_key+"matplotlib":
-                                                        all_chart(img_path_result)
-
-
-
-                                                    elif st.session_state.output_type == bt_key+"plotly":
-                                                        start = datetime.now()
-                                                        sp = img_path_result.split('/')
-                                                        folder_path = '/'+'/'.join(sp[1:-1])
-                                                        file_path =  folder_path + '/data.parquet'
-                                                        eqp_ch = sp[-1].split('.')[0]
-
-                                                        img_data = pd.read_parquet(file_path)
-                                                        if 'eqp_cb' in img_data.columns: img_data.drop(columns=['eqp_cb'], inplace=True)
-                                                        drawing_df = img_data[(img_data['eqp_id']==eqp_ch.split('-')[0])&(img_data['disp_name']==eqp_ch.split('-')[1])]
-                                                        fig = px.scatter(
-                                                                            drawing_df,
-                                                                            x="act_time",
-                                                                            y=img_data.columns[-1],
-                                                                            hover_data=[img_data.columns[-1],'root_lot_id','wafer_id']
-                                                                            )
-
-                                                        fig.update_layout(width=400, height=300)
-                                                        st.plotly_chart(fig, use_container_width=True)
-
-
-
-                                                    elif st.session_state.output_type == bt_key+"markdown":
-                                                        try:
-                                                            for index, row in pd.read_parquet(img_path_result.replace('.png','.parquet')).iterrows():
-                                                                st.markdown(f"[📘 {row['date']}  [{row['work_type']}] : {row['desc']}]({row['ctttm_url']})", unsafe_allow_html=True)
-                                                        except:
-                                                            st.markdown('😔 변경점 없음')
-
-
-                        # ===========================================Skip버튼 활성화 리스트 Drwing===================================================
-                except Exception as E:
-                    # print('no')
-                    st.subheader("")
-            # =======================================================================================================================================
-            # ============================
-            
-            
-            
-            
-            with tab5:
-                hit_data = HitDBDataLoad()
-                hit_data['line_rev'] = hit_data['sdwt'].map(line_rev)
-                
-                with st.container(border=True):
-                    try:
-                        select_line = st.segmented_control(
-                            "라인 선택",
-                            hit_data['line_rev'].unique(), key='line_hit'
-                            )
-            
-            
-                        select_sdwt = st.segmented_control(
-                            "분임조 선택",
-                            hit_data[hit_data['line_rev']==select_line]['sdwt'].unique(), key='sdwt_hit'
-                            )
-            
-                        if select_sdwt:
-                            hit_total_data = hit_data[(hit_data['line_rev']==select_line)&(hit_data['sdwt']==select_sdwt)]
-                            st.subheader(f'조회결과 (총{len(hit_total_data)}건)', divider=True)
-            
-                            for date_list in hit_total_data['update_date'].unique():
-                                final_hit_total_data = hit_total_data[hit_total_data['update_date'] == date_list]
-                                with st.expander(f'{date_list} ({len(final_hit_total_data)}건)', expanded=False):
-                                    with st.container(border=True):   
-                                        cols = st.columns(2)
-                                        for i, path_values in enumerate(final_hit_total_data.values):
-                                            if 'erd' in path_values[3]:
-                                                img_path = path_values[3] #차트 drwing위한 이미지 경로 변수 저장
-
-                                            else: 
-                                                img_path = path_values[3]
-                                                                                        
-
-                                            
-                                            img_path_sp = img_path.split('/') #차트에 각종 정보 표현위해 '/'구분자로 쪼개어 경로정보 list에 저장
-                                            with cols[i % 2]:
-                                                with st.container(border=True):
-                                                    st.markdown(img_path_sp[6] + ' / ' + img_path_sp[7] + ' / ' + img_path_sp[8] + ' / ' + img_path_sp[-1].split('.')[0])                    
-                                                    try:
-                                                        single_chart(img_path)
-                                                    except:
-                                                        pass
-            
-                                                    col1, col2, col3, col4, col5 = st.columns(5)
-            
-                                                    with col1:
-                                                        
-                                                        _key = f'{i}_{select_line}_{select_sdwt}_{img_path}' 
-            
-                                                        if st.button('삭제', key = _key+'button'):
-                                                            st.session_state.hit_del = _key+'pills'
-                                                            
-                                                        if st.session_state.hit_del == _key+'pills':
-                                                            selection = st.pills('삭제하시겠습니까?', ['YES','NO '],key = _key+'pills')
-                                                            if selection == 'YES':
-                                                                HitDBDataDelete(img_path)
-                                                                st.markdown('삭제완료')
-            
-                                                            
-                                                    with col2:
-                                                        st.markdown('')
-                                                    with col3:
-                                                        st.markdown('')
-                                                    with col4:
-                                                        st.markdown('')
-                                                    with col5:
-                                                        st.markdown('')                                               
-            
-            
-                    except TypeError:
-                        pass
-            
-            with tab6:
-                st.image('/appdata/abnormal_trend/code/manual.png')
-
-            with tab7:
-                st.header('Hard Spec 추천 조회')
-                st.markdown('')
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    with st.expander('로직 설명', expanded=False):
-                        with st.container(border=False):
-                            st.image('/appdata/abnormal_trend/pic/recommand_spec.png')
-                
-                st.markdown('')
-                st.markdown('')
-
-                col1, col2, col3, col4 = st.columns(4)
-
-                # line_list = ['KFBC', 'KFBE', 'KFBG', 'KFBH', 'KFBJ', 'KFE3', 'KFE5', 'KFHB', 'KFHG', 'KFJB', 'PFB3', 'PFB4', 'PFBB', 'PFBP', 'PFPB', 'XFB1', 'XFB2']
-                try:
-                    with col1:
-                        line_ids = st.selectbox("라인ID 선택해주세요", 
-                                        (['H1L']),
-                                               )
-                        if line_ids:
-                            try:
-                                models = st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}')
-                                step_model_dict = defaultdict(list)
-                                ver_step_dict = defaultdict(list)
-                                for model in models:
-                                    steps = st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}/{model}')
-                                    for step in steps:
-                                        step_model_dict[step].append(model)
-                                        ver_step_dict[step[0]+'%'+step[2:]].append(step)
-
-                                # steps = sorted(list(set(step_model_dict.keys())))
-                                # step_seq_select = steps
-                                step_seq_select = sorted([i for i in ver_step_dict.keys()])
-                            except:
-                                step_seq_select = ()
-                        else:
-                            step_seq_select = ()
-
-                    with col2:
-                        step_seq = st.selectbox("step_seq 선택해주세요", 
-                                                (step_seq_select), index=None, placeholder='Select')
-
-                        if step_seq:
-                            select_steps = ver_step_dict[step_seq]
-                            ppids = set()
-                            select_groups = []
-                            eqp_models = set()
-                            for select_step in select_steps:
-                                models = step_model_dict[select_step]
-                                eqp_models.update(models)
-                                for model in models:
-                                    # ppids.update(set(st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}/{model}/{step_seq}')))
-                                    _hdfs_file_path = f'/appdata/erd_stats_commonality/{line_ids}/{model}/{select_step}'
-                                    _ppids = st.session_state.hdfs_client.list(_hdfs_file_path)
-                                    ppids.update(set(_ppids))
-                                    select_groups += [f'{_hdfs_file_path}/{i}' for i in _ppids]
-                            
-                            recipe_lists = []
-                            recipe_ids = set()
-                            for _file in select_groups:
-                                _rcps = st.session_state.hdfs_client.list(_file)
-                                recipe_ids.update(set(_rcps))
-                                recipe_lists += [f'{_file}/{i}'for i in _rcps if i != '-']
-                            
-                            # ppids = sorted(list(ppids))
-                        else:
-                            recipe_ids = ()
-                             
-
-                    with col3:
-                        recipe_id = st.selectbox("RecipeID 선택해주세요", 
-                                                (recipe_ids) ,index=None ,placeholder='Select')
-                        if recipe_id:
-                            
-                            sql = f'''
-                            SELECT DISTINCT fdc_model
-                            FROM edisn.step_eqp_info
-                            WHERE step_seq like '{step_seq}'
-                              AND eqp_model in {tuple(eqp_models)}
-                            '''.replace(',)',')')
-                            with pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, charset='utf8', port=DB_PORT) as conn:
-                                with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-                                    cursor.execute(sql)
-                                    fdc_models = [i['fdc_model'] for i in cursor.fetchall()]
-                            # print('recipe_id', [i for i in recipe_lists if i.endswith(recipe_id)])
-                        else:
-                            fdc_models = ()
-                    
-                    with col4:
-                        fdc_model = st.selectbox("FDC Model 선택해주세요", 
-                                                (fdc_models) ,index=None ,placeholder='Select')
-                        
-                        if fdc_model:
-                            check_hdfs_list = True
-                        else:
-                            check_hdfs_list = False
-                    
-                    #with col4:
-                    #    recipe_id = st.selectbox("RecipeID 선택해주세요", 
-                    #                            (recipe_ids) ,index=None, placeholder='Select')
-                except TypeError:
-                        pass
-
-                if st.button("추천SPEC 조회"):
-                    st.session_state.min_max_data = None
-                    st.session_state.hard_spec_search_condition = None
-                    # print('conditions:',st.session_state.hard_spec_search_condition)
-                    history_data = ('SPEC', line_ids, step_seq, recipe_id, datetime.now(), st.session_state.user)
-                    ClickedCategoryUpLoad(history_data)
-                    if check_hdfs_list:
-                        st.session_state.hard_spec_search_condition = (line_ids, step_seq, recipe_id)
-                        try:
-                            datas = []
-
-                            for hdfs_path_dir in [i for i in recipe_lists if i.split('/')[-1] == recipe_id]:
-
-                                try:
-                                    iss = st.session_state.hdfs_client.list(hdfs_path_dir)
-                                    for i in iss:
-                                        datas.append( f'{hdfs_path_dir}/{i}' )
-                                except:
-                                    pass
-
-                            _path_data = []
-                            for _data in datas:
-                                _path_data.append((*_data.split('/')[3:], _data))
-                            
-                            files =                             pl.DataFrame(
-                                _path_data, schema=['line','model','step','ppid','rcp','date','path'], orient='row'
-                            ).sort(
-                                'date', descending=True
-                            ).group_by(
-                                ['line','model','step','ppid','rcp']
-                            ).agg(
-                                pl.col('path').head(120)
-                            ).explode(
-                                "path"
-                            )
-                            print('*'*20)
-                            st.session_state.hard_spec_search_condition = files.select(['line','step','ppid','rcp']).unique().rows()
-                            # print(files.select(['line','step','ppid','rcp']).unique().rows())
-                            print('*'*20)
-                            files = files['path'].to_list()
-                            
-                            # files = sorted(list(datas))[-120:]
-
-                            local_path = f'/appdata/abnormal_trend/pic/temp_all_stats/{st.session_state.user_uuid}'
-                            os.makedirs(local_path, exist_ok=True)
-
-                            for file in files:
-                                hdfs_path = file # f'{hdfs_path_dir}/{file}'
-                                try:
-                                    st.session_state.hdfs_client.download(hdfs_path, local_path, overwrite=True)
-                                except:
-                                    pass
-                                
-                            #lf = pl.scan_parquet( local_path ).filter(pl.col('value').is_not_null())
-                            lf = pl.scan_parquet( local_path )
-                     
-                            min_max_data =                             lf.group_by(
-                                ['sensor']
-                            ).agg(
-                                pl.col('upper_bound').max().alias('max'),
-                                pl.col('lower_bound').min().alias('min'),
-                            ).with_columns(
-                                ((pl.col('max')-pl.col('min'))*0.05).alias('gap')
-                            ).with_columns(
-                                (pl.col('max')+pl.col('gap')).alias('max'),
-                                (pl.col('min')-pl.col('gap')).alias('min')
-                            ).select(
-                                ['sensor','max','min']
-                            ).with_columns(
-                                pl.col("sensor")
-                                .map_elements(lambda x: {
-                                    "col1": split_by_reverse(x)[0],
-                                    "col2": split_by_reverse(x)[1],
-                                 })
-                                .alias("split")
-                            ).unnest("split").collect()
-                            # ===========================================================================================
-                            
-                            min_max_data =                             min_max_data.rename(
-                                {'col1':'sensor_name', 'col2':'cycle'}
-                            ).select(
-                                ['sensor_name','cycle','min','max']
-                            )
-
-                            shutil.rmtree(local_path)
-
-                            AB_sensors = pl.read_parquet(  
-                                '/appdata/abnormal_trend/pic/priority/priority.parquet'  
-                            ).filter(  
-                                pl.col('eqp_id') == fdc_model
-                            ).filter(  
-                                pl.col('priority').is_in(['A','B'])  
-                            ).select(  
-                                ['param_name','priority']  
-                            ).sort(  
-                                ['param_name','priority']  
-                            ).unique(subset=['param_name'], keep='first')
-                            
-                            # -------------------------------------------------  
-                            # min_max_data 전처리  
-                            min_max_data = min_max_data.rename({  
-                                "min": "Lower_Spec",  
-                                "max": "Upper_Spec"  
-                            }).join(  
-                                AB_sensors.rename({'param_name': 'sensor_name'}),  
-                                on=['sensor_name'],  
-                                how='left'  
-                            ).filter(  
-                                pl.col('priority').is_in(['A','B'])  
-                            ).sort(['priority', 'sensor_name'])
-                            
-                            # -------------------------------------------------  
-                            # Hard Spec 로드  
-                            try:  
-                                unit_model_ids = pl.scan_parquet(  
-                                    '/appdata/abnormal_trend/pic/unit_model.parquet'  
-                                ).filter(  
-                                    pl.col('fdc_model') == fdc_model  
-                                ).collect()['unit_model_id'].unique()
-                            
-                                hard_spec = pl.scan_parquet(  
-                                    '/appdata/abnormal_trend/pic/HARD_LIMIT.parquet'  
-                                ).filter(  
-                                    pl.col('UNIT_MODEL_ID').is_in(unit_model_ids)  
-                                ).filter(  
-                                    (pl.col('PARAMETER_NAME').is_in(min_max_data['sensor_name'].unique()))  
-                                    & (pl.col('RECIPE') == recipe_id)  
-                                ).sort(['PARAMETER_NAME', 'UPDATE_DATE']).join(  
-                                    min_max_data.rename({'sensor_name': 'PARAMETER_NAME'}).with_columns(  
-                                        pl.col("cycle")  
-                                        .str.split("@")  
-                                        .list.to_struct(fields=["ch_step", "iter"])  
-                                        .alias("tmp")  
-                                    ).unnest("tmp").with_columns(  
-                                        pl.col('iter').cast(pl.Int8)  
-                                    ).with_columns(  
-                                        pl.col('iter').cast(pl.Utf8)  
-                                    ).lazy(),  
-                                    on=['PARAMETER_NAME'],  
-
-
-# ===== END: plotly_to_hard_spec_section.py =====
-
-
-# ===== START: third_question_section.py =====
-
-                    if span <= 0:
-                        span = 1.0
-                        duration = pd.to_timedelta(span, unit="s")
-                
-                    gap = span * gap_ratio
-                
-                    # --- composite x 생성: offset + (act_time - 전역 tmin) ---
-                    i = df[eqp_col].map(eqp_to_i)
-                    
-                    # 혹시 mapping 안 된 값이 있으면 제거
-                    df = df[i.notna()].copy()
-                    i = i[i.notna()].astype(int).to_numpy()
-                
-                    offset = i * (span + gap)
-                    within = (df[time_col] - tmin).dt.total_seconds().to_numpy()
-                    df["_x_comp"] = offset + within
-                    # idx = temp.index
-                    # --- color list 생성 ---
-                    if not mode: c = 'gray'
-                    else: c = 'blue'
-                    colors = np.array([ c ]*len(df))
-                    if not mode:
-                        colors[df[df[eqp_col]==eqp_id].index] = 'red'
-                    
-                    # --- 전체 x폭(✅ (2) 좌우 여백 제거용 range) ---
-                    nseg = len(eqps)
-                    x0_full = 0.0
-                    x1_full = (nseg - 1) * (span + gap) + span
-                    
-                    # -----------------------------
-                    # ✅ 하단 x축 tick: 구간별 20/50/80% 3개만 + YYYY-MM-DD
-                    # -----------------------------
-                    tickvals = []
-                    ticktext = []
-                    for k in range(len(eqps)):
-                        seg_start = k * (span + gap)
-                        for frac in tick_fracs:
-                            x = seg_start + span * frac
-                            tt = tmin + pd.to_timedelta(span * frac, unit="s")
-                            tickvals.append(x)
-                            ticktext.append(tt.strftime("%Y-%m-%d"))  # ✅ 날짜까지만
-                    # --- figure ---
-                    fig = go.Figure()
-                    try:
-                        if not mode:
-                            fig.add_trace(
-                                go.Scattergl(
-                                    x=df["_x_comp"],
-                                    y=df[value_col],
-                                    mode="markers",
-                                    marker=dict(
-                                        size=marker_size,
-                                        color=colors
-                                    ),
-                                    customdata=np.stack(
-                                        [df[eqp_col].astype(str), df[time_col].dt.strftime("%Y-%m-%d %H:%M:%S"), df[lot_col]],
-                                        axis=1
-                                    ),
-                                    hovertemplate=(
-                                        "eqp=%{customdata[0]}<br>"
-                                        "act_time=%{customdata[1]}<br>"
-                                        "lot=%{customdata[2]}<br>"
-                                        f"{value_col}=%{{y}}<extra></extra>"
-                                    ),
-                                    showlegend=False
-                                )
-                            )
-                        else:
-                            fig.add_trace(
-                                go.Scattergl(
-                                    x=df["_x_comp"],
-                                    y=df[value_col],
-                                    mode="markers",
-                                    marker=dict(
-                                        size=marker_size,
-                                        color=colors
-                                    ),
-                                    showlegend=False
-                                )
-                            )
-                            for ss in min_max_data:
-                                fig.add_hline(
-                                    y=ss,                 # 기준값
-                                    line_width=1,
-                                    line_dash="dash",
-                                    line_color="orange",
-                                    opacity=0.8
-                                )
-                            
-                    except Exception as E: print(E)
-                    # --- 배경 음영 + 경계선 ---
-                    for k in range(len(eqps)):
-                        seg_start = k * (span + gap)
-                        seg_end = seg_start + span
-                
-                        if k % 2 == 0:
-                            fig.add_vrect(x0=seg_start, x1=seg_end, opacity=0.06, line_width=0)
-                
-                        if k < len(eqps) - 1:
-                            boundary = seg_end + (gap / 2 if gap > 0 else 0)
-                            fig.add_vline(x=boundary, line_width=0.5, line_dash="dot", opacity=0.6)
-                
-                    # -----------------------------
-                    # ✅ (1) EQP 라벨을 "각 구간 상단"에 annotation으로 확실히 표시
-                    #   - 반시계 90도: textangle=90
-                    #   - 아래→위 방향으로 읽힘
-                    # -----------------------------
-                    for k, e in enumerate(eqps):
-                        x_center = k * (span + gap) + span / 2
-                        if not mode:
-                            if e == eqp_id: color = 'red'
-                            else: color = 'gray'
-                        else:
-                            color = 'blue'
-                        fig.add_annotation(
-                            x=x_center,
-                            y=0.995, # y=0.8                 # 상단(페이퍼 좌표)
-                            xref="x",
-                            yref="paper",
-                            text=str(e),
-                            showarrow=False,
-                            textangle=270,           # ✅ 반시계 90도 (세로, 아래->위)
-                            xanchor="center",
-                            yanchor="top", # yanchor="bottom",
-                            yshift=-2,          # 살짝 아래로(픽셀) 내려서 경계에 붙는 느낌 완화
-                            align="center",
-                            font=dict(
-                                size=10,
-                                color=color,
-                                family='Arial'
-                            )
-                        )
-                    # --- 축 세팅 ---
-                    fig.update_xaxes(
-                        tickmode="array",
-                        tickvals=tickvals,
-                        ticktext=ticktext,
-                        range=[x0_full, x1_full],      # ✅ (2)
-                        showticklabels=(not hide_xticks_until_zoom),
-                        ticks=("outside" if not hide_xticks_until_zoom else ""),
-                        ticklen=(5 if not hide_xticks_until_zoom else 0),
-                    )
-                    fig.update_yaxes(title=value_col)
-                
-                    fig.update_layout(
-                        height=650,
-                        margin=dict(t=170),   # ✅ 상단 세로 라벨 공간 (라벨 길면 더 키워도 됨)
-                        hovermode="closest",
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-            # ======================= 동일성 Chart Drawing 함수 지정 ======================================================================
-            
-            
-            def all_chart_hard_spec(data_for_all_chart, sensor, ch_step, cl, cu, hl, hu, hard_vi):
-                start = datetime.now()
-
-                result = data_for_all_chart.select([
-                                                pl.col('act_time').min().alias('time_min'),
-                                                pl.col('act_time').max().alias('time_max')
-                                            ]).collect()
-                eqp_cb_unique = [i for i in data_for_all_chart.select(['eqp_id','disp_name']) \
-                                              .unique() \
-                                              .sort(['eqp_id','disp_name']).collect().iter_rows()]
-
-
-                fig = plt.figure(figsize=(12,5))
-
-                cmap = plt.get_cmap('tab20c', len(eqp_cb_unique))
-                gs = GridSpec(1, len(eqp_cb_unique), figure=fig)
-                ax_list = []
-
-                for n1, ec1 in enumerate( eqp_cb_unique ):
-                    if n1 == 0:
-                        ax_list.append( fig.add_subplot(gs[0,n1]) )
-                    else:
-                        ax_list.append( fig.add_subplot(gs[0,n1], sharey=ax_list[0]) )
-                        ax_list[n1].tick_params(axis='y', which='both', left=False, labelleft=False)
-
-                    full_range = pd.date_range(start=result['time_min'][0], end=result['time_max'][0])
-
-                    ax_list[n1].text(0.05,0.98, '-'.join(ec1), transform=ax_list[n1].transAxes, verticalalignment='top', horizontalalignment='left', fontsize=9, rotation=90)
-                    ax_list[n1].set_xlim([full_range.min(), full_range.max()])
-
-
-                    mid_value = full_range[round(len(full_range)/2)]
-                    ticks = [ mid_value , full_range.max() + pd.Timedelta(hours=240) ]
-
-                    ax_list[n1].set_xticks(ticks)
-                    ax_list[n1].set_xticklabels([ mid_value.strftime('%Y-%m-%d') , full_range.max().strftime('%Y-%m-%d') ], rotation=90, fontsize=8)
-                #target_eqp = None
-                for n2, ec2 in enumerate( eqp_cb_unique ):
-                    color = cmap(n2%10+n2%10)
-                    t = data_for_all_chart.filter(
-                        pl.col('eqp_id')==ec2[0],
-                        pl.col('disp_name')==ec2[1]
-                    ).drop_nulls().collect()
-
-                    ax_list[n2].scatter(t['act_time'],t['param_value'], color=color, s= 25, edgecolors='k', linewidths=0.05)
-
-                    if hard_vi == 0:
-                        for s in [cu, cl]:
-                            ax_list[n2].axhline(y=float(s), linestyle='--', color='red')
-                        for s in [hu, hl]:
-                            ax_list[n2].axhline(y=float(s), linestyle='--', color='blue')
-                    elif hard_vi == 1:
-                        for s in [cu, cl]:
-                            ax_list[n2].axhline(y=float(s), linestyle='--', color='red')
-                    #if select_eqp == list(ec2):
-                    #    target_eqp = n2
-                        # 각 축의 테두리를 빨갛게 설정
-
-                    ax_list[n2].yaxis.grid(True, linestyle='--', linewidth=0.7)
-
-                #for spine in ax_list[target_eqp].spines.values():
-                #    spine.set_edgecolor('red')
-                #    spine.set_linewidth(1)  # 테두리 두께 조정
-
-                plt.subplots_adjust(wspace=.05)
-                suptitle = sensor+' - '+ch_step
-                plt.suptitle(suptitle)
-                # st.write(f'end: {datetime.now()-start}')
-                st.pyplot(fig)
-            
-            # ======================= step all 선택하면 나머지 해제  =====
-            def updateStepSelect():
-                if 'ALL' in st.session_state.selected_step_button:
-                    st.session_state.selected_step_button = 'ALL'
-            
-            
-            def updateVerSelect():
-                if 'ALL' in st.session_state.selected_ver_button:
-                    st.session_state.selected_ver_button = 'ALL'
-            
-            # 251109 추가 ========
-            def commonUpdateStepSelect():
-                if 'ALL' in st.session_state.common_selected_step_button:
-                    st.session_state.common_selected_step_button = 'ALL'
-
-
-            def commonUpdateVerSelect():
-                if 'ALL' in st.session_state.common_selected_ver_button:
-                    st.session_state.common_selected_ver_button = 'ALL'
-            # ====================
-            
-            # =========================================================================================================
             with tab2:
                 st.subheader('조회조건 설정')
                 st.write('(감지되지 않는 트렌드 제보해주시면 업데이트하겠습니다.)')
@@ -1796,7 +1046,7 @@ if __name__ == '__main__':
                         # st.markdown('P23F, P3D 서버 과부하로 인한 데이터 오류로 공사중입니다 (~5/15까지) 죄송합니다.')
                         select_line = st.segmented_control(
                         "라인 선택",
-                        ['H1L'], key='line'
+                        ['H1L','15L','16L','17L','P1F','P1D','P23F','P2D','P3D','P3D2'], key='line'
                         )
                         select_line_upload = select_line #클릭이력 저장용 변수
                    
@@ -2520,7 +1770,7 @@ if __name__ == '__main__':
                 st.subheader('동일성 분석')
                 select_line = st.segmented_control(
                         "라인 선택",
-                        ['H1L'], key='erd_comm_line'
+                        ['H1L','15L','16L','17L','P1F','P1D','P23F','P2D','P3D','P3D2'], key='erd_comm_line'
                         )
                 select_line_upload = select_line
            
@@ -2902,6 +2152,758 @@ except Exception as E:
                             shutil.rmtree(LOCAL_DIR)
                         except:
                             pass
+
+                                                            # st.write(img_path_result)
+                                                           
+
+
+                                                        elif st.session_state.output_type == bt_key+"plotly":
+                                                            start = datetime.now()
+                                                            sp = img_path_result.split('/')
+                                                            folder_path = '/'+'/'.join(sp[1:-1])
+                                                            file_path =  folder_path + '/data.parquet'
+                                                            eqp_ch = sp[-1].split('.')[0]
+
+                                                            img_data = pd.read_parquet(file_path)
+                                                            if 'eqp_cb' in img_data.columns: img_data.drop(columns=['eqp_cb'], inplace=True)
+                                                            drawing_df = img_data[(img_data['eqp_id']==eqp_ch.split('-')[0])&(img_data['disp_name']==eqp_ch.split('-')[1])]
+                                                            fig = px.scatter(
+                                                                                drawing_df,
+                                                                                x="act_time",
+                                                                                y=img_data.columns[-1],
+                                                                                hover_data=[img_data.columns[-1],'root_lot_id','wafer_id']
+                                                                                )
+
+                                                            fig.update_layout(width=400, height=300)
+                                                            st.plotly_chart(fig, use_container_width=True)
+
+                                # ============================    Skip버튼 미설정 Drwing      =============================================
+
+
+
+
+
+
+                                # ===========================================================================================================================
+
+                                for_enu_true = st.session_state.common_history[common_grade][st.session_state.common_history[common_grade]['check'] == True]
+                                #print(for_enu_true[['file_path','check']].values)
+                                #skip체크있는 최종 이상감지 리스트(file_path_df)에 선택한 센서, skip유무, eqp까지 필터 후 변수에 저장 (for문에 직접 넣으려니 너무 길어서....)
+                                with st.expander(f'Skip 리스트 ({len(for_enu_true)} 건)', expanded=False):
+
+                                    with st.container(border=True):
+                                        cols = st.columns(2)
+                                        for i, path_values in enumerate(for_enu_true[['file_path','comment','knox_id','check']].values):
+                                            img_path = path_values[0]
+                                            img_path_sp = img_path.split('/')
+                                            img_path_comment = path_values[1]
+                                            img_path_knoxid = path_values[2]
+
+                                            with cols[i % 2]:
+                                                with st.container(border=True):
+                                                    img_path_result = img_path.replace('pic_server2', 'pic')
+                                                    st.markdown(img_path_sp[6] + ' / ' + img_path_sp[7] + ' / ' + img_path_sp[8] + ' / ' + img_path_sp[9] + ' / ' + img_path_sp[10] + ' / ' + img_path_sp[-1].split('.')[0])
+                                                    st.markdown(f'skip사유 (등록자) : {img_path_comment} / {img_path_knoxid}')
+
+                                                    ###########################
+                                                    # toggle dict 데이터 확인 #
+                                                    ###########################
+
+                                                    _key=f'skip_toggle_{str(common_grade)}_{str(i)}_{path_values}_{st.session_state.common_last_filter}'
+
+                                                    if _key not in st.session_state.common_skip_toggle_dict:
+                                                        check_value = path_values[1]
+                                                        st.session_state.common_skip_toggle_dict_before[_key] = check_value
+                                                        common_on = st.toggle('Skip (Skip 리스트로 이동하여 3일간 동일 이상건 제외)', key=_key, value=check_value, on_change=commonSkipToggleChange, args=(_key,))
+                                                        st.session_state.common_skip_toggle_dict[_key] = check_value
+                                                    else:
+                                                        check_value = st.session_state.common_skip_toggle_dict_before[_key]
+                                                        common_on = st.toggle('Skip (Skip 리스트로 이동하여 3일간 동일 이상건 제외)', key=_key, value=check_value, on_change=commonSkipToggleChange, args=(_key,))
+
+                                                        if st.session_state.skip_toggle_dict[_key] != common_on:
+                                                            data = [('-','-',img_path_sp[6],img_path_sp[7],
+                                                                        '-',img_path_sp[5],img_path_sp[8],img_path_sp[9],
+                                                                        img_path_sp[10],img_path_sp[11].split('.')[0],st.session_state.user,datetime.now())]
+                                                            # print(data)
+                                                            if  common_on == False:
+                                                                # print('on → off')
+                                                                data = data[0]
+                                                                if DBDataDelete(data[0],data[1],data[2],data[4],data[7],data[8],data[9]):
+                                                                    st.write('관리자 문의 필요')
+
+                                                            elif common_on == True:
+                                                                # print('off → on')
+                                                                if DBDataUpLoad(data):
+                                                                    st.write('관리자 문의 필요')
+
+                                                        st.session_state.common_skip_toggle_dict[_key] = common_on
+                                                        st.session_state.common_skip_toggle_dict_before[_key] = common_on
+                                                    # # # # # # # # # # # # # #
+
+                                                    # if on:
+                                                        # st.write(img_path)
+                                                        # print(img_path[0]) 
+                                                    st.image(img_path_result)
+
+
+                                                    bt_key = key=f'butt_{common_grade}_{path_values}_{str(i)}_{st.session_state.common_last_filter}'
+
+                                                    col1, col2, col4, col5 = st.columns(4)
+
+
+                                                    with col1:                                                
+                                                        if st.button('동일성차트', bt_key):
+                                                            if st.session_state.all_chart != bt_key:
+                                                                    st.session_state.all_chart = bt_key
+                                                            else:
+                                                                st.session_state.all_chart = None
+
+                                                            if st.session_state.output_type != bt_key+"matplotlib":
+                                                                st.session_state.output_type = bt_key+"matplotlib"
+                                                            else:
+                                                                st.session_state.output_type = None
+
+
+
+                                                    with col2:
+                                                        if st.button('자설비 Chart', bt_key+'_single_chart'):                                               
+                                                            if st.session_state.single_chart != bt_key+'_single_chart':
+                                                                st.session_state.single_chart = bt_key+'_single_chart'
+                                                            else:
+                                                                st.session_state.single_chart = None
+
+                                                            if st.session_state.output_type != bt_key+"plotly":
+                                                                st.session_state.output_type = bt_key+"plotly"
+                                                            else:
+                                                                st.session_state.output_type = None
+
+
+
+                                                    with col4:
+                                                        st.markdown('')
+                                                    with col5:
+                                                        st.markdown('')
+
+
+                                                    if st.session_state.output_type == bt_key+"matplotlib":
+                                                        all_chart(img_path_result)
+
+
+
+                                                    elif st.session_state.output_type == bt_key+"plotly":
+                                                        start = datetime.now()
+                                                        sp = img_path_result.split('/')
+                                                        folder_path = '/'+'/'.join(sp[1:-1])
+                                                        file_path =  folder_path + '/data.parquet'
+                                                        eqp_ch = sp[-1].split('.')[0]
+
+                                                        img_data = pd.read_parquet(file_path)
+                                                        if 'eqp_cb' in img_data.columns: img_data.drop(columns=['eqp_cb'], inplace=True)
+                                                        drawing_df = img_data[(img_data['eqp_id']==eqp_ch.split('-')[0])&(img_data['disp_name']==eqp_ch.split('-')[1])]
+                                                        fig = px.scatter(
+                                                                            drawing_df,
+                                                                            x="act_time",
+                                                                            y=img_data.columns[-1],
+                                                                            hover_data=[img_data.columns[-1],'root_lot_id','wafer_id']
+                                                                            )
+
+                                                        fig.update_layout(width=400, height=300)
+                                                        st.plotly_chart(fig, use_container_width=True)
+
+
+
+                                                    elif st.session_state.output_type == bt_key+"markdown":
+                                                        try:
+                                                            for index, row in pd.read_parquet(img_path_result.replace('.png','.parquet')).iterrows():
+                                                                st.markdown(f"[📘 {row['date']}  [{row['work_type']}] : {row['desc']}]({row['ctttm_url']})", unsafe_allow_html=True)
+                                                        except:
+                                                            st.markdown('😔 변경점 없음')
+
+
+                        # ===========================================Skip버튼 활성화 리스트 Drwing===================================================
+                except Exception as E:
+                    # print('no')
+                    st.subheader("")
+            # =======================================================================================================================================
+            # ============================
+            
+            
+            
+            
+            with tab5:
+                hit_data = HitDBDataLoad()
+                hit_data['line_rev'] = hit_data['sdwt'].map(line_rev)
+                
+                with st.container(border=True):
+                    try:
+                        select_line = st.segmented_control(
+                            "라인 선택",
+                            hit_data['line_rev'].unique(), key='line_hit'
+                            )
+            
+            
+                        select_sdwt = st.segmented_control(
+                            "분임조 선택",
+                            hit_data[hit_data['line_rev']==select_line]['sdwt'].unique(), key='sdwt_hit'
+                            )
+            
+                        if select_sdwt:
+                            hit_total_data = hit_data[(hit_data['line_rev']==select_line)&(hit_data['sdwt']==select_sdwt)]
+                            st.subheader(f'조회결과 (총{len(hit_total_data)}건)', divider=True)
+            
+                            for date_list in hit_total_data['update_date'].unique():
+                                final_hit_total_data = hit_total_data[hit_total_data['update_date'] == date_list]
+                                with st.expander(f'{date_list} ({len(final_hit_total_data)}건)', expanded=False):
+                                    with st.container(border=True):   
+                                        cols = st.columns(2)
+                                        for i, path_values in enumerate(final_hit_total_data.values):
+                                            if 'erd' in path_values[3]:
+                                                img_path = path_values[3] #차트 drwing위한 이미지 경로 변수 저장
+
+                                            else: 
+                                                img_path = path_values[3]
+                                                                                        
+
+                                            
+                                            img_path_sp = img_path.split('/') #차트에 각종 정보 표현위해 '/'구분자로 쪼개어 경로정보 list에 저장
+                                            with cols[i % 2]:
+                                                with st.container(border=True):
+                                                    st.markdown(img_path_sp[6] + ' / ' + img_path_sp[7] + ' / ' + img_path_sp[8] + ' / ' + img_path_sp[-1].split('.')[0])                    
+                                                    try:
+                                                        single_chart(img_path)
+                                                    except:
+                                                        pass
+            
+                                                    col1, col2, col3, col4, col5 = st.columns(5)
+            
+                                                    with col1:
+                                                        
+                                                        _key = f'{i}_{select_line}_{select_sdwt}_{img_path}' 
+            
+                                                        if st.button('삭제', key = _key+'button'):
+                                                            st.session_state.hit_del = _key+'pills'
+                                                            
+                                                        if st.session_state.hit_del == _key+'pills':
+                                                            selection = st.pills('삭제하시겠습니까?', ['YES','NO '],key = _key+'pills')
+                                                            if selection == 'YES':
+                                                                HitDBDataDelete(img_path)
+                                                                st.markdown('삭제완료')
+            
+                                                            
+                                                    with col2:
+                                                        st.markdown('')
+                                                    with col3:
+                                                        st.markdown('')
+                                                    with col4:
+                                                        st.markdown('')
+                                                    with col5:
+                                                        st.markdown('')                                               
+            
+            
+                    except TypeError:
+                        pass
+            
+            with tab6:
+                st.image('/appdata/abnormal_trend/code/manual.png')
+
+            with tab7:
+                st.header('Hard Spec 추천 조회')
+                st.markdown('')
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    with st.expander('로직 설명', expanded=False):
+                        with st.container(border=False):
+                            st.image('/appdata/abnormal_trend/pic/recommand_spec.png')
+                
+                st.markdown('')
+                st.markdown('')
+
+                col1, col2, col3, col4 = st.columns(4)
+
+                # line_list = ['KFBC', 'KFBE', 'KFBG', 'KFBH', 'KFBJ', 'KFE3', 'KFE5', 'KFHB', 'KFHG', 'KFJB', 'PFB3', 'PFB4', 'PFBB', 'PFBP', 'PFPB', 'XFB1', 'XFB2']
+                try:
+                    with col1:
+                        line_ids = st.selectbox("라인ID 선택해주세요", 
+                                        (['H1L','15L','16L','17L','P1F','P1D','P23F','P2D','P3D','P3D2']),
+                                               )
+                        if line_ids:
+                            try:
+                                models = st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}')
+                                step_model_dict = defaultdict(list)
+                                ver_step_dict = defaultdict(list)
+                                for model in models:
+                                    steps = st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}/{model}')
+                                    for step in steps:
+                                        step_model_dict[step].append(model)
+                                        ver_step_dict[step[0]+'%'+step[2:]].append(step)
+
+                                # steps = sorted(list(set(step_model_dict.keys())))
+                                # step_seq_select = steps
+                                step_seq_select = sorted([i for i in ver_step_dict.keys()])
+                            except:
+                                step_seq_select = ()
+                        else:
+                            step_seq_select = ()
+
+                    with col2:
+                        step_seq = st.selectbox("step_seq 선택해주세요", 
+                                                (step_seq_select), index=None, placeholder='Select')
+
+                        if step_seq:
+                            select_steps = ver_step_dict[step_seq]
+                            ppids = set()
+                            select_groups = []
+                            eqp_models = set()
+                            for select_step in select_steps:
+                                models = step_model_dict[select_step]
+                                eqp_models.update(models)
+                                for model in models:
+                                    # ppids.update(set(st.session_state.hdfs_client.list(f'/appdata/erd_stats_commonality/{line_ids}/{model}/{step_seq}')))
+                                    _hdfs_file_path = f'/appdata/erd_stats_commonality/{line_ids}/{model}/{select_step}'
+                                    _ppids = st.session_state.hdfs_client.list(_hdfs_file_path)
+                                    ppids.update(set(_ppids))
+                                    select_groups += [f'{_hdfs_file_path}/{i}' for i in _ppids]
+                            
+                            recipe_lists = []
+                            recipe_ids = set()
+                            for _file in select_groups:
+                                _rcps = st.session_state.hdfs_client.list(_file)
+                                recipe_ids.update(set(_rcps))
+                                recipe_lists += [f'{_file}/{i}'for i in _rcps if i != '-']
+                            
+                            # ppids = sorted(list(ppids))
+                        else:
+                            recipe_ids = ()
+                             
+
+                    with col3:
+                        recipe_id = st.selectbox("RecipeID 선택해주세요", 
+                                                (recipe_ids) ,index=None ,placeholder='Select')
+                        if recipe_id:
+                            
+                            sql = f'''
+                            SELECT DISTINCT fdc_model
+                            FROM edisn.step_eqp_info
+                            WHERE step_seq like '{step_seq}'
+                              AND eqp_model in {tuple(eqp_models)}
+                            '''.replace(',)',')')
+                            with pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, charset='utf8', port=DB_PORT) as conn:
+                                with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+                                    cursor.execute(sql)
+                                    fdc_models = [i['fdc_model'] for i in cursor.fetchall()]
+                            # print('recipe_id', [i for i in recipe_lists if i.endswith(recipe_id)])
+                        else:
+                            fdc_models = ()
+                    
+                    with col4:
+                        fdc_model = st.selectbox("FDC Model 선택해주세요", 
+                                                (fdc_models) ,index=None ,placeholder='Select')
+                        
+                        if fdc_model:
+                            check_hdfs_list = True
+                        else:
+                            check_hdfs_list = False
+                    
+                    #with col4:
+                    #    recipe_id = st.selectbox("RecipeID 선택해주세요", 
+                    #                            (recipe_ids) ,index=None, placeholder='Select')
+                except TypeError:
+                        pass
+
+                if st.button("추천SPEC 조회"):
+                    st.session_state.min_max_data = None
+                    st.session_state.hard_spec_search_condition = None
+                    # print('conditions:',st.session_state.hard_spec_search_condition)
+                    history_data = ('SPEC', line_ids, step_seq, recipe_id, datetime.now(), st.session_state.user)
+                    ClickedCategoryUpLoad(history_data)
+                    if check_hdfs_list:
+                        st.session_state.hard_spec_search_condition = (line_ids, step_seq, recipe_id)
+                        try:
+                            datas = []
+
+                            for hdfs_path_dir in [i for i in recipe_lists if i.split('/')[-1] == recipe_id]:
+
+                                try:
+                                    iss = st.session_state.hdfs_client.list(hdfs_path_dir)
+                                    for i in iss:
+                                        datas.append( f'{hdfs_path_dir}/{i}' )
+                                except:
+                                    pass
+
+                            _path_data = []
+                            for _data in datas:
+                                _path_data.append((*_data.split('/')[3:], _data))
+                            
+                            files =                             pl.DataFrame(
+                                _path_data, schema=['line','model','step','ppid','rcp','date','path'], orient='row'
+                            ).sort(
+                                'date', descending=True
+                            ).group_by(
+                                ['line','model','step','ppid','rcp']
+                            ).agg(
+                                pl.col('path').head(120)
+                            ).explode(
+                                "path"
+                            )
+                            print('*'*20)
+                            st.session_state.hard_spec_search_condition = files.select(['line','step','ppid','rcp']).unique().rows()
+                            # print(files.select(['line','step','ppid','rcp']).unique().rows())
+                            print('*'*20)
+                            files = files['path'].to_list()
+                            
+                            # files = sorted(list(datas))[-120:]
+
+                            local_path = f'/appdata/abnormal_trend/pic/temp_all_stats/{st.session_state.user_uuid}'
+                            os.makedirs(local_path, exist_ok=True)
+
+                            for file in files:
+                                hdfs_path = file # f'{hdfs_path_dir}/{file}'
+                                try:
+                                    st.session_state.hdfs_client.download(hdfs_path, local_path, overwrite=True)
+                                except:
+                                    pass
+                                
+                            #lf = pl.scan_parquet( local_path ).filter(pl.col('value').is_not_null())
+                            lf = pl.scan_parquet( local_path )
+                     
+                            min_max_data =                             lf.group_by(
+                                ['sensor']
+                            ).agg(
+                                pl.col('upper_bound').max().alias('max'),
+                                pl.col('lower_bound').min().alias('min'),
+                            ).with_columns(
+                                ((pl.col('max')-pl.col('min'))*0.05).alias('gap')
+                            ).with_columns(
+                                (pl.col('max')+pl.col('gap')).alias('max'),
+                                (pl.col('min')-pl.col('gap')).alias('min')
+                            ).select(
+                                ['sensor','max','min']
+                            ).with_columns(
+                                pl.col("sensor")
+                                .map_elements(lambda x: {
+                                    "col1": split_by_reverse(x)[0],
+                                    "col2": split_by_reverse(x)[1],
+                                 })
+                                .alias("split")
+                            ).unnest("split").collect()
+                            # ===========================================================================================
+                            
+                            min_max_data =                             min_max_data.rename(
+                                {'col1':'sensor_name', 'col2':'cycle'}
+                            ).select(
+                                ['sensor_name','cycle','min','max']
+                            )
+
+                            shutil.rmtree(local_path)
+
+                            AB_sensors = pl.read_parquet(  
+                                '/appdata/abnormal_trend/pic/priority/priority.parquet'  
+                            ).filter(  
+                                pl.col('eqp_id') == fdc_model
+                            ).filter(  
+                                pl.col('priority').is_in(['A','B'])  
+                            ).select(  
+                                ['param_name','priority']  
+                            ).sort(  
+                                ['param_name','priority']  
+                            ).unique(subset=['param_name'], keep='first')
+                            
+                            # -------------------------------------------------  
+                            # min_max_data 전처리  
+                            min_max_data = min_max_data.rename({  
+                                "min": "Lower_Spec",  
+                                "max": "Upper_Spec"  
+                            }).join(  
+                                AB_sensors.rename({'param_name': 'sensor_name'}),  
+                                on=['sensor_name'],  
+                                how='left'  
+                            ).filter(  
+                                pl.col('priority').is_in(['A','B'])  
+                            ).sort(['priority', 'sensor_name'])
+                            
+                            # -------------------------------------------------  
+                            # Hard Spec 로드  
+                            try:  
+                                unit_model_ids = pl.scan_parquet(  
+                                    '/appdata/abnormal_trend/pic/unit_model.parquet'  
+                                ).filter(  
+                                    pl.col('fdc_model') == fdc_model  
+                                ).collect()['unit_model_id'].unique()
+                            
+                                hard_spec = pl.scan_parquet(  
+                                    '/appdata/abnormal_trend/pic/HARD_LIMIT.parquet'  
+                                ).filter(  
+                                    pl.col('UNIT_MODEL_ID').is_in(unit_model_ids)  
+                                ).filter(  
+                                    (pl.col('PARAMETER_NAME').is_in(min_max_data['sensor_name'].unique()))  
+                                    & (pl.col('RECIPE') == recipe_id)  
+                                ).sort(['PARAMETER_NAME', 'UPDATE_DATE']).join(  
+                                    min_max_data.rename({'sensor_name': 'PARAMETER_NAME'}).with_columns(  
+                                        pl.col("cycle")  
+                                        .str.split("@")  
+                                        .list.to_struct(fields=["ch_step", "iter"])  
+                                        .alias("tmp")  
+                                    ).unnest("tmp").with_columns(  
+                                        pl.col('iter').cast(pl.Int8)  
+                                    ).with_columns(  
+                                        pl.col('iter').cast(pl.Utf8)  
+                                    ).lazy(),  
+                                    on=['PARAMETER_NAME'],  
+
+
+# ===== END: plotly_to_hard_spec_section.py =====
+
+
+# ===== START: third_question_section.py =====
+
+                    if span <= 0:
+                        span = 1.0
+                        duration = pd.to_timedelta(span, unit="s")
+                
+                    gap = span * gap_ratio
+                
+                    # --- composite x 생성: offset + (act_time - 전역 tmin) ---
+                    i = df[eqp_col].map(eqp_to_i)
+                    
+                    # 혹시 mapping 안 된 값이 있으면 제거
+                    df = df[i.notna()].copy()
+                    i = i[i.notna()].astype(int).to_numpy()
+                
+                    offset = i * (span + gap)
+                    within = (df[time_col] - tmin).dt.total_seconds().to_numpy()
+                    df["_x_comp"] = offset + within
+                    # idx = temp.index
+                    # --- color list 생성 ---
+                    if not mode: c = 'gray'
+                    else: c = 'blue'
+                    colors = np.array([ c ]*len(df))
+                    if not mode:
+                        colors[df[df[eqp_col]==eqp_id].index] = 'red'
+                    
+                    # --- 전체 x폭(✅ (2) 좌우 여백 제거용 range) ---
+                    nseg = len(eqps)
+                    x0_full = 0.0
+                    x1_full = (nseg - 1) * (span + gap) + span
+                    
+                    # -----------------------------
+                    # ✅ 하단 x축 tick: 구간별 20/50/80% 3개만 + YYYY-MM-DD
+                    # -----------------------------
+                    tickvals = []
+                    ticktext = []
+                    for k in range(len(eqps)):
+                        seg_start = k * (span + gap)
+                        for frac in tick_fracs:
+                            x = seg_start + span * frac
+                            tt = tmin + pd.to_timedelta(span * frac, unit="s")
+                            tickvals.append(x)
+                            ticktext.append(tt.strftime("%Y-%m-%d"))  # ✅ 날짜까지만
+                    # --- figure ---
+                    fig = go.Figure()
+                    try:
+                        if not mode:
+                            fig.add_trace(
+                                go.Scattergl(
+                                    x=df["_x_comp"],
+                                    y=df[value_col],
+                                    mode="markers",
+                                    marker=dict(
+                                        size=marker_size,
+                                        color=colors
+                                    ),
+                                    customdata=np.stack(
+                                        [df[eqp_col].astype(str), df[time_col].dt.strftime("%Y-%m-%d %H:%M:%S"), df[lot_col]],
+                                        axis=1
+                                    ),
+                                    hovertemplate=(
+                                        "eqp=%{customdata[0]}<br>"
+                                        "act_time=%{customdata[1]}<br>"
+                                        "lot=%{customdata[2]}<br>"
+                                        f"{value_col}=%{{y}}<extra></extra>"
+                                    ),
+                                    showlegend=False
+                                )
+                            )
+                        else:
+                            fig.add_trace(
+                                go.Scattergl(
+                                    x=df["_x_comp"],
+                                    y=df[value_col],
+                                    mode="markers",
+                                    marker=dict(
+                                        size=marker_size,
+                                        color=colors
+                                    ),
+                                    showlegend=False
+                                )
+                            )
+                            for ss in min_max_data:
+                                fig.add_hline(
+                                    y=ss,                 # 기준값
+                                    line_width=1,
+                                    line_dash="dash",
+                                    line_color="orange",
+                                    opacity=0.8
+                                )
+                            
+                    except Exception as E: print(E)
+                    # --- 배경 음영 + 경계선 ---
+                    for k in range(len(eqps)):
+                        seg_start = k * (span + gap)
+                        seg_end = seg_start + span
+                
+                        if k % 2 == 0:
+                            fig.add_vrect(x0=seg_start, x1=seg_end, opacity=0.06, line_width=0)
+                
+                        if k < len(eqps) - 1:
+                            boundary = seg_end + (gap / 2 if gap > 0 else 0)
+                            fig.add_vline(x=boundary, line_width=0.5, line_dash="dot", opacity=0.6)
+                
+                    # -----------------------------
+                    # ✅ (1) EQP 라벨을 "각 구간 상단"에 annotation으로 확실히 표시
+                    #   - 반시계 90도: textangle=90
+                    #   - 아래→위 방향으로 읽힘
+                    # -----------------------------
+                    for k, e in enumerate(eqps):
+                        x_center = k * (span + gap) + span / 2
+                        if not mode:
+                            if e == eqp_id: color = 'red'
+                            else: color = 'gray'
+                        else:
+                            color = 'blue'
+                        fig.add_annotation(
+                            x=x_center,
+                            y=0.995, # y=0.8                 # 상단(페이퍼 좌표)
+                            xref="x",
+                            yref="paper",
+                            text=str(e),
+                            showarrow=False,
+                            textangle=270,           # ✅ 반시계 90도 (세로, 아래->위)
+                            xanchor="center",
+                            yanchor="top", # yanchor="bottom",
+                            yshift=-2,          # 살짝 아래로(픽셀) 내려서 경계에 붙는 느낌 완화
+                            align="center",
+                            font=dict(
+                                size=10,
+                                color=color,
+                                family='Arial'
+                            )
+                        )
+                    # --- 축 세팅 ---
+                    fig.update_xaxes(
+                        tickmode="array",
+                        tickvals=tickvals,
+                        ticktext=ticktext,
+                        range=[x0_full, x1_full],      # ✅ (2)
+                        showticklabels=(not hide_xticks_until_zoom),
+                        ticks=("outside" if not hide_xticks_until_zoom else ""),
+                        ticklen=(5 if not hide_xticks_until_zoom else 0),
+                    )
+                    fig.update_yaxes(title=value_col)
+                
+                    fig.update_layout(
+                        height=650,
+                        margin=dict(t=170),   # ✅ 상단 세로 라벨 공간 (라벨 길면 더 키워도 됨)
+                        hovermode="closest",
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+            # ======================= 동일성 Chart Drawing 함수 지정 ======================================================================
+            
+            
+            def all_chart_hard_spec(data_for_all_chart, sensor, ch_step, cl, cu, hl, hu, hard_vi):
+                start = datetime.now()
+
+                result = data_for_all_chart.select([
+                                                pl.col('act_time').min().alias('time_min'),
+                                                pl.col('act_time').max().alias('time_max')
+                                            ]).collect()
+                eqp_cb_unique = [i for i in data_for_all_chart.select(['eqp_id','disp_name']) \
+                                              .unique() \
+                                              .sort(['eqp_id','disp_name']).collect().iter_rows()]
+
+
+                fig = plt.figure(figsize=(12,5))
+
+                cmap = plt.get_cmap('tab20c', len(eqp_cb_unique))
+                gs = GridSpec(1, len(eqp_cb_unique), figure=fig)
+                ax_list = []
+
+                for n1, ec1 in enumerate( eqp_cb_unique ):
+                    if n1 == 0:
+                        ax_list.append( fig.add_subplot(gs[0,n1]) )
+                    else:
+                        ax_list.append( fig.add_subplot(gs[0,n1], sharey=ax_list[0]) )
+                        ax_list[n1].tick_params(axis='y', which='both', left=False, labelleft=False)
+
+                    full_range = pd.date_range(start=result['time_min'][0], end=result['time_max'][0])
+
+                    ax_list[n1].text(0.05,0.98, '-'.join(ec1), transform=ax_list[n1].transAxes, verticalalignment='top', horizontalalignment='left', fontsize=9, rotation=90)
+                    ax_list[n1].set_xlim([full_range.min(), full_range.max()])
+
+
+                    mid_value = full_range[round(len(full_range)/2)]
+                    ticks = [ mid_value , full_range.max() + pd.Timedelta(hours=240) ]
+
+                    ax_list[n1].set_xticks(ticks)
+                    ax_list[n1].set_xticklabels([ mid_value.strftime('%Y-%m-%d') , full_range.max().strftime('%Y-%m-%d') ], rotation=90, fontsize=8)
+                #target_eqp = None
+                for n2, ec2 in enumerate( eqp_cb_unique ):
+                    color = cmap(n2%10+n2%10)
+                    t = data_for_all_chart.filter(
+                        pl.col('eqp_id')==ec2[0],
+                        pl.col('disp_name')==ec2[1]
+                    ).drop_nulls().collect()
+
+                    ax_list[n2].scatter(t['act_time'],t['param_value'], color=color, s= 25, edgecolors='k', linewidths=0.05)
+
+                    if hard_vi == 0:
+                        for s in [cu, cl]:
+                            ax_list[n2].axhline(y=float(s), linestyle='--', color='red')
+                        for s in [hu, hl]:
+                            ax_list[n2].axhline(y=float(s), linestyle='--', color='blue')
+                    elif hard_vi == 1:
+                        for s in [cu, cl]:
+                            ax_list[n2].axhline(y=float(s), linestyle='--', color='red')
+                    #if select_eqp == list(ec2):
+                    #    target_eqp = n2
+                        # 각 축의 테두리를 빨갛게 설정
+
+                    ax_list[n2].yaxis.grid(True, linestyle='--', linewidth=0.7)
+
+                #for spine in ax_list[target_eqp].spines.values():
+                #    spine.set_edgecolor('red')
+                #    spine.set_linewidth(1)  # 테두리 두께 조정
+
+                plt.subplots_adjust(wspace=.05)
+                suptitle = sensor+' - '+ch_step
+                plt.suptitle(suptitle)
+                # st.write(f'end: {datetime.now()-start}')
+                st.pyplot(fig)
+            
+            # ======================= step all 선택하면 나머지 해제  =====
+            def updateStepSelect():
+                if 'ALL' in st.session_state.selected_step_button:
+                    st.session_state.selected_step_button = 'ALL'
+            
+            
+            def updateVerSelect():
+                if 'ALL' in st.session_state.selected_ver_button:
+                    st.session_state.selected_ver_button = 'ALL'
+            
+            # 251109 추가 ========
+            def commonUpdateStepSelect():
+                if 'ALL' in st.session_state.common_selected_step_button:
+                    st.session_state.common_selected_step_button = 'ALL'
+
+
+            def commonUpdateVerSelect():
+                if 'ALL' in st.session_state.common_selected_ver_button:
+                    st.session_state.common_selected_ver_button = 'ALL'
+            # ====================
+            
+            # =========================================================================================================
+
                             
                     
             with tab8:
