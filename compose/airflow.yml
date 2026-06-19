@@ -156,7 +156,7 @@ services:
         /home/airflow/.vscode
         && chown -R "$${AIRFLOW_UID:-50000}:0" /home/airflow
         && chmod 700 /home/airflow/.config /home/airflow/.config/code-server
-        && exec code-server /opt/airflow
+        && exec runuser --preserve-environment -u airflow -- code-server /opt/airflow
         --bind-addr 0.0.0.0:8081
         --auth password
         --disable-telemetry
@@ -180,7 +180,7 @@ services:
       XDG_DATA_HOME: /home/airflow/.local/share
       PASSWORD: ${CODE_SERVER_PASSWORD:-airflow}
     working_dir: /opt/airflow
-    user: "${AIRFLOW_UID:-50000}:0"
+    user: "0:0"
     volumes:
       - "../airflow/dags:/opt/airflow/dags"
       - "../airflow/logs:/opt/airflow/logs"
