@@ -1,6 +1,6 @@
 """
 L3 Spider 가벼운 mock 데이터 생성 스크립트.
-경로: data/l3_spider/daily_anomaly/2026-06-17/{line}/{process}/{eds_step}/data.parquet
+경로: data/l3_spider/daily_anomaly/2026-06-17/{line}/{process}/{eds_step}/{step_seq}#{ppid}#{index}
 """
 
 from __future__ import annotations
@@ -79,12 +79,13 @@ def main() -> None:
             for eds_step in EDS_STEPS:
                 dir_path = ROOT / DATE / line / process / eds_step
                 dir_path.mkdir(parents=True, exist_ok=True)
-                out_path = dir_path / "data.parquet"
                 df = pd.DataFrame(make_rows(line, process, eds_step))
-                df.to_parquet(out_path, engine="pyarrow", index=False)
-                count += 1
-                print(f"  생성: {out_path.relative_to(ROOT)}")
-    print(f"\n완료: {count}개 파일, 파일당 {ROWS_PER_FILE}행")
+                for index, ((step_seq, ppid), group) in enumerate(df.groupby(["step_seq", "ppid"], sort=True)):
+                    out_path = dir_path / f"{step_seq}#{ppid}#{index}"
+                    group.to_parquet(out_path, engine="pyarrow", index=False)
+                    count += 1
+                    print(f"  생성: {out_path.relative_to(ROOT)}")
+    print(f"\n완료: {count}개 파일, 원본 조합당 최대 {ROWS_PER_FILE}행")
 
 
 if __name__ == "__main__":

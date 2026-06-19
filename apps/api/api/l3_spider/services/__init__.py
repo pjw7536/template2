@@ -115,19 +115,46 @@ def _has_required_selection(selection: dict[str, object]) -> bool:
 
 
 def _parse_filename_key(path: Path) -> tuple[str, str] | None:
-    """파일명에서 (step_seq, ppid) 파싱. '#' 구분자 형식 전용.
+    """파일명에서 (step_seq, ppid)를 파싱합니다.
 
     persistence.py 의 basename_template=f"{name_prefix}#{{i}}" 로 저장된
-    파일명 패턴: STEP_001#PPID_A#0.parquet → ('STEP_001', 'PPID_A')
-    파싱 불가(data.parquet, 구형 포맷 등)이면 None 반환.
+    파일명 패턴을 지원합니다.
+    예: STEP_001#PPID_A#0 또는 STEP_001#PPID_A#0.parquet → ('STEP_001', 'PPID_A')
+    파싱 불가(data.parquet, 구형 포맷 등)이면 None을 반환합니다.
     """
     try:
-        parts = path.stem.split('#')   # ['STEP_001', 'PPID_A', '0']
+        name = path.name
+        if name.endswith(".parquet"):
+            name = name[: -len(".parquet")]
+        parts = name.split("#")
         if len(parts) == 3 and parts[0] and parts[1]:
             return parts[0], parts[1]
     except Exception:
         pass
     return None
+
+
+def _add_path_context(frame: pd.DataFrame, path: Path, *, override_filename_keys: bool = False) -> pd.DataFrame:
+    """파일 경로에서 유도 가능한 컨텍스트 컬럼을 보강합니다."""
+
+    relative_parts = path.relative_to(selectors.get_data_root()).parts
+    if len(relative_parts) >= 4:
+        frame["eds_step"] = relative_parts[3]
+
+    parsed = _parse_filename_key(path)
+    if not parsed:
+        return frame
+
+    step_seq, ppid = parsed
+    if override_filename_keys or "step_seq" not in frame.columns:
+        frame["step_seq"] = step_seq
+    else:
+        frame["step_seq"] = frame["step_seq"].fillna(step_seq)
+    if override_filename_keys or "ppid" not in frame.columns:
+        frame["ppid"] = ppid
+    else:
+        frame["ppid"] = frame["ppid"].fillna(ppid)
+    return frame
 
 
 def _read_frames(selection: dict[str, object], columns: list[str]) -> list[pd.DataFrame]:
@@ -145,9 +172,7 @@ def _read_frames(selection: dict[str, object], columns: list[str]) -> list[pd.Da
         try:
             frame = selectors.read_parquet_columns(path, columns)
             frame = _normalize_display_status(frame)
-            relative_parts = path.relative_to(selectors.get_data_root()).parts
-            if len(relative_parts) >= 4:
-                frame["eds_step"] = relative_parts[3]
+            frame = _add_path_context(frame, path)
             frames.append(frame)
         except Exception as exc:
             print(f"[WARN] L3 Spider parquet read failed: {path}: {exc}")
@@ -157,7 +182,7 @@ def _read_frames(selection: dict[str, object], columns: list[str]) -> list[pd.Da
 def _read_summary_frames(selection: dict[str, object]) -> list[pd.DataFrame]:
     """summary 전용 최적화 읽기.
 
-    파일명이 STEP#PPID#N.parquet 형식이면 step_seq·ppid를 파일명에서 가져오고
+    파일명이 STEP#PPID#N 또는 STEP#PPID#N.parquet 형식이면 step_seq·ppid를 파일명에서 가져오고
     eqc·bin_name·display_status 3컬럼만 읽는다(6컬럼 → 3컬럼).
     구형 포맷(data.parquet 등)은 SUMMARY_COLUMNS 전체를 읽는 fallback 사용.
     두 경우 모두 파일당 즉시 drop_duplicates로 메모리를 줄인다.
@@ -176,12 +201,7 @@ def _read_summary_frames(selection: dict[str, object]) -> list[pd.DataFrame]:
             cols = _SUMMARY_COLUMNS_SLIM if parsed else SUMMARY_COLUMNS
             frame = selectors.read_parquet_columns(path, cols)
             frame = _normalize_display_status(frame)
-            relative_parts = path.relative_to(selectors.get_data_root()).parts
-            if len(relative_parts) >= 4:
-                frame["eds_step"] = relative_parts[3]
-            if parsed:
-                frame["step_seq"] = parsed[0]
-                frame["ppid"] = parsed[1]
+            frame = _add_path_context(frame, path, override_filename_keys=bool(parsed))
             available_dedup = [c for c in _SUMMARY_DEDUP_KEYS if c in frame.columns]
             frame = frame.drop_duplicates(subset=available_dedup)
             frames.append(frame)
