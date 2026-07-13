@@ -1,10 +1,11 @@
-import { BookOpen, Check, CircleHelp, Loader2, RefreshCw } from "lucide-react"
+import { BookOpen, Check, ChevronDown, ChevronUp, CircleHelp, Loader2, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,6 +146,7 @@ export function L3SpiderDataSelector({
   showBody = true,
 }) {
   const [guideDocumentKey, setGuideDocumentKey] = useState(null)
+  const [isSelectionPanelCollapsed, setIsSelectionPanelCollapsed] = useState(false)
   const availabilityForDate = selection.date ? meta.availability?.[selection.date] ?? {} : {}
   const visibleLineIds = sortedValues(Object.keys(availabilityForDate))
 
@@ -309,126 +311,157 @@ export function L3SpiderDataSelector({
   )
 
   return (
-    <section className="shrink-0 border-b bg-card">
-      <div className="flex flex-wrap items-center gap-6 px-6 py-2.5">
-        <label className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Date
-          </span>
-          <Input
-            type="date"
-            value={selection.date}
-            min={meta.dates?.[0] ?? ""}
-            max={meta.dates?.[meta.dates.length - 1] ?? ""}
-            onChange={(event) => changeDate(event.target.value)}
-            className="h-8 w-36 bg-muted/40 text-xs"
-          />
-        </label>
-        {selection.date && !hasDate ? (
-          <span className="text-xs font-medium text-destructive">해당 날짜에 데이터 없음</span>
-        ) : hasDate ? (
-          <div className="flex items-center gap-3">
-            {dateLoading ? (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="데이터 로딩 중" />
-            ) : (
-              <Check className="size-4 shrink-0 text-chart-2" aria-label="선택 완료" />
-            )}
-            {tabsSlot ? (
-              <motion.div
-                key={wiggleKey}
-                animate={{ x: [0, -5, 5, -4, 4, -2, 2, 0] }}
-                transition={{ duration: 0.6, ease: "easeInOut" }}
-                className="flex items-center"
-              >
-                {tabsSlot}
-              </motion.div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="ml-auto flex items-center gap-3">
-          {showBody ? (
-            <SelectionStatus
-              canFetch={canFetch}
-              date={selection.date}
-              isLoading={isLoading}
-              noData={noData}
-              selection={selection}
+    <Collapsible
+      asChild
+      open={!isSelectionPanelCollapsed}
+      onOpenChange={(open) => setIsSelectionPanelCollapsed(!open)}
+    >
+      <section className="shrink-0 border-b bg-card">
+        <div className="flex flex-wrap items-center gap-6 px-6 py-2.5">
+          <label className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Date
+            </span>
+            <Input
+              type="date"
+              value={selection.date}
+              min={meta.dates?.[0] ?? ""}
+              max={meta.dates?.[meta.dates.length - 1] ?? ""}
+              onChange={(event) => changeDate(event.target.value)}
+              className="h-8 w-36 bg-muted/40 text-xs"
             />
+          </label>
+          {selection.date && !hasDate ? (
+            <span className="text-xs font-medium text-destructive">해당 날짜에 데이터 없음</span>
+          ) : hasDate ? (
+            <div className="flex items-center gap-3">
+              {dateLoading ? (
+                <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="데이터 로딩 중" />
+              ) : (
+                <Check className="size-4 shrink-0 text-chart-2" aria-label="선택 완료" />
+              )}
+              {tabsSlot ? (
+                <motion.div
+                  key={wiggleKey}
+                  animate={{ x: [0, -5, 5, -4, 4, -2, 2, 0] }}
+                  transition={{ duration: 0.6, ease: "easeInOut" }}
+                  className="flex items-center"
+                >
+                  {tabsSlot}
+                </motion.div>
+              ) : null}
+            </div>
           ) : null}
-          {headerExtra}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-            새로고침
-          </Button>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="L3 Spider 도움말 문서 열기"
-                    title="도움말 문서"
-                  >
-                    <CircleHelp className="size-4" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>도움말 문서</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">L3 Spider 도움말</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  setGuideDocumentKey("page")
-                }}
-                aria-label="L3 Spider 페이지 설명서 열기"
-              >
-                <BookOpen className="size-4" aria-hidden="true" />
-                페이지 설명서
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  setGuideDocumentKey("algorithm")
-                }}
-                aria-label="L3 Spider 알고리즘 설명서 열기"
-              >
-                <CircleHelp className="size-4" aria-hidden="true" />
-                알고리즘 설명서
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="ml-auto flex items-center gap-3">
+            {showBody ? (
+              <SelectionStatus
+                canFetch={canFetch}
+                date={selection.date}
+                isLoading={isLoading}
+                noData={noData}
+                selection={selection}
+              />
+            ) : null}
+            {showBody ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label={isSelectionPanelCollapsed ? "선택 패널 펼치기" : "선택 패널 접기"}
+                    >
+                      {isSelectionPanelCollapsed ? (
+                        <ChevronDown className="size-4" aria-hidden="true" />
+                      ) : (
+                        <ChevronUp className="size-4" aria-hidden="true" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isSelectionPanelCollapsed ? "선택 패널 펼치기" : "선택 패널 접기"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {headerExtra}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+              새로고침
+            </Button>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label="L3 Spider 도움말 문서 열기"
+                      title="도움말 문서"
+                    >
+                      <CircleHelp className="size-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>도움말 문서</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">L3 Spider 도움말</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setGuideDocumentKey("page")
+                  }}
+                  aria-label="L3 Spider 페이지 설명서 열기"
+                >
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  페이지 설명서
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setGuideDocumentKey("algorithm")
+                  }}
+                  aria-label="L3 Spider 알고리즘 설명서 열기"
+                >
+                  <CircleHelp className="size-4" aria-hidden="true" />
+                  알고리즘 설명서
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
-      <L3SpiderGuideDialog guideKey={guideDocumentKey} onGuideKeyChange={setGuideDocumentKey} />
-      {showBody ? (
-        rightContent ? (
-          <div className="overflow-x-auto border-t px-6 py-2">
-            <div className="grid min-h-0 min-w-[1200px] grid-cols-[minmax(0,3fr)_minmax(0,5.1fr)] gap-4">
-              <div className="min-w-0">
+        <L3SpiderGuideDialog guideKey={guideDocumentKey} onGuideKeyChange={setGuideDocumentKey} />
+        {showBody ? (
+          <CollapsibleContent forceMount asChild>
+            {rightContent ? (
+              <div className="overflow-x-auto border-t px-6 py-2 data-[state=closed]:hidden">
+                <div className="grid min-h-0 min-w-[1200px] grid-cols-[minmax(0,3fr)_minmax(0,5.1fr)] gap-4">
+                  <div className="min-w-0">
+                    {selectorCards}
+                  </div>
+                  <div className="min-w-0">
+                    {rightContent}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="border-t px-6 py-2 data-[state=closed]:hidden">
                 {selectorCards}
               </div>
-              <div className="min-w-0">
-                {rightContent}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="border-t px-6 py-2">
-            {selectorCards}
-          </div>
-        )
-      ) : null}
-    </section>
+            )}
+          </CollapsibleContent>
+        ) : null}
+      </section>
+    </Collapsible>
   )
 }

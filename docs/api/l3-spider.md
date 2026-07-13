@@ -9,8 +9,15 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 | Prefix | `/api/v1/l3_spider/` |
 | Auth | Django session 로그인 필요 |
 | Data root | `L3_SPIDER_DATA_ROOT` |
+| Index source | `L3_SPIDER_INDEX_SOURCE` (`postgres` 또는 `sqlite_mock`) |
 | Request/Response | 조회 API는 camelCase. 설정 CRUD 입력은 snake_case, 응답은 camelCase |
 | Side effect | 조회 endpoint는 없음. `mail-rules/trigger`만 메일 발송 이력을 쓰고 Mail API를 호출 |
+
+`postgres`는 기본값이며 `public.l3_spider_file_index`,
+`public.l3_spider_daily_run_stats`, `public.l3_spider_run_status`를 조회합니다.
+`sqlite_mock`은 로컬 개발 전용으로 `L3_SPIDER_MOCK_INDEX_PATH`의 `file_index`,
+`daily_run_stats`, `run_status`를 read-only 조회합니다. `env/api.dev.env`만
+`sqlite_mock`을 설정하며 OIDC/prod는 PostgreSQL 오류를 mock으로 숨기지 않습니다.
 
 ## Data Layout
 
@@ -74,6 +81,8 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 `lineNames`(선택)는 `line_name` 기준 필터입니다. 값이 있으면 서버가 각 파일의 `line_name = resolve(line_id, process_id, step_seq)`(아래 규칙표)를 계산해, 선택된 `line_name`에 속하는 파일만 남깁니다. `lineIds`가 원본 `line_id` 필터라면 `lineNames`는 규칙으로 매핑된 표시용 라인 필터입니다. 경로 검증 대상이 아니며(파일 경로에 직접 쓰이지 않음), 비우거나 생략하면 필터가 적용되지 않습니다.
 
 `daily-summary`는 `dates`(또는 단일 날짜)만으로 그 날짜 전체를 집계하며, 위 필터도 함께 받습니다.
+`matrix.cells`는 `daily_run_stats`에서 확인된 모든 line_name×process_id×eds_step 분석 조합을 포함합니다.
+이상 집계가 없는 조합은 `highRisk`, `warning`, `total`, `bins`, `hrStepSeqs`, `hrEqpchs`를 0으로 반환합니다.
 
 `data`는 추가 차트 필터를 받을 수 있습니다.
 

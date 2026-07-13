@@ -367,7 +367,7 @@ function ProcessEdsSummaryCard({ matrix, selectedLine, onDrill, isMaximized, onT
 
   const hasRows = rows.length > 0
 
-  const [hideNormal, setHideNormal] = useState(false)
+  const [hideNormal, setHideNormal] = useState(true)
   const [filters, setFilters] = useState({ lineName: null, processId: null, edsStep: null })
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null })
 
@@ -518,26 +518,18 @@ function ProcessEdsSummaryCard({ matrix, selectedLine, onDrill, isMaximized, onT
                   <td className="px-3 py-1 font-mono font-semibold text-foreground">
                     {row.edsStep}
                   </td>
-                  {row.active ? (
-                    <>
-                      <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold text-chart-4">
-                        {formatNumber(row.warning)}
-                      </td>
-                      <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold text-destructive">
-                        {formatNumber(row.highRisk)}
-                      </td>
-                      <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold">
-                        {formatNumber(row.stepSeq)}
-                      </td>
-                      <td className="pl-3 pr-6 py-1 text-right text-xs tabular-nums font-semibold">
-                        {formatNumber(row.eqpch)}
-                      </td>
-                    </>
-                  ) : (
-                    <td colSpan={4} className="px-3 py-1 text-center text-[12px] text-muted-foreground">
-                      이상없음
-                    </td>
-                  )}
+                  <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold text-chart-4">
+                    {formatNumber(row.warning)}
+                  </td>
+                  <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold text-destructive">
+                    {formatNumber(row.highRisk)}
+                  </td>
+                  <td className="px-3 py-1 text-right text-xs tabular-nums font-semibold">
+                    {formatNumber(row.stepSeq)}
+                  </td>
+                  <td className="pl-3 pr-6 py-1 text-right text-xs tabular-nums font-semibold">
+                    {formatNumber(row.eqpch)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -801,12 +793,18 @@ export function L3SpiderSummaryView({ date, onDrill, selectedLine, onSelectLine,
   const trendQuery = useL3SpiderTrend()
   const data = query.data
   const h = data?.headline
-  const hasData = Boolean(h && h.totalRows > 0)
+  const hasData = Boolean((h && h.totalRows > 0) || data?.runStats?.totalRows > 0)
 
-  // 오늘 이상감지가 있는 라인 (활성)
+  // 오늘 Warning 또는 High Risk가 있는 라인만 활성으로 취급합니다.
   const activeLineOptions = useMemo(
-    () => sortLineNames(data?.matrix?.lines ?? []),
-    [data?.matrix?.lines],
+    () => sortLineNames([
+      ...new Set(
+        (data?.matrix?.cells ?? [])
+          .filter((cell) => (cell.highRisk ?? 0) + (cell.warning ?? 0) > 0)
+          .map((cell) => cell.line),
+      ),
+    ]),
+    [data?.matrix?.cells],
   )
   // 전체 알려진 라인 (lineGroups 기반, end_fab 마지막)
   const allLineOptions = useMemo(() => {

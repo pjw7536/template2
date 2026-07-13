@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
+from django.core.exceptions import ImproperlyConfigured
+
 
 # ==============================
 # 환경변수 파서 유틸 (읽기 쉬움 & 안전)
@@ -209,6 +211,17 @@ RACB_REPORT_BASE_URL = env(
 # L3 Spider Parquet 데이터 경로.
 # 원격 서버 데이터는 NFS/SMB 등으로 이 경로에 read-only mount해서 사용합니다.
 L3_SPIDER_DATA_ROOT = env("L3_SPIDER_DATA_ROOT", "/data/l3_spider/daily_anomaly")
+L3_SPIDER_INDEX_SOURCE = (
+    str(env("L3_SPIDER_INDEX_SOURCE", "postgres") or "postgres").strip().lower()
+)
+if L3_SPIDER_INDEX_SOURCE not in {"postgres", "sqlite_mock"}:
+    raise ImproperlyConfigured(
+        "L3_SPIDER_INDEX_SOURCE는 postgres 또는 sqlite_mock이어야 합니다."
+    )
+L3_SPIDER_MOCK_INDEX_PATH = env(
+    "L3_SPIDER_MOCK_INDEX_PATH",
+    f"{L3_SPIDER_DATA_ROOT}/_meta/index.sqlite3",
+)
 L3_SPIDER_MAX_CHART_POINTS_PER_PANEL = env_int("L3_SPIDER_MAX_CHART_POINTS_PER_PANEL", 2000) or 2000
 L3_SPIDER_MAIL_SENDER = env("L3_SPIDER_MAIL_SENDER", env("DRONE_MAIL_SENDER", ""))
 L3_SPIDER_MAIL_TARGET_URL = env("L3_SPIDER_MAIL_TARGET_URL", "")

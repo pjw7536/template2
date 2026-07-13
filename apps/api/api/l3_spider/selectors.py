@@ -5,6 +5,7 @@
 # =============================================================================
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
@@ -42,6 +43,55 @@ _RUN_STATUS_NAME = "l3_spider_run_status"
 _FILE_INDEX_TABLE = f'"{_INDEX_SCHEMA}"."{_FILE_INDEX_NAME}"'
 _DAILY_RUN_STATS_TABLE = f'"{_INDEX_SCHEMA}"."{_DAILY_RUN_STATS_NAME}"'
 _RUN_STATUS_TABLE = f'"{_INDEX_SCHEMA}"."{_RUN_STATUS_NAME}"'
+_SQLITE_TABLE_NAMES = {
+    _FILE_INDEX_NAME: "file_index",
+    _DAILY_RUN_STATS_NAME: "daily_run_stats",
+    _RUN_STATUS_NAME: "run_status",
+}
+
+
+def _uses_mock_index() -> bool:
+    """현재 L3 Spider 인덱스 source가 개발용 SQLite mock인지 반환합니다."""
+
+    return getattr(settings, "L3_SPIDER_INDEX_SOURCE", "postgres") == "sqlite_mock"
+
+
+def _get_mock_index_path() -> Path:
+    """개발용 SQLite mock 인덱스 경로를 반환합니다."""
+
+    configured = getattr(
+        settings,
+        "L3_SPIDER_MOCK_INDEX_PATH",
+        get_data_root() / "_meta" / "index.sqlite3",
+    )
+    return Path(configured).expanduser().resolve()
+
+
+def _connect_mock_index() -> sqlite3.Connection:
+    """개발용 SQLite mock 인덱스에 read-only로 연결합니다."""
+
+    path = _get_mock_index_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"L3 Spider mock 인덱스를 찾을 수 없습니다: {path}")
+    connection_uri = f"file:{path}?mode=ro"
+    mock_connection = sqlite3.connect(connection_uri, uri=True, timeout=30)
+    mock_connection.execute("PRAGMA query_only = ON")
+    mock_connection.execute("PRAGMA busy_timeout = 30000")
+    return mock_connection
+
+
+def _index_table(table_name: str) -> str:
+    """활성 source에 맞는 인덱스 테이블 식별자를 반환합니다."""
+
+    if _uses_mock_index():
+        return _SQLITE_TABLE_NAMES[table_name]
+    return f'"{_INDEX_SCHEMA}"."{table_name}"'
+
+
+def _index_placeholder() -> str:
+    """활성 source의 parameter placeholder를 반환합니다."""
+
+    return "?" if _uses_mock_index() else "%s"
 
 
 def _fetchall(sql: str, params: Sequence[object] = ()) -> list[tuple]:
@@ -61,8 +111,43 @@ def _fetch_dicts(sql: str, params: Sequence[object] = ()) -> list[dict]:
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
+def _fetch_index_all(sql: str, params: Sequence[object] = ()) -> list[tuple]:
+    """활성 L3 Spider 인덱스 source에서 tuple 행을 조회합니다."""
+
+    if not _uses_mock_index():
+        return _fetchall(sql, params)
+
+    mock_connection = _connect_mock_index()
+    try:
+        return list(mock_connection.execute(sql, params).fetchall())
+    finally:
+        mock_connection.close()
+
+
+def _fetch_index_dicts(sql: str, params: Sequence[object] = ()) -> list[dict]:
+    """활성 L3 Spider 인덱스 source에서 dict 행을 조회합니다."""
+
+    if not _uses_mock_index():
+        return _fetch_dicts(sql, params)
+
+    mock_connection = _connect_mock_index()
+    try:
+        cursor = mock_connection.execute(sql, params)
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    finally:
+        mock_connection.close()
+
+
 def _table_columns(table_name: str) -> set[str]:
-    """PostgreSQL public schema의 외부 적재 테이블 컬럼을 반환합니다."""
+    """활성 L3 Spider 인덱스 source의 테이블 컬럼을 반환합니다."""
+
+    if _uses_mock_index():
+        sqlite_table = _SQLITE_TABLE_NAMES[table_name]
+        rows = _fetch_index_all(f'PRAGMA table_info("{sqlite_table}")')
+        if not rows:
+            raise RuntimeError(f"SQLite mock {sqlite_table} 테이블이 없습니다.")
+        return {str(row[1]) for row in rows}
 
     rows = _fetchall(
         "SELECT column_name FROM information_schema.columns "
@@ -101,48 +186,59 @@ def query_indexed_files(
     chamber_id: Optional[str] = None,
     high_risk_only: bool = False,
 ) -> list[Path]:
-    """PostgreSQL file_index에서 조건에 맞는 filepath 목록을 조회합니다.
+    """활성 file_index source에서 조건에 맞는 filepath 목록을 조회합니다.
 
     반환된 Path 리스트는 기존 pd.read_parquet() 에 그대로 넘길 수 있습니다.
     """
     conditions: list[str] = []
     params: list = []
+    placeholder = _index_placeholder()
 
     if date is not None:
-        conditions.append("date = %s")
+        conditions.append(f"date = {placeholder}")
         params.append(date)
     if line_id is not None:
-        conditions.append("line_id = %s")
+        conditions.append(f"line_id = {placeholder}")
         params.append(line_id)
     if process_id is not None:
-        conditions.append("process_id = %s")
+        conditions.append(f"process_id = {placeholder}")
         params.append(process_id)
     if eds_step is not None:
-        conditions.append("eds_step = %s")
+        conditions.append(f"eds_step = {placeholder}")
         params.append(eds_step)
     if high_risk_only:
         conditions.append("has_high_risk = 1")
     if eqp_id is not None:
-        conditions.append(
-            "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
-            "COALESCE(NULLIF(eqp_ids::text, ''), '[]')::jsonb) AS item(value) "
-            "WHERE item.value = %s)"
-        )
+        if _uses_mock_index():
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM json_each(eqp_ids) WHERE value = {placeholder})"
+            )
+        else:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+                "COALESCE(NULLIF(eqp_ids::text, ''), '[]')::jsonb) AS item(value) "
+                f"WHERE item.value = {placeholder})"
+            )
         params.append(eqp_id)
     if chamber_id is not None:
-        conditions.append(
-            "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
-            "COALESCE(NULLIF(chamber_ids::text, ''), '[]')::jsonb) AS item(value) "
-            "WHERE item.value = %s)"
-        )
+        if _uses_mock_index():
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM json_each(chamber_ids) WHERE value = {placeholder})"
+            )
+        else:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+                "COALESCE(NULLIF(chamber_ids::text, ''), '[]')::jsonb) AS item(value) "
+                f"WHERE item.value = {placeholder})"
+            )
         params.append(chamber_id)
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = (
         "SELECT date, line_id, process_id, eds_step, filepath "
-        f"FROM {_FILE_INDEX_TABLE} {where}"
+        f"FROM {_index_table(_FILE_INDEX_NAME)} {where}"
     )
-    rows = _fetchall(query, params)
+    rows = _fetch_index_all(query, params)
 
     root = get_data_root()
     return [_rebuild_container_path(root, *row) for row in rows]
@@ -158,44 +254,55 @@ def query_indexed_files_by_range(
     chamber_id: Optional[str] = None,
     high_risk_only: bool = False,
 ) -> list[Path]:
-    """PostgreSQL에서 날짜 범위로 filepath 목록을 조회합니다.
+    """활성 file_index source에서 날짜 범위로 filepath 목록을 조회합니다.
 
     양 끝 포함(inclusive). 'YYYY-MM-DD' 형식.
     """
-    conditions = ["date >= %s", "date <= %s"]
+    placeholder = _index_placeholder()
+    conditions = [f"date >= {placeholder}", f"date <= {placeholder}"]
     params: list = [date_from, date_to]
 
     if line_id is not None:
-        conditions.append("line_id = %s")
+        conditions.append(f"line_id = {placeholder}")
         params.append(line_id)
     if process_id is not None:
-        conditions.append("process_id = %s")
+        conditions.append(f"process_id = {placeholder}")
         params.append(process_id)
     if eds_step is not None:
-        conditions.append("eds_step = %s")
+        conditions.append(f"eds_step = {placeholder}")
         params.append(eds_step)
     if high_risk_only:
         conditions.append("has_high_risk = 1")
     if eqp_id is not None:
-        conditions.append(
-            "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
-            "COALESCE(NULLIF(eqp_ids::text, ''), '[]')::jsonb) AS item(value) "
-            "WHERE item.value = %s)"
-        )
+        if _uses_mock_index():
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM json_each(eqp_ids) WHERE value = {placeholder})"
+            )
+        else:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+                "COALESCE(NULLIF(eqp_ids::text, ''), '[]')::jsonb) AS item(value) "
+                f"WHERE item.value = {placeholder})"
+            )
         params.append(eqp_id)
     if chamber_id is not None:
-        conditions.append(
-            "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
-            "COALESCE(NULLIF(chamber_ids::text, ''), '[]')::jsonb) AS item(value) "
-            "WHERE item.value = %s)"
-        )
+        if _uses_mock_index():
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM json_each(chamber_ids) WHERE value = {placeholder})"
+            )
+        else:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+                "COALESCE(NULLIF(chamber_ids::text, ''), '[]')::jsonb) AS item(value) "
+                f"WHERE item.value = {placeholder})"
+            )
         params.append(chamber_id)
 
     query = (
         "SELECT date, line_id, process_id, eds_step, filepath "
-        f"FROM {_FILE_INDEX_TABLE} WHERE {' AND '.join(conditions)}"
+        f"FROM {_index_table(_FILE_INDEX_NAME)} WHERE {' AND '.join(conditions)}"
     )
-    rows = _fetchall(query, params)
+    rows = _fetch_index_all(query, params)
 
     root = get_data_root()
     return [_rebuild_container_path(root, *row) for row in rows]
@@ -370,15 +477,16 @@ def _query_all_line_process_step_legacy() -> list[tuple[str, str, str]]:
 
 
 def query_date_line_process_eds_step(date: str) -> list[tuple[str, str, str, str, str]]:
-    """PostgreSQL daily_run_stats에서 선택 날짜의 분석 조합을 반환합니다.
+    """활성 daily_run_stats source에서 선택 날짜의 분석 조합을 반환합니다.
 
     날짜별 line_name 가용성(lineNameAvailability) 계산용. line_name은 step_seq로 결정되므로,
     특정 날짜에 어떤 line_name→process→eds가 '실제로' 존재하는지 알려면 date+eds+step_seq가
     함께 필요합니다.
     """
-    rows = _fetchall(
+    placeholder = _index_placeholder()
+    rows = _fetch_index_all(
         "SELECT date, line_id, process_id, eds_step, step_seq "
-        f"FROM {_DAILY_RUN_STATS_TABLE} WHERE date = %s",
+        f"FROM {_index_table(_DAILY_RUN_STATS_NAME)} WHERE date = {placeholder}",
         (date,),
     )
     return [(str(r[0]), str(r[1]), str(r[2]), str(r[3]), str(r[4])) for r in rows]
@@ -404,7 +512,7 @@ def _query_date_line_process_eds_step_legacy(date: str) -> list[tuple[str, str, 
 
 
 def query_date_file_index(date: str) -> list[dict]:
-    """PostgreSQL file_index의 특정 날짜 파일별 집계를 반환합니다.
+    """활성 file_index source의 특정 날짜 파일별 집계를 반환합니다.
 
     high_risk_cnt/warning_cnt/normal_cnt 가 있으면 요약을 parquet 없이 집계할 수 있습니다.
     카운트 컬럼이 없는 구 테이블이면 빈 리스트를 반환해 Parquet 집계로 전환합니다.
@@ -419,25 +527,26 @@ def query_date_file_index(date: str) -> list[dict]:
         "total_bin_cnt",   # 있으면 이상 여부 무관 전체 bin 수(= 분석 그룹)까지 인덱스로 집계
     ]
     columns = [column for column in wanted if column in available]
-    return _fetch_dicts(
-        f"SELECT {', '.join(columns)} FROM {_FILE_INDEX_TABLE} WHERE date = %s",
+    return _fetch_index_dicts(
+        f"SELECT {', '.join(columns)} FROM {_index_table(_FILE_INDEX_NAME)} "
+        f"WHERE date = {_index_placeholder()}",
         (date,),
     )
 
 
 def query_trend_data() -> list[dict]:
-    """PostgreSQL file_index에서 날짜별 위험 집계를 반환합니다.
+    """활성 file_index source에서 날짜별 위험 집계를 반환합니다.
 
     file_index의 카운트 컬럼으로 날짜별·라인별 트렌드를 계산합니다.
     """
     available = _table_columns(_FILE_INDEX_NAME)
     if "high_risk_cnt" not in available:
         return []
-    rows = _fetchall(
+    rows = _fetch_index_all(
         "SELECT date, line_id, process_id, step_seq, "
         "SUM(COALESCE(high_risk_cnt, 0)) AS hr, "
         "SUM(COALESCE(warning_cnt, 0)) AS wn "
-        f"FROM {_FILE_INDEX_TABLE} "
+        f"FROM {_index_table(_FILE_INDEX_NAME)} "
         "GROUP BY date, line_id, process_id, step_seq ORDER BY date"
     )
     return [
@@ -448,27 +557,28 @@ def query_trend_data() -> list[dict]:
 
 
 def query_run_stats(dates: list[str]) -> dict:
-    """PostgreSQL daily_run_stats에서 알고리즘 실행 통계를 반환합니다.
+    """활성 daily_run_stats source에서 알고리즘 실행 통계를 반환합니다.
 
     `_details`는 service의 line_name별 분석 step 집계에만 사용하고 API 응답 전에 제거합니다.
     """
     if not dates:
         return {"totalRows": 0, "combinations": 0, "byLine": [], "_details": []}
-    placeholders = ",".join(["%s"] * len(dates))
-    total, combinations = _fetchall(
+    placeholders = ",".join([_index_placeholder()] * len(dates))
+    daily_run_stats_table = _index_table(_DAILY_RUN_STATS_NAME)
+    total, combinations = _fetch_index_all(
         "SELECT COALESCE(SUM(row_cnt), 0), COUNT(*) "
-        f"FROM {_DAILY_RUN_STATS_TABLE} WHERE date IN ({placeholders})",
+        f"FROM {daily_run_stats_table} WHERE date IN ({placeholders})",
         dates,
     )[0]
-    by_line_rows = _fetchall(
+    by_line_rows = _fetch_index_all(
         "SELECT line_id, COUNT(DISTINCT step_seq), COALESCE(SUM(row_cnt), 0) "
-        f"FROM {_DAILY_RUN_STATS_TABLE} WHERE date IN ({placeholders}) "
+        f"FROM {daily_run_stats_table} WHERE date IN ({placeholders}) "
         "GROUP BY line_id ORDER BY line_id",
         dates,
     )
-    detail_rows = _fetchall(
+    detail_rows = _fetch_index_all(
         "SELECT date, line_id, process_id, eds_step, step_seq, COALESCE(SUM(row_cnt), 0) "
-        f"FROM {_DAILY_RUN_STATS_TABLE} WHERE date IN ({placeholders}) "
+        f"FROM {daily_run_stats_table} WHERE date IN ({placeholders}) "
         "GROUP BY date, line_id, process_id, eds_step, step_seq",
         dates,
     )
@@ -496,23 +606,23 @@ def query_run_stats(dates: list[str]) -> dict:
 def query_completed_dates() -> Optional[set[str]]:
     """알고리즘 런이 '완전히' 끝난 날짜 집합을 반환합니다.
 
-    PostgreSQL run_status 테이블(status='completed')을 읽습니다. 알고리즘 서버가
+    활성 run_status 테이블(status='completed')을 읽습니다. 알고리즘 서버가
     해당 날짜의 마지막 그룹까지 저장한 뒤 한 번만 'completed'로 표시하는 것을 전제로 합니다.
     """
-    rows = _fetchall(
-        f"SELECT date FROM {_RUN_STATUS_TABLE} WHERE status = 'completed'"
+    rows = _fetch_index_all(
+        f"SELECT date FROM {_index_table(_RUN_STATUS_NAME)} WHERE status = 'completed'"
     )
     return {str(row[0]) for row in rows}
 
 
 def query_all_line_process_step() -> list[tuple[str, str, str]]:
-    """PostgreSQL daily_run_stats의 모든 line/process/step 조합을 반환합니다.
+    """활성 daily_run_stats source의 모든 line/process/step 조합을 반환합니다.
 
     규칙 기반 line_name 매핑(lineGroups)용입니다.
     """
-    rows = _fetchall(
+    rows = _fetch_index_all(
         "SELECT DISTINCT line_id, process_id, step_seq "
-        f"FROM {_DAILY_RUN_STATS_TABLE}"
+        f"FROM {_index_table(_DAILY_RUN_STATS_NAME)}"
     )
     return [(str(row[0]), str(row[1]), str(row[2])) for row in rows]
 
@@ -520,10 +630,10 @@ def query_all_line_process_step() -> list[tuple[str, str, str]]:
 def query_line_rule_candidates() -> list[dict[str, object]]:
     """daily_run_stats의 line name 규칙 점검용 분석 조합을 반환합니다."""
 
-    rows = _fetchall(
+    rows = _fetch_index_all(
         "SELECT line_id, process_id, step_seq, MIN(date), MAX(date), "
         "COUNT(DISTINCT date) "
-        f"FROM {_DAILY_RUN_STATS_TABLE} "
+        f"FROM {_index_table(_DAILY_RUN_STATS_NAME)} "
         "GROUP BY line_id, process_id, step_seq "
         "ORDER BY line_id, process_id, step_seq"
     )
