@@ -24,6 +24,16 @@ def _is_safe_segment(value: str) -> bool:
     return bool(_SAFE_SEGMENT.match(value)) and ".." not in value
 
 
+class L3SpiderMetaQuerySerializer(serializers.Serializer):
+    """L3 Spider Meta의 선택 날짜 query parameter를 검증합니다."""
+
+    date = serializers.DateField(
+        required=False,
+        input_formats=["%Y-%m-%d"],
+        format="%Y-%m-%d",
+    )
+
+
 class L3SpiderDataRequestSerializer(serializers.Serializer):
     """L3 Spider 데이터 조회 요청을 검증합니다."""
 

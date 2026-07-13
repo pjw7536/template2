@@ -38,6 +38,7 @@ from .serializers import (
     L3SpiderMailRulePermissionUpdateSerializer,
     L3SpiderMailRuleSerializer,
     L3SpiderMailTriggerSerializer,
+    L3SpiderMetaQuerySerializer,
 )
 
 
@@ -50,8 +51,16 @@ class L3SpiderMetaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs) -> Response:
+        serializer = L3SpiderMetaQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        selected_date = serializer.validated_data.get("date")
         try:
-            return Response(services.get_meta(user=request.user))
+            return Response(
+                services.get_meta(
+                    selected_date=selected_date.isoformat() if selected_date else None,
+                    user=request.user,
+                )
+            )
         except services.L3SpiderServiceError as error:
             return _error_response(error)
 

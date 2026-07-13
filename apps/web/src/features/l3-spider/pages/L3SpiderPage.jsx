@@ -68,7 +68,7 @@ export function L3SpiderPage() {
   // Summary 매트릭스에서 선택한 line_name. Chart 탭 왕복에도 유지되도록 페이지에서 보관.
   const [summaryLine, setSummaryLine] = useState(null)
 
-  const metaQuery = useL3SpiderMeta()
+  const metaQuery = useL3SpiderMeta(selection.date)
   const structureQuery = useL3SpiderStructure(selection)
   const statsQuery = useL3SpiderStats(selection)
   // date의 daily summary 로딩 상태를 DataSelector의 ✓/스피너 표시에 사용(캐시 공유).

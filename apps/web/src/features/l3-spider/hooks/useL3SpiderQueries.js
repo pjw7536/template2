@@ -20,10 +20,25 @@ import {
   hasCompleteSelection,
 } from "../utils/selection"
 
-export function useL3SpiderMeta() {
+function keepCompletedDates(previousData) {
+  if (!previousData) return undefined
+  return {
+    dates: previousData.dates ?? [],
+    lineIds: [],
+    processIds: [],
+    edsSteps: [],
+    availability: {},
+    lineGroups: [],
+    lineNameAvailability: {},
+  }
+}
+
+export function useL3SpiderMeta(date) {
+  const dateKey = date || "__dates__"
   return useQuery({
-    queryKey: l3SpiderQueryKeys.meta(),
-    queryFn: fetchL3SpiderMeta,
+    queryKey: l3SpiderQueryKeys.meta(dateKey),
+    queryFn: () => fetchL3SpiderMeta(date),
+    placeholderData: keepCompletedDates,
     staleTime: 5 * 60 * 1000,   // 백엔드 캐시(600s)와 맞춰 5분간 재요청 억제
     gcTime: 10 * 60 * 1000,
   })

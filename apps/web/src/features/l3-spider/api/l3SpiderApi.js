@@ -33,8 +33,9 @@ function postJson(path, body) {
   })
 }
 
-export function fetchL3SpiderMeta() {
-  return request("/meta")
+export function fetchL3SpiderMeta(date = "") {
+  const query = date ? `?date=${encodeURIComponent(date)}` : ""
+  return request(`/meta${query}`)
 }
 
 export function fetchL3SpiderUnmappedLineRules() {

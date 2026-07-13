@@ -369,27 +369,28 @@ def _query_all_line_process_step_legacy() -> list[tuple[str, str, str]]:
     return sorted(combos)
 
 
-def query_all_date_line_process_eds_step() -> list[tuple[str, str, str, str, str]]:
-    """PostgreSQL daily_run_stats의 모든 분석 조합을 반환합니다.
+def query_date_line_process_eds_step(date: str) -> list[tuple[str, str, str, str, str]]:
+    """PostgreSQL daily_run_stats에서 선택 날짜의 분석 조합을 반환합니다.
 
     날짜별 line_name 가용성(lineNameAvailability) 계산용. line_name은 step_seq로 결정되므로,
     특정 날짜에 어떤 line_name→process→eds가 '실제로' 존재하는지 알려면 date+eds+step_seq가
     함께 필요합니다.
     """
     rows = _fetchall(
-        "SELECT DISTINCT date, line_id, process_id, eds_step, step_seq "
-        f"FROM {_DAILY_RUN_STATS_TABLE}"
+        "SELECT date, line_id, process_id, eds_step, step_seq "
+        f"FROM {_DAILY_RUN_STATS_TABLE} WHERE date = %s",
+        (date,),
     )
     return [(str(r[0]), str(r[1]), str(r[2]), str(r[3]), str(r[4])) for r in rows]
 
 
-def _query_all_date_line_process_eds_step_legacy() -> list[tuple[str, str, str, str, str]]:
-    """인덱스 미사용: 파일명 스캔으로 (date, line_id, process_id, eds_step, step_seq) 조합 수집."""
+def _query_date_line_process_eds_step_legacy(date: str) -> list[tuple[str, str, str, str, str]]:
+    """인덱스 미사용: 선택 날짜의 분석 조합을 파일명 스캔으로 수집합니다."""
     root = get_data_root()
     if not root.exists():
         return []
     combos: set[tuple[str, str, str, str, str]] = set()
-    for path in root.glob("*/*/*/*/*"):  # date/line_id/process_id/eds_step/file
+    for path in (root / date).glob("*/*/*/*"):  # line_id/process_id/eds_step/file
         if not path.is_file():
             continue
         parts = path.relative_to(root).parts

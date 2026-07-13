@@ -74,6 +74,7 @@ MAIL_SEVERITY_STATUSES = {
 }
 _MAX_PARALLEL_WORKERS = 8
 _MAIL_DIGEST_PREVIEW_LIMIT = 50
+_MetaCombo = tuple[str, str, str, str, str]
 
 
 class _SimpleCache:
@@ -108,12 +109,12 @@ _meta_cache = _SimpleCache(ttl=600.0)
 _structure_cache = _SimpleCache(ttl=600.0)
 _stats_cache = _SimpleCache(ttl=600.0)
 _daily_summary_cache = _SimpleCache(ttl=300.0)
-# 파일시스템 스캔 결과만 따로 캐싱: 사용자별 exclusion 규칙과 분리해
-# 여러 사용자/워커 간에 스캔 비용을 공유합니다.
-_raw_file_rows_cache = _SimpleCache(ttl=600.0)
-_RAW_FILE_ROWS_KEY = "raw"
+# Meta 원본 조합을 따로 캐싱해 사용자별 exclusion 규칙과 분리하고,
+# 같은 워커의 여러 사용자가 PostgreSQL 조회 비용을 공유합니다.
+_meta_combos_cache = _SimpleCache(ttl=600.0)
+_completed_dates_cache = _SimpleCache(ttl=600.0)
+_COMPLETED_DATES_KEY = "dates"
 _line_groups_cache = _SimpleCache(ttl=600.0)
-_LINE_GROUPS_KEY = "groups"
 _line_rule_candidates_cache = _SimpleCache(ttl=300.0)
 _LINE_RULE_CANDIDATES_KEY = "candidates"
 
@@ -402,17 +403,37 @@ def _dataframe_to_columnar(merged: pd.DataFrame) -> dict[str, object]:
 
 # ─── 서비스 함수 ─────────────────────────────────────────────────────────────
 
-def _get_raw_file_rows() -> list[dict[str, str]]:
-    """전체 실행 통계에서 (date, line_id, process_id, eds_step) 행을 반환합니다.
+def _get_completed_dates() -> set[str] | None:
+    """완료 날짜를 공유 TTL 캐시에서 반환합니다."""
 
-    결과를 별도 캐시에 저장하여 사용자별 exclusion 규칙 계산과 분리합니다.
-    같은 워커 내 여러 사용자가 PostgreSQL 조회 비용을 공유합니다.
-    """
-    cached = _raw_file_rows_cache.get(_RAW_FILE_ROWS_KEY)
+    cached = _completed_dates_cache.get(_COMPLETED_DATES_KEY)
     if cached is not None:
         return cached
 
-    rows = [
+    completed_dates = selectors.query_completed_dates()
+    if completed_dates is not None:
+        _completed_dates_cache.set(_COMPLETED_DATES_KEY, completed_dates)
+    return completed_dates
+
+
+def _get_meta_combos(selected_date: str) -> list[_MetaCombo]:
+    """선택 날짜의 실행 통계 조합을 날짜별 TTL 캐시에서 반환합니다."""
+
+    cached = _meta_combos_cache.get(selected_date)
+    if cached is not None:
+        return cached
+
+    combos = selectors.query_date_line_process_eds_step(selected_date)
+    _meta_combos_cache.set(selected_date, combos)
+    return combos
+
+
+def _get_raw_file_rows(combos: list[_MetaCombo]) -> list[dict[str, str]]:
+    """선택 날짜의 실행 통계 조합에서 Meta 기본 선택 항목을 반환합니다.
+
+    빈 목록도 유효한 결과로 취급해 동일 요청 안에서 PostgreSQL을 다시 조회하지 않습니다.
+    """
+    return [
         {
             "date": date,
             "line_id": line_id,
@@ -420,31 +441,28 @@ def _get_raw_file_rows() -> list[dict[str, str]]:
             "eds_step": eds_step,
         }
         for date, line_id, process_id, eds_step, _step_seq
-        in selectors.query_all_date_line_process_eds_step()
+        in combos
     ]
 
-    _raw_file_rows_cache.set(_RAW_FILE_ROWS_KEY, rows)
-    return rows
 
-
-def _build_line_groups() -> list[dict]:
-    """[{lineName, lineId, processIds}] — 전체 날짜 기준 line_name→line_id 매핑(TTL 캐시).
+def _build_line_groups(selected_date: str, combos: list[_MetaCombo]) -> list[dict]:
+    """[{lineName, lineId, processIds}] — 선택 날짜의 line_name 매핑(TTL 캐시).
 
     Chart 드릴/조회에서 line_name→line_id 해석용. 행 단위 line_name 필터가 정확성을 보장하므로
-    전체 날짜여도 무방(제외 필터와 무관 → 규칙 독립 캐시). 규칙 미매칭 조합은 line_id 로 폴백.
+    제외 필터와 무관한 날짜별 규칙 독립 캐시를 사용합니다. 규칙 미매칭 조합은 line_id로 폴백합니다.
     """
-    cached = _line_groups_cache.get(_LINE_GROUPS_KEY)
+    cached = _line_groups_cache.get(selected_date)
     if cached is not None:
         return cached
     try:
-        groups = _build_line_groups_impl()
+        groups = _build_line_groups_impl(combos)
     except Exception:
         groups = []
-    _line_groups_cache.set(_LINE_GROUPS_KEY, groups)
+    _line_groups_cache.set(selected_date, groups)
     return groups
 
 
-def _build_line_name_availability(rules: list) -> dict:
+def _build_line_name_availability(rules: list, combos: list[_MetaCombo]) -> dict:
     """{date: {lineName: {processId: [edsStep]}}} — '그 날짜에 실제로 존재하는' line_name→process→eds.
 
     line_name은 step_seq로 갈리므로(override), 어떤 날 그 line_name이 어떤 process·eds를 갖는지는
@@ -452,10 +470,12 @@ def _build_line_name_availability(rules: list) -> dict:
     위해 날짜별로 내려준다. 제외 필터(rules)의 경로 필드(line_id/process/eds/step_seq)를 적용해,
     제외된 조합이 패널에 남지 않게 한다(eqc·bin 기준 규칙은 컬럼이 없어 자동 무시).
     """
-    combos = selectors.query_all_date_line_process_eds_step()
     if not combos:
         return {}
-    df = pd.DataFrame(combos, columns=["date", "line_id", "process_id", "eds_step", "step_seq"])
+    df = pd.DataFrame(
+        combos,
+        columns=["date", "line_id", "process_id", "eds_step", "step_seq"],
+    )
     df = _apply_exclusion_filters_with_rules(df, rules)
     if df.empty:
         return {}
@@ -503,11 +523,10 @@ def _filter_files_by_line_names(files: list, selection: dict[str, object]) -> li
     return filtered
 
 
-def _build_line_groups_impl() -> list[dict]:
-    # 규칙 기반: daily_run_stats의 (line_id, process_id, step_seq) 조합을 resolve_line_name으로
+def _build_line_groups_impl(combos: list[_MetaCombo]) -> list[dict]:
+    # 규칙 기반: 선택 날짜의 (line_id, process_id, step_seq) 조합을 resolve_line_name으로
     # line_name에 매핑한다. step_seq마다 line_name이 달라질 수 있어
     # (override) 한 (line_id, process)가 여러 line_name에 나타날 수 있다. line_name→line_id 해석용.
-    combos = selectors.query_all_date_line_process_eds_step()
     groups: dict[str, dict[str, dict[str, set[str]]]] = {}   # lineName -> lineId -> process -> {eds}
     for _date, line_id, process_id, eds_step, step_seq in combos:
         line_name = line_name_rules.resolve_line_name(line_id, process_id, step_seq)
@@ -565,20 +584,53 @@ def get_unmapped_line_name_rules() -> dict[str, object]:
     }
 
 
-def get_meta(*, user: Any | None = None) -> dict[str, object]:
+def _empty_meta_result(dates: list[str]) -> dict[str, object]:
+    """완료 날짜만 포함한 빈 Meta 응답을 반환합니다."""
+
+    return {
+        "dates": dates,
+        "lineIds": [],
+        "processIds": [],
+        "edsSteps": [],
+        "availability": {},
+        "lineGroups": [],
+        "lineNameAvailability": {},
+    }
+
+
+def get_meta(*, selected_date: str | None = None, user: Any | None = None) -> dict[str, object]:
     """사용 가능한 날짜/라인/프로세스/EDS step 메타데이터를 반환합니다.
 
     활성 제외 필터의 경로 필드(line_id, process_id, eds_step)를 적용하여
     완전히 제외된 항목은 DataSelector에 표시되지 않습니다.
     """
+    if selected_date is None:
+        cached_dates_result = _meta_cache.get("dates")
+        if cached_dates_result is not None:
+            return cached_dates_result
+
+        completed_dates = _get_completed_dates()
+        result = _empty_meta_result(sorted(completed_dates or set()))
+        _meta_cache.set("dates", result)
+        return result
+
     rules = _get_exclusion_rules(user=user)
     rules_hash = str(hash(tuple(sorted(str(r) for r in rules))))
-    cached = _meta_cache.get(rules_hash)
+    cache_key = f"{selected_date}:{rules_hash}"
+    cached = _meta_cache.get(cache_key)
     if cached is not None:
         return cached
 
-    # 파일 스캔 결과는 공유 캐시에서 가져옴 (exclusion 규칙과 독립적)
-    file_rows = _get_raw_file_rows()
+    completed_dates = _get_completed_dates()
+    dates = sorted(completed_dates) if completed_dates is not None else [selected_date]
+    if completed_dates is not None and selected_date not in completed_dates:
+        result = _empty_meta_result(dates)
+        _meta_cache.set(cache_key, result)
+        return result
+
+    # 세 Meta 결과가 선택 날짜의 같은 PostgreSQL 조회 결과를 사용합니다.
+    combos = _get_meta_combos(selected_date)
+    file_rows = _get_raw_file_rows(combos)
 
     if file_rows:
         df = pd.DataFrame(file_rows).drop_duplicates()
@@ -587,28 +639,19 @@ def get_meta(*, user: Any | None = None) -> dict[str, object]:
     else:
         df = pd.DataFrame(columns=["date", "line_id", "process_id", "eds_step"])
 
-    # 완결성 게이트: 알고리즘 런이 완료된 날짜만 노출한다. 오늘(진행 중)은 완료 마커가
-    # 없으므로 셀렉터에서 제외되어, 사용자는 자동으로 마지막 완료 날짜(어제)를 보게 된다.
-    # None(알고리즘 서버 미구현)이면 게이트를 적용하지 않는다(하위호환).
-    completed_dates = selectors.query_completed_dates()
-
-    dates: set[str] = set()
     line_ids: set[str] = set()
     process_ids: set[str] = set()
     eds_steps: set[str] = set()
     availability: dict[str, dict[str, dict[str, set[str]]]] = {}
 
     for row in df.itertuples(index=False):
-        if completed_dates is not None and row.date not in completed_dates:
-            continue
-        dates.add(row.date)
         line_ids.add(row.line_id)
         process_ids.add(row.process_id)
         eds_steps.add(row.eds_step)
         availability.setdefault(row.date, {}).setdefault(row.line_id, {}).setdefault(row.process_id, set()).add(row.eds_step)
 
     result = {
-        "dates": sorted(dates),
+        "dates": dates,
         "lineIds": sorted(line_ids),
         "processIds": sorted(process_ids),
         "edsSteps": sorted(eds_steps),
@@ -622,10 +665,10 @@ def get_meta(*, user: Any | None = None) -> dict[str, object]:
             }
             for date, lines in sorted(availability.items())
         },
-        "lineGroups": _build_line_groups(),
-        "lineNameAvailability": _build_line_name_availability(rules),
+        "lineGroups": _build_line_groups(selected_date, combos),
+        "lineNameAvailability": _build_line_name_availability(rules, combos),
     }
-    _meta_cache.set(rules_hash, result)
+    _meta_cache.set(cache_key, result)
     return result
 
 

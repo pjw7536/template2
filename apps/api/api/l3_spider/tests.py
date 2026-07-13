@@ -34,7 +34,7 @@ from .models import (
     L3SpiderRunStatus,
 )
 from .services import line_name_rules
-from .views import L3SpiderUnmappedLineRulesView
+from .views import L3SpiderMetaView, L3SpiderUnmappedLineRulesView
 from .management.commands.import_l3_spider_line_name_rules import _load_rules_csv
 
 
@@ -48,7 +48,8 @@ class L3SpiderServiceTests(TestCase):
         services._structure_cache.clear()
         services._stats_cache.clear()
         services._daily_summary_cache.clear()
-        services._raw_file_rows_cache.clear()
+        services._meta_combos_cache.clear()
+        services._completed_dates_cache.clear()
         services._line_groups_cache.clear()
         services._line_rule_candidates_cache.clear()
         line_name_rules.clear_cache()
@@ -56,8 +57,8 @@ class L3SpiderServiceTests(TestCase):
             patch.object(selectors, "query_completed_dates", return_value=None),
             patch.object(
                 selectors,
-                "query_all_date_line_process_eds_step",
-                side_effect=selectors._query_all_date_line_process_eds_step_legacy,
+                "query_date_line_process_eds_step",
+                side_effect=selectors._query_date_line_process_eds_step_legacy,
             ),
             patch.object(selectors, "query_indexed_files", return_value=[]),
             patch.object(selectors, "query_date_file_index", return_value=[]),
@@ -256,7 +257,7 @@ class L3SpiderServiceTests(TestCase):
                 "_get_exclusion_rules",
                 return_value=[],
             ):
-                meta = services.get_meta()
+                meta = services.get_meta(selected_date="2025-01-15")
                 summary = services.get_summary(selection)
                 data = services.get_data(selection)
                 rows = self._columnar_rows(data)
@@ -272,6 +273,93 @@ class L3SpiderServiceTests(TestCase):
         self.assertEqual(summary["anomalies"][0]["binName"], "BIN_A")
         self.assertEqual(rows[0]["stepSeq"], "S1")
         self.assertIn("displayStatus", rows[0])
+
+    def test_meta_without_date_only_queries_completed_dates(self) -> None:
+        """날짜 미지정 Meta는 완료 날짜만 반환하고 실행 통계를 조회하지 않아야 합니다."""
+
+        services._completed_dates_cache.clear()
+        with patch.object(
+            selectors,
+            "query_completed_dates",
+            return_value={"2025-01-14", "2025-01-15"},
+        ), patch.object(
+            selectors,
+            "query_date_line_process_eds_step",
+        ) as query_combos:
+            meta = services.get_meta()
+
+        self.assertEqual(meta["dates"], ["2025-01-14", "2025-01-15"])
+        self.assertEqual(meta["lineIds"], [])
+        self.assertEqual(meta["lineNameAvailability"], {})
+        query_combos.assert_not_called()
+
+    def test_meta_queries_and_caches_combos_per_date(self) -> None:
+        """Meta는 선택 날짜만 조회하고 같은 날짜의 조합을 캐시해야 합니다."""
+
+        def date_combos(date: str) -> list[tuple[str, str, str, str, str]]:
+            return [(date, "L1", "P1", "EDS_M", "S1")]
+
+        services._completed_dates_cache.clear()
+        with patch.object(
+            selectors,
+            "query_completed_dates",
+            return_value={"2025-01-14", "2025-01-15"},
+        ), patch.object(
+            selectors,
+            "query_date_line_process_eds_step",
+            side_effect=date_combos,
+        ) as query_combos, patch.object(
+            services,
+            "_get_exclusion_rules",
+            return_value=[],
+        ):
+            meta = services.get_meta(selected_date="2025-01-15")
+            cached_meta = services.get_meta(selected_date="2025-01-15")
+            previous_meta = services.get_meta(selected_date="2025-01-14")
+
+        self.assertEqual(
+            [call.args[0] for call in query_combos.call_args_list],
+            ["2025-01-15", "2025-01-14"],
+        )
+        self.assertIs(cached_meta, meta)
+        self.assertEqual(meta["lineIds"], ["L1"])
+        self.assertEqual(meta["lineNameAvailability"], {
+            "2025-01-15": {"L1": {"P1": ["EDS_M"]}},
+        })
+        self.assertEqual(previous_meta["lineNameAvailability"], {
+            "2025-01-14": {"L1": {"P1": ["EDS_M"]}},
+        })
+
+    def test_meta_view_passes_validated_selected_date(self) -> None:
+        """Meta view는 검증된 날짜를 service에 ISO 문자열로 전달해야 합니다."""
+
+        user = get_user_model().objects.create_user(sabun="META-USER", password="test")
+        request = APIRequestFactory().get("/api/v1/l3_spider/meta", {"date": "2025-01-15"})
+        force_authenticate(request, user=user)
+
+        with patch.object(services, "get_meta", return_value={"dates": ["2025-01-15"]}) as get_meta:
+            response = L3SpiderMetaView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        get_meta.assert_called_once_with(selected_date="2025-01-15", user=user)
+
+    def test_meta_does_not_expose_uncompleted_selected_date(self) -> None:
+        """선택 날짜가 미완료이면 날짜 목록과 상세 결과에 노출하지 않아야 합니다."""
+
+        services._completed_dates_cache.clear()
+        with patch.object(
+            selectors,
+            "query_completed_dates",
+            return_value=set(),
+        ), patch.object(
+            selectors,
+            "query_date_line_process_eds_step",
+        ) as query_combos:
+            meta = services.get_meta(selected_date="2025-01-15")
+
+        self.assertEqual(meta["dates"], [])
+        self.assertEqual(meta["lineIds"], [])
+        query_combos.assert_not_called()
 
     def test_daily_summary_omits_unused_equipment_ranking(self) -> None:
         """일별 요약이 미사용 설비 랭킹 없이 기존 지표를 반환하는지 확인합니다."""
@@ -552,7 +640,7 @@ class L3SpiderServiceTests(TestCase):
                 "_get_exclusion_rules",
                 return_value=[],
             ):
-                meta = services.get_meta()
+                meta = services.get_meta(selected_date="2025-01-15")
                 stats = services.get_stats(selection)
                 data = services.get_data(selection)
                 candidates = services.get_filter_candidates(filter_selection)
@@ -625,6 +713,23 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
             "date_count": 4,
         }])
         self.assertIn('"public"."l3_spider_daily_run_stats"', fetchall.call_args.args[0])
+
+    def test_query_date_line_process_eds_step_uses_date_index_and_pk_uniqueness(self) -> None:
+        """Meta 조합 조회는 날짜 조건을 사용하고 중복 제거 연산을 추가하지 않아야 합니다."""
+
+        with patch.object(
+            selectors,
+            "_fetchall",
+            return_value=[("2025-01-15", "L1", "P1", "EDS_M", "S1")],
+        ) as fetchall:
+            result = selectors.query_date_line_process_eds_step("2025-01-15")
+
+        sql = fetchall.call_args.args[0]
+        self.assertEqual(result, [("2025-01-15", "L1", "P1", "EDS_M", "S1")])
+        self.assertNotIn("DISTINCT", sql.upper())
+        self.assertIn("WHERE date = %s", sql)
+        self.assertIn('"public"."l3_spider_daily_run_stats"', sql)
+        self.assertEqual(fetchall.call_args.args[1], ("2025-01-15",))
 
     def test_high_risk_filter_uses_integer_index_condition(self) -> None:
         """High Risk 파일 필터는 integer 컬럼을 직접 비교해야 합니다."""
