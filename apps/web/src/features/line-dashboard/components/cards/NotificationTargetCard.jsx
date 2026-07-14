@@ -484,6 +484,7 @@ function TargetMappingSummary({
                           checked={Boolean(mapping.needtosendWithoutComment)}
                           disabled={isPolicyDisabled}
                           onCheckedChange={(checked) => onMappingPolicyChange(mapping, checked === true)}
+                          className="data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
                           aria-label={`${userSdwtProd} 분임조원에서 ${sdwtProd} 설비로 보낸 E-SOP을 코멘트 없이 자동 예약`}
                         />
                       </TooltipTrigger>

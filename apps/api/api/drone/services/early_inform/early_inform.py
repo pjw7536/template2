@@ -141,7 +141,7 @@ def delete_early_inform_entry(*, entry_id: int) -> DroneEarlyInform:
         entry_id: 삭제 대상 ID.
 
     반환:
-        삭제된 DroneEarlyInform 인스턴스.
+        감사 로그에 사용할 삭제 전 DroneEarlyInform 상태 스냅샷.
 
     부작용:
         DroneEarlyInform 레코드가 삭제됩니다.
@@ -151,11 +151,22 @@ def delete_early_inform_entry(*, entry_id: int) -> DroneEarlyInform:
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 트랜잭션 내 조회/삭제
+    # 1) 트랜잭션 내 조회/삭제 전 상태 보존
     # -----------------------------------------------------------------------------
     with transaction.atomic():
         entry = selectors.get_early_inform_entry_for_update(entry_id=entry_id)
         if entry is None:
             raise DroneEarlyInformNotFoundError("Entry not found")
+
+        # Django는 삭제한 모델 인스턴스의 PK를 None으로 초기화하므로
+        # 감사 로그에 사용할 삭제 전 상태를 분리해 보존합니다.
+        previous_entry = DroneEarlyInform(
+            id=entry.id,
+            line_id=entry.line_id,
+            main_step=entry.main_step,
+            custom_end_step=entry.custom_end_step,
+            updated_by=entry.updated_by,
+            updated_at=entry.updated_at,
+        )
         entry.delete()
-        return entry
+        return previous_entry

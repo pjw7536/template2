@@ -257,6 +257,29 @@ class DroneSopTargetChannelServiceTests(TestCase):
         self.assertEqual(len(captured), 1)
 
 
+class DroneEarlyInformServiceTests(TestCase):
+    """DroneEarlyInform 설정 서비스의 삭제 경계를 검증합니다."""
+
+    def test_delete_returns_pre_delete_snapshot(self) -> None:
+        """삭제 후에도 감사 로그용 이전 상태의 ID가 보존되는지 확인합니다."""
+
+        entry = DroneEarlyInform.objects.create(
+            line_id="L1",
+            main_step="STEP1",
+            custom_end_step="STEP2",
+            updated_by="tester",
+        )
+        entry_id = entry.id
+
+        previous_entry = services.delete_early_inform_entry(entry_id=entry_id)
+
+        self.assertEqual(previous_entry.id, entry_id)
+        self.assertEqual(previous_entry.line_id, "L1")
+        self.assertEqual(previous_entry.main_step, "STEP1")
+        self.assertEqual(previous_entry.custom_end_step, "STEP2")
+        self.assertFalse(DroneEarlyInform.objects.filter(id=entry_id).exists())
+
+
 class DroneSopPop3ParsingTests(TestCase):
     """POP3 HTML 파싱 로직을 검증합니다."""
 
@@ -2244,8 +2267,7 @@ class DroneEndpointTests(TestCase):
         )
         self.client.force_login(self.user)
 
-    @patch("api.drone.views.services.delete_early_inform_entry")
-    def test_drone_early_inform_crud(self, mock_delete) -> None:
+    def test_drone_early_inform_crud(self) -> None:
         """조기 알림 CRUD 플로우가 동작하는지 확인합니다."""
         create_response = self.client.post(
             reverse("drone-early-inform"),
@@ -2266,9 +2288,10 @@ class DroneEndpointTests(TestCase):
         )
         self.assertEqual(update_response.status_code, 200)
 
-        mock_delete.return_value = DroneEarlyInform.objects.get(id=entry_id)
         delete_response = self.client.delete(f"{reverse('drone-early-inform')}?id={entry_id}")
         self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json(), {"success": True})
+        self.assertFalse(DroneEarlyInform.objects.filter(id=entry_id).exists())
 
     @patch("api.drone.views.selectors.get_line_history_payload", return_value={"rows": []})
     def test_drone_line_history(self, _mock_history) -> None:
