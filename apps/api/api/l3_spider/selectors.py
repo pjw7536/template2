@@ -477,16 +477,29 @@ def _query_all_line_process_step_legacy() -> list[tuple[str, str, str]]:
 
 
 def query_date_line_process_eds_step(date: str) -> list[tuple[str, str, str, str, str]]:
-    """활성 daily_run_stats source에서 선택 날짜의 분석 조합을 반환합니다.
+    """선택 날짜에서 실제 비어 있지 않은 파일을 가진 분석 조합을 반환합니다.
 
     날짜별 line_name 가용성(lineNameAvailability) 계산용. line_name은 step_seq로 결정되므로,
     특정 날짜에 어떤 line_name→process→eds가 '실제로' 존재하는지 알려면 date+eds+step_seq가
-    함께 필요합니다.
+    함께 필요합니다. 실행 통계에만 남은 조합은 하위 Step Seq가 비므로 file_index 자식 존재를
+    함께 확인합니다.
     """
     placeholder = _index_placeholder()
+    daily_run_stats_table = _index_table(_DAILY_RUN_STATS_NAME)
+    file_index_table = _index_table(_FILE_INDEX_NAME)
     rows = _fetch_index_all(
-        "SELECT date, line_id, process_id, eds_step, step_seq "
-        f"FROM {_index_table(_DAILY_RUN_STATS_NAME)} WHERE date = {placeholder}",
+        "SELECT stats.date, stats.line_id, stats.process_id, stats.eds_step, stats.step_seq "
+        f"FROM {daily_run_stats_table} AS stats "
+        f"WHERE stats.date = {placeholder} AND stats.row_cnt > 0 "
+        "AND EXISTS ("
+        f"SELECT 1 FROM {file_index_table} AS files "
+        "WHERE files.date = stats.date "
+        "AND files.line_id = stats.line_id "
+        "AND files.process_id = stats.process_id "
+        "AND files.eds_step = stats.eds_step "
+        "AND files.step_seq = stats.step_seq "
+        "AND COALESCE(files.row_cnt, stats.row_cnt, 0) > 0"
+        ")",
         (date,),
     )
     return [(str(r[0]), str(r[1]), str(r[2]), str(r[3]), str(r[4])) for r in rows]

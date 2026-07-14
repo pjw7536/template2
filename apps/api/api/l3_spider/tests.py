@@ -736,8 +736,8 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
         }])
         self.assertIn('"public"."l3_spider_daily_run_stats"', fetchall.call_args.args[0])
 
-    def test_query_date_line_process_eds_step_uses_date_index_and_pk_uniqueness(self) -> None:
-        """Meta 조합 조회는 날짜 조건을 사용하고 중복 제거 연산을 추가하지 않아야 합니다."""
+    def test_query_date_line_process_eds_step_requires_nonempty_file_child(self) -> None:
+        """Meta 조합은 날짜 조건과 실제 데이터가 있는 file_index 자식을 요구해야 합니다."""
 
         with patch.object(
             selectors,
@@ -749,8 +749,13 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
         sql = fetchall.call_args.args[0]
         self.assertEqual(result, [("2025-01-15", "L1", "P1", "EDS_M", "S1")])
         self.assertNotIn("DISTINCT", sql.upper())
-        self.assertIn("WHERE date = %s", sql)
+        self.assertIn("WHERE stats.date = %s", sql)
+        self.assertIn("stats.row_cnt > 0", sql)
+        self.assertIn("EXISTS", sql)
+        self.assertIn("files.step_seq = stats.step_seq", sql)
+        self.assertIn("COALESCE(files.row_cnt, stats.row_cnt, 0) > 0", sql)
         self.assertIn('"public"."l3_spider_daily_run_stats"', sql)
+        self.assertIn('"public"."l3_spider_file_index"', sql)
         self.assertEqual(fetchall.call_args.args[1], ("2025-01-15",))
 
     def test_high_risk_filter_uses_integer_index_condition(self) -> None:
@@ -820,7 +825,7 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
             );
             INSERT INTO daily_run_stats VALUES
                 ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S1', 10),
-                ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S2', 20);
+                ('2025-01-15', 'L1', 'P1', 'EDS_EMPTY', 'S2', 20);
             INSERT INTO run_status VALUES ('2025-01-15', 'completed', '2025-01-16T00:00:00');
             """
         )
@@ -843,7 +848,6 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
             selectors.query_date_line_process_eds_step("2025-01-15"),
             [
                 ("2025-01-15", "L1", "P1", "EDS_M", "S1"),
-                ("2025-01-15", "L1", "P1", "EDS_M", "S2"),
             ],
         )
 
@@ -851,7 +855,7 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
         self.assertEqual(stats["totalRows"], 30)
         self.assertEqual(stats["combinations"], 2)
         self.assertEqual(stats["byLine"], [{"lineId": "L1", "stepSeqCount": 2, "rowCnt": 30}])
-        self.assertEqual([row["step_seq"] for row in stats["_details"]], ["S1", "S2"])
+        self.assertEqual(sorted(row["step_seq"] for row in stats["_details"]), ["S1", "S2"])
 
     def test_mock_index_supports_file_filters_and_aggregates(self) -> None:
         """SQLite mock은 JSON 필터와 Summary·Trend 인덱스 집계를 지원해야 합니다."""
