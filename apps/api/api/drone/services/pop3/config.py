@@ -38,11 +38,12 @@ class NeedToSendRule:
     comment_last_at: str
     ignore_sample_type: bool = False
 
-    def compute(self, row: dict[str, Any]) -> int:
+    def compute(self, row: dict[str, Any], *, needtosend_without_comment: bool = False) -> int:
         """규칙에 따라 needtosend 값을 계산합니다.
 
         인자:
             row: Drone SOP 행 dict(행 데이터).
+            needtosend_without_comment: Comment 키워드 없이 예약할 지정 조합인지 여부.
 
         반환:
             needtosend 값(0/1).
@@ -52,22 +53,24 @@ class NeedToSendRule:
         """
 
         # ---------------------------------------------------------------------
-        # 1) 댓글/포함 키워드 추출
-        # ---------------------------------------------------------------------
-        comment = str(row.get("comment") or "").strip()
-        keyword = str(self.comment_last_at or "").strip()
-        if not comment or not keyword:
-            return 0
-        # ---------------------------------------------------------------------
-        # 2) 샘플 타입 조건 처리
+        # 1) 샘플 타입 조건 처리
         # ---------------------------------------------------------------------
         if not self.ignore_sample_type:
             sample_type = str(row.get("sample_type") or "").strip()
             if sample_type == "ENGR_PRODUCTION":
                 return 0
         # ---------------------------------------------------------------------
-        # 3) 키워드 포함 결과 반환
+        # 2) 지정 조합의 Comment 생략 정책 처리
         # ---------------------------------------------------------------------
+        if needtosend_without_comment:
+            return 1
+        # ---------------------------------------------------------------------
+        # 3) 댓글/포함 키워드 검사
+        # ---------------------------------------------------------------------
+        comment = str(row.get("comment") or "").strip()
+        keyword = str(self.comment_last_at or "").strip()
+        if not comment or not keyword:
+            return 0
         return _as_int_bool(keyword in comment)
 
 

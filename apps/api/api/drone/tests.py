@@ -85,6 +85,7 @@ def _ensure_target_mapping(
     sdwt_prod: str | None,
     user_sdwt_prod: str | None,
     target_user_sdwt_prod: str | None = None,
+    needtosend_without_comment: bool = False,
 ) -> None:
     """테스트용 target_user_sdwt_prod 매핑을 생성합니다."""
 
@@ -100,6 +101,7 @@ def _ensure_target_mapping(
     DroneSopTargetMapping.objects.create(
         sdwt_prod=normalized_sdwt,
         user_sdwt_prod=normalized_user,
+        needtosend_without_comment=needtosend_without_comment,
         target=target,
     )
 
@@ -669,6 +671,149 @@ class DroneSopPop3ParsingTests(TestCase):
         )
 
         row = build_drone_sop_row(html=html, early_inform_map={})
+        assert row is not None
+        self.assertEqual(row["needtosend"], 0)
+
+    def test_build_drone_sop_row_reserves_matching_mapping_without_comment(self) -> None:
+        """지정 조합 정책이 켜지면 Comment 키워드가 없어도 예약합니다."""
+
+        html = """
+        <data>
+          <sample_type>NORMAL</sample_type>
+          <sdwt_prod>A</sdwt_prod>
+          <user_sdwt_prod>EARSAUTO</user_sdwt_prod>
+          <comment>일반 작업 요청</comment>
+        </data>
+        """
+        _ensure_target_mapping(
+            sdwt_prod="A",
+            user_sdwt_prod="EARSAUTO",
+            target_user_sdwt_prod="target-a",
+            needtosend_without_comment=True,
+        )
+        _upsert_target(
+            target_user_sdwt_prod="target-a",
+            needtosend_comment_last_at="$SETUP_EQP",
+            needtosend_ignore_sample_type=False,
+            needtosend_enabled=True,
+        )
+
+        row = build_drone_sop_row(html=html, early_inform_map={})
+
+        assert row is not None
+        self.assertEqual(row["target_user_sdwt_prod"], "target-a")
+        self.assertEqual(row["needtosend"], 1)
+
+    def test_build_drone_sop_row_allows_commentless_mapping_without_keyword(self) -> None:
+        """Comment 생략 지정 조합만 사용하는 target은 빈 키워드로도 예약합니다."""
+
+        html = """
+        <data>
+          <sample_type>NORMAL</sample_type>
+          <sdwt_prod>A</sdwt_prod>
+          <user_sdwt_prod>EARSAUTO</user_sdwt_prod>
+        </data>
+        """
+        _ensure_target_mapping(
+            sdwt_prod="A",
+            user_sdwt_prod="EARSAUTO",
+            target_user_sdwt_prod="target-a",
+            needtosend_without_comment=True,
+        )
+        _upsert_target(
+            target_user_sdwt_prod="target-a",
+            needtosend_comment_last_at="",
+            needtosend_ignore_sample_type=False,
+            needtosend_enabled=True,
+        )
+
+        row = build_drone_sop_row(html=html, early_inform_map={})
+
+        assert row is not None
+        self.assertEqual(row["needtosend"], 1)
+
+    def test_build_drone_sop_row_keeps_comment_rule_for_other_mapping(self) -> None:
+        """정책이 꺼진 다른 지정 조합은 기존 Comment 키워드 규칙을 유지합니다."""
+
+        html = """
+        <data>
+          <sample_type>NORMAL</sample_type>
+          <sdwt_prod>A</sdwt_prod>
+          <user_sdwt_prod>OTHER</user_sdwt_prod>
+          <comment>일반 작업 요청</comment>
+        </data>
+        """
+        _ensure_target_mapping(
+            sdwt_prod="A",
+            user_sdwt_prod="OTHER",
+            target_user_sdwt_prod="target-a",
+        )
+        _upsert_target(
+            target_user_sdwt_prod="target-a",
+            needtosend_comment_last_at="$SETUP_EQP",
+            needtosend_ignore_sample_type=False,
+            needtosend_enabled=True,
+        )
+
+        row = build_drone_sop_row(html=html, early_inform_map={})
+
+        assert row is not None
+        self.assertEqual(row["needtosend"], 0)
+
+    def test_build_drone_sop_row_commentless_mapping_respects_sample_type_rule(self) -> None:
+        """Comment 생략 정책도 ENGR_PRODUCTION 제외 규칙을 우회하지 않습니다."""
+
+        html = """
+        <data>
+          <sample_type>ENGR_PRODUCTION</sample_type>
+          <sdwt_prod>A</sdwt_prod>
+          <user_sdwt_prod>EARSAUTO</user_sdwt_prod>
+          <comment>일반 작업 요청</comment>
+        </data>
+        """
+        _ensure_target_mapping(
+            sdwt_prod="A",
+            user_sdwt_prod="EARSAUTO",
+            target_user_sdwt_prod="target-a",
+            needtosend_without_comment=True,
+        )
+        _upsert_target(
+            target_user_sdwt_prod="target-a",
+            needtosend_comment_last_at="$SETUP_EQP",
+            needtosend_ignore_sample_type=False,
+            needtosend_enabled=True,
+        )
+
+        row = build_drone_sop_row(html=html, early_inform_map={})
+
+        assert row is not None
+        self.assertEqual(row["needtosend"], 0)
+
+    def test_build_drone_sop_row_commentless_mapping_respects_master_switch(self) -> None:
+        """Comment 생략 정책도 비활성 자동 예약 규칙을 우회하지 않습니다."""
+
+        html = """
+        <data>
+          <sample_type>NORMAL</sample_type>
+          <sdwt_prod>A</sdwt_prod>
+          <user_sdwt_prod>EARSAUTO</user_sdwt_prod>
+        </data>
+        """
+        _ensure_target_mapping(
+            sdwt_prod="A",
+            user_sdwt_prod="EARSAUTO",
+            target_user_sdwt_prod="target-a",
+            needtosend_without_comment=True,
+        )
+        _upsert_target(
+            target_user_sdwt_prod="target-a",
+            needtosend_comment_last_at="$SETUP_EQP",
+            needtosend_ignore_sample_type=True,
+            needtosend_enabled=False,
+        )
+
+        row = build_drone_sop_row(html=html, early_inform_map={})
+
         assert row is not None
         self.assertEqual(row["needtosend"], 0)
 
@@ -3395,7 +3540,13 @@ class DroneSopTargetRecipientTests(TestCase):
         self.assertFalse(custom_target["mailEnabled"])
         self.assertEqual(
             custom_target["mappings"],
-            [{"sdwtProd": "SDWT_A", "userSdwtProd": "USER_A"}],
+            [
+                {
+                    "sdwtProd": "SDWT_A",
+                    "userSdwtProd": "USER_A",
+                    "needtosendWithoutComment": False,
+                }
+            ],
         )
         self.assertEqual(
             payload["mappingOptions"]["userSdwtProds"],
@@ -3506,7 +3657,13 @@ class DroneSopTargetRecipientTests(TestCase):
         self.assertEqual(payload["target"]["targetUserSdwtProd"], "CUSTOM_TARGET")
         self.assertEqual(
             payload["target"]["mappings"],
-            [{"sdwtProd": "SDWT_A", "userSdwtProd": "USER_A"}],
+            [
+                {
+                    "sdwtProd": "SDWT_A",
+                    "userSdwtProd": "USER_A",
+                    "needtosendWithoutComment": False,
+                }
+            ],
         )
         self.assertTrue(
             DroneSopTargetMapping.objects.filter(
@@ -3588,7 +3745,13 @@ class DroneSopTargetRecipientTests(TestCase):
         self.assertEqual(payload["deleted"], {"sdwtProd": "sdwt_a", "userSdwtProd": "user_a"})
         self.assertEqual(
             payload["target"]["mappings"],
-            [{"sdwtProd": "SDWT_B", "userSdwtProd": "USER_B"}],
+            [
+                {
+                    "sdwtProd": "SDWT_B",
+                    "userSdwtProd": "USER_B",
+                    "needtosendWithoutComment": False,
+                }
+            ],
         )
         self.assertFalse(
             DroneSopTargetMapping.objects.filter(
@@ -3604,6 +3767,44 @@ class DroneSopTargetRecipientTests(TestCase):
                 target__target_user_sdwt_prod="CUSTOM_TARGET",
             ).exists()
         )
+
+    def test_notification_target_mapping_endpoint_updates_commentless_reservation(self) -> None:
+        """지정 조합 PATCH가 Comment 생략 예약 정책과 응답을 갱신합니다."""
+
+        target = _upsert_target(line_id="L1", target_user_sdwt_prod="CUSTOM_TARGET")
+        DroneSopTargetMapping.objects.create(
+            sdwt_prod="A",
+            user_sdwt_prod="EARSAUTO",
+            target=target,
+        )
+
+        self.client.force_login(self.actor)
+        response = self.client.patch(
+            reverse("line-dashboard-notification-target-mappings"),
+            data=json.dumps(
+                {
+                    "lineId": "L1",
+                    "targetUserSdwtProd": "CUSTOM_TARGET",
+                    "sdwtProd": "A",
+                    "userSdwtProd": "EARSAUTO",
+                    "needtosendWithoutComment": True,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mapping = DroneSopTargetMapping.objects.get(target=target)
+        self.assertTrue(mapping.needtosend_without_comment)
+        self.assertEqual(
+            response.json()["mapping"],
+            {
+                "sdwtProd": "A",
+                "userSdwtProd": "EARSAUTO",
+                "needtosendWithoutComment": True,
+            },
+        )
+        self.assertTrue(response.json()["target"]["mappings"][0]["needtosendWithoutComment"])
 
     def test_notification_target_mapping_endpoint_delete_returns_404_for_missing_mapping(self) -> None:
         """삭제할 지정 조합이 없으면 404를 반환해야 합니다."""

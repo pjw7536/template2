@@ -25,6 +25,7 @@ def create_drone_sop_target_mapping(
     target_user_sdwt_prod: str,
     sdwt_prod: str,
     user_sdwt_prod: str,
+    needtosend_without_comment: bool = False,
     actor: Any | None = None,
 ) -> DroneSopTargetMapping:
     """sdwt_prod/user_sdwt_prod 조합을 target_user_sdwt_prod에 연결합니다.
@@ -34,6 +35,7 @@ def create_drone_sop_target_mapping(
     - target_user_sdwt_prod: 알림 target 식별자
     - sdwt_prod: 설비 분임조 값
     - user_sdwt_prod: 사용자 분임조 값
+    - needtosend_without_comment: Comment 키워드 없이 자동 예약할지 여부
     - actor: 생성 요청 사용자
 
     반환:
@@ -74,10 +76,63 @@ def create_drone_sop_target_mapping(
             return DroneSopTargetMapping.objects.create(
                 sdwt_prod=normalized_sdwt,
                 user_sdwt_prod=normalized_user_sdwt,
+                needtosend_without_comment=needtosend_without_comment,
                 target=target,
             )
         except IntegrityError as exc:
             raise DroneSopTargetMappingDuplicateError("target mapping already exists") from exc
+
+
+def update_drone_sop_target_mapping_reservation_policy(
+    *,
+    line_id: str,
+    target_user_sdwt_prod: str,
+    sdwt_prod: str,
+    user_sdwt_prod: str,
+    needtosend_without_comment: bool,
+) -> DroneSopTargetMapping:
+    """지정 조합의 Comment 생략 자동 예약 정책을 갱신합니다.
+
+    입력:
+    - line_id: target 소유 라인
+    - target_user_sdwt_prod: 알림 target 식별자
+    - sdwt_prod: 설비 분임조 값
+    - user_sdwt_prod: 사용자 분임조 값
+    - needtosend_without_comment: Comment 키워드 없이 자동 예약할지 여부
+
+    반환:
+    - 갱신된 DroneSopTargetMapping
+
+    부작용:
+    - 일치하는 mapping row의 정책을 갱신합니다.
+
+    오류:
+    - DroneSopTargetMappingNotFoundError: 일치하는 지정 조합 없음
+    """
+
+    normalized_line_id = _normalize_required_mapping_value(line_id, "lineId")
+    normalized_target = _normalize_required_mapping_value(target_user_sdwt_prod, "targetUserSdwtProd")
+    normalized_sdwt = _normalize_required_mapping_value(sdwt_prod, "sdwtProd")
+    normalized_user_sdwt = _normalize_required_mapping_value(user_sdwt_prod, "userSdwtProd")
+
+    with transaction.atomic():
+        mapping = (
+            DroneSopTargetMapping.objects.select_for_update()
+            .filter(
+                target__line_id__iexact=normalized_line_id,
+                target__target_user_sdwt_prod__iexact=normalized_target,
+                sdwt_prod__iexact=normalized_sdwt,
+                user_sdwt_prod__iexact=normalized_user_sdwt,
+            )
+            .order_by("id")
+            .first()
+        )
+        if mapping is None:
+            raise DroneSopTargetMappingNotFoundError("target mapping not found")
+        if mapping.needtosend_without_comment != needtosend_without_comment:
+            mapping.needtosend_without_comment = needtosend_without_comment
+            mapping.save(update_fields=["needtosend_without_comment", "updated_at"])
+        return mapping
 
 
 def delete_drone_sop_target_mapping(
@@ -130,4 +185,5 @@ __all__ = [
     "DroneSopTargetMappingNotFoundError",
     "create_drone_sop_target_mapping",
     "delete_drone_sop_target_mapping",
+    "update_drone_sop_target_mapping_reservation_policy",
 ]

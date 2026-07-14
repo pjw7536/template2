@@ -554,6 +554,7 @@ class DroneSopTargetMapping(models.Model):
 
     sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
     user_sdwt_prod = models.CharField(max_length=64, null=True, blank=True)
+    needtosend_without_comment = models.BooleanField(default=False)
     target = models.ForeignKey(
         DroneSopTarget,
         on_delete=models.CASCADE,

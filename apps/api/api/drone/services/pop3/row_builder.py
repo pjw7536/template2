@@ -15,7 +15,7 @@ from ...models import build_sop_key
 from ..shared.notify_resolver import (
     UserSdwtProdMapIndex,
     load_user_sdwt_prod_map_index,
-    resolve_target_user_sdwt_prods,
+    resolve_target_resolutions,
 )
 from ..shared.user_sdwt_overrides import resolve_comment_user_sdwt_override
 from .config import NeedToSendRule
@@ -274,7 +274,8 @@ def build_drone_sop_row(
     if needtosend_rule_cache is None:
         needtosend_rule_cache = {}
 
-    target_user_sdwt_prods = resolve_target_user_sdwt_prods(row=row, index=user_sdwt_map_index)
+    target_resolutions = resolve_target_resolutions(row=row, index=user_sdwt_map_index)
+    target_user_sdwt_prods = [resolution.target_user_sdwt_prod for resolution in target_resolutions]
     target_user_sdwt_prod = target_user_sdwt_prods[0] if target_user_sdwt_prods else None
     row["target_user_sdwt_prods"] = target_user_sdwt_prods
     row["target_user_sdwt_prod"] = target_user_sdwt_prod
@@ -282,11 +283,12 @@ def build_drone_sop_row(
         any(
             _compute_needtosend_by_target(
                 row=row,
-                target_user_sdwt_prod=target,
+                target_user_sdwt_prod=resolution.target_user_sdwt_prod,
                 rule_cache=needtosend_rule_cache,
+                needtosend_without_comment=resolution.needtosend_without_comment,
             )
             == 1
-            for target in target_user_sdwt_prods
+            for resolution in target_resolutions
         )
     )
     return row

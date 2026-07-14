@@ -34,4 +34,5 @@ export {
   fetchNotificationRecipients,
   fetchNotificationTargets,
   updateNotificationRecipients,
+  updateNotificationTargetMapping,
 } from "./notificationRecipients"

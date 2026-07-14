@@ -5,6 +5,7 @@ import { AlertCircleIcon, BadgeCheckIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -12,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 function resolveSelectedOptionValue(values, selectedValue) {
   const normalizedSelectedValue = String(selectedValue || "").trim()
@@ -312,12 +314,15 @@ function TargetMappingSummary({
   error,
   isSaving,
   deletingMappingKey,
+  savingMappingKey,
   canManage,
+  isAutomaticReservationEnabled,
   onDraftChange,
   onMappingUserLineChange,
   onMappingSdwtLineChange,
   onSubmit,
   onDeleteMapping,
+  onMappingPolicyChange,
 }) {
   if (!target) {
     return (
@@ -438,6 +443,9 @@ function TargetMappingSummary({
       <div className="mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
         {mappings.length > 0 ? (
           mappings.map((mapping) => {
+            const hasCompleteMapping = Boolean(
+              String(mapping.sdwtProd || "").trim() && String(mapping.userSdwtProd || "").trim(),
+            )
             const sdwtProd = mapping.sdwtProd || "-"
             const userSdwtProd = mapping.userSdwtProd || "-"
             const sdwtProdLineLabel = getMappingValueLineLabel(mappingValueLineLabels, sdwtProd)
@@ -446,12 +454,16 @@ function TargetMappingSummary({
             const userSdwtProdLabel = formatMappingValueWithLine(userSdwtProdLineLabel, userSdwtProd)
             const mappingKey = `${userSdwtProd.trim().toLowerCase()}::${sdwtProd.trim().toLowerCase()}`
             const isDeleting = deletingMappingKey === mappingKey
-            const isDeleteDisabled = !canManage || isSaving || isDeleting
+            const isMappingSaving = savingMappingKey === mappingKey
+            const hasMappingMutation = Boolean(deletingMappingKey || savingMappingKey)
+            const isPolicyDisabled = !canManage || isSaving || hasMappingMutation
+            const isDeleteDisabled = !canManage || isSaving || isDeleting || Boolean(savingMappingKey)
             return (
               <Badge
                 key={`${sdwtProd}-${userSdwtProd}`}
                 variant="outline"
                 className="group grid max-w-full grid-cols-[minmax(5.5rem,9rem)_4.5rem_auto_minmax(5.5rem,9rem)_auto_auto] items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 text-[11px] shadow-sm transition-colors hover:bg-accent/50"
+                aria-busy={isMappingSaving}
               >
                 <span className="min-w-0 truncate text-center font-mono font-semibold text-foreground" title={userSdwtProdLabel}>
                   {userSdwtProdLabel}
@@ -464,16 +476,36 @@ function TargetMappingSummary({
                   {sdwtProdLabel}
                 </span>
                 <span className="shrink-0 text-muted-foreground">설비로 보낸 E-SOP</span>
-                <button
-                  type="button"
-                  disabled={isDeleteDisabled}
-                  onClick={() => onDeleteMapping(mapping)}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-                  aria-label={`${userSdwtProd} - ${sdwtProd} 지정 조합 삭제`}
-                  title="지정 조합 삭제"
-                >
-                  <IconTrash className="size-3.5" aria-hidden="true" />
-                </button>
+                <span className="flex shrink-0 items-center gap-2">
+                  {hasCompleteMapping ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Checkbox
+                          checked={Boolean(mapping.needtosendWithoutComment)}
+                          disabled={isPolicyDisabled}
+                          onCheckedChange={(checked) => onMappingPolicyChange(mapping, checked === true)}
+                          aria-label={`${userSdwtProd} 분임조원에서 ${sdwtProd} 설비로 보낸 E-SOP을 코멘트 없이 자동 예약`}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-72">
+                        이 조합으로 들어온 E-SOP을 Comment 키워드 없이 자동 예약합니다.
+                        {!isAutomaticReservationEnabled
+                          ? " 전체 자동 예약이 꺼져 있어 현재는 설정만 저장됩니다."
+                          : ""}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={isDeleteDisabled}
+                    onClick={() => onDeleteMapping(mapping)}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                    aria-label={`${userSdwtProd} - ${sdwtProd} 지정 조합 삭제`}
+                    title="지정 조합 삭제"
+                  >
+                    <IconTrash className="size-3.5" aria-hidden="true" />
+                  </button>
+                </span>
               </Badge>
             )
           })
@@ -495,6 +527,7 @@ export function NotificationTargetCard({
   isCreatingTarget,
   isCreatingMapping,
   deletingMappingKey,
+  savingMappingKey,
   targetFormError,
   mappingFormError,
   mappingDraft,
@@ -509,6 +542,7 @@ export function NotificationTargetCard({
   userSdwtValues,
   selectedUserSdwtProd,
   selectedNotificationTarget,
+  isAutomaticReservationEnabled,
   onTargetDraftChange,
   onMappingDraftChange,
   onMappingUserLineChange,
@@ -516,6 +550,7 @@ export function NotificationTargetCard({
   onCreateTarget,
   onCreateTargetMapping,
   onDeleteTargetMapping,
+  onMappingPolicyChange,
   onSelectTarget,
 }) {
   return (
@@ -600,12 +635,15 @@ export function NotificationTargetCard({
             error={mappingFormError}
             isSaving={isCreatingMapping}
             deletingMappingKey={deletingMappingKey}
+            savingMappingKey={savingMappingKey}
             canManage={canManageMappings}
+            isAutomaticReservationEnabled={isAutomaticReservationEnabled}
             onDraftChange={onMappingDraftChange}
             onMappingUserLineChange={onMappingUserLineChange}
             onMappingSdwtLineChange={onMappingSdwtLineChange}
             onSubmit={onCreateTargetMapping}
             onDeleteMapping={onDeleteTargetMapping}
+            onMappingPolicyChange={onMappingPolicyChange}
           />
         </div>
       </div>

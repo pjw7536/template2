@@ -15,6 +15,7 @@ import {
   fetchLineSettings,
   updateLineSetting,
   updateNotificationRecipients,
+  updateNotificationTargetMapping,
   updateUserSdwtJiraKey,
 } from "../api"
 import { timeFormatter } from "../utils/formatters"
@@ -601,6 +602,36 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
     [lineId],
   )
 
+  const updateTargetMappingPolicy = React.useCallback(
+    async ({ targetUserSdwtProd, sdwtProd, userSdwtProd: sourceUserSdwtProd, needtosendWithoutComment }) => {
+      if (!lineId) {
+        throw new Error("Select a line to update target mapping")
+      }
+      if (!targetUserSdwtProd) {
+        throw new Error("Select a notification target to update mapping")
+      }
+      const { target } = await updateNotificationTargetMapping({
+        lineId,
+        targetUserSdwtProd,
+        sdwtProd,
+        userSdwtProd: sourceUserSdwtProd,
+        needtosendWithoutComment,
+      })
+      if (target) {
+        setNotificationTargets((prev) => {
+          const key = target.targetUserSdwtProd.toLowerCase()
+          const currentTargets = Array.isArray(prev) ? prev : []
+          return currentTargets.map((item) => (
+            item.targetUserSdwtProd.toLowerCase() === key ? target : item
+          ))
+        })
+        setLastUpdatedLabel(nowLabel())
+      }
+      return target
+    },
+    [lineId],
+  )
+
   const updateMessengerRecipients = React.useCallback(
     ({ userIds, externalKnoxIds }) =>
       updateRecipients({ channel: "messenger", userIds, externalKnoxIds }),
@@ -643,6 +674,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
     createTarget,
     createTargetMapping,
     deleteTargetMapping,
+    updateTargetMappingPolicy,
     updateMailRecipients,
     updateMessengerRecipients,
   }

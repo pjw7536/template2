@@ -80,7 +80,11 @@ function normalizeTargetMappings(values) {
       const sdwtProd = typeof mapping.sdwtProd === "string" ? mapping.sdwtProd.trim() : ""
       const userSdwtProd = typeof mapping.userSdwtProd === "string" ? mapping.userSdwtProd.trim() : ""
       if (!sdwtProd && !userSdwtProd) return null
-      return { sdwtProd, userSdwtProd }
+      return {
+        sdwtProd,
+        userSdwtProd,
+        needtosendWithoutComment: Boolean(mapping.needtosendWithoutComment),
+      }
     })
     .filter(Boolean)
 }
@@ -267,6 +271,42 @@ export async function deleteNotificationTargetMapping({
     lineId: payload?.lineId || lineId,
     target: normalizeTarget(payload?.target, payload?.lineId || lineId),
     deleted: normalizeTargetMappings([payload?.deleted])[0] || null,
+  }
+}
+
+export async function updateNotificationTargetMapping({
+  lineId,
+  targetUserSdwtProd,
+  sdwtProd,
+  userSdwtProd,
+  needtosendWithoutComment,
+}) {
+  const response = await fetch(buildBackendUrl(NOTIFICATION_TARGET_MAPPINGS_PATH), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      lineId,
+      targetUserSdwtProd,
+      sdwtProd,
+      userSdwtProd,
+      needtosendWithoutComment: Boolean(needtosendWithoutComment),
+    }),
+  })
+  const payload = await safeParseJson(response)
+
+  if (!response.ok) {
+    throw buildApiError(
+      response,
+      payload,
+      `Failed to update target mapping (status ${response.status})`,
+    )
+  }
+
+  return {
+    lineId: payload?.lineId || lineId,
+    target: normalizeTarget(payload?.target, payload?.lineId || lineId),
+    mapping: normalizeTargetMappings([payload?.mapping])[0] || null,
   }
 }
 

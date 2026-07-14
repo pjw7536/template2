@@ -71,6 +71,7 @@ def compute_needtosend_by_target(
     row: dict[str, Any],
     target_user_sdwt_prod: str | None,
     rule_cache: dict[str, NeedToSendRule | None],
+    needtosend_without_comment: bool = False,
 ) -> int:
     """target_user_sdwt_prod 기준으로 needtosend 값을 계산합니다.
 
@@ -78,6 +79,7 @@ def compute_needtosend_by_target(
         row: Drone SOP 행 dict(행 데이터).
         target_user_sdwt_prod: 매핑된 대상 소속(없으면 None).
         rule_cache: 규칙 캐시(dict).
+        needtosend_without_comment: 매칭된 지정 조합의 Comment 생략 예약 여부.
 
     반환:
         needtosend 값(0/1).
@@ -100,7 +102,10 @@ def compute_needtosend_by_target(
     # -------------------------------------------------------------------------
     rule = get_needtosend_rule_for_target(target_user_sdwt_prod=normalized, cache=rule_cache)
     if rule:
-        return rule.compute(row)
+        return rule.compute(
+            row,
+            needtosend_without_comment=needtosend_without_comment,
+        )
     return 0
 
 

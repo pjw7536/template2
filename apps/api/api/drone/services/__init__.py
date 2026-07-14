@@ -59,6 +59,7 @@ from .channels import (
     replace_drone_sop_channel_recipients,
     seed_drone_sop_notification_defaults_from_rows,
     update_drone_sop_target_admin_row,
+    update_drone_sop_target_mapping_reservation_policy,
     upsert_drone_sop_user_sdwt_channel,
 )
 from .pop3.config import DroneSopPop3Config, DroneSopPop3IngestResult, NeedToSendRule
@@ -118,6 +119,7 @@ __all__ = [
     "seed_legacy_delivery_rows",
     "seed_drone_sop_notification_defaults_from_rows",
     "update_drone_sop_target_admin_row",
+    "update_drone_sop_target_mapping_reservation_policy",
     "upsert_drone_sop_user_sdwt_channel",
     "update_early_inform_entry",
     "update_table_record",

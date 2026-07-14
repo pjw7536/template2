@@ -172,15 +172,18 @@ def list_drone_sop_user_sdwt_maps() -> list[dict[str, Any]]:
     # -----------------------------------------------------------------------------
     # 1) 매핑 규칙 조회
     # -----------------------------------------------------------------------------
-    rows = (
-        DroneSopTargetMapping.objects.values("sdwt_prod", "user_sdwt_prod", "target__target_user_sdwt_prod")
-        .order_by("id")
-    )
+    rows = DroneSopTargetMapping.objects.values(
+        "sdwt_prod",
+        "user_sdwt_prod",
+        "target__target_user_sdwt_prod",
+        "needtosend_without_comment",
+    ).order_by("id")
     return [
         {
             "sdwt_prod": row.get("sdwt_prod"),
             "user_sdwt_prod": row.get("user_sdwt_prod"),
             "target_user_sdwt_prod": row.get("target__target_user_sdwt_prod"),
+            "needtosend_without_comment": bool(row.get("needtosend_without_comment")),
         }
         for row in rows
     ]
@@ -218,8 +221,6 @@ def get_drone_sop_needtosend_rule_by_target(
             target__target_user_sdwt_prod__iexact=normalized,
             enabled=True,
         )
-        .exclude(comment_keyword__isnull=True)
-        .exclude(comment_keyword__exact="")
         .order_by("id")
         .first()
     )
@@ -930,6 +931,7 @@ def list_drone_sop_notification_targets_for_line(*, line_id: str) -> list[dict[s
                 {
                     "sdwtProd": normalize_text(mapping.sdwt_prod),
                     "userSdwtProd": normalize_text(mapping.user_sdwt_prod),
+                    "needtosendWithoutComment": bool(mapping.needtosend_without_comment),
                 }
             )
 

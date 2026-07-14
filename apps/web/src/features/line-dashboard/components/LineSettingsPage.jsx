@@ -36,6 +36,7 @@ import {
   showDeleteToast,
   showJiraKeyToast,
   showNeedToSendRuleApplyToast,
+  showNeedToSendMappingApplyToast,
   showNeedToSendRuleToast,
   showRecipientCandidatesToast,
   showRecipientsSaveToast,
@@ -198,6 +199,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
     createTarget,
     createTargetMapping,
     deleteTargetMapping,
+    updateTargetMappingPolicy,
     updateMailRecipients,
     updateMessengerRecipients,
   } = useLineSettings({
@@ -235,6 +237,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
   const [isSavingJiraKey, setIsSavingJiraKey] = React.useState(false)
   const [needToSendRuleFormError, setNeedToSendRuleFormError] = React.useState(null)
   const [isSavingNeedToSendRule, setIsSavingNeedToSendRule] = React.useState(false)
+  const [savingNeedToSendMappingKey, setSavingNeedToSendMappingKey] = React.useState("")
   const [isSavingMessengerForceNewChatroom, setIsSavingMessengerForceNewChatroom] = React.useState(false)
   const [recipientDrafts, setRecipientDrafts] = React.useState({ mail: [], messenger: [] })
   const [recipientDraftTargets, setRecipientDraftTargets] = React.useState({ mail: "", messenger: "" })
@@ -725,6 +728,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
     setNeedToSendRuleFormError(null)
     setIsSavingJiraKey(false)
     setIsSavingNeedToSendRule(false)
+    setSavingNeedToSendMappingKey("")
   }, [channelEnabled, jiraKey, lineId, needToSendRule, selectedUserSdwtProd, templateKeys])
 
   React.useEffect(() => {
@@ -1188,11 +1192,6 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
       enabled: key === "enabled" ? Boolean(value) : Boolean(needToSendRuleDraft.enabled),
       ignoreSampleType: key === "ignoreSampleType" ? Boolean(value) : Boolean(needToSendRuleDraft.ignoreSampleType),
     }
-    if (nextRule.enabled && !normalizedKeyword) {
-      setNeedToSendRuleFormError("자동 예약을 활성화하려면 포함 키워드를 입력하세요.")
-      return
-    }
-
     setNeedToSendRuleDraft(nextRule)
     setIsSavingNeedToSendRule(true)
     setNeedToSendRuleFormError(null)
@@ -1232,11 +1231,6 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
         setNeedToSendRuleFormError(`포함 키워드는 ${MAX_NEED_TO_SEND_KEYWORD_LENGTH}자 이하여야 합니다.`)
         return
       }
-      if (needToSendRuleDraft.enabled && !normalizedKeyword) {
-        setNeedToSendRuleFormError("자동 예약을 활성화하려면 포함 키워드를 입력하세요.")
-        return
-      }
-
       const nextRule = {
         commentKeyword: normalizedKeyword,
         enabled: Boolean(needToSendRuleDraft.enabled),
@@ -1257,8 +1251,54 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
         setIsSavingNeedToSendRule(false)
       }
     },
-    [canManageChannelSettings, needToSendRuleDraft, selectedUserSdwtProd, updateNeedToSendRule],
+    [
+      canManageChannelSettings,
+      needToSendRuleDraft,
+      selectedUserSdwtProd,
+      updateNeedToSendRule,
+    ],
   )
+
+  const handleNeedToSendMappingPolicyChange = React.useCallback(async (mapping, nextValue) => {
+    if (!selectedUserSdwtProd) {
+      setMappingFormError("알림 Target을 선택하세요.")
+      return
+    }
+    if (!canManageMappings) {
+      setMappingFormError("지정 조합의 자동 예약 설정 변경 권한이 없습니다.")
+      return
+    }
+
+    const mappingKey = buildTargetMappingKey(mapping)
+    setSavingNeedToSendMappingKey(mappingKey)
+    setMappingFormError(null)
+    try {
+      await updateTargetMappingPolicy({
+        targetUserSdwtProd: selectedUserSdwtProd,
+        sdwtProd: mapping.sdwtProd,
+        userSdwtProd: mapping.userSdwtProd,
+        needtosendWithoutComment: nextValue,
+      })
+      showNeedToSendMappingApplyToast(
+        mapping.userSdwtProd,
+        mapping.sdwtProd,
+        nextValue,
+        Boolean(needToSendRule.enabled),
+      )
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error ? requestError.message : "Failed to update target mapping"
+      setMappingFormError(message)
+      showRequestErrorToast(message)
+    } finally {
+      setSavingNeedToSendMappingKey("")
+    }
+  }, [
+    canManageMappings,
+    needToSendRule.enabled,
+    selectedUserSdwtProd,
+    updateTargetMappingPolicy,
+  ])
 
   const handleRecipientSearch = React.useCallback(
     async (channel, event) => {
@@ -1678,6 +1718,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
       isCreatingTarget={isCreatingTarget}
       isCreatingMapping={isCreatingMapping}
       deletingMappingKey={deletingMappingKey}
+      savingMappingKey={savingNeedToSendMappingKey}
       targetFormError={targetFormError}
       mappingFormError={mappingFormError}
       mappingDraft={mappingDraft}
@@ -1692,6 +1733,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
       userSdwtValues={userSdwtValues}
       selectedUserSdwtProd={selectedUserSdwtProd}
       selectedNotificationTarget={selectedNotificationTarget}
+      isAutomaticReservationEnabled={Boolean(needToSendRule.enabled)}
       onTargetDraftChange={setNewTargetDraft}
       onMappingDraftChange={handleMappingDraftChange}
       onMappingUserLineChange={handleMappingUserLineChange}
@@ -1699,6 +1741,7 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
       onCreateTarget={handleCreateTarget}
       onCreateTargetMapping={handleCreateTargetMapping}
       onDeleteTargetMapping={handleDeleteTargetMapping}
+      onMappingPolicyChange={handleNeedToSendMappingPolicyChange}
       onSelectTarget={handleSelectNotificationTarget}
     />
   )

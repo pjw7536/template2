@@ -70,6 +70,22 @@ export function showNeedToSendRuleApplyToast(ruleKey, isEnabled) {
   })
 }
 
+export function showNeedToSendMappingApplyToast(
+  userSdwtProd,
+  sdwtProd,
+  isEnabled,
+  isAutomaticReservationEnabled,
+) {
+  const isWaitingForGlobalEnable = isEnabled && !isAutomaticReservationEnabled
+  toast.success(isWaitingForGlobalEnable ? "설정 저장 완료" : "적용 완료", {
+    description: isWaitingForGlobalEnable
+      ? `${userSdwtProd} → ${sdwtProd} 지정 조합이 저장되었습니다. 전체 자동 예약을 활성화하면 적용됩니다.`
+      : `${userSdwtProd} → ${sdwtProd} 지정 조합의 코멘트 없는 자동 예약이 ${isEnabled ? "활성화" : "비활성화"}되었습니다.`,
+    icon: <IconDeviceFloppy className="h-5 w-5 text-[var(--normal-text)]" />,
+    ...buildToastOptions({ intent: "success" }),
+  })
+}
+
 export function showDeleteToast() {
   toast.warning("삭제 완료", {
     description: "설정이 제거되었습니다.",

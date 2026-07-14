@@ -1025,7 +1025,7 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneNotificationTargetMappingView(DroneAuthenticatedView):
-    """라인별 Drone SOP 알림 target 지정 조합 생성/삭제 엔드포인트입니다."""
+    """라인별 Drone SOP 알림 target 지정 조합 생성/수정/삭제 엔드포인트입니다."""
 
     @staticmethod
     def _find_response_target(*, line_id: str, target_user_sdwt_prod: str) -> dict[str, object]:
@@ -1070,6 +1070,7 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
         target_user_sdwt_prod = normalize_target_text(payload.get("targetUserSdwtProd"))
         sdwt_prod = normalize_target_text(payload.get("sdwtProd"))
         user_sdwt_prod = normalize_target_text(payload.get("userSdwtProd"))
+        raw_needtosend_without_comment = payload.get("needtosendWithoutComment", False)
         if not line_id:
             return JsonResponse({"error": "lineId is required"}, status=400)
         if not target_user_sdwt_prod:
@@ -1078,6 +1079,8 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
             return JsonResponse({"error": "sdwtProd is required"}, status=400)
         if not user_sdwt_prod:
             return JsonResponse({"error": "userSdwtProd is required"}, status=400)
+        if not isinstance(raw_needtosend_without_comment, bool):
+            return JsonResponse({"error": "needtosendWithoutComment must be bool"}, status=400)
 
         try:
             mapping = services.create_drone_sop_target_mapping(
@@ -1085,6 +1088,7 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
                 target_user_sdwt_prod=target_user_sdwt_prod,
                 sdwt_prod=sdwt_prod,
                 user_sdwt_prod=user_sdwt_prod,
+                needtosend_without_comment=raw_needtosend_without_comment,
                 actor=request.user,
             )
         except services.DroneSopTargetMappingDuplicateError as exc:
@@ -1103,6 +1107,70 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
                 "mapping": {
                     "sdwtProd": mapping.sdwt_prod or "",
                     "userSdwtProd": mapping.user_sdwt_prod or "",
+                    "needtosendWithoutComment": bool(mapping.needtosend_without_comment),
+                },
+            }
+        )
+
+    def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """지정 조합의 Comment 생략 자동 예약 정책을 갱신합니다.
+
+        예시 요청:
+        - PATCH /api/v1/line-dashboard/notification-target-mappings
+          {"lineId":"L1","targetUserSdwtProd":"TARGET_A","sdwtProd":"A","userSdwtProd":"EARSAUTO","needtosendWithoutComment":true}
+        """
+
+        auth_response = self._authorize_user(request)
+        if auth_response is not None:
+            return auth_response
+        if not selectors.user_can_manage_drone_sop_recipients(user=request.user):
+            return JsonResponse({"error": "forbidden"}, status=403)
+
+        payload, error_response = _parse_json_body_or_error(request)
+        if error_response is not None:
+            return error_response
+
+        line_id = normalize_line_id(payload.get("lineId"))
+        target_user_sdwt_prod = normalize_target_text(payload.get("targetUserSdwtProd"))
+        sdwt_prod = normalize_target_text(payload.get("sdwtProd"))
+        user_sdwt_prod = normalize_target_text(payload.get("userSdwtProd"))
+        needtosend_without_comment = payload.get("needtosendWithoutComment")
+        if not line_id:
+            return JsonResponse({"error": "lineId is required"}, status=400)
+        if not target_user_sdwt_prod:
+            return JsonResponse({"error": "targetUserSdwtProd is required"}, status=400)
+        if not sdwt_prod:
+            return JsonResponse({"error": "sdwtProd is required"}, status=400)
+        if not user_sdwt_prod:
+            return JsonResponse({"error": "userSdwtProd is required"}, status=400)
+        if not isinstance(needtosend_without_comment, bool):
+            return JsonResponse({"error": "needtosendWithoutComment must be bool"}, status=400)
+
+        try:
+            mapping = services.update_drone_sop_target_mapping_reservation_policy(
+                line_id=line_id,
+                target_user_sdwt_prod=target_user_sdwt_prod,
+                sdwt_prod=sdwt_prod,
+                user_sdwt_prod=user_sdwt_prod,
+                needtosend_without_comment=needtosend_without_comment,
+            )
+        except services.DroneSopTargetMappingNotFoundError as exc:
+            return JsonResponse({"error": str(exc)}, status=404)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+
+        target = self._find_response_target(
+            line_id=line_id,
+            target_user_sdwt_prod=target_user_sdwt_prod,
+        )
+        return JsonResponse(
+            {
+                "lineId": line_id,
+                "target": target,
+                "mapping": {
+                    "sdwtProd": mapping.sdwt_prod or "",
+                    "userSdwtProd": mapping.user_sdwt_prod or "",
+                    "needtosendWithoutComment": bool(mapping.needtosend_without_comment),
                 },
             }
         )

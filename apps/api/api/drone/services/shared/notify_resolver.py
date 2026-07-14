@@ -55,36 +55,52 @@ def _normalize_user_sdwt_lookup_key(value: Any) -> str | None:
 
 
 @dataclass(frozen=True)
+class TargetResolution:
+    """매칭된 target과 지정 조합의 자동 예약 정책을 보관합니다."""
+
+    target_user_sdwt_prod: str
+    needtosend_without_comment: bool = False
+
+
+@dataclass(frozen=True)
 class UserSdwtProdMapIndex:
     """사용자 소속 매핑 인덱스."""
 
-    pair_map: dict[tuple[str, str], list[str]]
-    sdwt_only_map: dict[str, list[str]]
-    user_only_map: dict[str, list[str]]
+    pair_map: dict[tuple[str, str], list[TargetResolution]]
+    sdwt_only_map: dict[str, list[TargetResolution]]
+    user_only_map: dict[str, list[TargetResolution]]
 
 
-def _append_unique_target(*, target_list: list[str], target: str) -> None:
+def _append_unique_target(*, target_list: list[TargetResolution], target: TargetResolution) -> None:
     """target 목록에 대소문자 비구분 중복 없이 값을 추가합니다."""
 
-    target_key = _normalize_user_sdwt_lookup_key(target)
+    target_key = _normalize_user_sdwt_lookup_key(target.target_user_sdwt_prod)
     if not target_key:
         return
-    if any(_normalize_user_sdwt_lookup_key(existing) == target_key for existing in target_list):
+    if any(
+        _normalize_user_sdwt_lookup_key(existing.target_user_sdwt_prod) == target_key
+        for existing in target_list
+    ):
         return
     target_list.append(target)
 
 
-def _append_index_target(*, index_map: dict[Any, list[str]], key: Any, target: str) -> None:
+def _append_index_target(
+    *,
+    index_map: dict[Any, list[TargetResolution]],
+    key: Any,
+    target: TargetResolution,
+) -> None:
     """매핑 인덱스에 target 값을 누적합니다."""
 
     values = index_map.setdefault(key, [])
     _append_unique_target(target_list=values, target=target)
 
 
-def _merge_unique_targets(*target_groups: list[str]) -> list[str]:
+def _merge_unique_targets(*target_groups: list[TargetResolution]) -> list[TargetResolution]:
     """여러 target 목록을 순서 유지 + 중복 제거 방식으로 병합합니다."""
 
-    merged: list[str] = []
+    merged: list[TargetResolution] = []
     for group in target_groups:
         for target in group:
             _append_unique_target(target_list=merged, target=target)
@@ -105,9 +121,9 @@ def load_user_sdwt_prod_map_index() -> UserSdwtProdMapIndex:
     # 1) 매핑 규칙 로딩
     # -----------------------------------------------------------------------------
     rows = selectors.list_drone_sop_user_sdwt_maps()
-    pair_map: dict[tuple[str, str], list[str]] = {}
-    sdwt_only_map: dict[str, list[str]] = {}
-    user_only_map: dict[str, list[str]] = {}
+    pair_map: dict[tuple[str, str], list[TargetResolution]] = {}
+    sdwt_only_map: dict[str, list[TargetResolution]] = {}
+    user_only_map: dict[str, list[TargetResolution]] = {}
 
     # -----------------------------------------------------------------------------
     # 2) 규칙 정규화 및 인덱싱
@@ -118,18 +134,22 @@ def load_user_sdwt_prod_map_index() -> UserSdwtProdMapIndex:
         target = _normalize_user_sdwt_value(row.get("target_user_sdwt_prod"))
         if not target:
             continue
+        resolution = TargetResolution(
+            target_user_sdwt_prod=target,
+            needtosend_without_comment=bool(row.get("needtosend_without_comment")),
+        )
         sdwt_lookup = _normalize_user_sdwt_lookup_key(sdwt)
         user_lookup = _normalize_user_sdwt_lookup_key(user)
         if sdwt and user:
             assert sdwt_lookup is not None
             assert user_lookup is not None
-            _append_index_target(index_map=pair_map, key=(sdwt_lookup, user_lookup), target=target)
+            _append_index_target(index_map=pair_map, key=(sdwt_lookup, user_lookup), target=resolution)
         elif sdwt and not user:
             assert sdwt_lookup is not None
-            _append_index_target(index_map=sdwt_only_map, key=sdwt_lookup, target=target)
+            _append_index_target(index_map=sdwt_only_map, key=sdwt_lookup, target=resolution)
         elif user and not sdwt:
             assert user_lookup is not None
-            _append_index_target(index_map=user_only_map, key=user_lookup, target=target)
+            _append_index_target(index_map=user_only_map, key=user_lookup, target=resolution)
 
     return UserSdwtProdMapIndex(
         pair_map=pair_map,
@@ -138,19 +158,19 @@ def load_user_sdwt_prod_map_index() -> UserSdwtProdMapIndex:
     )
 
 
-def resolve_target_user_sdwt_prods(
+def resolve_target_resolutions(
     *,
     row: dict[str, Any],
     index: UserSdwtProdMapIndex,
-) -> list[str]:
-    """단일 row에 대한 target_user_sdwt_prod 목록을 해석합니다.
+) -> list[TargetResolution]:
+    """단일 row에 대한 target과 지정 조합 정책을 해석합니다.
 
     인자:
         row: Drone SOP 행 dict.
         index: 매핑 인덱스.
 
     반환:
-        우선순위가 가장 높은 매핑 tier의 target_user_sdwt_prod 목록.
+        우선순위가 가장 높은 매핑 tier의 target 해석 결과 목록.
 
     부작용:
         없음. 순수 해석입니다.
@@ -166,7 +186,7 @@ def resolve_target_user_sdwt_prods(
     # -----------------------------------------------------------------------------
     # 2) 우선순위 매칭
     # -----------------------------------------------------------------------------
-    mapped_targets: list[str] = []
+    mapped_targets: list[TargetResolution] = []
     if sdwt and user:
         mapped_targets = _merge_unique_targets(index.pair_map.get((sdwt, user), []))
         if mapped_targets:
@@ -184,5 +204,18 @@ def resolve_target_user_sdwt_prods(
     # 3) 신규 매핑이 없으면 기존 저장 target을 호환값으로 사용
     # -----------------------------------------------------------------------------
     if persisted_target:
-        return [persisted_target]
+        return [TargetResolution(target_user_sdwt_prod=persisted_target)]
     return []
+
+
+def resolve_target_user_sdwt_prods(
+    *,
+    row: dict[str, Any],
+    index: UserSdwtProdMapIndex,
+) -> list[str]:
+    """단일 row의 target 이름 목록을 기존 public 계약으로 반환합니다."""
+
+    return [
+        resolution.target_user_sdwt_prod
+        for resolution in resolve_target_resolutions(row=row, index=index)
+    ]
