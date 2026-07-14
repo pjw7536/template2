@@ -1371,6 +1371,7 @@ def _build_l3_spider_event_url(base_url: str, event: dict[str, object]) -> str:
 
     query_fields = [
         ("date", "date"),
+        ("lineName", "line_name"),
         ("lineId", "line_id"),
         ("processId", "process_id"),
         ("edsStep", "eds_step"),

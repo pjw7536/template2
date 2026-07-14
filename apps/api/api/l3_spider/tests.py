@@ -1594,6 +1594,7 @@ class L3SpiderMailRuleTests(TestCase):
         )
         html_content = mock_send.call_args.kwargs["html_content"]
         self.assertIn(f"date={today}", html_content)
+        self.assertIn("lineName=L1", html_content)
         self.assertIn("lineId=L1", html_content)
         self.assertIn("processId=P1", html_content)
         self.assertIn("edsStep=EDS_M", html_content)

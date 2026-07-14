@@ -66,6 +66,9 @@ function firstValueFromSearchParams(searchParams, names) {
 export function createSelectionFromSearchParams(searchParams) {
   return {
     date: firstValueFromSearchParams(searchParams, ["date"]),
+    lineNames: new Set(
+      valuesFromSearchParams(searchParams, ["lineName", "lineNames", "line_name", "line_names"]),
+    ),
     lineIds: new Set(
       valuesFromSearchParams(searchParams, ["lineId", "lineIds", "line_id", "line_ids"]),
     ),

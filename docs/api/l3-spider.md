@@ -134,7 +134,7 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 }
 ```
 
-`read` 권한자는 rule 전체 설정을 볼 수 있고, `write` 권한자는 rule 조건/수신자/발송 시각/활성 여부를 수정할 수 있습니다. 권한 관리와 삭제는 owner만 가능합니다. 테스트 발송은 write 권한자만 실행할 수 있으며 스케줄 due 여부, `L3SpiderMailDelivery`, `lastSentAt`, `lastCheckedAt`을 갱신하지 않습니다. 메일 본문에는 `L3_SPIDER_MAIL_TARGET_URL` 또는 `FRONTEND_BASE_URL + /l3_spider` 기준의 L3 Spider 이동 링크가 포함됩니다. 이벤트별 링크에는 `date`, `lineId`, `processId`, `edsStep`, `stepSeq`, `ppid`, `eqpch`, `binName` query param이 붙으며, Web 화면은 해당 값을 읽어 조건을 자동 선택합니다.
+`read` 권한자는 rule 전체 설정을 볼 수 있고, `write` 권한자는 rule 조건/수신자/발송 시각/활성 여부를 수정할 수 있습니다. 권한 관리와 삭제는 owner만 가능합니다. 테스트 발송은 write 권한자만 실행할 수 있으며 스케줄 due 여부, `L3SpiderMailDelivery`, `lastSentAt`, `lastCheckedAt`을 갱신하지 않습니다. 메일 본문에는 `L3_SPIDER_MAIL_TARGET_URL` 또는 `FRONTEND_BASE_URL + /l3_spider` 기준의 L3 Spider 이동 링크가 포함됩니다. 이벤트별 링크에는 `date`, `lineName`, `lineId`, `processId`, `edsStep`, `stepSeq`, `ppid`, `eqpch`, `binName` query param이 붙으며, Web 화면은 해당 값을 읽어 조건을 자동 선택합니다.
 
 ## line_name 규칙표 (`public.l3_spider_line_name_rule`)
 
