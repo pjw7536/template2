@@ -8,6 +8,7 @@ export const EMPTY_META = {
   edsSteps: [],
   availability: {},
   lineGroups: [],
+  canUseDeveloperOptions: false,
 }
 
 export const EMPTY_STATS = {

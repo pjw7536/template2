@@ -241,7 +241,7 @@ export function L3SpiderPage() {
         )}
         headerExtra={(
           <>
-            <L3SpiderDeveloperSheet />
+            {meta.canUseDeveloperOptions ? <L3SpiderDeveloperSheet /> : null}
             <L3SpiderMailRuleSheet />
             <L3SpiderExclusionSheet />
           </>

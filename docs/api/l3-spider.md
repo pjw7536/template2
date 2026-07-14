@@ -40,6 +40,7 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 | Method | Path | 설명 |
 | --- | --- | --- |
 | `GET` | `meta` | 선택 가능한 날짜, Line, Process, EDS Step과 availability를 반환 |
+| `GET` | `developer/unmapped-line-rules` | `l3_spider.view_developer_options` 권한 사용자에게 미매핑 line name 분석 조합을 반환 |
 | `POST` | `structure` | 선택 조건 기준 edsStepSeqs·edsStepPpids를 파일명 스캔만으로 반환 |
 | `POST` | `stats` | 선택 조건 기준 통계 요약과 PPID별 last_tkin_time을 반환 |
 | `POST` | `summary` | 선택 조건 기준 통계, step/PPID, bin, High Risk 목록을 반환 |

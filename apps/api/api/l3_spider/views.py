@@ -31,6 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
+from .permissions import CanViewL3SpiderDeveloperOptions, can_view_developer_options
 from .serializers import (
     L3SpiderDataRequestSerializer,
     L3SpiderExclusionFilterSerializer,
@@ -55,12 +56,14 @@ class L3SpiderMetaView(APIView):
         serializer.is_valid(raise_exception=True)
         selected_date = serializer.validated_data.get("date")
         try:
-            return Response(
-                services.get_meta(
-                    selected_date=selected_date.isoformat() if selected_date else None,
-                    user=request.user,
-                )
+            result = services.get_meta(
+                selected_date=selected_date.isoformat() if selected_date else None,
+                user=request.user,
             )
+            return Response({
+                **result,
+                "canUseDeveloperOptions": can_view_developer_options(request.user),
+            })
         except services.L3SpiderServiceError as error:
             return _error_response(error)
 
@@ -68,7 +71,7 @@ class L3SpiderMetaView(APIView):
 class L3SpiderUnmappedLineRulesView(APIView):
     """개발자 옵션에서 미매핑 line name 규칙을 조회합니다."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewL3SpiderDeveloperOptions]
 
     def get(self, request, *args, **kwargs) -> Response:
         try:

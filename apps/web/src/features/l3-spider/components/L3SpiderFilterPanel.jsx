@@ -213,7 +213,7 @@ export function L3SpiderFilterPanel({
   }
 
   return (
-    <section className="grid h-[320px] min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,1fr)] gap-4">
+    <section className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,1fr)] gap-4">
       <ColumnCard
         title="Step Seq"
         badge={totalStepCount > 0 ? `${totalStepCount}` : null}
