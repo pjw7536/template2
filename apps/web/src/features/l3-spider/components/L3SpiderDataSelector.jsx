@@ -39,15 +39,33 @@ function clampSelectionPanelHeight(height) {
   return Math.min(MAX_SELECTION_PANEL_HEIGHT, Math.max(MIN_SELECTION_PANEL_HEIGHT, height))
 }
 
+function scrollSelectedItemIntoView(container) {
+  const selectedItem = container?.querySelector('[data-selected="true"]')
+  if (!selectedItem) return
+  const containerRect = container.getBoundingClientRect()
+  const itemRect = selectedItem.getBoundingClientRect()
+  if (itemRect.top >= containerRect.top && itemRect.bottom <= containerRect.bottom) return
+  container.scrollTop +=
+    itemRect.top - containerRect.top - Math.max(0, (container.clientHeight - itemRect.height) / 2)
+}
+
 function MultiSelectColumnCard({ title, badge, disabled, placeholder, items, selected, onChange }) {
   const [query, setQuery] = useState("")
+  const contentRef = useRef(null)
   const isActive = selected.size > 0
   const allSelected = items.length > 0 && items.every((item) => selected.has(item))
+  const selectedItem = items.find((item) => selected.has(item)) ?? null
 
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? items.filter((item) => item.toLowerCase().includes(q)) : items
   }, [items, query])
+
+  useEffect(() => {
+    if (disabled || !selectedItem) return undefined
+    const frame = requestAnimationFrame(() => scrollSelectedItemIntoView(contentRef.current))
+    return () => cancelAnimationFrame(frame)
+  }, [disabled, selectedItem])
 
   return (
     <Card
@@ -88,7 +106,7 @@ function MultiSelectColumnCard({ title, badge, disabled, placeholder, items, sel
           disabled={disabled}
         />
       </div>
-      <CardContent className="min-h-0 overflow-y-auto bg-background/60 p-2">
+      <CardContent ref={contentRef} className="min-h-0 overflow-y-auto bg-background/60 p-2">
         {disabled ? (
           <div className="flex h-full min-h-16 items-center justify-center text-center text-sm text-muted-foreground">
             {placeholder}
@@ -117,6 +135,8 @@ function MultiSelectColumnCard({ title, badge, disabled, placeholder, items, sel
                   key={item}
                   type="button"
                   onClick={() => onChange(toggleSetValue(selected, item))}
+                  data-selected={isSelected ? "true" : undefined}
+                  aria-pressed={isSelected}
                   className={cn(
                     "flex h-9 w-full items-center justify-between gap-3 rounded-md border border-transparent px-3 text-left transition",
                     "hover:border-border hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

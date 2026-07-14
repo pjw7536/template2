@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronRight, Clock, Loader2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,11 +9,23 @@ import { cn } from "@/lib/utils"
 
 import { sortedValues } from "../utils/selection"
 
+function scrollSelectedItemIntoView(container) {
+  const selectedItem = container?.querySelector('[data-selected="true"]')
+  if (!selectedItem) return
+  const containerRect = container.getBoundingClientRect()
+  const itemRect = selectedItem.getBoundingClientRect()
+  if (itemRect.top >= containerRect.top && itemRect.bottom <= containerRect.bottom) return
+  container.scrollTop +=
+    itemRect.top - containerRect.top - Math.max(0, (container.clientHeight - itemRect.height) / 2)
+}
+
 function SelectRow({ label, hint, timeHint, selected, onClick, showFullLabel = false }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-selected={selected ? "true" : undefined}
+      aria-pressed={selected}
       className={cn(
         "flex h-9 w-full min-w-0 items-center gap-3 rounded-md border border-transparent px-3 text-left transition",
         "hover:border-border hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -61,10 +73,18 @@ function ColumnCard({
   placeholder,
   isActive,
   isLoading,
+  selectedKey,
   allowHorizontalScroll = false,
   children,
 }) {
   const [query, setQuery] = useState("")
+  const contentRef = useRef(null)
+
+  useEffect(() => {
+    if (disabled || !selectedKey) return undefined
+    const frame = requestAnimationFrame(() => scrollSelectedItemIntoView(contentRef.current))
+    return () => cancelAnimationFrame(frame)
+  }, [badge, disabled, isLoading, query, selectedKey])
 
   return (
     <Card
@@ -108,6 +128,7 @@ function ColumnCard({
         />
       </div>
       <CardContent
+        ref={contentRef}
         className={cn(
           "min-h-0 overflow-y-auto bg-background/60 p-2",
           allowHorizontalScroll ? "overflow-x-auto" : "overflow-x-hidden",
@@ -220,6 +241,7 @@ export function L3SpiderFilterPanel({
         disabled={!selectedEdsSteps || selectedEdsSteps.size === 0}
         placeholder="EDS Step을 먼저 선택하세요"
         isActive={checkedStep !== null}
+        selectedKey={checkedStep}
       >
         {(query) => {
           const q = query.trim().toLowerCase()
@@ -254,6 +276,7 @@ export function L3SpiderFilterPanel({
         disabled={!checkedStep}
         placeholder="Step Seq를 먼저 선택하세요"
         isActive={checkedPpid !== null}
+        selectedKey={checkedPpid}
         allowHorizontalScroll
       >
         {(query) =>
@@ -281,6 +304,7 @@ export function L3SpiderFilterPanel({
         placeholder={isCandidatesLoading ? "로딩 중…" : "PPID를 먼저 선택하세요"}
         isActive={checkedEqc !== null}
         isLoading={isCandidatesLoading}
+        selectedKey={checkedEqc}
       >
         {(query) =>
           applyQuery(visibleEqcs, query).map((eqc) => {
@@ -304,6 +328,7 @@ export function L3SpiderFilterPanel({
         disabled={!checkedEqc}
         placeholder="EQPCH를 먼저 선택하세요"
         isActive={checkedBin !== null}
+        selectedKey={checkedBin}
       >
         {(query) =>
           applyQuery(visibleBins, query).map((bin) => (
