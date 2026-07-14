@@ -41,7 +41,6 @@ export function L3SpiderChart({
   const trellisRef = useRef(null)
   const [lassoMode, setLassoMode] = useState('off')
   const [lassoShape, setLassoShape] = useState('box')
-  const [eqcTimeTrellisMode, setEqcTimeTrellisMode] = useState('step')
   const [highlightFirst, setHighlightFirst] = useState(false)
   const [isCapturing, setIsCapturing] = useState(false)
   const [captureProgress, setCaptureProgress] = useState(0)
@@ -171,28 +170,6 @@ export function L3SpiderChart({
                 </Button>
               </div>
             </div>
-            {xAxisMode === 'eqc_tkin_time' && (
-              <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-                <Button
-                  type="button"
-                  variant={eqcTimeTrellisMode === 'step' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setEqcTimeTrellisMode('step')}
-                >
-                  by Step
-                </Button>
-                <Button
-                  type="button"
-                  variant={eqcTimeTrellisMode === 'step_ppid' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setEqcTimeTrellisMode('step_ppid')}
-                >
-                  by Step+PPID
-                </Button>
-              </div>
-            )}
             <div className="h-5 w-px bg-border" />
             <Button
               type="button"
@@ -251,7 +228,6 @@ export function L3SpiderChart({
             highlightFirst={highlightFirst}
             lassoMode={lassoMode}
             lassoShape={lassoShape}
-            eqcTimeTrellisMode={eqcTimeTrellisMode}
             onLassoModeChange={setLassoMode}
             onLassoShapeChange={setLassoShape}
             scrollContainerRef={scrollContainerRef}

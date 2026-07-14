@@ -1371,6 +1371,7 @@ def _build_l3_spider_event_url(base_url: str, event: dict[str, object]) -> str:
 
     query_fields = [
         ("date", "date"),
+        ("lineName", "line_name"),
         ("lineId", "line_id"),
         ("processId", "process_id"),
         ("edsStep", "eds_step"),
@@ -2217,6 +2218,60 @@ def _build_line_name_run_stats(
     return result
 
 
+def _include_analyzed_matrix_cells(
+    matrix: dict[str, object],
+    details: list[dict[str, object]],
+    rules: list[dict],
+) -> dict[str, object]:
+    """실행 통계에만 있는 분석 조합을 이상 수치 0인 matrix cell로 보강합니다."""
+
+    if not details:
+        return matrix
+
+    frame = _apply_exclusion_filters_with_rules(pd.DataFrame(details), rules)
+    required_columns = {"line_id", "process_id", "eds_step", "step_seq"}
+    if frame.empty or not required_columns.issubset(frame.columns):
+        return matrix
+
+    cells_by_key = {
+        (
+            str(cell.get("line") or ""),
+            str(cell.get("process") or ""),
+            str(cell.get("edsStep") or ""),
+        ): dict(cell)
+        for cell in matrix.get("cells", [])
+    }
+
+    for line_id, process_id, eds_step, step_seq in frame[
+        ["line_id", "process_id", "eds_step", "step_seq"]
+    ].drop_duplicates().itertuples(index=False):
+        line_name = line_name_rules.resolve_line_name(line_id, process_id, step_seq)
+        key = (str(line_name), str(process_id), str(eds_step))
+        cells_by_key.setdefault(
+            key,
+            {
+                "line": key[0],
+                "process": key[1],
+                "edsStep": key[2],
+                "highRisk": 0,
+                "warning": 0,
+                "total": 0,
+                "bins": 0,
+                "hrStepSeqs": 0,
+                "hrEqpchs": 0,
+            },
+        )
+
+    cells = [cells_by_key[key] for key in sorted(cells_by_key)]
+    return {
+        **matrix,
+        "lines": sorted({cell["line"] for cell in cells}),
+        "processes": sorted({cell["process"] for cell in cells}),
+        "edsSteps": sorted({cell["edsStep"] for cell in cells}),
+        "cells": cells,
+    }
+
+
 def get_daily_summary(selection: dict[str, object], *, user: Any | None = None) -> dict[str, object]:
     """선택한 날짜 전체의 line_name×process×eds_step 기준 이상감지 요약을 반환합니다.
 
@@ -2284,6 +2339,11 @@ def get_daily_summary(selection: dict[str, object], *, user: Any | None = None) 
     result = _aggregate_daily(file_df, dates)
     run_stats = selectors.query_run_stats(dates)
     run_stat_details = run_stats.pop("_details", [])
+    result["matrix"] = _include_analyzed_matrix_cells(
+        result["matrix"],
+        run_stat_details,
+        rules,
+    )
     if not file_df.empty and "line_name" in file_df.columns:
         id_to_name = dict(zip(file_df["line_id"].astype(str), file_df["line_name"].astype(str)))
         for entry in run_stats["byLine"]:

@@ -1,10 +1,20 @@
-import { BookOpen, Check, CircleHelp, Loader2, RefreshCw } from "lucide-react"
+import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CircleHelp,
+  GripHorizontal,
+  Loader2,
+  RefreshCw,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +29,15 @@ import { cn } from "@/lib/utils"
 
 import { L3SpiderGuideDialog } from "./L3SpiderGuideDialog"
 import { EMPTY_SELECTION, sortedValues, sortLineNames, toggleSetValue } from "../utils/selection"
+
+const DEFAULT_SELECTION_PANEL_HEIGHT = 320
+const MIN_SELECTION_PANEL_HEIGHT = 180
+const MAX_SELECTION_PANEL_HEIGHT = 560
+const KEYBOARD_RESIZE_STEP = 24
+
+function clampSelectionPanelHeight(height) {
+  return Math.min(MAX_SELECTION_PANEL_HEIGHT, Math.max(MIN_SELECTION_PANEL_HEIGHT, height))
+}
 
 function MultiSelectColumnCard({ title, badge, disabled, placeholder, items, selected, onChange }) {
   const [query, setQuery] = useState("")
@@ -145,6 +164,11 @@ export function L3SpiderDataSelector({
   showBody = true,
 }) {
   const [guideDocumentKey, setGuideDocumentKey] = useState(null)
+  const [isSelectionPanelCollapsed, setIsSelectionPanelCollapsed] = useState(false)
+  const [selectionPanelHeight, setSelectionPanelHeight] = useState(DEFAULT_SELECTION_PANEL_HEIGHT)
+  const [isResizingSelectionPanel, setIsResizingSelectionPanel] = useState(false)
+  const resizeDragRef = useRef(null)
+  const suppressHandleClickRef = useRef(false)
   const availabilityForDate = selection.date ? meta.availability?.[selection.date] ?? {} : {}
   const visibleLineIds = sortedValues(Object.keys(availabilityForDate))
 
@@ -224,6 +248,58 @@ export function L3SpiderDataSelector({
     onSelectionChange({ ...EMPTY_SELECTION, date })
   }
 
+  const handleResizePointerDown = (event) => {
+    if (isSelectionPanelCollapsed || event.button !== 0) return
+    resizeDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: selectionPanelHeight,
+      moved: false,
+    }
+    suppressHandleClickRef.current = false
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setIsResizingSelectionPanel(true)
+  }
+
+  const handleResizePointerMove = (event) => {
+    const drag = resizeDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const delta = event.clientY - drag.startY
+    if (Math.abs(delta) >= 3) drag.moved = true
+    if (!drag.moved) return
+    event.preventDefault()
+    setSelectionPanelHeight(clampSelectionPanelHeight(drag.startHeight + delta))
+  }
+
+  const finishResize = (event, shouldSuppressClick) => {
+    const drag = resizeDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    suppressHandleClickRef.current = shouldSuppressClick && drag.moved
+    resizeDragRef.current = null
+    setIsResizingSelectionPanel(false)
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const handleResizePointerUp = (event) => finishResize(event, true)
+  const handleResizePointerCancel = (event) => finishResize(event, false)
+
+  const handleResizeHandleClick = () => {
+    if (suppressHandleClickRef.current) {
+      suppressHandleClickRef.current = false
+      return
+    }
+    setIsSelectionPanelCollapsed((collapsed) => !collapsed)
+  }
+
+  const handleResizeHandleKeyDown = (event) => {
+    if (isSelectionPanelCollapsed || !["ArrowUp", "ArrowDown"].includes(event.key)) return
+    event.preventDefault()
+    const delta = event.key === "ArrowDown" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP
+    setSelectionPanelHeight((height) => clampSelectionPanelHeight(height + delta))
+  }
+
   // ✓가 새 날짜에 대해 처음 뜰 때마다 탭을 한 번 흔들어 주목을 끈다.
   const [wiggleKey, setWiggleKey] = useState(0)
   const lastWiggledDateRef = useRef(null)
@@ -277,7 +353,7 @@ export function L3SpiderDataSelector({
   }
 
   const selectorCards = (
-    <div className="grid h-[320px] grid-cols-3 gap-4">
+    <div className="grid h-full min-h-0 grid-cols-3 gap-4">
       <MultiSelectColumnCard
         title={hasLineGroups ? "Line Name" : "Line ID"}
         badge={`${lineItemsForPanel.length}`}
@@ -309,126 +385,175 @@ export function L3SpiderDataSelector({
   )
 
   return (
-    <section className="shrink-0 border-b bg-card">
-      <div className="flex flex-wrap items-center gap-6 px-6 py-2.5">
-        <label className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Date
-          </span>
-          <Input
-            type="date"
-            value={selection.date}
-            min={meta.dates?.[0] ?? ""}
-            max={meta.dates?.[meta.dates.length - 1] ?? ""}
-            onChange={(event) => changeDate(event.target.value)}
-            className="h-8 w-36 bg-muted/40 text-xs"
-          />
-        </label>
-        {selection.date && !hasDate ? (
-          <span className="text-xs font-medium text-destructive">해당 날짜에 데이터 없음</span>
-        ) : hasDate ? (
-          <div className="flex items-center gap-3">
-            {dateLoading ? (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="데이터 로딩 중" />
-            ) : (
-              <Check className="size-4 shrink-0 text-chart-2" aria-label="선택 완료" />
-            )}
-            {tabsSlot ? (
-              <motion.div
-                key={wiggleKey}
-                animate={{ x: [0, -5, 5, -4, 4, -2, 2, 0] }}
-                transition={{ duration: 0.6, ease: "easeInOut" }}
-                className="flex items-center"
-              >
-                {tabsSlot}
-              </motion.div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="ml-auto flex items-center gap-3">
-          {showBody ? (
-            <SelectionStatus
-              canFetch={canFetch}
-              date={selection.date}
-              isLoading={isLoading}
-              noData={noData}
-              selection={selection}
+    <Collapsible
+      asChild
+      open={!isSelectionPanelCollapsed}
+      onOpenChange={(open) => setIsSelectionPanelCollapsed(!open)}
+    >
+      <section
+        className="relative z-10 shrink-0 border-b bg-card"
+        style={{ "--l3-selection-panel-height": `${selectionPanelHeight}px` }}
+      >
+        <div className="flex flex-wrap items-center gap-6 px-6 py-2.5">
+          <label className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Date
+            </span>
+            <Input
+              type="date"
+              value={selection.date}
+              min={meta.dates?.[0] ?? ""}
+              max={meta.dates?.[meta.dates.length - 1] ?? ""}
+              onChange={(event) => changeDate(event.target.value)}
+              className="h-8 w-36 bg-muted/40 text-xs"
             />
-          ) : null}
-          {headerExtra}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-            새로고침
-          </Button>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="L3 Spider 도움말 문서 열기"
-                    title="도움말 문서"
-                  >
-                    <CircleHelp className="size-4" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>도움말 문서</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">L3 Spider 도움말</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  setGuideDocumentKey("page")
-                }}
-                aria-label="L3 Spider 페이지 설명서 열기"
-              >
-                <BookOpen className="size-4" aria-hidden="true" />
-                페이지 설명서
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  setGuideDocumentKey("algorithm")
-                }}
-                aria-label="L3 Spider 알고리즘 설명서 열기"
-              >
-                <CircleHelp className="size-4" aria-hidden="true" />
-                알고리즘 설명서
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-      <L3SpiderGuideDialog guideKey={guideDocumentKey} onGuideKeyChange={setGuideDocumentKey} />
-      {showBody ? (
-        rightContent ? (
-          <div className="overflow-x-auto border-t px-6 py-2">
-            <div className="grid min-h-0 min-w-[1200px] grid-cols-[minmax(0,3fr)_minmax(0,5.1fr)] gap-4">
-              <div className="min-w-0">
-                {selectorCards}
-              </div>
-              <div className="min-w-0">
-                {rightContent}
-              </div>
+          </label>
+          {selection.date && !hasDate ? (
+            <span className="text-xs font-medium text-destructive">해당 날짜에 데이터 없음</span>
+          ) : hasDate ? (
+            <div className="flex items-center gap-3">
+              {dateLoading ? (
+                <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="데이터 로딩 중" />
+              ) : (
+                <Check className="size-4 shrink-0 text-chart-2" aria-label="선택 완료" />
+              )}
+              {tabsSlot ? (
+                <motion.div
+                  key={wiggleKey}
+                  animate={{ x: [0, -5, 5, -4, 4, -2, 2, 0] }}
+                  transition={{ duration: 0.6, ease: "easeInOut" }}
+                  className="flex items-center"
+                >
+                  {tabsSlot}
+                </motion.div>
+              ) : null}
             </div>
+          ) : null}
+          <div className="ml-auto flex items-center gap-3">
+            {showBody ? (
+              <SelectionStatus
+                canFetch={canFetch}
+                date={selection.date}
+                isLoading={isLoading}
+                noData={noData}
+                selection={selection}
+              />
+            ) : null}
+            {headerExtra}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+              새로고침
+            </Button>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label="L3 Spider 도움말 문서 열기"
+                      title="도움말 문서"
+                    >
+                      <CircleHelp className="size-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>도움말 문서</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">L3 Spider 도움말</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setGuideDocumentKey("page")
+                  }}
+                  aria-label="L3 Spider 페이지 설명서 열기"
+                >
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  페이지 설명서
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setGuideDocumentKey("algorithm")
+                  }}
+                  aria-label="L3 Spider 알고리즘 설명서 열기"
+                >
+                  <CircleHelp className="size-4" aria-hidden="true" />
+                  알고리즘 설명서
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        ) : (
-          <div className="border-t px-6 py-2">
-            {selectorCards}
-          </div>
-        )
-      ) : null}
-    </section>
+        </div>
+        <L3SpiderGuideDialog guideKey={guideDocumentKey} onGuideKeyChange={setGuideDocumentKey} />
+        {showBody ? (
+          <CollapsibleContent forceMount asChild>
+            {rightContent ? (
+              <div className="overflow-x-auto overflow-y-hidden border-t px-6 py-2 data-[state=closed]:hidden">
+                <div className="grid h-[var(--l3-selection-panel-height)] min-h-0 min-w-[1200px] grid-cols-[minmax(0,3fr)_minmax(0,5.1fr)] gap-4">
+                  <div className="h-full min-h-0 min-w-0">
+                    {selectorCards}
+                  </div>
+                  <div className="h-full min-h-0 min-w-0">
+                    {rightContent}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-hidden border-t px-6 py-2 data-[state=closed]:hidden">
+                <div className="h-[var(--l3-selection-panel-height)] min-h-0">
+                  {selectorCards}
+                </div>
+              </div>
+            )}
+          </CollapsibleContent>
+        ) : null}
+        {showBody ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className={cn(
+                  "absolute left-1/2 top-full h-5 w-24 -translate-x-1/2 -translate-y-1/2 touch-none rounded-md bg-card shadow-sm",
+                  isSelectionPanelCollapsed ? "cursor-pointer" : "cursor-row-resize",
+                  isResizingSelectionPanel && "bg-accent text-accent-foreground",
+                )}
+                aria-label={isSelectionPanelCollapsed ? "선택 패널 펼치기" : "선택 패널 높이 조절 및 접기"}
+                aria-expanded={!isSelectionPanelCollapsed}
+                onClick={handleResizeHandleClick}
+                onKeyDown={handleResizeHandleKeyDown}
+                onPointerDown={handleResizePointerDown}
+                onPointerMove={handleResizePointerMove}
+                onPointerUp={handleResizePointerUp}
+                onPointerCancel={handleResizePointerCancel}
+              >
+                {isSelectionPanelCollapsed ? (
+                  <ChevronDown className="size-4" aria-hidden="true" />
+                ) : (
+                  <>
+                    <GripHorizontal className="size-4" aria-hidden="true" />
+                    <ChevronUp className="size-4" aria-hidden="true" />
+                  </>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isSelectionPanelCollapsed ? "선택 패널 펼치기" : "드래그하여 높이 조절 · 클릭하여 접기"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+      </section>
+    </Collapsible>
   )
 }

@@ -799,7 +799,6 @@ const TrellisChart = forwardRef(function TrellisChart({
   highlightFirst = false,
   lassoMode = 'off',
   lassoShape = 'box',
-  eqcTimeTrellisMode = 'step',
   onLassoModeChange,
   onLassoShapeChange,
   scrollContainerRef,
@@ -827,18 +826,15 @@ const TrellisChart = forwardRef(function TrellisChart({
     if (xAxisMode === 'eqc_tkin_time') {
       const groupedData = new Map()
       data.forEach(row => {
-        const key = eqcTimeTrellisMode === 'step_ppid'
-          ? `${row.stepSeq}|||${row.ppid}`
-          : row.stepSeq
+        const key = row.stepSeq
         const rows = groupedData.get(key)
         if (rows) rows.push(row)
         else groupedData.set(key, [row])
       })
       const keys = [...groupedData.keys()].sort()
-      const subtitleMode = eqcTimeTrellisMode === 'step_ppid' ? 'step_seq + ppid' : 'step_seq'
       return {
         keys,
-        subtitle: `${new Set(data.map(d => d.eqc)).size} EQPCH · ${subtitleMode} trellis`,
+        subtitle: `${new Set(data.map(d => d.eqc)).size} EQPCH · step_seq trellis`,
         sharedYRange: getSharedYRange(data),
         groupedData,
       }
@@ -897,7 +893,7 @@ const TrellisChart = forwardRef(function TrellisChart({
       ? sortHighlightFirst(baseKeys, key => riskStepBins.has(key))
       : baseKeys
     return { keys, subtitle: `${keys.length} step·bin · 독립 Y축`, sharedYRange: null, groupedData }
-  }, [data, trellisBy, highlightFirst, xAxisMode, eqcTimeTrellisMode])
+  }, [data, trellisBy, highlightFirst, xAxisMode])
 
   const keySignature = useMemo(() => chartPlan.keys.join('\u0001'), [chartPlan.keys])
   const totalRows = Math.ceil(chartPlan.keys.length / chartColumns)

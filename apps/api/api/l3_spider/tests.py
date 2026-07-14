@@ -9,10 +9,12 @@ from datetime import time as datetime_time, timedelta
 from importlib import import_module
 from io import StringIO
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
@@ -397,6 +399,8 @@ class L3SpiderServiceTests(TestCase):
 
         self.assertNotIn("equipmentRanking", daily)
         self.assertEqual(daily["headline"]["highRiskEqpchs"], 1)
+        self.assertEqual(len(daily["matrix"]["cells"]), 1)
+        self.assertEqual(daily["matrix"]["cells"][0]["highRisk"], 1)
         self.assertEqual(
             daily["runStats"]["byLineName"],
             [{"lineName": "L1", "stepSeqCount": 1, "rowCnt": 3}],
@@ -438,6 +442,23 @@ class L3SpiderServiceTests(TestCase):
         self.assertEqual(
             daily["runStats"]["byLineName"],
             [{"lineName": "FAB_B", "stepSeqCount": 1, "rowCnt": 100}],
+        )
+        self.assertEqual(daily["matrix"]["lines"], ["FAB_B"])
+        self.assertEqual(daily["matrix"]["processes"], ["P2"])
+        self.assertEqual(daily["matrix"]["edsSteps"], ["EDS_M"])
+        self.assertEqual(
+            daily["matrix"]["cells"],
+            [{
+                "line": "FAB_B",
+                "process": "P2",
+                "edsStep": "EDS_M",
+                "highRisk": 0,
+                "warning": 0,
+                "total": 0,
+                "bins": 0,
+                "hrStepSeqs": 0,
+                "hrEqpchs": 0,
+            }],
         )
         self.assertNotIn("_details", daily["runStats"])
 
@@ -658,6 +679,7 @@ class L3SpiderServiceTests(TestCase):
         self.assertEqual(candidates["eqcHighRiskBins"], {"EQC_A": ["BIN_A"]})
 
 
+@override_settings(L3_SPIDER_INDEX_SOURCE="postgres")
 class L3SpiderPostgresSelectorTests(SimpleTestCase):
     """L3 Spider 외부 집계 테이블의 PostgreSQL 조회 계약을 검증합니다."""
 
@@ -740,6 +762,125 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
         sql = fetchall.call_args.args[0]
         self.assertIn("has_high_risk = 1", sql)
         self.assertNotIn("has_high_risk::text", sql)
+
+
+class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
+    """개발용 SQLite mock 인덱스의 현재 selector 계약을 검증합니다."""
+
+    def setUp(self) -> None:
+        """테스트용 read-only 대상 SQLite 인덱스를 생성합니다."""
+
+        self.temp_dir = TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.root = Path(self.temp_dir.name)
+        self.db_path = self.root / "_meta" / "index.sqlite3"
+        self.db_path.parent.mkdir(parents=True)
+
+        mock_connection = sqlite3.connect(self.db_path)
+        mock_connection.executescript(
+            """
+            CREATE TABLE file_index (
+                filepath TEXT PRIMARY KEY,
+                date TEXT NOT NULL,
+                line_id TEXT NOT NULL,
+                process_id TEXT NOT NULL,
+                eds_step TEXT NOT NULL,
+                step_seq TEXT NOT NULL,
+                ppid TEXT NOT NULL,
+                eqp_ids TEXT NOT NULL,
+                chamber_ids TEXT NOT NULL,
+                bin_names TEXT NOT NULL,
+                row_cnt INTEGER,
+                has_high_risk INTEGER,
+                high_risk_cnt INTEGER,
+                warning_cnt INTEGER,
+                normal_cnt INTEGER,
+                high_risk_eqcs TEXT,
+                total_bin_cnt INTEGER
+            );
+            CREATE TABLE daily_run_stats (
+                date TEXT NOT NULL,
+                line_id TEXT NOT NULL,
+                process_id TEXT NOT NULL,
+                eds_step TEXT NOT NULL,
+                step_seq TEXT NOT NULL,
+                row_cnt INTEGER NOT NULL,
+                PRIMARY KEY (date, line_id, process_id, eds_step, step_seq)
+            );
+            CREATE TABLE run_status (
+                date TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                completed_at TEXT
+            );
+            INSERT INTO file_index VALUES (
+                '2025-01-15/L1/P1/EDS_M/S1#PPID_A#0',
+                '2025-01-15', 'L1', 'P1', 'EDS_M', 'S1', 'PPID_A',
+                '["EQP_A"]', '["PM1"]', '["BIN_A"]',
+                10, 1, 2, 1, 7, '["EQP_A_PM1"]', 1
+            );
+            INSERT INTO daily_run_stats VALUES
+                ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S1', 10),
+                ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S2', 20);
+            INSERT INTO run_status VALUES ('2025-01-15', 'completed', '2025-01-16T00:00:00');
+            """
+        )
+        mock_connection.commit()
+        mock_connection.close()
+
+        settings_override = override_settings(
+            L3_SPIDER_INDEX_SOURCE="sqlite_mock",
+            L3_SPIDER_MOCK_INDEX_PATH=str(self.db_path),
+            L3_SPIDER_DATA_ROOT=str(self.root),
+        )
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
+
+    def test_mock_index_supports_meta_and_run_stats(self) -> None:
+        """SQLite mock은 완료 날짜와 날짜별 분석 통계를 현재 shape로 반환해야 합니다."""
+
+        self.assertEqual(selectors.query_completed_dates(), {"2025-01-15"})
+        self.assertEqual(
+            selectors.query_date_line_process_eds_step("2025-01-15"),
+            [
+                ("2025-01-15", "L1", "P1", "EDS_M", "S1"),
+                ("2025-01-15", "L1", "P1", "EDS_M", "S2"),
+            ],
+        )
+
+        stats = selectors.query_run_stats(["2025-01-15"])
+        self.assertEqual(stats["totalRows"], 30)
+        self.assertEqual(stats["combinations"], 2)
+        self.assertEqual(stats["byLine"], [{"lineId": "L1", "stepSeqCount": 2, "rowCnt": 30}])
+        self.assertEqual([row["step_seq"] for row in stats["_details"]], ["S1", "S2"])
+
+    def test_mock_index_supports_file_filters_and_aggregates(self) -> None:
+        """SQLite mock은 JSON 필터와 Summary·Trend 인덱스 집계를 지원해야 합니다."""
+
+        files = selectors.query_indexed_files(
+            date="2025-01-15",
+            eqp_id="EQP_A",
+            chamber_id="PM1",
+            high_risk_only=True,
+        )
+        self.assertEqual(
+            files,
+            [self.root / "2025-01-15" / "L1" / "P1" / "EDS_M" / "S1#PPID_A#0"],
+        )
+
+        indexed_rows = selectors.query_date_file_index("2025-01-15")
+        self.assertEqual(indexed_rows[0]["high_risk_cnt"], 2)
+        self.assertEqual(indexed_rows[0]["warning_cnt"], 1)
+        self.assertEqual(
+            selectors.query_trend_data(),
+            [{
+                "date": "2025-01-15",
+                "line_id": "L1",
+                "process_id": "P1",
+                "step_seq": "S1",
+                "hr": 2,
+                "wn": 1,
+            }],
+        )
 
 
 class L3SpiderManagedIndexModelTests(SimpleTestCase):
@@ -1033,22 +1174,43 @@ class L3SpiderLineNameRuleImportDatabaseTests(TestCase):
 
 
 class L3SpiderDeveloperOptionsViewTests(TestCase):
-    """개발자 옵션 endpoint의 인증 계약을 검증합니다."""
+    """개발자 옵션 endpoint와 Meta capability의 권한 계약을 검증합니다."""
 
     def setUp(self) -> None:
         """인증 테스트용 사용자를 생성합니다."""
 
-        self.user = get_user_model().objects.create_user(
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
             sabun="DEV-OPTION-USER",
             password="pw",
         )
+        self.developer = user_model.objects.create_user(
+            sabun="DEV-OPTION-DEVELOPER",
+            password="pw",
+        )
+        permission = Permission.objects.get(
+            codename="view_developer_options",
+            content_type__app_label="l3_spider",
+        )
+        self.developer.user_permissions.add(permission)
 
-    def test_authenticated_user_can_read_unmapped_line_rules(self) -> None:
-        """로그인 사용자는 미매핑 규칙을 조회할 수 있어야 합니다."""
+    def test_user_without_permission_cannot_read_unmapped_line_rules(self) -> None:
+        """일반 로그인 사용자는 미매핑 규칙을 조회할 수 없어야 합니다."""
+
+        request = APIRequestFactory().get("/api/v1/l3_spider/developer/unmapped-line-rules")
+        force_authenticate(request, user=self.user)
+        with patch.object(services, "get_unmapped_line_name_rules") as get_rules:
+            response = L3SpiderUnmappedLineRulesView.as_view()(request)
+
+        self.assertEqual(response.status_code, 403)
+        get_rules.assert_not_called()
+
+    def test_user_with_permission_can_read_unmapped_line_rules(self) -> None:
+        """개발자 옵션 권한 사용자는 미매핑 규칙을 조회할 수 있어야 합니다."""
 
         payload = {"count": 0, "items": [], "rulesFile": "public.l3_spider_line_name_rule"}
         request = APIRequestFactory().get("/api/v1/l3_spider/developer/unmapped-line-rules")
-        force_authenticate(request, user=self.user)
+        force_authenticate(request, user=self.developer)
         with patch.object(services, "get_unmapped_line_name_rules", return_value=payload):
             response = L3SpiderUnmappedLineRulesView.as_view()(request)
 
@@ -1062,6 +1224,23 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
         response = L3SpiderUnmappedLineRulesView.as_view()(request)
 
         self.assertIn(response.status_code, {401, 403})
+
+    def test_meta_exposes_developer_capability_without_mutating_cached_result(self) -> None:
+        """Meta는 사용자별 capability를 반환하고 공용 service 결과를 변경하지 않아야 합니다."""
+
+        cached_result = {"dates": ["2025-01-15"]}
+        with patch.object(services, "get_meta", return_value=cached_result):
+            user_request = APIRequestFactory().get("/api/v1/l3_spider/meta")
+            force_authenticate(user_request, user=self.user)
+            user_response = L3SpiderMetaView.as_view()(user_request)
+
+            developer_request = APIRequestFactory().get("/api/v1/l3_spider/meta")
+            force_authenticate(developer_request, user=self.developer)
+            developer_response = L3SpiderMetaView.as_view()(developer_request)
+
+        self.assertFalse(user_response.data["canUseDeveloperOptions"])
+        self.assertTrue(developer_response.data["canUseDeveloperOptions"])
+        self.assertNotIn("canUseDeveloperOptions", cached_result)
 
 
 class L3SpiderExclusionFilterOwnershipTests(TestCase):
@@ -1454,6 +1633,7 @@ class L3SpiderMailRuleTests(TestCase):
         )
         html_content = mock_send.call_args.kwargs["html_content"]
         self.assertIn(f"date={today}", html_content)
+        self.assertIn("lineName=L1", html_content)
         self.assertIn("lineId=L1", html_content)
         self.assertIn("processId=P1", html_content)
         self.assertIn("edsStep=EDS_M", html_content)

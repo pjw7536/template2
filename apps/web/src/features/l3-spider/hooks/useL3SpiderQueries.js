@@ -30,6 +30,7 @@ function keepCompletedDates(previousData) {
     availability: {},
     lineGroups: [],
     lineNameAvailability: {},
+    canUseDeveloperOptions: Boolean(previousData.canUseDeveloperOptions),
   }
 }
 
