@@ -114,9 +114,9 @@ export function useL3SpiderTrend() {
 }
 
 // ppid 선택 시 해당 경로의 파일에서 high risk EQPCH·Bin 후보만 반환
-export function useL3SpiderFilterCandidates(selection, edsStep, stepSeq, ppid) {
+export function useL3SpiderFilterCandidates(selection, edsStep, stepSeq, ppid, queryEnabled = true) {
   const enabled = Boolean(
-    hasCompleteSelection(selection) && edsStep && stepSeq && ppid,
+    queryEnabled && hasCompleteSelection(selection) && edsStep && stepSeq && ppid,
   )
   const key = JSON.stringify({
     date: selection.date,

@@ -19,8 +19,10 @@ function useInvalidateAfterMutation() {
   const queryClient = useQueryClient()
   return () => {
     queryClient.invalidateQueries({ queryKey: l3SpiderQueryKeys.exclusionFilters() })
-    // 필터 변경 시 meta·structure·stats·data 전체 무효화
+    // 필터 변경 시 요약·선택 트리·차트 데이터를 다시 조회합니다.
     queryClient.invalidateQueries({ queryKey: l3SpiderQueryKeys.meta() })
+    queryClient.invalidateQueries({ queryKey: ["l3-spider", "daily-summary"] })
+    queryClient.invalidateQueries({ queryKey: ["l3-spider", "summary"] })
     queryClient.invalidateQueries({ queryKey: ["l3-spider", "structure"] })
     queryClient.invalidateQueries({ queryKey: ["l3-spider", "stats"] })
     queryClient.invalidateQueries({ queryKey: ["l3-spider", "filter-candidates"] })

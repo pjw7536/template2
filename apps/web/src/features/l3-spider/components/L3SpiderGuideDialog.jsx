@@ -65,12 +65,12 @@ const PAGE_SCREENSHOTS = [
     title: "날짜 하나로 전체 이상 현황을 먼저 본다",
     image: "summary-overview.png",
     alt: "L3 Spider Summary 탭 실제 화면 캡처",
-    caption: "Summary 탭 실제 캡처. 번호는 날짜, 관리 버튼, 탭, 하단 Total 지표, 라인별 집계, 라인별 세부 요약을 가리킵니다.",
+    caption: "Summary 탭 실제 캡처. 번호는 날짜, 관리 버튼, 탭, 6개 Total 지표, 라인별 집계, 라인별 세부 요약을 가리킵니다.",
     points: [
       ["Date 선택", "조회 기준 날짜입니다. 날짜를 바꾸면 Summary 집계와 Chart 선택 후보가 같은 날짜 기준으로 다시 계산됩니다."],
       ["운영 버튼", "메일 설정은 자동 알림 rule을 관리하고, 제외 필터는 노이즈 조합을 집계에서 빼며, 새로고침은 최신 메타데이터를 다시 불러옵니다."],
       ["Summary / Chart 탭", "Summary는 날짜 전체 집계, Chart는 선택 조건별 scatter trellis 분석 화면입니다."],
-      ["하단 Total 지표", "분석 그룹, High Risk, Warning, 이상 건수, 이상 EQPCH 수를 한 줄로 보여줍니다."],
+      ["하단 Total 지표", "기존 3개에서 6개로 확장되어 분석 ROWS, 분석 그룹수, 이상 EQPCH, Warning, High Risk, 이상 건수를 2행 3열로 보여줍니다."],
       ["라인별 현황", "Line별 HR/WN/합계를 비교합니다. 이상이 없는 라인도 흐리게 표시되어 전체 커버리지와 이상 집중 라인을 같이 볼 수 있습니다."],
       ["라인별 세부 요약", "Line, Process, EDS Step별 High Risk/Warning 건수를 보여줍니다. 셀을 클릭하면 같은 조건으로 Chart 탭이 열립니다."],
     ],
@@ -81,11 +81,12 @@ const PAGE_SCREENSHOTS = [
     title: "Line에서 EQPCH까지 좁혀 scatter trellis로 확인한다",
     image: "chart-workflow.png",
     alt: "L3 Spider Chart 탭 실제 화면 캡처",
-    caption: "Chart 탭 실제 캡처. 선택 패널과 scatter trellis, chart order, axis mode, export 도구를 함께 보여줍니다.",
+    caption: "Chart 탭 실제 캡처. 선택 패널과 하단 조절 핸들, scatter trellis, chart order, axis mode, export 도구를 함께 보여줍니다.",
     points: [
       ["Date 선택", "현재 차트가 어떤 날짜 데이터인지 고정합니다. 선택 완료 시 날짜 옆 체크 표시가 보입니다."],
       ["상위 선택축", "Line Name, Process ID, EDS Step을 고릅니다. 각 컬럼 상단 숫자는 현재 날짜에서 선택 가능한 후보 수입니다."],
-      ["상세 선택축", "Step Seq, PPID, EQPCH를 순서대로 선택합니다. PPID 칼럼의 시간은 해당 조합의 마지막 TKin Time입니다."],
+      ["상세 선택축", "Step Seq, PPID, EQPCH, Bin Name을 순서대로 선택합니다. PPID 칼럼의 시간은 해당 조합의 마지막 TKin Time입니다."],
+      ["선택 패널 조절", "하단 핸들을 클릭하면 선택 패널을 접거나 펼칩니다. 펼친 상태에서 위아래로 드래그하거나 키보드 ↑/↓ 키를 누르면 패널 높이를 조절할 수 있습니다."],
       ["Scatter Plot trellis", "선택된 EQPCH의 이상 Bin을 작은 차트로 나눠 보여줍니다. 빨간 점은 High Risk, 주황 점은 Warning, 회색 점은 정상 기준입니다."],
       ["Chart Order", "기본 순서 또는 High Risk가 있는 차트를 앞쪽에 배치하는 순서를 선택합니다."],
       ["X Axis", "시간 기준, 시간+Wafer 기준, EQPCH+Time 기준으로 X축을 바꿉니다."],
@@ -260,7 +261,7 @@ function PageGuideContent() {
         eyebrow="Actual page capture guide"
         title="L3 Spider 실제 화면 기준 사용 설명서"
         description="L3 Spider는 날짜별 이상감지 결과를 Summary에서 빠르게 훑고, Chart에서 Line/Process/EDS/Step/PPID/EQPCH 단위로 파고드는 화면입니다. 각 캡처의 번호는 실제 UI 영역을 가리키며, 아래 설명은 그 영역이 무엇을 하는지 정리합니다."
-        badges={["캡처 경로 /l3_spider", "캡처 실행일 2026-07-04", "화면 데이터 날짜 2026-06-20"]}
+        badges={["캡처 경로 /l3_spider", "캡처 실행일 2026-07-14", "화면 데이터 날짜 2026-06-20"]}
       />
       <div className="grid gap-10 px-8 py-8">
         {PAGE_SCREENSHOTS.map((section) => (

@@ -276,6 +276,84 @@ class L3SpiderServiceTests(TestCase):
         self.assertEqual(rows[0]["stepSeq"], "S1")
         self.assertIn("displayStatus", rows[0])
 
+    def test_bin_name_exclusion_uses_comma_separated_or_patterns(self) -> None:
+        """Bin Name의 쉼표 구분 패턴은 OR 조건으로 제외되어야 합니다."""
+
+        frame = pd.DataFrame({
+            "bin_name": ["BIN0001", "BIN0002", "BIN0003", "BIN0004"],
+        })
+        rules = [{
+            "line_id": "*",
+            "process_id": "*",
+            "eds_step": "*",
+            "step_seq": "*",
+            "ppid": "*",
+            "eqpch": "*",
+            "bin_name": " BIN0001, BIN0002, ,BIN0003 ",
+            "date_from": None,
+            "date_to": None,
+        }]
+
+        filtered = services._apply_exclusion_filters_with_rules(frame, rules)
+
+        self.assertEqual(filtered["bin_name"].tolist(), ["BIN0004"])
+
+    def test_daily_summary_selection_tree_prunes_empty_parent_branches(self) -> None:
+        """제외 후 High Risk leaf가 없는 Line 상위 분기는 선택 트리에서 빠져야 합니다."""
+
+        samples = [
+            ("L1", "P1", "EDS_A", "S1", "PPID_A", "EQC_A", "BIN0001"),
+            ("L1", "P1", "EDS_A", "S2", "PPID_B", "EQC_B", "BIN0002"),
+            ("L2", "P2", "EDS_B", "S3", "PPID_C", "EQC_C", "BIN0003"),
+        ]
+        rules = [{
+            "line_id": "L1",
+            "process_id": "*",
+            "eds_step": "*",
+            "step_seq": "*",
+            "ppid": "*",
+            "eqpch": "*",
+            "bin_name": "BIN0001,BIN0002",
+            "date_from": None,
+            "date_to": None,
+        }]
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for line_id, process_id, eds_step, step_seq, ppid, eqc, bin_name in samples:
+                target = root / "2025-01-15" / line_id / process_id / eds_step
+                target.mkdir(parents=True, exist_ok=True)
+                pd.DataFrame([{
+                    "step_seq": step_seq,
+                    "ppid": ppid,
+                    "lot_id": "LOT",
+                    "eqc": eqc,
+                    "bin_name": bin_name,
+                    "display_status": "High Risk Chamber",
+                }]).to_parquet(target / f"{step_seq}#{ppid}#0", engine="pyarrow")
+
+            with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
+                services,
+                "_get_exclusion_rules",
+                return_value=rules,
+            ):
+                result = services.get_daily_summary({"dates": ["2025-01-15"]})
+
+        self.assertEqual(result["selectionTree"], {
+            "L2": {
+                "P2": {
+                    "EDS_B": {
+                        "S3": {
+                            "PPID_C": {
+                                "EQC_C": ["BIN0003"],
+                            },
+                        },
+                    },
+                },
+            },
+        })
+        self.assertNotIn("L1", result["selectionTree"])
+
     def test_meta_without_date_only_queries_completed_dates(self) -> None:
         """날짜 미지정 Meta는 완료 날짜만 반환하고 실행 통계를 조회하지 않아야 합니다."""
 
@@ -736,8 +814,8 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
         }])
         self.assertIn('"public"."l3_spider_daily_run_stats"', fetchall.call_args.args[0])
 
-    def test_query_date_line_process_eds_step_uses_date_index_and_pk_uniqueness(self) -> None:
-        """Meta 조합 조회는 날짜 조건을 사용하고 중복 제거 연산을 추가하지 않아야 합니다."""
+    def test_query_date_line_process_eds_step_requires_nonempty_file_child(self) -> None:
+        """Meta 조합은 날짜 조건과 실제 데이터가 있는 file_index 자식을 요구해야 합니다."""
 
         with patch.object(
             selectors,
@@ -749,8 +827,13 @@ class L3SpiderPostgresSelectorTests(SimpleTestCase):
         sql = fetchall.call_args.args[0]
         self.assertEqual(result, [("2025-01-15", "L1", "P1", "EDS_M", "S1")])
         self.assertNotIn("DISTINCT", sql.upper())
-        self.assertIn("WHERE date = %s", sql)
+        self.assertIn("WHERE stats.date = %s", sql)
+        self.assertIn("stats.row_cnt > 0", sql)
+        self.assertIn("EXISTS", sql)
+        self.assertIn("files.step_seq = stats.step_seq", sql)
+        self.assertIn("COALESCE(files.row_cnt, stats.row_cnt, 0) > 0", sql)
         self.assertIn('"public"."l3_spider_daily_run_stats"', sql)
+        self.assertIn('"public"."l3_spider_file_index"', sql)
         self.assertEqual(fetchall.call_args.args[1], ("2025-01-15",))
 
     def test_high_risk_filter_uses_integer_index_condition(self) -> None:
@@ -820,7 +903,7 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
             );
             INSERT INTO daily_run_stats VALUES
                 ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S1', 10),
-                ('2025-01-15', 'L1', 'P1', 'EDS_M', 'S2', 20);
+                ('2025-01-15', 'L1', 'P1', 'EDS_EMPTY', 'S2', 20);
             INSERT INTO run_status VALUES ('2025-01-15', 'completed', '2025-01-16T00:00:00');
             """
         )
@@ -843,7 +926,6 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
             selectors.query_date_line_process_eds_step("2025-01-15"),
             [
                 ("2025-01-15", "L1", "P1", "EDS_M", "S1"),
-                ("2025-01-15", "L1", "P1", "EDS_M", "S2"),
             ],
         )
 
@@ -851,7 +933,7 @@ class L3SpiderSQLiteMockSelectorTests(SimpleTestCase):
         self.assertEqual(stats["totalRows"], 30)
         self.assertEqual(stats["combinations"], 2)
         self.assertEqual(stats["byLine"], [{"lineId": "L1", "stepSeqCount": 2, "rowCnt": 30}])
-        self.assertEqual([row["step_seq"] for row in stats["_details"]], ["S1", "S2"])
+        self.assertEqual(sorted(row["step_seq"] for row in stats["_details"]), ["S1", "S2"])
 
     def test_mock_index_supports_file_filters_and_aggregates(self) -> None:
         """SQLite mock은 JSON 필터와 Summary·Trend 인덱스 집계를 지원해야 합니다."""

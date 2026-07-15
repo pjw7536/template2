@@ -28,7 +28,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 
 import { L3SpiderGuideDialog } from "./L3SpiderGuideDialog"
-import { EMPTY_SELECTION, sortedValues, sortLineNames, toggleSetValue } from "../utils/selection"
+import {
+  buildLineNameAvailabilityFromTree,
+  EMPTY_SELECTION,
+  sameSet,
+  sortedValues,
+  sortLineNames,
+  toggleSetValue,
+} from "../utils/selection"
 
 const DEFAULT_SELECTION_PANEL_HEIGHT = 320
 const MIN_SELECTION_PANEL_HEIGHT = 180
@@ -181,6 +188,7 @@ export function L3SpiderDataSelector({
   rightContent,
   headerExtra,
   tabsSlot,
+  selectionTree = null,
   showBody = true,
 }) {
   const [guideDocumentKey, setGuideDocumentKey] = useState(null)
@@ -198,12 +206,31 @@ export function L3SpiderDataSelector({
   const lineGroupsForDate = lineGroups.filter((g) => g.lineId in availabilityForDate)
   // 선택 날짜에 '실제로 존재하는' line_name → process → [eds] (백엔드가 날짜·step_seq·제외필터 반영).
   // 패널 옵션은 전적으로 이걸로 → 그 날 데이터 없는 조합은 애초에 선택지에 안 뜬다.
-  const lnaForDate = hasLineGroups ? (meta.lineNameAvailability?.[selection.date] ?? {}) : {}
+  const filteredLineNameAvailability = useMemo(
+    () => buildLineNameAvailabilityFromTree(selectionTree),
+    [selectionTree],
+  )
+  const lnaForDate = useMemo(
+    () => selectionTree !== null
+      ? (filteredLineNameAvailability ?? {})
+      : hasLineGroups
+        ? (meta.lineNameAvailability?.[selection.date] ?? {})
+        : {},
+    [
+      filteredLineNameAvailability,
+      hasLineGroups,
+      meta.lineNameAvailability,
+      selection.date,
+      selectionTree,
+    ],
+  )
 
   // Line 컬럼에 표시할 항목입니다. 설정이 있으면 LINE_NAME, 없으면 LINE_ID를 사용합니다.
-  const lineItemsForPanel = hasLineGroups
+  const lineItemsForPanel = selectionTree !== null
     ? sortLineNames(Object.keys(lnaForDate))
-    : visibleLineIds
+    : hasLineGroups
+      ? sortLineNames(Object.keys(lnaForDate))
+      : visibleLineIds
 
   // Line 컬럼 패널의 선택값입니다. 모드에 따라 LINE_NAME 또는 LINE_ID가 들어갑니다.
   const selectedLineItemsForPanel = hasLineGroups
@@ -217,7 +244,12 @@ export function L3SpiderDataSelector({
 
   // line_name 모드에서는 선택 날짜에 실제로 존재하는 process만 허용합니다.
   const processIds = sortedValues(
-    hasLineGroups
+    selectionTree !== null
+      ? new Set(
+          [...(hasLineGroups ? (selection.lineNames ?? new Set()) : selection.lineIds)]
+            .flatMap((key) => Object.keys(lnaForDate[key] ?? {})),
+        )
+      : hasLineGroups
       ? new Set(
           [...(selection.lineNames ?? new Set())].flatMap((name) => Object.keys(lnaForDate[name] ?? {})),
         )
@@ -234,9 +266,10 @@ export function L3SpiderDataSelector({
   // line_id 모드: 기존대로 availability 사용.
   const edsStepsFor = (lineNamesSet, lineIdList, processList) => {
     const out = new Set()
-    if (hasLineGroups) {
-      for (const name of lineNamesSet) {
-        const procs = lnaForDate[name]
+    if (selectionTree !== null || hasLineGroups) {
+      const treeKeys = hasLineGroups ? lineNamesSet : lineIdList
+      for (const key of treeKeys) {
+        const procs = lnaForDate[key]
         if (!procs) continue
         for (const pid of processList) {
           for (const eds of procs[pid] ?? []) out.add(eds)
@@ -371,6 +404,62 @@ export function L3SpiderDataSelector({
     )
     onSelectionChange({ ...selection, processIds: processIdsNext, edsSteps: nextEdsSteps })
   }
+
+  useEffect(() => {
+    if (selectionTree === null) return
+
+    const availableLineItems = new Set(lineItemsForPanel)
+    const nextLineNames = hasLineGroups
+      ? new Set(sortedValues(selection.lineNames).filter((value) => availableLineItems.has(value)))
+      : new Set()
+    const nextLineIds = hasLineGroups
+      ? new Set(
+          lineGroupsForDate
+            .filter((group) => nextLineNames.has(group.lineName))
+            .map((group) => group.lineId),
+        )
+      : new Set(sortedValues(selection.lineIds).filter((value) => availableLineItems.has(value)))
+    const selectedTreeKeys = hasLineGroups ? nextLineNames : nextLineIds
+    const validProcesses = new Set(
+      sortedValues(selectedTreeKeys).flatMap((key) => Object.keys(lnaForDate[key] ?? {})),
+    )
+    const nextProcessIds = new Set(
+      sortedValues(selection.processIds).filter((value) => validProcesses.has(value)),
+    )
+    const validEdsSteps = new Set()
+    for (const key of selectedTreeKeys) {
+      const processes = lnaForDate[key] ?? {}
+      for (const processId of nextProcessIds) {
+        for (const edsStep of processes[processId] ?? []) validEdsSteps.add(edsStep)
+      }
+    }
+    const nextEdsSteps = new Set(
+      sortedValues(selection.edsSteps).filter((value) => validEdsSteps.has(value)),
+    )
+
+    if (
+      sameSet(nextLineNames, selection.lineNames ?? new Set())
+      && sameSet(nextLineIds, selection.lineIds)
+      && sameSet(nextProcessIds, selection.processIds)
+      && sameSet(nextEdsSteps, selection.edsSteps)
+    ) return
+
+    onSelectionChange({
+      ...selection,
+      lineNames: nextLineNames,
+      lineIds: nextLineIds,
+      processIds: nextProcessIds,
+      edsSteps: nextEdsSteps,
+    })
+  }, [
+    hasLineGroups,
+    lineGroupsForDate,
+    lineItemsForPanel,
+    lnaForDate,
+    onSelectionChange,
+    selection,
+    selectionTree,
+  ])
 
   const selectorCards = (
     <div className="grid h-full min-h-0 grid-cols-3 gap-4">
