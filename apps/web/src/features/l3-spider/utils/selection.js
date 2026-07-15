@@ -138,6 +138,79 @@ export function sameSet(left, right) {
   return true
 }
 
+export function buildLineNameAvailabilityFromTree(selectionTree) {
+  if (selectionTree === null) return null
+
+  const availability = {}
+  for (const [lineName, processes] of Object.entries(selectionTree)) {
+    const processAvailability = {}
+    for (const [processId, edsSteps] of Object.entries(processes ?? {})) {
+      const availableEdsSteps = sortedValues(
+        Object.entries(edsSteps ?? {})
+          .filter(([, steps]) => Object.keys(steps ?? {}).length > 0)
+          .map(([edsStep]) => edsStep),
+      )
+      if (availableEdsSteps.length > 0) processAvailability[processId] = availableEdsSteps
+    }
+    if (Object.keys(processAvailability).length > 0) availability[lineName] = processAvailability
+  }
+  return availability
+}
+
+export function buildLeafOptionsFromTree(selectionTree, selection, checkedStep, checkedPpid) {
+  const empty = { edsStepSeqs: {}, edsStepPpids: {}, eqcHighRiskBins: {} }
+  if (selectionTree === null) return empty
+
+  const selectedLines = selection.lineNames?.size > 0
+    ? sortedValues(selection.lineNames)
+    : sortedValues(selection.lineIds)
+  const selectedProcesses = selection.processIds ?? new Set()
+  const selectedEdsSteps = selection.edsSteps ?? new Set()
+  const [checkedEdsStep, checkedStepSeq] = checkedStep?.split("|||", 2) ?? []
+  const stepSets = new Map()
+  const ppidSets = new Map()
+  const eqcBinSets = new Map()
+
+  for (const lineName of selectedLines) {
+    const processes = selectionTree[lineName] ?? {}
+    for (const [processId, edsSteps] of Object.entries(processes)) {
+      if (!selectedProcesses.has(processId)) continue
+      for (const [edsStep, steps] of Object.entries(edsSteps ?? {})) {
+        if (!selectedEdsSteps.has(edsStep)) continue
+        for (const [stepSeq, ppids] of Object.entries(steps ?? {})) {
+          if (!stepSets.has(edsStep)) stepSets.set(edsStep, new Set())
+          stepSets.get(edsStep).add(stepSeq)
+
+          const stepKey = `${edsStep}|||${stepSeq}`
+          if (!ppidSets.has(stepKey)) ppidSets.set(stepKey, new Set())
+          for (const [ppid, eqcs] of Object.entries(ppids ?? {})) {
+            ppidSets.get(stepKey).add(ppid)
+            if (edsStep !== checkedEdsStep || stepSeq !== checkedStepSeq || ppid !== checkedPpid) {
+              continue
+            }
+            for (const [eqc, binNames] of Object.entries(eqcs ?? {})) {
+              if (!eqcBinSets.has(eqc)) eqcBinSets.set(eqc, new Set())
+              for (const binName of binNames ?? []) eqcBinSets.get(eqc).add(binName)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    edsStepSeqs: Object.fromEntries(
+      sortedValues(stepSets.keys()).map((key) => [key, sortedValues(stepSets.get(key))]),
+    ),
+    edsStepPpids: Object.fromEntries(
+      sortedValues(ppidSets.keys()).map((key) => [key, sortedValues(ppidSets.get(key))]),
+    ),
+    eqcHighRiskBins: Object.fromEntries(
+      sortedValues(eqcBinSets.keys()).map((key) => [key, sortedValues(eqcBinSets.get(key))]),
+    ),
+  }
+}
+
 export function toggleSetValue(values, value) {
   const next = new Set(values)
   if (next.has(value)) {

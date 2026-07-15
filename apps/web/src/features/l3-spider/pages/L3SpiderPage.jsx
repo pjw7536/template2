@@ -22,6 +22,7 @@ import {
   useL3SpiderStructure,
 } from "../hooks/useL3SpiderQueries"
 import {
+  buildLeafOptionsFromTree,
   createLeafSelectionFromSearchParams,
   createSelectionFromSearchParams,
   EMPTY_META,
@@ -161,16 +162,28 @@ export function L3SpiderPage() {
   // checkedStep은 "eds_step|||step_seq" 복합키
   const checkedEdsStepFromKey = checkedStep ? checkedStep.split("|||")[0] : null
   const checkedStepSeq = checkedStep ? checkedStep.split("|||")[1] : null
+  const selectionTree = dailySummaryQuery.data?.selectionTree ?? null
+  const filteredLeafOptions = useMemo(
+    () => buildLeafOptionsFromTree(selectionTree, selection, checkedStep, checkedPpid),
+    [checkedPpid, checkedStep, selection, selectionTree],
+  )
 
   // ppid 선택 시 해당 경로 파일에서만 EQPCH·Bin 후보 조회
   const filterCandidatesQuery = useL3SpiderFilterCandidates(
-    selection, checkedEdsStepFromKey, checkedStepSeq, checkedPpid,
+    selection, checkedEdsStepFromKey, checkedStepSeq, checkedPpid, selectionTree === null,
   )
   const candidateEqcHighRiskBins = useMemo(
-    () => filterCandidatesQuery.isSuccess
-      ? (filterCandidatesQuery.data?.eqcHighRiskBins ?? {})
-      : null,
-    [filterCandidatesQuery.data?.eqcHighRiskBins, filterCandidatesQuery.isSuccess],
+    () => selectionTree !== null
+      ? filteredLeafOptions.eqcHighRiskBins
+      : filterCandidatesQuery.isSuccess
+        ? (filterCandidatesQuery.data?.eqcHighRiskBins ?? {})
+        : null,
+    [
+      filterCandidatesQuery.data?.eqcHighRiskBins,
+      filterCandidatesQuery.isSuccess,
+      filteredLeafOptions.eqcHighRiskBins,
+      selectionTree,
+    ],
   )
 
   // trellis 기준: EQPCH 선택 → bin별 subplots / Bin 선택 → eqc별 subplots
@@ -226,6 +239,7 @@ export function L3SpiderPage() {
       <L3SpiderDataSelector
         meta={meta}
         selection={selection}
+        selectionTree={selectionTree}
         onSelectionChange={handleSelectionChange}
         isLoading={metaQuery.isFetching}
         onRefresh={() => metaQuery.refetch()}
@@ -248,12 +262,22 @@ export function L3SpiderPage() {
         )}
         rightContent={
           <L3SpiderFilterPanel
-            edsStepSeqs={structureQuery.data?.edsStepSeqs ?? {}}
-            edsStepPpids={structureQuery.data?.edsStepPpids ?? {}}
+            edsStepSeqs={
+              selectionTree !== null
+                ? filteredLeafOptions.edsStepSeqs
+                : (structureQuery.data?.edsStepSeqs ?? {})
+            }
+            edsStepPpids={
+              selectionTree !== null
+                ? filteredLeafOptions.edsStepPpids
+                : (structureQuery.data?.edsStepPpids ?? {})
+            }
             ppidLastTkinTime={statsQuery.data?.ppidLastTkinTime ?? {}}
             selectedEdsSteps={selection.edsSteps}
             eqcHighRiskBins={candidateEqcHighRiskBins}
-            isCandidatesLoading={filterCandidatesQuery.isFetching && !!checkedPpid}
+            isCandidatesLoading={
+              selectionTree === null && filterCandidatesQuery.isFetching && !!checkedPpid
+            }
             checkedStep={checkedStep}
             checkedPpid={checkedPpid}
             checkedEqc={checkedEqc}

@@ -679,6 +679,13 @@ def _matches_pattern(value: str, pattern: str) -> bool:
     return fnmatch.fnmatch(str(value).lower(), pattern.replace("%", "*").lower())
 
 
+def _matches_comma_separated_patterns(value: str, pattern: str) -> bool:
+    """쉼표로 구분한 패턴 중 하나라도 값과 일치하는지 반환합니다."""
+
+    patterns = [token.strip() for token in str(pattern).split(",") if token.strip()]
+    return any(_matches_pattern(value, token) for token in patterns)
+
+
 def _get_exclusion_rules(*, user: Any | None = None) -> list[dict]:
     """사용자 소유 활성 제외 필터 규칙을 DB에서 조회합니다.
 
@@ -1676,8 +1683,13 @@ def _apply_exclusion_filters_with_rules(merged: pd.DataFrame, rules: list[dict])
             if col not in merged.columns:
                 row_mask = pd.Series(False, index=merged.index)
                 break
+            matcher = (
+                _matches_comma_separated_patterns
+                if field == "bin_name"
+                else _matches_pattern
+            )
             row_mask = row_mask & merged[col].astype(str).apply(
-                lambda v, p=pattern: _matches_pattern(v, p)
+                lambda v, p=pattern, match=matcher: match(v, p)
             )
 
         # 파일 경로 date 폴더명 기준 날짜 범위 (선택 날짜와 동일 기준)
@@ -2006,6 +2018,7 @@ def _empty_daily_summary() -> dict[str, object]:
         },
         "matrix": {"lines": [], "processes": [], "edsSteps": [], "cells": []},
         "runStats": {"totalRows": 0, "combinations": 0, "byLine": [], "byLineName": []},
+        "selectionTree": None,
     }
 
 
@@ -2054,8 +2067,9 @@ def _daily_file_df_from_index(index_rows: list[dict], date: str, root: Path) -> 
     return pd.DataFrame(counted), uncounted_paths
 
 
-def _daily_file_df_from_parquet(paths: list[Path], rules: list[dict] | None) -> pd.DataFrame:
-    """parquet 파일들을 읽어(제외필터 옵션) 파일별 집계 프레임으로 변환합니다."""
+def _read_daily_summary_rows(paths: list[Path], rules: list[dict] | None) -> pd.DataFrame:
+    """daily summary Parquet을 읽고 제외 필터를 적용한 행을 반환합니다."""
+
     if not paths:
         return pd.DataFrame()
     frames = _parallel_read(list(paths), _read_daily_summary_file)
@@ -2074,6 +2088,15 @@ def _daily_file_df_from_parquet(paths: list[Path], rules: list[dict] | None) -> 
     if "eqc" not in merged.columns:
         merged["eqc"] = ""
     merged["eqc"] = merged["eqc"].fillna("").astype(str)
+    return merged
+
+
+def _daily_file_df_from_rows(merged: pd.DataFrame) -> pd.DataFrame:
+    """필터 적용이 끝난 daily summary 행을 파일별 집계로 변환합니다."""
+
+    if merged.empty:
+        return pd.DataFrame()
+    merged = merged.copy()
     status = merged["display_status"].astype(str)
     merged["_hr"] = (status == "High Risk Chamber").astype(int)
     merged["_wn"] = (status == "Warning").astype(int)
@@ -2094,6 +2117,67 @@ def _daily_file_df_from_parquet(paths: list[Path], rules: list[dict] | None) -> 
             "total_bins": int(len(all_bins)),
         })
     return pd.DataFrame(records)
+
+
+def _daily_file_df_from_parquet(paths: list[Path], rules: list[dict] | None) -> pd.DataFrame:
+    """Parquet 파일을 읽어 제외 필터 적용 후 파일별 집계로 변환합니다."""
+
+    return _daily_file_df_from_rows(_read_daily_summary_rows(paths, rules))
+
+
+def _build_selection_tree(merged: pd.DataFrame) -> dict[str, object]:
+    """필터 적용 후 High Risk leaf만 포함하는 Chart 선택 트리를 반환합니다."""
+
+    required = {
+        "line_id", "process_id", "eds_step", "step_seq", "ppid",
+        "eqc", "bin_name", "display_status",
+    }
+    if merged.empty or not required.issubset(merged.columns):
+        return {}
+
+    high_risk = merged.loc[
+        merged["display_status"] == "High Risk Chamber",
+        list(required),
+    ].drop_duplicates()
+    if high_risk.empty:
+        return {}
+
+    tree: dict[str, dict] = {}
+    for row in high_risk.itertuples(index=False):
+        line_name = line_name_rules.resolve_line_name(
+            row.line_id,
+            row.process_id,
+            row.step_seq,
+        )
+        bins = (
+            tree.setdefault(str(line_name), {})
+            .setdefault(str(row.process_id), {})
+            .setdefault(str(row.eds_step), {})
+            .setdefault(str(row.step_seq), {})
+            .setdefault(str(row.ppid), {})
+            .setdefault(str(row.eqc), set())
+        )
+        bins.add(str(row.bin_name))
+
+    return {
+        line_name: {
+            process_id: {
+                eds_step: {
+                    step_seq: {
+                        ppid: {
+                            eqc: sorted(bin_names)
+                            for eqc, bin_names in sorted(eqcs.items())
+                        }
+                        for ppid, eqcs in sorted(ppids.items())
+                    }
+                    for step_seq, ppids in sorted(steps.items())
+                }
+                for eds_step, steps in sorted(eds_steps.items())
+            }
+            for process_id, eds_steps in sorted(processes.items())
+        }
+        for line_name, processes in sorted(tree.items())
+    }
 
 
 def _aggregate_daily(file_df: pd.DataFrame, dates: list) -> dict:
@@ -2299,12 +2383,15 @@ def get_daily_summary(selection: dict[str, object], *, user: Any | None = None) 
     # 제외필터가 있으면 행 단위 정확 필터가 필요 → 전량 parquet.
     # 없으면 file_index의 상태 카운트로 집계(초고속). 카운트 NULL(구 데이터) 파일만 parquet 폴백.
     file_frames: list[pd.DataFrame] = []
+    selection_tree: dict[str, object] | None = None
     try:
         if rules:
             paths: list[Path] = []
             for date in dates:
                 paths.extend(selectors.iter_date_files(date))
-            frame = _daily_file_df_from_parquet(paths, rules)
+            filtered_rows = _read_daily_summary_rows(paths, rules)
+            selection_tree = _build_selection_tree(filtered_rows)
+            frame = _daily_file_df_from_rows(filtered_rows)
             if not frame.empty:
                 file_frames.append(frame)
         else:
@@ -2337,6 +2424,7 @@ def get_daily_summary(selection: dict[str, object], *, user: Any | None = None) 
 
     file_df = pd.concat(file_frames, ignore_index=True) if file_frames else pd.DataFrame()
     result = _aggregate_daily(file_df, dates)
+    result["selectionTree"] = selection_tree
     run_stats = selectors.query_run_stats(dates)
     run_stat_details = run_stats.pop("_details", [])
     result["matrix"] = _include_analyzed_matrix_cells(
