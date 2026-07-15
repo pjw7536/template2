@@ -27,6 +27,7 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -429,6 +430,7 @@ export function DataTable({ lineId }) {
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 100 })
   const [columnSizing, setColumnSizing] = React.useState({})
   const [isCompactMode, setIsCompactMode] = React.useState(false)
+  const [showOriginalComment, setShowOriginalComment] = React.useState(false)
   const [rowRefreshAnimations, setRowRefreshAnimations] = React.useState({})
   const tableScrollRef = React.useRef(null)
   const pendingScrollSnapshotRef = React.useRef(null)
@@ -455,8 +457,8 @@ export function DataTable({ lineId }) {
   }
 
   const tableMetaWithRefresh = React.useMemo(
-    () => ({ ...tableMeta, rowRefreshAnimations }),
-    [rowRefreshAnimations, tableMeta]
+    () => ({ ...tableMeta, rowRefreshAnimations, showOriginalComment }),
+    [rowRefreshAnimations, showOriginalComment, tableMeta]
   )
   const columnVisibility = React.useMemo(() => {
     if (!isCompactMode) return {}
@@ -530,6 +532,7 @@ export function DataTable({ lineId }) {
    * ──────────────────────────────────────────────────────────────────────── */
   const handleClearFilters = React.useCallback(() => {
     resetFilters()
+    setShowOriginalComment(false)
     setFavoriteResetSignal((previous) => previous + 1)
   }, [resetFilters])
 
@@ -706,7 +709,7 @@ export function DataTable({ lineId }) {
         <QuickFilters
           sections={sections}
           filters={filters}
-          activeCount={activeCount}
+          activeCount={activeCount + (showOriginalComment ? 1 : 0)}
           onToggle={toggleFilter}
           onClear={handleClearFilters}
           globalFilterValue={filter}
@@ -717,6 +720,20 @@ export function DataTable({ lineId }) {
               config={statusChartConfig}
               total={filteredTotal}
             />
+          }
+          trailingControls={
+            <label
+              htmlFor="show-sp-reason"
+              className="flex h-8 cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
+              title="Comment 원문 표시"
+            >
+              <Checkbox
+                id="show-sp-reason"
+                checked={showOriginalComment}
+                onCheckedChange={(checked) => setShowOriginalComment(checked === true)}
+              />
+              <span>SP Reason</span>
+            </label>
           }
         />
       </div>

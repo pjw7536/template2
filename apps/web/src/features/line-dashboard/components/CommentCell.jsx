@@ -58,13 +58,16 @@ function getIndicatorStatus(meta, recordId, field) {
 export function CommentCell({ meta, recordId, baseValue }) {
   // 원본 값에서 보이는 텍스트와 suffix(마커 포함)를 분리
   const { visibleText: baseVisibleText, suffixWithMarker } = splitComment(baseValue)
+  const originalText = typeof baseValue === "string" ? baseValue : ""
+  const showOriginalComment = Boolean(meta?.showOriginalComment)
+  const baseEditorValue = showOriginalComment ? originalText : baseVisibleText
 
   // 편집 중 여부 / 드래프트 값(입력값)
   const isEditing = Boolean(meta.commentEditing[recordId])
   const draftValue = meta.commentDrafts[recordId]
 
   // 실제 에디터에 보여줄 값(편집 중이면 드래프트, 아니면 원본 보이는 텍스트)
-  const editorValue = isEditing ? (draftValue ?? baseVisibleText) : baseVisibleText
+  const editorValue = isEditing ? (draftValue ?? baseEditorValue) : baseEditorValue
 
   // 저장중/오류/인디케이터 상태
   const field = "comment"
@@ -122,8 +125,10 @@ export function CommentCell({ meta, recordId, baseValue }) {
 
   /** 💾 저장(보이는 텍스트 + suffix 재조합) */
   const handleSave = async () => {
-    const nextVisible = draftValue ?? baseVisibleText
-    const composed = composeComment(nextVisible, suffixWithMarker)
+    const nextValue = draftValue ?? baseEditorValue
+    const composed = showOriginalComment
+      ? nextValue
+      : composeComment(nextValue, suffixWithMarker)
 
     // 값이 실제로 바뀌지 않았다면 서버 호출 없이 그냥 닫기
     const original = typeof baseValue === "string" ? baseValue : ""
@@ -183,7 +188,7 @@ export function CommentCell({ meta, recordId, baseValue }) {
         onOpenChange={(nextOpen) => {
           // 열기: 현재 보이는 텍스트로 드래프트 채우기
           if (nextOpen) {
-            meta.setCommentDraftValue(recordId, baseVisibleText)
+            meta.setCommentDraftValue(recordId, baseEditorValue)
             meta.setCommentEditingState(recordId, true)
           } else {
             // 닫기: 편집 상태/드래프트/에러 정리
@@ -203,8 +208,8 @@ export function CommentCell({ meta, recordId, baseValue }) {
             className="block w-full cursor-pointer truncate rounded-md border px-2 py-1 text-left text-sm transition-colors hover:border-border hover:bg-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Open comment editor"
           >
-            {baseVisibleText.length > 0 ? (
-              <span className="block truncate">{baseVisibleText}</span>
+            {baseEditorValue.length > 0 ? (
+              <span className="block truncate">{baseEditorValue}</span>
             ) : (
               <span className="block min-h-[1.25rem] text-muted-foreground" aria-hidden="true" />
             )}
