@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "api.l3_spider",
     "api.management",
     "api.pm_comparison",
+    "api.tttm_spider",
     "api.rag",
     "api.observer",
     "api.voc",
@@ -225,6 +226,13 @@ L3_SPIDER_MOCK_INDEX_PATH = env(
 L3_SPIDER_MAX_CHART_POINTS_PER_PANEL = env_int("L3_SPIDER_MAX_CHART_POINTS_PER_PANEL", 2000) or 2000
 L3_SPIDER_MAIL_SENDER = env("L3_SPIDER_MAIL_SENDER", env("DRONE_MAIL_SENDER", ""))
 L3_SPIDER_MAIL_TARGET_URL = env("L3_SPIDER_MAIL_TARGET_URL", "")
+
+# TTTM Spider 경로.
+# data = 원본 트리(콤보 조회), result = 알고리즘 서버가 계산한 score_data parquet.
+# 원격 데이터는 NFS/SMB 등으로 read-only mount 해서 사용한다.
+TTTM_SPIDER_ROOT = env("TTTM_SPIDER_ROOT", "/data/tttm_spider")
+TTTM_SPIDER_DATA_ROOT = env("TTTM_SPIDER_DATA_ROOT", f"{TTTM_SPIDER_ROOT}/data")
+TTTM_SPIDER_RESULT_ROOT = env("TTTM_SPIDER_RESULT_ROOT", f"{TTTM_SPIDER_ROOT}/result")
 
 # FDC Hard Limit 추천 데이터 경로.
 # hardspec.py 원본 경로를 기본값으로 사용하고, 오프사이트 환경에서는 mount 경로를 env로 교체합니다.

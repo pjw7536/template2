@@ -1,0 +1,12 @@
+# sensor_catalog_map.txt  (MOCK — 데모/드릴다운 테스트용)
+# 형식: sensor_param_name,leaf_category   (# 주석 허용)
+# ⚠ 실제 팹 센서명→카테고리 도메인 데이터가 아니라, mock 파이프라인이 만드는
+#    param 이름에 맞춘 임시 매핑이다. 실제 파일을 받으면 교체할 것.
+# leaf_category 는 catalog.py 의 LEAF_ORDER 와 일치해야 한다.
+RF_FWD_PWR,RF_FWD
+RF_REF_PWR,RF_REF
+CHAMBER_PRESS,PRESS
+GAS_FLOW_AR,GAS_AR
+GAS_FLOW_O2,GAS_O2
+ESC_VOLT,ESC_V
+HELIUM_LEAK,HE_LEAK
