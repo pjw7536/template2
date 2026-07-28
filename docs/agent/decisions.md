@@ -37,3 +37,22 @@
 - `<table_name>` 폴더명은 실제 target table 이름과 일치시킨다.
 - 테이블별 app은 자기 model, migration, loader service, tests, management command만 소유한다.
 - 공통 파일 탐색, deflate CSV 파싱, PostgreSQL COPY 유틸은 `apps/api/api/data_movement/common`에 둔다.
+
+## 2026-07-27: Portal·앱 고정 역할 접근 권한
+
+- Portal과 모든 하위 scope의 역할은 `UserAccess.role`의 `user`/`admin` 두 값으로 통일한다.
+- canonical `portal` key 이외의 모든 scope는 Portal 접근을 선행 조건으로 사용한다.
+- 자동 정책과 일괄 승인은 `user`만 부여하고 `admin`은 사용자별 명시 권한으로만 부여한다.
+- `pending`·`denied` 행은 `user`만 저장하며, 역할 없는 승인·부여도 기존 역할 대신 `user`를 사용한다.
+- Portal `admin`은 전역 접근 관리, 앱 `admin`은 해당 앱의 관리자 기능만 담당한다.
+- 역할 판정은 요청 단위 일괄 resolver를 사용하고 전역 캐시는 사용하지 않는다.
+- 별도 소비처가 없는 사용자 프로필 운영 역할은 제거하고 권한 역할은 `UserAccess.role`만 사용한다.
+- 인증 응답의 접근 정보는 Portal과 모든 활성 scope를 포함한 `scope_access` 하나만 사용한다.
+- 접근 신청은 `/account/access/request`, 관리 결정은 `/account/access/users/<user_id>/decision`만 사용한다.
+- 접근 관리 요청 body와 query는 camelCase canonical 필드만 허용하고 이전 별칭은 400으로 거절한다.
+- 접근 차단 오류는 scope 종류와 관계없이 `scope_access_required`, `scope`, `access` 형태를 사용한다.
+- 제거된 `portal_access`, `app_access`, Portal 전용 승인 API, 정책 가상 역할, `canManage` 호환 계층은 복구하지 않는다.
+- `AccessScope`는 migration으로만 추가하고 `key`·유형을 변경하거나 행을 물리 삭제하지 않는다.
+- canonical Portal은 `key=portal`과 `scope_type=portal`을 DB 제약조건으로 함께 고정한다.
+- 권한 매트릭스는 Portal과 모든 활성 app·feature scope를 같은 결정 API로 관리한다.
+- 사용자와 scope는 비활성화로 수명을 관리하고 감사 로그가 참조하는 행은 `PROTECT`한다.

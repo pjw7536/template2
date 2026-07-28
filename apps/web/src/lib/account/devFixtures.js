@@ -117,18 +117,13 @@ const DUMMY_PENDING_ACCESS_USERS = [
   {
     user: {
       id: 9201,
-      userId: 9201,
       username: "han.seojun",
       displayName: "한서준",
       sabun: "T9201",
       knoxId: "han.seojun",
       email: "han.seojun@example.test",
       department: "Manufacturing",
-      accountDepartment: "Manufacturing",
-      line: "Line A",
       userSdwtProd: "SDWT_ALPHA",
-      profileRole: "viewer",
-      isStaff: false,
       isSuperuser: false,
     },
     access: {
@@ -136,37 +131,34 @@ const DUMMY_PENDING_ACCESS_USERS = [
       scope: "portal",
       reason: "pending",
       department: "Manufacturing",
-      departmentAllowed: false,
-      status: "pending",
-      role: "viewer",
-      requestId: 7201,
+      role: "user",
       requestedAt: "2026-07-10T09:20:00+09:00",
       decidedAt: null,
       rejectionReason: null,
       effectiveStatus: "pending",
       explicitStatus: "pending",
       source: "explicit_pending",
-      policyMatched: false,
-      policy: { matched: false, reason: "not_matched", source: "none", role: "viewer" },
+      policy: {
+        matched: false,
+        reason: "not_requested",
+        source: "none",
+        ruleId: null,
+        ruleType: null,
+        value: null,
+      },
       canRequest: false,
-      canManage: false,
     },
   },
   {
     user: {
       id: 9202,
-      userId: 9202,
       username: "jung.harin",
       displayName: "정하린",
       sabun: "T9202",
       knoxId: "jung.harin",
       email: "jung.harin@example.test",
       department: "Quality",
-      accountDepartment: "Quality",
-      line: "Line B",
       userSdwtProd: "SDWT_BETA",
-      profileRole: "manager",
-      isStaff: false,
       isSuperuser: false,
     },
     access: {
@@ -174,20 +166,22 @@ const DUMMY_PENDING_ACCESS_USERS = [
       scope: "portal",
       reason: "pending",
       department: "Quality",
-      departmentAllowed: false,
-      status: "pending",
-      role: "member",
-      requestId: 7202,
+      role: "user",
       requestedAt: "2026-07-10T08:55:00+09:00",
       decidedAt: null,
       rejectionReason: null,
       effectiveStatus: "pending",
       explicitStatus: "pending",
       source: "explicit_pending",
-      policyMatched: false,
-      policy: { matched: false, reason: "not_matched", source: "none", role: "member" },
+      policy: {
+        matched: false,
+        reason: "not_requested",
+        source: "none",
+        ruleId: null,
+        ruleType: null,
+        value: null,
+      },
       canRequest: false,
-      canManage: false,
     },
   },
 ]
@@ -199,8 +193,8 @@ const DUMMY_ACCESS_AUDIT_LOGS = [
     scopeName: "Portal",
     action: "approve",
     reason: "",
-    before: { status: "pending", role: "viewer" },
-    after: { status: "allowed", role: "member" },
+    before: { explicitStatus: "pending", role: "user" },
+    after: { explicitStatus: "allowed", role: "user" },
     createdAt: "2026-07-10T10:05:00+09:00",
     actor: { id: 9001, knoxId: "account.manager", username: "account.manager", email: "account.manager@example.test" },
     targetUser: { id: 9203, knoxId: "yoon.dohyun", username: "yoon.dohyun", email: "yoon.dohyun@example.test" },
@@ -212,8 +206,8 @@ const DUMMY_ACCESS_AUDIT_LOGS = [
     scopeName: "Portal",
     action: "reject",
     reason: "테스트용 거절 사유입니다.",
-    before: { status: "pending", role: "viewer" },
-    after: { status: "denied", role: "viewer" },
+    before: { explicitStatus: "pending", role: "user" },
+    after: { explicitStatus: "denied", role: "user" },
     createdAt: "2026-07-10T09:40:00+09:00",
     actor: { id: 9001, knoxId: "account.manager", username: "account.manager", email: "account.manager@example.test" },
     targetUser: { id: 9204, knoxId: "kang.minji", username: "kang.minji", email: "kang.minji@example.test" },
@@ -230,7 +224,6 @@ const DUMMY_ACCESS_AUDIT_LOGS = [
       id: 6101,
       ruleType: "department",
       value: "Manufacturing",
-      role: "viewer",
       isActive: true,
     },
     createdAt: "2026-07-09T17:30:00+09:00",
@@ -240,7 +233,6 @@ const DUMMY_ACCESS_AUDIT_LOGS = [
       id: 6101,
       ruleType: "department",
       value: "Manufacturing",
-      role: "viewer",
     },
   },
   {
@@ -249,8 +241,8 @@ const DUMMY_ACCESS_AUDIT_LOGS = [
     scopeName: "Portal",
     action: "change_role",
     reason: "운영 담당자 테스트",
-    before: { status: "allowed", role: "viewer" },
-    after: { status: "allowed", role: "manager" },
+    before: { explicitStatus: "allowed", role: "user" },
+    after: { explicitStatus: "allowed", role: "admin" },
     createdAt: "2026-07-09T15:10:00+09:00",
     actor: { id: 9001, knoxId: "account.manager", username: "account.manager", email: "account.manager@example.test" },
     targetUser: { id: 9205, knoxId: "oh.jisoo", username: "oh.jisoo", email: "oh.jisoo@example.test" },
@@ -269,38 +261,6 @@ function buildPagination({ page, pageSize, total }) {
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   }
-}
-
-function summarizeAccessRows(rows) {
-  return rows.reduce(
-    (summary, row) => {
-      const status = row.access?.effectiveStatus
-      const source = row.access?.source
-      summary.total += 1
-      summary.pageTotal += 1
-      if (status === "allowed") summary.allowed += 1
-      else if (status === "pending") summary.pending += 1
-      else if (status === "denied") summary.denied += 1
-      else if (status === "inactive") summary.inactive += 1
-      else summary.notRequested += 1
-      if (typeof source === "string" && source.startsWith("policy_")) summary.policyAllowed += 1
-      if (source === "explicit_allowed") summary.explicitAllowed += 1
-      if (source === "explicit_denied") summary.explicitDenied += 1
-      return summary
-    },
-    {
-      total: 0,
-      pageTotal: 0,
-      allowed: 0,
-      pending: 0,
-      denied: 0,
-      notRequested: 0,
-      inactive: 0,
-      policyAllowed: 0,
-      explicitAllowed: 0,
-      explicitDenied: 0,
-    },
-  )
 }
 
 export function withDevAccountOverviewFixtures(data) {
@@ -323,15 +283,6 @@ export function withDevAccountOverviewFixtures(data) {
   }
 }
 
-export function withDevManageableGroupFixtures(data) {
-  if (!DEV_FIXTURE_ENABLED || !data || typeof data !== "object") return data
-  if (!isEmptyArray(data.groups)) return data
-  return {
-    ...data,
-    groups: DUMMY_MANAGEABLE_GROUPS,
-  }
-}
-
 export function withDevPendingAccessUserFixtures(data, { page = 1, pageSize = 20, status = "" } = {}) {
   if (!DEV_FIXTURE_ENABLED || !data || typeof data !== "object") return data
   if (status !== "pending" || page !== 1 || !isEmptyArray(data.results)) return data
@@ -340,7 +291,6 @@ export function withDevPendingAccessUserFixtures(data, { page = 1, pageSize = 20
   return {
     ...data,
     results: rows,
-    summary: summarizeAccessRows(rows),
     pagination: buildPagination({ page, pageSize, total: rows.length }),
   }
 }

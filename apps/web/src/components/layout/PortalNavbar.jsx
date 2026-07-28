@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { SearchIcon } from "lucide-react"
+import { ChevronRightIcon, SearchIcon } from "lucide-react"
 
 import { GaNEtchLogo, ThemeColorSelector, ThemeToggle } from "@/components/common"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -15,6 +15,12 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 import { useAuth } from "@/lib/auth"
+import {
+  hasAnyScopeAccess,
+  hasEveryScopeAccess,
+  hasScopeAccess,
+  hasScopeRole,
+} from "@/lib/access/scopeAccess"
 import { PORTAL_BRAND_KEY, resolvePortalBrand } from "@/lib/config/portalBranding"
 import { buildProfileImageUrl, resolveProfileAvatarId } from "@/lib/profileImage"
 import { useTheme } from "@/lib/theme"
@@ -28,12 +34,28 @@ const NAV_ICON_CLASS_NAME = "size-4"
 const NAV_MENU_LINK_CLASS_NAME = "flex flex-row items-center gap-1.5"
 const NAV_MENU_TRIGGER_CLASS_NAME = "gap-1.5"
 const NAV_MENU_CONTENT_CLASS_NAME =
-  "data-[motion=from-start]:slide-in-from-left-30! data-[motion=to-start]:slide-out-to-left-30! data-[motion=from-end]:slide-in-from-right-30! data-[motion=to-end]:slide-out-to-right-30! absolute z-50 w-auto"
+  "data-[motion=from-start]:slide-in-from-left-30! data-[motion=to-start]:slide-out-to-left-30! data-[motion=from-end]:slide-in-from-right-30! data-[motion=to-end]:slide-out-to-right-30! absolute z-50 w-auto overflow-visible"
 const NAV_SUB_LINK_CLASS_NAME = "block whitespace-nowrap px-3 py-1.5"
+const NAV_FLYOUT_CLASS_NAME =
+  "pointer-events-none invisible absolute left-full top-0 z-50 ml-1 min-w-44 translate-x-1 rounded-md border bg-popover p-1 text-popover-foreground opacity-0 shadow-md transition-[opacity,transform,visibility] duration-150 group-hover/submenu:pointer-events-auto group-hover/submenu:visible group-hover/submenu:translate-x-0 group-hover/submenu:opacity-100 group-focus-within/submenu:pointer-events-auto group-focus-within/submenu:visible group-focus-within/submenu:translate-x-0 group-focus-within/submenu:opacity-100"
 
 function canShowNavigationItem(item, user) {
-  if (item?.requireSuperuser && !user?.is_superuser) return false
+  if (item?.adminScope && !hasScopeRole(user, item.adminScope)) return false
+  if (item?.appScope && !hasScopeAccess(user, item.appScope)) return false
+  if (item?.requiredAppScopes && !hasEveryScopeAccess(user, item.requiredAppScopes)) return false
+  if (item?.anyAppScopes && !hasAnyScopeAccess(user, item.anyAppScopes)) return false
   return true
+}
+
+function getVisibleNavigationItem(item, user) {
+  if (!canShowNavigationItem(item, user)) return null
+  if (!Array.isArray(item.children)) return item
+  return {
+    ...item,
+    children: item.children
+      .map((child) => getVisibleNavigationItem(child, user))
+      .filter(Boolean),
+  }
 }
 
 export function PortalNavbar({ navigationItems }) {
@@ -111,10 +133,85 @@ export function PortalNavbar({ navigationItems }) {
     return <Icon className={NAV_ICON_CLASS_NAME} />
   }
 
+  const renderNavigationLink = (item, { nested = false } = {}) => {
+    const linkClassName = cn(
+      NAV_SUB_LINK_CLASS_NAME,
+      "flex items-center gap-2",
+      nested && "rounded-sm py-2",
+    )
+
+    if (item.external) {
+      return (
+        <a
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClassName}
+        >
+          {renderIcon(item.icon)}
+          {item.title}
+        </a>
+      )
+    }
+
+    return (
+      <PortalNavLink href={item.href} className={linkClassName}>
+        {renderIcon(item.icon)}
+        {item.title}
+      </PortalNavLink>
+    )
+  }
+
+  const renderSubNavigationItem = (item) => {
+    const hasChildren = Array.isArray(item.children) && item.children.length > 0
+
+    if (!hasChildren) {
+      return (
+        <li key={item.title}>
+          <NavigationMenuLink asChild>{renderNavigationLink(item)}</NavigationMenuLink>
+        </li>
+      )
+    }
+
+    return (
+      <li key={item.title} className="group/submenu relative">
+        <NavigationMenuLink asChild>
+          <PortalNavLink
+            href={item.href}
+            className={cn(NAV_SUB_LINK_CLASS_NAME, "flex items-center gap-2 pr-8")}
+            aria-haspopup="true"
+          >
+            {renderIcon(item.icon)}
+            <span className="flex-1">{item.title}</span>
+            <ChevronRightIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          </PortalNavLink>
+        </NavigationMenuLink>
+
+        <div className={NAV_FLYOUT_CLASS_NAME}>
+          <span className="absolute right-full top-0 h-full w-2" aria-hidden="true" />
+          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+            Spider Apps
+          </div>
+          <ul aria-label="Spider 앱 바로가기">
+            {item.children.map((child) => (
+              <li key={child.title}>
+                <NavigationMenuLink asChild>
+                  {renderNavigationLink(child, { nested: true })}
+                </NavigationMenuLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </li>
+    )
+  }
+
   const visibleNavigationItems = navigationItems
     .map((navItem) => ({
       ...navItem,
-      items: navItem.items?.filter((item) => canShowNavigationItem(item, user)),
+      items: navItem.items
+        ?.map((item) => getVisibleNavigationItem(item, user))
+        .filter(Boolean),
     }))
     .filter((navItem) => canShowNavigationItem(navItem, user))
     .filter((navItem) => navItem.href || (Array.isArray(navItem.items) && navItem.items.length > 0))
@@ -191,32 +288,8 @@ export function PortalNavbar({ navigationItems }) {
                   {navItem.title}
                 </NavigationMenuTrigger>
                 <NavigationMenuContent className={NAV_MENU_CONTENT_CLASS_NAME}>
-                  <ul className="grid w-max gap-4 p-2">
-                    <li>
-                      {navItem.items?.map((item) => (
-                        <NavigationMenuLink key={item.title} asChild>
-                          {item.external ? (
-                            <a
-                              href={item.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={cn(NAV_SUB_LINK_CLASS_NAME, "flex items-center gap-2")}
-                            >
-                              {renderIcon(item.icon)}
-                              {item.title}
-                            </a>
-                          ) : (
-                            <PortalNavLink
-                              href={item.href}
-                              className={cn(NAV_SUB_LINK_CLASS_NAME, "flex items-center gap-2")}
-                            >
-                              {renderIcon(item.icon)}
-                              {item.title}
-                            </PortalNavLink>
-                          )}
-                        </NavigationMenuLink>
-                      ))}
-                    </li>
+                  <ul className="grid w-max gap-1 p-2">
+                    {navItem.items?.map(renderSubNavigationItem)}
                   </ul>
                 </NavigationMenuContent>
               </NavigationMenuItem>

@@ -97,9 +97,8 @@ make makemigrations-check
 
 | Command | 설명 |
 | --- | --- |
-| `check_access_permission_integrity` | 배포 전 접근 권한 scope, 정책, 사용자 권한, 관리자 그룹 정합성 점검 |
-| `grant_initial_access` | 배포 직후 활성 사용자에게 Portal과 활성 앱 접근 권한을 1회 보충 |
-| `ensure_dev_database` | dev 환경에서 Django 기본 DB와 필수 PostgreSQL extension 생성 |
+| `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할 정합성 점검 |
+| `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
 | `seed_dev_data` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
 | `seed_dummy_emails` | 로컬 개발용 더미 Email 데이터 생성 |
@@ -112,6 +111,7 @@ make makemigrations-check
 | `load_racb_list` | `racb_list` incoming 파일 적재 |
 | `load_mes_line_mapping_info` | `mes_line_mapping_info` incoming 파일 전체 교체 적재 |
 | `load_station_master` | `station_master` incoming 파일 전체 교체 적재 |
+| `import_l3_spider_line_name_rules` | L3 Spider line name 규칙 CSV를 검증해 DB 규칙으로 교체 적재 |
 | `seed_drone_dummy_data` | 로컬 개발용 Drone SOP 더미 데이터 생성 |
 | `seed_drone_targets_from_file` | JSON/CSV 기준 Drone SOP/발송 이력/알림 설정 초기화 후 target/channel/recipient seed |
 | `prune_drone_sop` | 보관 기간 초과 Drone SOP 데이터 정리 |
@@ -121,10 +121,7 @@ make makemigrations-check
 
 ```bash
 docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate --noinput
-docker compose -f docker-compose.dev.yml exec -T api python manage.py grant_initial_access --dry-run
-docker compose -f docker-compose.dev.yml exec -T api python manage.py grant_initial_access
-docker compose -f docker-compose.dev.yml exec -T api python manage.py grant_initial_access --force
-docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity
+docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase post-migration
 docker compose -f docker-compose.dev.yml exec -T api python manage.py ensure_dev_database
 docker compose -f docker-compose.dev.yml exec -T api python manage.py process_email_outbox
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dev_data --reset --prefix DEV
@@ -144,7 +141,31 @@ docker compose -f docker-compose.dev.yml exec -T api python manage.py prune_dron
 docker compose -f docker-compose.dev.yml exec -T api python manage.py purge_drone_sop --dry-run
 ```
 
-초기 배포 시 Portal/활성 앱 권한을 보충하려면 `migrate` 이후 운영자가 `grant_initial_access`를 수동 실행합니다. 실제 권한 부여는 DB의 완료 marker 기준으로 최초 1회만 수행하며, 다시 실행하면 건너뜁니다. 기본 실행은 기존 `pending/denied` 결정을 덮어쓰지 않습니다. 먼저 `--dry-run`으로 예정 건수를 확인하고, 완료 marker 이후 다시 실행해야 할 때만 `--force`를 사용합니다.
+배포 과정에서는 일반 사용자 권한을 자동 생성하거나 일괄 변경하지 않습니다. 최초 Portal
+관리자는 지정한 Django superuser가 권한 관리 화면에서 대상 사용자에게 `admin` 역할을
+명시적으로 부여합니다.
+
+### 고정 역할 권한 마이그레이션 배포 순서
+
+account 고정 역할 migration은 기존 역할·정책·감사 데이터를 정규화하고 제약조건을
+교체하므로 구버전 API와 신버전 API를 동시에 실행하지 않습니다. 다음 순서를 지킵니다.
+운영 API entrypoint는 migration을 자동 실행하지 않으며, 아래 migration과 무결성 검사는
+같은 release image의 one-off `docker compose run --rm --no-deps --entrypoint python api`
+명령으로 실행합니다.
+
+1. 배포 후보와 현재 운영 SHA 사이의 전체 diff를 확인해 권한 변경 외 커밋이 함께 포함되는지 확정합니다.
+2. 운영 DB의 migration ledger가 코드가 기대하는 직전 migration과 일치하는지 읽기 전용으로 확인합니다.
+3. `AccessAuditLog`, `UserAccess`, `AccessPolicyRule` row 수와 DB 백업을 확인합니다.
+4. `check_access_permission_integrity --phase pre-migration`을 실행해 migration을 막을 legacy 데이터 문제가 없는지 확인합니다.
+5. migration SQL의 `DROP ... CASCADE` 대상에 애플리케이션 외부 view, trigger, constraint가 의존하지 않는지 확인합니다. 특히 `account 0005`는 런타임에서 사용하지 않는 `account_user_profile` 테이블을 제거합니다.
+6. API와 권한 관련 worker를 모두 중지한 뒤 migration을 실행합니다.
+7. `check_access_permission_integrity --phase post-migration`을 실행하고 기존 권한·감사 row 수를 확인한 뒤, 오류가 없을 때 신버전 API를 시작합니다.
+8. 일반 사용자, 앱 `admin`, Portal `admin`, superuser 계정으로 접근과 관리자 메뉴를 smoke test합니다.
+
+`AccessScope` 신규 항목은 route·메뉴 코드와 함께 migration으로만 추가합니다. 운영 중단은
+scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니다. canonical Portal 이외의
+`portal` 유형이나 소문자 영숫자·하이픈 형식이 아닌 key가 있으면 `account 0005`가 의미를
+자동 변경하지 않고 중단하므로 migration 전에 무결성 명령으로 먼저 확인합니다.
 
 로컬 dev 로그인 사용자는 `env/api.dev.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
 `DUMMY_ADFS_*` 기준 dummy 사용자는 staff 슈퍼유저로 보정됩니다.

@@ -7,12 +7,6 @@ const REQUEST_STATUS_LABELS = {
   SUPERSEDED: { label: "취소(대체됨)", variant: "outline" },
 }
 
-const ACCOUNT_ROLE_LABELS = {
-  admin: "Admin",
-  manager: "Manager",
-  viewer: "Viewer",
-}
-
 export const ACCESS_ROLE_LABELS = {
   viewer: "뷰어",
   member: "멤버",
@@ -25,7 +19,7 @@ export const ACCESS_ROLE_VARIANTS = {
   manager: "default",
 }
 
-export function formatAccountDate(value) {
+function formatAccountDate(value) {
   if (!value) return "-"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
@@ -43,7 +37,7 @@ export function resolveAccessRole(value) {
   return ACCESS_ROLE_LABELS[value] ? value : "viewer"
 }
 
-export function resolveLatestRequest(history = []) {
+function resolveLatestRequest(history = []) {
   return history.find((item) => item.status === "PENDING") || history[0] || null
 }
 
@@ -54,9 +48,9 @@ export function getRequestStatus(status) {
   }
 }
 
-export function getAccountRoleLabel(role) {
+function getAccountRoleLabel(role) {
   const roleKey = (role || "").toLowerCase()
-  return ACCESS_ROLE_LABELS[roleKey] || ACCOUNT_ROLE_LABELS[roleKey] || role || "미지정"
+  return ACCESS_ROLE_LABELS[roleKey] || role || "미지정"
 }
 
 function normalizeLookupValue(value) {
@@ -69,16 +63,16 @@ function getCurrentAffiliationRole(affiliation) {
     ? affiliation.accessibleUserSdwtProds
     : []
   const matched = items.find(
-    (item) => normalizeLookupValue(item?.userSdwtProd || item?.user_sdwt_prod) === current,
+    (item) => normalizeLookupValue(item?.userSdwtProd) === current,
   )
   return matched?.role || ""
 }
 
-export function getPendingRequestCount(history = []) {
+function getPendingRequestCount(history = []) {
   return history.filter((item) => item.status === "PENDING").length
 }
 
-export function getAffiliationLabel(affiliation) {
+function getAffiliationLabel(affiliation) {
   return [
     affiliation?.currentDepartment || "미지정",
     affiliation?.currentLine || "미지정",
@@ -100,7 +94,6 @@ export function countManageableGroupMembers(groups = []) {
 }
 
 export function buildAccountSummaryModel({
-  profile,
   affiliation,
   reconfirm,
   history = [],
@@ -109,7 +102,7 @@ export function buildAccountSummaryModel({
   const resolvedLatestRequest = latestRequest || resolveLatestRequest(history)
   return {
     latestRequest: resolvedLatestRequest,
-    roleLabel: getAccountRoleLabel(getCurrentAffiliationRole(affiliation) || profile?.role),
+    roleLabel: getAccountRoleLabel(getCurrentAffiliationRole(affiliation)),
     needsReconfirm: Boolean(reconfirm?.requiresReconfirm),
     pendingRequests: getPendingRequestCount(history),
     requestStatus: resolvedLatestRequest ? getRequestStatus(resolvedLatestRequest.status) : null,
@@ -141,7 +134,6 @@ export function normalizeAccountOverview(data) {
       groups: manageableGroups,
     },
     accountSummary: buildAccountSummaryModel({
-      profile: fixtureData.user,
       affiliation: fixtureData.affiliation,
       reconfirm: fixtureData.affiliationReconfirm,
       history,

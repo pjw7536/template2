@@ -59,7 +59,7 @@ const LINE_DASHBOARD_GROUP = Object.freeze({
       url: "/ESOP_Dashboard/admin/drone-targets",
       icon: Database,
       scope: "global",
-      superuserOnly: true,
+      adminScope: "line-dashboard",
     },
   ],
 })
@@ -126,7 +126,7 @@ const SETTINGS_NAV_ITEMS = Object.freeze([
     title: "Permissions",
     url: "/settings/permissions",
     scope: "global",
-    accessAdminOnly: true,
+    adminScope: "portal",
   },
 ])
 
@@ -173,14 +173,17 @@ export const NAVIGATION_CONFIG = Object.freeze({
   ],
 })
 
-function filterRestrictedItems(items, includeSuperuser, canManageAccess) {
+function filterRestrictedItems(items, adminScopes) {
+  const allowedAdminScopes = new Set(
+    Array.isArray(adminScopes) ? adminScopes.filter(Boolean) : [],
+  )
   return (Array.isArray(items) ? items : [])
-    .filter((item) => (includeSuperuser || !item?.superuserOnly) && (canManageAccess || !item?.accessAdminOnly))
+    .filter((item) => !item?.adminScope || allowedAdminScopes.has(item.adminScope))
     .map((item) => {
       if (!Array.isArray(item?.items)) return item
       return {
         ...item,
-        items: filterRestrictedItems(item.items, includeSuperuser, canManageAccess),
+        items: filterRestrictedItems(item.items, adminScopes),
       }
     })
 }
@@ -188,14 +191,13 @@ function filterRestrictedItems(items, includeSuperuser, canManageAccess) {
 export function buildNavigationConfig({
   mailbox,
   disableEmailMembers = false,
-  includeSuperuser = false,
-  canManageAccess = false,
+  adminScopes = [],
 } = {}) {
   const trimmedMailbox = normalizeMailbox(mailbox)
   if (!trimmedMailbox) {
     return {
       ...NAVIGATION_CONFIG,
-      navMain: filterRestrictedItems(NAVIGATION_CONFIG.navMain, includeSuperuser, canManageAccess),
+      navMain: filterRestrictedItems(NAVIGATION_CONFIG.navMain, adminScopes),
     }
   }
 
@@ -221,8 +223,7 @@ export function buildNavigationConfig({
       NAVIGATION_CONFIG.navMain.map((item) =>
         item?.key === EMAILS_GROUP_BASE.key ? emailsGroup : item,
       ),
-      includeSuperuser,
-      canManageAccess,
+      adminScopes,
     ),
   }
 }

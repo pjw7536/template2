@@ -23,16 +23,14 @@ import { UserSdwtProdReconfirmDialog } from "./UserSdwtProdReconfirmDialog"
 /**
  * 인증 사용자 타입 정의
  * @typedef {Object} AuthUser
- * @property {string} id
+ * @property {number} id
  * @property {string} [email]
  * @property {string} [username]
  * @property {boolean} [is_superuser]
- * @property {boolean} [is_staff]
- * @property {string[]} [roles]
  * @property {string | null} [user_sdwt_prod]
  * @property {string | null} [pending_user_sdwt_prod]
  * @property {boolean} [has_pending_affiliation]
- * @property {Record<string, {allowed: boolean, reason?: string}>} [app_access]
+ * @property {Record<string, {allowed: boolean, reason?: string}>} [scope_access]
  */
 
 /**

@@ -38,7 +38,7 @@ PORTAL_ACCESS_EXEMPT_PATHS = frozenset(
         "/api/v1/account/affiliation/reconfirm",
         "/api/v1/account/external-affiliations/sync",
         "/api/v1/account/line-sdwt-options",
-        "/api/v1/account/portal-access",
+        "/api/v1/account/access/request",
         "/docs",
         "/metrics",
         "/schema",
@@ -71,23 +71,20 @@ APP_ACCESS_API_RULES = (
     ("/api/v1/activity/logs", "access-stats"),
 )
 
-_PORTAL_ACCESS_CACHE_ATTRIBUTE = "_portal_access_payload_cache"
-_APP_ACCESS_CACHE_ATTRIBUTE = "_app_access_payload_cache"
-
-
-class PortalAccessRequiredError(APIException):
-    """포털 접근 승인이 없는 인증 요청에 일관된 403 응답을 제공합니다."""
+class ScopeAccessRequiredError(APIException):
+    """scope 접근 승인이 없는 인증 요청에 일관된 403 응답을 제공합니다."""
 
     status_code = status.HTTP_403_FORBIDDEN
-    default_code = "portal_access_required"
+    default_code = "scope_access_required"
 
-    def __init__(self, *, portal_access: dict[str, object]) -> None:
-        """middleware 응답과 동일한 오류 payload를 보존합니다."""
+    def __init__(self, *, scope_key: str, access: dict[str, object]) -> None:
+        """차단된 scope와 최종 접근 상태를 응답에 포함합니다."""
 
-        super().__init__(detail="portal_access_required", code=self.default_code)
+        super().__init__(detail=self.default_code, code=self.default_code)
         self.detail = {
-            "error": "portal_access_required",
-            "portalAccess": portal_access,
+            "error": self.default_code,
+            "scope": scope_key,
+            "access": access,
         }
 
 
@@ -102,23 +99,6 @@ class PortalAuthenticationRequiredError(APIException):
         """account view의 기존 익명 오류 payload와 같은 형태를 반환합니다."""
 
         super().__init__(detail={"error": "unauthorized"}, code=self.default_code)
-
-
-class AppAccessRequiredError(APIException):
-    """앱 접근 권한이 없는 인증 요청에 일관된 403 응답을 제공합니다."""
-
-    status_code = status.HTTP_403_FORBIDDEN
-    default_code = "app_access_required"
-
-    def __init__(self, *, scope_key: str, app_access: dict[str, object]) -> None:
-        """차단된 앱 scope와 최종 권한 payload를 응답에 포함합니다."""
-
-        super().__init__(detail="app_access_required", code=self.default_code)
-        self.detail = {
-            "error": "app_access_required",
-            "scope": scope_key,
-            "appAccess": app_access,
-        }
 
 
 def _normalize_path(path: str) -> str:
@@ -178,62 +158,22 @@ def resolve_app_access_scope_for_path(path: str) -> str | None:
     return policy.removeprefix("app:")
 
 
-def _get_base_request(request: Any) -> Any:
-    """DRF Request이면 내부 Django HttpRequest를 반환합니다."""
-
-    return getattr(request, "_request", request)
-
-
-def get_request_portal_access_payload(*, request: Any, user: Any) -> dict[str, object]:
-    """같은 요청에서는 사용자별 포털 권한 payload를 한 번만 조회합니다."""
-
-    base_request = _get_base_request(request)
-    user_id = getattr(user, "pk", None)
-    cached = getattr(base_request, _PORTAL_ACCESS_CACHE_ATTRIBUTE, None)
-    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == user_id:
-        payload = cached[1]
-        if isinstance(payload, dict):
-            return payload
-
-    # account 도메인 import는 Django 초기화 순환을 피하기 위해 요청 시점에 수행합니다.
-    from api.account import services as account_services
-
-    payload = account_services.get_portal_access_payload(user=user)
-    setattr(base_request, _PORTAL_ACCESS_CACHE_ATTRIBUTE, (user_id, payload))
-    return payload
-
-
-def get_request_app_access_payload(
+def get_request_scope_access_payload(
     *,
     request: Any,
     user: Any,
     scope_key: str,
 ) -> dict[str, object]:
-    """같은 요청에서는 사용자와 앱 scope별 권한 payload를 한 번만 조회합니다."""
-
-    base_request = _get_base_request(request)
-    user_id = getattr(user, "pk", None)
-    cached = getattr(base_request, _APP_ACCESS_CACHE_ATTRIBUTE, None)
-    if not isinstance(cached, dict):
-        cached = {}
-        setattr(base_request, _APP_ACCESS_CACHE_ATTRIBUTE, cached)
-
-    cache_key = (user_id, scope_key)
-    payload = cached.get(cache_key)
-    if isinstance(payload, dict):
-        return payload
+    """요청 단위 resolver에서 사용자와 scope의 최종 접근 상태를 반환합니다."""
 
     # account 도메인 import는 Django 초기화 순환을 피하기 위해 요청 시점에 수행합니다.
     from api.account import services as account_services
 
-    portal_access = get_request_portal_access_payload(request=request, user=user)
-    payload = account_services.get_access_payload(
+    return account_services.get_access_payload(
         user=user,
         scope_key=scope_key,
-        portal_access=portal_access,
+        request=request,
     )
-    cached[cache_key] = payload
-    return payload
 
 
 def require_request_app_access(*, request: Any, user: Any) -> dict[str, object] | None:
@@ -246,14 +186,14 @@ def require_request_app_access(*, request: Any, user: Any) -> dict[str, object] 
     if not user or not getattr(user, "is_authenticated", False):
         raise PortalAuthenticationRequiredError()
 
-    app_access = get_request_app_access_payload(
+    scope_access = get_request_scope_access_payload(
         request=request,
         user=user,
         scope_key=scope_key,
     )
-    if not app_access.get("allowed"):
-        raise AppAccessRequiredError(scope_key=scope_key, app_access=app_access)
-    return app_access
+    if not scope_access.get("allowed"):
+        raise ScopeAccessRequiredError(scope_key=scope_key, access=scope_access)
+    return scope_access
 
 
 def require_request_portal_access(*, request: Any, user: Any) -> dict[str, object] | None:
@@ -265,11 +205,18 @@ def require_request_portal_access(*, request: Any, user: Any) -> dict[str, objec
     if not user or not getattr(user, "is_authenticated", False):
         raise PortalAuthenticationRequiredError()
 
-    portal_access = get_request_portal_access_payload(request=request, user=user)
-    if not portal_access.get("allowed"):
-        raise PortalAccessRequiredError(portal_access=portal_access)
+    portal_scope_access = get_request_scope_access_payload(
+        request=request,
+        user=user,
+        scope_key="portal",
+    )
+    if not portal_scope_access.get("allowed"):
+        raise ScopeAccessRequiredError(
+            scope_key="portal",
+            access=portal_scope_access,
+        )
     require_request_app_access(request=request, user=user)
-    return portal_access
+    return portal_scope_access
 
 
 class PortalAccessRequiredPermission(BasePermission):
@@ -288,12 +235,10 @@ __all__ = [
     "PORTAL_ACCESS_EXEMPT_PATH_PREFIXES",
     "PORTAL_ACCESS_EXEMPT_PATHS",
     "APP_ACCESS_API_RULES",
-    "AppAccessRequiredError",
-    "PortalAccessRequiredError",
+    "ScopeAccessRequiredError",
     "PortalAuthenticationRequiredError",
     "PortalAccessRequiredPermission",
-    "get_request_portal_access_payload",
-    "get_request_app_access_payload",
+    "get_request_scope_access_payload",
     "is_portal_access_exempt_path",
     "is_portal_access_protected_path",
     "require_request_portal_access",

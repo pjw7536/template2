@@ -20,6 +20,7 @@ from django.utils import timezone
 import api.account.services as account_services
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email, EmailAsset, EmailOutbox
+from api.emails.permissions import resolve_access_control
 from api.emails.selectors import get_filtered_emails, resolve_email_affiliation
 from api.emails.services import (
     _parse_message_to_fields,
@@ -54,13 +55,27 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
+
+
+def _grant_emails_admin(*, user, actor) -> None:
+    """테스트 사용자에게 Portal 접근과 Emails 관리자 역할을 부여합니다."""
+
+    for scope_key, role in (("portal", "user"), ("emails", "admin")):
+        _payload, status_code = account_services.decide_user_access(
+            actor=actor,
+            user_id=user.id,
+            scope_key=scope_key,
+            action="grant",
+            role=role,
         )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+        if status_code != 200:
+            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
 
 
 @override_settings(TIME_ZONE="Asia/Seoul")
@@ -654,6 +669,27 @@ class EmailMailboxAccessViewTests(TestCase):
         response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(response.status_code, 403)
 
+    def test_emails_admin_without_knox_id_is_not_privileged(self) -> None:
+        """Emails 관리자도 전역 사용자 식별자인 knox_id가 없으면 특권을 얻지 못해야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S11109",
+            password="test-password",
+        )
+        request = Mock(user=user)
+
+        with patch(
+            "api.emails.permissions.account_services.has_scope_role",
+            return_value=True,
+        ) as has_scope_role:
+            self.assertEqual(
+                resolve_access_control(request),
+                (True, False, set()),
+            )
+
+        has_scope_role.assert_not_called()
+
     def test_sender_can_access_sent_email_without_mailbox_access(self) -> None:
         """발신자는 메일함 접근 권한 없이도 보낸메일 접근이 가능한지 확인합니다.
 
@@ -1004,8 +1040,8 @@ class EmailMailboxAccessViewTests(TestCase):
         forbidden = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": "group-c"})
         self.assertEqual(forbidden.status_code, 403)
 
-    def test_staff_mailboxes_list_includes_unassigned(self) -> None:
-        """스태프가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
+    def test_emails_admin_mailboxes_list_includes_unassigned(self) -> None:
+        """Emails 관리자가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -1018,9 +1054,20 @@ class EmailMailboxAccessViewTests(TestCase):
         """
 
         User = get_user_model()
-        staff = User.objects.create_user(sabun="S33333", password="test-password", is_staff=True)
-        staff.knox_id = "knox-33333"
-        staff.save(update_fields=["knox_id"])
+        emails_admin = User.objects.create_user(sabun="S33333", password="test-password")
+        emails_admin.knox_id = "knox-33333"
+        emails_admin.save(update_fields=["knox_id"])
+        authority = User.objects.create_superuser(
+            sabun="S33330",
+            password="test-password",
+        )
+        _grant_emails_admin(user=emails_admin, actor=authority)
+        self.assertTrue(
+            account_services.has_scope_role(
+                user=emails_admin,
+                scope_key="emails",
+            )
+        )
 
         account_services.ensure_affiliation_option(
             department="Dept",
@@ -1059,10 +1106,10 @@ class EmailMailboxAccessViewTests(TestCase):
             body_text="Body U",
         )
 
-        self.client.force_login(staff)
+        self.client.force_login(emails_admin)
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
-        self.assertEqual(mailbox_list.status_code, 200)
+        self.assertEqual(mailbox_list.status_code, 200, mailbox_list.json())
         self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-b", mailbox_list.json()["results"])

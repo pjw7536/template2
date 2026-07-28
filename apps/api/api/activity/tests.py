@@ -8,28 +8,45 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import requests
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.core.exceptions import ObjectDoesNotExist
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+import api.account.services as account_services
 from api.activity.models import ActivityLog, ExternalAppAccessDailyStat, ExternalAppUsageSyncState
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
+
+
+def _grant_access_stats_admin(*, user, actor) -> None:
+    """테스트 사용자에게 Portal 접근과 접속 현황 관리자 역할을 부여합니다."""
+
+    for scope_key, role in (("portal", "user"), ("access-stats", "admin")):
+        _payload, status_code = account_services.decide_user_access(
+            actor=actor,
+            user_id=user.id,
+            scope_key=scope_key,
+            action="grant",
+            role=role,
         )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+        if status_code != 200:
+            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
 
 
 @override_settings(EXTERNAL_APP_USAGE_API_URLS="[]")
@@ -107,45 +124,6 @@ class ActivityLogEndpointTests(TestCase):
         payload = response.json()
         self.assertEqual(len(payload["results"]), 1)
         self.assertEqual(payload["results"][0]["action"], "UPDATE")
-
-    def test_activity_logs_handles_missing_profile(self) -> None:
-        """프로필이 없는 사용자도 오류 없이 응답되는지 확인합니다."""
-        # -----------------------------------------------------------------------------
-        # 1) 프로필 제거(있다면)
-        # -----------------------------------------------------------------------------
-        try:
-            self.user.profile.delete()
-        except ObjectDoesNotExist:
-            pass
-        self.user.refresh_from_db()
-
-        # -----------------------------------------------------------------------------
-        # 2) ActivityLog 생성
-        # -----------------------------------------------------------------------------
-        ActivityLog.objects.create(
-            user=self.user,
-            action="VIEW",
-            path="/api/v1/activity/logs",
-            method="GET",
-            status_code=200,
-            metadata={"note": "ok"},
-        )
-
-        # -----------------------------------------------------------------------------
-        # 3) 권한 부여 및 요청 수행
-        # -----------------------------------------------------------------------------
-        permission = Permission.objects.get(
-            content_type__app_label="activity",
-            codename="view_activitylog",
-        )
-        self.user.user_permissions.add(permission)
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse("activity-logs"))
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(len(payload["results"]), 1)
-        self.assertIsNone(payload["results"][0]["role"])
 
     def test_app_access_event_requires_auth(self) -> None:
         """앱 접속 이벤트 기록은 인증을 요구합니다."""
@@ -333,7 +311,8 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_manual_app_access_preview_validates_spreadsheet_paste(self) -> None:
         """외부 앱 접속현황 붙여넣기 미리보기가 행 단위 오류를 반환하는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _grant_access_stats_admin(user=self.user, actor=self.superuser)
+        self.client.force_login(self.user)
         pasted_text = "\t".join(["date", "appName", "accessCount", "uniqueUserCount"]) + "\n"
         pasted_text += "\t".join(["2026-06-17", "external foo", "10", "3"]) + "\n"
         pasted_text += "\t".join(["2026-06-17", "external bar", "2", "5"])
@@ -376,8 +355,8 @@ class ActivityLogEndpointTests(TestCase):
         self.assertEqual(payload["rows"][0]["values"]["appName"], "EXTERNAL CSV")
         self.assertEqual(payload["rows"][0]["values"]["memo"], "CSV 템플릿")
 
-    def test_manual_app_access_commit_requires_superuser(self) -> None:
-        """외부 앱 접속현황 수동 반영은 슈퍼유저만 허용합니다."""
+    def test_manual_app_access_commit_rejects_user_without_access_stats_admin(self) -> None:
+        """접속 현황 관리자 역할이 없는 사용자의 수동 반영을 거부합니다."""
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -488,15 +467,15 @@ class ActivityLogEndpointTests(TestCase):
         mock_get.side_effect = [
             FakeResponse(
                 [
-                    {"date": (timezone.localdate() - timedelta(days=1)).isoformat(), "accessCount": 5556, "appName": "AIO"},
-                    {"date": timezone.localdate().isoformat(), "accessCount": 5536, "appName": " aio "},
-                    {"date": (timezone.localdate() - timedelta(days=120)).isoformat(), "accessCount": 9999, "appName": "AIO"},
+                    {"date": (timezone.localdate(timezone=KST) - timedelta(days=1)).isoformat(), "accessCount": 5556, "appName": "AIO"},
+                    {"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 5536, "appName": " aio "},
+                    {"date": (timezone.localdate(timezone=KST) - timedelta(days=120)).isoformat(), "accessCount": 9999, "appName": "AIO"},
                 ]
             ),
             FakeResponse(
                 [
-                    {"date": timezone.localdate().isoformat(), "accessCount": 100, "appName": "AIO"},
-                    {"date": timezone.localdate().isoformat(), "accessCount": 200, "appName": "OTHER"},
+                    {"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 100, "appName": "AIO"},
+                    {"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 200, "appName": "OTHER"},
                 ]
             ),
         ]
@@ -517,8 +496,8 @@ class ActivityLogEndpointTests(TestCase):
         response = self.client.get(
             reverse("activity-app-access-stats"),
             {
-                "from": (timezone.localdate() - timedelta(days=1)).isoformat(),
-                "to": timezone.localdate().isoformat(),
+                "from": (timezone.localdate(timezone=KST) - timedelta(days=1)).isoformat(),
+                "to": timezone.localdate(timezone=KST).isoformat(),
                 "appId": "aio",
             },
         )
@@ -565,7 +544,10 @@ class ActivityLogEndpointTests(TestCase):
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
-            {"from": timezone.localdate().isoformat(), "to": timezone.localdate().isoformat()},
+            {
+                "from": timezone.localdate(timezone=KST).isoformat(),
+                "to": timezone.localdate(timezone=KST).isoformat(),
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -578,8 +560,22 @@ class ActivityLogEndpointTests(TestCase):
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
     @patch("api.activity.services.activity_logs.requests.get")
-    def test_external_usage_sync_allows_normal_user_first_attempt(self, mock_get) -> None:
-        """일반 사용자의 최초 동기화 시도는 1시간 제한 없이 허용됩니다."""
+    def test_external_usage_sync_rejects_normal_user(self, mock_get) -> None:
+        """일반 사용자는 전역 외부 사용량 동기화를 실행할 수 없습니다."""
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse("activity-app-access-sync-external"))
+
+        self.assertEqual(response.status_code, 403)
+        mock_get.assert_not_called()
+
+    @override_settings(
+        EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
+    )
+    @patch("api.activity.services.activity_logs.requests.get")
+    def test_external_usage_sync_app_admin_bypasses_one_hour_limit(self, mock_get) -> None:
+        """접속 현황 관리자는 최근 동기화 이력과 관계없이 수동 동기화할 수 있습니다."""
 
         class FakeResponse:
             """테스트용 외부 사용량 API 응답입니다."""
@@ -590,9 +586,15 @@ class ActivityLogEndpointTests(TestCase):
             def json(self) -> list[dict[str, object]]:
                 """외부 사용량 API row 목록을 반환합니다."""
 
-                return [{"date": timezone.localdate().isoformat(), "accessCount": 10, "appName": "AIO"}]
+                return [{"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 10, "appName": "AIO"}]
 
+        ExternalAppUsageSyncState.objects.create(
+            sync_key="external_app_usage",
+            last_synced_at=timezone.now() - timedelta(minutes=30),
+            last_status="success",
+        )
         mock_get.return_value = FakeResponse()
+        _grant_access_stats_admin(user=self.user, actor=self.superuser)
         self.client.force_login(self.user)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
@@ -601,34 +603,11 @@ class ActivityLogEndpointTests(TestCase):
         payload = response.json()
         self.assertTrue(payload["synced"])
         self.assertFalse(payload["skipped"])
-        mock_get.assert_called_once_with("https://usage.example.test/get/usage", timeout=10, verify=False)
-
-    @override_settings(
-        EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
-    )
-    @patch("api.activity.services.activity_logs.requests.get")
-    def test_external_usage_sync_skips_normal_user_within_one_hour(self, mock_get) -> None:
-        """일반 사용자는 마지막 동기화 시도 후 1시간 전에는 외부 API를 다시 호출하지 않습니다."""
-
-        state = ExternalAppUsageSyncState.objects.create(
-            sync_key="external_app_usage",
-            last_synced_at=None,
-            last_status="failed",
-            last_error="network down",
+        mock_get.assert_called_once_with(
+            "https://usage.example.test/get/usage",
+            timeout=10,
+            verify=False,
         )
-        state.updated_at = timezone.now() - timedelta(minutes=30)
-        state.save(update_fields=["updated_at"])
-        self.client.force_login(self.user)
-
-        response = self.client.post(reverse("activity-app-access-sync-external"))
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertFalse(payload["synced"])
-        self.assertTrue(payload["skipped"])
-        self.assertEqual(payload["syncState"]["lastStatus"], "failed")
-        self.assertTrue(payload["syncState"]["lastAttemptedAt"])
-        mock_get.assert_not_called()
 
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
@@ -646,7 +625,7 @@ class ActivityLogEndpointTests(TestCase):
             def json(self) -> list[dict[str, object]]:
                 """외부 사용량 API row 목록을 반환합니다."""
 
-                return [{"date": timezone.localdate().isoformat(), "accessCount": 10, "appName": "AIO"}]
+                return [{"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 10, "appName": "AIO"}]
 
         ExternalAppUsageSyncState.objects.create(
             sync_key="external_app_usage",

@@ -123,17 +123,20 @@ class AuthMeTests(TestCase):
         self.assertEqual(payload["username"], "홍길동")
         self.assertNotIn("name", payload)
         self.assertEqual(payload["email"], "hong@example.com")
+        self.assertNotIn("is_staff", payload)
+        self.assertNotIn("roles", payload)
         self.assertEqual(payload["department"], "Engineering")
         self.assertFalse(payload["has_pending_affiliation"])
-        self.assertIn("portal_access", payload)
-        self.assertIn("app_access", payload)
-        self.assertEqual(len(payload["app_access"]), 13)
-        self.assertFalse(payload["app_access"]["appstore"]["allowed"])
-        self.assertTrue(payload["app_access"]["appstore"]["blockedByPortal"])
-        self.assertEqual(payload["app_access"]["appstore"]["source"], "portal_access_required")
-        self.assertEqual(payload["app_access"]["appstore"]["underlyingAccess"]["source"], "none")
-        self.assertFalse(payload["portal_access"]["allowed"])
-        self.assertEqual(payload["portal_access"]["department"], "Engineering")
+        self.assertIn("scope_access", payload)
+        self.assertNotIn("portal_access", payload)
+        self.assertNotIn("app_access", payload)
+        self.assertEqual(len(payload["scope_access"]), 14)
+        self.assertFalse(payload["scope_access"]["appstore"]["allowed"])
+        self.assertTrue(payload["scope_access"]["appstore"]["blockedByPortal"])
+        self.assertEqual(payload["scope_access"]["appstore"]["source"], "portal_access_required")
+        self.assertEqual(payload["scope_access"]["appstore"]["underlyingAccess"]["source"], "none")
+        self.assertFalse(payload["scope_access"]["portal"]["allowed"])
+        self.assertEqual(payload["scope_access"]["portal"]["department"], "Engineering")
 
         scope, _created = AccessScope.objects.get_or_create(
             key=ACCESS_SCOPE_PORTAL,
@@ -147,22 +150,58 @@ class AuthMeTests(TestCase):
         )
         response = self.client.get(reverse("auth-me"))
         allowed_payload = response.json()
-        self.assertTrue(allowed_payload["portal_access"]["allowed"])
-        self.assertFalse(allowed_payload["app_access"]["appstore"]["blockedByPortal"])
-        self.assertEqual(allowed_payload["app_access"]["appstore"]["source"], "none")
+        self.assertTrue(allowed_payload["scope_access"]["portal"]["allowed"])
+        self.assertFalse(allowed_payload["scope_access"]["appstore"]["blockedByPortal"])
+        self.assertEqual(allowed_payload["scope_access"]["appstore"]["source"], "none")
 
         appstore_scope = AccessScope.objects.get(key="appstore")
         UserAccess.objects.create(
             scope=appstore_scope,
             user=user,
             status=UserAccess.Status.ALLOWED,
-            role="viewer",
+            role="user",
         )
         response = self.client.get(reverse("auth-me"))
-        appstore_access = response.json()["app_access"]["appstore"]
+        appstore_access = response.json()["scope_access"]["appstore"]
         self.assertTrue(appstore_access["allowed"])
-        self.assertNotIn("role", appstore_access)
+        self.assertEqual(appstore_access["role"], "user")
         self.assertNotIn("role", appstore_access["policy"])
+
+    def test_auth_me_exposes_feature_scope_in_canonical_scope_access(self) -> None:
+        """feature scope도 canonical scope_access에 같은 형태로 노출해야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S-FEATURE-SCOPE",
+            password="test-password",
+            department="Feature Department",
+        )
+        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
+        feature_scope = AccessScope.objects.create(
+            key="feature-auth-export",
+            name="Auth Export",
+            scope_type=AccessScope.ScopeTypes.FEATURE,
+        )
+        UserAccess.objects.create(
+            scope=portal_scope,
+            user=user,
+            status=UserAccess.Status.ALLOWED,
+            role="user",
+        )
+        UserAccess.objects.create(
+            scope=feature_scope,
+            user=user,
+            status=UserAccess.Status.ALLOWED,
+            role="admin",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("auth-me"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["scope_access"][feature_scope.key]["role"], "admin")
+        self.assertTrue(payload["scope_access"][feature_scope.key]["allowed"])
 
     def test_auth_me_portal_denial_overrides_explicit_app_allow(self) -> None:
         """Portal이 차단되면 auth 응답의 앱 명시 허용도 최종 차단되어야 합니다."""
@@ -178,7 +217,7 @@ class AuthMeTests(TestCase):
             scope=AccessScope.objects.get(key="appstore"),
             user=user,
             status=UserAccess.Status.ALLOWED,
-            role="viewer",
+            role="user",
         )
         self.client.force_login(user)
 
@@ -186,15 +225,20 @@ class AuthMeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertFalse(payload["portal_access"]["allowed"])
-        self.assertEqual(len(payload["app_access"]), 13)
+        self.assertFalse(payload["scope_access"]["portal"]["allowed"])
+        non_portal_accesses = {
+            key: access
+            for key, access in payload["scope_access"].items()
+            if key != ACCESS_SCOPE_PORTAL
+        }
+        self.assertEqual(len(non_portal_accesses), 13)
         self.assertTrue(
             all(
                 not access["allowed"] and access["blockedByPortal"]
-                for access in payload["app_access"].values()
+                for access in non_portal_accesses.values()
             )
         )
-        app_access = payload["app_access"]["appstore"]
+        app_access = payload["scope_access"]["appstore"]
         self.assertFalse(app_access["allowed"])
         self.assertTrue(app_access["blockedByPortal"])
         self.assertEqual(app_access["source"], "portal_access_required")
@@ -219,7 +263,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Engineering")
-        self.assertEqual(payload["portal_access"]["department"], "Engineering")
+        self.assertEqual(payload["scope_access"]["portal"]["department"], "Engineering")
         self.assertEqual(payload["user_sdwt_prod"], "GROUP-X")
 
     def test_auth_me_department_falls_back_to_current_affiliation(self) -> None:
@@ -238,7 +282,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Dept")
-        self.assertEqual(payload["portal_access"]["department"], "Dept")
+        self.assertEqual(payload["scope_access"]["portal"]["department"], "Dept")
         self.assertEqual(payload["user_sdwt_prod"], "GROUP-FALLBACK")
 
     def test_auth_me_does_not_auto_assign_dev_affiliation_without_flag(self) -> None:
@@ -473,8 +517,9 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "portal_access_required")
-        self.assertFalse(response.json()["portalAccess"]["allowed"])
+        self.assertEqual(response.json()["error"], "scope_access_required")
+        self.assertEqual(response.json()["scope"], ACCESS_SCOPE_PORTAL)
+        self.assertFalse(response.json()["access"]["allowed"])
 
     def test_allowed_basic_user_can_access_default_protected_view(self) -> None:
         """정책 승인된 Basic 사용자는 기본 보호 API를 사용할 수 있어야 합니다."""
@@ -503,8 +548,9 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "app_access_required")
+        self.assertEqual(response.json()["error"], "scope_access_required")
         self.assertEqual(response.json()["scope"], "appstore")
+        self.assertFalse(response.json()["access"]["allowed"])
 
     def test_app_api_allows_selected_app_scope(self) -> None:
         """포털과 앱 권한이 모두 허용된 사용자는 앱 API를 사용할 수 있어야 합니다."""
@@ -516,7 +562,7 @@ class PortalAccessEnforcementTests(TestCase):
             scope=AccessScope.objects.get(key="appstore"),
             user=user,
             status=UserAccess.Status.ALLOWED,
-            role="viewer",
+            role="user",
         )
 
         response = self.client.get(
@@ -615,20 +661,20 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "portal_access_required")
+        self.assertEqual(response.json()["error"], "scope_access_required")
 
-    def test_blocked_basic_user_can_query_portal_access_exception(self) -> None:
-        """미승인 Basic 사용자는 예외 경로에서 자신의 포털 상태를 조회할 수 있어야 합니다."""
+    def test_blocked_basic_user_can_query_scope_access_from_auth_me(self) -> None:
+        """미승인 Basic 사용자는 auth 응답에서 자신의 scope 상태를 조회할 수 있어야 합니다."""
 
         user = self._create_user(sabun="BASIC-STATUS", department="Blocked Department")
 
         response = self.client.get(
-            reverse("account-portal-access"),
+            reverse("auth-me"),
             **self._basic_credentials(user=user),
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["portalAccess"]["allowed"])
+        self.assertFalse(response.json()["scope_access"][ACCESS_SCOPE_PORTAL]["allowed"])
 
 
 class AuthOidcClaimMappingTests(TestCase):

@@ -1,7 +1,7 @@
 import { Activity, Bug, Gauge, Network, Radar, ScanSearch } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { hasAppAccess } from "@/lib/access/appAccess"
+import { hasScopeAccess } from "@/lib/access/scopeAccess"
 import { useAuth } from "@/lib/auth"
 import { SpiderBentoAppCards } from "../components/SpiderBentoAppCards"
 
@@ -81,7 +81,7 @@ export function SpiderHomePage() {
   const { user } = useAuth()
   const spiderLinkItems = spiderLinks.map((item) => ({
     ...item,
-    allowed: !item.disabled && (!item.appScope || hasAppAccess(user, item.appScope)),
+    allowed: !item.disabled && (!item.appScope || hasScopeAccess(user, item.appScope)),
   }))
 
   return (

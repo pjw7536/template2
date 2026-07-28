@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom"
 import { TeamSwitcher } from "@/components/common"
 import { AppShellLayout } from "@/components/layout"
 import { RequireAuth, useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { buildNavigationConfig } from "@/lib/config/navigationConfig"
 
 export function AccountSettingsShell() {
@@ -16,7 +17,7 @@ export function AccountSettingsShell() {
     "/settings/permissions",
   ].includes(normalizedPath)
   const navigation = buildNavigationConfig({
-    canManageAccess: Boolean(user?.portal_access?.canManage),
+    adminScopes: hasScopeRole(user, "portal") ? ["portal"] : [],
   })
 
   return (

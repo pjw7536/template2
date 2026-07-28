@@ -51,6 +51,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from api.account import services as account_services
 from api.common.services.activity_logging import (
     merge_activity_metadata,
     set_activity_new_state,
@@ -94,6 +95,7 @@ TEMPLATE_OPTION_LABELS = {
     "auto_sp": "Auto S/P",
 }
 DEFAULT_NOTIFICATION_TEMPLATE_KEY = "common"
+LINE_DASHBOARD_SCOPE = "line-dashboard"
 
 
 def _serialize_template_options(template_sources: dict[str, object]) -> list[dict[str, str]]:
@@ -144,14 +146,17 @@ def _ensure_authenticated(request: HttpRequest) -> JsonResponse | None:
     return None
 
 
-def _ensure_superuser(request: HttpRequest) -> JsonResponse | None:
-    """superuser 권한을 확인하고 실패 시 JsonResponse를 반환합니다."""
+def _ensure_line_dashboard_admin(request: HttpRequest) -> JsonResponse | None:
+    """Line Dashboard admin 역할을 확인하고 실패 시 JsonResponse를 반환합니다."""
 
     auth_response = _ensure_authenticated(request)
     if auth_response is not None:
         return auth_response
-    user = getattr(request, "user", None)
-    if not bool(getattr(user, "is_superuser", False)):
+    if not account_services.has_scope_role(
+        user=request.user,
+        scope_key=LINE_DASHBOARD_SCOPE,
+        request=request,
+    ):
         return JsonResponse({"error": "forbidden"}, status=403)
     return None
 
@@ -903,13 +908,13 @@ class DroneNotificationTargetView(DroneAuthenticatedView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class DroneSopTargetAdminView(DroneAuthenticatedView):
-    """superuser 전용 DroneSopTarget 관리 엔드포인트입니다."""
+    """Line Dashboard admin 전용 DroneSopTarget 관리 엔드포인트입니다."""
 
     @staticmethod
-    def _authorize_superuser(request: HttpRequest) -> JsonResponse | None:
-        """superuser 권한을 확인합니다."""
+    def _authorize_admin(request: HttpRequest) -> JsonResponse | None:
+        """Line Dashboard admin 역할을 확인합니다."""
 
-        return _ensure_superuser(request)
+        return _ensure_line_dashboard_admin(request)
 
     @staticmethod
     def _response_row(*, target_id: int) -> dict[str, object]:
@@ -927,7 +932,7 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
         - GET /api/v1/line-dashboard/admin/drone-targets
         """
 
-        auth_response = self._authorize_superuser(request)
+        auth_response = self._authorize_admin(request)
         if auth_response is not None:
             return auth_response
 
@@ -937,7 +942,7 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """DroneSopTarget row를 생성합니다."""
 
-        auth_response = self._authorize_superuser(request)
+        auth_response = self._authorize_admin(request)
         if auth_response is not None:
             return auth_response
         payload, error_response = _parse_json_body_or_error(request)
@@ -962,7 +967,7 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
     def patch(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """DroneSopTarget row를 수정합니다."""
 
-        auth_response = self._authorize_superuser(request)
+        auth_response = self._authorize_admin(request)
         if auth_response is not None:
             return auth_response
         payload, error_response = _parse_json_body_or_error(request)
@@ -997,7 +1002,7 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
     def delete(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """DroneSopTarget row를 삭제합니다."""
 
-        auth_response = self._authorize_superuser(request)
+        auth_response = self._authorize_admin(request)
         if auth_response is not None:
             return auth_response
         payload, error_response = _parse_json_body_or_error(request)

@@ -5,6 +5,7 @@ import { Outlet } from "react-router-dom"
 import { TeamSwitcher } from "@/components/common"
 import { AppShellLayout } from "@/components/layout"
 import { RequireAuth, useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { buildNavigationConfig } from "@/lib/config/navigationConfig"
 import {
   ActiveLineProvider,
@@ -47,7 +48,9 @@ function LineDashboardShellContent({ contentMaxWidthClass, scrollAreaClassName }
     }
   }, [isError, error])
 
-  const navigation = buildNavigationConfig({ includeSuperuser: Boolean(user?.is_superuser) })
+  const navigation = buildNavigationConfig({
+    adminScopes: hasScopeRole(user, "line-dashboard") ? ["line-dashboard"] : [],
+  })
 
   return (
     <DepartmentProvider>

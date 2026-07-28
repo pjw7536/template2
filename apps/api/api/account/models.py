@@ -1,12 +1,12 @@
 # =============================================================================
 # 모듈 설명: account 도메인 모델을 정의합니다.
-# - 주요 대상: User, UserProfile, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
+# - 주요 대상: User, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
 # - 불변 조건: sabun은 사용자 고유키이며 각 모델은 db_table을 명시합니다.
 # =============================================================================
 
 """계정/소속 도메인 모델 정의 모음.
 
-- 주요 대상: User, UserProfile, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
+- 주요 대상: User, Affiliation, UserSdwtProdAccess, UserSdwtProdChange
 - 주요 엔드포인트/클래스: 각 모델 클래스
 - 가정/불변 조건: sabun은 사용자 고유키이며 각 모델은 db_table을 명시함
 """
@@ -17,14 +17,14 @@ from typing import Any, Iterable
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Lower, Trim
 
 
 ACCESS_SCOPE_PORTAL = "portal"
-ACCESS_MANAGERS_GROUP_NAME = "Access Managers"
-MANAGE_ACCESS_PERMISSION = "account.manage_access"
+ACCESS_SCOPE_KEY_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 SYSTEM_APP_SCOPE_KEYS = (
     "access-stats",
     "appstore",
@@ -201,9 +201,6 @@ class User(AbstractUser):
 
     class Meta:
         db_table = "account_user"
-        permissions = [
-            ("manage_access", "포털 및 앱 접근 권한 관리"),
-        ]
 
     objects = UserManager()
 
@@ -213,26 +210,6 @@ class User(AbstractUser):
     def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
         """사용자 표시용 문자열을 반환합니다."""
         return self.get_username()
-
-
-class UserProfile(models.Model):
-    """사용자 역할(role) 등 추가 정보를 저장하는 프로필 모델입니다."""
-
-    class Roles(models.TextChoices):
-        ADMIN = "admin", "Admin"
-        MANAGER = "manager", "Manager"
-        VIEWER = "viewer", "Viewer"
-
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
-    role = models.CharField(max_length=32, choices=Roles.choices, default=Roles.VIEWER)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "account_user_profile"
-
-    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
-        """프로필 표시용 문자열을 반환합니다."""
-        return f"{self.user.get_username()} ({self.get_role_display()})"
 
 
 class Affiliation(models.Model):
@@ -361,11 +338,9 @@ class UserSdwtProdAccess(models.Model):
 
 
 class AccessRole(models.TextChoices):
-    """scope 접근 시 부여할 역할 값을 정의합니다."""
+    """모든 접근 scope에서 공통으로 사용할 역할을 정의합니다."""
 
-    VIEWER = "viewer", "Viewer"
-    MEMBER = "member", "Member"
-    MANAGER = "manager", "Manager"
+    USER = "user", "User"
     ADMIN = "admin", "Admin"
 
 
@@ -391,12 +366,20 @@ class AccessScope(models.Model):
         APP = "app", "App"
         FEATURE = "feature", "Feature"
 
-    key = models.CharField(max_length=64, unique=True)
+    key = models.CharField(
+        max_length=64,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=ACCESS_SCOPE_KEY_PATTERN,
+                message="scope key는 소문자 영숫자와 하이픈만 사용할 수 있습니다.",
+            )
+        ],
+    )
     name = models.CharField(max_length=128)
     scope_type = models.CharField(max_length=16, choices=ScopeTypes.choices, default=ScopeTypes.APP)
     is_active = models.BooleanField(default=True)
     requestable = models.BooleanField(default=True)
-    default_role = models.CharField(max_length=16, choices=AccessRole.choices, default=AccessRole.VIEWER)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -408,8 +391,18 @@ class AccessScope(models.Model):
                 name="chk_acc_scp_typ_valid",
             ),
             models.CheckConstraint(
-                condition=models.Q(default_role__in=("viewer", "member", "manager", "admin")),
-                name="chk_acc_scp_role_valid",
+                condition=(
+                    models.Q(key=ACCESS_SCOPE_PORTAL, scope_type="portal")
+                    | (
+                        ~models.Q(key=ACCESS_SCOPE_PORTAL)
+                        & ~models.Q(scope_type="portal")
+                    )
+                ),
+                name="chk_acc_scp_portal_key_type",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(key__regex=ACCESS_SCOPE_KEY_PATTERN),
+                name="chk_acc_scp_key_fmt",
             ),
         ]
         indexes = [
@@ -421,15 +414,6 @@ class AccessScope(models.Model):
         """접근 권한 대상 표시용 문자열을 반환합니다."""
         return self.key
 
-    def clean(self) -> None:
-        """앱 scope가 boolean 권한 계약을 벗어나는 role을 갖지 못하게 합니다."""
-
-        super().clean()
-        if self.scope_type == self.ScopeTypes.APP:
-            if self.default_role != AccessRole.VIEWER:
-                raise ValidationError({"default_role": "앱 scope의 기본 role은 viewer만 허용됩니다."})
-
-
 class AccessPolicyRule(models.Model):
     """scope별 기본 접근 허용 규칙을 저장합니다."""
 
@@ -439,7 +423,6 @@ class AccessPolicyRule(models.Model):
     scope = models.ForeignKey(AccessScope, on_delete=models.CASCADE, related_name="policy_rules")
     rule_type = models.CharField(max_length=32, choices=RuleTypes.choices)
     value = models.CharField(max_length=150, blank=True)
-    role = models.CharField(max_length=16, choices=AccessRole.choices, default=AccessRole.VIEWER)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -456,10 +439,6 @@ class AccessPolicyRule(models.Model):
             models.CheckConstraint(
                 condition=models.Q(rule_type="department"),
                 name="chk_acc_pol_rule_typ_dep",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(role__in=("viewer", "member", "manager", "admin")),
-                name="chk_acc_pol_role_valid",
             ),
         ]
         indexes = [
@@ -479,8 +458,6 @@ class AccessPolicyRule(models.Model):
         if not value:
             raise ValidationError({"value": "정책 값은 비워둘 수 없습니다."})
         self.value = value
-        if self.scope_id and self.scope.scope_type == AccessScope.ScopeTypes.APP and self.role != AccessRole.VIEWER:
-            raise ValidationError({"role": "앱 scope 정책의 role은 viewer만 허용됩니다."})
 
 
 class UserAccess(models.Model):
@@ -499,7 +476,7 @@ class UserAccess(models.Model):
     )
     department = models.CharField(max_length=128, null=True, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
-    role = models.CharField(max_length=16, choices=AccessRole.choices, default=AccessRole.VIEWER)
+    role = models.CharField(max_length=16, choices=AccessRole.choices, default=AccessRole.USER)
     reason = models.TextField(null=True, blank=True)
     requested_at = models.DateTimeField(auto_now_add=True)
     decided_by = models.ForeignKey(
@@ -525,8 +502,12 @@ class UserAccess(models.Model):
                 name="chk_acc_usr_acc_sts_valid",
             ),
             models.CheckConstraint(
-                condition=models.Q(role__in=("viewer", "member", "manager", "admin")),
+                condition=models.Q(role__in=("user", "admin")),
                 name="chk_acc_usr_acc_role_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status="allowed") | models.Q(role="user"),
+                name="chk_acc_usr_acc_role_state",
             ),
         ]
         indexes = [
@@ -538,13 +519,6 @@ class UserAccess(models.Model):
     def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
         """사용자 접근 상태 표시용 문자열을 반환합니다."""
         return f"{self.scope_id}:{self.user_id} ({self.status})"
-
-    def clean(self) -> None:
-        """앱 사용자 접근 row가 boolean 권한 계약을 벗어나지 못하게 합니다."""
-
-        super().clean()
-        if self.scope_id and self.scope.scope_type == AccessScope.ScopeTypes.APP and self.role != AccessRole.VIEWER:
-            raise ValidationError({"role": "앱 scope 사용자 권한의 role은 viewer만 허용됩니다."})
 
 
 class AccessAuditLog(models.Model):
@@ -558,35 +532,32 @@ class AccessAuditLog(models.Model):
         REVOKE = "revoke", "Revoke"
         RESET_TO_POLICY = "reset_to_policy", "Reset to policy"
         CHANGE_ROLE = "change_role", "Change role"
-        USER_ACCESS_UPDATE = "user_access_update", "User access update"
         POLICY_CREATE = "policy_create", "Policy create"
         POLICY_UPDATE = "policy_update", "Policy update"
         POLICY_DELETE = "policy_delete", "Policy delete"
         SCOPE_CREATE = "scope_create", "Scope create"
         SCOPE_UPDATE = "scope_update", "Scope update"
         SCOPE_DELETE = "scope_delete", "Scope delete"
-        ACCESS_MANAGER_GRANT = "access_manager_grant", "Access manager grant"
-        ACCESS_MANAGER_REVOKE = "access_manager_revoke", "Access manager revoke"
 
     scope = models.ForeignKey(
         AccessScope,
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="audit_logs",
     )
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="access_audit_actions",
     )
     target_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="access_audit_targets",
     )
     policy_rule = models.ForeignKey(
@@ -706,7 +677,6 @@ __all__ = [
     "ExternalAffiliationSnapshot",
     "User",
     "UserCurrentAffiliation",
-    "UserProfile",
     "UserSdwtProdAccess",
     "UserSdwtProdChange",
 ]

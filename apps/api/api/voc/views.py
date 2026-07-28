@@ -229,7 +229,7 @@ class VocPostDetailView(APIView):
         if not post:
             return _json_error("Post not found", status=404)
 
-        if not can_manage_post(user=request.user, post=post):
+        if not can_manage_post(user=request.user, post=post, request=request):
             return _json_error("Forbidden", status=403)
         try:
             updates = build_update_post_data(payload=payload or {})
@@ -284,7 +284,7 @@ class VocPostDetailView(APIView):
         if not post:
             return _json_error("Post not found", status=404)
 
-        if not can_manage_post(user=request.user, post=post):
+        if not can_manage_post(user=request.user, post=post, request=request):
             return _json_error("Forbidden", status=403)
 
         try:

@@ -13,7 +13,7 @@ from django.db import IntegrityError, OperationalError, ProgrammingError, connec
 
 
 class AccountConfig(AppConfig):
-    """Account 도메인 앱 설정 및 사용자 생성 시 프로필 시그널을 등록합니다."""
+    """Account 도메인 앱 설정과 기본 슈퍼유저 보정 시그널을 등록합니다."""
 
     default_auto_field = "django.db.models.BigAutoField"
     name = "api.account"
@@ -28,51 +28,13 @@ class AccountConfig(AppConfig):
         - 없음
 
         부작용:
-        - 사용자 생성 시 프로필 생성 시그널 등록
         - migrate 이후 기본 슈퍼유저 보정 시그널 등록
 
         오류:
         - 없음(내부에서 방어적으로 처리)
         """
-        # -----------------------------------------------------------------------------
-        # 1) 사용자 생성 시 프로필 생성 시그널 연결
-        # -----------------------------------------------------------------------------
-        from django.contrib.auth import get_user_model
-        from django.db.models.signals import post_migrate, post_save
+        from django.db.models.signals import post_migrate
 
-        from api.account.services import ensure_user_profile
-
-        def create_profile(sender, instance, created: bool, **kwargs) -> None:
-            """사용자 생성/knox_id 갱신 시 계정 부가 데이터를 보장합니다.
-
-            입력:
-            - sender: Django 시그널 발신 모델
-            - instance: 저장된 사용자 인스턴스
-            - created: 신규 생성 여부
-            - **kwargs: 시그널 추가 인자
-
-            반환:
-            - 없음
-
-            부작용:
-            - 사용자 프로필 생성 가능
-
-            오류:
-            - 없음
-            """
-            if created:
-                ensure_user_profile(instance)
-
-        post_save.connect(
-            create_profile,
-            sender=get_user_model(),
-            dispatch_uid="account_create_profile",
-            weak=False,
-        )
-
-        # -----------------------------------------------------------------------------
-        # 2) migrate 완료 후 기본 슈퍼유저 보정 연결
-        # -----------------------------------------------------------------------------
         def ensure_default_superuser(sender, **kwargs) -> None:
             """migrate 완료 후 기본 슈퍼유저를 보정합니다."""
 

@@ -10,32 +10,16 @@ from typing import Any, Optional, Set
 
 from django.http import HttpRequest
 
+from api.account import services as account_services
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
-from api.common.services import extract_bearer_token
 
-from .selectors import get_accessible_user_sdwt_prods_for_user
-
-
-def user_can_view_unassigned(user: Any) -> bool:
-    """UNASSIGNED(미분류) 메일함 조회 가능 여부를 반환합니다.
-
-    입력:
-        user: Django User 또는 유사 객체.
-    반환:
-        True면 UNASSIGNED 메일함 조회 허용.
-    부작용:
-        없음.
-    오류:
-        없음.
-    """
-
-    return bool(
-        user
-        and (getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
-    )
+from .selectors import (
+    get_accessible_user_sdwt_prods_for_user,
+    resolve_sender_id_from_user,
+)
 
 
-def email_is_unassigned(email: Any) -> bool:
+def _email_is_unassigned(email: Any) -> bool:
     """Email 인스턴스가 UNASSIGNED(미분류) 메일인지 판별합니다.
 
     입력:
@@ -64,48 +48,12 @@ def email_is_unassigned(email: Any) -> bool:
     return normalized in {"", UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
 
 
-def resolve_accessible_user_sdwt_prods(user: Any) -> Set[str]:
-    """사용자가 접근 가능한 user_sdwt_prod 목록(집합)을 조회합니다.
-
-    입력:
-        user: Django User 또는 유사 객체.
-    반환:
-        접근 가능한 user_sdwt_prod 값 집합.
-    부작용:
-        없음. 조회 전용.
-    오류:
-        없음.
-    """
-
-    return get_accessible_user_sdwt_prods_for_user(user)
-
-
-def _resolve_sender_id_from_user(user: Any) -> str | None:
-    """사용자에서 sender_id(knox_id)를 추출합니다.
-
-    입력:
-        user: Django User 또는 유사 객체.
-    반환:
-        유효한 knox_id 문자열 또는 None.
-    부작용:
-        없음.
-    오류:
-        없음.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) knox_id 후보 추출
-    # -----------------------------------------------------------------------------
-    knox_id = getattr(user, "knox_id", None)
-    if isinstance(knox_id, str) and knox_id.strip():
-        return knox_id.strip()
-    return None
-
-
-def user_can_access_email(
+def _user_can_access_email(
     user: Any,
     email: Any,
     accessible: Optional[Set[str]],
+    *,
+    is_privileged: bool = False,
 ) -> bool:
     """일반 사용자 기준으로 특정 이메일 접근 권한을 검사합니다.
 
@@ -124,7 +72,7 @@ def user_can_access_email(
     # -----------------------------------------------------------------------------
     # 1) 특권 사용자 우선 허용
     # -----------------------------------------------------------------------------
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+    if is_privileged:
         return True
     if accessible is None:
         return False
@@ -132,7 +80,7 @@ def user_can_access_email(
     # -----------------------------------------------------------------------------
     # 2) 발신자/메일함 범위 검증
     # -----------------------------------------------------------------------------
-    sender_id = _resolve_sender_id_from_user(user)
+    sender_id = resolve_sender_id_from_user(user)
     if sender_id and getattr(email, "sender_id", None) == sender_id:
         return True
     return bool(getattr(email, "user_sdwt_prod", None) and email.user_sdwt_prod in accessible)
@@ -169,15 +117,25 @@ def resolve_email_access_denial(
     # -----------------------------------------------------------------------------
     # 2) UNASSIGNED 정책을 기존 순서 그대로 적용
     # -----------------------------------------------------------------------------
-    if email_is_unassigned(email) and not user_can_view_unassigned(user):
-        if not user_can_access_email(user, email, accessible):
+    if _email_is_unassigned(email) and not is_privileged:
+        if not _user_can_access_email(
+            user,
+            email,
+            accessible,
+            is_privileged=is_privileged,
+        ):
             return "forbidden"
 
     # -----------------------------------------------------------------------------
     # 3) 일반 사용자 접근 범위 확인
     # -----------------------------------------------------------------------------
     if not is_privileged:
-        if not accessible or not user_can_access_email(user, email, accessible):
+        if not accessible or not _user_can_access_email(
+            user,
+            email,
+            accessible,
+            is_privileged=is_privileged,
+        ):
             return "forbidden"
 
     return None
@@ -214,7 +172,7 @@ def user_can_access_mailbox(
     # -----------------------------------------------------------------------------
     # 2) UNASSIGNED 접근 정책과 일반 사용자 접근 범위 확인
     # -----------------------------------------------------------------------------
-    if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not user_can_view_unassigned(user):
+    if mailbox_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD and not is_privileged:
         return False
     if not is_privileged and mailbox_user_sdwt_prod not in accessible:
         return False
@@ -242,26 +200,30 @@ def resolve_access_control(request: HttpRequest) -> tuple[bool, bool, Set[str]]:
         return False, False, set()
 
     # -----------------------------------------------------------------------------
-    # 2) sender_id 유무 및 특권 여부 판단
+    # 2) 모든 사용자에게 전역 식별자인 sender_id를 요구
     # -----------------------------------------------------------------------------
-    if not _resolve_sender_id_from_user(user):
+    if not resolve_sender_id_from_user(user):
         return True, False, set()
 
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+    # -----------------------------------------------------------------------------
+    # 3) 앱 관리자는 전체 메일함을 관리
+    # -----------------------------------------------------------------------------
+    if account_services.has_scope_role(
+        user=user,
+        scope_key="emails",
+        request=request,
+    ):
         return True, True, set()
 
     # -----------------------------------------------------------------------------
-    # 3) 접근 가능한 메일함 목록 조회
+    # 4) 일반 사용자는 접근 가능한 메일함 목록을 추가로 제한
     # -----------------------------------------------------------------------------
-    accessible = resolve_accessible_user_sdwt_prods(user)
+    accessible = get_accessible_user_sdwt_prods_for_user(user)
     return True, False, accessible
 
 
 __all__ = [
-    "email_is_unassigned",
-    "extract_bearer_token",
     "resolve_access_control",
-    "resolve_accessible_user_sdwt_prods",
-    "user_can_access_email",
-    "user_can_view_unassigned",
+    "resolve_email_access_denial",
+    "user_can_access_mailbox",
 ]

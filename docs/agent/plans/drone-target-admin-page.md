@@ -1,5 +1,7 @@
 # ExecPlan: Drone Target Admin Page
 
+> 이 계획의 superuser 전용 구조는 `app-rbac-unification.md`의 Line Dashboard scope admin으로 대체되었다.
+
 ## 목표
 - superuser만 `drone_sop_target` row를 조회, 추가, 수정, 삭제할 수 있는 관리 페이지를 제공한다.
 - 기존 line-dashboard/Drone API 구조 안에서 UI와 API를 연결한다.

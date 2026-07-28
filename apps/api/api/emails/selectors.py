@@ -65,6 +65,15 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     return account_selectors.get_accessible_user_sdwt_prods_for_user(user)
 
 
+def resolve_sender_id_from_user(user: Any) -> str | None:
+    """사용자 객체의 Knox ID를 메일 sender_id 형식으로 정규화합니다."""
+
+    sender_id = getattr(user, "knox_id", None)
+    if not isinstance(sender_id, str):
+        return None
+    return sender_id.strip() or None
+
+
 def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, object]]:
     """메일함(user_sdwt_prod)에 접근 가능한 사용자 목록을 반환합니다.
 
@@ -99,18 +108,11 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
     seen_user_ids: set[int] = set()
     sender_id_by_user_id: dict[int, str] = {}
 
-    def resolve_sender_id(user: Any) -> str:
-        """사용자 객체에서 sender_id(knox_id)를 추출합니다."""
-
-        sender_id = getattr(user, "knox_id", None)
-        return sender_id.strip() if isinstance(sender_id, str) and sender_id.strip() else ""
-
     def serialize_user(user: Any, access: Any | None) -> dict[str, object]:
         """사용자/권한 정보를 멤버 dict로 직렬화합니다."""
 
-        sender_id_by_user_id[user.id] = resolve_sender_id(user)
-        knox_id = getattr(user, "knox_id", None)
-        knox_id_value = knox_id.strip() if isinstance(knox_id, str) else ""
+        sender_id = resolve_sender_id_from_user(user) or ""
+        sender_id_by_user_id[user.id] = sender_id
         display_username = getattr(user, "username", None)
         display_username_value = display_username.strip() if isinstance(display_username, str) else ""
         role_value = getattr(access, "role", None) if access else "member"
@@ -118,7 +120,7 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
             "userId": user.id,
             "username": display_username_value,
             "name": display_username_value,
-            "knoxId": knox_id_value,
+            "knoxId": sender_id,
             "avatarid": getattr(user, "avatarid", None),
             "userSdwtProd": normalized,
             "role": role_value,
@@ -437,31 +439,6 @@ def list_email_ids_by_sender_after(
     )
 
 
-def contains_unassigned_emails(*, email_ids: list[int]) -> bool:
-    """email_ids 중 UNASSIGNED(미분류) 메일이 포함되는지 확인합니다.
-
-    입력:
-        email_ids: Email id 목록.
-    반환:
-        UNASSIGNED 포함 여부.
-    부작용:
-        없음. 조회 전용.
-    오류:
-        email_ids가 비어 있으면 False 반환.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 검증
-    # -----------------------------------------------------------------------------
-    if not email_ids:
-        return False
-
-    # -----------------------------------------------------------------------------
-    # 2) 포함 여부 조회
-    # -----------------------------------------------------------------------------
-    return Email.objects.filter(id__in=email_ids).filter(_unassigned_mailbox_query()).exists()
-
-
 def list_emails_by_ids(*, email_ids: list[int]) -> QuerySet[Email]:
     """Email id 목록으로 Email QuerySet을 조회합니다.
 
@@ -674,12 +651,12 @@ def list_distinct_email_mailboxes() -> list[str]:
 
 
 def list_privileged_email_mailboxes() -> list[str]:
-    """특권 사용자(staff/superuser)가 볼 메일함(user_sdwt_prod) 목록을 반환합니다.
+    """Emails 관리자가 볼 메일함(user_sdwt_prod) 목록을 반환합니다.
 
     입력:
         없음.
     반환:
-        특권 사용자에게 노출할 user_sdwt_prod 목록(정렬됨).
+        Emails 관리자에게 노출할 user_sdwt_prod 목록(정렬됨).
     부작용:
         없음. 조회 전용.
     오류:

@@ -354,8 +354,7 @@ export async function fetchNotificationRecipientPermissions() {
   }
 
   return {
-    isOperator: Boolean(payload?.isOperator),
-    canManageRecipients: Boolean(payload?.canManageRecipients ?? payload?.isOperator),
+    canManageRecipients: Boolean(payload?.canManageRecipients),
     manageableUserSdwtProds: normalizeTextValues(payload?.manageableUserSdwtProds),
   }
 }

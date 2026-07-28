@@ -12,11 +12,10 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AFFILIATION_QUERY_KEY } from "@/lib/account"
 import { buildBackendUrl } from "@/lib/api"
 
 import { fetchJson } from "../utils/fetchJson"
-
-const AFFILIATION_QUERY_KEY = ["account", "affiliation"]
 
 function isBlank(value) {
   return !value || (typeof value === "string" && !value.trim())

@@ -1,14 +1,15 @@
-"""배포 전 접근 권한 데이터와 운영 capability의 정합성을 점검합니다."""
+"""배포 전 접근 권한 데이터와 고정 역할 계약의 정합성을 점검합니다."""
 
 from __future__ import annotations
 
-from django.contrib.auth.models import Group, Permission
+import re
+
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models.functions import Lower, Trim
 
 from api.account.models import (
-    ACCESS_MANAGERS_GROUP_NAME,
+    ACCESS_SCOPE_KEY_PATTERN,
     ACCESS_SCOPE_PORTAL,
-    MANAGE_ACCESS_PERMISSION,
     SYSTEM_APP_SCOPE_KEYS,
     AccessPolicyRule,
     AccessRole,
@@ -16,26 +17,48 @@ from api.account.models import (
     UserAccess,
 )
 
+PRE_MIGRATION_PHASE = "pre-migration"
+POST_MIGRATION_PHASE = "post-migration"
+LEGACY_ACCESS_ROLES = ("viewer", "member", "manager", "admin")
+
 
 class Command(BaseCommand):
     """접근 권한 배포를 막아야 할 데이터 불일치를 보고합니다."""
 
-    help = "접근 권한 scope, 정책, 사용자 권한, 관리자 그룹의 정합성을 점검합니다."
+    help = "접근 권한 scope, 정책, 사용자 역할의 정합성을 점검합니다."
+
+    def add_arguments(self, parser):
+        """검사할 migration 시점을 필수 인자로 등록합니다."""
+
+        parser.add_argument(
+            "--phase",
+            choices=(PRE_MIGRATION_PHASE, POST_MIGRATION_PHASE),
+            required=True,
+            help="pre-migration은 legacy 역할, post-migration은 고정 역할 계약을 검사합니다.",
+        )
 
     def handle(self, *args, **options):
         """읽기 전용 점검을 실행하고 문제가 있으면 실패 코드로 종료합니다."""
 
+        phase = options["phase"]
+        role_findings = (
+            self._check_legacy_role_contract()
+            if phase == PRE_MIGRATION_PHASE
+            else self._check_fixed_role_contract()
+        )
         findings = [
             *self._check_system_scopes(),
-            *self._check_app_boolean_contract(),
+            *self._check_scope_identity(),
+            *role_findings,
             *self._check_policy_values(),
-            *self._check_access_manager_group(),
         ]
         if findings:
             details = "\n".join(f"- {finding}" for finding in findings)
             raise CommandError(f"접근 권한 무결성 점검에 실패했습니다.\n{details}")
 
-        self.stdout.write(self.style.SUCCESS("접근 권한 무결성 점검을 통과했습니다."))
+        self.stdout.write(
+            self.style.SUCCESS(f"접근 권한 무결성 점검을 통과했습니다. phase={phase}")
+        )
 
     def _check_system_scopes(self) -> list[str]:
         """코드가 요구하는 시스템 scope의 존재와 유형을 확인합니다."""
@@ -54,26 +77,49 @@ class Command(BaseCommand):
                 )
         return findings
 
-    def _check_app_boolean_contract(self) -> list[str]:
-        """앱 scope와 연결된 role 값이 boolean 권한 계약을 따르는지 확인합니다."""
+    def _check_scope_identity(self) -> list[str]:
+        """모든 scope가 고정 key 형식과 canonical Portal 규칙을 따르는지 확인합니다."""
 
         findings = []
-        app_scopes = AccessScope.objects.filter(scope_type=AccessScope.ScopeTypes.APP)
-        invalid_scope_count = app_scopes.exclude(default_role=AccessRole.VIEWER).count()
-        if invalid_scope_count:
-            findings.append(f"boolean 계약을 벗어난 앱 scope가 {invalid_scope_count}건입니다.")
+        for scope in AccessScope.objects.order_by("id").only("id", "key", "scope_type"):
+            if not re.fullmatch(ACCESS_SCOPE_KEY_PATTERN, scope.key or ""):
+                findings.append(f"scope key 형식이 잘못되었습니다: id={scope.id}, key={scope.key!r}")
+            if scope.key == ACCESS_SCOPE_PORTAL and scope.scope_type != AccessScope.ScopeTypes.PORTAL:
+                findings.append(
+                    f"canonical Portal 유형이 잘못되었습니다: id={scope.id}, type={scope.scope_type}"
+                )
+            if scope.key != ACCESS_SCOPE_PORTAL and scope.scope_type == AccessScope.ScopeTypes.PORTAL:
+                findings.append(
+                    f"canonical Portal 이외의 portal 유형 scope가 있습니다: id={scope.id}, key={scope.key}"
+                )
+        return findings
 
-        invalid_policy_count = AccessPolicyRule.objects.filter(
-            scope__scope_type=AccessScope.ScopeTypes.APP,
-        ).exclude(role=AccessRole.VIEWER).count()
-        if invalid_policy_count:
-            findings.append(f"viewer가 아닌 앱 정책이 {invalid_policy_count}건입니다.")
+    def _check_legacy_role_contract(self) -> list[str]:
+        """migration 전 사용자 접근이 legacy 역할 계약을 따르는지 확인합니다."""
 
-        invalid_access_count = UserAccess.objects.filter(
-            scope__scope_type=AccessScope.ScopeTypes.APP,
-        ).exclude(role=AccessRole.VIEWER).count()
+        invalid_access_count = UserAccess.objects.exclude(
+            role__in=LEGACY_ACCESS_ROLES
+        ).count()
+        if not invalid_access_count:
+            return []
+        return [f"유효하지 않은 legacy 사용자 역할이 {invalid_access_count}건입니다."]
+
+    def _check_fixed_role_contract(self) -> list[str]:
+        """migration 후 사용자 접근이 고정 역할 계약을 따르는지 확인합니다."""
+
+        findings = []
+        invalid_access_count = UserAccess.objects.exclude(role__in=AccessRole.values).count()
         if invalid_access_count:
-            findings.append(f"viewer가 아닌 앱 사용자 권한이 {invalid_access_count}건입니다.")
+            findings.append(f"유효하지 않은 사용자 역할이 {invalid_access_count}건입니다.")
+        invalid_role_state_count = (
+            UserAccess.objects.exclude(status=UserAccess.Status.ALLOWED)
+            .exclude(role=AccessRole.USER)
+            .count()
+        )
+        if invalid_role_state_count:
+            findings.append(
+                f"비허용 상태에 관리자 역할이 남은 사용자 권한이 {invalid_role_state_count}건입니다."
+            )
         return findings
 
     def _check_policy_values(self) -> list[str]:
@@ -81,14 +127,26 @@ class Command(BaseCommand):
 
         findings = []
         seen_keys = {}
-        for rule in AccessPolicyRule.objects.order_by("id").only("id", "scope_id", "rule_type", "value"):
+        rules = (
+            AccessPolicyRule.objects.annotate(
+                _access_policy_value=Lower(Trim("value")),
+            )
+            .order_by("id")
+            .only("id", "scope_id", "rule_type", "value")
+        )
+        for rule in rules:
             normalized_value = (rule.value or "").strip()
             if not normalized_value:
                 findings.append(f"정책 값이 비어 있습니다: id={rule.id}")
                 continue
             if rule.value != normalized_value:
                 findings.append(f"정책 값 앞뒤에 공백이 있습니다: id={rule.id}")
-            semantic_key = (rule.scope_id, rule.rule_type, normalized_value.casefold())
+            # PostgreSQL Lower 기반 유일 제약과 같은 의미 키를 사용합니다.
+            semantic_key = (
+                rule.scope_id,
+                rule.rule_type,
+                rule._access_policy_value,
+            )
             if semantic_key in seen_keys:
                 findings.append(
                     f"의미상 중복 정책이 있습니다: id={seen_keys[semantic_key]}, id={rule.id}"
@@ -96,24 +154,3 @@ class Command(BaseCommand):
             else:
                 seen_keys[semantic_key] = rule.id
         return findings
-
-    def _check_access_manager_group(self) -> list[str]:
-        """표준 권한 관리자 그룹이 capability permission을 보유하는지 확인합니다."""
-
-        app_label, codename = MANAGE_ACCESS_PERMISSION.split(".", maxsplit=1)
-        permission = Permission.objects.filter(
-            content_type__app_label=app_label,
-            codename=codename,
-        ).first()
-        if permission is None:
-            return [f"permission이 없습니다: {MANAGE_ACCESS_PERMISSION}"]
-
-        has_permission = Group.objects.filter(
-            name=ACCESS_MANAGERS_GROUP_NAME,
-            permissions=permission,
-        ).exists()
-        if not has_permission:
-            return [
-                f"{ACCESS_MANAGERS_GROUP_NAME} 그룹에 {MANAGE_ACCESS_PERMISSION} permission이 없습니다."
-            ]
-        return []

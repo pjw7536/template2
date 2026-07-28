@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { cn } from "@/lib/utils"
 
 import {
@@ -1042,7 +1043,7 @@ function AppTable({ apps, isLoading }) {
   )
 }
 
-function KpiActionCard({ onManualInput, onExternalSync, canManualInput, isSyncing, syncLabel }) {
+function KpiActionCard({ onManualInput, onExternalSync, canManageStats, isSyncing, syncLabel }) {
   return (
     <Card className="h-full min-h-0 justify-center gap-2 rounded-lg px-3 py-2 shadow-none">
       <Button
@@ -1051,7 +1052,7 @@ function KpiActionCard({ onManualInput, onExternalSync, canManualInput, isSyncin
         size="sm"
         className="h-8 justify-start text-[11px]"
         onClick={onManualInput}
-        disabled={!canManualInput}
+        disabled={!canManageStats}
       >
         <FileSpreadsheet className="size-4" />
         외부 앱 수동입력
@@ -1062,7 +1063,7 @@ function KpiActionCard({ onManualInput, onExternalSync, canManualInput, isSyncin
         size="sm"
         className="h-8 justify-start text-[11px]"
         onClick={onExternalSync}
-        disabled={isSyncing}
+        disabled={!canManageStats || isSyncing}
       >
         <RefreshCw className={cn("size-4", isSyncing && "animate-spin")} />
         {syncLabel}
@@ -1162,7 +1163,7 @@ export function AccessStatsPage() {
                 <KpiActionCard
                   onManualInput={() => setIsManualDialogOpen(true)}
                   onExternalSync={() => externalSyncMutation.mutate()}
-                  canManualInput={Boolean(user?.is_superuser)}
+                  canManageStats={hasScopeRole(user, "access-stats")}
                   isSyncing={externalSyncMutation.isPending}
                   syncLabel={externalSyncLabel}
                 />

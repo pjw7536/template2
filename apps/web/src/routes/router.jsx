@@ -3,7 +3,7 @@ import { createBrowserRouter, Outlet, useLocation } from "react-router-dom"
 
 import { PortalGlobalShell } from "@/components/layout"
 import { AppAccessGate, AuthAutoLoginGate, PortalAccessGate, useAuth } from "@/lib/auth"
-import { hasAppAccess } from "@/lib/access/appAccess"
+import { hasScopeAccess } from "@/lib/access/scopeAccess"
 
 import { accessStatsRoutes } from "@/features/access-stats"
 import { appstoreRoutes } from "@/features/appstore"
@@ -81,9 +81,9 @@ function AssistantWidgetOutlet() {
   const { user } = useAuth()
   const location = useLocation()
   const normalizedPath = location.pathname.replace(/\/+$/, "").toLowerCase()
-  const hasPortalAccess = Boolean(user?.portal_access?.allowed)
-  const hasAssistantAccess = hasAppAccess(user, "assistant")
-  const hasEmailsAccess = hasAppAccess(user, "emails")
+  const hasPortalAccess = hasScopeAccess(user, "portal")
+  const hasAssistantAccess = hasScopeAccess(user, "assistant")
+  const hasEmailsAccess = hasScopeAccess(user, "emails")
   const { data: mailboxesData } = useEmailMailboxes({ enabled: hasPortalAccess && hasEmailsAccess })
   const availableMailboxes = Array.isArray(mailboxesData?.results)
     ? mailboxesData.results
@@ -109,8 +109,8 @@ function AssistantWidgetOutlet() {
 
 function AssistantMailboxOutlet() {
   const { user } = useAuth()
-  const hasPortalAccess = Boolean(user?.portal_access?.allowed)
-  const hasEmailsAccess = hasAppAccess(user, "emails")
+  const hasPortalAccess = hasScopeAccess(user, "portal")
+  const hasEmailsAccess = hasScopeAccess(user, "emails")
   const { data: mailboxesData } = useEmailMailboxes({ enabled: hasPortalAccess && hasEmailsAccess })
   const availableMailboxes = Array.isArray(mailboxesData?.results)
     ? mailboxesData.results

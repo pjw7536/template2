@@ -11,6 +11,7 @@ Line Dashboard는 Drone SOP 데이터를 보고, 조기 알림과 멀티 채널 
 - SOP 대상 소속 계산
 - Jira/Messenger/Mail 알림 전송
 - 알림 대상/수신자 관리
+- Line Dashboard `admin` 전용 Drone target 기준 정보 관리
 - 실패 채널 재시도
 
 ## SOP 알림 흐름
@@ -55,6 +56,7 @@ Line Dashboard는 Drone SOP 데이터를 보고, 조기 알림과 멀티 채널 
 - 수집 문제는 `sop/ingest/pop3/trigger`와 POP3 env를 확인합니다.
 - 전송 문제는 channel별 delivery 상태와 Jira/Messenger/Mail env를 분리해 확인합니다.
 - 알림 대상 문제는 Account 소속, target mapping, recipient 설정을 함께 확인합니다.
+- `/admin/drone-targets` 403은 Line Dashboard `allowed/admin` 권한과 Portal 접근을 확인합니다.
 - 테이블 수정 문제는 허용 컬럼과 ActivityLog 기록 여부를 확인합니다.
 
 ## Drone target seed

@@ -52,7 +52,6 @@ def get_account_overview(*, user: Any, timezone_name: str) -> dict[str, object]:
         "username": getattr(user, "username", None),
         "knoxId": getattr(user, "knox_id", None),
         "userSdwtProd": current_values.get("user_sdwt_prod"),
-        "role": selectors.get_user_profile_role(user=user),
         "isSuperuser": bool(getattr(user, "is_superuser", False)),
         "isStaff": bool(getattr(user, "is_staff", False)),
     }

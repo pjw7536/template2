@@ -175,13 +175,20 @@ def default_contact(user) -> Tuple[str, str]:
     return (_user_display_name(user) or "사용자").strip(), _user_knoxid(user)
 
 
-def serialize_comment(comment: Any, current_user, liked_comment_ids: set[int]) -> Dict[str, Any]:
+def serialize_comment(
+    comment: Any,
+    current_user,
+    liked_comment_ids: set[int],
+    *,
+    is_appstore_admin: bool,
+) -> Dict[str, Any]:
     """댓글을 API 응답 형태로 직렬화합니다.
 
     인자:
         comment: AppStoreComment 인스턴스.
         current_user: 현재 사용자 객체(또는 None).
         liked_comment_ids: 현재 사용자가 좋아요한 댓글 id 집합.
+        is_appstore_admin: 요청에서 한 번 계산한 AppStore admin 여부.
 
     반환:
         댓글 API 응답 dict.
@@ -200,6 +207,11 @@ def serialize_comment(comment: Any, current_user, liked_comment_ids: set[int]) -
     liked = False
     if current_user and getattr(current_user, "is_authenticated", False):
         liked = comment.pk in liked_comment_ids
+    can_manage = can_manage_comment(
+        current_user,
+        comment,
+        is_appstore_admin=is_appstore_admin,
+    )
     # -----------------------------------------------------------------------------
     # 2) 응답 payload 구성
     # -----------------------------------------------------------------------------
@@ -213,8 +225,8 @@ def serialize_comment(comment: Any, current_user, liked_comment_ids: set[int]) -
         "author": serialize_user(author),
         "likeCount": int(getattr(comment, "like_count", 0) or 0),
         "liked": liked,
-        "canEdit": can_manage_comment(current_user, comment),
-        "canDelete": can_manage_comment(current_user, comment),
+        "canEdit": can_manage,
+        "canDelete": can_manage,
     }
 
 
@@ -227,6 +239,7 @@ def serialize_app(
     include_screenshots: bool = False,
     cover_src: str | None = None,
     liked_comment_ids: set[int] | None = None,
+    is_appstore_admin: bool,
 ) -> Dict[str, Any]:
     """앱을 API 응답 형태로 직렬화합니다(선호 시 댓글 포함).
 
@@ -238,6 +251,7 @@ def serialize_app(
         include_screenshots: 스크린샷 목록 포함 여부.
         cover_src: 대표 스크린샷 URL/소스(없으면 앱 기본값 사용).
         liked_comment_ids: 현재 사용자가 좋아요한 댓글 id 집합.
+        is_appstore_admin: 요청에서 한 번 계산한 AppStore admin 여부.
 
     반환:
         앱 상세/목록 API 응답 dict.
@@ -265,7 +279,15 @@ def serialize_app(
     if include_comments:
         related = getattr(app, "comments", None)
         if related is not None:
-            comments = [serialize_comment(comment, current_user, liked_comment_ids) for comment in related.all()]
+            comments = [
+                serialize_comment(
+                    comment,
+                    current_user,
+                    liked_comment_ids,
+                    is_appstore_admin=is_appstore_admin,
+                )
+                for comment in related.all()
+            ]
         else:
             comments = []
 
@@ -274,6 +296,11 @@ def serialize_app(
     # -----------------------------------------------------------------------------
     owner_payload = serialize_user(getattr(app, "owner", None))
     comment_count = getattr(app, "comment_count", 0) or 0
+    can_manage = can_manage_app(
+        current_user,
+        app,
+        is_appstore_admin=is_appstore_admin,
+    )
 
     cover_value = cover_src if cover_src is not None else getattr(app, "screenshot_src", "")
     payload: Dict[str, Any] = {
@@ -293,8 +320,8 @@ def serialize_app(
         "updatedAt": app.updated_at.isoformat(),
         "owner": owner_payload,
         "liked": liked,
-        "canEdit": can_manage_app(current_user, app),
-        "canDelete": can_manage_app(current_user, app),
+        "canEdit": can_manage,
+        "canDelete": can_manage,
         **({"comments": comments} if comments is not None else {}),
     }
 

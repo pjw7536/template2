@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from django.db import connection
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
@@ -282,34 +282,6 @@ def list_drone_sop_user_sdwt_channels_by_targets(
             "mail_configured": mail_config is not None,
         }
     return mapping
-
-
-def list_drone_sop_jira_templates_by_target_user_sdwt_prods(
-    *,
-    target_user_sdwt_prod_values: set[str] | list[str],
-) -> dict[str, str | None]:
-    """target_user_sdwt_prod별 Jira 템플릿 키 맵을 조회합니다.
-
-    인자:
-        target_user_sdwt_prod_values: target_user_sdwt_prod 집합 또는 리스트.
-
-    반환:
-        {target_user_sdwt_prod: template_key} 형태의 dict(없으면 None).
-
-    부작용:
-        없음. 읽기 전용 조회입니다.
-    """
-
-    channels = list_drone_sop_user_sdwt_channels_by_targets(
-        target_user_sdwt_prod_values=target_user_sdwt_prod_values,
-    )
-    normalized_targets = normalize_text_list(target_user_sdwt_prod_values)
-    result: dict[str, str | None] = {}
-    for target in normalized_targets:
-        lookup_key = normalize_lookup_text(target)
-        config = channels.get(lookup_key) if lookup_key else None
-        result[target] = normalize_text(config.get("jira_template_key")) if config else None
-    return result
 
 
 def load_drone_sop_custom_end_step_map() -> dict[tuple[str, str], str | None]:
@@ -613,132 +585,6 @@ def has_drone_sop_pipeline_candidates() -> bool:
     return qs.exists()
 
 
-def load_drone_sop_ctttm_workorders_map(
-    *,
-    sop_ids: Sequence[int],
-    ctttm_table: str,
-) -> dict[int, list[dict[str, str]]]:
-    """Drone SOP row id 목록에 대해 CTTTM 최신 workorder 정보를 조회합니다.
-
-    인자:
-        sop_ids: Drone SOP ID 목록.
-        ctttm_table: CTTTM 테이블명.
-
-    반환:
-        {sop_id: [{"eqp_id": "...", "workorder_id": "...", "line_id": "..."}]} 형태의 dict.
-
-    부작용:
-        없음. 읽기 전용 조회입니다.
-
-    오류:
-        테이블명이 허용된 패턴이 아니면 ValueError를 발생시킵니다.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력/환경 검증
-    # -----------------------------------------------------------------------------
-    if not sop_ids:
-        return {}
-    if connection.vendor != "postgresql":
-        return {}
-
-    # -----------------------------------------------------------------------------
-    # 2) 테이블명/ID 정규화
-    # -----------------------------------------------------------------------------
-    raw_table_name = str(ctttm_table or "").strip()
-    if not raw_table_name:
-        return {}
-    table_name = sanitize_identifier(raw_table_name)
-    if not table_name:
-        raise ValueError("CTTTM table name must match ^[A-Za-z0-9_]+$")
-
-    normalized_ids: list[int] = []
-    for raw_id in sop_ids:
-        try:
-            parsed = int(raw_id)
-        except (TypeError, ValueError):
-            continue
-        if parsed > 0:
-            normalized_ids.append(parsed)
-    if not normalized_ids:
-        return {}
-
-    unique_ids = sorted(set(normalized_ids))
-
-    # -----------------------------------------------------------------------------
-    # 3) SQL 조회
-    # -----------------------------------------------------------------------------
-    rows = run_query(
-        """
-        WITH RECURSIVE seq AS (
-            SELECT 1 AS n
-            UNION ALL
-            SELECT n + 1 FROM seq WHERE n < 100
-        ),
-        eqp_list_cte AS (
-            SELECT
-                sop.id AS sop_id,
-                CONCAT(sop.eqp_id, '-', SUBSTRING(COALESCE(sop.chamber_ids, ''), n, 1)) AS eqp_list
-            FROM drone_sop AS sop
-            JOIN seq ON n <= CHAR_LENGTH(COALESCE(sop.chamber_ids, ''))
-            WHERE sop.id = ANY(%s)
-              AND sop.eqp_id IS NOT NULL
-              AND sop.eqp_id <> ''
-        ),
-        latest_list AS (
-            SELECT DISTINCT ON (eqp_id)
-                eqp_id,
-                inprg_date,
-                workorder_id,
-                line_id
-            FROM {ctttm_table}
-            WHERE eqp_id IN (SELECT eqp_list FROM eqp_list_cte)
-            ORDER BY eqp_id, inprg_date DESC
-        )
-        SELECT
-            eqp_list_cte.sop_id AS sop_id,
-            latest_list.eqp_id AS eqp_id,
-            latest_list.workorder_id AS workorder_id,
-            latest_list.line_id AS line_id
-        FROM latest_list
-        JOIN eqp_list_cte ON eqp_list_cte.eqp_list = latest_list.eqp_id
-        ORDER BY eqp_list_cte.sop_id ASC
-        """.format(ctttm_table=table_name),
-        [unique_ids],
-    )
-
-    # -----------------------------------------------------------------------------
-    # 4) 결과 매핑 구성
-    # -----------------------------------------------------------------------------
-    mapping: dict[int, list[dict[str, str]]] = {}
-    for row in rows:
-        sop_id = row.get("sop_id")
-        if not isinstance(sop_id, int):
-            try:
-                sop_id = int(sop_id)
-            except (TypeError, ValueError):
-                continue
-        if sop_id <= 0:
-            continue
-
-        eqp_id = row.get("eqp_id")
-        workorder_id = row.get("workorder_id")
-        line_id = row.get("line_id")
-
-        if eqp_id is None or workorder_id is None or line_id is None:
-            continue
-
-        mapping.setdefault(sop_id, []).append(
-            {
-                "eqp_id": str(eqp_id).strip(),
-                "workorder_id": str(workorder_id).strip(),
-                "line_id": str(line_id).strip(),
-            }
-        )
-
-    return mapping
-
-
 def load_drone_sop_ctttm_latest_workorders_by_eqp_ids(
     *,
     eqp_ids: Sequence[str],
@@ -977,7 +823,7 @@ def _drone_sop_target_admin_queryset() -> QuerySet[DroneSopTarget]:
 
 
 def list_drone_sop_target_admin_rows() -> list[dict[str, object]]:
-    """superuser 관리 화면용 Drone SOP target 목록을 반환합니다.
+    """Line Dashboard 관리자 화면용 Drone SOP target 목록을 반환합니다.
 
     반환:
         target row와 관련 설정 count 목록.
@@ -991,7 +837,7 @@ def list_drone_sop_target_admin_rows() -> list[dict[str, object]]:
 
 
 def get_drone_sop_target_admin_row(*, target_id: int) -> dict[str, object] | None:
-    """target id 기준 superuser 관리 화면용 row를 반환합니다.
+    """target id 기준 Line Dashboard 관리자 화면용 row를 반환합니다.
 
     인자:
         target_id: DroneSopTarget PK.
@@ -1149,33 +995,6 @@ def get_tip_status_line_sdwt_options_payload() -> dict[str, object]:
     }
 
 
-def map_target_user_sdwt_prod_to_line_id() -> dict[str, str]:
-    """Drone target_user_sdwt_prod 값별 line_id 매핑을 반환합니다.
-
-    반환:
-        대문자 target_user_sdwt_prod → line_id 매핑.
-
-    부작용:
-        없음. 읽기 전용 조회입니다.
-    """
-
-    rows = (
-        DroneSopTarget.objects.exclude(line_id__isnull=True)
-        .exclude(line_id__exact="")
-        .exclude(target_user_sdwt_prod__isnull=True)
-        .exclude(target_user_sdwt_prod__exact="")
-        .values("target_user_sdwt_prod", "line_id")
-    )
-    result: dict[str, str] = {}
-    for row in rows:
-        target_value = normalize_text(row.get("target_user_sdwt_prod"))
-        line_id = normalize_text(row.get("line_id"))
-        if not target_value or not line_id:
-            continue
-        result[target_value.upper()] = line_id
-    return result
-
-
 def list_drone_sop_target_user_sdwt_prod_values() -> list[str]:
     """Drone SOP 설정 대상 user_sdwt_prod 목록을 조회합니다.
 
@@ -1239,16 +1058,14 @@ def get_drone_sop_permission_context(*, user: Any) -> dict[str, object]:
         user: Django 사용자 객체.
 
     반환:
-        운영자 여부와 관리 가능한 target_user_sdwt_prod 목록.
+        수신 설정 변경 가능 여부와 관리 가능한 target_user_sdwt_prod 목록.
 
     부작용:
         없음. 읽기 전용 조회입니다.
     """
 
-    is_operator = account_selectors.is_operator_user(user=user)
     can_manage_recipients = user_can_manage_drone_sop_recipients(user=user)
     return {
-        "isOperator": is_operator,
         "canManageRecipients": can_manage_recipients,
         "manageableUserSdwtProds": (
             list_drone_sop_target_user_sdwt_prod_values() if can_manage_recipients else []
@@ -1595,63 +1412,6 @@ def list_drone_sop_jira_target_user_sdwt_prods() -> list[str]:
     # 2) 공백 제거 및 반환
     # -----------------------------------------------------------------------------
     return normalize_text_list(rows)
-
-
-def get_drone_sop_jira_project_key_for_target_user_sdwt_prod(*, target_user_sdwt_prod: str) -> str | None:
-    """target_user_sdwt_prod에 해당하는 Jira project key를 조회합니다.
-
-    인자:
-        target_user_sdwt_prod: 사용자 소속 값.
-
-    반환:
-        Jira project key 문자열 또는 None.
-
-    부작용:
-        없음. 읽기 전용 조회입니다.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 유효성 확인
-    # -----------------------------------------------------------------------------
-    normalized = normalize_text(target_user_sdwt_prod)
-    if not normalized:
-        return None
-
-    # -----------------------------------------------------------------------------
-    # 2) 채널 설정 기반 Jira 키 조회
-    # -----------------------------------------------------------------------------
-    channel = get_drone_sop_channel_by_target_user_sdwt_prod(target_user_sdwt_prod=normalized)
-    if channel is None:
-        return None
-    return normalize_text(channel.jira_key)
-
-
-def list_drone_sop_jira_project_keys_by_target_user_sdwt_prods(
-    *,
-    target_user_sdwt_prod_values: set[str] | list[str],
-) -> dict[str, str | None]:
-    """target_user_sdwt_prod별 Jira project key 맵을 조회합니다.
-
-    인자:
-        target_user_sdwt_prod_values: target_user_sdwt_prod 집합 또는 리스트.
-
-    반환:
-        {target_user_sdwt_prod: jira_key} 형태의 dict.
-
-    부작용:
-        없음. 읽기 전용 조회입니다.
-    """
-
-    channels = list_drone_sop_user_sdwt_channels_by_targets(
-        target_user_sdwt_prod_values=target_user_sdwt_prod_values,
-    )
-    normalized_targets = normalize_text_list(target_user_sdwt_prod_values)
-    result: dict[str, str | None] = {}
-    for target in normalized_targets:
-        lookup_key = normalize_lookup_text(target)
-        config = channels.get(lookup_key) if lookup_key else None
-        result[target] = normalize_text(config.get("jira_key")) if config else None
-    return result
 
 
 def list_line_ids_for_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:

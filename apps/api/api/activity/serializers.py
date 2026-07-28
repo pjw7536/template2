@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
-
 from .models import ActivityLog
 
 INTERNAL_BRIDGE_REMOTE_ADDR = "172.18.0.1"
@@ -24,19 +22,6 @@ def _clean_text(value: Any, *, max_length: int) -> str:
     if not isinstance(value, str):
         return ""
     return value.strip()[:max_length]
-
-
-def _get_user_role(user: Any | None) -> Any | None:
-    """사용자 프로필 role 값을 안전하게 반환합니다."""
-
-    if user is None:
-        return None
-
-    try:
-        return getattr(user.profile, "role", None)
-    except ObjectDoesNotExist:
-        # 프로필이 없는 사용자는 예외 대신 None으로 처리합니다.
-        return None
 
 
 def _serialize_metadata(metadata: Any) -> Any:
@@ -79,7 +64,6 @@ def serialize_activity_log(entry: ActivityLog) -> dict[str, Any]:
     return {
         "id": entry.id,
         "user": username,
-        "role": _get_user_role(user),
         "action": entry.action,
         "path": entry.path,
         "method": entry.method,

@@ -1,5 +1,9 @@
 # ExecPlan: access-stats 수동 외부 API 동기화
 
+> 현재 권한·재실행 계약은 `app-rbac-unification.md`로 대체되었다. 수동 동기화는
+> Portal 접근이 허용된 Access Stats `admin`과 superuser만 실행하며, 허용된 요청은
+> 1시간 제한을 우회한다. 아래 내용은 2026-07-02 당시 구현 기록이다.
+
 ## 목표
 - access-stats 화면 조회 중 외부 API를 직접 호출하지 않는다.
 - 슈퍼유저가 버튼으로 외부 API 데이터를 수동 동기화한다.

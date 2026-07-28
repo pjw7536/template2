@@ -24,6 +24,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 import pandas as pd
 
+from api.account import services as account_services
+
 from . import selectors, services
 from .models import (
     L3SpiderDailyRunStats,
@@ -1270,11 +1272,26 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
             sabun="DEV-OPTION-DEVELOPER",
             password="pw",
         )
-        permission = Permission.objects.get(
-            codename="view_developer_options",
-            content_type__app_label="l3_spider",
+        actor = user_model.objects.create_superuser(
+            sabun="DEV-OPTION-SUPERUSER",
+            password="pw",
         )
-        self.developer.user_permissions.add(permission)
+        account_services.decide_user_access(
+            actor=actor,
+            user_id=self.developer.id,
+            scope_key="portal",
+            action="grant",
+            reason=None,
+            role="user",
+        )
+        account_services.decide_user_access(
+            actor=actor,
+            user_id=self.developer.id,
+            scope_key="l3-spider",
+            action="grant",
+            reason=None,
+            role="admin",
+        )
 
     def test_user_without_permission_cannot_read_unmapped_line_rules(self) -> None:
         """일반 로그인 사용자는 미매핑 규칙을 조회할 수 없어야 합니다."""
@@ -1287,8 +1304,18 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
         get_rules.assert_not_called()
 
-    def test_user_with_permission_can_read_unmapped_line_rules(self) -> None:
-        """개발자 옵션 권한 사용자는 미매핑 규칙을 조회할 수 있어야 합니다."""
+    def test_legacy_developer_permission_is_removed(self) -> None:
+        """역할 기반 권한으로 대체된 legacy permission이 남지 않아야 합니다."""
+
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type__app_label="l3_spider",
+                codename="view_developer_options",
+            ).exists()
+        )
+
+    def test_l3_spider_admin_can_read_unmapped_line_rules(self) -> None:
+        """L3 Spider admin은 미매핑 규칙을 조회할 수 있어야 합니다."""
 
         payload = {"count": 0, "items": [], "rulesFile": "public.l3_spider_line_name_rule"}
         request = APIRequestFactory().get("/api/v1/l3_spider/developer/unmapped-line-rules")

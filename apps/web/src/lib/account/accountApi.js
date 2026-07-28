@@ -6,8 +6,7 @@ const endpoints = {
   affiliationRequests: "/api/v1/account/affiliation/requests",
   affiliationApprove: "/api/v1/account/affiliation/approve",
   affiliationMembers: "/api/v1/account/affiliation/members",
-  grants: "/api/v1/account/access/grants",
-  manageable: "/api/v1/account/access/manageable",
+  accessRequest: "/api/v1/account/access/request",
   accessUsers: "/api/v1/account/access/users",
   accessMatrix: "/api/v1/account/access/matrix",
   accessPolicyRules: "/api/v1/account/access/policy-rules",
@@ -143,12 +142,6 @@ export const accountApi = {
     return unwrap(response, "Failed to update affiliation")
   },
 
-  async fetchManageableGroups() {
-    const url = buildBackendUrl(endpoints.manageable)
-    const response = await request(url, { cache: "no-store" })
-    return unwrap(response, "Failed to load group members")
-  },
-
   async fetchAffiliationRequests({
     page = 1,
     pageSize = 20,
@@ -158,9 +151,9 @@ export const accountApi = {
   } = {}) {
     const params = new URLSearchParams()
     params.set("page", String(page))
-    params.set("page_size", String(pageSize))
+    params.set("pageSize", String(pageSize))
     if (status) params.set("status", status)
-    if (search) params.set("q", search)
+    if (search) params.set("search", search)
     if (userSdwtProd) params.set("user_sdwt_prod", userSdwtProd)
 
     const url = buildBackendUrl(`${endpoints.affiliationRequests}?${params.toString()}`)
@@ -189,14 +182,14 @@ export const accountApi = {
     return unwrap(response, "Failed to update affiliation request")
   },
 
-  async updateGrant(payload) {
-    const url = buildBackendUrl(endpoints.grants)
+  async requestScopeAccess(scopes) {
+    const url = buildBackendUrl(endpoints.accessRequest)
     const response = await request(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ scopes }),
     })
-    return unwrap(response, "Failed to update grant")
+    return unwrap(response, "Failed to request scope access")
   },
 
   async fetchAccessUsers({
@@ -210,10 +203,10 @@ export const accountApi = {
   } = {}) {
     const params = new URLSearchParams()
     params.set("page", String(page))
-    params.set("page_size", String(pageSize))
+    params.set("pageSize", String(pageSize))
     if (status) params.set("status", status)
     if (source) params.set("source", source)
-    if (search) params.set("q", search)
+    if (search) params.set("search", search)
     if (department) params.set("department", department)
     if (scope) params.set("scope", scope)
 
@@ -225,13 +218,13 @@ export const accountApi = {
   async fetchAccessMatrix({ page = 1, pageSize = 20, search = "", department = "" } = {}) {
     const params = new URLSearchParams()
     params.set("page", String(page))
-    params.set("page_size", String(pageSize))
-    if (search) params.set("q", search)
+    params.set("pageSize", String(pageSize))
+    if (search) params.set("search", search)
     if (department) params.set("department", department)
 
     const url = buildBackendUrl(`${endpoints.accessMatrix}?${params.toString()}`)
     const response = await request(url, { cache: "no-store" })
-    return unwrap(response, "Failed to load app access matrix")
+    return unwrap(response, "Failed to load access matrix")
   },
 
   async decideAccessUser({ userId, ...payload }) {
@@ -287,7 +280,7 @@ export const accountApi = {
   } = {}) {
     const params = new URLSearchParams()
     params.set("page", String(page))
-    params.set("page_size", String(pageSize))
+    params.set("pageSize", String(pageSize))
     if (scope) params.set("scope", scope)
     if (userId) params.set("userId", String(userId))
     if (action) params.set("action", action)

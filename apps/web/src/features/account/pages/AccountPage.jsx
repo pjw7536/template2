@@ -3,6 +3,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { hasScopeAccess } from "@/lib/access/scopeAccess"
 import { useAuth } from "@/lib/auth"
 
 import { AffiliationCard } from "../components/AffiliationCard"
@@ -81,7 +82,7 @@ function AccountSummaryPanel({ pageTitle, profile, summary }) {
 
 export default function AccountPage() {
   const { user } = useAuth()
-  const hasPortalAccess = Boolean(user?.portal_access?.allowed)
+  const hasPortalAccess = hasScopeAccess(user, "portal")
   const {
     data: overviewData,
     isLoading: overviewLoading,
@@ -105,7 +106,6 @@ export default function AccountPage() {
   const accountSummary =
     overviewData?.accountSummary ||
     buildAccountSummaryModel({
-      profile,
       affiliation,
       reconfirm,
       history,

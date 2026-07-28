@@ -19,26 +19,24 @@ from rest_framework.views import APIView
 from api.common.services import (
     UNASSIGNED_USER_SDWT_PROD,
     ensure_airflow_token,
+    extract_bearer_token,
     parse_json_body,
     parse_json_body_or_error_when_present,
 )
 
 from .permissions import (
-    extract_bearer_token,
     resolve_access_control,
     resolve_email_access_denial,
-    _resolve_sender_id_from_user,
     user_can_access_mailbox,
-    user_can_view_unassigned,
 )
 from .selectors import (
-    contains_unassigned_emails,
     count_unassigned_emails_for_sender_id,
     get_email_asset_by_email_and_sequence,
     get_email_by_id,
     get_filtered_emails,
     get_sent_emails,
     list_mailbox_members,
+    resolve_sender_id_from_user,
     user_can_bulk_delete_emails,
 )
 
@@ -262,11 +260,10 @@ class EmailInboxListView(APIView):
             accessible=accessible,
         ):
             return _error_response("forbidden", status=403)
-        can_view_unassigned = user_can_view_unassigned(request.user)
         qs = get_filtered_emails(
             accessible_user_sdwt_prods=accessible,
             is_privileged=is_privileged,
-            can_view_unassigned=can_view_unassigned,
+            can_view_unassigned=is_privileged,
             mailbox_user_sdwt_prod=mailbox_user_sdwt_prod,
             search=filters["search"],
             sender=filters["sender"],
@@ -311,7 +308,7 @@ class EmailSentListView(APIView):
             return auth_error
         if "knox_id" in request.GET or "knoxId" in request.GET:
             return _error_response("knox_id query param is not allowed", status=400)
-        sender_id = _resolve_sender_id_from_user(request.user)
+        sender_id = resolve_sender_id_from_user(request.user)
         if not sender_id:
             return _error_response("forbidden", status=403)
         filters = build_email_filters(
@@ -435,7 +432,13 @@ class EmailMailboxSummaryView(APIView):
         if auth_error is not None:
             return auth_error
 
-        results = get_mailbox_access_summary_for_user(user=request.user)
+        is_privileged, _accessible, auth_error = _resolve_email_access_control(request)
+        if auth_error is not None:
+            return auth_error
+        results = get_mailbox_access_summary_for_user(
+            user=request.user,
+            is_privileged=is_privileged,
+        )
         return JsonResponse({"results": results})
 
 
@@ -464,7 +467,7 @@ class EmailUnassignedSummaryView(APIView):
         if auth_error is not None:
             return auth_error
         user = request.user
-        sender_id = _resolve_sender_id_from_user(user)
+        sender_id = resolve_sender_id_from_user(user)
         if not sender_id:
             return _error_response("forbidden", status=403)
         count = count_unassigned_emails_for_sender_id(sender_id=sender_id)
@@ -744,16 +747,11 @@ class EmailBulkDeleteView(APIView):
         except EmailRequestValidationError as exc:
             return _validation_error_response(exc)
         if not is_privileged:
-            sender_id = _resolve_sender_id_from_user(request.user)
+            sender_id = resolve_sender_id_from_user(request.user)
             if not user_can_bulk_delete_emails(
                 email_ids=normalized_ids,
                 accessible_user_sdwt_prods=accessible,
                 sender_id=sender_id,
-            ):
-                return _error_response("forbidden", status=403)
-        else:
-            if not user_can_view_unassigned(request.user) and contains_unassigned_emails(
-                email_ids=normalized_ids
             ):
                 return _error_response("forbidden", status=403)
         try:
@@ -793,7 +791,7 @@ class EmailMoveView(APIView):
         snake/camel 호환:
             email_ids <-> emailIds, to_user_sdwt_prod <-> toUserSdwtProd 지원.
         """
-        auth_error = _ensure_authenticated_user(request)
+        is_privileged, _accessible, auth_error = _resolve_email_access_control(request)
         if auth_error is not None:
             return auth_error
         user = request.user
@@ -812,6 +810,7 @@ class EmailMoveView(APIView):
                 user=user,
                 email_ids=normalized_ids,
                 to_user_sdwt_prod=target_user_sdwt_prod,
+                is_privileged=is_privileged,
             )
             return JsonResponse(result)
         except ValueError as exc:

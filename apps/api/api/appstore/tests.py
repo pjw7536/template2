@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from api.account import services as account_services
 from api.appstore.serializers import default_contact
 from api.appstore.services import create_app, create_comment, update_app
 
@@ -19,13 +20,12 @@ from api.appstore.services import create_app, create_comment, update_app
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
-        )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 class AppstoreScreenshotTests(TestCase):
@@ -529,6 +529,62 @@ class AppstoreEndpointTests(TestCase):
         )
         self.assertEqual(create_response.status_code, 201)
 
+    def test_appstore_list_resolves_admin_role_once_per_request(self) -> None:
+        """앱 개수와 관계없이 AppStore admin 판정은 요청당 한 번만 수행해야 합니다."""
+
+        for index in range(3):
+            create_app(
+                owner=self.user,
+                name=f"Query Test App {index}",
+                category="Tools",
+                description="",
+                url=f"https://example.com/query-{index}",
+                screenshot_url="",
+                contact_name="홍길동",
+                contact_knoxid="hong",
+            )
+
+        with patch(
+            "api.appstore.services.permissions.account_services.has_scope_role",
+            return_value=False,
+        ) as role_check:
+            response = self.client.get(reverse("appstore-apps"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 4)
+        role_check.assert_called_once()
+        self.assertEqual(role_check.call_args.kwargs["user"], self.user)
+        self.assertEqual(role_check.call_args.kwargs["scope_key"], "appstore")
+        self.assertIsNotNone(role_check.call_args.kwargs["request"])
+
+    def test_appstore_detail_reuses_admin_role_for_nested_comments(self) -> None:
+        """상세 댓글 수와 관계없이 같은 AppStore admin 판정 결과를 재사용해야 합니다."""
+
+        for index in range(3):
+            create_comment(
+                app=self.app,
+                user=self.user,
+                content=f"Query Test Comment {index}",
+            )
+
+        with patch(
+            "api.appstore.services.permissions.account_services.has_scope_role",
+            return_value=False,
+        ) as role_check:
+            response = self.client.get(
+                reverse("appstore-app-detail", kwargs={"app_id": self.app.pk})
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["app"]
+        self.assertEqual(len(payload["comments"]), 3)
+        self.assertTrue(payload["canEdit"])
+        self.assertTrue(all(comment["canEdit"] for comment in payload["comments"]))
+        role_check.assert_called_once()
+        self.assertEqual(role_check.call_args.kwargs["user"], self.user)
+        self.assertEqual(role_check.call_args.kwargs["scope_key"], "appstore")
+        self.assertIsNotNone(role_check.call_args.kwargs["request"])
+
     def test_appstore_create_returns_string_error_for_serializer_validation_failure(self) -> None:
         """앱 생성 검증 실패 시 문자열 error 계약을 유지하는지 확인합니다."""
         # -----------------------------------------------------------------------------
@@ -580,20 +636,40 @@ class AppstoreEndpointTests(TestCase):
         delete_response = self.client.delete(reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}))
         self.assertEqual(delete_response.status_code, 200)
 
-    def test_staff_user_can_manage_appstore_content(self) -> None:
-        """staff 계정이 타인 AppStore 콘텐츠를 편집할 수 있는지 검증합니다."""
+    def test_appstore_admin_can_manage_appstore_content(self) -> None:
+        """AppStore admin이 타인 콘텐츠를 편집할 수 있는지 검증합니다."""
         # -----------------------------------------------------------------------------
-        # 1) staff 사용자로 전환
+        # 1) AppStore 관리자 사용자 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        staff = User.objects.create_user(
+        app_admin = User.objects.create_user(
             sabun="S44444",
             password="test-password",
             email="s44444@example.com",
             knox_id="knox-44444",
-            is_staff=True,
         )
-        self.client.force_login(staff)
+        actor = User.objects.create_superuser(
+            sabun="S44445",
+            password="test-password",
+            knox_id="knox-44445",
+        )
+        account_services.decide_user_access(
+            actor=actor,
+            user_id=app_admin.id,
+            scope_key="portal",
+            action="grant",
+            reason=None,
+            role="user",
+        )
+        account_services.decide_user_access(
+            actor=actor,
+            user_id=app_admin.id,
+            scope_key="appstore",
+            action="grant",
+            reason=None,
+            role="admin",
+        )
+        self.client.force_login(app_admin)
 
         # -----------------------------------------------------------------------------
         # 2) 타인 앱 편집 권한 노출 확인
@@ -609,11 +685,11 @@ class AppstoreEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         update_response = self.client.patch(
             reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}),
-            data='{"description":"staff updated"}',
+            data='{"description":"app admin updated"}',
             content_type="application/json",
         )
         self.assertEqual(update_response.status_code, 200)
-        self.assertEqual(update_response.json()["app"]["description"], "staff updated")
+        self.assertEqual(update_response.json()["app"]["description"], "app admin updated")
 
         # -----------------------------------------------------------------------------
         # 4) 타인 댓글 수정 허용 확인
@@ -624,11 +700,11 @@ class AppstoreEndpointTests(TestCase):
                 "appstore-app-comment-detail",
                 kwargs={"app_id": self.app.pk, "comment_id": comment.pk},
             ),
-            data='{"content":"staff comment update"}',
+            data='{"content":"app admin comment update"}',
             content_type="application/json",
         )
         self.assertEqual(comment_response.status_code, 200)
-        self.assertEqual(comment_response.json()["comment"]["content"], "staff comment update")
+        self.assertEqual(comment_response.json()["comment"]["content"], "app admin comment update")
 
     def test_appstore_comments_endpoints(self) -> None:
         """댓글 목록/생성/수정/삭제/좋아요 API를 검증합니다."""

@@ -33,13 +33,12 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
-        )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 class AssistantRagIndexViewsTests(TestCase):

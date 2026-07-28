@@ -14,6 +14,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
+from api.account import services as account_services
 from api.common.services import parse_json_body
 
 from .serializers import normalize_app_access_payload, normalize_manual_app_access_paste_payload
@@ -31,6 +32,7 @@ DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 200
 MIN_LIMIT: int = 1
 VIEW_ACTIVITY_LOG_PERMISSIONS = ("activity.view_activitylog", "api.view_activitylog")
+ACCESS_STATS_SCOPE = "access-stats"
 
 
 def _parse_activity_log_limit(raw_limit: str | None) -> int:
@@ -49,6 +51,16 @@ def _can_view_activity_logs(user: Any) -> bool:
     """현재 사용자가 ActivityLog 조회 권한을 하나라도 보유했는지 확인합니다."""
 
     return any(user.has_perm(permission) for permission in VIEW_ACTIVITY_LOG_PERMISSIONS)
+
+
+def _can_manage_access_stats(request: HttpRequest) -> bool:
+    """현재 요청 사용자가 접속 현황 앱 관리자 역할인지 반환합니다."""
+
+    return account_services.has_scope_role(
+        user=request.user,
+        scope_key=ACCESS_STATS_SCOPE,
+        request=request,
+    )
 
 
 class ActivityLogView(APIView):
@@ -81,7 +93,7 @@ class ActivityLogView(APIView):
         - 예시 요청: GET /api/v1/activity/logs?limit=50
 
         응답 필드:
-        - 필드: id, user, role, action, path, method, status, metadata, timestamp
+        - 필드: id, user, action, path, method, status, metadata, timestamp
 
         snake/camel 호환:
         - 해당 없음(쿼리 파라미터 limit만 사용)
@@ -193,7 +205,7 @@ class AppAccessStatsView(APIView):
 
 
 class ManualAppAccessStatsPreviewView(APIView):
-    """슈퍼유저 전용 외부 앱 접속현황 붙여넣기 미리보기 API입니다."""
+    """접속 현황 앱 관리자용 외부 앱 접속현황 붙여넣기 미리보기 API입니다."""
 
     permission_classes: list[type] = []
 
@@ -212,14 +224,14 @@ class ManualAppAccessStatsPreviewView(APIView):
 
         오류:
         - 401: 인증 실패
-        - 403: 슈퍼유저 아님
+        - 403: 접속 현황 앱 관리자 권한 없음
         - 400: JSON/필수값 오류
         """
 
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
-        if not request.user.is_superuser:
+        if not _can_manage_access_stats(request):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         normalized, error = normalize_manual_app_access_paste_payload(parse_json_body(request))
@@ -234,7 +246,7 @@ class ManualAppAccessStatsPreviewView(APIView):
 
 
 class ManualAppAccessStatsCommitView(APIView):
-    """슈퍼유저 전용 외부 앱 접속현황 수동 반영 API입니다."""
+    """접속 현황 앱 관리자용 외부 앱 접속현황 수동 반영 API입니다."""
 
     permission_classes: list[type] = []
 
@@ -253,14 +265,14 @@ class ManualAppAccessStatsCommitView(APIView):
 
         오류:
         - 401: 인증 실패
-        - 403: 슈퍼유저 아님
+        - 403: 접속 현황 앱 관리자 권한 없음
         - 400: JSON/필수값/행 검증 오류
         """
 
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
-        if not request.user.is_superuser:
+        if not _can_manage_access_stats(request):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         normalized, error = normalize_manual_app_access_paste_payload(parse_json_body(request))
@@ -286,7 +298,7 @@ class ManualAppAccessStatsCommitView(APIView):
 
 
 class ExternalAppUsageSyncView(APIView):
-    """인증 사용자용 외부 앱 사용량 수동 동기화 API입니다."""
+    """접속 현황 앱 관리자용 외부 앱 사용량 수동 동기화 API입니다."""
 
     permission_classes: list[type] = []
 
@@ -300,19 +312,22 @@ class ExternalAppUsageSyncView(APIView):
         - JsonResponse: 동기화 여부, skip 여부, 저장 건수, 마지막 동기화 상태
 
         부작용:
-        - 1시간 제한을 통과하면 외부 API를 호출하고 DB row를 upsert합니다.
+        - 외부 API를 호출하고 DB row를 upsert합니다.
 
         오류:
         - 401: 인증 실패
-        - 일반 사용자는 최근 1시간 내 성공 동기화가 있으면 skip됩니다.
+        - 403: 접속 현황 앱 관리자 권한 없음
         """
 
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
+        if not _can_manage_access_stats(request):
+            return JsonResponse({"error": "Forbidden"}, status=403)
+
         payload = sync_external_app_usage_stats(
             user=request.user,
-            bypass_throttle=bool(request.user.is_superuser),
+            bypass_throttle=True,
         )
         return JsonResponse(payload, status=200)
 

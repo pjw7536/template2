@@ -11,6 +11,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { RequireAuth, useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { DepartmentProvider } from "@/lib/affiliation"
 import { APP_CATEGORIES } from "../utils/constants"
 import { useVocBoardState } from "../hooks/useVocBoardState"
@@ -58,21 +59,11 @@ function VocAppCategoryNav({ appFilter, onSelectApp }) {
 export function VocShell() {
   const { user } = useAuth()
   const currentUserName = user?.username || user?.email || "로그인 사용자"
-  const currentUserRoles = Array.isArray(user?.roles) ? user.roles : []
   const currentUser = {
     id: user?.id || user?.email || currentUserName,
     name: currentUserName,
-    roles: currentUserRoles,
   }
-  const isAdmin = Boolean(
-    user?.is_staff ||
-      user?.is_superuser ||
-      currentUserRoles.some((role) => {
-        if (typeof role !== "string") return false
-        const lower = role.toLowerCase()
-        return lower === "admin" || lower === "administrator"
-      }),
-  )
+  const isAdmin = hasScopeRole(user, "voc")
 
   const boardState = useVocBoardState({ currentUser, isAdmin })
   const sidebar = (

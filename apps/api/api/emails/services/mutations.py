@@ -13,9 +13,9 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
 
+import api.account.services as account_services
 from api.account import selectors as account_selectors
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
-import api.account.services as account_services
 
 from ..models import Email
 from ..selectors import (
@@ -26,33 +26,12 @@ from ..selectors import (
     list_email_ids_by_sender_after,
     list_emails_for_update,
     list_unassigned_email_ids_for_sender_id,
+    resolve_sender_id_from_user,
     user_can_bulk_delete_emails,
 )
 from .constants import SENT_MAILBOX_ID
 from .rag import enqueue_rag_delete, enqueue_rag_index_for_emails
 from .storage import delete_email_objects
-
-
-def _resolve_sender_id_from_user(user: Any) -> str | None:
-    """사용자에서 sender_id(knox_id)를 추출합니다.
-
-    입력:
-        user: Django User 또는 유사 객체.
-    반환:
-        유효한 knox_id 문자열 또는 None.
-    부작용:
-        없음.
-    오류:
-        없음.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) knox_id 추출 및 정규화
-    # -----------------------------------------------------------------------------
-    knox_id = getattr(user, "knox_id", None)
-    if isinstance(knox_id, str) and knox_id.strip():
-        return knox_id.strip()
-    return None
 
 
 @transaction.atomic
@@ -150,7 +129,7 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     # -----------------------------------------------------------------------------
     # 1) 사용자/메일함 유효성 확인
     # -----------------------------------------------------------------------------
-    sender_id = _resolve_sender_id_from_user(user)
+    sender_id = resolve_sender_id_from_user(user)
     if not sender_id:
         raise PermissionError("knox_id is required to claim unassigned emails")
 
@@ -256,6 +235,7 @@ def move_emails_for_user(
     user: Any,
     email_ids: Sequence[int],
     to_user_sdwt_prod: str,
+    is_privileged: bool,
 ) -> Dict[str, int]:
     """현재 사용자 권한을 확인한 뒤 메일을 다른 메일함으로 이동합니다.
 
@@ -263,6 +243,7 @@ def move_emails_for_user(
         user: Django User 또는 유사 객체.
         email_ids: 이동할 Email id 목록.
         to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
+        is_privileged: Emails 관리자 여부. 관리자도 사용자 식별용 knox_id는 필요합니다.
     반환:
         moved/ragRegistered/ragFailed/ragMissing 카운트 dict.
     부작용:
@@ -278,7 +259,7 @@ def move_emails_for_user(
     if not user or not getattr(user, "is_authenticated", False):
         raise PermissionError("unauthorized")
 
-    sender_id = _resolve_sender_id_from_user(user)
+    sender_id = resolve_sender_id_from_user(user)
     if not sender_id:
         raise PermissionError("forbidden")
 
@@ -298,7 +279,6 @@ def move_emails_for_user(
     # -----------------------------------------------------------------------------
     # 3) 접근 권한 검증
     # -----------------------------------------------------------------------------
-    is_privileged = bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
     accessible = get_accessible_user_sdwt_prods_for_user(user) if not is_privileged else set()
     if not is_privileged and target_user_sdwt_prod not in accessible:
         raise PermissionError("forbidden")

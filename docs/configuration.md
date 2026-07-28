@@ -180,3 +180,8 @@ PM SPIDER는 단일 `/data/pm_spider` mount 아래에서 `/data/pm_spider/data`�
 - Drone/Jira/Messenger 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/modules/line-dashboard.md`, `docs/api/line-dashboard.md`
 - Observer 기준정보/로그 계약 변경: `env/api*.env`, `docs/modules/observer.md`, `docs/api/observer.md`, `docs/data-model.md`
 - L3 Spider 데이터 경로 변경: `env/api*.env`, `docker-compose*.yml`, `compose/*.yml`, `docs/api/l3-spider.md`, `docs/inventory.md`
+## PostgreSQL 필수 확장
+
+- API migration 실행 전 대상 PostgreSQL DB에 `pg_trgm` 확장이 준비되어 있어야 합니다.
+- 개발 Compose는 `ensure_dev_database`가 개발 DB와 테스트 DB 생성 원본인 `template1`에 확장을 준비합니다.
+- 운영 신규 DB는 DB 관리자가 `CREATE EXTENSION IF NOT EXISTS pg_trgm`을 먼저 실행해야 합니다.

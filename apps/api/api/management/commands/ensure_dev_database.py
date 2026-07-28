@@ -15,6 +15,7 @@ from psycopg import sql
 from django.core.management.base import BaseCommand, CommandError
 
 REQUIRED_EXTENSIONS = ("pg_trgm",)
+TEST_DATABASE_TEMPLATE = "template1"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -122,9 +123,17 @@ class Command(BaseCommand):
             except psycopg.Error as exc:
                 raise CommandError(f"개발 DB 생성 확인에 실패했습니다: {exc}") from exc
 
+        extension_databases = list(
+            dict.fromkeys((target_database, TEST_DATABASE_TEMPLATE))
+        )
         try:
-            _ensure_required_extensions(database_name=target_database)
+            for database_name in extension_databases:
+                _ensure_required_extensions(database_name=database_name)
         except psycopg.Error as exc:
             raise CommandError(f"개발 DB extension 확인에 실패했습니다: {exc}") from exc
 
-        self.stdout.write(f"[db-bootstrap] extensions ensured: {', '.join(REQUIRED_EXTENSIONS)}")
+        self.stdout.write(
+            "[db-bootstrap] extensions ensured: "
+            f"{', '.join(REQUIRED_EXTENSIONS)} "
+            f"({', '.join(extension_databases)})"
+        )

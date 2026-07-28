@@ -23,6 +23,7 @@ from django.http import (
 )
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 
 from api.auth import services as auth_services
@@ -180,6 +181,7 @@ def auth_callback(request: HttpRequest):
     return redirect(result.target)
 
 
+@api_view(["GET"])
 def auth_me(request: HttpRequest):
     """현재 로그인한 사용자 정보를 반환합니다.
 
@@ -199,7 +201,7 @@ def auth_me(request: HttpRequest):
     - 예시 요청: GET /api/v1/auth/me
 
     예시 응답:
-    - 예시 응답: 200 {"id": 1, "usr_id": "...", "avatarid": "U-12345", "username": "...", "has_pending_affiliation": false}
+    - 예시 응답: 200 {"id": 1, "usr_id": "...", "username": "...", "scope_access": {"portal": {...}}}
 
     snake/camel 호환:
     - 해당 없음(요청 바디 없음)

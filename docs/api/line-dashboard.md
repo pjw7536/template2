@@ -28,6 +28,7 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 | 알림 매핑 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-target-mappings` | 대상 매핑 |
 | 수신자 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-recipients` | 수신자 |
 | 수신자 권한 | `GET/POST /api/v1/line-dashboard/notification-recipient-permissions` | 수신자 권한 |
+| Target 관리 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/admin/drone-targets` | Line Dashboard `admin` 전용 Drone target 기준 정보 관리 |
 | SOP | `POST /api/v1/line-dashboard/sop/<sop_id>/instant-inform` | 단건 즉시 인폼 |
 | SOP | `POST /api/v1/line-dashboard/sop/<sop_id>/retry-channel` | 실패 채널 재시도 |
 | SOP | `POST /api/v1/line-dashboard/sop/ingest/pop3/trigger` | SOP POP3 수집 |
@@ -35,6 +36,8 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 | SOP | `POST /api/v1/line-dashboard/sop/trigger` | SOP 알림 파이프라인 |
 
 ## 알림 대상 조회
+
+`admin/drone-targets`는 Portal 접근이 허용된 Line Dashboard `admin`만 사용할 수 있습니다. `is_staff`나 프로필 운영 역할은 이 관리자 판정에 사용하지 않습니다.
 
 ```http
 GET /api/v1/line-dashboard/notification-targets?lineId=L1

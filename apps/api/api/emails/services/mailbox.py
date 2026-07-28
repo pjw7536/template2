@@ -9,14 +9,12 @@ from __future__ import annotations
 from typing import Any
 
 import api.account.selectors as account_selectors
-from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 from ..selectors import (
     get_accessible_user_sdwt_prods_for_user,
     list_mailbox_members,
     list_privileged_email_mailboxes,
 )
-from ..permissions import user_can_view_unassigned
 from .constants import SENT_MAILBOX_ID
 
 
@@ -47,12 +45,6 @@ def list_mailboxes_for_user_access(
     # -----------------------------------------------------------------------------
     if is_privileged:
         mailboxes = list_privileged_email_mailboxes()
-        if not user_can_view_unassigned(user):
-            mailboxes = [
-                mailbox
-                for mailbox in mailboxes
-                if mailbox not in {UNASSIGNED_USER_SDWT_PROD, "rp-unclassified"}
-            ]
     else:
         mailboxes = sorted(accessible_user_sdwt_prods)
 
@@ -64,7 +56,11 @@ def list_mailboxes_for_user_access(
     return [SENT_MAILBOX_ID, *[mailbox for mailbox in mailboxes if mailbox != SENT_MAILBOX_ID]]
 
 
-def get_mailbox_access_summary_for_user(*, user: Any) -> list[dict[str, object]]:
+def get_mailbox_access_summary_for_user(
+    *,
+    user: Any,
+    is_privileged: bool,
+) -> list[dict[str, object]]:
     """현재 사용자 기준 메일함 접근 요약을 반환합니다.
 
     입력:
@@ -82,8 +78,6 @@ def get_mailbox_access_summary_for_user(*, user: Any) -> list[dict[str, object]]
     # -----------------------------------------------------------------------------
     if not user or not getattr(user, "is_authenticated", False):
         return []
-
-    is_privileged = bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
 
     # -----------------------------------------------------------------------------
     # 2) 접근 가능한 메일함 목록 구성

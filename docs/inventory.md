@@ -9,7 +9,7 @@
 | 모듈 | Prefix | 실제 라우팅 파일 | 주요 endpoint |
 | --- | --- | --- | --- |
 | Auth | `/api/v1/auth/` | `apps/api/api/auth/urls.py` | `login`, `logout`, `me`, `config`, empty redirect |
-| Account | `/api/v1/account/` | `apps/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/reconfirm`, `portal-access`, `portal-access/approvals`, `access/users`, `access/matrix`, `access/users/<user_id>/decision`, `access/policy-rules`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `access/grants`, `access/manageable`, `users`, `line-sdwt-options` |
+| Account | `/api/v1/account/` | `apps/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/reconfirm`, `access/request`, `access/users`, `access/matrix`, `access/users/<user_id>/decision`, `access/policy-rules`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `users`, `line-sdwt-options` |
 | Emails | `/api/v1/emails/` | `apps/api/api/emails/urls.py` | `inbox/`, `sent/`, `mailboxes/`, `mailboxes/summary/`, `mailboxes/members/`, `unassigned/`, `unassigned/claim/`, `ingest/`, `outbox/process/`, `assets/ocr/claim/`, `assets/ocr/update/`, `bulk-delete/`, `move/`, `<email_id>/`, `<email_id>/assets/<sequence>/`, `<email_id>/html/` |
 | Data Movement | `/api/v1/data-movement/` | `apps/api/api/data_movement/urls.py` | `<table_name>/load/` |
 | Assistant | `/api/v1/assistant/` | `apps/api/api/assistant/urls.py` | `chat`, `rag-indexes` |
@@ -47,7 +47,7 @@
 
 | Django app | 모델 |
 | --- | --- |
-| `api.account` | `User`, `UserProfile`, `Affiliation`, `UserCurrentAffiliation`, `UserSdwtProdAccess`, `AccessRole`, `AccessSource`, `AccessScope`, `AccessPolicyRule`, `UserAccess`, `AccessAuditLog`, `UserSdwtProdChange`, `ExternalAffiliationSnapshot` |
+| `api.account` | `User`, `Affiliation`, `UserCurrentAffiliation`, `UserSdwtProdAccess`, `AccessRole`, `AccessSource`, `AccessScope`, `AccessPolicyRule`, `UserAccess`, `AccessAuditLog`, `UserSdwtProdChange`, `ExternalAffiliationSnapshot` |
 | `api.activity` | `ActivityLog`, `ExternalAppAccessDailyStat`, `ExternalAppUsageSyncState` |
 | `api.appstore` | `AppStoreApp`, `AppStoreLike`, `AppStoreComment`, `AppStoreCommentLike` |
 | `api.drone` | `DroneSOP`, `DroneSopTarget`, `DroneSopTargetChannelConfig`, `DroneSopNeedToSendRule`, `DroneSopTargetMapping`, `DroneSopTargetRecipient`, `DroneSopTargetDispatch`, `DroneSopDelivery`, `DroneEarlyInform` |
@@ -68,9 +68,8 @@
 
 | Command | 위치 | 목적 |
 | --- | --- | --- |
-| `check_access_permission_integrity` | `apps/api/api/account/management/commands/check_access_permission_integrity.py` | 배포 전 접근 권한 scope, 정책, 사용자 권한, 관리자 그룹 정합성 점검 |
+| `check_access_permission_integrity` | `apps/api/api/account/management/commands/check_access_permission_integrity.py` | 필수 `--phase` 기준 migration 전·후 접근 권한 정합성 점검 |
 | `ensure_dev_database` | `apps/api/api/management/commands/ensure_dev_database.py` | dev 환경에서 Django 기본 DB와 필수 PostgreSQL extension 보장 |
-| `grant_initial_access` | `apps/api/api/account/management/commands/grant_initial_access.py` | 배포 직후 활성 사용자에게 Portal과 활성 앱 접근 권한을 1회 보충 |
 | `process_email_outbox` | `apps/api/api/emails/management/commands/process_email_outbox.py` | pending `EmailOutbox`를 RAG insert/delete 호출로 처리 |
 | `seed_dev_data` | `apps/api/api/management/commands/seed_dev_data.py` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
 | `seed_dummy_emails` | `apps/api/api/emails/management/commands/seed_dummy_emails.py` | 로컬 개발용 더미 Email 데이터를 생성 |
@@ -83,6 +82,7 @@
 | `load_racb_list` | `apps/api/api/data_movement/racb_list/management/commands/load_racb_list.py` | `racb_list` deflate CSV 파일 적재 |
 | `load_mes_line_mapping_info` | `apps/api/api/data_movement/mes_line_mapping_info/management/commands/load_mes_line_mapping_info.py` | `mes_line_mapping_info` deflate CSV 파일 전체 교체 적재 |
 | `load_station_master` | `apps/api/api/data_movement/station_master/management/commands/load_station_master.py` | `station_master` deflate CSV 파일 전체 교체 적재 |
+| `import_l3_spider_line_name_rules` | `apps/api/api/l3_spider/management/commands/import_l3_spider_line_name_rules.py` | L3 Spider line name 규칙 CSV 검증·DB 교체 적재 |
 | `seed_drone_dummy_data` | `apps/api/api/drone/management/commands/seed_drone_dummy_data.py` | 로컬 개발용 Drone SOP 더미 데이터를 생성 |
 | `seed_drone_targets_from_file` | `apps/api/api/drone/management/commands/seed_drone_targets_from_file.py` | JSON/CSV 기준 Drone SOP/발송 이력/알림 설정 초기화 후 대상/채널/수신자 생성 |
 | `prune_drone_sop` | `apps/api/api/drone/management/commands/prune_drone_sop.py` | 보관 기간을 초과한 Drone SOP 데이터 정리 |

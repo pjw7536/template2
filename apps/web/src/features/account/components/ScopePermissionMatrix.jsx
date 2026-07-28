@@ -4,17 +4,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-
-function isSuperuserBypass(access) {
-  return access?.source === "superuser_bypass" || access?.source === "admin"
-}
+import { isScopeAccessBypass } from "@/lib/access/scopeAccess"
 
 function getCellValue(access) {
-  if (isSuperuserBypass(access)) return "allowed"
+  if (isScopeAccessBypass(access)) return "allowed"
   if (access?.explicitStatus === "pending") return "pending"
   if (access?.explicitStatus === "denied") return "denied"
   if (access?.explicitStatus === "allowed") return "allowed"
@@ -27,7 +33,7 @@ function getEffectiveLabel(access) {
 }
 
 function getAccessMeta(access) {
-  if (isSuperuserBypass(access)) return "슈퍼유저"
+  if (isScopeAccessBypass(access)) return "슈퍼유저"
   if (access?.source === "portal_access_required") return "Portal 차단"
   if (access?.source === "scope_inactive") return "권한 범위 비활성"
   if (access?.source === "scope_not_found") return "권한 범위 없음"
@@ -39,9 +45,9 @@ function getAccessMeta(access) {
 }
 
 function getAccessSummary(access) {
-  if (isSuperuserBypass(access)) return "슈퍼유저 권한으로 접근 가능합니다."
+  if (isScopeAccessBypass(access)) return "슈퍼유저 권한으로 접근 가능합니다."
   if (access?.source === "portal_access_required") {
-    if (access?.underlyingAccess?.allowed) return "앱 권한은 있지만 Portal 권한이 없어 접근 불가합니다."
+    if (access?.underlyingAccess?.allowed) return "하위 권한은 있지만 Portal 권한이 없어 접근 불가합니다."
     return "Portal 권한이 없어 접근 불가합니다."
   }
   if (access?.source === "scope_inactive") return "권한 범위가 비활성화되어 접근 불가합니다."
@@ -56,7 +62,7 @@ function getAccessSummary(access) {
 
 function getPolicyDescription(access) {
   const policy = access?.policy
-  if (access?.policyMatched || policy?.matched) {
+  if (policy?.matched) {
     const ruleType = policy?.ruleType === "department" ? "부서" : policy?.ruleType || "규칙"
     const value = policy?.value || access?.department || "-"
     return `${ruleType}: ${value}`
@@ -66,10 +72,10 @@ function getPolicyDescription(access) {
 
 function getOriginalSettingLabel(access) {
   const value = getCellValue(access)
-  if (value === "inherit") return "자동 규칙"
+  if (value === "inherit") return "미설정 · 자동 규칙"
   if (value === "pending") return "승인 대기"
   if (value === "denied") return "차단"
-  return "허용"
+  return access?.role === "admin" ? "관리자" : "일반 사용자"
 }
 
 function AccessTooltipContent({ access, scope }) {
@@ -77,7 +83,7 @@ function AccessTooltipContent({ access, scope }) {
   const metaLabel = getAccessMeta(access)
   const policyLabel = getPolicyDescription(access)
   const originalSettingLabel = getOriginalSettingLabel(access)
-  const role = scope.scopeType === "portal" && access?.role ? access.role : ""
+  const role = access?.role || ""
   const resultBadgeVariant = effectiveLabel === "허용" ? "default" : "destructive"
 
   return (
@@ -115,8 +121,8 @@ function AccessTooltipContent({ access, scope }) {
         ) : null}
         {role ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">내부 role</span>
-            <span className="font-medium">{role}</span>
+            <span className="text-muted-foreground">역할</span>
+            <span className="font-medium">{role === "admin" ? "관리자" : "일반 사용자"}</span>
           </div>
         ) : null}
       </div>
@@ -124,74 +130,115 @@ function AccessTooltipContent({ access, scope }) {
   )
 }
 
-function AppPermissionCell({ user, scope, access, pendingCell, isMutating, onChange }) {
+function ScopePermissionCell({ user, scope, access, pendingCell, isMutating, onChange }) {
   const cellKey = `${user.id}:${scope.key}`
-  const hasSuperuserBypass = isSuperuserBypass(access)
+  const hasSuperuserBypass = isScopeAccessBypass(access)
   const isScopeUnavailable = ["scope_inactive", "scope_not_found"].includes(access?.source)
   const isPending = pendingCell === cellKey
   const visibleLabel = getEffectiveLabel(access)
-  const tooltipLabel = `${visibleLabel}, 최종 ${getEffectiveLabel(access)}, ${getAccessMeta(access)}`
+  const tooltipLabel = `${visibleLabel}, ${getAccessMeta(access)}`
   const isDisabled = hasSuperuserBypass || isScopeUnavailable || isPending || isMutating
-  const isAppAllowedButPortalBlocked =
+  const isScopeAllowedButPortalBlocked =
     scope.scopeType !== "portal" && access?.blockedByPortal && access?.underlyingAccess?.allowed
-  const isPermissionAllowed = isAppAllowedButPortalBlocked || access?.allowed
-  const nextValue = isPermissionAllowed ? "denied" : "allowed"
-  const nextLabel = nextValue === "allowed" ? "허용" : "차단"
-  const statusDotClass = access?.allowed
-    ? "bg-blue-600 shadow-sm"
-    : isAppAllowedButPortalBlocked
-      ? "bg-orange-500 shadow-sm"
-      : "bg-rose-500 shadow-sm"
-  const statusState = access?.allowed ? "allowed" : isAppAllowedButPortalBlocked ? "portal-blocked" : "denied"
+  const cellValue = getCellValue(access)
+  const currentValue = cellValue === "allowed"
+    ? access?.role === "admin" ? "admin" : "user"
+    : cellValue
+  const statusState = access?.allowed
+    ? access?.role === "admin" ? "admin" : "user"
+    : isScopeAllowedButPortalBlocked
+      ? "portal-blocked"
+      : currentValue
+  const statusDotClass = {
+    admin: "bg-primary shadow-sm",
+    user: "bg-foreground shadow-sm",
+    "portal-blocked": "bg-muted-foreground shadow-sm",
+    pending: "bg-muted-foreground shadow-sm",
+    denied: "bg-destructive shadow-sm",
+    inherit: "border-2 border-muted-foreground bg-background",
+  }[statusState]
 
   return (
     <div className="flex w-16 min-w-16 max-w-16 items-center justify-center overflow-visible">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex size-8 items-center justify-center rounded-md bg-background transition hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-            aria-disabled={isDisabled}
-            aria-label={`${user.knoxId || user.sabun || user.id} ${scope.name} 권한, ${tooltipLabel}. 클릭 시 ${nextLabel}`}
-            onClick={() => {
-              if (isDisabled) return
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex" tabIndex={isDisabled ? 0 : undefined}>
+              <DropdownMenuTrigger asChild disabled={isDisabled}>
+                <button
+                  type="button"
+                  className="inline-flex size-8 items-center justify-center rounded-md bg-background transition hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isDisabled}
+                  aria-label={`${user.knoxId || user.sabun || user.id} ${scope.name} 권한, ${tooltipLabel}. 권한 선택 메뉴 열기`}
+                >
+                  {isPending ? (
+                    <RefreshCw className="size-3.5 animate-spin" />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className={`block size-3.5 rounded-full transition ${statusDotClass}`}
+                      data-state={statusState}
+                    />
+                  )}
+                  <span className="sr-only">{visibleLabel}</span>
+                </button>
+              </DropdownMenuTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="end"
+            sideOffset={6}
+            hideArrow
+            className="border bg-popover p-3 text-popover-foreground shadow-lg"
+          >
+            <AccessTooltipContent access={access} scope={scope} />
+            {!isDisabled ? (
+              <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+                클릭한 뒤 적용할 권한을 직접 선택합니다.
+              </div>
+            ) : (
+              <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+                {isPending || isMutating ? "권한 변경을 처리하고 있습니다." : "이 권한은 여기서 변경할 수 없습니다."}
+              </div>
+            )}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuLabel>
+            <span className="block text-sm">권한 변경</span>
+            <span className="block truncate text-xs font-normal text-muted-foreground">
+              {scope.name}
+            </span>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              현재: {getOriginalSettingLabel(access)}
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup
+            value={currentValue}
+            onValueChange={(nextValue) => {
+              if (isDisabled || nextValue === currentValue) return
               onChange({ user, scope, access, nextValue })
             }}
           >
-            {isPending ? (
-              <RefreshCw className="size-3.5 animate-spin" />
-            ) : (
-              <span
-                aria-hidden="true"
-                className={`block size-3.5 rounded-full transition ${statusDotClass}`}
-                data-state={statusState}
-              />
-            )}
-            <span className="sr-only">{visibleLabel}</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent
-          side="bottom"
-          align="end"
-          sideOffset={6}
-          hideArrow
-          className="border bg-popover p-3 text-popover-foreground shadow-lg"
-        >
-          <AccessTooltipContent access={access} scope={scope} />
-          {!isDisabled ? (
-            <div className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-              클릭하면 이 권한만 {nextLabel}으로 변경됩니다.
-            </div>
-          ) : null}
-        </TooltipContent>
-      </Tooltip>
+            <DropdownMenuRadioItem value="user">일반 사용자</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="admin">관리자</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="denied" className="text-destructive">
+              차단
+            </DropdownMenuRadioItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioItem value="inherit">자동 규칙 적용</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
 
 const permissionColumnClass = "w-20 min-w-20 max-w-20"
 
-export function AppPermissionMatrix({
+export function ScopePermissionMatrix({
   query,
   filters,
   filterDraft,
@@ -224,9 +271,9 @@ export function AppPermissionMatrix({
         }}
       >
         <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor="app-permission-user-search">사용자 ID</Label>
+          <Label htmlFor="scope-permission-user-search">사용자 ID</Label>
           <Input
-            id="app-permission-user-search"
+            id="scope-permission-user-search"
             className="w-full"
             value={filterDraft.search}
             onChange={(event) => setFilterDraft((current) => ({ ...current, search: event.target.value }))}
@@ -234,9 +281,9 @@ export function AppPermissionMatrix({
           />
         </div>
         <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor="app-permission-department-search">부서</Label>
+          <Label htmlFor="scope-permission-department-search">부서</Label>
           <Input
-            id="app-permission-department-search"
+            id="scope-permission-department-search"
             className="w-full"
             value={filterDraft.department}
             onChange={(event) => setFilterDraft((current) => ({ ...current, department: event.target.value }))}
@@ -268,7 +315,7 @@ export function AppPermissionMatrix({
         {query.isPending ? (
           <div className="grid gap-3 p-4">
             {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`app-permission-matrix-${index}`} className="h-14 w-full" />
+              <Skeleton key={`scope-permission-matrix-${index}`} className="h-14 w-full" />
             ))}
           </div>
         ) : query.error && !rows.length ? (
@@ -354,7 +401,7 @@ export function AppPermissionMatrix({
                           key={scope.key}
                           className={isPortal ? `${permissionColumnClass} bg-muted/10 px-1 py-2 text-center` : `${permissionColumnClass} px-1 py-2 text-center`}
                         >
-                          <AppPermissionCell
+                          <ScopePermissionCell
                             user={row.user}
                             scope={scope}
                             access={row.accesses?.[scope.key]}

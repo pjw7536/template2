@@ -66,7 +66,11 @@ from .services import (
     update_app,
     update_comment,
 )
-from .services.permissions import can_manage_app, can_manage_comment
+from .services.permissions import (
+    can_manage_app,
+    can_manage_comment,
+    has_appstore_editor_permission,
+)
 from .services.screenshots import resolve_cover_image
 
 logger = logging.getLogger(__name__)
@@ -126,6 +130,15 @@ def _load_app(app_id: int) -> Any | None:
     return get_app_by_id(app_id=app_id)
 
 
+def _resolve_appstore_admin(request: Any) -> bool:
+    """현재 요청 사용자의 AppStore admin 여부를 한 번 계산합니다."""
+
+    user = getattr(request, "user", None)
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    return has_appstore_editor_permission(user, request=request)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class AppStoreAppsView(APIView):
     """앱 목록 조회 및 신규 등록."""
@@ -159,6 +172,7 @@ class AppStoreAppsView(APIView):
         queryset = get_app_list()
         liked_ids: Sequence[int] = []
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        is_appstore_admin = _resolve_appstore_admin(request)
         if user:
             liked_ids = get_liked_app_ids_for_user(user=user)
 
@@ -173,7 +187,15 @@ class AppStoreAppsView(APIView):
                 cover_src = app.screenshot_url
             elif getattr(app, "screenshot_base64", ""):
                 cover_src = request.build_absolute_uri(_build_cover_path(app))
-            apps.append(serialize_app(app, user, liked_ids, cover_src=cover_src))
+            apps.append(
+                serialize_app(
+                    app,
+                    user,
+                    liked_ids,
+                    cover_src=cover_src,
+                    is_appstore_admin=is_appstore_admin,
+                )
+            )
 
         # -----------------------------------------------------------------------------
         # 3) 응답 반환
@@ -267,8 +289,17 @@ class AppStoreAppsView(APIView):
                 contact_knoxid=validated["contact_knoxid"],
             )
             liked_ids = get_liked_app_ids_for_user(user=request.user)
+            is_appstore_admin = _resolve_appstore_admin(request)
             return JsonResponse(
-                {"app": serialize_app(app, request.user, liked_ids, include_screenshots=True)},
+                {
+                    "app": serialize_app(
+                        app,
+                        request.user,
+                        liked_ids,
+                        include_screenshots=True,
+                        is_appstore_admin=is_appstore_admin,
+                    )
+                },
                 status=201,
             )
         except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
@@ -369,6 +400,7 @@ class AppStoreAppDetailView(APIView):
         # -----------------------------------------------------------------------------
         liked_ids: Sequence[int] = []
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        is_appstore_admin = _resolve_appstore_admin(request)
         liked_comment_ids: set[int] = set()
         if user:
             liked_ids = get_liked_app_ids_for_user(user=user)
@@ -386,6 +418,7 @@ class AppStoreAppDetailView(APIView):
                     include_comments=True,
                     include_screenshots=True,
                     liked_comment_ids=liked_comment_ids,
+                    is_appstore_admin=is_appstore_admin,
                 )
             }
         )
@@ -434,7 +467,12 @@ class AppStoreAppDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        if not can_manage_app(request.user, app):
+        is_appstore_admin = _resolve_appstore_admin(request)
+        if not can_manage_app(
+            request.user,
+            app,
+            is_appstore_admin=is_appstore_admin,
+        ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # -----------------------------------------------------------------------------
@@ -467,7 +505,17 @@ class AppStoreAppDetailView(APIView):
         try:
             app = update_app(app=app, updates=updates)
             liked_ids = get_liked_app_ids_for_user(user=request.user)
-            return JsonResponse({"app": serialize_app(app, request.user, liked_ids, include_screenshots=True)})
+            return JsonResponse(
+                {
+                    "app": serialize_app(
+                        app,
+                        request.user,
+                        liked_ids,
+                        include_screenshots=True,
+                        is_appstore_admin=is_appstore_admin,
+                    )
+                }
+            )
         except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
             logger.exception("Failed to update appstore app")
             return JsonResponse({"error": "Failed to update app"}, status=500)
@@ -511,7 +559,11 @@ class AppStoreAppDetailView(APIView):
         if not app:
             return JsonResponse({"error": "App not found"}, status=404)
 
-        if not can_manage_app(request.user, app):
+        if not can_manage_app(
+            request.user,
+            app,
+            is_appstore_admin=_resolve_appstore_admin(request),
+        ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # -----------------------------------------------------------------------------
@@ -665,9 +717,18 @@ class AppStoreCommentsView(APIView):
         # -----------------------------------------------------------------------------
         comments = get_comments_for_app(app_id=app.pk)
         liked_comment_ids: set[int] = set()
+        is_appstore_admin = _resolve_appstore_admin(request)
         if request.user.is_authenticated:
             liked_comment_ids = set(get_liked_comment_ids_for_user(user=request.user, app_id=app.pk))
-        payload = [serialize_comment(comment, request.user, liked_comment_ids) for comment in comments]
+        payload = [
+            serialize_comment(
+                comment,
+                request.user,
+                liked_comment_ids,
+                is_appstore_admin=is_appstore_admin,
+            )
+            for comment in comments
+        ]
         # -----------------------------------------------------------------------------
         # 3) 응답 반환
         # -----------------------------------------------------------------------------
@@ -748,8 +809,16 @@ class AppStoreCommentsView(APIView):
                 content=validated["content"],
                 parent_comment=parent_comment,
             )
+            is_appstore_admin = _resolve_appstore_admin(request)
             return JsonResponse(
-                {"comment": serialize_comment(comment, request.user, set())},
+                {
+                    "comment": serialize_comment(
+                        comment,
+                        request.user,
+                        set(),
+                        is_appstore_admin=is_appstore_admin,
+                    )
+                },
                 status=201,
             )
         except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
@@ -809,7 +878,12 @@ class AppStoreCommentDetailView(APIView):
         if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
-        if not can_manage_comment(request.user, comment):
+        is_appstore_admin = _resolve_appstore_admin(request)
+        if not can_manage_comment(
+            request.user,
+            comment,
+            is_appstore_admin=is_appstore_admin,
+        ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # -----------------------------------------------------------------------------
@@ -835,7 +909,16 @@ class AppStoreCommentDetailView(APIView):
             liked_comment_ids: set[int] = set()
             if request.user.is_authenticated:
                 liked_comment_ids = set(get_liked_comment_ids_for_user(user=request.user, app_id=app.pk))
-            return JsonResponse({"comment": serialize_comment(comment, request.user, liked_comment_ids)})
+            return JsonResponse(
+                {
+                    "comment": serialize_comment(
+                        comment,
+                        request.user,
+                        liked_comment_ids,
+                        is_appstore_admin=is_appstore_admin,
+                    )
+                }
+            )
         except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
             logger.exception("Failed to update appstore comment %s", comment_id)
             return JsonResponse({"error": "Failed to update comment"}, status=500)
@@ -886,7 +969,11 @@ class AppStoreCommentDetailView(APIView):
         if not comment:
             return JsonResponse({"error": "Comment not found"}, status=404)
 
-        if not can_manage_comment(request.user, comment):
+        if not can_manage_comment(
+            request.user,
+            comment,
+            is_appstore_admin=_resolve_appstore_admin(request),
+        ):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # -----------------------------------------------------------------------------

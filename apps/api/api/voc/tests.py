@@ -12,19 +12,19 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+import api.account.services as account_services
 from api.voc.models import VocPost
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
-        )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 class VocEndpointTests(TestCase):
@@ -114,6 +114,45 @@ class VocEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_voc_admin_can_update_another_users_post(self) -> None:
+        """VOC admin 역할은 다른 사용자의 게시글을 관리할 수 있어야 합니다."""
+
+        User = get_user_model()
+        admin_user = User.objects.create_user(
+            sabun="S80002",
+            password="test-password",
+            knox_id="knox-80002",
+        )
+        authority = User.objects.create_superuser(
+            sabun="S80003",
+            password="test-password",
+        )
+        for scope_key, role in (("portal", "user"), ("voc", "admin")):
+            _payload, status_code = account_services.decide_user_access(
+                actor=authority,
+                user_id=admin_user.id,
+                scope_key=scope_key,
+                action="grant",
+                role=role,
+            )
+            self.assertEqual(status_code, 200)
+        post = VocPost.objects.create(
+            title="다른 사용자 글",
+            content="내용",
+            author=self.user,
+            status="접수",
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.patch(
+            reverse("voc-post-detail", kwargs={"post_id": post.id}),
+            data='{"status":"진행중"}',
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["post"]["status"], "진행중")
 
     def test_voc_posts_status_counts_order(self) -> None:
         """statusCounts가 상태 정의 순서를 유지하는지 확인합니다."""

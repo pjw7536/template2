@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -44,7 +44,13 @@ class EnsureDevDatabaseCommandTests(SimpleTestCase):
             )
 
         connect.assert_not_called()
-        ensure_extensions.assert_called_once_with(database_name="airflow")
+        self.assertEqual(
+            ensure_extensions.call_args_list,
+            [
+                call(database_name="airflow"),
+                call(database_name="template1"),
+            ],
+        )
         self.assertIn("target database already matches maintenance database: airflow", stdout.getvalue())
 
     @patch("api.management.commands.ensure_dev_database._database_exists", return_value=False)
@@ -92,7 +98,13 @@ class EnsureDevDatabaseCommandTests(SimpleTestCase):
         )
         database_exists.assert_called_once_with(cursor, database_name="dashboard")
         create_database.assert_called_once_with(cursor, database_name="dashboard", owner="airflow")
-        ensure_extensions.assert_called_once_with(database_name="dashboard")
+        self.assertEqual(
+            ensure_extensions.call_args_list,
+            [
+                call(database_name="dashboard"),
+                call(database_name="template1"),
+            ],
+        )
         self.assertIn("database created: dashboard", stdout.getvalue())
 
 

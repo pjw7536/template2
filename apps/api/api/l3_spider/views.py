@@ -62,7 +62,10 @@ class L3SpiderMetaView(APIView):
             )
             return Response({
                 **result,
-                "canUseDeveloperOptions": can_view_developer_options(request.user),
+                "canUseDeveloperOptions": can_view_developer_options(
+                    request.user,
+                    request=request,
+                ),
             })
         except services.L3SpiderServiceError as error:
             return _error_response(error)

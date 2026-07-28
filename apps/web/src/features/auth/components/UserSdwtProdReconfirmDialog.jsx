@@ -12,11 +12,11 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AFFILIATION_QUERY_KEY } from "@/lib/account"
 import { buildBackendUrl } from "@/lib/api"
 
 import { fetchJson } from "../utils/fetchJson"
 
-const AFFILIATION_QUERY_KEY = ["account", "affiliation"]
 const RECONFIRM_QUERY_KEY = ["account", "affiliationReconfirm"]
 
 function isBlank(value) {

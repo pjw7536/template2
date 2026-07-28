@@ -12,19 +12,17 @@ import { accountApi } from "./accountApi"
 import { normalizeAccountOverview } from "./accountOverview"
 import {
   withDevAccessAuditFixtures,
-  withDevManageableGroupFixtures,
   withDevPendingAccessUserFixtures,
 } from "./devFixtures"
 
 export const AFFILIATION_QUERY_KEY = ["account", "affiliation"]
-export const AFFILIATION_REQUESTS_QUERY_KEY = ["account", "affiliationRequests"]
-export const AFFILIATION_MEMBERS_QUERY_KEY = ["account", "affiliationMembers"]
-export const MANAGEABLE_QUERY_KEY = ["account", "manageable"]
-export const OVERVIEW_QUERY_KEY = ["account", "overview"]
-export const ACCESS_USERS_QUERY_KEY = ["account", "accessUsers"]
-export const ACCESS_MATRIX_QUERY_KEY = ["account", "accessMatrix"]
-export const ACCESS_POLICY_RULES_QUERY_KEY = ["account", "accessPolicyRules"]
-export const ACCESS_AUDIT_LOGS_QUERY_KEY = ["account", "accessAuditLogs"]
+const AFFILIATION_REQUESTS_QUERY_KEY = ["account", "affiliationRequests"]
+const AFFILIATION_MEMBERS_QUERY_KEY = ["account", "affiliationMembers"]
+const OVERVIEW_QUERY_KEY = ["account", "overview"]
+const ACCESS_USERS_QUERY_KEY = ["account", "accessUsers"]
+const ACCESS_MATRIX_QUERY_KEY = ["account", "accessMatrix"]
+const ACCESS_POLICY_RULES_QUERY_KEY = ["account", "accessPolicyRules"]
+const ACCESS_AUDIT_LOGS_QUERY_KEY = ["account", "accessAuditLogs"]
 
 export function useAffiliation() {
   return useQuery({
@@ -49,43 +47,6 @@ export function useAccountOverview({ enabled = true } = {}) {
     queryKey: OVERVIEW_QUERY_KEY,
     queryFn: accountApi.fetchOverview,
     select: normalizeAccountOverview,
-    enabled,
-  })
-}
-
-export function useManageableGroups() {
-  return useQuery({
-    queryKey: MANAGEABLE_QUERY_KEY,
-    queryFn: accountApi.fetchManageableGroups,
-    select: withDevManageableGroupFixtures,
-  })
-}
-
-export function useAffiliationRequests({
-  page = 1,
-  pageSize = 20,
-  status = "pending",
-  search = "",
-  userSdwtProd = "",
-  enabled = true,
-} = {}) {
-  return useQuery({
-    queryKey: [
-      ...AFFILIATION_REQUESTS_QUERY_KEY,
-      page,
-      pageSize,
-      status,
-      search,
-      userSdwtProd,
-    ],
-    queryFn: () =>
-      accountApi.fetchAffiliationRequests({
-        page,
-        pageSize,
-        status,
-        search,
-        userSdwtProd,
-      }),
     enabled,
   })
 }
@@ -138,17 +99,6 @@ export function useAffiliationDecision() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: AFFILIATION_REQUESTS_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: AFFILIATION_MEMBERS_QUERY_KEY })
-    },
-  })
-}
-
-export function useUpdateGrant() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: accountApi.updateGrant,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: MANAGEABLE_QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: AFFILIATION_QUERY_KEY })
     },
   })
 }

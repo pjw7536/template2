@@ -21,10 +21,8 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin  # Django 미들웨어 호환성 클래스
 
 from api.common.permissions import (
-    get_request_app_access_payload,
-    get_request_portal_access_payload,
-    is_portal_access_protected_path,
-    resolve_app_access_scope_for_path,
+    ScopeAccessRequiredError,
+    require_request_portal_access,
 )
 
 from .request_helpers import _load_json_bytes
@@ -548,41 +546,12 @@ class AccessRequiredMiddleware(MiddlewareMixin):
         - 403: 인증 사용자이지만 포털 접근이 허용되지 않을 때
         """
 
-        path = getattr(request, "path", "") or ""
-        if not is_portal_access_protected_path(path):
-            return None
-
         user = getattr(request, "user", None)
         if not user or not getattr(user, "is_authenticated", False):
             return None
 
-        portal_access = get_request_portal_access_payload(request=request, user=user)
-        if not portal_access.get("allowed"):
-            return JsonResponse(
-                {
-                    "error": "portal_access_required",
-                    "portalAccess": portal_access,
-                },
-                status=403,
-            )
-
-        scope_key = resolve_app_access_scope_for_path(path)
-        if scope_key is None:
-            return None
-
-        app_access = get_request_app_access_payload(
-            request=request,
-            user=user,
-            scope_key=scope_key,
-        )
-        if app_access.get("allowed"):
-            return None
-
-        return JsonResponse(
-            {
-                "error": "app_access_required",
-                "scope": scope_key,
-                "appAccess": app_access,
-            },
-            status=403,
-        )
+        try:
+            require_request_portal_access(request=request, user=user)
+        except ScopeAccessRequiredError as error:
+            return JsonResponse(error.detail, status=error.status_code)
+        return None

@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { TeamSwitcher } from "@/components/common"
 import { AppShellLayout } from "@/components/layout"
 import { RequireAuth, useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { buildNavigationConfig } from "@/lib/config/navigationConfig"
 import {
   ActiveLineProvider,
@@ -168,7 +169,7 @@ function EmailsShellLayout({
   const currentUserSdwtProd = normalizeMailbox(user?.user_sdwt_prod)
   const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
   const baseMailboxes = normalizedMailboxes.filter((mailbox) => !isSentMailbox(mailbox))
-  const canViewUnassigned = Boolean(user?.is_superuser)
+  const canViewUnassigned = hasScopeRole(user, "emails")
   const unassignedMailboxId = canViewUnassigned ? resolveUnassignedMailboxId(baseMailboxes) : ""
   const validMailboxes = canViewUnassigned
     ? Array.from(new Set([...baseMailboxes, unassignedMailboxId].filter(Boolean)))
@@ -274,6 +275,10 @@ function EmailsShellLayout({
   const navigation = buildNavigationConfig({
     mailbox: navigationMailbox,
     disableEmailMembers: isUnassignedMailbox(navigationMailbox),
+    adminScopes: [
+      ...(hasScopeRole(user, "portal") ? ["portal"] : []),
+      ...(hasScopeRole(user, "emails") ? ["emails"] : []),
+    ],
   })
 
   return (

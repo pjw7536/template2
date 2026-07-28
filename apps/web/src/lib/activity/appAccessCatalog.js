@@ -106,3 +106,9 @@ export function resolveAppAccessTarget(pathname) {
     return rule.prefixes?.some((prefix) => matchesPathPrefix(normalizedPathname, prefix))
   }) ?? null
 }
+
+export function getRequiredAppScopes(target) {
+  if (!target || target.requiresAppAccess === false) return []
+  const scopes = target.requiredAppScopes || (target.appId ? [target.appId] : [])
+  return scopes.filter(Boolean)
+}

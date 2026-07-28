@@ -1,5 +1,7 @@
 # ExecPlan: 접근 권한 관리자 capability 분리
 
+> 이 계획은 `app-rbac-unification.md`의 고정 `user`/`admin` 역할 구조로 대체되었다.
+
 ## 목표
 - 접근 권한 관리 권한을 `UserProfile.ADMIN`에서 분리한다.
 - 권한 관리 capability와 portal/app 접근 우회를 서로 독립적으로 판정한다.

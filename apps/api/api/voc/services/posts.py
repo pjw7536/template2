@@ -10,6 +10,8 @@ from typing import Any, Dict, Tuple
 
 from django.db import transaction
 
+from api.account import services as account_services
+
 from ..models import VocPost, VocReply
 from ..selectors import (
     get_default_post_status,
@@ -17,7 +19,6 @@ from ..selectors import (
     get_reply_by_id,
     get_valid_post_apps,
     get_valid_post_statuses,
-    is_admin_user,
 )
 
 MAX_TITLE_LENGTH = VocPost._meta.get_field("title").max_length or 255
@@ -253,7 +254,12 @@ def add_reply(*, post: VocPost, author: Any, content: str) -> Tuple[VocReply, Vo
     return loaded_reply, refreshed_post
 
 
-def can_manage_post(*, user: Any, post: VocPost) -> bool:
+def can_manage_post(
+    *,
+    user: Any,
+    post: VocPost,
+    request: Any | None = None,
+) -> bool:
     """게시글 수정/삭제 가능 여부(관리자 또는 작성자)를 판별합니다.
 
     입력:
@@ -271,5 +277,10 @@ def can_manage_post(*, user: Any, post: VocPost) -> bool:
     """
 
     return bool(
-        is_admin_user(user=user) or (user and getattr(user, "pk", None) == post.author_id)
+        account_services.has_scope_role(
+            user=user,
+            scope_key="voc",
+            request=request,
+        )
+        or (user and getattr(user, "pk", None) == post.author_id)
     )

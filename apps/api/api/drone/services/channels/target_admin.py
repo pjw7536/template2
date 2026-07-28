@@ -1,4 +1,4 @@
-"""Drone SOP target superuser 관리 서비스입니다."""
+"""Line Dashboard 관리자용 Drone SOP target 관리 서비스입니다."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def _raise_if_duplicate_target(*, target_user_sdwt_prod: str, exclude_id: int | 
 
 
 def create_drone_sop_target_admin_row(*, line_id: object, target_user_sdwt_prod: object) -> DroneSopTarget:
-    """superuser 관리 화면에서 DroneSopTarget row를 생성합니다.
+    """Line Dashboard 관리자 화면에서 DroneSopTarget row를 생성합니다.
 
     입력:
         line_id: target 소유 line ID.
@@ -105,7 +105,7 @@ def update_drone_sop_target_admin_row(
     line_id: object,
     target_user_sdwt_prod: object,
 ) -> DroneSopTarget:
-    """superuser 관리 화면에서 DroneSopTarget row를 수정합니다.
+    """Line Dashboard 관리자 화면에서 DroneSopTarget row를 수정합니다.
 
     입력:
         target_id: DroneSopTarget PK.
@@ -142,7 +142,7 @@ def update_drone_sop_target_admin_row(
 
 
 def delete_drone_sop_target_admin_row(*, target_id: object) -> None:
-    """superuser 관리 화면에서 DroneSopTarget row를 삭제합니다.
+    """Line Dashboard 관리자 화면에서 DroneSopTarget row를 삭제합니다.
 
     입력:
         target_id: DroneSopTarget PK.

@@ -1,5 +1,7 @@
 # ExecPlan: L3 Spider 개발자 옵션 권한
 
+> 이 계획의 별도 Django permission 구조는 `app-rbac-unification.md`의 L3 Spider scope admin으로 대체되었다.
+
 ## 목표
 - `l3_spider.view_developer_options` Django permission을 생성한다.
 - 권한이 있는 사용자에게만 개발자 옵션 버튼을 노출하고 관련 API 호출을 허용한다.

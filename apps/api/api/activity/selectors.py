@@ -24,7 +24,7 @@ def get_recent_activity_logs(*, limit: int) -> QuerySet[ActivityLog]:
     - limit: 반환할 최대 건수
 
     반환:
-    - QuerySet[ActivityLog]: 최신순 ActivityLog QuerySet(사용자/프로필 포함)
+    - QuerySet[ActivityLog]: 최신순 ActivityLog QuerySet(사용자 포함)
 
     부작용:
     - 없음(읽기 전용)
@@ -34,7 +34,7 @@ def get_recent_activity_logs(*, limit: int) -> QuerySet[ActivityLog]:
     """
 
     safe_limit = max(1, limit)
-    return ActivityLog.objects.select_related("user", "user__profile").order_by("-created_at")[:safe_limit]
+    return ActivityLog.objects.select_related("user").order_by("-created_at")[:safe_limit]
 
 
 def get_app_access_logs(

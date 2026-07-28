@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from django.db.models import Count, QuerySet
 
 from .models import VocPost, VocReply
@@ -68,25 +66,6 @@ def get_valid_post_apps() -> set[str]:
     """
 
     return {choice[0] for choice in VocPost.AppCategory.choices}
-
-
-def get_default_post_app() -> str:
-    """신규 VOC 게시글의 기본 앱 카테고리를 반환합니다.
-
-    입력:
-    - 없음
-
-    반환:
-    - str: 기본 앱 카테고리 값
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return VocPost.AppCategory.OTHER
 
 
 def get_post_list(*, status: str | None = None) -> QuerySet[VocPost]:
@@ -198,34 +177,3 @@ def get_status_counts() -> dict[str, int]:
         if status in base:
             ordered[status] = base[status]
     return ordered
-
-
-def is_admin_user(*, user: Any) -> bool:
-    """사용자가 VOC 게시글을 관리할 권한이 있는지 반환합니다.
-
-    입력:
-    - user: 사용자 객체
-
-    반환:
-    - bool: 관리자 권한 여부
-
-    부작용:
-    - user.profile 조회(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 기본 인증/관리자 플래그 확인
-    # -----------------------------------------------------------------------------
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-        return True
-    # -----------------------------------------------------------------------------
-    # 2) 프로필 역할 확인
-    # -----------------------------------------------------------------------------
-    profile = getattr(user, "profile", None)
-    role = getattr(profile, "role", None) if profile else None
-    return role == "admin"

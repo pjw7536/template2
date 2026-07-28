@@ -105,9 +105,6 @@ class L3SpiderLineNameRule(models.Model):
 
     class Meta:
         db_table = "l3_spider_line_name_rule"
-        permissions = [
-            ("view_developer_options", "L3 Spider 개발자 옵션 조회"),
-        ]
         ordering = ["priority", "id"]
         constraints = [
             models.CheckConstraint(

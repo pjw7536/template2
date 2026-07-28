@@ -16,12 +16,15 @@
 | App | 모델 | 목적 |
 | --- | --- | --- |
 | Account | `User` | 로그인 사용자와 OIDC claim 기반 사용자 정보 |
-| Account | `UserProfile` | 사용자 부가 profile |
 | Account | `Affiliation` | line, SDWT, product 기준 소속 단위 |
 | Account | `UserCurrentAffiliation` | 사용자의 현재 소속 |
 | Account | `UserSdwtProdAccess` | 접근 가능한 SDWT/product 권한 |
 | Account | `UserSdwtProdChange` | 소속/권한 변경 요청과 승인 상태 |
 | Account | `ExternalAffiliationSnapshot` | 외부 예측 소속 snapshot |
+| Account | `AccessScope` | Portal·앱·기능 접근 권한 범위 |
+| Account | `AccessPolicyRule` | scope별 부서 자동 접근 정책 |
+| Account | `UserAccess` | 사용자별 scope 접근 상태와 고정 역할 |
+| Account | `AccessAuditLog` | 접근 상태·정책·scope 변경 감사 이력 |
 | Activity | `ActivityLog` | 사용자/시스템 활동 로그 |
 | Emails | `Email` | 수집/작성/분류된 메일 본문과 metadata |
 | Emails | `EmailOutbox` | RAG insert/delete 비동기 작업 |

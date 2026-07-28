@@ -71,13 +71,12 @@ def tearDownModule() -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for service_name in ("get_portal_access_payload", "get_access_payload"):
-        patcher = patch(
-            f"api.account.services.{service_name}",
-            return_value={"allowed": True},
-        )
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+    patcher = patch(
+        "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 def _ensure_target_mapping(
@@ -3402,19 +3401,19 @@ class DroneSopTargetRecipientTests(TestCase):
         )
 
     def test_notification_recipient_permission_endpoint_returns_drone_context(self) -> None:
-        """권한 컨텍스트 API가 운영자 여부와 변경 가능 여부를 분리해 반환하는지 확인합니다."""
+        """권한 컨텍스트 API가 변경 가능 여부를 반환하는지 확인합니다."""
 
         self.client.force_login(self.same_group_user)
         response = self.client.get(reverse("line-dashboard-notification-recipient-permissions"))
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertFalse(payload["isOperator"])
         self.assertTrue(payload["canManageRecipients"])
+        self.assertNotIn("isOperator", payload)
         self.assertEqual(payload["manageableUserSdwtProds"], [])
 
-    def test_notification_recipient_permission_endpoint_operator_can_manage_all_targets(self) -> None:
-        """운영자는 모든 Drone SOP 대상 관리 권한을 가져야 합니다."""
+    def test_notification_recipient_permission_endpoint_returns_manageable_targets(self) -> None:
+        """변경 가능한 사용자에게 모든 Drone SOP 대상 목록을 반환해야 합니다."""
 
         _upsert_target(line_id="L1", target_user_sdwt_prod="ETCH_A")
 
@@ -3423,7 +3422,6 @@ class DroneSopTargetRecipientTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertTrue(payload["isOperator"])
         self.assertTrue(payload["canManageRecipients"])
         self.assertIn("ETCH_A", payload["manageableUserSdwtProds"])
 
@@ -4108,13 +4106,13 @@ class DroneSopTargetRecipientTests(TestCase):
 
 
 class DroneSopTargetAdminTests(TestCase):
-    """superuser 전용 DroneSopTarget 관리 API를 검증합니다."""
+    """Line Dashboard 관리자 전용 DroneSopTarget 관리 API를 검증합니다."""
 
     def setUp(self) -> None:
-        """테스트용 superuser와 일반 사용자를 준비합니다."""
+        """테스트용 앱 관리자와 일반 사용자를 준비합니다."""
 
         User = get_user_model()
-        self.superuser = User.objects.create_superuser(
+        self.admin_user = User.objects.create_user(
             sabun="S72000",
             password="test-password",
             knox_id="knox-72000",
@@ -4124,6 +4122,20 @@ class DroneSopTargetAdminTests(TestCase):
             password="test-password",
             knox_id="knox-72001",
         )
+        authority = User.objects.create_superuser(
+            sabun="S72002",
+            password="test-password",
+            knox_id="knox-72002",
+        )
+        for scope_key, role in (("portal", "user"), ("line-dashboard", "admin")):
+            _payload, status_code = account_services.decide_user_access(
+                actor=authority,
+                user_id=self.admin_user.id,
+                scope_key=scope_key,
+                action="grant",
+                role=role,
+            )
+            self.assertEqual(status_code, 200)
         self.endpoint = reverse("line-dashboard-admin-drone-targets")
 
     def _json(self, payload: dict[str, object]) -> str:
@@ -4131,8 +4143,8 @@ class DroneSopTargetAdminTests(TestCase):
 
         return json.dumps(payload)
 
-    def test_admin_drone_targets_requires_superuser(self) -> None:
-        """target 관리 API가 superuser만 허용되는지 확인합니다."""
+    def test_admin_drone_targets_requires_app_admin(self) -> None:
+        """target 관리 API가 Line Dashboard admin만 허용되는지 확인합니다."""
 
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, 401)
@@ -4144,7 +4156,7 @@ class DroneSopTargetAdminTests(TestCase):
     def test_admin_drone_targets_crud_flow(self) -> None:
         """target 생성, 조회, 수정, 삭제 흐름이 동작하는지 확인합니다."""
 
-        self.client.force_login(self.superuser)
+        self.client.force_login(self.admin_user)
         response = self.client.post(
             self.endpoint,
             data=self._json({"lineId": "L1", "targetUserSdwtProd": "TARGET_A"}),
@@ -4192,7 +4204,7 @@ class DroneSopTargetAdminTests(TestCase):
         """target 이름 중복을 대소문자 비구분으로 차단하는지 확인합니다."""
 
         DroneSopTarget.objects.create(line_id="L1", target_user_sdwt_prod="TARGET_A")
-        self.client.force_login(self.superuser)
+        self.client.force_login(self.admin_user)
 
         response = self.client.post(
             self.endpoint,
@@ -4229,7 +4241,7 @@ class DroneSopTargetAdminTests(TestCase):
             target_code_snapshot="TARGET_A",
         )
 
-        self.client.force_login(self.superuser)
+        self.client.force_login(self.admin_user)
         response = self.client.get(self.endpoint)
 
         self.assertEqual(response.status_code, 200)

@@ -2,10 +2,10 @@ import { useEffect, useRef } from "react"
 import { useLocation } from "react-router-dom"
 
 import { recordAppAccess } from "@/features/access-stats"
-import { getAppAccess } from "@/lib/access/appAccess"
+import { getScopeAccess } from "@/lib/access/scopeAccess"
 import { useAuth } from "@/lib/auth"
 
-import { resolveAppAccessTarget } from "./appAccessCatalog"
+import { getRequiredAppScopes, resolveAppAccessTarget } from "./appAccessCatalog"
 
 export function AppAccessTracker() {
   const { user } = useAuth()
@@ -13,14 +13,14 @@ export function AppAccessTracker() {
   const lastTrackedKeyRef = useRef("")
 
   useEffect(() => {
-    if (!user?.portal_access?.allowed) return
+    if (!getScopeAccess(user, "portal")?.allowed) return
 
     const target = resolveAppAccessTarget(location.pathname)
     if (!target) return
-    const requiredAppScopes = target.requiredAppScopes || [target.appId]
+    const requiredAppScopes = getRequiredAppScopes(target)
     if (
       target.requiresAppAccess !== false
-      && requiredAppScopes.some((scopeKey) => !getAppAccess(user, scopeKey)?.allowed)
+      && requiredAppScopes.some((scopeKey) => !getScopeAccess(user, scopeKey)?.allowed)
     ) return
 
     const path = `${location.pathname}${location.search || ""}`

@@ -1,5 +1,5 @@
 // 파일 경로: src/features/line-dashboard/pages/LineDashboardDroneTargetAdminPage.jsx
-// superuser 전용 drone_sop_target 관리 화면입니다.
+// Line Dashboard 관리자 전용 drone_sop_target 관리 화면입니다.
 import * as React from "react"
 import {
   Pencil,
@@ -32,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth"
+import { hasScopeRole } from "@/lib/access/scopeAccess"
 
 import { useDroneTargetAdmin } from "../hooks/useDroneTargetAdmin"
 
@@ -96,13 +97,13 @@ function RelatedCountBadges({ target }) {
 
 export function LineDashboardDroneTargetAdminPage() {
   const { user } = useAuth()
-  const isSuperuser = Boolean(user?.is_superuser)
+  const isAdmin = hasScopeRole(user, "line-dashboard")
   const {
     targetsQuery,
     createMutation,
     updateMutation,
     deleteMutation,
-  } = useDroneTargetAdmin({ enabled: isSuperuser })
+  } = useDroneTargetAdmin({ enabled: isAdmin })
   const [createDraft, setCreateDraft] = React.useState(EMPTY_DRAFT)
   const [editId, setEditId] = React.useState(null)
   const [editDraft, setEditDraft] = React.useState(EMPTY_DRAFT)
@@ -189,16 +190,16 @@ export function LineDashboardDroneTargetAdminPage() {
     }
   }
 
-  if (!isSuperuser) {
+  if (!isAdmin) {
     return (
       <div className="flex h-full min-h-0 items-start px-6 py-4">
         <section className="w-full rounded-lg border bg-card p-6">
           <div className="flex items-start gap-3">
             <ShieldAlert className="mt-0.5 size-5 text-destructive" aria-hidden="true" />
             <div className="space-y-1">
-              <h1 className="text-base font-semibold">Superuser 권한 필요</h1>
+              <h1 className="text-base font-semibold">Line Dashboard 관리자 권한 필요</h1>
               <p className="text-sm text-muted-foreground">
-                drone_sop_target 관리는 superuser 계정에서만 사용할 수 있습니다.
+                drone_sop_target 관리는 Line Dashboard 관리자만 사용할 수 있습니다.
               </p>
             </div>
           </div>
@@ -214,7 +215,7 @@ export function LineDashboardDroneTargetAdminPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight">Drone Target 관리</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              superuser 전용 drone_sop_target 기준 정보 관리
+              Line Dashboard 관리자 전용 drone_sop_target 기준 정보 관리
             </p>
           </div>
           <Button

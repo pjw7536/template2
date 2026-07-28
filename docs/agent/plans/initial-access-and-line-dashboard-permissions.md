@@ -1,5 +1,8 @@
 # ExecPlan: 초기 접근 권한 부여와 Line Dashboard 알림 권한 완화
 
+> 이 문서는 과거 실행 기록이다. 초기 권한 일괄 부여는 2026-07-28 사용자 결정으로
+> 제거되었으며, 현재 운영 계약은 `app-rbac-unification.md`와 `migration_guide.md`를 따른다.
+
 ## 목표
 - 서버 적용 직후 현재 활성 사용자가 Portal과 활성 앱 접근에서 막히지 않게 한다.
 - Line Dashboard 알림 설정 수정 권한을 operator 전용에서 Line Dashboard 접근 사용자 전체로 완화한다.
@@ -32,10 +35,10 @@
   - 대상 scope: `portal` + `scope_type=app`, `is_active=True`인 app scope
   - 기본 실행은 누락된 `UserAccess`만 `allowed/viewer`로 생성한다.
   - `--overwrite-existing` 옵션을 둬 기존 `pending/denied`를 명시적으로 `allowed/viewer`로 바꿀 수 있게 한다.
-  - `--force` 옵션을 둬 완료 marker 이후에도 운영자가 명시적으로 재실행할 수 있게 한다.
+  - `--force` 옵션을 둬 완료 상태 이후에도 운영자가 명시적으로 재실행할 수 있게 한다.
   - `--dry-run`으로 생성/변경 예정 건수를 먼저 확인한다.
   - 변경 내역은 `AccessAuditLog(action=grant)`로 남긴다.
-  - 완료 여부는 `AccessAuditLog` marker로 남겨 DB 기준 1회만 실제 실행한다.
+  - 현재 완료 여부는 후속 통합 계획에 따라 `AccessOperationState`에 저장하며, 기존 `AccessAuditLog` marker는 migration에서 승계 후 제거한다.
   - API 컨테이너 시작 흐름에는 연결하지 않고 운영자가 `migrate` 이후 수동 실행한다.
 - Line Dashboard 알림 설정:
   - 백엔드는 기존 `user_can_manage_drone_sop_recipients()`를 인증 사용자 기준으로 완화한다.

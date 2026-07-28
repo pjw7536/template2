@@ -15,15 +15,14 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
-import { getAppAccess } from "@/lib/access/appAccess"
-import { resolveAppAccessTarget } from "@/lib/activity/appAccessCatalog"
-import { buildBackendUrl } from "@/lib/api"
+import { getScopeAccess } from "@/lib/access/scopeAccess"
+import { getRequiredAppScopes, resolveAppAccessTarget } from "@/lib/activity/appAccessCatalog"
+import { accountApi } from "@/lib/account"
 
 import { useAuth } from "../hooks/useAuth"
-import { fetchJson } from "../utils/fetchJson"
 
-function getGateCopy(portalAccess) {
-  const reason = portalAccess?.reason || "access_state_unavailable"
+function getGateCopy(portalScopeAccess) {
+  const reason = portalScopeAccess?.reason || "access_state_unavailable"
   if (reason === "access_state_unavailable" || reason === "scope_not_found") {
     return {
       icon: AlertCircle,
@@ -69,12 +68,6 @@ function normalizePath(path) {
   return path.endsWith("/") ? path.slice(0, -1) : path
 }
 
-function getRequiredAppScopes(target) {
-  if (!target || target.requiresAppAccess === false) return []
-  const scopes = target.requiredAppScopes || (target.appId ? [target.appId] : [])
-  return scopes.filter(Boolean)
-}
-
 function getAppScopeLabel(target, scopeKey) {
   const requiredScopes = getRequiredAppScopes(target)
   if (requiredScopes.length <= 1) return target?.appName || scopeKey
@@ -114,17 +107,17 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
   const [statusMessage, setStatusMessage] = useState("")
   const [hasSubmittedRequest, setHasSubmittedRequest] = useState(false)
   const [hasObservedPending, setHasObservedPending] = useState(false)
-  const portalAccess = user?.portal_access
-  const gatePortalAccess = hasSubmittedRequest
-    ? { ...portalAccess, reason: "pending", canRequest: false }
-    : portalAccess
+  const portalScopeAccess = getScopeAccess(user, "portal")
+  const gatePortalScopeAccess = hasSubmittedRequest
+    ? { ...portalScopeAccess, reason: "pending", canRequest: false }
+    : portalScopeAccess
   const currentPath = normalizePath(location.pathname)
   const canBypassGate = allowUnapprovedPaths.some((path) => normalizePath(path) === currentPath)
-  const isPending = gatePortalAccess?.reason === "pending"
+  const isPending = gatePortalScopeAccess?.reason === "pending"
   const appTarget = resolveAppAccessTarget(location.pathname)
   const requiredAppScopes = getRequiredAppScopes(appTarget)
   const appRequestRows = requiredAppScopes.map((scopeKey) => {
-    const access = getAppAccess(user, scopeKey)
+    const access = getScopeAccess(user, scopeKey)
     const requestState = getAppRequestState(access, submittedAppScopes.has(scopeKey))
     return {
       scopeKey,
@@ -136,7 +129,7 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
 
   useEffect(() => {
     if (!hasSubmittedRequest) return
-    if (portalAccess?.reason === "pending") {
+    if (portalScopeAccess?.reason === "pending") {
       if (!hasObservedPending) setHasObservedPending(true)
       return
     }
@@ -144,7 +137,7 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
       setHasSubmittedRequest(false)
       setHasObservedPending(false)
     }
-  }, [hasObservedPending, hasSubmittedRequest, portalAccess?.reason])
+  }, [hasObservedPending, hasSubmittedRequest, portalScopeAccess?.reason])
 
   useEffect(() => {
     if (!user || canBypassGate || !isPending) return undefined
@@ -158,13 +151,13 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
     return null
   }
 
-  if (portalAccess?.allowed || canBypassGate) {
+  if (portalScopeAccess?.allowed || canBypassGate) {
     return children
   }
 
-  const copy = getGateCopy(gatePortalAccess)
+  const copy = getGateCopy(gatePortalScopeAccess)
   const Icon = copy.icon
-  const canRequestPortal = Boolean(gatePortalAccess?.canRequest)
+  const canRequestPortal = Boolean(gatePortalScopeAccess?.canRequest)
   const requestableAppRows = appRequestRows.filter((row) => row.requestState === "requestable")
   const canSubmitRequest = canRequestPortal || requestableAppRows.length > 0
   const actionLabel = getCombinedActionLabel({
@@ -172,40 +165,22 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
     requestableAppRows,
     fallbackLabel: copy.actionLabel,
   })
-  const department = portalAccess?.department || "미지정"
-  const rejectionReason = portalAccess?.rejectionReason || ""
+  const department = portalScopeAccess?.department || "미지정"
+  const rejectionReason = portalScopeAccess?.rejectionReason || ""
   const isBusy = isSubmitting || isRefreshing
 
-  const requestPortalAccess = async () => {
-    const result = await fetchJson(buildBackendUrl("/api/v1/account/portal-access"), {
-      method: "POST",
-    })
-    if (!result.ok) {
-      throw new Error("portal_request_failed")
-    }
-    const requestIsPending =
-      result.data?.status === "pending" || result.data?.portalAccess?.reason === "pending"
-    setHasSubmittedRequest(requestIsPending)
-    return requestIsPending
-  }
-
-  const requestAppAccess = async (scopeKey) => {
-    const result = await fetchJson(buildBackendUrl("/api/v1/account/access/request"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: scopeKey }),
-    })
-    if (!result.ok) {
-      const error = result.data?.error
-      throw new Error(error === "not_requestable" ? "app_not_requestable" : "app_request_failed")
-    }
-    if (result.data?.status === "pending") {
+  const requestScopeAccess = async (scopeKeys) => {
+    const result = await accountApi.requestScopeAccess(scopeKeys)
+    const requestIsPending = result?.status === "pending"
+    if (requestIsPending) {
+      setHasSubmittedRequest(true)
       setSubmittedAppScopes((prev) => {
         const next = new Set(prev)
-        next.add(scopeKey)
+        scopeKeys.filter((key) => key !== "portal").forEach((key) => next.add(key))
         return next
       })
     }
+    return requestIsPending
   }
 
   const handleRequest = async () => {
@@ -215,12 +190,9 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
     setErrorMessage("")
     setStatusMessage("")
     try {
-      if (canRequestPortal) {
-        await requestPortalAccess()
-      }
-      for (const row of requestableAppRows) {
-        await requestAppAccess(row.scopeKey)
-      }
+      const requestedScopes = requestableAppRows.map((row) => row.scopeKey)
+      if (canRequestPortal && requestedScopes.length === 0) requestedScopes.push("portal")
+      await requestScopeAccess(requestedScopes)
       const didRefresh = await refresh()
       const requestedPortal = canRequestPortal
       const requestedApps = requestableAppRows.length > 0
@@ -238,14 +210,10 @@ export function PortalAccessGate({ children, allowUnapprovedPaths = [] }) {
       }
     } catch (error) {
       const message = error?.message
-      if (message === "portal_request_failed") {
-        setErrorMessage("포털 권한 신청을 저장하지 못했습니다.")
-      } else if (message === "app_not_requestable") {
-        setErrorMessage("이 앱 권한은 신청할 수 없습니다.")
-      } else if (message === "app_request_failed") {
-        setErrorMessage("앱 권한 신청을 저장하지 못했습니다.")
+      if (message === "not_requestable") {
+        setErrorMessage("이 권한은 신청할 수 없습니다.")
       } else {
-        setErrorMessage("권한 신청 중 오류가 발생했습니다.")
+        setErrorMessage("권한 신청을 저장하지 못했습니다.")
       }
     } finally {
       setIsSubmitting(false)

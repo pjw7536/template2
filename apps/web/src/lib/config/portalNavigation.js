@@ -1,7 +1,14 @@
 import {
+  ActivityIcon,
   BookOpenIcon,
+  BugIcon,
+  GaugeIcon,
   LayoutGridIcon,
   MessageSquareIcon,
+  NetworkIcon,
+  RadarIcon,
+  ScanSearchIcon,
+  ShieldCheckIcon,
 } from "lucide-react"
 
 function readEnvValue(key) {
@@ -43,10 +50,59 @@ export const portalNavigationItems = [
         title: "Spider",
         href: "/spider",
         anyAppScopes: ["l0-spider", "l1-spider", "l3-spider", "pm-spider", "tttm-spider"],
+        children: [
+          { title: "L0 Spider", href: "/spider/l0", icon: ActivityIcon, appScope: "l0-spider" },
+          { title: "L1 Spider", href: "/spider/l1", icon: RadarIcon, appScope: "l1-spider" },
+          { title: "L3 Spider", href: "/spider/l3", icon: NetworkIcon, appScope: "l3-spider" },
+          { title: "TTTM Spider", href: "/spider/tttm", icon: ScanSearchIcon, appScope: "tttm-spider" },
+          { title: "PM Spider", href: "/spider/pm", icon: GaugeIcon, appScope: "pm-spider" },
+          { title: "Defect Spider", href: "/spider/defect", icon: BugIcon },
+        ],
       },
       { title: "접속 현황", href: "/access-stats", appScope: "access-stats" },
       externalLink("PMx", "VITE_PORTAL_PMX_URL"),
     ]),
+  },
+  {
+    title: "Admin",
+    icon: ShieldCheckIcon,
+    items: [
+      {
+        title: "권한 관리",
+        href: "/settings/permissions",
+        adminScope: "portal",
+      },
+      {
+        title: "Appstore 관리",
+        href: "/appstore",
+        adminScope: "appstore",
+      },
+      {
+        title: "L3 Spider 개발자 옵션",
+        href: "/spider/l3",
+        adminScope: "l3-spider",
+      },
+      {
+        title: "Line Dashboard Target 관리",
+        href: "/ESOP_Dashboard/admin/drone-targets",
+        adminScope: "line-dashboard",
+      },
+      {
+        title: "메일함 관리",
+        href: "/emails/inbox",
+        adminScope: "emails",
+      },
+      {
+        title: "접속 현황 관리",
+        href: "/access-stats",
+        adminScope: "access-stats",
+      },
+      {
+        title: "VOC 관리",
+        href: "/voc",
+        adminScope: "voc",
+      },
+    ],
   },
   {
     title: "About Us",

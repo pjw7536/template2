@@ -58,7 +58,7 @@ def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
     - user: 인증된 Django 사용자 객체
 
     반환:
-    - Dict[str, Any]: 기존 `/api/v1/auth/me` 응답 shape
+    - Dict[str, Any]: canonical `/api/v1/auth/me` 응답
 
     부작용:
     - 없음
@@ -76,7 +76,7 @@ def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
     if not department:
         department = current_values.get("department")
 
-    portal_access = account_services.get_portal_access_payload(user=user)
+    scope_access = account_services.get_scope_access_payloads(user=user)
     return {
         "id": user.pk,
         "usr_id": getattr(user, "knox_id", None),
@@ -84,16 +84,10 @@ def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
         "username": username,
         "email": user.email,
         "is_superuser": bool(getattr(user, "is_superuser", False)),
-        "is_staff": bool(getattr(user, "is_staff", False)),
-        "roles": [],
         "department": department,
         "line": current_values.get("line"),
         "user_sdwt_prod": current_values.get("user_sdwt_prod"),
         "pending_user_sdwt_prod": pending_user_sdwt_prod,
         "has_pending_affiliation": has_pending_affiliation,
-        "portal_access": portal_access,
-        "app_access": account_services.get_app_access_payloads(
-            user=user,
-            portal_access=portal_access,
-        ),
+        "scope_access": scope_access,
     }

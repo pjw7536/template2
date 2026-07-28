@@ -16,8 +16,18 @@ from datetime import datetime
 from typing import Any, Iterable
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, QuerySet
-from django.db.models.functions import Lower
+from django.db.models import (
+    BooleanField,
+    Case,
+    CharField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Lower, NullIf, Trim
 from django.utils import timezone
 
 from api.common.services import UNKNOWN, UNCLASSIFIED_USER_SDWT_PROD
@@ -33,7 +43,6 @@ from .models import (
     ExternalAffiliationSnapshot,
     UserAccess,
     UserCurrentAffiliation,
-    UserProfile,
     UserSdwtProdAccess,
     UserSdwtProdChange,
     _build_user_sdwt_display_map,
@@ -91,6 +100,35 @@ def _normalize_positive_int_set(values: Iterable[Any], *, allow_cast: bool = Fal
         if parsed > 0:
             normalized.add(parsed)
     return normalized
+
+
+def _resolved_access_department_expression():
+    """정책 비교용 부서를 PostgreSQL `Lower` 결과로 반환합니다."""
+
+    return Lower(
+        Coalesce(
+            NullIf(Trim("department"), Value("")),
+            Trim("current_affiliation__affiliation__department"),
+            Value(""),
+            output_field=CharField(),
+        ),
+    )
+
+
+def _active_access_policy_queryset(
+    *,
+    department: str | None = None,
+) -> QuerySet[AccessPolicyRule]:
+    """활성 정책 값과 선택한 부서를 PostgreSQL에서 같은 방식으로 정규화합니다."""
+
+    annotations = {
+        "_access_policy_value": Lower(Trim("value")),
+    }
+    if department is not None:
+        annotations["_access_department"] = Lower(
+            Trim(Value(department, output_field=CharField()))
+        )
+    return AccessPolicyRule.objects.filter(is_active=True).annotate(**annotations)
 
 
 def _list_active_user_contact_values_by_user_sdwt_prod(
@@ -573,28 +611,6 @@ def _list_active_user_knox_lookup_keys() -> set[str]:
     }
 
 
-def list_active_user_knox_lookup_keys_by_knox_ids(*, knox_ids: list[str]) -> set[str]:
-    """입력 knox_id 중 활성 account_user에 존재하는 lookup key 집합을 반환합니다."""
-
-    lookup_keys = sorted({value.lower() for value in _normalize_text_list(knox_ids)})
-    if not lookup_keys:
-        return set()
-
-    User = get_user_model()
-    return {
-        str(value or "").strip().lower()
-        for value in (
-            User.objects.filter(is_active=True)
-            .exclude(knox_id__isnull=True)
-            .exclude(knox_id__exact="")
-            .annotate(knox_lookup=Lower("knox_id"))
-            .filter(knox_lookup__in=lookup_keys)
-            .values_list("knox_lookup", flat=True)
-        )
-        if str(value or "").strip()
-    }
-
-
 def get_active_users_by_knox_lookup_keys(*, knox_ids: list[str]) -> dict[str, Any]:
     """입력 knox_id 중 활성 account_user 매핑을 lookup key 기준으로 반환합니다."""
 
@@ -835,83 +851,32 @@ def list_user_sdwt_prod_access_rows(*, user: Any) -> list[UserSdwtProdAccess]:
     )
 
 
-def get_user_profile_role(*, user: Any) -> str:
-    """사용자 프로필(role) 값을 조회합니다.
-
-    입력:
-    - user: Django 사용자 객체
-
-    반환:
-    - str: 역할 문자열(없으면 viewer)
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 사용자 유효성 확인
-    # -----------------------------------------------------------------------------
-    if not user:
-        return UserProfile.Roles.VIEWER
-
-    # -----------------------------------------------------------------------------
-    # 2) 프로필 조회
-    # -----------------------------------------------------------------------------
-    profile = UserProfile.objects.filter(user=user).only("role").first()
-    if profile is None:
-        return UserProfile.Roles.VIEWER
-    return profile.role or UserProfile.Roles.VIEWER
-
-
-def is_operator_user(*, user: Any) -> bool:
-    """전역 운영자 권한 여부를 조회합니다.
-
-    입력:
-    - user: Django 사용자 객체
-
-    반환:
-    - bool: 운영자이면 True
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 인증 및 Django 특권 플래그 확인
-    # -----------------------------------------------------------------------------
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-        return True
-
-    # -----------------------------------------------------------------------------
-    # 2) account profile의 admin 역할을 운영자로 해석
-    # -----------------------------------------------------------------------------
-    return get_user_profile_role(user=user) == UserProfile.Roles.ADMIN
-
-
 def get_access_scope_by_key(*, scope_key: str) -> AccessScope | None:
     """scope key로 접근 권한 대상을 조회합니다."""
 
-    normalized = _normalize_text(scope_key) or ACCESS_SCOPE_PORTAL
+    normalized = _normalize_text(scope_key)
+    if not normalized:
+        return None
     return AccessScope.objects.filter(key=normalized).first()
 
 
 def get_access_scope_by_key_for_update(*, scope_key: str) -> AccessScope | None:
     """트랜잭션 안에서 scope 행을 잠가 조회합니다."""
 
-    normalized = _normalize_text(scope_key) or ACCESS_SCOPE_PORTAL
+    normalized = _normalize_text(scope_key)
+    if not normalized:
+        return None
     return AccessScope.objects.select_for_update().filter(key=normalized).first()
 
 
+def list_access_scopes() -> list[AccessScope]:
+    """역할 판정에 사용할 전체 접근 scope를 안정적인 순서로 반환합니다."""
+
+    return list(AccessScope.objects.all().order_by("id"))
+
+
 def list_active_app_access_scopes() -> list[AccessScope]:
-    """권한 매트릭스에 표시할 활성 앱 scope를 반환합니다."""
+    """Portal 일괄 부여 대상인 활성 앱 scope를 반환합니다."""
 
     return list(
         AccessScope.objects.filter(
@@ -921,11 +886,34 @@ def list_active_app_access_scopes() -> list[AccessScope]:
     )
 
 
-def list_active_access_policy_rules(*, scope: AccessScope) -> list[AccessPolicyRule]:
-    """scope의 활성 접근 정책 규칙 목록을 반환합니다."""
+def list_managed_access_scopes() -> list[AccessScope]:
+    """권한 매트릭스에 표시할 Portal과 모든 활성 하위 scope를 반환합니다."""
+
+    scopes = list(
+        AccessScope.objects.filter(
+            Q(key=ACCESS_SCOPE_PORTAL) | Q(is_active=True),
+        ).order_by("name", "key")
+    )
+    return sorted(
+        scopes,
+        key=lambda scope: (
+            scope.key != ACCESS_SCOPE_PORTAL,
+            scope.name,
+            scope.key,
+        ),
+    )
+
+
+def list_active_access_policy_rules(
+    *,
+    scope: AccessScope,
+    department: str | None = None,
+) -> list[AccessPolicyRule]:
+    """scope의 활성 정책과 PostgreSQL 정규화 값을 반환합니다."""
 
     return list(
-        AccessPolicyRule.objects.filter(scope=scope, is_active=True)
+        _active_access_policy_queryset(department=department)
+        .filter(scope=scope)
         .select_related("scope")
         .order_by("rule_type", "id")
     )
@@ -934,14 +922,16 @@ def list_active_access_policy_rules(*, scope: AccessScope) -> list[AccessPolicyR
 def list_active_access_policy_rules_for_scopes(
     *,
     scopes: list[AccessScope],
+    department: str | None = None,
 ) -> list[AccessPolicyRule]:
-    """여러 scope의 활성 접근 정책 규칙을 한 번에 반환합니다."""
+    """여러 scope의 활성 정책과 PostgreSQL 정규화 값을 한 번에 반환합니다."""
 
     scope_ids = [scope.id for scope in scopes]
     if not scope_ids:
         return []
     return list(
-        AccessPolicyRule.objects.filter(scope_id__in=scope_ids, is_active=True)
+        _active_access_policy_queryset(department=department)
+        .filter(scope_id__in=scope_ids)
         .select_related("scope")
         .order_by("scope_id", "rule_type", "id")
     )
@@ -992,67 +982,6 @@ def list_user_access_rows_for_scopes_and_users(
     )
 
 
-def get_user_access_by_id(*, access_id: int) -> UserAccess | None:
-    """ID로 사용자 접근 상태 행을 조회합니다."""
-
-    if not access_id:
-        return None
-
-    return (
-        UserAccess.objects.filter(id=access_id)
-        .select_related("scope", "user", "decided_by")
-        .first()
-    )
-
-
-def get_user_access_by_id_for_update(*, access_id: int) -> UserAccess | None:
-    """트랜잭션 안에서 ID에 해당하는 사용자 접근 행을 잠가 조회합니다."""
-
-    if not access_id:
-        return None
-
-    return (
-        UserAccess.objects.select_for_update(of=("self",))
-        .filter(id=access_id)
-        .select_related("scope", "user", "decided_by")
-        .first()
-    )
-
-
-def list_user_access_rows(
-    *,
-    scope_key: str | None,
-    status: str | None,
-    search: str | None,
-) -> QuerySet[UserAccess]:
-    """사용자 접근 상태 목록을 필터링하여 조회합니다."""
-
-    queryset = UserAccess.objects.select_related("scope", "user", "decided_by").order_by(
-        "-requested_at",
-        "-id",
-    )
-    normalized_scope = _normalize_text(scope_key)
-    if normalized_scope:
-        queryset = queryset.filter(scope__key=normalized_scope)
-
-    normalized_status = (status or "").strip().lower()
-    if normalized_status in UserAccess.Status.values:
-        queryset = queryset.filter(status=normalized_status)
-
-    normalized_search = _normalize_text(search)
-    if normalized_search:
-        queryset = queryset.filter(
-            Q(scope__key__icontains=normalized_search)
-            | Q(scope__name__icontains=normalized_search)
-            | Q(user__knox_id__icontains=normalized_search)
-            | Q(user__email__icontains=normalized_search)
-            | Q(user__username__icontains=normalized_search)
-            | Q(department__icontains=normalized_search)
-        )
-
-    return queryset
-
-
 def list_access_management_users(
     *,
     search: str | None,
@@ -1061,16 +990,18 @@ def list_access_management_users(
     """접근 권한 관리 화면에 표시할 활성 사용자 목록을 조회합니다."""
 
     User = get_user_model()
-    queryset = User.objects.filter(is_active=True).select_related(
-        "current_affiliation__affiliation",
-        "profile",
+    queryset = (
+        User.objects.filter(is_active=True)
+        .select_related("current_affiliation__affiliation")
+        .annotate(_access_department=_resolved_access_department_expression())
     )
 
     normalized_department = _normalize_text(department)
     if normalized_department:
         queryset = queryset.filter(
-            Q(department__iexact=normalized_department)
-            | Q(current_affiliation__affiliation__department__iexact=normalized_department)
+            _access_department=Lower(
+                Trim(Value(normalized_department, output_field=CharField()))
+            )
         )
 
     normalized_search = _normalize_text(search)
@@ -1092,70 +1023,186 @@ def list_access_management_users(
     return queryset.order_by("department", "username", "knox_id", "id")
 
 
-def filter_access_management_users_for_fast_access_filter(
+def filter_access_management_users_by_effective_access(
     *,
     queryset: QuerySet[Any],
     scope: AccessScope,
     status: str | None,
     source: str | None,
-) -> tuple[QuerySet[Any], bool]:
-    """권한 관리 목록의 단순 접근 필터를 DB 조건으로 적용합니다."""
+) -> QuerySet[Any]:
+    """최종 Portal 선행 조건까지 포함한 접근 필터를 DB에서 적용합니다."""
 
     normalized_status = (_normalize_text(status) or "").lower()
     normalized_source = (_normalize_text(source) or "").lower()
+    if not normalized_status and not normalized_source:
+        return queryset
 
-    if not scope.is_active:
-        return queryset, False
-
-    if normalized_status and normalized_source:
-        return queryset, False
-
-    access_bypass_filter = Q(is_superuser=True)
-
-    if normalized_status in {UserAccess.Status.PENDING, UserAccess.Status.DENIED}:
-        return queryset.filter(
-            access_grants__scope=scope,
-            access_grants__status=normalized_status,
-        ).exclude(access_bypass_filter).distinct(), True
-
-    source_to_status = {
-        AccessSource.EXPLICIT_ALLOWED: UserAccess.Status.ALLOWED,
-        AccessSource.EXPLICIT_DENIED: UserAccess.Status.DENIED,
-        AccessSource.EXPLICIT_PENDING: UserAccess.Status.PENDING,
-    }
-    if normalized_source in source_to_status:
-        return queryset.filter(
-            access_grants__scope=scope,
-            access_grants__status=source_to_status[normalized_source],
-        ).exclude(access_bypass_filter).distinct(), True
-
-    if normalized_source == AccessSource.SUPERUSER_BYPASS:
-        return queryset.filter(is_superuser=True).distinct(), True
-
-    if normalized_source == AccessSource.POLICY_DEPARTMENT:
-        department_values = list(
-            AccessPolicyRule.objects.filter(
-                scope=scope,
-                is_active=True,
-                rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
-            ).values_list("value", flat=True)
+    scope_access_rows = UserAccess.objects.filter(
+        user_id=OuterRef("pk"),
+        scope=scope,
+    )
+    queryset = queryset.annotate(
+        _access_scope_status=Subquery(
+            scope_access_rows.values("status")[:1],
+            output_field=CharField(),
         )
-        department_filter = Q()
-        for value in department_values:
-            normalized_value = _normalize_text(value)
-            if normalized_value:
-                department_filter |= Q(department__iexact=normalized_value) | (
-                    (Q(department__isnull=True) | Q(department__exact=""))
-                    & Q(current_affiliation__affiliation__department__iexact=normalized_value)
-                )
-        if not department_filter:
-            return queryset.none(), True
-        return queryset.filter(department_filter).exclude(
-            Q(access_grants__scope=scope)
-            | Q(is_superuser=True)
-        ).distinct(), True
+    )
 
-    return queryset, False
+    scope_policy_departments = list(
+        _active_access_policy_queryset()
+        .filter(
+            scope=scope,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+        )
+        .values_list("_access_policy_value", flat=True)
+    )
+    queryset = queryset.annotate(
+        _access_department=_resolved_access_department_expression(),
+        _access_scope_policy=Case(
+            When(
+                _access_scope_status__isnull=True,
+                _access_department__in=scope_policy_departments,
+                then=Value(True),
+            ),
+            default=Value(False),
+            output_field=BooleanField(),
+        ),
+    )
+
+    portal_scope = (
+        scope
+        if scope.key == ACCESS_SCOPE_PORTAL
+        else AccessScope.objects.filter(key=ACCESS_SCOPE_PORTAL).first()
+    )
+    if scope.key == ACCESS_SCOPE_PORTAL:
+        portal_allowed_expression = Case(
+            When(is_superuser=True, then=Value(True)),
+            When(_access_scope_status=UserAccess.Status.ALLOWED, then=Value(True)),
+            When(_access_scope_policy=True, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+    elif portal_scope is None or not portal_scope.is_active:
+        portal_allowed_expression = Case(
+            When(is_superuser=True, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+    else:
+        portal_access_rows = UserAccess.objects.filter(
+            user_id=OuterRef("pk"),
+            scope=portal_scope,
+        )
+        portal_policy_departments = list(
+            _active_access_policy_queryset()
+            .filter(
+                scope=portal_scope,
+                rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            )
+            .values_list("_access_policy_value", flat=True)
+        )
+        queryset = queryset.annotate(
+            _access_portal_status=Subquery(
+                portal_access_rows.values("status")[:1],
+                output_field=CharField(),
+            ),
+            _access_portal_policy=Case(
+                When(
+                    _access_portal_status__isnull=True,
+                    _access_department__in=portal_policy_departments,
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        )
+        portal_allowed_expression = Case(
+            When(is_superuser=True, then=Value(True)),
+            When(_access_portal_status=UserAccess.Status.ALLOWED, then=Value(True)),
+            When(_access_portal_policy=True, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+
+    queryset = queryset.annotate(_access_portal_allowed=portal_allowed_expression)
+
+    status_cases = [When(is_superuser=True, then=Value("allowed"))]
+    source_cases = [
+        When(is_superuser=True, then=Value(AccessSource.SUPERUSER_BYPASS))
+    ]
+    if scope.key != ACCESS_SCOPE_PORTAL:
+        status_cases.append(
+            When(_access_portal_allowed=False, then=Value("denied"))
+        )
+        source_cases.append(
+            When(
+                _access_portal_allowed=False,
+                then=Value(AccessSource.PORTAL_ACCESS_REQUIRED),
+            )
+        )
+    if not scope.is_active:
+        status_cases.append(When(pk__isnull=False, then=Value("inactive")))
+        source_cases.append(
+            When(pk__isnull=False, then=Value(AccessSource.SCOPE_INACTIVE))
+        )
+    else:
+        status_cases.extend(
+            [
+                When(
+                    _access_scope_status=UserAccess.Status.DENIED,
+                    then=Value("denied"),
+                ),
+                When(
+                    _access_scope_status=UserAccess.Status.ALLOWED,
+                    then=Value("allowed"),
+                ),
+                When(
+                    _access_scope_status=UserAccess.Status.PENDING,
+                    then=Value("pending"),
+                ),
+                When(_access_scope_policy=True, then=Value("allowed")),
+            ]
+        )
+        source_cases.extend(
+            [
+                When(
+                    _access_scope_status=UserAccess.Status.DENIED,
+                    then=Value(AccessSource.EXPLICIT_DENIED),
+                ),
+                When(
+                    _access_scope_status=UserAccess.Status.ALLOWED,
+                    then=Value(AccessSource.EXPLICIT_ALLOWED),
+                ),
+                When(
+                    _access_scope_status=UserAccess.Status.PENDING,
+                    then=Value(AccessSource.EXPLICIT_PENDING),
+                ),
+                When(
+                    _access_scope_policy=True,
+                    then=Value(AccessSource.POLICY_DEPARTMENT),
+                ),
+            ]
+        )
+
+    queryset = queryset.annotate(
+        _access_effective_status=Case(
+            *status_cases,
+            default=Value("not_requested"),
+            output_field=CharField(),
+        ),
+        _access_effective_source=Case(
+            *source_cases,
+            default=Value(AccessSource.NONE),
+            output_field=CharField(),
+        ),
+    )
+
+    if normalized_status:
+        queryset = queryset.filter(_access_effective_status=normalized_status)
+    if normalized_source:
+        queryset = queryset.filter(_access_effective_source=normalized_source)
+
+    return queryset
 
 
 def list_user_access_rows_by_scope_and_user_ids(
@@ -1174,15 +1221,6 @@ def list_user_access_rows_by_scope_and_user_ids(
         .select_related("scope", "user", "decided_by")
         .order_by("user_id", "id")
     )
-
-
-def get_access_policy_rule_by_id(*, rule_id: int) -> AccessPolicyRule | None:
-    """ID로 접근 정책 규칙을 조회합니다."""
-
-    if not rule_id:
-        return None
-
-    return AccessPolicyRule.objects.filter(id=rule_id).select_related("scope").first()
 
 
 def get_access_policy_rule_by_id_for_update(*, rule_id: int) -> AccessPolicyRule | None:
@@ -1238,34 +1276,6 @@ def list_access_audit_logs(
     if normalized_action:
         queryset = queryset.filter(action=normalized_action)
     return queryset
-
-
-def get_user_profile_by_user(*, user: Any) -> UserProfile | None:
-    """사용자 프로필(UserProfile) 행을 조회합니다.
-
-    입력:
-    - user: Django 사용자 객체
-
-    반환:
-    - UserProfile | None: 프로필 행 또는 None
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 사용자 유효성 확인
-    # -----------------------------------------------------------------------------
-    if not user:
-        return None
-
-    # -----------------------------------------------------------------------------
-    # 2) 프로필 조회
-    # -----------------------------------------------------------------------------
-    return UserProfile.objects.filter(user=user).first()
 
 
 def list_user_sdwt_prod_changes(
@@ -1332,35 +1342,6 @@ def user_has_manage_permission(*, user: Any, user_sdwt_prod: str) -> bool:
     ).exists()
 
 
-def get_user_by_id(*, user_id: int) -> Any | None:
-    """id로 사용자를 조회하고 없으면 None을 반환합니다.
-
-    입력:
-    - user_id: 사용자 id
-
-    반환:
-    - Any | None: 사용자 객체 또는 None
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 사용자 조회 시도
-    # -----------------------------------------------------------------------------
-    UserModel = get_user_model()
-    try:
-        return UserModel.objects.get(id=user_id)
-    except UserModel.DoesNotExist:
-        # -----------------------------------------------------------------------------
-        # 2) 미존재 처리
-        # -----------------------------------------------------------------------------
-        return None
-
-
 def get_user_by_id_for_update(*, user_id: int) -> Any | None:
     """트랜잭션 안에서 사용자 행과 권한 판정용 관계를 잠가 조회합니다."""
 
@@ -1370,7 +1351,7 @@ def get_user_by_id_for_update(*, user_id: int) -> Any | None:
     UserModel = get_user_model()
     return (
         UserModel.objects.select_for_update(of=("self",))
-        .select_related("profile", "current_affiliation__affiliation")
+        .select_related("current_affiliation__affiliation")
         .filter(id=user_id)
         .first()
     )
@@ -2120,45 +2101,6 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
         or current_user_sdwt_prod
         or UNCLASSIFIED_USER_SDWT_PROD,
     }
-
-
-def get_affiliation_option(
-    department: str,
-    line: str,
-    user_sdwt_prod: str,
-) -> Affiliation | None:
-    """부서/라인/user_sdwt_prod 조합에 해당하는 소속 옵션 행을 조회합니다.
-
-    입력:
-    - department: 부서명
-    - line: 라인 식별자
-    - user_sdwt_prod: 소속 식별자
-
-    반환:
-    - Affiliation | None: 소속 옵션 또는 None
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    normalized_department = _normalize_text(department)
-    normalized_line = _normalize_text(line)
-    normalized_user_sdwt_prod = _normalize_text(user_sdwt_prod)
-    if not normalized_department or not normalized_line or not normalized_user_sdwt_prod:
-        return None
-
-    return (
-        Affiliation.objects.filter(
-            department=normalized_department,
-            line=normalized_line,
-            user_sdwt_prod__iexact=normalized_user_sdwt_prod,
-        )
-        .order_by("id")
-        .first()
-    )
 
 
 def get_affiliation_option_by_user_sdwt_prod(*, user_sdwt_prod: str) -> Affiliation | None:
