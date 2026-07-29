@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 from typing import Any
 
@@ -10,8 +12,11 @@ from airflow.utils.dates import days_ago
 
 from failure_alerts import notify_airflow_task_failure
 
+logger = logging.getLogger(__name__)
+
 AIRFLOW_API_BASE_URL = (os.getenv("AIRFLOW_API_BASE_URL") or "http://api:8000").strip().rstrip("/")
 AIRFLOW_TRIGGER_TOKEN = os.getenv("AIRFLOW_TRIGGER_TOKEN") or ""
+ERROR_RESPONSE_PREVIEW_MAX_CHARS = 4000
 
 
 def _parse_optional_int(value: Any) -> int | None:
@@ -32,6 +37,59 @@ def _parse_bool(value: Any) -> bool:
     if value in (None, ""):
         return False
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _format_error_response(response: requests.Response) -> str:
+    """API 실패 응답에서 운영 분석에 필요한 정보만 문자열로 변환합니다."""
+
+    try:
+        payload = response.json()
+    except ValueError:
+        response_text = response.text.strip() or "<empty>"
+        return response_text[:ERROR_RESPONSE_PREVIEW_MAX_CHARS]
+
+    if not isinstance(payload, dict):
+        return json.dumps(payload, ensure_ascii=False, default=str)[:ERROR_RESPONSE_PREVIEW_MAX_CHARS]
+
+    error_detail = {
+        key: payload[key]
+        for key in ("error", "table_name", "processed_count", "success_count", "failure_count")
+        if key in payload
+    }
+    outcomes = payload.get("outcomes")
+    if isinstance(outcomes, list):
+        failed_outcomes = []
+        for outcome in outcomes:
+            if not isinstance(outcome, dict):
+                continue
+            if outcome.get("status") != "failed" and not outcome.get("error_message"):
+                continue
+            failed_outcomes.append(
+                {
+                    key: outcome[key]
+                    for key in ("workorder_id", "status", "error_message")
+                    if key in outcome
+                }
+            )
+        if failed_outcomes:
+            error_detail["failed_outcomes"] = failed_outcomes
+
+    detail_payload = error_detail or payload
+    return json.dumps(detail_payload, ensure_ascii=False, default=str)[:ERROR_RESPONSE_PREVIEW_MAX_CHARS]
+
+
+def _raise_for_status_with_detail(response: requests.Response) -> None:
+    """HTTP 오류 상태와 API 실패 상세를 Airflow task log에 남깁니다."""
+
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        error_message = (
+            "ct_process_comment 요약 API 호출 실패: "
+            f"status={response.status_code}, url={response.url}, detail={_format_error_response(response)}"
+        )
+        logger.error(error_message)
+        raise RuntimeError(error_message) from exc
 
 
 def run_ct_process_comment_summary(**_context):
@@ -59,7 +117,7 @@ def run_ct_process_comment_summary(**_context):
         json=payload or None,
         timeout=1800,
     )
-    response.raise_for_status()
+    _raise_for_status_with_detail(response)
 
     try:
         return response.json()
