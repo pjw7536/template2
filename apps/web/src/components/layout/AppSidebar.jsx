@@ -16,7 +16,7 @@ export function AppSidebar({ header, nav, secondary, className, ...props }) {
       className={cn("md:top-14 md:h-[calc(100svh-4rem)]", className)}
       {...props}
     >
-      <SidebarHeader>{header ?? null}</SidebarHeader>
+      {header ? <SidebarHeader>{header}</SidebarHeader> : null}
       <SidebarContent>
         {nav ?? null}
         {secondary ?? null}

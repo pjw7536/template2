@@ -1,19 +1,34 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { ChevronRightIcon, SearchIcon } from "lucide-react"
+import { ChevronDownIcon, MenuIcon } from "lucide-react"
 
 import { GaNEtchLogo, ThemeColorSelector, ThemeToggle } from "@/components/common"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
-} from "@/components/ui/navigation-menu"
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { useAuth } from "@/lib/auth"
 import {
   hasAnyScopeAccess,
@@ -31,13 +46,8 @@ import { PortalProfileDropdown } from "./PortalProfileDropdown"
 
 const NAV_HIDE_DELAY_MS = 3000
 const NAV_ICON_CLASS_NAME = "size-4"
-const NAV_MENU_LINK_CLASS_NAME = "flex flex-row items-center gap-1.5"
 const NAV_MENU_TRIGGER_CLASS_NAME = "gap-1.5"
-const NAV_MENU_CONTENT_CLASS_NAME =
-  "data-[motion=from-start]:slide-in-from-left-30! data-[motion=to-start]:slide-out-to-left-30! data-[motion=from-end]:slide-in-from-right-30! data-[motion=to-end]:slide-out-to-right-30! absolute z-50 w-auto overflow-visible"
-const NAV_SUB_LINK_CLASS_NAME = "block whitespace-nowrap px-3 py-1.5"
-const NAV_FLYOUT_CLASS_NAME =
-  "pointer-events-none invisible absolute left-full top-0 z-50 ml-1 min-w-44 translate-x-1 rounded-md border bg-popover p-1 text-popover-foreground opacity-0 shadow-md transition-[opacity,transform,visibility] duration-150 group-hover/submenu:pointer-events-auto group-hover/submenu:visible group-hover/submenu:translate-x-0 group-hover/submenu:opacity-100 group-focus-within/submenu:pointer-events-auto group-focus-within/submenu:visible group-focus-within/submenu:translate-x-0 group-focus-within/submenu:opacity-100"
+const NAV_MENU_LINK_CLASS_NAME = "flex w-full items-center gap-2"
 
 function canShowNavigationItem(item, user) {
   if (item?.adminScope && !hasScopeRole(user, item.adminScope)) return false
@@ -66,6 +76,7 @@ export function PortalNavbar({ navigationItems }) {
   const shouldFadeNavItems = !isHomeRoute
   const hideTimerRef = useRef(null)
   const [isNavVisible, setIsNavVisible] = useState(() => pathname === "/")
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     if (hideTimerRef.current) {
@@ -87,6 +98,24 @@ export function PortalNavbar({ navigationItems }) {
         clearTimeout(hideTimerRef.current)
         hideTimerRef.current = null
       }
+    }
+  }, [])
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    const desktopMediaQuery = window.matchMedia("(min-width: 768px)")
+    const closeMenuOnDesktop = (event) => {
+      if (event.matches) {
+        setIsMobileMenuOpen(false)
+      }
+    }
+
+    desktopMediaQuery.addEventListener("change", closeMenuOnDesktop)
+    return () => {
+      desktopMediaQuery.removeEventListener("change", closeMenuOnDesktop)
     }
   }, [])
 
@@ -133,20 +162,14 @@ export function PortalNavbar({ navigationItems }) {
     return <Icon className={NAV_ICON_CLASS_NAME} />
   }
 
-  const renderNavigationLink = (item, { nested = false } = {}) => {
-    const linkClassName = cn(
-      NAV_SUB_LINK_CLASS_NAME,
-      "flex items-center gap-2",
-      nested && "rounded-sm py-2",
-    )
-
+  const renderNavigationLink = (item) => {
     if (item.external) {
       return (
         <a
           href={item.href}
           target="_blank"
           rel="noopener noreferrer"
-          className={linkClassName}
+          className={NAV_MENU_LINK_CLASS_NAME}
         >
           {renderIcon(item.icon)}
           {item.title}
@@ -155,7 +178,7 @@ export function PortalNavbar({ navigationItems }) {
     }
 
     return (
-      <PortalNavLink href={item.href} className={linkClassName}>
+      <PortalNavLink href={item.href} className={NAV_MENU_LINK_CLASS_NAME}>
         {renderIcon(item.icon)}
         {item.title}
       </PortalNavLink>
@@ -167,42 +190,81 @@ export function PortalNavbar({ navigationItems }) {
 
     if (!hasChildren) {
       return (
-        <li key={item.title}>
-          <NavigationMenuLink asChild>{renderNavigationLink(item)}</NavigationMenuLink>
-        </li>
+        <DropdownMenuItem key={item.title} asChild>
+          {renderNavigationLink(item)}
+        </DropdownMenuItem>
       )
     }
 
     return (
-      <li key={item.title} className="group/submenu relative">
-        <NavigationMenuLink asChild>
-          <PortalNavLink
-            href={item.href}
-            className={cn(NAV_SUB_LINK_CLASS_NAME, "flex items-center gap-2 pr-8")}
-            aria-haspopup="true"
+      <DropdownMenuSub key={item.title}>
+        <DropdownMenuSubTrigger>
+          {renderIcon(item.icon)}
+          {item.title}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-36">
+          {item.children.map((child) => (
+            <DropdownMenuItem key={child.title} asChild>
+              {renderNavigationLink(child)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    )
+  }
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false)
+  }
+
+  const renderMobileNavigationLink = (item, nested = false) => (
+    <Button
+      key={item.title}
+      asChild
+      variant="ghost"
+      size="sm"
+      className={cn("w-full justify-start gap-2", nested && "pl-8")}
+    >
+      <PortalNavLink
+        href={item.href}
+        target={item.external ? "_blank" : undefined}
+        rel={item.external ? "noopener noreferrer" : undefined}
+        onNavigate={closeMobileMenu}
+      >
+        {renderIcon(item.icon)}
+        {item.title}
+      </PortalNavLink>
+    </Button>
+  )
+
+  const renderMobileSubNavigationItem = (item) => {
+    const hasChildren = Array.isArray(item.children) && item.children.length > 0
+
+    if (!hasChildren) {
+      return renderMobileNavigationLink(item, true)
+    }
+
+    return (
+      <Collapsible key={item.title} className="group/mobile-sub">
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 pl-8"
           >
             {renderIcon(item.icon)}
-            <span className="flex-1">{item.title}</span>
-            <ChevronRightIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          </PortalNavLink>
-        </NavigationMenuLink>
-
-        <div className={NAV_FLYOUT_CLASS_NAME}>
-          <span className="absolute right-full top-0 h-full w-2" aria-hidden="true" />
-          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-            Spider Apps
-          </div>
-          <ul aria-label="Spider 앱 바로가기">
-            {item.children.map((child) => (
-              <li key={child.title}>
-                <NavigationMenuLink asChild>
-                  {renderNavigationLink(child, { nested: true })}
-                </NavigationMenuLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </li>
+            {item.title}
+            <ChevronDownIcon
+              className="ml-auto size-3.5 transition-transform group-data-[state=open]/mobile-sub:rotate-180"
+              aria-hidden="true"
+            />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-1 pt-1">
+          {item.children.map((child) => renderMobileNavigationLink(child, true))}
+        </CollapsibleContent>
+      </Collapsible>
     )
   }
 
@@ -227,14 +289,79 @@ export function PortalNavbar({ navigationItems }) {
 
   return (
     <div
-      className="flex h-full w-full items-center gap-6 px-4 md:px-6"
+      className="flex h-full w-full items-center gap-2 px-3 sm:gap-4 sm:px-4 md:gap-6 md:px-6"
       onMouseEnter={showNavItems}
       onMouseLeave={scheduleHideNavItems}
       onFocusCapture={showNavItems}
       onBlurCapture={handleBlur}
     >
-      <div className="flex flex-1 items-center gap-4">
-        <PortalNavLink href="/" className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-none md:gap-4 lg:flex-1">
+        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 md:hidden"
+              aria-label="메뉴 열기"
+            >
+              <MenuIcon className="size-5" aria-hidden="true" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-80 max-w-full gap-0 p-0">
+            <SheetHeader className="border-b px-4 py-4 pr-14">
+              <SheetTitle>{brand.name}</SheetTitle>
+              <SheetDescription>이동할 메뉴를 선택하세요.</SheetDescription>
+            </SheetHeader>
+            <nav
+              className="min-h-0 flex-1 overflow-y-auto p-3"
+              aria-label="모바일 포털 내비게이션"
+            >
+              <div className="flex flex-col gap-1">
+                {visibleNavigationItems.map((navItem) => {
+                  const Icon = navItem.icon
+
+                  if (navItem.href) {
+                    return renderMobileNavigationLink(navItem)
+                  }
+
+                  return (
+                    <Collapsible key={navItem.title} className="group/mobile-group">
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-full justify-start gap-2"
+                        >
+                          {renderIcon(Icon)}
+                          {navItem.title}
+                          <ChevronDownIcon
+                            className="ml-auto size-3.5 transition-transform group-data-[state=open]/mobile-group:rotate-180"
+                            aria-hidden="true"
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-1 pt-1">
+                        {navItem.items?.map(renderMobileSubNavigationItem)}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )
+                })}
+              </div>
+            </nav>
+            <SheetFooter className="border-t p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">화면 설정</span>
+                <div className="flex items-center gap-1">
+                  <ThemeToggle />
+                  <ThemeColorSelector />
+                </div>
+              </div>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+
+        <PortalNavLink href="/" className="flex min-w-0 items-center gap-3">
           <span className="flex size-8 shrink-0 items-center justify-center">
             {shouldUsePortalLogo ? (
               <GaNEtchLogo className="react-logo-circles--navbar" compact decorative />
@@ -248,62 +375,65 @@ export function PortalNavbar({ navigationItems }) {
             ) : null}
             {!shouldUsePortalLogo && BrandIcon ? <BrandIcon className="size-4" aria-hidden="true" /> : null}
           </span>
-          <span className="hidden text-xl font-semibold sm:block">{brand.name}</span>
+          <span className="max-w-32 truncate text-base font-semibold sm:max-w-none md:text-xl">
+            {brand.name}
+          </span>
         </PortalNavLink>
       </div>
 
-      <NavigationMenu
-        viewport={false}
-        className="hidden flex-1 justify-center lg:flex"
+      <nav
+        className="hidden min-w-0 flex-1 justify-center md:flex"
+        aria-label="Portal navigation"
       >
-        <NavigationMenuList className="justify-center gap-1">
+        <div className="flex items-center justify-center gap-1">
           {visibleNavigationItems.map((navItem) => {
             const Icon = navItem.icon
             if (navItem.href) {
               return (
-                <NavigationMenuItem key={navItem.title}>
-                  <NavigationMenuLink
-                    asChild
-                    className={cn(
-                      navigationMenuTriggerStyle(),
-                      NAV_MENU_LINK_CLASS_NAME,
-                      navItemVisibilityClassName,
-                    )}
-                  >
-                    <PortalNavLink href={navItem.href}>
-                      {renderIcon(Icon)}
-                      {navItem.title}
-                    </PortalNavLink>
-                  </NavigationMenuLink>
-                </NavigationMenuItem>
+                <Button
+                  key={navItem.title}
+                  asChild
+                  variant="ghost"
+                  className={navItemVisibilityClassName}
+                >
+                  <PortalNavLink href={navItem.href}>
+                    {renderIcon(Icon)}
+                    {navItem.title}
+                  </PortalNavLink>
+                </Button>
               )
             }
 
             return (
-              <NavigationMenuItem key={navItem.title}>
-                <NavigationMenuTrigger
-                  className={cn(NAV_MENU_TRIGGER_CLASS_NAME, navItemVisibilityClassName)}
-                >
-                  {renderIcon(Icon)}
-                  {navItem.title}
-                </NavigationMenuTrigger>
-                <NavigationMenuContent className={NAV_MENU_CONTENT_CLASS_NAME}>
-                  <ul className="grid w-max gap-1 p-2">
+              <DropdownMenu key={navItem.title} modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className={cn(
+                      NAV_MENU_TRIGGER_CLASS_NAME,
+                      navItemVisibilityClassName,
+                    )}
+                  >
+                    {renderIcon(Icon)}
+                    {navItem.title}
+                    <ChevronDownIcon className="size-3" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-38">
+                  <DropdownMenuGroup>
                     {navItem.items?.map(renderSubNavigationItem)}
-                  </ul>
-                </NavigationMenuContent>
-              </NavigationMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )
           })}
-        </NavigationMenuList>
-      </NavigationMenu>
+        </div>
+      </nav>
 
-      <div className="flex flex-1 items-center justify-end gap-2 md:gap-4">
-        <Button variant="ghost" size="icon" className="flex md:hidden">
-          <SearchIcon />
-        </Button>
-        <ThemeToggle />
-        <ThemeColorSelector />
+      <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-2 md:flex-none md:gap-4 lg:flex-1">
+        <ThemeToggle className="hidden md:inline-flex" />
+        <ThemeColorSelector className="hidden md:inline-flex" />
         <PortalProfileDropdown
           trigger={
             <Button variant="ghost" className="h-full p-0">
