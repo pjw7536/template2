@@ -12,16 +12,225 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from ..models import Affiliation, UserCurrentAffiliation
+from ..models import AccessAuditLog, Affiliation, UserCurrentAffiliation
 from .. import selectors
 from .access import _current_access_list
+from .access_control import create_access_audit_log
 from .affiliation_requests import request_affiliation_change
 from .utils import _normalize_user_sdwt_prod, _same_user_sdwt_prod
+
+AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN = "django_admin"
+AFFILIATION_AUDIT_SOURCE_SYSTEM_SYNC = "system_sync"
+AFFILIATION_AUDIT_SOURCE_DEV_SEED = "dev_seed"
+
+
+def _serialize_affiliation_state(
+    option: Affiliation,
+    *,
+    source: str | None = None,
+) -> dict[str, object]:
+    """소속 lifecycle 감사에 사용할 고정 snapshot을 반환합니다."""
+
+    snapshot: dict[str, object] = {
+        "id": option.id,
+        "department": option.department,
+        "line": option.line,
+        "userSdwtProd": option.user_sdwt_prod,
+        "isActive": option.is_active,
+    }
+    if source:
+        snapshot["source"] = source
+    return snapshot
+
+
+def create_affiliation(
+    *,
+    actor: Any,
+    affiliation: Affiliation,
+    reason: str,
+    source: str = AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN,
+) -> Affiliation:
+    """superuser가 새 활성 소속을 감사 로그와 함께 생성합니다."""
+
+    if not getattr(actor, "is_superuser", False):
+        raise PermissionDenied("소속은 superuser만 생성할 수 있습니다.")
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        raise ValidationError("소속 생성 사유를 입력하세요.")
+    normalized_source = (
+        (source or "").strip() or AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN
+    )
+    if affiliation.pk is not None:
+        raise ValidationError("이미 저장된 소속은 생성 서비스로 저장할 수 없습니다.")
+
+    affiliation.department = (affiliation.department or "").strip()
+    affiliation.line = (affiliation.line or "").strip()
+    affiliation.user_sdwt_prod = (affiliation.user_sdwt_prod or "").strip()
+    if not all(
+        (
+            affiliation.department,
+            affiliation.line,
+            affiliation.user_sdwt_prod,
+        )
+    ):
+        raise ValidationError("department/line/user_sdwt_prod is required")
+    affiliation.is_active = True
+
+    with transaction.atomic():
+        try:
+            with transaction.atomic():
+                affiliation.save()
+        except IntegrityError as error:
+            raise ValidationError("동일한 소속 식별자가 이미 존재합니다.") from error
+        create_access_audit_log(
+            scope=None,
+            actor=actor,
+            target_user=None,
+            policy_rule=None,
+            affiliation=affiliation,
+            action=AccessAuditLog.Actions.AFFILIATION_CREATE,
+            before={},
+            after=_serialize_affiliation_state(
+                affiliation,
+                source=normalized_source,
+            ),
+            reason=normalized_reason,
+        )
+    return affiliation
+
+
+def set_affiliations_active(
+    *,
+    actor: Any,
+    affiliation_ids: Iterable[int],
+    is_active: bool,
+    reason: str,
+) -> tuple[dict[str, object], int]:
+    """여러 소속의 전역 활성 상태를 한 transaction에서 변경합니다."""
+
+    if not getattr(actor, "is_superuser", False):
+        return {"error": "forbidden"}, 403
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        return {"error": "reason_required"}, 400
+    requested_ids = list(affiliation_ids)
+    if not requested_ids or any(
+        type(affiliation_id) is not int or affiliation_id <= 0
+        for affiliation_id in requested_ids
+    ):
+        return {"error": "affiliation_ids_required"}, 400
+    normalized_ids = sorted(set(requested_ids))
+
+    with transaction.atomic():
+        options = selectors.list_affiliations_by_ids_for_update(
+            affiliation_ids=normalized_ids,
+        )
+        found_ids = {option.id for option in options}
+        if found_ids != set(normalized_ids):
+            return {
+                "error": "affiliation_not_found",
+                "affiliationIds": sorted(set(normalized_ids) - found_ids),
+            }, 404
+
+        results: list[dict[str, object]] = []
+        updated_count = 0
+        for option in options:
+            if option.is_active == bool(is_active):
+                results.append(
+                    {
+                        "status": "unchanged",
+                        "affiliation": _serialize_affiliation_state(option),
+                    }
+                )
+                continue
+
+            before = _serialize_affiliation_state(option)
+            option.is_active = bool(is_active)
+            option.save(update_fields=["is_active"])
+            create_access_audit_log(
+                scope=None,
+                actor=actor,
+                target_user=None,
+                policy_rule=None,
+                affiliation=option,
+                action=(
+                    AccessAuditLog.Actions.AFFILIATION_ACTIVATE
+                    if option.is_active
+                    else AccessAuditLog.Actions.AFFILIATION_DEACTIVATE
+                ),
+                before=before,
+                after=_serialize_affiliation_state(option),
+                reason=normalized_reason,
+            )
+            updated_count += 1
+            results.append(
+                {
+                    "status": "updated",
+                    "affiliation": _serialize_affiliation_state(option),
+                }
+            )
+
+    return {
+        "status": "updated" if updated_count else "unchanged",
+        "updated": updated_count,
+        "unchanged": len(results) - updated_count,
+        "results": results,
+    }, 200
+
+
+def set_affiliation_active(
+    *,
+    actor: Any,
+    affiliation_id: int,
+    is_active: bool,
+    reason: str,
+) -> tuple[dict[str, object], int]:
+    """superuser가 소속의 전역 활성 상태를 감사 로그와 함께 변경합니다.
+
+    입력:
+    - actor: 변경 작업을 수행하는 Django 사용자
+    - affiliation_id: 변경할 Affiliation 기본 키
+    - is_active: 적용할 활성 상태
+    - reason: 운영 변경 사유
+
+    반환:
+    - tuple[dict[str, object], int]: 결과 payload와 HTTP 호환 상태 코드
+
+    부작용:
+    - Affiliation.is_active 변경
+    - AccessAuditLog 생성
+
+    오류:
+    - 403: superuser가 아님
+    - 404: 소속이 없음
+    - 400: 변경 사유가 없음
+    """
+
+    if not getattr(actor, "is_superuser", False):
+        return {"error": "forbidden"}, 403
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        return {"error": "reason_required"}, 400
+
+    payload, status_code = set_affiliations_active(
+        actor=actor,
+        affiliation_ids=[affiliation_id],
+        is_active=is_active,
+        reason=normalized_reason,
+    )
+    if status_code != 200:
+        return payload, status_code
+    result = payload["results"][0]
+    return {
+        "status": result["status"],
+        "affiliation": result["affiliation"],
+    }, 200
 
 
 def _update_affiliation_option_values(
@@ -30,9 +239,10 @@ def _update_affiliation_option_values(
     department: str,
     line: str,
     user_sdwt_prod: str,
-) -> Affiliation:
+) -> tuple[Affiliation, dict[str, object] | None]:
     """소속 옵션의 표시 값을 필요한 경우에만 갱신합니다."""
 
+    before = _serialize_affiliation_state(option)
     changed_fields: list[str] = []
     if option.department != department:
         option.department = department
@@ -45,7 +255,8 @@ def _update_affiliation_option_values(
         changed_fields.append("user_sdwt_prod")
     if changed_fields:
         option.save(update_fields=changed_fields)
-    return option
+        return option, before
+    return option, None
 
 
 def get_affiliation_overview(*, user: Any, timezone_name: str) -> dict[str, object]:
@@ -196,6 +407,8 @@ def ensure_affiliation_option(
     department: str,
     line: str,
     user_sdwt_prod: str,
+    audit_source: str = AFFILIATION_AUDIT_SOURCE_SYSTEM_SYNC,
+    audit_reason: str = "소속 옵션 자동 동기화",
 ) -> Affiliation:
     """소속 옵션을 생성하거나 기존 행을 갱신합니다.
 
@@ -207,7 +420,8 @@ def ensure_affiliation_option(
     - Affiliation: 소속 옵션 객체
 
     부작용:
-    - Affiliation 생성 또는 갱신
+    - Affiliation 생성 또는 실제 값 변경
+    - 생성·변경 시 system 감사 로그 생성
 
     오류:
     - ValueError: 필수 입력 누락
@@ -221,16 +435,22 @@ def ensure_affiliation_option(
     normalized_user_sdwt = (user_sdwt_prod or "").strip()
     if not normalized_department or not normalized_line or not normalized_user_sdwt:
         raise ValueError("department/line/user_sdwt_prod is required")
+    normalized_source = (
+        (audit_source or "").strip() or AFFILIATION_AUDIT_SOURCE_SYSTEM_SYNC
+    )
+    normalized_reason = (audit_reason or "").strip() or "소속 옵션 자동 동기화"
 
     # -----------------------------------------------------------------------------
     # 2) 옵션 조회 및 생성/갱신 처리
     # -----------------------------------------------------------------------------
     with transaction.atomic():
+        created = False
+        before: dict[str, object] | None = None
         option = selectors.get_affiliation_option_by_user_sdwt_prod(
             user_sdwt_prod=normalized_user_sdwt,
         )
         if option is not None:
-            option = _update_affiliation_option_values(
+            option, before = _update_affiliation_option_values(
                 option=option,
                 department=normalized_department,
                 line=normalized_line,
@@ -244,19 +464,53 @@ def ensure_affiliation_option(
                         line=normalized_line,
                         user_sdwt_prod=normalized_user_sdwt,
                     )
+                    created = True
             except IntegrityError:
                 option = selectors.get_affiliation_option_by_user_sdwt_prod(
                     user_sdwt_prod=normalized_user_sdwt,
                 )
                 if option is None:
                     raise
-                option = _update_affiliation_option_values(
+                option, before = _update_affiliation_option_values(
                     option=option,
                     department=normalized_department,
                     line=normalized_line,
                     user_sdwt_prod=normalized_user_sdwt,
                 )
 
+        if created:
+            create_access_audit_log(
+                scope=None,
+                actor=None,
+                target_user=None,
+                policy_rule=None,
+                affiliation=option,
+                action=AccessAuditLog.Actions.AFFILIATION_CREATE,
+                before={},
+                after=_serialize_affiliation_state(
+                    option,
+                    source=normalized_source,
+                ),
+                reason=normalized_reason,
+            )
+        elif before is not None:
+            create_access_audit_log(
+                scope=None,
+                actor=None,
+                target_user=None,
+                policy_rule=None,
+                affiliation=option,
+                action=AccessAuditLog.Actions.AFFILIATION_UPDATE,
+                before={
+                    **before,
+                    "source": normalized_source,
+                },
+                after=_serialize_affiliation_state(
+                    option,
+                    source=normalized_source,
+                ),
+                reason=normalized_reason,
+            )
         return option
 
 

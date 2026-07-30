@@ -37,7 +37,6 @@ from .selectors import (
     get_sent_emails,
     list_mailbox_members,
     resolve_sender_id_from_user,
-    user_can_bulk_delete_emails,
 )
 
 from .serializers import (
@@ -584,8 +583,15 @@ class EmailDetailView(APIView):
         if access_error:
             return access_error
         try:
-            delete_single_email(email_id)
+            delete_single_email(
+                email_id,
+                user=request.user,
+                is_privileged=is_privileged,
+                accessible_user_sdwt_prods=accessible,
+            )
             return JsonResponse({"status": "ok"})
+        except PermissionError:
+            return _error_response("forbidden", status=403)
         except NotFound as exc:
             return JsonResponse({"error": str(exc)}, status=404)
         except Exception:  # pragma: no cover  테스트 제외
@@ -737,8 +743,6 @@ class EmailBulkDeleteView(APIView):
         is_privileged, accessible, auth_error = _resolve_email_access_control(request)
         if auth_error is not None:
             return auth_error
-        if not is_privileged and not accessible:
-            return _error_response("forbidden", status=403)
         payload, payload_error = _parse_required_json_body(request)
         if payload_error is not None:
             return payload_error
@@ -746,17 +750,16 @@ class EmailBulkDeleteView(APIView):
             normalized_ids = parse_email_id_list(payload)
         except EmailRequestValidationError as exc:
             return _validation_error_response(exc)
-        if not is_privileged:
-            sender_id = resolve_sender_id_from_user(request.user)
-            if not user_can_bulk_delete_emails(
-                email_ids=normalized_ids,
-                accessible_user_sdwt_prods=accessible,
-                sender_id=sender_id,
-            ):
-                return _error_response("forbidden", status=403)
         try:
-            deleted_count = bulk_delete_emails(normalized_ids)
+            deleted_count = bulk_delete_emails(
+                normalized_ids,
+                user=request.user,
+                is_privileged=is_privileged,
+                accessible_user_sdwt_prods=accessible,
+            )
             return JsonResponse({"deleted": deleted_count})
+        except PermissionError:
+            return _error_response("forbidden", status=403)
         except NotFound as exc:
             return JsonResponse({"error": str(exc)}, status=404)
         except Exception:  # pragma: no cover  테스트 제외
@@ -791,7 +794,7 @@ class EmailMoveView(APIView):
         snake/camel 호환:
             email_ids <-> emailIds, to_user_sdwt_prod <-> toUserSdwtProd 지원.
         """
-        is_privileged, _accessible, auth_error = _resolve_email_access_control(request)
+        is_privileged, accessible, auth_error = _resolve_email_access_control(request)
         if auth_error is not None:
             return auth_error
         user = request.user
@@ -811,6 +814,7 @@ class EmailMoveView(APIView):
                 email_ids=normalized_ids,
                 to_user_sdwt_prod=target_user_sdwt_prod,
                 is_privileged=is_privileged,
+                accessible_user_sdwt_prods=accessible,
             )
             return JsonResponse(result)
         except ValueError as exc:

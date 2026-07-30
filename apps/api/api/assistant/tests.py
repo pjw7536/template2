@@ -33,12 +33,13 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    patcher = patch(
+    for target in (
         "api.account.services.get_access_payload",
-        return_value={"allowed": True},
-    )
-    patcher.start()
-    test_case.addCleanup(patcher.stop)
+        "api.account.services.data_scope.get_access_payload",
+    ):
+        patcher = patch(target, return_value={"allowed": True})
+        patcher.start()
+        test_case.addCleanup(patcher.stop)
 
 
 class AssistantRagIndexViewsTests(TestCase):
@@ -66,8 +67,27 @@ class AssistantRagIndexViewsTests(TestCase):
             target_user=self.user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        authority = User.objects.create_superuser(
+            sabun="S90012",
+            password="test-password",
+        )
+        affiliation = account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="group-b",
+        )
+        payload, data_scope_status = account_services.update_user_scope_affiliation_data(
+            actor=authority,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode="default",
+            affiliation_ids=[affiliation.id],
+            reason="Assistant 테스트 추가 범위",
+        )
+        self.assertEqual(data_scope_status, 200, payload)
 
     def test_rag_index_list_returns_accessible_user_sdwt_prods(self) -> None:
         """접근 가능한 user_sdwt_prod가 응답에 포함되는지 확인합니다."""
@@ -161,6 +181,7 @@ class AssistantRagIndexViewsTests(TestCase):
             target_user=other_user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
 
@@ -474,6 +495,7 @@ class AssistantChatViewTests(TestCase):
 
     def setUp(self) -> None:
         """테스트용 사용자/요청 팩토리를 준비합니다."""
+        _allow_test_scope_access(self)
         self.factory = RequestFactory()
         User = get_user_model()
         self.user = User.objects.create_user(

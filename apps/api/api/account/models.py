@@ -41,6 +41,10 @@ SYSTEM_APP_SCOPE_KEYS = (
     "voc",
 )
 SYSTEM_ACCESS_SCOPE_KEYS = (ACCESS_SCOPE_PORTAL, *SYSTEM_APP_SCOPE_KEYS)
+AFFILIATION_DATA_SCOPE_KEYS = (
+    "assistant",
+    "emails",
+)
 
 
 def _normalize_user_sdwt_prod(value: Any) -> str:
@@ -218,20 +222,31 @@ class Affiliation(models.Model):
     department = models.CharField(max_length=128)
     line = models.CharField(max_length=64)
     user_sdwt_prod = models.CharField(max_length=64)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "account_affiliation"
         constraints = [
             models.UniqueConstraint(
-                fields=["user_sdwt_prod"],
-                name="uniq_acc_aff_usr_sdw_prd",
+                Lower(Trim("user_sdwt_prod")),
+                name="uniq_acc_aff_usr_sdw_ci",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(user_sdwt_prod="")
+                    & models.Q(
+                        user_sdwt_prod=Trim(models.F("user_sdwt_prod")),
+                    )
+                ),
+                name="chk_acc_aff_usr_sdw_trim",
             ),
         ]
         indexes = [
             models.Index(fields=["department"], name="idx_acc_aff_dep"),
             models.Index(fields=["line"], name="idx_acc_aff_ln"),
             models.Index(fields=["user_sdwt_prod"], name="idx_acc_aff_usr_sdw_prd"),
+            models.Index(fields=["is_active"], name="idx_acc_aff_act"),
             models.Index(
                 fields=["line", "user_sdwt_prod"],
                 name="idx_acc_aff_ln_usr_sdw_prd",
@@ -318,6 +333,10 @@ class UserSdwtProdAccess(models.Model):
                 fields=["user", "affiliation"],
                 name="uniq_acc_usr_sdw_prd_acs_aff",
             ),
+            models.CheckConstraint(
+                condition=models.Q(role__in=("viewer", "member", "manager")),
+                name="chk_acc_usr_sdw_acs_role",
+            ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_acc_usr_sdw_prd_acs_usr"),
@@ -366,6 +385,10 @@ class AccessScope(models.Model):
         APP = "app", "App"
         FEATURE = "feature", "Feature"
 
+    class DataScopeTypes(models.TextChoices):
+        NONE = "none", "None"
+        AFFILIATION = "affiliation", "Affiliation"
+
     key = models.CharField(
         max_length=64,
         unique=True,
@@ -378,6 +401,12 @@ class AccessScope(models.Model):
     )
     name = models.CharField(max_length=128)
     scope_type = models.CharField(max_length=16, choices=ScopeTypes.choices, default=ScopeTypes.APP)
+    data_scope_type = models.CharField(
+        max_length=16,
+        choices=DataScopeTypes.choices,
+        default=DataScopeTypes.NONE,
+    )
+    include_current_affiliation = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     requestable = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -403,6 +432,24 @@ class AccessScope(models.Model):
             models.CheckConstraint(
                 condition=models.Q(key__regex=ACCESS_SCOPE_KEY_PATTERN),
                 name="chk_acc_scp_key_fmt",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(data_scope_type__in=("none", "affiliation")),
+                name="chk_acc_scp_dat_typ_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(data_scope_type="affiliation")
+                    | models.Q(include_current_affiliation=False)
+                ),
+                name="chk_acc_scp_cur_aff_scope",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(scope_type="portal")
+                    | models.Q(data_scope_type="none", include_current_affiliation=False)
+                ),
+                name="chk_acc_scp_portal_no_data",
             ),
         ]
         indexes = [
@@ -468,6 +515,10 @@ class UserAccess(models.Model):
         ALLOWED = "allowed", "Allowed"
         DENIED = "denied", "Denied"
 
+    class DataScopeModes(models.TextChoices):
+        DEFAULT = "default", "Default"
+        ALL = "all", "All"
+
     scope = models.ForeignKey(AccessScope, on_delete=models.CASCADE, related_name="user_accesses")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -477,6 +528,11 @@ class UserAccess(models.Model):
     department = models.CharField(max_length=128, null=True, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     role = models.CharField(max_length=16, choices=AccessRole.choices, default=AccessRole.USER)
+    data_scope_mode = models.CharField(
+        max_length=16,
+        choices=DataScopeModes.choices,
+        default=DataScopeModes.DEFAULT,
+    )
     reason = models.TextField(null=True, blank=True)
     requested_at = models.DateTimeField(auto_now_add=True)
     decided_by = models.ForeignKey(
@@ -509,6 +565,17 @@ class UserAccess(models.Model):
                 condition=models.Q(status="allowed") | models.Q(role="user"),
                 name="chk_acc_usr_acc_role_state",
             ),
+            models.CheckConstraint(
+                condition=models.Q(data_scope_mode__in=("default", "all")),
+                name="chk_acc_usr_acc_dat_mode",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status="allowed")
+                    | models.Q(data_scope_mode="default")
+                ),
+                name="chk_acc_usr_acc_dat_state",
+            ),
         ]
         indexes = [
             models.Index(fields=["scope"], name="idx_acc_usr_acc_scp"),
@@ -519,6 +586,76 @@ class UserAccess(models.Model):
     def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
         """사용자 접근 상태 표시용 문자열을 반환합니다."""
         return f"{self.scope_id}:{self.user_id} ({self.status})"
+
+
+class UserScopeAffiliationGrant(models.Model):
+    """사용자에게 앱 scope별 소속 데이터 범위를 명시적으로 부여합니다."""
+
+    class Sources(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        POLICY = "policy", "Policy"
+        EXTERNAL = "external", "External"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="scope_affiliation_grants",
+    )
+    scope = models.ForeignKey(
+        AccessScope,
+        on_delete=models.PROTECT,
+        related_name="affiliation_grants",
+    )
+    affiliation = models.ForeignKey(
+        Affiliation,
+        on_delete=models.PROTECT,
+        related_name="scope_user_grants",
+    )
+    source = models.CharField(
+        max_length=16,
+        choices=Sources.choices,
+        default=Sources.MANUAL,
+    )
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="scope_affiliation_grants_made",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "account_user_scope_aff_grant"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "scope", "affiliation"],
+                name="uniq_acc_usr_scp_aff_grt",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=("manual", "policy", "external")),
+                name="chk_acc_usr_scp_aff_src",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "scope", "is_active"],
+                name="idx_acc_usr_scp_aff_act",
+            ),
+            models.Index(
+                fields=["scope", "affiliation", "is_active"],
+                name="idx_acc_scp_aff_grt_act",
+            ),
+            models.Index(fields=["expires_at"], name="idx_acc_scp_aff_exp"),
+        ]
+
+    def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
+        """앱별 소속 데이터 grant 표시 문자열을 반환합니다."""
+        return f"{self.user_id}:{self.scope_id}:{self.affiliation_id}"
 
 
 class AccessAuditLog(models.Model):
@@ -538,6 +675,16 @@ class AccessAuditLog(models.Model):
         SCOPE_CREATE = "scope_create", "Scope create"
         SCOPE_UPDATE = "scope_update", "Scope update"
         SCOPE_DELETE = "scope_delete", "Scope delete"
+        DATA_SCOPE_GRANT = "data_scope_grant", "Data scope grant"
+        DATA_SCOPE_REVOKE = "data_scope_revoke", "Data scope revoke"
+        DATA_SCOPE_CHANGE = "data_scope_change", "Data scope change"
+        AFFILIATION_ROLE_GRANT = "affiliation_role_grant", "Affiliation role grant"
+        AFFILIATION_ROLE_CHANGE = "affiliation_role_change", "Affiliation role change"
+        AFFILIATION_ROLE_REVOKE = "affiliation_role_revoke", "Affiliation role revoke"
+        AFFILIATION_CREATE = "affiliation_create", "Affiliation create"
+        AFFILIATION_UPDATE = "affiliation_update", "Affiliation update"
+        AFFILIATION_ACTIVATE = "affiliation_activate", "Affiliation activate"
+        AFFILIATION_DEACTIVATE = "affiliation_deactivate", "Affiliation deactivate"
 
     scope = models.ForeignKey(
         AccessScope,
@@ -560,6 +707,13 @@ class AccessAuditLog(models.Model):
         on_delete=models.PROTECT,
         related_name="access_audit_targets",
     )
+    affiliation = models.ForeignKey(
+        Affiliation,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="access_audit_logs",
+    )
     policy_rule = models.ForeignKey(
         AccessPolicyRule,
         null=True,
@@ -577,6 +731,7 @@ class AccessAuditLog(models.Model):
         db_table = "account_access_audit_log"
         indexes = [
             models.Index(fields=["scope", "created_at"], name="idx_acc_aud_scp_ct"),
+            models.Index(fields=["affiliation", "created_at"], name="idx_acc_aud_aff_ct"),
             models.Index(fields=["target_user", "created_at"], name="idx_acc_aud_tgt_ct"),
             models.Index(fields=["actor", "created_at"], name="idx_acc_aud_act_ct"),
             models.Index(fields=["action"], name="idx_acc_aud_action"),
@@ -630,6 +785,46 @@ class UserSdwtProdChange(models.Model):
     class Meta:
         db_table = "account_user_sdwt_prod_change"
         ordering = ["-effective_from", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(status="PENDING"),
+                name="uniq_acc_usr_sdw_chg_pend",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status="APPROVED",
+                        approved=True,
+                        applied=True,
+                        approved_at__isnull=False,
+                        rejection_reason__isnull=True,
+                    )
+                    | models.Q(
+                        status="PENDING",
+                        approved=False,
+                        applied=False,
+                        approved_by__isnull=True,
+                        approved_at__isnull=True,
+                        rejection_reason__isnull=True,
+                    )
+                    | models.Q(
+                        status="REJECTED",
+                        approved=False,
+                        applied=False,
+                        approved_at__isnull=False,
+                    )
+                    | models.Q(
+                        status="SUPERSEDED",
+                        approved=False,
+                        applied=False,
+                        approved_by__isnull=True,
+                        approved_at__isnull=True,
+                    )
+                ),
+                name="chk_acc_usr_sdw_chg_state",
+            ),
+        ]
         indexes = [
             models.Index(
                 fields=["user", "effective_from"],
@@ -673,10 +868,12 @@ class ExternalAffiliationSnapshot(models.Model):
 
 
 __all__ = [
+    "AFFILIATION_DATA_SCOPE_KEYS",
     "Affiliation",
     "ExternalAffiliationSnapshot",
     "User",
     "UserCurrentAffiliation",
+    "UserScopeAffiliationGrant",
     "UserSdwtProdAccess",
     "UserSdwtProdChange",
 ]

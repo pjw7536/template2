@@ -71,8 +71,50 @@ def _user_can_manage_user_sdwt_prod(*, user: Any, user_sdwt_prod: str) -> bool:
     return selectors.user_has_manage_permission(user=user, user_sdwt_prod=user_sdwt_prod)
 
 
+def _resolve_user_sdwt_prod_role(
+    *,
+    user: Any,
+    user_sdwt_prod: str,
+) -> str | None:
+    """사용자의 대상 소속 실효 역할을 반환합니다.
+
+    현재 소속은 명시적 접근 권한 행이 없어도 최소 member로 인정합니다.
+    다른 소속은 명시적으로 부여된 viewer/member/manager 역할만 반환합니다.
+    """
+
+    normalized_target = _normalize_user_sdwt_prod(user_sdwt_prod)
+    if not normalized_target:
+        return None
+    affiliation = selectors.get_affiliation_option_by_user_sdwt_prod(
+        user_sdwt_prod=normalized_target,
+    )
+    if affiliation is None:
+        return None
+    normalized_target = affiliation.user_sdwt_prod
+    if _is_privileged_user(user):
+        return UserSdwtProdAccess.Roles.MANAGER
+
+    access = selectors.get_access_row_for_user_and_prod(
+        user=user,
+        user_sdwt_prod=normalized_target,
+    )
+    current_user_sdwt_prod = selectors.get_current_user_sdwt_prod(user=user)
+    if _same_user_sdwt_prod(current_user_sdwt_prod, normalized_target):
+        if access and access.role == UserSdwtProdAccess.Roles.MANAGER:
+            return UserSdwtProdAccess.Roles.MANAGER
+        return UserSdwtProdAccess.Roles.MEMBER
+
+    if access and access.role in {
+        UserSdwtProdAccess.Roles.VIEWER,
+        UserSdwtProdAccess.Roles.MEMBER,
+        UserSdwtProdAccess.Roles.MANAGER,
+    }:
+        return access.role
+    return None
+
+
 def _user_can_approve_affiliation_change(*, user: Any, target_user_sdwt_prod: str) -> bool:
-    """사용자가 소속 변경을 승인할 수 있는지 반환합니다.
+    """사용자가 manager 역할로 소속 변경을 승인할 수 있는지 반환합니다.
 
     입력:
     - user: Django 사용자 객체
@@ -88,24 +130,8 @@ def _user_can_approve_affiliation_change(*, user: Any, target_user_sdwt_prod: st
     - 없음
     """
 
-    # -----------------------------------------------------------------------------
-    # 1) 슈퍼유저/스태프는 항상 승인 가능
-    # -----------------------------------------------------------------------------
-    if _is_privileged_user(user):
-        return True
-
-    # -----------------------------------------------------------------------------
-    # 2) 역할 기반 승인 권한 확인
-    # -----------------------------------------------------------------------------
-    normalized_target = _normalize_user_sdwt_prod(target_user_sdwt_prod)
-    access = selectors.get_access_row_for_user_and_prod(
+    role = _resolve_user_sdwt_prod_role(
         user=user,
-        user_sdwt_prod=normalized_target,
+        user_sdwt_prod=target_user_sdwt_prod,
     )
-    if not access:
-        return False
-
-    return access.role in {
-        UserSdwtProdAccess.Roles.MEMBER,
-        UserSdwtProdAccess.Roles.MANAGER,
-    }
+    return role == UserSdwtProdAccess.Roles.MANAGER

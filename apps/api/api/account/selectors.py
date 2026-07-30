@@ -20,6 +20,7 @@ from django.db.models import (
     BooleanField,
     Case,
     CharField,
+    Count,
     OuterRef,
     Q,
     QuerySet,
@@ -43,6 +44,7 @@ from .models import (
     ExternalAffiliationSnapshot,
     UserAccess,
     UserCurrentAffiliation,
+    UserScopeAffiliationGrant,
     UserSdwtProdAccess,
     UserSdwtProdChange,
     _build_user_sdwt_display_map,
@@ -108,7 +110,17 @@ def _resolved_access_department_expression():
     return Lower(
         Coalesce(
             NullIf(Trim("department"), Value("")),
-            Trim("current_affiliation__affiliation__department"),
+            NullIf(
+                Case(
+                    When(
+                        current_affiliation__affiliation__is_active=True,
+                        then=Trim("current_affiliation__affiliation__department"),
+                    ),
+                    default=Value(""),
+                    output_field=CharField(),
+                ),
+                Value(""),
+            ),
             Value(""),
             output_field=CharField(),
         ),
@@ -149,6 +161,7 @@ def _list_active_user_contact_values_by_user_sdwt_prod(
     rows = (
         User.objects.filter(
             current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt_prod,
+            current_affiliation__affiliation__is_active=True,
             is_active=True,
         )
         .exclude(**{f"{contact_field}__isnull": True})
@@ -189,7 +202,10 @@ def get_current_affiliation_record(*, user: Any) -> UserCurrentAffiliation | Non
         return None
 
     return (
-        UserCurrentAffiliation.objects.filter(user=user)
+        UserCurrentAffiliation.objects.filter(
+            user=user,
+            affiliation__is_active=True,
+        )
         .select_related("affiliation")
         .order_by("id")
         .first()
@@ -246,7 +262,10 @@ def get_current_affiliation_values_by_user_ids(*, user_ids: Iterable[int]) -> di
         return {}
 
     rows = (
-        UserCurrentAffiliation.objects.filter(user_id__in=normalized_ids)
+        UserCurrentAffiliation.objects.filter(
+            user_id__in=normalized_ids,
+            affiliation__is_active=True,
+        )
         .select_related("affiliation")
         .order_by("user_id")
     )
@@ -299,6 +318,7 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
         values = set(list_distinct_user_sdwt_prod_values())
         values.update(
             UserCurrentAffiliation.objects.select_related("affiliation")
+            .filter(affiliation__is_active=True)
             .exclude(affiliation__user_sdwt_prod__isnull=True)
             .exclude(affiliation__user_sdwt_prod="")
             .values_list("affiliation__user_sdwt_prod", flat=True)
@@ -310,7 +330,10 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     # 3) 접근 권한 및 본인 소속 포함
     # -----------------------------------------------------------------------------
     values = set(
-        UserSdwtProdAccess.objects.filter(user=user).values_list(
+        UserSdwtProdAccess.objects.filter(
+            user=user,
+            affiliation__is_active=True,
+        ).values_list(
             "affiliation__user_sdwt_prod",
             flat=True,
         )
@@ -342,12 +365,14 @@ def list_distinct_user_sdwt_prod_values() -> set[str]:
     """
 
     affiliation_values = set(
-        Affiliation.objects.exclude(user_sdwt_prod="")
+        Affiliation.objects.filter(is_active=True)
+        .exclude(user_sdwt_prod="")
         .values_list("user_sdwt_prod", flat=True)
         .distinct()
     )
     access_values = set(
-        UserSdwtProdAccess.objects.exclude(affiliation__user_sdwt_prod="")
+        UserSdwtProdAccess.objects.filter(affiliation__is_active=True)
+        .exclude(affiliation__user_sdwt_prod="")
         .values_list("affiliation__user_sdwt_prod", flat=True)
         .distinct()
     )
@@ -356,7 +381,7 @@ def list_distinct_user_sdwt_prod_values() -> set[str]:
     return _collapse_user_sdwt_prod_values(combined)
 
 
-def list_affiliation_options() -> list[dict[str, str]]:
+def list_affiliation_options() -> list[dict[str, object]]:
     """소속 선택 옵션(부서/라인/user_sdwt_prod) 전체를 조회합니다.
 
     입력:
@@ -373,9 +398,9 @@ def list_affiliation_options() -> list[dict[str, str]]:
     """
 
     return list(
-        Affiliation.objects.all()
+        Affiliation.objects.filter(is_active=True)
         .order_by("department", "line", "user_sdwt_prod")
-        .values("department", "line", "user_sdwt_prod")
+        .values("id", "department", "line", "user_sdwt_prod")
     )
 
 
@@ -399,7 +424,10 @@ def affiliation_exists_for_user_sdwt_prod(*, user_sdwt_prod: str) -> bool:
     if not normalized:
         return False
 
-    return Affiliation.objects.filter(user_sdwt_prod__iexact=normalized).exists()
+    return Affiliation.objects.filter(
+        is_active=True,
+        user_sdwt_prod__iexact=normalized,
+    ).exists()
 
 
 def list_active_user_emails_by_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:
@@ -536,7 +564,10 @@ def list_distinct_active_user_sdwt_prod_values(
     User = get_user_model()
     normalized_department = _normalize_text(department) or ""
     queryset = (
-        User.objects.filter(is_active=True)
+        User.objects.filter(
+            is_active=True,
+            current_affiliation__affiliation__is_active=True,
+        )
         .exclude(current_affiliation__affiliation__user_sdwt_prod__isnull=True)
         .exclude(current_affiliation__affiliation__user_sdwt_prod__exact="")
     )
@@ -570,7 +601,10 @@ def list_distinct_active_departments(*, include_external_snapshots: bool = False
 
     User = get_user_model()
     values = (
-        User.objects.filter(is_active=True)
+        User.objects.filter(
+            is_active=True,
+            current_affiliation__affiliation__is_active=True,
+        )
         .exclude(current_affiliation__affiliation__department__isnull=True)
         .exclude(current_affiliation__affiliation__department__exact="")
         .values_list("current_affiliation__affiliation__department", flat=True)
@@ -738,10 +772,12 @@ def list_active_user_pool(
     )
     if normalized_user_sdwt:
         queryset = queryset.filter(
+            current_affiliation__affiliation__is_active=True,
             current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt
         )
     if normalized_department:
         queryset = queryset.filter(
+            current_affiliation__affiliation__is_active=True,
             current_affiliation__affiliation__department__iexact=normalized_department
         )
     if normalized_contact_field in {"email", "knox_id"}:
@@ -782,6 +818,8 @@ def list_active_user_pool(
             "affiliation",
             None,
         )
+        if affiliation is not None and not affiliation.is_active:
+            affiliation = None
         display_name = (
             getattr(user, "username", None)
             or getattr(user, "username_en", None)
@@ -845,7 +883,10 @@ def list_user_sdwt_prod_access_rows(*, user: Any) -> list[UserSdwtProdAccess]:
     """
 
     return list(
-        UserSdwtProdAccess.objects.filter(user=user)
+        UserSdwtProdAccess.objects.filter(
+            user=user,
+            affiliation__is_active=True,
+        )
         .select_related("affiliation", "user", "granted_by")
         .order_by("affiliation__user_sdwt_prod", "id")
     )
@@ -965,6 +1006,139 @@ def get_user_access_for_scope_for_update(*, user: Any, scope: AccessScope) -> Us
     )
 
 
+def list_active_scope_affiliation_grants(
+    *,
+    user: Any,
+    scope: AccessScope,
+) -> list[UserScopeAffiliationGrant]:
+    """사용자와 앱 scope의 활성·미만료 소속 데이터 grant를 반환합니다."""
+
+    if not user or scope is None:
+        return []
+    now = timezone.now()
+    return list(
+        UserScopeAffiliationGrant.objects.filter(
+            user=user,
+            scope=scope,
+            is_active=True,
+            affiliation__is_active=True,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .select_related("scope", "affiliation", "granted_by")
+        .order_by("affiliation__user_sdwt_prod", "id")
+    )
+
+
+def list_scope_affiliation_grants_for_update(
+    *,
+    user: Any,
+    scope: AccessScope,
+) -> list[UserScopeAffiliationGrant]:
+    """트랜잭션 안에서 사용자와 앱 scope의 모든 소속 grant를 잠가 반환합니다."""
+
+    if not user or scope is None:
+        return []
+    return list(
+        UserScopeAffiliationGrant.objects.select_for_update(of=("self",))
+        .filter(user=user, scope=scope)
+        .select_related("scope", "affiliation", "granted_by")
+        .order_by("affiliation_id", "id")
+    )
+
+
+def list_active_affiliations_by_ids(*, affiliation_ids: Iterable[int]) -> list[Affiliation]:
+    """활성 소속을 요청 ID 순서와 무관하게 안정된 표시 순서로 반환합니다."""
+
+    normalized_ids = _normalize_positive_int_set(affiliation_ids)
+    if not normalized_ids:
+        return []
+    return list(
+        Affiliation.objects.filter(id__in=normalized_ids, is_active=True).order_by(
+            "department",
+            "line",
+            "user_sdwt_prod",
+            "id",
+        )
+    )
+
+
+def list_active_affiliations_by_ids_for_update(
+    *,
+    affiliation_ids: Iterable[int],
+) -> list[Affiliation]:
+    """트랜잭션 안에서 선택한 활성 소속 행을 잠가 안정된 순서로 반환합니다."""
+
+    normalized_ids = _normalize_positive_int_set(affiliation_ids)
+    if not normalized_ids:
+        return []
+    return list(
+        Affiliation.objects.select_for_update(of=("self",))
+        .filter(id__in=normalized_ids, is_active=True)
+        .order_by("id")
+    )
+
+
+def list_affiliations_by_ids_for_update(
+    *,
+    affiliation_ids: Iterable[int],
+) -> list[Affiliation]:
+    """활성 상태와 무관하게 선택 소속을 id 오름차순으로 잠가 반환합니다."""
+
+    normalized_ids = _normalize_positive_int_set(affiliation_ids)
+    if not normalized_ids:
+        return []
+    return list(
+        Affiliation.objects.select_for_update(of=("self",))
+        .filter(id__in=normalized_ids)
+        .order_by("id")
+    )
+
+
+def get_affiliation_by_id_for_update(*, affiliation_id: int) -> Affiliation | None:
+    """트랜잭션 안에서 활성 상태와 무관하게 소속 한 건을 잠가 반환합니다."""
+
+    if type(affiliation_id) is not int or affiliation_id <= 0:
+        return None
+    return (
+        Affiliation.objects.select_for_update(of=("self",))
+        .filter(id=affiliation_id)
+        .first()
+    )
+
+
+def list_active_affiliations_by_user_sdwt_prods_for_update(
+    *,
+    user_sdwt_prods: Iterable[str],
+) -> list[Affiliation]:
+    """여러 활성 소속을 정규 식별자로 조회해 id 오름차순으로 잠급니다."""
+
+    lookup_keys = list(_build_user_sdwt_display_map(user_sdwt_prods).keys())
+    if not lookup_keys:
+        return []
+    return list(
+        Affiliation.objects.select_for_update(of=("self",))
+        .annotate(user_sdwt_prod_lookup=Lower(Trim("user_sdwt_prod")))
+        .filter(
+            is_active=True,
+            user_sdwt_prod_lookup__in=lookup_keys,
+        )
+        .order_by("id")
+    )
+
+
+def list_active_affiliations() -> list[Affiliation]:
+    """전체 활성 소속을 안정된 표시 순서로 반환합니다."""
+
+    return list(
+        Affiliation.objects.filter(is_active=True).order_by(
+            "department",
+            "line",
+            "user_sdwt_prod",
+            "id",
+        )
+    )
+
+
 def list_user_access_rows_for_scopes_and_users(
     *,
     scopes: list[AccessScope],
@@ -986,8 +1160,9 @@ def list_access_management_users(
     *,
     search: str | None,
     department: str | None,
+    manual_grant_scope_ids: Iterable[int] | None = None,
 ) -> QuerySet[Any]:
-    """접근 권한 관리 화면에 표시할 활성 사용자 목록을 조회합니다."""
+    """접근 권한 관리 화면에 표시할 활성 사용자를 조건별로 조회합니다."""
 
     User = get_user_model()
     queryset = (
@@ -1019,6 +1194,15 @@ def list_access_management_users(
             | Q(current_affiliation__affiliation__line__icontains=normalized_search)
             | Q(current_affiliation__affiliation__user_sdwt_prod__icontains=normalized_search)
         )
+
+    if manual_grant_scope_ids is not None:
+        scope_ids = _normalize_positive_int_set(manual_grant_scope_ids)
+        if not scope_ids:
+            return queryset.none()
+        queryset = queryset.filter(
+            access_grants__scope_id__in=scope_ids,
+            access_grants__status=UserAccess.Status.ALLOWED,
+        ).distinct()
 
     return queryset.order_by("department", "username", "knox_id", "id")
 
@@ -1223,6 +1407,57 @@ def list_user_access_rows_by_scope_and_user_ids(
     )
 
 
+def list_pending_access_requests(*, scope_key: str | None) -> QuerySet[UserAccess]:
+    """전체 또는 지정 scope의 승인 대기 요청을 최신 요청순으로 반환합니다."""
+
+    queryset = (
+        UserAccess.objects.filter(status=UserAccess.Status.PENDING)
+        .select_related(
+            "scope",
+            "user",
+            "user__current_affiliation__affiliation",
+        )
+    )
+    normalized_scope_key = _normalize_text(scope_key)
+    if normalized_scope_key:
+        queryset = queryset.filter(scope__key=normalized_scope_key)
+    return queryset.order_by("-requested_at", "-id")
+
+
+def list_pending_access_request_counts() -> list[dict[str, Any]]:
+    """승인 대기 요청 건수를 scope별로 집계합니다."""
+
+    return list(
+        UserAccess.objects.filter(status=UserAccess.Status.PENDING)
+        .values(
+            "scope__key",
+            "scope__name",
+            "scope__scope_type",
+            "scope__is_active",
+            "scope__requestable",
+        )
+        .annotate(total=Count("id"))
+        .order_by("scope__name", "scope__key")
+    )
+
+
+def list_user_access_requests_by_ids(*, request_ids: Iterable[int]) -> list[UserAccess]:
+    """일괄 결정 대상 UserAccess 행을 요청 ID 기준으로 조회합니다."""
+
+    normalized_ids = _normalize_positive_int_set(request_ids)
+    if not normalized_ids:
+        return []
+    return list(
+        UserAccess.objects.filter(id__in=normalized_ids)
+        .select_related(
+            "scope",
+            "user",
+            "user__current_affiliation__affiliation",
+        )
+        .order_by("user_id", "scope_id", "id")
+    )
+
+
 def get_access_policy_rule_by_id_for_update(*, rule_id: int) -> AccessPolicyRule | None:
     """트랜잭션 안에서 ID에 해당하는 정책 규칙 행을 잠가 조회합니다."""
 
@@ -1237,7 +1472,41 @@ def get_access_policy_rule_by_id_for_update(*, rule_id: int) -> AccessPolicyRule
     )
 
 
-def list_access_policy_rules(*, scope_key: str | None) -> QuerySet[AccessPolicyRule]:
+def list_access_scopes_by_keys_for_update(*, scope_keys: list[str]) -> list[AccessScope]:
+    """트랜잭션 안에서 요청한 scope를 안정된 순서로 잠가 반환합니다."""
+
+    normalized_keys = sorted(set(_normalize_text_list(scope_keys)))
+    return list(
+        AccessScope.objects.select_for_update(of=("self",))
+        .filter(key__in=normalized_keys)
+        .order_by("id")
+    )
+
+
+def list_access_policy_rules_for_scopes_and_value_for_update(
+    *,
+    scopes: list[AccessScope],
+    value: str,
+) -> list[AccessPolicyRule]:
+    """트랜잭션 안에서 scope별 동일 부서 정책 규칙을 잠가 반환합니다."""
+
+    return list(
+        AccessPolicyRule.objects.select_for_update(of=("self",))
+        .filter(
+            scope__in=scopes,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            value__iexact=value.strip(),
+        )
+        .select_related("scope")
+        .order_by("scope_id", "id")
+    )
+
+
+def list_access_policy_rules(
+    *,
+    scope_key: str | None,
+    managed_only: bool = False,
+) -> QuerySet[AccessPolicyRule]:
     """scope 조건에 맞는 접근 정책 규칙 목록을 조회합니다."""
 
     queryset = AccessPolicyRule.objects.select_related("scope").order_by(
@@ -1249,6 +1518,11 @@ def list_access_policy_rules(*, scope_key: str | None) -> QuerySet[AccessPolicyR
     normalized_scope = _normalize_text(scope_key)
     if normalized_scope:
         queryset = queryset.filter(scope__key=normalized_scope)
+    if managed_only:
+        queryset = queryset.filter(
+            Q(scope__key=ACCESS_SCOPE_PORTAL)
+            | Q(scope__is_active=True)
+        )
     return queryset
 
 
@@ -1264,6 +1538,7 @@ def list_access_audit_logs(
         "scope",
         "actor",
         "target_user",
+        "affiliation",
         "policy_rule",
     ).order_by("-created_at", "-id")
     normalized_scope = _normalize_text(scope_key)
@@ -1337,6 +1612,7 @@ def user_has_manage_permission(*, user: Any, user_sdwt_prod: str) -> bool:
 
     return UserSdwtProdAccess.objects.filter(
         user=user,
+        affiliation__is_active=True,
         affiliation__user_sdwt_prod__iexact=normalized,
         role=UserSdwtProdAccess.Roles.MANAGER,
     ).exists()
@@ -1352,6 +1628,19 @@ def get_user_by_id_for_update(*, user_id: int) -> Any | None:
     return (
         UserModel.objects.select_for_update(of=("self",))
         .select_related("current_affiliation__affiliation")
+        .filter(id=user_id)
+        .first()
+    )
+
+
+def get_user_by_id(*, user_id: int) -> Any | None:
+    """사용자 id로 활성 상태와 무관하게 단일 사용자를 조회합니다."""
+
+    if not user_id:
+        return None
+    UserModel = get_user_model()
+    return (
+        UserModel.objects.select_related("current_affiliation__affiliation")
         .filter(id=user_id)
         .first()
     )
@@ -1444,6 +1733,35 @@ def get_user_sdwt_prod_change_by_id(*, change_id: int) -> UserSdwtProdChange | N
         # 2) 미존재 처리
         # -----------------------------------------------------------------------------
         return None
+
+
+def get_user_sdwt_prod_change_by_id_for_update(
+    *,
+    change_id: int,
+) -> UserSdwtProdChange | None:
+    """트랜잭션 안에서 소속 변경 요청 행을 잠가 조회합니다.
+
+    입력:
+    - change_id: 변경 요청 id
+
+    반환:
+    - UserSdwtProdChange | None: 잠긴 변경 요청 또는 None
+
+    부작용:
+    - 현재 트랜잭션이 끝날 때까지 대상 행에 쓰기 잠금을 유지합니다.
+
+    오류:
+    - transaction.atomic() 밖에서 호출하면 데이터베이스가 오류를 반환할 수 있습니다.
+    """
+
+    if not change_id:
+        return None
+    return (
+        UserSdwtProdChange.objects.select_for_update(of=("self",))
+        .select_related("user")
+        .filter(id=change_id)
+        .first()
+    )
 
 
 def get_external_affiliation_snapshot_by_knox_id(
@@ -1661,6 +1979,66 @@ def get_access_row_for_user_and_prod(
     return (
         UserSdwtProdAccess.objects.filter(
             user=user,
+            affiliation__is_active=True,
+            affiliation__user_sdwt_prod__iexact=normalized,
+        )
+        .select_related("user", "affiliation")
+        .order_by("id")
+        .first()
+    )
+
+
+def list_active_affiliation_ids(
+    *,
+    affiliation_ids: Iterable[int],
+) -> set[int]:
+    """요청 ID 중 현재 활성 상태인 소속 ID 집합을 반환합니다."""
+
+    normalized_ids = _normalize_positive_int_set(affiliation_ids)
+    if not normalized_ids:
+        return set()
+    return set(
+        Affiliation.objects.filter(
+            id__in=normalized_ids,
+            is_active=True,
+        ).values_list("id", flat=True)
+    )
+
+
+def list_affiliation_roles_for_user_by_ids(
+    *,
+    user: Any,
+    affiliation_ids: Iterable[int],
+) -> dict[int, str]:
+    """사용자의 활성 소속별 명시 역할을 한 번에 조회해 반환합니다."""
+
+    normalized_ids = _normalize_positive_int_set(affiliation_ids)
+    if not normalized_ids:
+        return {}
+    return dict(
+        UserSdwtProdAccess.objects.filter(
+            user=user,
+            affiliation_id__in=normalized_ids,
+            affiliation__is_active=True,
+        ).values_list("affiliation_id", "role")
+    )
+
+
+def get_access_row_for_user_and_prod_for_update(
+    *,
+    user: Any,
+    user_sdwt_prod: str,
+) -> UserSdwtProdAccess | None:
+    """트랜잭션 안에서 사용자의 소속 접근 권한 행을 잠가 조회합니다."""
+
+    normalized = _normalize_user_sdwt_prod(user_sdwt_prod)
+    if not normalized:
+        return None
+    return (
+        UserSdwtProdAccess.objects.select_for_update(of=("self",))
+        .filter(
+            user=user,
+            affiliation__is_active=True,
             affiliation__user_sdwt_prod__iexact=normalized,
         )
         .select_related("user", "affiliation")
@@ -1696,6 +2074,7 @@ def other_manager_exists(
 
     return (
         UserSdwtProdAccess.objects.filter(
+            affiliation__is_active=True,
             affiliation__user_sdwt_prod__iexact=normalized,
             role=UserSdwtProdAccess.Roles.MANAGER,
         )
@@ -1723,6 +2102,7 @@ def list_manageable_user_sdwt_prod_values(*, user: Any) -> set[str]:
     values = set(
         UserSdwtProdAccess.objects.filter(
             user=user,
+            affiliation__is_active=True,
             role=UserSdwtProdAccess.Roles.MANAGER,
         ).values_list(
             "affiliation__user_sdwt_prod",
@@ -1733,7 +2113,7 @@ def list_manageable_user_sdwt_prod_values(*, user: Any) -> set[str]:
 
 
 def list_approvable_user_sdwt_prod_values(*, user: Any) -> set[str]:
-    """사용자가 승인(role=member/manager)할 수 있는 user_sdwt_prod 값 집합을 조회합니다.
+    """사용자가 승인(role=manager)할 수 있는 user_sdwt_prod 값 집합을 조회합니다.
 
     입력:
     - user: Django 사용자 객체
@@ -1751,7 +2131,8 @@ def list_approvable_user_sdwt_prod_values(*, user: Any) -> set[str]:
     values = set(
         UserSdwtProdAccess.objects.filter(
             user=user,
-            role__in=[UserSdwtProdAccess.Roles.MEMBER, UserSdwtProdAccess.Roles.MANAGER],
+            affiliation__is_active=True,
+            role=UserSdwtProdAccess.Roles.MANAGER,
         ).values_list(
             "affiliation__user_sdwt_prod",
             flat=True,
@@ -1872,7 +2253,10 @@ def list_group_members(*, user_sdwt_prods: set[str]) -> QuerySet[UserSdwtProdAcc
         UserSdwtProdAccess.objects.annotate(
             user_sdwt_prod_lookup=Lower("affiliation__user_sdwt_prod")
         )
-        .filter(user_sdwt_prod_lookup__in=lookup_keys)
+        .filter(
+            affiliation__is_active=True,
+            user_sdwt_prod_lookup__in=lookup_keys,
+        )
         .select_related("user", "affiliation")
         .order_by("affiliation__user_sdwt_prod", "user_id")
     )
@@ -1901,7 +2285,8 @@ def list_current_affiliation_users_by_user_sdwt_prod(*, user_sdwt_prod: str) -> 
     UserModel = get_user_model()
     return list(
         UserModel.objects.filter(
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized
+            current_affiliation__affiliation__is_active=True,
+            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized,
         )
         .select_related("current_affiliation__affiliation")
         .order_by("id")
@@ -1937,7 +2322,7 @@ def list_line_sdwt_pairs() -> list[dict[str, str]]:
     # 2) 라인/소속 값 조회 및 정제
     # -----------------------------------------------------------------------------
     pairs = (
-        Affiliation.objects.filter(line__isnull=False)
+        Affiliation.objects.filter(is_active=True, line__isnull=False)
         .exclude(line__exact="")
         .exclude(user_sdwt_prod__isnull=True)
         .exclude(user_sdwt_prod__exact="")
@@ -1976,7 +2361,10 @@ def list_user_sdwt_prod_values_for_line(*, line_id: str) -> list[str]:
         return []
 
     values = (
-        Affiliation.objects.filter(line__iexact=normalized_line_id)
+        Affiliation.objects.filter(
+            is_active=True,
+            line__iexact=normalized_line_id,
+        )
         .exclude(user_sdwt_prod__isnull=True)
         .exclude(user_sdwt_prod__exact="")
         .values_list("user_sdwt_prod", flat=True)
@@ -2123,7 +2511,34 @@ def get_affiliation_option_by_user_sdwt_prod(*, user_sdwt_prod: str) -> Affiliat
     if not normalized:
         return None
 
-    rows = list(Affiliation.objects.filter(user_sdwt_prod__iexact=normalized).order_by("id")[:2])
+    rows = list(
+        Affiliation.objects.filter(
+            is_active=True,
+            user_sdwt_prod__iexact=normalized,
+        ).order_by("id")[:2]
+    )
+    if len(rows) != 1:
+        return None
+    return rows[0]
+
+
+def get_affiliation_option_for_update_by_user_sdwt_prod(
+    *,
+    user_sdwt_prod: str,
+) -> Affiliation | None:
+    """트랜잭션 안에서 소속 행을 대소문자 비구분으로 잠가 조회합니다."""
+
+    normalized = _normalize_text(user_sdwt_prod)
+    if not normalized:
+        return None
+    rows = list(
+        Affiliation.objects.select_for_update(of=("self",))
+        .filter(
+            is_active=True,
+            user_sdwt_prod__iexact=normalized,
+        )
+        .order_by("id")[:2]
+    )
     if len(rows) != 1:
         return None
     return rows[0]

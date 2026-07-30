@@ -15,6 +15,7 @@ from __future__ import annotations
 from django import forms
 from django.contrib import admin
 from django.contrib import messages
+from django.contrib.admin.helpers import ActionForm
 from django.contrib.admin.widgets import AdminSplitDateTime
 from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
@@ -35,6 +36,7 @@ from api.account.models import (
     User,
     UserAccess,
     UserCurrentAffiliation,
+    UserScopeAffiliationGrant,
     UserSdwtProdAccess,
     UserSdwtProdChange,
 )
@@ -90,6 +92,34 @@ class ReadOnlyAdminMixin:
         """Admin에서 직접 삭제를 허용하지 않습니다."""
 
         return False
+
+
+class AffiliationAdminForm(forms.ModelForm):
+    """소속 생성 시 운영 사유를 함께 받는 Admin 폼입니다."""
+
+    reason = forms.CharField(
+        label="생성 사유",
+        max_length=500,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="소속을 추가하는 업무 목적이나 동기화 근거를 입력하세요.",
+    )
+
+    class Meta:
+        model = Affiliation
+        fields = ("department", "line", "user_sdwt_prod")
+
+
+class AffiliationActionForm(ActionForm):
+    """소속 활성 상태 일괄 action의 운영 사유를 받습니다."""
+
+    reason = forms.CharField(
+        label="변경 사유",
+        max_length=500,
+        required=True,
+        widget=forms.TextInput(
+            attrs={"placeholder": "활성 상태 변경 사유를 입력하세요"}
+        ),
+    )
 
 
 try:
@@ -517,18 +547,104 @@ class AccountUserAdmin(DjangoUserAdmin):
 
 
 @admin.register(Affiliation)
-class AffiliationAdmin(admin.ModelAdmin):
-    """Affiliation 관리 화면 설정입니다."""
+class AffiliationAdmin(SuperuserWriteAdminMixin, admin.ModelAdmin):
+    """소속 생성과 감사 가능한 활성 상태 action만 허용합니다."""
 
-    list_display = ("department", "line", "user_sdwt_prod")
+    actions = ("activate_affiliations", "deactivate_affiliations")
+    action_form = AffiliationActionForm
+    form = AffiliationAdminForm
+    list_display = ("department", "line", "user_sdwt_prod", "is_active")
     search_fields = ("department", "line", "user_sdwt_prod")
-    list_filter = ("line",)
+    list_filter = ("line", "is_active")
     ordering = ("department", "line", "user_sdwt_prod")
+
+    def get_readonly_fields(self, request, obj=None):
+        """기존 소속의 식별 값과 활성 상태를 직접 수정하지 못하게 합니다."""
+
+        if obj is not None:
+            return tuple(field.name for field in self.model._meta.fields)
+        return ("is_active", "created_at")
+
+    def has_change_permission(self, request, obj=None):
+        """목록 action은 허용하되 기존 소속의 개별 변경 화면은 읽기 전용으로 둡니다."""
+
+        if obj is not None:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        """연결된 권한 기준점인 소속의 물리 삭제를 금지합니다."""
+
+        return False
+
+    def save_model(self, request, obj, form, change):
+        """새 소속은 감사 가능한 생성 서비스로만 저장합니다."""
+
+        if change:
+            raise ValidationError("기존 소속은 활성/비활성 action으로만 변경할 수 있습니다.")
+        services.create_affiliation(
+            actor=request.user,
+            affiliation=obj,
+            reason=form.cleaned_data["reason"],
+            source=services.AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN,
+        )
+
+    def delete_model(self, request, obj):
+        """소속 물리 삭제 요청을 명시적으로 거부합니다."""
+
+        raise PermissionDenied("소속은 삭제할 수 없습니다. 비활성화 action을 사용하세요.")
+
+    def _set_affiliations_active(self, *, request, queryset, is_active):
+        """선택 소속을 운영자 사유와 함께 한 transaction에서 변경합니다."""
+
+        payload, status_code = services.set_affiliations_active(
+            actor=request.user,
+            affiliation_ids=list(
+                queryset.order_by("id").values_list("id", flat=True)
+            ),
+            is_active=is_active,
+            reason=request.POST.get("reason", ""),
+        )
+        if status_code != 200:
+            self.message_user(
+                request,
+                f"상태를 변경하지 못했습니다: {payload.get('error', 'unknown_error')}",
+                level=messages.ERROR,
+            )
+            return
+        self.message_user(
+            request,
+            (
+                f"상태 변경: {payload['updated']}건, "
+                f"변경 없음: {payload['unchanged']}건"
+            ),
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="선택한 소속 활성화")
+    def activate_affiliations(self, request, queryset):
+        """선택 소속을 감사 가능한 서비스 경로로 활성화합니다."""
+
+        self._set_affiliations_active(
+            request=request,
+            queryset=queryset,
+            is_active=True,
+        )
+
+    @admin.action(description="선택한 소속 비활성화")
+    def deactivate_affiliations(self, request, queryset):
+        """선택 소속을 감사 가능한 서비스 경로로 비활성화합니다."""
+
+        self._set_affiliations_active(
+            request=request,
+            queryset=queryset,
+            is_active=False,
+        )
 
 
 @admin.register(UserCurrentAffiliation)
-class UserCurrentAffiliationAdmin(admin.ModelAdmin):
-    """UserCurrentAffiliation 관리 화면 설정입니다."""
+class UserCurrentAffiliationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """현재 소속은 제품 서비스로만 변경하고 Admin에서는 읽기 전용으로 제공합니다."""
 
     list_display = (
         "user_knox_id",
@@ -568,8 +684,8 @@ class UserCurrentAffiliationAdmin(admin.ModelAdmin):
 
 
 @admin.register(UserSdwtProdAccess)
-class UserSdwtProdAccessAdmin(admin.ModelAdmin):
-    """UserSdwtProdAccess 관리 화면 설정입니다."""
+class UserSdwtProdAccessAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """소속 역할은 제품 API로만 변경하고 Admin에서는 읽기 전용으로 제공합니다."""
 
     list_display = ("user_knox_id", "affiliation_user_sdwt_prod", "role", "granted_by_knox_id", "created_at")
     list_filter = ("role", "affiliation__user_sdwt_prod")
@@ -608,6 +724,8 @@ def _serialize_admin_access_scope(obj):
         "key": obj.key,
         "name": obj.name,
         "scopeType": obj.scope_type,
+        "dataScopeType": obj.data_scope_type,
+        "includeCurrentAffiliation": obj.include_current_affiliation,
         "isActive": obj.is_active,
         "requestable": obj.requestable,
     }
@@ -617,8 +735,23 @@ def _serialize_admin_access_scope(obj):
 class AccessScopeAdmin(SuperuserWriteAdminMixin, admin.ModelAdmin):
     """migration으로 생성한 접근 권한 대상의 운영 상태 관리 화면입니다."""
 
-    list_display = ("key", "name", "scope_type", "is_active", "requestable", "created_at")
-    list_filter = ("scope_type", "is_active", "requestable")
+    list_display = (
+        "key",
+        "name",
+        "scope_type",
+        "data_scope_type",
+        "include_current_affiliation",
+        "is_active",
+        "requestable",
+        "created_at",
+    )
+    list_filter = (
+        "scope_type",
+        "data_scope_type",
+        "include_current_affiliation",
+        "is_active",
+        "requestable",
+    )
     search_fields = ("key", "name")
     ordering = ("key",)
 
@@ -630,7 +763,12 @@ class AccessScopeAdmin(SuperuserWriteAdminMixin, admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         """모든 scope의 식별 키와 유형을 생성 이후 고정합니다."""
 
-        return ("key", "scope_type")
+        return (
+            "key",
+            "scope_type",
+            "data_scope_type",
+            "include_current_affiliation",
+        )
 
     def has_delete_permission(self, request, obj=None):
         """scope 이력과 사용자 권한 보존을 위해 물리 삭제를 거부합니다."""
@@ -700,11 +838,12 @@ class UserAccessAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "department",
         "status",
         "role",
+        "data_scope_mode",
         "requested_at",
         "decided_by_knox_id",
         "decided_at",
     )
-    list_filter = ("scope__key", "status", "role", "department")
+    list_filter = ("scope__key", "status", "role", "data_scope_mode", "department")
     search_fields = (
         "scope__key",
         "scope__name",
@@ -732,6 +871,32 @@ class UserAccessAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         return getattr(decided_by, "knox_id", None) or ""
 
 
+@admin.register(UserScopeAffiliationGrant)
+class UserScopeAffiliationGrantAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """Portal 권한 관리 API에서 변경하는 앱별 소속 grant 조회 화면입니다."""
+
+    list_display = (
+        "scope",
+        "user",
+        "affiliation",
+        "source",
+        "is_active",
+        "expires_at",
+        "granted_by",
+        "updated_at",
+    )
+    list_filter = ("scope__key", "source", "is_active")
+    search_fields = (
+        "scope__key",
+        "user__knox_id",
+        "affiliation__user_sdwt_prod",
+        "granted_by__knox_id",
+        "reason",
+    )
+    autocomplete_fields = ("scope", "user", "affiliation", "granted_by")
+    ordering = ("scope__key", "user__knox_id", "affiliation__user_sdwt_prod")
+
+
 @admin.register(AccessAuditLog)
 class AccessAuditLogAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     """scope 접근 권한 감사 로그 조회 화면 설정입니다."""
@@ -740,15 +905,17 @@ class AccessAuditLogAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "created_at",
         "scope_key",
         "action",
+        "affiliation",
         "target_user_knox_id",
         "actor_knox_id",
         "policy_rule_label",
     )
-    list_filter = ("scope__key", "action", "created_at")
+    list_filter = ("scope__key", "affiliation__user_sdwt_prod", "action", "created_at")
     search_fields = (
         "scope__key",
         "actor__knox_id",
         "target_user__knox_id",
+        "affiliation__user_sdwt_prod",
         "policy_rule__value",
         "reason",
     )
@@ -757,6 +924,7 @@ class AccessAuditLogAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "scope",
         "actor",
         "target_user",
+        "affiliation",
         "policy_rule",
         "action",
         "before",
@@ -788,7 +956,7 @@ class AccessAuditLogAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(UserSdwtProdChange)
 class UserSdwtProdChangeAdmin(admin.ModelAdmin):
-    """UserSdwtProdChange 관리 화면 설정입니다."""
+    """소속 변경 요청은 읽기 전용으로 표시하고 승인 action만 허용합니다."""
 
     actions = ("approve_affiliation_changes",)
     list_display = (
@@ -809,6 +977,38 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
         "to_user_sdwt_prod",
     )
     autocomplete_fields = ("user", "approved_by", "created_by")
+
+    def has_add_permission(self, request):
+        """Admin에서 소속 변경 요청 생성을 허용하지 않습니다."""
+
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """목록 action 권한은 유지하되 개별 레코드 직접 변경은 금지합니다."""
+
+        if obj is not None:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        """감사 대상인 소속 변경 요청 삭제를 허용하지 않습니다."""
+
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        """소속 변경 요청의 모든 필드를 읽기 전용으로 제공합니다."""
+
+        return tuple(field.name for field in self.model._meta.fields)
+
+    def save_model(self, request, obj, form, change):
+        """직접 저장 대신 승인·반려 서비스를 사용하도록 강제합니다."""
+
+        raise PermissionDenied("소속 변경 요청은 서비스 action으로만 처리할 수 있습니다.")
+
+    def delete_model(self, request, obj):
+        """소속 변경 요청의 물리 삭제를 명시적으로 거부합니다."""
+
+        raise PermissionDenied("소속 변경 요청은 삭제할 수 없습니다.")
 
     @admin.display(ordering="user__knox_id", description="사용자 knox_id")
     def user_knox_id(self, obj):

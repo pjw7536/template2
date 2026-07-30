@@ -13,6 +13,7 @@ from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
 import api.account.selectors as account_selectors
+import api.account.services as account_services
 from api.account.selectors import list_distinct_user_sdwt_prod_values
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
@@ -62,7 +63,10 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
         없음.
     """
 
-    return account_selectors.get_accessible_user_sdwt_prods_for_user(user)
+    return account_services.get_accessible_user_sdwt_prods_for_scope(
+        user=user,
+        scope_key="emails",
+    )
 
 
 def resolve_sender_id_from_user(user: Any) -> str | None:
@@ -728,14 +732,24 @@ def list_emails_for_update(*, email_ids: Sequence[int]) -> list[Email]:
     # -----------------------------------------------------------------------------
     if not email_ids:
         return []
-    normalized = [int(value) for value in email_ids if isinstance(value, int) or str(value).isdigit()]
+    normalized = sorted(
+        {
+            int(value)
+            for value in email_ids
+            if isinstance(value, int) or str(value).isdigit()
+        }
+    )
     if not normalized:
         return []
 
     # -----------------------------------------------------------------------------
     # 2) 행 잠금 조회
     # -----------------------------------------------------------------------------
-    return list(Email.objects.select_for_update().filter(id__in=normalized))
+    return list(
+        Email.objects.select_for_update()
+        .filter(id__in=normalized)
+        .order_by("id")
+    )
 
 
 def get_email_asset_by_id(*, asset_id: int) -> EmailAsset | None:

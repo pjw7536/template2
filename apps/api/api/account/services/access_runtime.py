@@ -384,6 +384,13 @@ def _build_access_payload(
         "allowed": allowed,
         "scope": scope.key,
         "scopeType": scope.scope_type,
+        "dataScopeType": scope.data_scope_type,
+        "includeCurrentAffiliation": scope.include_current_affiliation,
+        "dataScopeMode": (
+            user_access.data_scope_mode
+            if user_access and user_access.status == UserAccess.Status.ALLOWED
+            else UserAccess.DataScopeModes.DEFAULT
+        ),
         "reason": reason,
         "department": department,
         "requestedAt": user_access.requested_at.isoformat() if user_access else None,
@@ -490,6 +497,8 @@ def _serialize_scope(scope: AccessScope) -> dict[str, object]:
         "key": scope.key,
         "name": scope.name,
         "scopeType": scope.scope_type,
+        "dataScopeType": scope.data_scope_type,
+        "includeCurrentAffiliation": scope.include_current_affiliation,
         "isActive": scope.is_active,
         "requestable": scope.requestable,
     }
@@ -535,6 +544,8 @@ def _serialize_access_user(user: Any) -> dict[str, object]:
 
     current_affiliation = getattr(user, "current_affiliation", None)
     affiliation = getattr(current_affiliation, "affiliation", None)
+    if affiliation is not None and not affiliation.is_active:
+        affiliation = None
     display_name = (
         getattr(user, "username", None)
         or getattr(user, "username_en", None)
@@ -562,6 +573,7 @@ def _serialize_user_access(user_access: UserAccess) -> dict[str, object]:
     return {
         "explicitStatus": user_access.status,
         "role": user_access.role,
+        "dataScopeMode": user_access.data_scope_mode,
     }
 
 
@@ -573,6 +585,8 @@ def _get_user_department(*, user: Any) -> str:
         return department
     current_affiliation = getattr(user, "current_affiliation", None)
     affiliation = getattr(current_affiliation, "affiliation", None)
+    if affiliation is not None and not affiliation.is_active:
+        affiliation = None
     return (getattr(affiliation, "department", None) or "").strip()
 
 

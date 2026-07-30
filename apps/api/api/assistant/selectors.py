@@ -1,13 +1,13 @@
 # =============================================================================
 # 모듈: 어시스턴트 접근 권한 셀렉터
 # 주요 함수: get_accessible_user_sdwt_prods_for_user
-# 주요 가정: RAG 인덱스 선택 권한은 account 셀렉터에서 결정합니다.
+# 주요 가정: RAG 검색 범위는 Assistant 앱별 account 데이터 scope에서 결정합니다.
 # =============================================================================
 from __future__ import annotations
 
 from typing import Any
 
-from api.account.selectors import get_accessible_user_sdwt_prods_for_user as _get_accessible_user_sdwt_prods_for_user
+import api.account.services as account_services
 
 
 def get_accessible_user_sdwt_prods_for_user(*, user: Any) -> set[str]:
@@ -23,4 +23,7 @@ def get_accessible_user_sdwt_prods_for_user(*, user: Any) -> set[str]:
         없음. 읽기 전용 조회입니다.
     """
 
-    return _get_accessible_user_sdwt_prods_for_user(user)
+    return account_services.get_accessible_user_sdwt_prods_for_scope(
+        user=user,
+        scope_key="assistant",
+    )

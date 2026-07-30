@@ -23,6 +23,7 @@ from ..models import (
     AccessRole,
     AccessScope,
     UserAccess,
+    UserSdwtProdAccess,
 )
 from .access_runtime import (
     _apply_portal_access_requirement,
@@ -51,6 +52,49 @@ _SCOPE_AUDIT_ACTIONS = {
     AccessAuditLog.Actions.SCOPE_UPDATE,
     AccessAuditLog.Actions.SCOPE_DELETE,
 }
+_DATA_SCOPE_AUDIT_ACTIONS = {
+    AccessAuditLog.Actions.DATA_SCOPE_GRANT,
+    AccessAuditLog.Actions.DATA_SCOPE_REVOKE,
+    AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+}
+_AFFILIATION_ROLE_AUDIT_ACTIONS = {
+    AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+    AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
+    AccessAuditLog.Actions.AFFILIATION_ROLE_REVOKE,
+}
+_AFFILIATION_LIFECYCLE_AUDIT_ACTIONS = {
+    AccessAuditLog.Actions.AFFILIATION_CREATE,
+    AccessAuditLog.Actions.AFFILIATION_UPDATE,
+    AccessAuditLog.Actions.AFFILIATION_ACTIVATE,
+    AccessAuditLog.Actions.AFFILIATION_DEACTIVATE,
+}
+
+
+def _create_data_scope_mode_audit_if_changed(
+    *,
+    scope: AccessScope,
+    actor: Any,
+    target_user: Any,
+    before_mode: str | None,
+    after_mode: str,
+    reason: str | None,
+) -> None:
+    """실제 앱 데이터 범위 방식이 바뀐 경우에만 별도 감사 로그를 남깁니다."""
+
+    if before_mode is None or before_mode == after_mode:
+        return
+    create_access_audit_log(
+        scope=scope,
+        actor=actor,
+        target_user=target_user,
+        policy_rule=None,
+        affiliation=None,
+        action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+        before={"dataScopeMode": before_mode},
+        after={"dataScopeMode": after_mode},
+        reason=reason,
+    )
+
 
 def _set_pending_access_request(
     *,
@@ -70,6 +114,7 @@ def _set_pending_access_request(
     user_access.department = _get_user_department(user=user)
     user_access.status = UserAccess.Status.PENDING
     user_access.role = AccessRole.USER
+    user_access.data_scope_mode = UserAccess.DataScopeModes.DEFAULT
     user_access.requested_at = timezone.now()
     user_access.decided_by = None
     user_access.decided_at = None
@@ -238,6 +283,7 @@ def _grant_default_app_accesses(
         app_access.department = _get_user_department(user=target_user)
         app_access.status = UserAccess.Status.ALLOWED
         app_access.role = AccessRole.USER
+        app_access.data_scope_mode = UserAccess.DataScopeModes.DEFAULT
         app_access.decided_by = actor
         app_access.decided_at = timezone.now()
         app_access.reason = None
@@ -252,6 +298,168 @@ def _grant_default_app_accesses(
             after=_serialize_user_access(app_access),
             reason=reason,
         )
+
+
+def apply_all_user_accesses(
+    *,
+    actor: Any,
+    user_id: int,
+    value: str,
+    reason: str,
+    request: Any | None = None,
+) -> tuple[dict[str, object], int]:
+    """Portal admin이 한 사용자의 모든 매트릭스 scope에 같은 권한을 적용합니다.
+
+    입력:
+    - actor: 변경을 수행하는 관리자
+    - user_id: 전체 권한을 변경할 사용자 ID
+    - value: 적용할 권한 값(inherit, user, admin, denied)
+    - reason: 일괄 변경 사유
+    - request: 접근 관리 권한 판정에 사용할 HTTP 요청
+
+    반환:
+    - 처리 상태, 변경 요약, 최신 매트릭스 행과 HTTP 상태 코드
+
+    부작용:
+    - 변경이 필요한 각 scope의 UserAccess와 감사 로그를 한 transaction에서 저장 또는 삭제
+
+    오류:
+    - 관리 권한 없음, 사용자/Portal scope 없음, 슈퍼유저 변경 시 오류 반환
+    """
+
+    if not can_manage_access(user=actor, request=request):
+        return {"error": "forbidden"}, 403
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        return {"error": "reason_required"}, 400
+
+    with transaction.atomic():
+        target_user = selectors.get_user_by_id_for_update(user_id=user_id)
+        if target_user is None:
+            return {"error": "user_not_found"}, 404
+        if target_user.is_superuser:
+            return {"error": "immutable_access_bypass"}, 409
+
+        scopes = selectors.list_managed_access_scopes()
+        if not any(scope.key == ACCESS_SCOPE_PORTAL for scope in scopes):
+            return {"error": "scope_not_found"}, 404
+
+        department = _get_user_department(user=target_user)
+        decided_at = timezone.now()
+        changed_scope_keys: list[str] = []
+        for scope in scopes:
+            user_access = selectors.get_user_access_for_scope_for_update(
+                user=target_user,
+                scope=scope,
+            )
+
+            if value == "inherit":
+                if user_access is None:
+                    continue
+                before = _serialize_user_access(user_access)
+                before_data_scope_mode = user_access.data_scope_mode
+                user_access.delete()
+                create_access_audit_log(
+                    scope=scope,
+                    actor=actor,
+                    target_user=target_user,
+                    policy_rule=None,
+                    action=AccessAuditLog.Actions.RESET_TO_POLICY,
+                    before=before,
+                    after={},
+                    reason=normalized_reason,
+                )
+                _create_data_scope_mode_audit_if_changed(
+                    scope=scope,
+                    actor=actor,
+                    target_user=target_user,
+                    before_mode=before_data_scope_mode,
+                    after_mode=UserAccess.DataScopeModes.DEFAULT,
+                    reason=normalized_reason,
+                )
+                changed_scope_keys.append(scope.key)
+                continue
+
+            next_status = (
+                UserAccess.Status.DENIED
+                if value == "denied"
+                else UserAccess.Status.ALLOWED
+            )
+            next_role = AccessRole.ADMIN if value == "admin" else AccessRole.USER
+            next_data_scope_mode = (
+                user_access.data_scope_mode
+                if user_access is not None
+                and user_access.status == UserAccess.Status.ALLOWED
+                and next_status == UserAccess.Status.ALLOWED
+                else UserAccess.DataScopeModes.DEFAULT
+            )
+            if (
+                user_access is not None
+                and user_access.status == next_status
+                and user_access.role == next_role
+                and user_access.data_scope_mode == next_data_scope_mode
+            ):
+                continue
+
+            before = _serialize_user_access(user_access) if user_access else {}
+            before_data_scope_mode = (
+                user_access.data_scope_mode
+                if user_access is not None
+                else None
+            )
+            audit_action = AccessAuditLog.Actions.REVOKE
+            if next_status == UserAccess.Status.ALLOWED:
+                audit_action = (
+                    AccessAuditLog.Actions.CHANGE_ROLE
+                    if user_access is not None
+                    and user_access.status == UserAccess.Status.ALLOWED
+                    else AccessAuditLog.Actions.GRANT
+                )
+            if user_access is None:
+                user_access = UserAccess(
+                    scope=scope,
+                    user=target_user,
+                )
+            user_access.department = department
+            user_access.status = next_status
+            user_access.role = next_role
+            user_access.data_scope_mode = next_data_scope_mode
+            user_access.decided_by = actor
+            user_access.decided_at = decided_at
+            user_access.reason = None
+            user_access.save()
+            create_access_audit_log(
+                scope=scope,
+                actor=actor,
+                target_user=target_user,
+                policy_rule=None,
+                action=audit_action,
+                before=before,
+                after=_serialize_user_access(user_access),
+                reason=normalized_reason,
+            )
+            _create_data_scope_mode_audit_if_changed(
+                scope=scope,
+                actor=actor,
+                target_user=target_user,
+                before_mode=before_data_scope_mode,
+                after_mode=next_data_scope_mode,
+                reason=normalized_reason,
+            )
+            changed_scope_keys.append(scope.key)
+
+    matrix_row = _build_access_matrix_row_for_user(target_user=target_user)
+    return {
+        "status": "ok",
+        "value": value,
+        "summary": {
+            "total": len(scopes),
+            "updated": len(changed_scope_keys),
+            "unchanged": len(scopes) - len(changed_scope_keys),
+        },
+        "changedScopes": changed_scope_keys,
+        "matrixRow": matrix_row,
+    }, 200
 
 
 def get_access_users(
@@ -309,12 +517,146 @@ def get_access_users(
     }, 200
 
 
+def get_pending_access_requests(
+    *,
+    actor: Any,
+    request: Any | None = None,
+    scope_key: str | None,
+    page: int,
+    page_size: int,
+) -> tuple[dict[str, object], int]:
+    """Portal admin용 전체 또는 scope별 승인 대기 요청을 반환합니다."""
+
+    if not can_manage_access(user=actor, request=request):
+        return {"error": "forbidden"}, 403
+
+    normalized_scope_key = (scope_key or "").strip() or None
+    if (
+        normalized_scope_key
+        and selectors.get_access_scope_by_key(scope_key=normalized_scope_key) is None
+    ):
+        return {"error": "scope_not_found"}, 404
+
+    request_queryset = selectors.list_pending_access_requests(
+        scope_key=normalized_scope_key,
+    )
+    paginator = Paginator(request_queryset, page_size)
+    try:
+        page_obj = paginator.page(page)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages or 1)
+
+    scope_counts = selectors.list_pending_access_request_counts()
+    total = sum(int(row["total"]) for row in scope_counts)
+    return {
+        "results": [
+            _serialize_pending_access_request(user_access)
+            for user_access in page_obj.object_list
+        ],
+        "scopeCounts": [
+            {
+                "scope": {
+                    "key": row["scope__key"],
+                    "name": row["scope__name"],
+                    "scopeType": row["scope__scope_type"],
+                    "isActive": row["scope__is_active"],
+                    "requestable": row["scope__requestable"],
+                },
+                "total": row["total"],
+            }
+            for row in scope_counts
+        ],
+        "summary": {"total": total},
+        "pagination": {
+            "page": page_obj.number,
+            "pageSize": page_size,
+            "total": paginator.count,
+            "totalPages": paginator.num_pages,
+        },
+    }, 200
+
+
+def approve_pending_access_requests(
+    *,
+    actor: Any,
+    request: Any | None = None,
+    request_ids: list[int],
+) -> tuple[dict[str, object], int]:
+    """Portal admin이 선택한 승인 대기 요청을 일반 사용자 역할로 승인합니다."""
+
+    if not can_manage_access(user=actor, request=request):
+        return {"error": "forbidden"}, 403
+
+    normalized_ids = list(dict.fromkeys(request_ids))
+    access_rows = selectors.list_user_access_requests_by_ids(
+        request_ids=normalized_ids,
+    )
+    rows_by_id = {row.id: row for row in access_rows}
+    ordered_rows = sorted(
+        access_rows,
+        key=lambda row: (
+            row.user_id,
+            row.scope.key != ACCESS_SCOPE_PORTAL,
+            row.scope.key,
+            row.id,
+        ),
+    )
+
+    approved: list[dict[str, object]] = []
+    failed: list[dict[str, object]] = [
+        {"requestId": request_id, "error": "request_not_found"}
+        for request_id in normalized_ids
+        if request_id not in rows_by_id
+    ]
+    for access_row in ordered_rows:
+        payload, status_code = _decide_user_access(
+            actor=actor,
+            user_id=access_row.user_id,
+            scope_key=access_row.scope.key,
+            action=AccessAuditLog.Actions.APPROVE,
+            reason="승인 대기 목록에서 일괄 승인",
+            role=AccessRole.USER,
+        )
+        result = {
+            "requestId": access_row.id,
+            "userId": access_row.user_id,
+            "scope": access_row.scope.key,
+        }
+        if status_code == 200:
+            approved.append(result)
+        else:
+            failed.append(
+                {
+                    **result,
+                    "error": payload.get("error", "approval_failed"),
+                }
+            )
+
+    if approved and failed:
+        result_status = "partial"
+    elif approved:
+        result_status = "ok"
+    else:
+        result_status = "failed"
+    return {
+        "status": result_status,
+        "approved": approved,
+        "failed": failed,
+        "summary": {
+            "requested": len(normalized_ids),
+            "approved": len(approved),
+            "failed": len(failed),
+        },
+    }, 200
+
+
 def get_access_matrix(
     *,
     actor: Any,
     request: Any | None = None,
     search: str | None,
     department: str | None,
+    manual_grant_only: bool,
     page: int,
     page_size: int,
 ) -> tuple[dict[str, object], int]:
@@ -330,7 +672,15 @@ def get_access_matrix(
     )
     if portal_scope is None:
         return {"error": "scope_not_found"}, 404
-    user_queryset = selectors.list_access_management_users(search=search, department=department)
+    user_queryset = selectors.list_access_management_users(
+        search=search,
+        department=department,
+        manual_grant_scope_ids=(
+            [scope.id for scope in scopes]
+            if manual_grant_only
+            else None
+        ),
+    )
     paginator = Paginator(user_queryset, page_size)
     try:
         page_obj = paginator.page(page)
@@ -352,27 +702,16 @@ def get_access_matrix(
         for access in access_rows
     }
 
-    results = []
-    for target_user in users:
-        portal_access = _build_access_payload(
-            user=target_user,
-            scope=portal_scope,
-            user_access=access_by_scope_and_user.get((portal_scope.id, target_user.id)),
-            policy_rules=policy_rules_by_scope.get(portal_scope.id, []),
+    results = [
+        _serialize_access_matrix_row(
+            target_user=target_user,
+            scopes=scopes,
+            portal_scope=portal_scope,
+            policy_rules_by_scope=policy_rules_by_scope,
+            access_by_scope_and_user=access_by_scope_and_user,
         )
-        accesses = {portal_scope.key: portal_access}
-        for scope in scopes[1:]:
-            raw_scope_access = _build_access_payload(
-                user=target_user,
-                scope=scope,
-                user_access=access_by_scope_and_user.get((scope.id, target_user.id)),
-                policy_rules=policy_rules_by_scope.get(scope.id, []),
-            )
-            accesses[scope.key] = _apply_portal_access_requirement(
-                scope_access=raw_scope_access,
-                portal_access=portal_access,
-            )
-        results.append({"user": _serialize_access_user(target_user), "accesses": accesses})
+        for target_user in users
+    ]
 
     return {
         "scopes": [_serialize_scope(scope) for scope in scopes],
@@ -384,6 +723,88 @@ def get_access_matrix(
             "totalPages": paginator.num_pages,
         },
     }, 200
+
+
+def _serialize_access_matrix_row(
+    *,
+    target_user: Any,
+    scopes: list[AccessScope],
+    portal_scope: AccessScope,
+    policy_rules_by_scope: dict[int, list[AccessPolicyRule]],
+    access_by_scope_and_user: dict[tuple[int, int], UserAccess],
+) -> dict[str, object]:
+    """한 사용자의 Portal 선행 조건을 포함한 전체 매트릭스 행을 직렬화합니다."""
+
+    portal_access = _build_access_payload(
+        user=target_user,
+        scope=portal_scope,
+        user_access=access_by_scope_and_user.get((portal_scope.id, target_user.id)),
+        policy_rules=policy_rules_by_scope.get(portal_scope.id, []),
+    )
+    accesses = {portal_scope.key: portal_access}
+    for scope in scopes[1:]:
+        raw_scope_access = _build_access_payload(
+            user=target_user,
+            scope=scope,
+            user_access=access_by_scope_and_user.get((scope.id, target_user.id)),
+            policy_rules=policy_rules_by_scope.get(scope.id, []),
+        )
+        accesses[scope.key] = _apply_portal_access_requirement(
+            scope_access=raw_scope_access,
+            portal_access=portal_access,
+        )
+    return {"user": _serialize_access_user(target_user), "accesses": accesses}
+
+
+def _build_access_matrix_row_for_user(*, target_user: Any) -> dict[str, object] | None:
+    """권한 변경 직후 한 사용자의 최신 전체 매트릭스 행을 조회해 반환합니다."""
+
+    scopes = selectors.list_managed_access_scopes()
+    portal_scope = next(
+        (scope for scope in scopes if scope.key == ACCESS_SCOPE_PORTAL),
+        None,
+    )
+    if portal_scope is None:
+        return None
+
+    policy_rules_by_scope: dict[int, list[AccessPolicyRule]] = {
+        scope.id: []
+        for scope in scopes
+    }
+    for rule in selectors.list_active_access_policy_rules_for_scopes(scopes=scopes):
+        policy_rules_by_scope.setdefault(rule.scope_id, []).append(rule)
+    access_by_scope_and_user = {
+        (access.scope_id, access.user_id): access
+        for access in selectors.list_user_access_rows_for_scopes_and_users(
+            scopes=scopes,
+            user_ids=[target_user.id],
+        )
+    }
+    return _serialize_access_matrix_row(
+        target_user=target_user,
+        scopes=scopes,
+        portal_scope=portal_scope,
+        policy_rules_by_scope=policy_rules_by_scope,
+        access_by_scope_and_user=access_by_scope_and_user,
+    )
+
+
+def _serialize_pending_access_request(
+    user_access: UserAccess,
+) -> dict[str, object]:
+    """UserAccess 승인 대기 행을 전체 요청 목록 API 형태로 직렬화합니다."""
+
+    return {
+        "requestId": user_access.id,
+        "scope": _serialize_scope(user_access.scope),
+        "user": _serialize_access_user(user_access.user),
+        "access": _build_access_payload(
+            user=user_access.user,
+            scope=user_access.scope,
+            user_access=user_access,
+            policy_rules=[],
+        ),
+    }
 
 
 def decide_user_access(
@@ -410,6 +831,7 @@ def decide_user_access(
         reason=reason,
         role=role,
         approve_all_apps=approve_all_apps,
+        include_matrix_row=True,
     )
 
 
@@ -422,6 +844,7 @@ def _decide_user_access(
     reason: str | None,
     role: str | None = None,
     approve_all_apps: bool = False,
+    include_matrix_row: bool = False,
 ) -> tuple[dict[str, object], int]:
     """모든 공개 API가 공유하는 사용자 scope 권한 변경을 수행합니다."""
 
@@ -450,6 +873,14 @@ def _decide_user_access(
     )
     if normalized_action not in supported_actions:
         return {"error": "invalid_action"}, 400
+    reason_required_actions = {
+        "grant",
+        "revoke",
+        AccessAuditLog.Actions.CHANGE_ROLE,
+        AccessAuditLog.Actions.RESET_TO_POLICY,
+    }
+    if normalized_action in reason_required_actions and not normalized_reason:
+        return {"error": "reason_required"}, 400
 
     explicit_role = None
     if normalized_action == AccessAuditLog.Actions.CHANGE_ROLE:
@@ -471,6 +902,7 @@ def _decide_user_access(
                 target_user=target_user,
                 scope=scope,
                 reason=normalized_reason,
+                include_matrix_row=include_matrix_row,
             )
 
         if normalized_action == AccessAuditLog.Actions.CHANGE_ROLE:
@@ -518,6 +950,21 @@ def _decide_user_access(
                 }, 409
 
         before = _serialize_user_access(user_access) if user_access else {}
+        before_data_scope_mode = (
+            user_access.data_scope_mode
+            if user_access is not None
+            else None
+        )
+        preserve_data_scope_mode = bool(
+            user_access is not None
+            and user_access.status == UserAccess.Status.ALLOWED
+            and next_status == UserAccess.Status.ALLOWED
+        )
+        next_data_scope_mode = (
+            user_access.data_scope_mode
+            if preserve_data_scope_mode
+            else UserAccess.DataScopeModes.DEFAULT
+        )
         if user_access is None:
             user_access = UserAccess(
                 scope=scope,
@@ -541,6 +988,7 @@ def _decide_user_access(
         user_access.department = _get_user_department(user=target_user)
         user_access.status = next_status
         user_access.role = normalized_role
+        user_access.data_scope_mode = next_data_scope_mode
         user_access.decided_by = actor
         user_access.decided_at = timezone.now()
         user_access.reason = normalized_reason if next_status == UserAccess.Status.DENIED else None
@@ -556,6 +1004,14 @@ def _decide_user_access(
             after=after,
             reason=normalized_reason or None,
         )
+        _create_data_scope_mode_audit_if_changed(
+            scope=scope,
+            actor=actor,
+            target_user=target_user,
+            before_mode=before_data_scope_mode,
+            after_mode=next_data_scope_mode,
+            reason=normalized_reason or None,
+        )
         if approve_all_apps:
             _grant_default_app_accesses(
                 actor=actor,
@@ -563,7 +1019,7 @@ def _decide_user_access(
                 reason=normalized_reason or None,
             )
 
-    return {
+    response_payload = {
         "status": "ok",
         "row": _serialize_effective_access_user(
             user=target_user,
@@ -571,7 +1027,12 @@ def _decide_user_access(
             user_access=user_access,
             policy_rules=policy_rules,
         ),
-    }, 200
+    }
+    if include_matrix_row:
+        response_payload["matrixRow"] = _build_access_matrix_row_for_user(
+            target_user=target_user,
+        )
+    return response_payload, 200
 
 
 def get_access_policy_rules(
@@ -585,10 +1046,20 @@ def get_access_policy_rules(
     if not can_manage_access(user=actor, request=request):
         return {"error": "forbidden"}, 403
 
+    normalized_scope_key = (scope_key or "").strip()
+    selected_scope_key = (
+        None
+        if normalized_scope_key.casefold() == "all"
+        else normalized_scope_key or ACCESS_SCOPE_PORTAL
+    )
+    rules = selectors.list_access_policy_rules(
+        scope_key=selected_scope_key,
+        managed_only=selected_scope_key is None,
+    )
     return {
         "results": [
             _serialize_access_policy_rule(rule)
-            for rule in selectors.list_access_policy_rules(scope_key=scope_key or ACCESS_SCOPE_PORTAL)
+            for rule in rules
         ]
     }, 200
 
@@ -645,6 +1116,127 @@ def create_access_policy_rule(
         )
 
     return {"status": "ok", "policyRule": after}, 201
+
+
+def bulk_apply_access_policy_rules(
+    *,
+    actor: Any,
+    request: Any | None = None,
+    scope_keys: list[str],
+    value: str,
+    is_active: bool,
+) -> tuple[dict[str, object], int]:
+    """한 부서의 자동 접근 규칙을 여러 scope에 같은 상태로 적용합니다.
+
+    입력:
+    - actor: 변경을 수행하는 Portal 관리자
+    - request: 접근 관리 권한 판정에 사용할 HTTP 요청
+    - scope_keys: 같은 상태를 적용할 Portal·앱·기능 scope key 목록
+    - value: 자동 접근을 판정할 부서명
+    - is_active: 모든 대상 scope에 적용할 사용 여부
+
+    반환:
+    - 변경된 규칙 목록, 처리 요약과 HTTP 상태 코드
+
+    부작용:
+    - 대상 scope별 정책 규칙과 감사 로그를 한 transaction에서 생성 또는 수정
+
+    오류:
+    - 관리 권한 없음, 빈 부서명, 없거나 관리 대상이 아닌 scope 입력 시 오류 반환
+    """
+
+    if not can_manage_access(user=actor, request=request):
+        return {"error": "forbidden"}, 403
+
+    normalized_value = (value or "").strip()
+    normalized_scope_keys = list(dict.fromkeys(key.strip() for key in scope_keys if key.strip()))
+    if not normalized_value:
+        return {"error": "invalid_policy_rule"}, 400
+    if not normalized_scope_keys:
+        return {"error": "scope_required"}, 400
+
+    with transaction.atomic():
+        scopes = selectors.list_access_scopes_by_keys_for_update(
+            scope_keys=normalized_scope_keys,
+        )
+        scopes_by_key = {scope.key: scope for scope in scopes}
+        invalid_scope_keys = [
+            key
+            for key in normalized_scope_keys
+            if key not in scopes_by_key
+            or (
+                key != ACCESS_SCOPE_PORTAL
+                and not scopes_by_key[key].is_active
+            )
+        ]
+        if invalid_scope_keys:
+            return {
+                "error": "invalid_scope",
+                "scopeKeys": invalid_scope_keys,
+            }, 400
+
+        existing_rules = selectors.list_access_policy_rules_for_scopes_and_value_for_update(
+            scopes=scopes,
+            value=normalized_value,
+        )
+        rules_by_scope_id = {rule.scope_id: rule for rule in existing_rules}
+        response_rules: list[AccessPolicyRule] = []
+        pending_changes: list[
+            tuple[AccessScope, AccessPolicyRule, dict[str, object], str]
+        ] = []
+
+        for scope_key in normalized_scope_keys:
+            scope = scopes_by_key[scope_key]
+            rule = rules_by_scope_id.get(scope.id)
+            if rule is not None and rule.is_active == is_active:
+                response_rules.append(rule)
+                continue
+
+            before = _serialize_access_policy_rule(rule) if rule else {}
+            audit_action = AccessAuditLog.Actions.POLICY_UPDATE
+            if rule is None:
+                rule = AccessPolicyRule(
+                    scope=scope,
+                    rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+                    value=normalized_value,
+                    is_active=is_active,
+                )
+                audit_action = AccessAuditLog.Actions.POLICY_CREATE
+            else:
+                rule.is_active = is_active
+
+            validation_error = _clean_policy_rule(rule)
+            if validation_error:
+                return validation_error, 400
+            pending_changes.append((scope, rule, before, audit_action))
+            response_rules.append(rule)
+
+        # 모든 후보 검증이 끝난 뒤 저장해 validation 오류가 부분 반영을 만들지 않게 합니다.
+        for scope, rule, before, audit_action in pending_changes:
+            rule.save()
+            create_access_audit_log(
+                scope=scope,
+                actor=actor,
+                target_user=None,
+                policy_rule=rule,
+                action=audit_action,
+                before=before,
+                after=_serialize_access_policy_rule(rule),
+                reason="자동 접근 규칙 매트릭스 일괄 변경",
+            )
+
+    return {
+        "status": "ok",
+        "policyRules": [
+            _serialize_access_policy_rule(rule)
+            for rule in response_rules
+        ],
+        "summary": {
+            "total": len(scopes),
+            "updated": len(pending_changes),
+            "unchanged": len(scopes) - len(pending_changes),
+        },
+    }, 200
 
 
 def update_access_policy_rule(
@@ -777,6 +1369,7 @@ def _reset_locked_user_access_to_policy(
     target_user: Any,
     scope: AccessScope,
     reason: str,
+    include_matrix_row: bool = False,
 ) -> tuple[dict[str, object], int]:
     """잠긴 사용자의 명시 접근 row를 제거해 정책 판정 상태로 되돌립니다."""
 
@@ -785,6 +1378,11 @@ def _reset_locked_user_access_to_policy(
         scope=scope,
     )
     before = _serialize_user_access(user_access) if user_access else {}
+    before_data_scope_mode = (
+        user_access.data_scope_mode
+        if user_access is not None
+        else None
+    )
     if user_access is not None:
         user_access.delete()
 
@@ -802,8 +1400,16 @@ def _reset_locked_user_access_to_policy(
         after={},
         reason=reason or None,
     )
+    _create_data_scope_mode_audit_if_changed(
+        scope=scope,
+        actor=actor,
+        target_user=target_user,
+        before_mode=before_data_scope_mode,
+        after_mode=UserAccess.DataScopeModes.DEFAULT,
+        reason=reason or None,
+    )
 
-    return {
+    response_payload = {
         "status": "ok",
         "row": _serialize_effective_access_user(
             user=target_user,
@@ -811,7 +1417,12 @@ def _reset_locked_user_access_to_policy(
             user_access=None,
             policy_rules=policy_rules,
         ),
-    }, 200
+    }
+    if include_matrix_row:
+        response_payload["matrixRow"] = _build_access_matrix_row_for_user(
+            target_user=target_user,
+        )
+    return response_payload, 200
 
 
 def _build_effective_access_rows(
@@ -882,6 +1493,7 @@ def create_access_audit_log(
     before: dict[str, object],
     after: dict[str, object],
     reason: str | None,
+    affiliation: Any | None = None,
 ) -> None:
     """접근 권한 변경 감사 로그를 생성합니다."""
 
@@ -889,6 +1501,7 @@ def create_access_audit_log(
         scope=scope,
         actor=actor if getattr(actor, "is_authenticated", False) else None,
         target_user=target_user,
+        affiliation=affiliation,
         policy_rule=policy_rule,
         action=action,
         before=_canonicalize_audit_snapshot(action=action, snapshot=before),
@@ -913,6 +1526,16 @@ def _serialize_access_audit_log(row: AccessAuditLog) -> dict[str, object]:
         "createdAt": row.created_at.isoformat() if row.created_at else None,
         "actor": _serialize_access_actor(row.actor),
         "targetUser": _serialize_access_actor(row.target_user),
+        "affiliation": (
+            {
+                "id": row.affiliation.id,
+                "department": row.affiliation.department,
+                "line": row.affiliation.line,
+                "userSdwtProd": row.affiliation.user_sdwt_prod,
+            }
+            if row.affiliation
+            else None
+        ),
         "policyRule": policy_snapshot or ({
             "id": policy_rule.id,
             "ruleType": policy_rule.rule_type,
@@ -956,7 +1579,54 @@ def _canonicalize_audit_snapshot(
     if action in _SCOPE_AUDIT_ACTIONS:
         return {
             key: snapshot.get(key)
-            for key in ("key", "name", "scopeType", "isActive", "requestable")
+            for key in (
+                "key",
+                "name",
+                "scopeType",
+                "dataScopeType",
+                "includeCurrentAffiliation",
+                "isActive",
+                "requestable",
+            )
+            if key in snapshot
+        }
+    if action in _DATA_SCOPE_AUDIT_ACTIONS:
+        return {
+            key: snapshot.get(key)
+            for key in (
+                "id",
+                "dataScopeMode",
+                "affiliationId",
+                "source",
+                "isActive",
+                "expiresAt",
+            )
+            if key in snapshot
+        }
+    if action in _AFFILIATION_ROLE_AUDIT_ACTIONS:
+        role = snapshot.get("role")
+        return {
+            key: snapshot.get(key)
+            for key in ("role", "grantedBy")
+            if (
+                key in snapshot
+                and (
+                    key != "role"
+                    or role in UserSdwtProdAccess.Roles.values
+                )
+            )
+        }
+    if action in _AFFILIATION_LIFECYCLE_AUDIT_ACTIONS:
+        return {
+            key: snapshot.get(key)
+            for key in (
+                "id",
+                "department",
+                "line",
+                "userSdwtProd",
+                "isActive",
+                "source",
+            )
             if key in snapshot
         }
     explicit_status = snapshot.get("explicitStatus")

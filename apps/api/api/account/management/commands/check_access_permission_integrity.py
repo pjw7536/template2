@@ -5,21 +5,26 @@ from __future__ import annotations
 import re
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from django.db.models.functions import Lower, Trim
 
 from api.account.models import (
     ACCESS_SCOPE_KEY_PATTERN,
     ACCESS_SCOPE_PORTAL,
+    AFFILIATION_DATA_SCOPE_KEYS,
     SYSTEM_APP_SCOPE_KEYS,
     AccessPolicyRule,
     AccessRole,
     AccessScope,
+    Affiliation,
     UserAccess,
+    UserScopeAffiliationGrant,
+    UserSdwtProdAccess,
 )
 
 PRE_MIGRATION_PHASE = "pre-migration"
 POST_MIGRATION_PHASE = "post-migration"
-LEGACY_ACCESS_ROLES = ("viewer", "member", "manager", "admin")
+PRE_MIGRATION_ACCESS_ROLES = tuple(AccessRole.values)
 
 
 class Command(BaseCommand):
@@ -34,7 +39,7 @@ class Command(BaseCommand):
             "--phase",
             choices=(PRE_MIGRATION_PHASE, POST_MIGRATION_PHASE),
             required=True,
-            help="pre-migration은 legacy 역할, post-migration은 고정 역할 계약을 검사합니다.",
+            help="pre-migration은 직전 release, post-migration은 현재 release 계약을 검사합니다.",
         )
 
     def handle(self, *args, **options):
@@ -42,7 +47,7 @@ class Command(BaseCommand):
 
         phase = options["phase"]
         role_findings = (
-            self._check_legacy_role_contract()
+            self._check_pre_migration_role_contract()
             if phase == PRE_MIGRATION_PHASE
             else self._check_fixed_role_contract()
         )
@@ -51,6 +56,12 @@ class Command(BaseCommand):
             *self._check_scope_identity(),
             *role_findings,
             *self._check_policy_values(),
+            *self._check_affiliation_access_values(),
+            *(
+                self._check_app_affiliation_data_scopes()
+                if phase == POST_MIGRATION_PHASE
+                else []
+            ),
         ]
         if findings:
             details = "\n".join(f"- {finding}" for finding in findings)
@@ -65,7 +76,11 @@ class Command(BaseCommand):
 
         expected_types = {ACCESS_SCOPE_PORTAL: AccessScope.ScopeTypes.PORTAL}
         expected_types.update({key: AccessScope.ScopeTypes.APP for key in SYSTEM_APP_SCOPE_KEYS})
-        scopes = AccessScope.objects.filter(key__in=expected_types).in_bulk(field_name="key")
+        scopes = (
+            AccessScope.objects.filter(key__in=expected_types)
+            .only("id", "key", "scope_type")
+            .in_bulk(field_name="key")
+        )
         findings = []
         for key, expected_type in expected_types.items():
             scope = scopes.get(key)
@@ -94,15 +109,15 @@ class Command(BaseCommand):
                 )
         return findings
 
-    def _check_legacy_role_contract(self) -> list[str]:
-        """migration 전 사용자 접근이 legacy 역할 계약을 따르는지 확인합니다."""
+    def _check_pre_migration_role_contract(self) -> list[str]:
+        """migration 전 사용자 접근이 직전 release의 고정 역할 계약을 따르는지 확인합니다."""
 
         invalid_access_count = UserAccess.objects.exclude(
-            role__in=LEGACY_ACCESS_ROLES
+            role__in=PRE_MIGRATION_ACCESS_ROLES
         ).count()
         if not invalid_access_count:
             return []
-        return [f"유효하지 않은 legacy 사용자 역할이 {invalid_access_count}건입니다."]
+        return [f"유효하지 않은 migration 전 사용자 역할이 {invalid_access_count}건입니다."]
 
     def _check_fixed_role_contract(self) -> list[str]:
         """migration 후 사용자 접근이 고정 역할 계약을 따르는지 확인합니다."""
@@ -153,4 +168,93 @@ class Command(BaseCommand):
                 )
             else:
                 seen_keys[semantic_key] = rule.id
+        return findings
+
+    def _check_affiliation_access_values(self) -> list[str]:
+        """소속 식별자와 소속 접근 역할의 무결성을 확인합니다."""
+
+        findings = []
+        seen_keys: dict[str, int] = {}
+        affiliations = (
+            Affiliation.objects.annotate(
+                _affiliation_lookup=Lower(Trim("user_sdwt_prod")),
+            )
+            .order_by("id")
+            .only("id", "user_sdwt_prod")
+        )
+        for affiliation in affiliations:
+            normalized = (affiliation.user_sdwt_prod or "").strip()
+            if not normalized:
+                findings.append(f"소속 식별자가 비어 있습니다: id={affiliation.id}")
+                continue
+            if affiliation.user_sdwt_prod != normalized:
+                findings.append(
+                    f"소속 식별자 앞뒤에 공백이 있습니다: id={affiliation.id}"
+                )
+            semantic_key = affiliation._affiliation_lookup
+            if semantic_key in seen_keys:
+                findings.append(
+                    "의미상 중복 소속이 있습니다: "
+                    f"id={seen_keys[semantic_key]}, id={affiliation.id}"
+                )
+            else:
+                seen_keys[semantic_key] = affiliation.id
+
+        invalid_role_count = UserSdwtProdAccess.objects.exclude(
+            role__in=UserSdwtProdAccess.Roles.values
+        ).count()
+        if invalid_role_count:
+            findings.append(
+                f"유효하지 않은 소속 접근 역할이 {invalid_role_count}건입니다."
+            )
+        return findings
+
+    def _check_app_affiliation_data_scopes(self) -> list[str]:
+        """migration 후 앱별 소속 정책과 grant 참조가 일치하는지 확인합니다."""
+
+        findings = []
+        scopes = AccessScope.objects.filter(
+            key__in=(ACCESS_SCOPE_PORTAL, *SYSTEM_APP_SCOPE_KEYS)
+        ).only(
+            "id",
+            "key",
+            "data_scope_type",
+            "include_current_affiliation",
+        )
+        for scope in scopes:
+            expects_affiliation = scope.key in AFFILIATION_DATA_SCOPE_KEYS
+            expected_type = (
+                AccessScope.DataScopeTypes.AFFILIATION
+                if expects_affiliation
+                else AccessScope.DataScopeTypes.NONE
+            )
+            if scope.data_scope_type != expected_type:
+                findings.append(
+                    "시스템 scope 데이터 유형이 잘못되었습니다: "
+                    f"{scope.key}={scope.data_scope_type}, expected={expected_type}"
+                )
+            if scope.include_current_affiliation != expects_affiliation:
+                findings.append(
+                    "시스템 scope 현재 소속 정책이 잘못되었습니다: "
+                    f"{scope.key}={scope.include_current_affiliation}"
+                )
+
+        invalid_all_count = UserAccess.objects.filter(
+            data_scope_mode=UserAccess.DataScopeModes.ALL,
+        ).filter(
+            ~Q(status=UserAccess.Status.ALLOWED)
+            | ~Q(scope__data_scope_type=AccessScope.DataScopeTypes.AFFILIATION)
+        ).count()
+        if invalid_all_count:
+            findings.append(
+                f"허용되지 않은 전체 소속 범위가 {invalid_all_count}건입니다."
+            )
+
+        invalid_grant_count = UserScopeAffiliationGrant.objects.filter(
+            ~Q(scope__data_scope_type=AccessScope.DataScopeTypes.AFFILIATION)
+        ).count()
+        if invalid_grant_count:
+            findings.append(
+                f"유효하지 않은 앱별 소속 grant가 {invalid_grant_count}건입니다."
+            )
         return findings

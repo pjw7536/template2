@@ -206,20 +206,33 @@ def resolve_access_control(request: HttpRequest) -> tuple[bool, bool, Set[str]]:
         return True, False, set()
 
     # -----------------------------------------------------------------------------
-    # 3) 앱 관리자는 전체 메일함을 관리
+    # 3) 앱 접근과 독립된 Emails 데이터 범위를 계산
     # -----------------------------------------------------------------------------
-    if account_services.has_scope_role(
+    data_scope = account_services.get_effective_affiliation_scope(
         user=user,
         scope_key="emails",
         request=request,
-    ):
-        return True, True, set()
+    )
+    if not data_scope.get("allowed"):
+        return True, False, set()
 
     # -----------------------------------------------------------------------------
-    # 4) 일반 사용자는 접근 가능한 메일함 목록을 추가로 제한
+    # 4) 전체 범위와 Emails admin 역할을 함께 가져야 전역 운영 특권을 부여
     # -----------------------------------------------------------------------------
-    accessible = get_accessible_user_sdwt_prods_for_user(user)
-    return True, False, accessible
+    accessible = {
+        str(affiliation.get("userSdwtProd") or "").strip()
+        for affiliation in data_scope.get("affiliations", [])
+        if str(affiliation.get("userSdwtProd") or "").strip()
+    }
+    is_privileged = bool(
+        data_scope.get("all")
+        and account_services.has_scope_role(
+            user=user,
+            scope_key="emails",
+            request=request,
+        )
+    )
+    return True, is_privileged, accessible
 
 
 __all__ = [

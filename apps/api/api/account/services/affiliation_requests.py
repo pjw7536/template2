@@ -27,6 +27,7 @@ from .utils import (
     _is_privileged_user,
     _normalize_user_sdwt_prod,
     _normalize_user_sdwt_lookup_key,
+    _resolve_user_sdwt_prod_role,
     _same_user_sdwt_prod,
     _user_can_approve_affiliation_change,
 )
@@ -144,17 +145,11 @@ def _resolve_affiliation_change_role(*, user: Any, change: UserSdwtProdChange) -
     - 없음
     """
 
-    if _is_privileged_user(user):
-        return "manager"
-
-    access = selectors.get_access_row_for_user_and_prod(
+    role = _resolve_user_sdwt_prod_role(
         user=user,
         user_sdwt_prod=change.to_user_sdwt_prod,
     )
-    if access and access.role in {"viewer", "member", "manager"}:
-        return access.role
-
-    return "viewer"
+    return role or "viewer"
 
 
 def get_pending_user_sdwt_prod_change(*, user: Any) -> UserSdwtProdChange | None:
@@ -349,9 +344,21 @@ def _apply_affiliation_change(*, change: UserSdwtProdChange, approver: Any | Non
         ]
     )
 
-    ensure_self_access(target_user, role="member")
+    audit_actor = approver or target_user
+    audit_reason = f"소속 변경 요청 #{change.id} 적용"
+    ensure_self_access(
+        target_user,
+        role="member",
+        audit_actor=audit_actor,
+        audit_reason=audit_reason,
+    )
     if previous_user_sdwt and not _same_user_sdwt_prod(previous_user_sdwt, change.to_user_sdwt_prod):
-        downgrade_member_access(user=target_user, user_sdwt_prod=previous_user_sdwt)
+        downgrade_member_access(
+            user=target_user,
+            user_sdwt_prod=previous_user_sdwt,
+            audit_actor=audit_actor,
+            audit_reason=audit_reason,
+        )
 
     return {
         "status": "applied",
@@ -376,6 +383,65 @@ def _should_auto_apply_affiliation_change(
         and not force_pending
         and not has_existing_pending
     )
+
+
+def _lock_affiliation_change_for_decision(
+    *,
+    change_id: int,
+) -> tuple[UserSdwtProdChange | None, dict[str, object] | None, int | None]:
+    """소속·사용자·요청 순서로 잠그고 현재 유효한 대기 요청을 반환합니다.
+
+    호출자는 반드시 `transaction.atomic()` 안에서 실행해야 합니다. 소속 역할 변경과
+    같은 `Affiliation` 잠금을 먼저 사용해 manager 재검사 시점과 역할 변경을 직렬화합니다.
+    """
+
+    preview = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
+    if preview is None:
+        return None, {"error": "Change not found"}, 404
+
+    locked_affiliation = (
+        selectors.get_affiliation_option_for_update_by_user_sdwt_prod(
+            user_sdwt_prod=preview.to_user_sdwt_prod,
+        )
+    )
+    if locked_affiliation is None:
+        return None, {"error": "forbidden"}, 403
+
+    locked_user = selectors.get_user_by_id_for_update(user_id=preview.user_id)
+    if locked_user is None:
+        return None, {"error": "User not found"}, 404
+
+    change = selectors.get_user_sdwt_prod_change_by_id_for_update(
+        change_id=change_id
+    )
+    if change is None:
+        return None, {"error": "Change not found"}, 404
+    if (
+        change.user_id != locked_user.id
+        or not _same_user_sdwt_prod(
+            change.to_user_sdwt_prod,
+            locked_affiliation.user_sdwt_prod,
+        )
+    ):
+        return None, {"error": "affiliation_request_changed"}, 409
+
+    change.user = locked_user
+    current_pending = selectors.get_pending_user_sdwt_prod_change(
+        user=locked_user
+    )
+    if (
+        change.status not in {None, "", UserSdwtProdChange.Status.PENDING}
+        or change.approved
+        or change.applied
+        or current_pending is None
+        or current_pending.id != change.id
+    ):
+        return (
+            None,
+            {"error": "Affiliation request already decided"},
+            409,
+        )
+    return change, None, None
 
 
 def request_affiliation_change(
@@ -409,27 +475,9 @@ def request_affiliation_change(
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 대상 소속 정규화 및 동일 소속 요청 차단
+    # 1) 대상 소속과 외부 예측값 정규화
     # -----------------------------------------------------------------------------
     normalized_target = _normalize_user_sdwt_prod(to_user_sdwt_prod)
-    current_user_sdwt = _normalize_user_sdwt_prod(selectors.get_current_user_sdwt_prod(user=user))
-    if _same_user_sdwt_prod(current_user_sdwt, normalized_target):
-        return {"error": "already current affiliation"}, 400
-
-    # -----------------------------------------------------------------------------
-    # 2) 자기 접근 권한 보장
-    # -----------------------------------------------------------------------------
-    ensure_self_access(user, role="member")
-
-    # -----------------------------------------------------------------------------
-    # 3) 기존 대기 요청 확인 및 대체 여부 판단
-    # -----------------------------------------------------------------------------
-    existing_pending = selectors.get_pending_user_sdwt_prod_change(user=user)
-    has_existing_pending = existing_pending is not None
-
-    # -----------------------------------------------------------------------------
-    # 4) 예측 소속 일치 여부 확인 및 자동 적용 판단
-    # -----------------------------------------------------------------------------
     knox_id = (getattr(user, "knox_id", None) or "").strip()
     predicted_user_sdwt = ""
     if knox_id:
@@ -438,27 +486,45 @@ def request_affiliation_change(
             snapshot.predicted_user_sdwt_prod if snapshot else None
         )
 
-    should_auto_apply = _should_auto_apply_affiliation_change(
-        predicted_user_sdwt=predicted_user_sdwt,
-        target_user_sdwt=normalized_target,
-        force_pending=force_pending,
-        has_existing_pending=has_existing_pending,
-    )
-
     # -----------------------------------------------------------------------------
-    # 5) effective_from 보정
-    # -----------------------------------------------------------------------------
-    if should_auto_apply:
-        effective_from = timezone.now()
-    else:
-        if effective_from is None:
-            effective_from = timezone.now()
-        elif timezone.is_naive(effective_from):
-            effective_from = timezone.make_aware(effective_from, timezone.utc)
-    # -----------------------------------------------------------------------------
-    # 6) 변경 요청 생성 및 자동 적용 분기
+    # 2) 사용자 단위로 요청 생성과 기존 대기 요청 대체를 직렬화
     # -----------------------------------------------------------------------------
     with transaction.atomic():
+        locked_user = selectors.get_user_by_id_for_update(
+            user_id=getattr(user, "id", None),
+        )
+        if locked_user is None:
+            return {"error": "User not found"}, 404
+
+        current_user_sdwt = _normalize_user_sdwt_prod(
+            selectors.get_current_user_sdwt_prod(user=locked_user)
+        )
+        if _same_user_sdwt_prod(current_user_sdwt, normalized_target):
+            return {"error": "already current affiliation"}, 400
+
+        ensure_self_access(locked_user, role="member")
+        existing_pending = selectors.get_pending_user_sdwt_prod_change(
+            user=locked_user
+        )
+        should_auto_apply = _should_auto_apply_affiliation_change(
+            predicted_user_sdwt=predicted_user_sdwt,
+            target_user_sdwt=normalized_target,
+            force_pending=force_pending,
+            has_existing_pending=existing_pending is not None,
+        )
+
+        if should_auto_apply:
+            resolved_effective_from = timezone.now()
+        elif effective_from is None:
+            resolved_effective_from = timezone.now()
+        elif timezone.is_naive(effective_from):
+            resolved_effective_from = timezone.make_aware(
+                effective_from,
+                timezone.utc,
+            )
+        else:
+            resolved_effective_from = effective_from
+
         if existing_pending is not None:
             existing_pending.status = UserSdwtProdChange.Status.SUPERSEDED
             existing_pending.approved = False
@@ -478,28 +544,35 @@ def request_affiliation_change(
             )
 
         change = UserSdwtProdChange.objects.create(
-            user=user,
+            user=locked_user,
             department=getattr(option, "department", None),
             line=getattr(option, "line", None),
-            from_user_sdwt_prod=selectors.get_current_user_sdwt_prod(user=user),
+            from_user_sdwt_prod=selectors.get_current_user_sdwt_prod(
+                user=locked_user
+            ),
             to_user_sdwt_prod=normalized_target,
-            effective_from=effective_from,
+            effective_from=resolved_effective_from,
             status=UserSdwtProdChange.Status.PENDING,
             applied=False,
             approved=False,
-            created_by=user,
+            created_by=locked_user,
         )
 
         if should_auto_apply:
-            return _apply_affiliation_change(change=change, approver=user), 200
+            return _apply_affiliation_change(
+                change=change,
+                approver=locked_user,
+            ), 200
 
-        current_affiliation = selectors.get_current_affiliation_record(user=user)
+        current_affiliation = selectors.get_current_affiliation_record(
+            user=locked_user
+        )
         if current_affiliation is not None and current_affiliation.requires_reconfirm:
             current_affiliation.requires_reconfirm = False
             current_affiliation.save(update_fields=["requires_reconfirm"])
 
     # -----------------------------------------------------------------------------
-    # 7) 승인 대기 응답 반환
+    # 3) 승인 대기 응답 반환
     # -----------------------------------------------------------------------------
     return (
         {
@@ -532,47 +605,38 @@ def approve_affiliation_change(
     - 접근 권한 행 보장
 
     오류:
-    - 403: 권한 없음
+    - 403: 권한 없음 또는 자기 요청 승인
     - 404: 변경 요청 없음
-    - 400: 이미 처리됨
+    - 409: 이미 처리됨
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 변경 요청 조회
-    # -----------------------------------------------------------------------------
-    change = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
-    if change is None:
-        return {"error": "Change not found"}, 404
-
-    # -----------------------------------------------------------------------------
-    # 2) 권한 검증
-    # -----------------------------------------------------------------------------
-    if not _user_can_approve_affiliation_change(
-        user=approver,
-        target_user_sdwt_prod=change.to_user_sdwt_prod,
-    ):
-        return {"error": "forbidden"}, 403
-
-    # -----------------------------------------------------------------------------
-    # 3) 상태 검증
-    # -----------------------------------------------------------------------------
-    if change.status == UserSdwtProdChange.Status.APPROVED or change.approved or change.applied:
-        return {"error": "already applied"}, 400
-    if change.status in {
-        UserSdwtProdChange.Status.REJECTED,
-        UserSdwtProdChange.Status.SUPERSEDED,
-    }:
-        return {"error": "already rejected"}, 400
-
-    # -----------------------------------------------------------------------------
-    # 4) 트랜잭션 내 승인/적용 처리
+    # 1) 소속·사용자·요청을 잠근 뒤 최신 manager 권한을 재검사
     # -----------------------------------------------------------------------------
     with transaction.atomic():
+        change, error_payload, error_status = _lock_affiliation_change_for_decision(
+            change_id=change_id
+        )
+        if error_payload is not None:
+            return error_payload, int(error_status or 409)
+        if change is None:  # 타입 안전성을 위한 방어 분기입니다.
+            return {"error": "Change not found"}, 404
+        if getattr(approver, "id", None) == change.user_id:
+            return {"error": "Cannot approve your own affiliation request"}, 403
+        if not _user_can_approve_affiliation_change(
+            user=approver,
+            target_user_sdwt_prod=change.to_user_sdwt_prod,
+        ):
+            return {"error": "forbidden"}, 403
+
+        # -----------------------------------------------------------------------------
+        # 2) 승인과 소속 적용을 원자적으로 처리
+        # -----------------------------------------------------------------------------
         payload = _apply_affiliation_change(change=change, approver=approver)
         payload["status"] = "approved"
 
     # -----------------------------------------------------------------------------
-    # 5) 응답 반환
+    # 3) 응답 반환
     # -----------------------------------------------------------------------------
     return payload, 200
 
@@ -598,58 +662,51 @@ def reject_affiliation_change(
     - 거절 사유 저장
 
     오류:
-    - 403: 권한 없음
+    - 403: 권한 없음 또는 자기 요청 거절
     - 404: 변경 요청 없음
-    - 400: 이미 처리됨
+    - 409: 이미 처리됨
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 변경 요청 조회
+    # 1) 소속·사용자·요청을 잠근 뒤 최신 manager 권한을 재검사
     # -----------------------------------------------------------------------------
-    change = selectors.get_user_sdwt_prod_change_by_id(change_id=change_id)
-    if change is None:
-        return {"error": "Change not found"}, 404
+    with transaction.atomic():
+        change, error_payload, error_status = _lock_affiliation_change_for_decision(
+            change_id=change_id
+        )
+        if error_payload is not None:
+            return error_payload, int(error_status or 409)
+        if change is None:  # 타입 안전성을 위한 방어 분기입니다.
+            return {"error": "Change not found"}, 404
+        if getattr(approver, "id", None) == change.user_id:
+            return {"error": "Cannot reject your own affiliation request"}, 403
+        if not _user_can_approve_affiliation_change(
+            user=approver,
+            target_user_sdwt_prod=change.to_user_sdwt_prod,
+        ):
+            return {"error": "forbidden"}, 403
 
-    # -----------------------------------------------------------------------------
-    # 2) 권한 검증
-    # -----------------------------------------------------------------------------
-    if not _user_can_approve_affiliation_change(
-        user=approver,
-        target_user_sdwt_prod=change.to_user_sdwt_prod,
-    ):
-        return {"error": "forbidden"}, 403
+        # -----------------------------------------------------------------------------
+        # 2) 거절 상태와 처리자 정보를 원자적으로 저장
+        # -----------------------------------------------------------------------------
+        normalized_reason = (
+            rejection_reason.strip() if isinstance(rejection_reason, str) else ""
+        )
+        change.status = UserSdwtProdChange.Status.REJECTED
+        change.approved = False
+        change.approved_by = approver
+        change.approved_at = timezone.now()
+        change.applied = False
+        change.rejection_reason = normalized_reason or None
+        change.save(
+            update_fields=[
+                "status",
+                "approved",
+                "approved_by",
+                "approved_at",
+                "applied",
+                "rejection_reason",
+            ]
+        )
 
-    # -----------------------------------------------------------------------------
-    # 3) 상태 검증
-    # -----------------------------------------------------------------------------
-    if change.status in {
-        UserSdwtProdChange.Status.REJECTED,
-        UserSdwtProdChange.Status.SUPERSEDED,
-    }:
-        return {"error": "already rejected"}, 400
-    if change.status == UserSdwtProdChange.Status.APPROVED or change.approved or change.applied:
-        return {"error": "already applied"}, 400
-
-    # -----------------------------------------------------------------------------
-    # 4) 거절 처리 및 저장
-    # -----------------------------------------------------------------------------
-    normalized_reason = rejection_reason.strip() if isinstance(rejection_reason, str) else ""
-    rejection_reason_value = normalized_reason or None
-    change.status = UserSdwtProdChange.Status.REJECTED
-    change.approved = False
-    change.approved_by = approver
-    change.approved_at = timezone.now()
-    change.applied = False
-    change.rejection_reason = rejection_reason_value
-    change.save(
-        update_fields=[
-            "status",
-            "approved",
-            "approved_by",
-            "approved_at",
-            "applied",
-            "rejection_reason",
-        ]
-    )
-
-    return {"status": "rejected", "changeId": change.id}, 200
+        return {"status": "rejected", "changeId": change.id}, 200

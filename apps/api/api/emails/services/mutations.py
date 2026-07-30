@@ -19,33 +19,152 @@ from api.common.services import UNASSIGNED_USER_SDWT_PROD
 
 from ..models import Email
 from ..selectors import (
-    get_accessible_user_sdwt_prods_for_user,
     get_email_for_update,
     list_email_asset_keys_by_email_ids,
-    list_email_id_user_sdwt_by_ids,
     list_email_ids_by_sender_after,
     list_emails_for_update,
     list_unassigned_email_ids_for_sender_id,
     resolve_sender_id_from_user,
-    user_can_bulk_delete_emails,
 )
 from .constants import SENT_MAILBOX_ID
 from .rag import enqueue_rag_delete, enqueue_rag_index_for_emails
 from .storage import delete_email_objects
 
 
+def _lock_active_affiliations_by_values(
+    user_sdwt_prods: Sequence[str | None],
+) -> dict[str, Any] | None:
+    """요청 소속을 모두 활성 정규 소속으로 해석해 id 순서로 잠급니다."""
+
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in user_sdwt_prods
+    ):
+        return None
+    normalized_values = {
+        value.strip()
+        for value in user_sdwt_prods
+        if isinstance(value, str) and value.strip()
+    }
+
+    affiliations = (
+        account_selectors.list_active_affiliations_by_user_sdwt_prods_for_update(
+            user_sdwt_prods=normalized_values,
+        )
+    )
+    affiliations_by_key = {
+        affiliation.user_sdwt_prod.strip().casefold(): affiliation
+        for affiliation in affiliations
+    }
+    requested_keys = {value.casefold() for value in normalized_values}
+    if set(affiliations_by_key) != requested_keys:
+        return None
+    return affiliations_by_key
+
+
+def _user_has_mailbox_capability(
+    *,
+    user: Any,
+    user_sdwt_prods: Sequence[str | None],
+    capability: str,
+    is_privileged: bool,
+    accessible_user_sdwt_prods: set[str] | None = None,
+    locked_affiliations: dict[str, Any] | None = None,
+) -> bool:
+    """잠금 안에서 최신 Emails 데이터 범위와 소속 capability를 함께 확인합니다.
+
+    view에서 계산한 is_privileged와 accessible_user_sdwt_prods는 조회 응답을 위한
+    snapshot일 수 있으므로 쓰기 승인 근거로 재사용하지 않습니다.
+    """
+
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in user_sdwt_prods
+    ):
+        return False
+    normalized_values = {
+        value.strip()
+        for value in user_sdwt_prods
+        if isinstance(value, str) and value.strip()
+    }
+    if not normalized_values:
+        return False
+
+    # -----------------------------------------------------------------------------
+    # 1) 활성 소속을 id 순서로 잠근 뒤 사용자 잠금
+    # -----------------------------------------------------------------------------
+    resolved_affiliations = locked_affiliations or _lock_active_affiliations_by_values(
+        list(normalized_values),
+    )
+    if resolved_affiliations is None:
+        return False
+    locked_user = account_selectors.get_user_by_id_for_update(
+        user_id=getattr(user, "id", None),
+    )
+    if locked_user is None:
+        return False
+
+    # -----------------------------------------------------------------------------
+    # 2) request cache와 전달받은 snapshot을 우회해 최신 앱 범위를 다시 계산
+    # -----------------------------------------------------------------------------
+    data_scope = account_services.get_affiliation_scope_decision(
+        user=locked_user,
+        scope_key="emails",
+    )
+    if not data_scope.get("allowed"):
+        return False
+    has_fresh_privilege = bool(
+        data_scope.get("all")
+        and account_services.has_scope_role(
+            user=locked_user,
+            scope_key="emails",
+        )
+    )
+    if has_fresh_privilege:
+        return True
+
+    accessible_values = {
+        str(value or "").strip()
+        for value in data_scope.get("userSdwtProds", [])
+        if str(value or "").strip()
+    }
+    accessible_lookup = {
+        value.strip().casefold()
+        for value in accessible_values
+        if isinstance(value, str) and value.strip()
+    }
+    if any(value.casefold() not in accessible_lookup for value in normalized_values):
+        return False
+    return account_services.has_affiliation_capability_for_ids(
+        user=locked_user,
+        affiliation_ids=[
+            resolved_affiliations[user_sdwt_prod.casefold()].id
+            for user_sdwt_prod in normalized_values
+        ],
+        capability=capability,
+    )
+
+
 @transaction.atomic
-def delete_single_email(email_id: int) -> Email:
+def delete_single_email(
+    email_id: int,
+    *,
+    user: Any | None = None,
+    is_privileged: bool = False,
+    accessible_user_sdwt_prods: set[str] | None = None,
+) -> Email:
     """단일 메일 삭제를 수행합니다(RAG 삭제는 Outbox 처리).
 
     입력:
         email_id: 삭제할 Email PK.
+        user/is_privileged/accessible_user_sdwt_prods: 사용자 호출의 권한 판정 정보.
     반환:
         삭제된 Email 인스턴스.
     부작용:
         Email 삭제 및 RAG 삭제 Outbox 적재.
     오류:
         Email이 없으면 NotFound 예외.
+        사용자 호출에서 manager 권한이 없으면 PermissionError 예외.
     """
 
     # -----------------------------------------------------------------------------
@@ -55,6 +174,14 @@ def delete_single_email(email_id: int) -> Email:
         email = get_email_for_update(email_id=email_id)
     except Email.DoesNotExist:
         raise NotFound("Email not found")
+    if user is not None and not _user_has_mailbox_capability(
+        user=user,
+        user_sdwt_prods=[email.user_sdwt_prod],
+        capability=account_services.AFFILIATION_CAPABILITY_DELETE,
+        is_privileged=is_privileged,
+        accessible_user_sdwt_prods=accessible_user_sdwt_prods,
+    ):
+        raise PermissionError("forbidden")
 
     # -----------------------------------------------------------------------------
     # 2) RAG 삭제 요청 및 삭제 실행
@@ -68,17 +195,25 @@ def delete_single_email(email_id: int) -> Email:
 
 
 @transaction.atomic
-def bulk_delete_emails(email_ids: List[int]) -> int:
+def bulk_delete_emails(
+    email_ids: List[int],
+    *,
+    user: Any | None = None,
+    is_privileged: bool = False,
+    accessible_user_sdwt_prods: set[str] | None = None,
+) -> int:
     """여러 메일을 한 번에 삭제합니다(RAG 삭제는 Outbox 처리).
 
     입력:
         email_ids: 삭제할 Email PK 목록.
+        user/is_privileged/accessible_user_sdwt_prods: 사용자 호출의 권한 판정 정보.
     반환:
         삭제된 메일 개수.
     부작용:
         Email 삭제 및 RAG 삭제 Outbox 적재.
     오류:
         대상이 없으면 NotFound 예외.
+        사용자 호출에서 모든 메일함의 manager 권한이 없으면 PermissionError 예외.
     """
 
     # -----------------------------------------------------------------------------
@@ -87,6 +222,20 @@ def bulk_delete_emails(email_ids: List[int]) -> int:
     emails = list_emails_for_update(email_ids=email_ids)
     if not emails:
         raise NotFound("No emails found to delete")
+    if user is not None:
+        normalized_ids = {
+            int(value)
+            for value in email_ids
+            if isinstance(value, int) or str(value).isdigit()
+        }
+        if len(emails) != len(normalized_ids) or not _user_has_mailbox_capability(
+            user=user,
+            user_sdwt_prods=[email.user_sdwt_prod for email in emails],
+            capability=account_services.AFFILIATION_CAPABILITY_DELETE,
+            is_privileged=is_privileged,
+            accessible_user_sdwt_prods=accessible_user_sdwt_prods,
+        ):
+            raise PermissionError("forbidden")
 
     # -----------------------------------------------------------------------------
     # 2) RAG 삭제 요청
@@ -141,14 +290,22 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     if target_user_sdwt_prod == UNASSIGNED_USER_SDWT_PROD:
         raise ValueError("Cannot claim emails into the UNASSIGNED mailbox")
 
-    # -----------------------------------------------------------------------------
-    # 2) 대상 메일 식별 및 업데이트
-    # -----------------------------------------------------------------------------
-    email_ids = list_unassigned_email_ids_for_sender_id(sender_id=sender_id)
-    if not email_ids:
-        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
-
     with transaction.atomic():
+        affiliations = _lock_active_affiliations_by_values(
+            [target_user_sdwt_prod],
+        )
+        if affiliations is None:
+            raise ValueError("Current affiliation must be active")
+        target_user_sdwt_prod = affiliations[
+            target_user_sdwt_prod.casefold()
+        ].user_sdwt_prod
+
+        # -------------------------------------------------------------------------
+        # 2) 대상 메일 식별 및 업데이트
+        # -------------------------------------------------------------------------
+        email_ids = list_unassigned_email_ids_for_sender_id(sender_id=sender_id)
+        if not email_ids:
+            return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
         Email.objects.filter(id__in=email_ids).update(
             user_sdwt_prod=target_user_sdwt_prod,
             classification_source=Email.ClassificationSource.CONFIRMED_USER,
@@ -167,12 +324,20 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
     return {"moved": len(email_ids), **rag_result}
 
 
-def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod: str) -> Dict[str, int]:
+def move_emails_to_user_sdwt_prod(
+    *,
+    email_ids: Sequence[int],
+    to_user_sdwt_prod: str,
+    user: Any | None = None,
+    is_privileged: bool = False,
+    accessible_user_sdwt_prods: set[str] | None = None,
+) -> Dict[str, int]:
     """지정한 Email id들을 다른 user_sdwt_prod 메일함으로 이동합니다.
 
     입력:
         email_ids: 이동할 Email id 목록.
         to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
+        user/is_privileged/accessible_user_sdwt_prods: 사용자 호출의 권한 판정 정보.
     반환:
         moved/ragRegistered/ragFailed/ragMissing 카운트 dict.
     부작용:
@@ -180,6 +345,7 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
         - RAG 인덱싱 Outbox 적재.
     오류:
         - 대상 메일함 미입력/금지된 값이면 ValueError
+        - 사용자 호출에서 source/target의 member 권한이 없으면 PermissionError
     """
 
     # -----------------------------------------------------------------------------
@@ -196,22 +362,48 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
         return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
 
     # -----------------------------------------------------------------------------
-    # 2) 기존 메일함 매핑 조회 및 이동 개수 계산
-    # -----------------------------------------------------------------------------
-    previous_user_sdwt = list_email_id_user_sdwt_by_ids(email_ids=ids)
-    resolved_ids = list(previous_user_sdwt.keys())
-    if not resolved_ids:
-        return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
-
-    moved_count = 0
-    for previous in previous_user_sdwt.values():
-        if (previous or "").strip() != target_user_sdwt_prod:
-            moved_count += 1
-
-    # -----------------------------------------------------------------------------
-    # 3) 메일함 업데이트
+    # 2) 행 잠금 상태에서 source/target 권한 확인 및 메일함 업데이트
     # -----------------------------------------------------------------------------
     with transaction.atomic():
+        emails = list_emails_for_update(email_ids=ids)
+        resolved_ids = [email.id for email in emails]
+        if not resolved_ids:
+            return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
+        affiliation_values = [target_user_sdwt_prod]
+        if user is not None:
+            affiliation_values.extend(email.user_sdwt_prod for email in emails)
+        locked_affiliations = _lock_active_affiliations_by_values(
+            affiliation_values,
+        )
+        target_affiliation = (
+            locked_affiliations or {}
+        ).get(target_user_sdwt_prod.casefold())
+        if target_affiliation is None:
+            raise ValueError("Target affiliation must be active")
+        target_user_sdwt_prod = target_affiliation.user_sdwt_prod
+        if user is not None:
+            if len(set(ids)) != len(emails) or not _user_has_mailbox_capability(
+                user=user,
+                user_sdwt_prods=[
+                    *(email.user_sdwt_prod for email in emails),
+                    target_user_sdwt_prod,
+                ],
+                capability=account_services.AFFILIATION_CAPABILITY_WRITE,
+                is_privileged=is_privileged,
+                accessible_user_sdwt_prods=accessible_user_sdwt_prods,
+                locked_affiliations=locked_affiliations,
+            ):
+                raise PermissionError("forbidden")
+
+        previous_user_sdwt = {
+            email.id: email.user_sdwt_prod
+            for email in emails
+        }
+        moved_count = sum(
+            1
+            for previous in previous_user_sdwt.values()
+            if (previous or "").strip() != target_user_sdwt_prod
+        )
         Email.objects.filter(id__in=resolved_ids).update(
             user_sdwt_prod=target_user_sdwt_prod,
             classification_source=Email.ClassificationSource.CONFIRMED_USER,
@@ -219,7 +411,7 @@ def move_emails_to_user_sdwt_prod(*, email_ids: Sequence[int], to_user_sdwt_prod
         )
 
     # -----------------------------------------------------------------------------
-    # 4) RAG 인덱싱 큐 적재
+    # 3) RAG 인덱싱 큐 적재
     # -----------------------------------------------------------------------------
     rag_result = enqueue_rag_index_for_emails(
         email_ids=ids,
@@ -236,6 +428,7 @@ def move_emails_for_user(
     email_ids: Sequence[int],
     to_user_sdwt_prod: str,
     is_privileged: bool,
+    accessible_user_sdwt_prods: set[str] | None = None,
 ) -> Dict[str, int]:
     """현재 사용자 권한을 확인한 뒤 메일을 다른 메일함으로 이동합니다.
 
@@ -243,7 +436,8 @@ def move_emails_for_user(
         user: Django User 또는 유사 객체.
         email_ids: 이동할 Email id 목록.
         to_user_sdwt_prod: 대상 메일함(user_sdwt_prod).
-        is_privileged: Emails 관리자 여부. 관리자도 사용자 식별용 knox_id는 필요합니다.
+        is_privileged: Emails 전체 데이터 범위 여부. 전체 범위 사용자도 knox_id는 필요합니다.
+        accessible_user_sdwt_prods: 요청에서 계산한 Emails 앱 소속 데이터 범위.
     반환:
         moved/ragRegistered/ragFailed/ragMissing 카운트 dict.
     부작용:
@@ -277,24 +471,15 @@ def move_emails_for_user(
         return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
 
     # -----------------------------------------------------------------------------
-    # 3) 접근 권한 검증
+    # 3) source/target member capability를 검사하며 실제 이동 처리
     # -----------------------------------------------------------------------------
-    accessible = get_accessible_user_sdwt_prods_for_user(user) if not is_privileged else set()
-    if not is_privileged and target_user_sdwt_prod not in accessible:
-        raise PermissionError("forbidden")
-
-    if not is_privileged:
-        if not user_can_bulk_delete_emails(
-            email_ids=normalized_ids,
-            accessible_user_sdwt_prods=accessible,
-            sender_id=sender_id,
-        ):
-            raise PermissionError("forbidden")
-
-    # -----------------------------------------------------------------------------
-    # 4) 실제 이동 처리
-    # -----------------------------------------------------------------------------
-    return move_emails_to_user_sdwt_prod(email_ids=normalized_ids, to_user_sdwt_prod=target_user_sdwt_prod)
+    return move_emails_to_user_sdwt_prod(
+        email_ids=normalized_ids,
+        to_user_sdwt_prod=target_user_sdwt_prod,
+        user=user,
+        is_privileged=is_privileged,
+        accessible_user_sdwt_prods=accessible_user_sdwt_prods,
+    )
 
 
 def move_sender_emails_after(

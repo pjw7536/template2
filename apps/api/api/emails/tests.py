@@ -55,12 +55,47 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    patcher = patch(
+    for target in (
         "api.account.services.get_access_payload",
-        return_value={"allowed": True},
+        "api.account.services.data_scope.get_access_payload",
+    ):
+        patcher = patch(target, return_value={"allowed": True})
+        patcher.start()
+        test_case.addCleanup(patcher.stop)
+
+
+def _grant_emails_affiliation_data(
+    *,
+    user,
+    user_sdwt_prods: tuple[str, ...],
+    actor=None,
+) -> None:
+    """테스트 사용자에게 Emails 앱의 추가 소속 데이터 범위를 부여합니다."""
+
+    if actor is None:
+        User = get_user_model()
+        actor = User.objects.create_superuser(
+            sabun=f"SCOPE-{user.id}",
+            password="test-password",
+        )
+    affiliations = [
+        account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod=user_sdwt_prod,
+        )
+        for user_sdwt_prod in user_sdwt_prods
+    ]
+    payload, status_code = account_services.update_user_scope_affiliation_data(
+        actor=actor,
+        user_id=user.id,
+        scope_key="emails",
+        data_scope_mode="default",
+        affiliation_ids=[affiliation.id for affiliation in affiliations],
+        reason="Emails 테스트 소속 데이터 범위",
     )
-    patcher.start()
-    test_case.addCleanup(patcher.stop)
+    if status_code != 200:
+        raise AssertionError(f"테스트 소속 데이터 범위 부여 실패: {payload}")
 
 
 def _grant_emails_admin(*, user, actor) -> None:
@@ -73,9 +108,21 @@ def _grant_emails_admin(*, user, actor) -> None:
             scope_key=scope_key,
             action="grant",
             role=role,
+            reason="Emails 관리자 테스트 권한 부여",
         )
         if status_code != 200:
             raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
+
+    payload, status_code = account_services.update_user_scope_affiliation_data(
+        actor=actor,
+        user_id=user.id,
+        scope_key="emails",
+        data_scope_mode="all",
+        affiliation_ids=[],
+        reason="Emails 관리자 테스트 전체 범위",
+    )
+    if status_code != 200:
+        raise AssertionError(f"테스트 전체 데이터 범위 부여 실패: {payload}")
 
 
 @override_settings(TIME_ZONE="Asia/Seoul")
@@ -287,6 +334,16 @@ class EmailAffiliationTests(TestCase):
 class EmailMoveServiceTests(TestCase):
     """emails.services 이동/삭제 관련 동작을 검증합니다."""
 
+    def setUp(self) -> None:
+        """메일 이동 대상에 사용할 활성 정규 소속을 준비합니다."""
+
+        for user_sdwt_prod in ("group-a", "group-b", "group-new"):
+            account_services.ensure_affiliation_option(
+                department="Dept",
+                line="Line",
+                user_sdwt_prod=user_sdwt_prod,
+            )
+
     @patch("api.emails.services.insert_email_to_rag")
     def test_enqueue_rag_index_for_emails_reports_missing_ids(self, _mock_insert: Mock) -> None:
         """존재하지 않는 id가 ragMissing으로 집계되는지 확인합니다.
@@ -410,6 +467,103 @@ class EmailMoveServiceTests(TestCase):
         email.refresh_from_db()
         self.assertEqual(email.user_sdwt_prod, "group-b")
 
+    def test_move_rechecks_latest_data_scope_instead_of_request_snapshot(self) -> None:
+        """요청 초기에 허용됐어도 최신 앱 범위가 차단되면 메일을 이동하지 않아야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S-MOVE-SNAPSHOT",
+            password="test-password",
+        )
+        email = Email.objects.create(
+            message_id="move-stale-scope",
+            received_at=timezone.now(),
+            subject="Stale scope",
+            sender="sender@example.com",
+            sender_id="move-snapshot",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        with patch(
+            "api.emails.services.mutations.account_services.get_affiliation_scope_decision",
+            return_value={"allowed": False, "userSdwtProds": [], "all": False},
+        ) as resolve_scope:
+            with self.assertRaises(PermissionError):
+                move_emails_to_user_sdwt_prod(
+                    email_ids=[email.id],
+                    to_user_sdwt_prod="group-b",
+                    user=user,
+                    is_privileged=True,
+                    accessible_user_sdwt_prods={"group-a", "group-b"},
+                )
+
+        resolve_scope.assert_called_once()
+        email.refresh_from_db()
+        self.assertEqual(email.user_sdwt_prod, "group-a")
+
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_move_uses_canonical_active_affiliation_identifier(self, _mock_insert: Mock) -> None:
+        """메일 목적지는 입력 문자열이 아니라 활성 Affiliation의 정규 값을 저장해야 합니다."""
+
+        canonical = account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="Canonical-Group",
+        )
+        email = Email.objects.create(
+            message_id="move-canonical-target",
+            received_at=timezone.now(),
+            subject="Canonical target",
+            sender="sender@example.com",
+            sender_id="move-canonical",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        result = move_emails_to_user_sdwt_prod(
+            email_ids=[email.id],
+            to_user_sdwt_prod="canonical-group",
+        )
+
+        self.assertEqual(result["moved"], 1)
+        email.refresh_from_db()
+        self.assertEqual(email.user_sdwt_prod, canonical.user_sdwt_prod)
+
+    def test_move_rejects_missing_or_inactive_target_affiliation(self) -> None:
+        """존재하지 않거나 비활성인 소속으로 메일을 이동할 수 없어야 합니다."""
+
+        inactive = account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="inactive-mail-target",
+        )
+        inactive.is_active = False
+        inactive.save(update_fields=["is_active"])
+        email = Email.objects.create(
+            message_id="move-invalid-target",
+            received_at=timezone.now(),
+            subject="Invalid target",
+            sender="sender@example.com",
+            sender_id="move-invalid",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        for target in ("missing-mail-target", inactive.user_sdwt_prod):
+            with self.subTest(target=target):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Target affiliation must be active",
+                ):
+                    move_emails_to_user_sdwt_prod(
+                        email_ids=[email.id],
+                        to_user_sdwt_prod=target,
+                    )
+
     @patch("api.emails.services.insert_email_to_rag")
     def test_move_sender_emails_after_filters_by_time(self, _mock_insert: Mock) -> None:
         """기준 시각 이후 메일만 이동되는지 확인합니다.
@@ -496,6 +650,37 @@ class EmailMoveServiceTests(TestCase):
         self.assertEqual(result["ragRegistered"], 1)
         self.assertEqual(result["ragMissing"], 0)
         self.assertEqual(result["ragFailed"], 0)
+
+    def test_claim_rejects_inactive_current_affiliation(self) -> None:
+        """현재 소속이 비활성화되면 UNASSIGNED 메일을 귀속할 수 없어야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S-CLAIM-INACTIVE",
+            password="test-password",
+            knox_id="claim-inactive",
+        )
+        _set_current_affiliation(
+            user,
+            user_sdwt_prod="claim-inactive-group",
+        )
+        current = account_services.get_affiliation_overview(
+            user=user,
+            timezone_name="Asia/Seoul",
+        )
+        affiliation = account_services.ensure_affiliation_option(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod=current["currentUserSdwtProd"],
+        )
+        affiliation.is_active = False
+        affiliation.save(update_fields=["is_active"])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "user_sdwt_prod must be set",
+        ):
+            claim_unassigned_emails_for_user(user=user)
 
 
 class EmailOutboxTests(TestCase):
@@ -690,6 +875,33 @@ class EmailMailboxAccessViewTests(TestCase):
 
         has_scope_role.assert_not_called()
 
+    def test_all_data_scope_without_emails_admin_is_not_privileged(self) -> None:
+        """전체 데이터 범위만으로 삭제·미분류 접근 특권이 생기지 않아야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S11108",
+            password="test-password",
+            knox_id="knox-11108",
+        )
+        request = Mock(user=user)
+
+        with patch(
+            "api.emails.permissions.account_services.get_effective_affiliation_scope",
+            return_value={
+                "allowed": True,
+                "all": True,
+                "affiliations": [{"userSdwtProd": "group-a"}],
+            },
+        ), patch(
+            "api.emails.permissions.account_services.has_scope_role",
+            return_value=False,
+        ):
+            self.assertEqual(
+                resolve_access_control(request),
+                (True, False, {"group-a"}),
+            )
+
     def test_sender_can_access_sent_email_without_mailbox_access(self) -> None:
         """발신자는 메일함 접근 권한 없이도 보낸메일 접근이 가능한지 확인합니다.
 
@@ -782,8 +994,13 @@ class EmailMailboxAccessViewTests(TestCase):
             target_user=user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=user,
+            user_sdwt_prods=("group-empty",),
+        )
 
         self.client.force_login(user)
 
@@ -821,8 +1038,13 @@ class EmailMailboxAccessViewTests(TestCase):
             target_user=user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=user,
+            user_sdwt_prods=("group-b",),
+        )
 
         Email.objects.create(
             message_id="msg-a2",
@@ -896,6 +1118,7 @@ class EmailMailboxAccessViewTests(TestCase):
             target_user=granted,
             action="grant",
             role="manager",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
 
@@ -1027,8 +1250,13 @@ class EmailMailboxAccessViewTests(TestCase):
             target_user=user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=user,
+            user_sdwt_prods=("group-b",),
+        )
 
         self.client.force_login(user)
 
@@ -1625,6 +1853,7 @@ class EmailEndpointTests(TestCase):
             self.assertEqual(html_response.status_code, 200)
             self.assertIn("<html>", html_response.content.decode("utf-8"))
 
+            account_services.ensure_self_access(self.user, role="manager")
             delete_response = self.client.delete(reverse("emails-detail", kwargs={"email_id": self.email.id}))
             self.assertEqual(delete_response.status_code, 200)
 
@@ -1655,6 +1884,35 @@ class EmailEndpointTests(TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response["Content-Type"], "image/png")
+
+    def test_member_cannot_delete_single_or_bulk_email(self) -> None:
+        """현재 소속 member는 단일·대량 삭제를 수행할 수 없습니다."""
+
+        bulk_email = Email.objects.create(
+            message_id="msg-member-delete",
+            received_at=timezone.now(),
+            subject="Member delete",
+            sender="sender@example.com",
+            sender_id="knox-11111",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+
+        single_response = self.client.delete(
+            reverse("emails-detail", kwargs={"email_id": self.email.id})
+        )
+        bulk_response = self.client.post(
+            reverse("emails-bulk-delete"),
+            data='{"email_ids":[%d]}' % bulk_email.id,
+            content_type="application/json",
+        )
+
+        self.assertEqual(single_response.status_code, 403)
+        self.assertEqual(bulk_response.status_code, 403)
+        self.assertTrue(Email.objects.filter(id=self.email.id).exists())
+        self.assertTrue(Email.objects.filter(id=bulk_email.id).exists())
+
     def test_email_sent_list(self) -> None:
         """보낸메일 목록 엔드포인트가 정상 동작하는지 확인합니다.
 
@@ -1696,8 +1954,13 @@ class EmailEndpointTests(TestCase):
             target_user=self.user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=self.user,
+            user_sdwt_prods=("group-b",),
+        )
 
         mailbox_response = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_response.status_code, 200)
@@ -1758,6 +2021,7 @@ class EmailEndpointTests(TestCase):
             user_sdwt_prod="group-a",
             body_text="Body",
         )
+        account_services.ensure_self_access(self.user, role="manager")
         with patch("api.emails.services.mutations.delete_email_objects"):
             response = self.client.post(
                 reverse("emails-bulk-delete"),
@@ -1790,8 +2054,13 @@ class EmailEndpointTests(TestCase):
             target_user=self.user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=self.user,
+            user_sdwt_prods=("group-b",),
+        )
 
         email = Email.objects.create(
             message_id="msg-move",
@@ -1813,6 +2082,62 @@ class EmailEndpointTests(TestCase):
 
         email.refresh_from_db()
         self.assertEqual(email.user_sdwt_prod, "group-b")
+
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_viewer_cannot_move_email(self, _mock_insert: Mock) -> None:
+        """추가 소속 viewer는 source와 target을 조회해도 메일을 이동할 수 없습니다."""
+
+        User = get_user_model()
+        manager = User.objects.create_user(
+            sabun="S77780",
+            password="test-password",
+            knox_id="knox-77780",
+        )
+        viewer = User.objects.create_user(
+            sabun="S77781",
+            password="test-password",
+            knox_id="knox-77781",
+        )
+        _set_current_affiliation(manager, user_sdwt_prod="group-b")
+        _set_current_affiliation(viewer, user_sdwt_prod="group-c")
+        account_services.ensure_self_access(self.user, role="manager")
+        account_services.ensure_self_access(manager, role="manager")
+        for group in ("group-a", "group-b"):
+            _, status_code = account_services.grant_or_revoke_access(
+                grantor=manager if group == "group-b" else self.user,
+                target_group=group,
+                target_user=viewer,
+                action="grant",
+                role="viewer",
+                reason="테스트 권한 변경",
+            )
+            self.assertEqual(status_code, 200)
+        _grant_emails_affiliation_data(
+            user=viewer,
+            user_sdwt_prods=("group-a", "group-b"),
+        )
+
+        email = Email.objects.create(
+            message_id="msg-viewer-move",
+            received_at=timezone.now(),
+            subject="Viewer move",
+            sender="viewer@example.com",
+            sender_id="knox-77781",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="Body",
+        )
+        self.client.force_login(viewer)
+
+        response = self.client.post(
+            reverse("emails-move"),
+            data='{"email_ids":[%d],"to_user_sdwt_prod":"group-b"}' % email.id,
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        email.refresh_from_db()
+        self.assertEqual(email.user_sdwt_prod, "group-a")
 
     @patch("api.emails.views.run_pop3_ingest_from_env", return_value={"deleted": 1, "reindexed": 2})
     def test_email_ingest_trigger(self, _mock_ingest) -> None:

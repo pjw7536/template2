@@ -12,8 +12,12 @@
 """
 from __future__ import annotations
 
+import importlib
+import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import StringIO
+from threading import Barrier
 from unittest.mock import patch
 
 from django.apps import apps as django_apps
@@ -22,13 +26,21 @@ from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError, connection, connections, transaction
+from django.db import (
+    IntegrityError,
+    close_old_connections,
+    connection,
+    connections,
+    transaction,
+)
 from django.db.migrations.executor import MigrationExecutor
+from django.db.models import Q, QuerySet
 from django.db.models.deletion import ProtectedError
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 
+from api.account import selectors as account_selectors
 from api.account.models import (
     ACCESS_SCOPE_PORTAL,
     AccessAuditLog,
@@ -40,6 +52,7 @@ from api.account.models import (
     ExternalAffiliationSnapshot,
     UserAccess,
     UserCurrentAffiliation,
+    UserScopeAffiliationGrant,
     UserSdwtProdAccess,
     UserSdwtProdChange,
 )
@@ -48,6 +61,8 @@ from api.account.selectors import (
     get_accessible_user_sdwt_prods_for_user,
     get_current_user_sdwt_prod,
     get_next_user_sdwt_prod_change,
+    list_active_affiliations_by_ids_for_update,
+    list_active_affiliations_by_user_sdwt_prods_for_update,
     list_active_user_emails_by_user_sdwt_prod,
     list_active_user_knox_ids_by_user_sdwt_prod,
     list_affiliation_options,
@@ -57,24 +72,37 @@ from api.account.selectors import (
 )
 from api.account.services import access_control as access_control_services
 from api.account.services import (
+    AFFILIATION_CAPABILITY_MANAGE_ACCESS,
     approve_affiliation_change,
     auto_approve_affiliation_from_snapshot,
+    bulk_apply_access_policy_rules,
+    create_affiliation,
     create_access_policy_rule,
     decide_user_access,
     delete_access_policy_rule,
+    ensure_affiliation_option,
     ensure_self_access,
     get_account_overview,
     get_access_payload,
+    get_affiliation_scope_decision,
+    get_effective_affiliation_scope,
     get_scope_access_payloads,
     get_affiliation_change_requests,
     get_affiliation_overview,
     grant_or_revoke_access,
+    has_affiliation_capability,
+    has_affiliation_capability_for_ids,
     can_manage_access,
     has_scope_role,
+    reject_affiliation_change,
     request_affiliation_change,
     request_access,
+    seed_dev_access_data,
+    set_affiliation_active,
+    set_affiliations_active,
     submit_affiliation_reconfirm_response,
     sync_external_affiliations,
+    update_user_scope_affiliation_data,
     update_access_policy_rule,
 )
 
@@ -352,6 +380,14 @@ class FixedAccessRoleMigrationTests(TransactionTestCase):
     def _fixture_teardown(self) -> None:
         """테스트 DB의 migration 초기 데이터까지 시작 시점 스냅샷으로 복원합니다."""
 
+        # -----------------------------------------------------------------------------
+        # 1) 최신 스키마를 먼저 복원해 이후 테스트가 과거 migration 상태를 보지 않게 함
+        # -----------------------------------------------------------------------------
+        self._restore_latest_migrations()
+
+        # -----------------------------------------------------------------------------
+        # 2) 최신 스키마 기준으로 데이터를 비우고 초기 직렬화 데이터를 복원
+        # -----------------------------------------------------------------------------
         for database_name in self._databases_names(include_mirrors=False):
             database_connection = connections[database_name]
             call_command(
@@ -410,6 +446,206 @@ class FixedAccessRoleMigrationTests(TransactionTestCase):
         )
         self.assertEqual(len(batched_audits), 2)
         self.assertTrue(all("role" not in row.after for row in batched_audits))
+
+
+class AccountAuthorizationMigrationTests(TransactionTestCase):
+    """통합 권한 migration의 대기 소속 요청 정리와 제약을 검증합니다."""
+
+    serialized_rollback = True
+    migrate_from = ("account", "0005_fixed_access_roles")
+    migrate_to = ("account", "0006_account_authorization_system")
+
+    @classmethod
+    def _fixture_setup(cls) -> None:
+        """초기 스냅샷은 종료 복원용으로만 사용합니다."""
+
+    def setUp(self) -> None:
+        """0005 스키마에서 사용자별 중복 대기 요청을 준비합니다."""
+
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        self.addCleanup(self._restore_latest_migrations)
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+        User = old_apps.get_model("account", "User")
+        UserSdwtProdChange = old_apps.get_model(
+            "account",
+            "UserSdwtProdChange",
+        )
+        AccessScope = old_apps.get_model("account", "AccessScope")
+        Affiliation = old_apps.get_model("account", "Affiliation")
+        UserAccess = old_apps.get_model("account", "UserAccess")
+        UserSdwtProdAccess = old_apps.get_model("account", "UserSdwtProdAccess")
+        user = User.objects.create(
+            sabun="MIGRATION-AFFILIATION-PENDING",
+            username="migration-affiliation-pending",
+        )
+        self.user_id = user.id
+        pending_rows = [
+            UserSdwtProdChange.objects.create(
+                user_id=user.id,
+                from_user_sdwt_prod="group-old",
+                to_user_sdwt_prod=f"group-{index}",
+                effective_from=timezone.now() + timedelta(minutes=index),
+                status="PENDING",
+            )
+            for index in range(3)
+        ]
+        self.latest_pending_id = pending_rows[-1].id
+        inconsistent_approved = UserSdwtProdChange.objects.create(
+            user_id=user.id,
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-approved",
+            effective_from=timezone.now() - timedelta(days=1),
+            status="APPROVED",
+            approved=False,
+            applied=False,
+        )
+        self.inconsistent_approved_id = inconsistent_approved.id
+        legacy_affiliation = Affiliation.objects.create(
+            department="Migration Dept",
+            line="Migration Line",
+            user_sdwt_prod="migration-group",
+        )
+        UserSdwtProdAccess.objects.create(
+            user_id=user.id,
+            affiliation_id=legacy_affiliation.id,
+            role="member",
+        )
+        emails_scope = AccessScope.objects.get(key="emails")
+        UserAccess.objects.update_or_create(
+            user_id=user.id,
+            scope_id=emails_scope.id,
+            defaults={
+                "status": "allowed",
+                "role": "admin",
+            },
+        )
+        self.legacy_affiliation_id = legacy_affiliation.id
+
+    def _restore_latest_migrations(self) -> None:
+        """다른 테스트를 위해 전체 migration leaf를 복구합니다."""
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    def _fixture_teardown(self) -> None:
+        """최신 스키마 복구 후 테스트 데이터를 초기 상태로 되돌립니다."""
+
+        self._restore_latest_migrations()
+        for database_name in self._databases_names(include_mirrors=False):
+            database_connection = connections[database_name]
+            call_command(
+                "flush",
+                verbosity=0,
+                interactive=False,
+                database=database_name,
+                reset_sequences=False,
+                inhibit_post_migrate=True,
+            )
+            serialized_contents = getattr(
+                database_connection,
+                "_test_serialized_contents",
+                None,
+            )
+            if serialized_contents:
+                database_connection.creation.deserialize_db_from_string(
+                    serialized_contents
+                )
+
+    def test_migration_keeps_only_latest_pending_request(self) -> None:
+        """최신 요청만 PENDING으로 남기고 DB 제약이 추가되는지 확인합니다."""
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        new_apps = executor.loader.project_state([self.migrate_to]).apps
+        UserSdwtProdChange = new_apps.get_model(
+            "account",
+            "UserSdwtProdChange",
+        )
+        UserAccess = new_apps.get_model("account", "UserAccess")
+        UserScopeAffiliationGrant = new_apps.get_model(
+            "account",
+            "UserScopeAffiliationGrant",
+        )
+        rows = list(
+            UserSdwtProdChange.objects.filter(user_id=self.user_id).order_by("id")
+        )
+
+        self.assertEqual(
+            [row.id for row in rows if row.status == "PENDING"],
+            [self.latest_pending_id],
+        )
+        self.assertTrue(
+            all(
+                row.status == "SUPERSEDED"
+                and row.rejection_reason == "취소(중복 대기 요청 정리)"
+                for row in rows
+                if row.id not in {
+                    self.latest_pending_id,
+                    self.inconsistent_approved_id,
+                }
+            )
+        )
+        normalized_approved = UserSdwtProdChange.objects.get(
+            id=self.inconsistent_approved_id,
+        )
+        self.assertTrue(normalized_approved.approved)
+        self.assertTrue(normalized_approved.applied)
+        self.assertIsNotNone(normalized_approved.approved_at)
+        self.assertIsNone(normalized_approved.rejection_reason)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                UserSdwtProdChange.objects.create(
+                    user_id=self.user_id,
+                    from_user_sdwt_prod="group-old",
+                    to_user_sdwt_prod="group-new",
+                    effective_from=timezone.now(),
+                    status="PENDING",
+                )
+
+        self.assertEqual(
+            set(
+                UserScopeAffiliationGrant.objects.filter(
+                    user_id=self.user_id,
+                    affiliation_id=self.legacy_affiliation_id,
+                    is_active=True,
+                ).values_list("scope__key", flat=True)
+            ),
+            {"assistant", "emails"},
+        )
+        self.assertEqual(
+            UserAccess.objects.get(
+                user_id=self.user_id,
+                scope__key="emails",
+            ).data_scope_mode,
+            "all",
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                UserSdwtProdChange.objects.create(
+                    user_id=self.user_id,
+                    from_user_sdwt_prod="group-old",
+                    to_user_sdwt_prod="group-invalid-state",
+                    effective_from=timezone.now(),
+                    status="APPROVED",
+                    approved=False,
+                    applied=False,
+                )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                UserSdwtProdChange.objects.create(
+                    user_id=self.user_id,
+                    from_user_sdwt_prod="group-old",
+                    to_user_sdwt_prod="group-invalid-pending-metadata",
+                    effective_from=timezone.now(),
+                    status="REJECTED",
+                    approved=False,
+                    applied=False,
+                    approved_at=None,
+                )
 
 
 class AccessFilterParityTests(TestCase):
@@ -1277,6 +1513,160 @@ class AccountEndpointTests(TestCase):
                 self.assertFalse(model_admin.has_add_permission(superuser_request))
                 self.assertFalse(model_admin.has_change_permission(superuser_request, obj))
                 self.assertFalse(model_admin.has_delete_permission(superuser_request, obj))
+
+    def test_affiliation_admin_write_paths_use_services_only(self) -> None:
+        """소속 기준점과 변경 요청은 Admin 직접 저장을 허용하지 않아야 합니다."""
+
+        from django.contrib.admin.sites import AdminSite
+
+        from api.account.admin import (
+            AffiliationAdmin,
+            UserCurrentAffiliationAdmin,
+            UserSdwtProdChangeAdmin,
+        )
+
+        request = RequestFactory().post("/admin/account/")
+        request.user = self.superuser
+        affiliation = _affiliation(user_sdwt_prod="admin-protected-group")
+        current = _set_current_affiliation(
+            self.user,
+            user_sdwt_prod=affiliation.user_sdwt_prod,
+        )
+        change = UserSdwtProdChange.objects.create(
+            user=self.user,
+            from_user_sdwt_prod=affiliation.user_sdwt_prod,
+            to_user_sdwt_prod="admin-protected-target",
+            effective_from=timezone.now(),
+        )
+        site = AdminSite()
+        affiliation_admin = AffiliationAdmin(Affiliation, site)
+        current_admin = UserCurrentAffiliationAdmin(
+            UserCurrentAffiliation,
+            site,
+        )
+        change_admin = UserSdwtProdChangeAdmin(UserSdwtProdChange, site)
+
+        self.assertIn(
+            "user_sdwt_prod",
+            affiliation_admin.get_readonly_fields(request, affiliation),
+        )
+        self.assertIn(
+            "is_active",
+            affiliation_admin.get_readonly_fields(request, affiliation),
+        )
+        self.assertFalse(
+            affiliation_admin.has_change_permission(request, affiliation)
+        )
+        self.assertTrue(affiliation_admin.has_change_permission(request))
+        self.assertFalse(affiliation_admin.has_delete_permission(request, affiliation))
+        with self.assertRaises(ValidationError):
+            affiliation_admin.save_model(
+                request,
+                affiliation,
+                form=None,
+                change=True,
+            )
+
+        self.assertFalse(current_admin.has_add_permission(request))
+        self.assertFalse(current_admin.has_change_permission(request, current))
+        self.assertFalse(current_admin.has_delete_permission(request, current))
+
+        self.assertFalse(change_admin.has_add_permission(request))
+        self.assertFalse(change_admin.has_change_permission(request, change))
+        self.assertFalse(change_admin.has_delete_permission(request, change))
+        self.assertTrue(change_admin.has_change_permission(request))
+        with self.assertRaises(PermissionDenied):
+            change_admin.save_model(request, change, form=None, change=True)
+
+    def test_affiliation_admin_bulk_action_is_atomic_and_uses_operator_reason(self) -> None:
+        """소속 Admin 일괄 action은 입력 사유로 한 번의 서비스 호출을 수행해야 합니다."""
+
+        from django.contrib.admin.sites import AdminSite
+
+        from api.account.admin import AffiliationAdmin
+
+        first = _affiliation(user_sdwt_prod="admin-action-first")
+        second = _affiliation(user_sdwt_prod="admin-action-second")
+        request = RequestFactory().post(
+            "/admin/account/affiliation/",
+            data={"reason": "조직 개편으로 일괄 중지"},
+        )
+        request.user = self.superuser
+        model_admin = AffiliationAdmin(Affiliation, AdminSite())
+
+        self.assertTrue(model_admin.action_form.base_fields["reason"].required)
+        with (
+            patch.object(model_admin, "message_user") as message_user,
+            patch(
+                "api.account.admin.services.set_affiliations_active",
+                wraps=set_affiliations_active,
+            ) as bulk_service,
+        ):
+            model_admin.deactivate_affiliations(
+                request,
+                Affiliation.objects.filter(id__in=[second.id, first.id]),
+            )
+
+        bulk_service.assert_called_once()
+        self.assertEqual(
+            bulk_service.call_args.kwargs["affiliation_ids"],
+            [first.id, second.id],
+        )
+        self.assertEqual(
+            bulk_service.call_args.kwargs["reason"],
+            "조직 개편으로 일괄 중지",
+        )
+        self.assertFalse(
+            Affiliation.objects.filter(
+                id__in=[first.id, second.id],
+                is_active=True,
+            ).exists()
+        )
+        self.assertEqual(
+            AccessAuditLog.objects.filter(
+                affiliation_id__in=[first.id, second.id],
+                action=AccessAuditLog.Actions.AFFILIATION_DEACTIVATE,
+                reason="조직 개편으로 일괄 중지",
+            ).count(),
+            2,
+        )
+        message_user.assert_called_once()
+
+    def test_affiliation_admin_create_uses_audited_service(self) -> None:
+        """소속 Admin 생성 폼은 입력 사유를 생성 감사 로그에 전달해야 합니다."""
+
+        from django.contrib.admin.sites import AdminSite
+
+        from api.account.admin import AffiliationAdmin
+
+        request = RequestFactory().post("/admin/account/affiliation/add/")
+        request.user = self.superuser
+        model_admin = AffiliationAdmin(Affiliation, AdminSite())
+        form = model_admin.get_form(request)(
+            data={
+                "department": "Admin Create Dept",
+                "line": "Admin Create Line",
+                "user_sdwt_prod": "admin-form-created",
+                "reason": "Admin 생성 경로 검증",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        option = form.save(commit=False)
+
+        model_admin.save_model(
+            request,
+            option,
+            form=form,
+            change=False,
+        )
+
+        self.assertIsNotNone(option.pk)
+        audit = AccessAuditLog.objects.get(
+            affiliation=option,
+            action=AccessAuditLog.Actions.AFFILIATION_CREATE,
+        )
+        self.assertEqual(audit.actor_id, self.superuser.id)
+        self.assertEqual(audit.reason, "Admin 생성 경로 검증")
 
     def test_portal_admin_role_is_manage_access_source(self) -> None:
         """Portal admin 역할만으로 접근 관리 권한을 획득해야 합니다."""
@@ -2207,6 +2597,310 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(audit_log.reason, "운영 회수")
 
+    def test_access_user_decision_returns_updated_full_matrix_row(self) -> None:
+        """단일 권한 결정은 Portal 연쇄 판정까지 반영한 최신 매트릭스 행을 반환해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        UserAccess.objects.bulk_create(
+            [
+                UserAccess(
+                    user=self.user,
+                    scope=portal_scope,
+                    status=UserAccess.Status.ALLOWED,
+                ),
+                UserAccess(
+                    user=self.user,
+                    scope=appstore_scope,
+                    status=UserAccess.Status.ALLOWED,
+                ),
+            ]
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            reverse("account-access-user-decision", kwargs={"user_id": self.user.id}),
+            data={
+                "scope": ACCESS_SCOPE_PORTAL,
+                "action": "revoke",
+                "reason": "Portal 접근 차단",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matrix_row = response.json()["matrixRow"]
+        self.assertEqual(matrix_row["user"]["id"], self.user.id)
+        self.assertFalse(matrix_row["accesses"][ACCESS_SCOPE_PORTAL]["allowed"])
+        appstore_access = matrix_row["accesses"]["appstore"]
+        self.assertFalse(appstore_access["allowed"])
+        self.assertTrue(appstore_access["blockedByPortal"])
+        self.assertEqual(appstore_access["explicitStatus"], UserAccess.Status.ALLOWED)
+        self.assertEqual(
+            appstore_access["underlyingAccess"]["source"],
+            AccessSource.EXPLICIT_ALLOWED,
+        )
+
+    def test_access_user_apply_all_sets_every_matrix_scope_to_user_role(self) -> None:
+        """전체 변경은 표시 scope를 일반 권한으로 통일하고 비활성 scope는 제외해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        observer_scope = AccessScope.objects.get(key="observer")
+        feature_scope = AccessScope.objects.create(
+            key="apply-all-feature",
+            name="전체 승인 기능",
+            scope_type=AccessScope.ScopeTypes.FEATURE,
+            is_active=True,
+        )
+        inactive_scope = AccessScope.objects.create(
+            key="apply-all-inactive",
+            name="비활성 전체 승인 제외",
+            scope_type=AccessScope.ScopeTypes.APP,
+            is_active=False,
+        )
+        UserAccess.objects.bulk_create(
+            [
+                UserAccess(
+                    user=self.user,
+                    scope=portal_scope,
+                    status=UserAccess.Status.DENIED,
+                    role=AccessRole.USER,
+                ),
+                UserAccess(
+                    user=self.user,
+                    scope=appstore_scope,
+                    status=UserAccess.Status.PENDING,
+                    role=AccessRole.USER,
+                ),
+                UserAccess(
+                    user=self.user,
+                    scope=feature_scope,
+                    status=UserAccess.Status.ALLOWED,
+                    role=AccessRole.ADMIN,
+                ),
+                UserAccess(
+                    user=self.user,
+                    scope=observer_scope,
+                    status=UserAccess.Status.ALLOWED,
+                    role=AccessRole.USER,
+                ),
+                UserAccess(
+                    user=self.user,
+                    scope=inactive_scope,
+                    status=UserAccess.Status.DENIED,
+                    role=AccessRole.USER,
+                ),
+            ]
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.user.id}),
+            data={"value": "user", "reason": "전체 일반 권한 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        matrix_accesses = payload["matrixRow"]["accesses"]
+        managed_scope_keys = set(matrix_accesses)
+        expected_changed_scope_keys = managed_scope_keys - {observer_scope.key}
+        self.assertNotIn(inactive_scope.key, managed_scope_keys)
+        self.assertEqual(payload["summary"]["total"], len(managed_scope_keys))
+        self.assertEqual(payload["summary"]["updated"], len(expected_changed_scope_keys))
+        self.assertEqual(payload["summary"]["unchanged"], 1)
+        self.assertEqual(set(payload["changedScopes"]), expected_changed_scope_keys)
+
+        stored_accesses = UserAccess.objects.filter(
+            user=self.user,
+            scope__key__in=managed_scope_keys,
+        )
+        self.assertEqual(stored_accesses.count(), len(managed_scope_keys))
+        self.assertFalse(
+            stored_accesses.exclude(
+                status=UserAccess.Status.ALLOWED,
+                role=AccessRole.USER,
+            ).exists()
+        )
+        for scope_key, access in matrix_accesses.items():
+            with self.subTest(scope=scope_key):
+                self.assertTrue(access["allowed"])
+                self.assertEqual(access["role"], AccessRole.USER)
+                self.assertEqual(access["explicitStatus"], UserAccess.Status.ALLOWED)
+
+        inactive_access = UserAccess.objects.get(user=self.user, scope=inactive_scope)
+        self.assertEqual(inactive_access.status, UserAccess.Status.DENIED)
+        self.assertEqual(inactive_access.role, AccessRole.USER)
+        changed_audits = AccessAuditLog.objects.filter(
+            actor=admin_user,
+            target_user=self.user,
+            scope__key__in=managed_scope_keys,
+        )
+        self.assertEqual(changed_audits.count(), len(expected_changed_scope_keys))
+        self.assertEqual(
+            changed_audits.get(scope=feature_scope).action,
+            AccessAuditLog.Actions.CHANGE_ROLE,
+        )
+
+    def test_access_user_apply_all_sets_every_matrix_scope_to_admin_role(self) -> None:
+        """관리자 선택은 모든 표시 scope를 관리자 권한으로 통일해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.user.id}),
+            data={"value": "admin", "reason": "전체 관리자 권한 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["value"], "admin")
+        managed_scope_keys = set(payload["matrixRow"]["accesses"])
+        stored_accesses = UserAccess.objects.filter(
+            user=self.user,
+            scope__key__in=managed_scope_keys,
+        )
+        self.assertEqual(stored_accesses.count(), len(managed_scope_keys))
+        self.assertFalse(
+            stored_accesses.exclude(
+                status=UserAccess.Status.ALLOWED,
+                role=AccessRole.ADMIN,
+            ).exists()
+        )
+        for scope_key, access in payload["matrixRow"]["accesses"].items():
+            with self.subTest(scope=scope_key):
+                self.assertTrue(access["allowed"])
+                self.assertEqual(access["role"], AccessRole.ADMIN)
+
+    def test_access_user_apply_all_denies_every_matrix_scope(self) -> None:
+        """접근 차단 선택은 모든 표시 scope를 명시적으로 차단해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.user.id}),
+            data={"value": "denied", "reason": "전체 권한 차단 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["value"], "denied")
+        managed_scope_keys = set(payload["matrixRow"]["accesses"])
+        stored_accesses = UserAccess.objects.filter(
+            user=self.user,
+            scope__key__in=managed_scope_keys,
+        )
+        self.assertEqual(stored_accesses.count(), len(managed_scope_keys))
+        self.assertFalse(
+            stored_accesses.exclude(
+                status=UserAccess.Status.DENIED,
+                role=AccessRole.USER,
+            ).exists()
+        )
+        for scope_key, access in payload["matrixRow"]["accesses"].items():
+            with self.subTest(scope=scope_key):
+                self.assertFalse(access["allowed"])
+                self.assertEqual(access["explicitStatus"], UserAccess.Status.DENIED)
+
+    def test_access_user_apply_all_resets_every_matrix_scope_to_policy(self) -> None:
+        """자동 규칙 선택은 모든 표시 scope의 명시 권한을 제거해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        managed_scopes = list(
+            AccessScope.objects.filter(
+                Q(key=ACCESS_SCOPE_PORTAL) | Q(is_active=True)
+            )
+        )
+        UserAccess.objects.bulk_create(
+            [
+                UserAccess(
+                    user=self.user,
+                    scope=scope,
+                    status=UserAccess.Status.ALLOWED,
+                    role=AccessRole.ADMIN,
+                )
+                for scope in managed_scopes
+            ]
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.user.id}),
+            data={"value": "inherit", "reason": "전체 자동 규칙 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["value"], "inherit")
+        self.assertEqual(payload["summary"]["updated"], len(managed_scopes))
+        self.assertFalse(
+            UserAccess.objects.filter(
+                user=self.user,
+                scope__in=managed_scopes,
+            ).exists()
+        )
+        for scope_key, access in payload["matrixRow"]["accesses"].items():
+            with self.subTest(scope=scope_key):
+                self.assertIsNone(access["explicitStatus"])
+        self.assertEqual(
+            AccessAuditLog.objects.filter(
+                actor=admin_user,
+                target_user=self.user,
+                action=AccessAuditLog.Actions.RESET_TO_POLICY,
+            ).count(),
+            len(managed_scopes),
+        )
+
+    def test_access_user_apply_all_rejects_invalid_value(self) -> None:
+        """전체 변경 API는 지원하지 않는 권한 값을 거절해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.user.id}),
+            data={"value": "pending"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_request")
+        self.assertFalse(UserAccess.objects.filter(user=self.user).exists())
+
+    def test_access_user_apply_all_rejects_superuser_without_writes(self) -> None:
+        """슈퍼유저 전체 변경은 기존 우회 권한을 유지하고 어떤 행도 생성하지 않아야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-user-apply-all", kwargs={"user_id": self.superuser.id}),
+            data={"value": "user", "reason": "슈퍼유저 변경 거부 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"], "immutable_access_bypass")
+        self.assertFalse(UserAccess.objects.filter(user=self.superuser).exists())
+        self.assertFalse(
+            AccessAuditLog.objects.filter(target_user=self.superuser).exists()
+        )
+
     def test_access_management_change_role_requires_explicit_role(self) -> None:
         """change_role action은 정책 허용 사용자에게도 명시적인 role이 필요합니다."""
 
@@ -2272,7 +2966,12 @@ class AccountEndpointTests(TestCase):
             with self.subTest(action=action):
                 response = self.client.post(
                     endpoint,
-                    data={"scope": scope.key, "action": action, **extra_payload},
+                    data={
+                        "scope": scope.key,
+                        "action": action,
+                        "reason": "슈퍼유저 변경 거부 검증",
+                        **extra_payload,
+                    },
                     content_type="application/json",
                 )
 
@@ -2564,6 +3263,88 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(row["accesses"]["report-export"]["source"], "explicit_allowed")
         self.assertEqual(row["accesses"]["report-export"]["role"], "admin")
 
+    def test_access_matrix_filters_users_with_manual_grants_in_managed_scopes(self) -> None:
+        """수동 부여 필터는 표시 scope의 명시 허용 사용자를 중복 없이 반환해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        User = get_user_model()
+        allowed_user = User.objects.create_user(
+            sabun="S-MATRIX-MANUAL-1",
+            password="test-password",
+            knox_id="matrix-manual-allowed",
+        )
+        pending_user = User.objects.create_user(
+            sabun="S-MATRIX-MANUAL-2",
+            password="test-password",
+            knox_id="matrix-manual-pending",
+        )
+        denied_user = User.objects.create_user(
+            sabun="S-MATRIX-MANUAL-3",
+            password="test-password",
+            knox_id="matrix-manual-denied",
+        )
+        inactive_user = User.objects.create_user(
+            sabun="S-MATRIX-MANUAL-4",
+            password="test-password",
+            knox_id="matrix-manual-inactive",
+        )
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        observer_scope = AccessScope.objects.get(key="observer")
+        inactive_scope = AccessScope.objects.create(
+            key="inactive-manual-filter",
+            name="비활성 수동 필터",
+            scope_type=AccessScope.ScopeTypes.APP,
+            is_active=False,
+        )
+        UserAccess.objects.bulk_create(
+            [
+                UserAccess(
+                    user=allowed_user,
+                    scope=appstore_scope,
+                    status=UserAccess.Status.ALLOWED,
+                ),
+                UserAccess(
+                    user=allowed_user,
+                    scope=observer_scope,
+                    status=UserAccess.Status.ALLOWED,
+                ),
+                UserAccess(
+                    user=pending_user,
+                    scope=appstore_scope,
+                    status=UserAccess.Status.PENDING,
+                ),
+                UserAccess(
+                    user=denied_user,
+                    scope=appstore_scope,
+                    status=UserAccess.Status.DENIED,
+                ),
+                UserAccess(
+                    user=inactive_user,
+                    scope=inactive_scope,
+                    status=UserAccess.Status.ALLOWED,
+                ),
+            ]
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.get(
+            reverse("account-access-matrix"),
+            {
+                "search": "matrix-manual",
+                "manualGrantOnly": "true",
+                "pageSize": 10,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["pagination"]["total"], 1)
+        self.assertEqual(
+            [row["user"]["id"] for row in payload["results"]],
+            [allowed_user.id],
+        )
+
     def test_access_users_returns_pending_feature_scope_requests(self) -> None:
         """대기 요청 목록은 feature scope도 앱과 같은 API 계약으로 조회해야 합니다."""
 
@@ -2600,6 +3381,217 @@ class AccountEndpointTests(TestCase):
             payload["results"][0]["access"]["effectiveStatus"],
             UserAccess.Status.PENDING,
         )
+
+    def test_pending_access_requests_lists_all_scopes_and_filters_one_scope(self) -> None:
+        """전체 승인 대기는 scope별 요청을 독립 행으로 반환하고 앱 필터를 지원해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        portal_request = UserAccess.objects.create(
+            user=self.user,
+            scope=portal_scope,
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+        appstore_request = UserAccess.objects.create(
+            user=self.user,
+            scope=appstore_scope,
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+
+        self.client.force_login(admin_user)
+        all_response = self.client.get(
+            reverse("account-pending-access-requests"),
+            {"pageSize": 5},
+        )
+        filtered_response = self.client.get(
+            reverse("account-pending-access-requests"),
+            {"scope": "appstore", "pageSize": 5},
+        )
+
+        self.assertEqual(all_response.status_code, 200)
+        all_payload = all_response.json()
+        self.assertEqual(all_payload["summary"]["total"], 2)
+        self.assertEqual(all_payload["pagination"]["total"], 2)
+        self.assertEqual(
+            {
+                (row["requestId"], row["scope"]["key"], row["user"]["id"])
+                for row in all_payload["results"]
+            },
+            {
+                (portal_request.id, ACCESS_SCOPE_PORTAL, self.user.id),
+                (appstore_request.id, "appstore", self.user.id),
+            },
+        )
+        scope_counts = {
+            row["scope"]["key"]: row["total"]
+            for row in all_payload["scopeCounts"]
+        }
+        self.assertEqual(
+            scope_counts,
+            {ACCESS_SCOPE_PORTAL: 1, "appstore": 1},
+        )
+
+        self.assertEqual(filtered_response.status_code, 200)
+        filtered_payload = filtered_response.json()
+        self.assertEqual(filtered_payload["summary"]["total"], 2)
+        self.assertEqual(filtered_payload["pagination"]["total"], 1)
+        self.assertEqual(
+            filtered_payload["results"][0]["requestId"],
+            appstore_request.id,
+        )
+        self.assertEqual(
+            filtered_payload["results"][0]["access"]["effectiveStatus"],
+            UserAccess.Status.PENDING,
+        )
+
+    def test_bulk_approve_pending_access_requests_only_updates_selected_rows(self) -> None:
+        """일괄 승인은 선택한 scope 요청만 일반 사용자로 승인하고 각각 감사 로그를 남겨야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        portal_request = UserAccess.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL),
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+        appstore_request = UserAccess.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key="appstore"),
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+        unselected_request = UserAccess.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key="observer"),
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            reverse("account-pending-access-requests-bulk-approve"),
+            data={
+                "requestIds": [
+                    appstore_request.id,
+                    portal_request.id,
+                    appstore_request.id,
+                ],
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(
+            payload["summary"],
+            {"requested": 2, "approved": 2, "failed": 0},
+        )
+        portal_request.refresh_from_db()
+        appstore_request.refresh_from_db()
+        unselected_request.refresh_from_db()
+        self.assertEqual(portal_request.status, UserAccess.Status.ALLOWED)
+        self.assertEqual(appstore_request.status, UserAccess.Status.ALLOWED)
+        self.assertEqual(portal_request.role, AccessRole.USER)
+        self.assertEqual(appstore_request.role, AccessRole.USER)
+        self.assertEqual(unselected_request.status, UserAccess.Status.PENDING)
+        self.assertEqual(
+            AccessAuditLog.objects.filter(
+                actor=admin_user,
+                target_user=self.user,
+                action=AccessAuditLog.Actions.APPROVE,
+                scope__key__in=[ACCESS_SCOPE_PORTAL, "appstore"],
+            ).count(),
+            2,
+        )
+
+    def test_bulk_approve_pending_access_requests_reports_partial_failure(self) -> None:
+        """이미 처리된 요청은 실패로 남기고 유효한 선택 요청은 계속 승인해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        pending_request = UserAccess.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key="appstore"),
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+        decided_request = UserAccess.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key="observer"),
+            department="Dept",
+            status=UserAccess.Status.ALLOWED,
+            role=AccessRole.USER,
+        )
+
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            reverse("account-pending-access-requests-bulk-approve"),
+            data={
+                "requestIds": [
+                    pending_request.id,
+                    decided_request.id,
+                    999999,
+                ],
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(
+            payload["summary"],
+            {"requested": 3, "approved": 1, "failed": 2},
+        )
+        self.assertEqual(
+            {row["requestId"] for row in payload["approved"]},
+            {pending_request.id},
+        )
+        self.assertEqual(
+            {
+                (row["requestId"], row["error"])
+                for row in payload["failed"]
+            },
+            {
+                (decided_request.id, "invalid_status_transition"),
+                (999999, "request_not_found"),
+            },
+        )
+        pending_request.refresh_from_db()
+        decided_request.refresh_from_db()
+        self.assertEqual(pending_request.status, UserAccess.Status.ALLOWED)
+        self.assertEqual(decided_request.status, UserAccess.Status.ALLOWED)
+
+    def test_pending_access_request_management_requires_portal_admin(self) -> None:
+        """일반 사용자는 전체 승인 대기 조회와 일괄 승인을 실행할 수 없어야 합니다."""
+
+        pending_request = UserAccess.objects.create(
+            user=self.manager,
+            scope=AccessScope.objects.get(key="appstore"),
+            department="Dept",
+            status=UserAccess.Status.PENDING,
+        )
+        self.client.force_login(self.user)
+
+        list_response = self.client.get(
+            reverse("account-pending-access-requests"),
+        )
+        bulk_response = self.client.post(
+            reverse("account-pending-access-requests-bulk-approve"),
+            data={"requestIds": [pending_request.id]},
+            content_type="application/json",
+        )
+
+        self.assertEqual(list_response.status_code, 403)
+        self.assertEqual(bulk_response.status_code, 403)
+        pending_request.refresh_from_db()
+        self.assertEqual(pending_request.status, UserAccess.Status.PENDING)
 
     def test_access_matrix_blocks_apps_when_portal_access_is_denied(self) -> None:
         """Portal 차단 사용자의 앱 명시 허용은 보존하되 최종 접근은 차단해야 합니다."""
@@ -2693,7 +3685,7 @@ class AccountEndpointTests(TestCase):
 
         response = self.client.post(
             reverse("account-access-user-decision", kwargs={"user_id": self.user.id}),
-            data='{"scope": "appstore", "action": "grant"}',
+            data='{"scope": "appstore", "action": "grant", "reason": "매트릭스 부여 검증"}',
             content_type="application/json",
         )
 
@@ -2719,12 +3711,12 @@ class AccountEndpointTests(TestCase):
 
         deny_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "revoke"}',
+            data='{"scope": "appstore", "action": "revoke", "reason": "매트릭스 차단 검증"}',
             content_type="application/json",
         )
         reset_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "reset_to_policy"}',
+            data='{"scope": "appstore", "action": "reset_to_policy", "reason": "자동 규칙 복귀 검증"}',
             content_type="application/json",
         )
 
@@ -2749,12 +3741,12 @@ class AccountEndpointTests(TestCase):
 
         grant_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "grant", "role": "admin"}',
+            data='{"scope": "appstore", "action": "grant", "role": "admin", "reason": "관리자 부여 검증"}',
             content_type="application/json",
         )
         change_role_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "change_role", "role": "user"}',
+            data='{"scope": "appstore", "action": "change_role", "role": "user", "reason": "일반 역할 변경 검증"}',
             content_type="application/json",
         )
 
@@ -2773,12 +3765,12 @@ class AccountEndpointTests(TestCase):
 
         grant_admin_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "grant", "role": "admin"}',
+            data='{"scope": "appstore", "action": "grant", "role": "admin", "reason": "관리자 부여 검증"}',
             content_type="application/json",
         )
         revoke_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "revoke"}',
+            data='{"scope": "appstore", "action": "revoke", "reason": "관리자 권한 회수 검증"}',
             content_type="application/json",
         )
         denied_access = UserAccess.objects.get(user=self.user, scope__key="appstore")
@@ -2791,7 +3783,7 @@ class AccountEndpointTests(TestCase):
 
         roleless_grant_response = self.client.post(
             endpoint,
-            data='{"scope": "appstore", "action": "grant"}',
+            data='{"scope": "appstore", "action": "grant", "reason": "일반 역할 복원 검증"}',
             content_type="application/json",
         )
         denied_access.refresh_from_db()
@@ -3076,7 +4068,7 @@ class AccountEndpointTests(TestCase):
         self.client.force_login(admin_user)
         response = self.client.post(
             reverse("account-access-user-decision", kwargs={"user_id": self.user.id}),
-            data='{"scope": "portal", "action": "reset_to_policy"}',
+            data='{"scope": "portal", "action": "reset_to_policy", "reason": "정책 권한 복귀 검증"}',
             content_type="application/json",
         )
 
@@ -3164,6 +4156,174 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(audit_response.status_code, 200)
         self.assertEqual(audit_response.json()["results"][0]["policyRule"]["value"], "NewDept")
+
+    def test_access_policy_rule_list_can_return_all_scopes(self) -> None:
+        """정책 목록은 매트릭스 구성을 위해 모든 scope 규칙을 함께 반환해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        appstore_rule = AccessPolicyRule.objects.create(
+            scope=appstore_scope,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            value="MatrixListDept",
+        )
+        inactive_scope = AccessScope.objects.create(
+            key="policy-matrix-list-inactive",
+            name="비활성 정책 목록 제외",
+            scope_type=AccessScope.ScopeTypes.APP,
+            is_active=False,
+        )
+        inactive_rule = AccessPolicyRule.objects.create(
+            scope=inactive_scope,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            value="MatrixListInactiveDept",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(
+            reverse("account-access-policy-rules"),
+            {"scope": "all"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rules = response.json()["results"]
+        self.assertIn(appstore_rule.id, {rule["id"] for rule in rules})
+        self.assertNotIn(inactive_rule.id, {rule["id"] for rule in rules})
+        self.assertIn(ACCESS_SCOPE_PORTAL, {rule["scope"] for rule in rules})
+
+    def test_access_policy_rule_bulk_apply_creates_updates_and_skips_same_state(self) -> None:
+        """정책 일괄 적용은 모든 대상 scope를 같은 상태로 맞추고 동일 상태는 건너뛰어야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
+        appstore_scope = AccessScope.objects.get(key="appstore")
+        observer_scope = AccessScope.objects.get(key="observer")
+        AccessPolicyRule.objects.create(
+            scope=portal_scope,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            value="MatrixBulkDept",
+            is_active=False,
+        )
+        AccessPolicyRule.objects.create(
+            scope=appstore_scope,
+            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
+            value="MatrixBulkDept",
+            is_active=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-policy-rules-bulk-apply"),
+            data={
+                "value": "MatrixBulkDept",
+                "scopeKeys": [
+                    ACCESS_SCOPE_PORTAL,
+                    "appstore",
+                    "observer",
+                    "observer",
+                ],
+                "isActive": True,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["summary"], {"total": 3, "updated": 2, "unchanged": 1})
+        rules = AccessPolicyRule.objects.filter(value="MatrixBulkDept")
+        self.assertEqual(rules.count(), 3)
+        self.assertFalse(rules.filter(is_active=False).exists())
+        self.assertEqual(
+            AccessAuditLog.objects.filter(
+                actor=admin_user,
+                action=AccessAuditLog.Actions.POLICY_CREATE,
+                policy_rule__value="MatrixBulkDept",
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            AccessAuditLog.objects.filter(
+                actor=admin_user,
+                action=AccessAuditLog.Actions.POLICY_UPDATE,
+                policy_rule__value="MatrixBulkDept",
+            ).count(),
+            1,
+        )
+
+        disable_response = self.client.post(
+            reverse("account-access-policy-rules-bulk-apply"),
+            data={
+                "value": "MatrixBulkDept",
+                "scopeKeys": [ACCESS_SCOPE_PORTAL, "appstore", "observer"],
+                "isActive": False,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(disable_response.status_code, 200)
+        self.assertEqual(disable_response.json()["summary"]["updated"], 3)
+        self.assertFalse(
+            AccessPolicyRule.objects.filter(
+                value="MatrixBulkDept",
+                is_active=True,
+            ).exists()
+        )
+
+    def test_access_policy_rule_bulk_apply_rejects_unmanaged_scope_without_writes(self) -> None:
+        """정책 일괄 적용은 비활성 또는 존재하지 않는 scope를 포함하면 전체를 거절해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        inactive_scope = AccessScope.objects.create(
+            key="policy-matrix-inactive",
+            name="비활성 정책 매트릭스",
+            scope_type=AccessScope.ScopeTypes.APP,
+            is_active=False,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("account-access-policy-rules-bulk-apply"),
+            data={
+                "value": "InvalidMatrixDept",
+                "scopeKeys": [ACCESS_SCOPE_PORTAL, inactive_scope.key, "missing-scope"],
+                "isActive": True,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["scopeKeys"],
+            [inactive_scope.key, "missing-scope"],
+        )
+        self.assertFalse(
+            AccessPolicyRule.objects.filter(value="InvalidMatrixDept").exists()
+        )
+
+    def test_access_policy_rule_bulk_apply_rolls_back_when_audit_creation_fails(self) -> None:
+        """정책 일괄 적용은 감사 로그 생성 실패 시 모든 scope 변경을 복구해야 합니다."""
+
+        admin_user = self.manager
+        _grant_manage_access(admin_user)
+        admin_user.refresh_from_db()
+
+        with patch(
+            "api.account.services.access_control.create_access_audit_log",
+            side_effect=RuntimeError("audit failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                bulk_apply_access_policy_rules(
+                    actor=admin_user,
+                    scope_keys=[ACCESS_SCOPE_PORTAL, "appstore"],
+                    value="RollbackMatrixDept",
+                    is_active=True,
+                )
+
+        self.assertFalse(
+            AccessPolicyRule.objects.filter(value="RollbackMatrixDept").exists()
+        )
 
     def test_access_policy_rule_api_rejects_non_department_types(self) -> None:
         """정책 API는 부서 이외의 적용 기준을 거부해야 합니다."""
@@ -3389,6 +4549,7 @@ class AccountEndpointTests(TestCase):
                 "actor",
                 "target_user",
                 "policy_rule",
+                "affiliation",
                 "action",
                 "before",
                 "after",
@@ -3491,6 +4652,66 @@ class AccountEndpointTests(TestCase):
         with self.assertRaises(ValidationError):
             rule.full_clean()
 
+    def test_affiliation_identifier_is_unique_after_trim_and_lower(self) -> None:
+        """소속 식별자는 앞뒤 공백과 대소문자를 무시해 중복을 차단해야 합니다."""
+
+        Affiliation.objects.create(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="Case-Group",
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Affiliation.objects.create(
+                    department="Dept",
+                    line="Line",
+                    user_sdwt_prod=" case-group ",
+                )
+
+    def test_affiliation_identifier_rejects_blank_and_whitespace(self) -> None:
+        """소속 식별자는 DB에서도 빈 값과 앞뒤 공백을 허용하지 않아야 합니다."""
+
+        for value in ("", " group-with-space "):
+            with self.subTest(value=value), self.assertRaises(IntegrityError):
+                with transaction.atomic():
+                    Affiliation.objects.create(
+                        department="Dept",
+                        line="Line",
+                        user_sdwt_prod=value,
+                    )
+
+    def test_affiliation_access_role_has_database_constraint(self) -> None:
+        """잘못된 소속 접근 역할은 DB 제약에서 차단해야 합니다."""
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                UserSdwtProdAccess.objects.create(
+                    user=self.user,
+                    affiliation=Affiliation.objects.get(user_sdwt_prod="group-b"),
+                    role="owner",
+                )
+
+    def test_user_has_only_one_pending_affiliation_change(self) -> None:
+        """사용자별 승인 대기 소속 요청은 DB에서도 한 건만 허용해야 합니다."""
+
+        UserSdwtProdChange.objects.create(
+            user=self.user,
+            from_user_sdwt_prod="group-a",
+            to_user_sdwt_prod="group-b",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                UserSdwtProdChange.objects.create(
+                    user=self.user,
+                    from_user_sdwt_prod="group-a",
+                    to_user_sdwt_prod="group-c",
+                    effective_from=timezone.now(),
+                    status=UserSdwtProdChange.Status.PENDING,
+                )
+
     def test_access_policy_rule_normalizes_value_and_rejects_semantic_duplicates(self) -> None:
         """정책 값은 공백을 제거하고 대소문자가 다른 의미상 중복도 차단해야 합니다."""
 
@@ -3523,7 +4744,7 @@ class AccountEndpointTests(TestCase):
             call_command("check_access_permission_integrity", stdout=StringIO())
 
     def test_access_permission_integrity_command_supports_both_phases(self) -> None:
-        """운영 점검 명령은 legacy와 고정 역할 계약을 명시적으로 나눠 검사해야 합니다."""
+        """운영 점검 명령은 직전·현재 release의 고정 역할 계약을 검사해야 합니다."""
 
         AccessPolicyRule.objects.create(
             scope=AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL),
@@ -3547,20 +4768,14 @@ class AccountEndpointTests(TestCase):
             status=UserAccess.Status.ALLOWED,
             role="user",
         )
-        with self.assertRaises(CommandError):
+        for phase in ("pre-migration", "post-migration"):
+            output = StringIO()
             call_command(
                 "check_access_permission_integrity",
-                phase="pre-migration",
-                stdout=StringIO(),
+                phase=phase,
+                stdout=output,
             )
-
-        output = StringIO()
-        call_command(
-            "check_access_permission_integrity",
-            phase="post-migration",
-            stdout=output,
-        )
-        self.assertIn("phase=post-migration", output.getvalue())
+            self.assertIn(f"phase={phase}", output.getvalue())
 
     def test_access_permission_integrity_uses_database_lower_contract(self) -> None:
         """Unicode 정책 값도 PostgreSQL Lower 유일 제약과 같은 기준으로 검사해야 합니다."""
@@ -3584,6 +4799,29 @@ class AccountEndpointTests(TestCase):
             stdout=output,
         )
 
+        self.assertIn("phase=post-migration", output.getvalue())
+
+    def test_access_permission_integrity_allows_dormant_inactive_affiliation_grant(self) -> None:
+        """비활성 소속의 보존 grant는 실효 권한이 아니므로 무결성 오류가 아니어야 합니다."""
+
+        affiliation = Affiliation.objects.create(
+            department="Dept",
+            line="Line",
+            user_sdwt_prod="inactive-scope-group",
+            is_active=False,
+        )
+        UserScopeAffiliationGrant.objects.create(
+            user=self.user,
+            scope=AccessScope.objects.get(key="emails"),
+            affiliation=affiliation,
+        )
+
+        output = StringIO()
+        call_command(
+            "check_access_permission_integrity",
+            phase="post-migration",
+            stdout=output,
+        )
         self.assertIn("phase=post-migration", output.getvalue())
 
     def test_auth_me_does_not_create_access_row_for_current_affiliation(self) -> None:
@@ -3804,6 +5042,7 @@ class AccountEndpointTests(TestCase):
             target_user=self.user,
             action="grant",
             role="member",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(grant_status, 200)
 
@@ -3832,6 +5071,7 @@ class AccountEndpointTests(TestCase):
             target_user=target,
             action="grant",
             role="viewer",
+            reason="테스트 권한 변경",
         )
         self.assertEqual(grant_status, 200)
 
@@ -3867,6 +5107,7 @@ class AccountEndpointTests(TestCase):
             target_user=target,
             action="revoke",
             role=None,
+            reason="테스트 권한 변경",
         )
 
         # -----------------------------------------------------------------------------
@@ -3876,6 +5117,289 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(
             revoke_payload.get("error"),
             "Cannot revoke access for the user's current affiliation",
+        )
+
+    def test_last_manager_cannot_be_demoted_or_revoked(self) -> None:
+        """소속의 마지막 manager는 강등하거나 회수할 수 없습니다."""
+
+        demote_payload, demote_status = grant_or_revoke_access(
+            grantor=self.manager,
+            target_group="group-a",
+            target_user=self.manager,
+            action="grant",
+            role="member",
+            reason="테스트 권한 변경",
+        )
+        revoke_payload, revoke_status = grant_or_revoke_access(
+            grantor=self.manager,
+            target_group="group-a",
+            target_user=self.manager,
+            action="revoke",
+            role=None,
+            reason="테스트 권한 변경",
+        )
+
+        self.assertEqual(demote_status, 409)
+        self.assertEqual(
+            demote_payload.get("error"),
+            "Cannot demote the last manager for this group",
+        )
+        self.assertEqual(revoke_status, 409)
+        self.assertEqual(
+            revoke_payload.get("error"),
+            "Cannot remove the last manager for this group",
+        )
+        self.assertEqual(
+            UserSdwtProdAccess.objects.get(
+                user=self.manager,
+                affiliation__user_sdwt_prod="group-a",
+            ).role,
+            UserSdwtProdAccess.Roles.MANAGER,
+        )
+
+    def test_affiliation_manager_can_grant_change_and_revoke_access_via_api(self) -> None:
+        """소속 manager가 제품 API로 추가 접근 역할을 관리할 수 있습니다."""
+
+        User = get_user_model()
+        target = User.objects.create_user(
+            sabun="S50010",
+            password="test-password",
+            knox_id="knox-50010",
+        )
+        _set_current_affiliation(target, user_sdwt_prod="group-b")
+        self.client.force_login(self.manager)
+
+        grant_response = self.client.post(
+            reverse("account-affiliation-access"),
+            data={
+                "userId": target.id,
+                "userSdwtProd": "group-a",
+                "role": "viewer",
+                "reason": "추가 소속 권한 부여 검증",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(grant_response.status_code, 200)
+        self.assertEqual(grant_response.json()["role"], "viewer")
+
+        change_response = self.client.post(
+            reverse("account-affiliation-access"),
+            data={
+                "userId": target.id,
+                "userSdwtProd": "group-a",
+                "role": "member",
+                "reason": "추가 소속 역할 변경 검증",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(change_response.status_code, 200)
+        self.assertEqual(change_response.json()["role"], "member")
+        members_response = self.client.get(
+            reverse("account-affiliation-members"),
+            {"user_sdwt_prod": "group-a"},
+        )
+        self.assertEqual(members_response.status_code, 200)
+        self.assertTrue(members_response.json()["canManage"])
+        self.assertEqual(members_response.json()["actorRole"], "manager")
+
+        revoke_response = self.client.delete(
+            reverse("account-affiliation-access"),
+            data={
+                "userId": target.id,
+                "userSdwtProd": "group-a",
+                "reason": "추가 소속 권한 회수 검증",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(revoke_response.status_code, 200)
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=target,
+                affiliation__user_sdwt_prod="group-a",
+            ).exists()
+        )
+        role_audits = list(
+            AccessAuditLog.objects.filter(
+                actor=self.manager,
+                target_user=target,
+                affiliation__user_sdwt_prod="group-a",
+                action__in=[
+                    AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+                    AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
+                    AccessAuditLog.Actions.AFFILIATION_ROLE_REVOKE,
+                ],
+            ).order_by("id")
+        )
+        self.assertEqual(
+            [audit.action for audit in role_audits],
+            [
+                AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+                AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
+                AccessAuditLog.Actions.AFFILIATION_ROLE_REVOKE,
+            ],
+        )
+        self.assertEqual(role_audits[0].before, {})
+        self.assertEqual(
+            role_audits[0].after,
+            {"role": "viewer", "grantedBy": self.manager.id},
+        )
+        self.assertEqual(role_audits[1].before["role"], "viewer")
+        self.assertEqual(role_audits[1].after["role"], "member")
+        self.assertEqual(role_audits[2].before["role"], "member")
+        self.assertEqual(role_audits[2].after, {})
+
+    def test_affiliation_role_change_rolls_back_when_audit_fails(self) -> None:
+        """소속 역할 감사 저장 실패 시 역할 부여도 함께 롤백해야 합니다."""
+
+        User = get_user_model()
+        target = User.objects.create_user(
+            sabun="S50013",
+            password="test-password",
+            knox_id="knox-50013",
+        )
+        _set_current_affiliation(target, user_sdwt_prod="group-b")
+
+        with patch(
+            "api.account.services.access.create_access_audit_log",
+            side_effect=RuntimeError("audit failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                grant_or_revoke_access(
+                    grantor=self.manager,
+                    target_group="group-a",
+                    target_user=target,
+                    action="grant",
+                    role="viewer",
+                    reason="테스트 권한 변경",
+                )
+
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=target,
+                affiliation__user_sdwt_prod="group-a",
+            ).exists()
+        )
+
+    def test_affiliation_role_management_rechecks_manager_after_lock(self) -> None:
+        """소속 잠금 대기 중 manager가 강등되면 최신 역할로 작업을 거절해야 합니다."""
+
+        User = get_user_model()
+        target = User.objects.create_user(
+            sabun="S50014",
+            password="test-password",
+            knox_id="knox-50014",
+        )
+        _set_current_affiliation(target, user_sdwt_prod="group-b")
+        original_lock = (
+            account_selectors.get_affiliation_option_for_update_by_user_sdwt_prod
+        )
+
+        def lock_and_demote(*, user_sdwt_prod):
+            affiliation = original_lock(user_sdwt_prod=user_sdwt_prod)
+            UserSdwtProdAccess.objects.filter(
+                user=self.manager,
+                affiliation=affiliation,
+            ).update(role=UserSdwtProdAccess.Roles.MEMBER)
+            return affiliation
+
+        with patch(
+            "api.account.services.access.selectors."
+            "get_affiliation_option_for_update_by_user_sdwt_prod",
+            side_effect=lock_and_demote,
+        ):
+            payload, status_code = grant_or_revoke_access(
+                grantor=self.manager,
+                target_group="group-a",
+                target_user=target,
+                action="grant",
+                role="viewer",
+                reason="테스트 권한 변경",
+            )
+
+        self.assertEqual(status_code, 403)
+        self.assertEqual(payload["error"], "forbidden")
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=target,
+                affiliation__user_sdwt_prod="group-a",
+            ).exists()
+        )
+
+    def test_affiliation_access_admin_is_read_only(self) -> None:
+        """Django Admin은 마지막 manager 보호를 우회해 소속 역할을 수정하지 못합니다."""
+
+        from django.contrib.admin.sites import AdminSite
+
+        from api.account.admin import UserSdwtProdAccessAdmin
+
+        request = RequestFactory().get("/admin/")
+        request.user = self.superuser
+        access_admin = UserSdwtProdAccessAdmin(UserSdwtProdAccess, AdminSite())
+
+        self.assertFalse(access_admin.has_add_permission(request))
+        self.assertFalse(access_admin.has_change_permission(request))
+        self.assertFalse(access_admin.has_delete_permission(request))
+
+    def test_affiliation_member_cannot_manage_access_via_api(self) -> None:
+        """일반 member는 다른 사용자의 소속 접근 역할을 관리할 수 없습니다."""
+
+        User = get_user_model()
+        target = User.objects.create_user(
+            sabun="S50011",
+            password="test-password",
+            knox_id="knox-50011",
+        )
+        _set_current_affiliation(target, user_sdwt_prod="group-b")
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("account-affiliation-access"),
+            data={
+                "userId": target.id,
+                "userSdwtProd": "group-a",
+                "role": "viewer",
+                "reason": "권한 없는 사용자 변경 거부 검증",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=target,
+                affiliation__user_sdwt_prod="group-a",
+            ).exists()
+        )
+
+    def test_inactive_affiliation_cannot_receive_access_role(self) -> None:
+        """비활성 소속에는 신규 접근 역할을 부여할 수 없습니다."""
+
+        affiliation = Affiliation.objects.get(user_sdwt_prod="group-a")
+        affiliation.is_active = False
+        affiliation.save(update_fields=["is_active"])
+        User = get_user_model()
+        target = User.objects.create_user(
+            sabun="S50012",
+            password="test-password",
+            knox_id="knox-50012",
+        )
+
+        payload, status_code = grant_or_revoke_access(
+            grantor=self.manager,
+            target_group="group-a",
+            target_user=target,
+            action="grant",
+            role="viewer",
+            reason="테스트 권한 변경",
+        )
+
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "Invalid user_sdwt_prod")
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=target,
+                affiliation=affiliation,
+            ).exists()
         )
 
     def test_account_affiliation_members_uses_account_domain(self) -> None:
@@ -3909,6 +5433,10 @@ class AccountEndpointTests(TestCase):
         user_ids = {row["userId"] for row in rows}
         self.assertIn(member.id, user_ids)
         self.assertIn(viewer.id, user_ids)
+        rows_by_user_id = {row["userId"]: row for row in rows}
+        self.assertEqual(rows_by_user_id[member.id]["role"], "member")
+        self.assertEqual(rows_by_user_id[viewer.id]["role"], "viewer")
+        self.assertFalse(response.json()["canManage"])
         self.assertNotIn("emailCount", rows[0])
 
 
@@ -3917,17 +5445,44 @@ class AffiliationSelectorTests(TestCase):
 
     def test_list_affiliation_options_orders_rows(self) -> None:
         """소속 옵션이 정렬된 순서로 반환되는지 확인합니다."""
-        _affiliation(department="DeptB", line="L2", user_sdwt_prod="S3")
-        _affiliation(department="DeptA", line="L2", user_sdwt_prod="S2")
-        _affiliation(department="DeptA", line="L1", user_sdwt_prod="S1")
+        affiliation_s3 = _affiliation(
+            department="DeptB",
+            line="L2",
+            user_sdwt_prod="S3",
+        )
+        affiliation_s2 = _affiliation(
+            department="DeptA",
+            line="L2",
+            user_sdwt_prod="S2",
+        )
+        affiliation_s1 = _affiliation(
+            department="DeptA",
+            line="L1",
+            user_sdwt_prod="S1",
+        )
 
         rows = list_affiliation_options()
         self.assertEqual(
             rows,
             [
-                {"department": "DeptA", "line": "L1", "user_sdwt_prod": "S1"},
-                {"department": "DeptA", "line": "L2", "user_sdwt_prod": "S2"},
-                {"department": "DeptB", "line": "L2", "user_sdwt_prod": "S3"},
+                {
+                    "id": affiliation_s1.id,
+                    "department": "DeptA",
+                    "line": "L1",
+                    "user_sdwt_prod": "S1",
+                },
+                {
+                    "id": affiliation_s2.id,
+                    "department": "DeptA",
+                    "line": "L2",
+                    "user_sdwt_prod": "S2",
+                },
+                {
+                    "id": affiliation_s3.id,
+                    "department": "DeptB",
+                    "line": "L2",
+                    "user_sdwt_prod": "S3",
+                },
             ],
         )
 
@@ -3938,7 +5493,6 @@ class AffiliationSelectorTests(TestCase):
                 Affiliation(department="DeptA", line="L1", user_sdwt_prod="S1"),
                 Affiliation(department="DeptB", line="L1", user_sdwt_prod="S2"),
                 Affiliation(department="DeptA", line="L2", user_sdwt_prod="S0"),
-                Affiliation(department="DeptA", line="L3", user_sdwt_prod=""),
             ],
             ignore_conflicts=True,
         )
@@ -3968,6 +5522,34 @@ class AffiliationSelectorTests(TestCase):
             rows = list_line_sdwt_pairs()
 
         self.assertEqual(rows, [])
+
+    def test_affiliation_write_locks_use_primary_key_order(self) -> None:
+        """표시값 정렬과 무관하게 다중 소속 잠금은 id 오름차순을 사용해야 합니다."""
+
+        first = _affiliation(
+            department="Z Dept",
+            line="Z Line",
+            user_sdwt_prod="z-lock-group",
+        )
+        second = _affiliation(
+            department="A Dept",
+            line="A Line",
+            user_sdwt_prod="a-lock-group",
+        )
+
+        with transaction.atomic():
+            by_ids = list_active_affiliations_by_ids_for_update(
+                affiliation_ids=[second.id, first.id],
+            )
+            by_values = list_active_affiliations_by_user_sdwt_prods_for_update(
+                user_sdwt_prods=[
+                    second.user_sdwt_prod,
+                    first.user_sdwt_prod,
+                ],
+            )
+
+        self.assertEqual([row.id for row in by_ids], [first.id, second.id])
+        self.assertEqual([row.id for row in by_values], [first.id, second.id])
 
 
 class AccessibleUserSdwtProdTests(TestCase):
@@ -4026,11 +5608,295 @@ class AccessibleUserSdwtProdTests(TestCase):
         self.assertNotIn("group-new", accessible)
 
 
+class AffiliationCapabilityTests(TestCase):
+    """소속 역할별 공통 capability 판정을 검증합니다."""
+
+    def test_viewer_member_manager_capabilities_are_separated(self) -> None:
+        """viewer는 읽기, member는 일반 변경, manager는 삭제·관리를 수행합니다."""
+
+        User = get_user_model()
+        viewer = User.objects.create_user(sabun="S42100", password="test-password")
+        member = User.objects.create_user(sabun="S42101", password="test-password")
+        manager = User.objects.create_user(sabun="S42102", password="test-password")
+        _set_current_affiliation(viewer, user_sdwt_prod="group-other")
+        _set_current_affiliation(member, user_sdwt_prod="group-a")
+        _set_current_affiliation(manager, user_sdwt_prod="group-a")
+        _grant_access(user=viewer, user_sdwt_prod="group-a", role="viewer")
+        _grant_access(user=manager, user_sdwt_prod="group-a", role="manager")
+
+        self.assertTrue(
+            has_affiliation_capability(
+                user=viewer,
+                user_sdwt_prod="group-a",
+                capability="read",
+            )
+        )
+        self.assertFalse(
+            has_affiliation_capability(
+                user=viewer,
+                user_sdwt_prod="group-a",
+                capability="write",
+            )
+        )
+        self.assertTrue(
+            has_affiliation_capability(
+                user=member,
+                user_sdwt_prod="group-a",
+                capability="write",
+            )
+        )
+        self.assertFalse(
+            has_affiliation_capability(
+                user=member,
+                user_sdwt_prod="group-a",
+                capability="delete",
+            )
+        )
+        for capability in ("read", "write", "delete", "manage_access", "approve"):
+            with self.subTest(capability=capability):
+                self.assertTrue(
+                    has_affiliation_capability(
+                        user=manager,
+                        user_sdwt_prod="group-a",
+                        capability=capability,
+                    )
+                )
+
+    def test_inactive_affiliation_is_inert_until_audited_reactivation(self) -> None:
+        """비활성 소속은 현재 소속과 명시 역할을 모두 중지하고 재활성화는 감사해야 합니다."""
+
+        User = get_user_model()
+        actor = User.objects.create_superuser(
+            sabun="S-AFFILIATION-STATE-ACTOR",
+            password="test-password",
+        )
+        user = User.objects.create_user(
+            sabun="S-AFFILIATION-STATE-USER",
+            password="test-password",
+        )
+        current = _set_current_affiliation(
+            user,
+            user_sdwt_prod="state-controlled-group",
+        )
+        _grant_access(
+            user=user,
+            user_sdwt_prod=current.affiliation.user_sdwt_prod,
+            role=UserSdwtProdAccess.Roles.MANAGER,
+        )
+
+        payload, status_code = set_affiliation_active(
+            actor=actor,
+            affiliation_id=current.affiliation_id,
+            is_active=False,
+            reason="조직 운영 중지",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        self.assertIsNone(get_current_user_sdwt_prod(user=user))
+        self.assertEqual(get_accessible_user_sdwt_prods_for_user(user), set())
+        self.assertFalse(
+            has_affiliation_capability(
+                user=user,
+                user_sdwt_prod="state-controlled-group",
+                capability="manage_access",
+            )
+        )
+        self.assertFalse(
+            has_affiliation_capability(
+                user=actor,
+                user_sdwt_prod="state-controlled-group",
+                capability="manage_access",
+            )
+        )
+        deactivate_audit = AccessAuditLog.objects.get(
+            affiliation_id=current.affiliation_id,
+            action=AccessAuditLog.Actions.AFFILIATION_DEACTIVATE,
+        )
+        self.assertTrue(deactivate_audit.before["isActive"])
+        self.assertFalse(deactivate_audit.after["isActive"])
+        self.assertEqual(deactivate_audit.reason, "조직 운영 중지")
+
+        payload, status_code = set_affiliation_active(
+            actor=actor,
+            affiliation_id=current.affiliation_id,
+            is_active=True,
+            reason="조직 운영 재개",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        self.assertEqual(
+            get_current_user_sdwt_prod(user=user),
+            "state-controlled-group",
+        )
+        self.assertTrue(
+            has_affiliation_capability(
+                user=user,
+                user_sdwt_prod="state-controlled-group",
+                capability="manage_access",
+            )
+        )
+        self.assertTrue(
+            AccessAuditLog.objects.filter(
+                affiliation_id=current.affiliation_id,
+                action=AccessAuditLog.Actions.AFFILIATION_ACTIVATE,
+                reason="조직 운영 재개",
+            ).exists()
+        )
+
+    def test_batch_capability_matches_single_role_rules_with_constant_queries(self) -> None:
+        """여러 소속 capability는 소속 수와 무관한 쿼리로 기존 역할 규칙을 유지해야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S-AFFILIATION-BATCH",
+            password="test-password",
+        )
+        current = _set_current_affiliation(
+            user,
+            user_sdwt_prod="batch-current",
+        ).affiliation
+        member = _affiliation(user_sdwt_prod="batch-member")
+        viewer = _affiliation(user_sdwt_prod="batch-viewer")
+        _grant_access(
+            user=user,
+            user_sdwt_prod=member.user_sdwt_prod,
+            role=UserSdwtProdAccess.Roles.MEMBER,
+        )
+        _grant_access(
+            user=user,
+            user_sdwt_prod=viewer.user_sdwt_prod,
+            role=UserSdwtProdAccess.Roles.VIEWER,
+        )
+        user = User.objects.select_related(
+            "current_affiliation__affiliation"
+        ).get(pk=user.pk)
+        affiliation_ids = [current.id, member.id, viewer.id]
+
+        with self.assertNumQueries(2):
+            can_read = has_affiliation_capability_for_ids(
+                user=user,
+                affiliation_ids=affiliation_ids,
+                capability="read",
+            )
+        with self.assertNumQueries(2):
+            can_write = has_affiliation_capability_for_ids(
+                user=user,
+                affiliation_ids=affiliation_ids,
+                capability="write",
+            )
+
+        self.assertTrue(can_read)
+        self.assertFalse(can_write)
+
+    def test_bulk_affiliation_state_change_rolls_back_on_audit_failure(self) -> None:
+        """일괄 활성 상태 변경은 감사 로그 생성 실패 시 전부 롤백해야 합니다."""
+
+        actor = get_user_model().objects.create_superuser(
+            sabun="S-AFFILIATION-BULK-ROLLBACK",
+            password="test-password",
+        )
+        first = _affiliation(user_sdwt_prod="bulk-rollback-first")
+        second = _affiliation(user_sdwt_prod="bulk-rollback-second")
+
+        with patch(
+            "api.account.services.affiliations.create_access_audit_log",
+            side_effect=[None, RuntimeError("audit failed")],
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                set_affiliations_active(
+                    actor=actor,
+                    affiliation_ids=[second.id, first.id],
+                    is_active=False,
+                    reason="원자성 검증",
+                )
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertTrue(first.is_active)
+        self.assertTrue(second.is_active)
+
+    def test_affiliation_create_and_sync_changes_are_audited(self) -> None:
+        """Admin 생성과 system sync의 실제 생성·변경만 lifecycle 감사로 남겨야 합니다."""
+
+        actor = get_user_model().objects.create_superuser(
+            sabun="S-AFFILIATION-CREATE-ACTOR",
+            password="test-password",
+        )
+        admin_option = create_affiliation(
+            actor=actor,
+            affiliation=Affiliation(
+                department="Admin Dept",
+                line="Admin Line",
+                user_sdwt_prod="admin-created-group",
+            ),
+            reason="신규 조직 등록",
+        )
+        created_audit = AccessAuditLog.objects.get(
+            affiliation=admin_option,
+            action=AccessAuditLog.Actions.AFFILIATION_CREATE,
+        )
+        self.assertEqual(created_audit.actor_id, actor.id)
+        self.assertEqual(created_audit.after["source"], "django_admin")
+        self.assertEqual(created_audit.reason, "신규 조직 등록")
+
+        synced = ensure_affiliation_option(
+            department="Sync Dept",
+            line="Sync Line",
+            user_sdwt_prod="synced-group",
+        )
+        ensure_affiliation_option(
+            department="Sync Dept",
+            line="Sync Line",
+            user_sdwt_prod="synced-group",
+        )
+        ensure_affiliation_option(
+            department="Updated Sync Dept",
+            line="Sync Line",
+            user_sdwt_prod="synced-group",
+        )
+
+        sync_audits = AccessAuditLog.objects.filter(
+            affiliation=synced,
+            action__in=[
+                AccessAuditLog.Actions.AFFILIATION_CREATE,
+                AccessAuditLog.Actions.AFFILIATION_UPDATE,
+            ],
+        ).order_by("id")
+        self.assertEqual(sync_audits.count(), 2)
+        self.assertIsNone(sync_audits[0].actor_id)
+        self.assertEqual(sync_audits[0].after["source"], "system_sync")
+        self.assertEqual(sync_audits[1].before["department"], "Sync Dept")
+        self.assertEqual(
+            sync_audits[1].after["department"],
+            "Updated Sync Dept",
+        )
+
+        with patch(
+            "api.account.services.affiliations.create_access_audit_log",
+            side_effect=RuntimeError("audit failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                create_affiliation(
+                    actor=actor,
+                    affiliation=Affiliation(
+                        department="Rollback Dept",
+                        line="Rollback Line",
+                        user_sdwt_prod="audit-rollback-created",
+                    ),
+                    reason="생성 롤백 검증",
+                )
+        self.assertFalse(
+            Affiliation.objects.filter(
+                user_sdwt_prod="audit-rollback-created",
+            ).exists()
+        )
+
+
 class AffiliationChangeApprovalTests(TestCase):
     """소속 변경 승인 로직을 검증합니다."""
 
-    def test_member_can_approve_and_preserves_effective_from(self) -> None:
-        """대상 소속 멤버 승인 시 적용 시각을 유지하는지 확인합니다."""
+    def test_manager_can_approve_and_preserves_effective_from(self) -> None:
+        """대상 소속 manager 승인 시 적용 시각을 유지하는지 확인합니다."""
         # -----------------------------------------------------------------------------
         # 1) 사용자/승인자 준비
         # -----------------------------------------------------------------------------
@@ -4041,14 +5907,15 @@ class AffiliationChangeApprovalTests(TestCase):
             knox_id="knox-10000",
         )
         _set_current_affiliation(requester, user_sdwt_prod="group-old")
+        _grant_access(user=requester, user_sdwt_prod="group-old", role="member")
 
-        member = User.objects.create_user(
+        manager = User.objects.create_user(
             sabun="S20000",
             password="test-password",
             knox_id="knox-20000",
         )
-        _set_current_affiliation(member, user_sdwt_prod="group-new")
-        _grant_access(user=member, user_sdwt_prod="group-new", role="member")
+        _set_current_affiliation(manager, user_sdwt_prod="group-new")
+        _grant_access(user=manager, user_sdwt_prod="group-new", role="manager")
 
         # -----------------------------------------------------------------------------
         # 2) 변경 요청 생성
@@ -4070,7 +5937,10 @@ class AffiliationChangeApprovalTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 승인 처리 실행
         # -----------------------------------------------------------------------------
-        _payload, status_code = approve_affiliation_change(approver=member, change_id=change.id)
+        _payload, status_code = approve_affiliation_change(
+            approver=manager,
+            change_id=change.id,
+        )
 
         # -----------------------------------------------------------------------------
         # 4) 승인 결과 검증
@@ -4083,9 +5953,270 @@ class AffiliationChangeApprovalTests(TestCase):
         self.assertTrue(change.approved)
         self.assertTrue(change.applied)
         self.assertEqual(change.status, UserSdwtProdChange.Status.APPROVED)
-        self.assertEqual(change.approved_by_id, member.id)
+        self.assertEqual(change.approved_by_id, manager.id)
         self.assertIsNotNone(change.approved_at)
         self.assertEqual(change.effective_from, past)
+        role_audits = {
+            audit.affiliation.user_sdwt_prod: audit
+            for audit in AccessAuditLog.objects.filter(
+                target_user=requester,
+                action__in=(
+                    AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+                    AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
+                ),
+            ).select_related("affiliation")
+        }
+        self.assertEqual(set(role_audits), {"group-old", "group-new"})
+        self.assertEqual(
+            role_audits["group-new"].action,
+            AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+        )
+        self.assertEqual(role_audits["group-new"].actor_id, manager.id)
+        self.assertEqual(role_audits["group-new"].before, {})
+        self.assertEqual(role_audits["group-new"].after["role"], "member")
+        self.assertEqual(
+            role_audits["group-old"].action,
+            AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
+        )
+        self.assertEqual(role_audits["group-old"].before["role"], "member")
+        self.assertEqual(role_audits["group-old"].after["role"], "viewer")
+
+    def test_approval_rechecks_manager_after_affiliation_lock(self) -> None:
+        """소속 잠금 대기 중 manager가 강등되면 승인 권한을 다시 확인해야 합니다."""
+
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10006",
+            password="test-password",
+            knox_id="knox-10006",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+        manager = User.objects.create_user(
+            sabun="S20006",
+            password="test-password",
+            knox_id="knox-20006",
+        )
+        _set_current_affiliation(manager, user_sdwt_prod="group-new")
+        manager_access = _grant_access(
+            user=manager,
+            user_sdwt_prod="group-new",
+            role=UserSdwtProdAccess.Roles.MANAGER,
+        )
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            created_by=requester,
+        )
+        original_lock = (
+            account_selectors.get_affiliation_option_for_update_by_user_sdwt_prod
+        )
+
+        def lock_and_demote(*, user_sdwt_prod):
+            affiliation = original_lock(user_sdwt_prod=user_sdwt_prod)
+            UserSdwtProdAccess.objects.filter(id=manager_access.id).update(
+                role=UserSdwtProdAccess.Roles.MEMBER,
+            )
+            return affiliation
+
+        with patch(
+            "api.account.services.affiliation_requests.selectors."
+            "get_affiliation_option_for_update_by_user_sdwt_prod",
+            side_effect=lock_and_demote,
+        ):
+            payload, status_code = approve_affiliation_change(
+                approver=manager,
+                change_id=change.id,
+            )
+
+        self.assertEqual(status_code, 403)
+        self.assertEqual(payload["error"], "forbidden")
+        change.refresh_from_db()
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
+        self.assertEqual(
+            get_current_user_sdwt_prod(user=requester),
+            "group-old",
+        )
+
+    def test_approval_rolls_back_when_automatic_role_audit_fails(self) -> None:
+        """자동 역할 감사 저장에 실패하면 소속과 역할 변경을 모두 되돌려야 합니다."""
+
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10007",
+            password="test-password",
+            knox_id="knox-10007",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+        _grant_access(user=requester, user_sdwt_prod="group-old", role="member")
+        manager = User.objects.create_user(
+            sabun="S20007",
+            password="test-password",
+            knox_id="knox-20007",
+        )
+        _set_current_affiliation(manager, user_sdwt_prod="group-new")
+        _grant_access(user=manager, user_sdwt_prod="group-new", role="manager")
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            created_by=requester,
+        )
+
+        with patch(
+            "api.account.services.access.create_access_audit_log",
+            side_effect=RuntimeError("audit failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                approve_affiliation_change(
+                    approver=manager,
+                    change_id=change.id,
+                )
+
+        change.refresh_from_db()
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
+        self.assertEqual(get_current_user_sdwt_prod(user=requester), "group-old")
+        self.assertEqual(
+            UserSdwtProdAccess.objects.get(
+                user=requester,
+                affiliation__user_sdwt_prod="group-old",
+            ).role,
+            UserSdwtProdAccess.Roles.MEMBER,
+        )
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=requester,
+                affiliation__user_sdwt_prod="group-new",
+            ).exists()
+        )
+
+    def test_current_affiliation_member_without_access_row_cannot_approve(self) -> None:
+        """현재 소속 member라도 명시적인 manager 역할 없이는 승인할 수 없습니다."""
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10002",
+            password="test-password",
+            knox_id="knox-10002",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+
+        member = User.objects.create_user(
+            sabun="S20002",
+            password="test-password",
+            knox_id="knox-20002",
+        )
+        _set_current_affiliation(member, user_sdwt_prod="group-new")
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=member,
+                affiliation__user_sdwt_prod__iexact="group-new",
+            ).exists()
+        )
+
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=requester,
+        )
+
+        _payload, status_code = approve_affiliation_change(
+            approver=member,
+            change_id=change.id,
+        )
+
+        self.assertEqual(status_code, 403)
+        change.refresh_from_db()
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
+        self.assertIsNone(change.approved_by_id)
+
+    def test_manager_cannot_decide_own_affiliation_request(self) -> None:
+        """대상 소속 manager여도 자신의 변경 요청은 승인·거절할 수 없습니다."""
+
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10004",
+            password="test-password",
+            knox_id="knox-10004",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+        _grant_access(user=requester, user_sdwt_prod="group-new", role="manager")
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=requester,
+        )
+
+        _approve_payload, approve_status = approve_affiliation_change(
+            approver=requester,
+            change_id=change.id,
+        )
+        _reject_payload, reject_status = reject_affiliation_change(
+            approver=requester,
+            change_id=change.id,
+            rejection_reason="self",
+        )
+
+        self.assertEqual(approve_status, 403)
+        self.assertEqual(reject_status, 403)
+        change.refresh_from_db()
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
+
+    def test_decided_affiliation_request_returns_conflict(self) -> None:
+        """이미 처리된 요청은 잠금 후 409 Conflict로 거절해야 합니다."""
+
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10005",
+            password="test-password",
+            knox_id="knox-10005",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+        manager = User.objects.create_user(
+            sabun="S20005",
+            password="test-password",
+            knox_id="knox-20005",
+        )
+        _set_current_affiliation(manager, user_sdwt_prod="group-new")
+        _grant_access(user=manager, user_sdwt_prod="group-new", role="manager")
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.REJECTED,
+            applied=False,
+            approved=False,
+            approved_by=manager,
+            approved_at=timezone.now(),
+            created_by=requester,
+        )
+
+        _payload, status_code = approve_affiliation_change(
+            approver=manager,
+            change_id=change.id,
+        )
+
+        self.assertEqual(status_code, 409)
 
     def test_non_member_cannot_approve(self) -> None:
         """대상 소속 멤버가 아니면 승인할 수 없음을 확인합니다."""
@@ -4130,6 +6261,46 @@ class AffiliationChangeApprovalTests(TestCase):
         self.assertEqual(status_code, 403)
         requester.refresh_from_db()
         self.assertEqual(get_current_user_sdwt_prod(user=requester), "group-old")
+
+    def test_other_affiliation_viewer_cannot_approve(self) -> None:
+        """다른 소속의 viewer 권한은 소속 변경 승인 권한으로 승격되지 않아야 합니다."""
+        User = get_user_model()
+        requester = User.objects.create_user(
+            sabun="S10003",
+            password="test-password",
+            knox_id="knox-10003",
+        )
+        _set_current_affiliation(requester, user_sdwt_prod="group-old")
+
+        viewer = User.objects.create_user(
+            sabun="S30003",
+            password="test-password",
+            knox_id="knox-30003",
+        )
+        _set_current_affiliation(viewer, user_sdwt_prod="group-other")
+        _grant_access(user=viewer, user_sdwt_prod="group-new", role="viewer")
+
+        change = UserSdwtProdChange.objects.create(
+            user=requester,
+            department="Dept",
+            line="Line",
+            from_user_sdwt_prod="group-old",
+            to_user_sdwt_prod="group-new",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=requester,
+        )
+
+        _payload, status_code = approve_affiliation_change(
+            approver=viewer,
+            change_id=change.id,
+        )
+
+        self.assertEqual(status_code, 403)
+        change.refresh_from_db()
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
 
 
 class AffiliationChangeSelectorTests(TestCase):
@@ -4184,6 +6355,7 @@ class AffiliationChangeSelectorTests(TestCase):
             status=UserSdwtProdChange.Status.APPROVED,
             applied=True,
             approved=True,
+            approved_at=now,
         )
 
         next_change = get_next_user_sdwt_prod_change(user=user, effective_from=now)
@@ -4427,6 +6599,45 @@ class AffiliationChangeRequestListTests(TestCase):
         self.assertEqual(payload["results"][0]["id"], change.id)
         self.assertEqual(payload["results"][0]["role"], "member")
 
+    def test_current_affiliation_without_access_row_is_returned_as_member(self) -> None:
+        """현재 소속 사용자의 승인 요청 역할은 명시적 권한 행 없이도 member여야 합니다."""
+        User = get_user_model()
+        member = User.objects.create_user(
+            sabun="S93001",
+            password="test-password",
+            knox_id="knox-93001",
+        )
+        _set_current_affiliation(member, user_sdwt_prod="group-own")
+        self.assertFalse(
+            UserSdwtProdAccess.objects.filter(
+                user=member,
+                affiliation__user_sdwt_prod__iexact="group-own",
+            ).exists()
+        )
+
+        change = UserSdwtProdChange.objects.create(
+            user=member,
+            to_user_sdwt_prod="group-own",
+            effective_from=timezone.now(),
+            status=UserSdwtProdChange.Status.PENDING,
+            applied=False,
+            approved=False,
+            created_by=member,
+        )
+
+        payload, status_code = get_affiliation_change_requests(
+            user=member,
+            status="pending",
+            search=None,
+            user_sdwt_prod="group-own",
+            page=1,
+            page_size=20,
+        )
+
+        self.assertEqual(status_code, 200)
+        self.assertEqual(payload["results"][0]["id"], change.id)
+        self.assertEqual(payload["results"][0]["role"], "member")
+
 
 class AffiliationChangeRequestEffectiveFromTests(TestCase):
     """소속 변경 요청 서비스 로직을 검증합니다."""
@@ -4501,6 +6712,7 @@ class AccountOverviewTests(TestCase):
             approved=True,
             created_by=user,
             approved_by=user,
+            approved_at=timezone.now(),
         )
 
         # -----------------------------------------------------------------------------
@@ -4899,8 +7111,8 @@ class AffiliationChangeRequestTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(get_current_user_sdwt_prod(user=user), "group-old")
 
-    def test_member_can_approve_affiliation_change(self) -> None:
-        """소속 멤버도 승인할 수 있는지 확인합니다."""
+    def test_member_cannot_approve_affiliation_change(self) -> None:
+        """소속 member는 manager 역할 없이 승인할 수 없습니다."""
         User = get_user_model()
         approver = User.objects.create_user(
             sabun="S50003",
@@ -4930,13 +7142,13 @@ class AffiliationChangeRequestTests(TestCase):
         )
 
         payload, status_code = approve_affiliation_change(approver=approver, change_id=change.id)
-        self.assertEqual(status_code, 200)
-        self.assertEqual(payload["status"], "approved")
+        self.assertEqual(status_code, 403)
+        self.assertEqual(payload["error"], "forbidden")
 
         change.refresh_from_db()
-        self.assertEqual(change.status, UserSdwtProdChange.Status.APPROVED)
+        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
         requester.refresh_from_db()
-        self.assertEqual(get_current_user_sdwt_prod(user=requester), "group-a")
+        self.assertIsNone(get_current_user_sdwt_prod(user=requester))
 
 
 class ExternalAffiliationSyncTests(TestCase):
@@ -5570,6 +7782,753 @@ class AccountAccessServiceTests(TestCase):
         )
 
 
+class DevAccessSeedTests(TestCase):
+    """로컬 권한 관리 화면용 더미데이터 구성을 검증합니다."""
+
+    def setUp(self) -> None:
+        """권한 결정 감사 로그에 사용할 dev 관리자 역할 사용자를 준비합니다."""
+
+        AccessScope.objects.update_or_create(
+            key=ACCESS_SCOPE_PORTAL,
+            defaults={
+                "name": "Portal",
+                "scope_type": AccessScope.ScopeTypes.PORTAL,
+                "is_active": True,
+                "requestable": True,
+            },
+        )
+        for scope_key in (
+            "appstore",
+            "assistant",
+            "line-dashboard",
+            "observer",
+            "voc",
+            "l3-spider",
+        ):
+            AccessScope.objects.update_or_create(
+                key=scope_key,
+                defaults={
+                    "name": scope_key,
+                    "scope_type": AccessScope.ScopeTypes.APP,
+                    "is_active": True,
+                    "requestable": True,
+                },
+            )
+        self.actor = get_user_model().objects.create_superuser(
+            sabun="S-SEED-ADMIN",
+            password="test-password",
+            knox_id="seed-admin",
+        )
+
+    def test_seed_dev_access_data_builds_pending_and_matrix_samples(self) -> None:
+        """시드가 페이지네이션용 대기 요청과 상태 비교 행을 함께 생성해야 합니다."""
+
+        result = seed_dev_access_data(
+            prefix="dev",
+            actor=self.actor,
+            reset=True,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "deletedUsers": 0,
+                "users": 28,
+                "pending": 54,
+                "allowed": 6,
+                "denied": 2,
+            },
+        )
+        seeded_users = get_user_model().objects.filter(
+            sabun__startswith="DEV-ACCESS-",
+        )
+        self.assertEqual(seeded_users.count(), 28)
+        self.assertEqual(
+            UserAccess.objects.filter(
+                user__in=seeded_users,
+                scope__key=ACCESS_SCOPE_PORTAL,
+                status=UserAccess.Status.PENDING,
+            ).count(),
+            24,
+        )
+        self.assertEqual(
+            UserAccess.objects.filter(
+                user__sabun="DEV-ACCESS-025",
+                scope__key="appstore",
+                status=UserAccess.Status.ALLOWED,
+                role=AccessRole.ADMIN,
+            ).count(),
+            1,
+        )
+        self.assertTrue(
+            AccessAuditLog.objects.filter(
+                affiliation__user_sdwt_prod__startswith="DEV_ACCESS_",
+                action=AccessAuditLog.Actions.AFFILIATION_CREATE,
+                after__source="dev_seed",
+            ).exists()
+        )
+        self.assertEqual(
+            UserAccess.objects.filter(
+                user__sabun="DEV-ACCESS-027",
+                scope__key=ACCESS_SCOPE_PORTAL,
+                status=UserAccess.Status.DENIED,
+            ).count(),
+            1,
+        )
+
+    def test_seed_dev_access_data_is_repeatable_with_and_without_reset(self) -> None:
+        """같은 prefix 시드를 반복해도 사용자와 권한 행 수가 늘어나지 않아야 합니다."""
+
+        seed_dev_access_data(prefix="DEV", actor=self.actor)
+        repeated_result = seed_dev_access_data(prefix="DEV", actor=self.actor)
+        reset_result = seed_dev_access_data(
+            prefix="DEV",
+            actor=self.actor,
+            reset=True,
+        )
+
+        self.assertEqual(repeated_result["users"], 28)
+        self.assertEqual(repeated_result["pending"], 54)
+        self.assertEqual(reset_result["deletedUsers"], 28)
+        self.assertEqual(reset_result["users"], 28)
+        self.assertEqual(
+            get_user_model().objects.filter(
+                sabun__startswith="DEV-ACCESS-",
+            ).count(),
+            28,
+        )
+
+
+class AppAffiliationDataScopeTests(TestCase):
+    """앱 접근 역할과 앱별 소속 데이터 범위가 독립적으로 동작하는지 검증합니다."""
+
+    def setUp(self) -> None:
+        """Portal 관리자, 대상 사용자, 앱 scope와 소속 옵션을 준비합니다."""
+
+        User = get_user_model()
+        self.actor = User.objects.create_superuser(
+            sabun="S-SCOPE-ADMIN",
+            password="test-password",
+            knox_id="scope-admin",
+        )
+        self.user = User.objects.create_user(
+            sabun="S-SCOPE-USER",
+            password="test-password",
+        )
+        self.portal = AccessScope.objects.update_or_create(
+            key=ACCESS_SCOPE_PORTAL,
+            defaults={
+                "name": "Portal",
+                "scope_type": AccessScope.ScopeTypes.PORTAL,
+                "data_scope_type": AccessScope.DataScopeTypes.NONE,
+                "include_current_affiliation": False,
+            },
+        )[0]
+        self.assistant = AccessScope.objects.update_or_create(
+            key="assistant",
+            defaults={
+                "name": "Assistant",
+                "scope_type": AccessScope.ScopeTypes.APP,
+                "data_scope_type": AccessScope.DataScopeTypes.AFFILIATION,
+                "include_current_affiliation": True,
+            },
+        )[0]
+        self.emails = AccessScope.objects.update_or_create(
+            key="emails",
+            defaults={
+                "name": "Emails",
+                "scope_type": AccessScope.ScopeTypes.APP,
+                "data_scope_type": AccessScope.DataScopeTypes.AFFILIATION,
+                "include_current_affiliation": True,
+            },
+        )[0]
+        self.appstore = AccessScope.objects.update_or_create(
+            key="appstore",
+            defaults={
+                "name": "Appstore",
+                "scope_type": AccessScope.ScopeTypes.APP,
+                "data_scope_type": AccessScope.DataScopeTypes.NONE,
+                "include_current_affiliation": False,
+            },
+        )[0]
+        self.affiliation_a = _affiliation(user_sdwt_prod="scope-group-a")
+        self.affiliation_b = _affiliation(user_sdwt_prod="scope-group-b")
+        self.affiliation_c = _affiliation(user_sdwt_prod="scope-group-c")
+        self.inactive_affiliation = _affiliation(user_sdwt_prod="scope-group-inactive")
+        self.inactive_affiliation.is_active = False
+        self.inactive_affiliation.save(update_fields=["is_active"])
+        UserCurrentAffiliation.objects.create(
+            user=self.user,
+            affiliation=self.affiliation_a,
+            source=UserCurrentAffiliation.Sources.USER_SELECTED,
+            confirmed_at=timezone.now(),
+        )
+        for scope, role in (
+            (self.portal, AccessRole.USER),
+            (self.assistant, AccessRole.ADMIN),
+            (self.emails, AccessRole.ADMIN),
+        ):
+            UserAccess.objects.create(
+                user=self.user,
+                scope=scope,
+                status=UserAccess.Status.ALLOWED,
+                role=role,
+            )
+
+    def test_explicit_grants_are_isolated_by_app_and_include_current_affiliation(self) -> None:
+        """같은 사용자의 명시 소속 grant가 다른 앱으로 전파되지 않아야 합니다."""
+
+        assistant_payload, assistant_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_b.id],
+            reason="Assistant 추가 데이터 범위",
+        )
+        emails_payload, emails_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="emails",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_c.id],
+            reason="Emails 추가 데이터 범위",
+        )
+
+        self.assertEqual(assistant_status, 200, assistant_payload)
+        self.assertEqual(emails_status, 200, emails_payload)
+        assistant_effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="assistant",
+        )
+        emails_effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="emails",
+        )
+        self.assertEqual(
+            set(assistant_effective["affiliationIds"]),
+            {self.affiliation_a.id, self.affiliation_b.id},
+        )
+        self.assertEqual(
+            set(emails_effective["affiliationIds"]),
+            {self.affiliation_a.id, self.affiliation_c.id},
+        )
+        self.assertFalse(assistant_effective["all"])
+        self.assertFalse(emails_effective["all"])
+
+    def test_current_affiliation_source_wins_over_overlapping_manual_grant(self) -> None:
+        """현재 소속과 수동 grant가 겹쳐도 자동 포함 source를 유지해야 합니다."""
+
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="emails",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_a.id],
+            reason="현재 소속과 겹치는 수동 범위",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        self.assertEqual(payload["grants"][0]["source"], "manual")
+        self.assertEqual(payload["effective"]["affiliationIds"], [self.affiliation_a.id])
+        self.assertEqual(payload["effective"]["affiliations"][0]["source"], "current")
+
+    def test_admin_role_does_not_imply_all_affiliations(self) -> None:
+        """앱 admin 역할만으로 전체 소속 데이터 접근이 생기지 않아야 합니다."""
+
+        effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="emails",
+        )
+
+        self.assertEqual(effective["mode"], "selected")
+        self.assertEqual(effective["affiliationIds"], [self.affiliation_a.id])
+
+    def test_explicit_all_mode_returns_only_active_affiliations(self) -> None:
+        """사유와 함께 부여한 전체 모드는 활성 소속만 반환해야 합니다."""
+
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="emails",
+            data_scope_mode=UserAccess.DataScopeModes.ALL,
+            affiliation_ids=[],
+            reason="메일 운영 전체 조회",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="emails",
+        )
+        self.assertEqual(effective["mode"], "all")
+        self.assertEqual(
+            set(effective["affiliationIds"]),
+            {
+                self.affiliation_a.id,
+                self.affiliation_b.id,
+                self.affiliation_c.id,
+            },
+        )
+        self.assertNotIn(self.inactive_affiliation.id, effective["affiliationIds"])
+
+    def test_lightweight_all_decision_does_not_enumerate_affiliations(self) -> None:
+        """전체 범위의 쓰기 판정은 활성 소속 목록을 조회하지 않아야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+
+        with patch(
+            "api.account.services.data_scope.selectors.list_active_affiliations"
+        ) as list_active_affiliations:
+            decision = get_affiliation_scope_decision(
+                user=self.user,
+                scope_key="emails",
+            )
+
+        list_active_affiliations.assert_not_called()
+        self.assertTrue(decision["allowed"])
+        self.assertTrue(decision["all"])
+        self.assertEqual(decision["affiliationIds"], [])
+        self.assertEqual(decision["userSdwtProds"], [])
+
+    def test_repeated_app_grant_preserves_explicit_all_mode(self) -> None:
+        """이미 허용된 앱을 다시 부여해도 명시적 전체 범위를 유지해야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+
+        payload, status_code = decide_user_access(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key=self.emails.key,
+            action="grant",
+            role=AccessRole.ADMIN,
+            reason="앱 권한 재확인",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        access.refresh_from_db()
+        self.assertEqual(
+            access.data_scope_mode,
+            UserAccess.DataScopeModes.ALL,
+        )
+        self.assertFalse(
+            AccessAuditLog.objects.filter(
+                target_user=self.user,
+                scope=self.emails,
+                action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+            ).exists()
+        )
+
+    def test_revoke_resets_all_mode_with_data_scope_audit(self) -> None:
+        """앱을 회수하며 전체 범위를 닫을 때 별도 데이터 범위 감사를 남겨야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+
+        payload, status_code = decide_user_access(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key=self.emails.key,
+            action="revoke",
+            reason="메일 앱 운영 종료",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        access.refresh_from_db()
+        self.assertEqual(
+            access.data_scope_mode,
+            UserAccess.DataScopeModes.DEFAULT,
+        )
+        audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.emails,
+            action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+        )
+        self.assertEqual(audit.before, {"dataScopeMode": "all"})
+        self.assertEqual(audit.after, {"dataScopeMode": "default"})
+
+    def test_reset_to_policy_records_all_mode_data_scope_change(self) -> None:
+        """자동 규칙으로 되돌리며 전체 범위를 제거할 때 별도 감사를 남겨야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+
+        payload, status_code = decide_user_access(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key=self.emails.key,
+            action=AccessAuditLog.Actions.RESET_TO_POLICY,
+            reason="메일 권한 자동 규칙 복귀",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        self.assertFalse(
+            UserAccess.objects.filter(user=self.user, scope=self.emails).exists()
+        )
+        audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.emails,
+            action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+        )
+        self.assertEqual(audit.before, {"dataScopeMode": "all"})
+        self.assertEqual(audit.after, {"dataScopeMode": "default"})
+
+    def test_apply_all_denied_records_all_mode_data_scope_change(self) -> None:
+        """전체 권한 차단으로 전체 범위를 닫을 때 데이터 범위 감사를 남겨야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+        self.client.force_login(self.actor)
+
+        response = self.client.post(
+            reverse(
+                "account-access-user-apply-all",
+                kwargs={"user_id": self.user.id},
+            ),
+            data={"value": "denied", "reason": "전체 권한 차단 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        access.refresh_from_db()
+        self.assertEqual(access.status, UserAccess.Status.DENIED)
+        self.assertEqual(
+            access.data_scope_mode,
+            UserAccess.DataScopeModes.DEFAULT,
+        )
+        audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.emails,
+            action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+        )
+        self.assertEqual(audit.before, {"dataScopeMode": "all"})
+        self.assertEqual(audit.after, {"dataScopeMode": "default"})
+
+    def test_apply_all_inherit_records_all_mode_data_scope_change(self) -> None:
+        """전체 자동 규칙 적용으로 전체 범위를 삭제할 때 별도 감사를 남겨야 합니다."""
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.data_scope_mode = UserAccess.DataScopeModes.ALL
+        access.save(update_fields=["data_scope_mode", "updated_at"])
+        self.client.force_login(self.actor)
+
+        response = self.client.post(
+            reverse(
+                "account-access-user-apply-all",
+                kwargs={"user_id": self.user.id},
+            ),
+            data={"value": "inherit", "reason": "전체 자동 규칙 검증"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(
+            UserAccess.objects.filter(user=self.user, scope=self.emails).exists()
+        )
+        audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.emails,
+            action=AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
+        )
+        self.assertEqual(audit.before, {"dataScopeMode": "all"})
+        self.assertEqual(audit.after, {"dataScopeMode": "default"})
+
+    def test_denied_app_access_makes_existing_grant_inert(self) -> None:
+        """명시 소속 grant가 남아 있어도 앱 접근이 거부되면 fail-closed 해야 합니다."""
+
+        UserScopeAffiliationGrant.objects.create(
+            user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_b,
+            granted_by=self.actor,
+        )
+        access = UserAccess.objects.get(user=self.user, scope=self.assistant)
+        access.status = UserAccess.Status.DENIED
+        access.role = AccessRole.USER
+        access.save(update_fields=["status", "role", "updated_at"])
+
+        effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="assistant",
+        )
+
+        self.assertFalse(effective["allowed"])
+        self.assertEqual(effective["mode"], "denied")
+        self.assertEqual(effective["affiliationIds"], [])
+
+    def test_management_api_updates_scope_and_writes_audit_logs(self) -> None:
+        """관리 API가 선택 범위를 교체하고 소속 단위 감사 로그를 남겨야 합니다."""
+
+        self.client.force_login(self.actor)
+        response = self.client.put(
+            reverse(
+                "account-access-user-data-scope",
+                kwargs={"user_id": self.user.id},
+            ),
+            data=json.dumps(
+                {
+                    "scope": "assistant",
+                    "dataScopeMode": "default",
+                    "affiliationIds": [self.affiliation_b.id],
+                    "reason": "프로젝트 협업 범위",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(
+            UserScopeAffiliationGrant.objects.filter(
+                user=self.user,
+                scope=self.assistant,
+                affiliation=self.affiliation_b,
+                is_active=True,
+            ).exists()
+        )
+        self.assertTrue(
+            AccessAuditLog.objects.filter(
+                target_user=self.user,
+                scope=self.assistant,
+                affiliation=self.affiliation_b,
+                action=AccessAuditLog.Actions.DATA_SCOPE_GRANT,
+            ).exists()
+        )
+
+    def test_data_scope_change_requires_reason_and_all_requires_app_access(self) -> None:
+        """모든 범위 변경은 사유가 필요하고 전체 범위는 앱 허용 행도 요구해야 합니다."""
+
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="emails",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[],
+            reason="",
+        )
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "reason_required")
+
+        access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        access.status = UserAccess.Status.DENIED
+        access.role = AccessRole.USER
+        access.save(update_fields=["status", "role", "updated_at"])
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="emails",
+            data_scope_mode=UserAccess.DataScopeModes.ALL,
+            affiliation_ids=[],
+            reason="운영 확인",
+        )
+        self.assertEqual(status_code, 409)
+        self.assertEqual(payload["error"], "allowed_app_access_required_for_all")
+
+    def test_access_only_app_rejects_affiliation_scope_management(self) -> None:
+        """소속 정보가 필요 없는 앱에는 소속 데이터 범위를 설정할 수 없어야 합니다."""
+
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="appstore",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_b.id],
+            reason="지원되지 않는 설정",
+        )
+
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "affiliation_scope_not_supported")
+
+    def test_data_migration_converts_legacy_grants_and_existing_emails_admin(self) -> None:
+        """전환 migration이 기존 전역 grant와 Emails 관리자 동작을 보존해야 합니다."""
+
+        for affiliation in (self.affiliation_b, self.affiliation_c):
+            UserSdwtProdAccess.objects.create(
+                user=self.user,
+                affiliation=affiliation,
+                role=UserSdwtProdAccess.Roles.MEMBER,
+                granted_by=self.actor,
+            )
+        migration = importlib.import_module(
+            "api.account.migrations.0006_account_authorization_system"
+        )
+        schema_editor = type(
+            "SchemaEditorStub",
+            (),
+            {"connection": connection},
+        )()
+        original_bulk_create = QuerySet.bulk_create
+        batch_sizes: list[int] = []
+
+        def tracking_bulk_create(queryset, objects, **kwargs):
+            """migration이 전달한 batch 크기를 기록한 뒤 실제 저장을 수행합니다."""
+
+            batch_sizes.append(len(objects))
+            return original_bulk_create(queryset, objects, **kwargs)
+
+        with patch.object(migration, "MIGRATION_BATCH_SIZE", 2), patch.object(
+            QuerySet,
+            "bulk_create",
+            tracking_bulk_create,
+        ):
+            migration.seed_app_affiliation_data_scopes(django_apps, schema_editor)
+
+        self.assertEqual(
+            set(
+                UserScopeAffiliationGrant.objects.filter(
+                    user=self.user,
+                    affiliation=self.affiliation_b,
+                    is_active=True,
+                ).values_list("scope__key", flat=True)
+            ),
+            {"assistant", "emails"},
+        )
+        self.assertEqual(batch_sizes, [2, 2])
+        emails_access = UserAccess.objects.get(user=self.user, scope=self.emails)
+        self.assertEqual(
+            emails_access.data_scope_mode,
+            UserAccess.DataScopeModes.ALL,
+        )
+
+    def test_manual_update_protects_effective_grants_and_reclaims_ended_grants(self) -> None:
+        """활성 자동 grant는 보호하고 만료·비활성 자동 grant는 수동으로 전환해야 합니다."""
+
+        policy_grant = UserScopeAffiliationGrant.objects.create(
+            user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_b,
+            source=UserScopeAffiliationGrant.Sources.POLICY,
+            granted_by=self.actor,
+        )
+        expired_grant = UserScopeAffiliationGrant.objects.create(
+            user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_c,
+            source=UserScopeAffiliationGrant.Sources.EXTERNAL,
+            expires_at=timezone.now() - timedelta(minutes=1),
+            granted_by=self.actor,
+        )
+
+        payload, status_code = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[],
+            reason="수동 범위 초기화",
+        )
+
+        self.assertEqual(status_code, 200, payload)
+        policy_grant.refresh_from_db()
+        expired_grant.refresh_from_db()
+        self.assertTrue(policy_grant.is_active)
+        self.assertTrue(expired_grant.is_active)
+        effective = get_effective_affiliation_scope(
+            user=self.user,
+            scope_key="assistant",
+        )
+        self.assertEqual(
+            set(effective["affiliationIds"]),
+            {self.affiliation_a.id, self.affiliation_b.id},
+        )
+        conflict_payload, conflict_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_b.id],
+            reason="자동 grant 수동 전환 시도",
+        )
+        self.assertEqual(conflict_status, 409)
+        self.assertEqual(
+            conflict_payload["error"],
+            "non_manual_affiliation_grants_immutable",
+        )
+
+        converted_payload, converted_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_c.id],
+            reason="만료 자동 grant 수동 전환",
+        )
+        self.assertEqual(converted_status, 200, converted_payload)
+        expired_grant.refresh_from_db()
+        self.assertEqual(
+            expired_grant.source,
+            UserScopeAffiliationGrant.Sources.MANUAL,
+        )
+        self.assertTrue(expired_grant.is_active)
+        self.assertIsNone(expired_grant.expires_at)
+        conversion_audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_c,
+            action=AccessAuditLog.Actions.DATA_SCOPE_GRANT,
+        )
+        self.assertEqual(conversion_audit.before["source"], "external")
+        self.assertEqual(conversion_audit.after["source"], "manual")
+
+        policy_grant.is_active = False
+        policy_grant.save(update_fields=["is_active", "updated_at"])
+        inactive_payload, inactive_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.affiliation_b.id, self.affiliation_c.id],
+            reason="비활성 자동 grant 수동 전환",
+        )
+        self.assertEqual(inactive_status, 200, inactive_payload)
+        policy_grant.refresh_from_db()
+        self.assertEqual(
+            policy_grant.source,
+            UserScopeAffiliationGrant.Sources.MANUAL,
+        )
+        self.assertTrue(policy_grant.is_active)
+        self.assertIsNone(policy_grant.expires_at)
+
+    def test_data_scope_update_locks_active_affiliations_inside_transaction(self) -> None:
+        """소속 범위 저장은 활성 소속을 transaction 안에서 잠가 검증해야 합니다."""
+
+        with patch(
+            "api.account.services.data_scope.selectors."
+            "list_active_affiliations_by_ids_for_update",
+            wraps=list_active_affiliations_by_ids_for_update,
+        ) as locked_selector:
+            payload, status_code = update_user_scope_affiliation_data(
+                actor=self.actor,
+                user_id=self.user.id,
+                scope_key="assistant",
+                data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+                affiliation_ids=[self.affiliation_b.id],
+                reason="잠금 검증",
+            )
+
+        self.assertEqual(status_code, 200, payload)
+        locked_selector.assert_called_once_with(
+            affiliation_ids={self.affiliation_b.id},
+        )
+
+        invalid_payload, invalid_status = update_user_scope_affiliation_data(
+            actor=self.actor,
+            user_id=self.user.id,
+            scope_key="assistant",
+            data_scope_mode=UserAccess.DataScopeModes.DEFAULT,
+            affiliation_ids=[self.inactive_affiliation.id],
+            reason="비활성 소속 차단",
+        )
+        self.assertEqual(invalid_status, 400)
+        self.assertEqual(invalid_payload["error"], "invalid_affiliation_ids")
+
+
 class AccountSelectorEmailTests(TestCase):
     """계정 이메일 셀렉터 동작을 검증합니다."""
 
@@ -5704,3 +8663,208 @@ class AccountSelectorEmailTests(TestCase):
         # -----------------------------------------------------------------------------
         knox_ids = list_active_user_knox_ids_by_user_sdwt_prod(user_sdwt_prod="group-a")
         self.assertEqual(knox_ids, ["knox-case"])
+
+
+class AuthorizationConcurrencyTests(TransactionTestCase):
+    """PostgreSQL 행 잠금이 권한 불변조건을 직렬화하는지 검증합니다."""
+
+    def _fixture_teardown(self) -> None:
+        """다음 migration 테스트가 초기 데이터까지 포함한 최신 상태에서 시작하게 합니다."""
+
+        for database_name in self._databases_names(include_mirrors=False):
+            database_connection = connections[database_name]
+            call_command(
+                "flush",
+                verbosity=0,
+                interactive=False,
+                database=database_name,
+                reset_sequences=False,
+                inhibit_post_migrate=True,
+            )
+            serialized_contents = getattr(
+                database_connection,
+                "_test_serialized_contents",
+                None,
+            )
+            if serialized_contents:
+                database_connection.creation.deserialize_db_from_string(
+                    serialized_contents
+                )
+
+    def _run_concurrently(self, *workers):
+        """각 worker가 독립 DB 연결을 사용하도록 동시에 실행합니다."""
+
+        with ThreadPoolExecutor(max_workers=len(workers)) as executor:
+            futures = [executor.submit(worker) for worker in workers]
+            results = [future.result(timeout=15) for future in futures]
+        close_old_connections()
+        return results
+
+    def test_concurrent_manager_revokes_preserve_one_manager(self) -> None:
+        """두 manager를 동시에 회수해도 마지막 manager 한 명은 남아야 합니다."""
+
+        User = get_user_model()
+        actor = User.objects.create_superuser(
+            sabun="S-CONCURRENT-MANAGER-ACTOR",
+            password="test-password",
+        )
+        affiliation = _affiliation(user_sdwt_prod="concurrent-managers")
+        managers = [
+            User.objects.create_user(
+                sabun=f"S-CONCURRENT-MANAGER-{index}",
+                password="test-password",
+            )
+            for index in (1, 2)
+        ]
+        for manager in managers:
+            UserSdwtProdAccess.objects.create(
+                user=manager,
+                affiliation=affiliation,
+                role=UserSdwtProdAccess.Roles.MANAGER,
+                granted_by=actor,
+            )
+        barrier = Barrier(2)
+
+        def revoke_manager(user_id):
+            close_old_connections()
+            barrier.wait(timeout=10)
+            payload, status_code = grant_or_revoke_access(
+                grantor=User.objects.get(pk=actor.id),
+                target_group=affiliation.user_sdwt_prod,
+                target_user=User.objects.get(pk=user_id),
+                action="revoke",
+                role=None,
+                reason="동시 manager 회수 검증",
+            )
+            close_old_connections()
+            return payload, status_code
+
+        results = self._run_concurrently(
+            lambda: revoke_manager(managers[0].id),
+            lambda: revoke_manager(managers[1].id),
+        )
+
+        self.assertEqual(sorted(status for _payload, status in results), [200, 409])
+        self.assertEqual(
+            UserSdwtProdAccess.objects.filter(
+                affiliation=affiliation,
+                role=UserSdwtProdAccess.Roles.MANAGER,
+            ).count(),
+            1,
+        )
+
+    def test_concurrent_affiliation_requests_leave_one_pending_request(self) -> None:
+        """같은 사용자의 동시 소속 요청은 이전 요청을 대체하고 하나만 대기시킵니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S-CONCURRENT-REQUEST",
+            password="test-password",
+        )
+        _set_current_affiliation(user, user_sdwt_prod="concurrent-current")
+        targets = [
+            _affiliation(user_sdwt_prod=f"concurrent-target-{index}")
+            for index in (1, 2)
+        ]
+        barrier = Barrier(2)
+
+        def request_change(option_id):
+            close_old_connections()
+            barrier.wait(timeout=10)
+            locked_user = User.objects.get(pk=user.id)
+            option = Affiliation.objects.get(pk=option_id)
+            payload, status_code = request_affiliation_change(
+                user=locked_user,
+                option=option,
+                to_user_sdwt_prod=option.user_sdwt_prod,
+                effective_from=None,
+                timezone_name="Asia/Seoul",
+                force_pending=True,
+            )
+            close_old_connections()
+            return payload, status_code
+
+        results = self._run_concurrently(
+            lambda: request_change(targets[0].id),
+            lambda: request_change(targets[1].id),
+        )
+
+        self.assertEqual([status for _payload, status in results], [202, 202])
+        changes = UserSdwtProdChange.objects.filter(user=user)
+        self.assertEqual(
+            changes.filter(status=UserSdwtProdChange.Status.PENDING).count(),
+            1,
+        )
+        self.assertEqual(
+            changes.filter(status=UserSdwtProdChange.Status.SUPERSEDED).count(),
+            1,
+        )
+
+    def test_deactivate_and_grant_race_finishes_fail_closed(self) -> None:
+        """소속 비활성화와 권한 부여가 경합해도 최종 capability는 없어야 합니다."""
+
+        User = get_user_model()
+        actor = User.objects.create_superuser(
+            sabun="S-CONCURRENT-DEACTIVATE-ACTOR",
+            password="test-password",
+        )
+        target = User.objects.create_user(
+            sabun="S-CONCURRENT-DEACTIVATE-TARGET",
+            password="test-password",
+        )
+        affiliation = _affiliation(user_sdwt_prod="concurrent-deactivate")
+        barrier = Barrier(2)
+
+        def deactivate():
+            close_old_connections()
+            barrier.wait(timeout=10)
+            result = set_affiliation_active(
+                actor=User.objects.get(pk=actor.id),
+                affiliation_id=affiliation.id,
+                is_active=False,
+                reason="동시 비활성화 검증",
+            )
+            close_old_connections()
+            return "deactivate", result
+
+        def grant():
+            close_old_connections()
+            barrier.wait(timeout=10)
+            result = grant_or_revoke_access(
+                grantor=User.objects.get(pk=actor.id),
+                target_group=affiliation.user_sdwt_prod,
+                target_user=User.objects.get(pk=target.id),
+                action="grant",
+                role=UserSdwtProdAccess.Roles.MANAGER,
+                reason="동시 권한 부여 검증",
+            )
+            close_old_connections()
+            return "grant", result
+
+        results = dict(self._run_concurrently(deactivate, grant))
+
+        self.assertEqual(results["deactivate"][1], 200)
+        self.assertIn(results["grant"][1], {200, 400})
+        affiliation.refresh_from_db()
+        self.assertFalse(affiliation.is_active)
+        self.assertFalse(
+            has_affiliation_capability(
+                user=target,
+                user_sdwt_prod=affiliation.user_sdwt_prod,
+                capability=AFFILIATION_CAPABILITY_MANAGE_ACCESS,
+            )
+        )
+        self.assertTrue(
+            AccessAuditLog.objects.filter(
+                affiliation=affiliation,
+                action=AccessAuditLog.Actions.AFFILIATION_DEACTIVATE,
+                reason="동시 비활성화 검증",
+            ).exists()
+        )
+        role_audit_exists = AccessAuditLog.objects.filter(
+            affiliation=affiliation,
+            target_user=target,
+            action=AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
+            reason="동시 권한 부여 검증",
+        ).exists()
+        self.assertEqual(role_audit_exists, results["grant"][1] == 200)

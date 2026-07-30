@@ -22,6 +22,9 @@ from api.common.services import ensure_airflow_token, normalize_text, parse_json
 from . import selectors, services
 from .serializers import (
     AccessAuditLogQuerySerializer,
+    BulkApprovePendingAccessRequestSerializer,
+    BulkApplyAccessPolicyRuleSerializer,
+    ApplyAllUserAccessSerializer,
     AccessMatrixQuerySerializer,
     AccessPolicyRuleCreateSerializer,
     AccessPolicyRuleQuerySerializer,
@@ -29,7 +32,12 @@ from .serializers import (
     AccessRequestSerializer,
     AccessUserQuerySerializer,
     AccessUserDecisionSerializer,
+    UserScopeAffiliationDataQuerySerializer,
+    UserScopeAffiliationDataUpdateSerializer,
+    PendingAccessRequestQuerySerializer,
     AffiliationApprovalSerializer,
+    AffiliationAccessGrantSerializer,
+    AffiliationAccessRevokeSerializer,
     AffiliationReconfirmResponseSerializer,
     ExternalAffiliationSyncSerializer,
 )
@@ -342,6 +350,7 @@ class AccountAccessMatrixView(APIView):
             request=request,
             search=(validated.get("search") or "").strip() or None,
             department=(validated.get("department") or "").strip() or None,
+            manual_grant_only=validated["manualGrantOnly"],
             page=validated["page"],
             page_size=validated["pageSize"],
         )
@@ -383,6 +392,165 @@ class AccountAccessUserDecisionView(APIView):
             reason=validated.get("reason"),
             role=validated.get("role"),
             approve_all_apps=validated.get("approveAllApps", False),
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountAccessUserDataScopeView(APIView):
+    """Portal 관리자가 사용자의 앱별 소속 데이터 범위를 조회하고 변경합니다."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        user_id: int,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """`?scope=emails`에 해당하는 현재·명시·전체 소속 범위를 반환합니다."""
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        serializer = UserScopeAffiliationDataQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return _invalid_access_query(serializer.errors)
+        payload, status_code = services.get_user_scope_affiliation_data(
+            actor=user,
+            request=request,
+            user_id=user_id,
+            scope_key=serializer.validated_data["scope"],
+        )
+        return JsonResponse(payload, status=status_code)
+
+    def put(
+        self,
+        request: HttpRequest,
+        user_id: int,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """앱별 전체 모드와 명시 소속 목록을 원자적으로 교체합니다.
+
+        요청 예시:
+        `{"scope":"emails","dataScopeMode":"default","affiliationIds":[1,2]}`
+        """
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+        serializer = UserScopeAffiliationDataUpdateSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+        validated = serializer.validated_data
+        payload, status_code = services.update_user_scope_affiliation_data(
+            actor=user,
+            request=request,
+            user_id=user_id,
+            scope_key=validated["scope"],
+            data_scope_mode=validated["dataScopeMode"],
+            affiliation_ids=validated["affiliationIds"],
+            reason=validated.get("reason"),
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountAccessUserApplyAllView(APIView):
+    """Portal 관리자가 한 사용자의 모든 활성 권한을 같은 값으로 변경합니다."""
+
+    def post(self, request: HttpRequest, user_id: int, *args: object, **kwargs: object) -> JsonResponse:
+        """`{"value": "admin"}`을 받아 모든 매트릭스 권한에 적용합니다."""
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+
+        serializer = ApplyAllUserAccessSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+
+        payload, status_code = services.apply_all_user_accesses(
+            actor=user,
+            request=request,
+            user_id=user_id,
+            value=serializer.validated_data["value"],
+            reason=serializer.validated_data["reason"],
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountPendingAccessRequestView(APIView):
+    """Portal 관리자가 전체 scope의 승인 대기 요청을 조회합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """전체 또는 선택한 scope의 승인 대기 요청을 반환합니다."""
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        serializer = PendingAccessRequestQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return _invalid_access_query(serializer.errors)
+        validated = serializer.validated_data
+        payload, status_code = services.get_pending_access_requests(
+            actor=user,
+            request=request,
+            scope_key=(validated.get("scope") or "").strip() or None,
+            page=validated["page"],
+            page_size=validated["pageSize"],
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountPendingAccessRequestBulkApproveView(APIView):
+    """Portal 관리자가 선택한 승인 대기 요청을 일괄 승인합니다."""
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """선택한 요청을 일반 사용자 역할로 각각 승인합니다."""
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+
+        serializer = BulkApprovePendingAccessRequestSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+        payload, status_code = services.approve_pending_access_requests(
+            actor=user,
+            request=request,
+            request_ids=serializer.validated_data["requestIds"],
         )
         return JsonResponse(payload, status=status_code)
 
@@ -439,6 +607,42 @@ class AccountAccessPolicyRuleCollectionView(APIView):
             rule_type=validated["ruleType"],
             value=validated["value"],
             is_active=validated.get("isActive"),
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountAccessPolicyRuleBulkApplyView(APIView):
+    """Portal 관리자가 한 부서의 자동 접근 규칙을 여러 scope에 적용합니다."""
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """`{"value":"개발팀","scopeKeys":["portal","appstore"],"isActive":true}`를 처리합니다."""
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+
+        serializer = BulkApplyAccessPolicyRuleSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+
+        validated = serializer.validated_data
+        payload, status_code = services.bulk_apply_access_policy_rules(
+            actor=user,
+            request=request,
+            scope_keys=validated["scopeKeys"],
+            value=validated["value"],
+            is_active=validated["isActive"],
         )
         return JsonResponse(payload, status=status_code)
 
@@ -520,11 +724,11 @@ class AccountAccessAuditLogView(APIView):
 
 
 # =============================================================================
-# 4) 관리자(그룹 매니저/슈퍼유저): 소속 변경 요청 승인/거절
+# 4) 소속 manager/특권 사용자: 소속 변경 요청 승인/거절
 # =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountAffiliationApprovalView(APIView):
-    """해당 소속 관리자(그룹 매니저)/슈퍼유저가 소속 변경 요청을 승인한다."""
+    """해당 소속 manager가 소속 변경 요청을 처리합니다."""
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """소속 변경 요청을 승인/거절합니다.
@@ -903,7 +1107,91 @@ class AccountAffiliationMembersView(APIView):
 
 
 # =============================================================================
-# 9) 사용자 pool 조회
+# 9) manager: 소속 접근 역할 부여·변경·회수
+# =============================================================================
+@method_decorator(csrf_exempt, name="dispatch")
+class AccountAffiliationAccessView(APIView):
+    """manager가 담당 소속의 사용자 접근 역할을 관리합니다."""
+
+    def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """사용자에게 소속 역할을 부여하거나 기존 역할을 변경합니다.
+
+        예시 요청:
+        - POST /api/v1/account/affiliation/access
+        - {"userId": 12, "userSdwtProd": "GROUP-A", "role": "member"}
+        """
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+
+        serializer = AffiliationAccessGrantSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+        validated = serializer.validated_data
+        target_user = selectors.get_user_by_id(user_id=validated["userId"])
+        if target_user is None:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        payload, status_code = services.grant_or_revoke_access(
+            grantor=user,
+            target_group=validated["userSdwtProd"],
+            target_user=target_user,
+            action="grant",
+            role=validated["role"],
+            reason=validated["reason"],
+        )
+        return JsonResponse(payload, status=status_code)
+
+    def delete(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """사용자의 추가 소속 접근 역할을 회수합니다.
+
+        예시 요청:
+        - DELETE /api/v1/account/affiliation/access
+        - {"userId": 12, "userSdwtProd": "GROUP-A"}
+        """
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return JsonResponse({"error": "unauthorized"}, status=401)
+        content_type_error = _require_json_content_type(request)
+        if content_type_error is not None:
+            return content_type_error
+        body = parse_json_body(request)
+        if body is None:
+            return _invalid_access_request(
+                {"body": ["유효한 JSON 객체가 필요합니다."]}
+            )
+
+        serializer = AffiliationAccessRevokeSerializer(data=body)
+        if not serializer.is_valid():
+            return _invalid_access_request(serializer.errors)
+        validated = serializer.validated_data
+        target_user = selectors.get_user_by_id(user_id=validated["userId"])
+        if target_user is None:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        payload, status_code = services.grant_or_revoke_access(
+            grantor=user,
+            target_group=validated["userSdwtProd"],
+            target_user=target_user,
+            action="revoke",
+            role=None,
+            reason=validated["reason"],
+        )
+        return JsonResponse(payload, status=status_code)
+
+
+# =============================================================================
+# 10) 사용자 pool 조회
 # =============================================================================
 @method_decorator(csrf_exempt, name="dispatch")
 class AccountUserPoolView(APIView):

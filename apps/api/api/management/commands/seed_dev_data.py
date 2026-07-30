@@ -12,7 +12,7 @@ from typing import Any
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
-from api.account.services import ensure_dev_dummy_superuser
+from api.account.services import ensure_dev_dummy_superuser, seed_dev_access_data
 
 
 def _env(name: str, default: str = "") -> str:
@@ -76,6 +76,12 @@ class Command(BaseCommand):
             f"dummy={getattr(user, 'sabun', '')}"
         )
 
+        account_result = seed_dev_access_data(
+            prefix=prefix,
+            actor=user,
+            reset=reset,
+        )
+        self.stdout.write(f"[account-seed] done {account_result}")
         call_command(
             "seed_dummy_emails",
             prefix=prefix,

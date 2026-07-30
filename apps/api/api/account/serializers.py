@@ -16,7 +16,14 @@ from collections.abc import Mapping
 
 from rest_framework import serializers
 
-from .models import AccessAuditLog, AccessPolicyRule, AccessRole, AccessSource
+from .models import (
+    AccessAuditLog,
+    AccessPolicyRule,
+    AccessRole,
+    AccessSource,
+    UserAccess,
+    UserSdwtProdAccess,
+)
 
 
 class ExternalAffiliationRecordSerializer(serializers.Serializer):
@@ -72,6 +79,23 @@ class StrictAccessSerializer(serializers.Serializer):
         return super().to_internal_value(data)
 
 
+class AffiliationAccessGrantSerializer(StrictAccessSerializer):
+    """소속 접근 역할 부여·변경 입력 스키마."""
+
+    userId = serializers.IntegerField(min_value=1)
+    userSdwtProd = serializers.CharField(max_length=64, trim_whitespace=True)
+    role = serializers.ChoiceField(choices=UserSdwtProdAccess.Roles.values)
+    reason = serializers.CharField(max_length=500, allow_blank=False)
+
+
+class AffiliationAccessRevokeSerializer(StrictAccessSerializer):
+    """소속 접근 역할 회수 입력 스키마."""
+
+    userId = serializers.IntegerField(min_value=1)
+    userSdwtProd = serializers.CharField(max_length=64, trim_whitespace=True)
+    reason = serializers.CharField(max_length=500, allow_blank=False)
+
+
 class AccessRequestSerializer(StrictAccessSerializer):
     """현재 사용자 접근 신청 입력 스키마."""
 
@@ -124,6 +148,51 @@ class AccessUserDecisionSerializer(StrictAccessSerializer):
                     )
                 }
             )
+        if action in {"grant", "revoke", "change_role", "reset_to_policy"} and not (
+            attrs.get("reason") or ""
+        ).strip():
+            raise serializers.ValidationError(
+                {"reason": "수동 권한 변경 사유가 필요합니다."}
+            )
+        return attrs
+
+
+class UserScopeAffiliationDataQuerySerializer(StrictAccessSerializer):
+    """사용자별 앱 소속 데이터 범위 조회 query 스키마."""
+
+    scope = serializers.CharField(max_length=64)
+
+
+class UserScopeAffiliationDataUpdateSerializer(StrictAccessSerializer):
+    """사용자별 앱 소속 데이터 범위 전체 교체 입력 스키마."""
+
+    scope = serializers.CharField(max_length=64)
+    dataScopeMode = serializers.ChoiceField(choices=UserAccess.DataScopeModes.values)
+    affiliationIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        default=list,
+        max_length=500,
+    )
+    reason = serializers.CharField(
+        max_length=500,
+        required=True,
+        allow_blank=False,
+        allow_null=False,
+    )
+
+    def validate_affiliationIds(self, values):
+        """소속 ID를 입력 순서대로 중복 제거합니다."""
+
+        return list(dict.fromkeys(values))
+
+    def validate(self, attrs):
+        """모든 소속 데이터 범위 변경에 추적 가능한 사유를 요구합니다."""
+
+        if not (attrs.get("reason") or "").strip():
+            raise serializers.ValidationError(
+                {"reason": "소속 데이터 범위 변경 사유가 필요합니다."}
+            )
         return attrs
 
 
@@ -164,11 +233,47 @@ class AccessUserQuerySerializer(AccessPaginationQuerySerializer):
         return "" if value == "all" else value
 
 
+class PendingAccessRequestQuerySerializer(AccessPaginationQuerySerializer):
+    """전체 또는 scope별 승인 대기 요청 목록 query 스키마."""
+
+    scope = serializers.CharField(max_length=64, required=False, allow_blank=True)
+
+    def validate_scope(self, value):
+        """전체 범위 sentinel을 빈 scope 필터로 정규화합니다."""
+
+        return "" if value == "all" else value.strip()
+
+
+class BulkApprovePendingAccessRequestSerializer(StrictAccessSerializer):
+    """선택한 승인 대기 요청의 일괄 승인 입력 스키마."""
+
+    requestIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=100,
+    )
+
+    def validate_requestIds(self, values):
+        """요청 ID를 입력 순서대로 중복 제거합니다."""
+
+        return list(dict.fromkeys(values))
+
+
+class ApplyAllUserAccessSerializer(StrictAccessSerializer):
+    """한 사용자의 모든 활성 scope에 동일한 권한을 적용하는 입력 스키마."""
+
+    value = serializers.ChoiceField(
+        choices=("inherit", "user", "admin", "denied"),
+    )
+    reason = serializers.CharField(max_length=500, allow_blank=False)
+
+
 class AccessMatrixQuerySerializer(AccessPaginationQuerySerializer):
     """사용자별 전체 scope 매트릭스 query 스키마."""
 
     search = serializers.CharField(max_length=150, required=False, allow_blank=True)
     department = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    manualGrantOnly = serializers.BooleanField(required=False, default=False)
 
 
 class AccessPolicyRuleQuerySerializer(StrictAccessSerializer):
@@ -207,6 +312,23 @@ class AccessPolicyRuleCreateSerializer(StrictAccessSerializer):
     ruleType = serializers.ChoiceField(choices=AccessPolicyRule.RuleTypes.values)
     value = serializers.CharField(max_length=150, allow_blank=True)
     isActive = serializers.BooleanField(required=False)
+
+
+class BulkApplyAccessPolicyRuleSerializer(StrictAccessSerializer):
+    """부서 자동 접근 규칙을 여러 scope에 일괄 적용하는 입력 스키마."""
+
+    value = serializers.CharField(max_length=150, allow_blank=True)
+    scopeKeys = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        allow_empty=False,
+        max_length=100,
+    )
+    isActive = serializers.BooleanField()
+
+    def validate_scopeKeys(self, values):
+        """scope key를 입력 순서대로 중복 제거합니다."""
+
+        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
 
 
 class AccessPolicyRuleUpdateSerializer(StrictAccessSerializer):
