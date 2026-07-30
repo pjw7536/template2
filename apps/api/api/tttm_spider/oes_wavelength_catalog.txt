@@ -1,0 +1,71 @@
+# oes_wavelength_catalog.txt
+# ------------------------------------------------------------
+# OES wavelength(nm) -> chemical-species(category) mapping.
+# format (comma-separated, '#' starts a comment):
+#   low_nm,high_nm,category_key,category_label
+# - same category_key across lines groups multiple emission peaks into one series.
+# - a wavelength inside [low_nm, high_nm] is classified as that category_key.
+# - anything not matched falls back to ETC (no need to list ETC here).
+# - on overlap, the FIRST matching line in this file wins.
+# NOTE: these are generic plasma-etch OES literature values; per-tool spectrometer
+#       calibration is not verified here — confirm before production use.
+# ------------------------------------------------------------
+
+# F
+682.6,688.6,F,F
+700.7,706.7,F,F
+
+# CL
+722.6,728.6,CL,Cl
+834.6,840.6,CL,Cl
+
+# BR
+824.2,830.2,BR,Br
+
+# O
+774.4,780.4,O,O
+841.6,847.6,O,O
+
+# N
+334.1,340.1,N,N
+354.7,360.7,N,N
+377.5,383.5,N,N
+743.8,749.8,N,N
+
+# H (H/OH)
+653.3,659.3,H,H/OH
+483.1,489.1,H,H/OH
+303.5,311.5,H,H/OH
+
+# CARBON (CFx, C2 Swan, CN)
+199.0,205.0,CARBON,C/CFx
+248.5,254.5,CARBON,C/CFx
+259.0,265.0,CARBON,C/CFx
+513.5,519.5,CARBON,C/CFx
+385.0,391.0,CARBON,C/CFx
+
+# SI
+285.2,291.2,SI,Si
+430.0,450.0,SI,Si
+
+# AL
+393.2,399.2,AL,Al
+
+# CU
+321.8,327.8,CU,Cu
+324.4,330.4,CU,Cu
+
+# W
+404.4,410.4,W,W
+
+# Y
+368.0,374.0,Y,Y
+
+# TI
+451.3,457.3,TI,Ti
+
+# AR
+748.4,752.4,AR,Ar
+749.5,753.5,AR,Ar
+809.5,813.5,AR,Ar
+840.5,844.5,AR,Ar
