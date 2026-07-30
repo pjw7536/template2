@@ -5,6 +5,7 @@ import {
   Eye,
   Search,
   ShieldQuestion,
+  Trash2,
   X,
   UserRound,
   Users,
@@ -34,9 +35,9 @@ const MEMBER_ROLE_LABELS = {
 }
 
 const MEMBER_ROLE_DESCRIPTIONS = {
-  viewer: "멤버 목록을 확인할 수 있습니다.",
-  member: "멤버 확인과 소속 변경 요청 처리가 가능합니다.",
-  manager: "소속 멤버와 변경 요청을 운영 권한으로 관리합니다.",
+  viewer: "소속 데이터를 조회할 수 있지만 변경할 수 없습니다.",
+  member: "소속 데이터를 조회하고 일반 변경 작업을 수행할 수 있습니다.",
+  manager: "소속 요청 승인, 삭제 작업, 멤버 권한 관리를 수행할 수 있습니다.",
 }
 
 const TAB_OPTIONS = [
@@ -81,7 +82,7 @@ function RequestActions({ row, isMutating, onApprove, onReject }) {
   if (row.type !== "request") return <span className="text-sm text-muted-foreground">-</span>
 
   const isPending = row.status === "PENDING"
-  const canApprove = row.approvalRole === "member" || row.approvalRole === "manager"
+  const canApprove = row.approvalRole === "manager"
   const disabled = !isPending || !canApprove || isMutating
 
   return (
@@ -114,9 +115,71 @@ function RequestActions({ row, isMutating, onApprove, onReject }) {
               <ShieldQuestion className="size-4" aria-hidden="true" />
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top">일반 권한 또는 운영 권한이 필요합니다.</TooltipContent>
+          <TooltipContent side="top">운영 권한이 필요합니다.</TooltipContent>
         </Tooltip>
       ) : null}
+    </div>
+  )
+}
+
+function MemberAccessActions({
+  row,
+  canManage,
+  isMutating,
+  onRoleChange,
+  onRevoke,
+}) {
+  if (row.type !== "member" || !canManage) {
+    return <span className="text-sm text-muted-foreground">-</span>
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <Select
+        value={row.memberRole}
+        onValueChange={(role) => onRoleChange(row, role)}
+        disabled={isMutating}
+      >
+        <SelectTrigger
+          className="h-8 w-32"
+          aria-label={`${row.name} 소속 역할 변경`}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {MEMBER_ROLE_OPTIONS.filter((option) => option.value !== "all").map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={row.isCurrentAffiliation && option.value === "viewer"}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8 text-destructive hover:text-destructive"
+              onClick={() => onRevoke(row)}
+              disabled={row.isCurrentAffiliation || isMutating}
+              aria-label={`${row.name} 추가 소속 접근 회수`}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {row.isCurrentAffiliation
+            ? "현재 소속 접근은 회수할 수 없습니다."
+            : "추가 소속 접근을 회수합니다."}
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -141,9 +204,12 @@ export function MembersDataTable({
   emptyMessage,
   onRetry,
   isMutating,
+  canManage,
   showApprovalNotice,
   onApprove,
   onReject,
+  onRoleChange,
+  onRevoke,
 }) {
   const safeRows = Array.isArray(rows) ? rows : []
   const normalizedSearch = (searchTerm || "").trim().toLowerCase()
@@ -258,21 +324,31 @@ export function MembersDataTable({
   const actionsColumn = {
       id: "actions",
       header: "작업",
-      cell: ({ row }) => (
+      cell: ({ row }) => row.original.type === "request" ? (
         <RequestActions
           row={row.original}
           isMutating={isMutating}
           onApprove={onApprove}
           onReject={onReject}
         />
+      ) : (
+        <MemberAccessActions
+          row={row.original}
+          canManage={canManage}
+          isMutating={isMutating}
+          onRoleChange={onRoleChange}
+          onRevoke={onRevoke}
+        />
       ),
       meta: {
         headerClassName: "sticky right-0 z-20 min-w-44 bg-muted/30 text-right",
         cellClassName: "sticky right-0 z-10 min-w-44 bg-card text-right group-hover:bg-muted/40",
       },
-    }
+  }
   const columns = activeTab === "members"
-    ? [userColumn, affiliationColumn, memberRoleColumn]
+    ? canManage
+      ? [userColumn, affiliationColumn, memberRoleColumn, actionsColumn]
+      : [userColumn, affiliationColumn, memberRoleColumn]
     : activeTab === "requests"
       ? [userColumn, affiliationColumn, requestedAtColumn, actionsColumn]
       : [userColumn, listTypeColumn, affiliationColumn, memberRoleColumn, requestedAtColumn, actionsColumn]
@@ -348,7 +424,7 @@ export function MembersDataTable({
       </div>
 
       {showApprovalNotice ? (
-        <p className="text-xs text-muted-foreground">소속 변경 승인과 거절은 일반 권한 또는 운영 권한이 필요합니다.</p>
+        <p className="text-xs text-muted-foreground">소속 변경 승인과 거절은 운영 권한이 필요합니다.</p>
       ) : null}
     </div>
   )

@@ -8,7 +8,6 @@ import {
   NetworkIcon,
   RadarIcon,
   ScanSearchIcon,
-  ShieldCheckIcon,
 } from "lucide-react"
 
 function readEnvValue(key) {
@@ -62,47 +61,6 @@ export const portalNavigationItems = [
       { title: "접속 현황", href: "/access-stats", appScope: "access-stats" },
       externalLink("PMx", "VITE_PORTAL_PMX_URL"),
     ]),
-  },
-  {
-    title: "Admin",
-    icon: ShieldCheckIcon,
-    items: [
-      {
-        title: "권한 관리",
-        href: "/settings/permissions",
-        adminScope: "portal",
-      },
-      {
-        title: "Appstore 관리",
-        href: "/appstore",
-        adminScope: "appstore",
-      },
-      {
-        title: "L3 Spider 개발자 옵션",
-        href: "/spider/l3",
-        adminScope: "l3-spider",
-      },
-      {
-        title: "Line Dashboard Target 관리",
-        href: "/ESOP_Dashboard/admin/drone-targets",
-        adminScope: "line-dashboard",
-      },
-      {
-        title: "메일함 관리",
-        href: "/emails/inbox",
-        adminScope: "emails",
-      },
-      {
-        title: "접속 현황 관리",
-        href: "/access-stats",
-        adminScope: "access-stats",
-      },
-      {
-        title: "VOC 관리",
-        href: "/voc",
-        adminScope: "voc",
-      },
-    ],
   },
   {
     title: "About Us",

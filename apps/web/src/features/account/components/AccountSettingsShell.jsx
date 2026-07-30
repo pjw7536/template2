@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom"
 
-import { TeamSwitcher } from "@/components/common"
 import { AppShellLayout } from "@/components/layout"
 import { RequireAuth, useAuth } from "@/lib/auth"
 import { hasScopeRole } from "@/lib/access/scopeAccess"
@@ -24,7 +23,6 @@ export function AccountSettingsShell() {
     <RequireAuth>
       <AppShellLayout
         navItems={navigation.navMain}
-        sidebarHeader={<TeamSwitcher disabled />}
         scrollAreaClassName={
           isFixedHeightPage
             ? "h-full min-h-0 overflow-hidden"

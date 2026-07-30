@@ -4,6 +4,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { useEffect, useRef } from "react"
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/common"
 import { Button } from "@/components/ui/button"
@@ -158,6 +159,7 @@ export function AccountDataTable({
   className,
   tableClassName,
   onScrollEnd,
+  scrollFooter,
   ariaLabel = "사용자 목록",
 }) {
   const safeData = Array.isArray(data) ? data : []
@@ -169,6 +171,7 @@ export function AccountDataTable({
     getCoreRowModel: getCoreRowModel(),
   })
   const hasFooter = Boolean(pagination)
+  const scrollContainerRef = useRef(null)
   const handleScroll = (event) => {
     if (!onScrollEnd) return
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
@@ -176,6 +179,14 @@ export function AccountDataTable({
       onScrollEnd()
     }
   }
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!onScrollEnd || !scrollContainer || isLoading || error) return
+    if (scrollContainer.scrollHeight - scrollContainer.clientHeight <= 96) {
+      onScrollEnd()
+    }
+  }, [error, isLoading, onScrollEnd, safeData.length])
 
   return (
     <div
@@ -191,7 +202,11 @@ export function AccountDataTable({
     >
       {toolbar ? <div className="min-w-0 border-b">{toolbar}</div> : null}
 
-      <div className="min-h-0 min-w-0 overflow-auto" onScroll={handleScroll}>
+      <div
+        ref={scrollContainerRef}
+        className="min-h-0 min-w-0 overflow-auto"
+        onScroll={handleScroll}
+      >
         {isLoading ? (
           <div className="grid gap-3 p-4">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -222,7 +237,7 @@ export function AccountDataTable({
                     <TableHead
                       key={header.id}
                       className={cn(
-                        "bg-muted/30 px-4 text-xs font-medium text-muted-foreground",
+                        "bg-muted px-4 text-xs font-medium text-muted-foreground",
                         header.column.columnDef.meta?.headerClassName,
                       )}
                     >
@@ -250,6 +265,7 @@ export function AccountDataTable({
             </TableBody>
           </Table>
         )}
+        {scrollFooter || null}
       </div>
 
       {pagination ? (

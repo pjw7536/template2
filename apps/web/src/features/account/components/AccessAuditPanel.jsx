@@ -18,8 +18,8 @@ export function AccessAuditPanel({ query, scope, scopeOptions, onScopeChange, on
   const rows = query.data?.results || []
 
   return (
-    <Card className="grid min-w-0 grid-rows-[auto_auto] overflow-hidden py-0 xl:h-full xl:min-h-0 xl:grid-rows-[min-content_minmax(0,1fr)] xl:gap-0">
-      <CardHeader className="border-b px-4 py-3 xl:grid-rows-[auto] xl:content-start xl:pb-3!">
+    <Card className="grid h-full min-h-0 min-w-0 grid-rows-[min-content_minmax(0,1fr)] gap-0 overflow-hidden py-0">
+      <CardHeader className="grid-rows-[auto] content-start border-b px-4 py-3 pb-3!">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="text-base">변경 이력</CardTitle>
@@ -39,7 +39,7 @@ export function AccessAuditPanel({ query, scope, scopeOptions, onScopeChange, on
           </Select>
         </div>
       </CardHeader>
-      <CardContent className="grid min-w-0 grid-rows-[auto_auto] p-0 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)_auto]">
+      <CardContent className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] p-0">
         {query.isPending ? (
           <div className="grid gap-2 p-4">
             <Skeleton className="h-10 w-full" />
@@ -52,7 +52,7 @@ export function AccessAuditPanel({ query, scope, scopeOptions, onScopeChange, on
         ) : !rows.length ? (
           <div className="p-4 text-sm text-muted-foreground">표시할 변경 이력이 없습니다.</div>
         ) : (
-          <div className="min-w-0 overflow-x-auto xl:min-h-0 xl:overflow-auto" aria-busy={query.isFetching}>
+          <div className="min-h-0 min-w-0 overflow-auto" aria-busy={query.isFetching}>
             <Table stickyHeader>
               <TableHeader>
                 <TableRow>
@@ -69,7 +69,12 @@ export function AccessAuditPanel({ query, scope, scopeOptions, onScopeChange, on
                   const changes = getAuditChanges(row)
                   const target = row.targetUser
                     ? getAuditIdentity(row.targetUser)
-                    : row.policyRule?.value || row.scope || row.after?.value || row.before?.value || "-"
+                    : row.affiliation?.userSdwtProd
+                      || row.policyRule?.value
+                      || row.scope
+                      || row.after?.value
+                      || row.before?.value
+                      || "-"
                   return (
                     <TableRow key={row.id}>
                       <TableCell className="min-w-40 text-xs text-muted-foreground">

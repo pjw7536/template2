@@ -1,18 +1,32 @@
 import {
   Ban,
   Check,
+  CheckCheck,
   Eye,
+  Layers3,
+  LoaderCircle,
   MoreHorizontal,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   SlidersHorizontal,
   UserPlus,
 } from "lucide-react"
+import { useEffect, useState } from "react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +44,7 @@ import {
   ACCESS_SOURCE_LABELS,
   ACCESS_STATUS_LABELS,
   formatPermissionCount,
-  PERMISSION_PAGE_SIZE,
+  getPermissionMutationErrorMessage,
 } from "../utils/permissionDisplay"
 import { AccountDataTable } from "./AccountDataTable"
 
@@ -93,6 +107,16 @@ function UserIdentity({ user }) {
         <span className="text-xs text-muted-foreground">/</span>
         <span className="truncate text-xs text-muted-foreground">{identifier}</span>
       </span>
+    </div>
+  )
+}
+
+function ScopeIdentity({ scope }) {
+  const label = scope?.name || scope?.key || "권한 범위"
+  return (
+    <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+      <Layers3 className="size-4 text-muted-foreground" />
+      <span className="truncate text-sm font-medium">{label}</span>
     </div>
   )
 }
@@ -270,14 +294,58 @@ function AccessUsersTable({
   onDecision,
   isMutating = false,
   onRetry,
-  pagination,
-  onPageChange,
+  onLoadMore,
+  scrollFooter,
+  selectedRequestIds,
+  onToggleRequest,
+  onToggleLoaded,
 }) {
+  const loadedRequestIds = rows
+    .map((row) => row.requestId)
+    .filter((requestId) => Number.isInteger(requestId) && requestId > 0)
+  const allLoadedSelected =
+    loadedRequestIds.length > 0
+    && loadedRequestIds.every((requestId) => selectedRequestIds.has(requestId))
+  const someLoadedSelected =
+    !allLoadedSelected
+    && loadedRequestIds.some((requestId) => selectedRequestIds.has(requestId))
   const columns = [
+    {
+      id: "select",
+      header: () => (
+        <Checkbox
+          checked={allLoadedSelected ? true : someLoadedSelected ? "indeterminate" : false}
+          onCheckedChange={() => onToggleLoaded(loadedRequestIds, !allLoadedSelected)}
+          disabled={isMutating || isFetching || loadedRequestIds.length === 0}
+          aria-label="불러온 요청 전체 선택"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={selectedRequestIds.has(row.original.requestId)}
+          onCheckedChange={(checked) => onToggleRequest(row.original.requestId, checked === true)}
+          disabled={isMutating || isFetching}
+          aria-label={`${row.original.user.displayName || row.original.user.knoxId || "사용자"} ${row.original.scope?.name || "권한"} 요청 선택`}
+        />
+      ),
+      meta: {
+        headerClassName: "w-12 min-w-12",
+        cellClassName: "w-12 min-w-12",
+      },
+    },
     {
       id: "user",
       header: "사용자",
       cell: ({ row }) => <UserIdentity user={row.original.user} />,
+      meta: {
+        headerClassName: "min-w-56",
+        cellClassName: "min-w-56",
+      },
+    },
+    {
+      id: "scope",
+      header: "신청 앱·기능",
+      cell: ({ row }) => <ScopeIdentity scope={row.original.scope} />,
       meta: {
         headerClassName: "min-w-56",
         cellClassName: "min-w-56",
@@ -325,7 +393,7 @@ function AccessUsersTable({
     },
     {
       id: "decidedAt",
-      header: "최근 결정",
+      header: "요청일",
       cell: ({ row }) => (
         <span className="text-xs text-muted-foreground">
           {formatAccountDateValue(row.original.access?.decidedAt || row.original.access?.requestedAt)}
@@ -343,7 +411,7 @@ function AccessUsersTable({
         <UserActions row={row.original} onDecision={onDecision} disabled={isMutating || isFetching} />
       ),
       meta: {
-        headerClassName: "sticky right-0 z-20 min-w-44 bg-muted/30 text-right",
+        headerClassName: "sticky right-0 z-20 min-w-44 bg-muted text-right",
         cellClassName: "sticky right-0 z-10 min-w-44 bg-card text-right group-hover:bg-muted/40",
       },
     },
@@ -351,29 +419,24 @@ function AccessUsersTable({
   const errorMessage = error?.message === "forbidden"
     ? "권한 관리 권한이 없습니다."
     : error
-      ? "사용자 목록을 불러오지 못했습니다."
+      ? "승인 대기 요청을 불러오지 못했습니다."
       : ""
 
   return (
     <AccountDataTable
       data={rows}
       columns={columns}
-      getRowId={(row) => String(row.user.id)}
+      getRowId={(row) => String(row.requestId)}
       isLoading={isLoading}
       isFetching={isFetching}
       error={errorMessage}
-      emptyMessage="표시할 사용자가 없습니다."
+      emptyMessage="승인 대기 요청이 없습니다."
       onRetry={onRetry}
-      pagination={{
-        page: pagination?.page || 1,
-        pageSize: pagination?.pageSize || PERMISSION_PAGE_SIZE,
-        total: pagination?.total || 0,
-        totalPages: pagination?.totalPages || 1,
-        onPageChange,
-      }}
-      className="h-full rounded-none border-0"
-      tableClassName="min-w-[1100px]"
-      ariaLabel="권한 범위별 접근 사용자 목록"
+      className="h-full rounded-none border-0 [&_[data-slot=table-container]]:h-auto [&_[data-slot=table-container]]:overflow-visible"
+      tableClassName="min-w-[1340px]"
+      onScrollEnd={onLoadMore}
+      scrollFooter={scrollFooter}
+      ariaLabel="전체 권한 승인 대기 요청 목록"
     />
   )
 }
@@ -384,50 +447,233 @@ export function PendingAccessPanel({
   scopeOptions,
   onScopeChange,
   onDecision,
-  onPageChange,
+  onBulkApprove,
   isMutating,
+  isBulkApproving,
 }) {
+  const [selectedRequestIds, setSelectedRequestIds] = useState(() => new Set())
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false)
+  const [bulkError, setBulkError] = useState("")
   const scopeLabel = scopeOptions.find((option) => option.value === scope)?.label || scope
+  const rows = query.data?.results || []
+  const loadedRequestIdsKey = rows
+    .map((row) => row.requestId)
+    .filter((requestId) => Number.isInteger(requestId) && requestId > 0)
+    .join(",")
+  const selectedCount = selectedRequestIds.size
+
+  useEffect(() => {
+    setSelectedRequestIds(new Set())
+    setIsBulkDialogOpen(false)
+    setBulkError("")
+  }, [scope])
+
+  useEffect(() => {
+    const loadedRequestIds = new Set(
+      loadedRequestIdsKey
+        .split(",")
+        .map(Number)
+        .filter((requestId) => Number.isInteger(requestId) && requestId > 0),
+    )
+    setSelectedRequestIds((current) => {
+      const next = new Set(
+        [...current].filter((requestId) => loadedRequestIds.has(requestId)),
+      )
+      return next.size === current.size ? current : next
+    })
+  }, [loadedRequestIdsKey])
+
+  const handleToggleRequest = (requestId, checked) => {
+    if (!Number.isInteger(requestId) || requestId <= 0) return
+    setSelectedRequestIds((current) => {
+      const next = new Set(current)
+      if (checked) {
+        next.add(requestId)
+      } else {
+        next.delete(requestId)
+      }
+      return next
+    })
+  }
+
+  const handleToggleLoaded = (requestIds, checked) => {
+    setSelectedRequestIds((current) => {
+      const next = new Set(current)
+      for (const requestId of requestIds) {
+        if (checked) {
+          next.add(requestId)
+        } else {
+          next.delete(requestId)
+        }
+      }
+      return next
+    })
+  }
+
+  const handleLoadMore = () => {
+    if (
+      !query.hasNextPage
+      || query.isFetchingNextPage
+      || query.isFetchNextPageError
+    ) {
+      return
+    }
+    void query.fetchNextPage()
+  }
+
+  const scrollFooter = rows.length > 0 ? (
+    <div
+      className="flex min-h-12 items-center justify-center gap-2 border-t px-4 py-3 text-sm text-muted-foreground"
+      aria-live="polite"
+    >
+      {query.isFetchingNextPage ? (
+        <>
+          <LoaderCircle className="size-4 animate-spin" />
+          다음 요청을 불러오는 중...
+        </>
+      ) : query.isFetchNextPageError ? (
+        <>
+          <span className="text-destructive">다음 요청을 불러오지 못했습니다.</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void query.fetchNextPage()}
+          >
+            <RefreshCw className="size-4" />
+            다시 시도
+          </Button>
+        </>
+      ) : query.hasNextPage ? (
+        "아래로 스크롤하면 다음 요청을 불러옵니다."
+      ) : (
+        `요청 ${formatPermissionCount(rows.length)}건을 모두 불러왔습니다.`
+      )}
+    </div>
+  ) : null
+
+  const handleBulkApprove = async () => {
+    if (selectedCount === 0 || isBulkApproving) return
+    setBulkError("")
+    try {
+      await onBulkApprove([...selectedRequestIds])
+      setSelectedRequestIds(new Set())
+      setIsBulkDialogOpen(false)
+    } catch (error) {
+      setBulkError(
+        getPermissionMutationErrorMessage(
+          error,
+          "선택한 권한 요청을 일괄 승인하지 못했습니다.",
+        ),
+      )
+    }
+  }
 
   return (
-    <Card className="grid min-w-0 grid-rows-[auto_auto] overflow-hidden py-0 xl:h-full xl:min-h-0 xl:grid-rows-[min-content_minmax(0,1fr)] xl:gap-0">
-      <CardHeader className="border-b px-4 py-3 xl:grid-rows-[auto] xl:content-start xl:pb-3!">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="text-base">승인 대기 요청</CardTitle>
-            <CardDescription>
-              {scopeLabel} · {formatPermissionCount(query.data?.pagination?.total)}건
-            </CardDescription>
+    <>
+      <Card className="grid h-full min-h-0 min-w-0 grid-rows-[min-content_minmax(0,1fr)] gap-0 overflow-hidden py-0">
+        <CardHeader className="grid-rows-[auto] content-start border-b px-4 py-3 pb-3!">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="text-base">승인 대기 요청</CardTitle>
+              <CardDescription>
+                {scopeLabel} · {formatPermissionCount(query.data?.pagination?.total)}건
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setBulkError("")
+                  setIsBulkDialogOpen(true)
+                }}
+                disabled={selectedCount === 0 || isMutating || query.isFetching}
+              >
+                <CheckCheck className="size-4" />
+                선택 {formatPermissionCount(selectedCount)}건 승인
+              </Button>
+              <Select
+                value={scope}
+                onValueChange={onScopeChange}
+                disabled={isMutating || query.isFetching}
+              >
+                <SelectTrigger className="w-52" aria-label="승인 대기 권한 범위">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label} ({formatPermissionCount(option.count)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <Select
-            value={scope}
-            onValueChange={onScopeChange}
-            disabled={isMutating || query.isFetching}
-          >
-            <SelectTrigger className="w-52" aria-label="승인 대기 권한 범위">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {scopeOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </CardHeader>
-      <CardContent className="grid min-w-0 grid-rows-[auto] p-0 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
-        <AccessUsersTable
-          rows={query.data?.results || []}
-          isLoading={query.isPending}
-          isFetching={query.isFetching}
-          error={query.error}
-          onDecision={onDecision}
-          isMutating={isMutating}
-          onRetry={query.refetch}
-          pagination={query.data?.pagination}
-          onPageChange={onPageChange}
-        />
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] p-0">
+          <AccessUsersTable
+            rows={rows}
+            isLoading={query.isPending}
+            isFetching={query.isFetching && !query.isFetchingNextPage}
+            error={query.isError && !query.data ? query.error : null}
+            onDecision={onDecision}
+            isMutating={isMutating}
+            onRetry={query.refetch}
+            onLoadMore={handleLoadMore}
+            scrollFooter={scrollFooter}
+            selectedRequestIds={selectedRequestIds}
+            onToggleRequest={handleToggleRequest}
+            onToggleLoaded={handleToggleLoaded}
+          />
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={isBulkDialogOpen}
+        onOpenChange={(open) => {
+          if (isBulkApproving) return
+          setIsBulkDialogOpen(open)
+          if (!open) setBulkError("")
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>선택 요청 일괄 승인</DialogTitle>
+            <DialogDescription>
+              선택한 {formatPermissionCount(selectedCount)}건을 일반 사용자 권한으로 승인합니다.
+              Portal과 앱·기능 요청은 각각 독립적으로 처리됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+            관리자 권한이 필요한 요청은 일괄 승인 후 개별적으로 역할을 변경해야 합니다.
+          </div>
+          {bulkError ? (
+            <p className="text-sm text-destructive" role="alert">{bulkError}</p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsBulkDialogOpen(false)}
+              disabled={isBulkApproving}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              onClick={handleBulkApprove}
+              disabled={selectedCount === 0 || isBulkApproving}
+            >
+              <CheckCheck className="size-4" />
+              {isBulkApproving
+                ? "승인 처리 중..."
+                : `${formatPermissionCount(selectedCount)}건 승인`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

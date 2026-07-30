@@ -6,10 +6,14 @@ const endpoints = {
   affiliationRequests: "/api/v1/account/affiliation/requests",
   affiliationApprove: "/api/v1/account/affiliation/approve",
   affiliationMembers: "/api/v1/account/affiliation/members",
+  affiliationAccess: "/api/v1/account/affiliation/access",
   accessRequest: "/api/v1/account/access/request",
   accessUsers: "/api/v1/account/access/users",
+  pendingAccessRequests: "/api/v1/account/access/pending-requests",
+  pendingAccessRequestsBulkApprove: "/api/v1/account/access/pending-requests/bulk-approve",
   accessMatrix: "/api/v1/account/access/matrix",
   accessPolicyRules: "/api/v1/account/access/policy-rules",
+  accessPolicyRulesBulkApply: "/api/v1/account/access/policy-rules/bulk-apply",
   accessAuditLogs: "/api/v1/account/access/audit-logs",
   users: "/api/v1/account/users",
 }
@@ -182,6 +186,26 @@ export const accountApi = {
     return unwrap(response, "Failed to update affiliation request")
   },
 
+  async grantAffiliationAccess(payload) {
+    const url = buildBackendUrl(endpoints.affiliationAccess)
+    const response = await request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return unwrap(response, "Failed to update affiliation access")
+  },
+
+  async revokeAffiliationAccess(payload) {
+    const url = buildBackendUrl(endpoints.affiliationAccess)
+    const response = await request(url, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return unwrap(response, "Failed to revoke affiliation access")
+  },
+
   async requestScopeAccess(scopes) {
     const url = buildBackendUrl(endpoints.accessRequest)
     const response = await request(url, {
@@ -215,16 +239,44 @@ export const accountApi = {
     return unwrap(response, "Failed to load access users")
   },
 
-  async fetchAccessMatrix({ page = 1, pageSize = 20, search = "", department = "" } = {}) {
+  async fetchAccessMatrix({
+    page = 1,
+    pageSize = 20,
+    search = "",
+    department = "",
+    manualGrantOnly = false,
+  } = {}) {
     const params = new URLSearchParams()
     params.set("page", String(page))
     params.set("pageSize", String(pageSize))
     if (search) params.set("search", search)
     if (department) params.set("department", department)
+    if (manualGrantOnly) params.set("manualGrantOnly", "true")
 
     const url = buildBackendUrl(`${endpoints.accessMatrix}?${params.toString()}`)
     const response = await request(url, { cache: "no-store" })
     return unwrap(response, "Failed to load access matrix")
+  },
+
+  async fetchPendingAccessRequests({ page = 1, pageSize = 20, scope = "all" } = {}) {
+    const params = new URLSearchParams()
+    params.set("page", String(page))
+    params.set("pageSize", String(pageSize))
+    if (scope && scope !== "all") params.set("scope", scope)
+
+    const url = buildBackendUrl(`${endpoints.pendingAccessRequests}?${params.toString()}`)
+    const response = await request(url, { cache: "no-store" })
+    return unwrap(response, "Failed to load pending access requests")
+  },
+
+  async bulkApprovePendingAccessRequests({ requestIds }) {
+    const url = buildBackendUrl(endpoints.pendingAccessRequestsBulkApprove)
+    const response = await request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestIds }),
+    })
+    return unwrap(response, "Failed to approve pending access requests")
   },
 
   async decideAccessUser({ userId, ...payload }) {
@@ -235,6 +287,35 @@ export const accountApi = {
       body: JSON.stringify(payload),
     })
     return unwrap(response, "Failed to update access user")
+  },
+
+  async fetchUserScopeData({ userId, scope }) {
+    const params = new URLSearchParams({ scope })
+    const url = buildBackendUrl(
+      `${endpoints.accessUsers}/${userId}/data-scope?${params.toString()}`,
+    )
+    const response = await request(url, { cache: "no-store" })
+    return unwrap(response, "Failed to load user data scope")
+  },
+
+  async updateUserScopeData({ userId, ...payload }) {
+    const url = buildBackendUrl(`${endpoints.accessUsers}/${userId}/data-scope`)
+    const response = await request(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return unwrap(response, "Failed to update user data scope")
+  },
+
+  async applyAllAccessUser({ userId, ...payload }) {
+    const url = buildBackendUrl(`${endpoints.accessUsers}/${userId}/apply-all`)
+    const response = await request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return unwrap(response, "Failed to apply all access permissions")
   },
 
   async fetchAccessPolicyRules({ scope = "portal" } = {}) {
@@ -253,6 +334,16 @@ export const accountApi = {
       body: JSON.stringify(payload),
     })
     return unwrap(response, "Failed to create access policy rule")
+  },
+
+  async bulkApplyAccessPolicyRules(payload) {
+    const url = buildBackendUrl(endpoints.accessPolicyRulesBulkApply)
+    const response = await request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return unwrap(response, "Failed to apply access policy rules")
   },
 
   async updateAccessPolicyRule({ id, ...payload }) {

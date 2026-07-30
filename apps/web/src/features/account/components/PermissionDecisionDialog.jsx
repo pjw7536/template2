@@ -5,6 +5,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  ShieldCheck,
   SlidersHorizontal,
   UserPlus,
 } from "lucide-react"
@@ -46,7 +47,14 @@ export function PermissionDecisionDialog({
   if (!decision) return null
 
   const requiresRole = ["approve", "grant", "change_role"].includes(decision.action)
-  const requiresReason = ["reject", "revoke"].includes(decision.action)
+  const requiresReason = [
+    "grant",
+    "revoke",
+    "reset_to_policy",
+    "change_role",
+    "apply_all",
+  ].includes(decision.action)
+  const showsReason = requiresReason || decision.action === "reject"
   const actionLabel = decision.label || ACCESS_ACTION_LABELS[decision.action] || decision.action
   const ActionIcon = {
     approve: Check,
@@ -55,10 +63,11 @@ export function PermissionDecisionDialog({
     revoke: Ban,
     reset_to_policy: RotateCcw,
     change_role: SlidersHorizontal,
+    apply_all: ShieldCheck,
   }[decision.action] || Save
 
   const handleSubmit = async () => {
-    if (isSubmitting) return
+    if (isSubmitting || (requiresReason && !reason.trim())) return
     await onSubmit({
       userId: decision.row.user.id,
       scope: decision.scope?.key || "portal",
@@ -127,15 +136,23 @@ export function PermissionDecisionDialog({
               />
             </div>
           ) : null}
-          {requiresReason ? (
+          {decision.description ? (
+            <p className="text-sm text-muted-foreground">
+              {decision.description}
+            </p>
+          ) : null}
+          {showsReason ? (
             <div className="grid gap-2">
-              <Label htmlFor="access-reason">사유 (선택)</Label>
+              <Label htmlFor="access-reason">
+                사유 ({requiresReason ? "필수" : "선택"})
+              </Label>
               <Textarea
                 id="access-reason"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="사유를 입력하세요"
                 maxLength={500}
+                disabled={isSubmitting}
               />
             </div>
           ) : null}
@@ -152,7 +169,7 @@ export function PermissionDecisionDialog({
           <Button
             variant={["reject", "revoke"].includes(decision.action) ? "destructive" : "default"}
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || (requiresReason && !reason.trim())}
           >
             {isSubmitting ? (
               <RefreshCw className="size-4 animate-spin" />
