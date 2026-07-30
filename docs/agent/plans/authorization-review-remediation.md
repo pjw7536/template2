@@ -1,0 +1,194 @@
+# ExecPlan: 권한 코드리뷰 보완
+
+## 목표
+- Django Admin의 직접 저장 경로가 현재 소속·소속 변경 상태를 우회하지 못하게 한다.
+- Emails 쓰기 대상은 존재하는 활성 Affiliation의 정규 식별자로만 저장한다.
+- 비활성 Affiliation을 현재 소속·소속 역할·관리 권한 계산에서 일관되게 제외한다.
+- 여러 Affiliation을 잠그는 모든 경로의 잠금 순서를 id 오름차순으로 통일한다.
+- 실제 `0005` 역사 상태에서 `0006` 데이터 이관을 실행하는 회귀 테스트를 보강한다.
+- 앱 권한이 없지만 데이터 grant가 보존된 상태와 소속 목록 조회 오류를 관리 UI에 명확히 표시한다.
+- 사용자별 유효 소속 변경 요청을 하나로 제한하고 동시 승인에 따른 소속 덮어쓰기를 차단한다.
+- manager 권한 변경과 승인·권한 관리가 동시에 실행돼도 잠금 안에서 최신 역할을 재검사한다.
+- 앱 데이터 범위와 소속 역할의 모든 실질적 변경을 감사 로그로 복원할 수 있게 한다.
+- `0005` 적용 직후의 정상 DB에서 `0006` 사전 무결성 검사가 통과하게 한다.
+- Emails 쓰기는 실제 변경 직전에 최신 앱 데이터 범위와 소속 capability를 함께 재검사한다.
+- 현재 소속과 명시 grant가 겹쳐도 관리 UI가 현재 소속의 자동 포함 의미를 정확히 표시한다.
+- 소속 기준정보의 생성·메타데이터 변경·활성 상태 변경을 모두 감사 가능한 서비스 경로로 통일한다.
+- Admin 소속 일괄 활성 상태 변경은 운영자 사유를 받아 하나의 transaction으로 처리한다.
+- 소속 변경 요청의 상태별 승인 메타데이터 불변 조건을 DB 제약으로 강제한다.
+- Emails 대량 쓰기 권한 검사는 소속별 반복 조회 없이 일괄 계산한다.
+- 전체 소속 모드에서는 소속 목록 조회 실패가 저장을 막지 않게 한다.
+- 수동 앱 권한과 소속 역할 변경은 운영자가 입력한 사유 없이는 저장하지 않는다.
+- 개발 시드도 소속 lifecycle 서비스와 출처가 명확한 감사 로그를 사용한다.
+- 쓰기 권한 판정은 화면용 소속 상세 직렬화 없이 경량 decision만 사용한다.
+- 실제 PostgreSQL 동시 요청에서도 마지막 manager·단일 대기 요청·비활성 소속 불변조건을 유지한다.
+
+## 현재 상태
+- `UserSdwtProdChange`에는 사용자별 `PENDING` 요청을 제한하는 DB 제약이 없다.
+- 소속 역할 관리와 소속 변경 승인·거절의 manager 검사가 소속 잠금과 동일한 경계에서 수행되지 않는다.
+- `reset_to_policy`와 전체 권한 변경 일부 경로는 `data_scope_mode` 변경 감사를 남기지 않는다.
+- `UserSdwtProdAccess` 역할 부여·변경·회수는 별도 감사 이력이 없다.
+- `pre-migration` 검사는 `0005`에서 이미 제거된 legacy 앱 역할만 허용해 정상 `user` 역할을 거부한다.
+- Emails 쓰기 서비스는 view에서 미리 계산한 앱 데이터 범위를 트랜잭션 안에서도 그대로 신뢰한다.
+- 소속 변경 적용 경로의 자동 역할 생성·승격·강등은 감사 로그를 남기지 않는다.
+- 현재 소속과 명시 grant가 겹치면 명시 grant source가 `current`를 덮어쓴다.
+- 소속 생성과 자동 보정 경로는 활성 상태 변경과 달리 감사 로그가 없다.
+- Admin 소속 일괄 action은 고정 사유와 개별 transaction을 사용한다.
+- 소속 변경 상태 제약은 `approved`와 `applied`만 검증한다.
+- Emails capability 검사는 잠금 중 소속 수만큼 역할 조회를 반복한다.
+- 데이터 범위 Dialog는 전체 모드에서도 소속 목록 조회 성공을 요구한다.
+- 소속 역할 API는 감사 로그를 남기지만 변경 사유를 받지 않는다.
+- 권한 매트릭스와 전체 적용은 고정 문구만 기록해 실제 업무 사유를 복원할 수 없다.
+- 개발 권한 시드는 `Affiliation.objects.update_or_create()`로 lifecycle 감사를 우회한다.
+- 쓰기 권한 판정이 `all` 여부만 필요해도 전체 활성 소속을 직렬화한다.
+- 잠금 순서와 롤백 테스트는 있으나 두 DB connection의 실제 경합 테스트는 없다.
+
+## 범위
+- 수정할 영역:
+  - `apps/api/api/account` 모델, migration, selector, service, test
+  - `apps/api/api/emails` 쓰기 권한 재검사와 test
+  - `apps/web/src/features/account` 감사 로그 action 표시
+  - Account 권한 API 문서와 권한 설계 기록
+- 수정하지 않을 영역:
+  - 앱 접근·소속 데이터 범위·소속 capability의 기존 정책
+  - Emails·Assistant의 조회 데이터 필터 계약
+  - 프론트엔드 권한 관리 흐름과 API 계약
+
+## 설계
+- 소속 변경 요청:
+  - 사용자 행을 잠근 뒤 기존 대기 요청을 다시 조회하고 대체한다.
+  - 사용자별 `PENDING` 요청 하나만 허용하는 조건부 UniqueConstraint를 DB 방어선으로 둔다.
+  - migration 전 기존 중복 `PENDING` 요청은 최신 한 건만 남기고 나머지를 `SUPERSEDED`로 정리한다.
+  - 승인·거절 시 사용자 행을 잠그고 해당 요청이 현재 유효한 대기 요청인지 재검사한다.
+- manager 재검증:
+  - 대상 `Affiliation` 행을 잠근 뒤 최신 `UserSdwtProdAccess` 역할로 권한을 확인한다.
+  - 역할 부여·회수와 소속 승인·거절이 `Affiliation` 잠금을 공통 직렬화 지점으로 사용한다.
+- 감사:
+  - 앱 접근 변경으로 `data_scope_mode`가 바뀌거나 행이 삭제될 때 `DATA_SCOPE_CHANGE`를 별도로 기록한다.
+  - 소속 역할 감사 action을 추가하고 actor, target user, affiliation, before/after role을 같은 transaction에 기록한다.
+  - 소속 변경 적용이 자동으로 만드는 역할 승격·강등도 승인자를 actor로 같은 transaction에 기록한다.
+- 최신 권한 재검사:
+  - Emails 이동·삭제 서비스는 호출자가 전달한 조회 범위를 쓰기 승인 근거로 사용하지 않는다.
+  - 잠금 경계 안에서 최신 Emails 데이터 범위와 소속 capability를 다시 계산한다.
+- 데이터 범위 source:
+  - 현재 소속과 명시 grant가 겹치면 실효 응답의 대표 source는 `current`를 유지한다.
+  - 별도의 grant 목록은 그대로 제공해 수동 grant 편집 계약을 보존한다.
+- 소속 lifecycle:
+  - 사용자·Admin 생성은 actor와 사유를 받는 생성 서비스로 처리한다.
+  - 자동 보정은 actor가 없는 system sync 감사로 생성·실제 메타데이터 변경만 기록한다.
+  - 일괄 활성 상태 변경은 선택 소속을 id 오름차순으로 잠근 한 transaction에서 적용한다.
+- 소속 변경 상태:
+  - `PENDING`, `APPROVED`, `REJECTED`, `SUPERSEDED`별 불리언·승인 시각·거절 사유 조합을 DB 제약으로 고정한다.
+  - 미적용 `0006`의 데이터 정규화를 확장한 뒤 강화된 제약을 추가한다.
+- Emails capability:
+  - 잠근 사용자와 소속 목록을 기준으로 실효 역할 map을 한 번에 조회한다.
+  - 기존 단건 capability 함수와 HTTP 계약은 유지한다.
+- public API/facade 영향:
+  - 수동 앱 권한·소속 역할·전체 적용 요청은 `reason`을 필수로 받는다.
+  - HTTP 응답 계약은 유지한다.
+  - 감사 action 필터에는 소속 역할 action이 추가된다.
+  - 기존 감사 화면에 새 action과 role snapshot 표시 이름만 추가한다.
+- migration/env/auth 영향:
+  - 미적용 Account 권한 migration은 `0006_account_authorization_system`으로 통합한다.
+  - env 계약 변경은 없다.
+- 수동 변경 사유:
+  - `grant`, `revoke`, `change_role`, `reset_to_policy`, 사용자 전체 권한 적용은 500자 이내 사유를 필수로 받는다.
+  - 승인 대기 처리와 자동 정책은 기존 요청·정책 자체가 근거이므로 현재 계약을 유지한다.
+- 경량 data scope:
+  - 내부 state resolver는 앱 접근, all 여부, 선택 소속만 계산한다.
+  - authorization decision은 상세 부서·라인 직렬화 없이 ID와 canonical 소속 값만 반환한다.
+  - 기존 관리 API payload는 상세 serializer가 동일한 형태로 유지한다.
+- 동시성:
+  - 별도 PostgreSQL connection을 사용하는 `TransactionTestCase`로 같은 소속의 manager 동시 회수와 비활성화/역할 변경을 경쟁시킨다.
+  - 동일 사용자의 동시 소속 변경 요청은 최종 단일 `PENDING`과 이전 요청 `SUPERSEDED`를 확인한다.
+
+## 실행 단계
+- [x] 현재 소속·소속 변경 Admin을 읽기 전용 및 서비스 action 전용으로 제한한다.
+- [x] Emails 이동·claim 대상의 활성 Affiliation 정규 식별자를 검증한다.
+- [x] 비활성 Affiliation을 기존 역할·현재 소속 selector와 role resolver에서 제외한다.
+- [x] 다중 Affiliation 잠금 순서를 id 오름차순으로 통일한다.
+- [x] `0005 -> 0006` 실제 데이터 이관 회귀 테스트와 상태 제약을 보강한다.
+- [x] 데이터 grant 보존 상태 및 affiliation 조회 오류 UI를 보완한다.
+- [x] Account·Emails·Assistant 테스트와 backend/frontend/UI 검증을 다시 실행한다.
+- [x] 사용자별 단일 `PENDING` 제약과 기존 중복 데이터 정리 migration을 추가한다.
+- [x] 소속 요청 생성·승인·거절의 사용자/소속 잠금과 최신 상태 재검사를 구현한다.
+- [x] 역할 관리 manager 검사를 소속 잠금 안으로 이동한다.
+- [x] 데이터 범위 변경과 소속 역할 변경 감사 로그를 보완한다.
+- [x] 정상·실패·동시성·감사 롤백 회귀 테스트를 추가한다.
+- [x] migration, Account 테스트, 경계 감사를 실행한다.
+- [x] `0005` 기준 `pre-migration` 역할 검사를 고치고 회귀 테스트를 추가한다.
+- [x] Emails 쓰기 트랜잭션에서 최신 앱 데이터 범위를 재검사한다.
+- [x] 소속 변경 적용의 자동 역할 승격·강등 감사를 추가한다.
+- [x] 현재 소속과 명시 grant 중첩 시 source 우선순위를 고친다.
+- [x] Account·Emails 회귀 테스트와 frontend 검증을 다시 실행한다.
+- [x] 소속 생성·메타데이터 변경 감사 서비스와 action 이름을 추가한다.
+- [x] Admin 일괄 활성 상태 변경을 사유 입력과 단일 transaction으로 보완한다.
+- [x] 소속 변경 상태 정규화와 DB CheckConstraint를 강화한다.
+- [x] Emails capability 일괄 판정 selector/service를 추가한다.
+- [x] 전체 범위 UI 저장 조건과 관련 회귀 테스트를 보완한다.
+- [x] 전체 backend/frontend/migration 검증을 다시 실행한다.
+- [x] 수동 앱 권한·소속 역할·전체 적용에 사용자 입력 사유를 필수화한다.
+- [x] 개발 권한 시드의 직접 Affiliation 쓰기를 lifecycle 서비스로 교체한다.
+- [x] 권한 판정용 경량 data scope decision을 분리하고 Emails 쓰기에서 사용한다.
+- [x] PostgreSQL 실제 동시성 회귀 테스트를 추가한다.
+- [x] backend/frontend/migration/문서 전체 검증을 다시 실행한다.
+
+## 검증
+- `docker compose -f docker-compose.dev.yml exec -T api python manage.py makemigrations --check --dry-run`
+- `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.account api.emails api.assistant --noinput`
+- `docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase pre-migration`
+- `docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase post-migration`
+- `npm run agent:audit:api-boundary`
+- `npm run agent:audit:web-boundary`
+- `npm run agent:audit:ui`
+- `npm --prefix apps/web run lint`
+- `npm --prefix apps/web run build`
+- `git diff --check`
+
+## 위험과 대응
+- 위험: 기존 DB에 사용자별 중복 `PENDING` 요청이 있으면 제약 추가가 실패할 수 있다.
+- 대응: migration에서 최신 요청만 유지하고 나머지를 `SUPERSEDED`로 정리한 뒤 제약을 추가한다.
+- 위험: 잠금 순서 변경으로 교착 가능성이 생길 수 있다.
+- 대응: 소속 관련 쓰기는 `Affiliation` 다음 `User` 순서로 잠그고 테스트에서 경합 경로를 검증한다.
+- 위험: 감사 로그 생성 실패가 권한 변경만 남길 수 있다.
+- 대응: 권한 변경과 감사 생성을 같은 transaction에 두고 실패 시 롤백 테스트를 추가한다.
+- 위험: Emails 데이터 범위 재조회 시 request cache가 이전 판정을 반환할 수 있다.
+- 대응: 쓰기 서비스는 request cache와 view 전달값을 우회해 DB에서 최신 범위를 직접 판정한다.
+- 위험: 자동 역할 변경 감사 추가가 개발용 자동 보정까지 불필요하게 기록할 수 있다.
+- 대응: 승인·적용처럼 actor와 업무 사건이 명확한 경로에서만 감사를 기록한다.
+- 위험: 자동 소속 보정이 반복될 때 감사 로그가 불필요하게 증가할 수 있다.
+- 대응: 생성 또는 메타데이터가 실제 변경된 경우에만 system sync 감사를 기록한다.
+- 위험: 강화된 상태 제약이 기존 소속 변경 이력과 충돌할 수 있다.
+- 대응: `0006`에서 상태별 메타데이터를 먼저 정규화하고 역사 마이그레이션 테스트로 검증한다.
+- 위험: capability 일괄 조회가 현재 소속의 암묵적 member 규칙을 다르게 계산할 수 있다.
+- 대응: 기존 단건 resolver와 동일한 우선순위를 사용하고 결과 동등성 테스트를 추가한다.
+- 위험: reason 필수화로 구버전 frontend 요청이 400을 받을 수 있다.
+- 대응: backend와 frontend를 같은 release 단위로 배포하고 기존 응답 계약은 유지한다.
+- 위험: 경량 resolver와 상세 resolver가 서로 다른 범위를 계산할 수 있다.
+- 대응: 하나의 내부 state resolver를 공유하고 decision/detail 결과 동등성 테스트를 추가한다.
+- 위험: 동시성 테스트가 connection 재사용이나 thread 예외로 불안정할 수 있다.
+- 대응: `TransactionTestCase`, `close_old_connections`, 명시적 barrier와 bounded future timeout을 사용한다.
+
+## 진행 기록
+- 2026-07-30: 전체 권한 코드 재검토에서 확인된 Admin 쓰기 우회, Emails 비정규 목적지, 비활성 소속 의미 불일치, 잠금 순서, 역사 마이그레이션 테스트, 관리 UI 상태를 후속 보완 범위로 확정했다.
+- 2026-07-30: 현재 소속과 소속 변경 Admin 직접 저장을 차단하고, 소속 활성 상태는 superuser 서비스 action과 감사 로그로만 변경하도록 보완했다.
+- 2026-07-30: Emails 목적지를 활성 정규 Affiliation으로 강제하고 다중 소속 잠금을 id 오름차순으로 통일했다.
+- 2026-07-30: `0005 -> 0006` 실제 grant·Emails all 이관과 소속 변경 상태 제약을 검증하는 migration 테스트를 추가했다.
+- 2026-07-30: Account·Emails·Assistant 295개 테스트, migration/system check, 사전 무결성, backend/frontend 경계, 웹 lint/build, diff 검사를 통과했다. UI audit은 기존 L3 raw color와 허용 가능한 동적 CSS 변수 후보만 보고했다.
+- 2026-07-30: 코드리뷰에서 확인한 소속 요청 경합, manager TOCTOU, 데이터 범위 감사 누락, 소속 역할 감사 누락을 보완 범위로 확정했다.
+- 2026-07-30: 조건부 unique constraint와 기존 중복 요청 정리 migration을 추가했다.
+- 2026-07-30: 소속 잠금 기반 manager 재검증, 데이터 범위 mode 감사, 소속 역할 감사를 구현하고 회귀 테스트를 추가했다.
+- 2026-07-30: Account 210개 테스트, migration check, Django system check, 권한 데이터 무결성, frontend/backend 경계, 웹 lint, 문서 inventory, diff 검사를 모두 통과했다.
+- 2026-07-30: 후속 코드리뷰에서 migration 사전 검사 역할 기준, Emails 쓰기 권한 재검사, 자동 소속 역할 감사, 현재 소속 source 우선순위 문제를 확인하고 보완 범위에 추가했다.
+- 2026-07-30: `0005` DB에서 pre-migration 점검 통과를 확인하고, Emails 쓰기 시 소속·사용자 잠금 뒤 최신 앱 범위와 역할을 재검사하도록 보완했다.
+- 2026-07-30: 소속 변경 적용의 역할 grant/change 감사를 추가하고, 겹치는 현재 소속 source를 보존하는 회귀 테스트를 추가했다.
+- 2026-07-30: Account·Emails·Assistant 289개, auth 31개, migration 2개 테스트와 system/migration check, backend/frontend 경계, 웹 lint/build, 문서 감사를 통과했다. UI audit은 기존 L3 raw color와 허용 가능한 동적 CSS 변수 inline style 후보를 보고해 비통과로 기록했다.
+- 2026-07-30: 구현 재검토에서 소속 lifecycle 감사 누락, Admin 일괄 작업 부분 성공, 상태 메타데이터 제약, Emails N+1, 전체 범위 UI 저장 차단을 확인하고 후속 보완 범위로 확정했다.
+- 2026-07-30: 소속 생성·자동 동기화 변경 감사를 추가하고 Admin 일괄 활성 상태 변경을 사유 필수·단일 transaction으로 전환했다.
+- 2026-07-30: 소속 변경 요청 상태별 메타데이터 제약, Emails 일괄 capability 판정, 전체 범위 UI 저장 조건을 보완했다.
+- 2026-07-30: Account·Emails·Assistant 299개, 추가 Admin 1개, Auth·Management 39개 테스트와 migration/system check, 권한 사전 무결성, backend/frontend/docs 경계, 웹 lint/build, diff 검사를 통과했다. UI audit은 기존 L3 raw color와 기존 동적 inline style 후보만 보고했다.
+- 2026-07-30: 추가 점검에서 수동 권한 사유 누락, dev 시드 lifecycle 우회, `all` 판정의 상세 직렬화, 실제 DB 경합 테스트 부재를 확인하고 최종 보완 범위로 확정했다.
+- 2026-07-30: 수동 앱·소속·전체 권한 변경에 사용자 입력 사유를 필수화하고, dev 시드를 `dev_seed` lifecycle 감사 경로로 통합했다.
+- 2026-07-30: 상세 응답과 경량 data scope decision이 하나의 내부 resolver를 공유하도록 분리하고 Emails 쓰기 재검사에 경량 판정을 적용했다.
+- 2026-07-30: 실제 PostgreSQL 연결 경합으로 마지막 manager, 단일 대기 요청, 비활성 소속 fail-closed와 감사 일관성을 검증했다.
+- 2026-07-30: Account 224개와 Emails·Assistant·Management 88개 테스트, migration/system check, backend/frontend 경계, 웹 lint/build, diff 검사를 통과했다. UI audit은 기존 L3 raw color와 측정값 기반 CSS 변수 inline style 후보만 보고했다.

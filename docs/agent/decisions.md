@@ -56,3 +56,26 @@
 - canonical Portal은 `key=portal`과 `scope_type=portal`을 DB 제약조건으로 함께 고정한다.
 - 권한 매트릭스는 Portal과 모든 활성 app·feature scope를 같은 결정 API로 관리한다.
 - 사용자와 scope는 비활성화로 수명을 관리하고 감사 로그가 참조하는 행은 `PROTECT`한다.
+
+## 2026-07-29: 소속 역할과 앱별 데이터 범위
+
+- 소속 역할 capability는 `viewer=조회`, `member=조회·일반 변경`, `manager=조회·일반 변경·삭제·소속 승인·권한 관리`로 고정한다.
+- 소속 변경 승인·거절은 대상 소속 manager만 가능하며 요청자는 자신의 요청을 처리할 수 없다.
+- 마지막 manager는 강등하거나 회수할 수 없고, 현재 소속 접근 자체도 회수하지 않는다.
+- 앱 접근, 앱별 소속 데이터 범위, 소속 역할 capability는 서로 독립적으로 판정한다.
+- Emails 이동은 source와 target 모두 member 이상, 삭제는 대상 소속 manager를 요구한다.
+- Emails 전역 운영 특권은 Emails `admin` 역할과 `data_scope_mode=all`을 모두 가진 경우에만 활성화한다.
+
+## 2026-07-30: 소속 권한 동시성·감사 불변조건
+
+- 사용자별 `PENDING` 소속 변경 요청은 DB 조건부 unique constraint로 한 건만 허용한다.
+- 소속 변경 승인·거절과 소속 역할 관리는 대상 `Affiliation` 잠금을 공통 직렬화 지점으로 사용하고 잠금 뒤 최신 manager 역할을 재검사한다.
+- 소속 역할 부여·변경·회수와 `data_scope_mode`의 실질적 변경은 원본 권한 변경과 같은 transaction에서 `AccessAuditLog`로 기록한다.
+- 비활성 `Affiliation`은 현재 소속·소속 역할·앱별 grant 계산에서 모두 제외하며,
+  연결 설정은 삭제하지 않고 전역 일시중지 상태로 보존한다.
+- 여러 `Affiliation`을 잠그는 쓰기 경로는 항상 `Affiliation.id` 오름차순을 사용한다.
+- Django Admin은 현재 소속과 소속 변경 요청을 직접 저장하지 않고 서비스 action만 사용한다.
+- 소속 기준정보의 생성·자동 동기화 변경·활성 상태 변경은 모두 같은 transaction에서 lifecycle 감사 로그를 남긴다.
+- Admin 소속 일괄 활성 상태 변경은 운영자 사유를 필수로 받고 선택 행 전체를 하나의 transaction으로 처리한다.
+- `UserSdwtProdChange`는 상태별 승인 시각·승인자·거절 사유 조합까지 DB CheckConstraint로 강제한다.
+- 여러 소속의 capability 판정은 활성 소속과 명시 역할을 일괄 조회하고 현재 소속의 암묵적 member 규칙을 합산한다.

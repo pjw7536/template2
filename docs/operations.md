@@ -97,7 +97,7 @@ make makemigrations-check
 
 | Command | 설명 |
 | --- | --- |
-| `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할 정합성 점검 |
+| `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할·앱별 소속 범위 정합성 점검 |
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
 | `seed_dev_data` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
@@ -156,11 +156,29 @@ account 고정 역할 migration은 기존 역할·정책·감사 데이터를 �
 1. 배포 후보와 현재 운영 SHA 사이의 전체 diff를 확인해 권한 변경 외 커밋이 함께 포함되는지 확정합니다.
 2. 운영 DB의 migration ledger가 코드가 기대하는 직전 migration과 일치하는지 읽기 전용으로 확인합니다.
 3. `AccessAuditLog`, `UserAccess`, `AccessPolicyRule` row 수와 DB 백업을 확인합니다.
-4. `check_access_permission_integrity --phase pre-migration`을 실행해 migration을 막을 legacy 데이터 문제가 없는지 확인합니다.
+4. `check_access_permission_integrity --phase pre-migration`을 실행해 `account 0005`의 `user/admin` 역할과 migration을 막을 소속 데이터 문제가 없는지 확인합니다.
 5. migration SQL의 `DROP ... CASCADE` 대상에 애플리케이션 외부 view, trigger, constraint가 의존하지 않는지 확인합니다. 특히 `account 0005`는 런타임에서 사용하지 않는 `account_user_profile` 테이블을 제거합니다.
 6. API와 권한 관련 worker를 모두 중지한 뒤 migration을 실행합니다.
 7. `check_access_permission_integrity --phase post-migration`을 실행하고 기존 권한·감사 row 수를 확인한 뒤, 오류가 없을 때 신버전 API를 시작합니다.
 8. 일반 사용자, 앱 `admin`, Portal `admin`, superuser 계정으로 접근과 관리자 메뉴를 smoke test합니다.
+
+`account 0006_account_authorization_system`은 기존 전역 소속 grant를 Emails와 Assistant의
+앱별 grant로 복제하고, 기존 허용된 Emails `admin`만 명시적 `all`로 전환합니다. 이
+migration 전에는 `UserSdwtProdAccess`, 앱별 `UserAccess` row 수를 기록하고, 적용 후에는
+`account_user_scope_aff_grant`의 사용자·앱·소속 중복과 Emails 관리자 `all` 전환 건수를
+확인합니다. 신규 앱 관리자는 자동으로 전체 데이터 범위를 받지 않습니다. 또한 소속 변경
+요청은 `PENDING`, `APPROVED`, `REJECTED`, `SUPERSEDED`별 승인 시각·승인자·거절 사유
+조합을 정규화한 뒤 DB 제약으로 고정합니다.
+
+소속 기준정보는 Django Admin의 직접 수정·삭제를 허용하지 않습니다. 생성과 활성 상태
+일괄 변경은 반드시 사유를 입력하며 `AccessAuditLog`에 기록됩니다. 일괄 활성 상태 변경은
+선택한 소속 전체가 성공하거나 전체가 롤백되므로 오류 발생 시 일부 소속만 변경된 것으로
+간주하지 않습니다.
+
+`account 0006`의 역방향 migration은 앱별 grant 생성과 중복 `PENDING` 요청 정리 전 상태를
+완전히 복원하지 않습니다. 운영 롤백은 migration 역적용보다 DB 백업 복원 또는 수정된
+신버전으로의 forward recovery를 우선합니다. 역적용이 필요하면 적용 직전 백업과 row 수
+기록을 기준으로 별도 데이터 복구 절차를 먼저 확정합니다.
 
 `AccessScope` 신규 항목은 route·메뉴 코드와 함께 migration으로만 추가합니다. 운영 중단은
 scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니다. canonical Portal 이외의
