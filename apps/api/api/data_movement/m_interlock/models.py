@@ -30,7 +30,7 @@ class MInterlock(models.Model):
     area_name = models.CharField(max_length=12, null=True, blank=True)
     process_id = models.CharField(max_length=16, null=True, blank=True)
     interlock_kind = models.CharField(max_length=30, null=True, blank=True)
-    lot_id = models.CharField(max_length=40, null=True, blank=True)
+    lot_id = models.TextField(null=True, blank=True)
     prod_step_seq = models.CharField(max_length=20, null=True, blank=True)
     prod_progs_time = models.CharField(max_length=18, null=True, blank=True)
     prod_eqp_type = models.CharField(max_length=40, null=True, blank=True)

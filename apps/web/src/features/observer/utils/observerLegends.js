@@ -13,17 +13,17 @@ export const observerLegends = {
     { key: "OPEN", className: OBSERVER_COLOR_CLASSES.TIP_OPEN, label: "OPEN" },
     { key: "CLOSE", className: OBSERVER_COLOR_CLASSES.TIP_CLOSE, label: "CLOSE" },
   ],
-  SPC_INTERLOCK: [
+  SPC_ITL: [
     {
-      key: "SPC_INTERLOCK",
-      className: OBSERVER_COLOR_CLASSES.SPC_INTERLOCK,
+      key: "SPC_ITL",
+      className: OBSERVER_COLOR_CLASSES.SPC_ITL,
       label: "SPC Interlock",
     },
   ],
-  FDC_INTERLOCK: [
+  FDC_ITL: [
     {
-      key: "FDC_INTERLOCK",
-      className: OBSERVER_COLOR_CLASSES.FDC_INTERLOCK,
+      key: "FDC_ITL",
+      className: OBSERVER_COLOR_CLASSES.FDC_ITL,
       label: "FDC Interlock",
     },
   ],

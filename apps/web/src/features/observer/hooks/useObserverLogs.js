@@ -33,12 +33,12 @@ export function useObserverLogs(
   const spcInterlockQuery = useSpcInterlockLogs(
     eqpId,
     logQueryOptions,
-    { enabled: enabledTypes.SPC_INTERLOCK }
+    { enabled: enabledTypes.SPC_ITL }
   );
   const fdcInterlockQuery = useFdcInterlockLogs(
     eqpId,
     logQueryOptions,
-    { enabled: enabledTypes.FDC_INTERLOCK }
+    { enabled: enabledTypes.FDC_ITL }
   );
   const ctttmQuery = useCtttmLogs(
     eqpId,
@@ -59,8 +59,8 @@ export function useObserverLogs(
   const logsLoading =
     (enabledTypes.EQP && eqpQuery.isLoading) ||
     (enabledTypes.TIP && tipQuery.isLoading) ||
-    (enabledTypes.SPC_INTERLOCK && spcInterlockQuery.isLoading) ||
-    (enabledTypes.FDC_INTERLOCK && fdcInterlockQuery.isLoading) ||
+    (enabledTypes.SPC_ITL && spcInterlockQuery.isLoading) ||
+    (enabledTypes.FDC_ITL && fdcInterlockQuery.isLoading) ||
     (enabledTypes.CTTTM && ctttmQuery.isLoading) ||
     (enabledTypes.RACB && racbQuery.isLoading) ||
     (enabledTypes.ESOP && esopQuery.isLoading);
@@ -70,10 +70,10 @@ export function useObserverLogs(
     () => {
       const eqpLogs = enabledTypes.EQP ? eqpQuery.data ?? [] : [];
       const tipLogs = enabledTypes.TIP ? tipQuery.data ?? [] : [];
-      const spcInterlockLogs = enabledTypes.SPC_INTERLOCK
+      const spcInterlockLogs = enabledTypes.SPC_ITL
         ? spcInterlockQuery.data ?? []
         : [];
-      const fdcInterlockLogs = enabledTypes.FDC_INTERLOCK
+      const fdcInterlockLogs = enabledTypes.FDC_ITL
         ? fdcInterlockQuery.data ?? []
         : [];
       const ctttmLogs = enabledTypes.CTTTM ? ctttmQuery.data ?? [] : [];
@@ -93,8 +93,8 @@ export function useObserverLogs(
     [
       enabledTypes.EQP,
       enabledTypes.TIP,
-      enabledTypes.SPC_INTERLOCK,
-      enabledTypes.FDC_INTERLOCK,
+      enabledTypes.SPC_ITL,
+      enabledTypes.FDC_ITL,
       enabledTypes.CTTTM,
       enabledTypes.RACB,
       enabledTypes.ESOP,
@@ -115,12 +115,12 @@ export function useObserverLogs(
         { type: "TIP", enabled: enabledTypes.TIP, query: tipQuery },
         {
           type: "SPC Interlock",
-          enabled: enabledTypes.SPC_INTERLOCK,
+          enabled: enabledTypes.SPC_ITL,
           query: spcInterlockQuery,
         },
         {
           type: "FDC Interlock",
-          enabled: enabledTypes.FDC_INTERLOCK,
+          enabled: enabledTypes.FDC_ITL,
           query: fdcInterlockQuery,
         },
         { type: "CTTTM", enabled: enabledTypes.CTTTM, query: ctttmQuery },
@@ -139,8 +139,8 @@ export function useObserverLogs(
     [
       enabledTypes.EQP,
       enabledTypes.TIP,
-      enabledTypes.SPC_INTERLOCK,
-      enabledTypes.FDC_INTERLOCK,
+      enabledTypes.SPC_ITL,
+      enabledTypes.FDC_ITL,
       enabledTypes.CTTTM,
       enabledTypes.RACB,
       enabledTypes.ESOP,

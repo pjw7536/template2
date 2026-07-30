@@ -900,7 +900,7 @@ def _fetch_interlock_logs(
         end_at=end_at,
         limit=limit,
     )
-    log_type = f"{kind_key}_INTERLOCK"
+    log_type = f"{kind_key}_ITL"
     return [
         _build_interlock_log_item(row, log_type=log_type)
         for row in rows

@@ -30,6 +30,10 @@ function buildTableRow(log) {
     })`;
   }
 
+  if (log.logType === "SPC_ITL" || log.logType === "FDC_ITL") {
+    row.info1 = log.interlockType || "-";
+  }
+
   return row;
 }
 

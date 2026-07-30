@@ -893,9 +893,9 @@ class ObserverEndpointTests(TestCase):
                 limit=20,
             )
 
-        self.assertEqual(logs[0]["id"], "SPC_INTERLOCK:17")
+        self.assertEqual(logs[0]["id"], "SPC_ITL:17")
         self.assertEqual(logs[0]["sourceId"], 17)
-        self.assertEqual(logs[0]["logType"], "SPC_INTERLOCK")
+        self.assertEqual(logs[0]["logType"], "SPC_ITL")
         self.assertEqual(logs[0]["eventType"], "SPC-017")
         self.assertEqual(logs[0]["eventTime"], "2026-07-28T14:55:02+09:00")
         self.assertEqual(logs[0]["eqpId"], "EQP-ALPHA")
@@ -907,6 +907,44 @@ class ObserverEndpointTests(TestCase):
             start_at="2026-07-28",
             end_at="2026-07-28",
             limit=20,
+        )
+
+    def test_observer_fdc_interlock_selector_uses_short_log_type(self) -> None:
+        """FDC interlock 응답에 단축된 logType과 ID 접두어를 적용합니다."""
+
+        with patch(
+            f"{OBSERVER_SELECTORS}.m_interlock_selectors.fetch_interlock_timeline_rows",
+            return_value=[
+                {
+                    "id": 18,
+                    "event_time": datetime(
+                        2026,
+                        7,
+                        28,
+                        15,
+                        0,
+                        tzinfo=ZoneInfo("Asia/Seoul"),
+                    ),
+                    "interlock_kind": "FDC",
+                    "interlock_no": "FDC-018",
+                    "prod_eqp_id": "EQP-ALPHA",
+                }
+            ],
+        ) as fetch_rows:
+            logs = selectors.get_logs_by_type(
+                eqp_id="eqp-alpha",
+                log_key="fdc-interlock",
+                start_at="2026-07-28",
+            )
+
+        self.assertEqual(logs[0]["id"], "FDC_ITL:18")
+        self.assertEqual(logs[0]["logType"], "FDC_ITL")
+        fetch_rows.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            interlock_kind="FDC",
+            start_at="2026-07-28",
+            end_at=None,
+            limit=None,
         )
 
     def test_observer_ctttm_logs_returns_results(self) -> None:

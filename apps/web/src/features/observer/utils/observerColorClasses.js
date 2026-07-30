@@ -9,8 +9,8 @@ export const OBSERVER_COLOR_CLASSES = {
   TIP_OPEN: "observer-color-tip-open observer-scale-green",
   TIP_CLOSE: "observer-color-tip-close observer-scale-red",
 
-  SPC_INTERLOCK: "observer-color-spc-interlock observer-scale-purple",
-  FDC_INTERLOCK: "observer-color-fdc-interlock observer-scale-amber",
+  SPC_ITL: "observer-color-spc-interlock observer-scale-purple",
+  FDC_ITL: "observer-color-fdc-interlock observer-scale-amber",
 
   CTTTM_CBM: "observer-color-ctttm-cbm observer-scale-cyan",
   CTTTM_NSP: "observer-color-ctttm-nsp observer-scale-purple",

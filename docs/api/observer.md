@@ -47,7 +47,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - SPC/FDC interlock은 `eqpId = m_interlock.prod_eqp_id`로만 매칭합니다.
 - SPC/FDC interlock의 event time은 `prod_progs_time`이며 `YYYYMMDD HHMMSS`를 Asia/Seoul 현지 시각으로 해석합니다.
 - 형식이 잘못되거나 비어 있는 `prod_progs_time`은 응답에서 제외합니다.
-- SPC/FDC 응답 `logType`은 각각 `SPC_INTERLOCK`, `FDC_INTERLOCK`이고 `eventTime`은 `+09:00` offset을 포함합니다.
+- SPC/FDC 응답 `logType`은 각각 `SPC_ITL`, `FDC_ITL`이고 `eventTime`은 `+09:00` offset을 포함합니다.
 - SPC/FDC 응답 ID는 `<logType>:<sourceId>` 형식이며 원본 `m_interlock.id`는 `sourceId`로 제공합니다.
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
 - `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.

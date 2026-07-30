@@ -4,8 +4,8 @@ const fallbackClass = "bg-muted text-foreground";
 export const logTypeBadgeClasses = {
   EQP: "bg-primary/15 text-primary",
   TIP: "bg-accent/20 text-accent-foreground",
-  SPC_INTERLOCK: "bg-primary/10 text-primary",
-  FDC_INTERLOCK: "bg-destructive/10 text-destructive",
+  SPC_ITL: "bg-primary/10 text-primary",
+  FDC_ITL: "bg-destructive/10 text-destructive",
   RACB: "bg-destructive/10 text-destructive",
   CTTTM: "bg-secondary/20 text-foreground",
   ESOP: "bg-muted text-foreground",

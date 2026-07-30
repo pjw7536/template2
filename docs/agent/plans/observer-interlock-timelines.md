@@ -37,7 +37,7 @@
 - 날짜만 전달된 `from/to`는 Asia/Seoul의 시작일 00:00:00과 종료일 23:59:59.999999로 해석한다.
 - offset이 포함된 datetime 범위는 Asia/Seoul로 변환한 뒤 `YYYYMMDD HHMMSS` 조회 경계로 변환한다.
 - Observer `eqpId`는 `prod_eqp_id`에만 매칭하며 `metro_eqp_id`와 `prod_chamber_id`는 조회 조건에 사용하지 않고 상세 필드로만 제공한다.
-- UI 선택 ID 충돌을 막기 위해 `id`는 `SPC_INTERLOCK:<source_id>` 또는 `FDC_INTERLOCK:<source_id>`로 반환하고 원본 PK는 `sourceId`로 제공한다.
+- UI 선택 ID 충돌을 막기 위해 `id`는 `SPC_ITL:<source_id>` 또는 `FDC_ITL:<source_id>`로 반환하고 원본 PK는 `sourceId`로 제공한다.
 - 공통 응답 후보:
   - 식별: `id`, `sourceId`, `logType`, `interlockKind`
   - 시간/설비: `eventTime`, `eqpId`, `prodEqpId`, `prodChamberId`, `metroEqpId`
@@ -55,7 +55,7 @@
 ### Frontend 데이터 흐름
 - `useSpcInterlockLogs`, `useFdcInterlockLogs`를 기존 `useObserverLogQuery` 위에 얇게 구성한다.
 - `useObserverLogs`가 두 query의 loading/error/refetch/data를 기존 로그들과 함께 조합한다.
-- `DEFAULT_TYPE_FILTERS`에 `SPC_INTERLOCK`, `FDC_INTERLOCK`를 별도 항목으로 추가해 독립 on/off를 지원한다.
+- `DEFAULT_TYPE_FILTERS`에 `SPC_ITL`, `FDC_ITL`를 별도 항목으로 추가해 독립 on/off를 지원한다.
 - `mergeLogsByTime`와 Data Log 변환에 두 배열을 포함하되 point event이므로 duration은 계산하지 않는다.
 - SPC/FDC 모두 Data Log 타입 필터, 행 선택, Log Detail에 포함한다.
 
@@ -125,3 +125,4 @@
 - 2026-07-30: 확정된 계약을 기준으로 backend selector/index/API와 frontend timeline/Data Log/상세 구현을 시작했다.
 - 2026-07-30: SPC/FDC endpoint, Asia/Seoul selector, 표현식 인덱스, frontend timeline/Data Log/상세 연결과 문서 갱신을 완료했다.
 - 2026-07-30: backend 64개 및 frontend 89개 테스트, migration check, production build, backend/frontend/UI boundary audit를 통과했다. docs audit은 기존 `docs/configuration.md`의 `DRONE_*` 색인 누락 1건으로 실패했으며 이번 변경 범위와 무관해 보존했다.
+- 2026-07-30: Observer interlock `logType` 계약을 `SPC_ITL`, `FDC_ITL`로 단축하고 backend/frontend/test/API 문서를 함께 갱신했다.

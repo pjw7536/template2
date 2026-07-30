@@ -25,8 +25,8 @@ export default function ObserverBoard({
   const visibleLogs = [
     ...(typeFilters?.EQP ? eqpLogs : []),
     ...(typeFilters?.TIP ? visibleTipLogs : []),
-    ...(typeFilters?.SPC_INTERLOCK ? spcInterlockLogs : []),
-    ...(typeFilters?.FDC_INTERLOCK ? fdcInterlockLogs : []),
+    ...(typeFilters?.SPC_ITL ? spcInterlockLogs : []),
+    ...(typeFilters?.FDC_ITL ? fdcInterlockLogs : []),
     ...(typeFilters?.CTTTM ? ctttmLogs : []),
     ...(typeFilters?.RACB ? racbLogs : []),
     ...(typeFilters?.ESOP ? esopLogs : []),
@@ -69,10 +69,10 @@ export default function ObserverBoard({
           />
         )}
 
-        {typeFilters?.SPC_INTERLOCK && (
+        {typeFilters?.SPC_ITL && (
           <InterlockObserver
             range={range}
-            logType="SPC_INTERLOCK"
+            logType="SPC_ITL"
             title="SPC Interlock"
             showLegend={showLegend}
             showTimeAxis={true}
@@ -80,10 +80,10 @@ export default function ObserverBoard({
           />
         )}
 
-        {typeFilters?.FDC_INTERLOCK && (
+        {typeFilters?.FDC_ITL && (
           <InterlockObserver
             range={range}
-            logType="FDC_INTERLOCK"
+            logType="FDC_ITL"
             title="FDC Interlock"
             showLegend={showLegend}
             showTimeAxis={true}

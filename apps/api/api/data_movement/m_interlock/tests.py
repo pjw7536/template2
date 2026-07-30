@@ -35,6 +35,7 @@ def _build_interlock_row(
     *,
     line_id: str = "LINE01",
     interlock_no: str = "INTLK-001",
+    lot_id: str = "LOT-01",
     usl: str = "12345678901234567890.12345678901234567890",
     spec_target: str = "10.0001",
     last_update_date: str = "2026-07-30 11:30:00",
@@ -60,7 +61,7 @@ def _build_interlock_row(
         "AREA01",
         "PROC01",
         "KIND",
-        "LOT-01",
+        lot_id,
         "STEP-100",
         "202607301100000000",
         "EQP-TYPE",
@@ -103,6 +104,11 @@ class MInterlockStructureTests(SimpleTestCase):
 
         for field_name in ("usl", "spec_target", "lsl", "ucl", "cl", "lcl"):
             self.assertEqual(MInterlock._meta.get_field(field_name).db_type(connection), "numeric")
+
+    def test_lot_id_uses_unbounded_postgresql_text(self) -> None:
+        """lot_id는 원천 길이를 제한하지 않는 text로 저장합니다."""
+
+        self.assertEqual(MInterlock._meta.get_field("lot_id").db_type(connection), "text")
 
     def test_timeline_index_matches_normalized_query_fields(self) -> None:
         """Observer 조회 인덱스 이름과 표현식 구성이 모델에 선언되어 있습니다."""
@@ -233,12 +239,13 @@ class MInterlockLifecycleTests(TestCase):
         """backtick row를 append하고 numeric 소수 자릿수를 손실 없이 저장합니다."""
 
         expected_usl = Decimal("12345678901234567890.12345678901234567890")
+        expected_lot_id = "LOT-" + ("LONG-" * 20)
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             incoming = root / "incoming"
             incoming.mkdir()
             source = incoming / "m_interlock_LINE01_20260730_1130.csv.deflate"
-            _write_deflate_csv(source, [_build_interlock_row()])
+            _write_deflate_csv(source, [_build_interlock_row(lot_id=expected_lot_id)])
 
             summary = loader_module.load_m_interlock_files(data_dir=root)
 
@@ -247,6 +254,7 @@ class MInterlockLifecycleTests(TestCase):
         self.assertEqual(summary.success_count, 1, summary.outcomes)
         self.assertEqual(summary.outcomes[0].row_count, 1)
         loaded = MInterlock.objects.get()
+        self.assertEqual(loaded.lot_id, expected_lot_id)
         self.assertEqual(loaded.usl, expected_usl)
         self.assertEqual(loaded.spec_target, Decimal("10.0001"))
         self.assertEqual(

@@ -20,6 +20,7 @@
 - 파일명은 `m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 정규식으로 검증한다.
 - 압축 해제된 각 row는 backtick으로 분리하고 제공된 35개 컬럼에 순서대로 매핑한다.
 - `usl`, `spec_target`, `lsl`, `ucl`, `cl`, `lcl`은 PostgreSQL 제약 없는 `numeric`으로 저장한다.
+- `lot_id`는 원천 문자열 길이를 제한하지 않는 PostgreSQL `text`로 저장한다.
 - `last_update_date`는 timezone-aware Django `DateTimeField`로 저장하며 공통 파서가 UTC로 변환한다.
 - 한 파일은 transaction 내 PostgreSQL COPY로 append한다. 동일 파일 재전달 또는 동일 row 중복에 대한 deduplication은 수행하지 않는다.
 - 대상 테이블에는 `id`, `created_at`을 추가하고 load-job 테이블로 파일 처리 결과를 기록한다.
@@ -53,3 +54,4 @@
 - 2026-07-30: 신규 앱 테스트 11개와 전체 data movement 테스트 115개가 통과했다.
 - 2026-07-30: migration dry-run, backend boundary audit, docs audit, diff whitespace 검사가 모두 통과했다.
 - 2026-07-30: Airflow DAG는 기존 `__pycache__` 쓰기 권한 때문에 `py_compile` 대신 캐시 없는 source compile 검사로 문법을 확인했다.
+- 2026-07-30: `lot_id`를 `varchar(40)`에서 길이 제한 없는 PostgreSQL `text`로 확장하고 새 migration과 장문 적재 회귀 테스트를 추가했다.

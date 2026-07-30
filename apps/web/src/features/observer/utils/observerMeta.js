@@ -27,11 +27,11 @@ export const groupConfig = {
       L3_TIP: OBSERVER_COLOR_CLASSES.TIP_CLOSE,
     },
   },
-  SPC_INTERLOCK: {
-    defaultClass: OBSERVER_COLOR_CLASSES.SPC_INTERLOCK,
+  SPC_ITL: {
+    defaultClass: OBSERVER_COLOR_CLASSES.SPC_ITL,
   },
-  FDC_INTERLOCK: {
-    defaultClass: OBSERVER_COLOR_CLASSES.FDC_INTERLOCK,
+  FDC_ITL: {
+    defaultClass: OBSERVER_COLOR_CLASSES.FDC_ITL,
   },
   RACB: {
     defaultClass: OBSERVER_COLOR_CLASSES.RACB,

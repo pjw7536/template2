@@ -59,8 +59,8 @@ export default function LogDetailSection({
         return <EqpDetail log={log} />;
       case "TIP":
         return <TipDetail log={log} />;
-      case "SPC_INTERLOCK":
-      case "FDC_INTERLOCK":
+      case "SPC_ITL":
+      case "FDC_ITL":
         return <InterlockDetail log={log} />;
       case "RACB":
         return <RacbDetail log={log} />;
