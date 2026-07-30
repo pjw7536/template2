@@ -10,6 +10,7 @@ from api.data_movement.common.services.file_loader import (
     list_data_files,
     list_incoming_files,
 )
+from api.data_movement.common.services.load_command import DataMovementLoadCommand
 from api.data_movement.common.services.postgres_copy import (
     CopyFullReplaceResult,
     CopyReplaceResult,
@@ -24,6 +25,7 @@ __all__ = [
     "CopyFullReplaceResult",
     "CopyReplaceResult",
     "DataMovementDirs",
+    "DataMovementLoadCommand",
     "claim_incoming_file",
     "copy_full_replace_rows",
     "copy_replace_rows",

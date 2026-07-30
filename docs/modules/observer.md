@@ -9,7 +9,7 @@ Observer는 설비 Observer 화면에 필요한 기준 정보와 로그를 조�
 - 공정 그룹 조회
 - 설비 목록/상세 조회
 - 설비별 통합 로그 조회
-- EQP, TIP, CTTTM, RACB, ESOP 유형별 로그 조회
+- EQP, TIP, SPC Interlock, FDC Interlock, CTTTM, RACB, ESOP 유형별 로그 조회
 - URL의 `eqpId`를 기준으로 설비 상세와 observer item 동기화
 - tkin Prevent process/step matrix 조회
 
@@ -35,6 +35,8 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 | Equipment | 기본 DB `station_master`, `drone_target` | 설비 목록과 상세 |
 | EQP log | 기본 DB `eqp_status_chg` | 상태 변경 기반 설비 로그 |
 | TIP log | 기본 DB `mi_tip_update_hist` | TIP 유형별 설비 로그 |
+| SPC Interlock log | 기본 DB `m_interlock` | `prod_eqp_id`와 `interlock_kind=SPC` 기준 이력 |
+| FDC Interlock log | 기본 DB `m_interlock` | `prod_eqp_id`와 `interlock_kind=FDC` 기준 이력 |
 | CTTTM log | 기본 DB `ctttm_workorder_list`, `ct_process_comment` | CTTTM 유형별 설비 로그와 요약 |
 | RACB log | 기본 DB `racb_list` | RACB 유형별 설비 로그 |
 | ESOP log | 기본 DB `drone_sop` | ESOP 관련 로그 |
@@ -60,6 +62,9 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 | 최대 limit | 5000 |
 | 날짜 형식 | `YYYY-MM-DD` 또는 datetime 문자열 |
 | 정렬/변환 | backend selector가 유형별 raw row를 공통 payload로 변환 |
+| Interlock 시간 | `prod_progs_time`을 `YYYYMMDD HHMMSS`, Asia/Seoul로 해석 |
+
+SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표시 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`입니다. 두 유형은 Data Log와 Log Detail에도 포함됩니다.
 
 ## 프론트 구조
 
@@ -81,6 +86,7 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 - 화면이 느리면 로그 API의 `from`, `to`, `limit` 조합과 응답 건수를 먼저 확인합니다.
 - CTTTM 요약이 비어 있으면 `summarize_ct_process_comment` command와 `ct_process_comment.update_flag` 상태를 확인합니다.
 - ESOP 로그가 누락되면 `api.drone` 데이터와 observer 로그 결합 지점을 함께 확인합니다.
+- SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id`, `interlock_kind`, `prod_progs_time` 형식과 적재 상태를 확인합니다.
 - tkin Prevent matrix가 비어 있으면 `station_master.ch_main`과 `m_tkin_prevent.eqp_id` 매핑부터 확인합니다.
 - tkin Prevent에서 Line은 ESOP Dashboard 선택값을 사용하며, user_sdwt_prod 후보는 `account_affiliation.line/user_sdwt_prod` 기준입니다.
 - tkin Prevent의 PRC/process/step/matrix 조회는 선택된 user_sdwt_prod와 PRC Group 기준입니다.

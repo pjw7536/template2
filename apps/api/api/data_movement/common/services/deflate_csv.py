@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import zlib
 from pathlib import Path
@@ -25,6 +26,21 @@ def _load_polars() -> Any:
     return pl
 
 
+def _validate_column_count(*, raw: bytes, separator: str, expected_count: int) -> None:
+    """헤더 없는 CSV의 각 non-empty row 컬럼 수가 계약과 같은지 검증합니다."""
+
+    text = raw.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=separator)
+    for row_index, row in enumerate(reader, start=1):
+        if not row or all(value == "" for value in row):
+            continue
+        if len(row) != expected_count:
+            raise ValueError(
+                f"CSV row {row_index} 컬럼 수가 올바르지 않습니다: "
+                f"expected={expected_count}, actual={len(row)}"
+            )
+
+
 def read_deflate_csv_file(
     *,
     file_path: Path,
@@ -32,6 +48,7 @@ def read_deflate_csv_file(
     datetime_columns: Sequence[str],
     float_columns: Sequence[str],
     separator: str = "\x03",
+    strict_column_count: bool = False,
 ) -> Any:
     """deflate 압축 CSV를 읽고 테이블 spec 기준으로 타입을 변환합니다."""
 
@@ -39,6 +56,9 @@ def read_deflate_csv_file(
 
     with file_path.open("rb") as handle:
         raw = zlib.decompress(handle.read())
+
+    if strict_column_count:
+        _validate_column_count(raw=raw, separator=separator, expected_count=len(columns))
 
     frame = pl.read_csv(
         io.BytesIO(raw),

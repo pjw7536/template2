@@ -18,7 +18,7 @@
 | L0 Spider | `/api/v1/l0_spider/` (`/api/v1/fdc-trend/` 호환) | `apps/api/api/l0_spider/urls.py` | `hard-spec/meta`, `hard-spec/recommendations` |
 | PM SPIDER | `/api/v1/pm_spider/` | `apps/api/api/pm_comparison/urls.py` | `meta`, `compare` |
 | TTTM Spider | `/api/v1/tttm_spider/` | `apps/api/api/tttm_spider/urls.py` | `combo/options`, `combo/types`, `combo/data-types`, `targets/eqps`, `targets/chambers`, `targets/lotwf`, `targets/golden`, `targets/result-status`, `dashboard/data`, `sensor-trace` |
-| Observer | `/api/v1/observer/` | `apps/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<line_id>/<eqp_id>`, `equipment-info/<eqp_id>`, `logs`, `logs/eqp`, `logs/tip`, `logs/ctttm`, `logs/racb`, `logs/esop`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
+| Observer | `/api/v1/observer/` | `apps/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<line_id>/<eqp_id>`, `equipment-info/<eqp_id>`, `logs`, `logs/eqp`, `logs/tip`, `logs/spc-interlock`, `logs/fdc-interlock`, `logs/ctttm`, `logs/racb`, `logs/esop`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
 | AppStore | `/api/v1/appstore/` | `apps/api/api/appstore/urls.py` | `apps`, `apps/<app_id>`, `apps/<app_id>/cover`, `apps/<app_id>/like`, `apps/<app_id>/view`, `apps/<app_id>/comments`, `apps/<app_id>/comments/<comment_id>`, `apps/<app_id>/comments/<comment_id>/like` |
 | VOC | `/api/v1/voc/` | `apps/api/api/voc/urls.py` | `posts`, `posts/<post_id>`, `posts/<post_id>/replies` |
 | Activity | `/api/v1/activity/` | `apps/api/api/activity/urls.py` | `logs`, `app-access`, `app-access-stats`, `app-access-sync-external` |
@@ -58,6 +58,7 @@
 | `api.data_movement.ctttm_workorder_list` | `CtttmWorkorderList`, `CtttmWorkorderListLoadJob` |
 | `api.data_movement.ct_process_comment` | `CtProcessComment`, `CtProcessCommentLoadJob` |
 | `api.data_movement.eqp_status_chg` | `EqpStatusChg`, `EqpStatusChgLoadJob` |
+| `api.data_movement.m_interlock` | `MInterlock`, `MInterlockLoadJob` |
 | `api.data_movement.mi_tip_update_hist` | `MiTipUpdateHist`, `MiTipUpdateHistLoadJob` |
 | `api.data_movement.racb_list` | `RacbList`, `RacbListLoadJob` |
 | `api.data_movement.mes_line_mapping_info` | `MesLineMappingInfo`, `MesLineMappingInfoLoadJob` |
@@ -80,6 +81,7 @@
 | `load_ct_process_comment` | `apps/api/api/data_movement/ct_process_comment/management/commands/load_ct_process_comment.py` | `ct_process_comment` deflate CSV 파일 적재 |
 | `summarize_ct_process_comment` | `apps/api/api/data_movement/ct_process_comment/management/commands/summarize_ct_process_comment.py` | `ct_process_comment` OpenWebUI 요약 |
 | `load_eqp_status_chg` | `apps/api/api/data_movement/eqp_status_chg/management/commands/load_eqp_status_chg.py` | `eqp_status_chg` deflate CSV 파일 적재 |
+| `load_m_interlock` | `apps/api/api/data_movement/m_interlock/management/commands/load_m_interlock.py` | `m_interlock` deflate CSV 파일 incremental append 적재 |
 | `load_mi_tip_update_hist` | `apps/api/api/data_movement/mi_tip_update_hist/management/commands/load_mi_tip_update_hist.py` | `mi_tip_update_hist` deflate CSV 파일 적재 |
 | `load_racb_list` | `apps/api/api/data_movement/racb_list/management/commands/load_racb_list.py` | `racb_list` deflate CSV 파일 적재 |
 | `load_mes_line_mapping_info` | `apps/api/api/data_movement/mes_line_mapping_info/management/commands/load_mes_line_mapping_info.py` | `mes_line_mapping_info` deflate CSV 파일 전체 교체 적재 |

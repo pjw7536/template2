@@ -4,6 +4,7 @@ import TipDetail from "./TipDetail";
 import RacbDetail from "./RacbDetail";
 import CtttmDetail from "./CtttmDetail";
 import EsopDetail from "./EsopDetail";
+import InterlockDetail from "./InterlockDetail";
 
 function findScrollableParent(element) {
   let current = element;
@@ -58,6 +59,9 @@ export default function LogDetailSection({
         return <EqpDetail log={log} />;
       case "TIP":
         return <TipDetail log={log} />;
+      case "SPC_INTERLOCK":
+      case "FDC_INTERLOCK":
+        return <InterlockDetail log={log} />;
       case "RACB":
         return <RacbDetail log={log} />;
       case "CTTTM":

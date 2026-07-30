@@ -614,6 +614,18 @@ class ObserverTipLogsView(_ObserverLogsByTypeView):
     log_key = "tip"
 
 
+class ObserverSpcInterlockLogsView(_ObserverLogsByTypeView):
+    """SPC interlock 이력만 반환합니다."""
+
+    log_key = "spc-interlock"
+
+
+class ObserverFdcInterlockLogsView(_ObserverLogsByTypeView):
+    """FDC interlock 이력만 반환합니다."""
+
+    log_key = "fdc-interlock"
+
+
 class ObserverCtttmLogsView(_ObserverLogsByTypeView):
     """CTTTM 타입 로그만 반환합니다."""
 
@@ -635,6 +647,7 @@ class ObserverEsopLogsView(_ObserverLogsByTypeView):
 __all__ = [
     "ObserverCtttmLogsView",
     "ObserverEsopLogsView",
+    "ObserverFdcInterlockLogsView",
     "ObserverEquipmentInfoView",
     "ObserverEqpLogsView",
     "ObserverEquipmentsView",
@@ -643,6 +656,7 @@ __all__ = [
     "ObserverPrcGroupView",
     "ObserverRacbLogsView",
     "ObserverSdwtView",
+    "ObserverSpcInterlockLogsView",
     "ObserverTipLogsView",
     "ObserverTkinPreventMatrixView",
     "ObserverTkinPreventProcessesView",

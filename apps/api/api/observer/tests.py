@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -830,6 +832,82 @@ class ObserverEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(isinstance(response.json(), list))
         self.assert_log_selector_called(selector, log_key="tip")
+
+    def test_observer_interlock_endpoints_return_separate_log_types(self) -> None:
+        """SPC와 FDC endpoint가 각자의 selector key를 전달합니다."""
+
+        endpoint_cases = (
+            ("observer-logs-spc-interlock", "spc-interlock"),
+            ("observer-logs-fdc-interlock", "fdc-interlock"),
+        )
+        for route_name, log_key in endpoint_cases:
+            with self.subTest(route_name=route_name):
+                with patch(
+                    f"{OBSERVER_VIEW_SELECTORS}.get_logs_by_type",
+                    return_value=[],
+                ) as selector:
+                    response = self.client.get(
+                        reverse(route_name),
+                        {"eqpId": "EQP-ALPHA"},
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                self.assert_log_selector_called(selector, log_key=log_key)
+
+    def test_observer_spc_interlock_selector_maps_detail_payload(self) -> None:
+        """m_interlock 원천 필드를 SPC Observer 공통/상세 계약으로 변환합니다."""
+
+        source_time = datetime(
+            2026,
+            7,
+            28,
+            14,
+            55,
+            2,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        )
+        with patch(
+            f"{OBSERVER_SELECTORS}.m_interlock_selectors.fetch_interlock_timeline_rows",
+            return_value=[
+                {
+                    "id": 17,
+                    "event_time": source_time,
+                    "interlock_kind": "SPC",
+                    "interlock_no": "SPC-017",
+                    "interlock_type": "SPEC",
+                    "interlock_comment": "상한 초과",
+                    "interlock_desc": "SPC 인터락",
+                    "prod_eqp_id": "EQP-ALPHA",
+                    "prod_chamber_id": "CH-A",
+                    "prod_progs_time": "20260728 145502",
+                    "item_value": "10.5",
+                    "usl": "10.0",
+                }
+            ],
+        ) as fetch_rows:
+            logs = selectors.get_logs_by_type(
+                eqp_id="eqp-alpha",
+                log_key="spc-interlock",
+                start_at="2026-07-28",
+                end_at="2026-07-28",
+                limit=20,
+            )
+
+        self.assertEqual(logs[0]["id"], "SPC_INTERLOCK:17")
+        self.assertEqual(logs[0]["sourceId"], 17)
+        self.assertEqual(logs[0]["logType"], "SPC_INTERLOCK")
+        self.assertEqual(logs[0]["eventType"], "SPC-017")
+        self.assertEqual(logs[0]["eventTime"], "2026-07-28T14:55:02+09:00")
+        self.assertEqual(logs[0]["eqpId"], "EQP-ALPHA")
+        self.assertEqual(logs[0]["prodChamberId"], "CH-A")
+        self.assertEqual(logs[0]["usl"], "10.0")
+        fetch_rows.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            interlock_kind="SPC",
+            start_at="2026-07-28",
+            end_at="2026-07-28",
+            limit=20,
+        )
 
     def test_observer_ctttm_logs_returns_results(self) -> None:
         with patch(

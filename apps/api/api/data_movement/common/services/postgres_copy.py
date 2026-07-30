@@ -29,6 +29,14 @@ class CopyFullReplaceResult:
     column_count: int
 
 
+@dataclass(frozen=True)
+class CopyAppendResult:
+    """COPY incremental append 적재 결과입니다."""
+
+    row_count: int
+    column_count: int
+
+
 def _quote_identifier(identifier: str) -> str:
     """단일 SQL identifier를 안전하게 quote 처리합니다."""
 
@@ -63,6 +71,43 @@ def _write_frame_csv(*, frame: Any) -> io.StringIO:
     frame.write_csv(buffer, include_header=False, separator=",", null_value="")
     buffer.seek(0)
     return buffer
+
+
+def copy_append_rows(
+    *,
+    frame: Any,
+    table_name: str,
+    columns: Sequence[str],
+) -> CopyAppendResult:
+    """PostgreSQL COPY를 사용해 DataFrame row를 대상 테이블에 append합니다."""
+
+    row_count, column_count = frame.shape
+    if row_count == 0:
+        raise ValueError("적재할 DataFrame이 비어 있습니다.")
+
+    quoted_table = _quote_identifier(table_name)
+    quoted_columns = _quote_columns(columns)
+    buffer = _write_frame_csv(frame=frame)
+
+    with connection.cursor() as cursor:
+        copy_cursor = getattr(cursor, "cursor", cursor)
+        if not hasattr(copy_cursor, "copy"):
+            raise RuntimeError("psycopg3 COPY API를 사용할 수 없습니다.")
+
+        copy_sql = f"""
+            COPY {quoted_table} ({quoted_columns})
+            FROM STDIN
+            WITH (
+                FORMAT CSV,
+                NULL '',
+                QUOTE '"',
+                ESCAPE '"'
+            )
+        """
+        with copy_cursor.copy(copy_sql) as copy:
+            copy.write(buffer.getvalue())
+
+    return CopyAppendResult(row_count=row_count, column_count=column_count)
 
 
 def copy_replace_rows(

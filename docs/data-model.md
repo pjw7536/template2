@@ -26,6 +26,8 @@
 | Account | `UserAccess` | 사용자별 scope 접근 상태와 고정 역할 |
 | Account | `AccessAuditLog` | 접근 상태·정책·scope 변경 감사 이력 |
 | Activity | `ActivityLog` | 사용자/시스템 활동 로그 |
+| Data Movement | `MInterlock` | m_interlock 원천 파일의 append-only interlock 이력 |
+| Data Movement | `MInterlockLoadJob` | m_interlock 파일별 적재 상태와 처리 결과 |
 | Emails | `Email` | 수집/작성/분류된 메일 본문과 metadata |
 | Emails | `EmailOutbox` | RAG insert/delete 비동기 작업 |
 | Emails | `EmailAsset` | 메일 첨부/이미지/OCR 대상 asset metadata |
@@ -63,7 +65,8 @@
 - `EmailOutbox`는 RAG 등록/삭제 작업을 보관하고 `process_email_outbox`가 처리합니다.
 - Drone SOP는 target, channel config, recipient, dispatch, delivery로 분리되어 알림 설정과 발송 결과를 추적합니다.
 - AppStore와 VOC는 작성자와 댓글/답변 관계를 기본 DB에 저장합니다.
-- Observer는 기준정보를 기본 DB의 `mes_line_mapping_info`, `station_master`에서 조회하고, 로그를 `eqp_status_chg`, `mi_tip_update_hist`, `ctttm_workorder_list`, `ct_process_comment`, `racb_list`, `drone_sop`에서 조회합니다.
+- Observer는 기준정보를 기본 DB의 `mes_line_mapping_info`, `station_master`에서 조회하고, 로그를 `eqp_status_chg`, `mi_tip_update_hist`, `m_interlock`, `ctttm_workorder_list`, `ct_process_comment`, `racb_list`, `drone_sop`에서 조회합니다.
+- `MInterlock`의 Observer 조회는 정규화된 `prod_eqp_id`, 정규화된 `interlock_kind`, `prod_progs_time` 복합 표현식 인덱스를 사용합니다.
 
 ## 변경 시 확인 항목
 

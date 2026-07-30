@@ -107,6 +107,12 @@ with DAG(
         op_kwargs={"table_name": "eqp_status_chg"},
     )
 
+    load_m_interlock = PythonOperator(
+        task_id="load_m_interlock",
+        python_callable=run_data_movement_load,
+        op_kwargs={"table_name": "m_interlock"},
+    )
+
     load_mi_tip_update_hist = PythonOperator(
         task_id="load_mi_tip_update_hist",
         python_callable=run_data_movement_load,

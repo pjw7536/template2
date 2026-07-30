@@ -1,4 +1,5 @@
 import React from "react";
+import { DATA_TYPE_LABELS } from "../../utils/constants";
 
 export default function ObserverTableFilters({ typeFilters, handleFilter }) {
   return (
@@ -12,7 +13,7 @@ export default function ObserverTableFilters({ typeFilters, handleFilter }) {
             onChange={handleFilter}
             className="rounded border border-border"
           />
-          {type.replace("_LOG", "")}
+          {DATA_TYPE_LABELS[type] || type.replace("_LOG", "")}
         </label>
       ))}
     </div>

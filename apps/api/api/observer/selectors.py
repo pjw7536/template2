@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import connection
 
 from api.data_movement.eqp_status_chg import selectors as eqp_status_chg_selectors
+from api.data_movement.m_interlock import selectors as m_interlock_selectors
 from api.data_movement.mi_tip_update_hist import selectors as mi_tip_update_hist_selectors
 from api.data_movement.racb_list import selectors as racb_list_selectors
 from api.drone import selectors as drone_selectors
@@ -812,6 +813,100 @@ def _fetch_tip_logs(
     )
 
 
+def _build_interlock_log_item(
+    row: Row,
+    *,
+    log_type: str,
+) -> Dict[str, object]:
+    """m_interlock 원천 행을 Observer 공통 로그와 상세 필드로 변환합니다."""
+
+    source_id = row.get("id")
+    event_time = row.get("event_time")
+    interlock_no = _safe_text(row.get("interlock_no")).strip()
+    interlock_type = _safe_text(row.get("interlock_type")).strip()
+    interlock_kind = _safe_text(row.get("interlock_kind")).strip().upper()
+    event_type = interlock_no or interlock_type or interlock_kind
+    comment = (
+        _safe_text(row.get("interlock_comment")).strip()
+        or _safe_text(row.get("interlock_desc")).strip()
+        or _safe_text(row.get("engr_comment")).strip()
+    )
+
+    return {
+        "id": f"{log_type}:{source_id}",
+        "sourceId": source_id,
+        "logType": log_type,
+        "eventType": event_type,
+        "eventTime": event_time.isoformat()
+        if isinstance(event_time, datetime)
+        else _safe_text(event_time),
+        "operator": None,
+        "comment": comment,
+        "interlockKind": interlock_kind,
+        "lineId": row.get("line_id"),
+        "interlockNo": row.get("interlock_no"),
+        "itemValue": row.get("item_value"),
+        "interlockType": row.get("interlock_type"),
+        "interlockComment": row.get("interlock_comment"),
+        "ppid": row.get("ppid"),
+        "usl": row.get("usl"),
+        "specTarget": row.get("spec_target"),
+        "lsl": row.get("lsl"),
+        "ucl": row.get("ucl"),
+        "cl": row.get("cl"),
+        "lcl": row.get("lcl"),
+        "batchId": row.get("batch_id"),
+        "metroItem": row.get("metro_item"),
+        "interlockDesc": row.get("interlock_desc"),
+        "areaName": row.get("area_name"),
+        "processId": row.get("process_id"),
+        "lotId": row.get("lot_id"),
+        "prodStepSeq": row.get("prod_step_seq"),
+        "prodProgsTime": row.get("prod_progs_time"),
+        "prodEqpType": row.get("prod_eqp_type"),
+        "prodBayName": row.get("prod_bay_name"),
+        "prodChamberId": row.get("prod_chamber_id"),
+        "metroStepSeq": row.get("metro_step_seq"),
+        "metroProgsTime": row.get("metro_progs_time"),
+        "intlkOccurWeek": row.get("intlk_occur_week"),
+        "intlkOccurYearM": row.get("intlk_occur_year_m"),
+        "metroEqpId": row.get("metro_eqp_id"),
+        "prodEqpId": row.get("prod_eqp_id"),
+        "eqpId": row.get("prod_eqp_id"),
+        "lastUpdateDate": row.get("last_update_date"),
+        "waferId": row.get("wafer_id"),
+        "eqpProcessPhase": row.get("eqp_process_phase"),
+        "eqpDetailComment": row.get("eqp_detail_comment"),
+        "engrComment": row.get("engr_comment"),
+    }
+
+
+def _fetch_interlock_logs(
+    *,
+    eqp_id: str,
+    interlock_kind: str,
+    start_at: object | None = None,
+    end_at: object | None = None,
+    limit: int | None = None,
+) -> List[Dict[str, object]]:
+    """SPC/FDC interlock 이력을 종류별 Observer 로그로 반환합니다."""
+
+    kind_key = normalize_id(interlock_kind)
+    resolved_start_at = start_at or _period_date()
+    rows = m_interlock_selectors.fetch_interlock_timeline_rows(
+        eqp_id=eqp_id,
+        interlock_kind=kind_key,
+        start_at=resolved_start_at,
+        end_at=end_at,
+        limit=limit,
+    )
+    log_type = f"{kind_key}_INTERLOCK"
+    return [
+        _build_interlock_log_item(row, log_type=log_type)
+        for row in rows
+    ]
+
+
 def _fetch_ctttm_logs(
     *,
     eqp_id: str,
@@ -1110,6 +1205,20 @@ OBSERVER_LOG_FETCHERS: Dict[str, LogFetcher] = {
         end_at=end_at,
         limit=limit,
     ),
+    "spc-interlock": lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
+        eqp_id=eqp_key,
+        interlock_kind="SPC",
+        start_at=start_at,
+        end_at=end_at,
+        limit=limit,
+    ),
+    "fdc-interlock": lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
+        eqp_id=eqp_key,
+        interlock_kind="FDC",
+        start_at=start_at,
+        end_at=end_at,
+        limit=limit,
+    ),
     "ctttm": lambda eqp_key, start_at, end_at, limit: _fetch_ctttm_logs(
         eqp_id=eqp_key,
         start_at=start_at,
@@ -1129,7 +1238,15 @@ OBSERVER_LOG_FETCHERS: Dict[str, LogFetcher] = {
         limit=limit,
     ),
 }
-OBSERVER_LOG_KEYS = ("eqp", "tip", "ctttm", "racb", "esop")
+OBSERVER_LOG_KEYS = (
+    "eqp",
+    "tip",
+    "spc-interlock",
+    "fdc-interlock",
+    "ctttm",
+    "racb",
+    "esop",
+)
 
 
 def _fetch_logs_by_type_normalized(

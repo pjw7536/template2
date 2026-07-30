@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     "api.data_movement.ct_process_comment",
     "api.data_movement.ctttm_workorder_list",
     "api.data_movement.eqp_status_chg",
+    "api.data_movement.m_interlock",
     "api.data_movement.mi_tip_update_hist",
     "api.data_movement.mes_line_mapping_info",
     "api.data_movement.m_tkin_prevent",
@@ -281,6 +282,10 @@ OPENWEBUI_SUMMARY_BATCH_SIZE = env_int("OPENWEBUI_SUMMARY_BATCH_SIZE", 100) or 1
 DATA_MOVEMENT_EQP_STATUS_CHG_DIR = env(
     "DATA_MOVEMENT_EQP_STATUS_CHG_DIR",
     "/data/data_movement/m_eqp_status_chg",
+)
+DATA_MOVEMENT_M_INTERLOCK_DIR = env(
+    "DATA_MOVEMENT_M_INTERLOCK_DIR",
+    "/data/data_movement/m_interlock",
 )
 DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR = env(
     "DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR",

@@ -92,6 +92,8 @@ export function mergeLogsByTime(logsByType = {}) {
   const {
     eqpLogs = [],
     tipLogs = [],
+    spcInterlockLogs = [],
+    fdcInterlockLogs = [],
     ctttmLogs = [],
     racbLogs = [],
     esopLogs = [],
@@ -100,6 +102,8 @@ export function mergeLogsByTime(logsByType = {}) {
   return [
     ...eqpLogs,
     ...tipLogs,
+    ...spcInterlockLogs,
+    ...fdcInterlockLogs,
     ...ctttmLogs,
     ...racbLogs,
     ...esopLogs,

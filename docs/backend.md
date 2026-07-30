@@ -81,6 +81,7 @@
 | `load_ct_process_comment` | `api.data_movement.ct_process_comment` | `python manage.py load_ct_process_comment` |
 | `summarize_ct_process_comment` | `api.data_movement.ct_process_comment` | `python manage.py summarize_ct_process_comment` |
 | `load_eqp_status_chg` | `api.data_movement.eqp_status_chg` | `python manage.py load_eqp_status_chg` |
+| `load_m_interlock` | `api.data_movement.m_interlock` | `python manage.py load_m_interlock` |
 | `load_mi_tip_update_hist` | `api.data_movement.mi_tip_update_hist` | `python manage.py load_mi_tip_update_hist` |
 | `load_racb_list` | `api.data_movement.racb_list` | `python manage.py load_racb_list` |
 | `load_mes_line_mapping_info` | `api.data_movement.mes_line_mapping_info` | `python manage.py load_mes_line_mapping_info` |

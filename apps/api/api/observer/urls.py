@@ -11,6 +11,7 @@ from django.urls import path
 from .views import (
     ObserverCtttmLogsView,
     ObserverEsopLogsView,
+    ObserverFdcInterlockLogsView,
     ObserverEquipmentInfoView,
     ObserverEqpLogsView,
     ObserverEquipmentsView,
@@ -19,6 +20,7 @@ from .views import (
     ObserverPrcGroupView,
     ObserverRacbLogsView,
     ObserverSdwtView,
+    ObserverSpcInterlockLogsView,
     ObserverTipLogsView,
     ObserverTkinPreventMatrixView,
     ObserverTkinPreventPrcGroupsView,
@@ -44,6 +46,16 @@ urlpatterns = [
     path("logs", ObserverLogsView.as_view(), name="observer-logs"),
     path("logs/eqp", ObserverEqpLogsView.as_view(), name="observer-logs-eqp"),
     path("logs/tip", ObserverTipLogsView.as_view(), name="observer-logs-tip"),
+    path(
+        "logs/spc-interlock",
+        ObserverSpcInterlockLogsView.as_view(),
+        name="observer-logs-spc-interlock",
+    ),
+    path(
+        "logs/fdc-interlock",
+        ObserverFdcInterlockLogsView.as_view(),
+        name="observer-logs-fdc-interlock",
+    ),
     path("logs/ctttm", ObserverCtttmLogsView.as_view(), name="observer-logs-ctttm"),
     path("logs/racb", ObserverRacbLogsView.as_view(), name="observer-logs-racb"),
     path("logs/esop", ObserverEsopLogsView.as_view(), name="observer-logs-esop"),

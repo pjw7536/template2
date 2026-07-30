@@ -1,6 +1,7 @@
 import React from "react";
 import EqpObserver from "./EqpObserver";
 import TipObserver from "./TipObserver";
+import InterlockObserver from "./InterlockObserver";
 import CtttmObserver from "./CtttmObserver";
 import RacbObserver from "./RacbObserver";
 import EsopObserver from "./EsopObserver";
@@ -12,6 +13,8 @@ export default function ObserverBoard({
   selectedTipGroups,
   eqpLogs = [],
   tipLogs = [],
+  spcInterlockLogs = [],
+  fdcInterlockLogs = [],
   ctttmLogs = [],
   racbLogs = [],
   esopLogs = [],
@@ -22,6 +25,8 @@ export default function ObserverBoard({
   const visibleLogs = [
     ...(typeFilters?.EQP ? eqpLogs : []),
     ...(typeFilters?.TIP ? visibleTipLogs : []),
+    ...(typeFilters?.SPC_INTERLOCK ? spcInterlockLogs : []),
+    ...(typeFilters?.FDC_INTERLOCK ? fdcInterlockLogs : []),
     ...(typeFilters?.CTTTM ? ctttmLogs : []),
     ...(typeFilters?.RACB ? racbLogs : []),
     ...(typeFilters?.ESOP ? esopLogs : []),
@@ -61,6 +66,28 @@ export default function ObserverBoard({
             showTimeAxis={true}
             totalTipLogCount={tipLogs.length}
             tipLogs={visibleTipLogs}
+          />
+        )}
+
+        {typeFilters?.SPC_INTERLOCK && (
+          <InterlockObserver
+            range={range}
+            logType="SPC_INTERLOCK"
+            title="SPC Interlock"
+            showLegend={showLegend}
+            showTimeAxis={true}
+            logs={spcInterlockLogs}
+          />
+        )}
+
+        {typeFilters?.FDC_INTERLOCK && (
+          <InterlockObserver
+            range={range}
+            logType="FDC_INTERLOCK"
+            title="FDC Interlock"
+            showLegend={showLegend}
+            showTimeAxis={true}
+            logs={fdcInterlockLogs}
           />
         )}
 

@@ -187,6 +187,8 @@ export default function ObserverPage() {
                 selectedTipGroups={selectedTipGroups}
                 eqpLogs={logsWithDuration.eqpLogs}
                 tipLogs={logsWithDuration.tipLogs}
+                spcInterlockLogs={logsWithDuration.spcInterlockLogs}
+                fdcInterlockLogs={logsWithDuration.fdcInterlockLogs}
                 ctttmLogs={logsWithDuration.ctttmLogs}
                 racbLogs={logsWithDuration.racbLogs}
                 esopLogs={logsWithDuration.esopLogs}

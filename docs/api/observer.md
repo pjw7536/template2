@@ -24,6 +24,8 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/logs?eqpId=...` | 전체 로그 |
 | GET | `/api/v1/observer/logs/eqp?eqpId=...` | EQP 로그 |
 | GET | `/api/v1/observer/logs/tip?eqpId=...` | TIP 로그 |
+| GET | `/api/v1/observer/logs/spc-interlock?eqpId=...` | SPC interlock 이력 |
+| GET | `/api/v1/observer/logs/fdc-interlock?eqpId=...` | FDC interlock 이력 |
 | GET | `/api/v1/observer/logs/ctttm?eqpId=...` | CTTTM 로그 |
 | GET | `/api/v1/observer/logs/racb?eqpId=...` | RACB 로그 |
 | GET | `/api/v1/observer/logs/esop?eqpId=...` | ESOP 로그 |
@@ -42,6 +44,11 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - 로그 조회 API는 공통으로 `from`, `to`, `limit` query를 지원합니다.
 - CTTTM 로그의 `summary`는 `ct_process_comment.llm_summary` 값을 사용합니다.
 - `from`, `to`는 `YYYY-MM-DD` 또는 datetime 문자열을 받습니다.
+- SPC/FDC interlock은 `eqpId = m_interlock.prod_eqp_id`로만 매칭합니다.
+- SPC/FDC interlock의 event time은 `prod_progs_time`이며 `YYYYMMDD HHMMSS`를 Asia/Seoul 현지 시각으로 해석합니다.
+- 형식이 잘못되거나 비어 있는 `prod_progs_time`은 응답에서 제외합니다.
+- SPC/FDC 응답 `logType`은 각각 `SPC_INTERLOCK`, `FDC_INTERLOCK`이고 `eventTime`은 `+09:00` offset을 포함합니다.
+- SPC/FDC 응답 ID는 `<logType>:<sourceId>` 형식이며 원본 `m_interlock.id`는 `sourceId`로 제공합니다.
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
 - `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.
 - frontend 기본 로그 조회는 `limit`을 명시하지 않고 backend 기본 기간 정책을 따릅니다.
@@ -63,6 +70,10 @@ GET /api/v1/observer/logs?eqpId=EQP-001
 
 ```http
 GET /api/v1/observer/logs/eqp?eqpId=EQP-001&from=2026-01-01&to=2026-01-31&limit=1000
+```
+
+```http
+GET /api/v1/observer/logs/spc-interlock?eqpId=EQP-001&from=2026-07-28&to=2026-07-30
 ```
 
 ```http
