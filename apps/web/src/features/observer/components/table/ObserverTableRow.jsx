@@ -1,8 +1,45 @@
 import React from "react";
 import { LinkIcon } from "@heroicons/react/24/outline";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { observerTableColumnWidths } from "./observerTableColumns";
 
 const fallbackLogTypeBadgeClass = () => "bg-muted text-foreground";
+
+function TruncatedChangeType({ value }) {
+  const textRef = React.useRef(null);
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  const handleOpenChange = (nextOpen) => {
+    const textElement = textRef.current;
+    const isOverflowing =
+      textElement && textElement.scrollWidth > textElement.clientWidth;
+    setIsOpen(Boolean(nextOpen && isOverflowing));
+  };
+
+  return (
+    <Tooltip open={isOpen} onOpenChange={handleOpenChange}>
+      <TooltipTrigger asChild>
+        <span
+          ref={textRef}
+          tabIndex={0}
+          className="block w-full truncate rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {value}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        className="max-w-80 whitespace-normal break-words text-left"
+      >
+        {value}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function ObserverTableRow({
   row,
@@ -63,9 +100,9 @@ export default function ObserverTableRow({
       </div>
       <div
         style={{ width: `${observerTableColumnWidths.changeType}px` }}
-        className="px-2 py-2 text-xs text-center text-foreground flex-shrink-0"
+        className="min-w-0 flex-shrink-0 overflow-hidden px-2 py-2 text-center text-xs text-foreground"
       >
-        {row.info1}
+        <TruncatedChangeType value={row.info1} />
       </div>
       <div
         style={{ width: `${observerTableColumnWidths.operator}px` }}

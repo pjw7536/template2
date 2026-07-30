@@ -31,7 +31,8 @@ function buildTableRow(log) {
   }
 
   if (log.logType === "SPC_ITL" || log.logType === "FDC_ITL") {
-    row.info1 = log.interlockType || "-";
+    row.info1 = log.metroItem || "-";
+    row.info2 = log.interlockType || "-";
   }
 
   return row;

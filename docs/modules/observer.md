@@ -64,7 +64,7 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 | 정렬/변환 | backend selector가 유형별 raw row를 공통 payload로 변환 |
 | Interlock 시간 | `prod_progs_time`을 `YYYYMMDD HHMMSS`, Asia/Seoul로 해석 |
 
-SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표시 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`입니다. Timeline marker는 `metroItem`을 우선 표시하고 `interlockType`, `interlockNo` 순서로 대체합니다. 두 유형은 Data Log와 Log Detail에도 포함됩니다.
+SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표시 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`입니다. Timeline marker는 `metroItem`을 우선 표시하고 `interlockType`, `interlockNo` 순서로 대체합니다. Data Log에서는 `Change Type`에 `metroItem`, `Operator`에 `interlockType`을 표시하며 두 유형 모두 Log Detail에도 포함됩니다.
 
 ## 프론트 구조
 
