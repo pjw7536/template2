@@ -10,7 +10,7 @@ from api.data_movement.common.models import UnboundedNumericField
 
 
 class MInterlock(models.Model):
-    """m_interlock 원천 데이터를 incremental 이력으로 저장합니다."""
+    """m_interlock 원천 데이터를 interlock_no 기준으로 저장합니다."""
 
     line_id = models.CharField(max_length=10, null=True, blank=True)
     interlock_no = models.CharField(max_length=100, null=True, blank=True)
@@ -51,6 +51,12 @@ class MInterlock(models.Model):
 
     class Meta:
         db_table = "m_interlock"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["interlock_no"],
+                name="uniq_m_intlk_no",
+            ),
+        ]
         indexes = [
             models.Index(
                 Upper(Trim("prod_eqp_id")),

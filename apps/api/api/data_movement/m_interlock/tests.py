@@ -110,6 +110,17 @@ class MInterlockStructureTests(SimpleTestCase):
 
         self.assertEqual(MInterlock._meta.get_field("lot_id").db_type(connection), "text")
 
+    def test_interlock_no_has_upsert_unique_constraint(self) -> None:
+        """interlock_no upsert를 보장하는 unique constraint를 선언합니다."""
+
+        constraint = next(
+            item
+            for item in MInterlock._meta.constraints
+            if item.name == "uniq_m_intlk_no"
+        )
+
+        self.assertEqual(constraint.fields, ("interlock_no",))
+
     def test_timeline_index_matches_normalized_query_fields(self) -> None:
         """Observer 조회 인덱스 이름과 표현식 구성이 모델에 선언되어 있습니다."""
 
@@ -233,10 +244,10 @@ class MInterlockSelectorTests(TestCase):
 
 @override_settings(DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=0, DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=0)
 class MInterlockLifecycleTests(TestCase):
-    """m_interlock 파일 선점, append, 정밀도 보존 lifecycle을 검증합니다."""
+    """m_interlock 파일 선점, upsert, 정밀도 보존 lifecycle을 검증합니다."""
 
-    def test_loader_appends_rows_and_preserves_unbounded_numeric(self) -> None:
-        """backtick row를 append하고 numeric 소수 자릿수를 손실 없이 저장합니다."""
+    def test_loader_upserts_rows_and_preserves_unbounded_numeric(self) -> None:
+        """backtick row를 upsert하고 numeric 소수 자릿수를 손실 없이 저장합니다."""
 
         expected_usl = Decimal("12345678901234567890.12345678901234567890")
         expected_lot_id = "LOT-" + ("LONG-" * 20)
@@ -266,7 +277,7 @@ class MInterlockLifecycleTests(TestCase):
         self.assertEqual(MInterlockLoadJob.objects.get().status, MInterlockLoadJob.Status.SUCCESS)
 
     def test_loader_keeps_previous_rows_for_incremental_files(self) -> None:
-        """후속 파일 적재 시 기존 row를 교체하지 않고 append합니다."""
+        """후속 파일의 interlock_no가 다르면 기존 row를 함께 유지합니다."""
 
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -287,6 +298,108 @@ class MInterlockLifecycleTests(TestCase):
             list(MInterlock.objects.order_by("id").values_list("interlock_no", flat=True)),
             ["INTLK-001", "INTLK-002"],
         )
+
+    def test_loader_overwrites_existing_row_by_interlock_no(self) -> None:
+        """후속 파일의 동일 interlock_no는 기존 식별자를 유지하며 덮어씁니다."""
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            incoming = root / "incoming"
+            incoming.mkdir()
+
+            first = incoming / "m_interlock_LINE01_20260730_1130.csv.deflate"
+            _write_deflate_csv(
+                first,
+                [
+                    _build_interlock_row(
+                        interlock_no="INTLK-001",
+                        line_id="LINE01",
+                        lot_id="LOT-OLD",
+                    )
+                ],
+            )
+            first_summary = loader_module.load_m_interlock_files(data_dir=root)
+            original = MInterlock.objects.get(interlock_no="INTLK-001")
+            original_id = original.id
+            original_created_at = original.created_at
+
+            second = incoming / "m_interlock_LINE01_20260730_1140.csv.deflate"
+            _write_deflate_csv(
+                second,
+                [
+                    _build_interlock_row(
+                        interlock_no="INTLK-001",
+                        line_id="LINE02",
+                        lot_id="LOT-NEW",
+                        last_update_date="2026-07-30 11:40:00",
+                    )
+                ],
+            )
+            second_summary = loader_module.load_m_interlock_files(data_dir=root)
+
+        self.assertEqual(first_summary.success_count, 1, first_summary.outcomes)
+        self.assertEqual(second_summary.success_count, 1, second_summary.outcomes)
+        self.assertEqual(MInterlock.objects.count(), 1)
+        updated = MInterlock.objects.get(interlock_no="INTLK-001")
+        self.assertEqual(updated.id, original_id)
+        self.assertEqual(updated.created_at, original_created_at)
+        self.assertEqual(updated.line_id, "LINE02")
+        self.assertEqual(updated.lot_id, "LOT-NEW")
+
+    def test_loader_keeps_last_file_duplicate_and_skips_blank_key(self) -> None:
+        """파일 내 중복은 마지막 row를 사용하고 빈 interlock_no는 제외합니다."""
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            source = incoming / "m_interlock_LINE01_20260730_1150.csv.deflate"
+            _write_deflate_csv(
+                source,
+                [
+                    _build_interlock_row(
+                        interlock_no="INTLK-001",
+                        lot_id="LOT-FIRST",
+                    ),
+                    _build_interlock_row(interlock_no="", lot_id="LOT-BLANK"),
+                    _build_interlock_row(
+                        interlock_no="INTLK-001",
+                        lot_id="LOT-LAST",
+                    ),
+                ],
+            )
+
+            summary = loader_module.load_m_interlock_files(data_dir=root)
+
+        self.assertEqual(summary.success_count, 1, summary.outcomes)
+        self.assertEqual(summary.outcomes[0].row_count, 1)
+        self.assertEqual(MInterlock.objects.count(), 1)
+        self.assertEqual(
+            MInterlock.objects.get(interlock_no="INTLK-001").lot_id,
+            "LOT-LAST",
+        )
+
+    def test_loader_fails_when_all_interlock_numbers_are_blank(self) -> None:
+        """유효한 interlock_no가 하나도 없으면 파일 실패로 기록합니다."""
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            source = incoming / "m_interlock_LINE01_20260730_1200.csv.deflate"
+            _write_deflate_csv(
+                source,
+                [_build_interlock_row(interlock_no="")],
+            )
+
+            summary = loader_module.load_m_interlock_files(data_dir=root)
+
+        self.assertEqual(summary.failure_count, 1)
+        self.assertIn(
+            "interlock_no 값이 있는 row가 없습니다.",
+            summary.outcomes[0].error_message or "",
+        )
+        self.assertEqual(MInterlock.objects.count(), 0)
 
     def test_dry_run_validates_without_moving_or_loading_file(self) -> None:
         """dry-run은 파일과 대상 테이블을 변경하지 않고 parsing 결과만 기록합니다."""

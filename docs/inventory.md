@@ -81,7 +81,7 @@
 | `load_ct_process_comment` | `apps/api/api/data_movement/ct_process_comment/management/commands/load_ct_process_comment.py` | `ct_process_comment` deflate CSV 파일 적재 |
 | `summarize_ct_process_comment` | `apps/api/api/data_movement/ct_process_comment/management/commands/summarize_ct_process_comment.py` | `ct_process_comment` OpenWebUI 요약 |
 | `load_eqp_status_chg` | `apps/api/api/data_movement/eqp_status_chg/management/commands/load_eqp_status_chg.py` | `eqp_status_chg` deflate CSV 파일 적재 |
-| `load_m_interlock` | `apps/api/api/data_movement/m_interlock/management/commands/load_m_interlock.py` | `m_interlock` deflate CSV 파일 incremental append 적재 |
+| `load_m_interlock` | `apps/api/api/data_movement/m_interlock/management/commands/load_m_interlock.py` | `m_interlock` deflate CSV 파일 interlock_no 기준 upsert |
 | `load_mi_tip_update_hist` | `apps/api/api/data_movement/mi_tip_update_hist/management/commands/load_mi_tip_update_hist.py` | `mi_tip_update_hist` deflate CSV 파일 적재 |
 | `load_racb_list` | `apps/api/api/data_movement/racb_list/management/commands/load_racb_list.py` | `racb_list` deflate CSV 파일 적재 |
 | `load_mes_line_mapping_info` | `apps/api/api/data_movement/mes_line_mapping_info/management/commands/load_mes_line_mapping_info.py` | `mes_line_mapping_info` deflate CSV 파일 전체 교체 적재 |

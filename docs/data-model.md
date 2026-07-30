@@ -26,7 +26,7 @@
 | Account | `UserAccess` | 사용자별 scope 접근 상태와 고정 역할 |
 | Account | `AccessAuditLog` | 접근 상태·정책·scope 변경 감사 이력 |
 | Activity | `ActivityLog` | 사용자/시스템 활동 로그 |
-| Data Movement | `MInterlock` | m_interlock 원천 파일의 append-only interlock 이력 |
+| Data Movement | `MInterlock` | m_interlock 원천 파일의 interlock_no 기준 최신 이력 |
 | Data Movement | `MInterlockLoadJob` | m_interlock 파일별 적재 상태와 처리 결과 |
 | Emails | `Email` | 수집/작성/분류된 메일 본문과 metadata |
 | Emails | `EmailOutbox` | RAG insert/delete 비동기 작업 |

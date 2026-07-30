@@ -6,7 +6,7 @@
 - 기존 날짜 범위, 타입 필터, Data Log 선택, 상세 보기, 오류 재시도 흐름과 일관되게 동작시킨다.
 
 ## 현재 상태
-- `m_interlock`은 append-only 원천 테이블이며 `prod_eqp_id`, `metro_eqp_id`, `prod_chamber_id`, `last_update_date`, `prod_progs_time`, `metro_progs_time`, `interlock_kind`를 가진다.
+- `m_interlock`은 `interlock_no` 기준 upsert 원천 테이블이며 `prod_eqp_id`, `metro_eqp_id`, `prod_chamber_id`, `last_update_date`, `prod_progs_time`, `metro_progs_time`, `interlock_kind`를 가진다.
 - `api.data_movement.m_interlock`에는 적재 loader가 있지만 Observer 조회 selector와 조회 인덱스는 없다.
 - Observer backend는 EQP/TIP/CTTTM/RACB/ESOP를 타입별 selector와 `/api/v1/observer/logs/<type>` endpoint로 제공한다.
 - Observer frontend는 타입별 React Query hook을 병렬 실행하고, 오른쪽 단일 세로 scroll 영역에 timeline을 순서대로 쌓는다.
@@ -17,7 +17,7 @@
 - `api.observer`에 SPC/FDC 로그 fetcher, endpoint, response mapping, 테스트를 추가한다.
 - Observer frontend에 SPC/FDC query hook, 필터, timeline, Data Log badge, 상세 표시를 추가한다.
 - API/모듈/data model 문서를 갱신한다.
-- `m_interlock` 적재 방식, retention, deduplication, 기존 Observer 로그 타입의 동작은 변경하지 않는다.
+- `m_interlock` retention과 기존 Observer 로그 타입의 동작은 변경하지 않는다.
 
 ## 설계
 
@@ -63,7 +63,7 @@
 - 기존 Observer 오른쪽 scroll owner는 유지하고 timeline section만 추가한다.
 - 기본 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`로 둔다.
 - 하나의 재사용 가능한 `InterlockObserver`를 SPC/FDC 설정으로 두 번 렌더링한다.
-- 각 timeline은 single group과 point item을 사용하고 marker label은 `interlock_no`, 없으면 `interlock_type`을 사용한다.
+- 각 timeline은 single group과 point item을 사용하고 marker label은 `metro_item`, 없으면 `interlock_type`, `interlock_no` 순서로 fallback한다.
 - SPC/FDC는 제목과 badge text로 항상 구분하고 색상만으로 의미를 전달하지 않는다.
 - 종류별 empty state, 공통 loading, 타입별 error/retry 상태를 기존 Observer 패턴으로 제공한다.
 - `InterlockDetail`은 핵심 식별/시간/설비/공정/spec/comment를 섹션화하고 긴 comment는 줄바꿈 가능한 값 영역에 표시한다.
@@ -81,7 +81,7 @@
 ## Soft Assumptions
 - SPC/FDC timeline은 기본 활성화하고 TIP 다음에 배치한다.
 - `interlock_kind`는 대소문자와 주변 공백을 정규화한다.
-- marker는 `interlock_no` 우선, `interlock_type` fallback으로 표시한다.
+- marker는 `metro_item` 우선, `interlock_type`, `interlock_no` fallback으로 표시한다.
 - 기존 Observer의 날짜 slider, legend toggle, 공통 scroll ownership을 유지한다.
 
 ## 실행 단계
@@ -109,7 +109,7 @@
 - 대응: `prod_progs_time` 고정폭 형식, Asia/Seoul offset, 날짜 및 datetime range boundary 포함 여부를 테스트한다.
 - 위험: production/metrology/chamber 설비 매칭이 실제 Observer ID와 다르면 로그가 누락되거나 섞인다.
 - 대응: 실제 ID 규칙을 확정하고 base/chamber/metro 케이스를 selector 테스트 fixture로 고정한다.
-- 위험: append-only 증가로 조회가 느려질 수 있다.
+- 위험: `interlock_no` key 수 증가로 조회가 느려질 수 있다.
 - 대응: 실제 where/order 조건과 같은 복합 인덱스를 migration으로 추가하고 query plan 후보를 점검한다.
 - 위험: 숫자 PK가 다른 로그 타입 PK와 충돌해 잘못된 상세가 선택될 수 있다.
 - 대응: frontend selection에 사용하는 응답 ID에 로그 타입 prefix를 포함한다.
@@ -126,3 +126,6 @@
 - 2026-07-30: SPC/FDC endpoint, Asia/Seoul selector, 표현식 인덱스, frontend timeline/Data Log/상세 연결과 문서 갱신을 완료했다.
 - 2026-07-30: backend 64개 및 frontend 89개 테스트, migration check, production build, backend/frontend/UI boundary audit를 통과했다. docs audit은 기존 `docs/configuration.md`의 `DRONE_*` 색인 누락 1건으로 실패했으며 이번 변경 범위와 무관해 보존했다.
 - 2026-07-30: Observer interlock `logType` 계약을 `SPC_ITL`, `FDC_ITL`로 단축하고 backend/frontend/test/API 문서를 함께 갱신했다.
+- 2026-07-30: 원천 적재가 `interlock_no` upsert로 변경되어 Observer는 key별 최신 row를 timeline에 표시하도록 현재 상태를 갱신했다.
+- 2026-07-30: SPC/FDC timeline marker의 표시값을 `metro_item` 우선으로 변경했다.
+- 2026-07-30: FDC marker가 `metroItem`을 렌더링하는 runtime check와 frontend lint/build를 통과했다.

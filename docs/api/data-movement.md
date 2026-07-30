@@ -29,7 +29,7 @@ POST /api/v1/data-movement/<table_name>/load/
 `ctttm_workorder_list`는 파일명 안의 `CT_MST_WORKORDER` 또는 `CT_MNU_WORKORDER`로 원천 DDL 컬럼 순서를 구분합니다.
 두 파일 모두 백틱(`) 구분자를 사용합니다.
 `eqp_status_chg`도 백틱(`) 구분자를 사용하며, `eqp_event_key` 기준 upsert와 180일 retention purge를 수행합니다.
-`m_interlock`은 헤더 없는 35개 백틱(`) 구분 컬럼을 파일마다 append하며, 동일 row 재전달 시 중복 제거하지 않습니다.
+`m_interlock`은 헤더 없는 35개 백틱(`) 구분 컬럼을 `interlock_no` 기준으로 upsert합니다. 빈 `interlock_no` row는 제외하고 파일 내 동일 key는 마지막 row를 사용합니다.
 `mi_tip_update_hist`도 백틱(`) 구분자를 사용하며, TIP 이력을 timeline 조회용 `eqp_cb` 단위로 변환합니다.
 `racb_list`는 comma 구분자를 사용하며, `c_racb_id`별 최신 `update_date` row를 선택한 뒤 `eqp_ids`를 `eqp_cb`로 explode하여 저장합니다.
 `mes_line_mapping_info`와 `station_master`도 백틱(`) 구분자를 사용하며, 성공 시 대상 테이블을 전체 교체합니다.

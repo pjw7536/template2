@@ -107,7 +107,7 @@ make makemigrations-check
 | `load_ct_process_comment` | `ct_process_comment` incoming 파일 적재 |
 | `summarize_ct_process_comment` | `ct_process_comment` OpenWebUI 요약 처리 |
 | `load_eqp_status_chg` | `eqp_status_chg` incoming 파일 적재 |
-| `load_m_interlock` | `m_interlock` incoming 파일 incremental append 적재 |
+| `load_m_interlock` | `m_interlock` incoming 파일 interlock_no 기준 upsert |
 | `load_mi_tip_update_hist` | `mi_tip_update_hist` incoming 파일 적재 |
 | `load_racb_list` | `racb_list` incoming 파일 적재 |
 | `load_mes_line_mapping_info` | `mes_line_mapping_info` incoming 파일 전체 교체 적재 |
@@ -213,7 +213,7 @@ POST /api/v1/data-movement/station_master/load/
 task별 `max_active_tasks`와 공용 pool은 지정하지 않으며 `default_pool`은 무제한 slots인 `-1`로 초기화합니다.
 pool 외의 task 동시 실행 수는 Airflow 기본 전역 설정을 따릅니다.
 `eqp_status_chg`는 `/data/data_movement/m_eqp_status_chg/incoming/*m_eqp_status_chg*.csv.deflate` 파일을 `eqp_event_key` 기준으로 upsert하고 180일 retention을 적용합니다.
-`m_interlock`은 `/data/data_movement/m_interlock/incoming/m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일을 중복 제거 없이 incremental append합니다.
+`m_interlock`은 `/data/data_movement/m_interlock/incoming/m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일을 `interlock_no` 기준으로 incremental upsert하며 빈 key row는 제외합니다.
 `mi_tip_update_hist`는 `/data/data_movement/mi_tip_update_hist/incoming/*mi_tip_update_hist*.csv.deflate` 파일을 TIP timeline 조회용 row로 적재합니다.
 `racb_list`는 `/data/data_movement/racb_list/incoming/*racb_list*.csv.deflate` 파일을 `c_racb_id` 최신 row 기준으로 설비별 `eqp_cb` row로 펼쳐 적재합니다.
 `mes_line_mapping_info`는 `/data/data_movement/mes_line_mapping_info/incoming/*_MES_MAPPING_INFO_*.csv.deflate` 파일을 테이블 전체 snapshot으로 적재합니다.

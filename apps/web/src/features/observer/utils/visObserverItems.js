@@ -6,6 +6,9 @@ const FALLBACK_CLASS = OBSERVER_COLOR_CLASSES.FALLBACK;
 
 function getItemLabel(logType, log) {
   if (logType === "ESOP") return log.lotId || log.eventType;
+  if (logType === "SPC_ITL" || logType === "FDC_ITL") {
+    return log.metroItem || log.interlockType || log.eventType;
+  }
   return log.eventType;
 }
 

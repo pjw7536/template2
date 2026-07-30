@@ -24,7 +24,7 @@ loader는 파일명에서 source를 추출한 뒤 MST는 55개 컬럼, MNU는 49
 `mes_line_mapping_info`는 파일 하나가 테이블 전체 snapshot이므로 새 파일 처리 시 기존 row를 모두 삭제하고 파일 전체를 다시 적재합니다.
 `station_master`도 파일 하나를 테이블 전체 snapshot으로 보고 전체 교체 적재합니다.
 `eqp_status_chg`는 `eqp_event_key` 기준으로 증분 upsert하고, `eqp_id`가 `E/e`로 시작하지 않거나 `chg_time`이 180일보다 오래된 row를 제외합니다. 저장 시 `eqp_cb=eqp_id-chamber_id`를 생성하며, 적재 후 target의 180일 초과 row도 삭제합니다.
-`m_interlock`은 `m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일의 헤더 없는 35개 백틱(`) 구분 컬럼을 append-only로 적재합니다. numeric 컬럼은 PostgreSQL 무제한 `numeric` precision을 유지하고 `lot_id`는 길이 제한 없는 `text`로 저장하며, 중복 제거 또는 retention은 적용하지 않습니다.
+`m_interlock`은 `m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일의 헤더 없는 35개 백틱(`) 구분 컬럼을 `interlock_no` 기준으로 upsert합니다. 빈 `interlock_no` row는 제외하고 파일 내 중복은 마지막 row를 사용합니다. 기존 DB 중복은 `last_update_date` 최신순, 이후 `id` 내림차순으로 한 건만 유지합니다. numeric 컬럼은 PostgreSQL 무제한 `numeric` precision을 유지하고 `lot_id`는 길이 제한 없는 `text`로 저장하며 retention은 적용하지 않습니다.
 `mi_tip_update_hist`는 TIP 원천 이력을 `tip_event_key` 기준으로 upsert하고, 원천 타입 조합을 timeline event type으로 매핑합니다.
 `racb_list`는 `c_racb_id`별 최신 `update_date` row를 고른 뒤 `eqp_ids`를 comma split하여 `eqp_cb` row로 펼쳐 저장합니다.
 

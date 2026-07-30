@@ -7,6 +7,8 @@ from pathlib import Path
 from django.conf import settings
 
 TABLE_NAME = "m_interlock"
+TEMP_TABLE_NAME = "tmp_m_interlock_upsert"
+UPSERT_KEY = "interlock_no"
 FILE_PATTERN = "m_interlock_*_????????_????.csv.deflate"
 SOURCE_FILE_PATTERN = (
     r"^m_interlock_(?P<line_id>.+)_(?P<file_timestamp>\d{8}_\d{4})\.csv\.deflate$"
