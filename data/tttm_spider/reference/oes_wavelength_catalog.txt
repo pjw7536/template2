@@ -1,14 +1,14 @@
 # oes_wavelength_catalog.txt
 # ------------------------------------------------------------
-# OES wavelength(nm) -> chemical-species(category) mapping.
-# format (comma-separated, '#' starts a comment):
+# OES 파장(nm) -> 화학종(category) 매핑.
+# 형식(쉼표 구분, '#'부터 주석):
 #   low_nm,high_nm,category_key,category_label
-# - same category_key across lines groups multiple emission peaks into one series.
-# - a wavelength inside [low_nm, high_nm] is classified as that category_key.
-# - anything not matched falls back to ETC (no need to list ETC here).
-# - on overlap, the FIRST matching line in this file wins.
-# NOTE: these are generic plasma-etch OES literature values; per-tool spectrometer
-#       calibration is not verified here — confirm before production use.
+# - 여러 줄에서 같은 category_key를 사용하면 복수 emission peak를 한 계열로 묶는다.
+# - [low_nm, high_nm] 범위에 포함되는 파장을 해당 category_key로 분류한다.
+# - 매핑되지 않은 파장은 ETC로 처리하므로 ETC 행은 따로 작성하지 않는다.
+# - 범위가 겹치면 이 파일에서 먼저 나온 행을 사용한다.
+# 주의: 범용 plasma-etch OES 문헌값이며 장비별 spectrometer 보정은 검증되지 않았다.
+#       운영 사용 전 반드시 확인한다.
 # ------------------------------------------------------------
 
 # F

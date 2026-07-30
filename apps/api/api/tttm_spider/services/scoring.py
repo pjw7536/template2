@@ -1,5 +1,5 @@
 # =============================================================================
-# 모듈: TTTM Spider 채점 코어 (framework-agnostic)
+# 모듈: TTTM Spider 서비스 계층의 framework-agnostic 채점 코어
 # 원본: tttm_dashboard_api.py 의 순수 채점 함수를 그대로 이식.
 #   - sensor_power_score  = tttm_dashboard_api._sensor_power_score
 #   - rms                 = tttm_dashboard_api._rms

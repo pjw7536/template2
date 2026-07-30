@@ -78,6 +78,7 @@
 | RACB report URL | `RACB_REPORT_BASE_URL` | RACB 로그 상세 팝업 URL 생성 기준 |
 | `L3_SPIDER_*` / L3 Spider 파일 데이터/메일 | `L3_SPIDER_DATA_ROOT`, `L3_SPIDER_INDEX_SOURCE`, `L3_SPIDER_MOCK_INDEX_PATH`, `L3_SPIDER_MAX_CHART_POINTS_PER_PANEL`, `L3_SPIDER_MAIL_SENDER`, `L3_SPIDER_MAIL_TARGET_URL` | read-only mount된 `daily_anomaly` Parquet 데이터 경로, 인덱스 source, 개발용 SQLite mock 경로, 차트 sampling 제한, 알림 메일 설정 |
 | `FDC_HARD_SPEC_*` / L0 Spider 추천 데이터 | `FDC_HARD_SPEC_DATA_ROOT`, `FDC_HARD_SPEC_PRIORITY_PATH`, `FDC_HARD_SPEC_UNIT_MODEL_PATH`, `FDC_HARD_SPEC_HARD_LIMIT_PATH` | FDC Hard Limit 추천 Parquet 데이터 경로 |
+| `TTTM_SPIDER_*` / TTTM Spider 파일 데이터 | `TTTM_SPIDER_ROOT`, `TTTM_SPIDER_DATA_HOST_PATH` | TTTM Spider 원본/계산 결과/참조 데이터의 host mount와 `/data/tttm_spider` 컨테이너 경로 |
 | `PM_COMPARISON_*` / PM SPIDER 파일 데이터 | `PM_COMPARISON_DATA_ROOT`, `PM_COMPARISON_DATA_HOST_PATH`, `PM_COMPARISON_MAX_FILES`, `PM_COMPARISON_MAX_META_DIRS` | PM SPIDER raw/score Parquet 데이터의 host mount와 컨테이너 내부 경로, scan 제한 |
 | 외부 앱 사용량 API | `EXTERNAL_APP_USAGE_API_URLS`, `EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS` | 앱별 접속현황에서 저장 없이 조회 시점에 합산하는 외부 사용량 API source 목록(JSON)과 timeout |
 | `DATA_MOVEMENT_*` / 파일 적재 데이터 | `DATA_MOVEMENT_HOST_PATH`, `DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS`, `DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS`, `DATA_MOVEMENT_M_TKIN_PREVENT_DIR`, `DATA_MOVEMENT_CTTTM_WORKORDER_LIST_DIR`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_DIR`, `DATA_MOVEMENT_EQP_STATUS_CHG_DIR`, `DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR`, `DATA_MOVEMENT_RACB_LIST_DIR`, `DATA_MOVEMENT_MES_LINE_MAPPING_INFO_DIR`, `DATA_MOVEMENT_STATION_MASTER_DIR` | FTP 등으로 수신한 파일의 host mount와 테이블별 root 경로. 하위 `incoming/processing` 사용. 최근 수정 파일과 stat 값이 변하는 파일은 이번 적재에서 제외 |
@@ -152,6 +153,15 @@ API가 직접 읽는 업무 파일 데이터는 신규/변경 시 아래 규칙�
 새 마운트에는 `/appdata` 컨테이너 경로를 추가하지 않습니다. 기존 `/appdata` 기반 경로는 해당 데이터 계약을 수정할 때 `/data/<domain>`으로 이동합니다.
 
 PM SPIDER는 단일 `/data/pm_spider` mount 아래에서 `/data/pm_spider/data`와 `/data/pm_spider/result` 구조만 지원합니다.
+
+TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tttm_spider:ro`로 mount하며 아래 구조를 사용합니다.
+
+- `data/`: line/eqp/chamber/date 기준 원본 Parquet 트리
+- `result/`: 사전 계산된 `score_data`와 `decomp_data`
+- `reference/`: `sensor_catalog_map.txt`, `oes_wavelength_catalog.txt` 참조 데이터
+- `lotwf_index.parquet`: 설비·챔버별 lot/wafer 선택 인덱스
+
+운영에서 `TTTM_SPIDER_DATA_HOST_PATH`를 다른 경로로 override할 때도 `reference/`의 두 파일을 함께 제공해야 합니다.
 
 ## 로컬 개발 기본 흐름
 

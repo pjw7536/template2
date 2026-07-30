@@ -596,6 +596,7 @@ class PortalAccessEnforcementTests(TestCase):
             "/api/v1/line-dashboard/summary": "line-dashboard",
             "/api/v1/l3_spider/meta": "l3-spider",
             "/api/v1/pm_spider/meta": "pm-spider",
+            "/api/v1/tttm_spider/combo/options": "tttm-spider",
             "/api/v1/assistant/chat": "assistant",
             "/api/v1/observer/lines": "observer",
             "/api/v1/emails/inbox/": "emails",
@@ -618,6 +619,7 @@ class PortalAccessEnforcementTests(TestCase):
             "/api/v1/data-movement/m_tkin_prevent/load": "token",
             "/api/v1/account/overview": "portal",
             "/api/v1/appstore/apps": "app:appstore",
+            "/api/v1/tttm_spider/dashboard/data": "app:tttm-spider",
             "/api/v1/activity/app-access": "portal",
             "/api/v1/activity/app-access-stats": "app:access-stats",
         }

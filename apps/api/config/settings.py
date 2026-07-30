@@ -233,6 +233,7 @@ L3_SPIDER_MAIL_TARGET_URL = env("L3_SPIDER_MAIL_TARGET_URL", "")
 TTTM_SPIDER_ROOT = env("TTTM_SPIDER_ROOT", "/data/tttm_spider")
 TTTM_SPIDER_DATA_ROOT = env("TTTM_SPIDER_DATA_ROOT", f"{TTTM_SPIDER_ROOT}/data")
 TTTM_SPIDER_RESULT_ROOT = env("TTTM_SPIDER_RESULT_ROOT", f"{TTTM_SPIDER_ROOT}/result")
+TTTM_SPIDER_REFERENCE_ROOT = env("TTTM_SPIDER_REFERENCE_ROOT", f"{TTTM_SPIDER_ROOT}/reference")
 
 # FDC Hard Limit 추천 데이터 경로.
 # hardspec.py 원본 경로를 기본값으로 사용하고, 오프사이트 환경에서는 mount 경로를 env로 교체합니다.

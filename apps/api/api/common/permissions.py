@@ -53,6 +53,7 @@ API_ROUTE_ACCESS_POLICIES = {
     "l0_spider": "app:l0-spider",
     "l3_spider": "app:l3-spider",
     "pm_spider": "app:pm-spider",
+    "tttm_spider": "app:tttm-spider",
     "assistant": "app:assistant",
     "observer": "app:observer",
     "emails": "app:emails",

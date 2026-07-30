@@ -1,6 +1,10 @@
-"""TTTM Spider mock 생성기 v3 — 실제스러운 이름 + 다중 recipe + 다수 웨이퍼.
+"""TTTM Spider 개발용 mock 데이터 생성 서비스 v3입니다.
+
+실제스러운 이름, 다중 recipe, 다수 웨이퍼 데이터를 생성합니다.
 eqp=ELXX30x, chamber=PM1..PM6, recipe=RCP_A(process)/RCP_ISD(isd), 웨이퍼 다수.
 lotwf 인덱스(전 챔버) + score_data(전 챔버·양 recipe) + raw/decomp(PM1 풀).
+
+실행: ``python -m api.tttm_spider.services.mock_data``
 """
 from __future__ import annotations
 

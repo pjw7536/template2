@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import math
-import os
+from pathlib import Path
+
+from django.conf import settings
 
 # ── TRACE 카테고리 트리 (MOCK 다축) ─────────────────────────────────────────
 # top → [leaf...]
@@ -42,10 +44,13 @@ _LEAF_TO_PARENT: dict[str, str] = {
     leaf: top for top, leaves in CATEGORY_TREE.items() for leaf in leaves
 }
 
-_DEFAULT_SENSOR_MAP_PATH = os.path.join(os.path.dirname(__file__), "sensor_catalog_map.txt")
-_DEFAULT_OES_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "oes_wavelength_catalog.txt")
-
 CATALOG_IS_STUB = True   # MOCK 카탈로그로 동작 중임을 프론트/메타에 표시
+
+
+def _reference_path(file_name: str) -> Path:
+    """TTTM Spider read-only 참조 데이터의 기본 경로를 반환합니다."""
+
+    return Path(settings.TTTM_SPIDER_REFERENCE_ROOT).expanduser().resolve() / file_name
 
 
 def leaf_parent(leaf: str) -> str:
@@ -53,17 +58,17 @@ def leaf_parent(leaf: str) -> str:
     return _LEAF_TO_PARENT.get(leaf, leaf)
 
 
-def load_sensor_category_map(path: str | None = None) -> dict[str, str]:
+def load_sensor_category_map(path: str | Path | None = None) -> dict[str, str]:
     """
     원본 catalog.load_sensor_category_map: 'sensor,category' 텍스트를 dict 로.
     (# 주석/빈 줄 무시). 파일이 없으면 빈 dict → 모든 센서가 ETC 로 폴백된다.
     """
-    p = path or _DEFAULT_SENSOR_MAP_PATH
+    source_path = Path(path) if path is not None else _reference_path("sensor_catalog_map.txt")
     out: dict[str, str] = {}
-    if not os.path.exists(p):
+    if not source_path.is_file():
         return out
-    with open(p, "r", encoding="utf-8") as f:
-        for line in f:
+    with source_path.open("r", encoding="utf-8") as source:
+        for line in source:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
@@ -74,18 +79,18 @@ def load_sensor_category_map(path: str | None = None) -> dict[str, str]:
     return out
 
 
-def load_oes_wavelength_catalog(path: str | None = None) -> list[tuple[float, float, str, str]]:
+def load_oes_wavelength_catalog(path: str | Path | None = None) -> list[tuple[float, float, str, str]]:
     """
     원본 tttm_dashboard_api._load_oes_wavelength_catalog 이식.
     'low,high,category_key,category_label' → [(low, high, key, label), ...].
     파일이 없거나 파싱 실패하면 빈 리스트(=전부 ETC 로 분류)로 폴백.
     """
-    p = path or _DEFAULT_OES_CATALOG_PATH
+    source_path = Path(path) if path is not None else _reference_path("oes_wavelength_catalog.txt")
     ranges: list[tuple[float, float, str, str]] = []
-    if not os.path.exists(p):
+    if not source_path.is_file():
         return ranges
-    with open(p, "r", encoding="utf-8") as f:
-        for line in f:
+    with source_path.open("r", encoding="utf-8") as source:
+        for line in source:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue

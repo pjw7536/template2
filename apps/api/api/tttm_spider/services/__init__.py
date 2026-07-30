@@ -2,9 +2,9 @@
 # 모듈: TTTM Spider 서비스 (읽기 전용 번들 빌더)
 # 원본: tttm_dashboard_api.py 의 _load_result_pdf / _filter_pdf_by_recipe /
 #   _build_trace_meta / _build_oes_bundle / _build_oes_decomp_bundle /
-#   _render_bundle 를 이식. 채점 수식은 ..scoring 에 있다.
+#   _render_bundle를 이식. 채점 수식은 services/scoring.py에 있습니다.
 # 주요 가정: scores.parquet 은 알고리즘 서버가 미리 계산해 둔다(파이프라인 미실행).
-#   자가비교(REF==COMP)는 데이터타입 무관하게 health=100 으로 단락한다(사용자 결정).
+#   자가비교(REF==COMP)는 데이터타입 무관하게 health=100으로 단락한다(사용자 결정).
 # =============================================================================
 from __future__ import annotations
 
@@ -15,7 +15,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .. import catalog, scoring, selectors
+from .. import selectors
+from . import catalog, scoring
 
 WARN_THRESHOLD = 70.0
 ALARM_THRESHOLD = 50.0
