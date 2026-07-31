@@ -31,6 +31,7 @@ const DEFAULT_LIST_RATIO = 0.45
 const GRID_GAP_PX = 16
 const EMPTY_EMAILS = []
 const EMPTY_MAILBOXES = []
+const EMPTY_EMAIL_DETAIL = { email: null, html: "" }
 
 function parseRoutedEmailId(value) {
   const normalized = typeof value === "string" ? value.trim() : ""
@@ -73,6 +74,7 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
   const [activeEmailId, setActiveEmailId] = useState(null)
   const [listWidth, setListWidth] = useState(420)
   const [isDragging, setIsDragging] = useState(false)
+  const [displayedDetail, setDisplayedDetail] = useState(EMPTY_EMAIL_DETAIL)
   const splitPaneRef = useRef(null)
   const dragCleanupRef = useRef(null)
   const mailboxChangeRef = useRef("")
@@ -104,6 +106,31 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
     data: htmlData,
     isLoading: isHtmlLoading,
   } = useEmailHtml(activeEmailId)
+  const isDetailTransitioning =
+    Boolean(activeEmailId) && (isDetailLoading || isHtmlLoading)
+  const visibleDetailData = activeEmailId
+    ? isDetailTransitioning
+      ? displayedDetail.email
+      : detailData
+    : null
+  const visibleHtmlData = activeEmailId
+    ? isDetailTransitioning
+      ? displayedDetail.html
+      : htmlData
+    : ""
+
+  useEffect(() => {
+    if (!activeEmailId) {
+      setDisplayedDetail(EMPTY_EMAIL_DETAIL)
+      return
+    }
+    if (isDetailTransitioning || !detailData) return
+
+    setDisplayedDetail({
+      email: detailData,
+      html: htmlData || "",
+    })
+  }, [activeEmailId, detailData, htmlData, isDetailTransitioning])
 
   const deleteMutation = useDeleteEmail()
   const bulkDeleteMutation = useBulkDeleteEmails()
@@ -369,10 +396,10 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
     selectedIds,
     activeEmailId,
     isListLoading,
-    detailData,
-    htmlData,
-    isDetailLoading,
-    isHtmlLoading,
+    detailData: visibleDetailData,
+    htmlData: visibleHtmlData,
+    isDetailLoading: isDetailTransitioning && !visibleDetailData,
+    isHtmlLoading: isDetailTransitioning && !visibleDetailData,
     handleToggleSelectAll,
     handleToggleSelect,
     handleSelectEmail,

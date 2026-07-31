@@ -7,6 +7,42 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatEmailDate } from "../utils/date"
 
+const EMAIL_DOCUMENT_STYLE = `
+  html {
+    min-height: 100%;
+    overflow: auto !important;
+    color-scheme: light;
+    background: Canvas;
+  }
+
+  body {
+    min-height: 100%;
+    margin: 0;
+    padding: 0.75rem;
+    overflow: visible !important;
+    box-sizing: border-box;
+    color: CanvasText;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+`
+
+function buildEmailDocument(content) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    ${content}
+    <style>${EMAIL_DOCUMENT_STYLE}</style>
+  </body>
+</html>`
+}
+
 function getLocalPart(emailAddress) {
   if (!emailAddress) return ""
   const atIndex = emailAddress.indexOf("@")
@@ -108,29 +144,35 @@ function RecipientSummary({ value }) {
 export function EmailDetail({ email, isLoading, html, isHtmlLoading }) {
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center rounded-xl border bg-card/60">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <Card className="h-full min-h-0 min-w-0 overflow-hidden" aria-busy="true">
+        <CardContent className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span className="sr-only">메일 상세 내용을 불러오는 중입니다.</span>
+        </CardContent>
+      </Card>
     )
   }
 
   if (!email) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border bg-card/60 text-center text-muted-foreground">
-        <Inbox className="h-8 w-8" />
-        <p className="text-sm">메일을 선택하면 상세 내용이 여기에 표시됩니다.</p>
-      </div>
+      <Card className="h-full min-h-0 min-w-0 overflow-hidden">
+        <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+          <Inbox className="h-8 w-8" />
+          <p className="text-sm">메일을 선택하면 상세 내용이 여기에 표시됩니다.</p>
+        </CardContent>
+      </Card>
     )
   }
 
   const sanitizedHtml = html ? DOMPurify.sanitize(html) : ""
   const hasHtml = Boolean(sanitizedHtml)
+  const emailDocument = hasHtml ? buildEmailDocument(sanitizedHtml) : ""
   const hasCc = parseRecipients(email.cc).length > 0
   const hasBcc = parseRecipients(email.bcc).length > 0
 
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader className="space-y-3">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <CardHeader className="min-w-0 shrink-0 space-y-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <MailOpen className="h-4 w-4" />
           <span>수신</span>
@@ -181,15 +223,18 @@ export function EmailDetail({ email, isLoading, html, isHtmlLoading }) {
           ) : null}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full min-w-0 overflow-auto overflow-x-auto rounded-lg border bg-background">
+      <CardContent className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="h-full min-h-0 min-w-0 overflow-hidden rounded-lg border bg-background">
           {hasHtml ? (
-            <div
-              className="space-y-4 p-3 text-sm leading-relaxed text-foreground"
-              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            <iframe
+              className="block h-full min-h-0 w-full min-w-0 border-0 bg-background"
+              srcDoc={emailDocument}
+              sandbox=""
+              referrerPolicy="no-referrer"
+              title={`${email.subject || "제목 없음"} 메일 본문`}
             />
           ) : email.bodyText ? (
-            <pre className="whitespace-pre-wrap p-3 text-sm leading-relaxed text-foreground">
+            <pre className="h-full min-w-0 overflow-auto whitespace-pre-wrap p-3 text-sm leading-relaxed text-foreground">
               {email.bodyText}
             </pre>
           ) : isHtmlLoading ? (
