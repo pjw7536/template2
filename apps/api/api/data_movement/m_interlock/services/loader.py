@@ -18,7 +18,12 @@ from api.data_movement.common.services.file_loader import (
     list_incoming_files,
 )
 from api.data_movement.common.services.postgres_copy import copy_append_rows
-from api.data_movement.m_interlock.models import MInterlockLoadJob
+from api.data_movement.m_interlock.models import (
+    MInterlock,
+    MInterlockLoadJob,
+    normalize_interlock_lookup,
+    parse_prod_progs_at,
+)
 from api.data_movement.m_interlock.services import spec
 
 
@@ -140,6 +145,55 @@ def _prepare_interlock_frame(frame):
     return prepared_frame
 
 
+def _sync_observer_fields(*, frame, batch_size: int = 1000) -> None:
+    """COPY upsert 대상의 Observer 파생 필드를 제한된 batch로 동기화합니다."""
+
+    source_frame = frame.select(
+        [
+            spec.UPSERT_KEY,
+            "prod_eqp_id",
+            "interlock_kind",
+            "prod_progs_time",
+        ]
+    )
+    for frame_chunk in source_frame.iter_slices(n_rows=batch_size):
+        source_by_key = {
+            str(row[spec.UPSERT_KEY]): row
+            for row in frame_chunk.iter_rows(named=True)
+        }
+        targets = list(
+            MInterlock.objects.filter(
+                interlock_no__in=source_by_key,
+            ).only(
+                "id",
+                "interlock_no",
+                "prod_eqp_id_lookup",
+                "interlock_kind_lookup",
+                "prod_progs_at",
+            )
+        )
+        for target in targets:
+            source = source_by_key[str(target.interlock_no)]
+            target.prod_eqp_id_lookup = normalize_interlock_lookup(
+                source.get("prod_eqp_id")
+            )
+            target.interlock_kind_lookup = normalize_interlock_lookup(
+                source.get("interlock_kind")
+            )
+            target.prod_progs_at = parse_prod_progs_at(
+                source.get("prod_progs_time")
+            )
+        MInterlock.objects.bulk_update(
+            targets,
+            [
+                "prod_eqp_id_lookup",
+                "interlock_kind_lookup",
+                "prod_progs_at",
+            ],
+            batch_size=batch_size,
+        )
+
+
 def _upsert_rows(*, frame) -> int:
     """임시 테이블 COPY 후 interlock_no 기준으로 원천 컬럼을 upsert합니다."""
 
@@ -195,7 +249,9 @@ def _upsert_rows(*, frame) -> int:
                     {update_assignments}
                 """
             )
-            return cursor.rowcount
+            row_count = cursor.rowcount
+        _sync_observer_fields(frame=frame)
+        return row_count
 
 
 def _load_claimed_file(*, claimed_file: ClaimedDataFile) -> LoadFileOutcome:

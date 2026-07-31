@@ -28,6 +28,9 @@ function findScrollableParent(element) {
  */
 export default function LogDetailSection({
   log,
+  isLoading = false,
+  error = null,
+  onRetry,
   className = "",
   overflowClassName = "overflow-auto",
   textSizeClass = "text-xs",
@@ -48,6 +51,31 @@ export default function LogDetailSection({
     return (
       <div className="text-sm text-muted-foreground text-center py-17">
         테이블이나 Observer에서 로그를 선택하면 상세정보가 표시됩니다.
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        선택한 로그의 상세정보를 불러오고 있습니다.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-destructive">
+        <p>상세정보를 불러오지 못했습니다.</p>
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={() => onRetry()}
+            className="rounded-md border border-destructive/30 px-3 py-1.5 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            다시 시도
+          </button>
+        ) : null}
       </div>
     );
   }

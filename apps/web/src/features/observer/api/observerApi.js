@@ -25,6 +25,36 @@ export const observerApi = {
       params: { lineId, eqpId, ...logQueryOptions },
     }),
 
+  fetchLogBatch: ({ eqpId, types, pageSize = 250, signal, ...range }) =>
+    observerApiClient("/logs/page", {
+      params: {
+        eqpId,
+        types: types.join(","),
+        pageSize,
+        ...range,
+      },
+      signal,
+    }),
+
+  fetchLogPage: ({
+    logKey,
+    eqpId,
+    cursor,
+    pageSize = 250,
+    signal,
+    ...range
+  }) =>
+    observerApiClient(`/logs/${logKey}/page`, {
+      params: { eqpId, cursor, pageSize, ...range },
+      signal,
+    }),
+
+  fetchLogDetail: ({ logKey, eqpId, detailId, signal }) =>
+    observerApiClient(`/logs/${logKey}/detail`, {
+      params: { eqpId, logId: detailId },
+      signal,
+    }),
+
   // EQP 정보 조회
   fetchEquipmentInfo: (lineId, eqpId) =>
     observerApiClient(`/equipment-info/${lineId}/${eqpId}`),

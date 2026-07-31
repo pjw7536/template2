@@ -95,7 +95,14 @@ class MInterlockStructureTests(SimpleTestCase):
         source_fields = [
             field.name
             for field in MInterlock._meta.local_fields
-            if field.name not in {"id", "created_at"}
+            if field.name
+            not in {
+                "id",
+                "created_at",
+                "prod_eqp_id_lookup",
+                "interlock_kind_lookup",
+                "prod_progs_at",
+            }
         ]
         self.assertEqual(source_fields, spec.COLUMNS)
 
@@ -121,16 +128,27 @@ class MInterlockStructureTests(SimpleTestCase):
 
         self.assertEqual(constraint.fields, ("interlock_no",))
 
-    def test_timeline_index_matches_normalized_query_fields(self) -> None:
-        """Observer 조회 인덱스 이름과 표현식 구성이 모델에 선언되어 있습니다."""
+    def test_timeline_index_uses_typed_query_fields_only(self) -> None:
+        """Observer 조회에는 typed keyset 인덱스만 선언합니다."""
 
-        index = next(
+        self.assertNotIn(
+            "idx_m_intlk_prd_kind_ptm",
+            {item.name for item in MInterlock._meta.indexes},
+        )
+        page_index = next(
             item
             for item in MInterlock._meta.indexes
-            if item.name == "idx_m_intlk_prd_kind_ptm"
+            if item.name == "idx_m_intlk_obs_page"
         )
-
-        self.assertEqual(len(index.expressions), 3)
+        self.assertEqual(
+            page_index.fields,
+            [
+                "prod_eqp_id_lookup",
+                "interlock_kind_lookup",
+                "-prod_progs_at",
+                "-id",
+            ],
+        )
 
     def test_parse_source_file_name_supports_variable_line_and_timestamp(self) -> None:
         """LineID와 날짜가 바뀌는 합의된 파일명에서 값을 추출합니다."""
@@ -216,6 +234,9 @@ class MInterlockSelectorTests(TestCase):
             rows[0]["event_time"],
             datetime(2026, 7, 28, 14, 55, 2, tzinfo=ZoneInfo("Asia/Seoul")),
         )
+        matching.refresh_from_db()
+        self.assertEqual(matching.prod_eqp_id_lookup, "PROD-EQP-01")
+        self.assertEqual(matching.interlock_kind_lookup, "SPC")
 
     def test_selector_converts_offset_boundary_and_skips_invalid_source_time(self) -> None:
         """offset query는 KST로 변환하고 유효하지 않은 원천 시간은 제외합니다."""
@@ -240,6 +261,67 @@ class MInterlockSelectorTests(TestCase):
         )
 
         self.assertEqual([row["id"] for row in rows], [matching.id])
+
+    def test_typed_page_cursor_keeps_same_timestamp_rows_without_overlap(self) -> None:
+        """동일 시각 row가 page 경계에 있어도 PK tie-breaker로 모두 반환합니다."""
+
+        created = [
+            MInterlock.objects.create(
+                prod_eqp_id="EQP-01",
+                interlock_kind="SPC",
+                prod_progs_time="20260728 145502",
+                interlock_no=f"SPC-{index}",
+            )
+            for index in range(3)
+        ]
+        first_page, has_more = selectors.fetch_interlock_timeline_page(
+            eqp_id="EQP-01",
+            interlock_kind="SPC",
+            start_at="2026-07-28",
+            end_at="2026-07-28",
+            page_size=2,
+        )
+        second_page, second_has_more = selectors.fetch_interlock_timeline_page(
+            eqp_id="EQP-01",
+            interlock_kind="SPC",
+            start_at="2026-07-28",
+            end_at="2026-07-28",
+            page_size=2,
+            cursor_time=first_page[-1]["event_time"],
+            cursor_id=first_page[-1]["id"],
+        )
+
+        self.assertTrue(has_more)
+        self.assertFalse(second_has_more)
+        self.assertEqual(
+            [row["id"] for row in first_page + second_page],
+            [created[2].id, created[1].id, created[0].id],
+        )
+        self.assertNotIn("lot_id", first_page[0])
+        self.assertIn("metro_item", first_page[0])
+
+    def test_selector_does_not_fallback_to_source_string_fields(self) -> None:
+        """typed 파생 필드가 비어 있으면 기존 문자열 컬럼으로 재조회하지 않습니다."""
+
+        row = MInterlock.objects.create(
+            prod_eqp_id="EQP-01",
+            interlock_kind="SPC",
+            prod_progs_time="20260728 145502",
+        )
+        MInterlock.objects.filter(id=row.id).update(
+            prod_eqp_id_lookup=None,
+            interlock_kind_lookup=None,
+            prod_progs_at=None,
+        )
+
+        rows = selectors.fetch_interlock_timeline_rows(
+            eqp_id="EQP-01",
+            interlock_kind="SPC",
+            start_at="2026-07-28",
+            end_at="2026-07-28",
+        )
+
+        self.assertEqual(rows, [])
 
 
 @override_settings(DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=0, DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=0)
@@ -271,6 +353,19 @@ class MInterlockLifecycleTests(TestCase):
         self.assertEqual(
             loaded.last_update_date,
             datetime(2026, 7, 30, 11, 30, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(loaded.prod_eqp_id_lookup, "PROD-EQP-01")
+        self.assertEqual(loaded.interlock_kind_lookup, "KIND")
+        self.assertEqual(
+            loaded.prod_progs_at,
+            datetime(
+                2026,
+                7,
+                30,
+                11,
+                0,
+                tzinfo=ZoneInfo("Asia/Seoul"),
+            ),
         )
         self.assertIsNotNone(loaded.id)
         self.assertIsNotNone(loaded.created_at)

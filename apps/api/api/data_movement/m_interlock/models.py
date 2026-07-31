@@ -2,11 +2,39 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from django.db import models
-from django.db.models.functions import Trim, Upper
 from django.db.models.functions import Now
 
 from api.data_movement.common.models import UnboundedNumericField
+
+SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
+PROD_PROGS_TIME_FORMATS = (
+    "%Y%m%d %H%M%S",
+    "%Y%m%d%H%M%S%f",
+)
+
+
+def normalize_interlock_lookup(value: object) -> str | None:
+    """Observer 검색용 문자열을 공백 제거 후 대문자로 정규화합니다."""
+
+    normalized = str(value or "").strip().upper()
+    return normalized or None
+
+
+def parse_prod_progs_at(value: object) -> datetime | None:
+    """원천 진행 시각을 Asia/Seoul aware datetime으로 변환합니다."""
+
+    raw_value = str(value or "").strip()
+    for source_format in PROD_PROGS_TIME_FORMATS:
+        try:
+            parsed = datetime.strptime(raw_value, source_format)
+        except ValueError:
+            continue
+        return parsed.replace(tzinfo=SEOUL_TIMEZONE)
+    return None
 
 
 class MInterlock(models.Model):
@@ -47,6 +75,9 @@ class MInterlock(models.Model):
     eqp_process_phase = models.CharField(max_length=50, null=True, blank=True)
     eqp_detail_comment = models.CharField(max_length=255, null=True, blank=True)
     engr_comment = models.CharField(max_length=500, null=True, blank=True)
+    prod_eqp_id_lookup = models.CharField(max_length=40, null=True, blank=True)
+    interlock_kind_lookup = models.CharField(max_length=30, null=True, blank=True)
+    prod_progs_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_default=Now())
 
     class Meta:
@@ -59,12 +90,35 @@ class MInterlock(models.Model):
         ]
         indexes = [
             models.Index(
-                Upper(Trim("prod_eqp_id")),
-                Upper(Trim("interlock_kind")),
-                "prod_progs_time",
-                name="idx_m_intlk_prd_kind_ptm",
+                fields=[
+                    "prod_eqp_id_lookup",
+                    "interlock_kind_lookup",
+                    "-prod_progs_at",
+                    "-id",
+                ],
+                name="idx_m_intlk_obs_page",
             ),
         ]
+
+    def sync_observer_fields(self) -> None:
+        """원천 필드에서 Observer 검색용 파생 필드를 계산합니다."""
+
+        self.prod_eqp_id_lookup = normalize_interlock_lookup(self.prod_eqp_id)
+        self.interlock_kind_lookup = normalize_interlock_lookup(self.interlock_kind)
+        self.prod_progs_at = parse_prod_progs_at(self.prod_progs_time)
+
+    def save(self, *args, **kwargs) -> None:
+        """ORM 저장에서도 Observer 파생 필드를 항상 함께 유지합니다."""
+
+        self.sync_observer_fields()
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {
+                "prod_eqp_id_lookup",
+                "interlock_kind_lookup",
+                "prod_progs_at",
+            }
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         """관리자/디버깅용 문자열 표현을 반환합니다."""

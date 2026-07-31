@@ -16,6 +16,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from . import selectors
+from . import serializers as observer_serializers
 
 OBSERVER_VIEW_SELECTORS = "api.observer.views.selectors"
 OBSERVER_SELECTORS = "api.observer.selectors"
@@ -662,6 +663,196 @@ class ObserverEndpointTests(TestCase):
     def test_observer_logs_requires_eqp_id(self) -> None:
         response = self.client.get(reverse("observer-logs"))
         self.assertEqual(response.status_code, 400)
+
+    def test_observer_logs_page_returns_bounded_type_payload(self) -> None:
+        """최초 page endpoint가 정규화된 bounded query를 selector에 전달합니다."""
+
+        payload = {
+            "data": {
+                "eqp": {
+                    "items": [],
+                    "nextCursor": None,
+                    "hasMore": False,
+                    "error": None,
+                }
+            },
+            "meta": {
+                "from": "2026-07-01T00:00:00",
+                "to": "2026-07-07T23:59:59.999999",
+                "pageSize": 250,
+                "partial": False,
+                "allFailed": False,
+            },
+        }
+        with patch(
+            f"{OBSERVER_VIEW_SELECTORS}.get_log_pages",
+            return_value=payload,
+        ) as selector:
+            response = self.client.get(
+                reverse("observer-logs-page"),
+                {
+                    "eqpId": "eqp-alpha",
+                    "from": "2026-07-01",
+                    "to": "2026-07-07",
+                    "types": "eqp",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), payload)
+        selector.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            log_types=["eqp"],
+            start_at="2026-07-01T00:00:00",
+            end_at="2026-07-07T23:59:59.999999",
+            page_size=observer_serializers.DEFAULT_OBSERVER_PAGE_SIZE,
+            range_key=(
+                "2026-07-01T00:00:00:"
+                "2026-07-07T23:59:59.999999"
+            ),
+        )
+
+    def test_observer_logs_page_rejects_more_than_ninety_days(self) -> None:
+        """backend도 frontend와 같은 최대 90일 조회 범위를 강제합니다."""
+
+        response = self.client.get(
+            reverse("observer-logs-page"),
+            {
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-01-01",
+                "to": "2026-07-07",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_observer_log_type_page_validates_cursor_scope(self) -> None:
+        """다른 설비에서 발급한 cursor는 현재 page query에 재사용할 수 없습니다."""
+
+        cursor = observer_serializers.encode_observer_cursor(
+            {
+                "eqpId": "OTHER-EQP",
+                "logType": "eqp",
+                "range": (
+                    "2026-07-01T00:00:00:"
+                    "2026-07-07T23:59:59.999999"
+                ),
+                "eventTime": "2026-07-06T10:00:00",
+                "tieBreaker": 10,
+            }
+        )
+
+        response = self.client.get(
+            reverse("observer-logs-type-page", kwargs={"log_key": "eqp"}),
+            {
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-07-01",
+                "to": "2026-07-07",
+                "cursor": cursor,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_observer_log_detail_returns_selected_source(self) -> None:
+        """detail endpoint가 설비/type/source ID를 selector에 전달합니다."""
+
+        payload = {
+            "id": "EQP-100",
+            "sourceId": 7,
+            "logType": "EQP",
+        }
+        with patch(
+            f"{OBSERVER_VIEW_SELECTORS}.get_log_detail",
+            return_value=payload,
+        ) as selector:
+            response = self.client.get(
+                reverse("observer-log-detail", kwargs={"log_key": "eqp"}),
+                {"eqpId": "eqp-alpha", "logId": "7"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), payload)
+        selector.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            log_key="eqp",
+            log_id="7",
+        )
+
+    def test_observer_eqp_page_builds_compact_payload_and_cursor(self) -> None:
+        """EQP page는 comment preview와 source PK cursor를 생성합니다."""
+
+        event_time = datetime(2026, 7, 6, 10, 30, tzinfo=ZoneInfo("Asia/Seoul"))
+        with patch(
+            f"{OBSERVER_SELECTORS}.eqp_status_chg_selectors.fetch_eqp_timeline_page",
+            return_value=(
+                [
+                    {
+                        "id": 11,
+                        "eqp_event_key": 101,
+                        "eqp_cb": "EQP-ALPHA",
+                        "eqp_status_type": "RUN",
+                        "chg_time": event_time,
+                        "operator_emp_id": "USER",
+                        "chg_comment": "가" * 250,
+                    }
+                ],
+                True,
+            ),
+        ):
+            page = selectors.get_log_page(
+                eqp_id="EQP-ALPHA",
+                log_key="eqp",
+                start_at="2026-07-01T00:00:00",
+                end_at="2026-07-07T23:59:59.999999",
+                page_size=1,
+                range_key=(
+                    "2026-07-01T00:00:00:"
+                    "2026-07-07T23:59:59.999999"
+                ),
+            )
+
+        self.assertEqual(len(page["items"][0]["comment"]), 200)
+        self.assertTrue(page["items"][0]["commentTruncated"])
+        self.assertEqual(page["items"][0]["detailId"], 11)
+        self.assertTrue(page["page"]["hasMore"])
+        cursor = observer_serializers.decode_observer_cursor(
+            page["page"]["nextCursor"]
+        )
+        self.assertEqual(cursor["tieBreaker"], 11)
+        self.assertEqual(cursor["logType"], "eqp")
+
+    def test_observer_batch_page_preserves_successful_types(self) -> None:
+        """한 source 실패가 성공한 다른 source 결과를 제거하지 않습니다."""
+
+        successful_page = {
+            "items": [{"id": "EQP-1"}],
+            "page": {
+                "nextCursor": None,
+                "hasMore": False,
+                "pageSize": 10,
+            },
+            "meta": {},
+        }
+        with patch(
+            f"{OBSERVER_SELECTORS}.get_log_page",
+            side_effect=[successful_page, RuntimeError("source failed")],
+        ):
+            payload = selectors.get_log_pages(
+                eqp_id="EQP-ALPHA",
+                log_types=["eqp", "tip"],
+                start_at="2026-07-01T00:00:00",
+                end_at="2026-07-07T23:59:59.999999",
+                page_size=10,
+                range_key="range",
+            )
+
+        self.assertEqual(payload["data"]["eqp"]["items"], [{"id": "EQP-1"}])
+        self.assertEqual(
+            payload["data"]["tip"]["error"]["code"],
+            "SOURCE_QUERY_FAILED",
+        )
+        self.assertTrue(payload["meta"]["partial"])
 
     def test_observer_eqp_logs_returns_results(self) -> None:
         with patch(

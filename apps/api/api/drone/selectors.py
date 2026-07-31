@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Sequence
 from django.db import connection
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 from django.db.models.functions import Lower
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 import api.account.selectors as account_selectors
 from api.common.services.db import run_query
@@ -157,6 +159,104 @@ def get_drone_sop_for_update(*, sop_id: int) -> DroneSOP | None:
     if sop_id <= 0:
         return None
     return DroneSOP.objects.select_for_update().filter(id=sop_id).first()
+
+
+def _observer_datetime(value: object) -> object:
+    """Observer 문자열 시각을 DroneSOP DateTimeField 조회값으로 정규화합니다."""
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = parse_datetime(str(value or ""))
+    if parsed is None:
+        return value
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_default_timezone())
+    return parsed
+
+
+def fetch_drone_sop_timeline_page(
+    *,
+    eqp_id: str,
+    start_at: object,
+    end_at: object,
+    page_size: int,
+    cursor_time: object | None = None,
+    cursor_id: int | None = None,
+) -> tuple[list[dict[str, object]], bool]:
+    """Observer ESOP compact log 한 페이지를 keyset 방식으로 반환합니다."""
+
+    eqp_key = str(eqp_id or "").strip().upper()
+    queryset = DroneSOP.objects.filter(
+        eqp_id_lookup=eqp_key,
+        created_at__gte=_observer_datetime(start_at),
+        created_at__lte=_observer_datetime(end_at),
+    )
+    normalized_cursor_time = (
+        _observer_datetime(cursor_time) if cursor_time is not None else None
+    )
+    if normalized_cursor_time is not None and cursor_id is not None:
+        queryset = queryset.filter(
+            Q(created_at__lt=normalized_cursor_time)
+            | Q(created_at=normalized_cursor_time, id__lt=cursor_id)
+        )
+
+    rows = list(
+        queryset.order_by("-created_at", "-id")
+        .values(
+            "id",
+            "sample_type",
+            "created_at",
+            "knox_id",
+            "status",
+            "comment",
+            "line_id",
+            "eqp_id",
+            "chamber_ids",
+            "lot_id",
+        )[: page_size + 1]
+    )
+    has_more = len(rows) > page_size
+    return rows[:page_size], has_more
+
+
+def get_drone_sop_timeline_detail(
+    *,
+    eqp_id: str,
+    source_id: int,
+) -> dict[str, object] | None:
+    """설비와 source PK가 일치하는 ESOP 상세 row를 반환합니다."""
+
+    return (
+        DroneSOP.objects.filter(
+            id=source_id,
+            eqp_id_lookup=str(eqp_id or "").strip().upper(),
+        )
+        .values(
+            "id",
+            "sample_type",
+            "sample_group",
+            "created_at",
+            "updated_at",
+            "knox_id",
+            "status",
+            "comment",
+            "line_id",
+            "sdwt_prod",
+            "eqp_id",
+            "chamber_ids",
+            "lot_id",
+            "proc_id",
+            "ppid",
+            "main_step",
+            "metro_current_step",
+            "metro_steps",
+            "metro_end_step",
+            "defect_url",
+            "ctttm_urls",
+        )
+        .first()
+    )
 
 
 def list_drone_sop_user_sdwt_maps() -> list[dict[str, Any]]:

@@ -16,7 +16,10 @@ from .views import (
     ObserverEqpLogsView,
     ObserverEquipmentsView,
     ObserverLinesView,
+    ObserverLogDetailView,
     ObserverLogsView,
+    ObserverLogsByTypePageView,
+    ObserverLogsPageView,
     ObserverPrcGroupView,
     ObserverRacbLogsView,
     ObserverSdwtView,
@@ -44,6 +47,17 @@ urlpatterns = [
         name="observer-equipment-info",
     ),
     path("logs", ObserverLogsView.as_view(), name="observer-logs"),
+    path("logs/page", ObserverLogsPageView.as_view(), name="observer-logs-page"),
+    path(
+        "logs/<str:log_key>/page",
+        ObserverLogsByTypePageView.as_view(),
+        name="observer-logs-type-page",
+    ),
+    path(
+        "logs/<str:log_key>/detail",
+        ObserverLogDetailView.as_view(),
+        name="observer-log-detail",
+    ),
     path("logs/eqp", ObserverEqpLogsView.as_view(), name="observer-logs-eqp"),
     path("logs/tip", ObserverTipLogsView.as_view(), name="observer-logs-tip"),
     path(

@@ -6,14 +6,13 @@ from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from django.db.models.functions import Trim, Upper
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from .models import MInterlock
 
 SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
-SOURCE_TIME_FORMAT = "%Y%m%d %H%M%S"
 VALID_INTERLOCK_KINDS = frozenset({"SPC", "FDC"})
 
 TIMELINE_VALUE_FIELDS = (
@@ -55,6 +54,18 @@ TIMELINE_VALUE_FIELDS = (
     "engr_comment",
 )
 
+TIMELINE_PAGE_VALUE_FIELDS = (
+    "id",
+    "interlock_no",
+    "interlock_type",
+    "interlock_comment",
+    "interlock_desc",
+    "engr_comment",
+    "interlock_kind",
+    "prod_eqp_id",
+    "metro_item",
+)
+
 
 def _normalize_datetime(value: object, *, is_end: bool = False) -> datetime:
     """조회 경계를 Asia/Seoul aware datetime으로 정규화합니다."""
@@ -81,23 +92,6 @@ def _normalize_datetime(value: object, *, is_end: bool = False) -> datetime:
     return parsed.astimezone(SEOUL_TIMEZONE)
 
 
-def _format_boundary(value: object, *, is_end: bool = False) -> str:
-    """조회 경계를 원천 prod_progs_time 문자열 형식으로 변환합니다."""
-
-    return _normalize_datetime(value, is_end=is_end).strftime(SOURCE_TIME_FORMAT)
-
-
-def _parse_source_time(value: object) -> datetime | None:
-    """원천 prod_progs_time을 Asia/Seoul aware datetime으로 변환합니다."""
-
-    raw_value = str(value or "").strip()
-    try:
-        parsed = datetime.strptime(raw_value, SOURCE_TIME_FORMAT)
-    except ValueError:
-        return None
-    return parsed.replace(tzinfo=SEOUL_TIMEZONE)
-
-
 def fetch_interlock_timeline_rows(
     *,
     eqp_id: str,
@@ -114,38 +108,106 @@ def fetch_interlock_timeline_rows(
         return []
 
     queryset = (
-        MInterlock.objects.annotate(
-            prod_eqp_key=Upper(Trim("prod_eqp_id")),
-            interlock_kind_key=Upper(Trim("interlock_kind")),
+        MInterlock.objects.filter(
+            prod_eqp_id_lookup=eqp_key,
+            interlock_kind_lookup=kind_key,
+            prod_progs_at__gte=_normalize_datetime(start_at),
         )
-        .filter(
-            prod_eqp_key=eqp_key,
-            interlock_kind_key=kind_key,
-            prod_progs_time__gte=_format_boundary(start_at),
-            prod_progs_time__regex=r"^\d{8} \d{6}$",
-        )
-        .order_by("-prod_progs_time", "-id")
-        .values(*TIMELINE_VALUE_FIELDS)
+        .order_by("-prod_progs_at", "-id")
+        .values(*TIMELINE_VALUE_FIELDS, "prod_progs_at")
     )
     if end_at is not None:
         queryset = queryset.filter(
-            prod_progs_time__lte=_format_boundary(end_at, is_end=True),
+            prod_progs_at__lte=_normalize_datetime(end_at, is_end=True),
         )
 
     rows: list[dict[str, Any]] = []
     for row in queryset.iterator(chunk_size=1000):
-        event_time = _parse_source_time(row.get("prod_progs_time"))
-        if event_time is None:
-            continue
-        row["event_time"] = event_time
+        row["event_time"] = row.pop("prod_progs_at")
         rows.append(row)
         if limit is not None and len(rows) >= limit:
             break
     return rows
 
 
+def fetch_interlock_timeline_page(
+    *,
+    eqp_id: str,
+    interlock_kind: str,
+    start_at: object,
+    end_at: object,
+    page_size: int,
+    cursor_time: object | None = None,
+    cursor_id: int | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Observer Interlock compact log 한 페이지를 keyset 방식으로 반환합니다."""
+
+    eqp_key = str(eqp_id or "").strip().upper()
+    kind_key = str(interlock_kind or "").strip().upper()
+    if not eqp_key or kind_key not in VALID_INTERLOCK_KINDS:
+        return [], False
+
+    queryset = MInterlock.objects.filter(
+        prod_eqp_id_lookup=eqp_key,
+        interlock_kind_lookup=kind_key,
+        prod_progs_at__gte=_normalize_datetime(start_at),
+        prod_progs_at__lte=_normalize_datetime(end_at, is_end=True),
+    )
+    parsed_cursor_time = None
+    if cursor_time:
+        try:
+            parsed_cursor_time = _normalize_datetime(cursor_time)
+        except ValueError:
+            parsed_cursor_time = None
+    if parsed_cursor_time is not None and cursor_id is not None:
+        queryset = queryset.filter(
+            Q(prod_progs_at__lt=parsed_cursor_time)
+            | Q(prod_progs_at=parsed_cursor_time, id__lt=cursor_id)
+        )
+
+    raw_rows = list(
+        queryset.order_by("-prod_progs_at", "-id")
+        .values(*TIMELINE_PAGE_VALUE_FIELDS, "prod_progs_at")[: page_size + 1]
+    )
+    has_more = len(raw_rows) > page_size
+    rows: list[dict[str, Any]] = []
+    for row in raw_rows[:page_size]:
+        row["event_time"] = row.pop("prod_progs_at")
+        rows.append(row)
+    return rows, has_more
+
+
+def get_interlock_timeline_detail(
+    *,
+    eqp_id: str,
+    interlock_kind: str,
+    source_id: int,
+) -> dict[str, Any] | None:
+    """설비, 종류, source PK가 일치하는 Interlock 상세 row를 반환합니다."""
+
+    eqp_key = str(eqp_id or "").strip().upper()
+    kind_key = str(interlock_kind or "").strip().upper()
+    if not eqp_key or kind_key not in VALID_INTERLOCK_KINDS:
+        return None
+
+    row = (
+        MInterlock.objects.filter(
+            id=source_id,
+            prod_eqp_id_lookup=eqp_key,
+            interlock_kind_lookup=kind_key,
+        )
+        .values(*TIMELINE_VALUE_FIELDS, "prod_progs_at")
+        .first()
+    )
+    if row is None:
+        return None
+    row["event_time"] = row.pop("prod_progs_at")
+    return row
+
+
 __all__ = [
     "SEOUL_TIMEZONE",
-    "SOURCE_TIME_FORMAT",
+    "fetch_interlock_timeline_page",
     "fetch_interlock_timeline_rows",
+    "get_interlock_timeline_detail",
 ]

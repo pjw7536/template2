@@ -10,4 +10,26 @@ export const observerQueryKeys = {
     eqpId ?? null,
     options ?? {},
   ],
+  logBatch: (eqpId, types, options) => [
+    ...ROOT_KEY,
+    "log-batch",
+    eqpId ?? null,
+    types,
+    options ?? {},
+  ],
+  logPage: (logKey, eqpId, options, cursor) => [
+    ...ROOT_KEY,
+    "log-page",
+    logKey,
+    eqpId ?? null,
+    options ?? {},
+    cursor ?? null,
+  ],
+  logDetail: (logKey, eqpId, detailId) => [
+    ...ROOT_KEY,
+    "log-detail",
+    logKey,
+    eqpId ?? null,
+    detailId ?? null,
+  ],
 }

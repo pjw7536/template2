@@ -22,6 +22,9 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/equipment-info/<line_id>/<eqp_id>` | 라인 포함 설비 상세 |
 | GET | `/api/v1/observer/equipment-info/<eqp_id>` | 설비 상세 |
 | GET | `/api/v1/observer/logs?eqpId=...` | 전체 로그 |
+| GET | `/api/v1/observer/logs/page?eqpId=...&from=...&to=...` | 모든 유형의 첫 compact page를 한 번에 조회 |
+| GET | `/api/v1/observer/logs/<log_type>/page?eqpId=...&from=...&to=...` | 유형별 다음 compact page 조회 |
+| GET | `/api/v1/observer/logs/<log_type>/detail?eqpId=...&logId=...` | 선택한 로그의 전체 상세 조회 |
 | GET | `/api/v1/observer/logs/eqp?eqpId=...` | EQP 로그 |
 | GET | `/api/v1/observer/logs/tip?eqpId=...` | TIP 로그 |
 | GET | `/api/v1/observer/logs/spc-interlock?eqpId=...` | SPC interlock 이력 |
@@ -42,11 +45,15 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - PRC/설비 조회는 `drone_target.target_user_sdwt_prod = station_master.sdwt_prod_lookup` 매칭으로 station 데이터를 제한합니다.
 - 기준정보와 로그는 기본 DB의 data movement/업무 테이블을 조회합니다.
 - 로그 조회 API는 공통으로 `from`, `to`, `limit` query를 지원합니다.
+- 신규 page API는 `from`, `to`를 필수로 받고 최대 90일 범위만 허용합니다.
+- page API의 `pageSize` 기본값은 250, 최대값은 1000입니다. 다음 page는 응답의 opaque `nextCursor`를 같은 EQP·기간·로그 유형 요청에 그대로 전달합니다.
+- `/logs/page`는 유형별 `items`, `page`, `error`를 반환합니다. 일부 source만 실패하면 성공 유형을 유지한 200 응답을 반환하고, 전부 실패하면 503을 반환합니다.
+- page 목록은 comment preview와 `detailId`만 포함하며, 전체 comment·defect map·CTTTM summary 같은 대형 필드는 `/detail`에서 선택 시 조회합니다.
 - CTTTM 로그의 `summary`는 `ct_process_comment.llm_summary` 값을 사용합니다.
 - `from`, `to`는 `YYYY-MM-DD` 또는 datetime 문자열을 받습니다.
-- SPC/FDC interlock은 `eqpId = m_interlock.prod_eqp_id`로만 매칭합니다.
-- SPC/FDC interlock의 event time은 `prod_progs_time`이며 `YYYYMMDD HHMMSS`를 Asia/Seoul 현지 시각으로 해석합니다.
-- 형식이 잘못되거나 비어 있는 `prod_progs_time`은 응답에서 제외합니다.
+- SPC/FDC interlock은 정규화된 `eqpId = m_interlock.prod_eqp_id_lookup`과 `interlock_kind_lookup`으로 매칭합니다.
+- SPC/FDC interlock의 event time은 `prod_progs_time`에서 변환해 저장한 `prod_progs_at`을 사용합니다. 원천 `YYYYMMDD HHMMSS` 또는 18자리 timestamp는 Asia/Seoul 현지 시각으로 해석합니다.
+- typed 파생 필드가 비어 있거나 원천 시간 형식이 잘못된 row는 응답에서 제외합니다.
 - SPC/FDC 응답 `logType`은 각각 `SPC_ITL`, `FDC_ITL`이고 `eventTime`은 `+09:00` offset을 포함합니다.
 - SPC/FDC 응답 ID는 `<logType>:<sourceId>` 형식이며 원본 `m_interlock.id`는 `sourceId`로 제공합니다.
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
@@ -77,6 +84,14 @@ GET /api/v1/observer/logs/spc-interlock?eqpId=EQP-001&from=2026-07-28&to=2026-07
 ```
 
 ```http
+GET /api/v1/observer/logs/page?eqpId=EQP-001&from=2026-07-28&to=2026-07-30&pageSize=250
+```
+
+```http
+GET /api/v1/observer/logs/eqp/page?eqpId=EQP-001&from=2026-07-28&to=2026-07-30&pageSize=250&cursor=<opaque-cursor>
+```
+
+```http
 GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=PROC1&stepSeq=10
 ```
 
@@ -86,7 +101,8 @@ GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=P
 | --- | --- |
 | 400 | 필수 query 누락 |
 | 401 | 배포 정책상 인증이 필요한 경우 |
-| 404 | 설비 정보 없음 |
+| 404 | 설비 정보 또는 선택한 상세 로그 없음 |
+| 503 | page batch의 모든 source 조회 실패 |
 | 500 | 기본 DB 조회 실패 |
 
 ## 관련 모듈 문서

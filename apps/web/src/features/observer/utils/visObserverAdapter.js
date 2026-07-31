@@ -21,9 +21,18 @@ export function createVisObserver({
 export function replaceObserverItems(observer, dataset, items) {
   if (!observer || !dataset) return;
 
-  dataset.clear();
-  dataset.add(items);
-  observer.setItems(dataset);
+  const nextItems = items ?? [];
+  const nextIds = new Set(nextItems.map((item) => item.id));
+  const removedIds = dataset
+    .getIds()
+    .filter((itemId) => !nextIds.has(itemId));
+
+  if (removedIds.length > 0) {
+    dataset.remove(removedIds);
+  }
+  if (nextItems.length > 0) {
+    dataset.update(nextItems);
+  }
 }
 
 export function setObserverGroups(observer, groups) {

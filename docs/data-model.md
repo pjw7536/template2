@@ -66,7 +66,7 @@
 - Drone SOP는 target, channel config, recipient, dispatch, delivery로 분리되어 알림 설정과 발송 결과를 추적합니다.
 - AppStore와 VOC는 작성자와 댓글/답변 관계를 기본 DB에 저장합니다.
 - Observer는 기준정보를 기본 DB의 `mes_line_mapping_info`, `station_master`에서 조회하고, 로그를 `eqp_status_chg`, `mi_tip_update_hist`, `m_interlock`, `ctttm_workorder_list`, `ct_process_comment`, `racb_list`, `drone_sop`에서 조회합니다.
-- `MInterlock`의 Observer 조회는 정규화된 `prod_eqp_id`, 정규화된 `interlock_kind`, `prod_progs_time` 복합 표현식 인덱스를 사용합니다.
+- `MInterlock`은 원천 필드와 함께 `prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`을 dual-write하며, Observer는 typed keyset 인덱스 `idx_m_intlk_obs_page`를 항상 사용합니다. 기존 문자열 조회 표현식 인덱스는 제거합니다. typed 파생 필드가 비어 있는 기존 row는 Observer 조회에서 제외하며 별도 호환 경로를 제공하지 않습니다.
 
 ## 변경 시 확인 항목
 

@@ -12,6 +12,7 @@ import {
 import { useObserverSelectionStore } from "../store/useObserverSelectionStore";
 import { useObserverStore } from "../store/useObserverStore";
 import { useObserverLogs } from "./useObserverLogs";
+import { useObserverLogDetailQuery } from "./useObserverLogDetailQuery";
 import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
 
 /**
@@ -218,9 +219,19 @@ export function useObserverPageState(params) {
     selectedTipGroups,
     logQueryOptions
   );
-  const selectedLog =
+  const selectedCompactLog =
     logs.mergedLogs.find((log) => String(log.id) === String(selectedRow)) ||
     null;
+  const selectedLogDetail = useObserverLogDetailQuery(
+    eqpId,
+    selectedCompactLog
+  );
+  const selectedLog = selectedCompactLog
+    ? {
+        ...selectedCompactLog,
+        ...(selectedLogDetail.data || {}),
+      }
+    : null;
 
   return {
     selection: {
@@ -253,6 +264,14 @@ export function useObserverPageState(params) {
     validation: { isValidating, validationError },
     logs,
     selectedLog,
+    selectedLogDetail: {
+      isLoading:
+        Boolean(selectedCompactLog) &&
+        selectedLogDetail.isFetching &&
+        !selectedLogDetail.data,
+      error: selectedLogDetail.isError ? selectedLogDetail.error : null,
+      refetch: selectedLogDetail.refetch,
+    },
     observerReady: Boolean(eqpId),
   };
 }

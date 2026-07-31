@@ -9,6 +9,8 @@ Observer는 설비 Observer 화면에 필요한 기준 정보와 로그를 조�
 - 공정 그룹 조회
 - 설비 목록/상세 조회
 - 설비별 통합 로그 조회
+- 최초 batch 및 유형별 keyset page 조회
+- 선택 로그의 상세 지연 조회
 - EQP, TIP, SPC Interlock, FDC Interlock, CTTTM, RACB, ESOP 유형별 로그 조회
 - URL의 `eqpId`를 기준으로 설비 상세와 observer item 동기화
 - tkin Prevent process/step matrix 조회
@@ -49,9 +51,10 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 3. 필수 query가 없으면 400을 반환합니다.
 4. `lineId`는 `drone_target.line_id`, `sdwtId`는 `drone_target.target_user_sdwt_prod`로 해석합니다.
 5. `drone_target.target_user_sdwt_prod = station_master.sdwt_prod_lookup` 매칭으로 station 데이터를 제한합니다.
-6. `from`, `to`, `limit` 로그 옵션을 검증합니다.
-7. 기본 DB의 기준정보 또는 로그 데이터를 조회합니다.
-8. 프론트가 사용하기 쉬운 형태로 반환합니다.
+6. 신규 page 경로는 최대 90일과 page size/cursor scope를 검증합니다.
+7. 최초 요청은 7개 source의 compact 첫 page를 batch 응답으로 반환합니다.
+8. 추가 데이터는 유형별 keyset cursor로, 전체 상세는 선택 시 별도 endpoint로 조회합니다.
+9. 프론트는 서버 응답을 React Query cache에 두고 resident log를 최대 5000개로 제한합니다.
 
 ## 로그 조회 정책
 
@@ -60,9 +63,12 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 | 기본 기간 | `from` 생략 시 `OBSERVER_QUERY_DAYS` 기준 최근 기간 |
 | 현재 기본값 | 60일 |
 | 최대 limit | 5000 |
+| page size | 기본 250, 최대 1000 |
+| page 기간 | 최대 90일 |
+| resident log | 화면당 최대 5000 |
 | 날짜 형식 | `YYYY-MM-DD` 또는 datetime 문자열 |
 | 정렬/변환 | backend selector가 유형별 raw row를 공통 payload로 변환 |
-| Interlock 시간 | `prod_progs_time`을 `YYYYMMDD HHMMSS`, Asia/Seoul로 해석 |
+| Interlock 시간 | `prod_progs_time`을 Asia/Seoul로 변환해 저장한 `prod_progs_at` 사용 |
 
 SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표시 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`입니다. Timeline marker는 `metroItem`을 우선 표시하고 `interlockType`, `interlockNo` 순서로 대체합니다. Data Log에서는 `Change Type`에 `metroItem`, `Operator`에 `interlockType`을 표시하며 두 유형 모두 Log Detail에도 포함됩니다.
 
@@ -74,7 +80,7 @@ SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표
 | `apps/web/src/features/observer/pages/TkinPreventDashboardPage.jsx` | tkin Prevent route page |
 | `apps/web/src/features/observer/api/observerApi.js` | backend API 호출 |
 | `apps/web/src/features/observer/hooks/useObserverLogs.js` | 로그 query orchestration |
-| `apps/web/src/features/observer/hooks/useObserverLogQuery.js` | 유형별 로그 query 공통화 |
+| `apps/web/src/features/observer/hooks/useObserverLogDetailQuery.js` | 선택 로그 상세 지연 조회 |
 | `apps/web/src/features/observer/store/useObserverStore.js` | 선택/필터 UI 상태 |
 | `apps/web/src/features/observer/utils/visObserverItems.js` | vis-timeline item 변환 |
 | `apps/web/src/features/observer/components/*Detail.jsx` | 로그 유형별 상세 패널 |
@@ -83,10 +89,13 @@ SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표
 
 - Observer 조회 문제는 `/api/v1/observer/lines` 같은 기준 정보 API와 data movement 적재 상태부터 확인합니다.
 - 기본 조회 기간은 `OBSERVER_QUERY_DAYS`로 조정합니다.
+- Data Log는 row virtualizer를 사용하므로 resident log 수와 관계없이 화면에는 viewport 주변 행만 mount됩니다.
+- Timeline DataSet은 전체 초기화 대신 ID 기준 diff를 반영해 선택과 zoom 초기화를 줄입니다.
 - 화면이 느리면 로그 API의 `from`, `to`, `limit` 조합과 응답 건수를 먼저 확인합니다.
 - CTTTM 요약이 비어 있으면 `summarize_ct_process_comment` command와 `ct_process_comment.update_flag` 상태를 확인합니다.
 - ESOP 로그가 누락되면 `api.drone` 데이터와 observer 로그 결합 지점을 함께 확인합니다.
-- SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id`, `interlock_kind`, `prod_progs_time` 형식과 적재 상태를 확인합니다.
+- SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 적재 상태를 확인합니다.
+- Interlock은 `prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 `idx_m_intlk_obs_page`를 항상 사용합니다. typed 파생 필드가 비어 있는 기존 row는 조회에서 제외하며 문자열 조회 fallback을 제공하지 않습니다.
 - tkin Prevent matrix가 비어 있으면 `station_master.ch_main`과 `m_tkin_prevent.eqp_id` 매핑부터 확인합니다.
 - tkin Prevent에서 Line은 ESOP Dashboard 선택값을 사용하며, user_sdwt_prod 후보는 `account_affiliation.line/user_sdwt_prod` 기준입니다.
 - tkin Prevent의 PRC/process/step/matrix 조회는 선택된 user_sdwt_prod와 PRC Group 기준입니다.

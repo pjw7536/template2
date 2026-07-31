@@ -15,6 +15,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.views import APIView
 
 from . import selectors
+from . import serializers as observer_serializers
 
 
 def _query_id(request: HttpRequest, key: str) -> str:
@@ -558,6 +559,128 @@ class _ObserverLogsByTypeView(APIView):
         )
 
 
+class ObserverLogsPageView(APIView):
+    """유형별 compact log 첫 페이지를 한 번에 반환합니다."""
+
+    def get(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """Observer 최초 화면용 bounded log page를 반환합니다.
+
+        예시 요청:
+        - GET /api/v1/observer/logs/page?eqpId=EQP-1&from=2026-07-01&to=2026-07-07
+
+        snake/camel 호환:
+        - eqpId/pageSize만 지원합니다.
+        """
+
+        query = observer_serializers.ObserverLogPageQuerySerializer(data=request.GET)
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_query", "details": query.errors},
+                status=400,
+            )
+
+        values = query.validated_data
+        payload = selectors.get_log_pages(
+            eqp_id=values["eqp_id"],
+            log_types=values["log_types"],
+            start_at=values["start_at"],
+            end_at=values["end_at"],
+            page_size=values["pageSize"],
+            range_key=values["range_key"],
+        )
+        status = 503 if payload["meta"]["allFailed"] else 200
+        return JsonResponse(payload, status=status)
+
+
+class ObserverLogsByTypePageView(APIView):
+    """지정된 log type의 compact page를 반환합니다."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        log_key: str,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """유형별 cursor page를 반환합니다.
+
+        예시 요청:
+        - GET /api/v1/observer/logs/tip/page?eqpId=EQP-1&from=2026-07-01&to=2026-07-07&pageSize=250
+
+        snake/camel 호환:
+        - eqpId/pageSize만 지원합니다.
+        """
+
+        type_key = str(log_key or "").strip().lower()
+        if type_key not in observer_serializers.OBSERVER_LOG_TYPES:
+            return JsonResponse({"error": "unsupported_log_type"}, status=404)
+
+        query = observer_serializers.ObserverLogPageQuerySerializer(
+            data=request.GET,
+            context={"log_type": type_key},
+        )
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_query", "details": query.errors},
+                status=400,
+            )
+
+        values = query.validated_data
+        payload = selectors.get_log_page(
+            eqp_id=values["eqp_id"],
+            log_key=type_key,
+            start_at=values["start_at"],
+            end_at=values["end_at"],
+            page_size=values["pageSize"],
+            range_key=values["range_key"],
+            cursor_payload=values["cursor_payload"],
+        )
+        return JsonResponse(payload)
+
+
+class ObserverLogDetailView(APIView):
+    """선택된 compact log의 상세 payload를 반환합니다."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        log_key: str,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """설비와 source PK가 일치하는 상세 log를 반환합니다.
+
+        예시 요청:
+        - GET /api/v1/observer/logs/esop/detail?eqpId=EQP-1&logId=123
+
+        snake/camel 호환:
+        - eqpId/logId만 지원합니다.
+        """
+
+        type_key = str(log_key or "").strip().lower()
+        if type_key not in observer_serializers.OBSERVER_LOG_TYPES:
+            return JsonResponse({"error": "unsupported_log_type"}, status=404)
+
+        query = observer_serializers.ObserverLogDetailQuerySerializer(
+            data=request.GET
+        )
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_query", "details": query.errors},
+                status=400,
+            )
+
+        values = query.validated_data
+        payload = selectors.get_log_detail(
+            eqp_id=values["eqpId"],
+            log_key=type_key,
+            log_id=values["logId"],
+        )
+        if payload is None:
+            return JsonResponse({"error": "log_not_found"}, status=404)
+        return JsonResponse(payload)
+
+
 class ObserverLogsView(_ObserverLogsByTypeView):
     """설비의 전체 로그를 타입별로 합쳐 반환합니다."""
 
@@ -652,6 +775,9 @@ __all__ = [
     "ObserverEqpLogsView",
     "ObserverEquipmentsView",
     "ObserverLinesView",
+    "ObserverLogDetailView",
+    "ObserverLogsByTypePageView",
+    "ObserverLogsPageView",
     "ObserverLogsView",
     "ObserverPrcGroupView",
     "ObserverRacbLogsView",

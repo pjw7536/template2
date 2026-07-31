@@ -7,6 +7,7 @@ from typing import List
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -111,4 +112,68 @@ def fetch_racb_timeline_logs(
     ]
 
 
-__all__ = ["fetch_racb_timeline_logs"]
+def fetch_racb_timeline_page(
+    *,
+    eqp_id: str,
+    start_at: object,
+    end_at: object,
+    page_size: int,
+    cursor_time: object | None = None,
+    cursor_id: int | None = None,
+) -> tuple[list[dict[str, object]], bool]:
+    """Observer RACB compact log 한 페이지를 keyset 방식으로 반환합니다."""
+
+    normalized_start_at = _normalize_datetime_filter(start_at)
+    normalized_end_at = _normalize_datetime_filter(end_at, is_end=True)
+    queryset = RacbList.objects.filter(
+        eqp_cb_lookup=_lookup_key(eqp_id),
+        update_date__gte=normalized_start_at,
+        update_date__lte=normalized_end_at,
+    )
+    normalized_cursor_time = _normalize_datetime_filter(cursor_time)
+    if normalized_cursor_time is not None and cursor_id is not None:
+        queryset = queryset.filter(
+            Q(update_date__lt=normalized_cursor_time)
+            | Q(update_date=normalized_cursor_time, id__lt=cursor_id)
+        )
+
+    rows = list(
+        queryset.order_by("-update_date", "-id")
+        .values(
+            "id",
+            "c_racb_id",
+            "eqp_cb",
+            "line_id",
+            "racb_type_cd",
+            "status_code",
+            "update_date",
+            "create_user",
+            "title",
+        )[: page_size + 1]
+    )
+    has_more = len(rows) > page_size
+    return rows[:page_size], has_more
+
+
+def get_racb_timeline_detail(*, eqp_id: str, log_id: str) -> dict[str, object] | None:
+    """Observer RACB log ID와 설비가 일치하는 상세 row를 반환합니다."""
+
+    try:
+        source_id = int(str(log_id or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return (
+        RacbList.objects.filter(
+            id=source_id,
+            eqp_cb_lookup=_lookup_key(eqp_id),
+        )
+        .values()
+        .first()
+    )
+
+
+__all__ = [
+    "fetch_racb_timeline_logs",
+    "fetch_racb_timeline_page",
+    "get_racb_timeline_detail",
+]

@@ -3,6 +3,7 @@ import React from "react";
 import ObserverDataTable from "./ObserverDataTable";
 import { LoadingSpinner } from "./Loaders";
 import { getLogTypeBadgeClass } from "../utils/logTypeStyles";
+import { OBSERVER_LOG_CONFIG } from "../utils/logPagination";
 
 export default function DataLogSection({
   eqpId,
@@ -12,8 +13,16 @@ export default function DataLogSection({
   handleFilter,
   logErrors = [],
   onRetryLogs,
+  hasMoreByType = {},
+  onLoadMoreType,
+  loadingMoreTypes = new Set(),
+  residentLogCount = 0,
+  residentLimitReached = false,
 }) {
   const hasLogErrors = logErrors.length > 0;
+  const moreTypes = OBSERVER_LOG_CONFIG.filter(
+    ({ logKey }) => hasMoreByType[logKey]
+  );
 
   return (
     <section className="border border-border bg-card shadow-sm rounded-xl p-3 flex-[2] h-120 min-h-0 flex flex-col overflow-hidden">
@@ -41,6 +50,31 @@ export default function DataLogSection({
                   재시도
                 </button>
               ) : null}
+            </div>
+          ) : null}
+          {moreTypes.length > 0 || residentLimitReached ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <span className="mr-auto">
+                {residentLogCount.toLocaleString()}건을 표시 중입니다.
+                {residentLimitReached
+                  ? " 안정적인 표시 한도에 도달해 기간을 좁혀야 합니다."
+                  : " 이전 로그를 유형별로 추가 조회할 수 있습니다."}
+              </span>
+              {!residentLimitReached
+                ? moreTypes.map(({ logKey, label }) => (
+                    <button
+                      key={logKey}
+                      type="button"
+                      onClick={() => onLoadMoreType?.(logKey)}
+                      disabled={loadingMoreTypes.has(logKey)}
+                      className="rounded-md border border-border bg-card px-2 py-1 font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loadingMoreTypes.has(logKey)
+                        ? `${label} 조회 중`
+                        : `${label} 더 불러오기`}
+                    </button>
+                  ))
+                : null}
             </div>
           ) : null}
           <div className="min-h-0 flex-1">

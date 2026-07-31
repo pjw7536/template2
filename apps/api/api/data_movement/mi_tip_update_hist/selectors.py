@@ -6,6 +6,7 @@ import hashlib
 from datetime import datetime, time
 from typing import List
 
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -124,4 +125,92 @@ def fetch_tip_timeline_logs(
     ]
 
 
-__all__ = ["fetch_tip_timeline_logs"]
+def fetch_tip_timeline_page(
+    *,
+    eqp_id: str,
+    start_at: object,
+    end_at: object,
+    page_size: int,
+    cursor_time: object | None = None,
+    cursor_id: int | None = None,
+) -> tuple[list[dict[str, object]], bool]:
+    """Observer TIP compact log 한 페이지를 keyset 방식으로 반환합니다."""
+
+    normalized_start_at = _normalize_datetime_filter(start_at)
+    normalized_end_at = _normalize_datetime_filter(end_at, is_end=True)
+    queryset = MiTipUpdateHist.objects.filter(
+        eqp_cb_lookup=_lookup_key(eqp_id),
+        gpm_update_date__gte=normalized_start_at,
+        gpm_update_date__lte=normalized_end_at,
+    )
+    normalized_cursor_time = _normalize_datetime_filter(cursor_time)
+    if normalized_cursor_time is not None and cursor_id is not None:
+        queryset = queryset.filter(
+            Q(gpm_update_date__lt=normalized_cursor_time)
+            | Q(gpm_update_date=normalized_cursor_time, id__lt=cursor_id)
+        )
+
+    rows = list(
+        queryset.order_by("-gpm_update_date", "-id")
+        .values(
+            "id",
+            "tip_event_key",
+            "eqp_cb",
+            "line_id",
+            "gpm_update_date",
+            "register_name",
+            "event_type",
+            "process_id",
+            "step_seq",
+            "ppid",
+            "tip_comment",
+        )[: page_size + 1]
+    )
+    has_more = len(rows) > page_size
+    return rows[:page_size], has_more
+
+
+def get_tip_timeline_detail(*, eqp_id: str, log_id: str) -> dict[str, object] | None:
+    """Observer TIP log ID와 설비가 일치하는 상세 row를 반환합니다."""
+
+    try:
+        source_id = int(str(log_id or "").strip())
+    except (TypeError, ValueError):
+        return None
+    row = MiTipUpdateHist.objects.filter(
+        id=source_id,
+        eqp_cb_lookup=_lookup_key(eqp_id),
+    ).first()
+    if row is None:
+        return None
+    return {
+        "id": row.id,
+        "tip_event_key": row.tip_event_key,
+        "line_id": row.line_id,
+        "eqp_cb": row.eqp_cb,
+        "step_seq": row.step_seq,
+        "process_id": row.process_id,
+        "ppid": row.ppid,
+        "reticle_id": row.reticle_id,
+        "product_id": row.product_id,
+        "sum_time": row.sum_time,
+        "rule_pkg_update_date": row.rule_pkg_update_date,
+        "gpm_update_date": row.gpm_update_date,
+        "register_name": row.register_name,
+        "event_type": row.event_type,
+        "tip_type": row.tip_type,
+        "tip_chg_type": row.tip_chg_type,
+        "tip_level": row.tip_level,
+        "tip_comment": row.tip_comment,
+        "tkin_restrc_lot_count": row.tkin_restrc_lot_count,
+        "cur_tkin_lot_count": row.cur_tkin_lot_count,
+        "term_intlk_occur_time": row.term_intlk_occur_time,
+        "last_update_date": row.last_update_date,
+    }
+
+
+__all__ = [
+    "fetch_tip_timeline_logs",
+    "fetch_tip_timeline_page",
+    "get_tip_timeline_detail",
+]

@@ -28,6 +28,7 @@ export default function ObserverPage() {
     validation,
     logs,
     selectedLog,
+    selectedLogDetail,
     observerReady,
   } = useObserverPageState(params); // 복잡한 상태를 한 곳에서 준비해 UI 단을 단순화
 
@@ -65,6 +66,11 @@ export default function ObserverPage() {
     filteredTipLogs,
     logErrors,
     refetchFailedLogs,
+    hasMoreByType,
+    loadMoreType,
+    loadingMoreTypes,
+    residentLogCount,
+    residentLimitReached,
   } = logs;
   const isCtttmLogSelected = selectedLog?.logType === "CTTTM";
   const isLogSelected = Boolean(selectedLog);
@@ -128,6 +134,11 @@ export default function ObserverPage() {
             handleFilter={handleFilterChange}
             logErrors={logErrors}
             onRetryLogs={refetchFailedLogs}
+            hasMoreByType={hasMoreByType}
+            onLoadMoreType={loadMoreType}
+            loadingMoreTypes={loadingMoreTypes}
+            residentLogCount={residentLogCount}
+            residentLimitReached={residentLimitReached}
           />
 
           <section className="grid min-h-0 grid-rows-[auto_1fr] gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
@@ -164,7 +175,12 @@ export default function ObserverPage() {
               )}
             </div>
             <div className="min-h-0 overflow-y-auto">
-              <LogDetailSection log={selectedLog} />
+              <LogDetailSection
+                log={selectedLog}
+                isLoading={selectedLogDetail.isLoading}
+                error={selectedLogDetail.error}
+                onRetry={selectedLogDetail.refetch}
+              />
             </div>
           </section>
         </div>
@@ -225,6 +241,9 @@ export default function ObserverPage() {
           <div className="min-h-0 min-w-0 overflow-auto rounded-md border border-border bg-card p-3">
             <LogDetailSection
               log={selectedLog}
+              isLoading={selectedLogDetail.isLoading}
+              error={selectedLogDetail.error}
+              onRetry={selectedLogDetail.refetch}
               overflowClassName="overflow-visible"
               summaryStreamingScrollClassName="max-w-none overflow-visible"
               textSizeClass="text-sm"

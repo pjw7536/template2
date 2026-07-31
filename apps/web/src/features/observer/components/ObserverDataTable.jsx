@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useObserverSelectionStore } from "../store/useObserverSelectionStore";
 import ObserverTableHeader from "./table/ObserverTableHeader";
 import ObserverTableFilters from "./table/ObserverTableFilters";
@@ -12,28 +13,31 @@ export default function ObserverDataTable({
 }) {
   const { selectedRow, source, setSelectedRow } = useObserverSelectionStore();
   const scrollContainerRef = useRef(null);
+  const rowIndexById = useMemo(
+    () =>
+      new Map(
+        data.map((row, index) => [String(row.id), index])
+      ),
+    [data]
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 40,
+    getItemKey: (index) => data[index]?.id ?? index,
+    overscan: 10,
+  });
+
   useEffect(() => {
     if (source !== "observer" || !selectedRow) return;
-    const container = scrollContainerRef.current;
-    if (!container) return;
+    const selectedIndex = rowIndexById.get(String(selectedRow));
+    if (selectedIndex === undefined) return;
 
-    const target = container.querySelector(
-      `[data-row-id="${String(selectedRow)}"]`
-    );
-    if (!target) return;
-
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const offsetTop = targetRect.top - containerRect.top;
-    const targetCenter = offsetTop + targetRect.height / 2;
-    const scrollTarget =
-      container.scrollTop + targetCenter - container.clientHeight / 2;
-
-    container.scrollTo({
-      top: Math.max(scrollTarget, 0),
+    rowVirtualizer.scrollToIndex(selectedIndex, {
+      align: "center",
       behavior: "smooth",
     });
-  }, [selectedRow, source]);
+  }, [rowIndexById, rowVirtualizer, selectedRow, source]);
 
   const handleSelect = (rowId) => setSelectedRow(rowId, "table");
 
@@ -61,15 +65,33 @@ export default function ObserverDataTable({
               role="listbox"
               aria-label="Observer 로그 목록"
             >
-              {data.map((row) => (
-                <ObserverTableRow
-                  key={row.id}
-                  row={row}
-                  isSelected={String(row.id) === String(selectedRow)}
-                  onSelect={handleSelect}
-                  getLogTypeBadgeClass={getLogTypeBadgeClass}
-                />
-              ))}
+              <div
+                className="relative w-full"
+                style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const row = data[virtualRow.index];
+
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="absolute left-0 top-0 w-full"
+                      style={{
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <ObserverTableRow
+                        row={row}
+                        isSelected={String(row.id) === String(selectedRow)}
+                        onSelect={handleSelect}
+                        getLogTypeBadgeClass={getLogTypeBadgeClass}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
