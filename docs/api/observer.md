@@ -50,11 +50,13 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - `/logs/page`는 유형별 `items`, `page`, `error`를 반환합니다. 일부 source만 실패하면 성공 유형을 유지한 200 응답을 반환하고, 전부 실패하면 503을 반환합니다.
 - page 목록은 comment preview와 `detailId`만 포함하며, 전체 comment·defect map·CTTTM summary 같은 대형 필드는 `/detail`에서 선택 시 조회합니다.
 - CTTTM 로그의 `summary`는 `ct_process_comment.llm_summary` 값을 사용합니다.
-- `from`, `to`는 `YYYY-MM-DD` 또는 datetime 문자열을 받습니다.
+- `from`, `to`는 `YYYY-MM-DD` 또는 datetime 문자열을 받습니다. 날짜와 offset 없는 datetime은 `Asia/Seoul`로 해석하며, offset이 있는 datetime은 같은 instant의 `Asia/Seoul` 시각으로 변환합니다.
+- 모든 Observer 로그의 `eventTime`은 `Asia/Seoul` 기준 `+09:00` offset을 포함한 ISO datetime으로 반환합니다.
+- EQP와 TIP의 timezone 없는 원천 시간은 KST 벽시계로 적재하며, page 목록과 detail은 같은 저장 instant를 사용하므로 동일한 KST 시간을 반환합니다.
 - SPC/FDC interlock은 정규화된 `eqpId = m_interlock.prod_eqp_id_lookup`과 `interlock_kind_lookup`으로 매칭합니다.
 - SPC/FDC interlock의 event time은 `prod_progs_time`에서 변환해 저장한 `prod_progs_at`을 사용합니다. 원천 `YYYYMMDD HHMMSS` 또는 18자리 timestamp는 Asia/Seoul 현지 시각으로 해석합니다.
 - typed 파생 필드가 비어 있거나 원천 시간 형식이 잘못된 row는 응답에서 제외합니다.
-- SPC/FDC 응답 `logType`은 각각 `SPC_ITL`, `FDC_ITL`이고 `eventTime`은 `+09:00` offset을 포함합니다.
+- SPC/FDC 응답 `logType`은 각각 `SPC_ITL`, `FDC_ITL`입니다.
 - SPC/FDC 응답 ID는 `<logType>:<sourceId>` 형식이며 원본 `m_interlock.id`는 `sourceId`로 제공합니다.
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
 - `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.

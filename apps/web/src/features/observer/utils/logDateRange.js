@@ -3,6 +3,7 @@ import {
   MAX_LOG_RANGE_DAYS,
   MIN_LOG_RANGE_DAYS,
 } from "./constants";
+import { getSeoulCalendarDate } from "./dateUtils";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -45,9 +46,9 @@ export function normalizeLogRange(value) {
 }
 
 function formatDateParam(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -55,12 +56,12 @@ function parseDateParam(value) {
   if (!DATE_PARAM_PATTERN.test(value || "")) return null;
 
   const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
+  const date = new Date(Date.UTC(year, month - 1, day));
 
   if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
   ) {
     return null;
   }
@@ -69,25 +70,23 @@ function parseDateParam(value) {
 }
 
 function formatDateLabel(date) {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${month}/${day}`;
 }
 
 function getDateFromDaysAgo(daysAgo) {
-  const date = new Date();
-  date.setDate(date.getDate() - clampLogRangeDays(daysAgo) + 1);
+  const date = getSeoulCalendarDate();
+  date.setUTCDate(date.getUTCDate() - clampLogRangeDays(daysAgo) + 1);
   return date;
 }
 
 function getUtcDayNumber(date) {
-  return Math.floor(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_IN_MS
-  );
+  return Math.floor(date.getTime() / DAY_IN_MS);
 }
 
 function getDaysAgoFromDate(date) {
-  const today = new Date();
+  const today = getSeoulCalendarDate();
   const diffDays = getUtcDayNumber(today) - getUtcDayNumber(date);
   return clampLogRangeDays(diffDays + 1);
 }
@@ -107,9 +106,9 @@ export function getLogRangeSpanDays(rangeValue) {
 
 export function getRecentLogDateRange(rangeDays) {
   const days = clampLogRangeDays(rangeDays);
-  const to = new Date();
+  const to = getSeoulCalendarDate();
   const from = new Date(to);
-  from.setDate(to.getDate() - days + 1);
+  from.setUTCDate(to.getUTCDate() - days + 1);
 
   return { from, to, days };
 }

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from pathlib import Path
 from typing import Sequence
+from zoneinfo import ZoneInfo
 
 from django.db import connection, transaction
 from django.utils import timezone
@@ -21,6 +22,8 @@ from api.data_movement.common.services.file_loader import (
 from api.data_movement.common.services.streaming_csv import iter_deflate_text_lines, parse_csv_datetime
 from api.data_movement.eqp_status_chg.models import EqpStatusChgLoadJob
 from api.data_movement.eqp_status_chg.services import spec
+
+SEOUL_TIMEZONE = ZoneInfo("Asia/Seoul")
 
 
 @dataclass(frozen=True)
@@ -91,13 +94,14 @@ def _quote_identifier(identifier: str) -> str:
     return connection.ops.quote_name(identifier)
 
 
-def _retention_cutoff() -> datetime:
-    """파일 필터와 DB purge에 함께 사용할 180일 cutoff를 반환합니다."""
+def _retention_cutoffs() -> tuple[datetime, datetime]:
+    """KST 원천 필터와 UTC DB purge에 사용할 180일 cutoff를 반환합니다."""
 
-    cutoff = timezone.now() - timedelta(days=spec.RETENTION_DAYS)
-    if timezone.is_aware(cutoff):
-        return cutoff.astimezone(datetime_timezone.utc).replace(tzinfo=None)
-    return cutoff
+    database_cutoff = timezone.now() - timedelta(days=spec.RETENTION_DAYS)
+    if timezone.is_naive(database_cutoff):
+        database_cutoff = timezone.make_aware(database_cutoff, datetime_timezone.utc)
+    source_cutoff = database_cutoff.astimezone(SEOUL_TIMEZONE).replace(tzinfo=None)
+    return source_cutoff, database_cutoff
 
 
 def _build_eqp_cb(*, eqp_id: str, chamber_id: str) -> str:
@@ -247,14 +251,14 @@ def _upsert_rows(*, selected_csv_path: Path, cutoff: datetime) -> None:
                     NULLIF(src.eqp_cb, ''),
                     NULLIF(src.eqp_cb_lookup, ''),
                     NULLIF(src.line_id, ''),
-                    NULLIF(src.chg_time, '')::timestamp,
+                    NULLIF(src.chg_time, '')::timestamp AT TIME ZONE 'Asia/Seoul',
                     NULLIF(src.eqp_code, ''),
                     NULLIF(src.eqp_mode_type, ''),
                     NULLIF(src.eqp_status_type, ''),
                     NULLIF(src.chg_comment, ''),
                     NULLIF(src.operator_emp_id, ''),
                     NULLIF(src.eqp_event_key, '')::numeric,
-                    NULLIF(src.last_update_time, '')::timestamp
+                    NULLIF(src.last_update_time, '')::timestamp AT TIME ZONE 'Asia/Seoul'
                 FROM {quoted_temp} src
                 WHERE NULLIF(src.eqp_event_key, '') IS NOT NULL
                   AND NULLIF(src.eqp_cb, '') IS NOT NULL
@@ -286,16 +290,16 @@ def _load_claimed_file(*, claimed_file: ClaimedDataFile) -> LoadFileOutcome:
     job = _create_job(file_name=claimed_file.original_name, file_path=claimed_file.original_path)
 
     try:
-        cutoff = _retention_cutoff()
+        source_cutoff, database_cutoff = _retention_cutoffs()
         selected_path, row_count = _write_selected_csv(
             source_path=claimed_file.working_path,
             output_dir=claimed_file.working_path.parent,
-            cutoff=cutoff,
+            cutoff=source_cutoff,
         )
         if row_count == 0:
             raise ValueError(f"empty dataframe: {claimed_file.original_path}")
 
-        _upsert_rows(selected_csv_path=selected_path, cutoff=cutoff)
+        _upsert_rows(selected_csv_path=selected_path, cutoff=database_cutoff)
         _finish_job(job=job, status=EqpStatusChgLoadJob.Status.SUCCESS, row_count=row_count)
         return LoadFileOutcome(
             file_name=claimed_file.original_name,
@@ -330,10 +334,11 @@ def _dry_run_one_file(*, file_path: Path) -> LoadFileOutcome:
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
+            source_cutoff, _database_cutoff = _retention_cutoffs()
             selected_path, row_count = _write_selected_csv(
                 source_path=file_path,
                 output_dir=Path(temp_dir),
-                cutoff=_retention_cutoff(),
+                cutoff=source_cutoff,
             )
             if row_count == 0:
                 raise ValueError(f"empty dataframe: {file_path}")

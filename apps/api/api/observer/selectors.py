@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
 import hashlib
 import json
 import logging
@@ -27,6 +26,7 @@ from api.data_movement.racb_list import selectors as racb_list_selectors
 from api.drone import selectors as drone_selectors
 
 from .serializers import encode_observer_cursor
+from .services import observer_period_start, serialize_observer_datetime
 
 DEFAULT_LOG_QUERY_DAYS = 60
 MAX_LOG_LIMIT = 5000
@@ -52,14 +52,14 @@ def _safe_text(value: object) -> str:
 
 
 def _period_date(days: int | None = None) -> str:
-    """조회 기준일(YYYY-MM-DD)을 반환합니다."""
+    """Asia/Seoul 기준 조회 시작 시각을 반환합니다."""
 
     query_days = (
         days
         if days is not None
         else getattr(settings, "OBSERVER_QUERY_DAYS", DEFAULT_LOG_QUERY_DAYS)
     )
-    return datetime.strftime(datetime.now() - timedelta(days=query_days), "%Y-%m-%d")
+    return observer_period_start(days=query_days)
 
 
 def _fetch_all(query: str, params: Sequence[object] | None = None) -> List[Row]:
@@ -845,9 +845,7 @@ def _build_interlock_log_item(
         "sourceId": source_id,
         "logType": log_type,
         "eventType": event_type,
-        "eventTime": event_time.isoformat()
-        if isinstance(event_time, datetime)
-        else _safe_text(event_time),
+        "eventTime": _serialize_event_time(event_time),
         "operator": None,
         "comment": comment,
         "interlockKind": interlock_kind,
@@ -1267,11 +1265,34 @@ def _comment_preview(value: object, *, limit: int = 200) -> tuple[str, bool]:
 
 
 def _serialize_event_time(value: object) -> str:
-    """datetime과 문자열 event time을 JSON cursor용 문자열로 변환합니다."""
+    """Observer 시각을 Asia/Seoul ISO 문자열로 변환합니다."""
 
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return _safe_text(value)
+    return serialize_observer_datetime(value)
+
+
+OBSERVER_RESPONSE_TIME_FIELDS = (
+    "eventTime",
+    "endTime",
+    "completedAt",
+    "lastUpdateTime",
+    "lastUpdateDate",
+    "create_date",
+    "due_date",
+    "update_date",
+    "created_at",
+    "updated_at",
+)
+
+
+def _serialize_log_time_fields(log: Dict[str, object]) -> Dict[str, object]:
+    """Observer 응답의 공통 시간 필드를 Asia/Seoul 문자열로 변환합니다."""
+
+    serialized = dict(log)
+    for field_name in OBSERVER_RESPONSE_TIME_FIELDS:
+        value = serialized.get(field_name)
+        if value is not None:
+            serialized[field_name] = _serialize_event_time(value)
+    return serialized
 
 
 def _tip_page_log_id(row: Row) -> str:
@@ -1688,6 +1709,7 @@ def get_log_page(
         raise ValueError(f"지원하지 않는 Observer log type입니다: {type_key}")
 
     items, has_more, next_time, next_id = result
+    items = [_serialize_log_time_fields(item) for item in items]
     next_cursor = None
     if has_more and next_time is not None and next_id is not None:
         next_cursor = _build_page_cursor(
@@ -1817,13 +1839,15 @@ def get_log_detail(
             "eqpId": row.get("eqp_cb"),
             "logType": "EQP",
             "eventType": row.get("eqp_status_type"),
-            "eventTime": row.get("chg_time"),
+            "eventTime": _serialize_event_time(row.get("chg_time")),
             "operator": row.get("operator_emp_id"),
             "comment": row.get("chg_comment"),
             "lineId": row.get("line_id"),
             "eqpCode": row.get("eqp_code"),
             "eqpModeType": row.get("eqp_mode_type"),
-            "lastUpdateTime": row.get("last_update_time"),
+            "lastUpdateTime": _serialize_event_time(row.get("last_update_time"))
+            if row.get("last_update_time") is not None
+            else None,
         }
     if type_key == "tip":
         row = mi_tip_update_hist_selectors.get_tip_timeline_detail(
@@ -1839,7 +1863,7 @@ def get_log_detail(
             "eqpId": row.get("eqp_cb"),
             "logType": "TIP",
             "eventType": row.get("event_type"),
-            "eventTime": row.get("gpm_update_date"),
+            "eventTime": _serialize_event_time(row.get("gpm_update_date")),
             "operator": register_name.split("-", 1)[0] or None,
             "comment": row.get("tip_comment"),
             "lineId": row.get("line_id"),
@@ -1859,7 +1883,13 @@ def get_log_detail(
             interlock_kind=kind,
             source_id=source_id,
         )
-        return _build_interlock_log_item(row, log_type=f"{kind}_ITL") if row else None
+        return (
+            _serialize_log_time_fields(
+                _build_interlock_log_item(row, log_type=f"{kind}_ITL")
+            )
+            if row
+            else None
+        )
     if type_key == "ctttm":
         row = ctttm_workorder_selectors.get_ctttm_timeline_detail(
             eqp_id=eqp_id,
@@ -1883,13 +1913,15 @@ def get_log_detail(
             "eqpId": row.get("eqp_id"),
             "logType": "CTTTM",
             "eventType": row.get("work_type"),
-            "eventTime": row.get("inprg_date"),
+            "eventTime": _serialize_event_time(row.get("inprg_date")),
             "operator": None,
             "comment": row.get("description"),
             "coreSummary": summary.get("llm_core_summary"),
             "summary": summary.get("llm_summary"),
             "lineId": row.get("line_id"),
-            "completedAt": row.get("comp_date"),
+            "completedAt": _serialize_event_time(row.get("comp_date"))
+            if row.get("comp_date") is not None
+            else None,
         }
     if type_key == "racb":
         row = racb_list_selectors.get_racb_timeline_detail(
@@ -1901,19 +1933,21 @@ def get_log_detail(
         query = urlencode(
             {"racbId": row.get("c_racb_id"), "lineId": row.get("line_id") or ""}
         )
-        return {
-            **row,
-            "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
-            "sourceId": row.get("id"),
-            "logType": "RACB",
-            "eventType": (
-                f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}"
-            ),
-            "eventTime": row.get("update_date"),
-            "operator": row.get("create_user"),
-            "comment": row.get("title"),
-            "url": f"{settings.RACB_REPORT_BASE_URL}?{query}",
-        }
+        return _serialize_log_time_fields(
+            {
+                **row,
+                "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
+                "sourceId": row.get("id"),
+                "logType": "RACB",
+                "eventType": (
+                    f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}"
+                ),
+                "eventTime": row.get("update_date"),
+                "operator": row.get("create_user"),
+                "comment": row.get("title"),
+                "url": f"{settings.RACB_REPORT_BASE_URL}?{query}",
+            }
+        )
     if type_key == "esop":
         row = drone_selectors.get_drone_sop_timeline_detail(
             eqp_id=eqp_id,
@@ -1926,7 +1960,7 @@ def get_log_detail(
             "sourceId": row.get("id"),
             "logType": "ESOP",
             "eventType": row.get("sample_type"),
-            "eventTime": row.get("created_at"),
+            "eventTime": _serialize_event_time(row.get("created_at")),
             "operator": row.get("knox_id"),
             "status": row.get("status"),
             "comment": row.get("comment"),
@@ -1961,7 +1995,10 @@ def _fetch_logs_by_type_normalized(
     fetcher = OBSERVER_LOG_FETCHERS.get(type_key)
     if fetcher is None:
         return []
-    return fetcher(eqp_key, start_at, end_at, limit)
+    return [
+        _serialize_log_time_fields(log)
+        for log in fetcher(eqp_key, start_at, end_at, limit)
+    ]
 
 
 # =============================================================================

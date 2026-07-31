@@ -79,3 +79,12 @@
 - Admin 소속 일괄 활성 상태 변경은 운영자 사유를 필수로 받고 선택 행 전체를 하나의 transaction으로 처리한다.
 - `UserSdwtProdChange`는 상태별 승인 시각·승인자·거절 사유 조합까지 DB CheckConstraint로 강제한다.
 - 여러 소속의 capability 판정은 활성 소속과 명시 역할을 일괄 조회하고 현재 소속의 암묵적 member 규칙을 합산한다.
+
+## 2026-07-31: Observer 표시·조회 시간대
+
+- Observer의 날짜-only 및 offset 없는 조회 query는 `Asia/Seoul` 현지 시각으로 해석한다.
+- offset이 있는 조회 query와 DB aware datetime은 같은 instant의 `Asia/Seoul` 시각으로 변환한다.
+- Observer API의 공통 시간 필드는 `+09:00` offset을 포함한 ISO datetime으로 반환한다.
+- Timeline 축, Data Log, Log Detail, 날짜 범위 계산은 브라우저 지역과 관계없이 `Asia/Seoul`을 사용한다.
+- EQP의 `chg_time`, `last_update_time`과 TIP의 `rule_pkg_update_date`, `gpm_update_date`, `last_update_date`는 timezone 없는 원천값을 KST 벽시계로 해석해 UTC instant로 저장한다.
+- 기존 EQP/TIP timestamp는 과거 Log Detail에 표시되던 원천 벽시계를 정답으로 삼아 9시간 앞당기는 data migration으로 보정한다.

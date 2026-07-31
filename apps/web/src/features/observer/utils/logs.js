@@ -1,11 +1,11 @@
 import { getTipGroupKey } from "./tipUtils";
+import { getStartOfSeoulDay } from "./dateUtils";
 
 const RANGE_LOG_TYPES = new Set(["EQP", "TIP"]);
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function getStartOfToday() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  return getStartOfSeoulDay();
 }
 
 export function getContinuousRangeEnd(start, sortedLogs, index) {

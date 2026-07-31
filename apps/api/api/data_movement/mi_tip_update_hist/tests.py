@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import zlib
 from datetime import datetime, timezone as datetime_timezone
 from io import StringIO
@@ -11,6 +12,7 @@ from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from api.data_movement.mi_tip_update_hist.management.commands.load_mi_tip_update_hist import services
@@ -97,6 +99,22 @@ def _build_tip_event_key(
 class MiTipUpdateHistStructureTests(SimpleTestCase):
     """mi_tip_update_hist 앱 구조와 command 경계를 검증합니다."""
 
+    @patch.object(
+        loader_module.timezone,
+        "now",
+        return_value=datetime(2026, 6, 20, 0, 0, tzinfo=datetime_timezone.utc),
+    )
+    def test_retention_cutoffs_share_the_same_instant(self, _now) -> None:
+        """원천 KST 벽시계와 DB UTC retention 경계가 같은 순간인지 확인합니다."""
+
+        source_cutoff, database_cutoff = loader_module._retention_cutoffs()
+
+        self.assertEqual(source_cutoff, datetime(2025, 12, 22, 9, 0))
+        self.assertEqual(
+            database_cutoff,
+            datetime(2025, 12, 22, 0, 0, tzinfo=datetime_timezone.utc),
+        )
+
     def test_model_table_names_match_expected_tables(self) -> None:
         """모델의 실제 DB 테이블명이 합의한 이름과 일치하는지 확인합니다."""
 
@@ -148,6 +166,58 @@ class MiTipUpdateHistStructureTests(SimpleTestCase):
 class MiTipUpdateHistLifecycleTests(TestCase):
     """TIP 이력 파일 처리 lifecycle을 검증합니다."""
 
+    def test_kst_data_migration_corrects_existing_source_times(self) -> None:
+        """기존 UTC 오해석 값을 원천 KST 벽시계에 맞는 instant로 보정합니다."""
+
+        row = MiTipUpdateHist.objects.create(
+            tip_event_key="migration-row",
+            eqp_cb="EAAA301-A",
+            rule_pkg_update_date=datetime(
+                2026,
+                6,
+                20,
+                9,
+                0,
+                tzinfo=datetime_timezone.utc,
+            ),
+            gpm_update_date=datetime(
+                2026,
+                6,
+                20,
+                10,
+                0,
+                tzinfo=datetime_timezone.utc,
+            ),
+            last_update_date=datetime(
+                2026,
+                6,
+                20,
+                10,
+                5,
+                tzinfo=datetime_timezone.utc,
+            ),
+        )
+        migration_module = importlib.import_module(
+            "api.data_movement.mi_tip_update_hist.migrations.0003_interpret_source_times_as_kst"
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(migration_module.Migration.operations[0].sql)
+
+        row.refresh_from_db()
+        self.assertEqual(
+            row.rule_pkg_update_date,
+            datetime(2026, 6, 20, 0, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            row.gpm_update_date,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            row.last_update_date,
+            datetime(2026, 6, 20, 1, 5, tzinfo=datetime_timezone.utc),
+        )
+
     @patch.object(
         loader_module.timezone,
         "now",
@@ -194,6 +264,19 @@ class MiTipUpdateHistLifecycleTests(TestCase):
         self.assertTrue(MiTipUpdateHist.objects.filter(eqp_cb="EUNK301-A", event_type="unknown").exists())
         self.assertFalse(hasattr(MiTipUpdateHist.objects.first(), "eqp_id"))
         self.assertFalse(hasattr(MiTipUpdateHist.objects.first(), "tip_chamber_id"))
+        loaded_row = MiTipUpdateHist.objects.get(eqp_cb="EAAA301-A")
+        self.assertEqual(
+            loaded_row.rule_pkg_update_date,
+            datetime(2026, 6, 20, 0, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            loaded_row.gpm_update_date,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            loaded_row.last_update_date,
+            datetime(2026, 6, 20, 1, 5, tzinfo=datetime_timezone.utc),
+        )
 
     @patch.object(
         loader_module.timezone,
@@ -275,6 +358,14 @@ class MiTipUpdateHistLifecycleTests(TestCase):
         self.assertEqual(summary.success_count, 1, summary.outcomes)
         updated_row = MiTipUpdateHist.objects.get(tip_event_key=_build_tip_event_key())
         self.assertEqual(updated_row.register_name, "NEW-USER")
+        self.assertEqual(
+            updated_row.gpm_update_date,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            updated_row.last_update_date,
+            datetime(2026, 6, 20, 1, 10, tzinfo=datetime_timezone.utc),
+        )
         self.assertFalse(MiTipUpdateHist.objects.filter(tip_event_key="old-row").exists())
 
     def test_selector_returns_observer_tip_payload(self) -> None:

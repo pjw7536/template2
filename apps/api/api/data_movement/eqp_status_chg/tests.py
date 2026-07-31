@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import zlib
 import warnings
 from datetime import datetime, timezone as datetime_timezone
@@ -12,6 +13,7 @@ from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from api.data_movement.eqp_status_chg import selectors
@@ -57,6 +59,22 @@ def _build_status_row(
 
 class EqpStatusChgStructureTests(SimpleTestCase):
     """eqp_status_chg 앱 구조와 command 경계를 검증합니다."""
+
+    @patch.object(
+        loader_module.timezone,
+        "now",
+        return_value=datetime(2026, 6, 20, 0, 0, tzinfo=datetime_timezone.utc),
+    )
+    def test_retention_cutoffs_share_the_same_instant(self, _now) -> None:
+        """원천 KST 벽시계와 DB UTC retention 경계가 같은 순간인지 확인합니다."""
+
+        source_cutoff, database_cutoff = loader_module._retention_cutoffs()
+
+        self.assertEqual(source_cutoff, datetime(2025, 12, 22, 9, 0))
+        self.assertEqual(
+            database_cutoff,
+            datetime(2025, 12, 22, 0, 0, tzinfo=datetime_timezone.utc),
+        )
 
     def test_model_table_names_match_expected_tables(self) -> None:
         """모델의 실제 DB 테이블명이 합의한 이름과 일치하는지 확인합니다."""
@@ -109,6 +127,39 @@ class EqpStatusChgStructureTests(SimpleTestCase):
 class EqpStatusChgLifecycleTests(TestCase):
     """EQP 상태 변경 파일 처리 lifecycle을 검증합니다."""
 
+    def test_kst_data_migration_corrects_existing_source_times(self) -> None:
+        """기존 UTC 오해석 값을 원천 KST 벽시계에 맞는 instant로 보정합니다."""
+
+        row = EqpStatusChg.objects.create(
+            eqp_cb="EAAA301-A",
+            chg_time=datetime(2026, 6, 20, 10, 0, tzinfo=datetime_timezone.utc),
+            eqp_event_key="900",
+            last_update_time=datetime(
+                2026,
+                6,
+                20,
+                10,
+                5,
+                tzinfo=datetime_timezone.utc,
+            ),
+        )
+        migration_module = importlib.import_module(
+            "api.data_movement.eqp_status_chg.migrations.0003_interpret_source_times_as_kst"
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(migration_module.Migration.operations[0].sql)
+
+        row.refresh_from_db()
+        self.assertEqual(
+            row.chg_time,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            row.last_update_time,
+            datetime(2026, 6, 20, 1, 5, tzinfo=datetime_timezone.utc),
+        )
+
     @patch.object(
         loader_module.timezone,
         "now",
@@ -150,6 +201,15 @@ class EqpStatusChgLifecycleTests(TestCase):
         self.assertTrue(EqpStatusChg.objects.filter(eqp_cb="EDDD304").exists())
         self.assertFalse(EqpStatusChg.objects.filter(eqp_cb__in=["ECCC303--", "EDDD304-"]).exists())
         self.assertFalse(hasattr(EqpStatusChg.objects.first(), "eqp_id"))
+        loaded_row = EqpStatusChg.objects.get(eqp_event_key="100")
+        self.assertEqual(
+            loaded_row.chg_time,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
+        self.assertEqual(
+            loaded_row.last_update_time,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
 
     @patch.object(
         loader_module.timezone,
@@ -201,6 +261,10 @@ class EqpStatusChgLifecycleTests(TestCase):
         updated_row = EqpStatusChg.objects.get(eqp_event_key="100")
         self.assertEqual(updated_row.eqp_status_type, "RUN")
         self.assertEqual(updated_row.chg_comment, "new")
+        self.assertEqual(
+            updated_row.chg_time,
+            datetime(2026, 6, 20, 1, 0, tzinfo=datetime_timezone.utc),
+        )
         self.assertFalse(EqpStatusChg.objects.filter(eqp_event_key="999").exists())
 
     def test_selector_normalizes_date_filters_without_naive_datetime_warning(self) -> None:

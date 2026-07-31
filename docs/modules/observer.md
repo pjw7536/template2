@@ -66,11 +66,14 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 | page size | 기본 250, 최대 1000 |
 | page 기간 | 최대 90일 |
 | resident log | 화면당 최대 5000 |
-| 날짜 형식 | `YYYY-MM-DD` 또는 datetime 문자열 |
+| 날짜 형식 | `YYYY-MM-DD` 또는 datetime 문자열, `Asia/Seoul` 기준 |
 | 정렬/변환 | backend selector가 유형별 raw row를 공통 payload로 변환 |
 | Interlock 시간 | `prod_progs_time`을 Asia/Seoul로 변환해 저장한 `prod_progs_at` 사용 |
 
 SPC/FDC interlock은 독립 타입 필터와 timeline을 사용하며 기본 표시 순서는 `EQP → TIP → SPC Interlock → FDC Interlock → CTTTM → RACB → ESOP`입니다. Timeline marker는 `metroItem`을 우선 표시하고 `interlockType`, `interlockNo` 순서로 대체합니다. Data Log에서는 `Change Type`에 `metroItem`, `Operator`에 `interlockType`을 표시하며 두 유형 모두 Log Detail에도 포함됩니다.
+
+Observer의 날짜 조회 경계, API `eventTime`, Timeline 축, Data Log와 Log Detail 표시는 모두 `Asia/Seoul` 기준입니다. 브라우저의 현지 시간대와 관계없이 같은 시각을 표시합니다.
+EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니다. 기존 데이터는 과거 Log Detail에 표시되던 벽시계를 기준으로 보정하므로 Data Log와 Log Detail의 시간이 일치합니다.
 
 ## 프론트 구조
 

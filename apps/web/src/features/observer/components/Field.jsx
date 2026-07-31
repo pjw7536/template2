@@ -1,17 +1,9 @@
 // Observer log detail의 label/value 표시 컴포넌트입니다.
 import React from "react";
+import { formatDetailDateTime } from "../utils/dateUtils";
 import StreamingText from "./StreamingText";
 
 const TIME_FIELD_LABELS = new Set(["Time", "End Time"]);
-
-function formatDetailDateTime(value) {
-  if (typeof value !== "string") return value;
-
-  const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/);
-  if (!match) return value;
-
-  return `${match[1]} ${match[2]}`;
-}
 
 function FieldLabel({ label, className = "" }) {
   return (

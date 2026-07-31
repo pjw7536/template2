@@ -10,7 +10,7 @@ const KOREAN_OBSERVER_LOCALE = {
   deleteSelected: "선택 항목 삭제",
 };
 
-const toKoreanMoment = (date) => moment(date).locale("ko");
+const toKoreanMoment = (date) => moment(date).utcOffset(9).locale("ko");
 
 const KOREAN_AXIS_FORMAT = {
   minorLabels: {

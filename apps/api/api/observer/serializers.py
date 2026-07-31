@@ -9,13 +9,13 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime, time, timezone as datetime_timezone
+from datetime import datetime
 import json
 from typing import Any
 
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
+
+from .services import normalize_observer_datetime
 
 DEFAULT_OBSERVER_PAGE_SIZE = 250
 MAX_OBSERVER_PAGE_SIZE = 1000
@@ -38,18 +38,14 @@ def _normalize_id(value: object) -> str:
 
 
 def _parse_boundary(value: str, *, is_end: bool) -> datetime:
-    """날짜 또는 datetime 문자열을 비교 가능한 UTC naive 값으로 변환합니다."""
+    """날짜 또는 datetime 문자열을 Asia/Seoul aware 값으로 변환합니다."""
 
-    parsed_date = parse_date(value)
-    if parsed_date is not None and len(value) == 10:
-        return datetime.combine(parsed_date, time.max if is_end else time.min)
-
-    parsed_datetime = parse_datetime(value)
-    if parsed_datetime is None:
-        raise serializers.ValidationError("올바른 날짜 또는 datetime 형식이어야 합니다.")
-    if timezone.is_aware(parsed_datetime):
-        return parsed_datetime.astimezone(datetime_timezone.utc).replace(tzinfo=None)
-    return parsed_datetime
+    try:
+        return normalize_observer_datetime(value, is_end=is_end)
+    except ValueError as exc:
+        raise serializers.ValidationError(
+            "올바른 날짜 또는 datetime 형식이어야 합니다."
+        ) from exc
 
 
 def encode_observer_cursor(payload: dict[str, Any]) -> str:
@@ -186,4 +182,3 @@ class ObserverLogDetailQuerySerializer(serializers.Serializer):
         if not normalized:
             raise serializers.ValidationError("logId가 필요합니다.")
         return normalized
-

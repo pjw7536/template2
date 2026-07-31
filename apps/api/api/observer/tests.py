@@ -677,8 +677,8 @@ class ObserverEndpointTests(TestCase):
                 }
             },
             "meta": {
-                "from": "2026-07-01T00:00:00",
-                "to": "2026-07-07T23:59:59.999999",
+                "from": "2026-07-01T00:00:00+09:00",
+                "to": "2026-07-07T23:59:59.999999+09:00",
                 "pageSize": 250,
                 "partial": False,
                 "allFailed": False,
@@ -703,12 +703,48 @@ class ObserverEndpointTests(TestCase):
         selector.assert_called_once_with(
             eqp_id="EQP-ALPHA",
             log_types=["eqp"],
-            start_at="2026-07-01T00:00:00",
-            end_at="2026-07-07T23:59:59.999999",
+            start_at="2026-07-01T00:00:00+09:00",
+            end_at="2026-07-07T23:59:59.999999+09:00",
             page_size=observer_serializers.DEFAULT_OBSERVER_PAGE_SIZE,
             range_key=(
-                "2026-07-01T00:00:00:"
-                "2026-07-07T23:59:59.999999"
+                "2026-07-01T00:00:00+09:00:"
+                "2026-07-07T23:59:59.999999+09:00"
+            ),
+        )
+
+    def test_observer_logs_page_converts_utc_range_to_seoul(self) -> None:
+        """offset query도 같은 instant의 Asia/Seoul 범위로 전달합니다."""
+
+        with patch(
+            f"{OBSERVER_VIEW_SELECTORS}.get_log_pages",
+            return_value={
+                "data": {},
+                "meta": {
+                    "partial": False,
+                    "allFailed": False,
+                },
+            },
+        ) as selector:
+            response = self.client.get(
+                reverse("observer-logs-page"),
+                {
+                    "eqpId": "EQP-ALPHA",
+                    "from": "2026-06-30T15:00:00Z",
+                    "to": "2026-07-01T14:59:59Z",
+                    "types": "eqp",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        selector.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            log_types=["eqp"],
+            start_at="2026-07-01T00:00:00+09:00",
+            end_at="2026-07-01T23:59:59+09:00",
+            page_size=observer_serializers.DEFAULT_OBSERVER_PAGE_SIZE,
+            range_key=(
+                "2026-07-01T00:00:00+09:00:"
+                "2026-07-01T23:59:59+09:00"
             ),
         )
 
@@ -779,10 +815,50 @@ class ObserverEndpointTests(TestCase):
             log_id="7",
         )
 
+    def test_observer_log_detail_serializes_times_in_seoul(self) -> None:
+        """상세 응답의 event와 갱신 시각을 Asia/Seoul로 직렬화합니다."""
+
+        with patch(
+            f"{OBSERVER_SELECTORS}.eqp_status_chg_selectors.get_eqp_timeline_detail",
+            return_value={
+                "id": 7,
+                "eqp_event_key": 100,
+                "eqp_cb": "EQP-ALPHA",
+                "eqp_status_type": "RUN",
+                "chg_time": datetime(
+                    2026,
+                    7,
+                    6,
+                    10,
+                    30,
+                    tzinfo=ZoneInfo("UTC"),
+                ),
+                "last_update_time": datetime(
+                    2026,
+                    7,
+                    6,
+                    10,
+                    31,
+                    tzinfo=ZoneInfo("UTC"),
+                ),
+            },
+        ):
+            detail = selectors.get_log_detail(
+                eqp_id="EQP-ALPHA",
+                log_key="eqp",
+                log_id="7",
+            )
+
+        self.assertEqual(detail["eventTime"], "2026-07-06T19:30:00+09:00")
+        self.assertEqual(
+            detail["lastUpdateTime"],
+            "2026-07-06T19:31:00+09:00",
+        )
+
     def test_observer_eqp_page_builds_compact_payload_and_cursor(self) -> None:
         """EQP page는 comment preview와 source PK cursor를 생성합니다."""
 
-        event_time = datetime(2026, 7, 6, 10, 30, tzinfo=ZoneInfo("Asia/Seoul"))
+        event_time = datetime(2026, 7, 6, 10, 30, tzinfo=ZoneInfo("UTC"))
         with patch(
             f"{OBSERVER_SELECTORS}.eqp_status_chg_selectors.fetch_eqp_timeline_page",
             return_value=(
@@ -815,6 +891,10 @@ class ObserverEndpointTests(TestCase):
         self.assertEqual(len(page["items"][0]["comment"]), 200)
         self.assertTrue(page["items"][0]["commentTruncated"])
         self.assertEqual(page["items"][0]["detailId"], 11)
+        self.assertEqual(
+            page["items"][0]["eventTime"],
+            "2026-07-06T19:30:00+09:00",
+        )
         self.assertTrue(page["page"]["hasMore"])
         cursor = observer_serializers.decode_observer_cursor(
             page["page"]["nextCursor"]
@@ -887,8 +967,8 @@ class ObserverEndpointTests(TestCase):
         self.assert_log_selector_called(
             selector,
             log_key="eqp",
-            start_at="2026-01-01T00:00:00",
-            end_at="2026-01-02T23:59:59.999999",
+            start_at="2026-01-01T00:00:00+09:00",
+            end_at="2026-01-02T23:59:59.999999+09:00",
             limit=selectors.MAX_LOG_LIMIT,
         )
 
@@ -915,6 +995,24 @@ class ObserverEndpointTests(TestCase):
             end_at=None,
             limit=None,
         )
+
+    def test_observer_default_period_uses_seoul_midnight(self) -> None:
+        """기본 조회 시작일을 Asia/Seoul 현지 자정으로 계산합니다."""
+
+        with patch(
+            "api.observer.services.timezone.timezone.now",
+            return_value=datetime(
+                2026,
+                7,
+                31,
+                0,
+                30,
+                tzinfo=ZoneInfo("UTC"),
+            ),
+        ):
+            start_at = selectors._period_date(days=1)
+
+        self.assertEqual(start_at, "2026-07-30T00:00:00+09:00")
 
     def test_observer_eqp_selector_uses_eqp_status_chg_selector(self) -> None:
         with patch(

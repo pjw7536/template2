@@ -1,26 +1,26 @@
 // src/features/observer/utils/observerUtils.js
 // observer 범위와 옵션 계산 유틸만 제공합니다.
+import { getEndOfSeoulDay, getStartOfSeoulDay } from "./dateUtils";
+
+function getDefaultDayRange() {
+  return {
+    min: getStartOfSeoulDay(),
+    max: new Date(getEndOfSeoulDay().getTime() + 1),
+  };
+}
 
 /** 전체 로그 범위 계산 */
 export const calcRange = (logs) => {
   if (!logs || logs.length === 0) {
     // 로그가 없을 때 기본값
-    const now = new Date();
-    return {
-      min: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-      max: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
-    };
+    return getDefaultDayRange();
   }
 
   // eventTime이 있는 로그만 필터링
   const validLogs = logs.filter((log) => log && log.eventTime);
 
   if (validLogs.length === 0) {
-    const now = new Date();
-    return {
-      min: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-      max: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
-    };
+    return getDefaultDayRange();
   }
 
   // 모든 시간을 추출 (eventTime과 endTime 모두 고려)
@@ -42,11 +42,7 @@ export const calcRange = (logs) => {
   });
 
   if (allTimes.length === 0) {
-    const now = new Date();
-    return {
-      min: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-      max: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
-    };
+    return getDefaultDayRange();
   }
 
   const minTime = Math.min(...allTimes);
@@ -59,8 +55,7 @@ export const calcRange = (logs) => {
 };
 
 const getEndOfToday = () => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return getEndOfSeoulDay();
 };
 
 /** 버퍼 추가 (줌 아웃 시 오늘까지는 항상 포함) */

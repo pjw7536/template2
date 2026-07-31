@@ -1,4 +1,8 @@
 import { calcRange, addBuffer } from "../utils/observerUtils";
+import {
+  getEndOfSeoulDay,
+  getStartOfSeoulDay,
+} from "../utils/dateUtils";
 
 /**
  * 로그 배열을 받아서 Observer 범위를 계산하는 훅
@@ -6,17 +10,8 @@ import { calcRange, addBuffer } from "../utils/observerUtils";
  */
 export function useObserverRange(logs = []) {
   if (logs.length === 0) {
-    const today = new Date();
-    const startOfToday = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-    const endOfToday = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() + 1
-    );
+    const startOfToday = getStartOfSeoulDay();
+    const endOfToday = new Date(getEndOfSeoulDay().getTime() + 1);
     return addBuffer(startOfToday.getTime(), endOfToday.getTime());
   }
 

@@ -23,10 +23,14 @@ Compose 기본 host path는 `./data/data_movement`이고, API 컨테이너에서
 loader는 파일명에서 source를 추출한 뒤 MST는 55개 컬럼, MNU는 49개 컬럼 레이아웃으로 백틱(`) 구분 파일을 읽습니다.
 `mes_line_mapping_info`는 파일 하나가 테이블 전체 snapshot이므로 새 파일 처리 시 기존 row를 모두 삭제하고 파일 전체를 다시 적재합니다.
 `station_master`도 파일 하나를 테이블 전체 snapshot으로 보고 전체 교체 적재합니다.
-`eqp_status_chg`는 `eqp_event_key` 기준으로 증분 upsert하고, `eqp_id`가 `E/e`로 시작하지 않거나 `chg_time`이 180일보다 오래된 row를 제외합니다. 저장 시 `eqp_cb=eqp_id-chamber_id`를 생성하며, 적재 후 target의 180일 초과 row도 삭제합니다.
+`eqp_status_chg`는 `eqp_event_key` 기준으로 증분 upsert하고, `eqp_id`가 `E/e`로 시작하지 않거나 `chg_time`이 180일보다 오래된 row를 제외합니다. 저장 시 `eqp_cb=eqp_id-chamber_id`를 생성하며, 적재 후 target의 180일 초과 row도 삭제합니다. 원천 `chg_time`, `last_update_time`은 timezone 없는 KST 벽시계 값으로 해석합니다. 원천 파일 retention 경계는 KST 벽시계, DB purge 경계는 같은 순간의 UTC를 사용합니다.
 `m_interlock`은 `m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일의 헤더 없는 35개 백틱(`) 구분 컬럼을 `interlock_no` 기준으로 upsert합니다. 빈 `interlock_no` row는 제외하고 파일 내 중복은 마지막 row를 사용합니다. 기존 DB 중복은 `last_update_date` 최신순, 이후 `id` 내림차순으로 한 건만 유지합니다. numeric 컬럼은 PostgreSQL 무제한 `numeric` precision을 유지하고 `lot_id`는 길이 제한 없는 `text`로 저장하며 retention은 적용하지 않습니다.
-`mi_tip_update_hist`는 TIP 원천 이력을 `tip_event_key` 기준으로 upsert하고, 원천 타입 조합을 timeline event type으로 매핑합니다.
+`mi_tip_update_hist`는 TIP 원천 이력을 `tip_event_key` 기준으로 upsert하고, 원천 타입 조합을 timeline event type으로 매핑합니다. 원천 `rule_pkg_update_date`, `gpm_update_date`, `last_update_date`는 timezone 없는 KST 벽시계 값으로 해석합니다.
 `racb_list`는 `c_racb_id`별 최신 `update_date` row를 고른 뒤 `eqp_ids`를 comma split하여 `eqp_cb` row로 펼쳐 저장합니다.
+
+EQP/TIP 원천 시간 계약 도입 전에는 timezone 없는 값을 PostgreSQL UTC session 시각으로 저장했습니다. `0003_interpret_source_times_as_kst` data migration은 기존 Log Detail에 보이던 원천 벽시계를 정답으로 삼아 위 시간 컬럼을 9시간 앞당기며, 이후 Observer Data Log와 Log Detail이 같은 KST 시각을 표시합니다. 대용량 운영 테이블에서는 이 일괄 갱신 중 row와 시간 인덱스 갱신 비용이 발생하므로 배포 시 DB 부하와 migration 소요 시간을 관찰합니다.
+
+운영 반영 시에는 EQP/TIP 파일 적재를 중지한 상태에서 두 `0003` migration을 적용하고, KST 해석 loader가 포함된 API를 배포한 뒤 적재를 재개합니다. 기존 loader와 신규 loader가 migration 전후에 동시에 실행되면 신규 UTC instant가 다시 9시간 보정되거나 기존 방식의 row가 남을 수 있으므로 rolling 상태에서 두 loader 버전을 혼용하지 않습니다.
 
 ## 실행 방식
 

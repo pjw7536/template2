@@ -7,15 +7,14 @@
 """Observer API 뷰."""
 from __future__ import annotations
 
-from datetime import datetime, time, timezone as datetime_timezone
+from datetime import datetime
 
 from django.http import HttpRequest, JsonResponse
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.views import APIView
 
 from . import selectors
 from . import serializers as observer_serializers
+from .services import normalize_observer_datetime
 
 
 def _query_id(request: HttpRequest, key: str) -> str:
@@ -60,14 +59,6 @@ def _parse_log_limit(request: HttpRequest) -> tuple[int | None, JsonResponse | N
     return min(limit, selectors.MAX_LOG_LIMIT), None
 
 
-def _to_comparable_datetime(value: datetime) -> datetime:
-    """aware/naive datetime 비교가 가능하도록 UTC naive 값으로 통일합니다."""
-
-    if timezone.is_aware(value):
-        return value.astimezone(datetime_timezone.utc).replace(tzinfo=None)
-    return value
-
-
 def _parse_log_datetime(
     request: HttpRequest,
     key: str,
@@ -80,16 +71,12 @@ def _parse_log_datetime(
     if not raw_value:
         return None, None, None
 
-    parsed_date = parse_date(raw_value)
-    if parsed_date is not None and len(raw_value) == 10:
-        boundary_time = time.max if is_end else time.min
-        value = datetime.combine(parsed_date, boundary_time)
+    try:
+        value = normalize_observer_datetime(raw_value, is_end=is_end)
+    except ValueError:
+        value = None
+    if value is not None:
         return value.isoformat(), value, None
-
-    parsed_datetime = parse_datetime(raw_value)
-    if parsed_datetime is not None:
-        comparable = _to_comparable_datetime(parsed_datetime)
-        return comparable.isoformat(), comparable, None
 
     return (
         None,
