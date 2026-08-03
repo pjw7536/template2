@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   TrendingUp,
 } from "lucide-react"
+import { toast } from "sonner"
 import {
   Bar,
   BarChart,
@@ -1063,7 +1064,7 @@ function KpiActionCard({ onManualInput, onExternalSync, canManageStats, isSyncin
         size="sm"
         className="h-8 justify-start text-[11px]"
         onClick={onExternalSync}
-        disabled={!canManageStats || isSyncing}
+        disabled={isSyncing}
       >
         <RefreshCw className={cn("size-4", isSyncing && "animate-spin")} />
         {syncLabel}
@@ -1082,7 +1083,14 @@ export function AccessStatsPage() {
     [dateOffset, periodKey]
   )
   const statsQuery = useAppAccessStatsQuery(params, { enabled: Boolean(user) })
-  const externalSyncMutation = useExternalAppUsageSyncMutation()
+  const externalSyncMutation = useExternalAppUsageSyncMutation({
+    onSuccess: (result) => {
+      if (!result?.skipped) return
+      toast.info("동기화를 건너뛰었습니다.", {
+        description: result.reason || "잠시 후 다시 시도해 주세요.",
+      })
+    },
+  })
   const payload = statsQuery.data
   const summary = payload?.summary ?? {}
   const responsePeriod = payload?.period || periodKey

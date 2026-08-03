@@ -39,7 +39,7 @@ ALLOWED_STATS_PERIODS = {"day", "week", "month"}
 MANUAL_SOURCE_TYPE = ExternalAppAccessDailyStat.SOURCE_TYPE_MANUAL
 EXTERNAL_USAGE_SOURCE_TYPE = "external_api"
 EXTERNAL_USAGE_SYNC_KEY = "external_app_usage"
-EXTERNAL_USAGE_SYNC_THROTTLE = timedelta(hours=1)
+EXTERNAL_USAGE_SYNC_THROTTLE = timedelta(hours=6)
 EXTERNAL_USAGE_SYNC_LOOKBACK_DAYS = 365
 MANUAL_PASTE_EXPECTED_COLUMNS = ["date", "appName", "accessCount", "uniqueUserCount", "memo"]
 
@@ -379,7 +379,7 @@ def _is_external_usage_sync_throttled(
     state: ExternalAppUsageSyncState,
     now: datetime,
 ) -> bool:
-    """마지막 동기화 시도 후 1시간이 지나지 않았는지 확인합니다."""
+    """마지막 동기화 시도 후 6시간이 지나지 않았는지 확인합니다."""
 
     if state.updated_at is None:
         return False
@@ -433,7 +433,7 @@ def sync_external_app_usage_stats(
     입력:
     - user: 동기화 요청 사용자
     - now: 테스트용 현재 시각
-    - bypass_throttle: 1시간 제한 우회 여부
+    - bypass_throttle: 관리자 요청의 6시간 제한 우회 여부
 
     반환:
     - dict[str, Any]: 동기화 결과와 마지막 상태
@@ -451,11 +451,15 @@ def sync_external_app_usage_stats(
             sync_key=EXTERNAL_USAGE_SYNC_KEY,
             defaults={"last_status": "never"},
         )
-        if not created and not bypass_throttle and _is_external_usage_sync_throttled(state=state, now=current):
+        if (
+            not created
+            and not bypass_throttle
+            and _is_external_usage_sync_throttled(state=state, now=current)
+        ):
             return {
                 "synced": False,
                 "skipped": True,
-                "reason": "최근 1시간 내 외부 API 동기화 이력이 있습니다.",
+                "reason": "최근 6시간 내 외부 API 동기화 이력이 있습니다.",
                 "syncState": _serialize_external_usage_sync_state(state),
                 "commit": {"createdRows": 0, "updatedRows": 0},
             }

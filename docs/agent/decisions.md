@@ -88,3 +88,13 @@
 - Timeline 축, Data Log, Log Detail, 날짜 범위 계산은 브라우저 지역과 관계없이 `Asia/Seoul`을 사용한다.
 - EQP의 `chg_time`, `last_update_time`과 TIP의 `rule_pkg_update_date`, `gpm_update_date`, `last_update_date`는 timezone 없는 원천값을 KST 벽시계로 해석해 UTC instant로 저장한다.
 - 기존 EQP/TIP timestamp는 과거 Log Detail에 표시되던 원천 벽시계를 정답으로 삼아 9시간 앞당기는 data migration으로 보정한다.
+
+## 2026-08-03: Access Stats 외부 사용량 동기화
+
+- 외부 사용량 동기화 요청은 `access-stats` 접근이 허용된 모든 로그인 사용자에게 허용한다.
+- 수동 통계 붙여넣기는 기존처럼 `access-stats`의 `admin` 역할만 허용한다.
+- 일반 사용자의 실제 외부 API 동기화는 전역 기준 6시간에 한 번만 수행한다.
+- `access-stats admin`과 슈퍼유저는 6시간 제한을 적용하지 않는다.
+- 성공뿐 아니라 실패한 실제 시도도 일반 사용자의 6시간 제한에 포함해 장애 중 반복 호출을 막는다.
+- 제한 기준은 `ExternalAppUsageSyncState.updated_at`이며, 제한된 요청은 외부 API 호출 없이 `skipped=true`와 사유를 반환한다.
+- 프런트는 제한된 요청의 서버 사유를 정보 toast로 사용자에게 표시한다.

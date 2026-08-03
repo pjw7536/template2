@@ -7,6 +7,7 @@ Activity는 활동 로그 조회, Health는 서버 상태 확인을 제공합니
 | Method | Path | Auth | 설명 |
 | --- | --- | --- | --- |
 | GET | `/api/v1/activity/logs?limit=50` | 권한 필요 | 최근 활동 로그 |
+| POST | `/api/v1/activity/app-access-sync-external` | `access-stats` 접근 | 외부 앱 사용량 동기화 요청 |
 | GET | `/api/v1/health/` | 공개 | 서버 상태 확인 |
 
 ## Activity 권한

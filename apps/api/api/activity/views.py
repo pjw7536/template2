@@ -298,7 +298,7 @@ class ManualAppAccessStatsCommitView(APIView):
 
 
 class ExternalAppUsageSyncView(APIView):
-    """접속 현황 앱 관리자용 외부 앱 사용량 수동 동기화 API입니다."""
+    """접속 현황 앱 사용자용 외부 앱 사용량 수동 동기화 API입니다."""
 
     permission_classes: list[type] = []
 
@@ -316,18 +316,15 @@ class ExternalAppUsageSyncView(APIView):
 
         오류:
         - 401: 인증 실패
-        - 403: 접속 현황 앱 관리자 권한 없음
+        - 403: Portal 또는 접속 현황 앱 접근 권한 없음
         """
 
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
-        if not _can_manage_access_stats(request):
-            return JsonResponse({"error": "Forbidden"}, status=403)
-
         payload = sync_external_app_usage_stats(
             user=request.user,
-            bypass_throttle=True,
+            bypass_throttle=_can_manage_access_stats(request),
         )
         return JsonResponse(payload, status=200)
 

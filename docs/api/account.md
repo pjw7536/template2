@@ -255,10 +255,13 @@ Content-Type: application/json
 | `l3-spider` | 개발자 옵션 조회 |
 | `line-dashboard` | Drone target 기준 정보 관리 |
 | `emails` | 전체·미분류 메일함 관리 |
-| `access-stats` | 수동 통계 입력과 외부 통계 동기화 |
+| `access-stats` | 수동 통계 입력 (`admin` 전용) |
 | `voc` | 다른 사용자의 게시글 관리 |
 
 `is_staff`는 앱 관리자 판정에 사용하지 않습니다.
+외부 통계 동기화는 예외적으로 `access-stats` 접근이 허용된 모든 로그인 사용자가 요청할 수 있고,
+일반 사용자의 실제 외부 API 호출은 전역 기준 6시간에 한 번으로 제한됩니다.
+`access-stats admin`과 슈퍼유저는 이 제한을 적용하지 않습니다.
 
 ## 앱별 소속 데이터 범위
 
