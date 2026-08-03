@@ -1,4 +1,6 @@
-import { L1SpiderPage } from "./pages/L1SpiderPage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const L1SpiderPage = lazyNamed(() => import("./pages/L1SpiderPage"), "L1SpiderPage")
 
 export const l1SpiderRoutes = [
   {

@@ -7,6 +7,7 @@ Activity는 변경 작업 로그 조회, Health는 서버 상태 확인을 담�
 - 최근 ActivityLog 조회
 - 조회 권한 검사
 - 로그 직렬화
+- 앱 접속 이벤트와 내부·외부 접속 통계 집계
 
 ActivityLog 생성은 `api.common`의 middleware가 수행합니다.
 

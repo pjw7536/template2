@@ -36,6 +36,10 @@ from .serializers import (
     UserScopeAffiliationDataUpdateSerializer,
     PendingAccessRequestQuerySerializer,
     AffiliationApprovalSerializer,
+    AffiliationChangeRequestSerializer,
+    AffiliationMembersQuerySerializer,
+    AffiliationRequestQuerySerializer,
+    UserPoolQuerySerializer,
     AffiliationAccessGrantSerializer,
     AffiliationAccessRevokeSerializer,
     AffiliationReconfirmResponseSerializer,
@@ -43,36 +47,9 @@ from .serializers import (
 )
 
 # -----------------------------------------------------------------------------
-# 시간대/페이지네이션 상수
+# 시간대 상수
 # -----------------------------------------------------------------------------
 TIMEZONE_NAME = "Asia/Seoul"         # 서비스 레이어에 전달할 시간대 이름
-DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 100
-
-
-def _parse_int(value: object, default: int) -> int:
-    """입력 값을 int로 파싱하며 실패 시 기본값을 반환합니다.
-
-    입력:
-    - value: 변환 대상 값
-    - default: 기본값
-
-    반환:
-    - int: 파싱된 값 또는 기본값
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-    try:
-        parsed = int(value)
-        if parsed <= 0:
-            return default
-        return parsed
-    except (TypeError, ValueError):
-        return default
 
 
 def _require_json_content_type(request: HttpRequest) -> JsonResponse | None:
@@ -172,10 +149,7 @@ class AccountAffiliationView(APIView):
 
         예시 요청:
         - 예시 요청: POST /api/v1/account/affiliation
-          요청 바디 예시: {"user_sdwt_prod":"SDWT_A"}
-
-        snake/camel 호환:
-        - user_sdwt_prod / userSdwtProd (키 매핑)
+        요청 바디 예시: {"userSdwtProd":"SDWT_A"}
         """
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
@@ -192,13 +166,12 @@ class AccountAffiliationView(APIView):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
         # -----------------------------------------------------------------------------
-        # 3) user_sdwt_prod 추출(호환 키 포함)
+        # 3) 입력 계약 검증
         # -----------------------------------------------------------------------------
-        new_value = normalize_text(payload.get("user_sdwt_prod"))
-        if not new_value:
-            new_value = normalize_text(payload.get("userSdwtProd"))
-        if not new_value:
-            return JsonResponse({"error": "user_sdwt_prod is required"}, status=400)
+        serializer = AffiliationChangeRequestSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+        new_value = serializer.validated_data["userSdwtProd"]
 
         # -----------------------------------------------------------------------------
         # 4) 소속 옵션 유효성 검증
@@ -752,9 +725,8 @@ class AccountAffiliationApprovalView(APIView):
           요청 바디 예시: {"changeId":123,"decision":"approve"}
           요청 바디 예시: {"changeId":123,"decision":"reject","rejectionReason":"소속 정보 불일치"}
 
-        snake/camel 호환:
-        - rejection_reason / rejectionReason (키 매핑)
-        - changeId (레거시 id 보정 지원)
+        입력 계약:
+        - changeId, decision, rejectionReason
         """
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
@@ -771,15 +743,7 @@ class AccountAffiliationApprovalView(APIView):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
         # -----------------------------------------------------------------------------
-        # 3) 하위 호환 키 보정
-        # -----------------------------------------------------------------------------
-        if "changeId" not in payload and "id" in payload:
-            payload = {**payload, "changeId": payload.get("id")}
-        if "rejectionReason" not in payload and "rejection_reason" in payload:
-            payload = {**payload, "rejectionReason": payload.get("rejection_reason")}
-
-        # -----------------------------------------------------------------------------
-        # 4) 입력 검증
+        # 3) 입력 검증
         # -----------------------------------------------------------------------------
         serializer = AffiliationApprovalSerializer(data=payload)
         if not serializer.is_valid():
@@ -790,7 +754,7 @@ class AccountAffiliationApprovalView(APIView):
         rejection_reason = (serializer.validated_data.get("rejectionReason") or "").strip() or None
 
         # -----------------------------------------------------------------------------
-        # 5) 의사결정에 따른 서비스 호출
+        # 4) 의사결정에 따른 서비스 호출
         # -----------------------------------------------------------------------------
         if decision == "reject":
             response_payload, status_code = services.reject_affiliation_change(
@@ -830,14 +794,7 @@ class AccountAffiliationRequestListView(APIView):
         - 401: 미인증
 
         예시 요청:
-        - 예시 요청: GET /api/v1/account/affiliation/requests?status=pending&q=kim&userSdwtProd=SDWT_A&page=2&pageSize=50
-
-        snake/camel 호환:
-        - user_sdwt_prod / userSdwtProd (키 매핑)
-        - page_size / pageSize (키 매핑)
-
-        기타 호환:
-        - q / search (검색 키)
+        - 예시 요청: GET /api/v1/account/affiliation/requests?status=pending&search=kim&userSdwtProd=SDWT_A&page=2&pageSize=50
         """
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
@@ -847,40 +804,24 @@ class AccountAffiliationRequestListView(APIView):
             return JsonResponse({"error": "unauthorized"}, status=401)
 
         # -----------------------------------------------------------------------------
-        # 2) 상태/검색/그룹 필터 추출
+        # 2) query 계약 검증
         # -----------------------------------------------------------------------------
-        status = (request.GET.get("status") or "pending").strip()
-
-        search = (request.GET.get("q") or request.GET.get("search") or "").strip()
-
-        user_sdwt_prod = (
-            request.GET.get("user_sdwt_prod")
-            or request.GET.get("userSdwtProd")
-            or ""
-        ).strip()
+        serializer = AffiliationRequestQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+        validated = serializer.validated_data
+        status = validated["status"]
 
         # -----------------------------------------------------------------------------
-        # 3) 페이지네이션 파라미터 보정
-        # -----------------------------------------------------------------------------
-        page = _parse_int(request.GET.get("page"), 1)
-        page_size = min(
-            _parse_int(
-                request.GET.get("page_size") or request.GET.get("pageSize"),
-                DEFAULT_PAGE_SIZE,
-            ),
-            MAX_PAGE_SIZE,
-        )
-
-        # -----------------------------------------------------------------------------
-        # 4) 서비스 호출 및 응답 반환
+        # 3) 서비스 호출 및 응답 반환
         # -----------------------------------------------------------------------------
         payload, status_code = services.get_affiliation_change_requests(
             user=user,
             status=status if status and status.lower() != "all" else None,
-            search=search or None,
-            user_sdwt_prod=user_sdwt_prod or None,
-            page=page,
-            page_size=page_size,
+            search=(validated.get("search") or "").strip() or None,
+            user_sdwt_prod=(validated.get("userSdwtProd") or "").strip() or None,
+            page=validated["page"],
+            page_size=validated["pageSize"],
         )
         return JsonResponse(payload, status=status_code)
 
@@ -1083,22 +1024,20 @@ class AccountAffiliationMembersView(APIView):
         - 403: 접근 권한 없음
 
         예시 요청:
-        - 예시 요청: GET /api/v1/account/affiliation/members?user_sdwt_prod=SDWT_A
+        - 예시 요청: GET /api/v1/account/affiliation/members?userSdwtProd=SDWT_A
 
-        snake/camel 호환:
-        - user_sdwt_prod / userSdwtProd (쿼리 키 매핑)
+        입력 계약:
+        - userSdwtProd
         """
 
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
 
-        user_sdwt_prod = (
-            request.GET.get("user_sdwt_prod")
-            or request.GET.get("userSdwtProd")
-            or selectors.get_current_user_sdwt_prod(user=user)
-            or ""
-        ).strip()
+        serializer = AffiliationMembersQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+        user_sdwt_prod = serializer.validated_data["userSdwtProd"]
         payload, status_code = services.get_affiliation_members(
             user=user,
             user_sdwt_prod=user_sdwt_prod,
@@ -1217,8 +1156,8 @@ class AccountUserPoolView(APIView):
         - 예시 요청: GET /api/v1/account/users?search=kim
         - 예시 요청: GET /api/v1/account/users?department=PHOTO&userSdwtProd=PHOTO_B
 
-        snake/camel 호환:
-        - user_sdwt_prod / userSdwtProd (쿼리 키 매핑)
+        입력 계약:
+        - search, department, userSdwtProd, contactField, limit, includeExternalSnapshots
         """
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
@@ -1228,24 +1167,15 @@ class AccountUserPoolView(APIView):
             return JsonResponse({"error": "unauthorized"}, status=401)
 
         # -----------------------------------------------------------------------------
-        # 2) 쿼리 파라미터 정규화
+        # 2) query 계약 검증
         # -----------------------------------------------------------------------------
-        search = normalize_text(request.GET.get("search"))
-        department = normalize_text(request.GET.get("department"))
-        user_sdwt_prod = normalize_text(request.GET.get("user_sdwt_prod"))
-        if not user_sdwt_prod:
-            user_sdwt_prod = normalize_text(request.GET.get("userSdwtProd"))
-        contact_field = normalize_text(request.GET.get("contactField"))
-        if contact_field and contact_field not in {"email", "knox_id"}:
-            return JsonResponse({"error": "contactField must be email or knox_id"}, status=400)
-        raw_limit = normalize_text(request.GET.get("limit"))
-        limit = None if raw_limit == "all" and user_sdwt_prod else min(_parse_int(raw_limit, 50), 500)
-        include_external_param = (normalize_text(request.GET.get("includeExternalSnapshots")) or "").lower()
-        include_external_snapshots = include_external_param in {
-            "1",
-            "true",
-            "yes",
-        }
+        serializer = UserPoolQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return JsonResponse(serializer.errors, status=400)
+        validated = serializer.validated_data
+        search = validated["search"].strip()
+        department = validated["department"].strip()
+        user_sdwt_prod = validated["userSdwtProd"].strip()
 
         # -----------------------------------------------------------------------------
         # 3) 사용자 pool 및 소속 옵션 조회
@@ -1254,15 +1184,15 @@ class AccountUserPoolView(APIView):
             search=search,
             department=department,
             user_sdwt_prod=user_sdwt_prod,
-            contact_field=contact_field,
-            limit=limit,
-            include_external_snapshots=include_external_snapshots,
+            contact_field=validated["contactField"],
+            limit=validated["limit"],
+            include_external_snapshots=validated["includeExternalSnapshots"],
         )
         departments = selectors.list_distinct_active_departments(
-            include_external_snapshots=include_external_snapshots
+            include_external_snapshots=validated["includeExternalSnapshots"]
         )
         user_sdwt_prods = selectors.list_distinct_active_user_sdwt_prod_values(
-            include_external_snapshots=include_external_snapshots,
+            include_external_snapshots=validated["includeExternalSnapshots"],
             department=department or "",
         )
         return JsonResponse(

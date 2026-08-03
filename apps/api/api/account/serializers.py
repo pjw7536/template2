@@ -1,14 +1,14 @@
 # =============================================================================
 # 모듈 설명: account 도메인 요청/응답 스키마를 정의합니다.
 # - 주요 대상: 외부 소속 동기화, 소속 재확인/승인 입력 스키마
-# - 불변 조건: 필드명은 클라이언트 계약과 호환되어야 합니다.
+# - 불변 조건: SPA HTTP 계약은 camelCase, 외부 동기 계약은 snake_case를 사용합니다.
 # =============================================================================
 
 """계정 도메인 요청/응답 스키마 정의 모음.
 
 - 주요 대상: 외부 소속 동기화, 소속 재확인/승인 입력 스키마
 - 주요 엔드포인트/클래스: ExternalAffiliationSyncSerializer 등
-- 가정/불변 조건: 필드명은 클라이언트 계약에 맞춰 유지됨
+- 가정/불변 조건: SPA와 외부 동기의 각 계약은 하나의 표기법만 허용함
 """
 from __future__ import annotations
 
@@ -24,6 +24,34 @@ from .models import (
     UserAccess,
     UserSdwtProdAccess,
 )
+
+
+class StrictSerializer(serializers.Serializer):
+    """선언되지 않은 입력 필드를 명시적으로 거절합니다."""
+
+    def to_internal_value(self, data):
+        """알 수 없는 필드가 조용히 무시되지 않게 검사합니다."""
+
+        if isinstance(data, Mapping):
+            unexpected_fields = sorted(set(data) - set(self.fields))
+            if unexpected_fields:
+                raise serializers.ValidationError(
+                    {"unexpectedFields": unexpected_fields}
+                )
+        return super().to_internal_value(data)
+
+
+class StrictTextField(serializers.CharField):
+    """문자열이 아닌 JSON 값을 문자열로 암묵적 변환하지 않습니다."""
+
+    default_error_messages = {"invalid": "문자열이어야 합니다."}
+
+    def to_internal_value(self, data):
+        """입력 타입을 확인한 뒤 기본 문자열 검증을 수행합니다."""
+
+        if not isinstance(data, str):
+            self.fail("invalid")
+        return super().to_internal_value(data)
 
 
 class ExternalAffiliationRecordSerializer(serializers.Serializer):
@@ -51,7 +79,13 @@ class AffiliationReconfirmResponseSerializer(serializers.Serializer):
     user_sdwt_prod = serializers.CharField(max_length=64, required=False, allow_blank=True)
 
 
-class AffiliationApprovalSerializer(serializers.Serializer):
+class AffiliationChangeRequestSerializer(StrictSerializer):
+    """SPA 소속 변경 요청 입력 스키마."""
+
+    userSdwtProd = StrictTextField(max_length=64, trim_whitespace=True)
+
+
+class AffiliationApprovalSerializer(StrictSerializer):
     """소속 변경 승인/거절 입력 스키마."""
 
     changeId = serializers.IntegerField()
@@ -64,19 +98,68 @@ class AffiliationApprovalSerializer(serializers.Serializer):
     )
 
 
-class StrictAccessSerializer(serializers.Serializer):
-    """접근 API에 선언되지 않은 입력 필드가 들어오면 명시적으로 거절합니다."""
+class AffiliationRequestQuerySerializer(StrictSerializer):
+    """소속 변경 요청 목록의 query 스키마."""
 
-    def to_internal_value(self, data):
-        """선언되지 않은 필드가 조용히 무시되지 않게 검사합니다."""
+    status = serializers.ChoiceField(
+        choices=["all", "pending", "approved", "rejected", "superseded"],
+        required=False,
+        default="pending",
+    )
+    search = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    userSdwtProd = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    page = serializers.IntegerField(required=False, default=1, min_value=1)
+    pageSize = serializers.IntegerField(required=False, default=20, min_value=1, max_value=100)
 
-        if isinstance(data, Mapping):
-            unexpected_fields = sorted(set(data) - set(self.fields))
-            if unexpected_fields:
+
+class AffiliationMembersQuerySerializer(StrictSerializer):
+    """소속 멤버 목록의 query 스키마."""
+
+    userSdwtProd = serializers.CharField(max_length=64, trim_whitespace=True)
+
+
+class UserPoolQuerySerializer(StrictSerializer):
+    """사용자 검색 pool의 query 스키마."""
+
+    search = serializers.CharField(max_length=150, required=False, default="", allow_blank=True)
+    department = serializers.CharField(max_length=128, required=False, default="", allow_blank=True)
+    userSdwtProd = serializers.CharField(max_length=64, required=False, default="", allow_blank=True)
+    contactField = serializers.ChoiceField(
+        choices=["", "email", "knox_id"],
+        required=False,
+        default="",
+        allow_blank=True,
+    )
+    limit = serializers.CharField(required=False, default="50", max_length=16)
+    includeExternalSnapshots = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        """limit를 정수 또는 소속 필터와 함께 쓰는 all로 검증합니다."""
+
+        raw_limit = attrs["limit"].strip().lower()
+        if raw_limit == "all":
+            if not attrs["userSdwtProd"].strip():
                 raise serializers.ValidationError(
-                    {"unexpectedFields": unexpected_fields}
+                    {"limit": "all은 userSdwtProd 필터와 함께만 사용할 수 있습니다."}
                 )
-        return super().to_internal_value(data)
+            attrs["limit"] = None
+            return attrs
+        try:
+            parsed_limit = int(raw_limit)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                {"limit": "1에서 500 사이의 정수여야 합니다."}
+            ) from None
+        if parsed_limit < 1 or parsed_limit > 500:
+            raise serializers.ValidationError(
+                {"limit": "1에서 500 사이의 정수여야 합니다."}
+            )
+        attrs["limit"] = parsed_limit
+        return attrs
+
+
+class StrictAccessSerializer(StrictSerializer):
+    """접근 API의 엄격한 입력 스키마 기반 클래스."""
 
 
 class AffiliationAccessGrantSerializer(StrictAccessSerializer):

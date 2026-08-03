@@ -1,9 +1,20 @@
 import { Navigate } from "react-router-dom"
 
-import { L0SpiderShell } from "./components/L0SpiderShell"
-import { L0SpiderDashboardPage } from "./pages/L0SpiderDashboardPage"
-import { L0SpiderExternalPage } from "./pages/L0SpiderExternalPage"
-import { SpiderFeaturePage } from "./pages/SpiderFeaturePage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const L0SpiderShell = lazyNamed(() => import("./components/L0SpiderShell"), "L0SpiderShell")
+const L0SpiderDashboardPage = lazyNamed(
+  () => import("./pages/L0SpiderDashboardPage"),
+  "L0SpiderDashboardPage",
+)
+const L0SpiderExternalPage = lazyNamed(
+  () => import("./pages/L0SpiderExternalPage"),
+  "L0SpiderExternalPage",
+)
+const SpiderFeaturePage = lazyNamed(
+  () => import("./pages/SpiderFeaturePage"),
+  "SpiderFeaturePage",
+)
 
 const l0SpiderChildren = [
   {

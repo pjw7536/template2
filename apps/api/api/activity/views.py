@@ -17,7 +17,12 @@ from rest_framework.views import APIView
 from api.account import services as account_services
 from api.common.services import parse_json_body
 
-from .serializers import normalize_app_access_payload, normalize_manual_app_access_paste_payload
+from .serializers import (
+    ActivityLogQuerySerializer,
+    AppAccessEventSerializer,
+    AppAccessStatsQuerySerializer,
+    ManualAppAccessStatsSerializer,
+)
 from .services import (
     build_manual_app_access_preview,
     commit_manual_app_access_stats,
@@ -27,24 +32,8 @@ from .services import (
     sync_external_app_usage_stats,
 )
 
-# 조회 건수 관련 상수(한 곳에서 관리)
-DEFAULT_LIMIT: int = 50
-MAX_LIMIT: int = 200
-MIN_LIMIT: int = 1
 VIEW_ACTIVITY_LOG_PERMISSIONS = ("activity.view_activitylog", "api.view_activitylog")
 ACCESS_STATS_SCOPE = "access-stats"
-
-
-def _parse_activity_log_limit(raw_limit: str | None) -> int:
-    """limit 쿼리 값을 기존 규칙대로 기본값/허용 범위 안으로 정규화합니다."""
-
-    try:
-        limit = int(raw_limit) if raw_limit is not None else DEFAULT_LIMIT
-    except (TypeError, ValueError):
-        # 비정상 값은 기존 API 동작처럼 오류 대신 기본값으로 처리합니다.
-        limit = DEFAULT_LIMIT
-
-    return max(MIN_LIMIT, min(limit, MAX_LIMIT))
 
 
 def _can_view_activity_logs(user: Any) -> bool:
@@ -108,9 +97,12 @@ class ActivityLogView(APIView):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
         # -----------------------------------------------------------------------------
-        # 2) limit 파라미터 파싱/정규화
+        # 2) query 계약 검증
         # -----------------------------------------------------------------------------
-        limit = _parse_activity_log_limit(request.GET.get("limit"))
+        serializer = ActivityLogQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return JsonResponse({"error": "Invalid query", "details": serializer.errors}, status=400)
+        limit = serializer.validated_data["limit"]
 
         # -----------------------------------------------------------------------------
         # 3) payload 생성
@@ -149,16 +141,16 @@ class AppAccessEventView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
-        payload = parse_json_body(request)
-        normalized, error = normalize_app_access_payload(payload)
-        if error or normalized is None:
-            return JsonResponse({"error": error or "Invalid payload"}, status=400)
+        serializer = AppAccessEventSerializer(data=parse_json_body(request))
+        if not serializer.is_valid():
+            return JsonResponse({"error": "Invalid payload", "details": serializer.errors}, status=400)
+        validated = serializer.validated_data
 
         entry = record_app_access(
             user=request.user,
-            app_id=normalized["app_id"],
-            app_name=normalized["app_name"],
-            path=normalized["path"],
+            app_id=validated["appId"],
+            app_name=validated["appName"],
+            path=validated["path"],
         )
         return JsonResponse({"id": entry.pk}, status=201)
 
@@ -191,12 +183,17 @@ class AppAccessStatsView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
+        serializer = AppAccessStatsQuerySerializer(data=request.GET)
+        if not serializer.is_valid():
+            return JsonResponse({"error": "Invalid query", "details": serializer.errors}, status=400)
+        validated = serializer.validated_data
+
         try:
             payload = get_app_access_stats_payload(
-                from_value=request.GET.get("from"),
-                to_value=request.GET.get("to"),
-                app_id=request.GET.get("appId") or request.GET.get("app_id"),
-                period_value=request.GET.get("period") or request.GET.get("granularity"),
+                from_value=validated.get("from"),
+                to_value=validated.get("to"),
+                app_id=validated.get("appId"),
+                period_value=validated.get("period"),
             )
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
@@ -234,13 +231,14 @@ class ManualAppAccessStatsPreviewView(APIView):
         if not _can_manage_access_stats(request):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
-        normalized, error = normalize_manual_app_access_paste_payload(parse_json_body(request))
-        if error or normalized is None:
-            return JsonResponse({"error": error or "Invalid payload"}, status=400)
+        serializer = ManualAppAccessStatsSerializer(data=parse_json_body(request))
+        if not serializer.is_valid():
+            return JsonResponse({"error": "Invalid payload", "details": serializer.errors}, status=400)
+        validated = serializer.validated_data
 
         payload = build_manual_app_access_preview(
-            pasted_text=normalized["pasted_text"],
-            source_name=normalized["source_name"],
+            pasted_text=validated["pastedText"],
+            source_name=validated["sourceName"],
         )
         return JsonResponse(payload)
 
@@ -275,14 +273,15 @@ class ManualAppAccessStatsCommitView(APIView):
         if not _can_manage_access_stats(request):
             return JsonResponse({"error": "Forbidden"}, status=403)
 
-        normalized, error = normalize_manual_app_access_paste_payload(parse_json_body(request))
-        if error or normalized is None:
-            return JsonResponse({"error": error or "Invalid payload"}, status=400)
+        serializer = ManualAppAccessStatsSerializer(data=parse_json_body(request))
+        if not serializer.is_valid():
+            return JsonResponse({"error": "Invalid payload", "details": serializer.errors}, status=400)
+        validated = serializer.validated_data
 
         try:
             payload = commit_manual_app_access_stats(
-                pasted_text=normalized["pasted_text"],
-                source_name=normalized["source_name"],
+                pasted_text=validated["pastedText"],
+                source_name=validated["sourceName"],
                 user=request.user,
             )
         except ValueError as exc:

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AFFILIATION_QUERY_KEY } from "@/lib/account"
+import { accountApi, AFFILIATION_QUERY_KEY } from "@/lib/account"
 import { buildBackendUrl } from "@/lib/api"
 
 import { fetchJson } from "../utils/fetchJson"
@@ -25,16 +25,6 @@ function isBlank(value) {
 
 function optionKey(option) {
   return `${option.department}||${option.line}||${option.user_sdwt_prod}`
-}
-
-async function fetchAffiliationOverview() {
-  const endpoint = buildBackendUrl("/api/v1/account/affiliation")
-  const result = await fetchJson(endpoint, { cache: "no-store" })
-  if (result.ok) return result.data
-  const message =
-    (result.data && typeof result.data === "object" && result.data.error) ||
-    "소속 정보를 불러오지 못했습니다."
-  throw new Error(message)
 }
 
 async function fetchReconfirmStatus() {
@@ -94,7 +84,7 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
 
   const affiliationQuery = useQuery({
     queryKey: AFFILIATION_QUERY_KEY,
-    queryFn: fetchAffiliationOverview,
+    queryFn: accountApi.fetchAffiliation,
     enabled: open,
   })
 

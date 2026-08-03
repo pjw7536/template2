@@ -13,6 +13,11 @@ const isStagingHost = siteHost === STAGING_HOST
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.js"],
+    clearMocks: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "src"),

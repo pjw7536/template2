@@ -28,6 +28,9 @@ jobs:
       - name: Check feature boundaries
         run: npm run agent:audit:web-boundary
 
+      - name: Test web
+        run: npm run web:test
+
       - name: Lint web
         run: npm run web:lint
 

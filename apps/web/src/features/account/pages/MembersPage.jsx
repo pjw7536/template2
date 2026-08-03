@@ -206,7 +206,7 @@ export default function MembersPage() {
   const memberRows = members.map((member) => {
     const displayName =
       member?.name?.trim() || member?.username?.trim() || member?.knoxId || "알 수 없음"
-    const memberAffiliation = member?.userSdwtProd || member?.user_sdwt_prod || ""
+    const memberAffiliation = member?.userSdwtProd || ""
     const normalizedRole = (member?.role || "").toLowerCase()
     return {
       id: `member-${member.userId}`,
@@ -232,7 +232,7 @@ export default function MembersPage() {
     const targetParts = [
       change?.department,
       change?.line,
-      change?.toUserSdwtProd || change?.to_user_sdwt_prod,
+      change?.toUserSdwtProd,
     ].filter(Boolean)
     const targetLabel =
       targetParts.length > 0 ? targetParts.join(" / ") : change?.toUserSdwtProd || "-"

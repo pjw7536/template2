@@ -1722,7 +1722,7 @@ class AccountEndpointTests(TestCase):
         self.client.force_login(onboarding_user)
         response = self.client.post(
             reverse("account-affiliation"),
-            data='{"department":"Dept","line":"L1","userSdwtProd":"group-b"}',
+            data='{"userSdwtProd":"group-b"}',
             content_type="application/json",
         )
 
@@ -1949,7 +1949,31 @@ class AccountEndpointTests(TestCase):
         response = self.client.get(reverse("account-users"), {"contactField": "phone"})
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "contactField must be email or knox_id")
+        self.assertIn("contactField", response.json())
+
+    def test_account_user_pool_rejects_removed_alias_and_invalid_limit(self) -> None:
+        """사용자 pool은 snake_case 별칭과 모호한 limit fallback을 거절해야 합니다."""
+
+        self.client.force_login(self.user)
+        alias_response = self.client.get(
+            reverse("account-users"),
+            {"user_sdwt_prod": "group-a"},
+        )
+        invalid_limit_response = self.client.get(
+            reverse("account-users"),
+            {"limit": "invalid"},
+        )
+        unbounded_response = self.client.get(
+            reverse("account-users"),
+            {"limit": "all"},
+        )
+
+        self.assertEqual(alias_response.status_code, 400)
+        self.assertEqual(alias_response.json()["unexpectedFields"], ["user_sdwt_prod"])
+        self.assertEqual(invalid_limit_response.status_code, 400)
+        self.assertIn("limit", invalid_limit_response.json())
+        self.assertEqual(unbounded_response.status_code, 400)
+        self.assertIn("limit", unbounded_response.json())
 
     def test_account_user_pool_returns_all_group_users_when_requested(self) -> None:
         """소속 단위 전체 불러오기는 기본 500명 제한 없이 해당 소속 사용자를 반환해야 합니다."""
@@ -4853,7 +4877,7 @@ class AccountEndpointTests(TestCase):
 
         create_response = self.client.post(
             reverse("account-affiliation"),
-            data='{"department":"Dept","line":"L1","user_sdwt_prod":"group-b"}',
+            data='{"userSdwtProd":"group-b"}',
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 202)
@@ -4876,32 +4900,18 @@ class AccountEndpointTests(TestCase):
         )
         self.assertEqual(approve_response.status_code, 200)
 
-    def test_account_affiliation_post_ignores_effective_from_input(self) -> None:
-        """사용자 소속 변경 API는 클라이언트 기준 시각 입력을 받지 않는지 확인합니다."""
-        # -----------------------------------------------------------------------------
-        # 1) 과거 기준 시각을 포함해 소속 변경 요청
-        # -----------------------------------------------------------------------------
+    def test_account_affiliation_post_rejects_unknown_fields(self) -> None:
+        """사용자 소속 변경 API는 선언되지 않은 입력을 거절해야 합니다."""
         self.client.force_login(self.user)
-        requested_effective_from = timezone.now() - timedelta(days=30)
-        before = timezone.now()
 
-        create_response = self.client.post(
+        response = self.client.post(
             reverse("account-affiliation"),
-            data=(
-                '{"department":"Dept","line":"L1","user_sdwt_prod":"group-b",'
-                '"effectiveFrom":"%s"}' % requested_effective_from.isoformat()
-            ),
+            data='{"userSdwtProd":"group-b","effectiveFrom":"2026-01-01T00:00:00Z"}',
             content_type="application/json",
         )
-        after = timezone.now()
 
-        # -----------------------------------------------------------------------------
-        # 2) 저장된 기준 시각은 요청 처리 시각인지 확인
-        # -----------------------------------------------------------------------------
-        self.assertEqual(create_response.status_code, 202)
-        change = UserSdwtProdChange.objects.get(id=create_response.json()["changeId"])
-        self.assertGreaterEqual(change.effective_from, before)
-        self.assertLessEqual(change.effective_from, after)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["unexpectedFields"], ["effectiveFrom"])
 
     def test_account_affiliation_rejection_reason_is_exposed(self) -> None:
         """거절 사유가 히스토리에 노출되는지 확인합니다."""
@@ -4912,7 +4922,7 @@ class AccountEndpointTests(TestCase):
 
         create_response = self.client.post(
             reverse("account-affiliation"),
-            data='{"department":"Dept","line":"L1","user_sdwt_prod":"group-b"}',
+            data='{"userSdwtProd":"group-b"}',
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 202)
@@ -4942,16 +4952,54 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(history[0]["rejectionReason"], "사유 확인 필요")
 
     def test_account_affiliation_rejects_non_string_user_sdwt_prod(self) -> None:
-        """user_sdwt_prod 타입 오류는 400을 반환해야 합니다."""
+        """userSdwtProd 타입 오류는 400을 반환해야 합니다."""
         self.client.force_login(self.user)
 
         response = self.client.post(
             reverse("account-affiliation"),
-            data='{"department":"Dept","line":"L1","user_sdwt_prod":123}',
+            data='{"userSdwtProd":123}',
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("error"), "user_sdwt_prod is required")
+        self.assertIn("userSdwtProd", response.json())
+
+    def test_account_affiliation_api_rejects_removed_aliases(self) -> None:
+        """SPA 소속 API는 제거된 snake_case와 이전 별칭을 거절해야 합니다."""
+
+        self.client.force_login(self.manager)
+        create_response = self.client.post(
+            reverse("account-affiliation"),
+            data={"user_sdwt_prod": "group-b"},
+            content_type="application/json",
+        )
+        list_response = self.client.get(
+            reverse("account-affiliation-requests"),
+            {"q": self.user.knox_id, "page_size": 5, "user_sdwt_prod": "group-a"},
+        )
+        approval_response = self.client.post(
+            reverse("account-affiliation-approve"),
+            data={"id": 1, "decision": "reject", "rejection_reason": "별칭 검증"},
+            content_type="application/json",
+        )
+        members_response = self.client.get(
+            reverse("account-affiliation-members"),
+            {"user_sdwt_prod": "group-a"},
+        )
+
+        self.assertEqual(create_response.status_code, 400)
+        self.assertEqual(create_response.json()["unexpectedFields"], ["user_sdwt_prod"])
+        self.assertEqual(list_response.status_code, 400)
+        self.assertEqual(
+            list_response.json()["unexpectedFields"],
+            ["page_size", "q", "user_sdwt_prod"],
+        )
+        self.assertEqual(approval_response.status_code, 400)
+        self.assertEqual(
+            approval_response.json()["unexpectedFields"],
+            ["id", "rejection_reason"],
+        )
+        self.assertEqual(members_response.status_code, 400)
+        self.assertEqual(members_response.json()["unexpectedFields"], ["user_sdwt_prod"])
 
     def test_account_affiliation_reconfirm(self) -> None:
         """소속 재확인 플로우가 정상 응답하는지 확인합니다."""
@@ -5196,7 +5244,7 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(change_response.json()["role"], "member")
         members_response = self.client.get(
             reverse("account-affiliation-members"),
-            {"user_sdwt_prod": "group-a"},
+            {"userSdwtProd": "group-a"},
         )
         self.assertEqual(members_response.status_code, 200)
         self.assertTrue(members_response.json()["canManage"])
@@ -5425,7 +5473,7 @@ class AccountEndpointTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(
             reverse("account-affiliation-members"),
-            {"user_sdwt_prod": "group-a"},
+            {"userSdwtProd": "group-a"},
         )
 
         self.assertEqual(response.status_code, 200)

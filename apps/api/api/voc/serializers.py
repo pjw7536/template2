@@ -1,136 +1,186 @@
 # =============================================================================
-# 모듈 설명: voc 응답 직렬화 유틸을 제공합니다.
-# - 주요 함수: serialize_user, serialize_reply, serialize_post
-# - 불변 조건: 응답 키는 카멜 케이스 기준을 유지합니다.
+# 모듈 설명: VOC API의 입력 검증과 출력 계약을 정의합니다.
+# - 주요 클래스: 게시글/답변 입력 serializer, 게시글/답변 출력 serializer
+# - 불변 조건: HTTP JSON 필드는 camelCase 계약 하나만 사용합니다.
 # =============================================================================
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Mapping
+from typing import Any
+
+from rest_framework import serializers
+
+from .models import VocPost
 
 
 def _build_user_display_name(user: Any) -> str:
-    """VOC 작성자 표시 이름을 생성합니다."""
+    """사용자 이름과 Knox ID로 VOC 작성자 표시 이름을 생성합니다."""
 
-    # -----------------------------------------------------------------------------
-    # 1) username/knox_id만 사용해 표시 이름을 구성
-    # -----------------------------------------------------------------------------
     username = getattr(user, "username", None)
     username = username.strip() if isinstance(username, str) else ""
     knox_id = getattr(user, "knox_id", None)
     knox_id = knox_id.strip() if isinstance(knox_id, str) else ""
 
-    # -----------------------------------------------------------------------------
-    # 2) knox_id가 있으면 이름 뒤에 함께 표시
-    # -----------------------------------------------------------------------------
     if username and knox_id:
         return f"{username}({knox_id})"
-    if username:
-        return username
-    if knox_id:
-        return knox_id
-    return ""
+    return username or knox_id
 
 
-def serialize_user(user: Any) -> dict[str, Any] | None:
-    """작성자 정보를 API 응답 형태로 직렬화합니다.
+class StrictSerializer(serializers.Serializer):
+    """VOC의 canonical 계약에 선언되지 않은 입력 필드를 거절합니다."""
 
-    입력:
-    - user: 사용자 객체 또는 None
+    def to_internal_value(self, data):
+        """알 수 없는 필드를 검증한 뒤 DRF 기본 변환을 수행합니다."""
 
-    반환:
-    - dict[str, Any] | None: 작성자 payload(없으면 None)
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 사용자 유무 및 이름 구성
-    # -----------------------------------------------------------------------------
-    if not user:
-        return None
-    payload: dict[str, Any] = {"id": user.pk, "name": _build_user_display_name(user)}
-    return payload
+        if isinstance(data, Mapping):
+            unexpected_fields = sorted(set(data) - set(self.fields))
+            if unexpected_fields:
+                raise serializers.ValidationError(
+                    {"unexpectedFields": unexpected_fields}
+                )
+        return super().to_internal_value(data)
 
 
-def serialize_reply(reply: Any) -> dict[str, Any]:
-    """답변(VocReply)을 API 응답 형태로 직렬화합니다.
+class VocPostCreateInputSerializer(StrictSerializer):
+    """VOC 게시글 생성 payload를 검증합니다."""
 
-    입력:
-    - reply: VocReply 객체
-
-    반환:
-    - dict[str, Any]: 답변 응답 payload
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return {
-        "id": reply.pk,
-        "postId": reply.post_id,
-        "content": reply.content,
-        "createdAt": reply.created_at.isoformat(),
-        "author": serialize_user(getattr(reply, "author", None)),
-    }
-
-
-def _prefetched_replies(post: Any) -> Iterable[dict[str, Any]]:
-    """prefetch_related 결과를 활용해 답변을 직렬화합니다.
-
-    입력:
-    - post: VocPost 객체(가능하면 replies가 prefetched된 상태)
-
-    반환:
-    - Iterable[dict[str, Any]]: 답변 payload 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    related = getattr(post, "replies", None)
-    if related is None:
-        return []
-    return [serialize_reply(reply) for reply in related.all()]
+    title = serializers.CharField(
+        max_length=VocPost._meta.get_field("title").max_length,
+        error_messages={
+            "blank": "title is required",
+            "required": "title is required",
+            "max_length": "title is too long",
+        },
+    )
+    content = serializers.CharField(
+        error_messages={"blank": "content is required", "required": "content is required"}
+    )
+    status = serializers.ChoiceField(
+        choices=VocPost.Status.choices,
+        default=VocPost.Status.RECEIVED,
+        error_messages={"invalid_choice": "Invalid status value"},
+    )
+    app = serializers.ChoiceField(
+        choices=VocPost.AppCategory.choices,
+        error_messages={"invalid_choice": "Invalid app value", "required": "app is required"},
+    )
 
 
-def serialize_post(post: Any) -> dict[str, Any]:
-    """게시글(VocPost)을 API 응답 형태로 직렬화합니다.
+class VocPostUpdateInputSerializer(StrictSerializer):
+    """VOC 게시글에서 변경할 필드만 검증합니다."""
 
-    입력:
-    - post: VocPost 객체
+    title = serializers.CharField(
+        required=False,
+        max_length=VocPost._meta.get_field("title").max_length,
+        error_messages={"blank": "title is required", "max_length": "title is too long"},
+    )
+    content = serializers.CharField(
+        required=False,
+        error_messages={"blank": "content is required"},
+    )
+    status = serializers.ChoiceField(
+        required=False,
+        choices=VocPost.Status.choices,
+        error_messages={"invalid_choice": "Invalid status value"},
+    )
+    app = serializers.ChoiceField(
+        required=False,
+        choices=VocPost.AppCategory.choices,
+        error_messages={"invalid_choice": "Invalid app value"},
+    )
 
-    반환:
-    - dict[str, Any]: 게시글 응답 payload
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """변경 필드가 하나 이상인지 확인합니다."""
 
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return {
-        "id": post.pk,
-        "title": post.title,
-        "content": post.content,
-        "status": post.status,
-        "app": post.app,
-        "createdAt": post.created_at.isoformat(),
-        "updatedAt": post.updated_at.isoformat(),
-        "author": serialize_user(getattr(post, "author", None)),
-        "replies": list(_prefetched_replies(post)),
-    }
+        if not attrs:
+            raise serializers.ValidationError("No changes provided")
+        return attrs
 
 
-__all__ = ["serialize_post", "serialize_reply", "serialize_user"]
+class VocReplyCreateInputSerializer(StrictSerializer):
+    """VOC 답변 생성 payload를 검증합니다."""
+
+    content = serializers.CharField(
+        error_messages={"blank": "content is required", "required": "content is required"}
+    )
+
+
+class VocUserOutputSerializer(serializers.Serializer):
+    """VOC 작성자를 canonical 응답 형태로 직렬화합니다."""
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.SerializerMethodField()
+
+    def get_name(self, user: Any) -> str:
+        """작성자 표시 이름을 반환합니다."""
+
+        return _build_user_display_name(user)
+
+
+class VocReplyOutputSerializer(serializers.Serializer):
+    """VOC 답변을 canonical 응답 형태로 직렬화합니다."""
+
+    id = serializers.IntegerField(read_only=True)
+    postId = serializers.IntegerField(source="post_id", read_only=True)
+    content = serializers.CharField(read_only=True)
+    createdAt = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
+
+    def get_createdAt(self, reply: Any) -> str:  # noqa: N802 - HTTP camelCase 계약
+        """답변 생성 시각을 ISO 8601 문자열로 반환합니다."""
+
+        return reply.created_at.isoformat()
+
+    def get_author(self, reply: Any) -> dict[str, Any] | None:
+        """답변 작성자 payload를 반환합니다."""
+
+        author = getattr(reply, "author", None)
+        return VocUserOutputSerializer(author).data if author else None
+
+
+class VocPostOutputSerializer(serializers.Serializer):
+    """VOC 게시글을 canonical 응답 형태로 직렬화합니다."""
+
+    id = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    content = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    app = serializers.CharField(read_only=True)
+    createdAt = serializers.SerializerMethodField()
+    updatedAt = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+
+    def get_createdAt(self, post: Any) -> str:  # noqa: N802 - HTTP camelCase 계약
+        """게시글 생성 시각을 ISO 8601 문자열로 반환합니다."""
+
+        return post.created_at.isoformat()
+
+    def get_updatedAt(self, post: Any) -> str:  # noqa: N802 - HTTP camelCase 계약
+        """게시글 수정 시각을 ISO 8601 문자열로 반환합니다."""
+
+        return post.updated_at.isoformat()
+
+    def get_author(self, post: Any) -> dict[str, Any] | None:
+        """게시글 작성자 payload를 반환합니다."""
+
+        author = getattr(post, "author", None)
+        return VocUserOutputSerializer(author).data if author else None
+
+    def get_replies(self, post: Any) -> list[dict[str, Any]]:
+        """게시글 답변 목록을 생성 순서대로 반환합니다."""
+
+        related = getattr(post, "replies", None)
+        if related is None:
+            return []
+        return list(VocReplyOutputSerializer(related.all(), many=True).data)
+
+
+__all__ = [
+    "VocPostCreateInputSerializer",
+    "VocPostOutputSerializer",
+    "VocPostUpdateInputSerializer",
+    "VocReplyCreateInputSerializer",
+    "VocReplyOutputSerializer",
+]

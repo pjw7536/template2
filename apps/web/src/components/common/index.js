@@ -12,6 +12,7 @@ export { Error04Illustration } from "./Error04Illustration"
 export { TeamSwitcher } from "./TeamSwitcher"
 export { LineSwitcherHeader } from "./LineSwitcherHeader"
 export { AppProviders } from "./AppProviders"
+export { RouteLoadingFallback } from "./RouteLoadingFallback"
 export {
   Table,
   TableHeader,

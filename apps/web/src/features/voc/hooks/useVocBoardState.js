@@ -17,8 +17,6 @@ import {
   EMPTY_POSTS,
   buildVocStatusCounts,
   getVocPostAuthorKey,
-  normalizeVocPosts,
-  sanitizeVocPost,
 } from "../utils/postTransforms"
 
 export function useVocBoardState({ currentUser, isAdmin }) {
@@ -39,17 +37,10 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   const [isDetailOpen, setIsDetailOpen] = React.useState(false)
   const [error, setError] = React.useState(null)
 
-  // 서버에서 VOC 글 목록과 상태 집계를 받아 클라이언트에서 정규화
+  // canonical API payload를 React Query의 단일 서버 상태로 사용합니다.
   const postsQuery = useQuery({
     queryKey: vocQueryKeys.posts(),
     queryFn: fetchVocPosts,
-    select: (payload) => {
-      const posts = normalizeVocPosts(payload?.posts)
-      return {
-        posts,
-        statusCounts: buildVocStatusCounts(posts, payload?.statusCounts),
-      }
-    },
   })
 
   React.useEffect(() => {
@@ -64,7 +55,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     }
   }, [postsQuery.isSuccess])
 
-  const posts = postsQuery.data?.posts ?? EMPTY_POSTS
+  const posts = postsQuery.data ?? EMPTY_POSTS
   const currentUserId = currentUser?.id
   const basePosts = isMyPostsOnly
     ? posts.filter((post) => {
@@ -150,16 +141,10 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   }
 
   // React Query 캐시를 한 지점에서만 갱신해 리스트/집계의 일관성을 보장
-  const updatePostsCache = (updater, nextStatusCounts) => {
+  const updatePostsCache = (updater) => {
     queryClient.setQueryData(vocQueryKeys.posts(), (previous) => {
-      const base = previous?.posts ?? posts
-      const updated = normalizeVocPosts(updater(base))
-      const countsSource =
-        nextStatusCounts && typeof nextStatusCounts === "object" ? nextStatusCounts : undefined
-      return {
-        posts: updated,
-        statusCounts: buildVocStatusCounts(updated, countsSource),
-      }
+      const base = Array.isArray(previous) ? previous : posts
+      return updater(base)
     })
   }
 
@@ -174,11 +159,8 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     },
     onSuccess: (result) => {
       if (!result?.post) return
-      const safePost = sanitizeVocPost(result.post)
-      if (!safePost) return
-
-      updatePostsCache((prev) => [safePost, ...(prev ?? [])], result.statusCounts)
-      setSelectedPostId(safePost.id)
+      updatePostsCache((prev) => [result.post, ...prev])
+      setSelectedPostId(result.post.id)
       setPagination((prev) => ({ ...prev, pageIndex: 0 }))
       resetForm()
       setIsCreateOpen(false)
@@ -191,11 +173,8 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     onError: (err) => {
       setError(err?.message || "게시글을 삭제하지 못했습니다.")
     },
-    onSuccess: (result, postId) => {
-      updatePostsCache(
-        (prev) => (prev ?? []).filter((post) => post.id !== postId),
-        result?.statusCounts,
-      )
+    onSuccess: (_result, postId) => {
+      updatePostsCache((prev) => prev.filter((post) => post.id !== postId))
       if (selectedPostId === postId) {
         clearSelection()
       }
@@ -210,12 +189,8 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     },
     onSuccess: (result) => {
       if (!result?.post) return
-      const safePost = sanitizeVocPost(result.post)
-      if (!safePost) return
-
-      updatePostsCache(
-        (prev) => (prev ?? []).map((post) => (post.id === safePost.id ? safePost : post)),
-        result.statusCounts,
+      updatePostsCache((prev) =>
+        prev.map((post) => (post.id === result.post.id ? result.post : post)),
       )
     },
   })
@@ -228,14 +203,14 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     },
     onSuccess: (result, variables) => {
       const reply = result?.reply
-      const safePost = sanitizeVocPost(result?.post)
-      if (!reply && !safePost) return
+      const updatedPost = result?.post
+      if (!reply && !updatedPost) return
       const targetId = variables.postId
 
       updatePostsCache((prev) =>
-        (prev ?? []).map((post) => {
+        prev.map((post) => {
           if (post.id !== targetId) return post
-          if (safePost) return safePost
+          if (updatedPost) return updatedPost
           return { ...post, replies: [...post.replies, reply].filter(Boolean) }
         }),
       )
@@ -253,7 +228,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     if (!app) return null
     try {
       const result = await createPostMutation.mutateAsync({ title, content, status, app })
-      return result?.post ? sanitizeVocPost(result.post) : null
+      return result?.post ?? null
     } catch {
       return null
     }
@@ -311,7 +286,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
         postId,
         updates: { title, content },
       })
-      return result?.post ? sanitizeVocPost(result.post) : null
+      return result?.post ?? null
     } catch {
       return null
     }

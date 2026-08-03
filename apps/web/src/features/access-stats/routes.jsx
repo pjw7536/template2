@@ -1,5 +1,10 @@
-import { AccessStatsShell } from "./components/AccessStatsShell"
-import { AccessStatsPage } from "./pages/AccessStatsPage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const AccessStatsShell = lazyNamed(
+  () => import("./components/AccessStatsShell"),
+  "AccessStatsShell",
+)
+const AccessStatsPage = lazyNamed(() => import("./pages/AccessStatsPage"), "AccessStatsPage")
 
 export const accessStatsRoutes = [
   {

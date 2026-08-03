@@ -1,7 +1,12 @@
-import { EmailsShell } from "./components/EmailsShell"
-import { EmailInboxPage } from "./pages/EmailInboxPage"
-import { EmailMembersPage } from "./pages/EmailMembersPage"
-import { EmailSentPage } from "./pages/EmailSentPage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const EmailsShell = lazyNamed(() => import("./components/EmailsShell"), "EmailsShell")
+const EmailInboxPage = lazyNamed(() => import("./pages/EmailInboxPage"), "EmailInboxPage")
+const EmailMembersPage = lazyNamed(
+  () => import("./pages/EmailMembersPage"),
+  "EmailMembersPage",
+)
+const EmailSentPage = lazyNamed(() => import("./pages/EmailSentPage"), "EmailSentPage")
 
 export const emailsRoutes = [
   {

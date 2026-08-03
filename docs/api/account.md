@@ -47,16 +47,21 @@ Content-Type: application/json
 
 ```json
 {
-  "user_sdwt_prod": "G-A"
+  "userSdwtProd": "G-A"
 }
 ```
 
-호환 키:
-
-- `user_sdwt_prod`
-- `userSdwtProd`
-
 응답은 자동 적용 또는 승인 대기 상태를 반환합니다.
+선언되지 않은 필드와 snake_case 별칭은 400으로 거절합니다.
+
+## 소속 변경 요청 목록
+
+```http
+GET /api/v1/account/affiliation/requests?status=pending&search=kim&userSdwtProd=G-A&page=1&pageSize=20
+```
+
+`status` 허용 값은 `all`, `pending`, `approved`, `rejected`, `superseded`입니다.
+소속 멤버 목록은 `userSdwtProd` query를 필수로 받습니다.
 
 ## 승인/거절
 
@@ -356,9 +361,10 @@ GET /api/v1/account/users?search=kim&contactField=email
 | Query | 설명 |
 | --- | --- |
 | `search` | 사용자 검색어 |
-| `user_sdwt_prod`, `userSdwtProd` | 소속 필터 |
+| `userSdwtProd` | 소속 필터 |
 | `contactField` | `email` 또는 `knox_id` |
-| `limit` | 숫자 또는 조건부 `all` |
+| `limit` | 1~500 정수, `userSdwtProd`와 함께일 때만 `all` |
+| `includeExternalSnapshots` | 미가입 외부 스냅샷 포함 여부 |
 
 ## 외부 소속 동기화
 

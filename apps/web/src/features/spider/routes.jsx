@@ -1,5 +1,10 @@
-import { DefectSpiderExternalPage } from "./pages/DefectSpiderExternalPage"
-import { SpiderHomePage } from "./pages/SpiderHomePage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const DefectSpiderExternalPage = lazyNamed(
+  () => import("./pages/DefectSpiderExternalPage"),
+  "DefectSpiderExternalPage",
+)
+const SpiderHomePage = lazyNamed(() => import("./pages/SpiderHomePage"), "SpiderHomePage")
 
 export const spiderRoutes = [
   {

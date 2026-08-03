@@ -1,6 +1,8 @@
 // src/features/auth/routes.jsx
 // 인증 관련 라우트를 정의합니다.
-import { LoginPage } from "./pages/LoginPage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const LoginPage = lazyNamed(() => import("./pages/LoginPage"), "LoginPage")
 
 export const authRoutes = [
   {

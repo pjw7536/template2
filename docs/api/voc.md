@@ -26,7 +26,8 @@ VOC API는 게시글과 답변을 관리합니다.
 {
   "title": "문의 제목",
   "content": "문의 내용",
-  "status": "접수"
+  "status": "접수",
+  "app": "기타"
 }
 ```
 
@@ -37,13 +38,33 @@ VOC API는 게시글과 답변을 관리합니다.
 - `완료`
 - `반려`
 
-## 목록 조회
+## 응답 계약
 
-```http
-GET /api/v1/voc/posts?status=접수
+목록 응답은 canonical camelCase 게시글 배열만 반환합니다.
+
+```json
+{
+  "results": [
+    {
+      "id": 1,
+      "title": "문의 제목",
+      "content": "<p>문의 내용</p>",
+      "status": "접수",
+      "app": "기타",
+      "createdAt": "2026-08-01T00:00:00+00:00",
+      "updatedAt": "2026-08-01T00:00:00+00:00",
+      "author": { "id": 1, "name": "사용자(knox-id)" },
+      "replies": []
+    }
+  ]
+}
 ```
 
-응답에는 게시글 목록과 상태별 카운트가 포함됩니다.
+- 생성·수정 응답: `{ "post": VocPost }`
+- 삭제 응답: `{ "success": true }`
+- 답변 생성 응답: `{ "reply": VocReply, "post": VocPost }`
+- `total`, `statusCounts`, snake_case/legacy 필드 별칭은 제공하지 않습니다.
+- 상태·앱·내 글 필터와 상태별 개수는 SPA가 받은 목록에서 계산합니다.
 
 ## 권한
 

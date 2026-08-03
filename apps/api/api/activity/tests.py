@@ -13,14 +13,64 @@ from zoneinfo import ZoneInfo
 import requests
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 import api.account.services as account_services
 from api.activity.models import ActivityLog, ExternalAppAccessDailyStat, ExternalAppUsageSyncState
+from api.activity.serializers import AppAccessEventSerializer, ManualAppAccessStatsSerializer
 
 KST = ZoneInfo("Asia/Seoul")
+
+
+class ActivitySerializerTests(SimpleTestCase):
+    """Activity JSON body의 문자열 타입 계약을 검증합니다."""
+
+    def test_manual_serializer_defaults_blank_source_name(self) -> None:
+        """빈 출처 이름은 기존 기본값인 manual로 유지해야 합니다."""
+
+        serializer = ManualAppAccessStatsSerializer(
+            data={"pastedText": "date,appName\n2026-08-01,App", "sourceName": ""}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["sourceName"], "manual")
+
+    def test_body_serializers_reject_non_string_text_fields(self) -> None:
+        """숫자 입력을 문자열로 암묵적 변환하지 않아야 합니다."""
+
+        invalid_cases = [
+            (
+                AppAccessEventSerializer(data={"appId": 123, "appName": "App"}),
+                "appId",
+            ),
+            (
+                AppAccessEventSerializer(data={"appId": "app", "appName": 123}),
+                "appName",
+            ),
+            (
+                AppAccessEventSerializer(
+                    data={"appId": "app", "appName": "App", "path": 123}
+                ),
+                "path",
+            ),
+            (
+                ManualAppAccessStatsSerializer(data={"pastedText": 123}),
+                "pastedText",
+            ),
+            (
+                ManualAppAccessStatsSerializer(
+                    data={"pastedText": "date,appName\n2026-08-01,App", "sourceName": 123}
+                ),
+                "sourceName",
+            ),
+        ]
+
+        for serializer, field_name in invalid_cases:
+            with self.subTest(field_name=field_name):
+                self.assertFalse(serializer.is_valid())
+                self.assertIn(field_name, serializer.errors)
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
@@ -126,6 +176,24 @@ class ActivityLogEndpointTests(TestCase):
         self.assertEqual(len(payload["results"]), 1)
         self.assertEqual(payload["results"][0]["action"], "UPDATE")
 
+    def test_activity_logs_rejects_invalid_limit(self) -> None:
+        """활동 로그는 잘못된 limit을 기본값으로 숨기지 않아야 합니다."""
+
+        permission = Permission.objects.get(
+            content_type__app_label="activity",
+            codename="view_activitylog",
+        )
+        self.user.user_permissions.add(permission)
+        self.client.force_login(self.user)
+
+        invalid_response = self.client.get(reverse("activity-logs"), {"limit": "many"})
+        oversized_response = self.client.get(reverse("activity-logs"), {"limit": "201"})
+
+        self.assertEqual(invalid_response.status_code, 400)
+        self.assertIn("limit", invalid_response.json()["details"])
+        self.assertEqual(oversized_response.status_code, 400)
+        self.assertIn("limit", oversized_response.json()["details"])
+
     def test_app_access_event_requires_auth(self) -> None:
         """앱 접속 이벤트 기록은 인증을 요구합니다."""
         response = self.client.post(
@@ -150,6 +218,41 @@ class ActivityLogEndpointTests(TestCase):
         self.assertEqual(entry.action, "APP_ACCESS")
         self.assertEqual(entry.metadata["app_id"], "appstore")
         self.assertEqual(entry.metadata["knox_id"], "knox-70000")
+
+    def test_activity_endpoints_reject_removed_request_aliases(self) -> None:
+        """접속 통계 API는 제거된 snake_case와 granularity 별칭을 거절해야 합니다."""
+
+        self.client.force_login(self.superuser)
+        event_response = self.client.post(
+            reverse("activity-app-access"),
+            data=json.dumps({"app_id": "appstore", "app_name": "Appstore"}),
+            content_type="application/json",
+        )
+        stats_response = self.client.get(
+            reverse("activity-app-access-stats"),
+            {"app_id": "appstore", "granularity": "day"},
+        )
+        manual_response = self.client.post(
+            reverse("activity-app-access-manual-preview"),
+            data=json.dumps({"pasted_text": "date\tappName\n2026-08-01\tApp"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(event_response.status_code, 400)
+        self.assertEqual(
+            event_response.json()["details"]["unexpectedFields"],
+            ["app_id", "app_name"],
+        )
+        self.assertEqual(stats_response.status_code, 400)
+        self.assertEqual(
+            stats_response.json()["details"]["unexpectedFields"],
+            ["app_id", "granularity"],
+        )
+        self.assertEqual(manual_response.status_code, 400)
+        self.assertEqual(
+            manual_response.json()["details"]["unexpectedFields"],
+            ["pasted_text"],
+        )
 
     def test_app_access_stats_allows_authenticated_user(self) -> None:
         """앱 접속 통계 조회는 인증 사용자에게 허용됩니다."""
@@ -226,7 +329,7 @@ class ActivityLogEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("period", response.json()["error"])
+        self.assertIn("period", response.json()["details"])
 
     def test_app_access_stats_groups_series_by_week(self) -> None:
         """주별 보기에서 내부/외부 접속 추이가 KST 월요일 기준으로 묶이는지 확인합니다."""
@@ -355,6 +458,24 @@ class ActivityLogEndpointTests(TestCase):
         self.assertEqual(payload["rows"][0]["values"]["appId"], "EXTERNAL CSV")
         self.assertEqual(payload["rows"][0]["values"]["appName"], "EXTERNAL CSV")
         self.assertEqual(payload["rows"][0]["values"]["memo"], "CSV 템플릿")
+
+    def test_manual_app_access_preview_defaults_blank_source_name(self) -> None:
+        """비어 있는 수동 입력 출처는 manual 기본값으로 처리해야 합니다."""
+
+        self.client.force_login(self.superuser)
+        pasted_text = (
+            "date,appName,accessCount,uniqueUserCount\n"
+            "2026-06-17,external csv,9,4"
+        )
+
+        response = self.client.post(
+            reverse("activity-app-access-manual-preview"),
+            data=json.dumps({"pastedText": pasted_text, "sourceName": ""}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["sourceName"], "manual")
 
     def test_manual_app_access_commit_rejects_user_without_access_stats_admin(self) -> None:
         """접속 현황 관리자 역할이 없는 사용자의 수동 반영을 거부합니다."""

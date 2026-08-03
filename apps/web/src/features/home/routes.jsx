@@ -1,7 +1,8 @@
 import { PortalHomeShell } from "@/components/layout"
+import { lazy } from "react"
 
-import HomePage from "./pages/HomePage"
-import ReactLogoBlankPage from "./pages/ReactLogoBlankPage"
+const HomePage = lazy(() => import("./pages/HomePage"))
+const ReactLogoBlankPage = lazy(() => import("./pages/ReactLogoBlankPage"))
 
 export const homeRoutes = [
   {

@@ -12,10 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AFFILIATION_QUERY_KEY } from "@/lib/account"
-import { buildBackendUrl } from "@/lib/api"
-
-import { fetchJson } from "../utils/fetchJson"
+import { accountApi, AFFILIATION_QUERY_KEY } from "@/lib/account"
 
 function isBlank(value) {
   return !value || (typeof value === "string" && !value.trim())
@@ -29,30 +26,6 @@ function sameText(left, right) {
   return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase()
 }
 
-async function fetchAffiliationOverview() {
-  const endpoint = buildBackendUrl("/api/v1/account/affiliation")
-  const result = await fetchJson(endpoint, { cache: "no-store" })
-  if (result.ok) return result.data
-  const message =
-    (result.data && typeof result.data === "object" && result.data.error) ||
-    "소속 정보를 불러오지 못했습니다."
-  throw new Error(message)
-}
-
-async function updateAffiliation(payload) {
-  const endpoint = buildBackendUrl("/api/v1/account/affiliation")
-  const result = await fetchJson(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-  if (result.ok) return result.data
-  const message =
-    (result.data && typeof result.data === "object" && result.data.error) ||
-    "소속 설정에 실패했습니다."
-  throw new Error(message)
-}
-
 export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
   const hasPendingAffiliation = Boolean(
     user && (user.has_pending_affiliation ?? !isBlank(user.pending_user_sdwt_prod)),
@@ -64,12 +37,12 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
 
   const affiliationQuery = useQuery({
     queryKey: AFFILIATION_QUERY_KEY,
-    queryFn: fetchAffiliationOverview,
+    queryFn: accountApi.fetchAffiliation,
     enabled: needsOnboarding,
   })
 
   const mutation = useMutation({
-    mutationFn: updateAffiliation,
+    mutationFn: accountApi.updateAffiliation,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AFFILIATION_QUERY_KEY })
       await onCompleted?.()
@@ -138,8 +111,6 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
     try {
       await mutation.mutateAsync({
         userSdwtProd: selected.user_sdwt_prod,
-        department: selected.department,
-        line: selected.line,
       })
     } catch (error) {
       setSubmitError(error?.message || "소속 설정에 실패했습니다.")

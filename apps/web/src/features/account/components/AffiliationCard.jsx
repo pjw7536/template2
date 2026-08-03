@@ -43,8 +43,6 @@ export function AffiliationCard({
     if (!target) return
     const payload = {
       userSdwtProd: target.user_sdwt_prod,
-      department: target.department,
-      line: target.line,
     }
     onSubmit(payload, () => {
       setSelectedKey("")

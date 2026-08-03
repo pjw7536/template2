@@ -9,11 +9,18 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 import api.account.services as account_services
+import api.voc.selectors as voc_selectors
+import api.voc.services as voc_services
 from api.voc.models import VocPost
+from api.voc.serializers import (
+    VocPostCreateInputSerializer,
+    VocPostUpdateInputSerializer,
+    VocReplyCreateInputSerializer,
+)
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
@@ -43,9 +50,10 @@ class VocEndpointTests(TestCase):
         VocPost.objects.create(title="Hello", content="World", author=self.user, status="접수")
         response = self.client.get(reverse("voc-posts"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["total"], 1)
-        self.assertEqual(response.json()["results"][0]["app"], "기타")
-        self.assertEqual(response.json()["results"][0]["author"]["name"], "정진우(knox-80000)")
+        payload = response.json()
+        self.assertEqual(set(payload), {"results"})
+        self.assertEqual(payload["results"][0]["app"], "기타")
+        self.assertEqual(payload["results"][0]["author"]["name"], "정진우(knox-80000)")
 
     def test_voc_author_display_uses_only_username_and_knox_id(self) -> None:
         User = get_user_model()
@@ -77,7 +85,9 @@ class VocEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 201)
-        post_id = create_response.json()["post"]["id"]
+        create_payload = create_response.json()
+        self.assertEqual(set(create_payload), {"post"})
+        post_id = create_payload["post"]["id"]
 
         # -----------------------------------------------------------------------------
         # 2) 게시글 수정
@@ -88,7 +98,9 @@ class VocEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(update_response.status_code, 200)
-        self.assertEqual(update_response.json()["post"]["status"], "진행중")
+        update_payload = update_response.json()
+        self.assertEqual(set(update_payload), {"post"})
+        self.assertEqual(update_payload["post"]["status"], "진행중")
 
         # -----------------------------------------------------------------------------
         # 3) 답변 추가
@@ -99,13 +111,14 @@ class VocEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(reply_response.status_code, 201)
+        self.assertEqual(set(reply_response.json()), {"post", "reply"})
 
         # -----------------------------------------------------------------------------
         # 4) 게시글 삭제
         # -----------------------------------------------------------------------------
         delete_response = self.client.delete(reverse("voc-post-detail", kwargs={"post_id": post_id}))
         self.assertEqual(delete_response.status_code, 200)
-        self.assertTrue(delete_response.json()["success"])
+        self.assertEqual(delete_response.json(), {"success": True})
 
     def test_voc_posts_create_requires_app(self) -> None:
         response = self.client.post(
@@ -135,6 +148,7 @@ class VocEndpointTests(TestCase):
                 scope_key=scope_key,
                 action="grant",
                 role=role,
+                reason="VOC 관리자 권한 테스트",
             )
             self.assertEqual(status_code, 200)
         post = VocPost.objects.create(
@@ -154,24 +168,71 @@ class VocEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["post"]["status"], "진행중")
 
-    def test_voc_posts_status_counts_order(self) -> None:
-        """statusCounts가 상태 정의 순서를 유지하는지 확인합니다."""
-        # -------------------------------------------------------------------------
-        # 1) 게시글 생성(순서와 무관하게 섞어서 생성)
-        # -------------------------------------------------------------------------
-        VocPost.objects.create(title="A", content="A", author=self.user, status="진행중")
-        VocPost.objects.create(title="B", content="B", author=self.user, status="접수")
-        VocPost.objects.create(title="C", content="C", author=self.user, status="완료")
-        VocPost.objects.create(title="D", content="D", author=self.user, status="반려")
 
-        # -------------------------------------------------------------------------
-        # 2) 목록 조회
-        # -------------------------------------------------------------------------
-        response = self.client.get(reverse("voc-posts"))
-        self.assertEqual(response.status_code, 200)
-        counts = response.json()["statusCounts"]
+class VocSerializerTests(SimpleTestCase):
+    """VOC 입력 serializer의 canonical validation을 검증합니다."""
 
-        # -------------------------------------------------------------------------
-        # 3) 상태 키 순서 검증
-        # -------------------------------------------------------------------------
-        self.assertEqual(list(counts.keys()), ["접수", "진행중", "완료", "반려"])
+    def test_create_serializer_applies_default_status(self) -> None:
+        serializer = VocPostCreateInputSerializer(
+            data={"title": "제목", "content": "내용", "app": "기타"}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["status"], "접수")
+
+    def test_input_serializers_reject_unknown_fields(self) -> None:
+        """정상 필드와 함께 전달된 legacy 필드도 모두 거절해야 합니다."""
+
+        serializers_with_legacy_field = [
+            VocPostCreateInputSerializer(
+                data={
+                    "title": "제목",
+                    "content": "내용",
+                    "app": "기타",
+                    "created_at": "legacy",
+                }
+            ),
+            VocPostUpdateInputSerializer(
+                data={"status": "완료", "created_at": "legacy"}
+            ),
+            VocReplyCreateInputSerializer(
+                data={"content": "답변", "post_id": 1}
+            ),
+        ]
+
+        for serializer in serializers_with_legacy_field:
+            with self.subTest(serializer=serializer.__class__.__name__):
+                self.assertFalse(serializer.is_valid())
+                self.assertIn("unexpectedFields", serializer.errors)
+
+
+class VocServiceSelectorTests(TestCase):
+    """VOC service와 selector의 역할 경계를 검증합니다."""
+
+    def setUp(self) -> None:
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S80100",
+            password="test-password",
+            knox_id="knox-80100",
+        )
+
+    def test_create_and_update_service_persist_validated_values(self) -> None:
+        post = voc_services.create_post(
+            author=self.user,
+            title="처음",
+            content="내용",
+            status="접수",
+            app="기타",
+        )
+
+        updated = voc_services.update_post(post=post, updates={"status": "완료"})
+
+        updated.refresh_from_db()
+        self.assertEqual(updated.status, "완료")
+
+    def test_post_list_selector_orders_newest_first(self) -> None:
+        first = VocPost.objects.create(title="먼저", content="내용", author=self.user)
+        second = VocPost.objects.create(title="나중", content="내용", author=self.user)
+
+        self.assertEqual(list(voc_selectors.get_post_list()), [second, first])

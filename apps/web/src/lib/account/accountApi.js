@@ -55,18 +55,15 @@ async function unwrap(response, defaultMessage) {
 
 function normalizeUser(rawUser) {
   if (!rawUser || typeof rawUser !== "object") return null
-  const recipientType = rawUser.recipientType === "external" ? "external" : "user"
-  const userId = Number.parseInt(rawUser.userId ?? rawUser.id, 10)
+  if (!["user", "external"].includes(rawUser.recipientType)) return null
+  const recipientType = rawUser.recipientType
+  const userId = Number.parseInt(rawUser.userId, 10)
   const knoxId = typeof rawUser.knoxId === "string" ? rawUser.knoxId : ""
-  const externalKnoxId = typeof rawUser.externalKnoxId === "string" ? rawUser.externalKnoxId : knoxId
+  const externalKnoxId = typeof rawUser.externalKnoxId === "string" ? rawUser.externalKnoxId : ""
   if (recipientType === "user" && (!Number.isFinite(userId) || userId <= 0)) return null
   if (recipientType === "external" && !externalKnoxId) return null
-  const recipientKey =
-    typeof rawUser.recipientKey === "string" && rawUser.recipientKey.trim()
-      ? rawUser.recipientKey.trim()
-      : recipientType === "external"
-        ? `external:${externalKnoxId.toLowerCase()}`
-        : `user:${userId}`
+  const recipientKey = typeof rawUser.recipientKey === "string" ? rawUser.recipientKey.trim() : ""
+  if (!recipientKey) return null
 
   return {
     id: recipientType === "external" ? recipientKey : userId,
@@ -136,12 +133,12 @@ export const accountApi = {
     return unwrap(response, "Failed to load account overview")
   },
 
-  async updateAffiliation(payload) {
+  async updateAffiliation({ userSdwtProd }) {
     const url = buildBackendUrl(endpoints.affiliation)
     const response = await request(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ userSdwtProd }),
     })
     return unwrap(response, "Failed to update affiliation")
   },
@@ -158,7 +155,7 @@ export const accountApi = {
     params.set("pageSize", String(pageSize))
     if (status) params.set("status", status)
     if (search) params.set("search", search)
-    if (userSdwtProd) params.set("user_sdwt_prod", userSdwtProd)
+    if (userSdwtProd) params.set("userSdwtProd", userSdwtProd)
 
     const url = buildBackendUrl(`${endpoints.affiliationRequests}?${params.toString()}`)
     const response = await request(url, { cache: "no-store" })
@@ -170,18 +167,22 @@ export const accountApi = {
       return { userSdwtProd: "", members: [] }
     }
     const params = new URLSearchParams()
-    params.set("user_sdwt_prod", userSdwtProd)
+    params.set("userSdwtProd", userSdwtProd)
     const url = buildBackendUrl(`${endpoints.affiliationMembers}?${params.toString()}`)
     const response = await request(url, { cache: "no-store" })
     return unwrap(response, "Failed to load affiliation members")
   },
 
-  async decideAffiliationRequest(payload) {
+  async decideAffiliationRequest({ changeId, decision, rejectionReason }) {
     const url = buildBackendUrl(endpoints.affiliationApprove)
     const response = await request(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        changeId,
+        decision,
+        ...(rejectionReason ? { rejectionReason } : {}),
+      }),
     })
     return unwrap(response, "Failed to update affiliation request")
   },

@@ -1,10 +1,16 @@
+import { lazy } from "react"
 import { Navigate } from "react-router-dom"
 
-import { AccountSettingsShell } from "./components/AccountSettingsShell"
-import AccountPage from "./pages/AccountPage"
-import MembersPage from "./pages/MembersPage"
-import PermissionsPage from "./pages/PermissionsPage"
-import SettingsPage from "./pages/SettingsPage"
+import { lazyNamed } from "@/lib/react/lazyNamed"
+
+const AccountSettingsShell = lazyNamed(
+  () => import("./components/AccountSettingsShell"),
+  "AccountSettingsShell",
+)
+const AccountPage = lazy(() => import("./pages/AccountPage"))
+const MembersPage = lazy(() => import("./pages/MembersPage"))
+const PermissionsPage = lazy(() => import("./pages/PermissionsPage"))
+const SettingsPage = lazy(() => import("./pages/SettingsPage"))
 
 export const accountRoutes = [
   {

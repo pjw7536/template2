@@ -1,84 +1,86 @@
-// VOC API 래퍼
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 
-import { DEFAULT_APP_CATEGORY } from "../utils/constants"
+import { sanitizeContentHtml } from "../utils"
 
 function buildApiError(response, payload, fallbackMessage) {
   const apiMessage =
     payload && typeof payload === "object" && typeof payload.error === "string"
       ? payload.error
       : ""
-  const message = apiMessage || fallbackMessage
-  const error = new Error(message)
+  const error = new Error(apiMessage || fallbackMessage)
   error.status = response.status
   return error
 }
 
-function normalizeAuthor(raw) {
-  if (!raw || typeof raw !== "object") return null
-  const nameCandidate =
-    (typeof raw.name === "string" && raw.name.trim()) ||
-    (typeof raw.username === "string" && raw.username.trim()) ||
-    (typeof raw.usr_id === "string" && raw.usr_id.trim()) ||
-    ""
-
-  const payload = {
-    id: raw.id ?? raw.usr_id ?? null,
-    name: nameCandidate || "알 수 없음",
-  }
-  return payload
+function buildContractError(message) {
+  const error = new Error(`Invalid VOC API response: ${message}`)
+  error.code = "VOC_API_CONTRACT_ERROR"
+  return error
 }
 
-function normalizeReply(raw) {
-  if (!raw || typeof raw !== "object") return null
-  const id = raw.id ?? raw.pk ?? null
-  if (id === null) return null
+function requireObject(value, field) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw buildContractError(`${field} must be an object`)
+  }
+  return value
+}
 
-  const createdAt =
-    (typeof raw.createdAt === "string" && raw.createdAt) ||
-    (typeof raw.created_at === "string" && raw.created_at) ||
-    ""
+function requireInteger(value, field) {
+  if (!Number.isInteger(value)) {
+    throw buildContractError(`${field} must be an integer`)
+  }
+  return value
+}
 
+function requireString(value, field) {
+  if (typeof value !== "string") {
+    throw buildContractError(`${field} must be a string`)
+  }
+  return value
+}
+
+export function parseVocAuthor(raw) {
+  if (raw === null) return null
+  const author = requireObject(raw, "author")
   return {
-    id,
-    postId: raw.postId ?? raw.post_id ?? null,
-    content: typeof raw.content === "string" ? raw.content : "",
-    createdAt,
-    author: normalizeAuthor(raw.author),
+    id: requireInteger(author.id, "author.id"),
+    name: requireString(author.name, "author.name"),
   }
 }
 
-function normalizePost(raw) {
-  if (!raw || typeof raw !== "object") return null
-  const id = raw.id ?? raw.pk ?? null
-  if (id === null) return null
+export function parseVocReply(raw) {
+  const reply = requireObject(raw, "reply")
+  return {
+    id: requireInteger(reply.id, "reply.id"),
+    postId: requireInteger(reply.postId, "reply.postId"),
+    content: requireString(reply.content, "reply.content").trim(),
+    createdAt: requireString(reply.createdAt, "reply.createdAt"),
+    author: parseVocAuthor(reply.author),
+  }
+}
 
-  const replies = Array.isArray(raw.replies)
-    ? raw.replies.map(normalizeReply).filter(Boolean)
-    : []
-
-  const createdAt =
-    (typeof raw.createdAt === "string" && raw.createdAt) ||
-    (typeof raw.created_at === "string" && raw.created_at) ||
-    ""
-
-  const updatedAt =
-    (typeof raw.updatedAt === "string" && raw.updatedAt) ||
-    (typeof raw.updated_at === "string" && raw.updated_at) ||
-    createdAt
-  const appValue = typeof raw.app === "string" ? raw.app.trim() : ""
+export function parseVocPost(raw) {
+  const post = requireObject(raw, "post")
+  if (!Array.isArray(post.replies)) {
+    throw buildContractError("post.replies must be an array")
+  }
 
   return {
-    id,
-    title: typeof raw.title === "string" ? raw.title : "",
-    content: typeof raw.content === "string" ? raw.content : "",
-    status: typeof raw.status === "string" ? raw.status : "",
-    app: appValue || DEFAULT_APP_CATEGORY,
-    createdAt,
-    updatedAt,
-    author: normalizeAuthor(raw.author),
-    replies,
+    id: requireInteger(post.id, "post.id"),
+    title: requireString(post.title, "post.title"),
+    content: sanitizeContentHtml(requireString(post.content, "post.content")),
+    status: requireString(post.status, "post.status"),
+    app: requireString(post.app, "post.app"),
+    createdAt: requireString(post.createdAt, "post.createdAt"),
+    updatedAt: requireString(post.updatedAt, "post.updatedAt"),
+    author: parseVocAuthor(post.author),
+    replies: post.replies.map(parseVocReply),
   }
+}
+
+function parsePostEnvelope(payload) {
+  const envelope = requireObject(payload, "payload")
+  return { post: parseVocPost(envelope.post) }
 }
 
 export async function fetchVocPosts() {
@@ -90,20 +92,14 @@ export async function fetchVocPosts() {
   const payload = await safeParseJson(response)
 
   if (!response.ok) {
-    throw buildApiError(
-      response,
-      payload,
-      `Failed to load posts (status ${response.status})`,
-    )
+    throw buildApiError(response, payload, `Failed to load posts (status ${response.status})`)
   }
 
-  const posts = Array.isArray(payload?.results)
-    ? payload.results.map(normalizePost).filter(Boolean)
-    : []
-  const statusCounts =
-    payload && typeof payload.statusCounts === "object" ? payload.statusCounts : undefined
-
-  return { posts, statusCounts }
+  const envelope = requireObject(payload, "payload")
+  if (!Array.isArray(envelope.results)) {
+    throw buildContractError("results must be an array")
+  }
+  return envelope.results.map(parseVocPost)
 }
 
 export async function createVocPost({ title, content, status, app }) {
@@ -112,24 +108,14 @@ export async function createVocPost({ title, content, status, app }) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({
-      title,
-      content,
-      ...(status ? { status } : {}),
-      ...(app ? { app } : {}),
-    }),
+    body: JSON.stringify({ title, content, status, app }),
   })
   const payload = await safeParseJson(response)
 
   if (!response.ok) {
     throw buildApiError(response, payload, "Failed to create post")
   }
-
-  return {
-    post: normalizePost(payload?.post),
-    statusCounts:
-      payload && typeof payload.statusCounts === "object" ? payload.statusCounts : undefined,
-  }
+  return parsePostEnvelope(payload)
 }
 
 export async function updateVocPost(postId, updates = {}) {
@@ -151,12 +137,7 @@ export async function updateVocPost(postId, updates = {}) {
   if (!response.ok) {
     throw buildApiError(response, payload, "Failed to update post")
   }
-
-  return {
-    post: normalizePost(payload?.post),
-    statusCounts:
-      payload && typeof payload.statusCounts === "object" ? payload.statusCounts : undefined,
-  }
+  return parsePostEnvelope(payload)
 }
 
 export async function deleteVocPost(postId) {
@@ -170,12 +151,10 @@ export async function deleteVocPost(postId) {
   if (!response.ok) {
     throw buildApiError(response, payload, "Failed to delete post")
   }
-
-  return {
-    success: true,
-    statusCounts:
-      payload && typeof payload.statusCounts === "object" ? payload.statusCounts : undefined,
+  if (requireObject(payload, "payload").success !== true) {
+    throw buildContractError("success must be true")
   }
+  return { success: true }
 }
 
 export async function createVocReply({ postId, content }) {
@@ -191,9 +170,9 @@ export async function createVocReply({ postId, content }) {
   if (!response.ok) {
     throw buildApiError(response, payload, "Failed to add reply")
   }
-
+  const envelope = requireObject(payload, "payload")
   return {
-    reply: normalizeReply(payload?.reply),
-    post: normalizePost(payload?.post),
+    reply: parseVocReply(envelope.reply),
+    post: parseVocPost(envelope.post),
   }
 }
