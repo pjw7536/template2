@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import hashlib
 import json
 import logging
@@ -26,7 +27,10 @@ from api.data_movement.racb_list import selectors as racb_list_selectors
 from api.drone import selectors as drone_selectors
 
 from .serializers import encode_observer_cursor
-from .services import observer_period_start, serialize_observer_datetime
+from .services import (
+    observer_period_start,
+    serialize_observer_datetime as _serialize_event_time,
+)
 
 DEFAULT_LOG_QUERY_DAYS = 60
 MAX_LOG_LIMIT = 5000
@@ -36,6 +40,22 @@ TKIN_PREVENT_LEVEL2_NAMES = {"LEVEL2", "LEVEL3"}
 Row = Dict[str, object]
 LogRows = List[Dict[str, object]]
 LogFetcher = Callable[[str, object | None, object | None, int | None], LogRows]
+CompactPageFetcher = Callable[..., tuple[list[Row], bool]]
+CompactRowSerializer = Callable[[Row], dict[str, object]]
+DetailFetcher = Callable[[str, int], Row | None]
+DetailSerializer = Callable[[Row], dict[str, object]]
+
+
+@dataclass(frozen=True)
+class _ObserverLogSource:
+    """Observer source의 전체 목록·page·detail 조회 계약을 보관합니다."""
+
+    fetch_logs: LogFetcher
+    fetch_page: CompactPageFetcher
+    serialize_page_row: CompactRowSerializer
+    cursor_time_field: str
+    fetch_detail: DetailFetcher
+    serialize_detail_row: DetailSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +69,253 @@ def _safe_text(value: object) -> str:
     """None 값을 안전하게 문자열로 정리합니다."""
 
     return "" if value is None else str(value)
+
+
+def _comment_preview(value: object, *, limit: int = 200) -> tuple[str, bool]:
+    """목록 payload에 사용할 comment preview와 잘림 여부를 반환합니다."""
+
+    text = _safe_text(value)
+    if len(text) <= limit:
+        return text, False
+    return text[:limit], True
+
+
+OBSERVER_RESPONSE_TIME_FIELDS = (
+    "eventTime",
+    "endTime",
+    "completedAt",
+    "lastUpdateTime",
+    "lastUpdateDate",
+    "create_date",
+    "due_date",
+    "update_date",
+    "created_at",
+    "updated_at",
+)
+
+
+def _serialize_log_time_fields(log: dict[str, object]) -> dict[str, object]:
+    """Observer 응답의 공통 시간 필드를 Asia/Seoul 문자열로 변환합니다."""
+
+    serialized = dict(log)
+    for field_name in OBSERVER_RESPONSE_TIME_FIELDS:
+        value = serialized.get(field_name)
+        if value is not None:
+            serialized[field_name] = _serialize_event_time(value)
+    return serialized
+
+
+def _tip_page_log_id(row: Row) -> str:
+    """기존 TIP Timeline ID와 호환되는 compact item ID를 생성합니다."""
+
+    event_time = row.get("gpm_update_date")
+    timestamp = (
+        event_time.strftime("%Y%m%d%H%M%S%f")
+        if hasattr(event_time, "strftime")
+        else _safe_text(event_time).replace("-", "").replace(":", "").replace(" ", "")
+    )
+    comment_hash = hashlib.md5(
+        _safe_text(row.get("tip_comment")).encode("utf-8")
+    ).hexdigest()
+    return "-".join(
+        [
+            "TIP",
+            _safe_text(row.get("eqp_cb")),
+            timestamp,
+            _safe_text(row.get("event_type")),
+            _safe_text(row.get("process_id")),
+            _safe_text(row.get("step_seq")),
+            _safe_text(row.get("ppid")),
+            comment_hash,
+        ]
+    )
+
+
+def _page_cursor_values(
+    cursor_payload: dict[str, object] | None,
+) -> tuple[object | None, int | None]:
+    """검증된 cursor payload에서 source selector 경계를 추출합니다."""
+
+    if not cursor_payload:
+        return None, None
+    try:
+        cursor_id = int(cursor_payload["tieBreaker"])
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    return cursor_payload.get("eventTime"), cursor_id
+
+
+def _build_page_cursor(
+    *,
+    eqp_id: str,
+    log_type: str,
+    range_key: str,
+    event_time: object,
+    tie_breaker: object,
+) -> str:
+    """다음 페이지용 opaque cursor를 생성합니다."""
+
+    return encode_observer_cursor(
+        {
+            "eqpId": eqp_id,
+            "logType": log_type,
+            "range": range_key,
+            "eventTime": _serialize_event_time(event_time),
+            "tieBreaker": int(tie_breaker),
+        }
+    )
+
+
+def serialize_compact_eqp_row(row: Row) -> dict[str, object]:
+    """EQP source row를 compact log payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(row.get("chg_comment"))
+    return {
+        "id": f"EQP-{row.get('eqp_event_key')}",
+        "detailId": row.get("id"),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_cb"),
+        "logType": "EQP",
+        "eventType": row.get("eqp_status_type"),
+        "eventTime": row.get("chg_time"),
+        "operator": row.get("operator_emp_id"),
+        "comment": preview,
+        "commentTruncated": truncated,
+    }
+
+
+def serialize_compact_tip_row(row: Row) -> dict[str, object]:
+    """TIP source row를 compact log payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(row.get("tip_comment"))
+    register_name = _safe_text(row.get("register_name"))
+    return {
+        "id": _tip_page_log_id(row),
+        "detailId": row.get("id"),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_cb"),
+        "logType": "TIP",
+        "eventType": row.get("event_type"),
+        "eventTime": row.get("gpm_update_date"),
+        "operator": register_name.split("-", 1)[0] or None,
+        "comment": preview,
+        "commentTruncated": truncated,
+        "lineId": row.get("line_id"),
+        "process": row.get("process_id"),
+        "step": row.get("step_seq"),
+        "ppid": row.get("ppid"),
+    }
+
+
+def serialize_compact_interlock_row(
+    row: Row,
+    *,
+    interlock_kind: str,
+) -> dict[str, object]:
+    """Interlock source row를 compact log payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(
+        row.get("interlock_comment")
+        or row.get("interlock_desc")
+        or row.get("engr_comment")
+    )
+    source_id = row.get("id")
+    event_type = (
+        _safe_text(row.get("interlock_no")).strip()
+        or _safe_text(row.get("interlock_type")).strip()
+        or interlock_kind
+    )
+    log_type = f"{interlock_kind}_ITL"
+    return {
+        "id": f"{log_type}:{source_id}",
+        "detailId": source_id,
+        "sourceId": source_id,
+        "eqpId": row.get("prod_eqp_id"),
+        "logType": log_type,
+        "eventType": event_type,
+        "eventTime": row.get("event_time"),
+        "operator": None,
+        "comment": preview,
+        "commentTruncated": truncated,
+        "metroItem": row.get("metro_item"),
+        "interlockType": row.get("interlock_type"),
+        "interlockKind": interlock_kind,
+    }
+
+
+def serialize_compact_ctttm_row(
+    row: Row,
+    *,
+    base_url: str,
+) -> dict[str, object]:
+    """CTTTM source row를 compact log payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(row.get("description"))
+    return {
+        "id": row.get("workorder_id"),
+        "detailId": row.get("id"),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_id"),
+        "logType": "CTTTM",
+        "eventType": row.get("work_type"),
+        "eventTime": row.get("inprg_date"),
+        "operator": None,
+        "comment": preview,
+        "commentTruncated": truncated,
+        "url": f"{base_url}{row.get('workorder_id')}&lineId={row.get('line_id')}",
+    }
+
+
+def serialize_compact_racb_row(
+    row: Row,
+    *,
+    report_base_url: str,
+) -> dict[str, object]:
+    """RACB source row를 compact log payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(row.get("title"))
+    query = urlencode(
+        {
+            "racbId": row.get("c_racb_id"),
+            "lineId": row.get("line_id") or "",
+        }
+    )
+    return {
+        "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
+        "detailId": row.get("id"),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_cb"),
+        "logType": "RACB",
+        "eventType": f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}",
+        "eventTime": row.get("update_date"),
+        "operator": row.get("create_user"),
+        "comment": preview,
+        "commentTruncated": truncated,
+        "lineId": row.get("line_id"),
+        "url": f"{report_base_url}?{query}",
+    }
+
+
+def serialize_compact_esop_row(row: Row) -> dict[str, object]:
+    """ESOP source row를 defect map 파싱 없는 compact payload로 변환합니다."""
+
+    preview, truncated = _comment_preview(row.get("comment"))
+    return {
+        "id": row.get("id"),
+        "detailId": row.get("id"),
+        "sourceId": row.get("id"),
+        "logType": "ESOP",
+        "eventType": row.get("sample_type"),
+        "eventTime": row.get("created_at"),
+        "operator": row.get("knox_id"),
+        "status": row.get("status"),
+        "comment": preview,
+        "commentTruncated": truncated,
+        "lineId": row.get("line_id"),
+        "eqpId": row.get("eqp_id"),
+        "eqpCb": f"{row.get('eqp_id') or '-'}-{row.get('chamber_ids') or '-'}",
+        "lotId": row.get("lot_id"),
+    }
 
 
 def _period_date(days: int | None = None) -> str:
@@ -1198,176 +1465,19 @@ def _fetch_esop_logs(
     ]
 
 
-OBSERVER_LOG_FETCHERS: Dict[str, LogFetcher] = {
-    "eqp": lambda eqp_key, start_at, end_at, limit: _fetch_eqp_logs(
-        eqp_id=eqp_key,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "tip": lambda eqp_key, start_at, end_at, limit: _fetch_tip_logs(
-        eqp_id=eqp_key,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "spc-interlock": lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
-        eqp_id=eqp_key,
-        interlock_kind="SPC",
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "fdc-interlock": lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
-        eqp_id=eqp_key,
-        interlock_kind="FDC",
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "ctttm": lambda eqp_key, start_at, end_at, limit: _fetch_ctttm_logs(
-        eqp_id=eqp_key,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "racb": lambda eqp_key, start_at, end_at, limit: _fetch_racb_logs(
-        eqp_id=eqp_key,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-    "esop": lambda eqp_key, start_at, end_at, limit: _fetch_esop_logs(
-        eqp_id=eqp_key,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    ),
-}
-OBSERVER_LOG_KEYS = (
-    "eqp",
-    "tip",
-    "spc-interlock",
-    "fdc-interlock",
-    "ctttm",
-    "racb",
-    "esop",
-)
-
-
-def _comment_preview(value: object, *, limit: int = 200) -> tuple[str, bool]:
-    """목록 payload에 사용할 comment preview와 잘림 여부를 반환합니다."""
-
-    text = _safe_text(value)
-    if len(text) <= limit:
-        return text, False
-    return text[:limit], True
-
-
-def _serialize_event_time(value: object) -> str:
-    """Observer 시각을 Asia/Seoul ISO 문자열로 변환합니다."""
-
-    return serialize_observer_datetime(value)
-
-
-OBSERVER_RESPONSE_TIME_FIELDS = (
-    "eventTime",
-    "endTime",
-    "completedAt",
-    "lastUpdateTime",
-    "lastUpdateDate",
-    "create_date",
-    "due_date",
-    "update_date",
-    "created_at",
-    "updated_at",
-)
-
-
-def _serialize_log_time_fields(log: Dict[str, object]) -> Dict[str, object]:
-    """Observer 응답의 공통 시간 필드를 Asia/Seoul 문자열로 변환합니다."""
-
-    serialized = dict(log)
-    for field_name in OBSERVER_RESPONSE_TIME_FIELDS:
-        value = serialized.get(field_name)
-        if value is not None:
-            serialized[field_name] = _serialize_event_time(value)
-    return serialized
-
-
-def _tip_page_log_id(row: Row) -> str:
-    """기존 TIP Timeline ID와 호환되는 compact item ID를 생성합니다."""
-
-    event_time = row.get("gpm_update_date")
-    timestamp = (
-        event_time.strftime("%Y%m%d%H%M%S%f")
-        if hasattr(event_time, "strftime")
-        else _safe_text(event_time).replace("-", "").replace(":", "").replace(" ", "")
-    )
-    comment_hash = hashlib.md5(
-        _safe_text(row.get("tip_comment")).encode("utf-8")
-    ).hexdigest()
-    return "-".join(
-        [
-            "TIP",
-            _safe_text(row.get("eqp_cb")),
-            timestamp,
-            _safe_text(row.get("event_type")),
-            _safe_text(row.get("process_id")),
-            _safe_text(row.get("step_seq")),
-            _safe_text(row.get("ppid")),
-            comment_hash,
-        ]
-    )
-
-
-def _page_cursor_values(
-    cursor_payload: dict[str, object] | None,
-) -> tuple[object | None, int | None]:
-    """검증된 cursor payload에서 source selector 경계를 추출합니다."""
-
-    if not cursor_payload:
-        return None, None
-    try:
-        cursor_id = int(cursor_payload["tieBreaker"])
-    except (KeyError, TypeError, ValueError):
-        return None, None
-    return cursor_payload.get("eventTime"), cursor_id
-
-
-def _build_page_cursor(
+def _fetch_compact_log_page(
     *,
-    eqp_id: str,
-    log_type: str,
-    range_key: str,
-    event_time: object,
-    tie_breaker: object,
-) -> str:
-    """다음 페이지용 opaque cursor를 생성합니다."""
-
-    return encode_observer_cursor(
-        {
-            "eqpId": eqp_id,
-            "logType": log_type,
-            "range": range_key,
-            "eventTime": _serialize_event_time(event_time),
-            "tieBreaker": int(tie_breaker),
-        }
-    )
-
-
-def _compact_eqp_page(
-    *,
+    source: _ObserverLogSource,
     eqp_id: str,
     start_at: object,
     end_at: object,
     page_size: int,
     cursor_payload: dict[str, object] | None,
 ) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """EQP source page를 Observer compact payload로 변환합니다."""
+    """source 정의에 따라 compact row와 다음 cursor 경계를 반환합니다."""
 
     cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = eqp_status_chg_selectors.fetch_eqp_timeline_page(
+    rows, has_more = source.fetch_page(
         eqp_id=eqp_id,
         start_at=start_at,
         end_at=end_at,
@@ -1375,292 +1485,12 @@ def _compact_eqp_page(
         cursor_time=cursor_time,
         cursor_id=cursor_id,
     )
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(row.get("chg_comment"))
-        items.append(
-            {
-                "id": f"EQP-{row.get('eqp_event_key')}",
-                "detailId": row.get("id"),
-                "sourceId": row.get("id"),
-                "eqpId": row.get("eqp_cb"),
-                "logType": "EQP",
-                "eventType": row.get("eqp_status_type"),
-                "eventTime": row.get("chg_time"),
-                "operator": row.get("operator_emp_id"),
-                "comment": preview,
-                "commentTruncated": truncated,
-            }
-        )
+    items = [source.serialize_page_row(row) for row in rows]
     last_row = rows[-1] if rows else None
     return (
         items,
         has_more,
-        last_row.get("chg_time") if last_row else None,
-        int(last_row["id"]) if last_row else None,
-    )
-
-
-def _compact_tip_page(
-    *,
-    eqp_id: str,
-    start_at: object,
-    end_at: object,
-    page_size: int,
-    cursor_payload: dict[str, object] | None,
-) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """TIP source page를 Observer compact payload로 변환합니다."""
-
-    cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = mi_tip_update_hist_selectors.fetch_tip_timeline_page(
-        eqp_id=eqp_id,
-        start_at=start_at,
-        end_at=end_at,
-        page_size=page_size,
-        cursor_time=cursor_time,
-        cursor_id=cursor_id,
-    )
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(row.get("tip_comment"))
-        register_name = _safe_text(row.get("register_name"))
-        items.append(
-            {
-                "id": _tip_page_log_id(row),
-                "detailId": row.get("id"),
-                "sourceId": row.get("id"),
-                "eqpId": row.get("eqp_cb"),
-                "logType": "TIP",
-                "eventType": row.get("event_type"),
-                "eventTime": row.get("gpm_update_date"),
-                "operator": register_name.split("-", 1)[0] or None,
-                "comment": preview,
-                "commentTruncated": truncated,
-                "lineId": row.get("line_id"),
-                "process": row.get("process_id"),
-                "step": row.get("step_seq"),
-                "ppid": row.get("ppid"),
-            }
-        )
-    last_row = rows[-1] if rows else None
-    return (
-        items,
-        has_more,
-        last_row.get("gpm_update_date") if last_row else None,
-        int(last_row["id"]) if last_row else None,
-    )
-
-
-def _compact_interlock_page(
-    *,
-    eqp_id: str,
-    interlock_kind: str,
-    start_at: object,
-    end_at: object,
-    page_size: int,
-    cursor_payload: dict[str, object] | None,
-) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """Interlock source page를 Observer compact payload로 변환합니다."""
-
-    cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = m_interlock_selectors.fetch_interlock_timeline_page(
-        eqp_id=eqp_id,
-        interlock_kind=interlock_kind,
-        start_at=start_at,
-        end_at=end_at,
-        page_size=page_size,
-        cursor_time=cursor_time,
-        cursor_id=cursor_id,
-    )
-    log_type = f"{interlock_kind}_ITL"
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(
-            row.get("interlock_comment")
-            or row.get("interlock_desc")
-            or row.get("engr_comment")
-        )
-        source_id = row.get("id")
-        event_type = (
-            _safe_text(row.get("interlock_no")).strip()
-            or _safe_text(row.get("interlock_type")).strip()
-            or interlock_kind
-        )
-        items.append(
-            {
-                "id": f"{log_type}:{source_id}",
-                "detailId": source_id,
-                "sourceId": source_id,
-                "eqpId": row.get("prod_eqp_id"),
-                "logType": log_type,
-                "eventType": event_type,
-                "eventTime": row.get("event_time"),
-                "operator": None,
-                "comment": preview,
-                "commentTruncated": truncated,
-                "metroItem": row.get("metro_item"),
-                "interlockType": row.get("interlock_type"),
-                "interlockKind": interlock_kind,
-            }
-        )
-    last_row = rows[-1] if rows else None
-    return (
-        items,
-        has_more,
-        last_row.get("event_time") if last_row else None,
-        int(last_row["id"]) if last_row else None,
-    )
-
-
-def _compact_ctttm_page(
-    *,
-    eqp_id: str,
-    start_at: object,
-    end_at: object,
-    page_size: int,
-    cursor_payload: dict[str, object] | None,
-) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """CTTTM source page를 Observer compact payload로 변환합니다."""
-
-    cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = ctttm_workorder_selectors.fetch_ctttm_timeline_page(
-        eqp_id=eqp_id,
-        start_at=start_at,
-        end_at=end_at,
-        page_size=page_size,
-        cursor_time=cursor_time,
-        cursor_id=cursor_id,
-    )
-    base_url = getattr(settings, "DRONE_CTTTM_BASE_URL", "")
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(row.get("description"))
-        items.append(
-            {
-                "id": row.get("workorder_id"),
-                "detailId": row.get("id"),
-                "sourceId": row.get("id"),
-                "eqpId": row.get("eqp_id"),
-                "logType": "CTTTM",
-                "eventType": row.get("work_type"),
-                "eventTime": row.get("inprg_date"),
-                "operator": None,
-                "comment": preview,
-                "commentTruncated": truncated,
-                "url": (
-                    f"{base_url}{row.get('workorder_id')}&lineId={row.get('line_id')}"
-                ),
-            }
-        )
-    last_row = rows[-1] if rows else None
-    return (
-        items,
-        has_more,
-        last_row.get("inprg_date") if last_row else None,
-        int(last_row["id"]) if last_row else None,
-    )
-
-
-def _compact_racb_page(
-    *,
-    eqp_id: str,
-    start_at: object,
-    end_at: object,
-    page_size: int,
-    cursor_payload: dict[str, object] | None,
-) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """RACB source page를 Observer compact payload로 변환합니다."""
-
-    cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = racb_list_selectors.fetch_racb_timeline_page(
-        eqp_id=eqp_id,
-        start_at=start_at,
-        end_at=end_at,
-        page_size=page_size,
-        cursor_time=cursor_time,
-        cursor_id=cursor_id,
-    )
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(row.get("title"))
-        query = urlencode(
-            {
-                "racbId": row.get("c_racb_id"),
-                "lineId": row.get("line_id") or "",
-            }
-        )
-        items.append(
-            {
-                "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
-                "detailId": row.get("id"),
-                "sourceId": row.get("id"),
-                "eqpId": row.get("eqp_cb"),
-                "logType": "RACB",
-                "eventType": (
-                    f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}"
-                ),
-                "eventTime": row.get("update_date"),
-                "operator": row.get("create_user"),
-                "comment": preview,
-                "commentTruncated": truncated,
-                "lineId": row.get("line_id"),
-                "url": f"{settings.RACB_REPORT_BASE_URL}?{query}",
-            }
-        )
-    last_row = rows[-1] if rows else None
-    return (
-        items,
-        has_more,
-        last_row.get("update_date") if last_row else None,
-        int(last_row["id"]) if last_row else None,
-    )
-
-
-def _compact_esop_page(
-    *,
-    eqp_id: str,
-    start_at: object,
-    end_at: object,
-    page_size: int,
-    cursor_payload: dict[str, object] | None,
-) -> tuple[list[dict[str, object]], bool, object | None, int | None]:
-    """ESOP source page를 defect map 파싱 없는 compact payload로 변환합니다."""
-
-    cursor_time, cursor_id = _page_cursor_values(cursor_payload)
-    rows, has_more = drone_selectors.fetch_drone_sop_timeline_page(
-        eqp_id=eqp_id,
-        start_at=start_at,
-        end_at=end_at,
-        page_size=page_size,
-        cursor_time=cursor_time,
-        cursor_id=cursor_id,
-    )
-    items = []
-    for row in rows:
-        preview, truncated = _comment_preview(row.get("comment"))
-        items.append(
-            {
-                "id": row.get("id"),
-                "detailId": row.get("id"),
-                "sourceId": row.get("id"),
-                "logType": "ESOP",
-                "eventType": row.get("sample_type"),
-                "eventTime": row.get("created_at"),
-                "operator": row.get("knox_id"),
-                "status": row.get("status"),
-                "comment": preview,
-                "commentTruncated": truncated,
-                "lineId": row.get("line_id"),
-                "eqpId": row.get("eqp_id"),
-                "eqpCb": f"{row.get('eqp_id') or '-'}-{row.get('chamber_ids') or '-'}",
-                "lotId": row.get("lot_id"),
-            }
-        )
-    last_row = rows[-1] if rows else None
-    return (
-        items,
-        has_more,
-        last_row.get("created_at") if last_row else None,
+        last_row.get(source.cursor_time_field) if last_row else None,
         int(last_row["id"]) if last_row else None,
     )
 
@@ -1678,42 +1508,25 @@ def get_log_page(
     """유형별 Observer compact log 한 페이지를 반환합니다."""
 
     type_key = (log_key or "").strip().lower()
-    common_options = {
-        "eqp_id": normalize_id(eqp_id),
-        "start_at": start_at,
-        "end_at": end_at,
-        "page_size": page_size,
-        "cursor_payload": cursor_payload,
-    }
-    if type_key == "eqp":
-        result = _compact_eqp_page(**common_options)
-    elif type_key == "tip":
-        result = _compact_tip_page(**common_options)
-    elif type_key == "spc-interlock":
-        result = _compact_interlock_page(
-            **common_options,
-            interlock_kind="SPC",
-        )
-    elif type_key == "fdc-interlock":
-        result = _compact_interlock_page(
-            **common_options,
-            interlock_kind="FDC",
-        )
-    elif type_key == "ctttm":
-        result = _compact_ctttm_page(**common_options)
-    elif type_key == "racb":
-        result = _compact_racb_page(**common_options)
-    elif type_key == "esop":
-        result = _compact_esop_page(**common_options)
-    else:
+    source = _OBSERVER_LOG_SOURCES.get(type_key)
+    if source is None:
         raise ValueError(f"지원하지 않는 Observer log type입니다: {type_key}")
 
+    normalized_eqp_id = normalize_id(eqp_id)
+    result = _fetch_compact_log_page(
+        source=source,
+        eqp_id=normalized_eqp_id,
+        start_at=start_at,
+        end_at=end_at,
+        page_size=page_size,
+        cursor_payload=cursor_payload,
+    )
     items, has_more, next_time, next_id = result
     items = [_serialize_log_time_fields(item) for item in items]
     next_cursor = None
     if has_more and next_time is not None and next_id is not None:
         next_cursor = _build_page_cursor(
-            eqp_id=normalize_id(eqp_id),
+            eqp_id=normalized_eqp_id,
             log_type=type_key,
             range_key=range_key,
             event_time=next_time,
@@ -1813,6 +1626,293 @@ def _numeric_detail_id(log_id: str) -> int | None:
     return value if value > 0 else None
 
 
+def _serialize_eqp_log_detail(row: Row) -> dict[str, object]:
+    """EQP source row를 상세 payload로 변환합니다."""
+
+    return {
+        "id": f"EQP-{row.get('eqp_event_key')}",
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_cb"),
+        "logType": "EQP",
+        "eventType": row.get("eqp_status_type"),
+        "eventTime": _serialize_event_time(row.get("chg_time")),
+        "operator": row.get("operator_emp_id"),
+        "comment": row.get("chg_comment"),
+        "lineId": row.get("line_id"),
+        "eqpCode": row.get("eqp_code"),
+        "eqpModeType": row.get("eqp_mode_type"),
+        "lastUpdateTime": _serialize_event_time(row.get("last_update_time"))
+        if row.get("last_update_time") is not None
+        else None,
+    }
+
+
+def _serialize_tip_log_detail(row: Row) -> dict[str, object]:
+    """TIP source row를 상세 payload로 변환합니다."""
+
+    register_name = _safe_text(row.get("register_name"))
+    return {
+        "id": _tip_page_log_id(row),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_cb"),
+        "logType": "TIP",
+        "eventType": row.get("event_type"),
+        "eventTime": _serialize_event_time(row.get("gpm_update_date")),
+        "operator": register_name.split("-", 1)[0] or None,
+        "comment": row.get("tip_comment"),
+        "lineId": row.get("line_id"),
+        "process": row.get("process_id"),
+        "step": row.get("step_seq"),
+        "ppid": row.get("ppid"),
+        "reticleId": row.get("reticle_id"),
+        "productId": row.get("product_id"),
+        "tipType": row.get("tip_type"),
+        "tipChangeType": row.get("tip_chg_type"),
+        "tipLevel": row.get("tip_level"),
+    }
+
+
+def _serialize_ctttm_log_detail(row: Row) -> dict[str, object]:
+    """CTTTM source row와 최신 요약을 상세 payload로 변환합니다."""
+
+    summary = _fetch_one(
+        """
+        select llm_core_summary, llm_summary
+        from ct_process_comment
+        where workorder_id = %s
+        order by updated_at desc, id desc
+        limit 1
+        """,
+        [row.get("workorder_id")],
+    ) or {}
+    return {
+        "id": row.get("workorder_id"),
+        "sourceId": row.get("id"),
+        "eqpId": row.get("eqp_id"),
+        "logType": "CTTTM",
+        "eventType": row.get("work_type"),
+        "eventTime": _serialize_event_time(row.get("inprg_date")),
+        "operator": None,
+        "comment": row.get("description"),
+        "coreSummary": summary.get("llm_core_summary"),
+        "summary": summary.get("llm_summary"),
+        "lineId": row.get("line_id"),
+        "completedAt": _serialize_event_time(row.get("comp_date"))
+        if row.get("comp_date") is not None
+        else None,
+    }
+
+
+def _serialize_racb_log_detail(row: Row) -> dict[str, object]:
+    """RACB source row를 report URL이 포함된 상세 payload로 변환합니다."""
+
+    query = urlencode(
+        {"racbId": row.get("c_racb_id"), "lineId": row.get("line_id") or ""}
+    )
+    return _serialize_log_time_fields(
+        {
+            **row,
+            "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
+            "sourceId": row.get("id"),
+            "logType": "RACB",
+            "eventType": (
+                f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}"
+            ),
+            "eventTime": row.get("update_date"),
+            "operator": row.get("create_user"),
+            "comment": row.get("title"),
+            "url": f"{settings.RACB_REPORT_BASE_URL}?{query}",
+        }
+    )
+
+
+def _serialize_esop_log_detail(row: Row) -> dict[str, object]:
+    """ESOP source row와 defect map 정보를 상세 payload로 변환합니다."""
+
+    return {
+        "id": row.get("id"),
+        "sourceId": row.get("id"),
+        "logType": "ESOP",
+        "eventType": row.get("sample_type"),
+        "eventTime": _serialize_event_time(row.get("created_at")),
+        "operator": row.get("knox_id"),
+        "status": row.get("status"),
+        "comment": row.get("comment"),
+        "lineId": row.get("line_id"),
+        "eqpId": row.get("eqp_id"),
+        "eqpCb": f"{row.get('eqp_id') or '-'}-{row.get('chamber_ids') or '-'}",
+        "lotId": row.get("lot_id"),
+        "defectMaps": _normalize_esop_defect_maps(row.get("defect_url")),
+        "sampleGroup": row.get("sample_group"),
+        "sdwtProd": row.get("sdwt_prod"),
+        "processId": row.get("proc_id"),
+        "ppid": row.get("ppid"),
+        "mainStep": row.get("main_step"),
+        "metroCurrentStep": row.get("metro_current_step"),
+        "metroSteps": row.get("metro_steps"),
+        "metroEndStep": row.get("metro_end_step"),
+        "ctttmUrls": row.get("ctttm_urls"),
+    }
+
+
+_OBSERVER_LOG_SOURCES: dict[str, _ObserverLogSource] = {
+    "eqp": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_eqp_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: eqp_status_chg_selectors.fetch_eqp_timeline_page(
+            **options
+        ),
+        serialize_page_row=serialize_compact_eqp_row,
+        cursor_time_field="chg_time",
+        fetch_detail=lambda eqp_id, source_id: eqp_status_chg_selectors.get_eqp_timeline_detail(
+            eqp_id=eqp_id,
+            log_id=str(source_id),
+        ),
+        serialize_detail_row=_serialize_eqp_log_detail,
+    ),
+    "tip": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_tip_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: mi_tip_update_hist_selectors.fetch_tip_timeline_page(
+            **options
+        ),
+        serialize_page_row=serialize_compact_tip_row,
+        cursor_time_field="gpm_update_date",
+        fetch_detail=lambda eqp_id, source_id: mi_tip_update_hist_selectors.get_tip_timeline_detail(
+            eqp_id=eqp_id,
+            log_id=str(source_id),
+        ),
+        serialize_detail_row=_serialize_tip_log_detail,
+    ),
+    "spc-interlock": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
+            eqp_id=eqp_key,
+            interlock_kind="SPC",
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: m_interlock_selectors.fetch_interlock_timeline_page(
+            **options,
+            interlock_kind="SPC",
+        ),
+        serialize_page_row=lambda row: serialize_compact_interlock_row(
+            row,
+            interlock_kind="SPC",
+        ),
+        cursor_time_field="event_time",
+        fetch_detail=lambda eqp_id, source_id: m_interlock_selectors.get_interlock_timeline_detail(
+            eqp_id=eqp_id,
+            interlock_kind="SPC",
+            source_id=source_id,
+        ),
+        serialize_detail_row=lambda row: _serialize_log_time_fields(
+            _build_interlock_log_item(row, log_type="SPC_ITL")
+        ),
+    ),
+    "fdc-interlock": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_interlock_logs(
+            eqp_id=eqp_key,
+            interlock_kind="FDC",
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: m_interlock_selectors.fetch_interlock_timeline_page(
+            **options,
+            interlock_kind="FDC",
+        ),
+        serialize_page_row=lambda row: serialize_compact_interlock_row(
+            row,
+            interlock_kind="FDC",
+        ),
+        cursor_time_field="event_time",
+        fetch_detail=lambda eqp_id, source_id: m_interlock_selectors.get_interlock_timeline_detail(
+            eqp_id=eqp_id,
+            interlock_kind="FDC",
+            source_id=source_id,
+        ),
+        serialize_detail_row=lambda row: _serialize_log_time_fields(
+            _build_interlock_log_item(row, log_type="FDC_ITL")
+        ),
+    ),
+    "ctttm": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_ctttm_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: ctttm_workorder_selectors.fetch_ctttm_timeline_page(
+            **options
+        ),
+        serialize_page_row=lambda row: serialize_compact_ctttm_row(
+            row,
+            base_url=getattr(settings, "DRONE_CTTTM_BASE_URL", ""),
+        ),
+        cursor_time_field="inprg_date",
+        fetch_detail=lambda eqp_id, source_id: ctttm_workorder_selectors.get_ctttm_timeline_detail(
+            eqp_id=eqp_id,
+            source_id=source_id,
+        ),
+        serialize_detail_row=_serialize_ctttm_log_detail,
+    ),
+    "racb": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_racb_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: racb_list_selectors.fetch_racb_timeline_page(
+            **options
+        ),
+        serialize_page_row=lambda row: serialize_compact_racb_row(
+            row,
+            report_base_url=settings.RACB_REPORT_BASE_URL,
+        ),
+        cursor_time_field="update_date",
+        fetch_detail=lambda eqp_id, source_id: racb_list_selectors.get_racb_timeline_detail(
+            eqp_id=eqp_id,
+            log_id=str(source_id),
+        ),
+        serialize_detail_row=_serialize_racb_log_detail,
+    ),
+    "esop": _ObserverLogSource(
+        fetch_logs=lambda eqp_key, start_at, end_at, limit: _fetch_esop_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+        ),
+        fetch_page=lambda **options: drone_selectors.fetch_drone_sop_timeline_page(
+            **options
+        ),
+        serialize_page_row=serialize_compact_esop_row,
+        cursor_time_field="created_at",
+        fetch_detail=lambda eqp_id, source_id: drone_selectors.get_drone_sop_timeline_detail(
+            eqp_id=eqp_id,
+            source_id=source_id,
+        ),
+        serialize_detail_row=_serialize_esop_log_detail,
+    ),
+}
+
+OBSERVER_LOG_KEYS = tuple(_OBSERVER_LOG_SOURCES)
+OBSERVER_LOG_FETCHERS: Dict[str, LogFetcher] = {
+    log_key: source.fetch_logs
+    for log_key, source in _OBSERVER_LOG_SOURCES.items()
+}
+
+
 def get_log_detail(
     *,
     eqp_id: str,
@@ -1823,163 +1923,12 @@ def get_log_detail(
 
     type_key = (log_key or "").strip().lower()
     source_id = _numeric_detail_id(log_id)
-    if source_id is None:
+    source = _OBSERVER_LOG_SOURCES.get(type_key)
+    if source_id is None or source is None:
         return None
 
-    if type_key == "eqp":
-        row = eqp_status_chg_selectors.get_eqp_timeline_detail(
-            eqp_id=eqp_id,
-            log_id=str(source_id),
-        )
-        if not row:
-            return None
-        return {
-            "id": f"EQP-{row.get('eqp_event_key')}",
-            "sourceId": row.get("id"),
-            "eqpId": row.get("eqp_cb"),
-            "logType": "EQP",
-            "eventType": row.get("eqp_status_type"),
-            "eventTime": _serialize_event_time(row.get("chg_time")),
-            "operator": row.get("operator_emp_id"),
-            "comment": row.get("chg_comment"),
-            "lineId": row.get("line_id"),
-            "eqpCode": row.get("eqp_code"),
-            "eqpModeType": row.get("eqp_mode_type"),
-            "lastUpdateTime": _serialize_event_time(row.get("last_update_time"))
-            if row.get("last_update_time") is not None
-            else None,
-        }
-    if type_key == "tip":
-        row = mi_tip_update_hist_selectors.get_tip_timeline_detail(
-            eqp_id=eqp_id,
-            log_id=str(source_id),
-        )
-        if not row:
-            return None
-        register_name = _safe_text(row.get("register_name"))
-        return {
-            "id": _tip_page_log_id(row),
-            "sourceId": row.get("id"),
-            "eqpId": row.get("eqp_cb"),
-            "logType": "TIP",
-            "eventType": row.get("event_type"),
-            "eventTime": _serialize_event_time(row.get("gpm_update_date")),
-            "operator": register_name.split("-", 1)[0] or None,
-            "comment": row.get("tip_comment"),
-            "lineId": row.get("line_id"),
-            "process": row.get("process_id"),
-            "step": row.get("step_seq"),
-            "ppid": row.get("ppid"),
-            "reticleId": row.get("reticle_id"),
-            "productId": row.get("product_id"),
-            "tipType": row.get("tip_type"),
-            "tipChangeType": row.get("tip_chg_type"),
-            "tipLevel": row.get("tip_level"),
-        }
-    if type_key in {"spc-interlock", "fdc-interlock"}:
-        kind = "SPC" if type_key == "spc-interlock" else "FDC"
-        row = m_interlock_selectors.get_interlock_timeline_detail(
-            eqp_id=eqp_id,
-            interlock_kind=kind,
-            source_id=source_id,
-        )
-        return (
-            _serialize_log_time_fields(
-                _build_interlock_log_item(row, log_type=f"{kind}_ITL")
-            )
-            if row
-            else None
-        )
-    if type_key == "ctttm":
-        row = ctttm_workorder_selectors.get_ctttm_timeline_detail(
-            eqp_id=eqp_id,
-            source_id=source_id,
-        )
-        if not row:
-            return None
-        summary = _fetch_one(
-            """
-            select llm_core_summary, llm_summary
-            from ct_process_comment
-            where workorder_id = %s
-            order by updated_at desc, id desc
-            limit 1
-            """,
-            [row.get("workorder_id")],
-        ) or {}
-        return {
-            "id": row.get("workorder_id"),
-            "sourceId": row.get("id"),
-            "eqpId": row.get("eqp_id"),
-            "logType": "CTTTM",
-            "eventType": row.get("work_type"),
-            "eventTime": _serialize_event_time(row.get("inprg_date")),
-            "operator": None,
-            "comment": row.get("description"),
-            "coreSummary": summary.get("llm_core_summary"),
-            "summary": summary.get("llm_summary"),
-            "lineId": row.get("line_id"),
-            "completedAt": _serialize_event_time(row.get("comp_date"))
-            if row.get("comp_date") is not None
-            else None,
-        }
-    if type_key == "racb":
-        row = racb_list_selectors.get_racb_timeline_detail(
-            eqp_id=eqp_id,
-            log_id=str(source_id),
-        )
-        if not row:
-            return None
-        query = urlencode(
-            {"racbId": row.get("c_racb_id"), "lineId": row.get("line_id") or ""}
-        )
-        return _serialize_log_time_fields(
-            {
-                **row,
-                "id": f"RACB-{row.get('c_racb_id')}-{row.get('eqp_cb')}",
-                "sourceId": row.get("id"),
-                "logType": "RACB",
-                "eventType": (
-                    f"{row.get('racb_type_cd') or ''}_{row.get('status_code') or ''}"
-                ),
-                "eventTime": row.get("update_date"),
-                "operator": row.get("create_user"),
-                "comment": row.get("title"),
-                "url": f"{settings.RACB_REPORT_BASE_URL}?{query}",
-            }
-        )
-    if type_key == "esop":
-        row = drone_selectors.get_drone_sop_timeline_detail(
-            eqp_id=eqp_id,
-            source_id=source_id,
-        )
-        if not row:
-            return None
-        return {
-            "id": row.get("id"),
-            "sourceId": row.get("id"),
-            "logType": "ESOP",
-            "eventType": row.get("sample_type"),
-            "eventTime": _serialize_event_time(row.get("created_at")),
-            "operator": row.get("knox_id"),
-            "status": row.get("status"),
-            "comment": row.get("comment"),
-            "lineId": row.get("line_id"),
-            "eqpId": row.get("eqp_id"),
-            "eqpCb": f"{row.get('eqp_id') or '-'}-{row.get('chamber_ids') or '-'}",
-            "lotId": row.get("lot_id"),
-            "defectMaps": _normalize_esop_defect_maps(row.get("defect_url")),
-            "sampleGroup": row.get("sample_group"),
-            "sdwtProd": row.get("sdwt_prod"),
-            "processId": row.get("proc_id"),
-            "ppid": row.get("ppid"),
-            "mainStep": row.get("main_step"),
-            "metroCurrentStep": row.get("metro_current_step"),
-            "metroSteps": row.get("metro_steps"),
-            "metroEndStep": row.get("metro_end_step"),
-            "ctttmUrls": row.get("ctttm_urls"),
-        }
-    return None
+    row = source.fetch_detail(eqp_id, source_id)
+    return source.serialize_detail_row(row) if row else None
 
 
 def _fetch_logs_by_type_normalized(

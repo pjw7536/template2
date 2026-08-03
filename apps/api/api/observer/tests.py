@@ -855,6 +855,125 @@ class ObserverEndpointTests(TestCase):
             "2026-07-06T19:31:00+09:00",
         )
 
+    def test_observer_detail_registry_wires_all_sources(self) -> None:
+        """일곱 상세 source가 조회 인자와 고유 payload 계약을 유지하는지 확인합니다."""
+
+        event_time = datetime(2026, 7, 6, 10, 30, tzinfo=ZoneInfo("UTC"))
+        cases = (
+            (
+                "eqp",
+                "eqp_status_chg_selectors.get_eqp_timeline_detail",
+                {"id": 21, "eqp_event_key": 101, "chg_time": event_time},
+                {"eqp_id": "EQP-ALPHA", "log_id": "21"},
+                {"logType": "EQP", "sourceId": 21},
+            ),
+            (
+                "tip",
+                "mi_tip_update_hist_selectors.get_tip_timeline_detail",
+                {
+                    "id": 22,
+                    "gpm_update_date": event_time,
+                    "register_name": "USER-사용자",
+                },
+                {"eqp_id": "EQP-ALPHA", "log_id": "22"},
+                {"logType": "TIP", "sourceId": 22, "operator": "USER"},
+            ),
+            (
+                "spc-interlock",
+                "m_interlock_selectors.get_interlock_timeline_detail",
+                {
+                    "id": 23,
+                    "event_time": event_time,
+                    "interlock_kind": "SPC",
+                    "prod_eqp_id": "EQP-ALPHA",
+                },
+                {
+                    "eqp_id": "EQP-ALPHA",
+                    "interlock_kind": "SPC",
+                    "source_id": 23,
+                },
+                {"logType": "SPC_ITL", "sourceId": 23, "eqpId": "EQP-ALPHA"},
+            ),
+            (
+                "fdc-interlock",
+                "m_interlock_selectors.get_interlock_timeline_detail",
+                {
+                    "id": 24,
+                    "event_time": event_time,
+                    "interlock_kind": "FDC",
+                    "prod_eqp_id": "EQP-ALPHA",
+                },
+                {
+                    "eqp_id": "EQP-ALPHA",
+                    "interlock_kind": "FDC",
+                    "source_id": 24,
+                },
+                {"logType": "FDC_ITL", "sourceId": 24, "eqpId": "EQP-ALPHA"},
+            ),
+            (
+                "ctttm",
+                "ctttm_workorder_selectors.get_ctttm_timeline_detail",
+                {
+                    "id": 25,
+                    "workorder_id": "WO-25",
+                    "inprg_date": event_time,
+                },
+                {"eqp_id": "EQP-ALPHA", "source_id": 25},
+                {"logType": "CTTTM", "sourceId": 25, "coreSummary": "핵심 요약"},
+            ),
+            (
+                "racb",
+                "racb_list_selectors.get_racb_timeline_detail",
+                {
+                    "id": 26,
+                    "c_racb_id": "R-26",
+                    "eqp_cb": "EQP-ALPHA",
+                    "update_date": event_time,
+                },
+                {"eqp_id": "EQP-ALPHA", "log_id": "26"},
+                {"logType": "RACB", "sourceId": 26},
+            ),
+            (
+                "esop",
+                "drone_selectors.get_drone_sop_timeline_detail",
+                {
+                    "id": 27,
+                    "created_at": event_time,
+                    "sample_group": "SAMPLE-A",
+                },
+                {"eqp_id": "EQP-ALPHA", "source_id": 27},
+                {"logType": "ESOP", "sourceId": 27, "sampleGroup": "SAMPLE-A"},
+            ),
+        )
+
+        with patch(
+            f"{OBSERVER_SELECTORS}._fetch_one",
+            return_value={
+                "llm_core_summary": "핵심 요약",
+                "llm_summary": "전체 요약",
+            },
+        ):
+            for log_key, fetch_path, row, fetch_options, expected in cases:
+                with self.subTest(log_key=log_key), patch(
+                    f"{OBSERVER_SELECTORS}.{fetch_path}",
+                    return_value=row,
+                ) as fetch_detail:
+                    detail = selectors.get_log_detail(
+                        eqp_id="EQP-ALPHA",
+                        log_key=log_key,
+                        log_id=str(row["id"]),
+                    )
+
+                fetch_detail.assert_called_once_with(**fetch_options)
+                self.assertEqual(
+                    {key: detail[key] for key in expected},
+                    expected,
+                )
+                self.assertEqual(
+                    detail["eventTime"],
+                    "2026-07-06T19:30:00+09:00",
+                )
+
     def test_observer_eqp_page_builds_compact_payload_and_cursor(self) -> None:
         """EQP page는 comment preview와 source PK cursor를 생성합니다."""
 
@@ -901,6 +1020,97 @@ class ObserverEndpointTests(TestCase):
         )
         self.assertEqual(cursor["tieBreaker"], 11)
         self.assertEqual(cursor["logType"], "eqp")
+
+    def test_observer_compact_page_registry_wires_all_sources(self) -> None:
+        """일곱 source registry가 조회 함수와 cursor 시간 기준을 올바르게 연결합니다."""
+
+        event_time = datetime(2026, 7, 6, 10, 30, tzinfo=ZoneInfo("UTC"))
+        cases = (
+            (
+                "eqp",
+                "eqp_status_chg_selectors.fetch_eqp_timeline_page",
+                "chg_time",
+                "EQP",
+                None,
+            ),
+            (
+                "tip",
+                "mi_tip_update_hist_selectors.fetch_tip_timeline_page",
+                "gpm_update_date",
+                "TIP",
+                None,
+            ),
+            (
+                "spc-interlock",
+                "m_interlock_selectors.fetch_interlock_timeline_page",
+                "event_time",
+                "SPC_ITL",
+                "SPC",
+            ),
+            (
+                "fdc-interlock",
+                "m_interlock_selectors.fetch_interlock_timeline_page",
+                "event_time",
+                "FDC_ITL",
+                "FDC",
+            ),
+            (
+                "ctttm",
+                "ctttm_workorder_selectors.fetch_ctttm_timeline_page",
+                "inprg_date",
+                "CTTTM",
+                None,
+            ),
+            (
+                "racb",
+                "racb_list_selectors.fetch_racb_timeline_page",
+                "update_date",
+                "RACB",
+                None,
+            ),
+            (
+                "esop",
+                "drone_selectors.fetch_drone_sop_timeline_page",
+                "created_at",
+                "ESOP",
+                None,
+            ),
+        )
+
+        for index, (log_key, fetch_path, time_field, log_type, interlock_kind) in enumerate(
+            cases,
+            start=1,
+        ):
+            with self.subTest(log_key=log_key), patch(
+                f"{OBSERVER_SELECTORS}.{fetch_path}",
+                return_value=([{"id": index, time_field: event_time}], True),
+            ) as fetch_page:
+                page = selectors.get_log_page(
+                    eqp_id="eqp-alpha",
+                    log_key=log_key,
+                    start_at="2026-07-01T00:00:00",
+                    end_at="2026-07-07T23:59:59.999999",
+                    page_size=10,
+                    range_key="range",
+                )
+
+            expected_options = {
+                "eqp_id": "EQP-ALPHA",
+                "start_at": "2026-07-01T00:00:00",
+                "end_at": "2026-07-07T23:59:59.999999",
+                "page_size": 10,
+                "cursor_time": None,
+                "cursor_id": None,
+            }
+            if interlock_kind is not None:
+                expected_options["interlock_kind"] = interlock_kind
+            fetch_page.assert_called_once_with(**expected_options)
+            self.assertEqual(page["items"][0]["logType"], log_type)
+            cursor = observer_serializers.decode_observer_cursor(
+                page["page"]["nextCursor"]
+            )
+            self.assertEqual(cursor["logType"], log_key)
+            self.assertEqual(cursor["tieBreaker"], index)
 
     def test_observer_batch_page_preserves_successful_types(self) -> None:
         """한 source 실패가 성공한 다른 source 결과를 제거하지 않습니다."""

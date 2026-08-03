@@ -16,13 +16,21 @@
 ^apps/web/src/features/line-dashboard/components/DataTableColumnRenderers\.jsx:.*style=.*width
 ^apps/web/src/features/line-dashboard/components/chart/LineHistoryLegend\.jsx:.*backgroundColor
 ^apps/web/src/features/line-dashboard/pages/LineDashboardOverviewPage\.jsx:.*(bg|text)-slate-
+# 사용자가 조절한 sticky column 폭을 CSS 변수로 전달합니다.
+^apps/web/src/features/account/components/AccessPolicyPanel\.jsx:.*style=\{
+# 측정된 selection panel 높이를 동일 영역의 CSS 계산에 전달합니다.
+^apps/web/src/features/l3-spider/components/L3SpiderDataSelector\.jsx:.*style=\{.*--l3-selection-panel-height
 ^apps/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*#
 ^apps/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*style=
 ^apps/web/src/features/pm-spider/components/OesHeatmap\.jsx:.*style=
 ^apps/web/src/features/pm-spider/components/PmSpiderCategoryDashboard\.jsx:.*style=
 ^apps/web/src/features/l3-spider/utils/chartStatus\.js:.*#
+# 기존 L3 legend의 High Risk/Warning/Normal 상태색 계약을 유지합니다.
+^apps/web/src/features/l3-spider/components/L3SpiderChart\.jsx:.*(style=|#)
 ^apps/web/src/features/l3-spider/components/TrellisChart\.jsx:.*#
 ^apps/web/src/features/l3-spider/components/TrellisChart\.css:.*#
 ^apps/web/src/features/observer/components/BaseObserver\.jsx:.*style=
+# TanStack Virtual이 계산한 전체 높이와 row translate 위치를 적용합니다.
+^apps/web/src/features/observer/components/ObserverDataTable\.jsx:.*style=\{
 ^apps/web/src/features/observer/components/filters/TipTreeNode\.jsx:.*style=.*paddingLeft
 ^apps/web/src/features/observer/components/table/ObserverTable(Header|Row)\.jsx:.*style=.*width

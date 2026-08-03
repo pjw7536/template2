@@ -919,6 +919,38 @@ class AccessFilterParityTests(TestCase):
                     )
                     self.assertEqual(actual_ids, expected_ids)
 
+    def test_inactive_portal_scope_blocks_explicitly_allowed_app_access(self) -> None:
+        """Portal scope가 비활성이면 app 명시 허용도 최종 접근으로 인정하지 않습니다."""
+
+        self.portal_scope.is_active = False
+        self.portal_scope.save(update_fields=["is_active"])
+        app_allowed_user = self.users["app_allowed"]
+        superuser = self.users["superuser"]
+        base_queryset = list_access_management_users(
+            search=None,
+            department=None,
+        ).filter(id__in=[app_allowed_user.id, superuser.id])
+
+        blocked_ids = set(
+            filter_access_management_users_by_effective_access(
+                queryset=base_queryset,
+                scope=self.app_scope,
+                status="denied",
+                source=AccessSource.PORTAL_ACCESS_REQUIRED,
+            ).values_list("id", flat=True)
+        )
+        bypass_ids = set(
+            filter_access_management_users_by_effective_access(
+                queryset=base_queryset,
+                scope=self.app_scope,
+                status="allowed",
+                source=AccessSource.SUPERUSER_BYPASS,
+            ).values_list("id", flat=True)
+        )
+
+        self.assertEqual(blocked_ids, {app_allowed_user.id})
+        self.assertEqual(bypass_ids, {superuser.id})
+
 
 class AccountEndpointTests(TestCase):
     """계정 관련 엔드포인트의 기본 흐름을 검증합니다."""

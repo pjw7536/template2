@@ -22,6 +22,10 @@ from api.common.services import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email, EmailAsset, EmailOutbox
 from api.emails.permissions import resolve_access_control
 from api.emails.selectors import get_filtered_emails, resolve_email_affiliation
+from api.emails.serializers import (
+    EmailBulkDeleteInputSerializer,
+    EmailMoveInputSerializer,
+)
 from api.emails.services import (
     _parse_message_to_fields,
     claim_unassigned_emails_for_user,
@@ -39,6 +43,58 @@ from api.emails.services.ingest import _LongLinePOP3, _iter_pop3_messages
 from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 
 UTC = getattr(timezone, "utc", dt_timezone.utc)
+
+
+class EmailWriteInputSerializerTests(SimpleTestCase):
+    """메일 삭제·이동 입력 serializer의 alias와 오류 계약을 검증합니다."""
+
+    def test_bulk_delete_accepts_camel_case_ids_and_normalizes_numbers(self) -> None:
+        """camelCase ID 목록의 숫자 문자열을 정수로 변환합니다."""
+
+        serializer = EmailBulkDeleteInputSerializer(
+            data={"emailIds": ["1", 2]},
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["normalized_email_ids"], [1, 2])
+
+    def test_move_accepts_snake_case_target_without_changing_service_input(self) -> None:
+        """snake_case 대상 메일함 값을 service 입력용 원문으로 보존합니다."""
+
+        serializer = EmailMoveInputSerializer(
+            data={
+                "email_ids": [3],
+                "to_user_sdwt_prod": " group-b ",
+            },
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["normalized_email_ids"], [3])
+        self.assertEqual(
+            serializer.validated_data["normalized_to_user_sdwt_prod"],
+            " group-b ",
+        )
+
+    def test_move_reuses_existing_required_field_errors(self) -> None:
+        """빈 ID 목록과 누락 대상이 기존 API 오류 문구를 유지하는지 확인합니다."""
+
+        missing_ids = EmailMoveInputSerializer(
+            data={"toUserSdwtProd": "group-b"},
+        )
+        missing_target = EmailMoveInputSerializer(
+            data={"emailIds": [1]},
+        )
+
+        self.assertFalse(missing_ids.is_valid())
+        self.assertEqual(
+            str(missing_ids.errors["non_field_errors"][0]),
+            "email_ids must be a non-empty list",
+        )
+        self.assertFalse(missing_target.is_valid())
+        self.assertEqual(
+            str(missing_target.errors["non_field_errors"][0]),
+            "to_user_sdwt_prod is required",
+        )
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
@@ -2029,6 +2085,31 @@ class EmailEndpointTests(TestCase):
                 content_type="application/json",
             )
             self.assertEqual(response.status_code, 200)
+
+    def test_email_write_validation_error_contract(self) -> None:
+        """일괄 삭제와 이동 입력 오류가 기존 응답 계약을 유지하는지 확인합니다."""
+
+        bulk_response = self.client.post(
+            reverse("emails-bulk-delete"),
+            data='{"emailIds":[]}',
+            content_type="application/json",
+        )
+        move_response = self.client.post(
+            reverse("emails-move"),
+            data='{"emailIds":[1]}',
+            content_type="application/json",
+        )
+
+        self.assertEqual(bulk_response.status_code, 400)
+        self.assertEqual(
+            bulk_response.json(),
+            {"error": "email_ids must be a non-empty list"},
+        )
+        self.assertEqual(move_response.status_code, 400)
+        self.assertEqual(
+            move_response.json(),
+            {"error": "to_user_sdwt_prod is required"},
+        )
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_email_move_endpoint(self, _mock_insert: Mock) -> None:

@@ -6,11 +6,14 @@ import { useBulkDeleteEmails, useDeleteEmail, useMoveEmails } from "./useEmailAc
 import { useEmailDetail, useEmailHtml } from "./useEmailDetail"
 import { useEmailList } from "./useEmailList"
 import { useEmailMailboxes } from "./useEmailMailboxes"
+import { useEmailSplitPane } from "./useEmailSplitPane"
 import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
 import {
+  buildEmailMoveTargets,
+  parseRoutedEmailId,
+} from "../utils/inboxController"
+import {
   getMailboxFromSearchParams,
-  isSentMailbox,
-  isUnassignedMailbox,
   normalizeMailbox,
   SENT_MAILBOX_ID,
 } from "../utils/mailbox"
@@ -25,60 +28,23 @@ const INITIAL_FILTERS = {
   dateTo: "",
 }
 
-const MIN_LIST_WIDTH = 600
-const MIN_DETAIL_WIDTH = 420
-const DEFAULT_LIST_RATIO = 0.45
-const GRID_GAP_PX = 16
 const EMPTY_EMAILS = []
 const EMPTY_MAILBOXES = []
 const EMPTY_EMAIL_DETAIL = { email: null, html: "" }
-
-function parseRoutedEmailId(value) {
-  const normalized = typeof value === "string" ? value.trim() : ""
-  if (!normalized) return null
-
-  const numericValue = /^\d+$/.test(normalized) ? Number(normalized) : null
-  if (Number.isSafeInteger(numericValue) && numericValue > 0) return numericValue
-
-  const ragMatch = normalized.match(/^email-(\d+)$/i)
-  if (!ragMatch) return null
-
-  const ragEmailId = Number(ragMatch[1])
-  return Number.isSafeInteger(ragEmailId) && ragEmailId > 0 ? ragEmailId : null
-}
-
-function clampListWidth(nextWidth, container) {
-  if (!container) return nextWidth
-  const { width } = container.getBoundingClientRect()
-  if (!width) return nextWidth
-
-  const maxWidth = Math.max(MIN_LIST_WIDTH, width - GRID_GAP_PX - MIN_DETAIL_WIDTH)
-  return Math.min(Math.max(nextWidth, MIN_LIST_WIDTH), maxWidth)
-}
-
-function buildMoveTargets(mailboxes, activeMailbox) {
-  const normalizedActive = normalizeMailbox(activeMailbox)
-  const options = (Array.isArray(mailboxes) ? mailboxes : EMPTY_MAILBOXES)
-    .map(normalizeMailbox)
-    .filter(Boolean)
-    .filter((mailbox) => !isSentMailbox(mailbox) && !isUnassignedMailbox(mailbox))
-    .filter((mailbox) => mailbox !== normalizedActive)
-
-  const unique = Array.from(new Set(options))
-  return unique.map((mailbox) => ({ value: mailbox, label: mailbox }))
-}
 
 function useEmailListController({ scope, mailboxParam, searchParams, setSearchParams }) {
   const [filters, setFilters] = useState(INITIAL_FILTERS)
   const [selectedIds, setSelectedIds] = useState([])
   const [activeEmailId, setActiveEmailId] = useState(null)
-  const [listWidth, setListWidth] = useState(420)
-  const [isDragging, setIsDragging] = useState(false)
   const [displayedDetail, setDisplayedDetail] = useState(EMPTY_EMAIL_DETAIL)
-  const splitPaneRef = useRef(null)
-  const dragCleanupRef = useRef(null)
   const mailboxChangeRef = useRef("")
   const mailboxInitializedRef = useRef(false)
+  const {
+    splitPaneRef,
+    splitPaneStyles,
+    isDragging,
+    handleResizeStart,
+  } = useEmailSplitPane()
 
   const normalizedMailbox = normalizeMailbox(mailboxParam)
   const listEnabled = scope === "sent" ? true : Boolean(normalizedMailbox)
@@ -138,7 +104,7 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
 
   const { data: mailboxData } = useEmailMailboxes()
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : EMPTY_MAILBOXES
-  const moveTargets = buildMoveTargets(mailboxes, normalizedMailbox)
+  const moveTargets = buildEmailMoveTargets(mailboxes, normalizedMailbox)
   const emailIdParam = (searchParams.get("emailId") || "").trim()
   const routedEmailId = parseRoutedEmailId(emailIdParam)
 
@@ -314,77 +280,6 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
   }
 
   const isReloading = isListFetching
-  const stopDragging = () => {
-    if (dragCleanupRef.current) {
-      dragCleanupRef.current()
-      dragCleanupRef.current = null
-    }
-  }
-
-  const handleResizeStart = (event) => {
-    if (!splitPaneRef.current) return
-    event.preventDefault()
-    stopDragging()
-    setIsDragging(true)
-
-    const handlePointerMove = (moveEvent) => {
-      const container = splitPaneRef.current
-      if (!container) return
-      const { left } = container.getBoundingClientRect()
-      const proposedWidth = moveEvent.clientX - left
-      setListWidth(clampListWidth(proposedWidth, container))
-    }
-
-    const handlePointerEnd = () => {
-      setIsDragging(false)
-      stopDragging()
-    }
-
-    dragCleanupRef.current = () => {
-      window.removeEventListener("pointermove", handlePointerMove)
-      window.removeEventListener("pointerup", handlePointerEnd)
-      window.removeEventListener("pointercancel", handlePointerEnd)
-    }
-
-    window.addEventListener("pointermove", handlePointerMove)
-    window.addEventListener("pointerup", handlePointerEnd)
-    window.addEventListener("pointercancel", handlePointerEnd)
-  }
-
-  useEffect(() => {
-    const container = splitPaneRef.current
-    if (!container) return
-    const { width } = container.getBoundingClientRect()
-    if (!width) return
-
-    const proposedWidth = width * DEFAULT_LIST_RATIO
-    setListWidth(clampListWidth(proposedWidth, container))
-  }, [])
-
-  useEffect(() => {
-    const handleResize = () => {
-      const container = splitPaneRef.current
-      if (!container) return
-      setListWidth((current) => clampListWidth(current, container))
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  useEffect(
-    () => () => {
-      if (dragCleanupRef.current) {
-        dragCleanupRef.current()
-        dragCleanupRef.current = null
-      }
-    },
-    [],
-  )
-
-  const splitPaneStyles = {
-    "--email-list-width": `${listWidth}px`,
-    "--email-handle-offset": `${listWidth + GRID_GAP_PX / 2}px`,
-  }
 
   return {
     scope,

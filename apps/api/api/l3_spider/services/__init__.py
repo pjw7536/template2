@@ -11,9 +11,6 @@ import functools
 import hashlib
 import html
 import json
-import math
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt_datetime
 from pathlib import Path
@@ -25,13 +22,23 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-import numpy as np
 import pandas as pd
 
 from api.common.services import send_knox_mail_api
 from api.l3_spider import selectors
 
 from . import line_name_rules
+from .analytics import (
+    ANOMALY_STATUSES,
+    _camelize_mapping,
+    _dataframe_to_columnar,
+    _empty_stats,
+    _has_required_selection,
+    _make_selection_cache_key,
+    _normalize_display_status,
+    _sample_chart_points,
+)
+from .cache import TTLCache
 
 SUMMARY_COLUMNS = ["step_seq", "ppid", "eqp_id", "eqc", "bin_name", "display_status"]
 # 파일명에서 step_seq/ppid 파싱 성공 시 파일에서 읽을 컬럼 (절반으로 감소)
@@ -67,7 +74,6 @@ CHART_COLUMNS = [
     "display_status",
     "comment",
 ]
-ANOMALY_STATUSES = {"Warning", "High Risk Chamber"}
 MAIL_SEVERITY_STATUSES = {
     "high_risk": {"High Risk Chamber"},
     "warning_or_high_risk": ANOMALY_STATUSES,
@@ -77,45 +83,17 @@ _MAIL_DIGEST_PREVIEW_LIMIT = 50
 _MetaCombo = tuple[str, str, str, str, str]
 
 
-class _SimpleCache:
-    """스레드 안전한 TTL 인메모리 캐시."""
-
-    def __init__(self, ttl: float = 600.0) -> None:
-        self._ttl = ttl
-        self._lock = threading.Lock()
-        self._store: dict[str, tuple[float, Any]] = {}
-
-    def get(self, key: str) -> Any:
-        with self._lock:
-            entry = self._store.get(key)
-            if entry is None:
-                return None
-            ts, value = entry
-            if time.monotonic() - ts > self._ttl:
-                del self._store[key]
-                return None
-            return value
-
-    def set(self, key: str, value: Any) -> None:
-        with self._lock:
-            self._store[key] = (time.monotonic(), value)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._store.clear()
-
-
-_meta_cache = _SimpleCache(ttl=600.0)
-_structure_cache = _SimpleCache(ttl=600.0)
-_stats_cache = _SimpleCache(ttl=600.0)
-_daily_summary_cache = _SimpleCache(ttl=300.0)
+_meta_cache = TTLCache(ttl=600.0)
+_structure_cache = TTLCache(ttl=600.0)
+_stats_cache = TTLCache(ttl=600.0)
+_daily_summary_cache = TTLCache(ttl=300.0)
 # Meta 원본 조합을 따로 캐싱해 사용자별 exclusion 규칙과 분리하고,
 # 같은 워커의 여러 사용자가 PostgreSQL 조회 비용을 공유합니다.
-_meta_combos_cache = _SimpleCache(ttl=600.0)
-_completed_dates_cache = _SimpleCache(ttl=600.0)
+_meta_combos_cache = TTLCache(ttl=600.0)
+_completed_dates_cache = TTLCache(ttl=600.0)
 _COMPLETED_DATES_KEY = "dates"
-_line_groups_cache = _SimpleCache(ttl=600.0)
-_line_rule_candidates_cache = _SimpleCache(ttl=300.0)
+_line_groups_cache = TTLCache(ttl=600.0)
+_line_rule_candidates_cache = TTLCache(ttl=300.0)
 _LINE_RULE_CANDIDATES_KEY = "candidates"
 
 
@@ -125,60 +103,6 @@ class L3SpiderServiceError(Exception):
     def __init__(self, message: str, *, status_code: int = 400) -> None:
         super().__init__(message)
         self.status_code = status_code
-
-
-def _snake_to_camel(value: str) -> str:
-    parts = value.split("_")
-    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
-
-
-def _camelize_mapping(row: dict[str, Any]) -> dict[str, Any]:
-    return {_snake_to_camel(key): _json_safe_value(value) for key, value in row.items()}
-
-
-def _json_safe_value(value: Any) -> Any:
-    if value is None:
-        return None
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    if pd.isna(value):
-        return None
-    if hasattr(value, "item"):
-        return _json_safe_value(value.item())
-    return value
-
-
-def _normalize_display_status(frame: pd.DataFrame) -> pd.DataFrame:
-    if "display status" in frame.columns and "display_status" not in frame.columns:
-        frame = frame.rename(columns={"display status": "display_status"})
-    if "display_status" in frame.columns:
-        frame["display_status"] = frame["display_status"].replace({"Single Spike": "Warning"})
-    return frame
-
-
-def _empty_stats() -> dict[str, int]:
-    return {
-        "total": 0,
-        "normal": 0,
-        "warning": 0,
-        "risk": 0,
-        "anomalySteps": 0,
-        "highRiskEqpchs": 0,
-    }
-
-
-def _has_required_selection(selection: dict[str, object]) -> bool:
-    return all(selection.get(key) for key in ("dates", "lineIds", "processIds", "edsSteps"))
-
-
-def _make_selection_cache_key(selection: dict) -> str:
-    return json.dumps({
-        "dates": sorted(selection.get("dates") or []),
-        "lineIds": sorted(selection.get("lineIds") or []),
-        "lineNames": sorted(selection.get("lineNames") or []),
-        "processIds": sorted(selection.get("processIds") or []),
-        "edsSteps": sorted(selection.get("edsSteps") or []),
-    }, sort_keys=True)
 
 
 def _parse_filename_key(path: Path) -> tuple[str, str] | None:
@@ -326,79 +250,6 @@ def _read_summary_frames(selection: dict[str, object]) -> list[pd.DataFrame]:
     except NotADirectoryError as exc:
         raise L3SpiderServiceError(str(exc), status_code=400) from exc
     return _parallel_read(files, _read_summary_file)
-
-
-def _sample_chart_points(frame: pd.DataFrame, group_columns: list[str]) -> pd.DataFrame:
-    """차트 패널별 최대 표시 점 수를 제한합니다."""
-    max_points = getattr(settings, "L3_SPIDER_MAX_CHART_POINTS_PER_PANEL", 2000)
-    if max_points <= 0 or frame.empty:
-        return frame
-
-    sampled: list[pd.DataFrame] = []
-    available_group_columns = [column for column in group_columns if column in frame.columns]
-    if not available_group_columns:
-        return frame.head(max_points)
-
-    for _, group in frame.groupby(available_group_columns, sort=False, dropna=False):
-        if len(group) <= max_points:
-            sampled.append(group)
-            continue
-
-        if "display_status" in group.columns:
-            anomaly = group[group["display_status"].isin(ANOMALY_STATUSES)]
-        else:
-            anomaly = group.iloc[0:0]
-        remaining_slots = max_points - len(anomaly)
-        if remaining_slots <= 0:
-            sampled.append(anomaly)
-            continue
-
-        others = group[~group.index.isin(anomaly.index)]
-        sampled.append(
-            pd.concat(
-                [
-                    anomaly,
-                    others.sample(n=min(remaining_slots, len(others)), random_state=42),
-                ]
-            )
-        )
-
-    return pd.concat(sampled, ignore_index=True) if sampled else frame.iloc[0:0]
-
-
-# ─── 컬럼 기반 직렬화 ────────────────────────────────────────────────────────
-
-def _dataframe_to_columnar(merged: pd.DataFrame) -> dict[str, object]:
-    """DataFrame을 컬럼 기반 응답 포맷으로 변환합니다.
-
-    {"cols": ["binValue", ...], "colData": [[val, ...], ...]}
-    row 포맷 대비 JSON 크기 ~60% 절감 (컬럼명 N회 반복 제거).
-    """
-    # float32 → float64
-    float32_cols = merged.select_dtypes(include=["float32"]).columns
-    if len(float32_cols):
-        merged = merged.copy()
-        merged[float32_cols] = merged[float32_cols].astype("float64")
-
-    # inf → NaN
-    merged = merged.replace([np.inf, -np.inf], np.nan)
-
-    cols = [_snake_to_camel(c) for c in merged.columns]
-    col_data: list[list] = []
-
-    for col in merged.columns:
-        series = merged[col]
-        if pd.api.types.is_float_dtype(series):
-            # float NaN → None (v != v 은 NaN에서만 True: IEEE 754)
-            raw = series.tolist()
-            col_data.append([None if v != v else v for v in raw])
-        elif pd.api.types.is_integer_dtype(series):
-            col_data.append(series.tolist())
-        else:
-            # object / string: pd.isna 기반 None 치환
-            col_data.append([None if pd.isna(v) else v for v in series])
-
-    return {"cols": cols, "colData": col_data}
 
 
 # ─── 서비스 함수 ─────────────────────────────────────────────────────────────
@@ -2541,7 +2392,7 @@ def get_data(selection: dict[str, object], *, user: Any | None = None) -> dict[s
     return _dataframe_to_columnar(merged)
 
 
-_trend_cache = _SimpleCache(ttl=300.0)
+_trend_cache = TTLCache(ttl=300.0)
 
 
 def get_trend(*, user: Any | None = None) -> dict[str, object]:

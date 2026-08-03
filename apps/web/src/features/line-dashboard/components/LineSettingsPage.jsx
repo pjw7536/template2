@@ -15,12 +15,12 @@ import {
   fetchMyNotificationRecipientTargets,
   fetchNotificationRecipientPermissions,
 } from "../api"
+import { useEarlyInformSettingsController } from "../hooks/useEarlyInformSettingsController"
 import { useLineSettings } from "../hooks/useLineSettings"
 import {
   DEFAULT_CHANNEL_ENABLED,
   DEFAULT_NEED_TO_SEND_RULE,
   DEFAULT_TEMPLATE_KEYS,
-  DUPLICATE_MESSAGE,
   DUPLICATE_TARGET_MAPPING_MESSAGE,
   DUPLICATE_TARGET_MESSAGE,
   MAX_FIELD_LENGTH,
@@ -32,7 +32,6 @@ import {
 } from "../utils/lineSettingsConfig"
 import {
   showAlarmChannelApplyToast,
-  showCreateToast,
   showDeleteToast,
   showJiraKeyToast,
   showNeedToSendRuleApplyToast,
@@ -45,7 +44,6 @@ import {
   showTargetMappingCreateToast,
   showUpdateToast,
 } from "../utils/lineSettingsToasts"
-import { validateStepDraft } from "../utils/lineSettingsValidation"
 import {
   getRecipientExternalKnoxId,
   getRecipientKey,
@@ -55,102 +53,15 @@ import {
   mergeRecipientUsers,
   sameUserSdwtProd,
 } from "../utils/lineSettings"
-
-function normalizeMappingOptionValue(value) {
-  return typeof value === "string" ? value.trim() : String(value ?? "").trim()
-}
-
-function findMappingDefaultOption(values, preferredValue) {
-  const options = Array.isArray(values) ? values : []
-  if (options.length === 0) return ""
-  const normalizedPreferred = String(preferredValue || "").trim().toLowerCase()
-  if (normalizedPreferred) {
-    const matched = options.find((value) => (
-      typeof value === "string" && value.trim().toLowerCase() === normalizedPreferred
-    ))
-    if (matched) return matched
-  }
-  return options[0] || ""
-}
-
-function buildMappingOptionsFromValues(values) {
-  const normalizedValues = Array.isArray(values)
-    ? values.map(normalizeMappingOptionValue).filter(Boolean)
-    : []
-  const uniqueValues = Array.from(new Set(normalizedValues))
-  return { userSdwtProds: uniqueValues, sdwtProds: uniqueValues }
-}
-
-function buildMappingLineOptions({ lineRows, currentLineId, currentValues }) {
-  const currentLine = normalizeMappingOptionValue(currentLineId)
-  const normalizedCurrentLineId = normalizeMappingOptionValue(currentLineId).toLowerCase()
-  const currentOption = currentLine
-    ? {
-        lineId: currentLine,
-        values: buildMappingOptionsFromValues(currentValues).userSdwtProds,
-      }
-    : null
-  const otherOptions = (Array.isArray(lineRows) ? lineRows : [])
-    .map((row) => {
-      const rowLineId = normalizeMappingOptionValue(row?.lineId)
-      if (!rowLineId || rowLineId.toLowerCase() === normalizedCurrentLineId) return null
-      const values = buildMappingOptionsFromValues(row?.userSdwtProds).userSdwtProds
-      return values.length > 0 ? { lineId: rowLineId, values } : null
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.lineId.localeCompare(b.lineId))
-
-  return currentOption ? [currentOption, ...otherOptions] : otherOptions
-}
-
-function getMappingLineOptionValues(lineOptions, selectedLineId) {
-  const normalizedSelectedLineId = normalizeMappingOptionValue(selectedLineId)
-  const option = (Array.isArray(lineOptions) ? lineOptions : []).find((row) => (
-    normalizeMappingOptionValue(row?.lineId).toLowerCase() === normalizedSelectedLineId.toLowerCase()
-  ))
-  return Array.isArray(option?.values) ? option.values : []
-}
-
-function buildMappingValueLineLabels(lineRows, currentLineId) {
-  const normalizedCurrentLineId = normalizeMappingOptionValue(currentLineId).toLowerCase()
-  const labels = {}
-
-  if (!Array.isArray(lineRows)) return {}
-
-  lineRows.forEach((row) => {
-    const rowLineId = normalizeMappingOptionValue(row?.lineId)
-    const values = Array.isArray(row?.userSdwtProds) ? row.userSdwtProds : []
-    values.forEach((value) => {
-      const normalizedValue = normalizeMappingOptionValue(value)
-      if (!rowLineId || !normalizedValue) return
-      const key = normalizedValue.toLowerCase()
-      if (rowLineId.toLowerCase() !== normalizedCurrentLineId) {
-        labels[key] = rowLineId
-      }
-    })
-  })
-
-  return labels
-}
-
-function buildTargetMappingKey({ userSdwtProd, sdwtProd }) {
-  return `${String(userSdwtProd || "").trim().toLowerCase()}::${String(sdwtProd || "").trim().toLowerCase()}`
-}
-
-function findMatchingUserSdwtValue(values, preferredValue) {
-  const normalizedPreferred = String(preferredValue || "").trim().toLowerCase()
-  if (!normalizedPreferred) return ""
-  return (Array.isArray(values) ? values : []).find((value) => (
-    String(value || "").trim().toLowerCase() === normalizedPreferred
-  )) || ""
-}
-
-function parseRecipientSearchTerms(value) {
-  return String(value || "")
-    .split(/[,，]/)
-    .map((term) => term.trim())
-    .filter(Boolean)
-}
+import {
+  buildMappingLineOptions,
+  buildMappingValueLineLabels,
+  buildTargetMappingKey,
+  findMappingDefaultOption,
+  findMatchingUserSdwtValue,
+  getMappingLineOptionValues,
+  parseRecipientSearchTerms,
+} from "../utils/lineSettingsMappings"
 
 export function LineSettingsPage({ lineId = "", mode = "notification" }) {
   const isRecipientSettings = mode === "recipients"
@@ -208,14 +119,28 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
     loadRecipients: isRecipientSettings,
   })
 
-  const [formValues, setFormValues] = React.useState({ mainStep: "", customEndStep: "" })
-  const [formError, setFormError] = React.useState(null)
-  const [isCreating, setIsCreating] = React.useState(false)
-
-  const [editingId, setEditingId] = React.useState(null)
-  const [editDraft, setEditDraft] = React.useState({ mainStep: "", customEndStep: "" })
-  const [rowErrors, setRowErrors] = React.useState({})
-  const [savingMap, setSavingMap] = React.useState({})
+  const {
+    formValues,
+    formError,
+    isCreating,
+    editingId,
+    editDraft,
+    rowErrors,
+    savingMap,
+    handleFormChange,
+    handleCreate,
+    startEditing,
+    cancelEditing,
+    handleEditChange,
+    handleSave,
+    handleDelete,
+  } = useEarlyInformSettingsController({
+    lineId,
+    entries,
+    createEntry,
+    updateEntry,
+    deleteEntry,
+  })
   const [newTargetDraft, setNewTargetDraft] = React.useState("")
   const [targetFormError, setTargetFormError] = React.useState(null)
   const [isCreatingTarget, setIsCreatingTarget] = React.useState(false)
@@ -394,10 +319,6 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
     refresh()
     void loadMyRecipientTargets()
   }, [lineId, loadMyRecipientTargets, refresh])
-
-  const handleFormChange = React.useCallback((key, value) => {
-    setFormValues((prev) => ({ ...prev, [key]: value }))
-  }, [])
 
   const clearRecipientGroupResults = React.useCallback((channel) => {
     const previousGroupIds = new Set(
@@ -825,56 +746,6 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
       isActive = false
     }
   }, [user?.id])
-
-  const resetForm = React.useCallback(() => {
-    setFormValues({ mainStep: "", customEndStep: "" })
-    setFormError(null)
-  }, [])
-
-  const handleCreate = React.useCallback(
-    async (event) => {
-      event.preventDefault()
-      if (!lineId) {
-        setFormError("Select a line to add an override")
-        return
-      }
-
-      const { normalizedMainStep, normalizedCustom, error: draftError } = validateStepDraft({
-        mainStep: formValues.mainStep,
-        customEndStep: formValues.customEndStep,
-      })
-      if (draftError) {
-        setFormError(draftError)
-        return
-      }
-
-      setIsCreating(true)
-      setFormError(null)
-
-      try {
-        const entry = await createEntry({
-          mainStep: normalizedMainStep,
-          customEndStep: normalizedCustom.length > 0 ? normalizedCustom : null,
-        })
-        if (entry) {
-          resetForm()
-          showCreateToast()
-        }
-      } catch (requestError) {
-        const message =
-          requestError instanceof Error ? requestError.message : "Failed to create entry"
-        const friendlyMessage =
-          requestError?.status === 409 || isDuplicateMessage(message)
-            ? DUPLICATE_MESSAGE
-            : message
-        setFormError(friendlyMessage)
-        showRequestErrorToast(friendlyMessage)
-      } finally {
-        setIsCreating(false)
-      }
-    },
-    [createEntry, formValues.customEndStep, formValues.mainStep, lineId, resetForm],
-  )
 
   const handleCreateTarget = React.useCallback(async () => {
     const normalized = newTargetDraft.trim()
@@ -1587,125 +1458,6 @@ export function LineSettingsPage({ lineId = "", mode = "notification" }) {
     selectedUserSdwtProd,
     updateMessengerForceNewChatroom,
   ])
-
-  const startEditing = React.useCallback((entry) => {
-    setEditingId(entry.id)
-    setEditDraft({ mainStep: entry.mainStep, customEndStep: entry.customEndStep ?? "" })
-    setRowErrors((prev) => {
-      if (!(entry.id in prev)) return prev
-      const next = { ...prev }
-      delete next[entry.id]
-      return next
-    })
-  }, [])
-
-  const cancelEditing = React.useCallback(() => {
-    setEditingId(null)
-    setEditDraft({ mainStep: "", customEndStep: "" })
-  }, [])
-
-  const handleEditChange = React.useCallback((key, value) => {
-    setEditDraft((prev) => ({ ...prev, [key]: value }))
-  }, [])
-
-  const handleSave = React.useCallback(async () => {
-    if (!editingId) return
-    const entry = entries.find((item) => item.id === editingId)
-    if (!entry) {
-      cancelEditing()
-      return
-    }
-
-    const { normalizedMainStep, normalizedCustom, error: draftError } = validateStepDraft({
-      mainStep: editDraft.mainStep,
-      customEndStep: editDraft.customEndStep,
-    })
-    const updates = {}
-
-    if (draftError) {
-      setRowErrors((prev) => ({ ...prev, [entry.id]: draftError }))
-      return
-    }
-
-    if (normalizedMainStep !== entry.mainStep) {
-      updates.mainStep = normalizedMainStep
-    }
-
-    const normalizedOriginal = (entry.customEndStep ?? "").trim()
-    if (normalizedCustom !== normalizedOriginal) {
-      updates.customEndStep = normalizedCustom.length > 0 ? normalizedCustom : null
-    }
-
-    if (Object.keys(updates).length === 0) {
-      cancelEditing()
-      return
-    }
-
-    setSavingMap((prev) => ({ ...prev, [entry.id]: true }))
-    setRowErrors((prev) => {
-      if (!(entry.id in prev)) return prev
-      const next = { ...prev }
-      delete next[entry.id]
-      return next
-    })
-
-    try {
-      await updateEntry({ id: entry.id, ...updates })
-      showUpdateToast()
-      cancelEditing()
-    } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "Failed to update entry"
-      setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
-      showRequestErrorToast(message)
-    } finally {
-      setSavingMap((prev) => {
-        if (!(entry.id in prev)) return prev
-        const next = { ...prev }
-        delete next[entry.id]
-        return next
-      })
-    }
-  }, [cancelEditing, editDraft.customEndStep, editDraft.mainStep, editingId, entries, updateEntry])
-
-  const handleDelete = React.useCallback(
-    async (entry) => {
-      if (!entry) return
-      const confirmed = window.confirm(
-        `Delete override for main step "${entry.mainStep}"? This action cannot be undone.`,
-      )
-      if (!confirmed) return
-
-      setSavingMap((prev) => ({ ...prev, [entry.id]: true }))
-      setRowErrors((prev) => {
-        if (!(entry.id in prev)) return prev
-        const next = { ...prev }
-        delete next[entry.id]
-        return next
-      })
-
-      try {
-        await deleteEntry({ id: entry.id })
-        if (editingId === entry.id) {
-          cancelEditing()
-        }
-        showDeleteToast()
-      } catch (requestError) {
-        const message =
-          requestError instanceof Error ? requestError.message : "Failed to delete entry"
-        setRowErrors((prev) => ({ ...prev, [entry.id]: message }))
-        showRequestErrorToast(message)
-      } finally {
-        setSavingMap((prev) => {
-          if (!(entry.id in prev)) return prev
-          const next = { ...prev }
-          delete next[entry.id]
-          return next
-        })
-      }
-    },
-    [cancelEditing, deleteEntry, editingId],
-  )
 
   const notificationTargetCard = (
     <NotificationTargetCard

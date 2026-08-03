@@ -11,6 +11,7 @@
 | Emails | `apps/web/src/features/emails` | `api.emails` | `docs/api/emails.md` | `Email`, `EmailAsset`, `EmailOutbox`, POP3, RAG, MinIO |
 | Assistant/RAG | `apps/web/src/features/assistant` | `api.assistant`, `api.rag` | `docs/api/assistant.md` | RAG, LLM, Account permission group |
 | Line Dashboard/Drone | `apps/web/src/features/line-dashboard` | `api.drone` | `docs/api/line-dashboard.md` | `DroneSOP`, target/channel/recipient/delivery, Jira/Mail/Messenger |
+| L3 Spider | `apps/web/src/features/l3-spider` | `api.l3_spider` | `docs/api/l3-spider.md` | Parquet anomaly, index table, line name rule, Mail API |
 | Observer | `apps/web/src/features/observer` | `api.observer` | `docs/api/observer.md` | 기본 DB 기준정보와 로그 |
 | PM SPIDER | `apps/web/src/features/pm-spider` | `api.pm_comparison` | `docs/modules/pm-comparison-dashboard-spec.md` | PM SPIDER raw/result Parquet |
 | AppStore | `apps/web/src/features/appstore` | `api.appstore` | `docs/api/appstore.md` | `AppStoreApp`, 댓글, 좋아요, cover image |

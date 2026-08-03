@@ -38,6 +38,13 @@ from api.drone.models import (
     DroneSopTargetMapping,
     DroneSopTargetRecipient,
 )
+from api.drone.serializers import (
+    DroneEarlyInformCreateSerializer,
+    DroneEarlyInformUpdateFieldsSerializer,
+    DroneNotificationTargetMappingCreateSerializer,
+    DroneNotificationTargetMappingDeleteSerializer,
+    DroneNotificationTargetMappingUpdateSerializer,
+)
 from api.drone.services.channels import recipients as recipient_services
 from api.drone.services.channels import user_sdwt_channel as channel_services
 from api.drone.services.jira.sop_jira import update_drone_sop_jira_status
@@ -254,6 +261,135 @@ class DroneSopTargetChannelServiceTests(TestCase):
             self.assertTrue(target.messenger_force_new_chatroom)
 
         self.assertEqual(len(captured), 1)
+
+
+class DroneEarlyInformInputSerializerTests(SimpleTestCase):
+    """Drone 조기 알림 생성·수정 입력 정규화 계약을 검증합니다."""
+
+    def test_create_normalizes_existing_camel_case_inputs(self) -> None:
+        """생성 입력의 공백과 숫자 mainStep을 기존 규칙대로 정규화합니다."""
+
+        serializer = DroneEarlyInformCreateSerializer(
+            data={
+                "lineId": " L1 ",
+                "mainStep": 123,
+                "customEndStep": " STEP2 ",
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["normalized_line_id"], "L1")
+        self.assertEqual(serializer.validated_data["normalized_main_step"], "123")
+        self.assertEqual(
+            serializer.validated_data["normalized_custom_end_step"],
+            "STEP2",
+        )
+
+    def test_update_builds_only_provided_service_fields(self) -> None:
+        """PATCH에서 제공된 필드만 snake_case 변경값으로 구성합니다."""
+
+        serializer = DroneEarlyInformUpdateFieldsSerializer(
+            data={"customEndStep": ""}
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["normalized_updates"],
+            {"custom_end_step": None},
+        )
+
+    def test_serializers_preserve_existing_validation_messages(self) -> None:
+        """필수값과 길이 오류가 기존 API 문구를 유지하는지 확인합니다."""
+
+        missing_line = DroneEarlyInformCreateSerializer(
+            data={"mainStep": "STEP1"}
+        )
+        long_custom_end_step = DroneEarlyInformCreateSerializer(
+            data={
+                "lineId": "L1",
+                "mainStep": "STEP1",
+                "customEndStep": "A" * 51,
+            }
+        )
+        empty_update = DroneEarlyInformUpdateFieldsSerializer(data={})
+
+        self.assertFalse(missing_line.is_valid())
+        self.assertEqual(
+            str(missing_line.errors["non_field_errors"][0]),
+            "lineId is required",
+        )
+        self.assertFalse(long_custom_end_step.is_valid())
+        self.assertEqual(
+            str(long_custom_end_step.errors["non_field_errors"][0]),
+            "customEndStep must be 50 characters or fewer",
+        )
+        self.assertFalse(empty_update.is_valid())
+        self.assertEqual(
+            str(empty_update.errors["non_field_errors"][0]),
+            "No valid fields to update",
+        )
+
+
+class DroneNotificationTargetMappingInputSerializerTests(SimpleTestCase):
+    """Drone 알림 target mapping operation별 입력 계약을 검증합니다."""
+
+    def test_create_normalizes_common_fields_and_defaults_policy(self) -> None:
+        """생성 입력을 정규화하고 Comment 생략 정책 기본값을 False로 설정합니다."""
+
+        serializer = DroneNotificationTargetMappingCreateSerializer(
+            data={
+                "lineId": " L1 ",
+                "targetUserSdwtProd": " TARGET_A ",
+                "sdwtProd": " SDWT_A ",
+                "userSdwtProd": " USER_A ",
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["normalized_line_id"], "L1")
+        self.assertEqual(
+            serializer.validated_data["normalized_target_user_sdwt_prod"],
+            "TARGET_A",
+        )
+        self.assertEqual(serializer.validated_data["normalized_sdwt_prod"], "SDWT_A")
+        self.assertEqual(
+            serializer.validated_data["normalized_user_sdwt_prod"],
+            "USER_A",
+        )
+        self.assertFalse(
+            serializer.validated_data["normalized_needtosend_without_comment"]
+        )
+
+    def test_update_requires_boolean_policy(self) -> None:
+        """PATCH에서는 Comment 생략 정책 boolean이 반드시 필요한지 확인합니다."""
+
+        serializer = DroneNotificationTargetMappingUpdateSerializer(
+            data={
+                "lineId": "L1",
+                "targetUserSdwtProd": "TARGET_A",
+                "sdwtProd": "SDWT_A",
+                "userSdwtProd": "USER_A",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            str(serializer.errors["non_field_errors"][0]),
+            "needtosendWithoutComment must be bool",
+        )
+
+    def test_delete_preserves_common_field_error_order(self) -> None:
+        """삭제 입력도 기존 공통 필드 오류 순서를 유지하는지 확인합니다."""
+
+        serializer = DroneNotificationTargetMappingDeleteSerializer(
+            data={"lineId": "L1"}
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            str(serializer.errors["non_field_errors"][0]),
+            "targetUserSdwtProd is required",
+        )
 
 
 class DroneEarlyInformServiceTests(TestCase):
@@ -2292,6 +2428,28 @@ class DroneEndpointTests(TestCase):
         self.assertEqual(delete_response.json(), {"success": True})
         self.assertFalse(DroneEarlyInform.objects.filter(id=entry_id).exists())
 
+    def test_drone_early_inform_validation_error_contract(self) -> None:
+        """생성·수정 serializer 오류가 기존 HTTP 응답 계약을 유지하는지 확인합니다."""
+
+        create_response = self.client.post(
+            reverse("drone-early-inform"),
+            data='{"mainStep":"STEP1"}',
+            content_type="application/json",
+        )
+        update_response = self.client.patch(
+            reverse("drone-early-inform"),
+            data='{"id":1}',
+            content_type="application/json",
+        )
+
+        self.assertEqual(create_response.status_code, 400)
+        self.assertEqual(create_response.json(), {"error": "lineId is required"})
+        self.assertEqual(update_response.status_code, 400)
+        self.assertEqual(
+            update_response.json(),
+            {"error": "No valid fields to update"},
+        )
+
     @patch("api.drone.views.selectors.get_line_history_payload", return_value={"rows": []})
     def test_drone_line_history(self, _mock_history) -> None:
         """라인 히스토리 API가 정상 응답하는지 확인합니다."""
@@ -3656,6 +3814,56 @@ class DroneSopTargetRecipientTests(TestCase):
             1,
         )
 
+    def test_notification_target_mapping_validation_error_contract(self) -> None:
+        """mapping operation별 serializer 오류가 기존 HTTP 문구를 유지하는지 확인합니다."""
+
+        self.client.force_login(self.actor)
+        url = reverse("line-dashboard-notification-target-mappings")
+        create_response = self.client.post(
+            url,
+            data=json.dumps({"lineId": "L1"}),
+            content_type="application/json",
+        )
+        update_response = self.client.patch(
+            url,
+            data=json.dumps(
+                {
+                    "lineId": "L1",
+                    "targetUserSdwtProd": "TARGET_A",
+                    "sdwtProd": "SDWT_A",
+                    "userSdwtProd": "USER_A",
+                }
+            ),
+            content_type="application/json",
+        )
+        delete_response = self.client.delete(
+            url,
+            data=json.dumps(
+                {
+                    "lineId": "L1",
+                    "targetUserSdwtProd": "TARGET_A",
+                    "sdwtProd": "SDWT_A",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(create_response.status_code, 400)
+        self.assertEqual(
+            create_response.json(),
+            {"error": "targetUserSdwtProd is required"},
+        )
+        self.assertEqual(update_response.status_code, 400)
+        self.assertEqual(
+            update_response.json(),
+            {"error": "needtosendWithoutComment must be bool"},
+        )
+        self.assertEqual(delete_response.status_code, 400)
+        self.assertEqual(
+            delete_response.json(),
+            {"error": "userSdwtProd is required"},
+        )
+
     def test_notification_target_mapping_endpoint_adds_mapping(self) -> None:
         """지정 조합 API가 target row와 mapping row를 함께 생성하는지 확인합니다."""
 
@@ -4133,6 +4341,7 @@ class DroneSopTargetAdminTests(TestCase):
                 user_id=self.admin_user.id,
                 scope_key=scope_key,
                 action="grant",
+                reason="Drone target 관리자 테스트 권한 부여",
                 role=role,
             )
             self.assertEqual(status_code, 200)
@@ -4214,6 +4423,48 @@ class DroneSopTargetAdminTests(TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["error"], "target already exists")
+
+    def test_admin_drone_targets_validates_and_normalizes_write_payloads(self) -> None:
+        """관리자 쓰기 입력을 serializer가 검증하고 공백을 정규화하는지 확인합니다."""
+
+        self.client.force_login(self.admin_user)
+
+        missing_line_response = self.client.post(
+            self.endpoint,
+            data=self._json({"targetUserSdwtProd": "TARGET_A"}),
+            content_type="application/json",
+        )
+        self.assertEqual(missing_line_response.status_code, 400)
+        self.assertEqual(missing_line_response.json()["error"], "lineId is required")
+
+        created_response = self.client.post(
+            self.endpoint,
+            data=self._json(
+                {
+                    "lineId": " L1 ",
+                    "targetUserSdwtProd": " TARGET_A ",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(created_response.status_code, 201)
+        created = created_response.json()["target"]
+        self.assertEqual(created["lineId"], "L1")
+        self.assertEqual(created["targetUserSdwtProd"], "TARGET_A")
+
+        invalid_id_response = self.client.patch(
+            self.endpoint,
+            data=self._json(
+                {
+                    "id": "invalid",
+                    "lineId": "L1",
+                    "targetUserSdwtProd": "TARGET_B",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(invalid_id_response.status_code, 400)
+        self.assertEqual(invalid_id_response.json()["error"], "id is required")
 
     def test_admin_drone_targets_returns_related_counts(self) -> None:
         """target 관리 목록이 연결 설정 count를 함께 반환하는지 확인합니다."""

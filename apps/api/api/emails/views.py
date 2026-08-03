@@ -20,6 +20,7 @@ from api.common.services import (
     UNASSIGNED_USER_SDWT_PROD,
     ensure_airflow_token,
     extract_bearer_token,
+    extract_first_error_message,
     parse_json_body,
     parse_json_body_or_error_when_present,
 )
@@ -42,8 +43,9 @@ from .selectors import (
 from .serializers import (
     EmailAssetOcrClaimSerializer,
     EmailAssetOcrUpdateSerializer,
+    EmailBulkDeleteInputSerializer,
+    EmailMoveInputSerializer,
     EmailRequestValidationError,
-    parse_email_id_list,
     parse_optional_positive_limit,
     serialize_email_detail,
     serialize_email_page,
@@ -746,10 +748,13 @@ class EmailBulkDeleteView(APIView):
         payload, payload_error = _parse_required_json_body(request)
         if payload_error is not None:
             return payload_error
-        try:
-            normalized_ids = parse_email_id_list(payload)
-        except EmailRequestValidationError as exc:
-            return _validation_error_response(exc)
+        serializer = EmailBulkDeleteInputSerializer(data=payload)
+        if not serializer.is_valid():
+            return _error_response(
+                extract_first_error_message(serializer.errors),
+                status=400,
+            )
+        normalized_ids = serializer.validated_data["normalized_email_ids"]
         try:
             deleted_count = bulk_delete_emails(
                 normalized_ids,
@@ -801,13 +806,16 @@ class EmailMoveView(APIView):
         payload, payload_error = _parse_required_json_body(request)
         if payload_error is not None:
             return payload_error
-        try:
-            normalized_ids = parse_email_id_list(payload)
-        except EmailRequestValidationError as exc:
-            return _validation_error_response(exc)
-        target_user_sdwt_prod = payload.get("to_user_sdwt_prod") or payload.get("toUserSdwtProd")
-        if not isinstance(target_user_sdwt_prod, str) or not target_user_sdwt_prod.strip():
-            return _error_response("to_user_sdwt_prod is required", status=400)
+        serializer = EmailMoveInputSerializer(data=payload)
+        if not serializer.is_valid():
+            return _error_response(
+                extract_first_error_message(serializer.errors),
+                status=400,
+            )
+        normalized_ids = serializer.validated_data["normalized_email_ids"]
+        target_user_sdwt_prod = serializer.validated_data[
+            "normalized_to_user_sdwt_prod"
+        ]
         try:
             result = move_emails_for_user(
                 user=user,

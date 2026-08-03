@@ -1,6 +1,6 @@
 import { buildBackendUrl } from "@/lib/api"
 
-import { normalizeEmailListFilters } from "../utils/filters"
+import { buildEmailListSearchParams } from "../utils/filters"
 
 const BASE_PATH = "/api/v1/emails"
 
@@ -27,16 +27,7 @@ async function handleJsonResponse(response) {
 }
 
 export async function fetchInboxEmails(params = {}) {
-  const filters = normalizeEmailListFilters(params)
-  const searchParams = {}
-  if (filters.page) searchParams.page = filters.page
-  if (filters.pageSize) searchParams.page_size = filters.pageSize
-  if (filters.userSdwtProd) searchParams.user_sdwt_prod = filters.userSdwtProd
-  if (filters.q) searchParams.q = filters.q
-  if (filters.sender) searchParams.sender = filters.sender
-  if (filters.recipient) searchParams.recipient = filters.recipient
-  if (filters.dateFrom) searchParams.date_from = filters.dateFrom
-  if (filters.dateTo) searchParams.date_to = filters.dateTo
+  const searchParams = buildEmailListSearchParams(params)
 
   const response = await fetch(buildBackendUrl(`${BASE_PATH}/inbox/`, searchParams), {
     credentials: "include",
@@ -46,15 +37,7 @@ export async function fetchInboxEmails(params = {}) {
 }
 
 export async function fetchSentEmails(params = {}) {
-  const filters = normalizeEmailListFilters(params)
-  const searchParams = {}
-  if (filters.page) searchParams.page = filters.page
-  if (filters.pageSize) searchParams.page_size = filters.pageSize
-  if (filters.q) searchParams.q = filters.q
-  if (filters.sender) searchParams.sender = filters.sender
-  if (filters.recipient) searchParams.recipient = filters.recipient
-  if (filters.dateFrom) searchParams.date_from = filters.dateFrom
-  if (filters.dateTo) searchParams.date_to = filters.dateTo
+  const searchParams = buildEmailListSearchParams(params, { includeMailbox: false })
 
   const response = await fetch(buildBackendUrl(`${BASE_PATH}/sent/`, searchParams), {
     credentials: "include",

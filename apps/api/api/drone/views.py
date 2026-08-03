@@ -60,6 +60,7 @@ from api.common.services.activity_logging import (
 )
 from api.common.services.request_helpers import (
     ensure_airflow_token,
+    extract_first_error_message,
     parse_json_body,
     parse_json_body_or_error_when_present,
 )
@@ -69,10 +70,16 @@ from .services.jira.templates.jira_template_registry import TEMPLATE_SOURCES as 
 from .services.mail.templates.mail_template_registry import MAIL_TEMPLATE_SOURCES
 from .services.messenger.templates.messenger_template_registry import EXCEL_TABLE_TEMPLATE_SENDERS
 from .serializers import (
+    DroneEarlyInformCreateSerializer,
+    DroneEarlyInformUpdateFieldsSerializer,
+    DroneNotificationTargetMappingCreateSerializer,
+    DroneNotificationTargetMappingDeleteSerializer,
+    DroneNotificationTargetMappingUpdateSerializer,
     DroneRequestValidationError,
-    normalize_custom_end_step,
+    DroneSopTargetAdminCreateSerializer,
+    DroneSopTargetAdminDeleteSerializer,
+    DroneSopTargetAdminUpdateSerializer,
     normalize_line_id,
-    normalize_main_step,
     normalize_target_text,
     normalize_updated_by,
     parse_limit_param,
@@ -553,19 +560,17 @@ class DroneEarlyInformView(DroneAuthenticatedView):
             return error_response
 
         # -----------------------------------------------------------------------------
-        # 3) 필수/선택 필드 검증
+        # 3) 생성 입력 검증
         # -----------------------------------------------------------------------------
-        line_id = normalize_line_id(payload.get("lineId"))
-        main_step = normalize_main_step(payload.get("mainStep"))
-        if not line_id:
-            return JsonResponse({"error": "lineId is required"}, status=400)
-        if not main_step:
-            return JsonResponse({"error": "mainStep is required"}, status=400)
-
-        try:
-            custom_end_step = normalize_custom_end_step(payload.get("customEndStep"))
-        except DroneRequestValidationError as exc:
-            return _validation_error_response(exc)
+        serializer = DroneEarlyInformCreateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        line_id = serializer.validated_data["normalized_line_id"]
+        main_step = serializer.validated_data["normalized_main_step"]
+        custom_end_step = serializer.validated_data["normalized_custom_end_step"]
 
         # -----------------------------------------------------------------------------
         # 4) updated_by 계산
@@ -655,30 +660,14 @@ class DroneEarlyInformView(DroneAuthenticatedView):
         set_activity_summary(request, f"Update drone_early_inform entry #{entry_id}")
         merge_activity_metadata(request, resource=self.TABLE_NAME, entryId=entry_id)
 
-        updates: dict[str, Any] = {}
         updated_by = self._resolve_updated_by(request)
-
-        if "lineId" in payload:
-            line_id = normalize_line_id(payload.get("lineId"))
-            if not line_id:
-                return JsonResponse({"error": "lineId is required"}, status=400)
-            updates["line_id"] = line_id
-
-        if "mainStep" in payload:
-            main_step = normalize_main_step(payload.get("mainStep"))
-            if not main_step:
-                return JsonResponse({"error": "mainStep is required"}, status=400)
-            updates["main_step"] = main_step
-
-        if "customEndStep" in payload:
-            try:
-                normalized = normalize_custom_end_step(payload.get("customEndStep"))
-            except DroneRequestValidationError as exc:
-                return _validation_error_response(exc)
-            updates["custom_end_step"] = normalized
-
-        if not updates:
-            return JsonResponse({"error": "No valid fields to update"}, status=400)
+        serializer = DroneEarlyInformUpdateFieldsSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        updates = serializer.validated_data["normalized_updates"]
 
         # -----------------------------------------------------------------------------
         # 5) 서비스 호출 및 응답 구성
@@ -949,10 +938,18 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
+        serializer = DroneSopTargetAdminCreateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        validated = serializer.validated_data
+
         try:
             target = services.create_drone_sop_target_admin_row(
-                line_id=payload.get("lineId"),
-                target_user_sdwt_prod=payload.get("targetUserSdwtProd"),
+                line_id=validated["lineId"],
+                target_user_sdwt_prod=validated["targetUserSdwtProd"],
             )
             row = self._response_row(target_id=target.id)
         except services.DroneSopTargetAdminDuplicateError as exc:
@@ -974,17 +971,21 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
-        try:
-            target_id = int(payload.get("id"))
-        except (TypeError, ValueError):
-            return JsonResponse({"error": "id is required"}, status=400)
+        serializer = DroneSopTargetAdminUpdateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        validated = serializer.validated_data
+        target_id = validated["id"]
 
         try:
             previous_row = selectors.get_drone_sop_target_admin_row(target_id=target_id)
             target = services.update_drone_sop_target_admin_row(
                 target_id=target_id,
-                line_id=payload.get("lineId"),
-                target_user_sdwt_prod=payload.get("targetUserSdwtProd"),
+                line_id=validated["lineId"],
+                target_user_sdwt_prod=validated["targetUserSdwtProd"],
             )
             row = self._response_row(target_id=target.id)
         except services.DroneSopTargetAdminDuplicateError as exc:
@@ -1009,10 +1010,13 @@ class DroneSopTargetAdminView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
-        try:
-            target_id = int(payload.get("id"))
-        except (TypeError, ValueError):
-            return JsonResponse({"error": "id is required"}, status=400)
+        serializer = DroneSopTargetAdminDeleteSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        target_id = serializer.validated_data["id"]
 
         try:
             previous_row = selectors.get_drone_sop_target_admin_row(target_id=target_id)
@@ -1071,21 +1075,21 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
-        line_id = normalize_line_id(payload.get("lineId"))
-        target_user_sdwt_prod = normalize_target_text(payload.get("targetUserSdwtProd"))
-        sdwt_prod = normalize_target_text(payload.get("sdwtProd"))
-        user_sdwt_prod = normalize_target_text(payload.get("userSdwtProd"))
-        raw_needtosend_without_comment = payload.get("needtosendWithoutComment", False)
-        if not line_id:
-            return JsonResponse({"error": "lineId is required"}, status=400)
-        if not target_user_sdwt_prod:
-            return JsonResponse({"error": "targetUserSdwtProd is required"}, status=400)
-        if not sdwt_prod:
-            return JsonResponse({"error": "sdwtProd is required"}, status=400)
-        if not user_sdwt_prod:
-            return JsonResponse({"error": "userSdwtProd is required"}, status=400)
-        if not isinstance(raw_needtosend_without_comment, bool):
-            return JsonResponse({"error": "needtosendWithoutComment must be bool"}, status=400)
+        serializer = DroneNotificationTargetMappingCreateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        line_id = serializer.validated_data["normalized_line_id"]
+        target_user_sdwt_prod = serializer.validated_data[
+            "normalized_target_user_sdwt_prod"
+        ]
+        sdwt_prod = serializer.validated_data["normalized_sdwt_prod"]
+        user_sdwt_prod = serializer.validated_data["normalized_user_sdwt_prod"]
+        raw_needtosend_without_comment = serializer.validated_data[
+            "normalized_needtosend_without_comment"
+        ]
 
         try:
             mapping = services.create_drone_sop_target_mapping(
@@ -1135,21 +1139,21 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
-        line_id = normalize_line_id(payload.get("lineId"))
-        target_user_sdwt_prod = normalize_target_text(payload.get("targetUserSdwtProd"))
-        sdwt_prod = normalize_target_text(payload.get("sdwtProd"))
-        user_sdwt_prod = normalize_target_text(payload.get("userSdwtProd"))
-        needtosend_without_comment = payload.get("needtosendWithoutComment")
-        if not line_id:
-            return JsonResponse({"error": "lineId is required"}, status=400)
-        if not target_user_sdwt_prod:
-            return JsonResponse({"error": "targetUserSdwtProd is required"}, status=400)
-        if not sdwt_prod:
-            return JsonResponse({"error": "sdwtProd is required"}, status=400)
-        if not user_sdwt_prod:
-            return JsonResponse({"error": "userSdwtProd is required"}, status=400)
-        if not isinstance(needtosend_without_comment, bool):
-            return JsonResponse({"error": "needtosendWithoutComment must be bool"}, status=400)
+        serializer = DroneNotificationTargetMappingUpdateSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        line_id = serializer.validated_data["normalized_line_id"]
+        target_user_sdwt_prod = serializer.validated_data[
+            "normalized_target_user_sdwt_prod"
+        ]
+        sdwt_prod = serializer.validated_data["normalized_sdwt_prod"]
+        user_sdwt_prod = serializer.validated_data["normalized_user_sdwt_prod"]
+        needtosend_without_comment = serializer.validated_data[
+            "normalized_needtosend_without_comment"
+        ]
 
         try:
             mapping = services.update_drone_sop_target_mapping_reservation_policy(
@@ -1198,18 +1202,18 @@ class DroneNotificationTargetMappingView(DroneAuthenticatedView):
         if error_response is not None:
             return error_response
 
-        line_id = normalize_line_id(payload.get("lineId"))
-        target_user_sdwt_prod = normalize_target_text(payload.get("targetUserSdwtProd"))
-        sdwt_prod = normalize_target_text(payload.get("sdwtProd"))
-        user_sdwt_prod = normalize_target_text(payload.get("userSdwtProd"))
-        if not line_id:
-            return JsonResponse({"error": "lineId is required"}, status=400)
-        if not target_user_sdwt_prod:
-            return JsonResponse({"error": "targetUserSdwtProd is required"}, status=400)
-        if not sdwt_prod:
-            return JsonResponse({"error": "sdwtProd is required"}, status=400)
-        if not user_sdwt_prod:
-            return JsonResponse({"error": "userSdwtProd is required"}, status=400)
+        serializer = DroneNotificationTargetMappingDeleteSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+        line_id = serializer.validated_data["normalized_line_id"]
+        target_user_sdwt_prod = serializer.validated_data[
+            "normalized_target_user_sdwt_prod"
+        ]
+        sdwt_prod = serializer.validated_data["normalized_sdwt_prod"]
+        user_sdwt_prod = serializer.validated_data["normalized_user_sdwt_prod"]
 
         try:
             services.delete_drone_sop_target_mapping(

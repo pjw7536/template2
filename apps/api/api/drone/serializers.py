@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from rest_framework import serializers
+
 from .models import DroneEarlyInform
 
 MAX_FIELD_LENGTH = 50
+MAX_TARGET_FIELD_LENGTH = 64
 
 
 class DroneRequestValidationError(ValueError):
@@ -292,6 +295,225 @@ def parse_optional_bool_field(
     if not isinstance(raw_value, bool):
         raise DroneRequestValidationError(f"{field_name} must be a boolean")
     return True, raw_value
+
+
+class DroneEarlyInformCreateSerializer(serializers.Serializer):
+    """Drone 조기 알림 생성 입력을 기존 API 오류 계약에 맞춰 검증합니다."""
+
+    lineId = serializers.JSONField(required=False, allow_null=True)
+    mainStep = serializers.JSONField(required=False, allow_null=True)
+    customEndStep = serializers.JSONField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """생성 필수값과 선택 종료 단계를 service 입력 형태로 정규화합니다."""
+
+        line_id = normalize_line_id(attrs.get("lineId"))
+        if not line_id:
+            raise serializers.ValidationError("lineId is required")
+
+        main_step = normalize_main_step(attrs.get("mainStep"))
+        if not main_step:
+            raise serializers.ValidationError("mainStep is required")
+
+        try:
+            custom_end_step = normalize_custom_end_step(attrs.get("customEndStep"))
+        except DroneRequestValidationError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        attrs["normalized_line_id"] = line_id
+        attrs["normalized_main_step"] = main_step
+        attrs["normalized_custom_end_step"] = custom_end_step
+        return attrs
+
+
+class DroneEarlyInformUpdateFieldsSerializer(serializers.Serializer):
+    """Drone 조기 알림 PATCH의 선택 변경 필드를 검증합니다."""
+
+    lineId = serializers.JSONField(required=False, allow_null=True)
+    mainStep = serializers.JSONField(required=False, allow_null=True)
+    customEndStep = serializers.JSONField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """제공된 camelCase 필드만 service용 snake_case 변경값으로 변환합니다."""
+
+        updates: dict[str, Any] = {}
+        if "lineId" in attrs:
+            line_id = normalize_line_id(attrs.get("lineId"))
+            if not line_id:
+                raise serializers.ValidationError("lineId is required")
+            updates["line_id"] = line_id
+
+        if "mainStep" in attrs:
+            main_step = normalize_main_step(attrs.get("mainStep"))
+            if not main_step:
+                raise serializers.ValidationError("mainStep is required")
+            updates["main_step"] = main_step
+
+        if "customEndStep" in attrs:
+            try:
+                updates["custom_end_step"] = normalize_custom_end_step(
+                    attrs.get("customEndStep")
+                )
+            except DroneRequestValidationError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+
+        if not updates:
+            raise serializers.ValidationError("No valid fields to update")
+        attrs["normalized_updates"] = updates
+        return attrs
+
+
+class _DroneNotificationTargetMappingFieldsSerializer(serializers.Serializer):
+    """Drone 알림 target mapping의 공통 식별 필드를 검증합니다."""
+
+    lineId = serializers.JSONField(required=False, allow_null=True)
+    targetUserSdwtProd = serializers.JSONField(required=False, allow_null=True)
+    sdwtProd = serializers.JSONField(required=False, allow_null=True)
+    userSdwtProd = serializers.JSONField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """공통 camelCase 필드를 기존 오류 순서대로 정규화합니다."""
+
+        normalized_fields = {
+            "normalized_line_id": normalize_line_id(attrs.get("lineId")),
+            "normalized_target_user_sdwt_prod": normalize_target_text(
+                attrs.get("targetUserSdwtProd")
+            ),
+            "normalized_sdwt_prod": normalize_target_text(attrs.get("sdwtProd")),
+            "normalized_user_sdwt_prod": normalize_target_text(
+                attrs.get("userSdwtProd")
+            ),
+        }
+        required_fields = (
+            ("normalized_line_id", "lineId is required"),
+            (
+                "normalized_target_user_sdwt_prod",
+                "targetUserSdwtProd is required",
+            ),
+            ("normalized_sdwt_prod", "sdwtProd is required"),
+            ("normalized_user_sdwt_prod", "userSdwtProd is required"),
+        )
+        for field_name, error_message in required_fields:
+            if not normalized_fields[field_name]:
+                raise serializers.ValidationError(error_message)
+
+        attrs.update(normalized_fields)
+        return attrs
+
+
+class DroneNotificationTargetMappingCreateSerializer(
+    _DroneNotificationTargetMappingFieldsSerializer
+):
+    """Drone 알림 target mapping 생성 입력을 검증합니다."""
+
+    needtosendWithoutComment = serializers.JSONField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """생성 시 Comment 생략 정책의 기본값을 False로 적용합니다."""
+
+        attrs = super().validate(attrs)
+        value = attrs.get("needtosendWithoutComment", False)
+        if not isinstance(value, bool):
+            raise serializers.ValidationError(
+                "needtosendWithoutComment must be bool"
+            )
+        attrs["normalized_needtosend_without_comment"] = value
+        return attrs
+
+
+class DroneNotificationTargetMappingUpdateSerializer(
+    _DroneNotificationTargetMappingFieldsSerializer
+):
+    """Drone 알림 target mapping 예약 정책 수정 입력을 검증합니다."""
+
+    needtosendWithoutComment = serializers.JSONField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """수정 시 Comment 생략 정책 boolean을 필수로 검증합니다."""
+
+        attrs = super().validate(attrs)
+        value = attrs.get("needtosendWithoutComment")
+        if not isinstance(value, bool):
+            raise serializers.ValidationError(
+                "needtosendWithoutComment must be bool"
+            )
+        attrs["normalized_needtosend_without_comment"] = value
+        return attrs
+
+
+class DroneNotificationTargetMappingDeleteSerializer(
+    _DroneNotificationTargetMappingFieldsSerializer
+):
+    """Drone 알림 target mapping 삭제 식별 입력을 검증합니다."""
+
+
+class _DroneSopTargetAdminWriteSerializer(serializers.Serializer):
+    """Drone SOP target 생성·수정 공통 입력을 검증합니다."""
+
+    lineId = serializers.JSONField(required=False)
+    targetUserSdwtProd = serializers.JSONField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """필수 문자열을 기존 관리자 API 오류 계약에 맞춰 정규화합니다."""
+
+        raw_line_id = attrs.get("lineId")
+        if not isinstance(raw_line_id, str) or not raw_line_id.strip():
+            raise serializers.ValidationError("lineId is required")
+        line_id = raw_line_id.strip()
+        if len(line_id) > MAX_FIELD_LENGTH:
+            raise serializers.ValidationError("lineId must be 50 characters or fewer")
+
+        target_user_sdwt_prod = normalize_target_text(attrs.get("targetUserSdwtProd"))
+        if not target_user_sdwt_prod:
+            raise serializers.ValidationError("targetUserSdwtProd is required")
+        if len(target_user_sdwt_prod) > MAX_TARGET_FIELD_LENGTH:
+            raise serializers.ValidationError(
+                "targetUserSdwtProd must be 64 characters or fewer"
+            )
+
+        attrs["lineId"] = line_id
+        attrs["targetUserSdwtProd"] = target_user_sdwt_prod
+        return attrs
+
+
+class DroneSopTargetAdminCreateSerializer(_DroneSopTargetAdminWriteSerializer):
+    """Drone SOP target 관리자 생성 입력 스키마입니다."""
+
+
+class DroneSopTargetAdminUpdateSerializer(_DroneSopTargetAdminWriteSerializer):
+    """Drone SOP target 관리자 수정 입력 스키마입니다."""
+
+    id = serializers.JSONField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """target ID와 수정 필드를 함께 검증합니다."""
+
+        try:
+            attrs["id"] = parse_positive_int(
+                attrs.get("id"),
+                error_message="id is required",
+            )
+        except DroneRequestValidationError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return super().validate(attrs)
+
+
+class DroneSopTargetAdminDeleteSerializer(serializers.Serializer):
+    """Drone SOP target 관리자 삭제 입력 스키마입니다."""
+
+    id = serializers.JSONField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """삭제 대상 ID를 양의 정수로 정규화합니다."""
+
+        try:
+            attrs["id"] = parse_positive_int(
+                attrs.get("id"),
+                error_message="id is required",
+            )
+        except DroneRequestValidationError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return attrs
 
 
 def serialize_early_inform_entry(entry: DroneEarlyInform) -> dict[str, Any]:

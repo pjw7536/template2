@@ -38,8 +38,70 @@ from .models import (
     L3SpiderRunStatus,
 )
 from .services import line_name_rules
+from .services.cache import TTLCache
 from .views import L3SpiderMetaView, L3SpiderUnmappedLineRulesView
 from .management.commands.import_l3_spider_line_name_rules import _load_rules_csv
+
+
+class L3SpiderCacheTests(SimpleTestCase):
+    """L3 Spider TTL 캐시의 만료와 초기화 계약을 검증합니다."""
+
+    @patch("api.l3_spider.services.cache.time.monotonic", side_effect=[10.0, 12.0, 16.0])
+    def test_cache_returns_value_until_ttl_expires(self, _monotonic) -> None:
+        """TTL 이내에는 값을 반환하고 이후에는 제거합니다."""
+
+        cache = TTLCache(ttl=5.0)
+        cache.set("meta", {"dates": ["2026-08-03"]})
+
+        self.assertEqual(cache.get("meta"), {"dates": ["2026-08-03"]})
+        self.assertIsNone(cache.get("meta"))
+
+    def test_clear_removes_cached_values(self) -> None:
+        """명시적 초기화가 모든 값을 제거하는지 확인합니다."""
+
+        cache = TTLCache()
+        cache.set("stats", {"total": 1})
+        cache.clear()
+
+        self.assertIsNone(cache.get("stats"))
+
+
+class L3SpiderAnalyticsTests(SimpleTestCase):
+    """L3 Spider DataFrame 계산 모듈의 응답 호환성을 검증합니다."""
+
+    def test_normalize_and_columnar_response_contract(self) -> None:
+        """legacy 상태와 JSON 비호환 수치를 현재 columnar 계약으로 변환합니다."""
+
+        frame = pd.DataFrame(
+            {
+                "display status": ["Single Spike", "Normal"],
+                "risk_score": [float("inf"), 0.25],
+            }
+        )
+
+        normalized = services._normalize_display_status(frame)
+        result = services._dataframe_to_columnar(normalized)
+
+        self.assertEqual(result["cols"], ["displayStatus", "riskScore"])
+        self.assertEqual(result["colData"][0], ["Warning", "Normal"])
+        self.assertEqual(result["colData"][1], [None, 0.25])
+
+    @override_settings(L3_SPIDER_MAX_CHART_POINTS_PER_PANEL=2)
+    def test_chart_sampling_preserves_anomaly_rows(self) -> None:
+        """패널 샘플링 시 이상 행을 정상 행보다 우선 보존합니다."""
+
+        frame = pd.DataFrame(
+            {
+                "eqc": ["EQ1", "EQ1", "EQ1", "EQ1"],
+                "display_status": ["Normal", "Warning", "Normal", "Normal"],
+                "value": [1, 2, 3, 4],
+            }
+        )
+
+        sampled = services._sample_chart_points(frame, ["eqc"])
+
+        self.assertEqual(len(sampled), 2)
+        self.assertIn("Warning", sampled["display_status"].tolist())
 
 
 class L3SpiderServiceTests(TestCase):
@@ -1281,7 +1343,7 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
             user_id=self.developer.id,
             scope_key="portal",
             action="grant",
-            reason=None,
+            reason="L3 Spider 개발자 옵션 테스트 Portal 권한 부여",
             role="user",
         )
         account_services.decide_user_access(
@@ -1289,7 +1351,7 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
             user_id=self.developer.id,
             scope_key="l3-spider",
             action="grant",
-            reason=None,
+            reason="L3 Spider 개발자 옵션 테스트 관리자 권한 부여",
             role="admin",
         )
 

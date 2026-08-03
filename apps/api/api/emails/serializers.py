@@ -57,6 +57,39 @@ def parse_optional_positive_limit(*, body_value: Any, query_value: Any) -> int |
     return limit if limit > 0 else None
 
 
+class EmailBulkDeleteInputSerializer(serializers.Serializer):
+    """메일 일괄 삭제의 snake/camel 호환 입력을 검증합니다."""
+
+    email_ids = serializers.JSONField(required=False)
+    emailIds = serializers.JSONField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """메일 ID 목록을 기존 오류 계약에 맞춰 양의 정수로 정규화합니다."""
+
+        try:
+            attrs["normalized_email_ids"] = parse_email_id_list(attrs)
+        except EmailRequestValidationError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return attrs
+
+
+class EmailMoveInputSerializer(EmailBulkDeleteInputSerializer):
+    """메일 이동의 ID 목록과 대상 메일함 입력을 검증합니다."""
+
+    to_user_sdwt_prod = serializers.JSONField(required=False)
+    toUserSdwtProd = serializers.JSONField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """이동 대상 alias를 해석하되 기존 service 정규화 입력을 보존합니다."""
+
+        attrs = super().validate(attrs)
+        target = attrs.get("to_user_sdwt_prod") or attrs.get("toUserSdwtProd")
+        if not isinstance(target, str) or not target.strip():
+            raise serializers.ValidationError("to_user_sdwt_prod is required")
+        attrs["normalized_to_user_sdwt_prod"] = target
+        return attrs
+
+
 def serialize_email_summary(email: Any) -> Dict[str, Any]:
     """Email 인스턴스를 목록 응답용 dict로 직렬화합니다.
 
@@ -188,6 +221,8 @@ __all__ = [
     "EmailAssetOcrClaimSerializer",
     "EmailAssetOcrUpdateSerializer",
     "EmailAssetOcrUpdateItemSerializer",
+    "EmailBulkDeleteInputSerializer",
+    "EmailMoveInputSerializer",
     "EmailRequestValidationError",
     "parse_email_id_list",
     "parse_optional_positive_limit",

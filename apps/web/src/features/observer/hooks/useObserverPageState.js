@@ -9,6 +9,11 @@ import {
   getLogRangeFromSearchParams,
   normalizeLogRange,
 } from "../utils/logDateRange";
+import {
+  buildLogRangeSearch,
+  getObserverEquipmentPath,
+  isObserverEquipmentPath,
+} from "../utils/observerLocation";
 import { useObserverSelectionStore } from "../store/useObserverSelectionStore";
 import { useObserverStore } from "../store/useObserverStore";
 import { useObserverLogs } from "./useObserverLogs";
@@ -91,22 +96,13 @@ export function useObserverPageState(params) {
   }, [location.search]);
 
   useEffect(() => {
-    const nextParams = new URLSearchParams(location.search);
-    let hasChanged = false;
-
-    for (const [key, value] of Object.entries(logQueryOptions)) {
-      if (nextParams.get(key) !== value) {
-        nextParams.set(key, value);
-        hasChanged = true;
-      }
-    }
-
-    if (!hasChanged) return;
+    const nextSearch = buildLogRangeSearch(location.search, logQueryOptions);
+    if (!nextSearch) return;
 
     navigate(
       {
         pathname: location.pathname,
-        search: `?${nextParams.toString()}`,
+        search: nextSearch,
         hash: location.hash,
       },
       { replace: true }
@@ -162,11 +158,10 @@ export function useObserverPageState(params) {
     if (isValidating || !hasValidationResult) return;
 
     const currentPath = location.pathname;
-    const isParamRoute =
-      currentPath.includes("/observer/") && currentPath.split("/").length > 2;
+    const isParamRoute = isObserverEquipmentPath(currentPath);
 
     if (eqpId) {
-      const newPath = `/observer/${eqpId}`;
+      const newPath = getObserverEquipmentPath(eqpId);
       if (currentPath !== newPath) {
         navigate(
           {
@@ -180,7 +175,7 @@ export function useObserverPageState(params) {
     } else if (isParamRoute) {
       navigate(
         {
-          pathname: "/observer",
+          pathname: getObserverEquipmentPath(null),
           search: location.search,
           hash: location.hash,
         },

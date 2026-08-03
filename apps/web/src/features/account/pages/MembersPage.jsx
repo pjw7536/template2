@@ -3,21 +3,13 @@ import { toast } from "sonner"
 import { CheckCircle2, Clock3, ShieldCheck, UserPlus, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/lib/auth"
 
 import { MembersDataTable } from "../components/MembersDataTable"
+import { MembersSummaryCards } from "../components/cards/MembersSummaryCards"
+import { MembersAccessDialogs } from "../components/dialog/MembersAccessDialogs"
 import {
   useAffiliationMembers,
   useAffiliationAccessMutation,
@@ -26,6 +18,11 @@ import {
   useInfiniteAffiliationRequests,
   useAffiliation,
 } from "../hooks/useAccountData"
+import {
+  buildAffiliationRequestRows,
+  buildMemberRows,
+  selectVisibleMemberRows,
+} from "../utils/memberRows"
 
 const REQUEST_PAGE_SIZE = 20
 
@@ -203,58 +200,8 @@ export default function MembersPage() {
   }
 
   const pageTitle = user?.username ? `Members · ${user.username}` : "Members"
-  const memberRows = members.map((member) => {
-    const displayName =
-      member?.name?.trim() || member?.username?.trim() || member?.knoxId || "알 수 없음"
-    const memberAffiliation = member?.userSdwtProd || ""
-    const normalizedRole = (member?.role || "").toLowerCase()
-    return {
-      id: `member-${member.userId}`,
-      userId: member.userId,
-      type: "member",
-      name: displayName,
-      knoxId: member.knoxId || "-",
-      email: member.email || "",
-      affiliationLabel: [member.department, memberAffiliation].filter(Boolean).join(" / ") || "-",
-      memberRole: ["viewer", "member", "manager"].includes(normalizedRole)
-        ? normalizedRole
-        : "viewer",
-      isCurrentAffiliation: Boolean(member.isCurrentAffiliation),
-      approvalRole: null,
-      requestedAt: null,
-      changeId: null,
-      status: "MEMBER",
-    }
-  })
-  const requestRows = requests.map((change) => {
-    const requesterName = change?.user?.username || change?.user?.sabun || "알 수 없음"
-    const requesterKnoxId = change?.user?.knoxId || "-"
-    const targetParts = [
-      change?.department,
-      change?.line,
-      change?.toUserSdwtProd,
-    ].filter(Boolean)
-    const targetLabel =
-      targetParts.length > 0 ? targetParts.join(" / ") : change?.toUserSdwtProd || "-"
-    const normalizedRole = (change?.role || "").toLowerCase()
-    const role = ["viewer", "member", "manager"].includes(normalizedRole)
-      ? normalizedRole
-      : "viewer"
-    return {
-      id: `request-${change.id}`,
-      type: "request",
-      name: requesterName,
-      knoxId: requesterKnoxId,
-      email: change?.user?.email || "",
-      affiliationLabel: targetLabel,
-      memberRole: null,
-      approvalRole: role,
-      requestedAt: change.requestedAt,
-      changeId: change.id,
-      status: change.status || "PENDING",
-    }
-  })
-  const combinedRows = [...requestRows, ...memberRows]
+  const memberRows = buildMemberRows(members)
+  const requestRows = buildAffiliationRequestRows(requests)
   const canApproveAny = requestRows.some(
     (row) => row.approvalRole === "manager",
   )
@@ -262,12 +209,7 @@ export default function MembersPage() {
     (row) => row.approvalRole === "manager",
   ).length
   const showApprovalNotice = requestTotal > 0 && !canApproveAny
-  const activeRows =
-    activeTab === "members"
-      ? memberRows
-      : activeTab === "requests"
-        ? requestRows
-        : combinedRows
+  const activeRows = selectVisibleMemberRows({ activeTab, memberRows, requestRows })
 
   const isActiveLoading =
     activeTab === "members"
@@ -381,27 +323,7 @@ export default function MembersPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          {summaryItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <div key={item.label} className="rounded-lg border bg-card p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
-                    <p className="mt-1 truncate text-xl font-semibold tabular-nums text-foreground">
-                      {item.value}
-                    </p>
-                  </div>
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                    <Icon className="size-4" aria-hidden="true" />
-                  </div>
-                </div>
-                <p className="mt-2 truncate text-xs text-muted-foreground">{item.description}</p>
-              </div>
-            )
-          })}
-        </div>
+        <MembersSummaryCards items={summaryItems} />
       </div>
 
       <div className="min-h-0 min-w-0 flex-1">
@@ -437,297 +359,73 @@ export default function MembersPage() {
         />
       </div>
 
-      <Dialog
-        open={Boolean(rejectTarget)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
+      <MembersAccessDialogs
+        rejectDialog={{
+          target: rejectTarget,
+          reason: rejectReason,
+          isPending: decisionMutation.isPending,
+          error: decisionMutation.error,
+          onReasonChange: setRejectReason,
+          onClose: () => {
             setRejectTarget(null)
             setRejectReason("")
-          }
+          },
+          onConfirm: handleRejectConfirm,
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>거절 사유 입력</DialogTitle>
-            <DialogDescription>
-              {rejectTarget?.name
-                ? `${rejectTarget.name}님의 소속 변경 요청을 거절합니다.`
-                : "소속 변경 요청을 거절합니다."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2">
-            <Label htmlFor="affiliationRejectReason">거절 사유 (선택)</Label>
-            <textarea
-              id="affiliationRejectReason"
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              className="min-h-24 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="사유를 입력하지 않아도 거절할 수 있습니다."
-              maxLength={500}
-            />
-            <p className="text-xs text-muted-foreground">
-              거절 사유는 신청자에게 그대로 표시됩니다.
-            </p>
-            {decisionMutation.error ? (
-              <p className="text-xs text-destructive">
-                {decisionMutation.error?.message || "거절 처리에 실패했습니다."}
-              </p>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setRejectTarget(null)
-                setRejectReason("")
-              }}
-              disabled={decisionMutation.isPending}
-            >
-              취소
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleRejectConfirm}
-              disabled={decisionMutation.isPending}
-            >
-              거절 확정
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={grantOpen}
-        onOpenChange={(nextOpen) => {
-          setGrantOpen(nextOpen)
-          if (!nextOpen) {
-            setGrantSearch("")
+        grantDialog={{
+          open: grantOpen,
+          userSdwtProd,
+          search: grantSearch,
+          userId: grantUserId,
+          role: grantRole,
+          reason: grantReason,
+          candidates: grantCandidates,
+          isCandidatesPending: grantCandidatesPending,
+          candidatesError: grantCandidatesError,
+          isPending: accessMutation.isPending,
+          error: accessMutation.error,
+          onOpenChange: (nextOpen) => {
+            setGrantOpen(nextOpen)
+            if (!nextOpen) {
+              setGrantSearch("")
+              setGrantUserId("")
+              setGrantRole("viewer")
+              setGrantReason("")
+            }
+          },
+          onSearchChange: (value) => {
+            setGrantSearch(value)
             setGrantUserId("")
-            setGrantRole("viewer")
-            setGrantReason("")
-          }
+          },
+          onUserIdChange: setGrantUserId,
+          onRoleChange: setGrantRole,
+          onReasonChange: setGrantReason,
+          onConfirm: handleGrantConfirm,
         }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>소속 접근 권한 추가</DialogTitle>
-            <DialogDescription>
-              {userSdwtProd} 데이터를 함께 사용할 사용자와 역할을 선택합니다.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="affiliationGrantSearch">사용자 검색</Label>
-              <Input
-                id="affiliationGrantSearch"
-                value={grantSearch}
-                onChange={(event) => {
-                  setGrantSearch(event.target.value)
-                  setGrantUserId("")
-                }}
-                placeholder="이름, Knox ID, 사번 검색"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="affiliationGrantUser">대상 사용자</Label>
-              <Select
-                value={grantUserId}
-                onValueChange={setGrantUserId}
-                disabled={grantCandidatesPending || grantCandidates.length === 0}
-              >
-                <SelectTrigger id="affiliationGrantUser" className="w-full">
-                  <SelectValue
-                    placeholder={
-                      grantCandidatesPending
-                        ? "사용자 조회 중..."
-                        : "사용자를 선택하세요"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {grantCandidates.map((candidate) => (
-                    <SelectItem
-                      key={candidate.userId}
-                      value={String(candidate.userId)}
-                    >
-                      {candidate.displayName || candidate.username || candidate.knoxId || candidate.sabun}
-                      {candidate.knoxId ? ` · ${candidate.knoxId}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!grantCandidatesPending && grantCandidates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  추가할 수 있는 사용자가 없습니다. 검색어를 변경해 보세요.
-                </p>
-              ) : null}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="affiliationGrantRole">소속 역할</Label>
-              <Select value={grantRole} onValueChange={setGrantRole}>
-                <SelectTrigger id="affiliationGrantRole" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="viewer">조회 권한</SelectItem>
-                  <SelectItem value="member">일반 권한</SelectItem>
-                  <SelectItem value="manager">운영 권한</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                조회 권한은 읽기 전용이며, 삭제와 권한 관리는 운영 권한만 가능합니다.
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="affiliationGrantReason">변경 사유 (필수)</Label>
-              <Textarea
-                id="affiliationGrantReason"
-                value={grantReason}
-                onChange={(event) => setGrantReason(event.target.value)}
-                placeholder="권한을 추가하는 이유를 입력하세요"
-                maxLength={500}
-                disabled={accessMutation.isPending}
-              />
-            </div>
-            {grantCandidatesError || accessMutation.error ? (
-              <p className="text-xs text-destructive">
-                {grantCandidatesError?.message
-                  || accessMutation.error?.message
-                  || "사용자 또는 권한 정보를 불러오지 못했습니다."}
-              </p>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setGrantOpen(false)}
-              disabled={accessMutation.isPending}
-            >
-              취소
-            </Button>
-            <Button
-              type="button"
-              onClick={handleGrantConfirm}
-              disabled={!grantUserId || !grantReason.trim() || accessMutation.isPending}
-            >
-              {accessMutation.isPending ? "추가 중..." : "권한 추가"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(roleChangeTarget)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
+        roleChangeDialog={{
+          target: roleChangeTarget,
+          reason: roleChangeReason,
+          isPending: accessMutation.isPending,
+          onReasonChange: setRoleChangeReason,
+          onClose: () => {
             setRoleChangeTarget(null)
             setRoleChangeReason("")
-          }
+          },
+          onConfirm: handleRoleChangeConfirm,
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>소속 역할 변경</DialogTitle>
-            <DialogDescription>
-              {roleChangeTarget?.row?.name
-                ? `${roleChangeTarget.row.name}님의 소속 역할을 변경합니다.`
-                : "선택한 사용자의 소속 역할을 변경합니다."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2">
-            <Label htmlFor="affiliationRoleChangeReason">변경 사유 (필수)</Label>
-            <Textarea
-              id="affiliationRoleChangeReason"
-              value={roleChangeReason}
-              onChange={(event) => setRoleChangeReason(event.target.value)}
-              placeholder="역할을 변경하는 이유를 입력하세요"
-              maxLength={500}
-              disabled={accessMutation.isPending}
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setRoleChangeTarget(null)
-                setRoleChangeReason("")
-              }}
-              disabled={accessMutation.isPending}
-            >
-              취소
-            </Button>
-            <Button
-              type="button"
-              onClick={handleRoleChangeConfirm}
-              disabled={!roleChangeReason.trim() || accessMutation.isPending}
-            >
-              {accessMutation.isPending ? "변경 중..." : "역할 변경"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(revokeTarget)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
+        revokeDialog={{
+          target: revokeTarget,
+          userSdwtProd,
+          reason: revokeReason,
+          isPending: accessMutation.isPending,
+          onReasonChange: setRevokeReason,
+          onClose: () => {
             setRevokeTarget(null)
             setRevokeReason("")
-          }
+          },
+          onConfirm: handleRevokeConfirm,
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>추가 소속 접근 회수</DialogTitle>
-            <DialogDescription>
-              {revokeTarget?.name
-                ? `${revokeTarget.name}님의 ${userSdwtProd} 추가 접근 권한을 회수합니다.`
-                : "선택한 사용자의 추가 소속 접근 권한을 회수합니다."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <p className="text-sm text-muted-foreground">
-              현재 소속 자체는 변경되지 않으며, 마지막 운영 권한은 회수할 수 없습니다.
-            </p>
-            <div className="grid gap-2">
-              <Label htmlFor="affiliationRevokeReason">변경 사유 (필수)</Label>
-              <Textarea
-                id="affiliationRevokeReason"
-                value={revokeReason}
-                onChange={(event) => setRevokeReason(event.target.value)}
-                placeholder="권한을 회수하는 이유를 입력하세요"
-                maxLength={500}
-                disabled={accessMutation.isPending}
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setRevokeTarget(null)
-                setRevokeReason("")
-              }}
-              disabled={accessMutation.isPending}
-            >
-              취소
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleRevokeConfirm}
-              disabled={!revokeReason.trim() || accessMutation.isPending}
-            >
-              {accessMutation.isPending ? "회수 중..." : "권한 회수"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   )
 }

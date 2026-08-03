@@ -10,95 +10,21 @@ import { transformLogsToTableData } from "../utils/dataTransformers";
 import { addDurationToLogs, mergeLogsByTime } from "../utils/logs";
 import {
   getEnabledLogKeys,
-  mergeUniqueLogItems,
   OBSERVER_LOG_CONFIG,
   OBSERVER_LOG_PAGE_SIZE,
   OBSERVER_RESIDENT_LOG_LIMIT,
 } from "../utils/logPagination";
+import {
+  buildObserverLogScopeKey,
+  getLatestObserverLogPageState,
+  mergeResidentLogs,
+  shouldRetryObserverLogQuery,
+} from "../utils/observerLogController";
 
 const LOG_QUERY_STALE_TIME = 1000 * 60 * 5;
 const LOG_QUERY_GC_TIME = 1000 * 60 * 2;
 const ALL_LOG_KEYS = OBSERVER_LOG_CONFIG.map(({ logKey }) => logKey);
 const ALL_LOG_KEY_VALUE = ALL_LOG_KEYS.join(",");
-
-function shouldRetry(failureCount, error) {
-  if (failureCount >= 1) return false;
-  return !error?.status || [429, 502, 503].includes(error.status);
-}
-
-function buildScopeKey(eqpId, logQueryOptions) {
-  return JSON.stringify([eqpId || "", logQueryOptions]);
-}
-
-function getLogTimestamp(item) {
-  const timestamp = Date.parse(item?.eventTime || "");
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-function mergeResidentLogs(batchData, entries, pageQueries) {
-  const result = {};
-  const seen = new Set();
-  let residentCount = 0;
-
-  for (const { logKey } of OBSERVER_LOG_CONFIG) {
-    const initialItems = mergeUniqueLogItems(
-      [batchData?.[logKey]?.items || []],
-      OBSERVER_RESIDENT_LOG_LIMIT
-    );
-    result[logKey] = initialItems;
-    residentCount += initialItems.length;
-    initialItems.forEach((item) => seen.add(`${logKey}:${item.id}`));
-  }
-
-  const extraItems = [];
-  entries.forEach((entry, index) => {
-    for (const item of pageQueries[index]?.data?.items || []) {
-      const identity = `${entry.logKey}:${item.id}`;
-      if (seen.has(identity)) continue;
-      seen.add(identity);
-      extraItems.push({
-        item,
-        logKey: entry.logKey,
-        sequence: extraItems.length,
-      });
-    }
-  });
-  extraItems.sort(
-    (left, right) =>
-      getLogTimestamp(right.item) - getLogTimestamp(left.item) ||
-      left.sequence - right.sequence
-  );
-
-  const remainingBudget = Math.max(
-    OBSERVER_RESIDENT_LOG_LIMIT - residentCount,
-    0
-  );
-  extraItems.slice(0, remainingBudget).forEach(({ item, logKey }) => {
-    result[logKey].push(item);
-  });
-  return result;
-}
-
-function getLatestPageState(logKey, batchData, entries, pageQueries) {
-  const matchingIndexes = entries
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.logKey === logKey);
-  const lastMatch = matchingIndexes.at(-1);
-  if (lastMatch) {
-    const query = pageQueries[lastMatch.index];
-    if (query?.data) {
-      return {
-        cursor: query.data.page?.nextCursor,
-        hasMore: Boolean(query.data.page?.hasMore),
-      };
-    }
-  }
-  const initial = batchData?.[logKey];
-  return {
-    cursor: initial?.nextCursor,
-    hasMore: Boolean(initial?.hasMore),
-  };
-}
 
 export function useObserverLogs(
   eqpId,
@@ -116,7 +42,7 @@ export function useObserverLogs(
     [enabledLogKeys]
   );
   const scopeKey = useMemo(
-    () => buildScopeKey(eqpId, logQueryOptions),
+    () => buildObserverLogScopeKey(eqpId, logQueryOptions),
     [eqpId, logQueryOptions]
   );
   const [pageRequests, setPageRequests] = useState({
@@ -149,7 +75,7 @@ export function useObserverLogs(
     enabled: Boolean(eqpId),
     staleTime: LOG_QUERY_STALE_TIME,
     gcTime: LOG_QUERY_GC_TIME,
-    retry: shouldRetry,
+    retry: shouldRetryObserverLogQuery,
   });
 
   const pageQueries = useQueries({
@@ -172,7 +98,7 @@ export function useObserverLogs(
       enabled: Boolean(eqpId && cursor),
       staleTime: LOG_QUERY_STALE_TIME,
       gcTime: LOG_QUERY_GC_TIME,
-      retry: shouldRetry,
+      retry: shouldRetryObserverLogQuery,
     })),
   });
 
@@ -196,7 +122,7 @@ export function useObserverLogs(
       result[logKey] =
         enabledLogKeySet.has(logKey) &&
         residentLogCount < OBSERVER_RESIDENT_LOG_LIMIT &&
-        getLatestPageState(
+        getLatestObserverLogPageState(
           logKey,
           batchData,
           activePageRequests,
@@ -220,7 +146,7 @@ export function useObserverLogs(
   }, [activePageRequests, pageQueries]);
 
   const loadMoreType = (logKey) => {
-    const pageState = getLatestPageState(
+    const pageState = getLatestObserverLogPageState(
       logKey,
       batchData,
       activePageRequests,

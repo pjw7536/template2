@@ -658,7 +658,7 @@ class AppstoreEndpointTests(TestCase):
             user_id=app_admin.id,
             scope_key="portal",
             action="grant",
-            reason=None,
+            reason="AppStore 관리자 테스트 Portal 권한 부여",
             role="user",
         )
         account_services.decide_user_access(
@@ -666,7 +666,7 @@ class AppstoreEndpointTests(TestCase):
             user_id=app_admin.id,
             scope_key="appstore",
             action="grant",
-            reason=None,
+            reason="AppStore 관리자 테스트 앱 권한 부여",
             role="admin",
         )
         self.client.force_login(app_admin)
