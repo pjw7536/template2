@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -102,6 +103,17 @@ class OpenWebUIConfigError(RuntimeError):
 
 class OpenWebUIRequestError(RuntimeError):
     """OpenWebUI 요청 또는 응답 처리에 실패했을 때 발생합니다."""
+
+
+class _OpenWebUIReasoningOnlyResponseError(OpenWebUIRequestError):
+    """OpenWebUI가 최종 답변 없이 reasoning만 반환했을 때 발생합니다."""
+
+
+@dataclass(frozen=True)
+class _RedactedResponseText:
+    """본문을 보관하지 않고 streaming 응답 문자열 길이만 표현합니다."""
+
+    length: int
 
 
 @dataclass(frozen=True)
@@ -211,7 +223,11 @@ def _parse_headers(raw: str | None, source: str) -> dict[str, str]:
 def _build_headers(config: OpenWebUISummaryConfig) -> dict[str, str]:
     """OpenWebUI 요청 header를 구성합니다."""
 
-    headers = {"Content-Type": "application/json", **config.common_headers}
+    headers = {
+        "Accept": "text/event-stream",
+        "Content-Type": "application/json",
+        **config.common_headers,
+    }
     if config.api_token:
         token = config.api_token
         headers["Authorization"] = token if token.lower().startswith("bearer ") else f"Bearer {token}"
@@ -379,6 +395,8 @@ def _truncate_log_label(value: Any, *, max_length: int = 80) -> str:
 def _describe_response_value(value: Any) -> str:
     """응답 본문 값은 노출하지 않고 타입과 크기만 설명합니다."""
 
+    if isinstance(value, _RedactedResponseText):
+        return f"str(len={value.length})"
     if value is None:
         return "NoneType"
     if isinstance(value, str):
@@ -464,6 +482,23 @@ def _build_response_context(
     )
 
 
+def _find_reasoning_value(message: dict[str, Any]) -> Any:
+    """표준 및 provider 확장 필드에서 reasoning 값 존재 여부를 찾습니다."""
+
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        value = message.get(key)
+        if value not in (None, ""):
+            return value
+
+    provider_fields = message.get("provider_specific_fields")
+    if isinstance(provider_fields, dict):
+        for key in ("reasoning_content", "reasoning", "thinking"):
+            value = provider_fields.get(key)
+            if value not in (None, ""):
+                return value
+    return None
+
+
 def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
     """OpenAI 호환 응답에서 텍스트를 추출하고 비텍스트 종료 원인을 구분합니다.
 
@@ -499,6 +534,7 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
 
     finish_reason = choice.get("finish_reason")
     content = message.get("content")
+    reasoning_value = _find_reasoning_value(message)
     response_context = _build_response_context(resp_json, choice, message, stage=stage)
 
     if finish_reason == "length":
@@ -526,7 +562,12 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
         raise OpenWebUIRequestError(f"OpenWebUI가 지원하지 않는 audio 응답을 반환했습니다. {response_context}")
 
     if content is None:
-        raise OpenWebUIRequestError(f"OpenWebUI 응답에 저장할 텍스트가 없습니다. {response_context}")
+        error_class = (
+            _OpenWebUIReasoningOnlyResponseError
+            if reasoning_value is not None
+            else OpenWebUIRequestError
+        )
+        raise error_class(f"OpenWebUI 응답에 저장할 텍스트가 없습니다. {response_context}")
     if not isinstance(content, str):
         raise OpenWebUIRequestError(
             f"OpenWebUI 응답 content 타입이 OpenAI 호환 계약과 다릅니다. {response_context}"
@@ -534,7 +575,12 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
 
     summary = content.strip()
     if not summary:
-        raise OpenWebUIRequestError(f"OpenWebUI 응답 content가 비어 있습니다. {response_context}")
+        error_class = (
+            _OpenWebUIReasoningOnlyResponseError
+            if reasoning_value is not None
+            else OpenWebUIRequestError
+        )
+        raise error_class(f"OpenWebUI 응답 content가 비어 있습니다. {response_context}")
     return summary
 
 
@@ -604,14 +650,153 @@ def _normalize_reviewed_core_summary_text(review: str, candidate: str) -> str | 
     return _normalize_core_summary_text(compact)
 
 
-def _post_chat_completion(
+def _iter_sse_payloads(response: requests.Response) -> Iterator[dict[str, Any]]:
+    """OpenWebUI SSE 응답에서 JSON payload를 순서대로 반환합니다."""
+
+    for line_number, raw_line in enumerate(response.iter_lines(decode_unicode=True), start=1):
+        line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else raw_line
+        if not isinstance(line, str):
+            continue
+        line = line.strip()
+        if not line or line.startswith(":") or not line.startswith("data:"):
+            continue
+
+        data = line.removeprefix("data:").strip()
+        if data == "[DONE]":
+            break
+        try:
+            payload = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise OpenWebUIRequestError(
+                f"OpenWebUI streaming 응답 JSON 파싱 실패: line={line_number}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise OpenWebUIRequestError(
+                f"OpenWebUI streaming event가 JSON 객체가 아닙니다. "
+                f"line={line_number}, event_type={type(payload).__name__}"
+            )
+        yield payload
+
+
+def _accumulate_streaming_text_lengths(
+    target: dict[str, int],
+    source: dict[str, Any],
+) -> None:
+    """reasoning 본문은 보관하지 않고 필드별 문자열 길이만 누적합니다."""
+
+    for key in ("reasoning_content", "reasoning", "thinking", "refusal"):
+        value = source.get(key)
+        if isinstance(value, str):
+            target[key] = target.get(key, 0) + len(value)
+
+
+def _parse_streaming_chat_completion(response: requests.Response, *, stage: str) -> str:
+    """OpenWebUI SSE chunk에서 최종 assistant content만 조합합니다."""
+
+    response_metadata: dict[str, Any] = {"object": "chat.completion.stream"}
+    choice_index: Any = 0
+    finish_reason: Any = None
+    content_parts: list[str] = []
+    content_seen = False
+    invalid_content: Any = None
+    text_lengths: dict[str, int] = {}
+    provider_text_lengths: dict[str, int] = {}
+    has_tool_calls = False
+    has_audio = False
+    event_count = 0
+
+    for payload in _iter_sse_payloads(response):
+        event_count += 1
+        for key in ("id", "object", "model", "usage"):
+            if payload.get(key) is not None:
+                response_metadata[key] = payload[key]
+
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            continue
+
+        choice_index = choice.get("index", choice_index)
+        if choice.get("finish_reason") is not None:
+            finish_reason = choice["finish_reason"]
+        delta = choice.get("delta")
+        if not isinstance(delta, dict):
+            continue
+
+        content = delta.get("content")
+        if isinstance(content, str):
+            content_seen = True
+            content_parts.append(content)
+        elif content is not None:
+            invalid_content = content
+
+        _accumulate_streaming_text_lengths(text_lengths, delta)
+        provider_fields = delta.get("provider_specific_fields")
+        if isinstance(provider_fields, dict):
+            _accumulate_streaming_text_lengths(provider_text_lengths, provider_fields)
+        has_tool_calls = has_tool_calls or bool(delta.get("tool_calls") or delta.get("function_call"))
+        has_audio = has_audio or delta.get("audio") is not None
+
+    if not event_count:
+        raise OpenWebUIRequestError(f"OpenWebUI streaming 응답이 비어 있습니다. stage={stage}")
+
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": "".join(content_parts) if content_seen else invalid_content,
+    }
+    message.update(
+        {key: _RedactedResponseText(length) for key, length in text_lengths.items() if length > 0}
+    )
+    if provider_text_lengths:
+        message["provider_specific_fields"] = {
+            key: _RedactedResponseText(length)
+            for key, length in provider_text_lengths.items()
+            if length > 0
+        }
+    if has_tool_calls:
+        message["tool_calls"] = [{}]
+    if has_audio:
+        message["audio"] = {}
+
+    response_metadata["choices"] = [
+        {
+            "index": choice_index,
+            "finish_reason": finish_reason,
+            "message": message,
+        }
+    ]
+    return _extract_reply_content(response_metadata, stage=stage)
+
+
+def _parse_chat_completion_response(response: requests.Response, *, stage: str) -> str:
+    """Content-Type에 따라 SSE 또는 JSON chat completion 응답을 해석합니다."""
+
+    response_headers = getattr(response, "headers", None)
+    content_type_value = response_headers.get("Content-Type", "") if hasattr(response_headers, "get") else ""
+    content_type = content_type_value if isinstance(content_type_value, str) else ""
+    if "text/event-stream" in content_type.lower():
+        return _parse_streaming_chat_completion(response, stage=stage)
+
+    try:
+        resp_json = response.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        response_text = getattr(response, "text", "")
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답 JSON 파싱 실패: status={response.status_code}, text={response_text[:500]!r}"
+        ) from exc
+    return _extract_reply_content(resp_json, stage=stage)
+
+
+def _post_chat_completion_once(
     *,
     session: requests.Session,
     config: OpenWebUISummaryConfig,
     messages: list[dict[str, str]],
     stage: str,
 ) -> str:
-    """OpenWebUI chat completions API를 호출하고 assistant 응답 원문을 반환합니다."""
+    """OpenWebUI chat completions API를 streaming 요청으로 한 번 호출합니다."""
 
     if not config.url:
         raise OpenWebUIConfigError("OPENWEBUI_URL 설정이 비어 있습니다.")
@@ -622,7 +807,7 @@ def _post_chat_completion(
         "model": config.model,
         "messages": messages,
         "temperature": 0.0,
-        "stream": False,
+        "stream": True,
         "tool_choice": "none",
     }
 
@@ -632,14 +817,12 @@ def _post_chat_completion(
             headers=_build_headers(config),
             json=payload,
             timeout=config.timeout_seconds,
+            stream=True,
         )
         response.raise_for_status()
-        try:
-            resp_json = response.json()
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise OpenWebUIRequestError(
-                f"OpenWebUI 응답 JSON 파싱 실패: status={response.status_code}, text={response.text[:500]!r}"
-            ) from exc
+        return _parse_chat_completion_response(response, stage=stage)
+    except OpenWebUIRequestError:
+        raise
     except requests.HTTPError as exc:
         status = response.status_code if "response" in locals() else "unknown"
         text_preview = getattr(response, "text", "")[:500]
@@ -647,7 +830,51 @@ def _post_chat_completion(
     except requests.RequestException as exc:
         raise OpenWebUIRequestError(f"OpenWebUI 요청 실패: {exc}") from exc
 
-    return _extract_reply_content(resp_json, stage=stage)
+
+def _with_low_reasoning(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """gpt-oss 재시도용으로 system message에 낮은 reasoning 설정을 추가합니다."""
+
+    retry_messages = [dict(message) for message in messages]
+    for message in retry_messages:
+        if message.get("role") != "system":
+            continue
+        message["content"] = f"Reasoning: low\n\n{message.get('content', '')}"
+        return retry_messages
+
+    return [{"role": "system", "content": "Reasoning: low"}, *retry_messages]
+
+
+def _post_chat_completion(
+    *,
+    session: requests.Session,
+    config: OpenWebUISummaryConfig,
+    messages: list[dict[str, str]],
+    stage: str,
+) -> str:
+    """최종 content가 없는 gpt-oss 응답을 낮은 reasoning으로 한 번 재시도합니다."""
+
+    try:
+        return _post_chat_completion_once(
+            session=session,
+            config=config,
+            messages=messages,
+            stage=stage,
+        )
+    except _OpenWebUIReasoningOnlyResponseError:
+        logger.warning(
+            "OpenWebUI가 최종 content 없이 reasoning만 반환해 낮은 reasoning으로 재시도합니다. stage=%s",
+            stage,
+        )
+
+    try:
+        return _post_chat_completion_once(
+            session=session,
+            config=config,
+            messages=_with_low_reasoning(messages),
+            stage=stage,
+        )
+    except _OpenWebUIReasoningOnlyResponseError as exc:
+        raise OpenWebUIRequestError(f"{exc} retry=reasoning_low") from exc
 
 
 def _request_event_summary(
