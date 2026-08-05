@@ -7,6 +7,7 @@ from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from unittest.mock import Mock, patch
 
 import requests
@@ -91,6 +92,17 @@ def _build_openwebui_session(
         session.post.side_effect = [build_response(content) for content in replies]
     else:
         session.post.return_value = build_response(reply)
+    return session
+
+
+def _build_openwebui_json_session(resp_json: Any) -> Mock:
+    """지정한 JSON을 반환하는 OpenWebUI session mock을 생성합니다."""
+
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = resp_json
+    session = Mock()
+    session.post.return_value = response
     return session
 
 
@@ -370,6 +382,7 @@ class CtProcessCommentSummaryTests(TestCase):
         review_request_messages = review_request_kwargs["json"]["messages"]
         self.assertEqual(event_request_kwargs["json"]["temperature"], 0.0)
         self.assertEqual(event_request_kwargs["json"]["model"], "test-model")
+        self.assertEqual(event_request_kwargs["json"]["tool_choice"], "none")
         self.assertEqual(event_request_kwargs["headers"]["Authorization"], "Bearer test-token")
         self.assertIn("절대로 추정하거나 생성하지 마세요", event_request_messages[0]["content"])
         self.assertIn("[YYYY-MM-DD HH:MM] 이벤트", event_request_messages[0]["content"])
@@ -469,6 +482,162 @@ class CtProcessCommentSummaryTests(TestCase):
         session.post.return_value = response
 
         with self.assertRaisesRegex(summary_module.OpenWebUIRequestError, "token limit"):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
+        """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {"name": "search", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"tool call.*stage=event_summary",
+        ):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_reports_openwebui_refusal_response(self) -> None:
+        """모델 거절 응답은 content null 일반 오류와 구분합니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": None, "refusal": "요청을 처리할 수 없습니다."},
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"생성을 거절.*stage=event_summary",
+        ):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_reports_openwebui_content_filter_response(self) -> None:
+        """content filter로 차단된 응답을 별도 원인으로 보고합니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "content_filter",
+                        "message": {"content": None},
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"content filter.*stage=event_summary",
+        ):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_reports_openwebui_audio_response(self) -> None:
+        """텍스트 전용 요약 배치에서 audio 응답을 저장하지 않습니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": None,
+                            "audio": {"data": "base64", "transcript": "점검 완료"},
+                        },
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"audio 응답.*stage=event_summary",
+        ):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_rejects_nonstandard_content_parts_response(self) -> None:
+        """최종 content 배열은 Chat Completions 응답 계약 위반으로 처리합니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": [{"type": "text", "text": "점검 완료"}]},
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"호환 계약.*content_type=list",
+        ):
+            summary_module.request_summary(
+                session=session,
+                config=_build_openwebui_config(),
+                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+            )
+
+    def test_request_summary_reports_openwebui_null_content_without_reason(self) -> None:
+        """원인 필드 없는 content null 응답도 호출 단계와 함께 보고합니다."""
+
+        session = _build_openwebui_json_session(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": None},
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(
+            summary_module.OpenWebUIRequestError,
+            r"저장할 텍스트가 없습니다.*stage=event_summary",
+        ):
             summary_module.request_summary(
                 session=session,
                 config=_build_openwebui_config(),

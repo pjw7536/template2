@@ -367,25 +367,81 @@ def build_core_summary_review_prompt(event_summary: str, core_summary: str) -> l
     ]
 
 
-def _extract_reply_content(resp_json: dict[str, Any]) -> str:
-    """OpenAI 호환 응답에서 assistant content 원문을 추출합니다."""
+def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
+    """OpenAI 호환 응답에서 텍스트를 추출하고 비텍스트 종료 원인을 구분합니다.
 
-    try:
-        choices = resp_json["choices"]
-        if not choices:
-            raise OpenWebUIRequestError("OpenWebUI 응답 choices가 비어 있습니다.")
-        choice = choices[0]
-        if choice.get("finish_reason") == "length":
-            raise OpenWebUIRequestError("OpenWebUI 응답이 token limit으로 잘렸습니다.")
-        content = choice["message"]["content"]
-        if not isinstance(content, str):
-            raise OpenWebUIRequestError("OpenWebUI 응답 content가 문자열이 아닙니다.")
-    except (KeyError, IndexError, TypeError) as exc:
-        raise OpenWebUIRequestError(f"OpenWebUI 응답 포맷이 기대와 다릅니다. raw={resp_json!r}") from exc
+    Chat Completions의 최종 ``message.content``는 문자열 또는 null일 수 있습니다.
+    요약 배치는 텍스트만 저장하므로 tool call, 거절, 필터링, audio 응답은
+    원문을 임의 변환하지 않고 호출 단계가 포함된 오류로 반환합니다.
+    """
+
+    if not isinstance(resp_json, dict):
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답이 JSON 객체가 아닙니다. stage={stage}, response_type={type(resp_json).__name__}"
+        )
+
+    choices = resp_json.get("choices")
+    if not isinstance(choices, list):
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답 choices가 배열이 아닙니다. stage={stage}, choices_type={type(choices).__name__}"
+        )
+    if not choices:
+        raise OpenWebUIRequestError(f"OpenWebUI 응답 choices가 비어 있습니다. stage={stage}")
+
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답 choice가 객체가 아닙니다. stage={stage}, choice_type={type(choice).__name__}"
+        )
+
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답 message가 객체가 아닙니다. stage={stage}, message_type={type(message).__name__}"
+        )
+
+    finish_reason = choice.get("finish_reason")
+    content = message.get("content")
+    message_fields = ",".join(sorted(str(key) for key in message))
+    response_context = (
+        f"stage={stage}, finish_reason={finish_reason!r}, "
+        f"content_type={type(content).__name__}, message_fields=[{message_fields}]"
+    )
+
+    if finish_reason == "length":
+        raise OpenWebUIRequestError(f"OpenWebUI 응답이 token limit으로 잘렸습니다. {response_context}")
+
+    tool_calls = message.get("tool_calls")
+    function_call = message.get("function_call")
+    if finish_reason in {"tool_calls", "function_call"} or tool_calls or function_call:
+        tool_call_count = (
+            len(tool_calls) if isinstance(tool_calls, list) else int(bool(tool_calls or function_call))
+        )
+        raise OpenWebUIRequestError(
+            f"OpenWebUI가 텍스트 대신 tool call을 반환했습니다. "
+            f"tool_call_count={tool_call_count}, {response_context}"
+        )
+
+    if finish_reason == "content_filter":
+        raise OpenWebUIRequestError(f"OpenWebUI 응답이 content filter로 차단되었습니다. {response_context}")
+
+    refusal = message.get("refusal")
+    if refusal not in (None, ""):
+        raise OpenWebUIRequestError(f"OpenWebUI 모델이 응답 생성을 거절했습니다. {response_context}")
+
+    if message.get("audio") is not None:
+        raise OpenWebUIRequestError(f"OpenWebUI가 지원하지 않는 audio 응답을 반환했습니다. {response_context}")
+
+    if content is None:
+        raise OpenWebUIRequestError(f"OpenWebUI 응답에 저장할 텍스트가 없습니다. {response_context}")
+    if not isinstance(content, str):
+        raise OpenWebUIRequestError(
+            f"OpenWebUI 응답 content 타입이 OpenAI 호환 계약과 다릅니다. {response_context}"
+        )
 
     summary = content.strip()
     if not summary:
-        raise OpenWebUIRequestError("OpenWebUI 응답 content가 비어 있습니다.")
+        raise OpenWebUIRequestError(f"OpenWebUI 응답 content가 비어 있습니다. {response_context}")
     return summary
 
 
@@ -460,6 +516,7 @@ def _post_chat_completion(
     session: requests.Session,
     config: OpenWebUISummaryConfig,
     messages: list[dict[str, str]],
+    stage: str,
 ) -> str:
     """OpenWebUI chat completions API를 호출하고 assistant 응답 원문을 반환합니다."""
 
@@ -473,6 +530,7 @@ def _post_chat_completion(
         "messages": messages,
         "temperature": 0.0,
         "stream": False,
+        "tool_choice": "none",
     }
 
     try:
@@ -496,7 +554,7 @@ def _post_chat_completion(
     except requests.RequestException as exc:
         raise OpenWebUIRequestError(f"OpenWebUI 요청 실패: {exc}") from exc
 
-    return _extract_reply_content(resp_json)
+    return _extract_reply_content(resp_json, stage=stage)
 
 
 def _request_event_summary(
@@ -524,6 +582,7 @@ def _request_event_summary(
                     prompt_source=chunk,
                     workorder_title=workorder_title,
                 ),
+                stage="event_summary",
             )
         )
         if chunk_summary:
@@ -553,6 +612,7 @@ def request_summary(
             session=session,
             config=config,
             messages=build_core_summary_prompt(event_summary),
+            stage="core_summary",
         )
     )
     if core_summary is None:
@@ -563,6 +623,7 @@ def request_summary(
             session=session,
             config=config,
             messages=build_core_summary_review_prompt(event_summary, core_summary),
+            stage="core_review",
         ),
         core_summary,
     )
