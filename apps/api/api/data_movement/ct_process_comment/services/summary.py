@@ -367,6 +367,103 @@ def build_core_summary_review_prompt(event_summary: str, core_summary: str) -> l
     ]
 
 
+def _truncate_log_label(value: Any, *, max_length: int = 80) -> str:
+    """응답 메타데이터 이름을 로그에 안전한 제한 길이로 변환합니다."""
+
+    label = str(value).replace("\n", "\\n").replace("\r", "\\r")
+    if len(label) <= max_length:
+        return label
+    return f"{label[:max_length]}..."
+
+
+def _describe_response_value(value: Any) -> str:
+    """응답 본문 값은 노출하지 않고 타입과 크기만 설명합니다."""
+
+    if value is None:
+        return "NoneType"
+    if isinstance(value, str):
+        return f"str(len={len(value)})"
+    if isinstance(value, list):
+        return f"list(len={len(value)})"
+    if isinstance(value, dict):
+        keys = sorted(_truncate_log_label(key) for key in value)[:10]
+        suffix = ",..." if len(value) > len(keys) else ""
+        return f"dict(keys=[{','.join(keys)}{suffix}])"
+    return type(value).__name__
+
+
+def _format_response_metadata(value: Any) -> str:
+    """응답 식별 메타데이터만 제한된 길이로 로그 문자열화합니다."""
+
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return repr(_truncate_log_label(value, max_length=120))
+    return f"<{type(value).__name__}>"
+
+
+def _format_token_usage(resp_json: dict[str, Any]) -> str:
+    """민감한 본문 없이 알려진 token 사용량만 로그용으로 정리합니다."""
+
+    usage = resp_json.get("usage")
+    if not isinstance(usage, dict):
+        return "unavailable"
+
+    usage_parts: list[str] = []
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            usage_parts.append(f"{key}={value}")
+
+    completion_details = usage.get("completion_tokens_details")
+    if isinstance(completion_details, dict):
+        for key in (
+            "reasoning_tokens",
+            "audio_tokens",
+            "accepted_prediction_tokens",
+            "rejected_prediction_tokens",
+        ):
+            value = completion_details.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                usage_parts.append(f"{key}={value}")
+
+    return ",".join(usage_parts) if usage_parts else "unavailable"
+
+
+def _build_response_context(
+    resp_json: dict[str, Any],
+    choice: dict[str, Any],
+    message: dict[str, Any],
+    *,
+    stage: str,
+) -> str:
+    """Airflow 오류 분석에 필요한 비민감 OpenWebUI 응답 정보를 구성합니다."""
+
+    response_fields = sorted(_truncate_log_label(key) for key in resp_json)[:12]
+    message_items = sorted(message.items(), key=lambda item: str(item[0]))[:12]
+    message_field_types = ",".join(
+        f"{_truncate_log_label(key)}:{_describe_response_value(value)}"
+        for key, value in message_items
+    )
+    if len(message) > len(message_items):
+        message_field_types = f"{message_field_types},..."
+
+    return ", ".join(
+        [
+            f"stage={stage}",
+            f"response_id={_format_response_metadata(resp_json.get('id'))}",
+            f"response_object={_format_response_metadata(resp_json.get('object'))}",
+            f"response_model={_format_response_metadata(resp_json.get('model'))}",
+            f"response_fields=[{','.join(response_fields)}]",
+            f"choice_index={_format_response_metadata(choice.get('index', 0))}",
+            f"finish_reason={_format_response_metadata(choice.get('finish_reason'))}",
+            f"content_type={type(message.get('content')).__name__}",
+            f"message_field_types={{{message_field_types}}}",
+            f"usage={{{_format_token_usage(resp_json)}}}",
+        ]
+    )
+
+
 def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
     """OpenAI 호환 응답에서 텍스트를 추출하고 비텍스트 종료 원인을 구분합니다.
 
@@ -402,11 +499,7 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
 
     finish_reason = choice.get("finish_reason")
     content = message.get("content")
-    message_fields = ",".join(sorted(str(key) for key in message))
-    response_context = (
-        f"stage={stage}, finish_reason={finish_reason!r}, "
-        f"content_type={type(content).__name__}, message_fields=[{message_fields}]"
-    )
+    response_context = _build_response_context(resp_json, choice, message, stage=stage)
 
     if finish_reason == "length":
         raise OpenWebUIRequestError(f"OpenWebUI 응답이 token limit으로 잘렸습니다. {response_context}")

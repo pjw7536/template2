@@ -620,29 +620,55 @@ class CtProcessCommentSummaryTests(TestCase):
                 contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
             )
 
-    def test_request_summary_reports_openwebui_null_content_without_reason(self) -> None:
-        """원인 필드 없는 content null 응답도 호출 단계와 함께 보고합니다."""
+    def test_request_summary_reports_null_content_metadata_without_body(self) -> None:
+        """content null 응답은 본문을 숨기고 분석용 메타데이터를 보고합니다."""
+
+        reasoning_text = "민감한 내부 추론 본문"
 
         session = _build_openwebui_json_session(
             {
+                "id": "chatcmpl-null-content",
+                "object": "chat.completion",
+                "model": "reasoning-model",
                 "choices": [
                     {
+                        "index": 0,
                         "finish_reason": "stop",
-                        "message": {"content": None},
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "reasoning_content": reasoning_text,
+                        },
                     }
-                ]
+                ],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 256,
+                    "total_tokens": 376,
+                    "completion_tokens_details": {"reasoning_tokens": 256},
+                },
             }
         )
 
-        with self.assertRaisesRegex(
-            summary_module.OpenWebUIRequestError,
-            r"저장할 텍스트가 없습니다.*stage=event_summary",
-        ):
+        with self.assertRaises(summary_module.OpenWebUIRequestError) as error_context:
             summary_module.request_summary(
                 session=session,
                 config=_build_openwebui_config(),
                 contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
             )
+
+        error_message = str(error_context.exception)
+        self.assertIn("저장할 텍스트가 없습니다", error_message)
+        self.assertIn("stage=event_summary", error_message)
+        self.assertIn("response_id='chatcmpl-null-content'", error_message)
+        self.assertIn("response_model='reasoning-model'", error_message)
+        self.assertIn(
+            f"reasoning_content:str(len={len(reasoning_text)})",
+            error_message,
+        )
+        self.assertIn("completion_tokens=256", error_message)
+        self.assertIn("reasoning_tokens=256", error_message)
+        self.assertNotIn(reasoning_text, error_message)
 
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:
         """시간순 요약이 짧아도 핵심요약 생성을 요청하고 NO_CORE_SUMMARY면 비워 둡니다."""
