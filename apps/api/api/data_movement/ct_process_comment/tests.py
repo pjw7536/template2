@@ -400,11 +400,11 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(event_request_kwargs["json"]["top_p"], 1.0)
         self.assertEqual(event_request_kwargs["json"]["reasoning_effort"], "low")
         self.assertEqual(event_request_kwargs["json"]["model"], "test-model")
-        self.assertIs(event_request_kwargs["json"]["stream"], True)
+        self.assertIs(event_request_kwargs["json"]["stream"], False)
         self.assertEqual(event_request_kwargs["json"]["tool_choice"], "none")
         self.assertIs(event_request_kwargs["json"]["include_reasoning"], False)
-        self.assertIs(event_request_kwargs["stream"], True)
-        self.assertEqual(event_request_kwargs["headers"]["Accept"], "text/event-stream")
+        self.assertIs(event_request_kwargs["stream"], False)
+        self.assertEqual(event_request_kwargs["headers"]["Accept"], "application/json")
         self.assertEqual(event_request_kwargs["headers"]["Authorization"], "Bearer test-token")
         self.assertIn("절대로 추정하거나 생성하지 마세요", event_request_messages[0]["content"])
         self.assertIn("[YYYY-MM-DD HH:MM] 이벤트", event_request_messages[0]["content"])
@@ -572,6 +572,105 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(payload["temperature"], 1.0)
         self.assertEqual(payload["top_p"], 1.0)
         self.assertEqual(payload["reasoning_effort"], "low")
+
+    def test_post_chat_completion_uses_non_stream_to_avoid_empty_stream_response(self) -> None:
+        """배치 호출은 빈 streaming 응답을 피하도록 non-stream을 기본 사용합니다."""
+
+        empty_stream_response = Mock()
+        empty_stream_response.headers = {"Content-Type": "application/json"}
+        empty_stream_response.raise_for_status.return_value = None
+        empty_stream_response.json.return_value = {
+            "id": "chatcmpl-empty-stream",
+            "object": "chat.completion.chunk",
+            "model": "gpt-oss-120b",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": ""},
+                }
+            ],
+        }
+        completed_response = Mock()
+        completed_response.headers = {"Content-Type": "application/json"}
+        completed_response.raise_for_status.return_value = None
+        completed_response.json.return_value = {
+            "id": "chatcmpl-completed",
+            "object": "chat.completion",
+            "model": "gpt-oss-120b",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": "[2026-01-01 10:00] 점검 완료",
+                    },
+                }
+            ],
+        }
+        session = Mock()
+        session.post.side_effect = lambda *_args, **kwargs: (
+            empty_stream_response if kwargs["json"]["stream"] else completed_response
+        )
+
+        content = summary_module._post_chat_completion(
+            session=session,
+            config=_build_openwebui_config(),
+            messages=[{"role": "user", "content": "점검 이력을 요약하세요."}],
+            stage="event_summary",
+        )
+
+        self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
+        self.assertEqual(session.post.call_count, 1)
+        request_kwargs = session.post.call_args.kwargs
+        self.assertIs(request_kwargs["json"]["stream"], False)
+        self.assertIs(request_kwargs["stream"], False)
+        self.assertEqual(request_kwargs["headers"]["Accept"], "application/json")
+
+    def test_post_chat_completion_retries_empty_non_stream_as_stream(self) -> None:
+        """빈 non-stream 종료 응답은 streaming 요청으로 한 번 복구합니다."""
+
+        empty_response = Mock()
+        empty_response.headers = {"Content-Type": "application/json"}
+        empty_response.raise_for_status.return_value = None
+        empty_response.json.return_value = {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": ""},
+                }
+            ]
+        }
+        streaming_response = _build_openwebui_sse_response(
+            [
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": "[2026-01-01 10:00] 점검 완료"},
+                            "finish_reason": "stop",
+                        }
+                    ]
+                }
+            ]
+        )
+        session = Mock()
+        session.post.side_effect = [empty_response, streaming_response]
+
+        content = summary_module._post_chat_completion(
+            session=session,
+            config=_build_openwebui_config(),
+            messages=[{"role": "user", "content": "점검 이력을 요약하세요."}],
+            stage="event_summary",
+        )
+
+        self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
+        self.assertEqual(session.post.call_count, 2)
+        retry_request = session.post.call_args_list[1].kwargs
+        self.assertIs(retry_request["json"]["stream"], True)
+        self.assertIs(retry_request["stream"], True)
+        self.assertEqual(retry_request["headers"]["Accept"], "text/event-stream")
 
     def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
         """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""
@@ -753,9 +852,9 @@ class CtProcessCommentSummaryTests(TestCase):
         )
         self.assertIn("completion_tokens=256", error_message)
         self.assertIn("reasoning_tokens=256", error_message)
-        self.assertNotIn("retry=reasoning_low", error_message)
+        self.assertIn("retry=stream", error_message)
         self.assertNotIn(reasoning_text, error_message)
-        self.assertEqual(session.post.call_count, 1)
+        self.assertEqual(session.post.call_count, 2)
 
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:
         """시간순 요약이 짧아도 핵심요약 생성을 요청하고 NO_CORE_SUMMARY면 비워 둡니다."""

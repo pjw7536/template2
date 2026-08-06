@@ -105,7 +105,11 @@ class OpenWebUIRequestError(RuntimeError):
     """OpenWebUI 요청 또는 응답 처리에 실패했을 때 발생합니다."""
 
 
-class _OpenWebUIReasoningOnlyResponseError(OpenWebUIRequestError):
+class _OpenWebUIEmptyContentResponseError(OpenWebUIRequestError):
+    """OpenWebUI가 저장할 최종 content 없이 종료했을 때 발생합니다."""
+
+
+class _OpenWebUIReasoningOnlyResponseError(_OpenWebUIEmptyContentResponseError):
     """OpenWebUI가 최종 답변 없이 reasoning만 반환했을 때 발생합니다."""
 
 
@@ -220,11 +224,11 @@ def _parse_headers(raw: str | None, source: str) -> dict[str, str]:
     return headers
 
 
-def _build_headers(config: OpenWebUISummaryConfig) -> dict[str, str]:
+def _build_headers(config: OpenWebUISummaryConfig, *, stream: bool) -> dict[str, str]:
     """OpenWebUI 요청 header를 구성합니다."""
 
     headers = {
-        "Accept": "text/event-stream",
+        "Accept": "text/event-stream" if stream else "application/json",
         "Content-Type": "application/json",
         **config.common_headers,
     }
@@ -565,7 +569,7 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
         error_class = (
             _OpenWebUIReasoningOnlyResponseError
             if reasoning_value is not None
-            else OpenWebUIRequestError
+            else _OpenWebUIEmptyContentResponseError
         )
         raise error_class(f"OpenWebUI 응답에 저장할 텍스트가 없습니다. {response_context}")
     if not isinstance(content, str):
@@ -578,7 +582,7 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
         error_class = (
             _OpenWebUIReasoningOnlyResponseError
             if reasoning_value is not None
-            else OpenWebUIRequestError
+            else _OpenWebUIEmptyContentResponseError
         )
         raise error_class(f"OpenWebUI 응답 content가 비어 있습니다. {response_context}")
     return summary
@@ -795,8 +799,9 @@ def _post_chat_completion_once(
     config: OpenWebUISummaryConfig,
     messages: list[dict[str, str]],
     stage: str,
+    stream: bool,
 ) -> str:
-    """OpenWebUI chat completions API를 streaming 요청으로 한 번 호출합니다."""
+    """OpenWebUI chat completions API를 지정한 응답 방식으로 한 번 호출합니다."""
 
     if not config.url:
         raise OpenWebUIConfigError("OPENWEBUI_URL 설정이 비어 있습니다.")
@@ -810,7 +815,7 @@ def _post_chat_completion_once(
         "temperature": 1.0,
         "top_p": 1.0,
         "reasoning_effort": "low",
-        "stream": True,
+        "stream": stream,
         "tool_choice": "none",
         # 모델의 reasoning 계산은 유지하고 API 응답 전송에서만 제외합니다.
         "include_reasoning": False,
@@ -819,10 +824,10 @@ def _post_chat_completion_once(
     try:
         response = session.post(
             config.url,
-            headers=_build_headers(config),
+            headers=_build_headers(config, stream=stream),
             json=payload,
             timeout=config.timeout_seconds,
-            stream=True,
+            stream=stream,
         )
         response.raise_for_status()
         return _parse_chat_completion_response(response, stage=stage)
@@ -843,14 +848,32 @@ def _post_chat_completion(
     messages: list[dict[str, str]],
     stage: str,
 ) -> str:
-    """reasoning을 노출하지 않는 streaming chat completion을 호출합니다."""
+    """non-stream 응답이 비었을 때만 streaming 방식으로 한 번 재요청합니다."""
 
-    return _post_chat_completion_once(
-        session=session,
-        config=config,
-        messages=messages,
-        stage=stage,
-    )
+    try:
+        return _post_chat_completion_once(
+            session=session,
+            config=config,
+            messages=messages,
+            stage=stage,
+            stream=False,
+        )
+    except _OpenWebUIEmptyContentResponseError:
+        logger.warning(
+            "OpenWebUI non-stream 응답의 최종 content가 비어 streaming 방식으로 재요청합니다. stage=%s",
+            stage,
+        )
+
+    try:
+        return _post_chat_completion_once(
+            session=session,
+            config=config,
+            messages=messages,
+            stage=stage,
+            stream=True,
+        )
+    except OpenWebUIRequestError as exc:
+        raise OpenWebUIRequestError(f"{exc} retry=stream") from exc
 
 
 def _request_event_summary(
