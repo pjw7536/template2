@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -264,8 +265,12 @@ def _normalize_summary_source_text(value: str) -> str:
     return re.sub(r"\n(?:[ \t]*\n)+", "\n", normalized).strip()
 
 
-def _build_timestamped_event_text(contents_text: str) -> str:
-    """comment header 기준으로 내용 block을 timestamp 확정 이벤트로 변환합니다."""
+def _build_timestamped_event_text(
+    contents_text: str,
+    *,
+    default_event_time: datetime | None = None,
+) -> str:
+    """comment header 또는 기본 시간으로 timestamp 확정 이벤트를 생성합니다."""
 
     events: list[str] = []
     current_time = ""
@@ -290,7 +295,12 @@ def _build_timestamped_event_text(contents_text: str) -> str:
             current_lines.append(line)
 
     flush_current_event()
-    return "\n".join(events)
+    if events or default_event_time is None:
+        return "\n".join(events)
+
+    if not contents_text:
+        return ""
+    return f"[{default_event_time.strftime('%Y-%m-%d %H:%M')}] {contents_text}"
 
 
 def _split_summary_source_chunks(source_text: str) -> list[str]:
@@ -359,11 +369,18 @@ def _build_summary_prompt_from_source(
     ]
 
 
-def build_summary_prompt(contents_text: str, workorder_title: str = "") -> list[dict[str, str]]:
+def build_summary_prompt(
+    contents_text: str,
+    workorder_title: str = "",
+    default_event_time: datetime | None = None,
+) -> list[dict[str, str]]:
     """OpenWebUI chat completions용 고정 message 목록을 생성합니다."""
 
     normalized_contents_text = _normalize_summary_source_text(contents_text)
-    timestamped_events = _build_timestamped_event_text(normalized_contents_text)
+    timestamped_events = _build_timestamped_event_text(
+        normalized_contents_text,
+        default_event_time=default_event_time,
+    )
     return _build_summary_prompt_from_source(
         source_label="timestamped_events" if timestamped_events else "contents_text",
         prompt_source=timestamped_events or normalized_contents_text,
@@ -954,11 +971,15 @@ def _request_event_summary(
     config: OpenWebUISummaryConfig,
     contents_text: str,
     workorder_title: str = "",
+    default_event_time: datetime | None = None,
 ) -> str:
     """큰 contents_text를 이벤트 묶음으로 나눠 시간순 요약을 생성합니다."""
 
     normalized_contents_text = _normalize_summary_source_text(contents_text)
-    timestamped_events = _build_timestamped_event_text(normalized_contents_text)
+    timestamped_events = _build_timestamped_event_text(
+        normalized_contents_text,
+        default_event_time=default_event_time,
+    )
     prompt_source = timestamped_events or normalized_contents_text
     source_label = "timestamped_events" if timestamped_events else "contents_text"
     chunks = _split_summary_source_chunks(prompt_source) or [prompt_source]
@@ -989,6 +1010,7 @@ def request_summary(
     config: OpenWebUISummaryConfig,
     contents_text: str,
     workorder_title: str = "",
+    default_event_time: datetime | None = None,
 ) -> GeneratedSummary:
     """OpenWebUI로 시간순 상세 요약과 핵심 요약을 분리해 반환합니다."""
 
@@ -997,6 +1019,7 @@ def request_summary(
         config=config,
         contents_text=contents_text,
         workorder_title=workorder_title,
+        default_event_time=default_event_time,
     )
 
     try:
@@ -1088,6 +1111,7 @@ def summarize_pending_ct_process_comments(
                 config=active_config,
                 contents_text=contents_text,
                 workorder_title=workorder_titles.get(comment.workorder_id, ""),
+                default_event_time=comment.create_date,
             )
             with transaction.atomic():
                 updated_count = CtProcessComment.objects.filter(pk=comment.pk, update_flag="Y").update(

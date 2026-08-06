@@ -14,6 +14,7 @@
 - Airflow DAG는 반복 실패를 원인별로 묶어 발생 건수와 대표 오류를 출력한다.
 - 운영 진단 결과 non-stream 응답도 HTTP 200/`finish_reason=stop`이지만 completion token만 소비하고
   최종 `content`가 `null`인 사례가 9% 발생하며, streaming 재시도도 빈 chunk로 종료된다.
+- `contents_text`에 인식 가능한 시간 헤더가 없으면 timestamp 형식 강제 prompt와 원문이 충돌할 수 있다.
 
 ## 범위
 - 수정: `ct_process_comment` selector/service/management command/tests, data movement summary trigger API, Airflow DAG, Django settings, env/docs.
@@ -31,6 +32,9 @@
 - 시간순 요약에 성공한 row는 `llm_summary`와 `update_flag='N'`을 갱신한다.
 - 시간순 요약 이후 핵심요약 또는 검수의 final content만 비어 있으면 시간순 요약을 저장하고
   `llm_core_summary=NULL`로 완료 처리한다.
+- `contents_text`에 인식 가능한 시간 헤더가 하나도 없으면 원문 줄바꿈을 유지하면서
+  맨 앞에 row의 `create_date` timestamp만 추가한다.
+- `create_date`도 비어 있으면 시간을 추정하지 않고 기존 원문 fallback을 유지한다.
 - 시간순 요약이나 그 밖의 OpenWebUI 요청에 실패한 row는 `update_flag='Y'`를 유지해 다음 배치에서 재시도한다.
 - 처리된 모든 row가 실패한 경우에만 API와 management command를 실패 처리하고,
   일부라도 성공·skip·dry-run이면 실패 상세를 보존한 채 성공 처리한다.
@@ -65,6 +69,7 @@
 - [x] 운영 실패 응답 shape 회귀 테스트와 검증 실행
 - [x] 핵심요약 단계의 빈 content가 시간순 요약 저장을 막지 않도록 부분 성공 처리
 - [x] 모든 처리 row가 실패한 경우에만 API와 management command를 실패 처리
+- [x] 시간 헤더가 없는 원문에 `create_date` 기본 이벤트 시간 적용
 
 ## 검증
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.data_movement.ct_process_comment api.observer --keepdb`
@@ -109,3 +114,5 @@
 - 2026-08-07: 일부 row만 실패한 배치는 실패 상세를 유지하면서 성공 처리하고,
   처리된 모든 row가 실패한 경우에만 API 500과 command 오류를 반환하도록 변경했다.
   `api.data_movement` 테스트 144건, migration check, backend boundary audit이 모두 통과했다.
+- 2026-08-07: 시간 헤더가 없는 `contents_text`는 원문 맨 앞에 `create_date` timestamp만 추가하도록 변경했다.
+  `api.data_movement` 테스트 146건, migration check, backend boundary audit이 모두 통과했다.

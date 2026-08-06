@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import zlib
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -159,7 +159,8 @@ class CtProcessCommentStructureTests(SimpleTestCase):
                     "[ 2026-06-19 18:37 / john ]",
                     "조치 완료",
                 ]
-            )
+            ),
+            default_event_time=datetime(2025, 1, 1, 9, 30, tzinfo=UTC),
         )
 
         system_prompt = messages[0]["content"]
@@ -172,6 +173,19 @@ class CtProcessCommentStructureTests(SimpleTestCase):
         self.assertIn("timestamped_events:", user_prompt)
         self.assertIn("[2026-06-19 13:44] 점검 시작 알람 확인", user_prompt)
         self.assertIn("[2026-06-19 18:37] 조치 완료", user_prompt)
+        self.assertNotIn("[2025-01-01 09:30]", user_prompt)
+
+    def test_build_summary_prompt_uses_create_date_when_timestamp_is_missing(self) -> None:
+        """시간 헤더가 없으면 원문 앞에 create_date timestamp만 추가합니다."""
+
+        messages = summary_module.build_summary_prompt(
+            "점검 시작\n알람 확인",
+            default_event_time=datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
+        )
+
+        user_prompt = messages[1]["content"]
+        self.assertIn("timestamped_events:", user_prompt)
+        self.assertIn("[2026-01-01 09:30] 점검 시작\n알람 확인", user_prompt)
 
     def test_build_summary_prompt_includes_workorder_title_when_present(self) -> None:
         """workorder title이 있으면 LLM 입력에 보조 컨텍스트로 포함합니다."""
@@ -464,6 +478,35 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertIn("판단이 애매하면", review_request_messages[0]["content"])
         self.assertIn("점검 시작 후 조치가 완료되었습니다.", review_request_messages[1]["content"])
         self.assertIn("[2026-01-01 10:00] 점검 시작", review_request_messages[1]["content"])
+
+    def test_summarize_passes_create_date_for_contents_without_timestamp(self) -> None:
+        """시간 헤더가 없는 row는 create_date를 OpenWebUI 입력 시간으로 사용합니다."""
+
+        comment = CtProcessComment.objects.create(
+            workorder_id="WO1",
+            contents_text="점검 시작\n알람 확인",
+            create_date=datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
+            update_flag="Y",
+        )
+        session = _build_openwebui_session(
+            replies=[
+                "[2026-01-01 09:30] 점검 시작 및 알람 확인",
+                "NO_CORE_SUMMARY",
+            ]
+        )
+
+        run_summary = summary_module.summarize_pending_ct_process_comments(
+            limit=10,
+            session=session,
+            config=_build_openwebui_config(),
+        )
+
+        comment.refresh_from_db()
+        event_request_messages = session.post.call_args_list[0].kwargs["json"]["messages"]
+        self.assertEqual(run_summary.success_count, 1)
+        self.assertEqual(comment.update_flag, "N")
+        self.assertEqual(comment.llm_summary, "[2026-01-01 09:30] 점검 시작 및 알람 확인")
+        self.assertIn("[2026-01-01 09:30] 점검 시작\n알람 확인", event_request_messages[1]["content"])
 
     def test_request_summary_splits_large_timestamped_events_before_summary_call(self) -> None:
         """긴 contents_text는 시간 이벤트 묶음으로 나눠 요약합니다."""

@@ -72,6 +72,7 @@ POST /api/v1/data-movement/ct_process_comment/summarize/
 ```
 
 `update_flag='Y'`인 `ct_process_comment` row를 최근 업데이트 순으로 OpenWebUI에 요약 요청합니다.
+`contents_text`에 인식 가능한 시간 헤더가 없으면 원문 맨 앞에 row의 `create_date` timestamp만 추가합니다.
 성공한 row는 `llm_summary`를 저장하고 `update_flag='N'`으로 변경합니다.
 시간순 요약 이후 핵심요약 또는 검수 응답만 비어 있으면 `llm_summary`는 저장하고
 `llm_core_summary=NULL`, `update_flag='N'`으로 완료 처리합니다.
