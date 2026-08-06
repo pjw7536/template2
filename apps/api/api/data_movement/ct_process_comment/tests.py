@@ -804,56 +804,120 @@ class CtProcessCommentSummaryTests(TestCase):
                 contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
             )
 
-    def test_request_summary_reports_null_content_metadata_without_body(self) -> None:
-        """content null 응답은 본문을 숨기고 분석용 메타데이터를 보고합니다."""
+    def test_request_summary_reports_both_empty_content_attempts_without_secrets(self) -> None:
+        """두 응답 mode가 모두 비면 시도별 진단을 보존하고 비밀값은 숨깁니다."""
 
         reasoning_text = "민감한 내부 추론 본문"
-
-        session = _build_openwebui_json_session(
-            {
-                "id": "chatcmpl-null-content",
-                "object": "chat.completion",
-                "model": "reasoning-model",
-                "choices": [
-                    {
-                        "index": 0,
-                        "finish_reason": "stop",
-                        "message": {
-                            "role": "assistant",
-                            "content": None,
-                            "reasoning_content": reasoning_text,
-                        },
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 120,
-                    "completion_tokens": 256,
-                    "total_tokens": 376,
-                    "completion_tokens_details": {"reasoning_tokens": 256},
-                },
-            }
+        prompt_secret = "로그에 노출되면 안 되는 점검 내용"
+        primary_response = Mock()
+        primary_response.status_code = 200
+        primary_response.url = "https://openwebui.example.local/v1/chat/completions"
+        primary_response.elapsed = timedelta(milliseconds=125)
+        primary_response.headers = {
+            "Content-Type": "application/json",
+            "Content-Length": "321",
+            "X-Request-ID": "primary-request-id",
+            "Set-Cookie": "session=response-secret",
+        }
+        primary_response.raise_for_status.return_value = None
+        primary_response.json.return_value = {
+            "id": "chatcmpl-empty-primary",
+            "object": "chat.completion.chunk",
+            "model": "gpt-oss-120b",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": ""},
+                }
+            ],
+        }
+        retry_response = Mock()
+        retry_response.status_code = 200
+        retry_response.url = "https://openwebui.example.local/v1/chat/completions"
+        retry_response.elapsed = timedelta(milliseconds=250)
+        retry_response.headers = {
+            "Content-Type": "application/json",
+            "Transfer-Encoding": "chunked",
+            "X-Request-ID": "retry-request-id",
+        }
+        retry_response.raise_for_status.return_value = None
+        retry_response.json.return_value = {
+            "id": "chatcmpl-empty-retry",
+            "object": "chat.completion.chunk",
+            "model": "gpt-oss-120b",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "reasoning_content": reasoning_text,
+                    },
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 256,
+                "total_tokens": 376,
+                "completion_tokens_details": {"reasoning_tokens": 256},
+            },
+        }
+        session = Mock()
+        session.post.side_effect = [primary_response, retry_response]
+        config = summary_module.OpenWebUISummaryConfig(
+            url=(
+                "https://endpoint-user:endpoint-password@openwebui.example.local/"
+                "v1/chat/completions?api_key=url-secret"
+            ),
+            model="gpt-oss-120b",
+            api_token="api-token-secret",
+            common_headers={"X-Internal-Secret": "common-header-secret"},
         )
 
         with self.assertRaises(summary_module.OpenWebUIRequestError) as error_context:
             summary_module.request_summary(
                 session=session,
-                config=_build_openwebui_config(),
-                contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
+                config=config,
+                contents_text=f"[ 2026-01-01 10:00 / 홍길동 ]\n{prompt_secret}",
             )
 
         error_message = str(error_context.exception)
-        self.assertIn("저장할 텍스트가 없습니다", error_message)
+        self.assertIn("모든 응답 방식", error_message)
+        self.assertIn("diagnostic_version='ctpc-openwebui-v2'", error_message)
+        self.assertIn("strategy='primary_non_stream_then_retry_stream'", error_message)
+        self.assertIn("attempt='primary_non_stream'", error_message)
+        self.assertIn("request_stream=False", error_message)
+        self.assertIn("upstream_ignored_stream_false", error_message)
+        self.assertIn("stop_without_final_content", error_message)
+        self.assertIn("request_include_reasoning=False", error_message)
+        self.assertIn("request_reasoning_effort='low'", error_message)
+        self.assertIn("request_authorization_present=True", error_message)
+        self.assertIn("response_id='chatcmpl-empty-primary'", error_message)
+        self.assertIn("x-request-id:'primary-request-id'", error_message)
+        self.assertIn("response_elapsed_ms=125", error_message)
+        self.assertIn("attempt='retry_stream'", error_message)
+        self.assertIn("request_stream=True", error_message)
+        self.assertIn("reasoning_only_without_final_content", error_message)
+        self.assertIn("response_id='chatcmpl-empty-retry'", error_message)
+        self.assertIn("x-request-id:'retry-request-id'", error_message)
+        self.assertIn("response_elapsed_ms=250", error_message)
         self.assertIn("stage=event_summary", error_message)
-        self.assertIn("response_id='chatcmpl-null-content'", error_message)
-        self.assertIn("response_model='reasoning-model'", error_message)
         self.assertIn(
             f"reasoning_content:str(len={len(reasoning_text)})",
             error_message,
         )
         self.assertIn("completion_tokens=256", error_message)
         self.assertIn("reasoning_tokens=256", error_message)
-        self.assertIn("retry=stream", error_message)
         self.assertNotIn(reasoning_text, error_message)
+        self.assertNotIn(prompt_secret, error_message)
+        self.assertNotIn("endpoint-user", error_message)
+        self.assertNotIn("endpoint-password", error_message)
+        self.assertNotIn("url-secret", error_message)
+        self.assertNotIn("api-token-secret", error_message)
+        self.assertNotIn("common-header-secret", error_message)
+        self.assertNotIn("response-secret", error_message)
         self.assertEqual(session.post.call_count, 2)
 
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:

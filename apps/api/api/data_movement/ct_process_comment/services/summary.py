@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from django.conf import settings
@@ -36,6 +37,20 @@ SUMMARY_TIME_LINE_PATTERN = re.compile(
     r"^(?P<time>(?:\d{4}[-/.]\d{2}[-/.]\d{2}\s+)?\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<event>.+)$"
 )
 CORE_SUMMARY_REWRITE_PREFIX = "REWRITE:"
+OPENWEBUI_DIAGNOSTIC_VERSION = "ctpc-openwebui-v2"
+OPENWEBUI_SAFE_RESPONSE_HEADERS = (
+    "Content-Type",
+    "Content-Length",
+    "Transfer-Encoding",
+    "Server",
+    "Via",
+    "X-Request-ID",
+    "X-OpenAI-Request-ID",
+    "X-Correlation-ID",
+    "Traceparent",
+    "CF-Ray",
+    "X-Envoy-Upstream-Service-Time",
+)
 
 SUMMARY_SYSTEM_PROMPT = """당신은 설비 점검 이력 요약기입니다.
 입력으로 제공된 이벤트 목록에 실제로 포함된 사실만 사용하세요.
@@ -424,6 +439,161 @@ def _format_response_metadata(value: Any) -> str:
     return f"<{type(value).__name__}>"
 
 
+def _redact_endpoint_url(value: Any) -> str:
+    """endpoint URL에서 인증정보, query, fragment를 제거합니다."""
+
+    if not isinstance(value, str) or not value.strip():
+        return "unavailable"
+    try:
+        parsed = urlsplit(value.strip())
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return "invalid"
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        port = parsed.port
+        netloc = f"{hostname}:{port}" if port is not None else hostname
+        return urlunsplit((parsed.scheme, netloc, parsed.path or "/", "", ""))
+    except ValueError:
+        return "invalid"
+
+
+def _format_request_message_shape(messages: list[dict[str, str]]) -> str:
+    """prompt 본문 없이 role과 content 길이만 진단용으로 표현합니다."""
+
+    message_shapes: list[str] = []
+    for message in messages:
+        role = _truncate_log_label(message.get("role", "unknown"), max_length=24)
+        message_shapes.append(f"{role}:{_describe_response_value(message.get('content'))}")
+    return f"[{','.join(message_shapes)}]"
+
+
+def _format_safe_response_headers(response: requests.Response | None) -> str:
+    """운영 추적에 필요한 allowlist 응답 header만 진단 문자열로 변환합니다."""
+
+    headers = getattr(response, "headers", None)
+    if not hasattr(headers, "get"):
+        return "{}"
+
+    header_parts: list[str] = []
+    for name in OPENWEBUI_SAFE_RESPONSE_HEADERS:
+        value = headers.get(name)
+        if value in (None, ""):
+            continue
+        header_parts.append(f"{name.lower()}:{_format_response_metadata(value)}")
+    return f"{{{','.join(header_parts)}}}"
+
+
+def _format_response_elapsed_ms(response: requests.Response | None) -> str:
+    """requests 응답 elapsed를 millisecond 문자열로 변환합니다."""
+
+    elapsed = getattr(response, "elapsed", None)
+    total_seconds = getattr(elapsed, "total_seconds", None)
+    if not callable(total_seconds):
+        return "unavailable"
+    try:
+        elapsed_seconds = total_seconds()
+    except (TypeError, ValueError, OverflowError):
+        return "unavailable"
+    if not isinstance(elapsed_seconds, (int, float)) or isinstance(elapsed_seconds, bool):
+        return "unavailable"
+    return str(max(0, round(elapsed_seconds * 1000)))
+
+
+def _build_attempt_context(
+    *,
+    response: requests.Response | None,
+    config: OpenWebUISummaryConfig,
+    messages: list[dict[str, str]],
+    stage: str,
+    stream: bool,
+    attempt: str,
+) -> str:
+    """OpenWebUI 호출 한 번의 요청/transport 정보를 비밀값 없이 구성합니다."""
+
+    status_code = getattr(response, "status_code", None)
+    if not isinstance(status_code, int) or isinstance(status_code, bool):
+        status_code = "unavailable"
+    response_url = getattr(response, "url", None)
+    request_headers = _build_headers(config, stream=stream)
+    request_header_names = sorted(_truncate_log_label(name) for name in request_headers)
+
+    return ", ".join(
+        [
+            f"diagnostic_version='{OPENWEBUI_DIAGNOSTIC_VERSION}'",
+            f"attempt='{attempt}'",
+            f"stage={stage}",
+            f"endpoint={_format_response_metadata(_redact_endpoint_url(config.url))}",
+            f"requested_model={_format_response_metadata(config.model)}",
+            f"request_stream={stream}",
+            f"http_read_stream={stream}",
+            f"request_accept={_format_response_metadata(request_headers.get('Accept'))}",
+            f"request_content_type={_format_response_metadata(request_headers.get('Content-Type'))}",
+            f"request_header_names=[{','.join(request_header_names)}]",
+            f"request_authorization_present={bool(request_headers.get('Authorization'))}",
+            f"request_timeout_seconds={config.timeout_seconds}",
+            "request_temperature=1.0",
+            "request_top_p=1.0",
+            "request_reasoning_effort='low'",
+            "request_include_reasoning=False",
+            "request_tool_choice='none'",
+            f"request_messages={_format_request_message_shape(messages)}",
+            f"response_status={status_code}",
+            f"response_url={_format_response_metadata(_redact_endpoint_url(response_url))}",
+            f"response_headers={_format_safe_response_headers(response)}",
+            f"response_elapsed_ms={_format_response_elapsed_ms(response)}",
+        ]
+    )
+
+
+def _with_attempt_context(
+    exc: OpenWebUIRequestError,
+    *,
+    response: requests.Response | None,
+    config: OpenWebUISummaryConfig,
+    messages: list[dict[str, str]],
+    stage: str,
+    stream: bool,
+    attempt: str,
+) -> OpenWebUIRequestError:
+    """기존 오류 subtype을 유지하면서 호출 attempt 진단을 덧붙입니다."""
+
+    error_class = type(exc)
+    error_text = str(exc)
+    diagnosis_hints: list[str] = []
+    response_headers = getattr(response, "headers", None)
+    response_content_type = (
+        response_headers.get("Content-Type", "") if hasattr(response_headers, "get") else ""
+    )
+    if not stream and "response_object='chat.completion.chunk'" in error_text:
+        diagnosis_hints.append("upstream_ignored_stream_false")
+    if (
+        not stream
+        and isinstance(response_content_type, str)
+        and "text/event-stream" in response_content_type.lower()
+    ):
+        diagnosis_hints.append("upstream_returned_sse_for_non_stream_request")
+    if isinstance(exc, _OpenWebUIReasoningOnlyResponseError):
+        diagnosis_hints.append("reasoning_only_without_final_content")
+    elif isinstance(exc, _OpenWebUIEmptyContentResponseError):
+        diagnosis_hints.append("stop_without_final_content")
+    if not diagnosis_hints:
+        diagnosis_hints.append("inspect_attempt_transport_and_response_shape")
+
+    attempt_context = _build_attempt_context(
+        response=response,
+        config=config,
+        messages=messages,
+        stage=stage,
+        stream=stream,
+        attempt=attempt,
+    )
+    return error_class(
+        f"{exc}; diagnosis_hints=[{','.join(diagnosis_hints)}]; "
+        f"attempt_context={{{attempt_context}}}"
+    )
+
+
 def _format_token_usage(resp_json: dict[str, Any]) -> str:
     """민감한 본문 없이 알려진 token 사용량만 로그용으로 정리합니다."""
 
@@ -461,7 +631,12 @@ def _build_response_context(
 ) -> str:
     """Airflow 오류 분석에 필요한 비민감 OpenWebUI 응답 정보를 구성합니다."""
 
-    response_fields = sorted(_truncate_log_label(key) for key in resp_json)[:12]
+    response_fields = sorted(
+        _truncate_log_label(key)
+        for key in resp_json
+        if not str(key).startswith("_diagnostic_")
+    )[:12]
+    choice_fields = sorted(_truncate_log_label(key) for key in choice)[:12]
     message_items = sorted(message.items(), key=lambda item: str(item[0]))[:12]
     message_field_types = ",".join(
         f"{_truncate_log_label(key)}:{_describe_response_value(value)}"
@@ -470,6 +645,22 @@ def _build_response_context(
     if len(message) > len(message_items):
         message_field_types = f"{message_field_types},..."
 
+    stream_stats = resp_json.get("_diagnostic_stream_stats")
+    stream_stat_parts: list[str] = []
+    if isinstance(stream_stats, dict):
+        for key in (
+            "event_count",
+            "choice_event_count",
+            "delta_event_count",
+            "content_chunk_count",
+            "empty_content_chunk_count",
+            "content_char_count",
+            "reasoning_char_count",
+        ):
+            value = stream_stats.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                stream_stat_parts.append(f"{key}={value}")
+
     return ", ".join(
         [
             f"stage={stage}",
@@ -477,11 +668,18 @@ def _build_response_context(
             f"response_object={_format_response_metadata(resp_json.get('object'))}",
             f"response_model={_format_response_metadata(resp_json.get('model'))}",
             f"response_fields=[{','.join(response_fields)}]",
+            f"choices_count={len(resp_json.get('choices', []))}",
             f"choice_index={_format_response_metadata(choice.get('index', 0))}",
+            f"choice_fields=[{','.join(choice_fields)}]",
             f"finish_reason={_format_response_metadata(choice.get('finish_reason'))}",
             f"content_type={type(message.get('content')).__name__}",
             f"message_field_types={{{message_field_types}}}",
             f"usage={{{_format_token_usage(resp_json)}}}",
+            (
+                f"stream_stats={{{','.join(stream_stat_parts)}}}"
+                if stream_stat_parts
+                else "stream_stats={unavailable}"
+            ),
         ]
     )
 
@@ -708,6 +906,10 @@ def _parse_streaming_chat_completion(response: requests.Response, *, stage: str)
     has_tool_calls = False
     has_audio = False
     event_count = 0
+    choice_event_count = 0
+    delta_event_count = 0
+    content_chunk_count = 0
+    empty_content_chunk_count = 0
 
     for payload in _iter_sse_payloads(response):
         event_count += 1
@@ -721,6 +923,7 @@ def _parse_streaming_chat_completion(response: requests.Response, *, stage: str)
         choice = choices[0]
         if not isinstance(choice, dict):
             continue
+        choice_event_count += 1
 
         choice_index = choice.get("index", choice_index)
         if choice.get("finish_reason") is not None:
@@ -728,11 +931,15 @@ def _parse_streaming_chat_completion(response: requests.Response, *, stage: str)
         delta = choice.get("delta")
         if not isinstance(delta, dict):
             continue
+        delta_event_count += 1
 
         content = delta.get("content")
         if isinstance(content, str):
             content_seen = True
             content_parts.append(content)
+            content_chunk_count += 1
+            if not content:
+                empty_content_chunk_count += 1
         elif content is not None:
             invalid_content = content
 
@@ -764,6 +971,15 @@ def _parse_streaming_chat_completion(response: requests.Response, *, stage: str)
     if has_audio:
         message["audio"] = {}
 
+    response_metadata["_diagnostic_stream_stats"] = {
+        "event_count": event_count,
+        "choice_event_count": choice_event_count,
+        "delta_event_count": delta_event_count,
+        "content_chunk_count": content_chunk_count,
+        "empty_content_chunk_count": empty_content_chunk_count,
+        "content_char_count": sum(len(part) for part in content_parts),
+        "reasoning_char_count": sum(text_lengths.values()) + sum(provider_text_lengths.values()),
+    }
     response_metadata["choices"] = [
         {
             "index": choice_index,
@@ -787,8 +1003,10 @@ def _parse_chat_completion_response(response: requests.Response, *, stage: str) 
         resp_json = response.json()
     except (json.JSONDecodeError, ValueError) as exc:
         response_text = getattr(response, "text", "")
+        text_length = len(response_text) if isinstance(response_text, str) else "unavailable"
         raise OpenWebUIRequestError(
-            f"OpenWebUI 응답 JSON 파싱 실패: status={response.status_code}, text={response_text[:500]!r}"
+            f"OpenWebUI 응답 JSON 파싱 실패: status={response.status_code}, "
+            f"text_type={type(response_text).__name__}, text_length={text_length}"
         ) from exc
     return _extract_reply_content(resp_json, stage=stage)
 
@@ -800,6 +1018,7 @@ def _post_chat_completion_once(
     messages: list[dict[str, str]],
     stage: str,
     stream: bool,
+    attempt: str,
 ) -> str:
     """OpenWebUI chat completions API를 지정한 응답 방식으로 한 번 호출합니다."""
 
@@ -821,6 +1040,7 @@ def _post_chat_completion_once(
         "include_reasoning": False,
     }
 
+    response: requests.Response | None = None
     try:
         response = session.post(
             config.url,
@@ -831,14 +1051,43 @@ def _post_chat_completion_once(
         )
         response.raise_for_status()
         return _parse_chat_completion_response(response, stage=stage)
-    except OpenWebUIRequestError:
-        raise
+    except OpenWebUIRequestError as exc:
+        raise _with_attempt_context(
+            exc,
+            response=response,
+            config=config,
+            messages=messages,
+            stage=stage,
+            stream=stream,
+            attempt=attempt,
+        ) from exc
     except requests.HTTPError as exc:
-        status = response.status_code if "response" in locals() else "unknown"
-        text_preview = getattr(response, "text", "")[:500]
-        raise OpenWebUIRequestError(f"OpenWebUI HTTP 오류 [{status}]: {text_preview!r}") from exc
+        status = getattr(response, "status_code", "unavailable")
+        request_error = OpenWebUIRequestError(f"OpenWebUI HTTP 오류: status={status}")
+        raise _with_attempt_context(
+            request_error,
+            response=response,
+            config=config,
+            messages=messages,
+            stage=stage,
+            stream=stream,
+            attempt=attempt,
+        ) from exc
     except requests.RequestException as exc:
-        raise OpenWebUIRequestError(f"OpenWebUI 요청 실패: {exc}") from exc
+        exception_message = str(exc)
+        request_error = OpenWebUIRequestError(
+            f"OpenWebUI 요청 실패: exception_type={type(exc).__name__}, "
+            f"exception_message_length={len(exception_message)}"
+        )
+        raise _with_attempt_context(
+            request_error,
+            response=response,
+            config=config,
+            messages=messages,
+            stage=stage,
+            stream=stream,
+            attempt=attempt,
+        ) from exc
 
 
 def _post_chat_completion(
@@ -850,6 +1099,7 @@ def _post_chat_completion(
 ) -> str:
     """non-stream 응답이 비었을 때만 streaming 방식으로 한 번 재요청합니다."""
 
+    primary_error: _OpenWebUIEmptyContentResponseError | None = None
     try:
         return _post_chat_completion_once(
             session=session,
@@ -857,11 +1107,15 @@ def _post_chat_completion(
             messages=messages,
             stage=stage,
             stream=False,
+            attempt="primary_non_stream",
         )
-    except _OpenWebUIEmptyContentResponseError:
+    except _OpenWebUIEmptyContentResponseError as exc:
+        primary_error = exc
         logger.warning(
-            "OpenWebUI non-stream 응답의 최종 content가 비어 streaming 방식으로 재요청합니다. stage=%s",
+            "OpenWebUI non-stream 응답의 최종 content가 비어 streaming 방식으로 재요청합니다. "
+            "stage=%s, diagnostic=%s",
             stage,
+            primary_error,
         )
 
     try:
@@ -871,9 +1125,17 @@ def _post_chat_completion(
             messages=messages,
             stage=stage,
             stream=True,
+            attempt="retry_stream",
         )
-    except OpenWebUIRequestError as exc:
-        raise OpenWebUIRequestError(f"{exc} retry=stream") from exc
+    except OpenWebUIRequestError as retry_exc:
+        if primary_error is None:
+            raise
+        raise OpenWebUIRequestError(
+            "OpenWebUI 모든 응답 방식에서 최종 content 추출에 실패했습니다. "
+            f"diagnostic_version='{OPENWEBUI_DIAGNOSTIC_VERSION}', "
+            "strategy='primary_non_stream_then_retry_stream', "
+            f"primary_error=({primary_error}), retry_error=({retry_exc})"
+        ) from retry_exc
 
 
 def _request_event_summary(
