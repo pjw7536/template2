@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import zlib
 from datetime import timedelta
 from io import StringIO
@@ -107,19 +106,6 @@ def _build_openwebui_json_session(resp_json: Any) -> Mock:
     session = Mock()
     session.post.return_value = response
     return session
-
-
-def _build_openwebui_sse_response(events: list[dict[str, Any]]) -> Mock:
-    """지정한 chunk를 SSE 형식으로 반환하는 OpenWebUI response mock을 생성합니다."""
-
-    response = Mock()
-    response.headers = {"Content-Type": "text/event-stream; charset=utf-8"}
-    response.raise_for_status.return_value = None
-    response.iter_lines.return_value = [
-        *(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events),
-        "data: [DONE]",
-    ]
-    return response
 
 
 def _build_openwebui_config() -> summary_module.OpenWebUISummaryConfig:
@@ -402,7 +388,7 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(event_request_kwargs["json"]["model"], "test-model")
         self.assertIs(event_request_kwargs["json"]["stream"], False)
         self.assertEqual(event_request_kwargs["json"]["tool_choice"], "none")
-        self.assertIs(event_request_kwargs["json"]["include_reasoning"], False)
+        self.assertNotIn("include_reasoning", event_request_kwargs["json"])
         self.assertIs(event_request_kwargs["stream"], False)
         self.assertEqual(event_request_kwargs["headers"]["Accept"], "application/json")
         self.assertEqual(event_request_kwargs["headers"]["Authorization"], "Bearer test-token")
@@ -511,86 +497,9 @@ class CtProcessCommentSummaryTests(TestCase):
                 contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
             )
 
-    def test_post_chat_completion_combines_only_streaming_final_content(self) -> None:
-        """SSE 응답은 reasoning을 제외하고 final content chunk만 조합합니다."""
+    def test_post_chat_completion_uses_non_stream_for_batch_summary(self) -> None:
+        """요약 배치는 JSON 전체 응답을 받는 non-stream 계약을 사용합니다."""
 
-        reasoning_text = "외부에 저장하면 안 되는 추론"
-        response = _build_openwebui_sse_response(
-            [
-                {
-                    "id": "chatcmpl-stream",
-                    "object": "chat.completion.chunk",
-                    "model": "gpt-oss-120b",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {
-                                "role": "assistant",
-                                "reasoning_content": reasoning_text,
-                            },
-                            "finish_reason": None,
-                        }
-                    ],
-                },
-                {
-                    "id": "chatcmpl-stream",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": "[2026-01-01 10:00] "},
-                            "finish_reason": None,
-                        }
-                    ],
-                },
-                {
-                    "id": "chatcmpl-stream",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": "점검 완료"},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                },
-            ]
-        )
-        session = Mock()
-        session.post.return_value = response
-
-        content = summary_module._post_chat_completion(
-            session=session,
-            config=_build_openwebui_config(),
-            messages=[{"role": "user", "content": "점검 이력을 요약하세요."}],
-            stage="event_summary",
-        )
-
-        self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
-        self.assertNotIn(reasoning_text, content)
-        self.assertEqual(session.post.call_count, 1)
-        payload = session.post.call_args.kwargs["json"]
-        self.assertIs(payload["include_reasoning"], False)
-        self.assertEqual(payload["temperature"], 1.0)
-        self.assertEqual(payload["top_p"], 1.0)
-        self.assertEqual(payload["reasoning_effort"], "low")
-
-    def test_post_chat_completion_uses_non_stream_to_avoid_empty_stream_response(self) -> None:
-        """배치 호출은 빈 streaming 응답을 피하도록 non-stream을 기본 사용합니다."""
-
-        empty_stream_response = Mock()
-        empty_stream_response.headers = {"Content-Type": "application/json"}
-        empty_stream_response.raise_for_status.return_value = None
-        empty_stream_response.json.return_value = {
-            "id": "chatcmpl-empty-stream",
-            "object": "chat.completion.chunk",
-            "model": "gpt-oss-120b",
-            "choices": [
-                {
-                    "index": 0,
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": ""},
-                }
-            ],
-        }
         completed_response = Mock()
         completed_response.headers = {"Content-Type": "application/json"}
         completed_response.raise_for_status.return_value = None
@@ -610,9 +519,7 @@ class CtProcessCommentSummaryTests(TestCase):
             ],
         }
         session = Mock()
-        session.post.side_effect = lambda *_args, **kwargs: (
-            empty_stream_response if kwargs["json"]["stream"] else completed_response
-        )
+        session.post.return_value = completed_response
 
         content = summary_module._post_chat_completion(
             session=session,
@@ -628,49 +535,58 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertIs(request_kwargs["stream"], False)
         self.assertEqual(request_kwargs["headers"]["Accept"], "application/json")
 
-    def test_post_chat_completion_retries_empty_non_stream_as_stream(self) -> None:
-        """빈 non-stream 종료 응답은 streaming 요청으로 한 번 복구합니다."""
+    def test_post_chat_completion_does_not_retry_empty_non_stream_response(self) -> None:
+        """upstream final 누락은 다른 응답 방식이나 prompt로 재시도하지 않습니다."""
 
         empty_response = Mock()
         empty_response.headers = {"Content-Type": "application/json"}
         empty_response.raise_for_status.return_value = None
         empty_response.json.return_value = {
+            "id": "chatcmpl-empty-primary",
+            "object": "chat.completion",
+            "model": "gpt-oss-120b",
             "choices": [
                 {
                     "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": ""},
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "provider_specific_fields": {
+                            "reasoning": None,
+                            "refusal": None,
+                        },
+                    },
                 }
-            ]
+            ],
+            "usage": {
+                "prompt_tokens": 441,
+                "completion_tokens": 184,
+                "total_tokens": 625,
+            },
         }
-        streaming_response = _build_openwebui_sse_response(
-            [
-                {
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": "[2026-01-01 10:00] 점검 완료"},
-                            "finish_reason": "stop",
-                        }
-                    ]
-                }
-            ]
-        )
         session = Mock()
-        session.post.side_effect = [empty_response, streaming_response]
+        session.post.return_value = empty_response
+        messages = [
+            {"role": "system", "content": "지정 형식으로 요약하세요."},
+            {"role": "user", "content": "점검 이력을 요약하세요."},
+        ]
 
-        content = summary_module._post_chat_completion(
-            session=session,
-            config=_build_openwebui_config(),
-            messages=[{"role": "user", "content": "점검 이력을 요약하세요."}],
-            stage="event_summary",
-        )
+        with self.assertRaises(summary_module.OpenWebUIRequestError) as error_context:
+            summary_module._post_chat_completion(
+                session=session,
+                config=_build_openwebui_config(),
+                messages=messages,
+                stage="event_summary",
+            )
 
-        self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
-        self.assertEqual(session.post.call_count, 2)
-        retry_request = session.post.call_args_list[1].kwargs
-        self.assertIs(retry_request["json"]["stream"], True)
-        self.assertIs(retry_request["stream"], True)
-        self.assertEqual(retry_request["headers"]["Accept"], "text/event-stream")
+        self.assertIn("completion_tokens_without_final_content", str(error_context.exception))
+        self.assertEqual(session.post.call_count, 1)
+        request_kwargs = session.post.call_args.kwargs
+        self.assertIs(request_kwargs["json"]["stream"], False)
+        self.assertIs(request_kwargs["stream"], False)
+        self.assertEqual(request_kwargs["headers"]["Accept"], "application/json")
+        self.assertNotIn("include_reasoning", request_kwargs["json"])
+        self.assertEqual(messages[0]["content"], "지정 형식으로 요약하세요.")
 
     def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
         """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""
@@ -804,10 +720,9 @@ class CtProcessCommentSummaryTests(TestCase):
                 contents_text="[ 2026-01-01 10:00 / 홍길동 ]\nTMP 센서 알람 발생",
             )
 
-    def test_request_summary_reports_both_empty_content_attempts_without_secrets(self) -> None:
-        """두 응답 mode가 모두 비면 시도별 진단을 보존하고 비밀값은 숨깁니다."""
+    def test_request_summary_reports_empty_content_without_retry_or_secrets(self) -> None:
+        """빈 non-stream 응답은 한 번만 호출하고 안전한 진단만 남깁니다."""
 
-        reasoning_text = "민감한 내부 추론 본문"
         prompt_secret = "로그에 노출되면 안 되는 점검 내용"
         primary_response = Mock()
         primary_response.status_code = 200
@@ -822,29 +737,7 @@ class CtProcessCommentSummaryTests(TestCase):
         primary_response.raise_for_status.return_value = None
         primary_response.json.return_value = {
             "id": "chatcmpl-empty-primary",
-            "object": "chat.completion.chunk",
-            "model": "gpt-oss-120b",
-            "choices": [
-                {
-                    "index": 0,
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": ""},
-                }
-            ],
-        }
-        retry_response = Mock()
-        retry_response.status_code = 200
-        retry_response.url = "https://openwebui.example.local/v1/chat/completions"
-        retry_response.elapsed = timedelta(milliseconds=250)
-        retry_response.headers = {
-            "Content-Type": "application/json",
-            "Transfer-Encoding": "chunked",
-            "X-Request-ID": "retry-request-id",
-        }
-        retry_response.raise_for_status.return_value = None
-        retry_response.json.return_value = {
-            "id": "chatcmpl-empty-retry",
-            "object": "chat.completion.chunk",
+            "object": "chat.completion",
             "model": "gpt-oss-120b",
             "choices": [
                 {
@@ -853,19 +746,21 @@ class CtProcessCommentSummaryTests(TestCase):
                     "message": {
                         "role": "assistant",
                         "content": None,
-                        "reasoning_content": reasoning_text,
+                        "provider_specific_fields": {
+                            "reasoning": None,
+                            "refusal": None,
+                        },
                     },
                 }
             ],
             "usage": {
-                "prompt_tokens": 120,
-                "completion_tokens": 256,
-                "total_tokens": 376,
-                "completion_tokens_details": {"reasoning_tokens": 256},
+                "prompt_tokens": 441,
+                "completion_tokens": 184,
+                "total_tokens": 625,
             },
         }
         session = Mock()
-        session.post.side_effect = [primary_response, retry_response]
+        session.post.return_value = primary_response
         config = summary_module.OpenWebUISummaryConfig(
             url=(
                 "https://endpoint-user:endpoint-password@openwebui.example.local/"
@@ -884,33 +779,20 @@ class CtProcessCommentSummaryTests(TestCase):
             )
 
         error_message = str(error_context.exception)
-        self.assertIn("모든 응답 방식", error_message)
-        self.assertIn("diagnostic_version='ctpc-openwebui-v2'", error_message)
-        self.assertIn("strategy='primary_non_stream_then_retry_stream'", error_message)
-        self.assertIn("attempt='primary_non_stream'", error_message)
+        self.assertIn("diagnostic_version='ctpc-openwebui-v3'", error_message)
+        self.assertIn("attempt='single_non_stream'", error_message)
         self.assertIn("request_stream=False", error_message)
-        self.assertIn("upstream_ignored_stream_false", error_message)
         self.assertIn("stop_without_final_content", error_message)
-        self.assertIn("request_include_reasoning=False", error_message)
+        self.assertIn("completion_tokens_without_final_content", error_message)
+        self.assertIn("provider_output_fields_empty_or_stripped", error_message)
+        self.assertIn("request_include_reasoning=omitted", error_message)
         self.assertIn("request_reasoning_effort='low'", error_message)
         self.assertIn("request_authorization_present=True", error_message)
         self.assertIn("response_id='chatcmpl-empty-primary'", error_message)
         self.assertIn("x-request-id:'primary-request-id'", error_message)
         self.assertIn("response_elapsed_ms=125", error_message)
-        self.assertIn("attempt='retry_stream'", error_message)
-        self.assertIn("request_stream=True", error_message)
-        self.assertIn("reasoning_only_without_final_content", error_message)
-        self.assertIn("response_id='chatcmpl-empty-retry'", error_message)
-        self.assertIn("x-request-id:'retry-request-id'", error_message)
-        self.assertIn("response_elapsed_ms=250", error_message)
         self.assertIn("stage=event_summary", error_message)
-        self.assertIn(
-            f"reasoning_content:str(len={len(reasoning_text)})",
-            error_message,
-        )
-        self.assertIn("completion_tokens=256", error_message)
-        self.assertIn("reasoning_tokens=256", error_message)
-        self.assertNotIn(reasoning_text, error_message)
+        self.assertIn("completion_tokens=184", error_message)
         self.assertNotIn(prompt_secret, error_message)
         self.assertNotIn("endpoint-user", error_message)
         self.assertNotIn("endpoint-password", error_message)
@@ -918,7 +800,7 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertNotIn("api-token-secret", error_message)
         self.assertNotIn("common-header-secret", error_message)
         self.assertNotIn("response-secret", error_message)
-        self.assertEqual(session.post.call_count, 2)
+        self.assertEqual(session.post.call_count, 1)
 
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:
         """시간순 요약이 짧아도 핵심요약 생성을 요청하고 NO_CORE_SUMMARY면 비워 둡니다."""

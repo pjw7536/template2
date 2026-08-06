@@ -10,10 +10,10 @@
 - loader는 신규/변경 row의 `update_flag`를 `Y`로 설정하고, `contents_text` 변경 시 `llm_summary`를 `NULL`로 초기화한다.
 - Observer CTTTM selector는 `ct_process_comment.llm_summary as summary`를 이미 조회한다.
 - CTTTM detail UI는 `log.summary`를 이미 표시한다.
-- OpenWebUI가 `stream=false` 요청에도 `chat.completion.chunk`와 빈 `content`를 반환하는지
-  현재 Airflow 오류만으로는 구분할 수 없다.
-- non-stream 최초 오류 후 streaming 재시도가 실패하면 최초 오류 정보가 최종 예외에서 유실된다.
-- Airflow DAG는 실패 outcome 전체를 JSON으로 만든 뒤 4,000자로 잘라 반복 오류의 핵심 진단이 유실될 수 있다.
+- 상세 진단은 요청 mode와 transport, 응답 shape, token usage를 호출별로 보존한다.
+- Airflow DAG는 반복 실패를 원인별로 묶어 발생 건수와 대표 오류를 출력한다.
+- 운영 진단 결과 non-stream 응답도 HTTP 200/`finish_reason=stop`이지만 completion token만 소비하고
+  최종 `content`가 `null`인 사례가 9% 발생하며, streaming 재시도도 빈 chunk로 종료된다.
 
 ## 범위
 - 수정: `ct_process_comment` selector/service/management command/tests, data movement summary trigger API, Airflow DAG, Django settings, env/docs.
@@ -25,8 +25,9 @@
 - OpenWebUI 호출은 OpenAI 호환 chat completions 응답을 전제로 한다.
 - prompt는 고정 출력 형식을 강제한다.
 - gpt-oss 요청은 권장 sampling인 `temperature=1.0`, `top_p=1.0`과
-  `reasoning_effort=low`를 사용해 reasoning-only 종료를 줄인다.
-- reasoning 계산은 유지하되 응답에는 `include_reasoning=false`를 적용해 최종 content만 저장한다.
+  단순 요약에 맞는 `reasoning_effort=low`를 사용한다.
+- 응답 확장 필드 제어가 final 채널 변환에 개입하지 않도록 `include_reasoning`은 요청에서 생략하고,
+  서비스가 최종 `content`만 추출해 저장한다.
 - 성공 row만 `llm_summary`와 `update_flag='N'`을 갱신한다.
 - 실패 row는 `update_flag='Y'`를 유지해 다음 배치에서 재시도한다.
 - `contents_text`가 비어 있는 row는 외부 호출 없이 skip하고 flag는 유지한다.
@@ -35,7 +36,9 @@
 - 오류에는 진단 버전, 요청 mode, attempt, endpoint, model, timeout, HTTP status와 안전한 응답 header,
   JSON 응답 shape를 포함하고 prompt/인증 token/authorization/응답 본문은 포함하지 않는다.
 - 요청/응답 모순과 reasoning-only 상태는 `diagnosis_hints`로 자동 분류한다.
-- non-stream과 streaming이 모두 실패하면 두 attempt의 오류를 하나의 최종 오류에 순서대로 보존한다.
+- 요약 호출은 non-stream JSON 요청 한 번만 수행하며, SSE parser·응답 방식 fallback·prompt 변경 재시도를 사용하지 않는다.
+- 빈 final content는 upstream 오류로 즉시 반환하고 해당 row의 `update_flag='Y'`를 유지한다.
+- completion token을 소비했는데 final content가 없으면 upstream 출력 변환 문제임을 진단 hint로 표시한다.
 - Airflow는 반복 실패를 원인별로 집계해 발생 건수, 대표 오류, workorder 샘플을 출력한다.
 
 ## 실행 단계
@@ -50,9 +53,11 @@
 - [x] gpt-oss 권장 sampling 및 low reasoning 요청 계약 적용
 - [x] reasoning-only 회귀 테스트와 migration/boundary 검증 실행
 - [x] OpenWebUI transport/response 진단 정보 보강
-- [x] 최초 non-stream 오류와 streaming 재시도 오류 동시 보존
+- [x] 단일 non-stream 오류의 transport와 응답 shape 보존
 - [x] Airflow 반복 실패 원인 집계 및 대표 오류 출력
 - [x] 상세 오류 회귀 테스트와 DAG compile 검증
+- [x] streaming parser와 모든 빈 content 재시도 제거
+- [x] 운영 실패 응답 shape 회귀 테스트와 검증 실행
 
 ## 검증
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.data_movement.ct_process_comment api.observer --keepdb`
@@ -64,8 +69,9 @@
 - 대응: 파일 적재와 요약을 별도 command로 분리한다.
 - 위험: LLM이 입력에 없는 내용을 생성할 수 있다.
 - 대응: 고정 prompt와 명시적 "확인 불가" 규칙을 유지하고, 테스트로 요청 계약과 저장 형식을 검증한다.
-- 위험: gpt-oss가 reasoning만 생성하고 final content 없이 종료할 수 있다.
-- 대응: 공식 권장 sampling과 `reasoning_effort=low`를 요청 최상위 파라미터로 전달한다.
+- 위험: gpt-oss 또는 OpenWebUI 변환 계층이 reasoning token을 생성한 뒤 final content 없이 종료할 수 있다.
+- 대응: 애플리케이션에서 reasoning을 요약으로 대체하거나 prompt를 변경하지 않고 실패 처리하며,
+  안전한 진단으로 upstream Harmony parser/서빙 계층을 수정할 근거를 남긴다.
 - 위험: 실패 row가 처리 완료로 잘못 표시될 수 있다.
 - 대응: 성공 응답을 받은 row만 `update_flag='N'`으로 변경한다.
 - 위험: 상세 오류에 prompt, 응답 본문, 인증 token이 노출될 수 있다.
@@ -85,3 +91,9 @@
   반복 실패 원인별 대표 오류를 추가했다.
 - 2026-08-06: Django 관련 테스트 52건, Airflow 오류 포맷 테스트 2건, migration check,
   Python compile, backend boundary audit이 모두 통과했다.
+- 2026-08-06: 운영 로그에서 non-stream도 completion token을 소비한 뒤 final content 없이 종료하고,
+  streaming 재시도 역시 빈 chunk로 끝나는 upstream final 채널 누락을 확인했다.
+- 2026-08-06: upstream Harmony final 누락으로 원인이 확정되어 streaming parser, 응답 방식 fallback,
+  `include_reasoning` 제어, final 강제 prompt 재시도를 제거하고 단일 non-stream 호출로 정리했다.
+  Django 관련 테스트 101건, Airflow 오류 포맷 테스트 2건, migration check,
+  backend boundary audit이 모두 통과했다.
