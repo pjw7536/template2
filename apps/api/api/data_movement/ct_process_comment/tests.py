@@ -535,6 +535,17 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertIs(request_kwargs["stream"], False)
         self.assertEqual(request_kwargs["headers"]["Accept"], "application/json")
 
+    def test_build_summary_prompt_removes_only_literal_newline_tokens(self) -> None:
+        """모든 literal ``\\n`` 묶음을 공백 하나로 치환합니다."""
+
+        messages = summary_module.build_summary_prompt(
+            "점검\\n\\n 완료\\n 확인\r\n실제 줄바꿈\\nex 유지",
+        )
+
+        user_content = messages[1]["content"]
+        prompt_source = user_content.split("<<<\n", 1)[1].rsplit("\n>>>", 1)[0]
+        self.assertEqual(prompt_source, "점검 완료 확인\r\n실제 줄바꿈 ex 유지")
+
     def test_post_chat_completion_does_not_retry_empty_non_stream_response(self) -> None:
         """upstream final 누락은 다른 응답 방식이나 prompt로 재시도하지 않습니다."""
 

@@ -311,6 +311,7 @@ def _build_summary_prompt_from_source(
 ) -> list[dict[str, str]]:
     """요약 source를 OpenWebUI chat completions용 message 목록으로 감쌉니다."""
 
+    normalized_prompt_source = _remove_literal_newline_tokens(prompt_source)
     content_parts: list[str] = []
     if workorder_title.strip():
         content_parts.extend(
@@ -326,7 +327,7 @@ def _build_summary_prompt_from_source(
         [
             f"{source_label}:",
             "<<<",
-            prompt_source,
+            normalized_prompt_source,
             ">>>",
         ]
     )
@@ -669,6 +670,12 @@ def _find_reasoning_value(message: dict[str, Any]) -> Any:
             if value not in (None, ""):
                 return value
     return None
+
+
+def _remove_literal_newline_tokens(value: str) -> str:
+    """LLM 입력 source의 모든 ``\\n`` 묶음을 공백 하나로 치환합니다."""
+
+    return re.sub(r"(?:[ \t]*\\n[ \t]*)+", " ", value).strip()
 
 
 def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
