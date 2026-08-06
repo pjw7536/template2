@@ -196,6 +196,12 @@ class SummaryRunSummary:
         return sum(1 for outcome in self.outcomes if outcome.status == SUMMARY_STATUS_FAILED)
 
     @property
+    def all_failed(self) -> bool:
+        """처리 대상이 있고 모든 row가 실패했는지 반환합니다."""
+
+        return self.processed_count > 0 and self.failure_count == self.processed_count
+
+    @property
     def skipped_count(self) -> int:
         """요약 요청 없이 건너뛴 row 수를 반환합니다."""
 
@@ -243,6 +249,19 @@ def _build_headers(config: OpenWebUISummaryConfig) -> dict[str, str]:
         token = config.api_token
         headers["Authorization"] = token if token.lower().startswith("bearer ") else f"Bearer {token}"
     return headers
+
+
+def _normalize_summary_source_text(value: str) -> str:
+    """이스케이프된 개행을 복원하고 연속된 줄바꿈을 하나로 축약합니다."""
+
+    normalized = (
+        value.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    return re.sub(r"\n(?:[ \t]*\n)+", "\n", normalized).strip()
 
 
 def _build_timestamped_event_text(contents_text: str) -> str:
@@ -311,7 +330,6 @@ def _build_summary_prompt_from_source(
 ) -> list[dict[str, str]]:
     """요약 source를 OpenWebUI chat completions용 message 목록으로 감쌉니다."""
 
-    normalized_prompt_source = _remove_literal_newline_tokens(prompt_source)
     content_parts: list[str] = []
     if workorder_title.strip():
         content_parts.extend(
@@ -327,7 +345,7 @@ def _build_summary_prompt_from_source(
         [
             f"{source_label}:",
             "<<<",
-            normalized_prompt_source,
+            prompt_source,
             ">>>",
         ]
     )
@@ -344,10 +362,11 @@ def _build_summary_prompt_from_source(
 def build_summary_prompt(contents_text: str, workorder_title: str = "") -> list[dict[str, str]]:
     """OpenWebUI chat completions용 고정 message 목록을 생성합니다."""
 
-    timestamped_events = _build_timestamped_event_text(contents_text)
+    normalized_contents_text = _normalize_summary_source_text(contents_text)
+    timestamped_events = _build_timestamped_event_text(normalized_contents_text)
     return _build_summary_prompt_from_source(
         source_label="timestamped_events" if timestamped_events else "contents_text",
-        prompt_source=timestamped_events or contents_text,
+        prompt_source=timestamped_events or normalized_contents_text,
         workorder_title=workorder_title,
     )
 
@@ -672,12 +691,6 @@ def _find_reasoning_value(message: dict[str, Any]) -> Any:
     return None
 
 
-def _remove_literal_newline_tokens(value: str) -> str:
-    """LLM 입력 source의 모든 ``\\n`` 묶음을 공백 하나로 치환합니다."""
-
-    return re.sub(r"(?:[ \t]*\\n[ \t]*)+", " ", value).strip()
-
-
 def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
     """OpenAI 호환 응답에서 텍스트를 추출하고 비텍스트 종료 원인을 구분합니다.
 
@@ -944,8 +957,9 @@ def _request_event_summary(
 ) -> str:
     """큰 contents_text를 이벤트 묶음으로 나눠 시간순 요약을 생성합니다."""
 
-    timestamped_events = _build_timestamped_event_text(contents_text)
-    prompt_source = timestamped_events or contents_text
+    normalized_contents_text = _normalize_summary_source_text(contents_text)
+    timestamped_events = _build_timestamped_event_text(normalized_contents_text)
+    prompt_source = timestamped_events or normalized_contents_text
     source_label = "timestamped_events" if timestamped_events else "contents_text"
     chunks = _split_summary_source_chunks(prompt_source) or [prompt_source]
     summary_chunks: list[str] = []
@@ -985,26 +999,42 @@ def request_summary(
         workorder_title=workorder_title,
     )
 
-    core_summary = _normalize_core_summary_text(
-        _post_chat_completion(
-            session=session,
-            config=config,
-            messages=build_core_summary_prompt(event_summary),
-            stage="core_summary",
+    try:
+        core_summary = _normalize_core_summary_text(
+            _post_chat_completion(
+                session=session,
+                config=config,
+                messages=build_core_summary_prompt(event_summary),
+                stage="core_summary",
+            )
         )
-    )
+    except _OpenWebUIEmptyContentResponseError as exc:
+        logger.warning(
+            "OpenWebUI 핵심요약 응답이 비어 시간순 요약만 저장합니다. %s",
+            exc,
+        )
+        return GeneratedSummary(core_summary=None, event_summary=event_summary)
+
     if core_summary is None:
         return GeneratedSummary(core_summary=None, event_summary=event_summary)
 
-    reviewed_core_summary = _normalize_reviewed_core_summary_text(
-        _post_chat_completion(
-            session=session,
-            config=config,
-            messages=build_core_summary_review_prompt(event_summary, core_summary),
-            stage="core_review",
-        ),
-        core_summary,
-    )
+    try:
+        reviewed_core_summary = _normalize_reviewed_core_summary_text(
+            _post_chat_completion(
+                session=session,
+                config=config,
+                messages=build_core_summary_review_prompt(event_summary, core_summary),
+                stage="core_review",
+            ),
+            core_summary,
+        )
+    except _OpenWebUIEmptyContentResponseError as exc:
+        logger.warning(
+            "OpenWebUI 핵심요약 검수 응답이 비어 시간순 요약만 저장합니다. %s",
+            exc,
+        )
+        return GeneratedSummary(core_summary=None, event_summary=event_summary)
+
     return GeneratedSummary(core_summary=reviewed_core_summary, event_summary=event_summary)
 
 

@@ -69,11 +69,11 @@ def _build_comment_row(
 
 def _build_openwebui_session(
     reply: str = "[2026-06-19 13:44] 점검",
-    replies: list[str] | None = None,
+    replies: list[str | None] | None = None,
 ) -> Mock:
     """OpenWebUI 응답을 흉내 내는 requests session mock을 생성합니다."""
 
-    def build_response(content: str) -> Mock:
+    def build_response(content: str | None) -> Mock:
         response = Mock()
         response.headers = {"Content-Type": "application/json"}
         response.raise_for_status.return_value = None
@@ -298,6 +298,53 @@ class CtProcessCommentStructureTests(SimpleTestCase):
         summarize_comments.assert_called_once_with(limit=5, workorder_id="WO1", dry_run=True)
         self.assertIn("dry_run: workorder_id=WO1", stdout.getvalue())
         self.assertIn("summary: processed=1", stdout.getvalue())
+
+    @patch(
+        "api.data_movement.ct_process_comment.management.commands"
+        ".summarize_ct_process_comment.services.summarize_pending_ct_process_comments"
+    )
+    def test_summary_command_does_not_raise_when_only_some_rows_failed(self, summarize_comments) -> None:
+        """일부 row만 실패하면 실패 상세를 출력하고 command를 성공 처리합니다."""
+
+        summarize_comments.return_value = summary_module.SummaryRunSummary(
+            outcomes=[
+                summary_module.SummaryRowOutcome(
+                    workorder_id="WO1",
+                    status=summary_module.SUMMARY_STATUS_SUCCESS,
+                ),
+                summary_module.SummaryRowOutcome(
+                    workorder_id="WO2",
+                    status=summary_module.SUMMARY_STATUS_FAILED,
+                    error_message="OpenWebUI 오류",
+                ),
+            ]
+        )
+        stdout = StringIO()
+
+        call_command("summarize_ct_process_comment", stdout=stdout)
+
+        self.assertIn("failed: workorder_id=WO2, error=OpenWebUI 오류", stdout.getvalue())
+        self.assertIn("success=1, failed=1", stdout.getvalue())
+
+    @patch(
+        "api.data_movement.ct_process_comment.management.commands"
+        ".summarize_ct_process_comment.services.summarize_pending_ct_process_comments"
+    )
+    def test_summary_command_raises_when_all_rows_failed(self, summarize_comments) -> None:
+        """모든 row가 실패하면 command가 실패를 나타내는 예외를 발생시킵니다."""
+
+        summarize_comments.return_value = summary_module.SummaryRunSummary(
+            outcomes=[
+                summary_module.SummaryRowOutcome(
+                    workorder_id="WO1",
+                    status=summary_module.SUMMARY_STATUS_FAILED,
+                    error_message="OpenWebUI 오류",
+                )
+            ]
+        )
+
+        with self.assertRaises(CommandError):
+            call_command("summarize_ct_process_comment", stdout=StringIO())
 
     def test_summary_command_rejects_invalid_limit(self) -> None:
         """요약 command limit은 1 이상만 허용합니다."""
@@ -535,16 +582,30 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertIs(request_kwargs["stream"], False)
         self.assertEqual(request_kwargs["headers"]["Accept"], "application/json")
 
-    def test_build_summary_prompt_removes_only_literal_newline_tokens(self) -> None:
-        """모든 literal ``\\n`` 묶음을 공백 하나로 치환합니다."""
+    def test_build_summary_prompt_restores_literal_newlines_before_timestamp_parsing(self) -> None:
+        """문자열 개행을 복원한 뒤 시간 헤더와 내용을 이벤트로 묶습니다."""
 
         messages = summary_module.build_summary_prompt(
-            "점검\\n\\n 완료\\n 확인\r\n실제 줄바꿈\\nex 유지",
+            "[ 2026-01-01 10:00 / 홍길동 ]\\n\\n점검 시작\\r\\n\\n알람 확인"
+            "\r\n\r\n\r\n[ 2026-01-01 11:00 / 홍길동 ]\r\n조치 완료",
         )
 
         user_content = messages[1]["content"]
         prompt_source = user_content.split("<<<\n", 1)[1].rsplit("\n>>>", 1)[0]
-        self.assertEqual(prompt_source, "점검 완료 확인\r\n실제 줄바꿈 ex 유지")
+        self.assertIn("timestamped_events:", user_content)
+        self.assertEqual(
+            prompt_source,
+            "[2026-01-01 10:00] 점검 시작 알람 확인\n[2026-01-01 11:00] 조치 완료",
+        )
+
+    def test_normalize_summary_source_text_collapses_consecutive_newlines(self) -> None:
+        """문자열 개행과 실제 연속 개행을 실제 개행 하나로 축약합니다."""
+
+        normalized = summary_module._normalize_summary_source_text(
+            "첫 번째\\n\\n\\r\\n두 번째\r\n\r\n\r\n세 번째",
+        )
+
+        self.assertEqual(normalized, "첫 번째\n두 번째\n세 번째")
 
     def test_post_chat_completion_does_not_retry_empty_non_stream_response(self) -> None:
         """upstream final 누락은 다른 응답 방식이나 prompt로 재시도하지 않습니다."""
@@ -840,6 +901,67 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(comment.llm_summary, "[2026-01-01 10:00] 점검")
         self.assertIsNone(comment.llm_core_summary)
         self.assertEqual(session.post.call_count, 2)
+
+    def test_summarize_saves_event_summary_when_core_summary_response_is_blank(self) -> None:
+        """핵심요약 응답이 공백이면 시간순 요약만 저장하고 처리를 완료합니다."""
+
+        comment = CtProcessComment.objects.create(
+            workorder_id="WO1",
+            contents_text="[ 2026-01-01 10:00 / 홍길동 ]\n점검 시작",
+            update_flag="Y",
+        )
+        session = _build_openwebui_session(
+            replies=[
+                "[2026-01-01 10:00] 점검 시작",
+                "   ",
+            ]
+        )
+
+        with self.assertLogs(summary_module.logger.name, level="WARNING") as log_context:
+            run_summary = summary_module.summarize_pending_ct_process_comments(
+                limit=10,
+                session=session,
+                config=_build_openwebui_config(),
+            )
+
+        comment.refresh_from_db()
+        self.assertEqual(run_summary.success_count, 1)
+        self.assertEqual(comment.update_flag, "N")
+        self.assertEqual(comment.llm_summary, "[2026-01-01 10:00] 점검 시작")
+        self.assertIsNone(comment.llm_core_summary)
+        self.assertEqual(session.post.call_count, 2)
+        self.assertIn("stage=core_summary", "\n".join(log_context.output))
+
+    def test_summarize_saves_event_summary_when_core_review_response_is_empty(self) -> None:
+        """핵심요약 검수 응답이 없으면 시간순 요약만 저장하고 처리를 완료합니다."""
+
+        comment = CtProcessComment.objects.create(
+            workorder_id="WO1",
+            contents_text="[ 2026-01-01 10:00 / 홍길동 ]\n점검 시작",
+            update_flag="Y",
+        )
+        session = _build_openwebui_session(
+            replies=[
+                "[2026-01-01 10:00] 점검 시작",
+                "핵심 요약: 점검을 시작했습니다.",
+                None,
+            ]
+        )
+
+        with self.assertLogs(summary_module.logger.name, level="WARNING") as log_context:
+            run_summary = summary_module.summarize_pending_ct_process_comments(
+                limit=10,
+                session=session,
+                config=_build_openwebui_config(),
+            )
+
+        comment.refresh_from_db()
+        self.assertEqual(run_summary.success_count, 1)
+        self.assertEqual(comment.update_flag, "N")
+        self.assertEqual(comment.llm_summary, "[2026-01-01 10:00] 점검 시작")
+        self.assertIsNone(comment.llm_core_summary)
+        self.assertEqual(session.post.call_count, 3)
+        self.assertIn("stage=core_review", "\n".join(log_context.output))
 
     def test_request_summary_keeps_single_short_event_core_summary(self) -> None:
         """단일 짧은 이벤트도 LLM이 구체 핵심요약을 만들면 저장합니다."""

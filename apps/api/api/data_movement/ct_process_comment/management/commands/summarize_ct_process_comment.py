@@ -47,5 +47,5 @@ class Command(BaseCommand):
             f"success={summary.success_count}, failed={summary.failure_count}, "
             f"skipped={summary.skipped_count}, dry_run={summary.dry_run_count}"
         )
-        if summary.failure_count:
+        if summary.all_failed:
             raise CommandError(f"ct_process_comment 요약 실패 row 수: {summary.failure_count}")

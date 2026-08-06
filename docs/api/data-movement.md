@@ -73,7 +73,11 @@ POST /api/v1/data-movement/ct_process_comment/summarize/
 
 `update_flag='Y'`인 `ct_process_comment` row를 최근 업데이트 순으로 OpenWebUI에 요약 요청합니다.
 성공한 row는 `llm_summary`를 저장하고 `update_flag='N'`으로 변경합니다.
+시간순 요약 이후 핵심요약 또는 검수 응답만 비어 있으면 `llm_summary`는 저장하고
+`llm_core_summary=NULL`, `update_flag='N'`으로 완료 처리합니다.
 실패 row는 `update_flag='Y'`를 유지해 다음 실행에서 재시도합니다.
+처리된 모든 row가 실패한 경우에만 API가 `500`을 반환하며, 일부라도 성공·skip·dry-run이면
+실패 상세를 `outcomes`에 포함한 `200` 응답을 반환합니다.
 
 요청 바디는 선택입니다.
 

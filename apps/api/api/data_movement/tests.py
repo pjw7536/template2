@@ -173,8 +173,8 @@ class DataMovementLoadTriggerApiTests(TestCase):
         self.assertEqual(response.json()["dry_run_count"], 0)
         summarize_comments.assert_called_once_with(dry_run=True, limit=3)
 
-    def test_summary_trigger_returns_500_when_any_summary_failed(self) -> None:
-        """요약 실패 row가 있으면 Airflow가 실패를 감지할 수 있게 500을 반환합니다."""
+    def test_summary_trigger_returns_500_when_all_summaries_failed(self) -> None:
+        """모든 요약 row가 실패하면 Airflow가 실패를 감지할 수 있게 500을 반환합니다."""
 
         summary = SummaryRunSummary(
             outcomes=[
@@ -197,3 +197,35 @@ class DataMovementLoadTriggerApiTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 500)
+
+    def test_summary_trigger_returns_200_when_only_some_summaries_failed(self) -> None:
+        """일부 요약 row만 실패하면 실패 상세를 포함한 성공 응답을 반환합니다."""
+
+        summary = SummaryRunSummary(
+            outcomes=[
+                SummaryRowOutcome(
+                    workorder_id="WO1",
+                    status="success",
+                    summary="[2026-01-01 10:00] 점검",
+                ),
+                SummaryRowOutcome(
+                    workorder_id="WO2",
+                    status="failed",
+                    error_message="OpenWebUI 오류",
+                ),
+            ]
+        )
+        with patch(
+            "api.data_movement.views.summarize_pending_ct_process_comments",
+            return_value=summary,
+        ):
+            response = self.client.post(
+                "/api/v1/data-movement/ct_process_comment/summarize/",
+                data={},
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer test-token",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["success_count"], 1)
+        self.assertEqual(response.json()["failure_count"], 1)

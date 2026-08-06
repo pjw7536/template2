@@ -28,8 +28,12 @@
   단순 요약에 맞는 `reasoning_effort=low`를 사용한다.
 - 응답 확장 필드 제어가 final 채널 변환에 개입하지 않도록 `include_reasoning`은 요청에서 생략하고,
   서비스가 최종 `content`만 추출해 저장한다.
-- 성공 row만 `llm_summary`와 `update_flag='N'`을 갱신한다.
-- 실패 row는 `update_flag='Y'`를 유지해 다음 배치에서 재시도한다.
+- 시간순 요약에 성공한 row는 `llm_summary`와 `update_flag='N'`을 갱신한다.
+- 시간순 요약 이후 핵심요약 또는 검수의 final content만 비어 있으면 시간순 요약을 저장하고
+  `llm_core_summary=NULL`로 완료 처리한다.
+- 시간순 요약이나 그 밖의 OpenWebUI 요청에 실패한 row는 `update_flag='Y'`를 유지해 다음 배치에서 재시도한다.
+- 처리된 모든 row가 실패한 경우에만 API와 management command를 실패 처리하고,
+  일부라도 성공·skip·dry-run이면 실패 상세를 보존한 채 성공 처리한다.
 - `contents_text`가 비어 있는 row는 외부 호출 없이 skip하고 flag는 유지한다.
 - 로컬 dev는 `adfs_dummy`의 `/v1/chat/completions`를 `OPENWEBUI_URL`로 사용한다.
 - 초기 구현에서는 Airflow `data_movement_file_load` DAG가 `load_ct_process_comment` 성공 후 요약 trigger API를 호출했다.
@@ -37,7 +41,8 @@
   JSON 응답 shape를 포함하고 prompt/인증 token/authorization/응답 본문은 포함하지 않는다.
 - 요청/응답 모순과 reasoning-only 상태는 `diagnosis_hints`로 자동 분류한다.
 - 요약 호출은 non-stream JSON 요청 한 번만 수행하며, SSE parser·응답 방식 fallback·prompt 변경 재시도를 사용하지 않는다.
-- 빈 final content는 upstream 오류로 즉시 반환하고 해당 row의 `update_flag='Y'`를 유지한다.
+- 시간순 요약의 빈 final content는 upstream 오류로 반환하고 해당 row의 `update_flag='Y'`를 유지한다.
+- 핵심요약 또는 검수의 빈 final content는 경고로 기록하고 시간순 요약만 저장한다.
 - completion token을 소비했는데 final content가 없으면 upstream 출력 변환 문제임을 진단 hint로 표시한다.
 - Airflow는 반복 실패를 원인별로 집계해 발생 건수, 대표 오류, workorder 샘플을 출력한다.
 
@@ -58,6 +63,8 @@
 - [x] 상세 오류 회귀 테스트와 DAG compile 검증
 - [x] streaming parser와 모든 빈 content 재시도 제거
 - [x] 운영 실패 응답 shape 회귀 테스트와 검증 실행
+- [x] 핵심요약 단계의 빈 content가 시간순 요약 저장을 막지 않도록 부분 성공 처리
+- [x] 모든 처리 row가 실패한 경우에만 API와 management command를 실패 처리
 
 ## 검증
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.data_movement.ct_process_comment api.observer --keepdb`
@@ -70,8 +77,8 @@
 - 위험: LLM이 입력에 없는 내용을 생성할 수 있다.
 - 대응: 고정 prompt와 명시적 "확인 불가" 규칙을 유지하고, 테스트로 요청 계약과 저장 형식을 검증한다.
 - 위험: gpt-oss 또는 OpenWebUI 변환 계층이 reasoning token을 생성한 뒤 final content 없이 종료할 수 있다.
-- 대응: 애플리케이션에서 reasoning을 요약으로 대체하거나 prompt를 변경하지 않고 실패 처리하며,
-  안전한 진단으로 upstream Harmony parser/서빙 계층을 수정할 근거를 남긴다.
+- 대응: 애플리케이션에서 reasoning을 요약으로 대체하거나 prompt를 변경하지 않는다. 시간순 요약이 비면 실패 처리하고,
+  핵심요약 또는 검수만 비면 시간순 요약을 보존하면서 안전한 진단을 경고로 남긴다.
 - 위험: 실패 row가 처리 완료로 잘못 표시될 수 있다.
 - 대응: 성공 응답을 받은 row만 `update_flag='N'`으로 변경한다.
 - 위험: 상세 오류에 prompt, 응답 본문, 인증 token이 노출될 수 있다.
@@ -97,3 +104,8 @@
   `include_reasoning` 제어, final 강제 prompt 재시도를 제거하고 단일 non-stream 호출로 정리했다.
   Django 관련 테스트 101건, Airflow 오류 포맷 테스트 2건, migration check,
   backend boundary audit이 모두 통과했다.
+- 2026-08-07: 핵심요약 또는 검수 응답만 비면 `llm_summary`를 저장하고 `llm_core_summary=NULL`로
+  완료하도록 변경했으며, 첫 번째 시간순 요약의 빈 응답은 기존 실패 정책을 유지했다.
+- 2026-08-07: 일부 row만 실패한 배치는 실패 상세를 유지하면서 성공 처리하고,
+  처리된 모든 row가 실패한 경우에만 API 500과 command 오류를 반환하도록 변경했다.
+  `api.data_movement` 테스트 144건, migration check, backend boundary audit이 모두 통과했다.

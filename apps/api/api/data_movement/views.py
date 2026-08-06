@@ -176,5 +176,5 @@ class DataMovementCtProcessCommentSummaryTriggerView(APIView):
             return JsonResponse({"error": "ct_process_comment 요약에 실패했습니다."}, status=500)
 
         response_payload = _serialize_summary(table_name="ct_process_comment", summary=summary)
-        status_code = 500 if summary.failure_count else 200
+        status_code = 500 if summary.all_failed else 200
         return JsonResponse(response_payload, status=status_code)
