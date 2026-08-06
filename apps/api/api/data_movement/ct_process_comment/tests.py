@@ -396,10 +396,13 @@ class CtProcessCommentSummaryTests(TestCase):
         event_request_messages = event_request_kwargs["json"]["messages"]
         core_request_messages = core_request_kwargs["json"]["messages"]
         review_request_messages = review_request_kwargs["json"]["messages"]
-        self.assertEqual(event_request_kwargs["json"]["temperature"], 0.0)
+        self.assertEqual(event_request_kwargs["json"]["temperature"], 1.0)
+        self.assertEqual(event_request_kwargs["json"]["top_p"], 1.0)
+        self.assertEqual(event_request_kwargs["json"]["reasoning_effort"], "low")
         self.assertEqual(event_request_kwargs["json"]["model"], "test-model")
         self.assertIs(event_request_kwargs["json"]["stream"], True)
         self.assertEqual(event_request_kwargs["json"]["tool_choice"], "none")
+        self.assertIs(event_request_kwargs["json"]["include_reasoning"], False)
         self.assertIs(event_request_kwargs["stream"], True)
         self.assertEqual(event_request_kwargs["headers"]["Accept"], "text/event-stream")
         self.assertEqual(event_request_kwargs["headers"]["Authorization"], "Bearer test-token")
@@ -566,7 +569,9 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(session.post.call_count, 1)
         payload = session.post.call_args.kwargs["json"]
         self.assertIs(payload["include_reasoning"], False)
-        self.assertNotIn("reasoning_effort", payload)
+        self.assertEqual(payload["temperature"], 1.0)
+        self.assertEqual(payload["top_p"], 1.0)
+        self.assertEqual(payload["reasoning_effort"], "low")
 
     def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
         """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""

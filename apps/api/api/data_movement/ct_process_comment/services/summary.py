@@ -806,7 +806,10 @@ def _post_chat_completion_once(
     payload = {
         "model": config.model,
         "messages": messages,
-        "temperature": 0.0,
+        # gpt-oss 권장 sampling과 낮은 reasoning 강도로 final content 생성을 안정화합니다.
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "reasoning_effort": "low",
         "stream": True,
         "tool_choice": "none",
         # 모델의 reasoning 계산은 유지하고 API 응답 전송에서만 제외합니다.

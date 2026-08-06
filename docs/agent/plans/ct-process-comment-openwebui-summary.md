@@ -19,7 +19,10 @@
 - 별도 `OPENWEBUI_*` 설정을 사용해 Assistant LLM 설정과 분리한다.
 - 조회 순서는 `updated_at DESC, id DESC`로 고정한다.
 - OpenWebUI 호출은 OpenAI 호환 chat completions 응답을 전제로 한다.
-- prompt는 고정 출력 형식을 강제하고, temperature는 `0.0`으로 고정한다.
+- prompt는 고정 출력 형식을 강제한다.
+- gpt-oss 요청은 권장 sampling인 `temperature=1.0`, `top_p=1.0`과
+  `reasoning_effort=low`를 사용해 reasoning-only 종료를 줄인다.
+- reasoning 계산은 유지하되 응답에는 `include_reasoning=false`를 적용해 최종 content만 저장한다.
 - 성공 row만 `llm_summary`와 `update_flag='N'`을 갱신한다.
 - 실패 row는 `update_flag='Y'`를 유지해 다음 배치에서 재시도한다.
 - `contents_text`가 비어 있는 row는 외부 호출 없이 skip하고 flag는 유지한다.
@@ -35,6 +38,8 @@
 - [x] Airflow summary trigger API/DAG 추가
 - [x] 테스트 추가/수정
 - [x] 검증 명령 실행
+- [x] gpt-oss 권장 sampling 및 low reasoning 요청 계약 적용
+- [x] reasoning-only 회귀 테스트와 migration/boundary 검증 실행
 
 ## 검증
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.data_movement.ct_process_comment api.observer --keepdb`
@@ -45,7 +50,9 @@
 - 위험: 외부 API 장애가 적재 lifecycle을 막을 수 있다.
 - 대응: 파일 적재와 요약을 별도 command로 분리한다.
 - 위험: LLM이 입력에 없는 내용을 생성할 수 있다.
-- 대응: 고정 prompt, `temperature=0.0`, 명시적 "확인 불가" 규칙을 사용한다.
+- 대응: 고정 prompt와 명시적 "확인 불가" 규칙을 유지하고, 테스트로 요청 계약과 저장 형식을 검증한다.
+- 위험: gpt-oss가 reasoning만 생성하고 final content 없이 종료할 수 있다.
+- 대응: 공식 권장 sampling과 `reasoning_effort=low`를 요청 최상위 파라미터로 전달한다.
 - 위험: 실패 row가 처리 완료로 잘못 표시될 수 있다.
 - 대응: 성공 응답을 받은 row만 `update_flag='N'`으로 변경한다.
 
@@ -54,3 +61,5 @@
 - 2026-07-06: OpenWebUI 요약 service/command/env/docs/tests를 추가했고 대상 테스트, migration check, backend boundary audit을 통과했다.
 - 2026-07-06: Airflow 주기 실행을 위해 `ct_process_comment/summarize/` trigger API와 DAG task를 추가했다.
 - 2026-07-06: 요약 trigger는 별도 `ct_process_comment_summary` DAG로 분리했다.
+- 2026-08-06: gpt-oss reasoning-only 응답 대응을 위해 권장 sampling과 명시적 low reasoning 요청 계약으로 변경했다.
+- 2026-08-06: `ct_process_comment` 테스트 41건, migration check, backend boundary audit이 모두 통과했다.
