@@ -809,6 +809,8 @@ def _post_chat_completion_once(
         "temperature": 0.0,
         "stream": True,
         "tool_choice": "none",
+        # 모델의 reasoning 계산은 유지하고 API 응답 전송에서만 제외합니다.
+        "include_reasoning": False,
     }
 
     try:
@@ -831,19 +833,6 @@ def _post_chat_completion_once(
         raise OpenWebUIRequestError(f"OpenWebUI 요청 실패: {exc}") from exc
 
 
-def _with_low_reasoning(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    """gpt-oss 재시도용으로 system message에 낮은 reasoning 설정을 추가합니다."""
-
-    retry_messages = [dict(message) for message in messages]
-    for message in retry_messages:
-        if message.get("role") != "system":
-            continue
-        message["content"] = f"Reasoning: low\n\n{message.get('content', '')}"
-        return retry_messages
-
-    return [{"role": "system", "content": "Reasoning: low"}, *retry_messages]
-
-
 def _post_chat_completion(
     *,
     session: requests.Session,
@@ -851,30 +840,14 @@ def _post_chat_completion(
     messages: list[dict[str, str]],
     stage: str,
 ) -> str:
-    """최종 content가 없는 gpt-oss 응답을 낮은 reasoning으로 한 번 재시도합니다."""
+    """reasoning을 노출하지 않는 streaming chat completion을 호출합니다."""
 
-    try:
-        return _post_chat_completion_once(
-            session=session,
-            config=config,
-            messages=messages,
-            stage=stage,
-        )
-    except _OpenWebUIReasoningOnlyResponseError:
-        logger.warning(
-            "OpenWebUI가 최종 content 없이 reasoning만 반환해 낮은 reasoning으로 재시도합니다. stage=%s",
-            stage,
-        )
-
-    try:
-        return _post_chat_completion_once(
-            session=session,
-            config=config,
-            messages=_with_low_reasoning(messages),
-            stage=stage,
-        )
-    except _OpenWebUIReasoningOnlyResponseError as exc:
-        raise OpenWebUIRequestError(f"{exc} retry=reasoning_low") from exc
+    return _post_chat_completion_once(
+        session=session,
+        config=config,
+        messages=messages,
+        stage=stage,
+    )
 
 
 def _request_event_summary(

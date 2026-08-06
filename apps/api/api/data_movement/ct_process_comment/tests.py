@@ -564,59 +564,9 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
         self.assertNotIn(reasoning_text, content)
         self.assertEqual(session.post.call_count, 1)
-
-    def test_post_chat_completion_retries_reasoning_only_stream_with_low_reasoning(self) -> None:
-        """reasoning만 반환한 SSE 응답은 낮은 reasoning으로 한 번 재시도합니다."""
-
-        reasoning_only_response = _build_openwebui_sse_response(
-            [
-                {
-                    "id": "chatcmpl-reasoning-only",
-                    "model": "gpt-oss-120b",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"reasoning_content": "추론만 생성됨"},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                }
-            ]
-        )
-        final_response = _build_openwebui_sse_response(
-            [
-                {
-                    "id": "chatcmpl-final",
-                    "model": "gpt-oss-120b",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": "[2026-01-01 10:00] 점검 완료"},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                }
-            ]
-        )
-        session = Mock()
-        session.post.side_effect = [reasoning_only_response, final_response]
-
-        content = summary_module._post_chat_completion(
-            session=session,
-            config=_build_openwebui_config(),
-            messages=[
-                {"role": "system", "content": "요약만 출력하세요."},
-                {"role": "user", "content": "점검 이력을 요약하세요."},
-            ],
-            stage="event_summary",
-        )
-
-        first_messages = session.post.call_args_list[0].kwargs["json"]["messages"]
-        retry_messages = session.post.call_args_list[1].kwargs["json"]["messages"]
-        self.assertEqual(content, "[2026-01-01 10:00] 점검 완료")
-        self.assertEqual(session.post.call_count, 2)
-        self.assertFalse(first_messages[0]["content"].startswith("Reasoning: low"))
-        self.assertTrue(retry_messages[0]["content"].startswith("Reasoning: low"))
+        payload = session.post.call_args.kwargs["json"]
+        self.assertIs(payload["include_reasoning"], False)
+        self.assertNotIn("reasoning_effort", payload)
 
     def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
         """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""
@@ -798,9 +748,9 @@ class CtProcessCommentSummaryTests(TestCase):
         )
         self.assertIn("completion_tokens=256", error_message)
         self.assertIn("reasoning_tokens=256", error_message)
-        self.assertIn("retry=reasoning_low", error_message)
+        self.assertNotIn("retry=reasoning_low", error_message)
         self.assertNotIn(reasoning_text, error_message)
-        self.assertEqual(session.post.call_count, 2)
+        self.assertEqual(session.post.call_count, 1)
 
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:
         """시간순 요약이 짧아도 핵심요약 생성을 요청하고 NO_CORE_SUMMARY면 비워 둡니다."""
