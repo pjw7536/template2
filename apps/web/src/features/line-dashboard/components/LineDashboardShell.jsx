@@ -77,7 +77,7 @@ function LineDashboardShellContent({ contentMaxWidthClass, scrollAreaClassName }
 }
 
 function LineDashboardShellLayout({ navigation, lineOptions, contentMaxWidthClass, scrollAreaClassName }) {
-  const [isNoticeOpen, setIsNoticeOpen] = useState(true)
+  const [isNoticeOpen, setIsNoticeOpen] = useState(false)
   const { activeLineId, onSelect } = useLineSwitcher()
   const lineSwitcherOptions = buildLineSwitcherOptions(lineOptions)
 
