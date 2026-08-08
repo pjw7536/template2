@@ -1,5 +1,5 @@
 // 앱스토어 필터 패널
-import { Plus, Search, Star, X } from "lucide-react"
+import { ListOrdered, Plus, Search, Star, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -70,7 +70,7 @@ const getCategorySections = (categories) => {
   ]
 }
 
-function CategoryButton({ option, category, count, onCategoryChange }) {
+function CategoryButton({ option, category, count, onCategoryChange, disabled }) {
   const isActive = option === category
   const isFeaturedReport = option === FEATURED_REPORT_CATEGORY
   const itemClassName = [
@@ -87,7 +87,8 @@ function CategoryButton({ option, category, count, onCategoryChange }) {
     <button
       type="button"
       onClick={() => onCategoryChange(option)}
-      className={itemClassName}
+      disabled={disabled}
+      className={`${itemClassName} disabled:cursor-not-allowed disabled:opacity-60`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className={indicatorClassName} aria-hidden="true" />
@@ -117,6 +118,9 @@ export function AppFilters({
   onReset,
   onCreate,
   isCreating,
+  canReorder,
+  onReorder,
+  isOrderEditing,
 }) {
   const categoryCount = (option) =>
     option === ALL_CATEGORY ? totalApps : categoryCounts?.[option] ?? 0
@@ -128,20 +132,35 @@ export function AppFilters({
     <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-2">
       {/* 상단: 요약 + 주요 액션 */}
       <Card className="rounded-2xl border bg-card shadow-sm">
-        <CardHeader className="space-y-3 pb-3">
-          <div className="flex justify-between">
-            <CardTitle className="text-xl">App store </CardTitle>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onCreate}
-              disabled={isCreating}
-              className="gap-1"
-              type="button"
-            >
-              <Plus className="size-4" />
-              Add
-            </Button>
+        <CardHeader className="space-y-3 px-4 pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="shrink-0 text-xl">App store</CardTitle>
+            <div className="flex items-center gap-1">
+              {canReorder ? (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onReorder}
+                  disabled={isOrderEditing}
+                  className="gap-1"
+                  type="button"
+                >
+                  <ListOrdered className="size-3.5" aria-hidden="true" />
+                  Sort
+                </Button>
+              ) : null}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onCreate}
+                disabled={isCreating || isOrderEditing}
+                className="gap-1"
+                type="button"
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+                Add
+              </Button>
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -163,10 +182,11 @@ export function AppFilters({
             <Input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
+              disabled={isOrderEditing}
               placeholder="앱 이름, 설명, 카테고리 검색"
               className="h-10 pl-9 pr-9"
             />
-            {hasQuery ? (
+            {hasQuery && !isOrderEditing ? (
               <Button
                 variant="ghost"
                 size="icon"
@@ -193,6 +213,7 @@ export function AppFilters({
               variant="ghost"
               size="sm"
               onClick={onReset}
+              disabled={isOrderEditing}
               type="button"
               className="h-8 px-2 text-xs text-muted-foreground"
             >
@@ -217,6 +238,7 @@ export function AppFilters({
                           category={category}
                           count={categoryCount(option)}
                           onCategoryChange={onCategoryChange}
+                          disabled={isOrderEditing}
                         />
                       </li>
                     ))}
@@ -230,6 +252,7 @@ export function AppFilters({
                 category={category}
                 count={categoryCount(ALL_CATEGORY)}
                 onCategoryChange={onCategoryChange}
+                disabled={isOrderEditing}
               />
             </div>
           </div>

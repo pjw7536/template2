@@ -9,6 +9,7 @@ import {
   deleteApp,
   deleteComment,
   incrementView,
+  reorderApps,
   toggleCommentLike,
   toggleLike,
   updateApp,
@@ -80,12 +81,13 @@ export function useAppstoreMutations() {
     onSuccess: (app) => {
       queryClient.setQueryData(appstoreQueryKeys.apps(), (previous) => {
         const prevApps = previous?.apps ?? []
-        const nextApps = [app, ...prevApps.filter((item) => item.id !== app.id)]
+        const nextApps = [...prevApps.filter((item) => item.id !== app.id), app]
         const prevTotal =
           typeof previous?.total === "number" ? previous.total : prevApps.length
-        return { apps: nextApps, total: prevTotal + 1 }
+        return { ...previous, apps: nextApps, total: prevTotal + 1 }
       })
       queryClient.setQueryData(appstoreQueryKeys.app(app.id), { app })
+      queryClient.invalidateQueries({ queryKey: appstoreQueryKeys.apps() })
     },
   })
 
@@ -107,10 +109,11 @@ export function useAppstoreMutations() {
         const filtered = previous.apps.filter((item) => item.id !== appId)
         const prevTotal =
           typeof previous.total === "number" ? previous.total : previous.apps.length
-        return { apps: filtered, total: Math.max(prevTotal - 1, filtered.length) }
+        return { ...previous, apps: filtered, total: Math.max(prevTotal - 1, filtered.length) }
       })
       queryClient.removeQueries({ queryKey: appstoreQueryKeys.app(appId) })
       queryClient.removeQueries({ queryKey: appstoreQueryKeys.comments(appId) })
+      queryClient.invalidateQueries({ queryKey: appstoreQueryKeys.apps() })
     },
   })
 
@@ -235,6 +238,27 @@ export function useAppstoreMutations() {
     },
   })
 
+  const reorderAppsMutation = useMutation({
+    mutationFn: reorderApps,
+    onSuccess: (result) => {
+      queryClient.setQueryData(appstoreQueryKeys.apps(), (previous) => {
+        if (!previous?.apps) return previous
+        const appsById = new Map(previous.apps.map((app) => [app.id, app]))
+        const orderedApps = result.appIds
+          .map((appId, index) => {
+            const app = appsById.get(appId)
+            return app ? { ...app, displayOrder: index + 1 } : null
+          })
+          .filter(Boolean)
+        return {
+          ...previous,
+          apps: orderedApps,
+          orderVersion: result.orderVersion,
+        }
+      })
+    },
+  })
+
   return {
     createAppMutation,
     updateAppMutation,
@@ -245,5 +269,6 @@ export function useAppstoreMutations() {
     updateCommentMutation,
     deleteCommentMutation,
     toggleCommentLikeMutation,
+    reorderAppsMutation,
   }
 }

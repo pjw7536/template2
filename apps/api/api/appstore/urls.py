@@ -10,6 +10,7 @@ from django.urls import path
 from .views import (
     AppStoreAppCoverView,
     AppStoreAppDetailView,
+    AppStoreAppOrderView,
     AppStoreAppsView,
     AppStoreCommentDetailView,
     AppStoreCommentLikeToggleView,
@@ -20,6 +21,7 @@ from .views import (
 
 urlpatterns = [
     path("apps", AppStoreAppsView.as_view(), name="appstore-apps"),
+    path("apps/order", AppStoreAppOrderView.as_view(), name="appstore-app-order"),
     path("apps/<int:app_id>", AppStoreAppDetailView.as_view(), name="appstore-app-detail"),
     path("apps/<int:app_id>/cover", AppStoreAppCoverView.as_view(), name="appstore-app-cover"),
     path(

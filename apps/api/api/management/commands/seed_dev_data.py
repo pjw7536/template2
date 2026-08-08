@@ -13,6 +13,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
 from api.account.services import ensure_dev_dummy_superuser, seed_dev_access_data
+from api.appstore.services import seed_appstore_dummy_data
 
 
 def _env(name: str, default: str = "") -> str:
@@ -82,6 +83,12 @@ class Command(BaseCommand):
             reset=reset,
         )
         self.stdout.write(f"[account-seed] done {account_result}")
+        appstore_result = seed_appstore_dummy_data(
+            prefix=prefix,
+            owner=user,
+            reset=reset,
+        )
+        self.stdout.write(f"[appstore-seed] done {appstore_result}")
         call_command(
             "seed_dummy_emails",
             prefix=prefix,

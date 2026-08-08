@@ -11,6 +11,7 @@ from api.account import services as account_services
 
 
 APPSTORE_SCOPE = "appstore"
+APPSTORE_ADMIN_ROLE = "admin"
 
 
 def is_authenticated_user(user: Any) -> bool:
@@ -25,6 +26,7 @@ def has_appstore_editor_permission(user: Any, *, request: Any | None = None) -> 
     return account_services.has_scope_role(
         user=user,
         scope_key=APPSTORE_SCOPE,
+        required_role=APPSTORE_ADMIN_ROLE,
         request=request,
     )
 

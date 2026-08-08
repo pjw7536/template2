@@ -32,15 +32,17 @@ class AppStoreApp(models.Model):
     )
     view_count = models.PositiveIntegerField(default=0)
     like_count = models.PositiveIntegerField(default=0)
+    display_order = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "appstore_app"
-        ordering = ["-created_at", "-id"]
+        ordering = ["display_order", "id"]
         indexes = [
             models.Index(fields=["category"], name="idx_aps_app_cat"),
             models.Index(fields=["name"], name="idx_aps_app_nam"),
+            models.Index(fields=["display_order"], name="idx_aps_app_dsp_ord"),
         ]
 
     def __str__(self) -> str:  # 사람이 읽기 쉬운 표현(커버리지 제외): pragma: no cover

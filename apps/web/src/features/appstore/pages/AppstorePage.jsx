@@ -1,6 +1,9 @@
 // 앱스토어 메인 페이지
 import { useEffect, useMemo, useState } from "react"
+import { GripVertical, LoaderCircle } from "lucide-react"
+import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth"
 import { useAppstorePageActions } from "../hooks/useAppstorePageActions"
@@ -16,6 +19,7 @@ import {
   buildFormCategoryOptions,
   filterApps,
 } from "../utils/appFilters"
+import { hasAppOrderChanged, moveAppWithinCategory } from "../utils/appOrder"
 
 const EMPTY_APPS = []
 
@@ -25,6 +29,10 @@ export function AppstorePage() {
   const [selectedAppId, setSelectedAppId] = useState(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isOrderEditing, setIsOrderEditing] = useState(false)
+  const [draftApps, setDraftApps] = useState([])
+  const [draftOrderVersion, setDraftOrderVersion] = useState("")
+  const [orderError, setOrderError] = useState("")
   const [editingApp, setEditingApp] = useState(null)
   const [updatingCommentId, setUpdatingCommentId] = useState(null)
   const [deletingCommentId, setDeletingCommentId] = useState(null)
@@ -32,6 +40,7 @@ export function AppstorePage() {
 
   const appsQuery = useAppsQuery()
   const apps = appsQuery.data?.apps ?? EMPTY_APPS
+  const canReorderApps = Boolean(appsQuery.data?.permissions?.canReorder)
   const { user } = useAuth()
 
   const mutations = useAppstoreMutations()
@@ -41,6 +50,7 @@ export function AppstorePage() {
     toggleLikeMutation,
     toggleCommentLikeMutation,
     createCommentMutation,
+    reorderAppsMutation,
   } = mutations
 
   useEffect(() => {
@@ -74,9 +84,12 @@ export function AppstorePage() {
     return buildCategoryCounts(apps)
   }, [apps])
 
-  const filteredApps = useMemo(() => {
-    return filterApps(apps, { category, query })
-  }, [apps, category, query])
+  const displayedApps = useMemo(() => {
+    const sourceApps = isOrderEditing ? draftApps : apps
+    return filterApps(sourceApps, { category, query })
+  }, [apps, category, draftApps, isOrderEditing, query])
+  const isOrderDirty = hasAppOrderChanged(apps, draftApps)
+  const orderScopeLabel = category === "all" ? "전체 앱" : category
 
   const detailApp = appDetailQuery.data?.app ?? null
   const isDetailLoading =
@@ -118,6 +131,58 @@ export function AppstorePage() {
     setCategory("all")
   }
 
+  const handleStartOrderEdit = () => {
+    setQuery("")
+    setDraftApps(apps)
+    setDraftOrderVersion(appsQuery.data?.orderVersion ?? "")
+    setOrderError("")
+    setIsOrderEditing(true)
+  }
+
+  const handleCancelOrderEdit = () => {
+    if (reorderAppsMutation.isPending) return
+    setIsOrderEditing(false)
+    setDraftApps([])
+    setDraftOrderVersion("")
+    setOrderError("")
+  }
+
+  const handleMoveApp = (sourceAppId, targetAppId) => {
+    setDraftApps((current) =>
+      moveAppWithinCategory(current, sourceAppId, targetAppId, category),
+    )
+    setOrderError("")
+  }
+
+  const handleSaveOrder = async () => {
+    setOrderError("")
+    try {
+      await reorderAppsMutation.mutateAsync({
+        appIds: draftApps.map((app) => app.id),
+        orderVersion: draftOrderVersion,
+      })
+      setIsOrderEditing(false)
+      setDraftApps([])
+      setDraftOrderVersion("")
+      toast.success("앱 노출 순서를 저장했어요.")
+    } catch (error) {
+      if (error?.status === 409) {
+        const result = await appsQuery.refetch()
+        if (result.error) {
+          setOrderError(result.error.message || "최신 앱 순서를 불러오지 못했습니다.")
+          return
+        }
+        setDraftApps(result.data.apps)
+        setDraftOrderVersion(result.data.orderVersion)
+        setOrderError(
+          "앱 목록 또는 순서가 변경되어 최신 목록을 불러왔습니다. 다시 정렬해 주세요.",
+        )
+        return
+      }
+      setOrderError(error?.message || "앱 순서를 저장하지 못했습니다.")
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[280px_1fr]">
@@ -136,20 +201,76 @@ export function AppstorePage() {
               setIsFormOpen(true)
             }}
             isCreating={createAppMutation.isPending}
+            canReorder={canReorderApps}
+            onReorder={handleStartOrderEdit}
+            isOrderEditing={isOrderEditing}
           />
         </div>
 
-        <div className="min-h-0 overflow-y-auto pt-0.5">
-          <AppList
-            apps={filteredApps}
-            selectedAppId={selectedAppId}
-            onSelect={handleSelect}
-            onOpenLink={handleOpenLink}
-            onToggleLike={handleToggleLike}
-            onEdit={handleEditApp}
-            onDelete={handleDeleteApp}
-            isLoading={appsQuery.isLoading || appsQuery.isFetching}
-          />
+        <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
+          {isOrderEditing ? (
+            <div className="flex shrink-0 items-start justify-between gap-4 rounded-xl border bg-card px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <GripVertical className="size-4 text-primary" aria-hidden="true" />
+                  {orderScopeLabel} 순서 편집
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {category === "all"
+                    ? "카드를 원하는 위치로 끌어 놓으세요."
+                    : "다른 카테고리 앱은 그대로 두고 이 카테고리 앱끼리 순서를 바꿉니다."}
+                  {" "}화살표 키로도 한 칸씩 이동할 수 있습니다.
+                </p>
+                {orderError ? (
+                  <p className="mt-2 text-sm text-destructive" role="alert">
+                    {orderError}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelOrderEdit}
+                  disabled={reorderAppsMutation.isPending}
+                >
+                  취소
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveOrder}
+                  disabled={
+                    reorderAppsMutation.isPending || !isOrderDirty || !draftApps.length
+                  }
+                >
+                  {reorderAppsMutation.isPending ? (
+                    <>
+                      <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+                      저장 중
+                    </>
+                  ) : (
+                    "순서 저장"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="min-h-0 flex-1 overflow-y-auto pt-0.5">
+            <AppList
+              apps={displayedApps}
+              selectedAppId={selectedAppId}
+              onSelect={handleSelect}
+              onOpenLink={handleOpenLink}
+              onToggleLike={handleToggleLike}
+              onEdit={handleEditApp}
+              onDelete={handleDeleteApp}
+              isLoading={!isOrderEditing && (appsQuery.isLoading || appsQuery.isFetching)}
+              isOrderEditing={isOrderEditing}
+              isOrderSaving={reorderAppsMutation.isPending}
+              onMoveApp={handleMoveApp}
+            />
+          </div>
         </div>
       </div>
 

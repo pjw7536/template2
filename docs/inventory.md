@@ -19,7 +19,7 @@
 | PM SPIDER | `/api/v1/pm_spider/` | `apps/api/api/pm_comparison/urls.py` | `meta`, `compare` |
 | TTTM Spider | `/api/v1/tttm_spider/` | `apps/api/api/tttm_spider/urls.py` | `combo/options`, `combo/types`, `combo/data-types`, `targets/eqps`, `targets/chambers`, `targets/lotwf`, `targets/golden`, `targets/result-status`, `dashboard/data`, `sensor-trace` |
 | Observer | `/api/v1/observer/` | `apps/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<line_id>/<eqp_id>`, `equipment-info/<eqp_id>`, `logs`, `logs/page`, `logs/<log_type>/page`, `logs/<log_type>/detail`, `logs/eqp`, `logs/tip`, `logs/spc-interlock`, `logs/fdc-interlock`, `logs/ctttm`, `logs/racb`, `logs/esop`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
-| AppStore | `/api/v1/appstore/` | `apps/api/api/appstore/urls.py` | `apps`, `apps/<app_id>`, `apps/<app_id>/cover`, `apps/<app_id>/like`, `apps/<app_id>/view`, `apps/<app_id>/comments`, `apps/<app_id>/comments/<comment_id>`, `apps/<app_id>/comments/<comment_id>/like` |
+| AppStore | `/api/v1/appstore/` | `apps/api/api/appstore/urls.py` | `apps`, `apps/order`, `apps/<app_id>`, `apps/<app_id>/cover`, `apps/<app_id>/like`, `apps/<app_id>/view`, `apps/<app_id>/comments`, `apps/<app_id>/comments/<comment_id>`, `apps/<app_id>/comments/<comment_id>/like` |
 | VOC | `/api/v1/voc/` | `apps/api/api/voc/urls.py` | `posts`, `posts/<post_id>`, `posts/<post_id>/replies` |
 | Activity | `/api/v1/activity/` | `apps/api/api/activity/urls.py` | `logs`, `app-access`, `app-access-stats`, `app-access-sync-external` |
 | Health | `/api/v1/health/` | `apps/api/api/health/urls.py` | empty path |
@@ -75,6 +75,7 @@
 | `ensure_dev_database` | `apps/api/api/management/commands/ensure_dev_database.py` | dev 환경에서 Django 기본 DB와 필수 PostgreSQL extension 보장 |
 | `process_email_outbox` | `apps/api/api/emails/management/commands/process_email_outbox.py` | pending `EmailOutbox`를 RAG insert/delete 호출로 처리 |
 | `seed_dev_data` | `apps/api/api/management/commands/seed_dev_data.py` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
+| `seed_appstore_dummy_data` | `apps/api/api/appstore/management/commands/seed_appstore_dummy_data.py` | 로컬 개발용 Appstore 순서 관리 더미 앱 생성 |
 | `seed_dummy_emails` | `apps/api/api/emails/management/commands/seed_dummy_emails.py` | 로컬 개발용 더미 Email 데이터를 생성 |
 | `load_m_tkin_prevent` | `apps/api/api/data_movement/m_tkin_prevent/management/commands/load_m_tkin_prevent.py` | `m_tkin_prevent` deflate CSV 파일 적재 |
 | `load_ctttm_workorder_list` | `apps/api/api/data_movement/ctttm_workorder_list/management/commands/load_ctttm_workorder_list.py` | `ctttm_workorder_list` deflate CSV 파일 적재 |

@@ -101,6 +101,7 @@ make makemigrations-check
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
 | `seed_dev_data` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
+| `seed_appstore_dummy_data` | 로컬 개발용 Appstore 순서 관리 더미 앱 생성 |
 | `seed_dummy_emails` | 로컬 개발용 더미 Email 데이터 생성 |
 | `load_m_tkin_prevent` | `m_tkin_prevent` incoming 파일 적재 |
 | `load_ctttm_workorder_list` | `ctttm_workorder_list` incoming 파일 적재 |
@@ -126,6 +127,7 @@ docker compose -f docker-compose.dev.yml exec -T api python manage.py check_acce
 docker compose -f docker-compose.dev.yml exec -T api python manage.py ensure_dev_database
 docker compose -f docker-compose.dev.yml exec -T api python manage.py process_email_outbox
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dev_data --reset --prefix DEV
+docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_appstore_dummy_data --reset --prefix DEV
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dummy_emails
 docker compose -f docker-compose.dev.yml exec -T api python manage.py load_m_tkin_prevent
 docker compose -f docker-compose.dev.yml exec -T api python manage.py load_ctttm_workorder_list

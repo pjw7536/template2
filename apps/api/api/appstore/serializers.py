@@ -316,6 +316,7 @@ def serialize_app(
         "viewCount": app.view_count,
         "likeCount": app.like_count,
         "commentCount": int(comment_count),
+        "displayOrder": app.display_order,
         "createdAt": app.created_at.isoformat(),
         "updatedAt": app.updated_at.isoformat(),
         "owner": owner_payload,
@@ -515,6 +516,36 @@ class AppStoreAppUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("No changes provided")
 
         return updates
+
+
+class AppStoreAppOrderSerializer(serializers.Serializer):
+    """Appstore 전체 앱 노출 순서 변경 요청을 검증합니다."""
+
+    app_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
+    )
+    order_version = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+    def to_internal_value(self, data: Any) -> Dict[str, Any]:
+        """카멜/스네이크 케이스 입력을 내부 필드로 정규화합니다."""
+
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("Invalid JSON body")
+
+        normalized: Dict[str, Any] = {}
+        if "appIds" in data or "app_ids" in data:
+            normalized["app_ids"] = data.get("appIds", data.get("app_ids"))
+        if "orderVersion" in data or "order_version" in data:
+            normalized["order_version"] = data.get("orderVersion", data.get("order_version"))
+        return super().to_internal_value(normalized)
+
+    def validate_app_ids(self, app_ids: list[int]) -> list[int]:
+        """앱 ID 중복을 거부합니다."""
+
+        if len(app_ids) != len(set(app_ids)):
+            raise serializers.ValidationError("appIds must not contain duplicates")
+        return app_ids
 
 
 class AppStoreCommentCreateSerializer(serializers.Serializer):

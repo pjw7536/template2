@@ -5,16 +5,31 @@
 # =============================================================================
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
+from threading import Barrier
 from urllib.parse import parse_qs, urlparse
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import close_old_connections
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 
 from api.account import services as account_services
+from api.appstore.selectors import get_app_list, get_seeded_apps
 from api.appstore.serializers import default_contact
-from api.appstore.services import create_app, create_comment, update_app
+from api.appstore.services import (
+    AppOrderConflictError,
+    build_app_order_version,
+    create_app,
+    create_comment,
+    reorder_apps,
+    seed_appstore_dummy_data,
+    update_app,
+)
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
@@ -483,6 +498,237 @@ class AppstoreCommentReplyLikeTests(TestCase):
         self.assertEqual(second_payload["likeCount"], 0)
 
 
+class AppstoreDisplayOrderTests(TestCase):
+    """Appstore 앱 노출 순서 서비스 규칙을 검증합니다."""
+
+    def setUp(self) -> None:
+        """순서 테스트용 사용자와 앱 세 개를 준비합니다."""
+
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S30000",
+            password="test-password",
+            knox_id="knox-30000",
+        )
+        self.apps = [
+            create_app(
+                owner=self.user,
+                name=f"Order App {index}",
+                category="Tools",
+                description="",
+                url=f"https://example.com/order-{index}",
+                screenshot_url="",
+                contact_name="홍길동",
+                contact_knoxid="hong",
+            )
+            for index in range(3)
+        ]
+
+    def test_create_app_appends_to_display_order(self) -> None:
+        """신규 앱이 기존 앱의 마지막 순서에 추가되는지 검증합니다."""
+
+        self.assertEqual(
+            [app.display_order for app in self.apps],
+            [1, 2, 3],
+        )
+        self.assertEqual(
+            list(get_app_list().values_list("id", flat=True)),
+            [app.pk for app in self.apps],
+        )
+
+    def test_reorder_apps_replaces_full_order(self) -> None:
+        """전체 앱 ID 순서가 연속된 노출 순서로 저장되는지 검증합니다."""
+
+        current_ids = [app.pk for app in self.apps]
+        requested_ids = list(reversed(current_ids))
+
+        saved_ids, order_version = reorder_apps(
+            app_ids=requested_ids,
+            expected_order_version=build_app_order_version(current_ids),
+        )
+
+        self.assertEqual(saved_ids, requested_ids)
+        self.assertEqual(order_version, build_app_order_version(requested_ids))
+        self.assertEqual(
+            list(get_app_list().values_list("id", flat=True)),
+            requested_ids,
+        )
+        self.assertEqual(
+            list(get_app_list().values_list("display_order", flat=True)),
+            [1, 2, 3],
+        )
+
+    def test_reorder_apps_rejects_stale_version(self) -> None:
+        """다른 관리자가 먼저 저장한 순서를 이전 버전으로 덮어쓰지 못해야 합니다."""
+
+        current_ids = [app.pk for app in self.apps]
+        stale_version = build_app_order_version(current_ids)
+        reorder_apps(
+            app_ids=list(reversed(current_ids)),
+            expected_order_version=stale_version,
+        )
+
+        with self.assertRaises(AppOrderConflictError):
+            reorder_apps(
+                app_ids=current_ids,
+                expected_order_version=stale_version,
+            )
+
+    def test_reorder_apps_rejects_changed_app_set(self) -> None:
+        """일부 앱이 누락된 전체 순서 요청을 거부해야 합니다."""
+
+        current_ids = [app.pk for app in self.apps]
+        with self.assertRaises(AppOrderConflictError):
+            reorder_apps(
+                app_ids=current_ids[:-1],
+                expected_order_version=build_app_order_version(current_ids),
+            )
+
+    def test_update_app_does_not_restore_stale_display_order(self) -> None:
+        """일반 앱 수정이 먼저 저장된 노출 순서를 덮어쓰지 않아야 합니다."""
+
+        current_ids = [app.pk for app in self.apps]
+        stale_app = self.apps[0]
+        requested_ids = list(reversed(current_ids))
+        reorder_apps(
+            app_ids=requested_ids,
+            expected_order_version=build_app_order_version(current_ids),
+        )
+
+        update_app(app=stale_app, updates={"name": "Updated App"})
+
+        self.assertEqual(
+            list(get_app_list().values_list("id", flat=True)),
+            requested_ids,
+        )
+
+
+class AppstoreDisplayOrderConcurrencyTests(TransactionTestCase):
+    """Appstore 앱 생성 순번의 transaction 동시성을 검증합니다."""
+
+    def setUp(self) -> None:
+        """동시 생성 요청이 공유할 사용자 레코드를 준비합니다."""
+
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S30001",
+            password="test-password",
+            knox_id="knox-30001",
+        )
+
+    def test_concurrent_create_app_assigns_distinct_display_orders(self) -> None:
+        """동시에 생성된 앱 두 개에도 서로 다른 연속 순번을 배정해야 합니다."""
+
+        start_barrier = Barrier(2)
+
+        def create_ordered_app(index: int) -> int:
+            """독립 DB connection에서 시작 시점을 맞춰 테스트 앱을 생성합니다."""
+
+            close_old_connections()
+            try:
+                user = get_user_model().objects.get(pk=self.user.pk)
+                start_barrier.wait()
+                app = create_app(
+                    owner=user,
+                    name=f"Concurrent App {index}",
+                    category="Tools",
+                    description="",
+                    url=f"https://example.com/concurrent-{index}",
+                    screenshot_url="",
+                    contact_name="홍길동",
+                    contact_knoxid="hong",
+                )
+                return app.display_order
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            display_orders = list(executor.map(create_ordered_app, range(2)))
+
+        self.assertEqual(sorted(display_orders), [1, 2])
+
+
+class AppstoreDummyDataTests(TestCase):
+    """Appstore 개발용 seed 데이터의 재실행 안전성을 검증합니다."""
+
+    def setUp(self) -> None:
+        """seed 소유자와 삭제되면 안 되는 일반 앱을 준비합니다."""
+
+        User = get_user_model()
+        self.owner = User.objects.create_user(
+            sabun="S30002",
+            password="test-password",
+            username="Dummy Owner",
+            knox_id="dummy-owner",
+        )
+        self.regular_app = create_app(
+            owner=self.owner,
+            name="Regular App",
+            category="Tools",
+            description="",
+            url="https://example.com/regular",
+            screenshot_url="",
+            contact_name="홍길동",
+            contact_knoxid="hong",
+        )
+
+    def test_seed_is_repeatable_and_reset_deletes_only_matching_prefix(self) -> None:
+        """재실행은 기존 seed를 갱신하고 reset은 같은 marker만 재생성해야 합니다."""
+
+        first = seed_appstore_dummy_data(prefix="dev", owner=self.owner, reset=True)
+        second = seed_appstore_dummy_data(prefix="DEV", owner=self.owner)
+        reset_result = seed_appstore_dummy_data(prefix="DEV", owner=self.owner, reset=True)
+
+        self.assertEqual(first, {"deleted": 0, "created": 8, "updated": 0, "total": 8})
+        self.assertEqual(second, {"deleted": 0, "created": 0, "updated": 8, "total": 8})
+        self.assertEqual(reset_result, {"deleted": 8, "created": 8, "updated": 0, "total": 8})
+        self.assertEqual(get_seeded_apps(name_prefix="[DEV] ").count(), 8)
+        self.assertEqual(
+            list(get_seeded_apps(name_prefix="[DEV] ").values_list("display_order", flat=True)),
+            list(range(2, 10)),
+        )
+        self.assertTrue(get_app_list().filter(pk=self.regular_app.pk).exists())
+
+
+class AppstoreDummyDataCommandTests(SimpleTestCase):
+    """Appstore seed management command의 dev 환경 가드를 검증합니다."""
+
+    def test_command_rejects_non_development_environment(self) -> None:
+        """development 환경이 아니면 Appstore seed 실행을 거부합니다."""
+
+        with patch.dict("os.environ", {"ENVIRONMENT": "production"}, clear=True):
+            with self.assertRaises(CommandError):
+                call_command("seed_appstore_dummy_data", stdout=StringIO())
+
+    @patch(
+        "api.appstore.management.commands.seed_appstore_dummy_data.seed_appstore_dummy_data"
+    )
+    @patch(
+        "api.appstore.management.commands.seed_appstore_dummy_data.ensure_dev_dummy_superuser"
+    )
+    def test_command_uses_dev_dummy_owner(
+        self,
+        ensure_dummy: Mock,
+        seed_data: Mock,
+    ) -> None:
+        """development 환경에서는 dev dummy 사용자를 seed 소유자로 전달합니다."""
+
+        owner = object()
+        ensure_dummy.return_value = owner
+        seed_data.return_value = {"deleted": 0, "created": 8, "updated": 0, "total": 8}
+
+        with patch.dict("os.environ", {"ENVIRONMENT": "development"}, clear=True):
+            call_command(
+                "seed_appstore_dummy_data",
+                reset=True,
+                prefix="demo",
+                stdout=StringIO(),
+            )
+
+        ensure_dummy.assert_called_once_with()
+        seed_data.assert_called_once_with(prefix="DEMO", owner=owner, reset=True)
+
+
 class AppstoreEndpointTests(TestCase):
     """AppStore 엔드포인트 기본 흐름 테스트."""
 
@@ -515,6 +761,10 @@ class AppstoreEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         list_response = self.client.get(reverse("appstore-apps"))
         self.assertEqual(list_response.status_code, 200)
+        list_payload = list_response.json()
+        self.assertTrue(list_payload["orderVersion"])
+        self.assertFalse(list_payload["permissions"]["canReorder"])
+        self.assertEqual(list_payload["results"][0]["displayOrder"], 1)
 
         # -----------------------------------------------------------------------------
         # 2) 앱 생성
@@ -528,6 +778,7 @@ class AppstoreEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.json()["app"]["displayOrder"], 2)
 
     def test_appstore_list_resolves_admin_role_once_per_request(self) -> None:
         """앱 개수와 관계없이 AppStore admin 판정은 요청당 한 번만 수행해야 합니다."""
@@ -555,6 +806,7 @@ class AppstoreEndpointTests(TestCase):
         role_check.assert_called_once()
         self.assertEqual(role_check.call_args.kwargs["user"], self.user)
         self.assertEqual(role_check.call_args.kwargs["scope_key"], "appstore")
+        self.assertEqual(role_check.call_args.kwargs["required_role"], "admin")
         self.assertIsNotNone(role_check.call_args.kwargs["request"])
 
     def test_appstore_detail_reuses_admin_role_for_nested_comments(self) -> None:
@@ -584,6 +836,111 @@ class AppstoreEndpointTests(TestCase):
         self.assertEqual(role_check.call_args.kwargs["user"], self.user)
         self.assertEqual(role_check.call_args.kwargs["scope_key"], "appstore")
         self.assertIsNotNone(role_check.call_args.kwargs["request"])
+
+    def test_appstore_admin_can_reorder_apps(self) -> None:
+        """Appstore admin이 전체 앱 노출 순서를 저장할 수 있는지 검증합니다."""
+
+        second_app = create_app(
+            owner=self.user,
+            name="Second App",
+            category="Tools",
+            description="",
+            url="https://example.com/second",
+            screenshot_url="",
+            contact_name="홍길동",
+            contact_knoxid="hong",
+        )
+        with patch(
+            "api.appstore.services.permissions.account_services.has_scope_role",
+            return_value=True,
+        ) as role_check:
+            list_response = self.client.get(reverse("appstore-apps"))
+            list_payload = list_response.json()
+            requested_ids = [second_app.pk, self.app.pk]
+            response = self.client.put(
+                reverse("appstore-app-order"),
+                data={
+                    "appIds": requested_ids,
+                    "orderVersion": list_payload["orderVersion"],
+                },
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["appIds"], requested_ids)
+        self.assertEqual(role_check.call_count, 2)
+        self.assertTrue(
+            all(call.kwargs["required_role"] == "admin" for call in role_check.call_args_list)
+        )
+        self.assertEqual(
+            list(get_app_list().values_list("id", flat=True)),
+            requested_ids,
+        )
+
+    def test_appstore_non_admin_cannot_reorder_apps(self) -> None:
+        """일반 사용자의 앱 노출 순서 변경을 거부하는지 검증합니다."""
+
+        with patch(
+            "api.appstore.services.permissions.account_services.has_scope_role",
+            return_value=False,
+        ) as role_check:
+            response = self.client.put(
+                reverse("appstore-app-order"),
+                data={
+                    "appIds": [self.app.pk],
+                    "orderVersion": build_app_order_version([self.app.pk]),
+                },
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 403)
+        role_check.assert_called_once()
+        self.assertEqual(role_check.call_args.kwargs["required_role"], "admin")
+
+    def test_appstore_anonymous_user_cannot_reorder_apps(self) -> None:
+        """비로그인 사용자의 앱 노출 순서 변경을 인증 단계에서 거부합니다."""
+
+        self.client.logout()
+        response = self.client.put(
+            reverse("appstore-app-order"),
+            data={
+                "appIds": [self.app.pk],
+                "orderVersion": build_app_order_version([self.app.pk]),
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_appstore_order_endpoint_rejects_duplicate_ids(self) -> None:
+        """순서 요청에 중복 앱 ID가 있으면 400을 반환하는지 검증합니다."""
+
+        with patch("api.appstore.views._resolve_appstore_admin", return_value=True):
+            response = self.client.put(
+                reverse("appstore-app-order"),
+                data={
+                    "appIds": [self.app.pk, self.app.pk],
+                    "orderVersion": build_app_order_version([self.app.pk]),
+                },
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_appstore_order_endpoint_returns_conflict_for_stale_version(self) -> None:
+        """이전 순서 버전으로 저장하면 409를 반환하는지 검증합니다."""
+
+        with patch("api.appstore.views._resolve_appstore_admin", return_value=True):
+            response = self.client.put(
+                reverse("appstore-app-order"),
+                data={
+                    "appIds": [self.app.pk],
+                    "orderVersion": "stale-version",
+                },
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 409)
 
     def test_appstore_create_returns_string_error_for_serializer_validation_failure(self) -> None:
         """앱 생성 검증 실패 시 문자열 error 계약을 유지하는지 확인합니다."""

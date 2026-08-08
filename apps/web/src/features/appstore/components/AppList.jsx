@@ -1,6 +1,7 @@
 // 앱 목록 컴포넌트
 import { useEffect, useRef, useState } from "react"
-import { ArrowUpRight, Eye, Heart, MessageSquare } from "lucide-react"
+import { ArrowUpRight, Eye, GripVertical, Heart, MessageSquare } from "lucide-react"
+import { motion, useReducedMotion } from "motion/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,6 +10,11 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { getCoverScreenshotUrl } from "../utils/appScreenshots"
+
+const MotionCard = motion.create(Card)
+const ORDER_LAYOUT_TRANSITION = {
+  layout: { type: "spring", stiffness: 500, damping: 38, mass: 0.7 },
+}
 
 function StatBadge({ icon: Icon, value, label }) {
   return (
@@ -145,7 +151,50 @@ export function AppList({
   onEdit: _onEdit,
   onDelete: _onDelete,
   isLoading,
+  isOrderEditing = false,
+  isOrderSaving = false,
+  onMoveApp,
 }) {
+  const shouldReduceMotion = useReducedMotion()
+  const dragRef = useRef({ sourceId: null, targetId: null })
+  const [draggedAppId, setDraggedAppId] = useState(null)
+
+  const clearDragState = () => {
+    dragRef.current = { sourceId: null, targetId: null }
+    setDraggedAppId(null)
+  }
+
+  const handleDragStart = (event, appId) => {
+    dragRef.current = { sourceId: appId, targetId: null }
+    setDraggedAppId(appId)
+    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setData("text/plain", String(appId))
+  }
+
+  const handleDragEnter = (event, targetAppId) => {
+    if (!isOrderEditing || isOrderSaving) return
+    event.preventDefault()
+    const { sourceId: sourceAppId, targetId: previousTargetId } = dragRef.current
+    if (!sourceAppId || sourceAppId === targetAppId) return
+    if (previousTargetId === targetAppId) return
+    dragRef.current.targetId = targetAppId
+    onMoveApp?.(sourceAppId, targetAppId)
+  }
+
+  const handleKeyboardMove = (event, app, index) => {
+    if (!isOrderEditing || isOrderSaving) return
+    const direction = ["ArrowLeft", "ArrowUp"].includes(event.key)
+      ? -1
+      : ["ArrowRight", "ArrowDown"].includes(event.key)
+        ? 1
+        : 0
+    if (!direction) return
+    const target = apps[index + direction]
+    if (!target) return
+    event.preventDefault()
+    onMoveApp?.(app.id, target.id)
+  }
+
   if (isLoading) {
     return (
       <Card className="border bg-card shadow-sm">
@@ -165,71 +214,108 @@ export function AppList({
   }
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,280px)] gap-3">
-      {apps.map((app) => {
+    <div
+      className="grid grid-cols-[repeat(auto-fit,280px)] gap-3"
+      role={isOrderEditing ? "list" : undefined}
+      aria-label={isOrderEditing ? "앱 노출 순서" : undefined}
+    >
+      {apps.map((app, index) => {
         const isSelected = selectedAppId === app.id
+        const isDragged = draggedAppId === app.id
         const coverSrc = getCoverScreenshotUrl(app)
 
         return (
-          <Card
+          <MotionCard
             key={app.id}
-            onClick={() => onSelect(app.id)}
+            layout={isOrderEditing ? "position" : false}
+            transition={shouldReduceMotion ? { duration: 0 } : ORDER_LAYOUT_TRANSITION}
+            onClick={() => {
+              if (!isOrderEditing) onSelect(app.id)
+            }}
+            draggable={isOrderEditing && !isOrderSaving}
+            tabIndex={isOrderEditing ? 0 : undefined}
+            role={isOrderEditing ? "listitem" : undefined}
+            aria-label={isOrderEditing ? `${app.name}, 현재 순서 ${index + 1}` : undefined}
+            onKeyDown={(event) => handleKeyboardMove(event, app, index)}
+            onDragStart={(event) => handleDragStart(event, app.id)}
+            onDragEnter={(event) => handleDragEnter(event, app.id)}
+            onDragOver={(event) => {
+              if (!isOrderEditing || isOrderSaving) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = "move"
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              clearDragState()
+            }}
+            onDragEnd={clearDragState}
             className={cn(
-              "flex h-full min-h-[200px] cursor-pointer flex-col gap-2 py-3 overflow-hidden border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+              "relative flex h-full min-h-[200px] flex-col gap-2 overflow-hidden py-3",
               isSelected && "border-primary/60 ring-1 ring-primary/30",
+              isOrderEditing
+                ? "cursor-grab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                : "cursor-pointer transition-shadow hover:-translate-y-0.5 hover:shadow-md",
+              isDragged && "border-2 border-dashed border-primary/60 bg-primary/5 shadow-none",
             )}
           >
-            {/* ✅ 상단을 2컬럼(그리드)로 분리 */}
-            {/* 예: 뱃지(선택) */}
-            <div className="flex items-center justify-between px-5 py-1">
-              <div className="min-w-0">
-                <AppTitle name={app.name} />
+            {isDragged ? (
+              <div className="flex flex-1 items-center justify-center text-xs font-medium text-primary">
+                {index + 1}번 위치에 배치
               </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-5 py-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {isOrderEditing ? (
+                      <>
+                        <GripVertical
+                          className="size-4 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span className="shrink-0 text-xs font-semibold tabular-nums text-primary">
+                          {index + 1}
+                        </span>
+                      </>
+                    ) : null}
+                    <AppTitle name={app.name} />
+                  </div>
 
-              <Badge
-                variant="secondary"
-                className="shrink-0 text-[9px] leading-none"
-              >
-                {app.category || "기타"}
-              </Badge>
-            </div>
-            <div className="flex justify-center px-3 py-2">
-              {/* 왼쪽: 스크린샷 */}
-              <div className="relative h-32 w-60 overflow-hidden rounded-md bg-muted ring-1 ring-border">
-                <AppCardScreenshot app={app} coverSrc={coverSrc} />
-              </div>
-
-              {/* 오른쪽: 앱 이름 */}
-
-            </div>
-
-            <CardContent className="flex flex-1 flex-col gap-2 px-3 py-1">
-
-
-              <Separator className="bg-border" />
-
-              <div className="mt-auto flex items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1">
-                  <StatBadge icon={Eye} value={app.viewCount} />
-                  <StatBadge icon={Heart} value={app.likeCount} />
-                  <StatBadge icon={MessageSquare} value={app.commentCount ?? 0} />
+                  <Badge variant="secondary" className="shrink-0 text-[9px] leading-none">
+                    {app.category || "기타"}
+                  </Badge>
                 </div>
+                <div className="flex justify-center px-3 py-2">
+                  <div className="relative h-32 w-60 overflow-hidden rounded-md bg-muted ring-1 ring-border">
+                    <AppCardScreenshot app={app} coverSrc={coverSrc} />
+                  </div>
+                </div>
+                <CardContent className="flex flex-1 flex-col gap-2 px-3 py-1">
+                  <Separator className="bg-border" />
+                  <div className="mt-auto flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <StatBadge icon={Eye} value={app.viewCount} />
+                      <StatBadge icon={Heart} value={app.likeCount} />
+                      <StatBadge icon={MessageSquare} value={app.commentCount ?? 0} />
+                    </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1 px-2 text-xs text-primary hover:bg-primary/10"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onOpenLink?.(app)
-                  }}
-                >
-                  Link
-                  <ArrowUpRight className="size-3" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 px-2 text-xs text-primary hover:bg-primary/10"
+                      disabled={isOrderEditing}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onOpenLink?.(app)
+                      }}
+                    >
+                      Link
+                      <ArrowUpRight className="size-3" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </>
+            )}
+          </MotionCard>
         )
       })}
     </div>

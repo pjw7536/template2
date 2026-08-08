@@ -8,6 +8,7 @@
 
 - GET    /api/v1/appstore/apps                     : 앱 목록 조회
 - POST   /api/v1/appstore/apps                     : 앱 등록
+- PUT    /api/v1/appstore/apps/order               : 앱 노출 순서 일괄 변경
 - GET    /api/v1/appstore/apps/<id>                : 단일 앱 상세(+댓글)
 - GET    /api/v1/appstore/apps/<id>/cover          : 앱 대표 스크린샷(바이너리)
 - PATCH  /api/v1/appstore/apps/<id>                : 앱 정보 수정
@@ -49,6 +50,7 @@ from .selectors import (
 )
 from .serializers import (
     AppStoreAppCreateSerializer,
+    AppStoreAppOrderSerializer,
     AppStoreAppUpdateSerializer,
     AppStoreCommentCreateSerializer,
     AppStoreCommentUpdateSerializer,
@@ -56,11 +58,14 @@ from .serializers import (
     serialize_comment,
 )
 from .services import (
+    AppOrderConflictError,
+    build_app_order_version,
     create_app,
     create_comment,
     delete_app,
     delete_comment,
     increment_view_count,
+    reorder_apps,
     toggle_comment_like,
     toggle_like,
     update_app,
@@ -169,7 +174,7 @@ class AppStoreAppsView(APIView):
         # -----------------------------------------------------------------------------
         # 1) 기본 목록/좋아요 정보 조회
         # -----------------------------------------------------------------------------
-        queryset = get_app_list()
+        queryset = list(get_app_list())
         liked_ids: Sequence[int] = []
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
         is_appstore_admin = _resolve_appstore_admin(request)
@@ -200,7 +205,14 @@ class AppStoreAppsView(APIView):
         # -----------------------------------------------------------------------------
         # 3) 응답 반환
         # -----------------------------------------------------------------------------
-        return JsonResponse({"results": apps, "total": len(apps)})
+        return JsonResponse(
+            {
+                "results": apps,
+                "total": len(apps),
+                "orderVersion": build_app_order_version([app.pk for app in queryset]),
+                "permissions": {"canReorder": is_appstore_admin},
+            }
+        )
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
         """앱을 신규 등록합니다.
@@ -305,6 +317,89 @@ class AppStoreAppsView(APIView):
         except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
             logger.exception("Failed to create appstore app")
             return JsonResponse({"error": "Failed to create app"}, status=500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AppStoreAppOrderView(APIView):
+    """관리자 전용 Appstore 앱 노출 순서 변경 endpoint입니다."""
+
+    def put(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
+        """전체 앱 ID 목록을 받아 노출 순서를 일괄 교체합니다.
+
+        입력:
+          - 요청: Django HttpRequest
+          - args/kwargs: URL 라우팅 인자
+
+        요청 예시:
+          - 예시 요청: PUT /api/v1/appstore/apps/order
+            {"appIds": [3, 1, 2], "orderVersion": "opaque-version"}
+
+        반환:
+          - appIds: 저장된 전체 앱 PK 목록
+          - orderVersion: 저장 후 노출 순서 버전
+          - updated: 갱신한 앱 개수
+
+        부작용:
+          모든 AppStoreApp 레코드의 display_order를 원자적으로 갱신합니다.
+
+        오류:
+          - 401: 인증 실패
+          - 403: Appstore admin 권한 없음
+          - 400: 요청 형식 또는 앱 ID 중복 오류
+          - 409: 편집 이후 앱 목록 또는 순서 변경 충돌
+          - 500: 내부 오류
+
+        snake/camel 호환:
+          - appIds / app_ids
+          - orderVersion / order_version
+        """
+
+        # -----------------------------------------------------------------------------
+        # 1) 인증 및 Appstore 관리자 권한 확인
+        # -----------------------------------------------------------------------------
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Authentication required"}, status=401)
+        if not _resolve_appstore_admin(request):
+            return JsonResponse({"error": "Forbidden"}, status=403)
+
+        # -----------------------------------------------------------------------------
+        # 2) JSON 요청 검증
+        # -----------------------------------------------------------------------------
+        payload = parse_json_body(request)
+        if payload is None:
+            return JsonResponse({"error": "Invalid JSON body"}, status=400)
+        serializer = AppStoreAppOrderSerializer(data=payload)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"error": extract_first_error_message(serializer.errors)},
+                status=400,
+            )
+
+        # -----------------------------------------------------------------------------
+        # 3) 원자적 순서 저장 및 충돌 응답 매핑
+        # -----------------------------------------------------------------------------
+        validated = serializer.validated_data
+        try:
+            app_ids, order_version = reorder_apps(
+                app_ids=validated["app_ids"],
+                expected_order_version=validated["order_version"],
+            )
+        except AppOrderConflictError:
+            return JsonResponse(
+                {"error": "App list or order changed. Refresh and try again."},
+                status=409,
+            )
+        except Exception:  # 방어적 로깅(커버리지 제외): pragma: no cover
+            logger.exception("Failed to reorder appstore apps")
+            return JsonResponse({"error": "Failed to reorder apps"}, status=500)
+
+        return JsonResponse(
+            {
+                "appIds": app_ids,
+                "orderVersion": order_version,
+                "updated": len(app_ids),
+            }
+        )
 
 
 @method_decorator(csrf_exempt, name="dispatch")

@@ -1,13 +1,13 @@
 # =============================================================================
 # 모듈 설명: AppStore 조회 셀렉터를 제공합니다.
-# - 주요 함수: get_app_list, get_app_detail, get_comments_for_app
-# - 불변 조건: 조회는 읽기 전용이며 최신순/오래된 순 정렬을 유지합니다.
+# - 주요 함수: get_app_list, get_seeded_apps, get_app_detail, get_comments_for_app
+# - 불변 조건: 조회는 읽기 전용이며 앱 노출 순서/댓글 오래된 순 정렬을 유지합니다.
 # =============================================================================
 from __future__ import annotations
 
 from typing import Any
 
-from django.db.models import Count, QuerySet
+from django.db.models import Count, Max, QuerySet
 
 from .models import AppStoreApp, AppStoreComment, AppStoreCommentLike, AppStoreLike
 
@@ -16,7 +16,7 @@ def get_app_list() -> QuerySet[AppStoreApp]:
     """AppStore 앱 목록 조회용 QuerySet을 반환합니다.
 
     반환:
-        최신순으로 정렬되고 comment_count가 포함된 QuerySet.
+        노출 순서로 정렬되고 comment_count가 포함된 QuerySet.
 
     부작용:
         없음. 읽기 전용 조회입니다.
@@ -28,8 +28,60 @@ def get_app_list() -> QuerySet[AppStoreApp]:
     return (
         AppStoreApp.objects.select_related("owner")
         .annotate(comment_count=Count("comments"))
-        .order_by("-created_at", "-id")
+        .order_by("display_order", "id")
     )
+
+
+def get_next_app_display_order() -> int:
+    """신규 앱에 배정할 마지막 노출 순서를 반환합니다.
+
+    반환:
+        현재 최대 노출 순서보다 1 큰 정수.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
+
+    오류:
+        없음.
+    """
+
+    current_max = AppStoreApp.objects.aggregate(max_order=Max("display_order"))["max_order"]
+    return int(current_max or 0) + 1
+
+
+def get_apps_for_display_order_update() -> QuerySet[AppStoreApp]:
+    """노출 순서 변경 transaction에서 잠글 앱 QuerySet을 반환합니다.
+
+    반환:
+        PK 순서로 정렬된 잠금 대상 QuerySet.
+
+    부작용:
+        호출한 transaction 안에서 조회 시 행 잠금을 획득합니다.
+
+    오류:
+        transaction 밖에서 평가하면 DB backend에 따라 오류가 발생할 수 있습니다.
+    """
+
+    return AppStoreApp.objects.select_for_update().only("id", "display_order").order_by("id")
+
+
+def get_seeded_apps(*, name_prefix: str) -> QuerySet[AppStoreApp]:
+    """지정한 이름 marker로 시작하는 Appstore seed 앱을 반환합니다.
+
+    인자:
+        name_prefix: seed 앱 이름 앞에 붙는 고정 marker.
+
+    반환:
+        현재 노출 순서로 정렬된 AppStoreApp QuerySet.
+
+    부작용:
+        없음. 읽기 전용 조회입니다.
+
+    오류:
+        없음.
+    """
+
+    return AppStoreApp.objects.filter(name__startswith=name_prefix).order_by("display_order", "id")
 
 
 def get_app_by_id(*, app_id: int) -> AppStoreApp | None:

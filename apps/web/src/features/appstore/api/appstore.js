@@ -93,6 +93,7 @@ function normalizeApp(raw) {
     viewCount: Number(raw.viewCount ?? raw.view_count ?? 0) || 0,
     likeCount: Number(raw.likeCount ?? raw.like_count ?? 0) || 0,
     commentCount: Number(raw.commentCount ?? raw.comment_count ?? comments?.length ?? 0) || 0,
+    displayOrder: Number(raw.displayOrder ?? raw.display_order ?? 0) || 0,
     createdAt: ensureString(raw.createdAt || raw.created_at),
     updatedAt: ensureString(raw.updatedAt || raw.updated_at || raw.createdAt || raw.created_at),
     owner: normalizeUser(raw.owner),
@@ -111,6 +112,23 @@ export async function fetchApps() {
   return {
     apps,
     total: typeof payload?.total === "number" ? payload.total : apps.length,
+    orderVersion: ensureString(payload?.orderVersion || payload?.order_version),
+    permissions: {
+      canReorder: Boolean(payload?.permissions?.canReorder),
+    },
+  }
+}
+
+export async function reorderApps(input) {
+  const payload = await request("/api/v1/appstore/apps/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  return {
+    appIds: Array.isArray(payload?.appIds) ? payload.appIds : [],
+    orderVersion: ensureString(payload?.orderVersion),
+    updated: Number(payload?.updated ?? 0) || 0,
   }
 }
 
