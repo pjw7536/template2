@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import itertools
 import logging
-import os
 import re
 import threading
 import time
@@ -15,21 +14,26 @@ from typing import Any
 
 import requests
 from airflow import DAG
-from airflow.hooks.base import BaseHook
-from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
 logger = logging.getLogger(__name__)
 
-DATABASE_CONNECTION_ID = os.getenv(
-    "CT_PROCESS_SUMMARY_DB_CONNECTION_ID",
-    "ct_process_comment_summary_db",
-)
-OPENWEBUI_CONNECTION_ID = os.getenv(
-    "CT_PROCESS_SUMMARY_OPENWEBUI_CONNECTION_ID",
-    "openwebui_continuous_summary",
-)
+# 연속 요약 실행 설정입니다. 서버 환경에 맞게 이 값만 교체합니다.
+DATABASE_HOST = "airflow-postgres"
+DATABASE_PORT = 8010
+DATABASE_NAME = "dashboard"
+DATABASE_USER = "airflow"
+DATABASE_PASSWORD = "airflow"
+OPENWEBUI_ENDPOINT = "https://openwebui.example/api/chat/completions"
+OPENWEBUI_API_TOKEN = "replace-with-api-token"
+OPENWEBUI_MODEL = "replace-with-model-name"
+OPENWEBUI_COMMON_HEADERS: dict[str, str] = {}
+OPENWEBUI_TIMEOUT_SECONDS = 120
+REQUEST_CONCURRENCY = 3
+RUN_DURATION_MINUTES = 360
+SOURCE_ROW_LIMIT = 300
+MAX_CONSECUTIVE_FAILURES = 5
 
 SUMMARY_CHUNK_MAX_EVENTS = 40
 SUMMARY_CHUNK_MAX_CHARS = 8000
@@ -191,53 +195,39 @@ def _split_source_chunks(source_text: str) -> list[str]:
 
 
 def _read_openwebui_config() -> OpenWebUIRequestConfig:
-    """전용 Airflow Connection에서 endpoint와 비밀값을 읽습니다."""
+    """파일 상단 설정에서 OpenWebUI 요청 정보를 읽습니다."""
 
-    connection = BaseHook.get_connection(OPENWEBUI_CONNECTION_ID)
-    extra = connection.extra_dejson
-    endpoint = str(extra.get("endpoint") or connection.host or "").strip()
-    model = str(extra.get("model") or "").strip()
-    if not endpoint:
-        raise ValueError(f"{OPENWEBUI_CONNECTION_ID} Connection의 endpoint가 비어 있습니다.")
-    if not model:
-        raise ValueError(f"{OPENWEBUI_CONNECTION_ID} Connection의 model이 비어 있습니다.")
-    if not endpoint.startswith(("http://", "https://")):
+    if not OPENWEBUI_ENDPOINT:
+        raise ValueError("OPENWEBUI_ENDPOINT가 비어 있습니다.")
+    if not OPENWEBUI_MODEL:
+        raise ValueError("OPENWEBUI_MODEL이 비어 있습니다.")
+    if not OPENWEBUI_ENDPOINT.startswith(("http://", "https://")):
         raise ValueError("OpenWebUI endpoint는 http:// 또는 https://로 시작해야 합니다.")
-
-    raw_headers = extra.get("headers") or {}
-    if not isinstance(raw_headers, dict):
-        raise ValueError("OpenWebUI Connection의 headers는 JSON 객체여야 합니다.")
-    headers = {
-        str(key): str(value)
-        for key, value in raw_headers.items()
-        if isinstance(key, str) and isinstance(value, (str, int, float, bool))
-    }
-    timeout_seconds = max(1, min(int(extra.get("timeout_seconds") or 120), 1800))
+    if OPENWEBUI_TIMEOUT_SECONDS < 1:
+        raise ValueError("OPENWEBUI_TIMEOUT_SECONDS는 1 이상이어야 합니다.")
     return OpenWebUIRequestConfig(
-        endpoint=endpoint,
-        model=model,
-        api_token=(connection.password or "").strip(),
-        headers=headers,
-        timeout_seconds=timeout_seconds,
+        endpoint=OPENWEBUI_ENDPOINT,
+        model=OPENWEBUI_MODEL,
+        api_token=OPENWEBUI_API_TOKEN,
+        headers=dict(OPENWEBUI_COMMON_HEADERS),
+        timeout_seconds=OPENWEBUI_TIMEOUT_SECONDS,
     )
 
 
 def _read_summary_rows(*, row_limit: int) -> list[SummarySourceRow]:
-    """전용 DB Connection으로 ct_process_comment를 읽기 전용 조회합니다."""
+    """파일 상단 PostgreSQL 설정으로 ct_process_comment를 읽기 전용 조회합니다."""
 
     import psycopg2
 
-    connection = BaseHook.get_connection(DATABASE_CONNECTION_ID)
     connect_kwargs: dict[str, Any] = {
-        "dbname": connection.schema or "dashboard",
-        "user": connection.login,
-        "password": connection.password,
-        "host": connection.host,
+        "dbname": DATABASE_NAME,
+        "user": DATABASE_USER,
+        "password": DATABASE_PASSWORD,
+        "host": DATABASE_HOST,
+        "port": DATABASE_PORT,
         "connect_timeout": 10,
         "application_name": "ct_process_comment_openwebui_continuous_summary",
     }
-    if connection.port:
-        connect_kwargs["port"] = connection.port
 
     db_connection = psycopg2.connect(**connect_kwargs)
     try:
@@ -447,14 +437,21 @@ def _run_worker(
     return stats
 
 
-def run_ct_process_comment_openwebui_continuous_summary(**context: Any) -> dict[str, Any]:
+def run_ct_process_comment_openwebui_continuous_summary() -> dict[str, Any]:
     """ct_process_comment 기반 OpenWebUI 연속 요약을 실행합니다."""
 
-    params = context["params"]
-    concurrency = int(params["concurrency"])
-    duration_minutes = int(params["duration_minutes"])
-    row_limit = int(params["row_limit"])
-    max_consecutive_failures = int(params["max_consecutive_failures"])
+    concurrency = REQUEST_CONCURRENCY
+    duration_minutes = RUN_DURATION_MINUTES
+    row_limit = SOURCE_ROW_LIMIT
+    max_consecutive_failures = MAX_CONSECUTIVE_FAILURES
+    if concurrency < 1:
+        raise ValueError("REQUEST_CONCURRENCY는 1 이상이어야 합니다.")
+    if duration_minutes < 1:
+        raise ValueError("RUN_DURATION_MINUTES는 1 이상이어야 합니다.")
+    if row_limit < 1:
+        raise ValueError("SOURCE_ROW_LIMIT는 1 이상이어야 합니다.")
+    if max_consecutive_failures < 1:
+        raise ValueError("MAX_CONSECUTIVE_FAILURES는 1 이상이어야 합니다.")
 
     config = _read_openwebui_config()
     rows = _read_summary_rows(row_limit=row_limit)
@@ -523,29 +520,15 @@ with DAG(
     max_active_runs=1,
     is_paused_upon_creation=True,
     default_args={"owner": "data-movement", "retries": 0},
-    params={
-        "concurrency": Param(3, type="integer", minimum=1, maximum=64),
-        "duration_minutes": Param(360, type="integer", minimum=1, maximum=10080),
-        "row_limit": Param(300, type="integer", minimum=1, maximum=10000),
-        "max_consecutive_failures": Param(5, type="integer", minimum=1, maximum=100),
-    },
     tags=["data_movement", "openwebui", "summary"],
     doc_md="""
 ### ct_process_comment OpenWebUI
 
-- `ct_process_comment_summary_db`: PostgreSQL host, port, database, login, password
-- `openwebui_continuous_summary`: password에 API token, Extra에 아래 JSON 입력
+- 파일 상단: PostgreSQL host, port, database, user, password
+- 파일 상단: OpenWebUI endpoint, API token, model, header, timeout
+- 파일 상단: 동시성, 실행시간, 조회 행 수, 연속 실패 기준
 
-```json
-{
-  "endpoint": "https://openwebui.example/api/chat/completions",
-  "model": "model-name",
-  "headers": {},
-  "timeout_seconds": 120
-}
-```
-
-기본값은 동시성 3, 6시간이며 DAG 실행 설정에서 변경할 수 있습니다.
+기본값은 동시성 3, 6시간이며 파일 상단 설정에서 변경할 수 있습니다.
 실행 중 GPU 상태는 LLM 서버 Grafana에서 확인합니다.
 DAG를 활성화하면 이전 실행의 성공 여부와 관계없이 종료 직후 다음 실행을 시작합니다.
 DAG를 일시중지하면 새로운 실행이 생성되지 않습니다.
