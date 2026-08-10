@@ -22,7 +22,14 @@ def list_pending_summary_comments(
 
     queryset = (
         CtProcessComment.objects.filter(update_flag="Y")
-        .only("id", "workorder_id", "contents_text", "create_date", "update_flag")
+        .only(
+            "id",
+            "workorder_id",
+            "contents_text",
+            "create_date",
+            "update_flag",
+            "summary_retry_count",
+        )
         .order_by("-updated_at", "-id")
     )
     if workorder_id:

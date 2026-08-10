@@ -93,6 +93,8 @@ def _serialize_summary(*, table_name: str, summary: Any) -> dict[str, Any]:
         payload["skipped_count"] = summary.skipped_count
     if hasattr(summary, "dry_run_count"):
         payload["dry_run_count"] = summary.dry_run_count
+    if hasattr(summary, "exhausted_count"):
+        payload["exhausted_count"] = summary.exhausted_count
     return payload
 
 

@@ -45,7 +45,8 @@ class Command(BaseCommand):
         self.stdout.write(
             f"summary: processed={summary.processed_count}, "
             f"success={summary.success_count}, failed={summary.failure_count}, "
-            f"skipped={summary.skipped_count}, dry_run={summary.dry_run_count}"
+            f"skipped={summary.skipped_count}, exhausted={summary.exhausted_count}, "
+            f"dry_run={summary.dry_run_count}"
         )
         if summary.all_failed:
             raise CommandError(f"ct_process_comment 요약 실패 row 수: {summary.failure_count}")

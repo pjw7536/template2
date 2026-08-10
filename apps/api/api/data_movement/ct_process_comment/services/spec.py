@@ -17,6 +17,9 @@ UPSERT_KEY = "workorder_id"
 UPDATE_FLAG_COLUMN = "update_flag"
 LLM_SUMMARY_COLUMN = "llm_summary"
 LLM_CORE_SUMMARY_COLUMN = "llm_core_summary"
+SUMMARY_RETRY_COUNT_COLUMN = "summary_retry_count"
+SUMMARY_LAST_ERROR_CODE_COLUMN = "summary_last_error_code"
+SUMMARY_LAST_ERROR_COLUMN = "summary_last_error"
 EQP_ID_FILTER_COLUMN = "eqp_id"
 EQP_ID_FILTER_PREFIXES = ("E",)
 

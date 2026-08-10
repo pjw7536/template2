@@ -143,6 +143,9 @@ def _upsert_rows(*, selected_csv_path: Path) -> None:
     quoted_update_flag = _quote_identifier(spec.UPDATE_FLAG_COLUMN)
     quoted_llm_summary = _quote_identifier(spec.LLM_SUMMARY_COLUMN)
     quoted_llm_core_summary = _quote_identifier(spec.LLM_CORE_SUMMARY_COLUMN)
+    quoted_summary_retry_count = _quote_identifier(spec.SUMMARY_RETRY_COUNT_COLUMN)
+    quoted_summary_last_error_code = _quote_identifier(spec.SUMMARY_LAST_ERROR_CODE_COLUMN)
+    quoted_summary_last_error = _quote_identifier(spec.SUMMARY_LAST_ERROR_COLUMN)
     temp_columns_sql = ", ".join(f"{_quote_identifier(column)} text" for column in spec.DB_COLUMNS)
     change_check_columns = [column for column in spec.DB_COLUMNS if column != spec.UPSERT_KEY]
     target_change_values = ", ".join(f"target.{_quote_identifier(column)}" for column in change_check_columns)
@@ -235,7 +238,8 @@ def _upsert_rows(*, selected_csv_path: Path) -> None:
                         modify_user,
                         modify_date,
                         pbu_part_key,
-                        {quoted_update_flag}
+                        {quoted_update_flag},
+                        {quoted_summary_retry_count}
                     )
                 SELECT
                     workorder_id,
@@ -255,7 +259,8 @@ def _upsert_rows(*, selected_csv_path: Path) -> None:
                     modify_user,
                     modify_date,
                     pbu_part_key,
-                    'Y'
+                    'Y',
+                    0
                 FROM latest_source
                 ON CONFLICT (workorder_id)
                 DO UPDATE SET
@@ -283,6 +288,18 @@ def _upsert_rows(*, selected_csv_path: Path) -> None:
                     {quoted_llm_core_summary} = CASE
                         WHEN target.contents_text IS DISTINCT FROM EXCLUDED.contents_text THEN NULL
                         ELSE target.{quoted_llm_core_summary}
+                    END,
+                    {quoted_summary_retry_count} = CASE
+                        WHEN target.contents_text IS DISTINCT FROM EXCLUDED.contents_text THEN 0
+                        ELSE target.{quoted_summary_retry_count}
+                    END,
+                    {quoted_summary_last_error_code} = CASE
+                        WHEN target.contents_text IS DISTINCT FROM EXCLUDED.contents_text THEN NULL
+                        ELSE target.{quoted_summary_last_error_code}
+                    END,
+                    {quoted_summary_last_error} = CASE
+                        WHEN target.contents_text IS DISTINCT FROM EXCLUDED.contents_text THEN NULL
+                        ELSE target.{quoted_summary_last_error}
                     END,
                     updated_at = NOW()
                 WHERE ({target_change_values}) IS DISTINCT FROM ({excluded_change_values})

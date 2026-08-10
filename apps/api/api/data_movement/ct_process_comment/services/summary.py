@@ -26,7 +26,10 @@ SUMMARY_STATUS_SUCCESS = "success"
 SUMMARY_STATUS_FAILED = "failed"
 SUMMARY_STATUS_SKIPPED = "skipped"
 SUMMARY_STATUS_DRY_RUN = "dry_run"
+SUMMARY_STATUS_EXHAUSTED = "exhausted"
 NO_CORE_SUMMARY_SENTINEL = "NO_CORE_SUMMARY"
+SUMMARY_MAX_RETRY_COUNT = 3
+SUMMARY_LAST_ERROR_MAX_CHARS = 8000
 SUMMARY_CHUNK_MAX_EVENTS = 40
 SUMMARY_CHUNK_MAX_CHARS = 8000
 CONTENTS_EVENT_HEADER_PATTERN = re.compile(
@@ -120,12 +123,34 @@ class OpenWebUIRequestError(RuntimeError):
     """OpenWebUI 요청 또는 응답 처리에 실패했을 때 발생합니다."""
 
 
-class _OpenWebUIEmptyContentResponseError(OpenWebUIRequestError):
+class _OpenWebUIRowResponseError(OpenWebUIRequestError):
+    """동일 row에서 재현될 수 있는 최종 응답 오류입니다."""
+
+    error_code = "row_response_error"
+
+
+class _OpenWebUIEmptyContentResponseError(_OpenWebUIRowResponseError):
     """OpenWebUI가 저장할 최종 content 없이 종료했을 때 발생합니다."""
+
+    error_code = "empty_content"
 
 
 class _OpenWebUIReasoningOnlyResponseError(_OpenWebUIEmptyContentResponseError):
     """OpenWebUI가 최종 답변 없이 reasoning만 반환했을 때 발생합니다."""
+
+    error_code = "reasoning_only"
+
+
+class _OpenWebUIContentFilterResponseError(_OpenWebUIRowResponseError):
+    """OpenWebUI가 content filter로 최종 답변을 차단했을 때 발생합니다."""
+
+    error_code = "content_filter"
+
+
+class _OpenWebUIRefusalResponseError(_OpenWebUIRowResponseError):
+    """OpenWebUI 모델이 최종 답변 생성을 거절했을 때 발생합니다."""
+
+    error_code = "refusal"
 
 
 @dataclass(frozen=True)
@@ -213,6 +238,12 @@ class SummaryRunSummary:
         """dry-run으로 확인한 row 수를 반환합니다."""
 
         return sum(1 for outcome in self.outcomes if outcome.status == SUMMARY_STATUS_DRY_RUN)
+
+    @property
+    def exhausted_count(self) -> int:
+        """재시도 한도를 소진해 완료한 row 수를 반환합니다."""
+
+        return sum(1 for outcome in self.outcomes if outcome.status == SUMMARY_STATUS_EXHAUSTED)
 
 
 def _parse_headers(raw: str | None, source: str) -> dict[str, str]:
@@ -761,11 +792,15 @@ def _extract_reply_content(resp_json: Any, *, stage: str) -> str:
         )
 
     if finish_reason == "content_filter":
-        raise OpenWebUIRequestError(f"OpenWebUI 응답이 content filter로 차단되었습니다. {response_context}")
+        raise _OpenWebUIContentFilterResponseError(
+            f"OpenWebUI 응답이 content filter로 차단되었습니다. {response_context}"
+        )
 
     refusal = message.get("refusal")
     if refusal not in (None, ""):
-        raise OpenWebUIRequestError(f"OpenWebUI 모델이 응답 생성을 거절했습니다. {response_context}")
+        raise _OpenWebUIRefusalResponseError(
+            f"OpenWebUI 모델이 응답 생성을 거절했습니다. {response_context}"
+        )
 
     if message.get("audio") is not None:
         raise OpenWebUIRequestError(f"OpenWebUI가 지원하지 않는 audio 응답을 반환했습니다. {response_context}")
@@ -1031,9 +1066,9 @@ def request_summary(
                 stage="core_summary",
             )
         )
-    except _OpenWebUIEmptyContentResponseError as exc:
+    except _OpenWebUIRowResponseError as exc:
         logger.warning(
-            "OpenWebUI 핵심요약 응답이 비어 시간순 요약만 저장합니다. %s",
+            "OpenWebUI 핵심요약 응답 오류로 시간순 요약만 저장합니다. %s",
             exc,
         )
         return GeneratedSummary(core_summary=None, event_summary=event_summary)
@@ -1051,14 +1086,62 @@ def request_summary(
             ),
             core_summary,
         )
-    except _OpenWebUIEmptyContentResponseError as exc:
+    except _OpenWebUIRowResponseError as exc:
         logger.warning(
-            "OpenWebUI 핵심요약 검수 응답이 비어 시간순 요약만 저장합니다. %s",
+            "OpenWebUI 핵심요약 검수 응답 오류로 시간순 요약만 저장합니다. %s",
             exc,
         )
         return GeneratedSummary(core_summary=None, event_summary=event_summary)
 
     return GeneratedSummary(core_summary=reviewed_core_summary, event_summary=event_summary)
+
+
+def _get_summary_error_code(exc: OpenWebUIConfigError | OpenWebUIRequestError) -> str:
+    """저장할 수 있는 안정적인 요약 오류 코드를 반환합니다."""
+
+    if isinstance(exc, _OpenWebUIRowResponseError):
+        return exc.error_code
+    if isinstance(exc, OpenWebUIConfigError):
+        return "config_error"
+    return "openwebui_error"
+
+
+def _record_summary_failure(
+    *,
+    comment: CtProcessComment,
+    exc: OpenWebUIConfigError | OpenWebUIRequestError,
+) -> bool:
+    """마지막 오류를 기록하고 row 응답 오류만 재시도 횟수에 반영합니다.
+
+    반환값은 이번 오류로 재시도 한도를 소진해 배치 대상에서 제외됐는지 나타냅니다.
+    실패 갱신은 원본 변경 순서를 보존하기 위해 ``updated_at``을 변경하지 않습니다.
+    """
+
+    error_code = _get_summary_error_code(exc)
+    error_message = str(exc)[:SUMMARY_LAST_ERROR_MAX_CHARS]
+    queryset = CtProcessComment.objects.filter(
+        pk=comment.pk,
+        contents_text=comment.contents_text,
+        update_flag="Y",
+    )
+
+    if not isinstance(exc, _OpenWebUIRowResponseError):
+        queryset.update(
+            summary_last_error_code=error_code,
+            summary_last_error=error_message,
+        )
+        return False
+
+    current_retry_count = comment.summary_retry_count
+    next_retry_count = min(current_retry_count + 1, SUMMARY_MAX_RETRY_COUNT)
+    exhausted = next_retry_count >= SUMMARY_MAX_RETRY_COUNT
+    updated_count = queryset.filter(summary_retry_count=current_retry_count).update(
+        summary_retry_count=next_retry_count,
+        summary_last_error_code=error_code,
+        summary_last_error=error_message,
+        update_flag="N" if exhausted else "Y",
+    )
+    return updated_count == 1 and exhausted
 
 
 def summarize_pending_ct_process_comments(
@@ -1088,7 +1171,14 @@ def summarize_pending_ct_process_comments(
         contents_text = (comment.contents_text or "").strip()
         if not contents_text:
             if not dry_run:
-                CtProcessComment.objects.filter(pk=comment.pk, update_flag="Y").update(
+                CtProcessComment.objects.filter(
+                    pk=comment.pk,
+                    contents_text=comment.contents_text,
+                    update_flag="Y",
+                ).update(
+                    summary_retry_count=0,
+                    summary_last_error_code=None,
+                    summary_last_error=None,
                     update_flag="N",
                     updated_at=timezone.now(),
                 )
@@ -1114,9 +1204,16 @@ def summarize_pending_ct_process_comments(
                 default_event_time=comment.create_date,
             )
             with transaction.atomic():
-                updated_count = CtProcessComment.objects.filter(pk=comment.pk, update_flag="Y").update(
+                updated_count = CtProcessComment.objects.filter(
+                    pk=comment.pk,
+                    contents_text=comment.contents_text,
+                    update_flag="Y",
+                ).update(
                     llm_summary=summary.event_summary,
                     llm_core_summary=summary.core_summary,
+                    summary_retry_count=0,
+                    summary_last_error_code=None,
+                    summary_last_error=None,
                     update_flag="N",
                     updated_at=timezone.now(),
                 )
@@ -1129,7 +1226,17 @@ def summarize_pending_ct_process_comments(
                     summary=summary.event_summary,
                 )
             )
+        except _OpenWebUIRowResponseError as exc:
+            exhausted = _record_summary_failure(comment=comment, exc=exc)
+            outcomes.append(
+                SummaryRowOutcome(
+                    workorder_id=comment.workorder_id,
+                    status=SUMMARY_STATUS_EXHAUSTED if exhausted else SUMMARY_STATUS_FAILED,
+                    error_message=str(exc),
+                )
+            )
         except (OpenWebUIConfigError, OpenWebUIRequestError) as exc:
+            _record_summary_failure(comment=comment, exc=exc)
             outcomes.append(
                 SummaryRowOutcome(
                     workorder_id=comment.workorder_id,

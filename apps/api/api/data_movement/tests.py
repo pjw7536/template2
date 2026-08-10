@@ -171,7 +171,35 @@ class DataMovementLoadTriggerApiTests(TestCase):
         self.assertEqual(response.json()["success_count"], 1)
         self.assertEqual(response.json()["skipped_count"], 0)
         self.assertEqual(response.json()["dry_run_count"], 0)
+        self.assertEqual(response.json()["exhausted_count"], 0)
         summarize_comments.assert_called_once_with(dry_run=True, limit=3)
+
+    def test_summary_trigger_reports_exhausted_count(self) -> None:
+        """재시도 한도를 소진한 row 수를 API 집계에 포함합니다."""
+
+        summary = SummaryRunSummary(
+            outcomes=[
+                SummaryRowOutcome(
+                    workorder_id="WO1",
+                    status="exhausted",
+                    error_message="빈 응답 3회",
+                )
+            ]
+        )
+        with patch(
+            "api.data_movement.views.summarize_pending_ct_process_comments",
+            return_value=summary,
+        ):
+            response = self.client.post(
+                "/api/v1/data-movement/ct_process_comment/summarize/",
+                data={},
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer test-token",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["processed_count"], 1)
+        self.assertEqual(response.json()["exhausted_count"], 1)
 
     def test_summary_trigger_returns_500_when_all_summaries_failed(self) -> None:
         """모든 요약 row가 실패하면 Airflow가 실패를 감지할 수 있게 500을 반환합니다."""
