@@ -78,6 +78,7 @@ def fetch_tip_timeline_logs(
     start_at: object | None = None,
     end_at: object | None = None,
     limit: int | None = None,
+    event_type_pattern: str | None = None,
 ) -> List[dict[str, object]]:
     """timeline TIP 로그 응답 형태로 TIP 이력을 반환합니다.
 
@@ -99,11 +100,14 @@ def fetch_tip_timeline_logs(
     normalized_start_at = _normalize_datetime_filter(start_at)
     normalized_end_at = _normalize_datetime_filter(end_at, is_end=True)
 
-    queryset = MiTipUpdateHist.objects.filter(eqp_cb_lookup=_lookup_key(eqp_id)).order_by("-gpm_update_date")
+    queryset = MiTipUpdateHist.objects.filter(eqp_cb_lookup=_lookup_key(eqp_id))
+    if event_type_pattern:
+        queryset = queryset.filter(event_type__iregex=event_type_pattern)
     if normalized_start_at is not None:
         queryset = queryset.filter(gpm_update_date__gte=normalized_start_at)
     if normalized_end_at is not None:
         queryset = queryset.filter(gpm_update_date__lte=normalized_end_at)
+    queryset = queryset.order_by("-gpm_update_date")
     if limit is not None:
         queryset = queryset[:limit]
 

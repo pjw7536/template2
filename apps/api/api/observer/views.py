@@ -8,13 +8,20 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from django.http import HttpRequest, JsonResponse
 from rest_framework.views import APIView
 
 from . import selectors
 from . import serializers as observer_serializers
-from .services import normalize_observer_datetime
+from .services import (
+    ObserverOpenWebUIError,
+    analyze_observer_logs,
+    normalize_observer_datetime,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _query_id(request: HttpRequest, key: str) -> str:
@@ -668,6 +675,78 @@ class ObserverLogDetailView(APIView):
         return JsonResponse(payload)
 
 
+class ObserverAnalysisView(APIView):
+    """현재 Observer 조회 조건을 OpenWebUI로 종합 분석합니다."""
+
+    def post(
+        self,
+        request: HttpRequest,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """관심 상태 통계와 주변 로그를 구성해 AI 분석 결과를 반환합니다.
+
+        예시 요청:
+        - POST /api/v1/observer/analysis
+        - body: {"eqpId":"EQP-1","from":"2026-08-01","to":"2026-08-07"}
+
+        snake/camel 호환:
+        - eqpId/logTypes/tipGroups와 from/to camelCase 계약만 지원합니다.
+
+        오류:
+        - 400: 입력 또는 날짜 범위 오류
+        - 502: OpenWebUI 요청/응답 오류
+        - 503: OpenWebUI 설정 누락 또는 전체 source 조회 실패
+        """
+
+        # ---------------------------------------------------------------------
+        # 1) 조회 조건 검증
+        # ---------------------------------------------------------------------
+        query = observer_serializers.ObserverAnalysisRequestSerializer(
+            data=request.data
+        )
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_request", "details": query.errors},
+                status=400,
+            )
+
+        # ---------------------------------------------------------------------
+        # 2) 통계 context 생성과 OpenWebUI 호출
+        # ---------------------------------------------------------------------
+        values = query.validated_data
+        try:
+            payload = analyze_observer_logs(
+                eqp_id=values["eqp_id"],
+                start_at=values["start_at"],
+                end_at=values["end_at"],
+                log_types=values["log_types"],
+                selected_tip_groups=values["tip_groups"],
+                question=values["question_clean"],
+            )
+        except ObserverOpenWebUIError as exc:
+            logger.warning(
+                "Observer OpenWebUI 분석 실패: exception_type=%s",
+                type(exc).__name__,
+            )
+            status_code = 503 if "설정이 비어" in str(exc) else 502
+            return JsonResponse(
+                {"error": "observer_analysis_failed", "message": str(exc)},
+                status=status_code,
+            )
+        except RuntimeError as exc:
+            logger.warning(
+                "Observer 분석 source 조회 실패: exception_type=%s",
+                type(exc).__name__,
+            )
+            return JsonResponse(
+                {"error": "observer_analysis_unavailable", "message": str(exc)},
+                status=503,
+            )
+
+        return JsonResponse(payload)
+
+
 class ObserverLogsView(_ObserverLogsByTypeView):
     """설비의 전체 로그를 타입별로 합쳐 반환합니다."""
 
@@ -755,6 +834,7 @@ class ObserverEsopLogsView(_ObserverLogsByTypeView):
 
 
 __all__ = [
+    "ObserverAnalysisView",
     "ObserverCtttmLogsView",
     "ObserverEsopLogsView",
     "ObserverFdcInterlockLogsView",

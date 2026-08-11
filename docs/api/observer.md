@@ -32,6 +32,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/logs/ctttm?eqpId=...` | CTTTM 로그 |
 | GET | `/api/v1/observer/logs/racb?eqpId=...` | RACB 로그 |
 | GET | `/api/v1/observer/logs/esop?eqpId=...` | ESOP 로그 |
+| POST | `/api/v1/observer/analysis` | 현재 조회 조건의 로그를 OpenWebUI로 종합 분석 |
 | GET | `/api/v1/observer/tkin-prevent/prc-groups?userSdwtProd=...` | tkin Prevent PRC 그룹 목록 |
 | GET | `/api/v1/observer/tkin-prevent/processes?userSdwtProd=...&prcGroup=...` | tkin Prevent process_id 목록 |
 | GET | `/api/v1/observer/tkin-prevent/step-seqs?userSdwtProd=...&prcGroup=...&processId=...` | tkin Prevent step_seq 목록 |
@@ -61,6 +62,12 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
 - `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.
 - frontend 기본 로그 조회는 `limit`을 명시하지 않고 backend 기본 기간 정책을 따릅니다.
+- 분석 API는 `eqpId`, `from`, `to`, 활성 `logTypes`, 선택 `tipGroups`를 JSON body로 받으며 최대 90일 범위만 허용합니다.
+- 분석 API는 브라우저의 현재 row를 받지 않고 같은 조회 조건으로 backend source를 다시 조회합니다.
+- EQP는 DB에서 `DOWN`, `IDLE`, `LOCAL`만 먼저 선별해 발생 빈도와 comment 원인을 요약합니다. TIP도 DB에서 `L*_TIP`만 선별하므로 `DOING`, `CNT`는 조회 상한을 소비하지 않습니다.
+- SPC/FDC/CTTTM/RACB/ESOP는 EQP/TIP 관심 이벤트 전 30분부터 후 10분까지의 raw context만 전달합니다. 관심 이벤트가 없으면 선택된 비 EQP/TIP 로그를 제한된 raw context로 전달합니다.
+- source별 최대 5000건, raw 유형별 최대 400건, 전체 prompt 문자 예산을 적용하며 누락 가능성은 응답 `meta.coverage`에 표시합니다.
+- 분석 모델 호출은 기존 `OPENWEBUI_*` 설정을 재사용하고 `reasoning_effort=medium`으로 실행합니다.
 - tkin Prevent 화면은 ESOP Dashboard line 선택과 `account_affiliation.line/user_sdwt_prod` 매핑으로 `userSdwtProd` 후보를 정합니다.
 - tkin Prevent PRC 후보는 `station_master.sdwt_prod_lookup = userSdwtProd`인 row의 `station_master.prc_group_lookup`에서 가져옵니다.
 - tkin Prevent process/step/matrix 조회는 `userSdwtProd`와 `prcGroup`으로 대상 `station_master.ch_main`을 찾습니다.
@@ -94,6 +101,21 @@ GET /api/v1/observer/logs/eqp/page?eqpId=EQP-001&from=2026-07-28&to=2026-07-30&p
 ```
 
 ```http
+POST /api/v1/observer/analysis
+Content-Type: application/json
+
+{
+  "eqpId": "EQP-001",
+  "from": "2026-07-28",
+  "to": "2026-07-30",
+  "logTypes": ["EQP", "TIP", "SPC_ITL", "FDC_ITL", "CTTTM", "RACB", "ESOP"],
+  "tipGroups": ["__ALL__"]
+}
+```
+
+분석 응답은 `analysis.headline`, `analysis.summary`, `analysis.findings`, `analysis.recommendedChecks`, `analysis.limitations`와 입력 범위를 설명하는 `meta`, `scope`를 반환합니다. `recordedCauses`는 로그 comment에 기록된 원인이고 `inferredCauses`는 주변 이벤트에 근거한 추정 원인입니다.
+
+```http
 GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=PROC1&stepSeq=10
 ```
 
@@ -104,6 +126,7 @@ GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=P
 | 400 | 필수 query 누락 |
 | 401 | 배포 정책상 인증이 필요한 경우 |
 | 404 | 설비 정보 또는 선택한 상세 로그 없음 |
+| 502 | OpenWebUI가 유효하지 않은 응답을 반환하거나 호출에 실패 |
 | 503 | page batch의 모든 source 조회 실패 |
 | 500 | 기본 DB 조회 실패 |
 

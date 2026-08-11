@@ -2025,6 +2025,49 @@ def get_logs_by_type(
     )
 
 
+def get_analysis_logs_by_type(
+    *,
+    eqp_id: str,
+    log_key: str,
+    start_at: object,
+    end_at: object,
+    limit: int,
+) -> List[Dict[str, object]]:
+    """AI 분석에 필요한 관심 상태와 주변 로그만 조회합니다.
+
+    EQP/TIP는 대량의 제외 상태가 조회 상한을 차지하지 않도록 DB에서 먼저
+    관심 상태를 제한하고, 나머지 유형은 기존 Observer payload를 재사용합니다.
+    """
+
+    eqp_key = normalize_id(eqp_id)
+    type_key = (log_key or "").strip().lower()
+    if type_key == "eqp":
+        logs = eqp_status_chg_selectors.fetch_eqp_timeline_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+            statuses=("DOWN", "IDLE", "LOCAL"),
+        )
+        return [_serialize_log_time_fields(log) for log in logs]
+    if type_key == "tip":
+        logs = mi_tip_update_hist_selectors.fetch_tip_timeline_logs(
+            eqp_id=eqp_key,
+            start_at=start_at,
+            end_at=end_at,
+            limit=limit,
+            event_type_pattern=r"^L.*_TIP$",
+        )
+        return [_serialize_log_time_fields(log) for log in logs]
+    return _fetch_logs_by_type_normalized(
+        eqp_key=eqp_key,
+        type_key=type_key,
+        start_at=start_at,
+        end_at=end_at,
+        limit=limit,
+    )
+
+
 def get_merged_logs(
     *,
     eqp_id: str,
@@ -2071,6 +2114,7 @@ __all__ = [
     "get_log_detail",
     "get_log_page",
     "get_log_pages",
+    "get_analysis_logs_by_type",
     "get_logs_by_type",
     "get_logs_for_equipment",
     "get_merged_logs",

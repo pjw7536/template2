@@ -55,6 +55,13 @@ export const observerApi = {
       signal,
     }),
 
+  analyzeLogs: ({ eqpId, from, to, logTypes, tipGroups }) =>
+    observerApiClient("/analysis", {
+      method: "POST",
+      body: JSON.stringify({ eqpId, from, to, logTypes, tipGroups }),
+      timeout: 130000,
+    }),
+
   // EQP 정보 조회
   fetchEquipmentInfo: (lineId, eqpId) =>
     observerApiClient(`/equipment-info/${lineId}/${eqpId}`),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, time
-from typing import List
+from typing import Iterable, List
 
 from django.db.models import Q
 from django.utils import timezone
@@ -46,6 +46,7 @@ def fetch_eqp_timeline_logs(
     start_at: object | None = None,
     end_at: object | None = None,
     limit: int | None = None,
+    statuses: Iterable[str] | None = None,
 ) -> List[dict[str, object]]:
     """timeline EQP 로그 응답 형태로 상태 변경 이력을 반환합니다.
 
@@ -67,11 +68,20 @@ def fetch_eqp_timeline_logs(
     normalized_start_at = _normalize_datetime_filter(start_at)
     normalized_end_at = _normalize_datetime_filter(end_at, is_end=True)
 
-    queryset = EqpStatusChg.objects.filter(eqp_cb_lookup=_lookup_key(eqp_id)).order_by("-chg_time")
+    queryset = EqpStatusChg.objects.filter(eqp_cb_lookup=_lookup_key(eqp_id))
+    normalized_statuses = {
+        _lookup_key(status) for status in (statuses or []) if _lookup_key(status)
+    }
+    if normalized_statuses:
+        status_query = Q()
+        for status in sorted(normalized_statuses):
+            status_query |= Q(eqp_status_type__iexact=status)
+        queryset = queryset.filter(status_query)
     if normalized_start_at is not None:
         queryset = queryset.filter(chg_time__gte=normalized_start_at)
     if normalized_end_at is not None:
         queryset = queryset.filter(chg_time__lte=normalized_end_at)
+    queryset = queryset.order_by("-chg_time")
     if limit is not None:
         queryset = queryset[:limit]
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from django.urls import path
 
 from .views import (
+    ObserverAnalysisView,
     ObserverCtttmLogsView,
     ObserverEsopLogsView,
     ObserverFdcInterlockLogsView,
@@ -32,6 +33,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("analysis", ObserverAnalysisView.as_view(), name="observer-analysis"),
     path("lines", ObserverLinesView.as_view(), name="observer-lines"),
     path("sdwts", ObserverSdwtView.as_view(), name="observer-sdwts"),
     path("prc-groups", ObserverPrcGroupView.as_view(), name="observer-prc-groups"),

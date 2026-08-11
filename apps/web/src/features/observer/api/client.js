@@ -107,6 +107,9 @@ export const observerApiClient = async (
         case 500:
           errorMessage = "서버 오류가 발생했습니다.";
           break;
+        case 502:
+          errorMessage = "OpenWebUI 분석 요청을 완료하지 못했습니다.";
+          break;
         case 503:
           errorMessage = "서비스를 일시적으로 사용할 수 없습니다.";
           break;

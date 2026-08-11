@@ -12,6 +12,7 @@ Observer는 설비 Observer 화면에 필요한 기준 정보와 로그를 조�
 - 최초 batch 및 유형별 keyset page 조회
 - 선택 로그의 상세 지연 조회
 - EQP, TIP, SPC Interlock, FDC Interlock, CTTTM, RACB, ESOP 유형별 로그 조회
+- 현재 조회 조건의 관심 상태 통계와 주변 로그를 이용한 OpenWebUI 종합 분석
 - URL의 `eqpId`를 기준으로 설비 상세와 observer item 동기화
 - tkin Prevent process/step matrix 조회
 
@@ -56,6 +57,16 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 8. 추가 데이터는 유형별 keyset cursor로, 전체 상세는 선택 시 별도 endpoint로 조회합니다.
 9. 프론트는 서버 응답을 React Query cache에 두고 resident log를 최대 5000개로 제한합니다.
 
+## AI 종합 분석 흐름
+
+1. 사용자가 현재 조회 화면에서 `AI 종합 분석`을 실행합니다.
+2. 프론트는 row 전체가 아니라 설비, 기간, 활성 로그 유형, TIP 그룹을 backend에 전달합니다.
+3. backend는 DB 조회 단계에서 EQP의 `DOWN`, `IDLE`, `LOCAL`과 TIP의 `L*_TIP`만 선별한 뒤 상태·comment별 통계로 압축합니다. TIP의 `DOING`, `CNT`는 제외됩니다.
+4. SPC/FDC/CTTTM/RACB/ESOP는 관심 상태 전 30분부터 후 10분까지의 사건만 raw context로 선별합니다.
+5. 기존 `OPENWEBUI_*` 연결과 `gpt-oss-120b` 모델에 구조화한 입력을 전달하고, 기록된 원인과 추정 원인을 분리한 결과를 Dialog에 표시합니다.
+
+이 방식은 화면 row 수와 무관하게 분석 입력 크기를 제한합니다. source 조회 또는 prompt가 제한된 경우 응답 coverage와 limitations에 반영되어 결과의 범위를 확인할 수 있습니다.
+
 ## 로그 조회 정책
 
 | 항목 | 정책 |
@@ -84,6 +95,8 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 | `apps/web/src/features/observer/api/observerApi.js` | backend API 호출 |
 | `apps/web/src/features/observer/hooks/useObserverLogs.js` | 로그 query orchestration |
 | `apps/web/src/features/observer/hooks/useObserverLogDetailQuery.js` | 선택 로그 상세 지연 조회 |
+| `apps/web/src/features/observer/hooks/useObserverAnalysis.js` | 현재 조회 조건의 분석 mutation |
+| `apps/web/src/features/observer/components/dialog/ObserverAnalysisDialog.jsx` | 분석 loading/error/result Dialog |
 | `apps/web/src/features/observer/store/useObserverStore.js` | 선택/필터 UI 상태 |
 | `apps/web/src/features/observer/utils/visObserverItems.js` | vis-timeline item 변환 |
 | `apps/web/src/features/observer/components/*Detail.jsx` | 로그 유형별 상세 패널 |
@@ -95,6 +108,8 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 - Data Log는 row virtualizer를 사용하므로 resident log 수와 관계없이 화면에는 viewport 주변 행만 mount됩니다.
 - Timeline DataSet은 전체 초기화 대신 ID 기준 diff를 반영해 선택과 zoom 초기화를 줄입니다.
 - 화면이 느리면 로그 API의 `from`, `to`, `limit` 조합과 응답 건수를 먼저 확인합니다.
+- AI 분석 호출 문제는 `OPENWEBUI_URL`, `OPENWEBUI_MODEL`, API token/header 설정과 `/api/v1/observer/analysis` 응답의 coverage부터 확인합니다.
+- AI 분석은 source별 최대 5000건, raw 유형별 최대 400건과 prompt 문자 예산을 적용하므로 장기간·대량 조회에서는 coverage의 truncation 표시를 함께 해석합니다.
 - CTTTM 요약이 비어 있으면 `summarize_ct_process_comment` command와 `ct_process_comment.update_flag` 상태를 확인합니다.
 - ESOP 로그가 누락되면 `api.drone` 데이터와 observer 로그 결합 지점을 함께 확인합니다.
 - SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 적재 상태를 확인합니다.

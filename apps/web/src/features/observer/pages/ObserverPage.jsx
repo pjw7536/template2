@@ -15,11 +15,13 @@ import DataLogSection from "../components/DataLogSection";
 import LogViewerSection from "../components/LogViewerSection";
 import LogDetailSection from "../components/LogDetailSection";
 import ObserverSettings from "../components/ObserverSettings";
+import ObserverAnalysisDialog from "../components/dialog/ObserverAnalysisDialog";
 import { useObserverPageState } from "../hooks/useObserverPageState";
 
 export default function ObserverPage() {
   const params = useParams();
   const [isLogDetailDialogOpen, setIsLogDetailDialogOpen] = useState(false);
+  const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
   const {
     selection,
     observerPrefs,
@@ -29,6 +31,7 @@ export default function ObserverPage() {
     logs,
     selectedLog,
     selectedLogDetail,
+    analysis,
     observerReady,
   } = useObserverPageState(params); // 복잡한 상태를 한 곳에서 준비해 UI 단을 단순화
 
@@ -80,6 +83,15 @@ export default function ObserverPage() {
     setIsLogDetailDialogOpen(false);
   }, [selectedLog?.id]);
 
+  useEffect(() => {
+    setIsAnalysisDialogOpen(false);
+  }, [analysis.scopeKey]);
+
+  const handleAnalysis = () => {
+    setIsAnalysisDialogOpen(true);
+    analysis.run();
+  };
+
   // 검증 중일 때 로딩 표시
   if (isValidating) {
     return (
@@ -123,6 +135,10 @@ export default function ObserverPage() {
           isSettingsDisabled={!observerReady || logsLoading}
           onSettingsToggle={() => setIsSettingsOpen(!isSettingsOpen)}
           showShareButton={true}
+          showAnalysisButton={true}
+          isAnalysisDisabled={!observerReady || logsLoading || !analysis.canRun}
+          isAnalysisLoading={analysis.isPending}
+          onAnalysis={handleAnalysis}
         />
 
         <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2">
@@ -252,6 +268,14 @@ export default function ObserverPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <ObserverAnalysisDialog
+        open={isAnalysisDialogOpen}
+        onOpenChange={setIsAnalysisDialogOpen}
+        isPending={analysis.isPending}
+        error={analysis.error}
+        data={analysis.data}
+        onRetry={analysis.run}
+      />
     </>
   );
 }

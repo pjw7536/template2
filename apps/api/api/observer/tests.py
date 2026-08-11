@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -17,6 +17,11 @@ from django.urls import reverse
 
 from . import selectors
 from . import serializers as observer_serializers
+from .services.analysis import analyze_observer_logs, build_observer_analysis_context
+from .services.openwebui import (
+    ObserverOpenWebUIConfig,
+    request_observer_analysis,
+)
 
 OBSERVER_VIEW_SELECTORS = "api.observer.views.selectors"
 OBSERVER_SELECTORS = "api.observer.selectors"
@@ -1630,3 +1635,300 @@ class ObserverEndpointTests(TestCase):
                 }
             ],
         )
+
+
+class ObserverAnalysisTests(TestCase):
+    """Observer 관심 상태 압축과 OpenWebUI API 계약을 검증합니다."""
+
+    def setUp(self) -> None:
+        """보호된 분석 endpoint를 호출할 인증 사용자를 준비합니다."""
+
+        _allow_test_scope_access(self)
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S-OBSERVER-AI",
+            password="test-password",
+            knox_id="knox-observer-ai",
+        )
+        self.client.force_login(self.user)
+        self.start_at = datetime(2026, 8, 1, tzinfo=ZoneInfo("Asia/Seoul"))
+        self.end_at = datetime(2026, 8, 3, 23, 59, 59, tzinfo=ZoneInfo("Asia/Seoul"))
+
+    def test_analysis_selector_prefilters_large_status_sources(self) -> None:
+        """EQP/TIP 제외 상태가 분석 조회 상한을 차지하지 않게 DB filter를 전달합니다."""
+
+        with (
+            patch.object(
+                selectors.eqp_status_chg_selectors,
+                "fetch_eqp_timeline_logs",
+                return_value=[],
+            ) as eqp_selector,
+            patch.object(
+                selectors.mi_tip_update_hist_selectors,
+                "fetch_tip_timeline_logs",
+                return_value=[],
+            ) as tip_selector,
+        ):
+            selectors.get_analysis_logs_by_type(
+                eqp_id="EQP-ALPHA",
+                log_key="eqp",
+                start_at=self.start_at,
+                end_at=self.end_at,
+                limit=5000,
+            )
+            selectors.get_analysis_logs_by_type(
+                eqp_id="EQP-ALPHA",
+                log_key="tip",
+                start_at=self.start_at,
+                end_at=self.end_at,
+                limit=5000,
+            )
+
+        self.assertEqual(
+            eqp_selector.call_args.kwargs["statuses"],
+            ("DOWN", "IDLE", "LOCAL"),
+        )
+        self.assertEqual(
+            tip_selector.call_args.kwargs["event_type_pattern"],
+            r"^L.*_TIP$",
+        )
+
+    def test_analysis_context_filters_eqp_and_tip_target_statuses(self) -> None:
+        """정상 EQP와 DOING/CNT TIP은 분석 대상에서 제외합니다."""
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["eqp", "tip", "spc-interlock"],
+            selected_tip_groups=["__ALL__"],
+            logs_by_type={
+                "eqp": [
+                    {
+                        "id": "EQP-RUN",
+                        "logType": "EQP",
+                        "eventType": "RUN",
+                        "eventTime": "2026-08-02T09:00:00+09:00",
+                        "comment": "정상 가동",
+                    },
+                    {
+                        "id": "EQP-DOWN",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                        "comment": "Pressure alarm 점검",
+                    },
+                ],
+                "tip": [
+                    {
+                        "id": "TIP-DOING",
+                        "logType": "TIP",
+                        "eventType": "DOING",
+                        "eventTime": "2026-08-02T09:40:00+09:00",
+                    },
+                    {
+                        "id": "TIP-CNT",
+                        "logType": "TIP",
+                        "eventType": "CNT",
+                        "eventTime": "2026-08-02T09:45:00+09:00",
+                    },
+                    {
+                        "id": "TIP-L1",
+                        "logType": "TIP",
+                        "eventType": "L1_TIP",
+                        "eventTime": "2026-08-02T09:50:00+09:00",
+                        "lineId": "LINE-A",
+                        "process": "PROC-A",
+                        "step": "1200",
+                        "ppid": "PPID-1",
+                        "comment": "Pressure 확인 필요",
+                    },
+                ],
+                "spc-interlock": [
+                    {
+                        "id": "SPC_ITL:1",
+                        "logType": "SPC_ITL",
+                        "eventType": "INT-1",
+                        "eventTime": "2026-08-02T09:55:00+09:00",
+                        "metroItem": "PRESSURE_HIGH",
+                        "comment": "Spec out",
+                    },
+                    {
+                        "id": "SPC_ITL:2",
+                        "logType": "SPC_ITL",
+                        "eventType": "INT-2",
+                        "eventTime": "2026-08-02T20:00:00+09:00",
+                        "metroItem": "TEMP_HIGH",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(context["eqpStatusStatistics"][0]["status"], "DOWN")
+        self.assertEqual(context["eqpStatusStatistics"][0]["count"], 1)
+        self.assertEqual(context["tipStatusStatistics"][0]["status"], "L1_TIP")
+        self.assertEqual(context["tipStatusStatistics"][0]["count"], 1)
+        context_rows = context["contextEvents"]["rows"]
+        self.assertEqual(len(context_rows), 1)
+        self.assertEqual(context_rows[0][2], "SPC_ITL")
+        self.assertEqual(context["coverage"]["eqpTargetCount"], 1)
+        self.assertEqual(context["coverage"]["tipTargetCount"], 1)
+
+    def test_analysis_context_honors_selected_tip_group(self) -> None:
+        """선택하지 않은 TIP group의 L*_TIP 상태는 분석에서 제외합니다."""
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["tip"],
+            selected_tip_groups=["LINE-A_PROC-A_1200_PPID-1"],
+            logs_by_type={
+                "tip": [
+                    {
+                        "id": "TIP-1",
+                        "logType": "TIP",
+                        "eventType": "L1_TIP",
+                        "eventTime": "2026-08-02T09:50:00+09:00",
+                        "lineId": "LINE-A",
+                        "process": "PROC-A",
+                        "step": "1200",
+                        "ppid": "PPID-1",
+                    },
+                    {
+                        "id": "TIP-2",
+                        "logType": "TIP",
+                        "eventType": "L2_TIP",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                        "lineId": "LINE-A",
+                        "process": "PROC-B",
+                        "step": "2200",
+                        "ppid": "PPID-2",
+                    },
+                ]
+            },
+        )
+
+        self.assertEqual(len(context["tipStatusStatistics"]), 1)
+        self.assertEqual(context["tipStatusStatistics"][0]["process"], "PROC-A")
+
+    def test_analysis_service_keeps_partial_source_failure_as_limitation(self) -> None:
+        """부분 source 실패는 성공 응답을 유지하면서 분석 한계에 명시합니다."""
+
+        def fetch_source(**kwargs):
+            if kwargs["log_key"] == "eqp":
+                raise RuntimeError("source failed")
+            return []
+
+        with (
+            patch.object(
+                selectors,
+                "get_analysis_logs_by_type",
+                side_effect=fetch_source,
+            ),
+            patch(
+                "api.observer.services.analysis.request_observer_analysis",
+                return_value=(
+                    '{"headline":"분석","summary":"요약","findings":[],'
+                    '"recommendedChecks":[],"limitations":[]}'
+                ),
+            ),
+        ):
+            result = analyze_observer_logs(
+                eqp_id="EQP-ALPHA",
+                start_at=self.start_at,
+                end_at=self.end_at,
+                log_types=["eqp", "tip"],
+                selected_tip_groups=["__ALL__"],
+                question="분석해 주세요.",
+            )
+
+        self.assertEqual(result["meta"]["sourceErrors"], {"eqp": "RuntimeError"})
+        self.assertIn("eqp", result["analysis"]["limitations"][0])
+
+    def test_openwebui_request_reuses_config_and_medium_reasoning(self) -> None:
+        """Observer 분석은 기존 OpenWebUI 설정과 medium reasoning을 사용합니다."""
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "choices": [{"message": {"content": '{"headline":"분석"}'}}]
+        }
+        session = Mock()
+        session.post.return_value = response
+        config = ObserverOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="gpt-oss-120b",
+            api_token="token",
+            common_headers={"Send-System-Name": "Observer"},
+            timeout_seconds=120,
+        )
+
+        content = request_observer_analysis(
+            messages=[{"role": "user", "content": "분석"}],
+            config=config,
+            session=session,
+        )
+
+        self.assertEqual(content, '{"headline":"분석"}')
+        request = session.post.call_args
+        self.assertEqual(request.kwargs["json"]["model"], "gpt-oss-120b")
+        self.assertEqual(request.kwargs["json"]["reasoning_effort"], "medium")
+        self.assertFalse(request.kwargs["json"]["stream"])
+        self.assertEqual(request.kwargs["headers"]["Authorization"], "Bearer token")
+
+    def test_analysis_endpoint_returns_normalized_payload(self) -> None:
+        """분석 endpoint는 검증된 현재 조회 조건을 service에 전달합니다."""
+
+        service_payload = {
+            "analysis": {
+                "headline": "이상 상태 반복",
+                "summary": "DOWN과 L1_TIP이 반복되었습니다.",
+                "findings": [],
+                "recommendedChecks": [],
+                "limitations": [],
+            },
+            "meta": {"eqpTargetCount": 3},
+            "scope": {"eqpId": "EQP-ALPHA"},
+        }
+        with patch(
+            "api.observer.views.analyze_observer_logs",
+            return_value=service_payload,
+        ) as analyze:
+            response = self.client.post(
+                reverse("observer-analysis"),
+                data=json.dumps(
+                    {
+                        "eqpId": " eqp-alpha ",
+                        "from": "2026-08-01",
+                        "to": "2026-08-03",
+                        "logTypes": ["eqp", "tip", "spc-interlock"],
+                        "tipGroups": ["__ALL__"],
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["analysis"]["headline"], "이상 상태 반복")
+        call = analyze.call_args.kwargs
+        self.assertEqual(call["eqp_id"], "EQP-ALPHA")
+        self.assertEqual(call["log_types"], ["eqp", "tip", "spc-interlock"])
+        self.assertEqual(call["selected_tip_groups"], ["__ALL__"])
+
+    def test_analysis_endpoint_rejects_over_90_day_range(self) -> None:
+        """분석도 기존 Observer와 같은 최대 90일 범위를 적용합니다."""
+
+        response = self.client.post(
+            reverse("observer-analysis"),
+            data=json.dumps(
+                {
+                    "eqpId": "EQP-ALPHA",
+                    "from": "2026-01-01",
+                    "to": "2026-05-01",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)

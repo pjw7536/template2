@@ -1,5 +1,12 @@
 """Observer 도메인 서비스 공개 인터페이스입니다."""
 
+from .analysis import (
+    analyze_observer_logs,
+    build_observer_analysis_context,
+    build_observer_analysis_messages,
+    normalize_observer_analysis_result,
+)
+from .openwebui import ObserverOpenWebUIError
 from .timezone import (
     SEOUL_TIMEZONE,
     normalize_observer_datetime,
@@ -8,8 +15,13 @@ from .timezone import (
 )
 
 __all__ = [
+    "ObserverOpenWebUIError",
     "SEOUL_TIMEZONE",
+    "analyze_observer_logs",
+    "build_observer_analysis_context",
+    "build_observer_analysis_messages",
     "normalize_observer_datetime",
+    "normalize_observer_analysis_result",
     "observer_period_start",
     "serialize_observer_datetime",
 ]

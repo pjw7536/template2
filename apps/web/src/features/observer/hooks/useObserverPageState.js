@@ -18,7 +18,9 @@ import { useObserverSelectionStore } from "../store/useObserverSelectionStore";
 import { useObserverStore } from "../store/useObserverStore";
 import { useObserverLogs } from "./useObserverLogs";
 import { useObserverLogDetailQuery } from "./useObserverLogDetailQuery";
+import { useObserverAnalysis } from "./useObserverAnalysis";
 import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
+import { getEnabledLogKeys } from "../utils/logPagination";
 
 /**
  * ObserverPage에서 흩어져 있던 상태/파생 데이터를 한 곳에 모아둔 훅.
@@ -214,6 +216,16 @@ export function useObserverPageState(params) {
     selectedTipGroups,
     logQueryOptions
   );
+  const analysisScope = useMemo(
+    () => ({
+      eqpId,
+      ...logQueryOptions,
+      logTypes: getEnabledLogKeys(typeFilters),
+      tipGroups: selectedTipGroups,
+    }),
+    [eqpId, logQueryOptions, selectedTipGroups, typeFilters]
+  );
+  const analysis = useObserverAnalysis(analysisScope);
   const selectedCompactLog =
     logs.mergedLogs.find((log) => String(log.id) === String(selectedRow)) ||
     null;
@@ -267,6 +279,7 @@ export function useObserverPageState(params) {
       error: selectedLogDetail.isError ? selectedLogDetail.error : null,
       refetch: selectedLogDetail.refetch,
     },
+    analysis,
     observerReady: Boolean(eqpId),
   };
 }

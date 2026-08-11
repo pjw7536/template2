@@ -294,3 +294,23 @@ class EqpStatusChgLifecycleTests(TestCase):
         ]
         self.assertEqual(naive_datetime_warnings, [])
         self.assertEqual([log["id"] for log in logs], ["EQP-200"])
+
+    def test_selector_filters_analysis_statuses_case_insensitively(self) -> None:
+        """분석용 EQP 상태 filter는 RUN을 제외하고 대소문자를 무시합니다."""
+
+        for event_key, status in (("301", "RUN"), ("302", "down")):
+            EqpStatusChg.objects.create(
+                eqp_cb="EAAA301-A",
+                eqp_cb_lookup="EAAA301-A",
+                line_id="L1",
+                chg_time=datetime(2026, 7, 1, 10, 0, tzinfo=datetime_timezone.utc),
+                eqp_status_type=status,
+                eqp_event_key=event_key,
+            )
+
+        logs = selectors.fetch_eqp_timeline_logs(
+            eqp_id="EAAA301-A",
+            statuses=("DOWN", "IDLE", "LOCAL"),
+        )
+
+        self.assertEqual([log["id"] for log in logs], ["EQP-302"])

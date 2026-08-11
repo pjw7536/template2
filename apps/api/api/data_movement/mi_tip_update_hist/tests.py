@@ -396,3 +396,33 @@ class MiTipUpdateHistLifecycleTests(TestCase):
         self.assertEqual(logs[0]["eventType"], "L1_TIP")
         self.assertEqual(logs[0]["operator"], "USER01")
         self.assertEqual(logs[0]["process"], "ETCH")
+
+    def test_selector_filters_analysis_tip_pattern_case_insensitively(self) -> None:
+        """분석용 TIP pattern은 L*_TIP만 남기고 DOING을 제외합니다."""
+
+        for index, event_type in enumerate(("DOING", "l2_tip"), start=1):
+            event_time = datetime(
+                2026,
+                6,
+                20,
+                10,
+                index,
+                tzinfo=datetime_timezone.utc,
+            )
+            MiTipUpdateHist.objects.create(
+                tip_event_key=f"analysis-{index}",
+                eqp_cb="EAAA301-A",
+                line_id="L1",
+                gpm_update_date=event_time,
+                event_type=event_type,
+                process_id="ETCH",
+                step_seq="100",
+                ppid="PPID-A",
+            )
+
+        logs = selectors.fetch_tip_timeline_logs(
+            eqp_id="EAAA301-A",
+            event_type_pattern=r"^L.*_TIP$",
+        )
+
+        self.assertEqual([log["eventType"] for log in logs], ["l2_tip"])
