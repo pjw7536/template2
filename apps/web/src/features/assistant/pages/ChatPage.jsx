@@ -285,6 +285,7 @@ export function ChatPage() {
           <div className="flex min-h-0 flex-col">
             <ChatMessages
               messages={messages}
+              conversationKey={activeRoomId}
               isGenerating={isGenerating}
               isActionDisabled={hasActiveGeneration}
               availableMailboxes={availableMailboxes}

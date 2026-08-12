@@ -431,6 +431,7 @@ export function ChatWidgetPanel({
               <>
                 <ChatMessages
                   messages={messages}
+                  conversationKey={activeRoomId}
                   isGenerating={isGenerating}
                   isActionDisabled={hasActiveGeneration}
                   fillBubbles

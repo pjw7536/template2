@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   Check,
   ChevronDown,
@@ -51,6 +51,7 @@ function formatScopeSummary(scope) {
 
 export function ChatMessages({
   messages = [],
+  conversationKey = "",
   isGenerating,
   fillBubbles = false,
   availableMailboxes = [],
@@ -69,6 +70,7 @@ export function ChatMessages({
   const previousScrollHeightRef = useRef(null)
   const loadOlderRequestRef = useRef(0)
   const scrollFrameRef = useRef(null)
+  const previousConversationKeyRef = useRef(conversationKey)
   const navigate = useNavigate()
   const [copiedMessageId, setCopiedMessageId] = useState("")
   const [editTargetId, setEditTargetId] = useState("")
@@ -87,6 +89,21 @@ export function ChatMessages({
     })
     return indexes
   }, [messages])
+
+  useLayoutEffect(() => {
+    if (previousConversationKeyRef.current === conversationKey) return
+    previousConversationKeyRef.current = conversationKey
+    previousScrollHeightRef.current = null
+    loadOlderRequestRef.current += 1
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current)
+      scrollFrameRef.current = null
+    }
+    setIsNearLatest(true)
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [conversationKey])
 
   useEffect(() => {
     if (!editTargetId) return
@@ -114,9 +131,7 @@ export function ChatMessages({
     if (!isNearLatest) return
     const scrollToLatest = () => {
       scrollFrameRef.current = null
-      messagesEndRef.current?.scrollIntoView({
-        behavior: isGenerating ? "auto" : "smooth",
-      })
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
     }
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
       scrollFrameRef.current = window.requestAnimationFrame(scrollToLatest)
@@ -129,7 +144,7 @@ export function ChatMessages({
     }
     scrollToLatest()
     return undefined
-  }, [isGenerating, isNearLatest, messages])
+  }, [isNearLatest, messages])
 
   const handleScroll = () => {
     const container = scrollContainerRef.current

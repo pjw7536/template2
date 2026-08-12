@@ -115,6 +115,66 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     expect(screen.getByRole("button", { name: "최신 답변으로 이동" })).toBeInTheDocument()
   })
 
+  it("대화방을 바꾸면 이전 스크롤 상태와 관계없이 즉시 하단을 표시한다", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ChatMessages
+          conversationKey="room-1"
+          messages={[{ id: "assistant-1", role: "assistant", content: "이전 답변" }]}
+        />
+      </MemoryRouter>,
+    )
+    const messageLog = screen.getByRole("log", { name: "대화 메시지" })
+    let scrollHeight = 1000
+    Object.defineProperties(messageLog, {
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, value: 300 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    })
+    fireEvent.scroll(messageLog)
+
+    scrollHeight = 1400
+    rerender(
+      <MemoryRouter>
+        <ChatMessages
+          conversationKey="room-2"
+          messages={[{ id: "assistant-2", role: "assistant", content: "새 대화 답변" }]}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(messageLog.scrollTop).toBe(1400)
+  })
+
+  it("새 메시지 자동 이동은 스크롤 애니메이션 없이 처리한다", async () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ChatMessages
+          conversationKey="room-1"
+          messages={[{ id: "assistant-1", role: "assistant", content: "첫 답변" }]}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled())
+    Element.prototype.scrollIntoView.mockClear()
+
+    rerender(
+      <MemoryRouter>
+        <ChatMessages
+          conversationKey="room-1"
+          messages={[
+            { id: "assistant-1", role: "assistant", content: "첫 답변" },
+            { id: "assistant-2", role: "assistant", content: "새 답변" },
+          ]}
+        />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto" })
+    })
+  })
+
   it("최초 인사 메시지에는 복사 action을 표시하지 않는다", () => {
     render(
       <MemoryRouter>
