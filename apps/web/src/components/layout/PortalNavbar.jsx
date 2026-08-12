@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { ChevronDownIcon, MenuIcon } from "lucide-react"
 
 import { GaNEtchLogo, ThemeColorSelector, ThemeToggle } from "@/components/common"
@@ -72,11 +72,13 @@ export function PortalNavbar({ navigationItems }) {
   const { user } = useAuth()
   const { theme = "system", systemTheme } = useTheme()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isHomeRoute = pathname === "/"
   const shouldFadeNavItems = !isHomeRoute
   const hideTimerRef = useRef(null)
   const [isNavVisible, setIsNavVisible] = useState(() => pathname === "/")
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [openDesktopMenu, setOpenDesktopMenu] = useState(null)
 
   useEffect(() => {
     if (hideTimerRef.current) {
@@ -103,6 +105,7 @@ export function PortalNavbar({ navigationItems }) {
 
   useEffect(() => {
     setIsMobileMenuOpen(false)
+    setOpenDesktopMenu(null)
   }, [pathname])
 
   useEffect(() => {
@@ -162,6 +165,31 @@ export function PortalNavbar({ navigationItems }) {
     return <Icon className={NAV_ICON_CLASS_NAME} />
   }
 
+  const closeDesktopMenu = () => {
+    setOpenDesktopMenu(null)
+  }
+
+  const navigateDesktopParentItem = (item) => {
+    closeDesktopMenu()
+    if (item.external) {
+      window.open(item.href, "_blank", "noopener,noreferrer")
+      return
+    }
+    navigate(item.href)
+  }
+
+  const handleDesktopParentItemClick = (event, item) => {
+    if (!item.href) return
+    event.preventDefault()
+    navigateDesktopParentItem(item)
+  }
+
+  const handleDesktopParentItemKeyDown = (event, item) => {
+    if (!item.href || !["Enter", " "].includes(event.key)) return
+    event.preventDefault()
+    navigateDesktopParentItem(item)
+  }
+
   const renderNavigationLink = (item) => {
     if (item.external) {
       return (
@@ -170,6 +198,7 @@ export function PortalNavbar({ navigationItems }) {
           target="_blank"
           rel="noopener noreferrer"
           className={NAV_MENU_LINK_CLASS_NAME}
+          onClick={closeDesktopMenu}
         >
           {renderIcon(item.icon)}
           {item.title}
@@ -178,7 +207,11 @@ export function PortalNavbar({ navigationItems }) {
     }
 
     return (
-      <PortalNavLink href={item.href} className={NAV_MENU_LINK_CLASS_NAME}>
+      <PortalNavLink
+        href={item.href}
+        className={NAV_MENU_LINK_CLASS_NAME}
+        onNavigate={closeDesktopMenu}
+      >
         {renderIcon(item.icon)}
         {item.title}
       </PortalNavLink>
@@ -198,7 +231,11 @@ export function PortalNavbar({ navigationItems }) {
 
     return (
       <DropdownMenuSub key={item.title}>
-        <DropdownMenuSubTrigger>
+        <DropdownMenuSubTrigger
+          className={item.href ? "cursor-pointer" : undefined}
+          onClick={(event) => handleDesktopParentItemClick(event, item)}
+          onKeyDown={(event) => handleDesktopParentItemKeyDown(event, item)}
+        >
           {renderIcon(item.icon)}
           {item.title}
         </DropdownMenuSubTrigger>
@@ -244,23 +281,40 @@ export function PortalNavbar({ navigationItems }) {
       return renderMobileNavigationLink(item, true)
     }
 
+    const trigger = (
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size={item.href ? "icon" : "sm"}
+          className={cn(
+            item.href ? "size-8 shrink-0" : "w-full justify-start gap-2 pl-8",
+          )}
+          aria-label={item.href ? `${item.title} 하위 메뉴 펼치기` : undefined}
+        >
+          {!item.href ? renderIcon(item.icon) : null}
+          {!item.href ? item.title : null}
+          <ChevronDownIcon
+            className={cn(
+              "size-3.5 transition-transform group-data-[state=open]/mobile-sub:rotate-180",
+              !item.href && "ml-auto",
+            )}
+            aria-hidden="true"
+          />
+        </Button>
+      </CollapsibleTrigger>
+    )
+
     return (
       <Collapsible key={item.title} className="group/mobile-sub">
-        <CollapsibleTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2 pl-8"
-          >
-            {renderIcon(item.icon)}
-            {item.title}
-            <ChevronDownIcon
-              className="ml-auto size-3.5 transition-transform group-data-[state=open]/mobile-sub:rotate-180"
-              aria-hidden="true"
-            />
-          </Button>
-        </CollapsibleTrigger>
+        {item.href ? (
+          <div className="flex items-center gap-1 pr-2">
+            <div className="min-w-0 flex-1">
+              {renderMobileNavigationLink(item, true)}
+            </div>
+            {trigger}
+          </div>
+        ) : trigger}
         <CollapsibleContent className="space-y-1 pt-1">
           {item.children.map((child) => renderMobileNavigationLink(child, true))}
         </CollapsibleContent>
@@ -405,7 +459,12 @@ export function PortalNavbar({ navigationItems }) {
             }
 
             return (
-              <DropdownMenu key={navItem.title} modal={false}>
+              <DropdownMenu
+                key={navItem.title}
+                modal={false}
+                open={openDesktopMenu === navItem.title}
+                onOpenChange={(open) => setOpenDesktopMenu(open ? navItem.title : null)}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
