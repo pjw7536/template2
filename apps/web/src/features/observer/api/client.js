@@ -54,7 +54,14 @@ function buildObserverUrl(baseUrl, path, params) {
  */
 export const observerApiClient = async (
   path,
-  { params, timeout = DEFAULT_TIMEOUT, signal, responseParser, ...opts } = {}
+  {
+    params,
+    timeout = DEFAULT_TIMEOUT,
+    signal,
+    responseParser,
+    headers,
+    ...opts
+  } = {}
 ) => {
   const baseUrl = resolveBaseUrl();
   const fullUrl = buildObserverUrl(baseUrl, path, params);
@@ -72,13 +79,13 @@ export const observerApiClient = async (
 
   try {
     const response = await fetch(fullUrl, {
+      ...opts,
       headers: {
         "Content-Type": "application/json",
-        ...opts.headers,
+        ...headers,
       },
       credentials: "include",
       signal: controller.signal,
-      ...opts,
     });
 
     if (!response.ok) {

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readObserverAnalysisStream } from "./observerApi";
+import { observerApi, readObserverAnalysisStream } from "./observerApi";
 
 function createStreamResponse(chunks) {
   const encoder = new TextEncoder();
@@ -15,6 +15,42 @@ function createStreamResponse(chunks) {
 }
 
 describe("Observer 분석 SSE parser", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("스트리밍 POST 요청에 JSON Content-Type과 SSE Accept를 함께 전송한다", async () => {
+    const payload = {
+      analysis: { findings: [] },
+      meta: {},
+      scope: { eqpId: "EQP-1" },
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      body: createStreamResponse([
+        `event: done\ndata: ${JSON.stringify({ payload })}\n\n`,
+      ]).body,
+    });
+
+    await observerApi.analyzeLogsStream({
+      eqpId: "EQP-1",
+      from: "2026-08-01",
+      to: "2026-08-03",
+      logTypes: ["ctttm"],
+      tipGroups: ["__ALL__"],
+      question: "분석해줘",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/observer/analysis/stream"),
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+      })
+    );
+  });
+
   it("분석 item을 표시용 delta로 전달하고 done payload를 반환한다", async () => {
     const payload = {
       analysis: {
