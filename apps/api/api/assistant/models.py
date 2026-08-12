@@ -13,6 +13,52 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
+ASSISTANT_DEFAULT_CONTEXT_KEY = "assistant"
+ASSISTANT_OPENWEBUI_CONTEXT_KEY = "assistant:openwebui"
+CHATWIDGET_SHARED_CONTEXT_KEY = "chatwidget:shared"
+OBSERVER_CONTEXT_PREFIX = "observer:"
+
+
+def normalize_assistant_context_key(context_key: object) -> str:
+    """빈 문맥 키를 Email RAG 기본 문맥으로 정규화합니다."""
+
+    normalized = str(context_key or "").strip()
+    return normalized or ASSISTANT_DEFAULT_CONTEXT_KEY
+
+
+def resolve_assistant_memory_context_key(context_key: object) -> str:
+    """요청 문맥 키를 rolling summary와 최근 이력의 기억 키로 변환합니다."""
+
+    normalized = normalize_assistant_context_key(context_key)
+    if normalized == CHATWIDGET_SHARED_CONTEXT_KEY:
+        return normalized
+    if (
+        normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY
+        or normalized.startswith(OBSERVER_CONTEXT_PREFIX)
+    ):
+        return CHATWIDGET_SHARED_CONTEXT_KEY
+    return normalized
+
+
+def is_chatwidget_shared_memory_context(context_key: object) -> bool:
+    """문맥 키가 일반 Chat·Observer 공유 기억에 속하는지 반환합니다."""
+
+    return (
+        resolve_assistant_memory_context_key(context_key)
+        == CHATWIDGET_SHARED_CONTEXT_KEY
+    )
+
+
+def format_assistant_memory_content(*, context_key: object, content: str) -> str:
+    """공유 요약에서 일반 Chat과 Observer 메시지 출처를 구분합니다."""
+
+    normalized = normalize_assistant_context_key(context_key)
+    if normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY:
+        return f"[대화 출처: 일반 Chat]\n{content}"
+    if normalized.startswith(OBSERVER_CONTEXT_PREFIX):
+        return f"[대화 출처: Observer]\n{content}"
+    return content
+
 
 class AssistantConversation(models.Model):
     """로그인 사용자가 소유하는 하나의 Assistant 대화방입니다."""
@@ -50,7 +96,7 @@ class AssistantConversation(models.Model):
 
 
 class AssistantConversationSummary(models.Model):
-    """대화방의 화면 문맥별 장기 요약과 포함 메시지 위치를 저장합니다."""
+    """대화방의 기억 그룹별 장기 요약과 포함 메시지 위치를 저장합니다."""
 
     conversation = models.ForeignKey(
         AssistantConversation,
@@ -64,7 +110,7 @@ class AssistantConversationSummary(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """한 대화방에서 같은 문맥 요약이 중복되지 않도록 제한합니다."""
+        """한 대화방에서 같은 기억 그룹 요약이 중복되지 않도록 제한합니다."""
 
         db_table = "assistant_conversation_summary"
         constraints = [

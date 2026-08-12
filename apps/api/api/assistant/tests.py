@@ -17,6 +17,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.utils import timezone
 
 import api.account.services as account_services
+from api.assistant import selectors as assistant_selectors
 from api.assistant import services as assistant_services
 from api.assistant.models import (
     AssistantContextSnapshot,
@@ -859,7 +860,7 @@ class AssistantOpenWebUIChatTests(TestCase):
         )
         AssistantConversationSummary.objects.create(
             conversation=conversation,
-            context_key="assistant:openwebui",
+            context_key="chatwidget:shared",
             summary="DOWN 반복 원인은 인터락입니다.",
             message_count=12,
         )
@@ -907,6 +908,36 @@ class AssistantConversationPersistenceTests(TestCase):
         self.owner.save(update_fields=["knox_id"])
         self.other.knox_id = "knox-71002"
         self.other.save(update_fields=["knox_id"])
+
+    def test_general_and_observer_resolve_same_summary_but_email_does_not(self) -> None:
+        """일반 Chat·Observer는 방 요약을 공유하고 Email RAG는 분리합니다."""
+
+        conversation = AssistantConversation.objects.create(
+            user=self.owner,
+            title="공유 기억 테스트",
+        )
+        shared_summary = AssistantConversationSummary.objects.create(
+            conversation=conversation,
+            context_key="chatwidget:shared",
+            summary="Observer 분석을 일반 Chat에서 이어갑니다.",
+            message_count=12,
+        )
+
+        for context_key in ("assistant:openwebui", "observer:scope-a"):
+            resolved = assistant_selectors.get_assistant_conversation_summary_for_user(
+                user=self.owner,
+                conversation_id=conversation.id,
+                context_key=context_key,
+            )
+            self.assertEqual(resolved, shared_summary)
+
+        self.assertIsNone(
+            assistant_selectors.get_assistant_conversation_summary_for_user(
+                user=self.owner,
+                conversation_id=conversation.id,
+                context_key="assistant",
+            )
+        )
 
     def _create_conversation(self, *, name: str = "장비 문의") -> str:
         """현재 로그인 사용자의 대화방을 API로 만들고 UUID를 반환합니다."""
@@ -1275,7 +1306,7 @@ class AssistantConversationPersistenceTests(TestCase):
         self.assertEqual(response.json()["coveredMessageCount"], 15)
         summary = AssistantConversationSummary.objects.get(
             conversation=conversation,
-            context_key="assistant:openwebui",
+            context_key="chatwidget:shared",
         )
         self.assertEqual(summary.message_count, 15)
         self.assertEqual(summary.summary, "DOWN 원인과 조치가 합의되었습니다.")
@@ -1291,8 +1322,8 @@ class AssistantConversationPersistenceTests(TestCase):
             ).exists()
         )
 
-    def test_summary_refresh_does_not_mix_message_contexts(self) -> None:
-        """rolling summary는 요청 contextKey와 다른 화면의 메시지를 포함하지 않습니다."""
+    def test_summary_refresh_shares_general_and_observer_but_excludes_email(self) -> None:
+        """rolling summary는 일반 Chat·Observer를 묶고 Email RAG는 제외합니다."""
 
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation()
@@ -1313,6 +1344,12 @@ class AssistantConversationPersistenceTests(TestCase):
                         "content": f"Observer 분석 {index}",
                         "context_key": "observer:scope-a",
                     },
+                    {
+                        "client_id": f"email-{index}",
+                        "role": "user",
+                        "content": f"메일 대화 {index}",
+                        "context_key": "assistant",
+                    },
                 ]
             )
         assistant_services.append_assistant_messages(
@@ -1322,7 +1359,7 @@ class AssistantConversationPersistenceTests(TestCase):
 
         with patch(
             "api.assistant.services.conversations.request_openwebui_conversation_summary",
-            return_value="일반 대화 요약",
+            return_value="일반 Chat과 Observer 공유 요약",
         ) as mocked_summary:
             response = self.client.post(
                 f"/api/v1/assistant/conversations/{conversation_id}/refresh-summary",
@@ -1335,11 +1372,17 @@ class AssistantConversationPersistenceTests(TestCase):
             message["content"]
             for message in mocked_summary.call_args.kwargs["messages"]
         ]
-        self.assertTrue(all(content.startswith("일반 대화") for content in summarized_contents))
+        self.assertTrue(
+            any(content.startswith("[대화 출처: 일반 Chat]") for content in summarized_contents)
+        )
+        self.assertTrue(
+            any(content.startswith("[대화 출처: Observer]") for content in summarized_contents)
+        )
+        self.assertFalse(any("메일 대화" in content for content in summarized_contents))
 
         with patch(
             "api.assistant.services.conversations.request_openwebui_conversation_summary",
-            return_value="Observer 대화 요약",
+            return_value="호출되지 않아야 하는 요약",
         ):
             observer_response = self.client.post(
                 f"/api/v1/assistant/conversations/{conversation_id}/refresh-summary",
@@ -1348,17 +1391,14 @@ class AssistantConversationPersistenceTests(TestCase):
             )
 
         self.assertEqual(observer_response.status_code, 200, observer_response.content)
+        self.assertFalse(observer_response.json()["updated"])
         summaries = AssistantConversationSummary.objects.filter(
             conversation=conversation,
         )
-        self.assertEqual(summaries.count(), 2)
+        self.assertEqual(summaries.count(), 1)
         self.assertEqual(
-            summaries.get(context_key="assistant:openwebui").summary,
-            "일반 대화 요약",
-        )
-        self.assertEqual(
-            summaries.get(context_key="observer:scope-a").summary,
-            "Observer 대화 요약",
+            summaries.get(context_key="chatwidget:shared").summary,
+            "일반 Chat과 Observer 공유 요약",
         )
 
     def test_generation_lease_blocks_other_tabs_until_finalized(self) -> None:
@@ -1559,7 +1599,7 @@ class AssistantConversationPersistenceTests(TestCase):
         conversation = AssistantConversation.objects.get(id=conversation_id)
         AssistantConversationSummary.objects.create(
             conversation=conversation,
-            context_key="assistant:openwebui",
+            context_key="chatwidget:shared",
             summary="원본 분기 요약",
             message_count=2,
         )

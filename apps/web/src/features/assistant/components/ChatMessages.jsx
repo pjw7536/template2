@@ -296,7 +296,7 @@ export function ChatMessages({
             {showContextDivider ? (
               <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
                 <span className="h-px flex-1 bg-border" />
-                <span>조회 조건 또는 대화 모드가 변경되었습니다.</span>
+                <span>현재 화면이 변경되었습니다. 이전 대화는 이어집니다.</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
             ) : null}

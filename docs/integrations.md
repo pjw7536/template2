@@ -93,7 +93,7 @@ Assistant가 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.
 
 - 메일함 외 전역 ChatWidget과 `/assistant`의 일반 대화 SSE stream
 - Assistant 첫 대화의 업무용 대화방 제목 생성
-- Assistant contextKey별 장기 대화 rolling summary
+- Assistant 대화방의 일반 Chat·Observer 공유 rolling summary와 Email RAG 분리 기억
 - Observer 현재 조회 데이터 구조화 분석
 - `ct_process_comment` contents 요약 배치
 

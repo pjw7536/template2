@@ -22,6 +22,8 @@ from ..models import (
     AssistantGeneration,
     AssistantMessage,
     AssistantMessageFeedback,
+    format_assistant_memory_content,
+    is_chatwidget_shared_memory_context,
 )
 from .errors import AssistantRequestError
 from .generations import finalize_assistant_generation
@@ -291,13 +293,13 @@ def refresh_assistant_conversation_summary(
         conversation: 요약을 소유하는 사용자 대화방입니다.
         messages: 아직 요약되지 않은 과거 메시지 묶음입니다.
         covered_message_count: 이번 요약까지 포함된 전체 메시지 위치입니다.
-        context_key: 화면/조회 조건별로 기억을 분리하는 메시지 문맥 키입니다.
+        context_key: 대화 기억을 저장할 해석된 문맥 키입니다.
 
     반환:
-        갱신된 문맥별 AssistantConversationSummary입니다.
+        갱신된 기억 그룹별 AssistantConversationSummary입니다.
 
     부작용:
-        OpenWebUI 저비용 요약 요청 후 문맥별 summary row를 조건부 갱신합니다.
+        OpenWebUI 저비용 요약 요청 후 기억 그룹별 summary row를 조건부 갱신합니다.
     """
 
     previous_message_count = existing_summary.message_count if existing_summary else 0
@@ -307,7 +309,17 @@ def refresh_assistant_conversation_summary(
         return existing_summary
     summary = request_openwebui_conversation_summary(
         messages=[
-            {"role": message.role, "content": message.content}
+            {
+                "role": message.role,
+                "content": (
+                    format_assistant_memory_content(
+                        context_key=message.context_key,
+                        content=message.content,
+                    )
+                    if is_chatwidget_shared_memory_context(context_key)
+                    else message.content
+                ),
+            }
             for message in messages
         ],
         existing_summary=existing_summary.summary if existing_summary else "",

@@ -29,7 +29,9 @@ describe("ChatMessages 문맥과 과거 이력", () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getAllByText("조회 조건 또는 대화 모드가 변경되었습니다.")).toHaveLength(1)
+    expect(
+      screen.getAllByText("현재 화면이 변경되었습니다. 이전 대화는 이어집니다."),
+    ).toHaveLength(1)
   })
 
   it("이전 메시지 불러오기 동작을 부모 handler에 전달한다", () => {

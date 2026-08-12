@@ -24,7 +24,7 @@ Django session이 필요합니다. `knox_id`가 없는 사용자는 접근이 �
 | PUT, DELETE | `/api/v1/assistant/conversations/<uuid>/messages/<clientId>/feedback` | Assistant 답변 평가·취소 |
 | GET | `/api/v1/assistant/conversations/<uuid>/export?exportFormat=markdown\|csv` | 현재 대화 분기 내보내기 |
 | POST | `/api/v1/assistant/conversations/<uuid>/generate-title` | 저장된 대화로 OpenWebUI 업무용 제목 생성 |
-| POST | `/api/v1/assistant/conversations/<uuid>/refresh-summary` | contextKey별 장기 대화 요약 갱신 |
+| POST | `/api/v1/assistant/conversations/<uuid>/refresh-summary` | 기억 그룹별 장기 대화 요약 갱신 |
 | GET, POST | `/api/v1/assistant/generations` | 사용자 활성 생성 조회·lease 획득 |
 | PATCH | `/api/v1/assistant/generations/<uuid>` | 생성 완료·중단·실패 기록 |
 
@@ -142,14 +142,14 @@ Content-Type: application/json
 - 한 요청은 메시지 20개까지 저장할 수 있으며 `content`와 채팅 `prompt`는 각각 최대 10,000자입니다.
 - 메시지 `sources`는 50개와 직렬화 기준 50KB, `contextSnapshot`은 100KB까지 허용합니다.
 - 생성 답변은 화면 표시와 저장 전에 같은 상한으로 정리됩니다. 본문이 줄어들면 생략 안내를 표시하고, 저장 재시도도 실패하면 해당 미저장 답변만 제거해 다음 질문을 계속할 수 있습니다.
-- `contextKey`는 일반 OpenWebUI, 메일 RAG, Observer 조회 context의 모델 입력 이력을 분리합니다.
+- `contextKey`는 일반 OpenWebUI, Email RAG, Observer 조회 context의 요청 경로·메시지 출처·현재 데이터 범위를 구분합니다. 같은 방의 일반 OpenWebUI와 Observer는 모델 입력 이력을 공유하며 Email RAG는 분리합니다.
 - `parentId`와 `revisionOfId`는 질문 수정·답변 재생성 시 원본을 삭제하지 않는 분기 관계입니다. GET은 현재 활성 분기만 반환합니다.
 - Observer 답변은 원본 로그 전체 대신 제한된 `contextSnapshot`의 조회 범위, 집계 coverage, 근거 ID를 저장합니다.
 - 대화방 GET은 `search`, `cursor`, `limit`, `archived`를 지원하고 검색은 제목과 메시지 본문을 함께 확인합니다. 고정 대화방은 전체 cursor page에서 일반 대화방보다 먼저 정렬됩니다. 메시지 GET은 `before`, `limit`으로 과거 page를 조회합니다.
 - 목록 응답은 공통으로 `results`, `nextCursor`, `hasMore`를 반환합니다. cursor는 서버가 서명한 opaque 문자열이므로 클라이언트가 해석하지 않습니다.
 - 메시지 DELETE는 방은 유지하고 내용을 초기화하며, 대화방 DELETE는 메시지까지 cascade 삭제합니다.
 
-최근 10개를 제외한 같은 `contextKey` 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다.
+최근 10개를 제외한 같은 기억 그룹 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다. `assistant:openwebui`와 `observer:*`는 `chatwidget:shared` 그룹으로 함께 집계하고 `assistant` Email RAG는 별도로 집계합니다.
 
 ```http
 POST /api/v1/assistant/conversations/<uuid>/refresh-summary
@@ -158,7 +158,7 @@ Content-Type: application/json
 {"contextKey": "assistant:openwebui"}
 ```
 
-요약은 최대 2,000자로 `assistant_conversation_summary`에 `(conversation, contextKey)`별로 저장하며 해당 `contextKey` 요청에만 모델 문맥으로 주입됩니다. Observer 조회 조건이나 화면 문맥이 달라도 서로 덮어쓰지 않습니다. 요약 실패는 이미 완료된 답변과 메시지 저장을 취소하지 않습니다.
+요약은 최대 2,000자로 `assistant_conversation_summary`에 `(conversation, memory context key)`별로 저장합니다. 같은 방의 일반 Chat·Observer 요청에는 `chatwidget:shared` 요약을 주입하고 Email RAG와 다른 방에는 주입하지 않습니다. Observer는 이 요약을 질문 의도 파악용 배경으로만 사용하고 현재 조회 데이터만 사실 근거로 사용합니다. 요약 실패는 이미 완료된 답변과 메시지 저장을 취소하지 않습니다.
 
 첫 질문과 답변 저장 후 기본 이름인 방은 다음 endpoint로 제목을 생성합니다.
 

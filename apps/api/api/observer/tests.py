@@ -1751,6 +1751,11 @@ class ObserverAnalysisTests(TestCase):
         self.assertIn("chronologicalSummary", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("시간순 이벤트 정리", ANALYSIS_STREAM_SYSTEM_PROMPT)
         self.assertIn("독립된 raw 근거", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("사실 근거가 아닙니다", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "현재 데이터만 근거로 삼으세요",
+            ANALYSIS_STREAM_SYSTEM_PROMPT,
+        )
         self.assertIn("findings는 중요도 순으로 최대 5개", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("finding은 중요도 순으로 최대 5개", ANALYSIS_STREAM_SYSTEM_PROMPT)
         self.assertIn(

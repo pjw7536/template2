@@ -103,7 +103,7 @@ def _get_conversation_summary(
     room_id: object,
     context_key: str,
 ) -> str:
-    """현재 사용자와 contextKey가 일치하는 대화방 장기 요약만 반환합니다."""
+    """현재 사용자의 대화방과 기억 그룹이 일치하는 장기 요약만 반환합니다."""
 
     try:
         conversation_id = UUID(str(room_id))
@@ -882,7 +882,7 @@ class AssistantConversationSummaryView(APIView):
                 existing_summary=batch["summary"],
                 messages=messages,
                 covered_message_count=int(batch["coveredMessageCount"]),
-                context_key=context_key,
+                context_key=str(batch["contextKey"]),
             )
         except AssistantConfigError as exc:
             logger.warning("Assistant 장기 요약 설정이 누락되었습니다.", exc_info=exc)

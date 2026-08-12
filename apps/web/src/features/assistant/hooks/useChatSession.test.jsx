@@ -378,7 +378,7 @@ describe("useChatSession page context", () => {
     })
   })
 
-  it("page sender에는 같은 context의 대화만 전달한다", async () => {
+  it("Observer sender에는 같은 방의 일반 Chat과 Observer 대화를 함께 전달한다", async () => {
     const messageSender = vi.fn().mockResolvedValue({
       reply: "Observer 분석 결과",
       sources: [],
@@ -393,7 +393,11 @@ describe("useChatSession page context", () => {
           initialActiveRoomId: "room-1",
           initialMessagesByRoom: {
             "room-1": [
-              { role: "user", content: "일반 질문", contextKey: "assistant" },
+              {
+                role: "user",
+                content: "일반 질문",
+                contextKey: "assistant:openwebui",
+              },
               { role: "user", content: "이전 분석", contextKey: "observer:scope-a" },
             ],
           },
@@ -407,6 +411,7 @@ describe("useChatSession page context", () => {
 
     const request = messageSender.mock.calls[0][0]
     expect(request.history.map((message) => message.content)).toEqual([
+      "[이전 대화 출처: 일반 Chat]\n일반 질문",
       "이전 분석",
       "왜 반복됐어?",
     ])
@@ -415,6 +420,82 @@ describe("useChatSession page context", () => {
       content: "Observer 분석 결과",
       contextKey: "observer:scope-a",
     })
+  })
+
+  it("일반 Chat sender에는 같은 방의 Observer 대화를 출처와 함께 전달한다", async () => {
+    const messageSender = vi.fn().mockResolvedValue({
+      reply: "일반 Chat 후속 답변",
+      sources: [],
+      segments: [],
+    })
+    const { result } = renderHook(
+      () =>
+        useChatSession({
+          messageSender,
+          messageContextKey: "assistant:openwebui",
+          initialRooms: [{ id: "room-1", name: "테스트" }],
+          initialActiveRoomId: "room-1",
+          initialMessagesByRoom: {
+            "room-1": [
+              {
+                role: "user",
+                content: "DOWN 반복을 분석해줘",
+                contextKey: "observer:scope-a",
+              },
+              {
+                role: "assistant",
+                content: "특정 시간대에 집중됐습니다.",
+                contextKey: "observer:scope-a",
+              },
+            ],
+          },
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage("방금 분석을 한 줄로 정리해줘")
+    })
+
+    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
+      "[이전 대화 출처: Observer]\nDOWN 반복을 분석해줘",
+      "[이전 대화 출처: Observer]\n특정 시간대에 집중됐습니다.",
+      "방금 분석을 한 줄로 정리해줘",
+    ])
+  })
+
+  it("Email RAG sender에는 일반 Chat과 Observer 대화를 전달하지 않는다", async () => {
+    const messageSender = vi.fn().mockResolvedValue({
+      reply: "메일 답변",
+      sources: [],
+      segments: [],
+    })
+    const { result } = renderHook(
+      () =>
+        useChatSession({
+          messageSender,
+          messageContextKey: "assistant",
+          initialRooms: [{ id: "room-1", name: "테스트" }],
+          initialActiveRoomId: "room-1",
+          initialMessagesByRoom: {
+            "room-1": [
+              { role: "user", content: "일반 질문", contextKey: "assistant:openwebui" },
+              { role: "assistant", content: "Observer 분석", contextKey: "observer:scope-a" },
+              { role: "user", content: "이전 메일 질문", contextKey: "assistant" },
+            ],
+          },
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage("후속 메일 질문")
+    })
+
+    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
+      "이전 메일 질문",
+      "후속 메일 질문",
+    ])
   })
 
   it("서버에서 현재 사용자의 방을 불러오고 user/assistant 메시지를 각각 저장한다", async () => {

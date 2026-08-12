@@ -26,7 +26,7 @@ export function buildObserverAnalysisQuestion(prompt, history = []) {
     )
     .slice(-4);
   const historySuffix = previousMessages.length
-    ? `\n\n현재 조회 조건에서의 이전 대화:\n${previousMessages
+    ? `\n\n같은 대화방의 이전 대화(질문 의도 파악용 배경 문맥):\n${previousMessages
         .map(
           (message) =>
             `- ${message.role === "user" ? "사용자" : "Assistant"}: ${message.content.slice(

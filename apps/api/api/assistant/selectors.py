@@ -15,10 +15,14 @@ from django.utils.dateparse import parse_datetime
 import api.account.services as account_services
 
 from .models import (
+    ASSISTANT_OPENWEBUI_CONTEXT_KEY,
+    CHATWIDGET_SHARED_CONTEXT_KEY,
+    OBSERVER_CONTEXT_PREFIX,
     AssistantConversation,
     AssistantConversationSummary,
     AssistantGeneration,
     AssistantMessage,
+    resolve_assistant_memory_context_key,
 )
 from .serializers import encode_assistant_cursor
 
@@ -256,18 +260,23 @@ def get_assistant_summary_batch(
     keep_recent_count: int = 10,
     max_batch_count: int = 50,
 ) -> dict[str, object]:
-    """최근 문맥을 제외하고 아직 요약되지 않은 메시지 batch를 반환합니다."""
+    """같은 기억 그룹의 최근 문맥을 제외한 미요약 메시지를 반환합니다."""
 
     branch_ids = _get_current_branch_message_ids(conversation=conversation)
-    queryset = AssistantMessage.objects.filter(
-        id__in=branch_ids,
-        context_key=context_key,
-    )
+    memory_context_key = resolve_assistant_memory_context_key(context_key)
+    queryset = AssistantMessage.objects.filter(id__in=branch_ids)
+    if memory_context_key == CHATWIDGET_SHARED_CONTEXT_KEY:
+        queryset = queryset.filter(
+            Q(context_key=ASSISTANT_OPENWEBUI_CONTEXT_KEY)
+            | Q(context_key__startswith=OBSERVER_CONTEXT_PREFIX)
+        )
+    else:
+        queryset = queryset.filter(context_key=memory_context_key)
     total_count = queryset.count()
     target_count = max(0, total_count - max(1, keep_recent_count))
     summary = get_assistant_conversation_summary(
         conversation=conversation,
-        context_key=context_key,
+        context_key=memory_context_key,
     )
     current_count = min(summary.message_count, target_count) if summary else 0
     if target_count - current_count < max(1, trigger_count):
@@ -276,6 +285,7 @@ def get_assistant_summary_batch(
             "coveredMessageCount": current_count,
             "totalMessageCount": total_count,
             "summary": summary,
+            "contextKey": memory_context_key,
         }
     covered_count = min(target_count, current_count + max(1, max_batch_count))
     messages = list(
@@ -286,6 +296,7 @@ def get_assistant_summary_batch(
         "coveredMessageCount": covered_count,
         "totalMessageCount": total_count,
         "summary": summary,
+        "contextKey": memory_context_key,
     }
 
 
@@ -294,11 +305,11 @@ def get_assistant_conversation_summary(
     conversation: AssistantConversation,
     context_key: str,
 ) -> AssistantConversationSummary | None:
-    """대화방과 문맥 키가 일치하는 장기 요약 하나를 반환합니다."""
+    """대화방과 해석된 기억 키가 일치하는 장기 요약 하나를 반환합니다."""
 
     return AssistantConversationSummary.objects.filter(
         conversation=conversation,
-        context_key=context_key,
+        context_key=resolve_assistant_memory_context_key(context_key),
     ).first()
 
 
@@ -308,12 +319,12 @@ def get_assistant_conversation_summary_for_user(
     conversation_id: UUID,
     context_key: str,
 ) -> AssistantConversationSummary | None:
-    """사용자 소유 대화방의 일치하는 문맥 요약만 반환합니다."""
+    """사용자 소유 대화방의 해석된 기억 키 요약만 반환합니다."""
 
     return AssistantConversationSummary.objects.filter(
         conversation__user=user,
         conversation_id=conversation_id,
-        context_key=context_key,
+        context_key=resolve_assistant_memory_context_key(context_key),
     ).first()
 
 

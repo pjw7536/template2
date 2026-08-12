@@ -24,6 +24,10 @@ import {
   normalizeGeneratedAssistantMessage,
 } from "../utils/chatLimits"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
+import {
+  formatChatHistoryContent,
+  isSameChatMemory,
+} from "../utils/chatMemory"
 import { normalizeChatSources } from "../utils/normalizeChatSources"
 
 const MAX_MODEL_HISTORY = 20
@@ -1161,7 +1165,7 @@ export function useChatSession(options = {}) {
       : [...currentMessages, userMessage]
     markPendingMessageIds(roomId, [userMessage])
     const historyForRequest = nextMessages
-      .filter((message) => (message.contextKey || "assistant") === requestContextKey)
+      .filter((message) => isSameChatMemory(message.contextKey, requestContextKey))
       .slice(-MAX_MODEL_HISTORY)
     let generation = null
     if (persistenceEnabled) {
@@ -1293,7 +1297,17 @@ export function useChatSession(options = {}) {
     try {
       const result = await chatMutation.mutateAsync({
         prompt: text,
-        history: historyForRequest.map(({ role, content }) => ({ role, content })),
+        history: historyForRequest.map((message) => ({
+          role: message.role,
+          content:
+            message.id === userMessage.id
+              ? message.content
+              : formatChatHistoryContent(
+                  message.content,
+                  message.contextKey,
+                  requestContextKey,
+                ),
+        })),
         roomId,
         permissionGroups,
         ragIndexNames,

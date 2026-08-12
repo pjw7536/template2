@@ -104,3 +104,10 @@
 - 서버 최초 적용 전인 `assistant`의 개발 마이그레이션 체인은 최종 모델 상태를 직접 생성하는 단일 `0001_initial.py`로 통합한다.
 - 신규 설치에 불필요한 기존 메시지 연결 및 요약 이전용 data migration은 초기 마이그레이션에 포함하지 않는다.
 - 단일 초기 마이그레이션이 배포된 이후의 Assistant schema 변경은 기존 파일을 수정하지 않고 새 migration으로 추가한다.
+
+## 2026-08-12: ChatWidget 방 단위 공유 기억
+
+- 같은 ChatWidget 대화방의 일반 Chat(`assistant:openwebui`)과 Observer(`observer:*`)는 최근 모델 이력과 rolling summary를 `chatwidget:shared` 기억 그룹으로 공유한다.
+- `contextKey`는 요청 라우팅, 메시지 출처, 현재 Observer 조회 범위를 보존하며 기억 경계와 분리한다.
+- Email RAG(`assistant`)와 다른 대화방은 공유 기억에 포함하지 않는다.
+- Observer의 공유 대화와 장기 요약은 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 `observer_analysis_context_json`으로 제한한다.
