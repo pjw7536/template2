@@ -62,8 +62,32 @@ vi.mock("./ChatWidgetLauncher", () => ({
 }))
 
 vi.mock("./ChatWidgetPanel", () => ({
-  ChatWidgetPanel: ({ onClose }) => (
-    <button type="button" onClick={onClose}>위젯 닫기</button>
+  ChatWidgetPanel: ({
+    onClose,
+    isSidebarOpen,
+    onToggleSidebar,
+    sidebarWidth,
+    sidebarMinWidth,
+    sidebarMaxWidth,
+    onSidebarResizePointerDown,
+    onSidebarResizeKeyDown,
+  }) => (
+    <div>
+      <button type="button" onClick={onClose}>위젯 닫기</button>
+      <button type="button" onClick={onToggleSidebar}>목록 전환</button>
+      {isSidebarOpen ? (
+        <div
+          role="separator"
+          aria-label="대화방 목록 너비 조절"
+          aria-valuemin={sidebarMinWidth}
+          aria-valuemax={sidebarMaxWidth}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={onSidebarResizePointerDown}
+          onKeyDown={onSidebarResizeKeyDown}
+        />
+      ) : null}
+    </div>
   ),
 }))
 
@@ -99,5 +123,43 @@ describe("ChatWidget 대화방 생성", () => {
 
     expect(chatSessionMocks.useChatSession).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: "위젯 열기" })).not.toBeInTheDocument()
+  })
+
+  it("대화방 목록 구분선을 드래그해 사이드바 너비를 조절한다", () => {
+    render(
+      <MemoryRouter>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    fireEvent.click(screen.getByRole("button", { name: "목록 전환" }))
+
+    const separator = screen.getByRole("separator", { name: "대화방 목록 너비 조절" })
+    expect(separator).toHaveAttribute("aria-valuenow", "208")
+
+    fireEvent.pointerDown(separator, { clientX: 300, pointerId: 1 })
+    fireEvent.pointerMove(document, { clientX: 364, pointerId: 1 })
+    fireEvent.pointerUp(document, { pointerId: 1 })
+
+    expect(separator).toHaveAttribute("aria-valuenow", "272")
+  })
+
+  it("키보드로 사이드바 너비를 단계 조절하고 최댓값으로 이동한다", () => {
+    render(
+      <MemoryRouter>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    fireEvent.click(screen.getByRole("button", { name: "목록 전환" }))
+
+    const separator = screen.getByRole("separator", { name: "대화방 목록 너비 조절" })
+    fireEvent.keyDown(separator, { key: "ArrowRight" })
+    expect(separator).toHaveAttribute("aria-valuenow", "224")
+
+    fireEvent.keyDown(separator, { key: "End" })
+    expect(separator).toHaveAttribute("aria-valuenow", "360")
   })
 })

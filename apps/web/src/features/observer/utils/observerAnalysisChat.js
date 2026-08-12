@@ -5,17 +5,10 @@ function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function appendList(lines, title, values) {
-  const items = Array.isArray(values) ? values.map(normalizeText).filter(Boolean) : [];
-  if (!items.length) return;
-  lines.push(`**${title}**`);
-  items.forEach((item) => lines.push(`- ${item}`));
-  lines.push("");
-}
-
-function formatDate(value) {
-  const normalized = normalizeText(value);
-  return normalized ? normalized.slice(0, 10) : "";
+function normalizeList(values, limit) {
+  return Array.isArray(values)
+    ? values.map(normalizeText).filter(Boolean).slice(0, limit)
+    : [];
 }
 
 export function buildObserverAnalysisQuestion(prompt, history = []) {
@@ -46,10 +39,38 @@ export function buildObserverAnalysisQuestion(prompt, history = []) {
   return `${currentPrompt}${historySuffix}`.slice(0, MAX_ANALYSIS_QUESTION_CHARS);
 }
 
+export function formatObserverAnalysisStreamItem(item) {
+  const itemType = normalizeText(item?.type);
+  if (itemType === "headline") {
+    const text = normalizeText(item?.text);
+    return text ? `### ${text}\n\n` : "";
+  }
+  if (itemType === "summary") {
+    const text = normalizeText(item?.text);
+    return text ? `${text}\n\n#### 주요 분석\n\n` : "";
+  }
+
+  if (itemType === "finding") {
+    const label = [normalizeText(item?.category), normalizeText(item?.target)]
+      .filter(Boolean)
+      .join(" · ");
+    const assessment = normalizeText(item?.assessment);
+    return assessment
+      ? `- ${label ? `**${label}**: ` : ""}${assessment}\n`
+      : "";
+  }
+  if (itemType === "limitations") {
+    const limitations = normalizeList(item?.values, 3);
+    return limitations.length
+      ? `\n> 분석 한계: ${limitations.join(" ")}\n\n`
+      : "";
+  }
+
+  return "";
+}
+
 export function formatObserverAnalysisChatReply(payload) {
   const analysis = payload?.analysis || {};
-  const meta = payload?.meta || {};
-  const scope = payload?.scope || {};
   const lines = [
     `### ${normalizeText(analysis.headline) || "Observer 종합 분석"}`,
     "",
@@ -59,35 +80,27 @@ export function formatObserverAnalysisChatReply(payload) {
     lines.push(normalizeText(analysis.summary), "");
   }
 
-  const findings = Array.isArray(analysis.findings) ? analysis.findings : [];
-  findings.forEach((finding) => {
-    const category = normalizeText(finding?.category) || "분석";
-    const target = normalizeText(finding?.target) || "주요 발견";
-    lines.push(`#### ${category} · ${target}`, "");
-    if (normalizeText(finding?.assessment)) {
-      lines.push(normalizeText(finding.assessment), "");
-    }
-    appendList(lines, "기록된 원인", finding?.recordedCauses);
-    appendList(lines, "주변 로그 기반 원인 후보", finding?.inferredCauses);
-    appendList(lines, "근거 로그", finding?.evidenceIds);
-  });
+  const findings = (Array.isArray(analysis.findings) ? analysis.findings : [])
+    .map((finding) => ({
+      label: [normalizeText(finding?.category), normalizeText(finding?.target)]
+        .filter(Boolean)
+        .join(" · "),
+      assessment: normalizeText(finding?.assessment),
+    }))
+    .filter((finding) => finding.assessment)
+    .slice(0, 5);
+  if (findings.length) {
+    lines.push("#### 주요 분석", "");
+    findings.forEach(({ label, assessment }) => {
+      lines.push(`- ${label ? `**${label}**: ` : ""}${assessment}`);
+    });
+    lines.push("");
+  }
 
-  appendList(lines, "추가 확인 항목", analysis.recommendedChecks);
-  appendList(lines, "분석 한계", analysis.limitations);
-
-  const period = [formatDate(scope.from), formatDate(scope.to)].filter(Boolean).join(" ~ ");
-  const coverage = [
-    `EQP 관심 상태 ${Number(meta.eqpTargetCount || 0).toLocaleString()}건`,
-    `TIP 관심 상태 ${Number(meta.tipTargetCount || 0).toLocaleString()}건`,
-    `주변 로그 ${Number(meta.contextIncludedCount || 0).toLocaleString()}건`,
-  ].join(" · ");
-  lines.push("---", `분석 범위: ${normalizeText(scope.eqpId) || "EQP 미상"}${period ? ` · ${period}` : ""}`);
-  lines.push(`분석 입력: ${coverage}`);
-  const version = [
-    normalizeText(meta.analysisModel),
-    normalizeText(meta.promptVersion),
-  ].filter(Boolean).join(" · ");
-  if (version) lines.push(`분석 버전: ${version}`);
+  const limitations = normalizeList(analysis.limitations, 3);
+  if (limitations.length) {
+    lines.push(`> 분석 한계: ${limitations.join(" ")}`);
+  }
 
   return lines.join("\n").trim();
 }

@@ -11,7 +11,7 @@ import { buildObserverAssistantContextKey } from "../utils/observerAssistantCont
 import { buildObserverEvidenceHref } from "../utils/observerEvidence";
 
 const DEFAULT_OBSERVER_ANALYSIS_PROMPT =
-  "현재 조회 기간의 EQP/TIP 관심 상태 빈도와 기록된 원인, 주변 로그 기반 원인 후보를 종합 분석해줘.";
+  "현재 조회 데이터의 반복·집중 패턴, 시간적 연관성, 원인 일관성, 운영상 의미를 중요도순으로 종합 분석해줘.";
 
 function formatScopeDescription(scope) {
   const from = String(scope?.from || "").slice(0, 10);
@@ -39,12 +39,14 @@ export function useObserverAssistantContext(scope) {
       footer: "Observer · OpenWebUI",
       scope,
       defaultPrompt: DEFAULT_OBSERVER_ANALYSIS_PROMPT,
-      sendMessage: async ({ prompt, history, roomId, contextKey }) => {
-        const payload = await observerApi.analyzeLogs({
+      sendMessage: async ({ prompt, history, roomId, contextKey, signal, onDelta }) => {
+        const payload = await observerApi.analyzeLogsStream({
           ...scope,
           question: buildObserverAnalysisQuestion(prompt, history),
           roomId,
           contextKey,
+          signal,
+          onDelta,
         });
         return {
           reply: formatObserverAnalysisChatReply(payload),

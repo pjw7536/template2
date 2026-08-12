@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   DEFAULT_TYPE_FILTERS,
@@ -107,7 +107,20 @@ export function useObserverPageState(params) {
     const nextRange = getLogRangeFromSearchParams(
       new URLSearchParams(location.search)
     );
-    if (!nextRange) return;
+    if (!nextRange) {
+      const nextSearch = buildLogRangeSearch(location.search, logQueryOptions);
+      if (!nextSearch) return;
+
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch,
+          hash: location.hash,
+        },
+        { replace: true }
+      );
+      return;
+    }
 
     setLogRange((currentRange) => {
       const current = normalizeLogRange(currentRange);
@@ -120,10 +133,20 @@ export function useObserverPageState(params) {
 
       return nextRange;
     });
-  }, [location.search]);
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    logQueryOptions,
+    navigate,
+  ]);
 
-  useEffect(() => {
-    const nextSearch = buildLogRangeSearch(location.search, logQueryOptions);
+  const handleLogRangeChange = useCallback((nextRangeValue) => {
+    const nextRange = normalizeLogRange(nextRangeValue);
+    const nextSearch = buildLogRangeSearch(
+      location.search,
+      buildLogDateRangeOptions(nextRange)
+    );
     if (!nextSearch) return;
 
     navigate(
@@ -138,7 +161,6 @@ export function useObserverPageState(params) {
     location.hash,
     location.pathname,
     location.search,
-    logQueryOptions,
     navigate,
   ]);
 
@@ -333,7 +355,7 @@ export function useObserverPageState(params) {
       isSettingsOpen,
       setIsSettingsOpen,
       logRange,
-      setLogRange,
+      setLogRange: handleLogRangeChange,
     },
     validation: { isValidating, validationError },
     logs,

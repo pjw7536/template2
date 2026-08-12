@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import EqpDetail from "./EqpDetail";
 import TipDetail from "./TipDetail";
 import RacbDetail from "./RacbDetail";
@@ -6,19 +6,27 @@ import CtttmDetail from "./CtttmDetail";
 import EsopDetail from "./EsopDetail";
 import InterlockDetail from "./InterlockDetail";
 
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 8;
+
 function findScrollableParent(element) {
-  let current = element;
+  let current = element.parentElement;
 
   while (current) {
     const { overflowY } = window.getComputedStyle(current);
-    const canScroll = /(auto|scroll|overlay)/.test(overflowY) && current.scrollHeight > current.clientHeight;
-    if (canScroll) {
+    if (/(auto|scroll|overlay)/.test(overflowY)) {
       return current;
     }
     current = current.parentElement;
   }
 
   return element;
+}
+
+function isScrolledToBottom(element) {
+  return (
+    element.scrollHeight - element.clientHeight - element.scrollTop <=
+    AUTO_SCROLL_BOTTOM_THRESHOLD
+  );
 }
 
 /**
@@ -37,15 +45,73 @@ export default function LogDetailSection({
   summaryStreamingScrollClassName,
 }) {
   const detailRef = useRef(null);
+  const scrollTrackingRef = useRef({
+    container: null,
+    isFollowing: true,
+    lastScrollTop: 0,
+    removeListener: null,
+  });
+  const logKey = `${log?.logType || ""}:${log?.id ?? log?.eventTime ?? ""}`;
+
+  const attachScrollContainer = useCallback((scrollContainer) => {
+    const tracking = scrollTrackingRef.current;
+    if (tracking.container === scrollContainer) return;
+
+    tracking.removeListener?.();
+    tracking.container = scrollContainer;
+    tracking.isFollowing = true;
+    tracking.lastScrollTop = scrollContainer.scrollTop;
+
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      const movedUp = currentScrollTop < tracking.lastScrollTop - 1;
+
+      if (movedUp) {
+        tracking.isFollowing = false;
+      } else if (isScrolledToBottom(scrollContainer)) {
+        tracking.isFollowing = true;
+      }
+
+      tracking.lastScrollTop = currentScrollTop;
+    };
+
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    tracking.removeListener = () => {
+      scrollContainer.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const detailElement = detailRef.current;
+    if (!detailElement) return;
+
+    const scrollContainer = findScrollableParent(detailElement);
+    attachScrollContainer(scrollContainer);
+    scrollTrackingRef.current.isFollowing = true;
+    scrollTrackingRef.current.lastScrollTop = scrollContainer.scrollTop;
+  }, [attachScrollContainer, error, isLoading, logKey]);
+
+  useEffect(() => () => {
+    const tracking = scrollTrackingRef.current;
+    tracking.removeListener?.();
+    tracking.container = null;
+    tracking.removeListener = null;
+  }, []);
+
   const handleStreamingProgress = useCallback(() => {
     const detailElement = detailRef.current;
     if (!detailElement) return;
 
     window.requestAnimationFrame(() => {
       const scrollContainer = findScrollableParent(detailElement);
+      attachScrollContainer(scrollContainer);
+      const tracking = scrollTrackingRef.current;
+      if (!tracking.isFollowing) return;
+
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      tracking.lastScrollTop = scrollContainer.scrollTop;
     });
-  }, []);
+  }, [attachScrollContainer]);
 
   if (!log) {
     return (

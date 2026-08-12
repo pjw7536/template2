@@ -19,14 +19,20 @@ from django.urls import reverse
 from . import selectors
 from . import serializers as observer_serializers
 from .services.analysis import (
+    ANALYSIS_STREAM_SYSTEM_PROMPT,
+    ANALYSIS_SYSTEM_PROMPT,
     MAX_PROMPT_CHARS,
+    OBSERVER_ANALYSIS_PROMPT_VERSION,
     analyze_observer_logs,
     build_observer_analysis_context,
     build_observer_analysis_messages,
+    normalize_observer_analysis_result,
+    stream_analyze_observer_logs,
 )
 from .services.openwebui import (
     ObserverOpenWebUIConfig,
     request_observer_analysis,
+    stream_observer_analysis,
 )
 
 OBSERVER_VIEW_SELECTORS = "api.observer.views.selectors"
@@ -1693,6 +1699,51 @@ class ObserverAnalysisTests(TestCase):
         self.assertFalse(too_long_serializer.is_valid())
         self.assertIn("question", too_long_serializer.errors)
 
+    def test_analysis_defaults_and_prompt_require_synthesized_findings(self) -> None:
+        """기본 질문과 system prompt가 단순 나열 대신 종합 분석을 요구합니다."""
+
+        serializer = observer_serializers.ObserverAnalysisRequestSerializer(
+            data={
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-08-01",
+                "to": "2026-08-03",
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertIn("반복·집중 패턴", serializer.validated_data["question"])
+        self.assertIn("시간적 연관성", serializer.validated_data["question"])
+        self.assertIn("단순 건수나 comment를 나열하지 말고", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("운영상 의미", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("chronologicalSummary", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("시간순 이벤트 정리", ANALYSIS_STREAM_SYSTEM_PROMPT)
+        self.assertIn("독립된 raw 근거", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("findings는 중요도 순으로 최대 5개", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("finding은 중요도 순으로 최대 5개", ANALYSIS_STREAM_SYSTEM_PROMPT)
+        self.assertEqual(
+            OBSERVER_ANALYSIS_PROMPT_VERSION,
+            "observer-analysis-prompt-v1",
+        )
+
+    def test_analysis_result_limits_findings_to_five(self) -> None:
+        """모델이 많은 finding을 반환해도 사용자 분석 상한을 보장합니다."""
+
+        result = normalize_observer_analysis_result(
+            {
+                "findings": [
+                    {
+                        "category": "EQP",
+                        "target": f"상태-{index}",
+                        "assessment": f"분석-{index}",
+                    }
+                    for index in range(6)
+                ]
+            }
+        )
+
+        self.assertEqual(len(result["findings"]), 5)
+        self.assertEqual(result["findings"][-1]["assessment"], "분석-4")
+
     def test_analysis_selector_prefilters_large_status_sources(self) -> None:
         """EQP/TIP 제외 상태가 분석 조회 상한을 차지하지 않게 DB filter를 전달합니다."""
 
@@ -1850,6 +1901,47 @@ class ObserverAnalysisTests(TestCase):
 
         self.assertEqual(len(context["tipStatusStatistics"]), 1)
         self.assertEqual(context["tipStatusStatistics"][0]["process"], "PROC-A")
+
+    def test_analysis_context_keeps_ctttm_chronological_summary_as_background(self) -> None:
+        """CTTTM 핵심요약과 시간순 이벤트 정리를 별도 context column에 보존합니다."""
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["eqp", "ctttm"],
+            selected_tip_groups=["__ALL__"],
+            logs_by_type={
+                "eqp": [
+                    {
+                        "id": "EQP-DOWN",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                    }
+                ],
+                "ctttm": [
+                    {
+                        "id": "WO-1",
+                        "logType": "CTTTM",
+                        "eventType": "CBM",
+                        "eventTime": "2026-08-02T09:50:00+09:00",
+                        "comment": "정기 점검",
+                        "coreSummary": "압력 계통 점검",
+                        "summary": "09:30 알람 확인 → 09:40 부품 교체 → 09:45 정상화",
+                    }
+                ],
+            },
+        )
+
+        columns = context["contextEvents"]["columns"]
+        row = context["contextEvents"]["rows"][0]
+        self.assertEqual(row[columns.index("summary")], "압력 계통 점검")
+        self.assertEqual(
+            row[columns.index("chronologicalSummary")],
+            "09:30 알람 확인 → 09:40 부품 교체 → 09:45 정상화",
+        )
+        self.assertEqual(context["schemaVersion"], "observer-analysis-v1")
 
     def test_analysis_context_always_stays_within_prompt_budget(self) -> None:
         """원인과 TIP 그룹이 많아도 최종 context가 모델 입력 상한을 넘지 않습니다."""
@@ -2080,6 +2172,161 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(request.kwargs["json"]["reasoning_effort"], "medium")
         self.assertFalse(request.kwargs["json"]["stream"])
         self.assertEqual(request.kwargs["headers"]["Authorization"], "Bearer token")
+
+    def test_openwebui_stream_yields_content_and_closes_response(self) -> None:
+        """Observer OpenWebUI stream은 content 조각을 반환하고 연결을 닫습니다."""
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.iter_lines.return_value = [
+            b'data: {"choices":[{"delta":{"content":"{\\"type\\":\\"headline\\"}"}}]}',
+            b"data: [DONE]",
+        ]
+        session = Mock()
+        session.post.return_value = response
+        config = ObserverOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="gpt-oss-120b",
+        )
+
+        chunks = list(
+            stream_observer_analysis(
+                messages=[{"role": "user", "content": "분석"}],
+                config=config,
+                session=session,
+            )
+        )
+
+        self.assertEqual(chunks, ['{"type":"headline"}'])
+        request = session.post.call_args
+        self.assertTrue(request.kwargs["json"]["stream"])
+        self.assertEqual(request.kwargs["headers"]["Accept"], "text/event-stream")
+        response.close.assert_called_once_with()
+
+    def test_stream_analysis_emits_blocks_and_final_structured_payload(self) -> None:
+        """NDJSON 분석은 완성된 블록과 근거 검증이 끝난 payload를 순서대로 냅니다."""
+
+        context = {
+            "scope": {
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-08-01T00:00:00+09:00",
+                "to": "2026-08-03T23:59:59+09:00",
+            },
+            "targetEvents": [{"eventId": "EQP:1"}],
+            "contextEvents": {"rows": []},
+            "coverage": {
+                "sourceMayBeTruncated": [],
+                "sourceErrors": {},
+                "promptTruncated": False,
+                "eqpTargetCount": 1,
+                "tipTargetCount": 0,
+                "contextIncludedCount": 0,
+            },
+        }
+        config = ObserverOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="gpt-oss-120b",
+        )
+        stream_chunks = [
+            '{"type":"headline","text":"DOWN 반복"}\n',
+            '{"type":"summary","text":"동일 상태가 반복되었습니다."}\n',
+            '{"type":"finding","category":"EQP","target":"DOWN",',
+            '"assessment":"반복 발생","recordedCauses":[],',
+            '"inferredCauses":[],"evidenceIds":["EQP:1","EQP:UNKNOWN"]}\n',
+            '{"type":"recommendedChecks","values":[]}\n',
+            '{"type":"limitations","values":[]}',
+        ]
+        with (
+            patch.object(selectors, "get_analysis_logs_by_type", return_value=[]),
+            patch(
+                "api.observer.services.analysis.build_observer_analysis_context",
+                return_value=context,
+            ),
+            patch(
+                "api.observer.services.analysis.ObserverOpenWebUIConfig.from_settings",
+                return_value=config,
+            ),
+            patch(
+                "api.observer.services.analysis.stream_observer_analysis",
+                return_value=iter(stream_chunks),
+            ),
+        ):
+            events = list(
+                stream_analyze_observer_logs(
+                    eqp_id="EQP-ALPHA",
+                    start_at=self.start_at,
+                    end_at=self.end_at,
+                    log_types=["eqp"],
+                    selected_tip_groups=["__ALL__"],
+                    question="분석해 주세요.",
+                )
+            )
+
+        self.assertEqual([event["type"] for event in events], [
+            "delta",
+            "delta",
+            "delta",
+            "delta",
+            "delta",
+            "done",
+        ])
+        payload = events[-1]["payload"]
+        self.assertEqual(payload["analysis"]["headline"], "DOWN 반복")
+        self.assertEqual(
+            payload["analysis"]["findings"][0]["evidenceIds"],
+            ["EQP:1"],
+        )
+        self.assertEqual(
+            payload["meta"]["promptVersion"],
+            "observer-analysis-stream-prompt-v1",
+        )
+
+    def test_analysis_stream_endpoint_returns_sse_event_order(self) -> None:
+        """Observer stream endpoint는 meta, delta, done 순서의 SSE를 반환합니다."""
+
+        service_payload = {
+            "analysis": {
+                "headline": "이상 상태 반복",
+                "summary": "DOWN이 반복되었습니다.",
+                "findings": [],
+                "recommendedChecks": [],
+                "limitations": [],
+            },
+            "meta": {"eqpTargetCount": 3},
+            "scope": {"eqpId": "EQP-ALPHA"},
+        }
+        with patch(
+            "api.observer.views.stream_analyze_observer_logs",
+            return_value=iter(
+                [
+                    {
+                        "type": "delta",
+                        "item": {"type": "headline", "text": "이상 상태 반복"},
+                    },
+                    {"type": "done", "payload": service_payload},
+                ]
+            ),
+        ):
+            response = self.client.post(
+                reverse("observer-analysis-stream"),
+                data=json.dumps(
+                    {
+                        "eqpId": "EQP-ALPHA",
+                        "from": "2026-08-01",
+                        "to": "2026-08-03",
+                        "logTypes": ["eqp"],
+                    }
+                ),
+                content_type="application/json",
+                HTTP_ACCEPT="text/event-stream",
+            )
+            body = b"".join(response.streaming_content).decode("utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Accel-Buffering"], "no")
+        self.assertLess(body.index("event: meta"), body.index("event: delta"))
+        self.assertLess(body.index("event: delta"), body.index("event: done"))
+        self.assertIn('"payload":{"analysis"', body)
 
     def test_analysis_endpoint_returns_normalized_payload(self) -> None:
         """분석 endpoint는 검증된 현재 조회 조건을 service에 전달합니다."""

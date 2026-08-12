@@ -5,6 +5,7 @@ from .analysis import (
     build_observer_analysis_context,
     build_observer_analysis_messages,
     normalize_observer_analysis_result,
+    stream_analyze_observer_logs,
 )
 from .openwebui import ObserverOpenWebUIError
 from .timezone import (
@@ -24,4 +25,5 @@ __all__ = [
     "normalize_observer_analysis_result",
     "observer_period_start",
     "serialize_observer_datetime",
+    "stream_analyze_observer_logs",
 ]

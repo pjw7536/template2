@@ -24,6 +24,11 @@ export function ChatWidgetPanel({
   onHeaderPointerDown,
   isSidebarOpen,
   onToggleSidebar,
+  sidebarWidth,
+  sidebarMinWidth,
+  sidebarMaxWidth,
+  onSidebarResizePointerDown,
+  onSidebarResizeKeyDown,
   ragSettings,
   rooms,
   sortedRooms,
@@ -315,7 +320,22 @@ export function ChatWidgetPanel({
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {isSidebarOpen ? (
-            <aside className="flex w-52 shrink-0 min-h-0 flex-col border-r bg-muted/40">
+            <aside
+              className="relative flex shrink-0 min-h-0 flex-col border-r bg-muted/40"
+              style={{ width: sidebarWidth }}
+            >
+              <div
+                className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1/2 touch-none cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/50 focus-visible:after:w-0.5 focus-visible:after:bg-primary"
+                role="separator"
+                aria-label="대화방 목록 너비 조절"
+                aria-orientation="vertical"
+                aria-valuemin={sidebarMinWidth}
+                aria-valuemax={sidebarMaxWidth}
+                aria-valuenow={Math.round(sidebarWidth)}
+                tabIndex={0}
+                onPointerDown={onSidebarResizePointerDown}
+                onKeyDown={onSidebarResizeKeyDown}
+              />
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="space-y-0.5">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>

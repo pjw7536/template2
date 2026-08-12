@@ -20,6 +20,26 @@ import {
   clampSize,
 } from "../utils/chatWidgetBounds"
 
+const DEFAULT_SIDEBAR_WIDTH = 208
+const MIN_SIDEBAR_WIDTH = 176
+const MAX_SIDEBAR_WIDTH = 360
+const MIN_CHAT_CONTENT_WIDTH = 280
+const SIDEBAR_KEYBOARD_STEP = 16
+
+function getSidebarMaxWidth(widgetWidth) {
+  return Math.max(
+    MIN_SIDEBAR_WIDTH,
+    Math.min(MAX_SIDEBAR_WIDTH, widgetWidth - MIN_CHAT_CONTENT_WIDTH),
+  )
+}
+
+function clampSidebarWidth(width, widgetWidth) {
+  return Math.min(
+    Math.max(width, MIN_SIDEBAR_WIDTH),
+    getSidebarMaxWidth(widgetWidth),
+  )
+}
+
 export function ChatWidget(props) {
   const location = useLocation()
   if (location.pathname.startsWith("/assistant")) return null
@@ -37,6 +57,8 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
   const [isWidgetDragging, setIsWidgetDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const [size, setSize] = useState(() => clampSize(DEFAULT_CHAT_WIDTH, DEFAULT_CHAT_HEIGHT))
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false)
   const { user } = useAuth()
   const { pageContext } = usePageAssistantContext()
   const sizeRef = useRef(size)
@@ -106,6 +128,7 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
   const widgetHasDraggedRef = useRef(false)
   const lastWidgetPositionRef = useRef(null)
   const resizeStartRef = useRef({ width: 0, height: 0, left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0 })
+  const sidebarResizeStartRef = useRef({ width: DEFAULT_SIDEBAR_WIDTH, x: 0 })
   const resizeDirectionRef = useRef("se")
   const chatContainerRef = useRef(null)
   const wasSendingRef = useRef(false)
@@ -299,6 +322,44 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
   }, [isResizing])
 
   useEffect(() => {
+    setSidebarWidth((prevWidth) => clampSidebarWidth(prevWidth, size.width))
+  }, [size.width])
+
+  useEffect(() => {
+    if (!isSidebarResizing || typeof document === "undefined") return
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+
+    const handlePointerMove = (event) => {
+      const deltaX = event.clientX - sidebarResizeStartRef.current.x
+      setSidebarWidth(
+        clampSidebarWidth(
+          sidebarResizeStartRef.current.width + deltaX,
+          sizeRef.current.width,
+        ),
+      )
+    }
+
+    const handlePointerUp = () => {
+      setIsSidebarResizing(false)
+    }
+
+    document.addEventListener("pointermove", handlePointerMove)
+    document.addEventListener("pointerup", handlePointerUp)
+    document.addEventListener("pointercancel", handlePointerUp)
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      document.removeEventListener("pointermove", handlePointerMove)
+      document.removeEventListener("pointerup", handlePointerUp)
+      document.removeEventListener("pointercancel", handlePointerUp)
+    }
+  }, [isSidebarResizing])
+
+  useEffect(() => {
     if (!isWidgetDragging) return
 
     const handlePointerMove = (event) => {
@@ -385,6 +446,7 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
     }
     setIsWidgetDragging(false)
     setIsResizing(false)
+    setIsSidebarResizing(false)
     setIsOpen(false)
     if (typeof window !== "undefined") {
       window.requestAnimationFrame?.(() => floatingButtonRef.current?.focus())
@@ -584,6 +646,29 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
     setIsResizing(true)
   }
 
+  const handleSidebarResizePointerDown = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    sidebarResizeStartRef.current = {
+      width: sidebarWidth,
+      x: event.clientX,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setIsSidebarResizing(true)
+  }
+
+  const handleSidebarResizeKeyDown = (event) => {
+    let nextWidth = sidebarWidth
+    if (event.key === "ArrowLeft") nextWidth -= SIDEBAR_KEYBOARD_STEP
+    else if (event.key === "ArrowRight") nextWidth += SIDEBAR_KEYBOARD_STEP
+    else if (event.key === "Home") nextWidth = MIN_SIDEBAR_WIDTH
+    else if (event.key === "End") nextWidth = getSidebarMaxWidth(size.width)
+    else return
+
+    event.preventDefault()
+    setSidebarWidth(clampSidebarWidth(nextWidth, size.width))
+  }
+
   if (!isOpen) {
     return (
       <ChatWidgetLauncher
@@ -609,6 +694,11 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
       onHeaderPointerDown={handleWidgetHeaderPointerDown}
       isSidebarOpen={isSidebarOpen}
       onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+      sidebarWidth={sidebarWidth}
+      sidebarMinWidth={MIN_SIDEBAR_WIDTH}
+      sidebarMaxWidth={getSidebarMaxWidth(size.width)}
+      onSidebarResizePointerDown={handleSidebarResizePointerDown}
+      onSidebarResizeKeyDown={handleSidebarResizeKeyDown}
       ragSettings={ragSettings}
       rooms={rooms}
       sortedRooms={sortedRooms}

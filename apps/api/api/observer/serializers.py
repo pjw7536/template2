@@ -30,7 +30,7 @@ OBSERVER_LOG_TYPES = (
     "esop",
 )
 DEFAULT_OBSERVER_ANALYSIS_QUESTION = (
-    "조회 기간의 EQP/TIP 관심 상태 빈도와 기록된 원인, 주변 로그 기반 원인 후보를 분석해 주세요."
+    "조회 데이터의 반복·집중 패턴, 시간적 연관성, 원인 일관성, 운영상 의미를 중요도순으로 종합 분석해 주세요."
 )
 MAX_OBSERVER_ANALYSIS_QUESTION_CHARS = 2400
 

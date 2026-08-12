@@ -54,7 +54,7 @@ function buildObserverUrl(baseUrl, path, params) {
  */
 export const observerApiClient = async (
   path,
-  { params, timeout = DEFAULT_TIMEOUT, signal, ...opts } = {}
+  { params, timeout = DEFAULT_TIMEOUT, signal, responseParser, ...opts } = {}
 ) => {
   const baseUrl = resolveBaseUrl();
   const fullUrl = buildObserverUrl(baseUrl, path, params);
@@ -123,7 +123,9 @@ export const observerApiClient = async (
       throw error;
     }
 
-    return response.json();
+    return typeof responseParser === "function"
+      ? await responseParser(response)
+      : response.json();
   } catch (error) {
     if (
       ["AbortError", "TimeoutError"].includes(error.name) &&

@@ -33,6 +33,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/logs/racb?eqpId=...` | RACB 로그 |
 | GET | `/api/v1/observer/logs/esop?eqpId=...` | ESOP 로그 |
 | POST | `/api/v1/observer/analysis` | 현재 조회 조건의 로그를 OpenWebUI로 종합 분석 |
+| POST | `/api/v1/observer/analysis/stream` | Observer 분석 블록과 최종 구조화 결과를 SSE로 전달 |
 | GET | `/api/v1/observer/tkin-prevent/prc-groups?userSdwtProd=...` | tkin Prevent PRC 그룹 목록 |
 | GET | `/api/v1/observer/tkin-prevent/processes?userSdwtProd=...&prcGroup=...` | tkin Prevent process_id 목록 |
 | GET | `/api/v1/observer/tkin-prevent/step-seqs?userSdwtProd=...&prcGroup=...&processId=...` | tkin Prevent step_seq 목록 |
@@ -66,6 +67,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - 분석 API는 브라우저의 현재 row를 받지 않고 같은 조회 조건으로 backend source를 다시 조회합니다.
 - EQP는 DB에서 `DOWN`, `IDLE`, `LOCAL`만 먼저 선별해 발생 빈도와 comment 원인을 요약합니다. TIP도 DB에서 `L*_TIP`만 선별하므로 `DOING`, `CNT`는 조회 상한을 소비하지 않습니다.
 - SPC/FDC/CTTTM/RACB/ESOP는 EQP/TIP 관심 이벤트 전 30분부터 후 10분까지의 raw context만 전달합니다. 관심 이벤트가 없으면 선택된 비 EQP/TIP 로그를 제한된 raw context로 전달합니다.
+- CTTTM context row는 `summary`에 `llm_core_summary` 핵심요약을, `chronologicalSummary`에 `llm_summary` 시간순 이벤트 정리를 담습니다. 시간순 정리는 사건 흐름 해석의 배경지식이며 독립된 raw 근거나 확정 원인으로 사용하지 않습니다.
 - source별 최대 5000건, raw 유형별 최대 400건, 전체 prompt 180,000자 예산을 적용합니다. 예산을 넘으면 주변 로그, 개별 대상 이벤트, 기록 원인, TIP/EQP 통계 순으로 축소하고 `meta.promptTruncation`에 section별 전후 건수를 표시합니다.
 - 분석 모델 호출은 기존 `OPENWEBUI_*` 설정을 재사용하고 `reasoning_effort=medium`으로 실행합니다.
 - 분석 응답 `meta`에는 실제 호출 모델 `analysisModel`, 프롬프트 계약 `promptVersion`, 입력 스키마 `schemaVersion`을 포함합니다.
@@ -120,9 +122,13 @@ Content-Type: application/json
 
 분석 응답은 `analysis.headline`, `analysis.summary`, `analysis.findings`, `analysis.recommendedChecks`, `analysis.limitations`와 입력 범위를 설명하는 `meta`, `scope`를 반환합니다. `recordedCauses`는 로그 comment에 기록된 원인이고 `inferredCauses`는 주변 이벤트에 근거한 추정 원인입니다. `meta.analysisModel`, `meta.promptVersion`, `meta.schemaVersion`으로 분석 재현에 필요한 버전을 확인할 수 있습니다.
 
+ChatWidget은 같은 request body를 `/api/v1/observer/analysis/stream`에 보내며 `text/event-stream` 응답을 사용합니다. `meta`는 provider 정보를, `delta`는 완성된 NDJSON 분석 블록을, `done`은 위와 동일한 최종 구조화 payload를 전달합니다. 연결 후 분석 오류는 `error` event로 전달됩니다. 기존 `/analysis` JSON endpoint는 호환성을 위해 유지됩니다.
+
+ChatWidget 본문은 `headline`, `summary`, 중요도순 최대 5개 finding의 `assessment`, 결론에 영향을 주는 `limitations`만 표시합니다. `recordedCauses`, `inferredCauses`, `evidenceIds`, `recommendedChecks`, `meta`, `scope`는 응답 호환성과 분석 검증·근거 이동을 위해 유지하지만 본문에는 직접 나열하지 않습니다.
+
 `question`은 최대 2,400자까지 허용합니다.
 
-Observer 화면에서는 별도 분석 버튼 없이 기존 전역 ChatWidget이 현재 조회 조건을 page context로 등록합니다. 이 context가 활성화된 동안 위젯 질문은 일반 Assistant/RAG API가 아니라 이 분석 API로 전달되며, 응답은 markdown 채팅 메시지로 변환됩니다. ChatWidget의 기존 `assistant` 접근 권한 정책은 유지됩니다.
+Observer 화면에서는 별도 분석 버튼 없이 기존 전역 ChatWidget이 현재 조회 조건을 page context로 등록합니다. 이 context가 활성화된 동안 위젯 질문은 일반 Assistant/RAG API가 아니라 streaming 분석 API로 전달되며, 완성된 분석 블록부터 markdown 채팅 메시지로 표시됩니다. 완료 시 구조화 payload로 근거 snapshot을 확정합니다. ChatWidget의 기존 `assistant` 접근 권한 정책은 유지됩니다.
 
 ```http
 GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=PROC1&stepSeq=10

@@ -8,9 +8,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import logging
 
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
+from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
 
 from api.assistant import selectors as assistant_selectors
@@ -21,9 +23,24 @@ from .services import (
     ObserverOpenWebUIError,
     analyze_observer_logs,
     normalize_observer_datetime,
+    stream_analyze_observer_logs,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _ObserverEventStreamRenderer(JSONRenderer):
+    """DRF 콘텐츠 협상에서 Observer SSE media type을 허용합니다."""
+
+    media_type = "text/event-stream"
+    format = "sse"
+
+
+def _encode_observer_sse_event(event: str, payload: object) -> str:
+    """브라우저가 해석할 수 있는 UTF-8 SSE event 문자열을 생성합니다."""
+
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {data}\n\n"
 
 
 def _query_id(request: HttpRequest, key: str) -> str:
@@ -756,6 +773,103 @@ class ObserverAnalysisView(APIView):
             )
 
         return JsonResponse(payload)
+
+
+class ObserverAnalysisStreamView(APIView):
+    """현재 Observer 조회 조건의 OpenWebUI 분석을 SSE로 전달합니다."""
+
+    renderer_classes = [JSONRenderer, _ObserverEventStreamRenderer]
+
+    def post(
+        self,
+        request: HttpRequest,
+        *args: object,
+        **kwargs: object,
+    ) -> StreamingHttpResponse | JsonResponse:
+        """Observer 분석 블록을 `meta`, `delta`, `done`, `error` event로 반환합니다.
+
+        예시 요청:
+        - POST /api/v1/observer/analysis/stream
+        - body: {"eqpId":"EQP-1","from":"2026-08-01","to":"2026-08-07",
+          "roomId":"<uuid>","contextKey":"observer:<scope>"}
+
+        snake/camel 호환:
+        - eqpId/logTypes/tipGroups/roomId/contextKey와 from/to 계약을 지원합니다.
+
+        오류:
+        - 연결 전 입력 오류는 JSON 400, 연결 후 분석 오류는 SSE error로 반환합니다.
+        """
+
+        # ---------------------------------------------------------------------
+        # 1) 연결 전에 요청 계약을 검증합니다.
+        # ---------------------------------------------------------------------
+        query = observer_serializers.ObserverAnalysisRequestSerializer(
+            data=request.data
+        )
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_request", "details": query.errors},
+                status=400,
+            )
+
+        values = query.validated_data
+        summary = None
+        if request.user.is_authenticated and values.get("room_id"):
+            summary = assistant_selectors.get_assistant_conversation_summary_for_user(
+                user=request.user,
+                conversation_id=values["room_id"],
+                context_key=values["context_key"],
+            )
+
+        # ---------------------------------------------------------------------
+        # 2) service event를 브라우저용 SSE 계약으로 변환합니다.
+        # ---------------------------------------------------------------------
+        def event_stream():
+            """Observer service iterator와 브라우저 연결 수명을 일치시킵니다."""
+
+            yield _encode_observer_sse_event(
+                "meta",
+                {"provider": "openwebui", "kind": "observer"},
+            )
+            try:
+                for stream_event in stream_analyze_observer_logs(
+                    eqp_id=values["eqp_id"],
+                    start_at=values["start_at"],
+                    end_at=values["end_at"],
+                    log_types=values["log_types"],
+                    selected_tip_groups=values["tip_groups"],
+                    question=values["question_clean"],
+                    conversation_summary=(
+                        summary.summary if summary is not None else ""
+                    ),
+                ):
+                    if stream_event.get("type") == "delta":
+                        yield _encode_observer_sse_event(
+                            "delta",
+                            {"item": stream_event.get("item")},
+                        )
+                    elif stream_event.get("type") == "done":
+                        yield _encode_observer_sse_event(
+                            "done",
+                            {"payload": stream_event.get("payload")},
+                        )
+            except GeneratorExit:
+                raise
+            except (ObserverOpenWebUIError, RuntimeError) as exc:
+                logger.warning(
+                    "Observer OpenWebUI stream 처리 실패: exception_type=%s",
+                    type(exc).__name__,
+                    exc_info=exc,
+                )
+                yield _encode_observer_sse_event("error", {"error": str(exc)})
+
+        response = StreamingHttpResponse(
+            event_stream(),
+            content_type="text/event-stream; charset=utf-8",
+        )
+        response["Cache-Control"] = "no-cache, no-transform"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
 
 class ObserverLogsView(_ObserverLogsByTypeView):

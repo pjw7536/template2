@@ -62,10 +62,15 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 1. Observer가 현재 설비, 기간, 활성 로그 유형, TIP 그룹을 전역 ChatWidget의 page context로 등록합니다.
 2. 위젯에는 연결된 EQP·기간과 `종합 분석` 빠른 질문이 표시되며, 사용자가 입력한 질문을 row 전체가 아닌 조회 조건과 함께 backend에 전달합니다.
 3. backend는 DB 조회 단계에서 EQP의 `DOWN`, `IDLE`, `LOCAL`과 TIP의 `L*_TIP`만 선별한 뒤 상태·comment별 통계로 압축합니다. TIP의 `DOING`, `CNT`는 제외됩니다.
-4. SPC/FDC/CTTTM/RACB/ESOP는 관심 상태 전 30분부터 후 10분까지의 사건만 raw context로 선별합니다.
-5. 현재 방·Observer context의 장기 요약과 구조화한 입력을 기존 `OPENWEBUI_*` 연결 및 `gpt-oss-120b` 모델에 전달하고, 기록된 원인과 추정 원인을 분리한 결과를 ChatWidget 메시지로 표시합니다.
-6. backend는 분석 입력에 존재하는 근거 ID만 결과에 남기고 실제 모델명·프롬프트·스키마 버전을 응답합니다.
-7. ChatWidget의 근거 ID를 누르면 분석 당시 설비·기간·로그 유형·TIP 그룹을 Observer에 복원하고, 해당 유형을 cursor로 찾은 뒤 Data Log 행을 선택·강조합니다.
+4. SPC/FDC/CTTTM/RACB/ESOP는 관심 상태 전 30분부터 후 10분까지의 사건만 raw context로 선별합니다. CTTTM은 `llm_core_summary` 핵심요약과 `llm_summary` 시간순 이벤트 정리를 별도 context로 보존합니다.
+5. 현재 방·Observer context의 장기 요약과 구조화한 입력을 기존 `OPENWEBUI_*` 연결 및 `gpt-oss-120b` 모델에 streaming으로 전달하고, 반복·집중 패턴과 시간적 연관성, 원인 일관성, 운영상 의미를 중요도순으로 분석합니다.
+6. 모델은 한 줄당 하나의 분석 블록인 NDJSON을 생성하고, backend는 완성된 블록부터 SSE `delta`로 전달합니다.
+7. backend는 분석 입력에 존재하는 근거 ID만 최종 결과에 남기고 실제 모델명·프롬프트·스키마 버전을 SSE `done` payload로 응답합니다.
+8. ChatWidget의 근거 ID를 누르면 분석 당시 설비·기간·로그 유형·TIP 그룹을 Observer에 복원하고, 해당 유형을 cursor로 찾은 뒤 Data Log 행을 선택·강조합니다.
+
+ChatWidget 본문에는 핵심 결론, 종합 설명, 최대 5개의 주요 분석과 결론에 영향을 주는 분석 한계만 표시합니다. 기록된 원인, 주변 로그 기반 후보, 근거 ID, 범위·입력·버전은 본문에서 반복하지 않고 기존 `분석 범위와 근거` 패널과 Data Log 이동 흐름에서 확인합니다.
+
+CTTTM `llm_summary`는 작업 내 사건 순서를 해석하는 배경지식으로만 사용합니다. 모델은 이 요약을 주변 raw event와 함께 분석하며, 요약 자체를 독립된 근거나 확정 원인으로 취급하지 않습니다.
 
 이 방식은 화면 row 수와 무관하게 분석 입력 크기를 제한합니다. source 조회 또는 prompt가 제한된 경우 응답 coverage와 limitations에 반영되며, prompt 축소는 section별 전후 건수로 확인할 수 있습니다. 근거 패널은 분석 당시 범위와 현재 범위의 일치 여부를 구분하고 모델·프롬프트 버전을 함께 표시합니다. Observer와 일반 Assistant 대화는 context key로 history와 장기 요약을 분리하므로 Observer 분석 내용이 일반 OpenWebUI 요청에 포함되지 않습니다.
 
