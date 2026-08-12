@@ -125,6 +125,12 @@ export const observerApi = {
       signal,
     }),
 
+  fetchEvidenceLog: ({ logKey, eqpId, evidenceId, from, to, signal }) =>
+    observerApiClient(`/logs/${logKey}/evidence`, {
+      params: { eqpId, evidenceId, from, to },
+      signal,
+    }),
+
   analyzeLogs: ({
     eqpId,
     from,

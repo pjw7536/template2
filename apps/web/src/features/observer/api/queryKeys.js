@@ -32,4 +32,12 @@ export const observerQueryKeys = {
     eqpId ?? null,
     detailId ?? null,
   ],
+  evidenceLog: (logKey, eqpId, evidenceId, range) => [
+    ...ROOT_KEY,
+    "evidence-log",
+    logKey,
+    eqpId ?? null,
+    evidenceId ?? null,
+    range ?? {},
+  ],
 }

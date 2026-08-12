@@ -28,6 +28,8 @@ from api.drone import selectors as drone_selectors
 
 from .serializers import encode_observer_cursor
 from .services import (
+    ANALYSIS_SOURCE_LIMIT,
+    build_observer_evidence_id,
     observer_period_start,
     serialize_observer_datetime as _serialize_event_time,
 )
@@ -2068,6 +2070,45 @@ def get_analysis_logs_by_type(
     )
 
 
+def get_analysis_evidence_log(
+    *,
+    eqp_id: str,
+    log_key: str,
+    evidence_id: str,
+    start_at: object,
+    end_at: object,
+) -> dict[str, object] | None:
+    """분석 당시 source 규칙으로 evidence ID에 일치하는 로그를 반환합니다.
+
+    입력:
+    - eqp_id/log_key: 분석 대상 설비와 로그 유형
+    - evidence_id: AI 분석 결과에 저장된 event ID
+    - start_at/end_at: 분석 당시 조회 범위
+
+    반환:
+    - dict | None: 일치하는 원본 로그 또는 미존재
+
+    부작용:
+    - 없음(DB read-only)
+    """
+
+    normalized_evidence_id = str(evidence_id or "").strip()
+    if not normalized_evidence_id:
+        return None
+
+    logs = get_analysis_logs_by_type(
+        eqp_id=eqp_id,
+        log_key=log_key,
+        start_at=start_at,
+        end_at=end_at,
+        limit=ANALYSIS_SOURCE_LIMIT,
+    )
+    for log in logs:
+        if build_observer_evidence_id(log) == normalized_evidence_id:
+            return log
+    return None
+
+
 def get_merged_logs(
     *,
     eqp_id: str,
@@ -2111,6 +2152,7 @@ def get_merged_logs(
 
 __all__ = [
     "get_equipment_info",
+    "get_analysis_evidence_log",
     "get_log_detail",
     "get_log_page",
     "get_log_pages",

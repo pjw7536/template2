@@ -25,6 +25,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/logs/page?eqpId=...&from=...&to=...` | 모든 유형의 첫 compact page를 한 번에 조회 |
 | GET | `/api/v1/observer/logs/<log_type>/page?eqpId=...&from=...&to=...` | 유형별 다음 compact page 조회 |
 | GET | `/api/v1/observer/logs/<log_type>/detail?eqpId=...&logId=...` | 선택한 로그의 전체 상세 조회 |
+| GET | `/api/v1/observer/logs/<log_type>/evidence?eqpId=...&evidenceId=...&from=...&to=...` | AI 분석에 사용된 근거 로그 단건 복원 |
 | GET | `/api/v1/observer/logs/eqp?eqpId=...` | EQP 로그 |
 | GET | `/api/v1/observer/logs/tip?eqpId=...` | TIP 로그 |
 | GET | `/api/v1/observer/logs/spc-interlock?eqpId=...` | SPC interlock 이력 |
@@ -51,6 +52,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - page API의 `pageSize` 기본값은 250, 최대값은 1000입니다. 다음 page는 응답의 opaque `nextCursor`를 같은 EQP·기간·로그 유형 요청에 그대로 전달합니다.
 - `/logs/page`는 유형별 `items`, `page`, `error`를 반환합니다. 일부 source만 실패하면 성공 유형을 유지한 200 응답을 반환하고, 전부 실패하면 503을 반환합니다.
 - page 목록은 comment preview와 `detailId`만 포함하며, 전체 comment·defect map·CTTTM summary 같은 대형 필드는 `/detail`에서 선택 시 조회합니다.
+- `/evidence`는 분석 당시와 같은 유형별 source filter와 5,000건 상한을 적용해 `evidenceId`와 일치하는 한 건만 반환합니다. frontend은 현재 resident page에 근거가 없을 때 이 endpoint로 복원해 목록과 상세에 표시합니다.
 - CTTTM 로그의 `summary`는 `ct_process_comment.llm_summary` 값을 사용합니다.
 - `from`, `to`는 `YYYY-MM-DD` 또는 datetime 문자열을 받습니다. 날짜와 offset 없는 datetime은 `Asia/Seoul`로 해석하며, offset이 있는 datetime은 같은 instant의 `Asia/Seoul` 시각으로 변환합니다.
 - 모든 Observer 로그의 `eventTime`은 `Asia/Seoul` 기준 `+09:00` offset을 포함한 ISO datetime으로 반환합니다.

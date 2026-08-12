@@ -54,6 +54,15 @@ export function getObserverEvidenceNavigation(searchParams) {
   };
 }
 
+export function clearObserverEvidenceSearch(search) {
+  const params = new URLSearchParams(search);
+  params.delete(EVIDENCE_ID_PARAM);
+  params.delete(LOG_TYPE_PARAM);
+  params.delete(TIP_GROUP_PARAM);
+  const normalized = params.toString();
+  return normalized ? `?${normalized}` : "";
+}
+
 export function buildEvidenceTypeFilters(logTypes) {
   const normalizedLogTypes = new Set(normalizeList(logTypes));
   if (!normalizedLogTypes.size) return { ...DEFAULT_TYPE_FILTERS };

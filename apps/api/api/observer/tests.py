@@ -833,6 +833,38 @@ class ObserverEndpointTests(TestCase):
             log_id="7",
         )
 
+    def test_observer_evidence_log_restores_analysis_source(self) -> None:
+        """근거 endpoint가 분석 범위와 evidence ID를 selector에 전달합니다."""
+
+        payload = {
+            "id": "EQP-100",
+            "logType": "EQP",
+            "eventTime": "2026-08-01T10:00:00+09:00",
+        }
+        with patch(
+            f"{OBSERVER_VIEW_SELECTORS}.get_analysis_evidence_log",
+            return_value=payload,
+        ) as selector:
+            response = self.client.get(
+                reverse("observer-evidence-log", kwargs={"log_key": "eqp"}),
+                {
+                    "eqpId": "eqp-alpha",
+                    "evidenceId": "EQP:EQP-100",
+                    "from": "2026-08-01",
+                    "to": "2026-08-03",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), payload)
+        selector.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            log_key="eqp",
+            evidence_id="EQP:EQP-100",
+            start_at="2026-08-01T00:00:00+09:00",
+            end_at="2026-08-03T23:59:59.999999+09:00",
+        )
+
     def test_observer_log_detail_serializes_times_in_seoul(self) -> None:
         """상세 응답의 event와 갱신 시각을 Asia/Seoul로 직렬화합니다."""
 
@@ -1798,6 +1830,35 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(
             tip_selector.call_args.kwargs["event_type_pattern"],
             r"^L.*_TIP$",
+        )
+
+    def test_analysis_evidence_selector_returns_matching_stable_id(self) -> None:
+        """근거 selector는 분석 source의 stable event ID로 한 건을 복원합니다."""
+
+        logs = [
+            {"id": "EQP-99", "logType": "EQP"},
+            {"id": "EQP-100", "logType": "EQP", "comment": "근거"},
+        ]
+        with patch.object(
+            selectors,
+            "get_analysis_logs_by_type",
+            return_value=logs,
+        ) as source:
+            result = selectors.get_analysis_evidence_log(
+                eqp_id="EQP-ALPHA",
+                log_key="eqp",
+                evidence_id="EQP:EQP-100",
+                start_at=self.start_at,
+                end_at=self.end_at,
+            )
+
+        self.assertEqual(result, logs[1])
+        source.assert_called_once_with(
+            eqp_id="EQP-ALPHA",
+            log_key="eqp",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            limit=5000,
         )
 
     def test_analysis_context_filters_eqp_and_tip_target_statuses(self) -> None:

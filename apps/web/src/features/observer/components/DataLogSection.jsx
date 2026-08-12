@@ -42,7 +42,7 @@ export default function DataLogSection({
             <div
               className={[
                 "mb-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs",
-                evidenceNavigationStatus.status === "not_found"
+                ["not_found", "error"].includes(evidenceNavigationStatus.status)
                   ? "border-destructive/30 bg-destructive/10 text-destructive"
                   : "border-primary/20 bg-primary/5 text-foreground",
               ].join(" ")}
@@ -59,9 +59,20 @@ export default function DataLogSection({
                 {evidenceNavigationStatus.status === "loading"
                   ? `AI 분석 근거 로그를 찾는 중입니다: ${evidenceNavigationStatus.evidenceId}`
                   : evidenceNavigationStatus.status === "found"
-                    ? `AI 분석 근거 로그를 선택했습니다: ${evidenceNavigationStatus.evidenceId}`
-                    : `현재 보존 한도에서 AI 분석 근거 로그를 찾지 못했습니다: ${evidenceNavigationStatus.evidenceId}`}
+                    ? `AI 분석 근거 로그를 열었습니다: ${evidenceNavigationStatus.evidenceId}`
+                    : evidenceNavigationStatus.status === "error"
+                      ? `AI 분석 근거 로그 조회에 실패했습니다: ${evidenceNavigationStatus.evidenceId}`
+                      : `원본 데이터에서 AI 분석 근거 로그를 찾지 못했습니다: ${evidenceNavigationStatus.evidenceId}`}
               </span>
+              {evidenceNavigationStatus.status === "error" ? (
+                <button
+                  type="button"
+                  onClick={() => evidenceNavigationStatus.retry?.()}
+                  className="ml-auto shrink-0 rounded border border-destructive/30 px-2 py-1 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  재시도
+                </button>
+              ) : null}
             </div>
           ) : null}
           {hasLogErrors ? (

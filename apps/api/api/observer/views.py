@@ -694,6 +694,51 @@ class ObserverLogDetailView(APIView):
         return JsonResponse(payload)
 
 
+class ObserverEvidenceLogView(APIView):
+    """AI 분석에 사용된 근거 로그 한 건을 복원합니다."""
+
+    def get(
+        self,
+        request: HttpRequest,
+        log_key: str,
+        *args: object,
+        **kwargs: object,
+    ) -> JsonResponse:
+        """분석 당시 설비·범위·event ID가 일치하는 로그를 반환합니다.
+
+        예시 요청:
+        - GET /api/v1/observer/logs/eqp/evidence?eqpId=EQP-1&from=2026-08-01&to=2026-08-03&evidenceId=EQP:1
+
+        snake/camel 호환:
+        - eqpId/evidenceId/from/to만 지원합니다.
+        """
+
+        type_key = str(log_key or "").strip().lower()
+        if type_key not in observer_serializers.OBSERVER_LOG_TYPES:
+            return JsonResponse({"error": "unsupported_log_type"}, status=404)
+
+        query = observer_serializers.ObserverEvidenceLogQuerySerializer(
+            data=request.GET
+        )
+        if not query.is_valid():
+            return JsonResponse(
+                {"error": "invalid_query", "details": query.errors},
+                status=400,
+            )
+
+        values = query.validated_data
+        payload = selectors.get_analysis_evidence_log(
+            eqp_id=values["eqp_id"],
+            log_key=type_key,
+            evidence_id=values["evidence_id"],
+            start_at=values["start_at"],
+            end_at=values["end_at"],
+        )
+        if payload is None:
+            return JsonResponse({"error": "evidence_log_not_found"}, status=404)
+        return JsonResponse(payload)
+
+
 class ObserverAnalysisView(APIView):
     """현재 Observer 조회 조건을 OpenWebUI로 종합 분석합니다."""
 

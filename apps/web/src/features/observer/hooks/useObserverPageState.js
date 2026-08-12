@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   DEFAULT_TYPE_FILTERS,
@@ -15,7 +15,7 @@ import {
   isObserverEquipmentPath,
 } from "../utils/observerLocation";
 import {
-  buildEvidenceTypeFilters,
+  clearObserverEvidenceSearch,
   getObserverEvidenceNavigation,
   matchesObserverEvidence,
 } from "../utils/observerEvidence";
@@ -25,7 +25,12 @@ import { useObserverLogs } from "./useObserverLogs";
 import { useObserverLogDetailQuery } from "./useObserverLogDetailQuery";
 import { useObserverAssistantContext } from "./useObserverAssistantContext";
 import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
-import { getEnabledLogKeys } from "../utils/logPagination";
+import {
+  getEnabledLogKeys,
+  OBSERVER_LOG_CONFIG,
+} from "../utils/logPagination";
+import { transformLogsToTableData } from "../utils/dataTransformers";
+import { useObserverEvidenceLogQuery } from "./useObserverEvidenceLogQuery";
 
 /**
  * ObserverPage에서 흩어져 있던 상태/파생 데이터를 한 곳에 모아둔 훅.
@@ -46,7 +51,6 @@ export function useObserverPageState(params) {
     setPrcGroup,
     setEqp,
     selectedRow,
-    source: selectionSource,
     setSelectedRow,
     resetSelection,
   } = useObserverSelectionStore();
@@ -63,11 +67,10 @@ export function useObserverPageState(params) {
     () => getObserverEvidenceNavigation(new URLSearchParams(location.search)),
     [location.search]
   );
-  const [typeFilters, setTypeFilters] = useState(() =>
-    evidenceNavigation?.logTypes?.length
-      ? buildEvidenceTypeFilters(evidenceNavigation.logTypes)
-      : { ...DEFAULT_TYPE_FILTERS }
-  );
+  const appliedEvidenceSelectionKeyRef = useRef("");
+  const [typeFilters, setTypeFilters] = useState(() => ({
+    ...DEFAULT_TYPE_FILTERS,
+  }));
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [logRange, setLogRange] = useState(() => {
     const initialRange = getLogRangeFromSearchParams(
@@ -82,8 +85,15 @@ export function useObserverPageState(params) {
 
   useEffect(() => {
     if (!evidenceNavigation) return;
-    if (evidenceNavigation.logTypes.length) {
-      setTypeFilters(buildEvidenceTypeFilters(evidenceNavigation.logTypes));
+    const evidenceFilterType = OBSERVER_LOG_CONFIG.find(
+      ({ logKey }) => logKey === evidenceNavigation.logKey
+    )?.filterType;
+    if (evidenceFilterType) {
+      setTypeFilters((currentFilters) =>
+        currentFilters[evidenceFilterType]
+          ? currentFilters
+          : { ...currentFilters, [evidenceFilterType]: true }
+      );
     }
     if (evidenceNavigation.tipGroups.length) {
       setSelectedTipGroups(evidenceNavigation.tipGroups);
@@ -92,6 +102,7 @@ export function useObserverPageState(params) {
 
   // URL 파라미터 검증 및 상태 반영 (과도한 파일 분리를 줄이기 위해 이 훅 안에서 처리)
   const [validationError, setValidationError] = useState(null);
+  const [appliedEquipmentRouteId, setAppliedEquipmentRouteId] = useState("");
   const shouldValidateEqpOnly = Boolean(params.eqpId && !params.lineId);
   const {
     data: equipmentInfo,
@@ -167,6 +178,7 @@ export function useObserverPageState(params) {
   useEffect(() => {
     if (!shouldValidateEqpOnly) {
       setValidationError(null);
+      setAppliedEquipmentRouteId("");
       return;
     }
 
@@ -176,6 +188,7 @@ export function useObserverPageState(params) {
       setSdwt(equipmentInfo.sdwtId);
       setPrcGroup(equipmentInfo.prcGroup);
       setEqp(params.eqpId);
+      setAppliedEquipmentRouteId(params.eqpId);
       return;
     }
 
@@ -204,7 +217,10 @@ export function useObserverPageState(params) {
 
   // 선택한 eqpId와 URL을 동기화
   useEffect(() => {
-    if (isValidating || !hasValidationResult) return;
+    const isEquipmentRoutePending = Boolean(
+      params.eqpId && appliedEquipmentRouteId !== params.eqpId
+    );
+    if (isValidating || !hasValidationResult || isEquipmentRoutePending) return;
 
     const currentPath = location.pathname;
     const isParamRoute = isObserverEquipmentPath(currentPath);
@@ -215,7 +231,7 @@ export function useObserverPageState(params) {
         navigate(
           {
             pathname: newPath,
-            search: location.search,
+            search: clearObserverEvidenceSearch(location.search),
             hash: location.hash,
           },
           { replace: true }
@@ -225,7 +241,7 @@ export function useObserverPageState(params) {
       navigate(
         {
           pathname: getObserverEquipmentPath(null),
-          search: location.search,
+          search: clearObserverEvidenceSearch(location.search),
           hash: location.hash,
         },
         { replace: true }
@@ -233,12 +249,14 @@ export function useObserverPageState(params) {
     }
   }, [
     eqpId,
+    appliedEquipmentRouteId,
     hasValidationResult,
     isValidating,
     location.hash,
     location.pathname,
     location.search,
     navigate,
+    params.eqpId,
   ]);
 
   useEffect(() => {
@@ -263,7 +281,7 @@ export function useObserverPageState(params) {
     selectedTipGroups,
     logQueryOptions
   );
-  const evidenceLog = useMemo(
+  const residentEvidenceLog = useMemo(
     () =>
       evidenceNavigation
         ? logs.mergedLogs.find((log) =>
@@ -272,37 +290,65 @@ export function useObserverPageState(params) {
         : null,
     [evidenceNavigation, logs.mergedLogs]
   );
+  const isEvidenceEquipmentPending = Boolean(
+    evidenceNavigation && params.eqpId && eqpId !== params.eqpId
+  );
+  const evidenceLogQuery = useObserverEvidenceLogQuery(
+    isEvidenceEquipmentPending ? "" : eqpId,
+    evidenceNavigation,
+    { enabled: Boolean(evidenceNavigation && !residentEvidenceLog) }
+  );
+  const fetchedEvidenceLog = useMemo(() => {
+    if (!evidenceLogQuery.data) return null;
+    return {
+      ...evidenceLogQuery.data,
+      detailId:
+        evidenceLogQuery.data.detailId ?? evidenceLogQuery.data.sourceId,
+    };
+  }, [evidenceLogQuery.data]);
+  const evidenceLog = residentEvidenceLog || fetchedEvidenceLog;
+  const visibleTableData = useMemo(() => {
+    if (!fetchedEvidenceLog || residentEvidenceLog) return logs.tableData;
+    const [evidenceRow] = transformLogsToTableData(
+      [fetchedEvidenceLog],
+      { [fetchedEvidenceLog.logType]: true },
+      ["__ALL__"]
+    );
+    if (!evidenceRow) return logs.tableData;
+    return [
+      evidenceRow,
+      ...logs.tableData.filter(
+        (row) => String(row.id) !== String(evidenceRow.id)
+      ),
+    ];
+  }, [fetchedEvidenceLog, logs.tableData, residentEvidenceLog]);
   useEffect(() => {
-    if (!evidenceNavigation || evidenceLog || logs.logsLoading) return;
-    if (
-      evidenceNavigation.logKey &&
-      logs.hasMoreByType[evidenceNavigation.logKey] &&
-      !logs.loadingMoreTypes.has(evidenceNavigation.logKey) &&
-      !logs.residentLimitReached
-    ) {
-      logs.loadMoreType(evidenceNavigation.logKey);
-    }
-  }, [evidenceLog, evidenceNavigation, logs]);
-  useEffect(() => {
-    if (!evidenceLog) return;
-    if (
-      String(selectedRow) === String(evidenceLog.id) &&
-      selectionSource === "assistant"
-    ) {
+    if (!evidenceNavigation) {
+      appliedEvidenceSelectionKeyRef.current = "";
       return;
     }
+    if (!evidenceLog) return;
+
+    const evidenceSelectionKey = `${eqpId}:${evidenceNavigation.evidenceId}:${evidenceLog.id}`;
+    if (appliedEvidenceSelectionKeyRef.current === evidenceSelectionKey) return;
+
+    // 근거 링크 진입 시에만 자동 선택하고 이후 사용자 선택은 유지합니다.
+    appliedEvidenceSelectionKeyRef.current = evidenceSelectionKey;
     setSelectedRow(evidenceLog.id, "assistant");
-  }, [evidenceLog, selectedRow, selectionSource, setSelectedRow]);
+  }, [eqpId, evidenceLog, evidenceNavigation, setSelectedRow]);
   const evidenceNavigationStatus = evidenceNavigation
     ? {
         evidenceId: evidenceNavigation.evidenceId,
         status: evidenceLog
           ? "found"
-          : logs.logsLoading ||
-              logs.loadingMoreTypes.has(evidenceNavigation.logKey) ||
-              logs.hasMoreByType[evidenceNavigation.logKey]
+          : isEvidenceEquipmentPending ||
+              logs.logsLoading ||
+              evidenceLogQuery.isFetching
             ? "loading"
-            : "not_found",
+            : evidenceLogQuery.isError && evidenceLogQuery.error?.status !== 404
+              ? "error"
+              : "not_found",
+        retry: evidenceLogQuery.refetch,
       }
     : null;
   const analysisScope = useMemo(
@@ -317,6 +363,9 @@ export function useObserverPageState(params) {
   useObserverAssistantContext(analysisScope);
   const selectedCompactLog =
     logs.mergedLogs.find((log) => String(log.id) === String(selectedRow)) ||
+    (evidenceLog && String(evidenceLog.id) === String(selectedRow)
+      ? evidenceLog
+      : null) ||
     null;
   const selectedLogDetail = useObserverLogDetailQuery(
     eqpId,
@@ -358,7 +407,10 @@ export function useObserverPageState(params) {
       setLogRange: handleLogRangeChange,
     },
     validation: { isValidating, validationError },
-    logs,
+    logs: {
+      ...logs,
+      tableData: visibleTableData,
+    },
     selectedLog,
     selectedLogDetail: {
       isLoading:

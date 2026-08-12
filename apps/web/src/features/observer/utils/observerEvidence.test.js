@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEvidenceTypeFilters,
   buildObserverEvidenceHref,
+  clearObserverEvidenceSearch,
   getObserverEvidenceNavigation,
   getObserverScopeSignature,
   matchesObserverEvidence,
@@ -47,6 +48,22 @@ describe("Observer AI 근거 이동", () => {
         "SPC_ITL:23"
       )
     ).toBe(true);
+  });
+
+  it("호기 전환용 search에서 근거 query만 제거한다", () => {
+    const search = clearObserverEvidenceSearch(
+      "?from=2026-08-01&to=2026-08-03&evidenceId=EQP%3A1" +
+        "&analysisLogType=eqp&analysisLogType=tip" +
+        "&analysisTipGroup=GROUP-A&view=compact"
+    );
+    const params = new URLSearchParams(search);
+
+    expect(params.get("from")).toBe("2026-08-01");
+    expect(params.get("to")).toBe("2026-08-03");
+    expect(params.get("view")).toBe("compact");
+    expect(params.has("evidenceId")).toBe(false);
+    expect(params.has("analysisLogType")).toBe(false);
+    expect(params.has("analysisTipGroup")).toBe(false);
   });
 
   it("분석 log type만 활성화하고 scope 비교 순서를 정규화한다", () => {

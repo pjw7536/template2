@@ -147,7 +147,7 @@ def _event_time(log: Mapping[str, object]) -> datetime | None:
         return None
 
 
-def _event_id(log: Mapping[str, object]) -> str:
+def build_observer_evidence_id(log: Mapping[str, object]) -> str:
     """OpenWebUI 근거 연결에 사용할 안정적인 event ID를 반환합니다."""
 
     log_type = _text(log.get("logType")) or "LOG"
@@ -212,7 +212,7 @@ def _top_cause_rows(
             "count": len(logs),
             "firstTime": _serialize_time(min(filter(None, map(_event_time, logs)), default=None)),
             "lastTime": _serialize_time(max(filter(None, map(_event_time, logs)), default=None)),
-            "evidenceIds": [_event_id(log) for log in logs[:5]],
+            "evidenceIds": [build_observer_evidence_id(log) for log in logs[:5]],
         }
         for comment, logs in ranked
     ]
@@ -241,7 +241,7 @@ def _build_eqp_summary(
             causes[cause].append(log)
             targets.append(
                 {
-                    "eventId": _event_id(log),
+                    "eventId": build_observer_evidence_id(log),
                     "eventTime": _serialize_time(_event_time(log)),
                     "logType": "EQP",
                     "status": status,
@@ -301,7 +301,7 @@ def _build_tip_summary(
             causes[cause].append(log)
             targets.append(
                 {
-                    "eventId": _event_id(log),
+                    "eventId": build_observer_evidence_id(log),
                     "eventTime": _serialize_time(_event_time(log)),
                     "logType": "TIP",
                     "status": status,
@@ -366,7 +366,7 @@ def _context_row(log: Mapping[str, object]) -> list[object]:
     log_type = _text(log.get("logType"))
     is_ctttm = log_type.upper() == "CTTTM"
     values = {
-        "eventId": _event_id(log),
+        "eventId": build_observer_evidence_id(log),
         "eventTime": _serialize_time(_event_time(log)),
         "logType": log_type,
         "eventType": _text(log.get("eventType")),
@@ -1247,6 +1247,7 @@ __all__ = [
     "build_observer_analysis_context",
     "build_observer_analysis_messages",
     "build_observer_stream_analysis_messages",
+    "build_observer_evidence_id",
     "normalize_observer_analysis_result",
     "stream_analyze_observer_logs",
 ]

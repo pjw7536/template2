@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈 설명: Observer 대용량 조회 query를 검증합니다.
-# - 주요 클래스: ObserverLogPageQuerySerializer, ObserverLogDetailQuerySerializer
+# - 주요 클래스: ObserverLogPageQuerySerializer, ObserverEvidenceLogQuerySerializer
 # - 불변 조건: cursor는 요청 범위와 log type이 일치해야 합니다.
 # =============================================================================
 
@@ -186,6 +186,51 @@ class ObserverLogDetailQuerySerializer(serializers.Serializer):
         if not normalized:
             raise serializers.ValidationError("logId가 필요합니다.")
         return normalized
+
+
+class ObserverEvidenceLogQuerySerializer(serializers.Serializer):
+    """AI 분석 근거 단건 복원 query를 검증합니다."""
+
+    eqpId = serializers.CharField(max_length=100)
+    evidenceId = serializers.CharField(max_length=1000)
+    from_value = serializers.CharField(max_length=64)
+    to = serializers.CharField(max_length=64)
+
+    def to_internal_value(self, data: Any) -> dict[str, Any]:
+        """HTTP `from` query를 Python 내부 필드로 옮깁니다."""
+
+        mutable_data = data.copy()
+        mutable_data["from_value"] = data.get("from")
+        return super().to_internal_value(mutable_data)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """설비, evidence ID, 분석 날짜 범위를 정규화합니다."""
+
+        start_at = _parse_boundary(attrs["from_value"], is_end=False)
+        end_at = _parse_boundary(attrs["to"], is_end=True)
+        if start_at > end_at:
+            raise serializers.ValidationError(
+                {"from": "from은 to보다 늦을 수 없습니다."}
+            )
+        if (end_at - start_at).days >= MAX_OBSERVER_QUERY_DAYS:
+            raise serializers.ValidationError(
+                {"from": f"조회 기간은 최대 {MAX_OBSERVER_QUERY_DAYS}일입니다."}
+            )
+
+        eqp_id = _normalize_id(attrs["eqpId"])
+        evidence_id = str(attrs["evidenceId"] or "").strip()
+        if not eqp_id:
+            raise serializers.ValidationError({"eqpId": "eqpId가 필요합니다."})
+        if not evidence_id:
+            raise serializers.ValidationError(
+                {"evidenceId": "evidenceId가 필요합니다."}
+            )
+
+        attrs["eqp_id"] = eqp_id
+        attrs["evidence_id"] = evidence_id
+        attrs["start_at"] = start_at.isoformat()
+        attrs["end_at"] = end_at.isoformat()
+        return attrs
 
 
 class ObserverAnalysisRequestSerializer(serializers.Serializer):
