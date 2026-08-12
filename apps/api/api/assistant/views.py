@@ -14,6 +14,7 @@ from uuid import UUID
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
 
 from api.common.services import (
@@ -74,6 +75,13 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 OPENWEBUI_MEMORY_ROOM_PREFIX = "openwebui-"
+
+
+class _AssistantEventStreamRenderer(JSONRenderer):
+    """DRF 콘텐츠 협상에서 SSE 응답 media type을 허용합니다."""
+
+    media_type = "text/event-stream"
+    format = "sse"
 
 
 def _conversation_not_found_response() -> JsonResponse:
@@ -500,6 +508,8 @@ class AssistantOpenWebUIChatView(APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 class AssistantOpenWebUIStreamView(APIView):
     """일반 OpenWebUI 답변을 SSE delta로 전달합니다."""
+
+    renderer_classes = [JSONRenderer, _AssistantEventStreamRenderer]
 
     def post(
         self,

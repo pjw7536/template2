@@ -836,10 +836,12 @@ class AssistantOpenWebUIChatTests(TestCase):
                     }
                 ),
                 content_type="application/json",
+                HTTP_ACCEPT="text/event-stream",
             )
             body = b"".join(response.streaming_content).decode("utf-8")
 
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("text/event-stream"))
         self.assertEqual(response["X-Accel-Buffering"], "no")
         self.assertIn("event: meta", body)
         self.assertIn('data: {"content":"첫 "}', body)
