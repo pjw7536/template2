@@ -1881,6 +1881,52 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(context["coverage"]["eqpTargetCount"], 1)
         self.assertEqual(context["coverage"]["tipTargetCount"], 1)
 
+    def test_analysis_context_uses_eqp_comment_before_first_delimiter(self) -> None:
+        """EQP 기록 원인은 첫 !@! 앞부분만 사용해 집계합니다."""
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["eqp"],
+            selected_tip_groups=["__ALL__"],
+            logs_by_type={
+                "eqp": [
+                    {
+                        "id": "EQP-DOWN-1",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                        "comment": "Pressure alarm !@! 작업자 메모 !@! 추가 정보",
+                    },
+                    {
+                        "id": "EQP-DOWN-2",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T11:00:00+09:00",
+                        "comment": "Pressure alarm!@!다른 메모",
+                    },
+                    {
+                        "id": "EQP-DOWN-3",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T12:00:00+09:00",
+                        "comment": "구분자 없는 원인",
+                    },
+                ]
+            },
+        )
+
+        causes = context["eqpStatusStatistics"][0]["recordedCauses"]
+        self.assertEqual(
+            [(cause["comment"], cause["count"]) for cause in causes],
+            [("Pressure alarm", 2), ("구분자 없는 원인", 1)],
+        )
+        self.assertEqual(
+            [event["comment"] for event in context["targetEvents"]],
+            ["Pressure alarm", "Pressure alarm", "구분자 없는 원인"],
+        )
+
     def test_analysis_context_honors_selected_tip_group(self) -> None:
         """선택하지 않은 TIP group의 L*_TIP 상태는 분석에서 제외합니다."""
 

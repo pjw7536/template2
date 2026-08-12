@@ -162,6 +162,13 @@ def _status(log: Mapping[str, object]) -> str:
     return _text(log.get("eventType")).upper()
 
 
+def _eqp_comment(log: Mapping[str, object]) -> str:
+    """EQP comment에서 첫 구분자 앞의 기록 원인만 반환합니다."""
+
+    raw_comment = str(log.get("comment") or "").split("!@!", 1)[0]
+    return _text(raw_comment, max_chars=MAX_CONTEXT_TEXT_CHARS) or "원인 미기록"
+
+
 def _tip_group_key(log: Mapping[str, object]) -> str:
     """프론트 TIP filter와 동일한 line/process/step/PPID 키를 생성합니다."""
 
@@ -230,7 +237,7 @@ def _build_eqp_summary(
         status_logs = sorted(groups[status], key=lambda log: _event_time(log) or datetime.min)
         causes: dict[str, list[Mapping[str, object]]] = defaultdict(list)
         for log in status_logs:
-            cause = _text(log.get("comment"), max_chars=MAX_CONTEXT_TEXT_CHARS) or "원인 미기록"
+            cause = _eqp_comment(log)
             causes[cause].append(log)
             targets.append(
                 {
