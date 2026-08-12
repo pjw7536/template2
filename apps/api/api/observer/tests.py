@@ -31,6 +31,7 @@ from .services.analysis import (
 )
 from .services.openwebui import (
     ObserverOpenWebUIConfig,
+    ObserverOpenWebUIError,
     request_observer_analysis,
     stream_observer_analysis,
 )
@@ -2244,13 +2245,18 @@ class ObserverAnalysisTests(TestCase):
             model="gpt-oss-120b",
         )
         stream_chunks = [
-            '{"type":"headline","text":"DOWN 반복"}\n',
+            "```ndjson\n",
+            "{\n",
+            '"type":"headline",\n',
+            '"text":"DOWN 반복"\n',
+            "}\n",
             '{"type":"summary","text":"동일 상태가 반복되었습니다."}\n',
             '{"type":"finding","category":"EQP","target":"DOWN",',
             '"assessment":"반복 발생","recordedCauses":[],',
             '"inferredCauses":[],"evidenceIds":["EQP:1","EQP:UNKNOWN"]}\n',
             '{"type":"recommendedChecks","values":[]}\n',
-            '{"type":"limitations","values":[]}',
+            '{"type":"limitations","values":[]}\n',
+            "```",
         ]
         with (
             patch.object(selectors, "get_analysis_logs_by_type", return_value=[]),
@@ -2296,6 +2302,55 @@ class ObserverAnalysisTests(TestCase):
             payload["meta"]["promptVersion"],
             "observer-analysis-stream-prompt-v1",
         )
+
+    def test_stream_analysis_rejects_incomplete_json_at_completion(self) -> None:
+        """upstream 종료 시에도 완성되지 않은 JSON은 오류로 남깁니다."""
+
+        context = {
+            "scope": {"eqpId": "EQP-ALPHA"},
+            "targetEvents": [],
+            "contextEvents": {"rows": []},
+            "coverage": {
+                "sourceMayBeTruncated": [],
+                "sourceErrors": {},
+                "promptTruncated": False,
+                "eqpTargetCount": 0,
+                "tipTargetCount": 0,
+                "contextIncludedCount": 0,
+            },
+        }
+        config = ObserverOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="gpt-oss-120b",
+        )
+        with (
+            patch(
+                "api.observer.services.analysis.build_observer_analysis_context",
+                return_value=context,
+            ),
+            patch(
+                "api.observer.services.analysis.ObserverOpenWebUIConfig.from_settings",
+                return_value=config,
+            ),
+            patch(
+                "api.observer.services.analysis.stream_observer_analysis",
+                return_value=iter(['{"type":"headline","text":"미완성"']),
+            ),
+        ):
+            with self.assertRaisesMessage(
+                ObserverOpenWebUIError,
+                "OpenWebUI stream 분석 응답이 NDJSON 형식이 아닙니다.",
+            ):
+                list(
+                    stream_analyze_observer_logs(
+                        eqp_id="EQP-ALPHA",
+                        start_at=self.start_at,
+                        end_at=self.end_at,
+                        log_types=["eqp"],
+                        selected_tip_groups=["__ALL__"],
+                        question="분석해 주세요.",
+                    )
+                )
 
     def test_analysis_stream_endpoint_returns_sse_event_order(self) -> None:
         """Observer stream endpoint는 meta, delta, done 순서의 SSE를 반환합니다."""

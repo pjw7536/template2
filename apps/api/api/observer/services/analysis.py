@@ -842,19 +842,63 @@ def _normalize_stream_analysis_item(payload: object) -> dict[str, object]:
     )
 
 
-def _parse_stream_analysis_line(line: str) -> dict[str, object] | None:
-    """완성된 NDJSON 한 줄을 분석 item으로 변환합니다."""
+def _parse_stream_analysis_buffer(
+    buffer: str,
+    *,
+    final: bool = False,
+) -> tuple[list[dict[str, object]], str]:
+    """stream buffer에서 완성된 JSON 객체만 순서대로 소비합니다.
 
-    normalized_line = line.strip()
-    if not normalized_line or normalized_line.startswith("```"):
-        return None
-    try:
-        payload = json.loads(normalized_line)
-    except json.JSONDecodeError as exc:
-        raise ObserverOpenWebUIError(
-            "OpenWebUI stream 분석 응답이 NDJSON 형식이 아닙니다."
-        ) from exc
-    return _normalize_stream_analysis_item(payload)
+    OpenWebUI가 NDJSON 객체를 여러 줄로 나누거나 Markdown code fence로
+    감싸도 객체 종료를 JSON decoder로 판별합니다. 완성 전 buffer는
+    다음 chunk와 합치도록 남기고, upstream이 종료된 final parse에서만
+    비정상 JSON을 오류로 확정합니다.
+    """
+
+    items: list[dict[str, object]] = []
+    remaining = buffer
+    decoder = json.JSONDecoder()
+    fence_pattern = re.compile(r"```(?:json|ndjson)?", re.IGNORECASE)
+
+    while True:
+        candidate = remaining.lstrip()
+        if not candidate:
+            return items, ""
+
+        if candidate.startswith("```"):
+            line_end = candidate.find("\n")
+            if line_end < 0:
+                if final and fence_pattern.fullmatch(candidate.strip()):
+                    return items, ""
+                return items, candidate
+            fence_line = candidate[:line_end].strip()
+            if not fence_pattern.fullmatch(fence_line):
+                if not final:
+                    return items, candidate
+                raise ObserverOpenWebUIError(
+                    "OpenWebUI stream 분석 응답이 NDJSON 형식이 아닙니다."
+                )
+            remaining = candidate[line_end + 1 :]
+            continue
+
+        if not candidate.startswith("{"):
+            if not final:
+                return items, candidate
+            raise ObserverOpenWebUIError(
+                "OpenWebUI stream 분석 응답이 NDJSON 형식이 아닙니다."
+            )
+
+        try:
+            payload, end_index = decoder.raw_decode(candidate)
+        except json.JSONDecodeError as exc:
+            if not final:
+                return items, candidate
+            raise ObserverOpenWebUIError(
+                "OpenWebUI stream 분석 응답이 NDJSON 형식이 아닙니다."
+            ) from exc
+
+        items.append(_normalize_stream_analysis_item(payload))
+        remaining = candidate[end_index:]
 
 
 def _build_analysis_from_stream_items(
@@ -1146,7 +1190,7 @@ def stream_analyze_observer_logs(
     )
     openwebui_config = ObserverOpenWebUIConfig.from_settings()
     stream_items: list[dict[str, object]] = []
-    line_buffer = ""
+    content_buffer = ""
 
     for content_delta in stream_observer_analysis(
         messages=build_observer_stream_analysis_messages(
@@ -1156,19 +1200,21 @@ def stream_analyze_observer_logs(
         ),
         config=openwebui_config,
     ):
-        line_buffer = f"{line_buffer}{content_delta}".replace("\r\n", "\n")
-        while "\n" in line_buffer:
-            raw_line, line_buffer = line_buffer.split("\n", 1)
-            item = _parse_stream_analysis_line(raw_line)
-            if item is None:
-                continue
+        content_buffer = f"{content_buffer}{content_delta}".replace("\r\n", "\n")
+        parsed_items, content_buffer = _parse_stream_analysis_buffer(
+            content_buffer
+        )
+        for item in parsed_items:
             stream_items.append(item)
             yield {"type": "delta", "item": item}
 
-    trailing_item = _parse_stream_analysis_line(line_buffer)
-    if trailing_item is not None:
-        stream_items.append(trailing_item)
-        yield {"type": "delta", "item": trailing_item}
+    trailing_items, content_buffer = _parse_stream_analysis_buffer(
+        content_buffer,
+        final=True,
+    )
+    for item in trailing_items:
+        stream_items.append(item)
+        yield {"type": "delta", "item": item}
     if not any(item.get("type") == "headline" for item in stream_items):
         raise ObserverOpenWebUIError("OpenWebUI stream 분석 headline이 비어 있습니다.")
 
