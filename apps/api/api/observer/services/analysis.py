@@ -62,7 +62,8 @@ ANALYSIS_SYSTEM_PROMPT = """당신은 반도체 설비 Observer 로그 분석기
 8. recordedCauses는 입력 comment에 직접 기록된 사실만, inferredCauses는 시간상 인접한 SPC/FDC/CTTTM/RACB/ESOP 기반 후보만 metadata로 작성하세요.
 9. 추정에는 입력에 존재하는 evidenceIds를 포함하되, 동시 발생만으로 인과관계를 확정하지 마세요.
 10. 데이터로 뒷받침되지 않는 일반론이나 점검 절차를 만들지 말고, 판단 근거가 부족하면 limitations에 명시하세요.
-11. 내부 추론 과정은 출력하지 말고 아래 JSON 객체만 반환하세요.
+11. 사용자에게 표시되는 모든 문장은 한국어로 작성하되, 장비명, 상태명, 기술 용어, 필드명과 고유명사는 원문을 유지하세요.
+12. 내부 추론 과정은 출력하지 말고 아래 JSON 객체만 반환하세요.
 
 출력 JSON 형식:
 {
@@ -97,8 +98,9 @@ ANALYSIS_STREAM_SYSTEM_PROMPT = """당신은 반도체 설비 Observer 로그 �
 8. recordedCauses는 입력 comment에 직접 기록된 사실만, inferredCauses는 시간상 인접한 SPC/FDC/CTTTM/RACB/ESOP 기반 후보만 metadata로 작성하세요.
 9. 추정에는 입력에 존재하는 evidenceIds를 포함하되, 동시 발생만으로 인과관계를 확정하지 마세요.
 10. 데이터로 뒷받침되지 않는 일반론이나 점검 절차를 만들지 말고, 판단 근거가 부족하면 limitations에 명시하세요.
-11. 내부 추론 과정과 Markdown code fence를 출력하지 마세요.
-12. 반드시 한 줄에 JSON 객체 하나만 출력하고 아래 순서를 지키세요.
+11. 사용자에게 표시되는 모든 문장은 한국어로 작성하되, 장비명, 상태명, 기술 용어, 필드명과 고유명사는 원문을 유지하세요.
+12. 내부 추론 과정과 Markdown code fence를 출력하지 마세요.
+13. 반드시 한 줄에 JSON 객체 하나만 출력하고 아래 순서를 지키세요.
 
 출력 NDJSON 형식:
 {"type":"headline","text":"가장 중요한 분석 결론 한 줄"}

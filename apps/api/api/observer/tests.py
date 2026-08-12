@@ -1700,7 +1700,7 @@ class ObserverAnalysisTests(TestCase):
         self.assertIn("question", too_long_serializer.errors)
 
     def test_analysis_defaults_and_prompt_require_synthesized_findings(self) -> None:
-        """기본 질문과 system prompt가 단순 나열 대신 종합 분석을 요구합니다."""
+        """기본 질문과 system prompt가 종합 분석과 한국어 답변을 요구합니다."""
 
         serializer = observer_serializers.ObserverAnalysisRequestSerializer(
             data={
@@ -1720,6 +1720,22 @@ class ObserverAnalysisTests(TestCase):
         self.assertIn("독립된 raw 근거", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("findings는 중요도 순으로 최대 5개", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("finding은 중요도 순으로 최대 5개", ANALYSIS_STREAM_SYSTEM_PROMPT)
+        self.assertIn(
+            "사용자에게 표시되는 모든 문장은 한국어로 작성하되",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "기술 용어, 필드명과 고유명사는 원문을 유지하세요",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "사용자에게 표시되는 모든 문장은 한국어로 작성하되",
+            ANALYSIS_STREAM_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "기술 용어, 필드명과 고유명사는 원문을 유지하세요",
+            ANALYSIS_STREAM_SYSTEM_PROMPT,
+        )
         self.assertEqual(
             OBSERVER_ANALYSIS_PROMPT_VERSION,
             "observer-analysis-prompt-v1",
