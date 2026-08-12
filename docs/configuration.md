@@ -89,7 +89,7 @@
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker |
 | Drone POP3/Jira/Mail/Messenger | `DRONE_*`, `KNOX_MESSENGER_*` | Drone SOP 수집과 채널별 전송 |
 | Assistant/RAG/LLM | `ASSISTANT_*`, `RAG_*` | RAG 검색, RAG 문서 등록/삭제, LLM 답변 |
-| OpenWebUI 요약 배치 | `OPENWEBUI_*` | `ct_process_comment` contents 요약 생성 |
+| OpenWebUI | `OPENWEBUI_*` | 일반 Assistant 대화·대화방 제목, Observer 분석, `ct_process_comment` contents 요약 생성 |
 | `MAIL_API_*` / Mail API | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID` | 외부 Mail API 전송 |
 | MinIO | `MINIO_*` | 메일 asset storage |
 | `VITE_*` / Web | `VITE_BACKEND_URL`, `BACKEND_API_URL`, `VITE_ASSISTANT_API_URL`, `VITE_AIRFLOW_BASE_URL`, `VITE_SITE_URL` | 브라우저와 container 내부 API URL |
@@ -185,7 +185,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 - Auth 계약 변경: `env/api*.env`, `env/web*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/api/auth.md`
 - RAG/LLM 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`
-- OpenWebUI 요약 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/observer.md`, `docs/api/observer.md`
+- OpenWebUI 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md`
 - Mail/Email 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/modules/emails.md`, `docs/api/emails.md`
 - Drone/Jira/Messenger 계약 변경: `env/api*.env`, `apps/adfs_dummy`, `docs/modules/line-dashboard.md`, `docs/api/line-dashboard.md`
 - Observer 기준정보/로그 계약 변경: `env/api*.env`, `docs/modules/observer.md`, `docs/api/observer.md`, `docs/data-model.md`

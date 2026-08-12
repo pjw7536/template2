@@ -23,9 +23,9 @@ function buildSortedOptions(values) {
   return normalizeList(values).sort((a, b) => a.localeCompare(b))
 }
 
-export function useAssistantRagIndex() {
+export function useAssistantRagIndex({ enabled = true } = {}) {
   const { user } = useAuth()
-  const ragIndexesQuery = useAssistantRagIndexes()
+  const ragIndexesQuery = useAssistantRagIndexes({ enabled })
   const ragData = ragIndexesQuery.data || {}
   const currentUserSdwtProd =
     normalizeString(user?.user_sdwt_prod) || normalizeString(ragData.currentUserSdwtProd)

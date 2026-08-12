@@ -12,7 +12,7 @@
 | Account | `/api/v1/account/` | `apps/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/reconfirm`, `access/request`, `access/users`, `access/matrix`, `access/users/<user_id>/decision`, `access/users/<user_id>/data-scope`, `access/policy-rules`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `users`, `line-sdwt-options` |
 | Emails | `/api/v1/emails/` | `apps/api/api/emails/urls.py` | `inbox/`, `sent/`, `mailboxes/`, `mailboxes/summary/`, `mailboxes/members/`, `unassigned/`, `unassigned/claim/`, `ingest/`, `outbox/process/`, `assets/ocr/claim/`, `assets/ocr/update/`, `bulk-delete/`, `move/`, `<email_id>/`, `<email_id>/assets/<sequence>/`, `<email_id>/html/` |
 | Data Movement | `/api/v1/data-movement/` | `apps/api/api/data_movement/urls.py` | `<table_name>/load/` |
-| Assistant | `/api/v1/assistant/` | `apps/api/api/assistant/urls.py` | `chat`, `rag-indexes` |
+| Assistant | `/api/v1/assistant/` | `apps/api/api/assistant/urls.py` | `chat`, `openwebui-chat`, `rag-indexes`, `conversations`, `conversations/<uuid>`, `conversations/<uuid>/messages`, `conversations/<uuid>/generate-title` |
 | Line Dashboard / Drone | `/api/v1/line-dashboard/` | `apps/api/api/drone/urls.py` | `early-inform`, `tables`, `tables/update`, `jira-keys`, `notification-targets`, `notification-target-mappings`, `jira-user-sdwt-prods`, `notification-recipients`, `notification-recipient-permissions`, `my-notification-recipient-targets`, `admin/drone-targets`, `history`, `line-ids`, `line-sdwt-options`, `sop/<sop_id>/instant-inform`, `sop/<sop_id>/retry-channel`, `sop/ingest/pop3/trigger`, `sop/precheck`, `sop/trigger` |
 | L3 Spider | `/api/v1/l3_spider/` | `apps/api/api/l3_spider/urls.py` | `meta`, `developer/unmapped-line-rules`, `structure`, `stats`, `summary`, `daily-summary`, `data`, `filter-candidates`, `exclusion-filters`, `exclusion-filters/<pk>`, `mail-rules`, `mail-rules/<pk>`, `mail-rules/<pk>/permissions`, `mail-rules/<pk>/test-send`, `mail-rules/trigger` |
 | L0 Spider | `/api/v1/l0_spider/` (`/api/v1/fdc-trend/` 호환) | `apps/api/api/l0_spider/urls.py` | `hard-spec/meta`, `hard-spec/recommendations` |
@@ -54,6 +54,7 @@
 | `api.appstore` | `AppStoreApp`, `AppStoreLike`, `AppStoreComment`, `AppStoreCommentLike` |
 | `api.drone` | `DroneSOP`, `DroneSopTarget`, `DroneSopTargetChannelConfig`, `DroneSopNeedToSendRule`, `DroneSopTargetMapping`, `DroneSopTargetRecipient`, `DroneSopTargetDispatch`, `DroneSopDelivery`, `DroneEarlyInform` |
 | `api.emails` | `Email`, `EmailOutbox`, `EmailAsset` |
+| `api.assistant` | `AssistantConversation`, `AssistantConversationSummary`, `AssistantGeneration`, `AssistantContextSnapshot`, `AssistantMessage`, `AssistantMessageFeedback` |
 | `api.data_movement.m_tkin_prevent` | `MTkinPrevent`, `MTkinPreventLoadJob` |
 | `api.data_movement.ctttm_workorder_list` | `CtttmWorkorderList`, `CtttmWorkorderListLoadJob` |
 | `api.data_movement.ct_process_comment` | `CtProcessComment`, `CtProcessCommentLoadJob` |
@@ -65,7 +66,7 @@
 | `api.data_movement.station_master` | `StationMaster`, `StationMasterLoadJob` |
 | `api.voc` | `VocPost`, `VocReply` |
 | `api.l3_spider` | `L3SpiderFileIndex`, `L3SpiderDailyRunStats`, `L3SpiderRunStatus`, `L3SpiderLineNameRule`, `L3SpiderExclusionFilter`, `L3SpiderMailRule`, `L3SpiderMailDelivery`, `L3SpiderMailRulePermission` |
-| `api.auth`, `api.assistant`, `api.rag`, `api.observer`, `api.l0_spider`, `api.pm_comparison`, `api.tttm_spider`, `api.health`, `api.common` | 자체 업무 model 없이 account/common/external DB 또는 외부 API/파일을 사용 |
+| `api.auth`, `api.rag`, `api.observer`, `api.l0_spider`, `api.pm_comparison`, `api.tttm_spider`, `api.health`, `api.common` | 자체 업무 model 없이 account/common/external DB 또는 외부 API/파일을 사용 |
 
 ## Management command
 

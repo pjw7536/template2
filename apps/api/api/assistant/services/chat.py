@@ -235,6 +235,7 @@ class AssistantChatService:
         user_header_id: Optional[str] = None,
         rag_index_names: Optional[Sequence[str]] = None,
         permission_groups: Optional[Sequence[str]] = None,
+        conversation_context: str = "",
     ) -> AssistantChatResult:
         """질문에 대한 어시스턴트 답변을 생성합니다.
 
@@ -243,6 +244,7 @@ class AssistantChatService:
             user_header_id: LLM 호출 시 User-Id 헤더 값(옵션).
             rag_index_names: 사용할 RAG 인덱스 목록(옵션).
             permission_groups: 검색 권한 그룹 목록(옵션).
+            conversation_context: RAG 검색에는 사용하지 않고 LLM 후속 문맥에만 제공할 대화 요약입니다.
 
         반환:
             AssistantChatResult 응답 DTO.
@@ -257,6 +259,17 @@ class AssistantChatService:
         normalized_question = question.strip()
         if not normalized_question:
             raise AssistantRequestError("질문이 비어 있습니다.")
+        normalized_conversation_context = (
+            conversation_context.strip()
+            if isinstance(conversation_context, str)
+            else ""
+        )
+        llm_question = (
+            f"[이전 대화 문맥]\n{normalized_conversation_context}\n\n"
+            f"[현재 질문]\n{normalized_question}"
+            if normalized_conversation_context
+            else normalized_question
+        )
 
         if self.config.use_dummy:
             if not self.config.dummy_use_rag:
@@ -291,7 +304,7 @@ class AssistantChatService:
             )
             reply, llm_response = self._call_llm(
                 session,
-                normalized_question,
+                llm_question,
                 contexts,
                 sources,
                 user_header_id=user_header_id,

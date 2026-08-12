@@ -5,7 +5,10 @@ function getMessageTimestamp(message) {
   return Number.isFinite(ts) ? ts : 0
 }
 
-function getLastQuestionTimestamp(roomId, messagesByRoom = {}) {
+function getLastQuestionTimestamp(room, messagesByRoom = {}) {
+  const updatedAt = Date.parse(room?.updatedAt || "")
+  if (Number.isFinite(updatedAt)) return updatedAt
+  const roomId = room?.id
   const roomMessages = messagesByRoom[roomId] || []
   const lastUser = [...roomMessages].reverse().find((message) => message.role === "user")
   if (lastUser) return getMessageTimestamp(lastUser)
@@ -15,7 +18,11 @@ function getLastQuestionTimestamp(roomId, messagesByRoom = {}) {
 }
 
 export function sortRoomsByRecentQuestion(rooms = [], messagesByRoom = {}) {
-  return [...rooms].sort(
-    (a, b) => getLastQuestionTimestamp(b.id, messagesByRoom) - getLastQuestionTimestamp(a.id, messagesByRoom),
-  )
+  return [...rooms].sort((a, b) => {
+    if (a?.pinned !== b?.pinned) return a?.pinned ? -1 : 1
+    return (
+      getLastQuestionTimestamp(b, messagesByRoom) -
+      getLastQuestionTimestamp(a, messagesByRoom)
+    )
+  })
 }

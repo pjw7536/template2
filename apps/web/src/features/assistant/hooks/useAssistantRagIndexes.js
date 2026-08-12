@@ -4,10 +4,10 @@ import { fetchRagIndexes } from "../api/fetchRagIndexes"
 
 export const ASSISTANT_RAG_INDEXES_QUERY_KEY = ["assistant", "rag-indexes"]
 
-export function useAssistantRagIndexes() {
+export function useAssistantRagIndexes({ enabled = true } = {}) {
   return useQuery({
     queryKey: ASSISTANT_RAG_INDEXES_QUERY_KEY,
     queryFn: fetchRagIndexes,
+    enabled,
   })
 }
-

@@ -76,7 +76,7 @@ Assistant가 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.
 - `ASSISTANT_LLM_COMMON_HEADERS`
 - `ASSISTANT_REQUEST_TIMEOUT`
 
-## OpenWebUI 요약
+## OpenWebUI
 
 `ct_process_comment` 요약 배치는 OpenWebUI의 OpenAI 호환 chat completions API를 호출해 `contents_text`를 요약합니다.
 
@@ -88,6 +88,16 @@ Assistant가 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.
 - `OPENWEBUI_COMMON_HEADERS`
 - `OPENWEBUI_TIMEOUT_SECONDS`
 - `OPENWEBUI_SUMMARY_BATCH_SIZE`
+
+사용처:
+
+- 메일함 외 전역 ChatWidget과 `/assistant`의 일반 대화 SSE stream
+- Assistant 첫 대화의 업무용 대화방 제목 생성
+- Assistant contextKey별 장기 대화 rolling summary
+- Observer 현재 조회 데이터 구조화 분석
+- `ct_process_comment` contents 요약 배치
+
+일반 채팅은 OpenAI 호환 `stream: true` 응답을 사용합니다. Nginx의 `/api/v1/assistant/openwebui-chat/stream` 경로는 buffering/cache를 끄며, 로컬 `adfs_dummy`도 동일한 `data: {...}` 및 `[DONE]` SSE 계약을 제공합니다.
 
 ## Mail API
 
@@ -147,7 +157,7 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 | OIDC provider 변경 | `env/api*.env`, `env/web*.env`, `apps/adfs_dummy/adfs_oidc.py`, `docs/api/auth.md` |
 | RAG endpoint/schema 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_rag.py`, `docs/api/assistant.md`, `docs/modules/emails.md` |
 | LLM request/response 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md` |
-| OpenWebUI 요약 request/response 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/observer.md`, `docs/api/observer.md` |
+| OpenWebUI request/response 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md` |
 | Mail API 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_mail.py`, `docs/modules/emails.md`, `docs/modules/line-dashboard.md` |
 | Jira 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_jira.py`, `docs/modules/line-dashboard.md` |
 | MinIO 변경 | `env/minio.env`, `docs/data-model.md`, `docs/modules/emails.md` |

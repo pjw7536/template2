@@ -1,25 +1,31 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useOutletContext } from "react-router-dom"
-import { Bot, PanelLeft, Plus, RefreshCw, Settings } from "lucide-react"
+import { Bot, Download, PanelLeft, Plus, RefreshCw, Sparkles } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/lib/auth"
+import { sendOpenWebUIStreamingMessage } from "../api/sendChatMessage"
 import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"
 import { RoomList } from "../components/RoomList"
-import { RagIndexMultiSelect } from "../components/RagIndexMultiSelect"
-import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatPage() {
+  const { user } = useAuth()
   const location = useLocation()
   const outletContext = useOutletContext() || {}
   const availableMailboxes = Array.isArray(outletContext.availableMailboxes)
     ? outletContext.availableMailboxes
     : []
-  const ragSettings = useAssistantRagIndex()
   const handoffMessages = Array.isArray(location?.state?.initialMessages)
     ? location.state.initialMessages
     : undefined
@@ -37,34 +43,64 @@ export function ChatPage() {
 
   const {
     rooms,
+    roomListRooms,
+    roomSearch,
+    showArchived,
+    hasMoreRooms,
+    isLoadingMoreRooms,
     activeRoomId,
     messages,
     messagesByRoom,
     isSending,
+    isGenerating,
+    hasActiveGeneration,
+    generationRoomId,
+    isRoomListBusy,
+    isSessionLoading,
     errorMessage,
+    canRetry,
+    canRetrySave,
     clearError,
     sendMessage,
+    retryAssistantSave,
+    discardFailedAssistantSave,
+    retryLastMessage,
+    stopGenerating,
     resetConversation,
+    editUserMessage,
+    regenerateAssistantMessage,
+    rateAssistantMessage,
     selectRoom,
+    searchRooms,
+    loadMoreRooms,
+    hasOlderMessages,
+    isLoadingOlderMessages,
+    loadOlderMessages,
     createRoom,
     removeRoom,
+    removeRooms,
+    renameRoom,
+    togglePinRoom,
+    toggleArchiveRoom,
+    toggleArchivedView,
+    downloadConversation,
   } = useChatSession({
     initialMessages: handoffMessages,
     initialRooms,
     initialMessagesByRoom,
     initialActiveRoomId,
-    permissionGroups: ragSettings.permissionGroups,
-    ragIndexNames: ragSettings.ragIndexNames,
+    messageSender: sendOpenWebUIStreamingMessage,
+    messageContextKey: "assistant:openwebui",
+    userKey: user?.id,
   })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [input, setInput] = useState("")
   const inputRef = useRef(null)
   const wasSendingRef = useRef(false)
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || rooms[0] || { name: "대화방" }
 
-  const sortedRooms = sortRoomsByRecentQuestion(rooms, messagesByRoom)
+  const sortedRooms = sortRoomsByRecentQuestion(roomListRooms, messagesByRoom)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -81,8 +117,8 @@ export function ChatPage() {
     event.preventDefault()
     if (!input.trim() || isSending) return
     try {
-      await sendMessage(input)
-      setInput("")
+      const result = await sendMessage(input)
+      if (result?.ok) setInput("")
     } finally {
       inputRef.current?.focus()
     }
@@ -92,23 +128,19 @@ export function ChatPage() {
     removeRoom(roomId)
   }
 
+  const handleDeleteRooms = (roomIds) => removeRooms(roomIds)
+
   const handleSelectRoom = (roomId) => {
-    setIsSettingsOpen(false)
     selectRoom(roomId)
   }
 
   const handleCreateRoom = () => {
-    setIsSettingsOpen(false)
+    if (isSessionLoading) return
     createRoom()
   }
 
   const handleResetConversation = () => {
-    setIsSettingsOpen(false)
     resetConversation(activeRoomId)
-  }
-
-  const handleToggleSettings = () => {
-    setIsSettingsOpen((prev) => !prev)
   }
 
   return (
@@ -150,11 +182,33 @@ export function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    disabled={!activeRoomId}
+                    aria-label="대화 내보내기"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => downloadConversation("markdown")}>
+                    Markdown으로 저장
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => downloadConversation("csv")}>
+                    Excel용 CSV로 저장
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9"
                 onClick={handleCreateRoom}
+                disabled={isRoomListBusy}
                 aria-label="새 대화방 만들기"
               >
                 <Plus className="h-4 w-4" />
@@ -172,23 +226,12 @@ export function ChatPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-1">
-              <span>RAG 인덱스</span>
-              {ragSettings.ragIndexNames.map((value) => (
-                <Badge key={value} variant="secondary" className="text-[11px]">
-                  {value}
-                </Badge>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1">
-              <span>권한 그룹</span>
-              {ragSettings.permissionGroups.map((value) => (
-                <Badge key={value} variant="secondary" className="text-[11px]">
-                  {value}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
+            <Badge variant="secondary" className="text-[11px]">
+              OpenWebUI
+            </Badge>
+            <span>일반 대화 모드</span>
           </div>
         </div>
 
@@ -198,13 +241,16 @@ export function ChatPage() {
               <div className="flex items-center justify-between px-3 py-2">
                 <div className="space-y-0.5">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">대화방</p>
-                  <p className="text-sm font-semibold text-foreground">최근 {rooms.length}개</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {showArchived ? "보관" : "최근"} {rooms.length}개
+                  </p>
                 </div>
                 <Button
                   variant="secondary"
                   size="sm"
                   className="h-8 px-3 text-xs"
                   onClick={handleCreateRoom}
+                  disabled={isRoomListBusy}
                 >
                   새 대화
                 </Button>
@@ -218,81 +264,63 @@ export function ChatPage() {
                   activeRoomId={activeRoomId}
                   onSelectRoom={handleSelectRoom}
                   onDeleteRoom={handleDeleteRoom}
+                  onDeleteRooms={handleDeleteRooms}
+                  onRenameRoom={renameRoom}
+                  onTogglePinRoom={togglePinRoom}
+                  onToggleArchiveRoom={toggleArchiveRoom}
+                  showArchived={showArchived}
+                  onToggleArchivedView={toggleArchivedView}
+                  isDisabled={isRoomListBusy}
+                  disabledRoomIds={generationRoomId ? [generationRoomId] : []}
+                  searchValue={roomSearch}
+                  onSearchRooms={searchRooms}
+                  hasMore={hasMoreRooms}
+                  isLoadingMore={isLoadingMoreRooms}
+                  onLoadMore={loadMoreRooms}
                 />
-              </div>
-              <div className="border-t px-3 py-3">
-                <Button
-                  variant={isSettingsOpen ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-9 w-full justify-between"
-                  onClick={handleToggleSettings}
-                >
-                  <span className="text-xs font-semibold">설정</span>
-                  <Settings className="h-4 w-4" />
-                </Button>
               </div>
             </aside>
           ) : null}
 
           <div className="flex min-h-0 flex-col">
-            {isSettingsOpen ? (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="flex items-center gap-2 border-b px-4 py-3">
-                  <Settings className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-semibold">RAG 설정</p>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-                  <div className="grid gap-3">
-                    <RagIndexMultiSelect
-                      label="RAG 인덱스"
-                      values={ragSettings.ragIndexNames}
-                      onChange={ragSettings.setRagIndexNames}
-                      placeholder="rp-unclassified"
-                      helperText="목록에서 선택 · 최소 1개 필수"
-                      options={ragSettings.ragIndexOptions}
-                      isDisabled={ragSettings.isLoading}
-                    />
-                    <RagIndexMultiSelect
-                      label="권한 그룹"
-                      values={ragSettings.permissionGroups}
-                      onChange={ragSettings.setPermissionGroups}
-                      placeholder="rag-public"
-                      helperText="목록에서 선택 · 최소 1개 필수"
-                      options={ragSettings.permissionGroupOptions}
-                      isDisabled={ragSettings.isLoading}
-                    />
-                    {ragSettings.isError ? (
-                      <p className="text-[11px] text-destructive">
-                        {ragSettings.errorMessage || "RAG 설정을 불러오지 못했어요."}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <ChatMessages
-                  messages={messages}
-                  isSending={isSending}
-                  availableMailboxes={availableMailboxes}
-                />
+            <ChatMessages
+              messages={messages}
+              isGenerating={isGenerating}
+              isActionDisabled={hasActiveGeneration}
+              availableMailboxes={availableMailboxes}
+              statusMode="openwebui"
+              hasOlderMessages={hasOlderMessages}
+              isLoadingOlderMessages={isLoadingOlderMessages}
+              onLoadOlderMessages={loadOlderMessages}
+              onEditMessage={editUserMessage}
+              onRegenerateMessage={regenerateAssistantMessage}
+              onRateMessage={rateAssistantMessage}
+            />
 
-                <ChatErrorBanner message={errorMessage} onDismiss={clearError} />
+            <ChatErrorBanner
+              message={errorMessage}
+              onDismiss={clearError}
+              canRetry={canRetrySave || canRetry}
+              onRetry={canRetrySave ? retryAssistantSave : retryLastMessage}
+              retryLabel={canRetrySave ? "답변 저장 다시 시도" : "재시도"}
+              canDiscard={canRetrySave}
+              onDiscard={discardFailedAssistantSave}
+            />
 
-                <ChatComposer
-                  inputId="assistant-page-input"
-                  label="어시스턴트에게 질문하기"
-                  inputRef={inputRef}
-                  inputValue={input}
-                  onInputChange={(event) => setInput(event.target.value)}
-                  onSubmit={handleSubmit}
-                  isSending={isSending}
-                  placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
-                  footerLeft="베타 · LLM API 연결"
-                  footerRight="Shift+Enter로 줄바꿈"
-                />
-              </>
-            )}
+            <ChatComposer
+              inputId="assistant-page-input"
+              label="어시스턴트에게 질문하기"
+              inputRef={inputRef}
+              inputValue={input}
+              onInputChange={(event) => setInput(event.target.value)}
+              onSubmit={handleSubmit}
+              isSending={isSending}
+              isGenerating={isGenerating}
+              onStop={stopGenerating}
+              placeholder="궁금한 점을 입력하세요. Shift+Enter로 줄바꿈"
+              footerLeft="OpenWebUI 연결"
+              footerRight="Shift+Enter로 줄바꿈"
+            />
           </div>
         </div>
       </div>

@@ -14,11 +14,16 @@ import {
   getObserverEquipmentPath,
   isObserverEquipmentPath,
 } from "../utils/observerLocation";
+import {
+  buildEvidenceTypeFilters,
+  getObserverEvidenceNavigation,
+  matchesObserverEvidence,
+} from "../utils/observerEvidence";
 import { useObserverSelectionStore } from "../store/useObserverSelectionStore";
 import { useObserverStore } from "../store/useObserverStore";
 import { useObserverLogs } from "./useObserverLogs";
 import { useObserverLogDetailQuery } from "./useObserverLogDetailQuery";
-import { useObserverAnalysis } from "./useObserverAnalysis";
+import { useObserverAssistantContext } from "./useObserverAssistantContext";
 import { useEquipmentInfoQuery } from "./useEquipmentInfoQuery";
 import { getEnabledLogKeys } from "../utils/logPagination";
 
@@ -41,6 +46,8 @@ export function useObserverPageState(params) {
     setPrcGroup,
     setEqp,
     selectedRow,
+    source: selectionSource,
+    setSelectedRow,
     resetSelection,
   } = useObserverSelectionStore();
 
@@ -52,7 +59,15 @@ export function useObserverPageState(params) {
   } = useObserverStore();
 
   // 페이지 로컬 UI 상태
-  const [typeFilters, setTypeFilters] = useState({ ...DEFAULT_TYPE_FILTERS });
+  const evidenceNavigation = useMemo(
+    () => getObserverEvidenceNavigation(new URLSearchParams(location.search)),
+    [location.search]
+  );
+  const [typeFilters, setTypeFilters] = useState(() =>
+    evidenceNavigation?.logTypes?.length
+      ? buildEvidenceTypeFilters(evidenceNavigation.logTypes)
+      : { ...DEFAULT_TYPE_FILTERS }
+  );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [logRange, setLogRange] = useState(() => {
     const initialRange = getLogRangeFromSearchParams(
@@ -64,6 +79,16 @@ export function useObserverPageState(params) {
     () => buildLogDateRangeOptions(logRange),
     [logRange]
   );
+
+  useEffect(() => {
+    if (!evidenceNavigation) return;
+    if (evidenceNavigation.logTypes.length) {
+      setTypeFilters(buildEvidenceTypeFilters(evidenceNavigation.logTypes));
+    }
+    if (evidenceNavigation.tipGroups.length) {
+      setSelectedTipGroups(evidenceNavigation.tipGroups);
+    }
+  }, [evidenceNavigation, setSelectedTipGroups]);
 
   // URL 파라미터 검증 및 상태 반영 (과도한 파일 분리를 줄이기 위해 이 훅 안에서 처리)
   const [validationError, setValidationError] = useState(null);
@@ -200,10 +225,10 @@ export function useObserverPageState(params) {
 
   // EQP가 바뀔 때마다 TIP 필터를 초기화하여 예전 선택이 남지 않도록 한다.
   useEffect(() => {
-    if (eqpId) {
+    if (eqpId && !evidenceNavigation?.tipGroups.length) {
       setSelectedTipGroups(["__ALL__"]);
     }
-  }, [eqpId, setSelectedTipGroups]);
+  }, [eqpId, evidenceNavigation, setSelectedTipGroups]);
 
   const handleFilterChange = (event) => {
     const { name, checked } = event.target;
@@ -216,6 +241,48 @@ export function useObserverPageState(params) {
     selectedTipGroups,
     logQueryOptions
   );
+  const evidenceLog = useMemo(
+    () =>
+      evidenceNavigation
+        ? logs.mergedLogs.find((log) =>
+            matchesObserverEvidence(log, evidenceNavigation.evidenceId)
+          ) || null
+        : null,
+    [evidenceNavigation, logs.mergedLogs]
+  );
+  useEffect(() => {
+    if (!evidenceNavigation || evidenceLog || logs.logsLoading) return;
+    if (
+      evidenceNavigation.logKey &&
+      logs.hasMoreByType[evidenceNavigation.logKey] &&
+      !logs.loadingMoreTypes.has(evidenceNavigation.logKey) &&
+      !logs.residentLimitReached
+    ) {
+      logs.loadMoreType(evidenceNavigation.logKey);
+    }
+  }, [evidenceLog, evidenceNavigation, logs]);
+  useEffect(() => {
+    if (!evidenceLog) return;
+    if (
+      String(selectedRow) === String(evidenceLog.id) &&
+      selectionSource === "assistant"
+    ) {
+      return;
+    }
+    setSelectedRow(evidenceLog.id, "assistant");
+  }, [evidenceLog, selectedRow, selectionSource, setSelectedRow]);
+  const evidenceNavigationStatus = evidenceNavigation
+    ? {
+        evidenceId: evidenceNavigation.evidenceId,
+        status: evidenceLog
+          ? "found"
+          : logs.logsLoading ||
+              logs.loadingMoreTypes.has(evidenceNavigation.logKey) ||
+              logs.hasMoreByType[evidenceNavigation.logKey]
+            ? "loading"
+            : "not_found",
+      }
+    : null;
   const analysisScope = useMemo(
     () => ({
       eqpId,
@@ -225,7 +292,7 @@ export function useObserverPageState(params) {
     }),
     [eqpId, logQueryOptions, selectedTipGroups, typeFilters]
   );
-  const analysis = useObserverAnalysis(analysisScope);
+  useObserverAssistantContext(analysisScope);
   const selectedCompactLog =
     logs.mergedLogs.find((log) => String(log.id) === String(selectedRow)) ||
     null;
@@ -279,7 +346,7 @@ export function useObserverPageState(params) {
       error: selectedLogDetail.isError ? selectedLogDetail.error : null,
       refetch: selectedLogDetail.refetch,
     },
-    analysis,
+    evidenceNavigationStatus,
     observerReady: Boolean(eqpId),
   };
 }

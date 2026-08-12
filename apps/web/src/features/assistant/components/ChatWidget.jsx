@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 
+import { usePageAssistantContext } from "@/lib/assistant/pageContext"
+import { useAuth } from "@/lib/auth"
+
+import { sendOpenWebUIStreamingMessage } from "../api/sendChatMessage"
 import { ChatWidgetLauncher } from "./ChatWidgetLauncher"
 import { ChatWidgetPanel } from "./ChatWidgetPanel"
 import { useAttentionTooltip } from "../hooks/useAttentionTooltip"
 import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
+import { isEmailAssistantRoute } from "../utils/assistantRoute"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 import {
   DEFAULT_CHAT_HEIGHT,
@@ -15,7 +20,13 @@ import {
   clampSize,
 } from "../utils/chatWidgetBounds"
 
-export function ChatWidget({ availableMailboxes = [] }) {
+export function ChatWidget(props) {
+  const location = useLocation()
+  if (location.pathname.startsWith("/assistant")) return null
+  return <ChatWidgetContent {...props} location={location} />
+}
+
+function ChatWidgetContent({ availableMailboxes = [], location }) {
   const [isOpen, setIsOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -26,24 +37,60 @@ export function ChatWidget({ availableMailboxes = [] }) {
   const [isWidgetDragging, setIsWidgetDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const [size, setSize] = useState(() => clampSize(DEFAULT_CHAT_WIDTH, DEFAULT_CHAT_HEIGHT))
-  const location = useLocation()
+  const { user } = useAuth()
+  const { pageContext } = usePageAssistantContext()
   const sizeRef = useRef(size)
-  const ragSettings = useAssistantRagIndex()
+  const isEmailRoute = isEmailAssistantRoute(location.pathname)
+  const ragSettings = useAssistantRagIndex({ enabled: isEmailRoute })
+  const defaultMessageSender = isEmailRoute ? undefined : sendOpenWebUIStreamingMessage
+  const defaultMessageContextKey = isEmailRoute ? "assistant" : "assistant:openwebui"
   const {
     rooms,
+    roomListRooms,
+    roomSearch,
+    showArchived,
+    hasMoreRooms,
+    isLoadingMoreRooms,
     activeRoomId,
     messages,
     messagesByRoom,
     isSending,
+    isGenerating,
+    hasActiveGeneration,
+    generationRoomId,
+    isRoomListBusy,
     errorMessage,
+    canRetry,
+    canRetrySave,
     clearError,
     sendMessage,
+    retryAssistantSave,
+    discardFailedAssistantSave,
+    retryLastMessage,
+    stopGenerating,
     selectRoom,
+    searchRooms,
+    loadMoreRooms,
+    hasOlderMessages,
+    isLoadingOlderMessages,
+    loadOlderMessages,
+    editUserMessage,
+    regenerateAssistantMessage,
+    rateAssistantMessage,
     createRoom,
     removeRoom,
+    removeRooms,
+    renameRoom,
+    togglePinRoom,
+    toggleArchiveRoom,
+    toggleArchivedView,
+    downloadConversation,
   } = useChatSession({
     permissionGroups: ragSettings.permissionGroups,
     ragIndexNames: ragSettings.ragIndexNames,
+    messageSender: pageContext?.sendMessage || defaultMessageSender,
+    messageContextKey: pageContext?.key || defaultMessageContextKey,
+    userKey: user?.id,
   })
   const inputRef = useRef(null)
   const floatingButtonRef = useRef(null)
@@ -61,16 +108,14 @@ export function ChatWidget({ availableMailboxes = [] }) {
   const resizeStartRef = useRef({ width: 0, height: 0, left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0 })
   const resizeDirectionRef = useRef("se")
   const chatContainerRef = useRef(null)
-  const initializedSessionRef = useRef(false)
   const wasSendingRef = useRef(false)
-  const sortedRooms = sortRoomsByRecentQuestion(rooms, messagesByRoom)
+  const sortedRooms = sortRoomsByRecentQuestion(roomListRooms, messagesByRoom)
 
-  const isChatPage =
-    typeof location?.pathname === "string" && location.pathname.startsWith("/assistant")
+  const isHomePage = location.pathname === "/"
 
   const { isAttentionTooltipVisible, attentionTooltipText } = useAttentionTooltip({
     isOpen,
-    isChatPage,
+    isHomePage,
   })
 
   useEffect(() => {
@@ -112,6 +157,11 @@ export function ChatWidget({ availableMailboxes = [] }) {
         ) || targetElement?.closest?.("[data-chat-widget-portal]")
       if (hasPortalTarget) return
 
+      const hasOpenWidgetPortal = document.querySelector(
+        '[data-chat-widget-portal][data-state="open"]',
+      )
+      if (hasOpenWidgetPortal) return
+
       if (chatContainerRef.current && !chatContainerRef.current.contains(targetElement)) {
         if (typeof window !== "undefined") {
           const rect = chatContainerRef.current?.getBoundingClientRect()
@@ -135,6 +185,24 @@ export function ChatWidget({ availableMailboxes = [] }) {
 
     document.addEventListener("pointerdown", handlePointerDown, true)
     return () => document.removeEventListener("pointerdown", handlePointerDown, true)
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || typeof document === "undefined") return
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return
+      const hasOpenWidgetPortal = document.querySelector(
+        '[data-chat-widget-portal][data-state="open"]',
+      )
+      if (hasOpenWidgetPortal) return
+      event.preventDefault()
+      setIsWidgetDragging(false)
+      setIsResizing(false)
+      setIsOpen(false)
+      window.requestAnimationFrame?.(() => floatingButtonRef.current?.focus())
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
   }, [isOpen])
 
   useEffect(() => {
@@ -289,18 +357,6 @@ export function ChatWidget({ availableMailboxes = [] }) {
   }, [buttonPosition.x, buttonPosition.y])
 
   useEffect(() => {
-    if (initializedSessionRef.current) return
-    const hasPreviousConversation = Object.values(messagesByRoom || {}).some((roomMessages) =>
-      Array.isArray(roomMessages) && roomMessages.some((message) => message?.role === "user")
-    )
-    const hasExistingRooms = Array.isArray(rooms) && rooms.length > 0
-    if (!hasPreviousConversation && !hasExistingRooms) {
-      createRoom("새 대화")
-    }
-    initializedSessionRef.current = true
-  }, [createRoom, messagesByRoom, rooms])
-
-  useEffect(() => {
     if (!isOpen) {
       wasSendingRef.current = isSending
       return
@@ -312,10 +368,6 @@ export function ChatWidget({ availableMailboxes = [] }) {
 
     wasSendingRef.current = isSending
   }, [isSending, isOpen])
-
-  if (isChatPage) {
-    return null
-  }
 
   const closeWidget = () => {
     if (typeof window !== "undefined") {
@@ -334,6 +386,9 @@ export function ChatWidget({ availableMailboxes = [] }) {
     setIsWidgetDragging(false)
     setIsResizing(false)
     setIsOpen(false)
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame?.(() => floatingButtonRef.current?.focus())
+    }
   }
 
   const focusInput = () => {
@@ -350,8 +405,18 @@ export function ChatWidget({ availableMailboxes = [] }) {
     event.preventDefault()
     if (!input.trim() || isSending) return
     try {
-      await sendMessage(input)
-      setInput("")
+      const result = await sendMessage(input)
+      if (result?.ok) setInput("")
+    } finally {
+      focusInput()
+    }
+  }
+
+  const handleQuickPrompt = async () => {
+    const prompt = pageContext?.defaultPrompt
+    if (!prompt || isSending) return
+    try {
+      await sendMessage(prompt)
     } finally {
       focusInput()
     }
@@ -550,12 +615,40 @@ export function ChatWidget({ availableMailboxes = [] }) {
       activeRoomId={activeRoomId}
       onSelectRoom={selectRoom}
       onDeleteRoom={removeRoom}
+      onDeleteRooms={removeRooms}
+      onRenameRoom={renameRoom}
+      onTogglePinRoom={togglePinRoom}
+      onToggleArchiveRoom={toggleArchiveRoom}
+      showArchived={showArchived}
+      onToggleArchivedView={toggleArchivedView}
       onCreateRoom={createRoom}
+      roomSearch={roomSearch}
+      onSearchRooms={searchRooms}
+      hasMoreRooms={hasMoreRooms}
+      isLoadingMoreRooms={isLoadingMoreRooms}
+      onLoadMoreRooms={loadMoreRooms}
       messages={messages}
       isSending={isSending}
+      isGenerating={isGenerating}
+      hasActiveGeneration={hasActiveGeneration}
+      generationRoomId={generationRoomId}
+      isRoomListBusy={isRoomListBusy}
+      onStopGenerating={stopGenerating}
+      hasOlderMessages={hasOlderMessages}
+      isLoadingOlderMessages={isLoadingOlderMessages}
+      onLoadOlderMessages={loadOlderMessages}
+      onEditMessage={editUserMessage}
+      onRegenerateMessage={regenerateAssistantMessage}
+      onRateMessage={rateAssistantMessage}
+      onDownloadConversation={downloadConversation}
       availableMailboxes={availableMailboxes}
       errorMessage={errorMessage}
       onClearError={clearError}
+      canRetry={canRetrySave || canRetry}
+      onRetry={canRetrySave ? retryAssistantSave : retryLastMessage}
+      retryLabel={canRetrySave ? "답변 저장 다시 시도" : "재시도"}
+      canDiscard={canRetrySave}
+      onDiscard={discardFailedAssistantSave}
       inputRef={inputRef}
       inputValue={input}
       onInputChange={handleInputChange}
@@ -563,6 +656,10 @@ export function ChatWidget({ availableMailboxes = [] }) {
       onOpenFullChat={handleOpenFullChat}
       onRestoreDefaultSize={handleRestoreDefaultSize}
       onClose={closeWidget}
+      pageContext={pageContext}
+      usesEmailRag={isEmailRoute}
+      onQuickPrompt={handleQuickPrompt}
+      currentPageScope={pageContext?.scope || null}
     />
   )
 }

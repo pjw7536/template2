@@ -4,6 +4,7 @@ import { createBrowserRouter, Outlet, useLocation } from "react-router-dom"
 import { PortalGlobalShell } from "@/components/layout"
 import { AppAccessGate, AuthAutoLoginGate, PortalAccessGate, useAuth } from "@/lib/auth"
 import { hasScopeAccess } from "@/lib/access/scopeAccess"
+import { PageAssistantContextProvider } from "@/lib/assistant/pageContext"
 
 import { accessStatsRoutes } from "@/features/access-stats"
 import { appstoreRoutes } from "@/features/appstore"
@@ -88,7 +89,9 @@ function AssistantWidgetOutlet() {
   const availableMailboxes = Array.isArray(mailboxesData?.results)
     ? mailboxesData.results
     : []
-  const hideChatWidget = [
+  const isAssistantPage =
+    normalizedPath === "/assistant" || normalizedPath.startsWith("/assistant/")
+  const hideChatWidget = isAssistantPage || [
     "/l3_spider",
     "/spider/l3",
     "/tttm_spider",
@@ -99,10 +102,12 @@ function AssistantWidgetOutlet() {
 
   return (
     <PortalAccessGate allowUnapprovedPaths={["/settings", "/settings/account"]}>
-      <Outlet context={{ availableMailboxes }} />
-      {hasPortalAccess && hasAssistantAccess && !hideChatWidget ? (
-        <ChatWidget availableMailboxes={availableMailboxes} />
-      ) : null}
+      <PageAssistantContextProvider>
+        <Outlet context={{ availableMailboxes }} />
+        {hasPortalAccess && hasAssistantAccess && !hideChatWidget ? (
+          <ChatWidget availableMailboxes={availableMailboxes} />
+        ) : null}
+      </PageAssistantContextProvider>
     </PortalAccessGate>
   )
 }

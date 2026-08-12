@@ -2,10 +2,10 @@ import { Loader2 } from "lucide-react"
 
 import { useAssistantStatusSteps } from "../hooks/useAssistantStatusSteps"
 
-export function AssistantStatusIndicator({ isSending }) {
-  const { statusText, stepIndex, totalSteps } = useAssistantStatusSteps(isSending)
+export function AssistantStatusIndicator({ isActive, mode }) {
+  const { statusText, stepIndex, totalSteps } = useAssistantStatusSteps(isActive, mode)
 
-  if (!isSending) return null
+  if (!isActive) return null
 
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">

@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button"
-import { Loader2, Send } from "lucide-react"
+import { Loader2, Send, Square } from "lucide-react"
+
+import { MAX_ASSISTANT_MESSAGE_CHARS } from "../utils/chatLimits"
 
 export function ChatComposer({
   inputId,
@@ -8,6 +10,8 @@ export function ChatComposer({
   onInputChange,
   onSubmit,
   isSending,
+  isGenerating = false,
+  onStop,
   placeholder,
   footerLeft,
   footerRight,
@@ -38,16 +42,30 @@ export function ChatComposer({
           onChange={onInputChange}
           onKeyDown={handleKeyDown}
           disabled={isSending}
+          maxLength={MAX_ASSISTANT_MESSAGE_CHARS}
         />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={isSending || !value.trim()}
-          className="h-10 w-10 flex-none"
-        >
-          {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          <span className="sr-only">Send message</span>
-        </Button>
+        {isGenerating ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="h-10 w-10 flex-none"
+            onClick={onStop}
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+            <span className="sr-only">응답 중지</span>
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="icon"
+            disabled={isSending || !value.trim()}
+            className="h-10 w-10 flex-none"
+          >
+            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <span className="sr-only">메시지 보내기</span>
+          </Button>
+        )}
       </div>
       {(footerLeft || footerRight) && (
         <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">

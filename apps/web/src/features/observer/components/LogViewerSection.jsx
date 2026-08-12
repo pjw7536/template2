@@ -1,8 +1,6 @@
 // src/features/observer/components/LogViewerSection.jsx - 개선된 버전
 import React from "react";
 import { AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
-import { Loader2, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import DirectEqpQuery from "./sections/DirectEqpQuery";
@@ -27,10 +25,6 @@ export default function LogViewerSection({
   isSettingsDisabled = false,
   onSettingsToggle,
   showShareButton = false,
-  showAnalysisButton = false,
-  isAnalysisDisabled = false,
-  isAnalysisLoading = false,
-  onAnalysis,
 }) {
   const directQuery = useDirectEquipmentQuery({
     setLine,
@@ -73,22 +67,6 @@ export default function LogViewerSection({
               <AdjustmentsHorizontalIcon className="h-4 w-4" />
               설정
             </button>
-          ) : null}
-          {showAnalysisButton ? (
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 shrink-0"
-              disabled={isAnalysisDisabled || isAnalysisLoading}
-              onClick={onAnalysis}
-            >
-              {isAnalysisLoading ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Sparkles className="size-4" aria-hidden="true" />
-              )}
-              {isAnalysisLoading ? "분석 중" : "AI 종합 분석"}
-            </Button>
           ) : null}
           {showShareButton ? <ShareButton /> : null}
         </div>

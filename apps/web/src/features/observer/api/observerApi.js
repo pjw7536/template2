@@ -55,10 +55,28 @@ export const observerApi = {
       signal,
     }),
 
-  analyzeLogs: ({ eqpId, from, to, logTypes, tipGroups }) =>
+  analyzeLogs: ({
+    eqpId,
+    from,
+    to,
+    logTypes,
+    tipGroups,
+    question,
+    roomId,
+    contextKey,
+  }) =>
     observerApiClient("/analysis", {
       method: "POST",
-      body: JSON.stringify({ eqpId, from, to, logTypes, tipGroups }),
+      body: JSON.stringify({
+        eqpId,
+        from,
+        to,
+        logTypes,
+        tipGroups,
+        question,
+        roomId,
+        contextKey,
+      }),
       timeout: 130000,
     }),
 

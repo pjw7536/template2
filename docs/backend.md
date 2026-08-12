@@ -20,7 +20,7 @@
 | `api.account` | 사용자, 소속, 접근 권한, 외부 소속 동기화 | `models.py`, `selectors.py`, `services/*.py`, `views.py` |
 | `api.emails` | 메일함, 메일 수집, asset, OCR, RAG Outbox | `models.py`, `permissions.py`, `services/*.py`, `management/commands/*.py` |
 | `api.data_movement` | 파일 기반 DB 적재 trigger와 테이블별 loader | `urls.py`, `views.py`, `<table_name>/models.py`, `<table_name>/services/*.py`, `<table_name>/management/commands/*.py` |
-| `api.assistant` | RAG 검색, LLM 호출, 답변 조립 | `services/chat.py`, `services/rag.py`, `services/llm.py` |
+| `api.assistant` | 대화방 영구 저장, RAG 검색, OpenWebUI/LLM 호출, 답변 조립 | `services/conversations.py`, `services/chat.py`, `services/rag.py`, `services/llm.py` |
 | `api.rag` | RAG 공통 client와 설정 | `services/client.py`, `services/config.py` |
 | `api.drone` | Drone SOP 수집, 알림 대상, dispatch/delivery, 라인 대시보드 | `models.py`, `selectors.py`, `services/*.py`, `management/commands/*.py` |
 | `api.observer` | 기본 DB 기준 정보/로그 조회 | `selectors.py`, `views.py` |

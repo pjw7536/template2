@@ -48,7 +48,7 @@ export function ChatWidgetLauncher({
         size="icon"
         className="h-12 w-12 rounded-full shadow-lg"
         onClick={onClick}
-        aria-label="Open assistant chat"
+        aria-label="AI 어시스턴트 열기"
         ref={floatingButtonRef}
       >
         <Bot className="size-8" />

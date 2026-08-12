@@ -13,6 +13,8 @@ import logging
 from django.http import HttpRequest, JsonResponse
 from rest_framework.views import APIView
 
+from api.assistant import selectors as assistant_selectors
+
 from . import selectors
 from . import serializers as observer_serializers
 from .services import (
@@ -688,10 +690,11 @@ class ObserverAnalysisView(APIView):
 
         예시 요청:
         - POST /api/v1/observer/analysis
-        - body: {"eqpId":"EQP-1","from":"2026-08-01","to":"2026-08-07"}
+        - body: {"eqpId":"EQP-1","from":"2026-08-01","to":"2026-08-07",
+          "roomId":"<uuid>","contextKey":"observer:<scope>"}
 
         snake/camel 호환:
-        - eqpId/logTypes/tipGroups와 from/to camelCase 계약만 지원합니다.
+        - eqpId/logTypes/tipGroups/roomId/contextKey와 from/to 계약을 지원합니다.
 
         오류:
         - 400: 입력 또는 날짜 범위 오류
@@ -715,6 +718,13 @@ class ObserverAnalysisView(APIView):
         # 2) 통계 context 생성과 OpenWebUI 호출
         # ---------------------------------------------------------------------
         values = query.validated_data
+        summary = None
+        if request.user.is_authenticated and values.get("room_id"):
+            summary = assistant_selectors.get_assistant_conversation_summary_for_user(
+                user=request.user,
+                conversation_id=values["room_id"],
+                context_key=values["context_key"],
+            )
         try:
             payload = analyze_observer_logs(
                 eqp_id=values["eqp_id"],
@@ -723,6 +733,7 @@ class ObserverAnalysisView(APIView):
                 log_types=values["log_types"],
                 selected_tip_groups=values["tip_groups"],
                 question=values["question_clean"],
+                conversation_summary=summary.summary if summary is not None else "",
             )
         except ObserverOpenWebUIError as exc:
             logger.warning(

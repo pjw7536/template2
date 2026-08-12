@@ -43,7 +43,7 @@ python manage.py runserver 0.0.0.0:8000
 | `api.auth` | OIDC 로그인/로그아웃/현재 사용자 |
 | `api.account` | 사용자 소속, 접근 권한, 사용자 pool |
 | `api.emails` | 메일 수집/조회/이동/삭제/OCR/RAG Outbox |
-| `api.assistant` | RAG 검색과 LLM 답변 생성 |
+| `api.assistant` | 사용자별 대화방 저장, OpenWebUI 일반 대화, 메일 RAG/LLM 답변 생성 |
 | `api.rag` | RAG 서버 호출 공통 client |
 | `api.drone` | Line Dashboard와 Drone SOP 알림 파이프라인 |
 | `api.observer` | 기본 DB 기준정보/로그 조회 |

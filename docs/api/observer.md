@@ -62,12 +62,14 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
 - `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.
 - frontend 기본 로그 조회는 `limit`을 명시하지 않고 backend 기본 기간 정책을 따릅니다.
-- 분석 API는 `eqpId`, `from`, `to`, 활성 `logTypes`, 선택 `tipGroups`를 JSON body로 받으며 최대 90일 범위만 허용합니다.
+- 분석 API는 `eqpId`, `from`, `to`, 활성 `logTypes`, 선택 `tipGroups`와 선택적인 `roomId`, `contextKey`를 JSON body로 받으며 최대 90일 범위만 허용합니다. 인증 사용자가 소유한 방과 문맥이 일치할 때만 해당 장기 요약을 분석 prompt에 포함합니다.
 - 분석 API는 브라우저의 현재 row를 받지 않고 같은 조회 조건으로 backend source를 다시 조회합니다.
 - EQP는 DB에서 `DOWN`, `IDLE`, `LOCAL`만 먼저 선별해 발생 빈도와 comment 원인을 요약합니다. TIP도 DB에서 `L*_TIP`만 선별하므로 `DOING`, `CNT`는 조회 상한을 소비하지 않습니다.
 - SPC/FDC/CTTTM/RACB/ESOP는 EQP/TIP 관심 이벤트 전 30분부터 후 10분까지의 raw context만 전달합니다. 관심 이벤트가 없으면 선택된 비 EQP/TIP 로그를 제한된 raw context로 전달합니다.
-- source별 최대 5000건, raw 유형별 최대 400건, 전체 prompt 문자 예산을 적용하며 누락 가능성은 응답 `meta.coverage`에 표시합니다.
+- source별 최대 5000건, raw 유형별 최대 400건, 전체 prompt 180,000자 예산을 적용합니다. 예산을 넘으면 주변 로그, 개별 대상 이벤트, 기록 원인, TIP/EQP 통계 순으로 축소하고 `meta.promptTruncation`에 section별 전후 건수를 표시합니다.
 - 분석 모델 호출은 기존 `OPENWEBUI_*` 설정을 재사용하고 `reasoning_effort=medium`으로 실행합니다.
+- 분석 응답 `meta`에는 실제 호출 모델 `analysisModel`, 프롬프트 계약 `promptVersion`, 입력 스키마 `schemaVersion`을 포함합니다.
+- finding의 `evidenceIds`는 분석 입력에 실제로 포함된 event ID만 남겨 모델이 생성한 알 수 없는 ID를 제거합니다.
 - tkin Prevent 화면은 ESOP Dashboard line 선택과 `account_affiliation.line/user_sdwt_prod` 매핑으로 `userSdwtProd` 후보를 정합니다.
 - tkin Prevent PRC 후보는 `station_master.sdwt_prod_lookup = userSdwtProd`인 row의 `station_master.prc_group_lookup`에서 가져옵니다.
 - tkin Prevent process/step/matrix 조회는 `userSdwtProd`와 `prcGroup`으로 대상 `station_master.ch_main`을 찾습니다.
@@ -108,12 +110,19 @@ Content-Type: application/json
   "eqpId": "EQP-001",
   "from": "2026-07-28",
   "to": "2026-07-30",
-  "logTypes": ["EQP", "TIP", "SPC_ITL", "FDC_ITL", "CTTTM", "RACB", "ESOP"],
-  "tipGroups": ["__ALL__"]
+  "logTypes": ["eqp", "tip", "spc-interlock", "fdc-interlock", "ctttm", "racb", "esop"],
+  "tipGroups": ["__ALL__"],
+  "question": "DOWN이 반복된 원인과 확인할 항목을 알려줘.",
+  "roomId": "<assistant-conversation-uuid>",
+  "contextKey": "observer:<scope-key>"
 }
 ```
 
-분석 응답은 `analysis.headline`, `analysis.summary`, `analysis.findings`, `analysis.recommendedChecks`, `analysis.limitations`와 입력 범위를 설명하는 `meta`, `scope`를 반환합니다. `recordedCauses`는 로그 comment에 기록된 원인이고 `inferredCauses`는 주변 이벤트에 근거한 추정 원인입니다.
+분석 응답은 `analysis.headline`, `analysis.summary`, `analysis.findings`, `analysis.recommendedChecks`, `analysis.limitations`와 입력 범위를 설명하는 `meta`, `scope`를 반환합니다. `recordedCauses`는 로그 comment에 기록된 원인이고 `inferredCauses`는 주변 이벤트에 근거한 추정 원인입니다. `meta.analysisModel`, `meta.promptVersion`, `meta.schemaVersion`으로 분석 재현에 필요한 버전을 확인할 수 있습니다.
+
+`question`은 최대 2,400자까지 허용합니다.
+
+Observer 화면에서는 별도 분석 버튼 없이 기존 전역 ChatWidget이 현재 조회 조건을 page context로 등록합니다. 이 context가 활성화된 동안 위젯 질문은 일반 Assistant/RAG API가 아니라 이 분석 API로 전달되며, 응답은 markdown 채팅 메시지로 변환됩니다. ChatWidget의 기존 `assistant` 접근 권한 정책은 유지됩니다.
 
 ```http
 GET /api/v1/observer/tkin-prevent/matrix?userSdwtProd=S1&prcGroup=P1&processId=PROC1&stepSeq=10

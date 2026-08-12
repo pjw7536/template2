@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from unittest.mock import Mock, patch
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -17,7 +18,12 @@ from django.urls import reverse
 
 from . import selectors
 from . import serializers as observer_serializers
-from .services.analysis import analyze_observer_logs, build_observer_analysis_context
+from .services.analysis import (
+    MAX_PROMPT_CHARS,
+    analyze_observer_logs,
+    build_observer_analysis_context,
+    build_observer_analysis_messages,
+)
 from .services.openwebui import (
     ObserverOpenWebUIConfig,
     request_observer_analysis,
@@ -1654,6 +1660,39 @@ class ObserverAnalysisTests(TestCase):
         self.start_at = datetime(2026, 8, 1, tzinfo=ZoneInfo("Asia/Seoul"))
         self.end_at = datetime(2026, 8, 3, 23, 59, 59, tzinfo=ZoneInfo("Asia/Seoul"))
 
+    def test_analysis_question_accepts_and_preserves_2400_characters(self) -> None:
+        """분석 질문 2,400자를 검증과 OpenWebUI 입력에서 동일하게 보존합니다."""
+
+        question = "가" * 2400
+        serializer = observer_serializers.ObserverAnalysisRequestSerializer(
+            data={
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-08-01",
+                "to": "2026-08-03",
+                "question": question,
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        messages = build_observer_analysis_messages(
+            context={},
+            question=question,
+            conversation_summary="이전 분석에서 DOWN 원인을 확인했습니다.",
+        )
+        self.assertIn(question, messages[1]["content"])
+        self.assertIn("이전 분석에서 DOWN 원인을 확인했습니다.", messages[1]["content"])
+
+        too_long_serializer = observer_serializers.ObserverAnalysisRequestSerializer(
+            data={
+                "eqpId": "EQP-ALPHA",
+                "from": "2026-08-01",
+                "to": "2026-08-03",
+                "question": f"{question}가",
+            }
+        )
+        self.assertFalse(too_long_serializer.is_valid())
+        self.assertIn("question", too_long_serializer.errors)
+
     def test_analysis_selector_prefilters_large_status_sources(self) -> None:
         """EQP/TIP 제외 상태가 분석 조회 상한을 차지하지 않게 DB filter를 전달합니다."""
 
@@ -1812,6 +1851,64 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(len(context["tipStatusStatistics"]), 1)
         self.assertEqual(context["tipStatusStatistics"][0]["process"], "PROC-A")
 
+    def test_analysis_context_always_stays_within_prompt_budget(self) -> None:
+        """원인과 TIP 그룹이 많아도 최종 context가 모델 입력 상한을 넘지 않습니다."""
+
+        tip_logs = [
+            {
+                "id": f"TIP-{group_index}-{event_index}",
+                "logType": "TIP",
+                "eventType": f"L{group_index}_TIP",
+                "eventTime": "2026-08-02T09:50:00+09:00",
+                "lineId": "LINE-A",
+                "process": f"PROC-{group_index}",
+                "step": str(group_index),
+                "ppid": f"PPID-{group_index}",
+                "comment": f"원인-{event_index}-" + ("가" * 990),
+            }
+            for group_index in range(100)
+            for event_index in range(30)
+        ]
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["tip"],
+            selected_tip_groups=["__ALL__"],
+            logs_by_type={"tip": tip_logs},
+        )
+
+        serialized_context = json.dumps(
+            context,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        self.assertLessEqual(len(serialized_context), MAX_PROMPT_CHARS)
+        self.assertTrue(context["coverage"]["promptTruncated"])
+        truncation = context["coverage"]["promptTruncation"]
+        self.assertEqual(
+            set(truncation),
+            {
+                "contextEvents",
+                "targetEvents",
+                "recordedCauses",
+                "tipStatusStatistics",
+                "eqpStatusStatistics",
+            },
+        )
+        self.assertTrue(
+            any(
+                counts["after"] < counts["before"]
+                for counts in truncation.values()
+            )
+        )
+        messages = build_observer_analysis_messages(
+            context=context,
+            question="가" * 2400,
+        )
+        self.assertLessEqual(len(messages[1]["content"]), MAX_PROMPT_CHARS)
+
     def test_analysis_service_keeps_partial_source_failure_as_limitation(self) -> None:
         """부분 source 실패는 성공 응답을 유지하면서 분석 한계에 명시합니다."""
 
@@ -1845,6 +1942,113 @@ class ObserverAnalysisTests(TestCase):
 
         self.assertEqual(result["meta"]["sourceErrors"], {"eqp": "RuntimeError"})
         self.assertIn("eqp", result["analysis"]["limitations"][0])
+
+    def test_analysis_limitation_names_the_reduced_prompt_sections(self) -> None:
+        """prompt 축소 한계는 실제로 줄어든 section 이름을 반환합니다."""
+
+        context = {
+            "scope": {"eqpId": "EQP-ALPHA"},
+            "targetEvents": [],
+            "contextEvents": {"rows": []},
+            "coverage": {
+                "sourceMayBeTruncated": [],
+                "sourceErrors": {},
+                "promptTruncated": True,
+                "promptTruncation": {
+                    "contextEvents": {"before": 20, "after": 5},
+                    "targetEvents": {"before": 2, "after": 2},
+                },
+            },
+        }
+        with (
+            patch(
+                "api.observer.services.analysis.build_observer_analysis_context",
+                return_value=context,
+            ),
+            patch.object(selectors, "get_analysis_logs_by_type", return_value=[]),
+            patch(
+                "api.observer.services.analysis.request_observer_analysis",
+                return_value=(
+                    '{"headline":"분석","summary":"요약","findings":[],'
+                    '"recommendedChecks":[],"limitations":[]}'
+                ),
+            ),
+        ):
+            result = analyze_observer_logs(
+                eqp_id="EQP-ALPHA",
+                start_at=self.start_at,
+                end_at=self.end_at,
+                log_types=["eqp"],
+                selected_tip_groups=["__ALL__"],
+                question="분석해 주세요.",
+            )
+
+        self.assertIn("contextEvents", result["analysis"]["limitations"][0])
+        self.assertNotIn("주변 로그 일부를 균등 축소", result["analysis"]["limitations"][0])
+
+    def test_analysis_service_records_versions_and_filters_unknown_evidence(self) -> None:
+        """실제 입력 근거만 유지하고 모델·프롬프트 버전을 metadata에 기록합니다."""
+
+        config = ObserverOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="gpt-oss-120b",
+        )
+        with (
+            patch.object(
+                selectors,
+                "get_analysis_logs_by_type",
+                return_value=[
+                    {
+                        "id": "EQP-DOWN-1",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                        "comment": "Pressure alarm",
+                    },
+                    {
+                        "id": "EQP-DOWN-2",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:05:00+09:00",
+                        "comment": "Pressure alarm",
+                    }
+                ],
+            ),
+            patch("api.observer.services.analysis.MAX_TARGET_EVENTS", 1),
+            patch(
+                "api.observer.services.analysis.ObserverOpenWebUIConfig.from_settings",
+                return_value=config,
+            ),
+            patch(
+                "api.observer.services.analysis.request_observer_analysis",
+                return_value=(
+                    '{"headline":"분석","summary":"요약","findings":['
+                    '{"category":"EQP","target":"DOWN","assessment":"반복",'
+                    '"recordedCauses":[],"inferredCauses":[],"evidenceIds":'
+                    '["EQP:EQP-DOWN-2","EQP:UNKNOWN"]}],'
+                    '"recommendedChecks":[],"limitations":[]}'
+                ),
+            ),
+        ):
+            result = analyze_observer_logs(
+                eqp_id="EQP-ALPHA",
+                start_at=self.start_at,
+                end_at=self.end_at,
+                log_types=["eqp"],
+                selected_tip_groups=["__ALL__"],
+                question="분석해 주세요.",
+            )
+
+        self.assertEqual(
+            result["analysis"]["findings"][0]["evidenceIds"],
+            ["EQP:EQP-DOWN-2"],
+        )
+        self.assertEqual(result["meta"]["analysisModel"], "gpt-oss-120b")
+        self.assertEqual(
+            result["meta"]["promptVersion"],
+            "observer-analysis-prompt-v1",
+        )
+        self.assertEqual(result["meta"]["schemaVersion"], "observer-analysis-v1")
 
     def test_openwebui_request_reuses_config_and_medium_reasoning(self) -> None:
         """Observer 분석은 기존 OpenWebUI 설정과 medium reasoning을 사용합니다."""
@@ -1891,10 +2095,18 @@ class ObserverAnalysisTests(TestCase):
             "meta": {"eqpTargetCount": 3},
             "scope": {"eqpId": "EQP-ALPHA"},
         }
-        with patch(
-            "api.observer.views.analyze_observer_logs",
-            return_value=service_payload,
-        ) as analyze:
+        summary = Mock(summary="Observer 장기 요약")
+        with (
+            patch(
+                "api.observer.views.assistant_selectors."
+                "get_assistant_conversation_summary_for_user",
+                return_value=summary,
+            ) as get_summary,
+            patch(
+                "api.observer.views.analyze_observer_logs",
+                return_value=service_payload,
+            ) as analyze,
+        ):
             response = self.client.post(
                 reverse("observer-analysis"),
                 data=json.dumps(
@@ -1904,6 +2116,8 @@ class ObserverAnalysisTests(TestCase):
                         "to": "2026-08-03",
                         "logTypes": ["eqp", "tip", "spc-interlock"],
                         "tipGroups": ["__ALL__"],
+                        "roomId": "00000000-0000-0000-0000-000000000001",
+                        "contextKey": "observer:scope-a",
                     }
                 ),
                 content_type="application/json",
@@ -1915,6 +2129,12 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(call["eqp_id"], "EQP-ALPHA")
         self.assertEqual(call["log_types"], ["eqp", "tip", "spc-interlock"])
         self.assertEqual(call["selected_tip_groups"], ["__ALL__"])
+        self.assertEqual(call["conversation_summary"], "Observer 장기 요약")
+        get_summary.assert_called_once_with(
+            user=self.user,
+            conversation_id=UUID("00000000-0000-0000-0000-000000000001"),
+            context_key="observer:scope-a",
+        )
 
     def test_analysis_endpoint_rejects_over_90_day_range(self) -> None:
         """분석도 기존 Observer와 같은 최대 90일 범위를 적용합니다."""

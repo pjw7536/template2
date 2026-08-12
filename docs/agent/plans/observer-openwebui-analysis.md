@@ -12,7 +12,7 @@
 
 ## 범위
 - Observer 분석 요청 serializer, 통계/원인 컨텍스트 생성 service, OpenWebUI 호출 service, POST API와 테스트를 추가한다.
-- Observer 화면에 분석 실행 버튼과 loading/error/result Dialog를 추가한다.
+- 기존 전역 ChatWidget에 Observer 조회 context와 OpenWebUI 분석 결과 표시를 연결한다.
 - Observer API/모듈 문서에 새 분석 계약을 기록한다.
 - DB schema, migration, 기존 OpenWebUI 환경변수, 기존 CTTTM 요약 동작은 변경하지 않는다.
 
@@ -56,3 +56,22 @@
 - 2026-08-11: backend 분석/호출 service와 API, frontend 실행 버튼/Dialog, focused backend 테스트를 구현했다.
 - 2026-08-11: EQP/TIP 관심 상태를 DB에서 선별하도록 보강하고 backend/frontend 회귀 테스트, lint/build, backend/frontend/UI/docs audit을 완료했다.
 - 2026-08-11: local dev는 기존 offsite dummy OpenWebUI 설정(`dummy-model`)을 사용함을 확인했다. 배포 환경의 `OPENWEBUI_MODEL=gpt-oss-120b` 계약은 변경하지 않았다.
+
+## 후속 전환: 기존 ChatWidget 재사용
+- [x] 전역 route orchestration에 page assistant context provider를 추가한다.
+- [x] ChatWidget이 page context별 message sender와 안내 상태를 지원하게 한다.
+- [x] Observer 조회 조건과 OpenWebUI 분석 API를 page context로 등록한다.
+- [x] Observer 전용 분석 버튼, mutation hook, 결과 Dialog를 제거한다.
+- [x] frontend 테스트·lint·build·boundary/UI audit과 문서를 갱신한다.
+
+### 전환 설계
+- 이 후속 작업 당시 위젯의 일반 화면은 `/api/v1/assistant/chat`을 유지했으며, 이후 `assistant-openwebui-routing.md`에서 메일함 외 화면을 OpenWebUI로 전환했다.
+- Observer context가 활성화되면 위젯 메시지는 `/api/v1/observer/analysis`로 보내고, backend가 기존 `OPENWEBUI_*` 설정을 사용한다.
+- feature 간 직접 import를 만들지 않기 위해 `apps/web/src/lib/assistant`의 공용 page context만 공유한다.
+- Observer context에서는 RAG 선택 UI 대신 연결된 EQP·조회 기간과 `현재 조회 데이터 종합 분석` 빠른 질문을 표시한다.
+- 설비·기간·로그 유형·TIP group 변경 시 등록 context를 교체하며, 응답에는 분석 scope를 함께 표시한다.
+- 기존 Assistant 권한에 따른 ChatWidget 노출 정책은 변경하지 않는다.
+
+### 전환 진행 기록
+- 2026-08-11: 공용 page context, context별 sender/history 분리, Observer markdown 변환과 위젯 연결 상태 UI를 구현했다.
+- 2026-08-11: 기존 Observer 분석 버튼·Dialog를 제거하고 frontend 69건, Observer backend 7건, lint/build/frontend boundary/UI/docs audit을 완료했다.

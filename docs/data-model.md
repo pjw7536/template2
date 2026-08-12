@@ -26,6 +26,11 @@
 | Account | `UserAccess` | 사용자별 scope 접근 상태와 고정 역할 |
 | Account | `AccessAuditLog` | 접근 상태·정책·scope 변경 감사 이력 |
 | Activity | `ActivityLog` | 사용자/시스템 활동 로그 |
+| Assistant | `AssistantConversation` | 사용자별 UUID 대화방, 현재 분기, 고정·보관 상태 |
+| Assistant | `AssistantMessage` | 대화방별 user/assistant 메시지, context, 출처, parent·revision 관계 |
+| Assistant | `AssistantGeneration` | 사용자 단위 활성 생성 lease와 종료 상태 |
+| Assistant | `AssistantContextSnapshot` | 업무 화면 분석 범위·coverage·제한된 근거 snapshot |
+| Assistant | `AssistantMessageFeedback` | Assistant 답변별 사용자 평가 |
 | Data Movement | `MInterlock` | m_interlock 원천 파일의 interlock_no 기준 최신 이력 |
 | Data Movement | `MInterlockLoadJob` | m_interlock 파일별 적재 상태와 처리 결과 |
 | Emails | `Email` | 수집/작성/분류된 메일 본문과 metadata |
@@ -52,7 +57,6 @@
 | App | 데이터 위치 |
 | --- | --- |
 | `api.auth` | `api.account.User`와 session/OIDC claim 사용 |
-| `api.assistant` | RAG/LLM 외부 응답을 runtime에서 조립 |
 | `api.rag` | 외부 RAG API client |
 | `api.observer` | 기본 DB의 data movement/업무 테이블 read-only 조회 |
 | `api.health` | runtime 상태 계산 |
@@ -61,6 +65,9 @@
 ## 주요 관계
 
 - `User`는 현재 소속(`UserCurrentAffiliation`)과 접근 권한(`UserSdwtProdAccess`)을 통해 업무 데이터 접근 범위를 얻습니다.
+- `AssistantConversation`은 `User`에 속하고 `current_message`에서 parent를 따라 현재 분기를 결정하며 `pinned_at`, `archived_at`을 보관합니다. `AssistantConversationSummary`는 `(conversation, context_key)`별 rolling summary와 포함 메시지 위치를 보관합니다.
+- `AssistantMessage`는 대화방 삭제 시 cascade 삭제되며 `(conversation, client_id)` constraint가 메시지 저장 재시도를 멱등 처리합니다. `parent`, `revision_of`로 질문 편집과 답변 재생성 전 원본 분기를 보존합니다.
+- `AssistantGeneration`은 queued/streaming 상태에 대한 사용자 partial unique constraint와 `(user, client_request_id)` 멱등 constraint를 사용합니다. `AssistantContextSnapshot`은 원본 대량 행 대신 제한된 JSON과 hash를 저장하고, `AssistantMessageFeedback`은 메시지 one-to-one 평가입니다.
 - Emails는 mailbox/소속 접근 범위를 기준으로 메일 목록과 상세 접근을 제한합니다.
 - `EmailOutbox`는 RAG 등록/삭제 작업을 보관하고 `process_email_outbox`가 처리합니다.
 - Drone SOP는 target, channel config, recipient, dispatch, delivery로 분리되어 알림 설정과 발송 결과를 추적합니다.

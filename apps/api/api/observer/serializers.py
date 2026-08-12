@@ -32,6 +32,7 @@ OBSERVER_LOG_TYPES = (
 DEFAULT_OBSERVER_ANALYSIS_QUESTION = (
     "조회 기간의 EQP/TIP 관심 상태 빈도와 기록된 원인, 주변 로그 기반 원인 후보를 분석해 주세요."
 )
+MAX_OBSERVER_ANALYSIS_QUESTION_CHARS = 2400
 
 
 def _normalize_id(value: object) -> str:
@@ -210,8 +211,15 @@ class ObserverAnalysisRequestSerializer(serializers.Serializer):
     question = serializers.CharField(
         required=False,
         allow_blank=False,
-        max_length=1000,
+        max_length=MAX_OBSERVER_ANALYSIS_QUESTION_CHARS,
         default=DEFAULT_OBSERVER_ANALYSIS_QUESTION,
+    )
+    room_id = serializers.UUIDField(required=False, allow_null=True)
+    context_key = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=512,
+        default="observer",
     )
 
     def to_internal_value(self, data: Any) -> dict[str, Any]:
@@ -219,6 +227,10 @@ class ObserverAnalysisRequestSerializer(serializers.Serializer):
 
         mutable_data = data.copy()
         mutable_data["from_value"] = data.get("from")
+        if "roomId" in data:
+            mutable_data["room_id"] = data.get("roomId")
+        if "contextKey" in data:
+            mutable_data["context_key"] = data.get("contextKey")
         return super().to_internal_value(mutable_data)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:

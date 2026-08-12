@@ -5,20 +5,6 @@ import { useAuth } from "@/lib/auth"
 const TOOLTIP_TEXT = "무엇이든 물어보세요"
 const TOOLTIP_TYPING_DURATION_MS = 300
 const TOOLTIP_VISIBLE_DURATION_MS = 3000
-const POST_LOGIN_ATTENTION_TOOLTIP_KEY = "auth:post-login-attention-tooltip"
-const hasWindow = typeof window !== "undefined"
-
-function consumePostLoginAttentionTooltipFlag() {
-  if (!hasWindow) return false
-  try {
-    const value = window.sessionStorage.getItem(POST_LOGIN_ATTENTION_TOOLTIP_KEY)
-    if (value !== "1") return false
-    window.sessionStorage.removeItem(POST_LOGIN_ATTENTION_TOOLTIP_KEY)
-    return true
-  } catch {
-    return false
-  }
-}
 
 function clearAttentionTooltipTimers(timeoutRef, intervalRef) {
   if (timeoutRef.current) {
@@ -75,17 +61,25 @@ function showAttentionTooltip(setIsVisible, setText, timeoutRef, intervalRef) {
   }, TOOLTIP_VISIBLE_DURATION_MS)
 }
 
-export function useAttentionTooltip({ isOpen, isChatPage }) {
+export function useAttentionTooltip({ isOpen, isHomePage }) {
   const { user } = useAuth()
+  const hasUser = Boolean(user)
+  const [shouldShowAttentionTooltip, setShouldShowAttentionTooltip] = useState(false)
   const [isAttentionTooltipVisible, setIsAttentionTooltipVisible] = useState(false)
   const [attentionTooltipText, setAttentionTooltipText] = useState("")
   const timeoutRef = useRef(null)
   const intervalRef = useRef(null)
 
   useEffect(() => {
-    if (!user) return
-    if (isOpen || isChatPage) return
-    if (!consumePostLoginAttentionTooltipFlag()) return
+    if (!hasUser || !isHomePage) return
+
+    setShouldShowAttentionTooltip(true)
+  }, [hasUser, isHomePage])
+
+  useEffect(() => {
+    if (!shouldShowAttentionTooltip || !hasUser || isOpen || !isHomePage) {
+      return undefined
+    }
 
     showAttentionTooltip(
       setIsAttentionTooltipVisible,
@@ -93,21 +87,20 @@ export function useAttentionTooltip({ isOpen, isChatPage }) {
       timeoutRef,
       intervalRef,
     )
-  }, [isChatPage, isOpen, user])
 
-  useEffect(() => {
-    if (user && !isOpen && !isChatPage) return
-
-    setIsAttentionTooltipVisible(false)
-    setAttentionTooltipText("")
-    clearAttentionTooltipTimers(timeoutRef, intervalRef)
-  }, [isChatPage, isOpen, user])
-
-  useEffect(() => {
     return () => {
       clearAttentionTooltipTimers(timeoutRef, intervalRef)
     }
-  }, [])
+  }, [hasUser, isHomePage, isOpen, shouldShowAttentionTooltip])
+
+  useEffect(() => {
+    if (hasUser && !isOpen && isHomePage) return
+
+    setShouldShowAttentionTooltip(false)
+    setIsAttentionTooltipVisible(false)
+    setAttentionTooltipText("")
+    clearAttentionTooltipTimers(timeoutRef, intervalRef)
+  }, [hasUser, isHomePage, isOpen])
 
   return { isAttentionTooltipVisible, attentionTooltipText }
 }

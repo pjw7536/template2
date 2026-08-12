@@ -44,12 +44,15 @@ function TruncatedChangeType({ value }) {
 export default function ObserverTableRow({
   row,
   isSelected,
+  isEvidenceSelected = false,
   onSelect,
   getLogTypeBadgeClass,
 }) {
   const baseClasses =
     "flex items-center cursor-pointer border-b border-border hover:bg-muted";
-  const selectionClasses = isSelected
+  const selectionClasses = isEvidenceSelected
+    ? "bg-primary/15 ring-1 ring-inset ring-primary/40 transition-colors duration-200"
+    : isSelected
     ? "bg-primary/10 transition-colors duration-200"
     : "bg-card transition-colors duration-150";
   const resolveLogTypeBadgeClass =
@@ -81,6 +84,7 @@ export default function ObserverTableRow({
       onKeyDown={handleRowKeyDown}
       role="option"
       aria-selected={isSelected}
+      aria-label={isEvidenceSelected ? "AI 분석 근거 로그" : undefined}
       tabIndex={0}
       className={`${baseClasses} ${selectionClasses}`}
     >

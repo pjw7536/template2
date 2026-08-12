@@ -29,7 +29,7 @@ export default function ObserverDataTable({
   });
 
   useEffect(() => {
-    if (source !== "observer" || !selectedRow) return;
+    if (!["observer", "assistant"].includes(source) || !selectedRow) return;
     const selectedIndex = rowIndexById.get(String(selectedRow));
     if (selectedIndex === undefined) return;
 
@@ -85,6 +85,10 @@ export default function ObserverDataTable({
                       <ObserverTableRow
                         row={row}
                         isSelected={String(row.id) === String(selectedRow)}
+                        isEvidenceSelected={
+                          source === "assistant" &&
+                          String(row.id) === String(selectedRow)
+                        }
                         onSelect={handleSelect}
                         getLogTypeBadgeClass={getLogTypeBadgeClass}
                       />

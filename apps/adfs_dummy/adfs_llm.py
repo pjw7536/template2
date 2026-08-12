@@ -6,11 +6,13 @@ docker-compose.dev.yml에서 Django assistant 서비스를
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from typing import Any, Dict
 
 from fastapi import APIRouter, Body, HTTPException
+from fastapi.responses import StreamingResponse
 
 from adfs_settings import DUMMY_LLM_DELAY_MS, DUMMY_LLM_REPLY_TEMPLATE
 
@@ -63,9 +65,32 @@ def _build_chat_completion(model: str, reply: str) -> Dict[str, Any]:
     }
 
 
+def _stream_chat_completion(model: str, reply: str):
+    """개발 환경에서도 실제 OpenAI 호환 SSE chunk를 순서대로 반환합니다."""
+
+    chunk_size = 8
+    for index in range(0, len(reply), chunk_size):
+        content = reply[index : index + chunk_size]
+        payload = {
+            "id": f"chatcmpl-{uuid.uuid4().hex}",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": content},
+                    "finish_reason": None,
+                }
+            ],
+        }
+        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
 @router.post("/v1/chat/completions")
 @router.post("/{prefix:path}/v1/chat/completions")
-async def chat_completions(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def chat_completions(payload: Dict[str, Any] = Body(...)) -> Any:
     """결정적인 chat completion 응답을 반환합니다."""
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="invalid JSON body")
@@ -80,4 +105,9 @@ async def chat_completions(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any
 
     _sleep_if_needed()
     reply = _render_reply(question)
+    if payload.get("stream") is True:
+        return StreamingResponse(
+            _stream_chat_completion(model_name, reply),
+            media_type="text/event-stream",
+        )
     return _build_chat_completion(model_name, reply)

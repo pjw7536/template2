@@ -28,7 +28,7 @@
 | `api.auth` | OIDC 로그인/로그아웃/현재 사용자 | ADFS/OIDC, `api.account.User` |
 | `api.account` | 소속, 권한, 사용자 pool | 기본 DB |
 | `api.emails` | 메일 수집/조회/이동/삭제/OCR/RAG Outbox | 기본 DB, POP3, RAG, MinIO |
-| `api.assistant` | RAG 기반 채팅 | RAG, LLM |
+| `api.assistant` | 사용자별 대화방 저장과 화면별 AI 채팅 | PostgreSQL, OpenWebUI, RAG, LLM |
 | `api.rag` | 외부 RAG 서버 공통 client | RAG |
 | `api.drone` | Line Dashboard와 Drone SOP 알림 | 기본 DB, POP3, Jira, Mail API, Messenger |
 | `api.observer` | 기본 DB 기준정보/로그 조회 | data movement 테이블, Drone 데이터 |

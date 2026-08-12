@@ -1,5 +1,6 @@
 // src/features/observer/components/DataLogSection.jsx
 import React from "react";
+import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react";
 import ObserverDataTable from "./ObserverDataTable";
 import { LoadingSpinner } from "./Loaders";
 import { getLogTypeBadgeClass } from "../utils/logTypeStyles";
@@ -18,6 +19,7 @@ export default function DataLogSection({
   loadingMoreTypes = new Set(),
   residentLogCount = 0,
   residentLimitReached = false,
+  evidenceNavigationStatus = null,
 }) {
   const hasLogErrors = logErrors.length > 0;
   const moreTypes = OBSERVER_LOG_CONFIG.filter(
@@ -36,6 +38,32 @@ export default function DataLogSection({
         </div>
       ) : (
         <>
+          {evidenceNavigationStatus ? (
+            <div
+              className={[
+                "mb-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs",
+                evidenceNavigationStatus.status === "not_found"
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : "border-primary/20 bg-primary/5 text-foreground",
+              ].join(" ")}
+              role="status"
+            >
+              {evidenceNavigationStatus.status === "loading" ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : evidenceNavigationStatus.status === "found" ? (
+                <CheckCircle2 className="size-3.5 text-primary" aria-hidden="true" />
+              ) : (
+                <TriangleAlert className="size-3.5" aria-hidden="true" />
+              )}
+              <span className="min-w-0 break-all">
+                {evidenceNavigationStatus.status === "loading"
+                  ? `AI 분석 근거 로그를 찾는 중입니다: ${evidenceNavigationStatus.evidenceId}`
+                  : evidenceNavigationStatus.status === "found"
+                    ? `AI 분석 근거 로그를 선택했습니다: ${evidenceNavigationStatus.evidenceId}`
+                    : `현재 보존 한도에서 AI 분석 근거 로그를 찾지 못했습니다: ${evidenceNavigationStatus.evidenceId}`}
+              </span>
+            </div>
+          ) : null}
           {hasLogErrors ? (
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               <span>

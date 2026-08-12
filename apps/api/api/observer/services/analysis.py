@@ -15,7 +15,11 @@ import json
 import re
 from typing import Iterable, Mapping, Sequence
 
-from .openwebui import ObserverOpenWebUIError, request_observer_analysis
+from .openwebui import (
+    ObserverOpenWebUIConfig,
+    ObserverOpenWebUIError,
+    request_observer_analysis,
+)
 from .timezone import normalize_observer_datetime, serialize_observer_datetime
 
 EQP_TARGET_STATUSES = frozenset({"DOWN", "IDLE", "LOCAL"})
@@ -30,6 +34,16 @@ MAX_TIP_GROUPS = 100
 MAX_CONTEXT_EVENTS_PER_TYPE = 400
 MAX_PROMPT_CHARS = 180_000
 MAX_CONTEXT_TEXT_CHARS = 1000
+MAX_ANALYSIS_QUESTION_CHARS = 2400
+MAX_CONVERSATION_SUMMARY_CHARS = 4000
+MAX_CONTEXT_JSON_CHARS = (
+    MAX_PROMPT_CHARS
+    - MAX_ANALYSIS_QUESTION_CHARS
+    - MAX_CONVERSATION_SUMMARY_CHARS
+    - 256
+)
+OBSERVER_ANALYSIS_SCHEMA_VERSION = "observer-analysis-v1"
+OBSERVER_ANALYSIS_PROMPT_VERSION = "observer-analysis-prompt-v1"
 
 ANALYSIS_SYSTEM_PROMPT = """당신은 반도체 설비 Observer 로그 분석기입니다.
 입력은 서버가 현재 조회 조건에서 생성한 통계와 주변 로그입니다.
@@ -434,7 +448,7 @@ def build_observer_analysis_context(
         for log_type in sorted(requested_types)
     }
     context: dict[str, object] = {
-        "schemaVersion": "observer-analysis-v1",
+        "schemaVersion": OBSERVER_ANALYSIS_SCHEMA_VERSION,
         "scope": {
             "eqpId": eqp_id,
             "from": start_at.isoformat(),
@@ -474,33 +488,179 @@ def build_observer_analysis_context(
 
 
 def _apply_prompt_budget(context: dict[str, object]) -> dict[str, object]:
-    """OpenWebUI user message가 문자 예산을 넘으면 raw 근거를 균등 축소합니다."""
+    """OpenWebUI 입력이 문자 예산 안에 들도록 세부 근거부터 단계적으로 줄입니다."""
+
+    def serialized_chars() -> int:
+        return len(json.dumps(context, ensure_ascii=False, separators=(",", ":")))
+
+    def reduce_list(values: object) -> bool:
+        if not isinstance(values, list) or not values:
+            return False
+        if len(values) == 1:
+            values.clear()
+        else:
+            values[:] = values[::2]
+        return True
+
+    def section_counts() -> dict[str, int]:
+        """축소 가능한 section별 현재 항목 수를 계산합니다."""
+
+        def cause_count(key: str) -> int:
+            values = context.get(key)
+            if not isinstance(values, list):
+                return 0
+            return sum(
+                len(item.get("recordedCauses") or [])
+                for item in values
+                if isinstance(item, dict)
+                and isinstance(item.get("recordedCauses"), list)
+            )
+
+        return {
+            "contextEvents": len(rows) if isinstance(rows, list) else 0,
+            "targetEvents": len(context.get("targetEvents") or []),
+            "recordedCauses": cause_count("tipStatusStatistics")
+            + cause_count("eqpStatusStatistics"),
+            "tipStatusStatistics": len(context.get("tipStatusStatistics") or []),
+            "eqpStatusStatistics": len(context.get("eqpStatusStatistics") or []),
+        }
 
     context_events = context.get("contextEvents")
     rows = context_events.get("rows") if isinstance(context_events, dict) else None
-    if not isinstance(rows, list):
+    coverage = context.get("coverage")
+    if serialized_chars() <= MAX_CONTEXT_JSON_CHARS:
+        return context
+    if isinstance(coverage, dict):
+        coverage["promptTruncated"] = True
+        coverage["promptTruncation"] = {
+            key: {"before": count, "after": count}
+            for key, count in section_counts().items()
+        }
+
+    # 원시 주변 로그, 개별 대상 이벤트, 원인 목록, 통계 그룹 순서로 축소합니다.
+    while serialized_chars() > MAX_CONTEXT_JSON_CHARS:
+        reduced = reduce_list(rows)
+        if not reduced:
+            reduced = reduce_list(context.get("targetEvents"))
+        if not reduced:
+            for summary_key in ("tipStatusStatistics", "eqpStatusStatistics"):
+                summaries = context.get(summary_key)
+                if not isinstance(summaries, list):
+                    continue
+                cause_lists = [
+                    summary.get("recordedCauses")
+                    for summary in summaries
+                    if isinstance(summary, dict)
+                ]
+                reduced_causes = False
+                for causes in cause_lists:
+                    reduced_causes = reduce_list(causes) or reduced_causes
+                if reduced_causes:
+                    reduced = True
+                    break
+        if not reduced:
+            reduced = reduce_list(context.get("tipStatusStatistics"))
+        if not reduced:
+            reduced = reduce_list(context.get("eqpStatusStatistics"))
+        if not reduced:
+            break
+
+    if isinstance(coverage, dict) and isinstance(rows, list):
+        coverage["contextIncludedCount"] = len(rows)
+        after_counts = section_counts()
+        for key, count in after_counts.items():
+            coverage["promptTruncation"][key]["after"] = count
+    if serialized_chars() <= MAX_CONTEXT_JSON_CHARS:
         return context
 
-    while rows and len(json.dumps(context, ensure_ascii=False)) > MAX_PROMPT_CHARS:
-        rows[:] = rows[::2]
-        coverage = context.get("coverage")
-        if isinstance(coverage, dict):
-            coverage["promptTruncated"] = True
-            coverage["contextIncludedCount"] = len(rows)
-    return context
+    # 비정상적으로 긴 식별자/오류 문자열까지 포함된 경우에도 상한을 보장합니다.
+    scope = context.get("scope") if isinstance(context.get("scope"), dict) else {}
+    policy = context.get("policy") if isinstance(context.get("policy"), dict) else {}
+    safe_coverage = coverage if isinstance(coverage, dict) else {}
+    return {
+        "schemaVersion": _text(context.get("schemaVersion"), max_chars=100),
+        "scope": {
+            "eqpId": _text(scope.get("eqpId"), max_chars=500),
+            "from": _text(scope.get("from"), max_chars=100),
+            "to": _text(scope.get("to"), max_chars=100),
+            "timezone": _text(scope.get("timezone"), max_chars=100),
+            "logTypes": [
+                _text(value, max_chars=100)
+                for value in list(scope.get("logTypes") or [])[:100]
+            ],
+            "tipGroups": [
+                _text(value, max_chars=200)
+                for value in list(scope.get("tipGroups") or [])[:100]
+            ],
+        },
+        "policy": policy,
+        "eqpStatusStatistics": [],
+        "tipStatusStatistics": [],
+        "targetEvents": [],
+        "contextEvents": {
+            "columns": list(CONTEXT_COLUMNS),
+            "rows": [],
+        },
+        "coverage": {
+            "sourceCounts": {
+                _text(key, max_chars=100): value
+                for key, value in list(
+                    dict(safe_coverage.get("sourceCounts") or {}).items()
+                )[:100]
+            },
+            "sourceMayBeTruncated": [
+                _text(value, max_chars=100)
+                for value in list(
+                    safe_coverage.get("sourceMayBeTruncated") or []
+                )[:100]
+            ],
+            "sourceErrors": {
+                _text(key, max_chars=100): _text(value, max_chars=500)
+                for key, value in list(
+                    dict(safe_coverage.get("sourceErrors") or {}).items()
+                )[:100]
+            },
+            "eqpTargetCount": safe_coverage.get("eqpTargetCount", 0),
+            "tipTargetCount": safe_coverage.get("tipTargetCount", 0),
+            "contextEligibleCounts": {
+                _text(key, max_chars=100): value
+                for key, value in list(
+                    dict(
+                        safe_coverage.get("contextEligibleCounts") or {}
+                    ).items()
+                )[:100]
+            },
+            "contextIncludedCount": 0,
+            "promptTruncated": True,
+            "promptTruncation": {
+                key: {**counts, "after": 0}
+                for key, counts in dict(
+                    safe_coverage.get("promptTruncation") or {}
+                ).items()
+                if isinstance(counts, dict)
+            },
+        },
+    }
 
 
 def build_observer_analysis_messages(
     *,
     context: Mapping[str, object],
     question: str,
+    conversation_summary: str = "",
 ) -> list[dict[str, str]]:
     """구조화 context와 사용자 질문을 gpt-oss-120b message로 변환합니다."""
 
     user_content = "\n".join(
         [
             "analysis_question:",
-            _text(question, max_chars=1000),
+            _text(question, max_chars=MAX_ANALYSIS_QUESTION_CHARS),
+            "",
+            "conversation_summary:",
+            _text(
+                conversation_summary,
+                max_chars=MAX_CONVERSATION_SUMMARY_CHARS,
+            ),
             "",
             "observer_analysis_context_json:",
             json.dumps(context, ensure_ascii=False, separators=(",", ":")),
@@ -567,6 +727,76 @@ def normalize_observer_analysis_result(payload: Mapping[str, object]) -> dict[st
     }
 
 
+def _get_available_evidence_ids(context: Mapping[str, object]) -> set[str]:
+    """실제 모델 입력 context에 포함된 근거 event ID 집합을 반환합니다."""
+
+    available: set[str] = set()
+
+    def collect_named_ids(value: object) -> None:
+        """통계·target event에 명시된 event/evidence ID를 재귀 수집합니다."""
+
+        if isinstance(value, Mapping):
+            event_id = _text(value.get("eventId"))
+            if event_id:
+                available.add(event_id)
+            evidence_ids = value.get("evidenceIds")
+            if isinstance(evidence_ids, list):
+                available.update(
+                    evidence_id
+                    for item in evidence_ids
+                    if (evidence_id := _text(item))
+                )
+            for nested_value in value.values():
+                collect_named_ids(nested_value)
+        elif isinstance(value, list):
+            for nested_value in value:
+                collect_named_ids(nested_value)
+
+    collect_named_ids(context)
+
+    context_events = context.get("contextEvents")
+    if not isinstance(context_events, Mapping):
+        return available
+    columns = context_events.get("columns")
+    rows = context_events.get("rows")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        return available
+    try:
+        event_id_index = columns.index("eventId")
+    except ValueError:
+        return available
+    for row in rows:
+        if isinstance(row, list) and len(row) > event_id_index:
+            event_id = _text(row[event_id_index])
+            if event_id:
+                available.add(event_id)
+    return available
+
+
+def _filter_analysis_evidence_ids(
+    *,
+    analysis: dict[str, object],
+    available_evidence_ids: set[str],
+) -> None:
+    """모델이 실제 입력에 없는 evidence ID를 응답에 남기지 않게 제한합니다."""
+
+    findings = analysis.get("findings")
+    if not isinstance(findings, list):
+        return
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        evidence_ids = finding.get("evidenceIds")
+        if not isinstance(evidence_ids, list):
+            finding["evidenceIds"] = []
+            continue
+        finding["evidenceIds"] = [
+            evidence_id
+            for evidence_id in evidence_ids
+            if evidence_id in available_evidence_ids
+        ]
+
+
 def analyze_observer_logs(
     *,
     eqp_id: str,
@@ -575,13 +805,14 @@ def analyze_observer_logs(
     log_types: Sequence[str],
     selected_tip_groups: Sequence[str],
     question: str,
+    conversation_summary: str = "",
 ) -> dict[str, object]:
     """현재 조회 조건의 통계와 주변 로그로 OpenWebUI 분석을 생성합니다.
 
     입력:
     - eqp_id/start_at/end_at: Observer 조회 조건
     - log_types/selected_tip_groups: 현재 화면 filter
-    - question: 사용자가 요청한 분석 관점
+    - question/conversation_summary: 현재 질문과 같은 문맥의 장기 대화 요약
 
     반환:
     - dict: 정규화된 분석 결과와 coverage meta
@@ -623,10 +854,20 @@ def analyze_observer_logs(
         logs_by_type=logs_by_type,
         source_errors=source_errors,
     )
+    openwebui_config = ObserverOpenWebUIConfig.from_settings()
     raw_result = request_observer_analysis(
-        messages=build_observer_analysis_messages(context=context, question=question)
+        messages=build_observer_analysis_messages(
+            context=context,
+            question=question,
+            conversation_summary=conversation_summary,
+        ),
+        config=openwebui_config,
     )
     analysis = normalize_observer_analysis_result(_parse_json_object(raw_result))
+    _filter_analysis_evidence_ids(
+        analysis=analysis,
+        available_evidence_ids=_get_available_evidence_ids(context),
+    )
     coverage = context["coverage"]
     deterministic_limitations: list[str] = []
     if coverage["sourceMayBeTruncated"]:
@@ -639,15 +880,28 @@ def analyze_observer_logs(
             f"일부 source 조회가 실패해 분석에서 제외되었습니다: {failed_sources}"
         )
     if coverage["promptTruncated"]:
+        truncation = coverage.get("promptTruncation") or {}
+        reduced_sections = [
+            key
+            for key, counts in truncation.items()
+            if isinstance(counts, dict)
+            and counts.get("after", 0) < counts.get("before", 0)
+        ]
         deterministic_limitations.append(
-            "입력 크기 제한으로 주변 로그 일부를 균등 축소했습니다."
+            "입력 크기 제한으로 다음 분석 항목을 축소했습니다: "
+            + ", ".join(reduced_sections)
         )
     analysis["limitations"] = list(
         dict.fromkeys([*analysis["limitations"], *deterministic_limitations])
     )
     return {
         "analysis": analysis,
-        "meta": coverage,
+        "meta": {
+            **coverage,
+            "analysisModel": openwebui_config.model,
+            "promptVersion": OBSERVER_ANALYSIS_PROMPT_VERSION,
+            "schemaVersion": OBSERVER_ANALYSIS_SCHEMA_VERSION,
+        },
         "scope": context["scope"],
     }
 
@@ -657,6 +911,8 @@ __all__ = [
     "EQP_TARGET_STATUSES",
     "TIP_EXCLUDED_STATUSES",
     "TIP_TARGET_PATTERN",
+    "OBSERVER_ANALYSIS_PROMPT_VERSION",
+    "OBSERVER_ANALYSIS_SCHEMA_VERSION",
     "analyze_observer_logs",
     "build_observer_analysis_context",
     "build_observer_analysis_messages",
