@@ -1048,6 +1048,55 @@ class DroneSopDeliveryEligibilityTests(TestCase):
 class DroneSopUpsertTests(TestCase):
     """UPSERT 동작을 검증합니다."""
 
+    def test_upsert_writes_normalized_eqp_lookup(self) -> None:
+        """POP3 raw SQL 신규 적재가 Observer 설비 lookup을 함께 저장합니다."""
+
+        upsert_drone_sop_rows(
+            rows=[
+                {
+                    "line_id": "L1",
+                    "eqp_id": " eqp01 ",
+                    "chamber_ids": "A",
+                    "lot_id": "LOT.LOOKUP.NEW",
+                    "main_step": "MS",
+                    "needtosend": 0,
+                    "status": "IN_PROGRESS",
+                }
+            ]
+        )
+
+        sop = DroneSOP.objects.get(lot_id="LOT.LOOKUP.NEW")
+        self.assertEqual(sop.eqp_id_lookup, "EQP01")
+
+    def test_upsert_repairs_missing_eqp_lookup_on_conflict(self) -> None:
+        """기존 lookup이 비어 있어도 동일 SOP upsert 시 정규화 값을 복구합니다."""
+
+        existing = _create_drone_sop(
+            line_id="L1",
+            eqp_id="EQP01",
+            chamber_ids="A",
+            lot_id="LOT.LOOKUP.EXISTING",
+            main_step="MS",
+        )
+        DroneSOP.objects.filter(id=existing.id).update(eqp_id_lookup=None)
+
+        upsert_drone_sop_rows(
+            rows=[
+                {
+                    "line_id": "L1",
+                    "eqp_id": "EQP01",
+                    "chamber_ids": "A",
+                    "lot_id": "LOT.LOOKUP.EXISTING",
+                    "main_step": "MS",
+                    "needtosend": 0,
+                    "status": "IN_PROGRESS",
+                }
+            ]
+        )
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.eqp_id_lookup, "EQP01")
+
     def test_upsert_skips_delivery_snapshot_for_ineligible_row_with_target(self) -> None:
         """target이 이미 확정되어도 발송 조건 미충족 row는 delivery를 만들지 않습니다."""
 
@@ -1673,6 +1722,76 @@ class DroneSelectorCaseInsensitiveTests(TestCase):
             return
         self.assertEqual(row["custom_end_step"], "ST003")
         self.assertEqual(row["status"], "COMPLETE")
+
+
+class DroneSopObserverSelectorTests(TestCase):
+    """Observer ESOP 설비·챔버 조회 규칙을 검증합니다."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        """여러 챔버를 포함한 ESOP와 비교용 다른 설비를 생성합니다."""
+
+        cls.esop = DroneSOP.objects.create(
+            line_id="L1",
+            eqp_id="EQP01",
+            chamber_ids="ABC",
+            lot_id="LOT.OBSERVER.ABC",
+            main_step="MS",
+        )
+        DroneSOP.objects.create(
+            line_id="L1",
+            eqp_id="EQP02",
+            chamber_ids="ABC",
+            lot_id="LOT.OBSERVER.OTHER",
+            main_step="MS",
+        )
+
+    def _fetch_ids(self, eqp_id: str) -> list[int]:
+        """지정한 Observer EQP 범위의 ESOP source ID 목록을 반환합니다."""
+
+        now = timezone.now()
+        rows, _ = selectors.fetch_drone_sop_timeline_page(
+            eqp_id=eqp_id,
+            start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=1),
+            page_size=10,
+        )
+        return [int(row["id"]) for row in rows]
+
+    def test_page_matches_each_character_in_multi_chamber_value(self) -> None:
+        """ABC 저장값은 A, B, C 챔버 조회에 각각 포함됩니다."""
+
+        for chamber in ("A", "B", "C"):
+            with self.subTest(chamber=chamber):
+                self.assertEqual(
+                    self._fetch_ids(f"EQP01-{chamber}"),
+                    [self.esop.id],
+                )
+
+    def test_page_excludes_unmatched_chamber(self) -> None:
+        """저장값에 없는 챔버는 ESOP page에서 제외됩니다."""
+
+        self.assertEqual(self._fetch_ids("EQP01-D"), [])
+
+    def test_page_without_chamber_returns_all_base_eqp_chambers(self) -> None:
+        """챔버 suffix가 없으면 기본 설비의 모든 챔버를 반환합니다."""
+
+        self.assertEqual(self._fetch_ids("eqp01"), [self.esop.id])
+
+    def test_detail_uses_same_eqp_chamber_scope_as_page(self) -> None:
+        """상세 조회도 page와 동일한 설비·챔버 범위를 적용합니다."""
+
+        matched = selectors.get_drone_sop_timeline_detail(
+            eqp_id="EQP01-B",
+            source_id=self.esop.id,
+        )
+        unmatched = selectors.get_drone_sop_timeline_detail(
+            eqp_id="EQP01-D",
+            source_id=self.esop.id,
+        )
+
+        self.assertIsNotNone(matched)
+        self.assertIsNone(unmatched)
 
 
 class DroneSopInstantInformTests(TestCase):

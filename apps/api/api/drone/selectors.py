@@ -175,6 +175,47 @@ def _observer_datetime(value: object) -> object:
     return parsed
 
 
+def _resolve_observer_esop_scope(eqp_id: str) -> tuple[str, tuple[str, ...]]:
+    """Observer의 설비-챔버 ID를 기본 설비와 챔버 후보로 분리합니다.
+
+    `-`는 설비와 챔버의 경계이며, 연속된 챔버 문자열은 문자별 챔버를
+    의미합니다. 예를 들어 `EQP01-ABC`는 `EQP01`과 `A`, `B`, `C`로
+    해석합니다.
+    """
+
+    normalized = str(eqp_id or "").strip().upper()
+    if "-" not in normalized:
+        return normalized, ()
+
+    base_eqp, chamber_suffix = normalized.split("-", 1)
+    chamber_candidates = tuple(
+        dict.fromkeys(
+            chamber
+            for chamber in chamber_suffix
+            if chamber and not chamber.isspace()
+        )
+    )
+    return base_eqp, chamber_candidates
+
+
+def _filter_observer_esop_scope(
+    queryset: QuerySet[DroneSOP],
+    *,
+    eqp_id: str,
+) -> QuerySet[DroneSOP]:
+    """Observer 설비-챔버 범위에 해당하는 DroneSOP queryset을 반환합니다."""
+
+    base_eqp, chamber_candidates = _resolve_observer_esop_scope(eqp_id)
+    queryset = queryset.filter(eqp_id_lookup=base_eqp)
+    if not chamber_candidates:
+        return queryset
+
+    chamber_filter = Q()
+    for chamber in chamber_candidates:
+        chamber_filter |= Q(chamber_ids__icontains=chamber)
+    return queryset.filter(chamber_filter)
+
+
 def fetch_drone_sop_timeline_page(
     *,
     eqp_id: str,
@@ -186,11 +227,12 @@ def fetch_drone_sop_timeline_page(
 ) -> tuple[list[dict[str, object]], bool]:
     """Observer ESOP compact log 한 페이지를 keyset 방식으로 반환합니다."""
 
-    eqp_key = str(eqp_id or "").strip().upper()
-    queryset = DroneSOP.objects.filter(
-        eqp_id_lookup=eqp_key,
-        created_at__gte=_observer_datetime(start_at),
-        created_at__lte=_observer_datetime(end_at),
+    queryset = _filter_observer_esop_scope(
+        DroneSOP.objects.filter(
+            created_at__gte=_observer_datetime(start_at),
+            created_at__lte=_observer_datetime(end_at),
+        ),
+        eqp_id=eqp_id,
     )
     normalized_cursor_time = (
         _observer_datetime(cursor_time) if cursor_time is not None else None
@@ -228,9 +270,9 @@ def get_drone_sop_timeline_detail(
     """설비와 source PK가 일치하는 ESOP 상세 row를 반환합니다."""
 
     return (
-        DroneSOP.objects.filter(
-            id=source_id,
-            eqp_id_lookup=str(eqp_id or "").strip().upper(),
+        _filter_observer_esop_scope(
+            DroneSOP.objects.filter(id=source_id),
+            eqp_id=eqp_id,
         )
         .values(
             "id",

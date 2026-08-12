@@ -85,6 +85,7 @@ def upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
         "sample_type",
         "sample_group",
         "eqp_id",
+        "eqp_id_lookup",
         "chamber_ids",
         "lot_id",
         "proc_id",
@@ -144,6 +145,9 @@ def upsert_drone_sop_rows(*, rows: Sequence[dict[str, Any]]) -> int:
     user_sdwt_map_index: UserSdwtProdMapIndex | None = None
     for row in rows:
         values: list[Any] = []
+        # ORM save()를 거치지 않는 raw SQL upsert에서도 Observer 조회 키를 유지합니다.
+        eqp_id = str(row.get("eqp_id") or "").strip()
+        row["eqp_id_lookup"] = eqp_id.upper() or None
         if not row.get("sop_key"):
             row["sop_key"] = build_sop_key(
                 line_id=row.get("line_id"),
