@@ -1,13 +1,26 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveAssistantSurface } from "./surfaceConfig"
+import {
+  isAssistantAppContextReady,
+  resolveAssistantSurface,
+} from "./surfaceConfig"
 
 describe("resolveAssistantSurface", () => {
+  it("Portal 홈은 앱 지식이 없는 일반 대화 surface를 반환한다", () => {
+    expect(resolveAssistantSurface({ appKey: "portal" })).toEqual({
+      mode: "portal",
+      profileKey: "portal-default",
+      profileVersion: 2,
+      appContextKey: "assistant:openwebui:assistant",
+      toolInputs: {},
+    })
+  })
+
   it("Portal 앱을 명시적인 app context로 변환한다", () => {
     expect(resolveAssistantSurface({ appKey: "appstore" })).toEqual({
       mode: "portal",
       profileKey: "portal-default",
-      profileVersion: 1,
+      profileVersion: 2,
       appContextKey: "assistant:openwebui:appstore",
       toolInputs: {},
     })
@@ -19,7 +32,7 @@ describe("resolveAssistantSurface", () => {
       expect(resolveAssistantSurface({ appKey, useAppContext: false })).toEqual({
         mode: "portal",
         profileKey: "portal-default",
-        profileVersion: 1,
+        profileVersion: 2,
         appContextKey: "assistant:openwebui:assistant",
         toolInputs: {},
       })
@@ -48,24 +61,25 @@ describe("resolveAssistantSurface", () => {
   })
 
   it("Observer page context가 준비된 경우에만 분석 surface를 반환한다", () => {
+    expect(isAssistantAppContextReady({ appKey: "observer" })).toBe(false)
     expect(resolveAssistantSurface({ appKey: "observer" })).toBeNull()
 
-    expect(
-      resolveAssistantSurface({
-        appKey: "observer",
-        pageContext: {
-          kind: "observer",
-          key: "observer:v1:scope-hash",
-          scope: {
-            eqpId: "EQP-01",
-            from: "2026-08-01",
-            to: "2026-08-13",
-            logTypes: ["eqp", "tip"],
-            tipGroups: ["__ALL__"],
-          },
+    const observerOptions = {
+      appKey: "observer",
+      pageContext: {
+        kind: "observer",
+        key: "observer:v1:scope-hash",
+        scope: {
+          eqpId: "EQP-01",
+          from: "2026-08-01",
+          to: "2026-08-13",
+          logTypes: ["eqp", "tip"],
+          tipGroups: ["__ALL__"],
         },
-      }),
-    ).toEqual({
+      },
+    }
+    expect(isAssistantAppContextReady(observerOptions)).toBe(true)
+    expect(resolveAssistantSurface(observerOptions)).toEqual({
       mode: "observer",
       profileKey: "observer-analysis",
       profileVersion: 1,

@@ -1,47 +1,42 @@
 import { useId } from "react"
-
-import { cn } from "@/lib/utils"
-
-const OPTION_CLASS_NAME =
-  "flex min-w-0 cursor-pointer items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors peer-checked:bg-card peer-checked:text-foreground peer-checked:shadow-sm peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1 peer-disabled:cursor-not-allowed"
+import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 
 export function ChatContextModeSelector({
   appLabel,
   usesAppContext,
   onChange,
   disabled = false,
+  disabledReason = "",
 }) {
-  const groupId = useId()
-  const generalId = `${groupId}-general`
-  const appId = `${groupId}-app`
+  const switchId = useId()
+  const knowledgeLabel = appLabel === "Appstore" ? "App Store" : appLabel
 
   return (
-    <fieldset disabled={disabled} className="min-w-0 disabled:opacity-60">
-      <legend className="sr-only">대화 배경지식 선택</legend>
-      <div className="grid grid-cols-2 gap-1 rounded-lg border bg-muted p-1">
-        <label htmlFor={generalId} className="min-w-0">
-          <input
-            id={generalId}
-            type="radio"
-            name={groupId}
-            checked={!usesAppContext}
-            onChange={() => onChange(false)}
-            className="peer sr-only"
-          />
-          <span className={OPTION_CLASS_NAME}>일반 대화</span>
-        </label>
-        <label htmlFor={appId} className="min-w-0" title={`${appLabel} 배경지식 사용`}>
-          <input
-            id={appId}
-            type="radio"
-            name={groupId}
-            checked={usesAppContext}
-            onChange={() => onChange(true)}
-            className="peer sr-only"
-          />
-          <span className={cn(OPTION_CLASS_NAME, "truncate")}>{appLabel} 지식 사용</span>
-        </label>
-      </div>
-    </fieldset>
+    <div
+      title={disabled && disabledReason ? disabledReason : undefined}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-foreground ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+    >
+      <SwitchPrimitive.Root
+        id={switchId}
+        checked={usesAppContext}
+        onCheckedChange={(checked) => onChange(checked === true)}
+        disabled={disabled}
+        data-slot="switch"
+        data-size="sm"
+        aria-label={`${knowledgeLabel} 지식 사용`}
+        className="peer group/switch relative inline-flex h-[14px] w-[24px] shrink-0 items-center rounded-full border border-transparent bg-input outline-none transition-all after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-primary data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:data-unchecked:bg-input/80"
+      >
+        <SwitchPrimitive.Thumb
+          data-slot="switch-thumb"
+          className="pointer-events-none block size-3 translate-x-0 rounded-full bg-background ring-0 transition-transform group-data-checked/switch:translate-x-[calc(100%-2px)] dark:data-checked:bg-primary-foreground dark:data-unchecked:bg-foreground"
+        />
+      </SwitchPrimitive.Root>
+      <label
+        htmlFor={switchId}
+        className={`inline-flex h-8 items-center ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+      >
+        {knowledgeLabel} 지식 사용
+      </label>
+    </div>
   )
 }

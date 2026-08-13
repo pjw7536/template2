@@ -40,6 +40,16 @@ _PROFILES: dict[tuple[str, int], AssistantProfile] = {
         write_partition="shared",
         timeout_seconds=130,
     ),
+    ("portal-default", 2): AssistantProfile(
+        key="portal-default",
+        version=2,
+        provider="openwebui",
+        allowed_tools=(),
+        account_scopes=("assistant",),
+        read_partitions=("shared", "scope:emails", "scope:observer"),
+        write_partition="shared",
+        timeout_seconds=130,
+    ),
     ("email-rag", 1): AssistantProfile(
         key="email-rag",
         version=1,
@@ -63,7 +73,7 @@ _PROFILES: dict[tuple[str, int], AssistantProfile] = {
 }
 
 _CURRENT_VERSIONS = {
-    "portal-default": 1,
+    "portal-default": 2,
     "email-rag": 1,
     "observer-analysis": 1,
 }

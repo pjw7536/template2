@@ -679,15 +679,18 @@ class AssistantOpenWebUIChatTests(TestCase):
                 session=session,
             )
 
-    def test_openwebui_system_message_supports_portal_home_context(self) -> None:
-        """홈 ChatWidget의 Portal context를 고정 배경지식으로 변환합니다."""
+    def test_openwebui_system_message_keeps_portal_home_context_general(self) -> None:
+        """과거 Portal context는 별도 앱 배경지식 없이 일반 대화로 처리합니다."""
 
         system_message = build_openwebui_app_system_message(
             context_key="assistant:openwebui:portal"
         )
 
-        self.assertIn("[현재 활성 앱: Portal]", system_message)
-        self.assertIn("Portal 공통 기능", system_message)
+        self.assertEqual(
+            system_message,
+            build_openwebui_app_system_message(context_key=""),
+        )
+        self.assertNotIn("[현재 활성 앱:", system_message)
 
     def test_openwebui_message_builder_ignores_untrusted_roles(self) -> None:
         """브라우저가 전달한 system/tool role은 OpenWebUI 대화에서 제외합니다."""
@@ -1279,7 +1282,13 @@ class AssistantRuntimeV2Tests(TestCase):
         )
 
     def test_profile_reads_only_allowed_memory_partitions(self) -> None:
-        """Portal/Email/Observer Profile이 allowlist 밖 partition을 Provider memory에서 제외합니다."""
+        """일반 대화는 권한 있는 scoped 기억을 잇고 전용 Profile은 범위를 제한합니다."""
+
+        legacy_portal = assistant_services.get_assistant_profile(
+            profile_key="portal-default",
+            profile_version=1,
+        )
+        self.assertEqual(legacy_portal.read_partitions, ("shared",))
 
         parent = None
         for partition, profile_key, content in (
@@ -1311,6 +1320,26 @@ class AssistantRuntimeV2Tests(TestCase):
         self.conversation.current_message = parent
         self.conversation.save(update_fields=["current_message"])
 
+        locked = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="message-locked-observer",
+            role=AssistantMessage.Roles.USER,
+            content="권한이 회수된 Observer 기억",
+            context_key="profile:observer-analysis",
+            parent=parent,
+            generation=self._generation(
+                partition="scope:observer",
+                profile_key="locked-observer",
+            ),
+            access_requirements={
+                "version": 1,
+                "accountScopes": ["assistant", "observer"],
+                "dataClaims": {"ragPermissionGroups": ["revoked-group"]},
+            },
+        )
+        self.conversation.current_message = locked
+        self.conversation.save(update_fields=["current_message"])
+
         portal = assistant_services.build_assistant_runtime_memory(
             user=self.user,
             conversation=self.conversation,
@@ -1331,7 +1360,10 @@ class AssistantRuntimeV2Tests(TestCase):
             ),
         )
 
-        self.assertEqual([item["content"] for item in portal.history], ["공용 기억"])
+        self.assertEqual(
+            [item["content"] for item in portal.history],
+            ["공용 기억", "메일 기억", "Observer 기억"],
+        )
         self.assertEqual(
             [item["content"] for item in email.history],
             ["공용 기억", "메일 기억"],

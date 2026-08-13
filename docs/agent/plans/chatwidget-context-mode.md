@@ -3,6 +3,8 @@
 ## 목표
 - ChatWidget 상단에서 일반 대화와 현재 앱 배경지식 사용을 명시적으로 선택할 수 있게 한다.
 - 앱 진입 시 앱 배경지식을 기본으로 사용하고, Emails와 Observer에서도 일반 대화를 선택하면 전용 도구를 비활성화한다.
+- 별도 앱 지식이 없는 Portal 홈은 선택 UI 없이 일반 대화만 사용한다.
+- 같은 대화방에서 앱 지식 모드에서 일반 대화로 바꿔도 권한 있는 이전 문맥을 이어서 사용한다.
 
 ## 현재 상태
 - `apps/web/src/lib/assistant/surfaceConfig.js`가 앱별 Profile, context key, Tool 입력을 결정한다.
@@ -12,13 +14,15 @@
 
 ## 범위
 - Assistant frontend의 surface 선택, ChatWidget 상태, compact 선택 UI와 관련 테스트를 수정한다.
-- 대화방 저장 구조, backend Profile/context 검증, DB schema, auth/env 계약은 변경하지 않는다.
+- backend `portal-default` Profile의 새 버전과 frontend Profile 버전 계약을 변경한다. 대화방 저장 구조, DB schema, auth/env 계약은 변경하지 않는다.
 - 기존 OpenWebUI Portal context 누락 수정은 보존한다.
 
 ## 설계
 - 앱별 surface 해석기에 `useAppContext` 선택을 추가하고, `false`이면 기존 Assistant 일반 surface를 반환한다.
 - ChatWidget은 현재 앱 key별 선택 상태를 관리하며 앱 key가 바뀌면 앱 배경지식 사용을 기본값으로 계산한다.
-- native radio semantics를 사용하는 compact segmented control을 헤더의 고정 영역에 배치한다.
+- Base UI 기반 shadcn `Switch`를 상단 action group의 저장 버튼 왼쪽에 배치하고 `<앱 이름> 지식 사용` 문구로 대상 지식을 명시한다.
+- Portal 홈에서는 segmented control을 표시하지 않고 일반 Assistant surface를 사용한다.
+- `portal-default` v2는 `shared`, `scope:emails`, `scope:observer`를 읽되 모든 항목의 현재 권한을 재검증하고 새 일반 대화는 `shared`에만 쓴다.
 - 일반 대화에서는 Emails RAG 설정과 Observer page context를 `useChatSession`에 전달하지 않는다.
 - public facade, migration, env, auth 변경은 없다. Offsite mock/dev wiring 변경도 필요하지 않다.
 
@@ -27,10 +31,17 @@
 - [x] ChatWidget에서 앱별 기본 상태와 Turn surface 전환을 연결한다.
 - [x] 접근 가능한 context mode selector와 상태별 안내를 추가한다.
 - [x] ChatWidget 및 selector 회귀 테스트를 추가한다.
+- [x] Portal 홈의 앱 지식 주입과 선택 UI를 제거한다.
+- [x] 일반 대화 Profile v2에서 권한 있는 앱 지식 대화 문맥을 이어 읽게 한다.
+- [x] 전체 폭 선택 영역을 상단 action group의 compact 토글로 축소한다.
+- [x] 저장 버튼 왼쪽 선택기를 shadcn Base UI `Switch`로 교체하고 앱 지식 이름을 표시한다.
+- [x] 상단 제목·Switch·아이콘 버튼의 세로 정렬 박스를 `h-8`로 통일한다.
+- [x] Observer context 준비 전에도 일반 대화 launcher를 유지하고 지식 Switch만 비활성화한다.
 - [x] frontend 테스트, lint, UI/경계 감사를 실행한다.
 
 ## 검증
 - `npm --prefix apps/web run test:run -- src/lib/assistant/surfaceConfig.test.js src/features/assistant/components/ChatWidget.test.jsx src/features/assistant/components/ChatContextModeSelector.test.jsx`
+- `docker compose exec -T api python manage.py test api.assistant.tests.AssistantRuntimeV2Tests --keepdb`
 - `npm --prefix apps/web run lint -- src/lib/assistant/surfaceConfig.js src/lib/assistant/surfaceConfig.test.js src/features/assistant/components/ChatWidget.jsx src/features/assistant/components/ChatWidget.test.jsx src/features/assistant/components/ChatWidgetPanel.jsx src/features/assistant/components/ChatContextModeSelector.jsx src/features/assistant/components/ChatContextModeSelector.test.jsx`
 - `npm --prefix apps/web run build`
 - `npm run agent:audit:ui`
@@ -43,8 +54,18 @@
 - 대응: 일반 surface는 `portal-default`, 빈 Tool 입력, `assistant:openwebui:assistant` 조합만 반환하도록 테스트한다.
 - 위험: 답변 생성 중 모드 표시와 실행 context가 달라질 수 있다.
 - 대응: 생성 중 radio를 비활성화한다.
+- 위험: 일반 대화 전환 뒤 권한이 회수된 scoped 기억이 노출될 수 있다.
+- 대응: partition을 `shared`로 복사하지 않고 runtime memory 조립 때 메시지·요약별 Account/data claim을 재검증한다.
 
 ## 진행 기록
 - 2026-08-13: 권장안(앱 지식 기본 사용, Emails/Observer 동일 적용, 앱 이동 시 기본값 초기화)으로 설계를 확정했다.
 - 2026-08-13: 일반/앱 surface 전환, native radio selector, 앱 이동 초기화와 회귀 테스트를 구현했다.
 - 2026-08-13: 관련 Vitest 19개, lint, production build, UI 일관성 감사와 frontend 경계 감사를 통과했다. DB migration과 offsite mock/env 변경은 필요하지 않았다.
+- 2026-08-13: Portal 홈에는 별도 앱 지식이 없으므로 일반 surface로 고정하고, 과거 Portal context도 일반 system message로 호환 처리했다.
+- 2026-08-13: `portal-default` v2가 현재 권한을 통과한 Email/Observer 기억도 읽도록 확장해 같은 방의 일반 대화 전환 시 문맥을 유지했다.
+- 2026-08-13: frontend 회귀 테스트 22개와 lint/build, Assistant backend 테스트 45개, UI 일관성·frontend 경계 감사를 통과했다.
+- 2026-08-13: 일반/지식 사용 선택기를 별도 행에서 제거하고 `Etch AI Assistant` 제목 오른쪽 compact 토글로 이동했다.
+- 2026-08-13: compact 선택기를 shadcn Base UI `Switch`로 교체하고 `App Store 지식 사용`처럼 대상 지식을 명시했다.
+- 2026-08-13: ChatWidget 헤더의 사이드바·제목·Switch·저장·최대화·최소화 control을 동일한 32px 높이와 중앙선으로 정렬했다.
+- 2026-08-13: Observer context가 아직 등록되지 않았을 때 Widget 전체가 사라지던 문제를 수정하고, 일반 대화로 열되 Observer 지식 Switch는 준비 전까지 비활성화했다.
+- 2026-08-13: 지식 Switch를 제목 영역에서 우측 action group으로 옮겨 저장 버튼 바로 왼쪽에 정렬했다.

@@ -3,7 +3,10 @@ import { useLocation } from "react-router-dom"
 
 import { resolveAssistantAppContext } from "@/lib/assistant/appContext"
 import { usePageAssistantContext } from "@/lib/assistant/pageContext"
-import { resolveAssistantSurface } from "@/lib/assistant/surfaceConfig"
+import {
+  isAssistantAppContextReady,
+  resolveAssistantSurface,
+} from "@/lib/assistant/surfaceConfig"
 import { useAuth } from "@/lib/auth"
 
 import { ChatWidgetLauncher } from "./ChatWidgetLauncher"
@@ -26,6 +29,11 @@ export function ChatWidget(props) {
   const usesAppContext = contextMode.appKey === activeAppContext?.key
     ? contextMode.usesAppContext
     : true
+  const isAppContextReady = isAssistantAppContextReady({
+    appKey: activeAppContext?.key,
+    pageContext,
+  })
+  const effectiveUsesAppContext = usesAppContext && isAppContextReady
 
   useEffect(() => {
     setContextMode({
@@ -35,11 +43,11 @@ export function ChatWidget(props) {
   }, [activeAppContext?.key])
 
   const ragSettings = useAssistantRagIndex({
-    enabled: Boolean(user) && activeAppContext?.key === "emails" && usesAppContext,
+    enabled: Boolean(user) && activeAppContext?.key === "emails" && effectiveUsesAppContext,
   })
   const surface = resolveAssistantSurface({
     appKey: activeAppContext?.key,
-    useAppContext: usesAppContext,
+    useAppContext: effectiveUsesAppContext,
     pageContext,
     permissionGroups: ragSettings.permissionGroups,
     ragIndexNames: ragSettings.ragIndexNames,
@@ -69,7 +77,8 @@ export function ChatWidget(props) {
       pageContext={surface.mode === "observer" ? pageContext : null}
       ragSettings={ragSettings}
       surface={surface}
-      usesAppContext={usesAppContext}
+      usesAppContext={effectiveUsesAppContext}
+      isAppContextReady={isAppContextReady}
       onUsesAppContextChange={handleContextModeChange}
       user={user}
     />
@@ -84,6 +93,7 @@ function ChatWidgetContent({
   ragSettings,
   surface,
   usesAppContext,
+  isAppContextReady,
   onUsesAppContextChange,
   user,
 }) {
@@ -280,6 +290,7 @@ function ChatWidgetContent({
       pageContext={pageContext}
       activeAppContext={activeAppContext}
       usesAppContext={usesAppContext}
+      isAppContextReady={isAppContextReady}
       onUsesAppContextChange={onUsesAppContextChange}
       usesEmailRag={surface.mode === "email"}
       onQuickPrompt={handleQuickPrompt}

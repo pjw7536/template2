@@ -31,6 +31,17 @@ function buildGeneralAssistantSurface() {
   })
 }
 
+export function isAssistantAppContextReady({ appKey, pageContext = null } = {}) {
+  const appContext = getAssistantAppContext(appKey)
+  if (!appContext) return false
+  if (appContext.key !== "observer") return true
+  return Boolean(
+    pageContext?.kind === "observer"
+    && typeof pageContext.key === "string"
+    && pageContext.key.startsWith("observer:v1:"),
+  )
+}
+
 export function resolveAssistantSurface({
   appKey,
   useAppContext = true,
@@ -40,6 +51,7 @@ export function resolveAssistantSurface({
 } = {}) {
   const appContext = getAssistantAppContext(appKey)
   if (!appContext) return null
+  if (appContext.key === "portal") return buildGeneralAssistantSurface()
   if (!useAppContext) return buildGeneralAssistantSurface()
 
   if (appContext.key === "emails") {
@@ -57,11 +69,7 @@ export function resolveAssistantSurface({
   }
 
   if (appContext.key === "observer") {
-    if (
-      pageContext?.kind !== "observer"
-      || typeof pageContext.key !== "string"
-      || !pageContext.key.startsWith("observer:v1:")
-    ) {
+    if (!isAssistantAppContextReady({ appKey, pageContext })) {
       return null
     }
     const scope = pageContext.scope && typeof pageContext.scope === "object"

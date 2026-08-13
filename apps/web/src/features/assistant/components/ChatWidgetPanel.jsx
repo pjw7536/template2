@@ -80,6 +80,7 @@ export function ChatWidgetPanel({
   pageContext,
   activeAppContext,
   usesAppContext,
+  isAppContextReady,
   onUsesAppContextChange,
   usesEmailRag,
   onQuickPrompt,
@@ -185,8 +186,8 @@ export function ChatWidgetPanel({
           onPointerDown={onHeaderPointerDown}
           role="presentation"
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex h-8 items-center justify-between">
+            <div className="flex h-8 min-w-0 items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -198,13 +199,30 @@ export function ChatWidgetPanel({
                 <PanelLeft className="h-3 w-3" />
               </Button>
 
-              <div className="mx-3 flex items-center gap-3">
+              <div className="mx-3 flex h-8 min-w-0 items-center gap-2">
                 <span className="flex h-2 w-2 rounded-full bg-primary ring-2 ring-primary/30" />
-                <p className="text-sm font-semibold leading-tight">Etch AI Assistant</p>
+                <p className="flex h-8 items-center truncate text-sm font-semibold leading-tight">
+                  Etch AI Assistant
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex h-8 items-center gap-1">
+              {activeAppContext.key !== "portal" ? (
+                <div className="flex h-8 items-center" data-chat-widget-no-drag="true">
+                  <ChatContextModeSelector
+                    appLabel={activeAppContext.label}
+                    usesAppContext={usesAppContext}
+                    onChange={onUsesAppContextChange}
+                    disabled={isSending || !isAppContextReady}
+                    disabledReason={
+                      !isAppContextReady
+                        ? `${activeAppContext.label} 조회 조건이 준비되면 사용할 수 있습니다.`
+                        : ""
+                    }
+                  />
+                </div>
+              ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -263,12 +281,6 @@ export function ChatWidgetPanel({
           </div>
 
           <div className="grid gap-2" data-chat-widget-no-drag="true">
-            <ChatContextModeSelector
-              appLabel={activeAppContext.label}
-              usesAppContext={usesAppContext}
-              onChange={onUsesAppContextChange}
-              disabled={isSending}
-            />
             {pageContext ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />

@@ -12,6 +12,6 @@ describe("assistant profile keys", () => {
       emails: "email-rag",
       observer: "observer-analysis",
     })
-    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.portal]).toBe(1)
+    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.portal]).toBe(2)
   })
 })

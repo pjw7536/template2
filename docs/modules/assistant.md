@@ -34,8 +34,8 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 1. 전역 ChatWidget이 현재 route를 확인합니다.
 2. `/emails/*`와 유효한 Observer page context가 아니면 등록된 현재 앱의 `appContextKey`와 `portal-default` Profile로 표준 Turn을 요청합니다. 알 수 없는 route는 Portal로 추정하지 않고 Widget을 표시하지 않습니다.
 3. 서버가 로그인 사용자와 `knox_id`를 확인합니다.
-4. 현재 대화방에서 권한을 통과한 `shared` 최근 이력만 사용합니다.
-5. 서버 허용 카탈로그의 현재 앱 배경지식, 같은 방의 공유 저장 요약과 최근 이력을 합쳐 기존 `OPENWEBUI_*` 설정으로 OpenAI 호환 Chat Completions를 호출합니다.
+4. 현재 대화방에서 권한을 통과한 `shared`, `scope:emails`, `scope:observer` 요약과 최근 이력을 사용합니다.
+5. 서버 허용 카탈로그의 현재 앱 배경지식, 같은 방에서 권한 검증을 통과한 저장 요약과 최근 이력을 합쳐 기존 `OPENWEBUI_*` 설정으로 OpenAI 호환 Chat Completions를 호출합니다.
 6. 외부 OpenAI 호환 stream의 chunk를 `message.delta`로 즉시 표시하고, 대기 중에는 `run.heartbeat`를 보냅니다. 중단·disconnect·timeout이면 upstream 연결을 닫습니다.
 
 `/assistant` 전체 화면도 같은 Turn client를 사용합니다. 일반 화면에서는 사용하지 않는 RAG index 조회와 설정 UI를 표시하지 않습니다.
@@ -73,7 +73,7 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 - 재접속 시 서버가 반환한 최신 대화방을 활성화하고, 메일 RAG 선택값은 현재 실행 중인 메모리에서만 유지합니다.
 - 모델 입력 이력은 클라이언트에서 받지 않고 서버 DB current branch에서만 구성합니다. 따라서 인사 메시지나 앱 출처 접두사도 클라이언트가 모델 이력에 삽입하지 않습니다.
 - 충분히 누적된 과거 메시지는 OpenWebUI 저비용 요청으로 최대 2,000자의 rolling summary를 만들고, Provider에는 summary cursor 이후의 최근 이력만 추가해 같은 메시지를 중복 전달하지 않습니다.
-- 같은 대화방에서도 Portal은 `shared`, Email은 `shared`+`scope:emails`, Observer는 `shared`+`scope:observer`만 읽습니다. scoped 데이터는 `shared`에 기록하지 않습니다.
+- 같은 대화방에서 일반 대화 Profile v2는 권한을 다시 통과한 `shared`+`scope:emails`+`scope:observer` 기억을 읽어 앱 지식 모드의 후속 대화를 이어갑니다. Email은 `shared`+`scope:emails`, Observer는 `shared`+`scope:observer`만 읽고, scoped 데이터는 `shared`에 기록하지 않습니다.
 - 메시지·summary·자동 제목·Run은 현재 Account scope와 RAG group/mailbox data claim을 합친 `access_requirements`를 보존하고 모든 재사용 시점에 다시 검증합니다.
 - 앱을 이동하면 대화방은 유지하고 현재 Profile이 허용한 기억 partition·Tool·화면 데이터만 사용합니다.
 - Observer 분석에서는 공유 대화와 장기 요약을 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 조회 조건의 `observer_analysis_context_json`만 근거로 삼습니다.

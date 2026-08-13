@@ -5,7 +5,7 @@ export const ASSISTANT_PROFILE_KEYS = Object.freeze({
 })
 
 export const ASSISTANT_PROFILE_VERSIONS = Object.freeze({
-  [ASSISTANT_PROFILE_KEYS.portal]: 1,
+  [ASSISTANT_PROFILE_KEYS.portal]: 2,
   [ASSISTANT_PROFILE_KEYS.emails]: 1,
   [ASSISTANT_PROFILE_KEYS.observer]: 1,
 })

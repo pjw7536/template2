@@ -6,7 +6,7 @@ import { ChatContextModeSelector } from "./ChatContextModeSelector"
 describe("ChatContextModeSelector", () => {
   afterEach(() => cleanup())
 
-  it("앱 지식 사용을 기본 선택 상태로 표시하고 일반 대화 전환을 알린다", () => {
+  it("사용할 앱 지식 이름과 Switch 상태를 표시하고 일반 대화 전환을 알린다", () => {
     const onChange = vi.fn()
 
     render(
@@ -17,8 +17,10 @@ describe("ChatContextModeSelector", () => {
       />,
     )
 
-    expect(screen.getByRole("radio", { name: "Appstore 지식 사용" })).toBeChecked()
-    fireEvent.click(screen.getByRole("radio", { name: "일반 대화" }))
+    expect(screen.getByText("App Store 지식 사용")).toBeInTheDocument()
+    const knowledgeSwitch = screen.getByRole("switch", { name: "App Store 지식 사용" })
+    expect(knowledgeSwitch).toHaveAttribute("aria-checked", "true")
+    fireEvent.click(knowledgeSwitch)
     expect(onChange).toHaveBeenCalledWith(false)
   })
 
@@ -32,7 +34,10 @@ describe("ChatContextModeSelector", () => {
       />,
     )
 
-    expect(screen.getByRole("radio", { name: "일반 대화" })).toBeDisabled()
-    expect(screen.getByRole("radio", { name: "Observer 지식 사용" })).toBeDisabled()
+    const knowledgeSwitch = screen.getByRole("switch", {
+      name: "Observer 지식 사용",
+    })
+    expect(knowledgeSwitch).toHaveAttribute("aria-disabled", "true")
+    expect(knowledgeSwitch).toHaveAttribute("tabindex", "-1")
   })
 })
