@@ -1,7 +1,7 @@
 # =============================================================================
 # 모듈: LLM 구조화 응답 파싱
 # 주요 구성: AssistantStructuredSegment, _parse_structured_llm_reply
-# 주요 가정: 응답은 answer와 segments를 가진 JSON 객체 하나입니다.
+# 주요 가정: 응답은 segments 배열과 조건부 answer를 가진 JSON 객체 하나입니다.
 # =============================================================================
 from __future__ import annotations
 
@@ -33,7 +33,9 @@ def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, List[AssistantStru
         없음. 순수 파싱입니다.
 
     허용 형식:
-        {"answer": string, "segments": [{"answer": string, "usedEmailIds": string[]}]}
+        {"answer": unknown, "segments": [{"answer": string, "usedEmailIds": string[]}]}
+        - segments가 비어 있을 때는 answer가 반드시 필요합니다.
+        - segments가 있을 때는 각 segment가 표시 답변이므로 answer는 문자열일 때만 사용합니다.
     """
 
     try:
@@ -43,9 +45,6 @@ def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, List[AssistantStru
     if not isinstance(parsed, dict):
         raise ValueError("Email LLM 응답이 JSON 객체가 아닙니다.")
 
-    answer_raw = parsed.get("answer")
-    if not isinstance(answer_raw, str) or not answer_raw.strip():
-        raise ValueError("Email LLM 응답의 answer가 비어 있습니다.")
     segments_raw = parsed.get("segments")
     if not isinstance(segments_raw, list):
         raise ValueError("Email LLM 응답의 segments가 배열이 아닙니다.")
@@ -71,4 +70,13 @@ def _parse_structured_llm_reply(raw_reply: str) -> Tuple[str, List[AssistantStru
             )
         )
 
-    return answer_raw.strip(), segments
+    answer_raw = parsed.get("answer")
+    answer = answer_raw.strip() if isinstance(answer_raw, str) else ""
+    if segments:
+        return answer, segments
+    if answer_raw is not None and not isinstance(answer_raw, str):
+        raise ValueError("Email LLM 응답의 answer 형식이 올바르지 않습니다.")
+    if not answer:
+        raise ValueError("Email LLM 응답의 answer가 비어 있습니다.")
+
+    return answer, segments

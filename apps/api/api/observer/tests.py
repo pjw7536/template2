@@ -1727,7 +1727,7 @@ class ObserverAnalysisTests(TestCase):
 
 
     def test_analysis_prompt_requires_synthesized_findings(self) -> None:
-        """system prompt가 종합 분석과 한국어 답변을 요구하는지 확인합니다."""
+        """system prompt가 종합 분석과 한국어 답변을 우선하는지 확인합니다."""
 
         self.assertIn("단순 건수나 comment를 나열하지 말고", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("운영상 의미", ANALYSIS_SYSTEM_PROMPT)
@@ -1799,7 +1799,7 @@ class ObserverAnalysisTests(TestCase):
         self.assertIn("사실 근거가 아닙니다", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("findings는 중요도 순으로 최대 5개", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn(
-            "사용자에게 표시되는 모든 문장은 한국어로 작성하되",
+            "사용자에게 표시되는 문장은 되도록이면 한국어로 작성하되",
             ANALYSIS_SYSTEM_PROMPT,
         )
         self.assertEqual(

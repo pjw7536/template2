@@ -282,6 +282,10 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(payload_with_context.get("temperature"), 0.0)
         messages = payload_with_context.get("messages")
         self.assertEqual([entry.get("role") for entry in messages], ["system", "system", "system", "user"])
+        constraints = messages[2].get("content", "")
+        self.assertIn("segments가 비면 비어 있지 않은 통합 답변", constraints)
+        self.assertIn('segments가 1개 이상이면', constraints)
+        self.assertIn('빈 문자열("")', constraints)
 
         payload_without_context = service._generate_llm_payload("질문입니다", [], email_ids=["E1"])
         self.assertEqual(payload_without_context.get("temperature"), 0.7)
@@ -324,6 +328,73 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual(result.segments[1]["reply"], "메일 1+2 기반 답변")
         self.assertEqual([entry["doc_id"] for entry in result.segments[1]["sources"]], ["E1", "E2"])
         self.assertEqual([entry["doc_id"] for entry in result.sources], ["E1", "E2"])
+
+    def test_generate_reply_uses_segments_when_top_level_answer_is_unusable(self) -> None:
+        """OpenWebUI의 최상위 answer를 쓸 수 없어도 유효한 segments를 처리합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        contexts = ["[emailId: E1]\n메일 배경지식"]
+        sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "메일 배경지식"}]
+        raw_replies = (
+            '{"answer":"","segments":[{"answer":"메일 기반 답변","usedEmailIds":["E1"]}]}',
+            '{"answer":null,"segments":[{"answer":"메일 기반 답변","usedEmailIds":["E1"]}]}',
+            '{"answer":[],"segments":[{"answer":"메일 기반 답변","usedEmailIds":["E1"]}]}',
+            '{"segments":[{"answer":"메일 기반 답변","usedEmailIds":["E1"]}]}',
+        )
+
+        for raw_reply in raw_replies:
+            with self.subTest(raw_reply=raw_reply), patch.object(
+                service,
+                "_retrieve_documents",
+                return_value=(contexts, {"hits": {}}, sources),
+            ), patch(
+                "api.assistant.services.chat.stream_llm_reply",
+                return_value=raw_reply,
+            ):
+                result = service.generate_reply_stream(
+                    "질문입니다",
+                    cancellation=ExternalCallCancellation(),
+                )
+
+            self.assertEqual(result.reply, "")
+            self.assertEqual(result.segments[0]["reply"], "메일 기반 답변")
+            self.assertEqual([source["doc_id"] for source in result.sources], ["E1"])
+
+    def test_generate_reply_rejects_empty_answer_without_segments(self) -> None:
+        """출처 segment와 통합 answer가 모두 빈 응답은 거부합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        with patch.object(
+            service,
+            "_retrieve_documents",
+            return_value=([], {"hits": {}}, []),
+        ), patch(
+            "api.assistant.services.chat.stream_llm_reply",
+            return_value='{"answer":"","segments":[]}',
+        ):
+            with self.assertRaisesMessage(ValueError, "answer가 비어 있습니다"):
+                service.generate_reply_stream(
+                    "질문입니다",
+                    cancellation=ExternalCallCancellation(),
+                )
+
+    def test_generate_reply_rejects_non_string_answer_without_segments(self) -> None:
+        """출처 segment가 없으면 통합 answer는 문자열이어야 합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        with patch.object(
+            service,
+            "_retrieve_documents",
+            return_value=([], {"hits": {}}, []),
+        ), patch(
+            "api.assistant.services.chat.stream_llm_reply",
+            return_value='{"answer":[],"segments":[]}',
+        ):
+            with self.assertRaisesMessage(ValueError, "answer 형식이 올바르지 않습니다"):
+                service.generate_reply_stream(
+                    "질문입니다",
+                    cancellation=ExternalCallCancellation(),
+                )
 
     @override_settings(
         OPENWEBUI_URL="http://openwebui/v1/chat/completions",
