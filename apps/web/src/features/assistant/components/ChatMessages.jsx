@@ -203,16 +203,6 @@ export function ChatMessages({
     }
   }
 
-  const handleEmailSourceClick = (event) => {
-    const target = event?.target
-    if (!(target instanceof Element)) return
-    const anchor = target.closest?.("a[data-email-source]")
-    const href = anchor?.getAttribute?.("href")
-    if (!href) return
-    event.preventDefault()
-    navigate(href)
-  }
-
   const handleCopy = async (message) => {
     try {
       await navigator.clipboard.writeText(message.content)
@@ -401,7 +391,6 @@ export function ChatMessages({
                     />
                   ) : (
                     <div
-                      onClick={handleEmailSourceClick}
                       dangerouslySetInnerHTML={{
                         __html: formatAssistantMessage(
                           message.content,
@@ -425,8 +414,12 @@ export function ChatMessages({
                             to={buildEmailSourceUrl(source.docId, messageMailbox, {
                               availableMailboxes,
                             })}
+                            target="_blank"
+                            rel="noopener noreferrer"
                           >
-                            <span className="truncate">{source.title || source.docId}</span>
+                            <span className="truncate">
+                              {source.title || "관련 메일 보기"}
+                            </span>
                           </Link>
                         </Badge>
                       ))}

@@ -10,6 +10,8 @@ const markedOptions = {
   mangle: false,
 }
 
+const EMAIL_SOURCE_FALLBACK_LABEL = "관련 메일 보기"
+
 function truncateLabel(value, maxLength = 48) {
   if (typeof value !== "string") return ""
   const trimmed = value.trim()
@@ -36,7 +38,7 @@ function buildSourceLookup(rawSources) {
     const docId = typeof source.docId === "string" ? source.docId.trim() : ""
     if (!docId) return
     const title = typeof source.title === "string" ? source.title.trim() : ""
-    const label = truncateLabel(title || docId)
+    const label = truncateLabel(title) || EMAIL_SOURCE_FALLBACK_LABEL
     lookup.set(docId, { docId, label })
   })
 
@@ -144,9 +146,39 @@ function buildReplacementFragment(doc, text, sourceLookup, mailbox, availableMai
   return fragment
 }
 
+function getEmailSourceFromHref(href, sourceLookup) {
+  if (!href || typeof href !== "string") return null
+
+  try {
+    const url = new URL(href, "http://assistant.local")
+    if (!/^\/emails(?:\/(?:inbox|sent))?\/?$/.test(url.pathname)) return null
+
+    const docId = url.searchParams.get("emailId")?.trim()
+    if (!docId) return null
+
+    return (
+      sourceLookup.get(docId) || {
+        docId,
+        label: EMAIL_SOURCE_FALLBACK_LABEL,
+      }
+    )
+  } catch {
+    return null
+  }
+}
+
+function replaceEmailLinkLabels(container, sourceLookup) {
+  container.querySelectorAll("a[href]").forEach((anchor) => {
+    const source = getEmailSourceFromHref(anchor.getAttribute("href"), sourceLookup)
+    if (!source) return
+
+    anchor.setAttribute("data-email-source", "true")
+    anchor.textContent = source.label
+  })
+}
+
 function injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes) {
   const sourceLookup = buildSourceLookup(sources)
-  if (sourceLookup.size === 0) return rawHtml
 
   if (typeof window === "undefined") return rawHtml
   if (typeof DOMParser === "undefined") return rawHtml
@@ -155,6 +187,8 @@ function injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes) {
   const doc = parser.parseFromString(rawHtml, "text/html")
   const container = doc.body
   if (!container) return rawHtml
+
+  replaceEmailLinkLabels(container, sourceLookup)
 
   const textNodes = []
   collectTextNodes(container, textNodes)
@@ -175,13 +209,30 @@ function injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes) {
   return container.innerHTML
 }
 
+function applyNewWindowLinkAttributes(rawHtml) {
+  if (typeof DOMParser === "undefined") return rawHtml
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(rawHtml, "text/html")
+  const container = doc.body
+  if (!container) return rawHtml
+
+  container.querySelectorAll("a[href]").forEach((anchor) => {
+    anchor.setAttribute("target", "_blank")
+    anchor.setAttribute("rel", "noopener noreferrer")
+  })
+
+  return container.innerHTML
+}
+
 export function formatAssistantMessage(content, sources = [], mailbox = "", availableMailboxes = []) {
   if (!content || typeof content !== "string") return ""
 
   const rawHtml = marked.parse(content, markedOptions)
   const htmlWithSources = injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes)
-  return DOMPurify.sanitize(htmlWithSources, {
+  const htmlWithNewWindowLinks = applyNewWindowLinkAttributes(htmlWithSources)
+  return DOMPurify.sanitize(htmlWithNewWindowLinks, {
     USE_PROFILES: { html: true },
-    ADD_ATTR: ["data-email-source"],
+    ADD_ATTR: ["data-email-source", "target", "rel"],
   })
 }

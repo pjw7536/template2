@@ -196,6 +196,58 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     expect(screen.queryByRole("button", { name: "메시지 복사" })).not.toBeInTheDocument()
   })
 
+  it("답변의 URL과 이메일 근거 링크를 항상 새 창에서 연다", () => {
+    const emailUrl =
+      "https://portal.example.com/emails/inbox?user_sdwt_prod=S1&emailId=DOC-1"
+    render(
+      <MemoryRouter>
+        <ChatMessages
+          messages={[
+            {
+              id: "assistant-links",
+              role: "assistant",
+              content:
+                `[포털](https://example.com/path), https://docs.example.com/guide, ${emailUrl}`,
+              sources: [{ docId: "DOC-1", title: "메일 근거" }],
+              userSdwtProd: "S1",
+            },
+          ]}
+          availableMailboxes={[{ userSdwtProd: "S1" }]}
+        />
+      </MemoryRouter>,
+    )
+
+    screen.getAllByRole("link").forEach((link) => {
+      expect(link).toHaveAttribute("target", "_blank")
+      expect(link).toHaveAttribute("rel", "noopener noreferrer")
+    })
+    expect(screen.queryByText(emailUrl)).not.toBeInTheDocument()
+    expect(screen.getAllByRole("link", { name: "메일 근거" })).toHaveLength(2)
+  })
+
+  it("메일 제목이 없으면 전체 주소 대신 기본 링크 문구를 표시한다", () => {
+    const emailUrl = "https://portal.example.com/emails/sent?emailId=DOC-2"
+    render(
+      <MemoryRouter>
+        <ChatMessages
+          messages={[
+            {
+              id: "assistant-email-fallback",
+              role: "assistant",
+              content: emailUrl,
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByText(emailUrl)).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "관련 메일 보기" })).toHaveAttribute(
+      "href",
+      emailUrl,
+    )
+  })
+
   it("질문 수정과 답변 재생성·평가 동작을 부모 handler에 전달한다", async () => {
     const onEditMessage = vi.fn().mockResolvedValue({ ok: true })
     const onRegenerateMessage = vi.fn()
