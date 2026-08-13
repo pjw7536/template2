@@ -51,6 +51,7 @@ export function useObserverPageState(params) {
     setPrcGroup,
     setEqp,
     selectedRow,
+    source,
     setSelectedRow,
     resetSelection,
   } = useObserverSelectionStore();
@@ -67,7 +68,13 @@ export function useObserverPageState(params) {
     () => getObserverEvidenceNavigation(new URLSearchParams(location.search)),
     [location.search]
   );
+  const evidenceNavigationKey = evidenceNavigation?.evidenceId || "";
   const appliedEvidenceSelectionKeyRef = useRef("");
+  const evidenceSelectionBaselineRef = useRef("");
+  const currentSelectionRef = useRef("");
+  currentSelectionRef.current = `${source || ""}:${selectedRow || ""}`;
+  const [dismissedEvidenceNavigationKey, setDismissedEvidenceNavigationKey] =
+    useState("");
   const [typeFilters, setTypeFilters] = useState(() => ({
     ...DEFAULT_TYPE_FILTERS,
   }));
@@ -99,6 +106,11 @@ export function useObserverPageState(params) {
       setSelectedTipGroups(evidenceNavigation.tipGroups);
     }
   }, [evidenceNavigation, setSelectedTipGroups]);
+
+  useEffect(() => {
+    evidenceSelectionBaselineRef.current = currentSelectionRef.current;
+    setDismissedEvidenceNavigationKey("");
+  }, [evidenceNavigationKey]);
 
   // URL 파라미터 검증 및 상태 반영 (과도한 파일 분리를 줄이기 위해 이 훅 안에서 처리)
   const [validationError, setValidationError] = useState(null);
@@ -336,7 +348,19 @@ export function useObserverPageState(params) {
     appliedEvidenceSelectionKeyRef.current = evidenceSelectionKey;
     setSelectedRow(evidenceLog.id, "assistant");
   }, [eqpId, evidenceLog, evidenceNavigation, setSelectedRow]);
-  const evidenceNavigationStatus = evidenceNavigation
+
+  useEffect(() => {
+    if (!evidenceNavigation || !["observer", "table"].includes(source)) return;
+
+    const currentSelection = `${source || ""}:${selectedRow || ""}`;
+    if (currentSelection === evidenceSelectionBaselineRef.current) return;
+
+    setDismissedEvidenceNavigationKey(evidenceNavigationKey);
+  }, [evidenceNavigation, evidenceNavigationKey, selectedRow, source]);
+
+  const evidenceNavigationStatus =
+    evidenceNavigation &&
+    dismissedEvidenceNavigationKey !== evidenceNavigationKey
     ? {
         evidenceId: evidenceNavigation.evidenceId,
         status: evidenceLog

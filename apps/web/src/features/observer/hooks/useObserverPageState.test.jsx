@@ -363,6 +363,47 @@ describe("useObserverPageState 조회 범위 동기화", () => {
     });
   });
 
+  it.each([
+    ["Timeline", "observer"],
+    ["Data Log", "table"],
+  ])("%s에서 사용자가 로그를 선택하면 AI 근거 안내를 닫는다", async (_, source) => {
+    const evidenceFrom = getDaysBeforeToday(11);
+    const evidenceTo = getDaysBeforeToday(9);
+    const evidenceHref =
+      `/observer/EQP-1?from=${evidenceFrom}&to=${evidenceTo}` +
+      "&evidenceId=TIP%3ATIP-EQP-1-1&analysisLogType=tip";
+
+    const view = render(
+      <MemoryRouter initialEntries={[evidenceHref]}>
+        <ObserverRangeHarness evidenceHref={evidenceHref} />
+      </MemoryRouter>
+    );
+    const rendered = within(view.container);
+
+    await waitFor(() => {
+      expect(rendered.getByLabelText("근거 이동 상태")).toHaveTextContent(
+        "found"
+      );
+    });
+
+    mockStates.selection.selectedRow = "TIP-EQP-1-2";
+    mockStates.selection.source = source;
+    view.rerender(
+      <MemoryRouter initialEntries={[evidenceHref]}>
+        <ObserverRangeHarness evidenceHref={evidenceHref} />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        rendered.getByLabelText("근거 이동 상태")
+      ).toBeEmptyDOMElement();
+    });
+    expect(rendered.getByLabelText("현재 검색 조건")).toHaveTextContent(
+      "evidenceId=TIP%3ATIP-EQP-1-1"
+    );
+  });
+
   it("다른 호기로 전환하면 날짜 범위만 유지하고 AI 근거 안내를 제거한다", async () => {
     const evidenceFrom = getDaysBeforeToday(11);
     const evidenceTo = getDaysBeforeToday(9);
