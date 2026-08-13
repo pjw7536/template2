@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { ChatComposer } from "./ChatComposer"
+import { ChatContextModeSelector } from "./ChatContextModeSelector"
 import { ChatErrorBanner } from "./ChatErrorBanner"
 import { ChatMessages } from "./ChatMessages"
 import { RoomList } from "./RoomList"
@@ -78,6 +79,8 @@ export function ChatWidgetPanel({
   onClose,
   pageContext,
   activeAppContext,
+  usesAppContext,
+  onUsesAppContextChange,
   usesEmailRag,
   onQuickPrompt,
   currentPageScope,
@@ -260,6 +263,12 @@ export function ChatWidgetPanel({
           </div>
 
           <div className="grid gap-2" data-chat-widget-no-drag="true">
+            <ChatContextModeSelector
+              appLabel={activeAppContext.label}
+              usesAppContext={usesAppContext}
+              onChange={onUsesAppContextChange}
+              disabled={isSending}
+            />
             {pageContext ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -315,7 +324,7 @@ export function ChatWidgetPanel({
                   </p>
                 ) : null}
               </>
-            ) : activeAppContext?.key && activeAppContext.key !== "portal" ? (
+            ) : usesAppContext && activeAppContext?.key && activeAppContext.key !== "portal" ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 <div className="min-w-0 flex-1">

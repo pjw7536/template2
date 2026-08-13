@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, useNavigate } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ChatWidget } from "./ChatWidget"
@@ -73,9 +73,27 @@ vi.mock("./ChatWidgetPanel", () => ({
     onSidebarResizePointerDown,
     onSidebarResizeKeyDown,
     activeAppContext,
+    usesAppContext,
+    onUsesAppContextChange,
   }) => (
     <div>
       <span>{activeAppContext?.label || "Portal"}</span>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!usesAppContext}
+        onClick={() => onUsesAppContextChange(false)}
+      >
+        일반 대화
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={usesAppContext}
+        onClick={() => onUsesAppContextChange(true)}
+      >
+        {activeAppContext?.label || "Portal"} 지식 사용
+      </button>
       <button type="button" onClick={onClose}>위젯 닫기</button>
       <button type="button" onClick={onToggleSidebar}>목록 전환</button>
       {isSidebarOpen ? (
@@ -93,6 +111,18 @@ vi.mock("./ChatWidgetPanel", () => ({
     </div>
   ),
 }))
+
+function ChatWidgetRouteHarness() {
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <button type="button" onClick={() => navigate("/emails/inbox")}>Emails로 이동</button>
+      <button type="button" onClick={() => navigate("/appstore")}>Appstore로 이동</button>
+      <ChatWidget />
+    </>
+  )
+}
 
 describe("ChatWidget 대화방 생성", () => {
   beforeEach(() => {
@@ -159,6 +189,58 @@ describe("ChatWidget 대화방 생성", () => {
     expect(screen.getByText("Appstore")).toBeInTheDocument()
   })
 
+  it("일반 대화를 선택하면 현재 대화방의 이후 Turn을 일반 surface로 전환한다", () => {
+    render(
+      <MemoryRouter initialEntries={["/appstore"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    fireEvent.click(screen.getByRole("radio", { name: "일반 대화" }))
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messageContextKey: "assistant:openwebui:assistant",
+        profileKey: "portal-default",
+        profileToolInputs: {},
+      }),
+    )
+  })
+
+  it("앱을 이동하면 해당 앱 지식 사용을 기본값으로 다시 선택한다", () => {
+    render(
+      <MemoryRouter initialEntries={["/appstore"]}>
+        <ChatWidgetRouteHarness />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    fireEvent.click(screen.getByRole("radio", { name: "일반 대화" }))
+    fireEvent.click(screen.getByRole("button", { name: "Emails로 이동" }))
+
+    expect(screen.getByRole("radio", { name: "Emails 지식 사용" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ profileKey: "email-rag" }),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Appstore로 이동" }))
+
+    expect(screen.getByRole("radio", { name: "Appstore 지식 사용" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messageContextKey: "assistant:openwebui:appstore",
+        profileKey: "portal-default",
+      }),
+    )
+  })
+
   it("Emails는 Portal 대화방을 유지하면서 Email RAG contextKey를 사용한다", () => {
     render(
       <MemoryRouter initialEntries={["/emails/inbox"]}>
@@ -169,6 +251,18 @@ describe("ChatWidget 대화방 생성", () => {
     expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
       expect.objectContaining({
         messageContextKey: "assistant",
+        profileKey: "email-rag",
+      }),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    fireEvent.click(screen.getByRole("radio", { name: "일반 대화" }))
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messageContextKey: "assistant:openwebui:assistant",
+        profileKey: "portal-default",
+        profileToolInputs: {},
       }),
     )
   })

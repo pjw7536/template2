@@ -13,6 +13,19 @@ describe("resolveAssistantSurface", () => {
     })
   })
 
+  it.each(["appstore", "emails", "observer"])(
+    "%s 앱 지식을 끄면 Tool 없는 일반 대화 surface를 반환한다",
+    (appKey) => {
+      expect(resolveAssistantSurface({ appKey, useAppContext: false })).toEqual({
+        mode: "portal",
+        profileKey: "portal-default",
+        profileVersion: 1,
+        appContextKey: "assistant:openwebui:assistant",
+        toolInputs: {},
+      })
+    },
+  )
+
   it("Email RAG 선택을 정규화된 Tool 입력으로 변환한다", () => {
     expect(
       resolveAssistantSurface({

@@ -48,6 +48,7 @@ OPENWEBUI_SUMMARY_SYSTEM_MESSAGE = (
 OPENWEBUI_TITLE_MAX_LENGTH = 40
 OPENWEBUI_SUMMARY_MAX_LENGTH = 2000
 OPENWEBUI_APP_KNOWLEDGE = {
+    "portal": "Portal 공통 기능과 등록된 업무 앱을 안내하는 홈 화면입니다.",
     "appstore": "업무 앱 탐색, 앱 등록 상태와 접근 정보를 다루는 Portal 앱입니다.",
     "line-dashboard": "라인 상태, 이력, 알림 설정과 수신 설정을 다루는 ESOP Dashboard 앱입니다.",
     "observer": "장비 로그와 사용자가 선택한 조회 조건을 바탕으로 분석하는 Observer 앱입니다.",

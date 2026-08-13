@@ -38,6 +38,7 @@ from api.assistant.services import (
     AssistantChatService,
     AssistantConfigError,
     AssistantOpenWebUIConfig,
+    build_openwebui_app_system_message,
     build_openwebui_messages,
     normalize_openwebui_conversation_title,
     request_openwebui_chat,
@@ -677,6 +678,16 @@ class AssistantOpenWebUIChatTests(TestCase):
                 config=config,
                 session=session,
             )
+
+    def test_openwebui_system_message_supports_portal_home_context(self) -> None:
+        """홈 ChatWidget의 Portal context를 고정 배경지식으로 변환합니다."""
+
+        system_message = build_openwebui_app_system_message(
+            context_key="assistant:openwebui:portal"
+        )
+
+        self.assertIn("[현재 활성 앱: Portal]", system_message)
+        self.assertIn("Portal 공통 기능", system_message)
 
     def test_openwebui_message_builder_ignores_untrusted_roles(self) -> None:
         """브라우저가 전달한 system/tool role은 OpenWebUI 대화에서 제외합니다."""

@@ -19,15 +19,38 @@ export function ChatWidget(props) {
   const { pageContext } = usePageAssistantContext()
   const { user } = useAuth()
   const activeAppContext = resolveAssistantAppContext(location.pathname)
+  const [contextMode, setContextMode] = useState({
+    appKey: activeAppContext?.key || "",
+    usesAppContext: true,
+  })
+  const usesAppContext = contextMode.appKey === activeAppContext?.key
+    ? contextMode.usesAppContext
+    : true
+
+  useEffect(() => {
+    setContextMode({
+      appKey: activeAppContext?.key || "",
+      usesAppContext: true,
+    })
+  }, [activeAppContext?.key])
+
   const ragSettings = useAssistantRagIndex({
-    enabled: Boolean(user) && activeAppContext?.key === "emails",
+    enabled: Boolean(user) && activeAppContext?.key === "emails" && usesAppContext,
   })
   const surface = resolveAssistantSurface({
     appKey: activeAppContext?.key,
+    useAppContext: usesAppContext,
     pageContext,
     permissionGroups: ragSettings.permissionGroups,
     ragIndexNames: ragSettings.ragIndexNames,
   })
+
+  const handleContextModeChange = (nextUsesAppContext) => {
+    setContextMode({
+      appKey: activeAppContext?.key || "",
+      usesAppContext: nextUsesAppContext,
+    })
+  }
 
   if (
     location.pathname.startsWith("/assistant") ||
@@ -46,6 +69,8 @@ export function ChatWidget(props) {
       pageContext={surface.mode === "observer" ? pageContext : null}
       ragSettings={ragSettings}
       surface={surface}
+      usesAppContext={usesAppContext}
+      onUsesAppContextChange={handleContextModeChange}
       user={user}
     />
   )
@@ -58,6 +83,8 @@ function ChatWidgetContent({
   pageContext,
   ragSettings,
   surface,
+  usesAppContext,
+  onUsesAppContextChange,
   user,
 }) {
   const [input, setInput] = useState("")
@@ -252,6 +279,8 @@ function ChatWidgetContent({
       onClose={closeWidget}
       pageContext={pageContext}
       activeAppContext={activeAppContext}
+      usesAppContext={usesAppContext}
+      onUsesAppContextChange={onUsesAppContextChange}
       usesEmailRag={surface.mode === "email"}
       onQuickPrompt={handleQuickPrompt}
       currentPageScope={pageContext?.scope || null}

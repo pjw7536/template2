@@ -321,7 +321,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     expect(screen.queryByRole("textbox", { name: "메시지 수정 입력" })).not.toBeInTheDocument()
   })
 
-  it("분석 당시 범위와 버전을 표시하고 근거 로그 위치로 이동한다", () => {
+  it("분석 범위 상태 배지 없이 버전을 표시하고 근거 로그 위치로 이동한다", () => {
     const evidenceHref =
       "/observer/EQP-1?from=2026-08-01&to=2026-08-03&evidenceId=EQP%3A1&analysisLogType=EQP"
     render(
@@ -339,6 +339,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
               role: "assistant",
               content: "분석 결과",
               contextSnapshot: {
+                kind: "observer",
                 scope: {
                   eqpId: "EQP-1",
                   from: "2026-08-01",
@@ -353,7 +354,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
                   {
                     category: "EQP",
                     target: "DOWN",
-                    evidenceTargets: [{ id: "EQP:1", href: evidenceHref }],
+                    evidenceIds: ["EQP:1"],
                   },
                 ],
               },
@@ -365,7 +366,8 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     )
 
     fireEvent.click(screen.getByRole("button", { name: "분석 범위와 근거" }))
-    expect(screen.getByText("현재 조회와 다름")).toBeInTheDocument()
+    expect(screen.queryByText("분석 당시 범위")).not.toBeInTheDocument()
+    expect(screen.queryByText("현재 조회와 다름")).not.toBeInTheDocument()
     expect(screen.getByText(/gpt-oss-120b · observer-analysis-prompt-v1/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "근거 로그 EQP:1 열기" }))

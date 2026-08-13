@@ -22,14 +22,25 @@ function buildProfileSurface({ mode, profileKey, appContextKey, toolInputs }) {
   }
 }
 
+function buildGeneralAssistantSurface() {
+  return buildProfileSurface({
+    mode: "portal",
+    profileKey: ASSISTANT_PROFILE_KEYS.portal,
+    appContextKey: buildOpenWebUIContextKey("assistant"),
+    toolInputs: {},
+  })
+}
+
 export function resolveAssistantSurface({
   appKey,
+  useAppContext = true,
   pageContext = null,
   permissionGroups = [],
   ragIndexNames = [],
 } = {}) {
   const appContext = getAssistantAppContext(appKey)
   if (!appContext) return null
+  if (!useAppContext) return buildGeneralAssistantSurface()
 
   if (appContext.key === "emails") {
     return buildProfileSurface({

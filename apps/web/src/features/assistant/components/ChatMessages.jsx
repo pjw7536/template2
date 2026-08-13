@@ -49,6 +49,39 @@ function formatScopeSummary(scope) {
     .join(" · ")
 }
 
+function buildObserverEvidenceHref(scope, evidenceId) {
+  const eqpId = String(scope?.eqpId || "").trim()
+  const normalizedEvidenceId = String(evidenceId || "").trim()
+  if (!eqpId || !normalizedEvidenceId) return ""
+
+  const params = new URLSearchParams()
+  const from = String(scope?.from || "").trim().slice(0, 10)
+  const to = String(scope?.to || "").trim().slice(0, 10)
+  if (from) params.set("from", from)
+  if (to) params.set("to", to)
+  params.set("evidenceId", normalizedEvidenceId)
+  normalizeScopeList(scope?.logTypes).forEach((logType) => {
+    params.append("analysisLogType", logType)
+  })
+  normalizeScopeList(scope?.tipGroups).forEach((tipGroup) => {
+    params.append("analysisTipGroup", tipGroup)
+  })
+  return `/observer/${encodeURIComponent(eqpId)}?${params.toString()}`
+}
+
+function getEvidenceTargets(contextSnapshot, evidence) {
+  if (Array.isArray(evidence?.evidenceTargets) && evidence.evidenceTargets.length) {
+    return evidence.evidenceTargets
+  }
+  if (contextSnapshot?.kind !== "observer" || !Array.isArray(evidence?.evidenceIds)) {
+    return []
+  }
+  return evidence.evidenceIds.map((evidenceId) => ({
+    id: evidenceId,
+    href: buildObserverEvidenceHref(contextSnapshot.scope, evidenceId),
+  }))
+}
+
 export function ChatMessages({
   messages = [],
   conversationKey = "",
@@ -411,19 +444,6 @@ export function ChatMessages({
                     </Button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className="space-y-2 px-1.5 pb-1.5 text-muted-foreground">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="text-[10px]">
-                        분석 당시 범위
-                      </Badge>
-                      {isCurrentScopeAvailable ? (
-                        <Badge
-                          variant={isSameAsCurrentScope ? "secondary" : "outline"}
-                          className="text-[10px]"
-                        >
-                          {isSameAsCurrentScope ? "현재 조회와 동일" : "현재 조회와 다름"}
-                        </Badge>
-                      ) : null}
-                    </div>
                     <p>분석 당시: {formatScopeSummary(snapshotScope)}</p>
                     {isCurrentScopeAvailable && !isSameAsCurrentScope ? (
                       <p>현재 조회: {formatScopeSummary(currentPageScope)}</p>
@@ -445,33 +465,37 @@ export function ChatMessages({
                     ) : null}
                     {(message.contextSnapshot.evidence || []).length ? (
                       <ul className="list-disc space-y-1 pl-4">
-                        {message.contextSnapshot.evidence.map((evidence, evidenceIndex) => (
-                          <li key={`${message.id}-evidence-${evidenceIndex}`}>
-                            <span>
-                              {[evidence?.category, evidence?.target].filter(Boolean).join(" · ")}
-                            </span>
-                            {Array.isArray(evidence?.evidenceTargets) && evidence.evidenceTargets.length ? (
-                              <span className="mt-1 flex flex-wrap gap-1">
-                                {evidence.evidenceTargets.map((target) => (
-                                  <Button
-                                    key={`${message.id}-${target.id}`}
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 max-w-full px-2 text-[10px]"
-                                    disabled={!target?.href}
-                                    onClick={() => target?.href && navigate(target.href)}
-                                    aria-label={`근거 로그 ${target?.id || ""} 열기`}
-                                  >
-                                    <span className="truncate">{target?.id}</span>
-                                  </Button>
-                                ))}
+                        {message.contextSnapshot.evidence.map((evidence, evidenceIndex) => {
+                          const evidenceTargets = getEvidenceTargets(
+                            message.contextSnapshot,
+                            evidence,
+                          )
+                          return (
+                            <li key={`${message.id}-evidence-${evidenceIndex}`}>
+                              <span>
+                                {[evidence?.category, evidence?.target].filter(Boolean).join(" · ")}
                               </span>
-                            ) : Array.isArray(evidence?.evidenceIds) && evidence.evidenceIds.length ? (
-                              `: ${evidence.evidenceIds.join(", ")}`
-                            ) : null}
-                          </li>
-                        ))}
+                              {evidenceTargets.length ? (
+                                <span className="mt-1 flex flex-wrap gap-1">
+                                  {evidenceTargets.map((target) => (
+                                    <Button
+                                      key={`${message.id}-${target.id}`}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 max-w-full px-2 text-[10px]"
+                                      disabled={!target?.href}
+                                      onClick={() => target?.href && navigate(target.href)}
+                                      aria-label={`근거 로그 ${target?.id || ""} 열기`}
+                                    >
+                                      <span className="truncate">{target?.id}</span>
+                                    </Button>
+                                  ))}
+                                </span>
+                              ) : null}
+                            </li>
+                          )
+                        })}
                       </ul>
                     ) : null}
                   </CollapsibleContent>
