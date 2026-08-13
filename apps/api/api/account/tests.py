@@ -5566,8 +5566,8 @@ class AffiliationSelectorTests(TestCase):
             ],
         )
 
-    def test_list_line_sdwt_pairs_filters_and_orders(self) -> None:
-        """station_master에 존재하는 라인-소속 쌍만 정렬 반환되는지 확인합니다."""
+    def test_list_line_sdwt_pairs_returns_all_active_pairs_in_order(self) -> None:
+        """활성 라인-소속 쌍을 외부 데이터 매칭 없이 정렬 반환하는지 확인합니다."""
         Affiliation.objects.bulk_create(
             [
                 Affiliation(department="DeptA", line="L1", user_sdwt_prod="S1"),
@@ -5577,31 +5577,35 @@ class AffiliationSelectorTests(TestCase):
             ignore_conflicts=True,
         )
 
-        with patch(
-            "api.account.selectors.station_master_selectors.list_distinct_sdwt_prod_lookup_values",
-            return_value={"S1", "S2"},
-        ):
-            rows = list_line_sdwt_pairs()
+        rows = list_line_sdwt_pairs()
 
         self.assertEqual(
             rows,
             [
                 {"line_id": "L1", "user_sdwt_prod": "S1"},
                 {"line_id": "L1", "user_sdwt_prod": "S2"},
+                {"line_id": "L2", "user_sdwt_prod": "S0"},
             ],
         )
 
-    def test_list_line_sdwt_pairs_returns_empty_without_station_match(self) -> None:
-        """station_master 매칭 값이 없으면 선택지를 반환하지 않습니다."""
-        _affiliation(department="DeptA", line="L1", user_sdwt_prod="S1")
+    def test_list_line_sdwt_pairs_excludes_inactive_and_blank_rows(self) -> None:
+        """비활성 또는 빈 라인/소속 행을 선택지에서 제외하는지 확인합니다."""
+        Affiliation.objects.bulk_create(
+            [
+                Affiliation(department="DeptA", line="L1", user_sdwt_prod="S1"),
+                Affiliation(
+                    department="DeptA",
+                    line="L2",
+                    user_sdwt_prod="S2",
+                    is_active=False,
+                ),
+                Affiliation(department="DeptA", line="", user_sdwt_prod="S3"),
+            ],
+        )
 
-        with patch(
-            "api.account.selectors.station_master_selectors.list_distinct_sdwt_prod_lookup_values",
-            return_value=set(),
-        ):
-            rows = list_line_sdwt_pairs()
+        rows = list_line_sdwt_pairs()
 
-        self.assertEqual(rows, [])
+        self.assertEqual(rows, [{"line_id": "L1", "user_sdwt_prod": "S1"}])
 
     def test_affiliation_write_locks_use_primary_key_order(self) -> None:
         """표시값 정렬과 무관하게 다중 소속 잠금은 id 오름차순을 사용해야 합니다."""
