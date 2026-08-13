@@ -1,6 +1,6 @@
 # Assistant API
 
-Assistant API는 화면에 따라 일반 OpenWebUI 대화와 메일 RAG 답변을 분리해 제공합니다.
+Assistant API는 같은 Portal 대화방의 공용 기억을 유지하면서 현재 앱에 맞는 OpenWebUI, Email RAG, Observer 답변 경로를 제공합니다.
 
 ## 호출자
 
@@ -83,7 +83,7 @@ Content-Type: application/json
 {
   "prompt": "장비 예방 정비 체크리스트를 알려줘",
   "roomId": "room-1",
-  "contextKey": "assistant:openwebui",
+  "contextKey": "assistant:openwebui:appstore",
   "history": [
     {"role": "user", "content": "이전 질문"},
     {"role": "assistant", "content": "이전 답변"}
@@ -91,7 +91,7 @@ Content-Type: application/json
 }
 ```
 
-`permissionGroups`와 `ragIndexName`은 OpenWebUI 일반 채팅에서 사용하지 않습니다. 서버는 사용자/assistant role만 대화 이력으로 허용하고 고정 system message를 추가합니다.
+`permissionGroups`와 `ragIndexName`은 OpenWebUI 일반 채팅에서 사용하지 않습니다. 서버는 사용자/assistant role만 대화 이력으로 허용하고 `contextKey`의 허용된 `appKey`에 해당하는 고정 배경지식을 system message에 추가합니다. 알 수 없는 앱 키는 배경지식에 반영하지 않습니다.
 
 ChatWidget은 같은 payload를 `/openwebui-chat/stream`에 전송합니다. 응답은 `text/event-stream`이며 event 계약은 다음과 같습니다.
 
@@ -129,7 +129,7 @@ Content-Type: application/json
       "clientId": "user-1720000000000-ab12c",
       "role": "user",
       "content": "DOWN 반복 원인을 알려줘",
-      "contextKey": "assistant:openwebui",
+      "contextKey": "assistant:openwebui:observer",
       "sources": [],
       "parentId": null,
       "revisionOfId": null
@@ -142,23 +142,23 @@ Content-Type: application/json
 - 한 요청은 메시지 20개까지 저장할 수 있으며 `content`와 채팅 `prompt`는 각각 최대 10,000자입니다.
 - 메시지 `sources`는 50개와 직렬화 기준 50KB, `contextSnapshot`은 100KB까지 허용합니다.
 - 생성 답변은 화면 표시와 저장 전에 같은 상한으로 정리됩니다. 본문이 줄어들면 생략 안내를 표시하고, 저장 재시도도 실패하면 해당 미저장 답변만 제거해 다음 질문을 계속할 수 있습니다.
-- `contextKey`는 일반 OpenWebUI, Email RAG, Observer 조회 context의 요청 경로·메시지 출처·현재 데이터 범위를 구분합니다. 같은 방의 일반 OpenWebUI와 Observer는 모델 입력 이력을 공유하며 Email RAG는 분리합니다.
+- `contextKey`는 Portal 앱 OpenWebUI, Email RAG, Observer 조회 context의 요청 경로·메시지 출처·현재 데이터 범위를 구분합니다. 같은 방에서는 세 요청 유형 모두 모델 입력 이력과 rolling summary를 공유합니다.
 - `parentId`와 `revisionOfId`는 질문 수정·답변 재생성 시 원본을 삭제하지 않는 분기 관계입니다. GET은 현재 활성 분기만 반환합니다.
 - Observer 답변은 원본 로그 전체 대신 제한된 `contextSnapshot`의 조회 범위, 집계 coverage, 근거 ID를 저장합니다.
 - 대화방 GET은 `search`, `cursor`, `limit`, `archived`를 지원하고 검색은 제목과 메시지 본문을 함께 확인합니다. 고정 대화방은 전체 cursor page에서 일반 대화방보다 먼저 정렬됩니다. 메시지 GET은 `before`, `limit`으로 과거 page를 조회합니다.
 - 목록 응답은 공통으로 `results`, `nextCursor`, `hasMore`를 반환합니다. cursor는 서버가 서명한 opaque 문자열이므로 클라이언트가 해석하지 않습니다.
 - 메시지 DELETE는 방은 유지하고 내용을 초기화하며, 대화방 DELETE는 메시지까지 cascade 삭제합니다.
 
-최근 10개를 제외한 같은 기억 그룹 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다. `assistant:openwebui`와 `observer:*`는 `chatwidget:shared` 그룹으로 함께 집계하고 `assistant` Email RAG는 별도로 집계합니다.
+최근 10개를 제외한 같은 기억 그룹 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다. `assistant:openwebui:*`, `observer:*`, `assistant` Email RAG는 모두 `chatwidget:shared` 그룹으로 함께 집계합니다.
 
 ```http
 POST /api/v1/assistant/conversations/<uuid>/refresh-summary
 Content-Type: application/json
 
-{"contextKey": "assistant:openwebui"}
+{"contextKey": "assistant:openwebui:portal"}
 ```
 
-요약은 최대 2,000자로 `assistant_conversation_summary`에 `(conversation, memory context key)`별로 저장합니다. 같은 방의 일반 Chat·Observer 요청에는 `chatwidget:shared` 요약을 주입하고 Email RAG와 다른 방에는 주입하지 않습니다. Observer는 이 요약을 질문 의도 파악용 배경으로만 사용하고 현재 조회 데이터만 사실 근거로 사용합니다. 요약 실패는 이미 완료된 답변과 메시지 저장을 취소하지 않습니다.
+요약은 최대 2,000자로 `assistant_conversation_summary`에 `(conversation, memory context key)`별로 저장합니다. 같은 방의 Portal 앱·Observer·Email RAG 요청에는 `chatwidget:shared` 요약을 주입하고 다른 방에는 주입하지 않습니다. Observer는 이 요약을 질문 의도 파악용 배경으로만 사용하고 현재 조회 데이터만 사실 근거로 사용합니다. 요약 실패는 이미 완료된 답변과 메시지 저장을 취소하지 않습니다.
 
 첫 질문과 답변 저장 후 기본 이름인 방은 다음 endpoint로 제목을 생성합니다.
 

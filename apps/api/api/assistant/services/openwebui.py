@@ -19,6 +19,7 @@ from typing import Any, Mapping, Sequence
 from django.conf import settings
 import requests
 
+from ..models import ASSISTANT_APP_LABELS, resolve_assistant_app_key
 from .errors import AssistantConfigError, AssistantRequestError
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,23 @@ OPENWEBUI_SUMMARY_SYSTEM_MESSAGE = (
 )
 OPENWEBUI_TITLE_MAX_LENGTH = 40
 OPENWEBUI_SUMMARY_MAX_LENGTH = 2000
+OPENWEBUI_APP_KNOWLEDGE = {
+    "appstore": "업무 앱 탐색, 앱 등록 상태와 접근 정보를 다루는 Portal 앱입니다.",
+    "line-dashboard": "라인 상태, 이력, 알림 설정과 수신 설정을 다루는 ESOP Dashboard 앱입니다.",
+    "observer": "장비 로그와 사용자가 선택한 조회 조건을 바탕으로 분석하는 Observer 앱입니다.",
+    "emails": "사용자가 접근 가능한 메일 검색 결과를 배경지식으로 사용하는 Emails 앱입니다.",
+    "l0-spider": "L0 Spider의 장비와 이상 현황 업무를 다루는 앱입니다.",
+    "l1-spider": "L1 Spider 업무 화면을 제공하는 앱입니다.",
+    "l3-spider": "L3 Spider 업무 화면을 제공하는 앱입니다.",
+    "pm-spider": "PM Spider 업무 화면을 제공하는 앱입니다.",
+    "tttm-spider": "TTTM Spider의 Target과 Score 업무를 다루는 앱입니다.",
+    "spider": "Spider 앱과 세부 분석 기능으로 이동하는 Portal 앱입니다.",
+    "access-stats": "Portal 앱별 접속 현황과 통계를 다루는 앱입니다.",
+    "teamstaff": "기술팀 구성과 담당 정보를 제공하는 Team 앱입니다.",
+    "voc": "VoE 게시글과 사용자 의견 업무를 다루는 앱입니다.",
+    "settings": "Portal 계정, 구성원과 권한 설정을 다루는 화면입니다.",
+    "assistant": "Portal 공통 대화를 전체 화면에서 제공하는 Assistant 앱입니다.",
+}
 
 
 @dataclass(frozen=True)
@@ -107,6 +125,29 @@ def _build_stream_headers(config: AssistantOpenWebUIConfig) -> dict[str, str]:
     return {**_build_headers(config), "Accept": "text/event-stream"}
 
 
+def build_openwebui_app_system_message(
+    *,
+    context_key: object,
+    base_message: str = OPENWEBUI_SYSTEM_MESSAGE,
+) -> str:
+    """허용된 현재 앱의 고정 배경지식을 Portal 기본 system message에 결합합니다."""
+
+    normalized_context_key = str(context_key or "").strip()
+    if not normalized_context_key or normalized_context_key == "assistant":
+        return base_message
+    app_key = resolve_assistant_app_key(context_key)
+    app_knowledge = OPENWEBUI_APP_KNOWLEDGE.get(app_key)
+    if not app_knowledge:
+        return base_message
+    return (
+        f"{base_message}\n\n"
+        f"[현재 활성 앱: {ASSISTANT_APP_LABELS[app_key]}]\n"
+        f"{app_knowledge}\n"
+        "현재 앱 정보는 이번 요청에만 적용하고, 이전 앱의 배경지식을 현재 앱의 사실로 "
+        "간주하지 마세요. 대화 이력은 앱을 이동해도 계속 참고하세요."
+    )
+
+
 def build_openwebui_messages(
     history: Sequence[Mapping[str, object]],
     *,
@@ -167,12 +208,14 @@ def stream_openwebui_chat(
     temperature: float = 1.0,
     top_p: float = 1.0,
     reasoning_effort: str = "medium",
+    context_key: object = None,
 ) -> Iterator[str]:
     """OpenWebUI Chat Completions SSE를 답변 content 조각 iterator로 변환합니다.
 
     입력:
         history: 최근 사용자/Assistant 대화입니다.
         conversation_summary: 최근 이력 이전의 장기 대화 요약입니다.
+        context_key: 현재 앱 배경지식을 해석할 서버 검증 문맥 키입니다.
 
     반환:
         화면에 즉시 이어 붙일 content 문자열 iterator입니다.
@@ -194,7 +237,10 @@ def stream_openwebui_chat(
         "model": active_config.model,
         "messages": build_openwebui_messages(
             history,
-            system_message=system_message,
+            system_message=build_openwebui_app_system_message(
+                context_key=context_key,
+                base_message=system_message,
+            ),
             conversation_summary=conversation_summary,
         ),
         "temperature": temperature,
@@ -283,8 +329,14 @@ def request_openwebui_chat(
     temperature: float = 1.0,
     top_p: float = 1.0,
     reasoning_effort: str = "medium",
+    context_key: object = None,
 ) -> str:
     """대화 이력을 기존 OpenWebUI endpoint로 전송하고 최종 답변을 반환합니다.
+
+    입력:
+        history: 최근 사용자/Assistant 대화입니다.
+        conversation_summary: 최근 이력 이전의 장기 대화 요약입니다.
+        context_key: 현재 앱 배경지식을 해석할 서버 검증 문맥 키입니다.
 
     부작용:
         OpenWebUI HTTP API를 호출합니다.
@@ -303,7 +355,10 @@ def request_openwebui_chat(
         "model": active_config.model,
         "messages": build_openwebui_messages(
             history,
-            system_message=system_message,
+            system_message=build_openwebui_app_system_message(
+                context_key=context_key,
+                base_message=system_message,
+            ),
             conversation_summary=conversation_summary,
         ),
         "temperature": temperature,
@@ -475,6 +530,7 @@ def request_openwebui_conversation_summary(
 
 __all__ = [
     "AssistantOpenWebUIConfig",
+    "build_openwebui_app_system_message",
     "build_openwebui_messages",
     "normalize_openwebui_conversation_title",
     "request_openwebui_chat",

@@ -15,8 +15,27 @@ from django.db.models import Q
 
 ASSISTANT_DEFAULT_CONTEXT_KEY = "assistant"
 ASSISTANT_OPENWEBUI_CONTEXT_KEY = "assistant:openwebui"
+ASSISTANT_OPENWEBUI_CONTEXT_PREFIX = f"{ASSISTANT_OPENWEBUI_CONTEXT_KEY}:"
 CHATWIDGET_SHARED_CONTEXT_KEY = "chatwidget:shared"
 OBSERVER_CONTEXT_PREFIX = "observer:"
+ASSISTANT_APP_LABELS = {
+    "portal": "Portal",
+    "assistant": "Assistant",
+    "appstore": "Appstore",
+    "line-dashboard": "ESOP Dashboard",
+    "observer": "Observer",
+    "emails": "Emails",
+    "l0-spider": "L0 Spider",
+    "l1-spider": "L1 Spider",
+    "l3-spider": "L3 Spider",
+    "pm-spider": "PM Spider",
+    "tttm-spider": "TTTM Spider",
+    "spider": "Spider",
+    "access-stats": "접속 현황",
+    "teamstaff": "Team",
+    "voc": "VoE",
+    "settings": "Settings",
+}
 
 
 def normalize_assistant_context_key(context_key: object) -> str:
@@ -26,6 +45,23 @@ def normalize_assistant_context_key(context_key: object) -> str:
     return normalized or ASSISTANT_DEFAULT_CONTEXT_KEY
 
 
+def resolve_assistant_app_key(context_key: object) -> str:
+    """메시지 문맥 키에서 서버가 허용한 활성 앱 키를 해석합니다."""
+
+    normalized = normalize_assistant_context_key(context_key)
+    if normalized == ASSISTANT_DEFAULT_CONTEXT_KEY:
+        return "emails"
+    if normalized.startswith(OBSERVER_CONTEXT_PREFIX):
+        return "observer"
+    if normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY:
+        return "portal"
+    if normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
+        app_key = normalized[len(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX) :]
+        if app_key in ASSISTANT_APP_LABELS:
+            return app_key
+    return "portal"
+
+
 def resolve_assistant_memory_context_key(context_key: object) -> str:
     """요청 문맥 키를 rolling summary와 최근 이력의 기억 키로 변환합니다."""
 
@@ -33,7 +69,9 @@ def resolve_assistant_memory_context_key(context_key: object) -> str:
     if normalized == CHATWIDGET_SHARED_CONTEXT_KEY:
         return normalized
     if (
-        normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY
+        normalized == ASSISTANT_DEFAULT_CONTEXT_KEY
+        or normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY
+        or normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX)
         or normalized.startswith(OBSERVER_CONTEXT_PREFIX)
     ):
         return CHATWIDGET_SHARED_CONTEXT_KEY
@@ -41,7 +79,7 @@ def resolve_assistant_memory_context_key(context_key: object) -> str:
 
 
 def is_chatwidget_shared_memory_context(context_key: object) -> bool:
-    """문맥 키가 일반 Chat·Observer 공유 기억에 속하는지 반환합니다."""
+    """문맥 키가 Portal Assistant 공용 기억에 속하는지 반환합니다."""
 
     return (
         resolve_assistant_memory_context_key(context_key)
@@ -50,14 +88,13 @@ def is_chatwidget_shared_memory_context(context_key: object) -> bool:
 
 
 def format_assistant_memory_content(*, context_key: object, content: str) -> str:
-    """공유 요약에서 일반 Chat과 Observer 메시지 출처를 구분합니다."""
+    """공유 요약에서 메시지가 생성된 앱 출처를 구분합니다."""
 
     normalized = normalize_assistant_context_key(context_key)
-    if normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY:
-        return f"[대화 출처: 일반 Chat]\n{content}"
-    if normalized.startswith(OBSERVER_CONTEXT_PREFIX):
-        return f"[대화 출처: Observer]\n{content}"
-    return content
+    if not is_chatwidget_shared_memory_context(normalized):
+        return content
+    app_key = resolve_assistant_app_key(normalized)
+    return f"[대화 출처: {ASSISTANT_APP_LABELS[app_key]}]\n{content}"
 
 
 class AssistantConversation(models.Model):

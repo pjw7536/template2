@@ -90,7 +90,7 @@ export function ChatPage() {
     initialMessagesByRoom,
     initialActiveRoomId,
     messageSender: sendOpenWebUIStreamingMessage,
-    messageContextKey: "assistant:openwebui",
+    messageContextKey: "assistant:openwebui:assistant",
     userKey: user?.id,
   })
 

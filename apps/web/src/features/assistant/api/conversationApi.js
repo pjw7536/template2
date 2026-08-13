@@ -64,11 +64,6 @@ export async function fetchAssistantConversationPage({
   }
 }
 
-export async function fetchAssistantConversations() {
-  const payload = await fetchAssistantConversationPage()
-  return Array.isArray(payload?.results) ? payload.results : []
-}
-
 export function createAssistantConversation({ name } = {}) {
   return requestConversationApi(CONVERSATIONS_PATH, {
     method: "POST",
@@ -93,11 +88,6 @@ export function generateAssistantConversationTitle(conversationId) {
   return requestConversationApi(conversationPath(conversationId, "/generate-title"), {
     method: "POST",
   })
-}
-
-export async function fetchAssistantConversationMessages(conversationId) {
-  const payload = await fetchAssistantConversationMessagePage(conversationId)
-  return payload.results
 }
 
 export async function fetchAssistantConversationMessagePage(
@@ -151,7 +141,10 @@ export function clearAssistantConversationMessages(conversationId) {
   })
 }
 
-export function refreshAssistantConversationSummary(conversationId, contextKey = "assistant") {
+export function refreshAssistantConversationSummary(
+  conversationId,
+  contextKey = "assistant:openwebui:portal",
+) {
   return requestConversationApi(conversationPath(conversationId, "/refresh-summary"), {
     method: "POST",
     body: JSON.stringify({ contextKey }),

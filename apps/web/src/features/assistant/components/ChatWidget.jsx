@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 
 import { usePageAssistantContext } from "@/lib/assistant/pageContext"
+import {
+  buildOpenWebUIContextKey,
+  resolveAssistantAppContext,
+} from "@/lib/assistant/appContext"
 import { useAuth } from "@/lib/auth"
 
 import { sendOpenWebUIStreamingMessage } from "../api/sendChatMessage"
@@ -10,7 +14,6 @@ import { ChatWidgetPanel } from "./ChatWidgetPanel"
 import { useAttentionTooltip } from "../hooks/useAttentionTooltip"
 import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
-import { isEmailAssistantRoute } from "../utils/assistantRoute"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 import {
   DEFAULT_CHAT_HEIGHT,
@@ -62,10 +65,13 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
   const { user } = useAuth()
   const { pageContext } = usePageAssistantContext()
   const sizeRef = useRef(size)
-  const isEmailRoute = isEmailAssistantRoute(location.pathname)
+  const activeAppContext = resolveAssistantAppContext(location.pathname)
+  const isEmailRoute = activeAppContext.key === "emails"
   const ragSettings = useAssistantRagIndex({ enabled: isEmailRoute })
   const defaultMessageSender = isEmailRoute ? undefined : sendOpenWebUIStreamingMessage
-  const defaultMessageContextKey = isEmailRoute ? "assistant" : "assistant:openwebui"
+  const defaultMessageContextKey = isEmailRoute
+    ? "assistant"
+    : buildOpenWebUIContextKey(activeAppContext.key)
   const {
     rooms,
     roomListRooms,
@@ -124,8 +130,6 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
   const hasDraggedRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const widgetDragOffsetRef = useRef({ x: 0, y: 0 })
-  const widgetDragStartRef = useRef({ x: 0, y: 0 })
-  const widgetHasDraggedRef = useRef(false)
   const lastWidgetPositionRef = useRef(null)
   const resizeStartRef = useRef({ width: 0, height: 0, left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0 })
   const sidebarResizeStartRef = useRef({ width: DEFAULT_SIDEBAR_WIDTH, x: 0 })
@@ -373,14 +377,6 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
         rect.height,
       )
 
-      if (
-        !widgetHasDraggedRef.current &&
-        (Math.abs(event.clientX - widgetDragStartRef.current.x) > 2 ||
-          Math.abs(event.clientY - widgetDragStartRef.current.y) > 2)
-      ) {
-        widgetHasDraggedRef.current = true
-      }
-
       setWidgetPosition(nextPosition)
     }
 
@@ -619,8 +615,6 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     }
-    widgetDragStartRef.current = { x: event.clientX, y: event.clientY }
-    widgetHasDraggedRef.current = false
     setIsWidgetDragging(true)
   }
 
@@ -747,6 +741,7 @@ function ChatWidgetContent({ availableMailboxes = [], location }) {
       onRestoreDefaultSize={handleRestoreDefaultSize}
       onClose={closeWidget}
       pageContext={pageContext}
+      activeAppContext={activeAppContext}
       usesEmailRag={isEmailRoute}
       onQuickPrompt={handleQuickPrompt}
       currentPageScope={pageContext?.scope || null}

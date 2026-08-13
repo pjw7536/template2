@@ -3,7 +3,6 @@ import { buildBackendUrl, getBackendBaseUrl } from "@/lib/api"
 import { normalizeChatSources } from "../utils/normalizeChatSources"
 
 const DEFAULT_CHAT_PATH = "/api/v1/assistant/chat"
-const OPENWEBUI_CHAT_PATH = "/api/v1/assistant/openwebui-chat"
 const OPENWEBUI_STREAM_PATH = "/api/v1/assistant/openwebui-chat/stream"
 const REQUEST_TIMEOUT_MS = 15000
 const OPENWEBUI_REQUEST_TIMEOUT_MS = 130000
@@ -251,6 +250,7 @@ async function requestChatMessage({
   includeRagSettings,
   timeoutMs,
   signal,
+  contextKey,
 }) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("메시지를 입력해주세요.")
@@ -266,6 +266,7 @@ async function requestChatMessage({
     permissionGroups,
     ragIndexNames,
     includeRagSettings,
+    contextKey,
   })
 
   const requestControl = createRequestController(signal, timeoutMs)
@@ -328,15 +329,6 @@ export function sendChatMessage(request) {
     endpoint: resolveChatEndpoint(),
     includeRagSettings: true,
     timeoutMs: REQUEST_TIMEOUT_MS,
-  })
-}
-
-export function sendOpenWebUIMessage(request) {
-  return requestChatMessage({
-    ...request,
-    endpoint: buildBackendUrl(OPENWEBUI_CHAT_PATH),
-    includeRagSettings: false,
-    timeoutMs: OPENWEBUI_REQUEST_TIMEOUT_MS,
   })
 }
 

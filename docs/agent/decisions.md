@@ -105,9 +105,11 @@
 - 신규 설치에 불필요한 기존 메시지 연결 및 요약 이전용 data migration은 초기 마이그레이션에 포함하지 않는다.
 - 단일 초기 마이그레이션이 배포된 이후의 Assistant schema 변경은 기존 파일을 수정하지 않고 새 migration으로 추가한다.
 
-## 2026-08-12: ChatWidget 방 단위 공유 기억
+## 2026-08-12: Portal Assistant 앱 단위 활성 컨텍스트와 방 단위 공유 기억
 
-- 같은 ChatWidget 대화방의 일반 Chat(`assistant:openwebui`)과 Observer(`observer:*`)는 최근 모델 이력과 rolling summary를 `chatwidget:shared` 기억 그룹으로 공유한다.
-- `contextKey`는 요청 라우팅, 메시지 출처, 현재 Observer 조회 범위를 보존하며 기억 경계와 분리한다.
-- Email RAG(`assistant`)와 다른 대화방은 공유 기억에 포함하지 않는다.
+- 같은 Assistant 대화방의 일반 앱(`assistant:openwebui:<appKey>`), Observer(`observer:*`), Email RAG(`assistant`)는 최근 모델 이력과 rolling summary를 `chatwidget:shared` 기억 그룹으로 공유한다.
+- `contextKey`는 기억을 분리하지 않고 요청 sender, 메시지의 앱 출처와 현재 Observer 조회 범위를 보존한다.
+- 앱 이동 시 대화방과 기억은 유지하고 현재 앱의 sender·고정 배경지식·화면 데이터만 교체한다.
+- OpenWebUI의 앱 배경지식은 클라이언트 문장을 신뢰하지 않고 서버 허용 카탈로그에서 `appKey`를 해석해 system message에 추가한다.
 - Observer의 공유 대화와 장기 요약은 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 `observer_analysis_context_json`으로 제한한다.
+- 기존 `assistant`와 `chatwidget:shared` rolling summary는 통합 전 메시지 집합의 `message_count`를 재사용할 수 없으므로 `0002` data migration에서 삭제하고 원본 메시지로 재생성한다.

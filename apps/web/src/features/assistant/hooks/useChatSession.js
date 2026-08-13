@@ -243,7 +243,7 @@ export function useChatSession(options = {}) {
   const messageContextKey =
     typeof options.messageContextKey === "string" && options.messageContextKey
       ? options.messageContextKey
-      : "assistant"
+      : "assistant:openwebui:portal"
   const userKeyRef = useRef(userKey)
   const titleRequestRoomIdsRef = useRef(new Set())
   const generationControllerRef = useRef(null)
@@ -315,7 +315,9 @@ export function useChatSession(options = {}) {
     }),
     enabled: persistenceEnabled && Boolean(activeRoomId),
   })
-  const chatMutation = useMutation({ mutationFn: (request) => messageSender(request) })
+  const chatMutation = useMutation({
+    mutationFn: ({ sender, request }) => sender(request),
+  })
   const createMutation = useMutation({ mutationFn: createAssistantConversation })
   const deleteMutation = useMutation({
     mutationFn: async (roomIds) => {
@@ -1104,10 +1106,7 @@ export function useChatSession(options = {}) {
       )
       return { ok: false, accepted: false }
     }
-    if (
-      failedAssistantSave &&
-      failedAssistantSave.contextKey === messageContextKey
-    ) {
+    if (failedAssistantSave) {
       setErrorMessage("먼저 표시된 답변 저장을 다시 시도해주세요.")
       return { ok: false, accepted: false }
     }
@@ -1133,7 +1132,8 @@ export function useChatSession(options = {}) {
       })
       if (!isSessionCurrent(sessionEpoch)) return { ok: false, accepted: false }
     }
-    const requestContextKey = messageContextKey
+    const requestContextKey = options.contextKey || messageContextKey
+    const requestMessageSender = options.messageSender || messageSender
     const originalMessages = messagesByRoomRef.current[roomId] ?? buildInitialMessages()
     const currentMessages = Array.isArray(options.baseMessages)
       ? options.baseMessages
@@ -1296,24 +1296,27 @@ export function useChatSession(options = {}) {
 
     try {
       const result = await chatMutation.mutateAsync({
-        prompt: text,
-        history: historyForRequest.map((message) => ({
-          role: message.role,
-          content:
-            message.id === userMessage.id
-              ? message.content
-              : formatChatHistoryContent(
-                  message.content,
-                  message.contextKey,
-                  requestContextKey,
-                ),
-        })),
-        roomId,
-        permissionGroups,
-        ragIndexNames,
-        contextKey: requestContextKey,
-        signal: controller.signal,
-        onDelta: appendStreamDelta,
+        sender: requestMessageSender,
+        request: {
+          prompt: text,
+          history: historyForRequest.map((message) => ({
+            role: message.role,
+            content:
+              message.id === userMessage.id
+                ? message.content
+                : formatChatHistoryContent(
+                    message.content,
+                    message.contextKey,
+                    requestContextKey,
+                  ),
+          })),
+          roomId,
+          permissionGroups,
+          ragIndexNames,
+          contextKey: requestContextKey,
+          signal: controller.signal,
+          onDelta: appendStreamDelta,
+        },
       })
       isStreamFinished = true
       cancelStreamFrame()
@@ -1476,7 +1479,12 @@ export function useChatSession(options = {}) {
         setErrorMessage("")
         return { ok: true, accepted: true, cancelled: true, roomId }
       }
-      setFailedRequest({ roomId, text, contextKey: requestContextKey })
+      setFailedRequest({
+        roomId,
+        text,
+        contextKey: requestContextKey,
+        messageSender: requestMessageSender,
+      })
       if (generation?.id) {
         await finalizeAssistantGeneration(generation.id, "failed", "request_failed").catch(
           () => {},
@@ -1530,7 +1538,6 @@ export function useChatSession(options = {}) {
     if (
       !persistenceEnabled ||
       !failedAssistantSave ||
-      failedAssistantSave.contextKey !== messageContextKey ||
       sendMessagePromiseRef.current
     ) {
       return { ok: false }
@@ -1549,7 +1556,10 @@ export function useChatSession(options = {}) {
         setFailedAssistantSave(null)
         setErrorMessage("")
         void requestGeneratedRoomTitle(savedRoomId)
-        void refreshAssistantConversationSummary(savedRoomId, messageContextKey).catch(() => {})
+        void refreshAssistantConversationSummary(
+          savedRoomId,
+          failedAssistantSave.contextKey,
+        ).catch(() => {})
         void queryClient.invalidateQueries({
           queryKey: messagesQueryKey(userKey, savedRoomId),
           exact: true,
@@ -1578,7 +1588,6 @@ export function useChatSession(options = {}) {
   const discardFailedAssistantSave = () => {
     if (
       !failedAssistantSave ||
-      failedAssistantSave.contextKey !== messageContextKey ||
       retryAssistantSavePromiseRef.current
     ) {
       return { ok: false }
@@ -1608,7 +1617,6 @@ export function useChatSession(options = {}) {
   const retryLastMessage = async () => {
     if (
       !failedRequest ||
-      failedRequest.contextKey !== messageContextKey ||
       generationControllerRef.current
     ) {
       return { ok: false, accepted: false }
@@ -1617,6 +1625,8 @@ export function useChatSession(options = {}) {
     return sendMessage(failedRequest.text, {
       roomId: failedRequest.roomId,
       reuseLastUserMessage: true,
+      contextKey: failedRequest.contextKey,
+      messageSender: failedRequest.messageSender,
     })
   }
 
@@ -1996,10 +2006,8 @@ export function useChatSession(options = {}) {
     isRoomListBusy,
     isSessionLoading,
     errorMessage: visibleErrorMessage,
-    canRetry: Boolean(failedRequest && failedRequest.contextKey === messageContextKey),
-    canRetrySave: Boolean(
-      failedAssistantSave && failedAssistantSave.contextKey === messageContextKey,
-    ),
+    canRetry: Boolean(failedRequest),
+    canRetrySave: Boolean(failedAssistantSave),
     clearError: () => setErrorMessage(""),
     sendMessage,
     retryAssistantSave,

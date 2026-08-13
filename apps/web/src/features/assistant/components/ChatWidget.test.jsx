@@ -71,8 +71,10 @@ vi.mock("./ChatWidgetPanel", () => ({
     sidebarMaxWidth,
     onSidebarResizePointerDown,
     onSidebarResizeKeyDown,
+    activeAppContext,
   }) => (
     <div>
+      <span>{activeAppContext?.label || "Portal"}</span>
       <button type="button" onClick={onClose}>위젯 닫기</button>
       <button type="button" onClick={onToggleSidebar}>목록 전환</button>
       {isSidebarOpen ? (
@@ -123,6 +125,36 @@ describe("ChatWidget 대화방 생성", () => {
 
     expect(chatSessionMocks.useChatSession).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: "위젯 열기" })).not.toBeInTheDocument()
+  })
+
+  it("현재 앱을 Portal 공용 기억의 contextKey로 전달한다", () => {
+    render(
+      <MemoryRouter initialEntries={["/appstore"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageContextKey: "assistant:openwebui:appstore",
+      }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    expect(screen.getByText("Appstore")).toBeInTheDocument()
+  })
+
+  it("Emails는 Portal 대화방을 유지하면서 Email RAG contextKey를 사용한다", () => {
+    render(
+      <MemoryRouter initialEntries={["/emails/inbox"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageContextKey: "assistant",
+      }),
+    )
   })
 
   it("대화방 목록 구분선을 드래그해 사이드바 너비를 조절한다", () => {

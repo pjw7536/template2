@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Check,
   ChevronDown,
@@ -77,19 +77,6 @@ export function ChatMessages({
   const [editValue, setEditValue] = useState("")
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
   const [isNearLatest, setIsNearLatest] = useState(true)
-  const contextDividerIndexes = useMemo(() => {
-    const indexes = new Set()
-    let previousContextKey = ""
-    messages.forEach((message, index) => {
-      const contextKey = typeof message?.contextKey === "string" ? message.contextKey : ""
-      if (contextKey && previousContextKey && contextKey !== previousContextKey) {
-        indexes.add(index)
-      }
-      if (contextKey) previousContextKey = contextKey
-    })
-    return indexes
-  }, [messages])
-
   useLayoutEffect(() => {
     if (previousConversationKeyRef.current === conversationKey) return
     previousConversationKeyRef.current = conversationKey
@@ -265,7 +252,7 @@ export function ChatMessages({
         </div>
       ) : null}
 
-      {messages.map((message, index) => {
+      {messages.map((message) => {
         const isUser = message.role === "user"
         const isEditing = isUser && editTargetId === message.id
         const sources = Array.isArray(message.sources) ? message.sources : []
@@ -276,7 +263,6 @@ export function ChatMessages({
           (message.content === "무엇을 도와드릴까요?" &&
             !message.contextKey &&
             sources.length === 0)
-        const showContextDivider = contextDividerIndexes.has(index)
         const snapshotScope = message.contextSnapshot?.scope
         const isCurrentScopeAvailable = Boolean(getScopeSignature(currentPageScope))
         const isSameAsCurrentScope =
@@ -292,25 +278,20 @@ export function ChatMessages({
         ].filter(Boolean)
 
         return (
-          <Fragment key={message.id}>
-            {showContextDivider ? (
-              <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                <span>현재 화면이 변경되었습니다. 이전 대화는 이어집니다.</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            ) : null}
-            <div className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
-              <div
-                className={[
-                  "group space-y-1",
-                  fillBubbles && !isUser
-                    ? "w-full"
-                    : isEditing
-                      ? "w-full max-w-[90%]"
-                      : "max-w-[90%]",
-                ].join(" ")}
-              >
+          <div
+            key={message.id}
+            className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}
+          >
+            <div
+              className={[
+                "group space-y-1",
+                fillBubbles && !isUser
+                  ? "w-full"
+                  : isEditing
+                    ? "w-full max-w-[90%]"
+                    : "max-w-[90%]",
+              ].join(" ")}
+            >
               {isUser ? (
                 isEditing ? (
                   <div className="w-full rounded-2xl border bg-muted p-3 shadow-sm">
@@ -531,9 +512,8 @@ export function ChatMessages({
                   )}
                 </div>
               ) : null}
-              </div>
             </div>
-          </Fragment>
+          </div>
         )
       })}
 

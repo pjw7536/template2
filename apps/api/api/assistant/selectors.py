@@ -15,7 +15,9 @@ from django.utils.dateparse import parse_datetime
 import api.account.services as account_services
 
 from .models import (
+    ASSISTANT_DEFAULT_CONTEXT_KEY,
     ASSISTANT_OPENWEBUI_CONTEXT_KEY,
+    ASSISTANT_OPENWEBUI_CONTEXT_PREFIX,
     CHATWIDGET_SHARED_CONTEXT_KEY,
     OBSERVER_CONTEXT_PREFIX,
     AssistantConversation,
@@ -267,7 +269,9 @@ def get_assistant_summary_batch(
     queryset = AssistantMessage.objects.filter(id__in=branch_ids)
     if memory_context_key == CHATWIDGET_SHARED_CONTEXT_KEY:
         queryset = queryset.filter(
-            Q(context_key=ASSISTANT_OPENWEBUI_CONTEXT_KEY)
+            Q(context_key=ASSISTANT_DEFAULT_CONTEXT_KEY)
+            | Q(context_key=ASSISTANT_OPENWEBUI_CONTEXT_KEY)
+            | Q(context_key__startswith=ASSISTANT_OPENWEBUI_CONTEXT_PREFIX)
             | Q(context_key__startswith=OBSERVER_CONTEXT_PREFIX)
         )
     else:

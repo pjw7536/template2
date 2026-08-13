@@ -32,8 +32,6 @@ vi.mock("../api/conversationApi", () => ({
   deleteAssistantConversation: conversationApiMocks.deleteConversation,
   deleteAssistantMessageFeedback: conversationApiMocks.deleteFeedback,
   exportAssistantConversation: conversationApiMocks.exportConversation,
-  fetchAssistantConversationMessages: conversationApiMocks.fetchMessages,
-  fetchAssistantConversations: conversationApiMocks.fetchConversations,
   fetchAssistantConversationPage: (...args) =>
     conversationApiMocks.fetchConversationPage(...args),
   fetchAssistantConversationMessagePage: async (...args) => {
@@ -378,7 +376,7 @@ describe("useChatSession page context", () => {
     })
   })
 
-  it("Observer sender에는 같은 방의 일반 Chat과 Observer 대화를 함께 전달한다", async () => {
+  it("Observer sender에는 같은 방의 Portal과 Observer 대화를 함께 전달한다", async () => {
     const messageSender = vi.fn().mockResolvedValue({
       reply: "Observer 분석 결과",
       sources: [],
@@ -395,7 +393,7 @@ describe("useChatSession page context", () => {
             "room-1": [
               {
                 role: "user",
-                content: "일반 질문",
+                content: "Portal 질문",
                 contextKey: "assistant:openwebui",
               },
               { role: "user", content: "이전 분석", contextKey: "observer:scope-a" },
@@ -411,7 +409,7 @@ describe("useChatSession page context", () => {
 
     const request = messageSender.mock.calls[0][0]
     expect(request.history.map((message) => message.content)).toEqual([
-      "[이전 대화 출처: 일반 Chat]\n일반 질문",
+      "[이전 대화 출처: Portal]\nPortal 질문",
       "이전 분석",
       "왜 반복됐어?",
     ])
@@ -422,9 +420,9 @@ describe("useChatSession page context", () => {
     })
   })
 
-  it("일반 Chat sender에는 같은 방의 Observer 대화를 출처와 함께 전달한다", async () => {
+  it("Portal sender에는 같은 방의 Observer 대화를 출처와 함께 전달한다", async () => {
     const messageSender = vi.fn().mockResolvedValue({
-      reply: "일반 Chat 후속 답변",
+      reply: "Portal 후속 답변",
       sources: [],
       segments: [],
     })
@@ -464,7 +462,52 @@ describe("useChatSession page context", () => {
     ])
   })
 
-  it("Email RAG sender에는 일반 Chat과 Observer 대화를 전달하지 않는다", async () => {
+  it("앱을 이동해도 같은 방의 메시지를 유지하고 새 앱 배경 문맥으로 이어서 전송한다", async () => {
+    let messageContextKey = "assistant:openwebui:portal"
+    const messageSender = vi.fn().mockResolvedValue({
+      reply: "Appstore 후속 답변",
+      sources: [],
+      segments: [],
+    })
+    const { result, rerender } = renderHook(
+      () =>
+        useChatSession({
+          messageSender,
+          messageContextKey,
+          initialRooms: [{ id: "room-1", name: "앱 이동 테스트" }],
+          initialActiveRoomId: "room-1",
+          initialMessagesByRoom: {
+            "room-1": [
+              {
+                role: "user",
+                content: "Portal에서 시작한 질문",
+                contextKey: "assistant:openwebui:portal",
+              },
+            ],
+          },
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    messageContextKey = "assistant:openwebui:appstore"
+    rerender()
+
+    await act(async () => {
+      await result.current.sendMessage("Appstore에서는 어떻게 보여?")
+    })
+
+    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
+      "[이전 대화 출처: Portal]\nPortal에서 시작한 질문",
+      "Appstore에서는 어떻게 보여?",
+    ])
+    expect(result.current.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Appstore 후속 답변",
+      contextKey: "assistant:openwebui:appstore",
+    })
+  })
+
+  it("Email RAG sender에도 같은 방의 Portal과 Observer 대화를 함께 전달한다", async () => {
     const messageSender = vi.fn().mockResolvedValue({
       reply: "메일 답변",
       sources: [],
@@ -493,6 +536,8 @@ describe("useChatSession page context", () => {
     })
 
     expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
+      "[이전 대화 출처: Portal]\n일반 질문",
+      "[이전 대화 출처: Observer]\nObserver 분석",
       "이전 메일 질문",
       "후속 메일 질문",
     ])
@@ -695,12 +740,13 @@ describe("useChatSession page context", () => {
       sources: [],
       segments: [],
     })
-    const { result } = renderHook(
+    let messageContextKey = "assistant:openwebui:portal"
+    const { result, rerender } = renderHook(
       () =>
         useChatSession({
           userKey: 10,
           messageSender,
-          messageContextKey: "assistant:openwebui",
+          messageContextKey,
         }),
       { wrapper: createWrapper() },
     )
@@ -726,6 +772,10 @@ describe("useChatSession page context", () => {
     expect(result.current.errorMessage).toBe("답변 저장 실패")
     expect(result.current.canRetrySave).toBe(true)
 
+    messageContextKey = "assistant:openwebui:appstore"
+    rerender()
+    expect(result.current.canRetrySave).toBe(true)
+
     await act(async () => {
       await result.current.sendMessage("저장 전에 보내면 안 되는 질문")
     })
@@ -747,6 +797,10 @@ describe("useChatSession page context", () => {
 
     expect(messageSender).toHaveBeenCalledOnce()
     expect(conversationApiMocks.appendMessages).toHaveBeenCalledTimes(3)
+    expect(conversationApiMocks.refreshSummary).toHaveBeenCalledWith(
+      "room-server",
+      "assistant:openwebui:portal",
+    )
     expect(result.current.canRetrySave).toBe(false)
     expect(result.current.errorMessage).toBe("")
   })
@@ -1375,6 +1429,52 @@ describe("useChatSession page context", () => {
     expect(result.current.messages.at(-1)).toMatchObject({
       role: "assistant",
       content: "재시도 성공",
+    })
+  })
+
+  it("앱 이동 후 재시도는 실패 당시 sender와 앱 문맥을 유지한다", async () => {
+    const portalSender = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Portal 일시 오류"))
+      .mockResolvedValueOnce({ reply: "Portal 재시도 성공", sources: [], segments: [] })
+    const appstoreSender = vi.fn().mockResolvedValue({
+      reply: "Appstore 답변",
+      sources: [],
+      segments: [],
+    })
+    let messageSender = portalSender
+    let messageContextKey = "assistant:openwebui:portal"
+    const { result, rerender } = renderHook(
+      () =>
+        useChatSession({
+          messageSender,
+          messageContextKey,
+          initialRooms: [{ id: "room-1", name: "테스트" }],
+          initialActiveRoomId: "room-1",
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage("Portal에서 실패한 질문")
+    })
+    expect(result.current.canRetry).toBe(true)
+
+    messageSender = appstoreSender
+    messageContextKey = "assistant:openwebui:appstore"
+    rerender()
+    expect(result.current.canRetry).toBe(true)
+
+    await act(async () => {
+      await result.current.retryLastMessage()
+    })
+
+    expect(portalSender).toHaveBeenCalledTimes(2)
+    expect(appstoreSender).not.toHaveBeenCalled()
+    expect(result.current.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Portal 재시도 성공",
+      contextKey: "assistant:openwebui:portal",
     })
   })
 })

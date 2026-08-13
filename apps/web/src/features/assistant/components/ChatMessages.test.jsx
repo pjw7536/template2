@@ -16,7 +16,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
 
   afterEach(() => cleanup())
 
-  it("contextKey가 바뀐 위치에만 조회 조건 변경 구분선을 표시한다", () => {
+  it("앱과 조회 조건이 바뀌어도 화면 전환 구분선을 표시하지 않는다", () => {
     render(
       <MemoryRouter>
         <ChatMessages
@@ -30,8 +30,8 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     )
 
     expect(
-      screen.getAllByText("현재 화면이 변경되었습니다. 이전 대화는 이어집니다."),
-    ).toHaveLength(1)
+      screen.queryByText("현재 화면이 변경되었습니다. 이전 대화는 이어집니다."),
+    ).not.toBeInTheDocument()
   })
 
   it("이전 메시지 불러오기 동작을 부모 handler에 전달한다", () => {

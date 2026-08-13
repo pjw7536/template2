@@ -92,10 +92,6 @@ function AssistantWidgetOutlet() {
   const isAssistantPage =
     normalizedPath === "/assistant" || normalizedPath.startsWith("/assistant/")
   const hideChatWidget = isAssistantPage || [
-    "/l3_spider",
-    "/spider/l3",
-    "/tttm_spider",
-    "/spider/tttm",
     "/settings/members",
     "/settings/permissions",
   ].includes(normalizedPath)

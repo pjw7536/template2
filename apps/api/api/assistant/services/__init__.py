@@ -46,6 +46,7 @@ from .normalization import (
 )
 from .openwebui import (
     AssistantOpenWebUIConfig,
+    build_openwebui_app_system_message,
     build_openwebui_messages,
     normalize_openwebui_conversation_title,
     request_openwebui_chat,
@@ -72,6 +73,7 @@ __all__ = [
     "build_assistant_csv_export",
     "build_assistant_markdown_export",
     "build_openwebui_messages",
+    "build_openwebui_app_system_message",
     "clear_assistant_messages",
     "conversation_memory",
     "create_assistant_conversation",

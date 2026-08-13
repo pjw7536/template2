@@ -5,7 +5,6 @@ import {
   createAssistantConversation,
   fetchAssistantConversationMessagePage,
   fetchAssistantConversationPage,
-  fetchAssistantConversations,
   generateAssistantConversationTitle,
   refreshAssistantConversationSummary,
 } from "./conversationApi"
@@ -13,20 +12,6 @@ import {
 describe("conversationApi", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
-  })
-
-  it("현재 사용자의 대화방 목록을 정규화한다", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({ results: [{ id: "room-1", name: "대화" }] }),
-    })
-    vi.stubGlobal("fetch", fetchMock)
-
-    await expect(fetchAssistantConversations()).resolves.toEqual([
-      { id: "room-1", name: "대화" },
-    ])
-    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/assistant\/conversations$/)
   })
 
   it("대화방 생성과 메시지 저장 요청을 camelCase로 전송한다", async () => {
@@ -155,6 +140,21 @@ describe("conversationApi", () => {
     expect(fetchMock.mock.calls[0][1].method).toBe("POST")
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
       contextKey: "assistant:openwebui",
+    })
+  })
+
+  it("요약 갱신 context를 생략하면 Portal 문맥을 사용한다", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ updated: false }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await refreshAssistantConversationSummary("room-1")
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      contextKey: "assistant:openwebui:portal",
     })
   })
 })

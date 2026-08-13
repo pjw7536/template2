@@ -12,7 +12,7 @@ Assistant는 메일함 외 화면의 일반 질문을 OpenWebUI로 전달하고,
 - 사용자/대화방 UUID 단위 DB 대화 이력 관리
 - OpenWebUI 기반 업무용 대화방 제목 자동 생성
 - SSE 답변 표시·중단·실패 재시도
-- cursor 기반 대화방 검색·과거 메시지 조회와 방 단위 일반 Chat·Observer 공유 장기 요약
+- cursor 기반 대화방 검색·과거 메시지 조회와 모든 Portal 앱의 방 단위 공유 장기 요약
 - 서버 generation lease 기반 다중 탭 중복 방지
 - 질문 편집·답변 재생성 분기, 메시지 복사·평가
 - 대화방 이름 변경·고정·보관, 현재 목록 전체 선택 삭제와 제목·본문 통합 검색
@@ -31,10 +31,10 @@ Assistant는 다음 값을 permission group으로 사용합니다.
 ## 일반 화면 OpenWebUI 흐름
 
 1. 전역 ChatWidget이 현재 route를 확인합니다.
-2. `/emails/*`와 Observer page context가 아니면 `/api/v1/assistant/openwebui-chat/stream`으로 질문과 같은 방의 일반 Chat·Observer 공유 대화 이력을 보냅니다.
+2. `/emails/*`와 Observer page context가 아니면 현재 route를 허용된 `appKey`로 해석하고 `/api/v1/assistant/openwebui-chat/stream`으로 질문과 같은 방의 공유 대화 이력을 보냅니다.
 3. 서버가 로그인 사용자와 `knox_id`를 확인합니다.
-4. 현재 대화방의 `chatwidget:shared` 최근 이력을 사용하며 이전 Observer 메시지에는 출처를 표시합니다.
-5. 같은 방의 공유 저장 요약과 최근 이력을 합쳐 기존 `OPENWEBUI_*` 설정으로 OpenAI 호환 Chat Completions를 호출합니다.
+4. 현재 대화방의 `chatwidget:shared` 최근 이력을 사용하며 이전 메시지에는 생성된 앱 출처를 표시합니다.
+5. 서버 허용 카탈로그의 현재 앱 배경지식, 같은 방의 공유 저장 요약과 최근 이력을 합쳐 기존 `OPENWEBUI_*` 설정으로 OpenAI 호환 Chat Completions를 호출합니다.
 6. `meta`, `delta`, `done`, `error` SSE event로 답변을 표시하고 중단 시 upstream 연결을 닫습니다.
 
 `/assistant` 전체 화면도 같은 OpenWebUI sender를 사용합니다. 일반 화면에서는 사용하지 않는 RAG index 조회와 설정 UI를 표시하지 않습니다.
@@ -44,7 +44,7 @@ Assistant는 다음 값을 permission group으로 사용합니다.
 1. `/emails/*` 화면에서 사용자가 `prompt`를 보냅니다.
 2. 서버가 사용자와 `knox_id`를 확인합니다.
 3. permission group과 RAG index를 검증합니다.
-4. 현재 대화방의 메일 RAG context 이력을 가져옵니다.
+4. 현재 대화방의 Portal 공용 이력을 가져오되 이전 메시지에는 앱 출처를 표시합니다.
 5. RAG 검색을 수행합니다.
 6. 검색 결과를 LLM에 전달합니다.
 7. 답변, 출처, segment, meta를 반환합니다.
@@ -71,7 +71,8 @@ Assistant는 다음 값을 permission group으로 사용합니다.
 - 재접속 시 서버가 반환한 최신 대화방을 활성화하고, 메일 RAG 선택값은 현재 실행 중인 메모리에서만 유지합니다.
 - backend 6시간 cache는 호환용 보조 저장이고, 모델 입력은 frontend가 현재 DB 방에서 불러온 history를 우선합니다.
 - 최근 10개 메시지는 그대로 유지하고 충분히 누적된 과거 메시지는 OpenWebUI 저비용 요청으로 최대 2,000자의 rolling summary를 만듭니다.
-- 같은 대화방의 일반 Chat(`assistant:openwebui`)과 Observer(`observer:*`)는 `chatwidget:shared` 기억 그룹으로 최근 이력과 rolling summary를 공유합니다. `contextKey`는 요청 경로·메시지 출처·현재 Observer 조회 범위를 구분하는 용도로 유지하며 Email RAG(`assistant`) 기억은 공유 그룹과 분리합니다.
+- 같은 대화방의 일반 앱(`assistant:openwebui:<appKey>`), Observer(`observer:*`), Email RAG(`assistant`)는 `chatwidget:shared` 기억 그룹으로 최근 이력과 rolling summary를 공유합니다. `contextKey`는 기억을 분리하지 않고 요청 sender·메시지 앱 출처·현재 Observer 조회 범위를 구분합니다.
+- 앱을 이동하면 대화방과 기억은 유지하고 현재 앱의 sender·고정 배경지식·화면 데이터만 교체합니다. 기존 `assistant:openwebui` 메시지는 Portal 출처로 계속 해석합니다.
 - Observer 분석에서는 공유 대화와 장기 요약을 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 조회 조건의 `observer_analysis_context_json`만 근거로 삼습니다.
 - 새로고침·탭 종료 시 현재 generation을 실패 처리하며, 연결이 끊긴 답변을 백그라운드에서 계속 생성하거나 SSE에 재연결하지 않습니다.
 - 대화방 선택 모드는 현재 검색·보관 조건에서 불러온 방을 대상으로 하며, 생성 중인 방을 제외하고 기존 소유자 전용 DELETE API로 삭제합니다. 일부 요청이 실패하면 성공한 방만 제거하고 실패한 방은 재시도할 수 있게 남깁니다.

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   sendChatMessage,
-  sendOpenWebUIMessage,
   sendOpenWebUIStreamingMessage,
 } from "./sendChatMessage"
 
@@ -18,42 +17,6 @@ function createSseResponse(events) {
     }),
   }
 }
-
-describe("sendOpenWebUIMessage", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it("OpenWebUI endpoint에는 RAG 설정 없이 대화만 전달한다", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        reply: "OpenWebUI 답변",
-        sources: [],
-        segments: [],
-      }),
-    })
-    vi.stubGlobal("fetch", fetchMock)
-
-    const result = await sendOpenWebUIMessage({
-      prompt: "일반 질문",
-      history: [{ role: "user", content: "이전 질문" }],
-      roomId: "room-1",
-      permissionGroups: ["group-a"],
-      ragIndexNames: ["rp-emails"],
-    })
-
-    const [endpoint, request] = fetchMock.mock.calls[0]
-    const payload = JSON.parse(request.body)
-    expect(endpoint).toMatch(/\/api\/v1\/assistant\/openwebui-chat$/)
-    expect(payload).toEqual({
-      prompt: "일반 질문",
-      history: [{ role: "user", content: "이전 질문" }],
-      roomId: "room-1",
-    })
-    expect(result.reply).toBe("OpenWebUI 답변")
-  })
-})
 
 describe("sendChatMessage", () => {
   afterEach(() => {

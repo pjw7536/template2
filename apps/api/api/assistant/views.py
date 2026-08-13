@@ -455,6 +455,7 @@ class AssistantOpenWebUIChatView(APIView):
         try:
             reply = request_openwebui_chat(
                 history=history_with_prompt,
+                context_key=validated_payload["context_key"],
                 conversation_summary=_get_conversation_summary(
                     user=request.user,
                     room_id=raw_room_id,
@@ -572,6 +573,7 @@ class AssistantOpenWebUIStreamView(APIView):
             try:
                 for delta in stream_openwebui_chat(
                     history=history_with_prompt,
+                    context_key=validated_payload["context_key"],
                     conversation_summary=_get_conversation_summary(
                         user=request.user,
                         room_id=raw_room_id,
@@ -839,7 +841,7 @@ class AssistantConversationSummaryView(APIView):
 
         예시 요청:
             POST /api/v1/assistant/conversations/<uuid>/refresh-summary
-            {"contextKey": "assistant:openwebui"}
+            {"contextKey": "assistant:openwebui:portal"}
 
         snake_case/camelCase 호환:
             contextKey/context_key를 지원하고 요약 갱신 metadata를 camelCase로 반환합니다.
