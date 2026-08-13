@@ -1,6 +1,6 @@
 # Assistant API
 
-Assistant API는 versioned Profile과 permission-aware memory를 사용해 Portal, Email RAG, Observer 실행을 하나의 Turn 계약으로 제공합니다.
+Assistant API는 versioned Profile과 permission-aware memory를 사용해 Portal, Email RAG, Observer, Appstore, ESOP Dashboard 실행을 하나의 Turn 계약으로 제공합니다.
 
 ## 호출자
 
@@ -30,6 +30,8 @@ Django session이 필요합니다. `knox_id`가 없는 사용자는 접근이 �
 | --- | --- | --- |
 | `/emails/*` | `/api/v1/assistant/turns/stream` | `email-rag` Profile로 RAG 검색과 답변 실행 |
 | Observer 조회 context | `/api/v1/assistant/turns/stream` | `observer-analysis` Profile로 현재 데이터를 재조회해 분석 |
+| `/appstore` | `/api/v1/assistant/turns/stream` | `appstore-context` Profile로 현재 필터의 제한된 앱 카탈로그를 재조회 |
+| `/ESOP_Dashboard/status/:lineId`, `/history/:lineId` | `/api/v1/assistant/turns/stream` | `line-dashboard-context` Profile로 line·기간별 상태/이력 snapshot 재조회 |
 | 그 외 전역 ChatWidget, `/assistant` | `/api/v1/assistant/turns/stream` | `portal-default` Profile로 서버 memory를 사용해 실행 |
 
 실행과 user/assistant 메시지 저장은 Turn endpoint만 담당합니다. 클라이언트가 별도 실행 이력이나 완료 메시지를 주입하는 API는 제공하지 않습니다.
@@ -67,12 +69,14 @@ Profile 계약:
 | `portal-default` v2 | OpenWebUI | `shared`, `scope:emails`, `scope:observer` | `shared` | `assistant` |
 | `email-rag` | OpenWebUI + `rag.search` | `shared`, `scope:emails` | `scope:emails` | `assistant`, `emails` |
 | `observer-analysis` | `observer.analysis` 현재 데이터 재조회 | `shared`, `scope:observer` | `scope:observer` | `assistant`, `observer` |
+| `appstore-context` | OpenWebUI + `appstore.catalog` | `shared`, `scope:appstore` | `scope:appstore` | `assistant`, `appstore` |
+| `line-dashboard-context` | OpenWebUI + `line-dashboard.snapshot` | `shared`, `scope:line-dashboard` | `scope:line-dashboard` | `assistant`, `line-dashboard` |
 
 `portal-default` v2는 같은 대화방에서 앱 지식 모드에서 일반 대화로 전환해도 문맥을 잇기 위해 scoped partition을 읽습니다. scoped 메시지와 요약은 Provider에 전달하기 전에 저장 당시의 Account/data 권한을 현재 사용자 기준으로 다시 검증하며, 일반 대화의 새 메시지는 계속 `shared`에만 기록합니다. 과거 실행 재현을 위한 v1은 `shared`만 읽습니다.
 
 `action`은 `send`, `edit`, `regenerate`, `retry`를 지원합니다. `edit`/`regenerate`는 `targetMessageId`, `retry`는 `retryRunId`가 필요하고 모든 재실행은 새 `clientRequestId`와 user `clientId`를 사용합니다. regenerate/retry는 저장된 Profile 버전과 제한된 Tool 입력을 재사용하지만 현재 Profile/Tool 권한 하한을 다시 적용합니다.
 
-`appContextKey`는 prompt 출처이며 생략하거나 알 수 없는 앱으로 대신 실행할 수 없습니다. Portal은 `assistant:openwebui:<등록 앱>`, Email은 `assistant`, Observer는 현재 Tool 입력에서 계산한 `observer:v1:<sha256>`만 허용합니다.
+`appContextKey`는 prompt 출처이며 생략하거나 알 수 없는 앱으로 대신 실행할 수 없습니다. Portal은 `assistant:openwebui:<등록 앱>`, Email은 `assistant`, Observer는 현재 Tool 입력에서 계산한 `observer:v1:<sha256>`, Appstore는 `appstore:v1`, ESOP Dashboard는 `line-dashboard:v1`만 허용합니다. Appstore Tool 입력은 `query`, `category`, `selectedAppId`, ESOP Tool 입력은 `view`, `lineId`, `from`, `to`만 허용하며 서버가 다시 정규화합니다.
 
 표준 SSE event는 `run.started`, `tool.started`, `tool.completed`, `run.heartbeat`, `message.delta`, `message.completed`, `run.completed`, `run.failed`입니다. Portal 답변은 외부 OpenAI 호환 chunk가 도착하는 대로 `message.delta`로 전달합니다. 구조화 검증이 필요한 Email/Observer는 전체 JSON 검증을 통과한 뒤 표시 가능한 block을 전달합니다. 같은 `clientRequestId`와 동일 hash의 완료 Run은 현재 권한 재검증 뒤 저장된 `message.completed`만 replay합니다. branch, 메시지, summary는 변경하지 않습니다. 다른 hash 또는 미완료 Run은 409입니다.
 
@@ -109,7 +113,7 @@ Content-Type: application/json
 - 목록 응답은 공통으로 `results`, `nextCursor`, `hasMore`를 반환합니다. cursor는 서버가 서명한 opaque 문자열이므로 클라이언트가 해석하지 않습니다.
 - 메시지 DELETE는 방은 유지하고 내용을 초기화하며, 대화방 DELETE는 메시지까지 cascade 삭제합니다.
 
-최근 10개를 제외한 같은 partition 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다. Portal, Email, Observer partition은 서로 섞지 않습니다.
+최근 10개를 제외한 같은 partition 메시지가 12개 이상 새로 쌓이면 다음 endpoint가 오래된 이력을 rolling summary로 갱신합니다. Portal, Email, Observer, Appstore, ESOP Dashboard partition은 서로 섞지 않습니다.
 
 ```http
 POST /api/v1/assistant/conversations/<uuid>/refresh-summary
@@ -158,7 +162,7 @@ Turn service가 `clientRequestId`와 요청 hash를 원자적으로 확인해 �
 
 ## 권한 규칙
 
-Turn endpoint는 Django session과 Profile별 Account scope를 검사합니다. Email Tool의 permission group 선택·검색·저장·재검증은 모두 `emails` scope에서 서버가 계산한 접근 가능 그룹을 기준으로 합니다. `assistant` scope 소속은 Email 검색 범위를 넓히지 않습니다.
+Turn endpoint는 Django session과 Profile별 Account scope를 검사합니다. Appstore와 ESOP Dashboard snapshot은 각각 `appstore`, `line-dashboard` scope가 있어야 조회·저장·재사용할 수 있습니다. Email Tool의 permission group 선택·검색·저장·재검증은 모두 `emails` scope에서 서버가 계산한 접근 가능 그룹을 기준으로 합니다. `assistant` scope 소속은 Email 검색 범위를 넓히지 않습니다.
 
 대화방 endpoint는 UUID만으로 접근할 수 없으며 항상 `conversation.user == request.user` 조건을 적용합니다. 다른 사용자의 방은 존재 여부를 노출하지 않고 404를 반환합니다.
 

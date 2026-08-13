@@ -131,3 +131,12 @@
 - Email 답변 생성의 URL, model, token, 공통 header와 timeout은 일반 Assistant와 같은 `OPENWEBUI_*` 설정을 사용한다.
 - `ASSISTANT_LLM_TEMPERATURE`와 `ASSISTANT_LLM_SYSTEM_MESSAGE`는 Email 구조화 prompt 조정값으로만 유지하고, `ASSISTANT_REQUEST_TIMEOUT`은 RAG 검색 timeout으로 유지한다.
 - offsite `adfs_dummy`의 기존 OpenAI 호환 endpoint가 Email 구조화 stream을 지원하므로 mock handler나 Compose 서비스 계약은 변경하지 않는다.
+
+## 2026-08-14: Appstore·ESOP Dashboard 서버 조회 배경지식
+
+- Appstore와 ESOP Dashboard의 변경 가능한 업무 데이터는 RAG 색인 대신 domain selector를 통한 요청 시점 snapshot으로 조회한다.
+- 브라우저는 검색·카테고리·선택 앱 또는 line·기간·화면 종류만 보내며 원본 업무 데이터는 보내지 않는다.
+- Appstore와 ESOP는 각각 독립 Profile, Tool, `scope:appstore`/`scope:line-dashboard` 기억 partition과 대상 앱 Account scope를 사용한다.
+- Appstore 연락처·댓글·이미지와 ESOP 사용자·댓글·수신자·관리자 설정은 snapshot에서 제외한다.
+- snapshot은 untrusted read-only JSON으로 OpenWebUI system context에 결합하고 내부 문구를 명령으로 취급하지 않는다.
+- 외부 OpenWebUI/RAG endpoint와 env, offsite dummy 계약은 변경하지 않는다.

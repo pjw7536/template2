@@ -5,12 +5,12 @@
 # =============================================================================
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Sequence
 
 from django.db import connection
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
-from django.db.models.functions import Lower
+from django.db.models.functions import Lower, TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -96,6 +96,140 @@ _DIMENSION_CANDIDATES = [
     "sample_type",
     "line_id",
 ]
+
+LINE_DASHBOARD_ASSISTANT_MAX_RANGE_DAYS = 31
+LINE_DASHBOARD_ASSISTANT_RECENT_ROWS = 20
+
+
+def _resolve_assistant_date_range(
+    *,
+    view: str,
+    from_value: object,
+    to_value: object,
+) -> tuple[date, date]:
+    """ESOP Assistant 조회 기간을 날짜로 정규화하고 최대 31일로 제한합니다."""
+
+    normalized_to = normalize_date_only(to_value)
+    end_date = date.fromisoformat(normalized_to) if normalized_to else timezone.localdate()
+    normalized_from = normalize_date_only(from_value)
+    default_days = 14 if view == "history" else 3
+    start_date = (
+        date.fromisoformat(normalized_from)
+        if normalized_from
+        else end_date - timedelta(days=default_days - 1)
+    )
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    earliest = end_date - timedelta(days=LINE_DASHBOARD_ASSISTANT_MAX_RANGE_DAYS - 1)
+    return max(start_date, earliest), end_date
+
+
+def get_line_dashboard_assistant_snapshot(
+    *,
+    line_id: object,
+    view: object,
+    from_value: object = None,
+    to_value: object = None,
+) -> dict[str, object]:
+    """ChatWidget용 ESOP line 상태·이력 snapshot을 조회합니다.
+
+    인자:
+        line_id: 현재 route에서 선택된 line ID입니다.
+        view: `status` 또는 `history` 화면 종류입니다.
+        from_value: 조회 시작일(YYYY-MM-DD)입니다.
+        to_value: 조회 종료일(YYYY-MM-DD)입니다.
+
+    반환:
+        상태별 건수, 일별 건수와 개인정보를 제외한 최근 SOP 목록입니다.
+
+    부작용:
+        없음. DroneSOP를 읽기 전용으로 조회합니다.
+
+    오류:
+        날짜 형식이 잘못되면 ValueError가 발생합니다.
+    """
+
+    normalized_view = str(view or "status").strip().lower()
+    if normalized_view not in {"status", "history"}:
+        normalized_view = "status"
+    normalized_line_id = normalize_line_id(line_id)
+    start_date, end_date = _resolve_assistant_date_range(
+        view=normalized_view,
+        from_value=from_value,
+        to_value=to_value,
+    )
+
+    queryset = DroneSOP.objects.filter(
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    )
+    if normalized_line_id:
+        queryset = queryset.filter(line_id__iexact=normalized_line_id)
+
+    status_counts = [
+        {
+            "status": str(row["status"] or "Unspecified"),
+            "count": int(row["count"] or 0),
+        }
+        for row in queryset.values("status")
+        .annotate(count=Count("id"))
+        .order_by("-count", "status")[:20]
+    ]
+    daily_counts = [
+        {
+            "date": row["day"].isoformat() if row["day"] else None,
+            "count": int(row["count"] or 0),
+            "needToSendCount": int(row["need_to_send_count"] or 0),
+            "instantInformCount": int(row["instant_inform_count"] or 0),
+        }
+        for row in queryset.annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(
+            count=Count("id"),
+            need_to_send_count=Count("id", filter=Q(needtosend__gt=0)),
+            instant_inform_count=Count("id", filter=Q(instant_inform__gt=0)),
+        )
+        .order_by("day")
+    ]
+    recent_rows = [
+        {
+            "id": row["id"],
+            "createdAt": row["created_at"].isoformat(),
+            "lineId": row["line_id"],
+            "status": row["status"],
+            "eqpId": row["eqp_id"],
+            "chamberIds": row["chamber_ids"],
+            "lotId": row["lot_id"],
+            "mainStep": row["main_step"],
+            "sampleType": row["sample_type"],
+            "needToSend": row["needtosend"],
+            "instantInform": row["instant_inform"],
+        }
+        for row in queryset.order_by("-created_at", "-id").values(
+            "id",
+            "created_at",
+            "line_id",
+            "status",
+            "eqp_id",
+            "chamber_ids",
+            "lot_id",
+            "main_step",
+            "sample_type",
+            "needtosend",
+            "instant_inform",
+        )[:LINE_DASHBOARD_ASSISTANT_RECENT_ROWS]
+    ]
+    return {
+        "view": normalized_view,
+        "lineId": normalized_line_id,
+        "from": start_date.isoformat(),
+        "to": end_date.isoformat(),
+        "generatedAt": timezone.now().isoformat(),
+        "totalCount": queryset.count(),
+        "statusCounts": status_counts,
+        "dailyCounts": daily_counts,
+        "recentRows": recent_rows,
+    }
 
 def _drone_sop_eligible_filter() -> Q:
     """Drone SOP 후보 공통 적합 조건 필터를 반환합니다."""

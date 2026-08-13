@@ -74,6 +74,14 @@ def resolve_assistant_turn_context_key(
         if context_key != expected:
             raise ValueError("Observer appContextKey가 현재 조회 조건과 일치하지 않습니다.")
         return expected
+    if profile.provider == "appstore-context":
+        if context_key != "appstore:v1" or "appstore.catalog" not in tool_inputs:
+            raise ValueError("Appstore appContextKey가 현재 조회 조건과 일치하지 않습니다.")
+        return context_key
+    if profile.provider == "line-dashboard-context":
+        if context_key != "line-dashboard:v1" or "line-dashboard.snapshot" not in tool_inputs:
+            raise ValueError("ESOP Dashboard appContextKey가 현재 조회 조건과 일치하지 않습니다.")
+        return context_key
     raise ValueError("지원하지 않는 Assistant Profile입니다.")
 
 

@@ -41,6 +41,7 @@ from .normalization import (
 from .openwebui import (
     AssistantOpenWebUIConfig,
     build_openwebui_app_system_message,
+    build_openwebui_grounded_system_message,
     build_openwebui_headers,
     build_openwebui_messages,
     normalize_openwebui_conversation_title,
@@ -94,6 +95,7 @@ __all__ = [
     "build_assistant_markdown_export",
     "build_openwebui_messages",
     "build_openwebui_app_system_message",
+    "build_openwebui_grounded_system_message",
     "build_openwebui_headers",
     "clear_assistant_messages",
     "create_assistant_conversation",

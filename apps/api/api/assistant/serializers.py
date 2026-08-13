@@ -73,6 +73,8 @@ class AssistantConversationSummaryRequestSerializer(serializers.Serializer):
             "profile:portal-default",
             "profile:email-rag",
             "profile:observer-analysis",
+            "profile:appstore-context",
+            "profile:line-dashboard-context",
         ),
     )
 
@@ -342,7 +344,13 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
     conversation_id = serializers.UUIDField()
     client_request_id = serializers.CharField(max_length=128)
     profile_key = serializers.ChoiceField(
-        choices=("portal-default", "email-rag", "observer-analysis")
+        choices=(
+            "portal-default",
+            "email-rag",
+            "observer-analysis",
+            "appstore-context",
+            "line-dashboard-context",
+        )
     )
     profile_version = serializers.IntegerField(required=False, min_value=1)
     app_context_key = serializers.CharField(required=False, max_length=512)
@@ -379,7 +387,12 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
 
         if not isinstance(value, dict):
             raise serializers.ValidationError("toolInputs must be an object")
-        if set(value) - {"rag.search", "observer.analysis"}:
+        if set(value) - {
+            "rag.search",
+            "observer.analysis",
+            "appstore.catalog",
+            "line-dashboard.snapshot",
+        }:
             raise serializers.ValidationError("지원하지 않는 Tool 입력입니다.")
         if _json_size_bytes(value) > MAX_ASSISTANT_BLOCKS_JSON_BYTES:
             raise serializers.ValidationError("toolInputs 크기는 최대 50KB까지 허용됩니다.")

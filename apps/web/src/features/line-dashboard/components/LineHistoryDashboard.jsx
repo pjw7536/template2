@@ -24,6 +24,15 @@ import {
   resolveDimensionRecords,
 } from "../utils/lineHistoryTransforms"
 import { useLineHistoryData } from "../hooks/useLineHistoryData"
+import { useLineDashboardAssistantContext } from "../hooks/useLineDashboardAssistantContext"
+
+function formatAssistantDate(value) {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ""
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, "0")
+  const day = String(value.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
 
 export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
   const defaultRange = React.useMemo(
@@ -39,6 +48,13 @@ export function LineHistoryDashboard({ lineId, initialRangeDays = 30 }) {
 
   // 날짜 범위 (일반적인 range UX)
   const [dateRange, setDateRange] = React.useState(defaultRange)
+
+  useLineDashboardAssistantContext({
+    view: "history",
+    lineId,
+    from: formatAssistantDate(dateRange?.from),
+    to: formatAssistantDate(dateRange?.to),
+  })
 
   // X축 집계 단위
   const [binMode, setBinMode] = React.useState(DEFAULT_BIN)

@@ -7,9 +7,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db.models import Count, Max, QuerySet
+from django.db.models import Count, Max, Q, QuerySet
+from django.utils import timezone
 
 from .models import AppStoreApp, AppStoreComment, AppStoreCommentLike, AppStoreLike
+
+APPSTORE_ASSISTANT_MAX_APPS = 40
+APPSTORE_ASSISTANT_DESCRIPTION_CHARS = 600
 
 
 def get_app_list() -> QuerySet[AppStoreApp]:
@@ -30,6 +34,93 @@ def get_app_list() -> QuerySet[AppStoreApp]:
         .annotate(comment_count=Count("comments"))
         .order_by("display_order", "id")
     )
+
+
+def get_appstore_assistant_catalog(
+    *,
+    query: str = "",
+    category: str = "",
+    selected_app_id: int | None = None,
+    limit: int = APPSTORE_ASSISTANT_MAX_APPS,
+) -> dict[str, object]:
+    """ChatWidget에 제공할 제한된 Appstore 카탈로그를 조회합니다.
+
+    인자:
+        query: 앱 이름·설명·카테고리에 적용할 현재 화면 검색어입니다.
+        category: 현재 화면의 카테고리 필터이며 `all`은 전체로 해석합니다.
+        selected_app_id: 상세 Dialog에서 선택한 앱 ID입니다.
+        limit: prompt 크기를 제한할 최대 앱 수입니다.
+
+    반환:
+        연락처·댓글·이미지를 제외한 앱 메타데이터와 조회 조건입니다.
+
+    부작용:
+        없음. Appstore 데이터를 읽기 전용으로 조회합니다.
+    """
+
+    normalized_query = str(query or "").strip()[:100]
+    normalized_category = str(category or "").strip()[:100]
+    safe_limit = max(
+        1,
+        min(
+            int(limit or APPSTORE_ASSISTANT_MAX_APPS),
+            APPSTORE_ASSISTANT_MAX_APPS,
+        ),
+    )
+    queryset = AppStoreApp.objects.all()
+
+    # 상세 앱이 선택된 경우 화면의 검색·카테고리보다 명시적인 선택을 우선합니다.
+    if selected_app_id is not None:
+        queryset = queryset.filter(id=selected_app_id)
+    else:
+        if normalized_query:
+            queryset = queryset.filter(
+                Q(name__icontains=normalized_query)
+                | Q(description__icontains=normalized_query)
+                | Q(category__icontains=normalized_query)
+            )
+        if normalized_category and normalized_category.lower() != "all":
+            queryset = queryset.filter(category__iexact=normalized_category)
+
+    rows = list(
+        queryset.order_by("display_order", "id").values(
+            "id",
+            "name",
+            "category",
+            "description",
+            "url",
+            "manual_url",
+            "view_count",
+            "like_count",
+            "updated_at",
+        )[: safe_limit + 1]
+    )
+    truncated = len(rows) > safe_limit
+    apps = [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "category": row["category"],
+            "description": str(row["description"] or "")[
+                :APPSTORE_ASSISTANT_DESCRIPTION_CHARS
+            ],
+            "url": row["url"],
+            "manualUrl": row["manual_url"],
+            "viewCount": row["view_count"],
+            "likeCount": row["like_count"],
+            "updatedAt": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+        for row in rows[:safe_limit]
+    ]
+    return {
+        "query": normalized_query,
+        "category": normalized_category or "all",
+        "selectedAppId": selected_app_id,
+        "generatedAt": timezone.now().isoformat(),
+        "count": len(apps),
+        "truncated": truncated,
+        "apps": apps,
+    }
 
 
 def get_next_app_display_order() -> int:

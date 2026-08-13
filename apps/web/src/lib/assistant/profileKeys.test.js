@@ -11,7 +11,11 @@ describe("assistant profile keys", () => {
       portal: "portal-default",
       emails: "email-rag",
       observer: "observer-analysis",
+      appstore: "appstore-context",
+      lineDashboard: "line-dashboard-context",
     })
     expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.portal]).toBe(2)
+    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.appstore]).toBe(1)
+    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.lineDashboard]).toBe(1)
   })
 })

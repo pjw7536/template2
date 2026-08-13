@@ -1,6 +1,6 @@
 # Assistant / OpenWebUI / RAG 모듈
 
-Assistant는 일반 질문과 메일함 RAG 검색 결과를 OpenWebUI로 전달합니다. 메일함에서는 기존 RAG 검색·권한·출처 계약을 유지해 근거가 있는 구조화 답변을 생성합니다. RAG app은 외부 RAG 서버를 호출하는 공통 client입니다.
+Assistant는 일반 질문, 메일함 RAG 검색 결과, Appstore 카탈로그와 ESOP Dashboard snapshot을 OpenWebUI로 전달합니다. 메일함에서는 기존 RAG 검색·권한·출처 계약을 유지하고, Appstore와 ESOP는 현재 화면 조건을 서버에서 재조회해 근거가 있는 답변을 생성합니다. RAG app은 외부 RAG 서버를 호출하는 공통 client입니다.
 
 ## 기능 요약
 
@@ -8,6 +8,8 @@ Assistant는 일반 질문과 메일함 RAG 검색 결과를 OpenWebUI로 전달
 - permission group 검증
 - 메일함 RAG 검색과 OpenWebUI 호출
 - 일반 화면 OpenWebUI 대화
+- Appstore 앱 검색·상세 조건 기반 카탈로그 배경지식
+- ESOP Dashboard line·기간 기반 상태/이력 배경지식
 - 정규화된 답변 block과 출처 반환
 - 사용자/대화방 UUID 단위 DB 대화 이력 관리
 - OpenWebUI 기반 업무용 대화방 제목 자동 생성
@@ -32,13 +34,22 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 ## 일반 화면 OpenWebUI 흐름
 
 1. 전역 ChatWidget이 현재 route를 확인합니다.
-2. `/emails/*`와 유효한 Observer page context가 아니면 등록된 현재 앱의 `appContextKey`와 `portal-default` Profile로 표준 Turn을 요청합니다. 알 수 없는 route는 Portal로 추정하지 않고 Widget을 표시하지 않습니다.
+2. `/emails/*`, 유효한 Observer/Appstore/ESOP page context가 아니면 등록된 현재 앱의 `appContextKey`와 `portal-default` Profile로 표준 Turn을 요청합니다. 알 수 없는 route는 Portal로 추정하지 않고 Widget을 표시하지 않습니다.
 3. 서버가 로그인 사용자와 `knox_id`를 확인합니다.
 4. 현재 대화방에서 권한을 통과한 `shared`, `scope:emails`, `scope:observer` 요약과 최근 이력을 사용합니다.
 5. 서버 허용 카탈로그의 현재 앱 배경지식, 같은 방에서 권한 검증을 통과한 저장 요약과 최근 이력을 합쳐 기존 `OPENWEBUI_*` 설정으로 OpenAI 호환 Chat Completions를 호출합니다.
 6. 외부 OpenAI 호환 stream의 chunk를 `message.delta`로 즉시 표시하고, 대기 중에는 `run.heartbeat`를 보냅니다. 중단·disconnect·timeout이면 upstream 연결을 닫습니다.
 
 `/assistant` 전체 화면도 같은 Turn client를 사용합니다. 일반 화면에서는 사용하지 않는 RAG index 조회와 설정 UI를 표시하지 않습니다.
+
+## Appstore·ESOP 배경지식 흐름
+
+1. Appstore는 검색어·카테고리·선택 앱 ID, ESOP는 status/history·line ID·기간만 page context로 등록합니다.
+2. frontend는 원본 업무 데이터를 보내지 않고 제한된 Tool 입력만 표준 Turn으로 전송합니다.
+3. 서버가 각각 `assistant+appstore`, `assistant+line-dashboard` Account scope를 검사합니다.
+4. Appstore/Drone selector가 연락처·댓글·수신자·관리자 설정을 제외한 크기 제한 snapshot을 다시 조회합니다.
+5. snapshot을 명령이 아닌 읽기 전용 JSON 자료로 표시해 기존 OpenWebUI stream에 전달합니다.
+6. 답변과 요약은 각각 `scope:appstore`, `scope:line-dashboard`에 저장하고 모든 재사용 시점에 권한을 다시 검증합니다.
 
 ## 메일함 RAG 흐름
 
@@ -73,7 +84,7 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 - 재접속 시 서버가 반환한 최신 대화방을 활성화하고, 메일 RAG 선택값은 현재 실행 중인 메모리에서만 유지합니다.
 - 모델 입력 이력은 클라이언트에서 받지 않고 서버 DB current branch에서만 구성합니다. 따라서 인사 메시지나 앱 출처 접두사도 클라이언트가 모델 이력에 삽입하지 않습니다.
 - 충분히 누적된 과거 메시지는 OpenWebUI 저비용 요청으로 최대 2,000자의 rolling summary를 만들고, Provider에는 summary cursor 이후의 최근 이력만 추가해 같은 메시지를 중복 전달하지 않습니다.
-- 같은 대화방에서 일반 대화 Profile v2는 권한을 다시 통과한 `shared`+`scope:emails`+`scope:observer` 기억을 읽어 앱 지식 모드의 후속 대화를 이어갑니다. Email은 `shared`+`scope:emails`, Observer는 `shared`+`scope:observer`만 읽고, scoped 데이터는 `shared`에 기록하지 않습니다.
+- 같은 대화방에서 일반 대화 Profile v2는 권한을 다시 통과한 `shared`+`scope:emails`+`scope:observer` 기억을 읽어 기존 후속 대화를 이어갑니다. Email, Observer, Appstore, ESOP 전용 Profile은 `shared`와 자기 `scope:*` partition만 읽고, scoped 데이터는 `shared`에 기록하지 않습니다.
 - 메시지·summary·자동 제목·Run은 현재 Account scope와 RAG group/mailbox data claim을 합친 `access_requirements`를 보존하고 모든 재사용 시점에 다시 검증합니다.
 - 앱을 이동하면 대화방은 유지하고 현재 Profile이 허용한 기억 partition·Tool·화면 데이터만 사용합니다.
 - Observer 분석에서는 공유 대화와 장기 요약을 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 조회 조건의 `observer_analysis_context_json`만 근거로 삼습니다.
@@ -134,4 +145,6 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 - `apps/api/api/assistant/services/reply.py`
 - `apps/api/api/rag/services/client.py`
 - `apps/api/api/rag/services/config.py`
+- `apps/api/api/appstore/selectors.py`
+- `apps/api/api/drone/selectors.py`
 - `apps/web/src/features/assistant`

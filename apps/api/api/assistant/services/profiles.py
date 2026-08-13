@@ -70,12 +70,34 @@ _PROFILES: dict[tuple[str, int], AssistantProfile] = {
         write_partition="scope:observer",
         timeout_seconds=130,
     ),
+    ("appstore-context", 1): AssistantProfile(
+        key="appstore-context",
+        version=1,
+        provider="appstore-context",
+        allowed_tools=("appstore.catalog",),
+        account_scopes=("assistant", "appstore"),
+        read_partitions=("shared", "scope:appstore"),
+        write_partition="scope:appstore",
+        timeout_seconds=130,
+    ),
+    ("line-dashboard-context", 1): AssistantProfile(
+        key="line-dashboard-context",
+        version=1,
+        provider="line-dashboard-context",
+        allowed_tools=("line-dashboard.snapshot",),
+        account_scopes=("assistant", "line-dashboard"),
+        read_partitions=("shared", "scope:line-dashboard"),
+        write_partition="scope:line-dashboard",
+        timeout_seconds=130,
+    ),
 }
 
 _CURRENT_VERSIONS = {
     "portal-default": 2,
     "email-rag": 1,
     "observer-analysis": 1,
+    "appstore-context": 1,
+    "line-dashboard-context": 1,
 }
 
 

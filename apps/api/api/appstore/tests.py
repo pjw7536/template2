@@ -19,7 +19,11 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 
 from api.account import services as account_services
-from api.appstore.selectors import get_app_list, get_seeded_apps
+from api.appstore.selectors import (
+    get_app_list,
+    get_appstore_assistant_catalog,
+    get_seeded_apps,
+)
 from api.appstore.serializers import default_contact
 from api.appstore.services import (
     AppOrderConflictError,
@@ -535,6 +539,21 @@ class AppstoreDisplayOrderTests(TestCase):
             list(get_app_list().values_list("id", flat=True)),
             [app.pk for app in self.apps],
         )
+
+    def test_assistant_catalog_applies_filter_and_excludes_contact_data(self) -> None:
+        """Assistant 카탈로그는 화면 필터를 적용하고 연락처·이미지를 노출하지 않습니다."""
+
+        self.apps[0].name = "분석 도구"
+        self.apps[0].description = "라인 데이터를 분석합니다."
+        self.apps[0].contact_knoxid = "private-knox"
+        self.apps[0].save(update_fields=["name", "description", "contact_knoxid", "updated_at"])
+
+        payload = get_appstore_assistant_catalog(query="분석", category="Tools")
+
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["apps"][0]["name"], "분석 도구")
+        self.assertNotIn("contactKnoxid", payload["apps"][0])
+        self.assertNotIn("screenshot", payload["apps"][0])
 
     def test_reorder_apps_replaces_full_order(self) -> None:
         """전체 앱 ID 순서가 연속된 노출 순서로 저장되는지 검증합니다."""

@@ -21,6 +21,12 @@ ASSISTANT_PROFILE_CONTEXT_PARTITIONS = {
     "profile:portal-default": "shared",
     "profile:email-rag": "scope:emails",
     "profile:observer-analysis": "scope:observer",
+    "profile:appstore-context": "scope:appstore",
+    "profile:line-dashboard-context": "scope:line-dashboard",
+}
+ASSISTANT_GROUNDED_CONTEXT_KEYS = {
+    "appstore:v1": "appstore",
+    "line-dashboard:v1": "line-dashboard",
 }
 ASSISTANT_APP_LABELS = {
     "portal": "Portal",
@@ -62,6 +68,8 @@ def resolve_assistant_app_key(context_key: object) -> str | None:
         return "emails"
     if normalized.startswith(OBSERVER_CONTEXT_PREFIX):
         return "observer"
+    if normalized in ASSISTANT_GROUNDED_CONTEXT_KEYS:
+        return ASSISTANT_GROUNDED_CONTEXT_KEYS[normalized]
     if normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
         app_key = normalized[len(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX) :]
         if app_key in ASSISTANT_APP_LABELS:

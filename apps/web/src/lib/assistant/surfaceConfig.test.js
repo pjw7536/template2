@@ -16,13 +16,55 @@ describe("resolveAssistantSurface", () => {
     })
   })
 
-  it("Portal 앱을 명시적인 app context로 변환한다", () => {
-    expect(resolveAssistantSurface({ appKey: "appstore" })).toEqual({
-      mode: "portal",
-      profileKey: "portal-default",
-      profileVersion: 2,
-      appContextKey: "assistant:openwebui:appstore",
-      toolInputs: {},
+  it("Appstore 화면 조건을 카탈로그 Tool surface로 변환한다", () => {
+    expect(resolveAssistantSurface({
+      appKey: "appstore",
+      pageContext: {
+        kind: "appstore",
+        key: "appstore:v1",
+        scope: { query: "분석", category: "Tools", selectedAppId: 7 },
+      },
+    })).toEqual({
+      mode: "appstore",
+      profileKey: "appstore-context",
+      profileVersion: 1,
+      appContextKey: "appstore:v1",
+      toolInputs: {
+        "appstore.catalog": {
+          query: "분석",
+          category: "Tools",
+          selectedAppId: 7,
+        },
+      },
+    })
+  })
+
+  it("ESOP line과 기간을 snapshot Tool surface로 변환한다", () => {
+    expect(resolveAssistantSurface({
+      appKey: "line-dashboard",
+      pageContext: {
+        kind: "line-dashboard",
+        key: "line-dashboard:v1",
+        scope: {
+          view: "history",
+          lineId: "L1",
+          from: "2026-08-01",
+          to: "2026-08-14",
+        },
+      },
+    })).toEqual({
+      mode: "line-dashboard",
+      profileKey: "line-dashboard-context",
+      profileVersion: 1,
+      appContextKey: "line-dashboard:v1",
+      toolInputs: {
+        "line-dashboard.snapshot": {
+          view: "history",
+          lineId: "L1",
+          from: "2026-08-01",
+          to: "2026-08-14",
+        },
+      },
     })
   })
 

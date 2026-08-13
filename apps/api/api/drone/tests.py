@@ -1611,6 +1611,42 @@ class DroneSelectorCaseInsensitiveTests(TestCase):
         self.assertTrue(selectors.line_id_exists(line_id="CUSTOM_LINE"))
         self.assertEqual(selectors.list_distinct_line_ids(), ["CUSTOM_LINE"])
 
+    def test_assistant_snapshot_limits_scope_and_excludes_personal_fields(self) -> None:
+        """ESOP Assistant snapshot은 line·기간을 적용하고 사용자·댓글 필드를 제외합니다."""
+
+        included = DroneSOP.objects.create(
+            line_id="L1",
+            eqp_id="EQP-1",
+            chamber_ids="A",
+            lot_id="LOT-1",
+            main_step="STEP-1",
+            status="RUN",
+            knox_id="private-user",
+            comment="private-comment",
+        )
+        DroneSOP.objects.create(
+            line_id="L2",
+            eqp_id="EQP-2",
+            chamber_ids="B",
+            lot_id="LOT-2",
+            main_step="STEP-2",
+            status="DOWN",
+        )
+        today = timezone.localdate().isoformat()
+
+        payload = selectors.get_line_dashboard_assistant_snapshot(
+            line_id="l1",
+            view="status",
+            from_value=today,
+            to_value=today,
+        )
+
+        self.assertEqual(payload["totalCount"], 1)
+        self.assertEqual(payload["statusCounts"], [{"status": "RUN", "count": 1}])
+        self.assertEqual(payload["recentRows"][0]["id"], included.id)
+        self.assertNotIn("knoxId", payload["recentRows"][0])
+        self.assertNotIn("comment", payload["recentRows"][0])
+
     def test_tip_status_line_sdwt_options_use_drone_targets_with_station_match(self) -> None:
         """TIP status 선택지는 station_master에 있는 Drone target만 반환합니다."""
 

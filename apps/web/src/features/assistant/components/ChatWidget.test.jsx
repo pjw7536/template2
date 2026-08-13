@@ -195,7 +195,12 @@ describe("ChatWidget 대화방 생성", () => {
     expect(screen.queryByRole("button", { name: "위젯 열기" })).not.toBeInTheDocument()
   })
 
-  it("현재 앱을 Portal 공용 기억의 contextKey로 전달한다", () => {
+  it("현재 Appstore 화면 조건을 전용 contextKey로 전달한다", () => {
+    chatSessionMocks.pageContext = {
+      kind: "appstore",
+      key: "appstore:v1",
+      scope: { query: "", category: "all", selectedAppId: null },
+    }
     render(
       <MemoryRouter initialEntries={["/appstore"]}>
         <ChatWidget />
@@ -204,7 +209,15 @@ describe("ChatWidget 대화방 생성", () => {
 
     expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:appstore",
+        messageContextKey: "appstore:v1",
+        profileKey: "appstore-context",
+        profileToolInputs: {
+          "appstore.catalog": {
+            query: "",
+            category: "all",
+            selectedAppId: null,
+          },
+        },
       }),
     )
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
@@ -212,6 +225,11 @@ describe("ChatWidget 대화방 생성", () => {
   })
 
   it("일반 대화를 선택하면 현재 대화방의 이후 Turn을 일반 surface로 전환한다", () => {
+    chatSessionMocks.pageContext = {
+      kind: "appstore",
+      key: "appstore:v1",
+      scope: { query: "", category: "all", selectedAppId: null },
+    }
     render(
       <MemoryRouter initialEntries={["/appstore"]}>
         <ChatWidget />
@@ -231,6 +249,11 @@ describe("ChatWidget 대화방 생성", () => {
   })
 
   it("앱을 이동하면 해당 앱 지식 사용을 기본값으로 다시 선택한다", () => {
+    chatSessionMocks.pageContext = {
+      kind: "appstore",
+      key: "appstore:v1",
+      scope: { query: "", category: "all", selectedAppId: null },
+    }
     render(
       <MemoryRouter initialEntries={["/appstore"]}>
         <ChatWidgetRouteHarness />
@@ -257,8 +280,8 @@ describe("ChatWidget 대화방 생성", () => {
     )
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:appstore",
-        profileKey: "portal-default",
+        messageContextKey: "appstore:v1",
+        profileKey: "appstore-context",
       }),
     )
   })

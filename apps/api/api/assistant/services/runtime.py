@@ -12,6 +12,8 @@ from datetime import datetime
 from collections.abc import Callable
 from typing import Any, Mapping, Sequence
 
+import api.appstore.selectors as appstore_selectors
+import api.drone.selectors as drone_selectors
 from api.common.services import ExternalCallCancellation
 
 from api.observer.selectors import OBSERVER_LOG_KEYS
@@ -22,7 +24,7 @@ from api.observer.services import (
 
 from .access_requirements import access_requirements_for_scopes, merge_access_requirements
 from .chat import AssistantChatService
-from .openwebui import stream_openwebui_chat
+from .openwebui import build_openwebui_grounded_system_message, stream_openwebui_chat
 from .profiles import AssistantProfile
 from .runtime_memory import format_assistant_runtime_context
 
@@ -30,6 +32,8 @@ from .runtime_memory import format_assistant_runtime_context
 TOOL_AUTHORIZATION_FLOORS: dict[str, tuple[str, ...]] = {
     "rag.search": ("assistant", "emails"),
     "observer.analysis": ("assistant", "observer"),
+    "appstore.catalog": ("assistant", "appstore"),
+    "line-dashboard.snapshot": ("assistant", "line-dashboard"),
 }
 MAX_RUNTIME_SOURCES = 50
 MAX_RUNTIME_SOURCE_ID_CHARS = 200
@@ -140,6 +144,26 @@ class AssistantRuntime:
                 cancellation=cancellation,
                 on_delta=on_delta,
             )
+        if profile.provider == "appstore-context":
+            return self._execute_appstore_context(
+                profile=profile,
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                tool_inputs=tool_inputs,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
+        if profile.provider == "line-dashboard-context":
+            return self._execute_line_dashboard_context(
+                profile=profile,
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                tool_inputs=tool_inputs,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
         raise ValueError("지원하지 않는 Assistant Provider입니다.")
 
     def _execute_openwebui(
@@ -177,6 +201,129 @@ class AssistantRuntime:
             blocks=[{"type": "text", "content": content, "sourceIds": []}],
             access_requirements=access_requirements_for_scopes(profile.account_scopes),
             execution_metadata={"outputChars": len(content)},
+        )
+
+    def _execute_grounded_openwebui(
+        self,
+        *,
+        profile: AssistantProfile,
+        app_key: str,
+        tool_key: str,
+        snapshot: Mapping[str, object],
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+        execution_metadata: Mapping[str, object],
+    ) -> AssistantRuntimeResult:
+        """서버 조회 snapshot을 system message에 넣어 OpenWebUI 답변을 생성합니다."""
+
+        request_history = [*history, {"role": "user", "content": prompt}]
+        system_message = build_openwebui_grounded_system_message(
+            app_key=app_key,
+            snapshot=snapshot,
+        )
+        content_parts: list[str] = []
+        remaining_chars = profile.max_output_chars
+        for raw_delta in stream_openwebui_chat(
+            history=request_history,
+            conversation_summary=conversation_summary,
+            system_message=system_message,
+            context_key=None,
+            cancellation=cancellation,
+        ):
+            delta = raw_delta[:remaining_chars]
+            if not delta:
+                break
+            content_parts.append(delta)
+            remaining_chars -= len(delta)
+            if on_delta is not None:
+                on_delta(delta)
+        content = "".join(content_parts)
+        return AssistantRuntimeResult(
+            content=content,
+            blocks=[{"type": "text", "content": content, "sourceIds": []}],
+            tool_keys=[tool_key],
+            access_requirements=access_requirements_for_scopes(profile.account_scopes),
+            execution_metadata={
+                **dict(execution_metadata),
+                "outputChars": len(content),
+            },
+        )
+
+    def _execute_appstore_context(
+        self,
+        *,
+        profile: AssistantProfile,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        tool_inputs: Mapping[str, object],
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """현재 Appstore 필터에 맞는 제한된 앱 카탈로그로 답변합니다."""
+
+        raw_input = tool_inputs.get("appstore.catalog")
+        catalog_input = raw_input if isinstance(raw_input, Mapping) else {}
+        snapshot = appstore_selectors.get_appstore_assistant_catalog(
+            query=str(catalog_input.get("query") or ""),
+            category=str(catalog_input.get("category") or "all"),
+            selected_app_id=catalog_input.get("selectedAppId"),
+        )
+        return self._execute_grounded_openwebui(
+            profile=profile,
+            app_key="appstore",
+            tool_key="appstore.catalog",
+            snapshot=snapshot,
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            cancellation=cancellation,
+            on_delta=on_delta,
+            execution_metadata={
+                "resultCount": int(snapshot.get("count") or 0),
+                "truncated": bool(snapshot.get("truncated")),
+            },
+        )
+
+    def _execute_line_dashboard_context(
+        self,
+        *,
+        profile: AssistantProfile,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        tool_inputs: Mapping[str, object],
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """현재 ESOP line·기간의 집계 snapshot으로 답변합니다."""
+
+        raw_input = tool_inputs.get("line-dashboard.snapshot")
+        dashboard_input = raw_input if isinstance(raw_input, Mapping) else {}
+        snapshot = drone_selectors.get_line_dashboard_assistant_snapshot(
+            line_id=dashboard_input.get("lineId"),
+            view=dashboard_input.get("view"),
+            from_value=dashboard_input.get("from"),
+            to_value=dashboard_input.get("to"),
+        )
+        return self._execute_grounded_openwebui(
+            profile=profile,
+            app_key="line-dashboard",
+            tool_key="line-dashboard.snapshot",
+            snapshot=snapshot,
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            cancellation=cancellation,
+            on_delta=on_delta,
+            execution_metadata={
+                "resultCount": int(snapshot.get("totalCount") or 0),
+                "from": str(snapshot.get("from") or ""),
+                "to": str(snapshot.get("to") or ""),
+            },
         )
 
     def _execute_email_rag(

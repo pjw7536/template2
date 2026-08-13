@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { useAuth } from "@/lib/auth"
 import { useAppstorePageActions } from "../hooks/useAppstorePageActions"
 import { useAppstoreMutations } from "../hooks/useAppstoreMutations"
+import { useAppstoreAssistantContext } from "../hooks/useAppstoreAssistantContext"
 import { useAppDetailQuery, useAppsQuery } from "../hooks/useAppstoreQueries"
 import { AppDetail } from "../components/AppDetail"
 import { AppFilters } from "../components/AppFilters"
@@ -37,6 +38,8 @@ export function AppstorePage() {
   const [updatingCommentId, setUpdatingCommentId] = useState(null)
   const [deletingCommentId, setDeletingCommentId] = useState(null)
   const [togglingCommentLikeId, setTogglingCommentLikeId] = useState(null)
+
+  useAppstoreAssistantContext({ query, category, selectedAppId })
 
   const appsQuery = useAppsQuery()
   const apps = appsQuery.data?.apps ?? EMPTY_APPS

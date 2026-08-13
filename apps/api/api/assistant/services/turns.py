@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 import hashlib
 import json
 import logging
@@ -44,7 +44,9 @@ from .turn_persistence import (
 
 logger = logging.getLogger(__name__)
 TURN_PERSISTENCE_GRACE_SECONDS = 10
-SAFE_ACCOUNT_SCOPES = frozenset({"assistant", "emails", "observer"})
+SAFE_ACCOUNT_SCOPES = frozenset(
+    {"assistant", "emails", "observer", "appstore", "line-dashboard"}
+)
 
 
 class AssistantTurnError(RuntimeError):
@@ -418,6 +420,79 @@ class AssistantTurnService:
                     "tipGroups": list(observer_input.get("tipGroups") or ["__ALL__"])[
                         :100
                     ],
+                }
+            }
+        if profile.provider == "appstore-context":
+            raw = tool_inputs.get("appstore.catalog")
+            appstore_input = raw if isinstance(raw, Mapping) else {}
+            if set(appstore_input) - {"query", "category", "selectedAppId"}:
+                raise AssistantTurnError(
+                    "invalid_tool_input",
+                    status_code=400,
+                    message="appstore.catalog에 지원하지 않는 입력이 있습니다.",
+                )
+            selected_app_id = appstore_input.get("selectedAppId")
+            if selected_app_id in (None, ""):
+                normalized_app_id = None
+            else:
+                try:
+                    normalized_app_id = int(selected_app_id)
+                except (TypeError, ValueError) as exc:
+                    raise AssistantTurnError(
+                        "invalid_tool_input",
+                        status_code=400,
+                        message="Appstore 선택 앱 ID가 올바르지 않습니다.",
+                    ) from exc
+                if normalized_app_id <= 0:
+                    raise AssistantTurnError(
+                        "invalid_tool_input",
+                        status_code=400,
+                        message="Appstore 선택 앱 ID가 올바르지 않습니다.",
+                    )
+            return {
+                "appstore.catalog": {
+                    "query": str(appstore_input.get("query") or "").strip()[:100],
+                    "category": str(appstore_input.get("category") or "all").strip()[:100],
+                    "selectedAppId": normalized_app_id,
+                }
+            }
+        if profile.provider == "line-dashboard-context":
+            raw = tool_inputs.get("line-dashboard.snapshot")
+            dashboard_input = raw if isinstance(raw, Mapping) else {}
+            if set(dashboard_input) - {"view", "lineId", "from", "to"}:
+                raise AssistantTurnError(
+                    "invalid_tool_input",
+                    status_code=400,
+                    message="line-dashboard.snapshot에 지원하지 않는 입력이 있습니다.",
+                )
+            view = str(dashboard_input.get("view") or "status").strip().lower()
+            line_id = str(dashboard_input.get("lineId") or "").strip()[:50]
+            if view not in {"status", "history"} or not line_id:
+                raise AssistantTurnError(
+                    "invalid_tool_input",
+                    status_code=400,
+                    message="ESOP Dashboard 화면 종류와 line ID가 필요합니다.",
+                )
+            normalized_dates: dict[str, str] = {}
+            for field_name in ("from", "to"):
+                value = str(dashboard_input.get(field_name) or "").strip()
+                if not value:
+                    continue
+                try:
+                    normalized_dates[field_name] = date.fromisoformat(
+                        value[:10]
+                    ).isoformat()
+                except ValueError as exc:
+                    raise AssistantTurnError(
+                        "invalid_tool_input",
+                        status_code=400,
+                        message="ESOP Dashboard 조회 날짜 형식이 올바르지 않습니다.",
+                    ) from exc
+            return {
+                "line-dashboard.snapshot": {
+                    "view": view,
+                    "lineId": line_id,
+                    **normalized_dates,
                 }
             }
         return {}
