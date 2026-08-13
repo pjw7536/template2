@@ -99,7 +99,7 @@ Content-Type: application/json
 | --- | --- |
 | DB write | Account, Emails, Drone, AppStore, VOC |
 | 외부 read/search | Assistant, Observer, Drone |
-| 외부 write/send | Emails RAG, Drone Jira/Mail/Messenger, Assistant LLM |
+| 외부 write/send | Emails RAG, Drone Jira/Mail/Messenger, Assistant OpenWebUI |
 | 파일/asset | Emails, AppStore |
 | ActivityLog | Account 일부 작업, Emails 이동/삭제, Drone table update, VOC |
 

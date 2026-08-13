@@ -597,7 +597,7 @@ class PortalAccessEnforcementTests(TestCase):
             "/api/v1/l3_spider/meta": "l3-spider",
             "/api/v1/pm_spider/meta": "pm-spider",
             "/api/v1/tttm_spider/combo/options": "tttm-spider",
-            "/api/v1/assistant/chat": "assistant",
+            "/api/v1/assistant/turns/stream": "assistant",
             "/api/v1/observer/lines": "observer",
             "/api/v1/emails/inbox/": "emails",
             "/api/v1/l0_spider/hard-spec/meta": "l0-spider",

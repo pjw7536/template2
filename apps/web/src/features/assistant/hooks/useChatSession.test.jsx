@@ -2,12 +2,17 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { useChatSession } from "./useChatSession"
+import { useChatSession as useChatSessionBase } from "./useChatSession"
+
+function useChatSession(options = {}) {
+  return useChatSessionBase({
+    profileKey: "portal-default",
+    messageContextKey: "assistant:openwebui:portal",
+    ...options,
+  })
+}
 
 const conversationApiMocks = vi.hoisted(() => ({
-  abandonGeneration: vi.fn(),
-  acquireGeneration: vi.fn(),
-  appendMessages: vi.fn(),
   clearMessages: vi.fn(),
   createConversation: vi.fn(),
   deleteFeedback: vi.fn(),
@@ -17,16 +22,15 @@ const conversationApiMocks = vi.hoisted(() => ({
   fetchConversationPage: vi.fn(),
   fetchConversations: vi.fn(),
   generateTitle: vi.fn(),
-  finalizeGeneration: vi.fn(),
   refreshSummary: vi.fn(),
   submitFeedback: vi.fn(),
   updateConversation: vi.fn(),
 }))
+const turnApiMocks = vi.hoisted(() => ({
+  streamTurn: vi.fn(),
+}))
 
 vi.mock("../api/conversationApi", () => ({
-  abandonAssistantGeneration: conversationApiMocks.abandonGeneration,
-  acquireAssistantGeneration: conversationApiMocks.acquireGeneration,
-  appendAssistantConversationMessages: conversationApiMocks.appendMessages,
   clearAssistantConversationMessages: conversationApiMocks.clearMessages,
   createAssistantConversation: conversationApiMocks.createConversation,
   deleteAssistantConversation: conversationApiMocks.deleteConversation,
@@ -41,10 +45,13 @@ vi.mock("../api/conversationApi", () => ({
       : response
   },
   generateAssistantConversationTitle: conversationApiMocks.generateTitle,
-  finalizeAssistantGeneration: conversationApiMocks.finalizeGeneration,
   refreshAssistantConversationSummary: conversationApiMocks.refreshSummary,
   submitAssistantMessageFeedback: conversationApiMocks.submitFeedback,
   updateAssistantConversation: conversationApiMocks.updateConversation,
+}))
+
+vi.mock("../api/turnApi", () => ({
+  streamAssistantTurn: turnApiMocks.streamTurn,
 }))
 
 function createWrapper(queryClient = new QueryClient({
@@ -66,10 +73,20 @@ function createDeferred() {
 describe("useChatSession page context", () => {
   beforeEach(() => {
     Object.values(conversationApiMocks).forEach((mock) => mock.mockReset())
-    conversationApiMocks.appendMessages.mockResolvedValue([])
-    conversationApiMocks.acquireGeneration.mockResolvedValue({
-      id: "generation-1",
-      status: "streaming",
+    turnApiMocks.streamTurn.mockReset()
+    turnApiMocks.streamTurn.mockImplementation(async (_payload, { onEvent }) => {
+      onEvent({ event: "run.started", payload: { runId: "run-1" } })
+      onEvent({
+        event: "message.completed",
+        payload: {
+          id: "assistant-1",
+          role: "assistant",
+          content: "서버 답변",
+          sources: [],
+          accessState: "available",
+        },
+      })
+      onEvent({ event: "run.completed", payload: { runId: "run-1" } })
     })
     conversationApiMocks.clearMessages.mockResolvedValue({})
     conversationApiMocks.createConversation.mockResolvedValue({
@@ -89,7 +106,6 @@ describe("useChatSession page context", () => {
       name: "장비 상태 이상 원인 분석",
     })
     conversationApiMocks.refreshSummary.mockResolvedValue({ updated: false })
-    conversationApiMocks.finalizeGeneration.mockResolvedValue({ status: "completed" })
     conversationApiMocks.submitFeedback.mockResolvedValue({ rating: "up", reason: "" })
     conversationApiMocks.deleteFeedback.mockResolvedValue({})
     conversationApiMocks.exportConversation.mockResolvedValue(undefined)
@@ -99,6 +115,146 @@ describe("useChatSession page context", () => {
       pinned: updates.pinned === true,
       archived: updates.archived === true,
     }))
+  })
+
+  it("Profile 설정 시 표준 Turn이 user/assistant 저장과 generation을 소유한다", async () => {
+    conversationApiMocks.fetchConversations.mockResolvedValue([
+      { id: "room-server", name: "서버 대화" },
+    ])
+    turnApiMocks.streamTurn.mockImplementation(async (_payload, { onEvent }) => {
+      onEvent({
+        event: "run.started",
+        payload: { runId: "run-1", assistantClientId: "assistant-1" },
+      })
+      onEvent({ event: "message.delta", payload: { content: "표준 " } })
+      onEvent({ event: "message.delta", payload: { content: "답변" } })
+      onEvent({
+        event: "message.completed",
+        payload: {
+          id: "assistant-1",
+          role: "assistant",
+          content: "표준 답변",
+          sources: [],
+          blocks: [{ type: "text", content: "표준 답변", sourceIds: [] }],
+          accessState: "available",
+        },
+      })
+      onEvent({ event: "run.completed", payload: { runId: "run-1" } })
+      return []
+    })
+    const { result } = renderHook(
+      () =>
+        useChatSession({
+          userKey: 10,
+          profileKey: "portal-default",
+          profileVersion: 1,
+          profileToolInputs: {},
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.activeRoomId).toBe("room-server"))
+    await waitFor(() => expect(result.current.messages[0]?.isGreeting).toBe(true))
+    await act(async () => {
+      await result.current.sendMessage("표준 질문")
+    })
+
+    expect(turnApiMocks.streamTurn).toHaveBeenCalledOnce()
+    expect(turnApiMocks.streamTurn.mock.calls[0][0]).toMatchObject({
+      action: "send",
+      conversationId: "room-server",
+      profileKey: "portal-default",
+      appContextKey: "assistant:openwebui:portal",
+      message: { content: "표준 질문" },
+    })
+    expect(turnApiMocks.streamTurn.mock.calls[0][0]).not.toHaveProperty("history")
+    expect(result.current.messages.at(-1)).toMatchObject({
+      id: "assistant-1",
+      content: "표준 답변",
+    })
+  })
+
+  it("앱 전환 후에도 기존 10,000자 메시지를 client history로 다시 전송하지 않는다", async () => {
+    conversationApiMocks.fetchConversations.mockResolvedValue([
+      { id: "room-server", name: "서버 대화" },
+    ])
+    conversationApiMocks.fetchMessages.mockResolvedValue([
+      {
+        id: "long-message",
+        role: "user",
+        content: "가".repeat(10_000),
+        contextKey: "profile:email-rag",
+        accessState: "available",
+      },
+    ])
+    const { result, rerender } = renderHook(
+      ({ messageContextKey }) =>
+        useChatSession({
+          userKey: 10,
+          messageContextKey,
+        }),
+      {
+        initialProps: { messageContextKey: "profile:email-rag" },
+        wrapper: createWrapper(),
+      },
+    )
+
+    await waitFor(() => expect(result.current.messages[0]?.content).toHaveLength(10_000))
+    rerender({ messageContextKey: "profile:portal-default" })
+    await act(async () => {
+      await result.current.sendMessage("후속 질문")
+    })
+
+    const payload = turnApiMocks.streamTurn.mock.calls[0][0]
+    expect(payload.message.content).toBe("후속 질문")
+    expect(payload).not.toHaveProperty("history")
+  })
+
+  it("Run 시작 전 실패한 Email 요청은 앱 이동 후에도 기존 RAG 설정으로 재시도한다", async () => {
+    conversationApiMocks.fetchConversations.mockResolvedValue([
+      { id: "room-server", name: "서버 대화" },
+    ])
+    turnApiMocks.streamTurn.mockRejectedValueOnce(new Error("연결 실패"))
+    const emailToolInputs = {
+      "rag.search": {
+        permissionGroups: ["mail-a"],
+        ragIndexes: ["email-index-a"],
+      },
+    }
+    const { result, rerender } = renderHook(
+      ({ profileKey, profileToolInputs }) =>
+        useChatSession({
+          userKey: 10,
+          profileKey,
+          profileToolInputs,
+        }),
+      {
+        initialProps: {
+          profileKey: "email-rag",
+          profileToolInputs: emailToolInputs,
+        },
+        wrapper: createWrapper(),
+      },
+    )
+
+    await waitFor(() => expect(result.current.activeRoomId).toBe("room-server"))
+    await act(async () => {
+      await result.current.sendMessage("메일 질문")
+    })
+    expect(result.current.canRetry).toBe(true)
+
+    rerender({ profileKey: "portal-default", profileToolInputs: {} })
+    await act(async () => {
+      await result.current.retryLastMessage()
+    })
+
+    expect(turnApiMocks.streamTurn).toHaveBeenCalledTimes(2)
+    expect(turnApiMocks.streamTurn.mock.calls[1][0]).toMatchObject({
+      profileKey: "email-rag",
+      profileVersion: 1,
+      toolInputs: emailToolInputs,
+      message: { content: "메일 질문" },
+    })
   })
 
   it("첫 페이지 재조회 후에도 추가 페이지와 선택 대화를 유지한다", async () => {
@@ -189,10 +345,12 @@ describe("useChatSession page context", () => {
     await act(async () => {
       await result.current.loadOlderMessages()
     })
-    expect(result.current.messages.map((message) => message.content)).toEqual([
-      "오래된 질문",
-      "최근 답변",
-    ])
+    await waitFor(() => {
+      expect(result.current.messages.map((message) => message.content)).toEqual([
+        "오래된 질문",
+        "최근 답변",
+      ])
+    })
 
     await act(async () => {
       await queryClient.invalidateQueries({
@@ -252,13 +410,8 @@ describe("useChatSession page context", () => {
       { id: "room-server", name: "서버 대화" },
     ])
     conversationApiMocks.clearMessages.mockReturnValue(clearing.promise)
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "답변",
-      sources: [],
-      segments: [],
-    })
     const { result } = renderHook(
-      () => useChatSession({ userKey: 10, messageSender }),
+      () => useChatSession({ userKey: 10 }),
       { wrapper: createWrapper() },
     )
 
@@ -271,7 +424,7 @@ describe("useChatSession page context", () => {
     })
 
     await expect(sendPromise).resolves.toEqual({ ok: false, accepted: false })
-    expect(messageSender).not.toHaveBeenCalled()
+    expect(turnApiMocks.streamTurn).not.toHaveBeenCalled()
     await act(async () => {
       clearing.resolve({})
       await resetPromise
@@ -376,314 +529,24 @@ describe("useChatSession page context", () => {
     })
   })
 
-  it("Observer sender에는 같은 방의 Portal과 Observer 대화를 함께 전달한다", async () => {
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "Observer 분석 결과",
-      sources: [],
-      segments: [],
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          messageContextKey: "observer:scope-a",
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-          initialMessagesByRoom: {
-            "room-1": [
-              {
-                role: "user",
-                content: "Portal 질문",
-                contextKey: "assistant:openwebui",
-              },
-              { role: "user", content: "이전 분석", contextKey: "observer:scope-a" },
-            ],
-          },
-        }),
-      { wrapper: createWrapper() },
-    )
 
-    await act(async () => {
-      await result.current.sendMessage("왜 반복됐어?")
-    })
 
-    const request = messageSender.mock.calls[0][0]
-    expect(request.history.map((message) => message.content)).toEqual([
-      "[이전 대화 출처: Portal]\nPortal 질문",
-      "이전 분석",
-      "왜 반복됐어?",
-    ])
-    expect(result.current.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: "Observer 분석 결과",
-      contextKey: "observer:scope-a",
-    })
-  })
 
-  it("Portal sender에는 같은 방의 Observer 대화를 출처와 함께 전달한다", async () => {
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "Portal 후속 답변",
-      sources: [],
-      segments: [],
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          messageContextKey: "assistant:openwebui",
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-          initialMessagesByRoom: {
-            "room-1": [
-              {
-                role: "user",
-                content: "DOWN 반복을 분석해줘",
-                contextKey: "observer:scope-a",
-              },
-              {
-                role: "assistant",
-                content: "특정 시간대에 집중됐습니다.",
-                contextKey: "observer:scope-a",
-              },
-            ],
-          },
-        }),
-      { wrapper: createWrapper() },
-    )
 
-    await act(async () => {
-      await result.current.sendMessage("방금 분석을 한 줄로 정리해줘")
-    })
 
-    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
-      "[이전 대화 출처: Observer]\nDOWN 반복을 분석해줘",
-      "[이전 대화 출처: Observer]\n특정 시간대에 집중됐습니다.",
-      "방금 분석을 한 줄로 정리해줘",
-    ])
-  })
-
-  it("앱을 이동해도 같은 방의 메시지를 유지하고 새 앱 배경 문맥으로 이어서 전송한다", async () => {
-    let messageContextKey = "assistant:openwebui:portal"
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "Appstore 후속 답변",
-      sources: [],
-      segments: [],
-    })
-    const { result, rerender } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          messageContextKey,
-          initialRooms: [{ id: "room-1", name: "앱 이동 테스트" }],
-          initialActiveRoomId: "room-1",
-          initialMessagesByRoom: {
-            "room-1": [
-              {
-                role: "user",
-                content: "Portal에서 시작한 질문",
-                contextKey: "assistant:openwebui:portal",
-              },
-            ],
-          },
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    messageContextKey = "assistant:openwebui:appstore"
-    rerender()
-
-    await act(async () => {
-      await result.current.sendMessage("Appstore에서는 어떻게 보여?")
-    })
-
-    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
-      "[이전 대화 출처: Portal]\nPortal에서 시작한 질문",
-      "Appstore에서는 어떻게 보여?",
-    ])
-    expect(result.current.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: "Appstore 후속 답변",
-      contextKey: "assistant:openwebui:appstore",
-    })
-  })
-
-  it("Email RAG sender에도 같은 방의 Portal과 Observer 대화를 함께 전달한다", async () => {
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "메일 답변",
-      sources: [],
-      segments: [],
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          messageContextKey: "assistant",
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-          initialMessagesByRoom: {
-            "room-1": [
-              { role: "user", content: "일반 질문", contextKey: "assistant:openwebui" },
-              { role: "assistant", content: "Observer 분석", contextKey: "observer:scope-a" },
-              { role: "user", content: "이전 메일 질문", contextKey: "assistant" },
-            ],
-          },
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await act(async () => {
-      await result.current.sendMessage("후속 메일 질문")
-    })
-
-    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
-      "[이전 대화 출처: Portal]\n일반 질문",
-      "[이전 대화 출처: Observer]\nObserver 분석",
-      "이전 메일 질문",
-      "후속 메일 질문",
-    ])
-  })
-
-  it("서버에서 현재 사용자의 방을 불러오고 user/assistant 메시지를 각각 저장한다", async () => {
-    conversationApiMocks.fetchConversations.mockResolvedValue([
-      {
-        id: "room-server",
-        name: "서버 대화",
-        updatedAt: "2026-08-11T00:00:00Z",
-      },
-    ])
-    conversationApiMocks.fetchMessages.mockResolvedValue([
-      {
-        id: "user-old",
-        role: "user",
-        content: "이전 질문",
-        contextKey: "assistant:openwebui",
-      },
-    ])
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "새 답변",
-      sources: [],
-      segments: [],
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await waitFor(() => {
-      expect(result.current.activeRoomId).toBe("room-server")
-      expect(result.current.messages.some((message) => message.content === "이전 질문")).toBe(true)
-    })
-
-    await act(async () => {
-      await result.current.sendMessage("새 질문")
-    })
-
-    expect(messageSender.mock.calls[0][0].history.map((message) => message.content)).toEqual([
-      "이전 질문",
-      "새 질문",
-    ])
-    expect(conversationApiMocks.appendMessages).toHaveBeenCalledTimes(2)
-    expect(conversationApiMocks.appendMessages.mock.calls[0][1][0]).toMatchObject({
-      role: "user",
-      content: "새 질문",
-      contextKey: "assistant:openwebui",
-    })
-    expect(conversationApiMocks.appendMessages.mock.calls[1][1][0]).toMatchObject({
-      role: "assistant",
-      content: "새 답변",
-      contextKey: "assistant:openwebui",
-    })
-    expect(conversationApiMocks.acquireGeneration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "room-server",
-        contextKey: "assistant:openwebui",
-      }),
-    )
-    expect(conversationApiMocks.finalizeGeneration).toHaveBeenCalledWith(
-      "generation-1",
-      "completed",
-    )
-    expect(
-      conversationApiMocks.appendMessages.mock.invocationCallOrder[1],
-    ).toBeLessThan(conversationApiMocks.finalizeGeneration.mock.invocationCallOrder[0])
-  })
-
-  it("백그라운드 메시지 응답이 늦게 도착해도 전송 중인 메시지를 유지한다", async () => {
-    const modelResponse = createDeferred()
-    const messageSender = vi.fn().mockReturnValue(modelResponse.promise)
-    const serverMessages = [
-      {
-        id: "user-old",
-        role: "user",
-        content: "이전 질문",
-        contextKey: "assistant:openwebui",
-      },
-    ]
-    conversationApiMocks.fetchConversations.mockResolvedValue([
-      { id: "room-server", name: "서버 대화" },
-    ])
-    conversationApiMocks.fetchMessages.mockResolvedValue(serverMessages)
-    const queryClient = new QueryClient({
-      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
-        }),
-      { wrapper: createWrapper(queryClient) },
-    )
-
-    await waitFor(() => {
-      expect(result.current.messages.map((message) => message.content)).toContain("이전 질문")
-    })
-    let sendPromise
-    act(() => {
-      sendPromise = result.current.sendMessage("새 질문")
-    })
-    await waitFor(() => {
-      expect(result.current.messages.map((message) => message.content)).toContain("새 질문")
-    })
-
-    act(() => {
-      queryClient.setQueryData(
-        ["assistant", "conversation-messages", "10", "room-server"],
-        {
-          roomId: "room-server",
-          page: { results: serverMessages, nextCursor: "", hasMore: false },
-        },
-      )
-    })
-
-    await waitFor(() => {
-      expect(result.current.messages.map((message) => message.content)).toContain("새 질문")
-    })
-    conversationApiMocks.fetchMessages.mockResolvedValue(result.current.messages)
-    await act(async () => {
-      modelResponse.resolve({ reply: "새 답변", sources: [], segments: [] })
-      await sendPromise
-    })
-  })
 
   it("이전 메시지 page를 500개를 넘어도 잘라내지 않고 앞에 추가한다", async () => {
     const currentMessages = Array.from({ length: 500 }, (_, index) => ({
       id: `current-${index}`,
       role: index % 2 === 0 ? "user" : "assistant",
       content: `현재 메시지 ${index}`,
-      contextKey: "assistant:openwebui",
+      contextKey: "assistant:openwebui:portal",
     }))
     const olderMessages = Array.from({ length: 20 }, (_, index) => ({
       id: `older-${index}`,
       role: index % 2 === 0 ? "user" : "assistant",
       content: `과거 메시지 ${index}`,
-      contextKey: "assistant:openwebui",
+      contextKey: "assistant:openwebui:portal",
     }))
     conversationApiMocks.fetchConversations.mockResolvedValue([
       { id: "room-server", name: "서버 대화" },
@@ -720,149 +583,28 @@ describe("useChatSession page context", () => {
         ([, options]) => options?.before === "older-page",
       ),
     ).toHaveLength(1)
-    expect(result.current.messages).toHaveLength(520)
-    expect(result.current.messages[0]).toMatchObject({ id: "older-0" })
-    expect(result.current.messages.at(-1)).toMatchObject({ id: "current-499" })
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(520)
+      expect(result.current.messages[0]).toMatchObject({ id: "older-0" })
+      expect(result.current.messages.at(-1)).toMatchObject({ id: "current-499" })
+    })
     expect(result.current.hasOlderMessages).toBe(false)
   })
-
-  it("Assistant 답변 저장 실패 시 generation을 완료로 표시하지 않는다", async () => {
-    conversationApiMocks.fetchConversations.mockResolvedValue([
-      { id: "room-server", name: "서버 대화" },
-      { id: "room-other", name: "다른 대화" },
-    ])
-    conversationApiMocks.appendMessages
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error("답변 저장 실패"))
-      .mockResolvedValueOnce([])
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "화면에는 표시되는 답변",
-      sources: [],
-      segments: [],
-    })
-    let messageContextKey = "assistant:openwebui:portal"
-    const { result, rerender } = renderHook(
-      () =>
-        useChatSession({
-          userKey: 10,
-          messageSender,
-          messageContextKey,
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await waitFor(() => expect(result.current.activeRoomId).toBe("room-server"))
-    await act(async () => {
-      await result.current.sendMessage("저장 실패를 확인해줘")
-    })
-
-    expect(result.current.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: "화면에는 표시되는 답변",
-    })
-    expect(conversationApiMocks.finalizeGeneration).toHaveBeenCalledWith(
-      "generation-1",
-      "failed",
-      "message_save_failed",
-    )
-    expect(conversationApiMocks.finalizeGeneration).not.toHaveBeenCalledWith(
-      "generation-1",
-      "completed",
-    )
-    expect(result.current.errorMessage).toBe("답변 저장 실패")
-    expect(result.current.canRetrySave).toBe(true)
-
-    messageContextKey = "assistant:openwebui:appstore"
-    rerender()
-    expect(result.current.canRetrySave).toBe(true)
-
-    await act(async () => {
-      await result.current.sendMessage("저장 전에 보내면 안 되는 질문")
-    })
-    expect(messageSender).toHaveBeenCalledOnce()
-    expect(result.current.errorMessage).toBe(
-      "먼저 표시된 답변 저장을 다시 시도해주세요.",
-    )
-
-    act(() => {
-      result.current.clearError()
-      result.current.selectRoom("room-other")
-    })
-    expect(result.current.canRetrySave).toBe(true)
-    expect(result.current.errorMessage).toContain("서버 대화")
-
-    await act(async () => {
-      await result.current.retryAssistantSave()
-    })
-
-    expect(messageSender).toHaveBeenCalledOnce()
-    expect(conversationApiMocks.appendMessages).toHaveBeenCalledTimes(3)
-    expect(conversationApiMocks.refreshSummary).toHaveBeenCalledWith(
-      "room-server",
-      "assistant:openwebui:portal",
-    )
-    expect(result.current.canRetrySave).toBe(false)
-    expect(result.current.errorMessage).toBe("")
-  })
-
-  it("저장에 실패한 Assistant 답변을 제거하면 다음 질문을 보낼 수 있다", async () => {
-    conversationApiMocks.fetchConversations.mockResolvedValue([
-      { id: "room-server", name: "서버 대화" },
-    ])
-    conversationApiMocks.appendMessages
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error("답변 저장 실패"))
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "저장되지 않은 답변",
-      sources: [],
-      segments: [],
-    })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await waitFor(() => expect(result.current.activeRoomId).toBe("room-server"))
-    await act(async () => {
-      await result.current.sendMessage("저장 실패 질문")
-    })
-    expect(result.current.canRetrySave).toBe(true)
-
-    act(() => {
-      result.current.discardFailedAssistantSave()
-    })
-    expect(result.current.canRetrySave).toBe(false)
-    expect(result.current.messages.some((message) => message.content === "저장되지 않은 답변"))
-      .toBe(false)
-
-    await act(async () => {
-      await result.current.sendMessage("다음 질문")
-    })
-    expect(messageSender).toHaveBeenCalledTimes(2)
-  })
-
   it("10,000자를 넘는 메시지는 전송하지 않는다", async () => {
-    const messageSender = vi.fn()
+    conversationApiMocks.fetchConversations.mockResolvedValue([
+      { id: "room-1", name: "테스트" },
+    ])
     const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
+      () => useChatSession({ userKey: 10 }),
       { wrapper: createWrapper() },
     )
 
+    await waitFor(() => expect(result.current.activeRoomId).toBe("room-1"))
     await act(async () => {
       await result.current.sendMessage("가".repeat(10_001))
     })
 
-    expect(messageSender).not.toHaveBeenCalled()
+    expect(turnApiMocks.streamTurn).not.toHaveBeenCalled()
     expect(result.current.errorMessage).toContain("10,000자")
   })
 
@@ -890,11 +632,6 @@ describe("useChatSession page context", () => {
   })
 
   it("빈 상태의 첫 메시지에서만 대화방을 만들고 제목을 생성한다", async () => {
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "첫 답변",
-      sources: [],
-      segments: [],
-    })
     const queryClient = new QueryClient({
       defaultOptions: {
         mutations: { retry: false },
@@ -905,8 +642,6 @@ describe("useChatSession page context", () => {
       () =>
         useChatSession({
           userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
         }),
       { wrapper: createWrapper(queryClient) },
     )
@@ -930,7 +665,7 @@ describe("useChatSession page context", () => {
     expect(conversationApiMocks.createConversation.mock.calls[0][0]).toEqual({
       name: "새 대화 1",
     })
-    expect(messageSender).toHaveBeenCalledOnce()
+    expect(turnApiMocks.streamTurn).toHaveBeenCalledOnce()
     await waitFor(() => {
       expect(conversationApiMocks.generateTitle).toHaveBeenCalledWith("room-server")
       expect(result.current.rooms[0]?.name).toBe("장비 상태 이상 원인 분석")
@@ -957,17 +692,10 @@ describe("useChatSession page context", () => {
   it("빈 상태에서 전송이 겹쳐도 대화방과 모델 요청을 한 번만 만든다", async () => {
     const creation = createDeferred()
     conversationApiMocks.createConversation.mockReturnValue(creation.promise)
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "첫 답변",
-      sources: [],
-      segments: [],
-    })
     const { result } = renderHook(
       () =>
         useChatSession({
           userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
         }),
       { wrapper: createWrapper() },
     )
@@ -996,7 +724,7 @@ describe("useChatSession page context", () => {
     })
 
     expect(conversationApiMocks.createConversation).toHaveBeenCalledOnce()
-    expect(messageSender).toHaveBeenCalledOnce()
+    expect(turnApiMocks.streamTurn).toHaveBeenCalledOnce()
     expect(result.current.rooms).toHaveLength(1)
   })
 
@@ -1116,8 +844,10 @@ describe("useChatSession page context", () => {
       "assistant-1",
       { rating: "down" },
     )
-    expect(result.current.messages[0]).toMatchObject({
-      feedback: { rating: "down", reason: "" },
+    await waitFor(() => {
+      expect(result.current.messages[0]).toMatchObject({
+        feedback: { rating: "down", reason: "" },
+      })
     })
   })
 
@@ -1211,17 +941,10 @@ describe("useChatSession page context", () => {
     conversationApiMocks.fetchConversations.mockResolvedValue([
       { id: "room-server", name: "새 대화" },
     ])
-    const messageSender = vi.fn().mockResolvedValue({
-      reply: "DOWN 반복 원인은 인터락입니다.",
-      sources: [],
-      segments: [],
-    })
     const { result } = renderHook(
       () =>
         useChatSession({
           userKey: 10,
-          messageSender,
-          messageContextKey: "assistant:openwebui",
         }),
       { wrapper: createWrapper() },
     )
@@ -1262,219 +985,9 @@ describe("useChatSession page context", () => {
     })
   })
 
-  it("실제 모델 응답을 기다릴 때만 AI 생성 상태를 켠다", async () => {
-    const modelResponse = createDeferred()
-    const messageSender = vi.fn().mockReturnValue(modelResponse.promise)
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-    let sendPromise
 
-    act(() => {
-      sendPromise = result.current.sendMessage("질문")
-    })
-    await waitFor(() => {
-      expect(result.current.isGenerating).toBe(true)
-    })
 
-    await act(async () => {
-      modelResponse.resolve({ reply: "답변", sources: [], segments: [] })
-      await sendPromise
-    })
-    expect(result.current.isGenerating).toBe(false)
-  })
 
-  it("응답 생성 중에도 다른 대화방으로 이동하고 목록을 조작할 수 있다", async () => {
-    const modelResponse = createDeferred()
-    const messageSender = vi.fn().mockReturnValue(modelResponse.promise)
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [
-            { id: "room-1", name: "첫 방" },
-            { id: "room-2", name: "둘째 방" },
-          ],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-    let sendPromise
 
-    act(() => {
-      sendPromise = result.current.sendMessage("질문")
-    })
-    await waitFor(() => expect(result.current.generationRoomId).toBe("room-1"))
 
-    act(() => result.current.selectRoom("room-2"))
-    expect(result.current.activeRoomId).toBe("room-2")
-    expect(result.current.isGenerating).toBe(false)
-    expect(result.current.isSending).toBe(true)
-    expect(result.current.hasActiveGeneration).toBe(true)
-    expect(result.current.isRoomListBusy).toBe(false)
-
-    let rejectedResult
-    await act(async () => {
-      rejectedResult = await result.current.sendMessage("둘째 방 질문")
-    })
-    expect(rejectedResult).toEqual({ ok: false, accepted: false })
-    expect(result.current.errorMessage).toBe("다른 대화방에서 답변을 생성하고 있어요.")
-
-    await act(async () => {
-      modelResponse.resolve({ reply: "답변", sources: [], segments: [] })
-      await sendPromise
-    })
-  })
-
-  it("응답 중지는 현재 요청을 Abort하고 생성 상태를 해제한다", async () => {
-    const messageSender = vi.fn().mockImplementation(({ signal }) =>
-      new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"))
-        })
-      }),
-    )
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-    let sendPromise
-
-    act(() => {
-      sendPromise = result.current.sendMessage("중지할 질문")
-    })
-    await waitFor(() => expect(result.current.isGenerating).toBe(true))
-    act(() => result.current.stopGenerating())
-    await act(async () => {
-      await sendPromise
-    })
-
-    expect(result.current.generationRoomId).toBe(null)
-    expect(result.current.isGenerating).toBe(false)
-    expect(result.current.errorMessage).toBe("")
-  })
-
-  it("session hook이 unmount되면 화면에 보이지 않는 생성 요청을 중단한다", async () => {
-    let requestSignal
-    const messageSender = vi.fn().mockImplementation(({ signal }) => {
-      requestSignal = signal
-      return new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"))
-        })
-      })
-    })
-    const { result, unmount } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-    let sendPromise
-
-    act(() => {
-      sendPromise = result.current.sendMessage("중단할 질문")
-    })
-    await waitFor(() => expect(result.current.isGenerating).toBe(true))
-    unmount()
-
-    expect(requestSignal?.aborted).toBe(true)
-    await expect(sendPromise).resolves.toEqual({ ok: false, accepted: false })
-  })
-
-  it("실패한 질문은 사용자 메시지를 중복 저장하지 않고 재시도한다", async () => {
-    const messageSender = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("일시 오류"))
-      .mockResolvedValueOnce({ reply: "재시도 성공", sources: [], segments: [] })
-    const { result } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await act(async () => {
-      await result.current.sendMessage("재시도 질문")
-    })
-    expect(result.current.canRetry).toBe(true)
-
-    await act(async () => {
-      await result.current.retryLastMessage()
-    })
-
-    expect(messageSender).toHaveBeenCalledTimes(2)
-    expect(
-      result.current.messages.filter(
-        (message) => message.role === "user" && message.content === "재시도 질문",
-      ),
-    ).toHaveLength(1)
-    expect(result.current.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: "재시도 성공",
-    })
-  })
-
-  it("앱 이동 후 재시도는 실패 당시 sender와 앱 문맥을 유지한다", async () => {
-    const portalSender = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Portal 일시 오류"))
-      .mockResolvedValueOnce({ reply: "Portal 재시도 성공", sources: [], segments: [] })
-    const appstoreSender = vi.fn().mockResolvedValue({
-      reply: "Appstore 답변",
-      sources: [],
-      segments: [],
-    })
-    let messageSender = portalSender
-    let messageContextKey = "assistant:openwebui:portal"
-    const { result, rerender } = renderHook(
-      () =>
-        useChatSession({
-          messageSender,
-          messageContextKey,
-          initialRooms: [{ id: "room-1", name: "테스트" }],
-          initialActiveRoomId: "room-1",
-        }),
-      { wrapper: createWrapper() },
-    )
-
-    await act(async () => {
-      await result.current.sendMessage("Portal에서 실패한 질문")
-    })
-    expect(result.current.canRetry).toBe(true)
-
-    messageSender = appstoreSender
-    messageContextKey = "assistant:openwebui:appstore"
-    rerender()
-    expect(result.current.canRetry).toBe(true)
-
-    await act(async () => {
-      await result.current.retryLastMessage()
-    })
-
-    expect(portalSender).toHaveBeenCalledTimes(2)
-    expect(appstoreSender).not.toHaveBeenCalled()
-    expect(result.current.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: "Portal 재시도 성공",
-      contextKey: "assistant:openwebui:portal",
-    })
-  })
 })

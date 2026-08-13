@@ -62,23 +62,20 @@
 - `ASSISTANT_RAG_DELETE_URL`, `RAG_DELETE_URL`
 - `RAG_INDEX_DEFAULT`, `RAG_INDEX_EMAILS`, `RAG_INDEX_LIST`
 - `ASSISTANT_RAG_PERMISSION_GROUPS`, `RAG_PERMISSION_GROUPS`
+- `ASSISTANT_REQUEST_TIMEOUT`
 
-## LLM
+## Email RAG 답변 prompt
 
-Assistant가 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.
+Assistant가 RAG 검색 결과를 OpenWebUI에 전달할 때 Email 구조화 답변 prompt를 적용합니다.
 
 주요 설정:
 
-- `ASSISTANT_LLM_URL`
-- `ASSISTANT_LLM_CREDENTIAL`
-- `ASSISTANT_LLM_MODEL`
 - `ASSISTANT_LLM_TEMPERATURE`
-- `ASSISTANT_LLM_COMMON_HEADERS`
-- `ASSISTANT_REQUEST_TIMEOUT`
+- `ASSISTANT_LLM_SYSTEM_MESSAGE`
 
 ## OpenWebUI
 
-`ct_process_comment` 요약 배치는 OpenWebUI의 OpenAI 호환 chat completions API를 호출해 `contents_text`를 요약합니다.
+일반 Assistant와 Email RAG 답변, Observer 분석 및 `ct_process_comment` 요약 배치는 OpenWebUI의 OpenAI 호환 chat completions API를 사용합니다.
 
 주요 설정:
 
@@ -92,12 +89,13 @@ Assistant가 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.
 사용처:
 
 - 메일함 외 전역 ChatWidget과 `/assistant`의 일반 대화 SSE stream
+- Email RAG 검색 결과의 구조화 `answer`/`segments` 답변 생성
 - Assistant 첫 대화의 업무용 대화방 제목 생성
 - Assistant 대화방의 Portal 앱·Observer·Email RAG 공유 rolling summary
 - Observer 현재 조회 데이터 구조화 분석
 - `ct_process_comment` contents 요약 배치
 
-일반 채팅은 OpenAI 호환 `stream: true` 응답을 사용합니다. Nginx의 `/api/v1/assistant/openwebui-chat/stream` 경로는 buffering/cache를 끄며, 로컬 `adfs_dummy`도 동일한 `data: {...}` 및 `[DONE]` SSE 계약을 제공합니다.
+Assistant Runtime은 외부 OpenAI 호환 요청에 `stream: true`를 보내고 `/api/v1/assistant/turns/stream`의 표준 SSE event로 정규화합니다. Nginx는 이 Turn 경로의 buffering/cache를 꺼야 합니다. 로컬 `adfs_dummy`도 `data: {...}`와 `[DONE]` chunk를 반환하며, system prompt에 따라 Email은 `answer`/`segments`, Observer는 분석 JSON 단일 계약을 생성합니다.
 
 ## Mail API
 

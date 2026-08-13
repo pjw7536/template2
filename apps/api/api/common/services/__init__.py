@@ -24,6 +24,7 @@ from .affiliations import (
     UNCLASSIFIED_USER_SDWT_PROD,
 )
 from .db import execute, get_cursor, run_query
+from .cancellation import ExternalCallCancellation, ExternalCallCancelled
 from .mail_api import MailSendError, send_knox_mail_api
 from .messenger import (
     KnoxMessengerConfig,
@@ -40,6 +41,7 @@ from .messenger import (
 )
 from .middleware import ActivityLoggingMiddleware, KnoxIdRequiredMiddleware
 from .normalization import normalize_text
+from .openai_stream import OpenAIStreamError, stream_openai_chat_completion
 from .request_helpers import (
     ensure_airflow_token,
     extract_first_error_message,
@@ -58,10 +60,13 @@ from .storage import (
 
 __all__ = [
     "ActivityLoggingMiddleware",
+    "ExternalCallCancellation",
+    "ExternalCallCancelled",
     "KnoxIdRequiredMiddleware",
     "KnoxMessengerConfig",
     "KnoxMessengerError",
     "MailSendError",
+    "OpenAIStreamError",
     "UNKNOWN",
     "UNASSIGNED_USER_SDWT_PROD",
     "UNCLASSIFIED_USER_SDWT_PROD",
@@ -88,6 +93,7 @@ __all__ = [
     "run_query",
     "search_user_ids_by_single_ids",
     "send_knox_mail_api",
+    "stream_openai_chat_completion",
     "send_chat_message",
     "send_excel_table_message_from_file",
     "set_activity_new_state",

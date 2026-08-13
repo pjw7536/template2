@@ -37,7 +37,7 @@
 - [x] 기존 `assistant`/`chatwidget:shared` rolling summary cache 초기화 migration과 회귀 테스트를 반영합니다.
 
 ## 검증
-- `npm --prefix apps/web run test:run -- src/lib/assistant/appContext.test.js src/features/assistant/utils/chatMemory.test.js src/features/assistant/hooks/useChatSession.test.jsx src/features/assistant/components/ChatWidget.test.jsx src/features/assistant/components/ChatMessages.test.jsx`
+- `npm --prefix apps/web run test:run -- src/lib/assistant/appContext.test.js src/features/assistant/hooks/useChatSession.test.jsx src/features/assistant/components/ChatWidget.test.jsx src/features/assistant/components/ChatMessages.test.jsx`
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.assistant`
 - `docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate assistant 0002 --plan`
 - `npm run agent:audit:web-boundary`

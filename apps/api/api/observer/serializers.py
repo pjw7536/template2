@@ -29,10 +29,6 @@ OBSERVER_LOG_TYPES = (
     "racb",
     "esop",
 )
-DEFAULT_OBSERVER_ANALYSIS_QUESTION = (
-    "조회 데이터의 반복·집중 패턴, 시간적 연관성, 원인 일관성, 운영상 의미를 중요도순으로 종합 분석해 주세요."
-)
-MAX_OBSERVER_ANALYSIS_QUESTION_CHARS = 2400
 
 
 def _normalize_id(value: object) -> str:
@@ -164,7 +160,6 @@ class ObserverLogPageQuerySerializer(serializers.Serializer):
 
         return attrs
 
-
 class ObserverLogDetailQuerySerializer(serializers.Serializer):
     """Observer log detail 조회 query를 검증합니다."""
 
@@ -230,76 +225,4 @@ class ObserverEvidenceLogQuerySerializer(serializers.Serializer):
         attrs["evidence_id"] = evidence_id
         attrs["start_at"] = start_at.isoformat()
         attrs["end_at"] = end_at.isoformat()
-        return attrs
-
-
-class ObserverAnalysisRequestSerializer(serializers.Serializer):
-    """Observer OpenWebUI 종합 분석 요청을 검증합니다."""
-
-    eqpId = serializers.CharField(max_length=100)
-    from_value = serializers.CharField(max_length=64)
-    to = serializers.CharField(max_length=64)
-    logTypes = serializers.ListField(
-        child=serializers.ChoiceField(choices=OBSERVER_LOG_TYPES),
-        required=False,
-        allow_empty=False,
-        default=list(OBSERVER_LOG_TYPES),
-        max_length=len(OBSERVER_LOG_TYPES),
-    )
-    tipGroups = serializers.ListField(
-        child=serializers.CharField(max_length=300),
-        required=False,
-        allow_empty=False,
-        default=["__ALL__"],
-        max_length=100,
-    )
-    question = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        max_length=MAX_OBSERVER_ANALYSIS_QUESTION_CHARS,
-        default=DEFAULT_OBSERVER_ANALYSIS_QUESTION,
-    )
-    room_id = serializers.UUIDField(required=False, allow_null=True)
-    context_key = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        max_length=512,
-        default="observer",
-    )
-
-    def to_internal_value(self, data: Any) -> dict[str, Any]:
-        """JSON의 `from` 값을 Python 내부 이름으로 옮깁니다."""
-
-        mutable_data = data.copy()
-        mutable_data["from_value"] = data.get("from")
-        if "roomId" in data:
-            mutable_data["room_id"] = data.get("roomId")
-        if "contextKey" in data:
-            mutable_data["context_key"] = data.get("contextKey")
-        return super().to_internal_value(mutable_data)
-
-    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """설비 ID, 날짜 범위와 중복 filter 값을 정규화합니다."""
-
-        start_at = _parse_boundary(attrs["from_value"], is_end=False)
-        end_at = _parse_boundary(attrs["to"], is_end=True)
-        if start_at > end_at:
-            raise serializers.ValidationError(
-                {"from": "from은 to보다 늦을 수 없습니다."}
-            )
-        if (end_at - start_at).days >= MAX_OBSERVER_QUERY_DAYS:
-            raise serializers.ValidationError(
-                {"from": f"조회 기간은 최대 {MAX_OBSERVER_QUERY_DAYS}일입니다."}
-            )
-
-        eqp_id = _normalize_id(attrs["eqpId"])
-        if not eqp_id:
-            raise serializers.ValidationError({"eqpId": "eqpId가 필요합니다."})
-
-        attrs["eqp_id"] = eqp_id
-        attrs["start_at"] = start_at
-        attrs["end_at"] = end_at
-        attrs["log_types"] = list(dict.fromkeys(attrs["logTypes"]))
-        attrs["tip_groups"] = list(dict.fromkeys(attrs["tipGroups"]))
-        attrs["question_clean"] = attrs["question"].strip()
         return attrs

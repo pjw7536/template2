@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .chat import AssistantChatResult, AssistantChatService, assistant_chat_service
 from .config import AssistantChatConfig
+from .conversation_access import list_accessible_assistant_conversation_page
 from .conversations import (
     append_assistant_messages,
     clear_assistant_messages,
@@ -19,26 +20,19 @@ from .conversations import (
     generate_assistant_conversation_title,
     is_default_assistant_conversation_title,
     refresh_assistant_conversation_summary,
+    refresh_authorized_assistant_conversation_summary,
     update_assistant_conversation,
     upsert_assistant_message_feedback,
 )
 from .errors import AssistantConfigError, AssistantRequestError
-from .memory import ConversationMemory, conversation_memory
 from .exports import build_assistant_csv_export, build_assistant_markdown_export
 from .generations import (
-    AssistantGenerationBusyError,
-    acquire_assistant_generation,
     finalize_assistant_generation,
 )
 from .normalization import (
-    append_user_prompt,
     build_rag_index_list_payload,
     default_permission_groups,
     normalize_csv_string,
-    normalize_history,
-    normalize_room_id,
-    normalize_segments,
-    normalize_sources,
     resolve_permission_groups,
     resolve_rag_index_names,
     resolve_sender_id,
@@ -47,14 +41,31 @@ from .normalization import (
 from .openwebui import (
     AssistantOpenWebUIConfig,
     build_openwebui_app_system_message,
+    build_openwebui_headers,
     build_openwebui_messages,
     normalize_openwebui_conversation_title,
     request_openwebui_chat,
     request_openwebui_conversation_summary,
     request_openwebui_conversation_title,
-    stream_openwebui_chat,
 )
 from .reply import AssistantStructuredSegment
+from .access_requirements import (
+    AssistantAccessDecision,
+    access_requirements_for_scopes,
+    empty_access_requirements,
+    merge_access_requirements,
+    normalize_access_requirements,
+    validate_access_requirements,
+)
+from .profiles import (
+    AssistantProfile,
+    AssistantProfileUnavailableError,
+    get_assistant_profile,
+    get_current_assistant_profile,
+)
+from .runtime import AssistantRuntime, AssistantRuntimeResult, assistant_runtime
+from .runtime_memory import AssistantRuntimeMemory, build_assistant_runtime_memory
+from .turns import AssistantTurnError, AssistantTurnService, assistant_turn_service
 
 __all__ = [
     "AssistantChatConfig",
@@ -64,33 +75,43 @@ __all__ = [
     "AssistantOpenWebUIConfig",
     "AssistantRequestError",
     "AssistantStructuredSegment",
-    "ConversationMemory",
-    "append_user_prompt",
+    "AssistantAccessDecision",
+    "AssistantProfile",
+    "AssistantProfileUnavailableError",
+    "AssistantRuntime",
+    "AssistantRuntimeResult",
+    "AssistantRuntimeMemory",
+    "AssistantTurnError",
+    "AssistantTurnService",
     "append_assistant_messages",
-    "acquire_assistant_generation",
     "assistant_chat_service",
+    "assistant_runtime",
+    "assistant_turn_service",
+    "access_requirements_for_scopes",
     "build_rag_index_list_payload",
+    "build_assistant_runtime_memory",
     "build_assistant_csv_export",
     "build_assistant_markdown_export",
     "build_openwebui_messages",
     "build_openwebui_app_system_message",
+    "build_openwebui_headers",
     "clear_assistant_messages",
-    "conversation_memory",
     "create_assistant_conversation",
     "create_assistant_context_snapshot",
     "default_permission_groups",
+    "empty_access_requirements",
     "delete_assistant_conversation",
     "delete_assistant_message_feedback",
-    "AssistantGenerationBusyError",
     "finalize_assistant_generation",
     "generate_assistant_conversation_title",
     "is_default_assistant_conversation_title",
+    "list_accessible_assistant_conversation_page",
+    "get_assistant_profile",
+    "get_current_assistant_profile",
+    "merge_access_requirements",
+    "normalize_access_requirements",
     "normalize_csv_string",
-    "normalize_history",
     "normalize_openwebui_conversation_title",
-    "normalize_room_id",
-    "normalize_segments",
-    "normalize_sources",
     "resolve_permission_groups",
     "resolve_rag_index_names",
     "resolve_sender_id",
@@ -98,8 +119,9 @@ __all__ = [
     "request_openwebui_conversation_summary",
     "request_openwebui_conversation_title",
     "refresh_assistant_conversation_summary",
-    "stream_openwebui_chat",
+    "refresh_authorized_assistant_conversation_summary",
     "update_assistant_conversation",
     "upsert_assistant_message_feedback",
     "validate_user_identity",
+    "validate_access_requirements",
 ]

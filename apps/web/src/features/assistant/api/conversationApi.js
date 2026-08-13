@@ -108,33 +108,6 @@ export async function fetchAssistantConversationMessagePage(
   }
 }
 
-export async function appendAssistantConversationMessages(conversationId, messages) {
-  const normalizedMessages = Array.isArray(messages)
-    ? messages.map((message) => ({
-        clientId: message.id,
-        role: message.role,
-        content: message.content,
-        contextKey: message.contextKey,
-        sources: Array.isArray(message.sources) ? message.sources : [],
-        userSdwtProd: message.userSdwtProd || "",
-        ...(Object.prototype.hasOwnProperty.call(message, "parentId")
-          ? { parentId: message.parentId || null }
-          : {}),
-        ...(message.revisionOfId ? { revisionOfId: message.revisionOfId } : {}),
-        ...(message.generationId ? { generationId: message.generationId } : {}),
-        ...(message.contextSnapshot ? { contextSnapshot: message.contextSnapshot } : {}),
-      }))
-    : []
-  const payload = await requestConversationApi(
-    conversationPath(conversationId, "/messages"),
-    {
-      method: "POST",
-      body: JSON.stringify({ messages: normalizedMessages }),
-    },
-  )
-  return Array.isArray(payload?.results) ? payload.results : []
-}
-
 export function clearAssistantConversationMessages(conversationId) {
   return requestConversationApi(conversationPath(conversationId, "/messages"), {
     method: "DELETE",
@@ -143,57 +116,15 @@ export function clearAssistantConversationMessages(conversationId) {
 
 export function refreshAssistantConversationSummary(
   conversationId,
-  contextKey = "assistant:openwebui:portal",
+  contextKey,
 ) {
+  if (typeof contextKey !== "string" || !contextKey.trim()) {
+    throw new Error("Assistant summary contextKey가 필요합니다.")
+  }
   return requestConversationApi(conversationPath(conversationId, "/refresh-summary"), {
     method: "POST",
-    body: JSON.stringify({ contextKey }),
+    body: JSON.stringify({ contextKey: contextKey.trim() }),
   })
-}
-
-export function acquireAssistantGeneration({
-  conversationId,
-  clientRequestId,
-  contextKey,
-  provider = "openwebui",
-  modelName = "",
-}) {
-  return requestConversationApi("/api/v1/assistant/generations", {
-    method: "POST",
-    body: JSON.stringify({
-      conversationId,
-      clientRequestId,
-      contextKey,
-      provider,
-      modelName,
-    }),
-  })
-}
-
-export function finalizeAssistantGeneration(generationId, status, errorCode = "") {
-  return requestConversationApi(
-    `/api/v1/assistant/generations/${encodeURIComponent(String(generationId || ""))}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ status, errorCode }),
-    },
-  )
-}
-
-export function abandonAssistantGeneration(generationId) {
-  if (!generationId) return
-  void fetch(
-    buildBackendUrl(
-      `/api/v1/assistant/generations/${encodeURIComponent(String(generationId))}`,
-    ),
-    {
-      method: "PATCH",
-      credentials: "include",
-      keepalive: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "failed", errorCode: "client_disconnected" }),
-    },
-  ).catch(() => {})
 }
 
 export function submitAssistantMessageFeedback(

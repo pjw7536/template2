@@ -1,63 +1,22 @@
 # =============================================================================
 # 모듈: 어시스턴트 LLM 호출/프롬프트 구성
-# 주요 함수: build_llm_payload, call_llm, extract_llm_reply
+# 주요 함수: build_llm_payload, stream_llm_reply
 # 주요 가정: LLM 요청/응답 오류는 AssistantRequestError로 변환합니다.
 # =============================================================================
 from __future__ import annotations
 
-import json
-import uuid
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
-import requests
+from api.common.services import (
+    ExternalCallCancellation,
+    OpenAIStreamError,
+    stream_openai_chat_completion,
+)
 
 from .config import AssistantChatConfig
 from .constants import NO_CONTEXT_MESSAGE, STRUCTURED_REPLY_SYSTEM_MESSAGE
 from .errors import AssistantConfigError, AssistantRequestError
-
-
-def post_json(
-    session: requests.Session,
-    url: str,
-    headers: Dict[str, str],
-    payload: Dict[str, Any],
-    *,
-    timeout: int,
-) -> Dict[str, Any]:
-    """POST 요청을 수행하고 JSON 응답을 반환합니다.
-
-    인자:
-        session: requests 세션.
-        url: 요청 URL.
-        headers: 요청 헤더.
-        payload: JSON 바디.
-        timeout: 요청 타임아웃(초).
-
-    반환:
-        응답 JSON dict.
-
-    부작용:
-        외부 HTTP 요청이 발생합니다.
-
-    오류:
-        요청/응답 오류는 AssistantRequestError로 래핑됩니다.
-    """
-
-    try:
-        response = session.post(url, headers=headers, json=payload, timeout=timeout)
-        response.raise_for_status()
-        try:
-            return response.json()
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise AssistantRequestError(
-                f"응답을 JSON 으로 파싱하는데 실패했습니다. (url={url}, status={response.status_code}, text={response.text[:500]!r})"
-            ) from exc
-    except requests.HTTPError as exc:
-        status = response.status_code if "response" in locals() else "unknown"
-        text_preview = getattr(response, "text", "")[:500]
-        raise AssistantRequestError(f"HTTP 오류 [{status}]: {text_preview!r} (url={url})") from exc
-    except requests.RequestException as exc:
-        raise AssistantRequestError(f"요청 중 오류 발생 (url={url}): {exc}") from exc
+from .openwebui import AssistantOpenWebUIConfig, build_openwebui_headers
 
 
 def build_llm_payload(
@@ -66,6 +25,7 @@ def build_llm_payload(
     contexts: List[str],
     *,
     email_ids: List[str],
+    model: str | None = None,
 ) -> Dict[str, Any]:
     """LLM 호출용 payload를 구성합니다.
 
@@ -74,6 +34,7 @@ def build_llm_payload(
         question: 사용자 질문 문자열.
         contexts: RAG에서 얻은 컨텍스트 목록.
         email_ids: 컨텍스트에 포함된 emailId 목록.
+        model: OpenWebUI 요청에 사용할 모델 식별자.
 
     반환:
         LLM API 요청 payload dict.
@@ -144,40 +105,10 @@ def build_llm_payload(
     }
 
     return {
-        "model": config.model,
+        "model": model or config.model,
         "messages": [system_msg, format_msg, constraints_msg, user_msg],
         "temperature": 0.0 if has_background_knowledge else config.temperature,
-        "stream": False,
     }
-
-
-def extract_llm_reply(resp_json: Dict[str, Any]) -> str:
-    """LLM 응답 JSON에서 content 문자열을 추출합니다.
-
-    인자:
-        resp_json: LLM 응답 JSON dict.
-
-    반환:
-        message.content 문자열.
-
-    부작용:
-        없음. 순수 추출입니다.
-
-    오류:
-        응답 포맷이 다르면 AssistantRequestError를 발생시킵니다.
-    """
-
-    try:
-        choices = resp_json["choices"]
-        if not choices:
-            raise AssistantRequestError("LLM 응답에 choices가 비어 있습니다.")
-        message = choices[0]["message"]
-        content = message["content"]
-        if not isinstance(content, str):
-            raise AssistantRequestError("LLM 응답 content가 문자열이 아닙니다.")
-        return content
-    except (KeyError, IndexError, TypeError) as exc:
-        raise AssistantRequestError(f"LLM 응답 포맷이 기대와 다릅니다. raw={resp_json!r}") from exc
 
 
 def _collect_email_ids(sources: Sequence[Dict[str, Any]]) -> List[str]:
@@ -193,56 +124,42 @@ def _collect_email_ids(sources: Sequence[Dict[str, Any]]) -> List[str]:
     return list(dict.fromkeys(email_ids))
 
 
-def call_llm(
-    session: requests.Session,
+def stream_llm_reply(
     config: AssistantChatConfig,
     question: str,
     contexts: List[str],
     sources: List[Dict[str, Any]],
     *,
+    cancellation: ExternalCallCancellation,
     user_header_id: Optional[str] = None,
-) -> Tuple[str, Dict[str, Any]]:
-    """LLM을 호출하고 답변/응답 JSON을 반환합니다.
+    openwebui_config: AssistantOpenWebUIConfig | None = None,
+) -> str:
+    """Email 구조화 답변을 OpenWebUI stream으로 읽어 원문 문자열로 반환합니다."""
 
-    인자:
-        session: requests 세션.
-        config: 어시스턴트 LLM 설정.
-        question: 질문 문자열.
-        contexts: 컨텍스트 목록.
-        sources: 출처 목록.
-        user_header_id: User-Id 헤더 값(옵션).
-
-    반환:
-        (reply, resp_json) 튜플.
-
-    부작용:
-        외부 LLM API 호출이 발생합니다.
-
-    오류:
-        설정 누락 또는 응답 오류 시 AssistantConfigError/AssistantRequestError를 발생시킵니다.
-    """
-
-    if not config.llm_url:
-        raise AssistantConfigError("LLM URL 설정이 비어 있습니다.")
-    if not config.llm_credential:
-        raise AssistantConfigError("LLM 인증 토큰이 비어 있습니다.")
-
-    headers = {
-        "Content-Type": "application/json",
-        **config.llm_headers,
-        "x-dep-ticket": config.llm_credential,
-        "Prompt-Msg-Id": str(uuid.uuid4()),
-        "Completion-Msg-Id": str(uuid.uuid4()),
-    }
+    active_config = openwebui_config or AssistantOpenWebUIConfig.from_settings()
+    if not active_config.url:
+        raise AssistantConfigError("OPENWEBUI_URL 설정이 비어 있습니다.")
+    if not active_config.model:
+        raise AssistantConfigError("OPENWEBUI_MODEL 설정이 비어 있습니다.")
+    headers = build_openwebui_headers(active_config)
     if user_header_id:
         headers["User-Id"] = user_header_id
-
     payload = build_llm_payload(
         config,
         question,
         contexts,
         email_ids=_collect_email_ids(sources),
+        model=active_config.model,
     )
-    resp_json = post_json(session, config.llm_url, headers, payload, timeout=config.request_timeout)
-    reply = extract_llm_reply(resp_json)
-    return reply, resp_json
+    try:
+        return "".join(
+            stream_openai_chat_completion(
+                url=active_config.url,
+                headers=headers,
+                payload=payload,
+                timeout_seconds=active_config.timeout_seconds,
+                cancellation=cancellation,
+            )
+        )
+    except OpenAIStreamError as exc:
+        raise AssistantRequestError("OpenWebUI 요청에 실패했습니다.") from exc

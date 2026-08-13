@@ -7,15 +7,19 @@ from __future__ import annotations
 
 import csv
 import json
+import threading
+import time
 from datetime import timedelta
 from importlib import import_module
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.core.management import call_command
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.urls import Resolver404, resolve
 from django.utils import timezone
 
 import api.account.services as account_services
@@ -29,10 +33,6 @@ from api.assistant.models import (
     AssistantMessage,
     AssistantMessageFeedback,
 )
-from api.assistant.serializers import (
-    AssistantChatRequestSerializer,
-    AssistantMessageBatchSerializer,
-)
 from api.assistant.services import (
     AssistantChatConfig,
     AssistantChatService,
@@ -42,10 +42,27 @@ from api.assistant.services import (
     normalize_openwebui_conversation_title,
     request_openwebui_chat,
     request_openwebui_conversation_title,
-    stream_openwebui_chat,
 )
-from api.assistant.views import AssistantChatView
 import api.rag.services as rag_services
+from api.common.services import ExternalCallCancellation, ExternalCallCancelled
+
+
+class RemovedAssistantCompatibilityRoutesTests(SimpleTestCase):
+    """삭제한 Assistant 실행·저장 호환 경로가 다시 등록되지 않게 보장합니다."""
+
+    def test_removed_routes_do_not_resolve(self) -> None:
+        """표준 Turn 외 과거 실행·Generation 경로는 404여야 합니다."""
+
+        paths = (
+            "/api/v1/assistant/chat",
+            "/api/v1/assistant/openwebui-chat",
+            "/api/v1/assistant/openwebui-chat/stream",
+            "/api/v1/assistant/generations",
+            "/api/v1/assistant/generations/00000000-0000-0000-0000-000000000001",
+        )
+        for path in paths:
+            with self.subTest(path=path), self.assertRaises(Resolver404):
+                resolve(path)
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
@@ -71,6 +88,55 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
         test_case.addCleanup(patcher.stop)
 
 
+def _append_assistant_messages(
+    *,
+    conversation: AssistantConversation,
+    messages: list[dict[str, object]],
+) -> list[AssistantMessage]:
+    """테스트 메시지에 현재 Assistant 권한 요구사항을 명시해 저장합니다."""
+
+    prepared_messages = []
+    for message in messages:
+        context_key = str(
+            message.get("context_key") or "assistant:openwebui:portal"
+        )
+        if context_key == "assistant":
+            profile_key, memory_partition = "email-rag", "scope:emails"
+        elif context_key.startswith("observer:"):
+            profile_key, memory_partition = "observer-analysis", "scope:observer"
+        else:
+            profile_key, memory_partition = "portal-default", "shared"
+        requirements = assistant_services.access_requirements_for_scopes(
+            ("assistant",)
+        )
+        generation = AssistantGeneration.objects.create(
+            user=conversation.user,
+            conversation=conversation,
+            client_request_id=f"test-{message['client_id']}",
+            context_key=context_key,
+            status=AssistantGeneration.Status.COMPLETED,
+            provider="test",
+            profile_key=profile_key,
+            profile_version=1,
+            memory_partition=memory_partition,
+            access_requirements=requirements,
+            expires_at=timezone.now() + timedelta(minutes=5),
+            finished_at=timezone.now(),
+        )
+        prepared_messages.append(
+            {
+                **message,
+                "context_key": context_key,
+                "generation_id": generation.id,
+                "access_requirements": requirements,
+            }
+        )
+    return assistant_services.append_assistant_messages(
+        conversation=conversation,
+        messages=prepared_messages,
+    )
+
+
 class AssistantRagIndexViewsTests(TestCase):
     """RAG 인덱스/권한 그룹 API 동작을 검증합니다."""
 
@@ -86,6 +152,10 @@ class AssistantRagIndexViewsTests(TestCase):
         self.user.knox_id = "knox-90000"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
+        self.conversation = AssistantConversation.objects.create(
+            user=self.user,
+            title="RAG 테스트",
+        )
 
         manager = User.objects.create_user(sabun="S90010", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
@@ -111,7 +181,7 @@ class AssistantRagIndexViewsTests(TestCase):
         payload, data_scope_status = account_services.update_user_scope_affiliation_data(
             actor=authority,
             user_id=self.user.id,
-            scope_key="assistant",
+            scope_key="emails",
             data_scope_mode="default",
             affiliation_ids=[affiliation.id],
             reason="Assistant 테스트 추가 범위",
@@ -137,51 +207,6 @@ class AssistantRagIndexViewsTests(TestCase):
             payload.get("emailRagIndex"),
             rag_services.resolve_rag_index_name(rag_services.RAG_INDEX_EMAILS),
         )
-
-    def test_chat_accepts_accessible_user_sdwt_prod_override(self) -> None:
-        """접근 가능한 permission_groups override가 허용되는지 확인합니다."""
-        self.client.force_login(self.user)
-
-        with patch("api.assistant.views.assistant_chat_service.generate_reply") as mocked_generate:
-            mocked_generate.return_value = SimpleNamespace(
-                reply="OK",
-                contexts=[],
-                sources=[],
-                is_dummy=True,
-            )
-            default_index = rag_services.resolve_rag_index_name(None)
-
-            response = self.client.post(
-                "/api/v1/assistant/chat",
-                data=json.dumps(
-                    {
-                        "prompt": "hello",
-                        "permission_groups": ["group-b"],
-                        "rag_index_name": default_index,
-                    }
-                ),
-                content_type="application/json",
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(mocked_generate.call_count, 1)
-        kwargs = mocked_generate.call_args.kwargs
-        self.assertEqual(kwargs.get("permission_groups"), ["group-b"])
-        self.assertEqual(kwargs.get("rag_index_names"), [default_index])
-
-    def test_chat_rejects_inaccessible_user_sdwt_prod_override(self) -> None:
-        """접근 불가능한 permission_groups override는 거부되는지 확인합니다."""
-        self.client.force_login(self.user)
-
-        response = self.client.post(
-            "/api/v1/assistant/chat",
-            data=json.dumps({"prompt": "hello", "permission_groups": ["group-x"]}),
-            content_type="application/json",
-        )
-
-        self.assertEqual(response.status_code, 403)
-        payload = response.json()
-        self.assertIn("error", payload)
 
     def test_rag_index_list_returns_all_known_user_sdwt_prods_for_superuser(self) -> None:
         """슈퍼유저는 모든 user_sdwt_prod가 노출되는지 확인합니다."""
@@ -215,6 +240,10 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertEqual(status_code, 200)
 
         self.client.force_login(superuser)
+        conversation = AssistantConversation.objects.create(
+            user=superuser,
+            title="슈퍼유저 RAG 테스트",
+        )
 
         response = self.client.get("/api/v1/assistant/rag-indexes")
         self.assertEqual(response.status_code, 200)
@@ -236,54 +265,6 @@ class AssistantRagIndexViewsTests(TestCase):
             },
         )
 
-    def test_chat_accepts_user_sdwt_prod_override_for_superuser(self) -> None:
-        """슈퍼유저는 permission_groups override가 허용되는지 확인합니다."""
-        User = get_user_model()
-        superuser = User.objects.create_superuser(
-            sabun="S90001",
-            password="test-password",
-            email="s90001@example.com",
-        )
-        superuser.knox_id = "knox-super"
-        superuser.save(update_fields=["knox_id"])
-        _set_current_affiliation(superuser, user_sdwt_prod="group-admin")
-
-        other_user = User.objects.create_user(
-            sabun="S90002",
-            password="test-password",
-            email="s90002@example.com",
-        )
-        _set_current_affiliation(other_user, user_sdwt_prod="group-c")
-
-        self.client.force_login(superuser)
-
-        with patch("api.assistant.views.assistant_chat_service.generate_reply") as mocked_generate:
-            mocked_generate.return_value = SimpleNamespace(
-                reply="OK",
-                contexts=[],
-                sources=[],
-                is_dummy=True,
-            )
-            default_index = rag_services.resolve_rag_index_name(None)
-
-            response = self.client.post(
-                "/api/v1/assistant/chat",
-                data=json.dumps(
-                    {
-                        "prompt": "hello",
-                        "permission_groups": ["group-c"],
-                        "rag_index_name": [default_index],
-                    }
-                ),
-                content_type="application/json",
-            )
-
-        self.assertEqual(response.status_code, 200)
-        kwargs = mocked_generate.call_args.kwargs
-        self.assertEqual(kwargs.get("permission_groups"), ["group-c"])
-        self.assertEqual(kwargs.get("rag_index_names"), [default_index])
-
-
 class AssistantChatServiceSourceFilteringTests(TestCase):
     """LLM 응답/출처 필터링 동작을 검증합니다."""
 
@@ -292,8 +273,6 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         service = AssistantChatService(
             config=AssistantChatConfig(
                 use_dummy=False,
-                llm_url="http://example.com",
-                llm_credential="token",
                 temperature=0.7,
             )
         )
@@ -309,11 +288,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
     def test_generate_reply_builds_segments_and_filters_sources(self) -> None:
         """segments 기반 출처 필터링이 올바른지 확인합니다."""
         service = AssistantChatService(
-            config=AssistantChatConfig(
-                use_dummy=False,
-                llm_url="http://example.com",
-                llm_credential="token",
-            )
+            config=AssistantChatConfig(use_dummy=False)
         )
 
         contexts = ["[emailId: E1]\ncontext 1", "[emailId: E2]\ncontext 2"]
@@ -323,24 +298,23 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         ]
 
         with patch.object(service, "_retrieve_documents", return_value=(contexts, {"hits": {}}, sources)):
-            with patch.object(
-                service,
-                "_call_llm",
-                return_value=(
-                    json.dumps(
-                        {
-                            "answer": "통합 답변입니다",
-                            "segments": [
-                                {"answer": "메일 2 기반 답변", "usedEmailIds": ["E2"]},
-                                {"answer": "메일 1+2 기반 답변", "usedEmailIds": ["E1", "E2", "E3"]},
-                            ],
-                        },
-                        ensure_ascii=False,
-                    ),
-                    {"choices": []},
+            with patch(
+                "api.assistant.services.chat.stream_llm_reply",
+                return_value=json.dumps(
+                    {
+                        "answer": "통합 답변입니다",
+                        "segments": [
+                            {"answer": "메일 2 기반 답변", "usedEmailIds": ["E2"]},
+                            {"answer": "메일 1+2 기반 답변", "usedEmailIds": ["E1", "E2", "E3"]},
+                        ],
+                    },
+                    ensure_ascii=False,
                 ),
             ):
-                result = service.generate_reply("질문입니다")
+                result = service.generate_reply_stream(
+                    "질문입니다",
+                    cancellation=ExternalCallCancellation(),
+                )
 
         self.assertEqual(result.reply, "통합 답변입니다")
         self.assertEqual(len(result.segments), 2)
@@ -350,54 +324,92 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         self.assertEqual([entry["doc_id"] for entry in result.segments[1]["sources"]], ["E1", "E2"])
         self.assertEqual([entry["doc_id"] for entry in result.sources], ["E1", "E2"])
 
-    def test_generate_reply_hides_sources_on_unparseable_reply(self) -> None:
-        """파싱 불가 응답일 때 출처가 숨겨지는지 확인합니다."""
-        service = AssistantChatService(
-            config=AssistantChatConfig(
-                use_dummy=False,
-                llm_url="http://example.com",
-                llm_credential="token",
+    @override_settings(
+        OPENWEBUI_URL="http://openwebui/v1/chat/completions",
+        OPENWEBUI_MODEL="openwebui-email-model",
+        OPENWEBUI_API_TOKEN="email-token",
+        OPENWEBUI_COMMON_HEADERS='{"X-Provider":"OpenWebUI"}',
+        OPENWEBUI_TIMEOUT_SECONDS=77,
+        ASSISTANT_LLM_URL="http://legacy-assistant/v1/chat/completions",
+        ASSISTANT_LLM_MODEL="legacy-assistant-model",
+    )
+    def test_generate_reply_uses_openwebui_connection_after_rag_search(self) -> None:
+        """Email RAG 답변 생성이 기존 Assistant 연결 대신 OpenWebUI 설정을 사용하는지 확인합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        contexts = ["[emailId: E1]\n메일 배경지식"]
+        sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "메일 배경지식"}]
+        raw_reply = '{"answer":"통합 답변","segments":[{"answer":"메일 기반 답변","usedEmailIds":["E1"]}]}'
+
+        with patch.object(
+            service,
+            "_retrieve_documents",
+            return_value=(contexts, {"hits": {}}, sources),
+        ), patch(
+            "api.assistant.services.llm.stream_openai_chat_completion",
+            return_value=iter([raw_reply]),
+        ) as stream_mock:
+            result = service.generate_reply_stream(
+                "질문입니다",
+                user_header_id="knox-user",
+                cancellation=ExternalCallCancellation(),
             )
+
+        request = stream_mock.call_args.kwargs
+        self.assertEqual(request["url"], "http://openwebui/v1/chat/completions")
+        self.assertEqual(request["payload"]["model"], "openwebui-email-model")
+        self.assertEqual(request["headers"]["Authorization"], "Bearer email-token")
+        self.assertEqual(request["headers"]["X-Provider"], "OpenWebUI")
+        self.assertEqual(request["headers"]["User-Id"], "knox-user")
+        self.assertEqual(request["timeout_seconds"], 77)
+        self.assertEqual(result.segments[0]["reply"], "메일 기반 답변")
+        self.assertEqual([source["doc_id"] for source in result.sources], ["E1"])
+
+    def test_generate_reply_rejects_unparseable_reply(self) -> None:
+        """파싱 불가 응답을 일반 답변으로 대신 사용하지 않습니다."""
+        service = AssistantChatService(
+            config=AssistantChatConfig(use_dummy=False)
         )
 
         sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"}]
 
         with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
-            with patch.object(service, "_call_llm", return_value=("그냥 텍스트 응답", {"choices": []})):
-                result = service.generate_reply("질문입니다")
-
-        self.assertEqual(result.reply, "그냥 텍스트 응답")
-        self.assertEqual(result.sources, [])
-        self.assertEqual(result.segments, [])
+            with patch(
+                "api.assistant.services.chat.stream_llm_reply",
+                return_value="그냥 텍스트 응답",
+            ):
+                with self.assertRaisesMessage(ValueError, "JSON 형식이 아닙니다"):
+                    service.generate_reply_stream(
+                        "질문입니다",
+                        cancellation=ExternalCallCancellation(),
+                    )
 
     def test_generate_reply_treats_empty_segments_as_no_sources(self) -> None:
         """segments가 비어 있으면 출처가 비워지는지 확인합니다."""
         service = AssistantChatService(
-            config=AssistantChatConfig(
-                use_dummy=False,
-                llm_url="http://example.com",
-                llm_credential="token",
-            )
+            config=AssistantChatConfig(use_dummy=False)
         )
 
         sources = [{"doc_id": "E1", "title": "메일 1", "snippet": "내용 1"}]
 
         with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
-            with patch.object(service, "_call_llm", return_value=('{"answer":"OK","segments":[]}', {"choices": []})):
-                result = service.generate_reply("질문입니다")
+            with patch(
+                "api.assistant.services.chat.stream_llm_reply",
+                return_value='{"answer":"OK","segments":[]}',
+            ):
+                result = service.generate_reply_stream(
+                    "질문입니다",
+                    cancellation=ExternalCallCancellation(),
+                )
 
         self.assertEqual(result.reply, "OK")
         self.assertEqual(result.sources, [])
         self.assertEqual(result.segments, [])
 
-    def test_generate_reply_supports_legacy_used_email_ids_format(self) -> None:
-        """레거시 usedEmailIds 포맷을 처리하는지 확인합니다."""
+    def test_generate_reply_rejects_legacy_used_email_ids_format(self) -> None:
+        """segments가 없는 과거 응답 포맷을 현재 계약으로 추정하지 않습니다."""
         service = AssistantChatService(
-            config=AssistantChatConfig(
-                use_dummy=False,
-                llm_url="http://example.com",
-                llm_credential="token",
-            )
+            config=AssistantChatConfig(use_dummy=False)
         )
 
         sources = [
@@ -406,18 +418,15 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
         ]
 
         with patch.object(service, "_retrieve_documents", return_value=(["context"], {"hits": {}}, sources)):
-            with patch.object(
-                service,
-                "_call_llm",
-                return_value=('{"answer":"OK","usedEmailIds":["E2","E3"]}', {"choices": []}),
+            with patch(
+                "api.assistant.services.chat.stream_llm_reply",
+                return_value='{"answer":"OK","usedEmailIds":["E2","E3"]}',
             ):
-                result = service.generate_reply("질문입니다")
-
-        self.assertEqual(result.reply, "OK")
-        self.assertEqual(len(result.segments), 1)
-        self.assertEqual(result.segments[0]["reply"], "OK")
-        self.assertEqual([entry["doc_id"] for entry in result.segments[0]["sources"]], ["E2"])
-        self.assertEqual([entry["doc_id"] for entry in result.sources], ["E2"])
+                with self.assertRaisesMessage(ValueError, "segments가 배열이 아닙니다"):
+                    service.generate_reply_stream(
+                        "질문입니다",
+                        cancellation=ExternalCallCancellation(),
+                    )
 
 
 class AssistantRagIntegrationTests(SimpleTestCase):
@@ -468,12 +477,21 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             "api.rag.services.search_rag", return_value=rag_response
         ) as search_mock:
             service = AssistantChatService(config=config)
-            result = service.generate_reply("hello")
+            result = service.generate_reply_stream(
+                "hello",
+                cancellation=ExternalCallCancellation(),
+            )
 
         # -------------------------------------------------------------------------
         # 4) 호출 파라미터/응답 검증
         # -------------------------------------------------------------------------
-        search_mock.assert_called_once_with("hello", index_name=["idx-user"], num_result_doc=5, timeout=30)
+        search_mock.assert_called_once_with(
+            "hello",
+            index_name=["idx-user"],
+            num_result_doc=5,
+            timeout=30,
+            cancellation=ANY,
+        )
         self.assertTrue(result.is_dummy)
         self.assertEqual(
             result.contexts,
@@ -503,7 +521,11 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             "api.rag.services.search_rag", return_value=rag_response
         ) as search_mock:
             service = AssistantChatService(config=config)
-            result = service.generate_reply("hello", permission_groups=["group-a"])
+            result = service.generate_reply_stream(
+                "hello",
+                permission_groups=["group-a"],
+                cancellation=ExternalCallCancellation(),
+            )
 
         # -------------------------------------------------------------------------
         # 3) 호출 파라미터/응답 검증
@@ -514,103 +536,47 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             num_result_doc=5,
             timeout=30,
             permission_groups=["group-a"],
+            cancellation=ANY,
         )
         self.assertEqual(result.sources, [])
         self.assertEqual(result.rag_response, rag_response)
 
+    def test_rag_hit_with_mismatched_email_scope_is_removed_before_llm(self) -> None:
+        """RAG가 잘못 반환한 다른 mailbox 문서는 LLM 배경지식에 포함하지 않습니다."""
 
-class AssistantChatViewTests(TestCase):
-    """AssistantChatView API 응답을 검증합니다."""
-
-    def setUp(self) -> None:
-        """테스트용 사용자/요청 팩토리를 준비합니다."""
-        _allow_test_scope_access(self)
-        self.factory = RequestFactory()
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            sabun="S77777",
-            password="test-password",
-            email="dummy.user@example.com",
+        rag_response = {
+            "hits": {
+                "hits": [
+                    {
+                        "_id": "forbidden-doc",
+                        "_source": {
+                            "doc_id": "email-forbidden",
+                            "title": "보호 메일",
+                            "merge_title_content": "노출되면 안 되는 본문",
+                            "user_sdwt_prod": "group-b",
+                            "permission_groups": ["group-b"],
+                        },
+                    }
+                ]
+            }
+        }
+        config = AssistantChatConfig(
+            use_dummy=True,
+            dummy_use_rag=True,
+            rag_index_names=["idx-email"],
         )
-        self.user.knox_id = "knox-77777"
-        self.user.save(update_fields=["knox_id"])
-        _set_current_affiliation(self.user, user_sdwt_prod="group-a")
-
-    def test_chat_view_returns_response_without_rag_url_attribute_error(self) -> None:
-        """정상 요청 시 응답 페이로드가 생성되는지 확인합니다."""
-        # -------------------------------------------------------------------------
-        # 1) 요청 객체 구성
-        # -------------------------------------------------------------------------
-        request = self.factory.post(
-            "/api/v1/assistant/chat",
-            data=json.dumps({"prompt": "hello"}),
-            content_type="application/json",
-        )
-        request.user = self.user
-
-        # -------------------------------------------------------------------------
-        # 2) 서비스 응답 patch 및 호출
-        # -------------------------------------------------------------------------
-        with patch(
-            "api.assistant.views.assistant_chat_service.generate_reply",
-            return_value=Mock(reply="안녕", contexts=[], sources=[], is_dummy=True),
+        with patch("api.rag.services.RAG_SEARCH_URL", "http://rag/search"), patch(
+            "api.rag.services.search_rag",
+            return_value=rag_response,
         ):
-            response = AssistantChatView().post(request)
+            result = AssistantChatService(config=config).generate_reply_stream(
+                "메일을 찾아줘",
+                permission_groups=["group-a"],
+                cancellation=ExternalCallCancellation(),
+            )
 
-        # -------------------------------------------------------------------------
-        # 3) 응답 검증
-        # -------------------------------------------------------------------------
-        self.assertEqual(response.status_code, 200)
-        payload = json.loads(response.content.decode("utf-8"))
-        self.assertEqual(payload["reply"], "안녕")
-        self.assertIn("meta", payload)
-
-    def test_chat_view_returns_string_error_for_serializer_validation_failure(self) -> None:
-        """serializer 검증 실패 시 문자열 error 계약을 유지하는지 확인합니다."""
-        # -------------------------------------------------------------------------
-        # 1) 빈 prompt 요청 구성
-        # -------------------------------------------------------------------------
-        request = self.factory.post(
-            "/api/v1/assistant/chat",
-            data=json.dumps({"prompt": "   "}),
-            content_type="application/json",
-        )
-        request.user = self.user
-
-        # -------------------------------------------------------------------------
-        # 2) 뷰 호출 및 응답 검증
-        # -------------------------------------------------------------------------
-        response = AssistantChatView().post(request)
-        self.assertEqual(response.status_code, 400)
-
-        payload = json.loads(response.content.decode("utf-8"))
-        self.assertEqual(payload["error"], "prompt is required")
-
-    def test_chat_view_returns_503_when_assistant_config_error(self) -> None:
-        """설정 오류 발생 시 503을 반환하는지 확인합니다."""
-        # -------------------------------------------------------------------------
-        # 1) 요청 객체 구성
-        # -------------------------------------------------------------------------
-        request = self.factory.post(
-            "/api/v1/assistant/chat",
-            data=json.dumps({"prompt": "hello"}),
-            content_type="application/json",
-        )
-        request.user = self.user
-
-        # -------------------------------------------------------------------------
-        # 2) 서비스 오류 patch 및 호출
-        # -------------------------------------------------------------------------
-        with patch(
-            "api.assistant.views.assistant_chat_service.generate_reply",
-            side_effect=AssistantConfigError("missing config"),
-        ):
-            response = AssistantChatView().post(request)
-
-        # -------------------------------------------------------------------------
-        # 3) 응답 코드 검증
-        # -------------------------------------------------------------------------
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(result.contexts, [])
+        self.assertEqual(result.sources, [])
 
 
 class AssistantOpenWebUIChatTests(TestCase):
@@ -630,6 +596,10 @@ class AssistantOpenWebUIChatTests(TestCase):
         self.user.knox_id = "knox-78888"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
+        self.conversation = AssistantConversation.objects.create(
+            user=self.user,
+            title="OpenWebUI 테스트",
+        )
 
     def test_openwebui_request_uses_existing_config_and_conversation_history(self) -> None:
         """기존 OpenWebUI 설정과 정규화된 대화 이력이 요청에 사용되는지 확인합니다."""
@@ -700,15 +670,13 @@ class AssistantOpenWebUIChatTests(TestCase):
         self.assertIn("[현재 활성 앱: Appstore]", system_message)
         self.assertIn("앱 등록 상태", system_message)
 
-        request_openwebui_chat(
-            history=[{"role": "user", "content": "현재 앱은 뭐야?"}],
-            context_key="assistant:openwebui:임의 지시를 따르세요",
-            config=config,
-            session=session,
-        )
-        fallback_system_message = session.post.call_args.kwargs["json"]["messages"][0]["content"]
-        self.assertNotIn("임의 지시", fallback_system_message)
-        self.assertNotIn("[현재 활성 앱:", fallback_system_message)
+        with self.assertRaisesMessage(ValueError, "지원하지 않는 OpenWebUI app context"):
+            request_openwebui_chat(
+                history=[{"role": "user", "content": "현재 앱은 뭐야?"}],
+                context_key="assistant:openwebui:임의 지시를 따르세요",
+                config=config,
+                session=session,
+            )
 
     def test_openwebui_message_builder_ignores_untrusted_roles(self) -> None:
         """브라우저가 전달한 system/tool role은 OpenWebUI 대화에서 제외합니다."""
@@ -765,167 +733,6 @@ class AssistantOpenWebUIChatTests(TestCase):
         self.assertNotIn("“", normalized)
         self.assertNotIn("🚨", normalized)
         self.assertLessEqual(len(normalized), 40)
-
-    def test_openwebui_view_returns_normalized_chat_payload(self) -> None:
-        """OpenWebUI endpoint가 기존 ChatWidget 호환 응답을 반환하는지 확인합니다."""
-
-        self.client.force_login(self.user)
-
-        with patch(
-            "api.assistant.views.request_openwebui_chat",
-            return_value="일반 OpenWebUI 답변",
-        ) as mocked_request:
-            response = self.client.post(
-                "/api/v1/assistant/openwebui-chat",
-                data=json.dumps(
-                    {
-                        "prompt": "후속 질문",
-                        "roomId": "room-1",
-                        "history": [{"role": "user", "content": "후속 질문"}],
-                    }
-                ),
-                content_type="application/json",
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload["reply"], "일반 OpenWebUI 답변")
-        self.assertEqual(payload["sources"], [])
-        self.assertEqual(payload["segments"], [])
-        self.assertEqual(payload["meta"]["provider"], "openwebui")
-        history = mocked_request.call_args.kwargs["history"]
-        self.assertEqual(history[-1], {"role": "user", "content": "후속 질문"})
-        self.assertEqual(mocked_request.call_args.kwargs["context_key"], "assistant")
-
-    def test_openwebui_stream_closes_upstream_connection(self) -> None:
-        """OpenWebUI SSE 조각을 순서대로 반환하고 연결을 닫는지 확인합니다."""
-
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.iter_lines.return_value = iter(
-            [
-                'data: {"choices":[{"delta":{"content":"첫 "}}]}',
-                'data: {"choices":[{"delta":{"content":"답변"}}]}',
-                "data: [DONE]",
-            ]
-        )
-        session = Mock()
-        session.post.return_value = response
-        config = AssistantOpenWebUIConfig(
-            url="http://openwebui/v1/chat/completions",
-            model="gpt-oss-120b",
-        )
-
-        chunks = list(
-            stream_openwebui_chat(
-                history=[{"role": "user", "content": "질문"}],
-                config=config,
-                session=session,
-            )
-        )
-
-        self.assertEqual(chunks, ["첫 ", "답변"])
-        self.assertTrue(session.post.call_args.kwargs["json"]["stream"])
-        self.assertTrue(session.post.call_args.kwargs["stream"])
-        response.iter_lines.assert_called_once_with(
-            chunk_size=1,
-            decode_unicode=True,
-        )
-        response.close.assert_called_once_with()
-
-    def test_openwebui_stream_rejects_eof_without_done_event(self) -> None:
-        """일부 delta 뒤 완료 신호 없이 끊긴 upstream 응답을 실패로 처리합니다."""
-
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.iter_lines.return_value = iter(
-            ['data: {"choices":[{"delta":{"content":"일부 답변"}}]}']
-        )
-        session = Mock()
-        session.post.return_value = response
-
-        with self.assertRaisesRegex(assistant_services.AssistantRequestError, "완료 신호"):
-            list(
-                stream_openwebui_chat(
-                    history=[{"role": "user", "content": "질문"}],
-                    config=AssistantOpenWebUIConfig(
-                        url="http://openwebui/v1/chat/completions",
-                        model="gpt-oss-120b",
-                    ),
-                    session=session,
-                )
-            )
-
-        response.close.assert_called_once_with()
-
-    def test_openwebui_stream_view_emits_meta_delta_and_done_events(self) -> None:
-        """브라우저 endpoint가 정해진 SSE event 순서와 buffering header를 반환합니다."""
-
-        self.client.force_login(self.user)
-        with patch(
-            "api.assistant.views.stream_openwebui_chat",
-            return_value=iter(["첫 ", "답변"]),
-        ):
-            response = self.client.post(
-                "/api/v1/assistant/openwebui-chat/stream",
-                data=json.dumps(
-                    {
-                        "prompt": "질문",
-                        "roomId": "room-stream",
-                        "history": [{"role": "user", "content": "질문"}],
-                    }
-                ),
-                content_type="application/json",
-                HTTP_ACCEPT="text/event-stream",
-            )
-            body = b"".join(response.streaming_content).decode("utf-8")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response["Content-Type"].startswith("text/event-stream"))
-        self.assertEqual(response["X-Accel-Buffering"], "no")
-        self.assertIn("event: meta", body)
-        self.assertIn('data: {"content":"첫 "}', body)
-        self.assertIn('data: {"reply":"첫 답변"', body)
-        self.assertLess(body.index("event: meta"), body.index("event: delta"))
-        self.assertLess(body.index("event: delta"), body.index("event: done"))
-
-    def test_openwebui_view_injects_owned_conversation_summary(self) -> None:
-        """UUID 대화방의 저장 요약이 같은 소유자의 OpenWebUI 요청에만 전달됩니다."""
-
-        self.client.force_login(self.user)
-        conversation = AssistantConversation.objects.create(
-            user=self.user,
-            title="요약 테스트",
-        )
-        AssistantConversationSummary.objects.create(
-            conversation=conversation,
-            context_key="chatwidget:shared",
-            summary="DOWN 반복 원인은 인터락입니다.",
-            message_count=12,
-        )
-        with patch(
-            "api.assistant.views.request_openwebui_chat",
-            return_value="요약 기반 답변",
-        ) as mocked_request:
-            response = self.client.post(
-                "/api/v1/assistant/openwebui-chat",
-                data=json.dumps(
-                    {
-                        "prompt": "그 원인은?",
-                        "roomId": str(conversation.id),
-                        "contextKey": "assistant:openwebui",
-                        "history": [{"role": "user", "content": "그 원인은?"}],
-                    }
-                ),
-                content_type="application/json",
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            mocked_request.call_args.kwargs["conversation_summary"],
-            "DOWN 반복 원인은 인터락입니다.",
-        )
-
 
 class AssistantSummaryCacheMigrationTests(TestCase):
     """Portal Assistant 기억 통합 data migration의 삭제 범위를 검증합니다."""
@@ -1003,33 +810,6 @@ class AssistantConversationPersistenceTests(TestCase):
         self.other.knox_id = "knox-71002"
         self.other.save(update_fields=["knox_id"])
 
-    def test_all_portal_app_contexts_resolve_same_summary(self) -> None:
-        """Portal 앱, Observer와 Email RAG가 같은 방의 공용 요약을 사용합니다."""
-
-        conversation = AssistantConversation.objects.create(
-            user=self.owner,
-            title="공유 기억 테스트",
-        )
-        shared_summary = AssistantConversationSummary.objects.create(
-            conversation=conversation,
-            context_key="chatwidget:shared",
-            summary="Observer 분석을 Portal 앱에서 이어갑니다.",
-            message_count=12,
-        )
-
-        for context_key in (
-            "assistant:openwebui",
-            "assistant:openwebui:appstore",
-            "observer:scope-a",
-            "assistant",
-        ):
-            resolved = assistant_selectors.get_assistant_conversation_summary_for_user(
-                user=self.owner,
-                conversation_id=conversation.id,
-                context_key=context_key,
-            )
-            self.assertEqual(resolved, shared_summary)
-
     def _create_conversation(self, *, name: str = "장비 문의") -> str:
         """현재 로그인 사용자의 대화방을 API로 만들고 UUID를 반환합니다."""
 
@@ -1041,114 +821,26 @@ class AssistantConversationPersistenceTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()["id"]
 
-    def test_conversation_messages_are_persisted_idempotently(self) -> None:
-        """메시지 저장 재시도가 중복 row를 만들지 않고 다시 조회되는지 확인합니다."""
-
-        self.client.force_login(self.owner)
-        conversation_id = self._create_conversation()
-        request_payload = {
-            "messages": [
-                {
-                    "clientId": "user-1",
-                    "role": "user",
-                    "content": "첫 질문",
-                    "contextKey": "assistant:openwebui",
-                },
-                {
-                    "clientId": "assistant-1",
-                    "role": "assistant",
-                    "content": "첫 답변",
-                    "contextKey": "assistant:openwebui",
-                    "sources": [],
-                },
-            ]
-        }
-
-        for _ in range(2):
-            response = self.client.post(
-                f"/api/v1/assistant/conversations/{conversation_id}/messages",
-                data=json.dumps(request_payload),
-                content_type="application/json",
-            )
-            self.assertEqual(response.status_code, 201, response.content)
-
-        self.assertEqual(AssistantMessage.objects.count(), 2)
-        response = self.client.get(
-            f"/api/v1/assistant/conversations/{conversation_id}/messages"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [message["content"] for message in response.json()["results"]],
-            ["첫 질문", "첫 답변"],
-        )
-
-    def test_other_user_cannot_read_append_or_delete_conversation(self) -> None:
-        """다른 사용자는 UUID를 알아도 대화방에 접근할 수 없는지 확인합니다."""
-
-        self.client.force_login(self.owner)
-        conversation_id = self._create_conversation()
-        self.client.force_login(self.other)
-
-        list_response = self.client.get("/api/v1/assistant/conversations")
-        self.assertEqual(list_response.status_code, 200)
-        self.assertEqual(list_response.json()["results"], [])
-
-        messages_url = (
-            f"/api/v1/assistant/conversations/{conversation_id}/messages"
-        )
-        self.assertEqual(self.client.get(messages_url).status_code, 404)
-        self.assertEqual(
-            self.client.post(
-                messages_url,
-                data=json.dumps(
-                    {
-                        "messages": [
-                            {
-                                "clientId": "other-user",
-                                "role": "user",
-                                "content": "침범 시도",
-                            }
-                        ]
-                    }
-                ),
-                content_type="application/json",
-            ).status_code,
-            404,
-        )
-        self.assertEqual(
-            self.client.delete(
-                f"/api/v1/assistant/conversations/{conversation_id}"
-            ).status_code,
-            404,
-        )
-        self.assertEqual(
-            self.client.post(
-                f"/api/v1/assistant/conversations/{conversation_id}/generate-title"
-            ).status_code,
-            404,
-        )
-        self.assertTrue(AssistantConversation.objects.filter(id=conversation_id).exists())
-
     def test_openwebui_title_is_saved_for_default_conversation(self) -> None:
         """저장된 첫 질문과 답변으로 생성한 제목이 대화방에 반영되는지 확인합니다."""
 
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation(name="새 대화")
         conversation = AssistantConversation.objects.get(id=conversation_id)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
                     "client_id": "user-title",
                     "role": "user",
                     "content": "EQP DOWN이 반복되는 원인은?",
-                    "context_key": "assistant:openwebui",
+                    "context_key": "assistant:openwebui:portal",
                 },
                 {
                     "client_id": "assistant-title",
                     "role": "assistant",
                     "content": "인터락 반복 발생이 주요 원인입니다.",
-                    "context_key": "assistant:openwebui",
+                    "context_key": "assistant:openwebui:portal",
                 },
             ],
         )
@@ -1190,7 +882,7 @@ class AssistantConversationPersistenceTests(TestCase):
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation(name="새 대화")
         conversation = AssistantConversation.objects.get(id=conversation_id)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
@@ -1227,14 +919,14 @@ class AssistantConversationPersistenceTests(TestCase):
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
                     "client_id": f"user-{index}",
                     "role": "user",
                     "content": f"질문 {index}",
-                    "context_key": "assistant:openwebui",
+                    "context_key": "assistant:openwebui:portal",
                 }
                 for index in range(25)
             ],
@@ -1267,14 +959,14 @@ class AssistantConversationPersistenceTests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertTrue(AssistantConversation.objects.filter(id=conversation_id).exists())
         self.assertEqual(AssistantMessage.objects.count(), 0)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
                     "client_id": "user-after-reset",
                     "role": "user",
                     "content": "초기화 후 질문",
-                    "context_key": "assistant:openwebui",
+                    "context_key": "assistant:openwebui:portal",
                 }
             ],
         )
@@ -1369,14 +1061,14 @@ class AssistantConversationPersistenceTests(TestCase):
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
                     "client_id": f"summary-{index}",
                     "role": "user" if index % 2 == 0 else "assistant",
                     "content": f"대화 {index}",
-                    "context_key": "assistant:openwebui",
+                    "context_key": "assistant:openwebui:portal",
                 }
                 for index in range(25)
             ],
@@ -1388,7 +1080,7 @@ class AssistantConversationPersistenceTests(TestCase):
         ) as mocked_summary:
             response = self.client.post(
                 f"/api/v1/assistant/conversations/{conversation_id}/refresh-summary",
-                data=json.dumps({"contextKey": "assistant:openwebui"}),
+                data=json.dumps({"contextKey": "profile:portal-default"}),
                 content_type="application/json",
             )
 
@@ -1397,7 +1089,7 @@ class AssistantConversationPersistenceTests(TestCase):
         self.assertEqual(response.json()["coveredMessageCount"], 15)
         summary = AssistantConversationSummary.objects.get(
             conversation=conversation,
-            context_key="chatwidget:shared",
+            context_key="shared",
         )
         self.assertEqual(summary.message_count, 15)
         self.assertEqual(summary.summary, "DOWN 원인과 조치가 합의되었습니다.")
@@ -1413,21 +1105,21 @@ class AssistantConversationPersistenceTests(TestCase):
             ).exists()
         )
 
-    def test_summary_refresh_shares_all_portal_app_messages(self) -> None:
-        """rolling summary는 일반 앱·Observer·Email RAG 메시지를 함께 묶습니다."""
+    def test_summary_refresh_keeps_profile_partitions_separate(self) -> None:
+        """rolling summary는 Portal·Observer·Email partition을 서로 섞지 않습니다."""
 
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
         messages = []
-        for index in range(16):
+        for index in range(25):
             messages.extend(
                 [
                     {
                         "client_id": f"general-{index}",
                         "role": "user",
                         "content": f"일반 대화 {index}",
-                        "context_key": "assistant:openwebui",
+                        "context_key": "assistant:openwebui:portal",
                     },
                     {
                         "client_id": f"observer-{index}",
@@ -1443,18 +1135,18 @@ class AssistantConversationPersistenceTests(TestCase):
                     },
                 ]
             )
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=messages,
         )
 
         with patch(
             "api.assistant.services.conversations.request_openwebui_conversation_summary",
-            return_value="Portal 앱 공용 대화 요약",
+            return_value="Portal 공용 대화 요약",
         ) as mocked_summary:
             response = self.client.post(
                 f"/api/v1/assistant/conversations/{conversation_id}/refresh-summary",
-                data=json.dumps({"contextKey": "assistant:openwebui"}),
+                data=json.dumps({"contextKey": "profile:portal-default"}),
                 content_type="application/json",
             )
 
@@ -1463,311 +1155,35 @@ class AssistantConversationPersistenceTests(TestCase):
             message["content"]
             for message in mocked_summary.call_args.kwargs["messages"]
         ]
+        self.assertTrue(summarized_contents)
         self.assertTrue(
-            any(content.startswith("[대화 출처: Portal]") for content in summarized_contents)
-        )
-        self.assertTrue(
-            any(content.startswith("[대화 출처: Observer]") for content in summarized_contents)
-        )
-        self.assertTrue(
-            any(content.startswith("[대화 출처: Emails]") for content in summarized_contents)
+            all("Observer 분석" not in content and "메일 대화" not in content for content in summarized_contents)
         )
 
         with patch(
             "api.assistant.services.conversations.request_openwebui_conversation_summary",
-            return_value="호출되지 않아야 하는 요약",
+            return_value="Observer 전용 요약",
         ):
             observer_response = self.client.post(
                 f"/api/v1/assistant/conversations/{conversation_id}/refresh-summary",
-                data=json.dumps({"contextKey": "observer:scope-a"}),
+                data=json.dumps({"contextKey": "profile:observer-analysis"}),
                 content_type="application/json",
             )
 
         self.assertEqual(observer_response.status_code, 200, observer_response.content)
-        self.assertFalse(observer_response.json()["updated"])
+        self.assertTrue(observer_response.json()["updated"])
         summaries = AssistantConversationSummary.objects.filter(
             conversation=conversation,
         )
-        self.assertEqual(summaries.count(), 1)
+        self.assertEqual(summaries.count(), 2)
         self.assertEqual(
-            summaries.get(context_key="chatwidget:shared").summary,
-            "Portal 앱 공용 대화 요약",
-        )
-
-    def test_generation_lease_blocks_other_tabs_until_finalized(self) -> None:
-        """사용자 단위 generation lease가 다중 탭의 중복 생성을 차단합니다."""
-
-        self.client.force_login(self.owner)
-        first_conversation_id = self._create_conversation(name="첫 대화")
-        second_conversation_id = self._create_conversation(name="두 번째 대화")
-        first_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": first_conversation_id,
-                    "clientRequestId": "request-first",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(first_response.status_code, 201, first_response.content)
-
-        blocked_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": second_conversation_id,
-                    "clientRequestId": "request-second",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(blocked_response.status_code, 409)
-        self.assertEqual(
-            blocked_response.json()["generation"]["conversationId"],
-            first_conversation_id,
-        )
-
-        generation_id = first_response.json()["id"]
-        finalize_response = self.client.patch(
-            f"/api/v1/assistant/generations/{generation_id}",
-            data=json.dumps({"status": "completed"}),
-            content_type="application/json",
-        )
-        self.assertEqual(finalize_response.status_code, 200)
-        self.assertEqual(finalize_response.json()["status"], "completed")
-        self.assertEqual(AssistantGeneration.objects.count(), 1)
-
-    def test_expired_generation_is_not_active_or_reusable(self) -> None:
-        """만료된 generation은 활성 조회에서 숨기고 같은 요청 ID 재사용을 거절합니다."""
-
-        self.client.force_login(self.owner)
-        conversation_id = self._create_conversation()
-        conversation = AssistantConversation.objects.get(id=conversation_id)
-        AssistantGeneration.objects.create(
-            user=self.owner,
-            conversation=conversation,
-            client_request_id="expired-request",
-            context_key="assistant:openwebui",
-            status=AssistantGeneration.Status.STREAMING,
-            expires_at=timezone.now() - timedelta(seconds=1),
-        )
-
-        active_response = self.client.get("/api/v1/assistant/generations")
-        self.assertEqual(active_response.status_code, 200)
-        self.assertIsNone(active_response.json()["generation"])
-
-        reused_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": conversation_id,
-                    "clientRequestId": "expired-request",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(reused_response.status_code, 409)
-        self.assertIn("새 요청 ID", reused_response.json()["error"])
-
-    def test_generation_request_id_cannot_change_its_contract(self) -> None:
-        """활성 generation도 같은 요청 ID로 대화방이나 문맥을 바꿀 수 없습니다."""
-
-        self.client.force_login(self.owner)
-        first_conversation_id = self._create_conversation(name="첫 대화")
-        second_conversation_id = self._create_conversation(name="두 번째 대화")
-        first_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": first_conversation_id,
-                    "clientRequestId": "same-request",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(first_response.status_code, 201)
-
-        mismatched_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": second_conversation_id,
-                    "clientRequestId": "same-request",
-                    "contextKey": "observer:scope-a",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(mismatched_response.status_code, 409)
-        self.assertIn("다른 생성 조건", mismatched_response.json()["error"])
-
-    def test_assistant_message_save_completes_generation_in_same_request(self) -> None:
-        """Assistant 답변 저장 성공 시 별도 finalize 요청 없이 lease를 종료합니다."""
-
-        self.client.force_login(self.owner)
-        first_conversation_id = self._create_conversation(name="첫 대화")
-        second_conversation_id = self._create_conversation(name="두 번째 대화")
-        generation_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": first_conversation_id,
-                    "clientRequestId": "atomic-completion-first",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(generation_response.status_code, 201, generation_response.content)
-        generation_id = generation_response.json()["id"]
-
-        message_response = self.client.post(
-            f"/api/v1/assistant/conversations/{first_conversation_id}/messages",
-            data=json.dumps(
-                {
-                    "messages": [
-                        {
-                            "clientId": "atomic-assistant-answer",
-                            "role": "assistant",
-                            "content": "저장이 완료되었습니다.",
-                            "contextKey": "assistant:openwebui",
-                            "generationId": generation_id,
-                        }
-                    ]
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(message_response.status_code, 201, message_response.content)
-        generation = AssistantGeneration.objects.get(id=generation_id)
-        self.assertEqual(generation.status, AssistantGeneration.Status.COMPLETED)
-        self.assertIsNotNone(generation.finished_at)
-
-        next_generation_response = self.client.post(
-            "/api/v1/assistant/generations",
-            data=json.dumps(
-                {
-                    "conversationId": second_conversation_id,
-                    "clientRequestId": "atomic-completion-second",
-                    "contextKey": "assistant:openwebui",
-                }
-            ),
-            content_type="application/json",
+            summaries.get(context_key="shared").summary,
+            "Portal 공용 대화 요약",
         )
         self.assertEqual(
-            next_generation_response.status_code,
-            201,
-            next_generation_response.content,
+            summaries.get(context_key="scope:observer").summary,
+            "Observer 전용 요약",
         )
-
-    def test_message_edit_creates_new_current_branch_without_deleting_original(self) -> None:
-        """질문 수정 시 원본 분기를 보존하고 새 분기만 조회합니다."""
-
-        self.client.force_login(self.owner)
-        conversation_id = self._create_conversation()
-        messages_url = f"/api/v1/assistant/conversations/{conversation_id}/messages"
-        original_response = self.client.post(
-            messages_url,
-            data=json.dumps(
-                {
-                    "messages": [
-                        {"clientId": "user-original", "role": "user", "content": "원본 질문"},
-                        {
-                            "clientId": "assistant-original",
-                            "role": "assistant",
-                            "content": "원본 답변",
-                            "parentId": "user-original",
-                        },
-                    ]
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(original_response.status_code, 201, original_response.content)
-        conversation = AssistantConversation.objects.get(id=conversation_id)
-        AssistantConversationSummary.objects.create(
-            conversation=conversation,
-            context_key="chatwidget:shared",
-            summary="원본 분기 요약",
-            message_count=2,
-        )
-
-        branch_response = self.client.post(
-            messages_url,
-            data=json.dumps(
-                {
-                    "messages": [
-                        {
-                            "clientId": "user-edited",
-                            "role": "user",
-                            "content": "수정 질문",
-                            "parentId": None,
-                            "revisionOfId": "user-original",
-                        },
-                        {
-                            "clientId": "assistant-edited",
-                            "role": "assistant",
-                            "content": "수정 답변",
-                            "parentId": "user-edited",
-                        },
-                    ]
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(branch_response.status_code, 201, branch_response.content)
-
-        list_response = self.client.get(messages_url)
-        self.assertEqual(
-            [message["content"] for message in list_response.json()["results"]],
-            ["수정 질문", "수정 답변"],
-        )
-        self.assertEqual(AssistantMessage.objects.count(), 4)
-        edited = AssistantMessage.objects.get(client_id="user-edited")
-        self.assertEqual(edited.revision_of.client_id, "user-original")
-        self.assertFalse(
-            AssistantConversationSummary.objects.filter(
-                conversation=conversation,
-            ).exists()
-        )
-
-        summary = AssistantConversationSummary.objects.create(
-            conversation=conversation,
-            context_key="assistant:openwebui",
-            summary="수정 분기 요약",
-            message_count=2,
-        )
-        replay_response = self.client.post(
-            messages_url,
-            data=json.dumps(
-                {
-                    "messages": [
-                        {
-                            "clientId": "user-edited",
-                            "role": "user",
-                            "content": "수정 질문",
-                            "parentId": None,
-                            "revisionOfId": "user-original",
-                        },
-                        {
-                            "clientId": "assistant-edited",
-                            "role": "assistant",
-                            "content": "수정 답변",
-                            "parentId": "user-edited",
-                        },
-                    ]
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(replay_response.status_code, 201, replay_response.content)
-        summary.refresh_from_db()
-        self.assertEqual(summary.summary, "수정 분기 요약")
 
     def test_conversation_metadata_archive_and_message_search(self) -> None:
         """이름·고정·보관 갱신과 메시지 본문 검색을 함께 지원합니다."""
@@ -1775,7 +1191,7 @@ class AssistantConversationPersistenceTests(TestCase):
         self.client.force_login(self.owner)
         conversation_id = self._create_conversation(name="초기 이름")
         conversation = AssistantConversation.objects.get(id=conversation_id)
-        assistant_services.append_assistant_messages(
+        _append_assistant_messages(
             conversation=conversation,
             messages=[
                 {
@@ -1810,188 +1226,860 @@ class AssistantConversationPersistenceTests(TestCase):
         )
         self.assertEqual(archived_response.json()["results"][0]["id"], conversation_id)
 
-    def test_observer_snapshot_feedback_and_exports_are_persisted(self) -> None:
-        """분석 근거 snapshot·평가·현재 분기 내보내기를 검증합니다."""
+class AssistantRuntimeV2Tests(TestCase):
+    """Profile partition, 표준 Turn, replay와 fail-closed 노출을 검증합니다."""
 
-        self.client.force_login(self.owner)
-        conversation_id = self._create_conversation(name="=Observer 분석")
-        messages_url = f"/api/v1/assistant/conversations/{conversation_id}/messages"
-        response = self.client.post(
-            messages_url,
-            data=json.dumps(
-                {
-                    "messages": [
-                        {"clientId": "observer-user", "role": "user", "content": "종합 분석"},
-                        {
-                            "clientId": "observer-answer",
-                            "role": "assistant",
-                            "content": "=HYPERLINK(\"https://invalid.test\") DOWN 반복 원인은 인터락입니다.",
-                            "parentId": "observer-user",
-                            "contextKey": "observer:scope-a",
-                            "contextSnapshot": {
-                                "kind": "observer",
-                                "scope": {"eqpId": "EQP-01"},
-                                "coverage": {"eqpTargetCount": 12},
-                                "evidence": [
-                                    {"target": "DOWN", "evidenceIds": ["log-1", "log-2"]}
-                                ],
-                            },
-                        },
-                    ]
-                }
+    def setUp(self) -> None:
+        """모든 Account scope를 통과하는 테스트 사용자와 대화방을 준비합니다."""
+
+        _allow_test_scope_access(self)
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S98000",
+            password="test-password",
+        )
+        self.user.knox_id = "knox-98000"
+        self.user.save(update_fields=["knox_id"])
+        _set_current_affiliation(self.user, user_sdwt_prod="group-a")
+        self.client.force_login(self.user)
+        self.conversation = AssistantConversation.objects.create(
+            user=self.user,
+            title="새 대화",
+            title_source="default",
+        )
+
+    def _generation(self, *, partition: str, profile_key: str) -> AssistantGeneration:
+        """memory partition이 고정된 완료 Run을 생성합니다."""
+
+        now = timezone.now()
+        return AssistantGeneration.objects.create(
+            user=self.user,
+            conversation=self.conversation,
+            client_request_id=f"request-{profile_key}",
+            context_key=f"profile:{profile_key}",
+            status=AssistantGeneration.Status.COMPLETED,
+            provider="test",
+            profile_key=profile_key,
+            profile_version=1,
+            memory_partition=partition,
+            access_requirements=assistant_services.access_requirements_for_scopes(()),
+            expires_at=now + timedelta(minutes=1),
+            finished_at=now,
+        )
+
+    def test_profile_reads_only_allowed_memory_partitions(self) -> None:
+        """Portal/Email/Observer Profile이 allowlist 밖 partition을 Provider memory에서 제외합니다."""
+
+        parent = None
+        for partition, profile_key, content in (
+            ("shared", "portal-default", "공용 기억"),
+            ("scope:emails", "email-rag", "메일 기억"),
+            ("scope:observer", "observer-analysis", "Observer 기억"),
+        ):
+            parent = AssistantMessage.objects.create(
+                conversation=self.conversation,
+                client_id=f"message-{profile_key}",
+                role=AssistantMessage.Roles.USER,
+                content=content,
+                context_key=f"profile:{profile_key}",
+                parent=parent,
+                generation=self._generation(
+                    partition=partition,
+                    profile_key=profile_key,
+                ),
+            )
+        parent = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="message-without-run",
+            role=AssistantMessage.Roles.USER,
+            content="contextKey만 있는 미분류 기억",
+            context_key="assistant:openwebui:portal",
+            parent=parent,
+            access_requirements=assistant_services.access_requirements_for_scopes(()),
+        )
+        self.conversation.current_message = parent
+        self.conversation.save(update_fields=["current_message"])
+
+        portal = assistant_services.build_assistant_runtime_memory(
+            user=self.user,
+            conversation=self.conversation,
+            profile=assistant_services.get_assistant_profile(
+                profile_key="portal-default"
             ),
-            content_type="application/json",
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(AssistantContextSnapshot.objects.count(), 1)
+        email = assistant_services.build_assistant_runtime_memory(
+            user=self.user,
+            conversation=self.conversation,
+            profile=assistant_services.get_assistant_profile(profile_key="email-rag"),
+        )
+        observer = assistant_services.build_assistant_runtime_memory(
+            user=self.user,
+            conversation=self.conversation,
+            profile=assistant_services.get_assistant_profile(
+                profile_key="observer-analysis"
+            ),
+        )
+
+        self.assertEqual([item["content"] for item in portal.history], ["공용 기억"])
         self.assertEqual(
-            response.json()["results"][1]["contextSnapshot"]["scope"]["eqpId"],
-            "EQP-01",
+            [item["content"] for item in email.history],
+            ["공용 기억", "메일 기억"],
+        )
+        self.assertEqual(
+            [item["content"] for item in observer.history],
+            ["공용 기억", "Observer 기억"],
         )
 
-        feedback_url = (
-            f"/api/v1/assistant/conversations/{conversation_id}/messages/"
-            "observer-answer/feedback"
+    def test_turn_send_and_completed_replay_do_not_mutate_branch(self) -> None:
+        """동일 완료 Turn replay가 저장 답변만 재생하고 branch/message 수를 유지합니다."""
+
+        runtime_result = assistant_services.AssistantRuntimeResult(
+            content="표준 답변",
+            blocks=[{"type": "text", "content": "표준 답변", "sourceIds": []}],
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant",)
+            ),
         )
-        feedback_response = self.client.put(
-            feedback_url,
-            data=json.dumps({"rating": "up"}),
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "turn-request-1",
+            "profileKey": "portal-default",
+            "appContextKey": "assistant:openwebui:portal",
+            "message": {"clientId": "turn-user-1", "content": "표준 질문"},
+            "toolInputs": {},
+        }
+        with patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+            return_value=runtime_result,
+        ) as execute:
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            body = b"".join(response.streaming_content).decode("utf-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("event: run.started", body)
+        self.assertIn("event: message.completed", body)
+        self.assertIn("event: run.completed", body)
+        execute.assert_called_once()
+        self.assertEqual(
+            execute.call_args.kwargs["context_key"],
+            "assistant:openwebui:portal",
+        )
+        stored_run = AssistantGeneration.objects.get(
+            user=self.user,
+            client_request_id="turn-request-1",
+        )
+        self.assertEqual(stored_run.context_key, "assistant:openwebui:portal")
+        before_head = AssistantConversation.objects.get(
+            id=self.conversation.id
+        ).current_message_id
+        before_count = AssistantMessage.objects.filter(
+            conversation=self.conversation
+        ).count()
+
+        replay = self.client.post(
+            "/api/v1/assistant/turns/stream",
+            data=json.dumps(payload),
             content_type="application/json",
         )
-        self.assertEqual(feedback_response.status_code, 200)
-        self.assertEqual(AssistantMessageFeedback.objects.count(), 1)
-
-        markdown_response = self.client.get(
-            f"/api/v1/assistant/conversations/{conversation_id}/export",
-            {"exportFormat": "markdown"},
+        replay_body = b"".join(replay.streaming_content).decode("utf-8")
+        self.assertIn('"replay":true', replay_body)
+        self.assertEqual(
+            AssistantConversation.objects.get(id=self.conversation.id).current_message_id,
+            before_head,
         )
-        self.assertEqual(markdown_response.status_code, 200, markdown_response.content)
-        self.assertIn("DOWN 반복 원인", markdown_response.content.decode("utf-8"))
-        csv_response = self.client.get(
-            f"/api/v1/assistant/conversations/{conversation_id}/export",
-            {"exportFormat": "csv"},
+        self.assertEqual(
+            AssistantMessage.objects.filter(conversation=self.conversation).count(),
+            before_count,
         )
-        self.assertEqual(csv_response.status_code, 200)
-        self.assertTrue(csv_response.content.startswith(b"\xef\xbb\xbf"))
-        csv_rows = list(
-            csv.reader(StringIO(csv_response.content.decode("utf-8-sig")))
+
+    def test_disconnect_at_precommit_checkpoint_does_not_save_answer(self) -> None:
+        """Provider 완료 뒤 저장 직전 연결이 끊기면 답변을 commit하지 않습니다."""
+
+        runtime_result = assistant_services.AssistantRuntimeResult(
+            content="저장되면 안 되는 답변",
+            blocks=[
+                {
+                    "type": "text",
+                    "content": "저장되면 안 되는 답변",
+                    "sourceIds": [],
+                }
+            ],
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant",)
+            ),
         )
-        self.assertEqual(csv_rows[0][1], "'=Observer 분석")
-        self.assertTrue(csv_rows[3][2].startswith("'=HYPERLINK"))
-
-        delete_feedback_response = self.client.delete(feedback_url)
-        self.assertEqual(delete_feedback_response.status_code, 204)
-        self.assertEqual(AssistantMessageFeedback.objects.count(), 0)
-
-
-class AssistantNormalizationTests(TestCase):
-    """정규화 유틸 동작을 검증합니다."""
-
-    def test_normalize_room_id_defaults_to_default(self) -> None:
-        """room_id가 비면 기본값으로 대체되는지 확인합니다."""
-        self.assertEqual(assistant_services.normalize_room_id(None), "default")
-        self.assertEqual(assistant_services.normalize_room_id(""), "default")
-
-    def test_assistant_request_size_limits_reject_oversized_payloads(self) -> None:
-        """채팅과 메시지 저장 요청의 권장 상한을 초과하면 검증에서 거부합니다."""
-
-        chat_serializer = AssistantChatRequestSerializer(
-            data={"prompt": "가" * 10_001}
-        )
-        self.assertFalse(chat_serializer.is_valid())
-        self.assertIn("prompt", chat_serializer.errors)
-
-        oversized_history = AssistantChatRequestSerializer(
-            data={
-                "prompt": "질문",
-                "history": [
-                    {"role": "user", "content": f"이전 질문 {index}"}
-                    for index in range(21)
-                ],
-            }
-        )
-        self.assertFalse(oversized_history.is_valid())
-        self.assertIn("history", oversized_history.errors)
-
-        oversized_history_content = AssistantChatRequestSerializer(
-            data={
-                "prompt": "질문",
-                "history": [{"role": "assistant", "content": "가" * 10_001}],
-            }
-        )
-        self.assertFalse(oversized_history_content.is_valid())
-        self.assertIn("history", oversized_history_content.errors)
-
-        base_message = {
-            "clientId": "limit-message",
-            "role": "assistant",
-            "content": "정상 답변",
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "turn-disconnect-precommit",
+            "profileKey": "portal-default",
+            "appContextKey": "assistant:openwebui:portal",
+            "message": {
+                "clientId": "turn-disconnect-user",
+                "content": "저장 직전 중단",
+            },
+            "toolInputs": {},
         }
-        oversized_batch = AssistantMessageBatchSerializer(
-            data={
-                "messages": [
-                    {**base_message, "clientId": f"limit-message-{index}"}
-                    for index in range(21)
-                ]
-            }
-        )
-        self.assertFalse(oversized_batch.is_valid())
+        with patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+            return_value=runtime_result,
+        ):
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            event_stream = response._iterator
+            self.assertIn(b"event: run.started", next(event_stream))
+            self.assertIn(b"event: run.heartbeat", next(event_stream))
+            event_stream.close()
 
-        oversized_content = AssistantMessageBatchSerializer(
-            data={"messages": [{**base_message, "content": "가" * 10_001}]}
+        generation = AssistantGeneration.objects.get(
+            user=self.user,
+            client_request_id="turn-disconnect-precommit",
         )
-        self.assertFalse(oversized_content.is_valid())
-
-        too_many_sources = AssistantMessageBatchSerializer(
-            data={"messages": [{**base_message, "sources": [{}] * 51}]}
+        self.assertEqual(generation.status, AssistantGeneration.Status.STOPPED)
+        self.assertFalse(
+            AssistantMessage.objects.filter(
+                conversation=self.conversation,
+                role=AssistantMessage.Roles.ASSISTANT,
+                content="저장되면 안 되는 답변",
+            ).exists()
         )
-        self.assertFalse(too_many_sources.is_valid())
 
-        oversized_sources = AssistantMessageBatchSerializer(
-            data={
-                "messages": [
-                    {**base_message, "sources": [{"snippet": "가" * 20_000}]}
-                ]
-            }
+    def test_locked_message_returns_chronology_only(self) -> None:
+        """data claim이 회수된 메시지는 본문·block·source·snapshot을 반환하지 않습니다."""
+
+        message = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="locked-message",
+            role=AssistantMessage.Roles.ASSISTANT,
+            content="보호 본문",
+            blocks=[{"type": "text", "content": "보호 block", "sourceIds": ["mail-1"]}],
+            sources=[{"doc_id": "mail-1"}],
+            access_requirements={
+                "version": 1,
+                "accountScopes": ["assistant", "emails"],
+                "dataClaims": {"ragPermissionGroups": ["revoked-group"]},
+            },
         )
-        self.assertFalse(oversized_sources.is_valid())
+        self.conversation.current_message = message
+        self.conversation.save(update_fields=["current_message"])
 
-        oversized_snapshot = AssistantMessageBatchSerializer(
-            data={
-                "messages": [
-                    {
-                        **base_message,
-                        "contextSnapshot": {"evidence": ["가" * 40_000]},
+        response = self.client.get(
+            f"/api/v1/assistant/conversations/{self.conversation.id}/messages"
+        )
+        payload = response.json()["results"][0]
+        self.assertEqual(payload["accessState"], "locked")
+        for protected_key in ("content", "blocks", "sources", "contextSnapshot"):
+            self.assertNotIn(protected_key, payload)
+
+    def test_email_permission_groups_use_email_scope_only(self) -> None:
+        """Assistant에서만 허용된 group은 Email RAG 입력과 재검증에서 거부합니다."""
+
+        with patch(
+            "api.assistant.selectors.get_accessible_email_user_sdwt_prods_for_user",
+            return_value={"group-a"},
+        ):
+            with self.assertRaises(assistant_services.AssistantRequestError):
+                assistant_services.resolve_permission_groups(["assistant-only"], self.user)
+            decision = assistant_services.validate_access_requirements(
+                user=self.user,
+                requirements={
+                    "version": 1,
+                    "accountScopes": ["assistant", "emails"],
+                    "dataClaims": {
+                        "ragPermissionGroups": ["assistant-only"],
+                    },
+                },
+            )
+
+        self.assertFalse(decision.allowed)
+        self.assertTrue(decision.data_claim_denied)
+
+    def test_email_and_observer_provider_receive_recent_history(self) -> None:
+        """Email/Observer Provider에 장기 요약과 요약 이후 최근 이력을 함께 전달합니다."""
+
+        email_service = Mock()
+        email_service.generate_reply_stream.return_value = SimpleNamespace(
+            reply="메일 답변",
+            segments=[],
+            sources=[],
+            retrieved_sources=[{"doc_id": "mail-1", "_mailbox": "group-a"}],
+            contexts=[],
+        )
+        runtime = assistant_services.AssistantRuntime(
+            email_chat_service=email_service,
+        )
+        email_result = runtime.execute(
+            profile=assistant_services.get_assistant_profile(profile_key="email-rag"),
+            prompt="방금 메일을 다시 설명해줘",
+            history=[{"role": "assistant", "content": "방금 메일의 핵심"}],
+            conversation_summary="이전 합의",
+            tool_inputs={
+                "rag.search": {
+                    "permissionGroups": ["group-a"],
+                    "mailboxes": ["group-a"],
+                    "ragIndexes": ["idx-email"],
+                }
+            },
+            user_header_id="knox-98000",
+            context_key="assistant",
+            cancellation=ExternalCallCancellation(),
+        )
+        email_context = email_service.generate_reply_stream.call_args.kwargs[
+            "conversation_context"
+        ]
+        self.assertIn("이전 합의", email_context)
+        self.assertIn("방금 메일의 핵심", email_context)
+        self.assertEqual(
+            email_result.access_requirements["dataClaims"]["mailboxes"],
+            ["group-a"],
+        )
+
+        observer_payload = {
+            "analysis": {
+                "headline": "비교 결과",
+                "summary": "직전 분석과 비교했습니다.",
+                "findings": [],
+                "limitations": [],
+            },
+            "meta": {"sourceCount": 0},
+            "scope": {},
+        }
+        with patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream",
+            return_value=observer_payload,
+        ) as analyze:
+            runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="observer-analysis"
+                ),
+                prompt="앞 분석과 비교해줘",
+                history=[{"role": "assistant", "content": "직전 DOWN 분석"}],
+                conversation_summary="장기 Observer 요약",
+                tool_inputs={
+                    "observer.analysis": {
+                        "eqpId": "EQP-1",
+                        "from": "2026-08-01T00:00:00+09:00",
+                        "to": "2026-08-02T00:00:00+09:00",
+                        "logTypes": ["eqp"],
+                        "tipGroups": ["__ALL__"],
                     }
-                ]
-            }
+                },
+                user_header_id="knox-98000",
+                context_key="observer:test",
+                cancellation=ExternalCallCancellation(),
+            )
+        observer_context = analyze.call_args.kwargs["conversation_summary"]
+        self.assertIn("장기 Observer 요약", observer_context)
+        self.assertIn("직전 DOWN 분석", observer_context)
+
+    def test_observer_provider_accepts_interlock_log_keys(self) -> None:
+        """Observer Provider는 화면과 selector가 사용하는 Interlock 키를 허용합니다."""
+
+        observer_payload = {
+            "analysis": {
+                "headline": "Interlock 분석",
+                "summary": "SPC/FDC Interlock을 분석했습니다.",
+                "findings": [],
+                "limitations": [],
+            },
+            "meta": {},
+            "scope": {},
+        }
+        with patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream",
+            return_value=observer_payload,
+        ) as analyze:
+            assistant_services.AssistantRuntime().execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="observer-analysis"
+                ),
+                prompt="Interlock을 분석해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={
+                    "observer.analysis": {
+                        "eqpId": "EQP-1",
+                        "from": "2026-08-01T00:00:00+09:00",
+                        "to": "2026-08-02T00:00:00+09:00",
+                        "logTypes": ["spc-interlock", "fdc-interlock"],
+                        "tipGroups": ["__ALL__"],
+                    }
+                },
+                user_header_id="knox-98000",
+                context_key="observer:test",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(
+            analyze.call_args.kwargs["log_types"],
+            ["spc-interlock", "fdc-interlock"],
         )
-        self.assertFalse(oversized_snapshot.is_valid())
 
-    def test_normalize_room_id_sanitizes(self) -> None:
-        """room_id가 허용 문자로 정규화되는지 확인합니다."""
-        self.assertEqual(assistant_services.normalize_room_id(" room$% "), "room--")
+    def test_runtime_memory_starts_after_partition_summary_cursor(self) -> None:
+        """summary에 포함된 partition 메시지는 최근 history에서 다시 보내지 않습니다."""
 
-    def test_normalize_history_keeps_latest(self) -> None:
-        """normalize_history가 최신 N개를 유지하는지 확인합니다."""
-        history = [
-            {"role": "user", "content": "첫번째"},
-            {"role": "assistant", "content": "두번째"},
-            {"role": "user", "content": "세번째"},
+        generation = self._generation(
+            partition="shared",
+            profile_key="portal-default",
+        )
+        parent = None
+        for index in range(3):
+            parent = AssistantMessage.objects.create(
+                conversation=self.conversation,
+                client_id=f"summary-overlap-{index}",
+                role=AssistantMessage.Roles.USER,
+                content=f"메시지 {index}",
+                context_key="assistant:openwebui:portal",
+                parent=parent,
+                generation=generation,
+                access_requirements=assistant_services.access_requirements_for_scopes(
+                    ("assistant",)
+                ),
+            )
+        self.conversation.current_message = parent
+        self.conversation.save(update_fields=["current_message"])
+        AssistantConversationSummary.objects.create(
+            conversation=self.conversation,
+            context_key="shared",
+            memory_partition="shared",
+            summary="첫 두 메시지 요약",
+            message_count=2,
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant",)
+            ),
+        )
+
+        memory = assistant_services.build_assistant_runtime_memory(
+            user=self.user,
+            conversation=self.conversation,
+            profile=assistant_services.get_assistant_profile(
+                profile_key="portal-default"
+            ),
+        )
+
+        self.assertEqual(memory.summary, "첫 두 메시지 요약")
+        self.assertEqual(
+            [entry["content"] for entry in memory.history],
+            ["메시지 2"],
+        )
+
+    def test_locked_summary_batch_does_not_advance_cursor(self) -> None:
+        """연속 batch 중 하나라도 잠기면 summary cursor를 건너뛰지 않습니다."""
+
+        parent = None
+        for index in range(22):
+            requirements = (
+                {
+                    "version": 1,
+                    "accountScopes": ["assistant"],
+                    "dataClaims": {"ragPermissionGroups": ["revoked-group"]},
+                }
+                if index == 3
+                else assistant_services.access_requirements_for_scopes(("assistant",))
+            )
+            parent = AssistantMessage.objects.create(
+                conversation=self.conversation,
+                client_id=f"locked-summary-{index}",
+                role=(
+                    AssistantMessage.Roles.USER
+                    if index % 2 == 0
+                    else AssistantMessage.Roles.ASSISTANT
+                ),
+                content=f"요약 대상 {index}",
+                context_key="assistant:openwebui:portal",
+                parent=parent,
+                access_requirements=requirements,
+            )
+        self.conversation.current_message = parent
+        self.conversation.save(update_fields=["current_message"])
+
+        result = assistant_services.refresh_authorized_assistant_conversation_summary(
+            user=self.user,
+            request=RequestFactory().post("/"),
+            conversation=self.conversation,
+            context_key="profile:portal-default",
+        )
+
+        self.assertFalse(result["updated"])
+        self.assertEqual(result["coveredMessageCount"], 0)
+        self.assertFalse(
+            AssistantConversationSummary.objects.filter(
+                conversation=self.conversation,
+                context_key="shared",
+            ).exists()
+        )
+
+    def test_locked_title_and_body_are_not_search_or_pagination_oracles(self) -> None:
+        """잠긴 제목·본문 검색은 대화 존재 여부나 page 위치를 드러내지 않습니다."""
+
+        locked = AssistantConversation.objects.create(
+            user=self.user,
+            title="극비 검색 키워드",
+            title_source="auto",
+            title_access_requirements={
+                "version": 1,
+                "accountScopes": ["assistant", "emails"],
+                "dataClaims": {"ragPermissionGroups": ["revoked-group"]},
+            },
+        )
+        locked_message = AssistantMessage.objects.create(
+            conversation=locked,
+            client_id="locked-search-message",
+            role=AssistantMessage.Roles.USER,
+            content="극비 검색 키워드 본문",
+            context_key="assistant",
+            access_requirements=locked.title_access_requirements,
+        )
+        locked.current_message = locked_message
+        locked.save(update_fields=["current_message"])
+
+        response = self.client.get(
+            "/api/v1/assistant/conversations",
+            {"search": "극비 검색 키워드", "limit": 1},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"], [])
+        self.assertFalse(response.json()["hasMore"])
+
+    def test_retry_cannot_reference_run_from_another_conversation(self) -> None:
+        """retryRunId는 요청 conversation 안의 Run만 참조할 수 있습니다."""
+
+        other = AssistantConversation.objects.create(
+            user=self.user,
+            title="다른 대화",
+            title_source="default",
+        )
+        now = timezone.now()
+        foreign_run = AssistantGeneration.objects.create(
+            user=self.user,
+            conversation=other,
+            client_request_id="foreign-retry-run",
+            context_key="assistant:openwebui:portal",
+            status=AssistantGeneration.Status.FAILED,
+            provider="openwebui",
+            profile_key="portal-default",
+            profile_version=1,
+            memory_partition="shared",
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant",)
+            ),
+            expires_at=now,
+            finished_at=now,
+        )
+        AssistantMessage.objects.create(
+            conversation=other,
+            client_id="foreign-retry-user",
+            role=AssistantMessage.Roles.USER,
+            content="다른 대화 질문",
+            context_key="assistant:openwebui:portal",
+            generation=foreign_run,
+            access_requirements=foreign_run.access_requirements,
+        )
+        payload = {
+            "action": "retry",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "cross-conversation-retry",
+            "profileKey": "portal-default",
+            "message": {"clientId": "new-retry-user", "content": "재시도"},
+            "retryRunId": str(foreign_run.id),
+            "toolInputs": {},
+        }
+
+        response = self.client.post(
+            "/api/v1/assistant/turns/stream",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "target_not_found")
+
+    def test_expired_run_result_is_fenced_before_message_persistence(self) -> None:
+        """lease가 만료된 Provider 결과는 답변이나 branch head를 저장하지 않습니다."""
+
+        from api.assistant.services.turn_persistence import (
+            AssistantRunFencedError,
+            commit_assistant_turn_result,
+        )
+
+        generation = AssistantGeneration.objects.create(
+            user=self.user,
+            conversation=self.conversation,
+            client_request_id="expired-run",
+            context_key="assistant:openwebui:portal",
+            status=AssistantGeneration.Status.STREAMING,
+            provider="openwebui",
+            profile_key="portal-default",
+            profile_version=1,
+            memory_partition="shared",
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant",)
+            ),
+            expires_at=timezone.now() - timedelta(seconds=1),
+            started_at=timezone.now() - timedelta(minutes=1),
+        )
+        user_message = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="expired-user",
+            role=AssistantMessage.Roles.USER,
+            content="이미 만료된 질문",
+            context_key="assistant:openwebui:portal",
+            generation=generation,
+            access_requirements=generation.access_requirements,
+        )
+        self.conversation.current_message = user_message
+        self.conversation.save(update_fields=["current_message"])
+        result = assistant_services.AssistantRuntimeResult(
+            content="늦게 도착한 답변",
+            blocks=[
+                {
+                    "type": "text",
+                    "content": "늦게 도착한 답변",
+                    "sourceIds": [],
+                }
+            ],
+            access_requirements=generation.access_requirements,
+        )
+
+        with self.assertRaises(AssistantRunFencedError):
+            commit_assistant_turn_result(
+                generation_id=generation.id,
+                input_message_id=user_message.id,
+                input_message_client_id=user_message.client_id,
+                assistant_client_id="expired-assistant",
+                context_key="assistant:openwebui:portal",
+                result=result,
+            )
+
+        self.conversation.refresh_from_db()
+        self.assertEqual(self.conversation.current_message_id, user_message.id)
+        self.assertFalse(
+            AssistantMessage.objects.filter(
+                conversation=self.conversation,
+                client_id="expired-assistant",
+            ).exists()
+        )
+
+    def test_turn_failure_never_exposes_upstream_error_detail(self) -> None:
+        """Provider 예외 본문과 식별자는 run.failed로 전달하지 않습니다."""
+
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "safe-error-run",
+            "profileKey": "portal-default",
+            "appContextKey": "assistant:openwebui:portal",
+            "message": {"clientId": "safe-error-user", "content": "질문"},
+            "toolInputs": {},
+        }
+        with patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+            side_effect=RuntimeError("internal-host secret-token mailbox-77"),
+        ):
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            body = b"".join(response.streaming_content).decode("utf-8")
+
+        self.assertIn("event: run.failed", body)
+        self.assertNotIn("secret-token", body)
+        self.assertNotIn("mailbox-77", body)
+
+
+class AssistantStreamingTransportTests(SimpleTestCase):
+    """OpenAI 호환 token stream과 사용자 중단 전파를 검증합니다."""
+
+    def test_openai_stream_requests_real_stream_and_yields_each_delta(self) -> None:
+        """transport가 stream=true를 보내고 도착한 content chunk를 즉시 반환합니다."""
+
+        from api.common.services import stream_openai_chat_completion
+
+        response = Mock()
+        response.iter_lines.return_value = [
+            'data: {"choices":[{"delta":{"content":"첫"}}]}',
+            'data: {"choices":[{"delta":{"content":" 번째"}}]}',
+            "data: [DONE]",
         ]
+        session = Mock()
+        session.post.return_value = response
+        cancellation = ExternalCallCancellation()
 
-        normalized = assistant_services.normalize_history(history, limit=2)
+        deltas = list(
+            stream_openai_chat_completion(
+                url="http://llm/chat/completions",
+                headers={"X-Test": "1"},
+                payload={"model": "test", "messages": []},
+                timeout_seconds=10,
+                cancellation=cancellation,
+                session=session,
+            )
+        )
 
-        self.assertEqual(len(normalized), 2)
-        self.assertEqual([entry["content"] for entry in normalized], ["두번째", "세번째"])
+        self.assertEqual(deltas, ["첫", " 번째"])
+        request_kwargs = session.post.call_args.kwargs
+        self.assertTrue(request_kwargs["stream"])
+        self.assertTrue(request_kwargs["json"]["stream"])
 
-    def test_normalize_sources_dedupes(self) -> None:
-        """normalize_sources가 doc_id 기준으로 중복 제거하는지 확인합니다."""
-        sources = [
-            {"doc_id": "DOC1", "title": "T1", "snippet": "S1"},
-            {"docId": "DOC1", "title": "T1b", "snippet": "S1b"},
-            {"doc_id": "DOC2", "title": "T2", "snippet": "S2"},
-        ]
-        normalized = assistant_services.normalize_sources(sources)
-        self.assertEqual(len(normalized), 2)
-        self.assertEqual({item["docId"] for item in normalized}, {"DOC1", "DOC2"})
+    def test_stream_cancellation_closes_active_response(self) -> None:
+        """브라우저 중단과 같은 cancellation은 열린 upstream response를 닫습니다."""
+
+        from api.common.services import stream_openai_chat_completion
+
+        response = Mock()
+        response.iter_lines.return_value = iter(
+            [
+                'data: {"choices":[{"delta":{"content":"진행 중"}}]}',
+                'data: {"choices":[{"delta":{"content":"늦은 응답"}}]}',
+            ]
+        )
+        session = Mock()
+        session.post.return_value = response
+        cancellation = ExternalCallCancellation()
+        stream = stream_openai_chat_completion(
+            url="http://llm/chat/completions",
+            headers={},
+            payload={"model": "test", "messages": []},
+            timeout_seconds=10,
+            cancellation=cancellation,
+            session=session,
+        )
+
+        self.assertEqual(next(stream), "진행 중")
+        cancellation.cancel()
+        with self.assertRaises(ExternalCallCancelled):
+            next(stream)
+        response.close.assert_called()
+
+    def test_runtime_generator_close_cancels_worker(self) -> None:
+        """SSE generator 종료가 worker의 cancellation token까지 전달됩니다."""
+
+        from api.assistant.services.runtime_execution import (
+            stream_assistant_runtime_execution,
+        )
+
+        cancelled = threading.Event()
+
+        class BlockingRuntime:
+            """첫 delta 이후 cancellation을 기다리는 테스트 Runtime입니다."""
+
+            def execute(self, **kwargs):
+                kwargs["on_delta"]("첫 토큰")
+                token = kwargs["cancellation"]
+                while not token.cancelled:
+                    time.sleep(0.01)
+                cancelled.set()
+                token.raise_if_cancelled()
+
+        execution = stream_assistant_runtime_execution(
+            runtime=BlockingRuntime(),
+            profile=assistant_services.get_assistant_profile(
+                profile_key="portal-default"
+            ),
+            prompt="질문",
+            history=[],
+            conversation_summary="",
+            tool_inputs={},
+            user_header_id="knox-test",
+            context_key="assistant:openwebui:portal",
+        )
+        first_event = next(execution)
+        self.assertEqual(first_event.kind, "delta")
+
+        execution.close()
+
+        self.assertTrue(cancelled.wait(timeout=1))
+
+
+class AssistantRunBackfillTests(TestCase):
+    """legacy provenance backfill의 해제·잠금·재실행 안정성을 검증합니다."""
+
+    def setUp(self) -> None:
+        """backfill 대상 사용자와 대화방을 준비합니다."""
+
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            sabun="S99000",
+            password="test-password",
+        )
+        self.conversation = AssistantConversation.objects.create(
+            user=self.user,
+            title="Legacy 대화",
+            title_source="legacy_unknown",
+        )
+        self.unresolved = {
+            "version": 1,
+            "accountScopes": ["legacy-unresolved"],
+            "dataClaims": {},
+        }
+
+    def test_backfill_replaces_sentinel_and_keeps_unresolved_terminal(self) -> None:
+        """분류 가능한 row만 잠금을 해제하고 unresolved row는 재실행해도 그대로 둡니다."""
+
+        email_message = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="legacy-email",
+            role=AssistantMessage.Roles.USER,
+            content="메일 질문",
+            context_key="assistant",
+            access_requirements=self.unresolved,
+            user_sdwt_prod="group-a",
+        )
+        unknown_message = AssistantMessage.objects.create(
+            conversation=self.conversation,
+            client_id="legacy-unknown",
+            role=AssistantMessage.Roles.USER,
+            content="출처 불명 질문",
+            context_key="unknown-context",
+            access_requirements=self.unresolved,
+        )
+
+        first_output = StringIO()
+        call_command(
+            "backfill_assistant_run_access",
+            batch_size=10,
+            stdout=first_output,
+        )
+        email_message.refresh_from_db()
+        unknown_message.refresh_from_db()
+        email_run = email_message.generation
+        unknown_run = unknown_message.generation
+
+        self.assertEqual(email_run.profile_key, "email-rag")
+        self.assertNotIn(
+            "legacy-unresolved",
+            email_run.access_requirements["accountScopes"],
+        )
+        self.assertEqual(unknown_run.profile_key, "legacy-unresolved")
+        self.assertIn(
+            "legacy-unresolved",
+            unknown_run.access_requirements["accountScopes"],
+        )
+
+        second_output = StringIO()
+        call_command(
+            "backfill_assistant_run_access",
+            batch_size=10,
+            stdout=second_output,
+        )
+        unknown_run.refresh_from_db()
+        second_report = json.loads(second_output.getvalue().strip().splitlines()[-1])
+
+        self.assertEqual(second_report["processed"], 0)
+        self.assertEqual(unknown_run.profile_key, "legacy-unresolved")
+        self.assertIn(
+            "legacy-unresolved",
+            unknown_run.access_requirements["accountScopes"],
+        )

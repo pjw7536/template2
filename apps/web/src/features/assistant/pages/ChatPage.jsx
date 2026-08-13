@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useLocation, useOutletContext } from "react-router-dom"
+import { useOutletContext } from "react-router-dom"
 import { Bot, Download, PanelLeft, Plus, RefreshCw, Sparkles } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth"
-import { sendOpenWebUIStreamingMessage } from "../api/sendChatMessage"
+import { resolveAssistantSurface } from "@/lib/assistant/surfaceConfig"
 import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"
@@ -21,26 +21,11 @@ import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatPage() {
   const { user } = useAuth()
-  const location = useLocation()
+  const surface = resolveAssistantSurface({ appKey: "assistant" })
   const outletContext = useOutletContext() || {}
   const availableMailboxes = Array.isArray(outletContext.availableMailboxes)
     ? outletContext.availableMailboxes
     : []
-  const handoffMessages = Array.isArray(location?.state?.initialMessages)
-    ? location.state.initialMessages
-    : undefined
-  const initialRooms = Array.isArray(location?.state?.initialRooms)
-    ? location.state.initialRooms
-    : undefined
-  const initialMessagesByRoom =
-    location?.state?.initialMessagesByRoom && typeof location.state.initialMessagesByRoom === "object"
-      ? location.state.initialMessagesByRoom
-      : undefined
-  const initialActiveRoomId =
-    typeof location?.state?.initialActiveRoomId === "string"
-      ? location.state.initialActiveRoomId
-      : undefined
-
   const {
     rooms,
     roomListRooms,
@@ -59,11 +44,8 @@ export function ChatPage() {
     isSessionLoading,
     errorMessage,
     canRetry,
-    canRetrySave,
     clearError,
     sendMessage,
-    retryAssistantSave,
-    discardFailedAssistantSave,
     retryLastMessage,
     stopGenerating,
     resetConversation,
@@ -85,13 +67,11 @@ export function ChatPage() {
     toggleArchivedView,
     downloadConversation,
   } = useChatSession({
-    initialMessages: handoffMessages,
-    initialRooms,
-    initialMessagesByRoom,
-    initialActiveRoomId,
-    messageSender: sendOpenWebUIStreamingMessage,
-    messageContextKey: "assistant:openwebui:assistant",
-    userKey: user?.id,
+    messageContextKey: surface.appContextKey,
+    profileKey: surface.profileKey,
+    profileVersion: surface.profileVersion,
+    profileToolInputs: surface.toolInputs,
+    userKey: user.id,
   })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -301,11 +281,9 @@ export function ChatPage() {
             <ChatErrorBanner
               message={errorMessage}
               onDismiss={clearError}
-              canRetry={canRetrySave || canRetry}
-              onRetry={canRetrySave ? retryAssistantSave : retryLastMessage}
-              retryLabel={canRetrySave ? "답변 저장 다시 시도" : "재시도"}
-              canDiscard={canRetrySave}
-              onDiscard={discardFailedAssistantSave}
+              canRetry={canRetry}
+              onRetry={retryLastMessage}
+              retryLabel="재시도"
             />
 
             <ChatComposer

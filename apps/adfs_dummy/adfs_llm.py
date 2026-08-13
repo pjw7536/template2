@@ -34,12 +34,46 @@ def _extract_latest_user_text(messages: Any) -> str:
     return ""
 
 
-def _render_reply(question: str) -> str:
+def _extract_system_text(messages: Any) -> str:
+    """더미 응답 계약 선택에 사용할 system message를 결합합니다."""
+
+    if not isinstance(messages, list):
+        return ""
+    return "\n".join(
+        str(entry.get("content") or "")
+        for entry in messages
+        if isinstance(entry, dict) and entry.get("role") == "system"
+    )
+
+
+def _render_reply(question: str, messages: Any) -> str:
+    """요청된 Provider 출력 계약과 일치하는 결정적 응답을 만듭니다."""
+
     template = (DUMMY_LLM_REPLY_TEMPLATE or "").strip()
     if not template:
         template = "개발용 더미 LLM 응답입니다. 질문: {question}"
     reply = template.replace("{question}", question)
-    return reply.strip() or "개발용 더미 LLM 응답입니다."
+    normalized_reply = reply.strip() or "개발용 더미 LLM 응답입니다."
+    system_text = _extract_system_text(messages)
+    if "usedEmailIds" in system_text and '"segments"' in system_text:
+        return json.dumps(
+            {"answer": normalized_reply, "segments": []},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    if "Observer 로그 분석기" in system_text:
+        return json.dumps(
+            {
+                "headline": "개발용 Observer 분석",
+                "summary": normalized_reply,
+                "findings": [],
+                "recommendedChecks": [],
+                "limitations": ["개발용 더미 응답입니다."],
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return normalized_reply
 
 
 def _sleep_if_needed() -> None:
@@ -104,7 +138,7 @@ async def chat_completions(payload: Dict[str, Any] = Body(...)) -> Any:
         raise HTTPException(status_code=400, detail="messages with a user prompt is required")
 
     _sleep_if_needed()
-    reply = _render_reply(question)
+    reply = _render_reply(question, messages)
     if payload.get("stream") is True:
         return StreamingResponse(
             _stream_chat_completion(model_name, reply),

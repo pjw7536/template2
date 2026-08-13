@@ -42,7 +42,6 @@ npm run preview
 | --- | --- |
 | `VITE_BACKEND_URL` | 브라우저에서 호출할 Django API 주소 |
 | `BACKEND_API_URL` | 컨테이너 내부 API 주소 |
-| `VITE_ASSISTANT_API_URL` | Assistant 채팅 endpoint |
 | `VITE_AIRFLOW_BASE_URL` | 브라우저용 Airflow 경로 |
 | `VITE_PORTAL_PMX_URL` | Portal PMx 외부 링크. 비어 있으면 숨김 |
 | `VITE_PORTAL_MOSAIC_URL` | Portal MOSAIC 외부 링크. 비어 있으면 숨김 |

@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈: 어시스턴트 접근 권한 셀렉터
-# 주요 함수: get_accessible_user_sdwt_prods_for_user
+# 주요 함수: get_accessible_email_user_sdwt_prods_for_user
 # 주요 가정: RAG 검색 범위는 Assistant 앱별 account 데이터 scope에서 결정합니다.
 # =============================================================================
 from __future__ import annotations
@@ -9,17 +9,11 @@ from typing import Any
 from uuid import UUID
 
 from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
-from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import api.account.services as account_services
 
 from .models import (
-    ASSISTANT_DEFAULT_CONTEXT_KEY,
-    ASSISTANT_OPENWEBUI_CONTEXT_KEY,
-    ASSISTANT_OPENWEBUI_CONTEXT_PREFIX,
-    CHATWIDGET_SHARED_CONTEXT_KEY,
-    OBSERVER_CONTEXT_PREFIX,
     AssistantConversation,
     AssistantConversationSummary,
     AssistantGeneration,
@@ -27,18 +21,6 @@ from .models import (
     resolve_assistant_memory_context_key,
 )
 from .serializers import encode_assistant_cursor
-
-
-def list_assistant_conversations_for_user(
-    *,
-    user: Any,
-) -> QuerySet[AssistantConversation]:
-    """사용자가 소유한 대화방을 최근 활동 순으로 반환합니다."""
-
-    return AssistantConversation.objects.filter(user=user).order_by(
-        "-updated_at",
-        "-created_at",
-    )
 
 
 def get_assistant_conversation_for_user(
@@ -139,6 +121,7 @@ def list_assistant_conversation_page(
     cursor_payload: dict[str, object] | None = None,
     limit: int = 20,
     archived: bool = False,
+    matching_conversation_ids: set[UUID] | None = None,
 ) -> dict[str, object]:
     """사용자 대화방을 고정 우선, 최근순 cursor page로 반환합니다."""
 
@@ -147,10 +130,8 @@ def list_assistant_conversation_page(
     queryset = queryset.filter(
         archived_at__isnull=not archived,
     )
-    if search:
-        queryset = queryset.filter(
-            Q(title__icontains=search) | Q(messages__content__icontains=search)
-        ).distinct()
+    if matching_conversation_ids is not None:
+        queryset = queryset.filter(id__in=matching_conversation_ids)
     queryset = queryset.annotate(
         _pinned_order=Case(
             When(pinned_at__isnull=False, then=Value(1)),
@@ -211,6 +192,21 @@ def list_assistant_conversation_page(
     return {"results": results, "nextCursor": next_cursor, "hasMore": has_more}
 
 
+def list_assistant_conversations_for_user(
+    *,
+    user: Any,
+    archived: bool,
+) -> list[AssistantConversation]:
+    """권한 인식 검색 후보가 될 사용자의 대화방을 반환합니다."""
+
+    return list(
+        AssistantConversation.objects.filter(
+            user=user,
+            archived_at__isnull=not archived,
+        ).order_by("id")
+    )
+
+
 def list_assistant_message_page(
     *,
     conversation: AssistantConversation,
@@ -267,13 +263,12 @@ def get_assistant_summary_batch(
     branch_ids = _get_current_branch_message_ids(conversation=conversation)
     memory_context_key = resolve_assistant_memory_context_key(context_key)
     queryset = AssistantMessage.objects.filter(id__in=branch_ids)
-    if memory_context_key == CHATWIDGET_SHARED_CONTEXT_KEY:
-        queryset = queryset.filter(
-            Q(context_key=ASSISTANT_DEFAULT_CONTEXT_KEY)
-            | Q(context_key=ASSISTANT_OPENWEBUI_CONTEXT_KEY)
-            | Q(context_key__startswith=ASSISTANT_OPENWEBUI_CONTEXT_PREFIX)
-            | Q(context_key__startswith=OBSERVER_CONTEXT_PREFIX)
-        )
+    if memory_context_key == "shared":
+        queryset = queryset.filter(generation__memory_partition="shared")
+    elif memory_context_key == "scope:emails":
+        queryset = queryset.filter(generation__memory_partition="scope:emails")
+    elif memory_context_key == "scope:observer":
+        queryset = queryset.filter(generation__memory_partition="scope:observer")
     else:
         queryset = queryset.filter(context_key=memory_context_key)
     total_count = queryset.count()
@@ -317,19 +312,18 @@ def get_assistant_conversation_summary(
     ).first()
 
 
-def get_assistant_conversation_summary_for_user(
+def list_assistant_conversation_summaries(
     *,
-    user: Any,
-    conversation_id: UUID,
-    context_key: str,
-) -> AssistantConversationSummary | None:
-    """사용자 소유 대화방의 해석된 기억 키 요약만 반환합니다."""
+    conversation: AssistantConversation,
+) -> list[AssistantConversationSummary]:
+    """대화방의 partition summary를 오래된 순서로 반환합니다."""
 
-    return AssistantConversationSummary.objects.filter(
-        conversation__user=user,
-        conversation_id=conversation_id,
-        context_key=resolve_assistant_memory_context_key(context_key),
-    ).first()
+    return list(
+        AssistantConversationSummary.objects.filter(conversation=conversation).order_by(
+            "created_at",
+            "id",
+        )
+    )
 
 
 def get_assistant_message_for_user(
@@ -358,43 +352,63 @@ def get_assistant_message_for_user(
     )
 
 
-def get_active_assistant_generation_for_user(
+def get_assistant_generation_for_user(
     *,
     user: Any,
+    conversation_id: UUID,
+    generation_id: UUID,
 ) -> AssistantGeneration | None:
-    """아직 lease가 유효한 사용자 활성 generation을 반환합니다."""
+    """사용자와 대화방이 모두 일치하는 generation 하나를 반환합니다."""
 
     return (
         AssistantGeneration.objects.filter(
             user=user,
-            expires_at__gt=timezone.now(),
-            status__in=(
-                AssistantGeneration.Status.QUEUED,
-                AssistantGeneration.Status.STREAMING,
-            ),
+            conversation_id=conversation_id,
+            id=generation_id,
         )
         .select_related("conversation")
-        .order_by("-created_at")
         .first()
     )
 
 
-def get_assistant_generation_for_user(
+def get_assistant_generation_message(
     *,
-    user: Any,
-    generation_id: UUID,
-) -> AssistantGeneration | None:
-    """사용자 소유 generation 하나를 반환합니다."""
+    generation: AssistantGeneration,
+    role: str,
+    latest: bool = False,
+) -> AssistantMessage | None:
+    """Run에 연결된 특정 role 메시지 하나를 안정적인 순서로 반환합니다."""
 
-    return (
-        AssistantGeneration.objects.filter(user=user, id=generation_id)
-        .select_related("conversation")
+    queryset = AssistantMessage.objects.filter(
+        generation=generation,
+        role=role,
+    ).order_by("created_at", "id")
+    return queryset.last() if latest else queryset.first()
+
+
+def lock_assistant_generation_with_conversation(
+    *,
+    generation_id: UUID,
+) -> tuple[AssistantGeneration | None, AssistantConversation | None]:
+    """Turn 결과 저장 transaction에서 Run과 대화방을 같은 순서로 잠급니다."""
+
+    generation = (
+        AssistantGeneration.objects.select_for_update()
+        .filter(id=generation_id)
         .first()
     )
+    if generation is None:
+        return None, None
+    conversation = (
+        AssistantConversation.objects.select_for_update()
+        .filter(id=generation.conversation_id)
+        .first()
+    )
+    return generation, conversation
 
 
-def get_accessible_user_sdwt_prods_for_user(*, user: Any) -> set[str]:
-    """사용자가 접근 가능한 user_sdwt_prod 목록을 조회합니다.
+def get_accessible_email_user_sdwt_prods_for_user(*, user: Any) -> set[str]:
+    """사용자가 Emails data scope에서 접근 가능한 mailbox group을 조회합니다.
 
     인자:
         user: Django 사용자 객체(익명/비인증 가능).
@@ -408,5 +422,5 @@ def get_accessible_user_sdwt_prods_for_user(*, user: Any) -> set[str]:
 
     return account_services.get_accessible_user_sdwt_prods_for_scope(
         user=user,
-        scope_key="assistant",
+        scope_key="emails",
     )

@@ -16,8 +16,12 @@ from django.db.models import Q
 ASSISTANT_DEFAULT_CONTEXT_KEY = "assistant"
 ASSISTANT_OPENWEBUI_CONTEXT_KEY = "assistant:openwebui"
 ASSISTANT_OPENWEBUI_CONTEXT_PREFIX = f"{ASSISTANT_OPENWEBUI_CONTEXT_KEY}:"
-CHATWIDGET_SHARED_CONTEXT_KEY = "chatwidget:shared"
 OBSERVER_CONTEXT_PREFIX = "observer:"
+ASSISTANT_PROFILE_CONTEXT_PARTITIONS = {
+    "profile:portal-default": "shared",
+    "profile:email-rag": "scope:emails",
+    "profile:observer-analysis": "scope:observer",
+}
 ASSISTANT_APP_LABELS = {
     "portal": "Portal",
     "assistant": "Assistant",
@@ -38,63 +42,61 @@ ASSISTANT_APP_LABELS = {
 }
 
 
+def default_assistant_access_requirements() -> dict[str, object]:
+    """새 provenance row에 사용할 빈 version 1 접근 요구사항을 반환합니다."""
+
+    return {"version": 1, "accountScopes": [], "dataClaims": {}}
+
+
 def normalize_assistant_context_key(context_key: object) -> str:
-    """빈 문맥 키를 Email RAG 기본 문맥으로 정규화합니다."""
+    """문맥 키를 공백만 제거하며 빈 값을 다른 Profile로 추정하지 않습니다."""
 
-    normalized = str(context_key or "").strip()
-    return normalized or ASSISTANT_DEFAULT_CONTEXT_KEY
+    return str(context_key or "").strip()
 
 
-def resolve_assistant_app_key(context_key: object) -> str:
-    """메시지 문맥 키에서 서버가 허용한 활성 앱 키를 해석합니다."""
+def resolve_assistant_app_key(context_key: object) -> str | None:
+    """메시지 문맥 키에서 명시적으로 확인되는 활성 앱 키만 해석합니다."""
 
     normalized = normalize_assistant_context_key(context_key)
     if normalized == ASSISTANT_DEFAULT_CONTEXT_KEY:
         return "emails"
     if normalized.startswith(OBSERVER_CONTEXT_PREFIX):
         return "observer"
-    if normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY:
-        return "portal"
     if normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
         app_key = normalized[len(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX) :]
         if app_key in ASSISTANT_APP_LABELS:
             return app_key
-    return "portal"
+    return None
 
 
 def resolve_assistant_memory_context_key(context_key: object) -> str:
-    """요청 문맥 키를 rolling summary와 최근 이력의 기억 키로 변환합니다."""
+    """명시적인 Profile 또는 partition key만 기억 partition으로 변환합니다."""
 
     normalized = normalize_assistant_context_key(context_key)
-    if normalized == CHATWIDGET_SHARED_CONTEXT_KEY:
+    if normalized in ASSISTANT_PROFILE_CONTEXT_PARTITIONS:
+        return ASSISTANT_PROFILE_CONTEXT_PARTITIONS[normalized]
+    if normalized in {"shared", "scope:emails", "scope:observer"}:
         return normalized
-    if (
-        normalized == ASSISTANT_DEFAULT_CONTEXT_KEY
-        or normalized == ASSISTANT_OPENWEBUI_CONTEXT_KEY
-        or normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX)
-        or normalized.startswith(OBSERVER_CONTEXT_PREFIX)
-    ):
-        return CHATWIDGET_SHARED_CONTEXT_KEY
-    return normalized
+    return "legacy-unresolved"
 
 
 def is_chatwidget_shared_memory_context(context_key: object) -> bool:
     """문맥 키가 Portal Assistant 공용 기억에 속하는지 반환합니다."""
 
-    return (
-        resolve_assistant_memory_context_key(context_key)
-        == CHATWIDGET_SHARED_CONTEXT_KEY
-    )
+    return normalize_assistant_context_key(context_key) == "shared"
 
 
 def format_assistant_memory_content(*, context_key: object, content: str) -> str:
     """공유 요약에서 메시지가 생성된 앱 출처를 구분합니다."""
 
     normalized = normalize_assistant_context_key(context_key)
-    if not is_chatwidget_shared_memory_context(normalized):
-        return content
+    if not normalized.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
+        raise ValueError("shared 메시지의 app context가 올바르지 않습니다.")
     app_key = resolve_assistant_app_key(normalized)
-    return f"[대화 출처: {ASSISTANT_APP_LABELS[app_key]}]\n{content}"
+    if app_key is None:
+        raise ValueError("shared 메시지의 app context가 올바르지 않습니다.")
+    app_label = ASSISTANT_APP_LABELS[app_key]
+    return f"[대화 출처: {app_label}]\n{content}"
 
 
 class AssistantConversation(models.Model):
@@ -107,6 +109,10 @@ class AssistantConversation(models.Model):
         related_name="assistant_conversations",
     )
     title = models.CharField(max_length=120, default="새 대화")
+    title_source = models.CharField(max_length=32, default="legacy_unknown")
+    title_access_requirements = models.JSONField(
+        default=default_assistant_access_requirements
+    )
     current_message = models.ForeignKey(
         "AssistantMessage",
         on_delete=models.SET_NULL,
@@ -141,7 +147,9 @@ class AssistantConversationSummary(models.Model):
         related_name="summaries",
     )
     context_key = models.CharField(max_length=512)
+    memory_partition = models.CharField(max_length=128, null=True, blank=True)
     summary = models.TextField(blank=True, default="")
+    access_requirements = models.JSONField(default=default_assistant_access_requirements)
     message_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -182,7 +190,7 @@ class AssistantGeneration(models.Model):
         related_name="generations",
     )
     client_request_id = models.CharField(max_length=128)
-    context_key = models.CharField(max_length=512, default="assistant")
+    context_key = models.CharField(max_length=512)
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -191,6 +199,14 @@ class AssistantGeneration(models.Model):
     error_code = models.CharField(max_length=64, blank=True, default="")
     provider = models.CharField(max_length=64, blank=True, default="")
     model_name = models.CharField(max_length=200, blank=True, default="")
+    profile_key = models.CharField(max_length=64, blank=True, default="")
+    profile_version = models.PositiveIntegerField(null=True, blank=True)
+    tool_keys = models.JSONField(default=list)
+    tool_inputs = models.JSONField(default=dict)
+    memory_partition = models.CharField(max_length=128, blank=True, default="")
+    access_requirements = models.JSONField(default=default_assistant_access_requirements)
+    request_hash = models.CharField(max_length=64, blank=True, default="")
+    execution_metadata = models.JSONField(default=dict)
     expires_at = models.DateTimeField()
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -267,7 +283,9 @@ class AssistantMessage(models.Model):
     client_id = models.CharField(max_length=128)
     role = models.CharField(max_length=16, choices=Roles.choices)
     content = models.TextField()
-    context_key = models.CharField(max_length=512, default="assistant")
+    blocks = models.JSONField(default=list)
+    access_requirements = models.JSONField(default=default_assistant_access_requirements)
+    context_key = models.CharField(max_length=512)
     sources = models.JSONField(default=list)
     user_sdwt_prod = models.CharField(max_length=128, blank=True, default="")
     parent = models.ForeignKey(

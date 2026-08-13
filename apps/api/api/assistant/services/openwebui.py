@@ -13,11 +13,16 @@ import json
 import logging
 import re
 import unicodedata
-from collections.abc import Iterator
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from django.conf import settings
 import requests
+
+from api.common.services import (
+    ExternalCallCancellation,
+    OpenAIStreamError,
+    stream_openai_chat_completion,
+)
 
 from ..models import ASSISTANT_APP_LABELS, resolve_assistant_app_key
 from .errors import AssistantConfigError, AssistantRequestError
@@ -102,7 +107,7 @@ class AssistantOpenWebUIConfig:
         )
 
 
-def _build_headers(config: AssistantOpenWebUIConfig) -> dict[str, str]:
+def build_openwebui_headers(config: AssistantOpenWebUIConfig) -> dict[str, str]:
     """OpenWebUI 요청 header를 구성하고 token은 Bearer 형식으로 정규화합니다."""
 
     headers = {
@@ -119,12 +124,6 @@ def _build_headers(config: AssistantOpenWebUIConfig) -> dict[str, str]:
     return headers
 
 
-def _build_stream_headers(config: AssistantOpenWebUIConfig) -> dict[str, str]:
-    """OpenWebUI SSE 응답을 요청하는 header를 구성합니다."""
-
-    return {**_build_headers(config), "Accept": "text/event-stream"}
-
-
 def build_openwebui_app_system_message(
     *,
     context_key: object,
@@ -133,12 +132,12 @@ def build_openwebui_app_system_message(
     """허용된 현재 앱의 고정 배경지식을 Portal 기본 system message에 결합합니다."""
 
     normalized_context_key = str(context_key or "").strip()
-    if not normalized_context_key or normalized_context_key == "assistant":
+    if not normalized_context_key:
         return base_message
     app_key = resolve_assistant_app_key(context_key)
     app_knowledge = OPENWEBUI_APP_KNOWLEDGE.get(app_key)
     if not app_knowledge:
-        return base_message
+        raise ValueError("지원하지 않는 OpenWebUI app context입니다.")
     return (
         f"{base_message}\n\n"
         f"[현재 활성 앱: {ASSISTANT_APP_LABELS[app_key]}]\n"
@@ -178,129 +177,6 @@ def build_openwebui_messages(
             continue
         messages.append({"role": str(role), "content": content.strip()})
     return messages
-
-
-def _extract_stream_delta(payload: object) -> str:
-    """OpenAI 호환 stream chunk에서 사용자에게 표시할 content만 추출합니다."""
-
-    if not isinstance(payload, dict):
-        return ""
-    choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return ""
-    choice = choices[0]
-    if not isinstance(choice, dict):
-        return ""
-    delta = choice.get("delta")
-    if not isinstance(delta, dict):
-        return ""
-    content = delta.get("content")
-    return content if isinstance(content, str) else ""
-
-
-def stream_openwebui_chat(
-    *,
-    history: Sequence[Mapping[str, object]],
-    conversation_summary: str = "",
-    config: AssistantOpenWebUIConfig | None = None,
-    session: requests.Session | None = None,
-    system_message: str = OPENWEBUI_SYSTEM_MESSAGE,
-    temperature: float = 1.0,
-    top_p: float = 1.0,
-    reasoning_effort: str = "medium",
-    context_key: object = None,
-) -> Iterator[str]:
-    """OpenWebUI Chat Completions SSE를 답변 content 조각 iterator로 변환합니다.
-
-    입력:
-        history: 최근 사용자/Assistant 대화입니다.
-        conversation_summary: 최근 이력 이전의 장기 대화 요약입니다.
-        context_key: 현재 앱 배경지식을 해석할 서버 검증 문맥 키입니다.
-
-    반환:
-        화면에 즉시 이어 붙일 content 문자열 iterator입니다.
-
-    부작용:
-        OpenWebUI streaming HTTP 연결을 열고 iterator 종료 시 즉시 닫습니다.
-
-    오류:
-        설정 누락 또는 upstream HTTP/stream 형식 오류 시 Assistant 계층 예외를 발생시킵니다.
-    """
-
-    active_config = config or AssistantOpenWebUIConfig.from_settings()
-    if not active_config.url:
-        raise AssistantConfigError("OPENWEBUI_URL 설정이 비어 있습니다.")
-    if not active_config.model:
-        raise AssistantConfigError("OPENWEBUI_MODEL 설정이 비어 있습니다.")
-
-    payload: dict[str, Any] = {
-        "model": active_config.model,
-        "messages": build_openwebui_messages(
-            history,
-            system_message=build_openwebui_app_system_message(
-                context_key=context_key,
-                base_message=system_message,
-            ),
-            conversation_summary=conversation_summary,
-        ),
-        "temperature": temperature,
-        "top_p": top_p,
-        "reasoning_effort": reasoning_effort,
-        "stream": True,
-        "tool_choice": "none",
-    }
-    active_session = session or requests.Session()
-    response = None
-    saw_done = False
-    try:
-        response = active_session.post(
-            active_config.url,
-            headers=_build_stream_headers(active_config),
-            json=payload,
-            timeout=active_config.timeout_seconds,
-            stream=True,
-        )
-        response.raise_for_status()
-        for raw_line in response.iter_lines(chunk_size=1, decode_unicode=True):
-            if not raw_line:
-                continue
-            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
-            if not isinstance(line, str) or not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if not data or data == "[DONE]":
-                if data == "[DONE]":
-                    saw_done = True
-                    break
-                continue
-            try:
-                chunk = json.loads(data)
-            except json.JSONDecodeError as exc:
-                raise AssistantRequestError("OpenWebUI stream chunk 형식이 올바르지 않습니다.") from exc
-            delta = _extract_stream_delta(chunk)
-            if delta:
-                yield delta
-        if not saw_done:
-            raise AssistantRequestError(
-                "OpenWebUI stream이 완료 신호 없이 종료되었습니다."
-            )
-    except requests.HTTPError as exc:
-        status_code = getattr(getattr(exc, "response", None), "status_code", None)
-        logger.warning("Assistant OpenWebUI stream HTTP 오류: status=%s", status_code)
-        raise AssistantRequestError(
-            f"OpenWebUI HTTP 오류가 발생했습니다. status={status_code or 'unknown'}"
-        ) from exc
-    except requests.RequestException as exc:
-        logger.warning(
-            "Assistant OpenWebUI stream 요청 실패: exception_type=%s",
-            type(exc).__name__,
-        )
-        raise AssistantRequestError("OpenWebUI stream 요청에 실패했습니다.") from exc
-    finally:
-        if response is not None:
-            response.close()
-        if session is None:
-            active_session.close()
 
 
 def _extract_content(payload: object) -> str:
@@ -371,7 +247,7 @@ def request_openwebui_chat(
     try:
         response = active_session.post(
             active_config.url,
-            headers=_build_headers(active_config),
+            headers=build_openwebui_headers(active_config),
             json=payload,
             timeout=active_config.timeout_seconds,
             stream=False,
@@ -393,6 +269,54 @@ def request_openwebui_chat(
     finally:
         if session is None:
             active_session.close()
+
+
+def stream_openwebui_chat(
+    *,
+    history: Sequence[Mapping[str, object]],
+    cancellation: ExternalCallCancellation,
+    conversation_summary: str = "",
+    config: AssistantOpenWebUIConfig | None = None,
+    session: requests.Session | None = None,
+    system_message: str = OPENWEBUI_SYSTEM_MESSAGE,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    reasoning_effort: str = "medium",
+    context_key: object = None,
+) -> Iterator[str]:
+    """Portal Turn용 OpenWebUI token stream을 취소 가능한 iterator로 반환합니다."""
+
+    active_config = config or AssistantOpenWebUIConfig.from_settings()
+    if not active_config.url:
+        raise AssistantConfigError("OPENWEBUI_URL 설정이 비어 있습니다.")
+    if not active_config.model:
+        raise AssistantConfigError("OPENWEBUI_MODEL 설정이 비어 있습니다.")
+    payload: dict[str, Any] = {
+        "model": active_config.model,
+        "messages": build_openwebui_messages(
+            history,
+            system_message=build_openwebui_app_system_message(
+                context_key=context_key,
+                base_message=system_message,
+            ),
+            conversation_summary=conversation_summary,
+        ),
+        "temperature": temperature,
+        "top_p": top_p,
+        "reasoning_effort": reasoning_effort,
+        "tool_choice": "none",
+    }
+    try:
+        yield from stream_openai_chat_completion(
+            url=active_config.url,
+            headers=build_openwebui_headers(active_config),
+            payload=payload,
+            timeout_seconds=active_config.timeout_seconds,
+            cancellation=cancellation,
+            session=session,
+        )
+    except OpenAIStreamError as exc:
+        raise AssistantRequestError("OpenWebUI 요청에 실패했습니다.") from exc
 
 
 def normalize_openwebui_conversation_title(raw_title: object) -> str:
@@ -530,11 +454,12 @@ def request_openwebui_conversation_summary(
 
 __all__ = [
     "AssistantOpenWebUIConfig",
+    "build_openwebui_headers",
     "build_openwebui_app_system_message",
     "build_openwebui_messages",
     "normalize_openwebui_conversation_title",
     "request_openwebui_chat",
+    "stream_openwebui_chat",
     "request_openwebui_conversation_summary",
     "request_openwebui_conversation_title",
-    "stream_openwebui_chat",
 ]

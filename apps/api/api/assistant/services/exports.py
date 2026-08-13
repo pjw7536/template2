@@ -30,13 +30,23 @@ def build_assistant_markdown_export(
     *,
     conversation: AssistantConversation,
     messages: Sequence[AssistantMessage],
+    locked_message_ids: set[int] | None = None,
+    export_title: str | None = None,
 ) -> bytes:
     """대화방 metadata와 현재 분기를 UTF-8 Markdown으로 반환합니다."""
 
-    lines = [f"# {conversation.title}", ""]
+    locked_ids = locked_message_ids or set()
+    lines = [f"# {export_title or conversation.title}", ""]
     for message in messages:
         role = "사용자" if message.role == AssistantMessage.Roles.USER else "Assistant"
-        lines.extend([f"## {role}", "", message.content, ""])
+        content = (
+            "현재 권한으로 볼 수 없는 메시지입니다."
+            if message.id in locked_ids
+            else message.content
+        )
+        lines.extend([f"## {role}", "", content, ""])
+        if message.id in locked_ids:
+            continue
         snapshot = message.context_snapshot
         if snapshot is not None:
             lines.extend(
@@ -53,23 +63,31 @@ def build_assistant_csv_export(
     *,
     conversation: AssistantConversation,
     messages: Sequence[AssistantMessage],
+    locked_message_ids: set[int] | None = None,
+    export_title: str | None = None,
 ) -> bytes:
     """Excel에서 바로 열 수 있는 UTF-8 BOM CSV로 현재 분기를 반환합니다."""
 
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["대화방", _escape_csv_formula(conversation.title)])
+    locked_ids = locked_message_ids or set()
+    writer.writerow(["대화방", _escape_csv_formula(export_title or conversation.title)])
     writer.writerow(["메시지 ID", "역할", "내용", "문맥", "생성 시각", "근거 수"])
     for message in messages:
         snapshot = message.context_snapshot
+        is_locked = message.id in locked_ids
         writer.writerow(
             [
                 _escape_csv_formula(message.client_id),
                 "사용자" if message.role == AssistantMessage.Roles.USER else "Assistant",
-                _escape_csv_formula(message.content),
-                _escape_csv_formula(message.context_key),
+                _escape_csv_formula(
+                    "현재 권한으로 볼 수 없는 메시지입니다."
+                    if is_locked
+                    else message.content
+                ),
+                _escape_csv_formula("" if is_locked else message.context_key),
                 message.created_at.isoformat(),
-                len(snapshot.evidence or []) if snapshot is not None else 0,
+                len(snapshot.evidence or []) if snapshot is not None and not is_locked else 0,
             ]
         )
     return output.getvalue().encode("utf-8-sig")

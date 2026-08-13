@@ -98,6 +98,7 @@ make makemigrations-check
 | Command | 설명 |
 | --- | --- |
 | `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할·앱별 소속 범위 정합성 점검 |
+| `backfill_assistant_run_access` | legacy Assistant Run·메시지·요약·제목의 Profile과 `access_requirements`를 dry-run 가능한 batch로 보강 |
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
 | `seed_dev_data` | 로컬 개발용 더미 사용자 보정 및 더미 데이터 통합 refresh |
@@ -124,6 +125,7 @@ make makemigrations-check
 ```bash
 docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate --noinput
 docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase post-migration
+docker compose -f docker-compose.dev.yml exec -T api python manage.py backfill_assistant_run_access --dry-run --batch-size 500
 docker compose -f docker-compose.dev.yml exec -T api python manage.py ensure_dev_database
 docker compose -f docker-compose.dev.yml exec -T api python manage.py process_email_outbox
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dev_data --reset --prefix DEV
@@ -144,6 +146,13 @@ docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_drone
 docker compose -f docker-compose.dev.yml exec -T api python manage.py prune_drone_sop
 docker compose -f docker-compose.dev.yml exec -T api python manage.py purge_drone_sop --dry-run
 ```
+
+Assistant Runtime v2 배포는 nullable schema migration을 먼저 적용한 뒤 `--dry-run` 집계를
+검토하고 command를 실행합니다. command는 checkpoint 파일로 중단·재개할 수 있고 동일
+batch를 다시 실행해도 같은 synthetic Run 식별자를 사용합니다. 충돌하거나 분류할 수 없는
+legacy 데이터는 `legacy-unresolved`로 유지해 노출하지 않습니다. 완료 보고서에서 미연결
+메시지가 없음을 확인하기 전에는 non-null 제약을 강화하지 않습니다. 제품 실행 endpoint는
+표준 Turn만 제공하므로 backfill 진행 여부와 관계없이 과거 데이터가 실행 경로로 유입되지 않습니다.
 
 배포 과정에서는 일반 사용자 권한을 자동 생성하거나 일괄 변경하지 않습니다. 최초 Portal
 관리자는 지정한 Django superuser가 권한 관리 화면에서 대상 사용자에게 `admin` 역할을

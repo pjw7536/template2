@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈: 어시스턴트 요청 직렬화/검증
-# 주요 클래스: AssistantChatRequestSerializer
+# 주요 클래스: AssistantTurnRequestSerializer
 # =============================================================================
 """어시스턴트 요청 입력 검증을 담당합니다."""
 from __future__ import annotations
@@ -13,18 +13,13 @@ from rest_framework import serializers
 
 from .models import (
     AssistantConversation,
-    AssistantGeneration,
     AssistantMessage,
     AssistantMessageFeedback,
 )
 
 ASSISTANT_CURSOR_SALT = "assistant.cursor.v1"
 MAX_ASSISTANT_MESSAGE_CHARS = 10_000
-MAX_ASSISTANT_MESSAGE_BATCH_SIZE = 20
-MAX_ASSISTANT_HISTORY_MESSAGES = 20
-MAX_ASSISTANT_SOURCES = 50
-MAX_ASSISTANT_SOURCES_JSON_BYTES = 50 * 1024
-MAX_ASSISTANT_CONTEXT_SNAPSHOT_JSON_BYTES = 100 * 1024
+MAX_ASSISTANT_BLOCKS_JSON_BYTES = 50 * 1024
 
 
 def _json_size_bytes(value: object) -> int:
@@ -33,6 +28,18 @@ def _json_size_bytes(value: object) -> int:
     return len(
         json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     )
+
+
+def _has_current_access(*, user: object, requirements: object, request: object) -> bool:
+    """순환 import 없이 현재 access requirements 검증 결과를 반환합니다."""
+
+    from .services.access_requirements import validate_access_requirements
+
+    return validate_access_requirements(
+        user=user,
+        requirements=requirements,
+        request=request,
+    ).allowed
 
 
 def encode_assistant_cursor(kind: str, payload: dict[str, object]) -> str:
@@ -57,128 +64,17 @@ def decode_assistant_cursor(value: str, *, expected_kind: str) -> dict[str, obje
     return payload
 
 
-class AssistantChatHistoryMessageSerializer(serializers.Serializer):
-    """모델에 전달할 이전 대화 한 건을 검증합니다."""
-
-    role = serializers.CharField(trim_whitespace=True, max_length=16)
-    content = serializers.CharField(
-        trim_whitespace=True,
-        max_length=MAX_ASSISTANT_MESSAGE_CHARS,
-    )
-
-
-class AssistantChatRequestSerializer(serializers.Serializer):
-    """어시스턴트 채팅 요청을 검증합니다."""
-
-    prompt = serializers.CharField(
-        allow_blank=True,
-        trim_whitespace=True,
-        max_length=MAX_ASSISTANT_MESSAGE_CHARS,
-        error_messages={"required": "prompt is required"},
-    )
-    room_id = serializers.JSONField(required=False)
-    permission_groups = serializers.JSONField(required=False)
-    rag_index_name = serializers.JSONField(required=False)
-    history = AssistantChatHistoryMessageSerializer(
-        many=True,
-        required=False,
-        allow_empty=True,
-        max_length=MAX_ASSISTANT_HISTORY_MESSAGES,
-    )
-    context_key = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        max_length=512,
-        default="assistant",
-    )
-
-    def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """카멜/스네이크 케이스 입력을 내부 필드로 정규화합니다."""
-
-        if not isinstance(data, dict):
-            raise serializers.ValidationError("Invalid JSON body")
-
-        normalized: Dict[str, Any] = {}
-
-        if "prompt" in data:
-            prompt_value = data.get("prompt")
-            if prompt_value is None or not isinstance(prompt_value, str):
-                raise serializers.ValidationError({"prompt": ["prompt is required"]})
-            normalized["prompt"] = prompt_value
-
-        if "roomId" in data:
-            room_id_value = data.get("roomId")
-            if room_id_value is not None:
-                normalized["room_id"] = room_id_value
-        elif "room_id" in data:
-            room_id_value = data.get("room_id")
-            if room_id_value is not None:
-                normalized["room_id"] = room_id_value
-
-        if "permissionGroups" in data:
-            permission_groups_value = data.get("permissionGroups")
-            if permission_groups_value is not None:
-                normalized["permission_groups"] = permission_groups_value
-        elif "permission_groups" in data:
-            permission_groups_value = data.get("permission_groups")
-            if permission_groups_value is not None:
-                normalized["permission_groups"] = permission_groups_value
-
-        if "ragIndexName" in data:
-            rag_index_value = data.get("ragIndexName")
-            if rag_index_value is not None:
-                normalized["rag_index_name"] = rag_index_value
-        elif "rag_index_name" in data:
-            rag_index_value = data.get("rag_index_name")
-            if rag_index_value is not None:
-                normalized["rag_index_name"] = rag_index_value
-
-        if "history" in data:
-            history_value = data.get("history")
-            if history_value is not None:
-                normalized["history"] = history_value
-
-        if "contextKey" in data:
-            context_key_value = data.get("contextKey")
-            if context_key_value is not None:
-                normalized["context_key"] = context_key_value
-        elif "context_key" in data:
-            context_key_value = data.get("context_key")
-            if context_key_value is not None:
-                normalized["context_key"] = context_key_value
-
-        return super().to_internal_value(normalized)
-
-    def validate_prompt(self, value: object) -> str:
-        """prompt가 공백/빈 문자열이 아닌지 확인합니다."""
-
-        if not isinstance(value, str):
-            raise serializers.ValidationError("prompt is required")
-        cleaned = value.strip()
-        if not cleaned:
-            raise serializers.ValidationError("prompt is required")
-        return cleaned
-
-
 class AssistantConversationSummaryRequestSerializer(serializers.Serializer):
     """rolling summary를 분리할 메시지 contextKey를 검증합니다."""
 
-    context_key = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        max_length=512,
-        default="assistant",
+    contextKey = serializers.ChoiceField(
+        source="context_key",
+        choices=(
+            "profile:portal-default",
+            "profile:email-rag",
+            "profile:observer-analysis",
+        ),
     )
-
-    def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """camelCase contextKey를 내부 snake_case 필드로 정규화합니다."""
-
-        if not isinstance(data, dict):
-            raise serializers.ValidationError("Invalid JSON body")
-        normalized = dict(data)
-        if "contextKey" in data:
-            normalized["context_key"] = data.get("contextKey")
-        return super().to_internal_value(normalized)
 
 
 class AssistantConversationCreateSerializer(serializers.Serializer):
@@ -256,6 +152,27 @@ class AssistantConversationSerializer(serializers.ModelSerializer):
     pinnedAt = serializers.DateTimeField(source="pinned_at", allow_null=True)
     archivedAt = serializers.DateTimeField(source="archived_at", allow_null=True)
 
+    def to_representation(self, instance: AssistantConversation) -> dict[str, object]:
+        """권한이 회수된 자동·legacy 제목을 일반 제목으로 대체합니다."""
+
+        payload = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            user is not None
+            and instance.title_source not in {"default", "user"}
+            and not _has_current_access(
+                user=user,
+                requirements=instance.title_access_requirements,
+                request=request,
+            )
+        ):
+            payload["name"] = "권한이 필요한 대화"
+            payload["titleAccessState"] = "locked"
+        else:
+            payload["titleAccessState"] = "available"
+        return payload
+
     def get_pinned(self, obj: AssistantConversation) -> bool:
         """고정 시각 존재 여부를 boolean으로 반환합니다."""
 
@@ -302,110 +219,6 @@ class AssistantConversationUpdateSerializer(serializers.Serializer):
         return attrs
 
 
-class AssistantMessageInputSerializer(serializers.Serializer):
-    """한 개의 대화 메시지 저장 요청을 검증합니다."""
-
-    client_id = serializers.CharField(max_length=128)
-    role = serializers.ChoiceField(choices=AssistantMessage.Roles.values)
-    content = serializers.CharField(
-        trim_whitespace=True,
-        max_length=MAX_ASSISTANT_MESSAGE_CHARS,
-    )
-    context_key = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=512,
-        default="assistant",
-    )
-    sources = serializers.JSONField(required=False, default=list)
-    user_sdwt_prod = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=128,
-        default="",
-    )
-    parent_id = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        allow_null=True,
-        max_length=128,
-    )
-    revision_of_id = serializers.CharField(
-        required=False,
-        allow_blank=False,
-        allow_null=True,
-        max_length=128,
-    )
-    generation_id = serializers.UUIDField(required=False, allow_null=True)
-    context_snapshot = serializers.JSONField(required=False, allow_null=True)
-
-    def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """메시지의 camelCase 입력을 내부 snake_case 필드로 정규화합니다."""
-
-        if not isinstance(data, dict):
-            raise serializers.ValidationError("message must be an object")
-        normalized = dict(data)
-        if "clientId" in data:
-            normalized["client_id"] = data.get("clientId")
-        if "contextKey" in data:
-            normalized["context_key"] = data.get("contextKey")
-        if "userSdwtProd" in data:
-            normalized["user_sdwt_prod"] = data.get("userSdwtProd")
-        if "parentId" in data:
-            normalized["parent_id"] = data.get("parentId")
-        if "revisionOfId" in data:
-            normalized["revision_of_id"] = data.get("revisionOfId")
-        if "generationId" in data:
-            normalized["generation_id"] = data.get("generationId")
-        if "contextSnapshot" in data:
-            normalized["context_snapshot"] = data.get("contextSnapshot")
-        return super().to_internal_value(normalized)
-
-    def validate_content(self, value: str) -> str:
-        """공백 메시지 저장을 거부합니다."""
-
-        cleaned = value.strip()
-        if not cleaned:
-            raise serializers.ValidationError("content is required")
-        return cleaned
-
-    def validate_sources(self, value: object) -> list[object]:
-        """출처 배열의 개수와 직렬화 크기를 제한합니다."""
-
-        if not isinstance(value, list):
-            raise serializers.ValidationError("sources must be an array")
-        if len(value) > MAX_ASSISTANT_SOURCES:
-            raise serializers.ValidationError(
-                f"sources는 최대 {MAX_ASSISTANT_SOURCES}개까지 저장할 수 있습니다."
-            )
-        if _json_size_bytes(value) > MAX_ASSISTANT_SOURCES_JSON_BYTES:
-            raise serializers.ValidationError("sources 크기는 최대 50KB까지 허용됩니다.")
-        return value
-
-    def validate_context_snapshot(self, value: object) -> dict[str, object] | None:
-        """분석 문맥 snapshot은 object 또는 null만 허용합니다."""
-
-        if value is None:
-            return None
-        if not isinstance(value, dict):
-            raise serializers.ValidationError("contextSnapshot must be an object")
-        if _json_size_bytes(value) > MAX_ASSISTANT_CONTEXT_SNAPSHOT_JSON_BYTES:
-            raise serializers.ValidationError(
-                "contextSnapshot 크기는 최대 100KB까지 허용됩니다."
-            )
-        return value
-
-
-class AssistantMessageBatchSerializer(serializers.Serializer):
-    """대화방에 저장할 하나 이상의 메시지 배열을 검증합니다."""
-
-    messages = AssistantMessageInputSerializer(
-        many=True,
-        allow_empty=False,
-        max_length=MAX_ASSISTANT_MESSAGE_BATCH_SIZE,
-    )
-
-
 class AssistantMessageSerializer(serializers.ModelSerializer):
     """저장 메시지를 ChatWidget에서 사용하는 형태로 반환합니다."""
 
@@ -421,6 +234,42 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
     generationId = serializers.UUIDField(source="generation_id", allow_null=True)
     contextSnapshot = serializers.SerializerMethodField()
     feedback = serializers.SerializerMethodField()
+    accessState = serializers.SerializerMethodField()
+
+    def _has_access(self, obj: AssistantMessage) -> bool:
+        """serializer 요청 사용자의 현재 권한으로 메시지 노출 여부를 판정합니다."""
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None:
+            return True
+        return _has_current_access(
+            user=user,
+            requirements=obj.access_requirements,
+            request=request,
+        )
+
+    def get_accessState(self, obj: AssistantMessage) -> str:
+        """메시지 본문 접근 상태를 반환합니다."""
+
+        return "available" if self._has_access(obj) else "locked"
+
+    def to_representation(self, instance: AssistantMessage) -> dict[str, object]:
+        """잠긴 메시지는 chronology와 branch 관계만 남긴 placeholder로 반환합니다."""
+
+        payload = super().to_representation(instance)
+        if self._has_access(instance):
+            return payload
+        allowed_keys = {
+            "id",
+            "role",
+            "parentId",
+            "revisionOfId",
+            "generationId",
+            "createdAt",
+            "accessState",
+        }
+        return {key: value for key, value in payload.items() if key in allowed_keys}
 
     def get_contextSnapshot(self, obj: AssistantMessage) -> dict[str, object] | None:
         """업무 분석 snapshot을 frontend 증거 패널 형태로 반환합니다."""
@@ -454,6 +303,7 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
             "id",
             "role",
             "content",
+            "blocks",
             "contextKey",
             "sources",
             "userSdwtProd",
@@ -462,93 +312,94 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
             "generationId",
             "contextSnapshot",
             "feedback",
+            "accessState",
             "createdAt",
         )
 
 
-class AssistantGenerationCreateSerializer(serializers.Serializer):
-    """답변 생성 lease 획득 요청을 검증합니다."""
+class AssistantTurnMessageSerializer(serializers.Serializer):
+    """Turn 요청이 새로 저장할 사용자 메시지 식별자와 본문을 검증합니다."""
 
-    conversation_id = serializers.UUIDField()
-    client_request_id = serializers.CharField(max_length=128)
-    context_key = serializers.CharField(max_length=512, default="assistant")
-    provider = serializers.CharField(required=False, allow_blank=True, max_length=64)
-    model_name = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    client_id = serializers.CharField(max_length=128)
+    content = serializers.CharField(max_length=MAX_ASSISTANT_MESSAGE_CHARS, trim_whitespace=True)
 
     def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """generation 요청의 camelCase 입력을 정규화합니다."""
+        """clientId를 내부 snake_case 이름으로 정규화합니다."""
+
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("message must be an object")
+        normalized = {
+            "client_id": data.get("clientId"),
+            "content": data.get("content"),
+        }
+        return super().to_internal_value(normalized)
+
+
+class AssistantTurnRequestSerializer(serializers.Serializer):
+    """표준 Turn send/edit/regenerate/retry 요청 계약을 검증합니다."""
+
+    action = serializers.ChoiceField(choices=("send", "edit", "regenerate", "retry"))
+    conversation_id = serializers.UUIDField()
+    client_request_id = serializers.CharField(max_length=128)
+    profile_key = serializers.ChoiceField(
+        choices=("portal-default", "email-rag", "observer-analysis")
+    )
+    profile_version = serializers.IntegerField(required=False, min_value=1)
+    app_context_key = serializers.CharField(required=False, max_length=512)
+    message = AssistantTurnMessageSerializer()
+    target_message_id = serializers.CharField(required=False, max_length=128)
+    retry_run_id = serializers.UUIDField(required=False)
+    tool_inputs = serializers.JSONField(required=False, default=dict)
+
+    def to_internal_value(self, data: Any) -> Dict[str, Any]:
+        """Turn API camelCase 입력을 내부 이름으로 정규화합니다."""
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
-        normalized = dict(data)
+        normalized = {
+            "action": data.get("action"),
+            "message": data.get("message"),
+        }
         for external, internal in (
             ("conversationId", "conversation_id"),
             ("clientRequestId", "client_request_id"),
-            ("contextKey", "context_key"),
-            ("modelName", "model_name"),
+            ("profileKey", "profile_key"),
+            ("profileVersion", "profile_version"),
+            ("appContextKey", "app_context_key"),
+            ("targetMessageId", "target_message_id"),
+            ("retryRunId", "retry_run_id"),
+            ("toolInputs", "tool_inputs"),
         ):
             if external in data:
                 normalized[internal] = data.get(external)
         return super().to_internal_value(normalized)
 
+    def validate_tool_inputs(self, value: object) -> dict[str, object]:
+        """Tool 입력을 허용 key와 50KB 상한으로 제한합니다."""
 
-class AssistantGenerationFinalizeSerializer(serializers.Serializer):
-    """답변 생성 lease 종료 상태를 검증합니다."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("toolInputs must be an object")
+        if set(value) - {"rag.search", "observer.analysis"}:
+            raise serializers.ValidationError("지원하지 않는 Tool 입력입니다.")
+        if _json_size_bytes(value) > MAX_ASSISTANT_BLOCKS_JSON_BYTES:
+            raise serializers.ValidationError("toolInputs 크기는 최대 50KB까지 허용됩니다.")
+        return value
 
-    status = serializers.ChoiceField(
-        choices=(
-            AssistantGeneration.Status.COMPLETED,
-            AssistantGeneration.Status.STOPPED,
-            AssistantGeneration.Status.FAILED,
-        )
-    )
-    error_code = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=64,
-        default="",
-    )
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        """action별 target/retry 계약과 새 client ID 요구사항을 확인합니다."""
 
-    def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """errorCode 입력을 내부 이름으로 정규화합니다."""
-
-        if not isinstance(data, dict):
-            raise serializers.ValidationError("Invalid JSON body")
-        normalized = dict(data)
-        if "errorCode" in data:
-            normalized["error_code"] = data.get("errorCode")
-        return super().to_internal_value(normalized)
-
-
-class AssistantGenerationSerializer(serializers.ModelSerializer):
-    """generation 상태를 frontend camelCase 형태로 반환합니다."""
-
-    conversationId = serializers.UUIDField(source="conversation_id")
-    clientRequestId = serializers.CharField(source="client_request_id")
-    contextKey = serializers.CharField(source="context_key")
-    errorCode = serializers.CharField(source="error_code")
-    modelName = serializers.CharField(source="model_name")
-    expiresAt = serializers.DateTimeField(source="expires_at")
-    startedAt = serializers.DateTimeField(source="started_at", allow_null=True)
-    finishedAt = serializers.DateTimeField(source="finished_at", allow_null=True)
-
-    class Meta:
-        """generation 공개 필드만 정의합니다."""
-
-        model = AssistantGeneration
-        fields = (
-            "id",
-            "conversationId",
-            "clientRequestId",
-            "contextKey",
-            "status",
-            "errorCode",
-            "provider",
-            "modelName",
-            "expiresAt",
-            "startedAt",
-            "finishedAt",
-        )
+        action = attrs["action"]
+        if action in {"send", "edit"} and not str(
+            attrs.get("app_context_key") or ""
+        ).strip():
+            raise serializers.ValidationError(
+                {"appContextKey": "appContextKey가 필요합니다."}
+            )
+        if action in {"edit", "regenerate"} and not attrs.get("target_message_id"):
+            raise serializers.ValidationError({"targetMessageId": "targetMessageId가 필요합니다."})
+        if action == "retry" and not attrs.get("retry_run_id"):
+            raise serializers.ValidationError({"retryRunId": "retryRunId가 필요합니다."})
+        return attrs
 
 
 class AssistantMessageFeedbackSerializer(serializers.Serializer):
@@ -571,20 +422,16 @@ class AssistantConversationExportQuerySerializer(serializers.Serializer):
 
 
 __all__ = [
-    "AssistantChatRequestSerializer",
     "AssistantConversationCreateSerializer",
     "AssistantConversationListQuerySerializer",
     "AssistantConversationExportQuerySerializer",
     "AssistantConversationSummaryRequestSerializer",
     "AssistantConversationSerializer",
     "AssistantConversationUpdateSerializer",
-    "AssistantGenerationCreateSerializer",
-    "AssistantGenerationFinalizeSerializer",
-    "AssistantGenerationSerializer",
-    "AssistantMessageBatchSerializer",
     "AssistantMessageListQuerySerializer",
     "AssistantMessageSerializer",
     "AssistantMessageFeedbackSerializer",
+    "AssistantTurnRequestSerializer",
     "decode_assistant_cursor",
     "encode_assistant_cursor",
 ]

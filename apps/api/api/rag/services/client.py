@@ -14,8 +14,10 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
+import json
 
 import requests
+from api.common.services import ExternalCallCancellation, ExternalCallCancelled
 from django.utils import timezone
 
 from .config import _normalize_index_names, _normalize_permission_groups
@@ -193,25 +195,56 @@ def _post_rag_request(
     *,
     timeout: int,
     expect_json: bool = False,
+    cancellation: ExternalCallCancellation | None = None,
 ) -> Dict[str, Any] | None:
     """RAG HTTP 요청을 수행하고 실패 시 동일한 로깅 규칙으로 기록합니다."""
 
     rag_services = _get_rag_services()
     response = None
+    session = requests.Session() if cancellation is not None else None
+    unregister = (
+        cancellation.register_closer(session.close)
+        if cancellation is not None and session is not None
+        else lambda: None
+    )
+    unregister_response = lambda: None
     try:
-        response = requests.post(
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        requester = session.post if session is not None else requests.post
+        response = requester(
             url,
             headers=rag_services.RAG_HEADERS,
             json=payload,
             timeout=max(1, int(timeout)),
+            stream=cancellation is not None,
         )
+        if cancellation is not None:
+            unregister_response = cancellation.register_closer(response.close)
         response.raise_for_status()
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         if expect_json:
+            if cancellation is not None:
+                raw_body = bytearray()
+                for chunk in response.iter_content(chunk_size=8192):
+                    cancellation.raise_if_cancelled()
+                    raw_body.extend(chunk)
+                return json.loads(raw_body.decode(response.encoding or "utf-8"))
             return response.json()
         return None
     except Exception as exc:
+        if cancellation is not None and cancellation.cancelled:
+            raise ExternalCallCancelled("RAG 호출이 취소되었습니다.") from exc
         _log_rag_failure(action, payload, exc, response=response)
         raise
+    finally:
+        unregister_response()
+        if response is not None:
+            response.close()
+        unregister()
+        if session is not None:
+            session.close()
 
 
 def _build_insert_payload(
@@ -376,6 +409,7 @@ def search_rag(
     num_result_doc: int = 5,
     permission_groups: Sequence[str] | None = None,
     timeout: int = 30,
+    cancellation: ExternalCallCancellation | None = None,
 ) -> Dict[str, Any]:
     """RAG에서 query_text 기반으로 문서를 검색합니다.
 
@@ -415,7 +449,14 @@ def search_rag(
     _require_rag_setting("search", payload, resolved_index_name, "RAG_INDEX_DEFAULT is not configured")
     _require_rag_setting("search", payload, payload.get("query_text"), "query_text is empty")
 
-    result = _post_rag_request("search", search_url, payload, timeout=timeout, expect_json=True)
+    result = _post_rag_request(
+        "search",
+        search_url,
+        payload,
+        timeout=timeout,
+        expect_json=True,
+        cancellation=cancellation,
+    )
     return result or {}
 
 

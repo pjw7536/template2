@@ -8,33 +8,19 @@ from __future__ import annotations
 from django.urls import path
 
 from .views import (
-    AssistantChatView,
     AssistantConversationDetailView,
     AssistantConversationListCreateView,
     AssistantConversationMessageView,
     AssistantConversationExportView,
     AssistantConversationSummaryView,
     AssistantConversationTitleView,
-    AssistantOpenWebUIChatView,
-    AssistantOpenWebUIStreamView,
     AssistantRagIndexListView,
-    AssistantGenerationDetailView,
-    AssistantGenerationListCreateView,
     AssistantMessageFeedbackView,
+    AssistantTurnStreamView,
 )
 
 urlpatterns = [
-    path("chat", AssistantChatView.as_view(), name="assistant-chat"),
-    path(
-        "openwebui-chat",
-        AssistantOpenWebUIChatView.as_view(),
-        name="assistant-openwebui-chat",
-    ),
-    path(
-        "openwebui-chat/stream",
-        AssistantOpenWebUIStreamView.as_view(),
-        name="assistant-openwebui-stream",
-    ),
+    path("turns/stream", AssistantTurnStreamView.as_view(), name="assistant-turn-stream"),
     path(
         "conversations",
         AssistantConversationListCreateView.as_view(),
@@ -71,14 +57,4 @@ urlpatterns = [
         name="assistant-conversation-refresh-summary",
     ),
     path("rag-indexes", AssistantRagIndexListView.as_view(), name="assistant-rag-indexes"),
-    path(
-        "generations",
-        AssistantGenerationListCreateView.as_view(),
-        name="assistant-generation-list-create",
-    ),
-    path(
-        "generations/<uuid:generation_id>",
-        AssistantGenerationDetailView.as_view(),
-        name="assistant-generation-detail",
-    ),
 ]

@@ -6,15 +6,17 @@ import { ChatWidget } from "./ChatWidget"
 
 const chatSessionMocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
+  pageContext: null,
+  user: { id: 10 },
   useChatSession: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: { id: 10 } }),
+  useAuth: () => ({ user: chatSessionMocks.user }),
 }))
 
 vi.mock("@/lib/assistant/pageContext", () => ({
-  usePageAssistantContext: () => ({ pageContext: null }),
+  usePageAssistantContext: () => ({ pageContext: chatSessionMocks.pageContext }),
 }))
 
 vi.mock("../hooks/useAttentionTooltip", () => ({
@@ -50,7 +52,6 @@ function createChatSessionResult() {
     isRoomListBusy: false,
     errorMessage: "",
     canRetry: false,
-    canRetrySave: false,
     createRoom: chatSessionMocks.createRoom,
   }
 }
@@ -96,6 +97,8 @@ vi.mock("./ChatWidgetPanel", () => ({
 describe("ChatWidget 대화방 생성", () => {
   beforeEach(() => {
     chatSessionMocks.createRoom.mockReset()
+    chatSessionMocks.pageContext = null
+    chatSessionMocks.user = { id: 10 }
     chatSessionMocks.useChatSession.mockReset()
     chatSessionMocks.useChatSession.mockImplementation(createChatSessionResult)
   })
@@ -119,6 +122,19 @@ describe("ChatWidget 대화방 생성", () => {
   it("Assistant 전체 페이지에서는 Widget session을 만들지 않는다", () => {
     render(
       <MemoryRouter initialEntries={["/assistant"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "위젯 열기" })).not.toBeInTheDocument()
+  })
+
+  it("인증 사용자가 없으면 비저장 session으로 대신 실행하지 않는다", () => {
+    chatSessionMocks.user = null
+
+    render(
+      <MemoryRouter>
         <ChatWidget />
       </MemoryRouter>,
     )
@@ -153,6 +169,34 @@ describe("ChatWidget 대화방 생성", () => {
     expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
       expect.objectContaining({
         messageContextKey: "assistant",
+      }),
+    )
+  })
+
+  it("Observer 문맥 등록 전에는 Portal Profile로 대신 실행하지 않는다", () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={["/observer/EQP-01"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).not.toHaveBeenCalled()
+
+    chatSessionMocks.pageContext = {
+      kind: "observer",
+      key: `observer:v1:${"a".repeat(64)}`,
+      scope: { eqpId: "EQP-01" },
+    }
+    rerender(
+      <MemoryRouter initialEntries={["/observer/EQP-01"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageContextKey: `observer:v1:${"a".repeat(64)}`,
+        profileKey: "observer-analysis",
       }),
     )
   })

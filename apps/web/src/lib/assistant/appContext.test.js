@@ -22,9 +22,11 @@ describe("Assistant 앱 컨텍스트", () => {
     expect(resolveAssistantAppContext(pathname).key).toBe(expectedKey)
   })
 
-  it("알 수 없는 앱 키와 경로는 Portal로 안전하게 되돌린다", () => {
-    expect(getAssistantAppContext("unknown").key).toBe("portal")
-    expect(resolveAssistantAppContext("/unknown/path").key).toBe("portal")
-    expect(buildOpenWebUIContextKey("unknown")).toBe("assistant:openwebui:portal")
+  it("알 수 없는 앱 키와 경로를 Portal로 추정하지 않는다", () => {
+    expect(getAssistantAppContext("unknown")).toBeNull()
+    expect(resolveAssistantAppContext("/unknown/path")).toBeNull()
+    expect(() => buildOpenWebUIContextKey("unknown")).toThrow(
+      "지원하지 않는 Assistant 앱 컨텍스트",
+    )
   })
 })

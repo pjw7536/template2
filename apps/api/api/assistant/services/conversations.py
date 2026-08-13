@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .. import selectors
 from ..models import (
     AssistantContextSnapshot,
     AssistantConversation,
@@ -26,6 +27,11 @@ from ..models import (
     is_chatwidget_shared_memory_context,
 )
 from .errors import AssistantRequestError
+from .access_requirements import (
+    empty_access_requirements,
+    merge_access_requirements,
+    validate_access_requirements,
+)
 from .generations import finalize_assistant_generation
 from .openwebui import (
     request_openwebui_conversation_summary,
@@ -50,6 +56,13 @@ def create_assistant_conversation(
     return AssistantConversation.objects.create(
         user=user,
         title=normalized_title[:120] or "새 대화",
+        title_source=(
+            "default"
+            if not normalized_title
+            or DEFAULT_CONVERSATION_TITLE_PATTERN.fullmatch(normalized_title)
+            else "user"
+        ),
+        title_access_requirements=empty_access_requirements(),
     )
 
 
@@ -74,7 +87,11 @@ def update_assistant_conversation(
     update_fields: list[str] = []
     if title is not None:
         conversation.title = title.strip()[:120] or "새 대화"
-        update_fields.append("title")
+        conversation.title_source = "user"
+        conversation.title_access_requirements = empty_access_requirements()
+        update_fields.extend(
+            ["title", "title_source", "title_access_requirements"]
+        )
     if pinned is not None:
         conversation.pinned_at = timezone.now() if pinned else None
         update_fields.append("pinned_at")
@@ -140,12 +157,20 @@ def generate_assistant_conversation_title(
         title=conversation.title,
     ).update(
         title=title,
+        title_source="auto",
+        title_access_requirements=merge_access_requirements(
+            *(message.access_requirements for message in messages)
+        ),
         updated_at=updated_at,
     )
     if updated_count != 1:
         raise ValueError("대화방 제목이 이미 변경되었거나 대화방이 삭제되었습니다.")
 
     conversation.title = title
+    conversation.title_source = "auto"
+    conversation.title_access_requirements = merge_access_requirements(
+        *(message.access_requirements for message in messages)
+    )
     conversation.updated_at = updated_at
     return conversation
 
@@ -307,6 +332,7 @@ def refresh_assistant_conversation_summary(
         if existing_summary is None:
             raise ValueError("갱신할 대화 요약 메시지가 없습니다.")
         return existing_summary
+    branch_head_id = conversation.current_message_id
     summary = request_openwebui_conversation_summary(
         messages=[
             {
@@ -324,12 +350,23 @@ def refresh_assistant_conversation_summary(
         ],
         existing_summary=existing_summary.summary if existing_summary else "",
     )
+    current_head_id = AssistantConversation.objects.filter(id=conversation.id).values_list(
+        "current_message_id", flat=True
+    ).first()
+    if current_head_id != branch_head_id:
+        raise ValueError("요약 생성 중 대화 분기가 변경되어 결과를 폐기했습니다.")
+    summary_requirements = merge_access_requirements(
+        *((existing_summary.access_requirements,) if existing_summary else ()),
+        *(message.access_requirements for message in messages),
+    )
     if existing_summary is None:
         try:
             return AssistantConversationSummary.objects.create(
                 conversation=conversation,
                 context_key=context_key,
+                memory_partition=context_key,
                 summary=summary,
+                access_requirements=summary_requirements,
                 message_count=covered_message_count,
             )
         except IntegrityError as exc:
@@ -341,15 +378,68 @@ def refresh_assistant_conversation_summary(
         message_count=existing_summary.message_count,
     ).update(
         summary=summary,
+        memory_partition=context_key,
+        access_requirements=summary_requirements,
         message_count=covered_message_count,
         updated_at=updated_at,
     )
     if updated_count != 1:
         raise ValueError("대화 요약이 이미 갱신되었거나 대화방이 삭제되었습니다.")
     existing_summary.summary = summary
+    existing_summary.memory_partition = context_key
+    existing_summary.access_requirements = summary_requirements
     existing_summary.message_count = covered_message_count
     existing_summary.updated_at = updated_at
     return existing_summary
+
+
+def refresh_authorized_assistant_conversation_summary(
+    *,
+    user: Any,
+    request: Any,
+    conversation: AssistantConversation,
+    context_key: str,
+) -> dict[str, object]:
+    """연속된 summary batch 전체가 현재 권한을 통과할 때만 cursor를 전진시킵니다."""
+
+    batch = selectors.get_assistant_summary_batch(
+        conversation=conversation,
+        context_key=context_key,
+    )
+    messages = list(batch["messages"])
+    existing_summary = batch["summary"]
+    current_count = existing_summary.message_count if existing_summary else 0
+    if not messages:
+        return {
+            "updated": False,
+            "coveredMessageCount": current_count,
+            "totalMessageCount": batch["totalMessageCount"],
+        }
+    if any(
+        not validate_access_requirements(
+            user=user,
+            requirements=message.access_requirements,
+            request=request,
+        ).allowed
+        for message in messages
+    ):
+        return {
+            "updated": False,
+            "coveredMessageCount": current_count,
+            "totalMessageCount": batch["totalMessageCount"],
+        }
+    summary = refresh_assistant_conversation_summary(
+        conversation=conversation,
+        existing_summary=existing_summary,
+        messages=messages,
+        covered_message_count=int(batch["coveredMessageCount"]),
+        context_key=str(batch["contextKey"]),
+    )
+    return {
+        "updated": True,
+        "coveredMessageCount": summary.message_count,
+        "totalMessageCount": batch["totalMessageCount"],
+    }
 
 
 @transaction.atomic
@@ -409,7 +499,13 @@ def append_assistant_messages(
             if generation is None:
                 raise ValueError("generationId를 현재 대화방에서 찾을 수 없습니다.")
 
-        context_key = str(message.get("context_key") or "assistant")
+        context_key = str(message.get("context_key") or "").strip()
+        if not context_key:
+            raise ValueError("context_key가 필요합니다.")
+        user_sdwt_prod = str(message.get("user_sdwt_prod") or "")
+        access_requirements = message.get("access_requirements")
+        if not isinstance(access_requirements, Mapping):
+            raise ValueError("access_requirements가 필요합니다.")
         snapshot = None
         snapshot_payload = message.get("context_snapshot")
         if isinstance(snapshot_payload, Mapping):
@@ -425,9 +521,11 @@ def append_assistant_messages(
             defaults={
                 "role": str(message["role"]),
                 "content": str(message["content"]),
+                "blocks": message.get("blocks") or [],
+                "access_requirements": dict(access_requirements),
                 "context_key": context_key,
                 "sources": message.get("sources") or [],
-                "user_sdwt_prod": str(message.get("user_sdwt_prod") or ""),
+                "user_sdwt_prod": user_sdwt_prod,
                 "parent": parent,
                 "revision_of": revision_of,
                 "generation": generation,

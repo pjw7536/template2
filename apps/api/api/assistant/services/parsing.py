@@ -12,13 +12,11 @@ from typing import List, Optional, Sequence
 from django.conf import settings
 
 
-def _read_setting(name: str, fallback: Optional[str] = None) -> Optional[str]:
+def _read_setting(name: str) -> Optional[str]:
     """Django settings 또는 환경변수에서 설정 값을 문자열로 읽습니다.
 
     인자:
         name: 설정 키 이름.
-        fallback: 값이 없을 때 사용할 기본값.
-
     반환:
         문자열 설정 값 또는 None.
 
@@ -31,10 +29,10 @@ def _read_setting(name: str, fallback: Optional[str] = None) -> Optional[str]:
     # -----------------------------------------------------------------------------
     value = getattr(settings, name, None)
     # -----------------------------------------------------------------------------
-    # 2) 환경변수 fallback
+    # 2) Django settings에 등록되지 않은 도메인 환경변수 조회
     # -----------------------------------------------------------------------------
     if value is None:
-        value = os.environ.get(name, fallback)
+        value = os.environ.get(name)
     # -----------------------------------------------------------------------------
     # 3) 문자열로 정규화
     # -----------------------------------------------------------------------------

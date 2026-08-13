@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from "react"
 
-import { useAuth } from "@/lib/auth"
 import { useAssistantRagIndexes } from "./useAssistantRagIndexes"
 import { useAssistantRagIndexStore } from "../store/useAssistantRagIndexStore"
 
@@ -24,11 +23,9 @@ function buildSortedOptions(values) {
 }
 
 export function useAssistantRagIndex({ enabled = true } = {}) {
-  const { user } = useAuth()
   const ragIndexesQuery = useAssistantRagIndexes({ enabled })
   const ragData = ragIndexesQuery.data || {}
-  const currentUserSdwtProd =
-    normalizeString(user?.user_sdwt_prod) || normalizeString(ragData.currentUserSdwtProd)
+  const currentUserSdwtProd = normalizeString(ragData.currentUserSdwtProd)
 
   const ragPublicGroup = normalizeString(ragData.ragPublicGroup) || DEFAULT_RAG_PUBLIC_GROUP
   const rawRagIndexes = normalizeList(ragData.ragIndexes)

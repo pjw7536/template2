@@ -254,6 +254,7 @@ export function ChatMessages({
 
       {messages.map((message) => {
         const isUser = message.role === "user"
+        const isLocked = message.accessState === "locked"
         const isEditing = isUser && editTargetId === message.id
         const sources = Array.isArray(message.sources) ? message.sources : []
         const messageMailbox =
@@ -477,7 +478,7 @@ export function ChatMessages({
                 </Collapsible>
               ) : null}
 
-              {!isEditing && !message.isStreaming && !isGreeting ? (
+              {!isEditing && !message.isStreaming && !isGreeting && !isLocked ? (
                 <div className={["flex items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100", isUser ? "justify-end" : "justify-start"].join(" ")}>
                   <Button type="button" variant="ghost" size="icon" className="size-7" onClick={() => handleCopy(message)} aria-label="메시지 복사">
                     {copiedMessageId === message.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

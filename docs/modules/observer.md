@@ -60,11 +60,11 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 ## AI 종합 분석 흐름
 
 1. Observer가 현재 설비, 기간, 활성 로그 유형, TIP 그룹을 전역 ChatWidget의 page context로 등록합니다.
-2. 위젯에는 연결된 EQP·기간과 `종합 분석` 빠른 질문이 표시되며, 사용자가 입력한 질문을 row 전체가 아닌 조회 조건과 함께 backend에 전달합니다.
+2. 위젯에는 연결된 EQP·기간과 `종합 분석` 빠른 질문이 표시되며, `observer-analysis` Profile의 표준 Turn API로 질문과 조회 조건만 전달합니다.
 3. backend는 DB 조회 단계에서 EQP의 `DOWN`, `IDLE`, `LOCAL`과 TIP의 `L*_TIP`만 선별한 뒤 상태·comment별 통계로 압축합니다. TIP의 `DOING`, `CNT`는 제외됩니다.
 4. SPC/FDC/CTTTM/RACB/ESOP는 관심 상태 전 30분부터 후 10분까지의 사건만 raw context로 선별합니다. CTTTM은 `llm_core_summary` 핵심요약과 `llm_summary` 시간순 이벤트 정리를 별도 context로 보존합니다.
-5. 현재 방에서 Portal 앱·Observer·Email RAG가 공유한 장기 요약과 구조화한 입력을 기존 `OPENWEBUI_*` 연결 및 `gpt-oss-120b` 모델에 streaming으로 전달하고, 반복·집중 패턴과 시간적 연관성, 원인 일관성, 운영상 의미를 중요도순으로 분석합니다. 공유 대화는 질문 의도와 후속 문맥에만 사용하며 사실 판단은 현재 Observer 조회 데이터로 제한합니다.
-6. 모델은 한 줄당 하나의 분석 블록인 NDJSON을 생성하고, backend는 완성된 블록부터 SSE `delta`로 전달합니다.
+5. 현재 방의 `shared`와 `scope:observer` partition에서 현재 권한을 통과한 기억만 구조화 입력과 함께 기존 `OPENWEBUI_*` 연결 및 `gpt-oss-120b` 모델에 `stream: true`로 전달합니다. 대화 기억은 질문 의도와 후속 문맥에만 사용하며 사실 판단은 현재 Observer 조회 데이터로 제한합니다.
+6. backend는 stream을 취소 가능하게 소비한 뒤 단일 분석 JSON 객체를 엄격히 검증합니다. 코드펜스나 일반 텍스트를 분석 결과로 대신 사용하지 않습니다.
 7. backend는 분석 입력에 존재하는 근거 ID만 최종 결과에 남기고 실제 모델명·프롬프트·스키마 버전을 SSE `done` payload로 응답합니다.
 8. ChatWidget의 근거 ID를 누르면 분석 당시 설비·기간·로그 유형·TIP 그룹을 Observer에 복원하고, 해당 유형을 cursor로 찾은 뒤 Data Log 행을 선택·강조합니다.
 
@@ -72,7 +72,7 @@ ChatWidget 본문에는 핵심 결론, 종합 설명, 최대 5개의 주요 분�
 
 CTTTM `llm_summary`는 작업 내 사건 순서를 해석하는 배경지식으로만 사용합니다. 모델은 이 요약을 주변 raw event와 함께 분석하며, 요약 자체를 독립된 근거나 확정 원인으로 취급하지 않습니다.
 
-이 방식은 화면 row 수와 무관하게 분석 입력 크기를 제한합니다. source 조회 또는 prompt가 제한된 경우 응답 coverage와 limitations에 반영되며, prompt 축소는 section별 전후 건수로 확인할 수 있습니다. 근거 패널은 분석 당시 범위와 현재 범위의 일치 여부를 구분하고 모델·프롬프트 버전을 함께 표시합니다. 같은 ChatWidget 대화방에서는 Portal 앱·Observer·Email RAG의 history·장기 요약을 이어서 사용하고, 모델 입력의 문맥 전환 메시지에 출처를 표시합니다. 다른 대화방의 기억은 포함하지 않습니다.
+이 방식은 화면 row 수와 무관하게 분석 입력 크기를 제한합니다. source 조회 또는 prompt가 제한된 경우 응답 coverage와 limitations에 반영되며, prompt 축소는 section별 전후 건수로 확인할 수 있습니다. 근거 패널은 분석 당시 범위와 현재 범위의 일치 여부를 구분하고 모델·프롬프트 버전을 함께 표시합니다. 같은 ChatWidget 대화방이라도 Email partition은 Observer Profile이 읽지 않으며, 다른 대화방의 기억도 포함하지 않습니다.
 
 ## 로그 조회 정책
 
@@ -102,8 +102,7 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 | `apps/web/src/features/observer/api/observerApi.js` | backend API 호출 |
 | `apps/web/src/features/observer/hooks/useObserverLogs.js` | 로그 query orchestration |
 | `apps/web/src/features/observer/hooks/useObserverLogDetailQuery.js` | 선택 로그 상세 지연 조회 |
-| `apps/web/src/features/observer/hooks/useObserverAssistantContext.js` | 현재 조회 조건과 Observer 분석 sender를 ChatWidget에 등록 |
-| `apps/web/src/features/observer/utils/observerAnalysisChat.js` | 분석 질문 history와 구조화 응답을 채팅 markdown으로 변환 |
+| `apps/web/src/features/observer/hooks/useObserverAssistantContext.js` | 현재 조회 조건을 ChatWidget page context에 등록 |
 | `apps/web/src/features/observer/utils/observerEvidence.js` | 분석 근거 URL 생성·해석과 로그 ID 매칭 |
 | `apps/web/src/lib/assistant/pageContext.jsx` | feature와 전역 ChatWidget 사이의 공용 page context |
 | `apps/web/src/features/observer/store/useObserverStore.js` | 선택/필터 UI 상태 |
@@ -117,10 +116,10 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 - Data Log는 row virtualizer를 사용하므로 resident log 수와 관계없이 화면에는 viewport 주변 행만 mount됩니다.
 - Timeline DataSet은 전체 초기화 대신 ID 기준 diff를 반영해 선택과 zoom 초기화를 줄입니다.
 - 화면이 느리면 로그 API의 `from`, `to`, `limit` 조합과 응답 건수를 먼저 확인합니다.
-- AI 분석 호출 문제는 `OPENWEBUI_URL`, `OPENWEBUI_MODEL`, API token/header 설정과 `/api/v1/observer/analysis` 응답의 coverage부터 확인합니다.
+- AI 분석 호출 문제는 `OPENWEBUI_URL`, `OPENWEBUI_MODEL`, API token/header 설정과 `/api/v1/assistant/turns/stream`의 Tool event부터 확인합니다.
 - AI 분석은 source별 최대 5000건, raw 유형별 최대 400건과 prompt 문자 예산을 적용하므로 장기간·대량 조회에서는 coverage의 truncation 표시를 함께 해석합니다.
 - 근거 링크 이동 시 해당 로그가 첫 page에 없으면 유형별 cursor를 resident 한도까지 추가 조회합니다. 찾지 못하면 Data Log 상단에 실패 상태를 표시합니다.
-- Observer ChatWidget은 기존 정책대로 `assistant` 접근 권한이 있는 사용자에게 표시됩니다. EQP를 선택하지 않았거나 분석할 로그 유형이 없으면 일반 OpenWebUI mode를 사용합니다.
+- Observer ChatWidget은 `assistant` 접근 권한이 있고 현재 조회 조건의 page context 등록이 끝난 사용자에게 표시됩니다. Observer context가 없을 때 Portal mode로 대신 실행하지 않습니다.
 - CTTTM 요약이 비어 있으면 `summarize_ct_process_comment` command와 `ct_process_comment.update_flag` 상태를 확인합니다.
 - ESOP 로그가 누락되면 `api.drone` 데이터와 observer 로그 결합 지점을 함께 확인합니다.
 - SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 적재 상태를 확인합니다.

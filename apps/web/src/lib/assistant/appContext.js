@@ -82,6 +82,7 @@ const APP_CONTEXTS = Object.freeze({
 })
 
 const PATH_RULES = Object.freeze([
+  ["/", "portal"],
   ["/spider/l0", "l0-spider"],
   ["/l0_spider", "l0-spider"],
   ["/fdc_trend", "l0-spider"],
@@ -116,15 +117,17 @@ function matchesPath(pathname, prefix) {
 
 export function getAssistantAppContext(appKey) {
   const normalizedKey = typeof appKey === "string" ? appKey.trim().toLowerCase() : ""
-  return APP_CONTEXTS[normalizedKey] || APP_CONTEXTS.portal
+  return APP_CONTEXTS[normalizedKey] || null
 }
 
 export function resolveAssistantAppContext(pathname) {
   const normalizedPathname = normalizePathname(pathname)
   const matchedRule = PATH_RULES.find(([prefix]) => matchesPath(normalizedPathname, prefix))
-  return getAssistantAppContext(matchedRule?.[1] || "portal")
+  return matchedRule ? getAssistantAppContext(matchedRule[1]) : null
 }
 
 export function buildOpenWebUIContextKey(appKey) {
-  return `assistant:openwebui:${getAssistantAppContext(appKey).key}`
+  const context = getAssistantAppContext(appKey)
+  if (!context) throw new Error("지원하지 않는 Assistant 앱 컨텍스트입니다.")
+  return `assistant:openwebui:${context.key}`
 }

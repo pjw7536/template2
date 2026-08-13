@@ -113,3 +113,21 @@
 - OpenWebUI의 앱 배경지식은 클라이언트 문장을 신뢰하지 않고 서버 허용 카탈로그에서 `appKey`를 해석해 system message에 추가한다.
 - Observer의 공유 대화와 장기 요약은 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 `observer_analysis_context_json`으로 제한한다.
 - 기존 `assistant`와 `chatwidget:shared` rolling summary는 통합 전 메시지 집합의 `message_count`를 재사용할 수 없으므로 `0002` data migration에서 삭제하고 원본 메시지로 재생성한다.
+
+## 2026-08-13: Assistant Runtime v2 Profile·partition·권한 provenance
+
+- 이 결정은 2026-08-12의 모든 앱 공유 기억 결정을 대체한다. Portal은 `shared`, Email은 `shared`와 `scope:emails`, Observer는 `shared`와 `scope:observer`만 읽는다.
+- 실행 의미는 versioned Profile로 재현하고 권한 하한은 항상 현재 Profile과 Tool 정책을 적용한다.
+- `AssistantGeneration`을 Run source of truth로 유지하며 Run, message, summary, 자동 제목에 version 1 `access_requirements`를 저장한다.
+- Account scope와 실제 RAG permission group/mailbox claim 중 하나라도 회수되면 답변 전체를 잠그고 내부 data claim 이름은 UI에 노출하지 않는다.
+- client `history`를 받는 실행 API는 제공하지 않는다. `appKey`, `contextKey`는 권한 근거로 사용하지 않고 Turn service가 소유 대화방의 current branch를 서버에서 조립한다.
+- legacy provenance는 nullable schema 이후 resumable command로 backfill하고 해석 불가능한 데이터는 `legacy-unresolved`로 영구 잠근다.
+- 외부 LLM/RAG URL과 payload는 변경하지 않아 offsite dummy/env/Compose contract 수정은 하지 않는다.
+
+## 2026-08-13: Email RAG 답변 Provider OpenWebUI 통합
+
+- 이 결정은 위 Runtime v2 결정 중 Email 답변 Provider 연결을 유지한다는 부분만 대체한다.
+- Email RAG의 검색, permission group/mailbox 필터, 구조화 `answer`/`segments`와 출처 계약은 유지한다.
+- Email 답변 생성의 URL, model, token, 공통 header와 timeout은 일반 Assistant와 같은 `OPENWEBUI_*` 설정을 사용한다.
+- `ASSISTANT_LLM_TEMPERATURE`와 `ASSISTANT_LLM_SYSTEM_MESSAGE`는 Email 구조화 prompt 조정값으로만 유지하고, `ASSISTANT_REQUEST_TIMEOUT`은 RAG 검색 timeout으로 유지한다.
+- offsite `adfs_dummy`의 기존 OpenAI 호환 endpoint가 Email 구조화 stream을 지원하므로 mock handler나 Compose 서비스 계약은 변경하지 않는다.

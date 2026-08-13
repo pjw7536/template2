@@ -2,12 +2,11 @@
 
 from .analysis import (
     ANALYSIS_SOURCE_LIMIT,
-    analyze_observer_logs,
+    analyze_observer_logs_stream,
     build_observer_analysis_context,
     build_observer_evidence_id,
     build_observer_analysis_messages,
     normalize_observer_analysis_result,
-    stream_analyze_observer_logs,
 )
 from .openwebui import ObserverOpenWebUIError
 from .timezone import (
@@ -21,7 +20,7 @@ __all__ = [
     "ObserverOpenWebUIError",
     "ANALYSIS_SOURCE_LIMIT",
     "SEOUL_TIMEZONE",
-    "analyze_observer_logs",
+    "analyze_observer_logs_stream",
     "build_observer_analysis_context",
     "build_observer_evidence_id",
     "build_observer_analysis_messages",
@@ -29,5 +28,4 @@ __all__ = [
     "normalize_observer_analysis_result",
     "observer_period_start",
     "serialize_observer_datetime",
-    "stream_analyze_observer_logs",
 ]

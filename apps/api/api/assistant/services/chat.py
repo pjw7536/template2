@@ -5,15 +5,19 @@
 # =============================================================================
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import requests
+from api.common.services import ExternalCallCancellation
 
 from .config import AssistantChatConfig
 from .errors import AssistantRequestError
-from .llm import build_llm_payload, call_llm, extract_llm_reply, post_json
+from .llm import (
+    build_llm_payload,
+    stream_llm_reply,
+)
 from .rag import extract_rag_sources, retrieve_documents
 from .reply import AssistantStructuredSegment, _parse_structured_llm_reply
 from .sources import build_structured_segments, filter_sources_by_used_email_ids
@@ -28,6 +32,7 @@ class AssistantChatResult:
     llm_response: Dict[str, Any]
     rag_response: Optional[Dict[str, Any]] = None
     sources: List[Dict[str, Any]] = field(default_factory=list)
+    retrieved_sources: List[Dict[str, Any]] = field(default_factory=list)
     segments: List[Dict[str, Any]] = field(default_factory=list)
     is_dummy: bool = False
 
@@ -93,13 +98,28 @@ class AssistantChatService:
         trimmed_contexts = resolved_contexts[: max(1, self.config.rag_num_docs)] if resolved_contexts else []
         reply_template = self.config.dummy_reply or ""
         reply = reply_template.replace("{question}", question)
+        source_ids = [
+            str(source.get("doc_id") or "").strip()
+            for source in (sources or [])
+            if isinstance(source, dict) and str(source.get("doc_id") or "").strip()
+        ]
+        structured_reply = {
+            "answer": reply,
+            "segments": [
+                {"answer": reply, "usedEmailIds": source_ids}
+            ] if source_ids else [],
+        }
 
         delay_ms = max(0, int(self.config.dummy_delay_ms))
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
 
         return AssistantChatResult(
-            reply=reply,
+            reply=json.dumps(
+                structured_reply,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
             contexts=trimmed_contexts,
             llm_response={
                 "mode": "dummy",
@@ -114,24 +134,8 @@ class AssistantChatService:
                 "count": len(trimmed_contexts),
             },
             sources=sources or [],
+            retrieved_sources=list(sources or []),
             is_dummy=True,
-        )
-
-    def _post(
-        self,
-        session: requests.Session,
-        url: str,
-        headers: Dict[str, str],
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """POST 요청을 수행하고 JSON 응답을 반환합니다."""
-
-        return post_json(
-            session,
-            url,
-            headers,
-            payload,
-            timeout=self.config.request_timeout,
         )
 
     def _extract_sources(self, hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -141,20 +145,20 @@ class AssistantChatService:
 
     def _retrieve_documents(
         self,
-        session: requests.Session,
         question: str,
         *,
         permission_groups: Optional[Sequence[str]] = None,
         rag_index_names: Optional[Sequence[str]] = None,
+        cancellation: ExternalCallCancellation | None = None,
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
         """RAG에서 문서를 검색하고 컨텍스트/출처 목록을 반환합니다."""
 
         return retrieve_documents(
-            session,
             self.config,
             question,
             permission_groups=permission_groups,
             rag_index_names=rag_index_names,
+            cancellation=cancellation,
         )
 
     def _generate_llm_payload(
@@ -168,40 +172,11 @@ class AssistantChatService:
 
         return build_llm_payload(self.config, question, contexts, email_ids=email_ids)
 
-    def _extract_llm_reply(self, resp_json: Dict[str, Any]) -> str:
-        """LLM 응답 JSON에서 content 문자열을 추출합니다."""
-
-        return extract_llm_reply(resp_json)
-
-    def _call_llm(
-        self,
-        session: requests.Session,
-        question: str,
-        contexts: List[str],
-        sources: List[Dict[str, Any]],
-        user_header_id: Optional[str] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
-        """LLM을 호출하고 답변/응답 JSON을 반환합니다."""
-
-        return call_llm(
-            session,
-            self.config,
-            question,
-            contexts,
-            sources,
-            user_header_id=user_header_id,
-        )
-
     def _apply_structured_reply(self, result: AssistantChatResult) -> AssistantChatResult:
         """구조화 응답을 파싱해 reply/sources/segments를 결과 DTO에 반영합니다."""
 
         answer, segments = _parse_structured_llm_reply(result.reply)
         result.reply = answer
-        if segments is None:
-            result.sources = []
-            result.segments = []
-            return result
-
         built_segments, filtered_sources = self._build_segments(result.sources, segments)
         result.segments = built_segments
         result.sources = filtered_sources
@@ -225,68 +200,37 @@ class AssistantChatService:
                 llm_response=llm_response,
                 rag_response=rag_response,
                 sources=sources,
+                retrieved_sources=list(sources),
             )
         )
 
-    def generate_reply(
+    def generate_reply_stream(
         self,
         question: str,
         *,
+        cancellation: ExternalCallCancellation,
         user_header_id: Optional[str] = None,
         rag_index_names: Optional[Sequence[str]] = None,
         permission_groups: Optional[Sequence[str]] = None,
         conversation_context: str = "",
     ) -> AssistantChatResult:
-        """질문에 대한 어시스턴트 답변을 생성합니다.
-
-        인자:
-            question: 사용자 질문 문자열.
-            user_header_id: LLM 호출 시 User-Id 헤더 값(옵션).
-            rag_index_names: 사용할 RAG 인덱스 목록(옵션).
-            permission_groups: 검색 권한 그룹 목록(옵션).
-            conversation_context: RAG 검색에는 사용하지 않고 LLM 후속 문맥에만 제공할 대화 요약입니다.
-
-        반환:
-            AssistantChatResult 응답 DTO.
-
-        부작용:
-            외부 RAG/LLM API 호출이 발생할 수 있습니다.
-
-        오류:
-            질문이 비어 있거나 상위 호출 오류 시 AssistantRequestError를 발생시킵니다.
-        """
+        """RAG 조회 후 구조화 LLM 응답을 취소 가능한 stream으로 완성합니다."""
 
         normalized_question = question.strip()
         if not normalized_question:
             raise AssistantRequestError("질문이 비어 있습니다.")
-        normalized_conversation_context = (
-            conversation_context.strip()
-            if isinstance(conversation_context, str)
-            else ""
-        )
-        llm_question = (
-            f"[이전 대화 문맥]\n{normalized_conversation_context}\n\n"
-            f"[현재 질문]\n{normalized_question}"
-            if normalized_conversation_context
-            else normalized_question
-        )
-
         if self.config.use_dummy:
-            if not self.config.dummy_use_rag:
-                return self._apply_structured_reply(self._generate_dummy_result(normalized_question))
-
-            try:
-                with requests.Session() as session:
-                    contexts, rag_response, sources = self._retrieve_documents(
-                        session,
-                        normalized_question,
-                        permission_groups=permission_groups,
-                        rag_index_names=rag_index_names,
-                    )
-            except AssistantRequestError:
+            cancellation.raise_if_cancelled()
+            if self.config.dummy_use_rag:
+                contexts, rag_response, sources = self._retrieve_documents(
+                    normalized_question,
+                    permission_groups=permission_groups,
+                    rag_index_names=rag_index_names,
+                    cancellation=cancellation,
+                )
+            else:
                 contexts, rag_response, sources = [], None, []
-
-            return self._apply_structured_reply(
+            result = self._apply_structured_reply(
                 self._generate_dummy_result(
                     normalized_question,
                     contexts=contexts,
@@ -294,26 +238,36 @@ class AssistantChatService:
                     rag_response=rag_response,
                 )
             )
-
-        with requests.Session() as session:
-            contexts, rag_response, sources = self._retrieve_documents(
-                session,
-                normalized_question,
-                permission_groups=permission_groups,
-                rag_index_names=rag_index_names,
-            )
-            reply, llm_response = self._call_llm(
-                session,
-                llm_question,
-                contexts,
-                sources,
-                user_header_id=user_header_id,
-            )
-
+            cancellation.raise_if_cancelled()
+            return result
+        cancellation.raise_if_cancelled()
+        contexts, rag_response, sources = self._retrieve_documents(
+            normalized_question,
+            permission_groups=permission_groups,
+            rag_index_names=rag_index_names,
+            cancellation=cancellation,
+        )
+        cancellation.raise_if_cancelled()
+        normalized_context = conversation_context.strip()
+        llm_question = (
+            f"[이전 대화 문맥]\n{normalized_context}\n\n"
+            f"[현재 질문]\n{normalized_question}"
+            if normalized_context
+            else normalized_question
+        )
+        reply = stream_llm_reply(
+            self.config,
+            llm_question,
+            contexts,
+            sources,
+            cancellation=cancellation,
+            user_header_id=user_header_id,
+        )
+        cancellation.raise_if_cancelled()
         return self._build_chat_result(
             reply=reply,
             contexts=contexts,
-            llm_response=llm_response,
+            llm_response={"mode": "stream"},
             rag_response=rag_response,
             sources=sources,
         )
