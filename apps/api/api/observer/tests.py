@@ -1733,6 +1733,69 @@ class ObserverAnalysisTests(TestCase):
         self.assertIn("운영상 의미", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("chronologicalSummary", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("독립된 raw 근거", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "EQP 로그는 설비가 wafer를 진행할 수 있는 상태인지",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn("DOWN은 설비에 Interlock 또는 error", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("LOCAL은 사용자가 설비를 offline", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("RUN은 설비에서 wafer가 진행 중", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("IDLE은 설비가 진행 가능한 상태", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("PM은 Preventive Maintenance", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "TIP 로그는 설비 자체의 사용 가능 상태와 별개",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "L1_TIP은 Etch기술팀이 관리하는 권한",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "Process Integration이나 Defect관리그룹이 더 높은 권한",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn("L1_TIP보다 무거운 제한", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("L3_TIP은 비표준 설비에 적용된 TIP", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "숫자만으로 L2_TIP보다 더 무거운 제한이라고 추정하지",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn("TIP_RELEASE에 따른 열림 상태", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "TIP 닫힘만으로 설비 자체가 DOWN 또는 사용 불가능하다고 판단하지",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "생산된 wafer의 계측 데이터에서 발생한 Interlock",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "wafer를 생산하는 동안 설비 sensor의 이상점을 감지",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "점검 또는 이상 발생 시 엔지니어가 점검 이력과 history를 기록",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "PM 이후 설비 backup을 통해 설비를 다시 가동",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn("CBM은 정해진 시간에 따른 정기 점검", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("NSP는 비정기 점검", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("MWO는 문제 발생 또는 기록 목적", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "sample wafer를 보내 설비를 검증한 이력",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "row의 title이 comment로 전달",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "설비 파츠의 개선품 또는 원가절감 목적의 개선품을 평가한 history",
+            ANALYSIS_SYSTEM_PROMPT,
+        )
         self.assertIn("사실 근거가 아닙니다", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("findings는 중요도 순으로 최대 5개", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn(
@@ -1741,7 +1804,7 @@ class ObserverAnalysisTests(TestCase):
         )
         self.assertEqual(
             OBSERVER_ANALYSIS_PROMPT_VERSION,
-            "observer-analysis-prompt-v1",
+            "observer-analysis-prompt-v2",
         )
 
 
@@ -2038,6 +2101,74 @@ class ObserverAnalysisTests(TestCase):
         )
         self.assertEqual(context["schemaVersion"], "observer-analysis-v1")
 
+    def test_analysis_context_applies_esop_ctttm_racb_llm_contract(self) -> None:
+        """ESOP·CTTTM·RACB 주변 로그를 LLM 전용 계약으로 축약합니다."""
+
+        context = build_observer_analysis_context(
+            eqp_id="EQP-ALPHA",
+            start_at=self.start_at,
+            end_at=self.end_at,
+            log_types=["eqp", "esop", "ctttm", "racb"],
+            selected_tip_groups=["__ALL__"],
+            logs_by_type={
+                "eqp": [
+                    {
+                        "id": "EQP-DOWN",
+                        "logType": "EQP",
+                        "eventType": "DOWN",
+                        "eventTime": "2026-08-02T10:00:00+09:00",
+                    }
+                ],
+                "esop": [
+                    {
+                        "id": "ESOP-1",
+                        "logType": "ESOP",
+                        "eventType": "SAMPLE",
+                        "eventTime": "2026-08-02T09:40:00+09:00",
+                        "status": "OPEN",
+                        "comment": "sample wafer 검증 정상 $@$ 내부 상세 정보",
+                    }
+                ],
+                "ctttm": [
+                    {
+                        "id": "WO-1",
+                        "logType": "CTTTM",
+                        "eventType": "CBM",
+                        "eventTime": "2026-08-02T09:45:00+09:00",
+                        "comment": "정기 PM",
+                    }
+                ],
+                "racb": [
+                    {
+                        "id": "RACB-1",
+                        "logType": "RACB",
+                        "eventType": "ACTION_OPEN",
+                        "eventTime": "2026-08-02T09:50:00+09:00",
+                        "comment": "Pressure alarm 개선 조치",
+                    }
+                ],
+            },
+        )
+
+        columns = context["contextEvents"]["columns"]
+        rows = {
+            row[columns.index("logType")]: row
+            for row in context["contextEvents"]["rows"]
+        }
+        esop_row = rows["ESOP"]
+        self.assertIsNone(esop_row[columns.index("eventType")])
+        self.assertIsNone(esop_row[columns.index("status")])
+        self.assertEqual(
+            esop_row[columns.index("comment")],
+            "sample wafer 검증 정상",
+        )
+        self.assertEqual(rows["CTTTM"][columns.index("eventType")], "CBM")
+        self.assertIsNone(rows["RACB"][columns.index("eventType")])
+        self.assertEqual(
+            rows["RACB"][columns.index("comment")],
+            "Pressure alarm 개선 조치",
+        )
+
     def test_analysis_context_always_stays_within_prompt_budget(self) -> None:
         """원인과 TIP 그룹이 많아도 최종 context가 모델 입력 상한을 넘지 않습니다."""
 
@@ -2236,7 +2367,7 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(result["meta"]["analysisModel"], "gpt-oss-120b")
         self.assertEqual(
             result["meta"]["promptVersion"],
-            "observer-analysis-prompt-v1",
+            "observer-analysis-prompt-v2",
         )
         self.assertEqual(result["meta"]["schemaVersion"], "observer-analysis-v1")
 
