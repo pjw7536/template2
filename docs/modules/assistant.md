@@ -88,6 +88,7 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 - 메시지·summary·자동 제목·Run은 현재 Account scope와 RAG group/mailbox data claim을 합친 `access_requirements`를 보존하고 모든 재사용 시점에 다시 검증합니다.
 - 앱을 이동하면 대화방은 유지하고 현재 Profile이 허용한 기억 partition·Tool·화면 데이터만 사용합니다.
 - Observer 분석에서는 공유 대화와 장기 요약을 질문 의도·용어·후속 질문을 이해하는 배경으로만 사용하고, 사실 판단은 현재 조회 조건의 `observer_analysis_context_json`만 근거로 삼습니다.
+- 일반 답변·Email RAG·대화방 제목·장기 요약·Observer 분석은 공통 영문 업무 용어 guide를 사용합니다. 설명 문장은 한국어로 작성하되 `interlock`, `wafer lot`, `sample wafer`, `recipe`, `sensor` 같은 canonical 업무 용어는 번역하거나 한글로 음역하지 않습니다.
 - 새로고침·탭 종료로 SSE가 끊기면 Turn service가 upstream response/session을 닫고 Run을 중단 처리합니다. 완료 저장도 활성 lease와 branch head를 다시 확인합니다. 백그라운드 생성과 SSE 재연결은 제공하지 않습니다.
 - 대화방 선택 모드는 현재 검색·보관 조건에서 불러온 방을 대상으로 하며, 생성 중인 방을 제외하고 기존 소유자 전용 DELETE API로 삭제합니다. 일부 요청이 실패하면 성공한 방만 제거하고 실패한 방은 재시도할 수 있게 남깁니다.
 - 최초 `무엇을 도와드릴까요?` 인사에는 메시지 action을 표시하지 않습니다.

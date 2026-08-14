@@ -18,6 +18,7 @@ from api.common.services import ExternalCallCancellation
 
 from api.observer.selectors import OBSERVER_LOG_KEYS
 from api.observer.services import (
+    MAX_OBSERVER_QUERY_DAYS,
     analyze_observer_logs_stream,
     normalize_observer_datetime,
 )
@@ -438,8 +439,12 @@ class AssistantRuntime:
         end_at = normalize_observer_datetime(observer_input.get("to"), is_end=True)
         if not isinstance(start_at, datetime) or not isinstance(end_at, datetime):
             raise ValueError("Observer 분석 날짜 범위가 올바르지 않습니다.")
-        if start_at > end_at or (end_at - start_at).days >= 31:
-            raise ValueError("Observer 분석 조회 기간은 최대 31일입니다.")
+        if start_at > end_at:
+            raise ValueError("Observer 분석 시작일은 종료일보다 늦을 수 없습니다.")
+        if (end_at - start_at).days >= MAX_OBSERVER_QUERY_DAYS:
+            raise ValueError(
+                f"Observer 분석 조회 기간은 최대 {MAX_OBSERVER_QUERY_DAYS}일입니다."
+            )
         log_types = list(observer_input.get("logTypes") or [])
         if not log_types or any(
             item not in OBSERVER_LOG_KEYS

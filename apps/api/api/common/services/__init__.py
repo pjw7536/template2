@@ -57,11 +57,16 @@ from .storage import (
     get_minio_client,
     upload_bytes,
 )
+from .terminology import (
+    ENGLISH_DOMAIN_TERMS_PROMPT,
+    append_english_domain_terms_prompt,
+)
 
 __all__ = [
     "ActivityLoggingMiddleware",
     "ExternalCallCancellation",
     "ExternalCallCancelled",
+    "ENGLISH_DOMAIN_TERMS_PROMPT",
     "KnoxIdRequiredMiddleware",
     "KnoxMessengerConfig",
     "KnoxMessengerError",
@@ -70,6 +75,7 @@ __all__ = [
     "UNKNOWN",
     "UNASSIGNED_USER_SDWT_PROD",
     "UNCLASSIFIED_USER_SDWT_PROD",
+    "append_english_domain_terms_prompt",
     "change_chatroom_title",
     "create_chatroom",
     "create_request_parameters",

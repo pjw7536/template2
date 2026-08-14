@@ -1737,7 +1737,7 @@ class ObserverAnalysisTests(TestCase):
             "EQP 로그는 설비가 wafer를 진행할 수 있는 상태인지",
             ANALYSIS_SYSTEM_PROMPT,
         )
-        self.assertIn("DOWN은 설비에 Interlock 또는 error", ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("DOWN은 설비에 interlock 또는 error", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("LOCAL은 사용자가 설비를 offline", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("RUN은 설비에서 wafer가 진행 중", ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("IDLE은 설비가 진행 가능한 상태", ANALYSIS_SYSTEM_PROMPT)
@@ -1766,7 +1766,7 @@ class ObserverAnalysisTests(TestCase):
             ANALYSIS_SYSTEM_PROMPT,
         )
         self.assertIn(
-            "생산된 wafer의 계측 데이터에서 발생한 Interlock",
+            "생산된 wafer의 계측 데이터에서 발생한 interlock",
             ANALYSIS_SYSTEM_PROMPT,
         )
         self.assertIn(
@@ -1804,7 +1804,7 @@ class ObserverAnalysisTests(TestCase):
         )
         self.assertEqual(
             OBSERVER_ANALYSIS_PROMPT_VERSION,
-            "observer-analysis-prompt-v2",
+            "observer-analysis-prompt-v3",
         )
 
 
@@ -2367,7 +2367,7 @@ class ObserverAnalysisTests(TestCase):
         self.assertEqual(result["meta"]["analysisModel"], "gpt-oss-120b")
         self.assertEqual(
             result["meta"]["promptVersion"],
-            "observer-analysis-prompt-v2",
+            "observer-analysis-prompt-v3",
         )
         self.assertEqual(result["meta"]["schemaVersion"], "observer-analysis-v1")
 

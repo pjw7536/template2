@@ -19,6 +19,7 @@ from django.conf import settings
 import requests
 
 from api.common.services import (
+    ENGLISH_DOMAIN_TERMS_PROMPT,
     ExternalCallCancellation,
     OpenAIStreamError,
     stream_openai_chat_completion,
@@ -32,18 +33,21 @@ logger = logging.getLogger(__name__)
 OPENWEBUI_SYSTEM_MESSAGE = (
     "당신은 Etch 기술팀의 AI Assistant입니다. 항상 한국어로 명확하고 간결하게 "
     "답변하되 코드, 명령어, 제품명과 고유명사는 원문을 유지하세요. 확인할 수 없는 "
-    "사실은 추측하지 말고 필요한 정보를 사용자에게 요청하세요."
+    "사실은 추측하지 말고 필요한 정보를 사용자에게 요청하세요.\n\n"
+    f"{ENGLISH_DOMAIN_TERMS_PROMPT}"
 )
 OPENWEBUI_TITLE_SYSTEM_MESSAGE = (
     "당신은 업무용 AI 채팅의 대화방 제목을 작성합니다. 대화의 핵심 업무 주제만 "
     "한국어 명사형 2~7어절로 요약하세요. 장비명, 상태명, 기술 용어와 고유명사는 "
     "원문을 유지하세요. 최대 40자로 작성하고 따옴표, Markdown, 이모지, 마침표, "
-    "설명, '제목:' 접두어 없이 제목 한 줄만 출력하세요."
+    "설명, '제목:' 접두어 없이 제목 한 줄만 출력하세요.\n\n"
+    f"{ENGLISH_DOMAIN_TERMS_PROMPT}"
 )
 OPENWEBUI_SUMMARY_SYSTEM_MESSAGE = (
     "당신은 장기 대화 기억을 갱신합니다. 기존 요약과 새 대화를 결합해 이후 질문에 "
     "필요한 사실, 결정, 장비명, 상태명, 원인, 미해결 항목만 한국어로 간결하게 "
-    "정리하세요. 추측을 추가하지 말고 최대 2000자로 작성하세요."
+    "정리하세요. 추측을 추가하지 말고 최대 2000자로 작성하세요.\n\n"
+    f"{ENGLISH_DOMAIN_TERMS_PROMPT}"
 )
 OPENWEBUI_TITLE_MAX_LENGTH = 40
 OPENWEBUI_SUMMARY_MAX_LENGTH = 2000

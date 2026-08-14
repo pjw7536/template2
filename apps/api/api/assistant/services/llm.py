@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence
 
 from api.common.services import (
+    ENGLISH_DOMAIN_TERMS_PROMPT,
     ExternalCallCancellation,
     OpenAIStreamError,
     stream_openai_chat_completion,
@@ -85,6 +86,8 @@ def build_llm_payload(
                 "- hasBackgroundKnowledge=true 인 경우: 배경지식에 없는 내용은 절대로 만들지 말 것(추측/일반지식 사용 금지).",
                 "- hasBackgroundKnowledge=true 인 경우: 배경지식의 문구/수치/사실관계를 임의로 바꾸지 말 것.",
                 "- hasBackgroundKnowledge=true 인 경우: 배경지식에서 근거를 찾을 수 없으면 answer에 '배경지식에서 관련 내용을 찾지 못했습니다.'라고만 쓰고 segments는 []로 둘 것.",
+                "",
+                ENGLISH_DOMAIN_TERMS_PROMPT,
                 "",
                 f"hasBackgroundKnowledge: {'true' if has_background_knowledge else 'false'}",
                 "",

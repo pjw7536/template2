@@ -15,11 +15,10 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .services import normalize_observer_datetime
+from .services import MAX_OBSERVER_QUERY_DAYS, normalize_observer_datetime
 
 DEFAULT_OBSERVER_PAGE_SIZE = 250
 MAX_OBSERVER_PAGE_SIZE = 1000
-MAX_OBSERVER_QUERY_DAYS = 90
 OBSERVER_LOG_TYPES = (
     "eqp",
     "tip",

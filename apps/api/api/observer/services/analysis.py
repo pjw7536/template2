@@ -15,7 +15,7 @@ import json
 import re
 from typing import Iterable, Mapping, Sequence
 
-from api.common.services import ExternalCallCancellation
+from api.common.services import ExternalCallCancellation, append_english_domain_terms_prompt
 
 from .openwebui import (
     ObserverOpenWebUIConfig,
@@ -45,9 +45,9 @@ MAX_CONTEXT_JSON_CHARS = (
     - 256
 )
 OBSERVER_ANALYSIS_SCHEMA_VERSION = "observer-analysis-v1"
-OBSERVER_ANALYSIS_PROMPT_VERSION = "observer-analysis-prompt-v2"
+OBSERVER_ANALYSIS_PROMPT_VERSION = "observer-analysis-prompt-v3"
 
-ANALYSIS_SYSTEM_PROMPT = """당신은 반도체 설비 Observer 로그 분석기입니다.
+ANALYSIS_SYSTEM_PROMPT = append_english_domain_terms_prompt("""당신은 반도체 설비 Observer 로그 분석기입니다.
 observer_analysis_context_json은 서버가 현재 조회 조건에서 생성한 통계와 주변 로그입니다.
 analysis_question과 conversation_summary는 같은 대화방의 질문 의도·용어·후속 질문을 이해하기 위한 배경 문맥이며 사실 근거가 아닙니다.
 분석의 사실 판단과 결론은 observer_analysis_context_json 안의 현재 데이터만 근거로 삼으세요.
@@ -55,7 +55,7 @@ analysis_question과 conversation_summary는 같은 대화방의 질문 의도·
 
 로그 배경지식:
 - EQP 로그는 설비가 wafer를 진행할 수 있는 상태인지 나타냅니다.
-  - DOWN은 설비에 Interlock 또는 error가 발생해 사용할 수 없는 상태입니다.
+  - DOWN은 설비에 interlock 또는 error가 발생해 사용할 수 없는 상태입니다.
   - LOCAL은 사용자가 설비를 offline으로 변경해 사용할 수 없는 상태입니다. PM 이후 sample wafer로 설비 진행 가능 여부를 확정하기 전 상태일 수 있습니다.
   - RUN은 설비에서 wafer가 진행 중인 상태입니다.
   - IDLE은 설비가 진행 가능한 상태이지만 현재 진행 중인 wafer가 없는 상태입니다.
@@ -66,9 +66,9 @@ analysis_question과 conversation_summary는 같은 대화방의 질문 의도·
   - L3_TIP은 비표준 설비에 적용된 TIP입니다. 숫자만으로 L2_TIP보다 더 무거운 제한이라고 추정하지 마세요.
   - L1_CNT, L2_CNT, L3_CNT와 DOING은 TIP_RELEASE에 따른 열림 상태이며 현재 분석 대상에서는 제외됩니다.
   - TIP 닫힘만으로 설비 자체가 DOWN 또는 사용 불가능하다고 판단하지 마세요.
-- SPC Interlock row는 설비에서 생산된 wafer의 계측 데이터에서 발생한 Interlock 이력입니다.
-- FDC Interlock row는 설비가 wafer를 생산하는 동안 설비 sensor의 이상점을 감지한 결과입니다.
-- SPC/FDC Interlock이 EQP/TIP 상태와 시간상 인접하다는 사실만으로 원인으로 확정하지 마세요.
+- SPC interlock row는 설비에서 생산된 wafer의 계측 데이터에서 발생한 interlock 이력입니다.
+- FDC interlock row는 설비가 wafer를 생산하는 동안 설비 sensor의 이상점을 감지한 결과입니다.
+- SPC/FDC interlock이 EQP/TIP 상태와 시간상 인접하다는 사실만으로 원인으로 확정하지 마세요.
 - CTTTM은 점검 또는 이상 발생 시 엔지니어가 점검 이력과 history를 기록하거나, PM 이후 설비 backup을 통해 설비를 다시 가동시키는 일련의 작업 과정을 기록한 로그입니다.
   - summary는 핵심요약, chronologicalSummary는 llm_summary로 만든 시간순 이벤트 정리입니다.
   - eventType의 CBM은 정해진 시간에 따른 정기 점검 또는 PM, NSP는 비정기 점검 또는 PM, MWO는 문제 발생 또는 기록 목적으로 엔지니어가 수동 생성한 작업일지입니다.
@@ -104,7 +104,7 @@ analysis_question과 conversation_summary는 같은 대화방의 질문 의도·
   ],
   "recommendedChecks": ["추가 확인 항목"],
   "limitations": ["분석 한계"]
-}"""
+}""")
 
 CONTEXT_COLUMNS = (
     "eventId",
