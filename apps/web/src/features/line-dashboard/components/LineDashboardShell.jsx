@@ -6,6 +6,7 @@ import { Outlet } from "react-router-dom"
 import { TeamSwitcher } from "@/components/common"
 import { AppShellLayout } from "@/components/layout"
 import { Button } from "@/components/ui/button"
+import { buildLineSwitcherOptions } from "@/features/account"
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,6 @@ import { buildNavigationConfig } from "@/lib/config/navigationConfig"
 import {
   ActiveLineProvider,
   DepartmentProvider,
-  buildLineSwitcherOptions,
   useLineSwitcher,
 } from "@/lib/affiliation"
 

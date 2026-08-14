@@ -22,20 +22,16 @@ from django.utils import timezone
 from django.urls import reverse
 
 import api.account.services as account_services
-from api.account.models import (
-    ACCESS_SCOPE_PORTAL,
-    AccessPolicyRule,
-    AccessScope,
-    UserAccess,
-    UserCurrentAffiliation,
-    UserSdwtProdAccess,
-)
+from api.account import selectors as account_selectors
 from api.auth.services.oidc import _extract_user_info_from_claims, _upsert_user_from_claims
 from api.common.permissions import (
     is_portal_access_protected_path,
     resolve_api_route_access_policy,
     resolve_app_access_scope_for_path,
 )
+
+
+ACCESS_SCOPE_PORTAL = "portal"
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
@@ -138,15 +134,14 @@ class AuthMeTests(TestCase):
         self.assertFalse(payload["scope_access"]["portal"]["allowed"])
         self.assertEqual(payload["scope_access"]["portal"]["department"], "Engineering")
 
-        scope, _created = AccessScope.objects.get_or_create(
+        account_services.ensure_access_scope(
             key=ACCESS_SCOPE_PORTAL,
-            defaults={"name": "Portal", "scope_type": AccessScope.ScopeTypes.PORTAL},
+            name="Portal",
+            scope_type="portal",
         )
-        AccessPolicyRule.objects.create(
-            scope=scope,
-            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
-            value="Engineering",
-            is_active=True,
+        account_services.set_department_access_policy(
+            scope_key=ACCESS_SCOPE_PORTAL,
+            department="Engineering",
         )
         response = self.client.get(reverse("auth-me"))
         allowed_payload = response.json()
@@ -154,11 +149,10 @@ class AuthMeTests(TestCase):
         self.assertFalse(allowed_payload["scope_access"]["appstore"]["blockedByPortal"])
         self.assertEqual(allowed_payload["scope_access"]["appstore"]["source"], "none")
 
-        appstore_scope = AccessScope.objects.get(key="appstore")
-        UserAccess.objects.create(
-            scope=appstore_scope,
+        account_services.set_user_scope_access(
             user=user,
-            status=UserAccess.Status.ALLOWED,
+            scope_key="appstore",
+            status="allowed",
             role="user",
         )
         response = self.client.get(reverse("auth-me"))
@@ -176,22 +170,21 @@ class AuthMeTests(TestCase):
             password="test-password",
             department="Feature Department",
         )
-        portal_scope = AccessScope.objects.get(key=ACCESS_SCOPE_PORTAL)
-        feature_scope = AccessScope.objects.create(
-            key="feature-auth-export",
-            name="Auth Export",
-            scope_type=AccessScope.ScopeTypes.FEATURE,
-        )
-        UserAccess.objects.create(
-            scope=portal_scope,
+        account_services.set_user_scope_access(
             user=user,
-            status=UserAccess.Status.ALLOWED,
+            scope_key=ACCESS_SCOPE_PORTAL,
+            status="allowed",
             role="user",
         )
-        UserAccess.objects.create(
-            scope=feature_scope,
+        feature_scope = account_services.ensure_access_scope(
+            key="feature-auth-export",
+            name="Auth Export",
+            scope_type="feature",
+        )
+        account_services.set_user_scope_access(
             user=user,
-            status=UserAccess.Status.ALLOWED,
+            scope_key=feature_scope.key,
+            status="allowed",
             role="admin",
         )
         self.client.force_login(user)
@@ -213,10 +206,10 @@ class AuthMeTests(TestCase):
             knox_id="KNOX-PORTAL-BLOCKED-APP",
             department="Blocked Department",
         )
-        UserAccess.objects.create(
-            scope=AccessScope.objects.get(key="appstore"),
+        account_services.set_user_scope_access(
             user=user,
-            status=UserAccess.Status.ALLOWED,
+            scope_key="appstore",
+            status="allowed",
             role="user",
         )
         self.client.force_login(user)
@@ -303,7 +296,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIsNone(payload["user_sdwt_prod"])
-        self.assertFalse(UserCurrentAffiliation.objects.filter(user=user).exists())
+        self.assertIsNone(account_selectors.get_current_affiliation_record(user=user))
 
     def test_auth_me_auto_assigns_dev_affiliation_when_enabled(self) -> None:
         """외부망 dev 자동 소속 플래그가 켜지면 기본 소속을 보장해야 합니다."""
@@ -331,15 +324,15 @@ class AuthMeTests(TestCase):
         self.assertEqual(payload["line"], "TDEV-L1")
         self.assertEqual(payload["user_sdwt_prod"], "TDEV_ALPHA")
 
-        current = UserCurrentAffiliation.objects.get(user=user)
-        self.assertEqual(current.source, UserCurrentAffiliation.Sources.ADMIN_ASSIGNED)
+        current = account_selectors.get_current_affiliation_record(user=user)
+        self.assertIsNotNone(current)
+        self.assertEqual(current.source, "admin_assigned")
         self.assertEqual(current.affiliation.user_sdwt_prod, "TDEV_ALPHA")
         self.assertTrue(
-            UserSdwtProdAccess.objects.filter(
-                user=user,
-                affiliation=current.affiliation,
-                role=UserSdwtProdAccess.Roles.MEMBER,
-            ).exists()
+            any(
+                row.affiliation_id == current.affiliation_id and row.role == "member"
+                for row in account_selectors.list_user_sdwt_prod_access_rows(user=user)
+            )
         )
 
     def test_auth_me_includes_pending_user_sdwt_prod(self) -> None:
@@ -487,15 +480,14 @@ class PortalAccessEnforcementTests(TestCase):
     def _allow_department(self, *, department: str) -> None:
         """테스트 부서에 portal 접근 정책을 부여합니다."""
 
-        scope, _created = AccessScope.objects.get_or_create(
+        account_services.ensure_access_scope(
             key=ACCESS_SCOPE_PORTAL,
-            defaults={"name": "Portal", "scope_type": AccessScope.ScopeTypes.PORTAL},
+            name="Portal",
+            scope_type="portal",
         )
-        AccessPolicyRule.objects.update_or_create(
-            scope=scope,
-            rule_type=AccessPolicyRule.RuleTypes.DEPARTMENT,
-            value=department,
-            defaults={"is_active": True},
+        account_services.set_department_access_policy(
+            scope_key=ACCESS_SCOPE_PORTAL,
+            department=department,
         )
 
     def test_anonymous_default_drf_view_requires_portal_authentication(self) -> None:
@@ -558,10 +550,10 @@ class PortalAccessEnforcementTests(TestCase):
         department = "App Scope Allowed Department"
         user = self._create_user(sabun="APP-SCOPE-ALLOWED", department=department)
         self._allow_department(department=department)
-        UserAccess.objects.create(
-            scope=AccessScope.objects.get(key="appstore"),
+        account_services.set_user_scope_access(
             user=user,
-            status=UserAccess.Status.ALLOWED,
+            scope_key="appstore",
+            status="allowed",
             role="user",
         )
 

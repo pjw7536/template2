@@ -76,9 +76,13 @@ vi.mock("./ChatWidgetPanel", () => ({
     usesAppContext,
     isAppContextReady,
     onUsesAppContextChange,
+    pageContext,
+    currentPageScope,
   }) => (
     <div>
       <span>{activeAppContext?.label || "Portal"}</span>
+      {pageContext ? <span>{pageContext.label || "현재 화면 데이터 연결됨"}</span> : null}
+      {currentPageScope?.lineId ? <span>현재 Line: {currentPageScope.lineId}</span> : null}
       {activeAppContext?.key !== "portal" ? (
         <div>
           <button
@@ -246,6 +250,43 @@ describe("ChatWidget 대화방 생성", () => {
         profileToolInputs: {},
       }),
     )
+  })
+
+  it("ESOP 현재 화면 조건을 snapshot Tool과 Widget page context로 전달한다", () => {
+    chatSessionMocks.pageContext = {
+      kind: "line-dashboard",
+      key: "line-dashboard:v1",
+      scope: {
+        view: "history",
+        lineId: "L1",
+        from: "2026-08-01",
+        to: "2026-08-14",
+      },
+    }
+    render(
+      <MemoryRouter initialEntries={["/ESOP_Dashboard/history/L1"]}>
+        <ChatWidget />
+      </MemoryRouter>,
+    )
+
+    expect(chatSessionMocks.useChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageContextKey: "line-dashboard:v1",
+        profileKey: "line-dashboard-context",
+        profileToolInputs: {
+          "line-dashboard.snapshot": {
+            view: "history",
+            lineId: "L1",
+            from: "2026-08-01",
+            to: "2026-08-14",
+          },
+        },
+      }),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
+    expect(screen.getByText("현재 화면 데이터 연결됨")).toBeInTheDocument()
+    expect(screen.getByText("현재 Line: L1")).toBeInTheDocument()
   })
 
   it("앱을 이동하면 해당 앱 지식 사용을 기본값으로 다시 선택한다", () => {

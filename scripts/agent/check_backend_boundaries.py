@@ -30,7 +30,16 @@ ALLOWED_APP_FILES = {
     "admin.py",
     "tests.py",
 }
-ALLOWED_APP_DIRS = {"services", "migrations", "management", "__pycache__"}
+ALLOWED_APP_DIRS = {
+    "services",
+    "selectors",
+    "views",
+    "serializers",
+    "tests",
+    "migrations",
+    "management",
+    "__pycache__",
+}
 ALLOWED_FACADE_MODULES = {"services", "selectors"}
 WRITE_METHODS = {
     "bulk_create",
@@ -105,24 +114,53 @@ def target_domain_and_tail(module: str) -> tuple[str | None, list[str]]:
     return parts[1], parts[2:]
 
 
-def imported_modules(node: ast.AST) -> list[tuple[str, int]]:
+def module_name_for_path(path: Path) -> str:
+    """source 경로를 `api.*` 절대 module 이름으로 변환합니다."""
+
+    parts = list(path.relative_to(API_ROOT).with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(["api", *parts])
+
+
+def resolve_import_from_module(node: ast.ImportFrom, source_path: Path) -> str:
+    """상대 ImportFrom을 source package 기준 절대 module 이름으로 해석합니다."""
+
+    if node.level == 0:
+        return node.module or ""
+
+    source_module = module_name_for_path(source_path).split(".")
+    package_parts = source_module if source_path.name == "__init__.py" else source_module[:-1]
+    parent_count = node.level - 1
+    if parent_count > len(package_parts):
+        return node.module or ""
+    base_parts = package_parts[: len(package_parts) - parent_count]
+    if node.module:
+        base_parts.extend(node.module.split("."))
+    return ".".join(base_parts)
+
+
+def imported_modules(node: ast.AST, source_path: Path) -> list[tuple[str, int]]:
     modules: list[tuple[str, int]] = []
     if isinstance(node, ast.Import):
         for alias in node.names:
             modules.append((alias.name, node.lineno))
-    elif isinstance(node, ast.ImportFrom) and node.module:
-        if node.module == "api" or node.module.startswith("api."):
-            _target_domain, tail = target_domain_and_tail(node.module)
+    elif isinstance(node, ast.ImportFrom):
+        imported_module = resolve_import_from_module(node, source_path)
+        if not imported_module:
+            return modules
+        if imported_module == "api" or imported_module.startswith("api."):
+            _target_domain, tail = target_domain_and_tail(imported_module)
             if tail:
-                modules.append((node.module, node.lineno))
+                modules.append((imported_module, node.lineno))
             else:
                 for alias in node.names:
                     if alias.name == "*":
-                        modules.append((node.module, node.lineno))
+                        modules.append((imported_module, node.lineno))
                     else:
-                        modules.append((f"{node.module}.{alias.name}", node.lineno))
+                        modules.append((f"{imported_module}.{alias.name}", node.lineno))
         else:
-            modules.append((node.module, node.lineno))
+            modules.append((imported_module, node.lineno))
     return modules
 
 
@@ -145,7 +183,7 @@ def check_import_boundaries() -> list[Finding]:
         source_domain = domain_from_path(path)
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            for module, line in imported_modules(node):
+            for module, line in imported_modules(node, path):
                 if not is_allowed_cross_domain_import(source_domain, module):
                     findings.append(
                         Finding(
@@ -166,7 +204,7 @@ def check_test_import_boundaries() -> list[Finding]:
         source_domain = domain_from_path(path)
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            for module, line in imported_modules(node):
+            for module, line in imported_modules(node, path):
                 if not is_allowed_cross_domain_import(source_domain, module):
                     findings.append(
                         Finding(
@@ -186,10 +224,21 @@ def has_objects_attribute(node: ast.AST) -> bool:
     return False
 
 
+def is_responsibility_module(path: Path, responsibility: str) -> bool:
+    """단일 module과 같은 이름의 package 내부 source를 함께 판별합니다."""
+
+    rel_parts = path.relative_to(API_ROOT).parts
+    responsibility_index = 2 if rel_parts[0] == "data_movement" else 1
+    if len(rel_parts) <= responsibility_index:
+        return False
+    entry = rel_parts[responsibility_index]
+    return entry == f"{responsibility}.py" or entry == responsibility
+
+
 def check_view_orm_usage() -> list[Finding]:
     findings: list[Finding] = []
-    for path in sorted(API_ROOT.rglob("views.py")):
-        if not is_python_source(path):
+    for path in sorted(API_ROOT.rglob("*.py")):
+        if not is_python_source(path) or not is_responsibility_module(path, "views"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -199,7 +248,7 @@ def check_view_orm_usage() -> list[Finding]:
                         "Direct ORM usage in views",
                         path,
                         node.lineno,
-                        "views.py must call selectors/services instead of direct ORM queries",
+                        "view modules must call selectors/services instead of direct ORM queries",
                     )
                 )
     return findings
@@ -207,8 +256,8 @@ def check_view_orm_usage() -> list[Finding]:
 
 def check_selector_writes() -> list[Finding]:
     findings: list[Finding] = []
-    for path in sorted(API_ROOT.rglob("selectors.py")):
-        if not is_python_source(path):
+    for path in sorted(API_ROOT.rglob("*.py")):
+        if not is_python_source(path) or not is_responsibility_module(path, "selectors"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -223,9 +272,54 @@ def check_selector_writes() -> list[Finding]:
                         "Write ORM usage in selectors",
                         path,
                         node.lineno,
-                        f"selectors.py must stay read-only: {func.attr}()",
+                        f"selector modules must stay read-only: {func.attr}()",
                     )
                 )
+    return findings
+
+
+def check_facade_purity() -> list[Finding]:
+    """service/selector package facade에 명시적 re-export만 있는지 확인합니다."""
+
+    findings: list[Finding] = []
+    facade_paths = sorted(API_ROOT.glob("*/services/__init__.py"))
+    facade_paths += sorted(API_ROOT.glob("*/selectors/__init__.py"))
+    facade_paths += sorted(API_ROOT.glob("data_movement/*/services/__init__.py"))
+    facade_paths += sorted(API_ROOT.glob("data_movement/*/selectors/__init__.py"))
+    for path in facade_paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                continue
+            if isinstance(node, ast.ImportFrom) and all(alias.name != "*" for alias in node.names):
+                continue
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "__all__"
+            ):
+                try:
+                    exported_names = ast.literal_eval(node.value)
+                except (TypeError, ValueError):
+                    exported_names = None
+                if (
+                    isinstance(exported_names, (list, tuple))
+                    and all(isinstance(name, str) for name in exported_names)
+                ):
+                    continue
+            findings.append(
+                Finding(
+                    "Facade execution logic",
+                    path,
+                    getattr(node, "lineno", 0),
+                    "services/selectors package facade may contain explicit re-exports only",
+                )
+            )
     return findings
 
 
@@ -498,28 +592,34 @@ def check_api_route_access_classification() -> list[Finding]:
     return findings
 
 
-def load_allowlist() -> list[re.Pattern[str]]:
+def load_allowlist() -> list[tuple[str, re.Pattern[str]]]:
     if not ALLOWLIST.exists():
         return []
-    patterns: list[re.Pattern[str]] = []
+    patterns: list[tuple[str, re.Pattern[str]]] = []
     for line in ALLOWLIST.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        patterns.append(re.compile(stripped))
+        patterns.append((stripped, re.compile(stripped)))
     return patterns
 
 
-def filter_allowlisted(findings: list[Finding], patterns: list[re.Pattern[str]]) -> list[Finding]:
+def filter_allowlisted(
+    findings: list[Finding],
+    patterns: list[tuple[str, re.Pattern[str]]],
+) -> tuple[list[Finding], set[str]]:
     if not patterns:
-        return findings
+        return findings, set()
     filtered: list[Finding] = []
+    used: set[str] = set()
     for finding in findings:
         rendered = finding.render()
-        if any(pattern.search(rendered) for pattern in patterns):
+        matched = [raw for raw, pattern in patterns if pattern.search(rendered)]
+        if matched:
+            used.update(matched)
             continue
         filtered.append(finding)
-    return filtered
+    return filtered, used
 
 
 def print_section(title: str, findings: list[Finding]) -> int:
@@ -540,19 +640,36 @@ def main() -> int:
 
     status = 0
     allowlist_patterns = load_allowlist()
-    checks = [
-        ("Cross-domain internal imports", filter_allowlisted(check_import_boundaries(), allowlist_patterns)),
-        ("Cross-domain internal imports in tests", filter_allowlisted(check_test_import_boundaries(), allowlist_patterns)),
-        ("Direct ORM usage in views", filter_allowlisted(check_view_orm_usage(), allowlist_patterns)),
-        ("Write ORM usage in selectors", filter_allowlisted(check_selector_writes(), allowlist_patterns)),
-        (
-            "API route access classification",
-            filter_allowlisted(check_api_route_access_classification(), allowlist_patterns),
-        ),
-        ("Backend app structure", filter_allowlisted(check_app_structure(), allowlist_patterns)),
+    raw_checks = [
+        ("Cross-domain internal imports", check_import_boundaries()),
+        ("Cross-domain internal imports in tests", check_test_import_boundaries()),
+        ("Direct ORM usage in views", check_view_orm_usage()),
+        ("Write ORM usage in selectors", check_selector_writes()),
+        ("Facade execution logic", check_facade_purity()),
+        ("API route access classification", check_api_route_access_classification()),
+        ("Backend app structure", check_app_structure()),
     ]
+    used_patterns: set[str] = set()
+    checks: list[tuple[str, list[Finding]]] = []
+    for title, raw_findings in raw_checks:
+        findings, used = filter_allowlisted(raw_findings, allowlist_patterns)
+        checks.append((title, findings))
+        used_patterns.update(used)
     for title, findings in checks:
         status |= print_section(title, findings)
+
+    print("== Backend boundary allowlist ==")
+    unused_patterns = [raw for raw, _pattern in allowlist_patterns if raw not in used_patterns]
+    if allowlist_patterns:
+        for raw, _pattern in allowlist_patterns:
+            state = "used" if raw in used_patterns else "unused"
+            print(f"{state}: {raw}")
+        status = 1
+    else:
+        print("OK")
+    if unused_patterns:
+        print(f"unused allowlist patterns: {len(unused_patterns)}")
+    print()
 
     if status == 0:
         print("Backend boundary audit passed.")

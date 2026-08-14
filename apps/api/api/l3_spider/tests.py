@@ -1,7 +1,6 @@
 # =============================================================================
 # 모듈: L3 Spider 서비스 테스트
 # 주요 대상: meta, summary, data 응답 형태
-# 주요 가정: 테스트 데이터는 임시 Parquet 파일로 생성합니다.
 # =============================================================================
 from __future__ import annotations
 
@@ -38,6 +37,7 @@ from .models import (
     L3SpiderRunStatus,
 )
 from .services import line_name_rules
+from .services import dashboard as service_implementation, queries as service_queries
 from .services.cache import TTLCache
 from .views import L3SpiderMetaView, L3SpiderUnmappedLineRulesView
 from .management.commands.import_l3_spider_line_name_rules import _load_rules_csv
@@ -79,8 +79,8 @@ class L3SpiderAnalyticsTests(SimpleTestCase):
             }
         )
 
-        normalized = services._normalize_display_status(frame)
-        result = services._dataframe_to_columnar(normalized)
+        normalized = service_implementation._normalize_display_status(frame)
+        result = service_implementation._dataframe_to_columnar(normalized)
 
         self.assertEqual(result["cols"], ["displayStatus", "riskScore"])
         self.assertEqual(result["colData"][0], ["Warning", "Normal"])
@@ -98,7 +98,7 @@ class L3SpiderAnalyticsTests(SimpleTestCase):
             }
         )
 
-        sampled = services._sample_chart_points(frame, ["eqc"])
+        sampled = service_implementation._sample_chart_points(frame, ["eqc"])
 
         self.assertEqual(len(sampled), 2)
         self.assertIn("Warning", sampled["display_status"].tolist())
@@ -110,14 +110,14 @@ class L3SpiderServiceTests(TestCase):
     def setUp(self) -> None:
         """서비스 인메모리 캐시를 초기화합니다."""
 
-        services._meta_cache.clear()
-        services._structure_cache.clear()
-        services._stats_cache.clear()
-        services._daily_summary_cache.clear()
-        services._meta_combos_cache.clear()
-        services._completed_dates_cache.clear()
-        services._line_groups_cache.clear()
-        services._line_rule_candidates_cache.clear()
+        service_implementation._meta_cache.clear()
+        service_implementation._structure_cache.clear()
+        service_implementation._stats_cache.clear()
+        service_implementation._daily_summary_cache.clear()
+        service_implementation._meta_combos_cache.clear()
+        service_implementation._completed_dates_cache.clear()
+        service_implementation._line_groups_cache.clear()
+        service_implementation._line_rule_candidates_cache.clear()
         line_name_rules.clear_cache()
         selector_patchers = [
             patch.object(selectors, "query_completed_dates", return_value=None),
@@ -319,7 +319,7 @@ class L3SpiderServiceTests(TestCase):
             }
 
             with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=[],
             ):
@@ -358,7 +358,7 @@ class L3SpiderServiceTests(TestCase):
             "date_to": None,
         }]
 
-        filtered = services._apply_exclusion_filters_with_rules(frame, rules)
+        filtered = service_implementation._apply_exclusion_filters_with_rules(frame, rules)
 
         self.assertEqual(filtered["bin_name"].tolist(), ["BIN0004"])
 
@@ -397,7 +397,7 @@ class L3SpiderServiceTests(TestCase):
                 }]).to_parquet(target / f"{step_seq}#{ppid}#0", engine="pyarrow")
 
             with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=rules,
             ):
@@ -421,7 +421,7 @@ class L3SpiderServiceTests(TestCase):
     def test_meta_without_date_only_queries_completed_dates(self) -> None:
         """날짜 미지정 Meta는 완료 날짜만 반환하고 실행 통계를 조회하지 않아야 합니다."""
 
-        services._completed_dates_cache.clear()
+        service_implementation._completed_dates_cache.clear()
         with patch.object(
             selectors,
             "query_completed_dates",
@@ -443,7 +443,7 @@ class L3SpiderServiceTests(TestCase):
         def date_combos(date: str) -> list[tuple[str, str, str, str, str]]:
             return [(date, "L1", "P1", "EDS_M", "S1")]
 
-        services._completed_dates_cache.clear()
+        service_implementation._completed_dates_cache.clear()
         with patch.object(
             selectors,
             "query_completed_dates",
@@ -453,7 +453,7 @@ class L3SpiderServiceTests(TestCase):
             "query_date_line_process_eds_step",
             side_effect=date_combos,
         ) as query_combos, patch.object(
-            services,
+            service_queries,
             "_get_exclusion_rules",
             return_value=[],
         ):
@@ -490,7 +490,7 @@ class L3SpiderServiceTests(TestCase):
     def test_meta_does_not_expose_uncompleted_selected_date(self) -> None:
         """선택 날짜가 미완료이면 날짜 목록과 상세 결과에 노출하지 않아야 합니다."""
 
-        services._completed_dates_cache.clear()
+        service_implementation._completed_dates_cache.clear()
         with patch.object(
             selectors,
             "query_completed_dates",
@@ -513,13 +513,13 @@ class L3SpiderServiceTests(TestCase):
             self._write_sample(root)
 
             with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=[],
             ), patch.object(
-                services,
+                service_queries,
                 "_parallel_read",
-                wraps=services._parallel_read,
+                wraps=service_queries._parallel_read,
             ) as parallel_read, patch.object(
                 selectors,
                 "query_run_stats",
@@ -554,7 +554,7 @@ class L3SpiderServiceTests(TestCase):
 
         with TemporaryDirectory() as temp_dir:
             with override_settings(L3_SPIDER_DATA_ROOT=temp_dir), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=[],
             ), patch.object(
@@ -625,7 +625,7 @@ class L3SpiderServiceTests(TestCase):
                 "EndFab" if step_seq == "S2" else "FAB_A"
             ),
         ):
-            by_line_name = services._build_line_name_run_stats(details, [])
+            by_line_name = service_implementation._build_line_name_run_stats(details, [])
 
         self.assertEqual(
             by_line_name,
@@ -654,7 +654,7 @@ class L3SpiderServiceTests(TestCase):
             }
 
             with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=[],
             ):
@@ -799,7 +799,7 @@ class L3SpiderServiceTests(TestCase):
             }
 
             with override_settings(L3_SPIDER_DATA_ROOT=str(root)), patch.object(
-                services,
+                service_queries,
                 "_get_exclusion_rules",
                 return_value=[],
             ):
@@ -1473,7 +1473,7 @@ class L3SpiderExclusionFilterOwnershipTests(TestCase):
         self._create_filter(user=self.owner, line_id="L2", is_active=False)
         self._create_filter(user=self.other, line_id="L3")
 
-        rules = services._get_exclusion_rules(user=self.owner)
+        rules = service_implementation._get_exclusion_rules(user=self.owner)
 
         self.assertEqual(len(rules), 1)
         self.assertEqual(rules[0]["line_id"], "L1")
@@ -1729,7 +1729,7 @@ class L3SpiderMailRuleTests(TestCase):
         """테스트 발송은 정기 발송 이력을 소모하지 않고 메일만 전송해야 합니다."""
 
         rule = self._create_rule(user=self.owner, eqpch="EQC_A")
-        today = services._rule_local_today(rule, now=services.timezone.now()).isoformat()
+        today = service_implementation._rule_local_today(rule, now=service_implementation.timezone.now()).isoformat()
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._write_mail_sample(root, date=today)
@@ -1739,7 +1739,7 @@ class L3SpiderMailRuleTests(TestCase):
                 L3_SPIDER_MAIL_SENDER="sender@example.com",
                 FRONTEND_BASE_URL="http://frontend.example.com",
             ), patch(
-                "api.l3_spider.services.send_knox_mail_api",
+                "api.l3_spider.services.rules.send_knox_mail_api",
                 return_value={"ok": True},
             ) as mock_send:
                 result = services.send_mail_rule_test(rule.id, user=self.owner)
@@ -1764,7 +1764,7 @@ class L3SpiderMailRuleTests(TestCase):
             granted_by=self.owner,
         )
 
-        with patch("api.l3_spider.services.send_knox_mail_api") as mock_send:
+        with patch("api.l3_spider.services.rules.send_knox_mail_api") as mock_send:
             with self.assertRaises(services.L3SpiderServiceError) as context:
                 services.send_mail_rule_test(rule.id, user=self.reader)
 
@@ -1776,10 +1776,10 @@ class L3SpiderMailRuleTests(TestCase):
 
         rule = self._create_rule(user=self.owner, eqpch="EQC_A")
         L3SpiderMailRule.objects.filter(pk=rule.pk).update(
-            created_at=services.timezone.now() - timedelta(days=1),
+            created_at=service_implementation.timezone.now() - timedelta(days=1),
         )
         rule.refresh_from_db()
-        today = services._rule_local_today(rule, now=services.timezone.now()).isoformat()
+        today = service_implementation._rule_local_today(rule, now=service_implementation.timezone.now()).isoformat()
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._write_mail_sample(root, date=today)
@@ -1789,7 +1789,7 @@ class L3SpiderMailRuleTests(TestCase):
                 L3_SPIDER_MAIL_SENDER="sender@example.com",
                 FRONTEND_BASE_URL="http://frontend.example.com",
             ), patch(
-                "api.l3_spider.services.send_knox_mail_api",
+                "api.l3_spider.services.rules.send_knox_mail_api",
                 return_value={"ok": True},
             ) as mock_send:
                 first = services.trigger_due_mail_rules(limit=10)

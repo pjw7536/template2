@@ -90,12 +90,14 @@
 ## 경계 규칙
 
 - 프론트 feature 외부 공개는 `apps/web/src/features/<feature>/index.js`를 통합니다.
-- 프론트 feature 내부 파일은 다른 feature를 직접 import하지 않습니다.
-- feature 간 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/lib` 같은 non-feature 계층에서만 수행합니다.
+- 프론트 feature 간 import는 public facade만 사용하며 선언된 `auth -> account`, `emails -> account`, `line-dashboard -> account` 방향만 허용합니다.
+- 그 밖의 feature 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/components/common`, `apps/web/src/lib` 같은 non-feature 계층에서 수행합니다.
+- `apps/web/src/lib`는 app-shell context, framework adapter, 범용 helper만 소유합니다.
 - React Query는 서버 데이터의 기준이고, Zustand는 feature-local UI 상태만 저장합니다.
 - 백엔드 view는 HTTP 처리만 맡고, 비즈니스 로직은 service/selector에 둡니다.
 - selector는 읽기 전용, service는 쓰기/transaction/외부 호출을 담당합니다.
 - 다른 백엔드 feature 의존은 selector 또는 `services/__init__.py` facade를 사용합니다.
+- backend service/selector package facade는 명시적 re-export만 포함합니다.
 - 외부 시스템 URL과 인증값은 환경 변수로 관리합니다.
 
 ## 상세 색인

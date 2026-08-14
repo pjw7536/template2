@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { buildLineSwitcherOptions, useLineOptionsQuery } from "@/lib/affiliation"
+import { buildLineSwitcherOptions, useLineOptionsQuery } from "@/features/account"
 import { TeamSwitcher } from "./TeamSwitcher"
 
 export function LineSwitcherHeader({ menuLabel, manageLabel, ariaLabel }) {

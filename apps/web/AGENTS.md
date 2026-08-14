@@ -26,11 +26,12 @@ These rules apply to `apps/web/**`.
 - `apps/web/src/features/<feature>/index.js` is the only public surface.
 - Named exports only.
 - `export *` is forbidden.
-- Feature-internal files must not import another feature, including another feature's facade.
-- Cross-feature composition is allowed only from non-feature orchestration layers such as `routes/*`, `components/layout/*`, or `lib/*`.
-- When a non-feature orchestration layer imports a feature, it must use `import { something } from "@/features/<otherFeature>"`.
+- Feature 간 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`만 허용합니다.
+- 허용된 feature 의존도 반드시 `@/features/<feature>` public facade만 사용합니다.
+- 비-feature orchestration layer인 `routes/*`, `components/layout/*`, `components/common/*`, `lib/*`는 feature facade를 조합할 수 있습니다.
 - Explicit `@/features/<otherFeature>/index.js` import is forbidden.
 - Direct imports to another feature's internals are forbidden (`components/*`, `pages/*`, `api/*`, etc.).
+- `lib/*`에는 app-shell context, framework adapter, 범용 helper만 둘 수 있으며 domain HTTP, React Query hook, 업무 UI를 둘 수 없습니다.
 
 ## Import Rules
 - Prefer `@/` for project-internal absolute imports.

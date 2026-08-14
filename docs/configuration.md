@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `env/api.common.env` | API 공통 | DB, 보안, auth, POP3, Drone, RAG, LLM, Mail API 기본값 |
 | `env/api.dev.env` | 로컬 API | dummy ADFS/RAG/LLM/Mail/Jira 연결 |
+| `env/api.test.env` | API test | 임시 PostgreSQL과 외부 호출 차단 설정 |
 | `env/api.oidc.dev.env` | OIDC 개발 API | 실제 OIDC/RAG 개발 연결용 override |
 | `env/api.prod.env` | 운영 API | 운영 배포 템플릿 |
 | `env/airflow.common.env` | Airflow DAG 공통 | DAG API trigger와 task 실패 callback 설정 |
@@ -195,3 +196,12 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 - API migration 실행 전 대상 PostgreSQL DB에 `pg_trgm` 확장이 준비되어 있어야 합니다.
 - 개발 Compose는 `ensure_dev_database`가 개발 DB와 테스트 DB 생성 원본인 `template1`에 확장을 준비합니다.
 - 운영 신규 DB는 DB 관리자가 `CREATE EXTENSION IF NOT EXISTS pg_trgm`을 먼저 실행해야 합니다.
+# 테스트 전용 Compose
+
+PR CI와 로컬 전체 backend 검증은 `docker-compose.test.yml`을 사용합니다. 이 구성은 임시 PostgreSQL과 `api-test`만 실행하며 internal Docker network로 외부 ADFS, RAG, Mail, MinIO 연결을 차단합니다. 테스트 전용 비밀이 아닌 기본값은 `env/api.test.env`에 있습니다.
+
+```bash
+docker compose -f docker-compose.test.yml run --rm api-test python manage.py test
+docker compose -f docker-compose.test.yml run --rm api-test python manage.py check
+docker compose -f docker-compose.test.yml run --rm api-test python manage.py makemigrations --check --dry-run
+```

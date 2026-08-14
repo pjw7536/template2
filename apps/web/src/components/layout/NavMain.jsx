@@ -1,11 +1,11 @@
 import { useParams } from "react-router-dom"
 
 import { SidebarNavMain } from "@/components/layout/SidebarNavMain"
+import { useLineOptionsQuery } from "@/features/account"
 import {
   getStoredLineId,
   normalizeTeamId,
   useActiveLineOptional,
-  useLineOptionsQuery,
 } from "@/lib/affiliation"
 
 function getFirstLineId(lineOptions) {

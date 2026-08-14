@@ -17,7 +17,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { getScopeAccess } from "@/lib/access/scopeAccess"
 import { getRequiredAppScopes, resolveAppAccessTarget } from "@/lib/activity/appAccessCatalog"
-import { accountApi } from "@/lib/account"
+import { accountApi } from "@/features/account"
 
 import { useAuth } from "../hooks/useAuth"
 

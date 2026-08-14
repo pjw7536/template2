@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth"
-import { resolveAssistantSurface } from "@/lib/assistant/surfaceConfig"
+import { resolveAssistantSurface } from "../utils/surfaceConfig"
 import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"

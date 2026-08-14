@@ -79,6 +79,11 @@ from .data_scope import (
     get_user_scope_affiliation_data,
     update_user_scope_affiliation_data,
 )
+from .bootstrap import (
+    ensure_access_scope,
+    set_department_access_policy,
+    set_user_scope_access,
+)
 from .users import get_user_by_knox_id
 
 __all__ = [
@@ -103,6 +108,7 @@ __all__ = [
     "delete_access_policy_rule",
     "ensure_self_access",
     "ensure_affiliation_option",
+    "ensure_access_scope",
     "ensure_dev_dummy_superuser",
     "ensure_dev_user_affiliation",
     "apply_all_user_accesses",
@@ -137,6 +143,8 @@ __all__ = [
     "set_current_affiliation_for_user",
     "set_affiliation_active",
     "set_affiliations_active",
+    "set_department_access_policy",
+    "set_user_scope_access",
     "seed_dev_access_data",
     "submit_affiliation_reconfirm_response",
     "sync_external_affiliations",

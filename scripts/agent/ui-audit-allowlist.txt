@@ -23,11 +23,12 @@
 ^apps/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*#
 ^apps/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*style=
 ^apps/web/src/features/pm-spider/components/OesHeatmap\.jsx:.*style=
-^apps/web/src/features/pm-spider/components/PmSpiderCategoryDashboard\.jsx:.*style=
+^apps/web/src/features/pm-spider/components/PmSpiderRankingTrace\.jsx:.*style=
 ^apps/web/src/features/l3-spider/utils/chartStatus\.js:.*#
 # 기존 L3 legend의 High Risk/Warning/Normal 상태색 계약을 유지합니다.
 ^apps/web/src/features/l3-spider/components/L3SpiderChart\.jsx:.*(style=|#)
 ^apps/web/src/features/l3-spider/components/TrellisChart\.jsx:.*#
+^apps/web/src/features/l3-spider/components/trellisChartBuilders\.js:.*#
 ^apps/web/src/features/l3-spider/components/TrellisChart\.css:.*#
 ^apps/web/src/features/observer/components/BaseObserver\.jsx:.*style=
 # TanStack Virtual이 계산한 전체 높이와 row translate 위치를 적용합니다.

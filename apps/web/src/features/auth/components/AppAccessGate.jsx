@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { getScopeAccess } from "@/lib/access/scopeAccess"
-import { accountApi } from "@/lib/account"
+import { accountApi } from "@/features/account"
 
 import { useAuth } from "../hooks/useAuth"
 

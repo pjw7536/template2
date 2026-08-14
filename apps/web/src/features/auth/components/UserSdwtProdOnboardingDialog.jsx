@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { accountApi, AFFILIATION_QUERY_KEY } from "@/lib/account"
+import { accountApi, AFFILIATION_QUERY_KEY } from "@/features/account"
 
 function isBlank(value) {
   return !value || (typeof value === "string" && !value.trim())

@@ -13,9 +13,9 @@ These rules apply to `apps/api/**`.
 - Allowed files/folders only:
   - `apps.py`, `models.py`, `urls.py`, `callback_urls.py` (auth only)
   - `views.py`, `serializers.py`, `selectors.py`, `permissions.py`, `admin.py`, `tests.py`
-  - `services/`, `migrations/`, `management/commands/`
+  - `services/`, `selectors/`, `views/`, `serializers/`, `tests/`, `migrations/`, `management/commands/`
 - No new backend folders outside approved paths.
-- Max depth 2, except `services/`, `migrations/`, `management/commands/`.
+- Max depth 2, except `services/`, `selectors/`, `views/`, `serializers/`, `tests/`, `migrations/`, `management/commands/`.
 - Shared/infrastructure packages only:
   - `apps/api/api/common`
   - `apps/api/api/data_movement/common`
@@ -25,6 +25,7 @@ These rules apply to `apps/api/**`.
 
 ## Cross-Feature and Responsibilities
 - Cross-feature imports allowed only through other feature's `services/__init__.py` facade or `selectors.py`.
+- `services/__init__.py`와 `selectors/__init__.py`는 명시적 re-export만 허용하며 실행 로직을 둘 수 없습니다.
 - `views.py`: HTTP only.
 - `serializers.py`: schema + validation only.
 - `permissions.py`: DRF permissions only.

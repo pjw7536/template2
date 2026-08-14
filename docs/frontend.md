@@ -22,7 +22,7 @@
 | `apps/web/src/components/common` | 여러 feature에서 쓰는 공통 UI |
 | `apps/web/src/components/ui` | shadcn/Radix 기반 primitive |
 | `apps/web/src/features/<feature>` | feature별 page/component/hook/api/store/utils |
-| `apps/web/src/lib` | API helper, auth, query client, theme 같은 공통 library |
+| `apps/web/src/lib` | app-shell context, framework adapter, 범용 helper |
 
 ## Feature 경계
 
@@ -39,7 +39,7 @@
 | `store/` | feature-local UI 상태 |
 | `utils/` | feature 내부 pure helper |
 
-feature 내부 파일은 다른 feature를 import하지 않습니다. 여러 feature를 함께 조립해야 할 때는 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/lib` 같은 non-feature 계층에서만 `@/features/<feature>` facade를 사용합니다.
+feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선언된 단방향 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`입니다. 그 밖의 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/components/common`, `apps/web/src/lib` 같은 non-feature 계층에서 수행합니다. `lib`에는 domain HTTP client, React Query hook, 업무 UI를 두지 않습니다.
 
 ## Route tree
 

@@ -12,8 +12,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from api.data_movement.common.services.file_loader import list_data_files, list_incoming_files
 from api.data_movement.ct_process_comment.services import SummaryRowOutcome, SummaryRunSummary
-from api.data_movement.m_tkin_prevent.models import MTkinPreventLoadJob
-from api.data_movement.m_tkin_prevent.services.loader import LoadFileOutcome, LoadRunSummary
+from api.data_movement.m_tkin_prevent.services import LoadFileOutcome, LoadRunSummary
 
 
 class DataMovementFileLoaderTests(SimpleTestCase):
@@ -115,7 +114,7 @@ class DataMovementLoadTriggerApiTests(TestCase):
             outcomes=[
                 LoadFileOutcome(
                     file_name="a.csv.deflate",
-                    status=MTkinPreventLoadJob.Status.SUCCESS,
+                    status="success",
                     row_count=1,
                     replace_values=["L1"],
                 )

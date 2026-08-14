@@ -42,6 +42,8 @@
 | `models.py` | schema, 제약, 순수 domain helper | 외부 시스템 호출 금지 |
 | `management/commands/` | 운영/개발 command entry | 다른 feature 내부 module 직접 우회 금지 |
 
+단순 app은 단일 `views.py`, `selectors.py`, `serializers.py`, `tests.py` 구조를 유지할 수 있습니다. 책임 분리가 필요한 app은 같은 이름의 package로 전환할 수 있으며, `services/__init__.py`와 `selectors/__init__.py`에는 실행 로직 없이 명시적 re-export만 둡니다.
+
 ## URL prefix
 
 | Prefix | App | 문서 |
@@ -91,7 +93,7 @@
 | `prune_drone_sop` | `api.drone` | `python manage.py prune_drone_sop` |
 | `purge_drone_sop` | `api.drone` | `python manage.py purge_drone_sop --dry-run` |
 
-모든 backend command와 test는 Docker Compose `api` 컨테이너 기준으로 실행합니다.
+개발 backend command와 feature test는 Docker Compose `api` 컨테이너 기준으로 실행합니다. PR CI와 전체 회귀 검증은 외부 연결이 차단된 `docker-compose.test.yml`의 `api-test` 컨테이너를 사용합니다.
 
 ## 변경 시 갱신해야 하는 문서
 

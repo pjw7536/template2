@@ -8,13 +8,15 @@ on:
       - master
 
 jobs:
-  frontend-boundary:
-    name: Frontend boundary, lint, build
+  frontend:
+    name: Frontend test, lint, build, audits
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -25,9 +27,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Check feature boundaries
-        run: npm run agent:audit:web-boundary
-
       - name: Test web
         run: npm run web:test
 
@@ -37,21 +36,38 @@ jobs:
       - name: Build web
         run: npm run web:build
 
-  backend-syntax:
-    name: Backend boundary and syntax
+      - name: Run repository audits
+        run: npm run agent:audit
+
+      - name: Check whitespace errors
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$BASE_SHA...HEAD"
+          elif [[ -n "$BASE_SHA" && "$BASE_SHA" != "0000000000000000000000000000000000000000" ]] && git cat-file -e "$BASE_SHA^{commit}"; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git diff-tree --check --root --no-commit-id -r HEAD
+          fi
+
+  backend:
+    name: Backend test, check, migrations
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Build backend test image
+        run: docker compose -f docker-compose.test.yml build api-test
 
-      - name: Check backend boundaries
-        run: python scripts/agent/check_backend_boundaries.py
+      - name: Run backend tests
+        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py test
 
-      - name: Compile backend Python
-        run: python -m compileall -q apps/api
+      - name: Run Django system checks
+        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py check
+
+      - name: Check migration drift
+        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py makemigrations --check --dry-run

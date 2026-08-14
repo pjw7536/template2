@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 
-import { resolveAssistantAppContext } from "@/lib/assistant/appContext"
+import { resolveAssistantAppContext } from "../utils/appContext"
 import { usePageAssistantContext } from "@/lib/assistant/pageContext"
 import {
   isAssistantAppContextReady,
   resolveAssistantSurface,
-} from "@/lib/assistant/surfaceConfig"
+} from "../utils/surfaceConfig"
 import { useAuth } from "@/lib/auth"
 
 import { ChatWidgetLauncher } from "./ChatWidgetLauncher"
@@ -74,7 +74,11 @@ export function ChatWidget(props) {
       {...props}
       location={location}
       activeAppContext={activeAppContext}
-      pageContext={surface.mode === "observer" ? pageContext : null}
+      pageContext={
+        surface.mode === "observer" || surface.mode === "line-dashboard"
+          ? pageContext
+          : null
+      }
       ragSettings={ragSettings}
       surface={surface}
       usesAppContext={effectiveUsesAppContext}

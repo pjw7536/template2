@@ -7,13 +7,13 @@ import { AppShellLayout } from "@/components/layout"
 import { RequireAuth, useAuth } from "@/lib/auth"
 import { hasScopeRole } from "@/lib/access/scopeAccess"
 import { buildNavigationConfig } from "@/lib/config/navigationConfig"
+import { useLineSdwtOptionsQuery } from "@/features/account"
 import {
   ActiveLineProvider,
   DepartmentProvider,
   SdwtProvider,
   getStoredMailboxId,
   useActiveLineOptional,
-  useLineSdwtOptionsQuery,
 } from "@/lib/affiliation"
 
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"

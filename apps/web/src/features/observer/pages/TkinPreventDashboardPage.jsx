@@ -11,10 +11,10 @@ import {
 } from "@/components/ui/tooltip";
 import {
   useActiveLine,
-  useLineDashboardLineSdwtOptionsQuery,
 } from "@/lib/affiliation";
 
 import { LoadingSpinner } from "../components/Loaders";
+import { useObserverLineSdwtOptions } from "../hooks/useObserverLineSdwtOptions";
 import {
   useTkinPreventMatrix,
   useTkinPreventPrcGroups,
@@ -324,7 +324,7 @@ export default function TkinPreventDashboardPage() {
   const [stepSeq, setStepSeq] = useState("");
   const [excludePwqPpid, setExcludePwqPpid] = useState(false);
 
-  const lineSdwtOptionsQuery = useLineDashboardLineSdwtOptionsQuery();
+  const lineSdwtOptionsQuery = useObserverLineSdwtOptions();
   const userSdwtOptions = useMemo(
     () => getUserSdwtOptionsForLine(lineSdwtOptionsQuery.data, lineId),
     [lineSdwtOptionsQuery.data, lineId]
