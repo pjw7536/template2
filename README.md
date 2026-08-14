@@ -30,7 +30,7 @@
 make dev
 ```
 
-`make dev`는 Web, API, Nginx, MinIO, dummy ADFS/RAG/LLM/Mail/Jira를 실행합니다.
+`make dev`는 Web, API, Nginx, MinIO, dummy ADFS/RAG/LLM/Mail/Jira와 Work Hub의 Grist·접근 동기화 worker를 함께 실행합니다. Work Hub API와 Navbar 메뉴도 자동으로 활성화됩니다.
 API DB는 compose 의존성으로 함께 올라가며, Airflow/FTP는 기본 실행에서 제외됩니다.
 
 서비스 그룹은 `app`과 `infra`로 나뉩니다.

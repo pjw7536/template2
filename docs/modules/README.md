@@ -13,6 +13,7 @@
 | Line Dashboard/Drone | `apps/web/src/features/line-dashboard` | `api.drone` | `docs/api/line-dashboard.md` | `DroneSOP`, target/channel/recipient/delivery, Jira/Mail/Messenger |
 | L3 Spider | `apps/web/src/features/l3-spider` | `api.l3_spider` | `docs/api/l3-spider.md` | Parquet anomaly, index table, line name rule, Mail API |
 | Observer | `apps/web/src/features/observer` | `api.observer` | `docs/api/observer.md` | 기본 DB 기준정보와 로그 |
+| Work Hub | `apps/web/src/features/work-hub` | `api.work_hub` | `docs/api/work-hub.md` | Grist Equipment/WorkLog/Task, `sdwt_prod` mapping |
 | PM SPIDER | `apps/web/src/features/pm-spider` | `api.pm_comparison` | `docs/modules/pm-comparison-dashboard-spec.md` | PM SPIDER raw/result Parquet |
 | AppStore | `apps/web/src/features/appstore` | `api.appstore` | `docs/api/appstore.md` | `AppStoreApp`, 댓글, 좋아요, cover image |
 | VOC | `apps/web/src/features/voc` | `api.voc` | `docs/api/voc.md` | `VocPost`, `VocReply`, ActivityLog |

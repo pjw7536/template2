@@ -59,6 +59,11 @@ const APP_ACCESS_RULES = [
     prefixes: ["/observer"],
   },
   {
+    appId: "work-hub",
+    appName: "설비 업무일지",
+    prefixes: ["/work-hub"],
+  },
+  {
     appId: "emails",
     appName: "Emails",
     prefixes: ["/emails"],

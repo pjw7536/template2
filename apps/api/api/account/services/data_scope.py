@@ -271,6 +271,47 @@ def can_access_scope_affiliation(
     )
 
 
+@transaction.atomic
+def deactivate_expired_scope_affiliation_grants(
+    *,
+    scope_key: str,
+    limit: int = 100,
+) -> int:
+    """지정 앱 scope에서 만료된 활성 소속 grant를 비활성화합니다.
+
+    grant별 저장 signal은 해당 소속의 외부 ACL projection을 다시 계산하게 합니다.
+    한 번 비활성화한 grant는 다음 worker 검사에서 제외됩니다.
+    """
+
+    if limit <= 0:
+        return 0
+    scope = selectors.get_access_scope_by_key(scope_key=scope_key)
+    if scope is None or scope.data_scope_type != AccessScope.DataScopeTypes.AFFILIATION:
+        return 0
+
+    grants = selectors.list_expired_scope_affiliation_grants_for_update(
+        scope=scope,
+        expired_at=timezone.now(),
+        limit=limit,
+    )
+    for grant in grants:
+        before = _serialize_grant(grant)
+        grant.is_active = False
+        grant.save(update_fields=["is_active", "updated_at"])
+        create_access_audit_log(
+            scope=scope,
+            actor=None,
+            target_user=grant.user,
+            policy_rule=None,
+            affiliation=grant.affiliation,
+            action=AccessAuditLog.Actions.DATA_SCOPE_REVOKE,
+            before=before,
+            after=_serialize_grant(grant),
+            reason="소속 데이터 범위 grant 만료",
+        )
+    return len(grants)
+
+
 def get_user_scope_affiliation_data(
     *,
     actor: Any,

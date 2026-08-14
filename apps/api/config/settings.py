@@ -45,6 +45,18 @@ def env_int(key: str, default: int | None = None) -> int | None:
         return default
 
 
+def env_float(key: str, default: float) -> float:
+    """실수 환경변수를 읽고 잘못된 값이면 기본값을 반환합니다."""
+
+    value = os.environ.get(key)
+    if value is None:
+        return default
+    try:
+        return float(value.strip())
+    except ValueError:
+        return default
+
+
 def env_list(key: str, default: str | Iterable[str] = "", sep: str = ",") -> list[str]:
     """
     쉼표 구분 리스트 파싱 (공백과 빈 문자열 제거)
@@ -133,6 +145,7 @@ INSTALLED_APPS = [
     "api.rag",
     "api.observer",
     "api.voc",
+    "api.work_hub",
 ]
 
 # 커스텀 사용자 모델 (account.User)
@@ -209,6 +222,45 @@ RACB_REPORT_BASE_URL = env(
     "RACB_REPORT_BASE_URL",
     "https://racb.eqms.abc.net/racb/rpt/ReportPop.do",
 )
+
+# Grist Work Hub는 기능 플래그가 꺼지면 기존 Portal과 독립적으로 비활성화됩니다.
+WORK_HUB_ENABLED = env_bool("WORK_HUB_ENABLED", False)
+# 본문 차단 후 Grist가 살아 있는 정리 기간에만 별도로 session logout을 유지합니다.
+GRIST_LOGOUT_ENABLED = env_bool("GRIST_LOGOUT_ENABLED", False)
+WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS = env_int(
+    "WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS",
+    30,
+) or 30
+WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS = env_int(
+    "WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS",
+    30,
+) or 30
+WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS = env_int(
+    "WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS",
+    90,
+) or 90
+WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS = env_int(
+    "WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS",
+    3600,
+) or 3600
+GRIST_API_URL = env("GRIST_API_URL", "")
+GRIST_API_KEY = env("GRIST_API_KEY", "")
+GRIST_API_KEY_FILE = env("GRIST_API_KEY_FILE", "")
+GRIST_PUBLIC_URL = env("GRIST_PUBLIC_URL", "")
+GRIST_ADMIN_EMAIL = env("GRIST_ADMIN_EMAIL", "")
+GRIST_ORG = env("GRIST_ORG", "work-hub")
+GRIST_ALLOWED_LAUNCH_HOSTS = env_list("GRIST_ALLOWED_LAUNCH_HOSTS", "localhost")
+GRIST_WEBHOOK_CALLBACK_URL = env("GRIST_WEBHOOK_CALLBACK_URL", "")
+GRIST_WEBHOOK_SECRET = env("GRIST_WEBHOOK_SECRET", "")
+GRIST_FORWARD_AUTH_TICKET_SECRET = env("GRIST_FORWARD_AUTH_TICKET_SECRET", "")
+GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS = env_int(
+    "GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS",
+    30,
+) or 30
+GRIST_FORWARD_AUTH_LOGIN_PATH = env("GRIST_FORWARD_AUTH_LOGIN_PATH", "/auth/login")
+GRIST_CONNECT_TIMEOUT = env_float("GRIST_CONNECT_TIMEOUT", 3.0)
+GRIST_READ_TIMEOUT = env_float("GRIST_READ_TIMEOUT", 15.0)
+GRIST_DEV_USER_SDWT_PROD = env("GRIST_DEV_USER_SDWT_PROD", "DEV_ALPHA")
 
 # L3 Spider Parquet 데이터 경로.
 # 원격 서버 데이터는 NFS/SMB 등으로 이 경로에 read-only mount해서 사용합니다.

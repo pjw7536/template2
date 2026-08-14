@@ -30,6 +30,8 @@ root compose 파일은 Makefile이 감싸는 실행 구현이고, `compose/` 아
 make dev
 ```
 
+`make dev`는 Portal app stack과 Work Hub의 Grist·접근 동기화 worker를 함께 실행하고 Navbar 메뉴를 활성화합니다. Portal만 필요한 경우에는 `make dev-app-up`을 사용합니다.
+
 app만 조작:
 
 ```bash
@@ -119,6 +121,12 @@ make makemigrations-check
 | `seed_drone_targets_from_file` | JSON/CSV 기준 Drone SOP/발송 이력/알림 설정 초기화 후 target/channel/recipient seed |
 | `prune_drone_sop` | 보관 기간 초과 Drone SOP 데이터 정리 |
 | `purge_drone_sop` | Drone SOP 데이터 전체 삭제 또는 dry-run 확인 |
+| `configure_grist_scope` | 소속과 Grist workspace/document/table ID mapping 등록 후 ACL Outbox 적재(`doc_id` 교체 불가), 선택적으로 document 전용 Webhook Authorization 출력 |
+| `audit_grist_schema` | Work Hub Grist table의 필수 column과 type 계약 검사 |
+| `sync_grist_equipment` | Observer 설비를 Grist Equipment에 upsert/archive |
+| `sync_grist_access` | 비활성 소속을 포함한 Portal 사용자·역할을 Grist document ACL로 전체 동기화 |
+| `process_grist_access_sync` | 전용 worker에서 만료 grant 회수, Grist 역할 Outbox 처리, 기본 1시간 전체 ACL 정합성 복구, 완료 이력 30일·실패 Webhook receipt 90일 기준 정리 |
+| `seed_grist_demo` | 로컬 `DEV_ALPHA`용 Grist schema·record·Webhook·mapping 멱등 생성 |
 
 실행 예시:
 
@@ -145,6 +153,12 @@ docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_drone
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run
 docker compose -f docker-compose.dev.yml exec -T api python manage.py prune_drone_sop
 docker compose -f docker-compose.dev.yml exec -T api python manage.py purge_drone_sop --dry-run
+docker compose -f docker-compose.dev.yml exec -T api python manage.py configure_grist_scope --help
+docker compose -f docker-compose.dev.yml exec -T api python manage.py audit_grist_schema
+docker compose -f docker-compose.dev.yml exec -T api python manage.py sync_grist_equipment --all --dry-run
+docker compose -f docker-compose.dev.yml exec -T api python manage.py sync_grist_access --all --dry-run
+docker compose -f docker-compose.dev.yml exec -T api python manage.py process_grist_access_sync
+docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_grist_demo
 ```
 
 Assistant Runtime v2 배포는 nullable schema migration을 먼저 적용한 뒤 `--dry-run` 집계를
@@ -153,6 +167,55 @@ batch를 다시 실행해도 같은 synthetic Run 식별자를 사용합니다. 
 legacy 데이터는 `legacy-unresolved`로 유지해 노출하지 않습니다. 완료 보고서에서 미연결
 메시지가 없음을 확인하기 전에는 non-null 제약을 강화하지 않습니다. 제품 실행 endpoint는
 표준 Turn만 제공하므로 backfill 진행 여부와 관계없이 과거 데이터가 실행 경로로 유입되지 않습니다.
+### Work Hub 시험 적용과 원복
+
+```bash
+make work-hub-up
+make work-hub-down
+```
+
+개발 시험의 `make work-hub-down`은 Work Hub를 즉시 중지합니다. Grist container만 단독 확인할 때는 `docker compose -f docker-compose.dev.yml --profile work-hub up -d grist`를 사용할 수 있지만, 이 명령은 Portal의 Work Hub 플래그를 켜지 않습니다.
+
+OIDC·prod에서는 Grist를 새 서버 `10.172.117.91`에 분리합니다. 먼저 새 서버에서 session secret을 배포 환경으로 주입하고 Grist, API key initializer, 전용 Nginx를 기동합니다.
+
+```bash
+GRIST_SESSION_SECRET='<배포 비밀값>' make grist-remote-config
+GRIST_SESSION_SECRET='<배포 비밀값>' make grist-remote-up
+curl -fsS http://10.172.117.91/status
+```
+
+`make grist-remote-up`은 key 디렉터리를 만들고 현재 배포 사용자의 UID/GID를 initializer에 자동 전달합니다. 첫 기동 후 해당 사용자 소유 `0600`으로 생성된 `data/work_hub_secrets/remote/grist_api_key` 값을 기존 Portal 서버의 배포 secret `GRIST_API_KEY`로 전달한 뒤 Portal 측 target을 실행합니다.
+
+```bash
+make oidc-work-hub-up
+make prod-work-hub-up
+```
+
+`make prod-work-hub-up`은 원격 Grist API key가 없으면 중단하고, 운영 API·Web image를 함께 빌드한 뒤 구버전 API와 `work-hub-access-worker`를 중지합니다. 이어 같은 API image의 one-off container로 `migrate --noinput`을 실행하며 migration이 실패하면 신버전을 기동하지 않습니다. OIDC도 key 누락 시 중단합니다. 이 target들은 새 서버의 Grist container를 생성하거나 삭제하지 않습니다.
+
+`make oidc-app-up`과 `make prod-app-up`은 Work Hub를 사용하지 않는 배포를 위해 `work-hub-access-worker`를 제외합니다.
+
+사용자 session 정리 유예가 필요한 운영 원복에서는 양쪽 서버를 함께 비활성화합니다. Portal 측 target은 UI·Webhook·worker 쓰기를 끄고, 새 서버 target은 Grist 본문·widget 접근을 503으로 차단합니다. `down -v`는 사용하지 않습니다.
+
+```bash
+# OIDC(stage)
+make oidc-work-hub-disable
+# 새 Grist 서버
+make grist-remote-disable
+# session 정리 유예 후
+make oidc-work-hub-down
+make grist-remote-down
+
+# 운영
+make prod-work-hub-disable
+# 새 Grist 서버
+make grist-remote-disable
+# session 정리 유예 후
+make prod-work-hub-down
+make grist-remote-down
+```
+
+Portal의 2단계 target은 `work-hub-access-worker`를 제거하고 API·Web·Nginx를 세 플래그가 모두 꺼진 상태로 재생성합니다. 새 서버의 `grist-remote-down`은 Grist·initializer·원격 Nginx container만 제거합니다. named `tailwind_grist_remote_data` volume과 bootstrap key 파일은 보존되므로 언제든 같은 설정으로 다시 기동할 수 있습니다. schema, backup, restore와 Portal account forward-auth 설정은 `docs/modules/work-hub.md`를 따릅니다.
 
 배포 과정에서는 일반 사용자 권한을 자동 생성하거나 일괄 변경하지 않습니다. 최초 Portal
 관리자는 지정한 Django superuser가 권한 관리 화면에서 대상 사용자에게 `admin` 역할을
@@ -391,6 +454,10 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 | `env/api.dev.env` | API 개발 오버라이드 |
 | `env/web.dev.env` | Web 개발 설정 |
 | `env/minio.env` | MinIO 설정 |
+| `env/grist.common.env` | Grist 공통 runtime 설정 |
+| `env/grist.remote.env` | 새 Grist 서버 주소·port·Portal 검증 URL 설정 |
+| `env/work-hub.oidc.env` | OIDC(stage) Portal의 원격 Grist 연결 설정 |
+| `env/work-hub.prod.env` | 운영 Portal의 원격 Grist 연결 설정 |
 
 ## 주의할 점
 

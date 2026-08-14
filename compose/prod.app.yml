@@ -36,6 +36,7 @@ services:
           - minio-init
 
   api:
+    image: ${API_IMAGE:-tailwind-api}
     build:
       context: ../apps/api
       dockerfile: Dockerfile
@@ -51,6 +52,27 @@ services:
       - ../env/api.prod.env
       - ../env/minio.env
     environment:
+      WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
+      GRIST_LOGOUT_ENABLED: ${GRIST_LOGOUT_ENABLED:-0}
+      GRIST_API_URL: ${GRIST_API_URL:-http://grist.example.invalid/o/work-hub}
+      GRIST_API_KEY: ${GRIST_API_KEY:-}
+      GRIST_API_KEY_FILE: ${GRIST_API_KEY_FILE:-}
+      GRIST_PUBLIC_URL: ${GRIST_PUBLIC_URL:-https://worklog.example.invalid}
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_EMAIL:-workhub-admin@example.invalid}
+      GRIST_ORG: ${GRIST_ORG:-work-hub}
+      GRIST_ALLOWED_LAUNCH_HOSTS: ${GRIST_ALLOWED_LAUNCH_HOSTS:-worklog.example.invalid}
+      GRIST_WEBHOOK_CALLBACK_URL: ${GRIST_WEBHOOK_CALLBACK_URL:-https://stg.plane.samsungds.net/api/v1/work-hub/webhooks/grist}
+      GRIST_WEBHOOK_SECRET: ${GRIST_WEBHOOK_SECRET:-}
+      GRIST_FORWARD_AUTH_TICKET_SECRET: ${GRIST_FORWARD_AUTH_TICKET_SECRET:-}
+      GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS: ${GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS:-30}
+      GRIST_FORWARD_AUTH_LOGIN_PATH: ${GRIST_FORWARD_AUTH_LOGIN_PATH:-/auth/login}
+      GRIST_CONNECT_TIMEOUT: ${GRIST_CONNECT_TIMEOUT:-3}
+      GRIST_READ_TIMEOUT: ${GRIST_READ_TIMEOUT:-15}
+      GRIST_DEV_USER_SDWT_PROD: ${GRIST_DEV_USER_SDWT_PROD:-DEV_ALPHA}
+      WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS: ${WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS:-30}
+      WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS:-30}
+      WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS:-90}
+      WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS: ${WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS:-3600}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: emails
       MINIO_REGION: us-east-1
@@ -87,6 +109,7 @@ services:
         VITE_PORTAL_MOSAIC_URL: ${VITE_PORTAL_MOSAIC_URL:-}
         VITE_PORTAL_CONFLUENCE_URL: ${VITE_PORTAL_CONFLUENCE_URL:-}
         VITE_DEFECT_SPIDER_URL: ${VITE_DEFECT_SPIDER_URL:-http://10.173.129.168:32600}
+        VITE_WORK_HUB_ENABLED: ${VITE_WORK_HUB_ENABLED:-0}
     env_file:
       - ../env/web.common.env
       - ../env/web.prod.env
@@ -110,8 +133,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      NGINX_ENVSUBST_FILTER: "^TTTM_SPIDER_UPSTREAM$"
+      NGINX_ENVSUBST_FILTER: "^(TTTM_SPIDER_UPSTREAM|PORTAL_HOST)$"
       TTTM_SPIDER_UPSTREAM: ${TTTM_SPIDER_UPSTREAM:-10.172.60.187:32710}
+      PORTAL_HOST: ${PORTAL_HOST:-plane.samsungds.net}
     volumes:
       - "../deploy/nginx/default.prod.conf:/etc/nginx/templates/default.conf.template:ro"
       - "api_static:/var/www/static:ro"

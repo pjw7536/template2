@@ -1,0 +1,19 @@
+[
+  {
+    "name": "Grouped View",
+    "url": "./widget_groupes.html",
+    "widgetId": "@work-hub/grouped-view",
+    "published": true,
+    "accessLevel": "read table",
+    "renderAfterReady": true,
+    "description": "컬럼 값으로 레코드를 묶고 그룹별로 접거나 펼쳐 보는 읽기 전용 화면입니다.",
+    "authors": [
+      {
+        "name": "Maxime Lacoste",
+        "url": "https://github.com/maximelacoste"
+      }
+    ],
+    "isGristLabsMaintained": false,
+    "lastUpdatedAt": "2026-03-24T13:02:48+01:00"
+  }
+]

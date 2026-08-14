@@ -18,6 +18,10 @@
 | `env/web.prod.env` | 운영 Web | 운영 site/backend URL |
 | `env/minio.env` | MinIO | local MinIO 계정과 endpoint |
 | `env/grafana.env` | Grafana | 모니터링 콘솔 관리자 계정과 기본 보안 설정 |
+| `env/grist.common.env` | Grist OSS | 단일 조직, telemetry, update 정책 공통 설정 |
+| `env/grist.remote.env` | 원격 Grist 서버 | `10.172.117.91` 공개 주소, port, Portal 검증 URL, 비밀값 없는 runtime 기본값 |
+| `env/work-hub.oidc.env` | Portal OIDC(stage) Work Hub | 원격 Grist URL, 관리자와 Portal 측 기능 설정 |
+| `env/work-hub.prod.env` | Portal 운영 Work Hub | 원격 Grist URL, 관리자와 Portal 측 기능 설정 |
 
 ## 환경별 dependency source 정책
 
@@ -76,6 +80,11 @@
 | Dev auto affiliation | `DEV_AUTO_AFFILIATION_ALLOWED`, `DEV_AUTO_AFFILIATION_PREFIX` | 소속 없는 로컬 dev 로그인 사용자의 기본 개발 소속 보장 |
 | Dev auto seed | `DEV_AUTO_SEED`, `DEV_SEED_PREFIX` | 로컬 dev API 기동 시 dummy 사용자 보정과 account 권한 요청을 포함한 prefix 기준 더미 데이터 refresh |
 | Observer 설정 | `OBSERVER_QUERY_DAYS` | Observer 로그 기본 조회 기간 |
+| Work Hub API | `WORK_HUB_ENABLED`, `GRIST_LOGOUT_ENABLED`, `GRIST_API_URL`, `GRIST_API_KEY`, `GRIST_API_KEY_FILE`, `GRIST_ADMIN_EMAIL`, `GRIST_WEBHOOK_CALLBACK_URL`, `GRIST_WEBHOOK_SECRET`, `GRIST_ALLOWED_LAUNCH_HOSTS`, `GRIST_CONNECT_TIMEOUT`, `GRIST_READ_TIMEOUT` | launcher·forward-auth opt-in, 비활성화 후 session 정리, 환경 key 우선·bootstrap 파일 차선의 공식 Grist API 인증, 보호할 운영 owner, document·table별 Webhook token의 마스터 키와 launch URL 허용 host·timeout |
+| Work Hub dev seed | `GRIST_DEV_USER_SDWT_PROD`, `GRIST_API_KEY`, `GRIST_API_KEY_FILE` | Portal 관리자 Grist account의 API key로 demo schema·record·Webhook·Portal mapping 생성 |
+| Grist runtime | `GRIST_PUBLIC_URL`, `GRIST_IMAGE`, `GRIST_HOST`, `GRIST_ORG`, `GRIST_SESSION_SECRET`, `GRIST_ALLOWED_WEBHOOK_DOMAINS`, `GRIST_SECRET_UID`, `GRIST_SECRET_GID` | 전용 host·단일 조직, `/persist` volume, session과 Webhook destination 제한, 원격 bootstrap key 파일 소유자. 운영은 session secret 누락 시 시작 실패 |
+| Grist widget | `GRIST_WIDGET_PUBLIC_URL`, `GRIST_WIDGET_HOST`, `GRIST_WIDGET_PORT`, `GRIST_WIDGET_LIST_URL_OPTIONAL` | 자체 호스팅 widget의 분리 origin, 운영 DNS host, 로컬 공개 port, 외부 gallery 장애 격리 |
+| Grist forward-auth | `GRIST_FORWARD_AUTH_TICKET_SECRET`, `GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS`, `GRIST_FORWARD_AUTH_LOGIN_PATH`, `PORTAL_HOST`, `PORTAL_PUBLIC_URL` | Portal account를 짧은 수명의 서명 ticket과 신뢰된 email header로 교환하는 Nginx 계약 |
 | RACB report URL | `RACB_REPORT_BASE_URL` | RACB 로그 상세 팝업 URL 생성 기준 |
 | `L3_SPIDER_*` / L3 Spider 파일 데이터/메일 | `L3_SPIDER_DATA_ROOT`, `L3_SPIDER_INDEX_SOURCE`, `L3_SPIDER_MOCK_INDEX_PATH`, `L3_SPIDER_MAX_CHART_POINTS_PER_PANEL`, `L3_SPIDER_MAIL_SENDER`, `L3_SPIDER_MAIL_TARGET_URL` | read-only mount된 `daily_anomaly` Parquet 데이터 경로, 인덱스 source, 개발용 SQLite mock 경로, 차트 sampling 제한, 알림 메일 설정 |
 | `FDC_HARD_SPEC_*` / L0 Spider 추천 데이터 | `FDC_HARD_SPEC_DATA_ROOT`, `FDC_HARD_SPEC_PRIORITY_PATH`, `FDC_HARD_SPEC_UNIT_MODEL_PATH`, `FDC_HARD_SPEC_HARD_LIMIT_PATH` | FDC Hard Limit 추천 Parquet 데이터 경로 |
@@ -166,7 +175,31 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 ## 로컬 개발 기본 흐름
 
-1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx를 함께 띄웁니다.
+### Grist OSS Work Hub opt-in
+
+Work Hub는 raw app stack의 필수 dependency가 아니지만 기본 개발 명령에는 포함됩니다. Dev에서는 다음 profile로 pinned Grist OSS를 추가합니다.
+
+기본 `make dev`와 호환 명령 `make dev-up`은 `WORK_HUB_ENABLED=1`, `VITE_WORK_HUB_ENABLED=1`, `GRIST_LOGOUT_ENABLED=1`을 주입하고 API·Web·Nginx·worker·Grist를 같은 계약으로 실행합니다. Portal만 점검하려면 세 값의 기본값이 `0`인 `make dev-app-up`을 사용합니다.
+
+아래 raw Compose 명령은 Grist container만 단독 확인할 때 사용합니다. Portal 통합 시험은 Make target을 사용합니다.
+
+```bash
+docker compose -f docker-compose.dev.yml --profile work-hub up -d grist
+```
+
+server-to-server API key는 `grist-api-key-init`이 첫 기동 때 `GRIST_ADMIN_EMAIL`로 내부 forward-auth session을 만든 뒤 Grist 공식 profile API에서 발급합니다. 로컬에서는 `${WORK_HUB_SECRET_HOST_PATH}/grist_api_key` 파일을 API·worker가 함께 읽습니다. 분리 운영에서는 새 서버가 같은 파일을 `0600`으로 만들고 운영자가 그 값을 기존 Portal 서버의 `GRIST_API_KEY` 배포 비밀값으로 전달합니다. 서버 간 공유 mount는 사용하지 않으며 tracked env에는 실제 key를 넣지 않습니다.
+
+Grist에는 `GRIST_IN_SERVICE=true`를 설정하고 외부 `/boot` 경로를 Nginx에서 차단해 boot key 화면을 사용하지 않습니다. 브라우저 로그인은 `/auth/grist/login`이 현재 Portal session의 `account.User` ID를 30초 ticket으로 서명합니다. Grist 전용 Nginx의 내부 subrequest가 `/auth/grist/verify`에서 현재 account·앱 권한을 다시 검사한 뒤에만 `X-Forwarded-User` email을 Grist에 전달합니다. Portal 미로그인 상태이면 기존 Portal OIDC 또는 로컬 dummy ADFS 로그인을 먼저 수행합니다. 단, `WORK_HUB_ENABLED=0`이면 Portal 로그인으로 보내기 전에 요청을 거부합니다.
+
+운영 Grist는 새 서버에서 `docker-compose.grist.yml`로 실행합니다. `env/grist.remote.env`의 기본값은 Grist `http://10.172.117.91`, widget `http://10.172.117.91:8101`, 조직 `work-hub`이며 `GRIST_SESSION_SECRET`은 외부에서 반드시 주입해야 합니다. 기존 Portal 서버의 OIDC/prod Compose에는 Grist container와 initializer가 없고 `work-hub-access-worker`만 남습니다. Portal의 `GRIST_API_URL`, `GRIST_PUBLIC_URL`, `GRIST_WIDGET_PUBLIC_URL`, `GRIST_ALLOWED_LAUNCH_HOSTS`는 원격 주소를 가리키며 `GRIST_API_KEY_FILE`은 비워 둡니다.
+
+새 서버 Nginx는 Grist container port를 직접 공개하지 않고 Portal의 `PORTAL_VERIFY_URL`을 forward-auth subrequest로 호출합니다. `PORTAL_PUBLIC_URL`과 `PORTAL_VERIFY_URL`은 새 서버에서 접근 가능한 기존 Portal 주소여야 합니다. 초기 IP/HTTP 운영 후 DNS와 TLS를 적용할 때는 `GRIST_PUBLIC_URL`, `GRIST_WIDGET_PUBLIC_URL`, Portal의 허용 host와 CSRF/CSP 계약을 같은 origin 기준으로 함께 바꿉니다. `GRIST_ORG`는 API launch URL과 Grist `GRIST_SINGLE_ORG`에 같은 값을 사용합니다.
+
+Portal에서는 `make oidc-work-hub-up` 또는 `make prod-work-hub-up`이 API·Web·Nginx·worker를 활성화하고, `GRIST_API_KEY`가 없으면 fail-closed로 중단합니다. 새 서버에서는 `make grist-remote-up`이 Grist·initializer·원격 Nginx를 기동하고, `make grist-remote-disable`이 본문·widget을 503으로 바꿉니다. 원복할 때는 양쪽 disable을 함께 실행해 session 정리 시간을 둔 뒤 Portal의 `*-work-hub-down`과 새 서버의 `make grist-remote-down`을 실행합니다. 어느 target도 Grist named volume이나 bootstrap key 파일을 자동 삭제하지 않습니다.
+
+`GRIST_ADMIN_EMAIL`은 모든 활성 Work Hub document의 break-glass owner이며 실제 Portal account email과 일치해야 합니다. 이메일이 등록된 활성 Portal superuser도 모든 활성 document의 owner로 동기화됩니다. `work-hub-access-worker`는 API와 같은 `API_IMAGE`를 사용하고 Grist REST API를 원격 호출합니다. `WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS`와 `WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS`는 완료 이력을 기본 30일, `WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS`는 실패 Webhook receipt를 기본 90일 보존합니다. Web 메뉴는 `VITE_WORK_HUB_ENABLED`, API context와 forward-auth는 `WORK_HUB_ENABLED`를 사용합니다.
+
+1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx, Work Hub worker와 Grist를 함께 띄웁니다.
 2. API는 `env/api.common.env`와 `env/api.dev.env`를 사용합니다.
 3. Web은 `env/web.dev.env`를 사용합니다.
 4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다.

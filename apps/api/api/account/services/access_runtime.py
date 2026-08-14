@@ -217,6 +217,123 @@ def get_scope_access_payloads(
     }
 
 
+def list_effective_affiliation_member_roles_for_scope(
+    *,
+    user_sdwt_prod: str,
+    scope_key: str,
+) -> list[dict[str, str]]:
+    """소속 역할 중 지정 scope의 최종 접근이 허용된 사용자만 반환합니다."""
+
+    affiliation = selectors.get_active_affiliation_by_user_sdwt_prod(
+        user_sdwt_prod=user_sdwt_prod
+    )
+    if affiliation is None:
+        return []
+    scope = selectors.get_access_scope_by_key(scope_key=scope_key)
+    if scope is None or scope.data_scope_type != AccessScope.DataScopeTypes.AFFILIATION:
+        return []
+    memberships = selectors.list_effective_affiliation_member_role_users(
+        user_sdwt_prod=user_sdwt_prod
+    )
+    memberships_by_user_id = {
+        int(item["user_id"]): item for item in memberships
+    }
+    users = selectors.list_active_acl_projection_users(
+        user_ids=[int(item["user_id"]) for item in memberships]
+    )
+    if not users:
+        return []
+    portal_scope = selectors.get_access_scope_by_key(scope_key=ACCESS_SCOPE_PORTAL)
+    access_scopes = [scope]
+    if portal_scope is not None and portal_scope.id != scope.id:
+        access_scopes.append(portal_scope)
+    policy_rules = selectors.list_active_access_policy_rules_for_scopes(
+        scopes=access_scopes,
+    )
+    rules_by_scope_id: dict[int, list[AccessPolicyRule]] = {
+        access_scope.id: [] for access_scope in access_scopes
+    }
+    for rule in policy_rules:
+        rules_by_scope_id.setdefault(rule.scope_id, []).append(rule)
+    access_rows = selectors.list_user_access_rows_for_scopes_and_users(
+        scopes=access_scopes,
+        user_ids=[user.id for user in users],
+    )
+    access_by_scope_and_user = {
+        (access.scope_id, access.user_id): access for access in access_rows
+    }
+    granted_user_ids = selectors.list_active_scope_affiliation_grant_user_ids(
+        scope=scope,
+        affiliation_id=affiliation.id,
+        user_ids=[user.id for user in users],
+    )
+    role_priority = {"viewer": 1, "member": 2, "manager": 3}
+    roles_by_email: dict[str, str] = {}
+
+    for user in users:
+        membership = memberships_by_user_id.get(user.id)
+        if membership is None and not getattr(user, "is_superuser", False):
+            continue
+        scope_access = _build_access_payload(
+            user=user,
+            scope=scope,
+            user_access=access_by_scope_and_user.get((scope.id, user.id)),
+            policy_rules=rules_by_scope_id.get(scope.id, []),
+        )
+        portal_access = (
+            _build_access_payload(
+                user=user,
+                scope=portal_scope,
+                user_access=access_by_scope_and_user.get((portal_scope.id, user.id)),
+                policy_rules=rules_by_scope_id.get(portal_scope.id, []),
+            )
+            if portal_scope is not None
+            else _build_missing_scope_payload(
+                user=user,
+                scope_key=ACCESS_SCOPE_PORTAL,
+            )
+        )
+        scope_access = _apply_portal_access_requirement(
+            scope_access=scope_access,
+            portal_access=portal_access,
+        )
+        if not scope_access.get("allowed"):
+            continue
+
+        current = getattr(user, "current_affiliation", None)
+        current_affiliation = getattr(current, "affiliation", None)
+        has_affiliation_scope = bool(
+            getattr(user, "is_superuser", False)
+            or scope_access.get("dataScopeMode") == UserAccess.DataScopeModes.ALL
+            or (
+                scope.include_current_affiliation
+                and current_affiliation is not None
+                and current_affiliation.is_active
+                and current_affiliation.id == affiliation.id
+            )
+            or user.id in granted_user_ids
+        )
+        if not has_affiliation_scope:
+            continue
+        email = (
+            str(user.email).strip().lower()
+            if getattr(user, "is_superuser", False)
+            else str(membership["email"])
+        )
+        role = (
+            "manager"
+            if getattr(user, "is_superuser", False)
+            else str(membership["role"])
+        )
+        previous = roles_by_email.get(email)
+        if previous is None or role_priority[role] > role_priority[previous]:
+            roles_by_email[email] = role
+    return [
+        {"email": email, "role": roles_by_email[email]}
+        for email in sorted(roles_by_email)
+    ]
+
+
 def _build_portal_access_payloads_by_user(
     *,
     users: list[Any],

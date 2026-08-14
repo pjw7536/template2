@@ -283,6 +283,31 @@ class ObserverEndpointTests(TestCase):
         self.assertEqual(params, ["LINE-A", "ETCH", "SD-10"])
         options.assert_called_once_with()
 
+    def test_work_hub_equipment_selector_uses_user_sdwt_prod(self) -> None:
+        """Work Hub 공개 selector는 소속 전체 설비를 동기화 형태로 반환합니다."""
+
+        with patch(
+            f"{OBSERVER_SELECTORS}._fetch_all",
+            return_value=[
+                {
+                    "equipment_id": "EQP-ALPHA",
+                    "line_id": "LINE-A",
+                    "sdwt_prod": "SD-10",
+                    "prc_group": "ETCH",
+                    "equipment_name": "Alpha 장비",
+                }
+            ],
+        ) as fetch_all:
+            equipments = selectors.list_equipments_for_user_sdwt_prod(
+                user_sdwt_prod=" sd-10 ",
+            )
+
+        query, params = fetch_all.call_args.args
+        self.assertEqual(equipments[0]["equipment_id"], "EQP-ALPHA")
+        self.assertEqual(equipments[0]["equipment_name"], "Alpha 장비")
+        self.assertIn("station.sdwt_prod_lookup = %s", query)
+        self.assertEqual(params, ["SD-10"])
+
     def test_observer_equipments_normalizes_query_values(self) -> None:
         with patch(
             f"{OBSERVER_VIEW_SELECTORS}.list_equipments",

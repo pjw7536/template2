@@ -15,8 +15,8 @@ Auth API는 OIDC 로그인과 Django session 관리를 담당합니다.
 | GET | `/api/v1/auth/login` | 공개 | OIDC 로그인 시작 |
 | POST | `/auth/google/callback/` | OIDC form_post | OIDC callback 처리 |
 | GET | `/api/v1/auth/me` | Session | 현재 사용자 조회 |
-| GET | `/api/v1/auth/logout` | Session | 로그아웃 후 IdP logout redirect |
-| POST | `/api/v1/auth/logout` | Session | 로그아웃 URL JSON 반환 |
+| GET | `/api/v1/auth/logout` | Session | Grist 세션 종료 후 IdP logout redirect |
+| POST | `/api/v1/auth/logout` | Session | 첫 로그아웃 경유 URL JSON 반환 |
 | GET | `/api/v1/auth/` | 공개 | 프론트 redirect 보조 |
 
 ## 로그인 시작
@@ -68,6 +68,10 @@ GET /api/v1/auth/me
   }
 }
 ```
+
+## 로그아웃
+
+Work Hub가 활성화되어 있거나 `GRIST_LOGOUT_ENABLED=1`인 세션 정리 기간에는 첫 로그아웃 요청이 Grist `/logout`을 반환합니다. Grist가 자체 session을 제거한 뒤 `grist_cleared=1` marker로 돌아오면 Portal은 기존 IdP logout URL로 이동합니다. 두 플래그가 모두 꺼져 있거나 Grist public URL이 안전하지 않으면 기존 IdP logout으로 바로 진행합니다.
 
 ## 오류
 

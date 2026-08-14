@@ -19,6 +19,7 @@
 | PM SPIDER | `/api/v1/pm_spider/` | `apps/api/api/pm_comparison/urls.py` | `meta`, `compare` |
 | TTTM Spider | `/api/v1/tttm_spider/` | `apps/api/api/tttm_spider/urls.py` | `combo/options`, `combo/types`, `combo/data-types`, `targets/eqps`, `targets/chambers`, `targets/lotwf`, `targets/golden`, `targets/result-status`, `dashboard/data`, `sensor-trace` |
 | Observer | `/api/v1/observer/` | `apps/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<line_id>/<eqp_id>`, `equipment-info/<eqp_id>`, `logs`, `logs/page`, `logs/<log_type>/page`, `logs/<log_type>/detail`, `logs/eqp`, `logs/tip`, `logs/spc-interlock`, `logs/fdc-interlock`, `logs/ctttm`, `logs/racb`, `logs/esop`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
+| Work Hub | `/api/v1/work-hub/`, `/auth/grist/` | `apps/api/api/work_hub/urls.py`, `callback_urls.py` | `context`, `webhooks/grist`, `login`, `verify` |
 | AppStore | `/api/v1/appstore/` | `apps/api/api/appstore/urls.py` | `apps`, `apps/order`, `apps/<app_id>`, `apps/<app_id>/cover`, `apps/<app_id>/like`, `apps/<app_id>/view`, `apps/<app_id>/comments`, `apps/<app_id>/comments/<comment_id>`, `apps/<app_id>/comments/<comment_id>/like` |
 | VOC | `/api/v1/voc/` | `apps/api/api/voc/urls.py` | `posts`, `posts/<post_id>`, `posts/<post_id>/replies` |
 | Activity | `/api/v1/activity/` | `apps/api/api/activity/urls.py` | `logs`, `app-access`, `app-access-stats`, `app-access-sync-external` |
@@ -40,6 +41,7 @@
 | PM SPIDER | `/pm_spider` | `apps/web/src/features/pm-spider/routes.jsx` | `apps/web/src/features/pm-spider/index.js` |
 | TTTM Spider | `/spider/tttm`, `/tttm_spider` | `apps/web/src/features/tttm-spider/routes.jsx` | `apps/web/src/features/tttm-spider/index.js` |
 | Observer | `/observer`, `/observer/:eqpId` | `apps/web/src/features/observer/routes.jsx` | `apps/web/src/features/observer/index.js` |
+| Work Hub | `/work-hub` | `apps/web/src/features/work-hub/routes.jsx` | `apps/web/src/features/work-hub/index.js` |
 | AppStore | `/appstore` | `apps/web/src/features/appstore/routes.jsx` | `apps/web/src/features/appstore/index.js` |
 | VOC | `/voc` | `apps/web/src/features/voc/routes.jsx` | `apps/web/src/features/voc/index.js` |
 | Teamstaff | `/teamstaff` | `apps/web/src/features/teamstaff/routes.jsx` | `apps/web/src/features/teamstaff/index.js` |
@@ -65,6 +67,7 @@
 | `api.data_movement.mes_line_mapping_info` | `MesLineMappingInfo`, `MesLineMappingInfoLoadJob` |
 | `api.data_movement.station_master` | `StationMaster`, `StationMasterLoadJob` |
 | `api.voc` | `VocPost`, `VocReply` |
+| `api.work_hub` | `GristDocumentScope`, `GristAccessSyncOutbox`, `GristWebhookReceipt`, `GristTaskLink` |
 | `api.l3_spider` | `L3SpiderFileIndex`, `L3SpiderDailyRunStats`, `L3SpiderRunStatus`, `L3SpiderLineNameRule`, `L3SpiderExclusionFilter`, `L3SpiderMailRule`, `L3SpiderMailDelivery`, `L3SpiderMailRulePermission` |
 | `api.auth`, `api.rag`, `api.observer`, `api.l0_spider`, `api.pm_comparison`, `api.tttm_spider`, `api.health`, `api.common` | 자체 업무 model 없이 account/common/external DB 또는 외부 API/파일을 사용 |
 
@@ -94,6 +97,12 @@
 | `seed_drone_targets_from_file` | `apps/api/api/drone/management/commands/seed_drone_targets_from_file.py` | JSON/CSV 기준 Drone SOP/발송 이력/알림 설정 초기화 후 대상/채널/수신자 생성 |
 | `prune_drone_sop` | `apps/api/api/drone/management/commands/prune_drone_sop.py` | 보관 기간을 초과한 Drone SOP 데이터 정리 |
 | `purge_drone_sop` | `apps/api/api/drone/management/commands/purge_drone_sop.py` | Drone SOP 데이터를 수동 전체 삭제 또는 dry-run 확인 |
+| `configure_grist_scope` | `apps/api/api/work_hub/management/commands/configure_grist_scope.py` | 소속과 Grist workspace/document/table ID mapping 등록 및 선택적 Webhook Authorization 출력 |
+| `audit_grist_schema` | `apps/api/api/work_hub/management/commands/audit_grist_schema.py` | Equipment/WorkLog/Task column 계약 점검 |
+| `sync_grist_equipment` | `apps/api/api/work_hub/management/commands/sync_grist_equipment.py` | Observer 설비를 Grist에 멱등 upsert/archive |
+| `sync_grist_access` | `apps/api/api/work_hub/management/commands/sync_grist_access.py` | 비활성 소속을 포함한 Portal 사용자·역할을 Grist document ACL로 전체 동기화 |
+| `process_grist_access_sync` | `apps/api/api/work_hub/management/commands/process_grist_access_sync.py` | 전용 worker의 만료 grant 회수, Grist 역할 Outbox 처리, 주기적 전체 ACL 복구와 완료 이력 정리 |
+| `seed_grist_demo` | `apps/api/api/work_hub/management/commands/seed_grist_demo.py` | 로컬 Grist demo schema·record·Webhook·mapping 멱등 생성 |
 
 ## Env 파일과 설정 그룹
 
@@ -108,5 +117,9 @@
 | `env/web.oidc.dev.env` | 실제 OIDC 개발 연결용 web 설정 |
 | `env/web.prod.env` | 운영 web 설정 템플릿 |
 | `env/minio.env` | 로컬 MinIO 계정과 endpoint |
+| `env/grist.common.env` | Grist 단일 조직, telemetry, update 정책 공통 설정 |
+| `env/grist.remote.env` | 새 Grist 서버 `10.172.117.91`의 공개 주소, port, Portal 검증 URL과 비밀값 없는 runtime 기본값 |
+| `env/work-hub.oidc.env` | OIDC(stage) Portal의 원격 Grist URL, 관리자와 기능 설정 |
+| `env/work-hub.prod.env` | 운영 Portal의 원격 Grist URL, 관리자와 기능 설정 |
 
-주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `ADFS_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `VITE_*`입니다.
+주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `ADFS_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `GRIST_*`, `WORK_HUB_ENABLED`, `VITE_*`입니다.

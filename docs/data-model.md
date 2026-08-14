@@ -51,6 +51,10 @@
 | AppStore | `AppStoreCommentLike` | 댓글 좋아요 |
 | VOC | `VocPost` | VOC 게시글 |
 | VOC | `VocReply` | VOC 답변 |
+| Work Hub | `GristDocumentScope` | Affiliation과 Grist workspace/document/table ID 연결 |
+| Work Hub | `GristAccessSyncOutbox` | Portal 역할을 Grist ACL에 재시도 가능하게 투영 |
+| Work Hub | `GristWebhookReceipt` | 비동기 처리용 검증 payload, Webhook hash, 임대·재시도 상태 보관 |
+| Work Hub | `GristTaskLink` | WorkLog record와 자동 생성 Task record 멱등 연결 |
 
 ## 모델이 없는 app
 
@@ -73,6 +77,7 @@
 - Drone SOP는 target, channel config, recipient, dispatch, delivery로 분리되어 알림 설정과 발송 결과를 추적합니다.
 - AppStore와 VOC는 작성자와 댓글/답변 관계를 기본 DB에 저장합니다.
 - Observer는 기준정보를 기본 DB의 `mes_line_mapping_info`, `station_master`에서 조회하고, 로그를 `eqp_status_chg`, `mi_tip_update_hist`, `m_interlock`, `ctttm_workorder_list`, `ct_process_comment`, `racb_list`, `drone_sop`에서 조회합니다.
+- Work Hub의 Django 모델은 Grist record 본문을 복제하지 않고 document/table mapping, 역할 동기화 Outbox, Webhook hash/status, WorkLog↔Task 연결만 저장합니다. 테스트 전환 과정의 Baserow/APITable table은 최종 schema에 포함하지 않습니다.
 - `MInterlock`은 원천 필드와 함께 `prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`을 dual-write하며, Observer는 typed keyset 인덱스 `idx_m_intlk_obs_page`를 항상 사용합니다. 기존 문자열 조회 표현식 인덱스는 제거합니다. typed 파생 필드가 비어 있는 기존 row는 Observer 조회에서 제외하며 별도 호환 경로를 제공하지 않습니다.
 
 ## 변경 시 확인 항목

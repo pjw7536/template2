@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <!-- MIT 라이선스의 maximelacoste/grist-widget-grouped-view를 기반으로 한 고정 버전입니다. -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grouped View — Grist widget</title>
+  <script src="./grist-plugin-api.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #f5f5f4;
+      --surface:      #ffffff;
+      --border:       #e4e4e2;
+      --border-strong:#c8c8c5;
+      --text:         #18181b;
+      --muted:        #71717a;
+      --accent:       #2563eb;
+      --group-stripe: #fafaf9;
+      --hover-row:    #f0f6ff;
+      --focus-ring:   0 0 0 2px rgba(37,99,235,.35);
+      --radius:       5px;
+      --shadow:       0 1px 2px rgba(0,0,0,.06), 0 1px 4px rgba(0,0,0,.04);
+      --font:         system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --mono:         ui-monospace, SFMono-Regular, Consolas, monospace;
+      --max-group-h:  200px;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      /* Grist가 문서 높이를 측정해 iframe을 늘리지 않도록 높이를 0으로 둡니다. */
+      height: 0;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    #app {
+      /* #app을 일반 흐름에서 분리해 문서 높이를 0으로 유지합니다. */
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: var(--font);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      background: var(--bg);
+    }
+
+    /* ── 도구 모음 ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      min-height: 36px;
+    }
+    .toolbar-group { display: flex; align-items: center; gap: 5px; }
+    .toolbar label {
+      font-size: 11px; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--muted); white-space: nowrap; cursor: default;
+    }
+    .toolbar select {
+      font-family: var(--font); font-size: 12px; padding: 3px 7px;
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      background: var(--surface); color: var(--text); cursor: pointer; outline: none; max-width: 180px;
+    }
+    .toolbar select:focus-visible { border-color: var(--accent); box-shadow: var(--focus-ring); }
+    .toolbar-sep { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
+    .toolbar-right { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+
+    .btn {
+      font-family: var(--font); font-size: 11px; font-weight: 500;
+      padding: 3px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+      background: var(--surface); color: var(--muted); cursor: pointer; white-space: nowrap;
+      transition: background .1s, color .1s, border-color .1s; outline: none;
+    }
+    .btn:hover         { background: var(--bg); color: var(--text); border-color: var(--muted); }
+    .btn:active        { background: #e4e4e2; }
+    .btn:focus-visible { box-shadow: var(--focus-ring); border-color: var(--accent); }
+
+    .btn-icon {
+      display: flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; padding: 0;
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      background: var(--surface); cursor: pointer; outline: none; flex-shrink: 0;
+      transition: background .1s, border-color .1s; color: var(--muted);
+    }
+    .btn-icon:hover         { background: var(--bg); border-color: var(--muted); color: var(--text); }
+    .btn-icon.active        { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-icon:focus-visible { box-shadow: var(--focus-ring); }
+
+    /* ── 표시 설정 패널 ── */
+    .settings-panel {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      flex-shrink: 0;
+    }
+    .settings-panel.open { display: flex; }
+
+    .setting-section-title {
+      font-size: 10px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 2px;
+    }
+
+    /* 그룹별 색상 */
+    .color-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .color-row-label {
+      font-size: 12px;
+      font-weight: 500;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+    }
+    .color-row-label.is-empty { font-style: italic; color: var(--muted); }
+
+    /* 색상 입력 스타일 */
+    .color-input-wrap {
+      position: relative;
+      width: 28px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .color-swatch {
+      display: block;
+      width: 28px;
+      height: 20px;
+      border-radius: 4px;
+      border: 2px solid var(--border-strong);
+      cursor: pointer;
+      transition: border-color .1s;
+    }
+    .color-swatch:hover { border-color: var(--muted); }
+    .color-input-wrap input[type="color"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      padding: 0;
+      border: none;
+    }
+    .color-input-wrap:focus-within .color-swatch { border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+    .btn-reset-color {
+      font-size: 10px; padding: 1px 6px;
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      background: var(--bg); color: var(--muted); cursor: pointer; outline: none;
+      transition: background .1s, color .1s; white-space: nowrap; flex-shrink: 0;
+      font-family: var(--font);
+    }
+    .btn-reset-color:hover         { color: var(--text); border-color: var(--muted); }
+    .btn-reset-color:focus-visible { box-shadow: var(--focus-ring); }
+
+    /* 불리언 표시 형식 */
+    .bool-row { display: flex; gap: 5px; flex-wrap: wrap; }
+    .bool-btn {
+      font-family: var(--font); font-size: 11px; padding: 2px 9px;
+      border: 1px solid var(--border-strong); border-radius: 10px;
+      background: var(--bg); color: var(--muted); cursor: pointer; outline: none;
+      transition: background .1s, border-color .1s, color .1s;
+    }
+    .bool-btn:hover         { border-color: var(--muted); color: var(--text); }
+    .bool-btn.selected      { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .bool-btn:focus-visible { box-shadow: var(--focus-ring); }
+
+    /* ── 통계 표시줄 ── */
+    .statsbar {
+      display: none; align-items: center; gap: 12px; padding: 4px 10px;
+      background: var(--group-stripe); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; font-size: 11px; color: var(--muted);
+    }
+    .statsbar.visible { display: flex; }
+    .stat-val { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* ── 콘텐츠 영역 ── */
+    .content {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) var(--bg);
+    }
+    .content::-webkit-scrollbar       { width: 8px; }
+    .content::-webkit-scrollbar-track { background: var(--bg); border-radius: 4px; }
+    .content::-webkit-scrollbar-thumb {
+      background: var(--border-strong); border-radius: 4px; border: 2px solid var(--bg);
+    }
+    .content::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* ── 빈 상태 ── */
+    .empty {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; gap: 10px;
+      color: var(--muted); text-align: center; padding: 20px;
+    }
+    .empty svg   { opacity: .25; }
+    .empty-title { font-size: 13px; font-weight: 500; color: var(--text); }
+    .empty-sub   { font-size: 12px; }
+
+    /* ── 그룹 ── */
+    .group {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .group-header {
+      display: flex; align-items: center; gap: 7px; padding: 6px 10px;
+      width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+      font-family: var(--font); font-size: 13px; color: var(--text);
+      user-select: none; transition: background .1s; outline: none;
+    }
+    .group-header:hover         { background: var(--bg); }
+    .group-header:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+
+    .chevron {
+      width: 14px; height: 14px; flex-shrink: 0; color: var(--muted);
+      transition: transform .2s cubic-bezier(.4,0,.2,1);
+    }
+    .group.collapsed .chevron { transform: rotate(-90deg); }
+
+    .group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .group-label {
+      font-size: 13px; font-weight: 600; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .group-label.is-empty { font-weight: 400; font-style: italic; color: var(--muted); }
+
+    .group-badge {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      padding: 1px 7px; border-radius: 10px;
+      background: var(--bg); border: 1px solid var(--border); color: var(--muted); flex-shrink: 0;
+    }
+
+    .group-body {
+      display: grid; grid-template-rows: 1fr;
+      transition: grid-template-rows .22s cubic-bezier(.4,0,.2,1);
+      border-top: 1px solid var(--border);
+    }
+    .group.collapsed .group-body { grid-template-rows: 0fr; border-top-color: transparent; }
+    .group-body-inner {
+      overflow: hidden;  /* 아코디언 애니메이션을 위해 내용을 숨깁니다. */
+    }
+    .group-body-inner .scroll-inner {
+      max-height: var(--max-group-h);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) var(--bg);
+    }
+    .group-body-inner .scroll-inner::-webkit-scrollbar       { width: 7px; }
+    .group-body-inner .scroll-inner::-webkit-scrollbar-track { background: var(--bg); }
+    .group-body-inner .scroll-inner::-webkit-scrollbar-thumb {
+      background: var(--border-strong); border-radius: 4px; border: 2px solid var(--bg);
+    }
+    .group-body-inner .scroll-inner::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+    /* 그룹 overflow 대신 마지막 표 행의 아래 모서리를 둥글게 처리합니다. */
+    .group-body-inner .rec-table tbody tr:last-child td:first-child {
+      border-radius: 0 0 0 calc(var(--radius) - 1px);
+    }
+    .group-body-inner .rec-table tbody tr:last-child td:last-child {
+      border-radius: 0 0 calc(var(--radius) - 1px) 0;
+    }
+    /* 펼침 상태에 맞춰 헤더 모서리를 처리합니다. */
+    .group-header {
+      border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+    }
+    .group.collapsed .group-header {
+      border-radius: calc(var(--radius) - 1px);
+    }
+
+    /* ── 표 ── */
+    .rec-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rec-table caption {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .rec-table thead th {
+      font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--muted);
+      letter-spacing: .03em; padding: 4px 10px; text-align: left;
+      background: var(--group-stripe); border-bottom: 1px solid var(--border);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;
+    }
+    .rec-table tbody tr           { transition: background .08s; }
+    .rec-table tbody tr:hover td  { background: var(--hover-row); }
+    .rec-table tbody td {
+      padding: 5px 10px; border-bottom: 1px solid var(--border); color: var(--text);
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .rec-table tbody tr:last-child td { border-bottom: none; }
+
+    .cell-null { color: var(--muted); font-style: italic; font-size: 11px; }
+    .cell-num  { font-family: var(--mono); font-size: 11px; }
+    .only-group-col { padding: 8px 12px; font-size: 11px; color: var(--muted); font-style: italic; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header class="toolbar" role="toolbar" aria-label="Options de groupement">
+    <div class="toolbar-group">
+      <label for="group-select">Grouper par</label>
+      <select id="group-select">
+        <option value="">— choisir —</option>
+      </select>
+    </div>
+    <div class="toolbar-sep" role="separator" aria-orientation="vertical"></div>
+    <div class="toolbar-group">
+      <label for="sort-select">Tri</label>
+      <select id="sort-select">
+        <option value="alpha-asc">A → Z</option>
+        <option value="alpha-desc">Z → A</option>
+        <option value="count-desc">Nb ↓</option>
+        <option value="count-asc">Nb ↑</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn" id="btn-expand"   type="button">Tout déplier</button>
+      <button class="btn" id="btn-collapse" type="button">Tout plier</button>
+      <div class="toolbar-sep" role="separator" aria-orientation="vertical"></div>
+      <button class="btn-icon" id="btn-settings" type="button"
+              aria-label="Réglages d'affichage" aria-expanded="false" aria-controls="settings-panel">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="settings-panel" id="settings-panel"
+       role="region" aria-label="Réglages d'affichage">
+
+    <div>
+      <p class="setting-section-title" id="lbl-colors">Couleurs des groupes</p>
+      <div class="color-grid" id="color-grid" aria-labelledby="lbl-colors"></div>
+    </div>
+
+    <div>
+      <p class="setting-section-title" id="lbl-maxh">Hauteur max par groupe</p>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="maxh-range" min="80" max="600" step="20" value="200"
+               aria-labelledby="lbl-maxh" style="flex:1;accent-color:var(--accent)">
+        <span id="maxh-val" style="font-family:var(--mono);font-size:11px;color:var(--text);min-width:36px">200px</span>
+        <button class="btn-reset-color" type="button" id="btn-reset-maxh"
+                aria-label="Réinitialiser la hauteur maximale">Réinitialiser</button>
+      </div>
+    </div>
+
+    <div id="bool-section" style="display:none">
+      <p class="setting-section-title" id="lbl-bool">Affichage vrai / faux</p>
+      <div class="bool-row" id="bool-row"
+           role="radiogroup" aria-labelledby="lbl-bool"></div>
+    </div>
+
+  </div>
+
+  <div class="statsbar" id="statsbar" role="status" aria-live="polite" aria-atomic="true">
+    <span><span class="stat-val" id="stat-groups">0</span> groupes</span>
+    <span aria-hidden="true">·</span>
+    <span><span class="stat-val" id="stat-records">0</span> enregistrements</span>
+  </div>
+
+  <main class="content" id="content" aria-label="Groupes d'enregistrements">
+    <div class="empty" id="empty-state" role="status">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.2"
+           aria-hidden="true" focusable="false">
+        <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+      <p class="empty-title">Aucune colonne sélectionnée</p>
+      <p class="empty-sub">Choisis une colonne dans la barre ci-dessus<br>pour grouper les enregistrements.</p>
+    </div>
+  </main>
+
+</div>
+
+<script>
+  // ── 1. 다국어 문자열 ──
+  const requestedLanguage = new URLSearchParams(window.location.search).get('language') || navigator.language;
+  const LANG = requestedLanguage.startsWith('ko')
+    ? 'ko'
+    : requestedLanguage.startsWith('fr') ? 'fr' : 'en';
+
+  const I18N = {
+    ko: {
+      groupBy:         '그룹 기준',
+      sortBy:          '정렬',
+      expandAll:       '모두 펼치기',
+      collapseAll:     '모두 접기',
+      settingsLabel:   '표시 설정',
+      chooseCol:       '— 선택 —',
+      sortAlphaAsc:    '가나다순',
+      sortAlphaDesc:   '가나다 역순',
+      sortCountDesc:   '개수 ↓',
+      sortCountAsc:    '개수 ↑',
+      sectionColors:   '그룹 색상',
+      sectionMaxH:     '그룹별 최대 높이',
+      sectionBool:     '참/거짓 표시',
+      reset:           '초기화',
+      noGroups:        '그룹이 없습니다. 그룹 기준 컬럼을 선택하세요.',
+      emptyTitle:      '선택한 컬럼이 없습니다',
+      emptySub:        '위 도구 모음에서 그룹 기준 컬럼을 선택하세요.',
+      emptyTitleNoRec: '레코드가 없습니다',
+      emptySubNoRec:   '선택한 테이블에 레코드가 없습니다.',
+      groups:          '개 그룹',
+      records:         '개 레코드',
+      record:          '개 레코드',
+      noOtherCol:      '표시할 다른 컬럼이 없습니다.',
+      groupCaption:    '그룹:',
+      emptyGroup:      '(비어 있음)',
+      colorLabel:      '그룹 색상',
+      resetColorLabel: '그룹 색상 초기화',
+      resetMaxH:       '최대 높이 초기화',
+      boolFormatLabel: '불리언 형식:',
+      ariaToolbar:     '그룹 옵션',
+      ariaSettings:    '표시 설정',
+      ariaContent:     '레코드 그룹',
+      ariaGroupRegion: '레코드 — ',
+      cellEmpty:       '빈 값',
+      boolTrue:  ['✓ 참', '예', 'True', '참', '1'],
+      boolFalse: ['✗ 거짓', '아니요', 'False', '거짓', '0'],
+      boolLabels: ['✓ / ✗', '예 / 아니요', 'True / False', '● 배지', '1 / 0'],
+    },
+    fr: {
+      groupBy:         'Grouper par',
+      sortBy:          'Tri',
+      expandAll:       'Tout déplier',
+      collapseAll:     'Tout plier',
+      settingsLabel:   'Réglages d’affichage',
+      chooseCol:       '— choisir —',
+      sortAlphaAsc:    'A → Z',
+      sortAlphaDesc:   'Z → A',
+      sortCountDesc:   'Nb ↓',
+      sortCountAsc:    'Nb ↑',
+      sectionColors:   'Couleurs des groupes',
+      sectionMaxH:     'Hauteur max par groupe',
+      sectionBool:     'Affichage vrai / faux',
+      reset:           'Réinitialiser',
+      noGroups:        'Aucun groupe — choisis une colonne de groupement.',
+      emptyTitle:      'Aucune colonne sélectionnée',
+      emptySub:        'Choisis une colonne dans la barre ci-dessus<br>pour grouper les enregistrements.',
+      emptyTitleNoRec: 'Aucun enregistrement',
+      emptySubNoRec:   'La table sélectionnée ne contient aucun enregistrement.',
+      groups:          'groupes',
+      records:         'enregistrements',
+      record:          'enregistrement',
+      noOtherCol:      'Aucune autre colonne à afficher.',
+      groupCaption:    'Groupe :',
+      emptyGroup:      '(vide)',
+      colorLabel:      'Couleur du groupe',
+      resetColorLabel: 'Réinitialiser la couleur du groupe',
+      resetMaxH:       'Réinitialiser la hauteur maximale',
+      boolFormatLabel: 'Format booléen :',
+      ariaToolbar:     'Options de groupement',
+      ariaSettings:    'Réglages d’affichage',
+      ariaContent:     'Groupes d’enregistrements',
+      ariaGroupRegion: 'Enregistrements — ',
+      cellEmpty:       'valeur vide',
+      boolTrue:  ['✓ vrai',  'Oui',  'True',  'vrai', '1'],
+      boolFalse: ['✗ faux',  'Non',  'False', 'faux', '0'],
+      boolLabels: ['✓ / ✗', 'Oui / Non', 'True / False', '● badge', '1 / 0'],
+    },
+    en: {
+      groupBy:         'Group by',
+      sortBy:          'Sort',
+      expandAll:       'Expand all',
+      collapseAll:     'Collapse all',
+      settingsLabel:   'Display settings',
+      chooseCol:       '— choose —',
+      sortAlphaAsc:    'A → Z',
+      sortAlphaDesc:   'Z → A',
+      sortCountDesc:   'Count ↓',
+      sortCountAsc:    'Count ↑',
+      sectionColors:   'Group colors',
+      sectionMaxH:     'Max height per group',
+      sectionBool:     'True / false display',
+      reset:           'Reset',
+      noGroups:        'No groups — choose a grouping column.',
+      emptyTitle:      'No column selected',
+      emptySub:        'Choose a column in the toolbar above<br>to group records.',
+      emptyTitleNoRec: 'No records',
+      emptySubNoRec:   'The selected table contains no records.',
+      groups:          'groups',
+      records:         'records',
+      record:          'record',
+      noOtherCol:      'No other column to display.',
+      groupCaption:    'Group:',
+      emptyGroup:      '(empty)',
+      colorLabel:      'Color of group',
+      resetColorLabel: 'Reset color of group',
+      resetMaxH:       'Reset maximum height',
+      boolFormatLabel: 'Boolean format:',
+      ariaToolbar:     'Grouping options',
+      ariaSettings:    'Display settings',
+      ariaContent:     'Record groups',
+      ariaGroupRegion: 'Records — ',
+      cellEmpty:       'empty value',
+      boolTrue:  ['✓ true',  'Yes',   'True',  'true',  '1'],
+      boolFalse: ['✗ false', 'No',    'False', 'false', '0'],
+      boolLabels: ['✓ / ✗', 'Yes / No', 'True / False', '● badge', '1 / 0'],
+    }
+  };
+  const T = I18N[LANG];
+
+  // ── 2. 상수 ──────────────────────────────────────────────
+  const DEFAULT_PALETTE = [
+    '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
+    '#ec4899','#06b6d4','#84cc16','#f97316','#6366f1',
+  ];
+
+  function makeBoolFormats() {
+    return [
+      { key: 'check', label: T.boolLabels[0],
+        t: `<span style="color:#16a34a;font-weight:500">${T.boolTrue[0]}</span>`,
+        f: `<span style="color:#dc2626">${T.boolFalse[0]}</span>` },
+      { key: 'oui',   label: T.boolLabels[1],
+        t: `<span style="color:#16a34a;font-weight:500">${T.boolTrue[1]}</span>`,
+        f: `<span style="color:#dc2626">${T.boolFalse[1]}</span>` },
+      { key: 'tf',    label: T.boolLabels[2],
+        t: `<span style="color:#16a34a;font-weight:500">${T.boolTrue[2]}</span>`,
+        f: `<span style="color:#dc2626">${T.boolFalse[2]}</span>` },
+      { key: 'badge', label: T.boolLabels[3],
+        t: `<span style="display:inline-block;padding:1px 7px;border-radius:9px;background:#dcfce7;color:#166534;font-size:10px;font-weight:600">${T.boolTrue[3]}</span>`,
+        f: `<span style="display:inline-block;padding:1px 7px;border-radius:9px;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:600">${T.boolFalse[3]}</span>` },
+      { key: 'num',   label: T.boolLabels[4],
+        t: '<span class="cell-num">1</span>',
+        f: '<span class="cell-num cell-null">0</span>' },
+    ];
+  }
+  const BOOL_FORMATS = makeBoolFormats();
+
+  // ── 3. 상태 ──────────────────────────────────────────────
+  let allRecords = [];
+  let allColumns = [];
+  let groupBy    = '';
+  let sortMode   = 'alpha-asc';
+  let collapsed  = new Set();
+  let colColors  = {};
+  let boolFmtKey = 'check';
+  let maxGroupH  = 200;
+
+  // ── 4. DOM 참조 ─────────────────────────────────────────
+  const groupSelect   = document.getElementById('group-select');
+  const sortSelect    = document.getElementById('sort-select');
+  const content       = document.getElementById('content');
+  const statsbar      = document.getElementById('statsbar');
+  const emptyState    = document.getElementById('empty-state');
+  const settingsPanel = document.getElementById('settings-panel');
+  const btnSettings   = document.getElementById('btn-settings');
+  const colorGrid     = document.getElementById('color-grid');
+  const boolRow       = document.getElementById('bool-row');
+  let   statGroups    = document.getElementById('stat-groups');
+  let   statRecords   = document.getElementById('stat-records');
+
+  // ── 5. 정적 DOM에 다국어 문자열 적용 ────────────────────
+  function applyI18nToDOM() {
+    document.querySelector('label[for="group-select"]').textContent = T.groupBy;
+    document.querySelector('label[for="sort-select"]').textContent  = T.sortBy;
+    document.getElementById('btn-expand').textContent               = T.expandAll;
+    document.getElementById('btn-collapse').textContent             = T.collapseAll;
+    document.getElementById('btn-settings').setAttribute('aria-label', T.settingsLabel);
+    document.querySelector('#group-select option').textContent      = T.chooseCol;
+    const sortOpts = document.querySelectorAll('#sort-select option');
+    sortOpts[0].textContent = T.sortAlphaAsc;
+    sortOpts[1].textContent = T.sortAlphaDesc;
+    sortOpts[2].textContent = T.sortCountDesc;
+    sortOpts[3].textContent = T.sortCountAsc;
+    document.getElementById('lbl-colors').textContent            = T.sectionColors;
+    document.getElementById('lbl-maxh').textContent              = T.sectionMaxH;
+    document.getElementById('lbl-bool').textContent              = T.sectionBool;
+    document.getElementById('btn-reset-maxh').textContent        = T.reset;
+    document.getElementById('btn-reset-maxh').setAttribute('aria-label', T.resetMaxH);
+    document.querySelector('.toolbar').setAttribute('aria-label', T.ariaToolbar);
+    document.getElementById('settings-panel').setAttribute('aria-label', T.ariaSettings);
+    document.getElementById('content').setAttribute('aria-label', T.ariaContent);
+    // 통계 값의 id는 유지하면서 레이블을 갱신합니다.
+    const statSpans = document.getElementById('statsbar').querySelectorAll(':scope > span');
+    statSpans[0].innerHTML = '<span class="stat-val" id="stat-groups">0</span> ' + T.groups;
+    statSpans[2].innerHTML = '<span class="stat-val" id="stat-records">0</span> ' + T.records;
+    document.querySelector('.empty-title').textContent = T.emptyTitle;
+    document.querySelector('.empty-sub').innerHTML     = T.emptySub;
+  }
+  applyI18nToDOM();
+  statGroups  = document.getElementById('stat-groups');
+  statRecords = document.getElementById('stat-records');
+
+  // ── 6. 유틸리티 ─────────────────────────────────────────
+  function hasBoolCol() {
+    return allColumns.filter(c => c !== groupBy)
+      .some(c => allRecords.some(r => typeof r[c] === 'boolean'));
+  }
+
+  function refreshBoolSection() {
+    const s = document.getElementById('bool-section');
+    if (s) s.style.display = hasBoolCol() ? '' : 'none';
+  }
+
+  function applyMaxGroupH() {
+    document.getElementById('app').style.setProperty('--max-group-h', maxGroupH + 'px');
+  }
+
+  function saveColors() {
+    grist.setOption('colColors', JSON.stringify(colColors));
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function normalizeColor(value, fallback = '') {
+    const normalized = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+  }
+
+  function parseStoredColors(value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return Object.fromEntries(
+        Object.entries(parsed).flatMap(([key, color]) => {
+          const normalized = normalizeColor(color);
+          return normalized ? [[key, normalized]] : [];
+        })
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  // ── 7. 표시 설정 버튼 ───────────────────────────────────
+  btnSettings.addEventListener('click', () => {
+    const isOpen = settingsPanel.classList.toggle('open');
+    btnSettings.classList.toggle('active', isOpen);
+    btnSettings.setAttribute('aria-expanded', String(isOpen));
+    if (isOpen) { refreshColorGrid(); refreshBoolSection(); }
+  });
+
+  // ── 8. 불리언 표시 형식 ─────────────────────────────────
+  function buildBoolButtons() {
+    boolRow.innerHTML = '';
+    BOOL_FORMATS.forEach(fmt => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bool-btn' + (fmt.key === boolFmtKey ? ' selected' : '');
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', String(fmt.key === boolFmtKey));
+      btn.setAttribute('aria-label', T.boolFormatLabel + ' ' + fmt.label);
+      btn.textContent = fmt.label;
+      btn.addEventListener('click', () => {
+        boolFmtKey = fmt.key;
+        boolRow.querySelectorAll('.bool-btn').forEach(b => {
+          b.classList.remove('selected');
+          b.setAttribute('aria-checked', 'false');
+        });
+        btn.classList.add('selected');
+        btn.setAttribute('aria-checked', 'true');
+        grist.setOption('boolFmtKey', boolFmtKey);
+        render();
+      });
+      boolRow.appendChild(btn);
+    });
+  }
+
+  // ── 9. 그룹 색상 설정 ───────────────────────────────────
+  function refreshColorGrid() {
+    colorGrid.innerHTML = '';
+    const groups = getGroups();
+    if (groups.length === 0) {
+      const msg = document.createElement('p');
+      msg.style.cssText = 'font-size:11px;color:var(--muted);font-style:italic';
+      msg.textContent = T.noGroups;
+      colorGrid.appendChild(msg);
+      return;
+    }
+    groups.forEach((group, i) => {
+      const isEmpty = group.key === '\x00__empty__';
+      const label   = isEmpty ? T.emptyGroup : String(group.label);
+      const color   = normalizeColor(
+        colColors[group.key],
+        DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]
+      );
+
+      const row   = document.createElement('div');
+      row.className = 'color-row';
+
+      const wrap   = document.createElement('div');
+      wrap.className = 'color-input-wrap';
+
+      const swatch = document.createElement('span');
+      swatch.className = 'color-swatch';
+      swatch.style.background = color;
+      swatch.setAttribute('aria-hidden', 'true');
+
+      const input = document.createElement('input');
+      input.type  = 'color';
+      input.value = color;
+      input.setAttribute('aria-label', T.colorLabel + ' ' + label);
+      input.addEventListener('input',  () => { swatch.style.background = input.value; });
+      input.addEventListener('change', () => {
+        colColors[group.key] = input.value;
+        swatch.style.background = input.value;
+        saveColors(); render();
+      });
+
+      wrap.appendChild(swatch);
+      wrap.appendChild(input);
+
+      const lbl = document.createElement('span');
+      lbl.className   = 'color-row-label' + (isEmpty ? ' is-empty' : '');
+      lbl.textContent = label;
+
+      const resetBtn = document.createElement('button');
+      resetBtn.type      = 'button';
+      resetBtn.className = 'btn-reset-color';
+      resetBtn.textContent = T.reset;
+      resetBtn.setAttribute('aria-label', T.resetColorLabel + ' ' + label);
+      resetBtn.addEventListener('click', () => {
+        const def = DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
+        colColors[group.key] = def;
+        input.value = def;
+        swatch.style.background = def;
+        saveColors(); render();
+      });
+
+      row.appendChild(wrap);
+      row.appendChild(lbl);
+      row.appendChild(resetBtn);
+      colorGrid.appendChild(row);
+    });
+  }
+
+  // ── 10. 그룹 최대 높이 슬라이더 ─────────────────────────
+  function initMaxHSlider() {
+    const range   = document.getElementById('maxh-range');
+    const valSpan = document.getElementById('maxh-val');
+    if (!range) return;
+    range.value = maxGroupH;
+    valSpan.textContent = maxGroupH + 'px';
+    range.addEventListener('input',  () => { valSpan.textContent = range.value + 'px'; });
+    range.addEventListener('change', () => {
+      maxGroupH = parseInt(range.value);
+      applyMaxGroupH();
+      grist.setOption('maxGroupH', maxGroupH);
+    });
+    document.getElementById('btn-reset-maxh').addEventListener('click', () => {
+      maxGroupH = 200;
+      range.value = 200;
+      valSpan.textContent = '200px';
+      applyMaxGroupH();
+      grist.setOption('maxGroupH', maxGroupH);
+    });
+    applyMaxGroupH();
+  }
+
+  // ── 11. Grist 연동 ─────────────────────────────────────
+  grist.ready({ requiredAccess: 'read table' });
+
+  grist.onOptions((opts) => {
+    if (opts) {
+      if (opts.groupBy)  { groupBy  = opts.groupBy;  groupSelect.value = groupBy;  }
+      if (opts.sortMode) { sortMode = opts.sortMode; sortSelect.value  = sortMode; }
+      if (opts.boolFmtKey && BOOL_FORMATS.find(f => f.key === opts.boolFmtKey))
+        boolFmtKey = opts.boolFmtKey;
+      if (opts.maxGroupH) { maxGroupH = parseInt(opts.maxGroupH) || 200; applyMaxGroupH(); }
+      if (opts.colColors) {
+        colColors = parseStoredColors(opts.colColors);
+      }
+    }
+    buildBoolButtons();
+    render();
+  });
+
+  grist.onRecords((records) => {
+    allRecords = records || [];
+    if (allRecords.length > 0) {
+      allColumns = Object.keys(allRecords[0])
+        .filter(k => k !== 'id' && k !== 'manualSort');
+      rebuildColumnSelect();
+    }
+    render();
+  });
+
+  buildBoolButtons();
+  initMaxHSlider();
+
+  // ── 12. 그룹 컬럼 선택 ─────────────────────────────────
+  function rebuildColumnSelect() {
+    const prev = groupSelect.value;
+    groupSelect.innerHTML = `<option value="">${T.chooseCol}</option>`;
+    allColumns.forEach(col => {
+      const opt = document.createElement('option');
+      opt.value = col; opt.textContent = col;
+      groupSelect.appendChild(opt);
+    });
+    const target = groupBy || prev;
+    if (target && allColumns.includes(target)) groupSelect.value = target;
+  }
+
+  groupSelect.addEventListener('change', () => {
+    groupBy = groupSelect.value;
+    collapsed.clear();
+    grist.setOption('groupBy', groupBy);
+    render();
+    if (settingsPanel.classList.contains('open')) refreshColorGrid();
+  });
+
+  sortSelect.addEventListener('change', () => {
+    sortMode = sortSelect.value;
+    grist.setOption('sortMode', sortMode);
+    render();
+  });
+
+  document.getElementById('btn-expand').addEventListener('click', () => {
+    collapsed.clear();
+    document.querySelectorAll('.group.collapsed').forEach(el => {
+      el.classList.remove('collapsed');
+      el.querySelector('.group-header').setAttribute('aria-expanded', 'true');
+    });
+  });
+
+  document.getElementById('btn-collapse').addEventListener('click', () => {
+    getGroups().forEach(g => collapsed.add(g.key));
+    document.querySelectorAll('.group:not(.collapsed)').forEach(el => {
+      el.classList.add('collapsed');
+      el.querySelector('.group-header').setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  // ── 13. 그룹 계산 ──────────────────────────────────────
+  function getGroups() {
+    if (!groupBy) return [];
+    const map = new Map();
+    allRecords.forEach(rec => {
+      const raw = rec[groupBy];
+      const key = (raw == null || raw === '') ? '\x00__empty__' : String(raw);
+      if (!map.has(key)) map.set(key, { key, label: raw, records: [] });
+      map.get(key).records.push(rec);
+    });
+    const groups = Array.from(map.values());
+    groups.forEach((g, i) => {
+      colColors[g.key] = normalizeColor(
+        colColors[g.key],
+        DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]
+      );
+    });
+    groups.sort((a, b) => {
+      if (a.key === '\x00__empty__') return  1;
+      if (b.key === '\x00__empty__') return -1;
+      if (sortMode === 'alpha-asc')  return String(a.label).localeCompare(String(b.label), LANG);
+      if (sortMode === 'alpha-desc') return String(b.label).localeCompare(String(a.label), LANG);
+      if (sortMode === 'count-desc') return b.records.length - a.records.length;
+      if (sortMode === 'count-asc')  return a.records.length - b.records.length;
+      return 0;
+    });
+    return groups;
+  }
+
+  // ── 14. 화면 렌더링 ────────────────────────────────────
+  function render() {
+    Array.from(content.children).forEach(c => {
+      if (c.id !== 'empty-state') c.remove();
+    });
+
+    if (!groupBy || allRecords.length === 0) {
+      emptyState.style.display = '';
+      emptyState.querySelector('.empty-title').textContent =
+        !groupBy ? T.emptyTitle : T.emptyTitleNoRec;
+      emptyState.querySelector('.empty-sub').innerHTML =
+        !groupBy ? T.emptySub : T.emptySubNoRec;
+      statsbar.classList.remove('visible');
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    const groups      = getGroups();
+    const displayCols = allColumns.filter(c => c !== groupBy);
+
+    statsbar.classList.add('visible');
+    statGroups.textContent  = groups.length;
+    statRecords.textContent = allRecords.length;
+
+    groups.forEach(group => {
+      const isCollapsed = collapsed.has(group.key);
+      const isEmpty     = group.key === '\x00__empty__';
+      const dotColor    = normalizeColor(colColors[group.key], '#94a3b8');
+      const labelTxt    = isEmpty ? T.emptyGroup : String(group.label);
+      const labelCls    = isEmpty ? 'group-label is-empty' : 'group-label';
+      const bodyId      = 'grp-' + btoa(encodeURIComponent(group.key)).replace(/[^a-zA-Z0-9]/g, '');
+
+      const card = document.createElement('article');
+      card.className = 'group' + (isCollapsed ? ' collapsed' : '');
+
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'group-header';
+      header.setAttribute('aria-expanded', String(!isCollapsed));
+      header.setAttribute('aria-controls', bodyId);
+      header.innerHTML = `
+        <svg class="chevron" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" focusable="false">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <span class="group-dot" aria-hidden="true"></span>
+        <span class="${labelCls}">${esc(labelTxt)}</span>
+        <span class="group-badge"
+              aria-label="${group.records.length}\u00a0${group.records.length > 1 ? T.records : T.record}"
+        >${group.records.length}</span>`;
+      header.querySelector('.group-dot').style.background = dotColor;
+
+      header.addEventListener('click', () => {
+        if (collapsed.has(group.key)) {
+          collapsed.delete(group.key);
+          card.classList.remove('collapsed');
+          header.setAttribute('aria-expanded', 'true');
+        } else {
+          collapsed.add(group.key);
+          card.classList.add('collapsed');
+          header.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      const body = document.createElement('div');
+      body.className = 'group-body';
+      body.id = bodyId;
+      body.setAttribute('role', 'region');
+      body.setAttribute('aria-label', T.ariaGroupRegion + labelTxt);
+
+      const inner = document.createElement('div');
+      inner.className = 'group-body-inner';
+      inner.innerHTML = displayCols.length === 0
+        ? `<p class="only-group-col">${T.noOtherCol}</p>`
+        : buildTable(displayCols, group.records, labelTxt);
+
+      body.appendChild(inner);
+      card.appendChild(header);
+      card.appendChild(body);
+      content.appendChild(card);
+    });
+    refreshBoolSection();
+  }
+
+  function buildTable(cols, records, groupLabel) {
+    const thead = cols.map(c =>
+      `<th scope="col" title="${esc(c)}">${esc(c)}</th>`
+    ).join('');
+    const tbody = records.map(rec =>
+      `<tr>${cols.map(c => `<td>${renderCell(rec[c])}</td>`).join('')}</tr>`
+    ).join('');
+    return `<div class="scroll-inner"><table class="rec-table">
+      <caption>${T.groupCaption} ${esc(groupLabel)}</caption>
+      <thead><tr>${thead}</tr></thead>
+      <tbody>${tbody}</tbody>
+    </table></div>`;
+  }
+
+  function renderCell(val) {
+    if (val == null || val === '')
+      return `<span class="cell-null" aria-label="${T.cellEmpty}">—</span>`;
+    if (val === true || val === false) {
+      const fmt = BOOL_FORMATS.find(f => f.key === boolFmtKey) || BOOL_FORMATS[0];
+      return val ? fmt.t : fmt.f;
+    }
+    if (typeof val === 'number') {
+      const isYearLike = Number.isInteger(val) && val >= 1000 && val <= 9999;
+      return `<span class="cell-num">${isYearLike ? val : val.toLocaleString(LANG === 'ko' ? 'ko-KR' : LANG === 'fr' ? 'fr-FR' : 'en-US')}</span>`;
+    }
+    if (Array.isArray(val)) return esc(val.join(', '));
+    return esc(String(val));
+  }
+</script>
+</body>
+</html>

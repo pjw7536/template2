@@ -62,6 +62,7 @@ services:
           - minio-init
 
   api:
+    image: ${API_IMAGE:-tailwind-api}
     build:
       context: ../apps/api
     env_file:
@@ -69,6 +70,27 @@ services:
       - ../env/api.dev.env
       - ../env/minio.env
     environment:
+      WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
+      GRIST_LOGOUT_ENABLED: ${GRIST_LOGOUT_ENABLED:-0}
+      GRIST_API_URL: ${GRIST_API_URL:-http://grist:8484/o/work-hub}
+      GRIST_API_KEY: ${GRIST_API_KEY:-}
+      GRIST_API_KEY_FILE: ${GRIST_API_KEY_FILE:-/run/work-hub/grist_api_key}
+      GRIST_PUBLIC_URL: ${GRIST_PUBLIC_URL:-http://localhost:8100}
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_EMAIL:-dummy.user@example.com}
+      GRIST_ORG: ${GRIST_ORG:-work-hub}
+      GRIST_ALLOWED_LAUNCH_HOSTS: ${GRIST_ALLOWED_LAUNCH_HOSTS:-localhost}
+      GRIST_WEBHOOK_CALLBACK_URL: ${GRIST_WEBHOOK_CALLBACK_URL:-http://api:8000/api/v1/work-hub/webhooks/grist}
+      GRIST_WEBHOOK_SECRET: ${GRIST_WEBHOOK_SECRET:-local-work-hub-webhook-secret}
+      GRIST_FORWARD_AUTH_TICKET_SECRET: ${GRIST_FORWARD_AUTH_TICKET_SECRET:-work-hub-local-forward-auth-secret-change-me}
+      GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS: ${GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS:-30}
+      GRIST_FORWARD_AUTH_LOGIN_PATH: ${GRIST_FORWARD_AUTH_LOGIN_PATH:-/auth/login}
+      GRIST_CONNECT_TIMEOUT: ${GRIST_CONNECT_TIMEOUT:-3}
+      GRIST_READ_TIMEOUT: ${GRIST_READ_TIMEOUT:-15}
+      GRIST_DEV_USER_SDWT_PROD: ${GRIST_DEV_USER_SDWT_PROD:-DEV_ALPHA}
+      WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS: ${WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS:-30}
+      WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS:-30}
+      WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS:-90}
+      WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS: ${WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS:-3600}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: emails
       MINIO_REGION: us-east-1
@@ -87,6 +109,7 @@ services:
       - "${L3_SPIDER_DATA_HOST_PATH:-../data/l3_spider/daily_anomaly}:/data/l3_spider/daily_anomaly:ro"
       - "${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}:/data/tttm_spider:ro"
       - "${PM_COMPARISON_DATA_HOST_PATH:-../data/pm_spider}:/data/pm_spider:ro"
+      - "${WORK_HUB_SECRET_HOST_PATH:-../data/work_hub_secrets/dev}:/run/work-hub:ro"
     ports:
       - "8000:8000"
     entrypoint:
@@ -111,6 +134,8 @@ services:
     env_file:
       - ../env/web.common.env
       - ../env/web.dev.env
+    environment:
+      VITE_WORK_HUB_ENABLED: ${VITE_WORK_HUB_ENABLED:-0}
     depends_on:
       - api
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
@@ -133,8 +158,13 @@ services:
         condition: service_started
     ports:
       - "80:80"
+      - "${GRIST_PORT:-8100}:8100"
+      - "${GRIST_WIDGET_PORT:-8101}:8101"
+    environment:
+      NGINX_ENVSUBST_FILTER: "^WORK_HUB_ENABLED$"
+      WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
     volumes:
-      - "../deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
+      - "../deploy/nginx/default.conf:/etc/nginx/templates/default.conf.template:ro"
       - "api_static:/var/www/static:ro"
     networks:
       - shared-net

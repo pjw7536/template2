@@ -707,6 +707,54 @@ def list_equipments(
     return equipments
 
 
+def list_equipments_for_user_sdwt_prod(
+    *,
+    user_sdwt_prod: str,
+) -> List[Dict[str, str]]:
+    """user_sdwt_prod 기준 전체 설비를 Work Hub 동기화 형태로 반환합니다.
+
+    입력:
+    - user_sdwt_prod: account Affiliation의 소속 식별자
+
+    반환:
+    - List[Dict[str, str]]: equipment_id/line_id/sdwt_prod/prc_group/name 목록
+
+    부작용:
+    - 없음(DB 조회)
+    """
+
+    normalized = str(user_sdwt_prod or "").strip().upper()
+    if not normalized:
+        return []
+    rows = _fetch_all(
+        """
+        select distinct on (station.station)
+            station.station as equipment_id,
+            coalesce(station.floor_line_id, '') as line_id,
+            coalesce(station.sdwt_prod, '') as sdwt_prod,
+            coalesce(station.prc_group, '') as prc_group,
+            coalesce(nullif(trim(station.station_name), ''), station.station) as equipment_name
+        from station_master station
+        where station.sdwt_prod_lookup = %s
+          and station.station is not null
+          and trim(station.station) <> ''
+        order by station.station, station.id
+        """,
+        [normalized],
+    )
+    return [
+        {
+            "equipment_id": str(row.get("equipment_id") or ""),
+            "line_id": str(row.get("line_id") or ""),
+            "sdwt_prod": str(row.get("sdwt_prod") or ""),
+            "prc_group": str(row.get("prc_group") or ""),
+            "equipment_name": str(row.get("equipment_name") or row.get("equipment_id") or ""),
+        }
+        for row in rows
+        if row.get("equipment_id")
+    ]
+
+
 # =============================================================================
 # m_tkin_prevent 대시보드 조회
 # =============================================================================

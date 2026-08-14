@@ -9,6 +9,7 @@ from __future__ import annotations
 from django.urls import include, path
 
 urlpatterns = [
+    path("auth/grist/", include("api.work_hub.callback_urls")),
     path("auth/", include("api.auth.callback_urls")),
     path("api/v1/health/", include("api.health.urls")),
     path("api/v1/auth/", include("api.auth.urls")),
@@ -26,4 +27,5 @@ urlpatterns = [
     path("api/v1/appstore/", include("api.appstore.urls")),
     path("api/v1/account/", include("api.account.urls")),
     path("api/v1/voc/", include("api.voc.urls")),
+    path("api/v1/work-hub/", include("api.work_hub.urls")),
 ]

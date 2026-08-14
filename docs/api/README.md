@@ -115,3 +115,4 @@ Content-Type: application/json
 - `docs/api/appstore.md`
 - `docs/api/voc.md`
 - `docs/api/activity-health.md`
+- `docs/api/work-hub.md`

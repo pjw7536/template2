@@ -39,11 +39,13 @@ SYSTEM_APP_SCOPE_KEYS = (
     "teamstaff",
     "tttm-spider",
     "voc",
+    "work-hub",
 )
 SYSTEM_ACCESS_SCOPE_KEYS = (ACCESS_SCOPE_PORTAL, *SYSTEM_APP_SCOPE_KEYS)
 AFFILIATION_DATA_SCOPE_KEYS = (
     "assistant",
     "emails",
+    "work-hub",
 )
 
 

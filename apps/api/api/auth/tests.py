@@ -126,7 +126,7 @@ class AuthMeTests(TestCase):
         self.assertIn("scope_access", payload)
         self.assertNotIn("portal_access", payload)
         self.assertNotIn("app_access", payload)
-        self.assertEqual(len(payload["scope_access"]), 14)
+        self.assertEqual(len(payload["scope_access"]), 15)
         self.assertFalse(payload["scope_access"]["appstore"]["allowed"])
         self.assertTrue(payload["scope_access"]["appstore"]["blockedByPortal"])
         self.assertEqual(payload["scope_access"]["appstore"]["source"], "portal_access_required")
@@ -224,7 +224,7 @@ class AuthMeTests(TestCase):
             for key, access in payload["scope_access"].items()
             if key != ACCESS_SCOPE_PORTAL
         }
-        self.assertEqual(len(non_portal_accesses), 13)
+        self.assertEqual(len(non_portal_accesses), 14)
         self.assertTrue(
             all(
                 not access["allowed"] and access["blockedByPortal"]
@@ -434,6 +434,71 @@ class AuthEndpointTests(TestCase):
         response = self.client.post(reverse("auth-logout"))
         self.assertEqual(response.status_code, 200)
         self.assertIn("logoutUrl", response.json())
+
+    @override_settings(
+        WORK_HUB_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_chains_through_grist_logout(self) -> None:
+        """Work Hub 활성 환경의 첫 logout은 Grist 세션을 먼저 종료해야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=False,
+        GRIST_LOGOUT_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_cleans_grist_session_while_work_hub_is_disabled(self) -> None:
+        """본문을 끈 정리 기간에도 기존 Grist 세션을 먼저 종료해야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=False,
+        GRIST_LOGOUT_ENABLED=False,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_skips_grist_when_optional_service_is_not_running(self) -> None:
+        """기본 Portal 실행에서는 중지된 Grist가 로그아웃을 막지 않아야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_uses_idp_after_grist_session_is_cleared(self) -> None:
+        """Grist가 돌아온 logout 요청은 다시 Grist로 보내지 않아야 합니다."""
+
+        response = self.client.get(
+            reverse("auth-logout"),
+            {"grist_cleared": "1"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotEqual(
+            response["Location"],
+            "https://worklog.example.invalid/logout",
+        )
 
     def test_auth_config_returns_fields(self) -> None:
         """auth_config 응답에 기본 필드가 포함되어야 합니다."""

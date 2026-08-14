@@ -2,6 +2,7 @@ import {
   ActivityIcon,
   BookOpenIcon,
   BugIcon,
+  ClipboardListIcon,
   GaugeIcon,
   LayoutGridIcon,
   MessageSquareIcon,
@@ -31,6 +32,10 @@ function compactItems(items) {
   return items.filter(Boolean)
 }
 
+function readEnvFlag(key) {
+  return ["1", "true", "yes", "on"].includes(readEnvValue(key).toLowerCase())
+}
+
 export const portalNavigationItems = [
   {
     title: "Apps",
@@ -39,6 +44,14 @@ export const portalNavigationItems = [
       { title: "Appstore", href: "/appstore", appScope: "appstore" },
       { title: "ESOP Dashboard", href: "/esop_dashboard", appScope: "line-dashboard" },
       { title: "Observer", href: "/observer", appScope: "observer" },
+      readEnvFlag("VITE_WORK_HUB_ENABLED")
+        ? {
+            title: "설비 업무일지",
+            href: "/work-hub",
+            icon: ClipboardListIcon,
+            appScope: "work-hub",
+          }
+        : null,
       {
         title: "TIP현황",
         href: "/ESOP_Dashboard/tip-status",

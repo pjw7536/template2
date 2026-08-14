@@ -1,0 +1,39 @@
+services:
+  work-hub-access-worker:
+    image: ${API_IMAGE:-tailwind-api}
+    profiles: ["work-hub"]
+    env_file:
+      - ../env/api.common.env
+      - ../env/api.oidc.dev.env
+    environment:
+      WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
+      GRIST_API_URL: ${GRIST_API_URL:-http://grist.example.invalid/o/work-hub}
+      GRIST_API_KEY: ${GRIST_API_KEY:-}
+      GRIST_API_KEY_FILE: ${GRIST_API_KEY_FILE:-}
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_EMAIL:-workhub-admin@example.invalid}
+      GRIST_CONNECT_TIMEOUT: ${GRIST_CONNECT_TIMEOUT:-3}
+      GRIST_READ_TIMEOUT: ${GRIST_READ_TIMEOUT:-15}
+      WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS: ${WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS:-30}
+      WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS:-30}
+      WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS:-90}
+      WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS: ${WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS:-3600}
+    entrypoint:
+      - python
+      - manage.py
+      - process_grist_access_sync
+      - --loop
+      - --poll-seconds
+      - "5"
+    volumes:
+      - ../apps/api:/app
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      shared-net:
+
+networks:
+  shared-net:
+    external: true
+    name: shared-net

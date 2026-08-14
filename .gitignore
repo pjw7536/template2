@@ -87,6 +87,7 @@ apps/api/logs/rag_errors.log
 /data/tttm_spider/data/
 /data/tttm_spider/result/
 /data/tttm_spider/lotwf_index.parquet
+/data/work_hub_secrets/
 
 # editor / tool artifacts
 .claude/

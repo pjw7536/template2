@@ -21,6 +21,7 @@ import { teamstaffRoutes } from "@/features/teamstaff"
 import { tttmSpiderRoutes } from "@/features/tttm-spider"
 import { TkinPreventDashboardRoute, observerRoutes } from "@/features/observer"
 import { vocRoutes } from "@/features/voc"
+import { workHubRoutes } from "@/features/work-hub"
 import { ChatWidget, assistantRoutes } from "@/features/assistant"
 import { emailsRoutes, useEmailMailboxes } from "@/features/emails"
 import { accountRoutes } from "@/features/account"
@@ -75,6 +76,7 @@ const protectedFeatureRoutes = [
   createAppRouteGroup("emails", "메일함", emailsRoutes),
   createAppRouteGroup("voc", "VoE", vocRoutes),
   createAppRouteGroup("observer", "Observer", observerRoutes),
+  createAppRouteGroup("work-hub", "설비 업무일지", workHubRoutes),
   ...accountRoutes,
 ]
 

@@ -21,6 +21,8 @@ Auth는 OIDC 기반 로그인과 Django session 관리를 담당합니다.
 6. claim으로 `User`를 생성하거나 갱신합니다.
 7. Django session을 만들고 프론트로 redirect합니다.
 
+로그아웃할 때 Work Hub가 활성화되어 있거나 `GRIST_LOGOUT_ENABLED=1`이면 Grist session을 먼저 제거하고 Portal·IdP 로그아웃을 이어서 실행합니다. Grist에서 돌아오는 요청은 `grist_cleared=1` marker로 redirect 반복을 막습니다. Grist를 실행하지 않는 기본 Portal 환경에서는 두 플래그를 모두 꺼 기존 IdP로 바로 이동합니다.
+
 ## Account와의 연결
 
 로그인 후 `/api/v1/auth/me`는 사용자 정보와 소속 상태를 반환합니다. 프론트는 이 값으로 온보딩 또는 소속 재확인 dialog를 띄울지 결정합니다.
@@ -43,6 +45,7 @@ Auth는 OIDC 기반 로그인과 Django session 관리를 담당합니다.
 
 - 로그인 redirect 오류는 `ALLOWED_REDIRECT_HOSTS`, `OIDC_REDIRECT_URI`, proxy host 설정을 확인합니다.
 - callback 오류는 state/nonce/session cookie와 ADFS 인증서 설정을 확인합니다.
+- Work Hub 로그아웃 반복이나 잔존 session은 `GRIST_PUBLIC_URL`, Grist `/auth/logout` proxy와 `grist_cleared=1` marker를 함께 확인합니다.
 - `/api/v1/auth/me` 응답은 Account 온보딩/소속 재확인 UI의 기준입니다.
 
 ## 관련 API

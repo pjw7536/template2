@@ -55,6 +55,7 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 | `observer` | `/observer`, `/observer/:eqpId` | 설비 로그 observer |
 | `appstore` | `/appstore` | 내부 앱 목록/등록/댓글 |
 | `voc` | `/voc` | VOC 게시판 |
+| `work-hub` | `/work-hub` | 소속별 Grist 설비 업무일지 launcher |
 | `teamstaff` | `/teamstaff` | 팀/인력 보조 화면 |
 | `errors` | `*` | 404와 route error |
 

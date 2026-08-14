@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import jwt
 from django.conf import settings
@@ -279,14 +279,14 @@ def auth_me(*, user: Any) -> Dict[str, Any]:
     return auth_selectors.get_current_user_payload(user=user)
 
 
-def auth_logout() -> str:
-    """IdP 로그아웃 URL을 반환합니다.
+def auth_logout(*, grist_logout_completed: bool = False) -> str:
+    """필요하면 Grist 세션을 먼저 종료하고 최종 IdP 로그아웃 URL을 반환합니다.
 
     입력:
-    - 없음
+    - grist_logout_completed: Grist 세션 종료 후 돌아온 요청인지 여부
 
     반환:
-    - str: 기존 ADFS logout URL
+    - str: Grist 또는 기존 ADFS logout URL
 
     부작용:
     - 없음
@@ -294,6 +294,22 @@ def auth_logout() -> str:
     오류:
     - 없음
     """
+    should_clear_grist_session = bool(
+        getattr(settings, "WORK_HUB_ENABLED", False)
+        or getattr(settings, "GRIST_LOGOUT_ENABLED", False)
+    )
+    if should_clear_grist_session and not grist_logout_completed:
+        public_url = str(getattr(settings, "GRIST_PUBLIC_URL", "") or "").strip()
+        parsed = urlparse(public_url)
+        if (
+            parsed.scheme in {"http", "https"}
+            and parsed.netloc
+            and parsed.username is None
+            and parsed.password is None
+            and not parsed.query
+            and not parsed.fragment
+        ):
+            return f"{public_url.rstrip('/')}/logout"
     return ADFS_LOGOUT_URL
 
 

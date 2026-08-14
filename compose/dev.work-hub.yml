@@ -1,0 +1,99 @@
+services:
+  work-hub-access-worker:
+    image: ${API_IMAGE:-tailwind-api}
+    profiles: ["work-hub"]
+    env_file:
+      - ../env/api.common.env
+      - ../env/api.dev.env
+    environment:
+      WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
+      GRIST_API_URL: ${GRIST_API_URL:-http://grist:8484/o/work-hub}
+      GRIST_API_KEY: ${GRIST_API_KEY:-}
+      GRIST_API_KEY_FILE: ${GRIST_API_KEY_FILE:-/run/work-hub/grist_api_key}
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_EMAIL:-dummy.user@example.com}
+      GRIST_CONNECT_TIMEOUT: ${GRIST_CONNECT_TIMEOUT:-3}
+      GRIST_READ_TIMEOUT: ${GRIST_READ_TIMEOUT:-15}
+      WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS: ${WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS:-30}
+      WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS:-30}
+      WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS: ${WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS:-90}
+      WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS: ${WORK_HUB_ACCESS_OUTBOX_PRUNE_INTERVAL_SECONDS:-3600}
+    entrypoint:
+      - python
+      - manage.py
+      - process_grist_access_sync
+      - --loop
+      - --poll-seconds
+      - "5"
+    volumes:
+      - ../apps/api:/app
+      - "${WORK_HUB_SECRET_HOST_PATH:-../data/work_hub_secrets/dev}:/run/work-hub:ro"
+    depends_on:
+      api:
+        condition: service_started
+      grist:
+        condition: service_started
+      grist-api-key-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      shared-net:
+
+  grist-api-key-init:
+    image: gristlabs/grist-oss:1.7.13
+    profiles: ["work-hub"]
+    environment:
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_EMAIL:-dummy.user@example.com}
+      GRIST_ORG: ${GRIST_ORG:-work-hub}
+      GRIST_API_KEY_FILE: ${GRIST_API_KEY_FILE:-/run/work-hub/grist_api_key}
+    entrypoint:
+      - /grist-custom/bootstrap_api_key.sh
+    volumes:
+      - ../deploy/grist:/grist-custom:ro
+      - "${WORK_HUB_SECRET_HOST_PATH:-../data/work_hub_secrets/dev}:/run/work-hub"
+    depends_on:
+      grist:
+        condition: service_started
+    restart: "no"
+    networks:
+      shared-net:
+
+  grist:
+    image: gristlabs/grist-oss:1.7.13
+    profiles: ["work-hub"]
+    env_file:
+      - ../env/grist.common.env
+    environment:
+      APP_HOME_URL: ${GRIST_PUBLIC_URL:-http://localhost:8100}
+      APP_UNTRUSTED_URL: ${GRIST_WIDGET_PUBLIC_URL:-http://localhost:8101}
+      GRIST_SINGLE_ORG: ${GRIST_ORG:-work-hub}
+      GRIST_IN_SERVICE: "true"
+      GRIST_FORCE_LOGIN: "true"
+      GRIST_DEFAULT_EMAIL: ${GRIST_ADMIN_EMAIL:-dummy.user@example.com}
+      GRIST_SESSION_SECRET: ${GRIST_SESSION_SECRET:-work-hub-local-session-secret-change-me}
+      GRIST_LOGIN_SYSTEM_TYPE: forward-auth
+      GRIST_FORWARD_AUTH_HEADER: X-Forwarded-User
+      GRIST_FORWARD_AUTH_LOGIN_PATH: /auth/login
+      GRIST_FORWARD_AUTH_LOGOUT_PATH: /auth/logout
+      GRIST_UNTRUSTED_PORT: "8485"
+      GRIST_USER_ROOT: /grist-custom
+      # 로컬 Docker 내부 HTTP callback은 Grist의 개발용 wildcard가 필요합니다.
+      ALLOWED_WEBHOOK_DOMAINS: ${GRIST_ALLOWED_WEBHOOK_DOMAINS:-*}
+    volumes:
+      - grist_data:/persist
+      - ../deploy/grist:/grist-custom:ro
+    expose:
+      - "8484"
+      - "8485"
+    restart: unless-stopped
+    networks:
+      shared-net:
+        aliases:
+          - grist
+
+volumes:
+  grist_data:
+
+networks:
+  shared-net:
+    external: true
+    name: shared-net

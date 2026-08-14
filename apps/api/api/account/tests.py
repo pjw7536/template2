@@ -78,6 +78,7 @@ from api.account.services import (
     bulk_apply_access_policy_rules,
     create_affiliation,
     create_access_policy_rule,
+    deactivate_expired_scope_affiliation_grants,
     decide_user_access,
     delete_access_policy_rule,
     ensure_affiliation_option,
@@ -1024,6 +1025,7 @@ class AccountEndpointTests(TestCase):
             "teamstaff": "Teamstaff",
             "tttm-spider": "TTTM Spider",
             "voc": "VoE",
+            "work-hub": "설비 업무일지",
         }
         scopes = AccessScope.objects.filter(scope_type=AccessScope.ScopeTypes.APP).order_by("key")
 
@@ -8578,6 +8580,40 @@ class AppAffiliationDataScopeTests(TestCase):
         )
         self.assertTrue(policy_grant.is_active)
         self.assertIsNone(policy_grant.expires_at)
+
+    def test_expired_scope_grants_are_deactivated_once_with_audit(self) -> None:
+        """worker용 만료 처리는 grant를 한 번만 비활성화하고 감사 로그를 남겨야 합니다."""
+
+        grant = UserScopeAffiliationGrant.objects.create(
+            user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_b,
+            source=UserScopeAffiliationGrant.Sources.EXTERNAL,
+            expires_at=timezone.now() - timedelta(minutes=1),
+            granted_by=self.actor,
+        )
+
+        first = deactivate_expired_scope_affiliation_grants(
+            scope_key="assistant",
+            limit=10,
+        )
+        second = deactivate_expired_scope_affiliation_grants(
+            scope_key="assistant",
+            limit=10,
+        )
+
+        grant.refresh_from_db()
+        self.assertEqual((first, second), (1, 0))
+        self.assertFalse(grant.is_active)
+        audit = AccessAuditLog.objects.get(
+            target_user=self.user,
+            scope=self.assistant,
+            affiliation=self.affiliation_b,
+            action=AccessAuditLog.Actions.DATA_SCOPE_REVOKE,
+        )
+        self.assertTrue(audit.before["isActive"])
+        self.assertFalse(audit.after["isActive"])
+        self.assertEqual(audit.reason, "소속 데이터 범위 grant 만료")
 
     def test_data_scope_update_locks_active_affiliations_inside_transaction(self) -> None:
         """소속 범위 저장은 활성 소속을 transaction 안에서 잠가 검증해야 합니다."""

@@ -233,14 +233,21 @@ def auth_logout(request: HttpRequest):
     - 예시 요청: GET /api/v1/auth/logout
 
     예시 응답:
-    - 예시 응답: 200 {"logoutUrl": "https://<adfs-logout>"}
+    - 예시 응답: 200 {"logoutUrl": "https://<grist>/logout"}
     - 예시 응답: 302 Location: https://<adfs-logout>
 
     snake/camel 호환:
     - 해당 없음(요청 바디 없음)
     """
 
-    logout_url = auth_services.auth_logout()
+    # Grist가 세션을 지운 뒤 붙이는 marker는 GET redirect에서만 신뢰합니다.
+    grist_logout_completed = bool(
+        request.method == "GET"
+        and request.GET.get("grist_cleared") == "1"
+    )
+    logout_url = auth_services.auth_logout(
+        grist_logout_completed=grist_logout_completed,
+    )
     logout(request)
 
     def _delete_session_cookie(response: HttpResponse) -> HttpResponse:
