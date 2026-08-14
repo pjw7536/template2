@@ -287,6 +287,8 @@ export function ChatMessages({
           (message.content === "무엇을 도와드릴까요?" &&
             !message.contextKey &&
             sources.length === 0)
+        const shouldStreamGreeting =
+          isGreeting && messages.length === 1 && Boolean(message.streamId)
         const snapshotScope = message.contextSnapshot?.scope
         const isCurrentScopeAvailable = Boolean(getScopeSignature(currentPageScope))
         const isSameAsCurrentScope =
@@ -387,7 +389,7 @@ export function ChatMessages({
                   {isGreeting ? (
                     <StreamingText
                       content={message.content}
-                      streamId={message.streamId}
+                      streamId={shouldStreamGreeting ? message.streamId : undefined}
                     />
                   ) : (
                     <div

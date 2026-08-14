@@ -196,6 +196,30 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     expect(screen.queryByRole("button", { name: "메시지 복사" })).not.toBeInTheDocument()
   })
 
+  it("기존 대화가 있으면 인사 메시지의 스트리밍을 다시 시작하지 않는다", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ChatMessages
+          messages={[
+            {
+              id: "greeting",
+              role: "assistant",
+              content: "무엇을 도와드릴까요?",
+              isGreeting: true,
+              streamId: "greeting-stream",
+            },
+            { id: "user-1", role: "user", content: "기존 질문" },
+          ]}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(container.querySelector("[aria-hidden='true']")).toHaveTextContent(
+      "무엇을 도와드릴까요?",
+    )
+    expect(container.querySelector("[data-streaming-cursor]")).not.toBeInTheDocument()
+  })
+
   it("답변의 URL과 이메일 근거 링크를 항상 새 창에서 연다", () => {
     const emailUrl =
       "https://portal.example.com/emails/inbox?user_sdwt_prod=S1&emailId=DOC-1"
