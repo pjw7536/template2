@@ -18,7 +18,6 @@ from django.db import close_old_connections
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 
-from api.account import services as account_services
 from api.appstore.selectors import (
     get_app_list,
     get_appstore_assistant_catalog,
@@ -1024,27 +1023,11 @@ class AppstoreEndpointTests(TestCase):
             email="s44444@example.com",
             knox_id="knox-44444",
         )
-        actor = User.objects.create_superuser(
-            sabun="S44445",
-            password="test-password",
-            knox_id="knox-44445",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=app_admin.id,
-            scope_key="portal",
-            action="grant",
-            reason="AppStore 관리자 테스트 Portal 권한 부여",
-            role="user",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=app_admin.id,
-            scope_key="appstore",
-            action="grant",
-            reason="AppStore 관리자 테스트 앱 권한 부여",
-            role="admin",
-        )
+        app_admin.keycloak_subject = "appstore-admin-subject"
+        app_admin.keycloak_client_roles = {
+            "portal": ["portal-user", "appstore-admin"],
+        }
+        app_admin.save(update_fields=["keycloak_subject", "keycloak_client_roles"])
         self.client.force_login(app_admin)
 
         # -----------------------------------------------------------------------------

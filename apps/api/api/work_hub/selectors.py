@@ -26,7 +26,7 @@ def list_active_document_scopes_for_user_sdwt_prods(
         normalized = str(value or "").strip()
         if not normalized:
             continue
-        query |= Q(affiliation__user_sdwt_prod__iexact=normalized)
+        query |= Q(affiliation_snapshot__user_sdwt_prod__iexact=normalized)
         has_value = True
     if not has_value:
         return GristDocumentScope.objects.none()
@@ -34,10 +34,8 @@ def list_active_document_scopes_for_user_sdwt_prods(
         GristDocumentScope.objects.filter(
             query,
             is_active=True,
-            affiliation__is_active=True,
         )
-        .select_related("affiliation")
-        .order_by("affiliation__user_sdwt_prod", "id")
+        .order_by("id")
     )
 
 
@@ -45,19 +43,29 @@ def list_active_document_scopes() -> QuerySet[GristDocumentScope]:
     """설비·권한 전체 동기화 대상인 활성 Grist mapping을 반환합니다."""
 
     return (
-        GristDocumentScope.objects.filter(is_active=True, affiliation__is_active=True)
-        .select_related("affiliation")
-        .order_by("affiliation__user_sdwt_prod", "id")
+        GristDocumentScope.objects.filter(is_active=True).order_by("id")
     )
+
+
+def list_active_document_scopes_for_keycloak_group_ids(
+    *, group_ids: Iterable[str]
+) -> QuerySet[GristDocumentScope]:
+    """Keycloak parent group ID에 대응하는 활성 document mapping을 반환합니다."""
+
+    normalized = {str(value).strip() for value in group_ids if str(value).strip()}
+    if not normalized:
+        return GristDocumentScope.objects.none()
+    return GristDocumentScope.objects.filter(
+        is_active=True,
+        keycloak_group_id__in=normalized,
+    ).order_by("id")
 
 
 def list_access_reconciliation_document_scopes() -> QuerySet[GristDocumentScope]:
     """소속 비활성 여부와 무관하게 ACL reconciliation 대상 mapping을 반환합니다."""
 
     return (
-        GristDocumentScope.objects.filter(is_active=True)
-        .select_related("affiliation")
-        .order_by("affiliation__user_sdwt_prod", "id")
+        GristDocumentScope.objects.filter(is_active=True).order_by("id")
     )
 
 
@@ -72,9 +80,8 @@ def get_access_reconciliation_document_scope_by_user_sdwt_prod(
     return (
         GristDocumentScope.objects.filter(
             is_active=True,
-            affiliation__user_sdwt_prod__iexact=normalized,
+            affiliation_snapshot__user_sdwt_prod__iexact=normalized,
         )
-        .select_related("affiliation")
         .order_by("id")
         .first()
     )
@@ -83,12 +90,26 @@ def get_access_reconciliation_document_scope_by_user_sdwt_prod(
 def list_enabled_document_scope_affiliation_ids() -> set[int]:
     """소속 비활성 여부와 무관하게 활성 document mapping의 소속 ID를 반환합니다."""
 
-    return set(
-        GristDocumentScope.objects.filter(is_active=True).values_list(
-            "affiliation_id",
-            flat=True,
+    result: set[int] = set()
+    for group_id in GristDocumentScope.objects.filter(is_active=True).values_list(
+        "keycloak_group_id", flat=True
+    ):
+        prefix = "legacy-affiliation:"
+        if str(group_id).startswith(prefix) and str(group_id).removeprefix(prefix).isdigit():
+            result.add(int(str(group_id).removeprefix(prefix)))
+    return result
+
+
+def list_enabled_document_scope_group_ids() -> set[str]:
+    """활성 document mapping의 Keycloak parent group ID를 반환합니다."""
+
+    return {
+        str(value)
+        for value in GristDocumentScope.objects.filter(is_active=True).values_list(
+            "keycloak_group_id", flat=True
         )
-    )
+        if str(value).strip()
+    }
 
 
 def list_document_scopes_for_affiliation_ids(
@@ -103,11 +124,12 @@ def list_document_scopes_for_affiliation_ids(
         return GristDocumentScope.objects.none()
     return (
         GristDocumentScope.objects.filter(
-            affiliation_id__in=normalized_ids,
+            keycloak_group_id__in=[
+                f"legacy-affiliation:{value}" for value in normalized_ids
+            ],
             is_active=True,
         )
-        .select_related("affiliation")
-        .order_by("affiliation_id", "id")
+        .order_by("id")
     )
 
 
@@ -153,7 +175,7 @@ def list_ready_access_sync_outbox(
             status=GristAccessSyncOutbox.Status.PROCESSING,
             updated_at__lte=stale_before,
         )
-    ).select_related("document_scope", "document_scope__affiliation")
+    ).select_related("document_scope")
     if for_update:
         queryset = queryset.select_for_update(skip_locked=True)
     return list(queryset.order_by("available_at", "id")[:limit])
@@ -171,9 +193,7 @@ def get_document_scope_by_doc_and_worklog_table(
             doc_id=str(doc_id).strip(),
             worklog_table_id=str(table_id).strip(),
             is_active=True,
-            affiliation__is_active=True,
         )
-        .select_related("affiliation")
         .order_by("id")
         .first()
     )
@@ -186,11 +206,40 @@ def get_document_scope_by_affiliation_id(
     """소속 ID로 Grist document mapping을 반환합니다."""
 
     return (
-        GristDocumentScope.objects.filter(affiliation_id=affiliation_id)
-        .select_related("affiliation")
+        GristDocumentScope.objects.filter(
+            keycloak_group_id=f"legacy-affiliation:{affiliation_id}"
+        )
         .order_by("id")
         .first()
     )
+
+
+def get_document_scope_by_keycloak_group_id(
+    *, group_id: str
+) -> GristDocumentScope | None:
+    """Keycloak parent group ID로 Grist document mapping을 반환합니다."""
+
+    normalized = str(group_id or "").strip()
+    if not normalized:
+        return None
+    return GristDocumentScope.objects.filter(keycloak_group_id=normalized).order_by("id").first()
+
+
+def get_legacy_document_scope_by_affiliation_name(
+    *, affiliation_name: str
+) -> GristDocumentScope | None:
+    """표시용 소속명이 일치하는 legacy mapping을 유일할 때만 반환합니다."""
+
+    normalized = str(affiliation_name or "").strip()
+    if not normalized:
+        return None
+    rows = list(
+        GristDocumentScope.objects.filter(
+            keycloak_group_id__startswith="legacy-affiliation:",
+            affiliation_snapshot__user_sdwt_prod=normalized,
+        ).order_by("id")[:2]
+    )
+    return rows[0] if len(rows) == 1 else None
 
 
 def list_ready_webhook_receipts(

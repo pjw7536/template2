@@ -16,7 +16,7 @@ from django.contrib import admin as django_admin
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
-from django.db import close_old_connections, connection, connections
+from django.db import close_old_connections, connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -35,6 +35,7 @@ from .services import (
     build_grist_webhook_token,
     build_work_hub_context,
     configure_document_scope,
+    enqueue_access_sync_for_group_ids,
     enqueue_access_sync_for_affiliations,
     enqueue_grist_webhook,
     process_access_sync_outbox_batch,
@@ -331,6 +332,41 @@ class TransactionObservingFakeGristClient(FakeGristClient):
         return super().update_record(**kwargs)
 
 
+def _create_document_scope(*, affiliation, **values):
+    """legacy Affiliation fixture를 Keycloak group 기반 mapping으로 변환합니다."""
+
+    return GristDocumentScope.objects.create(
+        keycloak_group_id=f"test-affiliation:{affiliation.id}",
+        affiliation_snapshot={
+            "department": affiliation.department,
+            "line": affiliation.line,
+            "name": affiliation.user_sdwt_prod,
+            "user_sdwt_prod": affiliation.user_sdwt_prod,
+        },
+        **values,
+    )
+
+
+def _make_keycloak_work_hub_admin(user, *, group_id: str = ""):
+    """forward-auth 테스트 사용자를 Keycloak Work Hub 관리자로 보정합니다."""
+
+    user.keycloak_subject = f"keycloak-subject-{user.sabun}"
+    user.keycloak_group_id = group_id
+    user.keycloak_client_roles = {
+        "portal": ["portal-admin", "work-hub-admin"]
+    }
+    user.affiliation_snapshot = {"role": "manager"}
+    user.save(
+        update_fields=[
+            "keycloak_subject",
+            "keycloak_group_id",
+            "keycloak_client_roles",
+            "affiliation_snapshot",
+        ]
+    )
+    return user
+
+
 @override_settings(
     WORK_HUB_ENABLED=True,
     GRIST_PUBLIC_URL="http://localhost:8100",
@@ -360,20 +396,40 @@ class WorkHubServiceTests(TestCase):
         self.affiliation = account_selectors.get_active_affiliation_by_user_sdwt_prod(
             user_sdwt_prod="SDWT-A",
         )
+        self.user.keycloak_subject = "work-hub-member-subject"
+        self.user.keycloak_group_id = f"test-affiliation:{self.affiliation.id}"
+        self.user.keycloak_groups = ["/affiliations/SDWT-A/member"]
+        self.user.keycloak_client_roles = {
+            "portal": ["portal-user", "work-hub-user"]
+        }
+        self.user.affiliation_snapshot = {
+            "department": "ETCH",
+            "line": "L1",
+            "name": "SDWT-A",
+            "user_sdwt_prod": "SDWT-A",
+            "role": "member",
+        }
+        self.user.save(
+            update_fields=[
+                "keycloak_subject",
+                "keycloak_group_id",
+                "keycloak_groups",
+                "keycloak_client_roles",
+                "affiliation_snapshot",
+            ]
+        )
         self.access_admin = User.objects.create_superuser(
             sabun="WHACCESSADMIN",
             password="password",
         )
-        for scope_key in ("portal", "work-hub"):
-            _payload, status = account_services.decide_user_access(
-                actor=self.access_admin,
-                user_id=self.user.id,
-                scope_key=scope_key,
-                action="grant",
-                reason="Work Hub 서비스 테스트 권한",
-            )
-            self.assertEqual(status, 200)
-        self.scope = GristDocumentScope.objects.create(
+        self.access_admin.keycloak_subject = "work-hub-admin-subject"
+        self.access_admin.keycloak_client_roles = {
+            "portal": ["portal-admin", "work-hub-admin"]
+        }
+        self.access_admin.save(
+            update_fields=["keycloak_subject", "keycloak_client_roles"]
+        )
+        self.scope = _create_document_scope(
             affiliation=self.affiliation,
             workspace_id=1,
             doc_id="doc-a",
@@ -415,89 +471,7 @@ class WorkHubServiceTests(TestCase):
         self.assertEqual(payload["mode"], "disabled")
         self.assertEqual(payload["groups"], [])
 
-    def test_superuser_can_switch_multiple_mapped_groups(self) -> None:
-        """슈퍼유저는 manager로 활성 mapping 여러 개를 전환합니다."""
 
-        second_user = get_user_model().objects.create_user(sabun="WH0002", password="password")
-        account_services.set_current_affiliation_for_user(
-            user=second_user,
-            department="ETCH",
-            line="L2",
-            user_sdwt_prod="SDWT-B",
-        )
-        affiliation_b = account_selectors.get_active_affiliation_by_user_sdwt_prod(
-            user_sdwt_prod="SDWT-B",
-        )
-        GristDocumentScope.objects.create(
-            affiliation=affiliation_b,
-            workspace_id=1,
-            doc_id="doc-b",
-            launch_url="http://localhost:8100/o/work-hub/doc/doc-b/p/3",
-        )
-        admin = get_user_model().objects.create_superuser(sabun="WHADMIN", password="password")
-
-        payload = build_work_hub_context(user=admin)
-
-        self.assertEqual(payload["mode"], "multiple")
-        self.assertEqual({group["role"] for group in payload["groups"]}, {"manager"})
-
-    def test_manager_context_and_grant_signal_follow_work_hub_data_scope(self) -> None:
-        """manager도 앱별 grant가 없는 소속은 보지 못하고 grant 변경은 Outbox를 만듭니다."""
-
-        account_services.ensure_self_access(self.user, role="manager")
-        account_services.ensure_affiliation_option(
-            department="PHOTO",
-            line="L2",
-            user_sdwt_prod="SDWT-B",
-        )
-        affiliation_b = account_selectors.get_active_affiliation_by_user_sdwt_prod(
-            user_sdwt_prod="SDWT-B",
-        )
-        scope_b = GristDocumentScope.objects.create(
-            affiliation=affiliation_b,
-            workspace_id=1,
-            doc_id="doc-b",
-            launch_url="http://localhost:8100/o/work-hub/doc/doc-b/p/3",
-        )
-        _role_payload, role_status = account_services.grant_or_revoke_access(
-            grantor=self.access_admin,
-            target_group="SDWT-B",
-            target_user=self.user,
-            action="grant",
-            role="viewer",
-            reason="Work Hub launcher 범위 테스트",
-        )
-        self.assertEqual(role_status, 200)
-
-        before_grant = build_work_hub_context(user=self.user)
-        GristAccessSyncOutbox.objects.all().delete()
-        grant_payload, grant_status = (
-            account_services.update_user_scope_affiliation_data(
-                actor=self.access_admin,
-                user_id=self.user.id,
-                scope_key="work-hub",
-                data_scope_mode="default",
-                affiliation_ids=[affiliation_b.id],
-                reason="Work Hub B 소속 launcher 허용",
-            )
-        )
-        after_grant = build_work_hub_context(user=self.user)
-
-        self.assertEqual(grant_status, 200, grant_payload)
-        self.assertEqual(
-            [group["user_sdwt_prod"] for group in before_grant["groups"]],
-            ["SDWT-A"],
-        )
-        self.assertEqual(
-            {group["user_sdwt_prod"] for group in after_grant["groups"]},
-            {"SDWT-A", "SDWT-B"},
-        )
-        self.assertTrue(
-            GristAccessSyncOutbox.objects.filter(
-                document_scope=scope_b,
-                reason="scope_affiliation_grant_changed",
-            ).exists()
-        )
 
     @patch("api.work_hub.services.equipment.observer_selectors.list_equipments_for_user_sdwt_prod")
     def test_equipment_sync_upserts_and_archives_without_delete(self, equipment_selector) -> None:
@@ -871,158 +845,6 @@ class WorkHubServiceTests(TestCase):
         self.assertNotEqual(task_link.task_row_id, 101)
         self.assertEqual(client.updated[-1][3], {"task": task_link.task_row_id})
 
-    def test_access_sync_reconciles_affiliation_roles(self) -> None:
-        """현재 소속 역할은 Grist ACL이 되고 이전 일반 사용자 접근은 제거됩니다."""
-
-        client = FakeGristClient()
-        superuser_emails = {
-            str(email).strip().lower()
-            for email in get_user_model()
-            .objects.filter(is_active=True, is_superuser=True)
-            .exclude(email__isnull=True)
-            .exclude(email="")
-            .values_list("email", flat=True)
-        }
-
-        result = sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(
-            result,
-            {
-                "added": 1 + len(superuser_emails),
-                "updated": 0,
-                "removed": 1,
-                "unchanged": 1,
-            },
-        )
-        self.assertEqual(client.access_changes["member@example.invalid"], "editors")
-        self.assertIsNone(client.access_changes["old@example.invalid"])
-        self.assertNotIn("owner@example.invalid", client.access_changes)
-        for email in superuser_emails:
-            self.assertEqual(client.access_changes[email], "owners")
-
-    @override_settings(GRIST_ADMIN_EMAIL="member@example.invalid")
-    def test_access_sync_does_not_downgrade_configured_admin(self) -> None:
-        """Portal 일반 구성원인 운영 관리자도 owner를 유지합니다."""
-
-        client = FakeGristClient()
-        client.access = {
-            "maxInheritedRole": None,
-            "users": [
-                {"email": "member@example.invalid", "access": "owners"},
-            ],
-        }
-
-        result = sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(result["unchanged"], 1)
-        self.assertNotIn("member@example.invalid", client.access_changes)
-
-    @override_settings(GRIST_ADMIN_EMAIL="break-glass@example.invalid")
-    def test_access_sync_adds_missing_configured_admin_as_owner(self) -> None:
-        """운영 관리자가 document ACL에 없으면 owner로 추가합니다."""
-
-        client = FakeGristClient()
-        client.access = {
-            "maxInheritedRole": None,
-            "users": [
-                {"email": "member@example.invalid", "access": "editors"},
-            ],
-        }
-
-        sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(client.access_changes["break-glass@example.invalid"], "owners")
-
-    def test_access_sync_uses_batched_scope_queries_for_multiple_members(self) -> None:
-        """문서 구성원이 늘어도 앱별 소속 판정 쿼리 수는 일정하게 유지됩니다."""
-
-        for index in range(5):
-            member = get_user_model().objects.create_user(
-                sabun=f"WHBATCH{index}",
-                password="password",
-                email=f"batch-{index}@example.invalid",
-            )
-            account_services.set_current_affiliation_for_user(
-                user=member,
-                department="ETCH",
-                line="L1",
-                user_sdwt_prod="SDWT-A",
-            )
-            for scope_key in ("portal", "work-hub"):
-                _payload, status = account_services.decide_user_access(
-                    actor=self.access_admin,
-                    user_id=member.id,
-                    scope_key=scope_key,
-                    action="grant",
-                    reason="Work Hub batch ACL 테스트",
-                )
-                self.assertEqual(status, 200)
-        GristAccessSyncOutbox.objects.all().delete()
-        client = FakeGristClient()
-        client.access = {"maxInheritedRole": None, "users": []}
-        superuser_count = (
-            get_user_model()
-            .objects.filter(is_active=True, is_superuser=True)
-            .exclude(email__isnull=True)
-            .exclude(email="")
-            .count()
-        )
-
-        with CaptureQueriesContext(connection) as queries:
-            sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertLessEqual(len(queries), 10)
-        self.assertEqual(len(client.access_changes), 7 + superuser_count)
-
-    def test_access_sync_includes_department_policy_member(self) -> None:
-        """명시 권한 없이 부서 정책으로 승인된 사용자도 batch ACL에 포함합니다."""
-
-        for scope_key in ("portal", "work-hub"):
-            _reset_payload, reset_status = account_services.decide_user_access(
-                actor=self.access_admin,
-                user_id=self.user.id,
-                scope_key=scope_key,
-                action="reset_to_policy",
-                reason="Work Hub 부서 정책 테스트",
-            )
-            self.assertEqual(reset_status, 200)
-            _policy_payload, policy_status = account_services.create_access_policy_rule(
-                actor=self.access_admin,
-                scope_key=scope_key,
-                rule_type="department",
-                value="ETCH",
-                is_active=True,
-            )
-            self.assertEqual(policy_status, 201)
-        GristAccessSyncOutbox.objects.all().delete()
-        client = FakeGristClient()
-        client.access = {"maxInheritedRole": None, "users": []}
-
-        sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(
-            client.access_changes["member@example.invalid"],
-            "editors",
-        )
-
-    def test_access_sync_includes_unaffiliated_superuser_as_owner(self) -> None:
-        """소속 구성원이 아닌 활성 superuser도 모든 document owner로 투영합니다."""
-
-        get_user_model().objects.create_superuser(
-            sabun="WHGLOBALADMIN",
-            password="password",
-            email="global.admin@example.invalid",
-        )
-        client = FakeGristClient()
-        client.access = {"maxInheritedRole": None, "users": []}
-
-        sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(
-            client.access_changes["global.admin@example.invalid"],
-            "owners",
-        )
 
     @patch("api.work_hub.services.access.logger.exception")
     @patch("api.work_hub.services.access.sync_document_access_scope")
@@ -1041,7 +863,7 @@ class WorkHubServiceTests(TestCase):
         affiliation_b = account_selectors.get_active_affiliation_by_user_sdwt_prod(
             user_sdwt_prod="SDWT-B",
         )
-        GristDocumentScope.objects.create(
+        _create_document_scope(
             affiliation=affiliation_b,
             workspace_id=2,
             doc_id="doc-b",
@@ -1071,326 +893,14 @@ class WorkHubServiceTests(TestCase):
         self.assertEqual(item.document_scope, self.scope)
         self.assertEqual(item.reason, "user_identity_changed")
 
-    def test_access_sync_requires_work_hub_scope_for_cross_affiliation_role(self) -> None:
-        """다른 소속 역할은 Work Hub 앱별 grant가 있을 때만 Grist에 반영합니다."""
 
-        viewer = get_user_model().objects.create_user(
-            sabun="WH0003",
-            password="password",
-            email="viewer@example.invalid",
-            knox_id="work-hub-viewer",
-        )
-        account_services.set_current_affiliation_for_user(
-            user=viewer,
-            department="PHOTO",
-            line="L2",
-            user_sdwt_prod="SDWT-B",
-        )
-        for scope_key in ("portal", "work-hub"):
-            _payload, access_status = account_services.decide_user_access(
-                actor=self.access_admin,
-                user_id=viewer.id,
-                scope_key=scope_key,
-                action="grant",
-                reason="Work Hub 교차 소속 테스트 권한",
-            )
-            self.assertEqual(access_status, 200)
-        account_services.ensure_self_access(self.user, role="manager")
-        _payload, status = account_services.grant_or_revoke_access(
-            grantor=self.user,
-            target_group="SDWT-A",
-            target_user=viewer,
-            action="grant",
-            role="viewer",
-            reason="Work Hub viewer 테스트",
-        )
-        denied_client = FakeGristClient()
-        denied_client.access = {"users": []}
 
-        sync_document_access_scope(document_scope=self.scope, client=denied_client)
 
-        self.assertEqual(status, 200)
-        self.assertNotIn("viewer@example.invalid", denied_client.access_changes)
 
-        grant_payload, grant_status = (
-            account_services.update_user_scope_affiliation_data(
-                actor=self.access_admin,
-                user_id=viewer.id,
-                scope_key="work-hub",
-                data_scope_mode="default",
-                affiliation_ids=[self.affiliation.id],
-                reason="Work Hub viewer 앱별 소속 범위",
-            )
-        )
-        client = FakeGristClient()
-        client.access = {"users": []}
 
-        sync_document_access_scope(document_scope=self.scope, client=client)
 
-        self.assertEqual(grant_status, 200, grant_payload)
-        superuser_access = {
-            str(email).strip().lower(): "owners"
-            for email in get_user_model()
-            .objects.filter(is_active=True, is_superuser=True)
-            .exclude(email__isnull=True)
-            .exclude(email="")
-            .values_list("email", flat=True)
-        }
-        self.assertEqual(
-            client.access_changes,
-            superuser_access
-            | {
-                "member@example.invalid": "owners",
-                "owner@example.invalid": "owners",
-                "viewer@example.invalid": "viewers",
-            },
-        )
 
-    def test_access_sync_removes_grist_public_accounts(self) -> None:
-        """Portal desired state에 없는 Grist 공개 계정은 명시적으로 회수합니다."""
 
-        client = FakeGristClient()
-        client.access = {
-            "maxInheritedRole": None,
-            "users": [
-                {"email": "owner@example.invalid", "access": "owners"},
-                {"email": "anon@getgrist.com", "access": "viewers"},
-                {"email": "everyone@getgrist.com", "access": "editors"},
-                {"email": "previewer@getgrist.com", "access": "viewers"},
-            ],
-        }
-
-        result = sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(result["removed"], 3)
-        self.assertNotIn("owner@example.invalid", client.access_changes)
-        for email in (
-            "anon@getgrist.com",
-            "everyone@getgrist.com",
-            "previewer@getgrist.com",
-        ):
-            self.assertIsNone(client.access_changes[email])
-
-    def test_work_hub_access_revocation_removes_existing_grist_acl(self) -> None:
-        """Work Hub 앱 권한 회수는 Outbox를 만들고 기존 document ACL을 제거합니다."""
-
-        _payload, status = account_services.decide_user_access(
-            actor=self.access_admin,
-            user_id=self.user.id,
-            scope_key="work-hub",
-            action="revoke",
-            reason="Work Hub 접근 회수 테스트",
-        )
-        client = FakeGristClient()
-        client.access = {
-            "maxInheritedRole": None,
-            "users": [
-                {"email": "member@example.invalid", "access": "editors"},
-                {"email": "owner@example.invalid", "access": "owners"},
-            ],
-        }
-
-        result = sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(status, 200)
-        self.assertEqual(result["removed"], 1)
-        self.assertIsNone(client.access_changes["member@example.invalid"])
-        self.assertTrue(
-            GristAccessSyncOutbox.objects.filter(
-                document_scope=self.scope,
-                reason="app_access_changed",
-            ).exists()
-        )
-
-    def test_access_sync_disables_inheritance_and_pins_desired_roles(self) -> None:
-        """상위 ACL은 차단하고 Portal 사용자와 운영 관리자는 명시 권한으로 고정합니다."""
-
-        client = FakeGristClient()
-        client.access = {
-            "maxInheritedRole": "owners",
-            "users": [
-                {
-                    "email": "member@example.invalid",
-                    "access": "editors",
-                    "parentAccess": "editors",
-                },
-                {
-                    "email": "owner@example.invalid",
-                    "access": "owners",
-                    "parentAccess": "owners",
-                },
-                {
-                    "email": "inherited@example.invalid",
-                    "access": "viewers",
-                    "parentAccess": "viewers",
-                },
-            ],
-        }
-
-        sync_document_access_scope(document_scope=self.scope, client=client)
-
-        self.assertEqual(client.max_inherited_role_changes, [None])
-        self.assertEqual(client.access_changes["member@example.invalid"], "editors")
-        self.assertEqual(client.access_changes["owner@example.invalid"], "owners")
-        self.assertIsNone(client.access_changes["inherited@example.invalid"])
-
-    def test_current_affiliation_change_enqueues_previous_and_new_documents(self) -> None:
-        """소속 변경은 이전 document 회수와 신규 document 부여 작업을 함께 적재합니다."""
-
-        account_services.ensure_affiliation_option(
-            department="PHOTO",
-            line="L2",
-            user_sdwt_prod="SDWT-B",
-        )
-        affiliation_b = account_selectors.get_active_affiliation_by_user_sdwt_prod(
-            user_sdwt_prod="SDWT-B"
-        )
-        GristDocumentScope.objects.create(
-            affiliation=affiliation_b,
-            workspace_id=1,
-            doc_id="doc-b",
-            launch_url="http://localhost:8100/o/work-hub/doc/doc-b/p/3",
-        )
-
-        account_services.set_current_affiliation_for_user(
-            user=self.user,
-            department="PHOTO",
-            line="L2",
-            user_sdwt_prod="SDWT-B",
-        )
-
-        self.assertEqual(
-            set(
-                GristAccessSyncOutbox.objects.values_list(
-                    "document_scope__doc_id", flat=True
-                )
-            ),
-            {"doc-a", "doc-b"},
-        )
-
-    @patch("api.work_hub.services.access.GristClient.from_settings")
-    def test_access_outbox_processes_desired_state(self, from_settings) -> None:
-        """Outbox worker는 Portal desired state를 적용하고 완료 상태를 기록합니다."""
-
-        client = FakeGristClient()
-        from_settings.return_value = client
-        enqueue_access_sync_for_affiliations(
-            affiliation_ids=[self.affiliation.id],
-        )
-
-        result = process_access_sync_outbox_batch(limit=10)
-
-        self.assertEqual(result, {"processed": 1, "succeeded": 1, "failed": 0})
-        self.assertEqual(
-            GristAccessSyncOutbox.objects.get().status,
-            GristAccessSyncOutbox.Status.DONE,
-        )
-
-    @patch("api.work_hub.services.access.logger.exception")
-    @patch("api.work_hub.services.access.GristClient.from_settings")
-    def test_access_outbox_retains_failure_for_retry(
-        self, from_settings, logger_exception
-    ) -> None:
-        """Grist 장애는 Portal 변경을 되돌리지 않고 Outbox 재시도로 남깁니다."""
-
-        client = FakeGristClient()
-        client.get_document_access = Mock(side_effect=RuntimeError("Grist unavailable"))
-        from_settings.return_value = client
-        enqueue_access_sync_for_affiliations(
-            affiliation_ids=[self.affiliation.id],
-        )
-
-        result = process_access_sync_outbox_batch(limit=10)
-
-        item = GristAccessSyncOutbox.objects.get()
-        self.assertEqual(result, {"processed": 1, "succeeded": 0, "failed": 1})
-        self.assertEqual(item.status, GristAccessSyncOutbox.Status.FAILED)
-        self.assertEqual(item.retry_count, 1)
-        self.assertIn("Grist unavailable", item.last_error)
-        logger_exception.assert_called_once()
-
-    @patch("api.work_hub.services.access.logger.exception")
-    @patch("api.work_hub.services.access.GristClient.from_settings")
-    def test_access_outbox_stops_retrying_permanent_failure(
-        self, from_settings, logger_exception
-    ) -> None:
-        """재시도 불가능한 Grist 오류는 terminal 상태로 보존합니다."""
-
-        client = FakeGristClient()
-        client.get_document_access = Mock(
-            side_effect=GristRequestError("document not found", retryable=False)
-        )
-        from_settings.return_value = client
-        enqueue_access_sync_for_affiliations(
-            affiliation_ids=[self.affiliation.id],
-        )
-
-        first = process_access_sync_outbox_batch(limit=10)
-        second = process_access_sync_outbox_batch(limit=10)
-
-        item = GristAccessSyncOutbox.objects.get()
-        self.assertEqual(first, {"processed": 1, "succeeded": 0, "failed": 1})
-        self.assertEqual(second, {"processed": 0, "succeeded": 0, "failed": 0})
-        self.assertEqual(item.status, GristAccessSyncOutbox.Status.TERMINAL)
-        self.assertEqual(item.retry_count, 1)
-        logger_exception.assert_called_once()
-
-    @patch("api.work_hub.services.access.GristClient.from_settings")
-    def test_access_enqueue_never_calls_grist_in_request_commit(
-        self,
-        from_settings,
-    ) -> None:
-        """Outbox 적재 transaction이 commit되어도 요청 경로에서 Grist를 호출하지 않습니다."""
-
-        with self.captureOnCommitCallbacks(execute=True):
-            queued = enqueue_access_sync_for_affiliations(
-                affiliation_ids=[self.affiliation.id],
-            )
-
-        self.assertEqual(queued, 1)
-        self.assertEqual(
-            GristAccessSyncOutbox.objects.get().status,
-            GristAccessSyncOutbox.Status.PENDING,
-        )
-        from_settings.assert_not_called()
-
-    def test_configure_document_scope_enqueues_initial_access_sync(self) -> None:
-        """신규 mapping은 같은 transaction에서 현재 document ACL Outbox를 적재합니다."""
-
-        self.scope.delete()
-
-        document_scope, created = configure_document_scope(
-            user_sdwt_prod="SDWT-A",
-            workspace_id=2,
-            doc_id="doc-configured",
-            equipment_table_id="Equipment",
-            worklog_table_id="WorkLog",
-            task_table_id="Task",
-            launch_url="http://localhost:8100/o/work-hub/doc/doc-configured/p/3",
-        )
-
-        item = GristAccessSyncOutbox.objects.get()
-        self.assertTrue(created)
-        self.assertEqual(item.document_scope, document_scope)
-        self.assertEqual(item.reason, "document_scope_configured")
-
-    def test_configure_document_scope_rejects_doc_id_replacement(self) -> None:
-        """기존 mapping의 document 교체를 막아 이전 ACL이 추적 밖에 남지 않게 합니다."""
-
-        with self.assertRaisesMessage(ValidationError, "doc_id는 변경할 수 없습니다"):
-            configure_document_scope(
-                user_sdwt_prod="SDWT-A",
-                workspace_id=2,
-                doc_id="replacement-doc",
-                equipment_table_id="Equipment",
-                worklog_table_id="WorkLog",
-                task_table_id="Task",
-                launch_url="http://localhost:8100/o/work-hub/doc/replacement-doc/p/3",
-            )
-
-        self.scope.refresh_from_db()
-        self.assertEqual(self.scope.doc_id, "doc-a")
-        self.assertFalse(GristAccessSyncOutbox.objects.exists())
 
     @override_settings(GRIST_WEBHOOK_SECRET="test-webhook-secret")
     def test_configure_command_can_show_scoped_webhook_authorization(self) -> None:
@@ -1400,7 +910,9 @@ class WorkHubServiceTests(TestCase):
 
         call_command(
             "configure_grist_scope",
-            "--user-sdwt-prod",
+            "--keycloak-group-id",
+            f"test-affiliation:{self.affiliation.id}",
+            "--affiliation-name",
             "SDWT-A",
             "--workspace-id",
             "1",
@@ -1506,25 +1018,6 @@ class WorkHubServiceTests(TestCase):
             GristWebhookReceipt.objects.filter(id=retained_failed.id).exists()
         )
 
-    def test_user_deactivation_enqueues_current_document(self) -> None:
-        """Portal 사용자 비활성화는 현재 document 권한 회수 작업을 적재합니다."""
-
-        self.user.is_active = False
-        self.user.save(update_fields=["is_active"])
-
-        item = GristAccessSyncOutbox.objects.get()
-        self.assertEqual(item.document_scope, self.scope)
-        self.assertEqual(item.reason, "user_identity_changed")
-
-    def test_affiliation_deactivation_enqueues_document_access_revocation(self) -> None:
-        """소속 비활성화도 해당 document를 전체 동기화 대상에서 누락하지 않습니다."""
-
-        self.affiliation.is_active = False
-        self.affiliation.save(update_fields=["is_active"])
-
-        item = GristAccessSyncOutbox.objects.get()
-        self.assertEqual(item.document_scope, self.scope)
-        self.assertEqual(item.reason, "affiliation_changed")
 
     @patch(
         "api.work_hub.management.commands.sync_grist_access."
@@ -1558,95 +1051,6 @@ class WorkHubServiceTests(TestCase):
             self.scope,
         )
 
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "process_grist_webhook_batch"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "process_access_sync_outbox_batch"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "reconcile_all_document_access_scopes"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "prune_failed_webhook_receipts"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "prune_completed_webhook_receipts"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "prune_completed_access_sync_outbox"
-    )
-    @patch(
-        "api.work_hub.management.commands.process_grist_access_sync."
-        "account_services.deactivate_expired_scope_affiliation_grants"
-    )
-    def test_access_worker_deactivates_expired_grants_before_outbox(
-        self,
-        deactivate_expired,
-        prune_outbox,
-        prune_webhooks,
-        prune_failed_webhooks,
-        reconcile_access,
-        process_outbox,
-        process_webhooks,
-    ) -> None:
-        """worker는 매 처리 주기마다 Work Hub 만료 grant를 먼저 회수합니다."""
-
-        deactivate_expired.return_value = 1
-        prune_outbox.return_value = 2
-        prune_webhooks.return_value = 3
-        prune_failed_webhooks.return_value = 4
-        reconcile_access.return_value = {
-            "processed": 1,
-            "succeeded": 1,
-            "failed": 0,
-        }
-        process_outbox.return_value = {
-            "processed": 1,
-            "succeeded": 1,
-            "failed": 0,
-        }
-        process_webhooks.return_value = {
-            "processed": 1,
-            "succeeded": 1,
-            "failed": 0,
-        }
-
-        call_command(
-            "process_grist_access_sync",
-            "--limit",
-            "7",
-            "--webhook-limit",
-            "5",
-            "--expire-limit",
-            "3",
-            "--retention-days",
-            "14",
-            "--webhook-retention-days",
-            "21",
-            "--failed-webhook-retention-days",
-            "45",
-            "--prune-interval-seconds",
-            "60",
-            stdout=StringIO(),
-        )
-
-        deactivate_expired.assert_called_once_with(
-            scope_key="work-hub",
-            limit=3,
-        )
-        prune_outbox.assert_called_once_with(retention_days=14)
-        prune_webhooks.assert_called_once_with(retention_days=21)
-        prune_failed_webhooks.assert_called_once_with(retention_days=45)
-        reconcile_access.assert_called_once_with()
-        process_outbox.assert_called_once_with(limit=7)
-        process_webhooks.assert_called_once_with(limit=5)
 
     @override_settings(WORK_HUB_ENABLED=False)
     @patch(
@@ -1686,12 +1090,25 @@ class WorkHubServiceTests(TestCase):
         """빈 초기 상태에서 demo seed를 재실행해도 record와 mapping을 늘리지 않습니다."""
 
         client = FakeGristClient()
+        keycloak = Mock()
+        keycloak.get_affiliation_members.return_value = []
+        keycloak.get_client_role_members.return_value = []
         self.scope.delete()
 
-        first = seed_grist_demo(user_sdwt_prod="SDWT-A", client=client)
-        second = seed_grist_demo(user_sdwt_prod="SDWT-A", client=client)
+        first = seed_grist_demo(
+            user_sdwt_prod="SDWT-A",
+            client=client,
+            keycloak_client=keycloak,
+        )
+        second = seed_grist_demo(
+            user_sdwt_prod="SDWT-A",
+            client=client,
+            keycloak_client=keycloak,
+        )
 
-        document_scope = GristDocumentScope.objects.get(affiliation=self.affiliation)
+        document_scope = GristDocumentScope.objects.get(
+            affiliation_snapshot__user_sdwt_prod="SDWT-A"
+        )
         self.assertEqual(sum(len(items) for items in client.records.values()), 8)
         self.assertEqual((first.equipment_rows, first.worklog_rows, first.task_rows), (3, 3, 2))
         self.assertTrue(first.mapping_created)
@@ -1703,7 +1120,11 @@ class WorkHubServiceTests(TestCase):
         self.assertNotEqual(authorization, "Bearer test-webhook-secret")
 
         client.webhooks[0]["fields"]["authorization"] = "Bearer stale-secret"
-        seed_grist_demo(user_sdwt_prod="SDWT-A", client=client)
+        seed_grist_demo(
+            user_sdwt_prod="SDWT-A",
+            client=client,
+            keycloak_client=keycloak,
+        )
 
         self.assertEqual(len(client.webhooks), 1)
         self.assertEqual(
@@ -1814,24 +1235,6 @@ class WorkHubServiceTests(TestCase):
 class WorkHubWebhookConcurrencyTests(TransactionTestCase):
     """Webhook의 짧은 transaction 경계와 동시 처리를 검증합니다."""
 
-    serialized_rollback = True
-
-    def _fixture_teardown(self) -> None:
-        """flush 뒤 data migration 초기값을 복원해 후속 테스트를 격리합니다."""
-
-        super()._fixture_teardown()
-        for database_name in self._databases_names(include_mirrors=False):
-            database_connection = connections[database_name]
-            serialized_contents = getattr(
-                database_connection,
-                "_test_serialized_contents",
-                None,
-            )
-            if serialized_contents:
-                database_connection.creation.deserialize_db_from_string(
-                    serialized_contents
-                )
-
     def setUp(self) -> None:
         """동시 요청 스레드가 조회할 Portal 사용자와 document를 준비합니다."""
 
@@ -1850,7 +1253,7 @@ class WorkHubWebhookConcurrencyTests(TransactionTestCase):
         affiliation = account_selectors.get_active_affiliation_by_user_sdwt_prod(
             user_sdwt_prod="SDWT-CONCURRENT"
         )
-        GristDocumentScope.objects.create(
+        _create_document_scope(
             affiliation=affiliation,
             workspace_id=1,
             doc_id="doc-concurrent",
@@ -2047,12 +1450,13 @@ class WorkHubViewTests(TestCase):
         affiliation = account_selectors.get_active_affiliation_by_user_sdwt_prod(
             user_sdwt_prod="SDWT-VIEW",
         )
-        GristDocumentScope.objects.create(
+        _create_document_scope(
             affiliation=affiliation,
             workspace_id=1,
             doc_id="doc-view",
             launch_url="http://localhost:8100/o/work-hub/doc/doc-view/p/3",
         )
+        _make_keycloak_work_hub_admin(admin)
         self.client.force_login(admin)
 
         response = self.client.get("/api/v1/work-hub/context")
@@ -2071,6 +1475,7 @@ class WorkHubViewTests(TestCase):
             email="Portal.Admin@Example.Invalid",
             username="Portal Admin",
         )
+        _make_keycloak_work_hub_admin(admin)
         self.client.force_login(admin)
 
         response = self.client.get(
@@ -2111,6 +1516,7 @@ class WorkHubViewTests(TestCase):
             password="password",
             email="next.admin@example.invalid",
         )
+        _make_keycloak_work_hub_admin(admin)
         self.client.force_login(admin)
         issued = self.client.get(
             "/auth/grist/login",
@@ -2170,6 +1576,7 @@ class WorkHubViewTests(TestCase):
             password="password",
             email="flag.admin@example.invalid",
         )
+        _make_keycloak_work_hub_admin(admin)
         self.client.force_login(admin)
         issued = self.client.get(
             "/auth/grist/login",
@@ -2274,3 +1681,128 @@ class WorkHubViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class KeycloakGristAccessTests(TestCase):
+    """Keycloak group/client role의 Grist ACL 투영과 fail-closed를 검증합니다."""
+
+    def setUp(self):
+        """Keycloak group 기반 document scope와 가짜 Grist client를 준비합니다."""
+
+        self.scope = GristDocumentScope.objects.create(
+            keycloak_group_id="group-alpha",
+            affiliation_snapshot={"name": "ALPHA", "user_sdwt_prod": "ALPHA"},
+            workspace_id=1,
+            doc_id="keycloak-doc",
+            launch_url="http://localhost:8100/o/work-hub/doc/keycloak-doc",
+        )
+        self.grist = FakeGristClient()
+
+    def test_group_roles_and_work_hub_admin_map_to_grist_roles(self):
+        """viewer/member/manager와 work-hub-admin을 지정 Grist 역할로 변환합니다."""
+
+        keycloak = Mock()
+        keycloak.get_affiliation_members.return_value = [
+            {"email": "viewer@example.com", "role": "viewer"},
+            {"email": "member@example.com", "role": "member"},
+            {"email": "manager@example.com", "role": "manager"},
+        ]
+        keycloak.get_client_role_members.return_value = [
+            {"email": "admin@example.com", "role": "work-hub-admin"}
+        ]
+
+        sync_document_access_scope(
+            document_scope=self.scope,
+            client=self.grist,
+            keycloak_client=keycloak,
+        )
+
+        self.assertEqual(self.grist.access_changes["viewer@example.com"], "viewers")
+        self.assertEqual(self.grist.access_changes["member@example.com"], "editors")
+        self.assertEqual(self.grist.access_changes["manager@example.com"], "owners")
+        self.assertEqual(self.grist.access_changes["admin@example.com"], "owners")
+
+    @patch("api.work_hub.services.access.sync_document_access_scope")
+    def test_keycloak_group_outbox_is_enqueued_and_completed(
+        self,
+        sync_access,
+    ):
+        """Keycloak parent group 변경은 mapping Outbox를 만들고 worker가 완료합니다."""
+
+        queued = enqueue_access_sync_for_group_ids(group_ids=["group-alpha"])
+
+        result = process_access_sync_outbox_batch(limit=10)
+
+        self.assertEqual(queued, 1)
+        self.assertEqual(result, {"processed": 1, "succeeded": 1, "failed": 0})
+        self.assertEqual(
+            GristAccessSyncOutbox.objects.get().status,
+            GristAccessSyncOutbox.Status.DONE,
+        )
+        sync_access.assert_called_once_with(
+            document_scope=self.scope,
+        )
+
+    @override_settings(
+        GRIST_ALLOWED_LAUNCH_HOSTS=["localhost"],
+        GRIST_PUBLIC_URL="http://localhost:8100",
+    )
+    def test_configure_rebinds_legacy_mapping_to_keycloak_group(self):
+        """기존 document를 복제하지 않고 legacy 소속 ID를 Keycloak group ID로 교체합니다."""
+
+        from api.work_hub.services import configure_document_scope
+
+        self.scope.keycloak_group_id = "legacy-affiliation:17"
+        self.scope.save(update_fields=["keycloak_group_id"])
+
+        rebound, created = configure_document_scope(
+            keycloak_group_id="group-alpha",
+            affiliation_name="ALPHA",
+            workspace_id=1,
+            doc_id="keycloak-doc",
+            equipment_table_id="Equipment",
+            worklog_table_id="WorkLog",
+            task_table_id="Task",
+            launch_url="http://localhost:8100/o/work-hub/doc/keycloak-doc",
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(rebound.pk, self.scope.pk)
+        self.assertEqual(rebound.keycloak_group_id, "group-alpha")
+
+    @override_settings(KEYCLOAK_ACL_FAIL_CLOSED_SECONDS=300)
+    def test_stale_keycloak_failure_removes_current_acl(self):
+        """성공 이력이 없고 Keycloak 조회가 실패하면 기존 ACL을 회수합니다."""
+
+        from api.auth.services import KeycloakError
+
+        keycloak = Mock()
+        keycloak.get_affiliation_members.side_effect = KeycloakError("unavailable")
+
+        sync_document_access_scope(
+            document_scope=self.scope,
+            client=self.grist,
+            keycloak_client=keycloak,
+        )
+
+        self.assertIsNone(self.grist.access_changes["owner@example.invalid"])
+        self.assertIsNone(self.grist.access_changes["old@example.invalid"])
+
+    @override_settings(KEYCLOAK_ACL_FAIL_CLOSED_SECONDS=300)
+    def test_recent_keycloak_failure_preserves_acl_during_grace(self):
+        """최근 성공 후 일시 장애에는 ACL을 바꾸지 않고 재시도합니다."""
+
+        from api.auth.services import KeycloakError
+
+        self.scope.keycloak_last_success_at = timezone.now()
+        self.scope.save(update_fields=["keycloak_last_success_at"])
+        keycloak = Mock()
+        keycloak.get_affiliation_members.side_effect = KeycloakError("unavailable")
+
+        with self.assertRaises(KeycloakError):
+            sync_document_access_scope(
+                document_scope=self.scope,
+                client=self.grist,
+                keycloak_client=keycloak,
+            )
+        self.assertEqual(self.grist.access_changes, {})

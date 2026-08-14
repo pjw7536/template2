@@ -12,18 +12,19 @@ Grist 소스를 현재 저장소에 vendor하거나 fork하지 않습니다. `gr
 
 | 영역 | 원본/책임 |
 | --- | --- |
-| `api.account` | Portal 사용자, 현재 소속, viewer/member/manager, `work-hub` app scope |
+| Keycloak | 기본 소속 group, viewer/member/manager, `work-hub-user/admin` client role |
+| `api.account` | Keycloak claim을 보관하는 Portal shadow 사용자 |
 | `api.observer` | `station_master` 기반 설비 기준정보 |
 | `api.work_hub` | 소속↔Grist document mapping, 접근 권한 Outbox, Webhook 멱등 이력, 설비 투영과 Task 생성 |
 | Grist OSS | Equipment projection, WorkLog, Task, 실시간 공동편집과 document history |
 | `work-hub` frontend | 허용 그룹을 보여주고 Grist document URL로 이동 |
 
-Portal account가 Grist 인증 identity의 단일 원본입니다. Portal은 안정적인 사용자 PK를 짧은 수명의 ticket으로 서명하고, Nginx 내부 검증이 성공한 account email만 Grist forward-auth header로 전달합니다. Portal 메뉴 권한과 Grist document 권한은 별도 보안 경계입니다. Portal account의 현재 소속, 명시 소속 역할, `work-hub` 앱별 소속 데이터 범위, 사용자·소속 활성 상태를 Grist ACL의 단일 원본으로 사용합니다. `viewer/member/manager`는 각각 Grist `viewers/editors/owners`로 투영되며, 이메일이 등록된 활성 superuser는 모든 활성 document의 `owner`로 투영됩니다. account 변경 signal과 신규 document mapping은 같은 DB transaction에 `GristAccessSyncOutbox`만 적재합니다. 등록된 mapping의 `doc_id`는 이전 document ACL이 관리 범위 밖에 남지 않도록 변경할 수 없습니다. 외부 Grist 호출은 `work-hub-access-worker`가 전담하고 재시도 가능한 ACL·Webhook 오류를 지수 backoff로 재시도합니다. worker는 만료된 앱별 소속 grant를 비활성화해 해당 document ACL을 회수하고, 완료 Outbox와 완료 Webhook receipt는 기본 30일, 실패·terminal Webhook receipt는 기본 90일 보존 후 정리합니다.
+Keycloak이 Grist ACL identity의 단일 원본입니다. Portal은 안정적인 shadow 사용자 PK를 짧은 수명의 ticket으로 서명하고, Nginx 내부 검증이 성공한 account email만 Grist forward-auth header로 전달합니다. Portal 메뉴 권한과 Grist document 권한은 별도 보안 경계입니다. `GristDocumentScope`는 `Affiliation` FK 대신 Keycloak parent group ID와 표시용 소속 snapshot을 저장합니다. 읽기 전용 service account가 role child group의 전체 멤버를 조회하며 `viewer/member/manager`는 각각 Grist `viewers/editors/owners`로 투영됩니다. `work-hub-admin` 사용자는 모든 활성 document의 `owner`입니다. 외부 Grist 호출은 `work-hub-access-worker`가 전담하고 최대 5분 주기로 전체 ACL을 복구합니다. Keycloak 조회가 5분 이상 실패하면 관리 ACL을 비워 fail-closed 처리합니다.
 
 ## 사용자 흐름
 
 1. `/work-hub`가 `GET /api/v1/work-hub/context`를 호출합니다.
-2. 일반 사용자는 현재 소속 document 하나로 이동하고 manager와 superuser는 여러 소속 중 선택합니다.
+2. 일반 사용자는 Keycloak 기본 소속 document 하나로 이동하고 `work-hub-admin`은 모든 활성 document 중 선택합니다.
 3. 사용자는 Grist WorkLog grid를 공동편집합니다.
 4. `follow_up_required=true`인 WorkLog Webhook을 Django가 받으면 같은 document의 Task를 한 번만 생성하고 양쪽 record를 연결합니다.
 
@@ -31,7 +32,7 @@ iframe을 사용하지 않습니다. Grist public URL, OIDC callback, cookie와 
 
 ## Grist document template
 
-`Affiliation.user_sdwt_prod` 하나당 document 하나를 사용합니다. table과 column ID는 다음 계약을 유지합니다.
+Keycloak 소속 parent group 하나당 document 하나를 사용합니다. table과 column ID는 다음 계약을 유지합니다.
 
 | Table | 주요 column |
 | --- | --- |
@@ -63,7 +64,7 @@ make work-hub-up
 make work-hub-seed
 ```
 
-Grist는 `http://localhost:8100`의 전용 Nginx proxy에서 열립니다. Grist container의 8484 포트는 host에 직접 공개하지 않고 외부 `X-Forwarded-User`와 `/boot` 요청은 각각 제거·차단합니다. `/auth/login`은 Portal `/auth/grist/login`으로 이동하며 미로그인 상태이면 로컬 dummy ADFS 로그인을 거친 뒤 Grist로 돌아옵니다.
+Grist는 `http://localhost:8100`의 전용 Nginx proxy에서 열립니다. Grist container의 8484 포트는 host에 직접 공개하지 않고 외부 `X-Forwarded-User`와 `/boot` 요청은 각각 제거·차단합니다. `/auth/login`은 Portal `/auth/grist/login`으로 이동하며 미로그인 상태이면 로컬 Keycloak 로그인을 거친 뒤 Grist로 돌아옵니다.
 
 ### Grouped View widget
 
@@ -125,7 +126,7 @@ docker compose -f "$COMPOSE_FILE" exec -T api python manage.py process_grist_acc
 
 Grist 자체 OIDC client나 외부 boot key 화면은 사용하지 않습니다. Grist OSS의 forward-auth login path만 새 서버 Nginx의 인증 middleware에 연결합니다. Portal `/auth/grist/login`은 Grist public origin을 검증하고 로그인된 사용자 PK를 최대 30초의 Django 서명 ticket으로 반환합니다. 새 서버 Nginx의 내부 `/auth/grist/verify` subrequest가 기존 Portal의 검증 API에서 기능 플래그, ticket 서명·만료, 활성 account, Portal 접근, `work-hub` app 접근을 다시 검사한 뒤 email을 `X-Forwarded-User`로 설정합니다. `WORK_HUB_ENABLED=0`이면 Portal은 새 login과 이미 발급된 ticket을 거부하며, 새 서버도 `make grist-remote-disable`로 본문·widget proxy를 503으로 차단해야 합니다. 일반 proxy 경로에서는 외부가 보낸 같은 header를 항상 제거합니다. Portal logout은 Work Hub가 활성 상태이거나 `GRIST_LOGOUT_ENABLED=1`인 정리 기간에 Grist `/logout`을 먼저 거쳐 Grist session을 제거하고 `grist_cleared=1` marker로 돌아온 뒤 기존 IdP logout을 수행합니다.
 
-Portal 로그인만으로 document 권한을 우회할 수 없습니다. callback은 Portal과 `work-hub` app 승인을 모두 검사하고, Grist는 별도로 동기화된 document ACL을 적용합니다. 전용 worker는 기존 정리 주기(기본 1시간)마다 비활성 소속 mapping까지 포함한 전체 ACL을 Portal desired state로 복구하며, Portal에 없는 Grist 공개 계정도 회수합니다. `WORK_HUB_ENABLED=0`이면 worker는 보존 이력 정리만 유지하고 전체 reconciliation과 Outbox의 Grist 쓰기는 건너뜁니다. 즉시 수동 점검할 때는 `sync_grist_access --all`을 사용합니다. break-glass email은 실제 Portal account와 같은 `GRIST_ADMIN_EMAIL`에 두며, ACL에 없으면 추가되고 Portal 일반 역할과 겹쳐도 항상 명시적 `owner`로 유지됩니다. 해당 계정 외에도 최소 한 명의 운영 owner를 더 유지합니다.
+Portal 로그인만으로 document 권한을 우회할 수 없습니다. callback은 `portal-user/admin`과 `work-hub-user/admin`을 모두 검사하고, Grist는 별도로 동기화된 document ACL을 적용합니다. 전용 worker는 최대 5분마다 활성 mapping 전체를 Keycloak desired state로 복구하며, Keycloak에 없는 Grist 계정도 회수합니다. `WORK_HUB_ENABLED=0`이면 worker는 보존 이력 정리만 유지하고 전체 reconciliation과 Outbox의 Grist 쓰기는 건너뜁니다. 즉시 수동 점검할 때는 `sync_grist_access --all`을 사용합니다. 지정된 `work-hub-admin` 비상 계정은 모든 활성 document의 owner로 유지합니다.
 
 ## Webhook
 

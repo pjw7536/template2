@@ -21,8 +21,13 @@ def sync_equipment_scope(
     """한 소속의 설비를 equipment_id 기준으로 멱등 upsert하고 누락 record를 archive합니다."""
 
     grist = client or GristClient.from_settings()
+    affiliation_name = str(
+        document_scope.affiliation_snapshot.get("user_sdwt_prod")
+        or document_scope.affiliation_snapshot.get("name")
+        or ""
+    )
     source_rows = observer_selectors.list_equipments_for_user_sdwt_prod(
-        user_sdwt_prod=document_scope.affiliation.user_sdwt_prod,
+        user_sdwt_prod=affiliation_name,
     )
     remote_rows = list(
         grist.iter_records(
@@ -49,7 +54,7 @@ def sync_equipment_scope(
             "line_id": source.get("line_id", ""),
             "sdwt_prod": source.get(
                 "sdwt_prod",
-                document_scope.affiliation.user_sdwt_prod,
+                affiliation_name,
             ),
             "prc_group": source.get("prc_group", ""),
             "equipment_name": source.get("equipment_name", equipment_id),

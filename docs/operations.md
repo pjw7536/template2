@@ -21,7 +21,7 @@ root compose 파일은 Makefile이 감싸는 실행 구현이고, `compose/` 아
 | 그룹 | 포함 서비스 | 설명 |
 | --- | --- | --- |
 | `app` | API, Web, Nginx, MinIO, MinIO init | 실제 앱 실행에 필요한 서비스 |
-| `dev app` 추가 | dummy ADFS/RAG/LLM/Mail/Jira | 로컬 외부계 대체 서비스 |
+| `dev app` 추가 | Keycloak, Keycloak PostgreSQL, dummy RAG/LLM/Mail/Jira | 로컬 인증과 외부계 대체 서비스 |
 | `infra` | Airflow DB, Airflow init/webserver/scheduler, FTP | 데이터 적재와 Airflow DAG 검증용 기반 서비스 |
 
 로컬 개발 기본 실행:
@@ -70,7 +70,8 @@ OIDC/prod compose에는 Airflow/FTP 외에 monitoring 서비스도 포함됩니�
 | Web | `http://localhost:3000` |
 | API | `http://localhost:8000` |
 | Nginx | `http://localhost` |
-| Dummy ADFS/RAG/LLM/Mail/Jira | `http://localhost:9102` |
+| Keycloak | `http://localhost:8180` |
+| Dummy RAG/LLM/Mail/Jira | `http://localhost:9102` |
 | MinIO | `http://localhost:9000`, `http://localhost:9001` |
 
 ## 프론트 명령
@@ -100,6 +101,8 @@ make makemigrations-check
 | Command | 설명 |
 | --- | --- |
 | `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할·앱별 소속 범위 정합성 점검 |
+| `migrate_legacy_access_to_keycloak` | 현재 유효한 기본 소속과 Portal·앱 user/admin 역할을 dry-run 기본으로 이관하고 선택적으로 비교 |
+| `audit_keycloak_cutover` | Account 테이블 row count/checksum과 DB backup·realm export·복원 시험 증적을 함께 검증 |
 | `backfill_assistant_run_access` | legacy Assistant Run·메시지·요약·제목의 Profile과 `access_requirements`를 dry-run 가능한 batch로 보강 |
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
@@ -125,7 +128,7 @@ make makemigrations-check
 | `audit_grist_schema` | Work Hub Grist table의 필수 column과 type 계약 검사 |
 | `sync_grist_equipment` | Observer 설비를 Grist Equipment에 upsert/archive |
 | `sync_grist_access` | 비활성 소속을 포함한 Portal 사용자·역할을 Grist document ACL로 전체 동기화 |
-| `process_grist_access_sync` | 전용 worker에서 만료 grant 회수, Grist 역할 Outbox 처리, 기본 1시간 전체 ACL 정합성 복구, 완료 이력 30일·실패 Webhook receipt 90일 기준 정리 |
+| `process_grist_access_sync` | 전용 worker에서 Grist 역할 Outbox 처리, 최대 5분 Keycloak ACL 정합성 복구, 완료 이력 30일·실패 Webhook receipt 90일 기준 정리 |
 | `seed_grist_demo` | 로컬 `DEV_ALPHA`용 Grist schema·record·Webhook·mapping 멱등 생성 |
 
 실행 예시:
@@ -133,6 +136,7 @@ make makemigrations-check
 ```bash
 docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate --noinput
 docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase post-migration
+docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate_legacy_access_to_keycloak --emergency-sabun <사번>
 docker compose -f docker-compose.dev.yml exec -T api python manage.py backfill_assistant_run_access --dry-run --batch-size 500
 docker compose -f docker-compose.dev.yml exec -T api python manage.py ensure_dev_database
 docker compose -f docker-compose.dev.yml exec -T api python manage.py process_email_outbox
@@ -160,6 +164,39 @@ docker compose -f docker-compose.dev.yml exec -T api python manage.py sync_grist
 docker compose -f docker-compose.dev.yml exec -T api python manage.py process_grist_access_sync
 docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_grist_demo
 ```
+
+## Keycloak 권한 전환
+
+Portal은 `사내 OIDC → Keycloak → Django session` 순서로 인증합니다. 운영 Keycloak은 Portal Compose와 분리하며, Portal에는 realm/client endpoint와 secret만 env로 주입합니다. 사내 OIDC의 `sabun` mapper는 서명된 불변 고유 식별자로 구성합니다. Keycloak access token 수명은 300초입니다.
+
+realm은 `/affiliations/<소속>/<viewer|member|manager>` group과 Portal client의 `portal-user/admin`, `<scope>-user/admin` role을 사용합니다. 사용자는 기본 소속 role group을 정확히 하나만 가져야 합니다. 일반 app user는 자기 기본 소속만, app admin은 해당 앱 전체 데이터를 조회합니다. 지정된 비상 계정 하나만 모든 `*-admin` role을 가지며 Django superuser는 권한 우회로 사용하지 않습니다.
+
+전환 순서는 다음과 같습니다.
+
+1. 읽기 전용 dry-run을 실행해 누락·중복 사용자와 비상 계정 수를 검증하고 출력 `checksum`을 보관합니다. pending, denied, 만료 grant, 추가 데이터 범위와 상세 감사 이력은 계획에 포함되지 않습니다.
+2. `--apply --compare`로 같은 계획을 멱등 반영하고 legacy/Keycloak group·client role이 일치하는지 확인합니다.
+3. 기존 Work Hub mapping마다 `configure_grist_scope --keycloak-group-id ... --affiliation-name ...`를 실행합니다. 기존 `legacy-affiliation:<id>` mapping은 같은 document에서 group ID만 교체되며 `doc_id`는 바뀌지 않습니다.
+4. API code flow/JWKS/refresh, 일반 사용자와 각 scope admin 접근, Work Hub forward-auth와 ACL을 smoke test합니다.
+5. Keycloak role 변경·회수가 최대 5분 안에 Portal과 Grist에 반영되는지 확인합니다. Admin API 조회가 5분 이상 실패하면 worker가 관리 ACL을 비워 fail-closed 처리합니다.
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate_legacy_access_to_keycloak --emergency-sabun <사번>
+docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate_legacy_access_to_keycloak --emergency-sabun <사번> --apply --compare
+```
+
+실제 cutover 직전에는 API와 권한 worker를 중지하고 DB backup, Account row count/checksum, Keycloak realm export와 별도 Keycloak/PostgreSQL에서의 복원 시험을 완료합니다. `audit_keycloak_cutover`는 세 증적 파일이 모두 존재하고 비어 있지 않을 때만 manifest를 출력합니다. 경로는 API container 내부 경로로 전달합니다.
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T airflow-postgres pg_dump -U airflow -Fc dashboard -f /tmp/portal-before-keycloak.dump
+# 운영 Keycloak 절차에 따라 realm export 후, 격리된 Keycloak 26.7.1과 별도 PostgreSQL에 import하고 로그인/group/role 조회 결과를 증적 파일로 남깁니다.
+docker compose -f docker-compose.dev.yml exec -T api python manage.py audit_keycloak_cutover \
+  --emergency-sabun <사번> \
+  --database-backup /evidence/portal-before-keycloak.dump \
+  --realm-export /evidence/portal-realm.json \
+  --realm-restore-evidence /evidence/realm-restore-test.txt
+```
+
+manifest와 권한 비교가 일치한 뒤에만 Account non-User 테이블 제거 migration을 별도 배포합니다. 제거 migration은 rollback 불가능한 단계이므로 이 저장소의 전환 branch에서는 실행하지 않으며, backup과 realm 복원 시험이 없는 환경에서는 절대 적용하지 않습니다. 전환 후 Account 쓰기 API·관리 화면은 제공하지 않고 `/settings/account`만 내 정보·소속·역할 조회용으로 유지합니다.
 
 Assistant Runtime v2 배포는 nullable schema migration을 먼저 적용한 뒤 `--dry-run` 집계를
 검토하고 command를 실행합니다. command는 checkpoint 파일로 중단·재개할 수 있고 동일
@@ -217,54 +254,15 @@ make grist-remote-down
 
 Portal의 2단계 target은 `work-hub-access-worker`를 제거하고 API·Web·Nginx를 세 플래그가 모두 꺼진 상태로 재생성합니다. 새 서버의 `grist-remote-down`은 Grist·initializer·원격 Nginx container만 제거합니다. named `tailwind_grist_remote_data` volume과 bootstrap key 파일은 보존되므로 언제든 같은 설정으로 다시 기동할 수 있습니다. schema, backup, restore와 Portal account forward-auth 설정은 `docs/modules/work-hub.md`를 따릅니다.
 
-배포 과정에서는 일반 사용자 권한을 자동 생성하거나 일괄 변경하지 않습니다. 최초 Portal
-관리자는 지정한 Django superuser가 권한 관리 화면에서 대상 사용자에게 `admin` 역할을
-명시적으로 부여합니다.
+Keycloak 전환 뒤에는 Portal에서 권한을 자동 생성하거나 변경하지 않습니다. 최초 및 비상
+관리 권한은 지정된 Keycloak 계정의 `portal-admin`과 앱별 `*-admin` client role로만
+부여합니다. Django superuser, 기존 Account 권한 관리 API와 관리 화면은 권한 우회 수단이
+아닙니다.
 
-### 고정 역할 권한 마이그레이션 배포 순서
-
-account 고정 역할 migration은 기존 역할·정책·감사 데이터를 정규화하고 제약조건을
-교체하므로 구버전 API와 신버전 API를 동시에 실행하지 않습니다. 다음 순서를 지킵니다.
-운영 API entrypoint는 migration을 자동 실행하지 않으며, 아래 migration과 무결성 검사는
-같은 release image의 one-off `docker compose run --rm --no-deps --entrypoint python api`
-명령으로 실행합니다.
-
-1. 배포 후보와 현재 운영 SHA 사이의 전체 diff를 확인해 권한 변경 외 커밋이 함께 포함되는지 확정합니다.
-2. 운영 DB의 migration ledger가 코드가 기대하는 직전 migration과 일치하는지 읽기 전용으로 확인합니다.
-3. `AccessAuditLog`, `UserAccess`, `AccessPolicyRule` row 수와 DB 백업을 확인합니다.
-4. `check_access_permission_integrity --phase pre-migration`을 실행해 `account 0005`의 `user/admin` 역할과 migration을 막을 소속 데이터 문제가 없는지 확인합니다.
-5. migration SQL의 `DROP ... CASCADE` 대상에 애플리케이션 외부 view, trigger, constraint가 의존하지 않는지 확인합니다. 특히 `account 0005`는 런타임에서 사용하지 않는 `account_user_profile` 테이블을 제거합니다.
-6. API와 권한 관련 worker를 모두 중지한 뒤 migration을 실행합니다.
-7. `check_access_permission_integrity --phase post-migration`을 실행하고 기존 권한·감사 row 수를 확인한 뒤, 오류가 없을 때 신버전 API를 시작합니다.
-8. 일반 사용자, 앱 `admin`, Portal `admin`, superuser 계정으로 접근과 관리자 메뉴를 smoke test합니다.
-
-`account 0006_account_authorization_system`은 기존 전역 소속 grant를 Emails와 Assistant의
-앱별 grant로 복제하고, 기존 허용된 Emails `admin`만 명시적 `all`로 전환합니다. 이
-migration 전에는 `UserSdwtProdAccess`, 앱별 `UserAccess` row 수를 기록하고, 적용 후에는
-`account_user_scope_aff_grant`의 사용자·앱·소속 중복과 Emails 관리자 `all` 전환 건수를
-확인합니다. 신규 앱 관리자는 자동으로 전체 데이터 범위를 받지 않습니다. 또한 소속 변경
-요청은 `PENDING`, `APPROVED`, `REJECTED`, `SUPERSEDED`별 승인 시각·승인자·거절 사유
-조합을 정규화한 뒤 DB 제약으로 고정합니다.
-
-소속 기준정보는 Django Admin의 직접 수정·삭제를 허용하지 않습니다. 생성과 활성 상태
-일괄 변경은 반드시 사유를 입력하며 `AccessAuditLog`에 기록됩니다. 일괄 활성 상태 변경은
-선택한 소속 전체가 성공하거나 전체가 롤백되므로 오류 발생 시 일부 소속만 변경된 것으로
-간주하지 않습니다.
-
-`account 0006`의 역방향 migration은 앱별 grant 생성과 중복 `PENDING` 요청 정리 전 상태를
-완전히 복원하지 않습니다. 운영 롤백은 migration 역적용보다 DB 백업 복원 또는 수정된
-신버전으로의 forward recovery를 우선합니다. 역적용이 필요하면 적용 직전 백업과 row 수
-기록을 기준으로 별도 데이터 복구 절차를 먼저 확정합니다.
-
-`AccessScope` 신규 항목은 route·메뉴 코드와 함께 migration으로만 추가합니다. 운영 중단은
-scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니다. canonical Portal 이외의
-`portal` 유형이나 소문자 영숫자·하이픈 형식이 아닌 key가 있으면 `account 0005`가 의미를
-자동 변경하지 않고 중단하므로 migration 전에 무결성 명령으로 먼저 확인합니다.
-
-로컬 dev 로그인 사용자는 `env/api.dev.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
-`DUMMY_ADFS_*` 기준 dummy 사용자는 staff 슈퍼유저로 보정됩니다.
-`DEV_AUTO_SEED=1`이면 dev API 기동 시 `seed_dev_data --reset`이 실행되며, `ENVIRONMENT=development`에서만 동작합니다.
-OIDC/운영 환경에서는 자동 소속 변경을 실행하지 않습니다.
+로컬 dev 사용자의 소속과 역할은 `deploy/keycloak/realm-portal.json`에서 관리합니다.
+`DEV_AUTO_SEED=1`의 업무 더미 데이터 refresh는 유지하지만 Keycloak 사용자를 Django
+superuser로 승격하거나 Account 권한 row를 자동 생성하지 않습니다. 운영에서는 realm
+변경을 Portal 배포와 분리하고, 변경 전 realm export와 복원 시험을 완료합니다.
 
 ## Data Movement Airflow DAG
 

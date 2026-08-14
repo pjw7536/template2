@@ -12,7 +12,6 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-import api.account.services as account_services
 import api.voc.selectors as voc_selectors
 import api.voc.services as voc_services
 from api.voc.models import VocPost
@@ -137,20 +136,11 @@ class VocEndpointTests(TestCase):
             password="test-password",
             knox_id="knox-80002",
         )
-        authority = User.objects.create_superuser(
-            sabun="S80003",
-            password="test-password",
-        )
-        for scope_key, role in (("portal", "user"), ("voc", "admin")):
-            _payload, status_code = account_services.decide_user_access(
-                actor=authority,
-                user_id=admin_user.id,
-                scope_key=scope_key,
-                action="grant",
-                role=role,
-                reason="VOC 관리자 권한 테스트",
-            )
-            self.assertEqual(status_code, 200)
+        admin_user.keycloak_subject = "voc-admin-subject"
+        admin_user.keycloak_client_roles = {
+            "portal": ["portal-user", "voc-admin"],
+        }
+        admin_user.save(update_fields=["keycloak_subject", "keycloak_client_roles"])
         post = VocPost.objects.create(
             title="다른 사용자 글",
             content="내용",

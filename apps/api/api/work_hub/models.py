@@ -7,13 +7,10 @@ from django.utils import timezone
 
 
 class GristDocumentScope(models.Model):
-    """Portal 소속과 Grist document/table 식별자를 연결합니다."""
+    """Keycloak 소속 group과 Grist document/table 식별자를 연결합니다."""
 
-    affiliation = models.ForeignKey(
-        "account.Affiliation",
-        on_delete=models.PROTECT,
-        related_name="grist_document_scopes",
-    )
+    keycloak_group_id = models.CharField(max_length=255, unique=True)
+    affiliation_snapshot = models.JSONField(default=dict)
     workspace_id = models.PositiveBigIntegerField()
     doc_id = models.CharField(max_length=128)
     equipment_table_id = models.CharField(max_length=64, default="Equipment")
@@ -22,16 +19,13 @@ class GristDocumentScope(models.Model):
     launch_url = models.URLField(max_length=500)
     template_revision = models.CharField(max_length=64, default="grist-work-hub-v1")
     is_active = models.BooleanField(default=True)
+    keycloak_last_success_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "work_hub_grist_document_scope"
         constraints = [
-            models.UniqueConstraint(
-                fields=["affiliation"],
-                name="uniq_wrk_hub_doc_scp_aff",
-            ),
             models.UniqueConstraint(
                 fields=["doc_id"],
                 name="uniq_wrk_hub_doc_scp_doc",
@@ -44,7 +38,8 @@ class GristDocumentScope(models.Model):
     def __str__(self) -> str:
         """관리 화면에 소속과 Grist document ID를 표시합니다."""
 
-        return f"{self.affiliation.user_sdwt_prod} -> {self.doc_id}"
+        label = str(self.affiliation_snapshot.get("name") or self.keycloak_group_id)
+        return f"{label} -> {self.doc_id}"
 
 
 class GristAccessSyncOutbox(models.Model):

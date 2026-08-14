@@ -14,7 +14,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser) -> None:
         """필수 Grist 식별자와 launch URL 인자를 등록합니다."""
 
-        parser.add_argument("--user-sdwt-prod", required=True)
+        parser.add_argument("--keycloak-group-id", required=True)
+        parser.add_argument("--affiliation-name", required=True)
+        parser.add_argument("--department", default="")
+        parser.add_argument("--line", default="")
         parser.add_argument("--workspace-id", type=int, required=True)
         parser.add_argument("--doc-id", required=True)
         parser.add_argument("--equipment-table-id", default="Equipment")
@@ -38,7 +41,10 @@ class Command(BaseCommand):
 
         try:
             mapping, created = configure_document_scope(
-                user_sdwt_prod=options["user_sdwt_prod"],
+                keycloak_group_id=options["keycloak_group_id"],
+                affiliation_name=options["affiliation_name"],
+                department=options["department"],
+                line=options["line"],
                 workspace_id=options["workspace_id"],
                 doc_id=options["doc_id"],
                 equipment_table_id=options["equipment_table_id"],

@@ -186,7 +186,7 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    """ADFS/OIDC 클레임에서 받은 사용자 식별 정보를 저장하는 커스텀 사용자 모델입니다."""
+    """Keycloak 클레임을 로컬 세션에 연결하는 읽기 전용 shadow 사용자입니다."""
 
     username = models.CharField(max_length=150, null=True, blank=True)
     sabun = models.CharField(max_length=50, unique=True)
@@ -204,6 +204,13 @@ class User(AbstractUser):
     intname = models.CharField(max_length=150, null=True, blank=True)
     origincomp = models.CharField(max_length=150, null=True, blank=True)
     employeetype = models.CharField(max_length=150, null=True, blank=True)
+    keycloak_subject = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    keycloak_group_id = models.CharField(max_length=255, blank=True, default="")
+    keycloak_groups = models.JSONField(default=list, blank=True)
+    keycloak_realm_roles = models.JSONField(default=list, blank=True)
+    keycloak_client_roles = models.JSONField(default=dict, blank=True)
+    affiliation_snapshot = models.JSONField(default=dict, blank=True)
+    keycloak_synced_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "account_user"

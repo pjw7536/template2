@@ -40,9 +40,9 @@ class ReadOnlyWorkHubAdmin(admin.ModelAdmin):
 class GristDocumentScopeAdmin(ReadOnlyWorkHubAdmin):
     """소속별 Grist document mapping을 조회합니다."""
 
-    list_display = ("affiliation", "doc_id", "template_revision", "is_active", "updated_at")
+    list_display = ("keycloak_group_id", "doc_id", "template_revision", "is_active", "updated_at")
     list_filter = ("is_active", "template_revision")
-    search_fields = ("affiliation__user_sdwt_prod", "doc_id")
+    search_fields = ("keycloak_group_id", "doc_id")
 
 
 @admin.register(GristAccessSyncOutbox)
@@ -58,7 +58,7 @@ class GristAccessSyncOutboxAdmin(ReadOnlyWorkHubAdmin):
         "updated_at",
     )
     list_filter = ("status", "reason")
-    search_fields = ("document_scope__doc_id", "document_scope__affiliation__user_sdwt_prod")
+    search_fields = ("document_scope__doc_id", "document_scope__keycloak_group_id")
 
 
 @admin.register(GristWebhookReceipt)

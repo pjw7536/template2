@@ -6,10 +6,7 @@
 
 from __future__ import annotations
 
-import os
-
 from django.apps import AppConfig
-from django.db import IntegrityError, OperationalError, ProgrammingError, connection
 
 
 class AccountConfig(AppConfig):
@@ -19,107 +16,6 @@ class AccountConfig(AppConfig):
     name = "api.account"
 
     def ready(self) -> None:
-        """앱 준비 시 런타임 시그널만 등록합니다.
+        """Keycloak 전환 후 Django superuser 자동 생성을 수행하지 않습니다."""
 
-        입력:
-        - 없음
-
-        반환:
-        - 없음
-
-        부작용:
-        - migrate 이후 기본 슈퍼유저 보정 시그널 등록
-
-        오류:
-        - 없음(내부에서 방어적으로 처리)
-        """
-        from django.db.models.signals import post_migrate
-
-        def ensure_default_superuser(sender, **kwargs) -> None:
-            """migrate 완료 후 기본 슈퍼유저를 보정합니다."""
-
-            self._ensure_default_superuser()
-
-        post_migrate.connect(
-            ensure_default_superuser,
-            sender=self,
-            dispatch_uid="account_ensure_default_superuser",
-            weak=False,
-        )
-
-    def _ensure_default_superuser(self) -> None:
-        """기본 슈퍼유저와 dev dummy 슈퍼유저를 환경변수 기반으로 보장합니다.
-
-        입력:
-        - 없음
-
-        반환:
-        - 없음
-
-        부작용:
-        - 기본 슈퍼유저 생성 시도
-
-        오류:
-        - 없음(테이블 미존재/무결성 오류는 조용히 반환)
-        """
-        from django.contrib.auth import get_user_model
-
-        def env_or_default(key: str, default: str = "") -> str:
-            """환경변수에서 값을 읽고 없으면 기본값을 반환합니다.
-
-            입력:
-            - key: 환경변수 키
-            - default: 기본값
-
-            반환:
-            - str: 환경변수 값 또는 기본값
-
-            부작용:
-            - 없음
-
-            오류:
-            - 없음
-            """
-            value = os.environ.get(key)
-            if value is None:
-                return default
-            value = value.strip()
-            return value or default
-
-        def create_default_superuser() -> None:
-            """기존 기본 admin 계정 생성 동작을 보존합니다."""
-
-            sabun = env_or_default("DJANGO_SUPERUSER_SABUN", "00000000")
-            if UserModel.objects.filter(sabun=sabun).exists():
-                return
-
-            UserModel.objects.create_superuser(
-                sabun=sabun,
-                password=env_or_default("DJANGO_SUPERUSER_PASSWORD", "dkssud123!"),
-                username=env_or_default("DJANGO_SUPERUSER_USERNAME", "admin"),
-                knox_id="admin",
-                email=env_or_default("DJANGO_SUPERUSER_EMAIL", "etch_mail_collector@samsung.com"),
-            )
-
-        # -----------------------------------------------------------------------------
-        # 1) 테이블 존재 여부 확인
-        # -----------------------------------------------------------------------------
-        UserModel = get_user_model()
-        try:
-            table_names = connection.introspection.table_names()
-        except (OperationalError, ProgrammingError):
-            return
-
-        if UserModel._meta.db_table not in table_names:
-            return
-
-        # -----------------------------------------------------------------------------
-        # 2) 기본 슈퍼유저와 dev dummy 슈퍼유저 보장
-        # -----------------------------------------------------------------------------
-        try:
-            from api.account.services import ensure_dev_dummy_superuser
-
-            create_default_superuser()
-            ensure_dev_dummy_superuser()
-        except IntegrityError:
-            return
+        return None

@@ -30,14 +30,14 @@
 make dev
 ```
 
-`make dev`는 Web, API, Nginx, MinIO, dummy ADFS/RAG/LLM/Mail/Jira와 Work Hub의 Grist·접근 동기화 worker를 함께 실행합니다. Work Hub API와 Navbar 메뉴도 자동으로 활성화됩니다.
+`make dev`는 Web, API, Nginx, MinIO, Keycloak, dummy RAG/LLM/Mail/Jira와 Work Hub의 Grist·접근 동기화 worker를 함께 실행합니다. Work Hub API와 Navbar 메뉴도 자동으로 활성화됩니다.
 API DB는 compose 의존성으로 함께 올라가며, Airflow/FTP는 기본 실행에서 제외됩니다.
 
 서비스 그룹은 `app`과 `infra`로 나뉩니다.
 
 | 그룹 | 포함 서비스 | 사용 시점 |
 | --- | --- | --- |
-| `app` | API, Web, Nginx, MinIO, MinIO init, dev dummy ADFS | 일반 앱 개발/검증 |
+| `app` | API, Web, Nginx, MinIO, MinIO init, dev Keycloak | 일반 앱 개발/검증 |
 | `infra` | Airflow DB, Airflow init/webserver/scheduler, FTP | 데이터 적재와 Airflow DAG 검증 |
 
 자세한 실행 명령은 `사용방법.md`를 봅니다.
@@ -65,7 +65,7 @@ make makemigrations-check
 
 ## 주요 API 영역
 
-모든 업무 API는 `/api/v1/` 아래에 있습니다. 예외적으로 OIDC 콜백만 `/auth/google/callback/`을 사용합니다.
+모든 업무 API는 `/api/v1/` 아래에 있습니다. 예외적으로 OIDC 콜백만 `/auth/keycloak/callback/`을 사용합니다.
 
 | Prefix | 설명 |
 | --- | --- |

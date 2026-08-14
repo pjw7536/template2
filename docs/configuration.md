@@ -7,7 +7,7 @@
 | 파일 | 사용처 | 역할 |
 | --- | --- | --- |
 | `env/api.common.env` | API 공통 | DB, 보안, auth, POP3, Drone, RAG, LLM, Mail API 기본값 |
-| `env/api.dev.env` | 로컬 API | dummy ADFS/RAG/LLM/Mail/Jira 연결 |
+| `env/api.dev.env` | 로컬 API | Keycloak과 dummy RAG/LLM/Mail/Jira 연결 |
 | `env/api.test.env` | API test | 임시 PostgreSQL과 외부 호출 차단 설정 |
 | `env/api.oidc.dev.env` | OIDC 개발 API | 실제 OIDC/RAG 개발 연결용 override |
 | `env/api.prod.env` | 운영 API | 운영 배포 템플릿 |
@@ -77,11 +77,12 @@
 | `DJANGO_*` / Django runtime | `ENVIRONMENT`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_TIME_ZONE` | API 실행 모드와 기본 Django 설정 |
 | 보안/proxy | `DJANGO_SECURE`, `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `USE_X_FORWARDED_HOST` | HTTPS, cookie, reverse proxy 설정 |
 | `DJANGO_DB_*` / 기본 DB | `DJANGO_DB_ENGINE`, `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST`, `DJANGO_DB_PORT` | Django 기본 PostgreSQL |
+| `KEYCLOAK_*` / Auth·Admin API | `KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_INTERNAL_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_MIGRATION_CLIENT_ID`, `KEYCLOAK_MIGRATION_CLIENT_SECRET`, `KEYCLOAK_ACL_FAIL_CLOSED_SECONDS` | authorization code/JWKS, 읽기 전용 ACL 조회 service account, cutover 전용 쓰기 service account와 5분 fail-closed 계약 |
 | Dev auto affiliation | `DEV_AUTO_AFFILIATION_ALLOWED`, `DEV_AUTO_AFFILIATION_PREFIX` | 소속 없는 로컬 dev 로그인 사용자의 기본 개발 소속 보장 |
 | Dev auto seed | `DEV_AUTO_SEED`, `DEV_SEED_PREFIX` | 로컬 dev API 기동 시 dummy 사용자 보정과 account 권한 요청을 포함한 prefix 기준 더미 데이터 refresh |
 | Observer 설정 | `OBSERVER_QUERY_DAYS` | Observer 로그 기본 조회 기간 |
 | Work Hub API | `WORK_HUB_ENABLED`, `GRIST_LOGOUT_ENABLED`, `GRIST_API_URL`, `GRIST_API_KEY`, `GRIST_API_KEY_FILE`, `GRIST_ADMIN_EMAIL`, `GRIST_WEBHOOK_CALLBACK_URL`, `GRIST_WEBHOOK_SECRET`, `GRIST_ALLOWED_LAUNCH_HOSTS`, `GRIST_CONNECT_TIMEOUT`, `GRIST_READ_TIMEOUT` | launcher·forward-auth opt-in, 비활성화 후 session 정리, 환경 key 우선·bootstrap 파일 차선의 공식 Grist API 인증, 보호할 운영 owner, document·table별 Webhook token의 마스터 키와 launch URL 허용 host·timeout |
-| Work Hub dev seed | `GRIST_DEV_USER_SDWT_PROD`, `GRIST_API_KEY`, `GRIST_API_KEY_FILE` | Portal 관리자 Grist account의 API key로 demo schema·record·Webhook·Portal mapping 생성 |
+| Work Hub dev seed | `GRIST_DEV_USER_SDWT_PROD`, `GRIST_DEV_KEYCLOAK_GROUP_ID`, `GRIST_API_KEY`, `GRIST_API_KEY_FILE` | Keycloak parent group과 Portal 관리자 Grist API key로 demo schema·record·Webhook·mapping 생성 |
 | Grist runtime | `GRIST_PUBLIC_URL`, `GRIST_IMAGE`, `GRIST_HOST`, `GRIST_ORG`, `GRIST_SESSION_SECRET`, `GRIST_ALLOWED_WEBHOOK_DOMAINS`, `GRIST_SECRET_UID`, `GRIST_SECRET_GID` | 전용 host·단일 조직, `/persist` volume, session과 Webhook destination 제한, 원격 bootstrap key 파일 소유자. 운영은 session secret 누락 시 시작 실패 |
 | Grist widget | `GRIST_WIDGET_PUBLIC_URL`, `GRIST_WIDGET_HOST`, `GRIST_WIDGET_PORT`, `GRIST_WIDGET_LIST_URL_OPTIONAL` | 자체 호스팅 widget의 분리 origin, 운영 DNS host, 로컬 공개 port, 외부 gallery 장애 격리 |
 | Grist forward-auth | `GRIST_FORWARD_AUTH_TICKET_SECRET`, `GRIST_FORWARD_AUTH_TICKET_MAX_AGE_SECONDS`, `GRIST_FORWARD_AUTH_LOGIN_PATH`, `PORTAL_HOST`, `PORTAL_PUBLIC_URL` | Portal account를 짧은 수명의 서명 ticket과 신뢰된 email header로 교환하는 Nginx 계약 |
@@ -93,7 +94,7 @@
 | 외부 앱 사용량 API | `EXTERNAL_APP_USAGE_API_URLS`, `EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS` | 앱별 접속현황에서 저장 없이 조회 시점에 합산하는 외부 사용량 API source 목록(JSON)과 timeout |
 | `DATA_MOVEMENT_*` / 파일 적재 데이터 | `DATA_MOVEMENT_HOST_PATH`, `DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS`, `DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS`, `DATA_MOVEMENT_M_TKIN_PREVENT_DIR`, `DATA_MOVEMENT_CTTTM_WORKORDER_LIST_DIR`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_DIR`, `DATA_MOVEMENT_EQP_STATUS_CHG_DIR`, `DATA_MOVEMENT_M_INTERLOCK_DIR`, `DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR`, `DATA_MOVEMENT_RACB_LIST_DIR`, `DATA_MOVEMENT_MES_LINE_MAPPING_INFO_DIR`, `DATA_MOVEMENT_STATION_MASTER_DIR` | FTP 등으로 수신한 파일의 host mount와 테이블별 root 경로. 하위 `incoming/processing` 사용. 최근 수정 파일과 stat 값이 변하는 파일은 이번 적재에서 제외 |
 | `FTP_*` / Data Movement FTP | `FTP_USER`, `FTP_PASS`, `FTP_PORT`, `FTP_PASV_ADDRESS`, `FTP_PASV_MIN_PORT`, `FTP_PASV_MAX_PORT` | `data_movement` 업로드용 FTP 계정, 접속 port, passive mode address/port |
-| `OIDC_*` / `ADFS_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `ADFS_CER_PATH`, `ALLOWED_REDIRECT_HOSTS` | ADFS/OIDC 로그인 |
+| `OIDC_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `ALLOWED_REDIRECT_HOSTS` | Keycloak client, realm issuer와 callback 계약 |
 | Airflow DAG env | `env/airflow.common.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 같은 env 파일에서 `AIRFLOW_FAILURE_ALERT_CHATROOM_TITLE`, `AIRFLOW_FAILURE_ALERT_CHATROOM_ID_FILE`, `AIRFLOW_FAILURE_ALERT_MESSAGE_TTL`, `KNOX_MESSENGER_TIMEOUT_SECONDS`를 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload 옵션. schedule과 HTTP timeout은 env override 없이 DAG 코드에 직접 작성 |
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker |
@@ -189,7 +190,7 @@ docker compose -f docker-compose.dev.yml --profile work-hub up -d grist
 
 server-to-server API key는 `grist-api-key-init`이 첫 기동 때 `GRIST_ADMIN_EMAIL`로 내부 forward-auth session을 만든 뒤 Grist 공식 profile API에서 발급합니다. 로컬에서는 `${WORK_HUB_SECRET_HOST_PATH}/grist_api_key` 파일을 API·worker가 함께 읽습니다. 분리 운영에서는 새 서버가 같은 파일을 `0600`으로 만들고 운영자가 그 값을 기존 Portal 서버의 `GRIST_API_KEY` 배포 비밀값으로 전달합니다. 서버 간 공유 mount는 사용하지 않으며 tracked env에는 실제 key를 넣지 않습니다.
 
-Grist에는 `GRIST_IN_SERVICE=true`를 설정하고 외부 `/boot` 경로를 Nginx에서 차단해 boot key 화면을 사용하지 않습니다. 브라우저 로그인은 `/auth/grist/login`이 현재 Portal session의 `account.User` ID를 30초 ticket으로 서명합니다. Grist 전용 Nginx의 내부 subrequest가 `/auth/grist/verify`에서 현재 account·앱 권한을 다시 검사한 뒤에만 `X-Forwarded-User` email을 Grist에 전달합니다. Portal 미로그인 상태이면 기존 Portal OIDC 또는 로컬 dummy ADFS 로그인을 먼저 수행합니다. 단, `WORK_HUB_ENABLED=0`이면 Portal 로그인으로 보내기 전에 요청을 거부합니다.
+Grist에는 `GRIST_IN_SERVICE=true`를 설정하고 외부 `/boot` 경로를 Nginx에서 차단해 boot key 화면을 사용하지 않습니다. 브라우저 로그인은 `/auth/grist/login`이 현재 Portal session의 shadow `account.User` ID를 30초 ticket으로 서명합니다. Grist 전용 Nginx의 내부 subrequest가 `/auth/grist/verify`에서 현재 Keycloak 기반 Portal·앱 권한을 다시 검사한 뒤에만 `X-Forwarded-User` email을 Grist에 전달합니다. Portal 미로그인 상태이면 Keycloak 로그인을 먼저 수행합니다. 단, `WORK_HUB_ENABLED=0`이면 Portal 로그인으로 보내기 전에 요청을 거부합니다.
 
 운영 Grist는 새 서버에서 `docker-compose.grist.yml`로 실행합니다. `env/grist.remote.env`의 기본값은 Grist `http://10.172.117.91`, widget `http://10.172.117.91:8101`, 조직 `work-hub`이며 `GRIST_SESSION_SECRET`은 외부에서 반드시 주입해야 합니다. 기존 Portal 서버의 OIDC/prod Compose에는 Grist container와 initializer가 없고 `work-hub-access-worker`만 남습니다. Portal의 `GRIST_API_URL`, `GRIST_PUBLIC_URL`, `GRIST_WIDGET_PUBLIC_URL`, `GRIST_ALLOWED_LAUNCH_HOSTS`는 원격 주소를 가리키며 `GRIST_API_KEY_FILE`은 비워 둡니다.
 
@@ -197,7 +198,7 @@ Grist에는 `GRIST_IN_SERVICE=true`를 설정하고 외부 `/boot` 경로를 Ngi
 
 Portal에서는 `make oidc-work-hub-up` 또는 `make prod-work-hub-up`이 API·Web·Nginx·worker를 활성화하고, `GRIST_API_KEY`가 없으면 fail-closed로 중단합니다. 새 서버에서는 `make grist-remote-up`이 Grist·initializer·원격 Nginx를 기동하고, `make grist-remote-disable`이 본문·widget을 503으로 바꿉니다. 원복할 때는 양쪽 disable을 함께 실행해 session 정리 시간을 둔 뒤 Portal의 `*-work-hub-down`과 새 서버의 `make grist-remote-down`을 실행합니다. 어느 target도 Grist named volume이나 bootstrap key 파일을 자동 삭제하지 않습니다.
 
-`GRIST_ADMIN_EMAIL`은 모든 활성 Work Hub document의 break-glass owner이며 실제 Portal account email과 일치해야 합니다. 이메일이 등록된 활성 Portal superuser도 모든 활성 document의 owner로 동기화됩니다. `work-hub-access-worker`는 API와 같은 `API_IMAGE`를 사용하고 Grist REST API를 원격 호출합니다. `WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS`와 `WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS`는 완료 이력을 기본 30일, `WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS`는 실패 Webhook receipt를 기본 90일 보존합니다. Web 메뉴는 `VITE_WORK_HUB_ENABLED`, API context와 forward-auth는 `WORK_HUB_ENABLED`를 사용합니다.
+`work-hub-admin` client role은 모든 활성 Work Hub document의 owner이며 지정된 비상 계정 하나에 전체 admin 역할을 둡니다. `work-hub-access-worker`는 API와 같은 `API_IMAGE`를 사용하고 Keycloak 읽기 전용 Admin API와 Grist REST API를 호출합니다. 전체 reconciliation은 최대 300초 주기이며 Keycloak 조회가 300초 이상 실패하면 ACL을 fail-closed 처리합니다. `WORK_HUB_ACCESS_OUTBOX_RETENTION_DAYS`와 `WORK_HUB_WEBHOOK_RECEIPT_RETENTION_DAYS`는 완료 이력을 기본 30일, `WORK_HUB_FAILED_WEBHOOK_RECEIPT_RETENTION_DAYS`는 실패 Webhook receipt를 기본 90일 보존합니다. Web 메뉴는 `VITE_WORK_HUB_ENABLED`, API context와 forward-auth는 `WORK_HUB_ENABLED`를 사용합니다.
 
 1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx, Work Hub worker와 Grist를 함께 띄웁니다.
 2. API는 `env/api.common.env`와 `env/api.dev.env`를 사용합니다.

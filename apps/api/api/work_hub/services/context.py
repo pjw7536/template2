@@ -9,7 +9,11 @@ from django.conf import settings
 from api.account import selectors as account_selectors
 from api.account import services as account_services
 
-from ..selectors import list_active_document_scopes_for_user_sdwt_prods
+from ..selectors import (
+    list_active_document_scopes,
+    list_active_document_scopes_for_user_sdwt_prods,
+    list_active_document_scopes_for_keycloak_group_ids,
+)
 
 
 def build_work_hub_context(*, user: Any) -> dict[str, object]:
@@ -23,6 +27,42 @@ def build_work_hub_context(*, user: Any) -> dict[str, object]:
             "reason": "work_hub_disabled",
             "groups": [],
         }
+
+    if getattr(user, "keycloak_subject", None):
+        access = account_services.get_access_payload(user=user, scope_key="work-hub")
+        if not access.get("allowed"):
+            return {
+                "enabled": True,
+                "available": False,
+                "mode": "unavailable",
+                "reason": "work_hub_role_missing",
+                "groups": [],
+            }
+        is_admin = access.get("role") == "admin"
+        mappings = list(
+            list_active_document_scopes()
+            if is_admin
+            else list_active_document_scopes_for_keycloak_group_ids(
+                group_ids=[str(getattr(user, "keycloak_group_id", "") or "")]
+            )
+        )
+        groups = [
+            {
+                "user_sdwt_prod": str(
+                    mapping.affiliation_snapshot.get("user_sdwt_prod")
+                    or mapping.affiliation_snapshot.get("name")
+                    or ""
+                ),
+                "department": str(mapping.affiliation_snapshot.get("department") or ""),
+                "line": str(mapping.affiliation_snapshot.get("line") or ""),
+                "role": "manager" if is_admin else str(
+                    getattr(user, "affiliation_snapshot", {}).get("role") or "viewer"
+                ),
+                "launch_url": mapping.launch_url,
+            }
+            for mapping in mappings
+        ]
+        return _context_from_groups(groups)
 
     roles = account_selectors.get_accessible_user_sdwt_prod_roles_for_user(user)
     current = account_selectors.get_current_user_sdwt_prod(user=user)
@@ -52,7 +92,7 @@ def build_work_hub_context(*, user: Any) -> dict[str, object]:
 
     groups = []
     for mapping in mappings:
-        group_name = mapping.affiliation.user_sdwt_prod
+        group_name = str(mapping.affiliation_snapshot.get("user_sdwt_prod") or "")
         role = next(
             (
                 candidate_role
@@ -64,12 +104,18 @@ def build_work_hub_context(*, user: Any) -> dict[str, object]:
         groups.append(
             {
                 "user_sdwt_prod": group_name,
-                "department": mapping.affiliation.department,
-                "line": mapping.affiliation.line,
+                "department": mapping.affiliation_snapshot.get("department", ""),
+                "line": mapping.affiliation_snapshot.get("line", ""),
                 "role": role,
                 "launch_url": mapping.launch_url,
             }
         )
+
+    return _context_from_groups(groups)
+
+
+def _context_from_groups(groups: list[dict[str, object]]) -> dict[str, object]:
+    """launcher group 목록을 공통 context 응답으로 변환합니다."""
 
     if not groups:
         return {

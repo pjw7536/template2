@@ -135,7 +135,11 @@ def _build_task_values(*, scope: Any, row_id: int, values: dict[str, Any]) -> di
         "title": f"[{equipment_label}] {symptom[:80]}",
         "description": str(values.get("action") or symptom).strip(),
         "source_worklog": row_id,
-        "sdwt_prod": scope.affiliation.user_sdwt_prod,
+        "sdwt_prod": str(
+            scope.affiliation_snapshot.get("user_sdwt_prod")
+            or scope.affiliation_snapshot.get("name")
+            or ""
+        ),
         "status": "open",
         "priority": "normal",
         "archived": False,

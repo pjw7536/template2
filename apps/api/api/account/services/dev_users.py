@@ -23,7 +23,7 @@ def _env(key: str, default: str = "") -> str:
 
 
 def ensure_dev_dummy_superuser() -> Any | None:
-    """development 환경의 dummy ADFS 사용자를 staff 슈퍼유저로 생성/보정합니다.
+    """development 환경의 dummy 사용자를 Keycloak shadow 계정으로 생성/보정합니다.
 
     입력:
     - 없음
@@ -52,10 +52,22 @@ def ensure_dev_dummy_superuser() -> Any | None:
         "knox_id": loginid,
         "email": _env("DUMMY_ADFS_EMAIL", "dummy.user@example.com"),
         "department": _env("DUMMY_ADFS_DEPT", "Development"),
+        "keycloak_subject": "local-dev-seed-actor",
+        "keycloak_group_id": "aff-dev-alpha-parent",
+        "keycloak_groups": ["/affiliations/DEV_ALPHA/member"],
+        "keycloak_client_roles": {"portal": ["portal-admin"]},
+        "affiliation_snapshot": {
+            "name": "DEV_ALPHA",
+            "user_sdwt_prod": "DEV_ALPHA",
+            "role": "member",
+            "path": "/affiliations/DEV_ALPHA/member",
+        },
+        "is_staff": False,
+        "is_superuser": False,
     }
     user = UserModel.objects.filter(sabun=sabun).first()
     if user is None:
-        return UserModel.objects.create_superuser(
+        return UserModel.objects.create_user(
             sabun=sabun,
             password=_env("DJANGO_SUPERUSER_PASSWORD", "dkssud123!"),
             **defaults,
@@ -65,11 +77,6 @@ def ensure_dev_dummy_superuser() -> Any | None:
     for field_name, value in defaults.items():
         if value and getattr(user, field_name) != value:
             setattr(user, field_name, value)
-            update_fields.append(field_name)
-
-    for field_name in ("is_staff", "is_superuser"):
-        if getattr(user, field_name) is not True:
-            setattr(user, field_name, True)
             update_fields.append(field_name)
 
     if update_fields:

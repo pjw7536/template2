@@ -227,6 +227,18 @@ def get_current_affiliation_values(*, user: Any) -> dict[str, Any]:
     - 없음
     """
 
+    if getattr(user, "keycloak_subject", None):
+        snapshot = dict(getattr(user, "affiliation_snapshot", {}) or {})
+        return {
+            "affiliation": None,
+            "department": snapshot.get("department"),
+            "line": snapshot.get("line"),
+            "user_sdwt_prod": snapshot.get("user_sdwt_prod") or snapshot.get("name"),
+            "requires_reconfirm": False,
+            "confirmed_at": getattr(user, "keycloak_synced_at", None),
+            "source": "keycloak_group",
+        }
+
     row = get_current_affiliation_record(user=user)
     affiliation = row.affiliation if row and row.affiliation_id else None
     return {
@@ -276,6 +288,20 @@ def get_current_affiliation_values_by_user_ids(*, user_ids: Iterable[int]) -> di
             "line": affiliation.line if affiliation else None,
             "user_sdwt_prod": affiliation.user_sdwt_prod if affiliation else None,
             "source": row.source,
+        }
+    User = get_user_model()
+    shadow_rows = User.objects.filter(
+        id__in=normalized_ids,
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values("id", "affiliation_snapshot")
+    for shadow in shadow_rows:
+        snapshot = dict(shadow.get("affiliation_snapshot") or {})
+        result[int(shadow["id"])] = {
+            "department": snapshot.get("department"),
+            "line": snapshot.get("line"),
+            "user_sdwt_prod": snapshot.get("user_sdwt_prod") or snapshot.get("name"),
+            "source": "keycloak_group",
         }
     return result
 
@@ -816,6 +842,20 @@ def list_distinct_active_user_sdwt_prod_values(
     # 2) 공백 제거 및 대소문자 비구분 중복 제거
     # -----------------------------------------------------------------------------
     collapsed_values = set(_collapse_user_sdwt_prod_values(values))
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if not isinstance(snapshot, dict):
+            continue
+        snapshot_department = str(snapshot.get("department") or "").strip()
+        if normalized_department and snapshot_department.casefold() != normalized_department.casefold():
+            continue
+        value = str(
+            snapshot.get("user_sdwt_prod") or snapshot.get("name") or ""
+        ).strip()
+        if value:
+            collapsed_values.add(value)
     if include_external_snapshots:
         external_queryset = ExternalAffiliationSnapshot.objects.exclude(
             predicted_user_sdwt_prod__exact=""
@@ -843,6 +883,14 @@ def list_distinct_active_departments(*, include_external_snapshots: bool = False
         .distinct()
     )
     collapsed_values = set(_collapse_text_values(values))
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if isinstance(snapshot, dict):
+            department = str(snapshot.get("department") or "").strip()
+            if department:
+                collapsed_values.add(department)
     if include_external_snapshots:
         external_values = (
             ExternalAffiliationSnapshot.objects.exclude(department__isnull=True)
@@ -1003,13 +1051,27 @@ def list_active_user_pool(
     )
     if normalized_user_sdwt:
         queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt
+            Q(
+                keycloak_subject__isnull=False,
+                affiliation_snapshot__user_sdwt_prod__iexact=normalized_user_sdwt,
+            )
+            | Q(
+                keycloak_subject__isnull=True,
+                current_affiliation__affiliation__is_active=True,
+                current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt,
+            )
         )
     if normalized_department:
         queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__department__iexact=normalized_department
+            Q(
+                keycloak_subject__isnull=False,
+                affiliation_snapshot__department__iexact=normalized_department,
+            )
+            | Q(
+                keycloak_subject__isnull=True,
+                current_affiliation__affiliation__is_active=True,
+                current_affiliation__affiliation__department__iexact=normalized_department,
+            )
         )
     if normalized_contact_field in {"email", "knox_id"}:
         queryset = queryset.exclude(**{f"{normalized_contact_field}__isnull": True}).exclude(
@@ -1028,6 +1090,8 @@ def list_active_user_pool(
             | Q(sabun__icontains=normalized_search)
             | Q(knox_id__icontains=normalized_search)
             | Q(email__icontains=normalized_search)
+            | Q(affiliation_snapshot__user_sdwt_prod__icontains=normalized_search)
+            | Q(affiliation_snapshot__name__icontains=normalized_search)
             | Q(current_affiliation__affiliation__user_sdwt_prod__icontains=normalized_search)
         )
 
@@ -1051,6 +1115,11 @@ def list_active_user_pool(
         )
         if affiliation is not None and not affiliation.is_active:
             affiliation = None
+        snapshot = (
+            dict(getattr(user, "affiliation_snapshot", {}) or {})
+            if getattr(user, "keycloak_subject", None)
+            else {}
+        )
         display_name = (
             getattr(user, "username", None)
             or getattr(user, "username_en", None)
@@ -1070,9 +1139,16 @@ def list_active_user_pool(
                 "sabun": getattr(user, "sabun", None) or "",
                 "knoxId": getattr(user, "knox_id", None) or "",
                 "email": getattr(user, "email", None) or "",
-                "department": getattr(affiliation, "department", "") or "",
-                "line": getattr(affiliation, "line", "") or "",
-                "userSdwtProd": getattr(affiliation, "user_sdwt_prod", "") or "",
+                "department": snapshot.get("department")
+                or getattr(affiliation, "department", "")
+                or "",
+                "line": snapshot.get("line")
+                or getattr(affiliation, "line", "")
+                or "",
+                "userSdwtProd": snapshot.get("user_sdwt_prod")
+                or snapshot.get("name")
+                or getattr(affiliation, "user_sdwt_prod", "")
+                or "",
             }
         )
     if include_external_snapshots:
@@ -2660,9 +2736,26 @@ def list_line_sdwt_pairs() -> list[dict[str, str]]:
     # -----------------------------------------------------------------------------
     # 2) 응답 형식으로 변환
     # -----------------------------------------------------------------------------
-    return [
-        {"line_id": row["line"], "user_sdwt_prod": row["user_sdwt_prod"]}
+    normalized_pairs = {
+        (str(row["line"]), str(row["user_sdwt_prod"]))
         for row in pairs
+    }
+    User = get_user_model()
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if not isinstance(snapshot, dict):
+            continue
+        line = str(snapshot.get("line") or "").strip()
+        name = str(
+            snapshot.get("user_sdwt_prod") or snapshot.get("name") or ""
+        ).strip()
+        if line and name:
+            normalized_pairs.add((line, name))
+    return [
+        {"line_id": line, "user_sdwt_prod": name}
+        for line, name in sorted(normalized_pairs)
     ]
 
 
@@ -2868,3 +2961,14 @@ def get_affiliation_option_for_update_by_user_sdwt_prod(
     if len(rows) != 1:
         return None
     return rows[0]
+
+
+def list_active_users_for_keycloak_migration() -> list[Any]:
+    """Keycloak 이관 대상 활성 사용자를 안정적인 사번 순서로 반환합니다."""
+
+    return list(
+        get_user_model()
+        .objects.filter(is_active=True)
+        .select_related("current_affiliation__affiliation")
+        .order_by("sabun", "id")
+    )

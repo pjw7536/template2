@@ -17,7 +17,7 @@ Grist API key와 Webhook 마스터 secret은 브라우저 응답에 포함하지
 
 ## GET `/api/v1/work-hub/context`
 
-현재 사용자가 열 수 있는 활성 Grist document mapping을 반환합니다. 일반 사용자는 현재 소속만, manager와 superuser는 접근 가능한 mapping을 반환합니다.
+현재 사용자가 열 수 있는 활성 Grist document mapping을 반환합니다. 일반 사용자는 Keycloak 기본 소속만, `work-hub-admin`은 모든 활성 mapping을 반환합니다.
 
 ```json
 {
@@ -42,7 +42,7 @@ Grist API key와 Webhook 마스터 secret은 브라우저 응답에 포함하지
 | `disabled` | `WORK_HUB_ENABLED=0` |
 | `unavailable` | 현재 허용 소속에 활성 Grist mapping이 없음 |
 | `single` | 자동 이동할 mapping 1개 |
-| `multiple` | manager가 선택할 mapping 여러 개 |
+| `multiple` | `work-hub-admin`이 선택할 mapping 여러 개 |
 
 주요 오류는 미인증 401, Portal 또는 `work-hub` scope 미승인 403입니다. Grist가 중지되어도 이 endpoint와 기존 Portal API는 동작하며, 실제 document 이동만 실패합니다.
 

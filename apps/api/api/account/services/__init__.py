@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from ..models import SYSTEM_ACCESS_SCOPE_KEYS
+
 from .access import (
     AFFILIATION_CAPABILITY_APPROVE,
     AFFILIATION_CAPABILITY_DELETE,
@@ -97,6 +99,7 @@ __all__ = [
     "AFFILIATION_CAPABILITY_MANAGE_ACCESS",
     "AFFILIATION_CAPABILITY_READ",
     "AFFILIATION_CAPABILITY_WRITE",
+    "SYSTEM_ACCESS_SCOPE_KEYS",
     "approve_pending_access_requests",
     "approve_affiliation_change",
     "auto_approve_affiliation_from_snapshot",

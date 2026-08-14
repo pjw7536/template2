@@ -248,6 +248,7 @@ GRIST_API_KEY = env("GRIST_API_KEY", "")
 GRIST_API_KEY_FILE = env("GRIST_API_KEY_FILE", "")
 GRIST_PUBLIC_URL = env("GRIST_PUBLIC_URL", "")
 GRIST_ADMIN_EMAIL = env("GRIST_ADMIN_EMAIL", "")
+GRIST_DEV_KEYCLOAK_GROUP_ID = env("GRIST_DEV_KEYCLOAK_GROUP_ID", "")
 GRIST_ORG = env("GRIST_ORG", "work-hub")
 GRIST_ALLOWED_LAUNCH_HOSTS = env_list("GRIST_ALLOWED_LAUNCH_HOSTS", "localhost")
 GRIST_WEBHOOK_CALLBACK_URL = env("GRIST_WEBHOOK_CALLBACK_URL", "")
@@ -267,6 +268,10 @@ GRIST_DEV_USER_SDWT_PROD = env("GRIST_DEV_USER_SDWT_PROD", "DEV_ALPHA")
 L3_SPIDER_DATA_ROOT = env("L3_SPIDER_DATA_ROOT", "/data/l3_spider/daily_anomaly")
 L3_SPIDER_INDEX_SOURCE = (
     str(env("L3_SPIDER_INDEX_SOURCE", "postgres") or "postgres").strip().lower()
+)
+WORK_HUB_KEYCLOAK_RECONCILE_INTERVAL_SECONDS = min(
+    300,
+    max(30, env_int("WORK_HUB_KEYCLOAK_RECONCILE_INTERVAL_SECONDS", 300)),
 )
 if L3_SPIDER_INDEX_SOURCE not in {"postgres", "sqlite_mock"}:
     raise ImproperlyConfigured(
@@ -540,21 +545,49 @@ SESSION_COOKIE_AGE = env_int("SESSION_COOKIE_AGE", 86400) or 86400
 
 
 # ==========================
-# OIDC / ADFS 프로바이더 설정
+# Keycloak OIDC 프로바이더 설정
 # ==========================
-ADFS_AUTH_URL = env("ADFS_AUTH_URL", "https://adfs.example.com/adfs/oauth2/authorize/")
-ADFS_LOGOUT_URL = env("ADFS_LOGOUT_URL", "https://adfs.example.com/adfs/oauth2/logout/")
+KEYCLOAK_PUBLIC_URL = env("KEYCLOAK_PUBLIC_URL", "")
+KEYCLOAK_INTERNAL_URL = env("KEYCLOAK_INTERNAL_URL", KEYCLOAK_PUBLIC_URL)
+KEYCLOAK_REALM = env("KEYCLOAK_REALM", "portal")
+KEYCLOAK_CLIENT_SECRET = env("KEYCLOAK_CLIENT_SECRET", "")
+KEYCLOAK_ADMIN_CLIENT_ID = env("KEYCLOAK_ADMIN_CLIENT_ID", "portal-admin-reader")
+KEYCLOAK_ADMIN_CLIENT_SECRET = env("KEYCLOAK_ADMIN_CLIENT_SECRET", "")
+KEYCLOAK_MIGRATION_CLIENT_ID = env("KEYCLOAK_MIGRATION_CLIENT_ID", "portal-migration")
+KEYCLOAK_MIGRATION_CLIENT_SECRET = env("KEYCLOAK_MIGRATION_CLIENT_SECRET", "")
+KEYCLOAK_CONNECT_TIMEOUT = env_float("KEYCLOAK_CONNECT_TIMEOUT", 3.0)
+KEYCLOAK_READ_TIMEOUT = env_float("KEYCLOAK_READ_TIMEOUT", 10.0)
+KEYCLOAK_JWKS_CACHE_SECONDS = env_int("KEYCLOAK_JWKS_CACHE_SECONDS", 300)
+KEYCLOAK_ACL_FAIL_CLOSED_SECONDS = env_int("KEYCLOAK_ACL_FAIL_CLOSED_SECONDS", 300)
+KEYCLOAK_AUTH_URL = env(
+    "KEYCLOAK_AUTH_URL",
+    f"{KEYCLOAK_PUBLIC_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/auth",
+)
+KEYCLOAK_TOKEN_URL = env(
+    "KEYCLOAK_TOKEN_URL",
+    f"{KEYCLOAK_INTERNAL_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token",
+)
+KEYCLOAK_JWKS_URL = env(
+    "KEYCLOAK_JWKS_URL",
+    f"{KEYCLOAK_INTERNAL_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs",
+)
+KEYCLOAK_LOGOUT_URL = env(
+    "KEYCLOAK_LOGOUT_URL",
+    f"{KEYCLOAK_PUBLIC_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout",
+)
+ADFS_AUTH_URL = KEYCLOAK_AUTH_URL
+ADFS_LOGOUT_URL = KEYCLOAK_LOGOUT_URL
 OIDC_CLIENT_ID = (
     env("OIDC_CLIENT_ID")
     or env("ADFS_CLIENT_ID")
     or env("GOOGLE_CLIENT_ID")
     or ""
 )
-OIDC_ISSUER = env("OIDC_ISSUER") or env("ADFS_ISSUER") or "http://localhost/api/adfs"
+OIDC_ISSUER = env("OIDC_ISSUER") or f"{KEYCLOAK_PUBLIC_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}"
 OIDC_REDIRECT_URI = (
     env("OIDC_REDIRECT_URI")
     or env("ADFS_REDIRECT_URI")
-    or "http://localhost/auth/google/callback/"
+    or "http://localhost/auth/keycloak/callback/"
 )
 ADFS_CER_PATH = env("ADFS_CER_PATH", str(BASE_DIR / "dummy_adfs_public.cer"))
 
@@ -563,7 +596,8 @@ OIDC_PROVIDER_CONFIGURED = bool(
     ADFS_AUTH_URL
     and OIDC_CLIENT_ID
     and OIDC_ISSUER
-    and ADFS_CER_PATH
+    and KEYCLOAK_CLIENT_SECRET
+    and KEYCLOAK_JWKS_URL
 )
 
 

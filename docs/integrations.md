@@ -46,7 +46,7 @@
 - `ADFS_CER_PATH`
 - `ALLOWED_REDIRECT_HOSTS`
 
-로컬 개발에서는 `http://localhost:9102`의 dummy ADFS를 사용합니다.
+로컬 인증은 `http://localhost:8180`의 Keycloak 26.7.1을 사용합니다. `http://localhost:9102` 서비스는 RAG/LLM/Mail/Jira dummy만 제공합니다.
 
 ## RAG
 

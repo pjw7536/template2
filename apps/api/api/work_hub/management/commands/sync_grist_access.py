@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand, CommandError
 
 from api.work_hub.selectors import (
-    get_access_reconciliation_document_scope_by_user_sdwt_prod,
+    get_document_scope_by_keycloak_group_id,
     list_access_reconciliation_document_scopes,
 )
 from api.work_hub.services import sync_document_access_scope
@@ -18,7 +18,7 @@ class Command(BaseCommand):
         """대상 소속과 dry-run 옵션을 등록합니다."""
 
         target = parser.add_mutually_exclusive_group(required=True)
-        target.add_argument("--user-sdwt-prod")
+        target.add_argument("--keycloak-group-id")
         target.add_argument("--all", action="store_true")
         parser.add_argument("--dry-run", action="store_true")
 
@@ -28,8 +28,8 @@ class Command(BaseCommand):
         if options["all"]:
             scopes = list(list_access_reconciliation_document_scopes())
         else:
-            scope = get_access_reconciliation_document_scope_by_user_sdwt_prod(
-                user_sdwt_prod=options["user_sdwt_prod"],
+            scope = get_document_scope_by_keycloak_group_id(
+                group_id=options["keycloak_group_id"],
             )
             scopes = [scope] if scope else []
         if not scopes:
@@ -42,7 +42,7 @@ class Command(BaseCommand):
             )
             mode = "DRY-RUN" if options["dry_run"] else "APPLIED"
             self.stdout.write(
-                f"{mode} {scope.affiliation.user_sdwt_prod}: "
+                f"{mode} {scope.keycloak_group_id}: "
                 f"added={result['added']} updated={result['updated']} "
                 f"removed={result['removed']} unchanged={result['unchanged']}"
             )

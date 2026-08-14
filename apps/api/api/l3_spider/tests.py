@@ -23,7 +23,6 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 import pandas as pd
 
-from api.account import services as account_services
 
 from . import selectors, services
 from .models import (
@@ -1334,25 +1333,12 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
             sabun="DEV-OPTION-DEVELOPER",
             password="pw",
         )
-        actor = user_model.objects.create_superuser(
-            sabun="DEV-OPTION-SUPERUSER",
-            password="pw",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=self.developer.id,
-            scope_key="portal",
-            action="grant",
-            reason="L3 Spider 개발자 옵션 테스트 Portal 권한 부여",
-            role="user",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=self.developer.id,
-            scope_key="l3-spider",
-            action="grant",
-            reason="L3 Spider 개발자 옵션 테스트 관리자 권한 부여",
-            role="admin",
+        self.developer.keycloak_subject = "l3-spider-admin-subject"
+        self.developer.keycloak_client_roles = {
+            "portal": ["portal-user", "l3-spider-admin"],
+        }
+        self.developer.save(
+            update_fields=["keycloak_subject", "keycloak_client_roles"]
         )
 
     def test_user_without_permission_cannot_read_unmapped_line_rules(self) -> None:

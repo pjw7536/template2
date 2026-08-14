@@ -45,7 +45,7 @@ Health는 인증 없이 서버 상태를 반환합니다.
 - Health 실패는 Django process, DB 연결 여부, reverse proxy routing을 순서대로 확인합니다.
 - Activity가 비어 있으면 middleware 적용 여부와 작업별 metadata 주입 여부를 확인합니다.
 - 외부 사용량 동기화는 `ExternalAppUsageSyncState.updated_at`을 마지막 실제 시도로 사용하며,
-  일반 사용자는 성공·실패 후 6시간 제한을 적용하고 `access-stats admin`과 슈퍼유저는 제한을 우회합니다.
+  일반 사용자는 성공·실패 후 6시간 제한을 적용하고 Keycloak `access-stats-admin`만 제한을 우회합니다.
 
 ## 관련 API
 

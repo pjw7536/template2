@@ -8,11 +8,12 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from api.account import selectors as account_selectors
-
 from ..models import GristDocumentScope
-from ..selectors import get_document_scope_by_affiliation_id
-from .access import enqueue_access_sync_for_affiliations
+from ..selectors import (
+    get_document_scope_by_keycloak_group_id,
+    get_legacy_document_scope_by_affiliation_name,
+)
+from .access import enqueue_access_sync_for_group_ids
 
 
 def _validate_launch_url(launch_url: str) -> str:
@@ -38,7 +39,10 @@ def _validate_launch_url(launch_url: str) -> str:
 @transaction.atomic
 def configure_document_scope(
     *,
-    user_sdwt_prod: str,
+    keycloak_group_id: str,
+    affiliation_name: str,
+    department: str = "",
+    line: str = "",
     workspace_id: int,
     doc_id: str,
     equipment_table_id: str,
@@ -54,17 +58,26 @@ def configure_document_scope(
     범위에서 갱신할 수 있습니다.
     """
 
-    affiliation = account_selectors.get_active_affiliation_by_user_sdwt_prod(
-        user_sdwt_prod=user_sdwt_prod,
-    )
-    if affiliation is None:
-        raise ValidationError("활성 Affiliation을 찾을 수 없습니다.")
+    normalized_group_id = str(keycloak_group_id or "").strip()
+    normalized_affiliation_name = str(affiliation_name or "").strip()
+    if not normalized_group_id or not normalized_affiliation_name:
+        raise ValidationError("Keycloak group ID와 표시용 소속 이름이 필요합니다.")
     normalized_doc_id = str(doc_id or "").strip()
     if not normalized_doc_id:
         raise ValidationError("doc_id가 필요합니다.")
     normalized_url = _validate_launch_url(launch_url)
-    existing = get_document_scope_by_affiliation_id(affiliation_id=affiliation.id)
+    existing = get_document_scope_by_keycloak_group_id(group_id=normalized_group_id)
+    if existing is None:
+        existing = get_legacy_document_scope_by_affiliation_name(
+            affiliation_name=normalized_affiliation_name
+        )
     values = {
+        "affiliation_snapshot": {
+            "name": normalized_affiliation_name,
+            "user_sdwt_prod": normalized_affiliation_name,
+            "department": str(department or "").strip(),
+            "line": str(line or "").strip(),
+        },
         "workspace_id": workspace_id,
         "doc_id": normalized_doc_id,
         "equipment_table_id": str(equipment_table_id or "Equipment").strip(),
@@ -76,7 +89,7 @@ def configure_document_scope(
     }
     if existing is None:
         document_scope = GristDocumentScope.objects.create(
-            affiliation=affiliation,
+            keycloak_group_id=normalized_group_id,
             **values,
         )
         created = True
@@ -86,14 +99,17 @@ def configure_document_scope(
                 "기존 Grist mapping의 doc_id는 변경할 수 없습니다. "
                 "새 소속 mapping으로 등록해주세요."
             )
+        existing.keycloak_group_id = normalized_group_id
         for field_name, value in values.items():
             setattr(existing, field_name, value)
-        existing.save(update_fields=[*values.keys(), "updated_at"])
+        existing.save(
+            update_fields=["keycloak_group_id", *values.keys(), "updated_at"]
+        )
         document_scope = existing
         created = False
 
-    enqueue_access_sync_for_affiliations(
-        affiliation_ids=[affiliation.id],
+    enqueue_access_sync_for_group_ids(
+        group_ids=[normalized_group_id],
         reason="document_scope_configured",
     )
     return document_scope, created

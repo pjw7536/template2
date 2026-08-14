@@ -13,6 +13,7 @@ from typing import Any
 from .. import selectors
 from ..models import (
     ACCESS_SCOPE_PORTAL,
+    SYSTEM_ACCESS_SCOPE_KEYS,
     AccessPolicyRule,
     AccessRole,
     AccessScope,
@@ -22,6 +23,50 @@ from ..models import (
 
 
 _SCOPE_ROLE_RESOLVER_CACHE_ATTRIBUTE = "_account_scope_role_resolvers"
+
+
+def _uses_keycloak(*, user: Any) -> bool:
+    """사용자가 Keycloak shadow 권한을 사용하는지 반환합니다."""
+
+    return bool(getattr(user, "keycloak_subject", None))
+
+
+def _keycloak_roles(*, user: Any) -> set[str]:
+    """모든 Keycloak client role을 하나의 집합으로 평탄화합니다."""
+
+    values = getattr(user, "keycloak_client_roles", {}) or {}
+    return {
+        str(role)
+        for roles in values.values()
+        if isinstance(roles, list)
+        for role in roles
+    }
+
+
+def _keycloak_access_payload(*, user: Any, scope_key: str) -> dict[str, object]:
+    """Keycloak role을 기존 접근 payload 계약으로 변환합니다."""
+
+    roles = _keycloak_roles(user=user)
+    portal_admin = "portal-admin" in roles
+    portal_allowed = portal_admin or "portal-user" in roles
+    if scope_key == ACCESS_SCOPE_PORTAL:
+        allowed = portal_allowed
+        role = AccessRole.ADMIN if portal_admin else AccessRole.USER if allowed else None
+    else:
+        is_admin = f"{scope_key}-admin" in roles
+        allowed = portal_allowed and (is_admin or f"{scope_key}-user" in roles)
+        role = AccessRole.ADMIN if is_admin else AccessRole.USER if allowed else None
+    return {
+        "allowed": allowed,
+        "scope": scope_key,
+        "scopeType": "portal" if scope_key == ACCESS_SCOPE_PORTAL else "app",
+        "reason": "keycloak_role" if allowed else "keycloak_role_missing",
+        "role": role,
+        "effectiveStatus": "allowed" if allowed else "denied",
+        "source": "keycloak_client_role",
+        "canRequest": False,
+        "blockedByPortal": bool(scope_key != ACCESS_SCOPE_PORTAL and not portal_allowed),
+    }
 
 
 def _requires_portal_access(*, scope: AccessScope) -> bool:
@@ -131,8 +176,14 @@ def has_scope_role(
 
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False):
-        return True
+    if _uses_keycloak(user=user):
+        normalized_role = _normalize_access_role(required_role)
+        payload = _keycloak_access_payload(user=user, scope_key=scope_key)
+        if not payload["allowed"] or normalized_role is None:
+            return False
+        if normalized_role == AccessRole.USER:
+            return payload["role"] in {AccessRole.USER, AccessRole.ADMIN}
+        return payload["role"] == normalized_role
     normalized_role = _normalize_access_role(required_role)
     if normalized_role is None:
         return False
@@ -154,6 +205,9 @@ def get_access_payload(
     request: Any | None = None,
 ) -> dict[str, object]:
     """현재 사용자의 scope 접근 상태를 Portal 우선순위와 함께 반환합니다."""
+
+    if _uses_keycloak(user=user):
+        return _keycloak_access_payload(user=user, scope_key=scope_key)
 
     if request is not None:
         resolver = _get_scope_role_resolver(user=user, request=request)
@@ -195,6 +249,12 @@ def get_scope_access_payloads(
     user: Any,
 ) -> dict[str, dict[str, object]]:
     """현재 사용자에게 노출할 scope의 최종 접근 상태를 한 map으로 반환합니다."""
+
+    if _uses_keycloak(user=user):
+        return {
+            scope_key: _keycloak_access_payload(user=user, scope_key=scope_key)
+            for scope_key in SYSTEM_ACCESS_SCOPE_KEYS
+        }
 
     resolver = _ScopeRoleResolver(user=user)
     include_inactive_scopes = _has_access_bypass(user=user)
@@ -708,13 +768,9 @@ def _get_user_department(*, user: Any) -> str:
 
 
 def _has_access_bypass(*, user: Any) -> bool:
-    """사용자가 portal/app 접근 제한을 우회할 수 있는지 확인합니다."""
+    """Django superuser 기반 권한 우회를 비활성화합니다."""
 
-    return bool(
-        user
-        and getattr(user, "is_authenticated", False)
-        and getattr(user, "is_superuser", False)
-    )
+    return False
 
 
 def _normalize_access_role(role: str | None) -> str | None:

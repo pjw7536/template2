@@ -46,7 +46,7 @@
 | Feature | 역할 | 주요 route |
 | --- | --- | --- |
 | `auth` | 로그인, 온보딩, 소속 재확인 | `/login` |
-| `account` | 계정, 소속, 멤버/권한 | `/settings/account`, `/settings/members` |
+| `account` | Keycloak shadow 계정과 읽기 전용 소속/역할 | `/settings/account` |
 | `emails` | 메일함과 메일 처리 | `/emails/inbox`, `/emails/sent`, `/emails/members` |
 | `assistant` | RAG 기반 채팅 | `/assistant` |
 | `line-dashboard` | Drone SOP/라인 대시보드 | `/ESOP_Dashboard/**` |

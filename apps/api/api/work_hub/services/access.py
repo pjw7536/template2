@@ -10,7 +10,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from api.account import services as account_services
+from api.auth.services import KeycloakAdminClient, KeycloakError
 
 from .. import selectors
 from ..models import GristAccessSyncOutbox, GristDocumentScope
@@ -33,16 +33,38 @@ WORK_HUB_SCOPE_KEY = "work-hub"
 
 def _desired_grist_users(
     document_scope: GristDocumentScope,
+    *,
+    keycloak_client: KeycloakAdminClient | None,
 ) -> dict[str, dict[str, str]]:
-    """Portal 유효 역할을 email별 Grist document 역할로 변환합니다."""
+    """Keycloak group/client role을 email별 Grist document 역할로 변환합니다."""
 
-    if not document_scope.is_active or not document_scope.affiliation.is_active:
+    if not document_scope.is_active:
         return {}
-    memberships = account_services.list_effective_affiliation_member_roles_for_scope(
-        user_sdwt_prod=document_scope.affiliation.user_sdwt_prod,
-        scope_key=WORK_HUB_SCOPE_KEY,
-    )
-    return {
+    try:
+        keycloak = keycloak_client or KeycloakAdminClient.from_settings()
+        memberships = keycloak.get_affiliation_members(
+            group_id=document_scope.keycloak_group_id
+        )
+        admins = keycloak.get_client_role_members(
+            client_id=settings.OIDC_CLIENT_ID,
+            role="work-hub-admin",
+        )
+    except KeycloakError:
+        grace_seconds = int(
+            getattr(settings, "KEYCLOAK_ACL_FAIL_CLOSED_SECONDS", 300) or 300
+        )
+        last_success = document_scope.keycloak_last_success_at
+        if last_success and last_success >= timezone.now() - timedelta(seconds=grace_seconds):
+            raise
+        logger.error(
+            "Keycloak 장기 조회 실패로 Grist ACL을 fail-closed 처리합니다: scope_id=%s",
+            document_scope.id,
+        )
+        return {}
+
+    document_scope.keycloak_last_success_at = timezone.now()
+    document_scope.save(update_fields=["keycloak_last_success_at", "updated_at"])
+    desired = {
         str(membership["email"]).casefold(): {
             "email": str(membership["email"]),
             "access": PORTAL_TO_GRIST_ROLE[str(membership["role"])],
@@ -52,13 +74,11 @@ def _desired_grist_users(
         and str(membership.get("email") or "").strip()
         and str(membership["email"]).strip().casefold() not in GRIST_PUBLIC_EMAILS
     }
-
-
-def _configured_admin_emails() -> set[str]:
-    """Grist document owner로 보존할 운영 관리자 email을 반환합니다."""
-
-    email = str(getattr(settings, "GRIST_ADMIN_EMAIL", "") or "").strip().casefold()
-    return {email} if email and email not in GRIST_PUBLIC_EMAILS else set()
+    for admin in admins:
+        email = str(admin.get("email") or "").strip()
+        if email and email.casefold() not in GRIST_PUBLIC_EMAILS:
+            desired[email.casefold()] = {"email": email, "access": "owners"}
+    return desired
 
 
 def sync_document_access_scope(
@@ -66,13 +86,15 @@ def sync_document_access_scope(
     document_scope: GristDocumentScope,
     dry_run: bool = False,
     client: GristClient | None = None,
+    keycloak_client: KeycloakAdminClient | None = None,
 ) -> dict[str, int]:
     """Portal의 최종 사용자·역할 집합과 Grist document ACL을 동일하게 맞춥니다."""
 
     grist = client or GristClient.from_settings()
-    desired = _desired_grist_users(document_scope)
-    for email in _configured_admin_emails():
-        desired[email] = {"email": email, "access": "owners"}
+    desired = _desired_grist_users(
+        document_scope,
+        keycloak_client=keycloak_client,
+    )
     access = grist.get_document_access(doc_id=document_scope.doc_id)
     current_users = access.get("users", []) if isinstance(access, dict) else []
     current = {
@@ -161,14 +183,58 @@ def enqueue_access_sync_for_affiliations(
     return queued
 
 
+@transaction.atomic
+def enqueue_access_sync_for_group_ids(
+    *,
+    group_ids: Iterable[str],
+    reason: str = "keycloak_access_changed",
+) -> int:
+    """Keycloak parent group ID에 연결된 document ACL 작업을 멱등 적재합니다."""
+
+    scopes = selectors.list_active_document_scopes_for_keycloak_group_ids(
+        group_ids=group_ids
+    )
+    normalized_reason = str(reason or "keycloak_access_changed").strip()[:64]
+    now = timezone.now()
+    queued = 0
+    for scope in scopes:
+        item = selectors.get_reusable_access_sync_outbox(document_scope=scope)
+        if item is None:
+            GristAccessSyncOutbox.objects.create(
+                document_scope=scope,
+                reason=normalized_reason,
+                available_at=now,
+            )
+        else:
+            item.reason = normalized_reason
+            item.status = GristAccessSyncOutbox.Status.PENDING
+            item.retry_count = 0
+            item.available_at = now
+            item.last_error = ""
+            item.processed_at = None
+            item.save(
+                update_fields=[
+                    "reason",
+                    "status",
+                    "retry_count",
+                    "available_at",
+                    "last_error",
+                    "processed_at",
+                    "updated_at",
+                ]
+            )
+        queued += 1
+    return queued
+
+
 def enqueue_access_sync_for_all_affiliations(
     *,
     reason: str = "portal_access_policy_changed",
 ) -> int:
     """활성 Work Hub document 전체에 desired-state 동기화를 적재합니다."""
 
-    return enqueue_access_sync_for_affiliations(
-        affiliation_ids=selectors.list_enabled_document_scope_affiliation_ids(),
+    return enqueue_access_sync_for_group_ids(
+        group_ids=selectors.list_enabled_document_scope_group_ids(),
         reason=reason,
     )
 
@@ -189,9 +255,17 @@ def reconcile_all_document_access_scopes(
         logger.exception("Grist 전체 접근 권한 동기화 client 준비 실패")
         result["failed"] = len(scopes)
         return result
+    try:
+        keycloak: KeycloakAdminClient | None = KeycloakAdminClient.from_settings()
+    except KeycloakError:
+        keycloak = None
     for scope in scopes:
         try:
-            sync_document_access_scope(document_scope=scope, client=grist)
+            sync_document_access_scope(
+                document_scope=scope,
+                client=grist,
+                keycloak_client=keycloak,
+            )
         except Exception:
             logger.exception(
                 "Grist 전체 접근 권한 동기화 실패: document_scope_id=%s",

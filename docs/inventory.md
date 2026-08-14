@@ -4,12 +4,12 @@
 
 ## 백엔드 API route
 
-모든 업무 API는 `apps/api/api/urls.py`에서 `/api/v1/` 아래로 include됩니다. Auth callback만 `apps/api/api/auth/callback_urls.py`를 통해 `/auth/google/callback/`을 사용합니다.
+모든 업무 API는 `apps/api/api/urls.py`에서 `/api/v1/` 아래로 include됩니다. Auth callback만 `apps/api/api/auth/callback_urls.py`를 통해 `/auth/keycloak/callback/`을 사용합니다.
 
 | 모듈 | Prefix | 실제 라우팅 파일 | 주요 endpoint |
 | --- | --- | --- | --- |
 | Auth | `/api/v1/auth/` | `apps/api/api/auth/urls.py` | `login`, `logout`, `me`, `config`, empty redirect |
-| Account | `/api/v1/account/` | `apps/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/reconfirm`, `access/request`, `access/users`, `access/matrix`, `access/users/<user_id>/decision`, `access/users/<user_id>/data-scope`, `access/policy-rules`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `users`, `line-sdwt-options` |
+| Account | `/api/v1/account/` | `apps/api/api/account/urls.py` | 읽기 전용 `users`, `line-sdwt-options` |
 | Emails | `/api/v1/emails/` | `apps/api/api/emails/urls.py` | `inbox/`, `sent/`, `mailboxes/`, `mailboxes/summary/`, `mailboxes/members/`, `unassigned/`, `unassigned/claim/`, `ingest/`, `outbox/process/`, `assets/ocr/claim/`, `assets/ocr/update/`, `bulk-delete/`, `move/`, `<email_id>/`, `<email_id>/assets/<sequence>/`, `<email_id>/html/` |
 | Data Movement | `/api/v1/data-movement/` | `apps/api/api/data_movement/urls.py` | `<table_name>/load/` |
 | Assistant | `/api/v1/assistant/` | `apps/api/api/assistant/urls.py` | `turns/stream`, `rag-indexes`, `conversations`, `conversations/<uuid>`, `conversations/<uuid>/messages`, `conversations/<uuid>/generate-title` |
@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | Home | `/` | `apps/web/src/features/home/routes.jsx` | `apps/web/src/features/home/index.js` |
 | Auth | `/login` | `apps/web/src/features/auth/routes.jsx` | `apps/web/src/features/auth/index.js` |
-| Account | `/settings`, `/settings/account`, `/settings/members`, `/settings/permissions` | `apps/web/src/features/account/routes.jsx` | `apps/web/src/features/account/index.js` |
+| Account | `/settings`, `/settings/account` | `apps/web/src/features/account/routes.jsx` | `apps/web/src/features/account/index.js` |
 | Emails | `/emails/inbox`, `/emails/sent`, `/emails/members` | `apps/web/src/features/emails/routes.jsx` | `apps/web/src/features/emails/index.js` |
 | Assistant | `/assistant` | `apps/web/src/features/assistant/routes.jsx` | `apps/web/src/features/assistant/index.js` |
 | Line Dashboard | `/ESOP_Dashboard`, `/ESOP_Dashboard/status/:lineId`, `/ESOP_Dashboard/tip-status`, `/ESOP_Dashboard/tip-status/:lineId`, `/ESOP_Dashboard/history/:lineId`, `/ESOP_Dashboard/settings/:lineId`, `/ESOP_Dashboard/settings/notification/:lineId`, `/ESOP_Dashboard/settings/recipients/:lineId`, `/ESOP_Dashboard/overview`, `/ESOP_Dashboard/admin/drone-targets` | `apps/web/src/features/line-dashboard/routes.jsx` | `apps/web/src/features/line-dashboard/index.js` |
@@ -46,6 +46,8 @@
 | VOC | `/voc` | `apps/web/src/features/voc/routes.jsx` | `apps/web/src/features/voc/index.js` |
 | Teamstaff | `/teamstaff` | `apps/web/src/features/teamstaff/routes.jsx` | `apps/web/src/features/teamstaff/index.js` |
 | Errors | `*` | `apps/web/src/features/errors/routes.jsx` | `apps/web/src/features/errors/index.js` |
+
+제거된 Account 관리 route `/settings/members`, `/settings/permissions`는 Keycloak 관리 콘솔로 대체되며 frontend router에 등록하지 않습니다.
 
 ## 주요 DB 모델
 
@@ -76,6 +78,8 @@
 | Command | 위치 | 목적 |
 | --- | --- | --- |
 | `check_access_permission_integrity` | `apps/api/api/account/management/commands/check_access_permission_integrity.py` | 필수 `--phase` 기준 migration 전·후 접근 권한 정합성 점검 |
+| `migrate_legacy_access_to_keycloak` | `apps/api/api/account/management/commands/migrate_legacy_access_to_keycloak.py` | 현재 유효한 기본 소속과 Portal·앱 역할의 dry-run/apply/비교 이관 |
+| `audit_keycloak_cutover` | `apps/api/api/account/management/commands/audit_keycloak_cutover.py` | Account 테이블 row count/checksum과 DB backup·realm export·복원 시험 증적 검증 |
 | `backfill_assistant_run_access` | `apps/api/api/assistant/management/commands/backfill_assistant_run_access.py` | legacy Assistant Run·메시지·요약·제목의 Profile과 권한 provenance를 batch 분류·보강 |
 | `ensure_dev_database` | `apps/api/api/management/commands/ensure_dev_database.py` | dev 환경에서 Django 기본 DB와 필수 PostgreSQL extension 보장 |
 | `process_email_outbox` | `apps/api/api/emails/management/commands/process_email_outbox.py` | pending `EmailOutbox`를 RAG insert/delete 호출로 처리 |
@@ -109,7 +113,7 @@
 | 파일 | 역할 |
 | --- | --- |
 | `env/api.common.env` | API 공통 기본값, DB, auth, POP3, Drone, RAG, LLM, Mail API 기본 설정 |
-| `env/api.dev.env` | 로컬 dummy ADFS/RAG/LLM/Mail/Jira, dev 자동 소속, dev 자동 seed 설정 |
+| `env/api.dev.env` | 로컬 Keycloak과 dummy RAG/LLM/Mail/Jira, dev seed 설정 |
 | `env/api.oidc.dev.env` | 실제 OIDC 개발 연결용 API 설정 |
 | `env/api.prod.env` | 운영 배포용 API 설정 템플릿 |
 | `env/airflow.common.env` | Airflow DAG API trigger와 실패 callback 설정 |
@@ -122,4 +126,4 @@
 | `env/work-hub.oidc.env` | OIDC(stage) Portal의 원격 Grist URL, 관리자와 기능 설정 |
 | `env/work-hub.prod.env` | 운영 Portal의 원격 Grist URL, 관리자와 기능 설정 |
 
-주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `ADFS_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `GRIST_*`, `WORK_HUB_ENABLED`, `VITE_*`입니다.
+주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `KEYCLOAK_*`, `OIDC_*`, 전환기 호환용 `ADFS_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `GRIST_*`, `WORK_HUB_ENABLED`, `VITE_*`입니다.

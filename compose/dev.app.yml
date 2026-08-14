@@ -71,6 +71,14 @@ services:
       - ../env/minio.env
     environment:
       WORK_HUB_ENABLED: ${WORK_HUB_ENABLED:-0}
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-portal}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-portal-local-secret}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-portal-admin-reader}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-portal-admin-reader-local-secret}
+      KEYCLOAK_MIGRATION_CLIENT_ID: ${KEYCLOAK_MIGRATION_CLIENT_ID:-portal-migration}
+      KEYCLOAK_MIGRATION_CLIENT_SECRET: ${KEYCLOAK_MIGRATION_CLIENT_SECRET:-portal-migration-local-secret}
       GRIST_LOGOUT_ENABLED: ${GRIST_LOGOUT_ENABLED:-0}
       GRIST_API_URL: ${GRIST_API_URL:-http://grist:8484/o/work-hub}
       GRIST_API_KEY: ${GRIST_API_KEY:-}
@@ -98,6 +106,8 @@ services:
       airflow-postgres:
         condition: service_healthy
       adfs:
+        condition: service_started
+      keycloak:
         condition: service_started
       minio:
         condition: service_started

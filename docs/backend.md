@@ -8,7 +8,7 @@
 | --- | --- |
 | Framework | Django 5.1, Django REST Framework |
 | 기본 API prefix | `/api/v1/` |
-| Auth callback 예외 | `/auth/google/callback/` |
+| Auth callback 예외 | `/auth/keycloak/callback/` |
 | 기본 DB | `DJANGO_DB_*` PostgreSQL |
 | 로컬 실행 | `make dev-app-up` |
 
@@ -68,7 +68,7 @@
 | 방식 | 사용 위치 | 확인 값 |
 | --- | --- | --- |
 | Django session | 일반 브라우저 API | 로그인 session cookie |
-| OIDC callback | `/auth/google/callback/` | provider `form_post` payload |
+| OIDC callback | `/auth/keycloak/callback/` | Keycloak authorization `code`, `state` |
 | Airflow Bearer token | 수집/동기화 trigger | `Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>` |
 | Internal OCR token | OCR worker | `X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>` |
 | 공개/조건부 공개 | health, 일부 조회성 API | endpoint별 문서 확인 |

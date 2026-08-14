@@ -15,7 +15,7 @@
 
 | App | 모델 | 목적 |
 | --- | --- | --- |
-| Account | `User` | 로그인 사용자와 OIDC claim 기반 사용자 정보 |
+| Account | `User` | Keycloak subject, 기본 group ID, 표시용 소속과 role claim을 보관하는 shadow 사용자 |
 | Account | `Affiliation` | line, SDWT, product 기준 소속 단위 |
 | Account | `UserCurrentAffiliation` | 사용자의 현재 소속 |
 | Account | `UserSdwtProdAccess` | 접근 가능한 SDWT/product 권한 |
@@ -51,8 +51,8 @@
 | AppStore | `AppStoreCommentLike` | 댓글 좋아요 |
 | VOC | `VocPost` | VOC 게시글 |
 | VOC | `VocReply` | VOC 답변 |
-| Work Hub | `GristDocumentScope` | Affiliation과 Grist workspace/document/table ID 연결 |
-| Work Hub | `GristAccessSyncOutbox` | Portal 역할을 Grist ACL에 재시도 가능하게 투영 |
+| Work Hub | `GristDocumentScope` | Keycloak parent group ID·표시용 소속 snapshot과 Grist workspace/document/table ID 연결 |
+| Work Hub | `GristAccessSyncOutbox` | Keycloak group/client role을 Grist ACL에 재시도 가능하게 투영 |
 | Work Hub | `GristWebhookReceipt` | 비동기 처리용 검증 payload, Webhook hash, 임대·재시도 상태 보관 |
 | Work Hub | `GristTaskLink` | WorkLog record와 자동 생성 Task record 멱등 연결 |
 
@@ -68,7 +68,7 @@
 
 ## 주요 관계
 
-- `User`는 현재 소속(`UserCurrentAffiliation`)과 접근 권한(`UserSdwtProdAccess`)을 통해 업무 데이터 접근 범위를 얻습니다.
+- Keycloak 전환 사용자는 shadow `User`의 client role과 기본 소속 snapshot으로 접근 범위를 얻습니다. legacy Account 권한 테이블은 cutover 이관·비교와 rollback 증적을 위해 최종 검증까지 읽기 전용으로 유지하고, 검증 완료 직후 별도 irreversible migration으로 제거합니다.
 - `AssistantConversation`은 `User`에 속하고 `current_message`에서 parent를 따라 현재 분기를 결정하며 `pinned_at`, `archived_at`을 보관합니다. `AssistantConversationSummary`는 `(conversation, context_key)`별 rolling summary와 포함 메시지 위치를 보관합니다.
 - `AssistantMessage`는 대화방 삭제 시 cascade 삭제되며 `(conversation, client_id)` constraint가 메시지 저장 재시도를 멱등 처리합니다. `parent`, `revision_of`로 질문 편집과 답변 재생성 전 원본 분기를 보존합니다.
 - `AssistantGeneration`은 queued/streaming 상태에 대한 사용자 partial unique constraint와 `(user, client_request_id)` 멱등 constraint를 사용합니다. `AssistantContextSnapshot`은 원본 대량 행 대신 제한된 JSON과 hash를 저장하고, `AssistantMessageFeedback`은 메시지 one-to-one 평가입니다.

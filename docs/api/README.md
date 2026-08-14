@@ -19,10 +19,10 @@ http://localhost:8000
 예외:
 
 ```text
-/auth/google/callback/
+/auth/keycloak/callback/
 ```
 
-OIDC provider가 `form_post`로 호출하는 callback입니다.
+Keycloak authorization code flow가 `code`와 `state`를 전달하는 callback입니다.
 
 ## 인증 방식
 
@@ -97,11 +97,11 @@ Content-Type: application/json
 
 | 분류 | 해당 모듈 |
 | --- | --- |
-| DB write | Account, Emails, Drone, AppStore, VOC |
+| DB write | Account shadow User, Emails, Drone, AppStore, VOC |
 | 외부 read/search | Assistant, Observer, Drone |
 | 외부 write/send | Emails RAG, Drone Jira/Mail/Messenger, Assistant OpenWebUI |
 | 파일/asset | Emails, AppStore |
-| ActivityLog | Account 일부 작업, Emails 이동/삭제, Drone table update, VOC |
+| ActivityLog | Emails 이동/삭제, Drone table update, VOC |
 
 ## 모듈별 API 문서
 

@@ -7,7 +7,6 @@ import time
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from api.account import services as account_services
 from api.work_hub.services import (
     process_access_sync_outbox_batch,
     process_grist_webhook_batch,
@@ -29,6 +28,15 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=100)
         parser.add_argument("--webhook-limit", type=int, default=20)
         parser.add_argument("--expire-limit", type=int, default=100)
+        parser.add_argument(
+            "--reconcile-interval-seconds",
+            type=float,
+            default=getattr(
+                settings,
+                "WORK_HUB_KEYCLOAK_RECONCILE_INTERVAL_SECONDS",
+                300,
+            ),
+        )
         parser.add_argument(
             "--retention-days",
             type=int,
@@ -82,12 +90,14 @@ class Command(BaseCommand):
         )
         poll_seconds = max(1.0, float(options["poll_seconds"]))
         next_prune_at = 0.0
+        reconcile_interval_seconds = min(
+            300.0,
+            max(30.0, float(options["reconcile_interval_seconds"])),
+        )
+        next_reconcile_at = 0.0
         while True:
             work_hub_enabled = bool(getattr(settings, "WORK_HUB_ENABLED", False))
-            expired = account_services.deactivate_expired_scope_affiliation_grants(
-                scope_key="work-hub",
-                limit=expire_limit,
-            )
+            expired = 0
             now = time.monotonic()
             pruned_outbox = 0
             pruned_webhooks = 0
@@ -106,9 +116,10 @@ class Command(BaseCommand):
                 pruned_failed_webhooks = prune_failed_webhook_receipts(
                     retention_days=failed_webhook_retention_days,
                 )
-                if work_hub_enabled:
-                    reconciled = reconcile_all_document_access_scopes()
                 next_prune_at = now + prune_interval_seconds
+            if work_hub_enabled and now >= next_reconcile_at:
+                reconciled = reconcile_all_document_access_scopes()
+                next_reconcile_at = now + reconcile_interval_seconds
             result = {"processed": 0, "succeeded": 0, "failed": 0}
             if work_hub_enabled:
                 result = process_access_sync_outbox_batch(limit=limit)

@@ -27,6 +27,7 @@ from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 
 from api.auth import services as auth_services
+from api.auth.services.keycloak import KeycloakError, save_token_session
 from api.auth.services.oidc_validation import append_error_to_target
 from api.common.services import resolve_frontend_target
 
@@ -133,10 +134,10 @@ def auth_login(request: HttpRequest):
 
 @csrf_exempt
 def auth_callback(request: HttpRequest):
-    """ADFS form_post 콜백을 처리하고 세션 로그인을 수행합니다.
+    """Keycloak authorization code 콜백을 처리하고 세션 로그인을 수행합니다.
 
     입력:
-    - 요청: Django HttpRequest (form_post)
+    - 요청: Django HttpRequest (query 또는 form)
 
     반환:
     - HttpResponse: 리다이렉트 또는 오류 응답
@@ -149,27 +150,27 @@ def auth_callback(request: HttpRequest):
     - 302: 토큰 오류/nonce 오류 시 error 쿼리를 포함해 리다이렉트
 
     예시 요청:
-    - 예시 요청: POST /api/v1/auth/callback
-      폼 예시: id_token=<jwt>&state=<b64url>
+    - 예시 요청: GET /auth/keycloak/callback/?code=<code>&state=<b64url>
 
     예시 응답:
     - 예시 응답: 302 Location: https://<frontend>/?error=invalid_token
 
     snake/camel 호환:
-    - 해당 없음(form_post 키를 그대로 사용)
+    - 해당 없음(code/state 키를 그대로 사용)
     """
 
-    if request.method != "POST":
-        return HttpResponseBadRequest("form_post only")
+    if request.method not in {"GET", "POST"}:
+        return HttpResponseBadRequest("GET or POST only")
 
-    id_token = request.POST.get("id_token")
-    state = request.POST.get("state")
-    if not id_token or not state:
-        return HttpResponseBadRequest("missing id_token/state")
+    params = request.GET if request.method == "GET" else request.POST
+    code = params.get("code")
+    state = params.get("state")
+    if not code or not state:
+        return HttpResponseBadRequest("missing code/state")
 
     result = auth_services.auth_callback(
         request=request,
-        raw_id_token=id_token,
+        code=code,
         state=state,
     )
     if result.bad_request_message:
@@ -178,6 +179,7 @@ def auth_callback(request: HttpRequest):
         return redirect(append_error_to_target(str(result.target), result.error_code))
 
     login(request, result.user)
+    save_token_session(request=request, token_set=result.token_set or {})
     return redirect(result.target)
 
 
@@ -210,7 +212,12 @@ def auth_me(request: HttpRequest):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "unauthorized"}, status=401)
 
-    return JsonResponse(auth_services.auth_me(user=request.user))
+    try:
+        payload = auth_services.auth_me(request=request, user=request.user)
+    except KeycloakError:
+        logout(request)
+        return JsonResponse({"detail": "keycloak_session_expired"}, status=401)
+    return JsonResponse(payload)
 
 
 def auth_logout(request: HttpRequest):

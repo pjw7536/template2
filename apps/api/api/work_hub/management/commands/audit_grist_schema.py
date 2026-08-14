@@ -97,7 +97,7 @@ class Command(BaseCommand):
                     violations.append(f"mismatched={', '.join(mismatched)}")
                 if violations:
                     failures.append(
-                        f"{scope.affiliation.user_sdwt_prod}/{table_name}: "
+                        f"{scope.keycloak_group_id}/{table_name}: "
                         + "; ".join(violations)
                     )
         if failures:

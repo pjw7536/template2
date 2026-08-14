@@ -2,6 +2,7 @@
 
 from .access import (
     enqueue_access_sync_for_affiliations,
+    enqueue_access_sync_for_group_ids,
     prune_completed_access_sync_outbox,
     process_access_sync_outbox_batch,
     reconcile_all_document_access_scopes,
@@ -43,6 +44,7 @@ __all__ = [
     "build_grist_webhook_token",
     "configure_document_scope",
     "enqueue_access_sync_for_affiliations",
+    "enqueue_access_sync_for_group_ids",
     "enqueue_grist_webhook",
     "has_grist_forward_auth_access",
     "process_access_sync_outbox_batch",

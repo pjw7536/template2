@@ -416,6 +416,7 @@ def seed_grist_demo(
     *,
     user_sdwt_prod: str,
     client: GristClient | None = None,
+    keycloak_client: Any = None,
 ) -> GristDemoResult:
     """로컬 Grist demo document·record·Webhook·Portal mapping을 멱등 생성합니다."""
 
@@ -442,7 +443,13 @@ def seed_grist_demo(
         raise GristDemoError(str(exc)) from exc
 
     document_scope, mapping_created = configure_document_scope(
-        user_sdwt_prod=normalized_group,
+        keycloak_group_id=str(
+            getattr(settings, "GRIST_DEV_KEYCLOAK_GROUP_ID", "")
+            or f"dev-affiliation:{normalized_group}"
+        ),
+        affiliation_name=normalized_group,
+        department="Development",
+        line="DEV-L1",
         workspace_id=workspace_id,
         doc_id=doc_id,
         equipment_table_id="Equipment",
@@ -451,7 +458,11 @@ def seed_grist_demo(
         launch_url=_worklog_launch_url(grist, doc_id=doc_id),
         template_revision="grist-work-hub-v1-demo",
     )
-    sync_document_access_scope(document_scope=document_scope, client=grist)
+    sync_document_access_scope(
+        document_scope=document_scope,
+        client=grist,
+        keycloak_client=keycloak_client,
+    )
     return GristDemoResult(
         workspace_id=workspace_id,
         doc_id=doc_id,

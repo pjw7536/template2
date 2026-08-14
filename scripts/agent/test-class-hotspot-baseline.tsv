@@ -1,8 +1,5 @@
 # path<TAB>class<TAB>line_limit_or_current_baseline
-apps/api/api/account/tests.py	AccountEndpointTests	4567
-apps/api/api/account/tests.py	AppAffiliationDataScopeTests	662
-apps/api/api/account/tests.py	ExternalAffiliationSyncTests	564
-apps/api/api/activity/tests.py	ActivityLogEndpointTests	756
+apps/api/api/activity/tests.py	ActivityLogEndpointTests	757
 apps/api/api/assistant/tests.py	AssistantRuntimeV2Tests	861
 apps/api/api/data_movement/ct_process_comment/tests.py	CtProcessCommentSummaryTests	1138
 apps/api/api/drone/tests.py	DroneSopInformPolicyTests	1306

@@ -1,64 +1,33 @@
-# Auth 모듈
+# Auth
 
-Auth는 OIDC 기반 로그인과 Django session 관리를 담당합니다.
+Auth feature는 `사내 OIDC → Keycloak → Django session` 인증을 담당합니다. Portal은 Keycloak issuer와 JWKS만 신뢰하며 upstream 사내 OIDC token을 직접 처리하지 않습니다.
 
-## 기능 요약
+## 로그인 흐름
 
-- OIDC 로그인 시작
-- OIDC callback 처리
-- 사용자 생성/갱신
-- Django session login/logout
-- 현재 사용자 정보 조회
-- redirect target 검증
+1. 브라우저가 `/api/v1/auth/login`을 호출합니다.
+2. API가 nonce, state와 PKCE S256 verifier를 Django session에 저장합니다.
+3. 브라우저가 Keycloak authorize endpoint로 이동합니다.
+4. Keycloak은 필요하면 사내 OIDC identity provider로 인증을 위임합니다.
+5. `/auth/keycloak/callback/`이 authorization code를 token set으로 교환합니다.
+6. JWKS로 서명, issuer, audience, 만료, nonce를 검증합니다.
+7. `sabun`, 단일 affiliation group과 Portal client role을 검증해 shadow `account.User`를 갱신합니다.
+8. Django session을 만든 뒤 안전한 frontend target으로 이동합니다.
 
-## 동작 흐름
+access token 수명은 300초입니다. `/api/v1/auth/me`는 만료 30초 전에 refresh하고 최신 access token의 group/client role을 다시 shadow User에 저장합니다. refresh 또는 claim 검증이 실패하면 로컬 session을 종료하고 401을 반환합니다.
 
-1. 프론트가 로그인 endpoint를 호출합니다.
-2. 서버가 state와 nonce를 생성합니다.
-3. 사용자는 ADFS authorize URL로 이동합니다.
-4. ADFS가 callback endpoint로 `id_token`을 전달합니다.
-5. 서버가 state와 nonce를 검증합니다.
-6. claim으로 `User`를 생성하거나 갱신합니다.
-7. Django session을 만들고 프론트로 redirect합니다.
+## 권한 입력
 
-로그아웃할 때 Work Hub가 활성화되어 있거나 `GRIST_LOGOUT_ENABLED=1`이면 Grist session을 먼저 제거하고 Portal·IdP 로그아웃을 이어서 실행합니다. Grist에서 돌아오는 요청은 `grist_cleared=1` marker로 redirect 반복을 막습니다. Grist를 실행하지 않는 기본 Portal 환경에서는 두 플래그를 모두 꺼 기존 IdP로 바로 이동합니다.
+- 사용자마다 `/affiliations/<소속>/<viewer|member|manager>` group이 정확히 하나 필요합니다.
+- `portal-user` 또는 `portal-admin`이 없으면 로그인하지 않습니다.
+- 앱 역할은 `<scope>-user` 또는 `<scope>-admin`입니다.
+- Django `is_superuser`는 권한 판정에서 사용하지 않습니다.
 
-## Account와의 연결
+## 공개 표면
 
-로그인 후 `/api/v1/auth/me`는 사용자 정보와 소속 상태를 반환합니다. 프론트는 이 값으로 온보딩 또는 소속 재확인 dialog를 띄울지 결정합니다.
-
-## 로컬 개발
-
-로컬에서는 `apps/adfs_dummy`가 ADFS 역할을 합니다.
-
-## 화면/API/데이터 추적
-
-| 구간 | 위치 |
+| 구분 | 경로 |
 | --- | --- |
-| 화면 | `/login`, 인증 후 `/` |
-| Frontend | `apps/web/src/features/auth` |
-| Backend API | `/api/v1/auth/config`, `/api/v1/auth/login`, `/api/v1/auth/me`, `/api/v1/auth/logout`, `/auth/google/callback/` |
-| 데이터 | `api.account.User`, Django session |
-| 외부 연동 | ADFS/OIDC 또는 `apps/adfs_dummy` |
+| Frontend | `/login` |
+| Backend API | `/api/v1/auth/config`, `/api/v1/auth/login`, `/api/v1/auth/me`, `/api/v1/auth/logout` |
+| Callback | `/auth/keycloak/callback/` |
 
-## 운영 포인트
-
-- 로그인 redirect 오류는 `ALLOWED_REDIRECT_HOSTS`, `OIDC_REDIRECT_URI`, proxy host 설정을 확인합니다.
-- callback 오류는 state/nonce/session cookie와 ADFS 인증서 설정을 확인합니다.
-- Work Hub 로그아웃 반복이나 잔존 session은 `GRIST_PUBLIC_URL`, Grist `/auth/logout` proxy와 `grist_cleared=1` marker를 함께 확인합니다.
-- `/api/v1/auth/me` 응답은 Account 온보딩/소속 재확인 UI의 기준입니다.
-
-## 관련 API
-
-- `docs/api/auth.md`
-
-## 관련 코드
-
-- `apps/api/api/auth/views.py`
-- `apps/api/api/auth/callback_urls.py`
-- `apps/api/api/auth/urls.py`
-- `apps/api/api/auth/selectors.py`
-- `apps/api/api/auth/services/oidc.py`
-- `apps/api/api/auth/services/oidc_utils.py`
-- `apps/api/api/auth/services/authentication.py`
-- `apps/web/src/features/auth`
+상세 endpoint와 오류 계약은 `docs/api/auth.md`, 환경 변수와 cutover 절차는 `docs/configuration.md`, `docs/operations.md`를 따릅니다.
