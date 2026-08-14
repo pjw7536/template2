@@ -145,25 +145,16 @@ class SeedDevDataCommandTests(SimpleTestCase):
 
     @patch("api.management.commands.seed_dev_data.call_command")
     @patch("api.management.commands.seed_dev_data.seed_appstore_dummy_data")
-    @patch("api.management.commands.seed_dev_data.seed_dev_access_data")
     @patch("api.management.commands.seed_dev_data.ensure_dev_dummy_superuser")
     def test_command_refreshes_dummy_data_when_dev_seed_is_enabled(
         self,
         ensure_dummy: Mock,
-        seed_access: Mock,
         seed_appstore: Mock,
         nested_call_command: Mock,
     ) -> None:
-        """development 환경이면 dummy 사용자 보정 후 하위 seed를 실행합니다."""
+        """development 환경이면 legacy Account 권한을 제외한 하위 seed를 실행합니다."""
 
         ensure_dummy.return_value = Mock(sabun="S000001")
-        seed_access.return_value = {
-            "deletedUsers": 0,
-            "users": 28,
-            "pending": 54,
-            "allowed": 6,
-            "denied": 2,
-        }
         seed_appstore.return_value = {
             "deleted": 8,
             "created": 8,
@@ -182,11 +173,6 @@ class SeedDevDataCommandTests(SimpleTestCase):
             call_command("seed_dev_data", reset=True, skip_rag=True, prefix="dev", stdout=StringIO())
 
         ensure_dummy.assert_called_once_with()
-        seed_access.assert_called_once_with(
-            prefix="DEV",
-            actor=ensure_dummy.return_value,
-            reset=True,
-        )
         seed_appstore.assert_called_once_with(
             prefix="DEV",
             owner=ensure_dummy.return_value,
