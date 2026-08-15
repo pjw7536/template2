@@ -67,6 +67,7 @@ export function normalizeMessages(messages) {
         ...(message.revisionOfId ? { revisionOfId: message.revisionOfId } : {}),
         ...(message.generationId ? { generationId: message.generationId } : {}),
         ...(message.contextSnapshot ? { contextSnapshot: message.contextSnapshot } : {}),
+        ...(message.knowledgeContext ? { knowledgeContext: message.knowledgeContext } : {}),
         ...(message.feedback ? { feedback: message.feedback } : {}),
       }
     })

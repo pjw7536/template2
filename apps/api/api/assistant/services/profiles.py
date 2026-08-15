@@ -151,6 +151,27 @@ _PROFILES: dict[tuple[str, int], AssistantProfile] = {
         write_partition="shared",
         timeout_seconds=260,
     ),
+    ("auto-knowledge", 2): AssistantProfile(
+        key="auto-knowledge",
+        version=2,
+        provider="auto-knowledge",
+        allowed_tools=(
+            "rag.search",
+            "observer.analysis",
+            "appstore.catalog",
+            "line-dashboard.snapshot",
+        ),
+        account_scopes=("assistant",),
+        read_partitions=(
+            "shared",
+            "scope:emails",
+            "scope:observer",
+            "scope:appstore",
+            "scope:line-dashboard",
+        ),
+        write_partition="shared",
+        timeout_seconds=260,
+    ),
 }
 
 _CURRENT_VERSIONS = {
@@ -159,7 +180,7 @@ _CURRENT_VERSIONS = {
     "observer-analysis": 2,
     "appstore-context": 2,
     "line-dashboard-context": 2,
-    "auto-knowledge": 1,
+    "auto-knowledge": 2,
 }
 
 

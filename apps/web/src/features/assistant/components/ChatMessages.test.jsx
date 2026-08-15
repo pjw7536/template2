@@ -220,7 +220,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     expect(container.querySelector("[data-streaming-cursor]")).not.toBeInTheDocument()
   })
 
-  it("답변의 URL과 이메일 근거 링크를 항상 새 창에서 연다", () => {
+  it("일반 URL은 새 창에서 열고 이메일 근거 링크는 현재 창에서 연다", () => {
     const emailUrl =
       "https://portal.example.com/emails/inbox?user_sdwt_prod=S1&emailId=DOC-1"
     render(
@@ -241,12 +241,19 @@ describe("ChatMessages 문맥과 과거 이력", () => {
       </MemoryRouter>,
     )
 
-    screen.getAllByRole("link").forEach((link) => {
-      expect(link).toHaveAttribute("target", "_blank")
-      expect(link).toHaveAttribute("rel", "noopener noreferrer")
-    })
+    screen
+      .getAllByRole("link", { name: /포털|https:\/\/docs\.example\.com\/guide/ })
+      .forEach((link) => {
+        expect(link).toHaveAttribute("target", "_blank")
+        expect(link).toHaveAttribute("rel", "noopener noreferrer")
+      })
     expect(screen.queryByText(emailUrl)).not.toBeInTheDocument()
-    expect(screen.getAllByRole("link", { name: "메일 근거" })).toHaveLength(2)
+    const emailLinks = screen.getAllByRole("link", { name: "메일 근거" })
+    expect(emailLinks).toHaveLength(2)
+    emailLinks.forEach((link) => {
+      expect(link).not.toHaveAttribute("target")
+      expect(link).not.toHaveAttribute("rel")
+    })
   })
 
   it("메일 제목이 없으면 전체 주소 대신 기본 링크 문구를 표시한다", () => {
@@ -270,6 +277,44 @@ describe("ChatMessages 문맥과 과거 이력", () => {
       "href",
       emailUrl,
     )
+  })
+
+  it("답변마다 실제 지식 실행 경로를 표시한다", () => {
+    render(
+      <MemoryRouter>
+        <ChatMessages
+          messages={[
+            {
+              id: "assistant-general",
+              role: "assistant",
+              content: "일반 답변 내용",
+              knowledgeContext: {
+                mode: "auto",
+                route: "direct",
+                sourceApp: null,
+                grounded: false,
+                fallback: false,
+              },
+            },
+            {
+              id: "assistant-email",
+              role: "assistant",
+              content: "메일 답변 내용",
+              knowledgeContext: {
+                mode: "current_scope",
+                route: "retrieve",
+                sourceApp: "emails",
+                grounded: true,
+                fallback: false,
+              },
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("일반 답변")).toBeInTheDocument()
+    expect(screen.getByText("Emails · 현재 메일함")).toBeInTheDocument()
   })
 
   it("질문 수정과 답변 재생성·평가 동작을 부모 handler에 전달한다", async () => {

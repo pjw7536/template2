@@ -55,6 +55,14 @@ export function isAssistantAppContextReady({ appKey, pageContext = null } = {}) 
       && Boolean(pageContext.scope?.lineId)
     )
   }
+  if (appContext.key === "emails") {
+    const mailbox = String(pageContext?.scope?.mailbox || "").trim()
+    return Boolean(
+      pageContext?.kind === "emails"
+      && mailbox
+      && (mailbox.toLowerCase() !== "sent" || pageContext.scope?.emailId),
+    )
+  }
   return true
 }
 
@@ -67,6 +75,9 @@ export function resolveAssistantSurface({
 } = {}) {
   const appContext = getAssistantAppContext(appKey)
   if (!appContext) return null
+  if (knowledgeMode === ASSISTANT_KNOWLEDGE_MODES.generalOnly) {
+    return buildGeneralAssistantSurface()
+  }
   if (knowledgeMode === ASSISTANT_KNOWLEDGE_MODES.auto) {
     const observerInput = isAssistantAppContextReady({ appKey, pageContext })
       && appContext.key === "observer"
@@ -96,6 +107,14 @@ export function resolveAssistantSurface({
           selectedAppId: pageContext.scope?.selectedAppId ?? null,
         }
       : { query: "", category: "all", selectedAppId: null }
+    const emailInput = appContext.key === "emails" && pageContext?.kind === "emails"
+      ? {
+          mailbox: String(pageContext.scope?.mailbox || "").trim(),
+          ...(pageContext.scope?.emailId
+            ? { emailId: String(pageContext.scope.emailId).trim() }
+            : {}),
+        }
+      : {}
     return buildProfileSurface({
       mode: "auto",
       profileKey: ASSISTANT_PROFILE_KEYS.autoKnowledge,
@@ -104,6 +123,7 @@ export function resolveAssistantSurface({
         "rag.search": {
           permissionGroups: copyStringList(permissionGroups),
           ragIndexes: copyStringList(ragIndexNames),
+          ...emailInput,
         },
         "observer.analysis": observerInput,
         "appstore.catalog": appstoreInput,
@@ -114,6 +134,7 @@ export function resolveAssistantSurface({
   if (appContext.key === "portal") return buildGeneralAssistantSurface()
 
   if (appContext.key === "emails") {
+    if (!isAssistantAppContextReady({ appKey, pageContext })) return null
     return buildProfileSurface({
       mode: "email",
       profileKey: ASSISTANT_PROFILE_KEYS.emails,
@@ -122,6 +143,10 @@ export function resolveAssistantSurface({
         "rag.search": {
           permissionGroups: copyStringList(permissionGroups),
           ragIndexes: copyStringList(ragIndexNames),
+          mailbox: String(pageContext.scope.mailbox).trim(),
+          ...(pageContext.scope.emailId
+            ? { emailId: String(pageContext.scope.emailId).trim() }
+            : {}),
         },
       },
     })

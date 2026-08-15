@@ -17,6 +17,8 @@ from typing import Any, Iterator, Mapping
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+import api.emails.selectors as email_selectors
+
 from .. import selectors
 from ..models import AssistantConversation, AssistantGeneration, AssistantMessage
 from ..serializers import AssistantMessageSerializer
@@ -418,7 +420,7 @@ class AssistantTurnService:
         if profile.provider == "email-rag":
             raw = tool_inputs.get("rag.search")
             rag_input = raw if isinstance(raw, Mapping) else {}
-            if set(rag_input) - {"permissionGroups", "ragIndexes"}:
+            if set(rag_input) - {"permissionGroups", "ragIndexes", "mailbox", "emailId"}:
                 raise AssistantTurnError(
                     "invalid_tool_input",
                     status_code=400,
@@ -450,11 +452,31 @@ class AssistantTurnService:
             mailboxes = [
                 group for group in groups if group in accessible_mailboxes
             ]
+            requested_mailbox = str(rag_input.get("mailbox") or "").strip()
+            requested_email_id = rag_input.get("emailId")
+            verified_scope = None
+            if requested_mailbox or requested_email_id not in (None, ""):
+                verified_scope = email_selectors.resolve_assistant_email_scope(
+                    user=user,
+                    mailbox=requested_mailbox,
+                    email_id=requested_email_id,
+                )
+                if verified_scope is None:
+                    raise AssistantTurnError(
+                        "permission_denied",
+                        status_code=403,
+                        message="현재 Email 화면 범위에 접근할 권한이 없습니다.",
+                    )
+                verified_mailbox = verified_scope["mailbox"]
+                if verified_mailbox in accessible_mailboxes:
+                    groups = [verified_mailbox]
+                    mailboxes = [verified_mailbox]
             return {
                 "rag.search": {
                     "permissionGroups": groups[:50],
                     "ragIndexes": indexes[:10],
                     "mailboxes": mailboxes[:50],
+                    **(verified_scope or {}),
                 }
             }
         if profile.provider == "observer-analysis":

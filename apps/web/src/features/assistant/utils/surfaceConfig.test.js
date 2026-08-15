@@ -78,7 +78,7 @@ describe("resolveAssistantSurface", () => {
     })).toEqual({
       mode: "auto",
       profileKey: "auto-knowledge",
-      profileVersion: 1,
+      profileVersion: 2,
       appContextKey: "assistant:openwebui:emails",
       toolInputs: {
         "rag.search": {
@@ -100,6 +100,11 @@ describe("resolveAssistantSurface", () => {
     expect(
       resolveAssistantSurface({
         appKey: "emails",
+        pageContext: {
+          kind: "emails",
+          key: "emails:v1",
+          scope: { mailbox: "ETCH_A", emailId: "7" },
+        },
         permissionGroups: ["group-a", "group-a", ""],
         ragIndexNames: ["rp-email"],
       }),
@@ -112,9 +117,22 @@ describe("resolveAssistantSurface", () => {
         "rag.search": {
           permissionGroups: ["group-a"],
           ragIndexes: ["rp-email"],
+          mailbox: "ETCH_A",
+          emailId: "7",
         },
       },
     })
+  })
+
+  it("보낸 메일함은 선택 Email이 있을 때만 현재 화면 범위로 준비된다", () => {
+    expect(isAssistantAppContextReady({
+      appKey: "emails",
+      pageContext: { kind: "emails", scope: { mailbox: "sent" } },
+    })).toBe(false)
+    expect(isAssistantAppContextReady({
+      appKey: "emails",
+      pageContext: { kind: "emails", scope: { mailbox: "sent", emailId: "7" } },
+    })).toBe(true)
   })
 
   it("Observer page context가 준비된 경우에만 분석 surface를 반환한다", () => {

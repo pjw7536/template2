@@ -42,6 +42,7 @@ class AssistantChatResult:
     is_dummy: bool = False
     knowledge_requested: bool = True
     rag_search_performed: bool = False
+    routing_fallback: bool = False
 
 
 class AssistantChatService:
@@ -163,6 +164,8 @@ class AssistantChatService:
         permission_groups: Optional[Sequence[str]] = None,
         rag_index_names: Optional[Sequence[str]] = None,
         cancellation: ExternalCallCancellation | None = None,
+        mailbox: str = "",
+        email_id: str = "",
     ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
         """RAG에서 문서를 검색하고 컨텍스트/출처 목록을 반환합니다."""
 
@@ -172,6 +175,8 @@ class AssistantChatService:
             permission_groups=permission_groups,
             rag_index_names=rag_index_names,
             cancellation=cancellation,
+            mailbox=mailbox,
+            email_id=email_id,
         )
 
     def _generate_llm_payload(
@@ -227,6 +232,8 @@ class AssistantChatService:
         permission_groups: Optional[Sequence[str]] = None,
         conversation_context: str = "",
         auto_route_knowledge: bool = False,
+        mailbox: str = "",
+        email_id: str = "",
     ) -> AssistantChatResult:
         """질문 의도에 따라 RAG를 조회하고 구조화 LLM 응답을 완성합니다."""
 
@@ -251,6 +258,8 @@ class AssistantChatService:
                     permission_groups=permission_groups,
                     rag_index_names=rag_index_names,
                     cancellation=cancellation,
+                    mailbox=mailbox,
+                    email_id=email_id,
                 )
             else:
                 contexts = [] if auto_route_knowledge else None
@@ -279,6 +288,7 @@ class AssistantChatService:
             return result
         knowledge_requested = True
         search_question = normalized_question
+        routing_fallback = False
         if auto_route_knowledge:
             decision = decide_email_knowledge_use(
                 normalized_question,
@@ -288,6 +298,7 @@ class AssistantChatService:
             )
             knowledge_requested = decision.use_knowledge
             search_question = decision.search_query or normalized_question
+            routing_fallback = decision.used_fallback
 
         cancellation.raise_if_cancelled()
         if knowledge_requested:
@@ -296,6 +307,8 @@ class AssistantChatService:
                 permission_groups=permission_groups,
                 rag_index_names=rag_index_names,
                 cancellation=cancellation,
+                mailbox=mailbox,
+                email_id=email_id,
             )
         else:
             contexts, rag_response, sources = [], None, []
@@ -325,6 +338,12 @@ class AssistantChatService:
             sources,
             cancellation=cancellation,
             user_header_id=user_header_id,
+            additional_system_message=(
+                "지식 라우팅을 완료하지 못했습니다. 조직의 최신 사실을 추측하지 말고, 확인할 수 "
+                "없는 업무 정보는 확인할 수 없다고 명시하세요. 일반 지식으로만 답변하세요."
+                if routing_fallback
+                else ""
+            ),
         )
         cancellation.raise_if_cancelled()
         result = self._build_chat_result(
@@ -336,6 +355,17 @@ class AssistantChatService:
         )
         result.knowledge_requested = knowledge_requested
         result.rag_search_performed = rag_search_performed
+        result.routing_fallback = routing_fallback
+        if knowledge_requested and not result.sources:
+            return AssistantChatResult(
+                reply=KNOWLEDGE_NOT_FOUND_REPLY,
+                contexts=contexts,
+                llm_response={"mode": "knowledge-not-grounded"},
+                rag_response=rag_response,
+                retrieved_sources=list(sources),
+                knowledge_requested=True,
+                rag_search_performed=rag_search_performed,
+            )
         return result
 
 

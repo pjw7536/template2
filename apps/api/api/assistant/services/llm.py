@@ -27,6 +27,7 @@ def build_llm_payload(
     *,
     email_ids: List[str],
     model: str | None = None,
+    additional_system_message: str = "",
 ) -> Dict[str, Any]:
     """LLM 호출용 payload를 구성합니다.
 
@@ -52,6 +53,11 @@ def build_llm_payload(
         "role": "system",
         "content": config.system_message,
     }
+    additional_messages = (
+        [{"role": "system", "content": additional_system_message.strip()}]
+        if additional_system_message.strip()
+        else []
+    )
     format_msg = {
         "role": "system",
         "content": STRUCTURED_REPLY_SYSTEM_MESSAGE,
@@ -110,7 +116,7 @@ def build_llm_payload(
 
     return {
         "model": model or config.model,
-        "messages": [system_msg, format_msg, constraints_msg, user_msg],
+        "messages": [system_msg, *additional_messages, format_msg, constraints_msg, user_msg],
         "temperature": 0.0 if has_background_knowledge else config.temperature,
     }
 
@@ -137,6 +143,7 @@ def stream_llm_reply(
     cancellation: ExternalCallCancellation,
     user_header_id: Optional[str] = None,
     openwebui_config: AssistantOpenWebUIConfig | None = None,
+    additional_system_message: str = "",
 ) -> str:
     """Email 구조화 답변을 OpenWebUI stream으로 읽어 원문 문자열로 반환합니다."""
 
@@ -154,6 +161,7 @@ def stream_llm_reply(
         contexts,
         email_ids=_collect_email_ids(sources),
         model=active_config.model,
+        additional_system_message=additional_system_message,
     )
     try:
         return "".join(

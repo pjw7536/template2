@@ -21,7 +21,11 @@ import api.account.services as account_services
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
 from api.emails.models import Email, EmailAsset, EmailOutbox
 from api.emails.permissions import resolve_access_control
-from api.emails.selectors import get_filtered_emails, resolve_email_affiliation
+from api.emails.selectors import (
+    get_filtered_emails,
+    resolve_assistant_email_scope,
+    resolve_email_affiliation,
+)
 from api.emails.serializers import (
     EmailBulkDeleteInputSerializer,
     EmailMoveInputSerializer,
@@ -828,6 +832,98 @@ class EmailOutboxTests(TestCase):
             index_name=resolve_rag_index_name(RAG_INDEX_EMAILS),
             permission_groups=["group-a", "sender"],
         )
+
+
+class EmailAssistantScopeSelectorTests(TestCase):
+    """ChatWidget Email 현재 화면 범위의 서버 재검증을 확인합니다."""
+
+    def setUp(self) -> None:
+        """단일 메일함 사용자와 서로 다른 범위의 메일을 준비합니다."""
+
+        _allow_test_scope_access(self)
+        User = get_user_model()
+        self.user = User.objects.create_user(sabun="S11880", password="test-password")
+        self.user.knox_id = "knox-11880"
+        self.user.save(update_fields=["knox_id"])
+        _set_current_affiliation(self.user, user_sdwt_prod="group-a")
+        self.own_mail = Email.objects.create(
+            message_id="assistant-scope-own",
+            received_at=timezone.now(),
+            subject="내 메일",
+            sender="sender@example.com",
+            sender_id="sender",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-a",
+            body_text="본문",
+            rag_doc_id="rag-own",
+        )
+        self.other_mail = Email.objects.create(
+            message_id="assistant-scope-other",
+            received_at=timezone.now(),
+            subject="다른 메일함",
+            sender="other@example.com",
+            sender_id="other",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-b",
+            body_text="본문",
+            rag_doc_id="rag-other",
+        )
+        self.sent_mail = Email.objects.create(
+            message_id="assistant-scope-sent",
+            received_at=timezone.now(),
+            subject="보낸 메일",
+            sender="me@example.com",
+            sender_id="knox-11880",
+            recipient=["dest@example.com"],
+            user_sdwt_prod="group-b",
+            body_text="본문",
+            rag_doc_id="rag-sent",
+        )
+
+    def test_scope_accepts_only_matching_accessible_mailbox_and_email(self) -> None:
+        """접근 가능한 현재 메일함에 실제로 속한 메일만 RAG ID로 정규화합니다."""
+
+        resolved = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="group-a",
+            email_id=self.own_mail.id,
+        )
+        wrong_mailbox = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="group-b",
+            email_id=self.other_mail.id,
+        )
+        mismatched_email = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="group-a",
+            email_id=self.other_mail.id,
+        )
+
+        self.assertEqual(resolved, {"mailbox": "group-a", "emailId": "rag-own"})
+        self.assertIsNone(wrong_mailbox)
+        self.assertIsNone(mismatched_email)
+
+    def test_sent_scope_requires_current_user_as_sender(self) -> None:
+        """보낸 메일함은 현재 사용자가 실제 발신자인 선택 메일만 허용합니다."""
+
+        resolved = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="sent",
+            email_id=self.sent_mail.id,
+        )
+        denied = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="sent",
+            email_id=self.other_mail.id,
+        )
+        missing_selection = resolve_assistant_email_scope(
+            user=self.user,
+            mailbox="sent",
+        )
+
+        self.assertEqual(resolved, {"mailbox": "group-b", "emailId": "rag-sent"})
+        self.assertIsNone(denied)
+        self.assertIsNone(missing_selection)
 
 
 class EmailMailboxAccessViewTests(TestCase):

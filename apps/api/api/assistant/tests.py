@@ -53,6 +53,7 @@ from api.assistant.services.knowledge_intent import (
     decide_auto_knowledge_route,
     decide_dummy_email_knowledge_use,
     decide_email_knowledge_use,
+    decide_knowledge_route_v2,
 )
 import api.rag.services as rag_services
 from api.common.services import ExternalCallCancellation, ExternalCallCancelled
@@ -545,7 +546,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
                     )
 
     def test_generate_reply_treats_empty_segments_as_no_sources(self) -> None:
-        """segments가 비어 있으면 출처가 비워지는지 확인합니다."""
+        """segments가 비어 있으면 일반 업무 사실 대신 근거 없음으로 응답합니다."""
         service = AssistantChatService(
             config=AssistantChatConfig(use_dummy=False)
         )
@@ -562,7 +563,7 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
                     cancellation=ExternalCallCancellation(),
                 )
 
-        self.assertEqual(result.reply, "OK")
+        self.assertEqual(result.reply, "배경지식에서 관련 내용을 찾지 못했습니다.")
         self.assertEqual(result.sources, [])
         self.assertEqual(result.segments, [])
 
@@ -794,14 +795,14 @@ class EmailKnowledgeIntentTests(SimpleTestCase):
         self.assertEqual(input_payload["currentQuestion"], "그 일정이 언제야?")
         self.assertIn("설비 변경 메일", input_payload["recentConversation"])
 
-    def test_invalid_decision_falls_back_to_original_question_rag(self) -> None:
-        """판별 응답 형식이 잘못되면 원본 질문으로 RAG를 사용하는 기존 동작을 유지합니다."""
+    def test_invalid_decision_retries_then_falls_back_to_general_reply(self) -> None:
+        """판별 응답 형식이 잘못되면 한 번 재시도한 뒤 지식을 강제로 조회하지 않습니다."""
 
         config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
         with patch(
             "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
             return_value=iter(["판별할 수 없습니다"]),
-        ):
+        ) as stream:
             decision = decide_email_knowledge_use(
                 "최근 메일을 찾아줘",
                 conversation_context="",
@@ -809,9 +810,32 @@ class EmailKnowledgeIntentTests(SimpleTestCase):
                 cancellation=ExternalCallCancellation(),
             )
 
-        self.assertTrue(decision.use_knowledge)
-        self.assertEqual(decision.search_query, "최근 메일을 찾아줘")
+        self.assertFalse(decision.use_knowledge)
+        self.assertEqual(decision.search_query, "")
         self.assertTrue(decision.used_fallback)
+        self.assertEqual(stream.call_count, 2)
+
+    def test_v2_router_retries_invalid_json_then_uses_direct_fallback(self) -> None:
+        """v2 라우터 JSON이 두 번 잘못되면 지식 조회 없이 direct fallback을 선택합니다."""
+
+        config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            side_effect=[iter(["잘못된 응답"]), iter(["여전히 잘못된 응답"])],
+        ) as stream:
+            decision = decide_knowledge_route_v2(
+                "이번 주 장애 메일을 알려줘",
+                active_app_key="portal",
+                available_app_keys=("emails",),
+                conversation_context="",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(decision.action, "direct")
+        self.assertEqual(decision.target_app, "")
+        self.assertTrue(decision.used_fallback)
+        self.assertEqual(stream.call_count, 2)
 
     def test_dummy_decision_uses_email_follow_up_context(self) -> None:
         """dummy 판별도 메일 용어 없는 후속 질문은 최근 메일 문맥을 함께 확인합니다."""
@@ -1746,7 +1770,7 @@ class AssistantRuntimeV2Tests(TestCase):
                 "appstore-context": 2,
                 "line-dashboard-context": 2,
                 "observer-analysis": 2,
-                "auto-knowledge": 1,
+                "auto-knowledge": 2,
             },
         )
         self.assertEqual(
@@ -1854,7 +1878,7 @@ class AssistantRuntimeV2Tests(TestCase):
         self.assertIn('"status":"RUN"', provider.call_args_list[1].kwargs["system_message"])
 
     def test_dynamic_app_v2_skips_tools_for_general_questions(self) -> None:
-        """동적 앱 v2의 일반 질문은 selector·분석 없이 앱 설명 기반 일반 답변을 생성합니다."""
+        """동적 앱 v2의 일반 질문은 selector·분석과 앱 설명 없이 일반 답변을 생성합니다."""
 
         runtime = assistant_services.AssistantRuntime()
         with patch(
@@ -1925,11 +1949,7 @@ class AssistantRuntimeV2Tests(TestCase):
             self.assertIsNone(result.context_snapshot)
         self.assertEqual(
             [call.kwargs["context_key"] for call in provider.call_args_list],
-            [
-                "assistant:openwebui:appstore",
-                "assistant:openwebui:line-dashboard",
-                "assistant:openwebui:observer",
-            ],
+            [None, None, None],
         )
 
     def test_dynamic_app_v1_preserves_always_tool_semantics(self) -> None:
@@ -1970,10 +1990,10 @@ class AssistantRuntimeV2Tests(TestCase):
         runtime = assistant_services.AssistantRuntime()
         snapshot = {"count": 1, "truncated": False, "apps": [{"id": 7, "name": "분석 앱"}]}
         with patch(
-            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            "api.assistant.services.runtime.decide_knowledge_route_v2",
             side_effect=[
-                KnowledgeRouteDecision("current_app", "appstore"),
-                KnowledgeRouteDecision("general", ""),
+                KnowledgeRouteDecision("retrieve", "appstore"),
+                KnowledgeRouteDecision("direct", ""),
             ],
         ) as route, patch(
             "api.assistant.services.runtime.appstore_selectors.get_appstore_assistant_catalog",
@@ -2012,7 +2032,42 @@ class AssistantRuntimeV2Tests(TestCase):
         self.assertEqual(app_result.tool_keys, ["appstore.catalog"])
         self.assertEqual(app_result.execution_metadata["selectedKnowledgeApp"], "appstore")
         self.assertEqual(general_result.tool_keys, [])
-        self.assertEqual(general_result.execution_metadata["routingAction"], "general")
+        self.assertEqual(general_result.execution_metadata["routingAction"], "direct")
+
+    def test_auto_profile_v1_preserves_legacy_route_semantics(self) -> None:
+        """저장된 auto-knowledge v1은 기존 current_app 라우팅 의미로 재실행됩니다."""
+
+        runtime = assistant_services.AssistantRuntime()
+        snapshot = {"count": 1, "truncated": False, "apps": [{"id": 7}]}
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            return_value=KnowledgeRouteDecision("current_app", "appstore"),
+        ) as legacy_route, patch(
+            "api.assistant.services.runtime.decide_knowledge_route_v2"
+        ) as v2_route, patch(
+            "api.assistant.services.runtime.appstore_selectors.get_appstore_assistant_catalog",
+            return_value=snapshot,
+        ), patch(
+            "api.assistant.services.runtime.stream_openwebui_chat",
+            return_value=["기존 자동 답변"],
+        ):
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge",
+                    profile_version=1,
+                ),
+                prompt="등록 앱을 알려줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"appstore.catalog": {}},
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:appstore",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        legacy_route.assert_called_once()
+        v2_route.assert_not_called()
+        self.assertEqual(result.tool_keys, ["appstore.catalog"])
 
     def test_auto_profile_routes_to_other_email_app(self) -> None:
         """자동 Profile은 현재 Observer 화면에서도 명시된 Email 지식을 선택할 수 있습니다."""
@@ -2029,8 +2084,8 @@ class AssistantRuntimeV2Tests(TestCase):
         )
         runtime = assistant_services.AssistantRuntime(email_chat_service=email_service)
         with patch(
-            "api.assistant.services.runtime.decide_auto_knowledge_route",
-            return_value=KnowledgeRouteDecision("other_app", "emails"),
+            "api.assistant.services.runtime.decide_knowledge_route_v2",
+            return_value=KnowledgeRouteDecision("retrieve", "emails"),
         ):
             result = runtime.execute(
                 profile=assistant_services.get_assistant_profile(
@@ -2062,8 +2117,8 @@ class AssistantRuntimeV2Tests(TestCase):
 
         runtime = assistant_services.AssistantRuntime()
         with patch(
-            "api.assistant.services.runtime.decide_auto_knowledge_route",
-            return_value=KnowledgeRouteDecision("other_app", "observer"),
+            "api.assistant.services.runtime.decide_knowledge_route_v2",
+            return_value=KnowledgeRouteDecision("retrieve", "observer"),
         ), patch(
             "api.assistant.services.runtime.analyze_observer_logs_stream"
         ) as analyze:
@@ -2100,9 +2155,9 @@ class AssistantRuntimeV2Tests(TestCase):
         }
         runtime = assistant_services.AssistantRuntime()
         with patch(
-            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            "api.assistant.services.runtime.decide_knowledge_route_v2",
             return_value=KnowledgeRouteDecision(
-                "current_app",
+                "retrieve",
                 "observer",
                 scope_hints={"eqpId": "EQP-02"},
             ),
@@ -2145,14 +2200,14 @@ class AssistantRuntimeV2Tests(TestCase):
                 "findings": [],
                 "limitations": [],
             },
-            "meta": {},
+            "meta": {"sourceCount": 1},
             "scope": {"eqpId": "EQP-03"},
         }
         runtime = assistant_services.AssistantRuntime()
         with patch(
-            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            "api.assistant.services.runtime.decide_knowledge_route_v2",
             return_value=KnowledgeRouteDecision(
-                "other_app",
+                "retrieve",
                 "observer",
                 scope_hints={
                     "eqpId": "EQP-03",
@@ -2259,6 +2314,102 @@ class AssistantRuntimeV2Tests(TestCase):
             ]
         )
         self.assertEqual(result.tool_keys, ["rag.search"])
+
+    def test_email_turn_revalidates_mailbox_and_selected_email_scope(self) -> None:
+        """Email 현재 화면 scope는 서버 selector 결과로 바꾸고 불일치 범위는 거부합니다."""
+
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "email-scope-turn-request",
+            "profileKey": "email-rag",
+            "profileVersion": 2,
+            "appContextKey": "assistant",
+            "message": {"clientId": "email-scope-user-message", "content": "이 메일을 요약해줘"},
+            "toolInputs": {
+                "rag.search": {
+                    "permissionGroups": ["group-a"],
+                    "ragIndexes": ["rp-emails"],
+                    "mailbox": "group-a",
+                    "emailId": "17",
+                }
+            },
+        }
+        with patch(
+            "api.assistant.services.turns.email_selectors.resolve_assistant_email_scope",
+            return_value=None,
+        ), patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+        ) as execute:
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 403)
+        execute.assert_not_called()
+
+    def test_email_turn_returns_normalized_knowledge_context(self) -> None:
+        """검증된 Email scope와 공개용 knowledgeContext가 실제 실행 결과와 일치합니다."""
+
+        runtime_result = assistant_services.AssistantRuntimeResult(
+            content="선택 메일 요약",
+            blocks=[{"type": "text", "content": "선택 메일 요약", "sourceIds": ["rag-17"]}],
+            sources=[{"doc_id": "rag-17", "title": "메일 제목"}],
+            tool_keys=["rag.search"],
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant", "emails")
+            ),
+            execution_metadata={
+                "knowledgeMode": "current_scope",
+                "routingAction": "retrieve",
+                "selectedKnowledgeApp": "emails",
+                "grounded": True,
+                "routingFallback": False,
+            },
+        )
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "email-scope-success-request",
+            "profileKey": "email-rag",
+            "profileVersion": 2,
+            "appContextKey": "assistant",
+            "message": {"clientId": "email-scope-success-user", "content": "이 메일을 요약해줘"},
+            "toolInputs": {
+                "rag.search": {
+                    "permissionGroups": ["group-a"],
+                    "ragIndexes": ["rp-emails"],
+                    "mailbox": "group-a",
+                    "emailId": "17",
+                }
+            },
+        }
+        with patch(
+            "api.assistant.services.turns.email_selectors.resolve_assistant_email_scope",
+            return_value={"mailbox": "group-a", "emailId": "rag-17"},
+        ), patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+            return_value=runtime_result,
+        ) as execute:
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            body = b"".join(response.streaming_content).decode("utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            execute.call_args.kwargs["tool_inputs"]["rag.search"]["emailId"],
+            "rag-17",
+        )
+        self.assertIn('"mode":"current_scope"', body)
+        self.assertIn('"sourceApp":"emails"', body)
+        self.assertNotIn("permissionGroups", body)
 
     def test_appstore_turn_stores_scoped_profile_and_normalized_tool_input(self) -> None:
         """Appstore Turn은 전용 partition과 앱 권한 provenance를 저장합니다."""

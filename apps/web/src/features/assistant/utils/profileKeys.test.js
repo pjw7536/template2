@@ -21,10 +21,11 @@ describe("assistant profile keys", () => {
     expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.observer]).toBe(2)
     expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.appstore]).toBe(2)
     expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.lineDashboard]).toBe(2)
-    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.autoKnowledge]).toBe(1)
+    expect(ASSISTANT_PROFILE_VERSIONS[ASSISTANT_PROFILE_KEYS.autoKnowledge]).toBe(2)
     expect(ASSISTANT_KNOWLEDGE_MODES).toEqual({
       currentApp: "current_app",
       auto: "auto",
+      generalOnly: "general_only",
     })
   })
 })

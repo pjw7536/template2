@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { ChatComposer } from "./ChatComposer"
-import { ChatContextModeSelector } from "./ChatContextModeSelector"
+import { ChatContextModeSelector, ChatKnowledgeToggle } from "./ChatContextModeSelector"
 import { ChatErrorBanner } from "./ChatErrorBanner"
 import { ChatMessages } from "./ChatMessages"
 import { RoomList } from "./RoomList"
@@ -80,6 +80,7 @@ export function ChatWidgetPanel({
   pageContext,
   activeAppContext,
   knowledgeMode,
+  supportsCurrentScope,
   isAppContextReady,
   onKnowledgeModeChange,
   usesEmailRag,
@@ -208,6 +209,26 @@ export function ChatWidgetPanel({
             </div>
 
             <div className="flex h-8 items-center gap-1">
+              {supportsCurrentScope ? (
+                <ChatContextModeSelector
+                  appLabel={activeAppContext.label}
+                  mode={knowledgeMode}
+                  onChange={onKnowledgeModeChange}
+                  disabled={isSending}
+                  currentAppReady={isAppContextReady}
+                  disabledReason={
+                    !isAppContextReady
+                      ? `${activeAppContext.label} 조회 조건이 준비되면 사용할 수 있습니다.`
+                      : ""
+                  }
+                />
+              ) : (
+                <ChatKnowledgeToggle
+                  checked={knowledgeMode === "auto"}
+                  onChange={onKnowledgeModeChange}
+                  disabled={isSending}
+                />
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -266,22 +287,6 @@ export function ChatWidgetPanel({
           </div>
 
           <div className="grid gap-2" data-chat-widget-no-drag="true">
-            {activeAppContext.key !== "portal" ? (
-              <div className="flex min-w-0 justify-end">
-                <ChatContextModeSelector
-                  appLabel={activeAppContext.label}
-                  mode={knowledgeMode}
-                  onChange={onKnowledgeModeChange}
-                  disabled={isSending}
-                  currentAppReady={isAppContextReady}
-                  disabledReason={
-                    !isAppContextReady
-                      ? `${activeAppContext.label} 조회 조건이 준비되면 사용할 수 있습니다.`
-                      : ""
-                  }
-                />
-              </div>
-            ) : null}
             {pageContext ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -337,7 +342,7 @@ export function ChatWidgetPanel({
                   </p>
                 ) : null}
               </>
-            ) : activeAppContext?.key && activeAppContext.key !== "portal" ? (
+            ) : activeAppContext?.key && supportsCurrentScope ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 <div className="min-w-0 flex-1">

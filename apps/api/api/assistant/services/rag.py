@@ -138,6 +138,8 @@ def retrieve_documents(
     permission_groups: Optional[Sequence[str]] = None,
     rag_index_names: Optional[Sequence[str]] = None,
     cancellation: ExternalCallCancellation | None = None,
+    mailbox: str = "",
+    email_id: str = "",
 ) -> Tuple[List[str], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     """RAG에서 문서를 검색하고 컨텍스트/출처 목록을 반환합니다.
 
@@ -207,6 +209,29 @@ def retrieve_documents(
         hits,
         permission_groups=normalized_permission_groups,
     )
+    normalized_mailbox = str(mailbox or "").strip()
+    normalized_email_id = str(email_id or "").strip()
+    if normalized_mailbox or normalized_email_id:
+        scoped_hits: list[Dict[str, Any]] = []
+        for hit in hits:
+            source = hit.get("_source") if isinstance(hit, dict) else None
+            if not isinstance(source, dict):
+                continue
+            metadata = source.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            source_mailbox = str(
+                source.get("user_sdwt_prod")
+                or metadata.get("user_sdwt_prod")
+                or metadata.get("mailbox")
+                or ""
+            ).strip()
+            source_doc_id = str(source.get("doc_id") or hit.get("_id") or "").strip()
+            if normalized_mailbox and source_mailbox != normalized_mailbox:
+                continue
+            if normalized_email_id and source_doc_id != normalized_email_id:
+                continue
+            scoped_hits.append(hit)
+        hits = scoped_hits
 
     documents = _format_rag_documents(hits)
     sources = extract_rag_sources(hits)

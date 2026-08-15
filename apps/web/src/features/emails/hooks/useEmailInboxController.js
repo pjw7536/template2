@@ -7,6 +7,7 @@ import { useEmailDetail, useEmailHtml } from "./useEmailDetail"
 import { useEmailList } from "./useEmailList"
 import { useEmailMailboxes } from "./useEmailMailboxes"
 import { useEmailSplitPane } from "./useEmailSplitPane"
+import { useEmailAssistantContext } from "./useEmailAssistantContext"
 import { DEFAULT_EMAIL_PAGE_SIZE, EMAIL_PAGE_SIZE_OPTIONS } from "../utils/emailPagination"
 import {
   buildEmailMoveTargets,
@@ -107,6 +108,12 @@ function useEmailListController({ scope, mailboxParam, searchParams, setSearchPa
   const moveTargets = buildEmailMoveTargets(mailboxes, normalizedMailbox)
   const emailIdParam = (searchParams.get("emailId") || "").trim()
   const routedEmailId = parseRoutedEmailId(emailIdParam)
+
+  useEmailAssistantContext({
+    scope,
+    mailbox: normalizedMailbox,
+    emailId: activeEmailId,
+  })
 
   useEffect(() => {
     if (isListError && listError) {

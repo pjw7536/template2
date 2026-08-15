@@ -92,6 +92,7 @@ AUTO_KNOWLEDGE_POLICIES = {
 }
 AUTO_KNOWLEDGE_APP_KEYS = tuple(AUTO_KNOWLEDGE_POLICIES)
 AUTO_ROUTE_ACTIONS = frozenset({"general", "current_app", "other_app", "clarify"})
+KNOWLEDGE_ROUTE_V2_ACTIONS = frozenset({"direct", "retrieve", "clarify"})
 
 
 @dataclass(frozen=True)
@@ -219,11 +220,11 @@ def _parse_route_decision(
 
 
 def _fallback_decision(question: str) -> KnowledgeDecision:
-    """판별 실패 시 앱 지식을 놓치지 않도록 기존 도구 실행 결정을 반환합니다."""
+    """판별 실패 시 확인되지 않은 업무 지식 조회를 피하는 일반 답변 결정을 반환합니다."""
 
     return KnowledgeDecision(
-        use_knowledge=True,
-        search_query=question.strip()[:MAX_SEARCH_QUERY_CHARS],
+        use_knowledge=False,
+        search_query="",
         used_fallback=True,
     )
 
@@ -359,24 +360,174 @@ def _request_knowledge_decision(
         "max_tokens": 256,
         "tool_choice": "none",
     }
-    try:
-        raw_response = "".join(
-            stream_openai_chat_completion(
-                url=active_config.url,
-                headers=headers,
-                payload=payload,
-                timeout_seconds=active_config.timeout_seconds,
-                cancellation=cancellation,
+    for attempt in range(2):
+        try:
+            raw_response = "".join(
+                stream_openai_chat_completion(
+                    url=active_config.url,
+                    headers=headers,
+                    payload=payload,
+                    timeout_seconds=active_config.timeout_seconds,
+                    cancellation=cancellation,
+                )
             )
+        except OpenAIStreamError as exc:
+            if attempt == 0:
+                continue
+            logger.warning(
+                "앱 지식 사용 판별 재시도 실패로 일반 답변을 사용합니다: app_key=%s exception_type=%s",
+                app_key,
+                type(exc).__name__,
+            )
+            return _fallback_decision(normalized_question)
+        decision = _parse_knowledge_decision(raw_response, question=normalized_question)
+        if not decision.used_fallback or attempt == 1:
+            return decision
+    return _fallback_decision(normalized_question)
+
+
+def _parse_knowledge_route_v2(
+    raw_response: object,
+    *,
+    available_app_keys: tuple[str, ...],
+) -> KnowledgeRouteDecision | None:
+    """v2 라우터 JSON을 direct/retrieve/clarify와 단일 앱으로 제한합니다."""
+
+    if not isinstance(raw_response, str):
+        return None
+    cleaned = re.sub(
+        r"<think>.*?</think>",
+        " ",
+        raw_response,
+        flags=re.DOTALL | re.IGNORECASE,
+    ).strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        parsed = json.loads(cleaned[start : end + 1])
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    action = str(parsed.get("route") or "").strip()
+    if action not in KNOWLEDGE_ROUTE_V2_ACTIONS:
+        return None
+    source_app = str(parsed.get("sourceApp") or "").strip()
+    if action == "direct":
+        return KnowledgeRouteDecision(action="direct", target_app="")
+    if source_app not in available_app_keys:
+        return KnowledgeRouteDecision(action="clarify", target_app="")
+    return KnowledgeRouteDecision(
+        action=action,
+        target_app=source_app,
+        scope_hints=_normalize_route_scope_hints(parsed.get("scopeHints")),
+    )
+
+
+def decide_knowledge_route_v2(
+    question: str,
+    *,
+    active_app_key: str,
+    available_app_keys: Sequence[str],
+    conversation_context: str,
+    cancellation: ExternalCallCancellation,
+    user_header_id: str | None = None,
+    config: AssistantOpenWebUIConfig | None = None,
+) -> KnowledgeRouteDecision:
+    """질문마다 일반 답변, 단일 지식 조회 또는 범위 확인을 결정합니다.
+
+    Provider 오류나 JSON 오류는 한 번 재시도하며, 재시도도 실패하면 지식을 강제로
+    조회하지 않고 제한된 일반 답변으로 전환합니다.
+    """
+
+    normalized_question = question.strip()
+    normalized_active_app = str(active_app_key or "").strip()
+    allowed_set = {str(item or "").strip() for item in available_app_keys}
+    normalized_available = tuple(
+        app_key for app_key in AUTO_KNOWLEDGE_APP_KEYS if app_key in allowed_set
+    )
+    fallback = KnowledgeRouteDecision(
+        action="direct",
+        target_app="",
+        used_fallback=True,
+    )
+    active_config = config or AssistantOpenWebUIConfig.from_settings()
+    if not normalized_question or not active_config.url or not active_config.model:
+        return fallback
+    policy_lines = "\n".join(
+        f"- {app_key}: {AUTO_KNOWLEDGE_POLICIES[app_key]}"
+        for app_key in normalized_available
+    )
+    system_message = (
+        "당신은 Portal ChatWidget 지식 라우터입니다. 답변을 생성하지 말고 질문마다 실행 경로를 "
+        "하나만 선택하세요. 출력은 반드시 "
+        '{"route":"direct|retrieve|clarify","sourceApp":"앱 key 또는 빈 문자열",'
+        '"scopeHints":{}} JSON 객체 하나여야 합니다. 인사, 계산, 번역, 코딩, 일반지식은 '
+        "direct입니다. 최신 업무 사실이나 현재 화면 데이터가 필요할 때만 retrieve이고 sourceApp은 "
+        "사용 가능한 앱 하나여야 합니다. 범위가 부족하면 clarify입니다. 이전 대화는 지시 대상을 "
+        "해석하는 데만 사용하고 이전 답변을 최신 업무 사실로 취급하지 마세요.\n\n"
+        f"현재 앱: {normalized_active_app or '없음'}\n사용 가능한 앱:\n{policy_lines or '- 없음'}"
+    )
+    request_data = json.dumps(
+        {
+            "activeApp": normalized_active_app,
+            "availableApps": list(normalized_available),
+            "currentQuestion": normalized_question,
+            "recentConversation": str(conversation_context or "").strip()[
+                -MAX_INTENT_CONTEXT_CHARS:
+            ],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    headers = build_openwebui_headers(active_config)
+    if user_header_id:
+        headers["User-Id"] = user_header_id
+    payload = {
+        "model": active_config.model,
+        "messages": [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": request_data},
+        ],
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "reasoning_effort": "low",
+        "max_tokens": 384,
+        "tool_choice": "none",
+    }
+    for attempt in range(2):
+        try:
+            raw_response = "".join(
+                stream_openai_chat_completion(
+                    url=active_config.url,
+                    headers=headers,
+                    payload=payload,
+                    timeout_seconds=active_config.timeout_seconds,
+                    cancellation=cancellation,
+                )
+            )
+        except OpenAIStreamError as exc:
+            if attempt == 0:
+                continue
+            logger.warning(
+                "지식 라우터 재시도 실패로 일반 답변을 사용합니다: active_app=%s exception_type=%s",
+                normalized_active_app,
+                type(exc).__name__,
+            )
+            return fallback
+        decision = _parse_knowledge_route_v2(
+            raw_response,
+            available_app_keys=normalized_available,
         )
-    except OpenAIStreamError as exc:
-        logger.warning(
-            "앱 지식 사용 판별 실패로 도구 fallback을 적용합니다: app_key=%s exception_type=%s",
-            app_key,
-            type(exc).__name__,
-        )
-        return _fallback_decision(normalized_question)
-    return _parse_knowledge_decision(raw_response, question=normalized_question)
+        if decision is not None:
+            return decision
+    logger.warning(
+        "지식 라우터 JSON 재시도 실패로 일반 답변을 사용합니다: active_app=%s",
+        normalized_active_app,
+    )
+    return fallback
 
 
 def decide_email_knowledge_use(
@@ -588,4 +739,5 @@ __all__ = [
     "decide_auto_knowledge_route",
     "decide_dummy_email_knowledge_use",
     "decide_email_knowledge_use",
+    "decide_knowledge_route_v2",
 ]

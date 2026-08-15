@@ -209,7 +209,7 @@ function injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes) {
   return container.innerHTML
 }
 
-function applyNewWindowLinkAttributes(rawHtml) {
+function applyLinkTargetAttributes(rawHtml) {
   if (typeof DOMParser === "undefined") return rawHtml
 
   const parser = new DOMParser()
@@ -218,6 +218,11 @@ function applyNewWindowLinkAttributes(rawHtml) {
   if (!container) return rawHtml
 
   container.querySelectorAll("a[href]").forEach((anchor) => {
+    if (anchor.hasAttribute("data-email-source")) {
+      anchor.removeAttribute("target")
+      anchor.removeAttribute("rel")
+      return
+    }
     anchor.setAttribute("target", "_blank")
     anchor.setAttribute("rel", "noopener noreferrer")
   })
@@ -230,8 +235,8 @@ export function formatAssistantMessage(content, sources = [], mailbox = "", avai
 
   const rawHtml = marked.parse(content, markedOptions)
   const htmlWithSources = injectEmailSourceLinks(rawHtml, sources, mailbox, availableMailboxes)
-  const htmlWithNewWindowLinks = applyNewWindowLinkAttributes(htmlWithSources)
-  return DOMPurify.sanitize(htmlWithNewWindowLinks, {
+  const htmlWithLinkTargets = applyLinkTargetAttributes(htmlWithSources)
+  return DOMPurify.sanitize(htmlWithLinkTargets, {
     USE_PROFILES: { html: true },
     ADD_ATTR: ["data-email-source", "target", "rel"],
   })
