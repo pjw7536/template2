@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Sequence
 
 from django.db import connection
-from django.db.models import Count, Exists, OuterRef, Q, QuerySet
+from django.db.models import Count, Exists, OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Lower, TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -39,6 +39,9 @@ from .serializers import (
 )
 from .services.table_schema import (
     DEFAULT_TABLE,
+    LINE_FILTER_MODE_SDWT,
+    LINE_FILTER_MODE_TARGET_USER_SDWT,
+    LINE_FILTER_MODE_USER_SDWT,
     build_line_filters,
     ensure_date_bounds,
     find_column,
@@ -103,33 +106,71 @@ LINE_DASHBOARD_ASSISTANT_RECENT_ROWS = 20
 
 def _resolve_assistant_date_range(
     *,
-    view: str,
-    from_value: object,
-    to_value: object,
+    from_value: str,
+    to_value: str,
 ) -> tuple[date, date]:
     """ESOP Assistant 조회 기간을 날짜로 정규화하고 최대 31일로 제한합니다."""
 
-    normalized_to = normalize_date_only(to_value)
-    end_date = date.fromisoformat(normalized_to) if normalized_to else timezone.localdate()
-    normalized_from = normalize_date_only(from_value)
-    default_days = 14 if view == "history" else 3
-    start_date = (
-        date.fromisoformat(normalized_from)
-        if normalized_from
-        else end_date - timedelta(days=default_days - 1)
-    )
+    start_date = date.fromisoformat(from_value)
+    end_date = date.fromisoformat(to_value)
     if start_date > end_date:
         start_date, end_date = end_date, start_date
     earliest = end_date - timedelta(days=LINE_DASHBOARD_ASSISTANT_MAX_RANGE_DAYS - 1)
     return max(start_date, earliest), end_date
 
 
+def _filter_assistant_line_scope(
+    queryset: QuerySet[DroneSOP],
+    *,
+    line_id: str,
+    line_filter_mode: str,
+) -> QuerySet[DroneSOP]:
+    """표 API와 동일한 line 직접 소속·target 매핑 범위를 적용합니다."""
+
+    direct_line_filter = Q(line_id__iexact=line_id)
+    if line_filter_mode == LINE_FILTER_MODE_TARGET_USER_SDWT:
+        target_values = (
+            DroneSopTarget.objects.filter(line_id__iexact=line_id)
+            .exclude(target_user_sdwt_prod="")
+            .annotate(assistant_target_value=Lower("target_user_sdwt_prod"))
+            .values("assistant_target_value")
+        )
+        return queryset.annotate(
+            assistant_row_target=Lower("target_user_sdwt_prod")
+        ).filter(
+            direct_line_filter
+            | Q(assistant_row_target__in=Subquery(target_values))
+        )
+
+    mapping_field = {
+        LINE_FILTER_MODE_USER_SDWT: "user_sdwt_prod",
+        LINE_FILTER_MODE_SDWT: "sdwt_prod",
+    }.get(line_filter_mode)
+    if mapping_field is None:
+        raise ValueError("지원하지 않는 ESOP line 필터 모드입니다.")
+    mapping_values = (
+        DroneSopTargetMapping.objects.filter(target__line_id__iexact=line_id)
+        .exclude(**{f"{mapping_field}__isnull": True})
+        .exclude(**{mapping_field: ""})
+        .annotate(assistant_mapping_value=Lower(mapping_field))
+        .values("assistant_mapping_value")
+    )
+    return queryset.annotate(
+        assistant_row_mapping=Lower(mapping_field)
+    ).filter(
+        direct_line_filter | Q(assistant_row_mapping__in=Subquery(mapping_values))
+    )
+
+
 def get_line_dashboard_assistant_snapshot(
     *,
-    line_id: object,
-    view: object,
-    from_value: object = None,
-    to_value: object = None,
+    line_id: str,
+    view: str,
+    from_value: str,
+    to_value: str,
+    line_filter_mode: str | None,
+    recent_hours_start: int | None,
+    recent_hours_end: int | None,
 ) -> dict[str, object]:
     """ChatWidget용 ESOP line 상태·이력 snapshot을 조회합니다.
 
@@ -138,6 +179,9 @@ def get_line_dashboard_assistant_snapshot(
         view: `status` 또는 `history` 화면 종류입니다.
         from_value: 조회 시작일(YYYY-MM-DD)입니다.
         to_value: 조회 종료일(YYYY-MM-DD)입니다.
+        line_filter_mode: status 표에 적용된 line 소속 기준입니다.
+        recent_hours_start: 현재 시각 기준 최근 조회 시작 시간입니다.
+        recent_hours_end: 현재 시각 기준 최근 조회 종료 시간입니다.
 
     반환:
         상태별 건수, 일별 건수와 개인정보를 제외한 최근 SOP 목록입니다.
@@ -149,12 +193,12 @@ def get_line_dashboard_assistant_snapshot(
         날짜 형식이 잘못되면 ValueError가 발생합니다.
     """
 
-    normalized_view = str(view or "status").strip().lower()
-    if normalized_view not in {"status", "history"}:
-        normalized_view = "status"
+    if view not in {"status", "history"}:
+        raise ValueError("지원하지 않는 ESOP 화면 종류입니다.")
     normalized_line_id = normalize_line_id(line_id)
+    if normalized_line_id is None:
+        raise ValueError("ESOP line ID가 필요합니다.")
     start_date, end_date = _resolve_assistant_date_range(
-        view=normalized_view,
         from_value=from_value,
         to_value=to_value,
     )
@@ -163,7 +207,34 @@ def get_line_dashboard_assistant_snapshot(
         created_at__date__gte=start_date,
         created_at__date__lte=end_date,
     )
-    if normalized_line_id:
+    if view == "status":
+        if line_filter_mode not in {
+            LINE_FILTER_MODE_TARGET_USER_SDWT,
+            LINE_FILTER_MODE_USER_SDWT,
+            LINE_FILTER_MODE_SDWT,
+        }:
+            raise ValueError("지원하지 않는 ESOP line 필터 모드입니다.")
+        if (
+            type(recent_hours_start) is not int
+            or type(recent_hours_end) is not int
+            or not 0 <= recent_hours_end <= recent_hours_start <= 168
+        ):
+            raise ValueError("ESOP 최근 시간 범위가 올바르지 않습니다.")
+        queryset = _filter_assistant_line_scope(
+            queryset,
+            line_id=normalized_line_id,
+            line_filter_mode=line_filter_mode,
+        )
+        now = timezone.now()
+        queryset = queryset.filter(
+            created_at__range=(
+                now - timedelta(hours=recent_hours_start),
+                now
+                - timedelta(hours=recent_hours_end)
+                + timedelta(minutes=5),
+            )
+        )
+    else:
         queryset = queryset.filter(line_id__iexact=normalized_line_id)
 
     status_counts = [
@@ -219,8 +290,8 @@ def get_line_dashboard_assistant_snapshot(
             "instant_inform",
         )[:LINE_DASHBOARD_ASSISTANT_RECENT_ROWS]
     ]
-    return {
-        "view": normalized_view,
+    snapshot = {
+        "view": view,
         "lineId": normalized_line_id,
         "from": start_date.isoformat(),
         "to": end_date.isoformat(),
@@ -230,6 +301,15 @@ def get_line_dashboard_assistant_snapshot(
         "dailyCounts": daily_counts,
         "recentRows": recent_rows,
     }
+    if view == "status":
+        snapshot.update(
+            {
+                "lineFilterMode": line_filter_mode,
+                "recentHoursStart": recent_hours_start,
+                "recentHoursEnd": recent_hours_end,
+            }
+        )
+    return snapshot
 
 def _drone_sop_eligible_filter() -> Q:
     """Drone SOP 후보 공통 적합 조건 필터를 반환합니다."""

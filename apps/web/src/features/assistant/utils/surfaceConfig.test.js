@@ -39,17 +39,20 @@ describe("resolveAssistantSurface", () => {
     })
   })
 
-  it("ESOP line과 기간을 snapshot Tool surface로 변환한다", () => {
+  it("ESOP line과 현재 화면 필터를 snapshot Tool surface로 변환한다", () => {
     expect(resolveAssistantSurface({
       appKey: "line-dashboard",
       pageContext: {
         kind: "line-dashboard",
         key: "line-dashboard:v1",
         scope: {
-          view: "history",
+          view: "status",
           lineId: "L1",
           from: "2026-08-01",
           to: "2026-08-14",
+          lineFilterMode: "target_user_sdwt_prod",
+          recentHoursStart: 8,
+          recentHoursEnd: 0,
         },
       },
     })).toEqual({
@@ -59,13 +62,32 @@ describe("resolveAssistantSurface", () => {
       appContextKey: "line-dashboard:v1",
       toolInputs: {
         "line-dashboard.snapshot": {
-          view: "history",
+          view: "status",
+          lineId: "L1",
+          from: "2026-08-01",
+          to: "2026-08-14",
+          lineFilterMode: "target_user_sdwt_prod",
+          recentHoursStart: 8,
+          recentHoursEnd: 0,
+        },
+      },
+    })
+  })
+
+  it("ESOP status 필터가 누락되면 준비되지 않은 surface로 처리한다", () => {
+    expect(resolveAssistantSurface({
+      appKey: "line-dashboard",
+      pageContext: {
+        kind: "line-dashboard",
+        key: "line-dashboard:v1",
+        scope: {
+          view: "status",
           lineId: "L1",
           from: "2026-08-01",
           to: "2026-08-14",
         },
       },
-    })
+    })).toBeNull()
   })
 
   it("현재 앱 지식을 끄면 Tool 없이 일반 대화 surface를 반환한다", () => {

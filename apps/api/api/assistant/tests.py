@@ -1585,10 +1585,13 @@ class AssistantRuntimeV2Tests(TestCase):
                 conversation_summary="",
                 tool_inputs={
                     "line-dashboard.snapshot": {
-                        "view": "history",
+                        "view": "status",
                         "lineId": "L1",
                         "from": "2026-08-01",
                         "to": "2026-08-02",
+                        "lineFilterMode": "target_user_sdwt_prod",
+                        "recentHoursStart": 8,
+                        "recentHoursEnd": 0,
                     }
                 },
                 user_header_id="knox-98000",
@@ -1603,9 +1606,12 @@ class AssistantRuntimeV2Tests(TestCase):
         )
         line_selector.assert_called_once_with(
             line_id="L1",
-            view="history",
+            view="status",
             from_value="2026-08-01",
             to_value="2026-08-02",
+            line_filter_mode="target_user_sdwt_prod",
+            recent_hours_start=8,
+            recent_hours_end=0,
         )
         self.assertEqual(appstore_result.tool_keys, ["appstore.catalog"])
         self.assertEqual(line_result.tool_keys, ["line-dashboard.snapshot"])
@@ -1619,6 +1625,55 @@ class AssistantRuntimeV2Tests(TestCase):
         )
         self.assertIn("분석 앱", provider.call_args_list[0].kwargs["system_message"])
         self.assertIn('"status":"RUN"', provider.call_args_list[1].kwargs["system_message"])
+
+    def test_line_dashboard_tool_input_preserves_current_table_filters(self) -> None:
+        """ESOP Tool 입력은 현재 표의 line·최근 시간 필터를 검증해 보존합니다."""
+
+        normalized = assistant_services.AssistantTurnService()._normalize_tool_inputs(
+            user=self.user,
+            profile=assistant_services.get_assistant_profile(
+                profile_key="line-dashboard-context"
+            ),
+            tool_inputs={
+                "line-dashboard.snapshot": {
+                    "view": "status",
+                    "lineId": " L1 ",
+                    "from": "2026-08-15",
+                    "to": "2026-08-15",
+                    "lineFilterMode": "target_user_sdwt_prod",
+                    "recentHoursStart": 8,
+                    "recentHoursEnd": 0,
+                }
+            },
+        )
+
+        self.assertEqual(
+            normalized["line-dashboard.snapshot"],
+            {
+                "view": "status",
+                "lineId": "L1",
+                "from": "2026-08-15",
+                "to": "2026-08-15",
+                "lineFilterMode": "target_user_sdwt_prod",
+                "recentHoursStart": 8,
+                "recentHoursEnd": 0,
+            },
+        )
+        with self.assertRaises(assistant_services.AssistantTurnError):
+            assistant_services.AssistantTurnService()._normalize_tool_inputs(
+                user=self.user,
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="line-dashboard-context"
+                ),
+                tool_inputs={
+                    "line-dashboard.snapshot": {
+                        "view": "status",
+                        "lineId": "L1",
+                        "from": "2026-08-15",
+                        "to": "2026-08-15",
+                    }
+                },
+            )
 
     def test_email_turn_revalidates_mailbox_and_selected_email_scope(self) -> None:
         """Email 현재 화면 scope는 서버 selector 결과로 바꾸고 불일치 범위는 거부합니다."""
@@ -1990,14 +2045,14 @@ class AssistantRuntimeV2Tests(TestCase):
                 "findings": [],
                 "limitations": [],
             },
-            "meta": {"sourceCount": 0},
+            "meta": {"sourceCounts": {"eqp": 2}},
             "scope": {},
         }
         with patch(
             "api.assistant.services.runtime.analyze_observer_logs_stream",
             return_value=observer_payload,
         ) as analyze:
-            runtime.execute(
+            observer_result = runtime.execute(
                 profile=assistant_services.get_assistant_profile(
                     profile_key="observer-analysis"
                 ),
@@ -2020,6 +2075,49 @@ class AssistantRuntimeV2Tests(TestCase):
         observer_context = analyze.call_args.kwargs["conversation_summary"]
         self.assertIn("장기 Observer 요약", observer_context)
         self.assertIn("직전 DOWN 분석", observer_context)
+        self.assertIn("직전 분석과 비교했습니다.", observer_result.content)
+        self.assertEqual(observer_result.execution_metadata["evidenceCount"], 2)
+
+    def test_observer_provider_returns_not_found_only_when_all_sources_are_empty(self) -> None:
+        """Observer 조회 source가 모두 0건일 때만 근거 없음 응답을 반환합니다."""
+
+        observer_payload = {
+            "analysis": {
+                "headline": "분석 결과",
+                "summary": "조회 범위에 분석할 로그가 없습니다.",
+                "findings": [],
+                "limitations": [],
+            },
+            "meta": {"sourceCounts": {"eqp": 0, "tip": 0}},
+            "scope": {},
+        }
+        with patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream",
+            return_value=observer_payload,
+        ):
+            result = assistant_services.AssistantRuntime().execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="observer-analysis"
+                ),
+                prompt="현재 범위를 분석해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={
+                    "observer.analysis": {
+                        "eqpId": "EQP-1",
+                        "from": "2026-08-01T00:00:00+09:00",
+                        "to": "2026-08-02T00:00:00+09:00",
+                        "logTypes": ["eqp"],
+                        "tipGroups": ["__ALL__"],
+                    }
+                },
+                user_header_id="knox-98000",
+                context_key="observer:test",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(result.content, "배경지식에서 관련 내용을 찾지 못했습니다.")
+        self.assertEqual(result.execution_metadata["evidenceCount"], 0)
 
     def test_observer_provider_accepts_interlock_log_keys(self) -> None:
         """Observer Provider는 화면과 selector가 사용하는 Interlock 키를 허용합니다."""
@@ -2031,7 +2129,9 @@ class AssistantRuntimeV2Tests(TestCase):
                 "findings": [],
                 "limitations": [],
             },
-            "meta": {},
+            "meta": {
+                "sourceCounts": {"spc-interlock": 1, "fdc-interlock": 1}
+            },
             "scope": {},
         }
         with patch(

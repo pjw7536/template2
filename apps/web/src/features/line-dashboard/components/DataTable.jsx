@@ -40,6 +40,7 @@ import {
 import { DataTablePagination } from "./DataTablePagination"
 import { DataTableToolbar } from "./DataTableToolbar"
 import { StatusDistributionCard } from "./StatusDistributionCard"
+import { useLineDashboardAssistantContext } from "../hooks/useLineDashboardAssistantContext"
 import { createColumnDefs } from "../utils/dataTableColumnDefs"
 import { createGlobalFilterFn } from "./GlobalFilter"
 import { QuickFilters } from "./QuickFilters"
@@ -361,6 +362,9 @@ export function DataTable({ lineId }) {
     setSorting,
     lineFilterMode,
     setLineFilterMode,
+    fromDate,
+    toDate,
+    recentHoursRange,
     isInitialLoadingRows,
     isRefreshingRows,
     rowsError,
@@ -368,6 +372,15 @@ export function DataTable({ lineId }) {
     tableMeta,
     setRecentHoursRange: syncRecentHoursRange,
   } = useDataTableState({ lineId })
+  useLineDashboardAssistantContext({
+    view: "status",
+    lineId,
+    from: fromDate,
+    to: toDate,
+    lineFilterMode,
+    recentHoursStart: recentHoursRange.start,
+    recentHoursEnd: recentHoursRange.end,
+  })
   const { user } = useAuth()
 
   const quickFilterOptions = React.useMemo(

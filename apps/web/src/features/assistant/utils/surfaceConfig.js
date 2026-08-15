@@ -48,10 +48,22 @@ export function isAssistantAppContextReady({ appKey, pageContext = null } = {}) 
     return pageContext?.kind === "appstore" && pageContext.key === "appstore:v1"
   }
   if (appContext.key === "line-dashboard") {
-    return (
+    const scope = pageContext?.scope
+    const hasBaseScope = Boolean(
       pageContext?.kind === "line-dashboard"
       && pageContext.key === "line-dashboard:v1"
-      && Boolean(pageContext.scope?.lineId)
+      && ["status", "history"].includes(scope?.view)
+      && scope.lineId
+      && scope.from
+      && scope.to,
+    )
+    if (!hasBaseScope) return false
+    if (scope.view === "history") return true
+    return (
+      typeof scope.lineFilterMode === "string"
+      && Boolean(scope.lineFilterMode)
+      && Number.isInteger(scope.recentHoursStart)
+      && Number.isInteger(scope.recentHoursEnd)
     )
   }
   if (appContext.key === "emails") {
@@ -142,17 +154,25 @@ export function resolveAssistantSurface({
     const scope = pageContext.scope && typeof pageContext.scope === "object"
       ? pageContext.scope
       : {}
+    const snapshotInput = {
+      view: scope.view,
+      lineId: scope.lineId,
+      from: scope.from,
+      to: scope.to,
+      ...(scope.view === "status"
+        ? {
+            lineFilterMode: scope.lineFilterMode,
+            recentHoursStart: scope.recentHoursStart,
+            recentHoursEnd: scope.recentHoursEnd,
+          }
+        : {}),
+    }
     return buildProfileSurface({
       mode: "line-dashboard",
       profileKey: ASSISTANT_PROFILE_KEYS.lineDashboard,
       appContextKey: "line-dashboard:v1",
       toolInputs: {
-        "line-dashboard.snapshot": {
-          view: scope.view === "history" ? "history" : "status",
-          lineId: scope.lineId,
-          ...(scope.from ? { from: scope.from } : {}),
-          ...(scope.to ? { to: scope.to } : {}),
-        },
+        "line-dashboard.snapshot": snapshotInput,
       },
     })
   }

@@ -343,13 +343,23 @@ class AssistantRuntime:
     ) -> AssistantRuntimeResult:
         """현재 ESOP line·기간의 집계 snapshot으로 답변합니다."""
 
-        raw_input = tool_inputs.get("line-dashboard.snapshot")
-        dashboard_input = raw_input if isinstance(raw_input, Mapping) else {}
+        dashboard_input = tool_inputs["line-dashboard.snapshot"]
+        if not isinstance(dashboard_input, Mapping):
+            raise ValueError("ESOP Dashboard Tool 입력이 올바르지 않습니다.")
+        view = dashboard_input["view"]
+        is_status = view == "status"
         snapshot = drone_selectors.get_line_dashboard_assistant_snapshot(
-            line_id=dashboard_input.get("lineId"),
-            view=dashboard_input.get("view"),
-            from_value=dashboard_input.get("from"),
-            to_value=dashboard_input.get("to"),
+            line_id=dashboard_input["lineId"],
+            view=view,
+            from_value=dashboard_input["from"],
+            to_value=dashboard_input["to"],
+            line_filter_mode=(dashboard_input["lineFilterMode"] if is_status else None),
+            recent_hours_start=(
+                dashboard_input["recentHoursStart"] if is_status else None
+            ),
+            recent_hours_end=(
+                dashboard_input["recentHoursEnd"] if is_status else None
+            ),
         )
         if int(snapshot.get("totalCount") or 0) < 1:
             return self._knowledge_not_found_reply(
@@ -532,9 +542,9 @@ class AssistantRuntime:
             cancellation=cancellation,
             **analysis_kwargs,
         )
-        analysis = payload.get("analysis") if isinstance(payload, Mapping) else {}
-        analysis = analysis if isinstance(analysis, Mapping) else {}
-        source_count = int(payload.get("meta", {}).get("sourceCount") or 0)
+        analysis = payload["analysis"]
+        coverage = payload["meta"]
+        source_count = sum(coverage["sourceCounts"].values())
         if source_count < 1:
             return self._knowledge_not_found_reply(
                 profile=profile,
@@ -598,8 +608,8 @@ class AssistantRuntime:
             },
             context_snapshot={
                 "kind": "observer",
-                "scope": dict(payload.get("scope") or {}),
-                "coverage": dict(payload.get("meta") or {}),
+                "scope": dict(payload["scope"]),
+                "coverage": dict(coverage),
                 "evidence": evidence,
             },
         )

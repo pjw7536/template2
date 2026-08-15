@@ -1639,6 +1639,9 @@ class DroneSelectorCaseInsensitiveTests(TestCase):
             view="status",
             from_value=today,
             to_value=today,
+            line_filter_mode="target_user_sdwt_prod",
+            recent_hours_start=8,
+            recent_hours_end=0,
         )
 
         self.assertEqual(payload["totalCount"], 1)
@@ -1646,6 +1649,62 @@ class DroneSelectorCaseInsensitiveTests(TestCase):
         self.assertEqual(payload["recentRows"][0]["id"], included.id)
         self.assertNotIn("knoxId", payload["recentRows"][0])
         self.assertNotIn("comment", payload["recentRows"][0])
+
+    def test_assistant_snapshot_matches_status_line_and_recent_hour_filters(self) -> None:
+        """ESOP Assistant snapshot은 status 표와 같은 target·최근 시간 범위를 적용합니다."""
+
+        _upsert_target(
+            line_id="L1",
+            target_user_sdwt_prod="TARGET-A",
+        )
+        now = timezone.now()
+        mapped_recent = DroneSOP.objects.create(
+            line_id="OTHER",
+            target_user_sdwt_prod="target-a",
+            lot_id="LOT-MAPPED-RECENT",
+            status="MAPPED",
+        )
+        direct_recent = DroneSOP.objects.create(
+            line_id="l1",
+            target_user_sdwt_prod="OTHER",
+            lot_id="LOT-DIRECT-RECENT",
+            status="DIRECT",
+        )
+        mapped_old = DroneSOP.objects.create(
+            line_id="OTHER",
+            target_user_sdwt_prod="TARGET-A",
+            lot_id="LOT-MAPPED-OLD",
+            status="OLD",
+        )
+        DroneSOP.objects.filter(pk=mapped_recent.pk).update(
+            created_at=now - timedelta(hours=4)
+        )
+        DroneSOP.objects.filter(pk=direct_recent.pk).update(
+            created_at=now - timedelta(hours=2)
+        )
+        DroneSOP.objects.filter(pk=mapped_old.pk).update(
+            created_at=now - timedelta(hours=12)
+        )
+
+        with patch("api.drone.selectors.timezone.now", return_value=now):
+            payload = selectors.get_line_dashboard_assistant_snapshot(
+                line_id="l1",
+                view="status",
+                from_value=(timezone.localdate() - timedelta(days=1)).isoformat(),
+                to_value=timezone.localdate().isoformat(),
+                line_filter_mode="target_user_sdwt_prod",
+                recent_hours_start=8,
+                recent_hours_end=0,
+            )
+
+        self.assertEqual(payload["totalCount"], 2)
+        self.assertEqual(
+            {row["id"] for row in payload["recentRows"]},
+            {mapped_recent.id, direct_recent.id},
+        )
+        self.assertEqual(payload["lineFilterMode"], "target_user_sdwt_prod")
+        self.assertEqual(payload["recentHoursStart"], 8)
+        self.assertEqual(payload["recentHoursEnd"], 0)
 
     def test_tip_status_line_sdwt_options_use_drone_targets_with_station_match(self) -> None:
         """TIP status 선택지는 station_master에 있는 Drone target만 반환합니다."""

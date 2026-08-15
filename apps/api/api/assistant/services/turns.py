@@ -46,6 +46,10 @@ from .turn_persistence import (
 
 logger = logging.getLogger(__name__)
 TURN_PERSISTENCE_GRACE_SECONDS = 10
+LINE_DASHBOARD_FILTER_MODES = frozenset(
+    {"target_user_sdwt_prod", "user_sdwt_prod", "sdwt_prod"}
+)
+LINE_DASHBOARD_RECENT_HOURS_MAX = 168
 SAFE_ACCOUNT_SCOPES = frozenset(
     {"assistant", "emails", "observer", "appstore", "line-dashboard"}
 )
@@ -69,6 +73,53 @@ class AssistantTurnError(RuntimeError):
         self.missing_scopes = tuple(
             scope for scope in missing_scopes if scope in SAFE_ACCOUNT_SCOPES
         )
+
+
+def _normalize_line_dashboard_input(
+    dashboard_input: Mapping[str, object],
+) -> dict[str, object]:
+    """ESOP 화면 종류별 현재 Tool 입력 계약을 엄격하게 검증합니다."""
+
+    view = dashboard_input.get("view")
+    required_fields = {"view", "lineId", "from", "to"}
+    if view == "status":
+        required_fields.update(
+            {"lineFilterMode", "recentHoursStart", "recentHoursEnd"}
+        )
+    line_id = str(dashboard_input.get("lineId") or "").strip()
+    try:
+        dates_are_valid = all(
+            isinstance(dashboard_input.get(field_name), str)
+            and date.fromisoformat(dashboard_input[field_name]).isoformat()
+            == dashboard_input[field_name]
+            for field_name in ("from", "to")
+        )
+    except ValueError:
+        dates_are_valid = False
+    recent_start = dashboard_input.get("recentHoursStart")
+    recent_end = dashboard_input.get("recentHoursEnd")
+    line_filter_mode = dashboard_input.get("lineFilterMode")
+    status_filters_are_valid = view != "status" or (
+        isinstance(line_filter_mode, str)
+        and line_filter_mode in LINE_DASHBOARD_FILTER_MODES
+        and type(recent_start) is int
+        and type(recent_end) is int
+        and 0 <= recent_end <= recent_start <= LINE_DASHBOARD_RECENT_HOURS_MAX
+    )
+    if (
+        view not in {"status", "history"}
+        or set(dashboard_input) != required_fields
+        or not line_id
+        or len(line_id) > 50
+        or not dates_are_valid
+        or not status_filters_are_valid
+    ):
+        raise AssistantTurnError(
+            "invalid_tool_input",
+            status_code=400,
+            message="ESOP Dashboard 현재 화면 조건이 올바르지 않습니다.",
+        )
+    return {**dashboard_input, "lineId": line_id}
 
 
 @dataclass(frozen=True)
@@ -481,41 +532,10 @@ class AssistantTurnService:
         if profile.provider == "line-dashboard-context":
             raw = tool_inputs.get("line-dashboard.snapshot")
             dashboard_input = raw if isinstance(raw, Mapping) else {}
-            if set(dashboard_input) - {"view", "lineId", "from", "to"}:
-                raise AssistantTurnError(
-                    "invalid_tool_input",
-                    status_code=400,
-                    message="line-dashboard.snapshot에 지원하지 않는 입력이 있습니다.",
-                )
-            view = str(dashboard_input.get("view") or "status").strip().lower()
-            line_id = str(dashboard_input.get("lineId") or "").strip()[:50]
-            if view not in {"status", "history"} or not line_id:
-                raise AssistantTurnError(
-                    "invalid_tool_input",
-                    status_code=400,
-                    message="ESOP Dashboard 화면 종류와 line ID가 필요합니다.",
-                )
-            normalized_dates: dict[str, str] = {}
-            for field_name in ("from", "to"):
-                value = str(dashboard_input.get(field_name) or "").strip()
-                if not value:
-                    continue
-                try:
-                    normalized_dates[field_name] = date.fromisoformat(
-                        value[:10]
-                    ).isoformat()
-                except ValueError as exc:
-                    raise AssistantTurnError(
-                        "invalid_tool_input",
-                        status_code=400,
-                        message="ESOP Dashboard 조회 날짜 형식이 올바르지 않습니다.",
-                    ) from exc
             return {
-                "line-dashboard.snapshot": {
-                    "view": view,
-                    "lineId": line_id,
-                    **normalized_dates,
-                }
+                "line-dashboard.snapshot": _normalize_line_dashboard_input(
+                    dashboard_input
+                )
             }
         return {}
 

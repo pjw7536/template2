@@ -54,7 +54,7 @@ class AssistantObserverAnalysisRangeTests(SimpleTestCase):
                 "findings": [],
                 "limitations": [],
             },
-            "meta": {},
+            "meta": {"sourceCounts": {"eqp": 1}},
             "scope": {},
         }
         start_date = date(2026, 5, 1)
