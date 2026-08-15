@@ -19,7 +19,7 @@ export function useChatSession(options = {}) {
 
   const profileVersion = Number.isInteger(options.profileVersion)
     ? options.profileVersion
-    : 1
+    : 2
   const profileToolInputs =
     options.profileToolInputs && typeof options.profileToolInputs === "object"
       ? options.profileToolInputs

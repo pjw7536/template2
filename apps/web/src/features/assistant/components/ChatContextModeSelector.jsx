@@ -1,77 +1,40 @@
-import { ASSISTANT_KNOWLEDGE_MODES } from "../utils/profileKeys"
+import { useId } from "react"
+import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 
 export function ChatContextModeSelector({
-  appLabel,
-  mode,
+  usesAppContext,
   onChange,
   disabled = false,
-  currentAppReady = true,
   disabledReason = "",
 }) {
-  const knowledgeLabel = appLabel === "Appstore" ? "App Store" : appLabel
-  const groupLabel = `${knowledgeLabel} 지식 선택 모드`
-  const options = [
-    {
-      value: ASSISTANT_KNOWLEDGE_MODES.currentApp,
-      label: "현재 화면",
-      disabled: !currentAppReady,
-    },
-    {
-      value: ASSISTANT_KNOWLEDGE_MODES.auto,
-      label: "자동",
-      disabled: false,
-    },
-  ]
+  const switchId = useId()
 
   return (
     <div
-      role="radiogroup"
-      aria-label={groupLabel}
-      className="inline-flex h-8 shrink-0 items-center rounded-lg border bg-muted/50 p-0.5 text-[10px] font-medium"
+      title={disabled && disabledReason ? disabledReason : undefined}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-foreground ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
     >
-      {options.map((option) => {
-        const isSelected = mode === option.value
-        const isDisabled = disabled || option.disabled
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            disabled={isDisabled}
-            title={option.disabled && disabledReason ? disabledReason : undefined}
-            onClick={() => onChange(option.value)}
-            className={`inline-flex h-6 items-center rounded-md px-2 whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${isSelected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"} disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export function ChatKnowledgeToggle({ checked, onChange, disabled = false }) {
-  return (
-    <label className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border bg-muted/50 px-2 text-[10px] font-medium text-foreground">
-      <span>업무 지식 자동 사용</span>
-      <button
-        type="button"
-        role="switch"
-        aria-label="업무 지식 자동 사용"
-        aria-checked={checked}
+      <SwitchPrimitive.Root
+        id={switchId}
+        checked={usesAppContext}
+        onCheckedChange={(checked) => onChange(checked === true)}
         disabled={disabled}
-        onClick={() => onChange(
-          checked
-            ? ASSISTANT_KNOWLEDGE_MODES.generalOnly
-            : ASSISTANT_KNOWLEDGE_MODES.auto,
-        )}
-        className={`relative inline-flex h-5 w-9 items-center rounded-full border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "border-primary bg-primary" : "border-input bg-background"}`}
+        data-slot="switch"
+        data-size="sm"
+        aria-label="현재 앱 지식 사용"
+        className="peer group/switch relative inline-flex h-[14px] w-[24px] shrink-0 items-center rounded-full border border-transparent bg-input outline-none transition-all after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-primary data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:data-unchecked:bg-input/80"
       >
-        <span
-          className={`block size-3.5 rounded-full bg-primary-foreground shadow-sm transition-transform ${checked ? "translate-x-[17px]" : "translate-x-0.5"}`}
+        <SwitchPrimitive.Thumb
+          data-slot="switch-thumb"
+          className="pointer-events-none block size-3 translate-x-0 rounded-full bg-background ring-0 transition-transform group-data-checked/switch:translate-x-[calc(100%-2px)] dark:data-checked:bg-primary-foreground dark:data-unchecked:bg-foreground"
         />
-      </button>
-    </label>
+      </SwitchPrimitive.Root>
+      <label
+        htmlFor={switchId}
+        className={`inline-flex h-8 items-center ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+      >
+        현재 앱 지식 사용
+      </label>
+    </div>
   )
 }

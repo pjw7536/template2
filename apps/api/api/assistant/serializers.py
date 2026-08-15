@@ -75,7 +75,6 @@ class AssistantConversationSummaryRequestSerializer(serializers.Serializer):
             "profile:observer-analysis",
             "profile:appstore-context",
             "profile:line-dashboard-context",
-            "profile:auto-knowledge",
         ),
     )
 
@@ -236,7 +235,6 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
     )
     generationId = serializers.UUIDField(source="generation_id", allow_null=True)
     contextSnapshot = serializers.SerializerMethodField()
-    knowledgeContext = serializers.SerializerMethodField()
     feedback = serializers.SerializerMethodField()
     accessState = serializers.SerializerMethodField()
 
@@ -290,48 +288,6 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
             "createdAt": snapshot.created_at.isoformat(),
         }
 
-    def get_knowledgeContext(self, obj: AssistantMessage) -> dict[str, object] | None:
-        """저장 실행 정보에서 공개 가능한 지식 라우팅 provenance만 반환합니다."""
-
-        if obj.role != AssistantMessage.Roles.ASSISTANT or obj.generation is None:
-            return None
-        generation = obj.generation
-        metadata = (
-            generation.execution_metadata
-            if isinstance(generation.execution_metadata, dict)
-            else {}
-        )
-        mode = str(metadata.get("knowledgeMode") or "").strip()
-        if mode not in {"general_only", "current_scope", "auto"}:
-            mode = (
-                "auto"
-                if generation.profile_key == "auto-knowledge"
-                else "general_only"
-                if generation.profile_key == "portal-default"
-                else "current_scope"
-            )
-        raw_route = str(metadata.get("routingAction") or "").strip()
-        route = {
-            "general": "direct",
-            "current_app": "retrieve",
-            "other_app": "retrieve",
-        }.get(raw_route, raw_route)
-        if route not in {"direct", "retrieve", "clarify"}:
-            route = "retrieve" if generation.tool_keys else "direct"
-        source_app = str(metadata.get("selectedKnowledgeApp") or "").strip()
-        if source_app not in {"emails", "observer", "appstore", "line-dashboard"}:
-            source_app = ""
-        if route != "retrieve":
-            source_app = ""
-        grounded = bool(metadata.get("grounded", False)) if route == "retrieve" else False
-        return {
-            "mode": mode,
-            "route": route,
-            "sourceApp": source_app or None,
-            "grounded": grounded,
-            "fallback": bool(metadata.get("routingFallback", False)),
-        }
-
     def get_feedback(self, obj: AssistantMessage) -> dict[str, object] | None:
         """현재 메시지의 사용자 평가를 반환합니다."""
 
@@ -357,7 +313,6 @@ class AssistantMessageSerializer(serializers.ModelSerializer):
             "revisionOfId",
             "generationId",
             "contextSnapshot",
-            "knowledgeContext",
             "feedback",
             "accessState",
             "createdAt",
@@ -395,10 +350,9 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             "observer-analysis",
             "appstore-context",
             "line-dashboard-context",
-            "auto-knowledge",
         )
     )
-    profile_version = serializers.IntegerField(required=False, min_value=1)
+    profile_version = serializers.ChoiceField(required=False, choices=(2,))
     app_context_key = serializers.CharField(required=False, max_length=512)
     message = AssistantTurnMessageSerializer()
     target_message_id = serializers.CharField(required=False, max_length=128)

@@ -19,7 +19,7 @@ class AssistantObserverAnalysisRangeTests(SimpleTestCase):
         self.runtime = assistant_services.AssistantRuntime()
         self.profile = assistant_services.get_assistant_profile(
             profile_key="observer-analysis",
-            profile_version=1,
+            profile_version=2,
         )
 
     def execute(self, *, start_date: date, end_date: date) -> None:

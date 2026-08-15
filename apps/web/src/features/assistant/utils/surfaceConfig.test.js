@@ -4,7 +4,6 @@ import {
   isAssistantAppContextReady,
   resolveAssistantSurface,
 } from "./surfaceConfig"
-import { ASSISTANT_KNOWLEDGE_MODES } from "./profileKeys"
 
 describe("resolveAssistantSurface", () => {
   it("Portal 홈은 앱 지식이 없는 일반 대화 surface를 반환한다", () => {
@@ -12,7 +11,7 @@ describe("resolveAssistantSurface", () => {
       mode: "portal",
       profileKey: "portal-default",
       profileVersion: 2,
-      appContextKey: "assistant:openwebui:assistant",
+      appContextKey: "assistant:openwebui:portal",
       toolInputs: {},
     })
   })
@@ -69,30 +68,16 @@ describe("resolveAssistantSurface", () => {
     })
   })
 
-  it("자동 지식 선택은 권한 필터링 전 네 앱 후보를 Profile에 전달한다", () => {
+  it("현재 앱 지식을 끄면 Tool 없이 일반 대화 surface를 반환한다", () => {
     expect(resolveAssistantSurface({
-      appKey: "emails",
-      knowledgeMode: ASSISTANT_KNOWLEDGE_MODES.auto,
-      permissionGroups: ["group-a"],
-      ragIndexNames: ["rp-email"],
+      appKey: "appstore",
+      useAppContext: false,
     })).toEqual({
-      mode: "auto",
-      profileKey: "auto-knowledge",
+      mode: "portal",
+      profileKey: "portal-default",
       profileVersion: 2,
-      appContextKey: "assistant:openwebui:emails",
-      toolInputs: {
-        "rag.search": {
-          permissionGroups: ["group-a"],
-          ragIndexes: ["rp-email"],
-        },
-        "observer.analysis": {},
-        "appstore.catalog": {
-          query: "",
-          category: "all",
-          selectedAppId: null,
-        },
-        "line-dashboard.snapshot": {},
-      },
+      appContextKey: "assistant:openwebui:portal",
+      toolInputs: {},
     })
   })
 
@@ -171,29 +156,16 @@ describe("resolveAssistantSurface", () => {
     })
   })
 
-  it("Observer 자동 모드는 현재 화면 범위를 후보 Tool에 포함한다", () => {
-    const pageContext = {
-      kind: "observer",
-      key: "observer:v1:scope-hash",
-      scope: {
-        eqpId: "EQP-01",
-        from: "2026-08-01",
-        to: "2026-08-13",
-        logTypes: ["eqp"],
-        tipGroups: ["__ALL__"],
-      },
-    }
+  it("Observer 현재 화면이 준비되지 않아도 OFF에서는 일반 surface를 반환한다", () => {
     expect(resolveAssistantSurface({
       appKey: "observer",
-      knowledgeMode: ASSISTANT_KNOWLEDGE_MODES.auto,
-      pageContext,
-    })).toMatchObject({
-      mode: "auto",
-      profileKey: "auto-knowledge",
-      appContextKey: "assistant:openwebui:observer",
-      toolInputs: {
-        "observer.analysis": pageContext.scope,
-      },
+      useAppContext: false,
+    })).toEqual({
+      mode: "portal",
+      profileKey: "portal-default",
+      profileVersion: 2,
+      appContextKey: "assistant:openwebui:portal",
+      toolInputs: {},
     })
   })
 

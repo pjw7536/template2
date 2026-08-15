@@ -82,29 +82,6 @@ function getEvidenceTargets(contextSnapshot, evidence) {
   }))
 }
 
-const KNOWLEDGE_SOURCE_LABELS = {
-  emails: "Emails",
-  observer: "Observer",
-  appstore: "App Store",
-  "line-dashboard": "Line Dashboard",
-}
-
-function getKnowledgeRouteLabel(knowledgeContext) {
-  if (!knowledgeContext || typeof knowledgeContext !== "object") return ""
-  if (knowledgeContext.route === "clarify") return "지식 범위 확인"
-  if (knowledgeContext.route !== "retrieve" || !knowledgeContext.sourceApp) {
-    return knowledgeContext.fallback ? "일반 답변 · 라우팅 대체" : "일반 답변"
-  }
-  const sourceLabel = KNOWLEDGE_SOURCE_LABELS[knowledgeContext.sourceApp]
-    || knowledgeContext.sourceApp
-  if (knowledgeContext.mode === "current_scope") {
-    return knowledgeContext.sourceApp === "emails"
-      ? `${sourceLabel} · 현재 메일함`
-      : `${sourceLabel} · 현재 화면`
-  }
-  return `${sourceLabel} · 자동 선택`
-}
-
 export function ChatMessages({
   messages = [],
   conversationKey = "",
@@ -303,7 +280,6 @@ export function ChatMessages({
         const isLocked = message.accessState === "locked"
         const isEditing = isUser && editTargetId === message.id
         const sources = Array.isArray(message.sources) ? message.sources : []
-        const knowledgeRouteLabel = getKnowledgeRouteLabel(message.knowledgeContext)
         const messageMailbox =
           typeof message.userSdwtProd === "string" ? message.userSdwtProd.trim() : ""
         const isGreeting =
@@ -410,11 +386,6 @@ export function ChatMessages({
                     "[&_a[data-email-source]]:inline-flex [&_a[data-email-source]]:items-center [&_a[data-email-source]]:rounded-full [&_a[data-email-source]]:border [&_a[data-email-source]]:border-border [&_a[data-email-source]]:bg-background [&_a[data-email-source]]:px-2 [&_a[data-email-source]]:py-0.5 [&_a[data-email-source]]:text-xs [&_a[data-email-source]]:font-medium [&_a[data-email-source]]:text-foreground [&_a[data-email-source]]:no-underline [&_a[data-email-source]]:hover:bg-muted",
                   ].join(" ")}
                 >
-                  {knowledgeRouteLabel ? (
-                    <Badge variant="secondary" className="w-fit text-[10px] font-medium">
-                      {knowledgeRouteLabel}
-                    </Badge>
-                  ) : null}
                   {isGreeting ? (
                     <StreamingText
                       content={message.content}

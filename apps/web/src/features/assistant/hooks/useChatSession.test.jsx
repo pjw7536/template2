@@ -147,7 +147,7 @@ describe("useChatSession page context", () => {
         useChatSession({
           userKey: 10,
           profileKey: "portal-default",
-          profileVersion: 1,
+          profileVersion: 2,
           profileToolInputs: {},
         }),
       { wrapper: createWrapper() },
@@ -222,15 +222,17 @@ describe("useChatSession page context", () => {
       },
     }
     const { result, rerender } = renderHook(
-      ({ profileKey, profileToolInputs }) =>
+      ({ profileKey, profileVersion, profileToolInputs }) =>
         useChatSession({
           userKey: 10,
           profileKey,
+          profileVersion,
           profileToolInputs,
         }),
       {
         initialProps: {
           profileKey: "email-rag",
+          profileVersion: 2,
           profileToolInputs: emailToolInputs,
         },
         wrapper: createWrapper(),
@@ -243,7 +245,7 @@ describe("useChatSession page context", () => {
     })
     expect(result.current.canRetry).toBe(true)
 
-    rerender({ profileKey: "portal-default", profileToolInputs: {} })
+    rerender({ profileKey: "portal-default", profileVersion: 2, profileToolInputs: {} })
     await act(async () => {
       await result.current.retryLastMessage()
     })
@@ -251,7 +253,7 @@ describe("useChatSession page context", () => {
     expect(turnApiMocks.streamTurn).toHaveBeenCalledTimes(2)
     expect(turnApiMocks.streamTurn.mock.calls[1][0]).toMatchObject({
       profileKey: "email-rag",
-      profileVersion: 1,
+      profileVersion: 2,
       toolInputs: emailToolInputs,
       message: { content: "메일 질문" },
     })

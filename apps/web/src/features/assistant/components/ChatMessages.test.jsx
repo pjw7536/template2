@@ -279,44 +279,6 @@ describe("ChatMessages 문맥과 과거 이력", () => {
     )
   })
 
-  it("답변마다 실제 지식 실행 경로를 표시한다", () => {
-    render(
-      <MemoryRouter>
-        <ChatMessages
-          messages={[
-            {
-              id: "assistant-general",
-              role: "assistant",
-              content: "일반 답변 내용",
-              knowledgeContext: {
-                mode: "auto",
-                route: "direct",
-                sourceApp: null,
-                grounded: false,
-                fallback: false,
-              },
-            },
-            {
-              id: "assistant-email",
-              role: "assistant",
-              content: "메일 답변 내용",
-              knowledgeContext: {
-                mode: "current_scope",
-                route: "retrieve",
-                sourceApp: "emails",
-                grounded: true,
-                fallback: false,
-              },
-            },
-          ]}
-        />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText("일반 답변")).toBeInTheDocument()
-    expect(screen.getByText("Emails · 현재 메일함")).toBeInTheDocument()
-  })
-
   it("질문 수정과 답변 재생성·평가 동작을 부모 handler에 전달한다", async () => {
     const onEditMessage = vi.fn().mockResolvedValue({ ok: true })
     const onRegenerateMessage = vi.fn()

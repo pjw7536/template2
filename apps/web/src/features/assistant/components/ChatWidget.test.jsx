@@ -73,10 +73,9 @@ vi.mock("./ChatWidgetPanel", () => ({
     onSidebarResizePointerDown,
     onSidebarResizeKeyDown,
     activeAppContext,
-    knowledgeMode,
-    supportsCurrentScope,
+    usesAppContext,
     isAppContextReady,
-    onKnowledgeModeChange,
+    onUsesAppContextChange,
     pageContext,
     currentPageScope,
   }) => (
@@ -84,35 +83,14 @@ vi.mock("./ChatWidgetPanel", () => ({
       <span>{activeAppContext?.label || "Portal"}</span>
       {pageContext ? <span>{pageContext.label || "현재 화면 데이터 연결됨"}</span> : null}
       {currentPageScope?.lineId ? <span>현재 Line: {currentPageScope.lineId}</span> : null}
-      {supportsCurrentScope ? (
-        <div>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={knowledgeMode === "current_app"}
-            disabled={!isAppContextReady}
-            aria-label="현재 화면"
-            onClick={() => onKnowledgeModeChange("current_app")}
-          />
-          <button
-            type="button"
-            role="radio"
-            aria-checked={knowledgeMode === "auto"}
-            aria-label="자동"
-            onClick={() => onKnowledgeModeChange("auto")}
-          />
-        </div>
-      ) : (
-        <button
-          type="button"
-          role="switch"
-          aria-label="업무 지식 자동 사용"
-          aria-checked={knowledgeMode === "auto"}
-          onClick={() => onKnowledgeModeChange(
-            knowledgeMode === "auto" ? "general_only" : "auto",
-          )}
-        />
-      )}
+      <button
+        type="button"
+        role="switch"
+        aria-label="현재 앱 지식 사용"
+        aria-checked={usesAppContext}
+        disabled={!isAppContextReady}
+        onClick={() => onUsesAppContextChange(!usesAppContext)}
+      />
       <button type="button" onClick={onClose}>위젯 닫기</button>
       <button type="button" onClick={onToggleSidebar}>목록 전환</button>
       {isSidebarOpen ? (
@@ -180,7 +158,7 @@ describe("ChatWidget 대화방 생성", () => {
     expect(chatSessionMocks.createRoom).not.toHaveBeenCalled()
   })
 
-  it("Portal 홈은 업무 지식 자동 사용 ON으로 시작하고 OFF에서 일반 대화로 전환한다", () => {
+  it("Portal 홈은 자동 라우터 없이 현재 앱 지식 토글만 제공한다", () => {
     render(
       <MemoryRouter>
         <ChatWidget />
@@ -190,21 +168,22 @@ describe("ChatWidget 대화방 생성", () => {
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messageContextKey: "assistant:openwebui:portal",
-        profileKey: "auto-knowledge",
+        profileKey: "portal-default",
         profileVersion: 2,
       }),
     )
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
-    const toggle = screen.getByRole("switch", { name: "업무 지식 자동 사용" })
+    const toggle = screen.getByRole("switch", { name: "현재 앱 지식 사용" })
     expect(toggle).toHaveAttribute("aria-checked", "true")
     fireEvent.click(toggle)
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:assistant",
+        messageContextKey: "assistant:openwebui:portal",
         profileKey: "portal-default",
         profileToolInputs: {},
       }),
     )
+    expect(toggle).toHaveAttribute("aria-checked", "false")
   })
 
   it("Assistant 전체 페이지에서는 Widget session을 만들지 않는다", () => {
@@ -260,7 +239,7 @@ describe("ChatWidget 대화방 생성", () => {
     expect(screen.getByText("Appstore")).toBeInTheDocument()
   })
 
-  it("자동 지식 선택을 선택하면 이후 Turn을 전역 라우터 Profile로 전환한다", () => {
+  it("현재 앱 지식을 끄면 이후 Turn을 배경지식 없는 일반 Profile로 전환한다", () => {
     chatSessionMocks.pageContext = {
       kind: "appstore",
       key: "appstore:v1",
@@ -273,13 +252,14 @@ describe("ChatWidget 대화방 생성", () => {
     )
 
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
-    fireEvent.click(screen.getByRole("radio", { name: "자동" }))
+    fireEvent.click(screen.getByRole("switch", { name: "현재 앱 지식 사용" }))
 
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:appstore",
-        profileKey: "auto-knowledge",
+        messageContextKey: "assistant:openwebui:portal",
+        profileKey: "portal-default",
         profileVersion: 2,
+        profileToolInputs: {},
       }),
     )
   })
@@ -334,10 +314,10 @@ describe("ChatWidget 대화방 생성", () => {
     )
 
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
-    fireEvent.click(screen.getByRole("radio", { name: "자동" }))
+    fireEvent.click(screen.getByRole("switch", { name: "현재 앱 지식 사용" }))
     fireEvent.click(screen.getByRole("button", { name: "Emails로 이동" }))
 
-    expect(screen.getByRole("radio", { name: "현재 화면" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "현재 앱 지식 사용" })).toHaveAttribute(
       "aria-checked",
       "true",
     )
@@ -347,7 +327,7 @@ describe("ChatWidget 대화방 생성", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Appstore로 이동" }))
 
-    expect(screen.getByRole("radio", { name: "현재 화면" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "현재 앱 지식 사용" })).toHaveAttribute(
       "aria-checked",
       "true",
     )
@@ -379,12 +359,13 @@ describe("ChatWidget 대화방 생성", () => {
     )
 
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
-    fireEvent.click(screen.getByRole("radio", { name: "자동" }))
+    fireEvent.click(screen.getByRole("switch", { name: "현재 앱 지식 사용" }))
 
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:emails",
-        profileKey: "auto-knowledge",
+        messageContextKey: "assistant:openwebui:portal",
+        profileKey: "portal-default",
+        profileToolInputs: {},
       }),
     )
   })
@@ -398,14 +379,14 @@ describe("ChatWidget 대화방 생성", () => {
 
     expect(chatSessionMocks.useChatSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        messageContextKey: "assistant:openwebui:observer",
-        profileKey: "auto-knowledge",
+        messageContextKey: "assistant:openwebui:portal",
+        profileKey: "portal-default",
       }),
     )
     expect(screen.getByRole("button", { name: "위젯 열기" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "위젯 열기" }))
     expect(
-      screen.getByRole("radio", { name: "현재 화면" }),
+      screen.getByRole("switch", { name: "현재 앱 지식 사용" }),
     ).toBeDisabled()
 
     chatSessionMocks.pageContext = {
@@ -426,7 +407,7 @@ describe("ChatWidget 대화방 생성", () => {
       }),
     )
     expect(
-      screen.getByRole("radio", { name: "현재 화면" }),
+      screen.getByRole("switch", { name: "현재 앱 지식 사용" }),
     ).not.toBeDisabled()
   })
 

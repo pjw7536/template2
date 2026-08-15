@@ -18,35 +18,6 @@ from adfs_settings import DUMMY_LLM_DELAY_MS, DUMMY_LLM_REPLY_TEMPLATE
 
 router = APIRouter()
 
-KNOWLEDGE_INTENT_TERMS = {
-    "emails": (
-        "메일",
-        "이메일",
-        "발신",
-        "수신",
-        "받은",
-        "보낸",
-        "제목",
-        "첨부",
-        "mail",
-        "email",
-    ),
-    "appstore": ("앱", "app", "등록", "카테고리", "접근", "목록", "상태"),
-    "line-dashboard": ("line", "라인", "상태", "이력", "집계", "알림", "수신"),
-    "observer": ("observer", "장비", "로그", "분석", "이상", "원인", "변화", "근거"),
-}
-KNOWLEDGE_FOLLOW_UP_TERMS = (
-    "그 ",
-    "그거",
-    "해당",
-    "방금",
-    "이전",
-    "앞에서",
-    "다시",
-    "요약",
-    "비교",
-)
-
 
 def _extract_latest_user_text(messages: Any) -> str:
     if not isinstance(messages, list):
@@ -75,79 +46,6 @@ def _extract_system_text(messages: Any) -> str:
     )
 
 
-def _render_knowledge_intent(question: str) -> str:
-    """앱별 키워드와 최근 대화로 결정적인 지식 사용 판별 JSON을 만듭니다."""
-
-    try:
-        request_data = json.loads(question)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        request_data = {}
-    if not isinstance(request_data, dict):
-        request_data = {}
-    app_key = str(request_data.get("appKey") or "").strip()
-    current_question = str(request_data.get("currentQuestion") or "").strip()
-    recent_conversation = str(request_data.get("recentConversation") or "").strip()
-    terms = KNOWLEDGE_INTENT_TERMS.get(app_key, ())
-    lowered_question = current_question.casefold()
-    lowered_context = recent_conversation.casefold()
-    has_direct_term = any(term.casefold() in lowered_question for term in terms)
-    follows_app_context = any(
-        term.casefold() in lowered_question for term in KNOWLEDGE_FOLLOW_UP_TERMS
-    ) and any(term.casefold() in lowered_context for term in terms)
-    use_knowledge = bool(terms) and (has_direct_term or follows_app_context)
-    return json.dumps(
-        {
-            "useKnowledge": use_knowledge,
-            "searchQuery": current_question if use_knowledge else "",
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-
-def _render_auto_knowledge_route(question: str) -> str:
-    """현재 앱 우선 규칙으로 결정적인 자동 지식 선택 JSON을 만듭니다."""
-
-    try:
-        request_data = json.loads(question)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        request_data = {}
-    if not isinstance(request_data, dict):
-        request_data = {}
-    active_app = str(request_data.get("activeApp") or "").strip()
-    available_apps = [
-        str(item).strip()
-        for item in request_data.get("availableApps", [])
-        if isinstance(item, str) and str(item).strip() in KNOWLEDGE_INTENT_TERMS
-    ]
-    current_question = str(request_data.get("currentQuestion") or "").strip()
-    lowered_question = current_question.casefold()
-    matched_apps = [
-        app_key
-        for app_key in available_apps
-        if any(
-            term.casefold() in lowered_question
-            for term in KNOWLEDGE_INTENT_TERMS.get(app_key, ())
-        )
-    ]
-    target_app = (
-        active_app
-        if active_app in matched_apps
-        else (matched_apps[0] if matched_apps else "")
-    )
-    if not target_app:
-        action = "general"
-    elif target_app == active_app:
-        action = "current_app"
-    else:
-        action = "other_app"
-    return json.dumps(
-        {"action": action, "targetApp": target_app, "scopeHints": {}},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-
 def _render_reply(question: str, messages: Any) -> str:
     """요청된 Provider 출력 계약과 일치하는 결정적 응답을 만듭니다."""
 
@@ -157,10 +55,6 @@ def _render_reply(question: str, messages: Any) -> str:
     reply = template.replace("{question}", question)
     normalized_reply = reply.strip() or "개발용 더미 LLM 응답입니다."
     system_text = _extract_system_text(messages)
-    if "전역 지식 선택 라우터" in system_text:
-        return _render_auto_knowledge_route(question)
-    if "지식 사용 라우터" in system_text:
-        return _render_knowledge_intent(question)
     if "usedEmailIds" in system_text and '"segments"' in system_text:
         return json.dumps(
             {"answer": normalized_reply, "segments": []},

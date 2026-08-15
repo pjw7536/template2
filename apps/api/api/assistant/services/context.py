@@ -58,7 +58,7 @@ def resolve_assistant_turn_context_key(
     """Profile별 허용 규칙으로 app context를 검증하고 canonical key를 반환합니다."""
 
     context_key = str(raw_context_key or "").strip()
-    if profile.provider in {"openwebui", "auto-knowledge"}:
+    if profile.provider == "openwebui":
         if not context_key.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
             raise ValueError("Assistant appContextKey가 올바르지 않습니다.")
         app_key = context_key[len(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX) :]

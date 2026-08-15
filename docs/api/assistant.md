@@ -50,7 +50,7 @@ Accept: text/event-stream
   "conversationId": "conversation-uuid",
   "clientRequestId": "request-uuid",
   "profileKey": "email-rag",
-  "profileVersion": 1,
+  "profileVersion": 2,
   "appContextKey": "assistant",
   "message": {"clientId": "user-client-id", "content": "최근 메일 요약"},
   "toolInputs": {
@@ -66,13 +66,13 @@ Profile 계약:
 
 | Profile | Provider/Tool | 읽기 partition | 쓰기 partition | Account scope |
 | --- | --- | --- | --- | --- |
-| `portal-default` v2 | OpenWebUI | `shared`, `scope:emails`, `scope:observer` | `shared` | `assistant` |
-| `email-rag` | OpenWebUI + `rag.search` | `shared`, `scope:emails` | `scope:emails` | `assistant`, `emails` |
-| `observer-analysis` | `observer.analysis` 현재 데이터 재조회 | `shared`, `scope:observer` | `scope:observer` | `assistant`, `observer` |
-| `appstore-context` | OpenWebUI + `appstore.catalog` | `shared`, `scope:appstore` | `scope:appstore` | `assistant`, `appstore` |
-| `line-dashboard-context` | OpenWebUI + `line-dashboard.snapshot` | `shared`, `scope:line-dashboard` | `scope:line-dashboard` | `assistant`, `line-dashboard` |
+| `portal-default` v2 | OpenWebUI | `shared` | `shared` | `assistant` |
+| `email-rag` v2 | OpenWebUI + `rag.search` | `shared`, `scope:emails` | `scope:emails` | `assistant`, `emails` |
+| `observer-analysis` v2 | `observer.analysis` 현재 데이터 재조회 | `shared`, `scope:observer` | `scope:observer` | `assistant`, `observer` |
+| `appstore-context` v2 | OpenWebUI + `appstore.catalog` | `shared`, `scope:appstore` | `scope:appstore` | `assistant`, `appstore` |
+| `line-dashboard-context` v2 | OpenWebUI + `line-dashboard.snapshot` | `shared`, `scope:line-dashboard` | `scope:line-dashboard` | `assistant`, `line-dashboard` |
 
-`portal-default` v2는 같은 대화방에서 앱 지식 모드에서 일반 대화로 전환해도 문맥을 잇기 위해 scoped partition을 읽습니다. scoped 메시지와 요약은 Provider에 전달하기 전에 저장 당시의 Account/data 권한을 현재 사용자 기준으로 다시 검증하며, 일반 대화의 새 메시지는 계속 `shared`에만 기록합니다. 과거 실행 재현을 위한 v1은 `shared`만 읽습니다.
+`portal-default` v2는 `shared` partition만 읽고 기록합니다. 앱별 Profile의 scoped 메시지와 요약은 Provider에 전달하기 전에 저장 당시의 Account/data 권한을 현재 사용자 기준으로 다시 검증합니다.
 
 `action`은 `send`, `edit`, `regenerate`, `retry`를 지원합니다. `edit`/`regenerate`는 `targetMessageId`, `retry`는 `retryRunId`가 필요하고 모든 재실행은 새 `clientRequestId`와 user `clientId`를 사용합니다. regenerate/retry는 저장된 Profile 버전과 제한된 Tool 입력을 재사용하지만 현재 Profile/Tool 권한 하한을 다시 적용합니다.
 

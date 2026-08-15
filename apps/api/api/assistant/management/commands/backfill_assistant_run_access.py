@@ -241,7 +241,7 @@ class Command(BaseCommand):
                                     "status": AssistantGeneration.Status.COMPLETED,
                                     "provider": metadata.get("provider", "legacy-unresolved"),
                                     "profile_key": profile_key,
-                                    "profile_version": 1 if metadata else None,
+                                    "profile_version": 2 if metadata else None,
                                     "memory_partition": metadata.get("partition", "legacy-unresolved"),
                                     "access_requirements": requirements,
                                     "request_hash": "",
@@ -254,7 +254,7 @@ class Command(BaseCommand):
                         else:
                             metadata = PROFILE_METADATA.get(profile_key, {})
                             generation.profile_key = profile_key
-                            generation.profile_version = 1 if metadata else None
+                            generation.profile_version = 2 if metadata else None
                             generation.memory_partition = metadata.get(
                                 "partition", "legacy-unresolved"
                             )
