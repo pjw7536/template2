@@ -34,6 +34,7 @@
 | `api.observer` | 기본 DB 기준정보/로그 조회 | data movement 테이블, Drone 데이터 |
 | `api.appstore` | 내부 앱 등록/댓글/좋아요 | 기본 DB, cover image |
 | `api.voc` | VOC 게시판 | 기본 DB |
+| `api.work_hub` | Grist launcher mapping, 설비 sync, WorkLog→Task 자동화 | 기본 DB, Grist REST API |
 | `api.activity` | ActivityLog 조회 | 기본 DB |
 | `api.health` | 헬스 체크 | runtime 상태 |
 | `api.common` | 공통 middleware/helper/client | logging, storage, mail, messenger |
@@ -45,13 +46,14 @@
 | Feature | 역할 | 주요 route |
 | --- | --- | --- |
 | `auth` | 로그인, 온보딩, 소속 재확인 | `/login` |
-| `account` | 계정, 소속, 멤버/권한 | `/settings/account`, `/settings/members` |
+| `account` | Keycloak shadow 계정과 읽기 전용 소속/역할 | `/settings/account` |
 | `emails` | 메일함과 메일 처리 | `/emails/inbox`, `/emails/sent`, `/emails/members` |
 | `assistant` | RAG 기반 채팅 | `/assistant` |
 | `line-dashboard` | Drone SOP/라인 대시보드 | `/ESOP_Dashboard/**` |
 | `observer` | 설비/로그 Observer | `/observer`, `/observer/:eqpId` |
 | `appstore` | 내부 앱 공유 | `/appstore` |
 | `voc` | VOC 게시판 | `/voc` |
+| `work-hub` | 설비 업무일지 launcher | `/work-hub` |
 | `home` | 인증 후 홈 shell | `/` |
 | `errors` | route error와 404 | `*` |
 | `teamstaff` | 팀/인력 보조 화면 | `/teamstaff` |
@@ -86,6 +88,16 @@
 2. API가 query를 정규화하고 기본 DB의 기준정보/로그 테이블을 조회합니다.
 3. EQP, TIP, CTTTM, RACB, Drone 로그를 공통 observer item 형태로 반환합니다.
 4. 프론트는 vis-timeline과 상세 패널에 변환된 로그를 표시합니다.
+
+### Work Hub
+
+1. `api.account`의 현재 소속과 viewer/member/manager 값으로 Portal launcher 범위를 결정합니다.
+2. `api.work_hub`가 활성 `GristDocumentScope`의 launch URL만 반환하며 API key는 브라우저에 노출하지 않습니다.
+3. 새 서버 `10.172.117.91`의 Grist 전용 Nginx는 기존 Portal이 발급한 단기 ticket을 Portal 검증 API로 확인하고 허용된 `account.User` email만 forward-auth header로 전달합니다.
+4. account 변경 signal은 Portal 역할을 `GristAccessSyncOutbox`에 적재하고 전용 `work-hub-access-worker`가 Grist document ACL에 투영합니다.
+5. management command가 `api.observer`의 `station_master` 설비를 Grist Equipment에 투영합니다.
+6. WorkLog/Task는 Grist가 원본이며 Webhook Task 자동화는 payload hash와 deterministic `task_key`로 멱등 처리합니다.
+7. 운영 Grist container는 별도 Compose project와 named volume으로 격리되어 중단·제거돼도 기존 Portal app과 Account DB에는 영향을 주지 않습니다.
 
 ## 경계 규칙
 

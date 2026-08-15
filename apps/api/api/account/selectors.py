@@ -227,6 +227,18 @@ def get_current_affiliation_values(*, user: Any) -> dict[str, Any]:
     - 없음
     """
 
+    if getattr(user, "keycloak_subject", None):
+        snapshot = dict(getattr(user, "affiliation_snapshot", {}) or {})
+        return {
+            "affiliation": None,
+            "department": snapshot.get("department"),
+            "line": snapshot.get("line"),
+            "user_sdwt_prod": snapshot.get("user_sdwt_prod") or snapshot.get("name"),
+            "requires_reconfirm": False,
+            "confirmed_at": getattr(user, "keycloak_synced_at", None),
+            "source": "keycloak_group",
+        }
+
     row = get_current_affiliation_record(user=user)
     affiliation = row.affiliation if row and row.affiliation_id else None
     return {
@@ -276,6 +288,20 @@ def get_current_affiliation_values_by_user_ids(*, user_ids: Iterable[int]) -> di
             "line": affiliation.line if affiliation else None,
             "user_sdwt_prod": affiliation.user_sdwt_prod if affiliation else None,
             "source": row.source,
+        }
+    User = get_user_model()
+    shadow_rows = User.objects.filter(
+        id__in=normalized_ids,
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values("id", "affiliation_snapshot")
+    for shadow in shadow_rows:
+        snapshot = dict(shadow.get("affiliation_snapshot") or {})
+        result[int(shadow["id"])] = {
+            "department": snapshot.get("department"),
+            "line": snapshot.get("line"),
+            "user_sdwt_prod": snapshot.get("user_sdwt_prod") or snapshot.get("name"),
+            "source": "keycloak_group",
         }
     return result
 
@@ -345,6 +371,77 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
     # 4) 최종 정제 및 반환
     # -----------------------------------------------------------------------------
     return _collapse_user_sdwt_prod_values(values)
+
+
+def get_accessible_user_sdwt_prod_roles_for_user(user: Any) -> dict[str, str]:
+    """사용자가 접근 가능한 소속별 viewer/member/manager 역할을 반환합니다.
+
+    현재 소속은 명시 권한이 없을 때 member로 간주하며, 슈퍼유저는 모든 활성
+    소속을 manager 역할로 조회합니다. 외부 도메인은 이 함수의 결과만 사용하고
+    account 모델을 직접 조회하지 않습니다.
+    """
+
+    if not user or not getattr(user, "is_authenticated", False):
+        return {}
+
+    if getattr(user, "is_superuser", False):
+        return {
+            value: UserSdwtProdAccess.Roles.MANAGER
+            for value in sorted(list_distinct_user_sdwt_prod_values(), key=str.casefold)
+        }
+
+    role_priority = {
+        UserSdwtProdAccess.Roles.VIEWER: 1,
+        UserSdwtProdAccess.Roles.MEMBER: 2,
+        UserSdwtProdAccess.Roles.MANAGER: 3,
+    }
+    roles_by_lookup: dict[str, tuple[str, str]] = {}
+    rows = (
+        UserSdwtProdAccess.objects.filter(user=user, affiliation__is_active=True)
+        .select_related("affiliation")
+        .order_by("affiliation__user_sdwt_prod", "id")
+    )
+    for row in rows:
+        value = _normalize_user_sdwt_prod(row.affiliation.user_sdwt_prod)
+        lookup = value.casefold() if value else ""
+        if not lookup:
+            continue
+        previous = roles_by_lookup.get(lookup)
+        if previous is None or role_priority[row.role] > role_priority[previous[1]]:
+            roles_by_lookup[lookup] = (value, row.role)
+
+    current = get_current_user_sdwt_prod(user=user)
+    current_value = _normalize_user_sdwt_prod(current)
+    current_lookup = current_value.casefold() if current_value else ""
+    if current_lookup:
+        explicit = roles_by_lookup.get(current_lookup)
+        effective_role = (
+            UserSdwtProdAccess.Roles.MANAGER
+            if explicit and explicit[1] == UserSdwtProdAccess.Roles.MANAGER
+            else UserSdwtProdAccess.Roles.MEMBER
+        )
+        roles_by_lookup[current_lookup] = (current_value, effective_role)
+
+    return {
+        value: role
+        for value, role in sorted(roles_by_lookup.values(), key=lambda item: item[0].casefold())
+    }
+
+
+def get_active_affiliation_by_user_sdwt_prod(*, user_sdwt_prod: str) -> Affiliation | None:
+    """정규화된 user_sdwt_prod와 일치하는 활성 소속을 반환합니다."""
+
+    normalized = _normalize_user_sdwt_prod(user_sdwt_prod)
+    if not normalized:
+        return None
+    return (
+        Affiliation.objects.filter(
+            is_active=True,
+            user_sdwt_prod__iexact=normalized,
+        )
+        .order_by("id")
+        .first()
+    )
 
 
 def list_distinct_user_sdwt_prod_values() -> set[str]:
@@ -451,6 +548,145 @@ def list_active_user_emails_by_user_sdwt_prod(*, user_sdwt_prod: str) -> list[st
     )
 
 
+def list_effective_affiliation_member_role_users(
+    *, user_sdwt_prod: str
+) -> list[dict[str, object]]:
+    """소속에 유효한 활성 사용자 ID·이메일·최종 역할을 반환합니다.
+
+    현재 소속 사용자는 최소 member로 취급하고, 명시적으로 부여된
+    ``UserSdwtProdAccess`` 역할이 더 높으면 그 역할을 사용합니다. 다른 소속
+    사용자에게 부여된 명시 권한도 포함하므로 외부 시스템은 이 결과만으로
+    소속별 접근 projection을 구성할 수 있습니다.
+    """
+
+    normalized = _normalize_user_sdwt_prod(user_sdwt_prod)
+    if not normalized:
+        return []
+    affiliation = (
+        Affiliation.objects.filter(
+            user_sdwt_prod__iexact=normalized,
+            is_active=True,
+        )
+        .order_by("id")
+        .first()
+    )
+    if affiliation is None:
+        return []
+
+    role_priority = {
+        UserSdwtProdAccess.Roles.VIEWER: 1,
+        UserSdwtProdAccess.Roles.MEMBER: 2,
+        UserSdwtProdAccess.Roles.MANAGER: 3,
+    }
+    roles_by_user_id: dict[int, tuple[str, str]] = {}
+    User = get_user_model()
+    current_rows = (
+        User.objects.filter(
+            current_affiliation__affiliation=affiliation,
+            is_active=True,
+        )
+        .exclude(email__isnull=True)
+        .exclude(email="")
+        .values_list("id", "email")
+    )
+    for user_id, email in current_rows:
+        normalized_email = (_normalize_text(email) or "").lower()
+        if normalized_email:
+            roles_by_user_id[user_id] = (
+                normalized_email,
+                UserSdwtProdAccess.Roles.MEMBER,
+            )
+
+    access_rows = (
+        UserSdwtProdAccess.objects.filter(
+            affiliation=affiliation,
+            user__is_active=True,
+        )
+        .exclude(user__email__isnull=True)
+        .exclude(user__email="")
+        .values_list("user_id", "user__email", "role")
+    )
+    for user_id, email, role in access_rows:
+        normalized_email = (_normalize_text(email) or "").lower()
+        if not normalized_email or role not in role_priority:
+            continue
+        previous = roles_by_user_id.get(user_id)
+        if previous is None or role_priority[role] > role_priority[previous[1]]:
+            roles_by_user_id[user_id] = (normalized_email, role)
+
+    return [
+        {"user_id": user_id, "email": email, "role": role}
+        for user_id, (email, role) in sorted(
+            roles_by_user_id.items(),
+            key=lambda item: (item[1][0], item[0]),
+        )
+    ]
+
+
+def get_current_affiliation_id_by_record_id(*, record_id: int) -> int | None:
+    """현재 소속 레코드 ID에 연결된 소속 ID를 반환합니다."""
+
+    return (
+        UserCurrentAffiliation.objects.filter(id=record_id)
+        .values_list("affiliation_id", flat=True)
+        .first()
+    )
+
+
+def get_access_affiliation_id_by_record_id(*, record_id: int) -> int | None:
+    """명시 소속 권한 레코드 ID에 연결된 소속 ID를 반환합니다."""
+
+    return (
+        UserSdwtProdAccess.objects.filter(id=record_id)
+        .values_list("affiliation_id", flat=True)
+        .first()
+    )
+
+
+def list_affiliation_ids_for_user_id(*, user_id: int) -> set[int]:
+    """사용자의 현재·역할·앱별 grant 소속 ID를 활성 여부와 무관하게 반환합니다."""
+
+    if not isinstance(user_id, int) or user_id <= 0:
+        return set()
+    affiliation_ids = set(
+        UserCurrentAffiliation.objects.filter(user_id=user_id).values_list(
+            "affiliation_id", flat=True
+        )
+    )
+    affiliation_ids.update(
+        UserSdwtProdAccess.objects.filter(user_id=user_id).values_list(
+            "affiliation_id", flat=True
+        )
+    )
+    affiliation_ids.update(
+        UserScopeAffiliationGrant.objects.filter(user_id=user_id).values_list(
+            "affiliation_id", flat=True
+        )
+    )
+    return {value for value in affiliation_ids if isinstance(value, int)}
+
+
+def get_user_access_sync_state(*, user_id: int) -> dict[str, object] | None:
+    """사용자 저장 전후 권한 동기화 비교에 필요한 최소 상태를 반환합니다."""
+
+    User = get_user_model()
+    values = User.objects.filter(id=user_id).values(
+        "email",
+        "is_active",
+        "is_superuser",
+        "department",
+    ).first()
+    if values is None:
+        return None
+    return {
+        "email": (_normalize_text(values.get("email")) or "").lower(),
+        "is_active": bool(values.get("is_active")),
+        "is_superuser": bool(values.get("is_superuser")),
+        "department": _normalize_text(values.get("department")) or "",
+        "affiliation_ids": list_affiliation_ids_for_user_id(user_id=user_id),
+    }
+
+
 def list_active_user_knox_ids_by_user_sdwt_prod(*, user_sdwt_prod: str) -> list[str]:
     """user_sdwt_prod에 대응하는 활성 사용자 knox_id 목록을 조회합니다.
 
@@ -496,6 +732,28 @@ def list_active_user_ids_by_ids(*, user_ids: Iterable[int]) -> set[int]:
     User = get_user_model()
     return set(
         User.objects.filter(id__in=normalized_ids, is_active=True).values_list("id", flat=True)
+    )
+
+
+def list_active_acl_projection_users(*, user_ids: Iterable[int]) -> list[Any]:
+    """지정 사용자와 이메일이 있는 활성 superuser를 ACL 투영 형태로 반환합니다.
+
+    Portal superuser는 launcher에서 모든 소속을 관리하므로 개별 소속 구성원이
+    아니어도 외부 document ACL 계산 대상에 포함합니다.
+    """
+
+    normalized_ids = _normalize_positive_int_set(user_ids, allow_cast=True)
+    User = get_user_model()
+    return list(
+        User.objects.filter(
+            Q(id__in=normalized_ids) | Q(is_superuser=True),
+            is_active=True,
+        )
+        .exclude(email__isnull=True)
+        .exclude(email="")
+        .select_related("current_affiliation__affiliation")
+        .annotate(_access_department=_resolved_access_department_expression())
+        .order_by("id")
     )
 
 
@@ -584,6 +842,20 @@ def list_distinct_active_user_sdwt_prod_values(
     # 2) 공백 제거 및 대소문자 비구분 중복 제거
     # -----------------------------------------------------------------------------
     collapsed_values = set(_collapse_user_sdwt_prod_values(values))
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if not isinstance(snapshot, dict):
+            continue
+        snapshot_department = str(snapshot.get("department") or "").strip()
+        if normalized_department and snapshot_department.casefold() != normalized_department.casefold():
+            continue
+        value = str(
+            snapshot.get("user_sdwt_prod") or snapshot.get("name") or ""
+        ).strip()
+        if value:
+            collapsed_values.add(value)
     if include_external_snapshots:
         external_queryset = ExternalAffiliationSnapshot.objects.exclude(
             predicted_user_sdwt_prod__exact=""
@@ -611,6 +883,14 @@ def list_distinct_active_departments(*, include_external_snapshots: bool = False
         .distinct()
     )
     collapsed_values = set(_collapse_text_values(values))
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if isinstance(snapshot, dict):
+            department = str(snapshot.get("department") or "").strip()
+            if department:
+                collapsed_values.add(department)
     if include_external_snapshots:
         external_values = (
             ExternalAffiliationSnapshot.objects.exclude(department__isnull=True)
@@ -771,13 +1051,27 @@ def list_active_user_pool(
     )
     if normalized_user_sdwt:
         queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt
+            Q(
+                keycloak_subject__isnull=False,
+                affiliation_snapshot__user_sdwt_prod__iexact=normalized_user_sdwt,
+            )
+            | Q(
+                keycloak_subject__isnull=True,
+                current_affiliation__affiliation__is_active=True,
+                current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt,
+            )
         )
     if normalized_department:
         queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__department__iexact=normalized_department
+            Q(
+                keycloak_subject__isnull=False,
+                affiliation_snapshot__department__iexact=normalized_department,
+            )
+            | Q(
+                keycloak_subject__isnull=True,
+                current_affiliation__affiliation__is_active=True,
+                current_affiliation__affiliation__department__iexact=normalized_department,
+            )
         )
     if normalized_contact_field in {"email", "knox_id"}:
         queryset = queryset.exclude(**{f"{normalized_contact_field}__isnull": True}).exclude(
@@ -796,6 +1090,8 @@ def list_active_user_pool(
             | Q(sabun__icontains=normalized_search)
             | Q(knox_id__icontains=normalized_search)
             | Q(email__icontains=normalized_search)
+            | Q(affiliation_snapshot__user_sdwt_prod__icontains=normalized_search)
+            | Q(affiliation_snapshot__name__icontains=normalized_search)
             | Q(current_affiliation__affiliation__user_sdwt_prod__icontains=normalized_search)
         )
 
@@ -819,6 +1115,11 @@ def list_active_user_pool(
         )
         if affiliation is not None and not affiliation.is_active:
             affiliation = None
+        snapshot = (
+            dict(getattr(user, "affiliation_snapshot", {}) or {})
+            if getattr(user, "keycloak_subject", None)
+            else {}
+        )
         display_name = (
             getattr(user, "username", None)
             or getattr(user, "username_en", None)
@@ -838,9 +1139,16 @@ def list_active_user_pool(
                 "sabun": getattr(user, "sabun", None) or "",
                 "knoxId": getattr(user, "knox_id", None) or "",
                 "email": getattr(user, "email", None) or "",
-                "department": getattr(affiliation, "department", "") or "",
-                "line": getattr(affiliation, "line", "") or "",
-                "userSdwtProd": getattr(affiliation, "user_sdwt_prod", "") or "",
+                "department": snapshot.get("department")
+                or getattr(affiliation, "department", "")
+                or "",
+                "line": snapshot.get("line")
+                or getattr(affiliation, "line", "")
+                or "",
+                "userSdwtProd": snapshot.get("user_sdwt_prod")
+                or snapshot.get("name")
+                or getattr(affiliation, "user_sdwt_prod", "")
+                or "",
             }
         )
     if include_external_snapshots:
@@ -898,6 +1206,58 @@ def get_access_scope_by_key(*, scope_key: str) -> AccessScope | None:
     if not normalized:
         return None
     return AccessScope.objects.filter(key=normalized).first()
+
+
+def get_access_scope_key_by_id(*, scope_id: int) -> str | None:
+    """접근 변경 signal이 사용할 scope key를 ID로 반환합니다."""
+
+    if not isinstance(scope_id, int) or scope_id <= 0:
+        return None
+    return AccessScope.objects.filter(id=scope_id).values_list("key", flat=True).first()
+
+
+def get_user_access_signal_state(*, record_id: int) -> dict[str, object] | None:
+    """UserAccess 저장 전 사용자와 scope 식별 상태를 반환합니다."""
+
+    values = (
+        UserAccess.objects.filter(id=record_id)
+        .values("user_id", "scope__key")
+        .first()
+    )
+    if values is None:
+        return None
+    return {
+        "user_id": values["user_id"],
+        "scope_key": values["scope__key"],
+    }
+
+
+def get_scope_affiliation_grant_signal_state(
+    *, record_id: int
+) -> dict[str, object] | None:
+    """앱별 소속 grant 저장 전 scope와 소속 식별 상태를 반환합니다."""
+
+    values = (
+        UserScopeAffiliationGrant.objects.filter(id=record_id)
+        .values("scope__key", "affiliation_id")
+        .first()
+    )
+    if values is None:
+        return None
+    return {
+        "scope_key": values["scope__key"],
+        "affiliation_id": values["affiliation_id"],
+    }
+
+
+def get_access_policy_scope_key_by_record_id(*, record_id: int) -> str | None:
+    """접근 정책 저장 전 연결된 scope key를 반환합니다."""
+
+    return (
+        AccessPolicyRule.objects.filter(id=record_id)
+        .values_list("scope__key", flat=True)
+        .first()
+    )
 
 
 def get_access_scope_by_key_for_update(*, scope_key: str) -> AccessScope | None:
@@ -1025,6 +1385,59 @@ def list_active_scope_affiliation_grants(
         .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
         .select_related("scope", "affiliation", "granted_by")
         .order_by("affiliation__user_sdwt_prod", "id")
+    )
+
+
+def list_active_scope_affiliation_grant_user_ids(
+    *,
+    scope: AccessScope,
+    affiliation_id: int,
+    user_ids: Iterable[int],
+) -> set[int]:
+    """여러 사용자 중 지정 scope·소속의 활성·미만료 grant 사용자 ID를 반환합니다."""
+
+    normalized_user_ids = _normalize_positive_int_set(user_ids)
+    if (
+        scope is None
+        or not isinstance(affiliation_id, int)
+        or affiliation_id <= 0
+        or not normalized_user_ids
+    ):
+        return set()
+    now = timezone.now()
+    return set(
+        UserScopeAffiliationGrant.objects.filter(
+            user_id__in=normalized_user_ids,
+            scope=scope,
+            affiliation_id=affiliation_id,
+            affiliation__is_active=True,
+            is_active=True,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .values_list("user_id", flat=True)
+    )
+
+
+def list_expired_scope_affiliation_grants_for_update(
+    *,
+    scope: AccessScope,
+    expired_at: Any,
+    limit: int,
+) -> list[UserScopeAffiliationGrant]:
+    """지정 scope의 활성 만료 grant를 잠가 제한된 수만 반환합니다."""
+
+    if scope is None or limit <= 0:
+        return []
+    return list(
+        UserScopeAffiliationGrant.objects.select_for_update(skip_locked=True)
+        .filter(
+            scope=scope,
+            is_active=True,
+            expires_at__isnull=False,
+            expires_at__lte=expired_at,
+        )
+        .select_related("scope", "affiliation", "user")
+        .order_by("expires_at", "id")[:limit]
     )
 
 
@@ -2323,9 +2736,26 @@ def list_line_sdwt_pairs() -> list[dict[str, str]]:
     # -----------------------------------------------------------------------------
     # 2) 응답 형식으로 변환
     # -----------------------------------------------------------------------------
-    return [
-        {"line_id": row["line"], "user_sdwt_prod": row["user_sdwt_prod"]}
+    normalized_pairs = {
+        (str(row["line"]), str(row["user_sdwt_prod"]))
         for row in pairs
+    }
+    User = get_user_model()
+    for snapshot in User.objects.filter(
+        is_active=True,
+        keycloak_subject__isnull=False,
+    ).values_list("affiliation_snapshot", flat=True):
+        if not isinstance(snapshot, dict):
+            continue
+        line = str(snapshot.get("line") or "").strip()
+        name = str(
+            snapshot.get("user_sdwt_prod") or snapshot.get("name") or ""
+        ).strip()
+        if line and name:
+            normalized_pairs.add((line, name))
+    return [
+        {"line_id": line, "user_sdwt_prod": name}
+        for line, name in sorted(normalized_pairs)
     ]
 
 
@@ -2531,3 +2961,14 @@ def get_affiliation_option_for_update_by_user_sdwt_prod(
     if len(rows) != 1:
         return None
     return rows[0]
+
+
+def list_active_users_for_keycloak_migration() -> list[Any]:
+    """Keycloak 이관 대상 활성 사용자를 안정적인 사번 순서로 반환합니다."""
+
+    return list(
+        get_user_model()
+        .objects.filter(is_active=True)
+        .select_related("current_affiliation__affiliation")
+        .order_by("sabun", "id")
+    )

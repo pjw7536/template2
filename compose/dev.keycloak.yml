@@ -1,0 +1,52 @@
+services:
+  keycloak-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak-local-only
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      shared-net:
+        aliases:
+          - keycloak-postgres
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.1
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak-local-only
+      KC_BOOTSTRAP_ADMIN_USERNAME: local-keycloak-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-keycloak-admin-change-me
+      KC_HOSTNAME: http://localhost:8180
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    volumes:
+      - ../deploy/keycloak/realm-portal.json:/opt/keycloak/data/import/realm-portal.json:ro
+    ports:
+      - "8180:8080"
+    networks:
+      shared-net:
+        aliases:
+          - keycloak
+
+volumes:
+  keycloak_postgres_data:
+
+networks:
+  shared-net:
+    external: true
+    name: shared-net

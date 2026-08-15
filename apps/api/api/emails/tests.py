@@ -111,13 +111,31 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for target in (
+    real_get_access_payload = account_services.get_access_payload
+    public_patcher = patch(
         "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    public_patcher.start()
+    test_case.addCleanup(public_patcher.stop)
+
+    def resolve_data_scope_access(*, user, scope_key, request=None):
+        """Keycloak shadow는 실제 역할을, legacy fixture는 허용값을 반환합니다."""
+
+        if getattr(user, "keycloak_subject", None):
+            return real_get_access_payload(
+                user=user,
+                scope_key=scope_key,
+                request=request,
+            )
+        return {"allowed": True}
+
+    data_scope_patcher = patch(
         "api.account.services.data_scope.get_access_payload",
-    ):
-        patcher = patch(target, return_value={"allowed": True})
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+        side_effect=resolve_data_scope_access,
+    )
+    data_scope_patcher.start()
+    test_case.addCleanup(data_scope_patcher.stop)
 
 
 def _grant_emails_affiliation_data(
@@ -126,59 +144,41 @@ def _grant_emails_affiliation_data(
     user_sdwt_prods: tuple[str, ...],
     actor=None,
 ) -> None:
-    """테스트 사용자에게 Emails 앱의 추가 소속 데이터 범위를 부여합니다."""
+    """테스트 사용자의 Keycloak 기본 소속과 Emails user 역할을 저장합니다."""
 
-    if actor is None:
-        User = get_user_model()
-        actor = User.objects.create_superuser(
-            sabun=f"SCOPE-{user.id}",
-            password="test-password",
-        )
-    affiliations = [
-        account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod=user_sdwt_prod,
-        )
-        for user_sdwt_prod in user_sdwt_prods
-    ]
-    payload, status_code = account_services.update_user_scope_affiliation_data(
-        actor=actor,
-        user_id=user.id,
-        scope_key="emails",
-        data_scope_mode="default",
-        affiliation_ids=[affiliation.id for affiliation in affiliations],
-        reason="Emails 테스트 소속 데이터 범위",
+    del actor
+    if len(user_sdwt_prods) != 1:
+        raise AssertionError("Keycloak 일반 사용자는 기본 소속 하나만 가질 수 있습니다.")
+    affiliation = user_sdwt_prods[0]
+    user.keycloak_subject = f"emails-user-{user.pk}"
+    user.keycloak_group_id = f"emails-group-{affiliation.casefold()}"
+    user.keycloak_groups = [f"/affiliations/{affiliation}/member"]
+    user.keycloak_client_roles = {"portal": ["portal-user", "emails-user"]}
+    user.affiliation_snapshot = {
+        "department": "Dept",
+        "line": "Line",
+        "name": affiliation,
+        "user_sdwt_prod": affiliation,
+        "role": "member",
+    }
+    user.save(
+        update_fields=[
+            "keycloak_subject",
+            "keycloak_group_id",
+            "keycloak_groups",
+            "keycloak_client_roles",
+            "affiliation_snapshot",
+        ]
     )
-    if status_code != 200:
-        raise AssertionError(f"테스트 소속 데이터 범위 부여 실패: {payload}")
 
 
 def _grant_emails_admin(*, user, actor) -> None:
-    """테스트 사용자에게 Portal 접근과 Emails 관리자 역할을 부여합니다."""
+    """테스트 사용자의 Keycloak shadow에 Emails 관리자 역할을 저장합니다."""
 
-    for scope_key, role in (("portal", "user"), ("emails", "admin")):
-        _payload, status_code = account_services.decide_user_access(
-            actor=actor,
-            user_id=user.id,
-            scope_key=scope_key,
-            action="grant",
-            role=role,
-            reason="Emails 관리자 테스트 권한 부여",
-        )
-        if status_code != 200:
-            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
-
-    payload, status_code = account_services.update_user_scope_affiliation_data(
-        actor=actor,
-        user_id=user.id,
-        scope_key="emails",
-        data_scope_mode="all",
-        affiliation_ids=[],
-        reason="Emails 관리자 테스트 전체 범위",
-    )
-    if status_code != 200:
-        raise AssertionError(f"테스트 전체 데이터 범위 부여 실패: {payload}")
+    del actor
+    user.keycloak_subject = f"emails-admin-{user.pk}"
+    user.keycloak_client_roles = {"portal": ["portal-user", "emails-admin"]}
+    user.save(update_fields=["keycloak_subject", "keycloak_client_roles"])
 
 
 @override_settings(TIME_ZONE="Asia/Seoul")
@@ -1022,8 +1022,8 @@ class EmailMailboxAccessViewTests(TestCase):
         response = self.client.get(reverse("emails-sent"), {"knox_id": "loginid-sender"})
         self.assertEqual(response.status_code, 400)
 
-    def test_mailbox_list_includes_empty_granted_mailbox(self) -> None:
-        """접근 권한만 있는 빈 메일함도 목록에 포함되는지 확인합니다.
+    def test_mailbox_list_includes_empty_default_affiliation(self) -> None:
+        """Keycloak 기본 소속의 빈 메일함도 목록에 포함되는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -1063,11 +1063,10 @@ class EmailMailboxAccessViewTests(TestCase):
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
         self.assertIn("__sent__", mailbox_list.json()["results"])
-        self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-empty", mailbox_list.json()["results"])
 
-    def test_user_can_select_granted_mailbox(self) -> None:
-        """접근 권한이 있는 메일함을 선택해 조회할 수 있는지 확인합니다.
+    def test_user_can_select_default_affiliation_mailbox(self) -> None:
+        """Keycloak 기본 소속 메일함을 선택해 조회할 수 있는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -1127,7 +1126,7 @@ class EmailMailboxAccessViewTests(TestCase):
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
-        self.assertEqual(mailbox_list.json()["results"], ["__sent__", "group-a", "group-b"])
+        self.assertEqual(mailbox_list.json()["results"], ["__sent__", "group-b"])
 
         response = self.client.get(reverse("emails-inbox"), {"user_sdwt_prod": "group-b"})
         self.assertEqual(response.status_code, 200)
@@ -1273,8 +1272,8 @@ class EmailMailboxAccessViewTests(TestCase):
         response = self.client.get(reverse("emails-mailbox-members"), {"user_sdwt_prod": "group-b"})
         self.assertEqual(response.status_code, 403)
 
-    def test_user_can_view_mailbox_members_for_granted_mailbox(self) -> None:
-        """권한이 있는 메일함의 멤버 목록을 조회할 수 있는지 확인합니다.
+    def test_user_can_view_mailbox_members_for_default_affiliation(self) -> None:
+        """Keycloak 기본 소속 메일함의 멤버 목록을 조회할 수 있는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -1416,8 +1415,8 @@ class EmailMailboxAccessViewTests(TestCase):
         results = filtered.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
 
-    def test_superuser_mailboxes_list_includes_unassigned(self) -> None:
-        """슈퍼유저가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
+    def test_keycloak_admin_mailboxes_list_includes_unassigned(self) -> None:
+        """Keycloak Emails admin이 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -1433,6 +1432,7 @@ class EmailMailboxAccessViewTests(TestCase):
         superuser = User.objects.create_superuser(sabun="S33334", password="test-password")
         superuser.knox_id = "knox-33334"
         superuser.save(update_fields=["knox_id"])
+        _grant_emails_admin(user=superuser, actor=superuser)
 
         account_services.ensure_affiliation_option(
             department="Dept",
@@ -2024,14 +2024,13 @@ class EmailEndpointTests(TestCase):
         summary_response = self.client.get(reverse("emails-mailbox-summary"))
         self.assertEqual(summary_response.status_code, 200)
         summary_rows = summary_response.json()["results"]
-        self.assertIn("group-a", {row["userSdwtProd"] for row in summary_rows})
+        self.assertEqual({row["userSdwtProd"] for row in summary_rows}, {"group-b"})
         summary_by_mailbox = {row["userSdwtProd"]: row for row in summary_rows}
-        self.assertEqual(summary_by_mailbox["group-a"]["accessSource"], "self")
-        self.assertEqual(summary_by_mailbox["group-b"]["accessSource"], "grant")
+        self.assertEqual(summary_by_mailbox["group-b"]["accessSource"], "self")
 
         members_response = self.client.get(
             reverse("emails-mailbox-members"),
-            {"user_sdwt_prod": "group-a"},
+            {"user_sdwt_prod": "group-b"},
         )
         self.assertEqual(members_response.status_code, 200)
 
@@ -2138,10 +2137,7 @@ class EmailEndpointTests(TestCase):
             reason="테스트 권한 변경",
         )
         self.assertEqual(status_code, 200)
-        _grant_emails_affiliation_data(
-            user=self.user,
-            user_sdwt_prods=("group-b",),
-        )
+        _grant_emails_admin(user=self.user, actor=self.user)
 
         email = Email.objects.create(
             message_id="msg-move",
@@ -2165,8 +2161,8 @@ class EmailEndpointTests(TestCase):
         self.assertEqual(email.user_sdwt_prod, "group-b")
 
     @patch("api.emails.services.insert_email_to_rag")
-    def test_viewer_cannot_move_email(self, _mock_insert: Mock) -> None:
-        """추가 소속 viewer는 source와 target을 조회해도 메일을 이동할 수 없습니다."""
+    def test_user_cannot_move_email_outside_default_affiliation(self, _mock_insert: Mock) -> None:
+        """일반 사용자는 기본 소속 밖의 메일함으로 이동할 수 없습니다."""
 
         User = get_user_model()
         manager = User.objects.create_user(
@@ -2180,7 +2176,7 @@ class EmailEndpointTests(TestCase):
             knox_id="knox-77781",
         )
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        _set_current_affiliation(viewer, user_sdwt_prod="group-c")
+        _set_current_affiliation(viewer, user_sdwt_prod="group-a")
         account_services.ensure_self_access(self.user, role="manager")
         account_services.ensure_self_access(manager, role="manager")
         for group in ("group-a", "group-b"):
@@ -2193,10 +2189,7 @@ class EmailEndpointTests(TestCase):
                 reason="테스트 권한 변경",
             )
             self.assertEqual(status_code, 200)
-        _grant_emails_affiliation_data(
-            user=viewer,
-            user_sdwt_prods=("group-a", "group-b"),
-        )
+        _grant_emails_affiliation_data(user=viewer, user_sdwt_prods=("group-a",))
 
         email = Email.objects.create(
             message_id="msg-viewer-move",

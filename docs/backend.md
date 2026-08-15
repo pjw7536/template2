@@ -8,7 +8,7 @@
 | --- | --- |
 | Framework | Django 5.1, Django REST Framework |
 | 기본 API prefix | `/api/v1/` |
-| Auth callback 예외 | `/auth/google/callback/` |
+| Auth callback 예외 | `/auth/keycloak/callback/` |
 | 기본 DB | `DJANGO_DB_*` PostgreSQL |
 | 로컬 실행 | `make dev-app-up` |
 
@@ -26,6 +26,7 @@
 | `api.observer` | 기본 DB 기준 정보/로그 조회 | `selectors.py`, `views.py` |
 | `api.appstore` | 내부 앱, 댓글, 좋아요, cover | `models.py`, `services/*.py`, `views.py` |
 | `api.voc` | VOC 게시글과 답변 | `models.py`, `services/posts.py`, `views.py` |
+| `api.work_hub` | Grist mapping, Portal account forward-auth, access·설비 sync, Webhook Task 자동화 | `models.py`, `selectors.py`, `services/`, `views.py`, `callback_urls.py`, management commands |
 | `api.activity` | 사용자 활동 로그 조회 | `models.py`, `selectors.py`, `services/activity_logs.py` |
 | `api.health` | health check | `services/health_status.py`, `views.py` |
 | `api.common` | 공통 DB, storage, mail, messenger, request helper | `services/*.py` |
@@ -58,6 +59,7 @@
 | `/api/v1/observer/` | `api.observer` | `docs/api/observer.md` |
 | `/api/v1/appstore/` | `api.appstore` | `docs/api/appstore.md` |
 | `/api/v1/voc/` | `api.voc` | `docs/api/voc.md` |
+| `/api/v1/work-hub/` | `api.work_hub` | `docs/api/work-hub.md` |
 | `/api/v1/activity/` | `api.activity` | `docs/api/activity-health.md` |
 | `/api/v1/health/` | `api.health` | `docs/api/activity-health.md` |
 
@@ -66,7 +68,7 @@
 | 방식 | 사용 위치 | 확인 값 |
 | --- | --- | --- |
 | Django session | 일반 브라우저 API | 로그인 session cookie |
-| OIDC callback | `/auth/google/callback/` | provider `form_post` payload |
+| OIDC callback | `/auth/keycloak/callback/` | Keycloak authorization `code`, `state` |
 | Airflow Bearer token | 수집/동기화 trigger | `Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>` |
 | Internal OCR token | OCR worker | `X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>` |
 | 공개/조건부 공개 | health, 일부 조회성 API | endpoint별 문서 확인 |
@@ -76,6 +78,12 @@
 | Command | App | 실행 예 |
 | --- | --- | --- |
 | `ensure_dev_database` | `api.management` | `python manage.py ensure_dev_database` |
+| `configure_grist_scope` | `api.work_hub` | `python manage.py configure_grist_scope --help` |
+| `audit_grist_schema` | `api.work_hub` | `python manage.py audit_grist_schema` |
+| `sync_grist_equipment` | `api.work_hub` | `python manage.py sync_grist_equipment --all --dry-run` |
+| `sync_grist_access` | `api.work_hub` | `python manage.py sync_grist_access --all --dry-run` (비활성 소속 ACL 회수 포함) |
+| `process_grist_access_sync` | `api.work_hub` | `python manage.py process_grist_access_sync` (만료 grant 회수 포함) |
+| `seed_grist_demo` | `api.work_hub` | `python manage.py seed_grist_demo` |
 | `process_email_outbox` | `api.emails` | `python manage.py process_email_outbox` |
 | `seed_dev_data` | `api.management` | `python manage.py seed_dev_data --reset --prefix DEV` |
 | `seed_appstore_dummy_data` | `api.appstore` | `python manage.py seed_appstore_dummy_data --reset --prefix DEV` |

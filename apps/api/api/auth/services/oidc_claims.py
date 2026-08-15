@@ -16,8 +16,10 @@ from typing import Any, Dict, List, Optional
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 import api.auth.selectors as auth_selectors
+from .keycloak import KeycloakIdentity
 
 
 def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[str]]:
@@ -62,6 +64,10 @@ def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[
         raw = claims.get(claim_key)
         value = str(raw).strip() if raw is not None else ""
         info[field_name] = value or None
+
+    # Keycloak 표준 claim을 사내 legacy claim이 없는 경우의 fallback으로 사용합니다.
+    info["email"] = info.get("email") or str(claims.get("email") or "").strip() or None
+    info["username"] = info.get("username") or str(claims.get("name") or "").strip() or None
 
     # 한글 username만 있는 기존 SSO 응답에서도 first_name/last_name을 유지합니다.
     username = info.get("username") or ""
@@ -164,5 +170,41 @@ def upsert_user_from_claims(
 
 __all__ = [
     "extract_user_info_from_claims",
+    "upsert_user_from_keycloak_identity",
     "upsert_user_from_claims",
 ]
+
+
+def upsert_user_from_keycloak_identity(*, identity: KeycloakIdentity) -> tuple[Any, bool]:
+    """검증된 Keycloak identity를 shadow User에 원자적으로 반영합니다."""
+
+    info = extract_user_info_from_claims(identity.claims)
+    info["sabun"] = identity.sabun
+    info["knox_id"] = identity.knox_id
+    user, created = upsert_user_from_claims(
+        info=info,
+        sabun=identity.sabun,
+        knox_id=identity.knox_id,
+    )
+    user.keycloak_subject = identity.subject
+    user.keycloak_group_id = identity.affiliation_group_id
+    user.keycloak_groups = identity.groups
+    user.keycloak_realm_roles = identity.realm_roles
+    user.keycloak_client_roles = identity.client_roles
+    user.affiliation_snapshot = identity.affiliation
+    user.keycloak_synced_at = timezone.now()
+    # Django superuser는 더 이상 권한 우회 수단으로 사용하지 않습니다.
+    user.is_superuser = False
+    user.save(
+        update_fields=[
+            "keycloak_subject",
+            "keycloak_group_id",
+            "keycloak_groups",
+            "keycloak_realm_roles",
+            "keycloak_client_roles",
+            "affiliation_snapshot",
+            "keycloak_synced_at",
+            "is_superuser",
+        ]
+    )
+    return user, created

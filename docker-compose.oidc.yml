@@ -1,3 +1,7 @@
 include:
-  - compose/oidc.infra.yml
-  - compose/oidc.app.yml
+  - path: compose/oidc.infra.yml
+    env_file: env/work-hub.oidc.env
+  - path: compose/oidc.app.yml
+    env_file: env/work-hub.oidc.env
+  - path: compose/oidc.work-hub.yml
+    env_file: env/work-hub.oidc.env

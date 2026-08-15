@@ -1,3 +1,7 @@
 include:
-  - compose/prod.infra.yml
-  - compose/prod.app.yml
+  - path: compose/prod.infra.yml
+    env_file: env/work-hub.prod.env
+  - path: compose/prod.app.yml
+    env_file: env/work-hub.prod.env
+  - path: compose/prod.work-hub.yml
+    env_file: env/work-hub.prod.env

@@ -126,7 +126,7 @@ class AuthMeTests(TestCase):
         self.assertIn("scope_access", payload)
         self.assertNotIn("portal_access", payload)
         self.assertNotIn("app_access", payload)
-        self.assertEqual(len(payload["scope_access"]), 14)
+        self.assertEqual(len(payload["scope_access"]), 15)
         self.assertFalse(payload["scope_access"]["appstore"]["allowed"])
         self.assertTrue(payload["scope_access"]["appstore"]["blockedByPortal"])
         self.assertEqual(payload["scope_access"]["appstore"]["source"], "portal_access_required")
@@ -224,7 +224,7 @@ class AuthMeTests(TestCase):
             for key, access in payload["scope_access"].items()
             if key != ACCESS_SCOPE_PORTAL
         }
-        self.assertEqual(len(non_portal_accesses), 13)
+        self.assertEqual(len(non_portal_accesses), 14)
         self.assertTrue(
             all(
                 not access["allowed"] and access["blockedByPortal"]
@@ -298,8 +298,8 @@ class AuthMeTests(TestCase):
         self.assertIsNone(payload["user_sdwt_prod"])
         self.assertIsNone(account_selectors.get_current_affiliation_record(user=user))
 
-    def test_auth_me_auto_assigns_dev_affiliation_when_enabled(self) -> None:
-        """외부망 dev 자동 소속 플래그가 켜지면 기본 소속을 보장해야 합니다."""
+    def test_auth_me_does_not_create_legacy_affiliation_in_dev(self) -> None:
+        """개발 환경도 auth 조회에서 legacy 소속을 자동 생성하지 않아야 합니다."""
         User = get_user_model()
         user = User.objects.create_user(sabun="S52346", password="test-password")
         user.knox_id = "KNOX-52346"
@@ -321,19 +321,9 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Engineering")
-        self.assertEqual(payload["line"], "TDEV-L1")
-        self.assertEqual(payload["user_sdwt_prod"], "TDEV_ALPHA")
-
-        current = account_selectors.get_current_affiliation_record(user=user)
-        self.assertIsNotNone(current)
-        self.assertEqual(current.source, "admin_assigned")
-        self.assertEqual(current.affiliation.user_sdwt_prod, "TDEV_ALPHA")
-        self.assertTrue(
-            any(
-                row.affiliation_id == current.affiliation_id and row.role == "member"
-                for row in account_selectors.list_user_sdwt_prod_access_rows(user=user)
-            )
-        )
+        self.assertIsNone(payload["line"])
+        self.assertIsNone(payload["user_sdwt_prod"])
+        self.assertIsNone(account_selectors.get_current_affiliation_record(user=user))
 
     def test_auth_me_includes_pending_user_sdwt_prod(self) -> None:
         """pending_user_sdwt_prod 값이 있을 때 응답에 포함되어야 합니다."""
@@ -435,6 +425,71 @@ class AuthEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("logoutUrl", response.json())
 
+    @override_settings(
+        WORK_HUB_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_chains_through_grist_logout(self) -> None:
+        """Work Hub 활성 환경의 첫 logout은 Grist 세션을 먼저 종료해야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=False,
+        GRIST_LOGOUT_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_cleans_grist_session_while_work_hub_is_disabled(self) -> None:
+        """본문을 끈 정리 기간에도 기존 Grist 세션을 먼저 종료해야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=False,
+        GRIST_LOGOUT_ENABLED=False,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_skips_grist_when_optional_service_is_not_running(self) -> None:
+        """기본 Portal 실행에서는 중지된 Grist가 로그아웃을 막지 않아야 합니다."""
+
+        response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(
+            response.json()["logoutUrl"],
+            "https://worklog.example.invalid/logout",
+        )
+
+    @override_settings(
+        WORK_HUB_ENABLED=True,
+        GRIST_PUBLIC_URL="https://worklog.example.invalid",
+    )
+    def test_auth_logout_uses_idp_after_grist_session_is_cleared(self) -> None:
+        """Grist가 돌아온 logout 요청은 다시 Grist로 보내지 않아야 합니다."""
+
+        response = self.client.get(
+            reverse("auth-logout"),
+            {"grist_cleared": "1"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotEqual(
+            response["Location"],
+            "https://worklog.example.invalid/logout",
+        )
+
     def test_auth_config_returns_fields(self) -> None:
         """auth_config 응답에 기본 필드가 포함되어야 합니다."""
         response = self.client.get(reverse("auth-config"))
@@ -504,7 +559,7 @@ class PortalAccessEnforcementTests(TestCase):
         user = self._create_user(sabun="BASIC-BLOCKED", department="Blocked Department")
 
         response = self.client.get(
-            reverse("account-overview"),
+            reverse("account-users"),
             **self._basic_credentials(user=user),
         )
 
@@ -521,7 +576,7 @@ class PortalAccessEnforcementTests(TestCase):
         self._allow_department(department=department)
 
         response = self.client.get(
-            reverse("account-overview"),
+            reverse("account-users"),
             **self._basic_credentials(user=user),
         )
 
@@ -637,7 +692,7 @@ class PortalAccessEnforcementTests(TestCase):
         self._allow_department(department=department)
 
         response = self.client.get(
-            reverse("account-overview"),
+            reverse("account-users"),
             **self._basic_credentials(user=user),
         )
 
@@ -791,3 +846,77 @@ class AuthOidcUserUpsertTests(TestCase):
         updated_user.refresh_from_db()
         self.assertEqual(updated_user.knox_id, "KNOX-NEW")
         self.assertEqual(updated_user.email, "new@example.com")
+
+
+class KeycloakIdentityContractTests(TestCase):
+    """Keycloak group/client role의 fail-closed 정규화를 검증합니다."""
+
+    def _claims(self, **overrides):
+        """기본 유효 claims에 테스트별 변경을 합칩니다."""
+
+        claims = {
+            "sub": "keycloak-subject",
+            "sabun": "KC0001",
+            "preferred_username": "keycloak.user",
+            "email": "keycloak.user@example.com",
+            "affiliation_group_id": "group-alpha",
+            "groups": ["/affiliations/ALPHA/member"],
+            "realm_access": {"roles": ["offline_access"]},
+            "resource_access": {
+                "portal": {
+                    "roles": ["portal-user", "work-hub-user"],
+                }
+            },
+        }
+        claims.update(overrides)
+        return claims
+
+    @override_settings(OIDC_CLIENT_ID="portal")
+    def test_identity_requires_exactly_one_affiliation_group(self):
+        """기본 소속이 누락되거나 중복되면 로그인을 차단합니다."""
+
+        from api.auth.services.keycloak import KeycloakError, identity_from_claims
+
+        with self.assertRaises(KeycloakError):
+            identity_from_claims(self._claims(groups=[]))
+        with self.assertRaises(KeycloakError):
+            identity_from_claims(
+                self._claims(
+                    groups=[
+                        "/affiliations/ALPHA/member",
+                        "/affiliations/BETA/viewer",
+                    ]
+                )
+            )
+
+    @override_settings(OIDC_CLIENT_ID="portal")
+    def test_identity_normalizes_group_and_roles(self):
+        """유효 claims는 소속 snapshot과 client role을 보존합니다."""
+
+        from api.auth.services.keycloak import identity_from_claims
+
+        identity = identity_from_claims(self._claims())
+
+        self.assertEqual(identity.subject, "keycloak-subject")
+        self.assertEqual(identity.affiliation_group_id, "group-alpha")
+        self.assertEqual(identity.affiliation["user_sdwt_prod"], "ALPHA")
+        self.assertEqual(identity.affiliation["role"], "member")
+        self.assertIn("work-hub-user", identity.client_roles["portal"])
+
+    def test_scope_roles_cover_user_and_admin_combinations(self):
+        """모든 scope의 user/admin 조합을 동일 규칙으로 판정합니다."""
+
+        from types import SimpleNamespace
+
+        from api.account.services import SYSTEM_ACCESS_SCOPE_KEYS, get_access_payload
+
+        for scope_key in SYSTEM_ACCESS_SCOPE_KEYS:
+            role = "portal-admin" if scope_key == "portal" else f"{scope_key}-admin"
+            user = SimpleNamespace(
+                is_authenticated=True,
+                keycloak_subject="subject",
+                keycloak_client_roles={"portal": ["portal-user", role]},
+            )
+            payload = get_access_payload(user=user, scope_key=scope_key)
+            self.assertTrue(payload["allowed"], scope_key)
+            self.assertEqual(payload["role"], "admin", scope_key)

@@ -67,27 +67,82 @@ def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
     - 없음
     """
     username = user.username if isinstance(getattr(user, "username", None), str) else ""
-    pending_change = account_selectors.get_pending_user_sdwt_prod_change(user=user)
+    is_keycloak_user = bool(getattr(user, "keycloak_subject", None))
+    pending_change = (
+        None
+        if is_keycloak_user
+        else account_selectors.get_pending_user_sdwt_prod_change(user=user)
+    )
     pending_user_sdwt_prod = pending_change.to_user_sdwt_prod if pending_change else None
     has_pending_affiliation = pending_change is not None
-    current_values = account_selectors.get_current_affiliation_values(user=user)
+    current_values = (
+        dict(getattr(user, "affiliation_snapshot", {}) or {})
+        if is_keycloak_user
+        else account_selectors.get_current_affiliation_values(user=user)
+    )
     raw_department = getattr(user, "department", None)
     department = raw_department.strip() if isinstance(raw_department, str) else raw_department
     if not department:
         department = current_values.get("department")
 
-    scope_access = account_services.get_scope_access_payloads(user=user)
+    scope_access = (
+        _get_keycloak_scope_access_payloads(user=user)
+        if is_keycloak_user
+        else account_services.get_scope_access_payloads(user=user)
+    )
     return {
         "id": user.pk,
         "usr_id": getattr(user, "knox_id", None),
         "avatarid": getattr(user, "avatarid", None),
         "username": username,
         "email": user.email,
-        "is_superuser": bool(getattr(user, "is_superuser", False)),
+        "is_superuser": False if is_keycloak_user else bool(getattr(user, "is_superuser", False)),
         "department": department,
         "line": current_values.get("line"),
         "user_sdwt_prod": current_values.get("user_sdwt_prod"),
         "pending_user_sdwt_prod": pending_user_sdwt_prod,
         "has_pending_affiliation": has_pending_affiliation,
         "scope_access": scope_access,
+        "keycloak_subject": getattr(user, "keycloak_subject", None),
+        "keycloak_group_id": getattr(user, "keycloak_group_id", ""),
+        "groups": list(getattr(user, "keycloak_groups", []) or []),
+        "realm_roles": list(getattr(user, "keycloak_realm_roles", []) or []),
+        "client_roles": dict(getattr(user, "keycloak_client_roles", {}) or {}),
     }
+
+
+def _get_keycloak_scope_access_payloads(*, user: Any) -> dict[str, dict[str, object]]:
+    """Keycloak client role을 기존 frontend scope_access 계약으로 변환합니다."""
+
+    client_roles = getattr(user, "keycloak_client_roles", {}) or {}
+    all_roles = {
+        str(role)
+        for roles in client_roles.values()
+        if isinstance(roles, list)
+        for role in roles
+    }
+    portal_admin = "portal-admin" in all_roles
+    portal_allowed = portal_admin or "portal-user" in all_roles
+    payloads: dict[str, dict[str, object]] = {}
+    for scope_key in account_services.SYSTEM_ACCESS_SCOPE_KEYS:
+        admin_role = f"{scope_key}-admin"
+        user_role = f"{scope_key}-user"
+        if scope_key == "portal":
+            allowed = portal_allowed
+            role = "admin" if portal_admin else "user" if allowed else None
+        else:
+            is_admin = admin_role in all_roles
+            allowed = portal_allowed and (is_admin or user_role in all_roles)
+            role = "admin" if is_admin else "user" if allowed else None
+        payloads[scope_key] = {
+            "allowed": allowed,
+            "scope": scope_key,
+            "scopeType": "portal" if scope_key == "portal" else "app",
+            "reason": "keycloak_role" if allowed else "keycloak_role_missing",
+            "role": role,
+            "effectiveStatus": "allowed" if allowed else "denied",
+            "source": "keycloak_client_role",
+            "canRequest": False,
+            "blockedByPortal": bool(scope_key != "portal" and not portal_allowed),
+        }
+    return payloads

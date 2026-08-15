@@ -2,9 +2,7 @@ import { useNavigate } from "react-router-dom"
 import {
   LogOutIcon,
   SettingsIcon,
-  ShieldIcon,
   UserIcon,
-  UsersIcon,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { buildBackendUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { buildProfileImageUrl, resolveProfileAvatarId } from "@/lib/profileImage"
 
@@ -50,16 +47,8 @@ export function PortalProfileDropdown({
     navigate("/settings/account")
   }
 
-  const handleManageTeam = () => {
-    navigate("/settings/members")
-  }
-
   const handleSettings = () => {
     navigate("/settings/account")
-  }
-
-  const handleAdmin = () => {
-    window.location.assign(buildBackendUrl("/admin/"))
   }
 
   const handleMenuSelect = (event, action) => {
@@ -81,12 +70,6 @@ export function PortalProfileDropdown({
   const accountMenuItems = [
     { label: "My account", icon: UserIcon, onSelect: handleMyAccount },
     { label: "Settings", icon: SettingsIcon, onSelect: handleSettings },
-  ]
-  const teamMenuItems = [
-    { label: "Manage team", icon: UsersIcon, onSelect: handleManageTeam },
-  ]
-  const adminMenuItems = [
-    { label: "Admin", icon: ShieldIcon, onSelect: handleAdmin },
   ]
 
   return (
@@ -112,21 +95,6 @@ export function PortalProfileDropdown({
         <DropdownMenuGroup>
           {accountMenuItems.map(renderMenuItem)}
         </DropdownMenuGroup>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuGroup>
-          {teamMenuItems.map(renderMenuItem)}
-        </DropdownMenuGroup>
-
-        {user?.is_superuser ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              {adminMenuItems.map(renderMenuItem)}
-            </DropdownMenuGroup>
-          </>
-        ) : null}
 
         <DropdownMenuSeparator />
 

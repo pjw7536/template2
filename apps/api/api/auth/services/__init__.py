@@ -20,9 +20,13 @@ from .oidc import (
     auth_logout,
     auth_me,
 )
+from .keycloak import KeycloakAdminClient, KeycloakError, KeycloakProvisioningClient
 
 __all__ = [
     "CsrfExemptSessionAuthentication",
+    "KeycloakAdminClient",
+    "KeycloakError",
+    "KeycloakProvisioningClient",
     "auth_callback",
     "auth_config",
     "auth_login",

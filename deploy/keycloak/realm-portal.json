@@ -1,0 +1,169 @@
+{
+  "realm": "portal",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "groups": [
+    {
+      "id": "affiliations-root",
+      "name": "affiliations",
+      "subGroups": [
+        {
+          "id": "aff-dev-alpha-parent",
+          "name": "DEV_ALPHA",
+          "subGroups": [
+            {"id": "aff-dev-alpha-viewer", "name": "viewer"},
+            {"id": "aff-dev-alpha-member", "name": "member"},
+            {"id": "aff-dev-alpha-manager", "name": "manager"}
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "portal": [
+        {"name": "portal-user"}, {"name": "portal-admin"},
+        {"name": "access-stats-user"}, {"name": "access-stats-admin"},
+        {"name": "appstore-user"}, {"name": "appstore-admin"},
+        {"name": "assistant-user"}, {"name": "assistant-admin"},
+        {"name": "emails-user"}, {"name": "emails-admin"},
+        {"name": "l0-spider-user"}, {"name": "l0-spider-admin"},
+        {"name": "l1-spider-user"}, {"name": "l1-spider-admin"},
+        {"name": "l3-spider-user"}, {"name": "l3-spider-admin"},
+        {"name": "line-dashboard-user"}, {"name": "line-dashboard-admin"},
+        {"name": "observer-user"}, {"name": "observer-admin"},
+        {"name": "pm-spider-user"}, {"name": "pm-spider-admin"},
+        {"name": "teamstaff-user"}, {"name": "teamstaff-admin"},
+        {"name": "tttm-spider-user"}, {"name": "tttm-spider-admin"},
+        {"name": "voc-user"}, {"name": "voc-admin"},
+        {"name": "work-hub-user"}, {"name": "work-hub-admin"}
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "portal",
+      "name": "Portal",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-local-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost/auth/keycloak/callback/"],
+      "webOrigins": ["http://localhost"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "protocolMappers": [
+        {
+          "name": "sabun",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {"user.attribute": "sabun", "claim.name": "sabun", "jsonType.label": "String", "id.token.claim": "true", "access.token.claim": "true"}
+        },
+        {
+          "name": "affiliation-group-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {"user.attribute": "affiliation_group_id", "claim.name": "affiliation_group_id", "jsonType.label": "String", "id.token.claim": "true", "access.token.claim": "true"}
+        },
+        {
+          "name": "full-group-paths",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {"claim.name": "groups", "full.path": "true", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true"}
+        },
+        {
+          "name": "portal-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {"included.client.audience": "portal", "id.token.claim": "false", "access.token.claim": "true"}
+        }
+      ],
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    },
+    {
+      "clientId": "portal-admin-reader",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-admin-reader-local-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "portal-migration",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-migration-local-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "dummy.user",
+      "enabled": true,
+      "email": "dummy.user@example.com",
+      "emailVerified": true,
+      "firstName": "Dummy",
+      "lastName": "User",
+      "attributes": {"sabun": ["S000001"], "affiliation_group_id": ["aff-dev-alpha-parent"]},
+      "credentials": [{"type": "password", "value": "dummy-user-change-me", "temporary": false}],
+      "groups": ["/affiliations/DEV_ALPHA/member"],
+      "clientRoles": {"portal": ["portal-user", "work-hub-user"]}
+    },
+    {
+      "username": "emergency.admin",
+      "enabled": true,
+      "email": "emergency.admin@example.com",
+      "emailVerified": true,
+      "firstName": "Emergency",
+      "lastName": "Admin",
+      "attributes": {"sabun": ["S999999"], "affiliation_group_id": ["aff-dev-alpha-parent"]},
+      "credentials": [{"type": "password", "value": "emergency-admin-change-me", "temporary": false}],
+      "groups": ["/affiliations/DEV_ALPHA/manager"],
+      "clientRoles": {
+        "portal": [
+          "portal-admin",
+          "access-stats-admin",
+          "appstore-admin",
+          "assistant-admin",
+          "emails-admin",
+          "l0-spider-admin",
+          "l1-spider-admin",
+          "l3-spider-admin",
+          "line-dashboard-admin",
+          "observer-admin",
+          "pm-spider-admin",
+          "teamstaff-admin",
+          "tttm-spider-admin",
+          "voc-admin",
+          "work-hub-admin"
+        ]
+      }
+    },
+    {
+      "username": "service-account-portal-admin-reader",
+      "enabled": true,
+      "serviceAccountClientId": "portal-admin-reader",
+      "clientRoles": {
+        "realm-management": ["query-groups", "query-users", "view-clients", "view-users"]
+      }
+    },
+    {
+      "username": "service-account-portal-migration",
+      "enabled": true,
+      "serviceAccountClientId": "portal-migration",
+      "clientRoles": {
+        "realm-management": ["manage-users", "query-groups", "query-users", "view-clients", "view-users"]
+      }
+    }
+  ]
+}

@@ -37,7 +37,7 @@
 | 모듈 | 기능 문서 | API 문서 | 주요 화면/route |
 | --- | --- | --- | --- |
 | Auth | `docs/modules/auth.md` | `docs/api/auth.md` | `/login`, OIDC callback |
-| Account | `docs/modules/account.md` | `docs/api/account.md` | `/settings/account`, `/settings/members` |
+| Account | `docs/modules/account.md` | `docs/api/account.md` | `/settings/account` |
 | Emails | `docs/modules/emails.md` | `docs/api/emails.md` | `/emails/inbox`, `/emails/sent`, `/emails/members` |
 | Assistant/RAG | `docs/modules/assistant.md` | `docs/api/assistant.md` | `/assistant` |
 | Line Dashboard/Drone | `docs/modules/line-dashboard.md` | `docs/api/line-dashboard.md` | `/ESOP_Dashboard/**` |

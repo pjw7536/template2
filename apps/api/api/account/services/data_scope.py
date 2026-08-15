@@ -24,6 +24,43 @@ from .access_control import create_access_audit_log
 from .access_runtime import can_manage_access, get_access_payload
 
 
+def _uses_keycloak(*, user: Any) -> bool:
+    """사용자가 Keycloak group 기반 소속 범위를 사용하는지 반환합니다."""
+
+    return bool(getattr(user, "keycloak_subject", None))
+
+
+def _keycloak_affiliation_scope(*, user: Any, scope_key: str) -> dict[str, object]:
+    """app admin은 전체, 일반 사용자는 기본 소속 하나로 범위를 제한합니다."""
+
+    access = get_access_payload(user=user, scope_key=scope_key)
+    if not access.get("allowed"):
+        return {
+            "allowed": False,
+            "scope": scope_key,
+            "type": AccessScope.DataScopeTypes.AFFILIATION,
+            "mode": "denied",
+            "all": False,
+            "affiliationIds": [],
+            "userSdwtProds": [],
+        }
+    is_admin = access.get("role") == "admin"
+    snapshot = dict(getattr(user, "affiliation_snapshot", {}) or {})
+    name = str(snapshot.get("user_sdwt_prod") or snapshot.get("name") or "").strip()
+    return {
+        "allowed": True,
+        "scope": scope_key,
+        "type": AccessScope.DataScopeTypes.AFFILIATION,
+        "mode": "all" if is_admin else "selected",
+        "all": is_admin,
+        "affiliationIds": [],
+        "userSdwtProds": [] if is_admin or not name else [name],
+        "keycloakGroupIds": (
+            [] if is_admin else [str(getattr(user, "keycloak_group_id", "") or "")]
+        ),
+    }
+
+
 def _serialize_affiliation(affiliation: Any) -> dict[str, object]:
     """소속 모델을 권한 API의 고정 응답 형태로 변환합니다."""
 
@@ -163,6 +200,9 @@ def get_affiliation_scope_decision(
     `all=True`는 모든 활성 소속을 뜻하므로 개별 소속 목록을 조회하지 않습니다.
     """
 
+    if _uses_keycloak(user=user):
+        return _keycloak_affiliation_scope(user=user, scope_key=scope_key)
+
     state = _resolve_affiliation_scope_state(
         user=user,
         scope_key=scope_key,
@@ -185,6 +225,29 @@ def get_effective_affiliation_scope(
     request: Any | None = None,
 ) -> dict[str, object]:
     """앱 접근을 포함해 사용자의 상세 실효 소속 데이터 범위를 반환합니다."""
+
+    if _uses_keycloak(user=user):
+        state = _keycloak_affiliation_scope(user=user, scope_key=scope_key)
+        snapshot = dict(getattr(user, "affiliation_snapshot", {}) or {})
+        serialized_snapshot = {
+            "id": None,
+            "department": str(snapshot.get("department") or ""),
+            "line": str(snapshot.get("line") or ""),
+            "userSdwtProd": str(
+                snapshot.get("user_sdwt_prod") or snapshot.get("name") or ""
+            ),
+            "isActive": True,
+            "keycloakGroupId": str(getattr(user, "keycloak_group_id", "") or ""),
+            "role": str(snapshot.get("role") or ""),
+        }
+        return {
+            **state,
+            "affiliations": (
+                []
+                if state.get("all") or not serialized_snapshot["userSdwtProd"]
+                else [serialized_snapshot]
+            ),
+        }
 
     state = _resolve_affiliation_scope_state(
         user=user,
@@ -227,6 +290,14 @@ def get_accessible_user_sdwt_prods_for_scope(
     request: Any | None = None,
 ) -> set[str]:
     """앱 scope에서 접근 가능한 활성 `user_sdwt_prod` 집합을 반환합니다."""
+
+    if _uses_keycloak(user=user):
+        resolved = _keycloak_affiliation_scope(user=user, scope_key=scope_key)
+        if not resolved.get("allowed"):
+            return set()
+        if resolved.get("all"):
+            return set(selectors.list_distinct_active_user_sdwt_prod_values())
+        return set(resolved.get("userSdwtProds", []))
 
     resolved = get_affiliation_scope_decision(
         user=user,
@@ -271,6 +342,48 @@ def can_access_scope_affiliation(
     )
 
 
+@transaction.atomic
+def deactivate_expired_scope_affiliation_grants(
+    *,
+    scope_key: str,
+    limit: int = 100,
+) -> int:
+    """지정 앱 scope에서 만료된 활성 소속 grant를 비활성화합니다.
+
+    grant별 저장 signal은 해당 소속의 외부 ACL projection을 다시 계산하게 합니다.
+    한 번 비활성화한 grant는 다음 worker 검사에서 제외됩니다.
+    """
+
+    # Keycloak 전환 후 신규 grant는 생성하지 않지만 cutover 전 잔여 row 정리를 보존합니다.
+    if limit <= 0:
+        return 0
+    scope = selectors.get_access_scope_by_key(scope_key=scope_key)
+    if scope is None or scope.data_scope_type != AccessScope.DataScopeTypes.AFFILIATION:
+        return 0
+
+    grants = selectors.list_expired_scope_affiliation_grants_for_update(
+        scope=scope,
+        expired_at=timezone.now(),
+        limit=limit,
+    )
+    for grant in grants:
+        before = _serialize_grant(grant)
+        grant.is_active = False
+        grant.save(update_fields=["is_active", "updated_at"])
+        create_access_audit_log(
+            scope=scope,
+            actor=None,
+            target_user=grant.user,
+            policy_rule=None,
+            affiliation=grant.affiliation,
+            action=AccessAuditLog.Actions.DATA_SCOPE_REVOKE,
+            before=before,
+            after=_serialize_grant(grant),
+            reason="소속 데이터 범위 grant 만료",
+        )
+    return len(grants)
+
+
 def get_user_scope_affiliation_data(
     *,
     actor: Any,
@@ -280,6 +393,8 @@ def get_user_scope_affiliation_data(
 ) -> tuple[dict[str, object], int]:
     """Portal 관리자가 편집할 사용자의 앱별 소속 데이터 범위를 반환합니다."""
 
+    if _uses_keycloak(user=actor):
+        return {"error": "keycloak_read_only"}, 410
     if not can_manage_access(user=actor, request=request):
         return {"error": "forbidden"}, 403
     target_user = selectors.get_user_by_id(user_id=user_id)
@@ -337,6 +452,8 @@ def update_user_scope_affiliation_data(
 ) -> tuple[dict[str, object], int]:
     """Portal 관리자가 사용자의 앱별 전체·선택 소속 범위를 원자적으로 변경합니다."""
 
+    if _uses_keycloak(user=actor):
+        return {"error": "keycloak_read_only"}, 410
     if not can_manage_access(user=actor, request=request):
         return {"error": "forbidden"}, 403
 

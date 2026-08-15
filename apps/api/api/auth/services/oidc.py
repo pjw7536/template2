@@ -4,31 +4,39 @@
 # - 불변 조건: 외부 API 응답 형식과 세션 계약은 view 계층에서 그대로 보존합니다.
 # =============================================================================
 
-"""id_token 전용 OIDC 플로우를 사용하는 세션 기반 인증 서비스.
+"""Keycloak authorization code flow를 사용하는 세션 기반 인증 서비스.
 
 - 주요 대상: auth_config, auth_login, auth_callback, auth_me, auth_logout
 - 주요 함수: 설정 페이로드 생성, authorize URL 생성, callback 검증/사용자 upsert
-- 가정/불변 조건: ADFS OIDC 설정은 settings/env에서 주입됨
+- 가정/불변 조건: Keycloak OIDC 설정은 settings/env에서 주입됨
 """
 from __future__ import annotations
 
 import uuid
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 import jwt
 from django.conf import settings
 from django.http import HttpRequest
 
-import api.account.services as account_services
 import api.auth.selectors as auth_selectors
 from .oidc_claims import (
     extract_user_info_from_claims,
+    upsert_user_from_keycloak_identity,
     upsert_user_from_claims,
 )
+from .keycloak import (
+    KeycloakError,
+    build_authorize_url,
+    decode_id_token,
+    exchange_code,
+    identity_from_claims,
+    refresh_session_if_needed,
+)
 from .oidc_utils import (
-    ADFS_AUTH_URL,
     ADFS_LOGOUT_URL,
     ISSUER,
     OIDC_CLIENT_ID,
@@ -38,14 +46,13 @@ from .oidc_utils import (
     save_nonce,
 )
 from .oidc_validation import (
-    decode_id_token,
     decode_state_to_target,
-    ensure_pubkey_ready,
     map_token_error,
     resolve_safe_redirect_target,
     validate_nonce,
-    validate_required_identity,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,7 @@ class OidcCallbackResult:
     user: Any = None
     error_code: Optional[str] = None
     bad_request_message: Optional[str] = None
+    token_set: Optional[Dict[str, Any]] = None
 
 
 def _session_max_age() -> Optional[int]:
@@ -161,8 +169,8 @@ def auth_config() -> Dict[str, Any]:
         "logoutUrl": "/api/v1/auth/logout",
         "meUrl": "/api/v1/auth/me",
         "callbackUrl": REDIRECT_URI,
-        "responseMode": "form_post",
-        "responseType": "id_token",
+        "responseMode": "query",
+        "responseType": "code",
         "frontendRedirect": settings.FRONTEND_BASE_URL,
         "sessionMaxAgeSeconds": _session_max_age(),
         "providerConfigured": _provider_configured(),
@@ -195,22 +203,19 @@ def auth_login(*, requested_target: Optional[str], request: HttpRequest) -> Oidc
     nonce = uuid.uuid4().hex
     save_nonce(request, nonce)
 
-    params = {
-        "client_id": OIDC_CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "response_mode": "form_post",
-        "response_type": "id_token",
-        "scope": "openid profile email",
-        "nonce": nonce,
-        "state": state,
-    }
-    return OidcLoginResult(authorize_url=f"{ADFS_AUTH_URL}?{urlencode(params)}")
+    return OidcLoginResult(
+        authorize_url=build_authorize_url(
+            request=request,
+            state=state,
+            nonce=nonce,
+        )
+    )
 
 
 def auth_callback(
     *,
     request: HttpRequest,
-    raw_id_token: str,
+    code: str,
     state: str,
 ) -> OidcCallbackResult:
     """OIDC callback 값을 검증하고 세션 로그인 대상 사용자를 반환합니다.
@@ -237,30 +242,30 @@ def auth_callback(
     target = resolve_safe_redirect_target(raw_target, request)
     expected_nonce = pop_nonce(request)
 
-    ensure_pubkey_ready()
-
     try:
+        token_set = exchange_code(request=request, code=code)
+        raw_id_token = str(token_set.get("id_token") or "")
+        raw_access_token = str(token_set.get("access_token") or "")
+        if not raw_id_token or not raw_access_token:
+            raise KeycloakError("Keycloak ID/access token이 없습니다.")
         decoded = decode_id_token(raw_id_token)
+        access_claims = decode_id_token(raw_access_token, require_subject=False)
+        identity = identity_from_claims({**decoded, **access_claims})
     except jwt.PyJWTError as exc:
+        logger.warning("Keycloak JWT 검증 실패", exc_info=exc)
         return OidcCallbackResult(target=target, error_code=map_token_error(exc))
+    except KeycloakError as exc:
+        logger.warning("Keycloak identity 검증 실패", exc_info=exc)
+        return OidcCallbackResult(target=target, error_code="invalid_keycloak_identity")
 
     if not validate_nonce(claims=decoded, expected_nonce=expected_nonce):
         return OidcCallbackResult(target=target, error_code="invalid_nonce")
 
-    info = extract_user_info_from_claims(decoded)
-    sabun, knox_id, identity_error = validate_required_identity(info)
-    if identity_error:
-        return OidcCallbackResult(target=target, error_code=identity_error)
-
-    user, _created = upsert_user_from_claims(
-        info=info,
-        sabun=str(sabun),
-        knox_id=str(knox_id),
-    )
-    return OidcCallbackResult(target=target, user=user)
+    user, _created = upsert_user_from_keycloak_identity(identity=identity)
+    return OidcCallbackResult(target=target, user=user, token_set=token_set)
 
 
-def auth_me(*, user: Any) -> Dict[str, Any]:
+def auth_me(*, request: HttpRequest, user: Any) -> Dict[str, Any]:
     """현재 로그인한 사용자 응답 payload를 조회합니다.
 
     입력:
@@ -275,18 +280,37 @@ def auth_me(*, user: Any) -> Dict[str, Any]:
     오류:
     - 없음
     """
-    account_services.ensure_dev_user_affiliation(user=user)
+    if getattr(user, "keycloak_subject", None):
+        token_set = refresh_session_if_needed(request=request)
+        if token_set is None:
+            raise KeycloakError("Keycloak session이 만료되었습니다.")
+        raw_access_token = str(token_set.get("access_token") or "")
+        raw_id_token = str(token_set.get("id_token") or "")
+        if not raw_access_token or not raw_id_token:
+            raise KeycloakError("Keycloak ID/access token이 없습니다.")
+        try:
+            id_claims = decode_id_token(raw_id_token)
+            access_claims = decode_id_token(
+                raw_access_token,
+                require_subject=False,
+            )
+            identity = identity_from_claims(
+                {**id_claims, **access_claims}
+            )
+        except jwt.PyJWTError as exc:
+            raise KeycloakError("Keycloak access token 검증에 실패했습니다.") from exc
+        user, _created = upsert_user_from_keycloak_identity(identity=identity)
     return auth_selectors.get_current_user_payload(user=user)
 
 
-def auth_logout() -> str:
-    """IdP 로그아웃 URL을 반환합니다.
+def auth_logout(*, grist_logout_completed: bool = False) -> str:
+    """필요하면 Grist 세션을 먼저 종료하고 최종 IdP 로그아웃 URL을 반환합니다.
 
     입력:
-    - 없음
+    - grist_logout_completed: Grist 세션 종료 후 돌아온 요청인지 여부
 
     반환:
-    - str: 기존 ADFS logout URL
+    - str: Grist 또는 기존 ADFS logout URL
 
     부작용:
     - 없음
@@ -294,11 +318,23 @@ def auth_logout() -> str:
     오류:
     - 없음
     """
+    should_clear_grist_session = bool(
+        getattr(settings, "WORK_HUB_ENABLED", False)
+        or getattr(settings, "GRIST_LOGOUT_ENABLED", False)
+    )
+    if should_clear_grist_session and not grist_logout_completed:
+        public_url = str(getattr(settings, "GRIST_PUBLIC_URL", "") or "").strip()
+        parsed = urlparse(public_url)
+        if (
+            parsed.scheme in {"http", "https"}
+            and parsed.netloc
+            and parsed.username is None
+            and parsed.password is None
+            and not parsed.query
+            and not parsed.fragment
+        ):
+            return f"{public_url.rstrip('/')}/logout"
     return ADFS_LOGOUT_URL
-
-
-_extract_user_info_from_claims = extract_user_info_from_claims
-_upsert_user_from_claims = upsert_user_from_claims
 
 
 __all__ = [
@@ -308,3 +344,7 @@ __all__ = [
     "auth_me",
     "auth_logout",
 ]
+
+
+_extract_user_info_from_claims = extract_user_info_from_claims
+_upsert_user_from_claims = upsert_user_from_claims

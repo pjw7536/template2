@@ -87,16 +87,59 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
     )
 
 
+def _set_keycloak_access(user, *, affiliation: str, roles: tuple[str, ...]) -> None:
+    """테스트 사용자의 Keycloak 소속 snapshot과 client role을 저장합니다."""
+
+    user.keycloak_subject = f"assistant-subject-{user.pk}"
+    user.keycloak_group_id = f"assistant-group-{affiliation.casefold()}"
+    user.keycloak_groups = [f"/affiliations/{affiliation}/member"]
+    user.keycloak_client_roles = {"portal": ["portal-user", *roles]}
+    user.affiliation_snapshot = {
+        "department": "Dept",
+        "line": "Line",
+        "name": affiliation,
+        "user_sdwt_prod": affiliation,
+        "role": "member",
+    }
+    user.save(
+        update_fields=[
+            "keycloak_subject",
+            "keycloak_group_id",
+            "keycloak_groups",
+            "keycloak_client_roles",
+            "affiliation_snapshot",
+        ]
+    )
+
+
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for target in (
+    real_get_access_payload = account_services.get_access_payload
+    public_patcher = patch(
         "api.account.services.get_access_payload",
+        return_value={"allowed": True},
+    )
+    public_patcher.start()
+    test_case.addCleanup(public_patcher.stop)
+
+    def resolve_data_scope_access(*, user, scope_key, request=None):
+        """Keycloak shadow는 실제 역할을, legacy fixture는 허용값을 반환합니다."""
+
+        if getattr(user, "keycloak_subject", None):
+            return real_get_access_payload(
+                user=user,
+                scope_key=scope_key,
+                request=request,
+            )
+        return {"allowed": True}
+
+    data_scope_patcher = patch(
         "api.account.services.data_scope.get_access_payload",
-    ):
-        patcher = patch(target, return_value={"allowed": True})
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+        side_effect=resolve_data_scope_access,
+    )
+    data_scope_patcher.start()
+    test_case.addCleanup(data_scope_patcher.stop)
 
 
 def _append_assistant_messages(
@@ -163,6 +206,11 @@ class AssistantRagIndexViewsTests(TestCase):
         self.user.knox_id = "knox-90000"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
+        _set_keycloak_access(
+            self.user,
+            affiliation="group-a",
+            roles=("assistant-user", "emails-user"),
+        )
         self.conversation = AssistantConversation.objects.create(
             user=self.user,
             title="RAG 테스트",
@@ -170,34 +218,6 @@ class AssistantRagIndexViewsTests(TestCase):
 
         manager = User.objects.create_user(sabun="S90010", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-b",
-            target_user=self.user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
-        self.assertEqual(status_code, 200)
-        authority = User.objects.create_superuser(
-            sabun="S90012",
-            password="test-password",
-        )
-        affiliation = account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod="group-b",
-        )
-        payload, data_scope_status = account_services.update_user_scope_affiliation_data(
-            actor=authority,
-            user_id=self.user.id,
-            scope_key="emails",
-            data_scope_mode="default",
-            affiliation_ids=[affiliation.id],
-            reason="Assistant 테스트 추가 범위",
-        )
-        self.assertEqual(data_scope_status, 200, payload)
 
     def test_rag_index_list_returns_accessible_user_sdwt_prods(self) -> None:
         """접근 가능한 user_sdwt_prod가 응답에 포함되는지 확인합니다."""
@@ -210,7 +230,7 @@ class AssistantRagIndexViewsTests(TestCase):
         self.assertEqual(payload.get("currentUserSdwtProd"), "group-a")
         self.assertEqual(
             set(payload.get("permissionGroups", [])),
-            {"group-a", "group-b", "knox-90000", rag_services.RAG_PUBLIC_GROUP},
+            {"group-a", "knox-90000", rag_services.RAG_PUBLIC_GROUP},
         )
         self.assertEqual(payload.get("ragIndexes"), rag_services.get_rag_index_candidates())
         self.assertEqual(payload.get("defaultRagIndex"), rag_services.resolve_rag_index_name(None))
@@ -219,8 +239,8 @@ class AssistantRagIndexViewsTests(TestCase):
             rag_services.resolve_rag_index_name(rag_services.RAG_INDEX_EMAILS),
         )
 
-    def test_rag_index_list_returns_all_known_user_sdwt_prods_for_superuser(self) -> None:
-        """슈퍼유저는 모든 user_sdwt_prod가 노출되는지 확인합니다."""
+    def test_rag_index_list_returns_all_known_user_sdwt_prods_for_app_admin(self) -> None:
+        """Keycloak app admin은 모든 user_sdwt_prod가 노출되는지 확인합니다."""
         User = get_user_model()
         superuser = User.objects.create_superuser(
             sabun="S90001",
@@ -230,6 +250,11 @@ class AssistantRagIndexViewsTests(TestCase):
         superuser.knox_id = "knox-super"
         superuser.save(update_fields=["knox_id"])
         _set_current_affiliation(superuser, user_sdwt_prod="group-admin")
+        _set_keycloak_access(
+            superuser,
+            affiliation="group-admin",
+            roles=("assistant-user", "emails-admin"),
+        )
 
         other_user = User.objects.create_user(
             sabun="S90002",
@@ -239,16 +264,6 @@ class AssistantRagIndexViewsTests(TestCase):
         _set_current_affiliation(other_user, user_sdwt_prod="group-c")
         manager = User.objects.create_user(sabun="S90011", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-d")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-d",
-            target_user=other_user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
-        self.assertEqual(status_code, 200)
 
         self.client.force_login(superuser)
         conversation = AssistantConversation.objects.create(

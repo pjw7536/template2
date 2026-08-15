@@ -117,17 +117,6 @@ const SETTINGS_NAV_ITEMS = Object.freeze([
     url: "/settings/account",
     scope: "global",
   },
-  {
-    title: "Members",
-    url: "/settings/members",
-    scope: "global",
-  },
-  {
-    title: "Permissions",
-    url: "/settings/permissions",
-    scope: "global",
-    adminScope: "portal",
-  },
 ])
 
 const SETTINGS_GROUP = Object.freeze({

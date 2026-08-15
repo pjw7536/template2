@@ -17,7 +17,6 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-import api.account.services as account_services
 from api.activity.models import ActivityLog, ExternalAppAccessDailyStat, ExternalAppUsageSyncState
 from api.activity.serializers import AppAccessEventSerializer, ManualAppAccessStatsSerializer
 
@@ -85,19 +84,14 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
 
 
 def _grant_access_stats_admin(*, user, actor) -> None:
-    """테스트 사용자에게 Portal 접근과 접속 현황 관리자 역할을 부여합니다."""
+    """테스트 사용자의 Keycloak shadow에 접속 현황 관리자 역할을 저장합니다."""
 
-    for scope_key, role in (("portal", "user"), ("access-stats", "admin")):
-        _payload, status_code = account_services.decide_user_access(
-            actor=actor,
-            user_id=user.id,
-            scope_key=scope_key,
-            action="grant",
-            role=role,
-            reason="Activity 관리자 테스트 권한 부여",
-        )
-        if status_code != 200:
-            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
+    del actor
+    user.keycloak_subject = f"activity-admin-{user.pk}"
+    user.keycloak_client_roles = {
+        "portal": ["portal-user", "access-stats-admin"],
+    }
+    user.save(update_fields=["keycloak_subject", "keycloak_client_roles"])
 
 
 @override_settings(EXTERNAL_APP_USAGE_API_URLS="[]")
@@ -127,6 +121,7 @@ class ActivityLogEndpointTests(TestCase):
             password="test-password",
             knox_id="knox-70002",
         )
+        _grant_access_stats_admin(user=self.superuser, actor=self.superuser)
 
     def test_activity_logs_requires_auth(self) -> None:
         """미인증 요청은 401을 반환하는지 확인합니다."""
@@ -787,8 +782,8 @@ class ActivityLogEndpointTests(TestCase):
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
     @patch("api.activity.services.activity_logs.requests.get")
-    def test_external_usage_sync_superuser_bypasses_six_hour_limit(self, mock_get) -> None:
-        """슈퍼유저는 마지막 실제 시각과 관계없이 동기화할 수 있습니다."""
+    def test_external_usage_sync_keycloak_admin_bypasses_six_hour_limit(self, mock_get) -> None:
+        """Keycloak app admin은 마지막 실제 시각과 관계없이 동기화할 수 있습니다."""
 
         class FakeResponse:
             """테스트용 외부 사용량 API 응답입니다."""

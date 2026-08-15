@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from ..models import SYSTEM_ACCESS_SCOPE_KEYS
+
 from .access import (
     AFFILIATION_CAPABILITY_APPROVE,
     AFFILIATION_CAPABILITY_DELETE,
@@ -67,12 +69,14 @@ from .access_runtime import (
     get_access_payload,
     get_scope_access_payloads,
     has_scope_role,
+    list_effective_affiliation_member_roles_for_scope,
 )
 from .dev_affiliation import ensure_dev_user_affiliation
 from .dev_access import seed_dev_access_data
 from .dev_users import ensure_dev_dummy_superuser
 from .data_scope import (
     can_access_scope_affiliation,
+    deactivate_expired_scope_affiliation_grants,
     get_affiliation_scope_decision,
     get_accessible_user_sdwt_prods_for_scope,
     get_effective_affiliation_scope,
@@ -95,12 +99,14 @@ __all__ = [
     "AFFILIATION_CAPABILITY_MANAGE_ACCESS",
     "AFFILIATION_CAPABILITY_READ",
     "AFFILIATION_CAPABILITY_WRITE",
+    "SYSTEM_ACCESS_SCOPE_KEYS",
     "approve_pending_access_requests",
     "approve_affiliation_change",
     "auto_approve_affiliation_from_snapshot",
     "bulk_apply_access_policy_rules",
     "can_manage_access",
     "can_access_scope_affiliation",
+    "deactivate_expired_scope_affiliation_grants",
     "create_affiliation",
     "create_access_audit_log",
     "create_access_policy_rule",
@@ -132,6 +138,7 @@ __all__ = [
     "get_access_policy_rules",
     "get_access_users",
     "has_scope_role",
+    "list_effective_affiliation_member_roles_for_scope",
     "has_affiliation_capability",
     "has_affiliation_capability_for_ids",
     "get_user_by_knox_id",

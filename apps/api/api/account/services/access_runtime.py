@@ -13,6 +13,7 @@ from typing import Any
 from .. import selectors
 from ..models import (
     ACCESS_SCOPE_PORTAL,
+    SYSTEM_ACCESS_SCOPE_KEYS,
     AccessPolicyRule,
     AccessRole,
     AccessScope,
@@ -22,6 +23,50 @@ from ..models import (
 
 
 _SCOPE_ROLE_RESOLVER_CACHE_ATTRIBUTE = "_account_scope_role_resolvers"
+
+
+def _uses_keycloak(*, user: Any) -> bool:
+    """사용자가 Keycloak shadow 권한을 사용하는지 반환합니다."""
+
+    return bool(getattr(user, "keycloak_subject", None))
+
+
+def _keycloak_roles(*, user: Any) -> set[str]:
+    """모든 Keycloak client role을 하나의 집합으로 평탄화합니다."""
+
+    values = getattr(user, "keycloak_client_roles", {}) or {}
+    return {
+        str(role)
+        for roles in values.values()
+        if isinstance(roles, list)
+        for role in roles
+    }
+
+
+def _keycloak_access_payload(*, user: Any, scope_key: str) -> dict[str, object]:
+    """Keycloak role을 기존 접근 payload 계약으로 변환합니다."""
+
+    roles = _keycloak_roles(user=user)
+    portal_admin = "portal-admin" in roles
+    portal_allowed = portal_admin or "portal-user" in roles
+    if scope_key == ACCESS_SCOPE_PORTAL:
+        allowed = portal_allowed
+        role = AccessRole.ADMIN if portal_admin else AccessRole.USER if allowed else None
+    else:
+        is_admin = f"{scope_key}-admin" in roles
+        allowed = portal_allowed and (is_admin or f"{scope_key}-user" in roles)
+        role = AccessRole.ADMIN if is_admin else AccessRole.USER if allowed else None
+    return {
+        "allowed": allowed,
+        "scope": scope_key,
+        "scopeType": "portal" if scope_key == ACCESS_SCOPE_PORTAL else "app",
+        "reason": "keycloak_role" if allowed else "keycloak_role_missing",
+        "role": role,
+        "effectiveStatus": "allowed" if allowed else "denied",
+        "source": "keycloak_client_role",
+        "canRequest": False,
+        "blockedByPortal": bool(scope_key != ACCESS_SCOPE_PORTAL and not portal_allowed),
+    }
 
 
 def _requires_portal_access(*, scope: AccessScope) -> bool:
@@ -131,8 +176,14 @@ def has_scope_role(
 
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False):
-        return True
+    if _uses_keycloak(user=user):
+        normalized_role = _normalize_access_role(required_role)
+        payload = _keycloak_access_payload(user=user, scope_key=scope_key)
+        if not payload["allowed"] or normalized_role is None:
+            return False
+        if normalized_role == AccessRole.USER:
+            return payload["role"] in {AccessRole.USER, AccessRole.ADMIN}
+        return payload["role"] == normalized_role
     normalized_role = _normalize_access_role(required_role)
     if normalized_role is None:
         return False
@@ -154,6 +205,9 @@ def get_access_payload(
     request: Any | None = None,
 ) -> dict[str, object]:
     """현재 사용자의 scope 접근 상태를 Portal 우선순위와 함께 반환합니다."""
+
+    if _uses_keycloak(user=user):
+        return _keycloak_access_payload(user=user, scope_key=scope_key)
 
     if request is not None:
         resolver = _get_scope_role_resolver(user=user, request=request)
@@ -196,6 +250,12 @@ def get_scope_access_payloads(
 ) -> dict[str, dict[str, object]]:
     """현재 사용자에게 노출할 scope의 최종 접근 상태를 한 map으로 반환합니다."""
 
+    if _uses_keycloak(user=user):
+        return {
+            scope_key: _keycloak_access_payload(user=user, scope_key=scope_key)
+            for scope_key in SYSTEM_ACCESS_SCOPE_KEYS
+        }
+
     resolver = _ScopeRoleResolver(user=user)
     include_inactive_scopes = _has_access_bypass(user=user)
     non_portal_scopes = sorted(
@@ -215,6 +275,123 @@ def get_scope_access_payloads(
         scope_key: dict(resolver.get_payload(scope_key=scope_key))
         for scope_key in scope_keys
     }
+
+
+def list_effective_affiliation_member_roles_for_scope(
+    *,
+    user_sdwt_prod: str,
+    scope_key: str,
+) -> list[dict[str, str]]:
+    """소속 역할 중 지정 scope의 최종 접근이 허용된 사용자만 반환합니다."""
+
+    affiliation = selectors.get_active_affiliation_by_user_sdwt_prod(
+        user_sdwt_prod=user_sdwt_prod
+    )
+    if affiliation is None:
+        return []
+    scope = selectors.get_access_scope_by_key(scope_key=scope_key)
+    if scope is None or scope.data_scope_type != AccessScope.DataScopeTypes.AFFILIATION:
+        return []
+    memberships = selectors.list_effective_affiliation_member_role_users(
+        user_sdwt_prod=user_sdwt_prod
+    )
+    memberships_by_user_id = {
+        int(item["user_id"]): item for item in memberships
+    }
+    users = selectors.list_active_acl_projection_users(
+        user_ids=[int(item["user_id"]) for item in memberships]
+    )
+    if not users:
+        return []
+    portal_scope = selectors.get_access_scope_by_key(scope_key=ACCESS_SCOPE_PORTAL)
+    access_scopes = [scope]
+    if portal_scope is not None and portal_scope.id != scope.id:
+        access_scopes.append(portal_scope)
+    policy_rules = selectors.list_active_access_policy_rules_for_scopes(
+        scopes=access_scopes,
+    )
+    rules_by_scope_id: dict[int, list[AccessPolicyRule]] = {
+        access_scope.id: [] for access_scope in access_scopes
+    }
+    for rule in policy_rules:
+        rules_by_scope_id.setdefault(rule.scope_id, []).append(rule)
+    access_rows = selectors.list_user_access_rows_for_scopes_and_users(
+        scopes=access_scopes,
+        user_ids=[user.id for user in users],
+    )
+    access_by_scope_and_user = {
+        (access.scope_id, access.user_id): access for access in access_rows
+    }
+    granted_user_ids = selectors.list_active_scope_affiliation_grant_user_ids(
+        scope=scope,
+        affiliation_id=affiliation.id,
+        user_ids=[user.id for user in users],
+    )
+    role_priority = {"viewer": 1, "member": 2, "manager": 3}
+    roles_by_email: dict[str, str] = {}
+
+    for user in users:
+        membership = memberships_by_user_id.get(user.id)
+        if membership is None and not getattr(user, "is_superuser", False):
+            continue
+        scope_access = _build_access_payload(
+            user=user,
+            scope=scope,
+            user_access=access_by_scope_and_user.get((scope.id, user.id)),
+            policy_rules=rules_by_scope_id.get(scope.id, []),
+        )
+        portal_access = (
+            _build_access_payload(
+                user=user,
+                scope=portal_scope,
+                user_access=access_by_scope_and_user.get((portal_scope.id, user.id)),
+                policy_rules=rules_by_scope_id.get(portal_scope.id, []),
+            )
+            if portal_scope is not None
+            else _build_missing_scope_payload(
+                user=user,
+                scope_key=ACCESS_SCOPE_PORTAL,
+            )
+        )
+        scope_access = _apply_portal_access_requirement(
+            scope_access=scope_access,
+            portal_access=portal_access,
+        )
+        if not scope_access.get("allowed"):
+            continue
+
+        current = getattr(user, "current_affiliation", None)
+        current_affiliation = getattr(current, "affiliation", None)
+        has_affiliation_scope = bool(
+            getattr(user, "is_superuser", False)
+            or scope_access.get("dataScopeMode") == UserAccess.DataScopeModes.ALL
+            or (
+                scope.include_current_affiliation
+                and current_affiliation is not None
+                and current_affiliation.is_active
+                and current_affiliation.id == affiliation.id
+            )
+            or user.id in granted_user_ids
+        )
+        if not has_affiliation_scope:
+            continue
+        email = (
+            str(user.email).strip().lower()
+            if getattr(user, "is_superuser", False)
+            else str(membership["email"])
+        )
+        role = (
+            "manager"
+            if getattr(user, "is_superuser", False)
+            else str(membership["role"])
+        )
+        previous = roles_by_email.get(email)
+        if previous is None or role_priority[role] > role_priority[previous]:
+            roles_by_email[email] = role
+    return [
+        {"email": email, "role": roles_by_email[email]}
+        for email in sorted(roles_by_email)
+    ]
 
 
 def _build_portal_access_payloads_by_user(
@@ -591,13 +768,9 @@ def _get_user_department(*, user: Any) -> str:
 
 
 def _has_access_bypass(*, user: Any) -> bool:
-    """사용자가 portal/app 접근 제한을 우회할 수 있는지 확인합니다."""
+    """Django superuser 기반 권한 우회를 비활성화합니다."""
 
-    return bool(
-        user
-        and getattr(user, "is_authenticated", False)
-        and getattr(user, "is_superuser", False)
-    )
+    return False
 
 
 def _normalize_access_role(role: str | None) -> str | None:

@@ -163,3 +163,114 @@
 - 다른 앱에서 Observer 필수 범위를 확보하지 못하면 임의 값을 사용하지 않고 장비·기간·로그 유형을 묻는 명확화 답변을 반환한다.
 - 자동 Profile은 권한 검증된 앱별 partition 기억을 읽되, 실행 결과는 실제 선택한 Tool의 권한 provenance만 저장한다.
 - 기존 앱별 Profile v1/v2와 외부 API·DB·env 계약은 유지하므로 migration은 추가하지 않는다.
+
+## 2026-08-04: Work Hub Grist OSS 전환
+
+- Work Hub의 공동편집 원본은 Grist OSS document로 두고 Portal은 소속·접근 권한·document mapping과 자동화만 소유한다.
+- Grist source는 vendor하거나 fork하지 않고 `gristlabs/grist-oss:1.7.13` image와 공식 REST API adapter로 격리한다.
+- 공개 Portal 경로 `/work-hub`와 context API는 유지하고 외부 Webhook만 `/webhooks/grist`로 교체한다.
+- `Affiliation.user_sdwt_prod` 하나당 Grist document 하나를 대응시키며 Equipment, WorkLog, Task table ID 계약을 유지한다.
+- OIDC/prod는 Portal과 같은 IdP의 별도 Grist OIDC client를 사용하고 document email ACL은 Portal 소속에서 동기화한다.
+- 기존 Baserow 업무 데이터는 자동 이관하지 않으며 기존 mapping은 비활성화하고 Baserow volume은 명시적 폐기 전까지 보존한다.
+
+## 2026-08-04: Work Hub APITable OSS와 Portal 단일 로그인 전환
+
+- Work Hub의 공동편집 원본을 APITable Space의 Equipment, WorkLog, Task datasheet로 전환한다.
+- Portal 로그인을 유일한 사용자 인증으로 사용하며 별도 APITable OIDC client나 로그인 화면을 사용자 흐름에 두지 않는다.
+- Portal은 권한 재검사 후 60초 수명의 HS256 1회용 ticket을 발급하고, APITable overlay는 `jti` 재사용을 Redis에서 거부한 뒤 session을 발급한다.
+- APITable upstream grid와 공동편집 엔진은 수정하지 않고 고정 image digest 위에 SSO/provisioning controller만 overlay한다.
+- Equipment의 자동 동기화 field는 field role로 잠그고, WorkLog는 Attachment와 작성·수정자/시각 field를 사용한다.
+- Grist volume과 기존 Django Grist table은 검증 기간 동안 삭제하지 않아 기능 플래그와 이전 adapter로 원복할 수 있게 한다.
+
+## 2026-08-05: Portal 기준 APITable 접근 권한 projection
+
+- APITable Space 멤버와 managed datasheet 역할의 단일 원본은 Portal account의 현재 소속, `UserSdwtProdAccess`, 사용자·소속 활성 상태로 고정한다.
+- 현재 소속 사용자는 최소 `member`로 보고 명시 `manager`는 유지하며, 추가 소속의 `viewer/member/manager`를 APITable `reader/editor/manager`로 투영한다.
+- Portal 변경은 같은 DB transaction에 `APITableAccessSyncOutbox`를 적재하고 commit 후 즉시 처리한다.
+- APITable 장애는 Portal 소속 변경을 되돌리지 않으며 API 컨테이너의 Outbox loop가 지수 backoff로 재시도한다.
+- 동기화는 delta가 아니라 소속별 전체 desired state를 사용하며 Portal 목록에서 사라진 사용자는 Space에서 제거한다.
+- `sync_apitable_access --all`은 APITable 직접 변경이나 누락 이벤트를 Portal 기준으로 복구하는 전체 reconciliation 경로로 유지한다.
+
+## 2026-08-05: Work Hub Grist OSS 재전환
+
+- APITable 실행 경로와 Portal overlay를 제거하고 보존된 Grist document mapping과 공식 REST API adapter를 다시 활성화한다.
+- APITable migration과 table은 적용 이력을 수정하거나 삭제하지 않고 새 migration에서 활성 mapping만 비활성화한다.
+- Portal 기준 접근 권한 단일 원본과 Outbox 방식은 유지하며 `viewer/member/manager`를 Grist `viewers/editors/owners`로 투영한다.
+- Grist 장애는 Portal 소속 변경을 되돌리지 않으며 `GristAccessSyncOutbox` worker가 지수 backoff로 재시도한다.
+- Portal 요청은 `GristAccessSyncOutbox` 적재까지만 수행하고 외부 ACL 호출은 독립 `work-hub-access-worker`가 전담한다.
+- 완료된 Grist ACL Outbox는 기본 30일 보존 후 worker가 정리하며 실패·terminal·processing 이력은 자동 삭제하지 않는다.
+- `/work-hub`, context API, Equipment/WorkLog/Task 계약은 유지하고 Webhook은 `/webhooks/grist`를 사용한다.
+
+## 2026-08-05: Work Hub Portal account forward-auth 인증
+
+- Grist 외부 boot 화면과 Grist 전용 OIDC client를 제거하고 Portal `account.User`를 브라우저 인증 identity의 단일 원본으로 사용한다.
+- Grist OSS에 포함되지 않은 GristConnect 대신 공식 forward-auth를 사용하고 Grist container 포트는 Nginx 내부 upstream으로만 노출한다.
+- `/auth/grist/login`은 Portal 사용자 PK를 30초 ticket으로 서명하고 `/auth/grist/verify`는 현재 account·Portal·`work-hub` 접근을 재검사해 email을 반환한다.
+- Nginx는 검증 성공 email만 `X-Forwarded-User`로 전달하고 일반 경로의 외부 header와 `/boot` 접근을 차단한다.
+- schema·record·ACL·Webhook 자동화는 Portal 관리자 Grist account에서 발급한 API key를 server-to-server credential로 유지한다.
+
+## 2026-08-05: Work Hub Grist widget 격리
+
+- Grouped View는 Grist core fork나 image 재빌드 대신 `GRIST_USER_ROOT/plugins`의 고정 revision user plugin으로 제공한다.
+- 자체 호스팅 widget은 Grist main app과 다른 origin에서 실행하고 Nginx는 등록된 plugin 정적 경로만 공개한다.
+- widget은 `read table`만 요청하며 외부 runtime dependency를 제거하고 CSP로 외부 연결을 차단한다.
+- 외부 공식 widget 목록 장애는 `GRIST_WIDGET_LIST_URL_OPTIONAL=true`로 격리해 자체 호스팅 widget gallery를 유지한다.
+
+## 2026-08-10: Work Hub 미적용 migration 통합
+
+- 실제 서버에는 Work Hub migration이 적용되지 않았으므로 테스트 환경의 Baserow→Grist→APITable→Grist 전환 이력을 운영 migration으로 유지하지 않는다.
+- Baserow/APITable 호환 모델과 table은 최종 schema에서 제거하고 Grist 모델 4개만 유지한다.
+- `work-hub` AccessScope 생성과 Grist schema 생성을 `work_hub.0001_initial` 하나로 통합한다.
+- 이 결정은 2026-08-05의 APITable migration/table 보존 결정을 대체한다.
+
+## 2026-08-10: Work Hub Grist ACL 권한 원본 강화
+
+- Grist document ACL 대상은 Portal 소속 역할과 Portal·`work-hub` 최종 앱 접근을 모두 통과한 사용자로 제한한다.
+- 사용자 앱 권한, Portal/Work Hub 부서 정책, scope 활성 상태와 사용자 부서 변경은 Grist 접근 Outbox를 재생성한다.
+- document의 `maxInheritedRole`은 `null`로 고정해 workspace/org 상속 권한이 Portal desired state를 우회하지 못하게 한다.
+- 재시도 불가능한 Grist 설정·4xx·응답 계약 오류는 `terminal` 상태로 보존하고, 새 권한 변경이 발생할 때만 다시 처리한다.
+- 동일 Webhook receipt와 WorkLog별 Task link는 외부 Grist 호출 동안 DB 잠금을 유지해 동시 전달에서도 Task를 하나만 생성한다.
+- 이메일이 등록된 활성 Portal superuser는 소속 membership 유무와 관계없이 모든 활성 Grist document의 owner로 투영한다.
+
+## 2026-08-10: Work Hub mapping과 완료 이력 계약
+
+- 운영 Grist document가 없는 초기 도입 시점부터 소속 mapping의 `doc_id`는 불변 식별자로 취급한다.
+- mapping 생성과 동일 document metadata 갱신은 ACL Outbox를 자동 적재한다.
+- `WORK_HUB_ENABLED=0`은 launcher뿐 아니라 미로그인 사용자의 Portal 인증 진입 전 Grist forward-auth login과 ticket 검증도 차단한다.
+- 완료 Outbox와 완료 Webhook receipt는 기본 30일, 실패 Webhook receipt는 기본 90일 보존하며 전용 worker가 주기적으로 정리한다.
+
+## 2026-08-10: Work Hub 최소 보안·정합성 보강
+
+- `GRIST_WEBHOOK_SECRET`은 document에 저장하는 공용 credential이 아니라 document·table 전용 HMAC token을 파생하는 마스터 키로 사용한다.
+- 전용 worker는 기존 기본 1시간 정리 주기마다 전체 document ACL을 Portal desired state와 맞추며 개별 document 실패는 격리한다.
+- OIDC·운영 Grist는 `GRIST_SESSION_SECRET`이 비어 있으면 시작하지 않고, 개발 환경만 로컬 기본값을 유지한다.
+- launcher의 타이머 자동 이동은 현재 history를 교체하고 사용자가 누르는 열기 버튼은 기존 history 추가 동작을 유지한다.
+
+## 2026-08-10: Work Hub 새 volume 무입력 초기화
+
+- 새 `grist_data`에서는 기존 API key 문자열이 유효하지 않으므로 `grist-api-key-init`이 `GRIST_ADMIN_EMAIL`의 Grist 공식 profile API key를 첫 기동에 발급한다.
+- API key는 환경 변수보다 `${WORK_HUB_SECRET_HOST_PATH}/grist_api_key` 파일을 차선으로 사용하며 API와 worker는 read-only로 mount한다.
+- OIDC(stage)와 prod의 host, 관리자, session/Webhook/forward-auth ticket key는 각각 `env/work-hub.oidc.env`, `env/work-hub.prod.env`를 Compose interpolation 기본값으로 사용한다.
+- stage Grist/widget host는 `worklog.stg.plane.samsungds.net`, `widgets.worklog.stg.plane.samsungds.net`, prod는 `worklog.plane.samsungds.net`, `widgets.worklog.plane.samsungds.net`으로 고정한다.
+- 일반 app target은 Work Hub를 끈 상태를 유지하고 `make oidc-work-hub-up`, `make prod-work-hub-up`만 기능 플래그와 bootstrap dependency를 함께 활성화한다.
+- `GRIST_ADMIN_EMAIL`은 Portal 일반 역할과 겹쳐도 모든 관리 document의 명시적 `owners`로 유지하고, ACL에 없으면 자동 추가한다.
+- `make prod-work-hub-up`은 API·Web image build와 같은 API image의 one-off DB migration을 성공한 뒤만 서비스를 기동한다.
+- OIDC·운영 원복은 `*-work-hub-disable`로 Grist session 정리를 유예한 뒤 `*-work-hub-down`으로 worker·initializer·Grist를 제거하는 2단계로 수행한다.
+
+## 2026-08-11: Work Hub Webhook 비동기 처리와 운영 fail-closed
+
+- Grist Webhook HTTP 경계는 document·table token, mapping과 payload를 검증해 `GristWebhookReceipt`에 저장한 뒤 `202 Accepted`로 종료한다.
+- `work-hub-access-worker`가 검증 payload를 임대해 Task를 생성·연결하며, 재시도 가능한 실패는 지수 backoff로 처리하고 중단된 임대는 회수한다.
+- 동일 receipt나 WorkLog row가 처리 중이면 요청 thread나 worker가 DB를 반복 조회하지 않고 기존 작업 유지 또는 receipt 재시도로 전환한다.
+- 운영 Work Hub migration은 구버전 API·worker를 먼저 중지하고, 실패 시 신버전을 올리지 않는 fail-closed를 사용한다.
+- 운영 긴급 비활성화는 비활성 Web build보다 API·Nginx·worker의 기능 OFF 재생성을 먼저 수행한다.
+- Grist API key initializer의 모든 HTTP 요청은 연결 3초, 전체 응답 15초 상한을 사용한다.
+
+## 2026-08-14: Work Hub Grist 원격 서버 분리
+
+- 기존 Portal 서버에는 Django API, Account DB, Web, `work-hub-access-worker`를 유지하고 새 서버 `10.172.117.91`에는 Grist OSS, 전용 Nginx, widget, API key initializer만 실행한다.
+- 새 서버는 독립 `docker-compose.grist.yml` project와 `tailwind_grist_remote_data` named volume을 사용하며 일반 down은 volume과 bootstrap key 파일을 삭제하지 않는다.
+- 새 서버 initializer가 생성한 관리자 API key는 파일 공유 mount 대신 기존 Portal 서버의 `GRIST_API_KEY` 배포 secret으로 전달한다.
+- 새 서버 Nginx는 기존 Portal의 `/auth/grist/verify`를 원격 forward-auth 경계로 사용하고, Portal은 Grist REST API를 `http://10.172.117.91`로 호출한다.
+- 비활성화와 원복은 Portal 측 `*-work-hub-disable/down`과 새 서버 측 `grist-remote-disable/down`을 함께 실행한다.
+- 초기 배포는 IP 기반 HTTP로 시작하고 DNS·TLS 전환 시 공개 URL과 Portal 허용 origin 계약을 env로 함께 변경한다.

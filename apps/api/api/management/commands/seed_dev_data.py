@@ -12,7 +12,7 @@ from typing import Any
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
-from api.account.services import ensure_dev_dummy_superuser, seed_dev_access_data
+from api.account.services import ensure_dev_dummy_superuser
 from api.appstore.services import seed_appstore_dummy_data
 
 
@@ -77,12 +77,8 @@ class Command(BaseCommand):
             f"dummy={getattr(user, 'sabun', '')}"
         )
 
-        account_result = seed_dev_access_data(
-            prefix=prefix,
-            actor=user,
-            reset=reset,
-        )
-        self.stdout.write(f"[account-seed] done {account_result}")
+        # Keycloak 전환 후 Account 권한은 외부 realm이 원본이므로 legacy 권한 row를 만들지 않습니다.
+        self.stdout.write("[account-seed] skipped source=keycloak")
         appstore_result = seed_appstore_dummy_data(
             prefix=prefix,
             owner=user,

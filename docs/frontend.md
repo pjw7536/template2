@@ -47,7 +47,7 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 | --- | --- | --- |
 | `home` | `/` | 인증 후 홈 shell |
 | `auth` | `/login` | 로그인 화면 |
-| `account` | `/settings/account`, `/settings/members` | 내 계정, 소속, 멤버/권한 관리 |
+| `account` | `/settings/account` | Keycloak 내 정보, 기본 소속과 역할 조회 |
 | `emails` | `/emails/inbox`, `/emails/sent`, `/emails/members` | 받은 메일, 보낸 메일, mailbox member |
 | `assistant` | `/assistant` | RAG 기반 채팅 |
 | `line-dashboard` | `/ESOP_Dashboard`, `/ESOP_Dashboard/status/:lineId`, `/ESOP_Dashboard/tip-status`, `/ESOP_Dashboard/tip-status/:lineId`, `/ESOP_Dashboard/history/:lineId`, `/ESOP_Dashboard/settings/:lineId`, `/ESOP_Dashboard/settings/notification/:lineId`, `/ESOP_Dashboard/settings/recipients/:lineId`, `/ESOP_Dashboard/overview`, `/ESOP_Dashboard/admin/drone-targets` | Drone SOP 현황/이력/설정 |
@@ -55,6 +55,7 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 | `observer` | `/observer`, `/observer/:eqpId` | 설비 로그 observer |
 | `appstore` | `/appstore` | 내부 앱 목록/등록/댓글 |
 | `voc` | `/voc` | VOC 게시판 |
+| `work-hub` | `/work-hub` | 소속별 Grist 설비 업무일지 launcher |
 | `teamstaff` | `/teamstaff` | 팀/인력 보조 화면 |
 | `errors` | `*` | 404와 route error |
 

@@ -1,0 +1,1 @@
+export { workHubRoutes } from "./routes"

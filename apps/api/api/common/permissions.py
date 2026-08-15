@@ -62,6 +62,7 @@ API_ROUTE_ACCESS_POLICIES = {
     "appstore": "app:appstore",
     "account": "portal",
     "voc": "app:voc",
+    "work-hub": "app:work-hub",
 }
 
 APP_ACCESS_API_RULES = (

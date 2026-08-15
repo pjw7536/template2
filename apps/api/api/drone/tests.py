@@ -4485,21 +4485,13 @@ class DroneSopTargetAdminTests(TestCase):
             password="test-password",
             knox_id="knox-72001",
         )
-        authority = User.objects.create_superuser(
-            sabun="S72002",
-            password="test-password",
-            knox_id="knox-72002",
+        self.admin_user.keycloak_subject = "line-dashboard-admin-subject"
+        self.admin_user.keycloak_client_roles = {
+            "portal": ["portal-user", "line-dashboard-admin"],
+        }
+        self.admin_user.save(
+            update_fields=["keycloak_subject", "keycloak_client_roles"]
         )
-        for scope_key, role in (("portal", "user"), ("line-dashboard", "admin")):
-            _payload, status_code = account_services.decide_user_access(
-                actor=authority,
-                user_id=self.admin_user.id,
-                scope_key=scope_key,
-                action="grant",
-                reason="Drone target 관리자 테스트 권한 부여",
-                role=role,
-            )
-            self.assertEqual(status_code, 200)
         self.endpoint = reverse("line-dashboard-admin-drone-targets")
 
     def _json(self, payload: dict[str, object]) -> str:
