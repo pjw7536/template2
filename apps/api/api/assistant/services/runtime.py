@@ -7,15 +7,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
 from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 import api.appstore.selectors as appstore_selectors
 import api.drone.selectors as drone_selectors
+from api.assistant.models import ASSISTANT_OPENWEBUI_CONTEXT_PREFIX
 from api.common.services import ExternalCallCancellation
-
 from api.observer.selectors import OBSERVER_LOG_KEYS
 from api.observer.services import (
     MAX_OBSERVER_QUERY_DAYS,
@@ -25,8 +25,13 @@ from api.observer.services import (
 
 from .access_requirements import access_requirements_for_scopes, merge_access_requirements
 from .chat import AssistantChatService
+from .knowledge_intent import (
+    KnowledgeRouteDecision,
+    decide_app_knowledge_use,
+    decide_auto_knowledge_route,
+)
 from .openwebui import build_openwebui_grounded_system_message, stream_openwebui_chat
-from .profiles import AssistantProfile
+from .profiles import AssistantProfile, get_assistant_profile
 from .runtime_memory import format_assistant_runtime_context
 
 
@@ -39,6 +44,18 @@ TOOL_AUTHORIZATION_FLOORS: dict[str, tuple[str, ...]] = {
 MAX_RUNTIME_SOURCES = 50
 MAX_RUNTIME_SOURCE_ID_CHARS = 200
 MAX_RUNTIME_SOURCE_TITLE_CHARS = 500
+AUTO_APP_TOOL_KEYS = {
+    "emails": "rag.search",
+    "observer": "observer.analysis",
+    "appstore": "appstore.catalog",
+    "line-dashboard": "line-dashboard.snapshot",
+}
+AUTO_APP_PROFILE_KEYS = {
+    "emails": "email-rag",
+    "observer": "observer-analysis",
+    "appstore": "appstore-context",
+    "line-dashboard": "line-dashboard-context",
+}
 
 
 def _normalize_runtime_sources(
@@ -142,6 +159,7 @@ class AssistantRuntime:
                 conversation_summary=conversation_summary,
                 history=history,
                 tool_inputs=tool_inputs,
+                user_header_id=user_header_id,
                 cancellation=cancellation,
                 on_delta=on_delta,
             )
@@ -152,6 +170,7 @@ class AssistantRuntime:
                 history=history,
                 conversation_summary=conversation_summary,
                 tool_inputs=tool_inputs,
+                user_header_id=user_header_id,
                 cancellation=cancellation,
                 on_delta=on_delta,
             )
@@ -162,6 +181,19 @@ class AssistantRuntime:
                 history=history,
                 conversation_summary=conversation_summary,
                 tool_inputs=tool_inputs,
+                user_header_id=user_header_id,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
+        if profile.provider == "auto-knowledge":
+            return self._execute_auto_knowledge(
+                profile=profile,
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                tool_inputs=tool_inputs,
+                user_header_id=user_header_id,
+                context_key=context_key,
                 cancellation=cancellation,
                 on_delta=on_delta,
             )
@@ -177,6 +209,7 @@ class AssistantRuntime:
         context_key: str,
         cancellation: ExternalCallCancellation,
         on_delta: Callable[[str], None] | None,
+        execution_metadata: Mapping[str, object] | None = None,
     ) -> AssistantRuntimeResult:
         """Portal OpenWebUI 응답을 일반 text block으로 정규화합니다."""
 
@@ -201,7 +234,293 @@ class AssistantRuntime:
             content=content,
             blocks=[{"type": "text", "content": content, "sourceIds": []}],
             access_requirements=access_requirements_for_scopes(profile.account_scopes),
-            execution_metadata={"outputChars": len(content)},
+            execution_metadata={
+                **dict(execution_metadata or {}),
+                "outputChars": len(content),
+            },
+        )
+
+    def _auto_active_app_key(self, context_key: str) -> str:
+        """검증된 OpenWebUI context key에서 현재 앱 key를 추출합니다."""
+
+        if not context_key.startswith(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX):
+            return ""
+        return context_key[len(ASSISTANT_OPENWEBUI_CONTEXT_PREFIX) :]
+
+    def _auto_available_app_keys(
+        self,
+        tool_inputs: Mapping[str, object],
+    ) -> tuple[str, ...]:
+        """권한 필터링 후 남은 Tool 입력을 자동 라우터 앱 key로 변환합니다."""
+
+        return tuple(
+            app_key
+            for app_key, tool_key in AUTO_APP_TOOL_KEYS.items()
+            if tool_key in tool_inputs
+        )
+
+    def _auto_target_tool_inputs(
+        self,
+        *,
+        decision: KnowledgeRouteDecision,
+        tool_inputs: Mapping[str, object],
+    ) -> dict[str, object] | None:
+        """라우터의 명시 범위를 현재 화면 범위에 덮어써 단일 Tool 입력을 만듭니다."""
+
+        target_app = decision.target_app
+        tool_key = AUTO_APP_TOOL_KEYS.get(target_app)
+        if not tool_key or tool_key not in tool_inputs:
+            return None
+        raw_input = tool_inputs.get(tool_key)
+        merged = dict(raw_input) if isinstance(raw_input, Mapping) else {}
+        hints = decision.scope_hints
+
+        if target_app == "observer":
+            for field_name in ("eqpId", "from", "to", "logTypes", "tipGroups"):
+                if field_name in hints:
+                    merged[field_name] = hints[field_name]
+            if any(not str(merged.get(key) or "").strip() for key in ("eqpId", "from", "to")):
+                return None
+            if not list(merged.get("logTypes") or []):
+                return None
+            merged.setdefault("tipGroups", ["__ALL__"])
+        elif target_app == "line-dashboard":
+            for field_name in ("lineId", "view", "from", "to"):
+                if field_name in hints:
+                    merged[field_name] = hints[field_name]
+            if not str(merged.get("lineId") or "").strip():
+                return None
+            merged.setdefault("view", "status")
+        elif target_app == "appstore":
+            for field_name in ("query", "category"):
+                if field_name in hints:
+                    merged[field_name] = hints[field_name]
+            if "query" in hints:
+                merged["selectedAppId"] = None
+            merged.setdefault("category", "all")
+
+        return {tool_key: merged}
+
+    def _auto_clarification_reply(
+        self,
+        *,
+        profile: AssistantProfile,
+        target_app: str,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """필수 조회 범위가 없을 때 도구 호출 없이 안전한 명확화 질문을 반환합니다."""
+
+        messages = {
+            "observer": (
+                "Observer 분석에 필요한 범위가 부족합니다. 분석할 장비, 기간, 로그 유형을 "
+                "알려주세요. 예: EQP-01, 지난 2시간, FDC Interlock 로그"
+            ),
+            "line-dashboard": (
+                "Line Dashboard 조회에 필요한 Line ID가 없습니다. 조회할 Line과 상태 또는 "
+                "이력 범위를 알려주세요."
+            ),
+            "emails": "현재 요청에서 사용할 수 있는 Email 검색 범위를 확인할 수 없습니다.",
+            "appstore": "현재 요청에서 사용할 수 있는 Appstore 조회 범위를 확인할 수 없습니다.",
+        }
+        content = messages.get(
+            target_app,
+            "요청한 업무 지식의 대상을 조금 더 구체적으로 알려주세요.",
+        )
+        if on_delta is not None:
+            on_delta(content)
+        return AssistantRuntimeResult(
+            content=content,
+            blocks=[{"type": "text", "content": content, "sourceIds": []}],
+            access_requirements=access_requirements_for_scopes(profile.account_scopes),
+            execution_metadata={
+                "knowledgeRequested": False,
+                "routingAction": "clarify",
+                "selectedKnowledgeApp": target_app,
+                "outputChars": len(content),
+            },
+        )
+
+    def _with_auto_route_metadata(
+        self,
+        result: AssistantRuntimeResult,
+        *,
+        decision: KnowledgeRouteDecision,
+    ) -> AssistantRuntimeResult:
+        """선택된 하위 Profile 결과에 자동 라우팅 provenance를 추가합니다."""
+
+        return replace(
+            result,
+            execution_metadata={
+                **result.execution_metadata,
+                "routingAction": decision.action,
+                "selectedKnowledgeApp": decision.target_app,
+                "routingFallback": decision.used_fallback,
+            },
+        )
+
+    def _execute_auto_target(
+        self,
+        *,
+        decision: KnowledgeRouteDecision,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        selected_tool_inputs: Mapping[str, object],
+        user_header_id: str | None,
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """자동 라우터가 선택한 앱의 기존 v1 실행 의미를 내부적으로 재사용합니다."""
+
+        child_profile = get_assistant_profile(
+            profile_key=AUTO_APP_PROFILE_KEYS[decision.target_app],
+            profile_version=1,
+        )
+        common = {
+            "profile": child_profile,
+            "prompt": prompt,
+            "history": history,
+            "conversation_summary": conversation_summary,
+            "tool_inputs": selected_tool_inputs,
+            "user_header_id": user_header_id,
+            "cancellation": cancellation,
+            "on_delta": on_delta,
+        }
+        if decision.target_app == "emails":
+            result = self._execute_email_rag(**common)
+        elif decision.target_app == "observer":
+            result = self._execute_observer(**common)
+        elif decision.target_app == "appstore":
+            result = self._execute_appstore_context(**common)
+        else:
+            result = self._execute_line_dashboard_context(**common)
+        return self._with_auto_route_metadata(result, decision=decision)
+
+    def _execute_auto_knowledge(
+        self,
+        *,
+        profile: AssistantProfile,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        tool_inputs: Mapping[str, object],
+        user_header_id: str | None,
+        context_key: str,
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """현재 앱 우선 상위 라우터로 일반 답변 또는 하나의 앱 지식을 실행합니다."""
+
+        active_app_key = self._auto_active_app_key(context_key)
+        available_app_keys = self._auto_available_app_keys(tool_inputs)
+        decision = decide_auto_knowledge_route(
+            prompt,
+            active_app_key=active_app_key,
+            available_app_keys=available_app_keys,
+            conversation_context=format_assistant_runtime_context(
+                history=[dict(item) for item in history],
+                summary=conversation_summary,
+            ),
+            cancellation=cancellation,
+            user_header_id=user_header_id,
+        )
+        if decision.action == "general" or (
+            decision.action == "current_app" and active_app_key not in AUTO_APP_TOOL_KEYS
+        ):
+            result = self._execute_openwebui(
+                profile=profile,
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                context_key=context_key,
+                cancellation=cancellation,
+                on_delta=on_delta,
+                execution_metadata={
+                    "knowledgeRequested": False,
+                    "routingAction": decision.action,
+                    "selectedKnowledgeApp": (
+                        active_app_key if decision.action == "current_app" else ""
+                    ),
+                    "routingFallback": decision.used_fallback,
+                },
+            )
+            return result
+        if decision.action == "clarify":
+            return self._auto_clarification_reply(
+                profile=profile,
+                target_app=decision.target_app,
+                on_delta=on_delta,
+            )
+        selected_tool_inputs = self._auto_target_tool_inputs(
+            decision=decision,
+            tool_inputs=tool_inputs,
+        )
+        if selected_tool_inputs is None:
+            return self._auto_clarification_reply(
+                profile=profile,
+                target_app=decision.target_app,
+                on_delta=on_delta,
+            )
+        return self._execute_auto_target(
+            decision=decision,
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            selected_tool_inputs=selected_tool_inputs,
+            user_header_id=user_header_id,
+            cancellation=cancellation,
+            on_delta=on_delta,
+        )
+
+    def _should_use_app_knowledge(
+        self,
+        *,
+        profile: AssistantProfile,
+        app_key: str,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        user_header_id: str | None,
+        cancellation: ExternalCallCancellation,
+    ) -> bool:
+        """Profile 버전과 질문 의도에 따라 앱의 동적 데이터 도구 사용 여부를 반환합니다."""
+
+        if profile.version < 2:
+            return True
+        decision = decide_app_knowledge_use(
+            app_key,
+            prompt,
+            conversation_context=format_assistant_runtime_context(
+                history=[dict(item) for item in history],
+                summary=conversation_summary,
+            ),
+            cancellation=cancellation,
+            user_header_id=user_header_id,
+        )
+        return decision.use_knowledge
+
+    def _execute_app_general_reply(
+        self,
+        *,
+        profile: AssistantProfile,
+        app_key: str,
+        prompt: str,
+        history: Sequence[Mapping[str, str]],
+        conversation_summary: str,
+        cancellation: ExternalCallCancellation,
+        on_delta: Callable[[str], None] | None,
+    ) -> AssistantRuntimeResult:
+        """동적 앱 데이터 없이 현재 앱의 수동적 설명만 허용한 일반 답변을 생성합니다."""
+
+        return self._execute_openwebui(
+            profile=profile,
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            context_key=f"assistant:openwebui:{app_key}",
+            cancellation=cancellation,
+            on_delta=on_delta,
+            execution_metadata={"knowledgeRequested": False},
         )
 
     def _execute_grounded_openwebui(
@@ -261,10 +580,30 @@ class AssistantRuntime:
         history: Sequence[Mapping[str, str]],
         conversation_summary: str,
         tool_inputs: Mapping[str, object],
+        user_header_id: str | None,
         cancellation: ExternalCallCancellation,
         on_delta: Callable[[str], None] | None,
     ) -> AssistantRuntimeResult:
         """현재 Appstore 필터에 맞는 제한된 앱 카탈로그로 답변합니다."""
+
+        if not self._should_use_app_knowledge(
+            profile=profile,
+            app_key="appstore",
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            user_header_id=user_header_id,
+            cancellation=cancellation,
+        ):
+            return self._execute_app_general_reply(
+                profile=profile,
+                app_key="appstore",
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
 
         raw_input = tool_inputs.get("appstore.catalog")
         catalog_input = raw_input if isinstance(raw_input, Mapping) else {}
@@ -284,6 +623,7 @@ class AssistantRuntime:
             cancellation=cancellation,
             on_delta=on_delta,
             execution_metadata={
+                "knowledgeRequested": True,
                 "resultCount": int(snapshot.get("count") or 0),
                 "truncated": bool(snapshot.get("truncated")),
             },
@@ -297,10 +637,30 @@ class AssistantRuntime:
         history: Sequence[Mapping[str, str]],
         conversation_summary: str,
         tool_inputs: Mapping[str, object],
+        user_header_id: str | None,
         cancellation: ExternalCallCancellation,
         on_delta: Callable[[str], None] | None,
     ) -> AssistantRuntimeResult:
         """현재 ESOP line·기간의 집계 snapshot으로 답변합니다."""
+
+        if not self._should_use_app_knowledge(
+            profile=profile,
+            app_key="line-dashboard",
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            user_header_id=user_header_id,
+            cancellation=cancellation,
+        ):
+            return self._execute_app_general_reply(
+                profile=profile,
+                app_key="line-dashboard",
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
 
         raw_input = tool_inputs.get("line-dashboard.snapshot")
         dashboard_input = raw_input if isinstance(raw_input, Mapping) else {}
@@ -321,6 +681,7 @@ class AssistantRuntime:
             cancellation=cancellation,
             on_delta=on_delta,
             execution_metadata={
+                "knowledgeRequested": True,
                 "resultCount": int(snapshot.get("totalCount") or 0),
                 "from": str(snapshot.get("from") or ""),
                 "to": str(snapshot.get("to") or ""),
@@ -358,7 +719,12 @@ class AssistantRuntime:
         result = self.email_chat_service.generate_reply_stream(
             prompt,
             cancellation=cancellation,
+            auto_route_knowledge=profile.version >= 2,
             **chat_kwargs,
+        )
+        knowledge_requested = bool(getattr(result, "knowledge_requested", True))
+        rag_search_performed = bool(
+            getattr(result, "rag_search_performed", True)
         )
         actual_mailboxes = {
             str(source.get("_mailbox") or "").strip()
@@ -404,16 +770,21 @@ class AssistantRuntime:
                 "mailboxes": sorted({*mailboxes, *actual_mailboxes}),
             },
         }
+        access_requirements = access_requirements_for_scopes(profile.account_scopes)
+        if rag_search_performed:
+            access_requirements = merge_access_requirements(
+                access_requirements,
+                claims,
+            )
         return AssistantRuntimeResult(
             content=content,
             blocks=blocks,
             sources=sources,
-            tool_keys=["rag.search"],
-            access_requirements=merge_access_requirements(
-                access_requirements_for_scopes(profile.account_scopes),
-                claims,
-            ),
+            tool_keys=["rag.search"] if rag_search_performed else [],
+            access_requirements=access_requirements,
             execution_metadata={
+                "knowledgeRequested": knowledge_requested,
+                "ragSearchPerformed": rag_search_performed,
                 "contextCount": len(result.contexts),
                 "sourceCount": len(sources),
                 "outputChars": len(content),
@@ -428,10 +799,30 @@ class AssistantRuntime:
         conversation_summary: str,
         history: Sequence[Mapping[str, str]],
         tool_inputs: Mapping[str, object],
+        user_header_id: str | None,
         cancellation: ExternalCallCancellation,
         on_delta: Callable[[str], None] | None,
     ) -> AssistantRuntimeResult:
         """제한된 조회 조건으로 Observer 현재 데이터를 재조회하고 분석합니다."""
+
+        if not self._should_use_app_knowledge(
+            profile=profile,
+            app_key="observer",
+            prompt=prompt,
+            history=history,
+            conversation_summary=conversation_summary,
+            user_header_id=user_header_id,
+            cancellation=cancellation,
+        ):
+            return self._execute_app_general_reply(
+                profile=profile,
+                app_key="observer",
+                prompt=prompt,
+                history=history,
+                conversation_summary=conversation_summary,
+                cancellation=cancellation,
+                on_delta=on_delta,
+            )
 
         raw_input = tool_inputs.get("observer.analysis")
         observer_input = raw_input if isinstance(raw_input, Mapping) else {}
@@ -521,6 +912,7 @@ class AssistantRuntime:
             tool_keys=["observer.analysis"],
             access_requirements=access_requirements_for_scopes(profile.account_scopes),
             execution_metadata={
+                "knowledgeRequested": True,
                 "outputChars": len(content),
                 "evidenceCount": int(payload.get("meta", {}).get("sourceCount") or 0),
             },

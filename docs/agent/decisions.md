@@ -140,3 +140,26 @@
 - Appstore 연락처·댓글·이미지와 ESOP 사용자·댓글·수신자·관리자 설정은 snapshot에서 제외한다.
 - snapshot은 untrusted read-only JSON으로 OpenWebUI system context에 결합하고 내부 문구를 명령으로 취급하지 않는다.
 - 외부 OpenWebUI/RAG endpoint와 env, offsite dummy 계약은 변경하지 않는다.
+
+## 2026-08-15: Assistant 앱 지식 자동 사용 Profile v2
+
+- `email-rag` v2는 현재 질문과 권한 검증된 최근 대화를 먼저 분류하고, 메일 자료가 필요한 경우에만 `rag.search`를 실행한다.
+- Appstore·Line Dashboard·Observer의 각 v2도 같은 판별 transport를 사용하고, 앱별 현재 데이터가 필요한 경우에만 selector 또는 분석 도구를 실행한다.
+- 동적 도구가 필요 없는 질문은 tool key와 context snapshot 없이 일반 OpenWebUI 답변으로 전환하며, 고정 앱 설명은 최신 질문과 관련 있을 때만 참고한다.
+- 일반 질문은 RAG를 조회하지 않으며 RAG tool key와 permission group/mailbox data claim도 저장하지 않는다.
+- 메일 자료가 필요한 질문에서 관련 context를 찾지 못하면 일반지식으로 추측하지 않고 검색 결과 없음으로 답한다.
+- 판별기는 후속 질문을 독립 검색 질의로 보완하며, 응답 오류나 형식 오류는 기존 RAG 사용 방식으로 fallback한다.
+- 기존 동적 앱 Profile v1은 완료 Run replay의 실행 의미를 보존하기 위해 항상 지식 도구를 사용하는 동작으로 유지한다.
+- 내장 dummy mode는 외부 판별 호출 없이 결정적 로컬 규칙을 사용하고, offsite OpenWebUI dummy endpoint는 동일한 구조화 판별 계약을 재현한다.
+- 외부 RAG/OpenWebUI endpoint·env·Compose 계약은 변경하지 않는다.
+
+## 2026-08-15: ChatWidget 현재 앱 전용·자동 지식 선택 모드
+
+- 기존 ON/OFF 스위치는 `현재 앱 지식만 사용`과 `자동 지식 선택`의 명시적 2상태 선택기로 교체한다.
+- 기본값인 현재 앱 전용 모드는 기존 앱별 Profile v2를 사용해 질문 의도는 판별하되 다른 앱 지식으로 전환하지 않는다.
+- 자동 모드는 별도 `auto-knowledge` Profile에서 현재 앱을 우선하고, 다른 앱의 고유 업무 요청이 명확할 때만 Email·Observer·Appstore·Line Dashboard 중 하나를 선택한다.
+- 자동 후보 Tool은 실행 전 현재 사용자 권한으로 필터링하며, 선택되지 않은 후보는 Tool 기록과 RAG data claim에 포함하지 않는다.
+- Observer는 사용자 질문에 명시된 장비·기간·로그 유형을 현재 화면 범위보다 우선하고, 누락 필드는 현재 Observer 범위로 보완한다.
+- 다른 앱에서 Observer 필수 범위를 확보하지 못하면 임의 값을 사용하지 않고 장비·기간·로그 유형을 묻는 명확화 답변을 반환한다.
+- 자동 Profile은 권한 검증된 앱별 partition 기억을 읽되, 실행 결과는 실제 선택한 Tool의 권한 provenance만 저장한다.
+- 기존 앱별 Profile v1/v2와 외부 API·DB·env 계약은 유지하므로 migration은 추가하지 않는다.

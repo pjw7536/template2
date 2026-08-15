@@ -75,6 +75,7 @@ class AssistantConversationSummaryRequestSerializer(serializers.Serializer):
             "profile:observer-analysis",
             "profile:appstore-context",
             "profile:line-dashboard-context",
+            "profile:auto-knowledge",
         ),
     )
 
@@ -350,6 +351,7 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             "observer-analysis",
             "appstore-context",
             "line-dashboard-context",
+            "auto-knowledge",
         )
     )
     profile_version = serializers.IntegerField(required=False, min_value=1)

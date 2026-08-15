@@ -13,7 +13,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from api.common.services import ExternalCallCancellation
 
 from .config import AssistantChatConfig
+from .constants import KNOWLEDGE_NOT_FOUND_REPLY
 from .errors import AssistantRequestError
+from .knowledge_intent import (
+    decide_dummy_email_knowledge_use,
+    decide_email_knowledge_use,
+)
 from .llm import (
     build_llm_payload,
     stream_llm_reply,
@@ -35,6 +40,8 @@ class AssistantChatResult:
     retrieved_sources: List[Dict[str, Any]] = field(default_factory=list)
     segments: List[Dict[str, Any]] = field(default_factory=list)
     is_dummy: bool = False
+    knowledge_requested: bool = True
+    rag_search_performed: bool = False
 
 
 class AssistantChatService:
@@ -78,6 +85,8 @@ class AssistantChatService:
         contexts: Optional[List[str]] = None,
         sources: Optional[List[Dict[str, Any]]] = None,
         rag_response: Optional[Dict[str, Any]] = None,
+        knowledge_requested: bool = True,
+        rag_search_performed: bool = False,
     ) -> AssistantChatResult:
         """더미 모드 응답을 생성합니다.
 
@@ -94,7 +103,9 @@ class AssistantChatService:
             더미 지연(delay) 설정에 따라 sleep이 발생할 수 있습니다.
         """
 
-        resolved_contexts = contexts or list(self.config.dummy_contexts)
+        resolved_contexts = (
+            list(self.config.dummy_contexts) if contexts is None else list(contexts)
+        )
         trimmed_contexts = resolved_contexts[: max(1, self.config.rag_num_docs)] if resolved_contexts else []
         reply_template = self.config.dummy_reply or ""
         reply = reply_template.replace("{question}", question)
@@ -136,6 +147,8 @@ class AssistantChatService:
             sources=sources or [],
             retrieved_sources=list(sources or []),
             is_dummy=True,
+            knowledge_requested=knowledge_requested,
+            rag_search_performed=rag_search_performed,
         )
 
     def _extract_sources(self, hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -213,41 +226,91 @@ class AssistantChatService:
         rag_index_names: Optional[Sequence[str]] = None,
         permission_groups: Optional[Sequence[str]] = None,
         conversation_context: str = "",
+        auto_route_knowledge: bool = False,
     ) -> AssistantChatResult:
-        """RAG 조회 후 구조화 LLM 응답을 취소 가능한 stream으로 완성합니다."""
+        """질문 의도에 따라 RAG를 조회하고 구조화 LLM 응답을 완성합니다."""
 
         normalized_question = question.strip()
         if not normalized_question:
             raise AssistantRequestError("질문이 비어 있습니다.")
         if self.config.use_dummy:
-            cancellation.raise_if_cancelled()
-            if self.config.dummy_use_rag:
-                contexts, rag_response, sources = self._retrieve_documents(
+            if auto_route_knowledge and self.config.dummy_use_rag:
+                decision = decide_dummy_email_knowledge_use(
                     normalized_question,
+                    conversation_context=conversation_context,
+                )
+                knowledge_requested = decision.use_knowledge
+                search_question = decision.search_query or normalized_question
+            else:
+                knowledge_requested = bool(self.config.dummy_use_rag)
+                search_question = normalized_question
+            cancellation.raise_if_cancelled()
+            if knowledge_requested:
+                contexts, rag_response, sources = self._retrieve_documents(
+                    search_question,
                     permission_groups=permission_groups,
                     rag_index_names=rag_index_names,
                     cancellation=cancellation,
                 )
             else:
-                contexts, rag_response, sources = [], None, []
+                contexts = [] if auto_route_knowledge else None
+                rag_response, sources = None, []
+            if auto_route_knowledge and knowledge_requested and not contexts:
+                return AssistantChatResult(
+                    reply=KNOWLEDGE_NOT_FOUND_REPLY,
+                    contexts=[],
+                    llm_response={"mode": "dummy-knowledge-not-found"},
+                    rag_response=rag_response,
+                    knowledge_requested=True,
+                    rag_search_performed=rag_response is not None,
+                    is_dummy=True,
+                )
             result = self._apply_structured_reply(
                 self._generate_dummy_result(
                     normalized_question,
                     contexts=contexts,
                     sources=sources,
                     rag_response=rag_response,
+                    knowledge_requested=knowledge_requested,
+                    rag_search_performed=rag_response is not None,
                 )
             )
             cancellation.raise_if_cancelled()
             return result
+        knowledge_requested = True
+        search_question = normalized_question
+        if auto_route_knowledge:
+            decision = decide_email_knowledge_use(
+                normalized_question,
+                conversation_context=conversation_context,
+                cancellation=cancellation,
+                user_header_id=user_header_id,
+            )
+            knowledge_requested = decision.use_knowledge
+            search_question = decision.search_query or normalized_question
+
         cancellation.raise_if_cancelled()
-        contexts, rag_response, sources = self._retrieve_documents(
-            normalized_question,
-            permission_groups=permission_groups,
-            rag_index_names=rag_index_names,
-            cancellation=cancellation,
-        )
+        if knowledge_requested:
+            contexts, rag_response, sources = self._retrieve_documents(
+                search_question,
+                permission_groups=permission_groups,
+                rag_index_names=rag_index_names,
+                cancellation=cancellation,
+            )
+        else:
+            contexts, rag_response, sources = [], None, []
         cancellation.raise_if_cancelled()
+        rag_search_performed = rag_response is not None
+        if auto_route_knowledge and knowledge_requested and not contexts:
+            return AssistantChatResult(
+                reply=KNOWLEDGE_NOT_FOUND_REPLY,
+                contexts=[],
+                llm_response={"mode": "knowledge-not-found"},
+                rag_response=rag_response,
+                retrieved_sources=list(sources),
+                knowledge_requested=True,
+                rag_search_performed=rag_search_performed,
+            )
         normalized_context = conversation_context.strip()
         llm_question = (
             f"[이전 대화 문맥]\n{normalized_context}\n\n"
@@ -264,13 +327,16 @@ class AssistantChatService:
             user_header_id=user_header_id,
         )
         cancellation.raise_if_cancelled()
-        return self._build_chat_result(
+        result = self._build_chat_result(
             reply=reply,
             contexts=contexts,
             llm_response={"mode": "stream"},
             rag_response=rag_response,
             sources=sources,
         )
+        result.knowledge_requested = knowledge_requested
+        result.rag_search_performed = rag_search_performed
+        return result
 
 
 assistant_chat_service = AssistantChatService()

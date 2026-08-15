@@ -79,9 +79,9 @@ export function ChatWidgetPanel({
   onClose,
   pageContext,
   activeAppContext,
-  usesAppContext,
+  knowledgeMode,
   isAppContextReady,
-  onUsesAppContextChange,
+  onKnowledgeModeChange,
   usesEmailRag,
   onQuickPrompt,
   currentPageScope,
@@ -208,21 +208,6 @@ export function ChatWidgetPanel({
             </div>
 
             <div className="flex h-8 items-center gap-1">
-              {activeAppContext.key !== "portal" ? (
-                <div className="flex h-8 items-center" data-chat-widget-no-drag="true">
-                  <ChatContextModeSelector
-                    appLabel={activeAppContext.label}
-                    usesAppContext={usesAppContext}
-                    onChange={onUsesAppContextChange}
-                    disabled={isSending || !isAppContextReady}
-                    disabledReason={
-                      !isAppContextReady
-                        ? `${activeAppContext.label} 조회 조건이 준비되면 사용할 수 있습니다.`
-                        : ""
-                    }
-                  />
-                </div>
-              ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -281,6 +266,22 @@ export function ChatWidgetPanel({
           </div>
 
           <div className="grid gap-2" data-chat-widget-no-drag="true">
+            {activeAppContext.key !== "portal" ? (
+              <div className="flex min-w-0 justify-end">
+                <ChatContextModeSelector
+                  appLabel={activeAppContext.label}
+                  mode={knowledgeMode}
+                  onChange={onKnowledgeModeChange}
+                  disabled={isSending}
+                  currentAppReady={isAppContextReady}
+                  disabledReason={
+                    !isAppContextReady
+                      ? `${activeAppContext.label} 조회 조건이 준비되면 사용할 수 있습니다.`
+                      : ""
+                  }
+                />
+              </div>
+            ) : null}
             {pageContext ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -336,15 +337,19 @@ export function ChatWidgetPanel({
                   </p>
                 ) : null}
               </>
-            ) : usesAppContext && activeAppContext?.key && activeAppContext.key !== "portal" ? (
+            ) : activeAppContext?.key && activeAppContext.key !== "portal" ? (
               <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <Database className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold text-foreground">
-                    {activeAppContext.label} 배경지식 연결됨
+                    {knowledgeMode === "auto"
+                      ? "자동 지식 선택"
+                      : `${activeAppContext.label} 지식만 사용`}
                   </p>
                   <p className="truncate text-[11px] text-muted-foreground">
-                    {activeAppContext.description}
+                    {knowledgeMode === "auto"
+                      ? "질문에 맞는 접근 가능한 업무 지식을 자동으로 선택합니다."
+                      : activeAppContext.description}
                   </p>
                 </div>
               </div>

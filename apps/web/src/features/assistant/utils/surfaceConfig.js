@@ -1,5 +1,9 @@
 import { buildOpenWebUIContextKey, getAssistantAppContext } from "./appContext"
-import { ASSISTANT_PROFILE_KEYS, ASSISTANT_PROFILE_VERSIONS } from "./profileKeys"
+import {
+  ASSISTANT_KNOWLEDGE_MODES,
+  ASSISTANT_PROFILE_KEYS,
+  ASSISTANT_PROFILE_VERSIONS,
+} from "./profileKeys"
 
 function copyStringList(values) {
   if (!Array.isArray(values)) return []
@@ -56,15 +60,58 @@ export function isAssistantAppContextReady({ appKey, pageContext = null } = {}) 
 
 export function resolveAssistantSurface({
   appKey,
-  useAppContext = true,
+  knowledgeMode = ASSISTANT_KNOWLEDGE_MODES.currentApp,
   pageContext = null,
   permissionGroups = [],
   ragIndexNames = [],
 } = {}) {
   const appContext = getAssistantAppContext(appKey)
   if (!appContext) return null
+  if (knowledgeMode === ASSISTANT_KNOWLEDGE_MODES.auto) {
+    const observerInput = isAssistantAppContextReady({ appKey, pageContext })
+      && appContext.key === "observer"
+      ? {
+          eqpId: pageContext.scope?.eqpId,
+          from: pageContext.scope?.from,
+          to: pageContext.scope?.to,
+          logTypes: copyStringList(pageContext.scope?.logTypes),
+          tipGroups: copyStringList(pageContext.scope?.tipGroups),
+        }
+      : {}
+    const lineInput = isAssistantAppContextReady({ appKey, pageContext })
+      && appContext.key === "line-dashboard"
+      ? {
+          view: pageContext.scope?.view === "history" ? "history" : "status",
+          lineId: pageContext.scope?.lineId,
+          ...(pageContext.scope?.from ? { from: pageContext.scope.from } : {}),
+          ...(pageContext.scope?.to ? { to: pageContext.scope.to } : {}),
+        }
+      : {}
+    const appstoreInput = appContext.key === "appstore" && pageContext?.kind === "appstore"
+      ? {
+          query: typeof pageContext.scope?.query === "string" ? pageContext.scope.query : "",
+          category: typeof pageContext.scope?.category === "string"
+            ? pageContext.scope.category
+            : "all",
+          selectedAppId: pageContext.scope?.selectedAppId ?? null,
+        }
+      : { query: "", category: "all", selectedAppId: null }
+    return buildProfileSurface({
+      mode: "auto",
+      profileKey: ASSISTANT_PROFILE_KEYS.autoKnowledge,
+      appContextKey: buildOpenWebUIContextKey(appContext.key),
+      toolInputs: {
+        "rag.search": {
+          permissionGroups: copyStringList(permissionGroups),
+          ragIndexes: copyStringList(ragIndexNames),
+        },
+        "observer.analysis": observerInput,
+        "appstore.catalog": appstoreInput,
+        "line-dashboard.snapshot": lineInput,
+      },
+    })
+  }
   if (appContext.key === "portal") return buildGeneralAssistantSurface()
-  if (!useAppContext) return buildGeneralAssistantSurface()
 
   if (appContext.key === "emails") {
     return buildProfileSurface({

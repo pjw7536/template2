@@ -45,6 +45,15 @@ from api.assistant.services import (
     request_openwebui_chat,
     request_openwebui_conversation_title,
 )
+from api.assistant.services.knowledge_intent import (
+    EmailKnowledgeDecision,
+    KnowledgeDecision,
+    KnowledgeRouteDecision,
+    decide_app_knowledge_use,
+    decide_auto_knowledge_route,
+    decide_dummy_email_knowledge_use,
+    decide_email_knowledge_use,
+)
 import api.rag.services as rag_services
 from api.common.services import ExternalCallCancellation, ExternalCallCancelled
 
@@ -290,6 +299,84 @@ class AssistantChatServiceSourceFilteringTests(TestCase):
 
         payload_without_context = service._generate_llm_payload("질문입니다", [], email_ids=["E1"])
         self.assertEqual(payload_without_context.get("temperature"), 0.7)
+
+    def test_auto_route_skips_rag_for_general_question(self) -> None:
+        """일반 질문으로 판별되면 RAG 조회 없이 일반 Email 답변을 생성합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        with patch(
+            "api.assistant.services.chat.decide_email_knowledge_use",
+            return_value=EmailKnowledgeDecision(False, ""),
+        ), patch.object(service, "_retrieve_documents") as retrieve, patch(
+            "api.assistant.services.chat.stream_llm_reply",
+            return_value='{"answer":"안녕하세요!","segments":[]}',
+        ):
+            result = service.generate_reply_stream(
+                "안녕하세요",
+                conversation_context="이전 메일 대화",
+                auto_route_knowledge=True,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        retrieve.assert_not_called()
+        self.assertEqual(result.reply, "안녕하세요!")
+        self.assertFalse(result.knowledge_requested)
+        self.assertFalse(result.rag_search_performed)
+
+    def test_auto_route_uses_rewritten_query_for_email_question(self) -> None:
+        """메일 후속 질문은 판별기가 보완한 독립 검색 질의로 RAG를 조회합니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        contexts = ["[emailId: E1]\n변경 일정은 8월 20일입니다."]
+        sources = [{"doc_id": "E1", "title": "변경 일정"}]
+        with patch(
+            "api.assistant.services.chat.decide_email_knowledge_use",
+            return_value=EmailKnowledgeDecision(True, "설비 변경 일정 메일"),
+        ), patch.object(
+            service,
+            "_retrieve_documents",
+            return_value=(contexts, {"hits": {}}, sources),
+        ) as retrieve, patch(
+            "api.assistant.services.chat.stream_llm_reply",
+            return_value=(
+                '{"answer":"","segments":'
+                '[{"answer":"8월 20일입니다.","usedEmailIds":["E1"]}]}'
+            ),
+        ):
+            result = service.generate_reply_stream(
+                "그 일정이 언제야?",
+                conversation_context="설비 변경 메일을 확인했습니다.",
+                auto_route_knowledge=True,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(retrieve.call_args.args[0], "설비 변경 일정 메일")
+        self.assertTrue(result.knowledge_requested)
+        self.assertTrue(result.rag_search_performed)
+        self.assertEqual(result.sources[0]["doc_id"], "E1")
+
+    def test_auto_route_returns_not_found_without_general_guess(self) -> None:
+        """메일 지식이 필요한데 검색 결과가 없으면 일반지식으로 답하지 않습니다."""
+
+        service = AssistantChatService(config=AssistantChatConfig(use_dummy=False))
+        with patch(
+            "api.assistant.services.chat.decide_email_knowledge_use",
+            return_value=EmailKnowledgeDecision(True, "없는 메일"),
+        ), patch.object(
+            service,
+            "_retrieve_documents",
+            return_value=([], {"hits": {"hits": []}}, []),
+        ), patch("api.assistant.services.chat.stream_llm_reply") as reply:
+            result = service.generate_reply_stream(
+                "없는 메일 내용을 알려줘",
+                auto_route_knowledge=True,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        reply.assert_not_called()
+        self.assertEqual(result.reply, "배경지식에서 관련 내용을 찾지 못했습니다.")
+        self.assertTrue(result.knowledge_requested)
+        self.assertTrue(result.rag_search_performed)
 
     def test_generate_reply_builds_segments_and_filters_sources(self) -> None:
         """segments 기반 출처 필터링이 올바른지 확인합니다."""
@@ -574,6 +661,24 @@ class AssistantRagIntegrationTests(SimpleTestCase):
             ],
         )
 
+    def test_dummy_auto_route_skips_rag_for_general_question(self) -> None:
+        """dummy v2도 일반 질문에서는 외부 판별과 RAG 검색을 모두 생략합니다."""
+
+        service = AssistantChatService(
+            config=AssistantChatConfig(use_dummy=True, dummy_use_rag=True)
+        )
+        with patch.object(service, "_retrieve_documents") as retrieve:
+            result = service.generate_reply_stream(
+                "안녕하세요",
+                auto_route_knowledge=True,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        retrieve.assert_not_called()
+        self.assertEqual(result.contexts, [])
+        self.assertFalse(result.knowledge_requested)
+        self.assertFalse(result.rag_search_performed)
+
     def test_generate_reply_passes_permission_group_override(self) -> None:
         """permission_groups 오버라이드가 전달되는지 확인합니다."""
         # -------------------------------------------------------------------------
@@ -650,6 +755,159 @@ class AssistantRagIntegrationTests(SimpleTestCase):
 
         self.assertEqual(result.contexts, [])
         self.assertEqual(result.sources, [])
+
+
+class EmailKnowledgeIntentTests(SimpleTestCase):
+    """Email 지식 자동 사용 판별 요청과 fallback을 검증합니다."""
+
+    def test_decision_uses_recent_context_and_user_identity(self) -> None:
+        """판별 요청은 현재 질문·최근 문맥·사용자 식별값을 제한된 payload로 전달합니다."""
+
+        config = AssistantOpenWebUIConfig(
+            url="http://openwebui/v1/chat/completions",
+            model="router-model",
+            api_token="router-token",
+            timeout_seconds=12,
+        )
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            return_value=iter(
+                ['<think>분류</think>{"useKnowledge":true,', '"searchQuery":"설비 변경 일정 메일"}']
+            ),
+        ) as stream:
+            decision = decide_email_knowledge_use(
+                "그 일정이 언제야?",
+                conversation_context="직전에는 설비 변경 메일을 설명했습니다.",
+                user_header_id="knox-10000",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        request = stream.call_args.kwargs
+        self.assertTrue(decision.use_knowledge)
+        self.assertEqual(decision.search_query, "설비 변경 일정 메일")
+        self.assertFalse(decision.used_fallback)
+        self.assertEqual(request["headers"]["Authorization"], "Bearer router-token")
+        self.assertEqual(request["headers"]["User-Id"], "knox-10000")
+        self.assertEqual(request["payload"]["temperature"], 0.0)
+        input_payload = json.loads(request["payload"]["messages"][1]["content"])
+        self.assertEqual(input_payload["currentQuestion"], "그 일정이 언제야?")
+        self.assertIn("설비 변경 메일", input_payload["recentConversation"])
+
+    def test_invalid_decision_falls_back_to_original_question_rag(self) -> None:
+        """판별 응답 형식이 잘못되면 원본 질문으로 RAG를 사용하는 기존 동작을 유지합니다."""
+
+        config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            return_value=iter(["판별할 수 없습니다"]),
+        ):
+            decision = decide_email_knowledge_use(
+                "최근 메일을 찾아줘",
+                conversation_context="",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertTrue(decision.use_knowledge)
+        self.assertEqual(decision.search_query, "최근 메일을 찾아줘")
+        self.assertTrue(decision.used_fallback)
+
+    def test_dummy_decision_uses_email_follow_up_context(self) -> None:
+        """dummy 판별도 메일 용어 없는 후속 질문은 최근 메일 문맥을 함께 확인합니다."""
+
+        decision = decide_dummy_email_knowledge_use(
+            "그 일정이 언제야?",
+            conversation_context="직전 설비 변경 메일을 확인했습니다.",
+        )
+        general = decide_dummy_email_knowledge_use(
+            "안녕하세요",
+            conversation_context="직전 설비 변경 메일을 확인했습니다.",
+        )
+
+        self.assertTrue(decision.use_knowledge)
+        self.assertFalse(general.use_knowledge)
+
+    def test_app_decision_uses_app_policy_and_context(self) -> None:
+        """공통 앱 판별 요청은 서버 app key와 앱별 도구 기준을 함께 전달합니다."""
+
+        config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            return_value=iter(['{"useKnowledge":false,"searchQuery":""}']),
+        ) as stream:
+            decision = decide_app_knowledge_use(
+                "observer",
+                "파이썬 코드를 작성해줘",
+                conversation_context="직전 장비 로그 분석",
+                user_header_id="knox-10000",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        request = stream.call_args.kwargs
+        input_payload = json.loads(request["payload"]["messages"][1]["content"])
+        system_message = request["payload"]["messages"][0]["content"]
+        self.assertFalse(decision.use_knowledge)
+        self.assertEqual(input_payload["appKey"], "observer")
+        self.assertIn("현재 선택 장비와 기간의 로그", system_message)
+        self.assertEqual(request["headers"]["User-Id"], "knox-10000")
+
+    def test_auto_route_prefers_explicit_other_app_and_normalizes_scope(self) -> None:
+        """자동 라우터는 현재 앱보다 명시된 다른 앱과 제한된 범위 hint를 선택합니다."""
+
+        config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            return_value=iter(
+                [
+                    '{"action":"other_app","targetApp":"observer","scopeHints":',
+                    '{"eqpId":"EQP-02","from":"2026-08-15T08:00:00+09:00",',
+                    '"to":"2026-08-15T10:00:00+09:00","logTypes":["fdc-interlock"],',
+                    '"ignored":"value"}}',
+                ]
+            ),
+        ) as stream:
+            decision = decide_auto_knowledge_route(
+                "EQP-02 FDC Interlock을 분석해줘",
+                active_app_key="emails",
+                available_app_keys=("emails", "observer"),
+                conversation_context="최근 메일 대화",
+                user_header_id="knox-10000",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(decision.action, "other_app")
+        self.assertEqual(decision.target_app, "observer")
+        self.assertEqual(decision.scope_hints["eqpId"], "EQP-02")
+        self.assertNotIn("ignored", decision.scope_hints)
+        input_payload = json.loads(
+            stream.call_args.kwargs["payload"]["messages"][1]["content"]
+        )
+        self.assertEqual(input_payload["activeApp"], "emails")
+        self.assertEqual(input_payload["availableApps"], ["emails", "observer"])
+
+    def test_auto_route_invalid_response_falls_back_to_current_app(self) -> None:
+        """자동 라우터 형식 오류는 사용 가능한 현재 앱을 우선하는 fallback으로 복귀합니다."""
+
+        config = AssistantOpenWebUIConfig(url="http://openwebui", model="router-model")
+        with patch(
+            "api.assistant.services.knowledge_intent.stream_openai_chat_completion",
+            return_value=iter(["invalid"]),
+        ):
+            decision = decide_auto_knowledge_route(
+                "어제 받은 내용을 알려줘",
+                active_app_key="emails",
+                available_app_keys=("emails", "observer"),
+                conversation_context="",
+                config=config,
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(decision.action, "current_app")
+        self.assertEqual(decision.target_app, "emails")
+        self.assertTrue(decision.used_fallback)
 
 
 class AssistantOpenWebUIChatTests(TestCase):
@@ -742,6 +1000,7 @@ class AssistantOpenWebUIChatTests(TestCase):
         system_message = session.post.call_args.kwargs["json"]["messages"][0]["content"]
         self.assertIn("[현재 활성 앱: Appstore]", system_message)
         self.assertIn("앱 등록 상태", system_message)
+        self.assertIn("최신 질문과 관련 있을 때만 참고", system_message)
 
         with self.assertRaisesMessage(ValueError, "지원하지 않는 OpenWebUI app context"):
             request_openwebui_chat(
@@ -1471,6 +1730,37 @@ class AssistantRuntimeV2Tests(TestCase):
             ).read_partitions,
             ("shared", "scope:line-dashboard"),
         )
+        self.assertEqual(
+            {
+                profile_key: assistant_services.get_assistant_profile(
+                    profile_key=profile_key
+                ).version
+                for profile_key in (
+                    "appstore-context",
+                    "line-dashboard-context",
+                    "observer-analysis",
+                    "auto-knowledge",
+                )
+            },
+            {
+                "appstore-context": 2,
+                "line-dashboard-context": 2,
+                "observer-analysis": 2,
+                "auto-knowledge": 1,
+            },
+        )
+        self.assertEqual(
+            assistant_services.get_assistant_profile(
+                profile_key="auto-knowledge"
+            ).read_partitions,
+            (
+                "shared",
+                "scope:emails",
+                "scope:observer",
+                "scope:appstore",
+                "scope:line-dashboard",
+            ),
+        )
 
     def test_appstore_and_line_dashboard_runtime_use_server_snapshots(self) -> None:
         """전용 Tool은 브라우저 원본 없이 서버 selector snapshot만 Provider에 전달합니다."""
@@ -1494,6 +1784,9 @@ class AssistantRuntimeV2Tests(TestCase):
             "api.assistant.services.runtime.drone_selectors.get_line_dashboard_assistant_snapshot",
             return_value=line_snapshot,
         ) as line_selector, patch(
+            "api.assistant.services.runtime.decide_app_knowledge_use",
+            return_value=KnowledgeDecision(True, ""),
+        ) as decide, patch(
             "api.assistant.services.runtime.stream_openwebui_chat",
             side_effect=[["Appstore 답변"], ["ESOP 답변"]],
         ) as provider:
@@ -1548,6 +1841,7 @@ class AssistantRuntimeV2Tests(TestCase):
         )
         self.assertEqual(appstore_result.tool_keys, ["appstore.catalog"])
         self.assertEqual(line_result.tool_keys, ["line-dashboard.snapshot"])
+        self.assertEqual(decide.call_count, 2)
         self.assertEqual(
             appstore_result.access_requirements["accountScopes"],
             ["appstore", "assistant"],
@@ -1558,6 +1852,413 @@ class AssistantRuntimeV2Tests(TestCase):
         )
         self.assertIn("분석 앱", provider.call_args_list[0].kwargs["system_message"])
         self.assertIn('"status":"RUN"', provider.call_args_list[1].kwargs["system_message"])
+
+    def test_dynamic_app_v2_skips_tools_for_general_questions(self) -> None:
+        """동적 앱 v2의 일반 질문은 selector·분석 없이 앱 설명 기반 일반 답변을 생성합니다."""
+
+        runtime = assistant_services.AssistantRuntime()
+        with patch(
+            "api.assistant.services.runtime.decide_app_knowledge_use",
+            return_value=KnowledgeDecision(False, ""),
+        ) as decide, patch(
+            "api.assistant.services.runtime.appstore_selectors.get_appstore_assistant_catalog"
+        ) as appstore_selector, patch(
+            "api.assistant.services.runtime.drone_selectors.get_line_dashboard_assistant_snapshot"
+        ) as line_selector, patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream"
+        ) as observer_analysis, patch(
+            "api.assistant.services.runtime.stream_openwebui_chat",
+            side_effect=[
+                ["Appstore 일반 답변"],
+                ["Line 일반 답변"],
+                ["Observer 일반 답변"],
+            ],
+        ) as provider:
+            appstore_result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="appstore-context",
+                    profile_version=2,
+                ),
+                prompt="파이썬 코드를 작성해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"appstore.catalog": {}},
+                user_header_id="knox-98000",
+                context_key="appstore:v1",
+                cancellation=ExternalCallCancellation(),
+            )
+            line_result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="line-dashboard-context",
+                    profile_version=2,
+                ),
+                prompt="안녕하세요",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"line-dashboard.snapshot": {}},
+                user_header_id="knox-98000",
+                context_key="line-dashboard:v1",
+                cancellation=ExternalCallCancellation(),
+            )
+            observer_result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="observer-analysis",
+                    profile_version=2,
+                ),
+                prompt="문장을 번역해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"observer.analysis": {}},
+                user_header_id="knox-98000",
+                context_key="observer:test",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        appstore_selector.assert_not_called()
+        line_selector.assert_not_called()
+        observer_analysis.assert_not_called()
+        self.assertEqual(decide.call_count, 3)
+        self.assertEqual(provider.call_count, 3)
+        for result in (appstore_result, line_result, observer_result):
+            self.assertEqual(result.tool_keys, [])
+            self.assertFalse(result.execution_metadata["knowledgeRequested"])
+            self.assertIsNone(result.context_snapshot)
+        self.assertEqual(
+            [call.kwargs["context_key"] for call in provider.call_args_list],
+            [
+                "assistant:openwebui:appstore",
+                "assistant:openwebui:line-dashboard",
+                "assistant:openwebui:observer",
+            ],
+        )
+
+    def test_dynamic_app_v1_preserves_always_tool_semantics(self) -> None:
+        """기존 동적 앱 v1 replay는 지식 판별기 없이 항상 전용 도구를 실행합니다."""
+
+        runtime = assistant_services.AssistantRuntime()
+        snapshot = {"count": 0, "truncated": False, "apps": []}
+        with patch(
+            "api.assistant.services.runtime.decide_app_knowledge_use"
+        ) as decide, patch(
+            "api.assistant.services.runtime.appstore_selectors.get_appstore_assistant_catalog",
+            return_value=snapshot,
+        ) as selector, patch(
+            "api.assistant.services.runtime.stream_openwebui_chat",
+            return_value=["기존 Appstore 답변"],
+        ):
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="appstore-context",
+                    profile_version=1,
+                ),
+                prompt="안녕하세요",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"appstore.catalog": {}},
+                user_header_id="knox-98000",
+                context_key="appstore:v1",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        decide.assert_not_called()
+        selector.assert_called_once()
+        self.assertEqual(result.tool_keys, ["appstore.catalog"])
+
+    def test_auto_profile_uses_current_app_or_general_route(self) -> None:
+        """자동 Profile은 현재 앱 선택과 일반 답변을 단일 상위 라우터 결과대로 실행합니다."""
+
+        runtime = assistant_services.AssistantRuntime()
+        snapshot = {"count": 1, "truncated": False, "apps": [{"id": 7, "name": "분석 앱"}]}
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            side_effect=[
+                KnowledgeRouteDecision("current_app", "appstore"),
+                KnowledgeRouteDecision("general", ""),
+            ],
+        ) as route, patch(
+            "api.assistant.services.runtime.appstore_selectors.get_appstore_assistant_catalog",
+            return_value=snapshot,
+        ) as selector, patch(
+            "api.assistant.services.runtime.stream_openwebui_chat",
+            side_effect=[["Appstore 답변"], ["일반 답변"]],
+        ):
+            app_result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="등록된 분석 앱을 알려줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"appstore.catalog": {}},
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:appstore",
+                cancellation=ExternalCallCancellation(),
+            )
+            general_result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="파이썬 코드를 작성해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"appstore.catalog": {}},
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:appstore",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(route.call_count, 2)
+        selector.assert_called_once()
+        self.assertEqual(app_result.tool_keys, ["appstore.catalog"])
+        self.assertEqual(app_result.execution_metadata["selectedKnowledgeApp"], "appstore")
+        self.assertEqual(general_result.tool_keys, [])
+        self.assertEqual(general_result.execution_metadata["routingAction"], "general")
+
+    def test_auto_profile_routes_to_other_email_app(self) -> None:
+        """자동 Profile은 현재 Observer 화면에서도 명시된 Email 지식을 선택할 수 있습니다."""
+
+        email_service = Mock()
+        email_service.generate_reply_stream.return_value = SimpleNamespace(
+            reply="관련 장애 메일",
+            segments=[],
+            sources=[],
+            retrieved_sources=[],
+            contexts=["메일 문맥"],
+            knowledge_requested=True,
+            rag_search_performed=True,
+        )
+        runtime = assistant_services.AssistantRuntime(email_chat_service=email_service)
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            return_value=KnowledgeRouteDecision("other_app", "emails"),
+        ):
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="관련 장애 메일을 찾아줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={
+                    "rag.search": {
+                        "permissionGroups": ["group-a"],
+                        "ragIndexes": ["idx-email"],
+                    },
+                    "observer.analysis": {},
+                },
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:observer",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(result.tool_keys, ["rag.search"])
+        self.assertEqual(result.execution_metadata["selectedKnowledgeApp"], "emails")
+        self.assertFalse(
+            email_service.generate_reply_stream.call_args.kwargs["auto_route_knowledge"]
+        )
+
+    def test_auto_profile_clarifies_missing_observer_scope(self) -> None:
+        """다른 앱의 Observer 요청에 필수 범위가 없으면 분석 없이 명확화 질문을 반환합니다."""
+
+        runtime = assistant_services.AssistantRuntime()
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            return_value=KnowledgeRouteDecision("other_app", "observer"),
+        ), patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream"
+        ) as analyze:
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="Observer 로그를 분석해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"observer.analysis": {}},
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:emails",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        analyze.assert_not_called()
+        self.assertEqual(result.tool_keys, [])
+        self.assertIn("장비, 기간, 로그 유형", result.content)
+        self.assertEqual(result.execution_metadata["routingAction"], "clarify")
+
+    def test_auto_profile_explicit_observer_scope_overrides_current_equipment(self) -> None:
+        """자동 라우터가 추출한 명시적 장비는 현재 Observer 화면 장비보다 우선합니다."""
+
+        observer_payload = {
+            "analysis": {
+                "headline": "EQP-02 분석",
+                "summary": "명시한 장비를 분석했습니다.",
+                "findings": [],
+                "limitations": [],
+            },
+            "meta": {},
+            "scope": {"eqpId": "EQP-02"},
+        }
+        runtime = assistant_services.AssistantRuntime()
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            return_value=KnowledgeRouteDecision(
+                "current_app",
+                "observer",
+                scope_hints={"eqpId": "EQP-02"},
+            ),
+        ), patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream",
+            return_value=observer_payload,
+        ) as analyze:
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="EQP-02로 다시 분석해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={
+                    "observer.analysis": {
+                        "eqpId": "EQP-01",
+                        "from": "2026-08-15T08:00:00+09:00",
+                        "to": "2026-08-15T10:00:00+09:00",
+                        "logTypes": ["eqp"],
+                        "tipGroups": ["__ALL__"],
+                    }
+                },
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:observer",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(analyze.call_args.kwargs["eqp_id"], "EQP-02")
+        self.assertEqual(result.tool_keys, ["observer.analysis"])
+        self.assertEqual(result.execution_metadata["selectedKnowledgeApp"], "observer")
+
+    def test_auto_profile_uses_complete_observer_scope_from_other_app(self) -> None:
+        """다른 앱에서도 질문에 Observer 필수 범위가 모두 있으면 즉시 분석합니다."""
+
+        observer_payload = {
+            "analysis": {
+                "headline": "교차 앱 분석",
+                "summary": "명시된 범위로 분석했습니다.",
+                "findings": [],
+                "limitations": [],
+            },
+            "meta": {},
+            "scope": {"eqpId": "EQP-03"},
+        }
+        runtime = assistant_services.AssistantRuntime()
+        with patch(
+            "api.assistant.services.runtime.decide_auto_knowledge_route",
+            return_value=KnowledgeRouteDecision(
+                "other_app",
+                "observer",
+                scope_hints={
+                    "eqpId": "EQP-03",
+                    "from": "2026-08-15T08:00:00+09:00",
+                    "to": "2026-08-15T09:00:00+09:00",
+                    "logTypes": ["fdc-interlock"],
+                },
+            ),
+        ), patch(
+            "api.assistant.services.runtime.analyze_observer_logs_stream",
+            return_value=observer_payload,
+        ) as analyze:
+            result = runtime.execute(
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                prompt="EQP-03의 지난 한 시간 FDC Interlock을 분석해줘",
+                history=[],
+                conversation_summary="",
+                tool_inputs={"observer.analysis": {}},
+                user_header_id="knox-98000",
+                context_key="assistant:openwebui:emails",
+                cancellation=ExternalCallCancellation(),
+            )
+
+        self.assertEqual(analyze.call_args.kwargs["eqp_id"], "EQP-03")
+        self.assertEqual(analyze.call_args.kwargs["log_types"], ["fdc-interlock"])
+        self.assertEqual(result.tool_keys, ["observer.analysis"])
+
+    def test_email_profile_v2_auto_routes_without_recording_unused_rag(self) -> None:
+        """v2는 자동 판별을 켜고 검색하지 않은 답변에 RAG tool·data claim을 남기지 않습니다."""
+
+        email_service = Mock()
+        email_service.generate_reply_stream.return_value = SimpleNamespace(
+            reply="일반 답변",
+            segments=[],
+            sources=[],
+            retrieved_sources=[],
+            contexts=[],
+            knowledge_requested=False,
+            rag_search_performed=False,
+        )
+        runtime = assistant_services.AssistantRuntime(email_chat_service=email_service)
+        result = runtime.execute(
+            profile=assistant_services.get_assistant_profile(
+                profile_key="email-rag",
+                profile_version=2,
+            ),
+            prompt="안녕하세요",
+            history=[],
+            conversation_summary="",
+            tool_inputs={
+                "rag.search": {
+                    "permissionGroups": ["group-a"],
+                    "ragIndexes": ["idx-email"],
+                }
+            },
+            user_header_id="knox-98000",
+            context_key="assistant",
+            cancellation=ExternalCallCancellation(),
+        )
+
+        self.assertTrue(
+            email_service.generate_reply_stream.call_args.kwargs[
+                "auto_route_knowledge"
+            ]
+        )
+        self.assertEqual(result.tool_keys, [])
+        self.assertEqual(result.access_requirements["dataClaims"], {})
+        self.assertFalse(result.execution_metadata["knowledgeRequested"])
+        self.assertFalse(result.execution_metadata["ragSearchPerformed"])
+
+    def test_email_profile_v1_preserves_always_search_semantics(self) -> None:
+        """기존 v1 replay는 자동 판별 없이 항상 검색하는 Provider 의미를 유지합니다."""
+
+        email_service = Mock()
+        email_service.generate_reply_stream.return_value = SimpleNamespace(
+            reply="기존 답변",
+            segments=[],
+            sources=[],
+            retrieved_sources=[],
+            contexts=[],
+            knowledge_requested=True,
+            rag_search_performed=True,
+        )
+        runtime = assistant_services.AssistantRuntime(email_chat_service=email_service)
+        result = runtime.execute(
+            profile=assistant_services.get_assistant_profile(
+                profile_key="email-rag",
+                profile_version=1,
+            ),
+            prompt="안녕하세요",
+            history=[],
+            conversation_summary="",
+            tool_inputs={"rag.search": {}},
+            user_header_id="knox-98000",
+            context_key="assistant",
+            cancellation=ExternalCallCancellation(),
+        )
+
+        self.assertFalse(
+            email_service.generate_reply_stream.call_args.kwargs[
+                "auto_route_knowledge"
+            ]
+        )
+        self.assertEqual(result.tool_keys, ["rag.search"])
 
     def test_appstore_turn_stores_scoped_profile_and_normalized_tool_input(self) -> None:
         """Appstore Turn은 전용 partition과 앱 권한 provenance를 저장합니다."""
@@ -1596,9 +2297,9 @@ class AssistantRuntimeV2Tests(TestCase):
                 data=json.dumps(payload),
                 content_type="application/json",
             )
+            self.assertEqual(response.status_code, 200)
             body = b"".join(response.streaming_content).decode("utf-8")
 
-        self.assertEqual(response.status_code, 200)
         self.assertIn("event: run.completed", body)
         stored_run = AssistantGeneration.objects.get(
             user=self.user,
@@ -1620,6 +2321,115 @@ class AssistantRuntimeV2Tests(TestCase):
                 }
             },
         )
+
+    def test_auto_turn_stores_only_selected_tool_requirements(self) -> None:
+        """자동 후보는 Runtime에 전달하되 저장 권한과 Tool 기록은 실제 선택 결과만 반영합니다."""
+
+        runtime_result = assistant_services.AssistantRuntimeResult(
+            content="Appstore 자동 선택 답변",
+            blocks=[
+                {
+                    "type": "text",
+                    "content": "Appstore 자동 선택 답변",
+                    "sourceIds": [],
+                }
+            ],
+            tool_keys=["appstore.catalog"],
+            access_requirements=assistant_services.access_requirements_for_scopes(
+                ("assistant", "appstore")
+            ),
+            execution_metadata={"selectedKnowledgeApp": "appstore"},
+        )
+        payload = {
+            "action": "send",
+            "conversationId": str(self.conversation.id),
+            "clientRequestId": "auto-turn-request",
+            "profileKey": "auto-knowledge",
+            "profileVersion": 1,
+            "appContextKey": "assistant:openwebui:appstore",
+            "message": {
+                "clientId": "auto-turn-user-message",
+                "content": "등록된 분석 앱을 알려줘",
+            },
+            "toolInputs": {
+                "rag.search": {
+                    "permissionGroups": ["group-a"],
+                    "ragIndexes": ["rp-emails"],
+                },
+                "observer.analysis": {},
+                "appstore.catalog": {
+                    "query": "분석",
+                    "category": "all",
+                    "selectedAppId": None,
+                },
+                "line-dashboard.snapshot": {},
+            },
+        }
+        with patch.object(
+            assistant_services.assistant_turn_service.runtime,
+            "execute",
+            return_value=runtime_result,
+        ) as execute:
+            response = self.client.post(
+                "/api/v1/assistant/turns/stream",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            body = b"".join(response.streaming_content).decode("utf-8")
+
+        self.assertIn("event: run.completed", body)
+        stored_run = AssistantGeneration.objects.get(
+            user=self.user,
+            client_request_id="auto-turn-request",
+        )
+        self.assertEqual(stored_run.profile_key, "auto-knowledge")
+        self.assertEqual(stored_run.memory_partition, "shared")
+        self.assertEqual(stored_run.tool_keys, ["appstore.catalog"])
+        self.assertEqual(
+            stored_run.access_requirements["accountScopes"],
+            ["appstore", "assistant"],
+        )
+        self.assertEqual(stored_run.access_requirements["dataClaims"], {})
+        self.assertEqual(
+            set(execute.call_args.kwargs["tool_inputs"]),
+            {
+                "rag.search",
+                "observer.analysis",
+                "appstore.catalog",
+                "line-dashboard.snapshot",
+            },
+        )
+
+    def test_auto_turn_filters_inaccessible_tool_candidates_before_runtime(self) -> None:
+        """자동 후보는 외부 Provider 호출 전에 Tool별 현재 권한으로 제거됩니다."""
+
+        service = assistant_services.AssistantTurnService()
+
+        def decide_access(*, requirements: object, **kwargs: object) -> object:
+            scopes = set(requirements.get("accountScopes") or [])
+            return SimpleNamespace(allowed="emails" not in scopes)
+
+        with patch(
+            "api.assistant.services.turns.validate_access_requirements",
+            side_effect=decide_access,
+        ):
+            filtered = service._filter_auto_tool_inputs(
+                user=self.user,
+                request=RequestFactory().get("/assistant"),
+                profile=assistant_services.get_assistant_profile(
+                    profile_key="auto-knowledge"
+                ),
+                tool_inputs={
+                    "rag.search": {
+                        "permissionGroups": ["group-a"],
+                        "mailboxes": ["group-a"],
+                    },
+                    "appstore.catalog": {},
+                },
+            )
+
+        self.assertEqual(filtered, {"appstore.catalog": {}})
 
     def test_turn_send_and_completed_replay_do_not_mutate_branch(self) -> None:
         """동일 완료 Turn replay가 저장 답변만 재생하고 branch/message 수를 유지합니다."""
@@ -1845,6 +2655,9 @@ class AssistantRuntimeV2Tests(TestCase):
             "scope": {},
         }
         with patch(
+            "api.assistant.services.runtime.decide_app_knowledge_use",
+            return_value=KnowledgeDecision(True, "앞 분석과 비교해줘"),
+        ) as decide, patch(
             "api.assistant.services.runtime.analyze_observer_logs_stream",
             return_value=observer_payload,
         ) as analyze:
@@ -1868,6 +2681,7 @@ class AssistantRuntimeV2Tests(TestCase):
                 context_key="observer:test",
                 cancellation=ExternalCallCancellation(),
             )
+        decide.assert_called_once()
         observer_context = analyze.call_args.kwargs["conversation_summary"]
         self.assertIn("장기 Observer 요약", observer_context)
         self.assertIn("직전 DOWN 분석", observer_context)
@@ -1891,7 +2705,8 @@ class AssistantRuntimeV2Tests(TestCase):
         ) as analyze:
             assistant_services.AssistantRuntime().execute(
                 profile=assistant_services.get_assistant_profile(
-                    profile_key="observer-analysis"
+                    profile_key="observer-analysis",
+                    profile_version=1,
                 ),
                 prompt="Interlock을 분석해줘",
                 history=[],

@@ -15,6 +15,7 @@ DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_SYSTEM_MESSAGE = "항상 한국어로 대답하는 친절한 AI"
 NO_CONTEXT_MESSAGE = "※ 검색된 배경지식이 없습니다. 일반적인 지식을 바탕으로 답변해주세요."
+KNOWLEDGE_NOT_FOUND_REPLY = "배경지식에서 관련 내용을 찾지 못했습니다."
 
 # =============================================================================
 # 2) 더미 모드(오프라인 개발)

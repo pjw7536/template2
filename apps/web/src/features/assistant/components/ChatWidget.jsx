@@ -16,6 +16,7 @@ import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
 import { useChatSession } from "../hooks/useChatSession"
 import { useFloatingChatWindow } from "../hooks/useFloatingChatWindow"
 import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
+import { ASSISTANT_KNOWLEDGE_MODES } from "../utils/profileKeys"
 
 export function ChatWidget(props) {
   const location = useLocation()
@@ -24,39 +25,47 @@ export function ChatWidget(props) {
   const activeAppContext = resolveAssistantAppContext(location.pathname)
   const [contextMode, setContextMode] = useState({
     appKey: activeAppContext?.key || "",
-    usesAppContext: true,
+    knowledgeMode: ASSISTANT_KNOWLEDGE_MODES.currentApp,
   })
-  const usesAppContext = contextMode.appKey === activeAppContext?.key
-    ? contextMode.usesAppContext
-    : true
+  const selectedKnowledgeMode = contextMode.appKey === activeAppContext?.key
+    ? contextMode.knowledgeMode
+    : ASSISTANT_KNOWLEDGE_MODES.currentApp
   const isAppContextReady = isAssistantAppContextReady({
     appKey: activeAppContext?.key,
     pageContext,
   })
-  const effectiveUsesAppContext = usesAppContext && isAppContextReady
+  const effectiveKnowledgeMode = (
+    selectedKnowledgeMode === ASSISTANT_KNOWLEDGE_MODES.currentApp
+    && !isAppContextReady
+  )
+    ? ASSISTANT_KNOWLEDGE_MODES.auto
+    : selectedKnowledgeMode
 
   useEffect(() => {
     setContextMode({
       appKey: activeAppContext?.key || "",
-      usesAppContext: true,
+      knowledgeMode: ASSISTANT_KNOWLEDGE_MODES.currentApp,
     })
   }, [activeAppContext?.key])
 
   const ragSettings = useAssistantRagIndex({
-    enabled: Boolean(user) && activeAppContext?.key === "emails" && effectiveUsesAppContext,
+    enabled: Boolean(user) && (
+      activeAppContext?.key === "emails"
+      || effectiveKnowledgeMode === ASSISTANT_KNOWLEDGE_MODES.auto
+    ),
   })
   const surface = resolveAssistantSurface({
     appKey: activeAppContext?.key,
-    useAppContext: effectiveUsesAppContext,
+    knowledgeMode: effectiveKnowledgeMode,
     pageContext,
     permissionGroups: ragSettings.permissionGroups,
     ragIndexNames: ragSettings.ragIndexNames,
   })
 
-  const handleContextModeChange = (nextUsesAppContext) => {
+  const handleContextModeChange = (nextKnowledgeMode) => {
     setContextMode({
       appKey: activeAppContext?.key || "",
-      usesAppContext: nextUsesAppContext,
+      knowledgeMode: nextKnowledgeMode,
     })
   }
 
@@ -75,15 +84,15 @@ export function ChatWidget(props) {
       location={location}
       activeAppContext={activeAppContext}
       pageContext={
-        surface.mode === "observer" || surface.mode === "line-dashboard"
+        activeAppContext.key === "observer" || activeAppContext.key === "line-dashboard"
           ? pageContext
           : null
       }
       ragSettings={ragSettings}
       surface={surface}
-      usesAppContext={effectiveUsesAppContext}
+      knowledgeMode={effectiveKnowledgeMode}
       isAppContextReady={isAppContextReady}
-      onUsesAppContextChange={handleContextModeChange}
+      onKnowledgeModeChange={handleContextModeChange}
       user={user}
     />
   )
@@ -96,9 +105,9 @@ function ChatWidgetContent({
   pageContext,
   ragSettings,
   surface,
-  usesAppContext,
+  knowledgeMode,
   isAppContextReady,
-  onUsesAppContextChange,
+  onKnowledgeModeChange,
   user,
 }) {
   const [input, setInput] = useState("")
@@ -293,10 +302,10 @@ function ChatWidgetContent({
       onClose={closeWidget}
       pageContext={pageContext}
       activeAppContext={activeAppContext}
-      usesAppContext={usesAppContext}
+      knowledgeMode={knowledgeMode}
       isAppContextReady={isAppContextReady}
-      onUsesAppContextChange={onUsesAppContextChange}
-      usesEmailRag={surface.mode === "email"}
+      onKnowledgeModeChange={onKnowledgeModeChange}
+      usesEmailRag={activeAppContext.key === "emails" && surface.mode !== "portal"}
       onQuickPrompt={handleQuickPrompt}
       currentPageScope={pageContext?.scope || null}
     />

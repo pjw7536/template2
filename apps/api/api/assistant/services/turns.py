@@ -47,6 +47,12 @@ TURN_PERSISTENCE_GRACE_SECONDS = 10
 SAFE_ACCOUNT_SCOPES = frozenset(
     {"assistant", "emails", "observer", "appstore", "line-dashboard"}
 )
+AUTO_TOOL_PROFILE_KEYS = {
+    "rag.search": "email-rag",
+    "observer.analysis": "observer-analysis",
+    "appstore.catalog": "appstore-context",
+    "line-dashboard.snapshot": "line-dashboard-context",
+}
 
 
 class AssistantTurnError(RuntimeError):
@@ -169,6 +175,12 @@ class AssistantTurnService:
             profile=profile,
             tool_inputs=action_contract["tool_inputs"],
         )
+        tool_inputs = self._filter_auto_tool_inputs(
+            user=user,
+            request=request,
+            profile=profile,
+            tool_inputs=tool_inputs,
+        )
         context_key = resolve_assistant_turn_context_key(
             profile=profile,
             raw_context_key=action_contract["context_key"],
@@ -189,7 +201,11 @@ class AssistantTurnService:
             access_requirements_for_scopes(current_floor),
             stored_requirements,
             memory.access_requirements,
-            self._tool_input_requirements(tool_inputs),
+            (
+                access_requirements_for_scopes(())
+                if profile.provider == "auto-knowledge"
+                else self._tool_input_requirements(tool_inputs)
+            ),
         )
         self._require_access(
             user=user,
@@ -351,6 +367,54 @@ class AssistantTurnService:
                 status_code=403,
                 message="현재 Profile에서 허용하지 않는 Tool입니다.",
             )
+        if profile.provider == "auto-knowledge":
+            normalized_candidates: dict[str, object] = {}
+            for tool_key, raw_input in tool_inputs.items():
+                candidate_input = raw_input if isinstance(raw_input, Mapping) else {}
+                if tool_key == "observer.analysis" and any(
+                    not str(candidate_input.get(key) or "").strip()
+                    for key in ("eqpId", "from", "to")
+                ):
+                    if set(candidate_input) - {
+                        "eqpId",
+                        "from",
+                        "to",
+                        "logTypes",
+                        "tipGroups",
+                    }:
+                        raise AssistantTurnError(
+                            "invalid_tool_input",
+                            status_code=400,
+                            message="observer.analysis에 지원하지 않는 입력이 있습니다.",
+                        )
+                    normalized_candidates[tool_key] = {}
+                    continue
+                if tool_key == "line-dashboard.snapshot" and not str(
+                    candidate_input.get("lineId") or ""
+                ).strip():
+                    if set(candidate_input) - {"view", "lineId", "from", "to"}:
+                        raise AssistantTurnError(
+                            "invalid_tool_input",
+                            status_code=400,
+                            message="line-dashboard.snapshot에 지원하지 않는 입력이 있습니다.",
+                        )
+                    normalized_candidates[tool_key] = {}
+                    continue
+                candidate_profile = get_assistant_profile(
+                    profile_key=AUTO_TOOL_PROFILE_KEYS[tool_key]
+                )
+                try:
+                    normalized_candidates.update(
+                        self._normalize_tool_inputs(
+                            user=user,
+                            profile=candidate_profile,
+                            tool_inputs={tool_key: candidate_input},
+                        )
+                    )
+                except AssistantTurnError as exc:
+                    if exc.code != "permission_denied":
+                        raise
+            return normalized_candidates
         if profile.provider == "email-rag":
             raw = tool_inputs.get("rag.search")
             rag_input = raw if isinstance(raw, Mapping) else {}
@@ -497,6 +561,34 @@ class AssistantTurnService:
             }
         return {}
 
+    def _filter_auto_tool_inputs(
+        self,
+        *,
+        user: Any,
+        request: Any,
+        profile: AssistantProfile,
+        tool_inputs: Mapping[str, object],
+    ) -> dict[str, object]:
+        """자동 Profile 후보 중 현재 사용자 권한이 확인된 Tool만 Runtime에 전달합니다."""
+
+        if profile.provider != "auto-knowledge":
+            return dict(tool_inputs)
+        allowed: dict[str, object] = {}
+        for tool_key, tool_input in tool_inputs.items():
+            requirements = merge_access_requirements(
+                access_requirements_for_scopes(
+                    TOOL_AUTHORIZATION_FLOORS.get(tool_key, ())
+                ),
+                self._tool_input_requirements({tool_key: tool_input}),
+            )
+            if validate_access_requirements(
+                user=user,
+                requirements=requirements,
+                request=request,
+            ).allowed:
+                allowed[tool_key] = tool_input
+        return allowed
+
     def _current_authorization_floor(
         self,
         *,
@@ -506,8 +598,9 @@ class AssistantTurnService:
         """현재 Profile과 Tool floor의 Account scope 합집합을 반환합니다."""
 
         scopes = set(get_current_assistant_profile(profile_key=profile_key).account_scopes)
-        for tool_key in tool_keys:
-            scopes.update(TOOL_AUTHORIZATION_FLOORS.get(tool_key, ()))
+        if profile_key != "auto-knowledge":
+            for tool_key in tool_keys:
+                scopes.update(TOOL_AUTHORIZATION_FLOORS.get(tool_key, ()))
         return tuple(sorted(scopes))
 
     def _tool_input_requirements(
@@ -648,7 +741,7 @@ class AssistantTurnService:
                 provider=profile.provider,
                 profile_key=profile.key,
                 profile_version=profile.version,
-                tool_keys=list(tool_inputs),
+                tool_keys=([] if profile.provider == "auto-knowledge" else list(tool_inputs)),
                 tool_inputs=tool_inputs,
                 memory_partition=profile.write_partition,
                 access_requirements=access_requirements,
@@ -747,8 +840,9 @@ class AssistantTurnService:
             return
 
         try:
-            for tool_key in prepared.tool_inputs:
-                yield "tool.started", {"runId": str(generation.id), "toolKey": tool_key}
+            if prepared.profile.provider != "auto-knowledge":
+                for tool_key in prepared.tool_inputs:
+                    yield "tool.started", {"runId": str(generation.id), "toolKey": tool_key}
             _, user_header_id = validate_user_identity(request.user)
             execution = stream_assistant_runtime_execution(
                 runtime=self.runtime,
