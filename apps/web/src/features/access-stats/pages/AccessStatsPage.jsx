@@ -27,12 +27,12 @@ import {
 } from "../utils/accessStatsPage"
 import {
   AppTable,
-  ChartPanel,
   KpiActionCard,
   KpiCard,
-  ManualPastePanel,
   StatePanel,
-} from "../components/AccessStatsPanels"
+} from "../components/AccessStatsSummaryPanels"
+import { ChartPanel } from "../components/AccessStatsChartPanel"
+import { ManualPastePanel } from "../components/ManualPastePanel"
 
 export function AccessStatsPage() {
   const { user } = useAuth()

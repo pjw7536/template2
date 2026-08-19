@@ -12,10 +12,9 @@ from django.utils import timezone
 from api.data_movement.common.services.deflate_csv import read_deflate_csv_file
 from api.data_movement.common.services.file_loader import (
     ClaimedDataFile,
-    claim_incoming_file,
     delete_claimed_file,
-    list_incoming_files,
 )
+from api.data_movement.common.services.load_runner import run_incoming_file_load
 from api.data_movement.common.services.postgres_copy import copy_full_replace_rows
 from api.data_movement.station_master.models import StationMasterLoadJob
 from api.data_movement.station_master.services import spec
@@ -203,16 +202,6 @@ def _dry_run_one_file(*, file_path: Path) -> LoadFileOutcome:
         )
 
 
-def _load_one_file(*, file_path: Path, table_dir: Path, dry_run: bool) -> LoadFileOutcome:
-    """단일 station 파일을 읽고 대상 테이블에 전체 반영합니다."""
-
-    if dry_run:
-        return _dry_run_one_file(file_path=file_path)
-
-    claimed_file = claim_incoming_file(file_path=file_path, table_dir=table_dir)
-    return _load_claimed_file(claimed_file=claimed_file)
-
-
 def load_station_master_files(
     *,
     data_dir: Path | str | None = None,
@@ -222,10 +211,12 @@ def load_station_master_files(
     """station_master deflate CSV 파일들을 순차 적재합니다."""
 
     resolved_table_dir = Path(data_dir) if data_dir is not None else spec.DEFAULT_TABLE_DIR
-    files = list_incoming_files(table_dir=resolved_table_dir, pattern=spec.FILE_PATTERN, limit=limit)
-
-    outcomes = [
-        _load_one_file(file_path=file_path, table_dir=resolved_table_dir, dry_run=dry_run)
-        for file_path in files
-    ]
+    outcomes = run_incoming_file_load(
+        table_dir=resolved_table_dir,
+        pattern=spec.FILE_PATTERN,
+        limit=limit,
+        dry_run=dry_run,
+        validate_file=_dry_run_one_file,
+        load_claimed_file=_load_claimed_file,
+    )
     return LoadRunSummary(outcomes=outcomes)

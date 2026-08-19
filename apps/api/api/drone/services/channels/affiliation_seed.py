@@ -133,16 +133,21 @@ def _normalize_seed_target_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict[
 
     normalized_rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for row in rows:
+    for row_index, row in enumerate(rows, start=1):
+        if "user_sdwt_prod" in row:
+            raise ValueError(
+                f"rows[{row_index}] must use target_user_sdwt_prod and recipient_user_sdwt_prod"
+            )
         department = _normalize_text(row.get("department"))
         line_id = _normalize_text(row.get("line_id")) or _normalize_text(row.get("line"))
-        legacy_user_sdwt_prod = _normalize_text(row.get("user_sdwt_prod"))
-        target_user_sdwt_prod = _normalize_text(row.get("target_user_sdwt_prod")) or legacy_user_sdwt_prod
-        recipient_user_sdwt_prod = _normalize_text(row.get("recipient_user_sdwt_prod")) or legacy_user_sdwt_prod
+        target_user_sdwt_prod = _normalize_text(row.get("target_user_sdwt_prod"))
+        recipient_user_sdwt_prod = _normalize_text(row.get("recipient_user_sdwt_prod"))
+        if not line_id:
+            raise ValueError(f"rows[{row_index}].line is required")
+        if not target_user_sdwt_prod:
+            raise ValueError(f"rows[{row_index}].target_user_sdwt_prod is required")
         if not recipient_user_sdwt_prod:
-            recipient_user_sdwt_prod = target_user_sdwt_prod
-        if not line_id or not target_user_sdwt_prod:
-            continue
+            raise ValueError(f"rows[{row_index}].recipient_user_sdwt_prod is required")
         key = target_user_sdwt_prod.casefold()
         if key in seen:
             continue
@@ -444,7 +449,7 @@ def seed_drone_sop_notification_defaults_from_rows(
       channel config, needtosend rule, recipient row를 생성할 수 있습니다.
 
     오류:
-    - 없음. 필수값이 비어 있는 row는 seed 대상에서 제외합니다.
+    - ValueError: 구형 별칭이 있거나 canonical 필수값이 비어 있을 때 발생합니다.
     """
 
     normalized_template_key = _normalize_text(template_key) or "common"

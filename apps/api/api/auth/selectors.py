@@ -12,43 +12,10 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
-
-from django.contrib.auth import get_user_model
-from django.contrib.auth.base_user import AbstractBaseUser
+from typing import Any, Dict
 
 import api.account.selectors as account_selectors
 import api.account.services as account_services
-
-
-# =============================================================================
-# 사용자 조회
-# =============================================================================
-
-
-def get_user_by_sabun(*, sabun: str) -> Optional[AbstractBaseUser]:
-    """사번으로 사용자 정보를 조회합니다.
-
-    입력:
-    - sabun: 사번 문자열
-
-    반환:
-    - Optional[AbstractBaseUser]: 사용자 객체 또는 None
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-    # -----------------------------------------------------------------------------
-    # 1) 사용자 모델 준비
-    # -----------------------------------------------------------------------------
-    UserModel = get_user_model()
-    # -----------------------------------------------------------------------------
-    # 2) 사번으로 단건 조회
-    # -----------------------------------------------------------------------------
-    return UserModel.objects.filter(sabun=sabun).first()
 
 
 def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
@@ -79,15 +46,15 @@ def get_current_user_payload(*, user: Any) -> Dict[str, Any]:
     scope_access = account_services.get_scope_access_payloads(user=user)
     return {
         "id": user.pk,
-        "usr_id": getattr(user, "knox_id", None),
-        "avatarid": getattr(user, "avatarid", None),
+        "knoxId": getattr(user, "knox_id", None),
+        "avatarId": getattr(user, "avatarid", None),
         "username": username,
         "email": user.email,
-        "is_superuser": bool(getattr(user, "is_superuser", False)),
+        "isSuperuser": bool(getattr(user, "is_superuser", False)),
         "department": department,
         "line": current_values.get("line"),
-        "user_sdwt_prod": current_values.get("user_sdwt_prod"),
-        "pending_user_sdwt_prod": pending_user_sdwt_prod,
-        "has_pending_affiliation": has_pending_affiliation,
-        "scope_access": scope_access,
+        "userSdwtProd": current_values.get("user_sdwt_prod"),
+        "pendingUserSdwtProd": pending_user_sdwt_prod,
+        "hasPendingAffiliation": has_pending_affiliation,
+        "scopeAccess": scope_access,
     }

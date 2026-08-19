@@ -19,20 +19,11 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 | GET | `/api/v1/observer/sdwts?lineId=...` | 라인별 SDWT |
 | GET | `/api/v1/observer/prc-groups?lineId=...&sdwtId=...` | 공정 그룹 |
 | GET | `/api/v1/observer/equipments?lineId=...&sdwtId=...&prcGroup=...` | 설비 목록 |
-| GET | `/api/v1/observer/equipment-info/<line_id>/<eqp_id>` | 라인 포함 설비 상세 |
 | GET | `/api/v1/observer/equipment-info/<eqp_id>` | 설비 상세 |
-| GET | `/api/v1/observer/logs?eqpId=...` | 전체 로그 |
 | GET | `/api/v1/observer/logs/page?eqpId=...&from=...&to=...` | 모든 유형의 첫 compact page를 한 번에 조회 |
 | GET | `/api/v1/observer/logs/<log_type>/page?eqpId=...&from=...&to=...` | 유형별 다음 compact page 조회 |
 | GET | `/api/v1/observer/logs/<log_type>/detail?eqpId=...&logId=...` | 선택한 로그의 전체 상세 조회 |
 | GET | `/api/v1/observer/logs/<log_type>/evidence?eqpId=...&evidenceId=...&from=...&to=...` | AI 분석에 사용된 근거 로그 단건 복원 |
-| GET | `/api/v1/observer/logs/eqp?eqpId=...` | EQP 로그 |
-| GET | `/api/v1/observer/logs/tip?eqpId=...` | TIP 로그 |
-| GET | `/api/v1/observer/logs/spc-interlock?eqpId=...` | SPC interlock 이력 |
-| GET | `/api/v1/observer/logs/fdc-interlock?eqpId=...` | FDC interlock 이력 |
-| GET | `/api/v1/observer/logs/ctttm?eqpId=...` | CTTTM 로그 |
-| GET | `/api/v1/observer/logs/racb?eqpId=...` | RACB 로그 |
-| GET | `/api/v1/observer/logs/esop?eqpId=...` | ESOP 로그 |
 | GET | `/api/v1/observer/tkin-prevent/prc-groups?userSdwtProd=...` | tkin Prevent PRC 그룹 목록 |
 | GET | `/api/v1/observer/tkin-prevent/processes?userSdwtProd=...&prcGroup=...` | tkin Prevent process_id 목록 |
 | GET | `/api/v1/observer/tkin-prevent/step-seqs?userSdwtProd=...&prcGroup=...&processId=...` | tkin Prevent step_seq 목록 |
@@ -45,8 +36,7 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - Observer drill-down의 `lineId`는 `drone_target.line_id`, `sdwtId`는 `drone_target.target_user_sdwt_prod` 기준입니다.
 - PRC/설비 조회는 `drone_target.target_user_sdwt_prod = station_master.sdwt_prod_lookup` 매칭으로 station 데이터를 제한합니다.
 - 기준정보와 로그는 기본 DB의 data movement/업무 테이블을 조회합니다.
-- 로그 조회 API는 공통으로 `from`, `to`, `limit` query를 지원합니다.
-- 신규 page API는 `from`, `to`를 필수로 받고 최대 90일 범위만 허용합니다.
+- 로그 page API는 `from`, `to`를 필수로 받고 최대 90일 범위만 허용합니다.
 - page API의 `pageSize` 기본값은 250, 최대값은 1000입니다. 다음 page는 응답의 opaque `nextCursor`를 같은 EQP·기간·로그 유형 요청에 그대로 전달합니다.
 - `/logs/page`는 유형별 `items`, `page`, `error`를 반환합니다. 일부 source만 실패하면 성공 유형을 유지한 200 응답을 반환하고, 전부 실패하면 503을 반환합니다.
 - page 목록은 comment preview와 `detailId`만 포함하며, 전체 comment·defect map·CTTTM summary 같은 대형 필드는 `/detail`에서 선택 시 조회합니다.
@@ -60,9 +50,6 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 - typed 파생 필드가 비어 있거나 원천 시간 형식이 잘못된 row는 응답에서 제외합니다.
 - SPC/FDC 응답 `logType`은 각각 `SPC_ITL`, `FDC_ITL`입니다.
 - SPC/FDC 응답 ID는 `<logType>:<sourceId>` 형식이며 원본 `m_interlock.id`는 `sourceId`로 제공합니다.
-- `from`을 생략하면 backend 기본 조회 기간인 최근 60일을 사용합니다.
-- `limit`은 양의 정수만 허용하며 최대 5000건으로 제한됩니다.
-- frontend 기본 로그 조회는 `limit`을 명시하지 않고 backend 기본 기간 정책을 따릅니다.
 - 분석 API는 `eqpId`, `from`, `to`, 활성 `logTypes`, 선택 `tipGroups`와 선택적인 `roomId`, `contextKey`를 JSON body로 받으며 최대 90일 범위만 허용합니다. 인증 사용자가 소유한 방과 문맥이 일치할 때만 해당 장기 요약을 분석 prompt에 포함합니다.
 - 분석 API는 브라우저의 현재 row를 받지 않고 같은 조회 조건으로 backend source를 다시 조회합니다.
 - EQP는 DB에서 `DOWN`, `IDLE`, `LOCAL`만 먼저 선별해 발생 빈도와 comment 원인을 요약합니다. TIP도 DB에서 `L*_TIP`만 선별하므로 `DOING`, `CNT`는 조회 상한을 소비하지 않습니다.
@@ -82,18 +69,6 @@ Observer API는 설비 Observer 화면에 필요한 라인, SDWT, 공정, 설비
 
 ```http
 GET /api/v1/observer/equipments?lineId=L1&sdwtId=S1&prcGroup=P1
-```
-
-```http
-GET /api/v1/observer/logs?eqpId=EQP-001
-```
-
-```http
-GET /api/v1/observer/logs/eqp?eqpId=EQP-001&from=2026-01-01&to=2026-01-31&limit=1000
-```
-
-```http
-GET /api/v1/observer/logs/spc-interlock?eqpId=EQP-001&from=2026-07-28&to=2026-07-30
 ```
 
 ```http

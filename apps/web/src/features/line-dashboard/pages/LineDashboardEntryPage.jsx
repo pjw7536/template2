@@ -18,7 +18,7 @@ export function LineDashboardEntryPage() {
   const { user } = useAuth()
   const { data: lineOptions = [], isLoading, isError, error, refetch } = useLineOptionsQuery({
     preferredUserSdwtProd:
-      typeof user?.user_sdwt_prod === "string" ? user.user_sdwt_prod.trim() : "",
+      typeof user?.userSdwtProd === "string" ? user.userSdwtProd.trim() : "",
   })
 
   const firstLineId = useMemo(() => getFirstLineId(lineOptions), [lineOptions])

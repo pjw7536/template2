@@ -24,7 +24,7 @@ function isBlank(value) {
 }
 
 function optionKey(option) {
-  return `${option.department}||${option.line}||${option.user_sdwt_prod}`
+  return `${option.department}||${option.line}||${option.userSdwtProd}`
 }
 
 async function fetchReconfirmStatus() {
@@ -32,7 +32,7 @@ async function fetchReconfirmStatus() {
   const result = await fetchJson(endpoint, { cache: "no-store" })
   if (result.ok) return result.data
   const message =
-    (result.data && typeof result.data === "object" && result.data.error) ||
+    (result.data && typeof result.data === "object" && result.data.message) ||
     "재확인 상태를 불러오지 못했습니다."
   throw new Error(message)
 }
@@ -46,7 +46,7 @@ async function submitReconfirm(payload) {
   })
   if (result.ok) return result.data
   const message =
-    (result.data && typeof result.data === "object" && result.data.error) ||
+    (result.data && typeof result.data === "object" && result.data.message) ||
     "재확인 처리에 실패했습니다."
   throw new Error(message)
 }
@@ -58,9 +58,9 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
   const queryClient = useQueryClient()
 
   const hasPendingAffiliation = Boolean(
-    user && (user.has_pending_affiliation ?? !isBlank(user.pending_user_sdwt_prod)),
+    user && (user.hasPendingAffiliation ?? !isBlank(user.pendingUserSdwtProd)),
   )
-  const hasAffiliation = Boolean(user && !isBlank(user.user_sdwt_prod))
+  const hasAffiliation = Boolean(user && !isBlank(user.userSdwtProd))
   const canCheck = Boolean(user && hasAffiliation && !hasPendingAffiliation)
 
   const reconfirmQuery = useQuery({
@@ -90,7 +90,7 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
 
   const allOptions = affiliationQuery.data?.affiliationOptions || []
   const predictedOption = allOptions.find(
-    (option) => option.user_sdwt_prod === predictedUserSdwtProd,
+    (option) => option.userSdwtProd === predictedUserSdwtProd,
   )
   const predictedMissing = Boolean(predictedUserSdwtProd) && !predictedOption
   const options = allOptions
@@ -132,7 +132,7 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
     try {
       await mutation.mutateAsync({
         accepted: true,
-        user_sdwt_prod: selected.user_sdwt_prod,
+        userSdwtProd: selected.userSdwtProd,
       })
     } catch (error) {
       setSubmitError(error?.message || "재확인 처리에 실패했습니다.")
@@ -163,7 +163,7 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
                 " / " +
                 (user?.line || "미지정") +
                 " / " +
-                (user?.user_sdwt_prod || "미지정")}
+                (user?.userSdwtProd || "미지정")}
             </p>
           </div>
 
@@ -205,7 +205,7 @@ export function UserSdwtProdReconfirmDialog({ user, onCompleted }) {
                   </option>
                   {options.map((option) => (
                     <option key={optionKey(option)} value={optionKey(option)}>
-                      {option.department} / {option.line} / {option.user_sdwt_prod}
+                      {option.department} / {option.line} / {option.userSdwtProd}
                     </option>
                   ))}
                 </select>

@@ -8,7 +8,7 @@ describe("Emails 목록 filter 계약", () => {
       .toEqual(expect.objectContaining({ page: 1, pageSize: 20, scope: "inbox" }))
   })
 
-  it("frontend filter를 backend snake_case query로 변환한다", () => {
+  it("frontend filter를 canonical camelCase query로 변환한다", () => {
     expect(buildEmailListSearchParams({
       page: 2,
       pageSize: 25,
@@ -17,10 +17,10 @@ describe("Emails 목록 filter 계약", () => {
       dateFrom: "2026-08-01",
     })).toEqual({
       page: 2,
-      page_size: 25,
-      user_sdwt_prod: "ETCH_A",
+      pageSize: 25,
+      userSdwtProd: "ETCH_A",
       q: "report",
-      date_from: "2026-08-01",
+      dateFrom: "2026-08-01",
     })
   })
 
@@ -28,6 +28,6 @@ describe("Emails 목록 filter 계약", () => {
     expect(buildEmailListSearchParams(
       { userSdwtProd: "ETCH_A" },
       { includeMailbox: false },
-    )).toEqual({ page: 1, page_size: 20 })
+    )).toEqual({ page: 1, pageSize: 20 })
   })
 })

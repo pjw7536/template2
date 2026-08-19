@@ -270,7 +270,7 @@ def run_drone_sop_jira_create_from_rows(
 
     부작용:
         - advisory lock 획득
-        - Jira API 호출 및 delivery/legacy 요약 상태 업데이트
+        - Jira API 호출 및 normalized delivery 상태 업데이트
     """
 
     # ---------------------------------------------------------------------
@@ -300,7 +300,7 @@ def run_drone_sop_jira_create_from_rows(
         )
 
 
-def run_drone_sop_jira_create_from_env(*, limit: int | None = None) -> DroneSopJiraCreateResult:
+def run_drone_sop_jira_create_from_settings(*, limit: int | None = None) -> DroneSopJiraCreateResult:
     """Jira delivery pending 또는 snapshot 미생성 대상 이슈를 생성합니다.
 
     인자:
@@ -338,7 +338,7 @@ __all__ = [
     "DroneSopInstantInformResult",
     "DroneSopJiraCreateResult",
     "enqueue_drone_sop_jira_instant_inform",
-    "run_drone_sop_jira_create_from_env",
+    "run_drone_sop_jira_create_from_settings",
     "run_drone_sop_jira_create_from_rows",
     "update_drone_sop_jira_status",
 ]

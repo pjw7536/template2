@@ -7,7 +7,11 @@ Activity는 활동 로그 조회, Health는 서버 상태 확인을 제공합니
 | Method | Path | Auth | 설명 |
 | --- | --- | --- | --- |
 | GET | `/api/v1/activity/logs?limit=50` | 권한 필요 | 최근 활동 로그 |
+| POST | `/api/v1/activity/app-access` | 로그인 | 앱 화면 진입 이벤트 기록 |
+| GET | `/api/v1/activity/app-access-stats` | 로그인 | KST 기준 앱 접속 통계 조회 |
 | POST | `/api/v1/activity/app-access-sync-external` | `access-stats` 접근 | 외부 앱 사용량 동기화 요청 |
+| POST | `/api/v1/activity/app-access-manual-preview` | `access-stats` 관리자 | CSV/TSV 수동 입력 미리보기 |
+| POST | `/api/v1/activity/app-access-manual-commit` | `access-stats` 관리자 | 검증된 수동 입력 반영 |
 | GET | `/api/v1/health/` | 공개 | 서버 상태 확인 |
 
 ## Activity 권한
@@ -32,6 +36,7 @@ Activity는 활동 로그 조회, Health는 서버 상태 확인을 제공합니
 - 수동 입력 body: `pastedText`, `sourceName`
 
 snake_case와 `granularity` 별칭은 허용하지 않습니다.
+CSV/TSV의 사용자 입력 헤더에는 기존 snake_case와 한국어 별칭을 계속 허용합니다.
 
 ## Health 응답
 
@@ -43,6 +48,8 @@ snake_case와 `granularity` 별칭은 허용하지 않습니다.
 ```
 
 ## 오류
+
+Activity API 오류는 `code`, `message`, `details`, `fieldErrors` 공통 형식을 사용합니다.
 
 | Status | 상황 |
 | --- | --- |

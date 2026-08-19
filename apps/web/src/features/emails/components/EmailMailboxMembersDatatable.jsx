@@ -58,7 +58,7 @@ const COLUMNS = [
         typeof username === "string" && username.trim()
           ? username
           : row.original.user || row.original.name || "Unknown"
-      const knoxId = row.original.knoxId || row.original.knox_id || row.original.secondary || ""
+      const knoxId = row.original.knoxId || row.original.secondary || ""
       const profileAvatarId = resolveProfileAvatarId(row.original)
       const avatarSrc = buildProfileImageUrl(profileAvatarId)
 

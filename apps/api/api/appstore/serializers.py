@@ -13,14 +13,12 @@ from .services.permissions import can_manage_app, can_manage_comment
 from .services.screenshots import apply_cover_index, sanitize_screenshot_urls
 
 
-def _pick_alias(data: Dict[str, Any], camel_key: str, snake_key: str) -> Any:
-    """카멜/스네이크 케이스 입력에서 기존 우선순위로 값을 선택합니다."""
+def _reject_unexpected_fields(data: Dict[str, Any], allowed_fields: set[str]) -> None:
+    """선언되지 않은 HTTP 입력 필드를 거절합니다."""
 
-    if camel_key in data:
-        return data.get(camel_key)
-    if snake_key in data:
-        return data.get(snake_key)
-    return None
+    unexpected_fields = sorted(set(data) - allowed_fields)
+    if unexpected_fields:
+        raise serializers.ValidationError({"unexpectedFields": unexpected_fields})
 
 
 def _trim_text(value: Any) -> str:
@@ -372,10 +370,25 @@ class AppStoreAppCreateSerializer(serializers.Serializer):
     contact_knoxid = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True)
 
     def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """카멜/스네이크 케이스 입력을 내부 필드로 정규화합니다."""
+        """canonical camelCase 입력을 내부 필드로 정규화합니다."""
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
+        _reject_unexpected_fields(
+            data,
+            {
+                "name",
+                "category",
+                "description",
+                "url",
+                "manualUrl",
+                "screenshotUrls",
+                "coverScreenshotIndex",
+                "screenshotUrl",
+                "contactName",
+                "contactKnoxid",
+            },
+        )
 
         normalized: Dict[str, Any] = {}
         if "name" in data:
@@ -389,31 +402,31 @@ class AppStoreAppCreateSerializer(serializers.Serializer):
         if "url" in data:
             normalized["url"] = data.get("url") or ""
 
-        manual_url_value = _pick_alias(data, "manualUrl", "manual_url")
+        manual_url_value = data.get("manualUrl")
         if manual_url_value is not None:
             normalized["manual_url"] = manual_url_value
 
-        screenshot_urls_value = _pick_alias(data, "screenshotUrls", "screenshot_urls")
+        screenshot_urls_value = data.get("screenshotUrls")
         if screenshot_urls_value is not None and not isinstance(screenshot_urls_value, list):
             screenshot_urls_value = []
         if screenshot_urls_value is not None:
             normalized["screenshot_urls"] = screenshot_urls_value
 
-        cover_index_value = _pick_alias(data, "coverScreenshotIndex", "cover_screenshot_index")
+        cover_index_value = data.get("coverScreenshotIndex")
         if cover_index_value == "":
             cover_index_value = None
         if cover_index_value is not None:
             normalized["cover_screenshot_index"] = cover_index_value
 
-        screenshot_url_value = _pick_alias(data, "screenshotUrl", "screenshot_url")
+        screenshot_url_value = data.get("screenshotUrl")
         if screenshot_url_value is not None:
             normalized["screenshot_url"] = screenshot_url_value
 
-        contact_name_value = _pick_alias(data, "contactName", "contact_name")
+        contact_name_value = data.get("contactName")
         if contact_name_value is not None:
             normalized["contact_name"] = contact_name_value
 
-        contact_knoxid_value = _pick_alias(data, "contactKnoxid", "contact_knoxid")
+        contact_knoxid_value = data.get("contactKnoxid")
         if contact_knoxid_value is not None:
             normalized["contact_knoxid"] = contact_knoxid_value
 
@@ -467,10 +480,25 @@ class AppStoreAppUpdateSerializer(serializers.Serializer):
     """AppStore 앱 수정 요청을 검증합니다."""
 
     def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """카멜/스네이크 케이스 입력을 업데이트 필드로 정규화합니다."""
+        """canonical camelCase 입력을 업데이트 필드로 정규화합니다."""
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
+        _reject_unexpected_fields(
+            data,
+            {
+                "name",
+                "category",
+                "description",
+                "url",
+                "manualUrl",
+                "screenshotUrls",
+                "coverScreenshotIndex",
+                "screenshotUrl",
+                "contactName",
+                "contactKnoxid",
+            },
+        )
 
         updates: Dict[str, Any] = {}
         max_category_length = _max_length(self.context, "max_category_length")
@@ -491,19 +519,19 @@ class AppStoreAppUpdateSerializer(serializers.Serializer):
             url = _required_text(data.get("url"), "url")
             updates["url"] = url
 
-        if "manualUrl" in data or "manual_url" in data:
-            manual_url = _trim_text(data.get("manualUrl") or data.get("manual_url"))
+        if "manualUrl" in data:
+            manual_url = _trim_text(data.get("manualUrl"))
             updates["manual_url"] = manual_url or None
 
-        if "screenshotUrl" in data or "screenshot_url" in data:
-            updates["screenshot_url"] = _trim_text(data.get("screenshotUrl") or data.get("screenshot_url"))
+        if "screenshotUrl" in data:
+            updates["screenshot_url"] = _trim_text(data.get("screenshotUrl"))
 
-        if "screenshotUrls" in data or "screenshot_urls" in data:
-            screenshot_urls = sanitize_screenshot_urls(data.get("screenshotUrls") or data.get("screenshot_urls"))
+        if "screenshotUrls" in data:
+            screenshot_urls = sanitize_screenshot_urls(data.get("screenshotUrls"))
             updates.pop("screenshot_url", None)
             updates["screenshot_urls"] = apply_cover_index(
                 screenshot_urls,
-                data.get("coverScreenshotIndex") or data.get("cover_screenshot_index"),
+                data.get("coverScreenshotIndex"),
             )
 
         if "contactName" in data:
@@ -528,16 +556,17 @@ class AppStoreAppOrderSerializer(serializers.Serializer):
     order_version = serializers.CharField(allow_blank=False, trim_whitespace=True)
 
     def to_internal_value(self, data: Any) -> Dict[str, Any]:
-        """카멜/스네이크 케이스 입력을 내부 필드로 정규화합니다."""
+        """canonical camelCase 입력을 내부 필드로 정규화합니다."""
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
+        _reject_unexpected_fields(data, {"appIds", "orderVersion"})
 
         normalized: Dict[str, Any] = {}
-        if "appIds" in data or "app_ids" in data:
-            normalized["app_ids"] = data.get("appIds", data.get("app_ids"))
-        if "orderVersion" in data or "order_version" in data:
-            normalized["order_version"] = data.get("orderVersion", data.get("order_version"))
+        if "appIds" in data:
+            normalized["app_ids"] = data.get("appIds")
+        if "orderVersion" in data:
+            normalized["order_version"] = data.get("orderVersion")
         return super().to_internal_value(normalized)
 
     def validate_app_ids(self, app_ids: list[int]) -> list[int]:
@@ -556,13 +585,14 @@ class AppStoreCommentCreateSerializer(serializers.Serializer):
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
+        _reject_unexpected_fields(data, {"content", "parentCommentId"})
 
         content = str(data.get("content") or "").strip()
         if not content:
             raise serializers.ValidationError({"content": ["content is required"]})
 
         attrs: Dict[str, Any] = {"content": content, "parent_comment_id": None}
-        raw_parent_id = data.get("parentCommentId") or data.get("parent_comment_id")
+        raw_parent_id = data.get("parentCommentId")
         if raw_parent_id is None or not str(raw_parent_id).strip():
             return attrs
 
@@ -582,6 +612,7 @@ class AppStoreCommentUpdateSerializer(serializers.Serializer):
 
         if not isinstance(data, dict):
             raise serializers.ValidationError("Invalid JSON body")
+        _reject_unexpected_fields(data, {"content"})
 
         if "content" not in data:
             raise serializers.ValidationError({"content": ["content is required"]})

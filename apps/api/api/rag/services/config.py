@@ -1,209 +1,74 @@
-# =============================================================================
-# 모듈 설명: RAG 설정 로드/정규화 헬퍼를 제공합니다.
-# - 주요 대상: RAG_* 설정값, _normalize_permission_groups, _normalize_index_names
-# - 불변 조건: env 또는 Django settings에서 설정을 읽어옵니다.
-# =============================================================================
-
-"""RAG 설정 값을 읽고 정규화하는 헬퍼 모음.
-
-- 주요 대상: RAG_* 설정값, 헤더/그룹/인덱스 정규화 함수
-- 주요 엔드포인트/클래스: 없음(설정 상수 및 함수 제공)
-- 가정/불변 조건: 설정값은 env 또는 Django settings에서 제공됨
-"""
+"""Django settings 기반 RAG 설정을 엄격하게 로드합니다."""
 
 from __future__ import annotations
 
 import json
-import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Sequence
 
 from django.conf import settings
 
 
-def _read_setting(name: str, default: str | None = None) -> str | None:
-    """환경변수/설정에서 값을 읽어 문자열로 반환합니다.
-
-    입력:
-    - name: 설정 키 이름
-    - default: 기본값
-
-    반환:
-    - str | None: 설정 문자열 또는 None
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 환경변수 우선 조회
-    # -----------------------------------------------------------------------------
-    value = os.environ.get(name)
-    if value is None:
-        # -----------------------------------------------------------------------------
-        # 2) Django settings 폴백
-        # -----------------------------------------------------------------------------
-        value = getattr(settings, name, default)
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    # -----------------------------------------------------------------------------
-    # 3) 문자열 변환
-    # -----------------------------------------------------------------------------
-    return str(value)
+class RagConfigError(ValueError):
+    """RAG 설정 형식이나 필수 값이 올바르지 않을 때 발생합니다."""
 
 
-def _parse_headers(raw: str | None) -> Dict[str, str]:
-    """JSON 문자열 헤더 설정을 dict[str, str]로 파싱합니다.
+def _parse_json_object(raw: object, *, setting_name: str) -> dict[str, Any]:
+    """JSON object 설정을 파싱하고 잘못된 형식은 명시적으로 거절합니다."""
 
-    입력:
-    - raw: JSON 문자열
-
-    반환:
-    - Dict[str, str]: 헤더 딕셔너리
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음(파싱 실패 시 빈 dict 반환)
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 유효성 확인
-    # -----------------------------------------------------------------------------
-    if not raw:
+    if raw in (None, ""):
         return {}
-    # -----------------------------------------------------------------------------
-    # 2) JSON 파싱
-    # -----------------------------------------------------------------------------
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return {}
+    if isinstance(raw, dict):
+        parsed = raw
+    else:
+        try:
+            parsed = json.loads(str(raw))
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise RagConfigError(f"{setting_name}은 JSON object여야 합니다.") from exc
     if not isinstance(parsed, dict):
-        return {}
+        raise RagConfigError(f"{setting_name}은 JSON object여야 합니다.")
+    return parsed
 
-    # -----------------------------------------------------------------------------
-    # 3) 문자열 헤더만 정규화
-    # -----------------------------------------------------------------------------
-    headers: Dict[str, str] = {}
+
+def _parse_headers(raw: object) -> dict[str, str]:
+    """RAG_HEADERS를 문자열 header dict로 검증합니다."""
+
+    parsed = _parse_json_object(raw, setting_name="RAG_HEADERS")
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     for key, value in parsed.items():
-        if isinstance(key, str) and isinstance(value, (str, int, float, bool)):
-            headers[key] = str(value)
+        if not isinstance(key, str) or not isinstance(value, (str, int, float, bool)):
+            raise RagConfigError("RAG_HEADERS의 key/value는 문자열 변환 가능한 scalar여야 합니다.")
+        headers[key] = str(value)
     return headers
 
 
-def _parse_permission_groups(raw: str | None) -> List[str]:
-    """권한 그룹 설정(JSON 배열 또는 CSV)을 문자열 리스트로 정규화합니다.
+def _parse_permission_groups(raw: object) -> list[str]:
+    """RAG_PERMISSION_GROUPS JSON 배열을 문자열 목록으로 검증합니다."""
 
-    입력:
-    - raw: JSON 배열 문자열 또는 CSV 문자열
-
-    반환:
-    - List[str]: 권한 그룹 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음(파싱 실패 시 빈 리스트 반환)
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 유효성 확인
-    # -----------------------------------------------------------------------------
-    if not raw:
+    if raw in (None, ""):
         return []
-    # -----------------------------------------------------------------------------
-    # 2) JSON 파싱 시도
-    # -----------------------------------------------------------------------------
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        parsed = None
-
-    # -----------------------------------------------------------------------------
-    # 3) JSON 배열 처리
-    # -----------------------------------------------------------------------------
-    if isinstance(parsed, Sequence) and not isinstance(parsed, (str, bytes, bytearray)):
-        return [str(item).strip() for item in parsed if str(item).strip()]
-
-    # -----------------------------------------------------------------------------
-    # 4) CSV 문자열 처리
-    # -----------------------------------------------------------------------------
-    if isinstance(raw, str):
-        return [item.strip() for item in raw.split(",") if item.strip()]
-
-    # -----------------------------------------------------------------------------
-    # 5) 기본값 반환
-    # -----------------------------------------------------------------------------
-    return []
+    if isinstance(raw, (list, tuple)):
+        parsed = list(raw)
+    else:
+        try:
+            parsed = json.loads(str(raw))
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise RagConfigError("RAG_PERMISSION_GROUPS는 JSON array여야 합니다.") from exc
+    if not isinstance(parsed, list) or any(not isinstance(item, str) for item in parsed):
+        raise RagConfigError("RAG_PERMISSION_GROUPS는 문자열 JSON array여야 합니다.")
+    return list(dict.fromkeys(item.strip() for item in parsed if item.strip()))
 
 
-def _parse_index_list(raw: str | None) -> List[str]:
-    """인덱스 목록 설정(JSON 배열 또는 CSV)을 문자열 리스트로 정규화합니다.
+def _parse_index_list(raw: object) -> list[str]:
+    """comma-separated RAG index allowlist를 정규화합니다."""
 
-    입력:
-    - raw: JSON 배열 문자열 또는 CSV 문자열
-
-    반환:
-    - List[str]: 인덱스 이름 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return _parse_permission_groups(raw)
-
-
-def _parse_chunk_factor(raw: str | None) -> Dict[str, str | int] | None:
-    """chunk_factor 설정(JSON 객체)을 정규화해 dict로 반환합니다.
-
-    입력:
-    - raw: JSON 객체 문자열
-
-    반환:
-    - Dict[str, str | int] | None: 정규화된 chunk_factor
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음(파싱 실패 시 None)
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 유효성 확인
-    # -----------------------------------------------------------------------------
-    if not raw:
-        return None
-    # -----------------------------------------------------------------------------
-    # 2) JSON 파싱
-    # -----------------------------------------------------------------------------
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    # -----------------------------------------------------------------------------
-    # 3) 허용 타입만 정규화
-    # -----------------------------------------------------------------------------
-    normalized: Dict[str, str | int] = {}
-    for key, value in parsed.items():
-        if not isinstance(key, str):
-            continue
-        if isinstance(value, (str, int)):
-            normalized[key] = value
-    return normalized or None
+    if raw in (None, ""):
+        return []
+    values = raw if isinstance(raw, (list, tuple)) else str(raw).split(",")
+    if any(not isinstance(value, str) for value in values):
+        raise RagConfigError("RAG_INDEX_LIST는 문자열 목록이어야 합니다.")
+    return list(dict.fromkeys(value.strip() for value in values if value.strip()))
 
 
 def _normalize_string_sequence(
@@ -211,163 +76,127 @@ def _normalize_string_sequence(
     *,
     split_commas: bool = False,
     dedupe: bool = False,
-) -> List[str]:
-    """문자열/시퀀스 입력을 공통 규칙으로 정규화합니다.
+) -> list[str]:
+    """요청 단계 문자열 목록을 공통 규칙으로 정규화합니다."""
 
-    입력:
-    - values: 문자열 또는 문자열 시퀀스
-    - split_commas: 문자열 입력을 CSV로 분리할지 여부
-    - dedupe: 중복 제거 여부
-
-    반환:
-    - List[str]: 공백 제거가 끝난 문자열 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 입력 유효성 확인 및 리스트화
-    # -----------------------------------------------------------------------------
     if not values:
         return []
-    if isinstance(values, str):
-        raw_values = values.split(",") if split_commas else [values]
-    elif isinstance(values, Sequence):
-        raw_values = list(values)
-    else:
-        return []
-
-    # -----------------------------------------------------------------------------
-    # 2) 값 정제
-    # -----------------------------------------------------------------------------
-    normalized: List[str] = []
-    for value in raw_values:
-        if value is None:
-            continue
-        cleaned = str(value).strip()
-        if cleaned:
-            normalized.append(cleaned)
-    if dedupe:
-        return list(dict.fromkeys(normalized))
-    return normalized
+    raw_values = values.split(",") if isinstance(values, str) and split_commas else [values] if isinstance(values, str) else list(values)
+    normalized = [str(value).strip() for value in raw_values if value is not None and str(value).strip()]
+    return list(dict.fromkeys(normalized)) if dedupe else normalized
 
 
-def _normalize_permission_groups(groups: Sequence[str] | str | None) -> List[str]:
-    """permission_groups 입력을 문자열 리스트로 정규화합니다.
-
-    입력:
-    - groups: 문자열 또는 문자열 시퀀스
-
-    반환:
-    - List[str]: 정규화된 권한 그룹 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
+def _normalize_permission_groups(groups: Sequence[str] | str | None) -> list[str]:
+    """요청 권한 그룹을 문자열 목록으로 정규화합니다."""
 
     return _normalize_string_sequence(groups)
 
 
-def _normalize_index_names(index_names: Sequence[str] | str | None) -> List[str]:
-    """index_name 입력을 문자열 리스트로 정규화합니다.
-
-    입력:
-    - index_names: 문자열 또는 문자열 시퀀스
-
-    반환:
-    - List[str]: 중복 제거된 인덱스 이름 목록
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
+def _normalize_index_names(index_names: Sequence[str] | str | None) -> list[str]:
+    """요청 index 이름을 중복 없는 목록으로 정규화합니다."""
 
     return _normalize_string_sequence(index_names, split_commas=True, dedupe=True)
 
 
-# =============================================================================
-# 설정값 로드 및 정규화
-# =============================================================================
+@dataclass(frozen=True)
+class RagConfig:
+    """RAG adapter가 사용하는 immutable 설정입니다."""
+
+    search_url: str
+    insert_url: str
+    delete_url: str
+    index_info_url: str
+    index_default: str
+    index_emails: str
+    index_list: tuple[str, ...]
+    permission_groups: tuple[str, ...]
+    public_group: str
+    headers: dict[str, str]
+    chunk_factor: dict[str, Any]
+    timeout_seconds: int
+    num_docs: int
+    error_log_path: str
+
+    @classmethod
+    def from_settings(cls) -> "RagConfig":
+        """canonical RAG_* Django settings만 읽어 설정을 생성합니다."""
+
+        public_group = str(getattr(settings, "RAG_PUBLIC_GROUP", "rag-public") or "").strip()
+        permission_groups = _parse_permission_groups(getattr(settings, "RAG_PERMISSION_GROUPS", ""))
+        if not permission_groups and public_group:
+            permission_groups = [public_group]
+        index_default = str(getattr(settings, "RAG_INDEX_DEFAULT", "") or "").strip()
+        index_emails = str(getattr(settings, "RAG_INDEX_EMAILS", "") or "").strip()
+        index_list = _parse_index_list(getattr(settings, "RAG_INDEX_LIST", ""))
+        for index_name in (index_default, index_emails):
+            if index_name and index_name not in index_list:
+                index_list.append(index_name)
+        try:
+            timeout_seconds = max(1, int(getattr(settings, "RAG_TIMEOUT_SECONDS", 30) or 30))
+        except (TypeError, ValueError) as exc:
+            raise RagConfigError("RAG_TIMEOUT_SECONDS는 양의 정수여야 합니다.") from exc
+        try:
+            num_docs = max(1, int(getattr(settings, "RAG_NUM_DOCS", 5) or 5))
+        except (TypeError, ValueError) as exc:
+            raise RagConfigError("RAG_NUM_DOCS는 양의 정수여야 합니다.") from exc
+        return cls(
+            search_url=str(getattr(settings, "RAG_SEARCH_URL", "") or "").strip(),
+            insert_url=str(getattr(settings, "RAG_INSERT_URL", "") or "").strip(),
+            delete_url=str(getattr(settings, "RAG_DELETE_URL", "") or "").strip(),
+            index_info_url=str(getattr(settings, "RAG_INDEX_INFO_URL", "") or "").strip(),
+            index_default=index_default,
+            index_emails=index_emails,
+            index_list=tuple(index_list),
+            permission_groups=tuple(permission_groups),
+            public_group=public_group,
+            headers=_parse_headers(getattr(settings, "RAG_HEADERS", "")),
+            chunk_factor=_parse_json_object(
+                getattr(settings, "RAG_CHUNK_FACTOR", ""),
+                setting_name="RAG_CHUNK_FACTOR",
+            ),
+            timeout_seconds=timeout_seconds,
+            num_docs=num_docs,
+            error_log_path=str(
+                getattr(settings, "RAG_ERROR_LOG_PATH", "")
+                or Path(settings.BASE_DIR) / "logs" / "rag_errors.log"
+            ),
+        )
 
 
-RAG_SEARCH_URL = _read_setting("ASSISTANT_RAG_URL") or _read_setting("RAG_SEARCH_URL", "")
-RAG_INSERT_URL = _read_setting("ASSISTANT_RAG_INSERT_URL") or _read_setting("RAG_INSERT_URL", "")
-RAG_DELETE_URL = _read_setting("ASSISTANT_RAG_DELETE_URL") or _read_setting("RAG_DELETE_URL", "")
-RAG_INDEX_NAME = _read_setting("ASSISTANT_RAG_INDEX_NAME") or _read_setting("RAG_INDEX_NAME", "")
-RAG_INDEX_DEFAULT = (
-    _read_setting("ASSISTANT_RAG_INDEX_DEFAULT")
-    or _read_setting("RAG_INDEX_DEFAULT")
-    or RAG_INDEX_NAME
-    or ""
-)
-RAG_INDEX_EMAILS = (
-    _read_setting("ASSISTANT_RAG_INDEX_EMAILS")
-    or _read_setting("RAG_INDEX_EMAILS")
-    or ""
-)
-RAG_INDEX_LIST = _parse_index_list(
-    _read_setting("ASSISTANT_RAG_INDEX_LIST") or _read_setting("RAG_INDEX_LIST")
-)
-RAG_PERMISSION_GROUPS = (
-    _parse_permission_groups(_read_setting("ASSISTANT_RAG_PERMISSION_GROUPS"))
-    or _parse_permission_groups(_read_setting("RAG_PERMISSION_GROUPS"))
-)
-RAG_PUBLIC_GROUP = "rag-public"
-RAG_CHUNK_FACTOR = _parse_chunk_factor(
-    _read_setting("ASSISTANT_RAG_CHUNK_FACTOR") or _read_setting("RAG_CHUNK_FACTOR")
-)
-RAG_ERROR_LOG_PATH = _read_setting("RAG_ERROR_LOG_PATH") or str(Path(settings.BASE_DIR) / "logs" / "rag_errors.log")
+RAG_CONFIG = RagConfig.from_settings()
+RAG_SEARCH_URL = RAG_CONFIG.search_url
+RAG_INSERT_URL = RAG_CONFIG.insert_url
+RAG_DELETE_URL = RAG_CONFIG.delete_url
+RAG_INDEX_INFO_URL = RAG_CONFIG.index_info_url
+RAG_INDEX_DEFAULT = RAG_CONFIG.index_default
+RAG_INDEX_EMAILS = RAG_CONFIG.index_emails
+RAG_INDEX_LIST = list(RAG_CONFIG.index_list)
+RAG_PERMISSION_GROUPS = list(RAG_CONFIG.permission_groups)
+RAG_PUBLIC_GROUP = RAG_CONFIG.public_group
+RAG_HEADERS = dict(RAG_CONFIG.headers)
+RAG_CHUNK_FACTOR = dict(RAG_CONFIG.chunk_factor)
+RAG_TIMEOUT_SECONDS = RAG_CONFIG.timeout_seconds
+RAG_NUM_DOCS = RAG_CONFIG.num_docs
+RAG_ERROR_LOG_PATH = RAG_CONFIG.error_log_path
 
-# -----------------------------------------------------------------------------
-# 헤더 구성
-# -----------------------------------------------------------------------------
-_custom_headers = _parse_headers(_read_setting("ASSISTANT_RAG_HEADERS")) or _parse_headers(_read_setting("RAG_HEADERS"))
-if _custom_headers:
-    RAG_HEADERS = {"Content-Type": "application/json", **_custom_headers}
-else:
-    RAG_HEADERS = {
-        "Content-Type": "application/json",
-        "x-dep-ticket": _read_setting("RAG_PASS_KEY", "") or "",
-        "api-key": _read_setting("RAG_API_KEY", "") or "",
-    }
-
-# -----------------------------------------------------------------------------
-# 권한 그룹 기본값 보정
-# -----------------------------------------------------------------------------
-if not RAG_PERMISSION_GROUPS:
-    RAG_PERMISSION_GROUPS = [RAG_PUBLIC_GROUP]
-
-# -----------------------------------------------------------------------------
-# 인덱스 목록 정규화
-# -----------------------------------------------------------------------------
-_resolved_index_list: List[str] = []
-for value in [*RAG_INDEX_LIST, RAG_INDEX_DEFAULT, RAG_INDEX_EMAILS]:
-    cleaned = str(value).strip() if isinstance(value, str) else ""
-    if cleaned and cleaned not in _resolved_index_list:
-        _resolved_index_list.append(cleaned)
-RAG_INDEX_LIST = _resolved_index_list
 
 __all__ = [
     "RAG_CHUNK_FACTOR",
+    "RAG_CONFIG",
     "RAG_DELETE_URL",
     "RAG_HEADERS",
     "RAG_INDEX_DEFAULT",
     "RAG_INDEX_EMAILS",
+    "RAG_INDEX_INFO_URL",
     "RAG_INDEX_LIST",
-    "RAG_INDEX_NAME",
     "RAG_INSERT_URL",
-    "RAG_PUBLIC_GROUP",
     "RAG_PERMISSION_GROUPS",
+    "RAG_PUBLIC_GROUP",
     "RAG_SEARCH_URL",
+    "RAG_TIMEOUT_SECONDS",
+    "RAG_NUM_DOCS",
+    "RagConfig",
+    "RagConfigError",
     "_normalize_index_names",
     "_normalize_permission_groups",
 ]

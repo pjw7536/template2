@@ -96,7 +96,12 @@ def get_rag_index_candidates() -> List[str]:
     """
 
     rag_services = _get_rag_services()
-    return list(rag_services.RAG_INDEX_LIST)
+    candidates = list(rag_services.RAG_INDEX_LIST)
+    for index_name in (rag_services.RAG_INDEX_DEFAULT, rag_services.RAG_INDEX_EMAILS):
+        normalized = str(index_name or "").strip()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
 
 
 def resolve_rag_index_name(index_name: str | None) -> str:
@@ -121,6 +126,8 @@ def resolve_rag_index_name(index_name: str | None) -> str:
     rag_services = _get_rag_services()
     resolved = index_name.strip() if isinstance(index_name, str) else ""
     if resolved:
+        if resolved not in get_rag_index_candidates():
+            raise ValueError(f"허용되지 않은 RAG index입니다: {resolved}")
         return resolved
 
     # -----------------------------------------------------------------------------
@@ -155,6 +162,10 @@ def resolve_rag_index_names(index_names: Sequence[str] | str | None) -> List[str
     # -----------------------------------------------------------------------------
     resolved = _normalize_index_names(index_names)
     if resolved:
+        allowed = set(get_rag_index_candidates())
+        unknown = [index_name for index_name in resolved if index_name not in allowed]
+        if unknown:
+            raise ValueError(f"허용되지 않은 RAG index입니다: {', '.join(unknown)}")
         return resolved
     # -----------------------------------------------------------------------------
     # 2) 단일 기본값 폴백
@@ -408,7 +419,7 @@ def search_rag(
     index_name: Sequence[str] | str | None = None,
     num_result_doc: int = 5,
     permission_groups: Sequence[str] | None = None,
-    timeout: int = 30,
+    timeout: int | None = None,
     cancellation: ExternalCallCancellation | None = None,
 ) -> Dict[str, Any]:
     """RAG에서 query_text 기반으로 문서를 검색합니다.
@@ -453,7 +464,7 @@ def search_rag(
         "search",
         search_url,
         payload,
-        timeout=timeout,
+        timeout=timeout or rag_services.RAG_TIMEOUT_SECONDS,
         expect_json=True,
         cancellation=cancellation,
     )
@@ -502,7 +513,7 @@ def insert_email_to_rag(
 
     insert_url = _require_rag_setting("insert", payload, rag_services.RAG_INSERT_URL, "RAG_INSERT_URL is not configured")
     _require_rag_setting("insert", payload, resolved_index_name, "RAG_INDEX_DEFAULT is not configured")
-    _post_rag_request("insert", insert_url, payload, timeout=30)
+    _post_rag_request("insert", insert_url, payload, timeout=rag_services.RAG_TIMEOUT_SECONDS)
 
 
 def delete_rag_doc(
@@ -538,4 +549,32 @@ def delete_rag_doc(
 
     delete_url = _require_rag_setting("delete", payload, rag_services.RAG_DELETE_URL, "RAG_DELETE_URL is not configured")
     _require_rag_setting("delete", payload, resolved_index_name, "RAG_INDEX_DEFAULT is not configured")
-    _post_rag_request("delete", delete_url, payload, timeout=10)
+    _post_rag_request("delete", delete_url, payload, timeout=rag_services.RAG_TIMEOUT_SECONDS)
+
+
+def get_rag_index_info(*, timeout: int | None = None) -> Dict[str, Any]:
+    """provider index-info endpoint의 JSON object를 반환합니다."""
+
+    rag_services = _get_rag_services()
+    url = _require_rag_setting(
+        "index_info",
+        {},
+        rag_services.RAG_INDEX_INFO_URL,
+        "RAG_INDEX_INFO_URL is not configured",
+    )
+    response = requests.get(
+        url,
+        headers=rag_services.RAG_HEADERS,
+        timeout=timeout or rag_services.RAG_TIMEOUT_SECONDS,
+    )
+    try:
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("RAG index-info response must be a JSON object")
+        return payload
+    except Exception as exc:
+        _log_rag_failure("index_info", {}, exc, response=response)
+        raise
+    finally:
+        response.close()

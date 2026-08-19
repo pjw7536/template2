@@ -279,7 +279,7 @@ def has_drone_sop_pipeline_candidates() -> bool:
     return selectors.has_drone_sop_pipeline_candidates()
 
 
-def run_drone_sop_pipeline_from_env(
+def run_drone_sop_pipeline_from_settings(
     *,
     limit: int | None = None,
 ) -> DroneSopInformResult:
@@ -370,5 +370,5 @@ def run_drone_sop_pipeline_from_env(
 __all__ = [
     "DroneSopInformResult",
     "has_drone_sop_pipeline_candidates",
-    "run_drone_sop_pipeline_from_env",
+    "run_drone_sop_pipeline_from_settings",
 ]

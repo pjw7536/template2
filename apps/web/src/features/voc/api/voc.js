@@ -4,11 +4,12 @@ import { sanitizeContentHtml } from "../utils"
 
 function buildApiError(response, payload, fallbackMessage) {
   const apiMessage =
-    payload && typeof payload === "object" && typeof payload.error === "string"
-      ? payload.error
+    payload && typeof payload === "object" && typeof payload.message === "string"
+      ? payload.message
       : ""
   const error = new Error(apiMessage || fallbackMessage)
   error.status = response.status
+  error.payload = payload
   return error
 }
 
@@ -70,7 +71,6 @@ export function parseVocPost(raw) {
     title: requireString(post.title, "post.title"),
     content: sanitizeContentHtml(requireString(post.content, "post.content")),
     status: requireString(post.status, "post.status"),
-    app: requireString(post.app, "post.app"),
     createdAt: requireString(post.createdAt, "post.createdAt"),
     updatedAt: requireString(post.updatedAt, "post.updatedAt"),
     author: parseVocAuthor(post.author),
@@ -102,13 +102,13 @@ export async function fetchVocPosts() {
   return envelope.results.map(parseVocPost)
 }
 
-export async function createVocPost({ title, content, status, app }) {
+export async function createVocPost({ title, content, status }) {
   const endpoint = buildBackendUrl("/api/v1/voc/posts")
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ title, content, status, app }),
+    body: JSON.stringify({ title, content, status }),
   })
   const payload = await safeParseJson(response)
 
@@ -124,7 +124,6 @@ export async function updateVocPost(postId, updates = {}) {
   if ("title" in updates) body.title = updates.title
   if ("content" in updates) body.content = updates.content
   if ("status" in updates) body.status = updates.status
-  if ("app" in updates) body.app = updates.app
 
   const response = await fetch(endpoint, {
     method: "PATCH",

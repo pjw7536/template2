@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 
 import { resolveAssistantAppContext } from "../utils/appContext"
@@ -13,9 +13,8 @@ import { ChatWidgetLauncher } from "./ChatWidgetLauncher"
 import { ChatWidgetPanel } from "./ChatWidgetPanel"
 import { useAttentionTooltip } from "../hooks/useAttentionTooltip"
 import { useAssistantRagIndex } from "../hooks/useAssistantRagIndex"
-import { useChatSession } from "../hooks/useChatSession"
+import { useAssistantChatController } from "../hooks/useAssistantChatController"
 import { useFloatingChatWindow } from "../hooks/useFloatingChatWindow"
-import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
 
 export function ChatWidget(props) {
   const location = useLocation()
@@ -104,9 +103,6 @@ function ChatWidgetContent({
   onUsesAppContextChange,
   user,
 }) {
-  const [input, setInput] = useState("")
-  const inputRef = useRef(null)
-  const wasSendingRef = useRef(false)
   const {
     buttonPosition,
     chatContainerRef,
@@ -133,15 +129,19 @@ function ChatWidgetContent({
     widgetPosition,
   } = useFloatingChatWindow()
   const {
+    focusInput,
+    input,
+    inputRef,
+    setInput,
+    submitMessage,
+    sortedRooms,
     rooms,
-    roomListRooms,
     roomSearch,
     showArchived,
     hasMoreRooms,
     isLoadingMoreRooms,
     activeRoomId,
     messages,
-    messagesByRoom,
     isSending,
     isGenerating,
     hasActiveGeneration,
@@ -170,44 +170,20 @@ function ChatWidgetContent({
     toggleArchiveRoom,
     toggleArchivedView,
     downloadConversation,
-  } = useChatSession({
-    messageContextKey: surface.appContextKey,
-    profileKey: surface.profileKey,
-    profileVersion: surface.profileVersion,
-    profileToolInputs: surface.toolInputs,
-    userKey: user.id,
+  } = useAssistantChatController({
+    isSurfaceActive: isOpen,
+    sessionOptions: {
+      messageContextKey: surface.appContextKey,
+      profileKey: surface.profileKey,
+      profileVersion: surface.profileVersion,
+      profileToolInputs: surface.toolInputs,
+      userKey: user.id,
+    },
   })
-  const sortedRooms = sortRoomsByRecentQuestion(roomListRooms, messagesByRoom)
   const { isAttentionTooltipVisible, attentionTooltipText } = useAttentionTooltip({
     isOpen,
     isHomePage: location.pathname === "/",
   })
-
-  useEffect(() => {
-    if (isOpen) inputRef.current?.focus()
-  }, [isOpen])
-
-  useEffect(() => {
-    if (!isOpen) {
-      wasSendingRef.current = isSending
-      return
-    }
-    if (!isSending && wasSendingRef.current) inputRef.current?.focus()
-    wasSendingRef.current = isSending
-  }, [isSending, isOpen])
-
-  const focusInput = () => inputRef.current?.focus()
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    if (!input.trim() || isSending) return
-    try {
-      const result = await sendMessage(input)
-      if (result?.ok) setInput("")
-    } finally {
-      focusInput()
-    }
-  }
 
   const handleQuickPrompt = async () => {
     const prompt = pageContext?.defaultPrompt
@@ -290,7 +266,7 @@ function ChatWidgetContent({
       inputRef={inputRef}
       inputValue={input}
       onInputChange={(event) => setInput(event.target.value)}
-      onSubmit={handleSubmit}
+      onSubmit={submitMessage}
       onOpenFullChat={handleOpenFullChat}
       onRestoreDefaultSize={handleRestoreDefaultSize}
       onClose={closeWidget}

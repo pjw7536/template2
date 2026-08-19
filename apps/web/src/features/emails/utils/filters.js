@@ -37,17 +37,17 @@ export function buildEmailListSearchParams(rawFilters = {}, { includeMailbox = t
   const filters = normalizeEmailListFilters(rawFilters)
   const searchParams = {
     page: filters.page,
-    page_size: filters.pageSize,
+    pageSize: filters.pageSize,
   }
 
   if (includeMailbox && filters.userSdwtProd) {
-    searchParams.user_sdwt_prod = filters.userSdwtProd
+    searchParams.userSdwtProd = filters.userSdwtProd
   }
   if (filters.q) searchParams.q = filters.q
   if (filters.sender) searchParams.sender = filters.sender
   if (filters.recipient) searchParams.recipient = filters.recipient
-  if (filters.dateFrom) searchParams.date_from = filters.dateFrom
-  if (filters.dateTo) searchParams.date_to = filters.dateTo
+  if (filters.dateFrom) searchParams.dateFrom = filters.dateFrom
+  if (filters.dateTo) searchParams.dateTo = filters.dateTo
 
   return searchParams
 }

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from adfs_settings import (
-    ASSISTANT_RAG_INDEX,
     DEFAULT_EMAIL,
     DEFAULT_PERMISSION_GROUPS,
     INDEX_NAMES,
@@ -327,7 +326,7 @@ BASE_RAG_DOCS = [
         "metadata": {"department_code": "FAB-OPS", "source": "dummy-rag"},
     },
     {
-        "index_name": ASSISTANT_RAG_INDEX,
+        "index_name": PRIMARY_RAG_INDEX,
         "doc_id": "safety-checklist",
         "title": "[더미] 안전 점검 체크리스트",
         "content": "Etch 설비 점검 시 확인해야 할 항목과 안전 수칙을 정리했습니다.",

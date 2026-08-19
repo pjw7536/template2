@@ -9,23 +9,15 @@ from __future__ import annotations
 from django.urls import path
 
 from .views import (
-    ObserverCtttmLogsView,
-    ObserverEsopLogsView,
-    ObserverFdcInterlockLogsView,
     ObserverEquipmentInfoView,
-    ObserverEqpLogsView,
     ObserverEquipmentsView,
     ObserverLinesView,
     ObserverEvidenceLogView,
     ObserverLogDetailView,
-    ObserverLogsView,
     ObserverLogsByTypePageView,
     ObserverLogsPageView,
     ObserverPrcGroupView,
-    ObserverRacbLogsView,
     ObserverSdwtView,
-    ObserverSpcInterlockLogsView,
-    ObserverTipLogsView,
     ObserverTkinPreventMatrixView,
     ObserverTkinPreventPrcGroupsView,
     ObserverTkinPreventProcessesView,
@@ -38,16 +30,10 @@ urlpatterns = [
     path("prc-groups", ObserverPrcGroupView.as_view(), name="observer-prc-groups"),
     path("equipments", ObserverEquipmentsView.as_view(), name="observer-equipments"),
     path(
-        "equipment-info/<str:line_id>/<str:eqp_id>",
-        ObserverEquipmentInfoView.as_view(),
-        name="observer-equipment-info-line",
-    ),
-    path(
         "equipment-info/<str:eqp_id>",
         ObserverEquipmentInfoView.as_view(),
         name="observer-equipment-info",
     ),
-    path("logs", ObserverLogsView.as_view(), name="observer-logs"),
     path("logs/page", ObserverLogsPageView.as_view(), name="observer-logs-page"),
     path(
         "logs/<str:log_key>/page",
@@ -64,21 +50,6 @@ urlpatterns = [
         ObserverEvidenceLogView.as_view(),
         name="observer-evidence-log",
     ),
-    path("logs/eqp", ObserverEqpLogsView.as_view(), name="observer-logs-eqp"),
-    path("logs/tip", ObserverTipLogsView.as_view(), name="observer-logs-tip"),
-    path(
-        "logs/spc-interlock",
-        ObserverSpcInterlockLogsView.as_view(),
-        name="observer-logs-spc-interlock",
-    ),
-    path(
-        "logs/fdc-interlock",
-        ObserverFdcInterlockLogsView.as_view(),
-        name="observer-logs-fdc-interlock",
-    ),
-    path("logs/ctttm", ObserverCtttmLogsView.as_view(), name="observer-logs-ctttm"),
-    path("logs/racb", ObserverRacbLogsView.as_view(), name="observer-logs-racb"),
-    path("logs/esop", ObserverEsopLogsView.as_view(), name="observer-logs-esop"),
     path(
         "tkin-prevent/prc-groups",
         ObserverTkinPreventPrcGroupsView.as_view(),

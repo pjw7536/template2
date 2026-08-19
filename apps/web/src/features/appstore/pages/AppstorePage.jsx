@@ -72,7 +72,7 @@ export function AppstorePage() {
   }, [user])
 
   const defaultContactKnoxid = useMemo(() => {
-    return user?.usr_id || ""
+    return user?.knoxId || ""
   }, [user])
 
   const categories = useMemo(() => {

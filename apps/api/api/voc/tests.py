@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -52,7 +53,7 @@ class VocEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(set(payload), {"results"})
-        self.assertEqual(payload["results"][0]["app"], "기타")
+        self.assertNotIn("app", payload["results"][0])
         self.assertEqual(payload["results"][0]["author"]["name"], "정진우(knox-80000)")
 
     def test_voc_author_display_uses_only_username_and_knox_id(self) -> None:
@@ -81,7 +82,7 @@ class VocEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         create_response = self.client.post(
             reverse("voc-posts"),
-            data='{"title":"Title","content":"Body","status":"접수","app":"기타"}',
+            data='{"title":"Title","content":"Body","status":"접수"}',
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 201)
@@ -120,13 +121,15 @@ class VocEndpointTests(TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json(), {"success": True})
 
-    def test_voc_posts_create_requires_app(self) -> None:
+    def test_voc_posts_rejects_removed_app_field(self) -> None:
         response = self.client.post(
             reverse("voc-posts"),
-            data='{"title":"Title","content":"Body","status":"접수"}',
+            data='{"title":"Title","content":"Body","status":"접수","app":"기타"}',
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_request")
+        self.assertIn("app", response.json()["fieldErrors"])
 
     def test_voc_admin_can_update_another_users_post(self) -> None:
         """VOC admin 역할은 다른 사용자의 게시글을 관리할 수 있어야 합니다."""
@@ -174,7 +177,7 @@ class VocSerializerTests(SimpleTestCase):
 
     def test_create_serializer_applies_default_status(self) -> None:
         serializer = VocPostCreateInputSerializer(
-            data={"title": "제목", "content": "내용", "app": "기타"}
+            data={"title": "제목", "content": "내용"}
         )
 
         self.assertTrue(serializer.is_valid(), serializer.errors)
@@ -188,7 +191,6 @@ class VocSerializerTests(SimpleTestCase):
                 data={
                     "title": "제목",
                     "content": "내용",
-                    "app": "기타",
                     "created_at": "legacy",
                 }
             ),
@@ -203,7 +205,45 @@ class VocSerializerTests(SimpleTestCase):
         for serializer in serializers_with_legacy_field:
             with self.subTest(serializer=serializer.__class__.__name__):
                 self.assertFalse(serializer.is_valid())
-                self.assertIn("unexpectedFields", serializer.errors)
+                self.assertTrue(
+                    {"created_at", "post_id"} & set(serializer.errors)
+                )
+
+
+class VocMigrationGuardTests(SimpleTestCase):
+    """VOC app 필드 제거 migration의 fail-closed 검사를 검증합니다."""
+
+    def test_remove_app_migration_rejects_unexpected_value(self) -> None:
+        """기타·빈 값 이외 category가 있으면 migration을 중단해야 합니다."""
+
+        migration = importlib.import_module(
+            "api.voc.migrations.0002_remove_vocpost_app"
+        )
+        queryset = type(
+            "DistinctValues",
+            (),
+            {
+                "distinct": lambda self: ["기타", "legacy-category"],
+            },
+        )()
+        manager = type(
+            "Manager",
+            (),
+            {
+                "values_list": lambda self, *args, **kwargs: queryset,
+            },
+        )()
+        historical_model = type("HistoricalVocPost", (), {"objects": manager})
+        app_registry = type(
+            "AppRegistry",
+            (),
+            {
+                "get_model": lambda self, *args: historical_model,
+            },
+        )()
+
+        with self.assertRaisesRegex(RuntimeError, "legacy-category"):
+            migration.validate_single_app_value(app_registry, None)
 
 
 class VocServiceSelectorTests(TestCase):
@@ -223,7 +263,6 @@ class VocServiceSelectorTests(TestCase):
             title="처음",
             content="내용",
             status="접수",
-            app="기타",
         )
 
         updated = voc_services.update_post(post=post, updates={"status": "완료"})

@@ -267,3 +267,19 @@ class RacbListLifecycleTests(TestCase):
             logs[0]["url"],
             "https://racb.eqms.abc.net/racb/rpt/ReportPop.do?racbId=RACB-1&lineId=LINE-A",
         )
+
+    @override_settings(RACB_REPORT_BASE_URL="")
+    def test_selector_omits_racb_url_when_base_url_is_disabled(self) -> None:
+        """RACB URL이 비어 있으면 잘못된 query-only 링크를 제공하지 않습니다."""
+
+        RacbList.objects.create(
+            c_racb_id="RACB-2",
+            eqp_cb="EAAA302-A",
+            line_id="LINE-A",
+            create_date=datetime(2026, 6, 20, 10, 0, tzinfo=datetime_timezone.utc),
+            update_date=datetime(2026, 6, 20, 10, 5, tzinfo=datetime_timezone.utc),
+        )
+
+        logs = selectors.fetch_racb_timeline_logs(eqp_id="eaaa302-a", limit=1)
+
+        self.assertIsNone(logs[0]["url"])

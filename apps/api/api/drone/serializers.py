@@ -5,14 +5,179 @@
 # =============================================================================
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any, Sequence
 
 from rest_framework import serializers
 
-from .models import DroneEarlyInform
+from .models import (
+    DroneEarlyInform,
+    DroneSopNeedToSendRule,
+    DroneSopTarget,
+    DroneSopTargetChannelConfig,
+)
 
 MAX_FIELD_LENGTH = 50
 MAX_TARGET_FIELD_LENGTH = 64
+LINE_DASHBOARD_ASSISTANT_MAX_RANGE_DAYS = 31
+LINE_DASHBOARD_ASSISTANT_FILTER_MODES = {
+    "target_user_sdwt_prod",
+    "user_sdwt_prod",
+    "sdwt_prod",
+}
+
+
+def serialize_drone_sop_target_configuration(
+    target: DroneSopTarget | None,
+) -> dict[str, object]:
+    """normalized channel/rule row에서 target 설정 응답을 생성합니다."""
+
+    configs = list(target.channel_configs.all()) if target is not None else []
+    config_by_channel = {config.channel: config for config in configs}
+    jira = config_by_channel.get(DroneSopTargetChannelConfig.Channels.JIRA)
+    messenger = config_by_channel.get(DroneSopTargetChannelConfig.Channels.MESSENGER)
+    mail = config_by_channel.get(DroneSopTargetChannelConfig.Channels.MAIL)
+    rule = None
+    if target is not None:
+        try:
+            rule = target.needtosend_rule
+        except DroneSopNeedToSendRule.DoesNotExist:
+            rule = None
+    return {
+        "jiraKey": jira.jira_project_key if jira else None,
+        "jiraTemplateKey": jira.template_key if jira else None,
+        "messengerTemplateKey": messenger.template_key if messenger else None,
+        "mailTemplateKey": mail.template_key if mail else None,
+        "jiraEnabled": bool(jira.enabled) if jira else True,
+        "messengerEnabled": bool(messenger.enabled) if messenger else True,
+        "messengerForceNewChatroom": bool(messenger.force_new_chatroom) if messenger else False,
+        "mailEnabled": bool(mail.enabled) if mail else True,
+        "needtosendCommentLastAt": rule.comment_keyword if rule else None,
+        "needtosendEnabled": bool(rule.enabled) if rule else False,
+        "needtosendIgnoreSampleType": bool(rule.ignore_sample_type) if rule else False,
+    }
+
+
+def normalize_line_dashboard_assistant_date_range(
+    *,
+    from_value: str,
+    to_value: str,
+) -> tuple[date, date]:
+    """ESOP Assistant 조회 기간을 날짜로 변환하고 최대 31일로 제한합니다."""
+
+    start_date = date.fromisoformat(from_value)
+    end_date = date.fromisoformat(to_value)
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    earliest = end_date - timedelta(days=LINE_DASHBOARD_ASSISTANT_MAX_RANGE_DAYS - 1)
+    return max(start_date, earliest), end_date
+
+
+def normalize_line_dashboard_assistant_options(
+    *,
+    line_id: Any,
+    view: str,
+    from_value: str,
+    to_value: str,
+    line_filter_mode: str | None,
+    recent_hours_start: int | None,
+    recent_hours_end: int | None,
+    current_time: Any,
+) -> tuple[str, date, date, tuple[Any, Any] | None]:
+    """ESOP Assistant 조회 옵션을 검증하고 최근 시간 범위를 계산합니다."""
+
+    if view not in {"status", "history"}:
+        raise ValueError("지원하지 않는 ESOP 화면 종류입니다.")
+    normalized_line_id = line_id.strip() if isinstance(line_id, str) else ""
+    if not normalized_line_id:
+        raise ValueError("ESOP line ID가 필요합니다.")
+    start_date, end_date = normalize_line_dashboard_assistant_date_range(
+        from_value=from_value,
+        to_value=to_value,
+    )
+    if view == "history":
+        return normalized_line_id, start_date, end_date, None
+    if line_filter_mode not in LINE_DASHBOARD_ASSISTANT_FILTER_MODES:
+        raise ValueError("지원하지 않는 ESOP line 필터 모드입니다.")
+    if (
+        type(recent_hours_start) is not int
+        or type(recent_hours_end) is not int
+        or not 0 <= recent_hours_end <= recent_hours_start <= 168
+    ):
+        raise ValueError("ESOP 최근 시간 범위가 올바르지 않습니다.")
+    recent_range = (
+        current_time - timedelta(hours=recent_hours_start),
+        current_time - timedelta(hours=recent_hours_end) + timedelta(minutes=5),
+    )
+    return normalized_line_id, start_date, end_date, recent_range
+
+
+def serialize_line_dashboard_assistant_snapshot(
+    *,
+    view: str,
+    line_id: str,
+    start_date: date,
+    end_date: date,
+    generated_at: Any,
+    total_count: int,
+    status_rows: Sequence[dict[str, Any]],
+    daily_rows: Sequence[dict[str, Any]],
+    recent_rows: Sequence[dict[str, Any]],
+    line_filter_mode: str | None,
+    recent_hours_start: int | None,
+    recent_hours_end: int | None,
+) -> dict[str, object]:
+    """ESOP Assistant 집계 row를 개인정보가 제외된 camelCase 응답으로 변환합니다."""
+
+    snapshot: dict[str, object] = {
+        "view": view,
+        "lineId": line_id,
+        "from": start_date.isoformat(),
+        "to": end_date.isoformat(),
+        "generatedAt": generated_at.isoformat(),
+        "totalCount": total_count,
+        "statusCounts": [
+            {
+                "status": str(row["status"] or "Unspecified"),
+                "count": int(row["count"] or 0),
+            }
+            for row in status_rows
+        ],
+        "dailyCounts": [
+            {
+                "date": row["day"].isoformat() if row["day"] else None,
+                "count": int(row["count"] or 0),
+                "needToSendCount": int(row["need_to_send_count"] or 0),
+                "instantInformCount": int(row["instant_inform_count"] or 0),
+            }
+            for row in daily_rows
+        ],
+        "recentRows": [
+            {
+                "id": row["id"],
+                "createdAt": row["created_at"].isoformat(),
+                "lineId": row["line_id"],
+                "status": row["status"],
+                "eqpId": row["eqp_id"],
+                "chamberIds": row["chamber_ids"],
+                "lotId": row["lot_id"],
+                "mainStep": row["main_step"],
+                "sampleType": row["sample_type"],
+                "needToSend": row["needtosend"],
+                "instantInform": row["instant_inform"],
+            }
+            for row in recent_rows
+        ],
+    }
+    if view == "status":
+        snapshot.update(
+            {
+                "lineFilterMode": line_filter_mode,
+                "recentHoursStart": recent_hours_start,
+                "recentHoursEnd": recent_hours_end,
+            }
+        )
+    return snapshot
 
 
 class DroneRequestValidationError(ValueError):

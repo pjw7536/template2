@@ -201,6 +201,7 @@ def reorder_apps(
     return requested_ids, build_app_order_version(requested_ids)
 
 
+@transaction.atomic
 def update_app(*, app: AppStoreApp, updates: Dict[str, Any]) -> AppStoreApp:
     """AppStore 앱 정보를 업데이트합니다.
 

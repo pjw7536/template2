@@ -61,6 +61,19 @@ def _get_or_create_channel_config(
         return concurrent, False
 
 
+def _get_channel_config(
+    *,
+    target: DroneSopTarget,
+    channel: str,
+) -> DroneSopTargetChannelConfig | None:
+    """normalized target/channel 설정 row를 조회합니다."""
+
+    prefetched = getattr(target, "_prefetched_objects_cache", {}).get("channel_configs")
+    if prefetched is not None:
+        return next((config for config in prefetched if config.channel == channel), None)
+    return target.channel_configs.filter(channel=channel).order_by("id").first()
+
+
 def _lock_target_by_name(*, normalized_target: str) -> DroneSopTarget | None:
     """대소문자 비구분 target row를 잠금 상태로 조회합니다."""
 
@@ -186,7 +199,10 @@ def _apply_channel_config_updates(
     ) or changed
 
     messenger_template_key = fields.messenger_template_key
-    existing_messenger = target._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.MESSENGER)
+    existing_messenger = _get_channel_config(
+        target=target,
+        channel=DroneSopTargetChannelConfig.Channels.MESSENGER,
+    )
     if (
         messenger_template_key is _UNSET
         and fields.jira_template_key is not _UNSET

@@ -6,11 +6,12 @@
 
 | 파일 | 사용처 | 역할 |
 | --- | --- | --- |
-| `env/api.common.env` | API 공통 | DB, 보안, auth, POP3, Drone, RAG, LLM, Mail API 기본값 |
+| `env/api.common.env` | API 공통 | DB, 도메인별 안전 기본값과 모든 profile 공통 정책 |
 | `env/api.dev.env` | 로컬 API | dummy ADFS/RAG/LLM/Mail/Jira 연결 |
 | `env/api.test.env` | API test | 임시 PostgreSQL과 외부 호출 차단 설정 |
-| `env/api.oidc.dev.env` | OIDC 개발 API | 실제 OIDC/RAG 개발 연결용 override |
-| `env/api.prod.env` | 운영 API | 운영 배포 템플릿 |
+| `env/api.server.common.env` | OIDC/prod API 공통 | 서버 origin, OIDC, RAG/RACB 실제 연동 설정 |
+| `env/api.oidc.dev.env` | OIDC 개발 API | 개발 실행·보안 토글과 OIDC 인증서 override |
+| `env/api.prod.env` | 운영 API | 운영 실행·보안 토글과 OIDC 인증서 override 템플릿 |
 | `env/airflow.common.env` | Airflow DAG 공통 | DAG API trigger와 task 실패 callback 설정 |
 | `env/web.common.env` | Web 공통 | 모든 Web 환경에서 공유하는 브라우저 노출 설정 |
 | `env/web.dev.env` | 로컬 Web | local browser/backend URL |
@@ -36,6 +37,8 @@
 ## Env / Compose 관리 원칙
 
 - 공통 기본값은 `*.common.env`에 두고, dev/OIDC/prod 차이는 환경별 env 파일에만 둡니다.
+- OIDC/prod가 공유하는 외부 endpoint와 인증 header는 `api.server.common.env`에 두고, dev/test에서는 읽지 않습니다.
+- 실제 password/token/key/secret은 profile 파일에 저장하지 않고 외부 secret injection에서 교체합니다.
 - `VITE_*` 값은 브라우저 번들에 포함될 수 있으므로 secret을 넣지 않습니다.
 - 운영 Web의 `VITE_*` build arg는 빌드 시점 값입니다. `env_file` 변경만으로 이미 빌드된 정적 번들이 바뀌지 않습니다.
 - 서비스 고유 infra 설정은 `env/minio.env`, `env/grafana.env`처럼 서비스별 env 파일에 둡니다.
@@ -72,26 +75,26 @@
 | --- | --- | --- |
 | `DJANGO_*` / Django runtime | `ENVIRONMENT`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_TIME_ZONE` | API 실행 모드와 기본 Django 설정 |
 | 보안/proxy | `DJANGO_SECURE`, `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `USE_X_FORWARDED_HOST` | HTTPS, cookie, reverse proxy 설정 |
-| `DJANGO_DB_*` / 기본 DB | `DJANGO_DB_ENGINE`, `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST`, `DJANGO_DB_PORT` | Django 기본 PostgreSQL |
+| `DJANGO_DB_*` / 기본 DB | `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST`, `DJANGO_DB_PORT` | Django 기본 PostgreSQL |
 | Dev auto affiliation | `DEV_AUTO_AFFILIATION_ALLOWED`, `DEV_AUTO_AFFILIATION_PREFIX` | 소속 없는 로컬 dev 로그인 사용자의 기본 개발 소속 보장 |
 | Dev auto seed | `DEV_AUTO_SEED`, `DEV_SEED_PREFIX` | 로컬 dev API 기동 시 dummy 사용자 보정과 account 권한 요청을 포함한 prefix 기준 더미 데이터 refresh |
 | Observer 설정 | `OBSERVER_QUERY_DAYS` | Observer 로그 기본 조회 기간 |
-| RACB report URL | `RACB_REPORT_BASE_URL` | RACB 로그 상세 팝업 URL 생성 기준 |
+| RACB report URL | `RACB_REPORT_BASE_URL` | RACB 로그 상세 팝업 URL 생성 기준. 비우면 API가 상세 링크를 제공하지 않음 |
 | `L3_SPIDER_*` / L3 Spider 파일 데이터/메일 | `L3_SPIDER_DATA_ROOT`, `L3_SPIDER_INDEX_SOURCE`, `L3_SPIDER_MOCK_INDEX_PATH`, `L3_SPIDER_MAX_CHART_POINTS_PER_PANEL`, `L3_SPIDER_MAIL_SENDER`, `L3_SPIDER_MAIL_TARGET_URL` | read-only mount된 `daily_anomaly` Parquet 데이터 경로, 인덱스 source, 개발용 SQLite mock 경로, 차트 sampling 제한, 알림 메일 설정 |
 | `FDC_HARD_SPEC_*` / L0 Spider 추천 데이터 | `FDC_HARD_SPEC_DATA_ROOT`, `FDC_HARD_SPEC_PRIORITY_PATH`, `FDC_HARD_SPEC_UNIT_MODEL_PATH`, `FDC_HARD_SPEC_HARD_LIMIT_PATH` | FDC Hard Limit 추천 Parquet 데이터 경로 |
 | `TTTM_SPIDER_*` / TTTM Spider 파일 데이터 | `TTTM_SPIDER_ROOT`, `TTTM_SPIDER_DATA_HOST_PATH` | TTTM Spider 원본/계산 결과/참조 데이터의 host mount와 `/data/tttm_spider` 컨테이너 경로 |
 | `PM_COMPARISON_*` / PM SPIDER 파일 데이터 | `PM_COMPARISON_DATA_ROOT`, `PM_COMPARISON_DATA_HOST_PATH`, `PM_COMPARISON_MAX_FILES`, `PM_COMPARISON_MAX_META_DIRS` | PM SPIDER raw/score Parquet 데이터의 host mount와 컨테이너 내부 경로, scan 제한 |
-| 외부 앱 사용량 API | `EXTERNAL_APP_USAGE_API_URLS`, `EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS` | 앱별 접속현황에서 저장 없이 조회 시점에 합산하는 외부 사용량 API source 목록(JSON)과 timeout |
+| 외부 앱 사용량 API | `EXTERNAL_APP_USAGE_API_URLS`, `EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS` | 앱별 접속현황에서 수동 동기화할 외부 사용량 API source 목록(JSON)과 timeout |
 | `DATA_MOVEMENT_*` / 파일 적재 데이터 | `DATA_MOVEMENT_HOST_PATH`, `DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS`, `DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS`, `DATA_MOVEMENT_M_TKIN_PREVENT_DIR`, `DATA_MOVEMENT_CTTTM_WORKORDER_LIST_DIR`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_DIR`, `DATA_MOVEMENT_EQP_STATUS_CHG_DIR`, `DATA_MOVEMENT_M_INTERLOCK_DIR`, `DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR`, `DATA_MOVEMENT_RACB_LIST_DIR`, `DATA_MOVEMENT_MES_LINE_MAPPING_INFO_DIR`, `DATA_MOVEMENT_STATION_MASTER_DIR` | FTP 등으로 수신한 파일의 host mount와 테이블별 root 경로. 하위 `incoming/processing` 사용. 최근 수정 파일과 stat 값이 변하는 파일은 이번 적재에서 제외 |
 | `FTP_*` / Data Movement FTP | `FTP_USER`, `FTP_PASS`, `FTP_PORT`, `FTP_PASV_ADDRESS`, `FTP_PASV_MIN_PORT`, `FTP_PASV_MAX_PORT` | `data_movement` 업로드용 FTP 계정, 접속 port, passive mode address/port |
 | `OIDC_*` / `ADFS_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `ADFS_CER_PATH`, `ALLOWED_REDIRECT_HOSTS` | ADFS/OIDC 로그인 |
 | Airflow DAG env | `env/airflow.common.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 같은 env 파일에서 `AIRFLOW_FAILURE_ALERT_CHATROOM_TITLE`, `AIRFLOW_FAILURE_ALERT_CHATROOM_ID_FILE`, `AIRFLOW_FAILURE_ALERT_MESSAGE_TTL`, `KNOX_MESSENGER_TIMEOUT_SECONDS`를 override |
-| Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload 옵션. schedule과 HTTP timeout은 env override 없이 DAG 코드에 직접 작성 |
-| Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker |
-| Drone POP3/Jira/Mail/Messenger | `DRONE_*`, `KNOX_MESSENGER_*` | Drone SOP 수집과 채널별 전송 |
-| Assistant/RAG | `ASSISTANT_*`, `RAG_*` | RAG 검색, RAG 문서 등록/삭제, Email 구조화 답변 prompt |
+| Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
+| Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. |
+| Drone POP3/Jira/Mail/Messenger | `DRONE_*`, `KNOX_MESSENGER_*` | Drone SOP 수집과 채널별 전송. 환경변수는 Django 시작 시 settings로 한 번 해석하며 runtime에서 다시 읽지 않음 |
+| 공용 RAG / Assistant | `RAG_SEARCH_URL`, `RAG_INSERT_URL`, `RAG_DELETE_URL`, `RAG_INDEX_INFO_URL`, `RAG_INDEX_DEFAULT`, `RAG_INDEX_EMAILS`, `RAG_INDEX_LIST`, `RAG_PERMISSION_GROUPS`, `RAG_PUBLIC_GROUP`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR`, `RAG_TIMEOUT_SECONDS`, `RAG_NUM_DOCS`, `ASSISTANT_*` | Emails와 Assistant가 공용 `RAG_*` provider 계약을 사용하고, Assistant 자체 prompt/runtime만 `ASSISTANT_*`를 사용 |
 | OpenWebUI | `OPENWEBUI_*` | 일반 Assistant·Email RAG 답변, 대화방 제목, Observer 분석, `ct_process_comment` contents 요약 생성 |
-| `MAIL_API_*` / Mail API | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID` | 외부 Mail API 전송 |
+| `MAIL_API_*` / Mail API | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID` | 외부 Mail API 전송. 환경변수는 Django 시작 시 settings로 한 번 해석 |
 | MinIO | `MINIO_*` | 메일 asset storage |
 | `VITE_*` / Web | `VITE_BACKEND_URL`, `BACKEND_API_URL`, `VITE_AIRFLOW_BASE_URL`, `VITE_SITE_URL` | 브라우저와 container 내부 API URL |
 | `VITE_PORTAL_*` / Web | `VITE_PORTAL_PMX_URL`, `VITE_PORTAL_MOSAIC_URL`, `VITE_PORTAL_CONFLUENCE_URL` | Portal 전역 네비게이션 외부 링크. 비어 있으면 메뉴 또는 화면에서 숨김/안내 |
@@ -99,6 +102,8 @@
 | Account UI fixture / Web | `VITE_ACCOUNT_DEV_FIXTURES` | 로컬 계정 화면 예시 데이터. 명시적으로 `1`일 때만 활성화 |
 | Monitoring | `PROMETHEUS_RETENTION_TIME`, `GF_SECURITY_ADMIN_USER`, `GF_SECURITY_ADMIN_PASSWORD`, `GF_SERVER_ROOT_URL`, `GF_SERVER_SERVE_FROM_SUB_PATH` | Prometheus 보관 기간, Grafana 관리자 계정, nginx subpath 프록시 설정 |
 | TTTM Spider | `TTTM_SPIDER_UPSTREAM` | nginx `/tttm-spider/` HTTPS 프록시가 전달할 내부 TTTM Spider host:port |
+
+비-Spider Django 설정의 bool 값은 `1/0`, `true/false`, `yes/no`, `on/off`만 허용합니다. int 값은 정수여야 합니다. `EXTERNAL_APP_USAGE_API_URLS`와 `RAG_PERMISSION_GROUPS`는 JSON 배열, `OPENWEBUI_COMMON_HEADERS`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR`는 JSON 객체여야 합니다. 형식이 잘못되면 Django가 default로 대체하지 않고 시작 단계에서 실패합니다. DB 연결은 `DJANGO_DB_*`, OIDC client·issuer·redirect는 `OIDC_*` canonical 키만 사용합니다. 구형 `DB_*`, `ADFS_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `ADFS_ISSUER`, `ADFS_REDIRECT_URI` 별칭은 지원하지 않습니다. 외부 공개 API prefix는 `PUBLIC_API_BASE_URL`만 사용하며 `DJANGO_PUBLIC_API_BASE_URL`은 지원하지 않습니다.
 
 ### Web 공통 환경 변수
 
@@ -130,6 +135,8 @@
 - 예: `[{"sourceName":"m-etch-dx","url":"https://example.test/get/usage"},{"sourceName":"other-system","url":"https://other.example.test/get/usage"}]`
 - 각 응답 row는 `date`, `appName`, `accessCount`를 사용하며, `appName`은 앞뒤 공백 제거 후 대문자로 정규화되어 앱 키와 표시명에 사용됩니다.
 - `EXTERNAL_APP_USAGE_API_URLS=[]`이면 외부 API 조회를 비활성화합니다.
+- 동기화 요청은 최근 365일을 적재하며 일반 사용자는 마지막 시도 후 6시간 동안 다시 실행할 수 없습니다. `access-stats` 관리자 역할은 이 제한을 우회할 수 있습니다.
+- 각 source의 `appId`, 날짜, `sourceName` 조합을 갱신하므로 재시도해도 중복 row를 만들지 않습니다.
 
 ### L3 Spider 메일 링크 배포 체크
 
@@ -169,7 +176,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx를 함께 띄웁니다.
 2. API는 `env/api.common.env`와 `env/api.dev.env`를 사용합니다.
 3. Web은 `env/web.dev.env`를 사용합니다.
-4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다.
+4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다. Dummy OIDC discovery가 공개한 authorize/token/userinfo URL은 실제 endpoint와 같은 host·port를 사용합니다.
 5. `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 `DEV_AUTO_AFFILIATION_PREFIX` 기반 기본 소속을 부여해 소속 선택 없이 다른 앱을 테스트할 수 있습니다.
 6. `DUMMY_ADFS_*` 기준 dummy 사용자는 migrate와 dev seed refresh에서 staff 슈퍼유저로 보정됩니다.
 7. `DEV_AUTO_SEED=1`이면 API migrate 이후 `seed_dev_data --reset`을 실행해 `DEV_SEED_PREFIX` 기준 더미 데이터를 refresh합니다. 내부 command는 `ENVIRONMENT=development`에서만 실행됩니다.
@@ -177,7 +184,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 ## 운영/실제 연동 흐름
 
-1. `env/api.prod.env` 또는 `env/api.oidc.dev.env`에서 실제 OIDC/RAG/Mail/Jira endpoint를 지정합니다.
+1. `env/api.server.common.env`에서 OIDC/prod 공통 origin과 OIDC/RAG/RACB endpoint를 지정하고, 각 profile에는 실행·보안 차이만 둡니다.
 2. `DJANGO_SECURE`, cookie secure, CSRF trusted origin, allowed host를 배포 도메인에 맞춥니다.
 3. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
 4. 민감 값은 배포 secret manager나 별도 env injection으로 주입하고 문서/커밋에 반복 기재하지 않습니다.

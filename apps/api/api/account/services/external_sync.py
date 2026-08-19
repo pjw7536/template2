@@ -98,8 +98,8 @@ def sync_external_affiliations(
     for record in normalized_records.values():
         knox_id = (record.get("knox_id") or "").strip()
         department = (record.get("department") or "").strip()
-        predicted = (record.get("user_sdwt_prod") or record.get("predicted_user_sdwt_prod") or "").strip()
-        source_updated_at = record.get("source_updated_at") or record.get("sourceUpdatedAt") or now
+        predicted = (record.get("user_sdwt_prod") or "").strip()
+        source_updated_at = record.get("source_updated_at") or now
         if not knox_id or not predicted or not department:
             continue
         if isinstance(source_updated_at, datetime) and timezone.is_naive(source_updated_at):

@@ -1,2 +1,5 @@
 export { AppAccessTracker } from "./AppAccessTracker"
-export { resolveAppAccessTarget } from "./appAccessCatalog"
+export {
+  getAppAccessDefinition,
+  resolveAppAccessTarget,
+} from "./appAccessCatalog"

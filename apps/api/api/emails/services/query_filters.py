@@ -131,9 +131,9 @@ def parse_mailbox_user_sdwt_prod(params: Mapping[str, Any]) -> str:
     """
 
     # -----------------------------------------------------------------------------
-    # 1) snake_case/camelCase 키 모두 허용
+    # 1) canonical camelCase 키만 허용
     # -----------------------------------------------------------------------------
-    raw = params.get("user_sdwt_prod") or params.get("userSdwtProd") or ""
+    raw = params.get("userSdwtProd") or ""
     return raw.strip() if isinstance(raw, str) else ""
 
 
@@ -162,8 +162,8 @@ def build_email_filters(
         "search": (params.get("q") or "").strip(),
         "sender": (params.get("sender") or "").strip(),
         "recipient": (params.get("recipient") or "").strip(),
-        "date_from": parse_datetime_value(params.get("date_from"), boundary="start"),
-        "date_to": parse_datetime_value(params.get("date_to"), boundary="end"),
+        "date_from": parse_datetime_value(params.get("dateFrom"), boundary="start"),
+        "date_to": parse_datetime_value(params.get("dateTo"), boundary="end"),
         "page": parse_int(params.get("page"), 1),
-        "page_size": min(parse_int(params.get("page_size"), default_page_size), max_page_size),
+        "page_size": min(parse_int(params.get("pageSize"), default_page_size), max_page_size),
     }

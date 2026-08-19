@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
-  APP_CATEGORIES,
   RICH_TEXT_EDITOR_FORMATS,
   RICH_TEXT_EDITOR_MODULES,
 } from "../utils/constants"
@@ -44,24 +43,6 @@ export function VocCreateDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground" htmlFor="voc-app">
-              앱 카테고리
-            </label>
-            <select
-              id="voc-app"
-              value={form.app}
-              onChange={(event) => updateForm("app", event.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
-              required
-            >
-              {APP_CATEGORIES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground" htmlFor="voc-title">
               제목

@@ -21,6 +21,8 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from django.conf import settings
 
+from .external_http import ExternalHttpError, request_external
+
 _DEFAULT_TIMEOUT_SECONDS = 10
 _DEFAULT_MESSAGE_TTL = 7200
 _DEVICE_TYPE = "relation"
@@ -40,12 +42,11 @@ class KnoxMessengerConfig:
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS
 
     @classmethod
-    def from_env(cls) -> "KnoxMessengerConfig":
-        """환경에서 Knox 설정을 읽어옵니다."""
+    def from_settings(cls) -> "KnoxMessengerConfig":
+        """Django settings에서 Knox 설정을 읽어옵니다."""
 
         timeout_raw = (
             getattr(settings, "KNOX_MESSENGER_TIMEOUT_SECONDS", "")
-            or os.getenv("KNOX_MESSENGER_TIMEOUT_SECONDS")
             or _DEFAULT_TIMEOUT_SECONDS
         )
         try:
@@ -55,19 +56,13 @@ class KnoxMessengerConfig:
 
         return cls(
             base_url=str(
-                getattr(settings, "KNOX_MESSENGER_API_BASE_URL", "")
-                or os.getenv("KNOX_MESSENGER_API_BASE_URL")
-                or ""
+                getattr(settings, "KNOX_MESSENGER_API_BASE_URL", "") or ""
             ).strip(),
             authorization=str(
-                getattr(settings, "KNOX_MESSENGER_AUTHORIZATION", "")
-                or os.getenv("KNOX_MESSENGER_AUTHORIZATION")
-                or ""
+                getattr(settings, "KNOX_MESSENGER_AUTHORIZATION", "") or ""
             ).strip(),
             system_id=str(
-                getattr(settings, "KNOX_MESSENGER_SYSTEM_ID", "")
-                or os.getenv("KNOX_MESSENGER_SYSTEM_ID")
-                or ""
+                getattr(settings, "KNOX_MESSENGER_SYSTEM_ID", "") or ""
             ).strip(),
             timeout_seconds=timeout_seconds,
         )
@@ -143,14 +138,17 @@ def _get_knox(
 ) -> requests.Response:
     """Knox GET 요청 공통 옵션(timeout/verify/header)을 적용합니다."""
 
-    response = requests.get(
-        _build_url(config.base_url, path),
-        headers=headers,
-        verify=False,
-        timeout=config.timeout_seconds,
-    )
-    response.raise_for_status()
-    return response
+    try:
+        return request_external(
+            requests.get,
+            _build_url(config.base_url, path),
+            headers=headers,
+            verify=False,
+            timeout=config.timeout_seconds,
+            raise_for_status=True,
+        )
+    except ExternalHttpError as exc:
+        raise KnoxMessengerError("Knox 메신저 요청에 실패했습니다.") from exc
 
 
 def _post_knox_json(
@@ -161,15 +159,18 @@ def _post_knox_json(
 ) -> requests.Response:
     """Knox JSON POST 요청 공통 옵션(timeout/verify/header)을 적용합니다."""
 
-    response = requests.post(
-        _build_url(config.base_url, path),
-        headers=headers,
-        data=json.dumps(payload),
-        verify=False,
-        timeout=config.timeout_seconds,
-    )
-    response.raise_for_status()
-    return response
+    try:
+        return request_external(
+            requests.post,
+            _build_url(config.base_url, path),
+            headers=headers,
+            data=json.dumps(payload),
+            verify=False,
+            timeout=config.timeout_seconds,
+            raise_for_status=True,
+        )
+    except ExternalHttpError as exc:
+        raise KnoxMessengerError("Knox 메신저 요청에 실패했습니다.") from exc
 
 
 def _register_device(config: KnoxMessengerConfig) -> dict[str, str]:
@@ -207,15 +208,18 @@ def _prepare_knox_context(config: KnoxMessengerConfig) -> _KnoxContext:
 def _post_encrypted(context: _KnoxContext, path: str, payload: dict[str, Any]) -> requests.Response:
     body = knox_encrypt(context.key, context.iv, json.dumps(payload)).decode("utf-8")
 
-    response = requests.post(
-        f"{context.base_url}{path.lstrip('/')}",
-        headers=context.headers,
-        data=body,
-        verify=False,
-        timeout=context.timeout_seconds,
-    )
-    response.raise_for_status()
-    return response
+    try:
+        return request_external(
+            requests.post,
+            f"{context.base_url}{path.lstrip('/')}",
+            headers=context.headers,
+            data=body,
+            verify=False,
+            timeout=context.timeout_seconds,
+            raise_for_status=True,
+        )
+    except ExternalHttpError as exc:
+        raise KnoxMessengerError("Knox 메신저 요청에 실패했습니다.") from exc
 
 
 def create_request_parameters(target_ids: Iterable[str]) -> dict[str, list[dict[str, str]]]:
@@ -231,7 +235,7 @@ def search_user_ids_by_single_ids(
 ) -> list[dict[str, Any]]:
     """singleId 목록으로 Knox userID 검색 결과를 조회합니다."""
 
-    resolved = config or KnoxMessengerConfig.from_env()
+    resolved = config or KnoxMessengerConfig.from_settings()
     headers = _register_device(resolved)
 
     payload = create_request_parameters(single_ids)
@@ -276,7 +280,7 @@ def create_chatroom(
 ) -> int:
     """Knox 메신저 채팅방을 생성합니다."""
 
-    resolved = config or KnoxMessengerConfig.from_env()
+    resolved = config or KnoxMessengerConfig.from_settings()
     context = _prepare_knox_context(resolved)
 
     payload = {
@@ -300,7 +304,7 @@ def send_chat_message(
 ) -> None:
     """Knox 메신저 채팅 메시지를 전송합니다."""
 
-    resolved = config or KnoxMessengerConfig.from_env()
+    resolved = config or KnoxMessengerConfig.from_settings()
     context = _prepare_knox_context(resolved)
 
     now_ms = int(time.time() * 1000)
@@ -328,7 +332,7 @@ def change_chatroom_title(
 ) -> None:
     """채팅룸 제목을 변경합니다."""
 
-    resolved = config or KnoxMessengerConfig.from_env()
+    resolved = config or KnoxMessengerConfig.from_settings()
     context = _prepare_knox_context(resolved)
     payload = {
         "requestId": int(time.time() * 1000),
@@ -369,7 +373,7 @@ def send_excel_table_message_from_file(
 ) -> None:
     """msgType=7(Table/Excel) 메시지를 HTML 파일로 전송합니다."""
 
-    resolved = config or KnoxMessengerConfig.from_env()
+    resolved = config or KnoxMessengerConfig.from_settings()
     context = _prepare_knox_context(resolved)
 
     html = _read_text_file(html_path, encoding=encoding).strip()

@@ -288,7 +288,7 @@ def _run_pop3_mode_ingest(
             pass
 
 
-def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
+def run_drone_sop_pop3_ingest_from_settings() -> DroneSopPop3IngestResult:
     """Drone SOP POP3 수집을 실행합니다.
 
     반환:
@@ -335,6 +335,6 @@ def run_drone_sop_pop3_ingest_from_env() -> DroneSopPop3IngestResult:
 
 __all__ = [
     "build_drone_sop_row",
-    "run_drone_sop_pop3_ingest_from_env",
+    "run_drone_sop_pop3_ingest_from_settings",
     "upsert_drone_sop_rows",
 ]

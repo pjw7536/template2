@@ -43,7 +43,7 @@ export default function MembersPage() {
   const [revokeTarget, setRevokeTarget] = useState(null)
   const [revokeReason, setRevokeReason] = useState("")
   const [selectedUserSdwtProd, setSelectedUserSdwtProd] = useState("")
-  const currentUserSdwtProd = (user?.user_sdwt_prod || "").trim()
+  const currentUserSdwtProd = (user?.userSdwtProd || "").trim()
   const { data: affiliationData } = useAffiliation()
   const manageableUserSdwtProds = Array.isArray(affiliationData?.manageableUserSdwtProds)
     ? affiliationData.manageableUserSdwtProds

@@ -1,6 +1,6 @@
 export function getScopeAccess(user, scopeKey) {
-  if (!scopeKey || !user?.scope_access || typeof user.scope_access !== "object") return null
-  const access = user.scope_access[scopeKey]
+  if (!scopeKey || !user?.scopeAccess || typeof user.scopeAccess !== "object") return null
+  const access = user.scopeAccess[scopeKey]
   return access && typeof access === "object" ? access : null
 }
 

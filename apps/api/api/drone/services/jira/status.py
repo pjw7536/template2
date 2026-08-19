@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈: Drone SOP Jira 상태 반영
-# 주요 기능: Jira 성공 delivery metadata와 legacy status update 호환 처리
+# 주요 기능: Jira 성공 delivery metadata와 normalized status update 처리
 # 주요 가정: Jira API 호출 결과는 delivery id/key 매핑으로 전달됩니다.
 # =============================================================================
 """Drone SOP Jira 상태 반영 헬퍼 모듈입니다."""

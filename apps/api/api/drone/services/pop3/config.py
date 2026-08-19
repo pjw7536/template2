@@ -1,19 +1,18 @@
 # =============================================================================
 # 모듈: Drone SOP POP3 설정/룰
 # 주요 기능: NeedToSendRule, DroneSopPop3Config, DroneSopPop3IngestResult
-# 주요 가정: 설정은 settings/env에서 주입됩니다.
+# 주요 가정: 환경변수는 Django settings에서 한 번만 해석됩니다.
 # =============================================================================
 """Drone SOP POP3 설정 및 규칙 모음."""
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
 
-from ..shared.utils import _first_defined, _parse_bool, _parse_int
+from ..shared.utils import _parse_bool, _parse_int
 
 def _as_int_bool(value: Any) -> int:
     """불리언 값을 0/1 정수로 변환합니다.
@@ -138,13 +137,13 @@ class DroneSopPop3Config:
 
     @classmethod
     def from_settings(cls) -> "DroneSopPop3Config":
-        """settings/env에서 POP3 수집 설정을 로드합니다.
+        """Django settings에서 POP3 수집 설정을 로드합니다.
 
         반환:
             DroneSopPop3Config 인스턴스.
 
         부작용:
-            settings/env 값을 조회합니다.
+            settings 값을 조회합니다.
         """
 
         # ---------------------------------------------------------------------
@@ -156,40 +155,19 @@ class DroneSopPop3Config:
         password = (getattr(settings, "DRONE_SOP_POP3_PASSWORD", "") or "").strip()
         use_ssl = _parse_bool(getattr(settings, "DRONE_SOP_POP3_USE_SSL", None), True)
         timeout = _parse_int(getattr(settings, "DRONE_SOP_POP3_TIMEOUT", None), 60)
-        include_subjects_raw = os.getenv("DRONE_SOP_POP3_SUBJECT")
+        include_subjects_raw = getattr(settings, "DRONE_SOP_POP3_SUBJECT", "")
         include_subjects = _load_include_subjects(include_subjects_raw)
         # ---------------------------------------------------------------------
         # 2) 더미 모드 설정 로드
         # ---------------------------------------------------------------------
-        dummy_mode = _parse_bool(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_DUMMY_MODE", None),
-                os.getenv("DRONE_SOP_DUMMY_MODE"),
-            ),
-            False,
-        )
-        dummy_mail_messages_url = (
-            getattr(settings, "DRONE_SOP_DUMMY_MAIL_MESSAGES_URL", "")
-            or os.getenv("DRONE_SOP_DUMMY_MAIL_MESSAGES_URL")
-            or ""
+        dummy_mode = _parse_bool(getattr(settings, "DRONE_SOP_DUMMY_MODE", None), False)
+        dummy_mail_messages_url = str(
+            getattr(settings, "DRONE_SOP_DUMMY_MAIL_MESSAGES_URL", "") or ""
         ).strip()
-        defectmap_url = (
-            getattr(settings, "DRONE_SOP_DEFECTMAP_URL", "")
-            or os.getenv("DRONE_SOP_DEFECTMAP_URL")
-            or ""
-        ).strip()
-        retention_days = _parse_int(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_RETENTION_DAYS", None),
-                os.getenv("DRONE_SOP_RETENTION_DAYS"),
-            ),
-            180,
-        ) or 180
+        defectmap_url = str(getattr(settings, "DRONE_SOP_DEFECTMAP_URL", "") or "").strip()
+        retention_days = _parse_int(getattr(settings, "DRONE_SOP_RETENTION_DAYS", None), 180) or 180
         prune_batch_size = _parse_int(
-            _first_defined(
-                getattr(settings, "DRONE_SOP_PRUNE_BATCH_SIZE", None),
-                os.getenv("DRONE_SOP_PRUNE_BATCH_SIZE"),
-            ),
+            getattr(settings, "DRONE_SOP_PRUNE_BATCH_SIZE", None),
             1000,
         ) or 1000
 

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 
 function optionKey(opt) {
-  return `${opt.department}||${opt.line}||${opt.user_sdwt_prod}`
+  return `${opt.department}||${opt.line}||${opt.userSdwtProd}`
 }
 
 const EMPTY_OPTIONS = []
@@ -28,7 +28,7 @@ export function AffiliationCard({
     if (selectedKey || !options.length) return
     const current = options.find(
       (opt) =>
-        opt.user_sdwt_prod === data?.currentUserSdwtProd &&
+        opt.userSdwtProd === data?.currentUserSdwtProd &&
         opt.department === data?.currentDepartment &&
         opt.line === data?.currentLine,
     )
@@ -39,10 +39,10 @@ export function AffiliationCard({
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const target = selected || options.find((opt) => opt.user_sdwt_prod === data?.currentUserSdwtProd)
+    const target = selected || options.find((opt) => opt.userSdwtProd === data?.currentUserSdwtProd)
     if (!target) return
     const payload = {
-      userSdwtProd: target.user_sdwt_prod,
+      userSdwtProd: target.userSdwtProd,
     }
     onSubmit(payload, () => {
       setSelectedKey("")
@@ -97,7 +97,7 @@ export function AffiliationCard({
                 </option>
                 {options.map((opt) => (
                   <option key={optionKey(opt)} value={optionKey(opt)}>
-                    {opt.department} / {opt.line} / {opt.user_sdwt_prod}
+                    {opt.department} / {opt.line} / {opt.userSdwtProd}
                   </option>
                 ))}
               </select>

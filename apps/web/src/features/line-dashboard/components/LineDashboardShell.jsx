@@ -49,7 +49,7 @@ function LineDashboardShellContent({ contentMaxWidthClass, scrollAreaClassName }
     error,
   } = useLineOptionsQuery({
     preferredUserSdwtProd:
-      typeof user?.user_sdwt_prod === "string" ? user.user_sdwt_prod.trim() : "",
+      typeof user?.userSdwtProd === "string" ? user.userSdwtProd.trim() : "",
   })
 
   useEffect(() => {

@@ -21,7 +21,6 @@ export function VocBoardPage() {
   const {
     statusCounts,
     statusFilter,
-    appFilter,
     isMyPostsOnly,
     filteredPosts,
     visiblePosts,
@@ -64,8 +63,6 @@ export function VocBoardPage() {
     (sum, count) => sum + (Number.isFinite(count) ? count : 0),
     0,
   )
-  const appFilterLabel = appFilter || "전체"
-
   const clearStatusFilter = React.useCallback(() => {
     if (statusFilter) {
       toggleStatusFilter(statusFilter)
@@ -77,9 +74,7 @@ export function VocBoardPage() {
     handleCreatePost,
     isSubmitDisabled,
   } = useVocCreateDialogState({
-    appFilter,
     form,
-    updateForm,
     setIsCreateOpen,
     createPost,
     isSubmitting,
@@ -123,9 +118,6 @@ export function VocBoardPage() {
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="rounded-full bg-muted px-2 py-1 text-foreground shadow-xs">
                 총 {totalPosts}건의 문의
-              </span>
-              <span className="rounded-full bg-muted px-2 py-1 text-foreground shadow-xs">
-                앱 {appFilterLabel}
               </span>
               {isRefreshing ? (
                 <span className="inline-flex items-center gap-1 text-primary">

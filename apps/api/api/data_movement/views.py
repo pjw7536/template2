@@ -3,41 +3,22 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict, is_dataclass
-from typing import Any, Callable
+from typing import Any
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 
-from api.common.services import ensure_airflow_token, parse_json_body_or_error_when_present
-from api.data_movement.ct_process_comment.services import load_ct_process_comment_files, summarize_pending_ct_process_comments
-from api.data_movement.ctttm_workorder_list.services import load_ctttm_workorder_list_files
-from api.data_movement.eqp_status_chg.services import load_eqp_status_chg_files
-from api.data_movement.m_interlock.services import load_m_interlock_files
-from api.data_movement.mes_line_mapping_info.services import load_mes_line_mapping_info_files
-from api.data_movement.mi_tip_update_hist.services import load_mi_tip_update_hist_files
-from api.data_movement.m_tkin_prevent.services import load_m_tkin_prevent_files
-from api.data_movement.racb_list.services import load_racb_list_files
-from api.data_movement.station_master.services import load_station_master_files
+from api.common.services import api_error_response, ensure_airflow_token, parse_json_body_or_error_when_present
+from api.data_movement.common.registry import get_data_movement_loader
+from api.data_movement.ct_process_comment.services import summarize_pending_ct_process_comments
 
 logger = logging.getLogger(__name__)
 
-LoadFunction = Callable[..., Any]
-
-
-DATA_MOVEMENT_LOADERS: dict[str, LoadFunction] = {
-    "m_tkin_prevent": load_m_tkin_prevent_files,
-    "ctttm_workorder_list": load_ctttm_workorder_list_files,
-    "ct_process_comment": load_ct_process_comment_files,
-    "eqp_status_chg": load_eqp_status_chg_files,
-    "m_interlock": load_m_interlock_files,
-    "mi_tip_update_hist": load_mi_tip_update_hist_files,
-    "racb_list": load_racb_list_files,
-    "mes_line_mapping_info": load_mes_line_mapping_info_files,
-    "station_master": load_station_master_files,
-}
+_ALLOWED_TRIGGER_FIELDS = frozenset({"limit", "dryRun"})
 
 
 def _parse_optional_positive_int(*, body_value: Any, query_value: Any, field_name: str) -> int | None:
@@ -75,7 +56,27 @@ def _serialize_outcome(outcome: Any) -> dict[str, Any]:
     """loader outcome을 JSON 응답용 dict로 변환합니다."""
 
     raw = asdict(outcome) if is_dataclass(outcome) else dict(outcome)
-    return {key: value for key, value in raw.items() if value is not None}
+    return {_to_camel_case(key): value for key, value in raw.items() if value is not None}
+
+
+def _to_camel_case(value: str) -> str:
+    """snake_case 내부 필드명을 API camelCase 필드명으로 변환합니다."""
+
+    return re.sub(r"_([a-z])", lambda match: match.group(1).upper(), value)
+
+
+def _validate_trigger_fields(*, payload: dict[str, Any], request: HttpRequest) -> JsonResponse | None:
+    """trigger body/query가 canonical 필드만 포함하는지 검증합니다."""
+
+    unknown_fields = sorted((set(payload) | set(request.GET)) - _ALLOWED_TRIGGER_FIELDS)
+    if not unknown_fields:
+        return None
+    return api_error_response(
+        code="invalid_request",
+        message="지원하지 않는 요청 필드가 있습니다.",
+        status=400,
+        field_errors={field: ["지원하지 않는 필드입니다."] for field in unknown_fields},
+    )
 
 
 def _serialize_summary(*, table_name: str, summary: Any) -> dict[str, Any]:
@@ -83,18 +84,18 @@ def _serialize_summary(*, table_name: str, summary: Any) -> dict[str, Any]:
 
     outcomes = [_serialize_outcome(outcome) for outcome in summary.outcomes]
     payload = {
-        "table_name": table_name,
-        "processed_count": summary.processed_count,
-        "success_count": summary.success_count,
-        "failure_count": summary.failure_count,
+        "tableName": table_name,
+        "processedCount": summary.processed_count,
+        "successCount": summary.success_count,
+        "failureCount": summary.failure_count,
         "outcomes": outcomes,
     }
     if hasattr(summary, "skipped_count"):
-        payload["skipped_count"] = summary.skipped_count
+        payload["skippedCount"] = summary.skipped_count
     if hasattr(summary, "dry_run_count"):
-        payload["dry_run_count"] = summary.dry_run_count
+        payload["dryRunCount"] = summary.dry_run_count
     if hasattr(summary, "exhausted_count"):
-        payload["exhausted_count"] = summary.exhausted_count
+        payload["exhaustedCount"] = summary.exhausted_count
     return payload
 
 
@@ -111,13 +112,20 @@ class DataMovementLoadTriggerView(APIView):
         if auth_response is not None:
             return auth_response
 
-        loader = DATA_MOVEMENT_LOADERS.get(table_name)
+        loader = get_data_movement_loader(table_name)
         if loader is None:
-            return JsonResponse({"error": f"지원하지 않는 data_movement 테이블입니다: {table_name}"}, status=404)
+            return api_error_response(
+                code="not_found",
+                message=f"지원하지 않는 data_movement 테이블입니다: {table_name}",
+                status=404,
+            )
 
         payload, payload_error = parse_json_body_or_error_when_present(request)
         if payload_error is not None:
             return payload_error
+        validation_error = _validate_trigger_fields(payload=payload, request=request)
+        if validation_error is not None:
+            return validation_error
 
         try:
             limit = _parse_optional_positive_int(
@@ -126,16 +134,20 @@ class DataMovementLoadTriggerView(APIView):
                 field_name="limit",
             )
             dry_run = _parse_optional_bool(
-                body_value=payload.get("dry_run"),
-                query_value=request.GET.get("dry_run"),
-                field_name="dry_run",
+                body_value=payload.get("dryRun"),
+                query_value=request.GET.get("dryRun"),
+                field_name="dryRun",
             )
             summary = loader(dry_run=dry_run, limit=limit)
         except ValueError as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
+            return api_error_response(code="invalid_request", message=str(exc), status=400)
         except Exception:
             logger.exception("Failed to trigger data_movement load: %s", table_name)
-            return JsonResponse({"error": "data_movement 파일 적재에 실패했습니다."}, status=500)
+            return api_error_response(
+                code="internal_error",
+                message="data_movement 파일 적재에 실패했습니다.",
+                status=500,
+            )
 
         response_payload = _serialize_summary(table_name=table_name, summary=summary)
         status_code = 500 if summary.failure_count else 200
@@ -158,6 +170,9 @@ class DataMovementCtProcessCommentSummaryTriggerView(APIView):
         payload, payload_error = parse_json_body_or_error_when_present(request)
         if payload_error is not None:
             return payload_error
+        validation_error = _validate_trigger_fields(payload=payload, request=request)
+        if validation_error is not None:
+            return validation_error
 
         try:
             limit = _parse_optional_positive_int(
@@ -166,16 +181,20 @@ class DataMovementCtProcessCommentSummaryTriggerView(APIView):
                 field_name="limit",
             )
             dry_run = _parse_optional_bool(
-                body_value=payload.get("dry_run"),
-                query_value=request.GET.get("dry_run"),
-                field_name="dry_run",
+                body_value=payload.get("dryRun"),
+                query_value=request.GET.get("dryRun"),
+                field_name="dryRun",
             )
             summary = summarize_pending_ct_process_comments(dry_run=dry_run, limit=limit)
         except ValueError as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
+            return api_error_response(code="invalid_request", message=str(exc), status=400)
         except Exception:
             logger.exception("Failed to trigger ct_process_comment summary")
-            return JsonResponse({"error": "ct_process_comment 요약에 실패했습니다."}, status=500)
+            return api_error_response(
+                code="internal_error",
+                message="ct_process_comment 요약에 실패했습니다.",
+                status=500,
+            )
 
         response_payload = _serialize_summary(table_name="ct_process_comment", summary=summary)
         status_code = 500 if summary.all_failed else 200

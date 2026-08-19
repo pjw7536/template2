@@ -85,6 +85,7 @@ from .bootstrap import (
     set_user_scope_access,
 )
 from .users import get_user_by_knox_id
+from .identity import upsert_user_identity
 
 __all__ = [
     "AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN",
@@ -135,6 +136,7 @@ __all__ = [
     "has_affiliation_capability",
     "has_affiliation_capability_for_ids",
     "get_user_by_knox_id",
+    "upsert_user_identity",
     "get_user_scope_affiliation_data",
     "grant_or_revoke_access",
     "reject_affiliation_change",

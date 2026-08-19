@@ -175,13 +175,18 @@ def retrieve_documents(
         if normalized_permission_groups:
             search_kwargs["permission_groups"] = normalized_permission_groups
         if cancellation is not None:
-            data = rag_services.search_rag(
+            data = rag_services.rag_adapter.search(
                 question,
+                index_names=search_kwargs.pop("index_name"),
                 **search_kwargs,
                 cancellation=cancellation,
             )
         else:
-            data = rag_services.search_rag(question, **search_kwargs)
+            data = rag_services.rag_adapter.search(
+                question,
+                index_names=search_kwargs.pop("index_name"),
+                **search_kwargs,
+            )
     except ExternalCallCancelled:
         raise
     except requests.HTTPError as exc:

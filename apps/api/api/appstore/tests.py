@@ -216,6 +216,43 @@ class AppstoreScreenshotTests(TestCase):
         self.assertEqual(updated.screenshot_mime_type, "")
         self.assertEqual(updated.screenshot_gallery, [])
 
+    def test_update_app_preserves_cover_fields_when_database_save_fails(self) -> None:
+        """커버 필드 저장 실패 시 기존 DB 값을 보존해야 합니다."""
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            sabun="S99998",
+            password="test-password",
+            knox_id="knox-99998",
+        )
+        app = create_app(
+            owner=user,
+            name="Rollback App",
+            category="Tools",
+            description="",
+            url="https://example.com",
+            screenshot_url="https://example.com/old.png",
+            contact_name="홍길동",
+            contact_knoxid="hong",
+        )
+
+        with patch.object(app, "save", side_effect=RuntimeError("save failed")):
+            with self.assertRaises(RuntimeError):
+                update_app(
+                    app=app,
+                    updates={
+                        "screenshot_urls": [
+                            "data:image/png;base64,QUJD",
+                            "https://example.com/gallery.png",
+                        ]
+                    },
+                )
+
+        app.refresh_from_db()
+        self.assertEqual(app.screenshot_url, "https://example.com/old.png")
+        self.assertEqual(app.screenshot_base64, "")
+        self.assertEqual(app.screenshot_gallery, [])
+
     def test_detail_payload_includes_screenshot_url(self) -> None:
         """상세 응답에 screenshotUrl/Urls와 manualUrl이 포함되는지 확인합니다."""
         # -----------------------------------------------------------------------------
@@ -799,6 +836,55 @@ class AppstoreEndpointTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         self.assertEqual(create_response.json()["app"]["displayOrder"], 2)
 
+    def test_appstore_endpoints_reject_removed_snake_case_aliases(self) -> None:
+        """AppStore JSON body는 제거된 snake_case 별칭을 거절해야 합니다."""
+
+        create_response = self.client.post(
+            reverse("appstore-apps"),
+            data={
+                "name": "Legacy",
+                "category": "Tools",
+                "url": "https://legacy.example",
+                "manual_url": "https://legacy.example/manual",
+            },
+            content_type="application/json",
+        )
+        update_response = self.client.patch(
+            reverse("appstore-app-detail", kwargs={"app_id": self.app.pk}),
+            data={"screenshot_url": "https://legacy.example/cover.png"},
+            content_type="application/json",
+        )
+        with patch(
+            "api.appstore.views.order.resolve_appstore_admin",
+            return_value=True,
+        ):
+            order_response = self.client.put(
+                reverse("appstore-app-order"),
+                data={
+                    "app_ids": [self.app.pk],
+                    "order_version": build_app_order_version([self.app.pk]),
+                },
+                content_type="application/json",
+            )
+        comment_response = self.client.post(
+            reverse("appstore-app-comments", kwargs={"app_id": self.app.pk}),
+            data={"content": "legacy", "parent_comment_id": 1},
+            content_type="application/json",
+        )
+
+        for response, expected_fields in (
+            (create_response, ["manual_url"]),
+            (update_response, ["screenshot_url"]),
+            (order_response, ["app_ids", "order_version"]),
+            (comment_response, ["parent_comment_id"]),
+        ):
+            with self.subTest(expected_fields=expected_fields):
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json()["fieldErrors"]["unexpectedFields"],
+                    expected_fields,
+                )
+
     def test_appstore_list_resolves_admin_role_once_per_request(self) -> None:
         """앱 개수와 관계없이 AppStore admin 판정은 요청당 한 번만 수행해야 합니다."""
 
@@ -934,7 +1020,7 @@ class AppstoreEndpointTests(TestCase):
     def test_appstore_order_endpoint_rejects_duplicate_ids(self) -> None:
         """순서 요청에 중복 앱 ID가 있으면 400을 반환하는지 검증합니다."""
 
-        with patch("api.appstore.views._resolve_appstore_admin", return_value=True):
+        with patch("api.appstore.views.order.resolve_appstore_admin", return_value=True):
             response = self.client.put(
                 reverse("appstore-app-order"),
                 data={
@@ -949,7 +1035,7 @@ class AppstoreEndpointTests(TestCase):
     def test_appstore_order_endpoint_returns_conflict_for_stale_version(self) -> None:
         """이전 순서 버전으로 저장하면 409를 반환하는지 검증합니다."""
 
-        with patch("api.appstore.views._resolve_appstore_admin", return_value=True):
+        with patch("api.appstore.views.order.resolve_appstore_admin", return_value=True):
             response = self.client.put(
                 reverse("appstore-app-order"),
                 data={
@@ -961,8 +1047,8 @@ class AppstoreEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 409)
 
-    def test_appstore_create_returns_string_error_for_serializer_validation_failure(self) -> None:
-        """앱 생성 검증 실패 시 문자열 error 계약을 유지하는지 확인합니다."""
+    def test_appstore_create_returns_canonical_serializer_error(self) -> None:
+        """앱 생성 검증 실패 시 canonical 오류 계약을 반환하는지 확인합니다."""
         # -----------------------------------------------------------------------------
         # 1) 필수 name 누락 요청
         # -----------------------------------------------------------------------------
@@ -973,11 +1059,13 @@ class AppstoreEndpointTests(TestCase):
         )
 
         # -----------------------------------------------------------------------------
-        # 2) 문자열 error 응답 검증
+        # 2) canonical 오류 응답 검증
         # -----------------------------------------------------------------------------
         self.assertEqual(response.status_code, 400)
         payload = response.json()
-        self.assertEqual(payload["error"], "name is required")
+        self.assertEqual(payload["code"], "invalid_request")
+        self.assertEqual(payload["message"], "name is required")
+        self.assertIn("name", payload["fieldErrors"])
 
     def test_appstore_detail_update_delete_and_view_like(self) -> None:
         """상세 조회/수정/삭제 및 좋아요/조회수 API를 검증합니다."""

@@ -6,11 +6,12 @@ import os
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from api.data_movement.common.services.file_loader import list_data_files, list_incoming_files
+from api.data_movement.common.services.load_runner import run_incoming_file_load
 from api.data_movement.ct_process_comment.services import SummaryRowOutcome, SummaryRunSummary
 from api.data_movement.m_tkin_prevent.services import LoadFileOutcome, LoadRunSummary
 
@@ -52,6 +53,67 @@ class DataMovementFileLoaderTests(SimpleTestCase):
             files = list_incoming_files(table_dir=root, pattern="*.csv.deflate")
 
         self.assertEqual(files, [])
+
+    @override_settings(
+        DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=0,
+        DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=0,
+    )
+    def test_common_runner_claims_each_file_before_loading(self) -> None:
+        """공통 runner는 이름순 파일을 선점한 뒤 표별 적재기에 전달합니다."""
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            (incoming / "b.csv").write_text("b", encoding="utf-8")
+            (incoming / "a.csv").write_text("a", encoding="utf-8")
+            validate_file = Mock()
+            load_claimed_file = Mock(side_effect=lambda *, claimed_file: claimed_file.original_name)
+
+            outcomes = run_incoming_file_load(
+                table_dir=root,
+                pattern="*.csv",
+                limit=None,
+                dry_run=False,
+                validate_file=validate_file,
+                load_claimed_file=load_claimed_file,
+            )
+
+        self.assertEqual(outcomes, ["a.csv", "b.csv"])
+        self.assertEqual(
+            [item.kwargs["claimed_file"].original_name for item in load_claimed_file.call_args_list],
+            ["a.csv", "b.csv"],
+        )
+        validate_file.assert_not_called()
+
+    @override_settings(
+        DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=0,
+        DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=0,
+    )
+    def test_common_runner_dry_run_does_not_claim_files(self) -> None:
+        """dry-run은 incoming 파일을 이동하지 않고 검증 callable만 실행합니다."""
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            incoming = root / "incoming"
+            incoming.mkdir()
+            source = incoming / "a.csv"
+            source.write_text("a", encoding="utf-8")
+            validate_file = Mock(return_value="validated")
+            load_claimed_file = Mock()
+
+            outcomes = run_incoming_file_load(
+                table_dir=root,
+                pattern="*.csv",
+                limit=None,
+                dry_run=True,
+                validate_file=validate_file,
+                load_claimed_file=load_claimed_file,
+            )
+
+        self.assertEqual(outcomes, ["validated"])
+        validate_file.assert_has_calls([call(file_path=source)])
+        load_claimed_file.assert_not_called()
 
     @override_settings(
         DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=60,
@@ -121,16 +183,17 @@ class DataMovementLoadTriggerApiTests(TestCase):
             ]
         )
         load_files = Mock(return_value=summary)
-        with patch.dict("api.data_movement.views.DATA_MOVEMENT_LOADERS", {"m_tkin_prevent": load_files}):
+        with patch("api.data_movement.views.get_data_movement_loader", return_value=load_files):
             response = self.client.post(
                 "/api/v1/data-movement/m_tkin_prevent/load/",
-                data={"limit": 1, "dry_run": True},
+                data={"limit": 1, "dryRun": True},
                 content_type="application/json",
                 HTTP_AUTHORIZATION="Bearer test-token",
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["success_count"], 1)
+        self.assertEqual(response.json()["successCount"], 1)
+        self.assertEqual(response.json()["outcomes"][0]["fileName"], "a.csv.deflate")
         load_files.assert_called_once_with(dry_run=True, limit=1)
 
     def test_load_trigger_rejects_unknown_table(self) -> None:
@@ -142,6 +205,19 @@ class DataMovementLoadTriggerApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_load_trigger_rejects_legacy_snake_case_field(self) -> None:
+        """이전 snake_case trigger 필드는 명시적으로 거절합니다."""
+
+        response = self.client.post(
+            "/api/v1/data-movement/m_tkin_prevent/load/",
+            data={"dry_run": True},
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer test-token",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("dry_run", response.json()["fieldErrors"])
 
     def test_summary_trigger_runs_ct_process_comment_summary(self) -> None:
         """ct_process_comment 요약 trigger가 service를 실행하고 summary를 반환합니다."""
@@ -161,16 +237,16 @@ class DataMovementLoadTriggerApiTests(TestCase):
         ) as summarize_comments:
             response = self.client.post(
                 "/api/v1/data-movement/ct_process_comment/summarize/",
-                data={"limit": 3, "dry_run": True},
+                data={"limit": 3, "dryRun": True},
                 content_type="application/json",
                 HTTP_AUTHORIZATION="Bearer test-token",
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["success_count"], 1)
-        self.assertEqual(response.json()["skipped_count"], 0)
-        self.assertEqual(response.json()["dry_run_count"], 0)
-        self.assertEqual(response.json()["exhausted_count"], 0)
+        self.assertEqual(response.json()["successCount"], 1)
+        self.assertEqual(response.json()["skippedCount"], 0)
+        self.assertEqual(response.json()["dryRunCount"], 0)
+        self.assertEqual(response.json()["exhaustedCount"], 0)
         summarize_comments.assert_called_once_with(dry_run=True, limit=3)
 
     def test_summary_trigger_reports_exhausted_count(self) -> None:
@@ -197,8 +273,8 @@ class DataMovementLoadTriggerApiTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["processed_count"], 1)
-        self.assertEqual(response.json()["exhausted_count"], 1)
+        self.assertEqual(response.json()["processedCount"], 1)
+        self.assertEqual(response.json()["exhaustedCount"], 1)
 
     def test_summary_trigger_returns_500_when_all_summaries_failed(self) -> None:
         """모든 요약 row가 실패하면 Airflow가 실패를 감지할 수 있게 500을 반환합니다."""
@@ -254,5 +330,5 @@ class DataMovementLoadTriggerApiTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["success_count"], 1)
-        self.assertEqual(response.json()["failure_count"], 1)
+        self.assertEqual(response.json()["successCount"], 1)
+        self.assertEqual(response.json()["failureCount"], 1)

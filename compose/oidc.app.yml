@@ -47,6 +47,7 @@ services:
         PIP_TRUSTED_HOST: repository.samsungds.net
     env_file:
       - ../env/api.common.env
+      - ../env/api.server.common.env
       - ../env/api.oidc.dev.env
       - ../env/minio.env
     environment:

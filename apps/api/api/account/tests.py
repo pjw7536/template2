@@ -1159,7 +1159,7 @@ class AccountEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
-            response.json()["details"]["unexpectedFields"],
+            response.json()["fieldErrors"]["unexpectedFields"],
             ["scope"],
         )
 
@@ -1981,7 +1981,7 @@ class AccountEndpointTests(TestCase):
         response = self.client.get(reverse("account-users"), {"contactField": "phone"})
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("contactField", response.json())
+        self.assertIn("contactField", response.json()["fieldErrors"])
 
     def test_account_user_pool_rejects_removed_alias_and_invalid_limit(self) -> None:
         """사용자 pool은 snake_case 별칭과 모호한 limit fallback을 거절해야 합니다."""
@@ -2001,11 +2001,11 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(alias_response.status_code, 400)
-        self.assertEqual(alias_response.json()["unexpectedFields"], ["user_sdwt_prod"])
+        self.assertEqual(alias_response.json()["fieldErrors"]["unexpectedFields"], ["user_sdwt_prod"])
         self.assertEqual(invalid_limit_response.status_code, 400)
-        self.assertIn("limit", invalid_limit_response.json())
+        self.assertIn("limit", invalid_limit_response.json()["fieldErrors"])
         self.assertEqual(unbounded_response.status_code, 400)
-        self.assertIn("limit", unbounded_response.json())
+        self.assertIn("limit", unbounded_response.json()["fieldErrors"])
 
     def test_account_user_pool_returns_all_group_users_when_requested(self) -> None:
         """소속 단위 전체 불러오기는 기본 500명 제한 없이 해당 소속 사용자를 반환해야 합니다."""
@@ -2087,11 +2087,11 @@ class AccountEndpointTests(TestCase):
 
         response = self.client.get(reverse("account-overview"))
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "scope_access_required")
+        self.assertEqual(response.json()["code"], "scope_access_required")
 
         request_list_response = self.client.get(reverse("account-affiliation-requests"))
         self.assertEqual(request_list_response.status_code, 403)
-        self.assertEqual(request_list_response.json()["error"], "scope_access_required")
+        self.assertEqual(request_list_response.json()["code"], "scope_access_required")
 
         request_payload, request_status = request_access(
             scope_keys=[ACCESS_SCOPE_PORTAL],
@@ -2110,7 +2110,7 @@ class AccountEndpointTests(TestCase):
 
         response_after_rerequest = self.client.get(reverse("account-overview"))
         self.assertEqual(response_after_rerequest.status_code, 403)
-        self.assertEqual(response_after_rerequest.json()["access"]["reason"], "pending")
+        self.assertEqual(response_after_rerequest.json()["details"]["access"]["reason"], "pending")
 
     def test_portal_access_request_and_admin_approval_flow(self) -> None:
         """비허용 부서 사용자가 요청 후 account admin 승인으로 접근 가능한지 확인합니다."""
@@ -2934,7 +2934,7 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "invalid_request")
+        self.assertIn("value", response.json()["fieldErrors"])
         self.assertFalse(UserAccess.objects.filter(user=self.user).exists())
 
     def test_access_user_apply_all_rejects_superuser_without_writes(self) -> None:
@@ -2951,7 +2951,7 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"], "immutable_access_bypass")
+        self.assertEqual(response.json()["details"]["reason"], "immutable_access_bypass")
         self.assertFalse(UserAccess.objects.filter(user=self.superuser).exists())
         self.assertFalse(
             AccessAuditLog.objects.filter(target_user=self.superuser).exists()
@@ -2971,7 +2971,7 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("role", response.json()["details"])
+        self.assertIn("role", response.json()["fieldErrors"])
         self.assertFalse(
             UserAccess.objects.filter(user=self.user, scope__key=ACCESS_SCOPE_PORTAL).exists()
         )
@@ -3032,7 +3032,7 @@ class AccountEndpointTests(TestCase):
                 )
 
                 self.assertEqual(response.status_code, 409)
-                self.assertEqual(response.json()["error"], "immutable_access_bypass")
+                self.assertEqual(response.json()["details"]["reason"], "immutable_access_bypass")
                 self.assertEqual(
                     UserAccess.objects.filter(
                         user=self.superuser,
@@ -3069,7 +3069,7 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"], "invalid_status_transition")
+        self.assertEqual(response.json()["details"]["reason"], "invalid_status_transition")
         self.assertFalse(
             UserAccess.objects.filter(user=self.user, scope__key=ACCESS_SCOPE_PORTAL).exists()
         )
@@ -3168,9 +3168,9 @@ class AccountEndpointTests(TestCase):
         response = self.client.get(reverse("account-access-users"))
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "scope_access_required")
-        self.assertEqual(response.json()["scope"], ACCESS_SCOPE_PORTAL)
-        self.assertFalse(response.json()["access"]["allowed"])
+        self.assertEqual(response.json()["code"], "scope_access_required")
+        self.assertEqual(response.json()["details"]["scope"], ACCESS_SCOPE_PORTAL)
+        self.assertFalse(response.json()["details"]["access"]["allowed"])
 
     def test_pending_access_remains_denied_when_department_policy_matches(self) -> None:
         """승인 대기 상태는 부서 자동 허용 규칙보다 우선해 접근을 차단해야 합니다."""
@@ -3889,7 +3889,7 @@ class AccountEndpointTests(TestCase):
 
         self.assertEqual(role_response.status_code, 400)
         self.assertEqual(
-            role_response.json()["details"]["unexpectedFields"],
+            role_response.json()["fieldErrors"]["unexpectedFields"],
             ["role"],
         )
         self.assertEqual(create_response.status_code, 201)
@@ -3939,26 +3939,20 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(query_response.status_code, 400)
-        self.assertEqual(
-            query_response.json(),
-            {
-                "error": "invalid_query",
-                "details": {
-                    "unexpectedFields": ["page_size", "q"],
-                },
-            },
-        )
+        self.assertEqual(query_response.json()["code"], "invalid_request")
+        self.assertEqual(query_response.json()["message"], "invalid_query")
+        self.assertEqual(query_response.json()["fieldErrors"]["unexpectedFields"], ["page_size", "q"])
         self.assertEqual(decision_response.status_code, 400)
         self.assertEqual(
-            decision_response.json()["details"]["unexpectedFields"],
+            decision_response.json()["fieldErrors"]["unexpectedFields"],
             ["userId"],
         )
         self.assertEqual(missing_scope_response.status_code, 400)
-        self.assertIn("scope", missing_scope_response.json()["details"])
+        self.assertIn("scope", missing_scope_response.json()["fieldErrors"])
         self.assertEqual(invalid_bulk_response.status_code, 400)
-        self.assertIn("approveAllApps", invalid_bulk_response.json()["details"])
+        self.assertIn("approveAllApps", invalid_bulk_response.json()["fieldErrors"])
         self.assertEqual(policy_response.status_code, 400)
-        self.assertIn("scope", policy_response.json()["details"])
+        self.assertIn("scope", policy_response.json()["fieldErrors"])
 
     def test_access_management_users_combined_status_source_filter_requires_both(self) -> None:
         """권한 관리 복합 필터는 status와 source를 모두 만족하는 사용자만 반환해야 합니다."""
@@ -4351,7 +4345,7 @@ class AccountEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
-            response.json()["scopeKeys"],
+            response.json()["details"]["scopeKeys"],
             [inactive_scope.key, "missing-scope"],
         )
         self.assertFalse(
@@ -4397,7 +4391,7 @@ class AccountEndpointTests(TestCase):
                 )
 
                 self.assertEqual(response.status_code, 400)
-                self.assertIn("ruleType", response.json()["details"])
+                self.assertIn("ruleType", response.json()["fieldErrors"])
 
         self.assertFalse(AccessPolicyRule.objects.filter(value="invalid").exists())
 
@@ -4943,7 +4937,7 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["unexpectedFields"], ["effectiveFrom"])
+        self.assertEqual(response.json()["fieldErrors"]["unexpectedFields"], ["effectiveFrom"])
 
     def test_account_affiliation_rejection_reason_is_exposed(self) -> None:
         """거절 사유가 히스토리에 노출되는지 확인합니다."""
@@ -4993,7 +4987,7 @@ class AccountEndpointTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("userSdwtProd", response.json())
+        self.assertIn("userSdwtProd", response.json()["fieldErrors"])
 
     def test_account_affiliation_api_rejects_removed_aliases(self) -> None:
         """SPA 소속 API는 제거된 snake_case와 이전 별칭을 거절해야 합니다."""
@@ -5019,19 +5013,19 @@ class AccountEndpointTests(TestCase):
         )
 
         self.assertEqual(create_response.status_code, 400)
-        self.assertEqual(create_response.json()["unexpectedFields"], ["user_sdwt_prod"])
+        self.assertEqual(create_response.json()["fieldErrors"]["unexpectedFields"], ["user_sdwt_prod"])
         self.assertEqual(list_response.status_code, 400)
         self.assertEqual(
-            list_response.json()["unexpectedFields"],
+            list_response.json()["fieldErrors"]["unexpectedFields"],
             ["page_size", "q", "user_sdwt_prod"],
         )
         self.assertEqual(approval_response.status_code, 400)
         self.assertEqual(
-            approval_response.json()["unexpectedFields"],
+            approval_response.json()["fieldErrors"]["unexpectedFields"],
             ["id", "rejection_reason"],
         )
         self.assertEqual(members_response.status_code, 400)
-        self.assertEqual(members_response.json()["unexpectedFields"], ["user_sdwt_prod"])
+        self.assertEqual(members_response.json()["fieldErrors"]["unexpectedFields"], ["user_sdwt_prod"])
 
     def test_account_affiliation_reconfirm(self) -> None:
         """소속 재확인 플로우가 정상 응답하는지 확인합니다."""
@@ -5062,7 +5056,7 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         confirm_response = self.client.post(
             reverse("account-affiliation-reconfirm"),
-            data='{"accepted": true, "user_sdwt_prod": "group-b"}',
+            data='{"accepted": true, "userSdwtProd": "group-b"}',
             content_type="application/json",
         )
         self.assertEqual(confirm_response.status_code, 200)
@@ -5089,7 +5083,7 @@ class AccountEndpointTests(TestCase):
         self.client.force_login(self.user)
         confirm_response = self.client.post(
             reverse("account-affiliation-reconfirm"),
-            data='{"accepted": true, "user_sdwt_prod": "group-b"}',
+            data='{"accepted": true, "userSdwtProd": "group-b"}',
             content_type="application/json",
         )
 
@@ -5097,7 +5091,7 @@ class AccountEndpointTests(TestCase):
         # 3) 결과 검증
         # -----------------------------------------------------------------------------
         self.assertEqual(confirm_response.status_code, 409)
-        self.assertEqual(confirm_response.json().get("error"), "reconfirm not required")
+        self.assertEqual(confirm_response.json()["details"]["reason"], "reconfirm not required")
 
     @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
     def test_account_external_sync_and_grants(self) -> None:
@@ -5107,7 +5101,7 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         sync_response = self.client.post(
             reverse("account-external-affiliation-sync"),
-            data='{"records":[{"knox_id":"knox-50000","department":"Dept","user_sdwt_prod":"group-a"}]}',
+            data='{"records":[{"knoxId":"knox-50000","department":"Dept","userSdwtProd":"group-a"}]}',
             content_type="application/json",
             HTTP_AUTHORIZATION="Bearer token",
         )

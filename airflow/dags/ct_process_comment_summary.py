@@ -60,11 +60,11 @@ def _summarize_failed_outcomes(outcomes: list[Any]) -> dict[str, Any]:
     for outcome in outcomes:
         if not isinstance(outcome, dict):
             continue
-        if outcome.get("status") != "failed" and not outcome.get("error_message"):
+        if outcome.get("status") != "failed" and not outcome.get("errorMessage"):
             continue
 
         failed_outcome_count += 1
-        raw_error_message = outcome.get("error_message")
+        raw_error_message = outcome.get("errorMessage")
         error_message = (
             raw_error_message if isinstance(raw_error_message, str) else "<missing-error-message>"
         )
@@ -79,7 +79,7 @@ def _summarize_failed_outcomes(outcomes: list[Any]) -> dict[str, Any]:
         )
         group["failure_count"] += 1
 
-        workorder_id = outcome.get("workorder_id")
+        workorder_id = outcome.get("workorderId")
         sample_workorder_ids = group["sample_workorder_ids"]
         if (
             isinstance(workorder_id, str)
@@ -112,7 +112,7 @@ def _format_error_response(response: requests.Response) -> str:
 
     error_detail = {
         key: payload[key]
-        for key in ("error", "table_name", "processed_count", "success_count", "failure_count")
+        for key in ("code", "message", "tableName", "processedCount", "successCount", "failureCount")
         if key in payload
     }
     outcomes = payload.get("outcomes")
@@ -156,7 +156,7 @@ def run_ct_process_comment_summary(**_context):
     if limit is not None:
         payload["limit"] = limit
     if _parse_bool(os.getenv("DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN")):
-        payload["dry_run"] = True
+        payload["dryRun"] = True
 
     response = requests.post(
         f"{AIRFLOW_API_BASE_URL}/api/v1/data-movement/ct_process_comment/summarize/",

@@ -66,7 +66,7 @@ class AssistantChatConfig:
         # -----------------------------------------------------------------------------
         rag_url = (rag_services.RAG_SEARCH_URL or "").strip()
         rag_index_names = rag_services.resolve_rag_index_names(None)
-        rag_num_docs = _parse_int(_read_setting("ASSISTANT_RAG_NUM_DOCS"), DEFAULT_NUM_DOCS)
+        rag_num_docs = rag_services.RAG_NUM_DOCS
         request_timeout = _parse_int(
             _read_setting("ASSISTANT_REQUEST_TIMEOUT"),
             DEFAULT_TIMEOUT,

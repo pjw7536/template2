@@ -33,7 +33,7 @@ export function LoginForm({
   const { theme = "system", systemTheme } = useTheme()
   const { login, config } = useAuth()
   const [searchParams] = useSearchParams()
-  const nextPath = searchParams?.get("next") || "/"
+  const targetPath = searchParams?.get("target") || "/"
   const autoLoginTriggeredRef = useRef(false)
 
   // provider 설정이 없는 경우를 대비해 버튼을 비활성화합니다.
@@ -45,7 +45,7 @@ export function LoginForm({
     if (!providerAvailable) return
     try {
       setIsLoading(true)
-      await login({ next: nextPath })
+      await login({ target: targetPath })
     } finally {
       setIsLoading(false)
     }
@@ -59,13 +59,13 @@ export function LoginForm({
     const autoLogin = async () => {
       try {
         setIsLoading(true)
-        await login({ next: nextPath })
+        await login({ target: targetPath })
       } finally {
         setIsLoading(false)
       }
     }
     autoLogin()
-  }, [login, nextPath, providerAvailable])
+  }, [login, targetPath, providerAvailable])
 
   return (
     <div className={cn("flex flex-col gap-3", className)} {...props}>

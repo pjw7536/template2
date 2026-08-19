@@ -16,10 +16,9 @@ from django.utils import timezone
 
 from api.data_movement.common.services.file_loader import (
     ClaimedDataFile,
-    claim_incoming_file,
     delete_claimed_file,
-    list_incoming_files,
 )
+from api.data_movement.common.services.load_runner import run_incoming_file_load
 from api.data_movement.common.services.streaming_csv import iter_deflate_text_lines, parse_csv_datetime
 from api.data_movement.mi_tip_update_hist.models import MiTipUpdateHistLoadJob
 from api.data_movement.mi_tip_update_hist.services import spec
@@ -472,12 +471,12 @@ def load_mi_tip_update_hist_files(
     """mi_tip_update_hist deflate CSV 파일들을 순차 적재합니다."""
 
     resolved_table_dir = Path(data_dir) if data_dir is not None else spec.DEFAULT_TABLE_DIR
-    files = list_incoming_files(table_dir=resolved_table_dir, pattern=spec.FILE_PATTERN, limit=limit)
-    outcomes = []
-    for file_path in files:
-        if dry_run:
-            outcomes.append(_dry_run_one_file(file_path=file_path))
-            continue
-        claimed_file = claim_incoming_file(file_path=file_path, table_dir=resolved_table_dir)
-        outcomes.append(_load_claimed_file(claimed_file=claimed_file))
+    outcomes = run_incoming_file_load(
+        table_dir=resolved_table_dir,
+        pattern=spec.FILE_PATTERN,
+        limit=limit,
+        dry_run=dry_run,
+        validate_file=_dry_run_one_file,
+        load_claimed_file=_load_claimed_file,
+    )
     return LoadRunSummary(outcomes=outcomes)

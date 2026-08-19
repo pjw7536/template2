@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,12 +30,9 @@ class DroneMessengerConfig:
 
     @classmethod
     def from_settings(cls) -> "DroneMessengerConfig":
-        """settings/env에서 TTL과 Knox 설정을 로드합니다."""
+        """Django settings에서 TTL과 Knox 설정을 로드합니다."""
 
-        ttl_raw = (
-            getattr(settings, "DRONE_MESSENGER_TTL", None)
-            or os.getenv("DRONE_MESSENGER_TTL")
-        )
+        ttl_raw = getattr(settings, "DRONE_MESSENGER_TTL", None)
 
         ttl = _parse_int(ttl_raw, _DEFAULT_TTL)
         if ttl <= 0:
@@ -44,7 +40,7 @@ class DroneMessengerConfig:
 
         return cls(
             ttl=ttl,
-            knox_config=messenger_services.KnoxMessengerConfig.from_env(),
+            knox_config=messenger_services.KnoxMessengerConfig.from_settings(),
         )
 
     def is_ready(self) -> bool:

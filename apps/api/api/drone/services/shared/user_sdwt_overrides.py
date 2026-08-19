@@ -1,16 +1,17 @@
 # =============================================================================
 # 모듈: Drone SOP user_sdwt_prod override 설정
-# 주요 기능: 환경변수 기반 comment keyword -> user_sdwt_prod 매핑 관리
-# 주요 가정: parser와 Engr 후보 API가 같은 환경변수를 사용합니다.
+# 주요 기능: settings 기반 comment keyword -> user_sdwt_prod 매핑 관리
+# 주요 가정: parser와 Engr 후보 API가 같은 Django settings를 사용합니다.
 # =============================================================================
 """Drone SOP user_sdwt_prod override 설정 유틸리티입니다."""
 
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from typing import Any
+
+from django.conf import settings
 
 def _normalize_text(value: Any) -> str:
     """환경변수 입력값을 공백 제거 문자열로 정규화합니다."""
@@ -31,9 +32,9 @@ def _normalize_mapping(payload: Mapping[Any, Any]) -> dict[str, str]:
 
 
 def get_comment_user_sdwt_override_map() -> dict[str, str]:
-    """환경변수 기준 comment keyword override map을 반환합니다."""
+    """Django settings 기준 comment keyword override map을 반환합니다."""
 
-    raw_value = os.getenv("DRONE_SOP_USER_SDWT_OVERRIDE_MAP", "").strip()
+    raw_value = str(getattr(settings, "DRONE_SOP_USER_SDWT_OVERRIDE_MAP", "") or "").strip()
     if not raw_value:
         return {}
     try:
@@ -56,10 +57,10 @@ def resolve_comment_user_sdwt_override(comment: Any) -> str | None:
     return None
 
 
-def list_engr_mapping_values_from_env() -> list[str]:
+def list_engr_mapping_values_from_settings() -> list[str]:
     """Engr 지정 조합 드롭다운에 추가할 fallback 및 override 값을 반환합니다."""
 
-    raw_fallbacks = os.getenv("DRONE_SOP_ENGR_FALLBACK_VALUES", "").strip()
+    raw_fallbacks = str(getattr(settings, "DRONE_SOP_ENGR_FALLBACK_VALUES", "") or "").strip()
     fallback_values = raw_fallbacks.split(",") if raw_fallbacks else []
     values = [
         *(_normalize_text(value) for value in fallback_values),
@@ -75,6 +76,6 @@ def list_engr_mapping_values_from_env() -> list[str]:
 
 __all__ = [
     "get_comment_user_sdwt_override_map",
-    "list_engr_mapping_values_from_env",
+    "list_engr_mapping_values_from_settings",
     "resolve_comment_user_sdwt_override",
 ]

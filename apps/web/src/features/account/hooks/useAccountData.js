@@ -7,23 +7,27 @@ import {
 } from "@tanstack/react-query"
 
 import { accountApi } from "../api/accountApi"
+import { accountQueryKeys, AFFILIATION_QUERY_KEY } from "../api/queryKeys"
 import { normalizeAccountOverview } from "../utils/accountOverview"
 import {
   withDevAccessAuditFixtures,
   withDevPendingAccessUserFixtures,
 } from "../utils/devFixtures"
 
-export const AFFILIATION_QUERY_KEY = ["account", "affiliation"]
-const AFFILIATION_REQUESTS_QUERY_KEY = ["account", "affiliationRequests"]
-const AFFILIATION_MEMBERS_QUERY_KEY = ["account", "affiliationMembers"]
-const AFFILIATION_GRANT_CANDIDATES_QUERY_KEY = ["account", "affiliationGrantCandidates"]
-const OVERVIEW_QUERY_KEY = ["account", "overview"]
-const ACCESS_USERS_QUERY_KEY = ["account", "accessUsers"]
-const PENDING_ACCESS_REQUESTS_QUERY_KEY = ["account", "pendingAccessRequests"]
-const ACCESS_MATRIX_QUERY_KEY = ["account", "accessMatrix"]
-const ACCESS_POLICY_RULES_QUERY_KEY = ["account", "accessPolicyRules"]
-const ACCESS_AUDIT_LOGS_QUERY_KEY = ["account", "accessAuditLogs"]
-const USER_SCOPE_DATA_QUERY_KEY = ["account", "userScopeData"]
+export { AFFILIATION_QUERY_KEY }
+
+const {
+  affiliationRequests: AFFILIATION_REQUESTS_QUERY_KEY,
+  affiliationMembers: AFFILIATION_MEMBERS_QUERY_KEY,
+  affiliationGrantCandidates: AFFILIATION_GRANT_CANDIDATES_QUERY_KEY,
+  overview: OVERVIEW_QUERY_KEY,
+  accessUsers: ACCESS_USERS_QUERY_KEY,
+  pendingAccessRequests: PENDING_ACCESS_REQUESTS_QUERY_KEY,
+  accessMatrix: ACCESS_MATRIX_QUERY_KEY,
+  accessPolicyRules: ACCESS_POLICY_RULES_QUERY_KEY,
+  accessAuditLogs: ACCESS_AUDIT_LOGS_QUERY_KEY,
+  userScopeData: USER_SCOPE_DATA_QUERY_KEY,
+} = accountQueryKeys
 
 function replaceAccessMatrixRow(data, matrixRow) {
   const userId = matrixRow?.user?.id

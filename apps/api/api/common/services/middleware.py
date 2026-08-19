@@ -23,12 +23,74 @@ from django.utils.deprecation import MiddlewareMixin  # Django 미들웨어 호�
 from api.common.permissions import (
     ScopeAccessRequiredError,
     require_request_portal_access,
+    uses_legacy_error_contract,
 )
 
-from .request_helpers import _load_json_bytes
+from .request_helpers import _load_json_bytes, api_error_response
 
 # 현재 파일의 로거(logger) 설정
 logger = logging.getLogger(__name__)
+
+_CANONICAL_ERROR_PATH_PREFIXES = (
+    "/api/v1/account",
+    "/api/v1/activity",
+    "/api/v1/appstore",
+    "/api/v1/data-movement",
+    "/api/v1/emails",
+    "/api/v1/voc",
+)
+_ERROR_CODE_BY_STATUS = {
+    400: "invalid_request",
+    401: "authentication_required",
+    403: "scope_access_required",
+    404: "not_found",
+    409: "conflict",
+    415: "invalid_request",
+    502: "external_dependency_error",
+    504: "external_dependency_timeout",
+}
+_ERROR_MESSAGE_BY_STATUS = {
+    400: "The request is invalid.",
+    401: "Authentication is required.",
+    403: "Access to this scope is required.",
+    404: "The requested resource was not found.",
+    409: "The request conflicts with the current state.",
+    415: "JSON content is required.",
+    502: "An external dependency failed.",
+    504: "An external dependency timed out.",
+}
+_ERROR_CODE_BY_LEGACY_REASON = {
+    "knox_id is required": "identity_required",
+    "unauthorized": "authentication_required",
+    "forbidden": "scope_access_required",
+}
+_CONTENT_DEPENDENT_RESPONSE_HEADERS = frozenset(
+    {
+        "content-encoding",
+        "content-length",
+        "content-md5",
+        "content-type",
+        "digest",
+        "etag",
+        "last-modified",
+    }
+)
+
+
+def _preserve_response_metadata(
+    *,
+    source: HttpResponse,
+    target: HttpResponse,
+) -> HttpResponse:
+    """변환된 body와 충돌하지 않는 원본 header와 cookie를 보존합니다."""
+
+    for header_name, header_value in source.items():
+        if header_name.lower() in _CONTENT_DEPENDENT_RESPONSE_HEADERS:
+            continue
+        target[header_name] = header_value
+    target.cookies.update(source.cookies)
+    target.reason_phrase = source.reason_phrase
+    return target
 
 
 class ActivityLoggingMiddleware(MiddlewareMixin):
@@ -492,7 +554,13 @@ class KnoxIdRequiredMiddleware(MiddlewareMixin):
         # -----------------------------------------------------------------------------
         knox_id = getattr(user, "knox_id", None)
         if not isinstance(knox_id, str) or not knox_id.strip():
-            return JsonResponse({"error": "knox_id is required"}, status=403)
+            if uses_legacy_error_contract(path):
+                return JsonResponse({"error": "knox_id is required"}, status=403)
+            return api_error_response(
+                code="identity_required",
+                message="A Knox ID is required.",
+                status=403,
+            )
 
         return None
 
@@ -555,3 +623,77 @@ class AccessRequiredMiddleware(MiddlewareMixin):
         except ScopeAccessRequiredError as error:
             return JsonResponse(error.detail, status=error.status_code)
         return None
+
+
+class CanonicalApiErrorMiddleware(MiddlewareMixin):
+    """전환이 완료된 API prefix의 legacy JSON 오류를 공통 계약으로 변환합니다."""
+
+    def process_response(
+        self,
+        request: HttpRequest,
+        response: HttpResponse,
+    ) -> HttpResponse:
+        """전환 완료 API 오류만 변환하고 성공·비 JSON·제외 경로 응답은 보존합니다."""
+
+        path = getattr(request, "path", "") or ""
+        status_code = getattr(response, "status_code", 200)
+        content_type = response.get("Content-Type", "")
+        if (
+            status_code < 400
+            or not path.startswith(_CANONICAL_ERROR_PATH_PREFIXES)
+            or "application/json" not in content_type
+        ):
+            return response
+
+        parsed, payload = _load_json_bytes(
+            response.content,
+            encoding=response.charset or "utf-8",
+        )
+        if not parsed or not isinstance(payload, Mapping):
+            return response
+        if {"code", "message", "details", "fieldErrors"}.issubset(payload):
+            return response
+
+        legacy_error = payload.get("error")
+        raw_details = payload.get("details")
+        details = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"error", "details"}
+        }
+        if isinstance(legacy_error, str) and legacy_error.strip():
+            details.setdefault("reason", legacy_error.strip())
+            if isinstance(raw_details, Mapping) and all(
+                isinstance(value, (list, tuple, Mapping))
+                for value in raw_details.values()
+            ):
+                field_errors: Mapping[str, Any] = raw_details
+            else:
+                field_errors = {}
+                if isinstance(raw_details, Mapping):
+                    details.update(raw_details)
+            message = legacy_error.strip()
+        else:
+            field_errors = payload
+            message = _ERROR_MESSAGE_BY_STATUS.get(
+                status_code,
+                "The request could not be completed.",
+            )
+        legacy_code = (
+            _ERROR_CODE_BY_LEGACY_REASON.get(legacy_error)
+            if isinstance(legacy_error, str)
+            else None
+        )
+        return _preserve_response_metadata(
+            source=response,
+            target=api_error_response(
+                code=legacy_code or _ERROR_CODE_BY_STATUS.get(
+                    status_code,
+                    "request_failed",
+                ),
+                message=message,
+                details=details or None,
+                field_errors=field_errors,
+                status=status_code,
+            ),
+        )

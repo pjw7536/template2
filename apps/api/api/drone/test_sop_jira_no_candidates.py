@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈: Drone SOP Jira 생성(후보 없음) 테스트
-# 주요 대상: run_drone_sop_jira_create_from_env 빠른 종료
+# 주요 대상: run_drone_sop_jira_create_from_settings 빠른 종료
 # 주요 가정: 후보가 없으면 skipped=True로 반환됩니다.
 # =============================================================================
 from __future__ import annotations
@@ -20,7 +20,7 @@ class DroneSopJiraNoCandidateTests(TestCase):
     )
     def test_run_returns_skipped_when_no_candidates(self) -> None:
         """후보가 없으면 skipped=True와 skip_reason이 반환되는지 확인합니다."""
-        result = services.run_drone_sop_jira_create_from_env()
+        result = services.run_drone_sop_jira_create_from_settings()
 
         self.assertEqual(result.candidates, 0)
         self.assertEqual(result.created, 0)

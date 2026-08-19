@@ -176,6 +176,10 @@ def _load_csv_seed_rows(*, path: Path) -> list[dict[str, Any]]:
             reader = csv.DictReader(handle)
             if not reader.fieldnames:
                 raise CommandError("CSV file must include a header row")
+            if "user_sdwt_prod" in reader.fieldnames:
+                raise CommandError(
+                    "CSV target rows must use target_user_sdwt_prod and recipient_user_sdwt_prod"
+                )
             deprecated_mapping_fields = {"mapping_sdwt_prod", "mapping_user_sdwt_prod"} & set(reader.fieldnames)
             if deprecated_mapping_fields:
                 raise CommandError("CSV mappings must use the mappings JSON column")
@@ -185,13 +189,14 @@ def _load_csv_seed_rows(*, path: Path) -> list[dict[str, Any]]:
             for row_index, raw_row in enumerate(reader, start=2):
                 row = dict(raw_row)
                 line = _normalize_text(row.get("line")) or _normalize_text(row.get("line_id"))
-                target_user_sdwt_prod = _normalize_text(row.get("target_user_sdwt_prod")) or _normalize_text(
-                    row.get("user_sdwt_prod")
-                )
+                target_user_sdwt_prod = _normalize_text(row.get("target_user_sdwt_prod"))
+                recipient_user_sdwt_prod = _normalize_text(row.get("recipient_user_sdwt_prod"))
                 if not line:
                     raise CommandError(f"CSV row {row_index}.line is required")
                 if not target_user_sdwt_prod:
                     raise CommandError(f"CSV row {row_index}.target_user_sdwt_prod is required")
+                if not recipient_user_sdwt_prod:
+                    raise CommandError(f"CSV row {row_index}.recipient_user_sdwt_prod is required")
 
                 target_key = target_user_sdwt_prod.casefold()
                 if target_key in seen_targets:
@@ -204,7 +209,7 @@ def _load_csv_seed_rows(*, path: Path) -> list[dict[str, Any]]:
                     "department": _normalize_text(row.get("department")),
                     "line_id": line,
                     "target_user_sdwt_prod": target_user_sdwt_prod,
-                    "recipient_user_sdwt_prod": _normalize_text(row.get("recipient_user_sdwt_prod")),
+                    "recipient_user_sdwt_prod": recipient_user_sdwt_prod,
                     "channels": _build_csv_channels(row, row_index=row_index),
                     "needtosend_rule": _build_csv_needtosend_rule(row, row_index=row_index),
                 }
@@ -239,17 +244,23 @@ def _load_json_seed_rows(*, path: Path) -> list[dict[str, Any]]:
     for index, target in enumerate(targets, start=1):
         if not isinstance(target, dict):
             raise CommandError(f"targets[{index}] must be an object")
+        if "user_sdwt_prod" in target:
+            raise CommandError(
+                f"targets[{index}] must use target_user_sdwt_prod and recipient_user_sdwt_prod"
+            )
         line = _normalize_text(target.get("line")) or _normalize_text(target.get("line_id"))
-        target_user_sdwt_prod = _normalize_text(target.get("target_user_sdwt_prod")) or _normalize_text(
-            target.get("user_sdwt_prod")
-        )
+        target_user_sdwt_prod = _normalize_text(target.get("target_user_sdwt_prod"))
+        recipient_user_sdwt_prod = _normalize_text(target.get("recipient_user_sdwt_prod"))
         if not line:
             raise CommandError(f"targets[{index}].line is required")
         if not target_user_sdwt_prod:
             raise CommandError(f"targets[{index}].target_user_sdwt_prod is required")
+        if not recipient_user_sdwt_prod:
+            raise CommandError(f"targets[{index}].recipient_user_sdwt_prod is required")
         row = dict(target)
         row["line_id"] = line
         row["target_user_sdwt_prod"] = target_user_sdwt_prod
+        row["recipient_user_sdwt_prod"] = recipient_user_sdwt_prod
         rows.append(row)
     return rows
 

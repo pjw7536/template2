@@ -45,8 +45,8 @@ export function resolveProfileAvatarId(source) {
   if (!source || typeof source !== "object") return ""
 
   return (
-    normalizeAvatarIdString(source.avatarid) ||
     normalizeAvatarIdString(source.avatarId) ||
+    normalizeAvatarIdString(source.avatarid) ||
     normalizeAvatarIdString(source.avatar_id) ||
     normalizeAvatarIdString(source.userid) ||
     normalizeAvatarIdString(source.userId) ||

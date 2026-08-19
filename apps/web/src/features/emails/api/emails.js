@@ -14,8 +14,8 @@ async function handleJsonResponse(response) {
 
   if (!response.ok) {
     const message =
-      typeof data?.error === "string"
-        ? data.error
+      typeof data?.message === "string"
+        ? data.message
         : `요청이 실패했습니다. (status ${response.status})`
     const error = new Error(message)
     error.status = response.status
@@ -70,7 +70,7 @@ export async function fetchEmailMailboxMembers(userSdwtProd) {
   const trimmed = typeof userSdwtProd === "string" ? userSdwtProd.trim() : ""
   const response = await fetch(
     buildBackendUrl(`${BASE_PATH}/mailboxes/members/`, {
-      user_sdwt_prod: trimmed,
+      userSdwtProd: trimmed,
     }),
     { credentials: "include" },
   )
@@ -116,7 +116,7 @@ export async function bulkDeleteEmails(emailIds = []) {
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ email_ids: emailIds }),
+    body: JSON.stringify({ emailIds }),
   })
   return handleJsonResponse(response)
 }
@@ -128,7 +128,7 @@ export async function moveEmails(emailIds = [], toUserSdwtProd = "") {
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ email_ids: emailIds, to_user_sdwt_prod: toUserSdwtProd }),
+    body: JSON.stringify({ emailIds, toUserSdwtProd }),
   })
   return handleJsonResponse(response)
 }

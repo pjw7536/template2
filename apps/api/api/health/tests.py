@@ -18,4 +18,7 @@ class HealthEndpointTests(TestCase):
         response = self.client.get(reverse("health"))
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(
+            payload,
+            {"status": "ok", "application": "template2-api"},
+        )

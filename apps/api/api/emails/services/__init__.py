@@ -8,6 +8,14 @@
 
 from __future__ import annotations
 
+from api.rag.services import (
+    RAG_INDEX_EMAILS,
+    RAG_PUBLIC_GROUP,
+    delete_rag_doc,
+    insert_email_to_rag,
+    resolve_rag_index_name,
+)
+
 from .constants import (
     EMAIL_CLASSIFICATION_CONFIRMED_USER,
     EMAIL_CLASSIFICATION_UNASSIGNED,
@@ -16,7 +24,7 @@ from .constants import (
     EMAIL_RAG_INDEX_STATUS_SKIPPED,
     SENT_MAILBOX_ID,
 )
-from .ingest import _parse_message_to_fields, ingest_pop3_mailbox, run_pop3_ingest, run_pop3_ingest_from_env
+from .ingest import _parse_message_to_fields, ingest_pop3_mailbox, run_pop3_ingest, run_pop3_ingest_from_settings
 from .mail_api import MailSendError, requests, send_knox_mail_api
 from .mailbox import get_mailbox_access_summary_for_user
 from .ocr import claim_email_asset_ocr_tasks, update_email_asset_ocr_results
@@ -43,13 +51,6 @@ from .rag import (
     process_email_outbox_batch,
     register_email_to_rag,
     register_missing_rag_docs,
-)
-from .rag_exports import (
-    RAG_INDEX_EMAILS,
-    RAG_PUBLIC_GROUP,
-    delete_rag_doc,
-    insert_email_to_rag,
-    resolve_rag_index_name,
 )
 from .storage import (
     delete_email_objects,
@@ -98,7 +99,7 @@ __all__ = [
     "requests",
     "resolve_rag_index_name",
     "run_pop3_ingest",
-    "run_pop3_ingest_from_env",
+    "run_pop3_ingest_from_settings",
     "save_parsed_email",
     "store_email_html_and_assets",
     "update_email_asset_ocr_results",

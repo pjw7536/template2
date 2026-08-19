@@ -28,7 +28,7 @@ GET /api/v1/auth/login?target=/account
 동작:
 
 1. OIDC 설정 여부를 확인합니다.
-2. `target` 또는 `next`를 state로 인코딩합니다.
+2. canonical `target`을 검증해 state로 인코딩합니다. 제거된 `next` query는 400으로 거절합니다.
 3. nonce를 세션에 저장합니다.
 4. ADFS authorize URL로 redirect합니다.
 
@@ -54,17 +54,21 @@ OIDC provider가 `id_token`, `state`를 form_post로 전달합니다.
 GET /api/v1/auth/me
 ```
 
-응답에는 사용자 기본 정보와 소속 상태가 포함됩니다.
+응답에는 camelCase 사용자 기본 정보, 소속 상태와 `scopeAccess`가 포함됩니다.
 로컬 dev에서 `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 기본 개발 소속이 먼저 보장된 뒤 응답됩니다.
 
 ```json
 {
-  "isAuthenticated": true,
-  "user": {
-    "id": 1,
-    "username": "user",
-    "knoxId": "knox.user",
-    "userSdwtProd": "G-A"
+  "id": 1,
+  "username": "user",
+  "knoxId": "knox.user",
+  "avatarId": "avatar.user",
+  "userSdwtProd": "G-A",
+  "pendingUserSdwtProd": null,
+  "hasPendingAffiliation": false,
+  "isSuperuser": false,
+  "scopeAccess": {
+    "portal": {"allowed": true, "role": "user"}
   }
 }
 ```

@@ -19,7 +19,7 @@ function isBlank(value) {
 }
 
 function optionKey(opt) {
-  return `${opt.department}||${opt.line}||${opt.user_sdwt_prod}`
+  return `${opt.department}||${opt.line}||${opt.userSdwtProd}`
 }
 
 function sameText(left, right) {
@@ -28,9 +28,9 @@ function sameText(left, right) {
 
 export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
   const hasPendingAffiliation = Boolean(
-    user && (user.has_pending_affiliation ?? !isBlank(user.pending_user_sdwt_prod)),
+    user && (user.hasPendingAffiliation ?? !isBlank(user.pendingUserSdwtProd)),
   )
-  const needsOnboarding = Boolean(user && isBlank(user.user_sdwt_prod) && !hasPendingAffiliation)
+  const needsOnboarding = Boolean(user && isBlank(user.userSdwtProd) && !hasPendingAffiliation)
   const queryClient = useQueryClient()
   const [selectedKey, setSelectedKey] = useState("")
   const [submitError, setSubmitError] = useState("")
@@ -65,12 +65,12 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
   const snapshotExactOption = snapshotUserSdwtProd
     ? options.find(
       (opt) =>
-        sameText(opt.user_sdwt_prod, snapshotUserSdwtProd) &&
+        sameText(opt.userSdwtProd, snapshotUserSdwtProd) &&
         (!snapshotDepartment || sameText(opt.department, snapshotDepartment)),
     )
     : null
   const snapshotFallbackOption = snapshotUserSdwtProd
-    ? options.find((opt) => sameText(opt.user_sdwt_prod, snapshotUserSdwtProd))
+    ? options.find((opt) => sameText(opt.userSdwtProd, snapshotUserSdwtProd))
     : null
   const snapshotDepartmentOption = snapshotDepartment
     ? options.find((opt) => sameText(opt.department, snapshotDepartment))
@@ -88,7 +88,7 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
       setSelectedKey(optionKey(departmentOption))
       return
     }
-    if (!user?.department || !user?.line || !user?.user_sdwt_prod) {
+    if (!user?.department || !user?.line || !user?.userSdwtProd) {
       setSelectedKey(optionKey(options[0]))
       return
     }
@@ -96,12 +96,12 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
       (opt) =>
         opt.department === user.department &&
         opt.line === user.line &&
-        opt.user_sdwt_prod === user.user_sdwt_prod,
+        opt.userSdwtProd === user.userSdwtProd,
     )
     if (current) {
       setSelectedKey(optionKey(current))
     }
-  }, [departmentOption, options, selectedKey, snapshotOption, user?.department, user?.line, user?.user_sdwt_prod])
+  }, [departmentOption, options, selectedKey, snapshotOption, user?.department, user?.line, user?.userSdwtProd])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -110,7 +110,7 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
     setSubmitError("")
     try {
       await mutation.mutateAsync({
-        userSdwtProd: selected.user_sdwt_prod,
+        userSdwtProd: selected.userSdwtProd,
       })
     } catch (error) {
       setSubmitError(error?.message || "소속 설정에 실패했습니다.")
@@ -172,7 +172,7 @@ export function UserSdwtProdOnboardingDialog({ user, onCompleted }) {
                   </option>
                   {options.map((opt) => (
                     <option key={optionKey(opt)} value={optionKey(opt)}>
-                      {opt.department} / {opt.line} / {opt.user_sdwt_prod}
+                      {opt.department} / {opt.line} / {opt.userSdwtProd}
                     </option>
                   ))}
                 </select>

@@ -1,90 +1,15 @@
-const APP_ACCESS_RULES = [
-  {
-    appId: "home",
-    appName: "Portal Home",
-    requiresAppAccess: false,
-    matches: (pathname) => pathname === "/",
-  },
-  {
-    appId: "appstore",
-    appName: "Appstore",
-    prefixes: ["/appstore"],
-  },
-  {
-    appId: "line-dashboard",
-    appName: "ESOP Dashboard",
-    prefixes: ["/ESOP_Dashboard/tip-status"],
-    requiredAppScopes: ["line-dashboard", "observer"],
-  },
-  {
-    appId: "line-dashboard",
-    appName: "ESOP Dashboard",
-    prefixes: ["/ESOP_Dashboard", "/esop_dashboard"],
-  },
-  {
-    appId: "l3-spider",
-    appName: "L3 Spider",
-    prefixes: ["/spider/l3", "/l3_spider"],
-  },
-  {
-    appId: "l0-spider",
-    appName: "L0 Spider",
-    matches: (pathname) => pathname === "/spider/l0",
-    prefixes: ["/l0_spider", "/fdc_trend"],
-  },
-  {
-    appId: "l1-spider",
-    appName: "L1 Spider",
-    matches: (pathname) => pathname === "/spider/l1",
-    prefixes: [],
-  },
-  {
-    appId: "pm-spider",
-    appName: "PM Spider",
-    prefixes: ["/spider/pm", "/pm_spider"],
-  },
-  {
-    appId: "tttm-spider",
-    appName: "TTTM Spider",
-    prefixes: ["/spider/tttm", "/tttm_spider"],
-  },
-  {
-    appId: "teamstaff",
-    appName: "Teamstaff",
-    prefixes: ["/teamstaff"],
-  },
-  {
-    appId: "observer",
-    appName: "Observer",
-    prefixes: ["/observer"],
-  },
-  {
-    appId: "emails",
-    appName: "Emails",
-    prefixes: ["/emails"],
-  },
-  {
-    appId: "voc",
-    appName: "VoE",
-    prefixes: ["/voc"],
-  },
-  {
-    appId: "settings",
-    appName: "Settings",
-    requiresAppAccess: false,
-    prefixes: ["/settings"],
-  },
-  {
-    appId: "assistant",
-    appName: "Assistant",
-    prefixes: ["/assistant"],
-  },
-  {
-    appId: "access-stats",
-    appName: "접속 현황",
-    prefixes: ["/access-stats"],
-  },
-]
+import { PORTAL_APP_CATALOG } from "../config/portalAppCatalog"
+
+export const APP_ACCESS_RULES = PORTAL_APP_CATALOG
+
+const APP_ACCESS_RULE_BY_ID = new Map(
+  APP_ACCESS_RULES.map((rule) => [rule.appId, rule]),
+)
+
+export function getAppAccessDefinition(appId) {
+  if (typeof appId !== "string") return null
+  return APP_ACCESS_RULE_BY_ID.get(appId.trim().toLowerCase()) ?? null
+}
 
 function normalizePathname(pathname) {
   const normalizedPathname = typeof pathname === "string" && pathname ? pathname : "/"

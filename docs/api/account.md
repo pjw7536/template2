@@ -378,11 +378,10 @@ Content-Type: application/json
 {
   "records": [
     {
-      "knox_id": "knox.user",
+      "knoxId": "knox.user",
       "department": "Dept",
-      "line": "Line",
-      "user_sdwt_prod": "G-A",
-      "source_updated_at": "2026-05-08T00:00:00Z"
+      "userSdwtProd": "G-A",
+      "sourceUpdatedAt": "2026-05-08T00:00:00Z"
     }
   ]
 }

@@ -23,7 +23,7 @@ POST /api/v1/data-movement/<table_name>/load/
 | `m_interlock` | `/data/data_movement/m_interlock/incoming/m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` |
 | `mi_tip_update_hist` | `/data/data_movement/mi_tip_update_hist/incoming/*mi_tip_update_hist*.csv.deflate` |
 | `racb_list` | `/data/data_movement/racb_list/incoming/*racb_list*.csv.deflate` |
-| `mes_line_mapping_info` | `/data/data_movement/mes_line_mapping_info/incoming/*_MES_MAPPING_INFO_*.csv.deflate` |
+| `mes_line_mapping_info` | `/data/data_movement/mes_line_mapping_info/incoming/*_MES_LINE_MAPPING_INFO_*.csv.deflate` |
 | `station_master` | `/data/data_movement/station_master/incoming/*_STATION_MASTER_*.csv.deflate` |
 
 `ctttm_workorder_list`는 파일명 안의 `CT_MST_WORKORDER` 또는 `CT_MNU_WORKORDER`로 원천 DDL 컬럼 순서를 구분합니다.
@@ -32,7 +32,7 @@ POST /api/v1/data-movement/<table_name>/load/
 `m_interlock`은 헤더 없는 35개 백틱(`) 구분 컬럼을 `interlock_no` 기준으로 upsert합니다. 빈 `interlock_no` row는 제외하고 파일 내 동일 key는 마지막 row를 사용합니다.
 적재 시 Observer 조회용 `prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`도 같은 transaction에서 함께 갱신합니다.
 `mi_tip_update_hist`도 백틱(`) 구분자를 사용하며, TIP 이력을 timeline 조회용 `eqp_cb` 단위로 변환합니다. 원천 `rule_pkg_update_date`, `gpm_update_date`, `last_update_date`는 timezone 없는 KST 벽시계 값으로 해석해 UTC instant로 저장합니다.
-`racb_list`는 comma 구분자를 사용하며, `c_racb_id`별 최신 `update_date` row를 선택한 뒤 `eqp_ids`를 `eqp_cb`로 explode하여 저장합니다.
+`racb_list` 원천 row는 백틱 구분자를 사용합니다. `c_racb_id`별 최신 `update_date` row를 선택한 뒤 `eqp_ids` 필드 내부의 comma-separated 값을 `eqp_cb`로 explode하여 저장합니다.
 `mes_line_mapping_info`와 `station_master`도 백틱(`) 구분자를 사용하며, 성공 시 대상 테이블을 전체 교체합니다.
 
 요청 바디는 선택입니다.
@@ -40,7 +40,7 @@ POST /api/v1/data-movement/<table_name>/load/
 ```json
 {
   "limit": 10,
-  "dry_run": false
+  "dryRun": false
 }
 ```
 
@@ -48,22 +48,22 @@ POST /api/v1/data-movement/<table_name>/load/
 
 ```json
 {
-  "table_name": "ctttm_workorder_list",
-  "processed_count": 1,
-  "success_count": 1,
-  "failure_count": 0,
+  "tableName": "ctttm_workorder_list",
+  "processedCount": 1,
+  "successCount": 1,
+  "failureCount": 0,
   "outcomes": [
     {
-      "file_name": "69623_CT_MST_WORKORDER_20260529_1400.csv.deflate",
+      "fileName": "69623_CT_MST_WORKORDER_20260529_1400.csv.deflate",
       "status": "success",
-      "row_count": 120,
-      "source_type": "MST"
+      "rowCount": 120,
+      "sourceType": "MST"
     }
   ]
 }
 ```
 
-실패 파일이 하나라도 있으면 응답은 `500`이며, `outcomes`에 파일별 `error_message`가 포함됩니다.
+실패 파일이 하나라도 있으면 응답은 `500`이며, `outcomes`에 파일별 `errorMessage`가 포함됩니다.
 
 ## ct_process_comment 요약 트리거
 
@@ -85,9 +85,9 @@ POST /api/v1/data-movement/ct_process_comment/summarize/
 ```json
 {
   "limit": 100,
-  "dry_run": false
+  "dryRun": false
 }
 ```
 
-응답에는 `processed_count`, `success_count`, `failure_count`, `skipped_count`, `dry_run_count`, `outcomes`가 포함됩니다.
+응답에는 `processedCount`, `successCount`, `failureCount`, `skippedCount`, `dryRunCount`, `outcomes`가 포함됩니다.
 실패 row가 하나라도 있으면 응답은 `500`입니다.

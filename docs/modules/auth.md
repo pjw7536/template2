@@ -14,11 +14,11 @@ Auth는 OIDC 기반 로그인과 Django session 관리를 담당합니다.
 ## 동작 흐름
 
 1. 프론트가 로그인 endpoint를 호출합니다.
-2. 서버가 state와 nonce를 생성합니다.
+2. 서버가 canonical `target`을 검증하고 state와 nonce를 생성합니다.
 3. 사용자는 ADFS authorize URL로 이동합니다.
 4. ADFS가 callback endpoint로 `id_token`을 전달합니다.
 5. 서버가 state와 nonce를 검증합니다.
-6. claim으로 `User`를 생성하거나 갱신합니다.
+6. claim을 정규화한 뒤 Account service facade로 `User`를 생성하거나 갱신합니다.
 7. Django session을 만들고 프론트로 redirect합니다.
 
 ## Account와의 연결
@@ -27,7 +27,7 @@ Auth는 OIDC 기반 로그인과 Django session 관리를 담당합니다.
 
 ## 로컬 개발
 
-로컬에서는 `apps/adfs_dummy`가 ADFS 역할을 합니다.
+로컬에서는 `apps/adfs_dummy`가 ADFS 역할을 하며 discovery가 노출하는 authorize/token/userinfo endpoint를 모두 제공합니다.
 
 ## 화면/API/데이터 추적
 

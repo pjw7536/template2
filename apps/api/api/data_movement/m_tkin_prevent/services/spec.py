@@ -9,6 +9,7 @@ from django.conf import settings
 TABLE_NAME = "m_tkin_prevent"
 TEMP_TABLE_NAME = "tmp_m_tkin_prevent"
 FILE_PATTERN = "*.csv.deflate"
+FILE_SEPARATOR = "\x03"
 REPLACE_COLUMN = "line_id"
 
 DEFAULT_TABLE_DIR = Path(settings.DATA_MOVEMENT_M_TKIN_PREVENT_DIR)

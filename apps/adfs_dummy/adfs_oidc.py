@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 import jwt
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from adfs_settings import (
@@ -269,9 +269,63 @@ async def logout() -> RedirectResponse:
     return RedirectResponse(url=target, status_code=302)
 
 
+@router.post("/token")
+async def token(
+    client_id: str = Form(CLIENT_ID),
+    nonce: str = Form("dummy-token-nonce"),
+) -> Dict[str, Any]:
+    """offsite client가 확인할 수 있는 최소 OIDC token 응답을 반환합니다."""
+
+    if CLIENT_ID and client_id != CLIENT_ID:
+        raise HTTPException(status_code=400, detail="invalid_client")
+    id_token = build_id_token(
+        email=DEFAULT_EMAIL,
+        name=DEFAULT_NAME,
+        sabun=DEFAULT_SABUN,
+        loginid=DEFAULT_LOGINID,
+        deptname=DEFAULT_DEPT,
+        deptid=DEFAULT_DEPTID,
+        username_en=DEFAULT_USERNAME_EN,
+        givenname=DEFAULT_GIVENNAME,
+        surname=DEFAULT_SURNAME,
+        grd_name=DEFAULT_GRDNAME,
+        grdname_en=DEFAULT_GRDNAME_EN,
+        busname=DEFAULT_BUSNAME,
+        intcode=DEFAULT_INTCODE,
+        intname=DEFAULT_INTNAME,
+        origincomp=DEFAULT_ORIGINCOMP,
+        employeetype=DEFAULT_EMPLOYEETYPE,
+        nonce=nonce,
+    )
+    return {
+        "access_token": id_token,
+        "id_token": id_token,
+        "token_type": "Bearer",
+        "expires_in": 300,
+    }
+
+
+@router.get("/userinfo")
+async def userinfo(authorization: str | None = Header(default=None)) -> Dict[str, Any]:
+    """Bearer 인증이 있으면 authorize form과 같은 기본 identity를 반환합니다."""
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="missing_bearer_token")
+    return {
+        "sub": hashlib.sha256(DEFAULT_SABUN.encode("utf-8")).hexdigest()[:32],
+        "mail": DEFAULT_EMAIL,
+        "email": DEFAULT_EMAIL,
+        "loginid": DEFAULT_LOGINID,
+        "sabun": DEFAULT_SABUN,
+        "username": DEFAULT_NAME,
+        "deptname": DEFAULT_DEPT,
+        "deptid": DEFAULT_DEPTID,
+    }
+
+
 @router.get("/.well-known/openid-configuration")
 async def openid_config(request: Request) -> Dict[str, Any]:
-    base = str(request.url.replace(path="", query="", fragment=""))[:-1]
+    base = str(request.url.replace(path="", query="", fragment="")).rstrip("/")
     return {
         "issuer": ISSUER,
         "authorization_endpoint": f"{base}/authorize",

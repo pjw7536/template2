@@ -222,7 +222,7 @@ describe("ChatMessages 문맥과 과거 이력", () => {
 
   it("일반 URL은 새 창에서 열고 이메일 근거 링크는 현재 창에서 연다", () => {
     const emailUrl =
-      "https://portal.example.com/emails/inbox?user_sdwt_prod=S1&emailId=DOC-1"
+      "https://portal.example.com/emails/inbox?userSdwtProd=S1&emailId=DOC-1"
     render(
       <MemoryRouter>
         <ChatMessages

@@ -59,7 +59,7 @@ export function DataScopeDialog({ selection, onOpenChange }) {
       return [
         option.department,
         option.line,
-        option.user_sdwt_prod,
+        option.userSdwtProd,
       ].some((value) => String(value || "").toLocaleLowerCase().includes(normalizedSearch))
     })
   }, [affiliationQuery.data?.affiliationOptions, search])
@@ -235,7 +235,7 @@ export function DataScopeDialog({ selection, onOpenChange }) {
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-medium">
-                            {option.user_sdwt_prod}
+                            {option.userSdwtProd}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {option.department} / {option.line}

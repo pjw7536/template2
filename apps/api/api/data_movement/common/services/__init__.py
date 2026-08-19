@@ -11,6 +11,7 @@ from api.data_movement.common.services.file_loader import (
     list_incoming_files,
 )
 from api.data_movement.common.services.load_command import DataMovementLoadCommand
+from api.data_movement.common.services.load_runner import run_incoming_file_load
 from api.data_movement.common.services.postgres_copy import (
     CopyFullReplaceResult,
     CopyReplaceResult,
@@ -35,6 +36,7 @@ __all__ = [
     "get_data_movement_dirs",
     "list_data_files",
     "list_incoming_files",
+    "run_incoming_file_load",
     "iter_deflate_text_lines",
     "write_selected_deflate_csv",
 ]

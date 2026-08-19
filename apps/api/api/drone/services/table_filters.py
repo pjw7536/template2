@@ -8,7 +8,6 @@ from typing import Any, Optional, Sequence
 
 DRONE_TARGET_TABLE_NAME = "drone_sop_target"
 DRONE_TARGET_MAPPING_TABLE_NAME = "drone_sop_target_mapping"
-LINE_FILTER_MODE_LEGACY = "legacy"
 LINE_FILTER_MODE_SDWT = "sdwt_prod"
 LINE_FILTER_MODE_USER_SDWT = "user_sdwt_prod"
 LINE_FILTER_MODE_TARGET_USER_SDWT = "target_user_sdwt_prod"
@@ -44,7 +43,6 @@ def normalize_line_filter_mode(
         return default
     normalized = value.strip().lower()
     if normalized in {
-        LINE_FILTER_MODE_LEGACY,
         LINE_FILTER_MODE_SDWT,
         LINE_FILTER_MODE_USER_SDWT,
         LINE_FILTER_MODE_TARGET_USER_SDWT,
@@ -132,7 +130,7 @@ def build_line_filters(
     column_names: Sequence[str],
     line_id: Optional[str],
     *,
-    filter_mode: str = LINE_FILTER_MODE_LEGACY,
+    filter_mode: str = LINE_FILTER_MODE_TARGET_USER_SDWT,
 ) -> dict[str, Any]:
     """lineId 기반 필터 SQL 조각을 생성합니다."""
 
@@ -144,7 +142,7 @@ def build_line_filters(
 
     normalized_mode = normalize_line_filter_mode(
         filter_mode,
-        default=LINE_FILTER_MODE_LEGACY,
+        default=LINE_FILTER_MODE_TARGET_USER_SDWT,
     )
     line_col = find_column(column_names, "line_id")
 
@@ -215,35 +213,6 @@ def build_line_filters(
             )
             return {"filters": filters, "params": params}
 
-    if normalized_mode == LINE_FILTER_MODE_LEGACY:
-        sdwt_col = find_column(column_names, "sdwt_prod")
-        if sdwt_col:
-            _append_line_filter(
-                filters=filters,
-                params=params,
-                base_filter=_build_drone_mapping_subquery_filter(
-                    column_name=sdwt_col,
-                    mapping_column="sdwt_prod",
-                ),
-                line_column=line_col,
-                line_id=line_id,
-            )
-            return {"filters": filters, "params": params}
-
-        user_sdwt_col = find_column(column_names, "user_sdwt_prod")
-        if user_sdwt_col:
-            _append_line_filter(
-                filters=filters,
-                params=params,
-                base_filter=_build_drone_mapping_subquery_filter(
-                    column_name=user_sdwt_col,
-                    mapping_column="user_sdwt_prod",
-                ),
-                line_column=line_col,
-                line_id=line_id,
-            )
-            return {"filters": filters, "params": params}
-
     if line_col:
         filters.append(f"LOWER({line_col}) = LOWER(%s)")
         params.append(line_id)
@@ -274,7 +243,6 @@ def build_date_range_filters(
 __all__ = [
     "DRONE_TARGET_MAPPING_TABLE_NAME",
     "DRONE_TARGET_TABLE_NAME",
-    "LINE_FILTER_MODE_LEGACY",
     "LINE_FILTER_MODE_SDWT",
     "LINE_FILTER_MODE_TARGET_USER_SDWT",
     "LINE_FILTER_MODE_USER_SDWT",

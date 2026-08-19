@@ -175,7 +175,7 @@ def auth_login(*, requested_target: Optional[str], request: HttpRequest) -> Oidc
     """ADFS authorize URL과 세션 nonce를 준비합니다.
 
     입력:
-    - requested_target: target 또는 next 쿼리 파라미터
+    - requested_target: canonical target 쿼리 파라미터
     - request: Django HttpRequest
 
     반환:

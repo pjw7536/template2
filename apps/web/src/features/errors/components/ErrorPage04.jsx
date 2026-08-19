@@ -6,6 +6,7 @@ import { Error04Illustration } from "@/components/common"
 function ErrorPage04({
   title = "Page not found",
   description = "We couldn't find the page you are looking for.",
+  statusLabel = "",
   actionLabel = "Back to home page",
   homeHref = "/",
 }) {
@@ -16,6 +17,11 @@ function ErrorPage04({
         <div className="flex h-full min-h-0 flex-col items-center justify-center gap-12 overflow-y-auto px-8 pt-6 pb-8 sm:pt-14 sm:pb-16 lg:justify-between lg:pt-20 lg:pb-24">
           <Error04Illustration aria-hidden="true" className="h-[clamp(300px,50vh,600px)]" />
           <div className="text-center">
+            {statusLabel ? (
+              <p className="mx-auto mb-3 w-fit rounded-full border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                {statusLabel}
+              </p>
+            ) : null}
             <h1 className="mb-1.5 text-2xl font-semibold">{title}</h1>
             <p className="mb-5 text-muted-foreground">{description}</p>
             <Button size="lg" className="rounded-lg text-base" asChild>

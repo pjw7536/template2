@@ -14,6 +14,12 @@ from typing import Any, Iterator, Mapping
 import requests
 
 from .cancellation import ExternalCallCancellation, ExternalCallCancelled
+from .external_http import (
+    ExternalHttpError,
+    ExternalHttpResponseError,
+    ExternalHttpTimeout,
+    request_external,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +76,17 @@ def stream_openai_chat_completion(
         cancellation.raise_if_cancelled()
         stream_payload = dict(payload)
         stream_payload["stream"] = True
-        response = active_session.post(
+        response = request_external(
+            active_session.post,
             url,
             headers=dict(headers),
             json=stream_payload,
             timeout=max(1, int(timeout_seconds)),
             stream=True,
+            cancellation=cancellation,
+            raise_for_status=True,
         )
         unregister_response = cancellation.register_closer(response.close)
-        response.raise_for_status()
         completed = False
         for raw_line in response.iter_lines(decode_unicode=True):
             cancellation.raise_if_cancelled()
@@ -93,13 +101,10 @@ def stream_openai_chat_completion(
             raise OpenAIStreamError("LLM streaming 응답이 완료되지 않았습니다.")
     except ExternalCallCancelled:
         raise
-    except requests.HTTPError as exc:
-        status = getattr(getattr(exc, "response", None), "status_code", "unknown")
-        logger.warning("OpenAI 호환 streaming HTTP 오류: status=%s", status)
+    except ExternalHttpResponseError as exc:
+        logger.warning("OpenAI 호환 streaming HTTP 오류: status=%s", exc.status_code)
         raise OpenAIStreamError("LLM 요청에 실패했습니다.") from exc
-    except requests.RequestException as exc:
-        if cancellation.cancelled:
-            raise ExternalCallCancelled("외부 호출이 취소되었습니다.") from exc
+    except (ExternalHttpTimeout, ExternalHttpError) as exc:
         logger.warning(
             "OpenAI 호환 streaming 요청 실패: exception_type=%s",
             type(exc).__name__,

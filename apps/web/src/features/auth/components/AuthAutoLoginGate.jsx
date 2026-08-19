@@ -15,8 +15,8 @@ export function AuthAutoLoginGate() {
   const location = useLocation()
   const autoLoginTriggeredRef = useRef(false)
 
-  // 현재 경로 + 쿼리를 next 파라미터로 사용해 돌아올 위치를 보존합니다.
-  const nextPath = `${location?.pathname || "/"}${location?.search || ""}`
+  // 현재 경로 + 쿼리를 target 파라미터로 사용해 돌아올 위치를 보존합니다.
+  const targetPath = `${location?.pathname || "/"}${location?.search || ""}`
 
   useEffect(() => {
     if (autoLoginTriggeredRef.current) return
@@ -25,8 +25,8 @@ export function AuthAutoLoginGate() {
     if (config?.providerConfigured === false) return
 
     autoLoginTriggeredRef.current = true
-    login({ next: nextPath })
-  }, [config?.providerConfigured, isLoading, login, location.pathname, location.search, nextPath, user])
+    login({ target: targetPath })
+  }, [config?.providerConfigured, isLoading, login, location.pathname, location.search, targetPath, user])
 
   if (!user) {
     const statusMessage = config?.providerConfigured === false

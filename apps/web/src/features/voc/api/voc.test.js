@@ -8,7 +8,6 @@ function buildPost(overrides = {}) {
     title: "문의",
     content: "<p>내용</p>",
     status: "접수",
-    app: "기타",
     createdAt: "2026-08-01T00:00:00+00:00",
     updatedAt: "2026-08-01T00:00:00+00:00",
     author: { id: 3, name: "사용자(knox)" },
@@ -77,7 +76,6 @@ describe("VOC API contract", () => {
       title: "문의",
       content: "내용",
       status: "접수",
-      app: "기타",
     })
   })
 })

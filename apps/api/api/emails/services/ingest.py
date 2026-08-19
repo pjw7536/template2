@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import poplib
 from datetime import datetime
 from email.header import decode_header, make_header
@@ -18,6 +17,7 @@ from email.policy import default
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Tuple
 
+from django.conf import settings
 from django.utils import timezone
 
 from api.common.services import UNASSIGNED_USER_SDWT_PROD
@@ -75,30 +75,30 @@ class _LongLinePOP3SSL(_LongLinePop3Mixin, poplib.POP3_SSL):
 
 
 def _load_excluded_subject_prefixes() -> tuple[str, ...]:
-    """환경변수 기반 메일 제목 제외 prefix 목록을 로드합니다.
+    """Django settings 기반 메일 제목 제외 prefix 목록을 로드합니다.
 
     입력:
-        없음(환경변수 EMAIL_EXCLUDED_SUBJECT_PREFIXES 사용).
+        없음(settings.EMAIL_EXCLUDED_SUBJECT_PREFIXES 사용).
     반환:
         제외 prefix 튜플.
     부작용:
-        환경변수 읽기.
+        Django settings 읽기.
     오류:
         없음.
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 환경변수 조회
+    # 1) canonical settings 조회
     # -----------------------------------------------------------------------------
-    raw = os.getenv("EMAIL_EXCLUDED_SUBJECT_PREFIXES", "")
-    if not raw:
+    configured = getattr(settings, "EMAIL_EXCLUDED_SUBJECT_PREFIXES", ())
+    if not configured:
         return DEFAULT_EXCLUDED_SUBJECT_PREFIXES
 
     # -----------------------------------------------------------------------------
     # 2) 목록 파싱 및 정규화
     # -----------------------------------------------------------------------------
     prefixes: List[str] = []
-    for item in raw.split(","):
+    for item in configured:
         cleaned = item.strip().strip("\"'").lower()
         if cleaned:
             prefixes.append(cleaned)
@@ -798,34 +798,11 @@ def run_pop3_ingest(
     return {"deleted": len(deleted), "reindexed": reindexed}
 
 
-def _env_bool(key: str, default: bool = False) -> bool:
-    """환경변수 값을 boolean으로 파싱합니다.
+def run_pop3_ingest_from_settings() -> Dict[str, int]:
+    """Django settings로 POP3 수집을 실행합니다.
 
     입력:
-        key: 환경변수 키.
-        default: 미설정 시 기본값.
-    반환:
-        해석된 boolean 값.
-    부작용:
-        환경변수 읽기.
-    오류:
-        없음.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 환경변수 조회 및 해석
-    # -----------------------------------------------------------------------------
-    value = os.getenv(key)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def run_pop3_ingest_from_env() -> Dict[str, int]:
-    """환경변수로 POP3 수집을 실행합니다.
-
-    입력:
-        없음(환경변수 사용).
+        없음(canonical EMAIL_POP3_* settings 사용).
     반환:
         {"deleted": 삭제된 메시지 수, "reindexed": 백필 재등록 수}
     부작용:
@@ -833,22 +810,19 @@ def run_pop3_ingest_from_env() -> Dict[str, int]:
     오류:
         환경변수 미설정 시 ValueError가 발생할 수 있음.
 
-    환경변수(우선):
-        - EMAIL_POP3_HOST / EMAIL_POP3_PORT / EMAIL_POP3_USERNAME / EMAIL_POP3_PASSWORD (우선 사용)
-        - EMAIL_POP3_USE_SSL / EMAIL_POP3_TIMEOUT (우선 사용)
-    폴백:
-        - POP3_HOST / POP3_PORT / POP3_USERNAME / POP3_PASSWORD / POP3_USE_SSL / POP3_TIMEOUT (폴백 사용)
+    설정:
+        EMAIL_POP3_HOST / PORT / USERNAME / PASSWORD / USE_SSL / TIMEOUT만 사용합니다.
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 환경변수 읽기
+    # 1) canonical settings 읽기
     # -----------------------------------------------------------------------------
-    host = os.getenv("EMAIL_POP3_HOST") or os.getenv("POP3_HOST") or ""
-    port = int(os.getenv("EMAIL_POP3_PORT") or os.getenv("POP3_PORT") or "995")
-    username = os.getenv("EMAIL_POP3_USERNAME") or os.getenv("POP3_USERNAME") or ""
-    password = os.getenv("EMAIL_POP3_PASSWORD") or os.getenv("POP3_PASSWORD") or ""
-    use_ssl = _env_bool("EMAIL_POP3_USE_SSL", _env_bool("POP3_USE_SSL", True))
-    timeout = int(os.getenv("EMAIL_POP3_TIMEOUT") or os.getenv("POP3_TIMEOUT") or "60")
+    host = settings.EMAIL_POP3_HOST
+    port = settings.EMAIL_POP3_PORT
+    username = settings.EMAIL_POP3_USERNAME
+    password = settings.EMAIL_POP3_PASSWORD
+    use_ssl = settings.EMAIL_POP3_USE_SSL
+    timeout = settings.EMAIL_POP3_TIMEOUT
 
     # -----------------------------------------------------------------------------
     # 2) 수집 실행

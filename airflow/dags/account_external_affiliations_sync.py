@@ -16,17 +16,20 @@ ACCOUNT_EXTERNAL_AFFILIATIONS_SYNC_TRIGGER_URL = (
     f"{AIRFLOW_API_BASE_URL}/api/v1/account/external-affiliations/sync"
 )
 EXTERNAL_AFFILIATION_COLUMN_RENAMES = {
-    "tdvt_nm": "user_sdwt_prod",
-    "sso_id": "knox_id",
+    "tdvt_nm": "userSdwtProd",
+    "sso_id": "knoxId",
     "org_dept_kor_nm": "department",
     "emp_prf_fllnm": "username",
+    "knox_id": "knoxId",
+    "user_sdwt_prod": "userSdwtProd",
+    "source_updated_at": "sourceUpdatedAt",
 }
 EXTERNAL_AFFILIATION_RECORD_COLUMNS = [
-    "knox_id",
+    "knoxId",
     "username",
     "department",
-    "user_sdwt_prod",
-    "source_updated_at",
+    "userSdwtProd",
+    "sourceUpdatedAt",
 ]
 
 
@@ -52,7 +55,7 @@ def run_account_external_affiliations_sync(**_context):
     # 사내 서버 수신부에서 받은 DataFrame은 아래 helper로 API payload 형식에 맞춥니다.
     # payload = build_external_affiliations_payload(payload)
     # records 예시:
-    # [{"knox_id": "K1", "username": "홍길동", "department": "DeptA", "user_sdwt_prod": "G1"}]
+    # [{"knoxId": "K1", "username": "홍길동", "department": "DeptA", "userSdwtProd": "G1"}]
     payload = {"records": []}
 
     response = requests.post(

@@ -32,7 +32,7 @@ from .early_inform.early_inform import (
 from .inform.sop_inform import (
     DroneSopInformResult,
     has_drone_sop_pipeline_candidates,
-    run_drone_sop_pipeline_from_env,
+    run_drone_sop_pipeline_from_settings,
 )
 from .inform.retry_channel import DroneSopRetryChannelResult, retry_drone_sop_channel
 from .jira.config import DroneJiraConfig
@@ -40,7 +40,7 @@ from .jira.sop_jira import (
     DroneSopInstantInformResult,
     DroneSopJiraCreateResult,
     enqueue_drone_sop_jira_instant_inform,
-    run_drone_sop_jira_create_from_env,
+    run_drone_sop_jira_create_from_settings,
 )
 from .channels import (
     DroneSopAffiliationSeedResult,
@@ -63,9 +63,9 @@ from .channels import (
     upsert_drone_sop_user_sdwt_channel,
 )
 from .pop3.config import DroneSopPop3Config, DroneSopPop3IngestResult, NeedToSendRule
-from .pop3.sop_pop3 import run_drone_sop_pop3_ingest_from_env
+from .pop3.sop_pop3 import run_drone_sop_pop3_ingest_from_settings
 from .shared.delivery_state import create_channel_delivery_with_dispatch
-from .shared.legacy_delivery import pop_legacy_delivery_seed, seed_legacy_delivery_rows
+from .shared.delivery_seed import seed_drone_sop_delivery_rows
 from .table_ops import (
     TableNotFoundError,
     TableRecordNotFoundError,
@@ -109,14 +109,13 @@ __all__ = [
     "get_or_create_drone_sop_target_by_name",
     "has_drone_sop_pipeline_candidates",
     "normalize_recipient_channel",
-    "pop_legacy_delivery_seed",
     "promote_drone_sop_external_recipients_for_user",
     "replace_drone_sop_channel_recipients",
     "retry_drone_sop_channel",
-    "run_drone_sop_jira_create_from_env",
-    "run_drone_sop_pipeline_from_env",
-    "run_drone_sop_pop3_ingest_from_env",
-    "seed_legacy_delivery_rows",
+    "run_drone_sop_jira_create_from_settings",
+    "run_drone_sop_pipeline_from_settings",
+    "run_drone_sop_pop3_ingest_from_settings",
+    "seed_drone_sop_delivery_rows",
     "seed_drone_sop_notification_defaults_from_rows",
     "update_drone_sop_target_admin_row",
     "update_drone_sop_target_mapping_reservation_policy",

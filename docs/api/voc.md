@@ -26,8 +26,7 @@ VOC API는 게시글과 답변을 관리합니다.
 {
   "title": "문의 제목",
   "content": "문의 내용",
-  "status": "접수",
-  "app": "기타"
+  "status": "접수"
 }
 ```
 
@@ -50,7 +49,6 @@ VOC API는 게시글과 답변을 관리합니다.
       "title": "문의 제목",
       "content": "<p>문의 내용</p>",
       "status": "접수",
-      "app": "기타",
       "createdAt": "2026-08-01T00:00:00+00:00",
       "updatedAt": "2026-08-01T00:00:00+00:00",
       "author": { "id": 1, "name": "사용자(knox-id)" },
@@ -64,7 +62,8 @@ VOC API는 게시글과 답변을 관리합니다.
 - 삭제 응답: `{ "success": true }`
 - 답변 생성 응답: `{ "reply": VocReply, "post": VocPost }`
 - `total`, `statusCounts`, snake_case/legacy 필드 별칭은 제공하지 않습니다.
-- 상태·앱·내 글 필터와 상태별 개수는 SPA가 받은 목록에서 계산합니다.
+- 상태·내 글 필터와 상태별 개수는 SPA가 받은 목록에서 계산합니다.
+- 제거된 `app` 필드를 생성·수정 요청에 보내면 400 `invalid_request`와 `fieldErrors.app`을 반환합니다.
 
 ## 권한
 
@@ -75,7 +74,7 @@ VOC API는 게시글과 답변을 관리합니다.
 
 | Status | 상황 |
 | --- | --- |
-| 400 | 잘못된 상태 또는 입력 |
+| 400 | 잘못된 상태, 제거된 `app` 필드 또는 기타 입력 오류 |
 | 401 | 로그인 필요 |
 | 403 | 작성자 또는 VOC `admin` 권한 없음 |
 | 404 | 게시글 없음 |

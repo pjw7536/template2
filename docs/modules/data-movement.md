@@ -16,7 +16,7 @@ Compose 기본 host path는 `./data/data_movement`이고, API 컨테이너에서
 | `m_interlock` | `/data/data_movement/m_interlock` | `m_interlock_*_????????_????.csv.deflate` |
 | `mi_tip_update_hist` | `/data/data_movement/mi_tip_update_hist` | `*mi_tip_update_hist*.csv.deflate` |
 | `racb_list` | `/data/data_movement/racb_list` | `*racb_list*.csv.deflate` |
-| `mes_line_mapping_info` | `/data/data_movement/mes_line_mapping_info` | `*_MES_MAPPING_INFO_*.csv.deflate` |
+| `mes_line_mapping_info` | `/data/data_movement/mes_line_mapping_info` | `*_MES_LINE_MAPPING_INFO_*.csv.deflate` |
 | `station_master` | `/data/data_movement/station_master` | `*_STATION_MASTER_*.csv.deflate` |
 
 `ctttm_workorder_list`는 `CT_MST_WORKORDER`와 `CT_MNU_WORKORDER`의 원천 컬럼 수와 순서가 다릅니다.

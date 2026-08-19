@@ -14,7 +14,7 @@ from ..models import VocPost, VocReply
 from ..selectors import get_post_detail
 
 
-def create_post(*, author: Any, title: str, content: str, status: str, app: str) -> VocPost:
+def create_post(*, author: Any, title: str, content: str, status: str) -> VocPost:
     """검증된 값으로 VOC 게시글을 생성합니다.
 
     부작용:
@@ -25,7 +25,6 @@ def create_post(*, author: Any, title: str, content: str, status: str, app: str)
         title=title,
         content=content,
         status=status,
-        app=app,
         author=author,
     )
 

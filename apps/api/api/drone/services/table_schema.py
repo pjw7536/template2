@@ -15,7 +15,6 @@ from api.common.services.db import run_query
 from .table_filters import (
     DRONE_TARGET_MAPPING_TABLE_NAME,
     DRONE_TARGET_TABLE_NAME,
-    LINE_FILTER_MODE_LEGACY,
     LINE_FILTER_MODE_SDWT,
     LINE_FILTER_MODE_TARGET_USER_SDWT,
     LINE_FILTER_MODE_USER_SDWT,
@@ -146,7 +145,6 @@ __all__ = [
     "normalize_line_id",
     "resolve_table_schema",
     "sanitize_identifier",
-    "LINE_FILTER_MODE_LEGACY",
     "LINE_FILTER_MODE_SDWT",
     "LINE_FILTER_MODE_USER_SDWT",
     "LINE_FILTER_MODE_TARGET_USER_SDWT",

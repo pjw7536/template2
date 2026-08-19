@@ -37,10 +37,10 @@ def _build_connection_kwargs(*, database_name: str) -> dict[str, str]:
 
     return {
         "dbname": database_name,
-        "user": _env("DJANGO_DB_USER") or _env("DB_USER", "airflow"),
-        "password": _env("DJANGO_DB_PASSWORD") or _env("DB_PASSWORD", "airflow"),
-        "host": _env("DJANGO_DB_HOST") or _env("DB_HOST", "airflow-postgres"),
-        "port": _env("DJANGO_DB_PORT") or _env("DB_PORT", "8010"),
+        "user": _env("DJANGO_DB_USER", "airflow"),
+        "password": _env("DJANGO_DB_PASSWORD", "airflow"),
+        "host": _env("DJANGO_DB_HOST", "airflow-postgres"),
+        "port": _env("DJANGO_DB_PORT", "8010"),
     }
 
 
@@ -86,7 +86,7 @@ class Command(BaseCommand):
 
         parser.add_argument(
             "--database",
-            default=_env("DJANGO_DB_NAME") or _env("DB_NAME", "dashboard"),
+            default=_env("DJANGO_DB_NAME", "dashboard"),
             help="생성 여부를 확인할 Django DB 이름",
         )
         parser.add_argument(

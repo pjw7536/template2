@@ -3,15 +3,5 @@ apps/api/api/account/tests.py	AccountEndpointTests	4566
 apps/api/api/account/tests.py	AppAffiliationDataScopeTests	628
 apps/api/api/account/tests.py	ExternalAffiliationSyncTests	564
 apps/api/api/activity/tests.py	ActivityLogEndpointTests	756
-apps/api/api/assistant/tests.py	AssistantRuntimeV2Tests	1544
-apps/api/api/data_movement/ct_process_comment/tests.py	CtProcessCommentSummaryTests	1138
-apps/api/api/drone/tests.py	DroneSopInformPolicyTests	1306
-apps/api/api/drone/tests.py	DroneSopJiraCreateProjectKeyTests	566
-apps/api/api/drone/tests.py	DroneSopPop3ParsingTests	587
-apps/api/api/drone/tests.py	DroneSopTargetRecipientTests	1549
-apps/api/api/drone/tests.py	DroneTablesEndpointTests	686
-apps/api/api/emails/tests.py	EmailMailboxAccessViewTests	736
 apps/api/api/l3_spider/tests.py	L3SpiderServiceTests	715
-apps/api/api/observer/tests.py	ObserverAnalysisTests	710
-apps/api/api/observer/tests.py	ObserverEndpointTests	1629
 apps/api/api/pm_comparison/tests.py	PmComparisonServiceTests	1192

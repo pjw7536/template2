@@ -31,19 +31,12 @@ function resolveRole(member) {
 }
 
 function buildMemberRow(member) {
-  const userId = member?.userId ?? member?.user_id ?? ""
-  const avatarid = normalizeText(
-    member?.avatarid ??
-      member?.avatarId ??
-      member?.avatar_id ??
-      member?.userid ??
-      member?.userId ??
-      member?.user_id,
-  )
+  const userId = member?.userId ?? ""
+  const avatarid = normalizeText(member?.avatarid ?? member?.avatarId ?? member?.userId)
   const name = normalizeText(member?.name)
   const username = normalizeText(member?.username)
-  const knoxId = normalizeText(member?.knoxId ?? member?.knox_id)
-  const userSdwtProd = normalizeText(member?.userSdwtProd ?? member?.user_sdwt_prod)
+  const knoxId = normalizeText(member?.knoxId)
+  const userSdwtProd = normalizeText(member?.userSdwtProd)
 
   const primary = username || name || userSdwtProd || "Unknown"
   const secondary = knoxId

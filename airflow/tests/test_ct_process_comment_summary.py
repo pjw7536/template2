@@ -67,9 +67,9 @@ class CtProcessCommentSummaryDagTests(unittest.TestCase):
 
         outcomes = [
             {
-                "workorder_id": f"WO-{index:03d}",
+                "workorderId": f"WO-{index:03d}",
                 "status": "failed",
-                "error_message": (
+                "errorMessage": (
                     "OpenWebUI 모든 응답 방식에서 최종 content 추출에 실패했습니다. "
                     "diagnostic_version='ctpc-openwebui-v2', stage=event_summary, "
                     f"response_id='chatcmpl-{index:03d}'"
@@ -79,10 +79,10 @@ class CtProcessCommentSummaryDagTests(unittest.TestCase):
         ]
         response = Mock()
         response.json.return_value = {
-            "table_name": "ct_process_comment",
-            "processed_count": 100,
-            "success_count": 1,
-            "failure_count": 99,
+            "tableName": "ct_process_comment",
+            "processedCount": 100,
+            "successCount": 1,
+            "failureCount": 99,
             "outcomes": outcomes,
         }
 
@@ -107,12 +107,12 @@ class CtProcessCommentSummaryDagTests(unittest.TestCase):
 
         response = Mock()
         response.json.return_value = {
-            "failure_count": 3,
+            "failureCount": 3,
             "outcomes": [
                 {
-                    "workorder_id": f"WO-{index}",
+                    "workorderId": f"WO-{index}",
                     "status": "failed",
-                    "error_message": f"원인-{index}. stage=event_summary",
+                    "errorMessage": f"원인-{index}. stage=event_summary",
                 }
                 for index in range(3)
             ],

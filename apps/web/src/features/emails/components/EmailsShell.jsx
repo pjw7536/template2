@@ -166,7 +166,7 @@ function EmailsShellLayout({
   const mailboxes = Array.isArray(mailboxData?.results) ? mailboxData.results : []
   const mailboxParam = getMailboxFromSearchParams(searchParams)
   const normalizedMailboxParam = normalizeMailbox(mailboxParam)
-  const currentUserSdwtProd = normalizeMailbox(user?.user_sdwt_prod)
+  const currentUserSdwtProd = normalizeMailbox(user?.userSdwtProd)
   const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
   const baseMailboxes = normalizedMailboxes.filter((mailbox) => !isSentMailbox(mailbox))
   const canViewUnassigned = hasScopeRole(user, "emails")

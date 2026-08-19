@@ -17,7 +17,6 @@ from django.contrib.auth import login, logout
 from django.http import (
     HttpRequest,
     HttpResponse,
-    HttpResponseBadRequest,
     HttpResponseRedirect,
     JsonResponse,
 )
@@ -28,16 +27,16 @@ from rest_framework.views import APIView
 
 from api.auth import services as auth_services
 from api.auth.services.oidc_validation import append_error_to_target
-from api.common.services import resolve_frontend_target
+from api.common.services import api_error_response, resolve_frontend_target
 
 
 class FrontendRedirectView(APIView):
-    """요청을 프론트엔드 엔트리포인트(next 포함)로 리다이렉트합니다."""
+    """요청을 canonical target의 프론트엔드 엔트리포인트로 리다이렉트합니다."""
 
     def get(  # 타입 검사 생략: type: ignore[override]
         self, request: HttpRequest, *args: object, **kwargs: object
-    ) -> HttpResponseRedirect:
-        """next 파라미터를 기준으로 안전한 리다이렉트 응답을 반환합니다.
+    ) -> HttpResponse:
+        """target 파라미터를 기준으로 안전한 리다이렉트 응답을 반환합니다.
 
         입력:
         - 요청: Django HttpRequest
@@ -53,18 +52,27 @@ class FrontendRedirectView(APIView):
         - 없음
 
         예시 요청:
-        - 예시 요청: GET /api/v1/auth/redirect/?next=/dashboard
+        - 예시 요청: GET /api/v1/auth/?target=/dashboard
 
         예시 응답:
         - 예시 응답: 302 Location: https://<frontend-base>/dashboard
 
-        snake/camel 호환:
-        - 해당 없음(쿼리 파라미터 next만 사용)
+        query 계약:
+        - target만 허용
         """
         # -----------------------------------------------------------------------------
-        # 1) next 파라미터 추출
+        unexpected_fields = sorted(set(request.GET) - {"target"})
+        if unexpected_fields:
+            return api_error_response(
+                code="invalid_request",
+                message="Unsupported query fields were provided.",
+                field_errors={"unexpectedFields": unexpected_fields},
+                status=400,
+            )
+
+        # 1) target 파라미터 추출
         # -----------------------------------------------------------------------------
-        target = resolve_frontend_target(request.GET.get("next"), request=request)
+        target = resolve_frontend_target(request.GET.get("target"), request=request)
         # -----------------------------------------------------------------------------
         # 2) 리다이렉트 응답 반환
         # -----------------------------------------------------------------------------
@@ -120,14 +128,27 @@ def auth_login(request: HttpRequest):
     예시 응답:
     - 예시 응답: 302 Location: https://<adfs-auth>/?client_id=...
 
-    snake/camel 호환:
-    - 해당 없음(쿼리 파라미터 target/next만 사용)
+    query 계약:
+    - target만 허용
     """
 
-    requested_target = request.GET.get("target") or request.GET.get("next")
+    unexpected_fields = sorted(set(request.GET) - {"target"})
+    if unexpected_fields:
+        return api_error_response(
+            code="invalid_request",
+            message="Unsupported query fields were provided.",
+            field_errors={"unexpectedFields": unexpected_fields},
+            status=400,
+        )
+    requested_target = request.GET.get("target")
     result = auth_services.auth_login(requested_target=requested_target, request=request)
     if result.bad_request_message:
-        return HttpResponseBadRequest(result.bad_request_message)
+        return api_error_response(
+            code="external_dependency_error",
+            message="OIDC provider is not configured.",
+            details={"reason": result.bad_request_message},
+            status=503,
+        )
     return redirect(result.authorize_url)
 
 
@@ -160,12 +181,27 @@ def auth_callback(request: HttpRequest):
     """
 
     if request.method != "POST":
-        return HttpResponseBadRequest("form_post only")
+        return api_error_response(
+            code="invalid_request",
+            message="OIDC callback requires form_post.",
+            field_errors={"method": ["POST is required."]},
+            status=400,
+        )
 
     id_token = request.POST.get("id_token")
     state = request.POST.get("state")
     if not id_token or not state:
-        return HttpResponseBadRequest("missing id_token/state")
+        field_errors = {}
+        if not id_token:
+            field_errors["id_token"] = ["This field is required."]
+        if not state:
+            field_errors["state"] = ["This field is required."]
+        return api_error_response(
+            code="invalid_request",
+            message="Required OIDC callback fields are missing.",
+            field_errors=field_errors,
+            status=400,
+        )
 
     result = auth_services.auth_callback(
         request=request,
@@ -173,7 +209,12 @@ def auth_callback(request: HttpRequest):
         state=state,
     )
     if result.bad_request_message:
-        return HttpResponseBadRequest(result.bad_request_message)
+        return api_error_response(
+            code="external_dependency_error",
+            message="OIDC provider is not configured.",
+            details={"reason": result.bad_request_message},
+            status=503,
+        )
     if result.error_code:
         return redirect(append_error_to_target(str(result.target), result.error_code))
 
@@ -201,14 +242,18 @@ def auth_me(request: HttpRequest):
     - 예시 요청: GET /api/v1/auth/me
 
     예시 응답:
-    - 예시 응답: 200 {"id": 1, "usr_id": "...", "username": "...", "scope_access": {"portal": {...}}}
+    - 예시 응답: 200 {"id": 1, "knoxId": "...", "username": "...", "scopeAccess": {"portal": {...}}}
 
     snake/camel 호환:
     - 해당 없음(요청 바디 없음)
     """
 
     if not request.user.is_authenticated:
-        return JsonResponse({"detail": "unauthorized"}, status=401)
+        return api_error_response(
+            code="authentication_required",
+            message="Authentication is required.",
+            status=401,
+        )
 
     return JsonResponse(auth_services.auth_me(user=request.user))
 

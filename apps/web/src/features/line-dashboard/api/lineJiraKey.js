@@ -33,9 +33,8 @@ function normalizeTemplateKey(value) {
 }
 
 function normalizeTemplateKeys(payload) {
-  const legacyTemplateKey = normalizeTemplateKey(payload?.templateKey)
   return {
-    jira: normalizeTemplateKey(payload?.jiraTemplateKey) || legacyTemplateKey,
+    jira: normalizeTemplateKey(payload?.jiraTemplateKey),
     messenger: normalizeTemplateKey(payload?.messengerTemplateKey),
     mail: normalizeTemplateKey(payload?.mailTemplateKey),
   }
@@ -90,8 +89,8 @@ function normalizeNeedToSendRule(payload) {
   }
 }
 
-export async function fetchUserSdwtJiraKey(userSdwtProd) {
-  if (!userSdwtProd) {
+export async function fetchTargetJiraConfiguration(targetUserSdwtProd) {
+  if (!targetUserSdwtProd) {
     return {
       jiraKey: "",
       channelEnabled: DEFAULT_CHANNEL_ENABLED,
@@ -101,7 +100,7 @@ export async function fetchUserSdwtJiraKey(userSdwtProd) {
     }
   }
 
-  const endpoint = buildBackendUrl("/api/v1/line-dashboard/jira-keys", { targetUserSdwtProd: userSdwtProd })
+  const endpoint = buildBackendUrl("/api/v1/line-dashboard/jira-keys", { targetUserSdwtProd })
   const response = await fetch(endpoint, {
     cache: "no-store",
     credentials: "include",
@@ -128,13 +127,12 @@ export async function fetchUserSdwtJiraKey(userSdwtProd) {
   }
 }
 
-export async function updateUserSdwtJiraKey(options) {
-  const { lineId, userSdwtProd, channelEnabled, needToSendRule, templateKeys } = options
+export async function updateTargetJiraConfiguration(options) {
+  const { lineId, targetUserSdwtProd, channelEnabled, needToSendRule, templateKeys } = options
   const endpoint = buildBackendUrl("/api/v1/line-dashboard/jira-keys")
   const requestBody = {
     lineId,
-    targetUserSdwtProd: userSdwtProd,
-    userSdwtProd,
+    targetUserSdwtProd,
   }
   if (Object.prototype.hasOwnProperty.call(options, "jiraKey")) {
     requestBody.jiraKey = typeof options.jiraKey === "string" ? options.jiraKey : ""

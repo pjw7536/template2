@@ -78,10 +78,10 @@ Emails `admin`과 superuser를 포함한 모든 로그인 사용자는 사용자
 
 ## 관련 코드
 
-- `apps/api/api/emails/views.py`
+- `apps/api/api/emails/views/`
 - `apps/api/api/emails/models.py`
 - `apps/api/api/emails/permissions.py`
-- `apps/api/api/emails/selectors.py`
+- `apps/api/api/emails/selectors/`
 - `apps/api/api/emails/services/ingest.py`
 - `apps/api/api/emails/services/mutations.py`
 - `apps/api/api/emails/services/mailbox.py`

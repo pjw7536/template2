@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
-  DEFAULT_APP_CATEGORY,
   RICH_TEXT_EDITOR_FORMATS,
   RICH_TEXT_EDITOR_MODULES,
   STATUS_OPTIONS,
@@ -57,9 +56,6 @@ export function VocPostDetailDialog({
                   {selectedPost.author?.name || "작성자"} ·{" "}
                   {formatTimestamp(selectedPost.createdAt)}
                   <VocStatusBadge status={selectedPost.status} />
-                  <Badge variant="outline" className="text-[11px]">
-                    {selectedPost.app || DEFAULT_APP_CATEGORY}
-                  </Badge>
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-end">

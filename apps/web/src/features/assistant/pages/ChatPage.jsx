@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { useOutletContext } from "react-router-dom"
 import { Bot, Download, PanelLeft, Plus, RefreshCw, Sparkles } from "lucide-react"
 
@@ -16,8 +16,7 @@ import { ChatComposer } from "../components/ChatComposer"
 import { ChatErrorBanner } from "../components/ChatErrorBanner"
 import { ChatMessages } from "../components/ChatMessages"
 import { RoomList } from "../components/RoomList"
-import { useChatSession } from "../hooks/useChatSession"
-import { sortRoomsByRecentQuestion } from "../utils/chatRooms"
+import { useAssistantChatController } from "../hooks/useAssistantChatController"
 
 export function ChatPage() {
   const { user } = useAuth()
@@ -27,15 +26,18 @@ export function ChatPage() {
     ? outletContext.availableMailboxes
     : []
   const {
+    input,
+    inputRef,
+    setInput,
+    submitMessage,
+    sortedRooms,
     rooms,
-    roomListRooms,
     roomSearch,
     showArchived,
     hasMoreRooms,
     isLoadingMoreRooms,
     activeRoomId,
     messages,
-    messagesByRoom,
     isSending,
     isGenerating,
     hasActiveGeneration,
@@ -45,7 +47,6 @@ export function ChatPage() {
     errorMessage,
     canRetry,
     clearError,
-    sendMessage,
     retryLastMessage,
     stopGenerating,
     resetConversation,
@@ -66,43 +67,18 @@ export function ChatPage() {
     toggleArchiveRoom,
     toggleArchivedView,
     downloadConversation,
-  } = useChatSession({
-    messageContextKey: surface.appContextKey,
-    profileKey: surface.profileKey,
-    profileVersion: surface.profileVersion,
-    profileToolInputs: surface.toolInputs,
-    userKey: user.id,
+  } = useAssistantChatController({
+    sessionOptions: {
+      messageContextKey: surface.appContextKey,
+      profileKey: surface.profileKey,
+      profileVersion: surface.profileVersion,
+      profileToolInputs: surface.toolInputs,
+      userKey: user.id,
+    },
   })
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [input, setInput] = useState("")
-  const inputRef = useRef(null)
-  const wasSendingRef = useRef(false)
   const activeRoom = rooms.find((room) => room.id === activeRoomId) || rooms[0] || { name: "대화방" }
-
-  const sortedRooms = sortRoomsByRecentQuestion(roomListRooms, messagesByRoom)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    if (!isSending && wasSendingRef.current && inputRef.current) {
-      inputRef.current.focus()
-    }
-    wasSendingRef.current = isSending
-  }, [isSending])
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    if (!input.trim() || isSending) return
-    try {
-      const result = await sendMessage(input)
-      if (result?.ok) setInput("")
-    } finally {
-      inputRef.current?.focus()
-    }
-  }
 
   const handleDeleteRoom = (roomId) => {
     removeRoom(roomId)
@@ -292,7 +268,7 @@ export function ChatPage() {
               inputRef={inputRef}
               inputValue={input}
               onInputChange={(event) => setInput(event.target.value)}
-              onSubmit={handleSubmit}
+              onSubmit={submitMessage}
               isSending={isSending}
               isGenerating={isGenerating}
               onStop={stopGenerating}

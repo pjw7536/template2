@@ -47,7 +47,7 @@ def run_data_movement_load(*, table_name: str, **_context):
     if limit is not None:
         payload["limit"] = limit
     if _parse_bool(os.getenv("DATA_MOVEMENT_LOAD_DRY_RUN")):
-        payload["dry_run"] = True
+        payload["dryRun"] = True
 
     response = requests.post(
         f"{AIRFLOW_API_BASE_URL}/api/v1/data-movement/{table_name}/load/",

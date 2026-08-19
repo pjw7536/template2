@@ -82,7 +82,7 @@ export function ManageableGroupsCard({ groups }) {
                 }
 
                 const username = member.username || "미지정"
-                const knoxId = member.knoxId || member.knox_id
+                const knoxId = member.knoxId
                 const name = (member.name || "").trim()
                 const detail = name && knoxId ? `${name} (${knoxId})` : name || knoxId || ""
                 const role = resolveAccessRole(member.role)

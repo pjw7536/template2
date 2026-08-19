@@ -36,10 +36,18 @@ from .serializers import (
 from .services import add_reply, can_manage_post, create_post, delete_post, update_post
 
 
-def _json_error(message: str, *, status: int) -> JsonResponse:
+def _json_error(
+    message: str,
+    *,
+    status: int,
+    details: Mapping[str, Any] | None = None,
+) -> JsonResponse:
     """VOC의 canonical 오류 payload를 반환합니다."""
 
-    return JsonResponse({"error": message}, status=status)
+    payload: dict[str, Any] = {"error": message}
+    if details is not None:
+        payload["details"] = details
+    return JsonResponse(payload, status=status)
 
 
 def _read_request_data(request: Request) -> tuple[dict[str, Any] | None, JsonResponse | None]:
@@ -63,7 +71,7 @@ def _validated_data(
     if serializer.is_valid():
         return dict(serializer.validated_data), None
     message = extract_first_error_message(serializer.errors)
-    return None, _json_error(message, status=400)
+    return None, _json_error(message, status=400, details=serializer.errors)
 
 
 def _serialize_post(post: Any) -> dict[str, Any]:
@@ -100,7 +108,7 @@ class VocPostsView(APIView):
 
         예시 요청:
         - `POST /api/v1/voc/posts`
-        - `{"title":"제목","content":"내용","status":"접수","app":"기타"}`
+        - `{"title":"제목","content":"내용","status":"접수"}`
 
         호환 정책:
         - request key는 canonical 필드만 허용하며 snake_case 별칭은 제공하지 않습니다.
@@ -144,7 +152,7 @@ class VocPostDetailView(APIView):
         - `{"title":"수정 제목","status":"진행중"}`
 
         호환 정책:
-        - title/content/status/app canonical 필드만 허용합니다.
+        - title/content/status canonical 필드만 허용합니다.
         """
 
         if not request.user.is_authenticated:

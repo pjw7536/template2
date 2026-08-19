@@ -54,11 +54,14 @@ def _build_event_type(row: RacbList) -> str:
     return f"{row.racb_type_cd or ''}_{row.status_code or ''}"
 
 
-def _build_racb_url(row: RacbList) -> str:
+def _build_racb_url(row: RacbList) -> str | None:
     """RACB 상세 팝업 URL을 생성합니다."""
 
+    base_url = str(getattr(settings, "RACB_REPORT_BASE_URL", "") or "").strip()
+    if not base_url:
+        return None
     query = urlencode({"racbId": row.c_racb_id, "lineId": row.line_id or ""})
-    return f"{settings.RACB_REPORT_BASE_URL}?{query}"
+    return f"{base_url}?{query}"
 
 
 def fetch_racb_timeline_logs(

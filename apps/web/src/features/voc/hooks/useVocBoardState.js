@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { DEFAULT_APP_CATEGORY, DEFAULT_STATUS } from "../utils/constants"
+import { DEFAULT_STATUS } from "../utils/constants"
 import { vocQueryKeys } from "../api/queryKeys"
 import {
   createVocPost,
@@ -23,12 +23,10 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   const queryClient = useQueryClient()
 
   const [statusFilter, setStatusFilter] = React.useState(null)
-  const [appFilter, setAppFilter] = React.useState(null)
   const [isMyPostsOnly, setIsMyPostsOnly] = React.useState(false)
   const [form, setForm] = React.useState({
     title: "",
     content: "",
-    app: DEFAULT_APP_CATEGORY,
   })
   const [replyDrafts, setReplyDrafts] = React.useState({})
   const [selectedPostId, setSelectedPostId] = React.useState(null)
@@ -64,14 +62,11 @@ export function useVocBoardState({ currentUser, isAdmin }) {
       })
     : posts
 
-  const appScopedPosts = appFilter
-    ? basePosts.filter((post) => post.app === appFilter)
-    : basePosts
-  const statusCounts = buildVocStatusCounts(appScopedPosts)
+  const statusCounts = buildVocStatusCounts(basePosts)
 
   const filteredPosts = statusFilter
-    ? appScopedPosts.filter((post) => post.status === statusFilter)
-    : appScopedPosts
+    ? basePosts.filter((post) => post.status === statusFilter)
+    : basePosts
   const start = pagination.pageIndex * pagination.pageSize
   const end = start + pagination.pageSize
   const visiblePosts = filteredPosts.slice(start, end)
@@ -111,7 +106,7 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   }
 
   const resetForm = () => {
-    setForm({ title: "", content: "", app: DEFAULT_APP_CATEGORY })
+    setForm({ title: "", content: "" })
   }
 
   const clearSelection = () => {
@@ -130,11 +125,6 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }
 
-  const selectAppFilter = (app) => {
-    setAppFilter(app)
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }))
-  }
-
   const toggleMyPostsOnly = () => {
     setIsMyPostsOnly((prev) => !prev)
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
@@ -149,8 +139,8 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   }
 
   const createPostMutation = useMutation({
-    mutationFn: ({ title, content, status, app }) =>
-      createVocPost({ title, content, status, app }),
+    mutationFn: ({ title, content, status }) =>
+      createVocPost({ title, content, status }),
     onMutate: () => {
       setError(null)
     },
@@ -222,12 +212,10 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     const title = form.title.trim()
     const content = sanitizeContentHtml(form.content)
     const status = DEFAULT_STATUS
-    const app = typeof form.app === "string" ? form.app.trim() : ""
 
     if (!title || !hasMeaningfulContent(content, { skipSanitize: true }) || !status) return null
-    if (!app) return null
     try {
-      const result = await createPostMutation.mutateAsync({ title, content, status, app })
+      const result = await createPostMutation.mutateAsync({ title, content, status })
       return result?.post ?? null
     } catch {
       return null
@@ -334,7 +322,6 @@ export function useVocBoardState({ currentUser, isAdmin }) {
   return {
     statusCounts,
     statusFilter,
-    appFilter,
     isMyPostsOnly,
     filteredPosts,
     visiblePosts,
@@ -364,7 +351,6 @@ export function useVocBoardState({ currentUser, isAdmin }) {
     updatePost,
     selectPost,
     toggleStatusFilter,
-    selectAppFilter,
     toggleMyPostsOnly,
     changePageSize,
     nextPage,

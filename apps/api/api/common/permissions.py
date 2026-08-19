@@ -14,6 +14,8 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.permissions import BasePermission
 
+from api.common.services.request_helpers import build_api_error_payload
+
 
 PORTAL_ACCESS_API_PREFIX = "/api/v1/"
 PORTAL_ACCESS_EXEMPT_PATH_PREFIXES = (
@@ -72,21 +74,46 @@ APP_ACCESS_API_RULES = (
     ("/api/v1/activity/logs", "access-stats"),
 )
 
+LEGACY_ERROR_CONTRACT_PREFIXES = (
+    "/api/v1/fdc-trend",
+    "/api/v1/l0_spider",
+    "/api/v1/l3_spider",
+    "/api/v1/pm_spider",
+    "/api/v1/tttm_spider",
+)
+
+
+def uses_legacy_error_contract(path: str) -> bool:
+    """이번 개선에서 제외된 Spider API 경로인지 반환합니다."""
+
+    return any(path.startswith(prefix) for prefix in LEGACY_ERROR_CONTRACT_PREFIXES)
+
 class ScopeAccessRequiredError(APIException):
     """scope 접근 승인이 없는 인증 요청에 일관된 403 응답을 제공합니다."""
 
     status_code = status.HTTP_403_FORBIDDEN
     default_code = "scope_access_required"
 
-    def __init__(self, *, scope_key: str, access: dict[str, object]) -> None:
+    def __init__(
+        self,
+        *,
+        scope_key: str,
+        access: dict[str, object],
+        legacy: bool = False,
+    ) -> None:
         """차단된 scope와 최종 접근 상태를 응답에 포함합니다."""
 
+        detail = (
+            {"error": self.default_code, "scope": scope_key, "access": access}
+            if legacy
+            else build_api_error_payload(
+                code=self.default_code,
+                message="Access to this scope is required.",
+                details={"scope": scope_key, "access": access},
+            )
+        )
         super().__init__(detail=self.default_code, code=self.default_code)
-        self.detail = {
-            "error": self.default_code,
-            "scope": scope_key,
-            "access": access,
-        }
+        self.detail = detail
 
 
 class PortalAuthenticationRequiredError(APIException):
@@ -96,10 +123,19 @@ class PortalAuthenticationRequiredError(APIException):
     default_code = "not_authenticated"
     default_detail = "Authentication credentials were not provided."
 
-    def __init__(self) -> None:
+    def __init__(self, *, legacy: bool = False) -> None:
         """account view의 기존 익명 오류 payload와 같은 형태를 반환합니다."""
 
-        super().__init__(detail={"error": "unauthorized"}, code=self.default_code)
+        detail = (
+            {"error": "unauthorized"}
+            if legacy
+            else build_api_error_payload(
+                code="authentication_required",
+                message="Authentication is required.",
+            )
+        )
+        super().__init__(detail=self.default_code, code=self.default_code)
+        self.detail = detail
 
 
 def _normalize_path(path: str) -> str:
@@ -185,7 +221,9 @@ def require_request_app_access(*, request: Any, user: Any) -> dict[str, object] 
     if scope_key is None:
         return None
     if not user or not getattr(user, "is_authenticated", False):
-        raise PortalAuthenticationRequiredError()
+        raise PortalAuthenticationRequiredError(
+            legacy=uses_legacy_error_contract(path)
+        )
 
     scope_access = get_request_scope_access_payload(
         request=request,
@@ -193,7 +231,11 @@ def require_request_app_access(*, request: Any, user: Any) -> dict[str, object] 
         scope_key=scope_key,
     )
     if not scope_access.get("allowed"):
-        raise ScopeAccessRequiredError(scope_key=scope_key, access=scope_access)
+        raise ScopeAccessRequiredError(
+            scope_key=scope_key,
+            access=scope_access,
+            legacy=uses_legacy_error_contract(path),
+        )
     return scope_access
 
 
@@ -204,7 +246,9 @@ def require_request_portal_access(*, request: Any, user: Any) -> dict[str, objec
     if not is_portal_access_protected_path(path):
         return None
     if not user or not getattr(user, "is_authenticated", False):
-        raise PortalAuthenticationRequiredError()
+        raise PortalAuthenticationRequiredError(
+            legacy=uses_legacy_error_contract(path)
+        )
 
     portal_scope_access = get_request_scope_access_payload(
         request=request,
@@ -215,6 +259,7 @@ def require_request_portal_access(*, request: Any, user: Any) -> dict[str, objec
         raise ScopeAccessRequiredError(
             scope_key="portal",
             access=portal_scope_access,
+            legacy=uses_legacy_error_contract(path),
         )
     require_request_app_access(request=request, user=user)
     return portal_scope_access
@@ -246,4 +291,5 @@ __all__ = [
     "require_request_app_access",
     "resolve_api_route_access_policy",
     "resolve_app_access_scope_for_path",
+    "uses_legacy_error_contract",
 ]

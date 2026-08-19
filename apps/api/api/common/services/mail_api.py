@@ -1,15 +1,17 @@
 # =============================================================================
 # 모듈 설명: 공용 Knox 메일 발신 API 호출 유틸을 제공합니다.
 # - 주요 함수: send_knox_mail_api
-# - 불변 조건: MAIL_API_* 환경변수가 필요합니다.
+# - 불변 조건: MAIL_API_* Django 설정이 필요합니다.
 # =============================================================================
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, Sequence
 
 import requests
+from django.conf import settings
+
+from .external_http import ExternalHttpError, ExternalHttpTimeout, request_external
 
 _MAIL_API_TIMEOUT_SECONDS = 10
 
@@ -19,12 +21,12 @@ class MailSendError(Exception):
 
 
 def _read_mail_api_config() -> tuple[str, str, str, str]:
-    """메일 API 호출에 필요한 환경변수를 읽어 정규화합니다."""
+    """메일 API 호출에 필요한 Django 설정을 읽어 정규화합니다."""
 
-    url = (os.getenv("MAIL_API_URL") or "").strip()
-    prod_key = (os.getenv("MAIL_API_KEY") or "").strip()
-    system_id = (os.getenv("MAIL_API_SYSTEM_ID") or "plane").strip()
-    knox_id = (os.getenv("MAIL_API_KNOX_ID") or "").strip()
+    url = str(getattr(settings, "MAIL_API_URL", "") or "").strip()
+    prod_key = str(getattr(settings, "MAIL_API_KEY", "") or "").strip()
+    system_id = str(getattr(settings, "MAIL_API_SYSTEM_ID", "plane") or "plane").strip()
+    knox_id = str(getattr(settings, "MAIL_API_KNOX_ID", "") or "").strip()
     return url, prod_key, system_id, knox_id
 
 
@@ -84,11 +86,11 @@ def send_knox_mail_api(
     부작용:
         외부 메일 발신 API에 HTTP 요청을 전송합니다.
     오류:
-        - 환경변수 누락 시 MailSendError
+        - Django 설정 누락 시 MailSendError
         - 수신자 없음 시 MailSendError
         - HTTP 오류/타임아웃 시 MailSendError
 
-    환경변수:
+    Django 설정:
         - MAIL_API_URL: 발신 API URL (예: https://.../send)
         - MAIL_API_KEY: x-dep-ticket 값
         - MAIL_API_SYSTEM_ID: systemId (기본값: plane)
@@ -96,7 +98,7 @@ def send_knox_mail_api(
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 환경변수 및 입력값 검증
+    # 1) Django 설정 및 입력값 검증
     # -----------------------------------------------------------------------------
     url, prod_key, system_id, knox_id = _read_mail_api_config()
     if not url:
@@ -124,7 +126,8 @@ def send_knox_mail_api(
     # 3) API 호출 및 응답 처리
     # -----------------------------------------------------------------------------
     try:
-        response = requests.post(
+        response = request_external(
+            requests.post,
             url,
             params=params,
             headers=headers,
@@ -136,7 +139,7 @@ def send_knox_mail_api(
                 f"메일 API 오류 {response.status_code}: {response.text[:300]}"
             )
         return _normalize_mail_response(response)
-    except requests.Timeout as exc:
+    except ExternalHttpTimeout as exc:
         raise MailSendError("메일 API 타임아웃") from exc
-    except requests.RequestException as exc:
+    except ExternalHttpError as exc:
         raise MailSendError(f"메일 API 요청 실패: {exc}") from exc

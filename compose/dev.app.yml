@@ -14,9 +14,9 @@ services:
       DUMMY_ADFS_ISSUER: http://localhost:9102/adfs
       DUMMY_LLM_REPLY_TEMPLATE: '개발용 더미 응답입니다. 질문 "{question}" 에 대한 테스트 답변입니다.'
       DUMMY_LLM_DELAY_MS: "1200"
-      DUMMY_RAG_INDEX_NAME: emails
-      DUMMY_ASSISTANT_RAG_INDEX: emails
-      DUMMY_MAIL_RAG_INDEX: emails
+      RAG_INDEX_DEFAULT: rp-unclassified
+      RAG_INDEX_EMAILS: rp-emails
+      RAG_INDEX_LIST: rp-unclassified,rp-emails
       DUMMY_RAG_PERMISSION_GROUPS: '["rag-public"]'
     ports:
       - "9102:9000"

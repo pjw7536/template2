@@ -38,38 +38,11 @@ from .access_runtime import (
     _serialize_user_access,
     can_manage_access,
 )
+from .access_audit import create_access_audit_log, serialize_access_audit_log
 
 
 _GRANT_ACTIONS = {"approve", "grant"}
 _REVOKE_ACTIONS = {"reject", "revoke"}
-_POLICY_AUDIT_ACTIONS = {
-    AccessAuditLog.Actions.POLICY_CREATE,
-    AccessAuditLog.Actions.POLICY_UPDATE,
-    AccessAuditLog.Actions.POLICY_DELETE,
-}
-_SCOPE_AUDIT_ACTIONS = {
-    AccessAuditLog.Actions.SCOPE_CREATE,
-    AccessAuditLog.Actions.SCOPE_UPDATE,
-    AccessAuditLog.Actions.SCOPE_DELETE,
-}
-_DATA_SCOPE_AUDIT_ACTIONS = {
-    AccessAuditLog.Actions.DATA_SCOPE_GRANT,
-    AccessAuditLog.Actions.DATA_SCOPE_REVOKE,
-    AccessAuditLog.Actions.DATA_SCOPE_CHANGE,
-}
-_AFFILIATION_ROLE_AUDIT_ACTIONS = {
-    AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
-    AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
-    AccessAuditLog.Actions.AFFILIATION_ROLE_REVOKE,
-}
-_AFFILIATION_LIFECYCLE_AUDIT_ACTIONS = {
-    AccessAuditLog.Actions.AFFILIATION_CREATE,
-    AccessAuditLog.Actions.AFFILIATION_UPDATE,
-    AccessAuditLog.Actions.AFFILIATION_ACTIVATE,
-    AccessAuditLog.Actions.AFFILIATION_DEACTIVATE,
-}
-
-
 def _create_data_scope_mode_audit_if_changed(
     *,
     scope: AccessScope,
@@ -701,7 +674,6 @@ def get_access_matrix(
         (access.scope_id, access.user_id): access
         for access in access_rows
     }
-
     results = [
         _serialize_access_matrix_row(
             target_user=target_user,
@@ -1353,7 +1325,7 @@ def get_access_audit_logs(
         page_obj = paginator.page(paginator.num_pages or 1)
 
     return {
-        "results": [_serialize_access_audit_log(row) for row in page_obj.object_list],
+        "results": [serialize_access_audit_log(row) for row in page_obj.object_list],
         "pagination": {
             "page": page_obj.number,
             "pageSize": page_size,
@@ -1480,173 +1452,4 @@ def _serialize_access_policy_rule(rule: AccessPolicyRule) -> dict[str, object]:
         "isActive": rule.is_active,
         "createdAt": rule.created_at.isoformat() if rule.created_at else None,
         "updatedAt": rule.updated_at.isoformat() if rule.updated_at else None,
-    }
-
-
-def create_access_audit_log(
-    *,
-    scope: AccessScope | None,
-    actor: Any,
-    target_user: Any | None,
-    policy_rule: AccessPolicyRule | None,
-    action: str,
-    before: dict[str, object],
-    after: dict[str, object],
-    reason: str | None,
-    affiliation: Any | None = None,
-) -> None:
-    """접근 권한 변경 감사 로그를 생성합니다."""
-
-    AccessAuditLog.objects.create(
-        scope=scope,
-        actor=actor if getattr(actor, "is_authenticated", False) else None,
-        target_user=target_user,
-        affiliation=affiliation,
-        policy_rule=policy_rule,
-        action=action,
-        before=_canonicalize_audit_snapshot(action=action, snapshot=before),
-        after=_canonicalize_audit_snapshot(action=action, snapshot=after),
-        reason=(reason or "").strip() or None,
-    )
-
-
-def _serialize_access_audit_log(row: AccessAuditLog) -> dict[str, object]:
-    """접근 권한 감사 로그를 API 응답 형태로 직렬화합니다."""
-
-    policy_rule = row.policy_rule
-    policy_snapshot = _get_policy_rule_snapshot(row=row)
-    return {
-        "id": row.id,
-        "scope": getattr(row.scope, "key", None),
-        "scopeName": getattr(row.scope, "name", None),
-        "action": row.action,
-        "reason": row.reason,
-        "before": row.before,
-        "after": row.after,
-        "createdAt": row.created_at.isoformat() if row.created_at else None,
-        "actor": _serialize_access_actor(row.actor),
-        "targetUser": _serialize_access_actor(row.target_user),
-        "affiliation": (
-            {
-                "id": row.affiliation.id,
-                "department": row.affiliation.department,
-                "line": row.affiliation.line,
-                "userSdwtProd": row.affiliation.user_sdwt_prod,
-            }
-            if row.affiliation
-            else None
-        ),
-        "policyRule": policy_snapshot or ({
-            "id": policy_rule.id,
-            "ruleType": policy_rule.rule_type,
-            "value": policy_rule.value,
-        } if policy_rule else None),
-    }
-
-
-def _get_policy_rule_snapshot(*, row: AccessAuditLog) -> dict[str, object] | None:
-    """삭제된 정책 규칙 정보를 감사 로그 JSON snapshot에서 복원합니다."""
-
-    for snapshot in (row.after, row.before):
-        rule_type = snapshot.get("ruleType")
-        value = snapshot.get("value")
-        if rule_type or value:
-            payload = {
-                "id": snapshot.get("id"),
-                "ruleType": rule_type,
-                "value": value,
-            }
-            return payload
-    return None
-
-
-def _canonicalize_audit_snapshot(
-    *,
-    action: str,
-    snapshot: object,
-) -> dict[str, object]:
-    """JSON snapshot을 action별 고정 필드로 정규화합니다."""
-
-    if not isinstance(snapshot, dict):
-        return {}
-
-    if action in _POLICY_AUDIT_ACTIONS:
-        return {
-            key: snapshot.get(key)
-            for key in ("id", "ruleType", "value", "isActive")
-            if key in snapshot
-        }
-    if action in _SCOPE_AUDIT_ACTIONS:
-        return {
-            key: snapshot.get(key)
-            for key in (
-                "key",
-                "name",
-                "scopeType",
-                "dataScopeType",
-                "includeCurrentAffiliation",
-                "isActive",
-                "requestable",
-            )
-            if key in snapshot
-        }
-    if action in _DATA_SCOPE_AUDIT_ACTIONS:
-        return {
-            key: snapshot.get(key)
-            for key in (
-                "id",
-                "dataScopeMode",
-                "affiliationId",
-                "source",
-                "isActive",
-                "expiresAt",
-            )
-            if key in snapshot
-        }
-    if action in _AFFILIATION_ROLE_AUDIT_ACTIONS:
-        role = snapshot.get("role")
-        return {
-            key: snapshot.get(key)
-            for key in ("role", "grantedBy")
-            if (
-                key in snapshot
-                and (
-                    key != "role"
-                    or role in UserSdwtProdAccess.Roles.values
-                )
-            )
-        }
-    if action in _AFFILIATION_LIFECYCLE_AUDIT_ACTIONS:
-        return {
-            key: snapshot.get(key)
-            for key in (
-                "id",
-                "department",
-                "line",
-                "userSdwtProd",
-                "isActive",
-                "source",
-            )
-            if key in snapshot
-        }
-    explicit_status = snapshot.get("explicitStatus")
-    payload: dict[str, object] = {}
-    if explicit_status in UserAccess.Status.values:
-        payload["explicitStatus"] = explicit_status
-    role = _normalize_access_role(snapshot.get("role"))
-    if role is not None:
-        payload["role"] = role
-    return payload
-
-
-def _serialize_access_actor(user: Any | None) -> dict[str, object] | None:
-    """감사 로그 사용자 요약 정보를 직렬화합니다."""
-
-    if user is None:
-        return None
-    return {
-        "id": user.id,
-        "knoxId": getattr(user, "knox_id", None),
-        "username": getattr(user, "username", None),
-        "email": getattr(user, "email", None),
     }

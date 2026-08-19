@@ -14,11 +14,39 @@ function jsonResponse(payload = {}) {
   }
 }
 
+function errorResponse(payload = {}, status = 400) {
+  return {
+    ...jsonResponse(payload),
+    ok: false,
+    status,
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe("Access Stats API contract", () => {
+  it("canonical 오류 message와 payload를 보존한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        errorResponse({
+          code: "invalid_request",
+          message: "날짜 범위가 올바르지 않습니다.",
+          details: {},
+          fieldErrors: {},
+        }),
+      ),
+    )
+
+    await expect(fetchAppAccessStats()).rejects.toMatchObject({
+      message: "날짜 범위가 올바르지 않습니다.",
+      status: 400,
+      payload: { code: "invalid_request" },
+    })
+  })
+
   it("통계 query는 appId와 period만 사용한다", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ apps: [] }))
     vi.stubGlobal("fetch", fetchMock)

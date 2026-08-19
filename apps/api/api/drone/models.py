@@ -133,172 +133,6 @@ class DroneSOP(models.Model):
         # -------------------------------------------------------------------------
         super().save(*args, **kwargs)
 
-    def _first_successful_jira_delivery(self) -> "DroneSopDelivery | None":
-        """성공한 첫 번째 Jira delivery를 반환합니다."""
-
-        if not self.pk:
-            return None
-        prefetched_rows = self._prefetched_delivery_rows()
-        if prefetched_rows is not None:
-            for delivery in prefetched_rows:
-                if (
-                    delivery.channel == DroneSopDelivery.Channels.JIRA
-                    and delivery.status == DroneSopDelivery.Statuses.SUCCESS
-                ):
-                    return delivery
-            return None
-        return (
-            self.channel_deliveries.filter(
-                channel=DroneSopDelivery.Channels.JIRA,
-                status=DroneSopDelivery.Statuses.SUCCESS,
-            )
-            .order_by("id")
-            .first()
-        )
-
-    @property
-    def jira_key(self) -> str | None:
-        """성공 Jira delivery의 외부 키를 표시용 속성으로 반환합니다."""
-
-        delivery = self._first_successful_jira_delivery()
-        return delivery.external_key if delivery else None
-
-    @property
-    def inform_step(self) -> str | None:
-        """성공 Jira delivery의 발송 step을 표시용 속성으로 반환합니다."""
-
-        delivery = self._first_successful_jira_delivery()
-        return delivery.sent_step if delivery else None
-
-    @property
-    def informed_at(self):
-        """성공 delivery의 최초 발송 시각을 표시용 속성으로 반환합니다."""
-
-        if not self.pk:
-            return None
-        prefetched_rows = self._prefetched_delivery_rows()
-        if prefetched_rows is not None:
-            success_rows = [
-                delivery
-                for delivery in prefetched_rows
-                if delivery.status == DroneSopDelivery.Statuses.SUCCESS
-            ]
-            if not success_rows:
-                return None
-            success_rows.sort(
-                key=lambda delivery: (
-                    delivery.sent_at is None,
-                    delivery.sent_at,
-                    delivery.id or 0,
-                )
-            )
-            return success_rows[0].sent_at
-        delivery = (
-            self.channel_deliveries.filter(status=DroneSopDelivery.Statuses.SUCCESS)
-            .order_by("sent_at", "id")
-            .first()
-        )
-        return delivery.sent_at if delivery else None
-
-    def _prefetched_delivery_rows(self) -> list["DroneSopDelivery"] | None:
-        """prefetch된 delivery row를 DB 조회 없이 ID 순서로 반환합니다."""
-
-        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("channel_deliveries")
-        if prefetched is None:
-            return None
-        return sorted(list(prefetched), key=lambda delivery: delivery.id or 0)
-
-    def _delivery_channel_rows(self, channel: str) -> list["DroneSopDelivery"]:
-        """지정 채널의 delivery row를 ID 순서로 반환합니다."""
-
-        prefetched_rows = self._prefetched_delivery_rows()
-        if prefetched_rows is not None:
-            return [delivery for delivery in prefetched_rows if delivery.channel == channel]
-        return list(self.channel_deliveries.filter(channel=channel).order_by("id"))
-
-    @staticmethod
-    def _summarize_delivery_status(delivery_rows: list["DroneSopDelivery"]) -> tuple[int, str | None]:
-        """delivery row 목록을 legacy 호환 상태값으로 요약합니다."""
-
-        if not delivery_rows:
-            return 0, None
-
-        blocked_statuses = {
-            DroneSopDelivery.Statuses.FAILED,
-            DroneSopDelivery.Statuses.CANCELLED,
-        }
-        failed_reason = next(
-            (
-                row.reason
-                for row in delivery_rows
-                if row.status in blocked_statuses and row.reason
-            ),
-            None,
-        )
-        if failed_reason or any(row.status in blocked_statuses for row in delivery_rows):
-            return -1, failed_reason
-        pending_statuses = {
-            DroneSopDelivery.Statuses.PENDING,
-            DroneSopDelivery.Statuses.SENDING,
-        }
-        if any(row.status in pending_statuses for row in delivery_rows):
-            return 0, None
-        if any(row.status == DroneSopDelivery.Statuses.SUCCESS for row in delivery_rows):
-            return 1, None
-        disabled_reason = next((row.reason for row in delivery_rows if row.reason), None)
-        return 0, disabled_reason
-
-    def _delivery_status_value(self, channel: str) -> int:
-        """지정 채널의 legacy 호환 상태값을 반환합니다."""
-
-        status_value, _ = self._summarize_delivery_status(self._delivery_channel_rows(channel))
-        return status_value
-
-    def _delivery_reason_value(self, channel: str) -> str | None:
-        """지정 채널의 legacy 호환 사유값을 반환합니다."""
-
-        _, reason = self._summarize_delivery_status(self._delivery_channel_rows(channel))
-        return reason
-
-    @property
-    def send_jira(self) -> int:
-        """Jira delivery 상태를 legacy 호환 상태값으로 반환합니다."""
-
-        return self._delivery_status_value(DroneSopDelivery.Channels.JIRA)
-
-    @property
-    def send_messenger(self) -> int:
-        """메신저 delivery 상태를 legacy 호환 상태값으로 반환합니다."""
-
-        return self._delivery_status_value(DroneSopDelivery.Channels.MESSENGER)
-
-    @property
-    def send_mail(self) -> int:
-        """메일 delivery 상태를 legacy 호환 상태값으로 반환합니다."""
-
-        return self._delivery_status_value(DroneSopDelivery.Channels.MAIL)
-
-    @property
-    def jira_reason(self) -> str | None:
-        """Jira delivery 실패/비활성 사유를 legacy 호환 속성으로 반환합니다."""
-
-        return self._delivery_reason_value(DroneSopDelivery.Channels.JIRA)
-
-    @property
-    def messenger_reason(self) -> str | None:
-        """메신저 delivery 실패/비활성 사유를 legacy 호환 속성으로 반환합니다."""
-
-        return self._delivery_reason_value(DroneSopDelivery.Channels.MESSENGER)
-
-    @property
-    def mail_reason(self) -> str | None:
-        """메일 delivery 실패/비활성 사유를 legacy 호환 속성으로 반환합니다."""
-
-        return self._delivery_reason_value(DroneSopDelivery.Channels.MAIL)
-
-
-
-
 class DroneSopTarget(models.Model):
     """Drone SOP 알림 target의 식별자와 소유 라인을 저장하는 모델입니다.
 
@@ -328,137 +162,11 @@ class DroneSopTarget(models.Model):
             models.Index(fields=["line_id"], name="idx_dro_sop_tgt_line"),
         ]
 
-    def _get_channel_config(self, *, channel: str) -> "DroneSopTargetChannelConfig | None":
-        """prefetch/cache를 우선 사용해 target 채널 설정을 조회합니다."""
-
-        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("channel_configs")
-        if prefetched is not None:
-            for config in prefetched:
-                if getattr(config, "channel", None) == channel:
-                    return config
-            return None
-        if not self.pk:
-            return None
-        cached = getattr(self, "_channel_config_by_channel_cache", None)
-        if cached is None:
-            cached = {config.channel: config for config in self.channel_configs.all()}
-            self._channel_config_by_channel_cache = cached
-        return cached.get(channel)
-
-    def _get_needtosend_rule(self) -> "DroneSopNeedToSendRule | None":
-        """prefetch/cache를 고려해 needtosend 규칙을 조회합니다."""
-
-        cached = getattr(self, "_needtosend_rule_cache", None)
-        if cached is not None:
-            return cached
-        if hasattr(self, "needtosend_rule"):
-            return self.needtosend_rule
-        return None
-
-    @property
-    def jira_key(self) -> str | None:
-        """Jira 채널의 project key를 legacy 호환 속성으로 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.JIRA)
-        return config.jira_project_key if config else None
-
-    @property
-    def chatroom_id(self) -> int | None:
-        """메신저 채널의 chatroom_id를 legacy 호환 속성으로 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.MESSENGER)
-        return config.chatroom_id if config else None
-
-    @property
-    def messenger_force_new_chatroom(self) -> bool:
-        """메신저 채널의 다음 발송 새 채팅방 생성 여부를 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.MESSENGER)
-        return bool(config.force_new_chatroom) if config else False
-
-    @property
-    def jira_template_key(self) -> str | None:
-        """Jira 채널 template key를 legacy 호환 속성으로 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.JIRA)
-        return config.template_key if config else None
-
-    @property
-    def mail_template_key(self) -> str | None:
-        """메일 채널 template key를 legacy 호환 속성으로 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.MAIL)
-        return config.template_key if config else None
-
-    @property
-    def messenger_template_key(self) -> str | None:
-        """메신저 채널 template key를 legacy 호환 속성으로 반환합니다."""
-
-        config = self._get_channel_config(channel=DroneSopTargetChannelConfig.Channels.MESSENGER)
-        return config.template_key if config else None
-
-    def _channel_enabled(self, *, channel: str) -> bool:
-        """채널 설정이 없으면 기존 동작과 동일하게 활성으로 간주합니다."""
-
-        config = self._get_channel_config(channel=channel)
-        return bool(config.enabled) if config else True
-
-    @property
-    def jira_enabled(self) -> bool:
-        """Jira 채널 활성 여부를 legacy 호환 속성으로 반환합니다."""
-
-        return self._channel_enabled(channel=DroneSopTargetChannelConfig.Channels.JIRA)
-
-    @property
-    def messenger_enabled(self) -> bool:
-        """메신저 채널 활성 여부를 legacy 호환 속성으로 반환합니다."""
-
-        return self._channel_enabled(channel=DroneSopTargetChannelConfig.Channels.MESSENGER)
-
-    @property
-    def mail_enabled(self) -> bool:
-        """메일 채널 활성 여부를 legacy 호환 속성으로 반환합니다."""
-
-        return self._channel_enabled(channel=DroneSopTargetChannelConfig.Channels.MAIL)
-
-    @property
-    def needtosend_comment_last_at(self) -> str | None:
-        """needtosend keyword를 legacy 호환 속성으로 반환합니다."""
-
-        rule = self._get_needtosend_rule()
-        return rule.comment_keyword if rule else None
-
-    @property
-    def needtosend_ignore_sample_type(self) -> bool:
-        """needtosend 샘플 타입 무시 여부를 legacy 호환 속성으로 반환합니다."""
-
-        rule = self._get_needtosend_rule()
-        return bool(rule.ignore_sample_type) if rule else False
-
-    @property
-    def needtosend_enabled(self) -> bool:
-        """needtosend 규칙 활성 여부를 legacy 호환 속성으로 반환합니다."""
-
-        rule = self._get_needtosend_rule()
-        return bool(rule.enabled) if rule else False
-
-    @classmethod
-    def get_or_create_by_name(cls, *, target_user_sdwt_prod: str, line_id: str = "") -> "DroneSopTarget":
-        """기존 호출부 호환을 위해 service의 target 생성 함수를 호출합니다."""
-
-        from .services.channels import get_or_create_drone_sop_target_by_name
-
-        return get_or_create_drone_sop_target_by_name(
-            target_user_sdwt_prod=target_user_sdwt_prod,
-            line_id=line_id,
-        )
-
     def __str__(self) -> str:  # 관리자/디버깅용 문자열 표현(커버리지 제외): pragma: no cover
         """관리자/디버깅용 문자열 표현을 반환합니다."""
 
-        chatroom_display = self.chatroom_id if self.chatroom_id is not None else "-"
         line_display = self.line_id or "-"
-        return f"{line_display} / {self.target_user_sdwt_prod} (jira={self.jira_key or '-'}, msg={chatroom_display})"
+        return f"{line_display} / {self.target_user_sdwt_prod}"
 
 
 class DroneSopTargetChannelConfig(models.Model):
@@ -525,24 +233,6 @@ class DroneSopNeedToSendRule(models.Model):
             models.Index(fields=["enabled"], name="idx_dro_nts_rule_en"),
         ]
 
-    @property
-    def needtosend_comment_last_at(self) -> str | None:
-        """기존 rule 필드명을 사용하는 호출부와 호환되는 keyword를 반환합니다."""
-
-        return self.comment_keyword
-
-    @property
-    def needtosend_ignore_sample_type(self) -> bool:
-        """기존 rule 필드명을 사용하는 호출부와 호환되는 샘플 타입 정책을 반환합니다."""
-
-        return self.ignore_sample_type
-
-    @property
-    def needtosend_enabled(self) -> bool:
-        """기존 rule 필드명을 사용하는 호출부와 호환되는 활성 여부를 반환합니다."""
-
-        return self.enabled
-
     def __str__(self) -> str:  # 관리자/디버깅용 문자열 표현(커버리지 제외): pragma: no cover
         """관리자/디버깅용 문자열 표현을 반환합니다."""
 
@@ -606,7 +296,7 @@ class DroneSopTargetMapping(models.Model):
 
     @property
     def target_user_sdwt_prod(self) -> str:
-        """연결된 target의 이름을 legacy 호환 속성으로 반환합니다."""
+        """연결된 target의 이름을 반환합니다."""
 
         return self.target.target_user_sdwt_prod
 
@@ -674,7 +364,7 @@ class DroneSopTargetRecipient(models.Model):
 
     @property
     def target_user_sdwt_prod(self) -> str:
-        """연결된 target의 이름을 legacy 호환 속성으로 반환합니다."""
+        """연결된 target의 이름을 반환합니다."""
 
         return self.target.target_user_sdwt_prod
 

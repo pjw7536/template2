@@ -19,6 +19,7 @@ from api.drone import services as drone_services
 from api.drone.models import (
     DroneEarlyInform,
     DroneSOP,
+    DroneSopDelivery,
     DroneSopTarget,
     DroneSopTargetMapping,
     DroneSopTargetRecipient,
@@ -537,19 +538,29 @@ def _seed_sop_rows(*, prefix: str, targets: list[str]) -> dict[str, int]:
             defaults=row_defaults,
         )
         sop = DroneSOP.objects.get(sop_key=sop_key)
-        drone_services.seed_legacy_delivery_rows(
+        delivery_rows = []
+        for channel in ("jira", "messenger", "mail"):
+            numeric_status = int(send_values[channel] or 0)
+            delivery_rows.append(
+                {
+                    "channel": channel,
+                    "status": (
+                        DroneSopDelivery.Statuses.SUCCESS
+                        if numeric_status > 0
+                        else DroneSopDelivery.Statuses.FAILED
+                        if numeric_status < 0
+                        else DroneSopDelivery.Statuses.PENDING
+                    ),
+                    "reason": reason_values[channel] if numeric_status < 0 else None,
+                    "externalKey": jira_key if channel == "jira" and numeric_status > 0 else None,
+                    "sentStep": inform_step,
+                    "sentAt": informed_at if numeric_status > 0 else None,
+                }
+            )
+        drone_services.seed_drone_sop_delivery_rows(
             sop=sop,
-            seed={
-                "send_jira": send_values["jira"],
-                "send_messenger": send_values["messenger"],
-                "send_mail": send_values["mail"],
-                "jira_reason": reason_values["jira"],
-                "messenger_reason": reason_values["messenger"],
-                "mail_reason": reason_values["mail"],
-                "jira_key": jira_key,
-                "inform_step": inform_step,
-                "informed_at": informed_at,
-            },
+            target_user_sdwt_prod=target_user_sdwt_prod,
+            deliveries=delivery_rows,
         )
         created += int(was_created)
         updated += int(not was_created)
@@ -574,6 +585,11 @@ class Command(BaseCommand):
             "--reset",
             action="store_true",
             help="동일 prefix 더미 데이터를 먼저 삭제한 뒤 다시 적재합니다.",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="전체 seed 흐름을 검증한 뒤 transaction을 롤백합니다.",
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -605,10 +621,12 @@ class Command(BaseCommand):
             recipient_result = _seed_recipients(prefix=prefix, targets=targets)
             early_result = _seed_early_inform(prefix=prefix)
             sop_result = _seed_sop_rows(prefix=prefix, targets=targets)
+            if bool(options.get("dry_run")):
+                transaction.set_rollback(True)
 
         self.stdout.write(
             self.style.SUCCESS(
-                "[drone-seed] done "
+                f"[drone-seed] {'dry-run' if bool(options.get('dry_run')) else 'done'} "
                 f"prefix={prefix} "
                 f"affiliations={affiliation_count} "
                 f"maps={map_result} "

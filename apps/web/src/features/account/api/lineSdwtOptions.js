@@ -39,7 +39,7 @@ export async function getLineSdwtOptions() {
     })
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}))
-      throw new Error(payload?.error || `Failed to load line SDWT options (${response.status})`)
+      throw new Error(payload?.message || `Failed to load line SDWT options (${response.status})`)
     }
     return normalizePayload(await response.json().catch(() => ({})))
   } catch (error) {

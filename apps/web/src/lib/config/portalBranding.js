@@ -15,6 +15,11 @@ import observerLogoLightPng from "../../assets/images/observer_lightmode.png"
 import portalLogoPng from "../../assets/images/logo.png"
 import spiderLogoDarkPng from "../../assets/images/spider_darkmode.png"
 import spiderLogoLightPng from "../../assets/images/spider_lightmode.png"
+import { getAppAccessDefinition } from "../activity/appAccessCatalog"
+
+function getCatalogAppName(appId, fallback) {
+  return getAppAccessDefinition(appId)?.appName || fallback
+}
 
 export const PORTAL_BRAND_KEY = "portal"
 
@@ -31,7 +36,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   appstore: {
     key: "appstore",
-    name: "Appstore",
+    name: getCatalogAppName("appstore", "Appstore"),
     pathPrefixes: ["/appstore"],
     mark: {
       type: "image",
@@ -42,7 +47,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   "line-dashboard": {
     key: "line-dashboard",
-    name: "ESOP Dashboard",
+    name: getCatalogAppName("line-dashboard", "ESOP Dashboard"),
     pathPrefixes: ["/ESOP_Dashboard", "/esop_dashboard"],
     mark: {
       type: "icon",
@@ -51,7 +56,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   observer: {
     key: "observer",
-    name: "Observer",
+    name: getCatalogAppName("observer", "Observer"),
     pathPrefixes: ["/observer"],
     mark: {
       type: "image",
@@ -62,7 +67,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   emails: {
     key: "emails",
-    name: "메일함",
+    name: getCatalogAppName("emails", "메일함"),
     pathPrefixes: ["/emails"],
     mark: {
       type: "icon",
@@ -126,7 +131,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   "access-stats": {
     key: "access-stats",
-    name: "접속 현황",
+    name: getCatalogAppName("access-stats", "접속 현황"),
     pathPrefixes: ["/access-stats"],
     mark: {
       type: "icon",
@@ -144,7 +149,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   voc: {
     key: "voc",
-    name: "VoE",
+    name: getCatalogAppName("voc", "VoE"),
     pathPrefixes: ["/voc"],
     mark: {
       type: "icon",
@@ -153,7 +158,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   settings: {
     key: "settings",
-    name: "Settings",
+    name: getCatalogAppName("settings", "Settings"),
     pathPrefixes: ["/settings"],
     mark: {
       type: "icon",
@@ -162,7 +167,7 @@ export const PORTAL_BRAND_REGISTRY = Object.freeze({
   },
   assistant: {
     key: "assistant",
-    name: "Assistant",
+    name: getCatalogAppName("assistant", "Assistant"),
     pathPrefixes: ["/assistant"],
     mark: {
       type: "icon",

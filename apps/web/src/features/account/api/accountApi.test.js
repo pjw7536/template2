@@ -10,11 +10,29 @@ function jsonResponse(payload = {}) {
   }
 }
 
+function errorResponse(payload = {}) {
+  return {
+    ...jsonResponse(payload),
+    ok: false,
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe("Account affiliation API contract", () => {
+  it("canonical 오류 message를 사용자 오류로 전달한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(errorResponse({ message: "소속 요청이 올바르지 않습니다." })),
+    )
+
+    await expect(accountApi.fetchAffiliation()).rejects.toThrow(
+      "소속 요청이 올바르지 않습니다.",
+    )
+  })
+
   it("소속 변경 body는 canonical 필드만 전송한다", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "pending" }))
     vi.stubGlobal("fetch", fetchMock)

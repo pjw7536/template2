@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+from .adapter import RagAdapter, rag_adapter
 from .client import (
     delete_rag_doc,
     get_rag_index_candidates,
+    get_rag_index_info,
     insert_email_to_rag,
     requests,
     resolve_rag_index_name,
@@ -23,12 +25,16 @@ from .config import (
     RAG_HEADERS,
     RAG_INDEX_DEFAULT,
     RAG_INDEX_EMAILS,
+    RAG_INDEX_INFO_URL,
     RAG_INDEX_LIST,
-    RAG_INDEX_NAME,
     RAG_INSERT_URL,
+    RAG_NUM_DOCS,
     RAG_PUBLIC_GROUP,
     RAG_PERMISSION_GROUPS,
     RAG_SEARCH_URL,
+    RAG_TIMEOUT_SECONDS,
+    RagConfig,
+    RagConfigError,
 )
 
 __all__ = [
@@ -38,13 +44,20 @@ __all__ = [
     "RAG_INDEX_DEFAULT",
     "RAG_INDEX_EMAILS",
     "RAG_INDEX_LIST",
-    "RAG_INDEX_NAME",
+    "RAG_INDEX_INFO_URL",
     "RAG_INSERT_URL",
+    "RAG_NUM_DOCS",
     "RAG_PUBLIC_GROUP",
     "RAG_PERMISSION_GROUPS",
     "RAG_SEARCH_URL",
+    "RAG_TIMEOUT_SECONDS",
+    "RagConfig",
+    "RagConfigError",
+    "RagAdapter",
+    "rag_adapter",
     "delete_rag_doc",
     "get_rag_index_candidates",
+    "get_rag_index_info",
     "insert_email_to_rag",
     "requests",
     "resolve_rag_index_name",

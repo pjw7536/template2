@@ -190,9 +190,9 @@ class ActivityLogEndpointTests(TestCase):
         oversized_response = self.client.get(reverse("activity-logs"), {"limit": "201"})
 
         self.assertEqual(invalid_response.status_code, 400)
-        self.assertIn("limit", invalid_response.json()["details"])
+        self.assertIn("limit", invalid_response.json()["fieldErrors"])
         self.assertEqual(oversized_response.status_code, 400)
-        self.assertIn("limit", oversized_response.json()["details"])
+        self.assertIn("limit", oversized_response.json()["fieldErrors"])
 
     def test_app_access_event_requires_auth(self) -> None:
         """앱 접속 이벤트 기록은 인증을 요구합니다."""
@@ -240,17 +240,17 @@ class ActivityLogEndpointTests(TestCase):
 
         self.assertEqual(event_response.status_code, 400)
         self.assertEqual(
-            event_response.json()["details"]["unexpectedFields"],
+            event_response.json()["fieldErrors"]["unexpectedFields"],
             ["app_id", "app_name"],
         )
         self.assertEqual(stats_response.status_code, 400)
         self.assertEqual(
-            stats_response.json()["details"]["unexpectedFields"],
+            stats_response.json()["fieldErrors"]["unexpectedFields"],
             ["app_id", "granularity"],
         )
         self.assertEqual(manual_response.status_code, 400)
         self.assertEqual(
-            manual_response.json()["details"]["unexpectedFields"],
+            manual_response.json()["fieldErrors"]["unexpectedFields"],
             ["pasted_text"],
         )
 
@@ -329,7 +329,7 @@ class ActivityLogEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("period", response.json()["details"])
+        self.assertIn("period", response.json()["fieldErrors"])
 
     def test_app_access_stats_groups_series_by_week(self) -> None:
         """주별 보기에서 내부/외부 접속 추이가 KST 월요일 기준으로 묶이는지 확인합니다."""
@@ -566,7 +566,7 @@ class ActivityLogEndpointTests(TestCase):
         ),
         EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS=3,
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_persists_api_rows_for_stats(self, mock_get) -> None:
         """수동 동기화가 외부 API row를 저장하고 통계 조회는 DB 값을 사용하는지 확인합니다."""
 
@@ -641,7 +641,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_failure_keeps_existing_stats(self, mock_get) -> None:
         """외부 API 동기화 실패 시 기존 통계 조회가 유지되는지 확인합니다."""
         mock_get.side_effect = requests.RequestException("network down")
@@ -691,7 +691,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_allows_normal_user(self, mock_get) -> None:
         """접속 현황에 접근 가능한 일반 사용자도 외부 사용량을 동기화할 수 있습니다."""
 
@@ -724,7 +724,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_throttles_normal_user_for_six_hours(self, mock_get) -> None:
         """일반 사용자는 마지막 실제 시도 후 6시간 동안 재동기화할 수 없습니다."""
 
@@ -747,7 +747,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_app_admin_bypasses_six_hour_limit(self, mock_get) -> None:
         """접속 현황 관리자는 마지막 실제 시각과 관계없이 동기화할 수 있습니다."""
 
@@ -786,7 +786,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_superuser_bypasses_six_hour_limit(self, mock_get) -> None:
         """슈퍼유저는 마지막 실제 시각과 관계없이 동기화할 수 있습니다."""
 
@@ -824,7 +824,7 @@ class ActivityLogEndpointTests(TestCase):
     @override_settings(
         EXTERNAL_APP_USAGE_API_URLS='[{"sourceName":"m-etch-dx","url":"https://usage.example.test/get/usage"}]'
     )
-    @patch("api.activity.services.activity_logs.requests.get")
+    @patch("api.activity.services.external_sync.requests.get")
     def test_external_usage_sync_runs_after_six_hours(self, mock_get) -> None:
         """일반 사용자는 마지막 실제 시도 후 6시간이 지나면 다시 동기화할 수 있습니다."""
 

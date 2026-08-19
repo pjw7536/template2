@@ -227,7 +227,7 @@ pool 외의 task 동시 실행 수는 Airflow 기본 전역 설정을 따릅니�
 `m_interlock`은 `/data/data_movement/m_interlock/incoming/m_interlock_<LineID>_<YYYYMMDD>_<HHMM>.csv.deflate` 파일을 `interlock_no` 기준으로 incremental upsert하며 빈 key row는 제외합니다.
 `mi_tip_update_hist`는 `/data/data_movement/mi_tip_update_hist/incoming/*mi_tip_update_hist*.csv.deflate` 파일을 TIP timeline 조회용 row로 적재합니다.
 `racb_list`는 `/data/data_movement/racb_list/incoming/*racb_list*.csv.deflate` 파일을 `c_racb_id` 최신 row 기준으로 설비별 `eqp_cb` row로 펼쳐 적재합니다.
-`mes_line_mapping_info`는 `/data/data_movement/mes_line_mapping_info/incoming/*_MES_MAPPING_INFO_*.csv.deflate` 파일을 테이블 전체 snapshot으로 적재합니다.
+`mes_line_mapping_info`는 `/data/data_movement/mes_line_mapping_info/incoming/*_MES_LINE_MAPPING_INFO_*.csv.deflate` 파일을 테이블 전체 snapshot으로 적재합니다.
 `station_master`는 `/data/data_movement/station_master/incoming/*_STATION_MASTER_*.csv.deflate` 파일을 테이블 전체 snapshot으로 적재합니다.
 파일 적재 DAG는 코드에 고정된 `*/1 * * * *` schedule과 1800초 HTTP timeout을 사용합니다.
 처리량 제한과 dry-run payload만 Airflow 환경 변수로 조정합니다.
@@ -291,8 +291,10 @@ DATA_MOVEMENT_HOST_PATH
 
 ### Drone JSON/CSV target seed
 
-`seed_drone_targets_from_file`은 JSON/CSV의 `department`, `line`, `user_sdwt_prod` 목록을 기준으로
-Drone SOP/발송 이력/알림 설정을 초기화한 뒤 다시 생성합니다.
+`seed_drone_targets_from_file`은 JSON/CSV의 `department`, `line`,
+`target_user_sdwt_prod`, `recipient_user_sdwt_prod` 목록을 기준으로 Drone SOP/발송
+이력/알림 설정을 초기화한 뒤 다시 생성합니다. 구형 top-level `user_sdwt_prod`
+별칭은 허용하지 않습니다.
 
 입력 샘플은 `docs/examples/drone_targets.sample.json`,
 `docs/examples/drone_targets.sample.csv`,
@@ -389,6 +391,9 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 | --- | --- |
 | `env/api.common.env` | API 공통 설정 |
 | `env/api.dev.env` | API 개발 오버라이드 |
+| `env/api.server.common.env` | OIDC/prod 서버 공통 외부 연동 설정 |
+| `env/api.oidc.dev.env` | OIDC 개발 실행·보안 오버라이드 |
+| `env/api.prod.env` | 운영 실행·보안 오버라이드 |
 | `env/web.dev.env` | Web 개발 설정 |
 | `env/minio.env` | MinIO 설정 |
 

@@ -1,6 +1,5 @@
 import { Loader2 } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
@@ -9,7 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/common"
-import { DEFAULT_APP_CATEGORY } from "../utils/constants"
 import { formatTimestamp } from "../utils"
 import { VocStatusBadge } from "./VocStatusBadge"
 
@@ -33,7 +31,6 @@ export function VocPostTable({
           <TableRow>
             <TableHead className="w-[70px]">No</TableHead>
             <TableHead className="w-[45%] min-w-[260px]">제목</TableHead>
-            <TableHead className="w-[120px]">카테고리</TableHead>
             <TableHead className="w-[120px]">상태</TableHead>
             <TableHead className="w-[120px]">작성자</TableHead>
             <TableHead className="w-[150px]">작성일</TableHead>
@@ -42,7 +39,7 @@ export function VocPostTable({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+              <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                 <span className="inline-flex items-center justify-center gap-2">
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                   <span>VOC 게시글을 불러오는 중입니다...</span>
@@ -51,7 +48,7 @@ export function VocPostTable({
             </TableRow>
           ) : filteredPosts.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+              <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                 {statusFilter
                   ? "선택한 상태의 글이 없습니다."
                   : "아직 등록된 글이 없습니다. 첫 문의를 남겨보세요."}
@@ -78,11 +75,6 @@ export function VocPostTable({
                   </TableCell>
                   <TableCell className="w-[45%] min-w-[260px] font-medium">
                     {post.title}
-                  </TableCell>
-                  <TableCell className="w-[120px]">
-                    <Badge variant="outline" className="text-[11px]">
-                      {post.app || DEFAULT_APP_CATEGORY}
-                    </Badge>
                   </TableCell>
                   <TableCell className="w-[120px]">
                     <VocStatusBadge status={post.status} />

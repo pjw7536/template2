@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import zlib
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
 from unittest.mock import Mock, patch
 
 import requests
@@ -23,100 +21,16 @@ from api.data_movement.ct_process_comment.models import CtProcessComment, CtProc
 from api.data_movement.ct_process_comment import selectors
 from api.data_movement.ct_process_comment.services import loader as loader_module
 from api.data_movement.ct_process_comment.services import summary as summary_module
+from api.data_movement.ct_process_comment.services import summary_prompts
 from api.data_movement.ct_process_comment.services import spec
 from api.data_movement.ct_process_comment.services.loader import LoadFileOutcome, LoadRunSummary
-
-
-def _write_deflate_csv(path: Path, rows: list[list[str]]) -> None:
-    """테스트용 deflate CSV 파일을 생성합니다."""
-
-    payload = "\n".join(spec.FILE_SEPARATOR.join(row) for row in rows).encode("utf-8")
-    path.write_bytes(zlib.compress(payload))
-
-
-def _build_comment_row(
-    *,
-    workorder_id: str = "WO1",
-    line_id: str = "L1",
-    eqp_id: str = "EQP1",
-    contents: str = "contents",
-    use_yn: str = "Y",
-    create_date: str = "2999-01-01 00:00:00",
-    update_date: str | None = None,
-) -> list[str]:
-    """DDL 순서에 맞춘 테스트용 comment row를 생성합니다."""
-
-    row = [""] * len(spec.FILE_COLUMNS)
-    row[0] = workorder_id
-    row[1] = line_id
-    row[2] = "PROC"
-    row[3] = "1"
-    row[4] = "C1"
-    row[5] = eqp_id
-    row[6] = "N"
-    row[7] = contents
-    row[8] = "contents text"
-    row[9] = create_date
-    row[10] = "creator"
-    row[11] = update_date or create_date
-    row[12] = "updater"
-    row[13] = use_yn
-    row[14] = "modifier"
-    row[15] = create_date
-    row[16] = "part"
-    return row
-
-
-def _build_openwebui_session(
-    reply: str = "[2026-06-19 13:44] 점검",
-    replies: list[str | None] | None = None,
-) -> Mock:
-    """OpenWebUI 응답을 흉내 내는 requests session mock을 생성합니다."""
-
-    def build_response(content: str | None) -> Mock:
-        response = Mock()
-        response.headers = {"Content-Type": "application/json"}
-        response.raise_for_status.return_value = None
-        response.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": content,
-                    }
-                }
-            ]
-        }
-        return response
-
-    session = Mock()
-    if replies is not None:
-        session.post.side_effect = [build_response(content) for content in replies]
-    else:
-        session.post.return_value = build_response(reply)
-    return session
-
-
-def _build_openwebui_json_session(resp_json: Any) -> Mock:
-    """지정한 JSON을 반환하는 OpenWebUI session mock을 생성합니다."""
-
-    response = Mock()
-    response.headers = {"Content-Type": "application/json"}
-    response.raise_for_status.return_value = None
-    response.json.return_value = resp_json
-    session = Mock()
-    session.post.return_value = response
-    return session
-
-
-def _build_openwebui_config() -> summary_module.OpenWebUISummaryConfig:
-    """테스트용 OpenWebUI 설정 객체를 생성합니다."""
-
-    return summary_module.OpenWebUISummaryConfig(
-        url="https://openwebui.example.local/v1/chat/completions",
-        model="test-model",
-        api_token="test-token",
-        timeout_seconds=3,
-    )
+from api.data_movement.ct_process_comment.test_support import (
+    _build_comment_row,
+    _build_openwebui_config,
+    _build_openwebui_json_session,
+    _build_openwebui_session,
+    _write_deflate_csv,
+)
 
 
 class CtProcessCommentStructureTests(SimpleTestCase):
@@ -539,7 +453,7 @@ class CtProcessCommentSummaryTests(TestCase):
             ]
         )
 
-        with patch.object(summary_module, "SUMMARY_CHUNK_MAX_EVENTS", 2):
+        with patch.object(summary_prompts, "SUMMARY_CHUNK_MAX_EVENTS", 2):
             generated = summary_module.request_summary(
                 session=session,
                 config=_build_openwebui_config(),
@@ -712,6 +626,8 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertNotIn("include_reasoning", request_kwargs["json"])
         self.assertEqual(messages[0]["content"], "지정 형식으로 요약하세요.")
 
+class CtProcessCommentSummaryResponseTests(TestCase):
+    """OpenWebUI 응답 형태별 요약 오류 계약을 검증합니다."""
     def test_request_summary_reports_openwebui_tool_call_response(self) -> None:
         """텍스트 대신 tool call이 반환되면 호출 단계가 포함된 오류를 발생시킵니다."""
 
@@ -926,6 +842,8 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertNotIn("response-secret", error_message)
         self.assertEqual(session.post.call_count, 1)
 
+class CtProcessCommentCoreSummaryTests(TestCase):
+    """핵심 요약 생성·검수 상태를 검증합니다."""
     def test_summarize_requests_core_summary_even_when_event_summary_is_short(self) -> None:
         """시간순 요약이 짧아도 핵심요약 생성을 요청하고 NO_CORE_SUMMARY면 비워 둡니다."""
 
@@ -1252,6 +1170,8 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(generated.core_summary, "TMP 센서 알람 후 CH-A 밸브 교체 요청이 기록되었습니다.")
         self.assertEqual(session.post.call_count, 3)
 
+class CtProcessCommentSummaryStateTests(TestCase):
+    """요약 저장·재시도 row 상태 전이를 검증합니다."""
     def test_summarize_keeps_update_flag_when_openwebui_fails(self) -> None:
         """OpenWebUI 요청 실패 시 update_flag를 Y로 유지합니다."""
 
@@ -1508,217 +1428,3 @@ class CtProcessCommentSummaryTests(TestCase):
         self.assertEqual(run_summary.success_count, 1)
         self.assertEqual(target.update_flag, "N")
         self.assertEqual(other.update_flag, "Y")
-
-
-@override_settings(DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS=0, DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=0)
-class CtProcessCommentLifecycleTests(TestCase):
-    """CT_PROCESS_COMMENT 파일 처리 lifecycle을 검증합니다."""
-
-    def test_loader_upserts_existing_workorder_comment_in_database(self) -> None:
-        """실제 COPY 경로로 기존 workorder comment를 새 파일 row로 갱신합니다."""
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO ctttm_workorder_list
-                    (source_type, workorder_id, line_id, eqp_id, work_type, description, inprg_date, comp_date)
-                VALUES
-                    ('MST', 'WO1', 'L1', 'EQP1', 'PM', 'desc', NULL, NULL),
-                    ('MST', 'WO2', 'L1', 'eQP2', 'PM', 'desc', NULL, NULL)
-                """
-            )
-        CtProcessComment.objects.create(
-            workorder_id="WO1",
-            line_id="OLD_LINE",
-            contents="old contents",
-            use_yn="Y",
-        )
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(
-                source,
-                [
-                    _build_comment_row(workorder_id="WO1", line_id="NEW_LINE", contents="new contents"),
-                    _build_comment_row(workorder_id="WO2", eqp_id="eQP2", contents="created contents"),
-                    _build_comment_row(workorder_id="WO_MISSING", line_id="SKIP_LINE", contents="skip contents"),
-                ],
-            )
-
-            summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-        self.assertEqual(summary.success_count, 1)
-        updated_row = CtProcessComment.objects.get(workorder_id="WO1")
-        self.assertEqual(updated_row.line_id, "NEW_LINE")
-        self.assertEqual(updated_row.contents, "new contents")
-        self.assertEqual(updated_row.update_flag, "Y")
-        created_row = CtProcessComment.objects.get(workorder_id="WO2")
-        self.assertEqual(created_row.contents, "created contents")
-        self.assertEqual(created_row.update_flag, "Y")
-        self.assertFalse(CtProcessComment.objects.filter(workorder_id="WO_MISSING").exists())
-
-    def test_loader_keeps_one_latest_row_when_file_has_duplicate_workorder_id(self) -> None:
-        """같은 파일의 중복 workorder_id는 최신 update_date row 하나만 반영합니다."""
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO ctttm_workorder_list
-                    (source_type, workorder_id, line_id, eqp_id, work_type, description, inprg_date, comp_date)
-                VALUES
-                    ('MST', 'WO1', 'L1', 'EQP1', 'PM', 'desc', NULL, NULL)
-                """
-            )
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(
-                source,
-                [
-                    _build_comment_row(
-                        workorder_id="WO1",
-                        line_id="OLD_LINE",
-                        contents="old contents",
-                        update_date="2999-01-01 00:00:00",
-                    ),
-                    _build_comment_row(
-                        workorder_id="WO1",
-                        line_id="NEW_LINE",
-                        contents="new contents",
-                        update_date="2999-01-02 00:00:00",
-                    ),
-                ],
-            )
-
-            summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-        self.assertEqual(summary.success_count, 1, summary.outcomes)
-        self.assertEqual(CtProcessComment.objects.filter(workorder_id="WO1").count(), 1)
-        loaded_row = CtProcessComment.objects.get(workorder_id="WO1")
-        self.assertEqual(loaded_row.line_id, "NEW_LINE")
-        self.assertEqual(loaded_row.contents, "new contents")
-
-    def test_loader_keeps_update_flag_when_existing_comment_is_unchanged(self) -> None:
-        """동일한 comment row 재적재는 API 요청 flag를 새로 켜지 않습니다."""
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO ctttm_workorder_list
-                    (source_type, workorder_id, line_id, eqp_id, work_type, description, inprg_date, comp_date)
-                VALUES
-                    ('MST', 'WO1', 'L1', 'EQP1', 'PM', 'desc', NULL, NULL)
-                """
-            )
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(source, [_build_comment_row(workorder_id="WO1")])
-
-            first_summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-            self.assertEqual(first_summary.success_count, 1)
-            loaded_row = CtProcessComment.objects.get(workorder_id="WO1")
-            self.assertEqual(loaded_row.update_flag, "Y")
-
-            loaded_row.update_flag = "N"
-            loaded_row.save(update_fields=["update_flag"])
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1400.csv.deflate"
-            _write_deflate_csv(source, [_build_comment_row(workorder_id="WO1")])
-
-            second_summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-        self.assertEqual(second_summary.success_count, 1, second_summary.outcomes)
-        unchanged_row = CtProcessComment.objects.get(workorder_id="WO1")
-        self.assertEqual(unchanged_row.update_flag, "N")
-
-    def test_loader_resets_llm_summary_when_contents_text_changes(self) -> None:
-        """contents_text 변경 시 기존 LLM 요약을 비워 재요약 대상이 되게 합니다."""
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO ctttm_workorder_list
-                    (source_type, workorder_id, line_id, eqp_id, work_type, description, inprg_date, comp_date)
-                VALUES
-                    ('MST', 'WO1', 'L1', 'EQP1', 'PM', 'desc', NULL, NULL)
-                """
-            )
-        CtProcessComment.objects.create(
-            workorder_id="WO1",
-            line_id="OLD_LINE",
-            contents_text="old text",
-            llm_core_summary="old core summary",
-            llm_summary="old summary",
-            summary_retry_count=2,
-            summary_last_error_code="empty_content",
-            summary_last_error="이전 오류",
-            use_yn="Y",
-        )
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(source, [_build_comment_row(workorder_id="WO1")])
-
-            summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-        self.assertEqual(summary.success_count, 1, summary.outcomes)
-        updated_row = CtProcessComment.objects.get(workorder_id="WO1")
-        self.assertEqual(updated_row.contents_text, "contents text")
-        self.assertIsNone(updated_row.llm_core_summary)
-        self.assertIsNone(updated_row.llm_summary)
-        self.assertEqual(updated_row.summary_retry_count, 0)
-        self.assertIsNone(updated_row.summary_last_error_code)
-        self.assertIsNone(updated_row.summary_last_error)
-
-    @patch.object(loader_module, "_upsert_rows")
-    def test_loader_upserts_and_deletes_processing_file(self, upsert_rows) -> None:
-        """성공 시 upsert를 호출하고 파일을 삭제합니다."""
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(source, [_build_comment_row()])
-
-            summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-            self.assertEqual(summary.success_count, 1)
-            self.assertFalse(source.exists())
-            self.assertEqual(list((root / "processing").iterdir()), [])
-
-        upsert_rows.assert_called_once()
-        self.assertEqual(CtProcessCommentLoadJob.objects.filter(status="success").count(), 1)
-
-    @patch.object(loader_module, "_upsert_rows", side_effect=ValueError("copy failed"))
-    def test_loader_deletes_file_even_when_upsert_fails(self, upsert_rows) -> None:
-        """DB 반영 실패 시에도 처리 파일을 삭제하고 실패 이력을 남깁니다."""
-
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            incoming = root / "incoming"
-            incoming.mkdir()
-            source = incoming / "65635_CT_PROCESS_COMMENT_20260529_1300.csv.deflate"
-            _write_deflate_csv(source, [_build_comment_row()])
-
-            summary = loader_module.load_ct_process_comment_files(data_dir=root)
-
-            self.assertEqual(summary.failure_count, 1)
-            self.assertFalse(source.exists())
-            self.assertEqual(list((root / "processing").iterdir()), [])
-
-        upsert_rows.assert_called_once()
-        self.assertEqual(CtProcessCommentLoadJob.objects.filter(status="failed").count(), 1)

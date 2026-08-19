@@ -11,8 +11,8 @@ async function request(path, options = {}) {
   const payload = await safeParseJson(response)
   if (!response.ok) {
     const message =
-      typeof payload?.error === "string"
-        ? payload.error
+      typeof payload?.message === "string"
+        ? payload.message
         : typeof payload?.detail === "string"
           ? payload.detail
           : `접속 통계 요청 실패 (${response.status})`

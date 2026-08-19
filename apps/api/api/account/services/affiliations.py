@@ -278,7 +278,15 @@ def get_affiliation_overview(*, user: Any, timezone_name: str) -> dict[str, obje
 
     access_list = _current_access_list(user)
     manageable = [entry["userSdwtProd"] for entry in access_list if entry["role"] == "manager"]
-    options = selectors.list_affiliation_options()
+    options = [
+        {
+            "id": option["id"],
+            "department": option["department"],
+            "line": option["line"],
+            "userSdwtProd": option["user_sdwt_prod"],
+        }
+        for option in selectors.list_affiliation_options()
+    ]
     current_values = selectors.get_current_affiliation_values(user=user)
     current_department = current_values.get("department") or getattr(user, "department", None)
 

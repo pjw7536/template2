@@ -24,7 +24,7 @@ export function AppAccessTracker() {
     ) return
 
     const path = `${location.pathname}${location.search || ""}`
-    const trackedKey = `${user.id || user.usr_id || "user"}:${path}`
+    const trackedKey = `${user.id || user.knoxId || "user"}:${path}`
     if (lastTrackedKeyRef.current === trackedKey) return
     lastTrackedKeyRef.current = trackedKey
 

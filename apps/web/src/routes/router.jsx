@@ -5,6 +5,10 @@ import { PortalGlobalShell } from "@/components/layout"
 import { AppAccessGate, AuthAutoLoginGate, PortalAccessGate, useAuth } from "@/lib/auth"
 import { hasScopeAccess } from "@/lib/access/scopeAccess"
 import { PageAssistantContextProvider } from "@/lib/assistant/pageContext"
+import {
+  getPortalAppDefinition,
+  shouldHideAssistantWidget,
+} from "@/lib/config/portalAppCatalog"
 
 import { accessStatsRoutes } from "@/features/access-stats"
 import { appstoreRoutes } from "@/features/appstore"
@@ -54,7 +58,8 @@ const esopDashboardRoutes = lineDashboardRoutes.map((route) => {
   }
 })
 
-function createAppRouteGroup(scopeKey, appName, routes) {
+function createAppRouteGroup(scopeKey, routes) {
+  const appName = getPortalAppDefinition(scopeKey)?.routeAppName || scopeKey
   return {
     element: <AppAccessGate scopeKey={scopeKey} appName={appName}><Outlet /></AppAccessGate>,
     children: routes,
@@ -63,25 +68,24 @@ function createAppRouteGroup(scopeKey, appName, routes) {
 
 const protectedFeatureRoutes = [
   ...spiderRoutes,
-  createAppRouteGroup("l0-spider", "L0 Spider", l0SpiderRoutes),
-  createAppRouteGroup("l1-spider", "L1 Spider", l1SpiderRoutes),
-  createAppRouteGroup("teamstaff", "Team", teamstaffRoutes),
-  createAppRouteGroup("line-dashboard", "ESOP Dashboard", esopDashboardRoutes),
-  createAppRouteGroup("l3-spider", "L3 Spider", l3SpiderRoutes),
-  createAppRouteGroup("pm-spider", "PM Spider", pmSpiderRoutes),
-  createAppRouteGroup("tttm-spider", "TTTM Spider", tttmSpiderRoutes),
-  createAppRouteGroup("appstore", "Appstore", appstoreRoutes),
-  createAppRouteGroup("access-stats", "접속 현황", accessStatsRoutes),
-  createAppRouteGroup("emails", "메일함", emailsRoutes),
-  createAppRouteGroup("voc", "VoE", vocRoutes),
-  createAppRouteGroup("observer", "Observer", observerRoutes),
+  createAppRouteGroup("l0-spider", l0SpiderRoutes),
+  createAppRouteGroup("l1-spider", l1SpiderRoutes),
+  createAppRouteGroup("teamstaff", teamstaffRoutes),
+  createAppRouteGroup("line-dashboard", esopDashboardRoutes),
+  createAppRouteGroup("l3-spider", l3SpiderRoutes),
+  createAppRouteGroup("pm-spider", pmSpiderRoutes),
+  createAppRouteGroup("tttm-spider", tttmSpiderRoutes),
+  createAppRouteGroup("appstore", appstoreRoutes),
+  createAppRouteGroup("access-stats", accessStatsRoutes),
+  createAppRouteGroup("emails", emailsRoutes),
+  createAppRouteGroup("voc", vocRoutes),
+  createAppRouteGroup("observer", observerRoutes),
   ...accountRoutes,
 ]
 
 function AssistantWidgetOutlet() {
   const { user } = useAuth()
   const location = useLocation()
-  const normalizedPath = location.pathname.replace(/\/+$/, "").toLowerCase()
   const hasPortalAccess = hasScopeAccess(user, "portal")
   const hasAssistantAccess = hasScopeAccess(user, "assistant")
   const hasEmailsAccess = hasScopeAccess(user, "emails")
@@ -89,12 +93,7 @@ function AssistantWidgetOutlet() {
   const availableMailboxes = Array.isArray(mailboxesData?.results)
     ? mailboxesData.results
     : []
-  const isAssistantPage =
-    normalizedPath === "/assistant" || normalizedPath.startsWith("/assistant/")
-  const hideChatWidget = isAssistantPage || [
-    "/settings/members",
-    "/settings/permissions",
-  ].includes(normalizedPath)
+  const hideChatWidget = shouldHideAssistantWidget(location.pathname)
 
   return (
     <PortalAccessGate allowUnapprovedPaths={["/settings", "/settings/account"]}>

@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -33,13 +32,9 @@ class DroneMailConfig:
 
     @classmethod
     def from_settings(cls) -> "DroneMailConfig":
-        """settings/env에서 메일 발신자 설정을 로드합니다."""
+        """Django settings에서 메일 발신자 설정을 로드합니다."""
 
-        sender = (
-            getattr(settings, "DRONE_MAIL_SENDER", "")
-            or os.getenv("DRONE_MAIL_SENDER")
-            or ""
-        ).strip()
+        sender = str(getattr(settings, "DRONE_MAIL_SENDER", "") or "").strip()
         return cls(sender_email=sender)
 
 

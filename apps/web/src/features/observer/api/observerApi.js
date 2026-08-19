@@ -18,12 +18,6 @@ export const observerApi = {
     return observerApiClient("/equipments", { params });
   },
 
-  // 로그 가져오기 - sdwtId 제거
-  fetchLogs: ({ lineId, eqpId, ...logQueryOptions }) =>
-    observerApiClient("/logs", {
-      params: { lineId, eqpId, ...logQueryOptions },
-    }),
-
   fetchLogBatch: ({ eqpId, types, pageSize = 250, signal, ...range }) =>
     observerApiClient("/logs/page", {
       params: {
@@ -59,10 +53,6 @@ export const observerApi = {
       params: { eqpId, evidenceId, from, to },
       signal,
     }),
-
-  // EQP 정보 조회
-  fetchEquipmentInfo: (lineId, eqpId) =>
-    observerApiClient(`/equipment-info/${lineId}/${eqpId}`),
 
   fetchEquipmentInfoByEqpId: (eqpId) =>
     observerApiClient(`/equipment-info/${eqpId}`),

@@ -43,13 +43,13 @@ async function request(url, options = {}) {
 
     return { ok: response.ok, data }
   } catch (error) {
-    return { ok: false, data: { error: String(error) } }
+    return { ok: false, data: { message: String(error) } }
   }
 }
 
 async function unwrap(response, defaultMessage) {
   if (response.ok) return response.data
-  const message = (response?.data && response.data.error) || defaultMessage
+  const message = (response?.data && response.data.message) || defaultMessage
   throw new Error(message || "Request failed")
 }
 

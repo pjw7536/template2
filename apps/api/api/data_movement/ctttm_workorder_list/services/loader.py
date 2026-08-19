@@ -13,10 +13,9 @@ from django.utils import timezone
 
 from api.data_movement.common.services.file_loader import (
     ClaimedDataFile,
-    claim_incoming_file,
     delete_claimed_file,
-    list_incoming_files,
 )
+from api.data_movement.common.services.load_runner import run_incoming_file_load
 from api.data_movement.ctttm_workorder_list.models import CtttmWorkorderListLoadJob
 from api.data_movement.ctttm_workorder_list.services.fast_csv import (
     build_fast_csv_plan,
@@ -362,12 +361,12 @@ def load_ctttm_workorder_list_files(
     """ctttm_workorder_list deflate CSV 파일들을 순차 적재합니다."""
 
     resolved_table_dir = Path(data_dir) if data_dir is not None else spec.DEFAULT_TABLE_DIR
-    files = list_incoming_files(table_dir=resolved_table_dir, pattern=spec.FILE_PATTERN, limit=limit)
-    outcomes = []
-    for file_path in files:
-        if dry_run:
-            outcomes.append(_dry_run_one_file(file_path=file_path))
-            continue
-        claimed_file = claim_incoming_file(file_path=file_path, table_dir=resolved_table_dir)
-        outcomes.append(_load_claimed_file(claimed_file=claimed_file))
+    outcomes = run_incoming_file_load(
+        table_dir=resolved_table_dir,
+        pattern=spec.FILE_PATTERN,
+        limit=limit,
+        dry_run=dry_run,
+        validate_file=_dry_run_one_file,
+        load_claimed_file=_load_claimed_file,
+    )
     return LoadRunSummary(outcomes=outcomes)

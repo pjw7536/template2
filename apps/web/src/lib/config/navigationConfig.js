@@ -10,6 +10,8 @@ import {
   Users,
 } from "lucide-react"
 
+import { getPortalAppDefinition } from "./portalAppCatalog"
+
 /**
  * 내비게이션 기본 구성.
  * - scope === "line" 인 메뉴는 라인 ID를 앞에 붙여야 하므로 주의.
@@ -17,7 +19,7 @@ import {
  */
 const LINE_DASHBOARD_GROUP = Object.freeze({
   key: "line-dashboard",
-  title: "Line Dashboard",
+  title: getPortalAppDefinition("line-dashboard")?.navigationTitle || "Line Dashboard",
   url: "/ESOP_Dashboard",
   icon: SquareTerminal,
   isActive: true,
@@ -87,7 +89,7 @@ const EMAIL_NAV_ITEMS = Object.freeze([
 
 const EMAILS_GROUP_BASE = Object.freeze({
   key: "emails",
-  title: "Emails",
+  title: getPortalAppDefinition("emails")?.navigationTitle || "Emails",
   url: "/emails/inbox",
   icon: Mail,
   isActive: true,
@@ -97,7 +99,7 @@ const EMAILS_GROUP_BASE = Object.freeze({
 
 const L0_SPIDER_GROUP = Object.freeze({
   key: "l0-spider",
-  title: "Spider",
+  title: getPortalAppDefinition("l0-spider")?.navigationTitle || "Spider",
   url: "/spider",
   icon: Activity,
   isActive: true,
@@ -132,7 +134,7 @@ const SETTINGS_NAV_ITEMS = Object.freeze([
 
 const SETTINGS_GROUP = Object.freeze({
   key: "settings",
-  title: "Settings",
+  title: getPortalAppDefinition("settings")?.navigationTitle || "Settings",
   url: "/settings/account",
   icon: Settings,
   isActive: true,
@@ -147,13 +149,13 @@ function normalizeMailbox(value) {
 function buildMailboxUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/inbox"
-  return `/emails/inbox?user_sdwt_prod=${encodeURIComponent(trimmed)}`
+  return `/emails/inbox?userSdwtProd=${encodeURIComponent(trimmed)}`
 }
 
 function buildMembersUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/members"
-  return `/emails/members?user_sdwt_prod=${encodeURIComponent(trimmed)}`
+  return `/emails/members?userSdwtProd=${encodeURIComponent(trimmed)}`
 }
 
 export const NAVIGATION_CONFIG = Object.freeze({

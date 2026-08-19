@@ -19,9 +19,10 @@ async function request(path, options = {}) {
   })
   const { data, ok, status } = await parseJson(response)
   if (!ok) {
-    const message = typeof data?.error === "string" ? data.error : `Request failed (${status})`
+    const message = typeof data?.message === "string" ? data.message : `Request failed (${status})`
     const error = new Error(message)
     error.status = status
+    error.payload = data
     throw error
   }
   return data
@@ -29,6 +30,27 @@ async function request(path, options = {}) {
 
 function ensureString(value) {
   return typeof value === "string" ? value : ""
+}
+
+const APP_MUTATION_FIELDS = [
+  "name",
+  "category",
+  "description",
+  "url",
+  "manualUrl",
+  "screenshotUrl",
+  "screenshotUrls",
+  "coverScreenshotIndex",
+  "contactName",
+  "contactKnoxid",
+]
+
+function buildAppMutationBody(input = {}) {
+  return Object.fromEntries(
+    APP_MUTATION_FIELDS
+      .filter((field) => input[field] !== undefined)
+      .map((field) => [field, input[field]]),
+  )
 }
 
 function normalizeUser(rawUser) {
@@ -42,17 +64,17 @@ function normalizeUser(rawUser) {
 
 function normalizeComment(raw) {
   if (!raw || typeof raw !== "object") return null
-  const id = raw.id ?? raw.commentId ?? raw.pk ?? null
+  const id = raw.id ?? null
   if (id == null) return null
   return {
     id,
-    appId: raw.appId ?? raw.app_id ?? null,
-    parentCommentId: raw.parentCommentId ?? raw.parent_comment_id ?? raw.parentId ?? raw.parent_id ?? null,
+    appId: raw.appId ?? null,
+    parentCommentId: raw.parentCommentId ?? null,
     content: ensureString(raw.content),
-    createdAt: ensureString(raw.createdAt || raw.created_at),
-    updatedAt: ensureString(raw.updatedAt || raw.updated_at || raw.createdAt || raw.created_at),
+    createdAt: ensureString(raw.createdAt),
+    updatedAt: ensureString(raw.updatedAt || raw.createdAt),
     author: normalizeUser(raw.author),
-    likeCount: Number(raw.likeCount ?? raw.like_count ?? 0) || 0,
+    likeCount: Number(raw.likeCount ?? 0) || 0,
     liked: Boolean(raw.liked),
     canEdit: Boolean(raw.canEdit),
     canDelete: Boolean(raw.canDelete),
@@ -61,15 +83,15 @@ function normalizeComment(raw) {
 
 function normalizeApp(raw) {
   if (!raw || typeof raw !== "object") return null
-  const id = raw.id ?? raw.appId ?? raw.pk ?? null
+  const id = raw.id ?? null
   if (id == null) return null
   const comments = Array.isArray(raw.comments)
     ? raw.comments.map(normalizeComment).filter(Boolean)
     : undefined
 
-  const screenshotUrl = ensureString(raw.screenshotUrl || raw.screenshot_url)
-  const screenshotUrls = normalizeScreenshotUrls(raw.screenshotUrls || raw.screenshot_urls)
-  const coverScreenshotIndexRaw = raw.coverScreenshotIndex ?? raw.cover_screenshot_index ?? 0
+  const screenshotUrl = ensureString(raw.screenshotUrl)
+  const screenshotUrls = normalizeScreenshotUrls(raw.screenshotUrls)
+  const coverScreenshotIndexRaw = raw.coverScreenshotIndex ?? 0
 
   const resolvedScreenshotUrls = screenshotUrls.length
     ? screenshotUrls
@@ -84,18 +106,18 @@ function normalizeApp(raw) {
     category: ensureString(raw.category),
     description: ensureString(raw.description),
     url: ensureString(raw.url),
-    manualUrl: ensureString(raw.manualUrl || raw.manual_url),
-    contactName: ensureString(raw.contactName || raw.contact_name),
-    contactKnoxid: ensureString(raw.contactKnoxid || raw.contact_knoxid),
+    manualUrl: ensureString(raw.manualUrl),
+    contactName: ensureString(raw.contactName),
+    contactKnoxid: ensureString(raw.contactKnoxid),
     screenshotUrl,
     screenshotUrls: resolvedScreenshotUrls,
     coverScreenshotIndex: resolvedCoverIndex,
-    viewCount: Number(raw.viewCount ?? raw.view_count ?? 0) || 0,
-    likeCount: Number(raw.likeCount ?? raw.like_count ?? 0) || 0,
-    commentCount: Number(raw.commentCount ?? raw.comment_count ?? comments?.length ?? 0) || 0,
-    displayOrder: Number(raw.displayOrder ?? raw.display_order ?? 0) || 0,
-    createdAt: ensureString(raw.createdAt || raw.created_at),
-    updatedAt: ensureString(raw.updatedAt || raw.updated_at || raw.createdAt || raw.created_at),
+    viewCount: Number(raw.viewCount ?? 0) || 0,
+    likeCount: Number(raw.likeCount ?? 0) || 0,
+    commentCount: Number(raw.commentCount ?? comments?.length ?? 0) || 0,
+    displayOrder: Number(raw.displayOrder ?? 0) || 0,
+    createdAt: ensureString(raw.createdAt),
+    updatedAt: ensureString(raw.updatedAt || raw.createdAt),
     owner: normalizeUser(raw.owner),
     liked: Boolean(raw.liked),
     canEdit: Boolean(raw.canEdit),
@@ -112,7 +134,7 @@ export async function fetchApps() {
   return {
     apps,
     total: typeof payload?.total === "number" ? payload.total : apps.length,
-    orderVersion: ensureString(payload?.orderVersion || payload?.order_version),
+    orderVersion: ensureString(payload?.orderVersion),
     permissions: {
       canReorder: Boolean(payload?.permissions?.canReorder),
     },
@@ -123,7 +145,10 @@ export async function reorderApps(input) {
   const payload = await request("/api/v1/appstore/apps/order", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      appIds: input?.appIds,
+      orderVersion: input?.orderVersion,
+    }),
   })
   return {
     appIds: Array.isArray(payload?.appIds) ? payload.appIds : [],
@@ -145,7 +170,7 @@ export async function createApp(input) {
   const payload = await request("/api/v1/appstore/apps", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify(buildAppMutationBody(input)),
   })
   const app = normalizeApp(payload?.app)
   if (!app) {
@@ -158,7 +183,7 @@ export async function updateApp(appId, updates) {
   const payload = await request(`/api/v1/appstore/apps/${appId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(updates),
+    body: JSON.stringify(buildAppMutationBody(updates)),
   })
   const app = normalizeApp(payload?.app)
   if (!app) {

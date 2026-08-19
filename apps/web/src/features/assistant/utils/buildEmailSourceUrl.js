@@ -30,7 +30,7 @@ export function buildEmailSourceUrl(emailId, userSdwtProd, options = {}) {
   const params = new URLSearchParams()
 
   if (canUseMailbox) {
-    params.set("user_sdwt_prod", mailbox)
+    params.set("userSdwtProd", mailbox)
   }
 
   params.set("emailId", normalizedEmailId)

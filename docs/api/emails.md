@@ -40,24 +40,26 @@ Emails API는 메일함 조회, 메일 처리, POP3 수집, OCR, RAG Outbox 처�
 ## 메일 목록 쿼리
 
 ```http
-GET /api/v1/emails/inbox/?userSdwtProd=G-A&q=report&page=1&page_size=20
+GET /api/v1/emails/inbox/?userSdwtProd=G-A&q=report&page=1&pageSize=20
 ```
 
 | Query | 설명 |
 | --- | --- |
-| `user_sdwt_prod`, `userSdwtProd` | 메일함 필터 |
+| `userSdwtProd` | 메일함 필터 |
 | `q` | 검색어 |
 | `sender` | 발신자 필터 |
 | `recipient` | 수신자 필터 |
-| `date_from`, `date_to` | 날짜/시간 필터 |
-| `page`, `page_size` | 페이지네이션 |
+| `dateFrom`, `dateTo` | 날짜/시간 필터 |
+| `page`, `pageSize` | 페이지네이션 |
+
+목록 query와 쓰기 JSON은 camelCase만 허용하며 제거된 snake_case alias는 400 `invalid_request`로 거부합니다.
 
 ## 메일 이동
 
 ```json
 {
   "emailIds": [1, 2, 3],
-  "targetUserSdwtProd": "G-B"
+  "toUserSdwtProd": "G-B"
 }
 ```
 
@@ -95,6 +97,8 @@ X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>
 ```
 
 ## 오류
+
+오류 body는 `code`, `message`, `details`, `fieldErrors`를 갖는 공통 형식을 사용합니다.
 
 | Status | 상황 |
 | --- | --- |

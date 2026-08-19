@@ -13,6 +13,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
+from api.management.commands.ensure_dev_database import _build_connection_kwargs
+
 
 class EnsureDevDatabaseCommandTests(SimpleTestCase):
     """dev DB bootstrap command의 가드와 생성 흐름을 검증합니다."""
@@ -23,6 +25,32 @@ class EnsureDevDatabaseCommandTests(SimpleTestCase):
         with patch.dict("os.environ", {"ENVIRONMENT": "production"}, clear=True):
             with self.assertRaises(CommandError):
                 call_command("ensure_dev_database", stdout=StringIO())
+
+    def test_connection_kwargs_ignore_legacy_database_aliases(self) -> None:
+        """개발 DB 준비 명령도 canonical Django DB 키만 사용합니다."""
+
+        with patch.dict(
+            "os.environ",
+            {
+                "DB_USER": "legacy_user",
+                "DB_PASSWORD": "legacy_password",
+                "DB_HOST": "legacy-host",
+                "DB_PORT": "9999",
+            },
+            clear=True,
+        ):
+            connection_kwargs = _build_connection_kwargs(database_name="dashboard")
+
+        self.assertEqual(
+            connection_kwargs,
+            {
+                "dbname": "dashboard",
+                "user": "airflow",
+                "password": "airflow",
+                "host": "airflow-postgres",
+                "port": "8010",
+            },
+        )
 
     @patch("api.management.commands.ensure_dev_database._ensure_required_extensions")
     @patch("api.management.commands.ensure_dev_database.psycopg.connect")

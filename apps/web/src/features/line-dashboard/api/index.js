@@ -20,8 +20,8 @@ export {
 } from "./lineSettings"
 export {
   fetchNotificationTemplateOptions,
-  fetchUserSdwtJiraKey,
-  updateUserSdwtJiraKey,
+  fetchTargetJiraConfiguration,
+  updateTargetJiraConfiguration,
 } from "./lineJiraKey"
 export {
   createNotificationTargetMapping,

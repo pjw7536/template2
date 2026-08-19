@@ -8,18 +8,14 @@ import {
   createLineSetting,
   deleteNotificationTargetMapping,
   deleteLineSetting,
-  fetchNotificationTemplateOptions,
-  fetchNotificationRecipients,
-  fetchNotificationTargets,
-  fetchUserSdwtJiraKey,
-  fetchLineSettings,
   updateLineSetting,
   updateNotificationRecipients,
   updateNotificationTargetMapping,
-  updateUserSdwtJiraKey,
+  updateTargetJiraConfiguration,
 } from "../api"
 import { timeFormatter } from "../utils/formatters"
 import { sortEntries } from "../utils/lineSettings"
+import { useLineSettingsServerState } from "./useLineSettingsServerState"
 
 const EMPTY_TIMESTAMP = "-"
 const EMPTY_MAPPING_OPTIONS = { userSdwtProds: [], sdwtProds: [] }
@@ -34,6 +30,14 @@ const normalizeId = (value) => String(value ?? "")
 const nowLabel = () => timeFormatter.format(new Date())
 
 export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true }) {
+  const {
+    invalidate: invalidateServerState,
+    refetch: refetchServerState,
+  } = useLineSettingsServerState({
+    lineId,
+    targetUserSdwtProd: userSdwtProd,
+    loadRecipients,
+  })
   const [entries, setEntries] = React.useState([])
   const [userSdwtValues, setUserSdwtValues] = React.useState([])
   const [mappingOptions, setMappingOptions] = React.useState(EMPTY_MAPPING_OPTIONS)
@@ -158,6 +162,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
     }
 
     try {
+      const queryResult = await refetchServerState()
       const [
         settingsResult,
         targetsResult,
@@ -165,32 +170,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         jiraResult,
         mailRecipientsResult,
         messengerRecipientsResult,
-      ] = await Promise.allSettled([
-        fetchLineSettings(lineId),
-        fetchNotificationTargets({ lineId }),
-        fetchNotificationTemplateOptions(),
-        userSdwtProd
-          ? fetchUserSdwtJiraKey(userSdwtProd)
-          : Promise.resolve({
-              jiraKey: "",
-              templateKeys: DEFAULT_TEMPLATE_KEYS,
-              messengerForceNewChatroom: DEFAULT_MESSENGER_FORCE_NEW_CHATROOM,
-            }),
-        shouldLoadRecipients
-          ? fetchNotificationRecipients({
-              lineId: requestLineId,
-              targetUserSdwtProd: userSdwtProd,
-              channel: "mail",
-            })
-          : Promise.resolve({ recipients: [] }),
-        shouldLoadRecipients
-          ? fetchNotificationRecipients({
-              lineId: requestLineId,
-              targetUserSdwtProd: userSdwtProd,
-              channel: "messenger",
-            })
-          : Promise.resolve({ recipients: [] }),
-      ])
+      ] = queryResult.data || []
+      if (!settingsResult) {
+        throw queryResult.error || new Error("Failed to load line settings")
+      }
       if (!isCurrentRefresh()) {
         return { ok: false, stale: true }
       }
@@ -305,7 +288,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         }
       }
     }
-  }, [isCurrentContext, lineId, loadRecipients, resetForLineChange, userSdwtProd])
+  }, [isCurrentContext, lineId, loadRecipients, refetchServerState, resetForLineChange, userSdwtProd])
 
   React.useEffect(() => {
     refresh()
@@ -320,9 +303,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         )
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return entry
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const updateEntry = React.useCallback(
@@ -334,9 +318,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         )
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return entry
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const deleteEntry = React.useCallback(async ({ id }) => {
@@ -344,8 +329,9 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
     const normalizedId = normalizeId(id)
     setEntries((prev) => prev.filter((item) => normalizeId(item.id) !== normalizedId))
     setLastUpdatedLabel(nowLabel())
+    await invalidateServerState()
     return { ok: true }
-  }, [])
+  }, [invalidateServerState])
 
   const updateJiraKey = React.useCallback(
     async ({ jiraKey: nextJiraKey, channelEnabled: nextChannelEnabled, templateKeys: nextTemplateKeys }) => {
@@ -360,9 +346,9 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         needToSendRule: savedNeedToSendRule,
         templateKeys: savedTemplateKeys,
         messengerForceNewChatroom: savedMessengerForceNewChatroom,
-      } = await updateUserSdwtJiraKey({
+      } = await updateTargetJiraConfiguration({
         lineId: requestLineId,
-        userSdwtProd,
+        targetUserSdwtProd: userSdwtProd,
         jiraKey: nextJiraKey,
         channelEnabled: nextChannelEnabled || channelEnabled,
         templateKeys: nextTemplateKeys || templateKeys,
@@ -376,6 +362,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         setJiraKeyError(null)
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return {
         jiraKey: savedKey,
         channelEnabled: savedChannelEnabled || DEFAULT_CHANNEL_ENABLED,
@@ -384,7 +371,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         messengerForceNewChatroom: Boolean(savedMessengerForceNewChatroom),
       }
     },
-    [channelEnabled, isCurrentContext, lineId, templateKeys, userSdwtProd],
+    [channelEnabled, invalidateServerState, isCurrentContext, lineId, templateKeys, userSdwtProd],
   )
 
   const updateNeedToSendRule = React.useCallback(
@@ -399,9 +386,9 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         channelEnabled: savedChannelEnabled,
         needToSendRule: savedNeedToSendRule,
         messengerForceNewChatroom: savedMessengerForceNewChatroom,
-      } = await updateUserSdwtJiraKey({
+      } = await updateTargetJiraConfiguration({
         lineId: requestLineId,
-        userSdwtProd,
+        targetUserSdwtProd: userSdwtProd,
         needToSendRule: nextNeedToSendRule || needToSendRule,
       })
       if (isCurrentContext(requestLineId, requestUserSdwtProd)) {
@@ -412,6 +399,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         setJiraKeyError(null)
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return {
         jiraKey: savedKey,
         channelEnabled: savedChannelEnabled || DEFAULT_CHANNEL_ENABLED,
@@ -419,7 +407,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         messengerForceNewChatroom: Boolean(savedMessengerForceNewChatroom),
       }
     },
-    [isCurrentContext, lineId, needToSendRule, userSdwtProd],
+    [invalidateServerState, isCurrentContext, lineId, needToSendRule, userSdwtProd],
   )
 
   const updateRecipients = React.useCallback(
@@ -452,9 +440,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         }
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return { recipients: recipients || [], stale: !isCurrent }
     },
-    [isCurrentContext, lineId, userSdwtProd],
+    [invalidateServerState, isCurrentContext, lineId, userSdwtProd],
   )
 
   const updateMailRecipients = React.useCallback(
@@ -475,9 +464,9 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         channelEnabled: savedChannelEnabled,
         needToSendRule: savedNeedToSendRule,
         messengerForceNewChatroom: savedMessengerForceNewChatroom,
-      } = await updateUserSdwtJiraKey({
+      } = await updateTargetJiraConfiguration({
         lineId: requestLineId,
-        userSdwtProd,
+        targetUserSdwtProd: userSdwtProd,
         messengerForceNewChatroom: Boolean(forceNewChatroom),
       })
       if (isCurrentContext(requestLineId, requestUserSdwtProd)) {
@@ -488,6 +477,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         setJiraKeyError(null)
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return {
         jiraKey: savedKey,
         channelEnabled: savedChannelEnabled || DEFAULT_CHANNEL_ENABLED,
@@ -495,7 +485,7 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         messengerForceNewChatroom: Boolean(savedMessengerForceNewChatroom),
       }
     },
-    [isCurrentContext, lineId, userSdwtProd],
+    [invalidateServerState, isCurrentContext, lineId, userSdwtProd],
   )
 
   const createTarget = React.useCallback(
@@ -539,9 +529,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
           return [...nextLines, { lineId: normalizedLineId, userSdwtProds: [nextValue] }]
         })
       }
+      await invalidateServerState()
       return target
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const createTargetMapping = React.useCallback(
@@ -568,9 +559,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         })
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return target
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const deleteTargetMapping = React.useCallback(
@@ -597,9 +589,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         })
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return target
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const updateTargetMappingPolicy = React.useCallback(
@@ -627,9 +620,10 @@ export function useLineSettings({ lineId, userSdwtProd, loadRecipients = true })
         })
         setLastUpdatedLabel(nowLabel())
       }
+      await invalidateServerState()
       return target
     },
-    [lineId],
+    [invalidateServerState, lineId],
   )
 
   const updateMessengerRecipients = React.useCallback(

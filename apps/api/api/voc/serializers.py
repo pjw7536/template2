@@ -37,7 +37,10 @@ class StrictSerializer(serializers.Serializer):
             unexpected_fields = sorted(set(data) - set(self.fields))
             if unexpected_fields:
                 raise serializers.ValidationError(
-                    {"unexpectedFields": unexpected_fields}
+                    {
+                        field: ["This field is not allowed."]
+                        for field in unexpected_fields
+                    }
                 )
         return super().to_internal_value(data)
 
@@ -61,10 +64,6 @@ class VocPostCreateInputSerializer(StrictSerializer):
         default=VocPost.Status.RECEIVED,
         error_messages={"invalid_choice": "Invalid status value"},
     )
-    app = serializers.ChoiceField(
-        choices=VocPost.AppCategory.choices,
-        error_messages={"invalid_choice": "Invalid app value", "required": "app is required"},
-    )
 
 
 class VocPostUpdateInputSerializer(StrictSerializer):
@@ -83,11 +82,6 @@ class VocPostUpdateInputSerializer(StrictSerializer):
         required=False,
         choices=VocPost.Status.choices,
         error_messages={"invalid_choice": "Invalid status value"},
-    )
-    app = serializers.ChoiceField(
-        required=False,
-        choices=VocPost.AppCategory.choices,
-        error_messages={"invalid_choice": "Invalid app value"},
     )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
@@ -146,7 +140,6 @@ class VocPostOutputSerializer(serializers.Serializer):
     title = serializers.CharField(read_only=True)
     content = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
-    app = serializers.CharField(read_only=True)
     createdAt = serializers.SerializerMethodField()
     updatedAt = serializers.SerializerMethodField()
     author = serializers.SerializerMethodField()

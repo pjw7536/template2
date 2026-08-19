@@ -1,6 +1,8 @@
 import { useMemo } from "react"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 
+import { getAppAccessDefinition } from "@/lib/activity/appAccessCatalog"
+
 import {
   commitManualAppAccessStats,
   fetchAppAccessStats,
@@ -108,7 +110,8 @@ function mergeAppRows(payloads) {
         accessCount: 0,
         uniqueUserCount: 0,
       }
-      current.appName = resolveDisplayAppName(current.appName, app.appName, key)
+      const catalogName = getAppAccessDefinition(key)?.appName
+      current.appName = catalogName || resolveDisplayAppName(current.appName, app.appName, key)
       current.accessCount += Number(app.accessCount) || 0
       current.uniqueUserCount += Number(app.uniqueUserCount) || 0
       current.lastAccessedAt = mergeLastAccessedAt(current.lastAccessedAt, app.lastAccessedAt)

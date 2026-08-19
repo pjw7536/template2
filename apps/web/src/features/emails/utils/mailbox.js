@@ -12,17 +12,14 @@ export function getMailboxFromSearchParams(searchParams) {
   if (!searchParams) return ""
 
   return normalizeMailbox(
-    searchParams.get("user_sdwt_prod") ||
-      searchParams.get("userSdwtProd") ||
-      searchParams.get("mailbox") ||
-      "",
+    searchParams.get("userSdwtProd") || "",
   )
 }
 
 export function buildMailboxUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/inbox"
-  return `/emails/inbox?user_sdwt_prod=${encodeURIComponent(trimmed)}`
+  return `/emails/inbox?userSdwtProd=${encodeURIComponent(trimmed)}`
 }
 
 export function buildSentUrl() {
@@ -32,7 +29,7 @@ export function buildSentUrl() {
 export function buildMembersUrl(mailbox) {
   const trimmed = normalizeMailbox(mailbox)
   if (!trimmed) return "/emails/members"
-  return `/emails/members?user_sdwt_prod=${encodeURIComponent(trimmed)}`
+  return `/emails/members?userSdwtProd=${encodeURIComponent(trimmed)}`
 }
 
 export function isSentMailbox(value) {

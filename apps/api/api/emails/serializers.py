@@ -25,20 +25,20 @@ class EmailRequestValidationError(ValueError):
 
 
 def parse_email_id_list(payload: dict[str, Any]) -> list[int]:
-    """email_ids/emailIds 값을 양의 정수 리스트로 파싱합니다."""
+    """emailIds 값을 양의 정수 리스트로 파싱합니다."""
 
-    email_ids = payload.get("email_ids") or payload.get("emailIds")
+    email_ids = payload.get("emailIds")
     if not isinstance(email_ids, list) or not email_ids:
-        raise EmailRequestValidationError("email_ids must be a non-empty list")
+        raise EmailRequestValidationError("emailIds must be a non-empty list")
 
     normalized_ids: list[int] = []
     for raw in email_ids:
         try:
             email_id = int(raw)
         except (TypeError, ValueError) as exc:
-            raise EmailRequestValidationError("email_ids must contain numeric values") from exc
+            raise EmailRequestValidationError("emailIds must contain numeric values") from exc
         if email_id <= 0:
-            raise EmailRequestValidationError("email_ids must contain numeric values")
+            raise EmailRequestValidationError("emailIds must contain numeric values")
         normalized_ids.append(email_id)
     return normalized_ids
 
@@ -58,13 +58,18 @@ def parse_optional_positive_limit(*, body_value: Any, query_value: Any) -> int |
 
 
 class EmailBulkDeleteInputSerializer(serializers.Serializer):
-    """메일 일괄 삭제의 snake/camel 호환 입력을 검증합니다."""
+    """메일 일괄 삭제의 canonical 입력을 검증합니다."""
 
-    email_ids = serializers.JSONField(required=False)
     emailIds = serializers.JSONField(required=False)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """메일 ID 목록을 기존 오류 계약에 맞춰 양의 정수로 정규화합니다."""
+
+        unknown_fields = sorted(set(self.initial_data) - {"emailIds"})
+        if unknown_fields:
+            raise serializers.ValidationError(
+                f"unsupported fields: {', '.join(unknown_fields)}"
+            )
 
         try:
             attrs["normalized_email_ids"] = parse_email_id_list(attrs)
@@ -76,16 +81,25 @@ class EmailBulkDeleteInputSerializer(serializers.Serializer):
 class EmailMoveInputSerializer(EmailBulkDeleteInputSerializer):
     """메일 이동의 ID 목록과 대상 메일함 입력을 검증합니다."""
 
-    to_user_sdwt_prod = serializers.JSONField(required=False)
     toUserSdwtProd = serializers.JSONField(required=False)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """이동 대상 alias를 해석하되 기존 service 정규화 입력을 보존합니다."""
+        """이동 대상 값을 service 입력으로 정규화합니다."""
 
-        attrs = super().validate(attrs)
-        target = attrs.get("to_user_sdwt_prod") or attrs.get("toUserSdwtProd")
+        unknown_fields = sorted(
+            set(self.initial_data) - {"emailIds", "toUserSdwtProd"}
+        )
+        if unknown_fields:
+            raise serializers.ValidationError(
+                f"unsupported fields: {', '.join(unknown_fields)}"
+            )
+        try:
+            attrs["normalized_email_ids"] = parse_email_id_list(attrs)
+        except EmailRequestValidationError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        target = attrs.get("toUserSdwtProd")
         if not isinstance(target, str) or not target.strip():
-            raise serializers.ValidationError("to_user_sdwt_prod is required")
+            raise serializers.ValidationError("toUserSdwtProd is required")
         attrs["normalized_to_user_sdwt_prod"] = target
         return attrs
 

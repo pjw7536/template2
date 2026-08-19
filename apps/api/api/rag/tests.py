@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
-from api.rag.services import search_rag
+from api.rag.services import RagConfig, RagConfigError, get_rag_index_info, resolve_rag_index_name, search_rag
 
 
 class RagSearchServiceTests(SimpleTestCase):
@@ -82,3 +82,39 @@ class RagSearchServiceTests(SimpleTestCase):
 
         self.assertIn("query_text is empty", str(context.exception))
         post.assert_not_called()
+
+    def test_resolve_rag_index_name_rejects_unknown_index(self) -> None:
+        """allowlist 밖 index는 provider 호출 전에 거절합니다."""
+
+        with patch("api.rag.services.RAG_INDEX_LIST", ["rp-allowed"]), patch(
+            "api.rag.services.RAG_INDEX_DEFAULT", "rp-allowed"
+        ), patch("api.rag.services.RAG_INDEX_EMAILS", ""):
+            with self.assertRaisesMessage(ValueError, "허용되지 않은 RAG index"):
+                resolve_rag_index_name("rp-unknown")
+
+    @override_settings(RAG_HEADERS="not-json")
+    def test_rag_config_rejects_invalid_headers_json(self) -> None:
+        """잘못된 header JSON은 빈 설정으로 조용히 바꾸지 않습니다."""
+
+        with self.assertRaises(RagConfigError):
+            RagConfig.from_settings()
+
+    def test_get_rag_index_info_uses_canonical_endpoint(self) -> None:
+        """index-info 조회는 공용 header/timeout 계약을 사용합니다."""
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"indexes": [{"name": "rp-a"}]}
+        with patch("api.rag.services.RAG_INDEX_INFO_URL", "http://rag/index-info"), patch(
+            "api.rag.services.RAG_HEADERS", {"Content-Type": "application/json"}
+        ), patch("api.rag.services.RAG_TIMEOUT_SECONDS", 17), patch(
+            "api.rag.services.requests.get", return_value=response
+        ) as get:
+            result = get_rag_index_info()
+
+        self.assertEqual(result["indexes"][0]["name"], "rp-a")
+        get.assert_called_once_with(
+            "http://rag/index-info",
+            headers={"Content-Type": "application/json"},
+            timeout=17,
+        )

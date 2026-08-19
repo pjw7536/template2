@@ -83,7 +83,7 @@ class AuthMeTests(TestCase):
         """미인증 요청은 401을 반환해야 합니다."""
         response = self.client.get(reverse("auth-me"))
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "unauthorized"})
+        self.assertEqual(response.json()["code"], "authentication_required")
 
     def test_auth_me_returns_username_and_knox_id(self) -> None:
         """인증된 사용자의 username/knox_id/avatarid가 응답에 포함되어야 합니다."""
@@ -114,25 +114,27 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
 
-        self.assertEqual(payload["usr_id"], "KNOX-12345")
-        self.assertEqual(payload["avatarid"], "U-12345")
+        self.assertEqual(payload["knoxId"], "KNOX-12345")
+        self.assertEqual(payload["avatarId"], "U-12345")
         self.assertEqual(payload["username"], "홍길동")
         self.assertNotIn("name", payload)
         self.assertEqual(payload["email"], "hong@example.com")
         self.assertNotIn("is_staff", payload)
         self.assertNotIn("roles", payload)
         self.assertEqual(payload["department"], "Engineering")
-        self.assertFalse(payload["has_pending_affiliation"])
-        self.assertIn("scope_access", payload)
+        self.assertFalse(payload["hasPendingAffiliation"])
+        self.assertIn("scopeAccess", payload)
+        self.assertNotIn("scope_access", payload)
+        self.assertNotIn("user_sdwt_prod", payload)
         self.assertNotIn("portal_access", payload)
         self.assertNotIn("app_access", payload)
-        self.assertEqual(len(payload["scope_access"]), 14)
-        self.assertFalse(payload["scope_access"]["appstore"]["allowed"])
-        self.assertTrue(payload["scope_access"]["appstore"]["blockedByPortal"])
-        self.assertEqual(payload["scope_access"]["appstore"]["source"], "portal_access_required")
-        self.assertEqual(payload["scope_access"]["appstore"]["underlyingAccess"]["source"], "none")
-        self.assertFalse(payload["scope_access"]["portal"]["allowed"])
-        self.assertEqual(payload["scope_access"]["portal"]["department"], "Engineering")
+        self.assertEqual(len(payload["scopeAccess"]), 14)
+        self.assertFalse(payload["scopeAccess"]["appstore"]["allowed"])
+        self.assertTrue(payload["scopeAccess"]["appstore"]["blockedByPortal"])
+        self.assertEqual(payload["scopeAccess"]["appstore"]["source"], "portal_access_required")
+        self.assertEqual(payload["scopeAccess"]["appstore"]["underlyingAccess"]["source"], "none")
+        self.assertFalse(payload["scopeAccess"]["portal"]["allowed"])
+        self.assertEqual(payload["scopeAccess"]["portal"]["department"], "Engineering")
 
         account_services.ensure_access_scope(
             key=ACCESS_SCOPE_PORTAL,
@@ -145,9 +147,9 @@ class AuthMeTests(TestCase):
         )
         response = self.client.get(reverse("auth-me"))
         allowed_payload = response.json()
-        self.assertTrue(allowed_payload["scope_access"]["portal"]["allowed"])
-        self.assertFalse(allowed_payload["scope_access"]["appstore"]["blockedByPortal"])
-        self.assertEqual(allowed_payload["scope_access"]["appstore"]["source"], "none")
+        self.assertTrue(allowed_payload["scopeAccess"]["portal"]["allowed"])
+        self.assertFalse(allowed_payload["scopeAccess"]["appstore"]["blockedByPortal"])
+        self.assertEqual(allowed_payload["scopeAccess"]["appstore"]["source"], "none")
 
         account_services.set_user_scope_access(
             user=user,
@@ -156,7 +158,7 @@ class AuthMeTests(TestCase):
             role="user",
         )
         response = self.client.get(reverse("auth-me"))
-        appstore_access = response.json()["scope_access"]["appstore"]
+        appstore_access = response.json()["scopeAccess"]["appstore"]
         self.assertTrue(appstore_access["allowed"])
         self.assertEqual(appstore_access["role"], "user")
         self.assertNotIn("role", appstore_access["policy"])
@@ -193,8 +195,8 @@ class AuthMeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["scope_access"][feature_scope.key]["role"], "admin")
-        self.assertTrue(payload["scope_access"][feature_scope.key]["allowed"])
+        self.assertEqual(payload["scopeAccess"][feature_scope.key]["role"], "admin")
+        self.assertTrue(payload["scopeAccess"][feature_scope.key]["allowed"])
 
     def test_auth_me_portal_denial_overrides_explicit_app_allow(self) -> None:
         """Portal이 차단되면 auth 응답의 앱 명시 허용도 최종 차단되어야 합니다."""
@@ -218,10 +220,10 @@ class AuthMeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertFalse(payload["scope_access"]["portal"]["allowed"])
+        self.assertFalse(payload["scopeAccess"]["portal"]["allowed"])
         non_portal_accesses = {
             key: access
-            for key, access in payload["scope_access"].items()
+            for key, access in payload["scopeAccess"].items()
             if key != ACCESS_SCOPE_PORTAL
         }
         self.assertEqual(len(non_portal_accesses), 13)
@@ -231,7 +233,7 @@ class AuthMeTests(TestCase):
                 for access in non_portal_accesses.values()
             )
         )
-        app_access = payload["scope_access"]["appstore"]
+        app_access = payload["scopeAccess"]["appstore"]
         self.assertFalse(app_access["allowed"])
         self.assertTrue(app_access["blockedByPortal"])
         self.assertEqual(app_access["source"], "portal_access_required")
@@ -256,8 +258,8 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Engineering")
-        self.assertEqual(payload["scope_access"]["portal"]["department"], "Engineering")
-        self.assertEqual(payload["user_sdwt_prod"], "GROUP-X")
+        self.assertEqual(payload["scopeAccess"]["portal"]["department"], "Engineering")
+        self.assertEqual(payload["userSdwtProd"], "GROUP-X")
 
     def test_auth_me_department_falls_back_to_current_affiliation(self) -> None:
         """사용자 부서가 공백이면 현재 앱 소속 부서를 auth 응답과 권한 판정에 사용해야 합니다."""
@@ -275,8 +277,8 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Dept")
-        self.assertEqual(payload["scope_access"]["portal"]["department"], "Dept")
-        self.assertEqual(payload["user_sdwt_prod"], "GROUP-FALLBACK")
+        self.assertEqual(payload["scopeAccess"]["portal"]["department"], "Dept")
+        self.assertEqual(payload["userSdwtProd"], "GROUP-FALLBACK")
 
     def test_auth_me_does_not_auto_assign_dev_affiliation_without_flag(self) -> None:
         """dev 자동 소속 플래그가 없으면 소속 없는 사용자를 변경하지 않아야 합니다."""
@@ -295,7 +297,7 @@ class AuthMeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertIsNone(payload["user_sdwt_prod"])
+        self.assertIsNone(payload["userSdwtProd"])
         self.assertIsNone(account_selectors.get_current_affiliation_record(user=user))
 
     def test_auth_me_auto_assigns_dev_affiliation_when_enabled(self) -> None:
@@ -322,7 +324,7 @@ class AuthMeTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["department"], "Engineering")
         self.assertEqual(payload["line"], "TDEV-L1")
-        self.assertEqual(payload["user_sdwt_prod"], "TDEV_ALPHA")
+        self.assertEqual(payload["userSdwtProd"], "TDEV_ALPHA")
 
         current = account_selectors.get_current_affiliation_record(user=user)
         self.assertIsNotNone(current)
@@ -374,8 +376,8 @@ class AuthMeTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 응답 검증
         # -----------------------------------------------------------------------------
-        self.assertEqual(payload["pending_user_sdwt_prod"], "group-pending")
-        self.assertTrue(payload["has_pending_affiliation"])
+        self.assertEqual(payload["pendingUserSdwtProd"], "group-pending")
+        self.assertTrue(payload["hasPendingAffiliation"])
 
     def test_auth_me_includes_pending_with_current_affiliation(self) -> None:
         """현재 소속이 있어도 pending_user_sdwt_prod 값이 포함되어야 합니다."""
@@ -416,18 +418,45 @@ class AuthMeTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 응답 검증
         # -----------------------------------------------------------------------------
-        self.assertEqual(payload["pending_user_sdwt_prod"], "group-next")
-        self.assertTrue(payload["has_pending_affiliation"])
+        self.assertEqual(payload["pendingUserSdwtProd"], "group-next")
+        self.assertTrue(payload["hasPendingAffiliation"])
 
 
 class AuthEndpointTests(TestCase):
     """인증 엔드포인트의 기본 동작을 검증합니다."""
 
+    def test_login_rejects_removed_next_query(self) -> None:
+        """로그인 시작 endpoint는 제거된 next 별칭을 명시적으로 거절합니다."""
+
+        response = self.client.get(reverse("auth-login"), {"next": "/account"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_request")
+        self.assertEqual(response.json()["fieldErrors"]["unexpectedFields"], ["next"])
+
+    def test_frontend_redirect_rejects_removed_next_query(self) -> None:
+        """프론트 redirect 보조 endpoint도 target만 허용합니다."""
+
+        response = self.client.get(reverse("frontend-redirect"), {"next": "/account"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["fieldErrors"]["unexpectedFields"], ["next"])
+
     @override_settings(OIDC_PROVIDER_CONFIGURED=False)
     def test_auth_login_returns_bad_request_when_not_configured(self) -> None:
-        """OIDC 설정이 비활성화되면 login이 400을 반환해야 합니다."""
+        """OIDC 설정이 비활성화되면 login이 canonical 503을 반환해야 합니다."""
         response = self.client.get(reverse("auth-login"))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["code"], "external_dependency_error")
+
+    def test_auth_callback_requires_form_post_fields(self) -> None:
+        """OIDC callback 누락 필드는 canonical fieldErrors로 반환합니다."""
+
+        response = self.client.post(reverse("auth-callback"))
+
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_request")
+        self.assertEqual(sorted(response.json()["fieldErrors"]), ["id_token", "state"])
 
     def test_auth_logout_returns_logout_url(self) -> None:
         """POST logout은 logoutUrl을 포함한 JSON을 반환해야 합니다."""
@@ -496,7 +525,15 @@ class PortalAccessEnforcementTests(TestCase):
         response = self.client.get(reverse("observer-lines"))
 
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"error": "unauthorized"})
+        self.assertEqual(
+            response.json(),
+            {
+                "code": "authentication_required",
+                "message": "Authentication is required.",
+                "details": None,
+                "fieldErrors": {},
+            },
+        )
 
     def test_blocked_basic_user_cannot_access_default_protected_view(self) -> None:
         """미승인 Basic 사용자는 기본 보호 API를 우회할 수 없어야 합니다."""
@@ -509,9 +546,9 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "scope_access_required")
-        self.assertEqual(response.json()["scope"], ACCESS_SCOPE_PORTAL)
-        self.assertFalse(response.json()["access"]["allowed"])
+        self.assertEqual(response.json()["code"], "scope_access_required")
+        self.assertEqual(response.json()["details"]["scope"], ACCESS_SCOPE_PORTAL)
+        self.assertFalse(response.json()["details"]["access"]["allowed"])
 
     def test_allowed_basic_user_can_access_default_protected_view(self) -> None:
         """정책 승인된 Basic 사용자는 기본 보호 API를 사용할 수 있어야 합니다."""
@@ -540,9 +577,9 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"], "scope_access_required")
-        self.assertEqual(response.json()["scope"], "appstore")
-        self.assertFalse(response.json()["access"]["allowed"])
+        self.assertEqual(response.json()["code"], "scope_access_required")
+        self.assertEqual(response.json()["details"]["scope"], "appstore")
+        self.assertFalse(response.json()["details"]["access"]["allowed"])
 
     def test_app_api_allows_selected_app_scope(self) -> None:
         """포털과 앱 권한이 모두 허용된 사용자는 앱 API를 사용할 수 있어야 합니다."""
@@ -642,7 +679,8 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"error": "knox_id is required"})
+        self.assertEqual(response.json()["code"], "identity_required")
+        self.assertEqual(response.json()["details"]["reason"], "knox_id is required")
 
     def test_blocked_basic_user_cannot_bypass_explicit_is_authenticated_view(self) -> None:
         """명시적 IsAuthenticated view도 미승인 Basic 사용자를 차단해야 합니다."""
@@ -668,7 +706,7 @@ class PortalAccessEnforcementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["scope_access"][ACCESS_SCOPE_PORTAL]["allowed"])
+        self.assertFalse(response.json()["scopeAccess"][ACCESS_SCOPE_PORTAL]["allowed"])
 
 
 class AuthOidcClaimMappingTests(TestCase):

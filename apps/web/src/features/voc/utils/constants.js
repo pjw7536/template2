@@ -26,16 +26,6 @@ export const STATUS_OPTIONS = [
 
 export const DEFAULT_STATUS = STATUS_OPTIONS[0]?.value || "접수"
 
-// VOC 앱 카테고리(정적 목록). 항목 추가 시 value/label을 함께 등록하고 VocPost.AppCategory와 값을 맞추세요.
-export const APP_CATEGORIES = [
-  {
-    value: "기타",
-    label: "기타",
-  },
-]
-
-export const DEFAULT_APP_CATEGORY = APP_CATEGORIES[0]?.value || "기타"
-
 // VOC 리치 텍스트 에디터 설정. 콘텐츠 정화/렌더링 정책은 utils/index.js에서만 관리합니다.
 export const RICH_TEXT_EDITOR_MODULES = {
   toolbar: [

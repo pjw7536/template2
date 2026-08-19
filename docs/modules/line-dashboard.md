@@ -73,8 +73,8 @@ JSON에는 target, channel config, mapping, needtosend rule 설정을 작성하�
 
 수신인은 JSON의 `department + recipient_user_sdwt_prod` 조합으로 account 활성 사용자와
 external affiliation snapshot에서 자동 수집합니다.
-기존 단순 형식의 `user_sdwt_prod`는 `target_user_sdwt_prod`와 `recipient_user_sdwt_prod`의
-호환 alias로 처리합니다.
+`target_user_sdwt_prod`와 `recipient_user_sdwt_prod`는 각각 명시해야 하며 구형
+`user_sdwt_prod` target 별칭은 허용하지 않습니다.
 
 실행 예시:
 

@@ -11,10 +11,10 @@ import { CenteredPage } from "./CenteredPage"
 import { useAuth } from "../hooks/useAuth"
 
 /**
- * 현재 URL을 기반으로 로그인 후 돌아올 next 파라미터 문자열을 생성합니다.
+ * 현재 URL을 기반으로 로그인 후 돌아올 target 파라미터 문자열을 생성합니다.
  * 초보자 팁: pathname + searchParams를 조합해 "원래 보고 있던 페이지" 정보를 유지합니다.
  */
-function buildNextParam(location) {
+function buildTargetParam(location) {
   if (!location?.pathname) {
     return ""
   }
@@ -31,14 +31,14 @@ export function RequireAuth({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const nextParam = buildNextParam(location)
+  const targetParam = buildTargetParam(location)
 
   useEffect(() => {
     if (!isLoading && !user) {
-      const search = nextParam && nextParam !== "/" ? `?next=${encodeURIComponent(nextParam)}` : ""
+      const search = targetParam && targetParam !== "/" ? `?target=${encodeURIComponent(targetParam)}` : ""
       navigate(`/login${search}`, { replace: true })
     }
-  }, [isLoading, location.pathname, location.search, navigate, nextParam, user])
+  }, [isLoading, location.pathname, location.search, navigate, targetParam, user])
 
   if (isLoading && !user) {
     return (

@@ -25,6 +25,12 @@ from .affiliations import (
 )
 from .db import execute, get_cursor, run_query
 from .cancellation import ExternalCallCancellation, ExternalCallCancelled
+from .external_http import (
+    ExternalHttpError,
+    ExternalHttpResponseError,
+    ExternalHttpTimeout,
+    request_external,
+)
 from .mail_api import MailSendError, send_knox_mail_api
 from .messenger import (
     KnoxMessengerConfig,
@@ -39,10 +45,11 @@ from .messenger import (
     send_chat_message,
     send_excel_table_message_from_file,
 )
-from .middleware import ActivityLoggingMiddleware, KnoxIdRequiredMiddleware
 from .normalization import normalize_text
 from .openai_stream import OpenAIStreamError, stream_openai_chat_completion
 from .request_helpers import (
+    api_error_response,
+    build_api_error_payload,
     ensure_airflow_token,
     extract_first_error_message,
     extract_bearer_token,
@@ -63,11 +70,12 @@ from .terminology import (
 )
 
 __all__ = [
-    "ActivityLoggingMiddleware",
     "ExternalCallCancellation",
     "ExternalCallCancelled",
+    "ExternalHttpError",
+    "ExternalHttpResponseError",
+    "ExternalHttpTimeout",
     "ENGLISH_DOMAIN_TERMS_PROMPT",
-    "KnoxIdRequiredMiddleware",
     "KnoxMessengerConfig",
     "KnoxMessengerError",
     "MailSendError",
@@ -76,6 +84,8 @@ __all__ = [
     "UNASSIGNED_USER_SDWT_PROD",
     "UNCLASSIFIED_USER_SDWT_PROD",
     "append_english_domain_terms_prompt",
+    "api_error_response",
+    "build_api_error_payload",
     "change_chatroom_title",
     "create_chatroom",
     "create_request_parameters",
@@ -95,6 +105,7 @@ __all__ = [
     "parse_json_body",
     "parse_json_body_or_error_when_present",
     "resolve_frontend_target",
+    "request_external",
     "resolve_user_ids_by_single_ids",
     "run_query",
     "search_user_ids_by_single_ids",

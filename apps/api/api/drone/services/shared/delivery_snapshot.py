@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Sequence
 
 from django.db.models import Q
 
-from ...models import DroneSopDelivery
+from ...models import DroneSOP, DroneSopDelivery
 
 DELIVERY_CHANNELS: tuple[str, ...] = (
     DroneSopDelivery.Channels.JIRA,
@@ -111,6 +112,76 @@ def normalize_channels(channels: Sequence[str]) -> list[str]:
     return normalized
 
 
+def _summarize_channel_deliveries(
+    delivery_rows: Sequence[DroneSopDelivery],
+) -> tuple[int, str | None]:
+    """한 채널의 normalized delivery row를 숫자 상태와 사유로 요약합니다."""
+
+    if not delivery_rows:
+        return 0, None
+    blocked_statuses = {
+        DroneSopDelivery.Statuses.FAILED,
+        DroneSopDelivery.Statuses.CANCELLED,
+    }
+    blocked_reason = next(
+        (row.reason for row in delivery_rows if row.status in blocked_statuses and row.reason),
+        None,
+    )
+    if blocked_reason or any(row.status in blocked_statuses for row in delivery_rows):
+        return -1, blocked_reason
+    if any(
+        row.status in {DroneSopDelivery.Statuses.PENDING, DroneSopDelivery.Statuses.SENDING}
+        for row in delivery_rows
+    ):
+        return 0, None
+    if any(row.status == DroneSopDelivery.Statuses.SUCCESS for row in delivery_rows):
+        return 1, None
+    return 0, next((row.reason for row in delivery_rows if row.reason), None)
+
+
+def summarize_sop_delivery_state(sop: DroneSOP) -> dict[str, object]:
+    """SOP의 normalized delivery row를 표시·검증용 상태로 투영합니다."""
+
+    prefetched = getattr(sop, "_prefetched_objects_cache", {}).get("channel_deliveries")
+    if prefetched is None:
+        rows = list(sop.channel_deliveries.order_by("id")) if sop.pk else []
+    else:
+        rows = sorted(list(prefetched), key=lambda row: row.id or 0)
+
+    rows_by_channel = {
+        channel: [row for row in rows if row.channel == channel]
+        for channel in DELIVERY_CHANNELS
+    }
+    channel_state = {
+        channel: _summarize_channel_deliveries(channel_rows)
+        for channel, channel_rows in rows_by_channel.items()
+    }
+    successful_jira = next(
+        (
+            row
+            for row in rows_by_channel[DroneSopDelivery.Channels.JIRA]
+            if row.status == DroneSopDelivery.Statuses.SUCCESS
+        ),
+        None,
+    )
+    successful_sent_at: list[datetime] = [
+        row.sent_at
+        for row in rows
+        if row.status == DroneSopDelivery.Statuses.SUCCESS and row.sent_at is not None
+    ]
+    return {
+        "sendJira": channel_state[DroneSopDelivery.Channels.JIRA][0],
+        "sendMessenger": channel_state[DroneSopDelivery.Channels.MESSENGER][0],
+        "sendMail": channel_state[DroneSopDelivery.Channels.MAIL][0],
+        "jiraReason": channel_state[DroneSopDelivery.Channels.JIRA][1],
+        "messengerReason": channel_state[DroneSopDelivery.Channels.MESSENGER][1],
+        "mailReason": channel_state[DroneSopDelivery.Channels.MAIL][1],
+        "jiraKey": successful_jira.external_key if successful_jira else None,
+        "informStep": successful_jira.sent_step if successful_jira else None,
+        "informedAt": min(successful_sent_at) if successful_sent_at else None,
+    }
+
+
 __all__ = [
     "DELIVERY_CHANNELS",
     "append_unique_target",
@@ -121,4 +192,5 @@ __all__ = [
     "normalize_channels",
     "normalize_lookup_key",
     "normalize_string_value",
+    "summarize_sop_delivery_state",
 ]

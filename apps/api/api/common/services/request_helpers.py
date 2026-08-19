@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
+from collections.abc import Mapping
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -45,6 +45,44 @@ def parse_json_body(request: HttpRequest) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+def build_api_error_payload(
+    *,
+    code: str,
+    message: str,
+    details: Mapping[str, Any] | None = None,
+    field_errors: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """공통 API 오류 body를 canonical camelCase 계약으로 생성합니다."""
+
+    return {
+        "code": str(code).strip(),
+        "message": str(message).strip(),
+        "details": dict(details) if details is not None else None,
+        "fieldErrors": dict(field_errors or {}),
+    }
+
+
+def api_error_response(
+    *,
+    code: str,
+    message: str,
+    status: int,
+    details: Mapping[str, Any] | None = None,
+    field_errors: Mapping[str, Any] | None = None,
+) -> JsonResponse:
+    """canonical 공통 API 오류 body를 JsonResponse로 반환합니다."""
+
+    return JsonResponse(
+        build_api_error_payload(
+            code=code,
+            message=message,
+            details=details,
+            field_errors=field_errors,
+        ),
+        status=status,
+    )
+
+
 def parse_json_body_or_error_when_present(
     request: HttpRequest,
 ) -> tuple[Dict[str, Any], JsonResponse | None]:
@@ -67,7 +105,11 @@ def parse_json_body_or_error_when_present(
         return {}, None
     payload = parse_json_body(request)
     if payload is None:
-        return {}, JsonResponse({"error": "Invalid JSON body"}, status=400)
+        return {}, api_error_response(
+            code="invalid_request",
+            message="JSON object body is required.",
+            status=400,
+        )
     return payload, None
 
 
@@ -118,14 +160,11 @@ def ensure_airflow_token(
     request: HttpRequest, *, require_bearer: bool = False
 ) -> JsonResponse | None:
     """AIRFLOW_TRIGGER_TOKEN을 검증하고 실패 시 JsonResponse를 반환합니다."""
-    expected = (
-        getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "")
-        or os.getenv("AIRFLOW_TRIGGER_TOKEN")
-        or ""
-    ).strip()
+    expected = str(getattr(settings, "AIRFLOW_TRIGGER_TOKEN", "") or "").strip()
     if not expected:
-        return JsonResponse(
-            {"error": "AIRFLOW_TRIGGER_TOKEN not configured"},
+        return api_error_response(
+            code="server_configuration_error",
+            message="AIRFLOW_TRIGGER_TOKEN is not configured.",
             status=500,
         )
 
@@ -139,14 +178,18 @@ def ensure_airflow_token(
         provided = extract_bearer_token(request)
 
     if provided != expected:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+        return api_error_response(
+            code="authentication_required",
+            message="Valid Airflow authentication is required.",
+            status=401,
+        )
     return None
 
 
 def resolve_frontend_target(
-    next_value: Optional[str], *, request: Optional[HttpRequest] = None
+    target_value: Optional[str], *, request: Optional[HttpRequest] = None
 ) -> str:
-    """프론트엔드 베이스 URL과 next 값을 조합해 안전한 리다이렉트를 생성합니다."""
+    """프론트엔드 베이스 URL과 target 값을 조합해 안전한 리다이렉트를 생성합니다."""
     base = str(getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
     if not base and request is not None:
         base = request.build_absolute_uri("/").rstrip("/")
@@ -157,22 +200,26 @@ def resolve_frontend_target(
     parsed_base = urlparse(base if "://" in base else f"http://{base.lstrip('/')}")
     allowed_hosts = {parsed_base.netloc} if parsed_base.netloc else set()
 
-    if next_value:
-        candidate = str(next_value).strip()
+    if target_value:
+        candidate = str(target_value).strip()
         if candidate:
+            if candidate.startswith("//"):
+                return base
+            if candidate.startswith("/"):
+                trimmed = candidate.lstrip("/")
+                return f"{base}/{trimmed}" if trimmed else base
             if url_has_allowed_host_and_scheme(
                 candidate, allowed_hosts=allowed_hosts, require_https=False
             ):
                 return candidate
-            if candidate.startswith("/"):
-                trimmed = candidate.lstrip("/")
-                return f"{base}/{trimmed}" if trimmed else base
             if "://" not in candidate:
                 trimmed = candidate.lstrip("/")
                 return f"{base}/{trimmed}" if trimmed else base
     return base
 
 __all__ = [
+    "api_error_response",
+    "build_api_error_payload",
     "extract_first_error_message",
     "parse_json_body",
     "parse_json_body_or_error_when_present",

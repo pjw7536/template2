@@ -16,7 +16,7 @@ import { buildBackendUrl } from "@/lib/api"
 
 import { DEFAULT_AUTH_CONFIG } from "../utils/authConfig"
 import { fetchJson } from "../utils/fetchJson"
-import { appendNextParam, buildNextUrl } from "../utils/url"
+import { appendTargetParam, buildTargetUrl } from "../utils/url"
 import { UserSdwtProdOnboardingDialog } from "./UserSdwtProdOnboardingDialog"
 import { UserSdwtProdReconfirmDialog } from "./UserSdwtProdReconfirmDialog"
 
@@ -26,11 +26,11 @@ import { UserSdwtProdReconfirmDialog } from "./UserSdwtProdReconfirmDialog"
  * @property {number} id
  * @property {string} [email]
  * @property {string} [username]
- * @property {boolean} [is_superuser]
- * @property {string | null} [user_sdwt_prod]
- * @property {string | null} [pending_user_sdwt_prod]
- * @property {boolean} [has_pending_affiliation]
- * @property {Record<string, {allowed: boolean, reason?: string}>} [scope_access]
+ * @property {boolean} [isSuperuser]
+ * @property {string | null} [userSdwtProd]
+ * @property {string | null} [pendingUserSdwtProd]
+ * @property {boolean} [hasPendingAffiliation]
+ * @property {Record<string, {allowed: boolean, reason?: string}>} [scopeAccess]
  */
 
 /**
@@ -49,7 +49,7 @@ import { UserSdwtProdReconfirmDialog } from "./UserSdwtProdReconfirmDialog"
  * @property {AuthUser | null} user
  * @property {boolean} isLoading
  * @property {boolean} isRefreshing
- * @property {(options?: { next?: string }) => Promise<{ method: "redirect"; url?: string }>} login
+ * @property {(options?: { target?: string }) => Promise<{ method: "redirect"; url?: string }>} login
  * @property {() => Promise<void>} logout
  * @property {(options?: { background?: boolean }) => Promise<boolean>} refresh
  * @property {AuthConfig} config
@@ -91,7 +91,7 @@ function getAccessStateRefreshIntervalMs(sessionRefreshIntervalMs) {
  * AuthProvider
  * ---------------------------------------------------------------------------
  * - 앱 전역에서 인증 상태를 공유하도록 Context Provider를 제공합니다.
- * - fetchJson, buildNextUrl 등의 유틸은 utils/ 폴더로 분리해 가독성을 높였습니다.
+ * - fetchJson, buildTargetUrl 등의 유틸은 utils/ 폴더로 분리해 가독성을 높였습니다.
  * - 중요한 포인트마다 한글 주석을 추가해 초보자도 흐름을 따라가기 쉽게 했습니다.
  */
 export function AuthProvider({ children }) {
@@ -229,14 +229,14 @@ export function AuthProvider({ children }) {
     [loadUser],
   )
 
-  /** 로그인: next 파라미터를 안전하게 붙여 백엔드 로그인 페이지로 이동 */
+  /** 로그인: target 파라미터를 안전하게 붙여 백엔드 로그인 페이지로 이동 */
   const login = useCallback(
     async (options = {}) => {
-      const nextPath = typeof options?.next === "string" ? options.next : undefined
-      const nextAbsolute = buildNextUrl(nextPath, config.frontendRedirect)
+      const targetPath = typeof options?.target === "string" ? options.target : undefined
+      const targetAbsolute = buildTargetUrl(targetPath, config.frontendRedirect)
       const rawLoginUrl = config.loginUrl || "/api/v1/auth/login"
       const absoluteLoginUrl = rawLoginUrl.startsWith("http") ? rawLoginUrl : buildBackendUrl(rawLoginUrl)
-      const target = appendNextParam(absoluteLoginUrl, nextAbsolute)
+      const target = appendTargetParam(absoluteLoginUrl, targetAbsolute)
 
       if (typeof window !== "undefined") {
         try {
