@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import poplib
+import re
 from datetime import datetime
 from email.header import decode_header, make_header
 from email.message import Message
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 상수
 # =============================================================================
-DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop]", "[test]")
+DEFAULT_EXCLUDED_SUBJECT_PREFIXES = ("[drone_sop*]", "[test]")
 EXCLUDED_BODY_ELEMENT_IDS = {
     "standardsignature",
     "bannersignimg",
@@ -113,8 +114,44 @@ def _load_excluded_subject_prefixes() -> tuple[str, ...]:
 EXCLUDED_SUBJECT_PREFIXES = _load_excluded_subject_prefixes()
 
 
+def _compile_excluded_subject_patterns(
+    patterns: Iterable[str],
+) -> tuple[re.Pattern[str], ...]:
+    """메일 제목 제외 설정을 시작점 고정 정규식으로 변환합니다.
+
+    입력:
+        patterns: `*` wildcard를 포함할 수 있는 제목 prefix 목록.
+    반환:
+        제목 시작점부터 비교하는 컴파일된 정규식 튜플.
+    부작용:
+        없음.
+    오류:
+        정규식 메타문자는 모두 escape하므로 사용자 입력에 의한 컴파일 오류가 없습니다.
+    """
+
+    matchers: list[re.Pattern[str]] = []
+    for pattern in patterns:
+        normalized = pattern.strip().lower()
+        if not normalized:
+            continue
+
+        # `*`만 wildcard로 남기고 나머지 문자는 모두 literal로 처리합니다.
+        expression = ".*".join(
+            re.escape(literal) for literal in normalized.split("*")
+        )
+        matchers.append(re.compile(rf"^{expression}"))
+
+    return tuple(matchers)
+
+
+# 상수: 제목 비교 시 반복 컴파일하지 않도록 matcher를 미리 생성합니다.
+EXCLUDED_SUBJECT_PATTERNS = _compile_excluded_subject_patterns(
+    EXCLUDED_SUBJECT_PREFIXES
+)
+
+
 def _is_excluded_subject(subject: str) -> bool:
-    """제목이 제외 대상 prefix로 시작하는지 검사합니다.
+    """제목이 제외 대상 pattern으로 시작하는지 검사합니다.
 
     입력:
         subject: 메일 제목 문자열.
@@ -127,10 +164,10 @@ def _is_excluded_subject(subject: str) -> bool:
     """
 
     # -----------------------------------------------------------------------------
-    # 1) 문자열 정규화 및 prefix 검사
+    # 1) 문자열 정규화 및 pattern 검사
     # -----------------------------------------------------------------------------
     normalized = (subject or "").strip().lower()
-    return any(normalized.startswith(prefix) for prefix in EXCLUDED_SUBJECT_PREFIXES)
+    return any(pattern.match(normalized) for pattern in EXCLUDED_SUBJECT_PATTERNS)
 
 
 def _decode_header_value(raw_value: str | None) -> str:

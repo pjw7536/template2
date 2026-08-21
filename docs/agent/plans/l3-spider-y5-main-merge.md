@@ -8,7 +8,7 @@
 ## 현재 상태
 - 현재 브랜치는 `main`이고 `y5`는 `origin/y5` 최신 커밋 `3fbce5fe`를 추적한다.
 - `main`과 `y5` 병합 시 L3 Spider 내부 2개 파일에서 충돌이 예상된다.
-- 작업트리에는 Drone, Line Dashboard, `env/api.prod.env` 관련 미커밋 변경이 존재한다.
+- 작업트리에는 Drone, Line Dashboard, `env/api.server.prod.env` 관련 미커밋 변경이 존재한다.
 
 ## 범위
 - 수정할 영역: `apps/api/api/l3_spider`, `apps/web/src/features/l3-spider`, L3 Spider 관련 문서/예시/목 데이터 스크립트.

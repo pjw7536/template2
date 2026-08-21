@@ -99,12 +99,12 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `env/api.common.env` | API 공통 기본값, DB, POP3, Drone, RAG 정책, LLM, Mail API 기본 설정 |
-| `env/api.dev.env` | 로컬 dummy ADFS/RAG/LLM/Mail/Jira, dev 자동 소속, dev 자동 seed 설정 |
-| `env/api.server.common.env` | OIDC/prod 공통 origin, OIDC, RAG/RACB 실제 연동 설정 |
-| `env/api.oidc.dev.env` | OIDC 개발 실행·보안·인증서 override |
-| `env/api.prod.env` | 운영 실행·보안·인증서 override 템플릿 |
-| `env/airflow.common.env` | Airflow DAG API trigger와 실패 callback 설정 |
+| `env/api.common.env` | API 공통 도메인 정책, timeout, 파일 경로와 안전 기본값 |
+| `env/api.local.env` | 로컬 DB, dummy ADFS/RAG/LLM/Mail/Jira, dev 자동 소속·seed 설정 |
+| `env/api.server.common.env` | OIDC/prod가 공유하는 비밀이 아닌 provider endpoint와 public prefix |
+| `env/api.server.oidc.env` | OIDC 개발 서버의 DB·origin·OIDC·credential·실행 설정 |
+| `env/api.server.prod.env` | 운영 서버의 DB·origin·OIDC·credential·실행 설정 |
+| `env/airflow.common.env` | 모든 환경의 Airflow DAG API trigger 인증과 실패 callback 설정 |
 | `env/web.dev.env` | 로컬 web 개발 설정 |
 | `env/web.oidc.dev.env` | 실제 OIDC 개발 연결용 web 설정 |
 | `env/web.prod.env` | 운영 web 설정 템플릿 |

@@ -55,7 +55,7 @@
 - Emails: 메일 문서 insert/delete
 - Assistant: 질문 검색
 
-OIDC/prod의 실제 provider endpoint와 인증 header는 `env/api.server.common.env`에서 공통으로 주입합니다.
+두 서버가 공유하는 provider endpoint는 `env/api.server.common.env`에서 주입하고, 인증 header는 OIDC의 `env/api.server.oidc.env`와 운영의 `env/api.server.prod.env`에서 각각 주입합니다.
 
 주요 설정:
 

@@ -198,7 +198,7 @@ scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니�
 `portal` 유형이나 소문자 영숫자·하이픈 형식이 아닌 key가 있으면 `account 0005`가 의미를
 자동 변경하지 않고 중단하므로 migration 전에 무결성 명령으로 먼저 확인합니다.
 
-로컬 dev 로그인 사용자는 `env/api.dev.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
+로컬 dev 로그인 사용자는 `env/api.local.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
 `DUMMY_ADFS_*` 기준 dummy 사용자는 staff 슈퍼유저로 보정됩니다.
 `DEV_AUTO_SEED=1`이면 dev API 기동 시 `seed_dev_data --reset`이 실행되며, `ENVIRONMENT=development`에서만 동작합니다.
 OIDC/운영 환경에서는 자동 소속 변경을 실행하지 않습니다.
@@ -390,12 +390,23 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 | 파일 | 역할 |
 | --- | --- |
 | `env/api.common.env` | API 공통 설정 |
-| `env/api.dev.env` | API 개발 오버라이드 |
-| `env/api.server.common.env` | OIDC/prod 서버 공통 외부 연동 설정 |
-| `env/api.oidc.dev.env` | OIDC 개발 실행·보안 오버라이드 |
-| `env/api.prod.env` | 운영 실행·보안 오버라이드 |
+| `env/api.local.env` | local DB와 dummy 외부계 설정 |
+| `env/api.server.common.env` | 두 서버가 공유하는 비밀이 아닌 provider endpoint |
+| `env/api.server.oidc.env` | OIDC 개발 서버의 DB·origin·인증·credential·실행 설정 |
+| `env/api.server.prod.env` | 운영 서버의 DB·origin·인증·credential·실행 설정 |
+| `env/airflow.common.env` | 모든 환경의 Airflow trigger 인증과 실패 알림 설정 |
 | `env/web.dev.env` | Web 개발 설정 |
 | `env/minio.env` | MinIO 설정 |
+
+서버 최초 준비와 검증:
+
+```bash
+# 각 서버 profile에 이전된 값을 확인하고 기존부터 비어 있던 필수값을 채운 뒤 검증
+make oidc-profile-env-check
+make prod-profile-env-check
+```
+
+`ADFS_CER_PATH`와 인증서 mount는 기존 OIDC/prod profile 계약을 그대로 사용합니다.
 
 ## 주의할 점
 

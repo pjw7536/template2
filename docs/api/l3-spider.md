@@ -16,7 +16,7 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 `postgres`는 기본값이며 `public.l3_spider_file_index`,
 `public.l3_spider_daily_run_stats`, `public.l3_spider_run_status`를 조회합니다.
 `sqlite_mock`은 로컬 개발 전용으로 `L3_SPIDER_MOCK_INDEX_PATH`의 `file_index`,
-`daily_run_stats`, `run_status`를 read-only 조회합니다. `env/api.dev.env`만
+`daily_run_stats`, `run_status`를 read-only 조회합니다. `env/api.local.env`만
 `sqlite_mock`을 설정하며 OIDC/prod는 PostgreSQL 오류를 mock으로 숨기지 않습니다.
 
 ## Data Layout

@@ -10,7 +10,7 @@
 - OIDC claim→Account upsert가 여러 service/selectors에 나뉘어 있다.
 
 ## 범위
-- 수정: `api.auth`, frontend auth feature, Account facade 호출, `apps/adfs_dummy`, `env/api.dev.env`, Compose와 auth 문서.
+- 수정: `api.auth`, frontend auth feature, Account facade 호출, `apps/adfs_dummy`, `env/api.local.env`, Compose와 auth 문서.
 - 유지: session cookie, callback `form_post`, Portal access gate, onboarding/reconfirm 사용자 흐름.
 - 제외: Spider·Teamstaff access scope와 navigation.
 

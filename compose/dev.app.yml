@@ -66,7 +66,7 @@ services:
       context: ../apps/api
     env_file:
       - ../env/api.common.env
-      - ../env/api.dev.env
+      - ../env/api.local.env
       - ../env/minio.env
     environment:
       MINIO_ENDPOINT: http://minio:9000

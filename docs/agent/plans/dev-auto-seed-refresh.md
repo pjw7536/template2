@@ -20,12 +20,12 @@
 - `seed_dev_data` management command를 추가하고 `ENVIRONMENT=development`를 요구한다.
 - command는 dummy user 보장 후 기존 seed command들을 prefix 기반 `--reset`으로 호출한다.
 - dev entrypoint는 `DEV_AUTO_SEED=1`일 때만 `seed_dev_data --reset`을 실행한다.
-- `env/api.dev.env`에만 `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`를 둔다.
+- `env/api.local.env`에만 `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`를 둔다.
 
 ## 실행 단계
 - [x] account dev user 보장 로직을 service 함수로 분리한다.
 - [x] `seed_dev_data` command와 테스트를 추가한다.
-- [x] `env/api.dev.env`, `compose/dev.app.yml`, docs를 동기화한다.
+- [x] `env/api.local.env`, `compose/dev.app.yml`, docs를 동기화한다.
 - [x] 컨테이너 기준 테스트와 backend boundary audit를 실행한다.
 
 ## 검증

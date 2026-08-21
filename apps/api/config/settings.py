@@ -452,7 +452,7 @@ EMAIL_POP3_USE_SSL = env_strict_bool("EMAIL_POP3_USE_SSL", True)
 EMAIL_POP3_TIMEOUT = env_strict_int("EMAIL_POP3_TIMEOUT", 60) or 60
 EMAIL_EXCLUDED_SUBJECT_PREFIXES = tuple(
     value.strip().strip("\"'").lower()
-    for value in env("EMAIL_EXCLUDED_SUBJECT_PREFIXES", "[drone_sop],[test]").split(",")
+    for value in env("EMAIL_EXCLUDED_SUBJECT_PREFIXES", "[drone_sop*],[test]").split(",")
     if value.strip().strip("\"'")
 )
 

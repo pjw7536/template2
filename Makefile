@@ -2,6 +2,8 @@
 COMPOSE_DEV=docker compose -f docker-compose.dev.yml
 COMPOSE_OIDC=docker compose -f docker-compose.oidc.yml
 COMPOSE_PROD=docker compose -f docker-compose.yml
+OIDC_API_ENV_FILE ?= $(CURDIR)/env/api.server.oidc.env
+PROD_API_ENV_FILE ?= $(CURDIR)/env/api.server.prod.env
 
 # infra는 재빌드 빈도가 낮은 기반 서비스만 포함합니다.
 # - DB: airflow-postgres
@@ -30,6 +32,7 @@ PROD_APP_BUILD_SERVICES=api web
 	dev dev-app-up dev-app-build dev-app-down dev-infra-up dev-infra-build dev-infra-down \
 	oidc oidc-app-up oidc-app-build oidc-app-down oidc-infra-up oidc-infra-build oidc-infra-down \
 	prod prod-app-up prod-app-build prod-app-down prod-infra-up prod-infra-build prod-infra-down \
+	oidc-profile-env-check prod-profile-env-check \
 	down test-api check-api makemigrations-check \
 	y5push y5pull
 
@@ -73,11 +76,11 @@ oidc:
 	$(MAKE) oidc-app-up
 
 # OIDC app만 올립니다.
-oidc-app-up: network
+oidc-app-up: oidc-profile-env-check network
 	$(COMPOSE_OIDC) up -d --no-deps $(OIDC_APP_SERVICES)
 
 # OIDC app 이미지/빌드 산출물만 다시 빌드합니다.
-oidc-app-build: network
+oidc-app-build: oidc-profile-env-check network
 	$(COMPOSE_OIDC) build $(OIDC_APP_BUILD_SERVICES)
 
 # OIDC app 컨테이너만 중지하고 제거합니다.
@@ -86,11 +89,11 @@ oidc-app-down:
 	$(COMPOSE_OIDC) rm -f $(OIDC_APP_SERVICES)
 
 # OIDC infra만 올립니다.
-oidc-infra-up: network
+oidc-infra-up: oidc-profile-env-check network
 	$(COMPOSE_OIDC) up -d $(OIDC_INFRA_SERVICES)
 
 # OIDC infra 이미지 중 빌드가 필요한 Airflow 이미지만 다시 빌드합니다.
-oidc-infra-build: network
+oidc-infra-build: oidc-profile-env-check network
 	$(COMPOSE_OIDC) build $(INFRA_BUILD_SERVICES)
 
 # OIDC infra 컨테이너만 중지하고 제거합니다.
@@ -104,11 +107,11 @@ prod:
 	$(MAKE) prod-app-up
 
 # prod app만 올립니다.
-prod-app-up: network
+prod-app-up: prod-profile-env-check network
 	$(COMPOSE_PROD) up -d --no-deps $(PROD_APP_SERVICES)
 
 # prod app 이미지/빌드 산출물만 다시 빌드합니다.
-prod-app-build: network
+prod-app-build: prod-profile-env-check network
 	$(COMPOSE_PROD) build $(PROD_APP_BUILD_SERVICES)
 
 # prod app 컨테이너만 중지하고 제거합니다.
@@ -117,17 +120,25 @@ prod-app-down:
 	$(COMPOSE_PROD) rm -f $(PROD_APP_SERVICES)
 
 # prod infra만 올립니다.
-prod-infra-up: network
+prod-infra-up: prod-profile-env-check network
 	$(COMPOSE_PROD) up -d $(PROD_INFRA_SERVICES)
 
 # prod infra 이미지 중 빌드가 필요한 Airflow 이미지만 다시 빌드합니다.
-prod-infra-build: network
+prod-infra-build: prod-profile-env-check network
 	$(COMPOSE_PROD) build $(INFRA_BUILD_SERVICES)
 
 # prod infra 컨테이너만 중지하고 제거합니다.
 prod-infra-down:
 	$(COMPOSE_PROD) stop $(PROD_INFRA_SERVICES)
 	$(COMPOSE_PROD) rm -f $(PROD_INFRA_SERVICES)
+
+# OIDC 개발 서버 profile의 필수값을 실제 기동 전에 확인합니다.
+oidc-profile-env-check:
+	./scripts/validate_server_profile_env.sh "$(OIDC_API_ENV_FILE)"
+
+# 운영 서버 profile의 필수값을 실제 기동 전에 확인합니다.
+prod-profile-env-check:
+	./scripts/validate_server_profile_env.sh "$(PROD_API_ENV_FILE)"
 
 # 모든 실행 진입점의 compose project를 내립니다.
 down:

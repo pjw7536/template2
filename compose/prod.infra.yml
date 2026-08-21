@@ -1,5 +1,7 @@
 include:
-  - airflow.internal.yml
+  - path:
+      - airflow.yml
+      - airflow.internal.yml
   - monitoring.yml
 
 services:

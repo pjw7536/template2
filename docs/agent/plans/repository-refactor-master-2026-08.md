@@ -90,7 +90,7 @@
 
 ### 외부 연동·offsite 계약
 - 외부 URL은 Django/Vite env로만 주입하고 settings의 기능별 다중 fallback을 제거해 한 canonical env key만 읽는다.
-- Auth/RAG/Assistant/Mail 계약 변경은 `docker-compose.dev.yml`, `env/api.dev.env`, `apps/adfs_dummy`, Django 설정/호출부를 같은 단계에서 갱신한다.
+- Auth/RAG/Assistant/Mail 계약 변경은 `docker-compose.dev.yml`, `env/api.local.env`, `apps/adfs_dummy`, Django 설정/호출부를 같은 단계에서 갱신한다.
 - Data Movement는 `data_movement_file_load`, `ct_process_comment_summary` DAG와 management command를 실제 소비자로 취급한다.
 - API business file mount는 `/data/<domain>`과 `${<DOMAIN>_DATA_HOST_PATH:-../data/<domain>}` 규칙을 유지한다.
 

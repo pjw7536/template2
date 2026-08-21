@@ -48,7 +48,7 @@ services:
     env_file:
       - ../env/api.common.env
       - ../env/api.server.common.env
-      - ../env/api.oidc.dev.env
+      - ../env/api.server.oidc.env
       - ../env/minio.env
     environment:
       MINIO_ENDPOINT: http://minio:9000

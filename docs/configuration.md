@@ -6,13 +6,13 @@
 
 | 파일 | 사용처 | 역할 |
 | --- | --- | --- |
-| `env/api.common.env` | API 공통 | DB, 도메인별 안전 기본값과 모든 profile 공통 정책 |
-| `env/api.dev.env` | 로컬 API | dummy ADFS/RAG/LLM/Mail/Jira 연결 |
+| `env/api.common.env` | API 공통 | 도메인별 안전 기본값과 모든 profile 공통 정책 |
+| `env/api.local.env` | 로컬 API | local DB와 dummy ADFS/RAG/LLM/Mail/Jira 연결 |
 | `env/api.test.env` | API test | 임시 PostgreSQL과 외부 호출 차단 설정 |
-| `env/api.server.common.env` | OIDC/prod API 공통 | 서버 origin, OIDC, RAG/RACB 실제 연동 설정 |
-| `env/api.oidc.dev.env` | OIDC 개발 API | 개발 실행·보안 토글과 OIDC 인증서 override |
-| `env/api.prod.env` | 운영 API | 운영 실행·보안 토글과 OIDC 인증서 override 템플릿 |
-| `env/airflow.common.env` | Airflow DAG 공통 | DAG API trigger와 task 실패 callback 설정 |
+| `env/api.server.common.env` | OIDC/prod API 공통 | 두 서버가 공유하는 비밀이 아닌 provider endpoint와 public prefix |
+| `env/api.server.oidc.env` | OIDC 개발 API | OIDC 서버의 DB·origin·인증·credential·실행 설정 |
+| `env/api.server.prod.env` | 운영 API | 운영 서버의 DB·origin·인증·credential·실행 설정 |
+| `env/airflow.common.env` | 모든 Airflow 환경 | DAG API trigger 인증과 task 실패 callback 설정 |
 | `env/web.common.env` | Web 공통 | 모든 Web 환경에서 공유하는 브라우저 노출 설정 |
 | `env/web.dev.env` | 로컬 Web | local browser/backend URL |
 | `env/web.oidc.dev.env` | OIDC 개발 Web | nginx 경유 OIDC 개발 URL |
@@ -37,13 +37,17 @@
 ## Env / Compose 관리 원칙
 
 - 공통 기본값은 `*.common.env`에 두고, dev/OIDC/prod 차이는 환경별 env 파일에만 둡니다.
-- OIDC/prod가 공유하는 외부 endpoint와 인증 header는 `api.server.common.env`에 두고, dev/test에서는 읽지 않습니다.
-- 실제 password/token/key/secret은 profile 파일에 저장하지 않고 외부 secret injection에서 교체합니다.
+- OIDC/prod가 공유하는 비밀이 아닌 provider endpoint는 `api.server.common.env`에 둡니다.
+- DB, origin, OIDC, password/token/key/authorization은 각각 `api.server.oidc.env`, `api.server.prod.env`에 둡니다.
+- 새 profile은 기존 env의 값을 유지합니다. 서버에서는 해당 profile의 값과 기존부터 비어 있던 OIDC·credential 항목을 확인한 뒤 `make oidc-profile-env-check` 또는 `make prod-profile-env-check`를 통과해야 합니다.
+- Airflow는 모든 환경에서 `airflow.common.env`를 사용하며 `AIRFLOW_TRIGGER_TOKEN`은 `api.common.env`의 값과 같아야 합니다.
 - `VITE_*` 값은 브라우저 번들에 포함될 수 있으므로 secret을 넣지 않습니다.
 - 운영 Web의 `VITE_*` build arg는 빌드 시점 값입니다. `env_file` 변경만으로 이미 빌드된 정적 번들이 바뀌지 않습니다.
 - 서비스 고유 infra 설정은 `env/minio.env`, `env/grafana.env`처럼 서비스별 env 파일에 둡니다.
 - Compose 계층은 app과 infra를 분리합니다. 앱 컨테이너는 `compose/*.app.yml`, 운영 보조 서비스는 `compose/*.infra.yml` 또는 infra에서 include하는 파일에 둡니다.
-- Airflow Compose 공통 env에는 Airflow runtime과 DAG 공통 연결/인증 값만 둡니다. DAG별 schedule과 HTTP timeout은 각 DAG 코드에 직접 작성합니다.
+- Airflow 서비스 정의는 `compose/airflow.yml` 한 곳에서 관리합니다. dev는 이 파일을 그대로 사용하고, OIDC/prod는 `compose/airflow.internal.yml`을 override로 병합합니다.
+- Airflow internal override에는 사내 image/build와 ODBC mount 차이만 두며 단독으로 실행하지 않습니다.
+- Airflow Compose 공통 env에는 모든 환경의 DAG 공통 연결/인증 값만 둡니다. DAG별 schedule과 HTTP timeout은 각 DAG 코드에 직접 작성합니다.
 - Airflow `airflow-init`는 task에 별도 pool 제한이 생기지 않도록 `default_pool` slots를 무제한 값인 `-1`로 설정합니다.
 - OIDC 개발과 운영 Compose에서 외부 registry image를 pull할 때는 `repository.samsungds.net` 사내 registry를 사용합니다. Docker Hub image는 `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>` 형식으로 적습니다.
 - OIDC 개발과 운영 Compose의 Docker build는 사내 package mirror build args를 사용합니다. Debian apt는 `http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian`의 `bullseye main`, 일반 pip는 `http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple`, npm은 `http://repository.samsungds.net/repository/proxy-npm-registry.npmjs.org`, Alpine은 `http://repository.samsungds.net/repository/proxy-raw-dl-cdn.alpinelinux.org-alpine`을 사용합니다.
@@ -53,7 +57,7 @@
 - Airflow ODBC 설정 파일은 repo에 저장하지 않습니다. 운영에서 `airflow/odbc/odbc.ini`, `airflow/odbc/odbcinst.ini`를 제공하면 Compose가 `/usr/local/odbc`에 read-only로 mount합니다.
 - dev Compose는 Dockerfile의 public 기본값과 public package source를 유지합니다.
 - torch 전용 wheel index가 필요한 Docker build를 추가할 때는 `http://repository.samsungds.net/repository/proxy-pypi-download.pytorch.org-whl/simple`과 trusted host `repository.samsungds.net`를 별도 pip 설정으로 사용합니다.
-- password/token/key/secret 값은 실제 운영에서는 배포 secret manager나 외부 env injection으로 관리합니다. repo env 파일에는 로컬/템플릿 값만 둡니다.
+- 공통 내부 token은 `api.common.env`에 두고, 서버 종속 secret과 외부 credential은 각 profile에서 관리합니다. 서버에서 교체한 값의 저장소 반영 여부는 운영 보안 정책을 따릅니다.
 - env/Compose 변경 후 `bash scripts/agent/check_compose_configs.sh`로 dev/OIDC/prod Compose 병합 결과를 확인합니다.
 
 현재 Compose와 Docker build에서 사용하는 사내 mirror 매핑은 아래 항목으로 제한합니다.
@@ -90,7 +94,7 @@
 | `OIDC_*` / `ADFS_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `ADFS_CER_PATH`, `ALLOWED_REDIRECT_HOSTS` | ADFS/OIDC 로그인 |
 | Airflow DAG env | `env/airflow.common.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 같은 env 파일에서 `AIRFLOW_FAILURE_ALERT_CHATROOM_TITLE`, `AIRFLOW_FAILURE_ALERT_CHATROOM_ID_FILE`, `AIRFLOW_FAILURE_ALERT_MESSAGE_TTL`, `KNOX_MESSENGER_TIMEOUT_SECONDS`를 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
-| Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. |
+| Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. 제목 제외값은 쉼표로 구분하며 `*`는 0글자 이상을 나타내는 wildcard입니다. |
 | Drone POP3/Jira/Mail/Messenger | `DRONE_*`, `KNOX_MESSENGER_*` | Drone SOP 수집과 채널별 전송. 환경변수는 Django 시작 시 settings로 한 번 해석하며 runtime에서 다시 읽지 않음 |
 | 공용 RAG / Assistant | `RAG_SEARCH_URL`, `RAG_INSERT_URL`, `RAG_DELETE_URL`, `RAG_INDEX_INFO_URL`, `RAG_INDEX_DEFAULT`, `RAG_INDEX_EMAILS`, `RAG_INDEX_LIST`, `RAG_PERMISSION_GROUPS`, `RAG_PUBLIC_GROUP`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR`, `RAG_TIMEOUT_SECONDS`, `RAG_NUM_DOCS`, `ASSISTANT_*` | Emails와 Assistant가 공용 `RAG_*` provider 계약을 사용하고, Assistant 자체 prompt/runtime만 `ASSISTANT_*`를 사용 |
 | OpenWebUI | `OPENWEBUI_*` | 일반 Assistant·Email RAG 답변, 대화방 제목, Observer 분석, `ct_process_comment` contents 요약 생성 |
@@ -140,7 +144,7 @@
 
 ### L3 Spider 메일 링크 배포 체크
 
-- 운영 서버 배포 또는 PR 리뷰 전 `env/api.common.env`의 `L3_SPIDER_MAIL_TARGET_URL`을 반드시 확인합니다.
+- 운영 서버 배포 전 `env/api.server.prod.env`의 `L3_SPIDER_MAIL_TARGET_URL`을 반드시 확인합니다. OIDC 개발 서버는 `env/api.server.oidc.env`를 확인합니다.
 - `L3_SPIDER_MAIL_TARGET_URL`은 메일 본문의 `L3 Spider에서 확인` 버튼과 이벤트별 `열기` deep link의 base URL입니다.
 - 값은 `/l3_spider`까지 포함한 Web URL로 설정합니다. 예: `https://<운영-host>/l3_spider`
 - 비워두면 backend는 `FRONTEND_BASE_URL + /l3_spider`를 사용합니다. 운영에서 `FRONTEND_BASE_URL`이 기대한 Web host인지 함께 확인합니다.
@@ -174,7 +178,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 ## 로컬 개발 기본 흐름
 
 1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx를 함께 띄웁니다.
-2. API는 `env/api.common.env`와 `env/api.dev.env`를 사용합니다.
+2. API는 `env/api.common.env`와 `env/api.local.env`를 사용합니다.
 3. Web은 `env/web.dev.env`를 사용합니다.
 4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다. Dummy OIDC discovery가 공개한 authorize/token/userinfo URL은 실제 endpoint와 같은 host·port를 사용합니다.
 5. `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 `DEV_AUTO_AFFILIATION_PREFIX` 기반 기본 소속을 부여해 소속 선택 없이 다른 앱을 테스트할 수 있습니다.
@@ -184,10 +188,13 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 ## 운영/실제 연동 흐름
 
-1. `env/api.server.common.env`에서 OIDC/prod 공통 origin과 OIDC/RAG/RACB endpoint를 지정하고, 각 profile에는 실행·보안 차이만 둡니다.
-2. `DJANGO_SECURE`, cookie secure, CSRF trusted origin, allowed host를 배포 도메인에 맞춥니다.
-3. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
-4. 민감 값은 배포 secret manager나 별도 env injection으로 주입하고 문서/커밋에 반복 기재하지 않습니다.
+1. 두 서버가 공유하는 비밀이 아닌 endpoint는 `env/api.server.common.env`에서 관리합니다.
+2. OIDC 개발 서버는 `env/api.server.oidc.env`, 운영 서버는 `env/api.server.prod.env`에 이전된 기존 DB·origin·credential 값을 확인하고, 기존부터 비어 있던 OIDC 항목만 실제 서버값으로 채웁니다.
+3. Airflow는 모든 환경에서 `env/airflow.common.env`를 사용합니다.
+4. `make oidc-profile-env-check` 또는 `make prod-profile-env-check`로 핵심 필수값, placeholder 잔존 여부와 API/Airflow token 일치를 확인합니다.
+5. local API는 `api.common.env` → `api.local.env`, 서버 API는 `api.common.env` → `api.server.common.env` → `api.server.<profile>.env` 순서로 적용합니다.
+6. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
+7. 서버에서 교체한 credential 값의 저장소 반영 여부는 운영 보안 정책에 따릅니다.
 
 ## 변경 시 동기화 대상
 

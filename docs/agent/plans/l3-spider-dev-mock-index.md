@@ -11,14 +11,14 @@
 
 ## 범위
 - 수정: L3 Spider selector의 명시적 PostgreSQL/SQLite mock source 선택.
-- 수정: Django 설정, `env/api.common.env`, `env/api.dev.env`, L3 Spider 설정 문서와 회귀 테스트.
+- 수정: Django 설정, `env/api.common.env`, `env/api.local.env`, L3 Spider 설정 문서와 회귀 테스트.
 - 유지: API 응답 계약, Parquet 경로, line name 규칙 DB, OIDC/prod compose 설정.
 - 제외: 운영 PostgreSQL fallback, 신규 mock 생성, DB migration, frontend UI 변경.
 
 ## 설계
 - `L3_SPIDER_INDEX_SOURCE`는 `postgres`와 `sqlite_mock`만 허용하고 기본값은 `postgres`로 둔다.
 - `sqlite_mock`은 `L3_SPIDER_MOCK_INDEX_PATH`의 SQLite를 read-only로 조회한다.
-- `env/api.dev.env`만 `sqlite_mock`을 명시하며 공통·OIDC·prod는 `postgres`를 유지한다.
+- `env/api.local.env`만 `sqlite_mock`을 명시하며 공통·OIDC·prod는 `postgres`를 유지한다.
 - selector의 공개 함수와 반환 shape는 유지하고 SQL placeholder, table name, JSON 배열 조건만 source별로 선택한다.
 - mock 파일이 없거나 schema가 맞지 않으면 자동으로 PostgreSQL로 전환하지 않고 명확히 실패시킨다.
 

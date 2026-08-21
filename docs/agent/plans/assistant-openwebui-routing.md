@@ -48,9 +48,9 @@
 - 위험: generic OpenWebUI 전환으로 RAG 설정이 보이지만 사용되지 않을 수 있다.
 - 대응: 메일 route에서만 RAG 설정 UI를 노출한다.
 - 위험: corporate OpenWebUI 없이 오프사이트 개발이 중단될 수 있다.
-- 대응: 기존 `env/api.dev.env`의 OpenWebUI URL/model과 `apps/adfs_dummy`의 OpenAI 호환 endpoint를 그대로 사용한다.
+- 대응: 기존 `env/api.local.env`의 OpenWebUI URL/model과 `apps/adfs_dummy`의 OpenAI 호환 endpoint를 그대로 사용한다.
 
 ## 진행 기록
 - 2026-08-11: 메일 route만 기존 RAG 흐름을 유지하고 별도 OpenWebUI endpoint를 추가하는 설계로 확정했다.
-- 2026-08-11: `env/api.dev.env`의 `OPENWEBUI_URL`/`OPENWEBUI_MODEL`이 `apps/adfs_dummy`의 OpenAI 호환 `/v1/chat/completions`와 일치해 mock/env 변경이 불필요함을 확인했다.
+- 2026-08-11: `env/api.local.env`의 `OPENWEBUI_URL`/`OPENWEBUI_MODEL`이 `apps/adfs_dummy`의 OpenAI 호환 `/v1/chat/completions`와 일치해 mock/env 변경이 불필요함을 확인했다.
 - 2026-08-11: Assistant backend 22개, Observer 분석 backend 7개, frontend 78개 테스트와 lint/build, frontend/backend 경계, UI 일관성, docs inventory, diff 검증이 모두 통과했다.

@@ -44,7 +44,12 @@ from api.emails.services import (
     run_pop3_ingest_from_settings,
     store_email_html_and_assets,
 )
-from api.emails.services.ingest import _LongLinePOP3, _iter_pop3_messages
+from api.emails.services.ingest import (
+    _LongLinePOP3,
+    _compile_excluded_subject_patterns,
+    _is_excluded_subject,
+    _iter_pop3_messages,
+)
 from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 
 UTC = getattr(timezone, "utc", dt_timezone.utc)
@@ -227,6 +232,53 @@ class EmailPop3SettingsTests(SimpleTestCase):
             use_ssl=False,
             timeout=7,
         )
+
+
+class EmailExcludedSubjectPatternTests(SimpleTestCase):
+    """메일 제목 제외 pattern의 wildcard와 literal 규칙을 검증합니다."""
+
+    def _is_excluded(self, subject: str, patterns: tuple[str, ...]) -> bool:
+        """지정한 pattern만 적용해 제목 제외 여부를 검사합니다."""
+
+        matchers = _compile_excluded_subject_patterns(patterns)
+        with patch(
+            "api.emails.services.ingest.EXCLUDED_SUBJECT_PATTERNS",
+            matchers,
+        ):
+            return _is_excluded_subject(subject)
+
+    def test_wildcard_matches_zero_or_more_characters(self) -> None:
+        """`*`가 닫는 대괄호 전의 0글자 이상 문자열과 일치합니다."""
+
+        patterns = ("[drone_sop*]", "[test]")
+
+        self.assertTrue(self._is_excluded("[drone_sop] 알림", patterns))
+        self.assertTrue(self._is_excluded("[drone_sop_v1] 알림", patterns))
+        self.assertTrue(self._is_excluded("[drone_sop_v2] 알림", patterns))
+
+    def test_match_is_case_insensitive_and_anchored_at_subject_start(self) -> None:
+        """대소문자와 앞 공백은 정규화하고 제목 중간 일치는 허용하지 않습니다."""
+
+        patterns = ("[drone_sop*]",)
+
+        self.assertTrue(self._is_excluded("  [DRONE_SOP_V2] 알림", patterns))
+        self.assertFalse(self._is_excluded("안내 [drone_sop_v2] 알림", patterns))
+
+    def test_literal_prefix_keeps_existing_behavior(self) -> None:
+        """wildcard가 없는 값은 기존 literal prefix 규칙을 유지합니다."""
+
+        patterns = ("[test]",)
+
+        self.assertTrue(self._is_excluded("[test] 알림", patterns))
+        self.assertFalse(self._is_excluded("[testing] 알림", patterns))
+
+    def test_regex_metacharacters_other_than_wildcard_are_literal(self) -> None:
+        """점과 대괄호가 정규식 문법으로 해석되지 않는지 확인합니다."""
+
+        patterns = ("[drone.sop*]",)
+
+        self.assertTrue(self._is_excluded("[drone.sop_v1] 알림", patterns))
+        self.assertFalse(self._is_excluded("[droneXsop_v1] 알림", patterns))
 
 
 @override_settings(TIME_ZONE="Asia/Seoul")

@@ -9,7 +9,7 @@
 
 ## 현재 상태
 - 프론트는 `/auth/me`의 `user_sdwt_prod`가 비어 있으면 소속 선택 dialog를 표시한다.
-- 로컬 dev는 `env/api.dev.env`를 사용하고, OIDC 개발/운영은 별도 env 파일을 사용한다.
+- 로컬 dev는 `env/api.local.env`를 사용하고, OIDC 개발/운영은 별도 env 파일을 사용한다.
 
 ## 범위
 - 수정: auth/account service, dev compose entrypoint, dev env, 관련 문서와 tests.
@@ -37,7 +37,7 @@
 
 ## 위험과 대응
 - 위험: OIDC 개발/운영 사용자의 소속이 자동 변경됨
-- 대응: `env/api.dev.env`에만 `DEV_AUTO_AFFILIATION_ALLOWED=1`을 둔다.
+- 대응: `env/api.local.env`에만 `DEV_AUTO_AFFILIATION_ALLOWED=1`을 둔다.
 - 위험: seed 제거 후 dev 화면에 샘플 데이터가 없음
 - 대응: 로그인/권한 진입만 자동 소속으로 보장하고, 업무 데이터는 실제 적재/개별 기능 흐름으로 확인한다.
 

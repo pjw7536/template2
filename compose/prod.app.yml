@@ -49,7 +49,7 @@ services:
     env_file:
       - ../env/api.common.env
       - ../env/api.server.common.env
-      - ../env/api.prod.env
+      - ../env/api.server.prod.env
       - ../env/minio.env
     environment:
       MINIO_ENDPOINT: http://minio:9000
