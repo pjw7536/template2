@@ -6,6 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query"
 
+import { useAuth } from "@/lib/auth"
+
 import { accountApi } from "../api/accountApi"
 import { accountQueryKeys, AFFILIATION_QUERY_KEY } from "../api/queryKeys"
 import { normalizeAccountOverview } from "../utils/accountOverview"
@@ -46,6 +48,10 @@ function replaceAccessMatrixRow(data, matrixRow) {
     return { ...data, pages }
   }
   return data
+}
+
+function useRefreshAuth() {
+  return useAuth().refresh
 }
 
 function refreshAccessDecisionQueries({ queryClient, refreshAuth, matrixRow }) {
@@ -303,7 +309,8 @@ export function usePendingAccessRequests({
   })
 }
 
-export function useBulkApprovePendingAccessRequests({ refreshAuth }) {
+export function useBulkApprovePendingAccessRequests() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.bulkApprovePendingAccessRequests,
@@ -320,7 +327,8 @@ export function useBulkApprovePendingAccessRequests({ refreshAuth }) {
   })
 }
 
-export function useAccessUserDecision({ refreshAuth }) {
+export function useAccessUserDecision() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.decideAccessUser,
@@ -362,7 +370,8 @@ export function useUpdateUserScopeData() {
   })
 }
 
-export function useApplyAllUserAccess({ refreshAuth }) {
+export function useApplyAllUserAccess() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.applyAllAccessUser,
@@ -384,7 +393,8 @@ export function useAccessPolicyRules({ scope = "portal", enabled = true } = {}) 
   })
 }
 
-export function useCreateAccessPolicyRule({ refreshAuth }) {
+export function useCreateAccessPolicyRule() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.createAccessPolicyRule,
@@ -400,7 +410,8 @@ export function useCreateAccessPolicyRule({ refreshAuth }) {
   })
 }
 
-export function useBulkApplyAccessPolicyRules({ refreshAuth }) {
+export function useBulkApplyAccessPolicyRules() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.bulkApplyAccessPolicyRules,
@@ -416,7 +427,8 @@ export function useBulkApplyAccessPolicyRules({ refreshAuth }) {
   })
 }
 
-export function useUpdateAccessPolicyRule({ refreshAuth }) {
+export function useUpdateAccessPolicyRule() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.updateAccessPolicyRule,
@@ -432,7 +444,8 @@ export function useUpdateAccessPolicyRule({ refreshAuth }) {
   })
 }
 
-export function useDeleteAccessPolicyRule({ refreshAuth }) {
+export function useDeleteAccessPolicyRule() {
+  const refreshAuth = useRefreshAuth()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApi.deleteAccessPolicyRule,
