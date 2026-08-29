@@ -55,7 +55,7 @@
 - Emails: 메일 문서 insert/delete
 - Assistant: 질문 검색
 
-두 서버가 공유하는 provider endpoint는 `env/api.server.common.env`에서 주입하고, 인증 header는 OIDC의 `env/api.server.oidc.env`와 운영의 `env/api.server.prod.env`에서 각각 주입합니다.
+provider endpoint와 인증 header는 OIDC의 `env/overlays/oidc/api.*.env`와 운영의 `env/overlays/prod/api.*.env`에서 각각 주입합니다. 현재 값이 같아도 profile별로 독립 관리합니다.
 
 주요 설정:
 
@@ -153,11 +153,11 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 
 | 변경 | 함께 확인할 문서/파일 |
 | --- | --- |
-| OIDC provider 변경 | `env/api*.env`, `env/web*.env`, `apps/adfs_dummy/adfs_oidc.py`, `docs/api/auth.md` |
-| RAG endpoint/schema 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_rag.py`, `docs/api/assistant.md`, `docs/modules/emails.md` |
-| LLM request/response 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md` |
-| OpenWebUI request/response 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md` |
-| Mail API 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_mail.py`, `docs/modules/emails.md`, `docs/modules/line-dashboard.md` |
-| Jira 변경 | `env/api*.env`, `apps/adfs_dummy/adfs_jira.py`, `docs/modules/line-dashboard.md` |
-| MinIO 변경 | `env/minio.env`, `docs/data-model.md`, `docs/modules/emails.md` |
-| Airflow token/trigger 변경 | `env/api*.env`, 관련 `docs/api/*.md`, `docs/operations.md` |
+| OIDC provider 변경 | `env/overlays/*/api.*.env`, `env/overlays/*/web.*.env`, `apps/adfs_dummy/adfs_oidc.py`, `docs/api/auth.md` |
+| RAG endpoint/schema 변경 | `env/overlays/*/api.*.env`, `apps/adfs_dummy/adfs_rag.py`, `docs/api/assistant.md`, `docs/modules/emails.md` |
+| LLM request/response 변경 | `env/overlays/*/api.*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md` |
+| OpenWebUI request/response 변경 | `env/overlays/*/api.*.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md` |
+| Mail API 변경 | `env/overlays/*/api.*.env`, `apps/adfs_dummy/adfs_mail.py`, `docs/modules/emails.md`, `docs/modules/line-dashboard.md` |
+| Jira 변경 | `env/overlays/*/api.*.env`, `apps/adfs_dummy/adfs_jira.py`, `docs/modules/line-dashboard.md` |
+| MinIO 변경 | `env/overlays/*/minio.*.env`, `docs/data-model.md`, `docs/modules/emails.md` |
+| Airflow token/trigger 변경 | `env/overlays/*/api.secret.env`, `env/overlays/*/airflow.*.env`, 관련 `docs/api/*.md`, `docs/operations.md` |

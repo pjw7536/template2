@@ -54,8 +54,6 @@ services:
 
   grafana:
     image: repository.samsungds.net/proxy-docker-registry-1.docker.io/grafana/grafana:11.5.2
-    env_file:
-      - ../env/grafana.env
     depends_on:
       - prometheus
     expose:

@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cd "$ROOT_DIR"
 
+./scripts/validate_env_profile_keys.sh
+
 # 세 배포 진입점이 모두 병합 가능한 Compose 구성인지 확인합니다.
 docker compose -f docker-compose.dev.yml config >/tmp/tailwind-dev-compose-config.yml
 docker compose -f docker-compose.oidc.yml config >/tmp/tailwind-oidc-compose-config.yml

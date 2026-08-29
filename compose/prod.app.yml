@@ -3,7 +3,8 @@ services:
     image: repository.samsungds.net/proxy-docker-registry-1.docker.io/minio/minio:latest
     command: server /data --console-address ":9001"
     env_file:
-      - ../env/minio.env
+      - ../env/overlays/prod/minio.config.env
+      - ../env/overlays/prod/minio.secret.env
     volumes:
       - "minio_data:/data"
     ports:
@@ -19,7 +20,8 @@ services:
     depends_on:
       - minio
     env_file:
-      - ../env/minio.env
+      - ../env/overlays/prod/minio.config.env
+      - ../env/overlays/prod/minio.secret.env
     entrypoint:
       - /bin/sh
       - -c
@@ -47,10 +49,10 @@ services:
         PIP_INDEX_URL: http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple
         PIP_TRUSTED_HOST: repository.samsungds.net
     env_file:
-      - ../env/api.common.env
-      - ../env/api.server.common.env
-      - ../env/api.server.prod.env
-      - ../env/minio.env
+      - ../env/overlays/prod/api.config.env
+      - ../env/overlays/prod/api.secret.env
+      - ../env/overlays/prod/minio.config.env
+      - ../env/overlays/prod/minio.secret.env
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: emails
@@ -80,17 +82,9 @@ services:
         ALPINE_REPOSITORY_MIRROR: http://repository.samsungds.net/repository/proxy-raw-dl-cdn.alpinelinux.org-alpine
         NPM_REGISTRY: http://repository.samsungds.net/repository/proxy-npm-registry.npmjs.org
         NPM_STRICT_SSL: "false"
-        VITE_BACKEND_URL: /
-        VITE_AIRFLOW_BASE_URL: /airflow
-        VITE_AIRFLOW_USERNAME: ${AIRFLOW_USERNAME:-airflow}
-        VITE_AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD:-airflow}
-        VITE_PORTAL_PMX_URL: ${VITE_PORTAL_PMX_URL:-}
-        VITE_PORTAL_MOSAIC_URL: ${VITE_PORTAL_MOSAIC_URL:-}
-        VITE_PORTAL_CONFLUENCE_URL: ${VITE_PORTAL_CONFLUENCE_URL:-}
-        VITE_DEFECT_SPIDER_URL: ${VITE_DEFECT_SPIDER_URL:-http://10.173.129.168:32600}
     env_file:
-      - ../env/web.common.env
-      - ../env/web.prod.env
+      - ../env/overlays/prod/web.config.env
+      - ../env/overlays/prod/web.secret.env
     depends_on:
       - api
     expose:

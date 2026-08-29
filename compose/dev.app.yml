@@ -29,7 +29,8 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     env_file:
-      - ../env/minio.env
+      - ../env/overlays/local/minio.config.env
+      - ../env/overlays/local/minio.secret.env
     volumes:
       - "minio_data:/data"
     ports:
@@ -45,7 +46,8 @@ services:
     depends_on:
       - minio
     env_file:
-      - ../env/minio.env
+      - ../env/overlays/local/minio.config.env
+      - ../env/overlays/local/minio.secret.env
     entrypoint:
       - /bin/sh
       - -c
@@ -65,9 +67,10 @@ services:
     build:
       context: ../apps/api
     env_file:
-      - ../env/api.common.env
-      - ../env/api.local.env
-      - ../env/minio.env
+      - ../env/overlays/local/api.config.env
+      - ../env/overlays/local/api.secret.env
+      - ../env/overlays/local/minio.config.env
+      - ../env/overlays/local/minio.secret.env
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: emails
@@ -109,8 +112,8 @@ services:
     build:
       context: ../apps/web
     env_file:
-      - ../env/web.common.env
-      - ../env/web.dev.env
+      - ../env/overlays/local/web.config.env
+      - ../env/overlays/local/web.secret.env
     depends_on:
       - api
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"

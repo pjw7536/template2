@@ -95,4 +95,4 @@ make makemigrations-check
 - 프론트엔드는 feature 외부에서 `apps/web/src/features/<feature>/index.js`만 import합니다.
 - 백엔드는 다른 feature를 직접 파고들지 않고 selector 또는 service facade를 통해 의존합니다.
 - 서버 데이터는 React Query가 기준이고, Zustand에는 UI 상태만 둡니다.
-- 인증/RAG/assistant/mail 계약을 바꾸면 `docker-compose.dev.yml`, `env/api.local.env`, `apps/adfs_dummy`도 함께 맞춥니다.
+- 인증/RAG/assistant/mail 계약을 바꾸면 `docker-compose.dev.yml`, `env/overlays/local/api.*.env`, `apps/adfs_dummy`도 함께 맞춥니다.

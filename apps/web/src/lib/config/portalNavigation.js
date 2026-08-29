@@ -10,17 +10,7 @@ import {
   ScanSearchIcon,
 } from "lucide-react"
 
-function readEnvValue(key) {
-  if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
-    const value = import.meta.env[key]
-    if (typeof value === "string" && value.trim()) return value.trim()
-  }
-  if (typeof process !== "undefined" && process.env && key in process.env) {
-    const value = process.env[key]
-    if (typeof value === "string" && value.trim()) return value.trim()
-  }
-  return ""
-}
+import { readEnvValue } from "@/lib/runtimeEnv"
 
 function externalLink(title, envKey) {
   const href = readEnvValue(envKey)

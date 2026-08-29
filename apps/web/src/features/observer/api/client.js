@@ -1,27 +1,13 @@
 import { getBackendBaseUrl } from "@/lib/api";
+import { readEnvValue } from "@/lib/runtimeEnv";
 
 const DEFAULT_TIMEOUT = 30000;
 const OBSERVER_API_PREFIX = "/api/v1/observer";
 
-const envCandidates = [
-  () => import.meta?.env?.VITE_OBSERVER_API_BASE_URL,
-  () => import.meta?.env?.VITE_API_BASE_URL,
-  () => process?.env?.VITE_OBSERVER_API_BASE_URL,
-  () => process?.env?.VITE_API_BASE_URL,
-];
-
 const trimTrailingSlash = (value) => value.replace(/\/+$/, "");
 
 function resolveBaseUrl() {
-  const raw = envCandidates
-    .map((read) => {
-      try {
-        return read();
-      } catch {
-        return undefined;
-      }
-    })
-    .find((value) => typeof value === "string" && value.trim());
+  const raw = readEnvValue("VITE_OBSERVER_API_BASE_URL", "VITE_API_BASE_URL");
 
   return trimTrailingSlash((raw || getBackendBaseUrl()).trim());
 }

@@ -1,0 +1,16 @@
+# local Airflow에 profile별 설정과 인증값을 추가합니다.
+services:
+  airflow-init:
+    env_file:
+      - ../env/overlays/local/airflow.config.env
+      - ../env/overlays/local/airflow.secret.env
+
+  airflow-webserver:
+    env_file:
+      - ../env/overlays/local/airflow.config.env
+      - ../env/overlays/local/airflow.secret.env
+
+  airflow-scheduler:
+    env_file:
+      - ../env/overlays/local/airflow.config.env
+      - ../env/overlays/local/airflow.secret.env

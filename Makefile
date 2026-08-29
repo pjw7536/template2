@@ -2,8 +2,10 @@
 COMPOSE_DEV=docker compose -f docker-compose.dev.yml
 COMPOSE_OIDC=docker compose -f docker-compose.oidc.yml
 COMPOSE_PROD=docker compose -f docker-compose.yml
-OIDC_API_ENV_FILE ?= $(CURDIR)/env/api.server.oidc.env
-PROD_API_ENV_FILE ?= $(CURDIR)/env/api.server.prod.env
+OIDC_API_CONFIG_ENV_FILE ?= $(CURDIR)/env/overlays/oidc/api.config.env
+OIDC_API_SECRET_ENV_FILE ?= $(CURDIR)/env/overlays/oidc/api.secret.env
+PROD_API_CONFIG_ENV_FILE ?= $(CURDIR)/env/overlays/prod/api.config.env
+PROD_API_SECRET_ENV_FILE ?= $(CURDIR)/env/overlays/prod/api.secret.env
 
 # infra는 재빌드 빈도가 낮은 기반 서비스만 포함합니다.
 # - DB: airflow-postgres
@@ -32,7 +34,7 @@ PROD_APP_BUILD_SERVICES=api web
 	dev dev-app-up dev-app-build dev-app-down dev-infra-up dev-infra-build dev-infra-down \
 	oidc oidc-app-up oidc-app-build oidc-app-down oidc-infra-up oidc-infra-build oidc-infra-down \
 	prod prod-app-up prod-app-build prod-app-down prod-infra-up prod-infra-build prod-infra-down \
-	oidc-profile-env-check prod-profile-env-check \
+	env-profile-key-check oidc-profile-env-check prod-profile-env-check \
 	down test-api check-api makemigrations-check \
 	y5push y5pull
 
@@ -132,13 +134,17 @@ prod-infra-down:
 	$(COMPOSE_PROD) stop $(PROD_INFRA_SERVICES)
 	$(COMPOSE_PROD) rm -f $(PROD_INFRA_SERVICES)
 
+# profile 파일 존재 여부, 중복 key와 OIDC/prod key 구성을 확인합니다.
+env-profile-key-check:
+	./scripts/validate_env_profile_keys.sh
+
 # OIDC 개발 서버 profile의 필수값을 실제 기동 전에 확인합니다.
-oidc-profile-env-check:
-	./scripts/validate_server_profile_env.sh "$(OIDC_API_ENV_FILE)"
+oidc-profile-env-check: env-profile-key-check
+	./scripts/validate_server_profile_env.sh "$(OIDC_API_CONFIG_ENV_FILE)" "$(OIDC_API_SECRET_ENV_FILE)"
 
 # 운영 서버 profile의 필수값을 실제 기동 전에 확인합니다.
-prod-profile-env-check:
-	./scripts/validate_server_profile_env.sh "$(PROD_API_ENV_FILE)"
+prod-profile-env-check: env-profile-key-check
+	./scripts/validate_server_profile_env.sh "$(PROD_API_CONFIG_ENV_FILE)" "$(PROD_API_SECRET_ENV_FILE)"
 
 # 모든 실행 진입점의 compose project를 내립니다.
 down:

@@ -1,12 +1,6 @@
 import { useEffect } from "react"
 
-function readEnvValue(key) {
-  if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
-    const value = import.meta.env[key]
-    if (typeof value === "string" && value.trim()) return value.trim()
-  }
-  return ""
-}
+import { readEnvValue } from "@/lib/runtimeEnv"
 
 const DEFECT_SPIDER_EXTERNAL_URL = readEnvValue("VITE_DEFECT_SPIDER_URL")
 

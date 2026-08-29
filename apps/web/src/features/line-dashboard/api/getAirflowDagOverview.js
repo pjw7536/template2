@@ -1,25 +1,8 @@
 // 파일 경로: src/features/line-dashboard/api/getAirflowDagOverview.js
-const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
-const DEFAULT_PUBLIC_BASE_URL = "https://stg.plane.samsungds.net/airflow"
+import { readEnvValue } from "@/lib/runtimeEnv"
 
-function readEnvValue(...keys) {
-  for (const key of keys) {
-    if (!key) continue
-    if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
-      const value = import.meta.env[key]
-      if (typeof value === "string" && value.trim()) {
-        return value
-      }
-    }
-    if (typeof process !== "undefined" && process.env && key in process.env) {
-      const value = process.env[key]
-      if (typeof value === "string" && value.trim()) {
-        return value
-      }
-    }
-  }
-  return undefined
-}
+const DEFAULT_INTERNAL_BASE_URL = "http://localhost/airflow"
+const DEFAULT_PUBLIC_BASE_URL = "/airflow"
 
 function resolveBaseUrls() {
   const apiCandidate =

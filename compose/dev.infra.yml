@@ -1,5 +1,7 @@
 include:
-  - airflow.yml
+  - path:
+      - airflow.yml
+      - airflow.local.yml
 
 services:
   ftp:

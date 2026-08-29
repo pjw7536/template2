@@ -2,7 +2,7 @@
 name: offsite-dev-contract-sync
 description: |
   외부망(offsite) 개발 환경에서 auth/RAG/assistant/mail contract 변경 시
-  docker-compose.dev.yml, env/api.local.env, apps/adfs_dummy 간 정합성을 유지하는 스킬.
+  docker-compose.dev.yml, env/overlays/local, apps/adfs_dummy 간 정합성을 유지하는 스킬.
 ---
 
 # offsite-dev-contract-sync
@@ -20,7 +20,7 @@ corporate network 없이도 로컬 개발 환경이 계속 동작하도록 mock�
 ## 환경 전제
 - offsite 개발은 `docker-compose.dev.yml`을 사용한다.
 - dummy service는 `apps/adfs_dummy`에 있다.
-- Django `api` 서비스는 `env/api.local.env`로 external dependency URL을 주입받는다.
+- Django `api` 서비스는 `env/overlays/local/api.config.env`와 `api.secret.env`만으로 전체 runtime 설정과 local external dependency URL·credential을 주입받는다.
 - assistant dummy mode는 `ASSISTANT_DUMMY_MODE=1`로 제어한다.
 - 외부 Docker network `shared-net`을 사용한다.
 
@@ -33,7 +33,7 @@ dummy 주요 endpoint 예시:
 contract가 바뀌면 아래를 함께 점검한다.
 
 - `apps/adfs_dummy`
-- `env/api.local.env`
+- `env/overlays/local/api.*.env`
 - `docker-compose.dev.yml`
 - Django 설정의 env var 참조부
 - auth/rag/assistant/mail 호출부
@@ -50,7 +50,7 @@ contract가 바뀌면 아래를 함께 점검한다.
    - serializer/client wrapper
    - dummy service handler
 3. dev wiring 동기화
-   - `env/api.local.env`의 URL/mode flag
+   - `env/overlays/local/api.config.env`의 URL/mode flag와 `api.secret.env`의 credential
    - compose 서비스 env 연결
    - mock endpoint path
 4. 로컬 실행 가능성 점검

@@ -50,8 +50,6 @@ services:
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-airflow}
-    env_file:
-      - ../env/airflow.common.env
     user: "0:0"
     volumes:
       - "../airflow:/sources"
@@ -66,8 +64,6 @@ services:
     command: webserver
     environment:
       <<: *airflow-common-env
-    env_file:
-      - ../env/airflow.common.env
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:
       - "../airflow/dags:/opt/airflow/dags"
@@ -95,8 +91,6 @@ services:
     command: scheduler
     environment:
       <<: *airflow-common-env
-    env_file:
-      - ../env/airflow.common.env
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:
       - "../airflow/dags:/opt/airflow/dags"

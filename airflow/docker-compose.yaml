@@ -3,7 +3,8 @@ x-airflow-common: &airflow-common
   image: ${AIRFLOW_IMAGE:-apache/airflow:2.11.0}
   pull_policy: missing
   env_file:
-    - ../env/airflow.common.env
+    - ../env/overlays/local/airflow.config.env
+    - ../env/overlays/local/airflow.secret.env
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow

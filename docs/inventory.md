@@ -99,15 +99,13 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `env/api.common.env` | API 공통 도메인 정책, timeout, 파일 경로와 안전 기본값 |
-| `env/api.local.env` | 로컬 DB, dummy ADFS/RAG/LLM/Mail/Jira, dev 자동 소속·seed 설정 |
-| `env/api.server.common.env` | OIDC/prod가 공유하는 비밀이 아닌 provider endpoint와 public prefix |
-| `env/api.server.oidc.env` | OIDC 개발 서버의 DB·origin·OIDC·credential·실행 설정 |
-| `env/api.server.prod.env` | 운영 서버의 DB·origin·OIDC·credential·실행 설정 |
-| `env/airflow.common.env` | 모든 환경의 Airflow DAG API trigger 인증과 실패 callback 설정 |
-| `env/web.dev.env` | 로컬 web 개발 설정 |
-| `env/web.oidc.dev.env` | 실제 OIDC 개발 연결용 web 설정 |
-| `env/web.prod.env` | 운영 web 설정 템플릿 |
-| `env/minio.env` | 로컬 MinIO 계정과 endpoint |
+| `env/overlays/local/*` | 로컬 API/Web/Airflow/MinIO 전체 설정과 dummy 외부계 credential |
+| `env/overlays/oidc/*` | OIDC API/Web/Airflow/MinIO/Grafana 설정·credential |
+| `env/overlays/prod/*` | 운영 API/Web/Airflow/MinIO/Grafana 설정·credential |
+| `env/overlays/test/*` | 격리된 backend test 설정과 credential |
+
+각 service는 해당 profile의 config → secret 순서로만 적용합니다.
+서버 운영값은 `env/overlays/oidc` 또는 `env/overlays/prod` 폴더만 확인하면 됩니다.
+운영 Web은 `/runtime-env.js`를 컨테이너 시작 시 생성하므로 `VITE_*` 변경에 이미지 재빌드가 필요하지 않습니다.
 
 주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `ADFS_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `VITE_*`입니다.

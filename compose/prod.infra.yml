@@ -2,7 +2,10 @@ include:
   - path:
       - airflow.yml
       - airflow.internal.yml
-  - monitoring.yml
+      - airflow.prod.yml
+  - path:
+      - monitoring.yml
+      - monitoring.prod.yml
 
 services:
   ftp:

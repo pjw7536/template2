@@ -1,27 +1,10 @@
 // src/lib/api.js
+import { readEnvValue } from "@/lib/runtimeEnv"
+
 const DEFAULT_BACKEND_URL = "http://localhost:8000/"
 
 function removeTrailingSlash(value) {
   return value.replace(/\/+$/, "")
-}
-
-function readEnvValue(...keys) {
-  for (const key of keys) {
-    if (!key) continue
-    if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
-      const value = import.meta.env[key]
-      if (typeof value === "string" && value.trim()) {
-        return value
-      }
-    }
-    if (typeof process !== "undefined" && process.env && key in process.env) {
-      const value = process.env[key]
-      if (typeof value === "string" && value.trim()) {
-        return value
-      }
-    }
-  }
-  return undefined
 }
 
 export function getBackendBaseUrl() {
