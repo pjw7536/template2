@@ -8,6 +8,7 @@ from __future__ import annotations
 from django.urls import path
 
 from .views import (
+    AirflowDagOverviewView,
     DroneEarlyInformView,
     DroneJiraKeyView,
     DroneMyNotificationRecipientTargetView,
@@ -31,6 +32,11 @@ from .views import (
 )
 
 urlpatterns = [
+    path(
+        "airflow/dag-overview",
+        AirflowDagOverviewView.as_view(),
+        name="line-dashboard-airflow-dag-overview",
+    ),
     path("early-inform", DroneEarlyInformView.as_view(), name="drone-early-inform"),
     path("tables", DroneTablesView.as_view(), name="drone-tables"),
     path("tables/update", DroneTableUpdateView.as_view(), name="drone-tables-update"),

@@ -253,10 +253,8 @@ export function LineDashboardOverviewPage() {
           <div className="space-y-3 px-6 pb-6">
             <p className="text-sm text-destructive">{error || overview?.error}</p>
             <p className="text-sm text-muted-foreground">
-              Airflow 이 <code className="rounded bg-muted px-1 py-0.5">{overview?.baseUrl}</code>
-              에서 실행 중인지, 필요한 경우 <code>AIRFLOW_USERNAME</code> 과{" "}
-              <code>AIRFLOW_PASSWORD</code>
-              환경 변수가 설정되어 있는지 확인하세요.
+              Django API 서버가 Airflow에 연결할 수 있는지 확인하세요. Airflow 계정 정보는
+              브라우저가 아닌 API 서버 환경변수에서 관리합니다.
             </p>
           </div>
         </Card>

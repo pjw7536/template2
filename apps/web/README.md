@@ -36,14 +36,13 @@ npm run preview
 
 ## 환경 변수
 
-개발 환경 변수는 `env/overlays/local/web.*.env`에서 관리합니다. OIDC와 prod도 각 profile의 Web env만 사용합니다.
+개발 환경 변수는 `env/overlays/local/web.config.env`에서 관리합니다. OIDC와 prod도 각 profile의 Web config만 사용합니다.
 운영 컨테이너는 시작 시 env를 `/runtime-env.js`로 생성하므로 Web env 변경에 이미지 재빌드가 필요하지 않습니다.
 
 | 변수 | 설명 |
 | --- | --- |
 | `VITE_BACKEND_URL` | 브라우저에서 호출할 Django API 주소 |
 | `BACKEND_API_URL` | 컨테이너 내부 API 주소 |
-| `VITE_AIRFLOW_BASE_URL` | 브라우저용 Airflow 경로 |
 | `VITE_PORTAL_PMX_URL` | Portal PMx 외부 링크. 비어 있으면 숨김 |
 | `VITE_PORTAL_MOSAIC_URL` | Portal MOSAIC 외부 링크. 비어 있으면 숨김 |
 | `VITE_PORTAL_CONFLUENCE_URL` | Portal Confluence 외부 링크. 비어 있으면 숨김 |

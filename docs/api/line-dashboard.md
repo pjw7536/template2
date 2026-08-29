@@ -22,6 +22,7 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 | 히스토리 | `GET /api/v1/line-dashboard/history` | 라인 히스토리 집계 |
 | 라인 | `GET /api/v1/line-dashboard/line-ids` | 라인 목록 |
 | 라인 | `GET /api/v1/line-dashboard/line-sdwt-options` | TIP status line/user_sdwt_prod 옵션 |
+| Airflow | `GET /api/v1/line-dashboard/airflow/dag-overview` | Django가 Airflow credential로 조회한 DAG 현황 |
 | Jira | `GET/POST /api/v1/line-dashboard/jira-keys` | Jira key |
 | Jira | `GET /api/v1/line-dashboard/jira-user-sdwt-prods` | Jira 사용자 소속 후보 |
 | 알림 대상 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-targets` | 알림 대상 |
@@ -34,6 +35,18 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 | SOP | `POST /api/v1/line-dashboard/sop/ingest/pop3/trigger` | SOP POP3 수집 |
 | SOP | `POST /api/v1/line-dashboard/sop/precheck` | 파이프라인 사전 점검 |
 | SOP | `POST /api/v1/line-dashboard/sop/trigger` | SOP 알림 파이프라인 |
+
+## Airflow DAG 현황
+
+브라우저는 Airflow REST API와 Basic Auth credential에 직접 접근하지 않습니다. Django API가
+`AIRFLOW_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`를 사용해 DAG 목록과 최근 실행을
+조회하고, 화면에는 정규화된 결과만 반환합니다.
+
+```http
+GET /api/v1/line-dashboard/airflow/dag-overview
+```
+
+응답의 `baseUrl`은 DAG 상세 화면 링크용 `AIRFLOW_PUBLIC_BASE_URL`이며 credential을 포함하지 않습니다.
 
 ## 알림 대상 조회
 
@@ -103,7 +116,8 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 | 403 | 권한 없음 |
 | 404 | SOP 또는 설정 없음 |
 | 500 | DB/파이프라인 처리 실패 |
-| 502 | Jira/Mail/Messenger 외부 호출 실패 |
+| 502 | Airflow/Jira/Mail/Messenger 외부 호출 실패 |
+| 503 | Airflow 서버 설정 누락 |
 
 ## 관련 모듈 문서
 

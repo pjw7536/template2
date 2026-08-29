@@ -84,7 +84,6 @@ services:
         NPM_STRICT_SSL: "false"
     env_file:
       - ../env/overlays/prod/web.config.env
-      - ../env/overlays/prod/web.secret.env
     depends_on:
       - api
     expose:

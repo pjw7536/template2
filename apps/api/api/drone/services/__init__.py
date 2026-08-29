@@ -21,6 +21,12 @@
 
 from __future__ import annotations
 
+from .airflow import (
+    AirflowConfigurationError,
+    AirflowOverviewError,
+    AirflowUpstreamError,
+    get_airflow_dag_overview,
+)
 from .early_inform.early_inform import (
     DroneEarlyInformDuplicateError,
     DroneEarlyInformNotFoundError,
@@ -76,6 +82,9 @@ from .table_ops import (
 )
 
 __all__ = [
+    "AirflowConfigurationError",
+    "AirflowOverviewError",
+    "AirflowUpstreamError",
     "DroneEarlyInformDuplicateError",
     "DroneEarlyInformNotFoundError",
     "DroneEarlyInformUpdateResult",
@@ -107,6 +116,7 @@ __all__ = [
     "get_table_record_delivery_update_payload",
     "get_table_list_payload",
     "get_or_create_drone_sop_target_by_name",
+    "get_airflow_dag_overview",
     "has_drone_sop_pipeline_candidates",
     "normalize_recipient_channel",
     "promote_drone_sop_external_recipients_for_user",

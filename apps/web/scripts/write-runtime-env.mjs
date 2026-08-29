@@ -4,12 +4,6 @@ import process from "node:process"
 
 const DEFAULT_OUTPUT_PATH = "/app/dist/runtime-env.js"
 const NON_VITE_RUNTIME_KEYS = new Set([
-  "AIRFLOW_BASE_URL",
-  "AIRFLOW_INTERNAL_BASE_URL",
-  "AIRFLOW_PASSWORD",
-  "AIRFLOW_PUBLIC_BASE_URL",
-  "AIRFLOW_URL",
-  "AIRFLOW_USERNAME",
   "BACKEND_API_URL",
   "BACKEND_URL",
   "MINIO_ENDPOINT",

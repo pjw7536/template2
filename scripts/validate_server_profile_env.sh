@@ -94,11 +94,18 @@ PROFILE_REQUIRED_KEYS=(
   RAG_DELETE_URL
   RAG_INDEX_INFO_URL
   RAG_HEADERS
+  AIRFLOW_BASE_URL
+  AIRFLOW_PUBLIC_BASE_URL
+  AIRFLOW_USERNAME
+  AIRFLOW_PASSWORD
   AIRFLOW_TRIGGER_TOKEN
   EMAIL_OCR_INTERNAL_TOKEN
 )
 
 AIRFLOW_COMMON_REQUIRED_KEYS=(
+  _AIRFLOW_WWW_USER_CREATE
+  _AIRFLOW_WWW_USER_USERNAME
+  _AIRFLOW_WWW_USER_PASSWORD
   AIRFLOW_API_BASE_URL
   AIRFLOW_TRIGGER_TOKEN
 )
@@ -120,6 +127,20 @@ api_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$PROFILE_SECRET_ENV_F
 airflow_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$AIRFLOW_PROFILE_SECRET_ENV_FILE")"
 if [[ "$api_trigger_token" != "$airflow_trigger_token" ]]; then
   echo "API profile과 Airflow profile의 AIRFLOW_TRIGGER_TOKEN 값이 일치하지 않습니다." >&2
+  exit 1
+fi
+
+api_airflow_username="$(read_env_value AIRFLOW_USERNAME "$PROFILE_CONFIG_ENV_FILE")"
+airflow_username="$(read_env_value _AIRFLOW_WWW_USER_USERNAME "$AIRFLOW_PROFILE_CONFIG_ENV_FILE")"
+if [[ "$api_airflow_username" != "$airflow_username" ]]; then
+  echo "API profile과 Airflow profile의 관리자 username이 일치하지 않습니다." >&2
+  exit 1
+fi
+
+api_airflow_password="$(read_env_value AIRFLOW_PASSWORD "$PROFILE_SECRET_ENV_FILE")"
+airflow_password="$(read_env_value _AIRFLOW_WWW_USER_PASSWORD "$AIRFLOW_PROFILE_SECRET_ENV_FILE")"
+if [[ "$api_airflow_password" != "$airflow_password" ]]; then
+  echo "API profile과 Airflow profile의 관리자 password가 일치하지 않습니다." >&2
   exit 1
 fi
 

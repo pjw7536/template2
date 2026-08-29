@@ -36,7 +36,7 @@
 - OIDC/prod가 현재 같은 provider endpoint를 사용해도 각 profile의 `api.config.env`에 독립적으로 명시합니다.
 - DB, origin, OIDC 등 비민감 profile 값은 `api.config.env`, password/token/key/authorization/header는 `api.secret.env`에 둡니다.
 - 새 profile은 기존 env의 값을 유지합니다. 서버에서는 해당 profile의 값과 기존부터 비어 있던 OIDC·credential 항목을 확인한 뒤 `make oidc-profile-env-check` 또는 `make prod-profile-env-check`를 통과해야 합니다.
-- Airflow의 전체 설정과 인증값은 각 profile의 `airflow.config.env`와 `airflow.secret.env`에서 읽습니다. `AIRFLOW_TRIGGER_TOKEN`은 같은 profile의 `api.secret.env`와 `airflow.secret.env`에서 일치해야 합니다.
+- Airflow 서비스의 설정과 초기 관리자 계정은 각 profile의 `airflow.config.env`와 `airflow.secret.env`에서 읽습니다. Django의 Airflow 조회 계정은 API profile에 별도로 두되 사용자 이름·비밀번호·trigger token은 Airflow profile과 일치해야 합니다.
 - `VITE_*` 값은 브라우저 번들에 포함될 수 있으므로 secret을 넣지 않습니다.
 - 운영 Web은 컨테이너 시작 시 env에서 `/runtime-env.js`를 생성합니다. `VITE_*` 변경은 Web 이미지를 다시 빌드하지 않고 컨테이너 재생성으로 반영합니다.
 - 서비스 고유 infra의 환경별 URL과 credential도 각 profile의 `<service>.config.env`와 `<service>.secret.env`에 둡니다.
@@ -54,7 +54,7 @@
 - dev Compose는 Dockerfile의 public 기본값과 public package source를 유지합니다.
 - torch 전용 wheel index가 필요한 Docker build를 추가할 때는 `http://repository.samsungds.net/repository/proxy-pypi-download.pytorch.org-whl/simple`과 trusted host `repository.samsungds.net`를 별도 pip 설정으로 사용합니다.
 - 내부 token과 외부 credential은 모두 각 profile의 secret env에서 관리합니다. 서버에서 교체한 값의 저장소 반영 여부는 운영 보안 정책을 따릅니다.
-- `make env-profile-key-check`로 env 파일 누락, 파일 내부 중복 key, OIDC/prod 서비스 key 구성을 확인합니다.
+- `make env-profile-key-check`로 env 파일 누락, 파일 내부 중복 key, OIDC/prod 서비스 key 구성과 API/Airflow 공용 인증값 일치를 확인합니다.
 - env/Compose 변경 후 `bash scripts/agent/check_compose_configs.sh`로 dev/OIDC/prod Compose 병합 결과를 확인합니다.
 
 현재 Compose와 Docker build에서 사용하는 사내 mirror 매핑은 아래 항목으로 제한합니다.
@@ -89,6 +89,7 @@
 | `DATA_MOVEMENT_*` / 파일 적재 데이터 | `DATA_MOVEMENT_HOST_PATH`, `DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS`, `DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS`, `DATA_MOVEMENT_M_TKIN_PREVENT_DIR`, `DATA_MOVEMENT_CTTTM_WORKORDER_LIST_DIR`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_DIR`, `DATA_MOVEMENT_EQP_STATUS_CHG_DIR`, `DATA_MOVEMENT_M_INTERLOCK_DIR`, `DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR`, `DATA_MOVEMENT_RACB_LIST_DIR`, `DATA_MOVEMENT_MES_LINE_MAPPING_INFO_DIR`, `DATA_MOVEMENT_STATION_MASTER_DIR` | FTP 등으로 수신한 파일의 host mount와 테이블별 root 경로. 하위 `incoming/processing` 사용. 최근 수정 파일과 stat 값이 변하는 파일은 이번 적재에서 제외 |
 | `FTP_*` / Data Movement FTP | `FTP_USER`, `FTP_PASS`, `FTP_PORT`, `FTP_PASV_ADDRESS`, `FTP_PASV_MIN_PORT`, `FTP_PASV_MAX_PORT` | `data_movement` 업로드용 FTP 계정, 접속 port, passive mode address/port |
 | `OIDC_*` / `ADFS_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `ADFS_CER_PATH`, `ALLOWED_REDIRECT_HOSTS` | ADFS/OIDC 로그인 |
+| Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 전용 Basic Auth |
 | Airflow DAG env | `env/overlays/<profile>/airflow.*.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 config env에서 선택값을 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. 제목 제외값은 쉼표로 구분하며 `*`는 0글자 이상을 나타내는 wildcard입니다. |
@@ -97,7 +98,7 @@
 | OpenWebUI | `OPENWEBUI_*` | 일반 Assistant·Email RAG 답변, 대화방 제목, Observer 분석, `ct_process_comment` contents 요약 생성 |
 | `MAIL_API_*` / Mail API | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID` | 외부 Mail API 전송. 환경변수는 Django 시작 시 settings로 한 번 해석 |
 | MinIO | `MINIO_*` | 메일 asset storage |
-| `VITE_*` / Web | `VITE_BACKEND_URL`, `BACKEND_API_URL`, `VITE_AIRFLOW_BASE_URL`, `VITE_SITE_URL` | 브라우저와 container 내부 API URL |
+| `VITE_*` / Web | `VITE_BACKEND_URL`, `BACKEND_API_URL`, `VITE_SITE_URL` | 브라우저와 container 내부 Django API URL |
 | `VITE_PORTAL_*` / Web | `VITE_PORTAL_PMX_URL`, `VITE_PORTAL_MOSAIC_URL`, `VITE_PORTAL_CONFLUENCE_URL` | Portal 전역 네비게이션 외부 링크. 비어 있으면 메뉴 또는 화면에서 숨김/안내 |
 | Spider 외부 링크 / Web | `VITE_DEFECT_SPIDER_URL` | `/spider` 허브의 Defect Spider 외부 링크. 비어 있으면 카드가 비활성 안내 상태로 표시 |
 | Account UI fixture / Web | `VITE_ACCOUNT_DEV_FIXTURES` | 로컬 계정 화면 예시 데이터. 명시적으로 `1`일 때만 활성화 |
@@ -108,9 +109,10 @@
 
 ### Web profile 환경 변수
 
-- Web 설정은 `env/overlays/<profile>/web.config.env`와 `web.secret.env`만 사용합니다.
+- Web 설정은 `env/overlays/<profile>/web.config.env`만 사용하며 브라우저용 secret env는 두지 않습니다.
 - 개발/OIDC Vite dev server는 기존 `import.meta.env`를 사용하고, 운영 정적 Web은 컨테이너 시작 시 생성한 `/runtime-env.js`를 우선 사용합니다.
-- runtime config 생성 대상은 `VITE_*`와 Web이 사용하는 명시적 API/Airflow/MinIO key로 제한합니다.
+- runtime config 생성 대상은 `VITE_*`와 Web이 사용하는 명시적 Backend/MinIO key로 제한합니다.
+- Airflow Basic Auth는 API profile의 config/secret에만 두며 Web과 `/runtime-env.js`에 전달하지 않습니다.
 
 ### 모니터링 스택
 
@@ -177,7 +179,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx를 함께 띄웁니다.
 2. API는 local API config/secret만 사용합니다.
-3. Web은 local Web config/secret만 사용합니다.
+3. Web은 local Web config만 사용하며, Airflow credential은 API가 보관합니다.
 4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다. Dummy OIDC discovery가 공개한 authorize/token/userinfo URL은 실제 endpoint와 같은 host·port를 사용합니다.
 5. `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 `DEV_AUTO_AFFILIATION_PREFIX` 기반 기본 소속을 부여해 소속 선택 없이 다른 앱을 테스트할 수 있습니다.
 6. `DUMMY_ADFS_*` 기준 dummy 사용자는 migrate와 dev seed refresh에서 staff 슈퍼유저로 보정됩니다.
@@ -188,8 +190,8 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 
 1. OIDC 개발 서버와 운영 서버는 각각 `env/overlays/<profile>` 폴더만 확인합니다.
 2. API endpoint와 credential은 해당 profile의 `api.config.env`와 `api.secret.env`에서 관리합니다.
-3. Airflow 연동값과 credential은 해당 profile의 `airflow.config.env`와 `airflow.secret.env`에서 관리합니다.
-4. `make oidc-profile-env-check` 또는 `make prod-profile-env-check`로 핵심 필수값, placeholder 잔존 여부와 API/Airflow token 일치를 확인합니다.
+3. API가 Airflow를 조회할 때 쓰는 endpoint와 credential은 API profile에 두고, 실제 Airflow 초기 관리자 계정은 Airflow profile에 둡니다. 두 profile의 사용자 이름과 비밀번호는 같은 값으로 설정해야 합니다.
+4. `make oidc-profile-env-check` 또는 `make prod-profile-env-check`로 핵심 필수값, placeholder 잔존 여부와 API/Airflow 사용자 이름·비밀번호·trigger token 일치를 확인합니다.
 5. 모든 API profile은 자신의 config → secret 순서로만 적용합니다.
 6. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
 7. 서버에서 교체한 credential 값의 저장소 반영 여부는 운영 보안 정책에 따릅니다.

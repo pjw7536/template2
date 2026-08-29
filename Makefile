@@ -134,7 +134,7 @@ prod-infra-down:
 	$(COMPOSE_PROD) stop $(PROD_INFRA_SERVICES)
 	$(COMPOSE_PROD) rm -f $(PROD_INFRA_SERVICES)
 
-# profile 파일 존재 여부, 중복 key와 OIDC/prod key 구성을 확인합니다.
+# profile 파일 존재 여부, 중복 key, OIDC/prod key 구성과 Airflow 공용값 일치를 확인합니다.
 env-profile-key-check:
 	./scripts/validate_env_profile_keys.sh
 

@@ -2,6 +2,7 @@
 # 모듈 설명: Line Dashboard·Drone view의 명시적 public facade입니다.
 # =============================================================================
 
+from .airflow import AirflowDagOverviewView
 from .dashboard import (
     DroneTablesView,
     DroneTableUpdateView,
@@ -33,6 +34,7 @@ from .triggers import (
 )
 
 __all__ = [
+    "AirflowDagOverviewView",
     "DroneEarlyInformView",
     "DroneJiraKeyView",
     "DroneMyNotificationRecipientTargetView",

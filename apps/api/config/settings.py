@@ -421,8 +421,15 @@ MINIO_REGION = env("MINIO_REGION", "us-east-1")
 
 
 # =============================
-# Airflow 트리거 인증(공통)
+# Airflow REST API 및 트리거 인증
 # =============================
+AIRFLOW_BASE_URL = (env("AIRFLOW_BASE_URL", "") or "").rstrip("/")
+AIRFLOW_PUBLIC_BASE_URL = (
+    env("AIRFLOW_PUBLIC_BASE_URL", "/airflow") or "/airflow"
+).rstrip("/")
+AIRFLOW_USERNAME = env("AIRFLOW_USERNAME", "") or ""
+AIRFLOW_PASSWORD = env("AIRFLOW_PASSWORD", "") or ""
+AIRFLOW_REQUEST_TIMEOUT_SECONDS = env_strict_int("AIRFLOW_REQUEST_TIMEOUT_SECONDS", 10) or 10
 AIRFLOW_TRIGGER_TOKEN = env("AIRFLOW_TRIGGER_TOKEN", "")
 
 
