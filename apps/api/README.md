@@ -29,8 +29,8 @@ python manage.py runserver 0.0.0.0:8000
 
 | 파일 | 설명 |
 | --- | --- |
-| `env/overlays/<profile>/api.config.env`, `api.secret.env` | profile별 전체 API config/secret |
-| `env/overlays/<profile>/minio.*.env` | profile별 MinIO config/secret |
+| `env/overlays/<profile>/api.env` | profile별 전체 API 환경변수 |
+| `env/overlays/<profile>/minio.env` | profile별 전체 MinIO 환경변수 |
 | `docker-compose.dev.yml` | 개발용 API/Web/Dummy/MinIO/Nginx 조합 |
 
 기본 데이터베이스는 PostgreSQL입니다. Django 기본 DB는 `DJANGO_DB_*` 환경 변수를 사용합니다.

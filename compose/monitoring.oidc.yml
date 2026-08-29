@@ -2,5 +2,4 @@
 services:
   grafana:
     env_file:
-      - ../env/overlays/oidc/grafana.config.env
-      - ../env/overlays/oidc/grafana.secret.env
+      - ../env/overlays/oidc/grafana.env

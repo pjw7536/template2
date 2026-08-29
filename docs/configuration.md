@@ -6,13 +6,10 @@
 
 | 파일 | 사용처 | 역할 |
 | --- | --- | --- |
-| `env/overlays/local/*.config.env` | 로컬 | local 서비스의 전체 설정과 dummy 외부계 연결 |
-| `env/overlays/local/*.secret.env` | 로컬 | local 서비스의 전체 password/token/header |
-| `env/overlays/oidc/*.config.env` | OIDC 개발 서버 | OIDC 서비스의 전체 비민감 설정 |
-| `env/overlays/oidc/*.secret.env` | OIDC 개발 서버 | OIDC 서비스의 전체 credential과 인증 header |
-| `env/overlays/prod/*.config.env` | 운영 서버 | 운영 서비스의 전체 비민감 설정 |
-| `env/overlays/prod/*.secret.env` | 운영 서버 | 운영 서비스의 전체 credential과 인증 header |
-| `env/overlays/test/api.*.env` | API test | 임시 PostgreSQL과 외부 호출 차단 설정 |
+| `env/overlays/local/<service>.env` | 로컬 | local 서비스의 전체 설정, credential과 dummy 외부계 연결 |
+| `env/overlays/oidc/<service>.env` | OIDC 개발 서버 | OIDC 서비스의 전체 설정과 credential |
+| `env/overlays/prod/<service>.env` | 운영 서버 | 운영 서비스의 전체 설정과 credential |
+| `env/overlays/test/api.env` | API test | 임시 PostgreSQL, 테스트 credential과 외부 호출 차단 설정 |
 
 ## 환경별 dependency source 정책
 
@@ -31,15 +28,14 @@
 ## Env / Compose 관리 원칙
 
 - 모든 환경변수는 `env/overlays/<profile>`에서 독립적으로 관리하며 profile 간 값을 상속하지 않습니다.
-- `*.config.env`는 Kubernetes ConfigMap, `*.secret.env`는 Kubernetes Secret으로 옮길 계약입니다.
-- 같은 service에서는 profile config → profile secret 순서로 적용합니다.
-- OIDC/prod가 현재 같은 provider endpoint를 사용해도 각 profile의 `api.config.env`에 독립적으로 명시합니다.
-- DB, origin, OIDC 등 비민감 profile 값은 `api.config.env`, password/token/key/authorization/header는 `api.secret.env`에 둡니다.
+- 각 profile은 서비스별 `<service>.env` 한 파일에 일반 설정과 credential을 함께 둡니다.
+- OIDC/prod가 현재 같은 provider endpoint를 사용해도 각 profile의 `api.env`에 독립적으로 명시합니다.
+- Argo CD 도입 시 현재 계약은 서비스별 env 파일을 ConfigMap 입력으로 사용합니다. 별도 Secret 저장소를 도입할 때만 credential 분리를 다시 설계합니다.
 - 새 profile은 기존 env의 값을 유지합니다. 서버에서는 해당 profile의 값과 기존부터 비어 있던 OIDC·credential 항목을 확인한 뒤 `make oidc-profile-env-check` 또는 `make prod-profile-env-check`를 통과해야 합니다.
-- Airflow 서비스의 설정과 초기 관리자 계정은 각 profile의 `airflow.config.env`와 `airflow.secret.env`에서 읽습니다. Django의 Airflow 조회 계정은 API profile에 별도로 두되 사용자 이름·비밀번호·trigger token은 Airflow profile과 일치해야 합니다.
+- Airflow 서비스의 설정과 초기 관리자 계정은 각 profile의 `airflow.env`에서 읽습니다. Django의 Airflow 조회 계정은 `api.env`에 별도로 두되 사용자 이름·비밀번호·trigger token은 Airflow profile과 일치해야 합니다.
 - `VITE_*` 값은 브라우저 번들에 포함될 수 있으므로 secret을 넣지 않습니다.
 - 운영 Web은 컨테이너 시작 시 env에서 `/runtime-env.js`를 생성합니다. `VITE_*` 변경은 Web 이미지를 다시 빌드하지 않고 컨테이너 재생성으로 반영합니다.
-- 서비스 고유 infra의 환경별 URL과 credential도 각 profile의 `<service>.config.env`와 `<service>.secret.env`에 둡니다.
+- 서비스 고유 infra의 환경별 URL과 credential도 각 profile의 `<service>.env`에 둡니다.
 - Compose 계층은 app과 infra를 분리합니다. 앱 컨테이너는 `compose/*.app.yml`, 운영 보조 서비스는 `compose/*.infra.yml` 또는 infra에서 include하는 파일에 둡니다.
 - Airflow 서비스 정의는 `compose/airflow.yml`에서 관리하고 `compose/airflow.<profile>.yml`로 profile env를 추가합니다. OIDC/prod는 `compose/airflow.internal.yml`도 함께 병합합니다.
 - Airflow internal override에는 사내 image/build와 ODBC mount 차이만 두며 단독으로 실행하지 않습니다.
@@ -53,7 +49,7 @@
 - Airflow ODBC 설정 파일은 repo에 저장하지 않습니다. 운영에서 `airflow/odbc/odbc.ini`, `airflow/odbc/odbcinst.ini`를 제공하면 Compose가 `/usr/local/odbc`에 read-only로 mount합니다.
 - dev Compose는 Dockerfile의 public 기본값과 public package source를 유지합니다.
 - torch 전용 wheel index가 필요한 Docker build를 추가할 때는 `http://repository.samsungds.net/repository/proxy-pypi-download.pytorch.org-whl/simple`과 trusted host `repository.samsungds.net`를 별도 pip 설정으로 사용합니다.
-- 내부 token과 외부 credential은 모두 각 profile의 secret env에서 관리합니다. 서버에서 교체한 값의 저장소 반영 여부는 운영 보안 정책을 따릅니다.
+- 내부 token과 외부 credential은 모두 해당 profile의 서비스 env에서 관리합니다. 서버에서 교체한 값의 저장소 반영 여부는 운영 정책을 따릅니다.
 - `make env-profile-key-check`로 env 파일 누락, 파일 내부 중복 key, OIDC/prod 서비스 key 구성과 API/Airflow 공용 인증값 일치를 확인합니다.
 - env/Compose 변경 후 `bash scripts/agent/check_compose_configs.sh`로 dev/OIDC/prod Compose 병합 결과를 확인합니다.
 
@@ -90,7 +86,7 @@
 | `FTP_*` / Data Movement FTP | `FTP_USER`, `FTP_PASS`, `FTP_PORT`, `FTP_PASV_ADDRESS`, `FTP_PASV_MIN_PORT`, `FTP_PASV_MAX_PORT` | `data_movement` 업로드용 FTP 계정, 접속 port, passive mode address/port |
 | `OIDC_*` / `ADFS_*` / Auth/OIDC | `OIDC_CLIENT_ID`, `OIDC_ISSUER`, `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `ADFS_CER_PATH`, `ALLOWED_REDIRECT_HOSTS` | ADFS/OIDC 로그인 |
 | Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 전용 Basic Auth |
-| Airflow DAG env | `env/overlays/<profile>/airflow.*.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 config env에서 선택값을 override |
+| Airflow DAG env | `env/overlays/<profile>/airflow.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 env에서 선택값을 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. 제목 제외값은 쉼표로 구분하며 `*`는 0글자 이상을 나타내는 wildcard입니다. |
 | Drone POP3/Jira/Mail/Messenger | `DRONE_*`, `KNOX_MESSENGER_*` | Drone SOP 수집과 채널별 전송. 환경변수는 Django 시작 시 settings로 한 번 해석하며 runtime에서 다시 읽지 않음 |
@@ -109,10 +105,10 @@
 
 ### Web profile 환경 변수
 
-- Web 설정은 `env/overlays/<profile>/web.config.env`만 사용하며 브라우저용 secret env는 두지 않습니다.
+- Web 설정은 `env/overlays/<profile>/web.env`만 사용합니다.
 - 개발/OIDC Vite dev server는 기존 `import.meta.env`를 사용하고, 운영 정적 Web은 컨테이너 시작 시 생성한 `/runtime-env.js`를 우선 사용합니다.
 - runtime config 생성 대상은 `VITE_*`와 Web이 사용하는 명시적 Backend/MinIO key로 제한합니다.
-- Airflow Basic Auth는 API profile의 config/secret에만 두며 Web과 `/runtime-env.js`에 전달하지 않습니다.
+- Airflow Basic Auth는 API profile의 `api.env`에만 두며 Web과 `/runtime-env.js`에 전달하지 않습니다.
 
 ### 모니터링 스택
 
@@ -122,7 +118,7 @@
 - nginx는 `/grafana/` 요청 전에 `/api/v1/auth/me`로 Django 세션 로그인 여부를 확인합니다. 미로그인 사용자는 `/api/v1/auth/login`으로 이동합니다.
 - Prometheus는 외부 포트를 열지 않고 `shared-net` 내부에서 Grafana datasource로만 사용합니다.
 - Prometheus 보관 기간은 `PROMETHEUS_RETENTION_TIME`으로 조정합니다. 기본값은 `15d`입니다.
-- Grafana 정책·외부 URL·관리자 credential은 각 서버 profile의 `grafana.config.env`와 `grafana.secret.env`에 있습니다.
+- Grafana 정책·외부 URL·관리자 credential은 각 서버 profile의 `grafana.env`에 있습니다.
 - 기본 dashboard `App Load Overview`는 host CPU/메모리/파일시스템/네트워크와 container별 CPU/메모리 추세를 표시합니다.
 - endpoint별 API latency, HTTP status, Django DB query 추세는 아직 앱 내부 metric이 없으므로 별도 instrumentation을 추가해야 합니다.
 
@@ -144,7 +140,7 @@
 
 ### L3 Spider 메일 링크 배포 체크
 
-- 운영 서버 배포 전 `env/overlays/prod/api.config.env`의 `L3_SPIDER_MAIL_TARGET_URL`을 반드시 확인합니다. OIDC 개발 서버는 `env/overlays/oidc/api.config.env`를 확인합니다.
+- 운영 서버 배포 전 `env/overlays/prod/api.env`의 `L3_SPIDER_MAIL_TARGET_URL`을 반드시 확인합니다. OIDC 개발 서버는 `env/overlays/oidc/api.env`를 확인합니다.
 - `L3_SPIDER_MAIL_TARGET_URL`은 메일 본문의 `L3 Spider에서 확인` 버튼과 이벤트별 `열기` deep link의 base URL입니다.
 - 값은 `/l3_spider`까지 포함한 Web URL로 설정합니다. 예: `https://<운영-host>/l3_spider`
 - 비워두면 backend는 `FRONTEND_BASE_URL + /l3_spider`를 사용합니다. 운영에서 `FRONTEND_BASE_URL`이 기대한 Web host인지 함께 확인합니다.
@@ -159,7 +155,7 @@ API가 직접 읽는 업무 파일 데이터는 신규/변경 시 아래 규칙�
 | 호스트 경로 env | Compose bind mount의 host 경로는 `${<DOMAIN>_DATA_HOST_PATH:-../data/<domain>}` 형식으로 둡니다. | `${PM_COMPARISON_DATA_HOST_PATH:-../data/pm_spider}` |
 | Django data root | Django 설정은 컨테이너 내부 경로를 `<DOMAIN>_DATA_ROOT`로 노출합니다. | `PM_COMPARISON_DATA_ROOT=/data/pm_spider` |
 | 권한 | 원본/참조 데이터는 `:ro`로 read-only mount합니다. 앱이 생성/업로드/처리하는 큐성 데이터만 read-write를 허용합니다. | `:/data/pm_spider:ro` |
-| 동기화 파일 | API 파일 마운트 변경 시 `compose/dev.app.yml`, `compose/oidc.app.yml`, `compose/prod.app.yml`, `env/overlays/*/api.config.env`, 이 문서를 함께 갱신합니다. | PM SPIDER 마운트 변경 |
+| 동기화 파일 | API 파일 마운트 변경 시 `compose/dev.app.yml`, `compose/oidc.app.yml`, `compose/prod.app.yml`, `env/overlays/*/api.env`, 이 문서를 함께 갱신합니다. | PM SPIDER 마운트 변경 |
 | 예외 | DB data dir, `node_modules`, staticfiles, MinIO bucket 등 서비스 내부 상태는 named volume 또는 서비스 고유 경로를 유지할 수 있습니다. | `api_data:/data`, `web_node_modules:/app/node_modules` |
 
 새 마운트에는 `/appdata` 컨테이너 경로를 추가하지 않습니다. 기존 `/appdata` 기반 경로는 해당 데이터 계약을 수정할 때 `/data/<domain>`으로 이동합니다.
@@ -178,8 +174,8 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 ## 로컬 개발 기본 흐름
 
 1. `make dev`가 API, Web, dummy 외부계, MinIO, Nginx를 함께 띄웁니다.
-2. API는 local API config/secret만 사용합니다.
-3. Web은 local Web config만 사용하며, Airflow credential은 API가 보관합니다.
+2. API는 local `api.env`만 사용합니다.
+3. Web은 local `web.env`만 사용하며, Airflow credential은 API가 보관합니다.
 4. ADFS/RAG/LLM/Mail/Jira 호출은 `apps/adfs_dummy`의 `http://adfs:9000` 또는 host 기준 `http://localhost:9102`로 연결됩니다. Dummy OIDC discovery가 공개한 authorize/token/userinfo URL은 실제 endpoint와 같은 host·port를 사용합니다.
 5. `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 `DEV_AUTO_AFFILIATION_PREFIX` 기반 기본 소속을 부여해 소속 선택 없이 다른 앱을 테스트할 수 있습니다.
 6. `DUMMY_ADFS_*` 기준 dummy 사용자는 migrate와 dev seed refresh에서 staff 슈퍼유저로 보정됩니다.
@@ -189,22 +185,23 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 ## 운영/실제 연동 흐름
 
 1. OIDC 개발 서버와 운영 서버는 각각 `env/overlays/<profile>` 폴더만 확인합니다.
-2. API endpoint와 credential은 해당 profile의 `api.config.env`와 `api.secret.env`에서 관리합니다.
+2. API endpoint와 credential은 해당 profile의 `api.env`에서 관리합니다.
 3. API가 Airflow를 조회할 때 쓰는 endpoint와 credential은 API profile에 두고, 실제 Airflow 초기 관리자 계정은 Airflow profile에 둡니다. 두 profile의 사용자 이름과 비밀번호는 같은 값으로 설정해야 합니다.
 4. `make oidc-profile-env-check` 또는 `make prod-profile-env-check`로 핵심 필수값, placeholder 잔존 여부와 API/Airflow 사용자 이름·비밀번호·trigger token 일치를 확인합니다.
-5. 모든 API profile은 자신의 config → secret 순서로만 적용합니다.
+5. 모든 API profile은 자신의 `api.env` 하나만 적용합니다.
 6. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
 7. 서버에서 교체한 credential 값의 저장소 반영 여부는 운영 보안 정책에 따릅니다.
 
 ## 변경 시 동기화 대상
 
-- Auth 계약 변경: `env/overlays/*/api.*.env`, `env/overlays/*/web.*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/api/auth.md`
-- RAG 계약 변경: `env/overlays/*/api.*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`
-- OpenWebUI 계약 변경: `env/overlays/*/api.*.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md`
-- Mail/Email 계약 변경: `env/overlays/*/api.*.env`, `apps/adfs_dummy`, `docs/modules/emails.md`, `docs/api/emails.md`
-- Drone/Jira/Messenger 계약 변경: `env/overlays/*/api.*.env`, `apps/adfs_dummy`, `docs/modules/line-dashboard.md`, `docs/api/line-dashboard.md`
-- Observer 기준정보/로그 계약 변경: `env/overlays/*/api.config.env`, `docs/modules/observer.md`, `docs/api/observer.md`, `docs/data-model.md`
-- L3 Spider 데이터 경로 변경: `env/overlays/*/api.config.env`, `docker-compose*.yml`, `compose/*.yml`, `docs/api/l3-spider.md`, `docs/inventory.md`
+- Auth 계약 변경: `env/overlays/*/api.env`, `env/overlays/*/web.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/api/auth.md`
+- RAG 계약 변경: `env/overlays/*/api.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`
+- OpenWebUI 계약 변경: `env/overlays/*/api.env`, `apps/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md`
+- Mail/Email 계약 변경: `env/overlays/*/api.env`, `apps/adfs_dummy`, `docs/modules/emails.md`, `docs/api/emails.md`
+- Drone/Jira/Messenger 계약 변경: `env/overlays/*/api.env`, `apps/adfs_dummy`, `docs/modules/line-dashboard.md`, `docs/api/line-dashboard.md`
+- Observer 기준정보/로그 계약 변경: `env/overlays/*/api.env`, `docs/modules/observer.md`, `docs/api/observer.md`, `docs/data-model.md`
+- L3 Spider 데이터 경로 변경: `env/overlays/*/api.env`, `docker-compose*.yml`, `compose/*.yml`, `docs/api/l3-spider.md`, `docs/inventory.md`
+
 ## PostgreSQL 필수 확장
 
 - API migration 실행 전 대상 PostgreSQL DB에 `pg_trgm` 확장이 준비되어 있어야 합니다.
@@ -212,7 +209,7 @@ TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../data/tttm_spider}`를 `/data/tt
 - 운영 신규 DB는 DB 관리자가 `CREATE EXTENSION IF NOT EXISTS pg_trgm`을 먼저 실행해야 합니다.
 # 테스트 전용 Compose
 
-PR CI와 로컬 전체 backend 검증은 `docker-compose.test.yml`을 사용합니다. 이 구성은 임시 PostgreSQL과 `api-test`만 실행하며 internal Docker network로 외부 ADFS, RAG, Mail, MinIO 연결을 차단합니다. 테스트 전용 비밀이 아닌 기본값은 `env/overlays/test/api.config.env`에 있습니다.
+PR CI와 로컬 전체 backend 검증은 `docker-compose.test.yml`을 사용합니다. 이 구성은 임시 PostgreSQL과 `api-test`만 실행하며 internal Docker network로 외부 ADFS, RAG, Mail, MinIO 연결을 차단합니다. 테스트 환경변수는 `env/overlays/test/api.env`에 있습니다.
 
 ```bash
 docker compose -f docker-compose.test.yml run --rm api-test python manage.py test

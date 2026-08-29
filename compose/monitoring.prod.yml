@@ -2,5 +2,4 @@
 services:
   grafana:
     env_file:
-      - ../env/overlays/prod/grafana.config.env
-      - ../env/overlays/prod/grafana.secret.env
+      - ../env/overlays/prod/grafana.env

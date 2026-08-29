@@ -20,11 +20,12 @@
 ## 2026-08-29: Argo CD 준비형 환경 변수 계약
 
 - 환경 변수 파일은 `env/overlays/<profile>`만 사용하고 profile 간 상속을 두지 않는다.
-- 각 profile의 `*.config.env`와 `*.secret.env`는 완결된 ConfigMap/Secret 후보로 관리한다.
-- Compose는 해당 profile의 config, secret 순서로만 값을 합성한다.
+- 각 profile은 서비스별 `<service>.env` 한 파일에 설정과 credential을 함께 관리한다.
+- Compose는 해당 profile의 서비스 env 파일만 직접 주입한다.
 - OIDC/prod key 누락과 파일 내부 중복은 `scripts/validate_env_profile_keys.sh`로 검사한다.
 - 운영 Web의 `VITE_*`와 명시적 Web runtime key는 이미지 빌드 시 고정하지 않고 컨테이너 시작 시 `/runtime-env.js`로 생성한다.
-- Kubernetes, Kustomize, Helm, Argo CD manifest는 별도 도입 단계에서 이 env 계약을 소비하며 이번 정리 범위에는 포함하지 않는다.
+- Kubernetes, Kustomize, Helm, Argo CD manifest는 별도 도입 단계에서 이 단일 env 계약을 ConfigMap 입력으로 소비하며 이번 정리 범위에는 포함하지 않는다.
+- 외부 Secret 저장소를 도입할 때만 credential 분리를 새 계약으로 다시 설계한다.
 
 ## 2026-06-19: backend boundary audit 1차 도입
 

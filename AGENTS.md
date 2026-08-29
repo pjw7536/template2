@@ -89,7 +89,7 @@ Detailed execution workflows are delegated to `.codex/skills/*`.
 - Compose host paths must be env-driven as `${<DOMAIN>_DATA_HOST_PATH:-../data/<domain>}` unless an existing shared host path is being reused.
 - Django settings must expose the container path as `<DOMAIN>_DATA_ROOT`; file-level settings may use `<DOMAIN>_<NAME>_PATH` only when the source contract requires individual files.
 - Source/reference datasets must be mounted read-only with `:ro`; use read-write mounts only for app-owned uploads, generated files, or processing queues.
-- When an API file mount is added or changed, keep `compose/dev.app.yml`, `compose/oidc.app.yml`, `compose/prod.app.yml`, `env/overlays/*/api.config.env`, and `docs/configuration.md` in sync.
+- When an API file mount is added or changed, keep `compose/dev.app.yml`, `compose/oidc.app.yml`, `compose/prod.app.yml`, `env/overlays/*/api.env`, and `docs/configuration.md` in sync.
 - Do not introduce new `/appdata` container paths. Existing `/appdata` paths should move to `/data/<domain>` when their mount contract is touched.
 
 ## 4. Output Scope Control

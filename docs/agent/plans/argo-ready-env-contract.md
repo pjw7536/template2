@@ -51,6 +51,7 @@
 
 ## 진행 기록
 - 2026-08-29: 사용자 결정에 따라 Web runtime config와 profile별 config/secret 재구성을 함께 진행하기로 했다.
+- 2026-08-29: 후속 결정으로 config/secret 분리를 제거하고 profile별 `<service>.env` 단일 파일 계약으로 대체했다.
 - 2026-08-29: dev/OIDC/prod/test Compose의 최종 environment hash가 재구성 전과 일치함을 확인했다.
 - 2026-08-29: Web runtime env 생성기·reader·no-cache 경로를 추가하고 기존 Vite build arg를 제거했다.
 - 2026-08-29: Compose, 문서, frontend boundary, agent test, skill validator, Web runtime 단위 테스트·빌드·lint를 통과했다.

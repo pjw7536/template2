@@ -2,15 +2,12 @@
 services:
   airflow-init:
     env_file:
-      - ../env/overlays/oidc/airflow.config.env
-      - ../env/overlays/oidc/airflow.secret.env
+      - ../env/overlays/oidc/airflow.env
 
   airflow-webserver:
     env_file:
-      - ../env/overlays/oidc/airflow.config.env
-      - ../env/overlays/oidc/airflow.secret.env
+      - ../env/overlays/oidc/airflow.env
 
   airflow-scheduler:
     env_file:
-      - ../env/overlays/oidc/airflow.config.env
-      - ../env/overlays/oidc/airflow.secret.env
+      - ../env/overlays/oidc/airflow.env

@@ -23,8 +23,7 @@ services:
     build:
       context: ./apps/api
     env_file:
-      - ./env/overlays/test/api.config.env
-      - ./env/overlays/test/api.secret.env
+      - ./env/overlays/test/api.env
     depends_on:
       test-postgres:
         condition: service_healthy

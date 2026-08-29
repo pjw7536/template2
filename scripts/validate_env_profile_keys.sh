@@ -5,33 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_DIR="$ROOT_DIR/env"
 
 required_files=(
-  overlays/local/api.config.env
-  overlays/local/api.secret.env
-  overlays/local/web.config.env
-  overlays/local/airflow.config.env
-  overlays/local/airflow.secret.env
-  overlays/local/minio.config.env
-  overlays/local/minio.secret.env
-  overlays/oidc/api.config.env
-  overlays/oidc/api.secret.env
-  overlays/oidc/web.config.env
-  overlays/oidc/airflow.config.env
-  overlays/oidc/airflow.secret.env
-  overlays/oidc/minio.config.env
-  overlays/oidc/minio.secret.env
-  overlays/oidc/grafana.config.env
-  overlays/oidc/grafana.secret.env
-  overlays/prod/api.config.env
-  overlays/prod/api.secret.env
-  overlays/prod/web.config.env
-  overlays/prod/airflow.config.env
-  overlays/prod/airflow.secret.env
-  overlays/prod/minio.config.env
-  overlays/prod/minio.secret.env
-  overlays/prod/grafana.config.env
-  overlays/prod/grafana.secret.env
-  overlays/test/api.config.env
-  overlays/test/api.secret.env
+  overlays/local/api.env
+  overlays/local/web.env
+  overlays/local/airflow.env
+  overlays/local/minio.env
+  overlays/oidc/api.env
+  overlays/oidc/web.env
+  overlays/oidc/airflow.env
+  overlays/oidc/minio.env
+  overlays/oidc/grafana.env
+  overlays/prod/api.env
+  overlays/prod/web.env
+  overlays/prod/airflow.env
+  overlays/prod/minio.env
+  overlays/prod/grafana.env
+  overlays/test/api.env
 )
 
 for relative_path in "${required_files[@]}"; do
@@ -40,6 +28,17 @@ for relative_path in "${required_files[@]}"; do
     exit 1
   fi
 done
+
+# 단일 서비스 env 계약을 되돌리는 이전 config/secret 파일은 허용하지 않습니다.
+legacy_env_file="$(
+  find "$ENV_DIR/overlays" -type f \
+    \( -name '*.config.env' -o -name '*.secret.env' \) \
+    -print -quit
+)"
+if [[ -n "$legacy_env_file" ]]; then
+  echo "이전 config/secret 환경변수 파일을 단일 env로 통합해야 합니다: $legacy_env_file" >&2
+  exit 1
+fi
 
 if find "$ENV_DIR/base" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
   echo "env/base에는 환경변수 파일을 둘 수 없습니다." >&2
@@ -87,15 +86,11 @@ compare_server_key_sets() {
   fi
 }
 
-compare_server_key_sets api.config.env
-compare_server_key_sets api.secret.env
-compare_server_key_sets web.config.env 1
-compare_server_key_sets airflow.config.env
-compare_server_key_sets airflow.secret.env
-compare_server_key_sets minio.config.env
-compare_server_key_sets minio.secret.env
-compare_server_key_sets grafana.config.env
-compare_server_key_sets grafana.secret.env
+compare_server_key_sets api.env
+compare_server_key_sets web.env 1
+compare_server_key_sets airflow.env
+compare_server_key_sets minio.env
+compare_server_key_sets grafana.env
 
 read_env_value() {
   local env_file="$1"
@@ -136,9 +131,9 @@ compare_profile_values() {
 }
 
 for profile in local oidc prod; do
-  compare_profile_values "$profile" api.config.env AIRFLOW_USERNAME airflow.config.env _AIRFLOW_WWW_USER_USERNAME "Airflow 사용자 이름"
-  compare_profile_values "$profile" api.secret.env AIRFLOW_PASSWORD airflow.secret.env _AIRFLOW_WWW_USER_PASSWORD "Airflow 비밀번호"
-  compare_profile_values "$profile" api.secret.env AIRFLOW_TRIGGER_TOKEN airflow.secret.env AIRFLOW_TRIGGER_TOKEN "Airflow trigger token"
+  compare_profile_values "$profile" api.env AIRFLOW_USERNAME airflow.env _AIRFLOW_WWW_USER_USERNAME "Airflow 사용자 이름"
+  compare_profile_values "$profile" api.env AIRFLOW_PASSWORD airflow.env _AIRFLOW_WWW_USER_PASSWORD "Airflow 비밀번호"
+  compare_profile_values "$profile" api.env AIRFLOW_TRIGGER_TOKEN airflow.env AIRFLOW_TRIGGER_TOKEN "Airflow trigger token"
 done
 
 echo "env profile key validation passed"

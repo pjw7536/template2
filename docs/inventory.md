@@ -104,7 +104,7 @@
 | `env/overlays/prod/*` | 운영 API/Web/Airflow/MinIO/Grafana 설정·credential |
 | `env/overlays/test/*` | 격리된 backend test 설정과 credential |
 
-각 service는 해당 profile의 config → secret 순서로만 적용합니다.
+각 service는 해당 profile의 `<service>.env` 하나만 적용합니다.
 서버 운영값은 `env/overlays/oidc` 또는 `env/overlays/prod` 폴더만 확인하면 됩니다.
 운영 Web은 `/runtime-env.js`를 컨테이너 시작 시 생성하므로 `VITE_*` 변경에 이미지 재빌드가 필요하지 않습니다.
 

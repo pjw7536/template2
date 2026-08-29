@@ -49,3 +49,4 @@
 - 2026-08-29: 정렬 전후 파일별 key/value hash가 일치하며 env key, dev/OIDC/prod/test Compose와 문서 검증을 통과했다.
 - 2026-08-29: OIDC/prod server 검증은 기존부터 비어 있는 OIDC/ADFS 필수값만 동일하게 보고함을 확인했다.
 - 2026-08-29: 후속 Airflow backend proxy 전환에서 빈 Web secret env 3개를 제거했으며, 최종 27개 env의 카테고리 형식을 유지했다.
+- 2026-08-29: 후속 단일 env 통합에서 카테고리 형식을 유지한 채 최종 파일 수를 15개로 줄였다.

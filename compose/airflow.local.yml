@@ -2,15 +2,12 @@
 services:
   airflow-init:
     env_file:
-      - ../env/overlays/local/airflow.config.env
-      - ../env/overlays/local/airflow.secret.env
+      - ../env/overlays/local/airflow.env
 
   airflow-webserver:
     env_file:
-      - ../env/overlays/local/airflow.config.env
-      - ../env/overlays/local/airflow.secret.env
+      - ../env/overlays/local/airflow.env
 
   airflow-scheduler:
     env_file:
-      - ../env/overlays/local/airflow.config.env
-      - ../env/overlays/local/airflow.secret.env
+      - ../env/overlays/local/airflow.env

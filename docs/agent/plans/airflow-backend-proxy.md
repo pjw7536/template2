@@ -19,7 +19,7 @@
 
 ## 설계
 - Web은 `GET /api/v1/line-dashboard/airflow/dag-overview`만 Django session으로 호출한다.
-- Django service는 내부 `AIRFLOW_BASE_URL`과 API config/secret의 계정으로 Airflow REST API를 호출한다.
+- Django service는 내부 `AIRFLOW_BASE_URL`과 `api.env`의 계정으로 Airflow REST API를 호출한다.
 - response는 기존 `baseUrl`, `fetchedAt`, `totals`, `dags` 형태를 유지한다.
 - 개별 DAG 최근 실행 조회 실패는 해당 DAG의 `latestRun=null`로 격리하고 목록 조회 실패는 502로 반환한다.
 - Airflow profile env의 `_AIRFLOW_WWW_USER_*`와 API profile env의 조회 계정이 일치하는지 서버 검증에서 확인한다.

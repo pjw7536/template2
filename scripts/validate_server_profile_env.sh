@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE_CONFIG_ENV_FILE="${1:?사용법: validate_server_profile_env.sh <profile-config-env-file> <profile-secret-env-file>}"
-PROFILE_SECRET_ENV_FILE="${2:?사용법: validate_server_profile_env.sh <profile-config-env-file> <profile-secret-env-file>}"
-PROFILE_ENV_DIR="${PROFILE_CONFIG_ENV_FILE%/*}"
-AIRFLOW_PROFILE_CONFIG_ENV_FILE="${AIRFLOW_PROFILE_CONFIG_ENV_FILE:-$PROFILE_ENV_DIR/airflow.config.env}"
-AIRFLOW_PROFILE_SECRET_ENV_FILE="${AIRFLOW_PROFILE_SECRET_ENV_FILE:-$PROFILE_ENV_DIR/airflow.secret.env}"
+PROFILE_ENV_FILE="${1:?사용법: validate_server_profile_env.sh <profile-env-file>}"
+PROFILE_ENV_DIR="${PROFILE_ENV_FILE%/*}"
+AIRFLOW_PROFILE_ENV_FILE="${AIRFLOW_PROFILE_ENV_FILE:-$PROFILE_ENV_DIR/airflow.env}"
 
 read_env_value() {
   local key="$1"
@@ -112,36 +110,34 @@ AIRFLOW_COMMON_REQUIRED_KEYS=(
 
 validate_env_group \
   "서버 profile" \
-  "$PROFILE_CONFIG_ENV_FILE" \
-  "$PROFILE_SECRET_ENV_FILE" \
+  "$PROFILE_ENV_FILE" \
   -- \
   "${PROFILE_REQUIRED_KEYS[@]}"
 validate_env_group \
   "Airflow profile env" \
-  "$AIRFLOW_PROFILE_CONFIG_ENV_FILE" \
-  "$AIRFLOW_PROFILE_SECRET_ENV_FILE" \
+  "$AIRFLOW_PROFILE_ENV_FILE" \
   -- \
   "${AIRFLOW_COMMON_REQUIRED_KEYS[@]}"
 
-api_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$PROFILE_SECRET_ENV_FILE")"
-airflow_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$AIRFLOW_PROFILE_SECRET_ENV_FILE")"
+api_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$PROFILE_ENV_FILE")"
+airflow_trigger_token="$(read_env_value AIRFLOW_TRIGGER_TOKEN "$AIRFLOW_PROFILE_ENV_FILE")"
 if [[ "$api_trigger_token" != "$airflow_trigger_token" ]]; then
   echo "API profile과 Airflow profile의 AIRFLOW_TRIGGER_TOKEN 값이 일치하지 않습니다." >&2
   exit 1
 fi
 
-api_airflow_username="$(read_env_value AIRFLOW_USERNAME "$PROFILE_CONFIG_ENV_FILE")"
-airflow_username="$(read_env_value _AIRFLOW_WWW_USER_USERNAME "$AIRFLOW_PROFILE_CONFIG_ENV_FILE")"
+api_airflow_username="$(read_env_value AIRFLOW_USERNAME "$PROFILE_ENV_FILE")"
+airflow_username="$(read_env_value _AIRFLOW_WWW_USER_USERNAME "$AIRFLOW_PROFILE_ENV_FILE")"
 if [[ "$api_airflow_username" != "$airflow_username" ]]; then
   echo "API profile과 Airflow profile의 관리자 username이 일치하지 않습니다." >&2
   exit 1
 fi
 
-api_airflow_password="$(read_env_value AIRFLOW_PASSWORD "$PROFILE_SECRET_ENV_FILE")"
-airflow_password="$(read_env_value _AIRFLOW_WWW_USER_PASSWORD "$AIRFLOW_PROFILE_SECRET_ENV_FILE")"
+api_airflow_password="$(read_env_value AIRFLOW_PASSWORD "$PROFILE_ENV_FILE")"
+airflow_password="$(read_env_value _AIRFLOW_WWW_USER_PASSWORD "$AIRFLOW_PROFILE_ENV_FILE")"
 if [[ "$api_airflow_password" != "$airflow_password" ]]; then
   echo "API profile과 Airflow profile의 관리자 password가 일치하지 않습니다." >&2
   exit 1
 fi
 
-echo "server profile env validation passed: $PROFILE_CONFIG_ENV_FILE + $PROFILE_SECRET_ENV_FILE"
+echo "server profile env validation passed: $PROFILE_ENV_FILE"

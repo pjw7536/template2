@@ -3,8 +3,7 @@ services:
     image: repository.samsungds.net/proxy-docker-registry-1.docker.io/minio/minio:latest
     command: server /data --console-address ":9001"
     env_file:
-      - ../env/overlays/oidc/minio.config.env
-      - ../env/overlays/oidc/minio.secret.env
+      - ../env/overlays/oidc/minio.env
     volumes:
       - "minio_data:/data"
     ports:
@@ -20,8 +19,7 @@ services:
     depends_on:
       - minio
     env_file:
-      - ../env/overlays/oidc/minio.config.env
-      - ../env/overlays/oidc/minio.secret.env
+      - ../env/overlays/oidc/minio.env
     entrypoint:
       - /bin/sh
       - -c
@@ -48,10 +46,8 @@ services:
         PIP_INDEX_URL: http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple
         PIP_TRUSTED_HOST: repository.samsungds.net
     env_file:
-      - ../env/overlays/oidc/api.config.env
-      - ../env/overlays/oidc/api.secret.env
-      - ../env/overlays/oidc/minio.config.env
-      - ../env/overlays/oidc/minio.secret.env
+      - ../env/overlays/oidc/api.env
+      - ../env/overlays/oidc/minio.env
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: emails
@@ -90,7 +86,7 @@ services:
         NPM_REGISTRY: http://repository.samsungds.net/repository/proxy-npm-registry.npmjs.org
         NPM_STRICT_SSL: "false"
     env_file:
-      - ../env/overlays/oidc/web.config.env
+      - ../env/overlays/oidc/web.env
     depends_on:
       - api
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
