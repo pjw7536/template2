@@ -1,6 +1,6 @@
 # 기존 Keycloak + Airflow 서버 기동
 
-[배포 문서 안내](../../../README.md)
+[배포 문서 안내](../../../README.md) · [입문 가이드](../kubernetes/README.md)
 
 ## 앱별 순차 배포
 
@@ -53,7 +53,8 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n etch-sso get pods
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
 ```
 
-`keycloak-airflow` 선택은 `deploy/keycloak`, `deploy/airflow`, `deploy/shared`, `airflow`, `docs`를 포함합니다.
+`keycloak-airflow` 기본 선택은 `deploy/keycloak`, `deploy/airflow`, `deploy/shared`, `docs`를 포함합니다.
+Airflow 빌드 소스 `apps/airflow`는 `--with-source`를 지정할 때만 포함합니다.
 `local/`, Portal·Monitoring 앱 소스는 필요하지 않습니다.
 새 clone이라면 [선택 체크아웃 안내](../../../SERVER_CHECKOUT.md)를 따라 `deploy/shared`를 먼저 받은 뒤 같은 선택 명령을 사용합니다.
 

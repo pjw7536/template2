@@ -1,8 +1,9 @@
 # Portal 배포·환경설정
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-사내 Kubernetes에 Portal을 올릴 때는 **`env/prod/`만 수정**합니다.
+사내 Kubernetes의 Portal 환경설정은 **`env/prod/`**에 작성합니다.
+이미지·Ingress·영속 저장소 placeholder는 [운영 overlay](k8s/overlays/prod/README.md)에서도 실제 값으로 준비합니다.
 현재 운영 중인 Keycloak 설정은 `../keycloak/env/prod.env`에 그대로 둡니다.
 환경설정은 `env/`, CI 정의는 `compose/test.yml`, Kubernetes와 프록시 정의는 `k8s/`에서 관리합니다. 로컬 개발 설정과 실행 도구는
 저장소 루트의 [local/](../../local/README.md)에 있습니다.

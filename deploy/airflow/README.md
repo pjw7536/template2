@@ -1,8 +1,8 @@
 # Airflow 단일 서버 Kubernetes 배포
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-서버 한 대의 Kubernetes에서 Airflow와 PostgreSQL을 함께 실행합니다.
+기존 Kubernetes 클러스터에서 선택한 Worker 한 대에 Airflow와 내부 PostgreSQL을 함께 실행합니다.
 Airflow는 Apache 공식 Helm chart **1.22.0**, 실행 이미지는 기존 **Airflow 2.11.0**,
 Executor는 **LocalExecutor**입니다. Redis·Celery worker·외부 DB 서버는 사용하지 않습니다.
 DAG와 관리자 초기화 코드는 이미지에 포함하고, DB와 로그는 같은 노드의 영구 디스크에 저장합니다.
@@ -52,7 +52,9 @@ DAG·플러그인·Dockerfile 원본은 [apps/airflow](../../apps/airflow/README
 APT/PIP mirror, BigDataQuery Python·ODBC 설치 옵션, versioned driver URL을 다시 옮길 필요가 없습니다.
 
 필요 도구는 **Python 3.10+**, **Helm 3.19.0+**, kubectl이며,
-Kubernetes는 **1.30.13 이상**이어야 합니다. 새 서버에는 단일 노드 Kubernetes(예: K3s)를 먼저 설치합니다.
+Kubernetes는 chart 요구사항상 **1.30.13 이상**이어야 합니다. 이는 현재 사내 설치 버전 확인값이나 신규 설치 권장 버전이 아닙니다.
+사내 배포는 [현재 클러스터](../shared/docs/infrastructure/cluster.md)를 사용합니다. 빈 서버 구축은
+[설치 기준 조회](../shared/docs/kubernetes/01-baseline.md) 후 확인된 도구·버전으로 준비합니다.
 이 도구는 Kubernetes 자체나 Ingress controller를 설치하지 않습니다.
 Ingress 없이도 port-forward로 UI에 접속할 수 있습니다.
 
@@ -93,7 +95,7 @@ local PV는 디렉터리를 자동 생성하지 않으며 20Gi 선언은 파일�
 DB·로그 디스크 여유 공간을 감시해야 합니다. 기존 Compose와 같이 로그를 자동 삭제하지 않습니다.
 자동 정리가 필요하면 운영 보관 정책을 정한 뒤 `scheduler.logGroomerSidecar`를 설정합니다.
 RWO 로그 PVC를 여러 Pod가 공유할 수 있도록 모두 같은 노드에 고정했습니다.
-서버가 한 대여서 서버·디스크 장애 시 전체가 중단됩니다.
+Airflow와 내부 DB가 한 Worker에 묶이므로 해당 Worker·디스크 장애 시 Airflow가 중단됩니다.
 
 ## 2. 공식 chart 준비
 

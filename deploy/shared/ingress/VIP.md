@@ -1,6 +1,10 @@
 # APP VIP로 Keycloak과 Airflow 연결
 
-[공용 Ingress 안내](README.md)
+[공용 Ingress 안내](README.md) · [입문 가이드](../docs/kubernetes/README.md)
+
+처음 배포할 때는 [앱별 순서](../docs/kubernetes/05-applications.md)를 따릅니다.
+이 문서 3절의 `server-up`은 이미 Keycloak이 있는 환경의 통합 운용을 위한 호환 경로입니다.
+아래 TCP 전달·TLS 종료는 목표 구성이며 실제 LB 설정은 인프라 담당자와 대조합니다.
 
 현재 인프라팀에 등록한 값은 다음과 같습니다.
 

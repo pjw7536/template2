@@ -26,7 +26,8 @@ Traefik Service는 ClusterIP를 유지합니다. LB는 Worker의 hostPort 443으
 
 ## 1. 현재 값과 목표 확인 — CP1
 
-공유 대화의 서버 출력에서 확인된 예시는 다음과 같습니다. 현재 상태는 아래 명령으로 다시 확인합니다.
+2026-09-16 사용자 확인에서 두 Worker는 모두 Ready입니다. 아래 추가 대상은 당시 작업의 예시이며
+이미 등록된 노드의 join을 반복하지 않습니다. 최신 [현황](../docs/infrastructure/cluster.md)과 아래 조회 결과를 대조합니다.
 
 | 항목 | 값 |
 | --- | --- |

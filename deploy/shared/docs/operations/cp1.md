@@ -2,9 +2,10 @@
 
 [배포 문서 안내](../../../README.md)
 
-현재 **기존 Keycloak + Airflow 기동**은 [서버 실행 안내](server-start.md)를 우선 따릅니다.
-`keycloak-airflow` 선택 checkout과 `make server-up`으로 공용 진입점 감시 범위를 보존합니다.
-아래 내용은 Keycloak 단독 배포와 기존 CP1 설정 보관 절차입니다.
+처음 배포하는 담당자는 [입문 가이드](../kubernetes/README.md)와 [앱별 배포](../kubernetes/05-applications.md)를 따릅니다.
+권장 경로는 `keycloak-check/up`, `airflow-check/up`이며 `make server-up`은 기존 통합 운용의 호환 명령입니다.
+아래는 **Keycloak 단독 수동 YAML 배포**와 기존 CP1 설정 보관 절차입니다.
+공용 앱 또는 두 Worker VIP를 연결한 환경에서는 4~5절의 정적 스택 apply를 실행하지 않고 앱별 도구를 사용합니다.
 
 CP 3대의 IP·노드 정보와 **2026-09-15 APP VIP·DNS·두 Worker Backend 현황**은
 [사내 운영 클러스터 현황](../infrastructure/cluster.md)에 함께 기록합니다.
@@ -23,7 +24,7 @@ APP VIP 환경에서는 [VIP 실행 절차](../../ingress/VIP.md)에 따라 Trae
 CP1
 /appdata/
 ├── etchax/                         # Git checkout: 여기서 pull과 배포 실행
-│   ├── apps/                       # Portal 선택 시 앱 소스
+│   ├── apps/                       # --with-source 선택 시 앱 소스
 │   ├── deploy/
 │   │   ├── keycloak/
 │   │   │   ├── env/                # 설정 예시
@@ -74,7 +75,8 @@ CP1의 kubeconfig는 배포 계정의 기존 `$HOME/.kube/config` 또는 조직�
 
 배포 계정에는 사내 Git 읽기 권한과 대상 클러스터의 배포 권한이 필요합니다.
 Git, Bash, Make, kubectl(Kustomize 포함), OpenSSL을 준비합니다.
-이 Keycloak 배포 절차를 실행하기 위해 CP1에 Python·Node.js·Docker를 설치할 필요는 없습니다.
+아래 수동 YAML 절차만 사용할 때는 Python·Node.js·Docker가 필요하지 않습니다.
+권장 `make keycloak-check/up`은 Python 3.10+가 필요하며 Helm·Docker는 필요하지 않습니다.
 이미지는 Worker에서 registry로부터 가져옵니다.
 
 `/appdata/etchax`는 전용 배포 계정이 쓸 수 있도록 준비합니다. 기존 checkout이 있다면

@@ -1,6 +1,6 @@
 # 사내 Keycloak 스택 배포
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 ## 서버에 복사한 뒤 넣을 파일
 
@@ -55,8 +55,8 @@ worker 파일 존재·권한·이미지 pull·실제 HTTPS 접속은 서버에�
 `k8s/claims/`는 사용자 프로필·속성 매핑을 담당합니다.
 파일별 역할과 적용 순서는 [Kubernetes 폴더 안내](k8s/README.md)를 참고합니다.
 
-CP1에는 `rendered/internal-keycloak-stack.yaml`과
-`rendered/internal-keycloak-claim-mappers.yaml` 두 파일만 전달합니다.
+수동 단독 YAML 전달 방식을 선택한 경우 CP1에 `rendered/internal-keycloak-stack.yaml`과
+`rendered/internal-keycloak-claim-mappers.yaml`을 전달합니다. 권장 앱별 배포 도구는 선택 checkout을 사용합니다.
 프로필·mapper 관리는 Job으로 통일하며 별도 Python 도구는 사용하지 않습니다.
 
 이 디렉터리는 `khplane01w09`(`10.172.40.87`) worker에 다음 리소스를 배포합니다.
@@ -70,14 +70,14 @@ CP1에는 `rendered/internal-keycloak-stack.yaml`과
 단독 스택의 Traefik은 `etch-sso`만 감시합니다. Ingress는 기존 도메인과 `keycloak-tls`
 Secret을 유지하며 annotation으로 `websecure` entrypoint와 TLS 사용을 명시합니다. Portal 연결은
 [Portal 운영 안내](../portal/k8s/overlays/prod/README.md)의 순서로 권한을 먼저 준비한 뒤
-선택 패치를 적용합니다. 단독 스택을 다시 적용하면 Portal 감시도 해제되므로 Portal을
-운영 중이라면 선택 패치를 다시 적용합니다.
+감시 범위를 확장합니다. 정적 단독 스택을 직접 적용하면 Portal 감시도 해제될 수 있습니다.
+공유 환경의 재배포는 기존 감시 범위·VIP를 보존하는 `make keycloak-up`을 사용합니다.
 
 현재 구성은 단일 worker와 로컬 디스크에 종속되므로 HA가 아닙니다. worker 또는 디스크
 장애에 대비한 PostgreSQL 외부 백업은 별도로 준비해야 합니다.
 
-기존 Keycloak에 Airflow를 연결하는 현재 단계는 [서버 기동 안내](../shared/docs/operations/server-start.md)의
-`make server-up`을 사용합니다. 이 명령은 실제 Traefik 감시 범위를 보존하므로 공유 앱 연결 후의 재적용에 사용합니다.
+기존 Keycloak에 Airflow를 연결할 때는 [Airflow 안내](../airflow/README.md)의 `make airflow-up`을 사용합니다.
+[서버 기동 안내](../shared/docs/operations/server-start.md)의 `make server-up`은 기존 통합 운용을 위한 호환 경로입니다.
 Traefik 소스는 [공용 ingress](../shared/ingress/README.md)에 있으며 현재 Kustomize 진입점이 함께 참조합니다.
 
 ## 1. Worker 사전 준비
@@ -100,8 +100,9 @@ PFX 추출, Fullchain 생성, Secret 등록, Ubuntu·Windows 신뢰 설정은
 [HTTPS 인증서와 Secret 운영 가이드](TLS.md)를 따릅니다. Secret은 별도 Pod가 아니라
 Kubernetes에 저장하는 데이터이며 `keycloak-tls`는 Traefik이 사용합니다.
 
-Keycloak 공개 DNS는 `etch-sso.samsungds.net`입니다. DNS A record는
-`10.172.40.87`을 가리켜야 하며, TLS 인증서 SAN에도 같은 이름이 포함되어야 합니다.
+Keycloak 공개 DNS는 `etch-sso.samsungds.net`입니다. 기존 Worker 직결과 APP VIP 전환 여부는
+[현황](../shared/docs/infrastructure/cluster.md)을 확인합니다. APP VIP 사용 시 직접 HTTPS·로그인 검증 후
+DNS를 전환하며 TLS 인증서 SAN에는 공개 DNS가 포함되어야 합니다.
 
 ```bash
 rg -n 'example.invalid|replace-me' deploy/keycloak/k8s
@@ -112,6 +113,9 @@ rg -n 'example.invalid|replace-me' deploy/keycloak/k8s
 TLS 인증서의 DNS 이름도 동일해야 합니다.
 
 ## 3. Namespace와 Secret 생성
+
+아래 3~4절은 수동 단독 배포 경로입니다. 위의 `make keycloak-up`으로 준비했다면 반복하지 않습니다.
+특히 공용 앱·APP VIP 구성에서는 4절의 정적 스택 apply 대신 앱별 도구를 사용합니다.
 
 실제 credential은 Git 제외 파일인 `deploy/keycloak/env/prod.env`에서 관리합니다.
 `deploy/keycloak/env/prod.env.example`을 참고하며 기존 실제 파일이 있으면 덮어쓰지 않습니다.

@@ -1,6 +1,6 @@
 # Headlamp 서버 운영 UI
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 Keycloak/OIDC 연동 없이 Kubernetes ServiceAccount 토큰으로 로그인합니다.
 기존 로컬 Headlamp처럼 `view`와 nodes/namespaces 조회 권한을 사용합니다.

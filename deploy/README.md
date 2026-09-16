@@ -13,6 +13,7 @@ deploy/
 ├── monitoring/               # kube-prometheus-stack Helm 배포
 └── shared/
     ├── docs/
+    │   ├── kubernetes/       # 입문·환경 조회·구축·배포·검증·운영 가이드
     │   ├── configuration/    # 앱 공통 환경설정·Secret 입력 규칙
     │   ├── operations/       # 서버 최초 기동·CP1 갱신 절차
     │   └── infrastructure/   # 클러스터·노드·VIP·DNS 현황
@@ -25,15 +26,23 @@ deploy/
 
 ## 처음 읽는 순서
 
+Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/docs/kubernetes/README.md)**에서 시작합니다.
+개념 → 현재 환경 조회 → 빈 서버 준비 → 클러스터 구축 → 앱 배포 → 접속 검증 → 운영 순서입니다.
+현재 OS·설치 도구·CNI는 미확정이므로 빈 서버 설치 명령은 조회 후 보완해야 합니다.
+이미 Ready인 클러스터를 사용한다면 가이드의 환경 조회 후 공통 배포 준비로 이동합니다.
+
+기존 운영 담당자의 목적별 바로가기는 다음과 같습니다.
+
 1. [클러스터 현황](shared/docs/infrastructure/cluster.md)에서 대상 노드·VIP와 확인 시점을 확인합니다.
 2. [선택 체크아웃](SERVER_CHECKOUT.md)으로 필요한 앱을 받습니다.
 3. [환경설정](shared/docs/configuration/environment.md)에서 설정 소유권과 입력 위치를 확인합니다.
-4. 기존 Keycloak에 Airflow를 연결하려면 [서버 최초 준비](shared/docs/operations/server-start.md)를 수행한 뒤, APP VIP 환경의 [VIP 적용 절차](shared/ingress/VIP.md)를 따릅니다. 앱별 배포는 아래 전용 문서에서 시작합니다.
+4. [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)와 아래 전용 문서에서 검사·적용·확인을 진행합니다. 기존 통합 운용은 [서버 기동](shared/docs/operations/server-start.md), APP VIP의 TLS·접속 검증은 [VIP 절차](shared/ingress/VIP.md)를 참고합니다.
 
 ## 공통 준비와 운영
 
 | 카테고리 | 문서 | 목적·사용 시점 |
 | --- | --- | --- |
+| 입문·전체 절차 | [Kubernetes 가이드](shared/docs/kubernetes/README.md) | 처음 접하는 담당자의 서버 준비부터 앱 배포·검증까지 |
 | 저장소 준비 | [선택 체크아웃](SERVER_CHECKOUT.md) | 처음 clone하거나 서버가 관리하는 앱 범위를 바꿀 때 |
 | 설정 참고 | [환경설정](shared/docs/configuration/environment.md) | 앱별 env 위치·필수값 검사·Secret 등록 규칙을 확인할 때 |
 | 운영 절차 | [서버 기동](shared/docs/operations/server-start.md) | 기존 Keycloak과 Airflow의 최초 준비·기동·재적용 |
@@ -56,6 +65,7 @@ deploy/
 ## 문서를 추가하거나 수정할 때
 
 - 여러 앱이 공유하는 설정 규칙·운영 절차·인프라 현황은 `shared/docs/`의 해당 카테고리에 둡니다. 이 경로는 모든 서버 선택 체크아웃에 포함됩니다.
+- 입문 설명과 단계별 완료 기준은 `shared/docs/kubernetes/`에서 연결하고 앱별 실행 명령의 원본은 해당 앱 문서에 유지합니다.
 - 앱별 시작점은 `<app>/README.md`, 특정 Job·overlay·Ingress의 사용법은 해당 원본 옆에 둡니다.
 - 공통 현황은 한 문서에서 관리하고 앱별 안내에서는 링크로 참조합니다. 현황을 갱신할 때 확인일과 미확인 항목도 함께 기록합니다.
 - 새 문서는 이 색인에 등록하고 상위 안내 링크를 제공합니다. 이동 시 현재 안내 문서의 상대 링크도 갱신합니다.

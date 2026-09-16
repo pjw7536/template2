@@ -1,6 +1,6 @@
 # 사내 서버 선택 체크아웃
 
-[배포 문서 안내](README.md)
+[배포 문서 안내](README.md) · [처음부터 따라가는 가이드](shared/docs/kubernetes/README.md)
 
 사내 서버는 `local/`을 제외하고 필요한 앱과 공통 도구를 작업 폴더에 둡니다.
 외부 개발 PC에는 적용하지 않습니다. 실제 env·인증서·DB는 기존 서버 외부 경로를 유지합니다.
@@ -67,8 +67,9 @@ cone 모드 특성상 루트 파일과 상위 디렉터리의 파일도 포함�
 
 ## 검사와 배포
 
-현재 Keycloak과 Airflow를 함께 켜는 단계는 [서버 기동 안내](shared/docs/operations/server-start.md)를 따릅니다.
-`keycloak-airflow`로 선택하고 `make server-up`으로 기존 진입점을 보존하며 재적용합니다.
+Keycloak과 Airflow는 [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)를 따릅니다.
+`keycloak-airflow`로 선택하고 `keycloak-check/up`, `airflow-check/up`을 각각 실행합니다.
+`make server-up`은 [서버 기동 안내](shared/docs/operations/server-start.md)의 기존 통합 운용을 위한 호환 명령입니다.
 
 ```bash
 make server-check APP=keycloak PROFILE=prod
@@ -89,7 +90,8 @@ bash deploy/shared/scripts/check-env.sh keycloak prod server \
   /appdata/etchax-config/keycloak/prod.env
 ```
 
-Keycloak YAML 생성은 `make k8s-export`, 실제 배포는 [CP1 운영 안내](shared/docs/operations/cp1.md)를 따릅니다.
+Keycloak 실제 배포는 [전용 안내](keycloak/README.md)의 `make keycloak-up`을 사용합니다.
+`make k8s-export`와 [CP1 수동 절차](shared/docs/operations/cp1.md)는 별도 YAML 전달·단독 운용을 위한 경로입니다.
 Portal은 [운영 안내](portal/k8s/overlays/prod/README.md)를 따릅니다.
 `server-check`나 `git pull`은 클러스터에 적용하거나 Secret을 갱신하지 않습니다.
 

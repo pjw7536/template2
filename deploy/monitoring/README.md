@@ -1,6 +1,6 @@
 # Kubernetes Monitoring
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 기존 Compose Monitoring은 신규 Kubernetes 환경에서 **kube-prometheus-stack**으로 대체합니다.
 Prometheus·Grafana·Alertmanager·kube-state-metrics·node-exporter와 Kubernetes 대시보드를 함께 설치합니다.

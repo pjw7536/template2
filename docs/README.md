@@ -4,6 +4,7 @@
 
 ## 실행 진입 안내
 
+- [서버 Kubernetes 배포 문서](../deploy/README.md): 입문 가이드·서버 준비·앱별 배포·운영
 - [사용방법](usage.md): Makefile 기반 개발·서버 실행
 - [Migration 안내](migration-guide.md): 기존 migration 운영 절차 참고
 - [로컬 Kubernetes 실행](../local/README.md)

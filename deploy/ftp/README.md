@@ -1,6 +1,6 @@
 # 서버별 FTP 배포
 
-[배포 문서 안내](../README.md)
+[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 FTP가 필요한 Linux Worker에 `etch.io/ftp-enabled=true` 라벨을 붙이면 DaemonSet이
 노드마다 Pod 하나를 실행합니다. `hostNetwork`로 해당 노드 IP에 직접 접속하며

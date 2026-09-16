@@ -1,5 +1,8 @@
 # 같은 클러스터에서 Keycloak을 빈 DB로 재기동
 
+> 과거 특정 작업의 일회성 재설치 기록입니다. 아래의 사용자 요청·삭제 허용은 당시 작업에만 해당합니다.
+> 신규 설치·정기 업데이트·일반 장애 복구에 재사용하지 않습니다. 현재 시작점은 [Kubernetes 가이드](../kubernetes/README.md)입니다.
+
 기존 Kubernetes Keycloak을 중지하고 이 프로젝트 원본으로 다시 시작하는 절차입니다.
 Keycloak 사용자·realm·client·사내 OIDC 설정은 새 DB에 승계하지 않습니다.
 Airflow DB는 초기화하지 않습니다. 기본 절차에서는 기존 Keycloak 데이터를 복구용으로 별도 보관합니다.
