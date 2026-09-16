@@ -14,31 +14,6 @@ Python 3.10+, Helm 3, kubectl과 클러스터 배포·RBAC 생성 권한이 필�
 선택 checkout은 `bash deploy/shared/scripts/checkout-server.sh headlamp`입니다.
 `local/`이나 다른 앱 없이 동작합니다. namespace와 release 이름은 `headlamp`로 고정합니다.
 
-### 서버에 Helm이 없는 경우
-
-Linux x86_64 서버용 공식 Helm 3.19.0 압축 파일을
-`deploy/shared/tools/helm-v3.19.0-linux-amd64.tar.gz`에 포함합니다. 약 17MiB이며
-서버 선택 checkout의 공통 경로에 포함되므로 Git으로 받을 수 있습니다.
-[공식 다운로드 원본](https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz) 그대로이며
-압축 파일 안에 LICENSE와 README가 포함되어 있습니다. ARM 서버에는 사용하지 않습니다.
-
-서버의 저장소 루트에서 실행합니다. 체크섬 검사에 실패하면 설치하지 않습니다.
-
-```bash
-uname -m
-printf '%s  %s\n' \
-  a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496 \
-  deploy/shared/tools/helm-v3.19.0-linux-amd64.tar.gz | sha256sum -c -
-
-# x86_64 및 체크섬 OK를 확인한 뒤 설치합니다.
-mkdir -p .tools/helm-v3.19.0
-tar -xzf deploy/shared/tools/helm-v3.19.0-linux-amd64.tar.gz -C .tools/helm-v3.19.0
-sudo install -m 0755 .tools/helm-v3.19.0/linux-amd64/helm /usr/local/bin/helm
-helm version --short
-```
-
-### 설정과 chart 준비
-
 ```bash
 cp deploy/headlamp/env/k8s.env.example deploy/headlamp/env/k8s.env
 # 예시의 사내 미러 경로를 확인하고 필요한 경우 IMAGE_PULL_SECRET을 입력합니다.
