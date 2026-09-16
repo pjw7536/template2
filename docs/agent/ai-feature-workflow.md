@@ -1,51 +1,49 @@
-# AI Feature Workflow
+# Portal AI 개발 흐름
 
-이 문서는 브랜치에서 AI가 작업할 때 feature 독립성 방향을 유지하기 위한 최소 지침입니다.
+## 시작 위치와 읽기 범위
 
-## 기본 원칙
+에디터·에이전트는 `apps/portal`에서 시작합니다. 단일 영역 작업은 `apps/portal/web` 또는
+`apps/portal/api`에서 시작할 수 있습니다. 루트 지침과 [Portal 지침](../../apps/portal/AGENTS.md),
+수정하는 영역의 하위 지침을 적용합니다. 다른 앱 작업은 해당 앱에서 별도 세션으로 시작합니다.
 
-1. 작업 전 root `AGENTS.md`와 수정 경로의 scoped `AGENTS.md`를 확인합니다.
-2. feature 내부 파일은 다른 feature를 import하지 않습니다.
-3. feature 간 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/lib` 같은 non-feature 계층에서만 합니다.
-4. frontend 공개면은 `apps/web/src/features/<feature>/index.js` named export로 제한합니다.
-5. backend 공개면은 `selectors.py` 또는 `services/__init__.py` facade로 제한합니다.
-6. `lib`는 여러 feature에서 쓰는 안정된 계약만 둡니다. 특정 feature의 화면/상태 구현을 `lib`로 옮기지 않습니다.
-7. intranet URL, token, credential은 코드에 직접 쓰지 않고 env로 주입합니다.
+대상 feature → 관련 공통 코드·공개 facade → 필요한 외부 계약 순서로 확인합니다.
+예를 들어 Portal에서 메일 화면을 수정할 때는 `rg '<검색어>' web/src/features/emails`부터 시작합니다.
+의존이 확인되면 해당 facade나 공통 컴포넌트로 검색을 넓힙니다. 의존 방향은 Web·API 지침을 따릅니다.
+전체 docs나 deploy를 미리 읽지 않으며, 인증·env·mock·파일 마운트 계약에 영향이 있을 때만 관련 지침을 읽습니다.
 
-## AI에게 붙여 넣을 기본 프롬프트
+Codex는 시작 위치까지의 상위 AGENTS.md를 함께 읽습니다. 하위 폴더에서 시작해도 루트 지침이 없어지지는 않습니다.
+따라서 루트는 공통 규칙, Portal은 개발 공통 규칙, Web·API는 각 경계를 소유합니다.
+스킬도 작업에 맞는 본문만 읽습니다. 이 방식은 탐색 기본값이며 파일 접근을 차단하는 보안 경계는 아닙니다.
+
+## 작업 프롬프트 예시
 
 ```text
-이 repo는 feature 독립성을 우선한다.
-작업 전 AGENTS.md와 수정 경로의 scoped AGENTS.md를 확인하라.
-feature 내부 파일에서 다른 feature를 import하지 말라.
-다른 feature 기능이 필요하면 routes/components/layout/lib 같은 non-feature 계층에서 조립하거나 public facade만 사용하라.
-외부 URL, token, credential은 코드에 하드코딩하지 말고 env 기반으로 처리하라.
-작업 후 npm run agent:audit:web-boundary, npm run web:lint, npm run web:build를 실행하고 결과를 보고하라.
-backend 변경이 있으면 Docker Compose api 컨테이너 기준 테스트를 실행하거나 실행 불가 사유를 남겨라.
+Portal의 <feature>에서 <원하는 동작>을 구현해줘.
+대상 feature부터 읽고 관련 공통 코드·공개 facade를 필요한 만큼 확인해줘.
+인증·환경·배포 계약에 영향이 있으면 해당 영역 지침을 읽고 관련 설정까지 맞춰줘.
+변경 영역에 맞는 검사를 실행하고 결과를 알려줘.
 ```
 
-## 필수 검증
+## 실행·검증
 
-Frontend feature import/export/routing 변경 후:
+명령은 [Portal 시작 문서](../../apps/portal/README.md#개발검증)를 따릅니다.
+Portal에서는 `make -C ../.. <target>`, Web·API에서는 `make -C ../../.. <target>`을 사용합니다.
 
-```bash
-npm run agent:audit:web-boundary
-npm run web:lint
-npm run web:build
-```
+- UI는 관련 테스트·린트·빌드와 UI audit, import/export/routing 변경은 Web boundary audit을 실행합니다.
+- Django 업무 로직은 관련 테스트, 경계 변경은 API boundary audit, 모델 변경은 migration 검사를 실행합니다.
+- Django 명령은 Compose api에서 실행하며 이미지 갱신·test env·migration 파일 보존은 테스트 스킬을 따릅니다.
+- 환경·배포 설정은 변경된 앱의 검사만 선택합니다. 실행하지 못한 검증은 원인을 남깁니다.
 
-Backend business logic 변경 후:
+`make dev`는 전체 로컬 Kubernetes 앱을 기동합니다. Portal 작업 범위와 실행 서비스 범위는 별개입니다.
 
-```bash
-npm run agent:audit:api-boundary
-docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.<feature>
-```
+## 탐색 범위 평가
 
-Docker Compose `api` 컨테이너가 실행되지 않으면, 테스트 실패 원인을 PR에 기록합니다.
+[Portal 범위 평가](evals/portal-agent-scope.md)를 사용해 UI·API·인증 작업을 각각 새 세션에서 확인합니다.
+변경 전후 같은 요청·시작 디렉터리·모델·도구 설정을 사용하고 다음을 기록합니다.
 
-## PR에서 확인할 것
+- 초기 적용 지침의 바이트 수(토큰 수를 직접 측정할 수 있으면 함께 기록).
+- 읽은 고유 파일 수와 실제 읽기 횟수, 대상 feature 밖으로 확장한 이유.
+- 무관한 앱 소스·운영 문서 읽기 여부와 필요한 외부 계약 누락 여부.
+- 선택한 검사와 작업 결과의 정확성.
 
-- feature 내부에 `@/features/<otherFeature>` import가 없는지 확인합니다.
-- `components/layout`, `routes`, `lib`에 들어간 코드가 특정 feature 내부 구현을 과하게 알고 있지 않은지 확인합니다.
-- facade export가 불필요하게 넓어지지 않았는지 확인합니다.
-- 공통 코드가 새 쓰레기통이 되지 않도록 도메인별 하위 경로를 사용했는지 확인합니다.
+지침 분량 감소만으로 전체 토큰 절감률이나 작업 품질 개선을 주장하지 않습니다.

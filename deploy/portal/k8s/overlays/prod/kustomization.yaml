@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tailwind-internal
+resources:
+  - ../../base
+  - namespace.yaml
+  - ingress.yaml
+  - traefik-rbac.yaml
+images:
+  - name: portal-api
+    newName: registry.internal.example.invalid/tailwind/api
+    newTag: replace-me
+  - name: portal-web
+    newName: registry.internal.example.invalid/tailwind/web
+    newTag: replace-me

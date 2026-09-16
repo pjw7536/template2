@@ -15,7 +15,7 @@ L3 Spider는 날짜·Line·Process·EDS Step 기준으로 Parquet 이상감지 �
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/l3_spider`, `/spider/l3` |
-| Frontend | `apps/web/src/features/l3-spider` |
+| Frontend | `apps/portal/web/src/features/l3-spider` |
 | Backend API | `/api/v1/l3_spider/**` |
 | 업무 데이터 | `L3SpiderFileIndex`, `L3SpiderDailyRunStats`, `L3SpiderRunStatus`, `L3SpiderLineNameRule`, `L3SpiderExclusionFilter`, `L3SpiderMailRule`, `L3SpiderMailDelivery` |
 | 파일 데이터 | `L3_SPIDER_DATA_ROOT` 아래 read-only daily anomaly Parquet |
@@ -41,6 +41,6 @@ L3 Spider는 날짜·Line·Process·EDS Step 기준으로 Parquet 이상감지 �
 
 - `docs/api/l3-spider.md`
 - `docs/configuration.md`
-- `apps/api/api/l3_spider/selectors.py`
-- `apps/api/api/l3_spider/services/`
-- `apps/web/src/features/l3-spider`
+- `apps/portal/api/api/l3_spider/selectors.py`
+- `apps/portal/api/api/l3_spider/services/`
+- `apps/portal/web/src/features/l3-spider`

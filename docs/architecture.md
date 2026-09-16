@@ -6,12 +6,20 @@
 
 | 영역 | 경로 | 역할 | 상세 문서 |
 | --- | --- | --- | --- |
-| Web | `apps/web` | React 19 + Vite SPA | `docs/frontend.md` |
-| API | `apps/api` | Django 5.1 API 서버 | `docs/backend.md` |
-| Dummy 외부계 | `apps/adfs_dummy` | 로컬 ADFS/RAG/LLM/Mail/Jira 대체 서버 | `docs/integrations.md` |
-| Env | `env` | 개발/운영 환경 변수 | `docs/configuration.md` |
-| Proxy | `deploy/nginx` | 로컬/운영 통합 진입점 | `docs/operations.md` |
+| Web | `apps/portal/web` | React 19 + Vite SPA | `docs/frontend.md` |
+| API | `apps/portal/api` | Django 5.1 API 서버 | `docs/backend.md` |
+| Dummy 외부계 | `local/adfs_dummy` | 로컬 ADFS/RAG/LLM/Mail/Jira 대체 서버 | `docs/integrations.md` |
+| Env | `local/<app>/env`, `deploy/<app>/env` | 개발/운영 환경 변수 | `docs/configuration.md` |
+| Proxy | `deploy/portal/k8s/base/nginx.conf` | 로컬/운영 통합 진입점 | `docs/operations.md` |
 | Docs | `docs` | 앱 상세 설명과 검증 기준 | `docs/README.md` |
+
+## 앱 소유 경로
+
+소스·이미지는 `apps/<app>`, 배포·공통 정의는 `deploy/<app>`, 외부 PC 설정은 `local/<app>`에서 관리합니다.
+Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 소유합니다.
+업무 feature 경계와 Python package 이름은 그대로 유지합니다. 앱 목록은 `deploy/shared/apps.json`입니다.
+서버 배포는 준비된 이미지와 배포 파일만 필요하며 빌드 때만 `--with-source`로 소스를 추가합니다.
+전체 시작점은 [Portal](../apps/portal/README.md), [Airflow](../apps/airflow/README.md)입니다.
 
 ## 요청 흐름
 
@@ -40,7 +48,7 @@
 
 ## 프론트엔드 모듈
 
-프론트엔드는 `apps/web/src/features/<feature>` 단위로 구성됩니다. feature 외부 공개는 항상 `index.js` facade를 통합니다.
+프론트엔드는 `apps/portal/web/src/features/<feature>` 단위로 구성됩니다. feature 외부 공개는 항상 `index.js` facade를 통합니다.
 
 | Feature | 역할 | 주요 route |
 | --- | --- | --- |
@@ -89,10 +97,10 @@
 
 ## 경계 규칙
 
-- 프론트 feature 외부 공개는 `apps/web/src/features/<feature>/index.js`를 통합니다.
+- 프론트 feature 외부 공개는 `apps/portal/web/src/features/<feature>/index.js`를 통합니다.
 - 프론트 feature 간 import는 public facade만 사용하며 선언된 `auth -> account`, `emails -> account`, `line-dashboard -> account` 방향만 허용합니다.
-- 그 밖의 feature 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/components/common`, `apps/web/src/lib` 같은 non-feature 계층에서 수행합니다.
-- `apps/web/src/lib`는 app-shell context, framework adapter, 범용 helper만 소유합니다.
+- 그 밖의 feature 조립은 `apps/portal/web/src/routes`, `apps/portal/web/src/components/layout`, `apps/portal/web/src/components/common`, `apps/portal/web/src/lib` 같은 non-feature 계층에서 수행합니다.
+- `apps/portal/web/src/lib`는 app-shell context, framework adapter, 범용 helper만 소유합니다.
 - React Query는 서버 데이터의 기준이고, Zustand는 feature-local UI 상태만 저장합니다.
 - 백엔드 view는 HTTP 처리만 맡고, 비즈니스 로직은 service/selector에 둡니다.
 - selector는 읽기 전용, service는 쓰기/transaction/외부 호출을 담당합니다.

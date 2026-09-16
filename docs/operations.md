@@ -5,61 +5,58 @@
 ## 실행 진입점
 
 일반 작업에서는 root의 `make` target을 사용합니다.
-root compose 파일은 Makefile이 감싸는 실행 구현이고, `compose/` 아래 파일은 내부 조립용입니다.
+Kubernetes 정의는 `deploy/<app>`과 `local/<app>`에서 관리합니다. Compose는 로컬 DB·API 검사·CI에만 사용합니다.
 
 | 환경 | 기본 명령 | 용도 | dependency source |
 | --- | --- | --- | --- |
 | `dev` | `make dev` | 로컬 개발 전용 | public registry/package source |
-| `oidc` | `make oidc` | 사내 OIDC 검증/스테이징 | internal mirror |
-| `prod` | `make prod` | 운영 compose 조립 | internal mirror |
+| `prod` | [운영 배포 안내](../deploy/portal/k8s/overlays/prod/README.md) | 사내 Kubernetes | internal mirror |
 
 `dev`는 로컬 PC에서만 사용하는 개발 환경입니다.
-`oidc`와 `prod`는 Docker image와 package manager source를 내부 mirror로 고정합니다.
+사내 서버는 Kubernetes만 사용합니다. Portal 입력은 `deploy/portal/env/prod`입니다.
+`make down`은 로컬 kind와 외부 DB 컨테이너만 종료하고 영속 데이터를 보존합니다.
 
-## app / infra 구분
+## 로컬 전체 앱 실행
 
-| 그룹 | 포함 서비스 | 설명 |
-| --- | --- | --- |
-| `app` | API, Web, Nginx, MinIO, MinIO init | 실제 앱 실행에 필요한 서비스 |
-| `dev app` 추가 | dummy ADFS/RAG/LLM/Mail/Jira | 로컬 외부계 대체 서비스 |
-| `infra` | Airflow DB, Airflow init/webserver/scheduler, FTP | 데이터 적재와 Airflow DAG 검증용 기반 서비스 |
-
-로컬 개발 기본 실행:
+한 PC의 kind에서 전체 앱을 실행합니다. PostgreSQL만 새 Docker Compose project로 분리합니다.
+설정·주소·계정·데이터 보존의 기준은 [로컬 실행 안내](../local/README.md)입니다.
 
 ```bash
+make k8s-check
 make dev
+make k8s-status
+make k8s-smoke
+make k8s-rebuild APP=portal
+make down
 ```
 
-app만 조작:
+기동 순서는 DB·스토리지·Secret → Keycloak/mock/MinIO → migration/seed → Portal → Airflow/FTP → Monitoring입니다.
+전체 앱 준비 상태와 Portal·Keycloak·Airflow HTTP 응답을 확인한 뒤 성공 처리합니다.
+종료해도 DB volume·호스트 데이터·자격증명은 보존되며 일반 seed는 기존 데이터를 reset하지 않습니다.
+kind 포트·마운트를 변경하면 `make down` 후 다시 기동합니다.
 
-```bash
-make dev-app-up
-make dev-app-build
-make dev-app-down
-make oidc-app-up
-make oidc-app-build
-make oidc-app-down
-make prod-app-up
-make prod-app-build
-make prod-app-down
-```
+| 서비스 | 로컬 주소 |
+| --- | --- |
+| Portal | http://localhost:8080 |
+| Keycloak | http://localhost:8180 |
+| Airflow | http://localhost:8080/airflow |
+| Grafana | `make k8s-grafana` → http://localhost:3000 |
+| Prometheus | `make k8s-prometheus` → http://localhost:9090 |
+| Headlamp | `make k8s-ui` → http://localhost:4466 |
+| FTP | localhost:6380, passive 8076–8079, env로 변경 가능 |
+| PostgreSQL | localhost:55432, env로 변경 가능 |
 
-Airflow/FTP 기반 데이터 적재 작업이 필요하면 infra를 별도로 조작합니다.
-OIDC/prod infra에는 monitoring 서비스도 함께 포함됩니다.
+`make check-api`, `make makemigrations-check`, `make test-api`는 일회성 Compose api 컨테이너에서 실행합니다.
 
-```bash
-make dev-infra-up
-make dev-infra-build
-make dev-infra-down
-make oidc-infra-up
-make oidc-infra-build
-make oidc-infra-down
-make prod-infra-up
-make prod-infra-build
-make prod-infra-down
-```
+## 사내 Kubernetes
 
-OIDC/prod compose에는 Airflow/FTP 외에 monitoring 서비스도 포함됩니다.
+`make server-check APP=all`은 local 파일 없이 모든 앱의 원본을 검사합니다.
+서버는 registry·DNS/TLS·DB·스토리지·실제 외부계 입력을 별도로 준비합니다.
+Portal migration은 운영 앱보다 먼저 실행하고, 여러 노드에서 FTP와 API 파일을 공유할 방식을 명시합니다.
+
+배포 파일의 서비스별 역할은 [Kubernetes 배포 안내](../deploy/README.md)를 참고합니다.
+`make k8s-export`로 Keycloak 기동 YAML과 claim 등록 Job YAML을 각각 생성합니다.
+claim 등록 Job은 Keycloak 기동과 사내 OIDC 설정을 완료한 뒤 별도로 실행합니다.
 
 주요 주소:
 
@@ -74,13 +71,13 @@ OIDC/prod compose에는 Airflow/FTP 외에 monitoring 서비스도 포함됩니�
 ## 프론트 명령
 
 ```bash
-npm run web:dev
-npm run web:build
-npm run web:lint
-npm run agent:audit
-npm run agent:audit:docs
-npm run agent:audit:web-boundary
-npm run agent:audit:ui
+make web-dev
+make web-build
+make web-lint
+make audit
+make audit-docs
+make audit-web-boundary
+make audit-ui
 ```
 
 ## 백엔드 검증
@@ -120,31 +117,31 @@ make makemigrations-check
 | `prune_drone_sop` | 보관 기간 초과 Drone SOP 데이터 정리 |
 | `purge_drone_sop` | Drone SOP 데이터 전체 삭제 또는 dry-run 확인 |
 
-실행 예시:
+로컬 API 검사용 Compose의 실행 예시입니다. 파일을 읽는 명령은 해당 경로를 `run -v <호스트>:<컨테이너>`로 연결해야 합니다:
 
 ```bash
-docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate --noinput
-docker compose -f docker-compose.dev.yml exec -T api python manage.py check_access_permission_integrity --phase post-migration
-docker compose -f docker-compose.dev.yml exec -T api python manage.py backfill_assistant_run_access --dry-run --batch-size 500
-docker compose -f docker-compose.dev.yml exec -T api python manage.py ensure_dev_database
-docker compose -f docker-compose.dev.yml exec -T api python manage.py process_email_outbox
-docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dev_data --reset --prefix DEV
-docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_appstore_dummy_data --reset --prefix DEV
-docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_dummy_emails
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_m_tkin_prevent
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_ctttm_workorder_list
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_ct_process_comment
-docker compose -f docker-compose.dev.yml exec -T api python manage.py summarize_ct_process_comment
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_eqp_status_chg
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_m_interlock
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_mi_tip_update_hist
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_racb_list
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_mes_line_mapping_info
-docker compose -f docker-compose.dev.yml exec -T api python manage.py load_station_master
-docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_drone_dummy_data --prefix DEMO --reset
-docker compose -f docker-compose.dev.yml exec -T api python manage.py seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run
-docker compose -f docker-compose.dev.yml exec -T api python manage.py prune_drone_sop
-docker compose -f docker-compose.dev.yml exec -T api python manage.py purge_drone_sop --dry-run
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api migrate --noinput
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api check_access_permission_integrity --phase post-migration
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api backfill_assistant_run_access --dry-run --batch-size 500
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api ensure_dev_database
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api process_email_outbox
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_dev_data --reset --prefix DEV
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_appstore_dummy_data --reset --prefix DEV
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_dummy_emails
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_m_tkin_prevent
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_ctttm_workorder_list
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_ct_process_comment
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api summarize_ct_process_comment
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_eqp_status_chg
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_m_interlock
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_mi_tip_update_hist
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_racb_list
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_mes_line_mapping_info
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api load_station_master
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_dummy_data --prefix DEMO --reset
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api prune_drone_sop
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api purge_drone_sop --dry-run
 ```
 
 Assistant Runtime v2 배포는 nullable schema migration을 먼저 적용한 뒤 `--dry-run` 집계를
@@ -163,8 +160,8 @@ legacy 데이터는 `legacy-unresolved`로 유지해 노출하지 않습니다. 
 account 고정 역할 migration은 기존 역할·정책·감사 데이터를 정규화하고 제약조건을
 교체하므로 구버전 API와 신버전 API를 동시에 실행하지 않습니다. 다음 순서를 지킵니다.
 운영 API entrypoint는 migration을 자동 실행하지 않으며, 아래 migration과 무결성 검사는
-같은 release image의 one-off `docker compose run --rm --no-deps --entrypoint python api`
-명령으로 실행합니다.
+같은 release image와 API Secret을 사용하는 Kubernetes Job으로 실행합니다.
+[마이그레이션 안내](migration-guide.md)를 따릅니다.
 
 1. 배포 후보와 현재 운영 SHA 사이의 전체 diff를 확인해 권한 변경 외 커밋이 함께 포함되는지 확정합니다.
 2. 운영 DB의 migration ledger가 코드가 기대하는 직전 migration과 일치하는지 읽기 전용으로 확인합니다.
@@ -198,14 +195,14 @@ scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니�
 `portal` 유형이나 소문자 영숫자·하이픈 형식이 아닌 key가 있으면 `account 0005`가 의미를
 자동 변경하지 않고 중단하므로 migration 전에 무결성 명령으로 먼저 확인합니다.
 
-로컬 dev 로그인 사용자는 `env/overlays/local/api.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
+로컬 dev 로그인 사용자는 `local/portal/env/api.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
 `DUMMY_ADFS_*` 기준 dummy 사용자는 staff 슈퍼유저로 보정됩니다.
 `DEV_AUTO_SEED=1`이면 dev API 기동 시 `seed_dev_data --reset`이 실행되며, `ENVIRONMENT=development`에서만 동작합니다.
 OIDC/운영 환경에서는 자동 소속 변경을 실행하지 않습니다.
 
 ## Data Movement Airflow DAG
 
-`airflow/dags/data_movement_file_load.py`는 기본 1분 주기로 아래 파일 적재 endpoint를 호출합니다.
+`apps/airflow/dags/data_movement_file_load.py`는 기본 1분 주기로 아래 파일 적재 endpoint를 호출합니다.
 
 ```text
 POST /api/v1/data-movement/m_tkin_prevent/load/
@@ -237,7 +234,7 @@ DATA_MOVEMENT_LOAD_LIMIT=
 DATA_MOVEMENT_LOAD_DRY_RUN=false
 ```
 
-`airflow/dags/ct_process_comment_summary.py`는 별도 DAG `ct_process_comment_summary`로 아래 endpoint를 호출합니다.
+`apps/airflow/dags/ct_process_comment_summary.py`는 별도 DAG `ct_process_comment_summary`로 아래 endpoint를 호출합니다.
 요약은 `update_flag='Y'` row를 OpenWebUI로 처리하므로 파일 적재 DAG와 독립적으로 재시도하거나 중지할 수 있습니다.
 
 ```text
@@ -261,20 +258,20 @@ DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=1
 
 ### Data Movement FTP
 
-Compose의 `ftp` service는 API와 같은 host path를 공유합니다.
+Kubernetes의 FTP DaemonSet은 API와 같은 host path를 공유합니다.
 기본 host path는 `./data/data_movement`이며 API 컨테이너에서는 `/data/data_movement`로 보입니다.
 
 ```bash
-make dev-infra-up
+make dev
 ```
 
 FTP 접속 기본값:
 
 ```text
-host=<compose host>
+host=localhost
 port=6380
 user=ftpuser
-password=ftp1234
+password=<local/shared/runtime/credentials.env의 FTP_PASS>
 passive ports=8076-8079
 ```
 
@@ -352,18 +349,18 @@ DATA_MOVEMENT_HOST_PATH
 사용 순서:
 
 ```bash
-docker compose -f docker-compose.dev.yml exec -T api \
-  python manage.py seed_drone_targets_from_file \
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api \
+  seed_drone_targets_from_file \
   --file /app/config/drone_targets.json \
   --dry-run
 
-docker compose -f docker-compose.dev.yml exec -T api \
-  python manage.py seed_drone_targets_from_file \
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api \
+  seed_drone_targets_from_file \
   --file /app/config/drone_targets.csv \
   --dry-run
 
-docker compose -f docker-compose.dev.yml exec -T api \
-  python manage.py seed_drone_targets_from_file \
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api \
+  seed_drone_targets_from_file \
   --file /app/config/drone_targets.json
 ```
 
@@ -389,35 +386,37 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 
 | 파일 | 역할 |
 | --- | --- |
-| `env/overlays/local/*` | local 서비스별 설정과 credential |
-| `env/overlays/oidc/*` | OIDC 서비스별 설정과 credential |
-| `env/overlays/prod/*` | prod 서비스별 설정과 credential |
-| `env/overlays/test/*` | backend test 설정과 credential |
+| `local/portal/env/*` | local 서비스별 설정과 credential |
+| `deploy/portal/env/prod/*` | 사내 Kubernetes API/Web/MinIO 설정, 실제 값은 Git 제외 |
+| `deploy/portal/env/test/*` | backend test 설정과 credential |
+| `deploy/keycloak/env/*` | Keycloak 기동과 사내 OIDC 설정 |
+| `deploy/airflow/env/*`, `deploy/monitoring/env/*` | 앱별 환경 설정 |
 
 서버 최초 준비와 검증:
 
 ```bash
 # 각 서버의 api.env 값을 확인하고 비어 있는 필수값을 채운 뒤 검증
 make env-profile-key-check
-make oidc-profile-env-check
 make prod-profile-env-check
 ```
 
-`ADFS_CER_PATH`와 인증서 mount는 기존 OIDC/prod profile 계약을 그대로 사용합니다.
+`OIDC_PROVIDER=adfs`이면 `ADFS_CER_PATH`와 인증서 mount를 사용합니다.
+`OIDC_PROVIDER=keycloak`이면 authorization code + PKCE와 내부 JWKS URL을 사용하므로
+인증서 파일을 사용하지 않습니다.
 OIDC와 prod 서버 설정은 각 profile 폴더 안에서 완결되며 다른 env 폴더를 상속하지 않습니다.
 
 ## 주의할 점
 
 - backend 테스트와 Django 명령은 `api` 컨테이너에서 실행합니다.
 - 외부 연동 URL은 하드코딩하지 않고 env로 관리합니다.
-- auth/RAG/assistant/mail 계약을 바꾸면 `apps/adfs_dummy`도 함께 갱신합니다.
+- auth/RAG/assistant/mail 계약을 바꾸면 `local/adfs_dummy`도 함께 갱신합니다.
 
 ## 문서 검증
 
 문서가 실제 route/model/env inventory와 크게 어긋나지 않는지 확인합니다.
 
 ```bash
-npm run agent:audit:docs
+make audit-docs
 ```
 
 검증 대상:
@@ -439,3 +438,5 @@ npm run agent:audit:docs
 | Drone 알림 실패 | SOP 수집 결과, target/channel/recipient 설정, Jira/Mail/Messenger env |
 | Observer 조회 실패 | `OBSERVER_QUERY_DAYS`, data movement 적재 상태, 기준 정보 endpoint |
 | 파일/이미지 실패 | MinIO env, bucket 접근, asset sequence |
+
+사내 서버는 [선택 체크아웃](../deploy/SERVER_CHECKOUT.md) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.

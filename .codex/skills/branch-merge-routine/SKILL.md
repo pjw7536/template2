@@ -29,7 +29,7 @@ source branch 변경사항을 target branch에 반영할 때 변경 의도를 �
    - `git diff --stat <target_branch>...origin/<source_branch>`
    - `git diff --name-only <target_branch>...origin/<source_branch>`
    - 변경 파일을 feature/app/domain별로 분류한다.
-   - 여러 feature, `apps/api`, `compose`, `env`, `AGENTS.md`, `.codex/skills`, public facade, route, auth, DB migration, API schema가 포함되면 관련 scoped `AGENTS.md`와 skill을 추가로 읽고 검증 계획을 세운다.
+   - 여러 feature, `apps/portal/api`, `local`, `deploy`, `docker-compose*.yml`,  `AGENTS.md`, `.codex/skills`, public facade, route, auth, DB migration, API schema가 포함되면 관련 scoped `AGENTS.md`와 skill을 추가로 읽고 검증 계획을 세운다.
    - 변경 파일이 한 feature 내부에만 있더라도 import/export, route, shared component, API 호출을 통해 다른 feature에 영향을 줄 수 있는지 확인한다.
 
 3. 병합
@@ -46,8 +46,8 @@ source branch 변경사항을 target branch에 반영할 때 변경 의도를 �
    - 불필요한 리팩터링을 추가하지 않는다.
 
 5. 검증
-   - `apps/web` 변경이 있으면 `cd apps/web && npm run lint`를 기본 검증으로 실행한다.
-   - `apps/api` 변경이 있으면 Docker Compose `api` 컨테이너 기준으로 관련 테스트/마이그레이션 검증을 실행한다.
+   - `apps/portal/web` 변경이 있으면 `cd apps/portal/web && npm run lint`를 기본 검증으로 실행한다.
+   - `apps/portal/api` 변경이 있으면 Docker Compose `api` 컨테이너 기준으로 관련 테스트/마이그레이션 검증을 실행한다.
    - agent rule/skill/script 변경이 있으면 skill validator 또는 해당 validation command를 실행한다.
    - 검증 실패가 병합된 파일의 좁은 문제이면 최소 수정으로 고친다. 범위가 다른 앱/feature로 확장되면 멈추고 보고한다.
 

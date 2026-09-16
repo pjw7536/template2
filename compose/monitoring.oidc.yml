@@ -1,5 +1,0 @@
-# OIDC Grafana에 profile별 URL과 관리자 인증값을 추가합니다.
-services:
-  grafana:
-    env_file:
-      - ../env/overlays/oidc/grafana.env

@@ -1,16 +1,16 @@
 # 외부 연동 계약
 
-이 문서는 앱이 외부 시스템과 통신하는 방식을 정리합니다. 로컬 개발에서는 대부분 `apps/adfs_dummy`가 외부 시스템을 대체합니다.
+이 문서는 앱이 외부 시스템과 통신하는 방식을 정리합니다. 로컬 개발에서는 대부분 `local/adfs_dummy`가 외부 시스템을 대체합니다.
 
 ## 연동 목록
 
 | 연동 | 사용 모듈 | 로컬 대체 |
 | --- | --- | --- |
-| ADFS/OIDC | Auth | `apps/adfs_dummy` |
-| RAG | Emails, Assistant | `apps/adfs_dummy` |
-| LLM | Assistant | `apps/adfs_dummy` |
-| Mail API | Emails, Drone | `apps/adfs_dummy` |
-| Jira | Drone | `apps/adfs_dummy` |
+| ADFS/OIDC | Auth | `local/adfs_dummy` |
+| RAG | Emails, Assistant | `local/adfs_dummy` |
+| LLM | Assistant | `local/adfs_dummy` |
+| Mail API | Emails, Drone | `local/adfs_dummy` |
+| Jira | Drone | `local/adfs_dummy` |
 | Knox Messenger | Drone/Common | 설정 기반 |
 | MinIO | Emails/Common | `minio` service |
 | Airflow | Account/Emails/Drone trigger | Bearer token |
@@ -23,30 +23,36 @@
 
 ## 로컬 dummy 외부계
 
-`apps/adfs_dummy`는 로컬 개발에서 다음 역할을 대체합니다.
+`local/adfs_dummy`는 로컬 개발에서 다음 역할을 대체합니다.
 
 | 파일 | 역할 |
 | --- | --- |
-| `apps/adfs_dummy/adfs_oidc.py` | OIDC authorize/logout/callback 보조 |
-| `apps/adfs_dummy/adfs_rag.py` | RAG search/insert/delete/index-info |
-| `apps/adfs_dummy/adfs_llm.py` | LLM chat completions |
-| `apps/adfs_dummy/adfs_mail.py` | Mail send와 dummy mail messages |
-| `apps/adfs_dummy/adfs_jira.py` | Jira issue 대체 |
-| `apps/adfs_dummy/adfs_stores.py` | dummy 저장소 |
+| `local/adfs_dummy/adfs_oidc.py` | OIDC authorize/logout/callback 보조 |
+| `local/adfs_dummy/adfs_rag.py` | RAG search/insert/delete/index-info |
+| `local/adfs_dummy/adfs_llm.py` | LLM chat completions |
+| `local/adfs_dummy/adfs_mail.py` | Mail send와 dummy mail messages |
+| `local/adfs_dummy/adfs_jira.py` | Jira issue 대체 |
+| `local/adfs_dummy/adfs_stores.py` | dummy 저장소 |
 
 ## ADFS/OIDC
 
 주요 설정:
 
+- `OIDC_PROVIDER`
 - `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
 - `OIDC_ISSUER`
 - `ADFS_AUTH_URL`
 - `ADFS_LOGOUT_URL`
 - `OIDC_REDIRECT_URI`
+- `OIDC_TOKEN_URL`
+- `OIDC_JWKS_URL`
 - `ADFS_CER_PATH`
 - `ALLOWED_REDIRECT_HOSTS`
 
 로컬 개발에서는 `http://localhost:9102`의 dummy ADFS를 사용합니다.
+로컬 Kubernetes에서는 `http://localhost:8180`의 Keycloak을 사용하고 API는 cluster 내부
+token/JWKS URL을 호출합니다. Keycloak은 로그인만 담당하며 Portal 권한은 Django가 유지합니다.
 
 ## RAG
 
@@ -55,7 +61,7 @@
 - Emails: 메일 문서 insert/delete
 - Assistant: 질문 검색
 
-provider endpoint와 인증 header는 OIDC의 `env/overlays/oidc/api.env`와 운영의 `env/overlays/prod/api.env`에서 각각 주입합니다. 현재 값이 같아도 profile별로 독립 관리합니다.
+provider endpoint와 인증 header는 운영의 `deploy/portal/env/prod/api.env`에서 주입합니다. 로컬은 `local/portal/env/api.env`와 Kubernetes override를 합성합니다.
 
 주요 설정:
 
@@ -153,11 +159,11 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 
 | 변경 | 함께 확인할 문서/파일 |
 | --- | --- |
-| OIDC provider 변경 | `env/overlays/*/api.env`, `env/overlays/*/web.env`, `apps/adfs_dummy/adfs_oidc.py`, `docs/api/auth.md` |
-| RAG endpoint/schema 변경 | `env/overlays/*/api.env`, `apps/adfs_dummy/adfs_rag.py`, `docs/api/assistant.md`, `docs/modules/emails.md` |
-| LLM request/response 변경 | `env/overlays/*/api.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md` |
-| OpenWebUI request/response 변경 | `env/overlays/*/api.env`, `apps/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md` |
-| Mail API 변경 | `env/overlays/*/api.env`, `apps/adfs_dummy/adfs_mail.py`, `docs/modules/emails.md`, `docs/modules/line-dashboard.md` |
-| Jira 변경 | `env/overlays/*/api.env`, `apps/adfs_dummy/adfs_jira.py`, `docs/modules/line-dashboard.md` |
-| MinIO 변경 | `env/overlays/*/minio.env`, `docs/data-model.md`, `docs/modules/emails.md` |
-| Airflow token/trigger 변경 | `env/overlays/*/api.env`, `env/overlays/*/airflow.env`, 관련 `docs/api/*.md`, `docs/operations.md` |
+| OIDC provider 변경 | `deploy/portal/env/*/api.env`, `deploy/portal/env/*/web.env`, `local/adfs_dummy/adfs_oidc.py`, `docs/api/auth.md` |
+| RAG endpoint/schema 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_rag.py`, `docs/api/assistant.md`, `docs/modules/emails.md` |
+| LLM request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md` |
+| OpenWebUI request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md` |
+| Mail API 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_mail.py`, `docs/modules/emails.md`, `docs/modules/line-dashboard.md` |
+| Jira 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_jira.py`, `docs/modules/line-dashboard.md` |
+| MinIO 변경 | `deploy/portal/env/*/minio.env`, `docs/data-model.md`, `docs/modules/emails.md` |
+| Airflow token/trigger 변경 | `deploy/portal/env/*/api.env`, `deploy/airflow/env/*.env`, 관련 `docs/api/*.md`, `docs/operations.md` |

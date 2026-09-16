@@ -1,6 +1,6 @@
 # 백엔드 상세 구조
 
-`apps/api`는 Django API 서버입니다. 업무 API는 `api.<feature>` app 단위로 나뉘며, global URLConf는 `apps/api/api/urls.py`입니다.
+`apps/portal/api`는 Django API 서버입니다. 업무 API는 `api.<feature>` app 단위로 나뉘며, global URLConf는 `apps/portal/api/api/urls.py`입니다.
 
 ## 실행 단위
 
@@ -8,9 +8,9 @@
 | --- | --- |
 | Framework | Django 5.1, Django REST Framework |
 | 기본 API prefix | `/api/v1/` |
-| Auth callback 예외 | `/auth/google/callback/` |
+| Auth callback 예외 | `/auth/google/callback/`, `/auth/keycloak/callback/` |
 | 기본 DB | `DJANGO_DB_*` PostgreSQL |
-| 로컬 실행 | `make dev-app-up` |
+| 로컬 실행 | `make dev` (전체 Kubernetes) |
 
 ## App 구조
 
@@ -66,7 +66,7 @@
 | 방식 | 사용 위치 | 확인 값 |
 | --- | --- | --- |
 | Django session | 일반 브라우저 API | 로그인 session cookie |
-| OIDC callback | `/auth/google/callback/` | provider `form_post` payload |
+| OIDC callback | `/auth/google/callback/`, `/auth/keycloak/callback/` | ADFS `form_post` id_token 또는 Keycloak query code |
 | Airflow Bearer token | 수집/동기화 trigger | `Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>` |
 | Internal OCR token | OCR worker | `X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>` |
 | 공개/조건부 공개 | health, 일부 조회성 API | endpoint별 문서 확인 |
@@ -93,11 +93,11 @@
 | `prune_drone_sop` | `api.drone` | `python manage.py prune_drone_sop` |
 | `purge_drone_sop` | `api.drone` | `python manage.py purge_drone_sop --dry-run` |
 
-개발 backend command와 feature test는 Docker Compose `api` 컨테이너 기준으로 실행합니다. PR CI와 전체 회귀 검증은 외부 연결이 차단된 `docker-compose.test.yml`의 `api-test` 컨테이너를 사용합니다.
+개발 backend command와 feature test는 Docker Compose `api` 컨테이너 기준으로 실행합니다. PR CI와 전체 회귀 검증은 외부 연결이 차단된 `deploy/portal/compose/test.yml`의 `api-test` 컨테이너를 사용합니다.
 
 ## 변경 시 갱신해야 하는 문서
 
 - route 추가/변경: `docs/inventory.md`, `docs/api/*.md`, `docs/modules/*.md`
 - model/schema 변경: `docs/data-model.md`, 해당 `docs/modules/*.md`
-- env contract 변경: `docs/configuration.md`, `docs/integrations.md`, 필요 시 `apps/adfs_dummy`
+- env contract 변경: `docs/configuration.md`, `docs/integrations.md`, 필요 시 `local/adfs_dummy`
 - command 추가/변경: `docs/inventory.md`, `docs/operations.md`

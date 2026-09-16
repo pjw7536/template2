@@ -44,7 +44,7 @@ AppStore는 내부 앱과 도구를 등록하고 공유하는 기능입니다.
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/appstore` |
-| Frontend | `apps/web/src/features/appstore` |
+| Frontend | `apps/portal/web/src/features/appstore` |
 | Backend API | `/api/v1/appstore/**` |
 | 데이터 | `AppStoreApp`, `AppStoreLike`, `AppStoreComment`, `AppStoreCommentLike` |
 | 파일/이미지 | cover endpoint가 URL redirect 또는 이미지 바이너리를 반환 |
@@ -61,12 +61,12 @@ AppStore는 내부 앱과 도구를 등록하고 공유하는 기능입니다.
 
 ## 관련 코드
 
-- `apps/api/api/appstore/views.py`
-- `apps/api/api/appstore/models.py`
-- `apps/api/api/appstore/selectors.py`
-- `apps/api/api/appstore/serializers.py`
-- `apps/api/api/appstore/services/apps.py`
-- `apps/api/api/appstore/services/comments.py`
-- `apps/api/api/appstore/services/likes.py`
-- `apps/api/api/appstore/services/screenshots.py`
-- `apps/web/src/features/appstore`
+- `apps/portal/api/api/appstore/views.py`
+- `apps/portal/api/api/appstore/models.py`
+- `apps/portal/api/api/appstore/selectors.py`
+- `apps/portal/api/api/appstore/serializers.py`
+- `apps/portal/api/api/appstore/services/apps.py`
+- `apps/portal/api/api/appstore/services/comments.py`
+- `apps/portal/api/api/appstore/services/likes.py`
+- `apps/portal/api/api/appstore/services/screenshots.py`
+- `apps/portal/web/src/features/appstore`

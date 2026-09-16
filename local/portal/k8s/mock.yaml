@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: adfs}
+  template:
+    metadata:
+      labels: {app: adfs}
+    spec:
+      containers:
+        - name: adfs
+          image: tailwind-adfs:k8s-local
+          imagePullPolicy: Never
+          ports:
+            - {name: http, containerPort: 9000}
+          env:
+            - {name: DUMMY_ADFS_PRIVATE_KEY_PATH, value: /app/dummy_adfs_private.key}
+          readinessProbe:
+            httpGet: {path: /rag/index-info, port: http}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adfs
+spec:
+  selector: {app: adfs}
+  ports:
+    - {name: http, port: 9000, targetPort: http}

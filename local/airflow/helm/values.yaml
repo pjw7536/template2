@@ -1,0 +1,17 @@
+# 로컬 PC에서 전체 앱을 함께 실행하기 위한 자원·동시성 설정입니다.
+config:
+  core:
+    parallelism: '4'
+    max_active_tasks_per_dag: '2'
+    max_active_runs_per_dag: '1'
+    dags_are_paused_at_creation: 'True'
+  webserver:
+    workers: '2'
+scheduler:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: '2', memory: 2Gi}
+webserver:
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: '1', memory: 1536Mi}

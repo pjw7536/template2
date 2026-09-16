@@ -1,0 +1,87 @@
+# 클러스터 지표 수집용 신규 설치. 업무 앱과 OIDC·Ingress는 연결하지 않습니다.
+fullnameOverride: monitoring
+crds:
+  enabled: true
+  # CRD 버전 변경은 별도 검토 후 수행합니다.
+  upgradeJob:
+    enabled: false
+grafana:
+  fullnameOverride: monitoring-grafana
+  admin:
+    existingSecret: monitoring-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    existingClaim: monitoring-grafana
+  deploymentStrategy:
+    type: Recreate
+  initChownData:
+    enabled: false
+  testFramework:
+    enabled: false
+  ingress:
+    enabled: false
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: '1', memory: 1Gi}
+  grafana.ini:
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+    retentionSize: 16GB
+    resources:
+      requests: {cpu: 500m, memory: 2Gi}
+      limits: {cpu: '2', memory: 4Gi}
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: 500m, memory: 512Mi}
+  # 외부 전송은 운영 수신자·채널을 정한 뒤 구성합니다.
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'null'
+      group_by: [namespace, alertname]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+    receivers:
+      - name: 'null'
+prometheusOperator:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: '1', memory: 512Mi}
+kube-state-metrics:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+# 접근 방식·인증서가 확정되지 않은 control-plane 전용 endpoint는 제외합니다.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false

@@ -8,7 +8,7 @@
 - local/OIDC/prod/test API env에는 해당 변수가 없다.
 
 ## 범위
-- 수정: `env/overlays/{local,oidc,prod,test}/api.env`.
+- 수정: `env/portal/{local,oidc,prod,test}/api.env`.
 - 추가: 이 ExecPlan.
 - 제외: Django settings와 Jira client 코드, credential, URL.
 

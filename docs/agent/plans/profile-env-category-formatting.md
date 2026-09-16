@@ -6,12 +6,12 @@
 - 기존 환경변수 key/value와 Compose 최종 적용 결과를 보존한다.
 
 ## 현재 상태
-- env는 `env/overlays/<profile>/<service>.(config|secret).env` 구조로 독립 관리된다.
+- env는 `env/portal/<profile>/<service>.(config|secret).env` 구조로 독립 관리된다.
 - 파일별 header와 일부 구분 주석은 있으나 서비스·profile 간 카테고리 순서가 일관되지 않다.
 - 한 파일 안의 중복 key는 `scripts/validate_env_profile_keys.sh`가 차단한다.
 
 ## 범위
-- 수정: `env/overlays` 아래의 모든 env 파일.
+- 수정: 앱별 `env` 아래의 모든 기존 profile env 파일.
 - 추가: 이 ExecPlan.
 - 제외: 환경변수 key/value, Compose 연결, runtime 코드, Kubernetes/Argo CD manifest.
 

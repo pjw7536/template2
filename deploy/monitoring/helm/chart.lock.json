@@ -1,0 +1,8 @@
+{
+  "name": "kube-prometheus-stack",
+  "version": "91.4.0",
+  "sha256": "10d54f6984e5f97b2e96e64440c7c0c37af2ed1b17c1521fa6c0da3529bdeec1",
+  "url": "https://github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-91.4.0/kube-prometheus-stack-91.4.0.tgz",
+  "kubernetesVersion": "1.25.0",
+  "helmVersion": "3.19.0"
+}

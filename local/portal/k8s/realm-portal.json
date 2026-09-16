@@ -1,0 +1,58 @@
+{
+  "realm": "portal",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "portal",
+      "name": "Portal local Kubernetes",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-local-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8080/auth/keycloak/callback/"],
+      "webOrigins": ["http://localhost:8080"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "sabun",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "sabun",
+            "claim.name": "sabun",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    }
+  ],
+  "users": [
+    {
+      "username": "dummy.user",
+      "enabled": true,
+      "email": "dummy.user@example.com",
+      "emailVerified": true,
+      "firstName": "Dummy",
+      "lastName": "User",
+      "attributes": {"sabun": ["S000001"]},
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dummy-user-change-me",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

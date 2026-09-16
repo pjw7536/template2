@@ -21,3 +21,4 @@ agent 성능을 “느낌”이 아니라 반복 가능한 작업과 성공 기�
 - `django-service-selector.md`
 - `offsite-contract-sync.md`
 - `observer-refactor-coordination.md`
+- [Portal 작업 범위](portal-agent-scope.md): UI·API·인증 작업의 탐색 확대와 지침 분량 비교

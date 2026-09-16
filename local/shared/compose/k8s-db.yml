@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?DB 설정을 준비하세요}
+      PORTAL_DB_PASSWORD: ${PORTAL_DB_PASSWORD:?}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+    ports:
+      - "127.0.0.1:${LOCAL_DB_PORT:-55432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-k8s-db.sh:/docker-entrypoint-initdb.d/10-apps.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+    networks: [kind]
+volumes:
+  postgres_data:
+networks:
+  kind:
+    external: true
+    name: kind

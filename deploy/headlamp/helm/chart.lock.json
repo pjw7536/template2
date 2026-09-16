@@ -1,0 +1,6 @@
+{
+  "name": "headlamp",
+  "version": "0.45.0",
+  "sha256": "38c619e0ed5db4164b02c353bcbb24e8157c1d98d961b292f99d68cc9316b8eb",
+  "url": "http://repository.samsungds.net/repository/proxy-raw-github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz"
+}

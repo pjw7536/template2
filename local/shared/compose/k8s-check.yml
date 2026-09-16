@@ -1,0 +1,16 @@
+# Django 검사는 Kubernetes와 같은 이미지·DB를 쓰는 일회성 Compose api에서 실행합니다.
+services:
+  api:
+    image: tailwind-api:k8s-local
+    env_file:
+      - ${K8S_API_ENV_FILE:-../runtime/api.env}
+    environment:
+      DJANGO_DB_HOST: tailwind-local-db-postgres-1
+      DJANGO_DB_USER: postgres
+      DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD:?make dev로 DB 설정을 준비하세요}
+    entrypoint: [python, manage.py]
+    networks: [kind]
+networks:
+  kind:
+    external: true
+    name: kind

@@ -2,12 +2,42 @@
 
 이 문서는 반복 설명 비용을 줄이기 위한 확정 결정만 기록한다.
 
+## 2026-09-14: Keycloak 배포 경로 단순화
+
+- CP1 배포는 기존 stack·claim-mappers YAML 두 개로 통일한다. 중복 Python 도구는 제거한다.
+- 서버 원본은 deploy/keycloak/k8s/stack.yaml로 통합하며 생성된 배포 내용은 유지한다.
+- make k8s-export는 Keycloak YAML 두 개만 생성한다. Portal client는 Portal 원본에서 필요할 때 별도로 생성한다.
+- 사내 OIDC 연결 설정은 새 연결 준비에 필요한 선택 원본으로 유지한다.
+
+## 2026-09-14: account_user 기준 Keycloak 프로필
+
+- 사용자는 기존 커스텀 User Profile 정의를 프로젝트 신원 필드 기준으로 교체하기로 했다.
+- 사용자가 사내 userid(EPID)의 유일성·불변성·재사용 금지를 확인했다. Keycloak username은 LOCAL/FORCE mapper로 EPID를 사용하며 기존 연결 계정은 사내 재로그인 때 갱신한다.
+- 사람 이름은 display_name에 저장해 Portal token의 username으로 전달하고, knox_id·sabun 계약은 유지한다.
+- Keycloak부터 정비한다. 중복 avatarid 프로필과 IdP userid 속성 mapper는 제거하고 Portal userid는 기본 username property를 읽는다. Django·프론트엔드는 후속 정비하며 기존 사용자 속성값은 일괄 삭제하지 않는다.
+- 성·이름은 기본 firstName·lastName에 저장하고 Portal에는 first_name·last_name으로 전달한다. 같은 이름의 커스텀 프로필 정의는 제거한다.
+- 로그인 ID·부서·이메일 등은 account_user 이름으로 저장하고 Portal claim 계약은 유지한다.
+- mapper 전달 YAML은 ConfigMap과 Job을 함께 포함해 서버 네트워크 설정 재적용 없이 갱신한다.
+
+## 2026-09-14: Keycloak 단독 라우팅 복원
+
+- 단독 스택은 `etch-sso`만 감시하고 기존 Ingress TLS Secret 참조를 유지한다. 사용자 후속 지시에 따라 `websecure` entrypoint와 TLS annotation을 명시한다.
+- Portal 감시 확장은 Portal overlay로 RBAC를 준비한 뒤 `traefik-watch-patch.json`으로 별도 적용한다. 아래 9월 11일의 공유 감시 기본값을 대체한다.
+- 실제 HTTPS 장애 원인은 운영 로그로 확정하지 않았으며, 이번 변경은 사용자가 제공한 정상 구성으로 네트워크 차이를 복원한다.
+
+## 2026-09-11: Keycloak 식별 속성 보호와 Portal 운영 라우팅
+
+- 사번·로그인 ID 등 미정의 사내 속성은 ADMIN_EDIT로 보존하고 일반 사용자 편집을 차단한다. 이전 Keycloak 스택 계획의 ENABLED 정책을 대체한다.
+- IdP 속성 mapper 19개와 Portal token mapper 19개는 각 소유 Job으로 등록한다. 완료된 Job은 ConfigMap 변경만으로 재실행되지 않는다.
+- 공유 Traefik은 etch-sso와 tailwind-internal을 감시하며 Portal 접근 권한은 Portal 운영 overlay의 namespace Role로 부여한다.
+- Portal Nginx는 내부 Ingress의 원래 HTTP/HTTPS 정보를 유지한다. 검증 기록은 [수정 계획](plans/fix-keycloak-production-routing.md)에 둔다.
+
 ## 확정된 운영 결정
 - 프로젝트 전용 skill은 `.codex/skills/*/SKILL.md`에 둔다.
 - `.codex/skills/.system/**`은 로컬 시스템 skill로 보고 추적/공유 대상에서 제외한다.
-- frontend UI 변경 후에는 `npm run agent:audit:ui` 또는 `scripts/agent/check_ui_consistency.sh`를 실행한다.
-- frontend feature import/export/routing 변경 후에는 `npm run agent:audit:web-boundary` 또는 `scripts/agent/check_frontend_boundaries.sh`를 실행한다.
-- backend domain boundary/import/view/selector 변경 후에는 `npm run agent:audit:api-boundary` 또는 `scripts/agent/check_backend_boundaries.py`를 실행한다.
+- frontend UI 변경 후에는 `make audit-ui` 또는 `apps/tooling/agent/check_ui_consistency.sh`를 실행한다.
+- frontend feature import/export/routing 변경 후에는 `make audit-web-boundary` 또는 `apps/tooling/agent/check_frontend_boundaries.sh`를 실행한다.
+- backend domain boundary/import/view/selector 변경 후에는 `make audit-api-boundary` 또는 `apps/tooling/agent/check_backend_boundaries.py`를 실행한다.
 - PR에서는 `.github/workflows/feature-guardrails.yml`의 frontend boundary, backend boundary, lint, build, backend syntax 검사를 통과해야 한다.
 - AI가 feature 작업을 수행할 때는 `docs/agent/ai-feature-workflow.md`의 기본 프롬프트와 검증 절차를 따른다.
 - 큰 작업은 `docs/agent/PLANS.md`의 ExecPlan 기준을 따른다.
@@ -17,19 +47,27 @@
 ## 보류된 결정
 - multi-agent orchestration은 eval에서 병렬 검토 효과가 확인될 때까지 도입하지 않는다.
 
+## 2026-09-11: Portal 운영은 Kubernetes prod
+
+- Portal의 env와 overlay는 각각 `deploy/portal/env/prod`, `deploy/portal/k8s/overlays/prod`를 사용한다. internal 경로는 통합하고 리소스 Namespace는 변경하지 않는다.
+- Portal 로그인은 준비한 Keycloak 입력을 사용한다. local/oidc/test의 기존 설정과 개발 Compose는 유지한다.
+- 실제 prod env와 전환 전 복구용 사본은 Git에서 제외하며 공개 예시만 관리한다.
+- Portal prod의 필수 입력 검사는 oidc Compose와 분리한다. Airflow·RAG 등 선택 업무 연동은 실제 연결 시 별도로 확인한다.
+- 기존 운영 Compose 시작·빌드 명령은 안내 후 중단한다. 전체 업무 서비스의 Kubernetes 이식과 실제 배포 완료를 뜻하지 않는다.
+
 ## 2026-08-29: Argo CD 준비형 환경 변수 계약
 
-- 환경 변수 파일은 `env/overlays/<profile>`만 사용하고 profile 간 상속을 두지 않는다.
+- 환경 변수 파일은 앱별 `deploy/portal/env/<profile>`, `deploy/keycloak/env`, `deploy/airflow/env`, `deploy/monitoring/env`에서 관리하고 profile 간 상속을 두지 않는다. 로컬 K8s의 실행 차이만 `portal/local/api-k8s.env`로 명시한다.
 - 각 profile은 서비스별 `<service>.env` 한 파일에 설정과 credential을 함께 관리한다.
 - Compose는 해당 profile의 서비스 env 파일만 직접 주입한다.
-- OIDC/prod key 누락과 파일 내부 중복은 `scripts/validate_env_profile_keys.sh`로 검사한다.
+- OIDC/prod key 누락과 파일 내부 중복은 `deploy/shared/scripts/validate_env_profile_keys.sh`로 검사한다.
 - 운영 Web의 `VITE_*`와 명시적 Web runtime key는 이미지 빌드 시 고정하지 않고 컨테이너 시작 시 `/runtime-env.js`로 생성한다.
-- Kubernetes, Kustomize, Helm, Argo CD manifest는 별도 도입 단계에서 이 단일 env 계약을 ConfigMap 입력으로 소비하며 이번 정리 범위에는 포함하지 않는다.
+- 2026-09-11 후속 결정: Kubernetes는 credential 입력을 Secret으로 소비한다. Keycloak 서버, 사내 OIDC와 Portal client 등록은 필요한 key만 선택해 별도 적용한다.
 - 외부 Secret 저장소를 도입할 때만 credential 분리를 새 계약으로 다시 설계한다.
 
 ## 2026-06-19: backend boundary audit 1차 도입
 
-- backend boundary audit은 `scripts/agent/check_backend_boundaries.py`의 AST 기반 검증으로 운영한다.
+- backend boundary audit은 `apps/tooling/agent/check_backend_boundaries.py`의 AST 기반 검증으로 운영한다.
 - 1차 실패 기준은 cross-domain internal import, test cross-domain internal import, `views.py` 직접 ORM, `selectors.py` write ORM, backend app 구조 위반이다.
 - 기존 service direct read ORM 후보는 범위가 넓어 CI 실패 기준에 넣지 않고 별도 debt로 관리한다.
 - CI backend job은 boundary audit 후 Python compile을 실행한다.
@@ -39,14 +77,14 @@
 - 문서 홈은 `docs/README.md`로 유지하고, 실제 route/model/env/command 색인은 `docs/inventory.md`로 분리한다.
 - 주제별 상세 문서는 `docs/backend.md`, `docs/frontend.md`, `docs/data-model.md`, `docs/configuration.md`로 분리해 문서가 길어져도 읽기 흐름을 유지한다.
 - 모듈 문서는 업무 흐름과 운영 포인트를 담당하고, API 문서는 endpoint 계약을 담당한다.
-- 문서 drift를 줄이기 위해 `scripts/agent/check_docs_inventory.sh`로 backend endpoint, frontend route, model, command, env group의 문서 반영 여부를 검증한다.
+- 문서 drift를 줄이기 위해 `apps/tooling/agent/check_docs_inventory.sh`로 backend endpoint, frontend route, model, command, env group의 문서 반영 여부를 검증한다.
 
 ## 2026-05-29: data_movement 테이블별 중첩 앱 구조
 
-- 파일 기반 DB 적재 기능은 `apps/api/api/data_movement/<table_name>` 아래에 테이블별 Django app으로 둔다.
+- 파일 기반 DB 적재 기능은 `apps/portal/api/api/data_movement/<table_name>` 아래에 테이블별 Django app으로 둔다.
 - `<table_name>` 폴더명은 실제 target table 이름과 일치시킨다.
 - 테이블별 app은 자기 model, migration, loader service, tests, management command만 소유한다.
-- 공통 파일 탐색, deflate CSV 파싱, PostgreSQL COPY 유틸은 `apps/api/api/data_movement/common`에 둔다.
+- 공통 파일 탐색, deflate CSV 파싱, PostgreSQL COPY 유틸은 `apps/portal/api/api/data_movement/common`에 둔다.
 
 ## 2026-07-27: Portal·앱 고정 역할 접근 권한
 
@@ -159,3 +197,109 @@
 - 실행 경로를 설명하는 별도 답변 badge나 공개 metadata는 제공하지 않는다.
 - Profile registry에는 현재 실행 version만 두며 삭제된 실행 방식의 재생성 계약은 제공하지 않는다.
 - 외부 RAG/OpenWebUI endpoint·env·Compose 계약과 기존 저장 메시지 조회는 변경하지 않는다.
+
+## 2026-09-14: 배포 파일과 env의 앱별 소유권 통합
+
+- Keycloak·Portal·Airflow·Monitoring의 배포 정의와 env 원본은 `deploy/<app>/`에 둔다.
+- 공통 Compose 조합·클러스터 설정·env 검사 도구만 `deploy/shared/`에 둔다. Portal client 입력은 Portal이 소유한다.
+- 루트 Makefile·Compose 및 기존 단독 Airflow 실행 진입점은 유지한다. CP1의 외부 실제 설정·인증서·DB 경로는 변경하지 않는다.
+- 상세 경로와 운영 명령은 [배포 안내](../../deploy/README.md)를 따른다. 과거 계획의 경로는 당시 상태를 기록한 것이다.
+
+## 2026-09-14: 외부 PC local과 사내 deploy 분리
+
+- 외부 PC 전용 env·mock·Compose·kind·실행 도구는 `local/`에 두고 사내 oidc/prod와 CI test는 deploy에 유지한다.
+- local은 공통 배포 정의를 참조하며 원본을 복제하지 않는다. 사내 검사·배포는 local 없이 실행한다.
+- 서버는 앱별 sparse checkout과 `make server-check APP=<앱>`을 사용한다. 전체 env·Kubernetes 검사는 전체 개발 checkout에서 수행한다.
+- 서버 clone 절차는 [선택 체크아웃 안내](../../deploy/SERVER_CHECKOUT.md), 로컬 개발은 [local 안내](../../local/README.md)를 따른다.
+
+## 2026-09-14: 사내 Kubernetes 전용
+
+- 사내 배포 방식은 Kubernetes만 지원한다. 로컬·CI Compose는 유지하며 과거 사내 Compose 정의는 참고용으로 보존한다.
+- Keycloak·Portal의 prod K8s 원본만 현재 서버 검사 대상이다. Airflow·Monitoring과 과거 oidc 환경은 K8s 정의가 없어 검사 실패로 표시한다.
+- 사내 Compose 시작·빌드는 차단하고 전체 down은 로컬만 종료한다. 이전 컨테이너 정리는 명시적인 legacy 종료 명령으로만 수행한다.
+
+## 2026-09-14: Airflow 단일 서버 공식 Helm 배포
+
+- Airflow는 공식 chart 1.22.0과 기존 실행 버전 2.11.0/LocalExecutor를 사용한다. 버전·checksum을 고정하고 오프라인 반입을 지원한다.
+- PostgreSQL 16은 같은 Kubernetes 노드에서 Helm release 밖 StatefulSet으로 관리한다. DB·로그 local PV는 Retain과 명시적 노드 affinity를 사용한다.
+- 실행 입력은 deploy/airflow/env/k8s.env, 이미지 빌드 입력은 build.env로 관리한다. 실제 파일은 Git에서 제외하고 기존 Compose env는 자동 병합하지 않는다.
+- 신규 DAG는 일시정지로 시작하며 기존 DB 이전·키 교체·메이저 업그레이드는 별도 운영 절차로 수행한다.
+- APP=airflow 서버 검사는 Helm·고정 chart 준비 후 가능하다. Monitoring과 PROFILE=oidc는 여전히 미전환이다.
+
+## 2026-09-14: Airflow 사내 구성과 Kubernetes 실행 기본값 정렬
+
+- 사용자의 기존 사내 설정 유지 요청에 따라 build.env 예시에 기존 internal Compose의 모든 build arg를 옮기고 PostgreSQL 사내 이미지도 동일하게 지정한다. 로컬 Dockerfile 기본값과 Compose는 변경하지 않는다.
+- ODBC 기본 전달 방식은 단일 노드의 기존 디렉터리 전체를 /usr/local/odbc에 읽기 전용 hostPath로 마운트하는 방식이다. 실제 경로는 ODBC_HOST_PATH로 받고 Secret 방식과 동시에 사용하지 않는다.
+- 최초 Helm 구성에서 조정했던 값을 기존 Compose/Airflow 2.11.0과 같게 정렬한다: 신규 DAG 활성, parallelism=32, DAG task/run=16/16, web worker=4, default_pool=-1, 로그 자동 삭제 비활성. CPU·메모리 제한은 별도 Kubernetes 운영 설정으로 유지한다.
+- 사내 driver 다운로드·ODBC 대상 접속은 실제 사내 환경에서 확인해야 하며 외부 PC 검증으로 성공을 주장하지 않는다.
+
+## 2026-09-14: 기존 Keycloak과 Airflow 우선 기동
+
+- 공용 Traefik 소스는 deploy/shared/ingress가 소유하며 기존 etch-sso 리소스 이름·노드·포트와 Keycloak 단독 렌더 결과는 유지한다.
+- 두 앱 재적용은 make server-up을 사용한다. 기존 Traefik 감시 namespace를 보존하고 Airflow namespace 접근 권한을 먼저 연결한다. Keycloak Secret과 OIDC/mapper Job은 갱신하지 않는다.
+- Airflow 공개 URL은 실제 env로 지정하며 기존 TLS Secret의 인증서 도메인·만료를 확인한다. 다른 namespace 인증서는 명시한 원본에서 대상 Secret이 없을 때만 복사한다.
+- Portal 없는 UI 기동 단계에는 신규 DAG 일시정지 override를 사용한다. 일반 Airflow 배포 기본값과 기존 DB의 DAG 활성 상태는 유지한다.
+- 최초 서버 준비와 이후 pull·실행 절차는 [서버 기동 안내](../../deploy/shared/docs/operations/server-start.md)에 모은다. 선택 checkout은 keycloak-airflow를 지원한다.
+
+## 2026-09-15: APP VIP와 두 Worker의 443 연결
+
+- 인프라팀이 APP VIP 10.172.26.150을 10.172.40.117:443과 10.172.40.87:443에 연결했다. NodePort 대신 기존 hostPort 443을 사용한다.
+- server-up의 VIP_BACKENDS 입력으로 실제 Node InternalIP를 확인하고 기존 Traefik Deployment를 두 Worker에 하나씩 배치한다. Backend 목록은 Deployment annotation에 유지해 후속 실행에서도 보존한다.
+- maxSurge=0/maxUnavailable=1의 순차 교체를 사용하며 LB Health Check로 비정상 Backend를 제외한다. Keycloak·Airflow·DB 배치는 확장하지 않는다.
+- 업무 URL은 https://etch.samsungds.net/airflow이며 실제 env와 도메인 인증서로 입력한다. 기존 Keycloak 도메인·issuer·인증서는 유지하고 DNS 전환은 VIP 경유 로그인 검증 이후 수행한다.
+
+## 2026-09-15: 앱별 Kubernetes 배포 진입점
+
+- Keycloak부터 순차 배포하도록 keycloak-check/up과 airflow-check/up을 앱별 스크립트로 제공한다. server-up은 기존 통합 실행 호환용으로 유지한다.
+- Keycloak은 env/certs로 최초 Secret을 만들며 기존 Secret 불일치는 자동 덮어쓰지 않는다. 공용 Traefik의 namespace 감시와 VIP 배치를 유지한다.
+- Airflow 배포는 Keycloak 원본을 읽거나 다시 적용하지 않고 자신의 리소스와 필요한 공용 ingress 연결만 처리한다. 앱별 배포에는 DB 삭제·초기화가 포함되지 않는다.
+
+## 2026-09-15: Keycloak Kubernetes 파일 역할별 정리
+
+- 원본은 k8s/server, k8s/oidc, k8s/claims로 분리하고 k8s/kustomization.yaml 진입점을 유지한다.
+- ConfigMap 키·컨테이너 마운트 경로·리소스 이름은 유지하며 정리 전후 생성 YAML이 동일함을 검증했다. 기본 배포는 설정 파일을 준비하고 OIDC·claim Job은 별도로 실행한다.
+
+## 2026-09-15: Kubernetes Monitoring 신규 구성
+
+- 기존 Compose Monitoring의 서버 이전은 kube-prometheus-stack으로 대체한다.
+- Portal·Keycloak과 독립 설치하며, 초기 Grafana 접속은 port-forward, 외부 알림 수신자는 미설정이다.
+- chart와 checksum을 고정하고 사내 미러·노드·데이터 경로·관리자 Secret 참조는 외부 env로 받는다.
+- 상세: [실행 계획](plans/monitoring-kube-prometheus-stack.md), [배포 안내](../../deploy/monitoring/README.md).
+
+## 2026-09-15: 앱별 소스·배포 경계
+
+- Portal은 `apps/portal/{api,web}`, Airflow 소스·이미지는 `apps/airflow`에서 관리합니다.
+- `deploy/shared/apps.json`을 앱 경로 원본으로 사용하며 기본 서버 checkout은 배포 전용, `--with-source`는 빌드 소스 추가입니다.
+- 기존 Compose 진입점과 참고용 정의는 유지합니다. Airflow 로그는 새 `data/airflow/logs`를 사용하며 이전 로그는 이관하지 않습니다.
+- 자세한 실행·검증 기록은 [ExecPlan](plans/app-source-deployment-layout.md)에 있습니다.
+
+## 2026-09-15: 최상위 관리 폴더 다섯 개
+
+관리 폴더는 apps·data·deploy·docs·local로 제한합니다. 저장소 도구는 apps/tooling,
+개발 Compose 조합은 local/compose, CI·이전 서버 Compose는 deploy가 소유합니다.
+실행은 Makefile을 기준으로 하며 루트 Compose는 호환 연결만 유지합니다.
+[실행 기록](plans/five-root-folders.md)을 참고합니다.
+
+## 2026-09-15: 루트 package·Compose 연결 제거
+
+루트 npm workspace와 Compose 연결 파일을 제거합니다. Web과 tooling은 독립 lockfile·node_modules를 사용하며 실행은 Makefile로 통일합니다. 이전 구조 결정의 호환 연결 보존 방침을 대체합니다. [작업 기록](plans/root-entrypoint-cleanup.md)을 참고합니다.
+
+## 2026-09-15: 로컬 env 준비와 공통 적용의 의존 방향
+
+로컬 API env 합성은 `local/portal/scripts/apply-env.sh`가 담당하고 공통 배포 도구에는 합성 파일을 전달합니다. 기존 Makefile 진입점은 유지하며 공통 도구의 로컬 API 직접 호출은 명시적 파일을 요구합니다. 폴더·배포 회귀 검사는 Feature Guardrails의 별도 tooling 작업에서 실행합니다. [작업 기록](plans/layout-review-followup.md)을 참고합니다.
+
+## 2026-09-16: 전체 로컬 앱의 Kubernetes 기본 실행
+
+- `make dev/down`은 한 PC의 kind 전체 앱과 별도 Docker PostgreSQL을 관리합니다. 이전 Compose 실행은 `compose-dev/compose-down`으로 유지합니다.
+- 새 DB volume에 Portal·Airflow·Keycloak DB와 계정을 분리하며, 기존 DB는 이관하거나 초기화하지 않습니다. 파일은 호스트에 유지해 kind 재생성 후에도 보존합니다.
+- Portal·FTP·Airflow·Monitoring은 deploy의 공통 정의를 재사용하고 로컬 연결·자원 차이만 local에 둡니다. 서버는 local 없이 검사·배포할 수 있습니다.
+- 소스 변경은 이미지 재빌드·재배포로 반영합니다. 백엔드 검사는 같은 이미지의 일회성 Compose api에서 실행하며 전체 테스트에는 표준 test env를 적용합니다.
+- [로컬 실행 안내](../../local/README.md), [실행·검증 기록](plans/local-all-apps-k8s.md)을 참고합니다.
+
+## 2026-09-16: Portal 중심 에이전트 작업 범위
+
+- 저장소·소스 경로·실행 환경을 유지하고 에이전트 시작 위치는 apps/portal을 기본으로 한다.
+- 루트는 공통 규칙·영역 진입점, Portal은 개발 탐색, Web·API는 각 경계, deploy·local은 운영·개발 환경 상세를 소유한다.
+- 대상 feature부터 탐색하고 외부 계약 변경 시에만 관련 설정으로 확장한다. Git scope 상세·스킬·문서는 필요할 때 읽는다.
+- 기본 Portal 지침 합계는 바이트 기준 31.1% 감소했다. 실제 토큰 절감과 새 세션 행동은 별도 평가 대상으로 남긴다.
+- [실행·검증 기록](plans/portal-agent-scope.md), [평가 시나리오](evals/portal-agent-scope.md)를 참고한다.

@@ -1,3 +1,0 @@
-include:
-  - compose/dev.infra.yml
-  - compose/dev.app.yml

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - api.yaml
+  - web.yaml
+  - minio.yaml
+  - edge-nginx.yaml
+configMapGenerator:
+  - name: edge-nginx-config
+    files:
+      - default.conf=nginx.conf

@@ -1,0 +1,8 @@
+# 운영 values는 유지하고 로컬 지표 보존량만 줄입니다.
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    retentionSize: 1GB
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: '1', memory: 2Gi}

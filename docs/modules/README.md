@@ -6,16 +6,16 @@
 
 | 모듈 | Frontend feature | Backend app | API 문서 | 주요 데이터/외부 연동 |
 | --- | --- | --- | --- | --- |
-| Auth | `apps/web/src/features/auth` | `api.auth`, `api.account` | `docs/api/auth.md` | OIDC/ADFS, Django session |
-| Account | `apps/web/src/features/account` | `api.account` | `docs/api/account.md` | `User`, `Affiliation`, `UserSdwtProdAccess`, 외부 소속 snapshot |
-| Emails | `apps/web/src/features/emails` | `api.emails` | `docs/api/emails.md` | `Email`, `EmailAsset`, `EmailOutbox`, POP3, RAG, MinIO |
-| Assistant/RAG | `apps/web/src/features/assistant` | `api.assistant`, `api.rag` | `docs/api/assistant.md` | PostgreSQL 대화 이력, OpenWebUI, RAG, LLM, Account permission group |
-| Line Dashboard/Drone | `apps/web/src/features/line-dashboard` | `api.drone` | `docs/api/line-dashboard.md` | `DroneSOP`, target/channel/recipient/delivery, Jira/Mail/Messenger |
-| L3 Spider | `apps/web/src/features/l3-spider` | `api.l3_spider` | `docs/api/l3-spider.md` | Parquet anomaly, index table, line name rule, Mail API |
-| Observer | `apps/web/src/features/observer` | `api.observer` | `docs/api/observer.md` | 기본 DB 기준정보와 로그 |
-| PM SPIDER | `apps/web/src/features/pm-spider` | `api.pm_comparison` | `docs/modules/pm-comparison-dashboard-spec.md` | PM SPIDER raw/result Parquet |
-| AppStore | `apps/web/src/features/appstore` | `api.appstore` | `docs/api/appstore.md` | `AppStoreApp`, 댓글, 좋아요, cover image |
-| VOC | `apps/web/src/features/voc` | `api.voc` | `docs/api/voc.md` | `VocPost`, `VocReply`, ActivityLog |
+| Auth | `apps/portal/web/src/features/auth` | `api.auth`, `api.account` | `docs/api/auth.md` | OIDC/ADFS, Django session |
+| Account | `apps/portal/web/src/features/account` | `api.account` | `docs/api/account.md` | `User`, `Affiliation`, `UserSdwtProdAccess`, 외부 소속 snapshot |
+| Emails | `apps/portal/web/src/features/emails` | `api.emails` | `docs/api/emails.md` | `Email`, `EmailAsset`, `EmailOutbox`, POP3, RAG, MinIO |
+| Assistant/RAG | `apps/portal/web/src/features/assistant` | `api.assistant`, `api.rag` | `docs/api/assistant.md` | PostgreSQL 대화 이력, OpenWebUI, RAG, LLM, Account permission group |
+| Line Dashboard/Drone | `apps/portal/web/src/features/line-dashboard` | `api.drone` | `docs/api/line-dashboard.md` | `DroneSOP`, target/channel/recipient/delivery, Jira/Mail/Messenger |
+| L3 Spider | `apps/portal/web/src/features/l3-spider` | `api.l3_spider` | `docs/api/l3-spider.md` | Parquet anomaly, index table, line name rule, Mail API |
+| Observer | `apps/portal/web/src/features/observer` | `api.observer` | `docs/api/observer.md` | 기본 DB 기준정보와 로그 |
+| PM SPIDER | `apps/portal/web/src/features/pm-spider` | `api.pm_comparison` | `docs/modules/pm-comparison-dashboard-spec.md` | PM SPIDER raw/result Parquet |
+| AppStore | `apps/portal/web/src/features/appstore` | `api.appstore` | `docs/api/appstore.md` | `AppStoreApp`, 댓글, 좋아요, cover image |
+| VOC | `apps/portal/web/src/features/voc` | `api.voc` | `docs/api/voc.md` | `VocPost`, `VocReply`, ActivityLog |
 | Activity/Health | API only | `api.activity`, `api.health` | `docs/api/activity-health.md` | `ActivityLog`, runtime health |
 | Common | shared | `api.common` | 공통 문서 | request helper, storage, mail, messenger, middleware |
 

@@ -1,0 +1,6 @@
+# 서버에서 넣는 실제 설정·인증서·백업은 추적하지 않습니다.
+/env/*
+!/env/*.env.example
+!/env/README.md
+/certs/*
+!/certs/README.md

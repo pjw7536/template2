@@ -17,8 +17,8 @@
 - 제외: Kubernetes/Helm/Kustomize/Argo CD manifest와 cluster 배포.
 
 ## 설계
-- 모든 비민감 설정은 `env/overlays/<profile>/<service>.config.env`에 완결해서 둔다.
-- credential/token/password/header는 `env/overlays/<profile>/<service>.secret.env`에 둔다.
+- 모든 비민감 설정은 `env/portal/<profile>/<service>.config.env`에 완결해서 둔다.
+- credential/token/password/header는 `env/portal/<profile>/<service>.secret.env`에 둔다.
 - Compose는 config 파일 다음 secret 파일을 읽어 Secret이 최종 override가 되게 한다.
 - Web runner는 시작 시 허용된 runtime key만 `runtime-env.js`로 생성한다.
 - Web 코드의 공통 env reader는 runtime config를 우선하고 Vite env를 개발 fallback으로 사용한다.

@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      nodeSelector: {kubernetes.io/hostname: tailwind-local-worker}
+      containers:
+        - name: api
+          imagePullPolicy: Never
+      volumes:
+        - name: api-data
+          emptyDir: null
+          hostPath: {path: /data/local-runtime/api, type: Directory}
+        - name: data-movement
+          emptyDir: null
+          hostPath: {path: /data/data_movement, type: Directory}
+        - name: l3-spider
+          emptyDir: null
+          hostPath: {path: /data/l3_spider/daily_anomaly, type: Directory}
+        - name: tttm-spider
+          emptyDir: null
+          hostPath: {path: /data/tttm_spider, type: Directory}
+        - name: pm-spider
+          emptyDir: null
+          hostPath: {path: /data/pm_spider, type: Directory}

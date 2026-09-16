@@ -34,7 +34,7 @@ VOC는 문의, 개선 요청, 답변을 관리하는 게시판형 기능입니�
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/voc` |
-| Frontend | `apps/web/src/features/voc` |
+| Frontend | `apps/portal/web/src/features/voc` |
 | Backend API | `/api/v1/voc/posts`, `/api/v1/voc/posts/<post_id>`, `/api/v1/voc/posts/<post_id>/replies` |
 | 데이터 | `VocPost`, `VocReply` |
 | 부작용 | ActivityLog 기록 |
@@ -51,9 +51,9 @@ VOC는 문의, 개선 요청, 답변을 관리하는 게시판형 기능입니�
 
 ## 관련 코드
 
-- `apps/api/api/voc/views.py`
-- `apps/api/api/voc/models.py`
-- `apps/api/api/voc/selectors.py`
-- `apps/api/api/voc/serializers.py`
-- `apps/api/api/voc/services/posts.py`
-- `apps/web/src/features/voc`
+- `apps/portal/api/api/voc/views.py`
+- `apps/portal/api/api/voc/models.py`
+- `apps/portal/api/api/voc/selectors.py`
+- `apps/portal/api/api/voc/serializers.py`
+- `apps/portal/api/api/voc/services/posts.py`
+- `apps/portal/web/src/features/voc`

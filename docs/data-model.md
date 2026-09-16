@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 기본 PostgreSQL | `DJANGO_DB_*` | Account, Emails, Drone, AppStore, VOC, Activity | 업무 데이터, 권한, 로그, 알림 상태 |
 | MinIO | `MINIO_*` | Emails/Common | 메일 asset 파일 저장/조회 |
-| Dummy 외부계 memory/file | `apps/adfs_dummy` | 로컬 Auth/RAG/LLM/Mail/Jira | 외부 시스템 대체 |
+| Dummy 외부계 memory/file | `local/adfs_dummy` | 로컬 Auth/RAG/LLM/Mail/Jira | 외부 시스템 대체 |
 | 외부 RAG/LLM/Mail/Jira/Messenger | env 기반 URL/token | Emails, Assistant, Drone | 검색, 답변, 알림, 메일 전송 |
 
 ## 기본 DB 모델

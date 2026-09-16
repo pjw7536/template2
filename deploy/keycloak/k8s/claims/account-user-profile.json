@@ -1,0 +1,313 @@
+{
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "userid",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "min": 1,
+          "max": 255
+        },
+        "username-prohibited-characters": {}
+      }
+    },
+    {
+      "name": "email",
+      "displayName": "email",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 254
+        },
+        "email": {}
+      }
+    },
+    {
+      "name": "firstName",
+      "displayName": "firstName",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "lastName",
+      "displayName": "lastName",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "knox_id",
+      "displayName": "knox_id",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "sabun",
+      "displayName": "sabun",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 50
+        }
+      }
+    },
+    {
+      "name": "display_name",
+      "displayName": "이름",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "username_en",
+      "displayName": "username_en",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "department",
+      "displayName": "department",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 128
+        }
+      }
+    },
+    {
+      "name": "deptid",
+      "displayName": "deptid",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 50
+        }
+      }
+    },
+    {
+      "name": "grd_name",
+      "displayName": "grd_name",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "grdname_en",
+      "displayName": "grdname_en",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "busname",
+      "displayName": "busname",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "intcode",
+      "displayName": "intcode",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 64
+        }
+      }
+    },
+    {
+      "name": "intname",
+      "displayName": "intname",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    },
+    {
+      "name": "employeetype",
+      "displayName": "employeetype",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 150
+        }
+      }
+    }
+  ],
+  "groups": [],
+  "unmanagedAttributePolicy": "ADMIN_EDIT"
+}

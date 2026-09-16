@@ -1,6 +1,6 @@
 # 프론트엔드 상세 구조
 
-`apps/web`은 React 19, React Router 7, Vite 6, Tailwind CSS 4 기반 SPA입니다. 서버 데이터는 React Query, UI 상호작용 상태는 feature-local Zustand/store 또는 component state가 담당합니다.
+`apps/portal/web`은 React 19, React Router 7, Vite 6, Tailwind CSS 4 기반 SPA입니다. 서버 데이터는 React Query, UI 상호작용 상태는 feature-local Zustand/store 또는 component state가 담당합니다.
 
 ## 실행 단위
 
@@ -11,18 +11,18 @@
 | Style | Tailwind CSS 4, shadcn/Radix primitives |
 | 서버 데이터 | React Query |
 | UI 상태 | Zustand 또는 component state |
-| 로컬 실행 | `npm run web:dev` |
+| 로컬 실행 | `make web-dev` |
 
 ## 최상위 구조
 
 | 경로 | 역할 |
 | --- | --- |
-| `apps/web/src/routes/router.jsx` | 전역 route 조립 |
-| `apps/web/src/components/layout` | 전역 shell/layout |
-| `apps/web/src/components/common` | 여러 feature에서 쓰는 공통 UI |
-| `apps/web/src/components/ui` | shadcn/Radix 기반 primitive |
-| `apps/web/src/features/<feature>` | feature별 page/component/hook/api/store/utils |
-| `apps/web/src/lib` | app-shell context, framework adapter, 범용 helper |
+| `apps/portal/web/src/routes/router.jsx` | 전역 route 조립 |
+| `apps/portal/web/src/components/layout` | 전역 shell/layout |
+| `apps/portal/web/src/components/common` | 여러 feature에서 쓰는 공통 UI |
+| `apps/portal/web/src/components/ui` | shadcn/Radix 기반 primitive |
+| `apps/portal/web/src/features/<feature>` | feature별 page/component/hook/api/store/utils |
+| `apps/portal/web/src/lib` | app-shell context, framework adapter, 범용 helper |
 
 ## Feature 경계
 
@@ -39,7 +39,7 @@
 | `store/` | feature-local UI 상태 |
 | `utils/` | feature 내부 pure helper |
 
-feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선언된 단방향 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`입니다. 그 밖의 조립은 `apps/web/src/routes`, `apps/web/src/components/layout`, `apps/web/src/components/common`, `apps/web/src/lib` 같은 non-feature 계층에서 수행합니다. `lib`에는 domain HTTP client, React Query hook, 업무 UI를 두지 않습니다.
+feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선언된 단방향 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`입니다. 그 밖의 조립은 `apps/portal/web/src/routes`, `apps/portal/web/src/components/layout`, `apps/portal/web/src/components/common`, `apps/portal/web/src/lib` 같은 non-feature 계층에서 수행합니다. `lib`에는 domain HTTP client, React Query hook, 업무 UI를 두지 않습니다.
 
 ## Route tree
 
@@ -84,12 +84,12 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 - scroll 영역은 region마다 축별 하나만 둡니다.
 - Tailwind semantic token을 먼저 사용하고 raw HEX/inline style은 피합니다.
 - loading, empty, error, disabled, selected, focus 상태를 명시합니다.
-- `apps/web/src/components/ui/**`는 shadcn CLI 흐름 또는 명시 요청 없이 직접 수정하지 않습니다.
+- `apps/portal/web/src/components/ui/**`는 shadcn CLI 흐름 또는 명시 요청 없이 직접 수정하지 않습니다.
 
 ## 변경 시 갱신해야 하는 문서
 
 - route 추가/변경: `docs/inventory.md`, `docs/frontend.md`, 해당 `docs/modules/*.md`
 - API client 변경: 해당 `docs/api/*.md`, 해당 `docs/modules/*.md`
 - feature facade 변경: `docs/frontend.md`, 필요 시 boundary audit 결과
-- feature 간 import 정책 변경: `apps/web/AGENTS.md`, `docs/architecture.md`, boundary audit script
+- feature 간 import 정책 변경: `apps/portal/web/AGENTS.md`, `docs/architecture.md`, boundary audit script
 - 주요 화면 흐름 변경: 해당 `docs/modules/*.md`

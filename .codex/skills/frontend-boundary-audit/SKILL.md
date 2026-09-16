@@ -9,7 +9,7 @@ description: |
 # frontend-boundary-audit
 
 ## 목적
-`apps/web/src/features/*`의 feature boundary 규칙을 빠르게 검증한다.
+`apps/portal/web/src/features/*`의 feature boundary 규칙을 빠르게 검증한다.
 
 ## 사용할 때
 - frontend feature를 생성/수정한 뒤
@@ -21,7 +21,7 @@ description: |
 아래 명령을 실행한다.
 
 ```bash
-scripts/agent/check_frontend_boundaries.sh
+apps/tooling/agent/check_frontend_boundaries.sh
 ```
 
 ## 해석 규칙

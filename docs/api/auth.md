@@ -14,6 +14,7 @@ Auth API는 OIDC 로그인과 Django session 관리를 담당합니다.
 | GET | `/api/v1/auth/config` | 공개 | 프론트 인증 설정 조회 |
 | GET | `/api/v1/auth/login` | 공개 | OIDC 로그인 시작 |
 | POST | `/auth/google/callback/` | OIDC form_post | OIDC callback 처리 |
+| GET | `/auth/keycloak/callback/` | Keycloak query | authorization code callback 처리 |
 | GET | `/api/v1/auth/me` | Session | 현재 사용자 조회 |
 | GET | `/api/v1/auth/logout` | Session | 로그아웃 후 IdP logout redirect |
 | POST | `/api/v1/auth/logout` | Session | 로그아웃 URL JSON 반환 |
@@ -30,7 +31,7 @@ GET /api/v1/auth/login?target=/account
 1. OIDC 설정 여부를 확인합니다.
 2. canonical `target`을 검증해 state로 인코딩합니다. 제거된 `next` query는 400으로 거절합니다.
 3. nonce를 세션에 저장합니다.
-4. ADFS authorize URL로 redirect합니다.
+4. 설정된 ADFS 또는 Keycloak authorize URL로 redirect합니다.
 
 ## Callback
 
@@ -41,12 +42,23 @@ Content-Type: application/x-www-form-urlencoded
 
 OIDC provider가 `id_token`, `state`를 form_post로 전달합니다.
 
+Keycloak provider는 authorization code + PKCE를 사용합니다.
+
+```http
+GET /auth/keycloak/callback/?code=<one-time-code>&state=<encoded-target>
+```
+
 동작:
 
 1. state와 redirect target을 검증합니다.
-2. 세션 nonce와 id_token nonce를 비교합니다.
-3. claim으로 `User`를 생성하거나 갱신합니다.
-4. Django session login 후 target으로 redirect합니다.
+2. Keycloak이면 세션의 PKCE verifier로 code를 token endpoint에서 교환합니다.
+3. 세션 nonce와 id_token nonce를 비교합니다.
+4. Keycloak JWKS 서명, issuer, audience와 token 시간을 검증합니다.
+5. claim으로 `User`를 생성하거나 갱신합니다.
+6. Django session login 후 target으로 redirect합니다.
+
+Keycloak 로그인은 identity만 제공하며 `scopeAccess`와 Portal 권한 원천은 기존 Django
+Account 모델을 그대로 사용합니다.
 
 ## 현재 사용자
 

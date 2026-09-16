@@ -1,0 +1,4 @@
+helm/vendor/
+env/k8s.env
+rendered/
+__pycache__/

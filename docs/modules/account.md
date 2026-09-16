@@ -123,7 +123,7 @@ staff/superuser는 활성 소속의 기존 데이터 접근 제한을 대부분 
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/settings/account`, `/settings/members`, `/settings/permissions` |
-| Frontend | `apps/web/src/features/account`, `apps/web/src/features/auth` |
+| Frontend | `apps/portal/web/src/features/account`, `apps/portal/web/src/features/auth` |
 | Backend API | `/api/v1/account/**`, `/api/v1/auth/me` |
 | 데이터 | `User`, `Affiliation`, `UserCurrentAffiliation`, `UserSdwtProdAccess`, `UserScopeAffiliationGrant`, `UserSdwtProdChange`, `ExternalAffiliationSnapshot`, `AccessScope`, `AccessPolicyRule`, `UserAccess`, `AccessAuditLog` |
 | 외부/배치 | Airflow `external-affiliations/sync` |
@@ -153,19 +153,19 @@ staff/superuser는 활성 소속의 기존 데이터 접근 제한을 대부분 
 
 ## 관련 코드
 
-- `apps/api/api/account/views.py`
-- `apps/api/api/account/models.py`
-- `apps/api/api/account/selectors.py`
-- `apps/api/api/account/serializers.py`
-- `apps/api/api/account/services/access_control.py`
-- `apps/api/api/account/services/access_runtime.py`
-- `apps/api/api/account/services/data_scope.py`
-- `apps/api/api/account/services/affiliation_requests.py`
-- `apps/api/api/account/services/affiliations.py`
-- `apps/api/api/account/services/external_sync.py`
-- `apps/api/api/account/services/overview.py`
-- `apps/api/api/account/services/users.py`
-- `apps/web/src/features/account`
-- `apps/web/src/features/account/pages/PermissionsPage.jsx`
-- `apps/web/src/features/account/components/*Permission*.jsx`
-- `apps/web/src/features/auth`
+- `apps/portal/api/api/account/views.py`
+- `apps/portal/api/api/account/models.py`
+- `apps/portal/api/api/account/selectors.py`
+- `apps/portal/api/api/account/serializers.py`
+- `apps/portal/api/api/account/services/access_control.py`
+- `apps/portal/api/api/account/services/access_runtime.py`
+- `apps/portal/api/api/account/services/data_scope.py`
+- `apps/portal/api/api/account/services/affiliation_requests.py`
+- `apps/portal/api/api/account/services/affiliations.py`
+- `apps/portal/api/api/account/services/external_sync.py`
+- `apps/portal/api/api/account/services/overview.py`
+- `apps/portal/api/api/account/services/users.py`
+- `apps/portal/web/src/features/account`
+- `apps/portal/web/src/features/account/pages/PermissionsPage.jsx`
+- `apps/portal/web/src/features/account/components/*Permission*.jsx`
+- `apps/portal/web/src/features/auth`

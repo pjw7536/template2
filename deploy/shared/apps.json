@@ -1,0 +1,52 @@
+{
+  "apps": {
+    "keycloak": {
+      "sourcePaths": [],
+      "deployPath": "deploy/keycloak",
+      "localPath": null
+    },
+    "portal": {
+      "sourcePaths": [
+        "apps/portal"
+      ],
+      "deployPath": "deploy/portal",
+      "localPath": "local/portal"
+    },
+    "airflow": {
+      "sourcePaths": [
+        "apps/airflow"
+      ],
+      "deployPath": "deploy/airflow",
+      "localPath": "local/airflow"
+    },
+    "ftp": {
+      "sourcePaths": [],
+      "deployPath": "deploy/ftp",
+      "localPath": "local/ftp"
+    },
+    "monitoring": {
+      "sourcePaths": [],
+      "deployPath": "deploy/monitoring",
+      "localPath": "local/monitoring"
+    },
+    "headlamp": {
+      "sourcePaths": [],
+      "deployPath": "deploy/headlamp",
+      "localPath": null
+    }
+  },
+  "groups": {
+    "keycloak-airflow": [
+      "keycloak",
+      "airflow"
+    ],
+    "all": [
+      "keycloak",
+      "portal",
+      "airflow",
+      "ftp",
+      "monitoring",
+      "headlamp"
+    ]
+  }
+}

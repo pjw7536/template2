@@ -60,7 +60,7 @@ Emails `admin`과 superuser를 포함한 모든 로그인 사용자는 사용자
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/emails/inbox`, `/emails/sent`, `/emails/members` |
-| Frontend | `apps/web/src/features/emails` |
+| Frontend | `apps/portal/web/src/features/emails` |
 | Backend API | `/api/v1/emails/**` |
 | 데이터 | `Email`, `EmailAsset`, `EmailOutbox` |
 | 외부 연동 | POP3, RAG, MinIO, OCR worker |
@@ -78,14 +78,14 @@ Emails `admin`과 superuser를 포함한 모든 로그인 사용자는 사용자
 
 ## 관련 코드
 
-- `apps/api/api/emails/views/`
-- `apps/api/api/emails/models.py`
-- `apps/api/api/emails/permissions.py`
-- `apps/api/api/emails/selectors/`
-- `apps/api/api/emails/services/ingest.py`
-- `apps/api/api/emails/services/mutations.py`
-- `apps/api/api/emails/services/mailbox.py`
-- `apps/api/api/emails/services/ocr.py`
-- `apps/api/api/emails/services/rag.py`
-- `apps/api/api/emails/services/storage.py`
-- `apps/web/src/features/emails`
+- `apps/portal/api/api/emails/views/`
+- `apps/portal/api/api/emails/models.py`
+- `apps/portal/api/api/emails/permissions.py`
+- `apps/portal/api/api/emails/selectors/`
+- `apps/portal/api/api/emails/services/ingest.py`
+- `apps/portal/api/api/emails/services/mutations.py`
+- `apps/portal/api/api/emails/services/mailbox.py`
+- `apps/portal/api/api/emails/services/ocr.py`
+- `apps/portal/api/api/emails/services/rag.py`
+- `apps/portal/api/api/emails/services/storage.py`
+- `apps/portal/web/src/features/emails`

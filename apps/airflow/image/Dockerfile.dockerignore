@@ -1,0 +1,11 @@
+# 빌드에 필요한 공개 소스만 전송한다.
+**
+!dags/
+!dags/*.py
+!plugins/
+!plugins/**
+!image/
+!image/bootstrap-user.py
+**/__pycache__/
+**/*.pyc
+**/.env*

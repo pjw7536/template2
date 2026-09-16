@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-postgres
+  labels:
+    app.kubernetes.io/name: external-postgres
+    app.kubernetes.io/part-of: tailwind-portal
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
