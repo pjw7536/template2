@@ -5,6 +5,7 @@
 이 폴더는 기존 Traefik의 설정 소유권을 공용으로 분리합니다.
 기본 실행 위치는 기존 `etch-sso` namespace, `khplane01w09` worker이며 80/443을 사용합니다.
 현재 APP VIP 환경은 [두 Worker 443 연결 안내](VIP.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
+새 Worker를 추가하거나 앱 재배포 없이 Traefik만 확장할 때는 [Worker 추가 가이드](ADD_WORKER.md)를 따릅니다.
 
 | 파일 | 역할 |
 | --- | --- |
@@ -12,6 +13,7 @@
 | `kustomization.yaml` | 기존 namespace와 사내 이미지 매핑 |
 | `routing.py` | namespace 감시 보존·앱별 권한·VIP Backend 노드 배치 검사 및 구성 |
 | `VIP.md` | 확정된 APP VIP·업무 DNS·인증서·서버 실행 및 접속 검증 절차 |
+| `ADD_WORKER.md` | 새 Worker 등록·Traefik 단독 확장·LB 활성화·검증·복구 절차 |
 
 Keycloak Kustomize 진입점도 이 원본을 참조하므로 정적 전달 YAML은 기존 스택과 동일합니다.
 정적 기본값은 `etch-sso` 단독 감시이며 기존 Keycloak 단독 설치와 호환됩니다.

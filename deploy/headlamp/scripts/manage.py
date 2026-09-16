@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -28,7 +29,7 @@ def settings(path, example=False):
         if not line or line.startswith('#'):
             continue
         key, separator, value = line.partition('=')
-        if not separator or key not in {'HEADLAMP_REGISTRY', 'IMAGE_PULL_SECRET'} or key in result:
+        if not separator or key not in {'HEADLAMP_REGISTRY', 'IMAGE_PULL_SECRET', 'HEADLAMP_HOST', 'HEADLAMP_TLS_SECRET'} or key in result:
             raise ValueError('알 수 없거나 중복된 env 항목입니다.')
         result[key] = value
     registry = result.get('HEADLAMP_REGISTRY', '')
@@ -39,7 +40,64 @@ def settings(path, example=False):
     secret = result.get('IMAGE_PULL_SECRET', '')
     if secret and not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', secret):
         raise ValueError('IMAGE_PULL_SECRET 이름이 올바르지 않습니다.')
-    return {'image': {'registry': registry}, 'imagePullSecrets': [{'name': secret}] if secret else []}
+    values = {'image': {'registry': registry}, 'imagePullSecrets': [{'name': secret}] if secret else []}
+    host = result.get('HEADLAMP_HOST', '')
+    tls = result.get('HEADLAMP_TLS_SECRET', '')
+    if bool(host) != bool(tls):
+        raise ValueError('HEADLAMP_HOST와 HEADLAMP_TLS_SECRET을 함께 입력하세요.')
+    if host:
+        label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+        if len(host) > 253 or not re.fullmatch(rf'{label}(?:\.{label})+', host):
+            raise ValueError('HEADLAMP_HOST에는 경로·scheme 없는 DNS 이름을 입력하세요.')
+        if len(tls) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', tls):
+            raise ValueError('HEADLAMP_TLS_SECRET 이름이 올바르지 않습니다.')
+        values['config'] = {'baseURL': '/headlamp'}
+        values['ingress'] = {
+            'enabled': True, 'ingressClassName': 'traefik',
+            'annotations': {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
+                            'traefik.ingress.kubernetes.io/router.tls': 'true'},
+            'hosts': [{'host': host, 'paths': [{'path': '/headlamp', 'type': 'Prefix'}]}],
+            'tls': [{'hosts': [host], 'secretName': tls}],
+        }
+    return values
+
+
+def ingress_plan(context, values):
+    """TLS와 기존 controller를 확인하고 namespace 추가 변경만 준비한다."""
+    kubectl = ['kubectl', '--context', context]
+    secret = values['ingress']['tls'][0]['secretName']
+    # kubectl 출력은 타입·키 이름으로 제한해 개인키·인증서 내용을 노출하지 않는다.
+    summary = run(kubectl + ['-n', 'headlamp', 'get', 'secret', secret, '-o',
+                  'go-template={{.type}}{{range $key, $value := .data}} {{$key}}{{end}}'],
+                  capture_output=True).stdout.split()
+    if not summary or summary[0] != 'kubernetes.io/tls' or not {'tls.crt', 'tls.key'} <= set(summary[1:]):
+        raise ValueError('headlamp namespace에 tls.crt·tls.key가 있는 TLS Secret을 먼저 등록하세요.')
+    current = json.loads(run(kubectl + ['-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json'],
+                             capture_output=True).stdout)
+    spec = importlib.util.spec_from_file_location('routing', APP.parent / 'shared/ingress/routing.py')
+    routing = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(routing)
+    desired = routing.preserve_namespaces(current, current, 'headlamp')
+    patch = [{'op': 'test', 'path': '/metadata/resourceVersion', 'value': current['metadata']['resourceVersion']}]
+    for index, container in enumerate(current['spec']['template']['spec']['containers']):
+        if container['name'] == 'traefik':
+            args = desired['spec']['template']['spec']['containers'][index]['args']
+            if args != container['args']:
+                patch.append({'op': 'replace', 'path': f'/spec/template/spec/containers/{index}/args', 'value': args})
+    access = {'apiVersion': 'v1', 'kind': 'List', 'items': routing.namespace_access('headlamp', current)}
+    return access, patch
+
+
+def connect_ingress(context, access, patch, dry_run=False):
+    """앱 namespace 권한을 먼저 준비한 뒤 기존 Traefik 감시 범위를 확장한다."""
+    kubectl = ['kubectl', '--context', context]
+    extra = ['--dry-run=server'] if dry_run else []
+    run(kubectl + ['apply', '-f', '-', *extra], input=json.dumps(access))
+    if len(patch) > 1:
+        run(kubectl + ['-n', 'etch-sso', 'patch', 'deployment', 'traefik', '--type=json',
+                       '--patch', json.dumps(patch), *extra])
+    if not dry_run:
+        run(kubectl + ['-n', 'etch-sso', 'rollout', 'status', 'deployment/traefik', '--timeout=300s'])
 
 
 def chart_path():
@@ -66,7 +124,10 @@ def main():
         kubectl = ['kubectl', '--context', args.context, '-n', 'headlamp']
         if args.action == 'ui':
             run(kubectl + ['rollout', 'status', 'deployment/headlamp', '--timeout=180s'])
-            print('http://localhost:4466 로그인용 조회 token (요청 유효기간 1시간):', flush=True)
+            deployment = json.loads(run(kubectl + ['get', 'deployment', 'headlamp', '-o', 'json'], capture_output=True).stdout)
+            base = '/headlamp/' if any('-base-url=/headlamp' in c.get('args', [])
+                                      for c in deployment['spec']['template']['spec']['containers']) else '/'
+            print(f'http://localhost:4466{base} 로그인용 조회 token (요청 유효기간 1시간):', flush=True)
             run(kubectl + ['create', 'token', 'headlamp-viewer', '--duration=1h'])
             run(kubectl + ['port-forward', '--address', '127.0.0.1', 'svc/headlamp', '4466:80'])
             return
@@ -96,9 +157,18 @@ def main():
             elif args.action == 'check':
                 print('서버 원본 검사 통과: headlamp/prod (실제 image pull·접속 검사는 별도)')
             else:
+                if values.get('ingress', {}).get('enabled'):
+                    access, patch = ingress_plan(args.context, values)
+                    connect_ingress(args.context, access, patch, dry_run=True)
                 # 검사를 통과한 chart와 설정으로만 설치하며 context를 자동 선택하지 않습니다.
                 run([helm, 'upgrade', '--install', 'headlamp', str(chart), *options,
                      '--kube-context', args.context, '--create-namespace', '--wait', '--timeout', '5m'])
+                if values.get('ingress', {}).get('enabled'):
+                    # Helm 실행 중의 변경을 재조회해 최신 namespace 목록을 보존한다.
+                    access, patch = ingress_plan(args.context, values)
+                    connect_ingress(args.context, access, patch)
+                    host = values['ingress']['hosts'][0]['host']
+                    print(f'접속 주소: https://{host}/headlamp/')
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         detail = error.stderr if isinstance(error, subprocess.CalledProcessError) and error.stderr else str(error)
         parser.exit(1, f'Headlamp 실행 실패: {detail}\n')
