@@ -20,6 +20,7 @@ http://localhost:8000
 
 ```text
 /auth/google/callback/
+/auth/keycloak/callback/
 ```
 
 OIDC provider가 `form_post`로 호출하는 callback입니다.
@@ -39,7 +40,7 @@ OIDC provider가 `form_post`로 호출하는 callback입니다.
 
 | 항목 | 설명 |
 | --- | --- |
-| Method/Path | 실제 `apps/api/api/<feature>/urls.py` 기준 경로 |
+| Method/Path | 실제 `apps/portal/api/api/<feature>/urls.py` 기준 경로 |
 | Auth | Session, Bearer token, Internal token, 공개 여부 |
 | Query/Body | 필수/선택 입력, `snake_case`/`camelCase` 호환 여부 |
 | Response | 주요 field와 collection envelope |

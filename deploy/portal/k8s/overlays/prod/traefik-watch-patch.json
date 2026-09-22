@@ -1,0 +1,17 @@
+[
+  {
+    "op": "test",
+    "path": "/spec/template/spec/containers/0/name",
+    "value": "traefik"
+  },
+  {
+    "op": "test",
+    "path": "/spec/template/spec/containers/0/args/2",
+    "value": "--providers.kubernetesingress.namespaces=etch-sso"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/args/2",
+    "value": "--providers.kubernetesingress.namespaces=etch-sso,tailwind-internal"
+  }
+]

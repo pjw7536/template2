@@ -1,0 +1,84 @@
+# AGENTS.md
+
+## Scope
+These rules apply to `apps/portal/web/**`.
+
+## 작업별 스킬과 명명
+- 아래 스킬 경로는 저장소 루트 기준이다. 현재 작업에 해당하는 스킬만 읽는다.
+- UI 구성: `.codex/skills/product-ui-design-system/SKILL.md`, 레이아웃 구성: `.codex/skills/compose-frontend-layout/SKILL.md`.
+- UI 일관성 검사: `.codex/skills/ui-consistency-audit/SKILL.md`, feature 경계 검사: `.codex/skills/frontend-boundary-audit/SKILL.md`.
+- src의 JSX 파일은 .jsx, 비 JSX 모듈은 .js를 사용한다. 컴포넌트는 PascalCase, hook/util/store는 명시된 예외 외에는 camelCase다.
+
+## Frontend Feature Boundary
+- Feature path: `apps/portal/web/src/features/<feature>`
+- Allowed subpaths only:
+  - `pages/`
+  - `components/`
+  - `hooks/`
+  - `api/`
+  - `store/`
+  - `utils/`
+  - `routes.jsx`
+  - `index.js`
+- Folder depth rule:
+  - Default: max depth 2
+  - One extra level under `components/` only when:
+    - the feature already has 12+ component files, or grouping is explicitly requested
+    - subfolder name is one of: `list`, `detail`, `form`, `dialog`, `table`, `chart`, `filters`, `cards`, `sections`
+    - no further nesting
+  - If another subfolder name is needed, ask first.
+
+## Public Facade
+- `apps/portal/web/src/features/<feature>/index.js` is the only public surface.
+- Named exports only.
+- `export *` is forbidden.
+- Feature 간 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`만 허용합니다.
+- 허용된 feature 의존도 반드시 `@/features/<feature>` public facade만 사용합니다.
+- 비-feature orchestration layer인 `routes/*`, `components/layout/*`, `components/common/*`, `lib/*`는 feature facade를 조합할 수 있습니다.
+- Explicit `@/features/<otherFeature>/index.js` import is forbidden.
+- Direct imports to another feature's internals are forbidden (`components/*`, `pages/*`, `api/*`, etc.).
+- `lib/*`에는 app-shell context, framework adapter, 범용 helper만 둘 수 있으며 domain HTTP, React Query hook, 업무 UI를 둘 수 없습니다.
+
+## Import Rules
+- Prefer `@/` for project-internal absolute imports.
+- `components/*` alias is allowed only for `components/...` paths.
+- Do not mix `@/components/...` and `components/...` in one file.
+- Keep existing alias style when editing.
+- Project-internal absolute imports must resolve under:
+  - `apps/portal/web/src/components/ui/*`
+  - `apps/portal/web/src/components/layout/*`
+  - `apps/portal/web/src/components/common/*`
+  - `apps/portal/web/src/lib/*`
+  - `apps/portal/web/src/features/<otherFeature>` (facade only from non-feature orchestration layers)
+
+## UI, Route, and Data Rules
+- Do not manually edit `apps/portal/web/src/components/ui/**` unless explicitly requested via shadcn CLI flow.
+- Every feature must expose `routes.jsx`.
+- Global routes only in `apps/portal/web/src/routes/*`.
+- Routes may compose `components/layout/*`, but must not define layout components in `routes/*`.
+- Routes must not contain business logic/data logic/derived UI logic.
+- React Query is the single source of truth for server data.
+- Use array query keys, avoid redundant keys, and invalidate minimum scope.
+- Never mirror server data to Zustand.
+- Zustand is only for feature-local UI/interaction flow state.
+
+## Styling, React, and Layout
+- Tailwind only; use design tokens; use `dark:` for dark mode.
+- Use shadcn/Radix primitives from `apps/portal/web/src/components/ui/*` before creating custom primitives.
+- Product UI decisions must follow `product-ui-design-system` skill.
+- Use semantic tokens (`bg-card`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-primary`, etc.) before raw colors.
+- Arbitrary HEX and inline style are forbidden unless strictly necessary; CSS variable-based dynamic sizing/coloring is allowed when library integration requires it.
+- Avoid premature optimization (`useMemo`, `useCallback`, `React.memo` only when required).
+- UI states must be explicit: loading, empty, error, disabled, selected, hover/focus, and dark mode when applicable.
+- Interactive controls must keep accessible labels, keyboard reachability, and visible focus states.
+- Layout core constraints:
+  - one scroll container per axis per region
+  - scrollable elements require `min-h-0`
+  - page skeleton: `h-screen flex flex-col` + fixed header + `flex-1 min-h-0 overflow-hidden`
+- Detailed layout recipes are in `compose-frontend-layout` skill.
+
+## Verification
+- After frontend UI changes, run or recommend `make audit-ui`.
+- After feature import/export/routing changes, run or recommend `make audit-web-boundary`.
+- For broad frontend changes, run or recommend `make audit`.
+- Audit script findings are review candidates; do not fix legacy findings outside the requested scope.

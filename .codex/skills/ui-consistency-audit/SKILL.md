@@ -20,12 +20,12 @@ React/Tailwind/shadcn UI 작업 후 일관성 위반 후보를 빠르게 찾는�
 아래 명령을 실행한다.
 
 ```bash
-scripts/agent/check_ui_consistency.sh
+apps/tooling/agent/check_ui_consistency.sh
 ```
 
 ## 해석 규칙
 - 출력은 “확정 오류”가 아니라 review 대상 후보이다.
-- `apps/web/src/components/ui/**`의 shadcn 내부 구현과 외부 라이브러리 연동 코드는 예외일 수 있다.
+- `apps/portal/web/src/components/ui/**`의 shadcn 내부 구현과 외부 라이브러리 연동 코드는 예외일 수 있다.
 - 기존 위반 후보를 발견해도 요청 범위 밖이면 고치지 말고 요약만 한다.
 
 ## 점검 관점

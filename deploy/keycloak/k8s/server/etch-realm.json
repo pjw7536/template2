@@ -1,0 +1,7 @@
+{
+  "realm": "etch",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true
+}

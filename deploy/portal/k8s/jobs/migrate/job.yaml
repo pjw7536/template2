@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: portal-migrate
+  labels:
+    app.kubernetes.io/name: portal-migrate
+    app.kubernetes.io/part-of: tailwind-portal
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portal-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: portal-api:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+          args:
+            - manage.py
+            - migrate
+            - --noinput
+          envFrom:
+            - secretRef:
+                name: api-env

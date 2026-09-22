@@ -24,7 +24,7 @@ Observer는 설비 Observer 화면에 필요한 기준 정보와 로그를 조�
 | `/ESOP_Dashboard/tip-status/:lineId` | m_tkin_prevent 예방 상태 matrix 조회 |
 | `/observer/:eqpId` | 특정 설비를 URL에서 바로 선택 |
 
-프론트 feature는 `apps/web/src/features/observer`이며, 외부 공개는 `apps/web/src/features/observer/index.js`의 `observerRoutes`입니다.
+프론트 feature는 `apps/portal/web/src/features/observer`이며, 외부 공개는 `apps/portal/web/src/features/observer/index.js`의 `observerRoutes`입니다.
 
 ## 데이터 소스
 
@@ -97,17 +97,17 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 
 | 경로 | 역할 |
 | --- | --- |
-| `apps/web/src/features/observer/pages/ObserverPage.jsx` | observer route page |
-| `apps/web/src/features/observer/pages/TkinPreventDashboardPage.jsx` | tkin Prevent route page |
-| `apps/web/src/features/observer/api/observerApi.js` | backend API 호출 |
-| `apps/web/src/features/observer/hooks/useObserverLogs.js` | 로그 query orchestration |
-| `apps/web/src/features/observer/hooks/useObserverLogDetailQuery.js` | 선택 로그 상세 지연 조회 |
-| `apps/web/src/features/observer/hooks/useObserverAssistantContext.js` | 현재 조회 조건을 ChatWidget page context에 등록 |
-| `apps/web/src/features/observer/utils/observerEvidence.js` | 분석 근거 URL 생성·해석과 로그 ID 매칭 |
-| `apps/web/src/lib/assistant/pageContext.jsx` | feature와 전역 ChatWidget 사이의 공용 page context |
-| `apps/web/src/features/observer/store/useObserverStore.js` | 선택/필터 UI 상태 |
-| `apps/web/src/features/observer/utils/visObserverItems.js` | vis-timeline item 변환 |
-| `apps/web/src/features/observer/components/*Detail.jsx` | 로그 유형별 상세 패널 |
+| `apps/portal/web/src/features/observer/pages/ObserverPage.jsx` | observer route page |
+| `apps/portal/web/src/features/observer/pages/TkinPreventDashboardPage.jsx` | tkin Prevent route page |
+| `apps/portal/web/src/features/observer/api/observerApi.js` | backend API 호출 |
+| `apps/portal/web/src/features/observer/hooks/useObserverLogs.js` | 로그 query orchestration |
+| `apps/portal/web/src/features/observer/hooks/useObserverLogDetailQuery.js` | 선택 로그 상세 지연 조회 |
+| `apps/portal/web/src/features/observer/hooks/useObserverAssistantContext.js` | 현재 조회 조건을 ChatWidget page context에 등록 |
+| `apps/portal/web/src/features/observer/utils/observerEvidence.js` | 분석 근거 URL 생성·해석과 로그 ID 매칭 |
+| `apps/portal/web/src/lib/assistant/pageContext.jsx` | feature와 전역 ChatWidget 사이의 공용 page context |
+| `apps/portal/web/src/features/observer/store/useObserverStore.js` | 선택/필터 UI 상태 |
+| `apps/portal/web/src/features/observer/utils/visObserverItems.js` | vis-timeline item 변환 |
+| `apps/portal/web/src/features/observer/components/*Detail.jsx` | 로그 유형별 상세 패널 |
 
 ## 운영 포인트
 
@@ -137,6 +137,6 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 
 ## 관련 코드
 
-- `apps/api/api/observer/views.py`
-- `apps/api/api/observer/selectors.py`
-- `apps/web/src/features/observer`
+- `apps/portal/api/api/observer/views.py`
+- `apps/portal/api/api/observer/selectors.py`
+- `apps/portal/web/src/features/observer`

@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: etch-sso
+resources:
+  - server/stack.yaml
+  # 기존 단독 배포 호환성을 위해 공용 ingress도 함께 렌더합니다.
+  - ../../shared/ingress
+images:
+  - name: keycloak-internal
+    newName: repository.samsungds.net/proxy-docker-quay.io/keycloak/keycloak
+    newTag: 26.7.1
+  - name: postgres-internal
+    newName: repository.samsungds.net/proxy-docker-registry-1.docker.io/postgres
+    newTag: "16"
+configMapGenerator:
+  - name: keycloak-realm
+    files:
+      - server/etch-realm.json
+  # claim 등록 Job은 별도로 실행하며, 여기서는 스크립트만 준비합니다.
+  - name: keycloak-claim-mapper
+    files:
+      - claims/sync-oidc-claim-mappers.sh
+      - oidc/admin-common.sh
+      - oidc/setup-oidc.sh
+      - claims/account-user-profile.json
+    options:
+      disableNameSuffixHash: true

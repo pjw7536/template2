@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: etch-ftp
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ftp
+spec:
+  selector:
+    matchLabels:
+      app: ftp
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        app: ftp
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        etch.io/ftp-enabled: "true"
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      automountServiceAccountToken: false
+      containers:
+        - name: ftp
+          image: fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177
+          imagePullPolicy: Always
+          command: ["/bin/bash", "/opt/ftp/start.sh"]
+          env:
+            - name: FTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ftp-credentials
+                  key: FTP_USER
+            - name: FTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: ftp-credentials
+                  key: FTP_PASS
+            - name: PASV_ADDRESS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: PASV_MIN_PORT
+              value: "8076"
+            - name: PASV_MAX_PORT
+              value: "8079"
+            - name: PASV_ENABLE
+              value: "YES"
+            - name: PASV_ADDR_RESOLVE
+              value: "NO"
+            - name: REVERSE_LOOKUP_ENABLE
+              value: "NO"
+            # 이미지 시작 시 계정 비밀번호를 출력하지 않도록 합니다.
+            - name: LOG_STDOUT
+              value: "YES"
+          ports:
+            - name: ftp
+              containerPort: 6380
+              hostPort: 6380
+            - name: passive-0
+              containerPort: 8076
+              hostPort: 8076
+            - name: passive-1
+              containerPort: 8077
+              hostPort: 8077
+            - name: passive-2
+              containerPort: 8078
+              hostPort: 8078
+            - name: passive-3
+              containerPort: 8079
+              hostPort: 8079
+          readinessProbe:
+            tcpSocket:
+              port: ftp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data/data_movement
+            - name: start
+              mountPath: /opt/ftp
+              readOnly: true
+      volumes:
+        - name: data
+          hostPath:
+            path: /data/data_movement
+            type: Directory
+        - name: start
+          configMap:
+            name: ftp-start

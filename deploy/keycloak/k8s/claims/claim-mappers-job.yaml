@@ -1,0 +1,83 @@
+# Keycloak과 사내 OIDC 설정 후 별도로 적용하는 일회성 작업입니다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-oidc-claim-mappers
+  namespace: etch-sso
+  labels:
+    app.kubernetes.io/name: keycloak-oidc-claim-mappers
+    app.kubernetes.io/part-of: etch-sso
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-oidc-claim-mappers
+        app.kubernetes.io/part-of: etch-sso
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: khplane01w09
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: claim-mappers
+          # 독립 적용 파일이므로 kustomization.yaml의 Keycloak mirror/tag와 함께 관리합니다.
+          image: repository.samsungds.net/proxy-docker-quay.io/keycloak/keycloak:26.7.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              # 기존 ConfigMap도 지원하도록 쓰기 가능한 사본에서 대상 realm 옵션을 교정합니다.
+              cp -f /opt/keycloak-config/sync-oidc-claim-mappers.sh /tmp/sync-oidc-claim-mappers.sh
+              sed -i.before-realm-fix 's/--realm "$KEYCLOAK_TARGET_REALM"/-r "$KEYCLOAK_TARGET_REALM"/g' /tmp/sync-oidc-claim-mappers.sh
+              exec /bin/bash /tmp/sync-oidc-claim-mappers.sh
+          env:
+            - name: KEYCLOAK_MAPPING_TARGET
+              value: idp
+            - name: KEYCLOAK_ADMIN_URL
+              value: http://keycloak:8080
+            - name: KEYCLOAK_TARGET_REALM
+              value: etch
+            - name: KEYCLOAK_IDP_ALIAS
+              value: oidc
+            - name: KEYCLOAK_TARGET_CLIENT
+              value: portal
+            - name: KEYCLOAK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-runtime
+                  key: bootstrap-admin-username
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-runtime
+                  key: bootstrap-admin-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /opt/keycloak-config
+              readOnly: true
+            - name: work
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: keycloak-claim-mapper
+        - name: work
+          emptyDir: {}

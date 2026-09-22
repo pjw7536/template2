@@ -46,7 +46,7 @@ Line Dashboard는 Drone SOP 데이터를 보고, 조기 알림과 멀티 채널 
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/ESOP_Dashboard/**` |
-| Frontend | `apps/web/src/features/line-dashboard` |
+| Frontend | `apps/portal/web/src/features/line-dashboard` |
 | Backend API | `/api/v1/line-dashboard/**` |
 | 데이터 | `DroneSOP`, `DroneSopTarget`, `DroneSopTargetChannelConfig`, `DroneSopTargetRecipient`, `DroneSopTargetDispatch`, `DroneSopDelivery`, `DroneEarlyInform` |
 | 외부 연동 | POP3, Jira, Knox Messenger, Knox Mail API |
@@ -78,14 +78,16 @@ external affiliation snapshot에서 자동 수집합니다.
 
 실행 예시:
 
+검사용 컨테이너에 입력 파일이 있어야 합니다. 호스트 파일은 `run -v <호스트 파일>:/app/config/drone_targets.json:ro`로 연결한 뒤 실행합니다.
+
 ```bash
-docker compose -f docker-compose.dev.yml exec -T api \
-  python manage.py seed_drone_targets_from_file \
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api \
+  seed_drone_targets_from_file \
   --file /app/config/drone_targets.json \
   --dry-run
 
-docker compose -f docker-compose.dev.yml exec -T api \
-  python manage.py seed_drone_targets_from_file \
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api \
+  seed_drone_targets_from_file \
   --file /app/config/drone_targets.json
 ```
 
@@ -104,16 +106,16 @@ docker compose -f docker-compose.dev.yml exec -T api \
 
 ## 관련 코드
 
-- `apps/api/api/drone/views.py`
-- `apps/api/api/drone/models.py`
-- `apps/api/api/drone/selectors.py`
-- `apps/api/api/drone/serializers.py`
-- `apps/api/api/drone/services/pop3/sop_pop3.py`
-- `apps/api/api/drone/services/inform/sop_inform.py`
-- `apps/api/api/drone/services/inform/retry_channel.py`
-- `apps/api/api/drone/services/jira/sop_jira.py`
-- `apps/api/api/drone/services/messenger/messenger_sender.py`
-- `apps/api/api/drone/services/mail/mail_sender.py`
-- `apps/api/api/drone/services/channels/recipients.py`
-- `apps/api/api/drone/services/table_ops.py`
-- `apps/web/src/features/line-dashboard`
+- `apps/portal/api/api/drone/views.py`
+- `apps/portal/api/api/drone/models.py`
+- `apps/portal/api/api/drone/selectors.py`
+- `apps/portal/api/api/drone/serializers.py`
+- `apps/portal/api/api/drone/services/pop3/sop_pop3.py`
+- `apps/portal/api/api/drone/services/inform/sop_inform.py`
+- `apps/portal/api/api/drone/services/inform/retry_channel.py`
+- `apps/portal/api/api/drone/services/jira/sop_jira.py`
+- `apps/portal/api/api/drone/services/messenger/messenger_sender.py`
+- `apps/portal/api/api/drone/services/mail/mail_sender.py`
+- `apps/portal/api/api/drone/services/channels/recipients.py`
+- `apps/portal/api/api/drone/services/table_ops.py`
+- `apps/portal/web/src/features/line-dashboard`

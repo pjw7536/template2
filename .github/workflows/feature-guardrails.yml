@@ -8,6 +8,32 @@ on:
       - master
 
 jobs:
+  tooling:
+    name: Repository layout and deployment regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/tooling/package-lock.json
+
+      - name: Check rendering tools
+        run: |
+          docker compose version
+          kubectl version --client
+          python3 --version
+
+      - name: Install tooling dependencies
+        run: make tooling-install
+
+      - name: Run repository regression tests
+        run: make tooling-test
+
   frontend:
     name: Frontend test, lint, build, audits
     runs-on: ubuntu-latest
@@ -23,21 +49,24 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          cache-dependency-path: |
+            apps/portal/web/package-lock.json
+            apps/tooling/package-lock.json
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: make install
 
       - name: Test web
-        run: npm run web:test
+        run: make web-test
 
       - name: Lint web
-        run: npm run web:lint
+        run: make web-lint
 
       - name: Build web
-        run: npm run web:build
+        run: make web-build
 
       - name: Run repository audits
-        run: npm run agent:audit
+        run: make audit
 
       - name: Check whitespace errors
         env:
@@ -61,13 +90,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build backend test image
-        run: docker compose -f docker-compose.test.yml build api-test
+        run: make build-ci-api
 
       - name: Run backend tests
-        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py test
+        run: make test-ci-api
 
       - name: Run Django system checks
-        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py check
+        run: make check-ci-api
 
       - name: Check migration drift
-        run: docker compose -f docker-compose.test.yml run --rm api-test python manage.py makemigrations --check --dry-run
+        run: make makemigrations-ci-check

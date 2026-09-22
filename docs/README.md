@@ -2,6 +2,14 @@
 
 이 `docs` 폴더는 코드를 열지 않아도 앱의 구조, 화면, API, 데이터, 환경 변수, 외부 연동, 운영 방법을 파악할 수 있게 정리한 문서입니다.
 
+## 실행 진입 안내
+
+- [서버 Kubernetes 배포 문서](../deploy/README.md): 입문 가이드·서버 준비·앱별 배포·운영
+- [사용방법](usage.md): Makefile 기반 개발·서버 실행
+- [Migration 안내](migration-guide.md): 기존 migration 운영 절차 참고
+- [로컬 Kubernetes 실행](../local/README.md)
+- [저장소 검사 도구](../apps/tooling/README.md)
+
 ## 먼저 읽는 순서
 
 1. 전체 그림: `docs/architecture.md`

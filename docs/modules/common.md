@@ -53,12 +53,12 @@ Common은 여러 백엔드 모듈에서 공유하는 helper, middleware, 외부 
 
 ## 관련 코드
 
-- `apps/api/api/common/services/__init__.py`
-- `apps/api/api/common/services/request_helpers.py`
-- `apps/api/api/common/services/activity_logging.py`
-- `apps/api/api/common/services/middleware.py`
-- `apps/api/api/common/services/db.py`
-- `apps/api/api/common/services/schema.py`
-- `apps/api/api/common/services/storage.py`
-- `apps/api/api/common/services/mail_api.py`
-- `apps/api/api/common/services/messenger.py`
+- `apps/portal/api/api/common/services/__init__.py`
+- `apps/portal/api/api/common/services/request_helpers.py`
+- `apps/portal/api/api/common/services/activity_logging.py`
+- `apps/portal/api/api/common/services/middleware.py`
+- `apps/portal/api/api/common/services/db.py`
+- `apps/portal/api/api/common/services/schema.py`
+- `apps/portal/api/api/common/services/storage.py`
+- `apps/portal/api/api/common/services/mail_api.py`
+- `apps/portal/api/api/common/services/messenger.py`

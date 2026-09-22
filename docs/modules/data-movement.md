@@ -5,7 +5,7 @@
 ## 디렉터리
 
 테이블별 root 아래 `incoming/`에 완료 파일을 둡니다. loader는 파일을 `processing/`으로 atomic move한 뒤 처리하고, 성공/실패 후 처리 파일을 삭제합니다.
-Compose 기본 host path는 `./data/data_movement`이고, API 컨테이너에서는 `/data/data_movement`로 mount됩니다.
+로컬 Kubernetes 기본 host path는 `./data/data_movement`이고, API 컨테이너에서는 `/data/data_movement`로 mount됩니다.
 
 | 테이블 | 기본 root | 파일 패턴 |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ EQP/TIP 원천 시간 계약 도입 전에는 timezone 없는 값을 PostgreSQL 
 - CTTTM comment 요약 자동 실행: Airflow DAG `ct_process_comment_summary`
 - 내부 API: `POST /api/v1/data-movement/<table_name>/load/`
 - CTTTM comment 요약 API: `POST /api/v1/data-movement/ct_process_comment/summarize/`
-- 파일 수신: Compose `ftp` service
+- 파일 수신: Kubernetes FTP DaemonSet
 
 ## Airflow 순서
 
@@ -54,14 +54,14 @@ EQP/TIP 원천 시간 계약 도입 전에는 timezone 없는 값을 PostgreSQL 
 
 ## FTP
 
-OIDC/운영 Compose의 `ftp` service는 `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd` 이미지를 사용합니다. dev Compose는 외부 개발용 public image 이름을 유지합니다.
+FTP 배포와 이미지·계정 입력은 [FTP 안내](../../deploy/ftp/README.md)를 따릅니다.
 FTP에서 보이는 `data_movement` 디렉터리는 API의 `/data/data_movement`와 같은 host path입니다.
 
 기본 접속 설정은 env로 바꿀 수 있습니다.
 
 ```text
 FTP_USER=ftpuser
-FTP_PASS=ftp1234
+FTP_PASS=<생성된 로컬 credential 또는 운영 Secret>
 FTP_PORT=6380
 FTP_PASV_ADDRESS=127.0.0.1
 FTP_PASV_MIN_PORT=8076

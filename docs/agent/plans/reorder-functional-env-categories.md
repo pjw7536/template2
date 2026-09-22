@@ -11,7 +11,7 @@
 - 기준 커밋은 공통·환경별 파일이 나뉘어 있어 현재 서비스 파일에 직접 대응하지 않는다.
 
 ## 범위
-- 수정: `env/overlays/{local,oidc,prod,test}`의 15개 env 파일.
+- 수정: `env/portal/{local,oidc,prod,test}`의 15개 env 파일.
 - 추가: 이 ExecPlan.
 - 제외: 환경변수 key/value, 파일명, Compose 연결, runtime 코드와 문서 계약.
 

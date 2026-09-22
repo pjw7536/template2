@@ -35,7 +35,7 @@ Health는 인증 없이 서버 상태를 반환합니다.
 | --- | --- |
 | Activity API | `/api/v1/activity/logs` |
 | Health API | `/api/v1/health/` |
-| Backend | `apps/api/api/activity`, `apps/api/api/health` |
+| Backend | `apps/portal/api/api/activity`, `apps/portal/api/api/health` |
 | 데이터 | `ActivityLog`, runtime health payload |
 | 생성 경로 | `api.common` middleware와 service helper |
 
@@ -53,11 +53,11 @@ Health는 인증 없이 서버 상태를 반환합니다.
 
 ## 관련 코드
 
-- `apps/api/api/activity/views.py`
-- `apps/api/api/activity/models.py`
-- `apps/api/api/activity/selectors.py`
-- `apps/api/api/activity/services/activity_logs.py`
-- `apps/api/api/health/views.py`
-- `apps/api/api/health/services/health_status.py`
-- `apps/api/api/common/services/middleware.py`
-- `apps/api/api/common/services/activity_logging.py`
+- `apps/portal/api/api/activity/views.py`
+- `apps/portal/api/api/activity/models.py`
+- `apps/portal/api/api/activity/selectors.py`
+- `apps/portal/api/api/activity/services/activity_logs.py`
+- `apps/portal/api/api/health/views.py`
+- `apps/portal/api/api/health/services/health_status.py`
+- `apps/portal/api/api/common/services/middleware.py`
+- `apps/portal/api/api/common/services/activity_logging.py`

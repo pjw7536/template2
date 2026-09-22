@@ -110,7 +110,7 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 | 구간 | 위치 |
 | --- | --- |
 | 화면 | `/assistant` |
-| Frontend | `apps/web/src/features/assistant` |
+| Frontend | `apps/portal/web/src/features/assistant` |
 | Backend API | `/api/v1/assistant/turns/stream`, `/api/v1/assistant/rag-indexes`, `/api/v1/assistant/conversations*` |
 | 데이터 | Account 권한 그룹, `assistant_conversation`, `assistant_conversation_summary`, `assistant_message`, `assistant_generation`, `assistant_context_snapshot`, `assistant_message_feedback` |
 | 외부 연동 | OpenWebUI 일반 대화·Email RAG 답변 SSE·대화방 제목·장기 요약 chat completions, RAG search |
@@ -128,24 +128,24 @@ Email RAG는 다음 값을 permission group으로 사용합니다.
 
 ## 관련 코드
 
-- `apps/api/api/assistant/views.py`
-- `apps/api/api/assistant/services/chat.py`
-- `apps/api/api/assistant/services/config.py`
-- `apps/api/api/assistant/services/conversations.py`
-- `apps/api/api/assistant/services/generations.py`
-- `apps/api/api/assistant/services/exports.py`
-- `apps/api/api/assistant/services/normalization.py`
-- `apps/api/api/assistant/services/openwebui.py`
-- `apps/api/api/assistant/services/profiles.py`
-- `apps/api/api/assistant/services/access_requirements.py`
-- `apps/api/api/assistant/services/runtime.py`
-- `apps/api/api/assistant/services/turns.py`
-- `apps/api/api/assistant/services/runtime_execution.py`
-- `apps/api/api/assistant/services/runtime_memory.py`
-- `apps/api/api/assistant/services/turn_persistence.py`
-- `apps/api/api/assistant/services/reply.py`
-- `apps/api/api/rag/services/client.py`
-- `apps/api/api/rag/services/config.py`
-- `apps/api/api/appstore/selectors.py`
-- `apps/api/api/drone/selectors.py`
-- `apps/web/src/features/assistant`
+- `apps/portal/api/api/assistant/views.py`
+- `apps/portal/api/api/assistant/services/chat.py`
+- `apps/portal/api/api/assistant/services/config.py`
+- `apps/portal/api/api/assistant/services/conversations.py`
+- `apps/portal/api/api/assistant/services/generations.py`
+- `apps/portal/api/api/assistant/services/exports.py`
+- `apps/portal/api/api/assistant/services/normalization.py`
+- `apps/portal/api/api/assistant/services/openwebui.py`
+- `apps/portal/api/api/assistant/services/profiles.py`
+- `apps/portal/api/api/assistant/services/access_requirements.py`
+- `apps/portal/api/api/assistant/services/runtime.py`
+- `apps/portal/api/api/assistant/services/turns.py`
+- `apps/portal/api/api/assistant/services/runtime_execution.py`
+- `apps/portal/api/api/assistant/services/runtime_memory.py`
+- `apps/portal/api/api/assistant/services/turn_persistence.py`
+- `apps/portal/api/api/assistant/services/reply.py`
+- `apps/portal/api/api/rag/services/client.py`
+- `apps/portal/api/api/rag/services/config.py`
+- `apps/portal/api/api/appstore/selectors.py`
+- `apps/portal/api/api/drone/selectors.py`
+- `apps/portal/web/src/features/assistant`

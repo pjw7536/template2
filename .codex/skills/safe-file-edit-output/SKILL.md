@@ -61,7 +61,7 @@ Backend:
 
 ## 출력 형식 예시
 ```text
-Path: apps/api/api/emails/services/__init__.py
+Path: apps/portal/api/api/emails/services/__init__.py
 Role: 이메일 도메인의 쓰기/오케스트레이션 파사드
 
 Changes:

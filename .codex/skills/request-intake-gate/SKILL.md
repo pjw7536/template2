@@ -96,7 +96,7 @@ Hard-Block 출력 예시:
 Hard-Block Questions
 1. API 응답에 pagination이 필요한가요? (권장: cursor 기반)
 2. 생성 권한은 admin만 허용하나요? (후보: admin / owner / authenticated)
-3. 저장 위치는 `apps/web/src/features/orders`가 맞나요?
+3. 저장 위치는 `apps/portal/web/src/features/orders`가 맞나요?
 
 답변은 번호 기준으로 알려주세요.
 예: 1) cursor, 2) admin+owner, 3) 네

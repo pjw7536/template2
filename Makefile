@@ -1,171 +1,212 @@
-# Compose 실행 진입점입니다.
-COMPOSE_DEV=docker compose -f docker-compose.dev.yml
-COMPOSE_OIDC=docker compose -f docker-compose.oidc.yml
-COMPOSE_PROD=docker compose -f docker-compose.yml
-OIDC_API_ENV_FILE ?= $(CURDIR)/env/overlays/oidc/api.env
-PROD_API_ENV_FILE ?= $(CURDIR)/env/overlays/prod/api.env
+# 로컬 Kubernetes·Compose 검사·서버 배포 실행 진입점입니다.
+COMPOSE_TEST=docker compose -f deploy/portal/compose/test.yml
+COMPOSE_K8S_CHECK=docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml
+PROD_API_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/api.env
+KIND_BIN ?= $(CURDIR)/.tools/bin/kind
+APP ?= keycloak
+PROFILE ?= prod
+COMPONENT ?= server
+ENV_APP ?= all
+ENV_PROFILE ?= all
+KUBE_CONTEXT ?=
+KEYCLOAK_ENV ?= $(CURDIR)/deploy/keycloak/env/prod.env
+KEYCLOAK_CERTS ?= $(CURDIR)/deploy/keycloak/certs
+AIRFLOW_ENV ?= $(CURDIR)/deploy/airflow/env/k8s.env
+AIRFLOW_TLS_SOURCE ?=
+VIP_BACKENDS ?=
 
-# infra는 재빌드 빈도가 낮은 기반 서비스만 포함합니다.
-# - DB: airflow-postgres
-# - Airflow: airflow-init, airflow-webserver, airflow-scheduler
-# - FTP: ftp
-# - Monitoring: OIDC/prod에서 prometheus, node-exporter, cadvisor, grafana
-INFRA_SERVICES=airflow-postgres airflow-init airflow-webserver airflow-scheduler ftp
-INFRA_BUILD_SERVICES=airflow-init airflow-webserver airflow-scheduler
-MONITORING_SERVICES=prometheus node-exporter cadvisor grafana
-OIDC_INFRA_SERVICES=$(INFRA_SERVICES) $(MONITORING_SERVICES)
-PROD_INFRA_SERVICES=$(INFRA_SERVICES) $(MONITORING_SERVICES)
+.PHONY: dev down env-check env-profile-key-check prod-profile-env-check \
+ k8s-tools k8s-render k8s-render-local k8s-render-server k8s-export k8s-env k8s-up k8s-down k8s-ui server-check server-up \
+ test-api check-api makemigrations-check keycloak-check keycloak-up airflow-check airflow-up
 
-# app은 실제 애플리케이션 기능을 구성하는 서비스입니다.
-# dev는 로컬 dummy 외부계(adfs)를 app으로 취급합니다.
-DEV_APP_SERVICES=adfs minio minio-init api web nginx
-DEV_APP_BUILD_SERVICES=adfs api web
+# 기본 개발 환경은 한 PC의 전체 Kubernetes 앱입니다.
+dev: k8s-up
 
-# OIDC/prod는 실제 연동 환경이므로 dummy adfs 없이 app 서비스만 다룹니다.
-OIDC_APP_SERVICES=minio minio-init api web nginx
-OIDC_APP_BUILD_SERVICES=api web
-PROD_APP_SERVICES=minio minio-init api web nginx
-PROD_APP_BUILD_SERVICES=api web
+# 저장소 전용 경로에 checksum 검증된 kind binary를 준비합니다.
+k8s-tools:
+	@test -x "$(KIND_BIN)" || ./local/shared/scripts/install-kind.sh
+	@"$(KIND_BIN)" version
 
-.PHONY: \
-	network \
-	dev dev-app-up dev-app-build dev-app-down dev-infra-up dev-infra-build dev-infra-down \
-	oidc oidc-app-up oidc-app-build oidc-app-down oidc-infra-up oidc-infra-build oidc-infra-down \
-	prod prod-app-up prod-app-build prod-app-down prod-infra-up prod-infra-build prod-infra-down \
-	env-profile-key-check oidc-profile-env-check prod-profile-env-check \
-	down test-api check-api makemigrations-check \
-	y5push y5pull
+# 전체 개발 checkout에서 로컬·서버 Kustomize 결과를 확인합니다.
+k8s-render: k8s-render-local k8s-render-server
 
-# shared-net은 compose 파일에서 external network로 사용합니다.
-network:
-	docker network create shared-net 2>/dev/null || true
+k8s-render-local:
+	kubectl kustomize local/shared/k8s >/dev/null
+	kubectl kustomize local/portal/k8s >/dev/null
+	kubectl kustomize local/keycloak/k8s >/dev/null
+	kubectl kustomize local/headlamp/k8s >/dev/null
+	kubectl kustomize local/adfs_dummy/k8s >/dev/null
+	kubectl kustomize local/portal/k8s/migrate >/dev/null
+	kubectl kustomize local/ftp/k8s >/dev/null
 
-# dev 기본 실행: API 의존 DB는 compose가 함께 올리고, Airflow/FTP는 제외합니다.
-dev:
-	$(MAKE) dev-app-up
+k8s-render-server:
+	kubectl kustomize deploy/keycloak/k8s >/dev/null
+	kubectl kustomize deploy/portal/k8s/jobs/keycloak-client >/dev/null
+	kubectl kustomize deploy/portal/k8s/overlays/prod >/dev/null
+	kubectl kustomize deploy/portal/k8s/overlays/prod/migrate >/dev/null
 
-# dev app을 올립니다. api 의존성은 compose가 확인하므로 DB 준비 이후 API가 시작됩니다.
-dev-app-up: network
-	$(COMPOSE_DEV) up $(DEV_APP_SERVICES)
+# CP1 전달용 Keycloak 스택과 별도 claim 등록 Job 파일을 생성합니다.
+k8s-export:
+	bash ./deploy/keycloak/scripts/render.sh
 
-# dev app 이미지/빌드 산출물만 다시 빌드합니다.
-dev-app-build: network
-	$(COMPOSE_DEV) build $(DEV_APP_BUILD_SERVICES)
+# 앱·작업에 필요한 입력만 검사하고 Secret에 등록합니다.
+k8s-env:
+ifeq ($(APP)/$(PROFILE),portal/local)
+	bash ./local/portal/scripts/apply-env.sh "$(COMPONENT)"
+else
+	bash ./deploy/shared/scripts/apply-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)"
+endif
 
-# dev app 컨테이너만 중지하고 제거합니다. volume과 network는 삭제하지 않습니다.
-dev-app-down:
-	$(COMPOSE_DEV) stop $(DEV_APP_SERVICES)
-	$(COMPOSE_DEV) rm -f $(DEV_APP_SERVICES)
+# 값은 출력하지 않고 선택한 앱의 필수 입력을 검사합니다.
+env-check:
+	bash ./deploy/shared/scripts/check-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)"
 
-# dev infra만 올립니다.
-dev-infra-up: network
-	$(COMPOSE_DEV) up -d $(INFRA_SERVICES)
+# 모든 앱은 고정 local context에 적용하고 기존 Docker DB는 건드리지 않습니다.
+k8s-up: k8s-tools
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py up
 
-# dev infra 이미지 중 빌드가 필요한 Airflow 이미지만 다시 빌드합니다.
-dev-infra-build: network
-	$(COMPOSE_DEV) build $(INFRA_BUILD_SERVICES)
+# kind cluster와 외부 PostgreSQL container를 중지합니다. DB volume은 유지합니다.
+k8s-down:
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py down
 
-# dev infra 컨테이너만 중지하고 제거합니다. DB volume은 삭제하지 않습니다.
-dev-infra-down:
-	$(COMPOSE_DEV) stop $(INFRA_SERVICES)
-	$(COMPOSE_DEV) rm -f $(INFRA_SERVICES)
+.PHONY: k8s-check k8s-rebuild k8s-status k8s-smoke k8s-health k8s-grafana k8s-prometheus
+k8s-check:
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py check
+k8s-rebuild:
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py rebuild --app "$(APP)"
+k8s-status:
+	python3 local/shared/scripts/k8s.py status
+k8s-health:
+	python3 local/shared/scripts/k8s.py health
+k8s-smoke:
+	python3 local/shared/scripts/k8s.py smoke
+k8s-grafana:
+	python3 local/shared/scripts/k8s.py grafana
+k8s-prometheus:
+	python3 local/shared/scripts/k8s.py prometheus
 
-# OIDC 전체 실행: infra를 먼저 올린 뒤 app을 올립니다.
-oidc:
-	$(MAKE) oidc-infra-up
-	$(MAKE) oidc-app-up
+# Headlamp UI용 조회 token을 발급하고 localhost:4466 port-forward를 유지합니다.
+k8s-ui:
+	KUBECTL_BIN=kubectl ./local/headlamp/scripts/headlamp-ui.sh
 
-# OIDC app만 올립니다.
-oidc-app-up: oidc-profile-env-check network
-	$(COMPOSE_OIDC) up -d --no-deps $(OIDC_APP_SERVICES)
-
-# OIDC app 이미지/빌드 산출물만 다시 빌드합니다.
-oidc-app-build: oidc-profile-env-check network
-	$(COMPOSE_OIDC) build $(OIDC_APP_BUILD_SERVICES)
-
-# OIDC app 컨테이너만 중지하고 제거합니다.
-oidc-app-down:
-	$(COMPOSE_OIDC) stop $(OIDC_APP_SERVICES)
-	$(COMPOSE_OIDC) rm -f $(OIDC_APP_SERVICES)
-
-# OIDC infra만 올립니다.
-oidc-infra-up: oidc-profile-env-check network
-	$(COMPOSE_OIDC) up -d $(OIDC_INFRA_SERVICES)
-
-# OIDC infra 이미지 중 빌드가 필요한 Airflow 이미지만 다시 빌드합니다.
-oidc-infra-build: oidc-profile-env-check network
-	$(COMPOSE_OIDC) build $(INFRA_BUILD_SERVICES)
-
-# OIDC infra 컨테이너만 중지하고 제거합니다.
-oidc-infra-down:
-	$(COMPOSE_OIDC) stop $(OIDC_INFRA_SERVICES)
-	$(COMPOSE_OIDC) rm -f $(OIDC_INFRA_SERVICES)
-
-# prod 전체 실행: infra를 먼저 올린 뒤 app을 올립니다.
-prod:
-	$(MAKE) prod-infra-up
-	$(MAKE) prod-app-up
-
-# prod app만 올립니다.
-prod-app-up: prod-profile-env-check network
-	$(COMPOSE_PROD) up -d --no-deps $(PROD_APP_SERVICES)
-
-# prod app 이미지/빌드 산출물만 다시 빌드합니다.
-prod-app-build: prod-profile-env-check network
-	$(COMPOSE_PROD) build $(PROD_APP_BUILD_SERVICES)
-
-# prod app 컨테이너만 중지하고 제거합니다.
-prod-app-down:
-	$(COMPOSE_PROD) stop $(PROD_APP_SERVICES)
-	$(COMPOSE_PROD) rm -f $(PROD_APP_SERVICES)
-
-# prod infra만 올립니다.
-prod-infra-up: prod-profile-env-check network
-	$(COMPOSE_PROD) up -d $(PROD_INFRA_SERVICES)
-
-# prod infra 이미지 중 빌드가 필요한 Airflow 이미지만 다시 빌드합니다.
-prod-infra-build: prod-profile-env-check network
-	$(COMPOSE_PROD) build $(INFRA_BUILD_SERVICES)
-
-# prod infra 컨테이너만 중지하고 제거합니다.
-prod-infra-down:
-	$(COMPOSE_PROD) stop $(PROD_INFRA_SERVICES)
-	$(COMPOSE_PROD) rm -f $(PROD_INFRA_SERVICES)
-
-# profile 파일 존재 여부, 중복 key, OIDC/prod key 구성과 Airflow 공용값 일치를 확인합니다.
+# Kubernetes·로컬·CI 공개 입력의 존재와 중복 키를 확인합니다.
 env-profile-key-check:
-	./scripts/validate_env_profile_keys.sh
+	bash ./deploy/shared/scripts/validate_env_profile_keys.sh "$(ENV_APP)" "$(ENV_PROFILE)"
 
-# OIDC 개발 서버 profile의 필수값을 실제 기동 전에 확인합니다.
-oidc-profile-env-check: env-profile-key-check
-	./scripts/validate_server_profile_env.sh "$(OIDC_API_ENV_FILE)"
+# 선택한 서버 앱은 local 파일과 다른 앱의 env 없이 검사합니다.
+server-check:
+	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
 
-# 운영 서버 profile의 필수값을 실제 기동 전에 확인합니다.
-prod-profile-env-check: env-profile-key-check
-	./scripts/validate_server_profile_env.sh "$(PROD_API_ENV_FILE)"
+# Kubernetes 운영 API의 필수값을 확인합니다. 선택 업무 연동은 별도 확인합니다.
+prod-profile-env-check:
+	bash ./deploy/shared/scripts/validate_env_profile_keys.sh portal prod
+	bash ./deploy/shared/scripts/check-env.sh portal prod api "$(PROD_API_ENV_FILE)"
 
-# 모든 실행 진입점의 compose project를 내립니다.
-down:
-	$(COMPOSE_DEV) down
-	$(COMPOSE_OIDC) down
-	$(COMPOSE_PROD) down
+# 로컬 Kubernetes와 새 DB만 종료하며 모든 영속 데이터를 보존합니다.
+down: k8s-down
 
-# 개발 API 컨테이너 기준 검증 명령입니다.
+# Kubernetes 개발 이미지와 새 DB를 사용하는 일회성 Compose api 검사입니다.
 test-api:
-	$(COMPOSE_DEV) exec -T api python manage.py test
+	K8S_API_ENV_FILE="$(CURDIR)/deploy/portal/env/test/api.env" $(COMPOSE_K8S_CHECK) run --rm -T api test
 
 check-api:
-	$(COMPOSE_DEV) exec -T api python manage.py check
+	$(COMPOSE_K8S_CHECK) run --rm -T api check
 
 makemigrations-check:
-	$(COMPOSE_DEV) exec -T api python manage.py makemigrations --check --dry-run
+	$(COMPOSE_K8S_CHECK) run --rm -T api makemigrations --check --dry-run
 
-# 현재 변경사항 전체를 커밋한 뒤 y5 브랜치로 푸시합니다.
-# 사용: make y5push msg="커밋 메시지"
-y5push:
-	@test -n "$(strip $(msg))" || (echo '사용: make y5push msg="커밋 메시지"'; exit 1)
-	./y5push "$(msg)"
+# 기존 Keycloak과 Airflow UI를 같은 서버 진입점에 연결합니다.
+server-up:
+	python3 ./deploy/shared/scripts/server-up.py --context "$(KUBE_CONTEXT)" --airflow-env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)" --vip-backends "$(VIP_BACKENDS)"
 
-# 원격 main 브랜치 상태로 현재 작업트리를 강제 동기화합니다.
-y5pull:
-	./y5pull
+# 앱별 검사는 실제 입력과 기존 클러스터를 확인하되 변경하지 않습니다.
+keycloak-check:
+	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" --certs "$(KEYCLOAK_CERTS)" --vip-backends "$(VIP_BACKENDS)" --check-only
+
+keycloak-up:
+	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" --certs "$(KEYCLOAK_CERTS)" --vip-backends "$(VIP_BACKENDS)"
+
+airflow-check:
+	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)" --check-only
+
+airflow-up:
+	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)"
+
+# Kubernetes 클러스터 모니터링을 독립적으로 검사·배포합니다.
+MONITORING_ENV ?= $(CURDIR)/deploy/monitoring/env/k8s.env
+.PHONY: monitoring-check monitoring-up
+monitoring-check:
+	python3 ./deploy/monitoring/scripts/manage.py check --env "$(MONITORING_ENV)"
+
+monitoring-up:
+	python3 ./deploy/monitoring/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(MONITORING_ENV)"
+
+# 로컬 보조 Compose와 CI 검사의 실행 진입점입니다.
+.PHONY: compose-check build-ci-api test-ci-api check-ci-api makemigrations-ci-check
+
+compose-check:
+	bash apps/tooling/agent/check_compose_configs.sh
+
+build-ci-api:
+	$(COMPOSE_TEST) build api-test
+
+test-ci-api:
+	$(COMPOSE_TEST) run --rm api-test python manage.py test
+
+check-ci-api:
+	$(COMPOSE_TEST) run --rm api-test python manage.py check
+
+makemigrations-ci-check:
+	$(COMPOSE_TEST) run --rm api-test python manage.py makemigrations --check --dry-run
+
+# 각 프로젝트가 자신의 Node 의존성을 설치합니다.
+.PHONY: install web-install tooling-install web-dev web-test web-lint web-build web-preview tooling-test
+install: web-install tooling-install
+web-install:
+	npm --prefix apps/portal/web ci --legacy-peer-deps
+tooling-install:
+	npm --prefix apps/tooling ci
+web-dev:
+	npm --prefix apps/portal/web run dev
+web-test:
+	npm --prefix apps/portal/web run test:run
+web-lint:
+	npm --prefix apps/portal/web run lint
+web-build:
+	npm --prefix apps/portal/web run build
+web-preview:
+	npm --prefix apps/portal/web run preview
+tooling-test:
+	npm --prefix apps/tooling test
+
+# 감사 도구는 저장소 루트에서 실행해 Python namespace와 상대 경로를 유지합니다.
+.PHONY: audit audit-tools-test audit-layout audit-web-boundary audit-api-boundary audit-hotspots audit-ui audit-docs
+audit: audit-tools-test audit-layout audit-web-boundary audit-api-boundary audit-hotspots audit-ui audit-docs
+audit-tools-test:
+	python3 -m unittest discover -s apps/tooling/agent/tests -p 'test_*.py'
+audit-layout:
+	python3 apps/tooling/agent/check_app_layout.py
+audit-web-boundary:
+	bash apps/tooling/agent/check_frontend_boundaries.sh
+audit-api-boundary:
+	python3 apps/tooling/agent/check_backend_boundaries.py
+audit-hotspots:
+	python3 apps/tooling/agent/check_hotspot_growth.py
+audit-ui:
+	bash apps/tooling/agent/check_ui_consistency.sh
+audit-docs:
+	bash apps/tooling/agent/check_docs_inventory.sh
+
+# Keycloak 로그인 방식의 서버 Headlamp를 독립적으로 운영합니다.
+HEADLAMP_ENV ?= $(CURDIR)/deploy/headlamp/env/k8s.env
+.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client
+headlamp-oidc-client:
+	@python3 ./deploy/headlamp/scripts/manage.py oidc-client --env "$(HEADLAMP_ENV)"
+headlamp-fetch-chart:
+	python3 ./deploy/headlamp/scripts/manage.py fetch-chart
+headlamp-check:
+	python3 ./deploy/headlamp/scripts/manage.py check --env "$(HEADLAMP_ENV)"
+headlamp-up:
+	python3 ./deploy/headlamp/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)"
+headlamp-ui:
+	python3 ./deploy/headlamp/scripts/manage.py ui --context "$(KUBE_CONTEXT)"

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tailwind-local
+resources:
+  - namespace.yaml
+  - external-postgres-service.yaml
+  - traefik.yaml
+  - ../../portal/k8s
+  - ../../keycloak/k8s
+  - ../../headlamp/k8s
+  - ../../adfs_dummy/k8s

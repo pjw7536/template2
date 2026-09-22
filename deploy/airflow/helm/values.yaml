@@ -1,0 +1,120 @@
+# 사내 단일 서버 배포: 버전·실행 방식은 기존 DAG 계약을 유지한다.
+airflowVersion: "2.11.0"
+defaultAirflowTag: "2.11.0"
+executor: LocalExecutor
+allowPodLaunching: false
+fullnameOverride: airflow
+useStandardNaming: true
+nodeSelector: {}
+# 단일 control-plane 노드도 실행할 수 있으며 다른 taint는 자동 허용하지 않는다.
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+postgresql:
+  enabled: false
+workers:
+  celery:
+    persistence:
+      enabled: false
+redis:
+  enabled: false
+pgbouncer:
+  enabled: false
+statsd:
+  enabled: false
+apiServer:
+  enabled: false
+dagProcessor:
+  enabled: false
+flower:
+  enabled: false
+images:
+  airflow:
+    pullPolicy: IfNotPresent
+  # 마이그레이션도 사내 패키지와 동일 버전의 이미지를 사용한다.
+  useDefaultImageForMigration: false
+data:
+  metadataSecretName: airflow-metadata
+fernetKeySecretName: airflow-fernet
+webserverSecretKeySecretName: airflow-webserver-key
+extraEnvFrom: |
+  - secretRef:
+      name: airflow-runtime
+config:
+  core:
+    load_examples: 'False'
+    # 기존 Compose와 Airflow 2.11.0 기본 동시 실행 값을 유지한다.
+    dags_are_paused_at_creation: 'False'
+    parallelism: 32
+    max_active_tasks_per_dag: 16
+    max_active_runs_per_dag: 16
+  api:
+    auth_backends: airflow.api.auth.backend.basic_auth
+  webserver:
+    enable_proxy_fix: 'True'
+    expose_config: 'False'
+    web_server_url_prefix: /airflow
+    workers: 4
+  scheduler:
+    enable_health_check: 'True'
+  metrics:
+    statsd_on: 'False'
+logs:
+  persistence:
+    enabled: true
+    existingClaim: airflow-logs
+  # 로그는 같은 노드의 기존 RWO PVC를 공유한다.
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+scheduler:
+  replicas: 1
+  resources:
+    requests: {cpu: '500m', memory: 1Gi}
+    limits: {cpu: '2', memory: 4Gi}
+  # 기존 Compose처럼 로그를 자동 삭제하지 않는다. 보관 정책은 운영에서 별도 설정한다.
+  logGroomerSidecar:
+    enabled: false
+webserver:
+  replicas: 1
+  resources:
+    requests: {cpu: '250m', memory: 1Gi}
+    limits: {cpu: '1', memory: 2Gi}
+triggerer:
+  persistence:
+    enabled: false
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: '100m', memory: 256Mi}
+    limits: {cpu: '500m', memory: 1Gi}
+  logGroomerSidecar:
+    enabled: false
+migrateDatabaseJob:
+  useHelmHooks: true
+  resources:
+    requests: {cpu: '100m', memory: 256Mi}
+    limits: {cpu: '1', memory: 1Gi}
+createUserJob:
+  useHelmHooks: true
+  # 비밀번호를 Helm values와 Job 명령 문자열에 기록하지 않는다.
+  args: [python, /opt/airflow/bootstrap-user.py]
+  env:
+    - name: AIRFLOW_ADMIN_USERNAME
+      valueFrom:
+        secretKeyRef: {name: airflow-admin, key: username}
+    - name: AIRFLOW_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef: {name: airflow-admin, key: password}
+    - name: AIRFLOW_ADMIN_EMAIL
+      valueFrom:
+        secretKeyRef: {name: airflow-admin, key: email}
+  resources:
+    requests: {cpu: '100m', memory: 256Mi}
+    limits: {cpu: '1', memory: 1Gi}

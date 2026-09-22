@@ -1,0 +1,809 @@
+# 자동 생성 파일입니다. mapper ConfigMap과 Job만 적용하며 서버·Ingress는 변경하지 않습니다.
+apiVersion: v1
+data:
+  account-user-profile.json: |
+    {
+      "attributes": [
+        {
+          "name": "username",
+          "displayName": "userid",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "min": 1,
+              "max": 255
+            },
+            "username-prohibited-characters": {}
+          }
+        },
+        {
+          "name": "email",
+          "displayName": "email",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 254
+            },
+            "email": {}
+          }
+        },
+        {
+          "name": "firstName",
+          "displayName": "firstName",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "lastName",
+          "displayName": "lastName",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "knox_id",
+          "displayName": "knox_id",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "sabun",
+          "displayName": "sabun",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 50
+            }
+          }
+        },
+        {
+          "name": "display_name",
+          "displayName": "이름",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "username_en",
+          "displayName": "username_en",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "department",
+          "displayName": "department",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 128
+            }
+          }
+        },
+        {
+          "name": "deptid",
+          "displayName": "deptid",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 50
+            }
+          }
+        },
+        {
+          "name": "grd_name",
+          "displayName": "grd_name",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "grdname_en",
+          "displayName": "grdname_en",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "busname",
+          "displayName": "busname",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "intcode",
+          "displayName": "intcode",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 64
+            }
+          }
+        },
+        {
+          "name": "intname",
+          "displayName": "intname",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        },
+        {
+          "name": "employeetype",
+          "displayName": "employeetype",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 150
+            }
+          }
+        }
+      ],
+      "groups": [],
+      "unmanagedAttributePolicy": "ADMIN_EDIT"
+    }
+  admin-common.sh: |
+    #!/usr/bin/env bash
+    # 관리 작업에서 공통으로 사용하는 Admin CLI 호출과 JSON 문자열 처리입니다.
+    KCADM_BIN="${KCADM_BIN:-/opt/keycloak/bin/kcadm.sh}"
+    KEYCLOAK_ADMIN_URL="${KEYCLOAK_ADMIN_URL:-http://keycloak:8080}"
+    KEYCLOAK_TARGET_REALM="${KEYCLOAK_TARGET_REALM:-etch}"
+    KCADM_CONFIG="${KCADM_CONFIG:-/tmp/keycloak-admin.config}"
+
+    json_string() {
+      local value="$1"
+      value="${value//\\/\\\\}"
+      value="${value//\"/\\\"}"
+      value="${value//$'\n'/\\n}"
+      value="${value//$'\r'/\\r}"
+      value="${value//$'\t'/\\t}"
+      printf '"%s"' "$value"
+    }
+
+    kc() {
+      # Admin API 오류 응답에 credential이 포함될 수 있어 원문을 로그에 남기지 않습니다.
+      if ! "$KCADM_BIN" "$@" --config "$KCADM_CONFIG" 2>/dev/null; then
+        echo 'Keycloak 관리 요청 실패: 연결, 계정 권한과 입력 설정을 확인하세요.' >&2
+        return 1
+      fi
+    }
+
+    admin_login() {
+      : "${KEYCLOAK_ADMIN_USERNAME:?관리자 계정이 필요합니다.}"
+      : "${KEYCLOAK_ADMIN_PASSWORD:?관리자 비밀번호가 필요합니다.}"
+      umask 077
+      kc config credentials --server "$KEYCLOAK_ADMIN_URL" --realm master \
+        --user "$KEYCLOAK_ADMIN_USERNAME" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
+      kc get "realms/$KEYCLOAK_TARGET_REALM" >/dev/null
+    }
+  setup-oidc.sh: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    source "$(dirname "${BASH_SOURCE[0]}")/admin-common.sh"
+    KEYCLOAK_IDP_ALIAS="${KEYCLOAK_IDP_ALIAS:-oidc}"
+    for key in CORP_OIDC_AUTH_URL CORP_OIDC_TOKEN_URL CORP_OIDC_ISSUER CORP_OIDC_CLIENT_ID CORP_OIDC_CLIENT_SECRET CORP_OIDC_CLIENT_AUTH_METHOD CORP_OIDC_VALIDATE_SIGNATURE; do
+      [[ -n "${!key:-}" ]] || { echo "필수 설정 누락: $key" >&2; exit 1; }
+    done
+    case "$CORP_OIDC_CLIENT_AUTH_METHOD" in
+      client_secret_basic|client_secret_post) ;;
+      *) echo '사내 OIDC client 인증 방식 오류' >&2; exit 1 ;;
+    esac
+    case "$CORP_OIDC_VALIDATE_SIGNATURE" in
+      true) : "${CORP_OIDC_JWKS_URL:?서명 검증에 필요한 JWKS URL이 없습니다.}" ;;
+      false) ;;
+      *) echo '서명 검증 설정은 true 또는 false여야 합니다.' >&2; exit 1 ;;
+    esac
+    admin_login
+    endpoint="identity-provider/instances"
+    aliases="$(kc get "$endpoint" -r "$KEYCLOAK_TARGET_REALM" --fields alias --format csv --noquotes)"
+    operation=create
+    while IFS= read -r alias; do
+      if [[ "${alias%$'\r'}" == "$KEYCLOAK_IDP_ALIAS" ]]; then
+        operation=update
+        endpoint="$endpoint/$KEYCLOAK_IDP_ALIAS"
+      fi
+    done <<< "$aliases"
+    args=(--set "alias=$(json_string "$KEYCLOAK_IDP_ALIAS")" --set providerId=oidc --set enabled=true)
+    # update의 GET/merge 동작으로 지정하지 않은 기존 연결·로그인 정책을 보존합니다.
+    for pair in authorizationUrl:CORP_OIDC_AUTH_URL tokenUrl:CORP_OIDC_TOKEN_URL issuer:CORP_OIDC_ISSUER clientId:CORP_OIDC_CLIENT_ID clientSecret:CORP_OIDC_CLIENT_SECRET clientAuthMethod:CORP_OIDC_CLIENT_AUTH_METHOD validateSignature:CORP_OIDC_VALIDATE_SIGNATURE; do
+      property="${pair%%:*}"; key="${pair#*:}"
+      args+=(--set "config.$property=$(json_string "${!key}")")
+    done
+    if [[ "$CORP_OIDC_VALIDATE_SIGNATURE" == true ]]; then
+      args+=(--set 'config.useJwksUrl="true"' --set "config.jwksUrl=$(json_string "$CORP_OIDC_JWKS_URL")")
+    fi
+    for pair in userInfoUrl:CORP_OIDC_USERINFO_URL logoutUrl:CORP_OIDC_LOGOUT_URL; do
+      property="${pair%%:*}"; key="${pair#*:}"
+      [[ -z "${!key:-}" ]] || args+=(--set "config.$property=$(json_string "${!key}")")
+    done
+    if [[ "$operation" == create ]]; then
+      args+=(--set 'displayName="사내 로그인"' --set 'config.defaultScope="openid"')
+    fi
+    kc "$operation" "$endpoint" -r "$KEYCLOAK_TARGET_REALM" "${args[@]}" >/dev/null
+    echo '사내 OIDC 설정 완료. 기존 사용자와 realm은 유지됩니다.'
+  sync-oidc-claim-mappers.sh: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    # 사내 OIDC claim을 Keycloak 사용자 속성과 Portal token claim으로 동기화합니다.
+    readonly KCADM_BIN="${KCADM_BIN:-/opt/keycloak/bin/kcadm.sh}"
+    readonly KEYCLOAK_ADMIN_URL="${KEYCLOAK_ADMIN_URL:-http://keycloak:8080}"
+    readonly KEYCLOAK_TARGET_REALM="${KEYCLOAK_TARGET_REALM:-etch}"
+    readonly KEYCLOAK_IDP_ALIAS="${KEYCLOAK_IDP_ALIAS:-oidc}"
+    readonly KEYCLOAK_TARGET_CLIENT="${KEYCLOAK_TARGET_CLIENT:-portal}"
+    readonly KEYCLOAK_MAPPING_TARGET="${KEYCLOAK_MAPPING_TARGET:-all}"
+    readonly KCADM_CONFIG="${KCADM_CONFIG:-/tmp/keycloak-claims.config}"
+
+    kcadm() {
+      if ! "$KCADM_BIN" "$@" --config "$KCADM_CONFIG" 2>/dev/null; then
+        echo 'Keycloak 관리 요청 실패: 연결과 관리자 권한을 확인하세요.' >&2
+        return 1
+      fi
+    }
+    readonly CLAIMS=(
+      loginid
+      userid
+      sabun
+      username
+      username_en
+      givenname
+      surname
+      deptname
+      deptid
+      mail
+      grdName
+      grdname_en
+      busname
+      intcode
+      intname
+      employeetype
+    )
+
+    # 사내 claim과 account_user에 대응하는 Keycloak 속성 이름을 분리합니다.
+    profile_attribute() {
+      case "$1" in
+        loginid) printf '%s' knox_id ;;
+        userid) printf '%s' username ;;
+        username) printf '%s' display_name ;;
+        givenname) printf '%s' firstName ;;
+        surname) printf '%s' lastName ;;
+        deptname) printf '%s' department ;;
+        mail) printf '%s' email ;;
+        grdName) printf '%s' grd_name ;;
+        *) printf '%s' "$1" ;;
+      esac
+    }
+
+    require_value() {
+      local name="$1"
+      local value="$2"
+
+      if [[ -z "$value" ]]; then
+        echo "필수 환경변수가 비어 있습니다: $name" >&2
+        exit 1
+      fi
+    }
+
+    login_admin() {
+      local attempt
+
+      for ((attempt = 1; attempt <= 60; attempt += 1)); do
+        if kcadm config credentials \
+          --server "$KEYCLOAK_ADMIN_URL" \
+          --realm master \
+          --user "$KEYCLOAK_ADMIN_USERNAME" \
+          --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1; then
+          echo "Keycloak Admin API 로그인이 완료됐습니다."
+          return 0
+        fi
+
+        echo "Keycloak Admin API 대기 중입니다. 시도: $attempt/60"
+        sleep 5
+      done
+
+      echo "Keycloak Admin API 로그인에 실패했습니다." >&2
+      return 1
+    }
+
+    find_mapper_id() {
+      local endpoint="$1"
+      local target_name="$2"
+      local rows
+      local first
+      local second
+
+      rows="$(
+        kcadm get "$endpoint" \
+          -r "$KEYCLOAK_TARGET_REALM" \
+          --fields id,name \
+          --format csv \
+          --noquotes
+      )" || return 2
+
+      while IFS=, read -r first second; do
+        first="${first%$'\r'}"
+        second="${second%$'\r'}"
+
+        if [[ "$first" == "$target_name" && -n "$second" ]]; then
+          printf '%s' "$second"
+          return 0
+        fi
+
+        if [[ "$second" == "$target_name" && -n "$first" ]]; then
+          printf '%s' "$first"
+          return 0
+        fi
+      done <<< "$rows"
+
+      return 1
+    }
+
+    find_client_uuid() {
+      local rows
+      local row
+
+      rows="$(
+        kcadm get clients \
+          -r "$KEYCLOAK_TARGET_REALM" \
+          --query "clientId=$KEYCLOAK_TARGET_CLIENT" \
+          --fields id \
+          --format csv \
+          --noquotes
+      )"
+
+      while IFS= read -r row; do
+        row="${row%$'\r'}"
+        if [[ -n "$row" ]]; then
+          printf '%s' "$row"
+          return 0
+        fi
+      done <<< "$rows"
+
+      return 1
+    }
+
+    sync_idp_mapper() {
+      local claim="$1"
+      local endpoint="identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers"
+      local mapper_id
+      local mapper_config
+      local attribute
+      attribute="$(profile_attribute "$claim")"
+
+      mapper_config="{\"syncMode\":\"FORCE\",\"claim\":\"${claim}\",\"user.attribute\":\"${attribute}\"}"
+
+      if mapper_id="$(find_mapper_id "$endpoint" "$claim")"; then
+        kcadm update "${endpoint}/${mapper_id}" \
+          -r "$KEYCLOAK_TARGET_REALM" \
+          --set "name=$claim" \
+          --set "identityProviderAlias=$KEYCLOAK_IDP_ALIAS" \
+          --set identityProviderMapper=oidc-user-attribute-idp-mapper \
+          --set "config=$mapper_config" >/dev/null
+        echo "IdP mapper 갱신: $claim"
+        return 0
+      else
+        # 조회 오류를 mapper 부재로 처리하면 중복을 만들 수 있어 즉시 중단합니다.
+        [[ "$?" == 1 ]] || return 1
+      fi
+
+      kcadm create "$endpoint" \
+        -r "$KEYCLOAK_TARGET_REALM" \
+        --set "name=$claim" \
+        --set "identityProviderAlias=$KEYCLOAK_IDP_ALIAS" \
+        --set identityProviderMapper=oidc-user-attribute-idp-mapper \
+        --set "config=$mapper_config" >/dev/null
+      echo "IdP mapper 생성: $claim"
+    }
+
+    # 사내 EPID는 기본 username에만 반영하고 기존 broker 연결 식별자는 유지합니다.
+    sync_epid_username_mapper() {
+      local endpoint="identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers"
+      local name=epid-username mapper_id
+      local mapper_config='{"syncMode":"FORCE","template":"${CLAIM.userid}","target":"LOCAL"}'
+
+      if mapper_id="$(find_mapper_id "$endpoint" "$name")"; then
+        kcadm update "${endpoint}/${mapper_id}" \
+          -r "$KEYCLOAK_TARGET_REALM" \
+          --set "name=$name" \
+          --set "identityProviderAlias=$KEYCLOAK_IDP_ALIAS" \
+          --set identityProviderMapper=oidc-username-idp-mapper \
+          --set "config=$mapper_config" >/dev/null
+        echo "EPID username mapper 갱신 완료"
+        return 0
+      else
+        [[ "$?" == 1 ]] || return 1
+      fi
+
+      kcadm create "$endpoint" \
+        -r "$KEYCLOAK_TARGET_REALM" \
+        --set "name=$name" \
+        --set "identityProviderAlias=$KEYCLOAK_IDP_ALIAS" \
+        --set identityProviderMapper=oidc-username-idp-mapper \
+        --set "config=$mapper_config" >/dev/null
+      echo "EPID username mapper 생성 완료"
+    }
+
+    sync_client_mapper() {
+      local client_uuid="$1"
+      local claim="$2"
+      local endpoint="clients/${client_uuid}/protocol-mappers/models"
+      local mapper_id
+      local mapper_config
+      local attribute
+      attribute="$(profile_attribute "$claim")"
+
+      mapper_config="{\"user.attribute\":\"${attribute}\",\"claim.name\":\"${claim}\",\"jsonType.label\":\"String\",\"multivalued\":\"false\",\"id.token.claim\":\"true\",\"access.token.claim\":\"true\",\"userinfo.token.claim\":\"true\"}"
+      # EPID·이메일·성·이름은 Keycloak 기본 사용자 property에서 읽습니다.
+      local mapper_type=oidc-usermodel-attribute-mapper
+      if [[ "$attribute" == username || "$attribute" == email || "$attribute" == firstName || "$attribute" == lastName ]]; then
+        mapper_type=oidc-usermodel-property-mapper
+      fi
+
+
+      if mapper_id="$(find_mapper_id "$endpoint" "$claim")"; then
+        kcadm update "${endpoint}/${mapper_id}" \
+          -r "$KEYCLOAK_TARGET_REALM" \
+          --set "name=$claim" \
+          --set protocol=openid-connect \
+          --set "protocolMapper=$mapper_type" \
+          --set "config=$mapper_config" >/dev/null
+        echo "Portal token mapper 갱신: $claim"
+        return 0
+      else
+        [[ "$?" == 1 ]] || return 1
+      fi
+
+      kcadm create "$endpoint" \
+        -r "$KEYCLOAK_TARGET_REALM" \
+        --set "name=$claim" \
+        --set protocol=openid-connect \
+        --set "protocolMapper=$mapper_type" \
+        --set "config=$mapper_config" >/dev/null
+      echo "Portal token mapper 생성: $claim"
+    }
+
+    # 이전 배포에서 생성한 폐기 mapper만 이름으로 찾아 제거합니다.
+    remove_retired_mapper() {
+      local endpoint="$1" name="$2" mapper_id
+      if mapper_id="$(find_mapper_id "$endpoint" "$name")"; then
+        kcadm delete "${endpoint}/${mapper_id}" -r "$KEYCLOAK_TARGET_REALM" >/dev/null
+        echo "폐기 mapper 삭제: $name"
+      else
+        # 조회 실패를 이미 삭제된 상태로 처리하지 않습니다.
+        [[ "$?" == 1 ]] || return 1
+      fi
+    }
+
+    require_value KEYCLOAK_ADMIN_USERNAME "${KEYCLOAK_ADMIN_USERNAME:-}"
+    require_value KEYCLOAK_ADMIN_PASSWORD "${KEYCLOAK_ADMIN_PASSWORD:-}"
+    case "$KEYCLOAK_MAPPING_TARGET" in
+      idp|client|all) ;;
+      *) echo 'KEYCLOAK_MAPPING_TARGET은 idp, client, all 중 하나여야 합니다.' >&2; exit 1 ;;
+    esac
+    login_admin
+
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]] && ! kcadm get \
+      "identity-provider/instances/$KEYCLOAK_IDP_ALIAS" \
+      -r "$KEYCLOAK_TARGET_REALM" >/dev/null; then
+      echo "Identity Provider를 찾을 수 없습니다: $KEYCLOAK_IDP_ALIAS" >&2
+      exit 1
+    fi
+
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]] && ! client_uuid="$(find_client_uuid)"; then
+      echo "OIDC client를 찾을 수 없습니다: $KEYCLOAK_TARGET_CLIENT" >&2
+      exit 1
+    fi
+
+    # 이메일을 username으로 쓰는 realm에서는 LOCAL mapper가 무시되므로 변경 전에 중단합니다.
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+      email_as_username="$(kcadm get "realms/$KEYCLOAK_TARGET_REALM" \
+        --fields registrationEmailAsUsername --format csv --noquotes)"
+      case "${email_as_username%$'\r'}" in
+        false) ;;
+        true)
+          echo 'EPID username을 사용하려면 realm의 Email as username 설정을 먼저 꺼야 합니다.' >&2
+          exit 1 ;;
+        *)
+          echo 'realm의 Email as username 설정을 확인할 수 없습니다.' >&2
+          exit 1 ;;
+      esac
+    fi
+
+    # 사용자 승인대로 프로필 정의를 교체하며 실제 사용자 레코드는 삭제하지 않습니다.
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+      kcadm update users/profile \
+        -r "$KEYCLOAK_TARGET_REALM" \
+        -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null
+      echo "account_user 기준 User Profile 등록 완료"
+    fi
+
+    for retired_claim in origincomp first_name last_name; do
+      if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+        remove_retired_mapper "identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers" "$retired_claim"
+      fi
+      if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]]; then
+        remove_retired_mapper "clients/${client_uuid}/protocol-mappers/models" "$retired_claim"
+      fi
+    done
+
+    # EPID는 기본 username에만 저장하므로 이전 avatarid 수집 mapper를 제거합니다.
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+      remove_retired_mapper "identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers" userid
+    fi
+
+    for claim in "${CLAIMS[@]}"; do
+      if [[ "$KEYCLOAK_MAPPING_TARGET" != client && "$claim" != userid ]]; then
+        sync_idp_mapper "$claim"
+      fi
+      if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]]; then
+        sync_client_mapper "$client_uuid" "$claim"
+      fi
+    done
+
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+      sync_epid_username_mapper
+    fi
+
+    echo "사내 OIDC claim ${#CLAIMS[@]}개의 동기화가 완료됐습니다. 대상: $KEYCLOAK_MAPPING_TARGET"
+kind: ConfigMap
+metadata:
+  name: keycloak-claim-mapper
+  namespace: etch-sso
+
+---
+# Keycloak과 사내 OIDC 설정 후 별도로 적용하는 일회성 작업입니다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-oidc-claim-mappers
+  namespace: etch-sso
+  labels:
+    app.kubernetes.io/name: keycloak-oidc-claim-mappers
+    app.kubernetes.io/part-of: etch-sso
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-oidc-claim-mappers
+        app.kubernetes.io/part-of: etch-sso
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: khplane01w09
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: claim-mappers
+          # 독립 적용 파일이므로 kustomization.yaml의 Keycloak mirror/tag와 함께 관리합니다.
+          image: repository.samsungds.net/proxy-docker-quay.io/keycloak/keycloak:26.7.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              # 기존 ConfigMap도 지원하도록 쓰기 가능한 사본에서 대상 realm 옵션을 교정합니다.
+              cp -f /opt/keycloak-config/sync-oidc-claim-mappers.sh /tmp/sync-oidc-claim-mappers.sh
+              sed -i.before-realm-fix 's/--realm "$KEYCLOAK_TARGET_REALM"/-r "$KEYCLOAK_TARGET_REALM"/g' /tmp/sync-oidc-claim-mappers.sh
+              exec /bin/bash /tmp/sync-oidc-claim-mappers.sh
+          env:
+            - name: KEYCLOAK_MAPPING_TARGET
+              value: idp
+            - name: KEYCLOAK_ADMIN_URL
+              value: http://keycloak:8080
+            - name: KEYCLOAK_TARGET_REALM
+              value: etch
+            - name: KEYCLOAK_IDP_ALIAS
+              value: oidc
+            - name: KEYCLOAK_TARGET_CLIENT
+              value: portal
+            - name: KEYCLOAK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-runtime
+                  key: bootstrap-admin-username
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-runtime
+                  key: bootstrap-admin-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /opt/keycloak-config
+              readOnly: true
+            - name: work
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: keycloak-claim-mapper
+        - name: work
+          emptyDir: {}

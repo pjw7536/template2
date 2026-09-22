@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+spec:
+  storageClassName: ''
+  volumeName: tailwind-local-minio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+spec:
+  strategy: {type: Recreate, rollingUpdate: null}
+  template:
+    spec:
+      nodeSelector: {kubernetes.io/hostname: tailwind-local-worker}

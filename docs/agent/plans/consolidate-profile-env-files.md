@@ -11,7 +11,7 @@
 - Compose, 검증 스크립트, 운영 문서와 agent 지침이 기존 파일명을 참조한다.
 
 ## 범위
-- 통합: `env/overlays/{local,oidc,prod,test}`의 서비스 env 파일.
+- 통합: `env/portal/{local,oidc,prod,test}`의 서비스 env 파일.
 - 수정: Compose env_file 연결, Makefile, env 검증 스크립트, 관련 운영·개발 문서와 agent 지침.
 - 제외: 환경변수 key/value 의미, Django/Web runtime 코드, Kubernetes/Argo CD manifest 생성.
 

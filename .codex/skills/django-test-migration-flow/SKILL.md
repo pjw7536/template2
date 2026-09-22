@@ -42,17 +42,23 @@ backend 변경 시 테스트와 migration 누락을 방지하고 container-first
 - 다른 domain이 필요하면 `services/__init__.py` facade 또는 `selectors.py` 사용
 
 ## 실행 명령
+
+아래 명령은 저장소 루트 기준이다. Portal에서 Makefile을 호출할 때는 `make -C ../.. <target>`을 사용한다.
+
+`make dev`로 이미지·외부 DB·runtime env를 준비합니다. 소스 수정 후에는 `make k8s-rebuild APP=portal`로 검사 이미지를 갱신합니다.
+전체 검사는 `make test-api check-api makemigrations-check`를 사용합니다. 특정 앱 테스트는 표준 test env를 명시합니다.
+
 ```bash
-# 전체 테스트
-docker compose -f docker-compose.dev.yml exec -T api python manage.py test
+K8S_API_ENV_FILE="$PWD/deploy/portal/env/test/api.env" docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api test api.<feature>
 
-# 특정 앱 테스트
-docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.<feature>
+# migration 생성 결과가 컨테이너 종료 후에도 소스에 남도록 소스를 연결합니다.
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T -v "$PWD/apps/portal/api:/app" api makemigrations
 
-# migration 생성/적용
-docker compose -f docker-compose.dev.yml exec -T api python manage.py makemigrations
-docker compose -f docker-compose.dev.yml exec -T api python manage.py migrate
+# 로컬 DB에 migration을 적용합니다.
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T -v "$PWD/apps/portal/api:/app" api migrate
 ```
+
+CI는 `make build-ci-api test-ci-api check-ci-api makemigrations-ci-check`를 사용합니다.
 
 ## 작업 절차
 1. 변경 유형 분류

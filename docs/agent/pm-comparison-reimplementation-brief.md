@@ -224,7 +224,7 @@ wide schema는 wavelength로 해석 가능한 numeric column을 `wavelength/valu
 기존 프로젝트 규칙상 feature 외부에서는 facade만 import합니다.
 
 ```text
-apps/web/src/features/pm-spider/
+apps/portal/web/src/features/pm-spider/
   index.js
   routes.jsx
   api/
@@ -348,7 +348,7 @@ detail 재조회 payload:
 백엔드 파일 구성:
 
 ```text
-apps/api/api/pm_comparison/
+apps/portal/api/api/pm_comparison/
   apps.py
   models.py
   selectors.py
@@ -406,17 +406,17 @@ apps/api/api/pm_comparison/
 Backend 명령은 Docker Compose `api` 컨테이너에서 실행합니다.
 
 ```bash
-docker compose -f docker-compose.dev.yml exec -T api python manage.py test api.pm_comparison
-docker compose -f docker-compose.dev.yml exec -T api python manage.py check
+K8S_API_ENV_FILE="$PWD/deploy/portal/env/test/api.env" docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api test api.pm_comparison
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api check
 ```
 
 Frontend:
 
 ```bash
-npm run lint --prefix apps/web
-npm run build --prefix apps/web
-scripts/agent/check_frontend_boundaries.sh
-scripts/agent/check_ui_consistency.sh
+npm run lint --prefix apps/portal/web
+npm run build --prefix apps/portal/web
+apps/tooling/agent/check_frontend_boundaries.sh
+apps/tooling/agent/check_ui_consistency.sh
 ```
 
 프로젝트에 audit script 이름이 다르면 `package.json`의 `agent:audit:*` script를 우선 사용합니다.
@@ -448,7 +448,7 @@ API:
 - data는 Hive-style partition이며 trace는 trace_param_name/value/time/step_time, OES는 long 또는 wide wavelength schema를 처리한다.
 
 구현 규칙:
-- frontend는 apps/web/src/features/pm-spider 내부 feature로 만들고 외부 import는 facade만 사용한다.
+- frontend는 apps/portal/web/src/features/pm-spider 내부 feature로 만들고 외부 import는 facade만 사용한다.
 - JSX 파일은 .jsx, non-JSX는 .js를 사용한다.
 - route 내부 h-screen 금지, h-full/min-h-0 기반 dashboard layout을 사용한다.
 - shadcn/Radix와 Tailwind semantic token을 우선 사용한다.

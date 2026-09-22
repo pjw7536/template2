@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ftp
+  namespace: etch-ftp
+spec:
+  template:
+    spec:
+      containers:
+        - name: ftp
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PASV_ADDRESS
+              valueFrom: null
+              value: '127.0.0.1'

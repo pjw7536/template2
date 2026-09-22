@@ -1,0 +1,37 @@
+# 기존 코드에서 의도적이거나 별도 정리 범위로 분류한 UI audit 후보입니다.
+# 새 코드가 이 목록에 의존하지 않도록, 가능한 한 path + 구체 패턴으로 제한합니다.
+
+^apps/portal/web/src/components/ui/
+^apps/portal/web/src/components/common/Error04Illustration\.jsx:.*maskType
+^apps/portal/web/src/components/common/ThemeColorSelector\.jsx:.*text-gray-500
+^apps/portal/web/src/features/assistant/components/ChatWidget(Launcher|Panel)\.jsx:.*style=
+^apps/portal/web/src/features/auth/components/CenteredPage\.jsx:.*h-screen
+^apps/portal/web/src/features/emails/components/EmailInboxView\.jsx:.*style=
+^apps/portal/web/src/features/emails/components/EmailMailboxMembersDatatable\.jsx:.*style=.*width
+^apps/portal/web/src/features/errors/components/ErrorPage04\.jsx:.*h-screen
+^apps/portal/web/src/components/layout/PortalGlobalShell\.jsx:.*h-screen
+^apps/portal/web/src/features/home/components/Team\.jsx:.*style=
+^apps/portal/web/src/features/line-dashboard/components/DataTable\.jsx:.*style=.*(width|tableLayout)
+^apps/portal/web/src/features/line-dashboard/components/DataTable\.jsx:.*style=\{toWidthStyle
+^apps/portal/web/src/features/line-dashboard/components/DataTableColumnRenderers\.jsx:.*style=.*width
+^apps/portal/web/src/features/line-dashboard/components/chart/LineHistoryLegend\.jsx:.*backgroundColor
+^apps/portal/web/src/features/line-dashboard/pages/LineDashboardOverviewPage\.jsx:.*(bg|text)-slate-
+# 사용자가 조절한 sticky column 폭을 CSS 변수로 전달합니다.
+^apps/portal/web/src/features/account/components/AccessPolicyPanel\.jsx:.*style=\{
+# 측정된 selection panel 높이를 동일 영역의 CSS 계산에 전달합니다.
+^apps/portal/web/src/features/l3-spider/components/L3SpiderDataSelector\.jsx:.*style=\{.*--l3-selection-panel-height
+^apps/portal/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*#
+^apps/portal/web/src/features/pm-spider/components/TraceSignalPanel\.jsx:.*style=
+^apps/portal/web/src/features/pm-spider/components/OesHeatmap\.jsx:.*style=
+^apps/portal/web/src/features/pm-spider/components/PmSpiderRankingTrace\.jsx:.*style=
+^apps/portal/web/src/features/l3-spider/utils/chartStatus\.js:.*#
+# 기존 L3 legend의 High Risk/Warning/Normal 상태색 계약을 유지합니다.
+^apps/portal/web/src/features/l3-spider/components/L3SpiderChart\.jsx:.*(style=|#)
+^apps/portal/web/src/features/l3-spider/components/TrellisChart\.jsx:.*#
+^apps/portal/web/src/features/l3-spider/components/trellisChartBuilders\.js:.*#
+^apps/portal/web/src/features/l3-spider/components/TrellisChart\.css:.*#
+^apps/portal/web/src/features/observer/components/BaseObserver\.jsx:.*style=
+# TanStack Virtual이 계산한 전체 높이와 row translate 위치를 적용합니다.
+^apps/portal/web/src/features/observer/components/ObserverDataTable\.jsx:.*style=\{
+^apps/portal/web/src/features/observer/components/filters/TipTreeNode\.jsx:.*style=.*paddingLeft
+^apps/portal/web/src/features/observer/components/table/ObserverTable(Header|Row)\.jsx:.*style=.*width

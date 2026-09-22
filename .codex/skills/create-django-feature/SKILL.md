@@ -17,29 +17,29 @@ description: |
 - feature 단위 API route scope를 추가할 때
 
 ## 전제 규칙
-- feature app 경로: `apps/api/api/<feature>`
+- feature app 경로: `apps/portal/api/api/<feature>`
 - Django app name: `api.<feature>`
 - 허용 파일/폴더만 생성한다.
 - 기본 폴더 깊이 최대 2를 지키고, `services/`, `migrations/`, `management/commands/`만 예외로 둔다.
 - business logic: `services/`
 - read query: `selectors.py`
 - HTTP wiring: `views.py`
-- global routing: `apps/api/api/urls.py`에서 `include()`만 사용
+- global routing: `apps/portal/api/api/urls.py`에서 `include()`만 사용
 - cross-feature import는 타 feature의 `services/__init__.py` facade 또는 `selectors.py`만 사용한다.
-- legacy root model(`apps/api/api/models.py`)을 건드려야 하면 확장하지 말고 feature app으로 이전 + 신규 migration으로 처리한다.
+- legacy root model(`apps/portal/api/api/models.py`)을 건드려야 하면 확장하지 말고 feature app으로 이전 + 신규 migration으로 처리한다.
 
 ## 생성 순서 (고정)
 순서를 바꾸지 않는다.
 
 1. 앱 경로 생성
-   - `apps/api/api/<feature>/`
+   - `apps/portal/api/api/<feature>/`
    - 기본 파일: `__init__.py`, `apps.py`, `models.py`, `serializers.py`, `selectors.py`, `views.py`, `urls.py`, `tests.py`, `services/__init__.py`
    - 필요 시만 추가: `permissions.py`, `admin.py`, `management/commands/`, `migrations/`
 2. `apps.py` 작성
    - `name = "api.<feature>"`
    - app label/class는 feature 기준으로 결정
 3. `INSTALLED_APPS` 등록
-   - 수정 파일: `apps/api/config/settings.py`
+   - 수정 파일: `apps/portal/api/config/settings.py`
    - `api.<feature>` 추가
 4. `models.py` 작성
    - concrete model은 해당 feature의 `models.py`에만 둔다.
@@ -77,7 +77,7 @@ description: |
     - 예: `path("items/", SomeView.as_view())`
     - 추가 URL 모듈이 필요하면 `<purpose>_urls.py`로 만들고 feature `urls.py`에서 include한다.
 11. global api urls 등록
-    - 수정 파일: `apps/api/api/urls.py`
+    - 수정 파일: `apps/portal/api/api/urls.py`
     - 예: `path("api/v1/<feature>/", include("api.<feature>.urls"))`
     - route scope는 feature slug와 일치시키는 것을 기본으로 한다(legacy mismatch 확장 금지).
 12. `tests.py` 작성
@@ -108,7 +108,7 @@ description: |
   - `selectors.py` -> models/api.common/타 feature selectors
 
 ## 금지사항
-- `apps/api/api/models.py` 같은 root model 확장
+- `apps/portal/api/api/models.py` 같은 root model 확장
 - cross-feature 내부 모듈 직접 import
 - view에서 ORM read 직접 수행
 - selector에서 write 수행

@@ -318,7 +318,7 @@ constrained width 우선:
 ## componentization 규칙
 같은 레이아웃 패턴이 2회 이상 반복되면 layout component로 승격한다.
 
-- `apps/web/src/components/layout/<LayoutName>.jsx`
+- `apps/portal/web/src/components/layout/<LayoutName>.jsx`
 
 허용 예:
 - `PageShell`
@@ -330,7 +330,7 @@ constrained width 우선:
 금지:
 - feature 폴더에 범용 layout component 생성
 - route 파일 안에서 page shell 직접 복붙
-- `apps/web/src/routes/*`에 layout component 신규 생성
+- `apps/portal/web/src/routes/*`에 layout component 신규 생성
 
 ## 출력 방식
 이 스킬 사용 시 내부 판단 순서는 아래를 따른다.
@@ -376,7 +376,7 @@ constrained width 우선:
 layout 변경 후 가능하면 `ui-consistency-audit` skill을 사용해 아래 명령을 실행한다.
 
 ```bash
-scripts/agent/check_ui_consistency.sh
+apps/tooling/agent/check_ui_consistency.sh
 ```
 
 ## 좋은 결과의 기준

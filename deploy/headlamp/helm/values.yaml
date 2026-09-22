@@ -1,0 +1,74 @@
+fullnameOverride: headlamp
+replicaCount: 1
+image:
+  tag: v0.45.0
+serviceAccount:
+  name: headlamp
+# 서버 Pod에는 사용자 조회·관리 권한을 부여하지 않습니다.
+clusterRoleBinding:
+  create: false
+config:
+  inCluster: true
+  unsafeUseServiceAccountToken: false
+  enableHelm: false
+  oidc:
+    secret:
+      create: false
+    externalSecret:
+      enabled: false
+ingress:
+  enabled: false
+service:
+  type: ClusterIP
+pluginsManager:
+  enabled: false
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 500m, memory: 256Mi}
+# Keycloak의 지정 그룹에만 기존 조회 권한을 부여합니다.
+extraManifests:
+  - |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: server-headlamp-viewer
+    subjects:
+      - kind: Group
+        name: headlamp:/headlamp-viewers
+        apiGroup: rbac.authorization.k8s.io
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: view
+  - |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: server-headlamp-discovery
+    rules:
+      - apiGroups: ['']
+        resources: [nodes, namespaces]
+        verbs: [get, list, watch]
+  - |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: server-headlamp-discovery
+    subjects:
+      - kind: Group
+        name: headlamp:/headlamp-viewers
+        apiGroup: rbac.authorization.k8s.io
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: server-headlamp-discovery

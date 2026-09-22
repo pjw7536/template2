@@ -12,12 +12,12 @@ description: |
 이 스킬은 화면이 같은 제품처럼 보이도록 시각 규칙과 상호작용 상태를 통일한다.
 
 대상:
-- `apps/web/src`의 React JSX 화면
+- `apps/portal/web/src`의 React JSX 화면
 - shadcn/Radix 기반 컴포넌트 조합
 - dashboard, admin, table, settings, list-detail, assistant/workbench UI
 
 비대상:
-- `apps/web/src/components/ui/**` 직접 수정
+- `apps/portal/web/src/components/ui/**` 직접 수정
 - 브랜드/마케팅 landing page
 - SVG 일러스트/차트 라이브러리 내부 구현
 
@@ -167,5 +167,5 @@ description: |
 UI 변경 후 가능하면 `ui-consistency-audit` skill을 사용해 아래 명령을 실행한다.
 
 ```bash
-scripts/agent/check_ui_consistency.sh
+apps/tooling/agent/check_ui_consistency.sh
 ```
