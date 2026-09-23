@@ -20,15 +20,15 @@ deploy/shared/certs/
 │   ├── .gitkeep
 │   ├── etch-sso.samsungds.net.p7b
 │   ├── etch-sso.samsungds.net.pfx
-│   ├── keycloak-fullchain.crt
-│   ├── keycloak.key
+│   ├── fullchain.crt
+│   ├── private.key
 │   └── keycloak-ca-bundle.pem   # OIDC 가이드에서 나중에 생성
 ├── etch.samsungds.net/           # Headlamp 접속 도메인
 │   ├── .gitkeep
 │   ├── etch.samsungds.net.p7b
 │   ├── etch.samsungds.net.pfx
-│   ├── etch-fullchain.crt
-│   └── etch.key
+│   ├── fullchain.crt
+│   └── private.key
 └── ca/                          # 공용 인증기관 원본
     ├── .gitkeep
     ├── SECDS-T2IssuingCA.crt
@@ -37,16 +37,50 @@ deploy/shared/certs/
 
 파일 이름은 위와 같이 유지합니다. 기존에 공용 폴더 바로 아래 넣었다면 위 구조에 맞춰 이동합니다. 이미 추출한 파일이 있으므로 지금 다시 추출할 필요는 없습니다.
 
+두 사이트 모두 인증서는 `fullchain.crt`, 개인키는 `private.key`입니다. 도메인은 상위 폴더로 구분합니다.
+원본 PFX/P7B와 CA 파일 이름은 변경하지 않습니다.
+
+### 기존 서버 파일 이름 변경
+
+이전 이름으로 파일을 넣은 서버에서는 저장소 루트에서 한 번 실행합니다.
+대상 파일이 이미 있으면 덮어쓰지 않고 중단합니다. 해당 경우 두 파일 중 사용할 인증서를 먼저 확인합니다.
+파일 이름만 바꾸므로 기존 Kubernetes TLS Secret이나 서비스는 변경되지 않습니다.
+
+```bash
+(
+  set -euo pipefail
+  cert_root=deploy/shared/certs
+  cert_moves=(
+    'etch-sso.samsungds.net/keycloak-fullchain.crt etch-sso.samsungds.net/fullchain.crt'
+    'etch-sso.samsungds.net/keycloak.key etch-sso.samsungds.net/private.key'
+    'etch.samsungds.net/etch-fullchain.crt etch.samsungds.net/fullchain.crt'
+    'etch.samsungds.net/etch.key etch.samsungds.net/private.key'
+  )
+  for cert_move in "${cert_moves[@]}"; do
+    read -r cert_old cert_new <<< "$cert_move"
+    if [ -e "$cert_root/$cert_old" ]; then
+      test ! -e "$cert_root/$cert_new"
+    fi
+  done
+  for cert_move in "${cert_moves[@]}"; do
+    read -r cert_old cert_new <<< "$cert_move"
+    if [ -e "$cert_root/$cert_old" ]; then
+      mv -n -- "$cert_root/$cert_old" "$cert_root/$cert_new"
+    fi
+  done
+)
+```
+
 | 파일 | 용도 |
 | --- | --- |
 | `etch-sso.samsungds.net.p7b`, `etch-sso.samsungds.net.pfx` | Keycloak 인증서 발급 원본 보관 |
-| `keycloak-fullchain.crt` | Keycloak HTTPS 서버 인증서와 중간 인증서 체인 |
-| `keycloak.key` | Keycloak 인증서와 짝인 개인키 |
+| `fullchain.crt` | Keycloak HTTPS 서버 인증서와 중간 인증서 체인 |
+| `private.key` | Keycloak 인증서와 짝인 개인키 |
 | `SECDS-T2IssuingCA.crt` | 중간 인증기관 인증서 |
 | `SECDS-T2RootCA.crt` | 루트 인증기관 인증서 |
 | `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | Headlamp 접속 도메인의 인증서 발급 원본 보관 |
-| `etch-fullchain.crt` | Headlamp HTTPS 서버 인증서와 중간 인증서 체인 |
-| `etch.key` | Headlamp 인증서와 짝인 개인키 |
+| `fullchain.crt` | Headlamp HTTPS 서버 인증서와 중간 인증서 체인 |
+| `private.key` | Headlamp 인증서와 짝인 개인키 |
 
 CA 파일은 나중에 Keycloak 인증서를 신뢰하기 위한 CA 묶음을 만들 때 사용합니다.
 확장자만으로 PEM/DER 형식을 확정할 수 없으므로 실제 파일을 넣은 뒤 형식과 체인을 확인합니다.
@@ -66,7 +100,7 @@ chmod 700 deploy/shared/certs deploy/shared/certs/{etch-sso.samsungds.net,etch.s
 파일을 모두 넣은 뒤 개인키와 PFX의 읽기 권한을 소유자로 제한합니다.
 
 ```bash
-chmod 600 deploy/shared/certs/etch-sso.samsungds.net/keycloak.key deploy/shared/certs/etch.samsungds.net/etch.key \
+chmod 600 deploy/shared/certs/etch-sso.samsungds.net/private.key deploy/shared/certs/etch.samsungds.net/private.key \
   deploy/shared/certs/etch-sso.samsungds.net/etch-sso.samsungds.net.pfx \
   deploy/shared/certs/etch.samsungds.net/etch.samsungds.net.pfx
 ```
@@ -88,8 +122,8 @@ make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT"
 Headlamp TLS 등록 시 사용할 파일 경로는 다음과 같습니다.
 
 ```text
-인증서: deploy/shared/certs/etch.samsungds.net/etch-fullchain.crt
-개인키: deploy/shared/certs/etch.samsungds.net/etch.key
+인증서: deploy/shared/certs/etch.samsungds.net/fullchain.crt
+개인키: deploy/shared/certs/etch.samsungds.net/private.key
 ```
 
 **폴더에 파일을 넣는 것만으로 기존 서버 인증서나 Kubernetes Secret이 바뀌지는 않습니다.**
@@ -114,7 +148,6 @@ Keycloak 인증서를 작업할 때:
 
 ```bash
 CERT_SITE=etch-sso.samsungds.net
-CERT_PREFIX=keycloak
 TLS_NAMESPACE=etch-sso
 TLS_SECRET=keycloak-tls
 ```
@@ -123,7 +156,6 @@ Headlamp 인증서를 작업할 때:
 
 ```bash
 CERT_SITE=etch.samsungds.net
-CERT_PREFIX=etch
 TLS_NAMESPACE=headlamp
 TLS_SECRET=headlamp-tls
 ```
@@ -211,13 +243,13 @@ openssl pkcs12 -in "$CERT_SITE_DIR/$CERT_SITE.pfx" \
   cat "$cert_work/leaf.crt" "$cert_work/SECDS-T2IssuingCA.pem" > "$cert_work/fullchain.crt"
   mkdir -p "$CERT_SITE_DIR/backups"
   cert_backup=$(mktemp -d "$CERT_SITE_DIR/backups/before-extract.XXXXXX")
-  for cert_name in "$CERT_PREFIX-fullchain.crt" "$CERT_PREFIX.key"; do
+  for cert_name in "fullchain.crt" "private.key"; do
     if [ -f "$CERT_SITE_DIR/$cert_name" ]; then
       cp -p "$CERT_SITE_DIR/$cert_name" "$cert_backup/"
     fi
   done
-  install -m 0600 "$cert_work/private.key" "$CERT_SITE_DIR/$CERT_PREFIX.key"
-  install -m 0644 "$cert_work/fullchain.crt" "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt"
+  install -m 0600 "$cert_work/private.key" "$CERT_SITE_DIR/private.key"
+  install -m 0644 "$cert_work/fullchain.crt" "$CERT_SITE_DIR/fullchain.crt"
   printf '추출·검증 완료. 기존 파일 보관 위치: %s\n' "$cert_backup"
 )
 ```
@@ -249,9 +281,9 @@ OpenSSL 3에서 구형 PFX 암호의 `unsupported` 오류가 발생한 경우에
   openssl verify -purpose sslserver -verify_hostname "$CERT_SITE" \
     -CAfile "$cert_work/SECDS-T2RootCA.pem" \
     -untrusted "$cert_work/SECDS-T2IssuingCA.pem" \
-    "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt"
-  openssl x509 -in "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt" -pubkey -noout > "$cert_work/cert-public.pem"
-  openssl pkey -in "$CERT_SITE_DIR/$CERT_PREFIX.key" -passin pass: -pubout > "$cert_work/key-public.pem"
+    "$CERT_SITE_DIR/fullchain.crt"
+  openssl x509 -in "$CERT_SITE_DIR/fullchain.crt" -pubkey -noout > "$cert_work/cert-public.pem"
+  openssl pkey -in "$CERT_SITE_DIR/private.key" -passin pass: -pubout > "$cert_work/key-public.pem"
   cmp "$cert_work/cert-public.pem" "$cert_work/key-public.pem"
   echo '인증서 체인·도메인·기간·개인키 일치 확인 완료'
 )
@@ -261,7 +293,7 @@ fullchain은 **서버 인증서가 첫 번째, 이어서 중간 CA** 순서여�
 위 검증은 별도의 CA 파일로 체인을 확인하므로 fullchain에 중간 CA가 실제로 포함돼 있는지도 확인합니다.
 
 ```bash
-openssl crl2pkcs7 -nocrl -certfile "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt" |
+openssl crl2pkcs7 -nocrl -certfile "$CERT_SITE_DIR/fullchain.crt" |
   openssl pkcs7 -print_certs -noout
 ```
 
@@ -280,8 +312,8 @@ openssl crl2pkcs7 -nocrl -certfile "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt" |
   kubectl --context "$KUBE_CONTEXT" create namespace "$TLS_NAMESPACE" --dry-run=client -o yaml |
     kubectl --context "$KUBE_CONTEXT" apply -f -
   kubectl --context "$KUBE_CONTEXT" -n "$TLS_NAMESPACE" create secret tls "$TLS_SECRET" \
-    --cert="$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt" \
-    --key="$CERT_SITE_DIR/$CERT_PREFIX.key" --dry-run=client -o yaml |
+    --cert="$CERT_SITE_DIR/fullchain.crt" \
+    --key="$CERT_SITE_DIR/private.key" --dry-run=client -o yaml |
     kubectl --context "$KUBE_CONTEXT" apply -f -
 )
 ```
@@ -318,7 +350,7 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
   openssl s_client -connect "$CERT_SITE:443" -servername "$CERT_SITE" \
     -verify_hostname "$CERT_SITE" -verify_return_error -CAfile "$cert_work/root.pem" \
     -showcerts </dev/null > "$cert_work/live-chain.pem"
-  openssl x509 -in "$CERT_SITE_DIR/$CERT_PREFIX-fullchain.crt" \
+  openssl x509 -in "$CERT_SITE_DIR/fullchain.crt" \
     -noout -fingerprint -sha256 > "$cert_work/expected.txt"
   openssl x509 -in "$cert_work/live-chain.pem" \
     -noout -fingerprint -sha256 > "$cert_work/actual.txt"

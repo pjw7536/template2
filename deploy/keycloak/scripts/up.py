@@ -62,8 +62,8 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     url = urlsplit(settings['keycloak-public-url'])
     if url.scheme != 'https' or not url.hostname or url.path or url.query or url.fragment:
         raise ValueError('keycloak-public-url은 경로 없는 HTTPS URL이어야 합니다.')
-    cert = Path(certs) / 'keycloak-fullchain.crt'
-    key = Path(certs) / 'keycloak.key'
+    cert = Path(certs) / 'fullchain.crt'
+    key = Path(certs) / 'private.key'
     checked = run(['openssl', 'x509', '-in', cert, '-noout', '-checkhost', url.hostname], sensitive=True)
     if 'does match certificate' not in checked:
         raise ValueError('인증서 도메인과 keycloak-public-url이 다릅니다.')

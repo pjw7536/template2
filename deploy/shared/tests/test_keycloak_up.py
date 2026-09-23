@@ -27,8 +27,8 @@ class KeycloakTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.certs = Path(self.directory.name)
-        (self.certs / 'keycloak-fullchain.crt').write_text('certificate')
-        (self.certs / 'keycloak.key').write_text('private-key')
+        (self.certs / 'fullchain.crt').write_text('certificate')
+        (self.certs / 'private.key').write_text('private-key')
         self.settings = dict(zip(keycloak.KEYS, ['db-password', 'admin', 'admin-password', 'https://sso.test']))
         self.calls = []
         self.secrets = {}
@@ -144,7 +144,7 @@ class KeycloakTests(unittest.TestCase):
     def test_real_certificate_validation_accepts_matching_key_and_rejects_wrong_host(self):
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                         '-subj', '/CN=sso.test', '-addext', 'subjectAltName=DNS:sso.test',
-                        '-keyout', self.certs / 'keycloak.key', '-out', self.certs / 'keycloak-fullchain.crt'],
+                        '-keyout', self.certs / 'private.key', '-out', self.certs / 'fullchain.crt'],
                        check=True, capture_output=True, timeout=15)
         keycloak.run.side_effect = lambda args, **kwargs: REAL_RUN(args, **kwargs) if args[0] == 'openssl' else self.fake_run(args, **kwargs)
         self.start(check_only=True)

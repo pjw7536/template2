@@ -43,8 +43,8 @@ CP1
 │       └── prod.env                # 서버 기동값 및 선택적인 CORP_OIDC_* 값
 ├── certs/                          # 기존 인증서 위치 유지, Git 바깥
 │   ├── etch-sso.samsungds.net.pfx
-│   ├── keycloak-fullchain.crt
-│   ├── keycloak.key
+│   ├── fullchain.crt
+│   ├── private.key
 │   ├── SECDS-T2IssuingCA.crt
 │   └── SECDS-T2RootCA.crt
 └── etchax-backups/                 # 백업 절차를 별도로 마련할 때 사용

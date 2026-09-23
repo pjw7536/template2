@@ -6,7 +6,7 @@
 | --- | --- |
 | 접속 주소 | `https://etch.samsungds.net/headlamp/` |
 | 인증서 폴더 | `deploy/shared/certs/etch.samsungds.net/` |
-| 인증서·개인키 | `etch-fullchain.crt`, `etch.key` |
+| 인증서·개인키 | `fullchain.crt`, `private.key` |
 | TLS Secret | `headlamp/headlamp-tls` |
 | 공용 CA 폴더 | `deploy/shared/certs/ca/` |
 

@@ -140,8 +140,8 @@ kubectl create namespace etch-sso --dry-run=client -o yaml | kubectl apply -f -
 make k8s-env APP=keycloak PROFILE=prod COMPONENT=server
 kubectl create secret tls keycloak-tls \
   --namespace etch-sso \
-  --cert=deploy/shared/certs/etch-sso.samsungds.net/keycloak-fullchain.crt \
-  --key=deploy/shared/certs/etch-sso.samsungds.net/keycloak.key \
+  --cert=deploy/shared/certs/etch-sso.samsungds.net/fullchain.crt \
+  --key=deploy/shared/certs/etch-sso.samsungds.net/private.key \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 

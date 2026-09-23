@@ -6,7 +6,7 @@
 | --- | --- |
 | 도메인 | `etch-sso.samsungds.net` |
 | 인증서 폴더 | `deploy/shared/certs/etch-sso.samsungds.net/` |
-| 인증서·개인키 | `keycloak-fullchain.crt`, `keycloak.key` |
+| 인증서·개인키 | `fullchain.crt`, `private.key` |
 | TLS Secret | `etch-sso/keycloak-tls` |
 | TLS 종료 | Traefik |
 

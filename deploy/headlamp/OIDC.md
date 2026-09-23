@@ -15,8 +15,8 @@ Headlamp 최초 설치에도 이 가이드를 사용할 수 있습니다. 먼저
 | 보관 폴더 (`deploy/shared/certs/` 아래) | 준비된 파일 | 이번 작업에서의 사용 |
 | --- | --- | --- |
 | `ca/` | `SECDS-T2RootCA.crt`, `SECDS-T2IssuingCA.crt` | Keycloak을 신뢰하기 위한 CA 묶음 생성 |
-| `etch-sso.samsungds.net/` | `keycloak-fullchain.crt`, `keycloak.key` | 기존 Keycloak HTTPS용. fullchain으로 CA 체인 확인 |
-| `etch.samsungds.net/` | `etch-fullchain.crt`, `etch.key` | 기존 Headlamp HTTPS용. 정상 운영 중이면 그대로 유지 |
+| `etch-sso.samsungds.net/` | `fullchain.crt`, `private.key` | 기존 Keycloak HTTPS용. fullchain으로 CA 체인 확인 |
+| `etch.samsungds.net/` | `fullchain.crt`, `private.key` | 기존 Headlamp HTTPS용. 정상 운영 중이면 그대로 유지 |
 | `etch-sso.samsungds.net/` | `etch-sso.samsungds.net.p7b`, `etch-sso.samsungds.net.pfx` | 원본 보관, 이번 절차에서는 사용하지 않음 |
 | `etch.samsungds.net/` | `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | 원본 보관, 이번 절차에서는 사용하지 않음 |
 
@@ -242,7 +242,7 @@ kubectl --context "$KUBE_CONTEXT" create namespace headlamp --dry-run=client -o 
   openssl verify -purpose sslserver -verify_hostname etch-sso.samsungds.net \
     -CAfile "$ca_work/SECDS-T2RootCA.pem" \
     -untrusted "$ca_work/SECDS-T2IssuingCA.pem" \
-    "$cert_dir/keycloak-fullchain.crt"
+    "$cert_dir/fullchain.crt"
 
   cat "$ca_work/SECDS-T2RootCA.pem" "$ca_work/SECDS-T2IssuingCA.pem" \
     > "$ca_work/keycloak-ca-bundle.pem"
@@ -252,7 +252,7 @@ kubectl --context "$KUBE_CONTEXT" create namespace headlamp --dry-run=client -o 
 ```
 
 실제 Keycloak 도메인이 다르다면 `-verify_hostname` 뒤의 주소도 바꿉니다.
-`keycloak-fullchain.crt: OK`와 **CA 묶음 생성 완료**가 나오면 성공입니다.
+`fullchain.crt: OK`와 **CA 묶음 생성 완료**가 나오면 성공입니다.
 오류가 나면 다음 등록 명령으로 넘어가지 않습니다. 만료·다른 도메인·발급 CA 불일치를 확인합니다.
 이 검사는 폴더에 있는 인증서를 대상으로 하므로 실제 Keycloak 서버도 같은 인증서를 제공하는지 확인해야 합니다.
 명령 참고: [OpenSSL 형식 변환](https://docs.openssl.org/3.0/man1/openssl-x509/),
@@ -297,7 +297,7 @@ Headlamp가 사용할 CA 준비는 끝났으며, 다음 단계에서 API server�
 > 기존 인증 설정을 보존하고, 아래 담당자용 상세 설정을 참고해 주세요.
 
 담당자에게 전달할 인증서 파일은 **3번에서 만든 `keycloak-ca-bundle.pem` 하나**입니다.
-PFX나 `keycloak.key`, `etch.key`를 API server에 전달할 필요는 없습니다.
+PFX나 각 사이트의 `private.key`를 API server에 전달할 필요는 없습니다.
 
 직접 인프라도 관리한다면 아래 상세 설정을 확인합니다.
 클러스터 설치 방식에 따라 수정 위치가 달라지므로 설정 파일 경로를 임의로 정해 편집하지 않습니다.
