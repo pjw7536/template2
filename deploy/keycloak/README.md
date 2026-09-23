@@ -4,21 +4,16 @@
 
 ## 서버에 복사한 뒤 넣을 파일
 
-프로젝트 내부에 운영 입력을 둘 때는 아래 폴더를 사용합니다. 실제 입력은 Git에서 제외합니다.
+프로젝트 내부에 운영 입력을 둘 때는 아래 폴더를 사용합니다. 일반 env는 Git에 포함하고 비밀값·인증서는 제외합니다.
 
 ```text
-deploy/keycloak/
-├── env/
-│   ├── prod.env.example       # 설정 양식
-│   └── prod.env               # 서버에서 실제 값 입력
-└── certs/
-    ├── keycloak-fullchain.crt # 서버 인증서와 Intermediate CA 체인
-    └── keycloak.key           # 인증서와 짝인 개인키
+deploy/keycloak/env/prod.env                  # 운영 입력
+deploy/shared/certs/etch-sso.samsungds.net/    # Keycloak 인증서·개인키
 ```
 
-[env 입력 안내](env/README.md)와 [인증서 입력·등록 안내](certs/README.md)를 따릅니다.
-아래 기존 `/appdata/certs` 예시 대신 프로젝트 내부 인증서를 사용할 경우
-TLS 등록의 `--cert`·`--key` 경로를 위 경로로 지정합니다. 파일 배치 자체는 DB나 클러스터를 변경하지 않습니다.
+[env 입력 안내](env/README.md)와 [공용 인증서 추출·적용 안내](../shared/certs/README.md)를 따릅니다.
+`make keycloak-check/up`은 위 공용 인증서 폴더를 기본으로 사용합니다.
+인증서 파일 배치 자체는 DB나 클러스터를 변경하지 않습니다.
 
 ## Keycloak만 검사하고 배포하기
 
@@ -117,32 +112,36 @@ TLS 인증서의 DNS 이름도 동일해야 합니다.
 아래 3~4절은 수동 단독 배포 경로입니다. 위의 `make keycloak-up`으로 준비했다면 반복하지 않습니다.
 특히 공용 앱·APP VIP 구성에서는 4절의 정적 스택 apply 대신 앱별 도구를 사용합니다.
 
-실제 credential은 Git 제외 파일인 `deploy/keycloak/env/prod.env`에서 관리합니다.
+일반 설정은 `deploy/keycloak/env/prod.env`, 실제 credential은 Git 제외 파일인 `deploy/keycloak/env/prod.secrets.env`에서 관리합니다. 배포 도구가 자동 병합합니다.
 `deploy/keycloak/env/prod.env.example`을 참고하며 기존 실제 파일이 있으면 덮어쓰지 않습니다.
 환경설정 전체 구조는 [앱별 환경설정](../shared/docs/configuration/environment.md)을 참고합니다.
 
 ```dotenv
-postgres-password=<충분히 긴 PostgreSQL 비밀번호>
 bootstrap-admin-username=<초기 Keycloak 관리자 계정>
-bootstrap-admin-password=<충분히 긴 초기 관리자 비밀번호>
 keycloak-public-url=https://etch-sso.samsungds.net
+```
+
+비밀번호는 `prod.secrets.env`에만 입력합니다.
+
+```dotenv
+postgres-password=<기존 PostgreSQL 비밀번호>
+bootstrap-admin-password=<기존 초기 관리자 비밀번호>
 ```
 
 Keycloak 공개 URL은 `/`로 끝나지 않게 작성합니다. Portal client secret과 주소는
 Portal API 설정에서 관리하며 서버 기동에는 필요하지 않습니다.
 
 ```bash
-# 최초 준비 때만 예시를 복사합니다.
-test -f deploy/keycloak/env/prod.env || cp deploy/keycloak/env/prod.env.example deploy/keycloak/env/prod.env
-chmod 600 deploy/keycloak/env/prod.env
-vi deploy/keycloak/env/prod.env
+# 일반 설정은 Git에 포함됩니다. 비밀값 파일은 기존 서버의 값을 준비합니다.
+chmod 600 deploy/keycloak/env/prod.secrets.env
+vi deploy/keycloak/env/prod.secrets.env
 make env-check APP=keycloak PROFILE=prod COMPONENT=server
 kubectl create namespace etch-sso --dry-run=client -o yaml | kubectl apply -f -
 make k8s-env APP=keycloak PROFILE=prod COMPONENT=server
 kubectl create secret tls keycloak-tls \
   --namespace etch-sso \
-  --cert=/appdata/certs/keycloak-fullchain.crt \
-  --key=/appdata/certs/keycloak.key \
+  --cert=deploy/shared/certs/etch-sso.samsungds.net/keycloak-fullchain.crt \
+  --key=deploy/shared/certs/etch-sso.samsungds.net/keycloak.key \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 

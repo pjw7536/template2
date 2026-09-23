@@ -319,3 +319,11 @@
 - client secret은 외부 Kubernetes Secret으로 주입하며 로컬 개발 토큰 구성은 유지합니다.
 - 제어면 OIDC는 설치 방식과 기존 인증 계약에 맞춰 운영자가 반영합니다. 서버 접속이 없는 환경에서 자동 변경하지 않습니다.
 - [실행 계획](plans/headlamp-keycloak.md), [전환 안내](../../deploy/headlamp/OIDC.md).
+
+## 2026-09-23: 운영 일반 env는 Git으로 전달
+
+- 사용자 요청에 따라 배포용 일반 `.env`는 Git 포함 대상으로 전환한다.
+- 비밀번호·토큰·서명 키·인증 헤더는 같은 폴더의 `*.secrets.env`에 보존하고 Git에서 제외한다.
+- 배포 도구는 두 파일을 데이터로 병합하며 비밀값 파일의 알 수 없는 키·중복을 거부한다.
+- 기존 통합 env도 읽을 수 있지만 새 비밀값 생성은 분리 파일에만 기록한다. 인증서·개인키 제외 규칙은 유지한다.
+- [실행·검증 기록](plans/deploy-public-env-secrets.md), [운영 안내](../../deploy/shared/docs/configuration/environment.md).

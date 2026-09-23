@@ -252,8 +252,8 @@ VIP 배치 목록은 Deployment annotation에 남으며 기존 앱별 배포 도
 
 **VIP 연결만으로 Headlamp 주소가 생기지는 않습니다.** 이후 Headlamp의 공개 도메인 또는 경로,
 TLS Secret, Ingress, Traefik의 `headlamp` namespace 감시·RBAC를 별도로 준비해야 합니다.
-현재 Headlamp는 Ingress가 비활성화되어 있으며 `/headlamp` 경로도 아직 설정되지 않았습니다.
-기존 토큰 로그인 권한은 유지하고, 경로 방식이라면 Headlamp의 base URL 설정까지 맞춰야 합니다.
+현재 Headlamp 배포 도구는 운영 env로 `/headlamp` HTTPS 경로와 Keycloak 로그인을 구성합니다.
+[Headlamp 운영 안내](../../headlamp/README.md)에 따라 TLS·OIDC Secret·CA와 제어면 인증을 준비하고 앱별 배포 명령을 사용합니다.
 
 ## 완료 기준
 

@@ -23,6 +23,13 @@ OIDC_ENV = ('\nHEADLAMP_HOST=ui.example.test\nHEADLAMP_TLS_SECRET=headlamp-tls'
 class DeploymentTest(unittest.TestCase):
     """외부 명령 실행 전에 잘못된 입력이 거부되는지 확인한다."""
 
+    def test_default_profile_is_valid_production_input(self):
+        values = manage.settings(manage.APP / 'env/k8s.env.example')
+        env = {entry['name']: entry['value'] for entry in values['env']}
+        self.assertEqual(env['OIDC_ISSUER_URL'], 'https://etch-sso.samsungds.net/realms/etch')
+        self.assertEqual(values['volumes'][0]['configMap']['name'], 'headlamp-oidc-ca')
+        self.assertNotIn('OIDC_CLIENT_SECRET', env)
+
     def test_env_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'input.env'

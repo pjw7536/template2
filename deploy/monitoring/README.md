@@ -24,7 +24,7 @@ Helm override를 받을 수 있습니다. 로컬 개발은 별도 wrapper와 `lo
 기본 서버 검사·배포는 local 파일을 읽지 않습니다.
 
 ```bash
-cp deploy/monitoring/env/k8s.env.example deploy/monitoring/env/k8s.env
+# Git으로 받은 일반 설정을 확인합니다.
 chmod 600 deploy/monitoring/env/k8s.env
 ```
 

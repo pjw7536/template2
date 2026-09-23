@@ -108,3 +108,9 @@ VIP 연결은 인프라팀에서 설정했으며, 위 앱 라우팅은 저장소
 
 [환경 조회와 기록 양식](../kubernetes/01-baseline.md)을 사용해 확인값·확인일·근거를 갱신합니다.
 앱 chart가 요구하는 최소 Kubernetes 버전을 현재 설치 버전 또는 새 서버 권장 버전으로 기록하지 않습니다.
+
+## 2026-09-22 인증서·Headlamp 후속 기록
+
+- 사용자가 Keycloak·업무 도메인의 PFX/P7B, 추출한 fullchain·개인키, SECDS-T2 루트·중간 CA 보유를 확인했습니다.
+- 보관 위치는 `deploy/shared/certs/`의 사이트별 폴더입니다. [추출·적용 안내](../../certs/README.md)를 따릅니다.
+- Headlamp의 운영 도메인·issuer·그룹 조회 권한 구성은 저장소에 반영되어 있습니다. 실제 서버의 Secret·로그인·제어면 OIDC 상태는 미조회입니다.

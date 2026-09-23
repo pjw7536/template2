@@ -78,6 +78,8 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
     chart = airflow.chart_path()
     with tempfile.TemporaryDirectory(prefix='server-up-check-') as temporary:
         airflow.render(settings, temporary, chart, pause_new_dags=True)
+    # 라우팅을 변경하기 전에 Airflow 자체의 배포 입력도 검사한다.
+    airflow.check_cluster_inputs(settings, context)
     run = airflow.run
     kube = ['kubectl', '--context', context]
     # 이미 구동 중인 Keycloak 전용 진입점이다. 자격증명 생성과 realm/mapper 변경은 실행하지 않는다.

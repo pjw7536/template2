@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import secrets
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
+merge_secrets = runpy.run_path(str(BASE.parent / 'shared/scripts/env_secrets.py'))['merge_secrets']
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 EXAMPLE = BASE / 'env/k8s.env.example'
 DEFAULT_ENV = BASE / 'env/k8s.env'
@@ -50,7 +52,7 @@ def read_env(path):
         require(separator and re.fullmatch(r'[A-Z][A-Z0-9_]*', key), f'설정 형식 오류: 줄 {number}')
         require(key not in values, f'중복 설정: {key}')
         values[key] = value
-    return values
+    return merge_secrets(path, values)
 
 
 def validate(values, example=False):
@@ -238,8 +240,9 @@ def render(settings, directory, chart, pause_new_dags=False, values_file=None):
     return flags
 
 
-def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
-    """노드와 기존 Secret을 확인한 뒤 DB → Helm hook → Pod 순서로 배포한다."""
+def check_cluster_inputs(settings, context):
+    """배포 전 버전·노드·기존 DB와 Fernet 키의 일치 여부를 읽기 전용으로 검사한다."""
+    require(context and context.strip(), '대상 context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
     scoped = [*kube, '-n', namespace]
@@ -253,6 +256,17 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
         if current.strip():
             stored = base64.b64decode(json.loads(current)['data'][key]).decode()
             require(stored == settings[setting], f'기존 {setting}과 다릅니다. 키 교체·DB 비밀번호 변경은 별도 절차가 필요합니다.')
+        elif name == 'airflow-postgres' and settings.get('POSTGRES_MODE', 'internal') == 'internal':
+            pvc = run([*scoped, 'get', 'pvc', 'airflow-postgres', '--ignore-not-found', '-o', 'name'])
+            require(not pvc.strip(), '기존 DB PVC가 있으나 airflow-postgres Secret이 없습니다. 실제 DB 비밀번호로 Secret을 먼저 복원하세요.')
+
+
+def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
+    """노드와 기존 Secret을 확인한 뒤 DB → Helm hook → Pod 순서로 배포한다."""
+    check_cluster_inputs(settings, context)
+    kube = ['kubectl', '--context', context]
+    namespace = settings['NAMESPACE']
+    scoped = [*kube, '-n', namespace]
     for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'), ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
         if settings[key] and (key in ('IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME') or settings['INGRESS_ENABLED'] == 'true'):
             run([*scoped, 'get', resource, settings[key], '-o', 'name'])
@@ -313,14 +327,27 @@ def main():
     args = parser.parse_args()
     if args.command == 'init-secrets':
         target = args.env or DEFAULT_ENV
-        content = EXAMPLE.read_text()
+        secret_target = target.with_suffix('.secrets.env')
+        require(target.suffix == '.env' and not target.name.endswith('.secrets.env'), '일반 .env 경로를 지정하세요.')
+        require(not secret_target.exists(), '비밀값 파일이 이미 있습니다. 기존 키를 보존하세요.')
+        if target.exists():
+            current = read_env(target)
+            require(all(not current.get(key) for key in SECRET_KEYS), '기존 env 비밀값을 먼저 분리하세요. 키를 다시 생성하지 않습니다.')
+        else:
+            content = EXAMPLE.read_text()
+            content = '\n'.join(line.split('=', 1)[0] + '=' if line.split('=', 1)[0] in SECRET_KEYS else line
+                                for line in content.splitlines()) + '\n'
+            with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+                output.write(content)
+        secret_lines = ['# 비밀값 전용 파일: Git에 추가하지 않습니다.']
         for key in SECRET_KEYS[:-1]:
             value = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if key == 'AIRFLOW_FERNET_KEY' else secrets.token_urlsafe(32)
-            content = content.replace(f'{key}=replace-me\n', f'{key}={value}\n')
+            secret_lines.append(f'{key}={value}')
+        secret_lines.append('AIRFLOW_TRIGGER_TOKEN=')
         # 기존 파일을 덮어쓰거나 Fernet 키를 다시 생성하지 않는다.
-        with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
-            output.write(content)
-        print('k8s.env 생성 완료. 서버 정보·관리자 이메일·Portal trigger token을 입력하세요.')
+        with os.fdopen(os.open(secret_target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+            output.write('\n'.join(secret_lines) + '\n')
+        print('비밀값 파일 생성 완료. 일반 env의 서버 정보와 비밀값 파일의 Portal trigger token을 확인하세요.')
         return
     if args.command == 'fetch-chart':
         directory = BASE / 'helm/vendor'

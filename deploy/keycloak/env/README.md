@@ -1,17 +1,17 @@
 # Keycloak 환경설정 입력 폴더
 
-프로젝트를 서버에 복사한 뒤 이 폴더의 `prod.env`에 실제 값을 입력합니다.
-기존 배포 도구가 기본으로 읽는 위치이므로 별도 경로 설정이 필요하지 않습니다.
-실제 env와 백업 파일은 Git에서 제외합니다. Git clone으로 가져온 경우 아래처럼 생성합니다.
+일반 설정은 Git에 포함된 `prod.env`, 비밀값은 Git에서 제외하는 `prod.secrets.env`에 저장합니다.
+기존 배포 도구가 두 파일을 자동 병합하므로 별도 경로 설정은 필요하지 않습니다.
 
-저장소 루트에서 실행합니다. 기존 파일은 덮어쓰지 않습니다.
+새 서버에는 기존 비밀값 파일을 같은 폴더에 복사한 뒤 검사합니다.
 
 ```bash
-test -f deploy/keycloak/env/prod.env || \
-  install -m 0600 deploy/keycloak/env/prod.env.example deploy/keycloak/env/prod.env
-vi deploy/keycloak/env/prod.env
+chmod 600 deploy/keycloak/env/prod.secrets.env
 make env-check APP=keycloak PROFILE=prod COMPONENT=server
 ```
+
+`prod.secrets.env`에는 `postgres-password`, `bootstrap-admin-password`,
+`CORP_OIDC_CLIENT_SECRET`을 `KEY=값` 형식으로 넣습니다. 일반 env의 해당 키는 비워둡니다.
 
 | 항목 | 입력 내용 |
 | --- | --- |
@@ -25,6 +25,6 @@ make env-check APP=keycloak PROFILE=prod COMPONENT=server
 서버 구동에는 첫 네 항목이 필요하고, 빈 DB에 사내 로그인을 연결하려면 `CORP_OIDC_*`도 준비합니다.
 파일을 수정한 것만으로 Kubernetes Secret이나 기존 DB 비밀번호가 변경되지는 않습니다.
 
-TLS 입력은 [인증서 폴더](../certs/README.md)를 참고합니다.
+TLS 입력은 [인증서 폴더](../../shared/certs/README.md)를 참고합니다.
 Secret 최초 등록·배포는 [Keycloak 배포 안내](../README.md)의 `make keycloak-check`와
 `make keycloak-up`을 사용합니다. 이미 있는 Secret을 의도적으로 갱신할 때만 별도 등록 절차를 사용합니다.

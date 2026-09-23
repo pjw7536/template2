@@ -219,6 +219,13 @@ class StartTests(unittest.TestCase):
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
 
+    def test_airflow_input_failure_stops_before_routing_mutation(self):
+        self.api.check_cluster_inputs.side_effect = ValueError('기존 Fernet 키 불일치')
+        with self.assertRaisesRegex(ValueError, 'Fernet'):
+            server.start(self.api, routing, 'test-context', Path('/test.env'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+        self.api.deploy.assert_not_called()
+
     def test_airflow_only_preserves_vip_and_never_reads_or_applies_keycloak(self):
         self.live = routing.place_vip_backends(self.live, self.live, ['192.0.2.10', '192.0.2.20'], self.nodes, [])
         self.live['status'] = {'readyReplicas': 2}

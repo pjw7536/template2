@@ -19,6 +19,7 @@ deploy/
     │   ├── configuration/    # 앱 공통 환경설정·Secret 입력 규칙
     │   ├── operations/       # 서버 최초 기동·CP1 갱신 절차
     │   └── infrastructure/   # 클러스터·노드·VIP·DNS 현황
+    ├── certs/                # 사이트별 인증서·공용 CA·추출과 적용 안내
     ├── ingress/              # 공용 Traefik 원본과 VIP 적용 절차
     └── scripts/              # 서버 기동·검사·체크아웃 도구
 ```
@@ -26,7 +27,15 @@ deploy/
 사내 서버는 [선택 체크아웃 안내](SERVER_CHECKOUT.md)를 따라 필요한 앱만 받습니다.
 명령은 별도 안내가 없으면 저장소 루트에서 실행합니다.
 
+배포 실행에는 각 앱의 실제 `.env` 파일을 사용합니다. 일반 설정 `.env`는 Git에 포함합니다.
+비밀번호·토큰은 같은 폴더의 `이름.secrets.env`에 저장하며 Git에서 제외합니다.
+배포 도구가 두 파일을 자동 병합합니다. 새 서버에는 비밀값 파일만 별도로 준비합니다. `.env.example`은 초기화와
+정적 검사에 쓰는 참고 파일이며, 기존 실제 env를 덮어쓰는 용도로 사용하지 않습니다.
+
 ## 처음 읽는 순서
+
+현재 준비 상태와 미완료 항목은 [배포 준비 점검](READINESS.md)을 먼저 확인합니다.
+정적 검사·실제 env 검사·클러스터 검사·로그인 검증의 차이도 정리되어 있습니다.
 
 Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/docs/kubernetes/README.md)**에서 시작합니다.
 개념 → 현재 환경 조회 → 빈 서버 준비 → 클러스터 구축 → 앱 배포 → 접속 검증 → 운영 순서입니다.
@@ -46,6 +55,7 @@ Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/do
 | --- | --- | --- |
 | 입문·전체 절차 | [Kubernetes 가이드](shared/docs/kubernetes/README.md) | 처음 접하는 담당자의 서버 준비부터 앱 배포·검증까지 |
 | 저장소 준비 | [선택 체크아웃](SERVER_CHECKOUT.md) | 처음 clone하거나 서버가 관리하는 앱 범위를 바꿀 때 |
+| 인증서 | [사이트별 인증서 관리](shared/certs/README.md) | PFX/P7B 추출·검증·TLS Secret 갱신 |
 | 설정 참고 | [환경설정](shared/docs/configuration/environment.md) | 앱별 env 위치·필수값 검사·Secret 등록 규칙을 확인할 때 |
 | 운영 절차 | [서버 기동](shared/docs/operations/server-start.md) | 기존 Keycloak과 Airflow의 최초 준비·기동·재적용 |
 | 운영 절차 | [CP1 운영](shared/docs/operations/cp1.md) | CP1 파일 배치·외부 설정 보관·Keycloak 단독 배포와 pull 이후 반영 |

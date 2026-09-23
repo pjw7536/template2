@@ -13,7 +13,8 @@ Airflow 리소스와 필요한 공용 Traefik 라우팅·TLS 연결만 적용하
 신규 DAG는 일시정지로 생성합니다. 기존 Airflow DB의 활성 DAG는 그대로 유지합니다.
 `AIRFLOW_ENV=/절대경로/k8s.env`, `AIRFLOW_TLS_SOURCE=namespace/secret`으로 입력을 지정할 수 있습니다.
 Ingress가 활성화되면 기존 `etch-sso/traefik`이 필요하며, 비활성화하면 단독 배포 후 port-forward를 사용합니다.
-Ingress 없는 `airflow-check`는 설정·차트 렌더만 검사하고 클러스터 준비 검사는 배포 때 수행합니다.
+`airflow-check`는 설정·차트와 클러스터 버전·대상 노드·기존 DB 비밀번호/Fernet 키를 검사합니다.
+Ingress를 사용하면 기존 Traefik·TLS도 확인합니다. 디스크·이미지 접근·실제 서비스 접속은 별도 확인합니다.
 기존 두 앱 통합 명령 `make server-up`은 호환용으로 유지합니다.
 아래 단독 `manage.py deploy`는 기존 Compose와 같은 일반 실행 기본값을 사용합니다.
 
@@ -36,7 +37,7 @@ Ingress 없는 `airflow-check`는 설정·차트 렌더만 검사하고 클러�
 | `../../apps/airflow/image/Dockerfile` | DAG·플러그인·관리자 초기화가 포함된 최종 이미지 |
 | `scripts/manage.py` | 초기 설정·차트 확보·이미지 빌드·검사·렌더·배포 |
 
-실제 `env/k8s.env`, `env/build.env`, `helm/vendor/`, `rendered/`, `backups/`는 Git에서 제외합니다.
+`env/k8s.env`와 `env/build.env`의 일반 설정은 Git에 포함합니다. 비밀값은 `env/k8s.secrets.env`에 저장하고, `*.secrets.env`, `helm/vendor/`, `rendered/`, `backups/`는 Git에서 제외합니다.
 Kubernetes 배포는 `k8s.env`를 읽습니다.
 DAG·플러그인·Dockerfile 원본은 [apps/airflow](../../apps/airflow/README.md)가 소유합니다.
 외부 PC용 Kubernetes 개발 설정은 [local/](../../local/README.md)에서 관리합니다.
@@ -63,10 +64,9 @@ kubectl config get-contexts
 read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
 python3 deploy/airflow/scripts/manage.py init-secrets
-cp deploy/airflow/env/build.env.example deploy/airflow/env/build.env
 ```
 
-`init-secrets`는 파일을 0600 권한으로 만들고 DB 비밀번호·관리자 비밀번호·Fernet 키·웹서버 키를 생성합니다.
+`init-secrets`는 `env/k8s.secrets.env`를 0600 권한으로 만들고 DB 비밀번호·관리자 비밀번호·Fernet 키·웹서버 키를 생성합니다.
 기존 파일이 있으면 덮어쓰지 않습니다. 다음 값을 실제 환경에 맞게 편집합니다.
 
 - `NODE_NAME`: 노드의 `kubernetes.io/hostname` label 값. 모든 Airflow Pod·DB·PV가 이 노드에 묶입니다.
@@ -74,12 +74,13 @@ cp deploy/airflow/env/build.env.example deploy/airflow/env/build.env
 - `POSTGRES_IMAGE`: 기존 사내 PostgreSQL 16 이미지 주소가 기본 입력되어 있습니다. mirror가 바뀐 경우에만 수정합니다.
 - `POSTGRES_UID`, `POSTGRES_GID`: 해당 이미지 사용자 UID/GID. 공식 Debian 이미지 기본값은 999/999입니다.
 - `ODBC_HOST_PATH`: 서버의 ODBC 설정 디렉터리 절대 경로. 기본 예시는 `/srv/airflow/odbc`입니다.
-- `AIRFLOW_ADMIN_EMAIL`: 실제 관리자 이메일. 생성된 관리자 비밀번호는 이 파일에서 확인합니다.
+- `AIRFLOW_ADMIN_EMAIL`: 실제 관리자 이메일. 생성된 관리자 비밀번호는 `k8s.secrets.env`에서 확인합니다.
 - `AIRFLOW_API_BASE_URL`: Airflow DAG가 호출하는 Portal API 주소. 다른 namespace라면 Service DNS를 수정합니다.
-- `AIRFLOW_TRIGGER_TOKEN`: Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.
+- `AIRFLOW_TRIGGER_TOKEN`: `k8s.secrets.env`에 넣습니다. Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.
 - `AIRFLOW_WEBSERVER_BASE_URL`: `/airflow`로 끝나는 접속 URL. 기본값은 port-forward 주소입니다.
 
 Knox 연결과 실패 알림이 필요하면 같은 파일의 `KNOX_*`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`를 채웁니다.
+단, `KNOX_MESSENGER_AUTHORIZATION`은 `k8s.secrets.env`에 저장합니다.
 설정은 따옴표 없이 `KEY=값`으로 작성하며 `$VAR`, `$(...)`를 실행하거나 확장하지 않습니다.
 서버 외부에 설정을 보관할 경우 모든 명령에 `--env /절대경로/k8s.env`를 사용할 수 있습니다.
 
@@ -113,7 +114,7 @@ python3 deploy/airflow/scripts/manage.py fetch-chart
 
 ## 3. DAG 포함 이미지 준비
 
-`env/build.env.example`을 복사하면 사내 의존성 이미지의 build arg가 적용됩니다.
+`env/build.env`를 사용하면 사내 의존성 이미지의 build arg가 적용됩니다.
 사내 base image·APT/PIP mirror·trusted hosts·ODBC artifact URL이 동일하며
 `INSTALL_BIGDATAQUERY_PYTHON=true`, `INSTALL_BIGDATAQUERY_ODBC=true`가 기본값입니다.
 기존에 공개 기본값으로 만든 `build.env`가 있으면 예시와 비교해 이 값을 갱신합니다.
@@ -214,7 +215,9 @@ CPU·메모리 제한은 Kubernetes 운영값이므로 실제 작업량과 서�
 PostgreSQL은 Airflow Helm release 밖에서 관리하므로 `helm uninstall airflow`가 DB를 삭제하지 않습니다.
 PV는 Retain이며 namespace나 PVC 삭제 후 자동 재연결되지 않습니다. 정상 업데이트에서는 삭제하지 마세요.
 Fernet 키를 잃으면 기존 Connection·Variable의 암호화된 값을 복호화하지 못합니다.
-실제 `k8s.env`도 접근을 제한해 백업합니다.
+일반 설정 `k8s.env`와 **비밀값 파일 `k8s.secrets.env`를 함께 백업**합니다.
+Fernet 키·DB 비밀번호는 비밀값 파일에 있으므로 일반 env나 Git 사본만으로 복구할 수 없습니다.
+비밀값 백업은 권한 0600으로 제한하고 저장소 밖의 별도 저장매체에 보관합니다.
 
 DB 백업은 운영자가 정한 주기에 실행합니다. 아래 예시는 실행 시각별 custom-format dump를 만들며
 실패한 백업은 완료 파일로 남기지 않습니다. 비밀번호는 컨테이너의 기존 Secret 환경에서 읽습니다.
@@ -241,7 +244,7 @@ chmod 700 deploy/airflow/backups
 2. 기존 PostgreSQL 16에서 `pg_dump -Fc`로 백업하고 기존 Fernet 키·Connection·Variable을 확인합니다.
 3. 새 서버 설정에 기존 Fernet 키를 입력하고 새 이미지·차트·디스크를 준비한 뒤 render/check를 실행합니다.
 4. 전용 namespace와 `airflow-postgres` Secret(password 키)을 먼저 만들고 렌더된 `storage.json`, `postgres.json`만 적용합니다.
-   Secret은 접근 제한된 파일에서 등록하고 `k8s.env`의 DB 비밀번호와 일치시킵니다.
+   Secret은 접근 제한된 파일에서 등록하고 `k8s.secrets.env`의 DB 비밀번호와 일치시킵니다.
 5. 새 DB가 준비되면 **비어 있는 새 airflow DB에만** `pg_restore --no-owner --no-acl -U airflow -d airflow`로 복원합니다.
    기존 업무 DB를 덮어쓰지 않습니다. 필요하면 기존 로그도 새 로그 경로에 복사하고 50000:0 권한을 맞춥니다.
 6. deploy를 실행해 공식 chart migration을 적용합니다. 기존 계정이 있으면 그대로 사용하며 자동 비밀번호 초기화는 하지 않습니다.

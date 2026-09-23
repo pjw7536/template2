@@ -15,9 +15,9 @@ env 작성만으로 앱이 배포되지는 않습니다.
 
 | 파일 | 넣는 내용 | 넣지 않는 내용 |
 | --- | --- | --- |
-| `env/prod/api.env` | Portal 서버, DB, Keycloak 로그인, 업무 연동 | Keycloak 관리자 비밀번호, 사내 OIDC client secret |
+| `env/prod/api.env` | Portal 서버, DB 주소, Keycloak 로그인, 업무 연동 주소 | 비밀번호·토큰·인증 헤더는 `api.secrets.env`에 저장 |
 | `env/prod/web.env` | 브라우저에서 사용할 Portal·API·파일 주소와 화면 링크 | 비밀번호와 token 등 비밀값 |
-| `env/prod/minio.env` | MinIO 관리자·API 접근 계정, 공개 주소 | Portal 로그인 설정 |
+| `env/prod/minio.env` | MinIO 공개 주소 | 계정·비밀번호·접근 키는 `minio.secrets.env`에 저장 |
 
 API는 Django 업무 기능들이 함께 실행되는 하나의 서버입니다. Assistant·Emails·Drone을
 별도 env 파일로 쪼개서 합성하지 않고 `api.env` 안의 기능별 구역으로 관리합니다.
@@ -57,11 +57,13 @@ done
 ```
 
 1. `api.env`의 **1~4번 구역**에 Portal DNS, DB, 로그인, HTTPS 설정을 작성합니다.
+   DB 비밀번호·Django Secret Key·OIDC Client Secret은 `api.secrets.env`에 저장합니다.
    Portal DB는 Keycloak 전용 DB와 별개입니다. `<Portal DNS>`는 실제 Portal 주소로 바꿉니다.
 2. `web.env`에 같은 Portal 공개 주소와 파일 접근 주소를 작성합니다.
-3. `minio.env`에 실제 사용할 계정을 작성합니다. 접근 계정이 MinIO에 존재하고 필요한
+3. `minio.secrets.env`에 실제 사용할 계정을 작성합니다. 접근 계정이 MinIO에 존재하고 필요한
    bucket 권한을 갖도록 별도 준비해야 합니다. env에 이름을 적는 것만으로 계정이 생성되지는 않습니다.
 4. 업무 기능을 연결할 때 `api.env`에 해당 구역을 추가합니다.
+   비밀번호·토큰·인증 헤더는 같은 키를 `api.secrets.env`에 넣고 일반 env의 값은 비워둡니다.
    [전체 설정 설명](../../docs/configuration.md)을 보고 필요한 값만 입력합니다.
    기존 다른 환경 파일을 통째로 복사하면 dummy 주소나 다른 환경의 계정까지 가져올 수 있습니다.
 
@@ -124,5 +126,8 @@ Secret 등록은 실행 중인 Pod를 자동 재시작하지 않습니다. Porta
 별도 입력 등록과 Job 실행이 필요합니다. [운영 overlay 배포 순서](k8s/overlays/prod/README.md)와
 [client 등록 안내](k8s/jobs/keycloak-client/README.md)를 따릅니다.
 
-`env/prod/*.env`와 `env/prod/*.pre-k8s.bak`는 Git에서 제외됩니다. `.example`에는 실제 비밀값을 넣지 않습니다.
+`env/prod/api.env`, `web.env`, `minio.env`의 일반 설정은 Git에 포함합니다.
+비밀번호·토큰·인증 헤더는 각각 `api.secrets.env`, `minio.secrets.env`에 저장하고 일반 env에서는 비웁니다.
+공용 검사·Secret 등록 도구가 두 파일을 병합합니다. `*.secrets.env`와 `*.pre-k8s.bak`는 Git에서 제외됩니다.
+`.example`에는 실제 비밀값을 넣지 않습니다.
 Git 제외 파일은 clone으로 전달되지 않으므로 CP1에는 별도의 안전한 경로로 전달하거나 직접 작성합니다.

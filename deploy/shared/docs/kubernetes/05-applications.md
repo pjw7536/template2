@@ -64,7 +64,7 @@ Portal 연동은 토큰·API 주소와 시험 DAG 결과까지 확인합니다. 
 | 앱 | 적용 경로 | 완료 기준 |
 | --- | --- | --- |
 | [Monitoring](../../../monitoring/README.md) | `make monitoring-check` → `make monitoring-up KUBE_CONTEXT="$KUBE_CONTEXT"` | Grafana 로그인·노드 지표·Prometheus target |
-| [Headlamp](../../../headlamp/README.md) | `make headlamp-check` → `make headlamp-up KUBE_CONTEXT="$KUBE_CONTEXT"` | 조회용 토큰으로 노드·Pod 조회 |
+| [Headlamp](../../../headlamp/README.md) | `make headlamp-check` → `make headlamp-up KUBE_CONTEXT="$KUBE_CONTEXT"` | Keycloak 그룹 계정으로 노드·Pod 조회 |
 | [FTP](../../../ftp/README.md) | Worker 폴더·포트·Secret·라벨 준비 → 상세 apply | 노드 IP로 passive 접속·파일 송수신 |
 
 Monitoring은 기본 port-forward, Headlamp HTTPS는 추가 설정, FTP는 노드 직접 접속입니다.

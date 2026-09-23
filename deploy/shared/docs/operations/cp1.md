@@ -65,7 +65,7 @@ Portal을 준비할 때만 `/appdata/etchax-config/portal/prod/`에 `api.env`, `
 | 서버 실행·노드·TLS 연결 | 개발 저장소의 `deploy/keycloak/k8s/server/stack.yaml` | commit/push 후 CP1 pull 및 스택 apply |
 | 프로필·claim 매핑 | 개발 저장소의 `deploy/keycloak/k8s/` | 생성 YAML을 포함해 commit/push 후 CP1에서 mapper Job 재실행 |
 | 실제 비밀번호·공개 URL | CP1 `/appdata/etchax-config/keycloak/prod.env` | 필요한 Secret 갱신 및 해당 작업 반영 |
-| 인증서·개인키 | CP1 `/appdata/certs/` | `keycloak-tls` Secret 갱신 |
+| 인증서·개인키 | CP1 `deploy/shared/certs/` | `keycloak-tls` Secret 갱신 |
 | PostgreSQL 데이터 | Worker의 local PV 경로 | DB 운영·백업 절차로 관리 |
 
 CP1의 kubeconfig는 배포 계정의 기존 `$HOME/.kube/config` 또는 조직에서 지정한
@@ -223,5 +223,5 @@ Portal을 함께 운영한다면 [Portal 운영 안내](../../../portal/k8s/over
 - Kubernetes에 저장: Secret과 실행 중인 리소스. 폴더 복사와는 별개.
 - Worker에 저장: PostgreSQL 실제 데이터. 저장소 경로를 바꿔도 이동하지 않음.
 
-이 구조는 기존 `/appdata/certs`와 Worker DB 경로를 유지합니다.
+인증서는 `deploy/shared/certs/`의 사이트별 폴더를 사용하며 Worker DB 경로는 유지합니다.
 이미 서버에 있는 파일을 자동 이동하거나 기존 Secret을 재생성하는 작업은 포함하지 않습니다.

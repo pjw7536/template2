@@ -1,4 +1,4 @@
 helm/vendor/
-env/k8s.env
+env/*.secrets.env
 rendered/
 __pycache__/

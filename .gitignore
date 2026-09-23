@@ -54,10 +54,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# 환경설정 예시는 추적하고 실제 운영 설정은 제외합니다.
+# 승인된 일반 운영 설정만 포함하고 비밀값·개인 설정은 제외합니다.
 !.env.example
 /deploy/*/env/*.env
 /deploy/portal/env/prod/*.env
+!/deploy/airflow/env/build.env
+!/deploy/airflow/env/k8s.env
+!/deploy/headlamp/env/k8s.env
+!/deploy/keycloak/env/prod.env
+!/deploy/monitoring/env/k8s.env
+!/deploy/portal/env/prod/api.env
+!/deploy/portal/env/prod/web.env
+!/deploy/portal/env/prod/minio.env
+/deploy/**/*.secrets.env
 /deploy/portal/env/prod/*.pre-k8s.bak
 /apps/portal/api/.env
 /apps/portal/web/.env.local

@@ -55,7 +55,7 @@ Keycloak은 [VIP 문서](../../ingress/VIP.md)의 도메인 검사와 아래 로
 | Keycloak | HTTPS → 사내 OIDC 로그인 → realm·사용자 claim |
 | Portal | 로그인 callback → API → 로그아웃, 시험 파일 업로드·다운로드 |
 | Airflow | UI 로그인·health, Portal 연동 시 시험 DAG 트리거·결과 |
-| Monitoring / Headlamp | Grafana 지표·target / 토큰 로그인·허용된 리소스 조회 |
+| Monitoring / Headlamp | Grafana 지표·target / Keycloak 로그인·그룹별 리소스 조회 |
 | FTP | 노드 passive 접속·시험 파일 송수신·저장 위치 |
 
 시험 데이터는 정상 삭제 절차로 정리합니다.

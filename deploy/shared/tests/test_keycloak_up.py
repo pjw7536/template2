@@ -17,6 +17,12 @@ REAL_RUN = keycloak.run
 
 
 class KeycloakTests(unittest.TestCase):
+    def test_default_certificate_directory_uses_shared_site(self):
+        with patch('sys.argv', ['up.py', '--context', 'test-context', '--check-only']), \
+                patch.object(keycloak, 'start') as start:
+            keycloak.main()
+        self.assertEqual(start.call_args.args[2], keycloak.BASE.parent / 'shared/certs/etch-sso.samsungds.net')
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -85,6 +91,16 @@ class KeycloakTests(unittest.TestCase):
                 self.assertEqual(args[1:3], ['--context', 'test-context'])
             self.assertNotIn('delete', args)
             self.assertFalse(any('airflow' in arg for arg in args))
+
+    def test_unschedulable_worker_stops_before_mutation(self):
+        for state in ({'unschedulable': True}, {'taints': [{'effect': 'NoSchedule'}]},
+                      {'taints': [{'effect': 'NoExecute'}]}):
+            with self.subTest(state=state):
+                self.calls.clear()
+                self.nodes[0]['spec'] = state
+                with self.assertRaisesRegex(ValueError, 'cordon|taint'):
+                    self.start()
+                self.assertEqual(self.mutations(), [])
 
     def test_reapply_preserves_secrets_namespaces_and_vip(self):
         self.existing()
@@ -158,13 +174,25 @@ class InputTests(unittest.TestCase):
     def test_keycloak_cli_loads_without_airflow_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/server-up.py', 'deploy/shared/ingress/routing.py'):
+            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/server-up.py',
+                             'deploy/shared/scripts/env_secrets.py', 'deploy/shared/ingress/routing.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(keycloak.ROOT / relative, target)
             result = subprocess.run(['python3', root / 'deploy/keycloak/scripts/up.py', '--help'], text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / 'deploy/airflow').exists())
+
+    def test_reads_credentials_from_companion_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'prod.env'
+            path.write_text('postgres-password=\nbootstrap-admin-username=admin\n'
+                            'bootstrap-admin-password=\nkeycloak-public-url=https://sso.test\n')
+            path.with_suffix('.secrets.env').write_text('postgres-password=fixture-db\nbootstrap-admin-password=fixture-admin\n')
+            self.assertEqual(keycloak.read_settings(path)['postgres-password'], 'fixture-db')
+            path.with_suffix('.secrets.env').unlink()
+            with self.assertRaises(ValueError):
+                keycloak.read_settings(path)
 
 
 if __name__ == '__main__':

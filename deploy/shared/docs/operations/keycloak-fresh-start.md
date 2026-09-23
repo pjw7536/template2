@@ -31,7 +31,7 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get statefulset keycloak-
 아래 파일 이동 명령을 실행하지 말고 실제 배치에 맞는 절차를 먼저 작성합니다.
 GitOps 또는 다른 운영 도구가 replicas를 자동 복구한다면 작업 동안 해당 동기화를 중지합니다.
 
-Keycloak의 `deploy/keycloak/env/prod.env`를 준비하고 신규 DB 비밀번호와 bootstrap 관리자 값을 입력합니다.
+Keycloak의 `deploy/keycloak/env/prod.env`에서 일반 설정을 확인하고, 신규 DB 비밀번호와 bootstrap 관리자 비밀번호는 같은 폴더의 `prod.secrets.env`에 입력합니다.
 기존 도메인과 TLS는 유지합니다. 기존 Secret은 아래 백업이 끝나기 전에 갱신하지 않습니다.
 사내 로그인을 사용하려면 같은 파일의 `CORP_OIDC_*`도 실제 발급값으로 준비합니다.
 
@@ -44,8 +44,8 @@ bash deploy/shared/scripts/check-env.sh keycloak prod oidc deploy/keycloak/env/p
 VIP 첫 구성이라면 실제 `make keycloak-check`와 `make keycloak-up`에
 `VIP_BACKENDS=10.172.40.117,10.172.40.87`을 추가합니다.
 이 IP는 [현재 VIP 구성](../../ingress/VIP.md)에만 해당합니다.
-기존 TLS Secret과 동일한 인증서·개인키를 `deploy/keycloak/certs/`에 준비하고
-[인증서 안내](../../../keycloak/certs/README.md)의 도메인·기간·키·체인 검사를 마칩니다.
+기존 TLS Secret과 동일한 인증서·개인키를 `deploy/shared/certs/etch-sso.samsungds.net/`에 준비하고
+[인증서 안내](../../certs/README.md)의 도메인·기간·키·체인 검사를 마칩니다.
 새 credential은 기존 Secret과 다르므로 `keycloak-check`는 4절의 명시적 Secret 갱신 후 실행합니다.
 
 검사 통과는 실제 이미지 pull·DB 초기화·로그인 성공을 보장하지 않습니다.

@@ -37,8 +37,8 @@ Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
 
 ## Keycloak 설정
 
-Portal API의 입력 예시는 `deploy/portal/env/prod/api.env.example`이며 실제 값은 Git 제외된
-`api.env`에 작성합니다. client 등록과 API가 같은 파일을 읽습니다.
+Portal API 일반 설정은 Git에 포함된 `deploy/portal/env/prod/api.env`에 작성하며,
+비밀값은 Git 제외 파일 `api.secrets.env`에 보관합니다. client 등록과 API 입력 도구가 두 파일을 병합합니다.
 [Portal client 등록 안내](../../jobs/keycloak-client/README.md)에 따라 client와 token mapper를
 먼저 준비합니다. 다른 환경의 값을 자동으로 상속하지 않습니다.
 

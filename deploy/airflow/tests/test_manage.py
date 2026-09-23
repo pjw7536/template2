@@ -48,12 +48,27 @@ class ConfigurationTests(unittest.TestCase):
             first = subprocess.run(args, capture_output=True, text=True)
             self.assertEqual(first.returncode, 0, first.stderr)
             before = path.read_bytes()
+            secret_path = path.with_suffix('.secrets.env')
+            secret_before = secret_path.read_bytes()
+            self.assertEqual(secret_path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(len(base64.urlsafe_b64decode(deploy.read_env(path)['AIRFLOW_FERNET_KEY'])), 32)
             self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)
             self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(secret_path.read_bytes(), secret_before)
             for key in deploy.SECRET_KEYS[:-1]:
                 self.assertNotIn(deploy.read_env(path)[key], first.stdout)
+                self.assertNotIn(deploy.read_env(path)[key], path.read_text())
+
+    def test_init_secrets_preserves_existing_public_env(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'k8s.env'
+            content = '\n'.join(f'{key}=' for key in deploy.SECRET_KEYS) + '\nNODE_NAME=existing-node\n'
+            path.write_text(content)
+            result = subprocess.run(['python3', str(SCRIPT), 'init-secrets', '--env', str(path)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(path.read_text(), content)
+            self.assertEqual(len(base64.urlsafe_b64decode(deploy.read_env(path)['AIRFLOW_FERNET_KEY'])), 32)
 
     def test_actual_settings_reject_example(self):
         deploy.validate(settings())
@@ -239,6 +254,16 @@ class DeploymentTests(unittest.TestCase):
         self.changed_key = 'airflow-postgres'
         with patch.object(deploy, 'run', self.fake_run):
             with self.assertRaisesRegex(ValueError, '기존 POSTGRES_PASSWORD'):
+                deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+
+    def test_existing_database_without_secret_requires_restore(self):
+        def run(args, **kwargs):
+            if 'get' in args and 'pvc' in args:
+                return 'persistentvolumeclaim/airflow-postgres'
+            return self.fake_run(args, **kwargs)
+        with patch.object(deploy, 'run', run):
+            with self.assertRaisesRegex(ValueError, 'Secret이 없습니다'):
                 deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
         self.assertFalse(any('apply' in args for args, _ in self.calls))
 

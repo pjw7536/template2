@@ -17,6 +17,7 @@ spec = importlib.util.spec_from_file_location('server_up', ROOT / 'deploy/shared
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 routing = server.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
+env_secrets = server.module('env_secrets', ROOT / 'deploy/shared/scripts/env_secrets.py')
 
 
 def run(args, data=None, sensitive=False):
@@ -35,6 +36,7 @@ def read_settings(path):
         if line.strip() and not line.lstrip().startswith('#'):
             key, _, value = line.partition('=')
             values[key] = value
+    values = env_secrets.merge_secrets(path, values)
     return {key: values[key] for key in KEYS}
 
 
@@ -91,6 +93,9 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     matches = [node for node in nodes if node['metadata'].get('labels', {}).get('kubernetes.io/hostname') == hostname]
     if len(matches) != 1 or not any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in matches[0].get('status', {}).get('conditions', [])):
         raise ValueError('Keycloak 원본에 지정한 worker가 없거나 Ready가 아닙니다.')
+    worker_spec = matches[0].get('spec', {})
+    if worker_spec.get('unschedulable') or any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in worker_spec.get('taints', [])):
+        raise ValueError('Keycloak worker가 cordon 상태이거나 차단 taint가 있습니다. 배치 가능 여부를 확인하세요.')
     if ips:
         pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
         updated = routing.place_vip_backends(updated, current, ips, nodes, pods)
@@ -117,7 +122,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--context', required=True)
     parser.add_argument('--env', type=Path, default=BASE / 'env/prod.env')
-    parser.add_argument('--certs', type=Path, default=BASE / 'certs')
+    parser.add_argument('--certs', type=Path, default=BASE.parent / 'shared/certs/etch-sso.samsungds.net')
     parser.add_argument('--vip-backends')
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()

@@ -11,12 +11,12 @@ local/
 └── shared/env/k8s.env        # 전체 로컬 실행 입력
 
 deploy/
-├── keycloak/env/             # prod.env.example / Git 제외 prod.env
+├── keycloak/env/             # prod.env / Git 제외 prod.secrets.env
 ├── portal/env/
 │   ├── test/                 # CI API 자동 테스트
-│   └── prod/                 # 예시와 Git 제외 실제 값
-├── airflow/env/              # k8s.env·build.env 예시
-└── monitoring/env/           # k8s.env 예시
+│   └── prod/                 # 일반 .env와 Git 제외 *.secrets.env
+├── airflow/env/              # k8s.env·build.env 일반 설정
+└── monitoring/env/           # k8s.env 일반 설정
 ```
 
 외부 PC는 `local/`, 사내와 CI는 `deploy/`에서 앱을 선택합니다.
@@ -24,6 +24,18 @@ deploy/
 사내 배포는 Kubernetes 전용입니다. Keycloak 사내 OIDC는 prod 환경의 oidc component로 관리합니다.
 
 ## 무엇을 어디에 적나요?
+
+일반 설정 `.env`는 Git에 포함합니다. 비밀번호·토큰·서명 키·인증 헤더는 일반 파일에서
+값을 비우고 같은 폴더의 `이름.secrets.env`에 저장합니다. 예를 들어 `api.env`는
+`api.secrets.env`, `prod.env`는 `prod.secrets.env`와 함께 읽습니다.
+비밀값 파일은 Git에서 제외하며 권한은 `chmod 600`으로 제한합니다.
+공용 env 검사·Secret 등록, Keycloak과 Airflow 배포 도구가 자동 병합합니다.
+일반 env에 없는 키나 비밀값 파일 내부 중복 키는 오류입니다. `.example` 검사에는 병합하지 않습니다.
+
+새 서버에서는 일반 설정을 Git으로 받고 기존 비밀값 파일만 별도로 복사합니다.
+기존 서버의 통합 env를 이 구조로 옮길 때는 먼저 비밀값을 별도 파일에 보존한 뒤 일반 env에서 비웁니다.
+Headlamp·Monitoring의 Secret 이름은 일반 설정이며 실제 credential은 Kubernetes Secret에 등록합니다.
+비밀값이 필요한 파일을 준비하지 않으면 배포 전 필수값 검사가 실패합니다.
 
 | 설정 | 관리 위치 | 읽는 대상 |
 | --- | --- | --- |

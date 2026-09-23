@@ -34,7 +34,8 @@ def main():
         if args.check_only:
             with tempfile.TemporaryDirectory(prefix='airflow-check-') as temporary:
                 airflow.render(settings, temporary, chart, pause_new_dags=True)
-            print('Airflow 설정·차트 검사 통과. 클러스터 연결·서버 준비는 배포 시 검사합니다.')
+            airflow.check_cluster_inputs(settings, args.context)
+            print('Airflow 설정·차트·클러스터 버전·노드·기존 비밀값 검사 통과. 디스크·이미지·접속 확인은 별도입니다.')
         else:
             airflow.deploy(settings, args.context, chart, pause_new_dags=True)
 
