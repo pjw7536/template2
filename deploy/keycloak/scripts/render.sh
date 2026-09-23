@@ -10,9 +10,9 @@ trap 'rm -rf -- "${RENDER_TMP}"' EXIT
 
 {
   printf '%s\n' \
-    '# 자동 생성 파일입니다. deploy/keycloak/k8s·deploy/shared/ingress 원본 수정 후 make k8s-export로 갱신합니다.' \
+    '# 자동 생성 파일입니다. deploy/keycloak/export·deploy/keycloak/k8s·deploy/shared/ingress 원본 수정 후 make k8s-export로 갱신합니다.' \
     '# 실제 credential과 TLS 개인키는 포함하지 않으며 Kubernetes Secret으로 별도 생성합니다.'
-  "${KUBECTL_BIN}" kustomize "${ROOT_DIR}/deploy/keycloak/k8s"
+  "${KUBECTL_BIN}" kustomize "${ROOT_DIR}/deploy/keycloak/export"
 } > "${RENDER_TMP}/internal-keycloak-stack.yaml"
 
 {

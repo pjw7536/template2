@@ -1,4 +1,4 @@
-# 자동 생성 파일입니다. deploy/keycloak/k8s·deploy/shared/ingress 원본 수정 후 make k8s-export로 갱신합니다.
+# 자동 생성 파일입니다. deploy/keycloak/export·deploy/keycloak/k8s·deploy/shared/ingress 원본 수정 후 make k8s-export로 갱신합니다.
 # 실제 credential과 TLS 개인키는 포함하지 않으며 Kubernetes Secret으로 별도 생성합니다.
 apiVersion: v1
 kind: Namespace
@@ -1080,12 +1080,15 @@ metadata:
   name: traefik
   namespace: etch-sso
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: traefik
   strategy:
-    type: Recreate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
   template:
     metadata:
       labels:
@@ -1096,7 +1099,7 @@ spec:
       - args:
         - --providers.kubernetesingress=true
         - --providers.kubernetesingress.ingressclass=traefik
-        - --providers.kubernetesingress.namespaces=etch-sso
+        - --providers.kubernetesingress.namespaces=etch-sso,headlamp
         - --entrypoints.web.address=:8000
         - --entrypoints.websecure.address=:8443
         - --entrypoints.health.address=:9000
@@ -1142,7 +1145,7 @@ spec:
             drop:
             - ALL
       nodeSelector:
-        kubernetes.io/hostname: khplane01w09
+        ingress: traefik
       serviceAccountName: traefik
 ---
 apiVersion: apps/v1

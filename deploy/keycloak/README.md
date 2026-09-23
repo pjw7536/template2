@@ -50,7 +50,7 @@ worker 파일 존재·권한·이미지 pull·실제 HTTPS 접속은 서버에�
 `k8s/claims/`는 사용자 프로필·속성 매핑을 담당합니다.
 파일별 역할과 적용 순서는 [Kubernetes 폴더 안내](k8s/README.md)를 참고합니다.
 
-수동 단독 YAML 전달 방식을 선택한 경우 CP1에 `rendered/internal-keycloak-stack.yaml`과
+수동 운영 YAML 전달 방식을 선택한 경우 CP1에 `rendered/internal-keycloak-stack.yaml`과
 `rendered/internal-keycloak-claim-mappers.yaml`을 전달합니다. 권장 앱별 배포 도구는 선택 checkout을 사용합니다.
 프로필·mapper 관리는 Job으로 통일하며 별도 Python 도구는 사용하지 않습니다.
 
@@ -62,10 +62,15 @@ worker 파일 존재·권한·이미지 pull·실제 HTTPS 접속은 서버에�
 - worker host port 80/443을 사용하는 Traefik Ingress Controller
 - 앱 client가 없는 `etch` realm 초기 설정
 
-단독 스택의 Traefik은 `etch-sso`만 감시합니다. Ingress는 기존 도메인과 `keycloak-tls`
+`k8s/` 기본 원본의 Traefik은 `etch-sso`만 감시합니다. `make k8s-export`는
+`export/`의 운영 설정을 적용해 전달 YAML을 생성합니다. 전달 YAML의 Traefik은
+2개 replica, RollingUpdate(`maxSurge: 0`, `maxUnavailable: 1`), `etch-sso,headlamp` 감시,
+`ingress: traefik` 노드 선택을 사용합니다. 기존 Headlamp RBAC와 해당 라벨을 가진
+배치 가능한 노드 2개가 필요합니다. hostPort 80/443을 사용하므로 두 Pod는 서로 다른 노드에 배치됩니다.
+Ingress는 기존 도메인과 `keycloak-tls`
 Secret을 유지하며 annotation으로 `websecure` entrypoint와 TLS 사용을 명시합니다. Portal 연결은
 [Portal 운영 안내](../portal/k8s/overlays/prod/README.md)의 순서로 권한을 먼저 준비한 뒤
-감시 범위를 확장합니다. 정적 단독 스택을 직접 적용하면 Portal 감시도 해제될 수 있습니다.
+감시 범위를 확장합니다. 전달 YAML을 직접 적용하면 명시되지 않은 Portal 등의 감시가 해제될 수 있습니다.
 공유 환경의 재배포는 기존 감시 범위·VIP를 보존하는 `make keycloak-up`을 사용합니다.
 
 현재 구성은 단일 worker와 로컬 디스크에 종속되므로 HA가 아닙니다. worker 또는 디스크

@@ -36,4 +36,4 @@ Job 등록·재실행 명령은 [배포 안내](../README.md)의 6~7절을 따�
 - 원본 폴더만 분리했으며 ConfigMap의 파일명과 `/opt/keycloak-config` 마운트 경로는 유지합니다.
 - Job 이름·namespace·Secret·PV/PVC 이름은 유지합니다. 폴더 정리를 이유로 리소스를 삭제하지 않습니다.
 - 초기 realm 파일은 빈 DB에서만 사용합니다. 일반 배포에 DB 초기화는 포함되지 않습니다.
-- 전달 YAML은 `make k8s-export`로 생성합니다. `rendered/` 파일은 직접 편집하지 않습니다.
+- 전달 YAML은 `../export/`의 Traefik 운영 설정을 사용하는 `make k8s-export`로 생성합니다. `rendered/` 파일은 직접 편집하지 않습니다.
