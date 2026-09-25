@@ -94,6 +94,15 @@ def resolve_metadata(values, metadata):
 
 def discover(values):
     """실행 호스트의 신뢰 저장소로 TLS를 검증해 metadata만 조회합니다."""
+    required = ("CORP_OIDC_DISCOVERY_URL", "CORP_OIDC_CLIENT_ID", "CORP_OIDC_CLIENT_SECRET", "CORP_OIDC_CLIENT_AUTH_METHOD")
+    missing = [key for key in required if not values.get(key, "").strip()]
+    if missing:
+        raise ValueError("필수 설정 누락: " + ", ".join(missing))
+    placeholders = [key for key in required if any(marker in values[key] for marker in ("<", "example.invalid", "replace-me", "change-me"))]
+    if placeholders:
+        raise ValueError("실제 값으로 교체할 설정: " + ", ".join(placeholders))
+    if values["CORP_OIDC_CLIENT_AUTH_METHOD"] not in ("client_secret_basic", "client_secret_post"):
+        raise ValueError("CORP_OIDC_CLIENT_AUTH_METHOD: client_secret_basic 또는 client_secret_post 필요")
     url = https_url(values.get("CORP_OIDC_DISCOVERY_URL", ""), "CORP_OIDC_DISCOVERY_URL")
     with urlopen(url, timeout=30) as response:
         https_url(response.geturl(), "discovery 최종 URL")
@@ -101,6 +110,14 @@ def discover(values):
     if len(content) > 1024 * 1024:
         raise ValueError("discovery 응답이 1 MiB를 초과합니다.")
     return resolve_metadata(values, json.loads(content))
+
+
+def write_resolved(path, values):
+    """공통 env 도구가 재조회하지 않도록 해석된 입력만 비공개 파일에 저장합니다."""
+    with open(path, "w", opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
+        os.fchmod(output.fileno(), 0o600)
+        output.write("".join(f"{key}={value}\n" for key, value in values.items()
+                             if key.startswith("CORP_OIDC_") and key != "CORP_OIDC_DISCOVERY_URL"))
 
 
 def run(args, **kwargs):
@@ -119,8 +136,7 @@ def setup(action, context, env_path, portal_env=None):
     with tempfile.TemporaryDirectory(prefix="keycloak-discovery-") as directory:
         temporary = Path(directory)
         resolved = temporary / "resolved.env"
-        resolved.write_text("".join(f"{key}={value}\n" for key, value in values.items() if key.startswith("CORP_OIDC_")))
-        resolved.chmod(0o600)
+        write_resolved(resolved, values)
         run(["bash", SHARED / "check-env.sh", "keycloak", "prod", "oidc", resolved])
         if portal_env:
             run(["bash", SHARED / "check-env.sh", "portal", "prod", "client", portal_env])
@@ -164,15 +180,21 @@ def setup(action, context, env_path, portal_env=None):
 def main():
     """사전 검사와 실제 적용의 명령 진입점입니다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check", "apply"))
-    parser.add_argument("--context", required=True)
+    parser.add_argument("action", choices=("check", "apply", "resolve"))
+    parser.add_argument("--context")
     parser.add_argument("--env", type=Path, default=BASE / "env/prod.env")
     parser.add_argument("--portal-env", type=Path)
+    parser.add_argument("--output", type=Path, help="resolve 전용 임시 env 출력 파일")
     args = parser.parse_args()
-    if not args.context.strip():
+    if args.action == "resolve" and not args.output:
+        parser.error("resolve에는 --output이 필요합니다.")
+    if args.action != "resolve" and not (args.context or "").strip():
         parser.error("--context는 비어 있을 수 없습니다.")
     try:
-        setup(args.action, args.context, args.env, args.portal_env)
+        if args.action == "resolve":
+            write_resolved(args.output, discover(read_env(args.env)))
+        else:
+            setup(args.action, args.context, args.env, args.portal_env)
     except (ValueError, OSError) as error:
         # URL·credential이 담길 수 있는 네트워크 예외 원문은 출력하지 않습니다.
         message = str(error) if type(error) is ValueError else "입력 파일 또는 discovery 접속/JSON 처리가 실패했습니다."

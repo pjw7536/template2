@@ -23,9 +23,10 @@ k8s/
 1. [배포 안내](../README.md)에 따라 env·인증서·worker 디스크를 준비합니다.
 2. `make keycloak-check KUBE_CONTEXT=실제컨텍스트명`으로 검사합니다.
 3. `make keycloak-up KUBE_CONTEXT=실제컨텍스트명`으로 기본 스택을 적용합니다.
-4. 사내 OIDC 입력을 Secret에 등록하고 `oidc/oidc-setup-job.yaml`을 별도로 실행합니다.
-5. `claims/claim-mappers-job.yaml`을 별도로 실행합니다.
+4. `make keycloak-oidc-check KUBE_CONTEXT=실제컨텍스트명`으로 discovery와 client 입력을 검사합니다.
+5. `make keycloak-oidc-setup KUBE_CONTEXT=실제컨텍스트명`으로 Secret·최신 ConfigMap·IdP Job·claim Job을 순서대로 적용합니다.
 
+`oidc/oidc-setup-job.yaml` 자체는 discovery를 조회하지 않고 위 명령이 해석한 Secret을 사용합니다.
 Job 등록·재실행 명령은 [배포 안내](../README.md)의 6~7절을 따릅니다.
 `make keycloak-up`은 Job을 실행하지 않습니다. Job이 나중에 사용할 스크립트·프로필은
 기본 배포 때 ConfigMap으로 준비하므로 세 하위 폴더를 함께 전달해야 합니다.

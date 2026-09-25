@@ -151,18 +151,8 @@ make keycloak-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 새 DB에서는 기존 관리자 화면 설정도 없어지므로 아래 작업이 필요합니다.
 
 ```bash
-bash deploy/shared/scripts/apply-env.sh keycloak prod oidc deploy/keycloak/env/prod.env
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso delete job keycloak-oidc-setup --ignore-not-found
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" apply -f deploy/keycloak/k8s/oidc/oidc-setup-job.yaml
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso wait \
-  --for=condition=complete job/keycloak-oidc-setup --timeout=15m
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/keycloak-oidc-setup
-
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso delete job keycloak-oidc-claim-mappers --ignore-not-found
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" apply -f deploy/keycloak/k8s/claims/claim-mappers-job.yaml
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso wait \
-  --for=condition=complete job/keycloak-oidc-claim-mappers --timeout=15m
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/keycloak-oidc-claim-mappers
+make keycloak-oidc-check KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
+make keycloak-oidc-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
 Portal 등 기존 앱이 사용하던 client는 별도 재등록해야 합니다.

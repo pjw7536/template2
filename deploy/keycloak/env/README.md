@@ -25,8 +25,10 @@ Discovery 기반 초기 설정은 [전체 설정 흐름](../DISCOVERY_SETUP.md)�
 Authorization·Token·JWKS·UserInfo·Logout URL과 issuer는 운영 env에 중복 입력하지 않습니다.
 `make keycloak-oidc-check KUBE_CONTEXT=...`와 `make keycloak-oidc-setup KUBE_CONTEXT=...`이
 discovery를 조회해 기존 Job에 필요한 endpoint 입력을 자동 생성합니다.
-`make env-check ... COMPONENT=oidc`와 `make k8s-env ... COMPONENT=oidc`는
-명시적인 endpoint를 가진 별도 수동 입력용이며 현재 discovery 전용 env에는 직접 사용하지 않습니다.
+`make env-check APP=keycloak PROFILE=prod COMPONENT=oidc`와
+`make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc`도 discovery 입력을 해석합니다.
+각각 검사·Secret 등록만 수행하므로 전체 설정은 위의 통합 명령을 사용합니다.
+Discovery 입력이 없으면 기존의 명시적 endpoint 입력도 지원합니다.
 
 값은 `KEY=값` 형식으로 입력하고 파일 전체를 Git에서 관리합니다.
 서버 구동에는 첫 네 항목이 필요하고, 빈 DB에 사내 로그인을 연결하려면 `CORP_OIDC_*`도 준비합니다.

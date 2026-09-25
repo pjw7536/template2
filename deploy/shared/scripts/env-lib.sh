@@ -43,6 +43,20 @@ require_url() {
   fi
 }
 
+# Keycloak discovery 입력을 기존 Job의 endpoint 계약으로 변환합니다.
+resolve_keycloak_discovery() {
+  local root="$1" app="$2" component="$3" file="$4" resolved status=0
+  [[ "$app/$component" == keycloak/oidc && -n "${ENV_VALUES[CORP_OIDC_DISCOVERY_URL]:-}" ]] || return 0
+  resolved="$(mktemp)" || return
+  if python3 "$root/deploy/keycloak/scripts/setup_discovery.py" resolve --env "$file" --output "$resolved"; then
+    load_env "$resolved" || status=$?
+  else
+    status=$?
+  fi
+  rm -f -- "$resolved"
+  return "$status"
+}
+
 resolve_env_file() {
   local root="$1" app="$2" profile="$3" component="$4"
   [[ "$profile" =~ ^[a-z0-9_-]+$ ]] || { echo '환경 이름 형식 오류' >&2; return 1; }

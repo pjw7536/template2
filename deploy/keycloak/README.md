@@ -38,7 +38,7 @@ DB·PVC·기존 Secret을 삭제하지 않습니다. 기존 Secret과 파일이 
 이후 기존 VIP와 다른 앱의 namespace 감시는 유지합니다.
 worker 파일 존재·권한·이미지 pull·실제 HTTPS 접속은 서버에서 추가 확인해야 합니다.
 
-사내 OIDC와 claim 등록은 아래 6~7절의 별도 Job을 사용합니다. Airflow는 이후
+사내 OIDC와 claim 등록은 아래 6절의 통합 명령으로 별도 Job을 실행합니다. 7절은 mapper만 재실행하는 절차입니다. Airflow는 이후
 `make airflow-check` → `make airflow-up`으로 따로 배포합니다.
 기존 `make server-up`은 두 앱을 함께 적용하는 호환 명령입니다.
 
@@ -52,7 +52,9 @@ worker 파일 존재·권한·이미지 pull·실제 HTTPS 접속은 서버에�
 
 수동 운영 YAML 전달 방식을 선택한 경우 CP1에 `rendered/internal-keycloak-stack.yaml`과
 `rendered/internal-keycloak-claim-mappers.yaml`을 전달합니다. 권장 앱별 배포 도구는 선택 checkout을 사용합니다.
-프로필·mapper 관리는 Job으로 통일하며 별도 Python 도구는 사용하지 않습니다.
+프로필·mapper 변경은 Job이 수행하며 discovery Python 도구는 입력 해석과 Job 실행 순서를 관리합니다.
+전달 YAML 두 개만으로 discovery 초기 설정을 실행할 수는 없습니다. 초기 설정에는 저장소의
+Makefile·deploy/keycloak·deploy/shared가 포함된 서버 선택 checkout을 사용합니다.
 
 이 디렉터리는 `khplane01w09`(`10.172.40.87`) worker에 다음 리소스를 배포합니다.
 
@@ -173,8 +175,8 @@ kubectl kustomize deploy/keycloak/k8s >/dev/null
 kubectl apply -k deploy/keycloak/k8s
 ```
 
-이 스택에는 claim 등록 Job이 포함되지 않습니다. 사내 OIDC 설정 후 7절에서 별도
-실행합니다. 이전 버전의 완료된 Job이 남아 있어도 서버 기동에는 영향을 주지 않습니다.
+이 스택에는 설정 Job이 포함되지 않습니다. 6절의 통합 명령으로 IdP와 claim을 등록합니다.
+이전 버전의 완료된 Job이 남아 있어도 서버 기동에는 영향을 주지 않습니다.
 
 Kustomize는 사내 mirror의 다음 이미지를 사용합니다.
 
@@ -231,27 +233,34 @@ OpenID Connect, flow는 Authorization Code를 사용합니다.
 
 ### 사내 OIDC 접속 설정을 env로 적용하기
 
-Discovery URL이 있으면 [Discovery 전체 설정 흐름](DISCOVERY_SETUP.md)을 사용합니다.
-`make keycloak-oidc-check`로 metadata·입력을 검사하고 `make keycloak-oidc-setup`으로
-IdP → 사용자 프로필·mapper를 순서대로 적용합니다. Portal env를 지정하면 client와 token mapper도 설정합니다.
-
-관리 화면에서 이미 연결한 설정은 서버 YAML을 적용해도 유지됩니다. env를 설정 원본으로
-전환하거나 새 연결을 만들 때만 `deploy/keycloak/env/prod.env`의 `CORP_OIDC_*` 부분을 작성합니다.
-인프라에서 확인한 client 인증 방식과 기존 서버의 서명 검증 정책을 명시합니다.
-서명 검증을 켜면 JWKS URL도 필요합니다. 아래 수동 경로는 discovery 없이 명시적 endpoint를 사용합니다.
+운영 env는 discovery 방식입니다. `deploy/keycloak/env/prod.env`의 client ID·secret을
+입력하고 아래 명령을 실행합니다. 인증 방식은 확인된 `client_secret_post`, 서명 검증은 `true`입니다.
+Authorization·Token·JWKS·UserInfo·Logout URL과 issuer를 다시 입력할 필요가 없습니다.
 
 ```bash
-make env-check APP=keycloak PROFILE=prod COMPONENT=oidc
-make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc
-kubectl delete job keycloak-oidc-setup -n etch-sso --ignore-not-found
-kubectl apply -f deploy/keycloak/k8s/oidc/oidc-setup-job.yaml
-kubectl wait --for=condition=complete job/keycloak-oidc-setup -n etch-sso --timeout=15m
-kubectl logs job/keycloak-oidc-setup -n etch-sso
+read -r -p '설정할 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
+make keycloak-oidc-check KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
+make keycloak-oidc-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
-이 Job은 alias `oidc`를 생성하거나 지정한 연결값을 갱신합니다. 사용자나 realm은 삭제하지
-않습니다. 선택적인 UserInfo/logout URL을 비우면 기존 설정을 유지합니다. 기존 연결이
-정상이라면 이 단계는 생략하고 claim 등록부터 실행해도 됩니다.
+`check`는 discovery·입력을 검사합니다. `setup`은 해석된 endpoint를 Secret에 저장하고
+최신 관리 ConfigMap → IdP Job → 사용자 프로필·mapper Job 순서로 적용합니다.
+서버 스택은 먼저 준비돼 있어야 합니다. 7절의 mapper Job은 이 명령에서 이미 실행하므로
+다시 실행하지 않아도 됩니다. Portal client도 함께 설정하려면
+`KEYCLOAK_PORTAL_ENV="$PWD/deploy/portal/env/prod/api.env"`를 두 명령에 추가합니다.
+다른 env 경로는 `KEYCLOAK_ENV=/절대/경로/prod.env`로 지정합니다.
+
+기존 `make env-check APP=keycloak PROFILE=prod COMPONENT=oidc`와
+`make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc`도 discovery를 해석합니다.
+다만 이 두 명령은 각각 입력 검사·Secret 등록까지만 수행하며 ConfigMap·Job은 적용하지 않습니다.
+수동으로 Job YAML을 실행할 때는 최신 관리 ConfigMap과 Secret이 먼저 필요하고,
+통합 명령과 달리 공통 Secret 명령은 현재 kubectl context를 사용합니다.
+기본 운영 절차는 위의 context를 명시하는 통합 명령을 사용합니다.
+
+IdP Job은 alias `oidc`를 생성하거나 지정한 연결값을 갱신하고 기존 사용자·realm을 보존합니다.
+Discovery에 없는 선택적인 UserInfo/logout URL은 기존 IdP 설정을 유지합니다.
+기존 연결이 정상이고 mapper만 갱신하려면 7절의 별도 절차를 사용할 수 있습니다.
+전체 사전 조건과 실패 확인은 [Discovery 설정 안내](DISCOVERY_SETUP.md)를 따릅니다.
 
 ## 7. 사내 OIDC 사용자 claim 일괄 매핑
 
@@ -317,6 +326,8 @@ realm의 `Email as username`이 켜져 있으면 EPID mapper가 무시될 수 �
 Identity Provider mapper는 `FORCE`로 설정합니다. 사내 OIDC를 거쳐 로그인해야 새 속성이
 채워지며, 프로필 정의를 등록하는 것만으로 외부에서 제공되지 않은 값이 생기지는 않습니다.
 Portal token mapper는 8절의 앱 client 등록 Job이 담당하며 기존 claim 이름을 유지합니다.
+
+6절의 `keycloak-oidc-setup`을 완료했다면 이 절의 재실행은 생략합니다. 아래는 mapper만 별도로 갱신하는 절차입니다.
 
 Job 실행 전 `etch` realm의 alias `oidc`와 `keycloak-runtime` 관리자 계정을 확인합니다.
 Portal client는 없어도 됩니다. 개발 PC에서 `make k8s-export` 후

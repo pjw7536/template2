@@ -18,6 +18,7 @@ esac
 echo "선택한 앱: $APP / 환경: $PROFILE / 작업: $COMPONENT"
 echo "읽는 설정: $ENV_FILE"
 load_env "$ENV_FILE"
+resolve_keycloak_discovery "$ROOT_DIR" "$APP" "$COMPONENT" "$ENV_FILE"
 validate_app_env "$APP" "$COMPONENT"
 if [[ "$APP/$PROFILE" == portal/prod ]]; then
   validate_portal_prod_env "$COMPONENT"

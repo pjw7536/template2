@@ -18,7 +18,8 @@ Discovery 검증 → OIDC Secret → 관리 ConfigMap → Identity Provider 생�
 
 ## 2. env 입력
 
-기존 `deploy/keycloak/env/prod.env`에 `CORP_OIDC_DISCOVERY_URL`을 추가합니다.
+`deploy/keycloak/env/prod.env`에는 discovery URL과 인증 방식이 이미 설정돼 있습니다.
+기존 provider의 client ID·secret을 입력합니다. 다른 환경에서는 discovery URL도 해당 환경에 맞춥니다.
 값은 전달받은 OpenID Connect 1.0 discovery endpoint를 그대로 사용합니다. 사내 주소는 코드에 고정하지 않습니다.
 
 ```dotenv
@@ -50,6 +51,10 @@ Discovery는 client 등록, 사내 claim 발급 정책, 그룹 권한을 자동 
 make keycloak-oidc-check KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 make keycloak-oidc-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
+
+`make env-check APP=keycloak PROFILE=prod COMPONENT=oidc`와
+`make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc`도 같은 discovery 해석기를 사용하지만
+각각 입력 검사·Secret 등록만 수행합니다. Job 실행까지는 위의 통합 명령을 사용하세요.
 
 별도 env는 `KEYCLOAK_ENV=/절대/경로/keycloak.env`로 지정합니다.
 `check`는 metadata와 입력 검증이며 클러스터·실제 로그인 성공을 보장하지 않습니다.

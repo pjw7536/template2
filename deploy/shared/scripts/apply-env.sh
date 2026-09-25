@@ -19,6 +19,7 @@ fi
 KUBECTL_BIN="${KUBECTL_BIN:-kubectl}"
 echo "설정 입력: $ENV_FILE / 앱: $APP / 작업: $COMPONENT"
 load_env "$ENV_FILE"
+resolve_keycloak_discovery "$ROOT_DIR" "$APP" "$COMPONENT" "$ENV_FILE"
 validate_app_env "$APP" "$COMPONENT"
 if [[ "$APP/$PROFILE" == portal/prod ]]; then
   validate_portal_prod_env "$COMPONENT"

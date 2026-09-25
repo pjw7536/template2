@@ -151,6 +151,9 @@ kubectl rollout status deployment/traefik -n etch-sso --timeout=5m
 
 새 DB라면 사내 OIDC 연결을 먼저 준비합니다. 관리 화면으로 설정하거나, 외부 env 파일의
 `CORP_OIDC_*` 항목을 작성한 뒤 다음 선택 작업을 실행합니다. 정상인 기존 연결은 생략합니다.
+아래 공통 env 명령은 `CORP_OIDC_DISCOVERY_URL`이 있으면 Python으로 endpoint를 해석합니다.
+CP1에서 discovery 접속과 TLS 신뢰가 필요합니다. ConfigMap과 두 Job까지 순차 실행하려면
+[Keycloak discovery 통합 명령](../../../keycloak/DISCOVERY_SETUP.md)을 사용할 수 있습니다.
 
 ```bash
 bash deploy/shared/scripts/check-env.sh keycloak prod oidc /appdata/etchax-config/keycloak/prod.env

@@ -56,6 +56,10 @@ API는 서버·DB·로그인·HTTPS, 공용 연동, 업무 기능, 조정·개�
 timeout/cache 등의 선택값을 생략하면 코드 기본값을 사용합니다. local/test는 유지하고,
 prod는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다. env의 변경 이력을 Git으로 관리합니다.
 
+Keycloak의 `COMPONENT=oidc` 입력은 `CORP_OIDC_DISCOVERY_URL`이 있으면 endpoint를 자동 해석합니다.
+실행 호스트에 Python과 discovery 접속·TLS 신뢰가 필요합니다. env 검사·Secret 등록 명령은
+Job을 실행하지 않으므로 전체 초기 설정은 [Keycloak discovery 절차](../../../keycloak/DISCOVERY_SETUP.md)를 사용합니다.
+
 ## 설정 검사
 
 Airflow·Monitoring·Headlamp의 `make env-check APP=<앱>`은 전용 Kubernetes 검사 도구를 사용합니다.
