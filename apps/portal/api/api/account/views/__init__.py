@@ -129,26 +129,7 @@ class AccountAffiliationView(APIView):
         return JsonResponse(payload)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """소속 변경 요청을 생성합니다.
-
-        입력:
-        - 요청: Django HttpRequest
-        - args/kwargs: URL 라우팅 인자
-
-        반환:
-        - JsonResponse: 변경 요청 결과
-
-        부작용:
-        - 변경 요청 생성(서비스 레이어)
-
-        오류:
-        - 400: 입력 오류
-        - 401: 미인증
-
-        예시 요청:
-        - 예시 요청: POST /api/v1/account/affiliation
-        요청 바디 예시: {"userSdwtProd":"SDWT_A"}
-        """
+        """POST /affiliation 입력은 검증하되 등록 소속 수정은 405로 거절합니다."""
         # -----------------------------------------------------------------------------
         # 1) 인증 확인
         # -----------------------------------------------------------------------------
@@ -169,26 +150,7 @@ class AccountAffiliationView(APIView):
         serializer = AffiliationChangeRequestSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse(serializer.errors, status=400)
-        new_value = serializer.validated_data["userSdwtProd"]
-
-        # -----------------------------------------------------------------------------
-        # 4) 소속 옵션 유효성 검증
-        # -----------------------------------------------------------------------------
-        option = selectors.get_affiliation_option_by_user_sdwt_prod(user_sdwt_prod=new_value)
-        if option is None:
-            return JsonResponse({"error": "Invalid user_sdwt_prod"}, status=400)
-
-        # -----------------------------------------------------------------------------
-        # 5) 서비스 호출 및 응답 반환
-        # -----------------------------------------------------------------------------
-        response_payload, status_code = services.request_affiliation_change(
-            user=user,
-            option=option,
-            to_user_sdwt_prod=new_value,
-            effective_from=None,
-            timezone_name=TIMEZONE_NAME,
-        )
-        return JsonResponse(response_payload, status=status_code)
+        return JsonResponse({"error": "affiliation_registration_only"}, status=405)
 
 
 # =============================================================================
@@ -867,39 +829,8 @@ class AccountAffiliationReconfirmView(APIView):
         return JsonResponse(payload)
 
     def post(self, request: HttpRequest, *args: object, **kwargs: object) -> JsonResponse:
-        """사용자가 재확인 응답을 제출합니다.
+        """이전 camelCase 입력을 검증하되 등록 소속의 재확인은 거절합니다."""
 
-        입력:
-        - 요청: Django HttpRequest
-        - args/kwargs: URL 라우팅 인자
-
-        반환:
-        - JsonResponse: 처리 결과
-
-        부작용:
-        - 자동 승인 선택 시 소속 변경이 즉시 적용됨
-        - 예측값 불일치 또는 예측 없음 선택 시 승인 대기 요청이 생성됨
-        - 기존 유지/자동 승인/승인 대기 생성 성공 시 재확인 플래그가 해제됨
-
-        오류:
-        - 400: 입력 오류
-        - 401: 미인증
-        - 409: 재확인 대상 아님
-
-        예시 요청:
-        - 예시 요청: POST /api/v1/account/affiliation/reconfirm
-          요청 바디 예시(변경 적용): {"accepted": true, "userSdwtProd": "G1"}
-        - 예시 요청: POST /api/v1/account/affiliation/reconfirm
-          요청 바디 예시(승인 대기): {"accepted": true, "userSdwtProd": "G2"}
-        - 예시 요청: POST /api/v1/account/affiliation/reconfirm
-          요청 바디 예시(기존 유지): {"accepted": false}
-
-        표기 계약:
-        - 요청 바디는 camelCase만 허용
-        """
-        # -----------------------------------------------------------------------------
-        # 1) 인증 확인
-        # -----------------------------------------------------------------------------
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse({"error": "unauthorized"}, status=401)
@@ -917,18 +848,7 @@ class AccountAffiliationReconfirmView(APIView):
         serializer = AffiliationReconfirmResponseSerializer(data=payload)
         if not serializer.is_valid():
             return JsonResponse(serializer.errors, status=400)
-
-        # -----------------------------------------------------------------------------
-        # 4) 서비스 호출 및 응답 반환
-        # -----------------------------------------------------------------------------
-        validated = serializer.validated_data
-        response_payload, status_code = services.submit_affiliation_reconfirm_response(
-            user=user,
-            accepted=validated["accepted"],
-            user_sdwt_prod=validated.get("user_sdwt_prod"),
-            timezone_name=TIMEZONE_NAME,
-        )
-        return JsonResponse(response_payload, status=status_code)
+        return JsonResponse({"error": "affiliation_registration_only"}, status=405)
 
 
 # =============================================================================

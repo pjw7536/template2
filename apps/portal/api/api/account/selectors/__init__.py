@@ -5,6 +5,7 @@ from .affiliation_options import (
     get_affiliation_option_for_update_by_user_sdwt_prod,
 )
 from .queries import (
+    list_users_by_registration_identifiers,
     affiliation_exists_for_user_sdwt_prod,
     filter_access_management_users_by_effective_access,
     get_access_policy_rule_by_id_for_update,

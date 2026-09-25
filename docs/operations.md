@@ -95,6 +95,7 @@ make makemigrations-check
 | Command | 설명 |
 | --- | --- |
 | `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할·앱별 소속 범위 정합성 점검 |
+| `register_reference_users` | 참조 CSV 경로를 받아 Portal 신규 사용자·소속 등록. 기본 dry-run, `--apply`로 저장하며 기존 계정은 건너뜀. Keycloak 계정·그룹 등록은 수행하지 않음. [입력 형식과 실행](../apps/portal/README.md#참조-파일로-사용자-사전-등록) |
 | `backfill_assistant_run_access` | legacy Assistant Run·메시지·요약·제목의 Profile과 `access_requirements`를 dry-run 가능한 batch로 보강 |
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""고정 chart로 Headlamp를 검사·배포하고 조회용 접속을 제공한다."""
+"""고정 chart로 Headlamp를 검사·배포하고 관리자 접속을 제공한다."""
 
 import argparse
 import hashlib

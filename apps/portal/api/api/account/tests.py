@@ -1734,8 +1734,8 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(options.status_code, 200)
         self.assertIn("lines", options.json())
 
-    def test_onboarding_affiliation_post_auto_applies_external_match(self) -> None:
-        """신규 사용자가 외부 예측 소속과 같은 값을 선택하면 즉시 적용되는지 확인합니다."""
+    def test_onboarding_cannot_replace_registered_affiliation(self) -> None:
+        """참조값과 일치해도 사용자가 로그인 후 소속을 입력할 수 없습니다."""
 
         User = get_user_model()
         onboarding_user = User.objects.create_user(
@@ -1758,11 +1758,8 @@ class AccountEndpointTests(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "applied")
-        self.assertEqual(get_current_user_sdwt_prod(user=onboarding_user), "group-b")
-        change = UserSdwtProdChange.objects.get(user=onboarding_user)
-        self.assertEqual(change.status, UserSdwtProdChange.Status.APPROVED)
+        self.assertEqual(response.status_code, 405)
+        self.assertFalse(UserCurrentAffiliation.objects.filter(user=onboarding_user).exists())
 
     def test_account_user_pool_requires_authentication(self) -> None:
         """사용자 pool 조회는 인증된 사용자에게만 허용되어야 합니다."""
@@ -2274,8 +2271,8 @@ class AccountEndpointTests(TestCase):
         self.assertIsNone(approval.decided_by)
         self.assertIsNone(approval.decided_at)
 
-    def test_portal_access_request_uses_current_affiliation_department_fallback(self) -> None:
-        """접근 요청 row의 부서는 현재 소속 부서 fallback과 일치해야 합니다."""
+    def test_portal_access_request_does_not_use_affiliation_department(self) -> None:
+        """접근 요청은 등록 소속 부서를 인증 부서로 대체하지 않습니다."""
 
         self.user.department = ""
         self.user.save(update_fields=["department"])
@@ -2295,7 +2292,7 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["status"], "pending")
         approval = UserAccess.objects.get(user=self.user, scope__key=ACCESS_SCOPE_PORTAL)
-        self.assertEqual(approval.department, "FallbackDept")
+        self.assertEqual(approval.department, "")
 
     def test_portal_access_rerequest_updates_requested_at(self) -> None:
         """거절 사용자가 재요청하면 pending 전환 시 요청 시각을 갱신해야 합니다."""
@@ -3989,8 +3986,8 @@ class AccountEndpointTests(TestCase):
         self.assertIn(self.user.id, {row["user"]["id"] for row in policy_allowed_response.json()["results"]})
         self.assertNotIn(pending_user.id, {row["user"]["id"] for row in policy_allowed_response.json()["results"]})
 
-    def test_access_management_filter_uses_affiliation_for_blank_account_department(self) -> None:
-        """공백 계정 부서는 실제 판정처럼 현재 소속 부서로 대체해야 합니다."""
+    def test_access_management_filter_does_not_use_affiliation_department(self) -> None:
+        """공백 계정 부서를 소속 부서로 대체하여 접근을 허용하지 않습니다."""
 
         admin_user = self.manager
         _grant_manage_access(admin_user)
@@ -4010,11 +4007,7 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [row["user"]["id"] for row in response.json()["results"]],
-            [self.user.id],
-        )
-        self.assertEqual(
-            response.json()["results"][0]["access"]["department"],
-            "Dept",
+            [],
         )
 
     def test_access_management_department_filter_uses_resolved_department(self) -> None:
@@ -4901,13 +4894,13 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         self.client.force_login(self.user)
 
-        create_response = self.client.post(
-            reverse("account-affiliation"),
-            data='{"userSdwtProd":"group-b"}',
-            content_type="application/json",
+        payload, status = request_affiliation_change(
+            user=self.user, option=_affiliation(user_sdwt_prod="group-b"),
+            to_user_sdwt_prod="group-b", effective_from=None,
+            timezone_name="Asia/Seoul", force_pending=True,
         )
-        self.assertEqual(create_response.status_code, 202)
-        change_id = create_response.json()["changeId"]
+        self.assertEqual(status, 202)
+        change_id = payload["changeId"]
 
         # -----------------------------------------------------------------------------
         # 2) 요청 목록 조회
@@ -4946,13 +4939,13 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         self.client.force_login(self.user)
 
-        create_response = self.client.post(
-            reverse("account-affiliation"),
-            data='{"userSdwtProd":"group-b"}',
-            content_type="application/json",
+        payload, status = request_affiliation_change(
+            user=self.user, option=_affiliation(user_sdwt_prod="group-b"),
+            to_user_sdwt_prod="group-b", effective_from=None,
+            timezone_name="Asia/Seoul", force_pending=True,
         )
-        self.assertEqual(create_response.status_code, 202)
-        change_id = create_response.json()["changeId"]
+        self.assertEqual(status, 202)
+        change_id = payload["changeId"]
 
         # -----------------------------------------------------------------------------
         # 2) 관리자 거절 처리(거절 사유 포함)
@@ -5028,7 +5021,7 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(members_response.json()["fieldErrors"]["unexpectedFields"], ["user_sdwt_prod"])
 
     def test_account_affiliation_reconfirm(self) -> None:
-        """소속 재확인 플로우가 정상 응답하는지 확인합니다."""
+        """기존 재확인 플래그가 있어도 사용자 입력을 요청하지 않습니다."""
         # -----------------------------------------------------------------------------
         # 1) 외부 예측/재확인 데이터 준비
         # -----------------------------------------------------------------------------
@@ -5049,7 +5042,7 @@ class AccountEndpointTests(TestCase):
 
         status_response = self.client.get(reverse("account-affiliation-reconfirm"))
         self.assertEqual(status_response.status_code, 200)
-        self.assertTrue(status_response.json()["requiresReconfirm"])
+        self.assertFalse(status_response.json()["requiresReconfirm"])
 
         # -----------------------------------------------------------------------------
         # 3) 재확인 응답 전송
@@ -5059,14 +5052,11 @@ class AccountEndpointTests(TestCase):
             data='{"accepted": true, "userSdwtProd": "group-b"}',
             content_type="application/json",
         )
-        self.assertEqual(confirm_response.status_code, 200)
-
-        self.user.refresh_from_db()
-        self.assertEqual(get_current_user_sdwt_prod(user=self.user), "group-b")
-        self.assertFalse(UserCurrentAffiliation.objects.get(user=self.user).requires_reconfirm)
+        self.assertEqual(confirm_response.status_code, 405)
+        self.assertEqual(get_current_user_sdwt_prod(user=self.user), "group-a")
 
     def test_account_affiliation_reconfirm_requires_flag(self) -> None:
-        """재확인 플래그가 없으면 409를 반환하는지 확인합니다."""
+        """재확인 입력은 등록 전용 정책에 따라 거절됩니다."""
         # -----------------------------------------------------------------------------
         # 1) 외부 예측 데이터 준비
         # -----------------------------------------------------------------------------
@@ -5090,8 +5080,8 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 결과 검증
         # -----------------------------------------------------------------------------
-        self.assertEqual(confirm_response.status_code, 409)
-        self.assertEqual(confirm_response.json()["details"]["reason"], "reconfirm not required")
+        self.assertEqual(confirm_response.status_code, 405)
+        self.assertEqual(confirm_response.json()["details"]["reason"], "affiliation_registration_only")
 
     @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
     def test_account_external_sync_and_grants(self) -> None:
@@ -5123,8 +5113,8 @@ class AccountEndpointTests(TestCase):
         overview = get_account_overview(user=self.manager, timezone_name="Asia/Seoul")
         self.assertTrue(overview["manageableGroups"]["groups"])
 
-    def test_viewer_grant_for_current_affiliation_upgrades_to_member(self) -> None:
-        """현재 소속에 viewer 권한을 부여하면 member로 승급되는지 확인합니다."""
+    def test_viewer_grant_for_current_affiliation_stays_viewer(self) -> None:
+        """현재 소속에 부여한 viewer 역할도 자동으로 승급하지 않습니다."""
         # -----------------------------------------------------------------------------
         # 1) 대상 사용자 준비
         # -----------------------------------------------------------------------------
@@ -5156,10 +5146,10 @@ class AccountEndpointTests(TestCase):
             user=target,
             affiliation__user_sdwt_prod__iexact="group-a",
         )
-        self.assertEqual(access.role, "member")
+        self.assertEqual(access.role, "viewer")
 
-    def test_revoke_current_affiliation_is_blocked(self) -> None:
-        """현재 소속에 대한 권한 회수는 거부되는지 확인합니다."""
+    def test_revoke_current_affiliation_access_is_allowed(self) -> None:
+        """등록 소속의 명시 권한도 회수할 수 있습니다."""
         # -----------------------------------------------------------------------------
         # 1) 대상 사용자/권한 준비
         # -----------------------------------------------------------------------------
@@ -5187,11 +5177,9 @@ class AccountEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 결과 검증
         # -----------------------------------------------------------------------------
-        self.assertEqual(revoke_status, 400)
-        self.assertEqual(
-            revoke_payload.get("error"),
-            "Cannot revoke access for the user's current affiliation",
-        )
+        self.assertEqual(revoke_status, 200)
+        self.assertEqual(revoke_payload["deleted"], 1)
+        self.assertFalse(UserSdwtProdAccess.objects.filter(user=target).exists())
 
     def test_last_manager_cannot_be_demoted_or_revoked(self) -> None:
         """소속의 마지막 manager는 강등하거나 회수할 수 없습니다."""
@@ -5496,6 +5484,7 @@ class AccountEndpointTests(TestCase):
         )
         _grant_access(user=viewer, user_sdwt_prod="group-a", role="viewer")
 
+        _grant_access(user=self.user, user_sdwt_prod="group-a", role="member")
         self.client.force_login(self.user)
         response = self.client.get(
             reverse("account-affiliation-members"),
@@ -5505,10 +5494,9 @@ class AccountEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         rows = response.json()["members"]
         user_ids = {row["userId"] for row in rows}
-        self.assertIn(member.id, user_ids)
+        self.assertNotIn(member.id, user_ids)
         self.assertIn(viewer.id, user_ids)
         rows_by_user_id = {row["userId"]: row for row in rows}
-        self.assertEqual(rows_by_user_id[member.id]["role"], "member")
         self.assertEqual(rows_by_user_id[viewer.id]["role"], "viewer")
         self.assertFalse(response.json()["canManage"])
         self.assertNotIn("emailCount", rows[0])
@@ -5682,7 +5670,7 @@ class AccessibleUserSdwtProdTests(TestCase):
         )
 
         accessible = get_accessible_user_sdwt_prods_for_user(user)
-        self.assertIn("group-old", accessible)
+        self.assertNotIn("group-old", accessible)
         self.assertNotIn("group-new", accessible)
 
 
@@ -5699,6 +5687,7 @@ class AffiliationCapabilityTests(TestCase):
         _set_current_affiliation(viewer, user_sdwt_prod="group-other")
         _set_current_affiliation(member, user_sdwt_prod="group-a")
         _set_current_affiliation(manager, user_sdwt_prod="group-a")
+        _grant_access(user=member, user_sdwt_prod="group-a", role="member")
         _grant_access(user=viewer, user_sdwt_prod="group-a", role="viewer")
         _grant_access(user=manager, user_sdwt_prod="group-a", role="manager")
 
@@ -5863,7 +5852,7 @@ class AffiliationCapabilityTests(TestCase):
                 capability="write",
             )
 
-        self.assertTrue(can_read)
+        self.assertFalse(can_read)
         self.assertFalse(can_write)
 
     def test_bulk_affiliation_state_change_rolls_back_on_audit_failure(self) -> None:
@@ -6044,20 +6033,9 @@ class AffiliationChangeApprovalTests(TestCase):
                 ),
             ).select_related("affiliation")
         }
-        self.assertEqual(set(role_audits), {"group-old", "group-new"})
-        self.assertEqual(
-            role_audits["group-new"].action,
-            AccessAuditLog.Actions.AFFILIATION_ROLE_GRANT,
-        )
-        self.assertEqual(role_audits["group-new"].actor_id, manager.id)
-        self.assertEqual(role_audits["group-new"].before, {})
-        self.assertEqual(role_audits["group-new"].after["role"], "member")
-        self.assertEqual(
-            role_audits["group-old"].action,
-            AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
-        )
-        self.assertEqual(role_audits["group-old"].before["role"], "member")
-        self.assertEqual(role_audits["group-old"].after["role"], "viewer")
+        self.assertEqual(role_audits, {})
+        self.assertEqual(UserSdwtProdAccess.objects.get(user=requester).role, "member")
+        self.assertEqual(UserSdwtProdAccess.objects.get(user=requester).affiliation.user_sdwt_prod, "group-old")
 
     def test_approval_rechecks_manager_after_affiliation_lock(self) -> None:
         """소속 잠금 대기 중 manager가 강등되면 승인 권한을 다시 확인해야 합니다."""
@@ -6118,8 +6096,8 @@ class AffiliationChangeApprovalTests(TestCase):
             "group-old",
         )
 
-    def test_approval_rolls_back_when_automatic_role_audit_fails(self) -> None:
-        """자동 역할 감사 저장에 실패하면 소속과 역할 변경을 모두 되돌려야 합니다."""
+    def test_legacy_approval_does_not_write_automatic_role_audits(self) -> None:
+        """기존 요청 승인은 소속만 변경하며 자동 권한 감사 경로를 호출하지 않습니다."""
 
         User = get_user_model()
         requester = User.objects.create_user(
@@ -6149,15 +6127,12 @@ class AffiliationChangeApprovalTests(TestCase):
             "api.account.services.access.create_access_audit_log",
             side_effect=RuntimeError("audit failed"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "audit failed"):
-                approve_affiliation_change(
-                    approver=manager,
-                    change_id=change.id,
-                )
+            _, status = approve_affiliation_change(approver=manager, change_id=change.id)
+            self.assertEqual(status, 200)
 
         change.refresh_from_db()
-        self.assertEqual(change.status, UserSdwtProdChange.Status.PENDING)
-        self.assertEqual(get_current_user_sdwt_prod(user=requester), "group-old")
+        self.assertEqual(change.status, UserSdwtProdChange.Status.APPROVED)
+        self.assertEqual(get_current_user_sdwt_prod(user=requester), "group-new")
         self.assertEqual(
             UserSdwtProdAccess.objects.get(
                 user=requester,
@@ -6677,8 +6652,8 @@ class AffiliationChangeRequestListTests(TestCase):
         self.assertEqual(payload["results"][0]["id"], change.id)
         self.assertEqual(payload["results"][0]["role"], "member")
 
-    def test_current_affiliation_without_access_row_is_returned_as_member(self) -> None:
-        """현재 소속 사용자의 승인 요청 역할은 명시적 권한 행 없이도 member여야 합니다."""
+    def test_current_affiliation_does_not_promote_requester_role(self) -> None:
+        """소속만으로 요청자의 표시 역할을 member로 승급하지 않습니다."""
         User = get_user_model()
         member = User.objects.create_user(
             sabun="S93001",
@@ -6714,7 +6689,7 @@ class AffiliationChangeRequestListTests(TestCase):
 
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["results"][0]["id"], change.id)
-        self.assertEqual(payload["results"][0]["role"], "member")
+        self.assertEqual(payload["results"][0]["role"], "viewer")
 
 
 class AffiliationChangeRequestEffectiveFromTests(TestCase):
@@ -6834,7 +6809,7 @@ class AccountOverviewTests(TestCase):
         group_a_row = next(
             row for row in accessible_rows if isinstance(row["userSdwtProd"], str) and row["userSdwtProd"].casefold() == "group-a"
         )
-        self.assertEqual(group_a_row["source"], "self")
+        self.assertEqual(group_a_row["source"], "grant")
 
     def test_request_affiliation_change_defaults_to_request_time(self) -> None:
         """effective_from이 없으면 요청 시각이 사용되는지 확인합니다."""
@@ -6891,7 +6866,7 @@ class AffiliationOverviewTests(TestCase):
         self.assertEqual(UserSdwtProdAccess.objects.count(), 0)
 
         self.assertEqual(payload["currentUserSdwtProd"], "group-a")
-        self.assertEqual(payload["accessibleUserSdwtProds"][0]["userSdwtProd"], "group-a")
+        self.assertEqual(payload["accessibleUserSdwtProds"], [])
 
     def test_get_affiliation_overview_includes_external_snapshot(self) -> None:
         """외부 소속 스냅샷 값이 개요 응답에 포함되는지 확인합니다."""
@@ -7093,11 +7068,7 @@ class AffiliationChangeRequestTests(TestCase):
 
         change = UserSdwtProdChange.objects.get(id=payload["changeId"])
         self.assertEqual(change.status, UserSdwtProdChange.Status.APPROVED)
-        access = UserSdwtProdAccess.objects.get(
-            user=user,
-            affiliation__user_sdwt_prod__iexact="group-auto",
-        )
-        self.assertEqual(access.role, "member")
+        self.assertFalse(UserSdwtProdAccess.objects.filter(user=user).exists())
 
     def test_request_affiliation_change_auto_applies_when_predicted_match_case_insensitively(self) -> None:
         """예측 소속과 대소문자만 다른 요청도 자동 승인되는지 확인합니다."""
@@ -7305,7 +7276,7 @@ class ExternalAffiliationSyncTests(TestCase):
         self.assertEqual(snapshot.username, "기존이름")
 
     def test_sync_external_affiliations_flags_user_on_change(self) -> None:
-        """예측 소속 변경 시 재확인 플래그가 켜지는지 확인합니다."""
+        """예측 소속 변경은 등록 사용자에게 재확인을 요구하지 않습니다."""
         # -----------------------------------------------------------------------------
         # 1) 사용자 준비
         # -----------------------------------------------------------------------------
@@ -7347,7 +7318,7 @@ class ExternalAffiliationSyncTests(TestCase):
         user.refresh_from_db()
 
         self.assertEqual(result["updated"], 1)
-        self.assertTrue(UserCurrentAffiliation.objects.get(user=user).requires_reconfirm)
+        self.assertFalse(UserCurrentAffiliation.objects.get(user=user).requires_reconfirm)
 
     def test_sync_external_affiliations_ignores_case_only_predicted_change(self) -> None:
         """예측 소속이 대소문자만 다르면 변경으로 보지 않는지 확인합니다."""
@@ -7488,7 +7459,7 @@ class ExternalAffiliationSyncTests(TestCase):
         # -----------------------------------------------------------------------------
         self.assertEqual(result["updated"], 1)
         user.refresh_from_db()
-        self.assertTrue(UserCurrentAffiliation.objects.get(user=user).requires_reconfirm)
+        self.assertFalse(UserCurrentAffiliation.objects.get(user=user).requires_reconfirm)
         snapshot = ExternalAffiliationSnapshot.objects.get(knox_id="loginid-ext-3")
         self.assertEqual(snapshot.predicted_user_sdwt_prod, "group-c")
 
@@ -7758,7 +7729,7 @@ class ExternalAffiliationSyncTests(TestCase):
         self.assertFalse(values.requires_reconfirm)
 
     def test_auto_approve_affiliation_from_snapshot(self) -> None:
-        """외부 스냅샷 기반 자동 승인이 적용되는지 확인합니다."""
+        """외부 스냅샷이 있어도 등록 후 자동으로 소속을 부여하지 않습니다."""
         # -----------------------------------------------------------------------------
         # 1) 소속/스냅샷 준비
         # -----------------------------------------------------------------------------
@@ -7784,15 +7755,8 @@ class ExternalAffiliationSyncTests(TestCase):
         # -----------------------------------------------------------------------------
         # 3) 결과 검증
         # -----------------------------------------------------------------------------
-        self.assertIsNotNone(result)
-        payload, status_code = result or ({}, 0)
-        self.assertEqual(status_code, 200)
-        self.assertEqual(payload.get("status"), "applied")
-
-        user.refresh_from_db()
-        values = UserCurrentAffiliation.objects.get(user=user)
-        self.assertEqual(values.affiliation.user_sdwt_prod, "group-auto")
-        self.assertFalse(values.requires_reconfirm)
+        self.assertIsNone(result)
+        self.assertFalse(UserCurrentAffiliation.objects.filter(user=user).exists())
 
 
 class AccountAccessServiceTests(TestCase):
@@ -8008,7 +7972,7 @@ class AppAffiliationDataScopeTests(TestCase):
                 "name": "Assistant",
                 "scope_type": AccessScope.ScopeTypes.APP,
                 "data_scope_type": AccessScope.DataScopeTypes.AFFILIATION,
-                "include_current_affiliation": True,
+                "include_current_affiliation": False,
             },
         )[0]
         self.emails = AccessScope.objects.update_or_create(
@@ -8017,7 +7981,7 @@ class AppAffiliationDataScopeTests(TestCase):
                 "name": "Emails",
                 "scope_type": AccessScope.ScopeTypes.APP,
                 "data_scope_type": AccessScope.DataScopeTypes.AFFILIATION,
-                "include_current_affiliation": True,
+                "include_current_affiliation": False,
             },
         )[0]
         self.appstore = AccessScope.objects.update_or_create(
@@ -8053,7 +8017,7 @@ class AppAffiliationDataScopeTests(TestCase):
                 role=role,
             )
 
-    def test_explicit_grants_are_isolated_by_app_and_include_current_affiliation(self) -> None:
+    def test_explicit_grants_are_isolated_by_app_without_current_affiliation(self) -> None:
         """같은 사용자의 명시 소속 grant가 다른 앱으로 전파되지 않아야 합니다."""
 
         assistant_payload, assistant_status = update_user_scope_affiliation_data(
@@ -8085,17 +8049,17 @@ class AppAffiliationDataScopeTests(TestCase):
         )
         self.assertEqual(
             set(assistant_effective["affiliationIds"]),
-            {self.affiliation_a.id, self.affiliation_b.id},
+            {self.affiliation_b.id},
         )
         self.assertEqual(
             set(emails_effective["affiliationIds"]),
-            {self.affiliation_a.id, self.affiliation_c.id},
+            {self.affiliation_c.id},
         )
         self.assertFalse(assistant_effective["all"])
         self.assertFalse(emails_effective["all"])
 
-    def test_current_affiliation_source_wins_over_overlapping_manual_grant(self) -> None:
-        """현재 소속과 수동 grant가 겹쳐도 자동 포함 source를 유지해야 합니다."""
+    def test_manual_grant_is_independent_of_current_affiliation(self) -> None:
+        """현재 소속과 겹쳐도 명시적 grant만 접근 근거로 반환합니다."""
 
         payload, status_code = update_user_scope_affiliation_data(
             actor=self.actor,
@@ -8109,7 +8073,7 @@ class AppAffiliationDataScopeTests(TestCase):
         self.assertEqual(status_code, 200, payload)
         self.assertEqual(payload["grants"][0]["source"], "manual")
         self.assertEqual(payload["effective"]["affiliationIds"], [self.affiliation_a.id])
-        self.assertEqual(payload["effective"]["affiliations"][0]["source"], "current")
+        self.assertEqual(payload["effective"]["affiliations"][0]["source"], "manual")
 
     def test_admin_role_does_not_imply_all_affiliations(self) -> None:
         """앱 admin 역할만으로 전체 소속 데이터 접근이 생기지 않아야 합니다."""
@@ -8120,7 +8084,7 @@ class AppAffiliationDataScopeTests(TestCase):
         )
 
         self.assertEqual(effective["mode"], "selected")
-        self.assertEqual(effective["affiliationIds"], [self.affiliation_a.id])
+        self.assertEqual(effective["affiliationIds"], [])
 
     def test_explicit_all_mode_returns_only_active_affiliations(self) -> None:
         """사유와 함께 부여한 전체 모드는 활성 소속만 반환해야 합니다."""
@@ -8513,7 +8477,7 @@ class AppAffiliationDataScopeTests(TestCase):
         )
         self.assertEqual(
             set(effective["affiliationIds"]),
-            {self.affiliation_a.id, self.affiliation_b.id},
+            {self.affiliation_b.id},
         )
         conflict_payload, conflict_status = update_user_scope_affiliation_data(
             actor=self.actor,
@@ -8946,3 +8910,157 @@ class AuthorizationConcurrencyTests(TransactionTestCase):
             reason="동시 권한 부여 검증",
         ).exists()
         self.assertEqual(role_audit_exists, results["grant"][1] == 200)
+
+
+class RegistrationAffiliationSeparationTests(TestCase):
+    """일괄 등록과 소속·권한 분리의 새 계약을 검증합니다."""
+
+    def setUp(self):
+        """입력 SDWT와 하나의 line 관계를 준비합니다."""
+        self.option = _affiliation(user_sdwt_prod="REGISTER-A", line="L-A")
+        self.record = {"epid": "EPID-1", "sabun": "REG-1", "knox_id": "reg-one",
+                       "user_sdwt_prod": "REGISTER-A"}
+
+    def test_registration_dry_run_and_idempotency(self):
+        """검증 실행은 저장하지 않고 재실행은 기존 소속을 유지합니다."""
+        from .services import register_reference_users
+        self.assertEqual(register_reference_users(records=[self.record]), {"created": 1, "skipped": 0})
+        self.assertFalse(get_user_model().objects.filter(sabun="REG-1").exists())
+        register_reference_users(records=[self.record], apply=True)
+        user = get_user_model().objects.get(sabun="REG-1")
+        self.assertFalse(user.has_usable_password())
+        self.assertEqual(user.avatarid, "EPID-1")
+        self.assertEqual(user.current_affiliation.affiliation.line, "L-A")
+        self.assertFalse(UserSdwtProdAccess.objects.filter(user=user).exists())
+        self.assertFalse(UserAccess.objects.filter(user=user).exists())
+        self.assertFalse(UserScopeAffiliationGrant.objects.filter(user=user).exists())
+        self.assertEqual(register_reference_users(records=[dict(self.record, user_sdwt_prod="")], apply=True),
+                         {"created": 0, "skipped": 1})
+        self.assertEqual(get_current_user_sdwt_prod(user=user), "REGISTER-A")
+
+    def test_no_affiliation_and_all_or_nothing_validation(self):
+        """소속 없음은 허용하고 유효하지 않은 행은 전체 등록을 취소합니다."""
+        from .services import register_reference_users
+        invalid = dict(self.record, epid="EPID-2", sabun="REG-2", knox_id="reg-two", user_sdwt_prod="unknown")
+        with self.assertRaises(ValueError):
+            register_reference_users(records=[self.record, invalid], apply=True)
+        self.assertFalse(get_user_model().objects.filter(sabun="REG-1").exists())
+        register_reference_users(records=[dict(self.record, user_sdwt_prod="")], apply=True)
+        user = get_user_model().objects.get(sabun="REG-1")
+        self.assertIsNone(get_current_user_sdwt_prod(user=user))
+        with self.assertRaises(ValueError):
+            register_reference_users(records=[dict(self.record, epid="other")], apply=True)
+
+    def test_affiliation_does_not_grant_access_and_can_be_revoked(self):
+        """등록 소속은 암묵적 권한이 없고 명시 viewer도 승급하지 않습니다."""
+        from .services import register_reference_users, has_affiliation_capability
+        register_reference_users(records=[self.record], apply=True)
+        user = get_user_model().objects.get(sabun="REG-1")
+        self.assertEqual(get_accessible_user_sdwt_prods_for_user(user), set())
+        self.assertFalse(has_affiliation_capability(user=user, user_sdwt_prod="REGISTER-A", capability="read"))
+        actor = get_user_model().objects.create_superuser(sabun="REG-ADMIN")
+        payload, status = grant_or_revoke_access(grantor=actor, target_user=user,
+            target_group="REGISTER-A", action="grant", role="viewer", reason="검증")
+        self.assertEqual(status, 200, payload)
+        self.assertFalse(has_affiliation_capability(user=user, user_sdwt_prod="REGISTER-A", capability="write"))
+        payload, status = grant_or_revoke_access(grantor=actor, target_user=user,
+            target_group="REGISTER-A", action="revoke", role=None, reason="검증")
+        self.assertEqual(status, 200, payload)
+
+    def test_reference_updates_and_http_cannot_change_registration(self):
+        """참조 갱신·기존 사용자 입력 API가 소속을 덮어쓰지 않습니다."""
+        from .services import register_reference_users, sync_external_affiliations
+        register_reference_users(records=[self.record], apply=True)
+        user = get_user_model().objects.get(sabun="REG-1")
+        for sdwt in ("REGISTER-A", "REGISTER-B"):
+            result = sync_external_affiliations(records=[{"knox_id": "reg-one", "department": "Dept", "user_sdwt_prod": sdwt}])
+            self.assertEqual(result["flagged"], 0)
+        self.assertEqual(get_current_user_sdwt_prod(user=user), "REGISTER-A")
+        self.assertFalse(user.current_affiliation.requires_reconfirm)
+        self.client.force_login(user)
+        response = self.client.post(reverse("account-affiliation"), {"userSdwtProd": "REGISTER-B"}, content_type="application/json")
+        self.assertEqual(response.status_code, 405)
+
+    def test_identity_login_preserves_registered_affiliation(self):
+        """사번·EPID로 들어온 로그인은 기존 등록 사용자와 소속을 보존합니다."""
+        from .services import register_reference_users, upsert_user_identity
+        register_reference_users(records=[self.record], apply=True)
+        user, created = upsert_user_identity(identity={"avatarid": "EPID-1", "username": "로그인 이름"},
+                                            sabun="REG-1", knox_id="reg-one")
+        self.assertFalse(created)
+        self.assertEqual(get_current_user_sdwt_prod(user=user), "REGISTER-A")
+        self.assertEqual(get_accessible_user_sdwt_prods_for_user(user), set())
+
+    def test_csv_command_validates_then_applies(self):
+        """실제 CSV 명령은 기본 dry-run이며 명시 적용과 중복 입력을 검사합니다."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "users.csv"
+            path.write_text("epid,sabun,knox_id,user_sdwt_prod\nEPID-1,REG-1,reg-one,REGISTER-A\n", encoding="utf-8")
+            output = StringIO()
+            call_command("register_reference_users", str(path), stdout=output)
+            self.assertIn("저장하지 않음", output.getvalue())
+            self.assertFalse(get_user_model().objects.filter(sabun="REG-1").exists())
+            call_command("register_reference_users", str(path), apply=True, stdout=StringIO())
+            self.assertTrue(get_user_model().objects.filter(sabun="REG-1", avatarid="EPID-1").exists())
+            path.write_text("epid,sabun,knox_id,user_sdwt_prod\nEPID-2,REG-2,reg-two,REGISTER-A\nEPID-2,REG-3,reg-three,REGISTER-A\n", encoding="utf-8")
+            with self.assertRaises(CommandError):
+                call_command("register_reference_users", str(path), apply=True, stdout=StringIO())
+            self.assertFalse(get_user_model().objects.filter(sabun="REG-2").exists())
+
+
+
+class RegistrationAccessMigrationTests(TransactionTestCase):
+    """실제 이전 schema에서 파생 권한을 명시적 권한으로 이관합니다."""
+
+    def test_preserves_roles_ranges_and_department_fallback(self):
+        """viewer 승급·만료 grant·정책 fallback을 보존하고 거절은 유지합니다."""
+        executor = MigrationExecutor(connection)
+        previous = [("account", "0006_account_authorization_system")]
+        latest = [("account", "0007_separate_affiliation_access")]
+        executor.migrate(previous)
+        try:
+            old = executor.loader.project_state(previous).apps
+            User = old.get_model("account", "User")
+            AffiliationModel = old.get_model("account", "Affiliation")
+            Current = old.get_model("account", "UserCurrentAffiliation")
+            Scope = old.get_model("account", "AccessScope")
+            Role = old.get_model("account", "UserSdwtProdAccess")
+            Grant = old.get_model("account", "UserScopeAffiliationGrant")
+            Policy = old.get_model("account", "AccessPolicyRule")
+            Access = old.get_model("account", "UserAccess")
+            option = AffiliationModel.objects.create(user_sdwt_prod="MIG-A", line="L1", department="Fallback")
+            user = User.objects.create(sabun="MIG-REG", department="")
+            current = Current.objects.create(user=user, affiliation=option, requires_reconfirm=True)
+            role = Role.objects.create(user=user, affiliation=option, role="viewer")
+            portal, _ = Scope.objects.get_or_create(key="portal", defaults={"name": "Portal", "scope_type": "portal"})
+            scope = Scope.objects.create(key="migration-reg", name="Migration", data_scope_type="affiliation", include_current_affiliation=True)
+            denied = Scope.objects.create(key="migration-denied", name="Denied")
+            for target in (portal, scope, denied):
+                Policy.objects.create(scope=target, rule_type="department", value="Fallback")
+            Access.objects.create(user=user, scope=denied, status="denied", role="user")
+            grant = Grant.objects.create(user=user, scope=scope, affiliation=option,
+                                         is_active=False, expires_at=timezone.now() - timedelta(days=1))
+            executor = MigrationExecutor(connection)
+            executor.migrate(latest)
+            role.refresh_from_db()
+            grant.refresh_from_db()
+            current.refresh_from_db()
+            scope.refresh_from_db()
+            self.assertEqual(role.role, "member")
+            self.assertTrue(grant.is_active)
+            self.assertIsNone(grant.expires_at)
+            self.assertFalse(current.requires_reconfirm)
+            self.assertFalse(scope.include_current_affiliation)
+            self.assertEqual(Access.objects.get(user=user, scope=portal).status, "allowed")
+            self.assertEqual(Access.objects.get(user=user, scope=scope).status, "allowed")
+            self.assertEqual(Access.objects.get(user=user, scope=denied).status, "denied")
+            # 새 소속을 저장해도 이관된 범위는 이전 소속에 남습니다.
+            new_option = AffiliationModel.objects.create(user_sdwt_prod="MIG-B", line="L2", department="Other")
+            current.affiliation = new_option
+            current.save(update_fields=["affiliation"])
+            self.assertEqual(Grant.objects.get(pk=grant.pk).affiliation_id, option.pk)
+            self.assertEqual(Role.objects.get(pk=role.pk).affiliation_id, option.pk)
+        finally:
+            MigrationExecutor(connection).migrate(latest)

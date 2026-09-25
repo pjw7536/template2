@@ -233,7 +233,7 @@ class Command(BaseCommand):
                     "시스템 scope 데이터 유형이 잘못되었습니다: "
                     f"{scope.key}={scope.data_scope_type}, expected={expected_type}"
                 )
-            if scope.include_current_affiliation != expects_affiliation:
+            if scope.include_current_affiliation:
                 findings.append(
                     "시스템 scope 현재 소속 정책이 잘못되었습니다: "
                     f"{scope.key}={scope.include_current_affiliation}"

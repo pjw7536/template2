@@ -262,7 +262,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(payload["userSdwtProd"], "GROUP-X")
 
     def test_auth_me_department_falls_back_to_current_affiliation(self) -> None:
-        """사용자 부서가 공백이면 현재 앱 소속 부서를 auth 응답과 권한 판정에 사용해야 합니다."""
+        """소속 부서는 표시할 수 있지만 정책 판정의 부서로 대체하지 않습니다."""
 
         User = get_user_model()
         user = User.objects.create_user(sabun="S42345", password="test-password")
@@ -277,7 +277,7 @@ class AuthMeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["department"], "Dept")
-        self.assertEqual(payload["scopeAccess"]["portal"]["department"], "Dept")
+        self.assertEqual(payload["scopeAccess"]["portal"]["department"], "")
         self.assertEqual(payload["userSdwtProd"], "GROUP-FALLBACK")
 
     def test_auth_me_does_not_auto_assign_dev_affiliation_without_flag(self) -> None:

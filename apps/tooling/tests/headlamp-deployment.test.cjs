@@ -17,7 +17,7 @@ test('Headlamp 입력 오류와 context 누락은 클러스터 변경 전에 차
   run(['-m', 'unittest', 'discover', '-s', 'deploy/headlamp/tests', '-v']);
 });
 
-test('Headlamp 서버 단독 구성은 Keycloak 그룹에만 조회 권한을 연결한다', t => {
+test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 관리 권한을 연결한다', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'headlamp-server-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.cpSync(path.join(root, 'deploy/headlamp'), path.join(directory, 'deploy/headlamp'), {
@@ -55,12 +55,13 @@ test('Headlamp 서버 단독 구성은 Keycloak 그룹에만 조회 권한을 �
   assert.equal(docs.some(doc => doc.kind === 'ServiceAccount' && doc.metadata.name === 'headlamp-viewer'), false);
   assert.equal(docs.find(doc => doc.kind === 'Service').spec.type, 'ClusterIP');
   const bindings = docs.filter(doc => doc.kind === 'ClusterRoleBinding');
-  assert.deepEqual(bindings.map(doc => doc.roleRef.name).sort(), ['server-headlamp-discovery', 'view']);
+  assert.deepEqual(bindings.map(doc => doc.roleRef.name).sort(), ['cluster-admin']);
   for (const binding of bindings) {
-    assert.deepEqual(binding.subjects, [{ kind: 'Group', name: 'headlamp:/headlamp-viewers', apiGroup: 'rbac.authorization.k8s.io' }]);
+    assert.deepEqual(binding.subjects, [{ kind: 'Group', name: 'headlamp:/headlamp-admins', apiGroup: 'rbac.authorization.k8s.io' }]);
   }
-  const rules = docs.find(doc => doc.kind === 'ClusterRole').rules;
-  assert.deepEqual(rules, [{ apiGroups: [''], resources: ['nodes', 'namespaces'], verbs: ['get', 'list', 'watch'] }]);
+  assert.equal(bindings[0].metadata.name, 'server-headlamp-admin');
+  assert.equal(docs.some(doc => doc.kind === 'ClusterRole'), false);
+  assert.doesNotMatch(rendered, /server-headlamp-viewer|server-headlamp-discovery|headlamp-viewers/);
   const paths = run(['deploy/shared/scripts/app-paths.py', 'headlamp']).trim().split('\n');
   assert.deepEqual(paths, ['deploy/shared', 'docs', 'deploy/headlamp']);
 

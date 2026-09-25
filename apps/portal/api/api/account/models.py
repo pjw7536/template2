@@ -259,7 +259,7 @@ class Affiliation(models.Model):
 
 
 class UserCurrentAffiliation(models.Model):
-    """앱에서 실제 권한 판단에 사용하는 사용자의 현재 소속을 저장하는 모델입니다."""
+    """접근 권한과 독립적인 사용자 등록 소속을 저장하는 모델입니다."""
 
     class Sources(models.TextChoices):
         EXTERNAL_AUTO = "external_auto", "External Auto"

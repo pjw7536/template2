@@ -73,6 +73,7 @@
 | Command | 위치 | 목적 |
 | --- | --- | --- |
 | `check_access_permission_integrity` | `apps/portal/api/api/account/management/commands/check_access_permission_integrity.py` | 필수 `--phase` 기준 migration 전·후 접근 권한 정합성 점검 |
+| `register_reference_users` | `apps/portal/api/api/account/management/commands/register_reference_users.py` | 참조 CSV로 Portal 신규 사용자·소속 등록. 기본 dry-run, Keycloak 계정·그룹은 생성하지 않음 |
 | `backfill_assistant_run_access` | `apps/portal/api/api/assistant/management/commands/backfill_assistant_run_access.py` | legacy Assistant Run·메시지·요약·제목의 Profile과 권한 provenance를 batch 분류·보강 |
 | `ensure_dev_database` | `apps/portal/api/api/management/commands/ensure_dev_database.py` | dev 환경에서 Django 기본 DB와 필수 PostgreSQL extension 보장 |
 | `process_email_outbox` | `apps/portal/api/api/emails/management/commands/process_email_outbox.py` | pending `EmailOutbox`를 RAG insert/delete 호출로 처리 |

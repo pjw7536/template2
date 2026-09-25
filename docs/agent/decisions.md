@@ -328,6 +328,13 @@
 - 기존 통합 env도 읽을 수 있지만 새 비밀값 생성은 분리 파일에만 기록한다. 인증서·개인키 제외 규칙은 유지한다.
 - [실행·검증 기록](plans/deploy-public-env-secrets.md), [운영 안내](../../deploy/shared/docs/configuration/environment.md).
 
+## 2026-09-24: Headlamp 관리자 그룹 전환
+
+- 기존 조회 그룹 정책을 대체한다. 최상위 headlamp-admins에 cluster-admin을 연결한다.
+- 사용자가 클러스터 전체 관리를 명시 승인했다. 기존 조회 사용자를 자동 승격하지 않는다.
+- Helm 관리 viewer/discovery RBAC를 제거하고 Keycloak 그룹 전환은 운영 안내에 따라 수행한다.
+- 실행 계획: [Headlamp 관리자 그룹](plans/headlamp-admin-group.md).
+
 ## 2026-09-24: Keycloak 실제 소속 속성
 
 - user_sdwt_prod와 line_id는 사용자 실제 소속 속성으로 추가하고 앱에 같은 이름으로 발급한다.
@@ -335,6 +342,14 @@
 - 접근 가능 범위와 등급은 별도 그룹으로 관리한다. 속성 정의·출력 mapper만 추가하며 테이블 동기화와 Django 전환은 후속 작업이다.
 - [실행 계획](plans/keycloak-affiliation-claims.md).
 
+
+## 2026-09-25: Portal 사전 등록 소속과 접근 권한 분리
+
+- 참조테이블 CSV로 사용자를 사전 등록할 때만 SDWT를 저장한다. EPID는 avatarid에 보관하고 기존 sabun 로그인 계약을 유지한다.
+- 등록 이후 참조값 갱신으로 소속을 덮어쓰거나 사용자 입력·재확인을 요구하지 않는다. 소속 없음도 허용한다.
+- SDWT와 line은 기존 Affiliation 목록에서 연결하며 소속으로 권한을 자동 부여하지 않는다.
+- 기존 소속 기반 역할·앱 데이터 범위·소속 부서 fallback 접근은 migration 0007에서 명시적 권한으로 보존한다.
+- Keycloak 소속 확장은 만들지 않으며 현재 단계의 소속 원본은 Portal이다. [실행·검증 기록](plans/affiliation-initial-reference.md).
 
 ## 2026-09-25: SDWT 하위 그룹으로 모든 업무 앱의 등급 통일
 

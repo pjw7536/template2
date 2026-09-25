@@ -78,8 +78,7 @@ def _resolve_user_sdwt_prod_role(
 ) -> str | None:
     """사용자의 대상 소속 실효 역할을 반환합니다.
 
-    현재 소속은 명시적 접근 권한 행이 없어도 최소 member로 인정합니다.
-    다른 소속은 명시적으로 부여된 viewer/member/manager 역할만 반환합니다.
+    소속과 무관하게 명시적으로 부여된 viewer/member/manager 역할만 반환합니다.
     """
 
     normalized_target = _normalize_user_sdwt_prod(user_sdwt_prod)
@@ -98,12 +97,6 @@ def _resolve_user_sdwt_prod_role(
         user=user,
         user_sdwt_prod=normalized_target,
     )
-    current_user_sdwt_prod = selectors.get_current_user_sdwt_prod(user=user)
-    if _same_user_sdwt_prod(current_user_sdwt_prod, normalized_target):
-        if access and access.role == UserSdwtProdAccess.Roles.MANAGER:
-            return UserSdwtProdAccess.Roles.MANAGER
-        return UserSdwtProdAccess.Roles.MEMBER
-
     if access and access.role in {
         UserSdwtProdAccess.Roles.VIEWER,
         UserSdwtProdAccess.Roles.MEMBER,

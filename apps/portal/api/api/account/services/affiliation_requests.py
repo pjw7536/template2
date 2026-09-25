@@ -21,7 +21,6 @@ from django.utils import timezone
 
 from ..models import UserCurrentAffiliation, UserSdwtProdChange
 from .. import selectors
-from .access import downgrade_member_access, ensure_self_access
 from .utils import (
     _build_user_sdwt_display_map,
     _is_privileged_user,
@@ -301,7 +300,6 @@ def _apply_affiliation_change(*, change: UserSdwtProdChange, approver: Any | Non
     # 1) 현재 앱 소속 업데이트
     # -----------------------------------------------------------------------------
     target_user = change.user
-    previous_user_sdwt = (getattr(change, "from_user_sdwt_prod", None) or "").strip()
     now = timezone.now()
     option = selectors.get_affiliation_option_by_user_sdwt_prod(
         user_sdwt_prod=change.to_user_sdwt_prod
@@ -343,22 +341,6 @@ def _apply_affiliation_change(*, change: UserSdwtProdChange, approver: Any | Non
             "rejection_reason",
         ]
     )
-
-    audit_actor = approver or target_user
-    audit_reason = f"소속 변경 요청 #{change.id} 적용"
-    ensure_self_access(
-        target_user,
-        role="member",
-        audit_actor=audit_actor,
-        audit_reason=audit_reason,
-    )
-    if previous_user_sdwt and not _same_user_sdwt_prod(previous_user_sdwt, change.to_user_sdwt_prod):
-        downgrade_member_access(
-            user=target_user,
-            user_sdwt_prod=previous_user_sdwt,
-            audit_actor=audit_actor,
-            audit_reason=audit_reason,
-        )
 
     return {
         "status": "applied",
@@ -502,7 +484,6 @@ def request_affiliation_change(
         if _same_user_sdwt_prod(current_user_sdwt, normalized_target):
             return {"error": "already current affiliation"}, 400
 
-        ensure_self_access(locked_user, role="member")
         existing_pending = selectors.get_pending_user_sdwt_prod_change(
             user=locked_user
         )

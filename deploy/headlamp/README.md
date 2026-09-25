@@ -2,8 +2,8 @@
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-Keycloak OIDC로 로그인하며 `/headlamp-viewers` 그룹에 `view`와 nodes/namespaces 조회 권한을 부여합니다.
-기본 `view`는 Secret 조회·수정·Pod exec 권한을 포함하지 않습니다. 다른 RBAC·집계 권한은 합산됩니다.
+Keycloak OIDC로 로그인하며 `/headlamp-admins` 그룹에 `cluster-admin` 전체 관리 권한을 부여합니다.
+모든 namespace의 조회·수정·삭제, Secret 접근과 RBAC 관리를 포함합니다. 다른 RBAC 권한은 합산됩니다.
 Headlamp Pod 자체에는 사용자 조회 권한을 부여하지 않으며 공용 로그인용 `headlamp-viewer` 계정은 제거합니다.
 
 ## 기본 운영 설정

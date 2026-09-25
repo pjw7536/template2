@@ -3,7 +3,7 @@
 [Headlamp 운영 안내](README.md) · [공용 인증서 폴더](../shared/certs/README.md)
 
 이 작업을 마치면 Headlamp에서 **Sign in → Keycloak 로그인**으로 접속합니다.
-`headlamp-viewers` 그룹에 넣은 사람만 노드·Pod·로그를 볼 수 있습니다. 수정 권한은 주지 않습니다.
+`headlamp-admins` 그룹에 넣은 사람에게 클러스터 전체 관리 권한을 부여합니다.
 
 **CP1의 `deploy/shared/certs/`의 사이트별 하위 폴더에 아래 10개 파일을 이미 넣었다는 전제입니다.**
 Keycloak은 기존 HTTPS 주소로 접속되는 상태에서 진행합니다.
@@ -129,7 +129,7 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 
 ### 2-2. 로그인 정보에 그룹 이름 넣기 — 반드시 필요
 
-이 설정이 있어야 Kubernetes가 사용자의 `headlamp-viewers` 가입 여부를 알 수 있습니다.
+이 설정이 있어야 Kubernetes가 사용자의 `headlamp-admins` 가입 여부를 알 수 있습니다.
 
 1. **Clients → headlamp → Client scopes**를 엽니다.
 2. `profile`, `email`의 **Assigned type**이 **Default**인지 확인합니다. 없으면 **Add client scope**로 추가합니다.
@@ -152,13 +152,13 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 
 ### 2-3. 사용할 사람을 그룹에 넣기
 
-1. 왼쪽 **Groups → Create group**에서 `headlamp-viewers`를 만듭니다. 다른 그룹 아래가 아닌 **최상위**에 만듭니다. 이미 있으면 그대로 사용합니다.
+1. 왼쪽 **Groups → Create group**에서 `headlamp-admins`를 만듭니다. 다른 그룹 아래가 아닌 **최상위**에 만듭니다. 이미 있으면 그대로 사용합니다.
 2. **Users**에서 Headlamp를 사용할 사람을 선택합니다.
-3. 그 사용자의 **Groups → Join Group**에서 `headlamp-viewers`를 선택해 가입시킵니다.
+3. 그 사용자의 **Groups → Join Group**에서 `headlamp-admins`를 선택해 가입시킵니다.
 4. 허용할 사람마다 반복합니다. 모든 사용자의 기본 가입 그룹으로 지정하지 않습니다.
 
 그룹 이름을 입력할 때 `/`는 넣지 않습니다. 2-2에서 **Full group path**를 켰으므로
-로그인 정보에는 자동으로 `/headlamp-viewers`라는 전체 경로가 들어갑니다.
+로그인 정보에는 자동으로 `/headlamp-admins`라는 전체 경로가 들어갑니다.
 
 ### 2-4. Client secret 확인
 
@@ -168,7 +168,7 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 **Credentials** 탭이 없으면 2-1의 **Client authentication**이 On인지 확인합니다.
 
 **완료 기준:** `headlamp` client와 `headlamp-groups` mapper가 있고,
-허용할 사용자가 `headlamp-viewers` 그룹에 들어 있으며 Client secret을 확인했습니다.
+허용할 사용자가 `headlamp-admins` 그룹에 들어 있으며 Client secret을 확인했습니다.
 이제 3번으로 넘어갑니다.
 
 <details>
@@ -286,7 +286,7 @@ Headlamp가 사용할 CA 준비는 끝났으며, 다음 단계에서 API server�
 >
 > - Keycloak issuer URL: `1번의 HEADLAMP_OIDC_ISSUER_URL 값`
 > - Client ID: `headlamp`
-> - 허용 그룹: Keycloak의 최상위 `/headlamp-viewers`
+> - 허용 그룹: Keycloak의 최상위 `/headlamp-admins`
 > - Kubernetes 사용자 이름: `sub` 값, 앞에 `headlamp:` 추가
 > - Kubernetes 그룹 이름: `groups` 값, 앞에 `headlamp:` 추가
 > - 서명 알고리즘: `RS256` — Keycloak realm 설정도 확인
@@ -327,12 +327,22 @@ make headlamp-ui KUBE_CONTEXT="$KUBE_CONTEXT"
 출력된 HTTPS 주소를 브라우저에서 엽니다.
 
 1. **Sign in**을 누르고 Keycloak으로 로그인합니다.
-2. 그룹에 가입한 계정으로 노드·Pod·로그가 보이는지 확인합니다.
+2. 관리자 그룹에 가입한 계정으로 노드·Pod·로그 조회와 아래 RBAC 전체 관리 검사를 확인합니다.
 3. 별도 브라우저나 시크릿 창에서 그룹에 넣지 않은 계정으로 로그인합니다. 이 계정은 리소스를 볼 수 없어야 합니다.
 4. 새로고침·재접속 후 수동 토큰 입력을 요구하지 않는지 확인합니다.
 
-**완료 기준:** 허용한 사용자만 리소스를 조회할 수 있고, 수정·Secret 조회·Pod exec 권한은 없습니다.
+**완료 기준:** 관리자 그룹에 전체 관리 권한이 있고, 다른 권한을 별도로 받지 않은 그룹 밖 사용자는 리소스에 접근할 수 없습니다.
 기존 공용 토큰용 `headlamp-viewer` 계정은 이번 배포에서 제거됩니다.
+
+### 기존 조회 그룹에서 전환
+
+`headlamp-admins`는 새 최상위 그룹으로 만들고 전체 관리할 사람만 가입시킵니다.
+기존 `headlamp-viewers`를 이름 변경하면 모든 기존 조회 사용자가 관리자가 되므로 이름을 변경하지 않습니다.
+`make headlamp-up`은 새 `server-headlamp-admin` 바인딩을 만들고 Helm이 관리하던
+`server-headlamp-viewer` 바인딩과 `server-headlamp-discovery` 역할·바인딩을 제거합니다.
+새 바인딩 이름을 사용하므로 변경 불가능한 기존 `roleRef`를 수정하지 않습니다.
+관리자 재로그인과 아래 권한 검사를 통과한 뒤 Keycloak의 기존 `headlamp-viewers` 그룹을 삭제합니다.
+Helm 외부에서 만든 기존 바인딩은 별도로 확인·정리합니다.
 
 ## 잘 안 될 때
 
@@ -411,28 +421,34 @@ kubectl --context "$KUBE_CONTEXT" get --raw=/readyz
 
 ### 권한 검사
 
-ID token에 `groups: ["/headlamp-viewers"]`가 있어야 합니다.
-API server가 prefix를 붙여 `headlamp:/headlamp-viewers`로 인식하고, 이 그룹에
-`view`와 nodes/namespaces 조회 권한이 연결됩니다.
+ID token에 `groups: ["/headlamp-admins"]`가 있어야 합니다.
+API server가 prefix를 붙여 `headlamp:/headlamp-admins`로 인식하고, 이 그룹에
+`cluster-admin` 전체 관리 권한이 연결됩니다.
 
 아래는 관리자 kubeconfig로 실행하는 RBAC 검사입니다. 실제 브라우저 로그인 검사도 별도로 수행합니다.
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" auth can-i list nodes \
-  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-viewers --as-group=system:authenticated
+  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
 # 기대: yes
 kubectl --context "$KUBE_CONTEXT" auth can-i create deployments --all-namespaces \
-  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-viewers --as-group=system:authenticated
-# 기대: no
+  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
+# 기대: yes
 kubectl --context "$KUBE_CONTEXT" auth can-i get secrets --all-namespaces \
-  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-viewers --as-group=system:authenticated
+  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
+# 기대: yes
+kubectl --context "$KUBE_CONTEXT" auth can-i '*' '*' --all-namespaces \
+  --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
+# 기대: yes
+kubectl --context "$KUBE_CONTEXT" auth can-i list nodes \
+  --as=headlamp:old-viewer --as-group=headlamp:/headlamp-viewers --as-group=system:authenticated
 # 기대: no
 kubectl --context "$KUBE_CONTEXT" auth can-i list nodes \
   --as=headlamp:rbac-outsider --as-group=system:authenticated
 # 기대: no
 ```
 
-Kubernetes 권한은 합산됩니다. 다른 RBAC 바인딩이나 `view` 집계 확장도 확인합니다.
+Kubernetes 권한은 합산됩니다. 다른 RBAC 바인딩도 확인합니다.
 기존 Helm release 밖에서 만든 `headlamp-viewer` 관련 리소스가 있다면 소유권과 권한을 별도로 점검합니다.
 그룹 탈퇴는 기존 ID token이 만료될 때까지 즉시 반영되지 않을 수 있습니다.
 토큰 갱신 후 로그인 유지·권한 반영도 확인합니다.

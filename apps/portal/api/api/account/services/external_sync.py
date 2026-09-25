@@ -18,7 +18,7 @@ from typing import Any, Iterable
 from django.db import transaction
 from django.utils import timezone
 
-from ..models import ExternalAffiliationSnapshot, UserCurrentAffiliation
+from ..models import ExternalAffiliationSnapshot
 from .. import selectors
 from .utils import _same_user_sdwt_prod
 
@@ -47,7 +47,7 @@ def sync_external_affiliations(
     *,
     records: Iterable[dict[str, object]],
 ) -> dict[str, int]:
-    """외부 예측 소속 스냅샷을 업서트하고 변경 시 재확인 플래그를 세웁니다.
+    """외부 예측 소속 스냅샷만 업서트하며 등록된 소속은 보존합니다.
 
     입력:
     - records: knox_id/department/user_sdwt_prod/source_updated_at을 포함한 레코드 목록
@@ -57,7 +57,6 @@ def sync_external_affiliations(
 
     부작용:
     - ExternalAffiliationSnapshot 업서트
-    - 현재 앱 소속의 requires_reconfirm 갱신
 
     오류:
     - 없음
@@ -70,13 +69,10 @@ def sync_external_affiliations(
     created = 0
     updated = 0
     unchanged = 0
-    flagged = 0
 
     record_list = [record for record in records if isinstance(record, dict)]
-    predicted_by_knox: dict[str, str] = {}
     to_create: list[ExternalAffiliationSnapshot] = []
     to_update: list[ExternalAffiliationSnapshot] = []
-    changed_knox_ids: list[str] = []
     processed_existing_ids: list[str] = []
     bulk_batch_size = 5000
     # 동일 knox_id 중복 입력으로 인한 고유 제약 충돌을 피하려고 마지막 레코드로 정규화합니다.
@@ -107,7 +103,6 @@ def sync_external_affiliations(
         if not isinstance(source_updated_at, datetime):
             source_updated_at = now
 
-        predicted_by_knox[knox_id] = predicted
         username_provided, username = _resolve_snapshot_username(
             record=record,
         )
@@ -143,8 +138,6 @@ def sync_external_affiliations(
             snapshot.source_updated_at = source_updated_at
             to_update.append(snapshot)
             updated += 1
-            if changed:
-                changed_knox_ids.append(knox_id)
         else:
             unchanged += 1
 
@@ -163,51 +156,5 @@ def sync_external_affiliations(
         if processed_existing_ids:
             ExternalAffiliationSnapshot.objects.filter(knox_id__in=processed_existing_ids).update(last_seen_at=now)
 
-    # -----------------------------------------------------------------------------
-    # 6) 사용자 재확인 플래그 갱신
-    # -----------------------------------------------------------------------------
-    if changed_knox_ids:
-        users_by_knox = selectors.get_users_by_knox_ids(knox_ids=changed_knox_ids)
-        user_ids = [user.id for user in users_by_knox.values() if user]
-        pending_user_ids = selectors.get_pending_user_sdwt_prod_changes_by_user_ids(user_ids=user_ids)
-        flagged_affiliations = []
-
-        for knox_id in changed_knox_ids:
-            user = users_by_knox.get(knox_id)
-            if user is None:
-                continue
-
-            if user.id in pending_user_ids:
-                continue
-
-            current_affiliation = selectors.get_current_affiliation_record(user=user)
-            if current_affiliation is None:
-                continue
-
-            current_user_sdwt = (
-                current_affiliation.affiliation.user_sdwt_prod
-                if current_affiliation.affiliation_id
-                else ""
-            ).strip()
-            if not current_user_sdwt:
-                continue
-
-            predicted = (predicted_by_knox.get(knox_id) or "").strip()
-            if not predicted or _same_user_sdwt_prod(current_user_sdwt, predicted):
-                continue
-
-            current_affiliation.requires_reconfirm = True
-            flagged_affiliations.append(current_affiliation)
-
-        if flagged_affiliations:
-            UserCurrentAffiliation.objects.bulk_update(
-                flagged_affiliations,
-                ["requires_reconfirm"],
-                batch_size=bulk_batch_size,
-            )
-            flagged = len(flagged_affiliations)
-
-    # -----------------------------------------------------------------------------
-    # 7) 결과 반환
-    # -----------------------------------------------------------------------------
-    return {"created": created, "updated": updated, "unchanged": unchanged, "flagged": flagged}
+    # 참조 갱신은 이미 등록한 사용자의 소속과 확인 상태에 영향을 주지 않습니다.
+    return {"created": created, "updated": updated, "unchanged": unchanged, "flagged": 0}

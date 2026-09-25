@@ -106,24 +106,7 @@ def _normalize_positive_int_set(values: Iterable[Any], *, allow_cast: bool = Fal
 def _resolved_access_department_expression():
     """정책 비교용 부서를 PostgreSQL `Lower` 결과로 반환합니다."""
 
-    return Lower(
-        Coalesce(
-            NullIf(Trim("department"), Value("")),
-            NullIf(
-                Case(
-                    When(
-                        current_affiliation__affiliation__is_active=True,
-                        then=Trim("current_affiliation__affiliation__department"),
-                    ),
-                    default=Value(""),
-                    output_field=CharField(),
-                ),
-                Value(""),
-            ),
-            Value(""),
-            output_field=CharField(),
-        ),
-    )
+    return Lower(Coalesce(NullIf(Trim("department"), Value("")), Value("")))
 
 
 def _active_access_policy_queryset(
@@ -326,7 +309,7 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
         return _collapse_user_sdwt_prod_values(values)
 
     # -----------------------------------------------------------------------------
-    # 3) 접근 권한 및 본인 소속 포함
+    # 3) 명시적 접근 권한만 포함
     # -----------------------------------------------------------------------------
     values = set(
         UserSdwtProdAccess.objects.filter(
@@ -338,9 +321,6 @@ def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
         )
     )
 
-    user_sdwt_prod = get_current_user_sdwt_prod(user=user)
-    if isinstance(user_sdwt_prod, str) and user_sdwt_prod.strip():
-        values.add(user_sdwt_prod)
     # -----------------------------------------------------------------------------
     # 4) 최종 정제 및 반환
     # -----------------------------------------------------------------------------
@@ -2488,3 +2468,11 @@ def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, s
         or current_user_sdwt_prod
         or UNCLASSIFIED_USER_SDWT_PROD,
     }
+
+
+def list_users_by_registration_identifiers(*, sabun: str, epid: str, knox_id: str) -> list[Any]:
+    """사전 등록 식별자 중 하나라도 겹치는 사용자를 잠가 조회합니다."""
+
+    return list(get_user_model().objects.select_for_update().filter(
+        Q(sabun=sabun) | Q(avatarid=epid) | Q(knox_id=knox_id),
+    ))

@@ -335,7 +335,7 @@ def get_affiliation_reconfirm_status(*, user: Any) -> dict[str, object]:
     predicted = snapshot.predicted_user_sdwt_prod if snapshot else None
     current_values = selectors.get_current_affiliation_values(user=user)
     return {
-        "requiresReconfirm": bool(current_values.get("requires_reconfirm", False)),
+        "requiresReconfirm": False,
         "predictedUserSdwtProd": predicted,
         "currentUserSdwtProd": current_values.get("user_sdwt_prod"),
     }
@@ -346,68 +346,9 @@ def auto_approve_affiliation_from_snapshot(
     user: Any,
     timezone_name: str,
 ) -> Tuple[dict[str, object], int] | None:
-    """신규 사용자 첫 로그인 시 외부 예측 소속으로 자동 승인/적용합니다.
+    """로그인 시 참조값으로 등록 소속을 변경하지 않습니다."""
 
-    입력:
-    - user: Django 사용자 객체
-    - timezone_name: 시간대 이름
-
-    반환:
-    - Tuple[dict[str, object], int] | None: 승인 결과 또는 None(미적용)
-
-    부작용:
-    - UserSdwtProdChange 생성 및 승인/적용
-    - 사용자 소속 필드 업데이트
-
-    오류:
-    - 없음(조건 불충족 시 None 반환)
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 기본 조건 확인
-    # -----------------------------------------------------------------------------
-    if not user:
-        return None
-
-    current_user_sdwt = (selectors.get_current_user_sdwt_prod(user=user) or "").strip()
-    if current_user_sdwt:
-        return None
-
-    knox_id = (getattr(user, "knox_id", None) or "").strip()
-    if not knox_id:
-        return None
-
-    if selectors.get_pending_user_sdwt_prod_change(user=user) is not None:
-        return None
-
-    # -----------------------------------------------------------------------------
-    # 2) 외부 예측 소속 확인
-    # -----------------------------------------------------------------------------
-    snapshot = selectors.get_external_affiliation_snapshot_by_knox_id(knox_id=knox_id)
-    if snapshot is None:
-        return None
-
-    predicted = (snapshot.predicted_user_sdwt_prod or "").strip()
-    if not predicted:
-        return None
-
-    # -----------------------------------------------------------------------------
-    # 3) 소속 옵션 확인
-    # -----------------------------------------------------------------------------
-    option = selectors.get_affiliation_option_by_user_sdwt_prod(user_sdwt_prod=predicted)
-    if option is None:
-        return None
-
-    # -----------------------------------------------------------------------------
-    # 4) 변경 요청 생성(예측값 일치 시 자동 적용)
-    # -----------------------------------------------------------------------------
-    return request_affiliation_change(
-        user=user,
-        option=option,
-        to_user_sdwt_prod=predicted,
-        effective_from=timezone.now(),
-        timezone_name=timezone_name,
-    )
+    return None
 
 
 def ensure_affiliation_option(

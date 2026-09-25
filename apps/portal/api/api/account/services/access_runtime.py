@@ -385,7 +385,7 @@ def _build_access_payload(
         "scope": scope.key,
         "scopeType": scope.scope_type,
         "dataScopeType": scope.data_scope_type,
-        "includeCurrentAffiliation": scope.include_current_affiliation,
+        "includeCurrentAffiliation": False,
         "dataScopeMode": (
             user_access.data_scope_mode
             if user_access and user_access.status == UserAccess.Status.ALLOWED
@@ -498,7 +498,7 @@ def _serialize_scope(scope: AccessScope) -> dict[str, object]:
         "name": scope.name,
         "scopeType": scope.scope_type,
         "dataScopeType": scope.data_scope_type,
-        "includeCurrentAffiliation": scope.include_current_affiliation,
+        "includeCurrentAffiliation": False,
         "isActive": scope.is_active,
         "requestable": scope.requestable,
     }
@@ -580,14 +580,7 @@ def _serialize_user_access(user_access: UserAccess) -> dict[str, object]:
 def _get_user_department(*, user: Any) -> str:
     """포털 정책 판정에 사용할 사용자 부서를 반환합니다."""
 
-    department = (getattr(user, "department", None) or "").strip()
-    if department:
-        return department
-    current_affiliation = getattr(user, "current_affiliation", None)
-    affiliation = getattr(current_affiliation, "affiliation", None)
-    if affiliation is not None and not affiliation.is_active:
-        affiliation = None
-    return (getattr(affiliation, "department", None) or "").strip()
+    return (getattr(user, "department", None) or "").strip()
 
 
 def _has_access_bypass(*, user: Any) -> bool:

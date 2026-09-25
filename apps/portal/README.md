@@ -69,3 +69,35 @@ Airflow는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 �
 루트에서 `make install`을 실행하면 Web과 도구의 독립 lockfile로 각각 의존성을 설치합니다.
 기존 Python 가상환경·생성 산출물은 새 경로에서 재생성합니다. API 실행·검증은 Compose 컨테이너를 사용합니다.
 실제 env 내용과 DB·파일 데이터 경로는 유지합니다.
+
+## 참조 파일로 사용자 사전 등록
+
+사용자의 등록 소속과 접근 권한은 별도로 관리합니다. SDWT 입력은 관리자 일괄
+등록 시에만 받으며 로그인 시 소속 입력·재확인을 요구하지 않습니다. 현재 소속을
+접근 범위에 자동으로 포함하지 않습니다. 기존 소속에서 파생되던 권한은 account
+migration `0007`이 명시적 역할·앱별 소속 grant로 보존합니다. migration은 기존
+권한을 자동 회수하지 않으며 역방향 실행도 이관한 권한을 삭제하지 않습니다.
+
+참조테이블을 UTF-8 CSV로 내보냅니다. 필수 헤더는 `epid,sabun,knox_id,user_sdwt_prod`,
+선택 헤더는 `username,email,department`입니다. EPID는 현재 모델의 `avatarid`에
+저장하고 로그인은 기존 사번(`sabun`)으로 계정을 연결합니다. `department`는 인증
+identity 부서이며 SDWT에서 자동 복사하지 않습니다. 기존 부서 접근 정책은 유지됩니다.
+
+SDWT는 기존 활성 조직 목록(`Affiliation`)에 있어야 하며 line은 그 조직에서
+조회합니다. SDWT가 없는 사용자는 CSV의 해당 칸을 비웁니다. 신규 계정에는 비밀번호나
+명시적 접근 권한을 부여하지 않습니다. 앱 접근과 데이터 범위는 권한 관리 화면에서
+별도로 부여합니다. 동일한 EPID·사번·Knox ID의 기존 계정은 건너뛰며, 일부 식별자만
+충돌하면 전체 등록을 취소합니다. 재실행으로 기존 사용자 소속을 덮어쓰지 않습니다.
+
+개발 환경의 DB와 최신 migration을 준비한 뒤 저장소 루트에서 실행합니다.
+
+```bash
+# 전체 파일 검증: 저장하지 않습니다.
+make register-reference-users REFERENCE_USERS_CSV=/absolute/path/users.csv
+# 검증한 파일을 등록합니다.
+make register-reference-users REFERENCE_USERS_CSV=/absolute/path/users.csv REGISTER_REFERENCE_USERS_APPLY=1
+```
+
+서버에서는 기존 API 이미지에 포함된 `manage.py register_reference_users` 명령에
+`/data/account` 아래 읽기 전용으로 마운트한 CSV 경로를 전달합니다. 기본은 dry-run,
+`--apply`가 있을 때만 저장합니다. 실제 참조 CSV·인증정보는 저장소에 커밋하지 않습니다.

@@ -87,7 +87,11 @@ from .bootstrap import (
 from .users import get_user_by_knox_id
 from .identity import upsert_user_identity
 
+from .registration import register_reference_users
+
+
 __all__ = [
+    "register_reference_users",
     "AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN",
     "AFFILIATION_AUDIT_SOURCE_DEV_SEED",
     "AFFILIATION_AUDIT_SOURCE_SYSTEM_SYNC",

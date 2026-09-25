@@ -1,5 +1,3 @@
-import { useState } from "react"
-
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,7 +7,7 @@ import { useAuth } from "@/lib/auth"
 import { AffiliationCard } from "../components/AffiliationCard"
 import { AffiliationHistoryCard } from "../components/AffiliationHistoryCard"
 import { ManageableGroupsCard } from "../components/ManageableGroupsCard"
-import { useAccountOverview, useAffiliation, useUpdateAffiliation } from "../hooks/useAccountData"
+import { useAccountOverview, useAffiliation } from "../hooks/useAccountData"
 import { buildAccountSummaryModel } from "../utils/accountOverview"
 
 function SummaryMetric({ label, value, description, badge }) {
@@ -60,7 +58,7 @@ function AccountSummaryPanel({ pageTitle, profile, summary }) {
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryMetric label="사용자" value={profile?.username || "미지정"} description={profile?.knoxId || "Knox ID 미지정"} />
-          <SummaryMetric label="멤버 권한" value={summary?.roleLabel} description="현재 소속 기준 권한" />
+          <SummaryMetric label="멤버 권한" value={summary?.roleLabel} description="명시적으로 부여된 권한" />
           <SummaryMetric label="현재 소속" value={summary?.affiliationLabel} description="Department / Line / user_sdwt_prod" />
           <SummaryMetric
             label="최근 요청"
@@ -93,9 +91,6 @@ export default function AccountPage() {
     isLoading: affiliationLoading,
     error: affiliationError,
   } = useAffiliation()
-  const updateAffiliationMutation = useUpdateAffiliation()
-  const [submitMessage, setSubmitMessage] = useState("")
-  const [submitError, setSubmitError] = useState("")
 
   const pageTitle = user?.username ? `내 계정 · ${user.username}` : "내 계정"
   const profile = overviewData?.user
@@ -111,18 +106,6 @@ export default function AccountPage() {
       history,
     })
 
-  const handleAffiliationSubmit = async (payload, onComplete) => {
-    setSubmitMessage("")
-    setSubmitError("")
-    try {
-      await updateAffiliationMutation.mutateAsync(payload)
-      setSubmitMessage("소속 변경 요청이 접수되었습니다. 승인 결과는 상태/이력에서 확인할 수 있습니다.")
-      onComplete?.()
-    } catch (error) {
-      setSubmitError(error?.message || "소속 변경 요청에 실패했습니다.")
-    }
-  }
-
   const affiliationContent = affiliationLoading ? (
     <Skeleton className="h-80 w-full" />
   ) : affiliationError ? (
@@ -132,13 +115,7 @@ export default function AccountPage() {
       </p>
     </div>
   ) : (
-    <AffiliationCard
-      data={affiliationData}
-      onSubmit={handleAffiliationSubmit}
-      isSubmitting={updateAffiliationMutation.isPending}
-      error={submitError}
-      successMessage={submitMessage}
-    />
+    <AffiliationCard data={affiliationData} />
   )
 
   if (!hasPortalAccess) {
@@ -147,7 +124,7 @@ export default function AccountPage() {
         <section className="space-y-1">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">계정 및 소속</h2>
           <p className="text-sm text-muted-foreground">
-            포털 접근 승인에 사용할 현재 소속을 확인하거나 변경할 수 있습니다.
+            등록된 소속을 확인합니다. 접근 권한은 관리자가 별도로 부여합니다.
           </p>
         </section>
         <div className="min-w-0">{affiliationContent}</div>

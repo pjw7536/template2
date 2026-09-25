@@ -110,25 +110,12 @@ def _resolve_affiliation_scope_state(
     affiliation_by_id: dict[int, Any] = {}
     source_by_id: dict[int, str] = {}
 
-    # -----------------------------------------------------------------------------
-    # 1) 앱 정책이 허용한 현재 소속을 파생 범위로 추가
-    # -----------------------------------------------------------------------------
-    if scope.include_current_affiliation:
-        current = selectors.get_current_affiliation_record(user=user)
-        affiliation = getattr(current, "affiliation", None)
-        if affiliation is not None and affiliation.is_active:
-            affiliation_by_id[affiliation.id] = affiliation
-            source_by_id[affiliation.id] = "current"
-
-    # -----------------------------------------------------------------------------
-    # 2) 앱에 명시적으로 부여된 활성·미만료 소속을 합산
-    # -----------------------------------------------------------------------------
+    # 소속 정보와 무관하게 명시된 활성·미만료 권한만 합산합니다.
     for grant in selectors.list_active_scope_affiliation_grants(
         user=user,
         scope=scope,
     ):
         affiliation_by_id[grant.affiliation_id] = grant.affiliation
-        # 현재 소속과 명시 grant가 겹치면 자동 포함 근거를 대표 source로 유지합니다.
         source_by_id.setdefault(grant.affiliation_id, grant.source)
 
     affiliations = sorted(
@@ -310,7 +297,7 @@ def get_user_scope_affiliation_data(
             "key": scope.key,
             "name": scope.name,
             "dataScopeType": scope.data_scope_type,
-            "includeCurrentAffiliation": scope.include_current_affiliation,
+            "includeCurrentAffiliation": False,
         },
         "dataScopeMode": (
             user_access.data_scope_mode

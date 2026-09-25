@@ -82,7 +82,7 @@ def has_affiliation_capability(
 ) -> bool:
     """사용자가 대상 소속에서 요청 capability를 보유하는지 반환합니다.
 
-    현재 소속은 최소 member로, 명시적인 과거·추가 소속은 저장된 역할로 판정합니다.
+    모든 소속에서 명시적으로 저장된 역할로 판정합니다.
     staff/superuser는 기존 소속 특권 정책에 따라 모든 capability를 보유합니다.
     """
 
@@ -129,32 +129,7 @@ def has_affiliation_capability_for_ids(
         user=user,
         affiliation_ids=normalized_ids,
     )
-    current = getattr(user, "current_affiliation", None)
-    current_affiliation = getattr(current, "affiliation", None)
-    current_affiliation_id = (
-        current.affiliation_id
-        if current is not None
-        and current_affiliation is not None
-        and current_affiliation.is_active
-        else None
-    )
-
-    effective_roles: dict[int, str] = {}
-    for affiliation_id in normalized_ids:
-        explicit_role = explicit_roles.get(affiliation_id)
-        if affiliation_id == current_affiliation_id:
-            effective_roles[affiliation_id] = (
-                UserSdwtProdAccess.Roles.MANAGER
-                if explicit_role == UserSdwtProdAccess.Roles.MANAGER
-                else UserSdwtProdAccess.Roles.MEMBER
-            )
-        elif explicit_role in UserSdwtProdAccess.Roles.values:
-            effective_roles[affiliation_id] = explicit_role
-
-    return all(
-        effective_roles.get(affiliation_id) in allowed_roles
-        for affiliation_id in normalized_ids
-    )
+    return all(explicit_roles.get(key) in allowed_roles for key in normalized_ids)
 
 
 def _normalize_access_role(role: str) -> str:
@@ -185,30 +160,9 @@ def _normalize_role_for_current_affiliation(
     user_sdwt_prod: str,
     role: str,
 ) -> str:
-    """현재 소속에 대한 viewer 요청을 member로 승급합니다.
+    """소속에 의한 자동 승급 없이 요청한 역할을 정규화합니다."""
 
-    입력:
-    - user: Django 사용자 객체
-    - user_sdwt_prod: 대상 소속
-    - role: 요청 역할(viewer/member/manager)
-
-    반환:
-    - str: 정규화된 역할
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    normalized_role = _normalize_access_role(role)
-    current_user_sdwt = (selectors.get_current_user_sdwt_prod(user=user) or "").strip()
-    target_user_sdwt = (user_sdwt_prod or "").strip()
-    if _same_user_sdwt_prod(current_user_sdwt, target_user_sdwt):
-        if normalized_role == UserSdwtProdAccess.Roles.VIEWER:
-            return UserSdwtProdAccess.Roles.MEMBER
-    return normalized_role
+    return _normalize_access_role(role)
 
 
 def _should_upgrade_role(current_role: str, target_role: str) -> bool:
@@ -432,10 +386,6 @@ def grant_or_revoke_access(
             return {"error": "User not found"}, 404
 
         # 소속 잠금 뒤 최신 역할을 읽어 권한 회수와 현재 작업을 직렬화합니다.
-        ensure_self_access(
-            grantor,
-            role=UserSdwtProdAccess.Roles.MEMBER,
-        )
         if not _user_can_manage_user_sdwt_prod(
             user=grantor,
             user_sdwt_prod=target_affiliation.user_sdwt_prod,
@@ -451,13 +401,6 @@ def grant_or_revoke_access(
         # 3) 회수 처리
         # -----------------------------------------------------------------------------
         if normalized_action == "revoke":
-            current_target_sdwt = (
-                selectors.get_current_user_sdwt_prod(user=locked_target_user) or ""
-            ).strip()
-            if _same_user_sdwt_prod(current_target_sdwt, normalized_target):
-                return {
-                    "error": "Cannot revoke access for the user's current affiliation"
-                }, 400
             if access is None:
                 return {"status": "ok", "deleted": 0}, 200
             if (
@@ -636,24 +579,7 @@ def get_affiliation_members(
     access_rows = list(selectors.list_group_members(user_sdwt_prods={canonical_user_sdwt}))
     access_by_user_id = {access.user_id: access for access in access_rows}
     members: list[dict[str, object]] = []
-    seen_user_ids: set[int] = set()
-
-    for member_user in selectors.list_current_affiliation_users_by_user_sdwt_prod(
-        user_sdwt_prod=canonical_user_sdwt
-    ):
-        access = access_by_user_id.get(member_user.id)
-        members.append(
-            _serialize_affiliation_member(
-                member_user=member_user,
-                user_sdwt_prod=canonical_user_sdwt,
-                access=access,
-            )
-        )
-        seen_user_ids.add(member_user.id)
-
     for access in access_rows:
-        if access.user_id in seen_user_ids:
-            continue
         members.append(
             _serialize_affiliation_member(
                 member_user=access.user,
@@ -661,7 +587,6 @@ def get_affiliation_members(
                 access=access,
             )
         )
-        seen_user_ids.add(access.user_id)
 
     role_order = {"manager": 0, "member": 1, "viewer": 2}
     members.sort(
@@ -837,43 +762,4 @@ def _current_access_list(user: Any) -> List[Dict[str, object]]:
     # 1) 접근 권한 행 조회
     # -----------------------------------------------------------------------------
     rows = selectors.list_user_sdwt_prod_access_rows(user=user)
-    access_map: dict[str, UserSdwtProdAccess | None] = {}
-    display_map = _build_user_sdwt_display_map(row.user_sdwt_prod for row in rows)
-    for row in rows:
-        lookup_key = _normalize_user_sdwt_lookup_key(row.user_sdwt_prod)
-        if not lookup_key:
-            continue
-        access_map.setdefault(lookup_key, row)
-
-    # -----------------------------------------------------------------------------
-    # 2) 현재 소속 포함
-    # -----------------------------------------------------------------------------
-    current_user_sdwt = selectors.get_current_user_sdwt_prod(user=user)
-    current_lookup_key = _normalize_user_sdwt_lookup_key(current_user_sdwt)
-    if current_lookup_key:
-        display_map[current_lookup_key] = (current_user_sdwt or "").strip()
-        access_map.setdefault(current_lookup_key, None)
-
-    # -----------------------------------------------------------------------------
-    # 3) 응답 목록 구성
-    # -----------------------------------------------------------------------------
-    result: List[Dict[str, object]] = []
-    for lookup_key, prod in sorted(display_map.items(), key=lambda item: item[1]):
-        entry = access_map.get(lookup_key)
-        source = "self" if lookup_key == current_lookup_key else "grant"
-        if entry is None:
-            fallback_role = (
-                UserSdwtProdAccess.Roles.MEMBER
-                if lookup_key == current_lookup_key
-                else UserSdwtProdAccess.Roles.VIEWER
-            )
-            result.append(
-                _serialize_access_fallback(
-                    user_sdwt_prod=prod,
-                    source=source,
-                    role=fallback_role,
-                )
-            )
-        else:
-            result.append(_serialize_access(entry, source))
-    return result
+    return [_serialize_access(row, "grant") for row in sorted(rows, key=lambda row: row.user_sdwt_prod)]
