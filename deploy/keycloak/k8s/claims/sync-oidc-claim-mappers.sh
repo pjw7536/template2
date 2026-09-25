@@ -35,6 +35,9 @@ readonly CLAIMS=(
   employeetype
 )
 
+# 참조 테이블이 관리하는 실제 소속은 사내 IdP 수신 대상에서 제외합니다.
+readonly AFFILIATION_CLAIMS=(user_sdwt_prod line_id)
+
 # 사내 claim과 account_user에 대응하는 Keycloak 속성 이름을 분리합니다.
 profile_attribute() {
   case "$1" in
@@ -315,6 +318,13 @@ for claim in "${CLAIMS[@]}"; do
     sync_client_mapper "$client_uuid" "$claim"
   fi
 done
+
+# 소속값은 관리자 또는 참조 테이블 동기화가 저장하고 앱에만 전달합니다.
+if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]]; then
+  for claim in "${AFFILIATION_CLAIMS[@]}"; do
+    sync_client_mapper "$client_uuid" "$claim"
+  done
+fi
 
 if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
   sync_epid_username_mapper

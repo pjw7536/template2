@@ -1,6 +1,10 @@
 # 로컬 Kubernetes·Compose 검사·서버 배포 실행 진입점입니다.
 COMPOSE_TEST=docker compose -f deploy/portal/compose/test.yml
 COMPOSE_K8S_CHECK=docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml
+
+# 값을 shell 코드에 삽입하지 않고 초기 설정 스크립트에 환경변수로 전달합니다.
+export KEYCLOAK_SDWTS_CSV KEYCLOAK_USERS_CSV KEYCLOAK_SDWT_CLIENTS KEYCLOAK_SDWT_APPLY KEYCLOAK_SDWT_VALIDATE_ONLY
+
 PROD_API_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/api.env
 KIND_BIN ?= $(CURDIR)/.tools/bin/kind
 APP ?= keycloak
@@ -21,6 +25,14 @@ VIP_BACKENDS ?=
 
 # 기본 개발 환경은 한 PC의 전체 Kubernetes 앱입니다.
 dev: k8s-up
+
+.PHONY: keycloak-sdwt-init keycloak-sdwt-test
+keycloak-sdwt-init:
+	python3 ./deploy/keycloak/scripts/init_sdwt.py
+
+keycloak-sdwt-test:
+	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_sdwt.py'
+
 
 # 저장소 전용 경로에 checksum 검증된 kind binary를 준비합니다.
 k8s-tools:

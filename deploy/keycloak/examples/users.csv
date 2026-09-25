@@ -1,0 +1,4 @@
+userid,user_sdwt_prod,sabun,loginid,username,mail,deptname,grdname_en
+90000001,SDWT-A,S000001,example.a,예시사용자A,example.a@example.invalid,예시부서,CL3
+90000002,SDWT-B,S000002,example.b,예시사용자B,example.b@example.invalid,예시부서,
+90000003,,S000003,example.c,예시미소속,example.c@example.invalid,,

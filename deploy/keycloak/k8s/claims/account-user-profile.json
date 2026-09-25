@@ -306,6 +306,34 @@
           "max": 150
         }
       }
+    },
+    {
+      "name": "user_sdwt_prod",
+      "displayName": "user_sdwt_prod",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "line_id",
+      "displayName": "line_id",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false
     }
   ],
   "groups": [],

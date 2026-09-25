@@ -3,7 +3,7 @@
 [Portal 배포 안내](../../../README.md)
 
 이 Job은 Portal 소유의 `deploy/portal/env/prod/api.env`에서 필요한 로그인 설정만 받아,
-Keycloak의 `etch` realm에 client와 16개 token mapper를 생성하거나 갱신합니다.
+Keycloak의 `etch` realm에 client와 18개 token mapper를 생성하거나 갱신합니다.
 실행 위치는 Keycloak이 있는 `etch-sso` namespace입니다. Portal API가 아직 없어도
 실행할 수 있지만, 공개 Portal URL과 callback은 실제 사용할 값으로 지정해야 합니다.
 
@@ -66,3 +66,12 @@ kubectl kustomize deploy/portal/k8s/jobs/keycloak-client > /tmp/internal-portal-
 
 `userid` token mapper는 Keycloak 기본 `username`의 EPID를 읽습니다. Keycloak의 커스텀
 `avatarid`는 사용하지 않습니다. 기존 계정은 사내 재로그인으로 username을 먼저 갱신합니다.
+
+## 실제 소속 claim
+
+사내 claim 16개와 별도로 `user_sdwt_prod`, `line_id`를 단일 문자열로 발급합니다.
+동일 이름의 사용자 속성을 User Attribute mapper로 읽어 ID Token·Access Token·UserInfo에 포함하며,
+값이 없으면 생략합니다. 두 속성은 Keycloak claim Job으로 먼저 정의하고 관리자 또는 EPID 기반
+참조 테이블 동기화가 채웁니다. 사내 IdP 수신 mapper는 만들지 않습니다.
+두 값만으로 권한을 부여하지 않으며 그룹 권한과 구분합니다. Django의 기존 소속 모델·판정은
+아직 전환하지 않았으므로 이 claim 추가만으로 Django 소속이 자동 갱신되지는 않습니다.

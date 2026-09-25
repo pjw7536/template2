@@ -264,7 +264,7 @@ intcode intname employeetype
 User Profile은 `k8s/claims/account-user-profile.json`으로 교체합니다. 기존 커스텀 정의를 합치지 않고
 프로젝트의 `account_user` 신원 필드에 맞춥니다. Keycloak 기본 `username`, `email`은 유지합니다.
 성·이름은 기본 `firstName`, `lastName`을 사용하고 커스텀 `givenname`, `surname` 정의는 제거합니다.
-전체 16개 필드는 `view: [admin, user]`로 설정하여 사용자가 계정 화면에서 본인 정보를
+프로필 필드는 `view: [admin, user]`로 설정하여 사용자가 계정 화면에서 본인 정보를
 조회할 수 있게 합니다. 편집은 `edit: [admin]`으로 관리자만 허용합니다. 미정의 과거 속성은
 `ADMIN_EDIT`로 관리합니다. 조회 권한 변경은 최신 claim Job 재실행으로 반영합니다.
 비밀번호·권한·로그인 시각은 프로필에 복제하지 않습니다.
@@ -376,3 +376,41 @@ OIDC_JWKS_URL=http://keycloak.etch-sso.svc.cluster.local:8080/realms/etch/protoc
 `origincomp`는 계속 프로필에서 제외하고 각 Job이 기존 mapper를 삭제합니다.
 기존 사용자 속성값과 Django DB 컬럼은 일괄 삭제하지 않습니다.
 직급 반영은 두 Job을 재실행하고 사내 재로그인한 뒤 확인합니다.
+
+## 실제 소속 정보: user_sdwt_prod·line_id
+
+`user_sdwt_prod`는 현재 소속 SDWT, `line_id`는 그 SDWT가 속한 line의 ID입니다.
+두 필드는 선택적 단일 문자열로 User Profile에 정의하며 본인은 조회만, 관리자는 수정할 수 있습니다.
+`Users → 사용자 → General`에서 확인·입력할 수 있습니다. 실제 값은 EPID 기준 참조 테이블을
+사용하는 최초 일괄 등록 또는 관리자가 저장합니다. 이후 참조값으로 자동 덮어쓰지 않습니다.
+필드 생성만으로 소속값이 채워지지 않습니다.
+사내 OIDC에는 두 필드의 수신 mapper를 만들지 않으므로 사내 로그인으로 덮어쓰지 않습니다.
+
+7절 claim Job으로 프로필을 적용하고 8절 Portal client Job을 실행하면 기존 사내 claim 16개와
+소속 claim 2개를 ID Token·Access Token·UserInfo에 같은 이름으로 전달합니다.
+값이 없으면 해당 claim은 생략됩니다. 이미 발급한 토큰은 변경되지 않으므로 새 토큰으로 확인합니다.
+이 두 값은 실제 소속이며 접근 가능한 SDWT 목록이나 관리자 권한이 아닙니다.
+접근 권한은 별도 그룹으로 관리합니다. 공용 scope 표준화는 후속 전환이며 현재는 client mapper입니다.
+
+## 확정 설계: SDWT별 공통 권한
+
+확정한 권한 구조는 `/{SDWT이름}/admin`, `/{SDWT이름}/user`, `/{SDWT이름}/viewer`입니다.
+SDWT 아래 등급 하위 그룹에 사용자를 가입시키고, 이 계약을 사용하는 모든 업무 앱이 같은
+SDWT 등급을 적용합니다. 앱별 그룹·업무 Client Role·Composite Role은 추가하지 않습니다.
+소속 속성과 권한은 별개이며 최초 등록에만 본인 SDWT의 user 그룹에 가입시킵니다.
+소속 변경·로그인 때 그룹을 자동 부여하지 않습니다. 신규 앱에도 기존 SDWT 등급이 적용됩니다.
+
+그룹 전체 경로를 `groups` 문자열 배열로 전달하고 각 앱의 백엔드가 실제 자원 SDWT와
+대조합니다. SDWT 관리자는 Keycloak·클러스터·앱 전역 관리자가 아닙니다.
+Headlamp 등의 기존 시스템 관리 그룹은 유지합니다.
+
+초기 설정은 [SDWT 그룹·사용자 초기 설정](SDWT_SETUP.md)의 `make keycloak-sdwt-init`으로 실행합니다.
+사용자 CSV의 직급 입력은 사내 OIDC와 같은 이름의 선택 항목 `grdname_en`으로 저장합니다.
+기존 사내 수신·토큰 발급 mapper를 사용하며 별도 `career_level` 속성은 추가하지 않습니다.
+참조 CSV를 검사하고 그룹·공통 scope·선택 client·신규 사용자와 본인 SDWT user 가입을 준비합니다.
+기본은 dry-run이며 기존 사용자 권한을 덮어쓰지 않습니다.
+
+**Keycloak 초기 설정 도구는 구현했으며 운영 서버 실행과 Portal 권한 판정 전환은 별도입니다.**
+초기 등록 도구만으로 앱의 그룹 권한 검사·세션 갱신이 구현되지는 않습니다.
+Portal 세션 권한 갱신, 기존 권한 이관 및 검증 순서는
+[SDWT 공통 권한 실행 계획](../../docs/agent/plans/keycloak-sdwt-group-authorization.md)을 따릅니다.

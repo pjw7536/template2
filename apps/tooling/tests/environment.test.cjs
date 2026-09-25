@@ -273,10 +273,10 @@ for (const existing of [false, true]) {
     const result = mock.run('deploy/portal/k8s/jobs/keycloak-client/setup-client.sh');
     assert.equal(result.status, 0, result.stderr);
     const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
-    assert.equal(writes.length, 17);
+    assert.equal(writes.length, 19);
     assert.equal(writes[0][0], existing ? 'update' : 'create');
     assert.ok(writes.every(a => a[1].startsWith('clients')));
-    assert.equal(writes.filter(a => a[1].includes('/protocol-mappers/')).length, 16);
+    assert.equal(writes.filter(a => a[1].includes('/protocol-mappers/')).length, 18);
   });
 }
 
@@ -366,8 +366,9 @@ else process.exit(1);
 test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이름을 분리한다', t => {
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
   const byName = Object.fromEntries(profile.attributes.map(a => [a.name, a]));
-  const mapping = { loginid: 'knox_id', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'department', deptid: 'deptid', mail: 'email', grdName: 'grd_name', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype' };
+  const mapping = { loginid: 'knox_id', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'department', deptid: 'deptid', mail: 'email', grdName: 'grd_name', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype', user_sdwt_prod: 'user_sdwt_prod', line_id: 'line_id' };
   assert.deepEqual(new Set(Object.keys(byName)), new Set(['username', 'firstName', 'lastName', ...Object.values(mapping)]));
+  assert.ok(!byName.career_level);
   // 활성 필드는 본인 조회만 허용하고 신원 정보 수정은 관리자에게 제한합니다.
   for (const attribute of profile.attributes) {
     assert.deepEqual(attribute.permissions, { view: ['admin', 'user'], edit: ['admin'] });
@@ -384,7 +385,7 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   const mock = mockAdmin(t);
   assert.equal(mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh').status, 0);
   const writes = mock.calls().filter(a => ['create', 'update'].includes(a[0]) && !a.includes('identityProviderMapper=oidc-username-idp-mapper') && (a[1].includes('/mappers') || a[1].includes('/protocol-mappers/')));
-  assert.equal(writes.length, 31);
+  assert.equal(writes.length, 33);
   for (const args of writes) {
     const claim = args.find(a => a.startsWith('name=')).slice(5);
     const config = JSON.parse(args.find(a => a.startsWith('config=')).slice(7));
@@ -398,6 +399,37 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
       assert.equal(config.claim, claim);
       assert.equal(config.syncMode, 'FORCE');
     }
+  }
+});
+
+test('소속 속성은 본인 수정과 사내 IdP 갱신을 막고 앱에만 전달한다', t => {
+  const names = ['user_sdwt_prod', 'line_id'];
+  const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
+  for (const name of names) {
+    const attribute = profile.attributes.find(item => item.name === name);
+    assert.deepEqual(attribute.permissions, { view: ['admin', 'user'], edit: ['admin'] });
+    assert.equal(attribute.multivalued, false);
+    assert.equal(attribute.required, undefined);
+  }
+  const mock = mockAdmin(t);
+  const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh');
+  assert.equal(result.status, 0, result.stderr);
+  const writes = mock.calls().filter(a => ['create', 'update'].includes(a[0]));
+  const local = JSON.parse(fs.readFileSync(path.join(root, 'local/keycloak/k8s/realm-portal.json'), 'utf8'));
+  for (const name of names) {
+    const mappings = writes.filter(a => a.includes(`name=${name}`));
+    assert.equal(mappings.length, 1);
+    assert.ok(mappings[0][1].startsWith('clients/'));
+    assert.ok(mappings[0].includes('protocolMapper=oidc-usermodel-attribute-mapper'));
+    const config = JSON.parse(mappings[0].find(a => a.startsWith('config=')).slice(7));
+    assert.equal(config['user.attribute'], name);
+    assert.equal(config['claim.name'], name);
+    assert.equal(config['jsonType.label'], 'String');
+    assert.equal(config.multivalued, 'false');
+    for (const flag of ['id.token.claim', 'access.token.claim', 'userinfo.token.claim']) {
+      assert.equal(config[flag], 'true');
+    }
+    assert.deepEqual(local.clients[0].protocolMappers.find(m => m.name === name).config, config);
   }
 });
 

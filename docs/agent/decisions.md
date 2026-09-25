@@ -327,3 +327,28 @@
 - 배포 도구는 두 파일을 데이터로 병합하며 비밀값 파일의 알 수 없는 키·중복을 거부한다.
 - 기존 통합 env도 읽을 수 있지만 새 비밀값 생성은 분리 파일에만 기록한다. 인증서·개인키 제외 규칙은 유지한다.
 - [실행·검증 기록](plans/deploy-public-env-secrets.md), [운영 안내](../../deploy/shared/docs/configuration/environment.md).
+
+## 2026-09-24: Keycloak 실제 소속 속성
+
+- user_sdwt_prod와 line_id는 사용자 실제 소속 속성으로 추가하고 앱에 같은 이름으로 발급한다.
+- 사내 OIDC가 아닌 EPID 기준 참조 테이블 또는 관리자가 관리하며, 사용자 직접 수정은 금지한다.
+- 접근 가능 범위와 등급은 별도 그룹으로 관리한다. 속성 정의·출력 mapper만 추가하며 테이블 동기화와 Django 전환은 후속 작업이다.
+- [실행 계획](plans/keycloak-affiliation-claims.md).
+
+
+## 2026-09-25: SDWT 하위 그룹으로 모든 업무 앱의 등급 통일
+
+- 최종 권한 계약은 `/{SDWT이름}/{admin|user|viewer}`이며 모든 참여 업무 앱이 같은 SDWT 등급을 적용한다. 앱별 등급 예외·고정 SDWT ID·업무 Role mapping은 도입하지 않는다.
+- 실제 소속은 `user_sdwt_prod`, line은 `line_id`로 유지한다. 소속 그룹에서 추정하지 않으며, 사내 EPID 출력 이름은 기존 `userid`를 유지한다.
+- Keycloak 최초 사전 등록 시 참조값을 저장하고 본인 SDWT user 그룹에 가입한다. 이후 재로그인·참조값 변경·소속 속성 변경으로 권한을 자동 부여하지 않는다.
+- 전환 후 Keycloak이 소속·권한 원본이 되고 Portal은 검증된 읽기용 복제만 유지한다. 현재 Portal 원본의 일괄 등록·migration 0007을 Keycloak 전환 완료로 간주하지 않는다.
+- 현재 Keycloak 설정과 Portal 코드는 아직 이 권한 계약으로 전환하지 않았다. 기존 앱별 권한 차이, Portal 세션 갱신, line·개인·공용 자원의 판정을 검증한 뒤 적용한다.
+- [최종 설계·실행 계획](plans/keycloak-sdwt-group-authorization.md)이 이전 조직·앱별 역할 묶음 계획을 대체한다.
+
+## 2026-09-25: Keycloak SDWT 초기 설정 자동화
+
+- `make keycloak-sdwt-init`은 기본 dry-run이며 SDWT–line·EPID–SDWT CSV로 그룹과 신규 사용자 가입을 준비한다. 기존 사용자의 소속·회수된 권한은 재실행으로 복구하지 않는다.
+- 지정한 client에만 `sdwt-access-v1` 그룹 claim을 연결하고 토큰 수명 300초를 적용한다. 충돌하는 기본 optional `microprofile-jwt` 연결만 해제하고 다른 client는 보존한다.
+- 사용자 생성 요청에 소속·그룹 가입을 함께 포함한다. 작업 전체는 여러 Admin API 호출이므로 완료된 작업을 보존하고 재실행으로 이어간다.
+- 초기 설정과 Portal 판정 전환·사내 broker 첫 로그인 검증을 구분한다. 실제 Keycloak 26.7.1 통합 검사는 완료했으며 운영에는 적용하지 않았다.
+- [초기 설정 안내](../../deploy/keycloak/SDWT_SETUP.md), [진행 계획](plans/keycloak-sdwt-group-authorization.md).

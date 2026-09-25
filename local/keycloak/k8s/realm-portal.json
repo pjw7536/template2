@@ -12,11 +12,16 @@
       "secret": "portal-local-secret",
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:8080/auth/keycloak/callback/"],
-      "webOrigins": ["http://localhost:8080"],
+      "redirectUris": [
+        "http://localhost:8080/auth/keycloak/callback/"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:8080/*"
+        "post.logout.redirect.uris": "http://localhost:8080/*",
+        "access.token.lifespan": "300"
       },
       "protocolMappers": [
         {
@@ -31,10 +36,63 @@
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "user_sdwt_prod",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "user_sdwt_prod",
+            "claim.name": "user_sdwt_prod",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "line_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "line_id",
+            "claim.name": "line_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "sdwt-groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
         }
       ],
-      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "email"],
-      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access"
+      ]
     }
   ],
   "users": [
@@ -45,7 +103,11 @@
       "emailVerified": true,
       "firstName": "Dummy",
       "lastName": "User",
-      "attributes": {"sabun": ["S000001"]},
+      "attributes": {
+        "sabun": [
+          "S000001"
+        ]
+      },
       "credentials": [
         {
           "type": "password",
