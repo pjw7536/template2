@@ -24,7 +24,7 @@ class DeploymentTest(unittest.TestCase):
     """외부 명령 실행 전에 잘못된 입력이 거부되는지 확인한다."""
 
     def test_default_profile_is_valid_production_input(self):
-        values = manage.settings(manage.APP / 'env/k8s.env.example')
+        values = manage.settings(manage.APP / 'env/k8s.env')
         env = {entry['name']: entry['value'] for entry in values['env']}
         self.assertEqual(env['OIDC_ISSUER_URL'], 'https://etch-sso.samsungds.net/realms/etch')
         self.assertEqual(values['volumes'][0]['configMap']['name'], 'headlamp-oidc-ca')

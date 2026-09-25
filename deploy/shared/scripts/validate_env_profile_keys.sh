@@ -8,21 +8,21 @@ SELECT_PROFILE="${2:-all}"
 case "$SELECT_APP" in all|portal|keycloak|airflow|monitoring|headlamp|shared) ;; *) echo '지원하지 않는 앱입니다.' >&2; exit 1 ;; esac
 case "$SELECT_PROFILE" in all|local|prod|test) ;; *) echo '지원하지 않는 환경입니다.' >&2; exit 1 ;; esac
 
-# 선택한 앱·환경의 공개 입력만 필수로 요구합니다. 실제 운영 env는 있을 때만 형식을 검사합니다.
+# 선택한 앱·환경의 추적 env를 필수로 요구하고 형식을 검사합니다.
 required_files=(
   "shared local local/shared/env/k8s.env.example"
   "portal local local/portal/env/api.env"
   "portal local local/portal/env/api-k8s.env"
   "portal local local/portal/env/web.env"
   "portal local local/portal/env/minio.env"
-  "portal prod deploy/portal/env/prod/api.env.example"
-  "portal prod deploy/portal/env/prod/web.env.example"
-  "portal prod deploy/portal/env/prod/minio.env.example"
-  "keycloak prod deploy/keycloak/env/prod.env.example"
-  "airflow prod deploy/airflow/env/k8s.env.example"
-  "airflow prod deploy/airflow/env/build.env.example"
-  "monitoring prod deploy/monitoring/env/k8s.env.example"
-  "headlamp prod deploy/headlamp/env/k8s.env.example"
+  "portal prod deploy/portal/env/prod/api.env"
+  "portal prod deploy/portal/env/prod/web.env"
+  "portal prod deploy/portal/env/prod/minio.env"
+  "keycloak prod deploy/keycloak/env/prod.env"
+  "airflow prod deploy/airflow/env/k8s.env"
+  "airflow prod deploy/airflow/env/build.env"
+  "monitoring prod deploy/monitoring/env/k8s.env"
+  "headlamp prod deploy/headlamp/env/k8s.env"
   "portal test deploy/portal/env/test/api.env"
 )
 selected_count=0

@@ -292,7 +292,7 @@ class StartTests(unittest.TestCase):
 
 class PauseTests(unittest.TestCase):
     def test_first_start_override_does_not_change_normal_compose_parity(self):
-        settings = airflow.read_env(airflow.EXAMPLE)
+        settings = airflow.read_env(airflow.DEFAULT_ENV)
         self.assertNotIn('core', airflow.helm_values(settings)['config'])
         self.assertEqual(airflow.helm_values(settings, pause_new_dags=True)['config']['core']['dags_are_paused_at_creation'], 'True')
         settings.update({'INGRESS_ENABLED': 'true', 'INGRESS_CLASS_NAME': 'traefik', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://portal.test/airflow'})

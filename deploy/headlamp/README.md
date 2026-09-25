@@ -20,7 +20,7 @@ Headlamp Pod 자체에는 사용자 조회 권한을 부여하지 않으며 공�
 
 `make headlamp-*`는 실제 설정 파일 `env/k8s.env`를 사용합니다.
 이 파일은 일반 설정만 담으며 Git에 포함합니다. Client Secret은 Kubernetes Secret에서 관리합니다.
-`env/k8s.env.example`은 초기화·정적 검사에 사용하는 참고 파일입니다.
+`env/k8s.env`를 배포·검사의 단일 입력으로 사용하고 Git에서 추적합니다.
 다른 설정은 `HEADLAMP_ENV=/절대경로/k8s.env`로 지정할 수 있습니다.
 기존 실제 env는 자동으로 덮어쓰지 않습니다. 오래된 파일은 운영 기본값과 비교합니다.
 

@@ -208,7 +208,7 @@ def main():
                 chart.write_bytes(downloaded.read_bytes())
             print(f'chart 준비 완료: {chart}')
             return
-        env = args.env or APP / 'env/k8s.env.example'
+        env = args.env or APP / 'env/k8s.env'
         if args.action == 'deploy' and args.env is None:
             raise ValueError('배포에는 실제 --env 파일이 필요합니다.')
         values = settings(env, example=args.env is None)

@@ -17,7 +17,6 @@ spec = importlib.util.spec_from_file_location('server_up', ROOT / 'deploy/shared
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 routing = server.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
-env_secrets = server.module('env_secrets', ROOT / 'deploy/shared/scripts/env_secrets.py')
 
 
 def run(args, data=None, sensitive=False):
@@ -36,7 +35,6 @@ def read_settings(path):
         if line.strip() and not line.lstrip().startswith('#'):
             key, _, value = line.partition('=')
             values[key] = value
-    values = env_secrets.merge_secrets(path, values)
     return {key: values[key] for key in KEYS}
 
 

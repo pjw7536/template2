@@ -33,7 +33,7 @@ case "$APP" in
     exit 0 ;;
 esac
 
-# 예시·설정 형식과 Kubernetes 원본만 검사하며 클러스터에는 적용하지 않습니다.
+# 추적 env 형식과 Kubernetes 원본만 검사하며 클러스터에는 적용하지 않습니다.
 bash deploy/shared/scripts/validate_env_profile_keys.sh "$APP" "$PROFILE"
 case "$APP/$PROFILE" in
   keycloak/prod)

@@ -27,9 +27,9 @@ Portal 기본 업무 볼륨은 `emptyDir`이므로 운영 데이터 저장소 �
 - Airflow: 클러스터 버전·노드·기존 DB 비밀번호/Fernet 키 검사를 공용 라우팅 변경보다 먼저 수행합니다.
   Ingress 없는 `airflow-check`도 이 검사를 수행합니다.
 - Airflow: 기존 내부 DB PVC가 있는데 비밀번호 Secret이 사라졌으면 기존 비밀번호로 복원하도록 중단합니다.
-- Airflow 백업: `k8s.env`뿐 아니라 Fernet 키가 있는 `k8s.secrets.env`도 별도로 백업하도록 수정했습니다.
+- Airflow 백업: Fernet 키를 포함하는 통합 `k8s.env` 전체를 백업합니다.
 - Headlamp: 아직 Headlamp가 설치되지 않은 서버에서도 따라갈 수 있도록 최초 설치 순서를 명시했습니다.
-- Portal: 가이드·운영 overlay의 오래된 단일 env/비밀값 위치 설명을 분리 파일 계약에 맞췄습니다.
+- Portal: 가이드·운영 overlay의 오래된 단일 env/비밀값 위치 설명을 단일 env 계약에 맞췄습니다.
 
 ## 새 서버에서 필요한 파일과 외부 준비
 
@@ -38,26 +38,23 @@ Portal 기본 업무 볼륨은 `emptyDir`이므로 운영 데이터 저장소 �
 
 다음 입력은 Git으로 전달되지 않으므로 별도로 준비합니다.
 
-- `deploy/keycloak/env/prod.secrets.env`
-- `deploy/airflow/env/k8s.secrets.env`
-- Portal을 배포할 경우 `api.secrets.env`, `minio.secrets.env`
 - [사이트별 인증서](shared/certs/README.md): Keycloak·업무 도메인의 fullchain과 개인키, 사내 Root/Issuing CA
 - Airflow·Headlamp·Monitoring의 고정 Helm chart와 해당 이미지의 사내 접근 경로
 - kubeconfig·배포 권한, Python·kubectl·Helm·Bash·OpenSSL, DNS/VIP·방화벽·worker 디스크
 
 현재 작업공간의 인증서 폴더에는 실제 인증서가 없습니다. 실제 서버에 이미 넣었다면 서버에서 검사합니다.
-비밀값 파일이 존재해도 `replace-me` 등의 임시값이면 준비 완료가 아닙니다.
-기존 서버의 통합 env를 Git 관리 설정으로 옮길 때는 먼저 비밀값을 별도 파일에 보존합니다.
+env 파일이 존재해도 `replace-me` 등의 임시값이면 준비 완료가 아닙니다.
+기존 분리 구성을 사용한 서버는 최신 통합 env에 기존 값이 보존됐는지 확인합니다.
 
 ## 검사 수준을 구분하기
 
-1. **원본 검사:** 예시 설정·Kustomize·Helm 렌더 검증. 실제 운영값·이미지 pull·로그인 성공은 확인하지 않습니다.
+1. **원본 검사:** 추적 env 형식·Kustomize·Helm 렌더 검증. 실제 운영값·이미지 pull·로그인 성공은 확인하지 않습니다.
 
    ```bash
    make server-check APP=all PROFILE=prod
    ```
 
-2. **실제 env 검사:** 준비한 일반 env와 비밀값 파일을 병합해서 검사합니다. Helm 앱은 고정 chart도 필요합니다.
+2. **실제 env 검사:** 비밀번호·토큰이 포함된 앱별 env를 검사합니다. Helm 앱은 고정 chart도 필요합니다.
 
    ```bash
    make env-check APP=keycloak PROFILE=prod COMPONENT=server
@@ -91,7 +88,7 @@ Airflow 자체 로그인은 현재 관리자 계정 방식입니다. Keycloak �
 Airflow까지 SSO로 전환하는 구성은 포함되지 않습니다.
 Headlamp와 HTTPS Airflow는 기존 공용 Traefik이 필요합니다. Ingress 없는 Airflow는 독립 배포할 수 있습니다.
 
-업데이트 전 DB·비밀값·이미지/chart 버전·인증서를 백업합니다. 일반 env만 백업하면 credential과 Fernet 키를 복구할 수 없습니다.
+업데이트 전 DB·비밀값·이미지/chart 버전·인증서를 백업합니다. 통합 env 전체를 백업해야 credential과 Fernet 키를 복구할 수 있습니다.
 DB migration 뒤 Helm rollback만으로 DB가 이전 상태로 돌아가지는 않습니다.
 Keycloak·Airflow는 단일 worker·local PV 구성으로 자동 HA가 아니며 실제 복원 훈련은 아직 검증하지 않았습니다.
 
@@ -99,6 +96,6 @@ Keycloak·Airflow는 단일 worker·local PV 구성으로 자동 HA가 아니며
 
 - 전체 6개 앱 정적·렌더 검사, 관련 배포 회귀 검사, env 병합·Git 경계, 문서 링크·셸 문법을 점검했습니다.
 - 사내 이미지 registry, API server 설정, worker의 파일·권한·포트는 접근할 수 없어 검증하지 못했습니다.
-- 비밀값 분리는 현재 파일을 정리한 것입니다. 이전 Git 이력에 들어갔던 credential까지 제거하지는 않습니다.
+- 사용자 정책에 따라 env의 credential도 private Git 저장소에서 관리하며 인증서·개인키 파일은 제외합니다.
   과거 예시의 비밀번호를 실제로 사용했다면 사용 여부를 확인하고 별도 교체 절차를 수행해야 합니다.
 - 운영 배포 완료 여부는 [검증 결과 기록 형식](shared/docs/kubernetes/06-verification.md)에 따라 서버에서 기록합니다.

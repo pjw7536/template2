@@ -388,7 +388,7 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 | 파일 | 역할 |
 | --- | --- |
 | `local/portal/env/*` | local 서비스별 설정과 credential |
-| `deploy/portal/env/prod/*` | 사내 Kubernetes API/Web/MinIO 설정, 실제 값은 Git 제외 |
+| `deploy/portal/env/prod/*` | 사내 Kubernetes API/Web/MinIO 통합 설정, credential 포함 Git 관리 |
 | `deploy/portal/env/test/*` | backend test 설정과 credential |
 | `deploy/keycloak/env/*` | Keycloak 기동과 사내 OIDC 설정 |
 | `deploy/airflow/env/*`, `deploy/monitoring/env/*` | 앱별 환경 설정 |

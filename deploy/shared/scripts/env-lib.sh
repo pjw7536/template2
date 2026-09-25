@@ -19,18 +19,7 @@ load_env() {
     seen["$key"]=1
     ENV_VALUES["$key"]="$value"
   done < "$file"
-  # 실제 env에만 인접한 비밀값 파일을 병합한다. 예시·비밀값 파일에는 재귀 적용하지 않는다.
-  if [[ "$file" == *.env && "$file" != *.secrets.env && -f "${file%.env}.secrets.env" ]]; then
-    local secret_file="${file%.env}.secrets.env"
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      line="${line%$'\r'}"
-      [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-      [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_-]*= ]] || { echo "비밀값 파일 형식 오류: $secret_file" >&2; return 1; }
-      key="${line%%=*}"
-      [[ -v seen[$key] ]] || { echo "일반 env에 없는 비밀값 키: $key" >&2; return 1; }
-    done < "$secret_file"
-    load_env "$secret_file" || return
-  fi
+
 }
 
 require_env_keys() {

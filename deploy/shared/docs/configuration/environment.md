@@ -11,10 +11,10 @@ local/
 └── shared/env/k8s.env        # 전체 로컬 실행 입력
 
 deploy/
-├── keycloak/env/             # prod.env / Git 제외 prod.secrets.env
+├── keycloak/env/             # prod.env
 ├── portal/env/
 │   ├── test/                 # CI API 자동 테스트
-│   └── prod/                 # 일반 .env와 Git 제외 *.secrets.env
+│   └── prod/                 # API·Web·MinIO 통합 .env
 ├── airflow/env/              # k8s.env·build.env 일반 설정
 └── monitoring/env/           # k8s.env 일반 설정
 ```
@@ -25,17 +25,12 @@ deploy/
 
 ## 무엇을 어디에 적나요?
 
-일반 설정 `.env`는 Git에 포함합니다. 비밀번호·토큰·서명 키·인증 헤더는 일반 파일에서
-값을 비우고 같은 폴더의 `이름.secrets.env`에 저장합니다. 예를 들어 `api.env`는
-`api.secrets.env`, `prod.env`는 `prod.secrets.env`와 함께 읽습니다.
-비밀값 파일은 Git에서 제외하며 권한은 `chmod 600`으로 제한합니다.
-공용 env 검사·Secret 등록, Keycloak과 Airflow 배포 도구가 자동 병합합니다.
-일반 env에 없는 키나 비밀값 파일 내부 중복 키는 오류입니다. `.example` 검사에는 병합하지 않습니다.
+배포 `.env`는 비밀번호·토큰·서명 키·인증 헤더를 포함해 같은 파일에서 관리하고 private Git 저장소에 포함합니다.
+각 도구는 지정한 env 하나만 읽으며 인접한 별도 파일을 자동으로 병합하지 않습니다.
+기존 분리 구성을 사용하던 서버는 최신 통합 env의 값을 확인한 뒤 사용합니다.
+인증서·개인키 파일은 Git에서 제외하고 별도로 준비합니다.
+Headlamp·Monitoring에서 참조하는 Kubernetes Secret과 env를 Secret으로 등록하는 배포 방식은 유지합니다.
 
-새 서버에서는 일반 설정을 Git으로 받고 기존 비밀값 파일만 별도로 복사합니다.
-기존 서버의 통합 env를 이 구조로 옮길 때는 먼저 비밀값을 별도 파일에 보존한 뒤 일반 env에서 비웁니다.
-Headlamp·Monitoring의 Secret 이름은 일반 설정이며 실제 credential은 Kubernetes Secret에 등록합니다.
-비밀값이 필요한 파일을 준비하지 않으면 배포 전 필수값 검사가 실패합니다.
 
 | 설정 | 관리 위치 | 읽는 대상 |
 | --- | --- | --- |
@@ -56,10 +51,10 @@ OIDC에서 받은 secret은 서로 다른 값입니다. 서버 이미지, 실행
 용량은 배포 YAML에서 관리합니다.
 
 API는 서버·DB·로그인·HTTPS, 공용 연동, 업무 기능, 조정·개발 설정 순서입니다. Emails·Assistant·Drone별 별도
-파일을 합성하지 않습니다. prod 예시는 서버·DB·로그인·파일 저장소 필수값 위주이며,
+파일을 합성하지 않습니다. prod env는 서버·DB·로그인·파일 저장소 필수값 위주이며,
 업무 연동을 사용할 때 필요한 값을 [설정 설명](../../../../docs/configuration.md)에서 추가합니다.
 timeout/cache 등의 선택값을 생략하면 코드 기본값을 사용합니다. local/test는 유지하고,
-prod는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다. 실제 파일을 예시로 덮어쓰지 않습니다.
+prod는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다. env의 변경 이력을 Git으로 관리합니다.
 
 ## 설정 검사
 
@@ -139,7 +134,7 @@ credential을 선택해 최종 `api-env` Secret 하나를 생성합니다. API, 
 ## 관리 규칙
 
 - 새로운 환경은 실제 필요할 때 추가하며, profile 사이에 숨은 상속을 만들지 않습니다.
-- 새 실제 credential 파일은 Git 제외하고 권한을 600으로 제한합니다. 예시는 실제 값을 담지 않습니다.
+- 운영 credential은 해당 env에 함께 저장합니다. 인증서·개인키 파일은 Git에서 제외합니다.
 - 앱 설정을 바꿀 때 다른 앱 전체 Secret을 가져오지 말고 연결에 필요한 값만 전달합니다.
 - Secret 변경만으로 기존 PostgreSQL 비밀번호나 Keycloak 관리자 비밀번호가 변경되지는 않습니다.
 - 환경변수 검사 회귀 테스트는 `node --test apps/tooling/tests/environment.test.cjs`로 실행합니다.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Airflow 단일 서버 설정 검증·렌더·배포 도구. Python 표준 라이브러리만 사용한다.
 
-예시 검사와 렌더는 클러스터를 변경하지 않는다. deploy만 명시한 context에 적용한다.
+정적 검사와 렌더는 클러스터를 변경하지 않는다. deploy만 명시한 context에 적용한다.
 설정은 코드로 실행하지 않으며 Secret은 Helm values와 렌더 결과에 포함하지 않는다.
 """
 
@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import secrets
 import shutil
 import subprocess
@@ -22,9 +21,8 @@ from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
-merge_secrets = runpy.run_path(str(BASE.parent / 'shared/scripts/env_secrets.py'))['merge_secrets']
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
-EXAMPLE = BASE / 'env/k8s.env.example'
+ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_DB', 'NODE_NAME', 'POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'POSTGRES_IMAGE', 'POSTGRES_UID', 'POSTGRES_GID', 'AIRFLOW_IMAGE_REPOSITORY', 'AIRFLOW_IMAGE_TAG', 'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_ENABLED', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', 'AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'AIRFLOW_ADMIN_USERNAME', 'AIRFLOW_ADMIN_EMAIL', 'POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL', 'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS'))
 DEFAULT_ENV = BASE / 'env/k8s.env'
 RUNTIME_KEYS = (
     'AIRFLOW_API_BASE_URL', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL',
@@ -52,12 +50,11 @@ def read_env(path):
         require(separator and re.fullmatch(r'[A-Z][A-Z0-9_]*', key), f'설정 형식 오류: 줄 {number}')
         require(key not in values, f'중복 설정: {key}')
         values[key] = value
-    return merge_secrets(path, values)
+    return values
 
 
 def validate(values, example=False):
     """서버 경로·버전·URL·비밀값을 검증하고 배포 시 예시값을 거부한다."""
-    keys = read_env(EXAMPLE)
     for key, default in DB_DEFAULTS.items():
         values.setdefault(key, default)
     require(values['POSTGRES_MODE'] in ('internal', 'external'), 'POSTGRES_MODE는 internal 또는 external이어야 합니다.')
@@ -67,7 +64,7 @@ def validate(values, example=False):
         require(re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*', values[key]), f'{key} 형식 오류')
     if values['POSTGRES_MODE'] == 'internal':
         require(all(values[key] == default for key, default in DB_DEFAULTS.items()), '내부 PostgreSQL 연결 설정은 기본값을 유지하세요.')
-    require(values.keys() == keys.keys(), 'k8s.env.example과 설정 키가 다릅니다. 누락·오타를 확인하세요.')
+    require(values.keys() == ENV_KEYS, 'k8s.env 설정 키가 계약과 다릅니다. 누락·오타를 확인하세요.')
     optional = {'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:]}
     for key, value in values.items():
         if key not in optional:
@@ -292,7 +289,7 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
 def build_image(settings, path):
     """기존 의존성 Dockerfile에 DAG를 추가하며 이미지는 자동 push하지 않는다."""
     build = read_env(path)
-    require(build.keys() == read_env(BASE / 'env/build.env.example').keys(), 'build.env 설정 키가 예시와 다릅니다.')
+    require(build.keys() == {'APT_DEBIAN_CODENAME', 'APT_DEBIAN_ARCH', 'BIGDATAQUERY_ODBC_DEB_URL', 'INSTALL_BIGDATAQUERY_PYTHON', 'PIP_INDEX_URL', 'APT_DEBIAN_REPOSITORY', 'PIP_TRUSTED_HOST', 'INSTALL_BIGDATAQUERY_ODBC', 'AIRFLOW_BASE_IMAGE', 'PIP_EXTRA_INDEX_URL'}, 'build.env 설정 키가 계약과 다릅니다.')
     require(re.search(r':2\.11\.0(?:@sha256:[a-f0-9]{64})?$', build['AIRFLOW_BASE_IMAGE']), '기본 이미지는 Airflow 2.11.0이어야 합니다.')
     for key in ('INSTALL_BIGDATAQUERY_PYTHON', 'INSTALL_BIGDATAQUERY_ODBC'):
         require(build[key] in ('true', 'false'), f'true 또는 false 필요: {key}')
@@ -315,10 +312,10 @@ def build_image(settings, path):
 
 
 def main():
-    """독립 실행 명령을 처리하며 기본 검사는 예시 설정만 사용한다."""
+    """독립 실행 명령을 처리하며 기본 검사는 추적 중인 env의 구조를 확인한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('init-secrets', 'fetch-chart', 'build-image', 'check', 'render', 'deploy'))
-    parser.add_argument('--env', type=Path, help='실제 k8s.env 경로. check는 생략하면 예시만 검사')
+    parser.add_argument('--env', type=Path, help='실제 k8s.env 경로. check는 생략하면 저장소 env 구조만 검사')
     parser.add_argument('--pause-new-dags', action='store_true', help='Portal 연결 전 UI 기동용: 신규 DAG를 일시정지로 생성')
     parser.add_argument('--build-env', type=Path, help='build.env 경로. build-image에 필수')
     parser.add_argument('--output', type=Path, help='render 출력 디렉터리')
@@ -327,27 +324,31 @@ def main():
     args = parser.parse_args()
     if args.command == 'init-secrets':
         target = args.env or DEFAULT_ENV
-        secret_target = target.with_suffix('.secrets.env')
-        require(target.suffix == '.env' and not target.name.endswith('.secrets.env'), '일반 .env 경로를 지정하세요.')
-        require(not secret_target.exists(), '비밀값 파일이 이미 있습니다. 기존 키를 보존하세요.')
-        if target.exists():
+        require(target.suffix == '.env', '.env 경로를 지정하세요.')
+        exists = target.exists()
+        if exists:
             current = read_env(target)
-            require(all(not current.get(key) for key in SECRET_KEYS), '기존 env 비밀값을 먼저 분리하세요. 키를 다시 생성하지 않습니다.')
+            require(all(not current.get(key) for key in SECRET_KEYS), '기존 env에 키가 있습니다. 다시 생성하지 않습니다.')
+            content = target.read_text()
         else:
-            content = EXAMPLE.read_text()
-            content = '\n'.join(line.split('=', 1)[0] + '=' if line.split('=', 1)[0] in SECRET_KEYS else line
-                                for line in content.splitlines()) + '\n'
-            with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
-                output.write(content)
-        secret_lines = ['# 비밀값 전용 파일: Git에 추가하지 않습니다.']
+            content = DEFAULT_ENV.read_text()
+        generated = {}
         for key in SECRET_KEYS[:-1]:
-            value = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if key == 'AIRFLOW_FERNET_KEY' else secrets.token_urlsafe(32)
-            secret_lines.append(f'{key}={value}')
-        secret_lines.append('AIRFLOW_TRIGGER_TOKEN=')
-        # 기존 파일을 덮어쓰거나 Fernet 키를 다시 생성하지 않는다.
-        with os.fdopen(os.open(secret_target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
-            output.write('\n'.join(secret_lines) + '\n')
-        print('비밀값 파일 생성 완료. 일반 env의 서버 정보와 비밀값 파일의 Portal trigger token을 확인하세요.')
+            generated[key] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if key == 'AIRFLOW_FERNET_KEY' else secrets.token_urlsafe(32)
+        generated['AIRFLOW_TRIGGER_TOKEN'] = ''
+        lines = []
+        for line in content.splitlines():
+            key = line.partition('=')[0]
+            lines.append(f'{key}={generated.pop(key)}' if key in generated else line)
+        lines.extend(f'{key}={value}' for key, value in generated.items())
+        # 기존 일반 설정은 보존하고 생성값은 같은 env에 저장합니다.
+        if exists:
+            target.write_text('\n'.join(lines) + '\n')
+            target.chmod(0o600)
+        else:
+            with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+                output.write('\n'.join(lines) + '\n')
+        print('env 초기 키 생성 완료. 같은 파일의 서버 정보와 Portal trigger token을 확인하세요.')
         return
     if args.command == 'fetch-chart':
         directory = BASE / 'helm/vendor'
@@ -359,7 +360,7 @@ def main():
         print('공식 Helm chart 다운로드·SHA-256 검사 완료')
         return
     example = args.command == 'check' and args.env is None
-    settings = read_env(EXAMPLE if example else args.env or DEFAULT_ENV)
+    settings = read_env(args.env or DEFAULT_ENV)
     validate(settings, example=example)
     if args.command == 'build-image':
         require(args.build_env, 'build-image에는 --build-env를 명시하세요.')
@@ -374,7 +375,7 @@ def main():
     else:
         with tempfile.TemporaryDirectory(prefix='airflow-check-') as temporary:
             render(settings, temporary, chart_path(), args.pause_new_dags, args.values)
-        print('Airflow Helm·PostgreSQL 원본 검사 통과' + (' (예시 설정; 실제 서버 준비 검사는 별도)' if example else ' (실제 설정; 클러스터 적용 없음)'))
+        print('Airflow Helm·PostgreSQL 원본 검사 통과' + (' (저장소 env 정적 검사; 실제 서버 준비 검사는 별도)' if example else ' (실제 설정; 클러스터 적용 없음)'))
 
 
 if __name__ == '__main__':

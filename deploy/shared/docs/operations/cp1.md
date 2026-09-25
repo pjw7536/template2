@@ -111,7 +111,7 @@ cd /appdata/etchax
 install -d -m 0700 /appdata/etchax-config/keycloak
 
 test -f /appdata/etchax-config/keycloak/prod.env || \
-  install -m 0600 deploy/keycloak/env/prod.env.example /appdata/etchax-config/keycloak/prod.env
+  install -m 0600 deploy/keycloak/env/prod.env /appdata/etchax-config/keycloak/prod.env
 
 vi /appdata/etchax-config/keycloak/prod.env
 

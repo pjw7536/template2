@@ -367,3 +367,10 @@
 - 사용자 생성 요청에 소속·그룹 가입을 함께 포함한다. 작업 전체는 여러 Admin API 호출이므로 완료된 작업을 보존하고 재실행으로 이어간다.
 - 초기 설정과 Portal 판정 전환·사내 broker 첫 로그인 검증을 구분한다. 실제 Keycloak 26.7.1 통합 검사는 완료했으며 운영에는 적용하지 않았다.
 - [초기 설정 안내](../../deploy/keycloak/SDWT_SETUP.md), [진행 계획](plans/keycloak-sdwt-group-authorization.md).
+
+## 2026-09-25: 배포 env 단일 파일 관리
+
+- 사용자 지시에 따라 기존 일반 설정·비밀값 분리 정책을 대체한다. private 저장소에서 비밀번호·토큰도 앱별 env에 함께 저장한다.
+- 지정한 env 하나만 읽고 인접 비밀값 파일 자동 병합은 제거한다. 인증서·개인키 파일은 계속 Git에서 제외한다.
+- Kubernetes Secret 등록 방식과 기존 credential은 보존한다.
+- 배포 env.example은 제거하고 추적 중인 env를 배포·검사 입력으로 사용한다. 허용 키는 코드에서 검증하며 테스트 credential은 독립 입력을 사용한다.

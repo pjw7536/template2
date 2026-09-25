@@ -54,19 +54,20 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# 승인된 일반 운영 설정만 포함하고 비밀값·개인 설정은 제외합니다.
+# 배포 env는 일반 설정과 credential을 함께 Git으로 관리합니다.
 !.env.example
-/deploy/*/env/*.env
-/deploy/portal/env/prod/*.env
-!/deploy/airflow/env/build.env
-!/deploy/airflow/env/k8s.env
-!/deploy/headlamp/env/k8s.env
-!/deploy/keycloak/env/prod.env
-!/deploy/monitoring/env/k8s.env
-!/deploy/portal/env/prod/api.env
-!/deploy/portal/env/prod/web.env
-!/deploy/portal/env/prod/minio.env
-/deploy/**/*.secrets.env
+!/deploy/**/.env
+!/deploy/**/*.env
+# 인증서·개인키는 배포 폴더 어디에 있든 제외합니다.
+/deploy/**/*.pem
+/deploy/**/*.crt
+/deploy/**/*.cer
+/deploy/**/*.der
+/deploy/**/*.key
+/deploy/**/*.p12
+/deploy/**/*.pfx
+/deploy/**/*.jks
+/deploy/**/*.keystore
 /deploy/portal/env/prod/*.pre-k8s.bak
 /apps/portal/api/.env
 /apps/portal/web/.env.local

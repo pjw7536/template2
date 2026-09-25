@@ -21,7 +21,7 @@ SPEC.loader.exec_module(deploy)
 
 def settings():
     """실제 자격증명 없이 운영 형식에 맞는 독립 입력을 만든다."""
-    result = deploy.read_env(deploy.EXAMPLE)
+    result = deploy.read_env(deploy.DEFAULT_ENV)
     result.update({
         'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow',
         'AIRFLOW_ADMIN_EMAIL': 'airflow@test.invalid',
@@ -48,17 +48,14 @@ class ConfigurationTests(unittest.TestCase):
             first = subprocess.run(args, capture_output=True, text=True)
             self.assertEqual(first.returncode, 0, first.stderr)
             before = path.read_bytes()
-            secret_path = path.with_suffix('.secrets.env')
-            secret_before = secret_path.read_bytes()
-            self.assertEqual(secret_path.stat().st_mode & 0o777, 0o600)
+            self.assertFalse(path.with_suffix('.secrets.env').exists())
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(len(base64.urlsafe_b64decode(deploy.read_env(path)['AIRFLOW_FERNET_KEY'])), 32)
             self.assertNotEqual(subprocess.run(args, capture_output=True).returncode, 0)
             self.assertEqual(path.read_bytes(), before)
-            self.assertEqual(secret_path.read_bytes(), secret_before)
             for key in deploy.SECRET_KEYS[:-1]:
                 self.assertNotIn(deploy.read_env(path)[key], first.stdout)
-                self.assertNotIn(deploy.read_env(path)[key], path.read_text())
+                self.assertIn(deploy.read_env(path)[key], path.read_text())
 
     def test_init_secrets_preserves_existing_public_env(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -67,13 +64,14 @@ class ConfigurationTests(unittest.TestCase):
             path.write_text(content)
             result = subprocess.run(['python3', str(SCRIPT), 'init-secrets', '--env', str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(path.read_text(), content)
+            self.assertEqual(deploy.read_env(path)['NODE_NAME'], 'existing-node')
+            self.assertFalse(path.with_suffix('.secrets.env').exists())
             self.assertEqual(len(base64.urlsafe_b64decode(deploy.read_env(path)['AIRFLOW_FERNET_KEY'])), 32)
 
     def test_actual_settings_reject_example(self):
         deploy.validate(settings())
         with self.assertRaisesRegex(ValueError, '실제 값으로 교체'):
-            deploy.validate(deploy.read_env(deploy.EXAMPLE))
+            deploy.validate({**settings(), 'POSTGRES_PASSWORD': 'replace-me'})
 
     def test_config_rejects_typos_and_helm_template_execution(self):
         values = settings()
@@ -170,7 +168,7 @@ class ConfigurationTests(unittest.TestCase):
 class InternalBuildParityTests(unittest.TestCase):
     def test_internal_build_inputs_match_dockerfile_contract(self):
         """공개 빌드 입력이 이미지 인자와 일치하고 사내 의존성을 유지합니다."""
-        actual = deploy.read_env(deploy.BASE / 'env/build.env.example')
+        actual = deploy.read_env(deploy.BASE / 'env/build.env')
         dockerfile = deploy.BASE.parents[1] / 'apps/airflow/image/Dockerfile.dependencies'
         arguments = set(re.findall(r'^ARG ([A-Z_]+)', dockerfile.read_text(), re.M))
         self.assertEqual(arguments, set(actual))
@@ -190,7 +188,7 @@ class InternalBuildParityTests(unittest.TestCase):
                 self.assertEqual([p.name for p in context.iterdir()], ['Dockerfile'])
             return ''
 
-        build_path = deploy.BASE / 'env/build.env.example'
+        build_path = deploy.BASE / 'env/build.env'
         with patch.object(deploy, 'run', fake_run):
             deploy.build_image(settings(), build_path)
         self.assertEqual(len(calls), 2)
@@ -206,7 +204,7 @@ class InternalBuildParityTests(unittest.TestCase):
     def test_missing_source_stops_before_docker_with_checkout_guidance(self):
         with patch.object(Path, 'exists', return_value=False), patch.object(deploy, 'run') as run:
             with self.assertRaisesRegex(ValueError, '--with-source'):
-                deploy.build_image(settings(), deploy.BASE / 'env/build.env.example')
+                deploy.build_image(settings(), deploy.BASE / 'env/build.env')
             run.assert_not_called()
 
 

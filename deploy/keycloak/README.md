@@ -4,7 +4,7 @@
 
 ## 서버에 복사한 뒤 넣을 파일
 
-프로젝트 내부에 운영 입력을 둘 때는 아래 폴더를 사용합니다. 일반 env는 Git에 포함하고 비밀값·인증서는 제외합니다.
+프로젝트 내부에 운영 입력을 둘 때는 아래 폴더를 사용합니다. 비밀번호를 포함한 env는 Git에 포함하고 인증서·개인키 파일은 제외합니다.
 
 ```text
 deploy/keycloak/env/prod.env                  # 운영 입력
@@ -117,8 +117,8 @@ TLS 인증서의 DNS 이름도 동일해야 합니다.
 아래 3~4절은 수동 단독 배포 경로입니다. 위의 `make keycloak-up`으로 준비했다면 반복하지 않습니다.
 특히 공용 앱·APP VIP 구성에서는 4절의 정적 스택 apply 대신 앱별 도구를 사용합니다.
 
-일반 설정은 `deploy/keycloak/env/prod.env`, 실제 credential은 Git 제외 파일인 `deploy/keycloak/env/prod.secrets.env`에서 관리합니다. 배포 도구가 자동 병합합니다.
-`deploy/keycloak/env/prod.env.example`을 참고하며 기존 실제 파일이 있으면 덮어쓰지 않습니다.
+일반 설정과 실제 credential을 `deploy/keycloak/env/prod.env` 하나에서 관리하고 Git에 포함합니다.
+`deploy/keycloak/env/prod.env`을 참고하며 기존 실제 파일이 있으면 덮어쓰지 않습니다.
 환경설정 전체 구조는 [앱별 환경설정](../shared/docs/configuration/environment.md)을 참고합니다.
 
 ```dotenv
@@ -126,7 +126,7 @@ bootstrap-admin-username=<초기 Keycloak 관리자 계정>
 keycloak-public-url=https://etch-sso.samsungds.net
 ```
 
-비밀번호는 `prod.secrets.env`에만 입력합니다.
+비밀번호는 `prod.env`에만 입력합니다.
 
 ```dotenv
 postgres-password=<기존 PostgreSQL 비밀번호>
@@ -137,9 +137,9 @@ Keycloak 공개 URL은 `/`로 끝나지 않게 작성합니다. Portal client se
 Portal API 설정에서 관리하며 서버 기동에는 필요하지 않습니다.
 
 ```bash
-# 일반 설정은 Git에 포함됩니다. 비밀값 파일은 기존 서버의 값을 준비합니다.
-chmod 600 deploy/keycloak/env/prod.secrets.env
-vi deploy/keycloak/env/prod.secrets.env
+# 비밀번호를 포함한 env 전체가 Git에 포함됩니다. 기존 서버의 값과 일치하는지 확인합니다.
+chmod 600 deploy/keycloak/env/prod.env
+vi deploy/keycloak/env/prod.env
 make env-check APP=keycloak PROFILE=prod COMPONENT=server
 kubectl create namespace etch-sso --dry-run=client -o yaml | kubectl apply -f -
 make k8s-env APP=keycloak PROFILE=prod COMPONENT=server
@@ -350,8 +350,7 @@ kubectl get job keycloak-oidc-claim-mappers -n etch-sso
 
 ## 8. Portal API 연결
 
-Portal의 실제 입력은 `deploy/portal/env/prod/api.env`에 작성합니다. 예시는 같은 경로의
-`api.env.example`입니다. 기존 파일이 있으면 덮어쓰지 않습니다. client는
+Portal 입력은 Git에서 추적하는 `deploy/portal/env/prod/api.env`에 작성합니다. client는
 [Portal client 등록 절차](../portal/k8s/jobs/keycloak-client/README.md)로 별도 생성·갱신하며,
 API Secret과 client 등록 작업이 같은 env 파일을 읽습니다.
 

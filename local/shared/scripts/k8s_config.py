@@ -129,7 +129,7 @@ def kind_config(config):
 
 def airflow_settings(creds):
     """서버 공통 env 계약에 로컬 외부 DB·라우팅 입력을 적용합니다."""
-    result = module('airflow').read_env(ROOT / 'deploy/airflow/env/k8s.env.example')
+    result = module('airflow').read_env(ROOT / 'deploy/airflow/env/k8s.env')
     result.update(NAMESPACE='airflow', NODE_NAME=WORKER, POSTGRES_MODE='external',
                   POSTGRES_HOST='external-postgres', POSTGRES_IMAGE='postgres:16',
                   POSTGRES_HOST_PATH='/data/local-runtime/unused-postgres',
@@ -137,7 +137,9 @@ def airflow_settings(creds):
                   AIRFLOW_IMAGE_REPOSITORY='tailwind-airflow', AIRFLOW_IMAGE_TAG='2.11.0-local',
                   AIRFLOW_ADMIN_EMAIL='airflow@localhost.test', INGRESS_ENABLED='true', INGRESS_CLASS_NAME='traefik',
                   AIRFLOW_API_BASE_URL='http://api.tailwind-local.svc.cluster.local:8000',
-                  POSTGRES_PASSWORD=creds['AIRFLOW_DB_PASSWORD'])
+                  POSTGRES_PASSWORD=creds['AIRFLOW_DB_PASSWORD'],
+                  KNOX_MESSENGER_API_BASE_URL='', KNOX_MESSENGER_AUTHORIZATION='',
+                  KNOX_MESSENGER_SYSTEM_ID='', AIRFLOW_FAILURE_ALERT_KNOX_IDS='')
     for key in ('AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_TRIGGER_TOKEN'):
         result[key] = creds[key]
     return result

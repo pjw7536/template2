@@ -11,11 +11,26 @@ const fixtures = {
   oidc: 'CORP_OIDC_AUTH_URL=https://idp.test/auth\nCORP_OIDC_TOKEN_URL=https://idp.test/token\nCORP_OIDC_ISSUER=https://idp.test\nCORP_OIDC_CLIENT_ID=corp\nCORP_OIDC_CLIENT_SECRET=private-marker\nCORP_OIDC_CLIENT_AUTH_METHOD=client_secret_post\nCORP_OIDC_VALIDATE_SIGNATURE=true\nCORP_OIDC_JWKS_URL=https://idp.test/keys\n',
 };
 
-// 공개 예시의 미입력값만 테스트 값으로 채우며 실제 운영 env는 읽지 않습니다.
+// 운영 credential을 읽지 않는 독립적인 검사 입력입니다.
 function portalFixture(component) {
-  return fs.readFileSync(path.join(root, 'deploy/portal/env/prod', `${component}.env.example`), 'utf8')
-    .replaceAll('<Portal DNS>', 'portal.test')
-    .replace(/^((?!MINIO_BROWSER_REDIRECT_URL)[A-Z][A-Z0-9_]*)=$/gm, '$1=private-marker');
+  const common = { OIDC_PROVIDER: 'keycloak', OIDC_CLIENT_ID: 'portal', OIDC_CLIENT_SECRET: 'private-marker',
+    OIDC_ISSUER: 'https://sso.test/realms/portal', OIDC_REDIRECT_URI: 'https://portal.test/auth/callback',
+    FRONTEND_BASE_URL: 'https://portal.test', ADFS_AUTH_URL: 'https://sso.test/auth',
+    ADFS_LOGOUT_URL: 'https://sso.test/logout', OIDC_TOKEN_URL: 'https://sso.test/token', OIDC_JWKS_URL: 'https://sso.test/keys' };
+  const inputs = {
+    api: { ...common, DJANGO_SECRET_KEY: 'private-marker', DJANGO_ALLOWED_HOSTS: 'portal.test',
+      DJANGO_DB_NAME: 'portal', DJANGO_DB_USER: 'portal', DJANGO_DB_PASSWORD: 'private-marker',
+      DJANGO_DB_HOST: 'db.test', DJANGO_DB_PORT: '5432', DJANGO_CORS_ALLOWED_ORIGINS: 'https://portal.test',
+      DJANGO_CSRF_TRUSTED_ORIGINS: 'https://portal.test', PUBLIC_API_BASE_URL: 'https://portal.test',
+      ALLOWED_REDIRECT_HOSTS: 'portal.test', MINIO_ENDPOINT: 'https://storage.test',
+      MINIO_ACCESS_KEY: 'private-marker', MINIO_SECRET_KEY: 'private-marker' },
+    web: { VITE_SITE_URL: 'https://portal.test', VITE_BACKEND_URL: 'https://portal.test',
+      BACKEND_API_URL: 'http://api.test', VITE_MINIO_ENDPOINT: 'https://storage.test' },
+    minio: { MINIO_ROOT_USER: 'private-marker', MINIO_ROOT_PASSWORD: 'private-marker',
+      MINIO_ACCESS_KEY: 'private-marker', MINIO_SECRET_KEY: 'private-marker',
+      MINIO_SERVER_URL: 'https://storage.test', MINIO_BROWSER_REDIRECT_URL: '' },
+  };
+  return Object.entries(inputs[component]).map(([key, value]) => `${key}=${value}\n`).join('');
 }
 
 function checkPortal(t, component, content) {
@@ -33,9 +48,9 @@ test('운영 API는 선택 업무 연동 없이 DB·Keycloak·MinIO 입력으로
   assert.notEqual(checkPortal(t, 'api', fixture.replace(/^MINIO_SECRET_KEY=.*\n/m, '')).status, 0);
 });
 
-test('운영 Web·MinIO 예시는 미입력 상태를 차단하고 완성된 입력을 허용한다', t => {
+test('운영 Web·MinIO 검사는 미입력 상태를 차단하고 완성된 입력을 허용한다', t => {
   for (const component of ['web', 'minio']) {
-    const example = fs.readFileSync(path.join(root, 'deploy/portal/env/prod', `${component}.env.example`), 'utf8');
+    const example = portalFixture(component).replace(/=.+/g, '=');
     assert.notEqual(checkPortal(t, component, example).status, 0);
     assert.equal(checkPortal(t, component, portalFixture(component)).status, 0);
   }
@@ -81,7 +96,7 @@ test('앱별 설정 경로와 외부 env 검사는 실행 디렉터리에 의존
 });
 
 
-test('실제 prod env 없이 공개 예시만 있어도 저장소 profile 검사를 통과한다', t => {
+test('추적 중인 env로 저장소 profile 검사를 통과한다', t => {
   const dir = sandbox(t);
   fs.mkdirSync(path.join(dir, 'deploy/shared/scripts'), { recursive: true });
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/validate_env_profile_keys.sh'), path.join(dir, 'deploy/shared/scripts/validate_env_profile_keys.sh'));
@@ -89,14 +104,13 @@ test('실제 prod env 없이 공개 예시만 있어도 저장소 profile 검사
   for (const relative of ['local/portal/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env']) {
     fs.cpSync(path.join(root, relative), path.join(dir, relative), {
       recursive: true,
-      filter: file => !['k8s.env', 'build.env'].includes(path.basename(file)),
     });
   }
   fs.mkdirSync(path.join(dir, 'deploy/portal/env/prod'));
   fs.mkdirSync(path.join(dir, 'deploy/keycloak/env'), { recursive: true });
-  fs.copyFileSync(path.join(root, 'deploy/keycloak/env/prod.env.example'), path.join(dir, 'deploy/keycloak/env/prod.env.example'));
+  fs.copyFileSync(path.join(root, 'deploy/keycloak/env/prod.env'), path.join(dir, 'deploy/keycloak/env/prod.env'));
   for (const component of ['api', 'web', 'minio']) {
-    fs.copyFileSync(path.join(root, 'deploy/portal/env/prod', `${component}.env.example`), path.join(dir, 'deploy/portal/env/prod', `${component}.env.example`));
+    fs.copyFileSync(path.join(root, 'deploy/portal/env/prod', `${component}.env`), path.join(dir, 'deploy/portal/env/prod', `${component}.env`));
   }
   const result = spawnSync('bash', ['deploy/shared/scripts/validate_env_profile_keys.sh'], { cwd: dir, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

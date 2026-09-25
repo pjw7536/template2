@@ -15,7 +15,7 @@ from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
-EXAMPLE = BASE / 'env/k8s.env.example'
+ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET'))
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
            'alertmanager': ('2Gi', 'alertmanager-monitoring-alertmanager-db-alertmanager-monitoring-alertmanager-0'),
            'grafana': ('5Gi', 'monitoring-grafana')}
@@ -48,7 +48,7 @@ def read_env(path):
 
 def validate(settings, example=False):
     """서버별 경로와 registry·리소스 이름을 검증한다."""
-    require(settings.keys() == read_env(EXAMPLE).keys(), 'env 키가 공개 예시와 다릅니다.')
+    require(settings.keys() == ENV_KEYS, 'env 키가 설정 계약과 다릅니다.')
     for key, value in settings.items():
         if key == 'IMAGE_PULL_SECRET' and not value:
             continue
@@ -205,7 +205,7 @@ def main():
         print('고정 chart 다운로드·SHA-256 검사 통과')
         return
     example = args.command == 'check' and args.env is None
-    settings = read_env(EXAMPLE if example else args.env or BASE / 'env/k8s.env')
+    settings = read_env(args.env or BASE / 'env/k8s.env')
     validate(settings, example)
     chart = chart_path()
     if args.command == 'deploy':
@@ -217,7 +217,7 @@ def main():
     else:
         with tempfile.TemporaryDirectory(prefix='monitoring-check-') as directory:
             render(settings, directory, chart, args.values)
-        print('Monitoring Helm 원본 검사 통과' + (' (예시 설정; 실제 서버 검사는 별도)' if example else ' (실제 설정; 클러스터 적용 없음)'))
+        print('Monitoring Helm 원본 검사 통과' + (' (저장소 env 정적 검사; 실제 서버 검사는 별도)' if example else ' (실제 설정; 클러스터 적용 없음)'))
 
 
 if __name__ == '__main__':

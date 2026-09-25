@@ -11,7 +11,7 @@ Keycloak의 `etch` realm에 client와 18개 token mapper를 생성하거나 갱�
 
 - 최신 `internal-keycloak-claim-mappers.yaml`로 프로필과 IdP mapper 작업을 먼저 완료합니다. 이 파일이 공통 관리 스크립트 ConfigMap도 준비합니다.
 - `keycloak-runtime`의 관리자 계정이 실제 Keycloak 관리자 계정과 일치해야 합니다.
-- `deploy/portal/env/prod/api.env.example`을 참고해 `OIDC_PROVIDER`, `OIDC_CLIENT_ID`,
+- `deploy/portal/env/prod/api.env`을 참고해 `OIDC_PROVIDER`, `OIDC_CLIENT_ID`,
   `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`을 작성합니다.
 - 기존 파일이 있다면 예시로 덮어쓰지 않습니다. DB 항목은 client 등록 단계에서는 필수가 아닙니다.
 

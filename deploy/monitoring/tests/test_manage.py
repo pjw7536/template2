@@ -16,7 +16,7 @@ spec.loader.exec_module(manage)
 
 def settings():
     """실제 비밀값 없이 테스트용 서버 입력을 만든다."""
-    result = manage.read_env(manage.EXAMPLE)
+    result = manage.read_env(manage.BASE / 'env/k8s.env')
     result['NODE_NAME'] = 'worker-one'
     for key in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'):
         result[key] = 'mirror.test/' + key.lower()
@@ -28,7 +28,7 @@ class MonitoringTests(unittest.TestCase):
 
     def test_placeholder_and_unknown_keys_are_rejected(self):
         with self.assertRaisesRegex(ValueError, '실제 값'):
-            manage.validate(manage.read_env(manage.EXAMPLE))
+            manage.validate({**settings(), 'NODE_NAME': 'replace-me'})
         data = settings()
         manage.validate(data)
         data['PASSWORD'] = 'not-allowed'

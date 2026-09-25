@@ -175,7 +175,7 @@ class InputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/server-up.py',
-                             'deploy/shared/scripts/env_secrets.py', 'deploy/shared/ingress/routing.py'):
+                             'deploy/shared/ingress/routing.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(keycloak.ROOT / relative, target)
@@ -183,14 +183,14 @@ class InputTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / 'deploy/airflow').exists())
 
-    def test_reads_credentials_from_companion_file(self):
+    def test_reads_credentials_only_from_selected_env(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'prod.env'
-            path.write_text('postgres-password=\nbootstrap-admin-username=admin\n'
-                            'bootstrap-admin-password=\nkeycloak-public-url=https://sso.test\n')
-            path.with_suffix('.secrets.env').write_text('postgres-password=fixture-db\nbootstrap-admin-password=fixture-admin\n')
+            path.write_text('postgres-password=fixture-db\nbootstrap-admin-username=admin\n'
+                            'bootstrap-admin-password=fixture-admin\nkeycloak-public-url=https://sso.test\n')
+            path.with_suffix('.secrets.env').write_text('postgres-password=stale-value\n')
             self.assertEqual(keycloak.read_settings(path)['postgres-password'], 'fixture-db')
-            path.with_suffix('.secrets.env').unlink()
+            path.write_text(path.read_text().replace('postgres-password=fixture-db', 'postgres-password='))
             with self.assertRaises(ValueError):
                 keycloak.read_settings(path)
 

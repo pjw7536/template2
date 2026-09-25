@@ -43,7 +43,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 - 로컬 Airflow와 API의 공용 credential은 실행 도구가 생성·재사용합니다. 로컬 개발은 사내망에 의존하지 않습니다.
 - Web 공개 설정에는 secret을 넣지 않습니다. 정적 Web은 시작 시 `/runtime-env.js`를 생성합니다.
 - 이미지 registry와 package mirror는 이미지 빌드·배포 입력으로 지정합니다. 전체 목록은 [mirror 참고](integrations/proxy-mirrors.md)를 봅니다.
-- Airflow 사내 의존성 이미지 빌드 입력은 `deploy/airflow/env/build.env.example`입니다. 승인된 버전 고정 ODBC artifact는 `BIGDATAQUERY_ODBC_DEB_URL`로 전달하며 로컬 개발 빌드에는 사용하지 않습니다.
+- Airflow 사내 의존성 이미지 빌드 입력은 `deploy/airflow/env/build.env`입니다. 승인된 버전 고정 ODBC artifact는 `BIGDATAQUERY_ODBC_DEB_URL`로 전달하며 로컬 개발 빌드에는 사용하지 않습니다.
 - Airflow ODBC 설정은 서버 `ODBC_HOST_PATH`를 `/usr/local/odbc`에 read-only로 연결하거나 `ODBC_SECRET_NAME`을 사용합니다. 실제 설정을 이미지나 Git에 넣지 않습니다.
 - Kubernetes Airflow는 기존 실행 용량과 `default_pool=-1`을 유지합니다. 로컬 자원 제한은 별도 Helm values로 지정합니다.
 - `make env-profile-key-check`는 공개 입력·예시의 존재와 중복 키를 확인하며 실제 운영 env 없이도 동작합니다.

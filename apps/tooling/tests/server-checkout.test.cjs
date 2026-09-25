@@ -25,6 +25,18 @@ function fixture(t) {
     recursive: true,
     filter: file => !file.endsWith('.env') && !file.endsWith('.bak'),
   });
+  // 배포 env 경로를 보존하되 credential 값은 테스트 입력으로 대체합니다.
+  for (const relative of ['airflow/env/k8s.env', 'airflow/env/build.env', 'monitoring/env/k8s.env',
+    'headlamp/env/k8s.env', 'keycloak/env/prod.env', 'portal/env/prod/api.env',
+    'portal/env/prod/web.env', 'portal/env/prod/minio.env', 'portal/env/test/api.env']) {
+    const input = fs.readFileSync(path.join(root, 'deploy', relative), 'utf8');
+    const sanitized = input.split('\n').map(line => {
+      const key = line.split('=')[0];
+      return !key.startsWith('#') && /password|token|fernet|authorization|secret.key|client.secret|access.key/i.test(key)
+        ? `${key}=replace-me` : line;
+    }).join('\n');
+    fs.writeFileSync(path.join(source, 'deploy', relative), sanitized, { mode: 0o600 });
+  }
   fs.copyFileSync(path.join(root, 'Makefile'), path.join(source, 'Makefile'));
   for (const folder of ['docs', 'apps/portal/api', 'apps/portal/web', 'apps/airflow', 'local']) {
     fs.mkdirSync(path.join(source, folder), { recursive: true });
@@ -91,12 +103,12 @@ test('선택 범위 변경은 수정 파일과 미지원 앱을 보존하고 중
   assert.ok(fs.readFileSync(path.join(checkout, 'Makefile'), 'utf8').endsWith('# 사용자 수정\n'));
 });
 
-test('서버 검사는 미지원 환경과 선택 앱의 누락된 예시를 차단한다', t => {
+test('서버 검사는 미지원 환경과 선택 앱의 누락된 env를 차단한다', t => {
   const checkout = fixture(t);
   run(checkout, 'bash', ['deploy/shared/scripts/checkout-server.sh', 'portal']);
   const args = ['deploy/shared/scripts/check-server.sh', 'portal'];
   assert.notEqual(spawnSync('bash', [...args, 'local'], { cwd: checkout }).status, 0);
-  fs.rmSync(path.join(checkout, 'deploy/portal/env/prod/api.env.example'));
+  fs.rmSync(path.join(checkout, 'deploy/portal/env/prod/api.env'));
   const result = spawnSync('bash', [...args, 'prod'], { cwd: checkout, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /설정 파일이 없습니다/);

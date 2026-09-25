@@ -28,7 +28,7 @@ Portal·Monitoring을 배포하지 않습니다. 기존 Keycloak namespace·DB·
 
 ## 최초 준비와 이후 실행의 차이
 
-Git pull은 소스와 일반 env 설정을 갱신합니다. 이미지·Helm chart·비밀값 파일(`*.secrets.env`)·인증서·데이터는 Git에 포함되지 않습니다.
+Git pull은 소스와 비밀번호·토큰을 포함한 env를 갱신합니다. 이미지·Helm chart·인증서·개인키·데이터는 별도로 준비합니다.
 최초 준비를 끝내면 이후에는 `git pull --ff-only`와 `make server-up`으로 같은 경로를 재실행합니다.
 Airflow DAG·Dockerfile이 바뀌면 새 이미지 빌드·태그 변경도 필요합니다.
 개발 PC의 변경사항은 먼저 commit/push되어야 서버에서 pull할 수 있습니다.
@@ -85,7 +85,7 @@ vi deploy/airflow/env/k8s.env
 Airflow가 사용할 DNS는 Traefik으로 연결되는 주소를 가리켜야 합니다.
 현재는 `etch.samsungds.net → APP VIP → 두 Worker:443`으로 연결하며, 단독 실행에서는 worker IP를 직접 사용할 수 있습니다.
 
-신규 연동 토큰이 필요할 때만 아래 명령으로 생성해 `k8s.secrets.env`에 입력합니다. 출력은 저장소에 기록하지 않습니다.
+신규 연동 토큰이 필요할 때만 아래 명령으로 생성해 `k8s.env`에 입력합니다. 생성한 값은 해당 env에 기록합니다.
 
 ```bash
 openssl rand -hex 32

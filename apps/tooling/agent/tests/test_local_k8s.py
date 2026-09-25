@@ -117,7 +117,7 @@ class LocalKubernetesTests(unittest.TestCase):
 
     def test_legacy_server_env_retains_internal_database_defaults(self):
         airflow = config.module('airflow')
-        values = airflow.read_env(airflow.EXAMPLE)
+        values = airflow.read_env(airflow.DEFAULT_ENV)
         for key in airflow.DB_DEFAULTS:
             values.pop(key)
         airflow.validate(values, example=True)
