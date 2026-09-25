@@ -72,7 +72,7 @@ class MetadataTests(unittest.TestCase):
 
 
 class FlowTests(unittest.TestCase):
-    def execute(self, action="apply", fail=None, portal=True):
+    def execute(self, action="apply", fail=None, portal=True, step="all"):
         calls = []
 
         def command(args, **kwargs):
@@ -82,6 +82,9 @@ class FlowTests(unittest.TestCase):
                 raise ValueError("시험 실패")
             if "create" in args and "configmap" in args:
                 return json.dumps({"kind": "ConfigMap"})
+            if "create" in args and "--dry-run=client" in args:
+                return json.dumps({"metadata": {}, "spec": {"template": {"metadata": {}, "spec": {
+                    "containers": [{"env": [], "envFrom": [{"secretRef": {"name": "oidc"}}]}]}}}})
             if "env" in kwargs:
                 wrapper = Path(kwargs["env"]["KUBECTL_BIN"]).read_text()
                 self.assertIn("--context test-context", wrapper)
@@ -92,9 +95,9 @@ class FlowTests(unittest.TestCase):
                 patch.object(setup, "run", side_effect=command):
             if fail:
                 with self.assertRaises(ValueError):
-                    setup.setup(action, "test-context", Path("unused"), Path("portal.env") if portal else None)
+                    setup.setup(action, "test-context", Path("unused"), Path("portal.env") if portal else None, step)
             else:
-                setup.setup(action, "test-context", Path("unused"), Path("portal.env") if portal else None)
+                setup.setup(action, "test-context", Path("unused"), Path("portal.env") if portal else None, step)
         return calls
 
     def test_check_does_not_write_cluster(self):
@@ -116,6 +119,35 @@ class FlowTests(unittest.TestCase):
     def test_portal_is_optional(self):
         calls = self.execute(portal=False)
         self.assertEqual(len([call for call in calls if "wait" in call]), 2)
+
+    def test_each_step_runs_only_its_own_job(self):
+        names = {"realm": "keycloak-realm-setup", "idp": "keycloak-oidc-setup",
+                 "profile": "keycloak-user-profile-setup", "mappers": "keycloak-idp-mappers-setup",
+                 "portal": "portal-keycloak-client"}
+        for step, name in names.items():
+            with self.subTest(step=step):
+                calls = self.execute(step=step, portal=step == "portal")
+                self.assertEqual([call[-2] for call in calls if "wait" in call], ["job/" + name])
+                secrets = [call for call in calls if str(setup.SHARED / "apply-env.sh") in call]
+                self.assertEqual(len(secrets), int(step in ("idp", "portal")))
+
+    def test_profile_does_not_require_discovery_env(self):
+        with patch.object(setup, "discover") as discover, patch.object(setup, "read_env") as read:
+            setup.setup("check", "test", Path("missing"), step="profile")
+            discover.assert_not_called()
+            read.assert_not_called()
+
+    def test_step_jobs_have_independent_modes_and_realm_needs_no_oidc_secret(self):
+        for step, key in (("profile", "KEYCLOAK_PROFILE_ONLY"), ("mappers", "KEYCLOAK_SKIP_PROFILE"), ("realm", None)):
+            payload = {"metadata": {}, "spec": {"template": {"metadata": {}, "spec": {
+                "containers": [{"env": [], "envFrom": ["oidc-secret"]}]}}}}
+            result = setup.step_job(payload, "test-job", step)
+            container = result["spec"]["template"]["spec"]["containers"][0]
+            if key:
+                self.assertIn({"name": key, "value": "true"}, container["env"])
+            else:
+                self.assertNotIn("envFrom", container)
+                self.assertEqual(container["command"][-1], "/opt/keycloak-config/setup-realm.sh")
 
 
 class ShellEntryTests(unittest.TestCase):

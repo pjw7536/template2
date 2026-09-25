@@ -20,7 +20,7 @@ git rev-parse HEAD
 | 앱 코드·DAG | 이미지 빌드·반입 → 고유 tag/digest → 앱별 검사·배포 |
 | manifest·chart 설정 | 앱별 검사·배포 |
 | env | 실제 입력 검사 → Secret 갱신 → 필요한 재시작·Job |
-| TLS | [TLS 절차](../../../keycloak/TLS.md)로 해당 namespace의 Secret 갱신 |
+| TLS | [TLS 절차](../../../keycloak/03_TLS.md)로 해당 namespace의 Secret 갱신 |
 | Portal DB schema | 백업·호환성 확인 → 같은 API 이미지로 migration → 배포 |
 | chart·Kubernetes·CNI 버전 | 별도 호환성·업그레이드·복구 검증 후 수행 |
 

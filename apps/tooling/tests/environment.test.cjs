@@ -241,6 +241,7 @@ if(a[0]!=='config' && a.includes('--realm')) process.exit(2);
 if(process.env.MOCK_FAIL && a[0]==='get' && a[1].includes(process.env.MOCK_FAIL)) { console.error('private-marker'); process.exit(1); }
 if(a[0]==='get') {
  if(a[1]==='identity-provider/instances') console.log(process.env.MOCK_EXISTING==='true'?'oidc':'');
+ else if(a[1]==='realms') console.log(process.env.MOCK_EXISTING==='true'?'master,unused'.replace(',', '\\n')+'\\netch':'master');
  else if(a[1]==='realms/etch') console.log(process.env.MOCK_EMAIL_AS_USERNAME || 'false');
  else if(a[1]==='clients') console.log(fs.existsSync(process.env.MOCK_STATE)?'client-uuid':'');
  else if(a[1].endsWith('/mappers')||a[1].endsWith('/models')) console.log(process.env.MOCK_RETIRED==='1'?'old-grade,grdName\\nold-origin,origincomp\\nold-first,first_name\\nold-last,last_name\\nold-userid,userid':process.env.MOCK_EPID_EXISTING==='1'?'existing-epid,epid-username\\nexisting-sabun,sabun':'existing-sabun,sabun');
@@ -380,7 +381,7 @@ else process.exit(1);
 test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이름을 분리한다', t => {
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
   const byName = Object.fromEntries(profile.attributes.map(a => [a.name, a]));
-  const mapping = { loginid: 'knox_id', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'department', deptid: 'deptid', mail: 'email', grdName: 'grd_name', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype', user_sdwt_prod: 'user_sdwt_prod', line_id: 'line_id' };
+  const mapping = { loginid: 'loginid', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'deptname', deptid: 'deptid', mail: 'email', grdName: 'grdName', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype', user_sdwt_prod: 'user_sdwt_prod', line_id: 'line_id' };
   assert.deepEqual(new Set(Object.keys(byName)), new Set(['username', 'firstName', 'lastName', ...Object.values(mapping)]));
   assert.ok(!byName.career_level);
   // 활성 필드는 본인 조회만 허용하고 신원 정보 수정은 관리자에게 제한합니다.
@@ -391,7 +392,7 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   for (const name of ['firstName', 'lastName']) {
     assert.ok(!byName[name].required);
   }
-  assert.equal(byName.department.validations.length.max, 128);
+  assert.equal(byName.deptname.validations.length.max, 128);
   assert.equal(byName.sabun.validations.length.max, 50);
   assert.ok(!byName.password && !byName.is_superuser);
   assert.ok(!byName.first_name && !byName.last_name && !byName.avatarid);
@@ -458,6 +459,8 @@ test('mapper 전달 YAML은 서버 변경 없이 프로필·스크립트와 실�
     'sync-oidc-claim-mappers.sh': 'claims/sync-oidc-claim-mappers.sh',
     'admin-common.sh': 'oidc/admin-common.sh',
     'setup-oidc.sh': 'oidc/setup-oidc.sh',
+    'setup-realm.sh': 'oidc/setup-realm.sh',
+    'etch-realm.json': 'server/etch-realm.json',
   };
   for (const [file, value] of Object.entries(config.data)) {
     assert.equal(value, fs.readFileSync(path.join(root, 'deploy/keycloak/k8s', sources[file]), 'utf8'));
@@ -475,7 +478,7 @@ test('폐기한 mapper를 삭제하되 Portal userid 출력은 보존한다', t 
     const gradeUpdate = mock.calls().find(a => a[0] === 'update' && a[1].endsWith('/old-grade'));
     assert.ok(gradeUpdate);
     assert.ok(gradeUpdate.includes('name=grdName'));
-    assert.equal(JSON.parse(gradeUpdate.find(a => a.startsWith('config=')).slice(7))['user.attribute'], 'grd_name');
+    assert.equal(JSON.parse(gradeUpdate.find(a => a.startsWith('config=')).slice(7))['user.attribute'], 'grdName');
     const deleted = mock.calls().filter(a => a[0] === 'delete');
     assert.equal(deleted.length, target === 'idp' ? 4 : 3);
     assert.ok(deleted.every(a => a[1].startsWith(target === 'idp' ? 'identity-provider/' : 'clients/')));
@@ -483,7 +486,7 @@ test('폐기한 mapper를 삭제하되 Portal userid 출력은 보존한다', t 
   }
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
   assert.ok(!profile.attributes.some(a => a.name === 'origincomp'));
-  assert.ok(profile.attributes.some(a => a.name === 'grd_name'));
+  assert.ok(profile.attributes.some(a => a.name === 'grdName'));
   assert.ok(profile.attributes.some(a => a.name === 'grdname_en'));
 });
 
@@ -555,4 +558,38 @@ require('node:fs').writeFileSync(process.env.MOCK_CAPTURE, JSON.stringify(proces
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(fs.readFileSync(capture)), [path.join(root, `deploy/${app}/scripts/manage.py`), 'check', '--env', input]);
   }
+});
+
+for (const existing of [false, true]) {
+  test(`realm 단계는 ${existing ? '기존 realm을 보존' : '없는 realm만 생성'}한다`, t => {
+    const mock = mockAdmin(t, { existing });
+    const result = mock.run('deploy/keycloak/k8s/oidc/setup-realm.sh');
+    assert.equal(result.status, 0, result.stderr);
+    const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
+    assert.equal(writes.length, existing ? 0 : 1);
+    if (!existing) assert.equal(writes[0][1], 'realms');
+  });
+}
+test('realm 조회 실패는 새 realm 생성으로 이어지지 않는다', t => {
+  const mock = mockAdmin(t, { fail: 'realms' });
+  assert.notEqual(mock.run('deploy/keycloak/k8s/oidc/setup-realm.sh').status, 0);
+  assert.ok(!mock.calls().some(a => ['create', 'update', 'delete'].includes(a[0])));
+});
+test('프로필 전용 단계는 IdP·client·mapper를 변경하지 않는다', t => {
+  const mock = mockAdmin(t, { fail: 'identity-provider' });
+  const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', { KEYCLOAK_PROFILE_ONLY: 'true' });
+  assert.equal(result.status, 0, result.stderr);
+  const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][1], 'users/profile');
+});
+test('IdP mapper 전용 단계는 User Profile과 client를 변경하지 않는다', t => {
+  const mock = mockAdmin(t);
+  const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', {
+    KEYCLOAK_MAPPING_TARGET: 'idp', KEYCLOAK_SKIP_PROFILE: 'true',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
+  assert.equal(writes.length, 16);
+  assert.ok(writes.every(a => a[1].startsWith('identity-provider/instances/oidc/mappers')));
 });

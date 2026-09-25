@@ -213,9 +213,9 @@ class KeycloakTests(unittest.TestCase):
         user = self.user("000003")
         self.assertEqual(user["username"], "000003")
         self.assertEqual(user["email"], "example@example.invalid")
-        self.assertEqual(user["attributes"]["knox_id"], ["example.user"])
+        self.assertEqual(user["attributes"]["loginid"], ["example.user"])
         self.assertEqual(user["attributes"]["display_name"], ["표시이름"])
-        self.assertEqual(user["attributes"]["department"], ["예시부서"])
+        self.assertEqual(user["attributes"]["deptname"], ["예시부서"])
         self.assertEqual(user["attributes"]["grdname_en"], ["CL3"])
         with self.assertRaises(setup.SetupError):
             self.run_setup([{**values, "userid": "000004", "mail": "other@example.invalid", "sabun": "S004"}])

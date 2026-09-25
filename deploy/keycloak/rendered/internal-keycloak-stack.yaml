@@ -199,8 +199,8 @@ data:
           }
         },
         {
-          "name": "knox_id",
-          "displayName": "knox_id",
+          "name": "loginid",
+          "displayName": "loginid",
           "permissions": {
             "view": [
               "admin",
@@ -275,8 +275,8 @@ data:
           }
         },
         {
-          "name": "department",
-          "displayName": "department",
+          "name": "deptname",
+          "displayName": "deptname",
           "permissions": {
             "view": [
               "admin",
@@ -313,8 +313,8 @@ data:
           }
         },
         {
-          "name": "grd_name",
-          "displayName": "grd_name",
+          "name": "grdName",
+          "displayName": "grdName",
           "permissions": {
             "view": [
               "admin",
@@ -492,6 +492,14 @@ data:
         --user "$KEYCLOAK_ADMIN_USERNAME" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
       kc get "realms/$KEYCLOAK_TARGET_REALM" >/dev/null
     }
+  etch-realm.json: |
+    {
+      "realm": "etch",
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true
+    }
   setup-oidc.sh: |
     #!/usr/bin/env bash
     set -Eeuo pipefail
@@ -537,6 +545,26 @@ data:
     fi
     kc "$operation" "$endpoint" -r "$KEYCLOAK_TARGET_REALM" "${args[@]}" >/dev/null
     echo '사내 OIDC 설정 완료. 기존 사용자와 realm은 유지됩니다.'
+  setup-realm.sh: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    source "$(dirname "${BASH_SOURCE[0]}")/admin-common.sh"
+    : "${KEYCLOAK_ADMIN_USERNAME:?관리자 계정이 필요합니다.}"
+    : "${KEYCLOAK_ADMIN_PASSWORD:?관리자 비밀번호가 필요합니다.}"
+    [[ "$KEYCLOAK_TARGET_REALM" == etch ]] || { echo '이 배포의 대상 realm은 etch입니다.' >&2; exit 1; }
+    umask 077
+    kc config credentials --server "$KEYCLOAK_ADMIN_URL" --realm master \
+      --user "$KEYCLOAK_ADMIN_USERNAME" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
+    # 조회 실패를 realm 부재로 간주하지 않습니다. 기존 realm 설정은 갱신하지 않습니다.
+    realms="$(kc get realms --fields realm --format csv --noquotes)"
+    while IFS= read -r realm; do
+      if [[ "${realm%$'\r'}" == "$KEYCLOAK_TARGET_REALM" ]]; then
+        echo 'etch realm이 이미 있어 기존 설정을 유지합니다.'
+        exit 0
+      fi
+    done <<< "$realms"
+    kc create realms -f "$(dirname "${BASH_SOURCE[0]}")/etch-realm.json" >/dev/null
+    echo 'etch realm 생성 완료.'
   sync-oidc-claim-mappers.sh: |
     #!/usr/bin/env bash
     set -Eeuo pipefail
@@ -548,6 +576,8 @@ data:
     readonly KEYCLOAK_IDP_ALIAS="${KEYCLOAK_IDP_ALIAS:-oidc}"
     readonly KEYCLOAK_TARGET_CLIENT="${KEYCLOAK_TARGET_CLIENT:-portal}"
     readonly KEYCLOAK_MAPPING_TARGET="${KEYCLOAK_MAPPING_TARGET:-all}"
+    readonly KEYCLOAK_PROFILE_ONLY="${KEYCLOAK_PROFILE_ONLY:-false}"
+    readonly KEYCLOAK_SKIP_PROFILE="${KEYCLOAK_SKIP_PROFILE:-false}"
     readonly KCADM_CONFIG="${KCADM_CONFIG:-/tmp/keycloak-claims.config}"
 
     kcadm() {
@@ -581,14 +611,11 @@ data:
     # 사내 claim과 account_user에 대응하는 Keycloak 속성 이름을 분리합니다.
     profile_attribute() {
       case "$1" in
-        loginid) printf '%s' knox_id ;;
         userid) printf '%s' username ;;
         username) printf '%s' display_name ;;
         givenname) printf '%s' firstName ;;
         surname) printf '%s' lastName ;;
-        deptname) printf '%s' department ;;
         mail) printf '%s' email ;;
-        grdName) printf '%s' grd_name ;;
         *) printf '%s' "$1" ;;
       esac
     }
@@ -799,7 +826,20 @@ data:
       idp|client|all) ;;
       *) echo 'KEYCLOAK_MAPPING_TARGET은 idp, client, all 중 하나여야 합니다.' >&2; exit 1 ;;
     esac
+    case "$KEYCLOAK_PROFILE_ONLY/$KEYCLOAK_SKIP_PROFILE" in
+      false/false|true/false|false/true) ;;
+      *) echo '프로필 실행 모드 조합이 올바르지 않습니다.' >&2; exit 1 ;;
+    esac
     login_admin
+
+    # 프로필 단계는 realm만 필요하며 IdP·client·mapper를 조회하거나 변경하지 않습니다.
+    if [[ "$KEYCLOAK_PROFILE_ONLY" == true ]]; then
+      kcadm get "realms/$KEYCLOAK_TARGET_REALM" >/dev/null
+      kcadm update users/profile -r "$KEYCLOAK_TARGET_REALM" \
+        -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null
+      echo 'User Profile 등록 완료. mapper는 별도 단계에서 실행하세요.'
+      exit 0
+    fi
 
     if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]] && ! kcadm get \
       "identity-provider/instances/$KEYCLOAK_IDP_ALIAS" \
@@ -829,7 +869,7 @@ data:
     fi
 
     # 사용자 승인대로 프로필 정의를 교체하며 실제 사용자 레코드는 삭제하지 않습니다.
-    if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+    if [[ "$KEYCLOAK_MAPPING_TARGET" != client && "$KEYCLOAK_SKIP_PROFILE" != true ]]; then
       kcadm update users/profile \
         -r "$KEYCLOAK_TARGET_REALM" \
         -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null

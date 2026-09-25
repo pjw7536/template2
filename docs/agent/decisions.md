@@ -366,7 +366,7 @@
 - 지정한 client에만 `sdwt-access-v1` 그룹 claim을 연결하고 토큰 수명 300초를 적용한다. 충돌하는 기본 optional `microprofile-jwt` 연결만 해제하고 다른 client는 보존한다.
 - 사용자 생성 요청에 소속·그룹 가입을 함께 포함한다. 작업 전체는 여러 Admin API 호출이므로 완료된 작업을 보존하고 재실행으로 이어간다.
 - 초기 설정과 Portal 판정 전환·사내 broker 첫 로그인 검증을 구분한다. 실제 Keycloak 26.7.1 통합 검사는 완료했으며 운영에는 적용하지 않았다.
-- [초기 설정 안내](../../deploy/keycloak/SDWT_SETUP.md), [진행 계획](plans/keycloak-sdwt-group-authorization.md).
+- [초기 설정 안내](../../deploy/keycloak/07_SDWT_SETUP.md), [진행 계획](plans/keycloak-sdwt-group-authorization.md).
 
 ## 2026-09-25: 배포 env 단일 파일 관리
 
@@ -374,3 +374,10 @@
 - 지정한 env 하나만 읽고 인접 비밀값 파일 자동 병합은 제거한다. 인증서·개인키 파일은 계속 Git에서 제외한다.
 - Kubernetes Secret 등록 방식과 기존 credential은 보존한다.
 - 배포 env.example은 제거하고 추적 중인 env를 배포·검사 입력으로 사용한다. 허용 키는 코드에서 검증하며 테스트 credential은 독립 입력을 사용한다.
+
+## 2026-09-25: Keycloak 커스텀 저장 이름을 사내 claim에 통일
+
+- 이전 account_user 기준 저장 명칭 결정을 변경한다. 사내 loginid·deptname·grdName은 Keycloak에서도 같은 이름으로 저장하고 발급한다. Portal DB 컬럼은 유지한다.
+- EPID는 기본 username, 사람 이름은 display_name, 이메일·성/이름은 기본 email·firstName·lastName을 유지한다.
+- 기존 값 복사는 별도 dry-run 기본 도구로 수행하며 이전 속성은 삭제하지 않는다. 신규 값과 충돌하면 중단한다.
+- [실행·검증 기록](plans/keycloak-claim-storage.md)을 참고한다.

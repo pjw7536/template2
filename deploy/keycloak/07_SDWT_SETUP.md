@@ -1,11 +1,28 @@
-# SDWT 그룹·사용자 초기 설정
+# 07. SDWT 그룹·사용자 초기 설정
+
+[시작 안내](README.md) · 전체 순서: [5번 단계](04_SETUP_FLOW.md#5-소속sdwt-그룹-권한--선택) · 필드: [매핑 참고](06_CLAIMS.md)
+
+이 문서는 기본 realm·프로필·업무 client 설정을 마친 뒤 필요한 경우에만 진행하는 선택 단계입니다.
+실행 파일은 `scripts/05-setup-sdwt.sh`이며 Make 진입점은 `keycloak-sdwt-init`입니다.
 
 `make keycloak-sdwt-init`으로 기존 Keycloak에 SDWT별 `admin/user/viewer` 하위 그룹을 만들고,
 선택한 업무 client에 공통 그룹 claim을 연결합니다. 사용자 CSV도 지정하면 신규 계정의
 소속과 본인 SDWT `user` 가입을 함께 등록합니다. 별도 Python 패키지 없이 Python 3.10+로 실행합니다.
 
-기본은 **dry-run**입니다. `KEYCLOAK_SDWT_APPLY=1`에서만 관리 설정·사용자를 변경합니다.
+기본은 **dry-run**입니다. Make의 `KEYCLOAK_SDWT_APPLY=1` 또는 직접 실행의 `--apply`에서만 관리 설정·사용자를 변경합니다.
 실제 사용자 CSV와 인증정보는 Git에 넣지 않습니다. 서버 선택 checkout에서도 Portal 소스·local 없이 실행됩니다.
+
+## 실행 순서와 결과
+
+| 순서 | 준비·실행 | 결과 |
+| --- | --- | --- |
+| 1 | CSV 작성 및 `--validate-only` | 파일 구조·중복·소속 연결 검사, 서버 접속 없음 |
+| 2 | 관리자 인증 환경변수 준비 | 관리 API 연결 준비, Secret 자동 조회 없음 |
+| 3 | dry-run 후 적용 | 그룹·공통 scope·신규 사용자 준비 |
+| 4 | 시험 로그인과 새 토큰 확인 | 실제 값·계정 연결·권한 검증 |
+
+실제 소속(`user_sdwt_prod`, `line_id`)과 접근 권한(SDWT 그룹)은 다른 정보입니다.
+사용자 사전 등록은 사내 계정과의 broker 연결을 자동으로 완료하지 않습니다.
 
 ## 1. 입력 파일
 
@@ -26,8 +43,9 @@ SDWT-B,LINE-1
 사용자 CSV의 필수 헤더는 `userid,user_sdwt_prod`입니다. `userid`는 사내 EPID이며 소속이 없으면 SDWT 칸을 비웁니다.
 선택 헤더는 `sabun,loginid,username,mail,deptname,grdname_en`입니다.
 신원 컬럼은 사내 OIDC claim 이름을 그대로 사용합니다. 등록 시 `userid→username`,
-`loginid→knox_id`, `username→display_name`, `mail→email`, `deptname→department`로
-기존 Keycloak 저장 구조에 맞춥니다. `sabun`과 `grdname_en`은 같은 이름의 속성에 저장합니다.
+`loginid→loginid`, `username→display_name`, `mail→email`, `deptname→deptname`로
+Keycloak 저장 구조에 맞춥니다. 이 표기는 CSV → 내부 저장 매핑입니다.
+앱에 발급할 때는 4번 token mapper가 `loginid → loginid`, `display_name → username` 등 사내 claim 이름으로 반환합니다. `sabun`과 `grdname_en`은 같은 이름의 속성에 저장합니다.
 `grdname_en`은 사내 OIDC의 동명 claim 값이며 같은 이름의 Keycloak 사용자 속성에 저장합니다.
 빈 값은 생략하고 기존 사용자 값은 재등록으로 변경하지 않습니다. 이후 사내 로그인에서는
 기존 `grdname_en` mapper로 갱신됩니다. CSV의 이전 `grd_name`, `career_level` 헤더는 사용하지 않습니다.
@@ -97,7 +115,7 @@ make keycloak-sdwt-init \
 
 client는 쉼표로 여러 개 지정할 수 있습니다. 사용자를 등록하지 않으려면 `KEYCLOAK_USERS_CSV`를
 생략합니다. client를 생략하면 그룹·프로필·사용자만 준비하고 앱 scope는 변경하지 않습니다.
-환경변수 대신 직접 실행할 경우 `python3 deploy/keycloak/scripts/init_sdwt.py --help`를 참고합니다.
+환경변수 대신 직접 실행할 경우 `bash deploy/keycloak/scripts/05-setup-sdwt.sh --help`를 참고합니다.
 
 적용 작업은 다음으로 제한됩니다.
 
@@ -136,7 +154,7 @@ claim을 검사합니다. 이전 토큰에는 이전 권한이 남으며 그룹 
 
 ```bash
 make keycloak-sdwt-test
-make k8s-render-local
+make server-check APP=keycloak PROFILE=prod
 ```
 
 실제 Keycloak 통합 테스트는 전용 테스트 서버의 URL을 `KEYCLOAK_SDWT_TEST_URL`에 지정하고

@@ -8,6 +8,8 @@ readonly KEYCLOAK_TARGET_REALM="${KEYCLOAK_TARGET_REALM:-etch}"
 readonly KEYCLOAK_IDP_ALIAS="${KEYCLOAK_IDP_ALIAS:-oidc}"
 readonly KEYCLOAK_TARGET_CLIENT="${KEYCLOAK_TARGET_CLIENT:-portal}"
 readonly KEYCLOAK_MAPPING_TARGET="${KEYCLOAK_MAPPING_TARGET:-all}"
+readonly KEYCLOAK_PROFILE_ONLY="${KEYCLOAK_PROFILE_ONLY:-false}"
+readonly KEYCLOAK_SKIP_PROFILE="${KEYCLOAK_SKIP_PROFILE:-false}"
 readonly KCADM_CONFIG="${KCADM_CONFIG:-/tmp/keycloak-claims.config}"
 
 kcadm() {
@@ -41,14 +43,11 @@ readonly AFFILIATION_CLAIMS=(user_sdwt_prod line_id)
 # 사내 claim과 account_user에 대응하는 Keycloak 속성 이름을 분리합니다.
 profile_attribute() {
   case "$1" in
-    loginid) printf '%s' knox_id ;;
     userid) printf '%s' username ;;
     username) printf '%s' display_name ;;
     givenname) printf '%s' firstName ;;
     surname) printf '%s' lastName ;;
-    deptname) printf '%s' department ;;
     mail) printf '%s' email ;;
-    grdName) printf '%s' grd_name ;;
     *) printf '%s' "$1" ;;
   esac
 }
@@ -259,7 +258,20 @@ case "$KEYCLOAK_MAPPING_TARGET" in
   idp|client|all) ;;
   *) echo 'KEYCLOAK_MAPPING_TARGET은 idp, client, all 중 하나여야 합니다.' >&2; exit 1 ;;
 esac
+case "$KEYCLOAK_PROFILE_ONLY/$KEYCLOAK_SKIP_PROFILE" in
+  false/false|true/false|false/true) ;;
+  *) echo '프로필 실행 모드 조합이 올바르지 않습니다.' >&2; exit 1 ;;
+esac
 login_admin
+
+# 프로필 단계는 realm만 필요하며 IdP·client·mapper를 조회하거나 변경하지 않습니다.
+if [[ "$KEYCLOAK_PROFILE_ONLY" == true ]]; then
+  kcadm get "realms/$KEYCLOAK_TARGET_REALM" >/dev/null
+  kcadm update users/profile -r "$KEYCLOAK_TARGET_REALM" \
+    -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null
+  echo 'User Profile 등록 완료. mapper는 별도 단계에서 실행하세요.'
+  exit 0
+fi
 
 if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]] && ! kcadm get \
   "identity-provider/instances/$KEYCLOAK_IDP_ALIAS" \
@@ -289,7 +301,7 @@ if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
 fi
 
 # 사용자 승인대로 프로필 정의를 교체하며 실제 사용자 레코드는 삭제하지 않습니다.
-if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
+if [[ "$KEYCLOAK_MAPPING_TARGET" != client && "$KEYCLOAK_SKIP_PROFILE" != true ]]; then
   kcadm update users/profile \
     -r "$KEYCLOAK_TARGET_REALM" \
     -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null

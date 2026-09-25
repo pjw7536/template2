@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discovery를 검증하고 기존 Keycloak 설정 Job을 순서대로 실행합니다."""
+"""Keycloak 설정 Job을 단계별 또는 통합 실행하며 IdP 입력은 discovery로 해석합니다."""
 
 import argparse
 import json
@@ -128,27 +128,49 @@ def run(args, **kwargs):
     return result.stdout
 
 
-def setup(action, context, env_path, portal_env=None):
+def step_job(payload, name, step):
+    """기존 Job의 이미지·권한·볼륨을 재사용하고 실행 단계만 구분합니다."""
+    payload["metadata"]["name"] = name
+    payload["metadata"].setdefault("labels", {})["app.kubernetes.io/name"] = name
+    template = payload["spec"]["template"]
+    template["metadata"].setdefault("labels", {})["app.kubernetes.io/name"] = name
+    payload["spec"]["backoffLimit"] = 0
+    template["spec"]["restartPolicy"] = "Never"
+    container = template["spec"]["containers"][0]
+    if step == "realm":
+        container.pop("envFrom", None)
+        container["command"] = ["/bin/bash", "/opt/keycloak-config/setup-realm.sh"]
+    else:
+        key = "KEYCLOAK_PROFILE_ONLY" if step == "profile" else "KEYCLOAK_SKIP_PROFILE"
+        container["env"].append({"name": key, "value": "true"})
+    return payload
+
+
+def setup(action, context, env_path, portal_env=None, step="all"):
     """모든 입력을 검사한 뒤 요청된 경우에만 클러스터에 적용합니다."""
-    print("사전 검사: discovery 및 발급 입력", flush=True)
-    values = discover(read_env(env_path))
+    print(f"사전 검사: {step}", flush=True)
+    if step == "portal" and not portal_env:
+        raise ValueError("Portal 단계에는 --portal-env가 필요합니다.")
+    values = discover(read_env(env_path)) if step in ("all", "idp") else None
     kube = ["kubectl", "--context", context, "-n", "etch-sso"]
     with tempfile.TemporaryDirectory(prefix="keycloak-discovery-") as directory:
         temporary = Path(directory)
         resolved = temporary / "resolved.env"
-        write_resolved(resolved, values)
-        run(["bash", SHARED / "check-env.sh", "keycloak", "prod", "oidc", resolved])
-        if portal_env:
+        if values is not None:
+            write_resolved(resolved, values)
+            run(["bash", SHARED / "check-env.sh", "keycloak", "prod", "oidc", resolved])
+        if portal_env and step in ("all", "portal"):
             run(["bash", SHARED / "check-env.sh", "portal", "prod", "client", portal_env])
         # 서버 소스만 선택 checkout한 환경에서도 적용 전에 필요한 파일을 확인합니다.
         files = [BASE / "k8s/claims/sync-oidc-claim-mappers.sh", BASE / "k8s/claims/account-user-profile.json",
-                 BASE / "k8s/oidc/admin-common.sh", BASE / "k8s/oidc/setup-oidc.sh"]
+                 BASE / "k8s/oidc/admin-common.sh", BASE / "k8s/oidc/setup-oidc.sh",
+                 BASE / "k8s/oidc/setup-realm.sh", BASE / "k8s/server/etch-realm.json"]
         for path in files + [BASE / "k8s/oidc/oidc-setup-job.yaml", BASE / "k8s/claims/claim-mappers-job.yaml"]:
             if not path.is_file():
                 raise ValueError(f"설정 파일 누락: {path.relative_to(ROOT)}")
-        if portal_env:
+        if portal_env and step in ("all", "portal"):
             run(["kubectl", "kustomize", ROOT / "deploy/portal/k8s/jobs/keycloak-client"])
-        print("사전 검사 통과. Discovery endpoint와 기존 claim 계약을 사용합니다.", flush=True)
+        print("사전 검사 통과. 클러스터의 선행 설정은 Job 실행 시 확인합니다.", flush=True)
         if action == "check":
             return
         # 공통 Secret 도구에도 같은 context를 강제합니다. 현재 context는 변경하지 않습니다.
@@ -156,25 +178,40 @@ def setup(action, context, env_path, portal_env=None):
         wrapper.write_text(f"#!/bin/sh\nexec kubectl --context {shlex.quote(context)} \"$@\"\n")
         wrapper.chmod(0o700)
         command_env = {**os.environ, "KUBECTL_BIN": str(wrapper)}
-        print("적용: OIDC Secret 및 관리 ConfigMap", flush=True)
-        run(["bash", SHARED / "apply-env.sh", "keycloak", "prod", "oidc", resolved], env=command_env)
+        print("적용: 선택 단계의 입력 및 관리 ConfigMap", flush=True)
+        if values is not None:
+            run(["bash", SHARED / "apply-env.sh", "keycloak", "prod", "oidc", resolved], env=command_env)
         config = run(kube + ["create", "configmap", "keycloak-claim-mapper",
                             *[f"--from-file={path}" for path in files], "--dry-run=client", "-o", "json"])
         run(kube + ["apply", "-f", "-"], input=config)
 
-        def job(name, manifest, kustomize=False):
+        def job(name, manifest, kustomize=False, variant=None):
             print(f"적용 및 완료 대기: {name}", flush=True)
+            payload = None
+            if variant:
+                payload = json.loads(run(kube + ["create", "--dry-run=client", "--validate=false", "-f", manifest, "-o", "json"]))
+                payload = step_job(payload, name, variant)
             run(kube + ["delete", "job", name, "--ignore-not-found", "--wait=true"])
-            run(kube + ["apply", "-k" if kustomize else "-f", manifest])
+            if payload is not None:
+                run(kube + ["apply", "-f", "-"], input=json.dumps(payload))
+            else:
+                run(kube + ["apply", "-k" if kustomize else "-f", manifest])
             run(kube + ["wait", "--for=condition=complete", f"job/{name}", "--timeout=15m"])
 
-        job("keycloak-oidc-setup", BASE / "k8s/oidc/oidc-setup-job.yaml")
-        job("keycloak-oidc-claim-mappers", BASE / "k8s/claims/claim-mappers-job.yaml")
-        if portal_env:
+        if step == "realm":
+            job("keycloak-realm-setup", BASE / "k8s/oidc/oidc-setup-job.yaml", variant=step)
+        if step in ("all", "idp"):
+            job("keycloak-oidc-setup", BASE / "k8s/oidc/oidc-setup-job.yaml")
+        if step == "all":
+            job("keycloak-oidc-claim-mappers", BASE / "k8s/claims/claim-mappers-job.yaml")
+        if step in ("profile", "mappers"):
+            name = "keycloak-user-profile-setup" if step == "profile" else "keycloak-idp-mappers-setup"
+            job(name, BASE / "k8s/claims/claim-mappers-job.yaml", variant=step)
+        if portal_env and step in ("all", "portal"):
             print("적용: Portal client Secret", flush=True)
             run(["bash", SHARED / "apply-env.sh", "portal", "prod", "client", portal_env], env=command_env)
             job("portal-keycloak-client", ROOT / "deploy/portal/k8s/jobs/keycloak-client", True)
-    print("설정 완료. 시험 계정으로 사내 로그인과 발급 claim을 확인하세요.", flush=True)
+    print(f"설정 완료: {step}. 단계별 관리 화면을 확인하고 전체 구성 후 시험 로그인하세요.", flush=True)
 
 
 def main():
@@ -182,6 +219,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("check", "apply", "resolve"))
     parser.add_argument("--context")
+    parser.add_argument("--step", choices=("all", "realm", "idp", "profile", "mappers", "portal"), default="all")
     parser.add_argument("--env", type=Path, default=BASE / "env/prod.env")
     parser.add_argument("--portal-env", type=Path)
     parser.add_argument("--output", type=Path, help="resolve 전용 임시 env 출력 파일")
@@ -194,7 +232,7 @@ def main():
         if args.action == "resolve":
             write_resolved(args.output, discover(read_env(args.env)))
         else:
-            setup(args.action, args.context, args.env, args.portal_env)
+            setup(args.action, args.context, args.env, args.portal_env, args.step)
     except (ValueError, OSError) as error:
         # URL·credential이 담길 수 있는 네트워크 예외 원문은 출력하지 않습니다.
         message = str(error) if type(error) is ValueError else "입력 파일 또는 discovery 접속/JSON 처리가 실패했습니다."

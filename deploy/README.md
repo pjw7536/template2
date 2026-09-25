@@ -66,7 +66,7 @@ Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/do
 
 | 앱 | 시작 문서 | 상세 작업 |
 | --- | --- | --- |
-| Keycloak | [서버 배포·사내 OIDC·사용자 claim](keycloak/README.md) | [TLS 인증서·Secret 운영](keycloak/TLS.md) |
+| Keycloak | [서버 배포·사내 OIDC·사용자 claim](keycloak/README.md) | [TLS 인증서·Secret 운영](keycloak/03_TLS.md) |
 | Portal | [환경설정·배포 입력 순서](portal/README.md) | [운영 overlay·배포 순서](portal/k8s/overlays/prod/README.md), [Keycloak client 등록](portal/k8s/jobs/keycloak-client/README.md) |
 | Airflow | [Helm 배포·이미지·스토리지](airflow/README.md) | 같은 문서에서 백업·데이터 이전·업데이트 안내 |
 | Monitoring | [Kubernetes 모니터링](monitoring/README.md) | kube-prometheus-stack·Grafana·지표 저장 |

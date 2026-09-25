@@ -32,7 +32,7 @@ callback 하나로 바뀌므로 먼저 확인합니다. 다른 client나 사내 
 Portal API에도 동일한 `api.env`를 적용해야 client secret이 일치합니다.
 
 16개 token claim은 ID Token, Access Token, UserInfo에 기존 사내 claim 이름의 문자열로 포함합니다.
-예: `display_name → username`, `knox_id → loginid`, `department → deptname`. 기본
+예: `display_name → username`, `loginid → loginid`, `deptname → deptname`. 기본
 `username → userid`, `email → mail`은 사용자 property mapper로 처리합니다.
 `firstName → givenname`, `lastName → surname`도 기본 사용자 property에서 읽습니다.
 사내 claim 이름은 유지하며 커스텀 `givenname`·`surname` 속성은 더 이상 읽지 않습니다.
@@ -59,7 +59,7 @@ kubectl kustomize deploy/portal/k8s/jobs/keycloak-client > /tmp/internal-portal-
 사용합니다. Secret 입력은 별도로 등록해야 합니다. 운영 서버에 Bash와 kubectl만 있으면
 실행되며 Node.js는 테스트할 때만 필요합니다.
 
-직급은 `grdName → grd_name → grdName` 매핑을 복원하며 `grdname_en`도 유지합니다.
+직급은 `grdName → grdName → grdName` 매핑을 복원하며 `grdname_en`도 유지합니다.
 `origincomp`는 계속 프로필에서 제외하고 각 Job이 기존 mapper를 삭제합니다.
 기존 사용자 속성값과 Django DB 컬럼은 일괄 삭제하지 않습니다.
 직급 반영은 두 Job을 재실행하고 사내 재로그인한 뒤 확인합니다.

@@ -46,7 +46,7 @@ kubectl config current-context
 - [환경설정 규칙](../configuration/environment.md)에 따라 실제 env를 준비합니다. 기존 파일은 보존하고 권한은 600으로 관리합니다.
 - 외부 env 파일은 앱 도구의 경로 인자로 지정합니다. env를 `source`로 실행하지 않습니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
-- [TLS 안내](../../../keycloak/TLS.md)로 도메인·SAN·만료·full chain·개인키를 확인하고 앱이 사용하는 namespace에 Secret을 준비합니다.
+- [TLS 안내](../../../keycloak/03_TLS.md)로 도메인·SAN·만료·full chain·개인키를 확인하고 앱이 사용하는 namespace에 Secret을 준비합니다.
 - [VIP 안내](../../ingress/VIP.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
 
 **완료 기준:** 선택한 앱의 이미지·chart·디스크·실제 env·TLS·배포 권한이 준비됩니다. 예시값이나 미정인 PVC 공급 방식이 남아 있으면 먼저 해결합니다.

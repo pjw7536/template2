@@ -21,6 +21,8 @@ trap 'rm -rf -- "${RENDER_TMP}"' EXIT
     --from-file="${ROOT_DIR}/deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh" \
     --from-file="${ROOT_DIR}/deploy/keycloak/k8s/oidc/admin-common.sh" \
     --from-file="${ROOT_DIR}/deploy/keycloak/k8s/oidc/setup-oidc.sh" \
+    --from-file="${ROOT_DIR}/deploy/keycloak/k8s/oidc/setup-realm.sh" \
+    --from-file="${ROOT_DIR}/deploy/keycloak/k8s/server/etch-realm.json" \
     --from-file="${ROOT_DIR}/deploy/keycloak/k8s/claims/account-user-profile.json" \
     --dry-run=client -o yaml
   printf '\n---\n'

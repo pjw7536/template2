@@ -20,12 +20,12 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 BASE = Path(__file__).resolve().parents[1]
 ROLES = ("admin", "user", "viewer")
 PAGE_SIZE = 100
-# CSV는 사내 claim 이름을 사용하고 저장 시 기존 Keycloak 속성으로 변환합니다.
+# CSV는 사내 claim 이름을 사용하고 기본 필드 충돌이 없는 커스텀 속성은 같은 이름으로 저장합니다.
 CSV_ATTRIBUTES = {
     "sabun": "sabun",
-    "loginid": "knox_id",
+    "loginid": "loginid",
     "username": "display_name",
-    "deptname": "department",
+    "deptname": "deptname",
     "grdname_en": "grdname_en",
 }
 
@@ -330,7 +330,7 @@ class Setup:
         # custom attribute 검색 문법에 입력을 끼워 넣지 않고 정확한 값을 비교합니다.
         existing = self.api.pages("users", briefRepresentation="false")
         by_id = {user["id"]: user for user in existing}
-        indexes = {key: {} for key in ("username", "email", "sabun", "knox_id")}
+        indexes = {key: {} for key in ("username", "email", "sabun", "loginid", "knox_id")}
         for user in existing:
             for key, index in indexes.items():
                 values = [user.get(key)] if key in {"username", "email"} else user.get("attributes", {}).get(key, [])
@@ -340,7 +340,7 @@ class Setup:
         for number, row in enumerate(self.users, 2):
             username_ids = indexes["username"].get(row["userid"].casefold(), set())
             matches = set(username_ids)
-            for claim, key in (("mail", "email"), ("sabun", "sabun"), ("loginid", "knox_id")):
+            for claim, key in (("mail", "email"), ("sabun", "sabun"), ("loginid", "loginid"), ("loginid", "knox_id")):
                 value = row.get(claim, "")
                 if value:
                     matches |= indexes[key].get(value.casefold(), set())
@@ -348,7 +348,7 @@ class Setup:
                 raise SetupError(f"사용자 CSV {number}행: 기존 계정 신원이 충돌합니다.")
             if username_ids:
                 current = by_id[next(iter(username_ids))]
-                for claim, key in (("sabun", "sabun"), ("loginid", "knox_id")):
+                for claim, key in (("sabun", "sabun"), ("loginid", "loginid"), ("loginid", "knox_id")):
                     values = current.get("attributes", {}).get(key, [])
                     if row.get(claim) and values and row[claim] not in values:
                         raise SetupError(f"사용자 CSV {number}행: 기존 계정의 {claim}와 다릅니다.")

@@ -35,12 +35,24 @@ register-reference-users:
 
 .PHONY: keycloak-sdwt-init keycloak-sdwt-test
 keycloak-sdwt-init:
-	python3 ./deploy/keycloak/scripts/init_sdwt.py
+	bash ./deploy/keycloak/scripts/05-setup-sdwt.sh
 
 keycloak-sdwt-test:
 	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_sdwt.py'
 
 KEYCLOAK_PORTAL_ENV ?=
+.PHONY: keycloak-realm-setup keycloak-idp-setup keycloak-profile-setup keycloak-idp-mappers-setup keycloak-portal-client-setup
+keycloak-realm-setup:
+	bash deploy/keycloak/scripts/00-create-realm.sh --context "$(KUBE_CONTEXT)"
+keycloak-idp-setup:
+	bash deploy/keycloak/scripts/01-create-idp.sh --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)"
+keycloak-profile-setup:
+	bash deploy/keycloak/scripts/02-register-user-profile.sh --context "$(KUBE_CONTEXT)"
+keycloak-idp-mappers-setup:
+	bash deploy/keycloak/scripts/03-sync-idp-mappers.sh --context "$(KUBE_CONTEXT)"
+keycloak-portal-client-setup:
+	bash deploy/keycloak/scripts/04-setup-portal-client.sh --context "$(KUBE_CONTEXT)" --portal-env "$(if $(KEYCLOAK_PORTAL_ENV),$(KEYCLOAK_PORTAL_ENV),$(PROD_API_ENV_FILE))"
+
 .PHONY: keycloak-oidc-check keycloak-oidc-setup
 keycloak-oidc-check:
 	python3 deploy/keycloak/scripts/setup_discovery.py check --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_PORTAL_ENV),--portal-env "$(KEYCLOAK_PORTAL_ENV)")
@@ -237,3 +249,7 @@ headlamp-up:
 	python3 ./deploy/headlamp/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)"
 headlamp-ui:
 	python3 ./deploy/headlamp/scripts/manage.py ui --context "$(KUBE_CONTEXT)"
+
+.PHONY: keycloak-claim-attributes-migrate
+keycloak-claim-attributes-migrate:
+	python3 deploy/keycloak/scripts/migrate_claim_attributes.py $(if $(filter 1,$(KEYCLOAK_CLAIM_MIGRATION_APPLY)),--apply,)

@@ -80,8 +80,8 @@
       }
     },
     {
-      "name": "knox_id",
-      "displayName": "knox_id",
+      "name": "loginid",
+      "displayName": "loginid",
       "permissions": {
         "view": [
           "admin",
@@ -156,8 +156,8 @@
       }
     },
     {
-      "name": "department",
-      "displayName": "department",
+      "name": "deptname",
+      "displayName": "deptname",
       "permissions": {
         "view": [
           "admin",
@@ -194,8 +194,8 @@
       }
     },
     {
-      "name": "grd_name",
-      "displayName": "grd_name",
+      "name": "grdName",
+      "displayName": "grdName",
       "permissions": {
         "view": [
           "admin",

@@ -1,6 +1,21 @@
-# Keycloak HTTPS 인증서 적용
+# 03. Keycloak HTTPS 인증서 적용
 
-[Keycloak 배포 안내](README.md) · [공용 인증서 추출·검증·적용](../shared/certs/README.md)
+[시작 안내](README.md) · [서버 설치](01_SERVER_SETUP.md) · [공용 인증서 추출·검증·적용](../shared/certs/README.md)
+
+이 문서는 공개 Keycloak 사이트의 HTTPS 인증서와 접속하는 쪽의 CA 신뢰를 다룹니다.
+인증서를 배치해도 realm·IdP·mapper 설정이 만들어지는 것은 아닙니다.
+
+## 먼저 문제 위치 구분
+
+| 증상 또는 작업 | 확인할 곳 |
+| --- | --- |
+| 공개 Keycloak 사이트 인증서 설치·갱신 | 아래 인증서 준비와 적용 |
+| 브라우저만 인증서 경고 | Windows 또는 해당 브라우저의 CA 신뢰 |
+| 호스트에서 discovery 조회 실패 | 실행 호스트의 신뢰 저장소. 필요 시 `SSL_CERT_FILE` |
+| Keycloak Pod에서 사내 Token/JWKS 조회 실패 | Keycloak JVM/컨테이너의 신뢰 설정 |
+| SDWT 관리자 API 접속 실패 | `KEYCLOAK_CA_FILE`, [SDWT 인증](07_SDWT_SETUP.md#2-연결과-인증) |
+
+## 현재 파일과 Secret
 
 | 항목 | 운영값 |
 | --- | --- |

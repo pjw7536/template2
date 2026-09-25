@@ -48,4 +48,4 @@ Headlamp는 `/headlamp` baseURL로 실행하고 기존 Traefik 감시 범위를 
 인증서 체인은 공용 안내의 실제 HTTPS 검사를 사용하고,
 로그인·그룹별 권한 검사는 [OIDC 가이드](OIDC.md)를 따릅니다.
 인증서가 정상인데 404라면 Ingress 경로·감시 namespace, 503이면 Service와 Pod 상태를 확인합니다.
-PC만 신뢰 오류가 나면 [Keycloak TLS의 클라이언트 신뢰 안내](../keycloak/TLS.md)를 참고합니다.
+PC만 신뢰 오류가 나면 [Keycloak TLS의 클라이언트 신뢰 안내](../keycloak/03_TLS.md)를 참고합니다.

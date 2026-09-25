@@ -129,7 +129,7 @@ Headlamp TLS 등록 시 사용할 파일 경로는 다음과 같습니다.
 **폴더에 파일을 넣는 것만으로 기존 서버 인증서나 Kubernetes Secret이 바뀌지는 않습니다.**
 파일 배치 후 아래의 **원본에서 추출하고 서버에 적용하기** 절차로 검증·등록합니다.
 
-관련 안내: [Keycloak 인증서](../../keycloak/TLS.md),
+관련 안내: [Keycloak 인증서](../../keycloak/03_TLS.md),
 [Headlamp HTTPS](../../headlamp/HTTPS_CERTIFICATE_GUIDE.md),
 [Headlamp Keycloak 로그인](../../headlamp/OIDC.md).
 기존 안내의 인증서 파일 경로를 사용할 때는 이 공용 폴더의 경로로 바꿉니다.

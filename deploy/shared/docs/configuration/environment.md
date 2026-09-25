@@ -58,7 +58,7 @@ prod는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다.
 
 Keycloak의 `COMPONENT=oidc` 입력은 `CORP_OIDC_DISCOVERY_URL`이 있으면 endpoint를 자동 해석합니다.
 실행 호스트에 Python과 discovery 접속·TLS 신뢰가 필요합니다. env 검사·Secret 등록 명령은
-Job을 실행하지 않으므로 전체 초기 설정은 [Keycloak discovery 절차](../../../keycloak/DISCOVERY_SETUP.md)를 사용합니다.
+Job을 실행하지 않으므로 전체 초기 설정은 [Keycloak discovery 절차](../../../keycloak/05_DISCOVERY_SETUP.md)를 사용합니다.
 
 ## 설정 검사
 

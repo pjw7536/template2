@@ -132,7 +132,7 @@ bash deploy/shared/scripts/apply-env.sh keycloak prod server \
 
 기존 DB·관리자 비밀번호를 그대로 사용합니다. Secret 값을 바꾸는 것만으로 DB 계정이나
 이미 생성된 Keycloak 관리자 비밀번호가 바뀌지는 않습니다.
-인증서와 `keycloak-tls`는 [TLS 가이드](../../../keycloak/TLS.md)의 절차로 별도 준비합니다.
+인증서와 `keycloak-tls`는 [TLS 가이드](../../../keycloak/03_TLS.md)의 절차로 별도 준비합니다.
 Worker 디스크·포트·DNS 준비는 [Keycloak 배포 안내](../../../keycloak/README.md)를 따릅니다.
 
 ## 4. 최초 서버 배포와 매핑 설정
@@ -153,7 +153,7 @@ kubectl rollout status deployment/traefik -n etch-sso --timeout=5m
 `CORP_OIDC_*` 항목을 작성한 뒤 다음 선택 작업을 실행합니다. 정상인 기존 연결은 생략합니다.
 아래 공통 env 명령은 `CORP_OIDC_DISCOVERY_URL`이 있으면 Python으로 endpoint를 해석합니다.
 CP1에서 discovery 접속과 TLS 신뢰가 필요합니다. ConfigMap과 두 Job까지 순차 실행하려면
-[Keycloak discovery 통합 명령](../../../keycloak/DISCOVERY_SETUP.md)을 사용할 수 있습니다.
+[Keycloak discovery 통합 명령](../../../keycloak/05_DISCOVERY_SETUP.md)을 사용할 수 있습니다.
 
 ```bash
 bash deploy/shared/scripts/check-env.sh keycloak prod oidc /appdata/etchax-config/keycloak/prod.env

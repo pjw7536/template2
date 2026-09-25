@@ -22,6 +22,8 @@ configMapGenerator:
       - claims/sync-oidc-claim-mappers.sh
       - oidc/admin-common.sh
       - oidc/setup-oidc.sh
+      - oidc/setup-realm.sh
+      - server/etch-realm.json
       - claims/account-user-profile.json
     options:
       disableNameSuffixHash: true
