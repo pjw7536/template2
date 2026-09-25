@@ -1,5 +1,0 @@
-# 비밀값·렌더 결과·외부 차트는 서버에서 준비한다.
-/env/*.secrets.env
-/rendered/
-/helm/vendor/
-/backups/
