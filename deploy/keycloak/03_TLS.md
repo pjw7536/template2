@@ -1,19 +1,9 @@
-# 03. Keycloak HTTPS 인증서 적용
+# 03. Keycloak HTTPS·CA 준비
 
 [시작 안내](README.md) · [서버 설치](01_SERVER_SETUP.md) · [공용 인증서 추출·검증·적용](../shared/certs/README.md)
 
 이 문서는 공개 Keycloak 사이트의 HTTPS 인증서와 접속하는 쪽의 CA 신뢰를 다룹니다.
 인증서를 배치해도 realm·IdP·mapper 설정이 만들어지는 것은 아닙니다.
-
-## 먼저 문제 위치 구분
-
-| 증상 또는 작업 | 확인할 곳 |
-| --- | --- |
-| 공개 Keycloak 사이트 인증서 설치·갱신 | 아래 인증서 준비와 적용 |
-| 브라우저만 인증서 경고 | Windows 또는 해당 브라우저의 CA 신뢰 |
-| 호스트에서 discovery 조회 실패 | 실행 호스트의 신뢰 저장소. 필요 시 `SSL_CERT_FILE` |
-| Keycloak Pod에서 사내 Token/JWKS 조회 실패 | Keycloak JVM/컨테이너의 신뢰 설정 |
-| SDWT 관리자 API 접속 실패 | `KEYCLOAK_CA_FILE`, [SDWT 인증](07_SDWT_SETUP.md#2-연결과-인증) |
 
 ## 현재 파일과 Secret
 
@@ -28,19 +18,17 @@
 ## 인증서 준비와 적용
 
 [공용 인증서 안내](../shared/certs/README.md)의 **Keycloak 사이트 선택**을 사용합니다.
-PFX·P7B 추출, fullchain 구성, 검증, TLS Secret 갱신과 실제 서버 인증서 확인을 한곳에서 관리합니다.
+PFX·P7B 추출, fullchain 구성과 검증을 한곳에서 관리합니다.
 Keycloak의 개인키는 TLS를 종료하는 Traefik이 사용하며 API server용 CA 파일과는 다릅니다.
 
-최초 앱 배포는 [운영 안내](README.md)의 `make keycloak-check` → `make keycloak-up`을 사용합니다.
-두 명령은 위 인증서 폴더를 기본으로 사용합니다. 기존 TLS Secret과 파일이 다르면 중단하므로
-**인증서 갱신은 공용 안내의 TLS Secret 등록 명령을 먼저 실행**합니다.
-정상 반영되면 TLS 갱신만을 위해 Keycloak이나 Traefik을 재시작할 필요는 없습니다.
+준비한 파일로 [서버 설치](01_SERVER_SETUP.md)를 진행하면 설치 도구가 TLS Secret을 생성합니다.
+이 문서에서는 서버 배포 명령을 중복 실행하지 않습니다.
 
 ## 신뢰 설정의 구분
 
 서버가 중간 인증서를 포함한 fullchain을 제공하고, 접속하는 PC·서버가 루트 CA를 신뢰해야 합니다.
 CP1의 신뢰 설정은 PC·Headlamp Pod·Kubernetes API server에 자동으로 전달되지 않습니다.
-Headlamp와 API server의 신뢰 설정은 [OIDC 가이드](../headlamp/OIDC.md)를 따릅니다.
+Headlamp와 API server의 신뢰 설정은 [Headlamp TLS](../headlamp/03_TLS.md)와 [API server 설정](../headlamp/05_APISERVER_SETUP.md)를 따릅니다.
 
 ## 클라이언트 신뢰: Ubuntu 클라이언트의 Root CA 신뢰
 

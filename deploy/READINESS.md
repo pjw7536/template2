@@ -75,7 +75,7 @@ env 파일이 존재해도 `replace-me` 등의 임시값이면 준비 완료가 
    이미지 pull 권한, 디스크 존재·용량, 사용자 정의 taint/toleration, 실제 DNS/TLS·방화벽은 서버에서 확인합니다.
 
 4. **실제 기능 검증:** [접속·기능 검증](shared/docs/kubernetes/06-verification.md)에 따라 실행합니다.
-   Headlamp는 [OIDC 가이드](headlamp/OIDC.md)의 모든 API server 설정과 그룹별 허용/거부 테스트가 필요합니다.
+   Headlamp는 [설치 안내](headlamp/README.md)의 모든 API server 설정과 그룹별 허용/거부 테스트가 필요합니다.
    Airflow는 health의 DB·scheduler 상태, 관리자 로그인, DAG·로그 및 필요 시 Portal 연동까지 확인합니다.
 
 ## 적용 순서와 복구

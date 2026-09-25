@@ -243,7 +243,8 @@ class Setup:
                     if child["name"] in ROLES:
                         check_clean_group(self.api, child)
             self.children[name] = {role: one(children, "name", role) for role in ROLES}
-        self.inspect_clients()
+        if self.client_names:
+            self.inspect_clients()
         self.inspect_users()
 
     def inspect_profile(self):

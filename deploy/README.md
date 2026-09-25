@@ -57,7 +57,7 @@ Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/do
 | 인증서 | [사이트별 인증서 관리](shared/certs/README.md) | PFX/P7B 추출·검증·TLS Secret 갱신 |
 | 설정 참고 | [환경설정](shared/docs/configuration/environment.md) | 앱별 env 위치·필수값 검사·Secret 등록 규칙을 확인할 때 |
 | 운영 절차 | [서버 기동](shared/docs/operations/server-start.md) | 기존 Keycloak과 Airflow의 최초 준비·기동·재적용 |
-| 운영 절차 | [CP1 운영](shared/docs/operations/cp1.md) | CP1 파일 배치·외부 설정 보관·Keycloak 단독 배포와 pull 이후 반영 |
+| 운영 절차 | [CP1 운영](shared/docs/operations/cp1.md) | 공통 Git·파일 관리와 앱별 반영 안내 |
 | 인프라 현황 | [클러스터 현황](shared/docs/infrastructure/cluster.md) | 노드·VIP·DNS·배치 계획과 확인된 상태를 조회할 때 |
 | 인프라 구성 | [공용 Ingress](shared/ingress/README.md) | Traefik 원본 소유권·namespace 감시·앱별 연결 원리 |
 | 인프라 적용 | [APP VIP 실행](shared/ingress/VIP.md) | 두 Worker의 443 연결·인증서 준비·서버 적용과 접속 검증 |

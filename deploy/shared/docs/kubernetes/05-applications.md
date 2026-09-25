@@ -7,23 +7,10 @@
 
 ## 1. Keycloak·공용 Traefik
 
-[Keycloak 상세 안내](../../../keycloak/README.md)의 env·인증서·Worker 디스크를 준비합니다.
-APP VIP 최초 연결 또는 backend 변경 때는 **유지할 Worker IP 전체**를 입력합니다.
-현재 기록은 [홈의 backend 표](README.md#현재-서버-상황)와 대조합니다.
-
-```bash
-read -r -p 'APP VIP의 전체 Worker backend IP 목록: ' VIP_BACKENDS
-make server-check APP=keycloak PROFILE=prod
-make keycloak-check KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
-make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
-```
-
-기존 backend를 유지하는 재배포는 `read`와 두 명령의 `VIP_BACKENDS` 인자를 생략할 수 있습니다.
-외부 입력은 `KEYCLOAK_ENV`·`KEYCLOAK_CERTS`를 검사와 배포에 동일하게 전달합니다.
-기존 Secret과 입력이 다르면 원본·실제 DB credential을 확인합니다. Secret·PVC 삭제로 우회하지 않습니다.
-
-상세 안내의 사내 OIDC 연결·사용자 claim Job까지 완료한 뒤 PostgreSQL·Keycloak·Traefik 준비 상태와 HTTPS·사내 로그인을 확인합니다.
-스택 배포만으로 OIDC·Portal client가 등록되지는 않습니다.
+[Keycloak 최초 설치 안내](../../../keycloak/README.md)에서 서버 준비·배포 → 자체 설정·사내 로그인 확인까지 완료합니다.
+입력 파일·context 선택·검사·적용 명령은 Keycloak 문서에서 관리합니다.
+APP VIP의 Worker backend와 공용 경로는 [VIP 안내](../../ingress/VIP.md)를 함께 확인합니다.
+Portal·Headlamp client 연결은 Keycloak 준비를 마친 뒤 수행합니다.
 
 ## 2. Airflow
 

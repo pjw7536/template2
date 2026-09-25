@@ -1,69 +1,47 @@
-# Headlamp 서버 운영 UI
+# 00. Headlamp 최초 설치 안내
 
-[배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
+현재 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 UI입니다.
+**Keycloak 자체 설정과 Account Console 사내 로그인 확인을 마친 뒤** 아래 순서로 설치합니다.
 
-Keycloak OIDC로 로그인하며 `/headlamp-admins` 그룹에 `cluster-admin` 전체 관리 권한을 부여합니다.
-모든 namespace의 조회·수정·삭제, Secret 접근과 RBAC 관리를 포함합니다. 다른 RBAC 권한은 합산됩니다.
-Headlamp Pod 자체에는 사용자 조회 권한을 부여하지 않으며 공용 로그인용 `headlamp-viewer` 계정은 제거합니다.
+## 설치 순서
 
-## 기본 운영 설정
+| 순서 | 할 일 | 실행 안내 | 완료 기준 |
+| --- | --- | --- | --- |
+| 1 | 도구·context·env·chart·namespace 준비 | [01 서버 준비](01_SERVER_SETUP.md) | 입력·chart 검사와 이미지 인증 준비 |
+| 2 | 사이트 인증서·Keycloak CA 등록 | [03 TLS](03_TLS.md) | TLS Secret·CA ConfigMap·OIDC 연결 검사 정상 |
+| 3 | Headlamp client·그룹·Client secret 등록 | [04 Keycloak 설정](04_KEYCLOAK_SETUP.md) | S256·groups mapper·관리자 가입·Secret 완료 |
+| 4 | 모든 API server의 OIDC 인증 설정 | [05 API server](05_APISERVER_SETUP.md) | 인증 계약 반영, 기존 관리자 접속 정상 |
+| 5 | Headlamp 배포·브라우저 로그인·권한 검증 | [06 배포와 검증](06_DEPLOY_VERIFY.md) | 관리자 허용·비관리자 거부·갱신 확인 |
 
-| 항목 | 값 |
+명령은 각 단계의 실행 안내에서만 수행합니다. `02`는 필요할 때 읽는 변수 참고 문서입니다.
+같은 Bash 터미널에서 진행하고, 새 터미널이면 [01의 실행 입력](01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 준비합니다.
+각 문서 끝의 완료 기준을 통과한 뒤 다음으로 이동합니다.
+
+API server 설정은 필수입니다. 제어면을 직접 관리하지 않는다면 05를 담당자에게 전달하고 완료 확인을 받습니다.
+Keycloak client 등록이나 Headlamp Pod Ready만으로 전체 설정이 끝나지는 않습니다.
+
+## 로그인과 권한
+
+```text
+Headlamp → Keycloak etch → 사내 IdP oidc → Keycloak ID Token
+         → Kubernetes API server 인증 → 그룹별 RBAC
+```
+
+허용한 사람만 Keycloak 최상위 `headlamp-admins` 그룹에 가입시킵니다.
+Kubernetes의 `headlamp:/headlamp-admins` 그룹에 `cluster-admin`을 연결하므로
+모든 namespace의 조회·수정·삭제, Secret 접근과 RBAC 관리가 가능합니다. 다른 RBAC 권한은 합산됩니다.
+Headlamp Pod 자체에는 사용자 조회·관리 권한을 부여하지 않습니다.
+Portal client나 SDWT 업무 그룹은 Headlamp의 client·관리자 그룹을 대신하지 않습니다.
+
+## 참고와 운영
+
+| 문서 | 용도 |
 | --- | --- |
-| 접속 주소 | `https://etch.samsungds.net/headlamp/` |
-| Keycloak issuer | `https://etch-sso.samsungds.net/realms/etch` |
-| Client ID | `headlamp` |
-| TLS Secret | `headlamp/headlamp-tls` |
-| Client secret 저장소 | `headlamp/headlamp-oidc`, 키 `OIDC_CLIENT_SECRET` |
-| Keycloak CA | `headlamp/headlamp-oidc-ca`, 키 `ca.crt` |
-| 인증서 폴더 | `deploy/shared/certs/etch.samsungds.net/` |
+| [02 환경변수](env/02_ENVIRONMENT.md) | 변수 의미·외부 env·검사 범위 |
+| [운영 참고](operations/README.md) | 장애 진단·Secret/CA 갱신·기존 조회 그룹 전환·복구 |
+| [Keycloak 자체 설정](../keycloak/04_SETUP_FLOW.md) | 사내 로그인·기존 사용자 연결 |
+| [Keycloak 사용자 필드](../keycloak/06_CLAIMS.md) | EPID·loginid·표시 이름 계약 |
 
-`make headlamp-*`는 실제 설정 파일 `env/k8s.env`를 사용합니다.
-이 파일은 일반 설정만 담으며 Git에 포함합니다. Client Secret은 Kubernetes Secret에서 관리합니다.
-`env/k8s.env`를 배포·검사의 단일 입력으로 사용하고 Git에서 추적합니다.
-다른 설정은 `HEADLAMP_ENV=/절대경로/k8s.env`로 지정할 수 있습니다.
-기존 실제 env는 자동으로 덮어쓰지 않습니다. 오래된 파일은 운영 기본값과 비교합니다.
+`OIDC.md`와 `HTTPS_CERTIFICATE_GUIDE.md`의 절차는 03~06과 운영 참고에 통합했습니다.
 
-## 준비와 검사
-
-Python 3.10+, Helm 3, kubectl과 대상 클러스터 배포 권한이 필요합니다.
-선택 checkout은 `bash deploy/shared/scripts/checkout-server.sh headlamp`입니다.
-`local/`이나 다른 앱 소스 없이 실행하며 namespace·Helm release 이름은 `headlamp`입니다.
-
-1. [공용 인증서 안내](../shared/certs/README.md)에서 Headlamp 인증서를 검증하고 TLS Secret에 등록합니다.
-2. [Keycloak 로그인 안내](OIDC.md)에서 client·그룹·로그인 Secret·CA·API server 인증을 준비합니다.
-3. 고정 chart를 준비하고 검사합니다.
-
-```bash
-make headlamp-fetch-chart
-make server-check APP=headlamp PROFILE=prod
-make headlamp-check
-```
-
-chart는 `helm/chart.lock.json`의 사내 미러에서 받으며 SHA-256을 검증합니다.
-외부 PC에서는 [공식 chart](https://github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz)를
-다운로드해 `deploy/headlamp/helm/vendor/headlamp-0.45.0.tgz`로 반입하거나 `HEADLAMP_CHART_FILE`로 지정합니다.
-검사·배포는 자동 다운로드하지 않습니다. 이미지 태그는 `v0.45.0`입니다.
-registry 인증이 필요한 환경에서는 `IMAGE_PULL_SECRET`을 별도로 준비합니다.
-
-## 적용과 확인
-
-저장소 루트에서 context를 명시합니다. 앞 명령이 실패하면 해결한 뒤 다음으로 진행합니다.
-
-```bash
-kubectl config get-contexts
-read -r -p '대상 context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-make headlamp-up KUBE_CONTEXT="$KUBE_CONTEXT"
-make headlamp-ui KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-`headlamp-up`은 OIDC Secret·선택 CA·TLS Secret과 기존 Traefik을 검사한 뒤 Helm으로 적용합니다.
-기존 Traefik의 namespace 감시 목록과 배치를 보존합니다. RBAC·Deployment 변경 권한이 필요합니다.
-Headlamp는 `/headlamp` baseURL을 사용하며 StripPrefix를 적용하지 않습니다.
-`headlamp-ui`는 배포된 HTTPS 주소를 출력합니다. 공용 토큰을 발급하거나 port-forward를 실행하지 않습니다.
-
-정적 검사 성공은 실제 image pull·인증서·로그인 성공과 다릅니다.
-[HTTPS 확인](HTTPS_CERTIFICATE_GUIDE.md)과 [그룹별 로그인 검증](OIDC.md)을 수행합니다.
-Helm 성공 후 Traefik 연결만 실패했다면 오류를 해결하고 다시 실행합니다. release를 자동 삭제하지 않습니다.
-CPU·메모리 실시간 수치는 metrics-server가 있어야 합니다. 로컬 `make k8s-ui`는 기존 로컬 구성을 사용합니다.
+[전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

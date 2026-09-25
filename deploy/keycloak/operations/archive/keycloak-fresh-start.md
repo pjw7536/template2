@@ -1,7 +1,7 @@
 # 같은 클러스터에서 Keycloak을 빈 DB로 재기동
 
 > 과거 특정 작업의 일회성 재설치 기록입니다. 아래의 사용자 요청·삭제 허용은 당시 작업에만 해당합니다.
-> 신규 설치·정기 업데이트·일반 장애 복구에 재사용하지 않습니다. 현재 시작점은 [Kubernetes 가이드](../kubernetes/README.md)입니다.
+> 신규 설치·정기 업데이트·일반 장애 복구에 재사용하지 않습니다. 현재 시작점은 [Keycloak 최초 설치 안내](../../README.md)입니다.
 
 기존 Kubernetes Keycloak을 중지하고 이 프로젝트 원본으로 다시 시작하는 절차입니다.
 Keycloak 사용자·realm·client·사내 OIDC 설정은 새 DB에 승계하지 않습니다.
@@ -10,7 +10,7 @@ Airflow DB는 초기화하지 않습니다. 기본 절차에서는 기존 Keyclo
 
 ## 1. 중지 전 준비 (CP1 / 배포용 checkout)
 
-[Keycloak 안내](../../../keycloak/README.md)의 env·인증서·worker 디스크 준비를 먼저 마칩니다.
+[Keycloak 안내](../../README.md)의 env·인증서·worker 디스크 준비를 먼저 마칩니다.
 Airflow 준비와 배포는 이후 별도 단계입니다.
 현재 작업 폴더의 미커밋·미추적 파일은 Git clone/pull로 전달되지 않습니다.
 검증한 배포 파일이 서버에도 모두 있는지 확인합니다.
@@ -43,9 +43,9 @@ bash deploy/shared/scripts/check-env.sh keycloak prod oidc deploy/keycloak/env/p
 
 VIP 첫 구성이라면 실제 `make keycloak-check`와 `make keycloak-up`에
 `VIP_BACKENDS=10.172.40.117,10.172.40.87`을 추가합니다.
-이 IP는 [현재 VIP 구성](../../ingress/VIP.md)에만 해당합니다.
+이 IP는 [현재 VIP 구성](../../../shared/ingress/VIP.md)에만 해당합니다.
 기존 TLS Secret과 동일한 인증서·개인키를 `deploy/shared/certs/etch-sso.samsungds.net/`에 준비하고
-[인증서 안내](../../certs/README.md)의 도메인·기간·키·체인 검사를 마칩니다.
+[인증서 안내](../../../shared/certs/README.md)의 도메인·기간·키·체인 검사를 마칩니다.
 새 credential은 기존 Secret과 다르므로 `keycloak-check`는 4절의 명시적 Secret 갱신 후 실행합니다.
 
 검사 통과는 실제 이미지 pull·DB 초기화·로그인 성공을 보장하지 않습니다.

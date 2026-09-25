@@ -4,20 +4,14 @@
 
 ## 앱별 순차 배포
 
-새 실행 진입점은 앱별로 구분합니다. 필요한 파일을 준비한 후 각 단계를 별도로 실행합니다.
+앱별 최초 설치·검사·배포 명령은 각 앱 소유 문서에서 실행합니다.
 
-```bash
-make keycloak-check KUBE_CONTEXT=<context>
-make keycloak-up KUBE_CONTEXT=<context>
-make airflow-check KUBE_CONTEXT=<context>
-make airflow-up KUBE_CONTEXT=<context>
-```
+| 순서 | 안내 |
+| --- | --- |
+| Keycloak 자체 준비 | [Keycloak 설치·설정](../../../keycloak/README.md) |
+| Airflow 준비·기동 | [Airflow 실행](../../../airflow/04_SETUP_FLOW.md) |
 
-위 `<context>`는 실제 이름으로 바꿉니다. Keycloak만 준비한 단계에서는 첫 두 명령만 사용합니다.
-Keycloak 명령은 env/TLS 최초 등록과 자기 스택을 적용하고 Airflow를 실행하지 않습니다.
-Airflow 명령은 기존 공용 Traefik에 라우팅을 연결하지만 Keycloak 스택을 다시 적용하지 않습니다.
-두 명령 모두 DB를 삭제하거나 빈 DB로 초기화하지 않습니다.
-자세한 입력은 [Keycloak](../../../keycloak/README.md)과 [Airflow](../../../airflow/README.md) 안내를 따릅니다.
+Airflow는 공용 Traefik에 라우팅을 연결하지만 전용 앱 명령으로 Keycloak 스택을 다시 적용하지 않습니다.
 아래 `server-up` 절차는 기존 통합 실행의 호환 안내입니다.
 
 현재 단계는 **이미 실행 중인 Keycloak을 프로젝트 원본으로 관리하고 Airflow UI를 같은 서버에서 여는 것**입니다.

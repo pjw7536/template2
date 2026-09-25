@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/manage.py'
 spec = importlib.util.spec_from_file_location('headlamp_manage', SCRIPT)
@@ -23,12 +23,75 @@ OIDC_ENV = ('\nHEADLAMP_HOST=ui.example.test\nHEADLAMP_TLS_SECRET=headlamp-tls'
 class DeploymentTest(unittest.TestCase):
     """외부 명령 실행 전에 잘못된 입력이 거부되는지 확인한다."""
 
+    def test_oidc_provider_checks_real_contract_without_credentials(self):
+        values = manage.settings(manage.APP / 'env/k8s.env')
+        issuer = next(item['value'] for item in values['env'] if item['name'] == 'OIDC_ISSUER_URL')
+        discovery = {
+            'issuer': issuer, 'response_types_supported': ['code'],
+            'id_token_signing_alg_values_supported': ['RS256'],
+            'code_challenge_methods_supported': ['S256'],
+            **{key: f'{issuer}/protocol/openid-connect/{suffix}' for key, suffix in
+               [('authorization_endpoint', 'auth'), ('token_endpoint', 'token'), ('jwks_uri', 'certs')]},
+        }
+        jwks = {'keys': [{'kid': 'test', 'kty': 'RSA', 'n': 'modulus', 'e': 'AQAB'}]}
+        for change, key_data, expected in [
+                ({}, jwks, None), ({'issuer': issuer + '/'}, jwks, 'issuer'),
+                ({'token_endpoint': 'http://internal/token'}, jwks, 'token_endpoint'),
+                ({'code_challenge_methods_supported': []}, jwks, 'S256'),
+                ({'id_token_signing_alg_values_supported': ['HS256']}, jwks, 'RS256'),
+                ({}, {'keys': []}, '공개키'), ({}, {'keys': ['bad']}, '공개키')]:
+            with self.subTest(change=change, keys=key_data), \
+                    patch.object(manage.ssl, 'create_default_context') as tls, \
+                    patch.object(manage.urllib.request.OpenerDirector, 'open') as request, patch('builtins.print'):
+                responses = []
+                for url, payload in [(issuer + '/.well-known/openid-configuration', discovery | change),
+                                     (discovery['jwks_uri'], key_data)]:
+                    response = MagicMock()
+                    response.__enter__.return_value = response
+                    response.geturl.return_value = url
+                    response.read.return_value = json.dumps(payload).encode()
+                    responses.append(response)
+                request.side_effect = responses
+                if expected:
+                    with self.assertRaisesRegex(ValueError, expected):
+                        manage.check_oidc_provider(values, Path('/test/ca.pem'))
+                else:
+                    manage.check_oidc_provider(values, Path('/test/ca.pem'))
+                    self.assertEqual(request.call_count, 2)
+                    self.assertEqual(request.call_args.kwargs['timeout'], 15)
+                tls.assert_called_once_with(cafile='/test/ca.pem')
+
+    def test_oidc_provider_requires_local_ca_and_propagates_tls_failure(self):
+        values = manage.settings(manage.APP / 'env/k8s.env')
+        with patch.object(manage.urllib.request.OpenerDirector, 'open') as request:
+            with self.assertRaisesRegex(ValueError, 'HEADLAMP_OIDC_CA_FILE'):
+                manage.check_oidc_provider(values)
+            request.assert_not_called()
+        with patch.object(manage.ssl, 'create_default_context'), \
+                patch.object(manage.urllib.request.OpenerDirector, 'open', side_effect=manage.ssl.SSLError('untrusted')):
+            with self.assertRaises(manage.ssl.SSLError):
+                manage.check_oidc_provider(values, Path('/test/ca.pem'))
+
     def test_default_profile_is_valid_production_input(self):
         values = manage.settings(manage.APP / 'env/k8s.env')
         env = {entry['name']: entry['value'] for entry in values['env']}
         self.assertEqual(env['OIDC_ISSUER_URL'], 'https://etch-sso.samsungds.net/realms/etch')
         self.assertEqual(values['volumes'][0]['configMap']['name'], 'headlamp-oidc-ca')
         self.assertNotIn('OIDC_CLIENT_SECRET', env)
+
+    def test_setup_env_follows_custom_names_without_chart_or_cluster(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'input.env'
+            path.write_text(('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV).replace(
+                'HEADLAMP_OIDC_SECRET=headlamp-oidc', 'HEADLAMP_OIDC_SECRET=custom-oidc'))
+            result = subprocess.run(['python3', str(SCRIPT), 'setup-env', '--env', str(path)],
+                                    capture_output=True, text=True, check=True)
+            exported = dict(line.split('=', 1) for line in result.stdout.splitlines())
+            self.assertEqual(exported['HEADLAMP_OIDC_SECRET'], 'custom-oidc')
+            self.assertEqual(exported['HEADLAMP_OIDC_CA_CONFIGMAP'], '')
+            self.assertEqual(exported['HEADLAMP_SSO_HOST'], 'sso.example.test')
+            self.assertEqual(exported['HEADLAMP_CALLBACK_URL'], 'https://ui.example.test/headlamp/oidc-callback')
+            self.assertNotIn('OIDC_CLIENT_SECRET', exported)
 
     def test_env_validation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -72,12 +135,14 @@ class DeploymentTest(unittest.TestCase):
             env = {item['name']: item['value'] for item in values['env']}
             self.assertEqual(env['OIDC_CALLBACK_URL'], 'https://ui.example.test/headlamp/oidc-callback')
             self.assertEqual(env['SSL_CERT_FILE'], '/etc/headlamp-ca/ca.crt')
+            self.assertEqual(env['OIDC_USE_ACCESS_TOKEN'], 'false')
             self.assertNotIn('OIDC_CLIENT_SECRET', env)
             self.assertEqual(values['config']['oidc']['externalSecret']['name'], 'headlamp-oidc')
             client = manage.oidc_client(values)
             self.assertEqual(client['redirectUris'], [env['OIDC_CALLBACK_URL']])
             self.assertFalse(client['publicClient'])
             self.assertFalse(client['directAccessGrantsEnabled'])
+            self.assertEqual(client['attributes']['id.token.signed.response.alg'], 'RS256')
             self.assertEqual(client['protocolMappers'][0]['config']['full.path'], 'true')
             self.assertNotIn('secret', client)
 

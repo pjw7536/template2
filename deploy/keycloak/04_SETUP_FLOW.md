@@ -1,194 +1,120 @@
-# 04. Keycloak 단계별 설정
+# 04. Keycloak 자체 설정
 
-[시작 안내](README.md) · 이전: [서버 설치](01_SERVER_SETUP.md) · 입력: [환경변수](env/02_ENVIRONMENT.md) · 필드 참고: [매핑 계약](06_CLAIMS.md)
+[전체 설치 순서](README.md) · 이전: [서버 설치](01_SERVER_SETUP.md) · 다음: [앱 연결](09_APP_CONNECTIONS.md)
 
-서버가 실행 중이고 `etch-sso` namespace의 `keycloak-runtime`에 실제 관리자 계정이 준비돼 있어야 합니다.
-각 실행 파일은 **지정한 단계만 실행**합니다. 다른 단계를 자동으로 이어서 실행하지 않습니다.
-대상 realm은 현재 배포 계약인 `etch`, IdP alias는 `oidc`입니다.
+서버 설치를 마친 뒤 Realm → 사내 IdP → User Profile → IdP mapper → 선택 SDWT 순서로 설정합니다.
+여기서는 Portal·Headlamp client를 만들지 않습니다. 아래 명령은 하나씩 실행하고 성공을 확인한 뒤 다음 단계로 넘어갑니다.
 
-| 순서 | 작업 | 실행 파일 | Make 명령 |
-| --- | --- | --- | --- |
-| 0 | Realm 생성 | [00-create-realm.sh](scripts/00-create-realm.sh) | `keycloak-realm-setup` |
-| 1 | Identity Provider 생성/갱신 | [01-create-idp.sh](scripts/01-create-idp.sh) | `keycloak-idp-setup` |
-| 2 | User Profile 등록 | [02-register-user-profile.sh](scripts/02-register-user-profile.sh) | `keycloak-profile-setup` |
-| 3 | IdP mapper 설정 | [03-sync-idp-mappers.sh](scripts/03-sync-idp-mappers.sh) | `keycloak-idp-mappers-setup` |
-| 4 | Portal client·token mapper | [04-setup-portal-client.sh](scripts/04-setup-portal-client.sh) | `keycloak-portal-client-setup` |
-| 5 | 소속·SDWT 그룹 권한 (선택) | [05-setup-sdwt.sh](scripts/05-setup-sdwt.sh) | `keycloak-sdwt-init` |
+## 실행 준비
 
-현재처럼 Realm과 provider가 정상 동작한다면 **2번부터 진행**합니다.
-**Portal 연결은 나중에 해도 됩니다.** 2·3번까지 먼저 완료하고 Portal 준비가 끝나면 4번을 실행합니다.
-2·3번에는 Portal client ID·secret·env 파일이 필요하지 않습니다.
-기존 `make keycloak-oidc-setup` 통합 명령은 1~3번을 함께 실행하는 호환 경로로 유지됩니다.
-단계별 명령과 통합 명령을 동시에 실행하지 마세요. 같은 관리 ConfigMap과 설정을 사용합니다.
-
-## 준비
-
-Python 3.10+·Bash·kubectl이 필요합니다. 저장소 루트에서 실행합니다.
-0~4번은 명시한 context를 사용하며 현재 context를 바꾸지 않습니다.
+서버 설치 때 사용한 저장소 루트의 Bash에서 실행합니다. 새 터미널이라면 저장소로 이동한 뒤
+아래 context 선택을 다시 합니다. `NAME` 열의 실제 클러스터 이름을 입력합니다.
 
 ```bash
 kubectl config current-context
 kubectl config get-contexts
 read -r -p '설정할 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
 kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get deployment keycloak
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get secret keycloak-runtime
 ```
 
-저장소 이동·도구 확인·입력 파일 편집부터 로그 확인까지의 실행 예시는
-[Discovery 실행 안내](05_DISCOVERY_SETUP.md#3-실행-위치와-연결-조건)를 참고합니다.
+`keycloak-runtime`의 관리자 계정은 서버 설치 때 준비한 계정입니다.
+각 Make 명령은 자신의 설정 Job을 생성하고 최대 15분 완료를 기다립니다. 별도로 Job을 apply할 필요는 없습니다.
 
-## 0. Realm 생성
+## 1. Realm 준비
 
 ```bash
 make keycloak-realm-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
-직접 실행:
+Admin Console에 서버 설치 때 입력한 관리자 계정으로 접속하고 `etch` realm을 선택합니다.
+서버 최초 import가 이미 `etch`를 만들었다면 이 명령은 존재 여부만 확인합니다.
+이후 모든 관리 화면 설정은 `master`가 아닌 `etch`에서 확인합니다.
+
+## 2. 사내 Identity Provider 생성
+
+[환경변수 안내](env/02_ENVIRONMENT.md#사내-identity-provider용-값)에 따라
+`deploy/keycloak/env/prod.env`의 사내 client ID·secret을 입력합니다.
+AD FS의 redirect URI는 `<공개 Keycloak URL>/realms/etch/broker/oidc/endpoint`입니다.
 
 ```bash
-bash deploy/keycloak/scripts/00-create-realm.sh --context "$KEYCLOAK_KUBE_CONTEXT"
+vi deploy/keycloak/env/prod.env
+python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "$KEYCLOAK_KUBE_CONTEXT" --env deploy/keycloak/env/prod.env
 ```
 
-- `etch`가 없으면 [기본 realm 정의](k8s/server/etch-realm.json)로 생성합니다.
-- 이미 있으면 갱신하지 않고 종료합니다. 사용자·client·프로필도 보존합니다.
-- IdP client ID·secret이나 discovery 접속은 필요하지 않습니다.
-- 확인: Admin Console의 realm 목록에 `etch`가 표시됩니다.
-
-## 1. Identity Provider 생성
-
-`deploy/keycloak/env/prod.env`의 사내 client ID·secret을 입력합니다.
-`CORP_OIDC_DISCOVERY_URL`, `client_secret_post` 인증 방식, 서명 검증은 기존 값을 사용합니다.
+검사가 통과한 뒤 적용합니다.
 
 ```bash
 make keycloak-idp-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
-직접 실행 또는 별도 env 입력:
+`Identity providers → oidc`에서 연결이 생성됐는지 확인합니다.
+Discovery 해석·인증 방식은 [05 Discovery 참고](05_DISCOVERY_SETUP.md)에 설명합니다.
 
-```bash
-bash deploy/keycloak/scripts/01-create-idp.sh --context "$KEYCLOAK_KUBE_CONTEXT" --env deploy/keycloak/env/prod.env
-```
-
-- Discovery → OIDC Secret → IdP Job까지만 수행합니다.
-- User Profile과 mapper는 변경하지 않습니다.
-- 확인: `Identity providers → oidc`에서 연결값과 실제 사내 로그인.
-- 세부 입력 계약: [Discovery 안내](05_DISCOVERY_SETUP.md).
-
-기존 사용자에 이전 저장 이름이 남아 있다면 [저장 이름 전환](06_CLAIMS.md#기존-사용자-저장-이름-전환)의 2번 프로필 → 값 복사 → 3번·4번 순서를 먼저 확인합니다.
-
-## 2. User Profile 등록
+## 3. User Profile 등록
 
 ```bash
 make keycloak-profile-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
-직접 실행:
+`Realm settings → User profile`에서 `loginid`, `deptname`, `grdName`, `display_name`, `sabun` 등을 확인합니다.
+사용자는 본인 필드를 조회할 수 있고 편집은 관리자만 가능합니다. 전체 필드 정의는 [06 매핑 참고](06_CLAIMS.md)에 있습니다.
 
-```bash
-bash deploy/keycloak/scripts/02-register-user-profile.sh --context "$KEYCLOAK_KUBE_CONTEXT"
-```
+## 4. 사내 claim 수신 mapper 설정
 
-- [account-user-profile.json](k8s/claims/account-user-profile.json)으로 사용자 필드·조회/편집 정책만 등록합니다.
-- IdP·client·mapper를 변경하지 않습니다. Realm과 관리자 인증만 필요합니다.
-- **기존 User Profile 정의는 교체**하며 커스텀 정의를 자동 병합하지 않습니다. 사용자 레코드·기존 속성값을 일괄 삭제하는 작업은 아닙니다.
-- 확인: `Realm settings → User profile → Attributes`에서 `loginid`, `display_name`, `deptname`, `sabun`, `grdName` 등.
-- 사용자 본인 조회, 관리자 편집 정책입니다. 기본 `username`, `email`, `firstName`, `lastName`도 포함됩니다.
-
-## 3. IdP mapper 설정
-
-2번의 프로필을 준비하고 realm의 `Email as username`이 꺼져 있는지 확인합니다.
-켜져 있으면 mapper Job이 중단합니다.
+`Realm settings`에서 `Email as username`이 꺼져 있는지 확인한 뒤 실행합니다.
 
 ```bash
 make keycloak-idp-mappers-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 ```
 
-직접 실행:
+`Identity providers → oidc → Mappers`에서 일반 속성 mapper 15개와 `epid-username` 1개를 확인합니다.
+mapper 생성만으로 사용자 값이 채워지지는 않습니다. 사내 로그인을 거쳐야 수신합니다.
 
-```bash
-bash deploy/keycloak/scripts/03-sync-idp-mappers.sh --context "$KEYCLOAK_KUBE_CONTEXT"
+## 5. 소속·SDWT 그룹 초기 설정
+
+SDWT 권한을 사용할 경우 [07 SDWT 설정](07_SDWT_SETUP.md)을 완료한 뒤 이 문서로 돌아옵니다.
+그룹·사용자는 앱 client 없이 등록합니다. SDWT를 사용하지 않으면 이 단계는 생략합니다.
+
+## 설정 완료 확인
+
+Portal·Headlamp를 설치하기 전에 Keycloak 기본 Account Console로 사내 로그인을 확인합니다.
+브라우저에서 아래 주소를 열고 사내 provider를 선택해 시험 계정으로 로그인합니다.
+
+```text
+<공개 Keycloak URL>/realms/etch/account/
 ```
 
-- User Profile을 다시 등록하지 않고 `oidc`의 mapper만 동기화합니다.
-- 일반 속성 15개 + `epid-username` 1개를 설정합니다. 프로젝트에서 폐기한 mapper는 기존 계약대로 정리합니다.
-- 확인: `Identity providers → oidc → Mappers`.
+Account Console 경로는 [Keycloak 공식 시작 안내](https://www.keycloak.org/getting-started/getting-started-kube)를 따릅니다.
 
-| 사내 수신 claim | Keycloak 내부 저장 필드 | 4번에서 앱에 발급하는 claim |
-| --- | --- | --- |
-| `userid` | 기본 `username` (EPID) | `userid` |
-| `loginid` | `loginid` | `loginid` |
-| `username` | `display_name` | `username` |
-| `mail` | 기본 `email` | `mail` |
-| `givenname` / `surname` | 기본 `firstName` / `lastName` | `givenname` / `surname` |
-| `deptname` | `deptname` | `deptname` |
-| `grdName` | `grdName` | `grdName` |
-
-전체 계약은 [사용자 claim 매핑](06_CLAIMS.md)을 참고합니다.
-`FORCE`로 사내 재로그인 시 갱신합니다. 사내에서 실제 claim을 발급해야 하며 mapper 생성만으로 값이 채워지지는 않습니다.
-
-## 4. Portal client·token mapper 설정
-
-`deploy/portal/env/prod/api.env`에 `OIDC_PROVIDER=keycloak`, `OIDC_CLIENT_ID`,
-`OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`을 준비합니다.
-**AD FS client와 다른 Portal 전용 client ID·secret**을 사용합니다.
-
-```bash
-make keycloak-portal-client-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_PORTAL_ENV="$PWD/deploy/portal/env/prod/api.env"
-```
-
-직접 실행:
-
-```bash
-bash deploy/keycloak/scripts/04-setup-portal-client.sh --context "$KEYCLOAK_KUBE_CONTEXT" --portal-env deploy/portal/env/prod/api.env
-```
-
-- Portal client와 token mapper 18개(사내 claim 16개 + 소속 2개)를 설정합니다.
-- IdP 접속 정보·User Profile·IdP mapper를 변경하지 않습니다. Discovery 접속이나 사내 client secret은 필요하지 않습니다.
-- 기존 Portal client의 secret·callback·Web origin 등은 env 값으로 갱신됩니다. 운영값을 확인하세요.
-- 확인: 해당 client의 전용 client scope에 있는 Mappers와 실제 발급 토큰.
-- 반환 claim은 사내 이름을 유지합니다. 전체 흐름은 `loginid → loginid → loginid`, `userid → 기본 username → userid`, `username → display_name → username`입니다.
-- 이 단계는 Portal client에 mapper를 등록합니다. 다른 앱 client에 자동 전파되지는 않습니다. [앱 전환 확인 항목](06_CLAIMS.md#기존-사내-oidc-앱을-연결할-때)을 참고하세요.
-- Portal API에도 같은 client 설정을 별도로 적용해야 합니다. [Portal client 계약](../portal/k8s/jobs/keycloak-client/README.md)을 따릅니다.
-
-## 5. 소속·SDWT 그룹 권한 — 선택
-
-이 단계는 Kubernetes Job 대신 기존 SDWT 도구의 관리 API·CSV 계약을 사용합니다.
-[SDWT 안내](07_SDWT_SETUP.md)에 따라 관리자 접속 URL·인증 환경변수를 준비합니다.
-client는 4번 등으로 미리 생성돼 있어야 합니다. 기본은 **dry-run**입니다.
-
-```bash
-# 서버 접속 없이 CSV만 검사합니다.
-bash deploy/keycloak/scripts/05-setup-sdwt.sh --sdwts /absolute/path/sdwts.csv --users /absolute/path/users.csv --validate-only
-
-# 변경 예정 내역을 확인합니다. 관리자 인증 환경변수가 필요합니다.
-bash deploy/keycloak/scripts/05-setup-sdwt.sh --sdwts /absolute/path/sdwts.csv --users /absolute/path/users.csv --client portal
-
-# 확인한 입력을 적용합니다.
-bash deploy/keycloak/scripts/05-setup-sdwt.sh --sdwts /absolute/path/sdwts.csv --users /absolute/path/users.csv --client portal --apply
-```
-
-Make를 사용할 때는 기존 `make keycloak-sdwt-init`의 `KEYCLOAK_SDWTS_CSV`, `KEYCLOAK_USERS_CSV`,
-`KEYCLOAK_SDWT_CLIENTS`, `KEYCLOAK_SDWT_VALIDATE_ONLY`, `KEYCLOAK_SDWT_APPLY` 입력을 그대로 사용합니다.
-`user_sdwt_prod`·`line_id`는 실제 소속이며 접근 권한은 별도 `/{SDWT}/admin|user|viewer` 그룹입니다.
-기존 사용자의 소속·권한은 재등록으로 덮어쓰지 않습니다.
-
-## 완료 확인과 실패 재실행
-
-0~4번은 각각 최신 관리 ConfigMap을 준비하고 자신의 Job만 재생성한 뒤 완료를 기다립니다.
-
-| 단계 | Job 이름 |
+| 확인 위치 | 완료 기준 |
 | --- | --- |
-| 0 | `keycloak-realm-setup` |
-| 1 | `keycloak-oidc-setup` |
-| 2 | `keycloak-user-profile-setup` |
-| 3 | `keycloak-idp-mappers-setup` |
-| 4 | `portal-keycloak-client` |
+| Account Console | 사내 인증을 거쳐 사용자 계정 화면에 도달 |
+| Admin Console → Users → 시험 사용자 | 기본 username은 EPID, loginid·deptname·grdName 등 사내에서 제공한 값이 저장됨 |
+| Users → 시험 사용자 → Identity provider links | 사내 `oidc` 연결 확인 |
+| Groups / Users → Groups | SDWT 사용 시 준비한 그룹과 시험 사용자의 가입 확인 |
+
+CSV로 사전 등록한 계정은 첫 사내 로그인에서 계정 연결 확인이 필요할 수 있습니다.
+EPID가 같다는 이유만으로 자동 연결을 가정하지 않습니다. 시험 계정으로 연결이 완료되는지 확인합니다.
+여기까지 완료하면 **Keycloak 자체 준비 완료**입니다. 다음은 [09 앱 연결](09_APP_CONNECTIONS.md)입니다.
+앱의 토큰·로그인·권한 검증은 각 앱 연결 단계에서 수행합니다.
+
+## Job 결과 확인
 
 ```bash
 kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get jobs
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/keycloak-user-profile-setup
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/keycloak-idp-mappers-setup
+read -r -p '로그를 확인할 Job 이름: ' KEYCLOAK_JOB_NAME
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs "job/$KEYCLOAK_JOB_NAME"
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job "$KEYCLOAK_JOB_NAME"
 ```
 
-실패 시 해당 Job 로그를 확인하고 원인을 수정한 뒤 해당 단계만 재실행합니다.
-실행 도중 적용된 설정은 자동 롤백하지 않습니다. 기존 realm과 계정 연결 정책은 유지합니다.
-마지막으로 시험 계정이 사내 인증을 다시 거치게 하고 사용자 속성, 새 Portal 토큰, 앱 로그인·권한을 확인합니다.
+| 작업 | 실행 파일 | Job 이름 |
+| --- | --- | --- |
+| Realm | `scripts/00-create-realm.sh` | `keycloak-realm-setup` |
+| IdP | `scripts/01-create-idp.sh` | `keycloak-oidc-setup` |
+| User Profile | `scripts/02-register-user-profile.sh` | `keycloak-user-profile-setup` |
+| IdP mapper | `scripts/03-sync-idp-mappers.sh` | `keycloak-idp-mappers-setup` |
+| SDWT | `scripts/05-setup-sdwt.sh` | Job 없이 관리자 API 사용 |
+
+실행 파일 이름의 숫자는 유지하지만, 이 문서의 제목 순서대로 진행합니다.
+Job 실패 시 로그의 원인을 해결하기 전 다음 단계로 넘어가지 않습니다.

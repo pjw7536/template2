@@ -40,6 +40,54 @@ class InputTests(unittest.TestCase):
         self.assertEqual(people[1]["user_sdwt_prod"], "")
         self.assertEqual(people[0]["userid"], "001")
 
+    def test_input_templates_and_test_fixtures(self):
+        fixture = ROOT / "apps/tooling/tests/fixtures/keycloak-sdwt"
+        templates = ROOT / "deploy/keycloak/inputs"
+        for name in ("sdwts", "users"):
+            header = (templates / f"{name}.template.csv").read_text().splitlines()
+            self.assertEqual(len(header), 1)
+            self.assertEqual(header[0], (fixture / f"{name}.csv").read_text().splitlines()[0])
+        groups, users = setup.load_inputs(fixture / "sdwts.csv", fixture / "users.csv")
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(users), 3)
+
+    def test_initial_setup_without_clients_never_reads_or_writes_client_api(self):
+        profile = json.loads((ROOT / "deploy/keycloak/k8s/claims/account-user-profile.json").read_text())
+        calls, groups = [], []
+
+        class Api:
+            def call(self, method, path="", data=None, query=None):
+                calls.append((method, path, data))
+                if "client" in path:
+                    raise AssertionError("앱 없는 초기 등록에서 client API를 호출했습니다.")
+                if method == "GET" and path == "":
+                    return {"registrationEmailAsUsername": False}
+                if path == "default-groups":
+                    return []
+                if path == "users/profile":
+                    return copy.deepcopy(profile)
+                if method == "POST":
+                    if path == "groups":
+                        groups.append({"id": "g1", **data})
+                    return None
+                raise AssertionError((method, path))
+
+            def pages(self, path, **query):
+                if path == "groups":
+                    return copy.deepcopy(groups)
+                if path == "users":
+                    return []
+                raise AssertionError(path)
+
+        task = setup.Setup(Api(), {"SDWT-A": "LINE-1"}, [{"userid": "001", "user_sdwt_prod": "SDWT-A", "loginid": "test.user"}], [])
+        task.inspect()
+        with redirect_stdout(io.StringIO()):
+            task.apply()
+        created = next(data for method, path, data in calls if method == "POST" and path == "users")
+        self.assertEqual(created["groups"], ["/SDWT-A/user"])
+        self.assertEqual(created["attributes"]["loginid"], ["test.user"])
+        self.assertEqual(created["attributes"]["line_id"], ["LINE-1"])
+
     def test_invalid_csv(self):
         for content in [
             "user_sdwt_prod,line_id\nA,L\nA,L2\n",
@@ -201,14 +249,14 @@ class KeycloakTests(unittest.TestCase):
         values = {"userid": "000003", "user_sdwt_prod": "SDWT-A", "sabun": "S003",
                   "loginid": "example.user", "username": "표시이름", "mail": "example@example.invalid",
                   "deptname": "예시부서", "grdname_en": "CL3"}
-        header = (ROOT / "deploy/keycloak/examples/users.template.csv").read_text().strip().split(",")
+        header = (ROOT / "deploy/keycloak/inputs/users.template.csv").read_text().strip().split(",")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "users.csv"
             with path.open("w", encoding="utf-8", newline="") as output:
                 writer = csv.DictWriter(output, fieldnames=header)
                 writer.writeheader()
                 writer.writerow(values)
-            _, users = setup.load_inputs(ROOT / "deploy/keycloak/examples/sdwts.csv", path)
+            _, users = setup.load_inputs(ROOT / "apps/tooling/tests/fixtures/keycloak-sdwt/sdwts.csv", path)
         self.run_setup(users)
         user = self.user("000003")
         self.assertEqual(user["username"], "000003")

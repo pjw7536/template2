@@ -29,12 +29,7 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
-            - -ec
-            - |
-              # 기존 ConfigMap도 지원하도록 쓰기 가능한 사본에서 대상 realm 옵션을 교정합니다.
-              cp -f /opt/keycloak-config/sync-oidc-claim-mappers.sh /tmp/sync-oidc-claim-mappers.sh
-              sed -i.before-realm-fix 's/--realm "$KEYCLOAK_TARGET_REALM"/-r "$KEYCLOAK_TARGET_REALM"/g' /tmp/sync-oidc-claim-mappers.sh
-              exec /bin/bash /tmp/sync-oidc-claim-mappers.sh
+            - /opt/keycloak-config/sync-oidc-claim-mappers.sh
           env:
             - name: KEYCLOAK_MAPPING_TARGET
               value: idp
@@ -44,8 +39,6 @@ spec:
               value: etch
             - name: KEYCLOAK_IDP_ALIAS
               value: oidc
-            - name: KEYCLOAK_TARGET_CLIENT
-              value: portal
             - name: KEYCLOAK_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:

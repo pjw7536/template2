@@ -34,7 +34,7 @@ def migrate(api, apply=False):
     """전체 충돌 검사 후 저장 직전 재확인하며 사용자 신원·권한은 유지합니다."""
     profile = api.call("GET", "users/profile")
     if not set(RENAMES.values()) <= {a["name"] for a in profile.get("attributes", [])}:
-        raise SetupError("2번 User Profile 등록을 먼저 실행하세요.")
+        raise SetupError("User Profile 등록을 먼저 실행하세요.")
     if profile.get("unmanagedAttributePolicy") != "ADMIN_EDIT":
         raise SetupError("이전 속성 보존을 위해 User Profile의 ADMIN_EDIT 정책이 필요합니다.")
     planned = []

@@ -310,22 +310,21 @@ test('IdP mapper는 Portal client 없이 15개 속성과 EPID username을 설정
   assert.ok(writes.every(a => JSON.parse(a.find(v => v.startsWith('config=')).slice(7)).syncMode === 'FORCE'));
 });
 
-test('claim Job은 기존 읽기 전용 스크립트의 realm 옵션을 사본에서 교정한다', t => {
-  const dir = sandbox(t);
-  const source = path.join(dir, 'source.sh');
-  const target = path.join(dir, 'run.sh');
-  const script = 'printf "%s\\n" --realm "$KEYCLOAK_TARGET_REALM"\n';
-  fs.writeFileSync(source, script, { mode: 0o400 });
+test('claim Job은 ConfigMap 원본을 직접 실행하고 IdP만 설정한다', t => {
   for (const relative of ['deploy/keycloak/k8s/claims/claim-mappers-job.yaml', 'deploy/keycloak/rendered/internal-keycloak-claim-mappers.yaml']) {
+    const mock = mockAdmin(t);
     const job = require('js-yaml').loadAll(fs.readFileSync(path.join(root, relative), 'utf8')).find(r => r.kind === 'Job');
-    const command = job.spec.template.spec.containers[0].command;
-    const body = command[2].replaceAll('/opt/keycloak-config/sync-oidc-claim-mappers.sh', source)
-      .replaceAll('/tmp/sync-oidc-claim-mappers.sh', target);
-    const result = spawnSync(command[0], [command[1], body], { encoding: 'utf8', env: { ...process.env, KEYCLOAK_TARGET_REALM: 'etch' } });
+    const container = job.spec.template.spec.containers[0];
+    const command = container.command.map(value => value.replace('/opt/keycloak-config/', path.join(root, 'deploy/keycloak/k8s/claims/')));
+    const source = fs.readFileSync(command[1], 'utf8');
+    const env = Object.fromEntries(container.env.filter(entry => entry.value).map(entry => [entry.name, entry.value]));
+    const result = spawnSync(command[0], command.slice(1), { encoding: 'utf8', env: { ...mock.env, ...env } });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, '-r\netch\n');
-    assert.equal(fs.readFileSync(source, 'utf8'), script);
-    assert.equal(fs.readFileSync(target + '.before-realm-fix', 'utf8'), script);
+    assert.equal(fs.readFileSync(command[1], 'utf8'), source);
+    assert.ok(mock.calls().every(args => !args[1].startsWith('clients')));
+    const mappings = mock.calls().filter(args => args.includes('identityProviderMapper=oidc-user-attribute-idp-mapper'));
+    assert.equal(mappings.length, 15);
+    assert.ok(mappings.every(args => args.includes('-r') && !args.includes('--realm')));
   }
 });
 

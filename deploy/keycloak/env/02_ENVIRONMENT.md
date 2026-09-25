@@ -1,79 +1,52 @@
-# 02. Keycloak 환경변수 안내
+# 02. Keycloak 최초 설치 입력
 
-[시작 안내](../README.md) · [단계별 실행](../04_SETUP_FLOW.md)
+[전체 설치 순서](../README.md) · 실행: [서버 설치](../01_SERVER_SETUP.md) / [Keycloak 자체 설정](../04_SETUP_FLOW.md)
 
-필요한 값은 **서버 기동용**, **사내 IdP 연결용**, **Portal 앱용**, **SDWT 관리자용**으로 구분합니다.
-실행할 단계에 해당하는 입력만 준비합니다.
-
-## 입력 위치
-
-| 작업 | 입력 위치 | 적용 명령 |
-| --- | --- | --- |
-| 서버 기동 | `deploy/keycloak/env/prod.env` | `keycloak-check`, `keycloak-up` |
-| 0. Realm / 2. User Profile / 3. IdP mapper | 기존 `etch-sso/keycloak-runtime` Secret의 관리자 계정 | 해당 단계별 Make 명령 |
-| 1. 사내 IdP | `deploy/keycloak/env/prod.env`의 `CORP_OIDC_*` | `keycloak-idp-setup` |
-| 4. Portal client | `deploy/portal/env/prod/api.env` | `keycloak-portal-client-setup` |
-| 5. SDWT | 관리자 인증 환경변수 + CSV 경로 | `keycloak-sdwt-init` |
+이 문서는 입력 위치와 의미만 설명합니다. 파일 편집·검사·적용 명령은 실행 문서를 따릅니다.
+설정 파일은 `KEY=값` 형식이며 셸 코드로 `source`하지 않습니다. 값을 따옴표로 감싸지 않습니다.
 
 ## 서버 기동용 값
 
-| Keycloak `prod.env` 항목 | 의미 |
+`deploy/keycloak/env/prod.env`에 입력합니다.
+
+| 항목 | 의미 |
 | --- | --- |
-| `postgres-password` | Keycloak PostgreSQL 비밀번호 |
-| `bootstrap-admin-username` | 최초 관리자 계정이며 설정 Job의 로그인 계정으로도 사용 |
-| `bootstrap-admin-password` | 관리자 비밀번호. 운영 중에는 실제 관리자 비밀번호와 일치해야 함 |
+| `postgres-password` | 새 Keycloak PostgreSQL의 비밀번호 |
+| `bootstrap-admin-username` | 최초 관리자 계정 |
+| `bootstrap-admin-password` | 최초 관리자 비밀번호. 설정 Job도 같은 계정 사용 |
 | `keycloak-public-url` | 공개 HTTPS URL. 경로와 끝의 `/` 없음 |
 
-```bash
-chmod 600 deploy/keycloak/env/prod.env
-make env-check APP=keycloak PROFILE=prod COMPONENT=server
-```
-
-서버 기동에는 사내 client나 Portal client 입력이 필요하지 않습니다.
-서버·TLS Secret 최초 준비는 [서버 설치](../01_SERVER_SETUP.md)의 `keycloak-check` → `keycloak-up`을 사용합니다.
+서버 설치 도구가 `etch-sso/keycloak-runtime` Secret을 준비합니다.
+Realm·프로필·IdP mapper Job은 이 Secret으로 인증하므로 별도 관리자 값을 입력하지 않습니다.
 
 ## 사내 Identity Provider용 값
 
-| Keycloak `prod.env` 항목 | 의미 |
+같은 `deploy/keycloak/env/prod.env`에 입력합니다. 사내 AD FS에서 발급받은 client를 사용합니다.
+
+| 항목 | 입력 |
 | --- | --- |
-| `CORP_OIDC_DISCOVERY_URL` | 사내 metadata URL. 현재 파일에 설정돼 있음 |
-| `CORP_OIDC_CLIENT_ID` | AD FS에서 발급받은 client ID |
-| `CORP_OIDC_CLIENT_SECRET` | 해당 client의 secret |
-| `CORP_OIDC_CLIENT_AUTH_METHOD` | 현재 확인된 방식은 `client_secret_post` (request body) |
+| `CORP_OIDC_DISCOVERY_URL` | 사내 metadata URL. 저장소 파일에 설정돼 있으므로 대상 주소 확인 |
+| `CORP_OIDC_CLIENT_ID` | 사내 client ID |
+| `CORP_OIDC_CLIENT_SECRET` | 사내 client secret |
+| `CORP_OIDC_CLIENT_AUTH_METHOD` | `client_secret_post` |
 | `CORP_OIDC_VALIDATE_SIGNATURE` | `true` |
 
-운영 서버에서는 기존 provider의 client ID·secret을 입력합니다.
-Authorization·Token·JWKS·UserInfo·Logout URL과 issuer는 별도 입력하지 않습니다.
-Discovery가 제공하는 값은 실행 시 해석하고 원본 env를 덮어쓰지 않습니다.
-선택 endpoint가 제공되지 않을 때의 처리는 [Discovery 안내](../05_DISCOVERY_SETUP.md)에 있습니다.
-
-## Portal 앱용 값
-
-Portal은 AD FS에 연결하는 client와 별개의 Keycloak client입니다.
-`deploy/portal/env/prod/api.env`에 `OIDC_PROVIDER=keycloak`, `OIDC_CLIENT_ID`,
-`OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`을 준비합니다.
-상세 값과 갱신 범위는 [Portal client 등록 계약](../../portal/k8s/jobs/keycloak-client/README.md)을 따릅니다.
-
-`KEYCLOAK_PORTAL_ENV`는 위 파일을 선택하는 **Make 인자**입니다. 사내 env에 넣는 항목이 아닙니다.
-기본 파일 대신 다른 파일을 사용할 때 단계별 명령에 경로를 지정합니다.
+Authorization·Token·JWKS·UserInfo·Logout URL과 issuer는 별도로 입력하지 않습니다.
+[Discovery](../05_DISCOVERY_SETUP.md)가 제공하는 값을 해석합니다.
+사내 client의 redirect URI는 `<공개 Keycloak URL>/realms/etch/broker/oidc/endpoint`입니다.
 
 ## SDWT 관리자 인증
 
-5번은 관리자 접속 URL·계정·비밀번호 또는 서비스 계정을 환경변수로 받습니다.
-`keycloak-runtime` Secret을 자동으로 읽지 않습니다. [SDWT 연결과 인증](../07_SDWT_SETUP.md#2-연결과-인증)을 따릅니다.
+SDWT 등록은 [07 연결과 인증](../07_SDWT_SETUP.md#2-연결과-인증)의 환경변수와 CSV를 사용합니다.
+관리자 API 도구는 Kubernetes Secret을 자동으로 읽지 않습니다.
 
-## 파일 작성과 반영의 차이
+## 앱 입력은 Keycloak 준비 후 작성
 
-- env는 `KEY=값` 형식입니다. 값에 shell 명령이나 따옴표 감싸기를 사용하지 않습니다. 파일을 shell 코드로 실행하지 않습니다.
-- 저장소 규칙에 따라 운영 설정·credential은 하나의 `prod.env`로 관리하며 private Git에 포함합니다. 인증서·개인키와 실제 사용자 CSV는 별도 정책을 따릅니다.
-- 파일만 수정하면 Kubernetes Secret·DB 비밀번호·기존 Keycloak 설정은 바뀌지 않습니다.
-- 서버 도구는 기존 Secret과 입력이 다르면 중단합니다. DB나 관리자 비밀번호 변경은 해당 실제 서비스와 Secret을 함께 맞춰야 합니다.
+Portal은 `deploy/portal/env/prod/api.env`, Headlamp는 `deploy/headlamp/env/k8s.env`와 전용 Secret을 사용합니다.
+이 값은 Keycloak 서버 설치 입력이 아닙니다. [09 앱 연결](../09_APP_CONNECTIONS.md)에서 각 앱의 안내를 따릅니다.
+사내 IdP와 업무 앱에 같은 client ID·secret을 사용하는 것으로 가정하지 않습니다.
 
-| 보조 명령 | 수행하는 일 |
-| --- | --- |
-| `make env-check APP=keycloak PROFILE=prod COMPONENT=oidc` | Discovery 해석과 입력 검사만 수행 |
-| `make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc` | 해석된 값을 OIDC Secret에 등록. Job은 실행하지 않음 |
-| `make env-profile-key-check ENV_APP=keycloak ENV_PROFILE=prod` | env 파일의 구조 검사 |
+## 파일과 적용의 차이
 
-보조 Secret 명령은 현재 kubectl context를 사용합니다. 보통은 context를 명시하는
-[단계별 명령](../04_SETUP_FLOW.md)을 사용하세요. Discovery 입력이 없는 별도 수동 env는 기존 명시적 endpoint 입력도 지원합니다.
+설정 파일만 편집하면 서버가 바뀌지 않습니다. 실행 문서의 검사·적용 명령이 Secret과 설정 Job을 준비합니다.
+인증서·개인키는 [TLS 준비](../03_TLS.md)의 파일 경로를 사용합니다.

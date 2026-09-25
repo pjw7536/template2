@@ -14,10 +14,14 @@ function render(relative) {
   return yaml.loadAll(result.stdout);
 }
 
-test('Keycloak 단독 스택은 기존 TLS 연결과 자체 namespace 감시만 유지한다', () => {
-  for (const resources of [render('deploy/keycloak/k8s'), yaml.loadAll(fs.readFileSync(path.join(root, 'deploy/keycloak/rendered/internal-keycloak-stack.yaml'), 'utf8'))]) {
+test('Keycloak 기본 스택과 전달 스택은 각 원본의 감시 범위와 TLS를 유지한다', () => {
+  const exported = render('deploy/keycloak/export');
+  const generated = yaml.loadAll(fs.readFileSync(path.join(root, 'deploy/keycloak/rendered/internal-keycloak-stack.yaml'), 'utf8'));
+  assert.deepEqual(generated, exported);
+  for (const [resources, namespaces, replicas] of [[render('deploy/keycloak/k8s'), 'etch-sso', 1], [generated, 'etch-sso,headlamp', 2]]) {
     const controller = resources.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
-    assert.ok(controller.spec.template.spec.containers[0].args.includes('--providers.kubernetesingress.namespaces=etch-sso'));
+    assert.ok(controller.spec.template.spec.containers[0].args.includes(`--providers.kubernetesingress.namespaces=${namespaces}`));
+    assert.equal(controller.spec.replicas, replicas);
     assert.ok(!controller.spec.template.spec.containers[0].args.some(a => a.includes('tailwind-internal')));
     const ingress = resources.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
     assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');

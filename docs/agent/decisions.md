@@ -318,7 +318,7 @@
 - Kubernetes OIDC의 username·groups prefix는 `headlamp:`이며 사용자별 ID token으로 인증합니다. 공용 viewer ServiceAccount는 제거합니다.
 - client secret은 외부 Kubernetes Secret으로 주입하며 로컬 개발 토큰 구성은 유지합니다.
 - 제어면 OIDC는 설치 방식과 기존 인증 계약에 맞춰 운영자가 반영합니다. 서버 접속이 없는 환경에서 자동 변경하지 않습니다.
-- [실행 계획](plans/headlamp-keycloak.md), [전환 안내](../../deploy/headlamp/OIDC.md).
+- [실행 계획](plans/headlamp-keycloak.md), [전환 안내](../../deploy/headlamp/operations/README.md#기존-조회-그룹에서-전환).
 
 ## 2026-09-23: 운영 일반 env는 Git으로 전달
 

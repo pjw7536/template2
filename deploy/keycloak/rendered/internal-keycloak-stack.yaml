@@ -608,7 +608,7 @@ data:
     # 참조 테이블이 관리하는 실제 소속은 사내 IdP 수신 대상에서 제외합니다.
     readonly AFFILIATION_CLAIMS=(user_sdwt_prod line_id)
 
-    # 사내 claim과 account_user에 대응하는 Keycloak 속성 이름을 분리합니다.
+    # 사내 claim 이름을 유지하되 Keycloak 기본 필드와의 충돌만 변환합니다.
     profile_attribute() {
       case "$1" in
         userid) printf '%s' username ;;
@@ -873,7 +873,7 @@ data:
       kcadm update users/profile \
         -r "$KEYCLOAK_TARGET_REALM" \
         -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null
-      echo "account_user 기준 User Profile 등록 완료"
+      echo "사내 claim 기준 User Profile 등록 완료"
     fi
 
     for retired_claim in origincomp first_name last_name; do

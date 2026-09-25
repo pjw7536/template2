@@ -90,7 +90,7 @@ CA 파일은 나중에 Keycloak 인증서를 신뢰하기 위한 CA 묶음을 �
 1. CP1에서 저장소 루트로 이동합니다. `Makefile`이 있는 위치입니다.
 2. 아래 명령으로 보관 폴더를 준비합니다.
 3. 평소 사용하는 파일 전송 도구로 사이트별 폴더에 각각 4개, `ca/`에 2개를 넣습니다.
-   `keycloak-ca-bundle.pem`은 지금 넣을 파일이 아니라 [OIDC 가이드](../../headlamp/OIDC.md)에서 생성할 파일입니다.
+   `keycloak-ca-bundle.pem`은 지금 넣을 파일이 아니라 [Headlamp TLS 준비](../../headlamp/03_TLS.md)에서 생성할 파일입니다.
 
 ```bash
 mkdir -p deploy/shared/certs/{etch-sso.samsungds.net,etch.samsungds.net,ca}
@@ -130,8 +130,8 @@ Headlamp TLS 등록 시 사용할 파일 경로는 다음과 같습니다.
 파일 배치 후 아래의 **원본에서 추출하고 서버에 적용하기** 절차로 검증·등록합니다.
 
 관련 안내: [Keycloak 인증서](../../keycloak/03_TLS.md),
-[Headlamp HTTPS](../../headlamp/HTTPS_CERTIFICATE_GUIDE.md),
-[Headlamp Keycloak 로그인](../../headlamp/OIDC.md).
+[Headlamp TLS](../../headlamp/03_TLS.md),
+[Headlamp 설치 순서](../../headlamp/README.md).
 기존 안내의 인증서 파일 경로를 사용할 때는 이 공용 폴더의 경로로 바꿉니다.
 
 ## 원본에서 추출하고 서버에 적용하기
@@ -326,12 +326,8 @@ Keycloak 최초 배포는 앞의 `make keycloak-check` → `make keycloak-up`으
 **갱신 시에는 위 Secret 등록을 먼저 수행합니다.** Keycloak 배포 도구는 기존 Secret과 파일이 다르면
 자동으로 덮어쓰지 않고 중단하기 때문입니다. TLS 갱신만 하는 경우 앱 전체를 다시 배포할 필요는 없습니다.
 
-Headlamp 최초 배포나 설정 변경은 [OIDC 가이드](../../headlamp/OIDC.md)의 준비를 완료한 뒤 실행합니다.
-
-```bash
-make headlamp-check
-make headlamp-up KUBE_CONTEXT="$KUBE_CONTEXT"
-```
+Headlamp 최초 설치 중이라면 [03 TLS 준비](../../headlamp/03_TLS.md)로 돌아갑니다.
+Headlamp 배포·접속 검사는 [06 배포와 검증](../../headlamp/06_DEPLOY_VERIFY.md)에서만 진행합니다.
 
 ### 6. 실제 제공되는 인증서 확인
 
@@ -367,7 +363,7 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
 ### 7. Headlamp OIDC용 CA는 별도 등록
 
 HTTPS TLS Secret 등록과 Keycloak 로그인용 CA 등록은 별개입니다.
-[OIDC 가이드 3-1·3-2](../../headlamp/OIDC.md)의 명령으로 다음을 준비합니다.
+[Headlamp TLS 준비](../../headlamp/03_TLS.md)의 명령으로 다음을 준비합니다.
 
 - 입력: `ca/SECDS-T2RootCA.crt`, `ca/SECDS-T2IssuingCA.crt`
 - 생성 파일: `etch-sso.samsungds.net/keycloak-ca-bundle.pem`
@@ -375,12 +371,7 @@ HTTPS TLS Secret 등록과 Keycloak 로그인용 CA 등록은 별개입니다.
 - API server: 같은 CA 묶음을 각 제어면에 배치·마운트하고 OIDC 인증 설정에 연결
 
 CA 교체 시에는 Headlamp와 각 API server의 신뢰 설정도 갱신해야 합니다.
-Headlamp는 새 CA를 확실히 읽도록 다음 명령으로 재시작하고 로그인까지 확인합니다.
-
-```bash
-kubectl --context "$KUBE_CONTEXT" -n headlamp rollout restart deployment/headlamp
-kubectl --context "$KUBE_CONTEXT" -n headlamp rollout status deployment/headlamp --timeout=300s
-```
+Headlamp 재시작·로그인 확인은 [운영 참고](../../headlamp/operations/README.md#재시작과-복구)를 따릅니다.
 
 명령 참고: [OpenSSL PFX 추출](https://docs.openssl.org/3.0/man1/openssl-pkcs12/),
 [P7B 추출](https://docs.openssl.org/3.0/man1/openssl-pkcs7/).

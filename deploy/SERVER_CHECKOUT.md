@@ -91,7 +91,7 @@ bash deploy/shared/scripts/check-env.sh keycloak prod server \
 ```
 
 Keycloak 실제 배포는 [전용 안내](keycloak/README.md)의 `make keycloak-up`을 사용합니다.
-`make k8s-export`와 [CP1 수동 절차](shared/docs/operations/cp1.md)는 별도 YAML 전달·단독 운용을 위한 경로입니다.
+`make k8s-export`와 [Keycloak 전달 YAML 참고](keycloak/operations/cp1.md#전달용-yaml)는 별도 전달 경로이며 최초 설치는 단계별 앱 도구를 사용합니다.
 Portal은 [운영 안내](portal/k8s/overlays/prod/README.md)를 따릅니다.
 `server-check`나 `git pull`은 클러스터에 적용하거나 Secret을 갱신하지 않습니다.
 

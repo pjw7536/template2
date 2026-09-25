@@ -250,7 +250,11 @@ audit-docs:
 
 # Keycloak 로그인 방식의 서버 Headlamp를 독립적으로 운영합니다.
 HEADLAMP_ENV ?= $(CURDIR)/deploy/headlamp/env/k8s.env
-.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client
+.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-setup-env
+headlamp-setup-env:
+	@python3 ./deploy/headlamp/scripts/manage.py setup-env --env "$(HEADLAMP_ENV)"
+headlamp-oidc-check:
+	python3 ./deploy/headlamp/scripts/manage.py oidc-check --env "$(HEADLAMP_ENV)" $(if $(HEADLAMP_OIDC_CA_FILE),--ca-file "$(HEADLAMP_OIDC_CA_FILE)")
 headlamp-oidc-client:
 	@python3 ./deploy/headlamp/scripts/manage.py oidc-client --env "$(HEADLAMP_ENV)"
 headlamp-fetch-chart:

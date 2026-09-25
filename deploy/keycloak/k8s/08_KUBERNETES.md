@@ -1,73 +1,56 @@
-# 08. Keycloak Kubernetes 원본 안내
+# 08. Keycloak Kubernetes 원본 참고
 
-[시작 안내](../README.md) · 실행: [서버 설치](../01_SERVER_SETUP.md) / [0~5단계 설정](../04_SETUP_FLOW.md)
+[전체 설치 순서](../README.md)
 
-이 문서는 manifest·스크립트·전달 YAML을 유지보수할 때 사용합니다.
-운영 명령은 위의 실행 문서를 따릅니다. 서버 스택과 설정 Job은 별도 작업입니다.
+처음 설치할 때 manifest를 개별 적용할 필요는 없습니다.
+[서버 설치](../01_SERVER_SETUP.md)와 [Keycloak 설정](../04_SETUP_FLOW.md)의 Make 명령이 아래 원본을 사용합니다.
 
-## 파일 구조
+## 원본과 역할
 
-```text
-k8s/
-├── kustomization.yaml                # 서버·공용 ingress·관리 ConfigMap 묶음
-├── server/
-│   ├── stack.yaml                    # PostgreSQL·Keycloak·PV/PVC·서비스
-│   └── etch-realm.json                # 신규 etch realm 기본값
-├── oidc/
-│   ├── oidc-setup-job.yaml            # 사내 IdP Job, Realm Job 생성 시에도 재사용
-│   ├── setup-realm.sh                # 기존 realm은 보존, 없을 때만 생성
-│   ├── setup-oidc.sh                  # 해석된 endpoint로 IdP 생성/갱신
-│   └── admin-common.sh               # 관리 CLI·문자열 처리 공통 함수
-└── claims/
-    ├── claim-mappers-job.yaml         # 프로필+IdP mapper 통합 Job 원본
-    ├── sync-oidc-claim-mappers.sh      # 전용 모드와 통합 모드 지원
-    ├── account-user-profile.json      # User Profile 정의
-    └── sdwt-access-scope.json         # SDWT groups 공통 scope 정의
-```
-
-Traefik 원본은 `deploy/shared/ingress`에서 참조합니다.
-
-## 서버와 설정 Job의 차이
-
-| 실행 | 동작 |
+| 원본 | 역할 |
 | --- | --- |
-| `keycloak-up` | 서버 스택·관리 ConfigMap 준비. 설정 Job은 실행하지 않음 |
-| 0번 Realm | IdP Job 원본에서 OIDC Secret 의존성을 제거하고 realm 생성 스크립트 실행 |
-| 1번 IdP | Discovery 해석 결과를 Secret으로 전달한 뒤 IdP Job 실행 |
-| 2번 User Profile | claim Job 원본에 `KEYCLOAK_PROFILE_ONLY=true`를 넣어 실행 |
-| 3번 IdP mapper | claim Job 원본에 `KEYCLOAK_SKIP_PROFILE=true`, 대상 `idp`로 실행 |
-| 4번 Portal | Portal 소유 Job·ConfigMap 사용 |
-| 기존 통합 실행 | IdP Job 이후 기본 claim Job으로 프로필·mapper를 함께 실행 |
+| `kustomization.yaml` | 서버·공용 ingress·관리 ConfigMap 구성 |
+| `server/stack.yaml` | PostgreSQL·Keycloak·PV/PVC·Service |
+| `server/etch-realm.json` | 최초 `etch` realm 정의 |
+| `oidc/setup-realm.sh` | realm 준비 |
+| `oidc/setup-oidc.sh` | 사내 IdP 연결 등록 |
+| `oidc/oidc-setup-job.yaml` | IdP Job 원본, Realm Job에도 재사용 |
+| `claims/account-user-profile.json` | 사용자 필드·조회/편집 권한 |
+| `claims/sync-oidc-claim-mappers.sh` | 수신·발급 mapper 등록 |
+| `claims/claim-mappers-job.yaml` | 프로필·mapper Job 원본 |
+| `claims/sdwt-access-scope.json` | 앱 연결 시 사용하는 SDWT groups scope |
 
-단계별 0~4번은 최신 공통 관리 ConfigMap을 준비합니다.
-파생 Job은 이미지·볼륨·리소스·보안 설정을 기존 manifest에서 재사용하며 Job 이름을 단계별로 구분합니다.
-Job 이름과 실패 로그 조회는 [완료 확인](../04_SETUP_FLOW.md#완료-확인과-실패-재실행)에 있습니다.
+Traefik은 `deploy/shared/ingress`에서 참조합니다.
+서버 배포는 관리 ConfigMap을 준비하지만 Realm·IdP·프로필·mapper 설정 Job을 실행하지 않습니다.
+각 Job의 이름은 [설정 결과 확인](../04_SETUP_FLOW.md#job-결과-확인)에 있습니다.
 
-`setup-oidc.sh` 자체는 discovery를 조회하지 않습니다. 실행 호스트가 먼저 endpoint를 해석해야 합니다.
-`claim-mappers-job.yaml`을 직접 실행하면 기본적으로 프로필과 IdP mapper가 **둘 다** 변경됩니다.
-각각 실행하려면 2번·3번 명령을 사용합니다.
+## 도구의 실행 범위
 
-## 생성 파일 갱신
+`setup_discovery.py`가 명시한 context로 ConfigMap과 선택 단계의 Job을 준비합니다.
+프로필 단계는 `KEYCLOAK_PROFILE_ONLY=true`, 수신 mapper 단계는 `KEYCLOAK_SKIP_PROFILE=true`로 구분합니다.
+사내 접속 정보는 실행 호스트에서 Discovery를 조회한 뒤 Secret으로 전달합니다.
 
-원본을 변경한 뒤 저장소 루트에서 실행합니다. 아래 명령은 클러스터에 적용하지 않습니다.
+Portal client Job은 `deploy/portal/k8s/jobs/keycloak-client`가 소유합니다.
+SDWT 초기 등록은 Job 대신 관리자 API를 사용합니다.
 
-```bash
-make k8s-export
-make server-check APP=keycloak PROFILE=prod
-```
+## 렌더 파일
 
-| 생성 파일 | 포함 내용 | 사용 조건 |
-| --- | --- | --- |
-| `rendered/internal-keycloak-stack.yaml` | 서버·공통 ConfigMap·운영 Traefik 설정 | [서버 문서](../01_SERVER_SETUP.md)의 수동 전달 배포 조건 확인 |
-| `rendered/internal-keycloak-claim-mappers.yaml` | 관리 ConfigMap + 통합 claim Job | IdP가 이미 있고 프로필·mapper를 함께 갱신할 때 |
+`rendered/`는 생성된 전달용 YAML이며 직접 편집하지 않습니다.
+최초 설치 안내는 Python·Make를 사용하는 단계별 경로로 통일합니다.
+전달용 YAML은 별도 배포 형태이므로 단계별 명령과 함께 적용하지 않습니다.
+특히 전달 스택은 Headlamp namespace 감시·RBAC 등 별도 전제가 있어 최초 설치 명령을 대체하지 않습니다.
 
-`rendered/`는 직접 편집하지 않습니다. 원본 `k8s/`, `export/`, `scripts/render.sh`에서 갱신합니다.
-전달 YAML만으로 discovery나 독립 단계 실행 파일 전체를 대체할 수는 없습니다.
+## 관리 도구의 참조 관계
 
-## 유지해야 하는 계약
+| 도구 | 호출 경로·역할 |
+| --- | --- |
+| `scripts/up.py` | `keycloak-check/up`의 서버 배포 구현 |
+| `scripts/setup_discovery.py` | 단계별 실행 파일과 공통 env 도구의 Discovery 해석 |
+| `scripts/00`~`05` 실행 파일 | Make 명령이 호출하는 단계별 진입점 |
+| `scripts/init_sdwt.py` | SDWT 그룹·사용자 등록과 앱 scope 연결 |
+| `scripts/render.sh` | `k8s-export`가 사용하는 전달 YAML 생성기 |
+| `scripts/migrate_claim_attributes.py` | 별도 `keycloak-claim-attributes-migrate` 진입점. 최초 설치에는 사용하지 않음 |
 
-- 서버 배포는 `stack.yaml` 단독 적용보다 공용 라우팅을 보존하는 앱 배포 도구를 사용합니다.
-- 공통 ConfigMap 파일명과 `/opt/keycloak-config` 마운트 경로는 Job이 참조합니다.
-- `etch-realm.json`은 서버 최초 import와 0번 realm 생성에 사용합니다. 기존 realm을 덮어쓰지 않습니다.
-- Secret·PV/PVC 이름은 기존 데이터를 연결하므로 폴더 정리를 이유로 삭제·변경하지 않습니다.
-- 운영 전달 스택의 Traefik 배치·감시 범위는 기본 스택과 다릅니다. 상세 조건은 [서버 설치](../01_SERVER_SETUP.md)에 있습니다.
+통합 `keycloak-oidc-check/setup`과 전달용 `export/`는 기존 운영 절차에서 참조하므로 유지합니다.
+최초 설치는 [설정 안내](../04_SETUP_FLOW.md)의 단계별 명령만 사용합니다.
+claim Job은 ConfigMap의 최신 스크립트를 직접 실행하며 임시 사본·realm 옵션 치환을 사용하지 않습니다.

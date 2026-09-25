@@ -1,0 +1,4 @@
+# 실제 DSN·접속정보·인증서와 하위 파일은 Git에 포함하지 않는다.
+*
+!.gitignore
+!README.md
