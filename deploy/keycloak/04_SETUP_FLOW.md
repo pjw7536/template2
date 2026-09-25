@@ -16,6 +16,8 @@
 | 5 | 소속·SDWT 그룹 권한 (선택) | [05-setup-sdwt.sh](scripts/05-setup-sdwt.sh) | `keycloak-sdwt-init` |
 
 현재처럼 Realm과 provider가 정상 동작한다면 **2번부터 진행**합니다.
+**Portal 연결은 나중에 해도 됩니다.** 2·3번까지 먼저 완료하고 Portal 준비가 끝나면 4번을 실행합니다.
+2·3번에는 Portal client ID·secret·env 파일이 필요하지 않습니다.
 기존 `make keycloak-oidc-setup` 통합 명령은 1~3번을 함께 실행하는 호환 경로로 유지됩니다.
 단계별 명령과 통합 명령을 동시에 실행하지 마세요. 같은 관리 ConfigMap과 설정을 사용합니다.
 
@@ -25,9 +27,14 @@ Python 3.10+·Bash·kubectl이 필요합니다. 저장소 루트에서 실행합
 0~4번은 명시한 context를 사용하며 현재 context를 바꾸지 않습니다.
 
 ```bash
+kubectl config current-context
+kubectl config get-contexts
 read -r -p '설정할 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
 kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get deployment keycloak
 ```
+
+저장소 이동·도구 확인·입력 파일 편집부터 로그 확인까지의 실행 예시는
+[Discovery 실행 안내](05_DISCOVERY_SETUP.md#3-실행-위치와-연결-조건)를 참고합니다.
 
 ## 0. Realm 생성
 
