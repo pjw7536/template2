@@ -231,10 +231,14 @@ OpenID Connect, flow는 Authorization Code를 사용합니다.
 
 ### 사내 OIDC 접속 설정을 env로 적용하기
 
+Discovery URL이 있으면 [Discovery 전체 설정 흐름](DISCOVERY_SETUP.md)을 사용합니다.
+`make keycloak-oidc-check`로 metadata·입력을 검사하고 `make keycloak-oidc-setup`으로
+IdP → 사용자 프로필·mapper를 순서대로 적용합니다. Portal env를 지정하면 client와 token mapper도 설정합니다.
+
 관리 화면에서 이미 연결한 설정은 서버 YAML을 적용해도 유지됩니다. env를 설정 원본으로
 전환하거나 새 연결을 만들 때만 `deploy/keycloak/env/prod.env`의 `CORP_OIDC_*` 부분을 작성합니다.
 인프라에서 확인한 client 인증 방식과 기존 서버의 서명 검증 정책을 명시합니다.
-서명 검증을 켜면 JWKS URL도 필요합니다. discovery 없이 명시적 endpoint를 사용합니다.
+서명 검증을 켜면 JWKS URL도 필요합니다. 아래 수동 경로는 discovery 없이 명시적 endpoint를 사용합니다.
 
 ```bash
 make env-check APP=keycloak PROFILE=prod COMPONENT=oidc

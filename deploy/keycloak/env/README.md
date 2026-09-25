@@ -16,7 +16,17 @@ make env-check APP=keycloak PROFILE=prod COMPONENT=server
 | `bootstrap-admin-username` | 빈 DB 최초 기동 시 만들 관리자 계정 |
 | `bootstrap-admin-password` | 초기 관리자 비밀번호 |
 | `keycloak-public-url` | 공개 URL. 현재 원본 기준 `https://etch-sso.samsungds.net`, 끝에 `/` 없음 |
-| `CORP_OIDC_*` | 사내 로그인 연결을 등록할 때 필요한 발급값·endpoint |
+| `CORP_OIDC_CLIENT_ID`, `CORP_OIDC_CLIENT_SECRET` | 사내 로그인 client 발급 정보 |
+| `CORP_OIDC_CLIENT_AUTH_METHOD` | 현재 provider에서 확인한 `client_secret_post` (request body 방식) |
+| `CORP_OIDC_VALIDATE_SIGNATURE` | 서명 검증 사용: `true` |
+| `CORP_OIDC_DISCOVERY_URL` | Discovery 설정 흐름에서 읽을 metadata URL. endpoint들은 실행 시 해석하며 파일을 덮어쓰지 않음 |
+
+Discovery 기반 초기 설정은 [전체 설정 흐름](../DISCOVERY_SETUP.md)을 따릅니다.
+Authorization·Token·JWKS·UserInfo·Logout URL과 issuer는 운영 env에 중복 입력하지 않습니다.
+`make keycloak-oidc-check KUBE_CONTEXT=...`와 `make keycloak-oidc-setup KUBE_CONTEXT=...`이
+discovery를 조회해 기존 Job에 필요한 endpoint 입력을 자동 생성합니다.
+`make env-check ... COMPONENT=oidc`와 `make k8s-env ... COMPONENT=oidc`는
+명시적인 endpoint를 가진 별도 수동 입력용이며 현재 discovery 전용 env에는 직접 사용하지 않습니다.
 
 값은 `KEY=값` 형식으로 입력하고 파일 전체를 Git에서 관리합니다.
 서버 구동에는 첫 네 항목이 필요하고, 빈 DB에 사내 로그인을 연결하려면 `CORP_OIDC_*`도 준비합니다.

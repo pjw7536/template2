@@ -40,6 +40,14 @@ keycloak-sdwt-init:
 keycloak-sdwt-test:
 	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_sdwt.py'
 
+KEYCLOAK_PORTAL_ENV ?=
+.PHONY: keycloak-oidc-check keycloak-oidc-setup
+keycloak-oidc-check:
+	python3 deploy/keycloak/scripts/setup_discovery.py check --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_PORTAL_ENV),--portal-env "$(KEYCLOAK_PORTAL_ENV)")
+
+keycloak-oidc-setup:
+	python3 deploy/keycloak/scripts/setup_discovery.py apply --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_PORTAL_ENV),--portal-env "$(KEYCLOAK_PORTAL_ENV)")
+
 
 # 저장소 전용 경로에 checksum 검증된 kind binary를 준비합니다.
 k8s-tools:
