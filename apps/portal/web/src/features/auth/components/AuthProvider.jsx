@@ -24,7 +24,7 @@ import { appendTargetParam, buildTargetUrl } from "../utils/url"
  * @property {number} id
  * @property {string} [email]
  * @property {string} [username]
- * @property {boolean} [isSuperuser]
+ * @property {boolean} [isPortalAdmin]
  * @property {string | null} [userSdwtProd]
  * @property {string | null} [pendingUserSdwtProd]
  * @property {boolean} [hasPendingAffiliation]

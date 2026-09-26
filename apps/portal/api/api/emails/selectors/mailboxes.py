@@ -100,9 +100,7 @@ def list_mailbox_members(*, mailbox_user_sdwt_prod: str) -> list[dict[str, objec
     access_rows = list(account_selectors.list_group_members(user_sdwt_prods={normalized}))
     access_by_user_id = {row.user_id: row for row in access_rows}
 
-    affiliated_users = account_selectors.list_current_affiliation_users_by_user_sdwt_prod(
-        user_sdwt_prod=normalized
-    )
+    affiliated_users = []
 
     members: list[dict[str, object]] = []
     seen_user_ids: set[int] = set()
@@ -200,19 +198,7 @@ def resolve_email_affiliation(*, sender_id: str, received_at: datetime | None) -
             }
 
     # -----------------------------------------------------------------------------
-    # 2) 외부 예측 소속 확인
-    # -----------------------------------------------------------------------------
-    snapshot = account_selectors.get_external_affiliation_snapshot_by_knox_id(knox_id=sender_id)
-    if snapshot is not None:
-        predicted = (snapshot.predicted_user_sdwt_prod or "").strip()
-        if predicted:
-            return {
-                "user_sdwt_prod": predicted,
-                "classification_source": Email.ClassificationSource.PREDICTED_EXTERNAL,
-            }
-
-    # -----------------------------------------------------------------------------
-    # 3) 기본값(UNASSIGNED) 반환
+    # 2) 로그인 프로필이 없는 발신자는 미분류로 반환
     # -----------------------------------------------------------------------------
     return {
         "user_sdwt_prod": UNASSIGNED_USER_SDWT_PROD,

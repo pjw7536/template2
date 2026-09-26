@@ -10,7 +10,7 @@ class AssistantOpenWebUIChatTests(TestCase):
         _allow_test_scope_access(self)
         self.factory = RequestFactory()
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S78888",
             sabun="S78888",
             password="test-password",
             email="openwebui.user@example.com",

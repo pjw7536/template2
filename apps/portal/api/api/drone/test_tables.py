@@ -1,3 +1,4 @@
+from api.drone.tests import _keycloak_login, _set_keycloak_access
 # =============================================================================
 # 모듈: 분리된 Drone 회귀 테스트
 # 주요 가정: 공통 fixture와 import는 api.drone.tests에서 공유합니다.
@@ -190,12 +191,12 @@ class DroneTablesEndpointTestsPart1(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S41000",
             sabun="S41000",
             password="test-password",
             knox_id="knox-41000",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
     @patch("api.drone.services.table_ops._fetch_rows")
     @patch("api.drone.services.table_ops.table_schema.resolve_table_schema")
@@ -623,12 +624,12 @@ class DroneTablesEndpointTestsPart2(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S41000",
             sabun="S41000",
             password="test-password",
             knox_id="knox-41000",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
     @patch("api.drone.services.table_ops.execute")
     @patch("api.drone.services.table_ops._fetch_row")

@@ -24,6 +24,29 @@ from api.activity.serializers import AppAccessEventSerializer, ManualAppAccessSt
 KST = ZoneInfo("Asia/Seoul")
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 class ActivitySerializerTests(SimpleTestCase):
     """Activity JSON body의 문자열 타입 계약을 검증합니다."""
 
@@ -84,20 +107,9 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
     test_case.addCleanup(patcher.stop)
 
 
-def _grant_access_stats_admin(*, user, actor) -> None:
-    """테스트 사용자에게 Portal 접근과 접속 현황 관리자 역할을 부여합니다."""
-
-    for scope_key, role in (("portal", "user"), ("access-stats", "admin")):
-        _payload, status_code = account_services.decide_user_access(
-            actor=actor,
-            user_id=user.id,
-            scope_key=scope_key,
-            action="grant",
-            role=role,
-            reason="Activity 관리자 테스트 권한 부여",
-        )
-        if status_code != 200:
-            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
+def _grant_access_stats_admin(*, user, actor=None) -> None:
+    """접속 현황 관리자 client 역할을 테스트 세션에 설정합니다."""
+    _set_keycloak_access(user, roles=["access-stats-admin"])
 
 
 @override_settings(EXTERNAL_APP_USAGE_API_URLS="[]")
@@ -112,17 +124,17 @@ class ActivityLogEndpointTests(TestCase):
         # 1) 기본 사용자 생성
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S70000",
             sabun="S70000",
             password="test-password",
             knox_id="knox-70000",
         )
-        self.other_user = User.objects.create_user(
+        self.other_user = User.objects.create_user(avatarid="S70001",
             sabun="S70001",
             password="test-password",
             knox_id="knox-70001",
         )
-        self.superuser = User.objects.create_superuser(
+        self.superuser = User.objects.create_superuser(avatarid="S70002",
             sabun="S70002",
             password="test-password",
             knox_id="knox-70002",
@@ -138,7 +150,7 @@ class ActivityLogEndpointTests(TestCase):
         # -----------------------------------------------------------------------------
         # 1) 로그인 후 접근 시도
         # -----------------------------------------------------------------------------
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.get(reverse("activity-logs"))
         self.assertEqual(response.status_code, 403)
@@ -165,7 +177,7 @@ class ActivityLogEndpointTests(TestCase):
             codename="view_activitylog",
         )
         self.user.user_permissions.add(permission)
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         # -----------------------------------------------------------------------------
         # 3) 응답 검증
@@ -184,7 +196,7 @@ class ActivityLogEndpointTests(TestCase):
             codename="view_activitylog",
         )
         self.user.user_permissions.add(permission)
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         invalid_response = self.client.get(reverse("activity-logs"), {"limit": "many"})
         oversized_response = self.client.get(reverse("activity-logs"), {"limit": "201"})
@@ -205,7 +217,7 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_app_access_event_records_activity_log(self) -> None:
         """앱 접속 이벤트 기록 API가 APP_ACCESS 로그를 생성하는지 확인합니다."""
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(
             reverse("activity-app-access"),
@@ -222,7 +234,8 @@ class ActivityLogEndpointTests(TestCase):
     def test_activity_endpoints_reject_removed_request_aliases(self) -> None:
         """접속 통계 API는 제거된 snake_case와 granularity 별칭을 거절해야 합니다."""
 
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
         event_response = self.client.post(
             reverse("activity-app-access"),
             data=json.dumps({"app_id": "appstore", "app_name": "Appstore"}),
@@ -256,7 +269,7 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_app_access_stats_allows_authenticated_user(self) -> None:
         """앱 접속 통계 조회는 인증 사용자에게 허용됩니다."""
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.get(reverse("activity-app-access-stats"))
 
@@ -300,7 +313,8 @@ class ActivityLogEndpointTests(TestCase):
             metadata={"app_id": "appstore", "app_name": "Appstore"},
             created_at=datetime(2026, 6, 17, 3, 0, tzinfo=UTC),
         )
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
@@ -321,7 +335,8 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_app_access_stats_rejects_invalid_period(self) -> None:
         """앱 접속 통계 조회가 허용되지 않은 집계 단위를 거부하는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
@@ -362,7 +377,8 @@ class ActivityLogEndpointTests(TestCase):
             created_by=self.superuser,
             updated_by=self.superuser,
         )
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
@@ -401,7 +417,8 @@ class ActivityLogEndpointTests(TestCase):
             created_by=self.superuser,
             updated_by=self.superuser,
         )
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
@@ -416,7 +433,7 @@ class ActivityLogEndpointTests(TestCase):
     def test_manual_app_access_preview_validates_spreadsheet_paste(self) -> None:
         """외부 앱 접속현황 붙여넣기 미리보기가 행 단위 오류를 반환하는지 확인합니다."""
         _grant_access_stats_admin(user=self.user, actor=self.superuser)
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         pasted_text = "\t".join(["date", "appName", "accessCount", "uniqueUserCount"]) + "\n"
         pasted_text += "\t".join(["2026-06-17", "external foo", "10", "3"]) + "\n"
         pasted_text += "\t".join(["2026-06-17", "external bar", "2", "5"])
@@ -438,7 +455,8 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_manual_app_access_preview_accepts_csv_template_paste(self) -> None:
         """외부 앱 접속현황 CSV 템플릿 붙여넣기가 미리보기 유효 행으로 처리되는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
         pasted_text = (
             "date,appName,accessCount,uniqueUserCount,memo\n"
             "2026-06-17,external csv,9,4,CSV 템플릿"
@@ -462,7 +480,8 @@ class ActivityLogEndpointTests(TestCase):
     def test_manual_app_access_preview_defaults_blank_source_name(self) -> None:
         """비어 있는 수동 입력 출처는 manual 기본값으로 처리해야 합니다."""
 
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
         pasted_text = (
             "date,appName,accessCount,uniqueUserCount\n"
             "2026-06-17,external csv,9,4"
@@ -479,7 +498,7 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_manual_app_access_commit_rejects_user_without_access_stats_admin(self) -> None:
         """접속 현황 관리자 역할이 없는 사용자의 수동 반영을 거부합니다."""
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(
             reverse("activity-app-access-manual-commit"),
@@ -491,7 +510,8 @@ class ActivityLogEndpointTests(TestCase):
 
     def test_manual_app_access_commit_upserts_daily_stats(self) -> None:
         """외부 앱 접속현황 수동 반영이 앱/날짜/출처 기준으로 upsert되는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
         first_text = (
             "date\tappName\taccessCount\tuniqueUserCount\tmemo\n"
             "2026-06-17\texternal foo\t10\t3\t초기 입력"
@@ -544,7 +564,8 @@ class ActivityLogEndpointTests(TestCase):
             metadata={"app_id": "appstore", "app_name": "Appstore", "event_type": "app_access"},
             created_at=datetime(2026, 6, 17, 1, 0, tzinfo=UTC),
         )
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.get(
             reverse("activity-app-access-stats"),
@@ -601,7 +622,8 @@ class ActivityLogEndpointTests(TestCase):
                 ]
             ),
         ]
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         sync_response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -654,7 +676,7 @@ class ActivityLogEndpointTests(TestCase):
             metadata={"app_id": "appstore", "app_name": "Appstore", "event_type": "app_access"},
             created_at=timezone.now(),
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         sync_response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -707,7 +729,7 @@ class ActivityLogEndpointTests(TestCase):
                 return [{"date": timezone.localdate(timezone=KST).isoformat(), "accessCount": 10, "appName": "AIO"}]
 
         mock_get.return_value = FakeResponse()
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -733,7 +755,7 @@ class ActivityLogEndpointTests(TestCase):
             last_synced_at=timezone.now() - timedelta(minutes=30),
             last_status="success",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -769,7 +791,7 @@ class ActivityLogEndpointTests(TestCase):
         )
         mock_get.return_value = FakeResponse()
         _grant_access_stats_admin(user=self.user, actor=self.superuser)
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -807,7 +829,8 @@ class ActivityLogEndpointTests(TestCase):
             last_status="success",
         )
         mock_get.return_value = FakeResponse()
-        self.client.force_login(self.superuser)
+        _set_keycloak_access(self.superuser, roles=["portal-admin"])
+        _keycloak_login(self.client, self.superuser)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
 
@@ -848,7 +871,7 @@ class ActivityLogEndpointTests(TestCase):
             updated_at=timezone.now() - timedelta(hours=6, seconds=1)
         )
         mock_get.return_value = FakeResponse()
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
         response = self.client.post(reverse("activity-app-access-sync-external"))
 

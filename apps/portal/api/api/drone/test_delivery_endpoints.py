@@ -1,3 +1,4 @@
+from api.drone.tests import _keycloak_login, _set_keycloak_access
 # =============================================================================
 # 모듈: 분리된 Drone 회귀 테스트
 # 주요 가정: 공통 fixture와 import는 api.drone.tests에서 공유합니다.
@@ -734,12 +735,12 @@ class DroneEndpointTests(TestCase):
         """테스트용 사용자/클라이언트를 준비합니다."""
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S60000",
             sabun="S60000",
             password="test-password",
             knox_id="knox-60000",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
     def test_drone_early_inform_crud(self) -> None:
         """조기 알림 CRUD 플로우가 동작하는지 확인합니다."""

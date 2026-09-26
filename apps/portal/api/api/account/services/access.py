@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, List
 
 from django.db import IntegrityError, transaction
 
+from .keycloak_access import has_sdwt_capability
 from .. import selectors
 from ..models import AccessAuditLog, UserSdwtProdAccess
 from .access_control import create_access_audit_log
@@ -74,27 +75,9 @@ def _serialize_affiliation_role_audit(
     }
 
 
-def has_affiliation_capability(
-    *,
-    user: Any,
-    user_sdwt_prod: str,
-    capability: str,
-) -> bool:
-    """사용자가 대상 소속에서 요청 capability를 보유하는지 반환합니다.
-
-    모든 소속에서 명시적으로 저장된 역할로 판정합니다.
-    staff/superuser는 기존 소속 특권 정책에 따라 모든 capability를 보유합니다.
-    """
-
-    normalized_capability = (capability or "").strip().lower()
-    allowed_roles = AFFILIATION_CAPABILITY_ROLES.get(normalized_capability)
-    if allowed_roles is None:
-        return False
-    role = _resolve_user_sdwt_prod_role(
-        user=user,
-        user_sdwt_prod=user_sdwt_prod,
-    )
-    return role in allowed_roles
+def has_affiliation_capability(*, user: Any, user_sdwt_prod: str, capability: str, context=None) -> bool:
+    """검증된 세션 context로 SDWT 데이터 작업을 검사합니다."""
+    return has_sdwt_capability(user=user, user_sdwt_prod=user_sdwt_prod, capability=capability, context=context)
 
 
 def has_affiliation_capability_for_ids(

@@ -189,6 +189,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "api.auth.services.authentication.KeycloakSessionContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # 사용자 활동 로깅 (커스텀)
@@ -382,7 +383,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.auth.services.authentication.CsrfExemptSessionAuthentication",
-        "api.auth.services.authentication.PortalAccessBasicAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "api.common.permissions.PortalAccessRequiredPermission",
@@ -581,48 +581,26 @@ SESSION_COOKIE_AGE = env_strict_int("SESSION_COOKIE_AGE", 86400) or 86400
 
 
 # =============================
-# OIDC / ADFS / Keycloak 설정
+# Keycloak OIDC 설정
 # =============================
-OIDC_PROVIDER = str(env("OIDC_PROVIDER", "adfs") or "adfs").strip().lower()
-if OIDC_PROVIDER not in {"adfs", "keycloak"}:
-    raise ImproperlyConfigured(
-        "OIDC_PROVIDER는 adfs 또는 keycloak이어야 합니다."
-    )
-
-ADFS_AUTH_URL = env("ADFS_AUTH_URL", "") or ""
-ADFS_LOGOUT_URL = env("ADFS_LOGOUT_URL", "") or ""
-OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", "") or ""
-OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", "") or ""
-OIDC_ISSUER = env("OIDC_ISSUER", "") or ""
-OIDC_REDIRECT_URI = env("OIDC_REDIRECT_URI", "") or ""
-OIDC_TOKEN_URL = env("OIDC_TOKEN_URL", "") or ""
-OIDC_JWKS_URL = env("OIDC_JWKS_URL", "") or ""
-OIDC_CONNECT_TIMEOUT_SECONDS = (
-    env_strict_int("OIDC_CONNECT_TIMEOUT_SECONDS", 3) or 3
-)
-OIDC_READ_TIMEOUT_SECONDS = env_strict_int("OIDC_READ_TIMEOUT_SECONDS", 10) or 10
-OIDC_JWKS_CACHE_SECONDS = env_strict_int("OIDC_JWKS_CACHE_SECONDS", 300) or 300
-ADFS_CER_PATH = env("ADFS_CER_PATH", str(BASE_DIR / "dummy_adfs_public.cer"))
-
-# 외부 IdP 구성이 완료되었는지 여부 (프론트 노출용)
-if OIDC_PROVIDER == "keycloak":
-    OIDC_PROVIDER_CONFIGURED = bool(
-        ADFS_AUTH_URL
-        and ADFS_LOGOUT_URL
-        and OIDC_CLIENT_ID
-        and OIDC_CLIENT_SECRET
-        and OIDC_ISSUER
-        and OIDC_REDIRECT_URI
-        and OIDC_TOKEN_URL
-        and OIDC_JWKS_URL
-    )
-else:
-    OIDC_PROVIDER_CONFIGURED = bool(
-        ADFS_AUTH_URL
-        and OIDC_CLIENT_ID
-        and OIDC_ISSUER
-        and ADFS_CER_PATH
-    )
+OIDC_PROVIDER = str(env("OIDC_PROVIDER", "keycloak")).strip()
+if OIDC_PROVIDER != "keycloak":
+    raise ImproperlyConfigured("Portal은 OIDC_PROVIDER=keycloak만 지원합니다.")
+if any(env(key) for key in ("ADFS_AUTH_URL", "ADFS_LOGOUT_URL", "ADFS_CER_PATH")):
+    raise ImproperlyConfigured("이전 ADFS 설정을 제거하고 OIDC_AUTH_URL/OIDC_LOGOUT_URL을 사용하세요.")
+OIDC_AUTH_URL = env("OIDC_AUTH_URL", "")
+OIDC_LOGOUT_URL = env("OIDC_LOGOUT_URL", "")
+OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", "")
+OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", "")
+OIDC_ISSUER = env("OIDC_ISSUER", "")
+OIDC_REDIRECT_URI = env("OIDC_REDIRECT_URI", "")
+OIDC_TOKEN_URL = env("OIDC_TOKEN_URL", "")
+OIDC_JWKS_URL = env("OIDC_JWKS_URL", "")
+OIDC_CONNECT_TIMEOUT_SECONDS = env_strict_int("OIDC_CONNECT_TIMEOUT_SECONDS", 3)
+OIDC_READ_TIMEOUT_SECONDS = env_strict_int("OIDC_READ_TIMEOUT_SECONDS", 10)
+OIDC_JWKS_CACHE_SECONDS = env_strict_int("OIDC_JWKS_CACHE_SECONDS", 300)
+OIDC_PROVIDER_CONFIGURED = all((OIDC_AUTH_URL, OIDC_LOGOUT_URL, OIDC_CLIENT_ID,
+    OIDC_CLIENT_SECRET, OIDC_ISSUER, OIDC_REDIRECT_URI, OIDC_TOKEN_URL, OIDC_JWKS_URL))
 
 
 # =====================

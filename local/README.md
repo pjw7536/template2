@@ -41,12 +41,34 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 `test-api`는 저장소의 표준 test env와 별도 Django 테스트 DB를 사용합니다.
 `check-api`·`makemigrations-check`는 실제 합성된 로컬 Kubernetes env를 검사합니다.
 
-- Portal: http://localhost:8080 — `dummy.user / dummy-user-change-me`
+- Portal: http://localhost:8080 — `90000001 / dummy-user-change-me` (내부 팀 계정)
+- 다른 Portal 테스트 계정: `90000002` 메일 조회, `90000003` 전체 앱, `90000004` 전체 관리자, `90000005` 무권한. 비밀번호는 위와 같습니다.
 - Keycloak: http://localhost:8180 — `local-keycloak-admin / local-keycloak-admin-change-me`
 - Airflow: http://localhost:8080/airflow — 사용자 `airflow`
 - FTP: localhost:6380, passive 8076–8079 — 사용자 `ftpuser`
 - Grafana: `make k8s-grafana` 실행 중 http://localhost:3000 — 사용자 `admin`
-- PostgreSQL: localhost:55432 — dashboard/portal, airflow/airflow, keycloak/keycloak DB/계정
+- PostgreSQL: localhost:55432 — dashboard_keycloak/portal, airflow/airflow, keycloak/keycloak DB/계정
+
+Portal은 EPID 인증용 `dashboard_keycloak` DB를 사용합니다. 로컬 기동은 최종 API env의
+DB가 없을 때만 생성하며, 이전 `dashboard` DB는 보존합니다. 기존 업무 데이터는 새 DB에
+자동 복사하지 않습니다. 테스트 데이터는 Portal seed 단계에서 준비합니다.
+
+### Docker Desktop / WSL 재시작 후 복구
+
+호스트의 `data/k8s-local`에는 파일이 있는데 worker의 `/data/local-runtime`이 비어 있거나,
+PostgreSQL이 `10-apps.sh` bind mount 오류로 시작하지 못하면 저장소 루트에서 실행합니다.
+
+```bash
+docker restart tailwind-local-worker
+docker compose --project-name tailwind-local-db --env-file local/shared/runtime/db.env \
+  -f local/shared/compose/k8s-db.yml up -d --force-recreate --wait
+make k8s-rebuild APP=portal
+```
+
+이 절차는 기존 DB 볼륨과 호스트 데이터를 유지하며 컨테이너 마운트를 다시 연결합니다.
+Portal 갱신은 Secret의 폐기된 설정 키도 제거하여 현재 env와 일치시킵니다.
+기존 Keycloak realm은 import로 덮어쓰지 않으므로, 이전 설치에서는 EPID 테스트 계정과
+현재 Portal claim mapper를 별도로 반영해야 합니다.
 
 생성된 DB·Airflow·Grafana·FTP 비밀번호는 `local/shared/runtime/credentials.env`에 있습니다.
 이 파일은 0600 권한으로 생성하고 Git에서 제외하며 재실행해도 덮어쓰지 않습니다.
@@ -122,3 +144,10 @@ python3 -m unittest discover -s apps/tooling/agent/tests -p test_local_k8s.py
 ```
 
 통합 검사는 테스트 대화·메일·파일 적재 이력·DAG 실행을 생성합니다. 기존 DB나 파일을 초기화하지 않습니다.
+
+### 역할 기반 Portal 표준 사용자
+
+신규 로컬 realm의 `90000001` 계정은 `portal-members` 그룹에서 `portal-all-apps`를 상속합니다.
+기존 realm은 import로 갱신되지 않습니다. 기존 환경은 Admin Console에서 `portal-members` 그룹을 생성하고,
+Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`을 가입시키고 재로그인합니다.
+부서 정보만으로 앱에 접근할 수 없으며, 기존 SDWT 그룹은 유지합니다. DB나 realm을 초기화할 필요는 없습니다.

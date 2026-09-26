@@ -66,6 +66,30 @@ from api.drone.services.pop3.sop_pop3 import build_drone_sop_row, upsert_drone_s
 _PREVIOUS_LOGGING_DISABLE: int | None = None
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.department = department
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login", "department"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 def setUpModule() -> None:
     """테스트 실행 중 로그 출력을 최소화합니다."""
 
@@ -171,14 +195,8 @@ def _upsert_target(**kwargs: object) -> DroneSopTarget:
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str, department: str = "Dept", line: str = "Line") -> None:
-    """테스트 사용자의 현재 앱 소속을 설정합니다."""
-
-    account_services.set_current_affiliation_for_user(
-        user=user,
-        department=department,
-        line=line,
-        user_sdwt_prod=user_sdwt_prod,
-    )
+    """주소록 조회용 최근 로그인 소속을 준비합니다."""
+    _set_keycloak_access(user, sdwt=user_sdwt_prod, department=department, line=line)
 
 
 def _create_drone_sop(**overrides: object) -> DroneSOP:

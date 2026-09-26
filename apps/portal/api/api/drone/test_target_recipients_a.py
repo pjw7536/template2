@@ -1,3 +1,4 @@
+from api.drone.tests import _keycloak_login, _set_keycloak_access
 # =============================================================================
 # 모듈: 분리된 Drone 회귀 테스트
 # 주요 가정: 공통 fixture와 import는 api.drone.tests에서 공유합니다.
@@ -22,19 +23,19 @@ class DroneSopTargetRecipientTestsPart1(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.actor = User.objects.create_superuser(
+        self.actor = User.objects.create_superuser(avatarid="S71000",
             sabun="S71000",
             password="test-password",
             knox_id="knox-71000",
         )
-        self.mail_user = User.objects.create_user(
+        self.mail_user = User.objects.create_user(avatarid="S71001",
             sabun="S71001",
             password="test-password",
             knox_id="knox-71001",
             email="mail-user@example.com",
         )
         _set_current_affiliation(self.mail_user, user_sdwt_prod="PHOTO_B")
-        self.same_group_user = User.objects.create_user(
+        self.same_group_user = User.objects.create_user(avatarid="S71002",
             sabun="S71002",
             password="test-password",
             knox_id="knox-71002",
@@ -209,7 +210,7 @@ class DroneSopTargetRecipientTestsPart1(TestCase):
             ]
         )
         User = get_user_model()
-        joined_user = User.objects.create_user(
+        joined_user = User.objects.create_user(avatarid="S71005",
             sabun="S71005",
             password="test-password",
             knox_id="EXTERNAL-71005",
@@ -246,7 +247,7 @@ class DroneSopTargetRecipientTestsPart1(TestCase):
         )
 
         User = get_user_model()
-        joined_user = User.objects.create_user(
+        joined_user = User.objects.create_user(avatarid="S71007",
             sabun="S71007",
             password="test-password",
             knox_id="external-71007",
@@ -277,7 +278,7 @@ class DroneSopTargetRecipientTestsPart1(TestCase):
         )
 
         User = get_user_model()
-        joined_user = User.objects.create_user(
+        joined_user = User.objects.create_user(avatarid="S71008",
             sabun="S71008",
             password="test-password",
             email="external-71008@samsung.com",
@@ -342,7 +343,7 @@ class DroneSopTargetRecipientTestsPart1(TestCase):
             actor=self.actor,
         )
 
-        self.client.force_login(self.actor)
+        _keycloak_login(self.client, self.actor)
         response = self.client.get(
             reverse("line-dashboard-notification-recipients"),
             {
@@ -442,19 +443,19 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.actor = User.objects.create_superuser(
+        self.actor = User.objects.create_superuser(avatarid="S71000",
             sabun="S71000",
             password="test-password",
             knox_id="knox-71000",
         )
-        self.mail_user = User.objects.create_user(
+        self.mail_user = User.objects.create_user(avatarid="S71001",
             sabun="S71001",
             password="test-password",
             knox_id="knox-71001",
             email="mail-user@example.com",
         )
         _set_current_affiliation(self.mail_user, user_sdwt_prod="PHOTO_B")
-        self.same_group_user = User.objects.create_user(
+        self.same_group_user = User.objects.create_user(avatarid="S71002",
             sabun="S71002",
             password="test-password",
             knox_id="knox-71002",
@@ -670,7 +671,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
     def test_notification_recipient_endpoint_replaces_mail_recipients(self) -> None:
         """수신인 API가 최종 userIds 스냅샷으로 메일 수신인을 저장하는지 확인합니다."""
 
-        self.client.force_login(self.actor)
+        _keycloak_login(self.client, self.actor)
         response = self.client.put(
             reverse("line-dashboard-notification-recipients"),
             data=json.dumps(
@@ -706,7 +707,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
             ]
         )
 
-        self.client.force_login(self.actor)
+        _keycloak_login(self.client, self.actor)
         response = self.client.put(
             reverse("line-dashboard-notification-recipients"),
             data=json.dumps(
@@ -746,7 +747,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
             user=self.mail_user,
         )
 
-        self.client.force_login(self.actor)
+        _keycloak_login(self.client, self.actor)
         response = self.client.get(
             reverse("line-dashboard-notification-recipients"),
             {"lineId": "L1", "targetUserSdwtProd": "etch_a", "channel": "mail"},
@@ -768,7 +769,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
             user=self.mail_user,
         )
 
-        self.client.force_login(self.same_group_user)
+        _keycloak_login(self.client, self.same_group_user)
         response = self.client.get(
             reverse("line-dashboard-notification-recipients"),
             {"lineId": "L1", "targetUserSdwtProd": "ETCH_A", "channel": "mail"},
@@ -784,7 +785,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
     def test_notification_recipient_endpoint_allows_non_operator_update(self) -> None:
         """로그인 사용자는 운영자가 아니어도 수신인을 저장할 수 있어야 합니다."""
 
-        self.client.force_login(self.same_group_user)
+        _keycloak_login(self.client, self.same_group_user)
         response = self.client.put(
             reverse("line-dashboard-notification-recipients"),
             data=json.dumps(
@@ -811,7 +812,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
         """account 공통 그룹 manager도 로그인 사용자 기준으로 수신인을 저장할 수 있어야 합니다."""
 
         User = get_user_model()
-        account_manager = User.objects.create_user(
+        account_manager = User.objects.create_user(avatarid="S71005",
             sabun="S71005",
             password="test-password",
             knox_id="knox-71005",
@@ -820,7 +821,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
         _set_current_affiliation(account_manager, department="Dept", line="L1", user_sdwt_prod="ETCH_A")
         account_services.ensure_self_access(account_manager, role="manager")
 
-        self.client.force_login(account_manager)
+        _keycloak_login(self.client, account_manager)
         response = self.client.put(
             reverse("line-dashboard-notification-recipients"),
             data=json.dumps(
@@ -846,7 +847,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
     def test_notification_recipient_permission_endpoint_returns_drone_context(self) -> None:
         """권한 컨텍스트 API가 변경 가능 여부를 반환하는지 확인합니다."""
 
-        self.client.force_login(self.same_group_user)
+        _keycloak_login(self.client, self.same_group_user)
         response = self.client.get(reverse("line-dashboard-notification-recipient-permissions"))
 
         self.assertEqual(response.status_code, 200)
@@ -860,7 +861,7 @@ class DroneSopTargetRecipientTestsPart2(TestCase):
 
         _upsert_target(line_id="L1", target_user_sdwt_prod="ETCH_A")
 
-        self.client.force_login(self.actor)
+        _keycloak_login(self.client, self.actor)
         response = self.client.get(reverse("line-dashboard-notification-recipient-permissions"))
 
         self.assertEqual(response.status_code, 200)

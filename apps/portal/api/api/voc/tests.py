@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 from unittest.mock import patch
 
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -35,17 +36,40 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
     test_case.addCleanup(patcher.stop)
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 class VocEndpointTests(TestCase):
     def setUp(self) -> None:
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S80000",
             sabun="S80000",
             password="test-password",
             knox_id="knox-80000",
             username="정진우",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
     def test_voc_posts_list_returns_results(self) -> None:
         VocPost.objects.create(title="Hello", content="World", author=self.user, status="접수")
@@ -58,7 +82,7 @@ class VocEndpointTests(TestCase):
 
     def test_voc_author_display_uses_only_username_and_knox_id(self) -> None:
         User = get_user_model()
-        fallback_user = User.objects.create_user(
+        fallback_user = User.objects.create_user(avatarid="S80001",
             sabun="S80001",
             password="test-password",
             knox_id="knox-80001",
@@ -135,25 +159,16 @@ class VocEndpointTests(TestCase):
         """VOC admin 역할은 다른 사용자의 게시글을 관리할 수 있어야 합니다."""
 
         User = get_user_model()
-        admin_user = User.objects.create_user(
+        admin_user = User.objects.create_user(avatarid="S80002",
             sabun="S80002",
             password="test-password",
             knox_id="knox-80002",
         )
-        authority = User.objects.create_superuser(
+        authority = User.objects.create_superuser(avatarid="S80003",
             sabun="S80003",
             password="test-password",
         )
-        for scope_key, role in (("portal", "user"), ("voc", "admin")):
-            _payload, status_code = account_services.decide_user_access(
-                actor=authority,
-                user_id=admin_user.id,
-                scope_key=scope_key,
-                action="grant",
-                role=role,
-                reason="VOC 관리자 권한 테스트",
-            )
-            self.assertEqual(status_code, 200)
+        _set_keycloak_access(admin_user, roles=["voc-admin"])
         post = VocPost.objects.create(
             title="다른 사용자 글",
             content="내용",
@@ -161,7 +176,7 @@ class VocEndpointTests(TestCase):
             status="접수",
         )
 
-        self.client.force_login(admin_user)
+        _keycloak_login(self.client, admin_user)
         response = self.client.patch(
             reverse("voc-post-detail", kwargs={"post_id": post.id}),
             data='{"status":"진행중"}',
@@ -251,7 +266,7 @@ class VocServiceSelectorTests(TestCase):
 
     def setUp(self) -> None:
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S80100",
             sabun="S80100",
             password="test-password",
             knox_id="knox-80100",

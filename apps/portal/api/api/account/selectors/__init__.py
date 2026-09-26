@@ -82,3 +82,5 @@ from .queries import (
     resolve_user_affiliation,
     user_has_manage_permission,
 )
+
+from .queries import get_user_by_epid

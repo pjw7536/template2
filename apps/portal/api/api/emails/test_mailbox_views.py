@@ -5,6 +5,7 @@
 # =============================================================================
 
 from __future__ import annotations
+from api.emails.tests import _keycloak_login, _set_keycloak_access
 
 import base64
 from datetime import date, datetime, timedelta, timezone as dt_timezone
@@ -49,6 +50,7 @@ from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 UTC = getattr(timezone, "utc", dt_timezone.utc)
 
 from api.emails.tests import (
+    _grant_sdwt,
     _allow_test_scope_access,
     _grant_emails_admin,
     _grant_emails_affiliation_data,
@@ -77,7 +79,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S11111", password="test-password")
+        user = User.objects.create_user(avatarid="S11111", sabun="S11111", password="test-password")
         user.knox_id = "knox-11111"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
@@ -103,7 +105,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
             body_text="Body B",
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(response.status_code, 200)
@@ -127,10 +129,10 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S11110", password="test-password")
+        user = User.objects.create_user(avatarid="S11110", sabun="S11110", password="test-password")
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(reverse("emails-inbox"))
         self.assertEqual(response.status_code, 403)
@@ -139,7 +141,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """Emails 관리자도 전역 사용자 식별자인 knox_id가 없으면 특권을 얻지 못해야 합니다."""
 
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S11109",
             sabun="S11109",
             password="test-password",
         )
@@ -160,7 +162,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """전체 데이터 범위만으로 삭제·미분류 접근 특권이 생기지 않아야 합니다."""
 
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S11108",
             sabun="S11108",
             password="test-password",
             knox_id="knox-11108",
@@ -183,8 +185,8 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
                 (True, False, {"group-a"}),
             )
 
-    def test_sender_can_access_sent_email_without_mailbox_access(self) -> None:
-        """발신자는 메일함 접근 권한 없이도 보낸메일 접근이 가능한지 확인합니다.
+    def test_sender_cannot_access_sent_email_without_mailbox_access(self) -> None:
+        """발신자도 SDWT 권한 없는 보낸메일을 읽을 수 없습니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -197,7 +199,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S11113", password="test-password")
+        user = User.objects.create_user(avatarid="S11113", sabun="S11113", password="test-password")
         user.knox_id = "loginid-sender"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
@@ -213,15 +215,15 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
             body_text="Body",
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         detail = self.client.get(reverse("emails-detail", kwargs={"email_id": sent_email.id}))
-        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.status_code, 403)
 
         sent_list = self.client.get(reverse("emails-sent"))
         self.assertEqual(sent_list.status_code, 200)
         results = sent_list.json()["results"]
-        self.assertTrue(any(item["id"] == sent_email.id for item in results))
+        self.assertFalse(any(item["id"] == sent_email.id for item in results))
 
     def test_sent_rejects_knox_id_query_param(self) -> None:
         """보낸메일 조회에서 knox_id 파라미터가 거부되는지 확인합니다.
@@ -237,12 +239,12 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S11114", password="test-password")
+        user = User.objects.create_user(avatarid="S11114", sabun="S11114", password="test-password")
         user.knox_id = "loginid-sender"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(reverse("emails-sent"), {"knox_id": "loginid-sender"})
         self.assertEqual(response.status_code, 400)
@@ -251,13 +253,13 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """받은메일 목록에서 제거된 snake_case query를 거부합니다."""
 
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S11115",
             sabun="S11115",
             password="test-password",
             knox_id="loginid-query",
         )
         _set_current_affiliation(user, user_sdwt_prod="group-a")
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(
             reverse("emails-inbox"),
@@ -282,29 +284,22 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S11112", password="test-password")
+        user = User.objects.create_user(avatarid="S11112", sabun="S11112", password="test-password")
         user.knox_id = "knox-11112"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        manager = User.objects.create_user(sabun="S11113", password="test-password")
+        manager = User.objects.create_user(avatarid="S11113", sabun="S11113", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-empty")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-empty",
-            target_user=user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(user, group='group-empty', role='member')
         self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=user,
             user_sdwt_prods=("group-empty",),
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
@@ -326,22 +321,15 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S22222", password="test-password")
+        user = User.objects.create_user(avatarid="S22222", sabun="S22222", password="test-password")
         user.knox_id = "knox-22222"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        manager = User.objects.create_user(sabun="S22223", password="test-password")
+        manager = User.objects.create_user(avatarid="S22223", sabun="S22223", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-b",
-            target_user=user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(user, group='group-b', role='member')
         self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=user,
@@ -369,7 +357,7 @@ class EmailMailboxAccessBasicsViewTests(TestCase):
             body_text="Body B2",
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
@@ -402,34 +390,27 @@ class EmailMailboxMemberViewTests(TestCase):
         """
 
         User = get_user_model()
-        requester = User.objects.create_user(sabun="S33333", password="test-password")
+        requester = User.objects.create_user(avatarid="S33333", sabun="S33333", password="test-password")
         requester.username = "홍길동"
         requester.knox_id = "loginid-requester"
         requester.save(update_fields=["username", "knox_id"])
         _set_current_affiliation(requester, user_sdwt_prod="group-a")
 
-        affiliated = User.objects.create_user(sabun="S33334", password="test-password")
+        affiliated = User.objects.create_user(avatarid="S33334", sabun="S33334", password="test-password")
         affiliated.username = "김철수"
         affiliated.knox_id = "loginid-affiliated"
         affiliated.save(update_fields=["username", "knox_id"])
         _set_current_affiliation(affiliated, user_sdwt_prod="group-a")
 
-        granted = User.objects.create_user(sabun="S33335", password="test-password")
+        granted = User.objects.create_user(avatarid="S33335", sabun="S33335", password="test-password")
         granted.username = "이영희"
         granted.knox_id = "loginid-granted"
         granted.save(update_fields=["username", "knox_id"])
         _set_current_affiliation(granted, user_sdwt_prod="group-b")
-        manager = User.objects.create_user(sabun="S33336", password="test-password")
+        manager = User.objects.create_user(avatarid="S33336", sabun="S33336", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-a")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-a",
-            target_user=granted,
-            action="grant",
-            role="manager",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(granted, group='group-a', role='manager')
         self.assertEqual(status_code, 200)
 
         Email.objects.create(
@@ -473,7 +454,7 @@ class EmailMailboxMemberViewTests(TestCase):
             body_text="Body",
         )
 
-        self.client.force_login(requester)
+        _keycloak_login(self.client, requester)
 
         response = self.client.get(reverse("emails-mailbox-members"), {"userSdwtProd": "group-a"})
         self.assertEqual(response.status_code, 200)
@@ -512,17 +493,17 @@ class EmailMailboxMemberViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S44444", password="test-password")
+        user = User.objects.create_user(avatarid="S44444", sabun="S44444", password="test-password")
         user.knox_id = "knox-44444"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        other = User.objects.create_user(sabun="S44445", password="test-password")
+        other = User.objects.create_user(avatarid="S44445", sabun="S44445", password="test-password")
         other.knox_id = "knox-44445"
         other.save(update_fields=["knox_id"])
         _set_current_affiliation(other, user_sdwt_prod="group-b")
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(reverse("emails-mailbox-members"), {"userSdwtProd": "group-b"})
         self.assertEqual(response.status_code, 403)
@@ -541,34 +522,27 @@ class EmailMailboxMemberViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S55555", password="test-password")
+        user = User.objects.create_user(avatarid="S55555", sabun="S55555", password="test-password")
         user.knox_id = "knox-55555"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
 
-        mailbox_owner = User.objects.create_user(sabun="S55556", password="test-password")
+        mailbox_owner = User.objects.create_user(avatarid="S55556", sabun="S55556", password="test-password")
         mailbox_owner.knox_id = "knox-55556"
         mailbox_owner.save(update_fields=["knox_id"])
         _set_current_affiliation(mailbox_owner, user_sdwt_prod="group-b")
 
-        manager = User.objects.create_user(sabun="S55557", password="test-password")
+        manager = User.objects.create_user(avatarid="S55557", sabun="S55557", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-b",
-            target_user=user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(user, group='group-b', role='member')
         self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=user,
             user_sdwt_prods=("group-b",),
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         response = self.client.get(reverse("emails-mailbox-members"), {"userSdwtProd": "group-b"})
         self.assertEqual(response.status_code, 200)
@@ -600,10 +574,10 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
         """
 
         User = get_user_model()
-        emails_admin = User.objects.create_user(sabun="S33333", password="test-password")
+        emails_admin = User.objects.create_user(avatarid="S33333", sabun="S33333", password="test-password")
         emails_admin.knox_id = "knox-33333"
         emails_admin.save(update_fields=["knox_id"])
-        authority = User.objects.create_superuser(
+        authority = User.objects.create_superuser(avatarid="S33330",
             sabun="S33330",
             password="test-password",
         )
@@ -652,14 +626,14 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
             body_text="Body U",
         )
 
-        self.client.force_login(emails_admin)
+        _keycloak_login(self.client, emails_admin)
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200, mailbox_list.json())
         self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
         self.assertIn("group-b", mailbox_list.json()["results"])
-        self.assertIn("group-empty", mailbox_list.json()["results"])
+        self.assertNotIn("group-empty", mailbox_list.json()["results"])
         self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
 
         response = self.client.get(reverse("emails-inbox"))
@@ -678,8 +652,8 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
         results = filtered.json()["results"]
         self.assertEqual({item["userSdwtProd"] for item in results}, {"group-b"})
 
-    def test_superuser_mailboxes_list_includes_unassigned(self) -> None:
-        """슈퍼유저가 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
+    def test_portal_admin_mailboxes_list_includes_unassigned(self) -> None:
+        """portal-admin이 UNASSIGNED 메일함을 포함해 조회하는지 확인합니다.
 
         입력:
             없음(테스트 데이터 생성).
@@ -692,7 +666,7 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
         """
 
         User = get_user_model()
-        superuser = User.objects.create_superuser(sabun="S33334", password="test-password")
+        superuser = User.objects.create_superuser(avatarid="S33334", sabun="S33334", password="test-password")
         superuser.knox_id = "knox-33334"
         superuser.save(update_fields=["knox_id"])
 
@@ -723,13 +697,14 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
             body_text="Body U4",
         )
 
-        self.client.force_login(superuser)
+        _grant_emails_admin(user=superuser)
+        _keycloak_login(self.client, superuser)
 
         mailbox_list = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_list.status_code, 200)
         self.assertIn("__sent__", mailbox_list.json()["results"])
         self.assertIn("group-a", mailbox_list.json()["results"])
-        self.assertIn("group-empty", mailbox_list.json()["results"])
+        self.assertNotIn("group-empty", mailbox_list.json()["results"])
         self.assertIn(UNASSIGNED_USER_SDWT_PROD, mailbox_list.json()["results"])
 
         unassigned_list = self.client.get(reverse("emails-inbox"), {"userSdwtProd": UNASSIGNED_USER_SDWT_PROD})
@@ -751,7 +726,7 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S44444", password="test-password")
+        user = User.objects.create_user(avatarid="S44444", sabun="S44444", password="test-password")
         user.knox_id = "loginid-claim"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
@@ -777,7 +752,7 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
             body_text="Body C",
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
 
         summary = self.client.get(reverse("emails-unassigned-summary"))
         self.assertEqual(summary.status_code, 200)
@@ -810,7 +785,7 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S55555", password="test-password")
+        user = User.objects.create_user(avatarid="S55555", sabun="S55555", password="test-password")
         user.knox_id = "loginid-no-sdwt"
         user.save(update_fields=["knox_id"])
 
@@ -825,6 +800,6 @@ class EmailMailboxAdminAndClaimViewTests(TestCase):
             body_text="Body U2",
         )
 
-        self.client.force_login(user)
+        _keycloak_login(self.client, user)
         claimed = self.client.post(reverse("emails-unassigned-claim"))
         self.assertEqual(claimed.status_code, 400)

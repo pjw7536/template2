@@ -41,3 +41,7 @@ SDWT 그룹을 발급하려면 [앱 그룹 연결](../../../../keycloak/09_APP_C
 이 client 등록 명령만으로 Portal API가 배포되지는 않습니다.
 시험 계정으로 로그인해 callback, 신원 claim, 필요한 소속·그룹과 앱 접근 판정을 확인합니다.
 Keycloak의 소속·그룹을 발급하는 것과 Portal의 실제 권한 판정 구현은 별개입니다.
+
+Portal client 등록은 신원·소속 claim 외에 앱 역할과 `resource_access.<client-id>.roles`, `groups` mapper를 준비합니다. 운영 사용자에게 역할은 자동 부여하지 않습니다. `portal-members` 그룹에 `portal-all-apps`를 연결하며, 운영자가 조직 정책에 따라 구성원을 지정합니다. 제한 사용자는 개별 앱 역할을 지정합니다. Portal은 deptid나 그룹 이름으로 앱 접근을 추정하지 않고 발급된 client 역할만 확인합니다. 상세 정책과 최초 관리자 설정은 [Portal 배포 안내](../../../README.md#keycloak-권한과-새-db-시작)를 따릅니다.
+
+그룹 역할 연결은 [Keycloak 공식 Admin CLI](https://www.keycloak.org/docs/latest/server_admin/#admin-cli)의 `add-roles --gname ... --cclientid ...`를 사용합니다.

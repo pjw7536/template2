@@ -313,7 +313,11 @@ class AccountUserChangeForm(UserChangeForm):
 
 @admin.register(User)
 class AccountUserAdmin(DjangoUserAdmin):
-    """사용자(User) 관리 화면 설정입니다."""
+    """Keycloak 계정은 조회만 하고 비상 Django 관리자는 별도로 관리합니다."""
+    def has_add_permission(self, request):
+        """SSO 사용자는 로그인에서, 비상 관리자는 createsuperuser에서 생성합니다."""
+        return False
+
 
     form = AccountUserChangeForm
     add_form = AccountUserCreationForm
@@ -415,6 +419,9 @@ class AccountUserAdmin(DjangoUserAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         """일반 staff가 인증·권한 관련 민감 필드를 변경하지 못하게 합니다."""
+
+        if obj is not None and not obj.is_staff and not obj.is_superuser:
+            return tuple(dict.fromkeys((*super().get_readonly_fields(request, obj), *(field.name for field in obj._meta.fields))))
 
         readonly_fields = tuple(super().get_readonly_fields(request, obj))
         if getattr(request.user, "is_superuser", False):
@@ -547,7 +554,7 @@ class AccountUserAdmin(DjangoUserAdmin):
 
 
 @admin.register(Affiliation)
-class AffiliationAdmin(SuperuserWriteAdminMixin, admin.ModelAdmin):
+class AffiliationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     """소속 생성과 감사 가능한 활성 상태 action만 허용합니다."""
 
     actions = ("activate_affiliations", "deactivate_affiliations")
@@ -955,7 +962,7 @@ class AccessAuditLogAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(UserSdwtProdChange)
-class UserSdwtProdChangeAdmin(admin.ModelAdmin):
+class UserSdwtProdChangeAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     """소속 변경 요청은 읽기 전용으로 표시하고 승인 action만 허용합니다."""
 
     actions = ("approve_affiliation_changes",)
@@ -1087,7 +1094,7 @@ class UserSdwtProdChangeAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExternalAffiliationSnapshot)
-class ExternalAffiliationSnapshotAdmin(admin.ModelAdmin):
+class ExternalAffiliationSnapshotAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     """ExternalAffiliationSnapshot 관리 화면 설정입니다."""
 
     list_display = (

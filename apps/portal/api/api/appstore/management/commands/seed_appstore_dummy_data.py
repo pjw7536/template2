@@ -11,7 +11,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
-from api.account.services import ensure_dev_dummy_superuser
+from api.account.services import ensure_dev_dummy_user
 from api.appstore.services import seed_appstore_dummy_data
 
 
@@ -48,9 +48,9 @@ class Command(BaseCommand):
         if not prefix:
             raise CommandError("--prefix must not be empty")
 
-        owner = ensure_dev_dummy_superuser()
+        owner = ensure_dev_dummy_user()
         if owner is None:
-            raise CommandError("dev dummy 사용자를 보장하지 못했습니다. DUMMY_ADFS_* 설정을 확인하세요.")
+            raise CommandError("dev dummy 사용자를 보장하지 못했습니다. 로컬 Keycloak fixture 설정을 확인하세요.")
 
         result = seed_appstore_dummy_data(
             prefix=prefix,

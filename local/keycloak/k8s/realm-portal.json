@@ -79,6 +79,230 @@
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
           }
+        },
+        {
+          "name": "userid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "userid",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "mail",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "mail",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "givenname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "firstName",
+            "claim.name": "givenname",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "surname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "lastName",
+            "claim.name": "surname",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "loginid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "loginid",
+            "claim.name": "loginid",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "display_name",
+            "claim.name": "username",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "deptid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "deptid",
+            "claim.name": "deptid",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "deptname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "deptname",
+            "claim.name": "deptname",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "username_en",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "username_en",
+            "claim.name": "username_en",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "grdName",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "grdName",
+            "claim.name": "grdName",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "grdname_en",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "grdname_en",
+            "claim.name": "grdname_en",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "busname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "busname",
+            "claim.name": "busname",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "intcode",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "intcode",
+            "claim.name": "intcode",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "intname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "intname",
+            "claim.name": "intname",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "employeetype",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "employeetype",
+            "claim.name": "employeetype",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "portal-app-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "portal",
+            "claim.name": "resource_access.portal.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
         }
       ],
       "defaultClientScopes": [
@@ -97,17 +321,42 @@
   ],
   "users": [
     {
-      "username": "dummy.user",
+      "username": "90000001",
       "enabled": true,
       "email": "dummy.user@example.com",
       "emailVerified": true,
-      "firstName": "Dummy",
-      "lastName": "User",
+      "firstName": "Local",
+      "lastName": "1",
       "attributes": {
         "sabun": [
           "S000001"
+        ],
+        "loginid": [
+          "dummy.user"
+        ],
+        "display_name": [
+          "dummy.user"
+        ],
+        "deptid": [
+          "LOCAL-ETCH"
+        ],
+        "deptname": [
+          "Local Etch"
+        ],
+        "user_sdwt_prod": [
+          "SDWT-A"
+        ],
+        "line_id": [
+          "LINE-1"
         ]
       },
+      "clientRoles": {
+        "portal": []
+      },
+      "groups": [
+        "/SDWT-A/user",
+        "/portal-members"
+      ],
       "credentials": [
         {
           "type": "password",
@@ -115,6 +364,291 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "90000002",
+      "enabled": true,
+      "email": "external.email@example.com",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "2",
+      "attributes": {
+        "sabun": [
+          "S000002"
+        ],
+        "loginid": [
+          "external.email"
+        ],
+        "display_name": [
+          "external.email"
+        ],
+        "deptid": [
+          "EXTERNAL"
+        ],
+        "deptname": [
+          "External"
+        ],
+        "user_sdwt_prod": [
+          "SDWT-A"
+        ],
+        "line_id": [
+          "LINE-1"
+        ]
+      },
+      "clientRoles": {
+        "portal": [
+          "emails-user"
+        ]
+      },
+      "groups": [
+        "/SDWT-A/viewer"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dummy-user-change-me",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "90000003",
+      "enabled": true,
+      "email": "external.all@example.com",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "3",
+      "attributes": {
+        "sabun": [
+          "S000003"
+        ],
+        "loginid": [
+          "external.all"
+        ],
+        "display_name": [
+          "external.all"
+        ],
+        "deptid": [
+          "EXTERNAL"
+        ],
+        "deptname": [
+          "External"
+        ],
+        "user_sdwt_prod": [
+          "SDWT-A"
+        ],
+        "line_id": [
+          "LINE-1"
+        ]
+      },
+      "clientRoles": {
+        "portal": [
+          "portal-all-apps"
+        ]
+      },
+      "groups": [
+        "/SDWT-B/user"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dummy-user-change-me",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "90000004",
+      "enabled": true,
+      "email": "portal.admin@example.com",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "4",
+      "attributes": {
+        "sabun": [
+          "S000004"
+        ],
+        "loginid": [
+          "portal.admin"
+        ],
+        "display_name": [
+          "portal.admin"
+        ],
+        "deptid": [
+          "EXTERNAL"
+        ],
+        "deptname": [
+          "External"
+        ],
+        "user_sdwt_prod": [
+          "SDWT-A"
+        ],
+        "line_id": [
+          "LINE-1"
+        ]
+      },
+      "clientRoles": {
+        "portal": [
+          "portal-admin"
+        ]
+      },
+      "groups": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dummy-user-change-me",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "90000005",
+      "enabled": true,
+      "email": "no.access@example.com",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "5",
+      "attributes": {
+        "sabun": [
+          "S000005"
+        ],
+        "loginid": [
+          "no.access"
+        ],
+        "display_name": [
+          "no.access"
+        ],
+        "deptid": [
+          "EXTERNAL"
+        ],
+        "deptname": [
+          "External"
+        ],
+        "user_sdwt_prod": [
+          "SDWT-A"
+        ],
+        "line_id": [
+          "LINE-1"
+        ]
+      },
+      "clientRoles": {
+        "portal": []
+      },
+      "groups": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dummy-user-change-me",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "portal": [
+        {
+          "name": "portal-admin"
+        },
+        {
+          "name": "portal-all-apps"
+        },
+        {
+          "name": "access-stats-user"
+        },
+        {
+          "name": "appstore-user"
+        },
+        {
+          "name": "assistant-user"
+        },
+        {
+          "name": "emails-user"
+        },
+        {
+          "name": "l0-spider-user"
+        },
+        {
+          "name": "l1-spider-user"
+        },
+        {
+          "name": "l3-spider-user"
+        },
+        {
+          "name": "line-dashboard-user"
+        },
+        {
+          "name": "observer-user"
+        },
+        {
+          "name": "pm-spider-user"
+        },
+        {
+          "name": "teamstaff-user"
+        },
+        {
+          "name": "tttm-spider-user"
+        },
+        {
+          "name": "voc-user"
+        },
+        {
+          "name": "access-stats-admin"
+        },
+        {
+          "name": "appstore-admin"
+        },
+        {
+          "name": "emails-admin"
+        },
+        {
+          "name": "l3-spider-admin"
+        },
+        {
+          "name": "line-dashboard-admin"
+        },
+        {
+          "name": "voc-admin"
+        }
+      ]
+    }
+  },
+  "groups": [
+    {
+      "name": "SDWT-A",
+      "subGroups": [
+        {
+          "name": "viewer"
+        },
+        {
+          "name": "user"
+        },
+        {
+          "name": "admin"
+        }
+      ]
+    },
+    {
+      "name": "SDWT-B",
+      "subGroups": [
+        {
+          "name": "viewer"
+        },
+        {
+          "name": "user"
+        },
+        {
+          "name": "admin"
+        }
+      ]
+    },
+    {
+      "name": "portal-members",
+      "clientRoles": {
+        "portal": [
+          "portal-all-apps"
+        ]
+      }
     }
   ]
 }

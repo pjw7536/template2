@@ -125,43 +125,12 @@ def _active_access_policy_queryset(
     return AccessPolicyRule.objects.filter(is_active=True).annotate(**annotations)
 
 
-def _list_active_user_contact_values_by_user_sdwt_prod(
-    *,
-    user_sdwt_prod: str,
-    contact_field: str,
-) -> list[str]:
-    """소속에 연결된 활성 사용자 연락처 값을 중복 없이 조회합니다."""
-
+def _list_active_user_contact_values_by_user_sdwt_prod(*, user_sdwt_prod: str, contact_field: str) -> list[str]:
+    """마지막 로그인 프로필에서 소속별 연락처를 조회합니다."""
     if contact_field not in {"email", "knox_id"}:
-        raise ValueError("contact_field must be email or knox_id")
-
-    normalized_user_sdwt_prod = _normalize_text(user_sdwt_prod)
-    if not normalized_user_sdwt_prod:
         return []
-
-    User = get_user_model()
-    rows = (
-        User.objects.filter(
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt_prod,
-            current_affiliation__affiliation__is_active=True,
-            is_active=True,
-        )
-        .exclude(**{f"{contact_field}__isnull": True})
-        .exclude(**{f"{contact_field}__exact": ""})
-        .values_list(contact_field, flat=True)
-        .order_by(contact_field)
-        .distinct()
-    )
-
-    normalized_values: list[str] = []
-    seen: set[str] = set()
-    for value in rows:
-        cleaned = _normalize_text(value)
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        normalized_values.append(cleaned)
-    return normalized_values
+    return sorted({getattr(u, contact_field) for u in list_current_affiliation_users_by_user_sdwt_prod(
+        user_sdwt_prod=user_sdwt_prod) if getattr(u, contact_field)})
 
 
 def get_current_affiliation_record(*, user: Any) -> UserCurrentAffiliation | None:
@@ -195,72 +164,19 @@ def get_current_affiliation_record(*, user: Any) -> UserCurrentAffiliation | Non
 
 
 def get_current_affiliation_values(*, user: Any) -> dict[str, Any]:
-    """현재 앱 소속 값을 평탄화해 반환합니다.
-
-    입력:
-    - user: Django 사용자 객체
-
-    반환:
-    - dict[str, Any]: affiliation/department/line/user_sdwt_prod/reconfirm 값
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    row = get_current_affiliation_record(user=user)
-    affiliation = row.affiliation if row and row.affiliation_id else None
-    return {
-        "affiliation": affiliation,
-        "department": affiliation.department if affiliation else None,
-        "line": affiliation.line if affiliation else None,
-        "user_sdwt_prod": affiliation.user_sdwt_prod if affiliation else None,
-        "requires_reconfirm": bool(row.requires_reconfirm) if row else False,
-        "confirmed_at": row.confirmed_at if row else None,
-        "source": row.source if row else None,
-    }
+    """현재 요청 소속 또는 마지막 로그인 프로필을 조회합니다. 프로필은 권한이 아닙니다."""
+    ctx = getattr(user, "_portal_authorization_context", None)
+    profile = getattr(user, "identity_profile", {}) or {}
+    return {"affiliation": None, "department": ctx.department if ctx else getattr(user, "department", None),
+            "line": ctx.line if ctx else profile.get("line_id"),
+            "user_sdwt_prod": ctx.user_sdwt_prod if ctx else profile.get("user_sdwt_prod"),
+            "requires_reconfirm": False, "confirmed_at": None, "source": "keycloak"}
 
 
 def get_current_affiliation_values_by_user_ids(*, user_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
-    """사용자 id별 현재 앱 소속 값을 평탄화해 반환합니다.
-
-    입력:
-    - user_ids: 사용자 id iterable
-
-    반환:
-    - dict[int, dict[str, Any]]: user_id → 소속 값 매핑
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    normalized_ids = _normalize_positive_int_set(user_ids, allow_cast=True)
-    if not normalized_ids:
-        return {}
-
-    rows = (
-        UserCurrentAffiliation.objects.filter(
-            user_id__in=normalized_ids,
-            affiliation__is_active=True,
-        )
-        .select_related("affiliation")
-        .order_by("user_id")
-    )
-    result: dict[int, dict[str, Any]] = {}
-    for row in rows:
-        affiliation = row.affiliation if row.affiliation_id else None
-        result[row.user_id] = {
-            "department": affiliation.department if affiliation else None,
-            "line": affiliation.line if affiliation else None,
-            "user_sdwt_prod": affiliation.user_sdwt_prod if affiliation else None,
-            "source": row.source,
-        }
-    return result
+    """로그인한 사용자들의 마지막 프로필을 ID별로 반환합니다."""
+    return {user.pk: get_current_affiliation_values(user=user)
+            for user in get_user_model().objects.filter(pk__in=list(user_ids))}
 
 
 def get_current_user_sdwt_prod(*, user: Any) -> str | None:
@@ -272,92 +188,23 @@ def get_current_user_sdwt_prod(*, user: Any) -> str | None:
 
 
 def get_accessible_user_sdwt_prods_for_user(user: Any) -> set[str]:
-    """사용자가 접근 가능한 user_sdwt_prod 값 집합을 조회합니다.
-
-    입력:
-    - user: Django 사용자 객체(비인증 가능)
-
-    반환:
-    - set[str]: 접근 가능한 user_sdwt_prod 집합
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 인증 여부 확인
-    # -----------------------------------------------------------------------------
-    if not user or not getattr(user, "is_authenticated", False):
+    """요청 전용 snapshot의 SDWT만 반환하며 DB grant는 읽지 않습니다."""
+    ctx = getattr(user, "_portal_authorization_context", None)
+    if not getattr(user, "is_active", False) or not ctx or ctx.epid != user.avatarid:
         return set()
-
-    # -----------------------------------------------------------------------------
-    # 2) 슈퍼유저는 전체 집합 반환
-    # -----------------------------------------------------------------------------
-    if getattr(user, "is_superuser", False):
-        values = set(list_distinct_user_sdwt_prod_values())
-        values.update(
-            UserCurrentAffiliation.objects.select_related("affiliation")
-            .filter(affiliation__is_active=True)
-            .exclude(affiliation__user_sdwt_prod__isnull=True)
-            .exclude(affiliation__user_sdwt_prod="")
-            .values_list("affiliation__user_sdwt_prod", flat=True)
-            .distinct()
-        )
-        return _collapse_user_sdwt_prod_values(values)
-
-    # -----------------------------------------------------------------------------
-    # 3) 명시적 접근 권한만 포함
-    # -----------------------------------------------------------------------------
-    values = set(
-        UserSdwtProdAccess.objects.filter(
-            user=user,
-            affiliation__is_active=True,
-        ).values_list(
-            "affiliation__user_sdwt_prod",
-            flat=True,
-        )
-    )
-
-    # -----------------------------------------------------------------------------
-    # 4) 최종 정제 및 반환
-    # -----------------------------------------------------------------------------
-    return _collapse_user_sdwt_prod_values(values)
+    return set(dict(ctx.sdwt_roles))
 
 
 def list_distinct_user_sdwt_prod_values() -> set[str]:
-    """시스템에 등록된 user_sdwt_prod 값 집합을 조회합니다.
-
-    입력:
-    - 없음
-
-    반환:
-    - set[str]: 중복 제거된 user_sdwt_prod 집합
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    affiliation_values = set(
-        Affiliation.objects.filter(is_active=True)
-        .exclude(user_sdwt_prod="")
-        .values_list("user_sdwt_prod", flat=True)
-        .distinct()
-    )
-    access_values = set(
-        UserSdwtProdAccess.objects.filter(affiliation__is_active=True)
-        .exclude(affiliation__user_sdwt_prod="")
-        .values_list("affiliation__user_sdwt_prod", flat=True)
-        .distinct()
-    )
-
-    combined = affiliation_values | access_values
-    return _collapse_user_sdwt_prod_values(combined)
+    """로그인한 사용자의 최근 Keycloak 프로필·그룹에서 알려진 SDWT 이름만 조회합니다."""
+    values = set()
+    profiles = get_user_model().objects.filter(is_active=True, last_login__isnull=False).values_list("identity_profile", flat=True)
+    for profile in profiles:
+        sdwt = profile.get("user_sdwt_prod")
+        if isinstance(sdwt, str) and sdwt:
+            values.add(sdwt)
+        values.update(profile.get("authorization", {}).get("sdwtRoles", {}))
+    return values
 
 
 def list_affiliation_options() -> list[dict[str, object]]:
@@ -516,89 +363,18 @@ def list_active_user_ids_with_contact_by_ids(*, user_ids: Iterable[int], contact
     return valid_ids
 
 
-def list_distinct_active_user_sdwt_prod_values(
-    *,
-    include_external_snapshots: bool = False,
-    department: str = "",
-) -> list[str]:
-    """활성 사용자 pool에 존재하는 user_sdwt_prod 목록을 반환합니다.
-
-    입력:
-    - include_external_snapshots: 외부 소속 스냅샷의 예측 소속 포함 여부
-    - department: 특정 department로 소속 목록을 좁힐 값
-
-    반환:
-    - list[str]: 정렬된 user_sdwt_prod 목록
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 활성 사용자에서 소속 값 수집
-    # -----------------------------------------------------------------------------
-    User = get_user_model()
-    normalized_department = _normalize_text(department) or ""
-    queryset = (
-        User.objects.filter(
-            is_active=True,
-            current_affiliation__affiliation__is_active=True,
-        )
-        .exclude(current_affiliation__affiliation__user_sdwt_prod__isnull=True)
-        .exclude(current_affiliation__affiliation__user_sdwt_prod__exact="")
-    )
-    if normalized_department:
-        queryset = queryset.filter(
-            current_affiliation__affiliation__department__iexact=normalized_department
-        )
-    values = (
-        queryset.values_list("current_affiliation__affiliation__user_sdwt_prod", flat=True)
-        .order_by("current_affiliation__affiliation__user_sdwt_prod")
-        .distinct()
-    )
-
-    # -----------------------------------------------------------------------------
-    # 2) 공백 제거 및 대소문자 비구분 중복 제거
-    # -----------------------------------------------------------------------------
-    collapsed_values = set(_collapse_user_sdwt_prod_values(values))
-    if include_external_snapshots:
-        external_queryset = ExternalAffiliationSnapshot.objects.exclude(
-            predicted_user_sdwt_prod__exact=""
-        )
-        if normalized_department:
-            external_queryset = external_queryset.filter(department__iexact=normalized_department)
-        external_values = external_queryset.values_list("predicted_user_sdwt_prod", flat=True)
-        collapsed_values.update(_collapse_user_sdwt_prod_values(external_values))
-    return sorted(collapsed_values)
+def list_distinct_active_user_sdwt_prod_values(*, include_external_snapshots: bool = False, department: str = "") -> list[str]:
+    """실제 로그인 사용자들의 소속을 조회합니다. 외부 예측값은 사용하지 않습니다."""
+    qs = get_user_model().objects.filter(is_active=True, last_login__isnull=False)
+    if department:
+        qs = qs.filter(department=department)
+    return sorted({v for v in qs.values_list("identity_profile__user_sdwt_prod", flat=True) if isinstance(v, str) and v})
 
 
 def list_distinct_active_departments(*, include_external_snapshots: bool = False) -> list[str]:
-    """활성 사용자/외부 스냅샷의 department 목록을 조회합니다."""
-
-    User = get_user_model()
-    values = (
-        User.objects.filter(
-            is_active=True,
-            current_affiliation__affiliation__is_active=True,
-        )
-        .exclude(current_affiliation__affiliation__department__isnull=True)
-        .exclude(current_affiliation__affiliation__department__exact="")
-        .values_list("current_affiliation__affiliation__department", flat=True)
-        .order_by("current_affiliation__affiliation__department")
-        .distinct()
-    )
-    collapsed_values = set(_collapse_text_values(values))
-    if include_external_snapshots:
-        external_values = (
-            ExternalAffiliationSnapshot.objects.exclude(department__isnull=True)
-            .exclude(department__exact="")
-            .values_list("department", flat=True)
-        )
-        collapsed_values.update(_collapse_text_values(external_values))
-    return sorted(collapsed_values)
+    """로그인한 활성 사용자들의 부서를 조회합니다."""
+    return sorted({v for v in get_user_model().objects.filter(is_active=True, last_login__isnull=False)
+                   .values_list("department", flat=True) if v})
 
 
 def _build_external_snapshot_email(*, knox_id: str) -> str:
@@ -707,142 +483,28 @@ def _list_external_affiliation_pool(
     return results
 
 
-def list_active_user_pool(
-    *,
-    search: str = "",
-    department: str = "",
-    user_sdwt_prod: str = "",
-    contact_field: str = "",
-    limit: int | None = 50,
-    include_external_snapshots: bool = False,
-) -> list[dict[str, object]]:
-    """수신인 선택 UI에서 사용할 활성 사용자 pool을 조회합니다.
-
-    입력:
-    - search: 이름/사번/knox_id/email 검색어
-    - department: 특정 department 필터
-    - user_sdwt_prod: 특정 소속 필터
-    - contact_field: email 또는 knox_id 보유 사용자 필터
-    - limit: 최대 반환 개수(None이면 제한 없음)
-    - include_external_snapshots: 미가입 외부 스냅샷 사용자 포함 여부
-
-    반환:
-    - list[dict[str, object]]: 사용자 선택 옵션 목록
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 기본 사용자 queryset 구성
-    # -----------------------------------------------------------------------------
-    safe_limit = None if limit is None else max(1, min(int(limit or 50), 500))
-    normalized_search = _normalize_text(search) or ""
-    normalized_department = _normalize_text(department) or ""
-    normalized_user_sdwt = _normalize_text(user_sdwt_prod) or ""
-    normalized_contact_field = _normalize_text(contact_field) or ""
-
-    User = get_user_model()
-    queryset = User.objects.filter(is_active=True).select_related(
-        "current_affiliation__affiliation"
-    )
-    if normalized_user_sdwt:
-        queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized_user_sdwt
-        )
-    if normalized_department:
-        queryset = queryset.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__department__iexact=normalized_department
-        )
-    if normalized_contact_field in {"email", "knox_id"}:
-        queryset = queryset.exclude(**{f"{normalized_contact_field}__isnull": True}).exclude(
-            **{f"{normalized_contact_field}__exact": ""}
-        )
-
-    # -----------------------------------------------------------------------------
-    # 2) 검색어 필터 적용
-    # -----------------------------------------------------------------------------
-    if normalized_search:
-        queryset = queryset.filter(
-            Q(username__icontains=normalized_search)
-            | Q(username_en__icontains=normalized_search)
-            | Q(givenname__icontains=normalized_search)
-            | Q(surname__icontains=normalized_search)
-            | Q(sabun__icontains=normalized_search)
-            | Q(knox_id__icontains=normalized_search)
-            | Q(email__icontains=normalized_search)
-            | Q(current_affiliation__affiliation__user_sdwt_prod__icontains=normalized_search)
-        )
-
-    rows = queryset.order_by(
-        "current_affiliation__affiliation__user_sdwt_prod",
-        "username",
-        "id",
-    )
-    if safe_limit is not None:
-        rows = rows[:safe_limit]
-
-    # -----------------------------------------------------------------------------
-    # 3) 프론트엔드 선택 옵션 형태로 직렬화
-    # -----------------------------------------------------------------------------
-    results: list[dict[str, object]] = []
-    for user in rows:
-        affiliation = getattr(
-            getattr(user, "current_affiliation", None),
-            "affiliation",
-            None,
-        )
-        if affiliation is not None and not affiliation.is_active:
-            affiliation = None
-        display_name = (
-            getattr(user, "username", None)
-            or getattr(user, "username_en", None)
-            or getattr(user, "givenname", None)
-            or getattr(user, "knox_id", None)
-            or getattr(user, "sabun", None)
-            or ""
-        )
-        results.append(
-            {
-                "id": user.id,
-                "userId": user.id,
-                "recipientType": "user",
-                "recipientKey": f"user:{user.id}",
-                "username": getattr(user, "username", None) or "",
-                "displayName": display_name,
-                "sabun": getattr(user, "sabun", None) or "",
-                "knoxId": getattr(user, "knox_id", None) or "",
-                "email": getattr(user, "email", None) or "",
-                "department": getattr(affiliation, "department", "") or "",
-                "line": getattr(affiliation, "line", "") or "",
-                "userSdwtProd": getattr(affiliation, "user_sdwt_prod", "") or "",
-            }
-        )
-    if include_external_snapshots:
-        results.extend(
-            _list_external_affiliation_pool(
-                search=normalized_search,
-                department=normalized_department,
-                user_sdwt_prod=normalized_user_sdwt,
-                limit=limit,
-            )
-        )
-        results = sorted(
-            results,
-            key=lambda item: (
-                str(item.get("userSdwtProd") or "").casefold(),
-                str(item.get("displayName") or item.get("knoxId") or "").casefold(),
-                str(item.get("recipientKey") or "").casefold(),
-            ),
-        )
-        if safe_limit is not None:
-            results = results[:safe_limit]
-    return results
+def list_active_user_pool(*, search: str = "", department: str = "", user_sdwt_prod: str = "",
+                          contact_field: str = "", limit: int | None = 50,
+                          include_external_snapshots: bool = False) -> list[dict[str, object]]:
+    """Portal에 로그인한 사용자만 수신인 선택 목록으로 제공합니다."""
+    qs = get_user_model().objects.filter(is_active=True, last_login__isnull=False)
+    if search:
+        qs = qs.filter(Q(username__icontains=search) | Q(knox_id__icontains=search)
+                       | Q(email__icontains=search) | Q(sabun__icontains=search))
+    if department:
+        qs = qs.filter(department=department)
+    if user_sdwt_prod:
+        qs = qs.filter(identity_profile__user_sdwt_prod=user_sdwt_prod)
+    if contact_field in {"email", "knox_id"}:
+        qs = qs.exclude(**{f"{contact_field}__isnull": True}).exclude(**{contact_field: ""})
+    qs = qs.order_by("username", "pk")
+    if limit is not None:
+        qs = qs[:max(1, min(int(limit), 500))]
+    return [{"id": u.pk, "userId": u.pk, "recipientType": "user", "recipientKey": f"user:{u.pk}",
+             "username": u.username or "", "displayName": u.username or u.knox_id or u.avatarid,
+             "sabun": u.sabun, "knoxId": u.knox_id or "", "email": u.email,
+             "department": u.department or "", "line": u.identity_profile.get("line_id", ""),
+             "userSdwtProd": u.identity_profile.get("user_sdwt_prod", "")} for u in qs]
 
 
 def list_user_sdwt_prod_access_rows(*, user: Any) -> list[UserSdwtProdAccess]:
@@ -2218,68 +1880,24 @@ def list_affiliation_change_requests(
     return qs.order_by("-created_at", "-id")
 
 
-def list_group_members(*, user_sdwt_prods: set[str]) -> QuerySet[UserSdwtProdAccess]:
-    """지정한 user_sdwt_prods 그룹에 속한 멤버 접근 권한 행을 조회합니다.
-
-    입력:
-    - user_sdwt_prods: 소속 식별자 집합
-
-    반환:
-    - QuerySet[UserSdwtProdAccess]: 멤버 접근 권한 행 목록
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    lookup_keys = list(_build_user_sdwt_display_map(user_sdwt_prods).keys())
-    if not lookup_keys:
-        return UserSdwtProdAccess.objects.none()
-
-    return (
-        UserSdwtProdAccess.objects.annotate(
-            user_sdwt_prod_lookup=Lower("affiliation__user_sdwt_prod")
-        )
-        .filter(
-            affiliation__is_active=True,
-            user_sdwt_prod_lookup__in=lookup_keys,
-        )
-        .select_related("user", "affiliation")
-        .order_by("affiliation__user_sdwt_prod", "user_id")
-    )
+def list_group_members(*, user_sdwt_prods: set[str]) -> list[Any]:
+    """마지막 로그인 당시 그룹을 조회용 멤버 목록으로 반환합니다. 권한 판정에는 쓰지 않습니다."""
+    from types import SimpleNamespace
+    rows = []
+    for user in get_user_model().objects.filter(is_active=True, last_login__isnull=False):
+        snapshot = user.identity_profile.get("authorization", {})
+        for sdwt, role in snapshot.get("sdwtRoles", {}).items():
+            if sdwt in user_sdwt_prods:
+                rows.append(SimpleNamespace(user=user, user_id=user.pk, affiliation=SimpleNamespace(user_sdwt_prod=sdwt),
+                    role={"user": "member", "admin": "manager", "viewer": "viewer"}.get(role, "viewer"),
+                    granted_by_id=None, created_at=user.last_login))
+    return rows
 
 
 def list_current_affiliation_users_by_user_sdwt_prod(*, user_sdwt_prod: str) -> list[Any]:
-    """현재 앱 소속이 지정 user_sdwt_prod인 사용자를 조회합니다.
-
-    입력:
-    - user_sdwt_prod: 소속 식별자
-
-    반환:
-    - list[Any]: 사용자 객체 목록
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    normalized = _normalize_user_sdwt_prod(user_sdwt_prod)
-    if not normalized:
-        return []
-
-    UserModel = get_user_model()
-    return list(
-        UserModel.objects.filter(
-            current_affiliation__affiliation__is_active=True,
-            current_affiliation__affiliation__user_sdwt_prod__iexact=normalized,
-        )
-        .select_related("current_affiliation__affiliation")
-        .order_by("id")
-    )
+    """마지막 로그인 소속이 일치하는 활성 사용자를 조회합니다."""
+    return list(get_user_model().objects.filter(is_active=True, last_login__isnull=False,
+        identity_profile__user_sdwt_prod=user_sdwt_prod).order_by("pk"))
 
 
 def list_line_sdwt_pairs() -> list[dict[str, str]]:
@@ -2393,81 +2011,10 @@ def get_next_user_sdwt_prod_change(
 
 
 def resolve_user_affiliation(user: Any, at_time: datetime | None) -> dict[str, str]:
-    """지정 시점의 사용자 소속 스냅샷을 계산합니다.
-
-    입력:
-    - user: Django 사용자 객체
-    - at_time: 기준 시각(없으면 현재 시각)
-
-    반환:
-    - dict[str, str]: 부서/라인/user_sdwt_prod 스냅샷
-
-    부작용:
-    - 없음(읽기 전용)
-
-    오류:
-    - 없음
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 기준 시각 보정
-    # -----------------------------------------------------------------------------
-    if at_time is None:
-        at_time = timezone.now()
-    if timezone.is_naive(at_time):
-        at_time = timezone.make_aware(at_time, timezone.utc)
-
-    current_values = get_current_affiliation_values(user=user)
-    current_department = current_values.get("department")
-    current_line = current_values.get("line")
-    current_user_sdwt_prod = current_values.get("user_sdwt_prod")
-
-    # -----------------------------------------------------------------------------
-    # 2) 기준 시각까지 승인된 변경 조회
-    # -----------------------------------------------------------------------------
-    change = (
-        UserSdwtProdChange.objects.filter(user=user, effective_from__lte=at_time)
-        .filter(Q(status=UserSdwtProdChange.Status.APPROVED) | Q(approved=True))
-        .order_by("-effective_from", "-id")
-        .first()
-    )
-
-    # -----------------------------------------------------------------------------
-    # 3) 변경 이력이 있으면 해당 스냅샷 반환
-    # -----------------------------------------------------------------------------
-    if change:
-        return {
-            "department": change.department or current_department or UNKNOWN,
-            "line": change.line or current_line or "",
-            "user_sdwt_prod": change.to_user_sdwt_prod
-            or current_user_sdwt_prod
-            or UNCLASSIFIED_USER_SDWT_PROD,
-        }
-
-    # -----------------------------------------------------------------------------
-    # 4) 다음 변경이 있는 경우 이전 소속 추정
-    # -----------------------------------------------------------------------------
-    next_change = (
-        UserSdwtProdChange.objects.filter(user=user, effective_from__gt=at_time)
-        .filter(Q(status=UserSdwtProdChange.Status.APPROVED) | Q(approved=True))
-        .order_by("effective_from", "id")
-        .first()
-    )
-
-    before_user_sdwt_prod = None
-    if next_change:
-        before_user_sdwt_prod = next_change.from_user_sdwt_prod
-
-    # -----------------------------------------------------------------------------
-    # 5) 기본 스냅샷 반환
-    # -----------------------------------------------------------------------------
-    return {
-        "department": current_department or UNKNOWN,
-        "line": current_line or "",
-        "user_sdwt_prod": before_user_sdwt_prod
-        or current_user_sdwt_prod
-        or UNCLASSIFIED_USER_SDWT_PROD,
-    }
+    """로그인에서 받은 현재 소속을 반환하며 이전 DB 변경 이력을 권한에 사용하지 않습니다."""
+    values = get_current_affiliation_values(user=user)
+    return {"department": values["department"] or UNKNOWN, "line": values["line"] or "",
+            "user_sdwt_prod": values["user_sdwt_prod"] or UNCLASSIFIED_USER_SDWT_PROD}
 
 
 def list_users_by_registration_identifiers(*, sabun: str, epid: str, knox_id: str) -> list[Any]:
@@ -2476,3 +2023,8 @@ def list_users_by_registration_identifiers(*, sabun: str, epid: str, knox_id: st
     return list(get_user_model().objects.select_for_update().filter(
         Q(sabun=sabun) | Q(avatarid=epid) | Q(knox_id=knox_id),
     ))
+
+
+def get_user_by_epid(*, epid: str) -> Any | None:
+    """EPID가 정확히 일치하는 사용자만 조회합니다."""
+    return get_user_model().objects.filter(avatarid=epid).first()

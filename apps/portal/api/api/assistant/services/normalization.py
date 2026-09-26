@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import List, Sequence, Tuple
 
 from api.account import selectors as account_selectors
+from api.account import services as account_services
 import api.rag.services as rag_services
 
 from .. import selectors
@@ -169,7 +170,8 @@ def resolve_permission_groups(raw_groups: Sequence[object] | None, user: object)
     if sender_id:
         allowed.add(sender_id)
     allowed.add(rag_services.RAG_PUBLIC_GROUP)
-    invalid = [group for group in normalized if group not in allowed]
+    data_scope = account_services.get_effective_affiliation_scope(user=user, scope_key="emails")
+    invalid = [] if data_scope["all"] else [group for group in normalized if group not in allowed]
     if invalid:
         raise AssistantRequestError("해당 permission_groups에 대한 접근 권한이 없습니다.")
 
@@ -262,6 +264,7 @@ def build_rag_index_list_payload(*, user: object) -> dict[str, object]:
         "defaultRagIndex": rag_services.resolve_rag_index_name(None),
         "emailRagIndex": rag_services.resolve_rag_index_name(rag_services.RAG_INDEX_EMAILS),
         "permissionGroups": sorted(permission_groups),
+        "allPermissionGroups": account_services.get_effective_affiliation_scope(user=user, scope_key="emails")["all"],
         "currentUserSdwtProd": current_user_sdwt_prod,
         "ragPublicGroup": rag_services.RAG_PUBLIC_GROUP,
     }

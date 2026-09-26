@@ -1,83 +1,46 @@
-"""Account HTTP camelCase와 공통 오류 계약 회귀 테스트입니다."""
-
-from __future__ import annotations
-
-from django.contrib.auth import get_user_model
+"""Keycloak 조회와 종료된 account 변경 API의 HTTP 계약을 검증합니다."""
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import Affiliation
+from .models import User
+from .services import AUTHORIZATION_SESSION_KEY, build_authorization_snapshot
 
 
+@override_settings(OIDC_CLIENT_ID="portal")
 class AccountHttpContractTests(TestCase):
-    """남아 있던 소속 재확인·외부 sync snake_case 입력을 거절합니다."""
+    def setUp(self):
+        self.user = User.objects.create_user(avatarid="9001", sabun="1001", knox_id="test.user")
+        self.client.force_login(self.user)
+        session = self.client.session
+        session[AUTHORIZATION_SESSION_KEY] = build_authorization_snapshot({"userid": "9001", "deptid": "ETCH",
+            "resource_access": {"portal": {"roles": ["portal-all-apps"]}},
+            "user_sdwt_prod": "SDWT-A", "line_id": "L1", "groups": ["/SDWT-A/viewer"]})
+        session.save()
 
-    def test_reconfirm_rejects_snake_case_input(self) -> None:
-        """브라우저 재확인 body는 userSdwtProd만 허용합니다."""
+    def test_retired_mutations_return_410(self):
+        routes = ["account-affiliation", "account-affiliation-approve", "account-affiliation-reconfirm",
+                  "account-access-request", "account-access-policy-rules", "account-pending-access-requests-bulk-approve",
+                  "account-external-affiliation-sync", "account-affiliation-access"]
+        for route in routes:
+            with self.subTest(route=route):
+                response = self.client.post(reverse(route), data={"anything": "ignored"})
+                self.assertEqual(response.status_code, 410)
+                self.assertEqual(response.json()["code"], "managed_by_keycloak")
 
-        user = get_user_model().objects.create_user(
-            sabun="ACCOUNT-HTTP-1",
-            password="test-password",
-            knox_id="account.http.1",
-        )
-        self.client.force_login(user)
-
-        response = self.client.post(
-            reverse("account-affiliation-reconfirm"),
-            data={"accepted": True, "user_sdwt_prod": "group-a"},
-            content_type="application/json",
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.json()["fieldErrors"]["unexpectedFields"],
-            ["user_sdwt_prod"],
-        )
-
-    def test_affiliation_options_use_camel_case(self) -> None:
-        """소속 선택 옵션 성공 응답은 내부 model field 이름을 노출하지 않습니다."""
-
-        user = get_user_model().objects.create_user(
-            sabun="ACCOUNT-HTTP-OPTIONS",
-            password="test-password",
-            knox_id="account.http.options",
-        )
-        Affiliation.objects.create(
-            department="Dept",
-            line="L1",
-            user_sdwt_prod="group-a",
-            is_active=True,
-        )
-        self.client.force_login(user)
-
-        response = self.client.get(reverse("account-affiliation"))
-
+    def test_overview_uses_session_not_organization_catalog(self):
+        response = self.client.get(reverse("account-overview"))
         self.assertEqual(response.status_code, 200)
-        option = response.json()["affiliationOptions"][0]
-        self.assertEqual(option["userSdwtProd"], "group-a")
-        self.assertNotIn("user_sdwt_prod", option)
+        self.assertTrue(response.json()["hasAllAppsAccess"])
+        self.assertNotIn("isInternalMember", response.json())
+        self.assertEqual(response.json()["userSdwtProd"], "SDWT-A")
+        self.assertEqual(response.json()["sdwtAccess"], {"SDWT-A": "viewer"})
 
-    @override_settings(AIRFLOW_TRIGGER_TOKEN="token")
-    def test_external_sync_rejects_snake_case_input(self) -> None:
-        """Airflow sync record도 camelCase field만 허용합니다."""
+    def test_line_options_only_expose_known_line_and_accessible_sdwts(self):
+        response = self.client.get(reverse("account-line-sdwt-options"))
+        self.assertEqual(response.json(), {"lines": [{"lineId": "L1", "userSdwtProds": ["SDWT-A"]}], "userSdwtProds": ["SDWT-A"]})
 
-        response = self.client.post(
-            reverse("account-external-affiliation-sync"),
-            data={
-                "records": [
-                    {
-                        "knox_id": "account.http.2",
-                        "department": "Dept",
-                        "user_sdwt_prod": "group-a",
-                    }
-                ]
-            },
-            content_type="application/json",
-            HTTP_AUTHORIZATION="Bearer token",
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.json()["fieldErrors"]["records"][0]["unexpectedFields"],
-            ["knox_id", "user_sdwt_prod"],
-        )
+    def test_user_pool_only_includes_logged_in_users(self):
+        User.objects.create_user(avatarid="9002", sabun="1002", knox_id="not.logged.in")
+        response = self.client.get(reverse("account-users"))
+        self.assertEqual([r["userId"] for r in response.json()["results"]], [self.user.pk])

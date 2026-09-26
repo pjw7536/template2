@@ -25,6 +25,7 @@ function buildSortedOptions(values) {
 export function useAssistantRagIndex({ enabled = true } = {}) {
   const ragIndexesQuery = useAssistantRagIndexes({ enabled })
   const ragData = ragIndexesQuery.data || {}
+  const allPermissionGroups = ragData.allPermissionGroups === true
   const currentUserSdwtProd = normalizeString(ragData.currentUserSdwtProd)
 
   const ragPublicGroup = normalizeString(ragData.ragPublicGroup) || DEFAULT_RAG_PUBLIC_GROUP
@@ -68,7 +69,7 @@ export function useAssistantRagIndex({ enabled = true } = {}) {
 
   const normalizedPermissionGroups = normalizeList(permissionGroups)
   const filteredPermissionGroups = normalizedPermissionGroups.filter((value) =>
-    permissionGroupOptions.includes(value),
+    allPermissionGroups || permissionGroupOptions.includes(value),
   )
 
   useEffect(() => {
@@ -89,6 +90,7 @@ export function useAssistantRagIndex({ enabled = true } = {}) {
   }
 
   return {
+    allPermissionGroups,
     permissionGroups: resolvedPermissionGroups,
     setPermissionGroups,
     ragIndexNames: resolvedRagIndexNames,

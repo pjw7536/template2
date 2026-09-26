@@ -155,6 +155,8 @@ def get_filtered_emails(
 def get_sent_emails(
     *,
     sender_id: str,
+    accessible_user_sdwt_prods: set[str] | None = None,
+    is_privileged: bool = False,
     search: str,
     sender: str,
     recipient: str,
@@ -185,6 +187,9 @@ def get_sent_emails(
         return Email.objects.none()
 
     queryset = Email.objects.filter(sender_id=sender_id.strip()).order_by("-received_at", "-id")
+
+    if not is_privileged:
+        queryset = queryset.filter(user_sdwt_prod__in=accessible_user_sdwt_prods or set())
 
     # -----------------------------------------------------------------------------
     # 2) 공통 검색/기간 필터 적용

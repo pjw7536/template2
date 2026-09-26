@@ -1,14 +1,14 @@
 # =============================================================================
 # 모듈 설명: OIDC 클레임을 사용자 정보로 변환하고 저장합니다.
 # - 주요 대상: 클레임 매핑, 사용자 생성/갱신
-# - 불변 조건: sabun은 사용자 식별 기준이며 knox_id는 필수 로그인 식별자입니다.
+# - 불변 조건: userid(EPID)는 사용자 식별 기준이며 sabun과 loginid도 필수입니다.
 # =============================================================================
 
 """OIDC 클레임 기반 사용자 생성/갱신 서비스.
 
 - 주요 대상: 클레임 필드 매핑, 사용자 upsert
 - 주요 함수: extract_user_info_from_claims, upsert_user_from_claims
-- 가정/불변 조건: sabun은 사용자 조회 키로 사용하고 knox_id는 비어 있을 수 없음
+- 가정/불변 조건: EPID로만 사용자를 조회하고 knox_id는 비어 있을 수 없음
 """
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ from typing import Any, Dict, Optional
 import api.account.services as account_services
 
 
-def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[str]]:
-    """ADFS 클레임을 사용자 모델 필드로 매핑해 반환합니다.
+def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Any]:
+    """Keycloak 클레임을 사용자 모델 필드로 매핑해 반환합니다.
 
     입력:
     - claims: id_token에서 추출한 클레임 딕셔너리
 
     반환:
-    - Dict[str, Optional[str]]: 사용자 필드 매핑 결과
+    - Dict[str, Any]: 사용자 필드 매핑 결과
 
     부작용:
     - 없음
@@ -54,15 +54,16 @@ def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[
         "employeetype": "employeetype",
     }
 
-    info: Dict[str, Optional[str]] = {}
+    info: Dict[str, Any] = {}
     for claim_key, field_name in claim_to_field.items():
         raw = claims.get(claim_key)
-        value = str(raw).strip() if raw is not None else ""
+        if raw is not None and not isinstance(raw, str):
+            raise ValueError("invalid_identity_claims")
+        value = raw.strip() if raw is not None else ""
         info[field_name] = value or None
 
     # Keycloak 표준 claim은 사내 legacy claim이 없을 때만 fallback으로 사용합니다.
     standard_fallbacks = {
-        "knox_id": "preferred_username",
         "username": "name",
         "first_name": "given_name",
         "last_name": "family_name",
@@ -72,7 +73,9 @@ def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[
         if info.get(field_name):
             continue
         raw = claims.get(claim_key)
-        value = str(raw).strip() if raw is not None else ""
+        if raw is not None and not isinstance(raw, str):
+            raise ValueError("invalid_identity_claims")
+        value = raw.strip() if raw is not None else ""
         info[field_name] = value or None
 
     # 한글 username만 있는 기존 SSO 응답에서도 first_name/last_name을 유지합니다.
@@ -86,12 +89,13 @@ def extract_user_info_from_claims(claims: Dict[str, Any]) -> Dict[str, Optional[
             else:
                 info["first_name"] = info.get("first_name") or trimmed
 
+    info["identity_profile"] = {key: claims.get(key, "") for key in ("user_sdwt_prod", "line_id")}
     return info
 
 
 def upsert_user_from_claims(
     *,
-    info: Dict[str, Optional[str]],
+    info: Dict[str, Any],
     sabun: str,
     knox_id: str,
 ) -> tuple[Any, bool]:

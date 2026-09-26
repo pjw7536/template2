@@ -142,6 +142,8 @@ class EmailSentListView(APIView):
 
         qs = get_sent_emails(
             sender_id=sender_id,
+            accessible_user_sdwt_prods=_accessible,
+            is_privileged=_is_privileged,
             search=filters["search"],
             sender=filters["sender"],
             recipient=filters["recipient"],

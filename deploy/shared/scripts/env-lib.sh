@@ -108,12 +108,10 @@ validate_app_env() {
       require_url OIDC_ISSUER && require_url OIDC_REDIRECT_URI && require_url FRONTEND_BASE_URL || return
       [[ "${ENV_VALUES[FRONTEND_BASE_URL]}" != */ ]] || { echo 'FRONTEND_BASE_URL 끝의 /를 제거하세요.' >&2; return 1; } ;;
     portal/api)
-      require_env_keys DJANGO_SECRET_KEY DJANGO_ALLOWED_HOSTS DJANGO_DB_NAME DJANGO_DB_USER DJANGO_DB_PASSWORD DJANGO_DB_HOST OIDC_PROVIDER OIDC_CLIENT_ID OIDC_ISSUER ADFS_AUTH_URL OIDC_REDIRECT_URI FRONTEND_BASE_URL || return
-      case "${ENV_VALUES[OIDC_PROVIDER]}" in
-        keycloak) require_env_keys OIDC_CLIENT_SECRET OIDC_TOKEN_URL OIDC_JWKS_URL ADFS_LOGOUT_URL ;;
-        adfs) require_env_keys ADFS_CER_PATH ;;
-        *) echo 'OIDC_PROVIDER: adfs 또는 keycloak 필요' >&2; return 1 ;;
-      esac ;;
+      require_env_keys DJANGO_SECRET_KEY DJANGO_ALLOWED_HOSTS DJANGO_DB_NAME DJANGO_DB_USER DJANGO_DB_PASSWORD DJANGO_DB_HOST OIDC_PROVIDER OIDC_CLIENT_ID OIDC_ISSUER OIDC_AUTH_URL OIDC_REDIRECT_URI FRONTEND_BASE_URL || return
+      [[ "${ENV_VALUES[OIDC_PROVIDER]}" == keycloak ]] || { echo 'Portal은 Keycloak만 지원합니다.' >&2; return 1; }
+      require_env_keys OIDC_CLIENT_SECRET OIDC_TOKEN_URL OIDC_JWKS_URL OIDC_LOGOUT_URL || return
+      ;;
     portal/web) require_env_keys VITE_SITE_URL VITE_BACKEND_URL BACKEND_API_URL ;;
     portal/minio) require_env_keys MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY ;;
     *) echo "지원하지 않는 설정 작업: $app/$component" >&2; return 1 ;;
@@ -127,7 +125,7 @@ validate_portal_prod_env() {
     api)
       [[ "${ENV_VALUES[OIDC_PROVIDER]:-}" == keycloak ]] || { echo '운영 Portal은 OIDC_PROVIDER=keycloak을 사용합니다.' >&2; return 1; }
       require_env_keys DJANGO_DB_PORT DJANGO_CORS_ALLOWED_ORIGINS DJANGO_CSRF_TRUSTED_ORIGINS PUBLIC_API_BASE_URL ALLOWED_REDIRECT_HOSTS MINIO_ENDPOINT MINIO_ACCESS_KEY MINIO_SECRET_KEY || return
-      for key in FRONTEND_BASE_URL PUBLIC_API_BASE_URL OIDC_ISSUER OIDC_REDIRECT_URI ADFS_AUTH_URL ADFS_LOGOUT_URL OIDC_TOKEN_URL OIDC_JWKS_URL MINIO_ENDPOINT; do
+      for key in FRONTEND_BASE_URL PUBLIC_API_BASE_URL OIDC_ISSUER OIDC_REDIRECT_URI OIDC_AUTH_URL OIDC_LOGOUT_URL OIDC_TOKEN_URL OIDC_JWKS_URL MINIO_ENDPOINT; do
         require_url "$key" || return
       done ;;
     web)

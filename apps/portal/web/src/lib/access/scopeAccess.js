@@ -20,9 +20,9 @@ export function hasAnyScopeAccess(user, scopeKeys) {
 
 export function hasScopeRole(user, scopeKey, role = "admin") {
   const access = getScopeAccess(user, scopeKey)
-  return Boolean(access?.allowed && access?.role === role)
+  return Boolean(access?.allowed && (access?.role === role || (role === "user" && access?.role === "admin")))
 }
 
 export function isScopeAccessBypass(access) {
-  return access?.source === "superuser_bypass"
+  return Boolean(access?.allowed && access?.dataScopeMode === "all")
 }

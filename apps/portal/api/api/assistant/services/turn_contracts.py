@@ -17,6 +17,7 @@ from typing import Any, Iterator, Mapping
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+import api.account.services as account_services
 import api.emails.selectors as email_selectors
 
 from .. import selectors
@@ -323,8 +324,9 @@ class AssistantTurnValidationMixin:
             accessible_mailboxes = (
                 selectors.get_accessible_email_user_sdwt_prods_for_user(user=user)
             )
+            all_mailboxes = account_services.get_effective_affiliation_scope(user=user, scope_key="emails")["all"]
             mailboxes = [
-                group for group in groups if group in accessible_mailboxes
+                group for group in groups if group in accessible_mailboxes or all_mailboxes
             ]
             requested_mailbox = str(rag_input.get("mailbox") or "").strip()
             requested_email_id = rag_input.get("emailId")
@@ -342,7 +344,7 @@ class AssistantTurnValidationMixin:
                         message="현재 Email 화면 범위에 접근할 권한이 없습니다.",
                     )
                 verified_mailbox = verified_scope["mailbox"]
-                if verified_mailbox in accessible_mailboxes:
+                if verified_mailbox in accessible_mailboxes or all_mailboxes:
                     groups = [verified_mailbox]
                     mailboxes = [verified_mailbox]
             return {

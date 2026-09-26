@@ -9,7 +9,7 @@ class ObserverTkinEndpointTests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S-OBSERVER",
             sabun="S-OBSERVER",
             password="test-password",
             knox_id="knox-observer",

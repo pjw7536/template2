@@ -157,7 +157,8 @@ def validate_access_requirements(
     data_claims = normalized["dataClaims"]
     rag_groups = set(data_claims.get("ragPermissionGroups", []))
     mailboxes = set(data_claims.get("mailboxes", []))
-    data_claim_denied = bool(
+    data_scope = account_services.get_effective_affiliation_scope(user=user, scope_key="emails")
+    data_claim_denied = not data_scope["all"] and bool(
         not rag_groups.issubset(_allowed_rag_groups(user=user))
         or not mailboxes.issubset(
             account_services.get_accessible_user_sdwt_prods_for_scope(

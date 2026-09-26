@@ -10,7 +10,7 @@ Portal과 Headlamp는 서로의 설치를 요구하지 않으므로 사용할 �
 
 [Portal client 등록 안내](../portal/k8s/jobs/keycloak-client/README.md)에서 입력 파일 작성 → client 등록 → Portal API 설정을 진행합니다.
 이 작업은 `scripts/04-setup-portal-client.sh`를 사용하지만 파일명 숫자가 전체 설치 순서를 뜻하지는 않습니다.
-Portal client와 사내 claim 16개·소속 claim 2개의 token mapper를 등록합니다.
+Portal client와 사내 claim 16개·소속 claim 2개, Portal 앱 역할·SDWT groups mapper를 등록합니다.
 Portal API 배포는 [Portal 배포 안내](../portal/README.md)를 따릅니다.
 
 ### SDWT 그룹을 Portal에 전달하는 경우
@@ -24,7 +24,8 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_
 make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_CSV= KEYCLOAK_SDWT_CLIENTS=portal KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
 ```
 
-`sdwt-access-v1` 기본 scope를 연결하고 `groups`를 전체 경로 배열로 발급합니다.
+Portal client 등록 단계에서 이미 `groups`를 전체 경로 배열로 발급합니다.
+위 선택 작업은 `sdwt-access-v1` 기본 scope도 연결합니다.
 선택 client의 Access Token 수명을 300초로 설정합니다. 이 설정만으로 앱의 권한 판정 코드가 구현되지는 않습니다.
 앱이 실제 자원의 SDWT와 그룹 등급을 검사하는지 확인해야 합니다.
 

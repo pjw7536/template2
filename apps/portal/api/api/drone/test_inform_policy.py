@@ -187,7 +187,7 @@ class DroneSopInformPolicyTestsPart1Continuation(TestCase):
     ) -> None:
         """취소 delivery는 자동 재발송하지 않고 pending 채널만 처리하는지 확인합니다."""
         User = get_user_model()
-        user = User.objects.create_user(sabun="S85001", password="test-password")
+        user = User.objects.create_user(avatarid="S85001", sabun="S85001", password="test-password")
         user.email = "target85001@example.com"
         user.save(update_fields=["email"])
         _set_current_affiliation(user, user_sdwt_prod="SDWT1")
@@ -716,7 +716,7 @@ class DroneSopInformPolicyTestsPart2(TestCase):
     def test_inform_sets_informed_at_when_mail_succeeds(self, mock_mail: Mock) -> None:
         """메일 전송 성공 시 informed_at이 설정되는지 확인합니다."""
         User = get_user_model()
-        user = User.objects.create_user(sabun="S84001", password="test-password")
+        user = User.objects.create_user(avatarid="S84001", sabun="S84001", password="test-password")
         user.email = "user84001@example.com"
         user.save(update_fields=["email"])
         _set_current_affiliation(user, user_sdwt_prod="SDWT1")
@@ -771,7 +771,7 @@ class DroneSopInformPolicyTestsPart2(TestCase):
     def test_inform_sends_mail_to_configured_delivery_target(self, mock_mail: Mock) -> None:
         """한 SOP 조합의 고정 target에만 메일을 발송합니다."""
         User = get_user_model()
-        user_a = User.objects.create_user(sabun="S84011", password="test-password")
+        user_a = User.objects.create_user(avatarid="S84011", sabun="S84011", password="test-password")
         user_a.email = "target-a@example.com"
         user_a.save(update_fields=["email"])
 
@@ -938,12 +938,12 @@ class DroneSopInformPolicyTestsPart3(TestCase):
         # -----------------------------------------------------------------------------
         User = get_user_model()
 
-        user_a = User.objects.create_user(sabun="S83001", password="test-password")
+        user_a = User.objects.create_user(avatarid="S83001", sabun="S83001", password="test-password")
         user_a.knox_id = "knox-001"
         user_a.save(update_fields=["knox_id"])
         _set_current_affiliation(user_a, user_sdwt_prod="SDWT1")
 
-        user_b = User.objects.create_user(sabun="S83002", password="test-password")
+        user_b = User.objects.create_user(avatarid="S83002", sabun="S83002", password="test-password")
         user_b.knox_id = " knox-002 "
         user_b.save(update_fields=["knox_id"])
         _set_current_affiliation(user_b, user_sdwt_prod="SDWT1")
@@ -1043,12 +1043,12 @@ class DroneSopInformPolicyTestsPart3(TestCase):
         mock_create_chatroom.return_value = 4567
 
         User = get_user_model()
-        user_a = User.objects.create_user(sabun="S83003", password="test-password")
+        user_a = User.objects.create_user(avatarid="S83003", sabun="S83003", password="test-password")
         user_a.knox_id = "knox-003"
         user_a.save(update_fields=["knox_id"])
         _set_current_affiliation(user_a, user_sdwt_prod="SDWT1")
 
-        user_b = User.objects.create_user(sabun="S83004", password="test-password")
+        user_b = User.objects.create_user(avatarid="S83004", sabun="S83004", password="test-password")
         user_b.knox_id = "knox-004"
         user_b.save(update_fields=["knox_id"])
         _set_current_affiliation(user_b, user_sdwt_prod="SDWT1")
@@ -1207,12 +1207,12 @@ class DroneSopInformPolicyTestsPart3(TestCase):
         mock_create_chatroom.return_value = 4567
 
         User = get_user_model()
-        user_a = User.objects.create_user(sabun="S83101", password="test-password")
+        user_a = User.objects.create_user(avatarid="S83101", sabun="S83101", password="test-password")
         user_a.knox_id = "knox-101"
         user_a.save(update_fields=["knox_id"])
         _set_current_affiliation(user_a, user_sdwt_prod="SDWT1")
 
-        user_b = User.objects.create_user(sabun="S83102", password="test-password")
+        user_b = User.objects.create_user(avatarid="S83102", sabun="S83102", password="test-password")
         user_b.knox_id = "knox-102"
         user_b.save(update_fields=["knox_id"])
         _set_current_affiliation(user_b, user_sdwt_prod="SDWT1")

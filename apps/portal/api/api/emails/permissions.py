@@ -80,9 +80,6 @@ def _user_can_access_email(
     # -----------------------------------------------------------------------------
     # 2) 발신자/메일함 범위 검증
     # -----------------------------------------------------------------------------
-    sender_id = resolve_sender_id_from_user(user)
-    if sender_id and getattr(email, "sender_id", None) == sender_id:
-        return True
     return bool(getattr(email, "user_sdwt_prod", None) and email.user_sdwt_prod in accessible)
 
 

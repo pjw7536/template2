@@ -1,7 +1,7 @@
 # =============================================================================
 # 모듈 설명: Keycloak 로그인 전용 OIDC code flow를 제공합니다.
 # - 주요 대상: PKCE authorize URL, code 교환, JWKS id_token 검증, SSO logout
-# - 불변 조건: Keycloak은 로그인 제공자이며 Portal 권한 원천은 Django에 유지됩니다.
+# - 불변 조건: Keycloak은 로그인과 권한의 원천이며 검증된 권한은 세션에 저장합니다.
 # =============================================================================
 
 """Keycloak authorization code + PKCE 로그인 헬퍼입니다.
@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
+from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
 
@@ -82,7 +83,7 @@ def build_authorize_url(*, request: HttpRequest, state: str, nonce: str) -> str:
 
     입력:
     - request: Django 요청과 세션
-    - state: 검증 후 복원할 프론트엔드 target
+    - state: 로그인 트랜잭션에 연결된 일회용 난수
     - nonce: id_token 재사용을 막는 세션 난수
 
     반환:
@@ -108,7 +109,7 @@ def build_authorize_url(*, request: HttpRequest, state: str, nonce: str) -> str:
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    return f"{settings.ADFS_AUTH_URL}?{urlencode(params)}"
+    return f"{settings.OIDC_AUTH_URL}?{urlencode(params)}"
 
 
 def exchange_code(*, request: HttpRequest, code: str) -> dict[str, Any]:
@@ -174,21 +175,29 @@ def decode_id_token(raw_id_token: str) -> dict[str, Any]:
     - jwt.PyJWTError: 서명, issuer, audience, 만료 또는 필수 claim 오류
     """
 
-    jwks_client = jwt.PyJWKClient(
-        settings.OIDC_JWKS_URL,
-        cache_keys=True,
-        lifespan=int(getattr(settings, "OIDC_JWKS_CACHE_SECONDS", 300)),
-        timeout=int(getattr(settings, "OIDC_READ_TIMEOUT_SECONDS", 10)),
-    )
+    jwks_client = _jwks_client(settings.OIDC_JWKS_URL, settings.OIDC_JWKS_CACHE_SECONDS,
+                               settings.OIDC_READ_TIMEOUT_SECONDS)
     signing_key = jwks_client.get_signing_key_from_jwt(raw_id_token)
-    return jwt.decode(
+    claims = jwt.decode(
         raw_id_token,
         signing_key.key,
         algorithms=["RS256"],
         audience=settings.OIDC_CLIENT_ID,
         issuer=settings.OIDC_ISSUER,
-        options={"require": ["exp", "iat", "iss", "sub"]},
+        options={"require": ["exp", "iat", "iss", "sub", "aud", "nonce"]},
     )
+
+    audience = claims.get("aud")
+    if (claims.get("azp") not in (None, settings.OIDC_CLIENT_ID)
+            or (isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != settings.OIDC_CLIENT_ID)):
+        raise jwt.InvalidAudienceError("invalid azp")
+    return claims
+
+
+@lru_cache(maxsize=8)
+def _jwks_client(url: str, lifespan: int, timeout: int) -> jwt.PyJWKClient:
+    """URL과 설정별 JWKS 캐시를 공유합니다."""
+    return jwt.PyJWKClient(url, cache_keys=False, lifespan=lifespan, timeout=timeout)
 
 
 def save_id_token(*, request: HttpRequest, raw_id_token: str) -> None:
@@ -234,7 +243,7 @@ def build_logout_url(*, request: HttpRequest) -> str:
     }
     if raw_id_token:
         params["id_token_hint"] = raw_id_token
-    return f"{settings.ADFS_LOGOUT_URL}?{urlencode(params)}"
+    return f"{settings.OIDC_LOGOUT_URL}?{urlencode(params)}"
 
 
 __all__ = [

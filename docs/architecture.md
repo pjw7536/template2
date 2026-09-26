@@ -1,6 +1,6 @@
 # 전체 아키텍처
 
-이 앱은 React SPA와 Django API가 한 저장소에 있는 업무용 모듈형 모놀리스입니다. 로컬 개발에서는 dummy 외부계를 함께 띄워 ADFS, RAG, LLM, Mail, Jira를 대체합니다.
+이 앱은 React SPA와 Django API가 한 저장소에 있는 업무용 모듈형 모놀리스입니다. 로컬 개발에서는 Keycloak으로 인증하고 dummy 외부계로 RAG, LLM, Mail, Jira를 대체합니다.
 
 ## 구성 요소
 
@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Web | `apps/portal/web` | React 19 + Vite SPA | `docs/frontend.md` |
 | API | `apps/portal/api` | Django 5.1 API 서버 | `docs/backend.md` |
-| Dummy 외부계 | `local/adfs_dummy` | 로컬 ADFS/RAG/LLM/Mail/Jira 대체 서버 | `docs/integrations.md` |
+| Dummy 외부계 | `local/adfs_dummy` | 로컬 RAG/LLM/Mail/Jira 대체 서버 | `docs/integrations.md` |
 | Env | `local/<app>/env`, `deploy/<app>/env` | 개발/운영 환경 변수 | `docs/configuration.md` |
 | Proxy | `deploy/portal/k8s/base/nginx.conf` | 로컬/운영 통합 진입점 | `docs/operations.md` |
 | Docs | `docs` | 앱 상세 설명과 검증 기준 | `docs/README.md` |
@@ -33,7 +33,7 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 
 | Django app | 역할 | 주요 저장소/연동 |
 | --- | --- | --- |
-| `api.auth` | OIDC 로그인/로그아웃/현재 사용자 | ADFS/OIDC, `api.account.User` |
+| `api.auth` | OIDC 로그인/로그아웃/현재 사용자 | Keycloak OIDC, `api.account.User` |
 | `api.account` | 소속, 권한, 사용자 pool | 기본 DB |
 | `api.emails` | 메일 수집/조회/이동/삭제/OCR/RAG Outbox | 기본 DB, POP3, RAG, MinIO |
 | `api.assistant` | 사용자별 대화방 저장과 화면별 AI 채팅 | PostgreSQL, OpenWebUI, RAG, LLM |
@@ -115,3 +115,5 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 - 데이터 모델: `docs/data-model.md`
 - 환경 설정: `docs/configuration.md`
 - 운영 명령: `docs/operations.md`
+
+Portal은 EPID 계정과 로그인 세션별 앱·SDWT 권한을 사용합니다. 앱 접근은 Keycloak client 역할만으로 허용하며 데이터 접근은 그룹 등급을 별도로 검사합니다. DB 소속·권한 테이블은 로그인 권한의 원천이 아닙니다.

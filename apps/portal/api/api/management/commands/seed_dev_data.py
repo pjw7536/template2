@@ -12,7 +12,7 @@ from typing import Any
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
-from api.account.services import ensure_dev_dummy_superuser, seed_dev_access_data
+from api.account.services import ensure_dev_dummy_user
 from api.appstore.services import seed_appstore_dummy_data
 
 
@@ -66,9 +66,9 @@ class Command(BaseCommand):
         if not prefix:
             raise CommandError("--prefix must not be empty")
 
-        user = ensure_dev_dummy_superuser()
+        user = ensure_dev_dummy_user()
         if user is None:
-            raise CommandError("dev dummy 사용자를 보장하지 못했습니다. DUMMY_ADFS_* 설정을 확인하세요.")
+            raise CommandError("dev dummy 사용자를 보장하지 못했습니다. 로컬 Keycloak fixture 설정을 확인하세요.")
 
         reset = bool(options.get("reset"))
         skip_rag = bool(options.get("skip_rag"))
@@ -77,12 +77,6 @@ class Command(BaseCommand):
             f"dummy={getattr(user, 'sabun', '')}"
         )
 
-        account_result = seed_dev_access_data(
-            prefix=prefix,
-            actor=user,
-            reset=reset,
-        )
-        self.stdout.write(f"[account-seed] done {account_result}")
         appstore_result = seed_appstore_dummy_data(
             prefix=prefix,
             owner=user,

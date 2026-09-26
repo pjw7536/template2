@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .keycloak_access import get_authorization_context
 from .. import selectors
 from ..models import (
     UserSdwtProdAccess,
@@ -25,22 +26,8 @@ from ..models import (
 
 
 def _is_privileged_user(user: Any) -> bool:
-    """superuser/staff 여부를 반환합니다.
-
-    입력:
-    - user: Django 사용자 객체
-
-    반환:
-    - bool: 관리자 여부
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return bool(getattr(user, "is_superuser", False) or getattr(user, "is_staff", False))
+    """Django 관리자 플래그와 무관하게 Portal 전체 관리자만 판정합니다."""
+    return get_authorization_context(user=user).portal_admin
 
 
 def _user_can_manage_user_sdwt_prod(*, user: Any, user_sdwt_prod: str) -> bool:
@@ -71,39 +58,11 @@ def _user_can_manage_user_sdwt_prod(*, user: Any, user_sdwt_prod: str) -> bool:
     return selectors.user_has_manage_permission(user=user, user_sdwt_prod=user_sdwt_prod)
 
 
-def _resolve_user_sdwt_prod_role(
-    *,
-    user: Any,
-    user_sdwt_prod: str,
-) -> str | None:
-    """사용자의 대상 소속 실효 역할을 반환합니다.
-
-    소속과 무관하게 명시적으로 부여된 viewer/member/manager 역할만 반환합니다.
-    """
-
-    normalized_target = _normalize_user_sdwt_prod(user_sdwt_prod)
-    if not normalized_target:
-        return None
-    affiliation = selectors.get_affiliation_option_by_user_sdwt_prod(
-        user_sdwt_prod=normalized_target,
-    )
-    if affiliation is None:
-        return None
-    normalized_target = affiliation.user_sdwt_prod
-    if _is_privileged_user(user):
-        return UserSdwtProdAccess.Roles.MANAGER
-
-    access = selectors.get_access_row_for_user_and_prod(
-        user=user,
-        user_sdwt_prod=normalized_target,
-    )
-    if access and access.role in {
-        UserSdwtProdAccess.Roles.VIEWER,
-        UserSdwtProdAccess.Roles.MEMBER,
-        UserSdwtProdAccess.Roles.MANAGER,
-    }:
-        return access.role
-    return None
+def _resolve_user_sdwt_prod_role(*, user: Any, user_sdwt_prod: str) -> str | None:
+    """세션의 SDWT 등급을 기존 capability 명칭으로 변환합니다."""
+    ctx = get_authorization_context(user=user)
+    role = "admin" if ctx.portal_admin else dict(ctx.sdwt_roles).get(user_sdwt_prod)
+    return {"viewer": "viewer", "user": "member", "admin": "manager"}.get(role)
 
 
 def _user_can_approve_affiliation_change(*, user: Any, target_user_sdwt_prod: str) -> bool:

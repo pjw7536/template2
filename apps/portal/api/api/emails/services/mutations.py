@@ -31,118 +31,20 @@ from .rag import enqueue_rag_delete, enqueue_rag_index_for_emails
 from .storage import delete_email_objects
 
 
-def _lock_active_affiliations_by_values(
-    user_sdwt_prods: Sequence[str | None],
-) -> dict[str, Any] | None:
-    """요청 소속을 모두 활성 정규 소속으로 해석해 id 순서로 잠급니다."""
-
-    if any(
-        not isinstance(value, str) or not value.strip()
-        for value in user_sdwt_prods
-    ):
-        return None
-    normalized_values = {
-        value.strip()
-        for value in user_sdwt_prods
-        if isinstance(value, str) and value.strip()
-    }
-
-    affiliations = (
-        account_selectors.list_active_affiliations_by_user_sdwt_prods_for_update(
-            user_sdwt_prods=normalized_values,
-        )
-    )
-    affiliations_by_key = {
-        affiliation.user_sdwt_prod.strip().casefold(): affiliation
-        for affiliation in affiliations
-    }
-    requested_keys = {value.casefold() for value in normalized_values}
-    if set(affiliations_by_key) != requested_keys:
-        return None
-    return affiliations_by_key
 
 
-def _user_has_mailbox_capability(
-    *,
-    user: Any,
-    user_sdwt_prods: Sequence[str | None],
-    capability: str,
-    is_privileged: bool,
-    accessible_user_sdwt_prods: set[str] | None = None,
-    locked_affiliations: dict[str, Any] | None = None,
-) -> bool:
-    """잠금 안에서 최신 Emails 데이터 범위와 소속 capability를 함께 확인합니다.
-
-    view에서 계산한 is_privileged와 accessible_user_sdwt_prods는 조회 응답을 위한
-    snapshot일 수 있으므로 쓰기 승인 근거로 재사용하지 않습니다.
-    """
-
-    if any(
-        not isinstance(value, str) or not value.strip()
-        for value in user_sdwt_prods
-    ):
-        return False
-    normalized_values = {
-        value.strip()
-        for value in user_sdwt_prods
-        if isinstance(value, str) and value.strip()
-    }
-    if not normalized_values:
-        return False
-
-    # -----------------------------------------------------------------------------
-    # 1) 활성 소속을 id 순서로 잠근 뒤 사용자 잠금
-    # -----------------------------------------------------------------------------
-    resolved_affiliations = locked_affiliations or _lock_active_affiliations_by_values(
-        list(normalized_values),
-    )
-    if resolved_affiliations is None:
-        return False
-    locked_user = account_selectors.get_user_by_id_for_update(
-        user_id=getattr(user, "id", None),
-    )
+def _user_has_mailbox_capability(*, user: Any, user_sdwt_prods: Sequence[str | None], capability: str,
+                                is_privileged: bool, accessible_user_sdwt_prods: set[str] | None = None,
+                                locked_affiliations: dict[str, Any] | None = None) -> bool:
+    """데이터 행 잠금 안에서 원래 로그인 context와 활성 사용자 상태를 검사합니다."""
+    context = account_services.get_authorization_context(user=user)
+    locked_user = account_selectors.get_user_by_id_for_update(user_id=getattr(user, "id", None))
     if locked_user is None:
         return False
-
-    # -----------------------------------------------------------------------------
-    # 2) request cache와 전달받은 snapshot을 우회해 최신 앱 범위를 다시 계산
-    # -----------------------------------------------------------------------------
-    data_scope = account_services.get_affiliation_scope_decision(
-        user=locked_user,
-        scope_key="emails",
-    )
-    if not data_scope.get("allowed"):
-        return False
-    has_fresh_privilege = bool(
-        data_scope.get("all")
-        and account_services.has_scope_role(
-            user=locked_user,
-            scope_key="emails",
-        )
-    )
-    if has_fresh_privilege:
-        return True
-
-    accessible_values = {
-        str(value or "").strip()
-        for value in data_scope.get("userSdwtProds", [])
-        if str(value or "").strip()
-    }
-    accessible_lookup = {
-        value.strip().casefold()
-        for value in accessible_values
-        if isinstance(value, str) and value.strip()
-    }
-    if any(value.casefold() not in accessible_lookup for value in normalized_values):
-        return False
-    return account_services.has_affiliation_capability_for_ids(
-        user=locked_user,
-        affiliation_ids=[
-            resolved_affiliations[user_sdwt_prod.casefold()].id
-            for user_sdwt_prod in normalized_values
-        ],
-        capability=capability,
-    )
+    access = account_services.get_access_payload(user=locked_user, scope_key="emails", context=context)
+    return bool(access["allowed"] and user_sdwt_prods and all(
+        account_services.has_sdwt_capability(user=locked_user, user_sdwt_prod=value,
+            capability=capability, context=context) for value in user_sdwt_prods))
 
 
 @transaction.atomic
@@ -291,14 +193,9 @@ def claim_unassigned_emails_for_user(*, user: Any) -> Dict[str, int]:
         raise ValueError("Cannot claim emails into the UNASSIGNED mailbox")
 
     with transaction.atomic():
-        affiliations = _lock_active_affiliations_by_values(
-            [target_user_sdwt_prod],
-        )
-        if affiliations is None:
-            raise ValueError("Current affiliation must be active")
-        target_user_sdwt_prod = affiliations[
-            target_user_sdwt_prod.casefold()
-        ].user_sdwt_prod
+        if not _user_has_mailbox_capability(user=user, user_sdwt_prods=[target_user_sdwt_prod],
+                capability="write", is_privileged=False):
+            raise PermissionError("forbidden")
 
         # -------------------------------------------------------------------------
         # 2) 대상 메일 식별 및 업데이트
@@ -369,18 +266,6 @@ def move_emails_to_user_sdwt_prod(
         resolved_ids = [email.id for email in emails]
         if not resolved_ids:
             return {"moved": 0, "ragRegistered": 0, "ragFailed": 0, "ragMissing": 0}
-        affiliation_values = [target_user_sdwt_prod]
-        if user is not None:
-            affiliation_values.extend(email.user_sdwt_prod for email in emails)
-        locked_affiliations = _lock_active_affiliations_by_values(
-            affiliation_values,
-        )
-        target_affiliation = (
-            locked_affiliations or {}
-        ).get(target_user_sdwt_prod.casefold())
-        if target_affiliation is None:
-            raise ValueError("Target affiliation must be active")
-        target_user_sdwt_prod = target_affiliation.user_sdwt_prod
         if user is not None:
             if len(set(ids)) != len(emails) or not _user_has_mailbox_capability(
                 user=user,
@@ -391,7 +276,6 @@ def move_emails_to_user_sdwt_prod(
                 capability=account_services.AFFILIATION_CAPABILITY_WRITE,
                 is_privileged=is_privileged,
                 accessible_user_sdwt_prods=accessible_user_sdwt_prods,
-                locked_affiliations=locked_affiliations,
             ):
                 raise PermissionError("forbidden")
 

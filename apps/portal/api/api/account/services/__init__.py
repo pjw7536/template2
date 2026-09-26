@@ -70,7 +70,7 @@ from .access_runtime import (
 )
 from .dev_affiliation import ensure_dev_user_affiliation
 from .dev_access import seed_dev_access_data
-from .dev_users import ensure_dev_dummy_superuser
+from .dev_users import ensure_dev_dummy_user
 from .data_scope import (
     can_access_scope_affiliation,
     get_affiliation_scope_decision,
@@ -91,6 +91,9 @@ from .registration import register_reference_users
 
 
 __all__ = [
+    "AUTHORIZATION_SESSION_KEY", "AuthorizationContext", "bind_authorization_context",
+    "build_authorization_snapshot", "get_authorization_context", "keycloak_access_payload",
+    "keycloak_data_scope", "has_sdwt_capability",
     "register_reference_users",
     "AFFILIATION_AUDIT_SOURCE_DJANGO_ADMIN",
     "AFFILIATION_AUDIT_SOURCE_DEV_SEED",
@@ -114,7 +117,7 @@ __all__ = [
     "ensure_self_access",
     "ensure_affiliation_option",
     "ensure_access_scope",
-    "ensure_dev_dummy_superuser",
+    "ensure_dev_dummy_user",
     "ensure_dev_user_affiliation",
     "apply_all_user_accesses",
     "get_current_user_sdwt_prod_change",
@@ -157,3 +160,9 @@ __all__ = [
     "update_access_policy_rule",
     "update_user_scope_affiliation_data",
 ]
+
+from .keycloak_access import (
+    AUTHORIZATION_SESSION_KEY, AuthorizationContext, bind_authorization_context,
+    build_authorization_snapshot, get_authorization_context, keycloak_access_payload,
+    keycloak_data_scope, has_sdwt_capability,
+)

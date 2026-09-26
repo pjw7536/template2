@@ -79,7 +79,7 @@ class Client:
         form.feed(self.request(PORTAL + '/api/v1/auth/login', raw=True))
         if not form.action:
             raise AssertionError('Keycloak 로그인 form을 찾지 못했습니다.')
-        fields = {**form.fields, 'username': 'dummy.user', 'password': 'dummy-user-change-me', 'credentialId': ''}
+        fields = {**form.fields, 'username': '90000001', 'password': 'dummy-user-change-me', 'credentialId': ''}
         with self.opener.open(Request(form.action, data=urlencode(fields).encode()), timeout=60) as response:
             response.read()
         user = self.request(PORTAL + '/api/v1/auth/me')

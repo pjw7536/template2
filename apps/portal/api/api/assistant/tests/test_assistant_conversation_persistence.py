@@ -1,3 +1,4 @@
+from api.assistant.tests import _keycloak_login, _set_keycloak_access
 from . import *  # noqa: F403
 
 
@@ -9,11 +10,11 @@ class AssistantConversationPersistenceTests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.owner = User.objects.create_user(
+        self.owner = User.objects.create_user(avatarid="S71001",
             sabun="S71001",
             password="test-password",
         )
-        self.other = User.objects.create_user(
+        self.other = User.objects.create_user(avatarid="S71002",
             sabun="S71002",
             password="test-password",
         )
@@ -36,7 +37,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_openwebui_title_is_saved_for_default_conversation(self) -> None:
         """저장된 첫 질문과 답변으로 생성한 제목이 대화방에 반영되는지 확인합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation(name="새 대화")
         conversation = AssistantConversation.objects.get(id=conversation_id)
         _append_assistant_messages(
@@ -75,7 +76,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_title_generation_requires_saved_question_and_answer(self) -> None:
         """질문이나 답변이 부족하면 OpenWebUI를 호출하지 않고 409를 반환합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation(name="새 대화")
 
         with patch(
@@ -91,7 +92,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_title_generation_does_not_recreate_deleted_conversation(self) -> None:
         """OpenWebUI 응답 대기 중 삭제된 방을 제목 저장이 다시 만들지 않습니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation(name="새 대화")
         conversation = AssistantConversation.objects.get(id=conversation_id)
         _append_assistant_messages(
@@ -128,7 +129,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_message_list_returns_latest_twenty_and_delete_cascades(self) -> None:
         """기본 조회 상한과 대화방 삭제의 message cascade를 검증합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
         _append_assistant_messages(
@@ -193,7 +194,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_conversation_list_supports_search_and_cursor_pagination(self) -> None:
         """검색 조건을 유지한 signed cursor로 다음 대화방 page를 조회합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         first_id = self._create_conversation(name="EQP DOWN 분석 A")
         second_id = self._create_conversation(name="EQP DOWN 분석 B")
         self._create_conversation(name="TIP 상태 분석")
@@ -234,7 +235,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_conversation_list_keeps_pinned_rooms_first_across_pages(self) -> None:
         """오래된 고정 대화방도 첫 page에서 누락되지 않고 중복 없이 조회됩니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         pinned_id = self._create_conversation(name="오래된 고정 대화")
         pin_response = self.client.patch(
             f"/api/v1/assistant/conversations/{pinned_id}",
@@ -270,7 +271,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_summary_refresh_rolls_up_old_messages_and_clear_resets_memory(self) -> None:
         """오래된 메시지만 요약하고 메시지 초기화 시 장기 기억도 제거합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
         _append_assistant_messages(
@@ -320,7 +321,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_summary_refresh_keeps_profile_partitions_separate(self) -> None:
         """rolling summary는 Portal·Observer·Email partition을 서로 섞지 않습니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation()
         conversation = AssistantConversation.objects.get(id=conversation_id)
         messages = []
@@ -400,7 +401,7 @@ class AssistantConversationPersistenceTests(TestCase):
     def test_conversation_metadata_archive_and_message_search(self) -> None:
         """이름·고정·보관 갱신과 메시지 본문 검색을 함께 지원합니다."""
 
-        self.client.force_login(self.owner)
+        _keycloak_login(self.client, self.owner)
         conversation_id = self._create_conversation(name="초기 이름")
         conversation = AssistantConversation.objects.get(id=conversation_id)
         _append_assistant_messages(

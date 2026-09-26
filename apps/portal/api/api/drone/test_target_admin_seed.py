@@ -1,3 +1,4 @@
+from api.drone.tests import _keycloak_login, _set_keycloak_access
 # =============================================================================
 # 모듈: 분리된 Drone 회귀 테스트
 # 주요 가정: 공통 fixture와 import는 api.drone.tests에서 공유합니다.
@@ -21,31 +22,22 @@ class DroneSopTargetAdminTests(TestCase):
         """테스트용 앱 관리자와 일반 사용자를 준비합니다."""
 
         User = get_user_model()
-        self.admin_user = User.objects.create_user(
+        self.admin_user = User.objects.create_user(avatarid="S72000",
             sabun="S72000",
             password="test-password",
             knox_id="knox-72000",
         )
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S72001",
             sabun="S72001",
             password="test-password",
             knox_id="knox-72001",
         )
-        authority = User.objects.create_superuser(
+        authority = User.objects.create_superuser(avatarid="S72002",
             sabun="S72002",
             password="test-password",
             knox_id="knox-72002",
         )
-        for scope_key, role in (("portal", "user"), ("line-dashboard", "admin")):
-            _payload, status_code = account_services.decide_user_access(
-                actor=authority,
-                user_id=self.admin_user.id,
-                scope_key=scope_key,
-                action="grant",
-                reason="Drone target 관리자 테스트 권한 부여",
-                role=role,
-            )
-            self.assertEqual(status_code, 200)
+        _set_keycloak_access(self.admin_user, roles=["line-dashboard-admin"])
         self.endpoint = reverse("line-dashboard-admin-drone-targets")
 
     def _json(self, payload: dict[str, object]) -> str:
@@ -59,14 +51,14 @@ class DroneSopTargetAdminTests(TestCase):
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, 401)
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, 403)
 
     def test_admin_drone_targets_crud_flow(self) -> None:
         """target 생성, 조회, 수정, 삭제 흐름이 동작하는지 확인합니다."""
 
-        self.client.force_login(self.admin_user)
+        _keycloak_login(self.client, self.admin_user)
         response = self.client.post(
             self.endpoint,
             data=self._json({"lineId": "L1", "targetUserSdwtProd": "TARGET_A"}),
@@ -114,7 +106,7 @@ class DroneSopTargetAdminTests(TestCase):
         """target 이름 중복을 대소문자 비구분으로 차단하는지 확인합니다."""
 
         DroneSopTarget.objects.create(line_id="L1", target_user_sdwt_prod="TARGET_A")
-        self.client.force_login(self.admin_user)
+        _keycloak_login(self.client, self.admin_user)
 
         response = self.client.post(
             self.endpoint,
@@ -128,7 +120,7 @@ class DroneSopTargetAdminTests(TestCase):
     def test_admin_drone_targets_validates_and_normalizes_write_payloads(self) -> None:
         """관리자 쓰기 입력을 serializer가 검증하고 공백을 정규화하는지 확인합니다."""
 
-        self.client.force_login(self.admin_user)
+        _keycloak_login(self.client, self.admin_user)
 
         missing_line_response = self.client.post(
             self.endpoint,
@@ -193,7 +185,7 @@ class DroneSopTargetAdminTests(TestCase):
             target_code_snapshot="TARGET_A",
         )
 
-        self.client.force_login(self.admin_user)
+        _keycloak_login(self.client, self.admin_user)
         response = self.client.get(self.endpoint)
 
         self.assertEqual(response.status_code, 200)
@@ -217,7 +209,7 @@ class DroneSopJsonTargetSeedTests(TestCase):
             line="LSEED",
             user_sdwt_prod="SEED_A",
         )
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S72001",
             sabun="S72001",
             password="test-password",
             knox_id="seed-user",
@@ -380,14 +372,14 @@ class DroneSopJsonTargetSeedTests(TestCase):
                 line_id="LJSON",
                 user_sdwt_prod="SEED_A",
             ),
-            ["seed-user@example.com", "json-external@samsung.com"],
+            ["seed-user@example.com"],
         )
         self.assertEqual(
             selectors.list_messenger_receiver_knox_ids_for_user_sdwt_prod(
                 line_id="LJSON",
                 user_sdwt_prod="SEED_A",
             ),
-            ["seed-user", "json-external"],
+            ["seed-user"],
         )
 
     def test_seed_from_rows_rejects_legacy_target_alias_before_reset(self) -> None:

@@ -16,6 +16,7 @@ import {
   useActiveLineOptional,
 } from "@/lib/affiliation"
 
+import { buildAffiliationOptions } from "../utils/mailboxOptions"
 import { useEmailMailboxes } from "../hooks/useEmailMailboxes"
 import {
   buildMailboxUrl,
@@ -27,8 +28,6 @@ import {
   normalizeMailbox,
   resolveUnassignedMailboxId,
   SENT_MAILBOX_ID,
-  SENT_MAILBOX_LABEL,
-  UNASSIGNED_MAILBOX_LABEL,
 } from "../utils/mailbox"
 
 const INBOX_PREFIX = "/emails/inbox"
@@ -45,59 +44,6 @@ function buildLineOptions(lineSdwtOptions) {
     .map((line) => normalizeLineId(line?.lineId))
     .filter(Boolean)
   return Array.from(new Set(lineIds))
-}
-
-function buildAffiliationOptions(
-  lineSdwtOptions,
-  mailboxes,
-  {
-    includeSent = false,
-    includeUnassigned = false,
-    unassignedMailboxId = "",
-    unassignedLabel = UNASSIGNED_MAILBOX_LABEL,
-  } = {},
-) {
-  const lines = Array.isArray(lineSdwtOptions?.lines) ? lineSdwtOptions.lines : []
-  const mailboxSet = new Set(mailboxes)
-
-  const options = lines.flatMap((line) => {
-    const lineId = normalizeLineId(line?.lineId)
-    if (!lineId) return []
-
-    const userSdwtProds = Array.isArray(line?.userSdwtProds) ? line.userSdwtProds : []
-
-    return userSdwtProds
-      .map((value) => normalizeMailbox(value))
-      .filter((value) => value && mailboxSet.has(value))
-      .map((userSdwtProd) => ({
-        id: userSdwtProd,
-        label: `${lineId} / ${userSdwtProd}`,
-        lineId,
-        userSdwtProd,
-      }))
-  })
-
-  const normalizedUnassigned = normalizeMailbox(unassignedMailboxId)
-  if (includeUnassigned && normalizedUnassigned) {
-    options.unshift({
-      id: normalizedUnassigned,
-      label: unassignedLabel,
-      description: "미분류 메일함",
-      lineId: null,
-      userSdwtProd: normalizedUnassigned,
-    })
-  }
-
-  if (includeSent) {
-    options.unshift({
-      id: SENT_MAILBOX_ID,
-      label: SENT_MAILBOX_LABEL,
-      lineId: null,
-      userSdwtProd: null,
-    })
-  }
-
-  return options
 }
 
 export function EmailsShell({ contentMaxWidthClass, scrollAreaClassName }) {
@@ -169,7 +115,7 @@ function EmailsShellLayout({
   const currentUserSdwtProd = normalizeMailbox(user?.userSdwtProd)
   const normalizedMailboxes = mailboxes.map(normalizeMailbox).filter(Boolean)
   const baseMailboxes = normalizedMailboxes.filter((mailbox) => !isSentMailbox(mailbox))
-  const canViewUnassigned = hasScopeRole(user, "emails")
+  const canViewUnassigned = user?.isPortalAdmin === true
   const unassignedMailboxId = canViewUnassigned ? resolveUnassignedMailboxId(baseMailboxes) : ""
   const validMailboxes = canViewUnassigned
     ? Array.from(new Set([...baseMailboxes, unassignedMailboxId].filter(Boolean)))
@@ -187,7 +133,7 @@ function EmailsShellLayout({
       ? storedMailboxCandidate
       : ""
 
-  const fallbackMailbox = normalizedMailboxParam || currentUserSdwtProd || firstMailbox
+  const fallbackMailbox = normalizedMailboxParam || (validMailboxes.includes(currentUserSdwtProd) ? currentUserSdwtProd : "") || firstMailbox
   const activeMailbox = isSentRoute ? SENT_MAILBOX_ID : fallbackMailbox
   const navigationMailbox = isSentRoute ? (storedMailbox || fallbackMailbox) : fallbackMailbox
   const switcherMailbox = isSentRoute ? (storedMailbox || fallbackMailbox) : activeMailbox

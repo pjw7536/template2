@@ -12,6 +12,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.management import call_command
@@ -41,6 +42,29 @@ from .services import dashboard as service_implementation, queries as service_qu
 from .services.cache import TTLCache
 from .views import L3SpiderMetaView, L3SpiderUnmappedLineRulesView
 from .management.commands.import_l3_spider_line_name_rules import _load_rules_csv
+
+
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
 
 
 class L3SpiderCacheTests(SimpleTestCase):
@@ -477,7 +501,7 @@ class L3SpiderServiceTests(TestCase):
     def test_meta_view_passes_validated_selected_date(self) -> None:
         """Meta view는 검증된 날짜를 service에 ISO 문자열로 전달해야 합니다."""
 
-        user = get_user_model().objects.create_user(sabun="META-USER", password="test")
+        user = get_user_model().objects.create_user(avatarid="META-USER", sabun="META-USER", password="test")
         request = APIRequestFactory().get("/api/v1/l3_spider/meta", {"date": "2025-01-15"})
         force_authenticate(request, user=user)
 
@@ -1326,34 +1350,19 @@ class L3SpiderDeveloperOptionsViewTests(TestCase):
         """인증 테스트용 사용자를 생성합니다."""
 
         user_model = get_user_model()
-        self.user = user_model.objects.create_user(
+        self.user = user_model.objects.create_user(avatarid="DEV-OPTION-USER",
             sabun="DEV-OPTION-USER",
             password="pw",
         )
-        self.developer = user_model.objects.create_user(
+        self.developer = user_model.objects.create_user(avatarid="DEV-OPTION-DEVELOPER",
             sabun="DEV-OPTION-DEVELOPER",
             password="pw",
         )
-        actor = user_model.objects.create_superuser(
+        actor = user_model.objects.create_superuser(avatarid="DEV-OPTION-SUPERUSER",
             sabun="DEV-OPTION-SUPERUSER",
             password="pw",
         )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=self.developer.id,
-            scope_key="portal",
-            action="grant",
-            reason="L3 Spider 개발자 옵션 테스트 Portal 권한 부여",
-            role="user",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=self.developer.id,
-            scope_key="l3-spider",
-            action="grant",
-            reason="L3 Spider 개발자 옵션 테스트 관리자 권한 부여",
-            role="admin",
-        )
+        _set_keycloak_access(self.developer, roles=["l3-spider-admin"])
 
     def test_user_without_permission_cannot_read_unmapped_line_rules(self) -> None:
         """일반 로그인 사용자는 미매핑 규칙을 조회할 수 없어야 합니다."""
@@ -1421,12 +1430,12 @@ class L3SpiderExclusionFilterOwnershipTests(TestCase):
         """테스트용 사용자를 생성합니다."""
 
         user_model = get_user_model()
-        self.owner = user_model.objects.create_user(
+        self.owner = user_model.objects.create_user(avatarid="100001",
             username="owner",
             sabun="100001",
             password="pw",
         )
-        self.other = user_model.objects.create_user(
+        self.other = user_model.objects.create_user(avatarid="100002",
             username="other",
             sabun="100002",
             password="pw",
@@ -1513,25 +1522,25 @@ class L3SpiderMailRuleTests(TestCase):
         """테스트용 사용자를 생성합니다."""
 
         user_model = get_user_model()
-        self.owner = user_model.objects.create_user(
+        self.owner = user_model.objects.create_user(avatarid="200001",
             username="mail-owner",
             sabun="200001",
             email="mail-owner@example.com",
             password="pw",
         )
-        self.other = user_model.objects.create_user(
+        self.other = user_model.objects.create_user(avatarid="200002",
             username="mail-other",
             sabun="200002",
             email="mail-other@example.com",
             password="pw",
         )
-        self.reader = user_model.objects.create_user(
+        self.reader = user_model.objects.create_user(avatarid="200003",
             username="mail-reader",
             sabun="200003",
             email="mail-reader@example.com",
             password="pw",
         )
-        self.writer = user_model.objects.create_user(
+        self.writer = user_model.objects.create_user(avatarid="200004",
             username="mail-writer",
             sabun="200004",
             email="mail-writer@example.com",

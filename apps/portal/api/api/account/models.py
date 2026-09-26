@@ -91,7 +91,7 @@ def _collapse_user_sdwt_prod_values(values: Iterable[Any]) -> set[str]:
 
 
 class UserManager(BaseUserManager):
-    """sabun 기반 사용자 생성을 제공하는 커스텀 User 매니저입니다."""
+    """명시적인 EPID와 사번으로 사용자를 생성하는 매니저입니다."""
 
     use_in_migrations = True
 
@@ -115,6 +115,8 @@ class UserManager(BaseUserManager):
         # -----------------------------------------------------------------------------
         # 1) sabun 검증
         # -----------------------------------------------------------------------------
+        if not str(extra_fields.get("avatarid") or "").strip():
+            raise ValueError("avatarid (EPID) is required")
         if not sabun:
             raise ValueError("sabun is required")
         # -----------------------------------------------------------------------------
@@ -184,12 +186,13 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    """ADFS/OIDC 클레임에서 받은 사용자 식별 정보를 저장하는 커스텀 사용자 모델입니다."""
+    """Keycloak OIDC 클레임에서 받은 사용자 식별 정보를 저장하는 커스텀 사용자 모델입니다."""
 
     username = models.CharField(max_length=150, null=True, blank=True)
     sabun = models.CharField(max_length=50, unique=True)
     knox_id = models.CharField(max_length=150, null=True, blank=True, unique=True)
-    avatarid = models.CharField(max_length=50, null=True, blank=True)
+    avatarid = models.CharField(max_length=50, unique=True)
+    identity_profile = models.JSONField(default=dict, blank=True)
     username_en = models.CharField(max_length=150, null=True, blank=True)
     givenname = models.CharField(max_length=150, null=True, blank=True)
     surname = models.CharField(max_length=150, null=True, blank=True)
@@ -208,8 +211,8 @@ class User(AbstractUser):
 
     objects = UserManager()
 
-    USERNAME_FIELD = "sabun"
-    REQUIRED_FIELDS: list[str] = []
+    USERNAME_FIELD = "avatarid"
+    REQUIRED_FIELDS: list[str] = ["sabun"]
 
     def __str__(self) -> str:  # 사람이 읽는 표현(커버리지 제외): pragma: no cover
         """사용자 표시용 문자열을 반환합니다."""

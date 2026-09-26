@@ -49,6 +49,29 @@ import api.rag.services as rag_services
 from api.common.services import ExternalCallCancellation, ExternalCallCancelled
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 class RemovedAssistantCompatibilityRoutesTests(SimpleTestCase):
     """삭제한 Assistant 실행·저장 호환 경로가 다시 등록되지 않게 보장합니다."""
 
@@ -68,14 +91,9 @@ class RemovedAssistantCompatibilityRoutesTests(SimpleTestCase):
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
-    """테스트 사용자의 현재 앱 소속을 설정합니다."""
-
-    account_services.set_current_affiliation_for_user(
-        user=user,
-        department="Dept",
-        line="Line",
-        user_sdwt_prod=user_sdwt_prod,
-    )
+    """소속 표시 정보와 테스트에 필요한 SDWT user 그룹을 각각 설정합니다."""
+    _set_keycloak_access(user, roles=["emails-user", "assistant-user"],
+        groups=[f"/{user_sdwt_prod}/user"], sdwt=user_sdwt_prod)
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:

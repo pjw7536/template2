@@ -9,7 +9,7 @@ class ObserverAnalysisPart2Tests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S-OBSERVER-AI",
             sabun="S-OBSERVER-AI",
             password="test-password",
             knox_id="knox-observer-ai",

@@ -11,6 +11,7 @@ from threading import Barrier
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock, patch
 
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -47,6 +48,29 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
     test_case.addCleanup(patcher.stop)
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 class AppstoreScreenshotTests(TestCase):
     """appstore 스크린샷 저장/응답 동작을 검증합니다."""
 
@@ -55,12 +79,12 @@ class AppstoreScreenshotTests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.viewer = User.objects.create_user(
+        self.viewer = User.objects.create_user(avatarid="S00000",
             sabun="S00000",
             password="test-password",
             knox_id="knox-00000",
         )
-        self.client.force_login(self.viewer)
+        _keycloak_login(self.client, self.viewer)
 
     def test_create_app_stores_data_url_as_base64(self) -> None:
         """data URL이 base64 필드로 저장되는지 확인합니다."""
@@ -68,7 +92,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/입력 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S12345",
             sabun="S12345",
             password="test-password",
             knox_id="knox-12345",
@@ -104,7 +128,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/입력 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S88888",
             sabun="S88888",
             password="test-password",
             knox_id="knox-88888",
@@ -140,7 +164,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/입력 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S77777",
             sabun="S77777",
             password="test-password",
             knox_id="knox-77777",
@@ -186,7 +210,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/기존 앱 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S99999",
             sabun="S99999",
             password="test-password",
             knox_id="knox-99999",
@@ -220,7 +244,7 @@ class AppstoreScreenshotTests(TestCase):
         """커버 필드 저장 실패 시 기존 DB 값을 보존해야 합니다."""
 
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S99998",
             sabun="S99998",
             password="test-password",
             knox_id="knox-99998",
@@ -259,7 +283,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/앱 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S54321",
             sabun="S54321",
             password="test-password",
             knox_id="knox-54321",
@@ -299,7 +323,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/앱 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S22222",
             sabun="S22222",
             password="test-password",
             knox_id="knox-22222",
@@ -342,7 +366,7 @@ class AppstoreScreenshotTests(TestCase):
         # 1) 사용자/앱 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S33333",
             sabun="S33333",
             password="test-password",
             knox_id="knox-33333",
@@ -393,7 +417,7 @@ class AppstoreContactDefaultTests(TestCase):
         # 1) 사용자 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S11111",
             sabun="S11111",
             password="test-password",
             knox_id="knox-11111",
@@ -419,7 +443,7 @@ class AppstoreContactDefaultTests(TestCase):
         # 1) 사용자 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S11112",
             sabun="S11112",
             password="test-password",
             knox_id="knox-11112",
@@ -446,12 +470,12 @@ class AppstoreCommentReplyLikeTests(TestCase):
         """댓글/좋아요 테스트용 사용자와 앱을 준비합니다."""
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S22222",
             sabun="S22222",
             password="test-password",
             knox_id="knox-22222",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         self.app = create_app(
             owner=self.user,
             name="Test App",
@@ -546,7 +570,7 @@ class AppstoreDisplayOrderTests(TestCase):
         """순서 테스트용 사용자와 앱 세 개를 준비합니다."""
 
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S30000",
             sabun="S30000",
             password="test-password",
             knox_id="knox-30000",
@@ -666,7 +690,7 @@ class AppstoreDisplayOrderConcurrencyTests(TransactionTestCase):
         """동시 생성 요청이 공유할 사용자 레코드를 준비합니다."""
 
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S30001",
             sabun="S30001",
             password="test-password",
             knox_id="knox-30001",
@@ -711,7 +735,7 @@ class AppstoreDummyDataTests(TestCase):
         """seed 소유자와 삭제되면 안 되는 일반 앱을 준비합니다."""
 
         User = get_user_model()
-        self.owner = User.objects.create_user(
+        self.owner = User.objects.create_user(avatarid="S30002",
             sabun="S30002",
             password="test-password",
             username="Dummy Owner",
@@ -760,7 +784,7 @@ class AppstoreDummyDataCommandTests(SimpleTestCase):
         "api.appstore.management.commands.seed_appstore_dummy_data.seed_appstore_dummy_data"
     )
     @patch(
-        "api.appstore.management.commands.seed_appstore_dummy_data.ensure_dev_dummy_superuser"
+        "api.appstore.management.commands.seed_appstore_dummy_data.ensure_dev_dummy_user"
     )
     def test_command_uses_dev_dummy_owner(
         self,
@@ -792,13 +816,13 @@ class AppstoreEndpointTests(TestCase):
         """엔드포인트 테스트용 사용자와 기본 앱을 생성합니다."""
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S33333",
             sabun="S33333",
             password="test-password",
             email="s33333@example.com",
             knox_id="knox-33333",
         )
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         self.app = create_app(
             owner=self.user,
             name="Test App",
@@ -1106,34 +1130,19 @@ class AppstoreEndpointTests(TestCase):
         # 1) AppStore 관리자 사용자 준비
         # -----------------------------------------------------------------------------
         User = get_user_model()
-        app_admin = User.objects.create_user(
+        app_admin = User.objects.create_user(avatarid="S44444",
             sabun="S44444",
             password="test-password",
             email="s44444@example.com",
             knox_id="knox-44444",
         )
-        actor = User.objects.create_superuser(
+        actor = User.objects.create_superuser(avatarid="S44445",
             sabun="S44445",
             password="test-password",
             knox_id="knox-44445",
         )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=app_admin.id,
-            scope_key="portal",
-            action="grant",
-            reason="AppStore 관리자 테스트 Portal 권한 부여",
-            role="user",
-        )
-        account_services.decide_user_access(
-            actor=actor,
-            user_id=app_admin.id,
-            scope_key="appstore",
-            action="grant",
-            reason="AppStore 관리자 테스트 앱 권한 부여",
-            role="admin",
-        )
-        self.client.force_login(app_admin)
+        _set_keycloak_access(app_admin, roles=["appstore-admin"])
+        _keycloak_login(self.client, app_admin)
 
         # -----------------------------------------------------------------------------
         # 2) 타인 앱 편집 권한 노출 확인

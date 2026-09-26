@@ -8,7 +8,7 @@ class AssistantRunBackfillTests(TestCase):
         """backfill 대상 사용자와 대화방을 준비합니다."""
 
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S99000",
             sabun="S99000",
             password="test-password",
         )

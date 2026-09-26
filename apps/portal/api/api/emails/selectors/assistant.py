@@ -8,6 +8,7 @@ from typing import Any
 
 from django.db.models import Q
 
+from api.account import services as account_services
 from ..models import Email
 from .mailboxes import get_accessible_user_sdwt_prods_for_user, resolve_sender_id_from_user
 
@@ -32,9 +33,12 @@ def resolve_assistant_email_scope(
     normalized_mailbox = str(mailbox or "").strip()
     if not normalized_mailbox:
         return None
+    data_scope = account_services.get_effective_affiliation_scope(user=user, scope_key="emails")
+    if not data_scope["allowed"]:
+        return None
     accessible_mailboxes = get_accessible_user_sdwt_prods_for_user(user)
     is_sent_mailbox = normalized_mailbox.casefold() == "sent"
-    if not is_sent_mailbox and normalized_mailbox not in accessible_mailboxes:
+    if not data_scope["all"] and not is_sent_mailbox and normalized_mailbox not in accessible_mailboxes:
         return None
 
     normalized_email_id = str(email_id or "").strip()
@@ -48,6 +52,8 @@ def resolve_assistant_email_scope(
         email_query |= Q(id=int(normalized_email_id))
     email = Email.objects.filter(email_query).first()
     if email is None:
+        return None
+    if not data_scope["all"] and email.user_sdwt_prod not in accessible_mailboxes:
         return None
     if is_sent_mailbox:
         sender_id = resolve_sender_id_from_user(user)

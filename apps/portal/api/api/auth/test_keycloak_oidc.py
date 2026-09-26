@@ -1,147 +1,161 @@
-# =============================================================================
-# 모듈 설명: Keycloak 로그인 전용 OIDC 계약을 검증합니다.
-# - 주요 대상: code+PKCE authorize, callback, JWKS 검증, logout
-# - 불변 조건: Keycloak 로그인 후에도 Portal 권한 원천은 Django에 유지됩니다.
-# =============================================================================
+"""Keycloak code flow와 서명된 토큰·세션 계약을 검증합니다."""
+import time
+from unittest.mock import patch, Mock
+from urllib.parse import urlparse, parse_qs
 
-"""Keycloak login-only OIDC 흐름의 회귀 테스트입니다."""
-
-from __future__ import annotations
-
-from unittest.mock import Mock, patch
-from urllib.parse import parse_qs, urlparse
-
-from django.contrib.auth import get_user_model
+import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from api.auth.services import keycloak_oidc
-
+from api.account.services import AUTHORIZATION_SESSION_KEY
+from .services import keycloak_oidc
 
 KEYCLOAK_SETTINGS = {
-    "OIDC_PROVIDER": "keycloak",
-    "OIDC_PROVIDER_CONFIGURED": True,
-    "OIDC_CLIENT_ID": "portal",
-    "OIDC_CLIENT_SECRET": "portal-local-secret",
-    "OIDC_ISSUER": "http://localhost:8180/realms/portal",
-    "OIDC_REDIRECT_URI": "http://localhost:8080/auth/keycloak/callback/",
-    "OIDC_TOKEN_URL": "http://keycloak:8080/realms/portal/protocol/openid-connect/token",
-    "OIDC_JWKS_URL": "http://keycloak:8080/realms/portal/protocol/openid-connect/certs",
-    "ADFS_AUTH_URL": "http://localhost:8180/realms/portal/protocol/openid-connect/auth",
-    "ADFS_LOGOUT_URL": "http://localhost:8180/realms/portal/protocol/openid-connect/logout",
-    "FRONTEND_BASE_URL": "http://localhost:8080",
-    "ALLOWED_REDIRECT_HOSTS": {"localhost:8080"},
+    "OIDC_PROVIDER": "keycloak", "OIDC_PROVIDER_CONFIGURED": True,
+    "OIDC_CLIENT_ID": "portal", "OIDC_CLIENT_SECRET": "test-secret",
+    "OIDC_ISSUER": "https://sso.example/realms/portal",
+    "OIDC_AUTH_URL": "https://sso.example/auth", "OIDC_LOGOUT_URL": "https://sso.example/logout",
+    "OIDC_REDIRECT_URI": "https://portal.example/auth/keycloak/callback/",
+    "OIDC_TOKEN_URL": "https://sso.example/token", "OIDC_JWKS_URL": "https://sso.example/certs",
+    "FRONTEND_BASE_URL": "https://portal.example", "ALLOWED_REDIRECT_HOSTS": ["portal.example"],
 }
 
 
 @override_settings(**KEYCLOAK_SETTINGS)
-class KeycloakOidcFlowTests(TestCase):
-    """Keycloak browser/API 로그인 경계를 검증합니다."""
-
-    def test_login_uses_authorization_code_and_pkce(self) -> None:
-        """로그인 시작은 code flow와 S256 PKCE를 사용해야 합니다."""
-
-        response = self.client.get(reverse("auth-login"), {"target": "/account"})
-
+class KeycloakFlowTests(TestCase):
+    def start(self):
+        response = self.client.get(reverse("auth-login"), {"target": "https://portal.example/emails"})
         self.assertEqual(response.status_code, 302)
-        query = parse_qs(urlparse(response["Location"]).query)
-        self.assertEqual(query["response_type"], ["code"])
-        self.assertEqual(query["response_mode"], ["query"])
-        self.assertEqual(query["code_challenge_method"], ["S256"])
-        self.assertTrue(query["code_challenge"][0])
-        self.assertTrue(self.client.session.get(keycloak_oidc.PKCE_SESSION_KEY))
+        return parse_qs(urlparse(response.url).query)
 
-    @patch("api.auth.services.keycloak_oidc.decode_id_token")
-    @patch("api.auth.services.keycloak_oidc.exchange_code")
-    def test_callback_logs_in_with_existing_django_permission_model(
-        self,
-        exchange_code: Mock,
-        decode_id_token: Mock,
-    ) -> None:
-        """검증된 Keycloak identity는 기존 Django 사용자로만 저장되어야 합니다."""
+    def claims(self, expected_nonce, **updates):
+        return {"userid": "9001", "sabun": "1001", "loginid": "test.user", "nonce": expected_nonce,
+                "resource_access": {"portal": {"roles": ["portal-all-apps"]}},
+                "sub": "kc-1", "username": "테스트", "deptid": "ETCH", "groups": ["/SDWT-A/viewer"], **updates}
 
-        login_response = self.client.get(reverse("auth-login"))
-        self.assertEqual(login_response.status_code, 302)
-        nonce = self.client.session["oidc_nonce"]
-        state = parse_qs(urlparse(login_response["Location"]).query)["state"][0]
-        exchange_code.return_value = {"id_token": "signed-keycloak-id-token"}
-        decode_id_token.return_value = {
-            "sub": "keycloak-user-id",
-            "sabun": "S000001",
-            "preferred_username": "dummy.user",
-            "name": "Dummy User",
-            "given_name": "Dummy",
-            "family_name": "User",
-            "email": "dummy.user@example.com",
-            "nonce": nonce,
-        }
+    def finish(self, params, claims=None):
+        with patch.object(keycloak_oidc, "exchange_code", return_value={"id_token": "signed-token"}), patch.object(keycloak_oidc, "decode_id_token", return_value=claims or self.claims(params["nonce"][0])):
+            return self.client.get(reverse("auth-keycloak-callback"), {"code": "one-time", "state": params["state"][0]})
 
-        response = self.client.get(
-            reverse("auth-keycloak-callback"),
-            {"code": "one-time-code", "state": state},
-        )
+    def test_login_uses_random_state_pkce_and_code(self):
+        a = self.start(); b = self.start()
+        self.assertNotEqual(a["state"], b["state"])
+        self.assertEqual(b["response_type"], ["code"])
+        self.assertEqual(b["code_challenge_method"], ["S256"])
+        self.assertNotIn("portal.example", b["state"][0])
 
-        self.assertEqual(response.status_code, 302)
-        user = get_user_model().objects.get(sabun="S000001")
-        self.assertEqual(user.knox_id, "dummy.user")
-        self.assertEqual(user.email, "dummy.user@example.com")
-        self.assertFalse(user.is_superuser)
-        self.assertEqual(
-            self.client.session[keycloak_oidc.ID_TOKEN_SESSION_KEY],
-            "signed-keycloak-id-token",
-        )
-        exchange_code.assert_called_once()
-
-    def test_callback_requires_code_and_state(self) -> None:
-        """Keycloak callback은 code와 state 누락을 canonical 오류로 반환해야 합니다."""
-
-        response = self.client.get(reverse("auth-keycloak-callback"))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(sorted(response.json()["fieldErrors"]), ["code", "state"])
-
-    def test_logout_includes_id_token_hint_and_safe_redirect(self) -> None:
-        """Keycloak logout은 SSO 세션과 Portal 복귀 주소를 함께 전달해야 합니다."""
-
-        session = self.client.session
-        session[keycloak_oidc.ID_TOKEN_SESSION_KEY] = "stored-id-token"
-        session.save()
-
+    def test_callback_me_and_logout(self):
+        response = self.finish(self.start())
+        self.assertEqual(response.url, "https://portal.example/emails")
+        payload = self.client.get(reverse("auth-me")).json()
+        self.assertEqual(payload["avatarId"], "9001")
+        self.assertTrue(payload["hasAllAppsAccess"])
+        self.assertFalse(payload["isPortalAdmin"])
+        self.assertEqual(payload["sdwtAccess"], {"SDWT-A": "viewer"})
+        self.assertTrue(payload["scopeAccess"]["emails"]["allowed"])
+        self.assertIn(AUTHORIZATION_SESSION_KEY, self.client.session)
         response = self.client.post(reverse("auth-logout"))
-
-        self.assertEqual(response.status_code, 200)
         query = parse_qs(urlparse(response.json()["logoutUrl"]).query)
-        self.assertEqual(query["client_id"], ["portal"])
-        self.assertEqual(query["id_token_hint"], ["stored-id-token"])
-        self.assertEqual(query["post_logout_redirect_uri"], ["http://localhost:8080"])
+        self.assertEqual(query["id_token_hint"], ["signed-token"])
+        self.assertNotIn(AUTHORIZATION_SESSION_KEY, self.client.session)
+
+    def test_state_mismatch_never_exchanges_code(self):
+        self.start()
+        with patch.object(keycloak_oidc, "exchange_code") as exchange:
+            response = self.client.get(reverse("auth-keycloak-callback"), {"code": "code", "state": "wrong"})
+            exchange.assert_not_called()
+        self.assertIn("invalid_state", response.url)
+
+    def test_callback_is_single_use(self):
+        params = self.start(); self.finish(params)
+        self.assertIn("invalid_state", self.finish(params).url)
+
+    def test_nonce_mismatch_missing_identity_and_epid_fallback(self):
+        for update in [{"nonce": "wrong"}, {"userid": ""}, {"loginid": "", "preferred_username": "9001"}, {"sabun": ["1001"]}]:
+            params = self.start()
+            response = self.finish(params, self.claims(params["nonce"][0], **update))
+            self.assertIn("error=", response.url)
+            self.assertNotIn(AUTHORIZATION_SESSION_KEY, self.client.session)
+
+    def test_cancel_consumes_login_transaction(self):
+        params = self.start()
+        response = self.client.get(reverse("auth-keycloak-callback"), {"error": "access_denied", "state": params["state"][0]})
+        self.assertIn("login_cancelled", response.url)
+        self.assertNotIn(keycloak_oidc.PKCE_SESSION_KEY, self.client.session)
+
+    def test_network_failure_does_not_login(self):
+        params = self.start()
+        with patch.object(keycloak_oidc, "exchange_code", side_effect=keycloak_oidc.KeycloakOidcError()):
+            response = self.client.get(reverse("auth-keycloak-callback"), {"code": "code", "state": params["state"][0]})
+        self.assertIn("token_exchange_failed", response.url)
+        self.assertNotIn(AUTHORIZATION_SESSION_KEY, self.client.session)
+
+    def test_retired_write_endpoint(self):
+        self.finish(self.start())
+        response = self.client.post("/api/v1/account/access/request", data={})
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("managed_by_keycloak", response.content.decode())
+
+    def test_old_callback_and_post_are_not_supported(self):
+        self.assertEqual(self.client.post("/auth/google/callback/").status_code, 404)
+        self.assertEqual(self.client.post(reverse("auth-keycloak-callback")).status_code, 405)
 
 
 @override_settings(**KEYCLOAK_SETTINGS)
-class KeycloakJwksValidationTests(TestCase):
-    """Keycloak JWKS 검증 옵션을 고정합니다."""
+class KeycloakSignedTokenTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    @patch("api.auth.services.keycloak_oidc.jwt.decode")
-    @patch("api.auth.services.keycloak_oidc.jwt.PyJWKClient")
-    def test_decode_requires_signature_issuer_audience_and_time_claims(
-        self,
-        jwks_client_class: Mock,
-        jwt_decode: Mock,
-    ) -> None:
-        """JWKS decode는 운영 보안 검증 항목을 비활성화하지 않아야 합니다."""
+    def token(self, **updates):
+        claims = {"iss": KEYCLOAK_SETTINGS["OIDC_ISSUER"], "aud": "portal", "sub": "kc-1",
+                  "iat": int(time.time()), "exp": int(time.time()) + 60, "nonce": "nonce", **updates}
+        return jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "key-1"})
 
-        signing_key = Mock()
-        signing_key.key = "public-key"
-        jwks_client_class.return_value.get_signing_key_from_jwt.return_value = signing_key
-        jwt_decode.return_value = {"sub": "user-id"}
+    def decode(self, token):
+        with patch.object(keycloak_oidc, "_jwks_client") as client:
+            client.return_value.get_signing_key_from_jwt.return_value = Mock(key=self.key.public_key())
+            return keycloak_oidc.decode_id_token(token)
 
-        result = keycloak_oidc.decode_id_token("signed-token")
+    def test_valid_signed_token(self):
+        self.assertEqual(self.decode(self.token())["sub"], "kc-1")
 
-        self.assertEqual(result, {"sub": "user-id"})
-        _, kwargs = jwt_decode.call_args
-        self.assertEqual(kwargs["audience"], "portal")
-        self.assertEqual(kwargs["issuer"], KEYCLOAK_SETTINGS["OIDC_ISSUER"])
-        self.assertEqual(kwargs["algorithms"], ["RS256"])
-        self.assertEqual(
-            kwargs["options"]["require"],
-            ["exp", "iat", "iss", "sub"],
-        )
+    def test_expired_wrong_issuer_audience_and_azp(self):
+        for updates in [{"exp": 1}, {"iss": "https://other.example"}, {"aud": "other"}, {"azp": "other"}, {"aud": ["portal", "other"]}]:
+            with self.assertRaises(jwt.PyJWTError):
+                self.decode(self.token(**updates))
+
+    def test_signature_is_required(self):
+        other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        with self.assertRaises(jwt.PyJWTError):
+            self.decode(jwt.encode({"sub": "fake"}, other, algorithm="RS256"))
+
+@override_settings(**KEYCLOAK_SETTINGS)
+class KeycloakSessionBoundaryTests(TestCase):
+    """동일 사용자 여러 세션과 로컬 관리자 인증의 경계를 검증합니다."""
+
+    start = KeycloakFlowTests.start
+    claims = KeycloakFlowTests.claims
+    finish = KeycloakFlowTests.finish
+
+    def test_relogin_does_not_change_another_session_permissions(self):
+        from django.test import Client
+        original_client = self.client
+        self.finish(self.start())
+        self.client = Client()
+        params = self.start()
+        self.finish(params, self.claims(params["nonce"][0], deptid="OTHER", groups=[], resource_access={}))
+        self.assertFalse(self.client.get(reverse("auth-me")).json()["scopeAccess"]["emails"]["allowed"])
+        self.assertTrue(original_client.get(reverse("auth-me")).json()["scopeAccess"]["emails"]["allowed"])
+
+    def test_local_superuser_and_basic_auth_cannot_access_business_api(self):
+        import base64
+        from django.contrib.auth import get_user_model
+        user = get_user_model().objects.create_superuser(avatarid="emergency", sabun="emergency", password="local-only", knox_id="emergency")
+        self.client.force_login(user)
+        self.assertEqual(self.client.get(reverse("emails-inbox")).status_code, 403)
+        self.client.logout()
+        header = "Basic " + base64.b64encode(b"emergency:local-only").decode()
+        self.assertEqual(self.client.get(reverse("emails-inbox"), HTTP_AUTHORIZATION=header).status_code, 401)

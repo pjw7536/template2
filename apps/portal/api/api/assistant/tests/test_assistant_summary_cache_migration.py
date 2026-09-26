@@ -7,7 +7,7 @@ class AssistantSummaryCacheMigrationTests(TestCase):
     def test_migration_resets_only_rebuildable_shared_summary_cache(self) -> None:
         """공유·Email 요약만 삭제하고 원본 메시지와 다른 문맥 요약은 보존합니다."""
 
-        user = get_user_model().objects.create_user(
+        user = get_user_model().objects.create_user(avatarid="S71000",
             sabun="S71000",
             password="test-password",
         )

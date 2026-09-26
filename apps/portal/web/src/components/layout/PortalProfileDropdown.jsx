@@ -119,7 +119,7 @@ export function PortalProfileDropdown({
           {teamMenuItems.map(renderMenuItem)}
         </DropdownMenuGroup>
 
-        {user?.isSuperuser ? (
+        {user?.isPortalAdmin ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

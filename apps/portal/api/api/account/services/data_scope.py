@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from django.db import transaction
 from django.utils import timezone
 
+from .keycloak_access import keycloak_data_scope
 from .. import selectors
 from ..models import (
     AccessAuditLog,
@@ -139,99 +140,20 @@ def _resolve_affiliation_scope_state(
     }
 
 
-def get_affiliation_scope_decision(
-    *,
-    user: Any,
-    scope_key: str,
-    request: Any | None = None,
-) -> dict[str, object]:
-    """쓰기 경로에서 사용할 경량 소속 범위 판정 결과를 반환합니다.
-
-    `all=True`는 모든 활성 소속을 뜻하므로 개별 소속 목록을 조회하지 않습니다.
-    """
-
-    state = _resolve_affiliation_scope_state(
-        user=user,
-        scope_key=scope_key,
-        request=request,
-    )
-    affiliations = state.get("_affiliations", [])
-    return {
-        key: value
-        for key, value in state.items()
-        if not key.startswith("_")
-    } | {
-        "userSdwtProds": [affiliation.user_sdwt_prod for affiliation in affiliations],
-    }
+def get_affiliation_scope_decision(*, user: Any, scope_key: str, request: Any | None = None, context=None) -> dict[str, object]:
+    """조직 사전 등록 없이 세션의 SDWT 범위를 반환합니다."""
+    return keycloak_data_scope(user=user, scope_key=scope_key, context=context)
 
 
-def get_effective_affiliation_scope(
-    *,
-    user: Any,
-    scope_key: str,
-    request: Any | None = None,
-) -> dict[str, object]:
-    """앱 접근을 포함해 사용자의 상세 실효 소속 데이터 범위를 반환합니다."""
-
-    state = _resolve_affiliation_scope_state(
-        user=user,
-        scope_key=scope_key,
-        request=request,
-    )
-    affiliations = state.get("_affiliations", [])
-    source_by_id = state.get("_sourceById", {})
-    if state.get("all"):
-        affiliations = selectors.list_active_affiliations()
-        affiliation_ids = [affiliation.id for affiliation in affiliations]
-        serialized_affiliations = [
-            _serialize_affiliation(affiliation)
-            for affiliation in affiliations
-        ]
-    else:
-        affiliation_ids = state.get("affiliationIds", [])
-        serialized_affiliations = [
-            {
-                **_serialize_affiliation(affiliation),
-                "source": source_by_id[affiliation.id],
-            }
-            for affiliation in affiliations
-        ]
-
-    return {
-        key: value
-        for key, value in state.items()
-        if not key.startswith("_") and key != "affiliationIds"
-    } | {
-        "affiliationIds": affiliation_ids,
-        "affiliations": serialized_affiliations,
-    }
+def get_effective_affiliation_scope(*, user: Any, scope_key: str, request: Any | None = None, context=None) -> dict[str, object]:
+    """조직 사전 등록 없이 세션의 SDWT 범위를 반환합니다."""
+    return keycloak_data_scope(user=user, scope_key=scope_key, context=context)
 
 
-def get_accessible_user_sdwt_prods_for_scope(
-    *,
-    user: Any,
-    scope_key: str,
-    request: Any | None = None,
-) -> set[str]:
-    """앱 scope에서 접근 가능한 활성 `user_sdwt_prod` 집합을 반환합니다."""
-
-    resolved = get_affiliation_scope_decision(
-        user=user,
-        scope_key=scope_key,
-        request=request,
-    )
-    if not resolved.get("allowed") or resolved.get("type") != AccessScope.DataScopeTypes.AFFILIATION:
-        return set()
-    if resolved.get("all"):
-        return {
-            affiliation.user_sdwt_prod
-            for affiliation in selectors.list_active_affiliations()
-        }
-    return {
-        str(value or "").strip()
-        for value in resolved.get("userSdwtProds", [])
-        if str(value or "").strip()
-    }
+def get_accessible_user_sdwt_prods_for_scope(*, user: Any, scope_key: str,
+                                           request: Any | None = None, context=None) -> set[str]:
+    """유한한 SDWT 범위만 반환합니다. 전체 범위는 상세 판정의 all로 처리합니다."""
+    return set(keycloak_data_scope(user=user, scope_key=scope_key, context=context)["userSdwtProds"])
 
 
 def can_access_scope_affiliation(

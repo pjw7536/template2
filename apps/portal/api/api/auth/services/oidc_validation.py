@@ -6,8 +6,8 @@
 
 """OIDC callback 검증 헬퍼 모음.
 
-- 주요 대상: state 복원, 안전한 redirect target 계산, id_token 디코드
-- 주요 함수: decode_state_to_target, resolve_safe_redirect_target, decode_id_token
+- 주요 대상: 안전한 redirect target 계산, nonce·신원 검증
+- 주요 함수: resolve_safe_redirect_target, validate_nonce, validate_required_identity
 - 가정/불변 조건: 세션 nonce와 id_token nonce가 일치해야 로그인 가능함
 """
 from __future__ import annotations
@@ -20,41 +20,7 @@ from django.http import HttpRequest
 
 from api.common.services import resolve_frontend_target
 from . import keycloak_oidc
-from .oidc_utils import (
-    PUB_KEY,
-    b64d,
-    is_allowed_redirect,
-)
-
-
-def decode_state_to_target(state: str, request: HttpRequest) -> str:
-    """state(b64url)를 redirect target 문자열로 복원합니다.
-
-    입력:
-    - state: base64url 인코딩된 문자열
-    - 요청: Django HttpRequest
-
-    반환:
-    - str: 복원된 target 또는 기본 프론트엔드 URL
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음(복원 실패 시 기본 프론트엔드 URL 반환)
-    """
-    try:
-        decoded_state = b64d(state)
-    except Exception:
-        return resolve_frontend_target(None, request=request)
-
-    if isinstance(decoded_state, str):
-        return decoded_state
-
-    try:
-        return decoded_state.decode("utf-8")
-    except Exception:
-        return str(decoded_state, "utf-8", errors="ignore")
+from .oidc_utils import is_allowed_redirect
 
 
 def resolve_safe_redirect_target(target: Optional[str], request: HttpRequest) -> str:
@@ -79,57 +45,9 @@ def resolve_safe_redirect_target(target: Optional[str], request: HttpRequest) ->
     return resolved
 
 
-def ensure_pubkey_ready() -> None:
-    """PUB_KEY 준비 상태를 확인합니다.
-
-    입력:
-    - 없음
-
-    반환:
-    - 없음
-
-    부작용:
-    - 없음
-
-    오류:
-    - RuntimeError: 공개키 설정이 없을 때
-    """
-    if getattr(settings, "OIDC_PROVIDER", "adfs") == "keycloak":
-        return
-    if not PUB_KEY:
-        raise RuntimeError("OIDC public key (PUB_KEY) is not configured.")
-
-
 def decode_id_token(raw_id_token: str) -> Dict[str, Any]:
-    """id_token(JWT)을 디코드해 클레임 딕셔너리를 반환합니다.
-
-    입력:
-    - raw_id_token: id_token 문자열
-
-    반환:
-    - Dict[str, Any]: JWT 클레임
-
-    부작용:
-    - 없음
-
-    오류:
-    - jwt.PyJWTError: 토큰 파싱/검증 실패
-    """
-    if getattr(settings, "OIDC_PROVIDER", "adfs") == "keycloak":
-        return keycloak_oidc.decode_id_token(raw_id_token)
-
-    return jwt.decode(
-        raw_id_token,
-        PUB_KEY,
-        algorithms=["RS256"],
-        options={
-            # 사내 시스템 전용 기존 동작을 보존하기 위해 검증 비활성 설정을 유지합니다.
-            "verify_signature": False,
-            "verify_exp": False,
-            "verify_aud": False,
-            "verify_iss": False,
-        },
-    )
+    """Keycloak JWKS와 필수 표준 claim을 검증합니다."""
+    return keycloak_oidc.decode_id_token(raw_id_token)
 
 
 def map_token_error(exc: jwt.PyJWTError) -> str:
@@ -178,7 +96,7 @@ def validate_nonce(*, claims: Dict[str, Any], expected_nonce: Optional[str]) -> 
 def validate_required_identity(
     info: Dict[str, Optional[str]],
 ) -> tuple[Optional[str], Optional[str], Optional[str]]:
-    """로그인에 필요한 sabun/knox_id 값을 검증합니다.
+    """로그인에 필요한 EPID/sabun/knox_id 값을 검증합니다.
 
     입력:
     - info: 클레임에서 추출한 사용자 정보
@@ -192,6 +110,8 @@ def validate_required_identity(
     오류:
     - 없음
     """
+    if not info.get("avatarid"):
+        return None, None, "missing_userid"
     sabun = info.get("sabun")
     knox_id = info.get("knox_id")
     if not sabun:
@@ -224,8 +144,6 @@ def append_error_to_target(target: str, error_code: str) -> str:
 __all__ = [
     "append_error_to_target",
     "decode_id_token",
-    "decode_state_to_target",
-    "ensure_pubkey_ready",
     "map_token_error",
     "resolve_safe_redirect_target",
     "validate_nonce",

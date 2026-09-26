@@ -381,3 +381,15 @@
 - EPID는 기본 username, 사람 이름은 display_name, 이메일·성/이름은 기본 email·firstName·lastName을 유지한다.
 - 기존 값 복사는 별도 dry-run 기본 도구로 수행하며 이전 속성은 삭제하지 않는다. 신규 값과 충돌하면 중단한다.
 - [실행·검증 기록](plans/keycloak-claim-storage.md)을 참고한다.
+
+## 2026-09-25: Portal Keycloak 인증·세션 권한 전환
+
+- 새 DB를 전제로 EPID(`userid` → `avatarid`)를 필수 고유 로그인 식별자로 사용한다. 사번으로 계정을 연결하지 않는다.
+- 내부 팀은 `PORTAL_INTERNAL_DEPT_IDS`의 deptid로 판정한다. 모든 활성 앱을 사용하지만 관리 기능이나 SDWT 권한은 자동 부여하지 않는다.
+- 외부 사용자는 Portal client의 `<scope>-user`·`portal-all-apps`, 관리 기능은 지원 앱의 `<scope>-admin`·`portal-admin`으로 관리한다. 다른 client/realm 역할은 무시한다.
+- SDWT 그룹은 `/이름/viewer|user|admin`이며 조회 / 조회·수정 / 조회·수정·삭제에 대응한다. 소속 속성과 독립적이며 전체 조직 목록을 동기화하지 않는다.
+- 검증된 권한은 로그인별 서버 세션에 고정한다. 다른 세션의 재로그인이 기존 세션 권한을 바꾸지 않는다. DB의 최신 프로필은 표시·수신인 조회용이며 권한 판정에는 사용하지 않는다.
+- Portal 권한·소속 변경 API는 410으로 종료한다. 화면은 조회와 메일·메신저 요청 안내를 제공한다. 비상 Django 관리자·Basic 인증은 업무 API 권한을 얻지 못한다.
+- 이 결정이 이전 Portal 사전 등록·DB 권한 원본 계약을 대체한다. [실행·검증 기록](plans/portal-keycloak-transition.md).
+
+- 2026-09-26: Portal 앱 접근은 Keycloak client 역할만 판정한다. 조직 정책은 운영자가 portal-members 그룹 가입으로 관리하며 portal-all-apps를 상속한다. deptid와 이전 internal snapshot은 접근 근거로 사용하지 않는다. SDWT 권한은 별도 유지한다.

@@ -15,8 +15,8 @@ const fixtures = {
 function portalFixture(component) {
   const common = { OIDC_PROVIDER: 'keycloak', OIDC_CLIENT_ID: 'portal', OIDC_CLIENT_SECRET: 'private-marker',
     OIDC_ISSUER: 'https://sso.test/realms/portal', OIDC_REDIRECT_URI: 'https://portal.test/auth/callback',
-    FRONTEND_BASE_URL: 'https://portal.test', ADFS_AUTH_URL: 'https://sso.test/auth',
-    ADFS_LOGOUT_URL: 'https://sso.test/logout', OIDC_TOKEN_URL: 'https://sso.test/token', OIDC_JWKS_URL: 'https://sso.test/keys' };
+    FRONTEND_BASE_URL: 'https://portal.test', OIDC_AUTH_URL: 'https://sso.test/auth',
+    OIDC_LOGOUT_URL: 'https://sso.test/logout', OIDC_TOKEN_URL: 'https://sso.test/token', OIDC_JWKS_URL: 'https://sso.test/keys' };
   const inputs = {
     api: { ...common, DJANGO_SECRET_KEY: 'private-marker', DJANGO_ALLOWED_HOSTS: 'portal.test',
       DJANGO_DB_NAME: 'portal', DJANGO_DB_USER: 'portal', DJANGO_DB_PASSWORD: 'private-marker',
@@ -243,6 +243,7 @@ if(a[0]==='get') {
  if(a[1]==='identity-provider/instances') console.log(process.env.MOCK_EXISTING==='true'?'oidc':'');
  else if(a[1]==='realms') console.log(process.env.MOCK_EXISTING==='true'?'master,unused'.replace(',', '\\n')+'\\netch':'master');
  else if(a[1]==='realms/etch') console.log(process.env.MOCK_EMAIL_AS_USERNAME || 'false');
+ else if(a[1]==='groups') console.log(process.env.MOCK_EXISTING==='true'?'portal-members':'');
  else if(a[1]==='clients') console.log(fs.existsSync(process.env.MOCK_STATE)?'client-uuid':'');
  else if(a[1].endsWith('/mappers')||a[1].endsWith('/models')) console.log(process.env.MOCK_RETIRED==='1'?'old-grade,grdName\\nold-origin,origincomp\\nold-first,first_name\\nold-last,last_name\\nold-userid,userid':process.env.MOCK_EPID_EXISTING==='1'?'existing-epid,epid-username\\nexisting-sabun,sabun':'existing-sabun,sabun');
  else console.log('{}');
@@ -288,10 +289,19 @@ for (const existing of [false, true]) {
     const result = mock.run('deploy/portal/k8s/jobs/keycloak-client/setup-client.sh');
     assert.equal(result.status, 0, result.stderr);
     const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
-    assert.equal(writes.length, 19);
+    assert.equal(writes.length, existing ? 42 : 43);
     assert.equal(writes[0][0], existing ? 'update' : 'create');
-    assert.ok(writes.every(a => a[1].startsWith('clients')));
-    assert.equal(writes.filter(a => a[1].includes('/protocol-mappers/')).length, 18);
+    assert.ok(writes.every(a => a[1].startsWith('clients') || a[1] === 'groups'));
+    assert.equal(writes.filter(a => a[1] === 'groups').length, existing ? 0 : 1);
+    const grant = mock.calls().find(a => a[0] === 'add-roles');
+    assert.equal(grant[grant.indexOf('--gname') + 1], 'portal-members');
+    assert.equal(grant[grant.indexOf('--cclientid') + 1], 'portal');
+    assert.equal(grant[grant.indexOf('--rolename') + 1], 'portal-all-apps');
+    assert.ok(mock.calls().every(a => !String(a[1]).startsWith('users')));
+    assert.equal(writes.filter(a => a[1].includes('/protocol-mappers/')).length, 20);
+    assert.equal(writes.filter(a => a[1].endsWith('/roles')).length, 21);
+    assert.ok(writes.some(a => a.includes('name="portal-all-apps"')));
+    assert.ok(writes.some(a => a.includes('protocolMapper=oidc-usermodel-client-role-mapper')));
   });
 }
 
@@ -591,4 +601,16 @@ test('IdP mapper 전용 단계는 User Profile과 client를 변경하지 않는�
   const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
   assert.equal(writes.length, 16);
   assert.ok(writes.every(a => a[1].startsWith('identity-provider/instances/oidc/mappers')));
+});
+
+
+test('로컬 표준 사용자는 부서가 아닌 그룹에서 전체 앱 역할을 상속한다', () => {
+  const realm = JSON.parse(fs.readFileSync(path.join(root, 'local/keycloak/k8s/realm-portal.json'), 'utf8'));
+  const group = realm.groups.find(g => g.name === 'portal-members');
+  assert.deepEqual(group.clientRoles.portal, ['portal-all-apps']);
+  const user = realm.users.find(u => u.username === '90000001');
+  assert.ok(user.groups.includes('/portal-members'));
+  assert.deepEqual(user.clientRoles.portal, []);
+  const denied = realm.users.find(u => u.username === '90000005');
+  assert.ok(!denied.groups.includes('/portal-members'));
 });

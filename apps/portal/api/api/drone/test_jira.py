@@ -1,3 +1,4 @@
+from api.drone.tests import _keycloak_login, _set_keycloak_access
 # =============================================================================
 # 모듈: 분리된 Drone 회귀 테스트
 # 주요 가정: 공통 fixture와 import는 api.drone.tests에서 공유합니다.
@@ -21,17 +22,17 @@ class DroneJiraKeyEndpointTests(TestCase):
         """테스트용 사용자/소속 데이터를 준비합니다."""
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S70000",
             sabun="S70000",
             password="test-password",
             knox_id="knox-70000",
         )
-        self.superuser = User.objects.create_superuser(
+        self.superuser = User.objects.create_superuser(avatarid="S70001",
             sabun="S70001",
             password="test-password",
             knox_id="knox-70001",
         )
-        self.staff_user = User.objects.create_user(
+        self.staff_user = User.objects.create_user(avatarid="S70002",
             sabun="S70002",
             password="test-password",
             knox_id="knox-70002",
@@ -65,7 +66,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             needtosend_enabled=True,
         )
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(reverse("line-dashboard-jira-keys"), {"targetUserSdwtProd": "SDWT"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["jiraKey"], "PROJ")
@@ -89,7 +90,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             jira_key="PROJ",
         )
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(reverse("line-dashboard-jira-keys"), {"targetUserSdwtProd": "sdwt"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["jiraKey"], "PROJ")
@@ -103,7 +104,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             jira_key="PROJ",
         )
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(reverse("line-dashboard-jira-keys"), {"targetUserSdwtProd": "SDWT"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["jiraKey"], "PROJ")
@@ -119,7 +120,7 @@ class DroneJiraKeyEndpointTests(TestCase):
     def test_notification_template_options_returns_registry_keys(self) -> None:
         """템플릿 옵션 조회가 registry 기반 key 목록을 반환하는지 확인합니다."""
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(reverse("line-dashboard-notification-template-options"))
 
         self.assertEqual(response.status_code, 200)
@@ -132,7 +133,7 @@ class DroneJiraKeyEndpointTests(TestCase):
     def test_jira_key_get_rejects_snake_case_query_key(self) -> None:
         """GET 조회는 target_user_sdwt_prod(snake_case) 쿼리 키를 허용하지 않는지 확인합니다."""
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(
             reverse("line-dashboard-jira-keys"),
             {"target_user_sdwt_prod": "SDWT"},
@@ -143,7 +144,7 @@ class DroneJiraKeyEndpointTests(TestCase):
     def test_jira_key_get_rejects_legacy_user_sdwt_prod_alias(self) -> None:
         """GET 조회는 제거된 userSdwtProd 별칭을 명시적으로 거부합니다."""
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.get(
             reverse("line-dashboard-jira-keys"),
             {"userSdwtProd": "SDWT"},
@@ -159,7 +160,7 @@ class DroneJiraKeyEndpointTests(TestCase):
         """Jira 키 갱신은 로그인 사용자와 staff 모두 허용되는지 확인합니다."""
         payload = {"lineId": "L1", "targetUserSdwtProd": "SDWT", "jiraKey": "PROJ", "jiraTemplateKey": "common"}
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -167,7 +168,7 @@ class DroneJiraKeyEndpointTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        self.client.force_login(self.staff_user)
+        _keycloak_login(self.client, self.staff_user)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -192,7 +193,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "mailEnabled": False,
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -219,7 +220,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "mailTemplateKey": "auto_sp",
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -245,7 +246,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "mailTemplateKey": "unknown_template",
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -266,7 +267,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "mailTemplateKey": "",
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -291,7 +292,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "messengerForceNewChatroom": True,
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -314,7 +315,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             "needtosendIgnoreSampleType": False,
         }
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(payload),
@@ -339,7 +340,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             jira_key="OLD",
         )
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -361,7 +362,7 @@ class DroneJiraKeyEndpointTests(TestCase):
     def test_jira_key_post_requires_line_id_for_new_target(self) -> None:
         """새 알림 target의 Jira 키를 저장할 때는 lineId가 필요합니다."""
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps({"targetUserSdwtProd": "CUSTOM_TARGET", "jiraKey": "PROJ"}),
@@ -376,7 +377,7 @@ class DroneJiraKeyEndpointTests(TestCase):
 
     def test_jira_key_post_rejects_snake_case_target_user_sdwt_prod(self) -> None:
         """POST 갱신은 target_user_sdwt_prod(snake_case) 키를 허용하지 않는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -393,7 +394,7 @@ class DroneJiraKeyEndpointTests(TestCase):
     def test_jira_key_post_rejects_legacy_user_sdwt_prod_alias(self) -> None:
         """POST 갱신은 제거된 userSdwtProd 별칭을 명시적으로 거부합니다."""
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps({"userSdwtProd": "SDWT", "jiraKey": "PROJ"}),
@@ -408,7 +409,7 @@ class DroneJiraKeyEndpointTests(TestCase):
 
     def test_jira_key_post_rejects_snake_case_jira_template_keys(self) -> None:
         """POST 갱신은 jira_key/template_key(snake_case) 키를 허용하지 않는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -430,7 +431,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             messenger_template_key="H1",
         )
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -449,7 +450,7 @@ class DroneJiraKeyEndpointTests(TestCase):
 
     def test_jira_key_post_rejects_non_string_jira_key(self) -> None:
         """POST 갱신은 jiraKey에 문자열/Null 외 타입을 허용하지 않는지 확인합니다."""
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -465,7 +466,7 @@ class DroneJiraKeyEndpointTests(TestCase):
 
     def test_jira_key_post_rejects_legacy_template_key_alias(self) -> None:
         """POST 갱신은 제거된 templateKey 별칭을 명시적으로 거부합니다."""
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps(
@@ -490,7 +491,7 @@ class DroneJiraKeyEndpointTests(TestCase):
             jira_key="OLD",
         )
 
-        self.client.force_login(self.superuser)
+        _keycloak_login(self.client, self.superuser)
         response = self.client.post(
             reverse("line-dashboard-jira-keys"),
             data=json.dumps({"targetUserSdwtProd": "SDWT", "jiraKey": "NEW"}),

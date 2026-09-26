@@ -5,6 +5,7 @@
 # =============================================================================
 
 from __future__ import annotations
+from api.emails.tests import _keycloak_login, _set_keycloak_access
 
 import base64
 from datetime import date, datetime, timedelta, timezone as dt_timezone
@@ -49,6 +50,7 @@ from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 UTC = getattr(timezone, "utc", dt_timezone.utc)
 
 from api.emails.tests import (
+    _grant_sdwt,
     _allow_test_scope_access,
     _grant_emails_admin,
     _grant_emails_affiliation_data,
@@ -73,7 +75,7 @@ class EmailEndpointTests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S11111", password="test-password")
+        self.user = User.objects.create_user(avatarid="S11111", sabun="S11111", password="test-password")
         self.user.knox_id = "knox-11111"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
@@ -100,7 +102,7 @@ class EmailEndpointTests(TestCase):
             body_text="Body",
         )
 
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
 
     def test_email_list_detail_html_and_delete(self) -> None:
         """목록/상세/HTML/삭제 엔드포인트가 정상 동작하는지 확인합니다.
@@ -128,7 +130,8 @@ class EmailEndpointTests(TestCase):
             self.assertEqual(html_response.status_code, 200)
             self.assertIn("<html>", html_response.content.decode("utf-8"))
 
-            account_services.ensure_self_access(self.user, role="manager")
+            _grant_sdwt(self.user, role='manager')
+            _keycloak_login(self.client, self.user)
             delete_response = self.client.delete(reverse("emails-detail", kwargs={"email_id": self.email.id}))
             self.assertEqual(delete_response.status_code, 200)
 
@@ -220,22 +223,16 @@ class EmailEndpointTests(TestCase):
         """
 
         User = get_user_model()
-        manager = User.objects.create_user(sabun="S11112", password="test-password")
+        manager = User.objects.create_user(avatarid="S11112", sabun="S11112", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-b",
-            target_user=self.user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(self.user, group='group-b', role='member')
         self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=self.user,
             user_sdwt_prods=("group-b",),
         )
+        _keycloak_login(self.client, self.user)
 
         mailbox_response = self.client.get(reverse("emails-mailboxes"))
         self.assertEqual(mailbox_response.status_code, 200)
@@ -245,8 +242,8 @@ class EmailEndpointTests(TestCase):
         summary_rows = summary_response.json()["results"]
         self.assertIn("group-a", {row["userSdwtProd"] for row in summary_rows})
         summary_by_mailbox = {row["userSdwtProd"]: row for row in summary_rows}
-        self.assertEqual(summary_by_mailbox["group-a"]["accessSource"], "self")
-        self.assertEqual(summary_by_mailbox["group-b"]["accessSource"], "grant")
+        self.assertEqual(summary_by_mailbox["group-a"]["accessSource"], "keycloak")
+        self.assertEqual(summary_by_mailbox["group-b"]["accessSource"], "keycloak")
 
         members_response = self.client.get(
             reverse("emails-mailbox-members"),
@@ -296,7 +293,8 @@ class EmailEndpointTests(TestCase):
             user_sdwt_prod="group-a",
             body_text="Body",
         )
-        account_services.ensure_self_access(self.user, role="manager")
+        _grant_sdwt(self.user, role='manager')
+        _keycloak_login(self.client, self.user)
         with patch("api.emails.services.mutations.delete_email_objects"):
             response = self.client.post(
                 reverse("emails-bulk-delete"),
@@ -355,22 +353,16 @@ class EmailEndpointTests(TestCase):
         """
 
         User = get_user_model()
-        manager = User.objects.create_user(sabun="S77779", password="test-password")
+        manager = User.objects.create_user(avatarid="S77779", sabun="S77779", password="test-password")
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
-        account_services.ensure_self_access(manager, role="manager")
-        _, status_code = account_services.grant_or_revoke_access(
-            grantor=manager,
-            target_group="group-b",
-            target_user=self.user,
-            action="grant",
-            role="member",
-            reason="테스트 권한 변경",
-        )
+        _grant_sdwt(manager, role='manager')
+        _, status_code = _grant_sdwt(self.user, group='group-b', role='member')
         self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=self.user,
             user_sdwt_prods=("group-b",),
         )
+        _keycloak_login(self.client, self.user)
 
         email = Email.objects.create(
             message_id="msg-move",
@@ -398,29 +390,23 @@ class EmailEndpointTests(TestCase):
         """추가 소속 viewer는 source와 target을 조회해도 메일을 이동할 수 없습니다."""
 
         User = get_user_model()
-        manager = User.objects.create_user(
+        manager = User.objects.create_user(avatarid="S77780",
             sabun="S77780",
             password="test-password",
             knox_id="knox-77780",
         )
-        viewer = User.objects.create_user(
+        viewer = User.objects.create_user(avatarid="S77781",
             sabun="S77781",
             password="test-password",
             knox_id="knox-77781",
         )
         _set_current_affiliation(manager, user_sdwt_prod="group-b")
         _set_current_affiliation(viewer, user_sdwt_prod="group-c")
-        account_services.ensure_self_access(self.user, role="manager")
-        account_services.ensure_self_access(manager, role="manager")
+        _grant_sdwt(self.user, role='manager')
+        _keycloak_login(self.client, self.user)
+        _grant_sdwt(manager, role='manager')
         for group in ("group-a", "group-b"):
-            _, status_code = account_services.grant_or_revoke_access(
-                grantor=manager if group == "group-b" else self.user,
-                target_group=group,
-                target_user=viewer,
-                action="grant",
-                role="viewer",
-                reason="테스트 권한 변경",
-            )
+            _, status_code = _grant_sdwt(viewer, group=group, role='viewer')
             self.assertEqual(status_code, 200)
         _grant_emails_affiliation_data(
             user=viewer,
@@ -437,7 +423,7 @@ class EmailEndpointTests(TestCase):
             user_sdwt_prod="group-a",
             body_text="Body",
         )
-        self.client.force_login(viewer)
+        _keycloak_login(self.client, viewer)
 
         response = self.client.post(
             reverse("emails-move"),

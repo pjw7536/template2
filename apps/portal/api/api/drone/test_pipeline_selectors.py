@@ -649,7 +649,7 @@ class DroneSelectorCaseInsensitiveTests(TestCase):
     def test_selector_lookups_ignore_case_for_user_sdwt_prod_and_target(self) -> None:
         """소속/채널/수신자 조회가 대소문자를 무시하는지 확인합니다."""
         User = get_user_model()
-        user = User.objects.create_user(
+        user = User.objects.create_user(avatarid="S71000",
             sabun="S71000",
             password="test-password",
             knox_id="knox-71000",

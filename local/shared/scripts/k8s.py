@@ -5,6 +5,7 @@ Secret은 stdin과 사용자 전용 파일로만 전달하고 기존 Docker DB�
 """
 
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -45,9 +46,17 @@ def apply(items, sensitive=False):
 
 
 def secret(namespace, name, values):
-    """Secret 값은 인자나 출력에 표시하지 않습니다."""
-    apply([{'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': namespace},
-            'type': 'Opaque', 'stringData': values}], sensitive=True)
+    """폐기된 설정 키도 제거하며 Secret 값은 stdin으로만 전달합니다."""
+    data = {key: base64.b64encode(value.encode()).decode() for key, value in values.items()}
+    existing = run([*KUBE, '-n', namespace, 'get', 'secret', name,
+                    '--ignore-not-found', '-o', 'name'], quiet=True)
+    if existing.strip():
+        # JSON Patch의 add는 기존 data 객체 전체를 교체하므로 이전 키가 남지 않습니다.
+        run([*KUBE, '-n', namespace, 'patch', 'secret', name, '--type=json', '--patch-file=/dev/stdin'],
+            data=json.dumps([{'op': 'add', 'path': '/data', 'value': data}]), sensitive=True)
+    else:
+        apply([{'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': namespace},
+                'type': 'Opaque', 'data': data}], sensitive=True)
 
 
 def resources(relative):
@@ -139,6 +148,18 @@ def cluster_up(config):
 def database_up():
     """새 Compose DB만 실행하고 현재 주소를 namespace별 Service에 연결합니다."""
     run([*DB, 'up', '-d', '--wait'], sensitive=True)
+    # 새 인증용 DB도 기존 DB를 삭제하지 않고 최종 API env의 이름으로 준비합니다.
+    run(['bash', ROOT / 'local/portal/scripts/build-local-api-env.sh', RUNTIME / 'api.env'], sensitive=True)
+    api_env = read_env(RUNTIME / 'api.env')
+    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'postgres',
+         '-v', 'ON_ERROR_STOP=1', '-v', 'portal_db=' + api_env['DJANGO_DB_NAME'],
+         '-v', 'portal_owner=' + api_env['DJANGO_DB_USER']], data=r"""
+SELECT format('CREATE DATABASE %I OWNER %I', :'portal_db', :'portal_owner')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'portal_db')
+\gexec
+""", sensitive=True)
+    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', api_env['DJANGO_DB_NAME'],
+         '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE EXTENSION IF NOT EXISTS pg_trgm'], sensitive=True)
     identifier = run([*DB, 'ps', '-q', 'postgres'], quiet=True).strip()
     address = run(['docker', 'inspect', '--format', '{{(index .NetworkSettings.Networks "kind").IPAddress}}', identifier], quiet=True).strip()
     if not address:
@@ -329,7 +350,7 @@ def status():
         run([*KUBE, '-n', namespace, 'get', 'pods,pvc'])
     print('Portal: http://localhost:8080\nKeycloak: http://localhost:8180\nAirflow: http://localhost:8080/airflow\n'
           f'FTP: localhost:{settings()["LOCAL_FTP_PORT"]} (passive 시작 {settings()["LOCAL_FTP_PASSIVE_START"]})\nGrafana: make k8s-grafana\nPrometheus: make k8s-prometheus\n'
-          'Portal 사용자: dummy.user / dummy-user-change-me\n'
+          'Portal 사용자: 90000001 / dummy-user-change-me\n'
           'Airflow: airflow, Grafana: admin, FTP: ftpuser — 비밀번호: local/shared/runtime/credentials.env')
 
 

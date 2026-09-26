@@ -10,9 +10,9 @@ import {
 } from "@/components/common"
 
 const ROLE_LABELS = {
-  viewer: "뷰어",
-  member: "멤버",
-  manager: "관리자",
+  viewer: "조회",
+  member: "조회·수정",
+  manager: "조회·수정·삭제",
 }
 
 const ROLE_VARIANTS = {
@@ -22,6 +22,7 @@ const ROLE_VARIANTS = {
 }
 
 const SOURCE_LABELS = {
+  keycloak: "Keycloak",
   self: "내 소속",
   grant: "부여됨",
   privileged: "관리자 전체",

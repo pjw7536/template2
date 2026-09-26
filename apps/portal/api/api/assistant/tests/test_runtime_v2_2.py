@@ -1,3 +1,4 @@
+from api.assistant.tests import _keycloak_login, _set_keycloak_access
 from . import *  # noqa: F403
 
 
@@ -9,14 +10,14 @@ class AssistantRuntimeV2Part2Tests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_user(avatarid="S98000",
             sabun="S98000",
             password="test-password",
         )
         self.user.knox_id = "knox-98000"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
-        self.client.force_login(self.user)
+        _keycloak_login(self.client, self.user)
         self.conversation = AssistantConversation.objects.create(
             user=self.user,
             title="새 대화",

@@ -55,6 +55,39 @@ from api.rag.services import RAG_INDEX_EMAILS, resolve_rag_index_name
 UTC = getattr(timezone, "utc", dt_timezone.utc)
 
 
+def _set_keycloak_access(user, *, roles=(), groups=(), sdwt="", line="Line", department="Dept"):
+    """명시적인 Keycloak 테스트 토큰과 최근 로그인 표시 정보를 준비합니다."""
+    from django.conf import settings
+    snapshot = account_services.build_authorization_snapshot({
+        "userid": user.avatarid, "deptname": department, "line_id": line,
+        "user_sdwt_prod": sdwt, "groups": list(groups),
+        "resource_access": {settings.OIDC_CLIENT_ID: {"roles": list(roles)}},
+    })
+    account_services.bind_authorization_context(user=user, snapshot=snapshot)
+    user.identity_profile = {"user_sdwt_prod": sdwt, "line_id": line, "deptname": department, "authorization": snapshot}
+    user.last_login = timezone.now()
+    user.save(update_fields=["identity_profile", "last_login"])
+    user._test_keycloak_snapshot = snapshot
+
+
+def _grant_sdwt(user, group=None, role="member"):
+    """테스트 토큰에 지정한 SDWT 등급을 추가합니다."""
+    ctx = account_services.get_authorization_context(user=user)
+    values = dict(ctx.sdwt_roles)
+    values[group or ctx.user_sdwt_prod] = {"member": "user", "manager": "admin"}.get(role, role)
+    _set_keycloak_access(user, roles=ctx.roles or ["emails-user"], sdwt=ctx.user_sdwt_prod,
+        groups=[f"/{name}/{grade}" for name, grade in values.items()])
+    return {}, 200
+
+
+def _keycloak_login(client, user):
+    """검증된 세션의 저장 형식을 재현하며 권한이 없으면 빈 snapshot을 씁니다."""
+    client.force_login(user)
+    session = client.session
+    session[account_services.AUTHORIZATION_SESSION_KEY] = getattr(user, "_test_keycloak_snapshot", {})
+    session.save()
+
+
 class EmailWriteInputSerializerTests(SimpleTestCase):
     """메일 삭제·이동 입력 serializer의 canonical 계약을 검증합니다."""
 
@@ -121,14 +154,9 @@ class EmailWriteInputSerializerTests(SimpleTestCase):
 
 
 def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
-    """테스트 사용자의 현재 앱 소속을 설정합니다."""
-
-    account_services.set_current_affiliation_for_user(
-        user=user,
-        department="Dept",
-        line="Line",
-        user_sdwt_prod=user_sdwt_prod,
-    )
+    """소속 표시 정보와 테스트에 필요한 SDWT user 그룹을 각각 설정합니다."""
+    _set_keycloak_access(user, roles=["emails-user", "assistant-user"],
+        groups=[f"/{user_sdwt_prod}/user"], sdwt=user_sdwt_prod)
 
 
 def _allow_test_scope_access(test_case: TestCase) -> None:
@@ -143,65 +171,19 @@ def _allow_test_scope_access(test_case: TestCase) -> None:
         test_case.addCleanup(patcher.stop)
 
 
-def _grant_emails_affiliation_data(
-    *,
-    user,
-    user_sdwt_prods: tuple[str, ...],
-    actor=None,
-) -> None:
-    """테스트 사용자에게 Emails 앱의 추가 소속 데이터 범위를 부여합니다."""
-
-    if actor is None:
-        User = get_user_model()
-        actor = User.objects.create_superuser(
-            sabun=f"SCOPE-{user.id}",
-            password="test-password",
-        )
-    affiliations = [
-        account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod=user_sdwt_prod,
-        )
-        for user_sdwt_prod in user_sdwt_prods
-    ]
-    payload, status_code = account_services.update_user_scope_affiliation_data(
-        actor=actor,
-        user_id=user.id,
-        scope_key="emails",
-        data_scope_mode="default",
-        affiliation_ids=[affiliation.id for affiliation in affiliations],
-        reason="Emails 테스트 소속 데이터 범위",
-    )
-    if status_code != 200:
-        raise AssertionError(f"테스트 소속 데이터 범위 부여 실패: {payload}")
+def _grant_emails_affiliation_data(*, user, user_sdwt_prods, actor=None) -> None:
+    """별도로 부여한 SDWT 그룹을 새 테스트 로그인 snapshot에 반영합니다."""
+    ctx = account_services.get_authorization_context(user=user)
+    groups = dict(ctx.sdwt_roles)
+    for name in user_sdwt_prods:
+        groups.setdefault(name, "user")
+    _set_keycloak_access(user, roles=ctx.roles or ["emails-user"],
+        groups=[f"/{name}/{role}" for name, role in groups.items()], sdwt=ctx.user_sdwt_prod)
 
 
-def _grant_emails_admin(*, user, actor) -> None:
-    """테스트 사용자에게 Portal 접근과 Emails 관리자 역할을 부여합니다."""
-
-    for scope_key, role in (("portal", "user"), ("emails", "admin")):
-        _payload, status_code = account_services.decide_user_access(
-            actor=actor,
-            user_id=user.id,
-            scope_key=scope_key,
-            action="grant",
-            role=role,
-            reason="Emails 관리자 테스트 권한 부여",
-        )
-        if status_code != 200:
-            raise AssertionError(f"테스트 권한 부여 실패: {scope_key}={status_code}")
-
-    payload, status_code = account_services.update_user_scope_affiliation_data(
-        actor=actor,
-        user_id=user.id,
-        scope_key="emails",
-        data_scope_mode="all",
-        affiliation_ids=[],
-        reason="Emails 관리자 테스트 전체 범위",
-    )
-    if status_code != 200:
-        raise AssertionError(f"테스트 전체 데이터 범위 부여 실패: {payload}")
+def _grant_emails_admin(*, user, actor=None) -> None:
+    """모든 메일함을 다루는 테스트에는 portal-admin을 명시합니다."""
+    _set_keycloak_access(user, roles=["portal-admin"])
 
 
 class EmailPop3SettingsTests(SimpleTestCase):
@@ -379,7 +361,7 @@ class EmailAffiliationTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S12345", password="test-password")
+        user = User.objects.create_user(avatarid="S12345", sabun="S12345", password="test-password")
         user.knox_id = "loginid1"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-a")
@@ -403,7 +385,7 @@ class EmailAffiliationTests(TestCase):
         affiliation = resolve_email_affiliation(sender_id="unknown-sender", received_at=timezone.now())
         self.assertEqual(affiliation["user_sdwt_prod"], UNASSIGNED_USER_SDWT_PROD)
 
-    def test_resolve_email_affiliation_uses_external_prediction(self) -> None:
+    def test_resolve_email_affiliation_ignores_external_prediction(self) -> None:
         """외부 예측 소속이 있는 경우 해당 값을 사용하는지 확인합니다.
 
         입력:
@@ -428,63 +410,14 @@ class EmailAffiliationTests(TestCase):
         )
 
         affiliation = resolve_email_affiliation(sender_id="loginid-ext", received_at=timezone.now())
-        self.assertEqual(affiliation["user_sdwt_prod"], "group-pred")
+        self.assertEqual(affiliation["user_sdwt_prod"], UNASSIGNED_USER_SDWT_PROD)
 
-    def test_resolve_email_affiliation_uses_current_user_sdwt_prod(self) -> None:
-        """현재 user_sdwt_prod가 최우선으로 유지되는지 확인합니다.
-
-        입력:
-            없음(테스트 데이터 생성).
-        반환:
-            없음.
-        부작용:
-            테스트 DB에 사용자/변경 이력 생성.
-        오류:
-            조건 불일치 시 assertion 실패.
-        """
-
-        User = get_user_model()
-        user = User.objects.create_user(sabun="S77777", password="test-password")
-        user.knox_id = "loginid3"
-        user.save(update_fields=["knox_id"])
-        _set_current_affiliation(user, user_sdwt_prod="group-old")
-
-        # -------------------------------------------------------------------------
-        # 1) 소속 옵션 및 변경 요청 준비
-        # -------------------------------------------------------------------------
-        effective_from = timezone.now()
-        option = account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod="group-new",
-        )
-        approver = User.objects.create_user(sabun="S77778", password="test-password")
-        _set_current_affiliation(approver, user_sdwt_prod="group-new")
-        account_services.ensure_self_access(approver, role="manager")
-        payload, status_code = account_services.request_affiliation_change(
-            user=user,
-            option=option,
-            to_user_sdwt_prod="group-new",
-            effective_from=effective_from,
-            timezone_name="Asia/Seoul",
-        )
-        self.assertEqual(status_code, 202)
-
-        # -------------------------------------------------------------------------
-        # 2) 승인 권한 보장 및 승인 처리
-        # -------------------------------------------------------------------------
-        approve_payload, approve_status = account_services.approve_affiliation_change(
-            approver=approver,
-            change_id=payload["changeId"],
-        )
-        self.assertEqual(approve_status, 200)
-        self.assertEqual(approve_payload.get("status"), "approved")
-
-        before = resolve_email_affiliation(sender_id="loginid3", received_at=effective_from - timedelta(hours=1))
-        self.assertEqual(before["user_sdwt_prod"], "group-new")
-
-        after = resolve_email_affiliation(sender_id="loginid3", received_at=effective_from + timedelta(hours=1))
-        self.assertEqual(after["user_sdwt_prod"], "group-new")
+    def test_resolve_email_affiliation_uses_latest_keycloak_profile(self):
+        """수신 시각과 무관하게 최근 로그인 프로필로 메일을 분류합니다."""
+        user = get_user_model().objects.create_user(avatarid="S77777", sabun="S77777", knox_id="loginid3")
+        _set_current_affiliation(user, user_sdwt_prod="group-new")
+        for received_at in (timezone.now() - timedelta(days=1), timezone.now()):
+            self.assertEqual(resolve_email_affiliation(sender_id="loginid3", received_at=received_at)["user_sdwt_prod"], "group-new")
 
 
 class EmailMoveServiceTests(TestCase):
@@ -623,102 +556,33 @@ class EmailMoveServiceTests(TestCase):
         email.refresh_from_db()
         self.assertEqual(email.user_sdwt_prod, "group-b")
 
-    def test_move_rechecks_latest_data_scope_instead_of_request_snapshot(self) -> None:
-        """요청 초기에 허용됐어도 최신 앱 범위가 차단되면 메일을 이동하지 않아야 합니다."""
-
-        User = get_user_model()
-        user = User.objects.create_user(
-            sabun="S-MOVE-SNAPSHOT",
-            password="test-password",
-        )
-        email = Email.objects.create(
-            message_id="move-stale-scope",
-            received_at=timezone.now(),
-            subject="Stale scope",
-            sender="sender@example.com",
-            sender_id="move-snapshot",
-            recipient=["dest@example.com"],
-            user_sdwt_prod="group-a",
-            body_text="Body",
-        )
-
-        with patch(
-            "api.emails.services.mutations.account_services.get_affiliation_scope_decision",
-            return_value={"allowed": False, "userSdwtProds": [], "all": False},
-        ) as resolve_scope:
-            with self.assertRaises(PermissionError):
-                move_emails_to_user_sdwt_prod(
-                    email_ids=[email.id],
-                    to_user_sdwt_prod="group-b",
-                    user=user,
-                    is_privileged=True,
-                    accessible_user_sdwt_prods={"group-a", "group-b"},
-                )
-
-        resolve_scope.assert_called_once()
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_move_keeps_login_permissions_after_profile_update(self, _insert):
+        """다른 로그인에서 DB 프로필이 바뀌어도 현재 로그인 권한으로 이동합니다."""
+        user = get_user_model().objects.create_user(avatarid="MOVE", sabun="MOVE", knox_id="move")
+        _set_keycloak_access(user, roles=["emails-user"], groups=["/A/user", "/B/user"])
+        fresh_user = get_user_model().objects.get(pk=user.pk)
+        _set_keycloak_access(fresh_user, roles=[])
+        email = Email.objects.create(message_id="snapshot", received_at=timezone.now(), subject="Move", sender="a@example.com", user_sdwt_prod="A")
+        move_emails_to_user_sdwt_prod(email_ids=[email.pk], to_user_sdwt_prod="B", user=user)
         email.refresh_from_db()
-        self.assertEqual(email.user_sdwt_prod, "group-a")
+        self.assertEqual(email.user_sdwt_prod, "B")
 
     @patch("api.emails.services.insert_email_to_rag")
-    def test_move_uses_canonical_active_affiliation_identifier(self, _mock_insert: Mock) -> None:
-        """메일 목적지는 입력 문자열이 아니라 활성 Affiliation의 정규 값을 저장해야 합니다."""
-
-        canonical = account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod="Canonical-Group",
-        )
-        email = Email.objects.create(
-            message_id="move-canonical-target",
-            received_at=timezone.now(),
-            subject="Canonical target",
-            sender="sender@example.com",
-            sender_id="move-canonical",
-            recipient=["dest@example.com"],
-            user_sdwt_prod="group-a",
-            body_text="Body",
-        )
-
-        result = move_emails_to_user_sdwt_prod(
-            email_ids=[email.id],
-            to_user_sdwt_prod="canonical-group",
-        )
-
-        self.assertEqual(result["moved"], 1)
+    def test_move_preserves_exact_target_identifier(self, _insert):
+        """백그라운드 이동은 SDWT 문자열을 대소문자 보정 없이 저장합니다."""
+        email = Email.objects.create(message_id="exact", received_at=timezone.now(), subject="Exact", sender="a@example.com", user_sdwt_prod="A")
+        move_emails_to_user_sdwt_prod(email_ids=[email.pk], to_user_sdwt_prod="canonical-group")
         email.refresh_from_db()
-        self.assertEqual(email.user_sdwt_prod, canonical.user_sdwt_prod)
+        self.assertEqual(email.user_sdwt_prod, "canonical-group")
 
-    def test_move_rejects_missing_or_inactive_target_affiliation(self) -> None:
-        """존재하지 않거나 비활성인 소속으로 메일을 이동할 수 없어야 합니다."""
-
-        inactive = account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod="inactive-mail-target",
-        )
-        inactive.is_active = False
-        inactive.save(update_fields=["is_active"])
-        email = Email.objects.create(
-            message_id="move-invalid-target",
-            received_at=timezone.now(),
-            subject="Invalid target",
-            sender="sender@example.com",
-            sender_id="move-invalid",
-            recipient=["dest@example.com"],
-            user_sdwt_prod="group-a",
-            body_text="Body",
-        )
-
-        for target in ("missing-mail-target", inactive.user_sdwt_prod):
-            with self.subTest(target=target):
-                with self.assertRaisesRegex(
-                    ValueError,
-                    "Target affiliation must be active",
-                ):
-                    move_emails_to_user_sdwt_prod(
-                        email_ids=[email.id],
-                        to_user_sdwt_prod=target,
-                    )
+    @patch("api.emails.services.insert_email_to_rag")
+    def test_background_move_needs_no_organization_catalog(self, _insert):
+        """조직 목록을 적재하지 않아도 신뢰된 백그라운드 이동이 동작합니다."""
+        email = Email.objects.create(message_id="no-catalog", received_at=timezone.now(), subject="Move", sender="a@example.com", user_sdwt_prod="A")
+        move_emails_to_user_sdwt_prod(email_ids=[email.pk], to_user_sdwt_prod="unseen-target")
+        email.refresh_from_db()
+        self.assertEqual(email.user_sdwt_prod, "unseen-target")
 
     @patch("api.emails.services.insert_email_to_rag")
     def test_move_sender_emails_after_filters_by_time(self, _mock_insert: Mock) -> None:
@@ -784,7 +648,7 @@ class EmailMoveServiceTests(TestCase):
         """
 
         User = get_user_model()
-        user = User.objects.create_user(sabun="S22222", password="test-password")
+        user = User.objects.create_user(avatarid="S22222", sabun="S22222", password="test-password")
         user.knox_id = "loginid-claim"
         user.save(update_fields=["knox_id"])
         _set_current_affiliation(user, user_sdwt_prod="group-claim")
@@ -807,35 +671,11 @@ class EmailMoveServiceTests(TestCase):
         self.assertEqual(result["ragMissing"], 0)
         self.assertEqual(result["ragFailed"], 0)
 
-    def test_claim_rejects_inactive_current_affiliation(self) -> None:
-        """현재 소속이 비활성화되면 UNASSIGNED 메일을 귀속할 수 없어야 합니다."""
-
-        User = get_user_model()
-        user = User.objects.create_user(
-            sabun="S-CLAIM-INACTIVE",
-            password="test-password",
-            knox_id="claim-inactive",
-        )
-        _set_current_affiliation(
-            user,
-            user_sdwt_prod="claim-inactive-group",
-        )
-        current = account_services.get_affiliation_overview(
-            user=user,
-            timezone_name="Asia/Seoul",
-        )
-        affiliation = account_services.ensure_affiliation_option(
-            department="Dept",
-            line="Line",
-            user_sdwt_prod=current["currentUserSdwtProd"],
-        )
-        affiliation.is_active = False
-        affiliation.save(update_fields=["is_active"])
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "user_sdwt_prod must be set",
-        ):
+    def test_claim_requires_write_group_even_with_profile(self):
+        """프로필 소속만으로 미분류 메일 귀속 권한이 생기지 않습니다."""
+        user = get_user_model().objects.create_user(avatarid="CLAIM", sabun="CLAIM", knox_id="claim")
+        _set_keycloak_access(user, roles=["emails-user"], sdwt="A", groups=["/A/viewer"])
+        with self.assertRaises(PermissionError):
             claim_unassigned_emails_for_user(user=user)
 
 
@@ -938,7 +778,7 @@ class EmailAssistantScopeSelectorTests(TestCase):
 
         _allow_test_scope_access(self)
         User = get_user_model()
-        self.user = User.objects.create_user(sabun="S11880", password="test-password")
+        self.user = User.objects.create_user(avatarid="S11880", sabun="S11880", password="test-password")
         self.user.knox_id = "knox-11880"
         self.user.save(update_fields=["knox_id"])
         _set_current_affiliation(self.user, user_sdwt_prod="group-a")
@@ -1017,7 +857,10 @@ class EmailAssistantScopeSelectorTests(TestCase):
             mailbox="sent",
         )
 
-        self.assertEqual(resolved, {"mailbox": "group-b", "emailId": "rag-sent"})
+        self.assertIsNone(resolved)
+        _grant_sdwt(self.user, group="group-b", role="viewer")
+        allowed = resolve_assistant_email_scope(user=self.user, mailbox="sent", email_id=self.sent_mail.id)
+        self.assertEqual(allowed, {"mailbox": "group-b", "emailId": "rag-sent"})
         self.assertIsNone(denied)
         self.assertIsNone(missing_selection)
 

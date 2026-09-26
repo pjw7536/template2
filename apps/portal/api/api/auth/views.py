@@ -114,7 +114,7 @@ def auth_login(request: HttpRequest):
     - 요청: Django HttpRequest
 
     반환:
-    - HttpResponse: ADFS authorize로 리다이렉트 응답
+    - HttpResponse: Keycloak authorize로 리다이렉트 응답
 
     부작용:
     - 세션에 nonce 저장
@@ -126,7 +126,7 @@ def auth_login(request: HttpRequest):
     - 예시 요청: GET /api/v1/auth/login?target=/dashboard
 
     예시 응답:
-    - 예시 응답: 302 Location: https://<adfs-auth>/?client_id=...
+    - 예시 응답: 302 Location: https://<keycloak-auth>/?client_id=...
 
     query 계약:
     - target만 허용
@@ -154,87 +154,28 @@ def auth_login(request: HttpRequest):
 
 @csrf_exempt
 def auth_callback(request: HttpRequest):
-    """ADFS form_post 또는 Keycloak code 콜백으로 세션 로그인합니다.
+    """GET /auth/keycloak/callback/?code=...&state=...를 검증하고 로그인합니다.
 
-    입력:
-    - 요청: Django HttpRequest (ADFS form_post 또는 Keycloak query)
-
-    반환:
-    - HttpResponse: 리다이렉트 또는 오류 응답
-
-    부작용:
-    - 사용자 생성/갱신 및 세션 로그인
-
-    오류:
-    - 400: 잘못된 메서드, 설정 비활성화, 파라미터 누락
-    - 302: 토큰 오류/nonce 오류 시 error 쿼리를 포함해 리다이렉트
-
-    예시 요청:
-    - 예시 요청: POST /auth/google/callback/
-      폼 예시: id_token=<jwt>&state=<b64url>
-    - 예시 요청: GET /auth/keycloak/callback/?code=<code>&state=<b64url>
-
-    예시 응답:
-    - 예시 응답: 302 Location: https://<frontend>/?error=invalid_token
-
-    snake/camel 호환:
-    - 해당 없음(provider별 표준 키를 그대로 사용)
+    Keycloak query 응답만 받으며 camel/snake 별칭은 지원하지 않습니다.
     """
-
-    is_keycloak = getattr(settings, "OIDC_PROVIDER", "adfs") == "keycloak"
-    allowed_methods = {"GET", "POST"} if is_keycloak else {"POST"}
-    if request.method not in allowed_methods:
-        return api_error_response(
-            code="invalid_request",
-            message="OIDC callback method is not allowed.",
-            field_errors={
-                "method": [
-                    "GET or POST is required."
-                    if is_keycloak
-                    else "POST is required."
-                ]
-            },
-            status=400,
-        )
-
-    params = request.GET if request.method == "GET" else request.POST
-    credential_field = "code" if is_keycloak else "id_token"
-    credential = params.get(credential_field)
-    state = params.get("state")
-    if not credential or not state:
-        field_errors = {}
-        if not credential:
-            field_errors[credential_field] = ["This field is required."]
-        if not state:
-            field_errors["state"] = ["This field is required."]
-        return api_error_response(
-            code="invalid_request",
-            message="Required OIDC callback fields are missing.",
-            field_errors=field_errors,
-            status=400,
-        )
-
-    result = auth_services.auth_callback(
-        request=request,
-        raw_id_token=None if is_keycloak else credential,
-        code=credential if is_keycloak else None,
-        state=state,
-    )
+    if request.method != "GET":
+        return api_error_response(code="invalid_request", message="GET is required.", status=405)
+    result = auth_services.auth_callback(request=request, code=request.GET.get("code"),
+        state=request.GET.get("state", ""), error=request.GET.get("error"))
     if result.bad_request_message:
-        return api_error_response(
-            code="external_dependency_error",
-            message="OIDC provider is not configured.",
-            details={"reason": result.bad_request_message},
-            status=503,
-        )
+        return api_error_response(code="external_dependency_error", message="OIDC provider is not configured.", status=503)
     if result.error_code:
-        return redirect(append_error_to_target(str(result.target), result.error_code))
+        return redirect(append_error_to_target(result.target, result.error_code))
+    from datetime import timedelta
+    from django.utils import timezone
+    from api.account.services import AUTHORIZATION_SESSION_KEY, bind_authorization_context
+    from .services.keycloak_oidc import save_id_token
 
     login(request, result.user)
-    if is_keycloak and result.raw_id_token:
-        from api.auth.services.keycloak_oidc import save_id_token
-
-        save_id_token(request=request, raw_id_token=result.raw_id_token)
+    request.session[AUTHORIZATION_SESSION_KEY] = result.authorization
+    request.session.set_expiry(timezone.now() + timedelta(seconds=settings.SESSION_COOKIE_AGE))
+    bind_authorization_context(user=request.user, snapshot=result.authorization)
+    save_id_token(request=request, raw_id_token=result.raw_id_token)
     return redirect(result.target)
 
 
@@ -294,8 +235,8 @@ def auth_logout(request: HttpRequest):
     - 예시 요청: GET /api/v1/auth/logout
 
     예시 응답:
-    - 예시 응답: 200 {"logoutUrl": "https://<adfs-logout>"}
-    - 예시 응답: 302 Location: https://<adfs-logout>
+    - 예시 응답: 200 {"logoutUrl": "https://<keycloak-logout>"}
+    - 예시 응답: 302 Location: https://<keycloak-logout>
 
     snake/camel 호환:
     - 해당 없음(요청 바디 없음)

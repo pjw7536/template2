@@ -88,6 +88,7 @@ export function ChatWidgetPanel({
 }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const {
+    allPermissionGroups,
     permissionGroups,
     setPermissionGroups,
     ragIndexNames,
@@ -316,6 +317,7 @@ export function ChatWidgetPanel({
                     showSelectionBadges={false}
                   />
                   <RagIndexMultiSelect
+                    allowCustomValues={allPermissionGroups}
                     label="권한 그룹"
                     values={permissionGroups}
                     onChange={setPermissionGroups}
@@ -440,7 +442,8 @@ export function ChatWidgetPanel({
                       isDisabled={isRagSettingsLoading}
                     />
                     <RagIndexMultiSelect
-                      label="권한 그룹"
+                      allowCustomValues={allPermissionGroups}
+                    label="권한 그룹"
                       values={permissionGroups}
                       onChange={setPermissionGroups}
                       placeholder="rag-public"

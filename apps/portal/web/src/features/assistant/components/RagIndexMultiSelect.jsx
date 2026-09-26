@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { Input } from "@/components/ui/input"
 import { ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -31,9 +33,11 @@ export function RagIndexMultiSelect({
   placeholder = "선택하세요",
   isDisabled = false,
   showSelectionBadges = true,
+  allowCustomValues = false,
 }) {
+  const [customValue, setCustomValue] = useState("")
   const normalizedValues = normalizeList(values)
-  const normalizedOptions = normalizeList(options)
+  const normalizedOptions = normalizeList([...(options || []), ...(allowCustomValues ? normalizedValues : [])])
   const hasSelection = normalizedValues.length > 0
   const canDeselect = normalizedValues.length > 1
   const formatLabel = (value) => LABEL_MAP[value] ?? value
@@ -104,6 +108,28 @@ export function RagIndexMultiSelect({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+      {allowCustomValues ? (
+        <div className="flex gap-2">
+          <Input
+            aria-label={`${label} 직접 입력`}
+            placeholder="SDWT 이름 직접 입력"
+            value={customValue}
+            disabled={isDisabled}
+            onChange={(event) => setCustomValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return
+              event.preventDefault()
+              if (!customValue.trim()) return
+              onChange(normalizeList([...normalizedValues, customValue]))
+              setCustomValue("")
+            }}
+          />
+          <Button type="button" variant="outline" disabled={isDisabled || !customValue.trim()} onClick={() => {
+            onChange(normalizeList([...normalizedValues, customValue]))
+            setCustomValue("")
+          }}>추가</Button>
+        </div>
+      ) : null}
       {showSelectionBadges && hasSelection ? (
         <div className="flex flex-wrap gap-1">
           {normalizedValues.map((value) => (
