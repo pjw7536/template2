@@ -80,7 +80,8 @@ vi "$HEADLAMP_ENV"
 
 | 확인할 항목 | 무엇을 입력하나요? |
 | --- | --- |
-| `HEADLAMP_HOST` | Headlamp를 열 사이트의 도메인만 입력. DNS가 기존 Traefik HTTPS 진입 주소를 가리켜야 함 |
+| `HEADLAMP_HOST` | `etch.samsungds.net`. DNS가 기존 Traefik HTTPS 진입 주소를 가리켜야 함 |
+| `HEADLAMP_TLS_SECRET` | `headlamp-tls`. `headlamp` namespace에 등록 |
 | `HEADLAMP_OIDC_ISSUER_URL` | 현재 정상 작동하는 Keycloak 공개 주소 뒤에 `/realms/etch`를 붙인 값. 사내 AD FS 주소가 아님 |
 | `HEADLAMP_REGISTRY` | 노드에서 이미지를 받을 수 있는 registry 미러 경로. `https://` 제외 |
 | `IMAGE_PULL_SECRET` | registry 인증이 필요하면 새로 등록할 Secret 이름, 필요 없으면 `=` 뒤를 비움 |

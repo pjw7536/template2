@@ -8,7 +8,8 @@
 
 **실행 위치:** 01에서 사용하던 CP1 Bash 터미널, 저장소 루트.
 **목표:** Headlamp용 사이트 인증서와 Keycloak을 신뢰할 CA를 `headlamp` namespace에 등록합니다.
-사이트 인증서가 이미 Keycloak에 등록되어 있어도 Headlamp namespace에는 별도로 등록해야 합니다.
+운영 도메인은 `etch.samsungds.net`, TLS Secret은 `headlamp/headlamp-tls`입니다.
+Keycloak의 `etch-sso.samsungds.net` 인증서와 구분해 준비합니다.
 
 먼저 아래에서 사용할 경로가 준비됐는지 확인합니다. 출력값이 비어 있으면 01의 실행 입력부터 다시 수행하세요.
 단, 공인 CA 분기에서는 `HEADLAMP_OIDC_CA_FILE`이 빈 값인 것이 정상입니다.

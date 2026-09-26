@@ -25,7 +25,11 @@ SSO 코드를 포함한 Airflow 2.11.0 이미지를 새 고유 태그로 빌드�
 CA ConfigMap은 `ca.crt` 키에 필요한 신뢰 루트·중간 CA를 포함한 bundle을 넣습니다.
 CA 설정을 쓰면 TLS 인증서 검증에 해당 bundle을 사용합니다. HTTPS 검증 생략은 지원하지 않습니다.
 브라우저 callback은 `${AIRFLOW_WEBSERVER_BASE_URL}/oauth-authorized/keycloak` 하나만 등록합니다.
-운영 Airflow 공개 URL도 HTTPS여야 합니다.
+운영 Airflow 공개 URL은 `https://etch.samsungds.net/airflow`이며, callback은
+`https://etch.samsungds.net/airflow/oauth-authorized/keycloak`입니다.
+현재 realm issuer는 `https://etch-sso.samsungds.net/realms/etch`입니다.
+업무 도메인의 TLS 원본은 `headlamp/headlamp-tls`, Airflow 대상은 `airflow/airflow-tls`이며
+[배포 절차](../../../04_SETUP_FLOW.md)에 따라 최초 복사합니다.
 
 ## 2. client 등록
 

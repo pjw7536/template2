@@ -78,6 +78,19 @@ DB 이전·기존 리소스 삭제를 자동으로 수행하지 않습니다. �
 다른 controller를 사용할 때는 [직접 실행](../04_SETUP_FLOW.md#6-고급-직접-deploy와-helm-override)의 준비 범위를 확인합니다.
 URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습니다.
 
+운영 HTTPS 설정은 다음 값으로 통일합니다. namespace는 `airflow`를 사용합니다.
+
+```dotenv
+INGRESS_ENABLED=true
+INGRESS_CLASS_NAME=traefik
+INGRESS_TLS_SECRET=airflow-tls
+AIRFLOW_WEBSERVER_BASE_URL=https://etch.samsungds.net/airflow
+```
+
+인증서 원본은 `headlamp/headlamp-tls`이고 Airflow의 대상은 `airflow/airflow-tls`입니다.
+[공용 Ingress 기준](../../shared/ingress/README.md#운영-ingress-기준)과
+[최초 복사 절차](../04_SETUP_FLOW.md#3-클러스터-사전-검사)를 따릅니다.
+
 ## 5. 다른 env 파일 사용
 
 Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`를 매번 전달합니다.

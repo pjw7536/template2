@@ -9,11 +9,12 @@ Keycloak env를 자동으로 읽거나 복제하지 않으므로 주소가 바�
 ## 처음 편집할 때
 
 01에서 연 파일에서 `=` 오른쪽만 바꿉니다. `export`나 따옴표를 넣지 않고 한 줄에 한 항목을 씁니다.
-아래는 **형식 설명용 예시**이므로 `.example.test` 주소를 운영 env에 복사하지 않습니다.
+아래는 이 프로젝트의 운영값입니다. namespace와 Ingress 이름은 모두 `headlamp`입니다.
 
 ```dotenv
-HEADLAMP_HOST=ui.example.test
-HEADLAMP_OIDC_ISSUER_URL=https://sso.example.test/realms/etch
+HEADLAMP_HOST=etch.samsungds.net
+HEADLAMP_TLS_SECRET=headlamp-tls
+HEADLAMP_OIDC_ISSUER_URL=https://etch-sso.samsungds.net/realms/etch
 HEADLAMP_OIDC_SECRET=headlamp-oidc
 IMAGE_PULL_SECRET=
 ```

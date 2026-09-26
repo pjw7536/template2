@@ -9,6 +9,8 @@
 
 | 항목 | 운영값 |
 | --- | --- |
+| namespace | `etch-sso` |
+| Ingress 이름 | `keycloak` |
 | 도메인 | `etch-sso.samsungds.net` |
 | 인증서 폴더 | `deploy/shared/certs/etch-sso.samsungds.net/` |
 | 인증서·개인키 | `fullchain.crt`, `private.key` |

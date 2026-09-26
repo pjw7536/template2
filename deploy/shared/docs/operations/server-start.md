@@ -112,14 +112,15 @@ Kubernetes가 접근할 수 있는 이미지와 실제 tag를 `k8s.env`에 지�
 Airflow Ingress는 Airflow namespace의 TLS Secret을 사용합니다.
 기존 인증서가 선택한 도메인을 포함한다면 기존 Secret을 최초 한 번 복사할 수 있습니다.
 
-예를 들어 **기존 Keycloak 도메인으로 Airflow도 접속할 때**는 다음 원본을 사용할 수 있습니다.
+업무 도메인 `etch.samsungds.net`의 인증서 원본은 `headlamp/headlamp-tls`로 통일합니다.
+원본이 없다면 먼저 [Headlamp TLS 등록](../../../headlamp/03_TLS.md)을 완료합니다.
 
 ```bash
-AIRFLOW_TLS_SOURCE=etch-sso/keycloak-tls
+AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls
 ```
 
-기존 Portal 도메인이라면 그 도메인의 인증서가 있는 실제 `namespace/secret`을 지정합니다.
-Keycloak 인증서가 Portal 도메인도 포함한다고 가정하지 않습니다.
+대상은 `airflow/airflow-tls`입니다. Keycloak의 `etch-sso/keycloak-tls`는
+`etch-sso.samsungds.net`용이므로 이 복사의 원본으로 사용하지 않습니다.
 도구는 인증서 만료·도메인을 검사하고, Airflow TLS Secret이 없을 때만 복사합니다.
 대상 Secret이 이미 있으면 기존 값을 유지합니다. 원본 Secret·개인키·Keycloak 인증값은 변경하지 않습니다.
 

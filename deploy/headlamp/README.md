@@ -3,6 +3,10 @@
 현재 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 UI입니다.
 **Keycloak 자체 설정과 Account Console 사내 로그인 확인을 마친 뒤** 아래 순서로 설치합니다.
 
+운영 Ingress는 `headlamp / headlamp / etch.samsungds.net / headlamp-tls`입니다
+(namespace / name / hosts / tls_secret). 접속 주소는 `https://etch.samsungds.net/headlamp/`이며
+[공용 Ingress 기준](../shared/ingress/README.md#운영-ingress-기준)을 따릅니다.
+
 ## 처음 시작하거나 초기화 후 다시 설치한다면
 
 **먼저 [01 서버 준비](01_SERVER_SETUP.md)를 열고, 번호 순서대로 한 블록씩 실행하세요.**

@@ -391,7 +391,10 @@ ls -l "$CERT_SITE_DIR/fullchain.crt" "$CERT_SITE_DIR/private.key"
 오류 없이 끝났는지 확인합니다. Secret 등록 성공과 실제 HTTPS 반영 여부는 2-4에서 함께 확인합니다.
 
 - Keycloak: `etch-sso/keycloak-tls`를 등록합니다.
-- Headlamp: `headlamp/headlamp-tls`를 등록합니다.
+- Headlamp: `etch.samsungds.net`용 `headlamp/headlamp-tls`를 등록합니다.
+- Airflow: 같은 업무 도메인의 `/airflow`를 사용하며, [Airflow 배포](../../airflow/04_SETUP_FLOW.md)에서
+  `AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls`로 `airflow/airflow-tls`에 최초 복사합니다. 원본 갱신 시 복사본도 별도 갱신합니다.
+- namespace·Ingress 이름·host·TLS Secret은 [공용 Ingress 기준](../ingress/README.md#운영-ingress-기준)을 따릅니다.
 - 기존 Ingress가 이 Secret을 사용하면 Traefik이 변경을 반영합니다. 실제 접속 검증은 다음 단계에서 합니다.
 
 ### 2-3. 최초 배포 시 앱 설치

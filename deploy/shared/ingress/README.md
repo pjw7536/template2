@@ -7,6 +7,28 @@
 현재 APP VIP 환경은 [두 Worker 443 연결 안내](VIP.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
 새 Worker를 추가하거나 앱 재배포 없이 Traefik만 확장할 때는 [Worker 추가 가이드](ADD_WORKER.md)를 따릅니다.
 
+## 운영 Ingress 기준
+
+프로젝트의 서버 가이드에서는 다음 값을 사용합니다. `name`은 Ingress 리소스 이름이며,
+`tls_secret`은 해당 행의 namespace에 있는 Secret 이름입니다.
+
+| namespace | name | hosts | tls_secret |
+| --- | --- | --- | --- |
+| etch-sso | keycloak | etch-sso.samsungds.net | keycloak-tls |
+| headlamp | headlamp | etch.samsungds.net | headlamp-tls |
+
+Keycloak은 `https://etch-sso.samsungds.net`, Headlamp는 `https://etch.samsungds.net/headlamp/`로 접속합니다.
+Airflow 공개 주소는 `https://etch.samsungds.net/airflow`입니다.
+Airflow는 `headlamp/headlamp-tls`의 인증서를 자기 namespace의 `airflow-tls`로 최초 복사해 사용합니다.
+Secret은 namespace 간 직접 참조할 수 없으며, 원본 인증서 갱신 시 복사본도 별도로 갱신해야 합니다.
+
+배포 후 대상 context에서 다음 값과 대조합니다.
+
+```bash
+kubectl --context "$KUBE_CONTEXT" get ingress -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.tls[*].hosts,TLS_SECRET:.spec.tls[*].secretName'
+```
+
 | 파일 | 역할 |
 | --- | --- |
 | `stack.yaml` | 기존 Traefik ServiceAccount·RBAC·IngressClass·Deployment·Service |

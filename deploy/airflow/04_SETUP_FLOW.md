@@ -74,11 +74,13 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 Ingress를 사용하면 `etch-sso/traefik`과 TLS 인증서 도메인·만료도 검사합니다.
 검사 통과는 실제 디스크 권한·이미지 pull·외부 DB 접속·Portal 연동 성공을 보장하지 않습니다.
 
-Airflow namespace에 TLS Secret이 아직 없다면 사용할 기존 인증서의 위치를 명시합니다.
+운영 URL은 `https://etch.samsungds.net/airflow`, `INGRESS_TLS_SECRET=airflow-tls`입니다.
+Airflow namespace에 TLS Secret이 아직 없다면 기존 `headlamp/headlamp-tls`를 원본으로 지정합니다.
+원본이 없다면 먼저 [Headlamp TLS 등록](../headlamp/03_TLS.md)을 완료합니다.
 Airflow 공개 도메인이 인증서에 포함되어 있어야 하며 실행 호스트에는 OpenSSL이 필요합니다.
 
 ```bash
-read -r -p 'TLS 원본 namespace/secret: ' AIRFLOW_TLS_SOURCE_REF
+AIRFLOW_TLS_SOURCE_REF=headlamp/headlamp-tls
 make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_TLS_SOURCE="$AIRFLOW_TLS_SOURCE_REF"
 ```
 

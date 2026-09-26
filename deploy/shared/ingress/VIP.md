@@ -80,7 +80,9 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow create secret tls airflow-t
 ```
 
 namespace가 이미 있으면 해당 create 명령은 건너뜁니다. 기존 `airflow-tls`가 있다면 먼저 도메인을 확인하고 인증서 교체 절차를 별도로 수행합니다.
-이미 다른 namespace에 맞는 인증서가 있다면 [서버 기동 안내](../docs/operations/server-start.md)의 명시적 TLS 복사 기능을 사용할 수 있습니다.
+기존 `headlamp/headlamp-tls`가 있다면 위 직접 생성 대신 [서버 기동 안내](../docs/operations/server-start.md)의
+`AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls` 복사 기능을 사용합니다. 아래 검사 명령에는
+`--tls-source headlamp/headlamp-tls`, 배포 명령에는 `AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls`를 추가합니다.
 
 ## 3. 검사 후 배포
 
