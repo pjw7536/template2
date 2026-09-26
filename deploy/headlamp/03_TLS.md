@@ -6,6 +6,21 @@
 아래는 현재 사내 루트·중간 CA를 사용하는 설치 절차입니다.
 다른 인증기관이나 공인 CA를 쓰면 먼저 이 문서 끝의 해당 분기를 읽고 입력·생략 단계를 맞춥니다.
 
+**실행 위치:** 01에서 사용하던 CP1 Bash 터미널, 저장소 루트.
+**목표:** Headlamp용 사이트 인증서와 Keycloak을 신뢰할 CA를 `headlamp` namespace에 등록합니다.
+사이트 인증서가 이미 Keycloak에 등록되어 있어도 Headlamp namespace에는 별도로 등록해야 합니다.
+
+먼저 아래에서 사용할 경로가 준비됐는지 확인합니다. 출력값이 비어 있으면 01의 실행 입력부터 다시 수행하세요.
+단, 공인 CA 분기에서는 `HEADLAMP_OIDC_CA_FILE`이 빈 값인 것이 정상입니다.
+
+```bash
+printf '사이트 도메인: %s\n사이트 인증서 폴더: %s\nCA 원본 폴더: %s\nKeycloak CA 묶음: %s\n' \
+  "$HEADLAMP_HOST" "$HEADLAMP_CERT_DIR" "$HEADLAMP_CA_DIR" "$HEADLAMP_OIDC_CA_FILE"
+```
+
+기본 사내 CA를 사용하면 아래 1~3번을 진행합니다. Keycloak 또는 Headlamp 인증서의 발급기관이 다르면
+**명령을 실행하기 전에** 끝의 [공개 CA 또는 다른 인증기관인 경우](#공개-ca-또는-다른-인증기관인-경우)를 확인합니다.
+
 | 구성 | 용도 | 적용 위치 |
 | --- | --- | --- |
 | Headlamp fullchain·개인키 | 브라우저에 Headlamp 사이트 증명 | `headlamp` namespace의 TLS Secret |
@@ -31,6 +46,17 @@ mkdir -p "$HEADLAMP_CERT_DIR" "$(dirname "$HEADLAMP_OIDC_CA_FILE")" "$HEADLAMP_C
 원본 PFX만 있다면 [공용 인증서 추출](../shared/certs/README.md#원본에서-추출하고-서버에-적용하기)의
 사이트 선택과 3번 추출 절차를 수행한 뒤 여기로 돌아옵니다. 그 문서의 앱 배포 단계까지 진행하지 않습니다.
 사이트 이름·Secret·context는 01에서 선택한 값과 같아야 합니다.
+
+파일은 관리자 PC가 아니라 **지금 명령을 실행하는 CP1의 위 경로**에 있어야 합니다.
+인증서 담당자에게 받은 파일을 서버로 옮기고 표의 이름으로 배치한 뒤 확인합니다.
+
+```bash
+ls -l "$HEADLAMP_CERT_DIR/fullchain.crt" "$HEADLAMP_CERT_DIR/private.key" \
+  "$HEADLAMP_CA_DIR/SECDS-T2RootCA.crt" "$HEADLAMP_CA_DIR/SECDS-T2IssuingCA.crt"
+```
+
+네 파일 모두 조회되어야 합니다. `No such file`이면 아직 검증 명령을 실행하지 말고 경로·파일명을 맞춥니다.
+`fullchain.crt`는 Headlamp 도메인에 유효한 인증서여야 하며, Keycloak 사이트 인증서를 이름만 바꿔 사용하지 않습니다.
 
 ## 2. 인증서 검증과 CA 묶음 생성
 
@@ -62,6 +88,8 @@ mkdir -p "$HEADLAMP_CERT_DIR" "$(dirname "$HEADLAMP_OIDC_CA_FILE")" "$HEADLAMP_C
 ```
 
 `fullchain.crt: OK`와 완료 메시지가 나와야 합니다. 오류가 나면 다음 단계로 넘어가지 않습니다.
+`hostname mismatch`는 사이트 도메인과 인증서가 다르다는 뜻이고, `unable to get ... issuer certificate`는
+CA 체인을 확인해야 한다는 뜻입니다. `cmp`에서 차이가 나면 인증서와 개인키가 서로 짝이 맞지 않습니다.
 fullchain은 별도 CA 파일로 검증했으므로 중간 CA 포함 여부도 확인합니다.
 
 ```bash
@@ -91,6 +119,16 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp get secret "$HEADLAMP_TLS_SECRET"
 kubectl --context "$KUBE_CONTEXT" -n headlamp get configmap "$HEADLAMP_OIDC_CA_CONFIGMAP"
 make headlamp-oidc-check HEADLAMP_OIDC_CA_FILE="$HEADLAMP_OIDC_CA_FILE"
 ```
+
+등록 시 `created`, `configured` 또는 `unchanged`가 출력되면 적용된 것입니다.
+마지막 명령은 `OIDC 연결 검사 통과: TLS·issuer·code flow·PKCE S256·RS256 공개키`를 출력해야 합니다.
+
+| 여기서 실패한다면 | 확인할 것 |
+| --- | --- |
+| Secret·ConfigMap이 `NotFound` | 등록 명령 성공 여부, context, `headlamp` namespace, 01에서 읽은 이름 |
+| 이름을 찾지 못함·연결 시간 초과 | CP1에서 Keycloak 도메인의 DNS·방화벽·HTTPS 접근 |
+| TLS 인증서 검증 실패 | Keycloak의 실제 발급 CA가 준비한 루트·중간 CA와 같은지, 인증서 유효기간 |
+| issuer 불일치 | env의 issuer가 Keycloak 공개 URL + `/realms/etch`와 정확히 같은지 |
 
 접속 중인 Keycloak의 TLS 체인·issuer·code flow·S256·RS256 공개키까지 확인합니다.
 실행 서버에서 성공해도 Pod·API server의 네트워크·CA 신뢰는 각각 준비해야 합니다.

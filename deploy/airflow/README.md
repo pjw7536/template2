@@ -56,6 +56,13 @@ Keycloak과 Keycloak DB는 재배포하지 않습니다. 신규 DAG는 일시정
 TLS 최초 등록 명령과 검사·배포별 영향은 [04 실행](04_SETUP_FLOW.md)에 있습니다.
 기존 `make server-up`은 두 앱 통합 경로이며 Airflow 단독 배포에는 위 전용 명령을 사용합니다.
 
+## Keycloak 로그인
+
+[SSO 설정·client 등록·검증 안내](k8s/jobs/keycloak-client/README.md)를 따릅니다.
+정상 로그인한 모든 사용자는 기본 Viewer이며 `airflow` client의 User·Admin만 추가 권한으로 적용합니다.
+공개 env의 `AIRFLOW_AUTH_MODE=db`는 기존 배포 호환값입니다. 서버 전환 시 실제 OIDC 입력을 준비하고
+`keycloak`으로 바꿔 배포합니다. 로컬은 실행 도구가 Keycloak 모드를 적용합니다.
+
 ## 파일과 설정 소유권
 
 | 경로 | 역할 |

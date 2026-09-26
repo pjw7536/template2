@@ -7,6 +7,7 @@ Secret은 stdin과 사용자 전용 파일로만 전달하고 기존 Docker DB�
 import argparse
 import base64
 import json
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -281,8 +282,28 @@ def airflow_up(creds):
     deploy = module('airflow')
     values = airflow_settings(creds)
     deploy.validate(values)
+    airflow_client_up(values)
     deploy.deploy(values, CONTEXT, deploy.chart_path(), pause_new_dags=True,
                   values_file=ROOT / 'local/airflow/helm/values.yaml')
+
+
+def airflow_client_up(values):
+    """기존 로컬 realm을 보존하면서 공통 client 등록과 로컬 테스트 역할을 적용한다."""
+    path = ROOT / 'deploy/airflow/k8s/jobs/keycloak-client/setup_client.py'
+    spec = importlib.util.spec_from_file_location('airflow_keycloak_client', path)
+    client = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(client)
+    admin = client.KeycloakAdmin('http://localhost:8180', 'portal',
+                                 'local-keycloak-admin', 'local-keycloak-admin-change-me')
+    identifier, roles = client.configure(admin, values)
+    # 운영 client 등록은 사용자 역할을 부여하지 않으며 이 두 계정은 로컬에서만 지정한다.
+    for username, role in [('90000001', 'Admin'), ('90000003', 'User')]:
+        users = admin.request('GET', admin.root + '/users?username=' + username + '&exact=true')
+        if len(users) != 1:
+            raise ValueError('로컬 Keycloak 테스트 사용자가 없습니다: ' + username)
+        admin.request('POST', admin.root + '/users/' + users[0]['id'] + '/role-mappings/clients/' + identifier,
+                      [roles[role]])
+    print('로컬 Airflow SSO client 등록 완료', flush=True)
 
 
 def dependency_up(app):
@@ -351,7 +372,7 @@ def status():
     print('Portal: http://localhost:8080\nKeycloak: http://localhost:8180\nAirflow: http://localhost:8080/airflow\n'
           f'FTP: localhost:{settings()["LOCAL_FTP_PORT"]} (passive 시작 {settings()["LOCAL_FTP_PASSIVE_START"]})\nGrafana: make k8s-grafana\nPrometheus: make k8s-prometheus\n'
           'Portal 사용자: 90000001 / dummy-user-change-me\n'
-          'Airflow: airflow, Grafana: admin, FTP: ftpuser — 비밀번호: local/shared/runtime/credentials.env')
+          'Airflow: Keycloak 로그인 (90000001 관리자, 90000003 운영, 나머지 조회)\nGrafana: admin, FTP: ftpuser — 비밀번호: local/shared/runtime/credentials.env')
 
 
 def main():

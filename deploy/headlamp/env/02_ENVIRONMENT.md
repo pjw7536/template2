@@ -6,6 +6,31 @@
 일반 설정만 담고 Git으로 전달합니다. Client secret은 Kubernetes Secret에 등록합니다.
 Keycloak env를 자동으로 읽거나 복제하지 않으므로 주소가 바뀌면 아래 값을 함께 맞춥니다.
 
+## 처음 편집할 때
+
+01에서 연 파일에서 `=` 오른쪽만 바꿉니다. `export`나 따옴표를 넣지 않고 한 줄에 한 항목을 씁니다.
+아래는 **형식 설명용 예시**이므로 `.example.test` 주소를 운영 env에 복사하지 않습니다.
+
+```dotenv
+HEADLAMP_HOST=ui.example.test
+HEADLAMP_OIDC_ISSUER_URL=https://sso.example.test/realms/etch
+HEADLAMP_OIDC_SECRET=headlamp-oidc
+IMAGE_PULL_SECRET=
+```
+
+| 헷갈리기 쉬운 값 | 차이 |
+| --- | --- |
+| `HEADLAMP_HOST`와 issuer | 앞은 Headlamp 사이트, 뒤는 인증을 담당하는 Keycloak realm URL |
+| `HEADLAMP_OIDC_CLIENT_ID`와 `HEADLAMP_OIDC_SECRET` | 앞은 Keycloak에 등록한 앱 ID, 뒤는 Kubernetes에 만들 Secret의 이름 |
+| `HEADLAMP_OIDC_SECRET`와 Client secret | `headlamp-oidc`는 보관함 이름이며 비밀값이 아님. 실제 비밀값은 04의 숨김 입력으로 등록 |
+| `HEADLAMP_TLS_SECRET`과 인증서 파일 | 앞은 Kubernetes 보관 이름, 파일은 03에서 서버에 준비할 `fullchain.crt`·`private.key` |
+| CA ConfigMap과 CA 파일 | ConfigMap은 Pod가 읽는 보관함. 파일은 CP1 연결 검사·API server 등록에 쓰는 PEM |
+
+env를 저장한 뒤에는 [01의 실행 입력](../01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 읽어야
+현재 터미널 변수와 이후 등록 명령에도 수정값이 반영됩니다.
+
+## env에 입력하는 값
+
 | 변수 | 의미와 확인 위치 |
 | --- | --- |
 | `HEADLAMP_REGISTRY` | Headlamp 이미지 미러. `https://` 없이 입력 |

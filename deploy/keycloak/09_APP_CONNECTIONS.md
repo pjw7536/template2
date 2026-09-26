@@ -39,12 +39,20 @@ Headlamp의 `headlamp-admins`는 클러스터 전체 관리 권한을 위한 전
 SDWT 업무 그룹이나 Portal용 권한을 대신 연결하지 않습니다.
 Headlamp에는 Portal 전용 등록 명령을 사용하지 않습니다.
 
+## Airflow
+
+[Airflow SSO 등록 안내](../airflow/k8s/jobs/keycloak-client/README.md)를 따릅니다.
+기존 realm에 전용 `airflow` client를 등록하며 기본 조회는 정상 로그인한 모두에게 허용합니다.
+운영 담당자에게만 해당 client의 `User` 또는 `Admin`을 직접 부여합니다.
+Portal의 앱 역할·SDWT 그룹·조직 mapper는 Airflow 권한에 사용하지 않습니다.
+
 ## 앱별 완료 기준
 
 | 앱 | 확인할 결과 |
 | --- | --- |
 | Portal | 사내 로그인·callback 성공, 새 토큰의 신원 claim, 필요한 소속·그룹과 앱의 접근 판정 |
 | Headlamp | 브라우저 로그인 성공, 허용한 관리자의 접근 성공, 허용하지 않은 사용자의 접근 거부 |
+| Airflow | Keycloak 로그인, 기본 Viewer, 명시적 User·Admin, 기존 Portal Basic API 호출 |
 | 추가 OIDC 앱 | 전용 client·redirect URI·issuer/JWKS·필요한 claim·권한 판정 확인 |
 
 새 client를 만드는 것만으로 Portal의 mapper가 다른 앱에 복제되지는 않습니다.

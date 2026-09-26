@@ -53,7 +53,7 @@ config:
     max_active_tasks_per_dag: 16
     max_active_runs_per_dag: 16
   api:
-    auth_backends: airflow.api.auth.backend.basic_auth
+    auth_backends: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.providers.fab.auth_manager.api.auth.backend.session
   webserver:
     enable_proxy_fix: 'True'
     expose_config: 'False'

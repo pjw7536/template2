@@ -7,6 +7,19 @@
 새 터미널이면 [01 실행 입력](01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 준비합니다.
 Keycloak 자체 설정은 이미 완료한 상태이며 여기서는 Headlamp 전용 client만 등록합니다.
 
+**실행 위치:** 1~4번은 PC의 Keycloak 관리자 웹 화면, 5번은 CP1 터미널입니다.
+**목표:** Headlamp를 로그인 가능한 앱으로 등록하고, 사용할 사람에게 그룹을 부여한 뒤 비밀값을 Kubernetes에 전달합니다.
+
+먼저 CP1에서 아래 공개값을 출력해 브라우저 옆에 두고 입력합니다.
+
+```bash
+printf 'Client ID: %s\nValid redirect URIs: %s\nKubernetes Secret 이름: %s\n' \
+  "$HEADLAMP_OIDC_CLIENT_ID" "$HEADLAMP_CALLBACK_URL" "$HEADLAMP_OIDC_SECRET"
+```
+
+빈 값이면 01의 실행 입력부터 다시 수행합니다. Keycloak 관리자 화면에서는 왼쪽 위 realm 선택을 **etch**로 맞춥니다.
+`master` realm에서 client를 만들지 않습니다. Headlamp 초기화 중 client를 삭제했다면 아래에서 새로 생성합니다.
+
 파일 임포트가 제한되어 있으면 **아래 순서대로 관리자 화면에서 직접 입력**합니다.
 `headlamp-client.json`을 만들거나 PC로 가져올 필요가 없습니다.
 Keycloak 26.x 기준이며 화면 언어에 따라 메뉴 이름이 조금 다를 수 있습니다.
@@ -51,6 +64,10 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 항목을 찾아 **S256**으로 설정하고 저장합니다. 보통 **Advanced settings** 영역에 있습니다.
 생성 화면에 같은 PKCE 항목이 보이면 그곳에서 설정해도 됩니다.
 
+여기까지 저장한 뒤 client의 **Settings**를 다시 열어 Client authentication이 On이고,
+Standard flow가 켜져 있으며 redirect URI가 CP1 출력과 정확히 같은지 확인합니다.
+redirect URI는 Headlamp 첫 화면 주소가 아니라 로그인 결과를 받는 `/headlamp/oidc-callback` 주소입니다.
+
 client의 서명 알고리즘은 RS256이어야 합니다. `Clients → 해당 client → Advanced`의
 ID Token Signature Algorithm을 RS256으로 맞춥니다. 미설정 시 realm 기본값이 사용되므로 확인합니다.
 
@@ -77,6 +94,11 @@ ID Token Signature Algorithm을 RS256으로 맞춥니다. 미설정 시 realm �
 이미 `headlamp-groups` mapper가 있으면 새로 추가하지 말고 값을 확인·수정합니다.
 왼쪽 메뉴의 공용 **Client scopes**에서 다른 앱이 함께 쓰는 설정을 수정하지 않습니다.
 
+`headlamp-dedicated`가 보이지 않으면 먼저 **Clients → 해당 client → Client scopes** 안에 있는지 확인합니다.
+client ID를 변경했다면 dedicated 이름도 그 client에 맞게 표시됩니다.
+저장한 mapper를 다시 열어 `groups`, Full group path On, Add to ID token On을 확인하세요.
+이 세 값이 맞아야 05의 API server가 관리자 그룹을 알아볼 수 있습니다.
+
 ## 3. 사용할 사람을 그룹에 넣기
 
 1. 왼쪽 **Groups → Create group**에서 `headlamp-admins`를 만듭니다. 다른 그룹 아래가 아닌 **최상위**에 만듭니다. 이미 있으면 그대로 사용합니다.
@@ -94,12 +116,19 @@ SDWT의 `/{SDWT}/admin` 그룹은 이 관리자 그룹을 대신하지 않습니
 그룹 이름을 입력할 때 `/`는 넣지 않습니다. 2번에서 **Full group path**를 켰으므로
 로그인 정보에는 자동으로 `/headlamp-admins`라는 전체 경로가 들어갑니다.
 
+가입 후 해당 사용자의 Groups 목록에 `/headlamp-admins`가 보이는지 확인합니다.
+이 그룹은 **모든 namespace를 관리하고 Secret도 읽을 수 있는 클러스터 관리자**용입니다.
+마지막 접근 거부 검증을 위해 별도 권한이 없는 그룹 밖 시험 계정도 준비합니다.
+
 ## 4. Client secret 확인
 
 **Clients → headlamp → Credentials**에서 **Client secret**을 확인합니다.
 아래 5번의 CP1 명령이 비밀값을 물어볼 때 이 값을 입력합니다.
 이미 사용 중인 client라면 **Regenerate**를 누르지 않습니다.
 **Credentials** 탭이 없으면 1번의 **Client authentication**이 On인지 확인합니다.
+
+Client secret은 자동으로 발급되는 긴 비밀 문자열입니다. `headlamp`, `headlamp-oidc` 같은 이름을 대신 입력하면 안 됩니다.
+client를 삭제하고 새로 만들었다면 **새 client의 Credentials 값**을 사용합니다. 과거 비밀값은 재사용하지 않습니다.
 
 **완료 기준:** `headlamp` client와 `headlamp-groups` mapper가 있고,
 허용할 사용자가 `headlamp-admins` 그룹에 들어 있으며 Client secret을 확인했습니다.
@@ -148,6 +177,10 @@ make headlamp-oidc-client > /tmp/headlamp-client.json
 ```bash
 kubectl --context "$KUBE_CONTEXT" -n headlamp get secret "$HEADLAMP_OIDC_SECRET"
 ```
+
+TYPE은 `Opaque`, DATA는 `1`이어야 합니다. 등록 블록의 마지막 명령이 오류 없이 끝났는지도 확인하세요.
+`NotFound`면 같은 context·namespace에 등록했는지 확인합니다.
+이 조회는 Secret의 존재만 확인하므로 비밀값을 잘못 붙여 넣었다면 5번 블록을 다시 실행해 올바른 값으로 갱신합니다.
 
 기존 Secret에 다른 키가 있으면 배포 검사에서 거부합니다. 다른 앱의 Secret을 재사용하지 말고
 Headlamp 전용 Secret 이름을 env에 지정한 뒤 `01`의 입력을 다시 읽고 등록합니다.

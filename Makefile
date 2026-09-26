@@ -269,3 +269,12 @@ headlamp-ui:
 .PHONY: keycloak-claim-attributes-migrate
 keycloak-claim-attributes-migrate:
 	python3 deploy/keycloak/scripts/migrate_claim_attributes.py $(if $(filter 1,$(KEYCLOAK_CLAIM_MIGRATION_APPLY)),--apply,)
+
+# 기존 realm을 유지하며 Airflow 전용 client만 등록합니다.
+.PHONY: airflow-keycloak-client
+airflow-keycloak-client:
+	python3 deploy/airflow/k8s/jobs/keycloak-client/setup_client.py --env "$(AIRFLOW_ENV)"
+
+.PHONY: k8s-airflow-sso-check
+k8s-airflow-sso-check:
+	python3 local/airflow/smoke_sso.py

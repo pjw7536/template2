@@ -48,3 +48,24 @@ class SecretTests(unittest.TestCase):
         self.assertEqual(items[0]['metadata']['name'], 'api-env')
         self.assertEqual(base64.b64decode(items[0]['data']['OIDC_CLIENT_ID']), b'portal')
         self.assertTrue(apply.call_args.kwargs['sensitive'])
+
+
+class AirflowCredentialTests(unittest.TestCase):
+    def test_upgrade_adds_only_client_secret_and_read_only_check_does_not_write(self):
+        """기존 DB·Fernet 키를 유지하며 쓰기 실행에서만 누락 secret을 추가한다."""
+        import tempfile
+        import k8s_config
+        with tempfile.TemporaryDirectory() as directory, patch.object(k8s_config, 'RUNTIME', Path(directory)):
+            current = k8s_config.credentials(create=True)
+            current.pop('AIRFLOW_OIDC_CLIENT_SECRET')
+            path = Path(directory) / 'credentials.env'
+            k8s_config.write_env(path, current)
+            original = path.read_bytes()
+            checked = k8s_config.credentials()
+            self.assertIn('AIRFLOW_OIDC_CLIENT_SECRET', checked)
+            self.assertEqual(path.read_bytes(), original)
+            upgraded = k8s_config.credentials(create=True)
+            self.assertEqual({key: upgraded[key] for key in current}, current)
+            self.assertGreaterEqual(len(upgraded['AIRFLOW_OIDC_CLIENT_SECRET']), 32)
+            self.assertEqual(k8s_config.credentials(create=True), upgraded)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)

@@ -40,6 +40,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 - 로컬 API는 기본 env → `api-k8s.env` → runtime override → MinIO client credential 순서로 합성합니다.
 - 사내 Portal은 `deploy/portal/env/prod` 입력만 사용합니다. `make prod-profile-env-check`로 필수 입력을 검사합니다.
 - Airflow의 DB·관리자·Portal 연결은 `deploy/airflow/env/k8s.env`에 둡니다. API의 Airflow 사용자·비밀번호·trigger token을 함께 맞춥니다.
+- Airflow 웹 SSO는 `AIRFLOW_AUTH_MODE=keycloak`, `AIRFLOW_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET`을 사용합니다. 모든 인증 사용자는 Viewer, 전용 client의 User·Admin만 추가 적용합니다. Portal Basic API와 DAG trigger token 계약은 유지합니다. 상세 입력은 [Airflow SSO 안내](../deploy/airflow/k8s/jobs/keycloak-client/README.md)를 따릅니다.
 - 로컬 Airflow와 API의 공용 credential은 실행 도구가 생성·재사용합니다. 로컬 개발은 사내망에 의존하지 않습니다.
 - Web 공개 설정에는 secret을 넣지 않습니다. 정적 Web은 시작 시 `/runtime-env.js`를 생성합니다.
 - 이미지 registry와 package mirror는 이미지 빌드·배포 입력으로 지정합니다. 전체 목록은 [mirror 참고](integrations/proxy-mirrors.md)를 봅니다.

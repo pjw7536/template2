@@ -3,6 +3,35 @@
 현재 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 UI입니다.
 **Keycloak 자체 설정과 Account Console 사내 로그인 확인을 마친 뒤** 아래 순서로 설치합니다.
 
+## 처음 시작하거나 초기화 후 다시 설치한다면
+
+**먼저 [01 서버 준비](01_SERVER_SETUP.md)를 열고, 번호 순서대로 한 블록씩 실행하세요.**
+이 README는 순서를 설명하는 입구입니다. 여러 문서의 명령을 한꺼번에 붙여 넣지 않습니다.
+`01 → 03 → 04 → 05 → 06`이 실행 순서이며, `02`는 설정값을 찾을 때 여는 참고 문서입니다.
+
+작업할 곳은 세 군데입니다.
+
+| 작업할 곳 | 여기서 하는 일 |
+| --- | --- |
+| CP1의 Bash 터미널 | 저장소 루트에서 `make`·`kubectl` 실행, 인증서와 Secret 등록 |
+| PC의 웹 브라우저 | Keycloak 관리자 화면에서 client·그룹 등록, 마지막에 Headlamp 로그인 |
+| 각 제어면 서버의 터미널 | Kubernetes API server가 Keycloak 토큰을 받아들이도록 설정. 05에서만 사용 |
+
+`kubectl --context ...`는 선택한 클러스터에 명령을 보냅니다. 반면 `sudo vi /etc/kubernetes/...`는
+**현재 SSH로 접속한 서버의 파일**을 편집합니다. context를 바꿔도 SSH 접속 서버는 바뀌지 않습니다.
+
+초기화 후에는 다음 상태에서 시작하면 됩니다.
+
+- Keycloak의 `etch` realm·사내 IdP `oidc`·기존 사용자는 유지하고, Account Console 사내 로그인이 됩니다.
+- `headlamp` namespace가 없어도 됩니다. 01에서 만들고, 삭제된 이미지 인증·TLS·OIDC Secret과 CA ConfigMap은 다시 등록합니다.
+- Keycloak의 Headlamp client·관리자 그룹이 없어도 됩니다. 04에서 새로 만듭니다. 남아 있다면 해당 단계에서 확인합니다.
+- API server의 OIDC 설정은 남아 있을 수 있습니다. 05에서 먼저 확인하고 중복 추가하거나 다른 앱의 인증 설정을 덮어쓰지 않습니다.
+- 인증서 원본·개인키·CA 파일은 준비되어 있어야 합니다. namespace를 삭제했다면 Kubernetes Secret도 없어졌으므로 파일로 다시 등록해야 합니다.
+
+문서의 `read ...` 명령은 실행 후 값을 입력하고 Enter를 누릅니다. `Headlamp client secret:` 입력은 화면에 보이지 않습니다.
+`<...>` 형태의 설명용 값은 실제 값으로 바꿔야 하며 그대로 실행하지 않습니다.
+오류가 나오면 해당 단계의 확인 방법으로 해결한 뒤 진행합니다. 새 터미널을 열었다면 01의 실행 입력을 다시 준비합니다.
+
 ## 설치 순서
 
 | 순서 | 할 일 | 실행 안내 | 완료 기준 |

@@ -89,3 +89,11 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_ENV="$AIRFLOW_EN
 ```
 
 실제 값 검사는 [차트 준비](../03_ARTIFACTS.md) 이후 실행합니다. 위 두 명령은 설정이나 클러스터를 변경하지 않습니다.
+
+## Keycloak SSO 입력
+
+`AIRFLOW_AUTH_MODE=keycloak` 전환 시 issuer·전용 client ID/secret이 필요합니다.
+[SSO 등록 안내](../k8s/jobs/keycloak-client/README.md)의 설정표와 등록 순서를 따릅니다.
+서버는 HTTPS를 사용하고 사내 CA는 `AIRFLOW_OIDC_CA_CONFIGMAP`의 `ca.crt`를
+`AIRFLOW_OIDC_CA_BUNDLE=/etc/airflow/oidc-ca/ca.crt`로 마운트합니다.
+`AIRFLOW_OIDC_ALLOW_HTTP=true`는 공개 Airflow 주소가 localhost인 개발 환경에서만 허용합니다.

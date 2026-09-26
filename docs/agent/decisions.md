@@ -393,3 +393,12 @@
 - 이 결정이 이전 Portal 사전 등록·DB 권한 원본 계약을 대체한다. [실행·검증 기록](plans/portal-keycloak-transition.md).
 
 - 2026-09-26: Portal 앱 접근은 Keycloak client 역할만 판정한다. 조직 정책은 운영자가 portal-members 그룹 가입으로 관리하며 portal-all-apps를 상속한다. deptid와 이전 internal snapshot은 접근 근거로 사용하지 않는다. SDWT 권한은 별도 유지한다.
+
+
+## 2026-09-26: Airflow Keycloak SSO와 기본 조회 권한
+
+- 기존 realm의 전용 `airflow` client로 웹 로그인한다. 검증된 ID Token의 해당 client 역할만 사용하며 Portal 역할·SDWT·조직 그룹은 해석하지 않는다.
+- 모든 인증 사용자는 기본 Viewer이며 User·Admin은 Keycloak에서 명시적으로 부여한다. 역할 제거 후 새 로그인은 Viewer로 복귀한다. 익명 조회·기존 세션 이관·통합 로그아웃은 포함하지 않는다.
+- Airflow 내장 역할 이름을 그대로 사용하고 사용자 식별은 issuer/sub로 고정한다. 기존 DB 계정과 이메일·이름으로 자동 병합하지 않는다.
+- 기존 Portal Basic API 인증과 DAG trigger token은 유지한다. 로컬 SSO·권한 회수·양방향 연동을 검증했으며 사내 서버에는 아직 적용하지 않았다.
+- [구현·검증 기록](plans/airflow-keycloak-sso.md), [서버 설정 안내](../../deploy/airflow/k8s/jobs/keycloak-client/README.md).

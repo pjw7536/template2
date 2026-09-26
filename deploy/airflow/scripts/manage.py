@@ -23,11 +23,16 @@ from urllib.request import urlopen
 BASE = Path(__file__).resolve().parents[1]
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_DB', 'NODE_NAME', 'POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'POSTGRES_IMAGE', 'POSTGRES_UID', 'POSTGRES_GID', 'AIRFLOW_IMAGE_REPOSITORY', 'AIRFLOW_IMAGE_TAG', 'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_ENABLED', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', 'AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'AIRFLOW_ADMIN_USERNAME', 'AIRFLOW_ADMIN_EMAIL', 'POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL', 'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS'))
+OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID',
+             'AIRFLOW_OIDC_CLIENT_SECRET', 'AIRFLOW_OIDC_BACKCHANNEL_BASE_URL',
+             'AIRFLOW_OIDC_CA_BUNDLE', 'AIRFLOW_OIDC_CA_CONFIGMAP', 'AIRFLOW_OIDC_ALLOW_HTTP')
+ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS)
 DEFAULT_ENV = BASE / 'env/k8s.env'
 RUNTIME_KEYS = (
     'AIRFLOW_API_BASE_URL', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL',
     'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS',
 )
+RUNTIME_KEYS += tuple(key for key in OIDC_KEYS if key != 'AIRFLOW_OIDC_CA_CONFIGMAP')
 SECRET_KEYS = ('POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY',
                'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN')
 DB_DEFAULTS = {'POSTGRES_MODE': 'internal', 'POSTGRES_HOST': 'airflow-postgres',
@@ -65,7 +70,7 @@ def validate(values, example=False):
     if values['POSTGRES_MODE'] == 'internal':
         require(all(values[key] == default for key, default in DB_DEFAULTS.items()), '내부 PostgreSQL 연결 설정은 기본값을 유지하세요.')
     require(values.keys() == ENV_KEYS, 'k8s.env 설정 키가 계약과 다릅니다. 누락·오타를 확인하세요.')
-    optional = {'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:]}
+    optional = {'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:], *OIDC_KEYS}
     for key, value in values.items():
         if key not in optional:
             require(bool(value.strip()), f'필수 설정 누락: {key}')
@@ -73,7 +78,8 @@ def validate(values, example=False):
             require(not any(marker in value for marker in ('replace-me', 'example.invalid', '<', '>')), f'실제 값으로 교체하세요: {key}')
         # Helm은 일부 문자열을 템플릿으로 평가하므로 설정 입력의 템플릿 실행을 막는다.
         require('{{' not in value and '}}' not in value, f'템플릿 표현식 금지: {key}')
-    for key in ('NAMESPACE', 'NODE_NAME', 'IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET'):
+    validate_oidc(values)
+    for key in ('NAMESPACE', 'AIRFLOW_OIDC_CA_CONFIGMAP', 'NODE_NAME', 'IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET'):
         require(not values[key] or (len(values[key]) <= 253 and re.fullmatch(r'[a-z0-9]([a-z0-9.-]*[a-z0-9])?', values[key])), f'Kubernetes 이름 형식 오류: {key}')
     require(len(values['NAMESPACE']) <= 40 and '.' not in values['NAMESPACE'], 'NAMESPACE는 40자 이하 DNS label이어야 합니다.')
     paths = []
@@ -115,6 +121,32 @@ def validate(values, example=False):
         except ValueError:
             decoded = b''
         require(len(decoded) == 32, 'AIRFLOW_FERNET_KEY는 32바이트 URL-safe base64 키여야 합니다.')
+
+
+def validate_oidc(values):
+    """운영 HTTPS와 명시적인 로컬 HTTP 예외, CA 마운트 계약을 검사한다."""
+    require(values['AIRFLOW_AUTH_MODE'] in ('db', 'keycloak'), 'AIRFLOW_AUTH_MODE는 db 또는 keycloak이어야 합니다.')
+    require(values['AIRFLOW_OIDC_ALLOW_HTTP'] in ('true', 'false'), 'AIRFLOW_OIDC_ALLOW_HTTP 형식 오류')
+    if values['AIRFLOW_AUTH_MODE'] == 'db':
+        return
+    for key in ('AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID', 'AIRFLOW_OIDC_CLIENT_SECRET'):
+        require(values[key].strip(), f'필수 OIDC 설정 누락: {key}')
+    require(re.fullmatch(r'[a-zA-Z0-9_-]+', values['AIRFLOW_OIDC_CLIENT_ID']), 'OIDC client ID 형식 오류')
+    local = values['AIRFLOW_OIDC_ALLOW_HTTP'] == 'true'
+    public = urlsplit(values['AIRFLOW_WEBSERVER_BASE_URL'])
+    require(not local or public.hostname in ('localhost', '127.0.0.1'), 'OIDC HTTP 예외는 localhost 개발 환경에서만 허용합니다.')
+    require(local or public.scheme == 'https', '운영 OIDC callback은 HTTPS여야 합니다.')
+    for key in ('AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_BACKCHANNEL_BASE_URL'):
+        if not values[key]:
+            continue
+        url = urlsplit(values[key])
+        require(url.scheme in (('http', 'https') if local else ('https',)) and url.hostname
+                and not url.username and not url.password and not url.query and not url.fragment
+                and re.fullmatch(r'/realms/[a-zA-Z0-9_.-]+/?', url.path)
+                and not any(c.isspace() for c in values[key]), f'OIDC realm URL 형식 오류: {key}')
+    ca, configmap = values['AIRFLOW_OIDC_CA_BUNDLE'], values['AIRFLOW_OIDC_CA_CONFIGMAP']
+    require(bool(ca) == bool(configmap), 'OIDC CA bundle과 ConfigMap을 함께 지정하세요.')
+    require(not ca or ca == '/etc/airflow/oidc-ca/ca.crt', 'OIDC CA bundle 경로는 /etc/airflow/oidc-ca/ca.crt입니다.')
 
 
 def run(args, *, data=None, sensitive=False):
@@ -188,6 +220,9 @@ def helm_values(settings, pause_new_dags=False):
     elif settings['ODBC_SECRET_NAME']:
         result['volumes'] = [{'name': 'odbc', 'secret': {'secretName': settings['ODBC_SECRET_NAME']}}]
         result['volumeMounts'] = [{'name': 'odbc', 'mountPath': '/usr/local/odbc', 'readOnly': True}]
+    if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
+        result.setdefault('volumes', []).append({'name': 'oidc-ca', 'configMap': {'name': settings['AIRFLOW_OIDC_CA_CONFIGMAP']}})
+        result.setdefault('volumeMounts', []).append({'name': 'oidc-ca', 'mountPath': '/etc/airflow/oidc-ca', 'readOnly': True})
     if settings['INGRESS_ENABLED'] == 'true':
         url = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL'])
         annotations = {}
@@ -264,6 +299,8 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
     scoped = [*kube, '-n', namespace]
+    if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
+        run([*scoped, 'get', 'configmap', settings['AIRFLOW_OIDC_CA_CONFIGMAP'], '-o', 'name'])
     for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'), ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
         if settings[key] and (key in ('IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME') or settings['INGRESS_ENABLED'] == 'true'):
             run([*scoped, 'get', resource, settings[key], '-o', 'name'])
@@ -296,7 +333,7 @@ def build_image(settings, path):
     require(build['INSTALL_BIGDATAQUERY_ODBC'] != 'true' or build['BIGDATAQUERY_ODBC_DEB_URL'], 'ODBC 설치에는 BIGDATAQUERY_ODBC_DEB_URL이 필요합니다.')
     root = BASE.parents[1]
     source = root / 'apps/airflow'
-    require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'dags', 'plugins')),
+    require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'dags', 'plugins')),
             '이미지 빌드 소스가 없습니다. bash deploy/shared/scripts/checkout-server.sh airflow --with-source 로 소스를 추가하세요.')
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']
     dependency = final + '-dependencies'

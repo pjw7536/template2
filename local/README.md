@@ -44,7 +44,7 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 - Portal: http://localhost:8080 — `90000001 / dummy-user-change-me` (내부 팀 계정)
 - 다른 Portal 테스트 계정: `90000002` 메일 조회, `90000003` 전체 앱, `90000004` 전체 관리자, `90000005` 무권한. 비밀번호는 위와 같습니다.
 - Keycloak: http://localhost:8180 — `local-keycloak-admin / local-keycloak-admin-change-me`
-- Airflow: http://localhost:8080/airflow — 사용자 `airflow`
+- Airflow: http://localhost:8080/airflow — Keycloak 로그인. `90000001` 관리자, `90000003` 일반 운영, 나머지 로그인 사용자는 기본 조회. 비밀번호는 Portal 테스트 계정과 동일합니다.
 - FTP: localhost:6380, passive 8076–8079 — 사용자 `ftpuser`
 - Grafana: `make k8s-grafana` 실행 중 http://localhost:3000 — 사용자 `admin`
 - PostgreSQL: localhost:55432 — dashboard_keycloak/portal, airflow/airflow, keycloak/keycloak DB/계정
@@ -70,7 +70,7 @@ Portal 갱신은 Secret의 폐기된 설정 키도 제거하여 현재 env와 �
 기존 Keycloak realm은 import로 덮어쓰지 않으므로, 이전 설치에서는 EPID 테스트 계정과
 현재 Portal claim mapper를 별도로 반영해야 합니다.
 
-생성된 DB·Airflow·Grafana·FTP 비밀번호는 `local/shared/runtime/credentials.env`에 있습니다.
+생성된 DB·Airflow API·Grafana·FTP 비밀번호는 `local/shared/runtime/credentials.env`에 있습니다.
 이 파일은 0600 권한으로 생성하고 Git에서 제외하며 재실행해도 덮어쓰지 않습니다.
 
 ## 로컬 설정과 파일 보존
@@ -151,3 +151,21 @@ python3 -m unittest discover -s apps/tooling/agent/tests -p test_local_k8s.py
 기존 realm은 import로 갱신되지 않습니다. 기존 환경은 Admin Console에서 `portal-members` 그룹을 생성하고,
 Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`을 가입시키고 재로그인합니다.
 부서 정보만으로 앱에 접근할 수 없으며, 기존 SDWT 그룹은 유지합니다. DB나 realm을 초기화할 필요는 없습니다.
+
+## Airflow Keycloak 로그인
+
+`make k8s-rebuild APP=airflow`는 기존 realm을 보존하면서 전용 client를 등록하고 이미지를 갱신합니다.
+새 환경의 `make dev`도 같은 등록 경로를 사용합니다. realm JSON의 재import에 의존하지 않습니다.
+누락된 Airflow client secret만 `local/shared/runtime/credentials.env`에 추가하며 기존 DB·Fernet 키는 유지합니다.
+
+로그인한 모든 사용자는 Viewer입니다. `airflow` client의 User·Admin 역할만 추가 권한으로 적용하고,
+Portal 역할·조직·SDWT 그룹은 사용하지 않습니다. 로컬 테스트 계정 90000001에는 Admin,
+90000003에는 User를 등록합니다. 서버 등록 도구는 사용자 역할을 자동 부여하지 않습니다.
+
+```bash
+make k8s-airflow-sso-check
+```
+
+이 검사는 실제 Keycloak 로그인·기본 조회·역할 회수 후 Viewer 복귀·기존 Basic API·Portal 조회를 확인합니다.
+90000003의 역할을 잠시 제거한 뒤 원래대로 복원하며 DAG를 실행하지 않습니다.
+Airflow 웹의 DB 비밀번호 로그인은 SSO로 대체되지만 기존 API 계정은 유지됩니다.

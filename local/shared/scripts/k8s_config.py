@@ -89,10 +89,16 @@ def credentials(create=False):
     path = RUNTIME / 'credentials.env'
     keys = ('POSTGRES_PASSWORD', 'PORTAL_DB_PASSWORD', 'AIRFLOW_DB_PASSWORD', 'KEYCLOAK_DB_PASSWORD',
             'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN',
-            'GRAFANA_PASSWORD', 'FTP_PASS')
+            'GRAFANA_PASSWORD', 'FTP_PASS', 'AIRFLOW_OIDC_CLIENT_SECRET')
     if path.exists():
         result = read_env(path)
-        if set(result) != {*keys, 'AIRFLOW_FERNET_KEY'}:
+        expected = {*keys, 'AIRFLOW_FERNET_KEY'}
+        if set(result) == expected - {'AIRFLOW_OIDC_CLIENT_SECRET'}:
+            result['AIRFLOW_OIDC_CLIENT_SECRET'] = secrets.token_urlsafe(32) if create else 'local-render-only-0123456789'
+            if create:
+                write_env(path, result)
+                path.chmod(0o600)
+        if set(result) != expected:
             raise ValueError('기존 credentials.env 키를 확인하세요. 자동으로 교체하지 않습니다.')
         return result
     if not create:
@@ -140,6 +146,11 @@ def airflow_settings(creds):
                   POSTGRES_PASSWORD=creds['AIRFLOW_DB_PASSWORD'],
                   KNOX_MESSENGER_API_BASE_URL='', KNOX_MESSENGER_AUTHORIZATION='',
                   KNOX_MESSENGER_SYSTEM_ID='', AIRFLOW_FAILURE_ALERT_KNOX_IDS='')
+    result.update(AIRFLOW_AUTH_MODE='keycloak', AIRFLOW_OIDC_ISSUER='http://localhost:8180/realms/portal',
+                  AIRFLOW_OIDC_CLIENT_ID='airflow', AIRFLOW_OIDC_CLIENT_SECRET=creds['AIRFLOW_OIDC_CLIENT_SECRET'],
+                  AIRFLOW_OIDC_BACKCHANNEL_BASE_URL='http://keycloak.tailwind-local.svc.cluster.local:8080/realms/portal',
+                  AIRFLOW_OIDC_ALLOW_HTTP='true', AIRFLOW_OIDC_CA_BUNDLE='', AIRFLOW_OIDC_CA_CONFIGMAP='',
+                  AIRFLOW_WEBSERVER_BASE_URL='http://localhost:8080/airflow')
     for key in ('AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_TRIGGER_TOKEN'):
         result[key] = creds[key]
     return result
