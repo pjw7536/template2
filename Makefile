@@ -295,6 +295,14 @@ headlamp-up:
 headlamp-ui:
 	python3 ./deploy/headlamp/scripts/manage.py ui --context "$(KUBE_CONTEXT)"
 
+# 저장소에 포함한 사내 미러 구성으로 클러스터 공용 Metrics API를 설치합니다.
+.PHONY: metrics-server-up
+metrics-server-up:
+	@test -n "$(KUBE_CONTEXT)" || { echo 'KUBE_CONTEXT를 지정하세요.' >&2; exit 1; }
+	kubectl --context "$(KUBE_CONTEXT)" apply -f deploy/shared/metrics-server/components.yaml
+	kubectl --context "$(KUBE_CONTEXT)" -n kube-system rollout status deployment/metrics-server --timeout=180s
+	kubectl --context "$(KUBE_CONTEXT)" wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
+
 .PHONY: keycloak-claim-attributes-migrate
 keycloak-claim-attributes-migrate:
 	python3 deploy/keycloak/scripts/migrate_claim_attributes.py $(if $(filter 1,$(KEYCLOAK_CLAIM_MIGRATION_APPLY)),--apply,)

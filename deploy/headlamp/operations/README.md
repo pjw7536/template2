@@ -39,8 +39,57 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp get events --sort-by=.lastTimestam
 kubectl --context "$KUBE_CONTEXT" -n headlamp logs deployment/headlamp --tail=100
 ```
 
-CPU·메모리 수치가 없으면 metrics-server 설치 여부를 확인합니다.
+CPU·메모리 수치가 없으면 아래 metrics-server 설치 절차로 Metrics API를 확인합니다.
 기본 replica는 1입니다. 로그인 state·갱신 토큰이 프로세스 내에 있으므로 임의로 다중 replica로 확장하지 않습니다.
+
+## CPU·메모리 사용량: metrics-server
+
+클러스터 공용 Metrics API가 없으면 관리자 kubeconfig로 metrics-server를 설치합니다.
+[설치 YAML](../../shared/metrics-server/components.yaml)은 공식 v0.9.0 구성을 포함하며,
+이미지는 프로젝트에 등록된 사내 미러를 사용합니다.
+
+```text
+repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0
+```
+
+서버는 저장소에 포함된 YAML을 사용하므로 설치 시 GitHub에 접속하지 않습니다.
+v0.9.x는 Kubernetes 1.34 이상을 지원하며, 이번 대상인 1.36.4에 사용할 수 있습니다.
+공식 원본과 호환표: [v0.9.0 릴리스](https://github.com/kubernetes-sigs/metrics-server/releases/tag/v0.9.0),
+[설치 요구사항](https://github.com/kubernetes-sigs/metrics-server#requirements).
+
+먼저 대상 context와 기존 설치 여부를 확인합니다.
+
+```bash
+kubectl --context "$KUBE_CONTEXT" version
+kubectl --context "$KUBE_CONTEXT" get apiservice v1beta1.metrics.k8s.io
+kubectl --context "$KUBE_CONTEXT" -n kube-system get deployment metrics-server
+```
+
+APIService와 Deployment가 모두 `NotFound`이면 저장소 루트에서 실행합니다.
+기존 리소스가 있으면 현재 설치 도구와 상태를 먼저 확인합니다.
+미러 인증이 필요한 환경은 `kube-system`의 이미지 인증 Secret을 준비하고
+설치 YAML의 Deployment에 `spec.template.spec.imagePullSecrets`로 연결합니다.
+
+```bash
+make metrics-server-up KUBE_CONTEXT="$KUBE_CONTEXT"
+kubectl --context "$KUBE_CONTEXT" top nodes
+kubectl --context "$KUBE_CONTEXT" top pods -A
+```
+
+명령은 YAML 적용 후 Deployment와 APIService 준비를 각각 최대 180초 기다립니다.
+첫 수집 전에는 수치가 없을 수 있으므로 잠시 후 `top`을 다시 확인합니다.
+수치가 나오면 Headlamp를 새로고침합니다.
+
+실패하면 다음 결과로 이미지 미러·kubelet 연결·Metrics API 상태를 확인합니다.
+
+```bash
+kubectl --context "$KUBE_CONTEXT" -n kube-system describe pods -l k8s-app=metrics-server
+kubectl --context "$KUBE_CONTEXT" -n kube-system logs deployment/metrics-server --tail=100
+kubectl --context "$KUBE_CONTEXT" describe apiservice v1beta1.metrics.k8s.io
+```
+
+`ImagePullBackOff`는 이벤트에 표시된 이미지가 위 사내 미러 주소인지와 미러 인증·노드 CA를 확인합니다.
+로그의 kubelet `x509` 오류는 kubelet serving 인증서의 CA와 노드 주소 SAN을 확인합니다.
 
 ## 기존 조회 그룹에서 전환
 
