@@ -20,14 +20,17 @@ Discovery는 사내 IdP의 접속 정보를 자동으로 가져오는 기능입�
 
 필수 값이 없으면 검사가 중단됩니다. 신규 IdP에 제공되지 않은 선택 URL은 추정해서 만들지 않습니다.
 endpoint는 HTTPS를 사용하고 서명 검증은 활성화합니다. issuer는 받은 값을 그대로 사용합니다.
+
 해석 결과는 임시 env와 Kubernetes Secret으로 전달하며 원본 `prod.env`를 덮어쓰지 않습니다.
 
 ## 별도로 준비하는 값
 
 사내 client ID·secret은 AD FS에서 발급받아 [환경변수 안내](env/02_ENVIRONMENT.md#사내-identity-provider용-값)에 따라 입력합니다.
 Discovery는 credential·사용자 claim 값·접근 권한을 발급하지 않습니다.
+
 인증 방식 `client_secret_post`는 `Client secret sent in the request body`에 해당합니다.
-metadata에 인증 방식 목록이 없으면 도구는 `client_secret_basic`을 기본 지원 방식으로 검사하므로 실제 client의 지원 방식을 확인합니다.
+metadata에 인증 방식 목록이 없으면 도구는 `client_secret_basic`을 기본 지원 방식으로 검사합니다.
+이 경우 실제 client가 지원하는 인증 방식을 별도로 확인합니다.
 
 ## 네트워크와 인증서
 

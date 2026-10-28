@@ -102,13 +102,13 @@ docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime
 
 ## 관련 API
 
-- `docs/api/line-dashboard.md`
+- [Line Dashboard / Drone API](../api/line-dashboard.md)
 
 ## 관련 코드
 
-- `apps/portal/api/api/drone/views.py`
+- `apps/portal/api/api/drone/views/`
 - `apps/portal/api/api/drone/models.py`
-- `apps/portal/api/api/drone/selectors.py`
+- `apps/portal/api/api/drone/selectors/`
 - `apps/portal/api/api/drone/serializers.py`
 - `apps/portal/api/api/drone/services/pop3/sop_pop3.py`
 - `apps/portal/api/api/drone/services/inform/sop_inform.py`

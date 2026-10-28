@@ -48,8 +48,8 @@ Common은 여러 백엔드 모듈에서 공유하는 helper, middleware, 외부 
 
 ## 관련 문서
 
-- `docs/integrations.md`
-- `docs/operations.md`
+- [외부 연동 계약](../integrations.md)
+- [운영/개발 명령](../operations.md)
 
 ## 관련 코드
 

@@ -932,6 +932,31 @@ metadata:
   namespace: etch-sso
 ---
 apiVersion: v1
+data:
+  paths.yaml: |
+    # 운영·로컬 Traefik이 공유하는 하위 경로 처리입니다.
+    http:
+      middlewares:
+        minio-console:
+          chain:
+            middlewares:
+              - minio-console-slash
+              - minio-console-strip
+        minio-console-slash:
+          redirectRegex:
+            regex: '^(https?://[^/]+/minio-console)(\?.*)?$'
+            replacement: '${1}/${2}'
+            permanent: true
+        minio-console-strip:
+          stripPrefix:
+            prefixes:
+              - /minio-console
+kind: ConfigMap
+metadata:
+  name: traefik-middlewares-7h69688t92
+  namespace: etch-sso
+---
+apiVersion: v1
 kind: Service
 metadata:
   labels:
@@ -1178,6 +1203,8 @@ spec:
         - --providers.kubernetesingress=true
         - --providers.kubernetesingress.ingressclass=traefik
         - --providers.kubernetesingress.namespaces=etch-sso,headlamp
+        - --providers.file.directory=/etc/traefik/dynamic
+        - --providers.file.watch=true
         - --entrypoints.web.address=:8000
         - --entrypoints.websecure.address=:8443
         - --entrypoints.health.address=:9000
@@ -1222,9 +1249,17 @@ spec:
           capabilities:
             drop:
             - ALL
+        volumeMounts:
+        - mountPath: /etc/traefik/dynamic
+          name: middlewares
+          readOnly: true
       nodeSelector:
         ingress: traefik
       serviceAccountName: traefik
+      volumes:
+      - configMap:
+          name: traefik-middlewares-7h69688t92
+        name: middlewares
 ---
 apiVersion: apps/v1
 kind: StatefulSet

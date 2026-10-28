@@ -6,10 +6,12 @@ APP="${1:?사용법: apply-env.sh <keycloak|portal> <환경> [server|oidc|api|cl
 PROFILE="${2:?환경 이름이 필요합니다.}"
 COMPONENT="${3:-server}"
 [[ "$APP/$COMPONENT" != portal/server ]] || COMPONENT=api
-if [[ "$APP" == portal && "$PROFILE" != local && "$PROFILE" != prod ]]; then
-  echo 'Portal Kubernetes 환경은 local 또는 prod입니다. 운영 입력은 deploy/portal/env/prod를 사용하세요.' >&2
-  exit 1
-fi
+case "$APP/$PROFILE" in
+  keycloak/prod|portal/local|portal/prod) ;;
+  keycloak/*) echo 'Keycloak Kubernetes 환경은 prod입니다.' >&2; exit 1 ;;
+  portal/*) echo 'Portal Kubernetes 환경은 local 또는 prod입니다. 운영 입력은 deploy/portal/env/prod를 사용하세요.' >&2; exit 1 ;;
+  *) echo 'Kubernetes Secret 등록은 keycloak 또는 portal 앱만 지원합니다.' >&2; exit 1 ;;
+esac
 ENV_FILE="${4:-}"
 if [[ "$APP/$PROFILE/$COMPONENT" == portal/local/api && -z "$ENV_FILE" ]]; then
   echo '로컬 API는 합성된 env 파일을 네 번째 인자로 전달하세요. 기본 실행은 make k8s-env APP=portal PROFILE=local을 사용하세요.' >&2
@@ -17,6 +19,13 @@ if [[ "$APP/$PROFILE/$COMPONENT" == portal/local/api && -z "$ENV_FILE" ]]; then
 fi
 [[ -n "$ENV_FILE" ]] || ENV_FILE="$(resolve_env_file "$ROOT_DIR" "$APP" "$PROFILE" "$COMPONENT")"
 KUBECTL_BIN="${KUBECTL_BIN:-kubectl}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+KUBECTL_ARGS=()
+if [[ "$PROFILE" == prod && -z "${KUBE_CONTEXT//[[:space:]]/}" ]]; then
+  echo '서버 설정 등록에는 KUBE_CONTEXT를 지정하세요.' >&2
+  exit 1
+fi
+[[ -z "${KUBE_CONTEXT:-}" ]] || KUBECTL_ARGS=(--context "$KUBE_CONTEXT")
 echo "설정 입력: $ENV_FILE / 앱: $APP / 작업: $COMPONENT"
 load_env "$ENV_FILE"
 resolve_keycloak_discovery "$ROOT_DIR" "$APP" "$COMPONENT" "$ENV_FILE"
@@ -48,7 +57,7 @@ trap 'rm -rf -- "$ENV_TMP"' EXIT
 for key in "${keys[@]}"; do
   [[ ! -v ENV_VALUES[$key] ]] || printf '%s=%s\n' "$key" "${ENV_VALUES[$key]}"
 done > "$ENV_TMP/input.env"
-"$KUBECTL_BIN" create secret generic "$secret" -n "$namespace" \
-  --from-env-file="$ENV_TMP/input.env" --dry-run=client -o yaml | "$KUBECTL_BIN" apply -f -
+"$KUBECTL_BIN" "${KUBECTL_ARGS[@]}" create secret generic "$secret" -n "$namespace" \
+  --from-env-file="$ENV_TMP/input.env" --dry-run=client -o yaml | "$KUBECTL_BIN" "${KUBECTL_ARGS[@]}" apply -f -
 echo "설정 등록 완료: $namespace / $secret"
 echo '기동 설정은 Pod 재시작 시, 설정 Job 입력은 해당 Job 재실행 시 반영됩니다.'

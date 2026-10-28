@@ -3,11 +3,13 @@
 [배포 문서 안내](../../../README.md) · [입문 가이드](../kubernetes/README.md) · [설치 기준 조회](../kubernetes/01-baseline.md)
 
 > 노드 현황 기준일: 2026-09-16 사용자 확인 / APP VIP·DNS 기록: 2026-09-15
->
-> 이 문서를 사내 Kubernetes topology와 workload 배치의 기준 정보로 사용합니다. 실제
-> 배포 전에는 `kubectl get nodes -o wide` 결과와 비교해 상태 변경 여부를 확인합니다.
-> 아래 5대의 노드명·역할·IP·Ready는 사용자가 제공한 현재 구성입니다. 에이전트가 서버를 조회한 결과는 아닙니다.
-> 노드 확인은 VIP·DNS·앱 배포 성공을 의미하지 않으며 해당 항목은 각 기록의 확인 시점을 유지합니다.
+> Worker 용도·MinIO 배포 대상 지정: 2026-10-27 사용자 확인. 실제 MinIO 배포는 미실행입니다.
+
+이 문서는 사내 Kubernetes의 노드 구성과 앱 배치를 기록합니다.
+배포 전에는 `kubectl get nodes -o wide` 결과와 비교해 변경 여부를 확인합니다.
+
+아래 5대의 노드명·역할·IP·Ready 상태는 사용자가 제공한 정보입니다. 에이전트가 서버를 직접 조회한 결과는 아닙니다.
+VIP·DNS·앱 배포 여부는 노드 상태와 별도로 확인해야 하며, 각 항목의 확인 시점을 함께 읽습니다.
 
 ```text
                   Kubernetes API VIP
@@ -39,6 +41,13 @@
 | `khplanew01` | `10.172.40.117` | worker | 미확인 | 미확인 | 미확인 | APP VIP Backend 등록 기록 있음 / Ready |
 
 위 표의 workload는 기존 배치 기록이며 2026-09-16 확인 범위는 노드 상태까지입니다.
+
+### 2026-10-27 Worker 용도와 MinIO 배치 지정
+
+- `khplane01w09`(`10.172.40.87`)는 사용자 지정 Keycloak 전용 Worker입니다.
+- 새 MinIO와 초기화 Job은 `khplanew01`(`10.172.40.117`)에 배치합니다. 운영 YAML에 nodeSelector를 반영했습니다.
+- MinIO 데이터 볼륨도 해당 Worker에서 사용할 수 있어야 합니다. 실제 디스크 경로·PV 준비와 서버 배포는 아직 확인하지 않았습니다.
+- 이 지정은 기존 Traefik·VIP·Keycloak의 배치를 이동하거나 변경하는 작업을 포함하지 않습니다. 아래 VIP 관련 설명은 과거 기록·배포 계획으로 유지합니다.
 
 ### 과거 계획과 현재 목록의 구분
 
@@ -74,8 +83,9 @@ etch.samsungds.net → APP VIP 10.172.26.150:443
 ```
 
 VIP 연결은 인프라팀에서 설정했으며, 위 앱 라우팅은 저장소의 배포 계획입니다.
-현재 목표는 기존 Keycloak 유지와 Airflow 기동입니다. 두 Worker에 Traefik을 배치하더라도
-앱·DB를 복제하는 것은 아닙니다. 서버 적용과 확인은 [APP VIP 실행 절차](../../ingress/VIP.md)를 따릅니다.
+이 기록의 배포 목표는 기존 Keycloak 유지와 Airflow 기동입니다.
+두 Worker에 Traefik을 배치해도 앱·DB가 복제되지는 않습니다.
+서버 적용과 확인은 [APP VIP 실행 절차](../../ingress/VIP.md)를 따릅니다.
 
 ## 확정된 클러스터·Keycloak 정보
 

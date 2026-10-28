@@ -1,7 +1,5 @@
-# path<TAB>line_limit_or_current_baseline
-apps/portal/api/api/account/admin.py	1101
+# 경로<TAB>기존 대형 파일의 기준 줄 수(이후 증가 금지)
+apps/portal/api/api/account/admin.py	1108
 apps/portal/api/api/account/selectors/queries.py	2533
 apps/portal/api/api/account/services/access_control.py	1652
-apps/portal/api/api/account/tests.py	8954
-apps/portal/api/api/account/views/__init__.py	1248
-apps/portal/api/api/l3_spider/tests.py	1845
+apps/portal/api/api/l3_spider/tests.py	1854

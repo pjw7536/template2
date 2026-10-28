@@ -18,7 +18,7 @@ function portalFixture(component) {
     FRONTEND_BASE_URL: 'https://portal.test', OIDC_AUTH_URL: 'https://sso.test/auth',
     OIDC_LOGOUT_URL: 'https://sso.test/logout', OIDC_TOKEN_URL: 'https://sso.test/token', OIDC_JWKS_URL: 'https://sso.test/keys' };
   const inputs = {
-    api: { ...common, DJANGO_SECRET_KEY: 'private-marker', DJANGO_ALLOWED_HOSTS: 'portal.test',
+    api: { ...common, DJANGO_SECRET_KEY: 'private-marker', DJANGO_ALLOWED_HOSTS: 'portal.test,localhost',
       DJANGO_DB_NAME: 'portal', DJANGO_DB_USER: 'portal', DJANGO_DB_PASSWORD: 'private-marker',
       DJANGO_DB_HOST: 'db.test', DJANGO_DB_PORT: '5432', DJANGO_CORS_ALLOWED_ORIGINS: 'https://portal.test',
       DJANGO_CSRF_TRUSTED_ORIGINS: 'https://portal.test', PUBLIC_API_BASE_URL: 'https://portal.test',
@@ -48,6 +48,19 @@ test('운영 API는 선택 업무 연동 없이 DB·Keycloak·MinIO 입력으로
   assert.notEqual(checkPortal(t, 'api', fixture.replace(/^MINIO_SECRET_KEY=.*\n/m, '')).status, 0);
 });
 
+test('운영 API 입력은 고정 health probe의 localhost Host를 허용해야 한다', t => {
+  const fixture = portalFixture('api');
+  for (const hosts of ['portal.test', 'portal.test,127.0.0.1', 'portal.test,localhost.test']) {
+    const result = checkPortal(t, 'api', fixture.replace(/^DJANGO_ALLOWED_HOSTS=.*$/m, `DJANGO_ALLOWED_HOSTS=${hosts}`));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DJANGO_ALLOWED_HOSTS.*localhost/);
+  }
+  for (const hosts of ['portal.test,localhost', 'portal.test, .LOCALHOST ', 'portal.test,*']) {
+    const result = checkPortal(t, 'api', fixture.replace(/^DJANGO_ALLOWED_HOSTS=.*$/m, `DJANGO_ALLOWED_HOSTS=${hosts}`));
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
+
 test('운영 Web·MinIO 검사는 미입력 상태를 차단하고 완성된 입력을 허용한다', t => {
   for (const component of ['web', 'minio']) {
     const example = portalFixture(component).replace(/=.+/g, '=');
@@ -69,6 +82,35 @@ test('Kubernetes 입력 경로는 prod로 통일하고 미지원 환경을 적�
     const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'portal', profile, 'api'], { cwd: root, encoding: 'utf8', env: { ...process.env, KUBECTL_BIN: '/not-a-real-kubectl' } });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /local 또는 prod/);
+  }
+});
+
+test('Secret 등록은 외부 env가 있어도 미지원 앱·환경을 입력 조회와 kubectl 호출 전에 거부한다', t => {
+  const dir = sandbox(t), input = path.join(dir, 'input.env'), calls = path.join(dir, 'calls');
+  fs.writeFileSync(input, fixtures.server + fixtures.oidc + portalFixture('api'));
+  const kubectl = path.join(dir, 'kubectl.cjs');
+  fs.writeFileSync(kubectl, `#!/usr/bin/env node
+require('node:fs').appendFileSync(process.env.MOCK_CALLS, 'called\\n');
+`, { mode: 0o700 });
+  for (const [app, profile, message] of [
+    ...['local', 'oidc', 'test', 'custom'].map(profile => ['keycloak', profile, /Keycloak.*prod/]),
+    ...['oidc', 'test', 'custom'].map(profile => ['portal', profile, /Portal.*local 또는 prod/]),
+    ['airflow', 'prod', /keycloak 또는 portal/], ['unknown', 'prod', /keycloak 또는 portal/],
+  ]) {
+    for (const context of ['', 'review-context']) {
+      for (const external of [input, path.join(dir, 'missing.env')]) {
+        const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', app, profile, 'server', external], {
+          cwd: root, encoding: 'utf8', env: { ...process.env, KUBE_CONTEXT: context, KUBECTL_BIN: kubectl, MOCK_CALLS: calls },
+        });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, message);
+        assert.ok(!result.stdout.includes('설정 입력:'));
+        assert.ok(!result.stderr.includes('설정 파일이 없습니다'));
+        assert.ok(!result.stderr.includes('KUBE_CONTEXT'));
+        assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
+        assert.equal(fs.existsSync(calls), false);
+      }
+    }
   }
 });
 
@@ -140,7 +182,7 @@ if(args[0]==='create'){
 }else if(args[0]==='apply'){fs.readFileSync(0,'utf8');}else process.exit(1);
 `, { mode: 0o700 });
   const result = spawnSync('make', ['k8s-env', 'APP=portal', 'PROFILE=local'], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, KUBECTL_BIN: kubectl, MOCK_CAPTURE: capture },
+    cwd: dir, encoding: 'utf8', env: { ...process.env, KUBE_CONTEXT: '', KUBECTL_BIN: kubectl, MOCK_CAPTURE: capture },
   });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
@@ -154,6 +196,56 @@ if(args[0]==='create'){
   assert.equal(fs.existsSync(prepared), false);
 });
 
+function localApiBuilder(t, minio) {
+  const dir = sandbox(t);
+  for (const relative of ['deploy/shared/scripts/env-lib.sh', 'local/portal/scripts/build-local-api-env.sh']) {
+    const destination = path.join(dir, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(root, relative), destination);
+  }
+  const envDir = path.join(dir, 'local/portal/env');
+  fs.mkdirSync(envDir);
+  fs.writeFileSync(path.join(envDir, 'api.env'), 'BASE_ONLY=base\nLAYER=base\nOVERLAY_ONLY=base\nMINIO_ACCESS_KEY=base\nMINIO_SECRET_KEY=base\n');
+  fs.writeFileSync(path.join(envDir, 'api-k8s.env'), 'LAYER=overlay\nOVERLAY_ONLY=overlay\nMINIO_ACCESS_KEY=overlay\n');
+  const runtime = path.join(dir, 'runtime.env');
+  fs.writeFileSync(runtime, 'LAYER=runtime\nMINIO_ACCESS_KEY=runtime\n');
+  fs.writeFileSync(path.join(envDir, 'minio.env'), minio);
+  const output = path.join(dir, 'output.env');
+  const result = spawnSync('bash', ['local/portal/scripts/build-local-api-env.sh', output], {
+    cwd: dir, encoding: 'utf8', env: { ...process.env, LOCAL_K8S_API_OVERRIDES: runtime },
+  });
+  return { dir, output, result };
+}
+
+test('MinIO 합성은 공통 env 구문으로 CRLF와 리터럴을 보존하고 두 client 키만 최종 덮어쓴다', t => {
+  const literal = 'private-marker $(touch executed) `touch executed` $UNCHANGED=equals';
+  const { dir, output, result } = localApiBuilder(t,
+    `MINIO_ACCESS_KEY=client\r\nMINIO_SECRET_KEY=${literal}\r\nMINIO_ROOT_PASSWORD=excluded\r\nLAYER=excluded`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
+  assert.equal(fs.existsSync(path.join(dir, 'executed')), false);
+  const values = Object.fromEntries(fs.readFileSync(output, 'utf8').trimEnd().split('\n').map(line => {
+    const separator = line.indexOf('=');
+    return [line.slice(0, separator), line.slice(separator + 1)];
+  }));
+  assert.deepEqual(values, { BASE_ONLY: 'base', LAYER: 'runtime', MINIO_ACCESS_KEY: 'client',
+    MINIO_SECRET_KEY: literal, OVERLAY_ONLY: 'overlay' });
+  assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+});
+
+test('MinIO 중복 키와 잘못된 env 구문은 합성 파일을 만들기 전에 차단한다', t => {
+  for (const minio of [
+    'MINIO_ACCESS_KEY=client\nMINIO_SECRET_KEY=private-marker\nMINIO_SECRET_KEY=duplicate\n',
+    'MINIO_ACCESS_KEY=client\nMINIO_SECRET_KEY=private-marker\ninvalid setting\n',
+  ]) {
+    const { output, result } = localApiBuilder(t, minio);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /중복 설정|설정 형식 오류/);
+    assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
+    assert.equal(fs.existsSync(output), false);
+  }
+});
+
 test('공통 도구는 합성 파일 없는 로컬 API 입력을 kubectl 호출 전에 차단한다', () => {
   const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'portal', 'local', 'api'], {
     cwd: root, encoding: 'utf8', env: { ...process.env, KUBECTL_BIN: '/not-a-real-kubectl' },
@@ -163,12 +255,41 @@ test('공통 도구는 합성 파일 없는 로컬 API 입력을 kubectl 호출 
   assert.ok(!result.stderr.includes('/not-a-real-kubectl'));
 });
 
+test('prod 설정 등록은 context가 없으면 어떤 kubectl 명령도 호출하지 않는다', t => {
+  const dir = sandbox(t), input = path.join(dir, 'input.env'), calls = path.join(dir, 'calls');
+  const kubectl = path.join(dir, 'kubectl.cjs');
+  fs.writeFileSync(kubectl, `#!/usr/bin/env node
+require('node:fs').appendFileSync(process.env.MOCK_CALLS, 'called\\n');
+`, { mode: 0o700 });
+  for (const [app, component, content] of [
+    ['keycloak', 'server', fixtures.server], ['keycloak', 'oidc', fixtures.oidc],
+    ['portal', 'client', portalFixture('api')], ['portal', 'api', portalFixture('api')],
+    ['portal', 'web', portalFixture('web')], ['portal', 'minio', portalFixture('minio')],
+  ]) {
+    fs.writeFileSync(input, content, { mode: 0o600 });
+    for (const context of [undefined, '', ' \t ']) {
+      const env = { ...process.env, KUBECTL_BIN: kubectl, MOCK_CALLS: calls };
+      if (context === undefined) delete env.KUBE_CONTEXT;
+      else env.KUBE_CONTEXT = context;
+      const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', app, 'prod', component, input], {
+        cwd: root, encoding: 'utf8', env,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /KUBE_CONTEXT/);
+      assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
+      assert.equal(fs.existsSync(calls), false);
+    }
+  }
+});
+
 test('prod API Secret은 준비된 API 입력만 기존 Namespace에 적용한다', t => {
   const dir = sandbox(t), input = path.join(dir, 'input.env'), capture = path.join(dir, 'capture.json');
+  const calls = path.join(dir, 'calls.jsonl');
   fs.writeFileSync(input, portalFixture('api'), { mode: 0o600 });
   const kubectl = path.join(dir, 'kubectl.cjs');
   fs.writeFileSync(kubectl, `#!/usr/bin/env node
-const fs=require('node:fs');const args=process.argv.slice(2);
+const fs=require('node:fs');const raw=process.argv.slice(2);const args=raw.slice(2);
+fs.appendFileSync(process.env.MOCK_CALLS,JSON.stringify(raw)+'\\n');
 if(args[0]==='create'){
  const file=args.find(a=>a.startsWith('--from-env-file=')).split('=').slice(1).join('=');
  const keys=fs.readFileSync(file,'utf8').trim().split('\\n').map(l=>l.split('=')[0]);
@@ -176,13 +297,17 @@ if(args[0]==='create'){
  console.log('apiVersion: v1\\nkind: Secret');
 }else if(args[0]==='apply'){fs.readFileSync(0,'utf8');console.log('applied');}else process.exit(1);
 `, { mode: 0o700 });
-  const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'portal', 'prod', 'api', input], { cwd: root, encoding: 'utf8', env: { ...process.env, KUBECTL_BIN: kubectl, MOCK_CAPTURE: capture } });
+  const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'portal', 'prod', 'api', input], { cwd: root, encoding: 'utf8', env: { ...process.env, KUBE_CONTEXT: 'review-context', KUBECTL_BIN: kubectl, MOCK_CAPTURE: capture, MOCK_CALLS: calls } });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
   const captured = JSON.parse(fs.readFileSync(capture, 'utf8'));
   assert.equal(captured.args[captured.args.indexOf('-n') + 1], 'tailwind-internal');
   assert.ok(captured.keys.includes('MINIO_SECRET_KEY'));
   assert.ok(!captured.keys.includes('MINIO_ROOT_PASSWORD'));
+  const commands = fs.readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(commands.length, 2);
+  assert.ok(commands.every(args => args[0] === '--context' && args[1] === 'review-context'));
+  assert.deepEqual(new Set(commands.map(args => args[2])), new Set(['create', 'apply']));
 });
 
 function sandbox(t) {
@@ -367,10 +492,12 @@ test('JSON 특수문자가 있는 client secret을 변형하지 않는다', t =>
 for (const component of ['server', 'oidc']) {
   test(`${component} Secret에는 해당 작업의 입력만 전달한다`, t => {
     const dir = sandbox(t), input = path.join(dir, 'input.env'), captured = path.join(dir, 'selected.env');
+    const calls = path.join(dir, 'calls.jsonl');
     fs.writeFileSync(input, fixtures.server + fixtures.oidc);
     const kubectl = path.join(dir, 'kubectl.cjs');
     fs.writeFileSync(kubectl, `#!/usr/bin/env node
-const fs=require('node:fs');const args=process.argv.slice(2);
+const fs=require('node:fs');const raw=process.argv.slice(2);const args=raw.slice(2);
+fs.appendFileSync(process.env.MOCK_CALLS,JSON.stringify(raw)+'\\n');
 if(args[0]==='create'){
  const flag=args.find(a=>a.startsWith('--from-env-file='));
  fs.copyFileSync(flag.slice('--from-env-file='.length),process.env.MOCK_CAPTURE);
@@ -378,12 +505,16 @@ if(args[0]==='create'){
 }else if(args[0]==='apply'){fs.readFileSync(0,'utf8');console.log('secret configured');}
 else process.exit(1);
 `, { mode: 0o700 });
-    const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'keycloak', 'prod', component, input], { cwd: root, encoding: 'utf8', env: { ...process.env, KUBECTL_BIN: kubectl, MOCK_CAPTURE: captured } });
+    const result = spawnSync('bash', ['deploy/shared/scripts/apply-env.sh', 'keycloak', 'prod', component, input], { cwd: root, encoding: 'utf8', env: { ...process.env, KUBE_CONTEXT: 'review-context', KUBECTL_BIN: kubectl, MOCK_CAPTURE: captured, MOCK_CALLS: calls } });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
     const keys = fs.readFileSync(captured, 'utf8').trim().split('\n').map(l => l.split('=')[0]);
     if (component === 'server') assert.deepEqual(keys.sort(), ['postgres-password', 'bootstrap-admin-username', 'bootstrap-admin-password', 'keycloak-public-url'].sort());
     else assert.ok(keys.every(k => k.startsWith('CORP_OIDC_')));
+    const commands = fs.readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(commands.length, 2);
+    assert.ok(commands.every(args => args[0] === '--context' && args[1] === 'review-context'));
+    assert.deepEqual(new Set(commands.map(args => args[2])), new Set(['create', 'apply']));
   });
 }
 

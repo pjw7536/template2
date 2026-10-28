@@ -2,8 +2,9 @@
 
 [시작 안내](README.md) · 이전: [환경변수](env/02_ENVIRONMENT.md) · 다음: [단계별 실행](04_SETUP_FLOW.md)
 
-명령은 저장소 루트에서 실행합니다. 이미 배포할 이미지가 registry에 있다면 빌드는 생략하고
-선택한 Worker에서 해당 이미지를 가져올 수 있는지 확인합니다.
+아래 명령은 저장소 루트에서 실행합니다.
+배포할 이미지가 이미 registry에 있으면 빌드를 생략할 수 있습니다.
+이 경우에도 선택한 Worker에서 해당 이미지를 가져올 수 있는지 확인합니다.
 
 ## 1. 공식 chart 준비
 
@@ -41,13 +42,20 @@ python3 deploy/airflow/scripts/manage.py build-image \
   --build-env deploy/airflow/env/build.env
 ```
 
-Docker가 있는 빌드 환경에서 실행합니다. 기존 `apps/airflow/image/Dockerfile.dependencies`로 의존성 이미지를 만들고
-`apps/airflow/image/Dockerfile`로 DAG·플러그인을 추가합니다. 최종 context는 `apps/airflow`입니다. 빌드 context에 실제 env·로그·DSN은 보내지 않습니다.
-이미지는 자동 push하지 않습니다. `k8s.env`에 지정한 이미지 이름으로 `docker push`하거나,
-`docker save` 후 서버 containerd에 반입하세요. K3s이면 `sudo k3s ctr images import <이미지.tar>`를 사용합니다.
-**Docker에만 이미지가 있어서는 Kubernetes가 사용할 수 없습니다.** PostgreSQL 이미지도 준비합니다.
-DAG 변경 시 이미지를 다시 빌드하고 `AIRFLOW_IMAGE_TAG`를 변경해 재배포합니다.
-플러그인 소스는 `apps/airflow/plugins`에 두며 최종 이미지에 함께 포함됩니다.
+Docker가 있는 빌드 호스트에서 실행합니다. 빌드는 다음 두 단계로 진행됩니다.
+
+1. `apps/airflow/image/Dockerfile.dependencies`로 의존성 이미지를 만듭니다.
+2. `apps/airflow/image/Dockerfile`로 DAG·플러그인을 추가합니다.
+
+최종 빌드 context는 `apps/airflow`입니다. 실제 env·로그·DSN 파일은 context에 보내지 않습니다.
+플러그인 소스는 `apps/airflow/plugins`에 두며 최종 이미지에 포함됩니다.
+
+빌드한 이미지는 자동으로 push되지 않습니다. `k8s.env`의 이미지 이름으로 registry에 push하거나,
+`docker save`로 저장한 뒤 서버 containerd에 반입합니다.
+K3s에서는 `sudo k3s ctr images import <이미지.tar>`를 사용합니다.
+Docker에만 이미지를 넣어서는 Kubernetes가 사용할 수 없습니다. PostgreSQL 이미지도 같은 기준으로 준비합니다.
+
+DAG를 변경하면 이미지를 다시 빌드하고 `AIRFLOW_IMAGE_TAG`를 새 값으로 바꿔 배포합니다.
 
 private registry 인증이 필요하면 대상 namespace에 imagePullSecret을 미리 만들고
 `IMAGE_PULL_SECRET`에 이름을 입력합니다.

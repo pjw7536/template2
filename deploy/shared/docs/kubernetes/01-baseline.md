@@ -2,7 +2,8 @@
 
 [가이드 홈](README.md) · 이전: [용어](00-concepts.md) · 다음: [앱 준비](04-prerequisites.md)
 
-기존 서버에서 읽기 전용으로 확인합니다. 명령·권한이 없으면 오류를 기록하고 담당자에게 요청합니다.
+기존 서버의 상태를 조회하는 단계입니다. 아래 명령은 설정을 변경하지 않습니다.
+명령이 없거나 권한이 부족하면 오류를 기록하고 담당자에게 확인을 요청합니다.
 
 ## CP1에서 클러스터 조회
 
@@ -47,7 +48,8 @@ command -v kubeadm kubelet kubectl containerd crictl k3s rke2
 systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 ```
 
-설치되지 않은 후보 서비스·명령의 오류는 따로 기록합니다. 도구 이름만으로 구축 방식을 확정하지 않습니다.
+후보 명령이나 서비스가 설치되지 않아 생기는 오류도 기록합니다.
+명령 하나가 있다는 이유만으로 클러스터 구축 방식을 확정하지 않습니다.
 
 | 확인할 정보 | 근거·담당 |
 | --- | --- |

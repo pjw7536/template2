@@ -2,9 +2,12 @@
 
 [전체 순서](../README.md) · [서버 준비](../01_SERVER_SETUP.md)
 
-`env/k8s.env`가 검사·배포·client JSON 생성의 단일 입력입니다.
-일반 설정만 담고 Git으로 전달합니다. Client secret은 Kubernetes Secret에 등록합니다.
-Keycloak env를 자동으로 읽거나 복제하지 않으므로 주소가 바뀌면 아래 값을 함께 맞춥니다.
+검사·배포·client JSON 생성은 모두 `env/k8s.env`를 읽습니다.
+이 파일에는 일반 설정과 Kubernetes 리소스의 이름을 넣고 Git으로 전달합니다.
+실제 client secret은 04의 절차로 Kubernetes Secret에 등록합니다.
+
+Headlamp가 Keycloak env를 자동으로 읽지는 않습니다.
+Keycloak 주소가 바뀌면 이 문서의 관련 값도 함께 맞춥니다.
 
 ## 처음 편집할 때
 
@@ -70,10 +73,13 @@ env를 저장한 뒤에는 [01의 실행 입력](../01_SERVER_SETUP.md#2-대상-
 | `make headlamp-up KUBE_CONTEXT=대상` | Secret·CA 키·TLS·Traefik 사전 검사 후 Helm 적용 |
 | `make headlamp-ui KUBE_CONTEXT=대상` | 배포 상태와 접속 주소 확인 |
 
-OIDC 연결 검사는 client 존재·secret 유효성·그룹 가입·실제 토큰 서명·Kubernetes 권한까지 검사하지 않습니다.
-Pod와 모든 API server에서도 discovery·JWKS 접근이 가능해야 합니다.
-Keycloak 인증서 갱신으로 CA가 바뀌면 로컬 검사 파일, Headlamp ConfigMap, API server CA를 모두 갱신합니다.
-Secret 또는 CA 변경 후 Headlamp를 재시작하는 절차는 [운영 참고](../operations/README.md)를 따릅니다.
+OIDC 연결 검사와 실제 로그인 검증은 다릅니다.
+client 존재 여부, secret의 유효성, 그룹 가입, 실제 토큰 서명과 Kubernetes 권한은 별도로 확인합니다.
+Headlamp Pod와 모든 API server에서도 discovery·JWKS 주소에 접근할 수 있어야 합니다.
+
+Keycloak 인증서 갱신으로 CA가 바뀌면 세 곳을 함께 갱신합니다.
+실행 호스트의 검사 파일, Headlamp ConfigMap, API server의 CA 파일입니다.
+변경 후 Headlamp 재시작은 [운영 참고](../operations/README.md)를 따릅니다.
 
 ## 고정 계약과 파일 역할
 

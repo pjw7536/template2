@@ -2,9 +2,9 @@
 
 [전체 순서](README.md) · 참고: [02 환경변수](env/02_ENVIRONMENT.md) · 다음: [03 TLS](03_TLS.md)
 
-모든 명령은 배포 서버(CP1)의 저장소 루트에서 **같은 Bash 터미널**로 실행합니다.
-각 명령이 성공했는지 확인한 뒤 다음으로 진행합니다. 새 터미널에서는 2번을 다시 실행합니다.
-실행에는 `local/`이나 앱 소스가 필요하지 않습니다.
+배포 서버(CP1)의 저장소 루트에서 같은 Bash 터미널을 사용합니다.
+명령 하나가 성공한 것을 확인한 뒤 다음 명령을 실행합니다.
+새 터미널을 열면 2번의 실행 입력을 다시 준비합니다. `local/`이나 앱 소스는 필요하지 않습니다.
 
 **이 단계의 목표:** 사용할 클러스터와 사이트 주소를 정하고, 설치 파일과 `headlamp` namespace를 준비합니다.
 아직 Headlamp 화면이 열리지 않는 것이 정상입니다.
@@ -54,9 +54,11 @@ read -r -p 'Headlamp를 설치할 context: ' KUBE_CONTEXT
 export KUBE_CONTEXT
 ```
 
-`kubectl config get-contexts` 결과의 **NAME 열**에서 설치할 클러스터를 골라 입력합니다.
-별표(`*`)나 서버 IP가 아니라 context 이름 자체를 입력하세요. 목록이 없거나 권한 오류가 나면
-관리자 kubeconfig를 먼저 준비해야 합니다. `command not found`가 난 도구도 설치 후 다시 확인합니다.
+`kubectl config get-contexts` 결과의 NAME 열에서 설치할 클러스터를 고릅니다.
+별표(`*`)나 서버 IP를 빼고 context 이름 자체를 입력합니다.
+
+목록이 없거나 권한 오류가 나면 관리자 kubeconfig부터 준비합니다.
+`command not found`가 나온 도구는 설치한 뒤 다시 확인합니다.
 
 ```bash
 test -n "$KUBE_CONTEXT" && kubectl --context "$KUBE_CONTEXT" -n etch-sso get deployment keycloak traefik
@@ -117,9 +119,12 @@ fi
 Issuer는 Keycloak의 `keycloak-public-url` + `/realms/etch`이며 사내 AD FS 주소가 아닙니다.
 Callback은 이후 Keycloak client 등록 화면에 그대로 입력합니다.
 
-성공하면 `접속 주소`, `Callback`, `Issuer` 세 줄이 출력됩니다. 공개 주소이므로 작업 메모에 남겨 두세요.
-브라우저에서 열 주소는 `/headlamp/`, Keycloak에 등록할 callback은 `/headlamp/oidc-callback`으로 서로 다릅니다.
-`입력 검증 실패`가 나오면 env를 고친 뒤 **위 if 블록 전체를 다시 실행**합니다.
+성공하면 `접속 주소`, `Callback`, `Issuer` 세 줄이 출력됩니다. 공개 주소이므로 작업 메모에 남겨 둡니다.
+
+- 브라우저에서 열 주소: `/headlamp/`
+- Keycloak에 등록할 callback: `/headlamp/oidc-callback`
+
+`입력 검증 실패`가 나오면 env를 고친 뒤 위 if 블록 전체를 다시 실행합니다.
 
 ## 3. 고정 chart 준비
 

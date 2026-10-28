@@ -7,11 +7,11 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 | 항목 | 값 |
 | --- | --- |
 | Prefix | `/api/v1/l3_spider/` |
-| Auth | Django session 로그인 필요 |
+| Auth | Django session과 Portal·`l3-spider` 앱 접근 필요. 메일 trigger는 Airflow token |
 | Data root | `L3_SPIDER_DATA_ROOT` |
 | Index source | `L3_SPIDER_INDEX_SOURCE` (`postgres` 또는 `sqlite_mock`) |
 | Request/Response | 조회 API는 camelCase. 설정 CRUD 입력은 snake_case, 응답은 camelCase |
-| Side effect | 조회 endpoint는 없음. `mail-rules/trigger`만 메일 발송 이력을 쓰고 Mail API를 호출 |
+| Side effect | 제외 필터·메일 rule·공유 권한 CRUD는 DB 변경. trigger는 발송 이력과 Mail API 호출, test-send는 단발 메일 전송 |
 
 `postgres`는 기본값이며 `public.l3_spider_file_index`,
 `public.l3_spider_daily_run_stats`, `public.l3_spider_run_status`를 조회합니다.
@@ -47,12 +47,15 @@ L3 Spider API는 read-only mount된 `daily_anomaly` Parquet 파일을 조회해 
 | `POST` | `daily-summary` | 선택 날짜 전체의 line_name×process×eds 요약 매트릭스와 헤드라인을 반환 |
 | `POST` | `data` | 선택 조건과 차트 필터 기준 Plotly 표시용 row 목록을 반환 |
 | `POST` | `filter-candidates` | 선택 조건 기준 EQPCH/bin 등 차트 필터 후보를 반환 |
-| `GET` | `mail-rules` | 로그인 사용자 소유 메일 발송 rule 목록을 반환 |
+| `GET` | `trend` | 로그인 사용자의 추세 데이터 조회 |
+| `GET/POST` | `exclusion-filters` | 사용자 제외 필터 목록·생성 |
+| `PATCH/DELETE` | `exclusion-filters/{id}` | 사용자 제외 필터 수정·삭제 |
+| `GET` | `mail-rules` | 로그인 사용자 소유 또는 공유받은 메일 발송 rule 목록을 반환 |
 | `POST` | `mail-rules` | 로그인 사용자 소유 메일 발송 rule 생성 |
-| `PATCH` | `mail-rules/{id}` | 로그인 사용자 소유 메일 발송 rule 수정 |
+| `PATCH` | `mail-rules/{id}` | 소유자 또는 write 공유 권한자가 메일 발송 rule 수정 |
 | `DELETE` | `mail-rules/{id}` | 로그인 사용자 소유 메일 발송 rule 삭제 |
 | `GET` | `mail-rules/{id}/permissions` | owner가 메일 rule 공유 권한 목록 조회 |
-| `PUT` | `mail-rules/{id}/permissions` | owner가 메일 rule 공유 권한 전체 교체 |
+| `PUT/PATCH` | `mail-rules/{id}/permissions` | owner가 메일 rule 공유 권한 전체 교체 |
 | `POST` | `mail-rules/{id}/test-send` | write 권한자가 해당 rule을 단발성으로 테스트 발송 |
 | `POST` | `mail-rules/trigger` | Airflow token으로 due rule을 처리하고 Mail API 호출 |
 

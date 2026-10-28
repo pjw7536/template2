@@ -63,7 +63,7 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   assert.equal(docs.some(doc => doc.kind === 'ClusterRole'), false);
   assert.doesNotMatch(rendered, /server-headlamp-viewer|server-headlamp-discovery|headlamp-viewers/);
   const paths = run(['deploy/shared/scripts/app-paths.py', 'headlamp']).trim().split('\n');
-  assert.deepEqual(paths, ['deploy/shared', 'docs', 'deploy/headlamp']);
+  assert.deepEqual(paths, ['deploy/shared', 'deploy/headlamp']);
 
   const ingress = docs.find(doc => doc.kind === 'Ingress');
   assert.equal(ingress.spec.ingressClassName, 'traefik');

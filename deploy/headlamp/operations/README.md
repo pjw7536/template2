@@ -1,8 +1,9 @@
 # Headlamp 운영 참고
 
-최초 설치는 [시작 안내](../README.md)의 순서를 따릅니다.
-이 문서는 설치 후 갱신·장애·기존 구성 전환·복구에 사용합니다.
-새 터미널에서는 [실행 입력](../01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 먼저 준비합니다.
+설치 후 설정을 갱신하거나 장애를 확인하고 복구할 때 사용하는 문서입니다.
+처음 설치한다면 [시작 안내](../README.md)의 순서를 따릅니다.
+
+새 터미널을 열었을 때는 작업 전에 [실행 입력](../01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 준비합니다.
 
 ## 변경 종류별 반영
 
@@ -43,8 +44,9 @@ CPU·메모리 수치가 없으면 metrics-server 설치 여부를 확인합니�
 
 ## 기존 조회 그룹에서 전환
 
-`headlamp-admins`는 새 최상위 그룹으로 만들고 전체 관리할 사람만 가입시킵니다.
-기존 `headlamp-viewers`를 이름 변경하면 모든 기존 조회 사용자가 관리자가 되므로 이름을 변경하지 않습니다.
+`headlamp-admins`를 새 최상위 그룹으로 만들고 전체 관리 권한이 필요한 사람만 가입시킵니다.
+기존 `headlamp-viewers`의 이름을 바꾸면 조회 사용자 전원이 관리자가 되므로 새 그룹을 별도로 만듭니다.
+
 `make headlamp-up`은 새 `server-headlamp-admin` 바인딩을 만들고 Helm이 관리하던
 `server-headlamp-viewer` 바인딩과 `server-headlamp-discovery` 역할·바인딩을 제거합니다.
 새 바인딩 이름을 사용하므로 변경 불가능한 기존 `roleRef`를 수정하지 않습니다.
@@ -61,10 +63,11 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp rollout restart deployment/headlam
 kubectl --context "$KUBE_CONTEXT" -n headlamp rollout status deployment/headlamp --timeout=180s
 ```
 
-재시작 후 사내 로그인과 관리자·비관리자 권한을 다시 확인합니다.
-복구는 관리자 kubeconfig로 이전 env·Helm revision·제어면 설정을 복원합니다.
-`helm rollback`만으로 Keycloak·제어면·외부 Secret은 복구되지 않습니다.
-이전 revision이 공용 토큰 계정을 다시 만들 수 있으므로 복구 후 권한을 확인합니다.
+재시작 후에는 사내 로그인과 관리자·비관리자의 권한을 다시 확인합니다.
+
+복구할 때는 관리자 kubeconfig를 사용해 이전 env·Helm revision·제어면 설정을 복원합니다.
+`helm rollback`은 Keycloak·제어면·외부 Secret까지 되돌리지 않습니다.
+이전 revision이 공용 토큰 계정을 다시 만들 수도 있으므로 복구 후 권한도 확인합니다.
 
 Helm revision은 다음 읽기 명령으로 확인합니다.
 

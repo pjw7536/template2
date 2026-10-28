@@ -1,7 +1,9 @@
 # 사내 배포 문서 안내
 
-사내 서버는 Kubernetes로만 배포합니다. 앱별 Kubernetes 원본과 CI 입력을 관리합니다.
-외부 PC 전용 env·mock·kind·개발 실행 도구는 [local/](../local/README.md)에 있습니다.
+이 폴더는 사내 Kubernetes 배포에 필요한 앱별 설정과 운영 문서를 모아 둔 곳입니다.
+사내 서버는 Kubernetes로만 배포하며, CI 검사에 쓰는 입력도 여기서 관리합니다.
+
+외부 PC의 개발 환경은 [local/](../local/README.md)을 사용합니다. 개발용 env·mock·kind·실행 도구는 그곳에 있습니다.
 
 ```text
 deploy/
@@ -26,27 +28,36 @@ deploy/
 
 사내 서버는 [선택 체크아웃 안내](SERVER_CHECKOUT.md)를 따라 필요한 앱만 받습니다.
 명령은 별도 안내가 없으면 저장소 루트에서 실행합니다.
+기존 Kubernetes에서 Portal 외 서비스를 먼저 운영하려면 `platform`을 선택합니다.
+서버에는 `deploy`와 루트 실행 파일을 받으며 `apps/`·`local/`·루트 `docs/`는 필요하지 않습니다.
+공통 운영 문서는 `deploy/shared/docs`에 포함됩니다.
+Portal을 추가할 때는 `all`로 확장하고 앱별 입력·migration·라우팅 연결을 수행합니다.
 
-배포 실행에는 각 앱의 실제 `.env` 파일을 사용합니다. 일반 설정과 비밀번호·토큰을 같은 env에 저장하고 private Git 저장소에 포함합니다.
-인증서·개인키 파일은 Git에서 제외하고 서버에 별도로 준비합니다. 배포 도구는 지정한 env 하나만 읽습니다.
-`.env`를 배포와 검사에 함께 사용하며 변경 이력도 Git으로 관리합니다.
+설정은 각 앱의 env 파일에서 관리합니다. 일반 설정과 비밀번호·토큰을 같은 파일에 넣고,
+비공개 Git 저장소에서 변경 이력을 관리합니다. 검사와 배포 도구는 지정한 env 파일 하나를 읽습니다.
+
+인증서·개인키 파일은 Git에 넣지 않고 서버에 별도로 준비합니다.
 
 ## 처음 읽는 순서
 
-현재 준비 상태와 미완료 항목은 [배포 준비 점검](READINESS.md)을 먼저 확인합니다.
-정적 검사·실제 env 검사·클러스터 검사·로그인 검증의 차이도 정리되어 있습니다.
+[배포 준비 기록](READINESS.md)에는 이전 점검 결과와 미완료 항목이 있습니다.
+과거 기록이므로 현재 배포 가능 여부는 앱의 배포 정의, env, 클러스터를 다시 검사해 판단합니다.
+검사 종류와 각각의 확인 범위도 이 문서에서 설명합니다.
 
 Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/docs/kubernetes/README.md)**에서 시작합니다.
 개념 → 현재 환경 조회 → 빈 서버 준비 → 클러스터 구축 → 앱 배포 → 접속 검증 → 운영 순서입니다.
 현재 OS·설치 도구·CNI는 미확정이므로 빈 서버 설치 명령은 조회 후 보완해야 합니다.
 이미 Ready인 클러스터를 사용한다면 가이드의 환경 조회 후 공통 배포 준비로 이동합니다.
 
-기존 운영 담당자의 목적별 바로가기는 다음과 같습니다.
+기존 클러스터에 배포할 때는 다음 순서로 읽습니다.
 
 1. [클러스터 현황](shared/docs/infrastructure/cluster.md)에서 대상 노드·VIP와 확인 시점을 확인합니다.
-2. [선택 체크아웃](SERVER_CHECKOUT.md)으로 필요한 앱을 받습니다.
+2. [선택 체크아웃](SERVER_CHECKOUT.md)에서 `platform`으로 Portal 외 서비스를 받습니다.
 3. [환경설정](shared/docs/configuration/environment.md)에서 설정 소유권과 입력 위치를 확인합니다.
-4. [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)와 아래 전용 문서에서 검사·적용·확인을 진행합니다. 기존 통합 운용은 [서버 기동](shared/docs/operations/server-start.md), APP VIP의 TLS·접속 검증은 [VIP 절차](shared/ingress/VIP.md)를 참고합니다.
+4. [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)와 아래 앱 문서를 따라 검사·배포·접속 확인을 진행합니다.
+
+기존 통합 운용은 [서버 기동](shared/docs/operations/server-start.md),
+APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/VIP.md)를 참고합니다.
 
 ## 공통 준비와 운영
 
@@ -67,7 +78,7 @@ Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/do
 | 앱 | 시작 문서 | 상세 작업 |
 | --- | --- | --- |
 | Keycloak | [서버 배포·사내 OIDC·사용자 claim](keycloak/README.md) | [TLS 인증서·Secret 운영](keycloak/03_TLS.md) |
-| Portal | [환경설정·배포 입력 순서](portal/README.md) | [운영 overlay·배포 순서](portal/k8s/overlays/prod/README.md), [Keycloak client 등록](portal/k8s/jobs/keycloak-client/README.md) |
+| Portal | [환경설정·배포 입력 순서](portal/README.md) | [운영 overlay·배포 순서](portal/k8s/overlays/prod/README.md), [Keycloak client 등록](portal/k8s/jobs/keycloak-client/README.md), [MinIO만 추가](portal/MINIO_SETUP.md) |
 | Airflow | [Helm 배포·이미지·스토리지](airflow/README.md) | 같은 문서에서 백업·데이터 이전·업데이트 안내 |
 | Monitoring | [Kubernetes 모니터링](monitoring/README.md) | kube-prometheus-stack·Grafana·지표 저장 |
 | Headlamp | [Kubernetes 운영 UI](headlamp/README.md) | Keycloak 로그인·그룹별 조회 권한·HTTPS 접속 |
@@ -86,6 +97,13 @@ Kubernetes가 처음이라면 **[Kubernetes 처음부터 배포까지](shared/do
 ```bash
 # 선택한 서버 앱의 파일을 검사하며 local/이나 다른 앱은 필요하지 않습니다.
 make server-check APP=keycloak
+
+# Portal 외 서비스의 Helm·chart를 준비한 뒤 그룹 전체를 검사합니다.
+make server-check APP=platform
+
+# 기존 클러스터에서 공용 Ingress를 먼저 검사·적용합니다.
+make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT"
+make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 # Keycloak 전달용 YAML 두 개를 생성합니다.
 make k8s-export
@@ -106,7 +124,9 @@ Headlamp도 [전용 안내](headlamp/README.md)에 따라 고정 chart를 준비
 ## 소유권
 
 - Keycloak 관리자·전용 DB·사내 OIDC 입력은 Keycloak, Portal client 입력은 Portal이 소유합니다.
-- 실제 앱 소스는 `apps/<app>`, 공통 배포 정의는 `deploy/<app>`에 원본을 하나만 유지합니다. 기본 서버 checkout은 배포 전용이며 빌드는 `--with-source`로 소스를 추가합니다. local이 공통 정의를 참조합니다.
+- 앱 소스는 `apps/<app>`, 배포 정의는 `deploy/<app>`에서 관리합니다. local 개발 환경도 이 배포 정의를 참조합니다.
+- 서버에는 기본적으로 배포 파일만 받습니다. 이미지를 빌드할 때만 `--with-source`로 앱 소스를 추가합니다.
+- `platform`은 Portal을 제외한 서비스, `all`은 Portal을 포함한 서비스 파일을 선택합니다. checkout은 이전 범위를 교체합니다.
 - 서버 검사·렌더링·배포는 local 없이 수행할 수 있어야 합니다.
 - CI의 test 입력은 로컬 전용이 아니므로 `deploy/portal/env/test/`에 유지합니다.
 - 실제 CP1 설정은 `/appdata/etchax-config/<app>/`에서 관리하고 외부 env 인자로 전달합니다.

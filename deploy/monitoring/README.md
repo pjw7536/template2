@@ -2,7 +2,7 @@
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-기존 Compose Monitoring은 신규 Kubernetes 환경에서 **kube-prometheus-stack**으로 대체합니다.
+새 Kubernetes 환경에는 기존 Compose Monitoring 대신 `kube-prometheus-stack`을 설치합니다.
 Prometheus·Grafana·Alertmanager·kube-state-metrics·node-exporter와 Kubernetes 대시보드를 함께 설치합니다.
 Portal·Keycloak·Airflow의 기동 여부와 관계없이 설치할 수 있습니다. 기존 지표 DB는 복원하지 않습니다.
 
@@ -19,8 +19,23 @@ Portal·Keycloak·Airflow의 기동 여부와 관계없이 설치할 수 있습�
 
 ## 1. 서버 설정과 디스크 준비
 
-공통 `manage.py`의 check/render/deploy는 `--values /경로/values.yaml`로 환경별 비밀값 없는
-Helm override를 받을 수 있습니다. 로컬 개발은 별도 wrapper와 `local/monitoring`의 values를 사용합니다.
+공통 `manage.py`의 check/render/deploy는 `--values /경로/values.yaml`로 환경별 Helm 설정을 추가할 수 있습니다.
+이 values 파일에는 비밀값을 넣지 않습니다.
+검사와 배포에는 같은 override를 전달합니다. 최종 렌더에서 비활성화한 Grafana·Prometheus·Alertmanager는
+준비 대기와 신규 local PV 생성 대상에서 제외합니다. 기존 PV·PVC는 도구가 삭제하지 않습니다.
+Grafana가 비활성화돼 있으면 관리자 Secret도 조회하지 않습니다.
+
+Prometheus를 끌 때는 고정 chart의 ServiceMonitor 인증 입력도 함께 맞춥니다.
+Prometheus 전용 token Secret을 사용하는 기본 감시를 함께 끄는 override 예시입니다.
+
+```yaml
+prometheus:
+  enabled: false
+kubernetesServiceMonitors:
+  enabled: false
+```
+
+로컬 개발은 별도 wrapper와 `local/monitoring`의 values를 사용합니다.
 기본 서버 검사·배포는 local 파일을 읽지 않습니다.
 
 ```bash
@@ -52,9 +67,18 @@ sudo install -d -o 1000 -g 2000 -m 0770 /srv/monitoring/prometheus /srv/monitori
 sudo install -d -o 472 -g 472 -m 0770 /srv/monitoring/grafana
 ```
 
-local PV로 Prometheus 20Gi·Alertmanager 2Gi·Grafana 5Gi를 예약합니다. StorageClass는 필요하지 않습니다.
-이는 파일시스템 quota가 아니므로 실제 디스크 여유 공간을 확인합니다. Prometheus 보존은 7일 또는 16GB이며
-WAL 등 추가 공간이 필요합니다. 서버 한 대에 데이터를 보관하므로 고가용성 구성은 아닙니다.
+local PV로 다음 용량을 예약합니다. StorageClass는 필요하지 않습니다.
+
+| 서비스 | 예약 용량 |
+| --- | ---: |
+| Prometheus | 20Gi |
+| Alertmanager | 2Gi |
+| Grafana | 5Gi |
+
+예약 용량이 파일시스템 사용량을 제한하는 것은 아니므로 실제 디스크 여유 공간을 확인합니다.
+Prometheus 보존 기준은 7일 또는 16GB이며 WAL 등 추가 공간이 필요합니다.
+
+서버 한 대에 데이터를 보관하므로 고가용성 구성은 아닙니다.
 Pod 재시작에도 데이터를 보존하며 PV reclaim policy는 Retain입니다. PVC·namespace는 정상 업데이트 시 삭제하지 않습니다.
 
 ## 2. 고정 chart 준비
@@ -87,6 +111,8 @@ cat deploy/monitoring/rendered/images.txt
 
 ## 4. Namespace와 관리자 Secret 준비
 
+Grafana를 비활성화했다면 namespace를 준비한 뒤 아래 관리자 Secret 등록 블록은 생략합니다.
+
 ```bash
 read -r -p '대상 Kubernetes context: ' MONITORING_CONTEXT
 kubectl --context "$MONITORING_CONTEXT" create namespace monitoring --dry-run=client -o yaml \
@@ -99,9 +125,11 @@ kubectl --context "$MONITORING_CONTEXT" -n monitoring create secret generic moni
 ```
 
 `NAMESPACE`·`GRAFANA_ADMIN_SECRET`을 변경했다면 명령의 이름도 맞춥니다.
-Secret이 이미 있으면 생성 단계를 생략하며 임의로 덮어쓰지 않습니다. 관리자 비밀번호는
-Helm values나 저장소에 넣지 않습니다. Grafana DB가 생성된 후 Secret만 변경해도 기존 비밀번호는 바뀌지 않으므로
-계정 갱신은 Grafana에서 수행합니다. registry 인증용 Secret도 이 단계에 준비합니다.
+Secret이 이미 있으면 생성 단계를 생략하며 임의로 덮어쓰지 않습니다.
+관리자 비밀번호는 Helm values나 저장소에 넣지 않습니다.
+
+Grafana DB가 생성된 후에는 Secret만 변경해도 기존 비밀번호가 바뀌지 않습니다. 계정 갱신은 Grafana에서 수행합니다.
+registry 인증용 Secret도 이 단계에 준비합니다.
 
 ## 5. 배포와 확인
 
@@ -119,9 +147,14 @@ Prometheus Targets는 다음 port-forward로 확인할 수 있습니다.
 kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitoring-prometheus 9090:9090
 ```
 
-`http://localhost:9090/targets`에서 기본 수집 대상의 UP 상태를 확인합니다. 기존 node-exporter가 host port 9100을
-사용한다면 새 DaemonSet과 충돌하므로 이전 exporter를 정리하거나 기존 공용 Monitoring을 사용합니다.
-Alertmanager는 배포하지만 수신자는 null로 두며 외부 메시지를 보내지 않습니다.
+`http://localhost:9090/targets`에서 기본 수집 대상의 `UP` 상태를 확인합니다.
+
+기존 node-exporter가 host port 9100을 사용하면 새 DaemonSet과 충돌합니다.
+이전 exporter를 정리하거나 기존 공용 Monitoring을 사용합니다.
+
+기본 구성의 Alertmanager는 수신자를 null로 두며 외부 메시지를 보내지 않습니다.
+최종 렌더의 일반 workload 준비는 Helm `--wait`로 확인합니다.
+활성 Prometheus·Alertmanager만 실제 CR 이름에 대응하는 StatefulSet의 생성과 준비를 추가로 기다립니다.
 
 ## 갱신·운영
 

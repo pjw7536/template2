@@ -31,6 +31,9 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/portal-keycloak-
 명령은 입력 검사·관리 ConfigMap·client Secret 준비 후 Job을 실행하고 완료를 기다립니다.
 사내 IdP·User Profile·수신 mapper는 이 단계에서 설정하지 않습니다.
 
+`checkout-server.sh portal`로 준비한 서버에도 필요한 Keycloak 등록 지원 코드가 포함됩니다.
+등록 입력은 Portal의 `api.env`만 사용하며 Keycloak env는 읽지 않습니다.
+
 사내 claim 16개와 소속 2개를 ID Token·Access Token·UserInfo에 발급합니다.
 전체 필드는 [claim 매핑 계약](../../../../keycloak/06_CLAIMS.md)을 따릅니다.
 SDWT 그룹을 발급하려면 [앱 그룹 연결](../../../../keycloak/09_APP_CONNECTIONS.md#sdwt-그룹을-portal에-전달하는-경우)을 수행합니다.
@@ -42,6 +45,15 @@ SDWT 그룹을 발급하려면 [앱 그룹 연결](../../../../keycloak/09_APP_C
 시험 계정으로 로그인해 callback, 신원 claim, 필요한 소속·그룹과 앱 접근 판정을 확인합니다.
 Keycloak의 소속·그룹을 발급하는 것과 Portal의 실제 권한 판정 구현은 별개입니다.
 
-Portal client 등록은 신원·소속 claim 외에 앱 역할과 `resource_access.<client-id>.roles`, `groups` mapper를 준비합니다. 운영 사용자에게 역할은 자동 부여하지 않습니다. `portal-members` 그룹에 `portal-all-apps`를 연결하며, 운영자가 조직 정책에 따라 구성원을 지정합니다. 제한 사용자는 개별 앱 역할을 지정합니다. Portal은 deptid나 그룹 이름으로 앱 접근을 추정하지 않고 발급된 client 역할만 확인합니다. 상세 정책과 최초 관리자 설정은 [Portal 배포 안내](../../../README.md#keycloak-권한과-새-db-시작)를 따릅니다.
+client 등록 도구는 신원·소속 claim 외에 다음 권한 설정을 준비합니다.
+
+- 앱 역할과 `resource_access.<client-id>.roles`, `groups` mapper
+- `portal-members` 그룹과 이 그룹의 `portal-all-apps` 역할 연결
+
+운영 사용자에게 역할을 자동으로 부여하지는 않습니다. 운영자가 조직 정책에 따라 그룹 구성원을 지정하고,
+제한 사용자에게는 개별 앱 역할을 부여합니다.
+
+Portal은 발급된 client 역할로 앱 접근을 판단합니다. `deptid`나 그룹 이름으로 앱 접근을 추정하지 않습니다.
+상세 정책과 최초 관리자 설정은 [Portal 배포 안내](../../../README.md#keycloak-권한과-새-db-시작)를 따릅니다.
 
 그룹 역할 연결은 [Keycloak 공식 Admin CLI](https://www.keycloak.org/docs/latest/server_admin/#admin-cli)의 `add-roles --gname ... --cclientid ...`를 사용합니다.

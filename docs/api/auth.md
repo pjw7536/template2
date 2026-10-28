@@ -1,99 +1,51 @@
 # Auth API
 
-Auth API는 OIDC 로그인과 Django session 관리를 담당합니다.
+Keycloak OIDC authorization code + PKCE와 Django 세션을 사용합니다.
 
-## 호출자
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/api/v1/auth/config` | 공개 OIDC 설정과 `authorizationSource: keycloak` |
+| GET | `/api/v1/auth/login?target=/settings/account` | 로그인 시작 |
+| GET | `/auth/keycloak/callback/?code=<code>&state=<state>` | 일회용 code callback |
+| GET | `/api/v1/auth/me` | 로그인 사용자의 현재 세션 정보 |
+| GET | `/api/v1/auth/logout` | 세션 종료 후 Keycloak logout redirect |
+| POST | `/api/v1/auth/logout` | 세션 종료 후 `logoutUrl` JSON 반환 |
+| GET | `/api/v1/auth/?target=/settings/account` | 프론트 복귀 주소로 redirect |
 
-- 브라우저 SPA
-- OIDC provider callback
+## 로그인과 callback
 
-## Endpoint
+로그인 query는 `target`만 받습니다. `next` 등 미지원 필드는 400입니다.
+서버가 복귀 주소를 검증하고 일회용 state·nonce와 PKCE 정보를 세션에 저장합니다.
+State는 복귀 주소를 인코딩한 문자열이 아닙니다.
 
-| Method | Path | Auth | 설명 |
-| --- | --- | --- | --- |
-| GET | `/api/v1/auth/config` | 공개 | 프론트 인증 설정 조회 |
-| GET | `/api/v1/auth/login` | 공개 | OIDC 로그인 시작 |
-| POST | `/auth/google/callback/` | OIDC form_post | OIDC callback 처리 |
-| GET | `/auth/keycloak/callback/` | Keycloak query | authorization code callback 처리 |
-| GET | `/api/v1/auth/me` | Session | 현재 사용자 조회 |
-| GET | `/api/v1/auth/logout` | Session | 로그아웃 후 IdP logout redirect |
-| POST | `/api/v1/auth/logout` | Session | 로그아웃 URL JSON 반환 |
-| GET | `/api/v1/auth/` | 공개 | 프론트 redirect 보조 |
-
-## 로그인 시작
-
-```http
-GET /api/v1/auth/login?target=/account
-```
-
-동작:
-
-1. OIDC 설정 여부를 확인합니다.
-2. canonical `target`을 검증해 state로 인코딩합니다. 제거된 `next` query는 400으로 거절합니다.
-3. nonce를 세션에 저장합니다.
-4. 설정된 ADFS 또는 Keycloak authorize URL로 redirect합니다.
-
-## Callback
-
-```http
-POST /auth/google/callback/
-Content-Type: application/x-www-form-urlencoded
-```
-
-OIDC provider가 `id_token`, `state`를 form_post로 전달합니다.
-
-Keycloak provider는 authorization code + PKCE를 사용합니다.
-
-```http
-GET /auth/keycloak/callback/?code=<one-time-code>&state=<encoded-target>
-```
-
-동작:
-
-1. state와 redirect target을 검증합니다.
-2. Keycloak이면 세션의 PKCE verifier로 code를 token endpoint에서 교환합니다.
-3. 세션 nonce와 id_token nonce를 비교합니다.
-4. Keycloak JWKS 서명, issuer, audience와 token 시간을 검증합니다.
-5. claim으로 `User`를 생성하거나 갱신합니다.
-6. Django session login 후 target으로 redirect합니다.
-
-Keycloak 로그인은 identity만 제공하며 `scopeAccess`와 Portal 권한 원천은 기존 Django
-Account 모델을 그대로 사용합니다.
+Callback은 GET만 받습니다. State, PKCE code 교환, JWKS 서명, issuer, audience, token 시간,
+nonce와 신원을 검증한 뒤 사용자와 권한 snapshot을 세션에 저장합니다.
+기존 `/auth/google/callback/`은 제공하지 않습니다.
 
 ## 현재 사용자
 
-```http
-GET /api/v1/auth/me
-```
+`GET /api/v1/auth/me`의 주요 필드는 다음과 같습니다.
 
-응답에는 camelCase 사용자 기본 정보, 소속 상태와 `scopeAccess`가 포함됩니다.
-로컬 dev에서 `DEV_AUTO_AFFILIATION_ALLOWED=1`이면 소속 없는 로그인 사용자에게 기본 개발 소속이 먼저 보장된 뒤 응답됩니다.
+| 필드 | 의미 |
+| --- | --- |
+| `id`, `knoxId`, `avatarId`, `username`, `email` | 사용자 식별 정보 (`avatarId`는 EPID) |
+| `department`, `line`, `userSdwtProd` | 현재 로그인 세션의 소속 |
+| `authorizationSource` | `keycloak` |
+| `hasAllAppsAccess`, `isPortalAdmin` | 세션의 전체 앱·Portal 관리자 역할 |
+| `scopeAccess` | scope별 `allowed`, `role`, `source` 등 접근 정보 |
+| `sdwtAccess` | SDWT 이름을 키로 하는 `viewer`/`user`/`admin` 등급 |
+| `pendingUserSdwtProd`, `hasPendingAffiliation` | 호환 응답 값 `null`, `false` |
 
-```json
-{
-  "id": 1,
-  "username": "user",
-  "knoxId": "knox.user",
-  "avatarId": "avatar.user",
-  "userSdwtProd": "G-A",
-  "pendingUserSdwtProd": null,
-  "hasPendingAffiliation": false,
-  "isSuperuser": false,
-  "scopeAccess": {
-    "portal": {"allowed": true, "role": "user"}
-  }
-}
-```
+조회는 DB 소속을 자동 생성하거나 세션 권한을 갱신하지 않습니다. 역할 변경 후 재로그인이 필요합니다.
 
 ## 오류
 
-| Status | 상황 |
+| 응답 | 상황 |
 | --- | --- |
-| 400 | callback 값 누락 또는 state 오류 |
-| 401 | 로그인되지 않은 상태에서 `/me` 호출 |
-| 403 | 허용되지 않은 redirect target |
+| 400 | 로그인·프론트 redirect의 미지원 query |
+| 401 | 로그인하지 않은 `/me` 요청 |
+| 405 | GET 이외 callback 요청 |
 | 503 | OIDC provider 설정 누락 |
+| 302 + `error` query | callback state/code/token/nonce/신원 검증 실패 |
 
-## 관련 모듈 문서
-
-- `docs/modules/auth.md`
+관련 문서: [Auth 모듈](../modules/auth.md), [Account 권한](../modules/account.md).

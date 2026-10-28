@@ -3,7 +3,8 @@
 [전체 설치 순서](README.md) · 이전: [서버 설치](01_SERVER_SETUP.md) · 다음: [앱 연결](09_APP_CONNECTIONS.md)
 
 서버 설치를 마친 뒤 Realm → 사내 IdP → User Profile → IdP mapper → 선택 SDWT 순서로 설정합니다.
-여기서는 Portal·Headlamp client를 만들지 않습니다. 아래 명령은 하나씩 실행하고 성공을 확인한 뒤 다음 단계로 넘어갑니다.
+Portal·Headlamp client는 이후 앱 연결 단계에서 만듭니다.
+아래 명령은 하나씩 실행하고 성공을 확인한 뒤 다음 단계로 넘어갑니다.
 
 ## 실행 준비
 
@@ -19,7 +20,7 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get secret keycloak-runti
 ```
 
 `keycloak-runtime`의 관리자 계정은 서버 설치 때 준비한 계정입니다.
-각 Make 명령은 자신의 설정 Job을 생성하고 최대 15분 완료를 기다립니다. 별도로 Job을 apply할 필요는 없습니다.
+각 Make 명령이 해당 설정 Job을 생성하고, 완료될 때까지 최대 15분 기다립니다. Job을 별도로 apply할 필요는 없습니다.
 
 ## 1. Realm 준비
 
@@ -96,7 +97,8 @@ Account Console 경로는 [Keycloak 공식 시작 안내](https://www.keycloak.o
 
 CSV로 사전 등록한 계정은 첫 사내 로그인에서 계정 연결 확인이 필요할 수 있습니다.
 EPID가 같다는 이유만으로 자동 연결을 가정하지 않습니다. 시험 계정으로 연결이 완료되는지 확인합니다.
-여기까지 완료하면 **Keycloak 자체 준비 완료**입니다. 다음은 [09 앱 연결](09_APP_CONNECTIONS.md)입니다.
+
+위 항목을 모두 확인하면 Keycloak 자체 준비가 끝납니다. 다음은 [09 앱 연결](09_APP_CONNECTIONS.md)입니다.
 앱의 토큰·로그인·권한 검증은 각 앱 연결 단계에서 수행합니다.
 
 ## Job 결과 확인

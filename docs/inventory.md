@@ -4,25 +4,28 @@
 
 ## 백엔드 API route
 
-모든 업무 API는 `apps/portal/api/api/urls.py`에서 `/api/v1/` 아래로 include됩니다. Auth callback만 `apps/portal/api/api/auth/callback_urls.py`를 통해 기존 ADFS의 `/auth/google/callback/`과 Keycloak의 `/auth/keycloak/callback/`을 사용합니다.
+모든 업무 API는 `apps/portal/api/api/urls.py`에서 `/api/v1/` 아래로 include됩니다. Auth callback만 `apps/portal/api/api/auth/callback_urls.py`를 통해 Keycloak의 `/auth/keycloak/callback/`을 사용합니다.
 
-| 모듈 | Prefix | 실제 라우팅 파일 | 주요 endpoint |
+| 모듈 | Prefix | 실제 라우팅 파일 | 등록 endpoint |
 | --- | --- | --- | --- |
-| Auth | `/api/v1/auth/` | `apps/portal/api/api/auth/urls.py` | `login`, `logout`, `me`, `config`, empty redirect |
-| Account | `/api/v1/account/` | `apps/portal/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/reconfirm`, `access/request`, `access/users`, `access/matrix`, `access/users/<user_id>/decision`, `access/users/<user_id>/data-scope`, `access/policy-rules`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `users`, `line-sdwt-options` |
+| Auth | `/api/v1/auth/` | `apps/portal/api/api/auth/urls.py` | `login`, `logout`, `me`, `config` (빈 경로도 등록) |
+| Account | `/api/v1/account/` | `apps/portal/api/api/account/urls.py` | `overview`, `affiliation`, `affiliation/approve`, `affiliation/requests`, `affiliation/members`, `affiliation/access`, `affiliation/reconfirm`, `access/request`, `access/users`, `access/matrix`, `access/pending-requests`, `access/pending-requests/bulk-approve`, `access/users/<user_id>/decision`, `access/users/<user_id>/data-scope`, `access/users/<user_id>/apply-all`, `access/policy-rules`, `access/policy-rules/bulk-apply`, `access/policy-rules/<rule_id>`, `access/audit-logs`, `external-affiliations/sync`, `users`, `line-sdwt-options` |
 | Emails | `/api/v1/emails/` | `apps/portal/api/api/emails/urls.py` | `inbox/`, `sent/`, `mailboxes/`, `mailboxes/summary/`, `mailboxes/members/`, `unassigned/`, `unassigned/claim/`, `ingest/`, `outbox/process/`, `assets/ocr/claim/`, `assets/ocr/update/`, `bulk-delete/`, `move/`, `<email_id>/`, `<email_id>/assets/<sequence>/`, `<email_id>/html/` |
-| Data Movement | `/api/v1/data-movement/` | `apps/portal/api/api/data_movement/urls.py` | `<table_name>/load/` |
-| Assistant | `/api/v1/assistant/` | `apps/portal/api/api/assistant/urls.py` | `turns/stream`, `rag-indexes`, `conversations`, `conversations/<uuid>`, `conversations/<uuid>/messages`, `conversations/<uuid>/generate-title` |
-| Line Dashboard / Drone | `/api/v1/line-dashboard/` | `apps/portal/api/api/drone/urls.py` | `early-inform`, `tables`, `tables/update`, `jira-keys`, `notification-targets`, `notification-target-mappings`, `jira-user-sdwt-prods`, `notification-recipients`, `notification-recipient-permissions`, `my-notification-recipient-targets`, `admin/drone-targets`, `history`, `line-ids`, `line-sdwt-options`, `sop/<sop_id>/instant-inform`, `sop/<sop_id>/retry-channel`, `sop/ingest/pop3/trigger`, `sop/precheck`, `sop/trigger` |
-| L3 Spider | `/api/v1/l3_spider/` | `apps/portal/api/api/l3_spider/urls.py` | `meta`, `developer/unmapped-line-rules`, `structure`, `stats`, `summary`, `daily-summary`, `data`, `filter-candidates`, `exclusion-filters`, `exclusion-filters/<pk>`, `mail-rules`, `mail-rules/<pk>`, `mail-rules/<pk>/permissions`, `mail-rules/<pk>/test-send`, `mail-rules/trigger` |
+| Data Movement | `/api/v1/data-movement/` | `apps/portal/api/api/data_movement/urls.py` | `ct_process_comment/summarize/`, `<table_name>/load/` |
+| Assistant | `/api/v1/assistant/` | `apps/portal/api/api/assistant/urls.py` | `turns/stream`, `conversations`, `conversations/<conversation_id>`, `conversations/<conversation_id>/messages`, `conversations/<conversation_id>/messages/<client_id>/feedback`, `conversations/<conversation_id>/export`, `conversations/<conversation_id>/generate-title`, `conversations/<conversation_id>/refresh-summary`, `rag-indexes` |
+| Line Dashboard / Drone | `/api/v1/line-dashboard/` | `apps/portal/api/api/drone/urls.py` | `airflow/dag-overview`, `early-inform`, `tables`, `tables/update`, `jira-keys`, `notification-targets`, `admin/drone-targets`, `notification-target-mappings`, `notification-template-options`, `jira-user-sdwt-prods`, `notification-recipients`, `notification-recipient-permissions`, `my-notification-recipient-targets`, `history`, `line-ids`, `line-sdwt-options`, `sop/<sop_id>/instant-inform`, `sop/<sop_id>/retry-channel`, `sop/ingest/pop3/trigger`, `sop/precheck`, `sop/trigger` |
+| L3 Spider | `/api/v1/l3_spider/` | `apps/portal/api/api/l3_spider/urls.py` | `meta`, `developer/unmapped-line-rules`, `structure`, `stats`, `summary`, `daily-summary`, `data`, `filter-candidates`, `exclusion-filters`, `exclusion-filters/<pk>`, `mail-rules`, `mail-rules/trigger`, `mail-rules/<pk>/permissions`, `mail-rules/<pk>/test-send`, `mail-rules/<pk>`, `trend` |
 | L0 Spider | `/api/v1/l0_spider/` (`/api/v1/fdc-trend/` 호환) | `apps/portal/api/api/l0_spider/urls.py` | `hard-spec/meta`, `hard-spec/recommendations` |
 | PM SPIDER | `/api/v1/pm_spider/` | `apps/portal/api/api/pm_comparison/urls.py` | `meta`, `compare` |
 | TTTM Spider | `/api/v1/tttm_spider/` | `apps/portal/api/api/tttm_spider/urls.py` | `combo/options`, `combo/types`, `combo/data-types`, `targets/eqps`, `targets/chambers`, `targets/lotwf`, `targets/golden`, `targets/result-status`, `dashboard/data`, `sensor-trace` |
-| Observer | `/api/v1/observer/` | `apps/portal/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<line_id>/<eqp_id>`, `equipment-info/<eqp_id>`, `logs`, `logs/page`, `logs/<log_type>/page`, `logs/<log_type>/detail`, `logs/eqp`, `logs/tip`, `logs/spc-interlock`, `logs/fdc-interlock`, `logs/ctttm`, `logs/racb`, `logs/esop`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
+| Observer | `/api/v1/observer/` | `apps/portal/api/api/observer/urls.py` | `lines`, `sdwts`, `prc-groups`, `equipments`, `equipment-info/<eqp_id>`, `logs/page`, `logs/<log_key>/page`, `logs/<log_key>/detail`, `logs/<log_key>/evidence`, `tkin-prevent/prc-groups`, `tkin-prevent/processes`, `tkin-prevent/step-seqs`, `tkin-prevent/matrix` |
 | AppStore | `/api/v1/appstore/` | `apps/portal/api/api/appstore/urls.py` | `apps`, `apps/order`, `apps/<app_id>`, `apps/<app_id>/cover`, `apps/<app_id>/like`, `apps/<app_id>/view`, `apps/<app_id>/comments`, `apps/<app_id>/comments/<comment_id>`, `apps/<app_id>/comments/<comment_id>/like` |
 | VOC | `/api/v1/voc/` | `apps/portal/api/api/voc/urls.py` | `posts`, `posts/<post_id>`, `posts/<post_id>/replies` |
-| Activity | `/api/v1/activity/` | `apps/portal/api/api/activity/urls.py` | `logs`, `app-access`, `app-access-stats`, `app-access-sync-external` |
-| Health | `/api/v1/health/` | `apps/portal/api/api/health/urls.py` | empty path |
+| Activity | `/api/v1/activity/` | `apps/portal/api/api/activity/urls.py` | `app-access`, `app-access-manual-commit`, `app-access-manual-preview`, `app-access-stats`, `app-access-sync-external`, `logs` |
+| Health | `/api/v1/health/` | `apps/portal/api/api/health/urls.py` | 빈 경로 |
+
+Account의 소속 변경·권한 관리·외부 소속 동기화 경로는 등록만 유지하며 view에서 `410 managed_by_keycloak`을 반환합니다. 일부 경로는 공통 접근·신원 검사가 먼저 적용됩니다.
+`access/users`와 `access/matrix`는 현재 세션 정보만 제공합니다. 상세는 [Account API](api/account.md)를 봅니다.
 
 ## 프론트엔드 route
 
@@ -37,6 +40,10 @@
 | Assistant | `/assistant` | `apps/portal/web/src/features/assistant/routes.jsx` | `apps/portal/web/src/features/assistant/index.js` |
 | Line Dashboard | `/ESOP_Dashboard`, `/ESOP_Dashboard/status/:lineId`, `/ESOP_Dashboard/tip-status`, `/ESOP_Dashboard/tip-status/:lineId`, `/ESOP_Dashboard/history/:lineId`, `/ESOP_Dashboard/settings/:lineId`, `/ESOP_Dashboard/settings/notification/:lineId`, `/ESOP_Dashboard/settings/recipients/:lineId`, `/ESOP_Dashboard/overview`, `/ESOP_Dashboard/admin/drone-targets` | `apps/portal/web/src/features/line-dashboard/routes.jsx` | `apps/portal/web/src/features/line-dashboard/index.js` |
 | L3 Spider | `/l3_spider`, `/spider/l3` | `apps/portal/web/src/features/l3-spider/routes.jsx` | `apps/portal/web/src/features/l3-spider/index.js` |
+| Spider | `/spider`, `/spider/defect` | `apps/portal/web/src/features/spider/routes.jsx` | `apps/portal/web/src/features/spider/index.js` |
+| L0 Spider | `/spider/l0`, `/l0_spider/**`, `/fdc_trend/**` | `apps/portal/web/src/features/l0-spider/routes.jsx` | `apps/portal/web/src/features/l0-spider/index.js` |
+| L1 Spider | `/spider/l1` | `apps/portal/web/src/features/l1-spider/routes.jsx` | `apps/portal/web/src/features/l1-spider/index.js` |
+| Access Stats | `/access-stats` | `apps/portal/web/src/features/access-stats/routes.jsx` | `apps/portal/web/src/features/access-stats/index.js` |
 | PM SPIDER | `/pm_spider` | `apps/portal/web/src/features/pm-spider/routes.jsx` | `apps/portal/web/src/features/pm-spider/index.js` |
 | TTTM Spider | `/spider/tttm`, `/tttm_spider` | `apps/portal/web/src/features/tttm-spider/routes.jsx` | `apps/portal/web/src/features/tttm-spider/index.js` |
 | Observer | `/observer`, `/observer/:eqpId` | `apps/portal/web/src/features/observer/routes.jsx` | `apps/portal/web/src/features/observer/index.js` |
@@ -101,17 +108,19 @@
 | 파일 | 역할 |
 | --- | --- |
 | `local/portal/env/*` | 로컬 API/Web/MinIO 전체 설정과 dummy 외부계 credential, K8s 실행 차이 |
-| `deploy/portal/env/prod/*` | 사내 K8s API/Web/MinIO 및 Portal client 입력, 실제 env는 Git 제외 |
+| `deploy/portal/env/prod/*` | 사내 K8s API/Web/MinIO 및 Portal client 입력, env는 Git 관리 |
 | `deploy/portal/env/test/*` | 격리된 backend test 설정과 credential |
 | `deploy/keycloak/env/*` | Keycloak 서버 및 사내 OIDC 입력 |
-| `deploy/airflow/env/*` | Kubernetes 실행·빌드 예시와 이전 환경별 Airflow 설정 |
+| `deploy/airflow/env/*` | Kubernetes 실행·빌드 입력과 공개 예시 |
 | `deploy/airflow/helm`, `deploy/airflow/k8s`, `deploy/airflow/scripts` | 공식 Helm chart 단일 서버 배포, 별도 PostgreSQL·영구 저장소·검사 도구 |
 | `deploy/monitoring/env/*` | 환경별 Grafana 설정 |
 | `deploy/shared/ingress` | 기존 Traefik 공용 원본과 namespace 감시·접근 권한 구성 |
 | `deploy/shared/scripts/server-up.py` | 기존 Keycloak과 Airflow의 서버 기동 진입점 |
 
-각 service는 해당 profile의 `<service>.env` 하나만 적용합니다.
+운영 Portal은 서비스별 env를 적용합니다. 로컬 API는 기본 env, Kubernetes 차이와 생성된 runtime override를 합성합니다.
 운영값은 [앱별 환경설정 안내](../deploy/shared/docs/configuration/environment.md)에서 앱과 환경을 선택해 확인합니다.
 운영 Web은 `/runtime-env.js`를 컨테이너 시작 시 생성하므로 `VITE_*` 변경에 이미지 재빌드가 필요하지 않습니다.
 
-주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `ADFS_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `VITE_*`입니다.
+주요 env group은 `DJANGO_*`, `DJANGO_DB_*`, `DEV_AUTO_AFFILIATION_*`, `DEV_AUTO_SEED`, `DEV_SEED_PREFIX`, `L3_SPIDER_*`, `TTTM_SPIDER_*`, `FDC_HARD_SPEC_*`, `PM_COMPARISON_*`, `DATA_MOVEMENT_*`, `FTP_*`, `OIDC_*`, `AIRFLOW_*`, `AIRFLOW_TRIGGER_TOKEN`, `EMAIL_POP3_*`, `DRONE_*`, `KNOX_MESSENGER_*`, `ASSISTANT_*`, `RAG_*`, `MAIL_API_*`, `MINIO_*`, `VITE_*`입니다.
+
+이전 `ADFS_*` 설정 그룹은 제거됐으며 현재 인증 설정은 `OIDC_*`를 사용합니다.

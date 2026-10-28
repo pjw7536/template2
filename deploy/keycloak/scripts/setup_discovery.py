@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
@@ -174,10 +173,7 @@ def setup(action, context, env_path, portal_env=None, step="all"):
         if action == "check":
             return
         # 공통 Secret 도구에도 같은 context를 강제합니다. 현재 context는 변경하지 않습니다.
-        wrapper = temporary / "kubectl"
-        wrapper.write_text(f"#!/bin/sh\nexec kubectl --context {shlex.quote(context)} \"$@\"\n")
-        wrapper.chmod(0o700)
-        command_env = {**os.environ, "KUBECTL_BIN": str(wrapper)}
+        command_env = {**os.environ, "KUBE_CONTEXT": context, "KUBECTL_BIN": "kubectl"}
         print("적용: 선택 단계의 입력 및 관리 ConfigMap", flush=True)
         if values is not None:
             run(["bash", SHARED / "apply-env.sh", "keycloak", "prod", "oidc", resolved], env=command_env)

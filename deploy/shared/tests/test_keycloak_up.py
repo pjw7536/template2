@@ -32,16 +32,22 @@ class KeycloakTests(unittest.TestCase):
         self.settings = dict(zip(keycloak.KEYS, ['db-password', 'admin', 'admin-password', 'https://sso.test']))
         self.calls = []
         self.secrets = {}
-        self.pvc = ''
+        self.pvc = None
+        self.pv = None
+        self.namespace = None
         self.live = None
+        self.pods = []
         self.public_matches = True
-        self.source = [controller(), {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress',
+        self.source = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {
+                            'name': 'etch-sso', 'labels': {'app.kubernetes.io/part-of': 'etch-sso'},
+                            'annotations': {'source.test/policy': 'configured'}}},
+                       controller(), {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress',
                                       'metadata': {'name': 'keycloak'}, 'spec': {'rules': [{'host': 'sso.test'}]}}]
         self.nodes = [worker('worker', '192.0.2.10'), worker('second-worker', '192.0.2.20')]
         self.addCleanup(patch.stopall)
         patch.object(keycloak, 'read_settings', return_value=self.settings).start()
         patch.object(keycloak, 'run', side_effect=self.fake_run).start()
-        patch.object(keycloak.server, 'render_json', side_effect=lambda *args: deepcopy(self.source)).start()
+        patch.object(keycloak.runtime, 'render_json', side_effect=lambda *args: deepcopy(self.source)).start()
 
     def fake_run(self, args, **kwargs):
         args = list(map(str, args))
@@ -59,13 +65,17 @@ class KeycloakTests(unittest.TestCase):
                 secret = self.secrets.get(args[args.index('secret') + 1])
                 return json.dumps(secret) if secret else ''
             if 'pvc' in args:
-                return self.pvc
+                return json.dumps(self.pvc) if self.pvc is not None else ''
+            if 'pv' in args:
+                return json.dumps(self.pv) if self.pv is not None else ''
+            if 'namespace' in args:
+                return 'namespace/etch-sso' if self.namespace is not None else ''
             if 'deployment' in args:
                 return json.dumps(self.live) if self.live else ''
             if 'nodes' in args:
                 return json.dumps({'items': self.nodes})
             if 'pods' in args:
-                return json.dumps({'items': []})
+                return json.dumps({'items': self.pods})
         return ''
 
     def start(self, **kwargs):
@@ -79,18 +89,64 @@ class KeycloakTests(unittest.TestCase):
                                    ('keycloak-tls', {'tls.crt': 'certificate', 'tls.key': 'private-key'}, 'kubernetes.io/tls')]:
             self.secrets[name] = {'type': kind, 'data': {key: base64.b64encode(value.encode()).decode() for key, value in values.items()}}
         self.live = controller('etch-sso,airflow,tailwind-internal')
-        self.pvc = 'persistentvolumeclaim/keycloak-postgres-data'
+        self.live['metadata']['resourceVersion'] = 'existing-version'
+        self.pvc = {'metadata': {'name': 'keycloak-postgres-data', 'namespace': 'etch-sso', 'uid': 'existing-claim'}}
+        self.pv = {'spec': {'persistentVolumeReclaimPolicy': 'Retain', 'claimRef': {
+            'name': 'keycloak-postgres-data', 'namespace': 'etch-sso', 'uid': 'existing-claim'}},
+            'status': {'phase': 'Bound'}}
+        self.namespace = {'metadata': {'name': 'etch-sso',
+            'labels': {'operator.test/security': 'keep'}, 'annotations': {'operator.test/policy': 'keep'}}}
 
     def test_fresh_install_creates_secrets_before_stack_and_never_deletes(self):
         self.start()
         writes = self.mutations()
         self.assertEqual([json.loads(kw['data'])['kind'] for _, kw in writes], ['Namespace', 'Secret', 'Secret', 'List'])
+        self.assertIn('create', writes[0][0])
+        self.assertEqual(json.loads(writes[0][1]['data']), self.source[0])
+        self.assertFalse(any(item['kind'] == 'Namespace' for item in json.loads(writes[-1][1]['data'])['items']))
         self.assertTrue(all('create' in args and kw['sensitive'] for args, kw in writes[1:3]))
         for args, _ in self.calls:
             if args[0] == 'kubectl':
                 self.assertEqual(args[1:3], ['--context', 'test-context'])
             self.assertNotIn('delete', args)
             self.assertFalse(any('airflow' in arg for arg in args))
+
+    def test_existing_namespace_metadata_is_never_written_even_when_source_contains_namespace(self):
+        self.existing()
+        before = deepcopy(self.namespace)
+        self.start()
+        writes = self.mutations()
+        self.assertEqual(len(writes), 1)
+        stack = json.loads(writes[0][1]['data'])
+        self.assertEqual(stack['kind'], 'List')
+        self.assertFalse(any(item['kind'] == 'Namespace' for item in stack['items']))
+        self.assertEqual(self.namespace, before)
+        self.assertTrue(any('get' in args and 'namespace' in args for args, _ in self.calls))
+
+    def test_missing_runtime_with_any_retained_pv_blocks_all_writes_before_namespace_recreation(self):
+        for phase in ('Bound', 'Released', 'Available'):
+            for check_only in (True, False):
+                with self.subTest(phase=phase, check_only=check_only):
+                    self.calls.clear()
+                    self.pv = {'spec': {'persistentVolumeReclaimPolicy': 'Retain'}, 'status': {'phase': phase}}
+                    if phase != 'Available':
+                        self.pv['spec']['claimRef'] = {'name': 'keycloak-postgres-data',
+                            'namespace': 'etch-sso', 'uid': 'deleted-claim'}
+                    with self.assertRaisesRegex(ValueError, '기존 PV'):
+                        self.start(check_only=check_only)
+                    self.assertEqual(self.mutations(), [])
+                    self.assertTrue(any('get' in args and 'pv' in args for args, _ in self.calls))
+
+    def test_restored_runtime_does_not_bypass_released_or_old_claim_recovery(self):
+        self.existing()
+        for phase, pvc_uid in (('Released', 'existing-claim'), ('Bound', 'new-claim'), ('Available', None)):
+            with self.subTest(phase=phase, pvc_uid=pvc_uid):
+                self.calls.clear()
+                self.pv['status']['phase'] = phase
+                self.pvc = {'metadata': {'uid': pvc_uid}} if pvc_uid is not None else None
+                with self.assertRaisesRegex(ValueError, '이전 PVC'):
+                    self.start()
+                self.assertEqual(self.mutations(), [])
 
     def test_unschedulable_worker_stops_before_mutation(self):
         for state in ({'unschedulable': True}, {'taints': [{'effect': 'NoSchedule'}]},
@@ -120,6 +176,60 @@ class KeycloakTests(unittest.TestCase):
             self.start()
         self.assertEqual(self.mutations(), [])
 
+    def test_operator_worker_pool_is_preserved_by_check_and_deploy(self):
+        """공용 Ingress가 허용한 pool을 Keycloak 재배포에서도 유지한다."""
+        self.existing()
+        self.live['metadata']['resourceVersion'] = 'operator-version'
+        self.live['metadata']['annotations'] = {'operator.test/owner': 'keep'}
+        template = self.live['spec']['template']
+        template['metadata'] = {'labels': {'operator.test/controller': 'ingress'}}
+        placement = template['spec']
+        placement['nodeSelector'] = {'operator.test/pool': 'ingress'}
+        placement['affinity'] = {'nodeAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': {
+            'nodeSelectorTerms': [{'matchExpressions': [{'key': 'operator.test/pool', 'operator': 'In', 'values': ['ingress']}]}]}}}
+        placement['tolerations'] = [{'key': 'operator.test/dedicated', 'operator': 'Exists'}]
+        for node in self.nodes:
+            node['metadata']['labels']['operator.test/pool'] = 'ingress'
+        # pool의 다른 Worker가 cordon 상태여도 앱 Worker와 남은 후보가 정상이면 배포한다.
+        self.nodes[1]['spec']['unschedulable'] = True
+        original = deepcopy(self.live)
+        self.start(check_only=True)
+        self.assertEqual(self.mutations(), [])
+        self.start()
+        updated = keycloak.routing.controller(json.loads(self.mutations()[-1][1]['data'])['items'])
+        for key in ('nodeSelector', 'affinity', 'tolerations'):
+            self.assertEqual(updated['spec']['template']['spec'][key], placement[key])
+        self.assertEqual(updated['spec']['template']['metadata']['labels']['operator.test/controller'], 'ingress')
+        self.assertEqual(updated['metadata']['resourceVersion'], 'operator-version')
+        self.assertEqual(updated['metadata']['annotations'], original['metadata']['annotations'])
+        self.assertIn(keycloak.routing.PREFIX + 'etch-sso,airflow,tailwind-internal',
+                      updated['spec']['template']['spec']['containers'][0]['args'])
+        self.assertEqual(self.live, original)
+        self.assertFalse(any('create' in args for args, _ in self.mutations()))
+
+    def test_invalid_recorded_vip_stops_before_any_keycloak_or_secret_write(self):
+        """이미 기록된 VIP의 실제 배치 오류를 공통 검사로 차단한다."""
+        self.existing()
+        self.live = keycloak.routing.place_vip_backends(self.live, self.live,
+                           ['192.0.2.10', '192.0.2.20'], self.nodes, [])
+        self.live['spec']['replicas'] = 1
+        with self.assertRaises(ValueError):
+            self.start()
+        self.assertEqual(self.mutations(), [])
+
+    def test_worker_pool_port_conflict_stops_before_any_write(self):
+        """모든 pool 후보의 80/443이 충돌하면 앱에도 적용하지 않는다."""
+        self.existing()
+        self.live['spec']['template']['spec']['nodeSelector'] = {'operator.test/pool': 'ingress'}
+        for node in self.nodes:
+            node['metadata']['labels']['operator.test/pool'] = 'ingress'
+            self.pods.append({'metadata': {'name': 'other-proxy', 'namespace': 'other'},
+                              'spec': {'nodeName': node['metadata']['name'],
+                                       'containers': [{'ports': [{'hostPort': 443}]}]}})
+        with self.assertRaises(ValueError):
+            self.start()
+        self.assertEqual(self.mutations(), [])
+
     def test_existing_tls_mismatch_is_not_overwritten(self):
         self.existing()
         self.secrets['keycloak-tls']['data']['tls.crt'] = 'ZGlmZmVyZW50'
@@ -132,7 +242,7 @@ class KeycloakTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '개인키'):
             self.start()
         self.public_matches = True
-        self.pvc = 'existing-pvc'
+        self.pvc = {'metadata': {'name': 'keycloak-postgres-data', 'uid': 'existing-claim'}}
         with self.assertRaisesRegex(ValueError, '기존 PVC'):
             self.start()
         self.assertEqual(self.mutations(), [])
@@ -174,7 +284,7 @@ class InputTests(unittest.TestCase):
     def test_keycloak_cli_loads_without_airflow_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/server-up.py',
+            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/runtime.py',
                              'deploy/shared/ingress/routing.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +292,7 @@ class InputTests(unittest.TestCase):
             result = subprocess.run(['python3', root / 'deploy/keycloak/scripts/up.py', '--help'], text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / 'deploy/airflow').exists())
+            self.assertFalse((root / 'deploy/shared/scripts/server-up.py').exists())
 
     def test_reads_credentials_only_from_selected_env(self):
         with tempfile.TemporaryDirectory() as directory:

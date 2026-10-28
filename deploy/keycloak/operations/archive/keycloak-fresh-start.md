@@ -3,10 +3,11 @@
 > 과거 특정 작업의 일회성 재설치 기록입니다. 아래의 사용자 요청·삭제 허용은 당시 작업에만 해당합니다.
 > 신규 설치·정기 업데이트·일반 장애 복구에 재사용하지 않습니다. 현재 시작점은 [Keycloak 최초 설치 안내](../../README.md)입니다.
 
-기존 Kubernetes Keycloak을 중지하고 이 프로젝트 원본으로 다시 시작하는 절차입니다.
-Keycloak 사용자·realm·client·사내 OIDC 설정은 새 DB에 승계하지 않습니다.
-Airflow DB는 초기화하지 않습니다. 기본 절차에서는 기존 Keycloak 데이터를 복구용으로 별도 보관합니다.
-이번 재설치는 사용자 요청에 따라 3절의 일회성 삭제 절차를 사용해 DB 보관을 생략합니다.
+당시에는 기존 Kubernetes Keycloak을 중지하고 이 프로젝트 원본으로 다시 시작했습니다.
+Keycloak 사용자·realm·client·사내 OIDC 설정은 새 DB로 옮기지 않았으며 Airflow DB는 초기화하지 않았습니다.
+
+기본 절차는 기존 Keycloak 데이터를 복구용으로 별도 보관하는 방식입니다.
+당시 재설치는 사용자 요청에 따라 3절의 일회성 삭제 절차를 사용해 DB 보관을 생략했습니다.
 
 ## 1. 중지 전 준비 (CP1 / 배포용 checkout)
 
@@ -26,13 +27,15 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get statefulset keycloak-
 ```
 
 실제 리소스 이름이 `keycloak`, `keycloak-postgres`인지 확인합니다.
-이 문서의 worker 경로는 원본의 `khplane01w09`, `/appdata/keycloak-postgres` 및
-`PGDATA=/var/lib/postgresql/data/pgdata` 기준입니다. 실제 PV·마운트·PGDATA가 다르면
-아래 파일 이동 명령을 실행하지 말고 실제 배치에 맞는 절차를 먼저 작성합니다.
+이 기록은 worker `khplane01w09`, 데이터 경로 `/appdata/keycloak-postgres`,
+`PGDATA=/var/lib/postgresql/data/pgdata`를 기준으로 작성했습니다.
+실제 PV·마운트·PGDATA가 다르면 아래 파일 이동 명령을 실행하지 말고 실제 배치에 맞는 절차를 먼저 작성합니다.
+
 GitOps 또는 다른 운영 도구가 replicas를 자동 복구한다면 작업 동안 해당 동기화를 중지합니다.
 
 Keycloak의 `deploy/keycloak/env/prod.env`에서 일반 설정과 신규 DB 비밀번호·bootstrap 관리자 비밀번호를 함께 입력합니다.
 기존 도메인과 TLS는 유지합니다. 기존 Secret은 아래 백업이 끝나기 전에 갱신하지 않습니다.
+
 사내 로그인을 사용하려면 같은 파일의 `CORP_OIDC_*`도 실제 발급값으로 준비합니다.
 
 ```bash
@@ -117,8 +120,8 @@ sudo test ! -e /appdata/keycloak-postgres/pgdata
 ```
 
 PV의 상위 디렉터리는 그대로 두고 `pgdata`만 옮깁니다. 새 `pgdata`는 PostgreSQL이 생성합니다.
-보관 경로를 운영 기록에 남깁니다. 같은 디스크의 사본은 디스크 장애 대비 백업이 아니므로
-복구가 필요하면 별도 저장매체에도 보관합니다.
+보관 경로를 운영 기록에 남깁니다.
+디스크 장애에도 복구할 수 있도록 별도 저장매체에도 보관합니다. 같은 디스크의 사본만으로는 디스크 장애에 대비할 수 없습니다.
 
 ## 4. 신규 Secret 등록 및 프로젝트 구성 적용 (CP1)
 
@@ -157,7 +160,7 @@ make keycloak-oidc-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 
 Portal 등 기존 앱이 사용하던 client는 별도 재등록해야 합니다.
 Portal client 절차는 [client 등록 안내](../../../portal/k8s/jobs/keycloak-client/README.md)를 따릅니다.
-Airflow는 현재 자체 관리자 계정으로 로그인하며 이 절차가 Airflow SSO를 설정하지는 않습니다.
+당시 Airflow는 자체 관리자 계정으로 로그인했습니다. 이 절차에는 Airflow SSO 설정이 포함되지 않습니다.
 
 ## 6. 완료 판정
 
@@ -171,6 +174,7 @@ Keycloak 관리자 로그인·etch realm·OIDC 설정·실제 사내 로그인�
 Keycloak 검증을 마친 뒤 [Airflow 안내](../../../airflow/README.md)에 따라 별도로 배포합니다.
 
 실패 시 namespace·PV를 삭제하거나 이전 데이터를 새 DB에 합치지 않습니다.
-기존 DB를 보관한 경우 복구하려면 Keycloak과 DB를 다시 중지하고 새 `pgdata`를 별도 분리한 뒤 기존 디렉터리와
-이전 DB 비밀번호·이미지·배포 설정을 함께 복원하는 별도 절차를 수행합니다.
-이번처럼 보관 없이 삭제했다면 기존 DB 복구에는 별도로 보유한 백업이 필요합니다.
+기존 DB를 보관했다면 별도 복구 절차를 수행합니다. Keycloak과 DB를 다시 중지하고 새 `pgdata`를 분리한 뒤,
+기존 디렉터리와 이전 DB 비밀번호·이미지·배포 설정을 함께 복원합니다.
+
+당시처럼 보관 없이 삭제했다면 기존 DB 복구에는 별도로 보유한 백업이 필요합니다.

@@ -12,7 +12,7 @@ Emails API는 메일함 조회, 메일 처리, POP3 수집, OCR, RAG Outbox 처�
 
 | API | 인증 |
 | --- | --- |
-| 일반 메일 조회/이동/삭제 | Django session |
+| 일반 메일 조회/이동/삭제 | Django session, Portal·`emails` 앱 접근, SDWT 데이터 등급 |
 | POP3 수집/Outbox 처리 | Airflow Bearer token |
 | OCR claim/update | `X-Internal-Token` |
 
@@ -111,4 +111,4 @@ X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>
 
 ## 관련 모듈 문서
 
-- `docs/modules/emails.md`
+- [Emails 모듈](../modules/emails.md)

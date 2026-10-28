@@ -17,7 +17,7 @@ L3 Spider는 날짜·Line·Process·EDS Step 기준으로 Parquet 이상감지 �
 | 화면 | `/l3_spider`, `/spider/l3` |
 | Frontend | `apps/portal/web/src/features/l3-spider` |
 | Backend API | `/api/v1/l3_spider/**` |
-| 업무 데이터 | `L3SpiderFileIndex`, `L3SpiderDailyRunStats`, `L3SpiderRunStatus`, `L3SpiderLineNameRule`, `L3SpiderExclusionFilter`, `L3SpiderMailRule`, `L3SpiderMailDelivery` |
+| 업무 데이터 | `L3SpiderFileIndex`, `L3SpiderDailyRunStats`, `L3SpiderRunStatus`, `L3SpiderLineNameRule`, `L3SpiderExclusionFilter`, `L3SpiderMailRule`, `L3SpiderMailDelivery`, `L3SpiderMailRulePermission` |
 | 파일 데이터 | `L3_SPIDER_DATA_ROOT` 아래 read-only daily anomaly Parquet |
 | 외부 연동 | Airflow, Knox Mail API |
 
@@ -31,7 +31,7 @@ L3 Spider는 날짜·Line·Process·EDS Step 기준으로 Parquet 이상감지 �
 
 ## 권한과 운영 포인트
 
-- 일반 조회와 개인 rule 관리는 Django session이 필요합니다.
+- 일반 조회와 개인 rule 관리는 Django session과 Portal·`l3-spider` 앱 접근이 필요합니다.
 - 개발자 옵션은 Portal 접근이 허용된 L3 Spider `admin`만 사용할 수 있습니다.
 - mail trigger는 `AIRFLOW_TRIGGER_TOKEN`이 필요합니다.
 - 날짜나 조합이 누락되면 PostgreSQL index table과 `L3_SPIDER_DATA_ROOT` mount를 함께 확인합니다.
@@ -39,8 +39,8 @@ L3 Spider는 날짜·Line·Process·EDS Step 기준으로 Parquet 이상감지 �
 
 ## 관련 문서와 코드
 
-- `docs/api/l3-spider.md`
-- `docs/configuration.md`
+- [L3 Spider API](../api/l3-spider.md)
+- [환경 설정](../configuration.md)
 - `apps/portal/api/api/l3_spider/selectors.py`
 - `apps/portal/api/api/l3_spider/services/`
 - `apps/portal/web/src/features/l3-spider`

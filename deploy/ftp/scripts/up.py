@@ -3,6 +3,7 @@
 
 import argparse
 import base64
+import importlib.util
 import ipaddress
 import json
 import os
@@ -14,6 +15,9 @@ import sys
 BASE = Path(__file__).resolve().parents[1]
 LABEL = 'etch.io/ftp-enabled'
 NAMESPACE = 'etch-ftp'
+spec = importlib.util.spec_from_file_location('deploy_runtime', BASE.parent / 'shared/scripts/runtime.py')
+runtime = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runtime)
 
 
 def run(args, *, data=None, sensitive=False):
@@ -83,7 +87,7 @@ def start(context, nodes, credential_file, check_only=False):
         raise ValueError('FTP_NODES는 공백·중복 없이 쉼표로 구분한 노드 이름 목록이어야 합니다.')
     credentials = read_credentials(Path(credential_file))
     kube = ['kubectl', '--context', context]
-    source = run(['kubectl', 'kustomize', BASE / 'k8s'])
+    source = runtime.render_json(run, kube, BASE / 'k8s')
     all_nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
     check_nodes(all_nodes, names)
     current = run([*kube, '-n', NAMESPACE, 'get', 'secret', 'ftp-credentials',
@@ -97,15 +101,20 @@ def start(context, nodes, credential_file, check_only=False):
     if check_only:
         print('입력·노드·기존 Secret·원본 렌더 검사 통과. 디스크·포트·FTP 전송은 별도 확인하세요.')
         return
-    namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NAMESPACE}}
-    run([*kube, 'apply', '-f', '-'], data=json.dumps(namespace))
+    existing_namespace = run([*kube, 'get', 'namespace', NAMESPACE, '--ignore-not-found', '-o', 'name'])
+    if not existing_namespace.strip():
+        # 초기 Namespace만 생성하고 기존 보안 정책과 운영 metadata는 수정하지 않는다.
+        namespace = next((item for item in source if item['kind'] == 'Namespace'),
+                         {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NAMESPACE}})
+        run([*kube, 'create', '-f', '-'], data=json.dumps(namespace))
     if not current.strip():
         secret = {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
                   'metadata': {'name': 'ftp-credentials', 'namespace': NAMESPACE}, 'data': encoded}
         # 검사 이후 다른 운영자가 만든 Secret도 덮어쓰지 않는다.
         run([*kube, 'create', '-f', '-'], data=json.dumps(secret), sensitive=True)
     run([*kube, 'label', 'node', *names, LABEL + '=true', '--overwrite'])
-    run([*kube, 'apply', '-f', '-'], data=source)
+    run([*kube, 'apply', '-f', '-'], data=json.dumps(
+        {'apiVersion': 'v1', 'kind': 'List', 'items': [item for item in source if item['kind'] != 'Namespace']}))
     run([*kube, '-n', NAMESPACE, 'rollout', 'status', 'daemonset/ftp', '--timeout=300s'])
     print(run([*kube, '-n', NAMESPACE, 'get', 'pods', '-l', 'app=ftp', '-o', 'wide']))
     print('FTP 배포 완료. 각 노드 IP의 6380 포트에서 업로드·다운로드를 확인하세요.')

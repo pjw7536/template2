@@ -3,7 +3,8 @@
 [공용 Ingress 안내](README.md) · [기존 Keycloak·Airflow 통합 배포](VIP.md)
 
 목표는 새 Worker에도 Traefik을 하나 배치해 APP VIP가 해당 Worker의 443으로 요청을 전달하도록 만드는 것입니다.
-**일반 업무 Pod만 실행할 Worker라면 클러스터 등록까지만 하면 됩니다. 모든 Worker를 VIP Backend로 만들 필요는 없습니다.**
+일반 업무 Pod만 실행할 Worker라면 클러스터 등록까지만 진행합니다.
+VIP를 통해 요청을 받을 Worker에만 나머지 절차를 수행합니다.
 
 ## 어디에서 무엇을 하나요?
 
@@ -26,8 +27,9 @@ Traefik Service는 ClusterIP를 유지합니다. LB는 Worker의 hostPort 443으
 
 ## 1. 현재 값과 목표 확인 — CP1
 
-2026-09-16 사용자 확인에서 두 Worker는 모두 Ready입니다. 아래 추가 대상은 당시 작업의 예시이며
-이미 등록된 노드의 join을 반복하지 않습니다. 최신 [현황](../docs/infrastructure/cluster.md)과 아래 조회 결과를 대조합니다.
+2026-09-16 사용자 확인 당시 두 Worker는 모두 Ready였습니다.
+아래 추가 대상은 당시 작업의 예시입니다. 최신 [현황](../docs/infrastructure/cluster.md)과 아래 조회 결과를 대조합니다.
+이미 등록된 노드에 join을 반복하지 않습니다.
 
 | 항목 | 값 |
 | --- | --- |
@@ -87,8 +89,9 @@ CP1에서 `kubectl --context "$VIP_CONTEXT" get nodes -o wide`를 다시 확인�
 sudo ss -lntp '( sport = :80 or sport = :443 )'
 ```
 
-Nginx 등 다른 프로세스가 점유 중이면 자동 종료하지 말고 담당자와 조정합니다.
-**hostPort는 네트워크 규칙으로 구현될 수 있으므로 ss 결과가 비어 있어도 Traefik이 없다는 뜻은 아닙니다.**
+Nginx 등 다른 프로세스가 점유 중이면 담당자와 조정합니다. 자동으로 종료하지 않습니다.
+
+hostPort는 네트워크 규칙으로 구현될 수 있습니다. 따라서 ss 결과가 비어 있어도 Traefik이 실행 중일 수 있습니다.
 Kubernetes Pod의 포트 충돌은 다음 단계의 공통 로직이 검사합니다.
 
 CP1에서 현재 Traefik 이미지를 확인하고 새 Worker의 containerd에서도 같은 이미지를 받을 수 있도록 준비합니다.
@@ -122,6 +125,7 @@ kubectl --context "$VIP_CONTEXT" get pods -A -o json > "$VIP_WORKDIR/pods.json"
 아래 블록은 파일만 생성합니다. 클러스터에는 아직 적용하지 않습니다.
 현재 이미지·실행 인자·namespace 감시·ServiceAccount를 그대로 유지하고 배치 설정만 계산합니다.
 공통 `routing.py`가 IP·Ready·cordon·taint·기존 Backend 누락·Pod의 80/443 충돌을 검사합니다.
+
 현재 별도의 nodeSelector·affinity 정책이 있다면 생성 파일에서 대체되는 범위를 확인하고 운영 정책과 먼저 맞춥니다.
 
 ```bash
@@ -190,8 +194,14 @@ dry-run이 실패하면 실제 적용하지 않습니다. resourceVersion 검사
 기존 백업을 보존한 채 4단계에서 새 작업 디렉터리를 만들어 다시 확인하며, 검사 항목을 삭제해 강행하지 않습니다.
 
 예시에서는 `khplane01w09`와 `khplanew01`에 각각 하나씩 `1/1 Running`이어야 합니다.
-Pending이면 `kubectl describe pod`, ImagePullBackOff이면 해당 노드의 이미지 미러·인증,
-Ready 실패이면 Pod 로그와 CNI 연결을 확인합니다. rollout 실패 상태에서는 새 LB Backend를 활성화하지 않습니다.
+
+| 상태 | 먼저 확인할 내용 |
+| --- | --- |
+| Pending | `kubectl describe pod`의 이벤트 |
+| ImagePullBackOff | 해당 노드의 이미지 미러·인증 |
+| Ready 실패 | Pod 로그와 CNI 연결 |
+
+rollout이 실패한 상태에서는 새 LB Backend를 활성화하지 않습니다.
 
 ## 6. Worker 직접 접속 → VIP 순서로 검증
 
@@ -218,6 +228,7 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
 
 새 Worker IP는 실제 추가한 IP로 바꿉니다. 한 번의 VIP 요청 성공만으로 두 Backend가 모두 정상이라고 판단하지 않습니다.
 각 Worker 직접 요청과 LB 상태를 함께 확인합니다. Ingress가 없는 `/`의 404는 VIP 장애의 근거가 아닙니다.
+
 사용할 서비스 도메인의 DNS가 APP VIP를 가리키는지 확인한 뒤 PC 브라우저에서도 실제 로그인까지 검사합니다.
 기존 Keycloak DNS 변경은 별도 전환 작업이며 이 가이드에서 자동 변경하지 않습니다.
 
@@ -238,6 +249,7 @@ kubectl --context "$VIP_CONTEXT" -n etch-sso rollout status deployment/traefik -
 
 dry-run이 실패하면 적용하지 않습니다. 다른 작업이나 admission 정책이 spec을 변경했다면 복구의 test가 실패합니다.
 현재 설정과 백업을 비교해 조정하며 test를 제거해 덮어쓰지 않습니다.
+
 `rollout undo`만으로는 replicas와 VIP annotation까지 복구되지 않으므로 위 복구 파일을 사용합니다.
 복구 뒤 기존 Worker 직접 HTTPS 접속과 VIP를 다시 확인합니다. 새 Worker의 drain·삭제·reset은 수행하지 않습니다.
 
@@ -250,8 +262,9 @@ VIP 배치 목록은 Deployment annotation에 남으며 기존 앱별 배포 도
 `kubectl apply -k deploy/shared/ingress` 또는 Keycloak 정적 YAML 직접 적용은 단일 Worker 기본값을 덮어쓸 수 있으므로 사용하지 않습니다.
 이 절차에서는 Airflow까지 배포하는 `make server-up`도 실행할 필요가 없습니다.
 
-**VIP 연결만으로 Headlamp 주소가 생기지는 않습니다.** 이후 Headlamp의 공개 도메인 또는 경로,
-TLS Secret, Ingress, Traefik의 `headlamp` namespace 감시·RBAC를 별도로 준비해야 합니다.
+Headlamp를 사용하려면 VIP 연결에 더해 공개 도메인 또는 경로, TLS Secret, Ingress,
+Traefik의 `headlamp` namespace 감시·RBAC를 별도로 준비합니다.
+
 현재 Headlamp 배포 도구는 운영 env로 `/headlamp` HTTPS 경로와 Keycloak 로그인을 구성합니다.
 [Headlamp 운영 안내](../../headlamp/README.md)에 따라 TLS·OIDC Secret·CA와 제어면 인증을 준비하고 앱별 배포 명령을 사용합니다.
 

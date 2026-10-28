@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location('server_up', ROOT / 'deploy/shared/scripts/server-up.py')
+spec = importlib.util.spec_from_file_location('airflow_server', ROOT / 'deploy/airflow/scripts/server.py')
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
@@ -34,8 +34,9 @@ def main():
         if args.check_only:
             with tempfile.TemporaryDirectory(prefix='airflow-check-') as temporary:
                 airflow.render(settings, temporary, chart, pause_new_dags=True)
-            airflow.check_cluster_inputs(settings, args.context)
-            print('Airflow 설정·차트·클러스터 버전·노드·기존 비밀값 검사 통과. 디스크·이미지·접속 확인은 별도입니다.')
+                airflow.check_cluster_inputs(settings, args.context, Path(temporary) / 'airflow.yaml')
+            airflow.check_required_resources(settings, args.context)
+            print('Airflow 설정·차트·클러스터 버전·노드·기존 비밀값·필수 리소스 검사 통과. 디스크·이미지·접속 확인은 별도입니다.')
         else:
             airflow.deploy(settings, args.context, chart, pause_new_dags=True)
 

@@ -18,8 +18,13 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get jobs,pvc
 kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get service,ingress,endpointslices
 ```
 
-**성공 기준:** 원하는 replica 준비, Pod의 READY 충족, PVC의 Bound, Job 완료, Service의 준비된 endpoint 존재.
-Pod의 Running만으로 준비 완료를 판단하지 않습니다. 일회성 Job의 Completed는 정상입니다.
+다음 상태를 모두 확인합니다.
+
+- 필요한 replica 수가 준비되고 Pod의 READY가 충족됩니다.
+- PVC는 Bound, 일회성 Job은 Completed 상태입니다.
+- Service에 준비된 endpoint가 있습니다.
+
+Pod가 Running이라는 이유만으로 앱이 준비됐다고 판단하지 않습니다.
 
 ## 2. HTTPS 확인 — 접근 가능한 PC
 
@@ -44,9 +49,12 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
   --cacert "$CA_FILE" "https://$APP_HOST$APP_HEALTH_PATH"
 ```
 
-OS가 CA를 신뢰하면 `--cacert`는 생략할 수 있습니다. 인증서 검증을 건너뛰는 `-k`는 사용하지 않습니다.
-**성공 기준:** TLS 검증과 health 내용 정상. Airflow는 HTTP 200뿐 아니라 DB·scheduler의 healthy를 확인합니다.
-Keycloak은 [VIP 문서](../../ingress/VIP.md)의 도메인 검사와 아래 로그인을 확인합니다.
+OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다.
+인증서 검증을 건너뛰는 `-k`는 사용하지 않습니다.
+
+**성공 기준:** TLS 검증을 통과하고 health 응답 내용이 정상이어야 합니다.
+Airflow는 HTTP 200 외에 DB와 scheduler가 healthy인지도 확인합니다.
+Keycloak은 [VIP 문서](../../ingress/VIP.md)의 도메인 검사와 아래 로그인 검증을 수행합니다.
 
 ## 3. 실제 기능 확인
 
@@ -59,5 +67,6 @@ Keycloak은 [VIP 문서](../../ingress/VIP.md)의 도메인 검사와 아래 로
 | FTP | 노드 passive 접속·시험 파일 송수신·저장 위치 |
 
 시험 데이터는 정상 삭제 절차로 정리합니다.
-결과는 `수행일·담당자 / context·namespace / 커밋·이미지·chart / 정적 검사 / 리소스 / 접속·기능 / 미완료·다음 조치`로 기록합니다.
-비밀값은 제외하고, 접근 불가·확인 대기를 성공으로 표시하지 않습니다.
+결과에는 수행일·담당자, context·namespace, 커밋·이미지·chart 버전을 남깁니다.
+정적 검사, 리소스 상태, 접속·기능 검증의 결과를 나누어 적고 미완료 항목과 다음 조치를 덧붙입니다.
+비밀값은 기록하지 않습니다. 접근하지 못했거나 확인 대기 중인 항목은 성공으로 표시하지 않습니다.

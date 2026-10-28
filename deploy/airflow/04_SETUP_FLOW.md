@@ -2,10 +2,17 @@
 
 [시작 안내](README.md) · 이전: [차트·이미지](03_ARTIFACTS.md) · 다음: [운영](05_OPERATIONS.md)
 
-서버·env·차트·이미지·ODBC 준비가 끝난 뒤 사용합니다. 명령은 저장소 루트의 Bash에서 실행합니다.
-아래 기본 흐름은 `deploy/airflow/env/k8s.env`, namespace `airflow` 기준입니다.
-namespace를 바꿨다면 kubectl의 `-n airflow`도 바꿉니다.
-다른 env는 Python에 `--env`, Makefile에 `AIRFLOW_ENV`로 같은 파일을 전달합니다.
+서버·env·chart·이미지·ODBC를 준비한 뒤 저장소 루트의 Bash에서 실행합니다.
+기본 입력은 `deploy/airflow/env/k8s.env`, namespace는 `airflow`입니다.
+현재 최초 설치는 새 DB로 진행합니다. DB 복원 단계는 수행하지 않으며,
+선택한 Worker의 DB 디렉터리가 기존 PostgreSQL 데이터 경로가 아닌지 확인합니다.
+이미 Airflow PVC·Secret이 남아 있다면 새 설치로 간주하지 말고 연결된 저장소부터 확인합니다.
+이 안내는 기존 리소스나 데이터를 자동 삭제하지 않습니다.
+
+다른 설정을 쓴다면 아래 두 항목을 맞춥니다.
+
+- namespace를 바꾼 경우: kubectl 명령의 `-n airflow`도 같은 이름으로 바꿉니다.
+- env 파일을 바꾼 경우: Python에는 `--env`, Makefile에는 `AIRFLOW_ENV`로 같은 파일을 전달합니다.
 
 ## 실행 순서와 영향
 
@@ -70,9 +77,16 @@ Secret 값은 출력에 포함하지 않습니다. **`airflow.yaml`을 직접 ku
 make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 ```
 
-클러스터 버전, 대상 노드 Ready·cordon 상태, 기존 DB 비밀번호와 Fernet 키를 조회합니다.
-Ingress를 사용하면 `etch-sso/traefik`과 TLS 인증서 도메인·만료도 검사합니다.
-검사 통과는 실제 디스크 권한·이미지 pull·외부 DB 접속·Portal 연동 성공을 보장하지 않습니다.
+이 단계에서 확인하는 항목은 다음과 같습니다.
+
+- 클러스터 버전과 대상 노드의 Ready·cordon 상태
+- 최종 Pod 설정이 해당 노드의 taint를 허용하는지 여부
+- 기존 DB 비밀번호·Fernet 키와 env의 일치 여부
+- 설정에서 참조하는 image pull·ODBC Secret, OIDC CA ConfigMap, IngressClass
+- Ingress를 쓸 때 `etch-sso/traefik`과 TLS 인증서의 도메인·만료
+
+필요한 입력이 빠지면 공용 리소스를 적용하기 전에 중단합니다.
+검사를 통과한 뒤에도 실제 디스크 권한, 이미지 다운로드, 외부 DB 접속, Portal 연동은 따로 확인합니다.
 
 운영 URL은 `https://etch.samsungds.net/airflow`, `INGRESS_TLS_SECRET=airflow-tls`입니다.
 Airflow namespace에 TLS Secret이 아직 없다면 기존 `headlamp/headlamp-tls`를 원본으로 지정합니다.
@@ -167,6 +181,8 @@ python3 deploy/airflow/scripts/manage.py deploy \
 환경별 비밀값 없는 override가 필요하면 `check`, `render`, `deploy` 모두 동일한
 `--values /절대경로/values.yaml`을 전달합니다. Makefile의 airflow-check/up에는 이 override 전달 기능이 없습니다.
 override는 생성 values 뒤에 적용되므로 노드·DAG 정책까지 덮어쓸 수 있습니다. 렌더 결과를 반드시 확인합니다.
+배포 후 재시작·준비 대기는 최종 렌더에 존재하는 Deployment·StatefulSet·DaemonSet만 대상으로 합니다.
+예를 들어 `triggerer.enabled: false`이면 triggerer는 재시작·대기 대상에서 제외합니다.
 
 자원 기본값은 `helm/values.yaml`과 `k8s/postgres/stack.json`이 원본입니다.
 parallelism=32, DAG별 task=16·run=16, 웹서버 worker=4이며 초기화 Job은 default_pool slots를 -1로 설정합니다.

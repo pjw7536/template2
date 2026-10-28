@@ -6,12 +6,12 @@
 
 | 영역 | 경로 | 역할 | 상세 문서 |
 | --- | --- | --- | --- |
-| Web | `apps/portal/web` | React 19 + Vite SPA | `docs/frontend.md` |
-| API | `apps/portal/api` | Django 5.1 API 서버 | `docs/backend.md` |
-| Dummy 외부계 | `local/adfs_dummy` | 로컬 RAG/LLM/Mail/Jira 대체 서버 | `docs/integrations.md` |
-| Env | `local/<app>/env`, `deploy/<app>/env` | 개발/운영 환경 변수 | `docs/configuration.md` |
-| Proxy | `deploy/portal/k8s/base/nginx.conf` | 로컬/운영 통합 진입점 | `docs/operations.md` |
-| Docs | `docs` | 앱 상세 설명과 검증 기준 | `docs/README.md` |
+| Web | `apps/portal/web` | React 19 + Vite SPA | [프론트엔드 상세 구조](frontend.md) |
+| API | `apps/portal/api` | Django 5.2 이상·6.0 미만 API 서버 | [백엔드 상세 구조](backend.md) |
+| Dummy 외부계 | `local/adfs_dummy` | 로컬 RAG/LLM/Mail/Jira 대체 서버 | [외부 연동 계약](integrations.md) |
+| Env | `local/<app>/env`, `deploy/<app>/env` | 개발/운영 환경 변수 | [환경 설정](configuration.md) |
+| Proxy | `deploy/portal/k8s/base/nginx.conf` | 로컬/운영 통합 진입점 | [운영/개발 명령](operations.md) |
+| Docs | `docs` | 앱 상세 설명과 검증 기준 | [프로젝트 문서 홈](README.md) |
 
 ## 앱 소유 경로
 
@@ -34,7 +34,7 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 | Django app | 역할 | 주요 저장소/연동 |
 | --- | --- | --- |
 | `api.auth` | OIDC 로그인/로그아웃/현재 사용자 | Keycloak OIDC, `api.account.User` |
-| `api.account` | 소속, 권한, 사용자 pool | 기본 DB |
+| `api.account` | 세션 소속·권한 조회, 사용자 pool | Keycloak 세션, 기본 DB |
 | `api.emails` | 메일 수집/조회/이동/삭제/OCR/RAG Outbox | 기본 DB, POP3, RAG, MinIO |
 | `api.assistant` | 사용자별 대화방 저장과 화면별 AI 채팅 | PostgreSQL, OpenWebUI, RAG, LLM |
 | `api.rag` | 외부 RAG 서버 공통 client | RAG |
@@ -42,7 +42,10 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 | `api.observer` | 기본 DB 기준정보/로그 조회 | data movement 테이블, Drone 데이터 |
 | `api.appstore` | 내부 앱 등록/댓글/좋아요 | 기본 DB, cover image |
 | `api.voc` | VOC 게시판 | 기본 DB |
-| `api.activity` | ActivityLog 조회 | 기본 DB |
+| `api.activity` | 활동 로그·앱 접속 통계·외부 사용량 동기화 | 기본 DB, 외부 사용량 API |
+| `api.data_movement` | 파일 적재·CTTTM 요약 trigger | 기본 DB, FTP 수신 큐, OpenWebUI |
+| `api.l3_spider` | 이상감지 조회·메일 규칙 | 기본 DB 인덱스, Parquet, Mail API |
+| `api.l0_spider`, `api.pm_comparison`, `api.tttm_spider` | Spider 분석 데이터 조회 | Parquet·참조 파일 |
 | `api.health` | 헬스 체크 | runtime 상태 |
 | `api.common` | 공통 middleware/helper/client | logging, storage, mail, messenger |
 
@@ -52,11 +55,15 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 
 | Feature | 역할 | 주요 route |
 | --- | --- | --- |
-| `auth` | 로그인, 온보딩, 소속 재확인 | `/login` |
-| `account` | 계정, 소속, 멤버/권한 | `/settings/account`, `/settings/members` |
+| `auth` | Keycloak 로그인, 세션 조회 | `/login` |
+| `account` | 세션 계정·권한 조회, Portal 관리자 사용자 목록 | `/settings/account`, `/settings/members`, `/settings/permissions` |
 | `emails` | 메일함과 메일 처리 | `/emails/inbox`, `/emails/sent`, `/emails/members` |
 | `assistant` | RAG 기반 채팅 | `/assistant` |
 | `line-dashboard` | Drone SOP/라인 대시보드 | `/ESOP_Dashboard/**` |
+| `spider` | Spider 허브 | `/spider`, `/spider/defect` |
+| `l0-spider`, `l1-spider`, `l3-spider` | L0·L1·L3 분석 화면 | `/spider/l0`, `/spider/l1`, `/l0_spider/**`, `/l3_spider`, `/spider/l3` |
+| `pm-spider`, `tttm-spider` | PM·TTTM 분석 화면 | `/pm_spider`, `/spider/tttm`, `/tttm_spider` |
+| `access-stats` | 앱 접속 통계 | `/access-stats` |
 | `observer` | 설비/로그 Observer | `/observer`, `/observer/:eqpId` |
 | `appstore` | 내부 앱 공유 | `/appstore` |
 | `voc` | VOC 게시판 | `/voc` |
@@ -70,13 +77,13 @@ Portal은 `apps/portal/api`와 `apps/portal/web`, Airflow는 `apps/airflow`가 �
 
 1. 사용자가 OIDC로 로그인합니다.
 2. `api.auth`가 OIDC claim을 검증하고 `api.account.User`를 만들거나 갱신합니다.
-3. `api.account`가 현재 소속과 접근 가능한 `user_sdwt_prod`를 계산합니다.
+3. `api.account`가 검증된 Keycloak 세션의 소속·앱 역할·SDWT 그룹으로 접근 범위를 계산합니다.
 4. Emails, Assistant, Drone은 소속/권한 범위를 재사용해 조회와 작업 권한을 제한합니다.
 
 ### 메일과 RAG
 
 1. Emails가 POP3 또는 Mail API에서 메일과 asset을 수집합니다.
-2. 발신자, 수신자, 소속, mailbox 기준으로 메일 접근 범위를 계산합니다.
+2. 로그인 세션의 앱 역할·SDWT 등급과 mailbox 기준으로 메일 접근 범위를 계산합니다.
 3. RAG 등록/삭제가 필요하면 `EmailOutbox`에 작업을 쌓습니다.
 4. Outbox 처리기가 RAG insert/delete endpoint를 호출합니다.
 5. Assistant는 RAG 검색 결과를 LLM에 전달해 답변을 생성합니다.

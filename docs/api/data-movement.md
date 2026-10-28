@@ -90,4 +90,4 @@ POST /api/v1/data-movement/ct_process_comment/summarize/
 ```
 
 응답에는 `processedCount`, `successCount`, `failureCount`, `skippedCount`, `dryRunCount`, `outcomes`가 포함됩니다.
-실패 row가 하나라도 있으면 응답은 `500`입니다.
+HTTP 200이어도 일부 row가 실패할 수 있으므로 `failureCount`와 `outcomes`를 함께 확인합니다.

@@ -46,6 +46,8 @@ spec:
               httpHeaders:
                 - name: Host
                   value: localhost
+                - name: X-Forwarded-Proto
+                  value: https
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
@@ -55,6 +57,8 @@ spec:
               httpHeaders:
                 - name: Host
                   value: localhost
+                - name: X-Forwarded-Proto
+                  value: https
             initialDelaySeconds: 20
             periodSeconds: 10
           resources:

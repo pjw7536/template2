@@ -28,6 +28,8 @@ make makemigrations-check
 
 ## 설정 파일
 
+아래 경로는 모두 저장소 루트를 기준으로 합니다.
+
 | 파일 | 설명 |
 | --- | --- |
 | `local/portal/env/api.env`, `api-k8s.env` | 로컬 API 입력과 Kubernetes 차이 |
@@ -42,7 +44,7 @@ make makemigrations-check
 | Django app | 역할 |
 | --- | --- |
 | `api.auth` | OIDC 로그인/로그아웃/현재 사용자 |
-| `api.account` | 사용자 소속, 접근 권한, 사용자 pool |
+| `api.account` | Keycloak 세션 소속·권한 조회, 사용자 pool |
 | `api.emails` | 메일 수집/조회/이동/삭제/OCR/RAG Outbox |
 | `api.assistant` | 사용자별 대화방 저장, OpenWebUI 일반 대화, 메일 RAG/LLM 답변 생성 |
 | `api.rag` | RAG 서버 호출 공통 client |
@@ -52,11 +54,15 @@ make makemigrations-check
 | `api.activity` | ActivityLog 조회 |
 | `api.voc` | VOC 게시글/답변 |
 | `api.common` | 공통 middleware, DB, storage, mail, messenger helper |
+| `api.data_movement` | FTP 수신 파일의 테이블별 적재·CTTTM 요약 trigger |
+| `api.l3_spider` | 이상감지 조회·제외 조건·메일 규칙 |
+| `api.l0_spider`, `api.pm_comparison`, `api.tttm_spider` | 파일 기반 Spider 분석 조회 |
 | `api.health` | health check |
 
 ## 자주 쓰는 관리 명령
 
-`ensure_dev_database`, `process_email_outbox`는 준비된 로컬 환경에서 아래 형태로 실행합니다(저장소 루트 기준).
+`ensure_dev_database`는 개발 DB를 준비하고, `process_email_outbox`는 이메일 Outbox를 처리합니다.
+준비된 로컬 환경에서 아래 형태로 실행합니다(저장소 루트 기준).
 
 ```bash
 docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api <command>
@@ -64,12 +70,10 @@ docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime
 
 ## 더 읽을 문서
 
-- 전체 구조: `docs/architecture.md`
-- 백엔드 상세 구조: `docs/backend.md`
-- 실제 API route/model/command 색인: `docs/inventory.md`
-- 데이터 모델: `docs/data-model.md`
-- 환경 설정: `docs/configuration.md`
-- API 공통 규칙: `docs/api/README.md`
-- 모듈별 API 계약: `docs/api/*.md`
-- 모듈별 기능/동작: `docs/modules/*.md`
-- 운영/외부 연동: `docs/operations.md`, `docs/integrations.md`
+- [전체 구조](../../../docs/architecture.md)
+- [백엔드 상세 구조](../../../docs/backend.md)
+- [실제 API route·model·command 색인](../../../docs/inventory.md)
+- [데이터 모델](../../../docs/data-model.md)과 [환경 설정](../../../docs/configuration.md)
+- [API 공통 규칙과 모듈별 호출 계약](../../../docs/api/README.md)
+- [모듈별 기능과 동작](../../../docs/modules/README.md)
+- [운영 절차](../../../docs/operations.md)와 [외부 연동](../../../docs/integrations.md)

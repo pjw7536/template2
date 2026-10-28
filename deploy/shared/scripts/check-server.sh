@@ -7,8 +7,9 @@ PROFILE="${2:-prod}"
 [[ "$PROFILE" == prod ]] || { echo "사내 서버는 Kubernetes 전용입니다. $PROFILE 환경의 Kubernetes 정의가 없습니다." >&2; exit 1; }
 cd "$ROOT_DIR"
 
-if [[ "$APP" == all || "$APP" == keycloak-airflow ]]; then
-  selected_apps="$(python3 deploy/shared/scripts/app-paths.py "$APP" --names)"
+# 앱과 그룹 이름은 checkout과 같은 카탈로그에서 해석합니다.
+selected_apps="$(python3 deploy/shared/scripts/app-paths.py "$APP" --names)"
+if [[ "$selected_apps" != "$APP" ]]; then
   while IFS= read -r app; do
     bash "$ROOT_DIR/deploy/shared/scripts/check-server.sh" "$app" "$PROFILE"
   done <<< "$selected_apps"

@@ -12,10 +12,16 @@ if [[ -f "$RUNTIME_ENV" ]]; then
   load_env "$RUNTIME_ENV"
 fi
 # MinIO client credential만 API에 전달하며 관리자·서버 설정은 전달하지 않습니다.
-for key in MINIO_ACCESS_KEY MINIO_SECRET_KEY; do
-  ENV_VALUES["$key"]="$(awk -F= -v key="$key" '$1==key {sub(/^[^=]*=/, ""); print; exit}' "${ROOT_DIR}/local/portal/env/minio.env")"
-done
+declare -A API_ENV_VALUES=()
 for key in "${!ENV_VALUES[@]}"; do
-  printf '%s=%s\n' "$key" "${ENV_VALUES[$key]}"
+  API_ENV_VALUES["$key"]="${ENV_VALUES[$key]}"
+done
+ENV_VALUES=()
+load_env "${ROOT_DIR}/local/portal/env/minio.env"
+for key in MINIO_ACCESS_KEY MINIO_SECRET_KEY; do
+  API_ENV_VALUES["$key"]="${ENV_VALUES[$key]:-}"
+done
+for key in "${!API_ENV_VALUES[@]}"; do
+  printf '%s=%s\n' "$key" "${API_ENV_VALUES[$key]}"
 done | LC_ALL=C sort > "$OUTPUT_FILE"
 chmod 600 "$OUTPUT_FILE"

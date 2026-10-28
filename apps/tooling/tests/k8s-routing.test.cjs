@@ -32,16 +32,30 @@ test('Keycloak 기본 스택과 전달 스택은 각 원본의 감시 범위와 
   }
 });
 
-test('Portal 선택 패치는 감시 인자만 확장하며 해당 namespace 권한과 일치한다', () => {
+test('Portal 후속 연결은 기존 앱·배치를 보존하고 namespace 권한과 일치한다', () => {
   const keycloak = render('deploy/keycloak/k8s');
   const portal = render('deploy/portal/k8s/overlays/prod');
   const ingress = portal.find(r => r.kind === 'Ingress');
   const original = keycloak.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
-  const patched = spawnSync('kubectl', ['patch', '--local', '-f', '-', '--type=json', '--patch-file', 'deploy/portal/k8s/overlays/prod/traefik-watch-patch.json', '-o', 'json'], { cwd: root, input: JSON.stringify(original), encoding: 'utf8' });
+  original.metadata.resourceVersion = 'review-version';
+  original.metadata.annotations = { 'deploy.tailwind.local/vip-backends': '192.0.2.10,192.0.2.20' };
+  original.spec.replicas = 2;
+  original.spec.template.spec.containers[0].args[2] = '--providers.kubernetesingress.namespaces=etch-sso,headlamp,airflow';
+  const planned = spawnSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('routing', 'deploy/shared/ingress/routing.py')
+routing = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(routing)
+print(json.dumps(routing.namespace_patch(json.load(sys.stdin), 'tailwind-internal')))
+`], { cwd: root, input: JSON.stringify(original), encoding: 'utf8' });
+  assert.equal(planned.status, 0, planned.stderr);
+  const patch = JSON.parse(planned.stdout);
+  assert.deepEqual(patch[0], { op: 'test', path: '/metadata/resourceVersion', value: 'review-version' });
+  const patched = spawnSync('kubectl', ['patch', '--local', '-f', '-', '--type=json', '--patch', JSON.stringify(patch), '-o', 'json'], { cwd: root, input: JSON.stringify(original), encoding: 'utf8' });
   assert.equal(patched.status, 0, patched.stderr);
   const controller = JSON.parse(patched.stdout);
   const expected = structuredClone(original);
-  expected.spec.template.spec.containers[0].args[2] = '--providers.kubernetesingress.namespaces=etch-sso,tailwind-internal';
+  expected.spec.template.spec.containers[0].args[2] = '--providers.kubernetesingress.namespaces=etch-sso,headlamp,airflow,tailwind-internal';
   assert.deepEqual(controller, expected);
   const spec = controller.spec.template.spec;
   const args = spec.containers[0].args;
@@ -71,13 +85,28 @@ test('Nginx가 API·callback·SSE·MinIO·Web에 원래 HTTPS 정보를 전달�
   const script = `set -eu
 nginx -t
 nginx
-for route in /api/v1/auth/login /auth/keycloak/callback/ /api/v1/assistant/turns/stream /minio/profile/test /; do
+for route in /api/v1/health/ /api/v1/auth/login /auth/keycloak/callback/ /api/v1/assistant/turns/stream /minio/profile/test /; do
   wget -qO- --header='X-Forwarded-Proto: https' "http://127.0.0.1$route"
   wget -qO- --header='X-Forwarded-Proto: http' "http://127.0.0.1$route"
   wget -qO- "http://127.0.0.1$route"
 done
+for host in portal.test:8443 localhost:8080; do
+  for protocol in https http missing; do
+    forwarded=''
+    if [ "$protocol" != missing ]; then forwarded="X-Forwarded-Proto: $protocol\\r\\n"; fi
+    response="$(printf 'GET /minio HTTP/1.0\\r\\nHost: %s\\r\\n%b\\r\\n' "$host" "$forwarded" | nc 127.0.0.1 80)"
+    printf '%s\\n' "$response" | sed -n '1p; /^Location:/p' | tr -d '\\r'
+  done
+done
 `;
   const result = spawnSync('docker', ['run', '--rm', '--pull=never', '--network', 'none', '--mount', `type=bind,source=${config},target=/etc/nginx/nginx.conf,readonly`, '--entrypoint', '/bin/sh', 'nginx:1.27-alpine', '-c', script], { encoding: 'utf8', timeout: 30000 });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(result.stdout.trim().split('\n'), Array.from({ length: 5 }, () => ['https', 'http', 'http']).flat());
+  const lines = result.stdout.trim().split('\n');
+  assert.deepEqual(lines.slice(0, 18), Array.from({ length: 6 }, () => ['https', 'http', 'http']).flat());
+  const redirects = lines.slice(18);
+  assert.equal(redirects.length, 12);
+  for (let index = 0; index < redirects.length; index += 2) {
+    assert.match(redirects[index], /^HTTP\/1\.[01] 301 /);
+    assert.equal(redirects[index + 1], 'Location: /minio/');
+  }
 });

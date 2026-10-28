@@ -1,11 +1,18 @@
 # 00. Headlamp 최초 설치 안내
 
-현재 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 UI입니다.
-**Keycloak 자체 설정과 Account Console 사내 로그인 확인을 마친 뒤** 아래 순서로 설치합니다.
+Headlamp는 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 화면입니다.
+먼저 Keycloak 설정을 마치고 Account Console에서 사내 로그인이 되는지 확인합니다.
+그다음 아래 순서로 Headlamp를 설치합니다.
 
-운영 Ingress는 `headlamp / headlamp / etch.samsungds.net / headlamp-tls`입니다
-(namespace / name / hosts / tls_secret). 접속 주소는 `https://etch.samsungds.net/headlamp/`이며
-[공용 Ingress 기준](../shared/ingress/README.md#운영-ingress-기준)을 따릅니다.
+운영 접속 주소는 `https://etch.samsungds.net/headlamp/`입니다.
+Ingress 설정은 [공용 Ingress 기준](../shared/ingress/README.md#운영-ingress-기준)을 따릅니다.
+
+| 항목 | 값 |
+| --- | --- |
+| namespace | `headlamp` |
+| Ingress 이름 | `headlamp` |
+| host | `etch.samsungds.net` |
+| TLS Secret 이름 | `headlamp-tls` |
 
 ## 처음 시작하거나 초기화 후 다시 설치한다면
 
@@ -21,8 +28,9 @@
 | PC의 웹 브라우저 | Keycloak 관리자 화면에서 client·그룹 등록, 마지막에 Headlamp 로그인 |
 | 각 제어면 서버의 터미널 | Kubernetes API server가 Keycloak 토큰을 받아들이도록 설정. 05에서만 사용 |
 
-`kubectl --context ...`는 선택한 클러스터에 명령을 보냅니다. 반면 `sudo vi /etc/kubernetes/...`는
-**현재 SSH로 접속한 서버의 파일**을 편집합니다. context를 바꿔도 SSH 접속 서버는 바뀌지 않습니다.
+`kubectl --context ...`는 선택한 클러스터에 명령을 보냅니다.
+`sudo vi /etc/kubernetes/...`는 현재 SSH로 접속한 서버의 파일을 편집합니다.
+context를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치를 구분합니다.
 
 초기화 후에는 다음 상태에서 시작하면 됩니다.
 
@@ -60,10 +68,11 @@ Headlamp → Keycloak etch → 사내 IdP oidc → Keycloak ID Token
          → Kubernetes API server 인증 → 그룹별 RBAC
 ```
 
-허용한 사람만 Keycloak 최상위 `headlamp-admins` 그룹에 가입시킵니다.
-Kubernetes의 `headlamp:/headlamp-admins` 그룹에 `cluster-admin`을 연결하므로
-모든 namespace의 조회·수정·삭제, Secret 접근과 RBAC 관리가 가능합니다. 다른 RBAC 권한은 합산됩니다.
-Headlamp Pod 자체에는 사용자 조회·관리 권한을 부여하지 않습니다.
+운영을 허용한 사람만 Keycloak 최상위 `headlamp-admins` 그룹에 가입시킵니다.
+이 그룹은 Kubernetes의 `headlamp:/headlamp-admins`로 전달되고 `cluster-admin` 권한에 연결됩니다.
+따라서 모든 namespace의 조회·수정·삭제, Secret 접근, RBAC 관리가 가능합니다.
+
+다른 RBAC 권한이 있으면 함께 합산됩니다. Headlamp Pod 자체에는 사용자 조회·관리 권한을 주지 않습니다.
 Portal client나 SDWT 업무 그룹은 Headlamp의 client·관리자 그룹을 대신하지 않습니다.
 
 ## 참고와 운영

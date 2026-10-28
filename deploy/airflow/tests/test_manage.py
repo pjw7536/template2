@@ -1,6 +1,7 @@
 """Airflow 배포의 민감값·스토리지·재배포 순서를 검증한다."""
 
 import base64
+from copy import deepcopy
 import importlib.util
 import json
 import os
@@ -215,16 +216,166 @@ class DeploymentTests(unittest.TestCase):
         if 'version' in args:
             return json.dumps({'serverVersion': {'gitVersion': 'v1.34.0'}})
         if 'nodes' in args:
-            return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+            return json.dumps({'items': [{'spec': self.node_spec, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+        if 'create' in args and '--dry-run=client' in args:
+            return json.dumps({'kind': 'List', 'items': self.pod_resources})
+        if 'get' in args and any(kind in args and name in args for kind, name in self.missing_resources):
+            raise ValueError('필수 리소스가 없습니다.')
         if 'secret' in args and 'get' in args:
             if self.changed_key and self.changed_key in args:
                 return json.dumps({'data': {'password': base64.b64encode(b'old-password').decode()}})
+            name = args[args.index('secret') + 1]
+            if name in self.existing_secrets:
+                return json.dumps(self.existing_secrets[name])
             return ''
+        if 'get' in args:
+            for kind in ('pvc', 'deployment', 'namespace'):
+                if kind in args:
+                    name = args[args.index(kind) + 1]
+                    return self.existing_resources.get((kind, name), '')
         return ''
 
     def setUp(self):
         self.calls = []
         self.changed_key = None
+        self.node_spec = {}
+        self.existing_secrets = {}
+        self.existing_resources = {}
+        self.missing_resources = set()
+        self.pod_resources = [{'kind': 'Deployment', 'metadata': {'name': 'airflow-scheduler'},
+                               'spec': {'template': {'spec': {
+                                   'nodeSelector': {'kubernetes.io/hostname': 'test-node'},
+                                   'tolerations': [
+                                       {'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists', 'effect': 'NoSchedule'},
+                                       {'key': 'node-role.kubernetes.io/master', 'operator': 'Exists', 'effect': 'NoSchedule'}]}}}}]
+        # 배포 순서 테스트는 Helm 실행 대신 최종 Pod 리소스의 외부 명령 계약을 대체합니다.
+        for name, value in [('render', []), ('chart_path', Path('/chart.tgz'))]:
+            patcher = patch.object(deploy, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_missing_required_resources_stop_before_any_apply(self):
+        for key, kind in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'),
+                          ('AIRFLOW_OIDC_CA_CONFIGMAP', 'configmap')]:
+            with self.subTest(key=key), patch.object(deploy, 'run', self.fake_run):
+                self.calls.clear()
+                self.missing_resources = {(kind, 'missing-resource')}
+                with self.assertRaisesRegex(ValueError, '필수 리소스'):
+                    deploy.deploy({**settings(), key: 'missing-resource'}, 'test-context', Path('/chart.tgz'))
+                self.assertFalse(any('apply' in args or 'upgrade' in args for args, _ in self.calls))
+
+    def test_external_database_uses_final_toleration_override(self):
+        """외부 DB는 최종 Helm Pod가 허용하는 전용 노드에서 배포할 수 있습니다."""
+        self.node_spec = {'taints': [{'key': 'dedicated', 'value': 'airflow', 'effect': 'NoSchedule'}]}
+        self.pod_resources[0]['spec']['template']['spec']['tolerations'] = [
+            {'key': 'dedicated', 'value': 'airflow', 'effect': 'NoSchedule'}]
+        values = {**settings(), 'POSTGRES_MODE': 'external', 'POSTGRES_HOST': 'postgres.test'}
+        override = Path('/environment/override.yaml')
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.deploy(values, 'test-context', Path('/chart.tgz'), values_file=override)
+        self.assertEqual(deploy.render.call_args.args[-1], override)
+        self.assertTrue(any('upgrade' in args for args, _ in self.calls))
+
+    def test_airflow_override_does_not_hide_untolerated_internal_database(self):
+        self.node_spec = {'taints': [{'key': 'dedicated', 'value': 'airflow', 'effect': 'NoSchedule'}]}
+        self.pod_resources[0]['spec']['template']['spec']['tolerations'] = [
+            {'key': 'dedicated', 'operator': 'Exists', 'effect': 'NoSchedule'}]
+        with patch.object(deploy, 'run', self.fake_run):
+            with self.assertRaisesRegex(ValueError, 'airflow-postgres.*taint'):
+                deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+
+    def test_each_component_must_tolerate_its_node_taints(self):
+        self.node_spec = {'taints': [{'key': 'dedicated', 'value': 'airflow', 'effect': 'NoSchedule'}]}
+        self.pod_resources[0]['spec']['template']['spec']['tolerations'] = [
+            {'key': 'dedicated', 'operator': 'Exists', 'effect': 'NoSchedule'}]
+        self.pod_resources.append({'kind': 'Job', 'metadata': {'name': 'airflow-migration'}, 'spec': {
+            'template': {'spec': {'nodeSelector': {'kubernetes.io/hostname': 'test-node'}}}}})
+        values = {**settings(), 'POSTGRES_MODE': 'external', 'POSTGRES_HOST': 'postgres.test'}
+        with patch.object(deploy, 'run', self.fake_run):
+            with self.assertRaisesRegex(ValueError, 'airflow-migration.*taint'):
+                deploy.deploy(values, 'test-context', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+
+    def test_toleration_key_value_effect_and_exists_match_kubernetes_rules(self):
+        taint = {'key': 'dedicated', 'value': 'airflow', 'effect': 'NoExecute'}
+        for toleration, expected in [
+                ({'key': 'dedicated', 'value': 'airflow', 'effect': 'NoExecute'}, True),
+                ({'key': 'dedicated', 'value': 'other'}, False),
+                ({'key': 'other', 'value': 'airflow'}, False),
+                ({'key': 'dedicated', 'operator': 'Exists'}, True),
+                ({'operator': 'Exists', 'effect': 'NoExecute'}, True),
+                ({'key': 'dedicated', 'operator': 'Exists', 'effect': 'NoSchedule'}, False),
+                ({'key': 'dedicated', 'value': 'airflow', 'tolerationSeconds': 300}, True)]:
+            with self.subTest(toleration=toleration):
+                self.assertEqual(deploy.tolerates(taint, [toleration]), expected)
+
+    def test_rendered_pods_accepts_json_stream_and_preserves_context(self):
+        resources = [*self.pod_resources, {'kind': 'ConfigMap', 'metadata': {'name': 'airflow-config'}}]
+        for output in [json.dumps({'kind': 'List', 'items': resources}),
+                       '\n'.join(json.dumps(item) for item in resources)]:
+            with self.subTest(output=output), patch.object(deploy, 'run', return_value=output) as run:
+                pods = deploy.rendered_pods(settings(), 'test-context', '/rendered/airflow.yaml')
+                self.assertEqual([name for name, _ in pods], ['airflow-scheduler', 'airflow-postgres'])
+                self.assertEqual(run.call_args.args[0][1:3], ['--context', 'test-context'])
+                self.assertIn('--dry-run=client', run.call_args.args[0])
+
+    def test_missing_fernet_with_existing_database_or_deployment_stops_before_mutation(self):
+        """DB 계정이 정상이어도 기존 설치의 암호화 키를 새로 덮어쓰지 않습니다."""
+        values = settings()
+        self.existing_secrets['airflow-postgres'] = {
+            'data': {'password': base64.b64encode(values['POSTGRES_PASSWORD'].encode()).decode()}}
+        for kind, name in [('pvc', 'airflow-postgres'), ('deployment', 'airflow-scheduler'),
+                           ('secret', 'airflow-metadata')]:
+            with self.subTest(kind=kind):
+                self.calls.clear()
+                self.existing_resources = {(kind, name): f'{kind}/{name}'}
+                if kind == 'secret':
+                    self.existing_secrets[name] = {'data': {'connection': 'fixture'}}
+                with patch.object(deploy, 'run', self.fake_run):
+                    with self.assertRaisesRegex(ValueError, 'Fernet.*복원'):
+                        deploy.deploy(values, 'test-context', Path('/chart.tgz'))
+                self.assertFalse(any('apply' in args or 'upgrade' in args for args, _ in self.calls))
+
+    def test_restored_fernet_allows_existing_database_and_changed_key_is_rejected(self):
+        """원래 키를 복원하면 재배포할 수 있고 다른 키로의 변경은 중단합니다."""
+        values = settings()
+        self.existing_resources[('pvc', 'airflow-postgres')] = 'pvc/airflow-postgres'
+        self.existing_secrets = {
+            'airflow-postgres': {'data': {'password': base64.b64encode(values['POSTGRES_PASSWORD'].encode()).decode()}},
+            'airflow-fernet': {'data': {'fernet-key': base64.b64encode(values['AIRFLOW_FERNET_KEY'].encode()).decode()}},
+        }
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.check_cluster_inputs(values, 'test-context')
+            with self.assertRaisesRegex(ValueError, '기존 AIRFLOW_FERNET_KEY'):
+                deploy.check_cluster_inputs({**values, 'AIRFLOW_FERNET_KEY': 'different-key'}, 'test-context')
+
+    def test_external_database_with_existing_metadata_requires_fernet_restore(self):
+        self.existing_secrets['airflow-metadata'] = {'data': {'connection': 'fixture'}}
+        values = {**settings(), 'POSTGRES_MODE': 'external', 'POSTGRES_HOST': 'external-postgres'}
+        with patch.object(deploy, 'run', self.fake_run):
+            with self.assertRaisesRegex(ValueError, 'Fernet.*복원'):
+                deploy.deploy(values, 'test-context', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+
+    def test_untolerated_blocking_taints_stop_before_mutation(self):
+        for key, effect in [('dedicated', 'NoSchedule'), ('dedicated', 'NoExecute'),
+                            ('node-role.kubernetes.io/control-plane', 'NoExecute')]:
+            with self.subTest(key=key, effect=effect):
+                self.calls.clear()
+                self.node_spec = {'taints': [{'key': key, 'value': 'other', 'effect': effect}]}
+                with patch.object(deploy, 'run', self.fake_run):
+                    with self.assertRaisesRegex(ValueError, 'taint'):
+                        deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+                self.assertFalse(any('apply' in args for args, _ in self.calls))
+
+    def test_default_control_plane_tolerations_and_soft_taints_are_allowed(self):
+        for taint in [{'key': 'node-role.kubernetes.io/control-plane', 'effect': 'NoSchedule'},
+                      {'key': 'node-role.kubernetes.io/master', 'effect': 'NoSchedule'},
+                      {'key': 'dedicated', 'effect': 'PreferNoSchedule'}]:
+            with self.subTest(taint=taint), patch.object(deploy, 'run', self.fake_run):
+                self.node_spec = {'taints': [taint]}
+                deploy.check_cluster_inputs(settings(), 'test-context')
 
     def test_deploy_orders_database_hooks_and_rollout_without_helm_wait(self):
         with patch.object(deploy, 'run', self.fake_run), patch.object(deploy, 'render', return_value=[]):
@@ -247,6 +398,55 @@ class DeploymentTests(unittest.TestCase):
         secret_apply = next(kwargs for command, kwargs in self.calls if '--server-side' in command)
         self.assertTrue(secret_apply['sensitive'])
         self.assertIn('airflow-runtime', secret_apply['data'])
+
+    def test_new_namespace_is_created_before_secrets_and_application_resources(self):
+        """최초 설치는 Namespace를 한 번 생성한 뒤 Secret과 앱을 적용합니다."""
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        creates = [(index, json.loads(kwargs['data'])) for index, (args, kwargs) in enumerate(self.calls)
+                   if 'create' in args and '--dry-run=client' not in args]
+        self.assertEqual([body for _, body in creates], [
+            {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': settings()['NAMESPACE']}}])
+        first_apply = next(index for index, (args, _) in enumerate(self.calls) if 'apply' in args)
+        self.assertLess(creates[0][0], first_apply)
+
+    def test_existing_namespace_is_not_reapplied_or_recreated(self):
+        """이미 있는 Namespace의 보안 label·annotation과 운영 설정에는 쓰지 않습니다."""
+        self.existing_resources[('namespace', settings()['NAMESPACE'])] = 'namespace/airflow'
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        self.assertTrue(any('get' in args and 'namespace' in args for args, _ in self.calls))
+        for args, kwargs in self.calls:
+            if '--dry-run=client' in args or not any(verb in args for verb in ('apply', 'create', 'patch')):
+                continue
+            if 'data' in kwargs:
+                body = json.loads(kwargs['data'])
+                self.assertNotEqual(body.get('kind'), 'Namespace')
+                self.assertTrue(all(item.get('kind') != 'Namespace' for item in body.get('items', [])))
+
+    def test_deploy_restarts_only_components_present_in_final_render(self):
+        """triggerer가 비활성화돼도 남은 scheduler·webserver는 재시작하고 준비를 기다립니다."""
+        webserver = deepcopy(self.pod_resources[0])
+        webserver['metadata']['name'] = 'airflow-webserver'
+        self.pod_resources += [webserver, {'kind': 'Job', 'metadata': {'name': 'airflow-migration'},
+                                          'spec': deepcopy(webserver['spec'])}]
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.deploy(settings(), 'test-context', Path('/chart.tgz'), values_file=Path('/override.json'))
+        commands = [args for args, _ in self.calls]
+        restart = next(args for args in commands if 'restart' in args)
+        self.assertEqual(restart[restart.index('restart') + 1:],
+                         ['deployment/airflow-scheduler', 'deployment/airflow-webserver'])
+        waits = [args[args.index('status') + 1] for args in commands if 'rollout' in args and 'status' in args]
+        self.assertEqual(waits, ['statefulset/airflow-postgres', 'deployment/airflow-scheduler',
+                                 'deployment/airflow-webserver'])
+        self.assertEqual(deploy.render.call_args.args[-1], Path('/override.json'))
+
+    def test_deploy_uses_rendered_workload_kind_for_rollout(self):
+        self.pod_resources[0]['kind'] = 'StatefulSet'
+        with patch.object(deploy, 'run', self.fake_run):
+            deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        restart = next(args for args, _ in self.calls if 'restart' in args)
+        self.assertEqual(restart[restart.index('restart') + 1:], ['statefulset/airflow-scheduler'])
 
     def test_changed_database_password_stops_before_mutation(self):
         self.changed_key = 'airflow-postgres'
@@ -286,6 +486,34 @@ class DeploymentTests(unittest.TestCase):
 
 
 class HelmIntegrationTests(unittest.TestCase):
+    def test_official_chart_can_disable_triggerer_without_removing_other_components(self):
+        path = Path(os.environ.get('AIRFLOW_CHART_FILE', deploy.BASE / 'helm/vendor/airflow-1.22.0.tgz'))
+        if not path.is_file() or not shutil.which('helm'):
+            self.skipTest('공식 chart archive와 Helm 반입 후 실행 가능')
+        with tempfile.TemporaryDirectory() as directory:
+            override = Path(directory) / 'override.json'
+            override.write_text(json.dumps({'triggerer': {'enabled': False}}))
+            deploy.render(settings(), directory, deploy.chart_path(), values_file=override)
+            rendered = (Path(directory) / 'airflow.yaml').read_text()
+            workloads = re.findall(r'^kind: (?:Deployment|StatefulSet|DaemonSet)\nmetadata:\n  name: (\S+)',
+                                   rendered, re.M)
+            self.assertEqual(workloads, ['airflow-scheduler', 'airflow-webserver'])
+
+    def test_official_chart_applies_toleration_override_to_components_and_hooks(self):
+        path = Path(os.environ.get('AIRFLOW_CHART_FILE', deploy.BASE / 'helm/vendor/airflow-1.22.0.tgz'))
+        if not path.is_file() or not shutil.which('helm'):
+            self.skipTest('공식 chart archive와 Helm 반입 후 실행 가능')
+        with tempfile.TemporaryDirectory() as directory:
+            override = Path(directory) / 'override.json'
+            override.write_text(json.dumps({'tolerations': [
+                {'key': 'dedicated', 'value': 'airflow', 'operator': 'Equal', 'effect': 'NoSchedule'}]}))
+            flags = deploy.render(settings(), directory, deploy.chart_path(), values_file=override)
+            rendered = (Path(directory) / 'airflow.yaml').read_text()
+            self.assertEqual(flags[-1], override)
+            self.assertEqual(rendered.count('key: dedicated'), 5)
+            self.assertEqual(rendered.count('value: airflow'), 5)
+            self.assertNotIn('key: node-role.kubernetes.io/control-plane', rendered)
+
     def test_official_chart_renders_airflow2_localexecutor_without_extra_claims(self):
         path = Path(os.environ.get('AIRFLOW_CHART_FILE', deploy.BASE / 'helm/vendor/airflow-1.22.0.tgz'))
         if not path.is_file() or not shutil.which('helm'):

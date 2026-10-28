@@ -16,13 +16,13 @@ Emails는 메일 수집부터 조회, 이동/삭제, OCR, RAG 인덱싱까지 �
 ## 권한 기준
 
 메일 접근은 Account가 계산한 `user_sdwt_prod` 접근 범위와 사용자의 `knox_id`를 사용합니다.
-Emails `admin`과 superuser를 포함한 모든 로그인 사용자는 사용자 식별을 위해 유효한
+Portal 관리자를 포함한 모든 로그인 사용자는 사용자 식별을 위해 유효한
 `knox_id`가 있어야 합니다.
 
-- 일반 사용자: 접근 가능한 소속 메일 또는 본인이 보낸 메일
-- Emails `admin`: 전체 메일함과 `UNASSIGNED` 조회·관리
-- superuser: 비상 운영을 위한 전역 우회
-- `is_staff`만으로는 전체 메일함 권한을 얻지 않음
+- 일반 사용자: Keycloak SDWT 그룹으로 접근 가능한 소속 메일. 본인이 보냈다는 이유만으로 범위를 우회하지 않음
+- Emails `admin`: 앱 관리자 역할이며 SDWT 데이터 범위는 별도 검사
+- `portal-admin`: 전체 데이터 범위와 관리자 역할로 전체 메일함·`UNASSIGNED` 조회·관리
+- Django `is_staff`/`is_superuser`만으로는 전체 메일함 권한을 얻지 않음
 
 ## 메일 수집 흐름
 
@@ -74,7 +74,7 @@ Emails `admin`과 superuser를 포함한 모든 로그인 사용자는 사용자
 
 ## 관련 API
 
-- `docs/api/emails.md`
+- [Emails API](../api/emails.md)
 
 ## 관련 코드
 

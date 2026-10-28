@@ -3,7 +3,8 @@
 [전체 설치 순서](../README.md) · 실행: [서버 설치](../01_SERVER_SETUP.md) / [Keycloak 자체 설정](../04_SETUP_FLOW.md)
 
 이 문서는 입력 위치와 의미만 설명합니다. 파일 편집·검사·적용 명령은 실행 문서를 따릅니다.
-설정 파일은 `KEY=값` 형식이며 셸 코드로 `source`하지 않습니다. 값을 따옴표로 감싸지 않습니다.
+
+설정 파일은 `KEY=값` 형식으로 작성합니다. 값을 따옴표로 감싸거나 파일을 셸 코드로 `source`하지 않습니다.
 
 ## 서버 기동용 값
 
@@ -33,6 +34,7 @@ Realm·프로필·IdP mapper Job은 이 Secret으로 인증하므로 별도 관�
 
 Authorization·Token·JWKS·UserInfo·Logout URL과 issuer는 별도로 입력하지 않습니다.
 [Discovery](../05_DISCOVERY_SETUP.md)가 제공하는 값을 해석합니다.
+
 사내 client의 redirect URI는 `<공개 Keycloak URL>/realms/etch/broker/oidc/endpoint`입니다.
 
 ## SDWT 관리자 인증
@@ -44,7 +46,8 @@ SDWT 등록은 [07 연결과 인증](../07_SDWT_SETUP.md#2-연결과-인증)의 
 
 Portal은 `deploy/portal/env/prod/api.env`, Headlamp는 `deploy/headlamp/env/k8s.env`와 전용 Secret을 사용합니다.
 이 값은 Keycloak 서버 설치 입력이 아닙니다. [09 앱 연결](../09_APP_CONNECTIONS.md)에서 각 앱의 안내를 따릅니다.
-사내 IdP와 업무 앱에 같은 client ID·secret을 사용하는 것으로 가정하지 않습니다.
+
+사내 IdP와 업무 앱의 client ID·secret은 각각 준비합니다.
 
 ## 파일과 적용의 차이
 

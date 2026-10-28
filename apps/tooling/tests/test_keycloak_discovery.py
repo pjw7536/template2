@@ -86,8 +86,8 @@ class FlowTests(unittest.TestCase):
                 return json.dumps({"metadata": {}, "spec": {"template": {"metadata": {}, "spec": {
                     "containers": [{"env": [], "envFrom": [{"secretRef": {"name": "oidc"}}]}]}}}})
             if "env" in kwargs:
-                wrapper = Path(kwargs["env"]["KUBECTL_BIN"]).read_text()
-                self.assertIn("--context test-context", wrapper)
+                self.assertEqual(kwargs["env"]["KUBE_CONTEXT"], "test-context")
+                self.assertEqual(kwargs["env"]["KUBECTL_BIN"], "kubectl")
             return ""
 
         with patch.object(setup, "discover", return_value=setup.resolve_metadata(VALUES, METADATA)), \
@@ -175,20 +175,23 @@ urllib.request.urlopen = fetch
 ''')
         kubectl = self.directory / "kubectl"
         kubectl.write_text('''#!/usr/bin/env python3
-import os, pathlib, sys
+import json, os, pathlib, sys
 args = sys.argv[1:]
 with open(os.environ["KUBE_LOG"], "a") as log:
-    log.write(" ".join(args) + "\\n")
+    log.write(json.dumps(args) + "\\n")
 if "create" in args:
-    source = next(arg.split("=", 1)[1] for arg in args if arg.startswith("--from-env-file="))
-    pathlib.Path(os.environ["SECRET_INPUT"]).write_text(pathlib.Path(source).read_text())
+    source = next((arg.split("=", 1)[1] for arg in args if arg.startswith("--from-env-file=")), None)
+    if source:
+        pathlib.Path(os.environ["SECRET_INPUT"]).write_text(pathlib.Path(source).read_text())
     print("{}")
 else:
     sys.stdin.read()
 ''')
         kubectl.chmod(0o700)
         self.env = {**os.environ, "PYTHONPATH": str(self.directory), "METADATA_FILE": str(self.metadata),
-                    "KUBECTL_BIN": str(kubectl), "FETCH_LOG": str(self.directory / "fetch.log"),
+                    "KUBE_CONTEXT": "test-context", "KUBECTL_BIN": str(kubectl),
+                    "PATH": str(self.directory) + os.pathsep + os.environ["PATH"],
+                    "FETCH_LOG": str(self.directory / "fetch.log"),
                     "KUBE_LOG": str(self.directory / "kube.log"), "SECRET_INPUT": str(self.directory / "secret.env")}
 
     def command(self, name):
@@ -212,6 +215,39 @@ else:
         self.assertEqual(values["CORP_OIDC_CLIENT_SECRET"], "private-marker")
         self.assertNotIn("CORP_OIDC_DISCOVERY_URL", values)
         self.assertEqual((self.directory / "fetch.log").read_text(), "fetch\n")
+
+    def test_direct_apply_uses_argument_context_for_secrets_and_jobs_despite_ambient_context(self):
+        """직접 실행도 Secret과 Job을 같은 대상으로 보내며 중복 context 인자를 만들지 않습니다."""
+        portal = self.directory / "portal.env"
+        portal.write_text("OIDC_PROVIDER=keycloak\nOIDC_CLIENT_ID=portal\nOIDC_CLIENT_SECRET=private-marker\n"
+                          "OIDC_ISSUER=https://sso.test/realms/portal\n"
+                          "OIDC_REDIRECT_URI=https://portal.test/auth/callback\nFRONTEND_BASE_URL=https://portal.test\n")
+        for ambient in (None, "different-context"):
+            with self.subTest(ambient=ambient):
+                log = self.directory / "kube.log"
+                log.unlink(missing_ok=True)
+                env = {**self.env, "KUBECTL_BIN": "/not-the-selected-kubectl"}
+                if ambient is None:
+                    env.pop("KUBE_CONTEXT", None)
+                else:
+                    env["KUBE_CONTEXT"] = ambient
+                result = subprocess.run([
+                    "python3", setup.BASE / "scripts/setup_discovery.py", "apply", "--context", "selected-context",
+                    "--env", self.input, "--portal-env", portal,
+                ], env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("private-marker", result.stdout + result.stderr)
+                calls = [json.loads(line) for line in log.read_text().splitlines()]
+                secrets = [call for call in calls if "create" in call and "secret" in call]
+                self.assertEqual(len(secrets), 2)
+                self.assertTrue(any("keycloak-oidc-settings" in call for call in secrets))
+                self.assertTrue(any("portal-keycloak-client" in call for call in secrets))
+                self.assertEqual(len([call for call in calls if "wait" in call]), 3)
+                for call in calls:
+                    if "kustomize" not in call:
+                        self.assertEqual(call.count("--context"), 1)
+                        self.assertEqual(call[call.index("--context") + 1], "selected-context")
+                self.assertFalse(any("use-context" in call for call in calls))
 
     def test_discovery_failure_prevents_secret_write(self):
         self.metadata.write_text("{}")

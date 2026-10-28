@@ -18,8 +18,12 @@ Portal API를 호출하는 DAG와 Airflow 이미지 빌드 소스를 관리합�
 DAG·이미지를 변경하면 `make k8s-rebuild APP=airflow`로 반영합니다.
 계정과 DB 연결은 공통 로컬 실행 도구가 생성하며 기존 데이터를 보존합니다.
 
-검사 명령은 `python3 -m unittest discover -s apps/airflow/tests -v`,
-`node --test apps/tooling/tests/airflow-deployment.test.cjs apps/tooling/tests/app-layout.test.cjs`입니다.
+검사도 저장소 루트에서 실행합니다.
+
+| 확인할 내용 | 명령 |
+| --- | --- |
+| DAG·플러그인 동작 | `python3 -m unittest discover -s apps/airflow/tests -v` |
+| 이미지·배포 경로와 앱 구조 | `node --test apps/tooling/tests/airflow-deployment.test.cjs apps/tooling/tests/app-layout.test.cjs` |
 
 ## 빌드·배포
 

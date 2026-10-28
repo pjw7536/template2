@@ -15,3 +15,12 @@ spec:
   template:
     spec:
       nodeSelector: {kubernetes.io/hostname: tailwind-local-worker}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+spec:
+  template:
+    spec:
+      nodeSelector: {kubernetes.io/hostname: tailwind-local-worker}

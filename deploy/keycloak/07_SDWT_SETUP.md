@@ -3,7 +3,8 @@
 [전체 설치 순서](README.md) · 이전: [수신 mapper 설정](04_SETUP_FLOW.md#4-사내-claim-수신-mapper-설정)
 
 SDWT 권한을 사용하는 경우, Keycloak의 Realm·User Profile·IdP mapper를 준비한 뒤 실행합니다.
-**Portal·Headlamp client는 아직 필요하지 않습니다.** 여기서는 그룹·사용자만 등록하고 앱에 그룹을 발급하는 설정은 앱 연결 때 수행합니다.
+여기서는 그룹·사용자만 등록하므로 Portal·Headlamp client는 아직 필요하지 않습니다.
+앱 토큰에 그룹을 포함하는 설정은 이후 앱 연결 단계에서 수행합니다.
 
 실행은 관리자 API를 사용합니다. Kubernetes Job이나 runtime Secret을 자동으로 사용하지 않습니다.
 실제 사용자 CSV와 인증정보는 Git에 넣지 않습니다.
@@ -29,7 +30,9 @@ userid,user_sdwt_prod,sabun,loginid,username,mail
 90000001,SDWT-A,100001,example.user,예시사용자,user@example.invalid
 ```
 
-예시는 가상 데이터입니다. 실제 값으로 작성합니다. Portal을 사용할 사용자는 `sabun`, `loginid`를 CSV에 포함하거나 사내 로그인에서 수신할 수 있어야 합니다.
+예시는 가상 데이터이므로 실제 값으로 바꿉니다.
+Portal을 사용할 사용자는 `sabun`, `loginid`를 CSV에 포함하거나 사내 로그인에서 수신할 수 있어야 합니다.
+
 사용자 사전 등록이 필요 없고 그룹만 준비한다면 사용자 CSV 경로는 비워 둡니다.
 
 저장소 루트의 Bash에서 파일 경로를 입력하고 서버 접속 없이 검사합니다.
@@ -64,7 +67,9 @@ export KEYCLOAK_CA_FILE
 ```
 
 OS가 이미 인증서를 신뢰하면 CA 변수는 생략합니다.
-서비스 계정을 사용하는 경우 `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_ADMIN_REALM`으로 인증하며 client secret이 있으면 사용자 비밀번호보다 우선합니다.
+
+서비스 계정을 사용하는 경우 `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_ADMIN_REALM`으로 인증합니다.
+client secret이 있으면 사용자 비밀번호보다 우선합니다.
 
 ## 3. 계획 확인과 적용
 
@@ -81,8 +86,14 @@ make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SD
 ```
 
 각 SDWT 아래에 `admin`, `user`, `viewer` 그룹을 생성합니다.
-사용자 CSV를 지정하면 EPID를 기본 username으로 등록하고 소속 SDWT·line을 저장하며 본인 SDWT의 `user` 그룹에 가입시킵니다.
+사용자 CSV를 지정하면 다음 작업도 수행합니다.
+
+- EPID를 기본 username으로 등록합니다.
+- 소속 SDWT·line을 저장합니다.
+- 본인 SDWT의 `user` 그룹에 가입시킵니다.
+
 `admin`이나 다른 SDWT 권한은 자동 부여하지 않습니다. 사용자별 추가 권한은 관리자가 필요한 그룹 가입으로 지정합니다.
+
 기본 realm 그룹에 의한 의도하지 않은 권한 부여나 중복 신원이 발견되면 검사가 중단됩니다.
 
 client를 생략한 이 단계에서는 앱용 scope를 생성·연결하지 않습니다.

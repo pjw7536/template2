@@ -1,14 +1,16 @@
 # Airflow Keycloak SSO 등록과 운영
 
-기존 Keycloak realm에 Airflow 전용 confidential client를 등록합니다.
-로그인한 모든 사용자는 기본 Viewer입니다. 필요한 운영자에게만 Keycloak 사용자 화면에서
-`airflow` client의 `User` 또는 `Admin` 역할을 직접 부여합니다. 조직별 그룹은 사용하지 않습니다.
-역할을 제거하면 다음 로그인부터 Viewer로 돌아갑니다. 기존 세션 이관·통합 로그아웃은 범위 밖입니다.
+기존 Keycloak realm에 Airflow 전용 비공개 클라이언트(confidential client)를 등록하는 안내입니다.
+로그인한 사용자는 기본적으로 Viewer가 됩니다.
+
+추가 권한이 필요한 운영자에게만 Keycloak 사용자 화면에서 `airflow` client의 User 또는 Admin을 부여합니다.
+조직별 그룹은 사용하지 않습니다. 역할을 제거하면 다음 로그인부터 Viewer로 돌아갑니다.
+기존 세션 이관과 통합 로그아웃은 이 작업에 포함되지 않습니다.
 
 ## 1. 실제 env와 이미지 준비
 
 SSO 코드를 포함한 Airflow 2.11.0 이미지를 새 고유 태그로 빌드합니다.
-공개 예시를 복사한 Git 제외 운영 env를 사용하고 아래 값을 입력합니다.
+Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값을 입력합니다. 실제 비밀값은 이 문서에 복사하지 않습니다.
 기존 DB·Fernet 키·관리자 API 계정은 유지합니다.
 
 | 키 | 입력 |
@@ -69,9 +71,13 @@ Airflow 로그인 화면의 Keycloak 버튼으로 로그인합니다. 기본 사
 관리자의 관리 화면 접근, User·Admin 제거 후 새 로그인에서 Viewer 복귀를 확인합니다.
 잘못된 토큰·다른 issuer·만료 토큰은 기본 Viewer로 처리하지 않고 로그인에 실패해야 합니다.
 
-Portal → Airflow는 기존 DB 계정의 Basic 인증을 유지합니다. 웹 로그인만 SSO로 바뀌며
-Airflow → Portal의 trigger token도 바뀌지 않습니다. 양방향 호출을 별도로 검증합니다.
-현재 Portal API에 쓰는 관리자 계정의 최소 권한 전용 계정 전환은 후속 작업입니다.
+웹 로그인과 앱 간 호출은 각각 확인합니다.
+
+- 웹 로그인은 Keycloak SSO를 사용합니다.
+- Portal → Airflow 호출은 기존 DB 계정의 Basic 인증을 유지합니다.
+- Airflow → Portal 호출은 기존 trigger token을 유지합니다.
+
+양방향 호출을 따로 검증합니다. 현재 Portal API가 쓰는 관리자 계정을 최소 권한의 전용 계정으로 바꾸는 일은 후속 작업입니다.
 
 문제 시 `AIRFLOW_AUTH_MODE=db`로 명시적으로 되돌려 재배포할 수 있습니다.
 DB·Fernet 키·기존 API 계정을 초기화하지 않습니다. 서버 env·client를 준비하지 않은 로컬 성공을

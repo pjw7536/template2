@@ -2,9 +2,12 @@
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-기존 Kubernetes 클러스터의 Worker 한 대에 Airflow와 내부 PostgreSQL을 배포하는 안내입니다.
-처음 설치한다면 아래 01~04를 순서대로 읽고, 이미 운영 중이면 필요한 단계만 실행합니다.
-문서 번호는 읽는 순서이며 스크립트 명령 이름과는 별개입니다.
+기존 Kubernetes 클러스터의 Worker 한 대에 Airflow와 내부 PostgreSQL을 설치합니다.
+현재 설치는 **기존 Compose DB를 이전하지 않고 새 DB로 시작**합니다.
+DB 비밀번호·관리자 비밀번호·Fernet 키를 새로 생성하며 기존 DB 데이터 경로는 재사용하지 않습니다.
+처음 설치할 때는 01~04를 순서대로 읽습니다. 운영 중인 서버는 아래 표에서 필요한 작업을 고릅니다.
+
+문서의 번호는 읽는 순서입니다. 실행할 스크립트나 명령의 번호를 뜻하지는 않습니다.
 
 ## 상황별 시작점
 
@@ -14,7 +17,8 @@
 | 입력과 이미지가 모두 준비됨 | [04 단계별 검사·배포·접속](04_SETUP_FLOW.md) |
 | env·DB·URL·Secret 설정 확인 | [02 환경변수](env/02_ENVIRONMENT.md) |
 | DAG·플러그인 이미지 갱신 | [05 업데이트](05_OPERATIONS.md#3-dag이미지-업데이트) |
-| 기존 Compose DB 이전·백업 | [05 운영](05_OPERATIONS.md) |
+| 설치 후 DB·설정 백업 | [05 운영](05_OPERATIONS.md#1-db와-설정-백업) |
+| 과거 Compose DB 이전 참고 | [05 이전 참고](05_OPERATIONS.md#2-기존-compose-db-이전). 현재 신규 설치에서는 생략 |
 | 배포·접속 실패 | [05 문제 해결](05_OPERATIONS.md#4-실패-단계-확인) |
 
 ## 현재 구성
@@ -42,9 +46,15 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 ```
 
-`airflow-check`는 설정·chart·클러스터 버전·노드·기존 비밀값을 검사합니다.
-`airflow-up`은 Airflow를 배포하며 Ingress 사용 시 필요한 공용 Traefik 라우팅도 적용합니다.
-Keycloak과 Keycloak DB는 재배포하지 않습니다. 신규 DAG는 일시정지로 생성하며 기존 DAG의 활성 상태는 유지합니다.
+두 명령의 역할은 다음과 같습니다.
+
+- `airflow-check`: 설정·chart·클러스터 버전·노드·기존 비밀값을 검사합니다.
+- `airflow-up`: Airflow를 배포하고, Ingress를 사용하면 필요한 공용 Traefik 라우팅도 연결합니다.
+
+Keycloak과 Keycloak DB는 재배포하지 않습니다.
+공용 Traefik 연결은 최신 namespace 목록에 Airflow를 추가하는 패치만 적용합니다.
+동시 변경으로 패치가 거부되면 기존 앱 연결 상태를 확인한 뒤 검사·배포 명령을 다시 실행합니다.
+신규 DAG는 일시정지 상태로 만들고 기존 DAG의 활성 상태는 유지합니다.
 직접 `manage.py deploy`를 실행할 때는 [실행 방식의 차이](04_SETUP_FLOW.md#6-고급-직접-deploy와-helm-override)를 확인합니다.
 
 | 선택 입력 | 사용하는 경우 |
@@ -59,9 +69,12 @@ TLS 최초 등록 명령과 검사·배포별 영향은 [04 실행](04_SETUP_FLO
 ## Keycloak 로그인
 
 [SSO 설정·client 등록·검증 안내](k8s/jobs/keycloak-client/README.md)를 따릅니다.
-정상 로그인한 모든 사용자는 기본 Viewer이며 `airflow` client의 User·Admin만 추가 권한으로 적용합니다.
-공개 env의 `AIRFLOW_AUTH_MODE=db`는 기존 배포 호환값입니다. 서버 전환 시 실제 OIDC 입력을 준비하고
-`keycloak`으로 바꿔 배포합니다. 로컬은 실행 도구가 Keycloak 모드를 적용합니다.
+로그인에 성공한 사용자는 기본적으로 Viewer입니다.
+추가 권한이 필요하면 Keycloak의 `airflow` client에서 User 또는 Admin 역할을 부여합니다.
+
+저장소 env의 `AIRFLOW_AUTH_MODE=db`는 기존 배포와의 호환값입니다.
+서버를 전환할 때는 실제 OIDC 입력을 준비한 뒤 `keycloak`으로 바꿔 배포합니다.
+로컬에서는 실행 도구가 Keycloak 모드를 적용합니다.
 
 ## 파일과 설정 소유권
 

@@ -8,22 +8,34 @@
 
 | 순서 | 안내 |
 | --- | --- |
+| 공용 Traefik 준비 | [공용 Ingress 검사·적용](../../ingress/README.md) |
 | Keycloak 자체 준비 | [Keycloak 설치·설정](../../../keycloak/README.md) |
 | Airflow 준비·기동 | [Airflow 실행](../../../airflow/04_SETUP_FLOW.md) |
 
 Airflow는 공용 Traefik에 라우팅을 연결하지만 전용 앱 명령으로 Keycloak 스택을 다시 적용하지 않습니다.
 아래 `server-up` 절차는 기존 통합 실행의 호환 안내입니다.
 
-현재 단계는 **이미 실행 중인 Keycloak을 프로젝트 원본으로 관리하고 Airflow UI를 같은 서버에서 여는 것**입니다.
-Portal·Monitoring을 배포하지 않습니다. 기존 Keycloak namespace·DB·관리자·사내 OIDC 설정은 유지합니다.
-공용 Traefik은 기존 `etch-sso/traefik`과 worker 80/443을 사용합니다.
-**APP VIP `10.172.26.150`과 두 Worker의 443을 사용하는 현재 환경은 [VIP 실행 절차](../../ingress/VIP.md)를 따릅니다.**
-이 문서는 공통 최초 준비를 설명하며, VIP 모드에서는 Traefik만 두 Worker로 확장합니다.
+**현재 신규 Airflow 설치에는 아래 통합 명령을 사용하지 않습니다.**
+이 호환 경로는 Keycloak과 Airflow를 같은 앱 Worker에 배치한 과거 구성을 전제로 합니다.
+현재 `khplane01w09`는 [Keycloak 전용 Worker](../infrastructure/cluster.md#2026-10-27-worker-용도와-minio-배치-지정)이므로,
+다른 Worker의 자원·스토리지를 확인한 뒤 [Airflow 전용 설치](../../../airflow/01_SERVER_SETUP.md)와
+`make airflow-check`·`make airflow-up`을 사용합니다. DB는 이전하지 않고 새로 만듭니다.
+
+이 절차는 실행 중인 Keycloak을 프로젝트 원본으로 관리하면서 Airflow UI를 여는 용도입니다.
+
+- 기존 Keycloak namespace·DB·관리자·사내 OIDC 설정은 유지합니다.
+- Portal·Monitoring은 배포하지 않습니다.
+- 공용 Traefik은 기존 `etch-sso/traefik`과 Worker의 80/443을 사용합니다.
+
+아래 내용은 과거 통합 구성의 준비·재실행 절차입니다.
+APP VIP `10.172.26.150`과 두 Worker의 443을 사용하는 환경은 [VIP 실행 절차](../../ingress/VIP.md)를 따릅니다.
+VIP 모드에서는 Traefik만 두 Worker로 확장합니다.
 
 ## 최초 준비와 이후 실행의 차이
 
 Git pull은 소스와 비밀번호·토큰을 포함한 env를 갱신합니다. 이미지·Helm chart·인증서·개인키·데이터는 별도로 준비합니다.
 최초 준비를 끝내면 이후에는 `git pull --ff-only`와 `make server-up`으로 같은 경로를 재실행합니다.
+
 Airflow DAG·Dockerfile이 바뀌면 새 이미지 빌드·태그 변경도 필요합니다.
 개발 PC의 변경사항은 먼저 commit/push되어야 서버에서 pull할 수 있습니다.
 
@@ -43,14 +55,18 @@ bash deploy/shared/scripts/checkout-server.sh keycloak-airflow
 
 kubectl config get-contexts
 read -r -p '배포할 context: ' AIRFLOW_KUBE_CONTEXT
+export KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n etch-sso get pods
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
 ```
 
-`keycloak-airflow` 기본 선택은 `deploy/keycloak`, `deploy/airflow`, `deploy/shared`, `docs`를 포함합니다.
+`keycloak-airflow` 기본 선택은 `deploy/keycloak`, `deploy/airflow`, `deploy/shared`를 포함합니다.
+공통 운영 문서는 `deploy/shared/docs`를 사용하며 루트 `docs/` 전체는 받지 않습니다.
 Airflow 빌드 소스 `apps/airflow`는 `--with-source`를 지정할 때만 포함합니다.
 `local/`, Portal·Monitoring 앱 소스는 필요하지 않습니다.
 새 clone이라면 [선택 체크아웃 안내](../../../SERVER_CHECKOUT.md)를 따라 `deploy/shared`를 먼저 받은 뒤 같은 선택 명령을 사용합니다.
+서버 Secret을 따로 등록할 때도 위에서 내보낸 `KUBE_CONTEXT`를 유지하고
+`make k8s-env APP=keycloak PROFILE=prod COMPONENT=server KUBE_CONTEXT="$KUBE_CONTEXT"`처럼 대상을 명시합니다.
 
 ## 2. Airflow 최초 설정
 
@@ -59,12 +75,13 @@ python3 deploy/airflow/scripts/manage.py init-secrets
 vi deploy/airflow/env/k8s.env
 ```
 
-`init-secrets`는 기존 파일을 덮어쓰지 않습니다. 이미 설정했다면 편집만 합니다.
+`init-secrets`는 기존 일반 설정을 보존하고 같은 파일의 빈 비밀값 항목을 채웁니다.
+기존 키가 하나라도 있으면 생성을 거부합니다. 이미 설정했다면 이 명령을 건너뛰고 편집만 합니다.
 아래 항목을 실제 값으로 입력합니다. 사내 빌드 주소·BigDataQuery·ODBC 기본값은 이미 채워져 있습니다.
 
 | 키 | 이 단계의 값 |
 | --- | --- |
-| `NODE_NAME` | 기존 앱 worker hostname label. 현재 원본은 `khplane01w09`. VIP 모드에서도 앱·DB 위치는 유지 |
+| `NODE_NAME` | 과거 통합 구성의 Keycloak·Airflow 공통 Worker hostname label. 현재 신규 설치에는 이 통합 경로를 사용하지 않음 |
 | `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG` | worker가 가져올 수 있는 DAG 포함 이미지 주소·고유 태그 |
 | `AIRFLOW_ADMIN_EMAIL` | 실제 관리자 이메일 |
 | `ODBC_HOST_PATH` | worker에 있는 기존 ODBC 설정 디렉터리의 절대 경로 |
@@ -151,8 +168,9 @@ make server-up \
 5. 이번 단계에만 신규 DAG를 일시정지로 생성하도록 override합니다.
 
 Keycloak 관리자 credential·realm·사내 OIDC·claim mapper Job은 자동 갱신하지 않습니다.
-이름·namespace·PV 경로가 바뀌지 않으므로 파일을 공용 폴더로 옮겼다는 이유로 기존 리소스를 삭제하지 않습니다.
-단독 Traefik은 Recreate를 사용합니다. VIP 모드에서는 두 Worker를 순차 교체하며 LB가 DOWN Backend를 제외하도록 구성합니다.
+리소스 이름·namespace·PV 경로도 유지합니다. 파일을 공용 폴더로 옮겼다는 이유로 기존 리소스를 삭제하지 않습니다.
+
+단독 Traefik은 Recreate를 사용합니다. VIP 모드에서는 두 Worker를 순차 교체하고 LB가 DOWN Backend를 제외하도록 구성합니다.
 갱신 중 개별 연결은 재시도가 필요할 수 있습니다.
 
 복원한 Airflow DB의 기존 활성 DAG는 이 옵션으로 정지되지 않습니다. Portal이 없으면 기존 DAG도 UI에서 일시정지해야 합니다.
@@ -177,5 +195,6 @@ make server-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_ENV="$PWD/deploy/air
 
 새 shell에서는 context 변수를 다시 지정합니다. 이미 복사한 TLS Secret에는 원본 인자가 필요하지 않습니다.
 DAG·이미지가 바뀌었다면 먼저 새 이미지 tag를 준비합니다.
-**공용 라우팅을 연결한 이후에는 Keycloak 원본이나 전달 YAML을 직접 apply하지 말고 이 명령을 사용합니다.**
-정적 단독 manifest는 현재 클러스터의 다른 앱 감시 범위를 알 수 없습니다.
+
+공용 라우팅을 연결한 이후에도 위 명령을 사용합니다.
+Keycloak 원본이나 전달 YAML을 직접 apply하면 다른 앱의 감시 범위를 보존하지 못할 수 있습니다.

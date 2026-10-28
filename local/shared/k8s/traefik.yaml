@@ -136,6 +136,8 @@ spec:
             - --providers.kubernetesingress=true
             - --providers.kubernetesingress.ingressclass=traefik
             - --providers.kubernetesingress.namespaces=tailwind-local,airflow
+            - --providers.file.directory=/etc/traefik/dynamic
+            - --providers.file.watch=true
             - --entrypoints.web.address=:8000
             - --entrypoints.websecure.address=:8443
             - --entrypoints.health.address=:9000
@@ -143,6 +145,10 @@ spec:
             - --ping.entrypoint=health
             - --accesslog=true
             - --log.level=INFO
+          volumeMounts:
+            - name: middlewares
+              mountPath: /etc/traefik/dynamic
+              readOnly: true
           ports:
             - name: web
               containerPort: 8000
@@ -169,6 +175,10 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+      volumes:
+        - name: middlewares
+          configMap:
+            name: traefik-middlewares
 ---
 apiVersion: v1
 kind: Service

@@ -2,8 +2,8 @@
 
 [시작 안내](README.md) · [자동 배포](01_SERVER_SETUP.md)
 
-기본 실행은 `make ftp-check` → `make ftp-up`입니다. 아래는 원본 구조와 수동 배포 참고입니다.
-자동 배포와 수동 배포를 중복 실행할 필요는 없습니다.
+일반 설치는 `make ftp-check` → `make ftp-up` 순서로 진행합니다.
+이 문서는 원본 구조를 확인하거나 수동으로 배포할 때 사용합니다. 두 배포 방식을 중복 실행할 필요는 없습니다.
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
@@ -22,9 +22,10 @@ Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 �
 | 계정 | `etch-ftp` namespace의 `ftp-credentials` Secret |
 
 노드별 파일은 독립적이며 자동 복제·이동하지 않습니다. 소비 앱이 다른 노드에 있으면
-별도 공유 저장소 또는 파일 전송이 필요합니다. 기존 Compose의 `ftp` DNS 이름은 생성하지 않으므로
-기존 클라이언트의 접속 설정을 대상 노드 IP와 6380으로 변경합니다.
-외부 PC용 Compose와 이전 사내 Compose 참고 자료는 그대로 유지합니다.
+별도 공유 저장소 또는 파일 전송이 필요합니다.
+
+기존 Compose의 `ftp` DNS 이름은 생성하지 않습니다. 기존 클라이언트의 접속 설정을 대상 노드 IP와 6380으로 변경합니다.
+외부 PC 개발에는 `local/ftp/k8s`의 Kubernetes overlay를 사용합니다. FTP 전용 Compose는 제거됐습니다.
 
 ## 준비
 
@@ -64,8 +65,9 @@ kubectl --context "$FTP_CONTEXT" -n etch-ftp rollout status daemonset/ftp
 kubectl --context "$FTP_CONTEXT" -n etch-ftp get pods -o wide
 ```
 
-FTP_USER는 영문·숫자·밑줄·하이픈만 사용하고 FTP_PASS에는 줄바꿈·역슬래시를 넣지 않습니다.
+`FTP_USER`에는 영문·숫자·밑줄·하이픈만 사용하고 `FTP_PASS`에는 줄바꿈·역슬래시를 넣지 않습니다.
 기본 계정은 제공하지 않습니다. 현재 모든 대상 노드는 같은 Secret을 사용합니다.
+
 계정 변경 후에는 `kubectl --context "$FTP_CONTEXT" -n etch-ftp rollout restart daemonset/ftp`를 실행합니다.
 
 각 노드 IP의 6380에 FTP 클라이언트로 로그인하고 passive 모드로 `data_movement/`에

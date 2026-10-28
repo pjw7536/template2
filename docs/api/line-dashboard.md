@@ -9,7 +9,7 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 
 ## 인증
 
-- 화면 API: Django session
+- 화면 API: Django session과 Portal·`line-dashboard` 앱 접근
 - SOP 수집/파이프라인 trigger: Airflow Bearer token
 
 ## Endpoint
@@ -25,10 +25,12 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 | Airflow | `GET /api/v1/line-dashboard/airflow/dag-overview` | Django가 Airflow credential로 조회한 DAG 현황 |
 | Jira | `GET/POST /api/v1/line-dashboard/jira-keys` | Jira key |
 | Jira | `GET /api/v1/line-dashboard/jira-user-sdwt-prods` | Jira 사용자 소속 후보 |
-| 알림 대상 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-targets` | 알림 대상 |
-| 알림 매핑 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-target-mappings` | 대상 매핑 |
-| 수신자 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/notification-recipients` | 수신자 |
-| 수신자 권한 | `GET/POST /api/v1/line-dashboard/notification-recipient-permissions` | 수신자 권한 |
+| 알림 대상 | `GET/POST /api/v1/line-dashboard/notification-targets` | 알림 대상 |
+| 알림 매핑 | `POST/PATCH/DELETE /api/v1/line-dashboard/notification-target-mappings` | 대상 매핑 |
+| 수신자 | `GET/PUT /api/v1/line-dashboard/notification-recipients` | 수신자 |
+| 수신자 권한 | `GET /api/v1/line-dashboard/notification-recipient-permissions` | 수신자 권한 |
+| 내 수신 대상 | `GET /api/v1/line-dashboard/my-notification-recipient-targets` | 로그인 사용자 수신 대상 |
+| 템플릿 | `GET /api/v1/line-dashboard/notification-template-options` | 채널별 템플릿 옵션 |
 | Target 관리 | `GET/POST/PATCH/DELETE /api/v1/line-dashboard/admin/drone-targets` | Line Dashboard `admin` 전용 Drone target 기준 정보 관리 |
 | SOP | `POST /api/v1/line-dashboard/sop/<sop_id>/instant-inform` | 단건 즉시 인폼 |
 | SOP | `POST /api/v1/line-dashboard/sop/<sop_id>/retry-channel` | 실패 채널 재시도 |
@@ -63,7 +65,7 @@ Engr/설비 조합 드롭다운 후보에 섞지 않습니다.
 ## 테이블 조회
 
 ```http
-GET /api/v1/line-dashboard/tables?table=drone_sop&lineId=L1&recentHours=24
+GET /api/v1/line-dashboard/tables?table=drone_sop&lineId=L1&recentHoursStart=24&recentHoursEnd=0
 ```
 
 주요 query:
@@ -71,7 +73,7 @@ GET /api/v1/line-dashboard/tables?table=drone_sop&lineId=L1&recentHours=24
 - `table`
 - `lineId`
 - `from`, `to`
-- `recentHours`
+- `recentHoursStart`, `recentHoursEnd`: 각각 기본 8, 0. 범위는 0~168시간이며 24시간 초과 값은 일 단위로 보정
 
 ## 테이블 수정
 
@@ -86,12 +88,18 @@ GET /api/v1/line-dashboard/tables?table=drone_sop&lineId=L1&recentHours=24
 }
 ```
 
-수정 가능한 대표 컬럼:
+수정 가능한 컬럼:
 
 - `comment`
 - `needtosend`
-- `instant_inform`
-- `status`
+
+`instant_inform`, `status`는 이 API의 수정 허용 컬럼이 아닙니다. 즉시 인폼과 재시도는 전용 SOP endpoint를 사용합니다.
+
+## 수신자 목록 교체
+
+`PUT /api/v1/line-dashboard/notification-recipients`는
+`lineId`, `targetUserSdwtProd`, `channel`, `userIds`, `externalKnoxIds`를 받아
+해당 대상·채널의 최종 수신자 목록을 교체합니다. 개별 수신자용 POST/PATCH/DELETE는 제공하지 않습니다.
 
 ## SOP trigger
 
@@ -121,4 +129,4 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 
 ## 관련 모듈 문서
 
-- `docs/modules/line-dashboard.md`
+- [Line Dashboard / Drone 모듈](../modules/line-dashboard.md)

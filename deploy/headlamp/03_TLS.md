@@ -43,10 +43,13 @@ mkdir -p "$HEADLAMP_CERT_DIR" "$(dirname "$HEADLAMP_OIDC_CA_FILE")" "$HEADLAMP_C
 | `$HEADLAMP_CA_DIR/SECDS-T2RootCA.crt` | 사내 루트 CA. PEM 또는 DER |
 | `$HEADLAMP_CA_DIR/SECDS-T2IssuingCA.crt` | 사내 중간 CA. PEM 또는 DER |
 
-**이미 위 파일이 있으면 PFX·P7B는 필요하지 않습니다. Keycloak 서버 개인키도 가져올 필요가 없습니다.**
-원본 PFX만 있다면 [공용 인증서 추출](../shared/certs/README.md#원본에서-추출하고-서버에-적용하기)의
-사이트 선택과 3번 추출 절차를 수행한 뒤 여기로 돌아옵니다. 그 문서의 앱 배포 단계까지 진행하지 않습니다.
-사이트 이름·Secret·context는 01에서 선택한 값과 같아야 합니다.
+표의 파일이 모두 준비되어 있으면 PFX·P7B 추출은 건너뜁니다.
+Keycloak 서버의 개인키는 가져오지 않아도 됩니다.
+
+PFX 원본만 있다면 [공용 인증서 추출](../shared/certs/README.md#1단계-인증서-추출)에서
+사이트 선택과 3번 추출까지만 수행한 뒤 이 문서로 돌아옵니다.
+그 문서의 앱 배포 단계까지 진행하지는 않습니다.
+사이트 이름·Secret·context는 01에서 정한 값과 같아야 합니다.
 
 파일은 관리자 PC가 아니라 **지금 명령을 실행하는 CP1의 위 경로**에 있어야 합니다.
 인증서 담당자에게 받은 파일을 서버로 옮기고 표의 이름으로 배치한 뒤 확인합니다.
@@ -88,10 +91,15 @@ ls -l "$HEADLAMP_CERT_DIR/fullchain.crt" "$HEADLAMP_CERT_DIR/private.key" \
 )
 ```
 
-`fullchain.crt: OK`와 완료 메시지가 나와야 합니다. 오류가 나면 다음 단계로 넘어가지 않습니다.
-`hostname mismatch`는 사이트 도메인과 인증서가 다르다는 뜻이고, `unable to get ... issuer certificate`는
-CA 체인을 확인해야 한다는 뜻입니다. `cmp`에서 차이가 나면 인증서와 개인키가 서로 짝이 맞지 않습니다.
-fullchain은 별도 CA 파일로 검증했으므로 중간 CA 포함 여부도 확인합니다.
+정상이면 `fullchain.crt: OK`와 완료 메시지가 나옵니다. 오류가 나면 다음 단계로 넘어가지 않습니다.
+
+| 오류 | 의미 |
+| --- | --- |
+| `hostname mismatch` | 사이트 도메인과 인증서가 다름 |
+| `unable to get ... issuer certificate` | CA 체인 확인 필요 |
+| `cmp` 결과가 다름 | 인증서와 개인키가 서로 짝이 맞지 않음 |
+
+위 검증은 별도 CA 파일을 사용합니다. fullchain 자체에 중간 CA가 들어 있는지도 아래 명령으로 확인합니다.
 
 ```bash
 openssl crl2pkcs7 -nocrl -certfile "$HEADLAMP_CERT_DIR/fullchain.crt" |

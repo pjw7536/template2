@@ -26,16 +26,18 @@ Observer는 설비 Observer 화면에 필요한 기준 정보와 로그를 조�
 
 프론트 feature는 `apps/portal/web/src/features/observer`이며, 외부 공개는 `apps/portal/web/src/features/observer/index.js`의 `observerRoutes`입니다.
 
+조회 API는 로그인과 Portal·`observer` 앱 접근을 검사합니다. AI 분석은 `assistant` 접근도 필요합니다.
+
 ## 데이터 소스
 
 Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블을 조회합니다.
 
 | 데이터 | Backend source | 설명 |
 | --- | --- | --- |
-| Line | 기본 DB `drone_target` | 선택 가능한 line 목록 |
-| SDWT | 기본 DB `drone_target`, `station_master` | line별 target_user_sdwt_prod 목록 |
+| Line | 기본 DB `drone_sop_target` | 선택 가능한 line 목록 |
+| SDWT | 기본 DB `drone_sop_target`, `station_master` | line별 target_user_sdwt_prod 목록 |
 | Process group | 기본 DB `station_master` | target_user_sdwt_prod와 매칭되는 SDWT별 공정 그룹 |
-| Equipment | 기본 DB `station_master`, `drone_target` | 설비 목록과 상세 |
+| Equipment | 기본 DB `station_master`, `drone_sop_target` | 설비 목록과 상세 |
 | EQP log | 기본 DB `eqp_status_chg` | 상태 변경 기반 설비 로그 |
 | TIP log | 기본 DB `mi_tip_update_hist` | TIP 유형별 설비 로그 |
 | SPC Interlock log | 기본 DB `m_interlock` | `prod_eqp_id`와 `interlock_kind=SPC` 기준 이력 |
@@ -50,8 +52,8 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 1. 요청 query를 정리합니다.
 2. `lineId`, `sdwtId`, `prcGroup` 등 식별자를 대문자로 정규화합니다.
 3. 필수 query가 없으면 400을 반환합니다.
-4. `lineId`는 `drone_target.line_id`, `sdwtId`는 `drone_target.target_user_sdwt_prod`로 해석합니다.
-5. `drone_target.target_user_sdwt_prod = station_master.sdwt_prod_lookup` 매칭으로 station 데이터를 제한합니다.
+4. `lineId`는 `drone_sop_target.line_id`, `sdwtId`는 `drone_sop_target.target_user_sdwt_prod`로 해석합니다.
+5. `drone_sop_target.target_user_sdwt_prod = station_master.sdwt_prod_lookup` 매칭으로 station 데이터를 제한합니다.
 6. 신규 page 경로는 최대 90일과 page size/cursor scope를 검증합니다.
 7. 최초 요청은 7개 source의 compact 첫 page를 batch 응답으로 반환합니다.
 8. 추가 데이터는 유형별 keyset cursor로, 전체 상세는 선택 시 별도 endpoint로 조회합니다.
@@ -65,7 +67,7 @@ Observer 기준정보와 로그는 기본 DB의 data movement/업무 테이블�
 4. SPC/FDC/CTTTM/RACB/ESOP는 관심 상태 전 30분부터 후 10분까지의 사건만 raw context로 선별합니다. CTTTM은 `llm_core_summary` 핵심요약과 `llm_summary` 시간순 이벤트 정리를 별도 context로 보존합니다.
 5. 현재 방의 `shared`와 `scope:observer` partition에서 현재 권한을 통과한 기억만 구조화 입력과 함께 기존 `OPENWEBUI_*` 연결 및 `gpt-oss-120b` 모델에 `stream: true`로 전달합니다. 대화 기억은 질문 의도와 후속 문맥에만 사용하며 사실 판단은 현재 Observer 조회 데이터로 제한합니다.
 6. backend는 stream을 취소 가능하게 소비한 뒤 단일 분석 JSON 객체를 엄격히 검증합니다. 코드펜스나 일반 텍스트를 분석 결과로 대신 사용하지 않습니다.
-7. backend는 분석 입력에 존재하는 근거 ID만 최종 결과에 남기고 실제 모델명·프롬프트·스키마 버전을 SSE `done` payload로 응답합니다.
+7. backend는 분석 입력에 존재하는 근거 ID만 남기고 모델명·프롬프트·스키마 버전을 포함한 구조화 결과를 표준 Turn SSE의 `message.completed`로 전달합니다. 실행 완료는 `run.completed`로 알립니다.
 8. ChatWidget의 근거 ID를 누르면 분석 당시 설비·기간·로그 유형·TIP 그룹을 Observer에 복원하고, 해당 유형을 cursor로 찾은 뒤 Data Log 행을 선택·강조합니다.
 
 ChatWidget 본문에는 핵심 결론, 종합 설명, 최대 5개의 주요 분석과 결론에 영향을 주는 분석 한계만 표시합니다. 기록된 원인, 주변 로그 기반 후보, 근거 ID, 범위·입력·버전은 본문에서 반복하지 않고 기존 `분석 범위와 근거` 패널과 Data Log 이동 흐름에서 확인합니다.
@@ -78,8 +80,8 @@ CTTTM `llm_summary`는 작업 내 사건 순서를 해석하는 배경지식으�
 
 | 항목 | 정책 |
 | --- | --- |
-| 기본 기간 | `from` 생략 시 `OBSERVER_QUERY_DAYS` 기준 최근 기간 |
-| 현재 기본값 | 60일 |
+| page 기간 입력 | `from`, `to` 필수. 날짜·시간은 Asia/Seoul 기준 |
+| 내부 selector 기본 기간 | 명시적 기간이 없는 내부 호출은 `OBSERVER_QUERY_DAYS` 기본 60일 |
 | 최대 limit | 5000 |
 | page size | 기본 250, 최대 1000 |
 | page 기간 | 최대 90일 |
@@ -125,18 +127,18 @@ EQP/TIP의 timezone 없는 원천값도 KST 벽시계로 해석해 저장합니�
 - SPC/FDC 로그가 누락되면 `m_interlock.prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 적재 상태를 확인합니다.
 - Interlock은 `prod_eqp_id_lookup`, `interlock_kind_lookup`, `prod_progs_at`과 `idx_m_intlk_obs_page`를 항상 사용합니다. typed 파생 필드가 비어 있는 기존 row는 조회에서 제외하며 문자열 조회 fallback을 제공하지 않습니다.
 - tkin Prevent matrix가 비어 있으면 `station_master.ch_main`과 `m_tkin_prevent.eqp_id` 매핑부터 확인합니다.
-- tkin Prevent에서 Line은 ESOP Dashboard 선택값을 사용하며, user_sdwt_prod 후보는 `account_affiliation.line/user_sdwt_prod` 기준입니다.
+- tkin Prevent에서 Line은 ESOP Dashboard 선택값을 사용합니다. `user_sdwt_prod` 후보는 `drone_sop_target.line_id/target_user_sdwt_prod`와 `station_master.sdwt_prod_lookup` 매칭을 기준으로 조회합니다.
 - tkin Prevent의 PRC/process/step/matrix 조회는 선택된 user_sdwt_prod와 PRC Group 기준입니다.
 
 ## 관련 API
 
-- `docs/api/observer.md`
-- `docs/inventory.md`
-- `docs/configuration.md`
-- `docs/data-model.md`
+- [Observer API](../api/observer.md)
+- [앱 인벤토리](../inventory.md)
+- [환경 설정](../configuration.md)
+- [데이터 모델과 저장소](../data-model.md)
 
 ## 관련 코드
 
-- `apps/portal/api/api/observer/views.py`
-- `apps/portal/api/api/observer/selectors.py`
+- `apps/portal/api/api/observer/views/`
+- `apps/portal/api/api/observer/selectors/`
 - `apps/portal/web/src/features/observer`

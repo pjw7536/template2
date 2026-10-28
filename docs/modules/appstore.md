@@ -14,7 +14,8 @@ AppStore는 내부 앱과 도구를 등록하고 공유하는 기능입니다.
 
 ## 권한
 
-- 앱 등록, 좋아요, 댓글 작성은 로그인 사용자가 수행합니다.
+- 조회·대표 이미지·댓글을 포함한 모든 API는 로그인과 Portal·`appstore` 앱 접근이 필요합니다.
+- 앱 등록, 좋아요, 댓글 작성은 앱 접근이 허용된 사용자가 수행합니다.
 - 앱 수정/삭제는 작성자 또는 Appstore `admin`만 가능합니다.
 - 앱 노출 순서 변경은 Appstore `admin`만 가능합니다.
 - 댓글 수정/삭제는 작성자 또는 Appstore `admin`만 가능합니다.
@@ -57,11 +58,11 @@ AppStore는 내부 앱과 도구를 등록하고 공유하는 기능입니다.
 
 ## 관련 API
 
-- `docs/api/appstore.md`
+- [AppStore API](../api/appstore.md)
 
 ## 관련 코드
 
-- `apps/portal/api/api/appstore/views.py`
+- `apps/portal/api/api/appstore/views/`
 - `apps/portal/api/api/appstore/models.py`
 - `apps/portal/api/api/appstore/selectors.py`
 - `apps/portal/api/api/appstore/serializers.py`

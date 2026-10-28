@@ -13,10 +13,10 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'deploy/keycloak'
 KEYS = ('postgres-password', 'bootstrap-admin-username', 'bootstrap-admin-password', 'keycloak-public-url')
-spec = importlib.util.spec_from_file_location('server_up', ROOT / 'deploy/shared/scripts/server-up.py')
-server = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(server)
-routing = server.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
+spec = importlib.util.spec_from_file_location('deploy_runtime', ROOT / 'deploy/shared/scripts/runtime.py')
+runtime = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runtime)
+routing = runtime.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
 
 
 def run(args, data=None, sensitive=False):
@@ -70,22 +70,37 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     private_public = run(['openssl', 'pkey', '-in', key, '-passin', 'pass:', '-pubout'], sensitive=True)
     if public.strip() != private_public.strip():
         raise ValueError('인증서와 개인키가 일치하지 않습니다.')
-    desired = server.render_json(run, kube, BASE / 'k8s')
+    desired = runtime.render_json(run, kube, BASE / 'k8s')
+    namespaces = [item for item in desired if item['kind'] == 'Namespace']
+    if len(namespaces) != 1 or namespaces[0]['metadata']['name'] != 'etch-sso':
+        raise ValueError('Keycloak 원본에는 etch-sso Namespace가 정확히 하나 있어야 합니다.')
+    namespace = namespaces[0]
+    desired = [item for item in desired if item['kind'] != 'Namespace']
     hosts = [rule['host'] for item in desired if item['kind'] == 'Ingress' for rule in item['spec'].get('rules', [])]
     if url.hostname not in hosts:
         raise ValueError('공개 URL과 Keycloak Ingress 도메인이 다릅니다. 배포 원본을 먼저 맞추세요.')
     pending = [secret_if_missing(kube, 'keycloak-runtime', settings),
                secret_if_missing(kube, 'keycloak-tls', {'tls.crt': cert.read_text(), 'tls.key': key.read_text()}, 'kubernetes.io/tls')]
-    # 기존 DB가 있는 환경에서 Secret만 사라진 경우 임의 비밀번호로 복구하지 않는다.
-    if pending[0]:
-        pvc = run([*kube, '-n', 'etch-sso', 'get', 'pvc', 'keycloak-postgres-data', '--ignore-not-found', '-o', 'name'])
-        if pvc.strip():
-            raise ValueError('기존 PVC가 있으나 keycloak-runtime이 없습니다. 실제 DB credential에 맞춰 Secret을 먼저 복원하세요.')
+    # namespace 삭제 후에도 Retain PV와 DB 파일은 남으므로 PVC 부재만으로 신규 설치라고 판단하지 않는다.
+    pvc_raw = run([*kube, '-n', 'etch-sso', 'get', 'pvc', 'keycloak-postgres-data', '--ignore-not-found', '-o', 'json'])
+    pv_raw = run([*kube, 'get', 'pv', 'keycloak-postgres-data', '--ignore-not-found', '-o', 'json'])
+    pvc = json.loads(pvc_raw) if pvc_raw.strip() else None
+    pv = json.loads(pv_raw) if pv_raw.strip() else None
+    if pending[0] and (pvc is not None or pv is not None):
+        storage = 'PVC' if pvc is not None else 'PV'
+        raise ValueError(f'기존 {storage}가 있으나 keycloak-runtime이 없습니다. 보존된 DB와 실제 credential을 확인하고 Secret을 먼저 복원하세요.')
+    if pv is not None:
+        reference = pv.get('spec', {}).get('claimRef', {})
+        previous_uid = reference.get('uid')
+        current_uid = pvc.get('metadata', {}).get('uid') if pvc is not None else None
+        if (pv.get('status', {}).get('phase') == 'Released'
+                or previous_uid and previous_uid != current_uid
+                or reference and (reference.get('name') != 'keycloak-postgres-data'
+                                  or reference.get('namespace') != 'etch-sso')):
+            raise ValueError('기존 PV가 Released 상태이거나 이전 PVC를 참조합니다. DB·Secret과 PV/PVC 복구 상태를 확인하세요. 도구는 claimRef나 데이터를 변경하지 않습니다.')
     original = routing.controller(desired)
     current_json = run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '--ignore-not-found', '-o', 'json'])
-    current = json.loads(current_json) if current_json.strip() else original
-    updated = routing.preserve_namespaces(original, current, 'etch-sso')
-    ips = routing.vip_backend_ips(vip_backends, current)
+    current = json.loads(current_json) if current_json.strip() else None
     nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
     hostname = original['spec']['template']['spec'].get('nodeSelector', {}).get('kubernetes.io/hostname')
     matches = [node for node in nodes if node['metadata'].get('labels', {}).get('kubernetes.io/hostname') == hostname]
@@ -94,16 +109,16 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     worker_spec = matches[0].get('spec', {})
     if worker_spec.get('unschedulable') or any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in worker_spec.get('taints', [])):
         raise ValueError('Keycloak worker가 cordon 상태이거나 차단 taint가 있습니다. 배치 가능 여부를 확인하세요.')
-    if ips:
-        pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
-        updated = routing.place_vip_backends(updated, current, ips, nodes, pods)
-    elif current['spec']['template']['spec'].get('nodeSelector', {}) != original['spec']['template']['spec'].get('nodeSelector', {}) or current['spec'].get('replicas', 1) != 1:
-        raise ValueError('기존 Traefik 배치와 원본이 다릅니다. 배치 설정을 먼저 확인하세요.')
+    pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
+    updated = routing.plan_controller(original, current, vip_backends, nodes, pods)
     desired = [updated if item is original else item for item in desired]
     if check_only:
         print('Keycloak 입력·원본·기존 Secret·worker 검사 통과. 클러스터를 변경하지 않았습니다.')
         return
-    run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': 'etch-sso'}}))
+    existing_namespace = run([*kube, 'get', 'namespace', 'etch-sso', '--ignore-not-found', '-o', 'name'])
+    if not existing_namespace.strip():
+        # 최초에는 원본 metadata를 사용하고 기존 namespace의 운영 label·annotation은 건드리지 않는다.
+        run([*kube, 'create', '-f', '-'], data=json.dumps(namespace))
     for secret in pending:
         if secret:
             # create만 사용해 검사 이후 다른 운영자가 만든 Secret도 덮어쓰지 않는다.

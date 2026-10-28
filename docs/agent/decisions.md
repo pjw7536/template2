@@ -1,6 +1,11 @@
 # Agent Decisions
 
-이 문서는 반복 설명 비용을 줄이기 위한 확정 결정만 기록한다.
+이 문서는 설계·운영 방침을 결정한 배경과 이후 변경 이력을 보존합니다.
+날짜가 다른 기록에는 서로 대체하는 결정이 있으므로, 같은 주제의 후속 기록도 확인합니다.
+문서 배치 순서가 날짜순은 아니며, 과거의 확정 결정이 현재도 유효하다는 뜻은 아닙니다.
+
+현재 실행 방법과 계약은 [전체 문서 안내](../README.md)에서 해당 앱의 안내로 이동해 확인합니다.
+작업별 검증 결과는 [실행 계획 목록](plans/README.md), 이 폴더의 용도는 [에이전트 문서 안내](README.md)를 참고합니다.
 
 ## 2026-09-17: Kubernetes 기준 저장소·로컬 배포 소유권
 
@@ -402,3 +407,28 @@
 - Airflow 내장 역할 이름을 그대로 사용하고 사용자 식별은 issuer/sub로 고정한다. 기존 DB 계정과 이메일·이름으로 자동 병합하지 않는다.
 - 기존 Portal Basic API 인증과 DAG trigger token은 유지한다. 로컬 SSO·권한 회수·양방향 연동을 검증했으며 사내 서버에는 아직 적용하지 않았다.
 - [구현·검증 기록](plans/airflow-keycloak-sso.md), [서버 설정 안내](../../deploy/airflow/k8s/jobs/keycloak-client/README.md).
+
+## 2026-10-28: deploy 독립 운영과 Portal 후속 연결
+
+- 서버는 같은 저장소에서 deploy와 최소 루트 파일만 선택한다. platform 그룹으로 Portal 외 서비스를 먼저 준비하고 Portal 추가 시 all로 확장한다. 루트 docs 전체는 선택하지 않는다.
+- 공용 Traefik은 ingress-check/up으로 앱과 독립적으로 준비한다. 기존 리소스 이름·namespace·감시 범위·VIP 배치를 유지하고 기존 namespace 설정은 수정하지 않는다.
+- Portal 연결은 기존 portal-traefik 권한 확인 후 감시 인자만 resourceVersion 검사와 함께 수정한다. 이미 연결됐거나 전체 namespace를 감시하면 변경하지 않는다.
+- Airflow 전용 TLS·통합 기동은 Airflow가 소유하고 shared에는 공통 runtime을 둔다. 기존 server-up CLI는 호환 경로로 유지한다.
+- 서버 Secret 적용은 명시한 KUBE_CONTEXT만 사용한다. 로컬 env 합성 순서와 API에 전달하는 MinIO client 키 두 개는 유지한다.
+- 제품 소스는 변경하지 않으며 관련 tooling 검사는 갱신한다. 실제 서버 적용과 로컬 회귀 검증을 구분한다. [실행·검증 기록](plans/deploy-independent-platform.md).
+
+## 2026-10-28: deploy 리뷰 7건의 입력·배치·동시 변경 처리
+
+- Portal 운영 API는 고정 probe Host인 localhost를 허용해야 한다. Secret 등록은 Keycloak prod와 Portal local/prod만 지원하며 외부 env도 같은 제한을 받는다.
+- 공용 Ingress와 Keycloak은 같은 controller 배치 계획 함수를 사용한다. 보존할 실제 배치의 정상 Worker 용량과 기록된 VIP Backend 수용 여부를 검사하고 명시한 VIP 변경만 새 배치를 계산한다.
+- 필수 node affinity의 metadata.name field 조건은 Kubernetes API 검증에 맞춰 노드별 단일 값의 OR로 생성한다.
+- Airflow 단독 배포는 적용 직전 조회한 resourceVersion으로 namespace 감시만 패치하며 충돌 시 앱 배포를 중단한다. 재시작 대상은 최종 chart에 존재하는 workload에서 결정한다.
+- [실행·검증 기록](plans/deploy-review-seven-fixes.md)에 리뷰 재현과 251개 검사 결과를 남긴다. 실제 클러스터에는 적용하지 않았다.
+
+## 2026-10-28: Namespace·보존 볼륨 복구와 선택 구성 배포
+
+- Keycloak·Airflow·FTP 배포는 기존 Namespace의 정책 label·annotation을 보존하고 없는 Namespace만 생성한다. 앱 적용 목록에 Namespace를 다시 넣지 않는다.
+- Keycloak의 runtime Secret이 없고 PV/PVC가 남아 있으면 새 인증값을 등록하지 않는다. Released PV와 이전 claimRef UID는 Secret 복원 여부와 별개로 수동 복구를 요구하며 데이터·claimRef를 자동 변경하지 않는다.
+- Portal의 /minio 리다이렉트는 상대 Location으로 원래 scheme·host·port를 보존한다.
+- Monitoring은 최종 Helm 렌더에 존재하는 서비스에 맞춰 스토리지를 준비하고 실제 Operator workload를 기다린다. 비활성 Grafana에는 관리자 Secret 조회를 요구하지 않는다.
+- [실행·검증 기록](plans/deploy-review-recovery-and-routing.md)에 추가 리뷰 4건과 177개 검사 결과를 남긴다. 실제 클러스터에는 적용하지 않았다.

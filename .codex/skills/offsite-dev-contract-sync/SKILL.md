@@ -35,6 +35,7 @@ dummy 주요 endpoint 예시:
 contract가 바뀌면 아래를 함께 점검한다.
 
 - `local/adfs_dummy`
+- 인증·앱 역할·SDWT 그룹 변경 시 `local/keycloak` realm·client 설정
 - `local/portal/env/api.env`
 - `local/portal/env/api-k8s.env`와 관련 env 합성 입력(생성된 runtime 파일은 직접 편집하지 않는다)
 - `local/portal/k8s`

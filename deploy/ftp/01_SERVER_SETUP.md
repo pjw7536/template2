@@ -13,6 +13,7 @@
 관리 호스트에는 루트 Makefile과 `deploy/ftp`, `deploy/shared`가 필요합니다.
 선택 checkout은 `bash deploy/shared/scripts/checkout-server.sh ftp`를 사용합니다.
 서버 실행에 local 폴더나 앱 소스는 필요하지 않습니다.
+
 kubectl에는 노드 조회·라벨 변경, namespace·Secret·DaemonSet·ConfigMap 적용 및 Pod 조회 권한이 필요합니다.
 
 ## 2. 클러스터와 Worker 선택
@@ -30,9 +31,11 @@ read -r -p 'FTP Worker 이름 (여러 개는 쉼표 구분, 공백 없음): ' FT
 export FTP_NODES
 ```
 
-`FTP_NODES` 예시는 `worker-a` 또는 `worker-a,worker-b`입니다. IP가 아닌 `NAME` 값을 넣습니다.
-**이미 FTP 라벨이 붙은 노드까지 포함한 전체 목록**을 입력합니다. 기존 노드를 목록에서 빼면 검사에서 중단합니다.
+`FTP_NODES`에는 노드 목록의 `NAME` 값을 넣습니다. 예를 들어 `worker-a` 또는 `worker-a,worker-b`처럼 지정합니다.
+
+이미 FTP 라벨이 붙은 노드까지 포함한 전체 목록을 입력합니다. 기존 노드를 목록에서 빼면 검사에서 중단합니다.
 노드 제거는 [운영 문서](02_OPERATIONS.md)의 라벨 제거 절차를 먼저 수행합니다.
+
 검사는 Linux Worker, Ready 상태, cordon·차단 taint, IPv4 InternalIP를 확인합니다.
 
 ## 3. 각 Worker의 저장 폴더와 포트 준비
@@ -47,6 +50,7 @@ sudo ss -lntp | grep -E ':(6380|8076|8077|8078|8079)[[:space:]]' || true
 
 기존 파일이 있으면 해당 Worker의 `/data/data_movement`로 이관하고 읽기·쓰기 권한을 맞춥니다.
 FTP 시작 시 최상위 폴더 소유자를 이미지의 `ftp` 사용자로 변경하며 하위 파일 소유권은 변경하지 않습니다.
+
 배포 스크립트는 원격 디렉터리를 만들거나 데이터를 옮기지 않습니다. 폴더가 없으면 Pod 기동에 실패합니다.
 
 기존 FTP가 포트를 쓰고 있으면 전환 시 중단합니다. 방화벽은 클라이언트에서 Worker InternalIP의
@@ -72,8 +76,13 @@ export FTP_CREDENTIAL_FILE
 ```
 
 이미 계정 파일이 있으면 경로만 지정하고 재생성하지 않습니다. 기존 파일에는 `chmod 600`을 적용합니다.
-파일은 `FTP_USER=값`, `FTP_PASS=값` 두 줄입니다. `export`나 값을 감싸는 따옴표를 넣지 않습니다.
-사용자 이름은 영문·숫자·밑줄·하이픈, 비밀번호는 비어 있지 않아야 하며 줄바꿈·역슬래시를 넣지 않습니다.
+
+계정 파일은 다음 규칙으로 작성합니다.
+
+- `FTP_USER=값`, `FTP_PASS=값` 두 줄을 입력합니다. `export`나 값을 감싸는 따옴표는 넣지 않습니다.
+- 사용자 이름에는 영문·숫자·밑줄·하이픈만 사용합니다.
+- 비밀번호는 비워 두지 않으며 줄바꿈·역슬래시를 넣지 않습니다.
+
 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다. 기본 계정은 없습니다.
 
 ## 5. 검사 후 배포
@@ -94,11 +103,13 @@ make ftp-up
 
 기존 Secret이 입력과 다르면 변경 전에 중단합니다. 동일 입력으로 재실행할 수 있고 파일 데이터를 삭제하지 않습니다.
 배포 중 실패하면 이미 적용된 리소스는 남습니다. 원인을 해결하고 같은 입력으로 재실행합니다.
+
 스크립트는 `deploy/ftp/scripts/up.py`이며 Python 표준 라이브러리만 사용합니다.
 모든 클러스터 명령은 명시한 context를 사용합니다.
 
 이 실행기는 기본 `k8s/` 원본용입니다. 기본 이미지는 digest로 고정된 `fauria/vsftpd`입니다.
 사내 registry·imagePullSecrets나 다른 저장 경로가 필요하면 [수동 배포·overlay 절차](03_KUBERNETES.md)를 사용합니다.
+
 검사 통과는 이미지 pull·원격 디스크·방화벽·실제 FTP 인증 성공을 보장하지 않습니다.
 
 ## 6. 완료 확인

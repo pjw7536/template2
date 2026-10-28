@@ -38,6 +38,7 @@ function fixture(t) {
     fs.writeFileSync(path.join(source, 'deploy', relative), sanitized, { mode: 0o600 });
   }
   fs.copyFileSync(path.join(root, 'Makefile'), path.join(source, 'Makefile'));
+  fs.copyFileSync(path.join(root, '.gitignore'), path.join(source, '.gitignore'));
   for (const folder of ['docs', 'apps/portal/api', 'apps/portal/web', 'apps/airflow', 'local']) {
     fs.mkdirSync(path.join(source, folder), { recursive: true });
     fs.writeFileSync(path.join(source, folder, 'fixture.txt'), 'test fixture\n');
@@ -57,8 +58,11 @@ for (const app of appNames) {
     run(checkout, 'bash', ['deploy/shared/scripts/checkout-server.sh', app]);
     assert.equal(fs.existsSync(path.join(checkout, 'local')), false);
     assert.equal(fs.existsSync(path.join(checkout, 'apps')), false);
+    assert.equal(fs.existsSync(path.join(checkout, 'docs')), false);
     for (const other of appNames.filter(other => other !== app)) {
-      assert.equal(fs.existsSync(path.join(checkout, 'deploy', other)), false);
+      const supporting = (catalog.apps[app].supportPaths || []).some(relative => relative.startsWith(`deploy/${other}/`));
+      assert.equal(fs.existsSync(path.join(checkout, 'deploy', other)), supporting);
+      if (supporting) assert.equal(fs.existsSync(path.join(checkout, 'deploy', other, 'env')), false);
     }
     const chartEnv = {};
     let toolsReady = true;
@@ -90,6 +94,57 @@ for (const app of appNames) {
   });
 }
 
+test('Portal 전용 checkout은 Keycloak env·앱 소스 없이 공식 client 등록 명령을 실행한다', t => {
+  const checkout = fixture(t);
+  run(checkout, 'bash', ['deploy/shared/scripts/checkout-server.sh', 'portal']);
+  assert.equal(fs.existsSync(path.join(checkout, 'local')), false);
+  assert.equal(fs.existsSync(path.join(checkout, 'apps')), false);
+  assert.equal(fs.existsSync(path.join(checkout, 'deploy/keycloak/env')), false);
+  assert.equal(run(checkout, 'python3', ['deploy/shared/scripts/app-paths.py', 'portal', '--names']), 'portal\n');
+  run(checkout, 'kubectl', ['kustomize', 'deploy/portal/k8s/jobs/keycloak-client']);
+
+  const directory = path.dirname(checkout);
+  const envFile = path.join(directory, 'portal-client.env');
+  fs.writeFileSync(envFile, 'OIDC_PROVIDER=keycloak\nOIDC_CLIENT_ID=portal-fixture\n' +
+    'OIDC_CLIENT_SECRET=fixture-client-password\nOIDC_ISSUER=https://sso.test/realms/etch\n' +
+    'OIDC_REDIRECT_URI=https://portal.test/auth/keycloak/callback/\nFRONTEND_BASE_URL=https://portal.test\n');
+  const bin = path.join(directory, 'bin');
+  fs.mkdirSync(bin);
+  const log = path.join(directory, 'kubectl.jsonl');
+  // 클러스터 호출만 대체하고 실제 Makefile·env 검사·등록 도구 전체를 실행합니다.
+  fs.writeFileSync(path.join(bin, 'kubectl'), `#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+event = {'args': args}
+if 'create' in args and 'secret' in args:
+    source = next(arg.split('=', 1)[1] for arg in args if arg.startswith('--from-env-file='))
+    values = dict(line.split('=', 1) for line in Path(source).read_text().splitlines())
+    event['clientId'] = values['OIDC_CLIENT_ID']
+    event['envKeys'] = sorted(values)
+with Path(os.environ['PORTAL_REGISTRATION_LOG']).open('a') as output:
+    output.write(json.dumps(event) + '\\n')
+if 'create' in args:
+    print(json.dumps({'apiVersion': 'v1', 'kind': 'Secret' if 'secret' in args else 'ConfigMap'}))
+`, { mode: 0o755 });
+  const result = spawnSync('make', ['keycloak-portal-client-setup', 'KUBE_CONTEXT=review-context',
+    `KEYCLOAK_PORTAL_ENV=${envFile}`], {
+    cwd: checkout, encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, PORTAL_REGISTRATION_LOG: log },
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.ok(calls.some(({ args }) => args.includes('job/portal-keycloak-client') && args.includes('wait')));
+  for (const { args } of calls.filter(({ args }) => !args.includes('kustomize'))) {
+    assert.deepEqual(args.slice(0, 2), ['--context', 'review-context']);
+  }
+  const input = calls.find(({ args }) => args.includes('create') && args.includes('secret'));
+  assert.equal(input.clientId, 'portal-fixture');
+  assert.deepEqual(input.envKeys, ['FRONTEND_BASE_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
+    'OIDC_ISSUER', 'OIDC_REDIRECT_URI']);
+  assert.equal(fs.existsSync(path.join(checkout, 'deploy/keycloak/env')), false);
+});
+
 test('선택 범위 변경은 수정 파일과 미지원 앱을 보존하고 중단한다', t => {
   const checkout = fixture(t);
   const script = 'deploy/shared/scripts/checkout-server.sh';
@@ -101,6 +156,125 @@ test('선택 범위 변경은 수정 파일과 미지원 앱을 보존하고 중
   assert.match(result.stderr, /작업 파일 변경/);
   assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
   assert.ok(fs.readFileSync(path.join(checkout, 'Makefile'), 'utf8').endsWith('# 사용자 수정\n'));
+});
+
+test('제외될 앱의 ignored 백업은 선택 전환을 막고 파일과 기존 범위를 보존한다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'portal']);
+  const before = run(checkout, 'git', ['sparse-checkout', 'list']);
+  const relative = 'deploy/portal/env/prod/api.env.pre-k8s.bak';
+  const backup = path.join(checkout, relative);
+  fs.writeFileSync(backup, 'fixture-backup\n');
+  run(checkout, 'git', ['check-ignore', '-q', relative]);
+  assert.equal(run(checkout, 'git', ['status', '--porcelain', '--untracked-files=normal']), '');
+  const result = spawnSync('bash', [script, 'airflow'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ignored/);
+  assert.ok(result.stderr.includes(relative));
+  assert.equal(fs.readFileSync(backup, 'utf8'), 'fixture-backup\n');
+  assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
+  assert.ok(fs.existsSync(path.join(checkout, 'deploy/portal/env/prod/api.env')));
+  // 운영자가 저장소 밖에 보존한 뒤 같은 명령으로 다시 진행할 수 있습니다.
+  const saved = path.join(path.dirname(checkout), 'saved-backup');
+  fs.renameSync(backup, saved);
+  run(checkout, 'bash', [script, 'airflow']);
+  assert.equal(fs.readFileSync(saved, 'utf8'), 'fixture-backup\n');
+  assert.equal(fs.existsSync(path.join(checkout, 'deploy/portal')), false);
+});
+
+test('소스의 ignored env는 --with-source 해제 시 보존한다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'portal', '--with-source']);
+  const before = run(checkout, 'git', ['sparse-checkout', 'list']);
+  const env = path.join(checkout, 'apps/portal/api/.env');
+  fs.writeFileSync(env, 'fixture-local-env\n');
+  const result = spawnSync('bash', [script, 'portal'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.readFileSync(env, 'utf8'), 'fixture-local-env\n');
+  assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
+});
+
+test('선택 경로·공통 경로·root·cone 상위 파일의 ignored 입력은 허용하고 보존한다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'portal']);
+  const retained = ['.env', 'deploy/ancestor.pem', 'deploy/shared/certs/review.key',
+    'deploy/portal/env/prod/api.env.pre-k8s.bak'];
+  for (const relative of retained) {
+    const file = path.join(checkout, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `fixture: ${relative}\n`);
+    run(checkout, 'git', ['check-ignore', '-q', relative]);
+  }
+  run(checkout, 'bash', [script, 'all']);
+  for (const relative of retained) {
+    assert.equal(fs.readFileSync(path.join(checkout, relative), 'utf8'), `fixture: ${relative}\n`);
+  }
+  assert.ok(fs.existsSync(path.join(checkout, 'deploy/airflow')));
+  assert.equal(fs.existsSync(path.join(checkout, 'local')), false);
+});
+
+test('서버 범위에서 제외할 docs의 ignored 파일은 전환 전에 보존한다', t => {
+  const checkout = fixture(t);
+  run(checkout, 'git', ['sparse-checkout', 'set', '--cone', 'deploy/shared', 'docs']);
+  const before = run(checkout, 'git', ['sparse-checkout', 'list']);
+  const relative = 'docs/review.pem';
+  const certificate = path.join(checkout, relative);
+  fs.writeFileSync(certificate, 'fixture-certificate\n');
+  run(checkout, 'git', ['check-ignore', '-q', relative]);
+  const result = spawnSync('bash', ['deploy/shared/scripts/checkout-server.sh', 'platform'], {
+    cwd: checkout, encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.ok(result.stderr.includes(relative));
+  assert.equal(fs.readFileSync(certificate, 'utf8'), 'fixture-certificate\n');
+  assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
+});
+
+test('공백·줄바꿈·한글이 있는 ignored 백업 이름도 보존한다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'portal']);
+  const relative = 'deploy/portal/env/prod/review \n한글.pre-k8s.bak';
+  const backup = path.join(checkout, relative);
+  fs.writeFileSync(backup, 'fixture-special-path\n');
+  const before = run(checkout, 'git', ['sparse-checkout', 'list']);
+  const result = spawnSync('bash', [script, 'airflow'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.readFileSync(backup, 'utf8'), 'fixture-special-path\n');
+  assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
+});
+
+test('제외될 경로의 ignored 심볼릭 링크도 삭제하지 않는다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'portal']);
+  const target = path.join(path.dirname(checkout), 'external-private-key');
+  fs.writeFileSync(target, 'fixture-private-key\n');
+  const link = path.join(checkout, 'deploy/portal/env/prod/review.key');
+  fs.symlinkSync(target, link);
+  const result = spawnSync('bash', [script, 'airflow'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.readlinkSync(link), target);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'fixture-private-key\n');
+});
+
+test('ignored 중첩 Git 디렉터리는 root 파일로 잘못 허용하지 않는다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  const nested = path.join(checkout, 'vendor');
+  fs.mkdirSync(nested);
+  run(nested, 'git', ['init', '-q']);
+  const file = path.join(nested, 'backup.txt');
+  fs.writeFileSync(file, 'fixture-nested-backup\n');
+  const before = run(checkout, 'git', ['sparse-checkout', 'list']);
+  const result = spawnSync('bash', [script, 'airflow'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.ok(result.stderr.includes('vendor/'));
+  assert.equal(fs.readFileSync(file, 'utf8'), 'fixture-nested-backup\n');
+  assert.equal(run(checkout, 'git', ['sparse-checkout', 'list']), before);
 });
 
 test('서버 검사는 미지원 환경과 선택 앱의 누락된 env를 차단한다', t => {
@@ -127,6 +301,41 @@ test('Keycloak·Airflow 선택은 두 앱과 공용 ingress만 포함한다', t 
   const result = spawnSync('make', ['server-up'], { cwd: checkout, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /--context/);
+});
+
+test('platform은 Portal 없이 준비하고 all 확장 시 기반 앱과 인증서를 유지한다', t => {
+  const checkout = fixture(t);
+  const script = 'deploy/shared/scripts/checkout-server.sh';
+  run(checkout, 'bash', [script, 'platform']);
+  const expected = appNames.filter(app => app !== 'portal');
+  assert.deepEqual(run(checkout, 'python3', ['deploy/shared/scripts/app-paths.py', 'platform', '--names'])
+    .trim().split('\n'), expected);
+  for (const app of expected) assert.ok(fs.existsSync(path.join(checkout, 'deploy', app)));
+  for (const folder of ['deploy/portal', 'apps', 'local', 'docs']) {
+    assert.equal(fs.existsSync(path.join(checkout, folder)), false, folder);
+  }
+  const certificate = path.join(checkout, 'deploy/shared/certs/platform-review.pem');
+  fs.writeFileSync(certificate, 'fixture-platform-certificate\n');
+  run(checkout, 'git', ['check-ignore', '-q', 'deploy/shared/certs/platform-review.pem']);
+  run(checkout, 'bash', [script, 'all']);
+  for (const app of appNames) assert.ok(fs.existsSync(path.join(checkout, 'deploy', app)));
+  assert.equal(fs.readFileSync(certificate, 'utf8'), 'fixture-platform-certificate\n');
+  for (const folder of ['apps', 'local', 'docs']) {
+    assert.equal(fs.existsSync(path.join(checkout, folder)), false, folder);
+  }
+});
+
+test('서버 그룹 검사는 카탈로그에 추가한 그룹의 앱만 실행한다', t => {
+  const checkout = fixture(t);
+  run(checkout, 'bash', ['deploy/shared/scripts/checkout-server.sh', 'platform']);
+  const catalogFile = path.join(checkout, 'deploy/shared/apps.json');
+  const selectedCatalog = JSON.parse(fs.readFileSync(catalogFile, 'utf8'));
+  selectedCatalog.groups['custom-platform'] = ['keycloak', 'ftp'];
+  fs.writeFileSync(catalogFile, JSON.stringify(selectedCatalog));
+  const output = run(checkout, 'make', ['server-check', 'APP=custom-platform']);
+  assert.match(output, /서버 원본 검사 통과: keycloak\/prod/);
+  assert.match(output, /서버 원본 검사 통과: ftp\/prod/);
+  assert.doesNotMatch(output, /portal\/prod/);
 });
 
 for (const app of [...appNames, ...Object.keys(catalog.groups)]) {

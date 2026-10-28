@@ -21,14 +21,16 @@ Kubernetes 정의는 `deploy/<app>`과 `local/<app>`에서 관리합니다. Comp
 한 PC의 kind에서 전체 앱을 실행합니다. PostgreSQL만 새 Docker Compose project로 분리합니다.
 설정·주소·계정·데이터 보존의 기준은 [로컬 실행 안내](../local/README.md)입니다.
 
-```bash
-make k8s-check
-make dev
-make k8s-status
-make k8s-smoke
-make k8s-rebuild APP=portal
-make down
-```
+필요한 작업에 맞는 명령을 선택합니다. 모든 명령은 저장소 루트에서 실행합니다.
+
+| 작업 | 명령 |
+| --- | --- |
+| 기동 전 준비 상태 확인 | `make k8s-check` |
+| 전체 앱 기동 | `make dev` |
+| 실행 상태 조회 | `make k8s-status` |
+| 대표 기능 동작 확인 | `make k8s-smoke` |
+| Portal 소스 변경 반영 | `make k8s-rebuild APP=portal` |
+| 로컬 환경 종료 | `make down` |
 
 기동 순서는 DB·스토리지·Secret → Keycloak/mock/MinIO → migration/seed → Portal → Airflow/FTP → Monitoring입니다.
 전체 앱 준비 상태와 Portal·Keycloak·Airflow HTTP 응답을 확인한 뒤 성공 처리합니다.
@@ -58,16 +60,6 @@ Portal migration은 운영 앱보다 먼저 실행하고, 여러 노드에서 FT
 `make k8s-export`로 Keycloak 기동 YAML과 claim 등록 Job YAML을 각각 생성합니다.
 claim 등록 Job은 Keycloak 기동과 사내 OIDC 설정을 완료한 뒤 별도로 실행합니다.
 
-주요 주소:
-
-| 서비스 | 주소 |
-| --- | --- |
-| Web | `http://localhost:3000` |
-| API | `http://localhost:8000` |
-| Nginx | `http://localhost` |
-| Dummy ADFS/RAG/LLM/Mail/Jira | `http://localhost:9102` |
-| MinIO | `http://localhost:9000`, `http://localhost:9001` |
-
 ## 프론트 명령
 
 ```bash
@@ -95,7 +87,7 @@ make makemigrations-check
 | Command | 설명 |
 | --- | --- |
 | `check_access_permission_integrity` | `--phase` 기준 migration 전 legacy 또는 적용 후 고정 역할·앱별 소속 범위 정합성 점검 |
-| `register_reference_users` | 참조 CSV 경로를 받아 Portal 신규 사용자·소속 등록. 기본 dry-run, `--apply`로 저장하며 기존 계정은 건너뜀. Keycloak 계정·그룹 등록은 수행하지 않음. [입력 형식과 실행](../apps/portal/README.md#참조-파일로-사용자-사전-등록) |
+| `register_reference_users` | 참조 CSV 경로를 받아 Portal 신규 사용자·소속 등록. 기본 dry-run, `--apply`로 저장하며 기존 계정은 건너뜀. Keycloak 계정·그룹 등록은 수행하지 않음. [명령 구현](../apps/portal/api/api/account/management/commands/register_reference_users.py) |
 | `backfill_assistant_run_access` | legacy Assistant Run·메시지·요약·제목의 Profile과 `access_requirements`를 dry-run 가능한 batch로 보강 |
 | `ensure_dev_database` | dev DB와 테스트 DB 생성 원본에 필수 PostgreSQL extension 생성 |
 | `process_email_outbox` | EmailOutbox RAG 작업 처리 |
@@ -142,7 +134,7 @@ docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime
 docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_dummy_data --prefix DEMO --reset
 docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run
 docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api prune_drone_sop
-docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api purge_drone_sop --dry-run
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api purge_drone_sop
 ```
 
 Assistant Runtime v2 배포는 nullable schema migration을 먼저 적용한 뒤 `--dry-run` 집계를
@@ -152,11 +144,13 @@ legacy 데이터는 `legacy-unresolved`로 유지해 노출하지 않습니다. 
 메시지가 없음을 확인하기 전에는 non-null 제약을 강화하지 않습니다. 제품 실행 endpoint는
 표준 Turn만 제공하므로 backfill 진행 여부와 관계없이 과거 데이터가 실행 경로로 유입되지 않습니다.
 
-배포 과정에서는 일반 사용자 권한을 자동 생성하거나 일괄 변경하지 않습니다. 최초 Portal
-관리자는 지정한 Django superuser가 권한 관리 화면에서 대상 사용자에게 `admin` 역할을
-명시적으로 부여합니다.
+앱 역할과 SDWT 등급은 Keycloak에서 관리합니다. 최초 Portal 관리자는 Portal client의
+`portal-admin` 역할을 부여하고 재로그인해 확인합니다. Django superuser나 DB 권한 변경은
+Keycloak 세션 권한을 대신하지 않습니다.
 
-### 고정 역할 권한 마이그레이션 배포 순서
+### 기존 DB 고정 역할 마이그레이션 배포 순서
+
+이 절은 남아 있는 Account DB 이력의 migration 절차입니다. 현재 세션 권한은 Keycloak에서 관리합니다.
 
 account 고정 역할 migration은 기존 역할·정책·감사 데이터를 정규화하고 제약조건을
 교체하므로 구버전 API와 신버전 API를 동시에 실행하지 않습니다. 다음 순서를 지킵니다.
@@ -171,7 +165,7 @@ account 고정 역할 migration은 기존 역할·정책·감사 데이터를 �
 5. migration SQL의 `DROP ... CASCADE` 대상에 애플리케이션 외부 view, trigger, constraint가 의존하지 않는지 확인합니다. 특히 `account 0005`는 런타임에서 사용하지 않는 `account_user_profile` 테이블을 제거합니다.
 6. API와 권한 관련 worker를 모두 중지한 뒤 migration을 실행합니다.
 7. `check_access_permission_integrity --phase post-migration`을 실행하고 기존 권한·감사 row 수를 확인한 뒤, 오류가 없을 때 신버전 API를 시작합니다.
-8. 일반 사용자, 앱 `admin`, Portal `admin`, superuser 계정으로 접근과 관리자 메뉴를 smoke test합니다.
+8. Keycloak 일반 사용자, 앱 관리자, `portal-admin` 세션으로 접근과 관리자 메뉴를 smoke test합니다. Django superuser만으로 앱 접근이 허용되지 않는지도 확인합니다.
 
 `account 0006_account_authorization_system`은 기존 전역 소속 grant를 Emails와 Assistant의
 앱별 grant로 복제하고, 기존 허용된 Emails `admin`만 명시적 `all`로 전환합니다. 이
@@ -196,8 +190,8 @@ scope 또는 사용자를 삭제하지 않고 `is_active=false`로 처리합니�
 `portal` 유형이나 소문자 영숫자·하이픈 형식이 아닌 key가 있으면 `account 0005`가 의미를
 자동 변경하지 않고 중단하므로 migration 전에 무결성 명령으로 먼저 확인합니다.
 
-로컬 dev 로그인 사용자는 `local/portal/env/api.env`의 `DEV_AUTO_AFFILIATION_ALLOWED=1` 설정으로 기본 소속이 보장됩니다.
-`DUMMY_ADFS_*` 기준 dummy 사용자는 staff 슈퍼유저로 보정됩니다.
+로컬 로그인 소속과 권한은 Keycloak 토큰·그룹에서 가져옵니다. `DEV_AUTO_AFFILIATION_ALLOWED`나
+dummy 사용자의 Django 관리자 플래그는 현재 로그인 세션의 앱 권한을 부여하지 않습니다.
 `DEV_AUTO_SEED=1`이면 dev API 기동 시 `seed_dev_data --reset`이 실행되며, `ENVIRONMENT=development`에서만 동작합니다.
 OIDC/운영 환경에서는 자동 소속 변경을 실행하지 않습니다.
 
@@ -287,7 +281,7 @@ FTP_PASV_MAX_PORT
 DATA_MOVEMENT_HOST_PATH
 ```
 
-### Drone JSON/CSV target seed
+## Drone JSON/CSV target seed
 
 `seed_drone_targets_from_file`은 JSON/CSV의 `department`, `line`,
 `target_user_sdwt_prod`, `recipient_user_sdwt_prod` 목록을 기준으로 Drone SOP/발송
@@ -388,7 +382,7 @@ JSON/CSV 파일은 `api` 컨테이너가 읽을 수 있는 경로에 배치해�
 | 파일 | 역할 |
 | --- | --- |
 | `local/portal/env/*` | local 서비스별 설정과 credential |
-| `deploy/portal/env/prod/*` | 사내 Kubernetes API/Web/MinIO 통합 설정, credential 포함 Git 관리 |
+| `deploy/portal/env/prod/*` | 사내 Kubernetes API/Web/MinIO 통합 설정, credential을 포함해 Git 관리 |
 | `deploy/portal/env/test/*` | backend test 설정과 credential |
 | `deploy/keycloak/env/*` | Keycloak 기동과 사내 OIDC 설정 |
 | `deploy/airflow/env/*`, `deploy/monitoring/env/*` | 앱별 환경 설정 |
@@ -401,9 +395,8 @@ make env-profile-key-check
 make prod-profile-env-check
 ```
 
-`OIDC_PROVIDER=adfs`이면 `ADFS_CER_PATH`와 인증서 mount를 사용합니다.
-`OIDC_PROVIDER=keycloak`이면 authorization code + PKCE와 내부 JWKS URL을 사용하므로
-인증서 파일을 사용하지 않습니다.
+`OIDC_PROVIDER=keycloak`만 지원하며 authorization code + PKCE와 JWKS 서명 검증을 사용합니다.
+기존 ADFS token 검증용 인증서 설정은 사용하지 않습니다. HTTPS CA 신뢰 설정은 별도로 유지합니다.
 OIDC와 prod 서버 설정은 각 profile 폴더 안에서 완결되며 다른 env 폴더를 상속하지 않습니다.
 
 ## 주의할 점

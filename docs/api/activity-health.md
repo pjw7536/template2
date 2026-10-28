@@ -8,7 +8,7 @@ Activity는 활동 로그 조회, Health는 서버 상태 확인을 제공합니
 | --- | --- | --- | --- |
 | GET | `/api/v1/activity/logs?limit=50` | 권한 필요 | 최근 활동 로그 |
 | POST | `/api/v1/activity/app-access` | 로그인 | 앱 화면 진입 이벤트 기록 |
-| GET | `/api/v1/activity/app-access-stats` | 로그인 | KST 기준 앱 접속 통계 조회 |
+| GET | `/api/v1/activity/app-access-stats` | `access-stats` 접근 | KST 기준 앱 접속 통계 조회 |
 | POST | `/api/v1/activity/app-access-sync-external` | `access-stats` 접근 | 외부 앱 사용량 동기화 요청 |
 | POST | `/api/v1/activity/app-access-manual-preview` | `access-stats` 관리자 | CSV/TSV 수동 입력 미리보기 |
 | POST | `/api/v1/activity/app-access-manual-commit` | `access-stats` 관리자 | 검증된 수동 입력 반영 |
@@ -16,7 +16,7 @@ Activity는 활동 로그 조회, Health는 서버 상태 확인을 제공합니
 
 ## Activity 권한
 
-다음 권한 중 하나가 필요합니다.
+활동 로그는 세션 인증과 Portal·`access-stats` 앱 접근에 더해 다음 Django permission 중 하나가 필요합니다.
 
 - `activity.view_activitylog`
 - `api.view_activitylog`
@@ -47,6 +47,9 @@ CSV/TSV의 사용자 입력 헤더에는 기존 snake_case와 한국어 별칭�
 }
 ```
 
+Health는 프로세스의 고정 상태와 `APPLICATION_NAME`(미설정 시 `template2-api`)을 반환합니다.
+DB·MinIO·외부 서비스 연결을 검사하는 readiness endpoint가 아닙니다.
+
 ## 오류
 
 Activity API 오류는 `code`, `message`, `details`, `fieldErrors` 공통 형식을 사용합니다.
@@ -58,4 +61,4 @@ Activity API 오류는 `code`, `message`, `details`, `fieldErrors` 공통 형식
 
 ## 관련 모듈 문서
 
-- `docs/modules/activity-health.md`
+- [Activity / Health 모듈](../modules/activity-health.md)

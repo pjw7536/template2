@@ -4,6 +4,7 @@
 
 CP1은 배포 명령을 실행하는 호스트이며 Keycloak·PostgreSQL은 manifest에 지정한 Worker에서 실행됩니다.
 저장소를 갱신하는 것과 Kubernetes·사용자 설정을 적용하는 것은 별개의 작업입니다.
+
 최초 설치 명령은 [서버 설치](../01_SERVER_SETUP.md)와 [Keycloak 자체 설정](../04_SETUP_FLOW.md)에만 둡니다.
 
 ## 파일 소유 위치
@@ -48,11 +49,13 @@ make keycloak-check KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_ENV="$KEYCLOA
 
 배포 시에도 `keycloak-up`에 같은 `KUBE_CONTEXT`, `KEYCLOAK_ENV`를 지정합니다.
 사내 IdP 단계는 `keycloak-idp-setup`에 같은 경로를 전달합니다.
+
 기본 인증서 위치와 다르면 서버 검사·배포 양쪽에 동일한 `KEYCLOAK_CERTS`를 추가합니다.
 
 ## 전달용 YAML
 
 `rendered/`는 [Kubernetes 원본 참고](../k8s/08_KUBERNETES.md)의 별도 전달 파일입니다.
 일반 설치는 단계별 Make 명령을 사용합니다.
-전달 스택은 Headlamp namespace 권한·ingress 노드 라벨 등 별도 조건이 있으며,
+
+전달 스택에는 Headlamp namespace 권한·ingress 노드 라벨 등 별도 조건이 있습니다.
 공용 라우팅이 연결된 서버에 직접 적용하면 감시 범위·배치가 원본 값으로 바뀔 수 있습니다.

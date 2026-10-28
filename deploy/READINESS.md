@@ -2,9 +2,11 @@
 
 [배포 문서 안내](README.md)
 
-2026-09-23 작업공간 기준 점검입니다. 운영 서버에 접속하거나 배포하지 않았습니다.
-**현재 원본의 정적 검사는 통과하지만 전체 앱을 그대로 운영 배포할 준비가 끝난 상태는 아닙니다.**
-이 문서는 현재 점검 기록이며 이후 운영값·서버 상태가 바뀌면 다시 검사합니다.
+이 문서는 **2026-09-23 작업 공간에서 수행한 점검 기록**입니다.
+운영 서버에 접속하거나 배포한 결과가 아닙니다.
+
+아래 표의 통과·실패는 당시 상태를 뜻합니다. 현재 배포를 준비할 때는 대상 앱의
+`server-check`, 전용 입력 검사, 클러스터·접속 검증을 다시 수행합니다.
 
 ## 앱별 상태
 
@@ -17,9 +19,11 @@
 | Portal | API/Web/MinIO 실패 | 공개 주소, 외부 DB, Django·연동 credential, API/Web 이미지, 업무 데이터 PVC·MinIO 저장소 |
 | FTP | env 파일 방식 아님 | 대상 노드 라벨·저장소·계정 Secret·이미지 반입·방화벽·passive 송수신 검증 |
 
-실제 env 검사에서 첫 오류가 나오면 이후 오류가 가려질 수 있습니다. 위 표는 파일 조사도 포함합니다.
-Airflow의 이미지 태그 형식이 유효해도 해당 이미지가 registry에 있고 필요한 DAG·초기화 코드가 들어 있는지는 별도 확인해야 합니다.
-Portal 기본 업무 볼륨은 `emptyDir`이므로 운영 데이터 저장소 준비 없이 업무 기능을 사용하지 않습니다.
+표를 읽을 때는 다음을 함께 확인합니다.
+
+- env 검사는 첫 오류에서 중단될 수 있습니다. 위 표에는 별도 파일 조사에서 찾은 항목도 포함했습니다.
+- Airflow 이미지 태그가 올바르더라도 registry에 이미지가 있는지, DAG·초기화 코드가 들어 있는지 따로 확인합니다.
+- Portal의 기본 업무 볼륨은 `emptyDir`입니다. 운영 데이터를 보존할 저장소를 준비한 뒤 업무 기능을 사용합니다.
 
 ## 이번 점검에서 수정한 부분
 
@@ -42,7 +46,7 @@ Portal 기본 업무 볼륨은 `emptyDir`이므로 운영 데이터 저장소 �
 - Airflow·Headlamp·Monitoring의 고정 Helm chart와 해당 이미지의 사내 접근 경로
 - kubeconfig·배포 권한, Python·kubectl·Helm·Bash·OpenSSL, DNS/VIP·방화벽·worker 디스크
 
-현재 작업공간의 인증서 폴더에는 실제 인증서가 없습니다. 실제 서버에 이미 넣었다면 서버에서 검사합니다.
+점검 당시 작업공간의 인증서 폴더에는 실제 인증서가 없었습니다. 실제 서버에 이미 넣었다면 서버에서 검사합니다.
 env 파일이 존재해도 `replace-me` 등의 임시값이면 준비 완료가 아닙니다.
 기존 분리 구성을 사용한 서버는 최신 통합 env에 기존 값이 보존됐는지 확인합니다.
 
@@ -84,8 +88,8 @@ env 파일이 존재해도 `replace-me` 등의 임시값이면 준비 완료가 
 2. Airflow 이미지·chart·비밀값·디스크 준비 → `airflow-check` → `airflow-up` → health·DAG 확인.
 3. Headlamp chart·TLS·Keycloak client·CA·API server OIDC 준비 → `headlamp-check` → `headlamp-up` → 그룹별 로그인 확인.
 
-Airflow 자체 로그인은 현재 관리자 계정 방식입니다. Keycloak 로그인을 사용하는 앱은 Headlamp이며,
-Airflow까지 SSO로 전환하는 구성은 포함되지 않습니다.
+점검 당시 Airflow 자체 로그인은 관리자 계정 방식이었습니다. 당시 Keycloak 로그인 대상은
+Headlamp였으며, 이 기록의 검증 범위에는 Airflow SSO 전환이 포함되지 않았습니다.
 Headlamp와 HTTPS Airflow는 기존 공용 Traefik이 필요합니다. Ingress 없는 Airflow는 독립 배포할 수 있습니다.
 
 업데이트 전 DB·비밀값·이미지/chart 버전·인증서를 백업합니다. 통합 env 전체를 백업해야 credential과 Fernet 키를 복구할 수 있습니다.

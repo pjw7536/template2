@@ -10,6 +10,12 @@
         "apps/portal"
       ],
       "deployPath": "deploy/portal",
+      "supportPaths": [
+        "deploy/keycloak/scripts",
+        "deploy/keycloak/k8s/claims",
+        "deploy/keycloak/k8s/oidc",
+        "deploy/keycloak/k8s/server"
+      ],
       "localPath": "local/portal"
     },
     "airflow": {
@@ -36,6 +42,13 @@
     }
   },
   "groups": {
+    "platform": [
+      "keycloak",
+      "airflow",
+      "ftp",
+      "monitoring",
+      "headlamp"
+    ],
     "keycloak-airflow": [
       "keycloak",
       "airflow"

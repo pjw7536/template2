@@ -18,6 +18,7 @@
 
 실행 호스트에 Python 3.10+·Bash·kubectl·OpenSSL이 필요합니다. Keycloak 단독 배포에 Airflow·Helm·Docker는 필요하지 않습니다.
 서버 선택 checkout에는 루트 Makefile과 필요한 `deploy` 파일이 있어야 합니다. [서버 checkout](../SERVER_CHECKOUT.md)을 참고하세요.
+
 이 구성은 단일 worker의 로컬 디스크에 의존하므로 HA가 아닙니다. PostgreSQL 외부 백업을 별도로 준비합니다.
 
 ## 실행 호스트 준비
@@ -62,8 +63,10 @@ deploy/shared/certs/etch-sso.samsungds.net/     # fullchain.crt, private.key
 
 [env 안내](env/02_ENVIRONMENT.md)의 서버 기동용 네 항목을 입력합니다.
 서버 기동에는 사내·Portal client secret이 필요하지 않습니다.
+
 공개 URL은 경로와 끝의 `/`가 없는 HTTPS URL이어야 하며 Ingress 도메인·인증서 SAN과 맞아야 합니다.
 DNS·APP VIP는 [인프라 현황](../shared/docs/infrastructure/cluster.md), 인증서 준비는 [TLS 안내](03_TLS.md)를 따릅니다.
+
 인증서 파일을 배치하는 것만으로 Secret이나 서버 설정이 바뀌지는 않습니다.
 
 ```bash
@@ -90,6 +93,7 @@ make keycloak-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 | `keycloak-up` | 없는 runtime/TLS Secret 준비, PostgreSQL·Keycloak·Traefik 적용 |
 
 최초 기동 시 관리자 계정을 만들고 이후 설정 Job도 같은 runtime Secret으로 로그인합니다.
+`etch-sso` namespace가 없을 때만 원본의 label·annotation을 포함해 생성하며, 이미 있으면 namespace 설정은 변경하지 않습니다.
 
 | 선택 입력 | 사용하는 경우 |
 | --- | --- |
@@ -98,6 +102,31 @@ make keycloak-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 | `VIP_BACKENDS=...` | VIP 최초 배치 지정. 검사·배포 양쪽에 동일하게 전달 |
 
 현재 인프라의 VIP 최초 배치 예시는 `10.172.40.117,10.172.40.87`입니다. 실제 운영 대상과 일치하는지 확인합니다.
+
+공용 Ingress를 먼저 준비했다면 기존 감시 namespace·replica·Worker pool·affinity·VIP annotation을 유지합니다.
+Keycloak도 공통 Ingress 배치 검사를 사용하며 실제 보존할 배치가 유효한지 적용 전에 확인합니다.
+기록된 VIP와 배치가 다르면 검사에서 중단합니다. 확인한 `VIP_BACKENDS`를 검사·배포 양쪽에 명시하면
+기존 Backend를 포함한 배치를 다시 계산합니다. Keycloak·DB의 전용 Worker 조건은 별도로 유지합니다.
+
+### 기존 DB·namespace를 복구하는 경우
+
+`keycloak-runtime`이 없고 DB의 PVC 또는 PV가 남아 있으면 검사·배포 모두 적용 전에 중단합니다.
+PV가 `Available`이어도 디스크가 비어 있다고 단정할 수 없으므로 같은 규칙을 적용합니다.
+기존 DB의 실제 비밀번호·관리자 설정을 확인하고 runtime Secret을 먼저 복원한 뒤 다시 검사합니다.
+
+namespace 삭제로 PVC·Secret이 사라져도 `Retain` PV와 Worker의 DB 파일은 남을 수 있습니다.
+아래 조회로 바인딩 상태를 확인하고, DB 백업·실제 credential과 대조해 운영자가 복구합니다.
+
+```bash
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" get pv keycloak-postgres-data \
+  -o jsonpath='{.status.phase}{"\n"}{.spec.claimRef}{"\n"}'
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get pvc keycloak-postgres-data \
+  -o jsonpath='{.metadata.uid}{"\n"}'
+```
+
+PV가 `Released`이거나 이전 PVC의 UID를 참조하면 runtime Secret을 복원했어도 배포를 중단합니다.
+도구는 PV의 `claimRef`를 지우거나 데이터·namespace·PVC를 삭제하지 않습니다.
+운영자가 보존할 DB와 바인딩 복구를 확인한 뒤 `keycloak-check`부터 다시 실행합니다.
 
 ## 4. 서버 기동 확인
 
@@ -111,8 +140,11 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get pods -o wide
 kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get ingress
 ```
 
-Keycloak·PostgreSQL이 원본의 worker에 배치됐는지 확인합니다. Traefik은 VIP·배포 방식에 따라 여러 노드에 배치될 수 있습니다.
-외부 DNS/TLS 준비 후 공개 주소의 로그인 화면과 realm discovery 응답을 확인합니다.
+다음 항목을 확인합니다.
+
+- Keycloak·PostgreSQL이 원본에 지정된 worker에서 실행됩니다.
+- Traefik은 VIP·배포 방식에 맞는 노드에서 실행됩니다. 여러 노드에 배치될 수 있습니다.
+- 외부 DNS/TLS 준비 후 공개 주소에서 로그인 화면과 realm discovery 응답을 확인할 수 있습니다.
 
 ```bash
 curl -fsS https://etch-sso.samsungds.net/realms/etch/.well-known/openid-configuration

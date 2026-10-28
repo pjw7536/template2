@@ -47,11 +47,17 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 | --- | --- | --- |
 | `home` | `/` | 인증 후 홈 shell |
 | `auth` | `/login` | 로그인 화면 |
-| `account` | `/settings/account`, `/settings/members` | 내 계정, 소속, 멤버/권한 관리 |
+| `account` | `/settings/account`, `/settings/members`, `/settings/permissions` | 세션 권한 조회, Portal 관리자 사용자 목록, Keycloak 관리 안내 |
 | `emails` | `/emails/inbox`, `/emails/sent`, `/emails/members` | 받은 메일, 보낸 메일, mailbox member |
 | `assistant` | `/assistant` | RAG 기반 채팅 |
 | `line-dashboard` | `/ESOP_Dashboard`, `/ESOP_Dashboard/status/:lineId`, `/ESOP_Dashboard/tip-status`, `/ESOP_Dashboard/tip-status/:lineId`, `/ESOP_Dashboard/history/:lineId`, `/ESOP_Dashboard/settings/:lineId`, `/ESOP_Dashboard/settings/notification/:lineId`, `/ESOP_Dashboard/settings/recipients/:lineId`, `/ESOP_Dashboard/overview`, `/ESOP_Dashboard/admin/drone-targets` | Drone SOP 현황/이력/설정 |
 | `l3-spider` | `/l3_spider`, `/spider/l3` | EDS Parquet 기반 반도체 이상감지 대시보드 |
+| `spider` | `/spider`, `/spider/defect` | Spider 허브와 외부 Defect 연결 |
+| `l0-spider` | `/spider/l0`, `/l0_spider/**`, `/fdc_trend/**` | L0 Spider와 호환 경로 |
+| `l1-spider` | `/spider/l1` | L1 Spider |
+| `pm-spider` | `/pm_spider` | PM 비교 대시보드 |
+| `tttm-spider` | `/spider/tttm`, `/tttm_spider` | TTTM Spider |
+| `access-stats` | `/access-stats` | 앱 접속 통계 |
 | `observer` | `/observer`, `/observer/:eqpId` | 설비 로그 observer |
 | `appstore` | `/appstore` | 내부 앱 목록/등록/댓글 |
 | `voc` | `/voc` | VOC 게시판 |
@@ -80,7 +86,8 @@ feature 간 import는 `@/features/<feature>` facade만 사용하며 현재 선�
 
 ## UI와 레이아웃 원칙
 
-- page skeleton은 `h-screen flex flex-col`과 `flex-1 min-h-0 overflow-hidden` 구조를 우선합니다.
+- 앱 최상위 shell은 `h-screen flex flex-col`과 `flex-1 min-h-0 overflow-hidden`으로 화면 높이를 관리합니다.
+- route 내부 page는 `h-full min-h-0`으로 부모 높이를 따릅니다.
 - scroll 영역은 region마다 축별 하나만 둡니다.
 - Tailwind semantic token을 먼저 사용하고 raw HEX/inline style은 피합니다.
 - loading, empty, error, disabled, selected, focus 상태를 명시합니다.

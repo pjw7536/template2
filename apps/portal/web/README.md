@@ -1,6 +1,7 @@
 # Web SPA 안내
 
-`apps/portal/web`은 React 19, React Router 7, Vite 6, Tailwind CSS 4로 만든 SPA입니다. 서버 데이터는 React Query로 관리하고, Zustand는 화면 상호작용 같은 UI 상태에만 사용합니다.
+`apps/portal/web`은 React 19, React Router 7, Vite 6, Tailwind CSS 4로 만든 단일 페이지 웹앱(SPA)입니다.
+서버 데이터는 React Query로 관리하고, Zustand는 화면 상호작용 같은 UI 상태에만 사용합니다.
 
 ## 실행하기
 
@@ -17,7 +18,7 @@ make web-dev
 `apps/portal/web` 안에서 직접:
 
 ```bash
-npm install
+npm ci --legacy-peer-deps
 npm run dev
 ```
 
@@ -83,8 +84,8 @@ npm run preview
 
 ## 더 읽을 문서
 
-- 앱 문서 홈: `docs/README.md`
-- 프론트엔드 상세 구조: `docs/frontend.md`
-- 실제 route 색인: `docs/inventory.md`
-- API 호출 규칙: `docs/api/README.md`
-- 모듈별 업무 흐름: `docs/modules/*.md`
+- [앱 문서 홈](../../../docs/README.md)
+- [프론트엔드 상세 구조](../../../docs/frontend.md)
+- [실제 route 색인](../../../docs/inventory.md)
+- [API 호출 규칙](../../../docs/api/README.md)
+- [모듈별 업무 흐름](../../../docs/modules/README.md)

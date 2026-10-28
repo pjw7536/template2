@@ -19,6 +19,14 @@ def read_catalog(path):
             raise ValueError(f'잘못된 로컬 경로: {name}')
         if app['sourcePaths'] not in ([], [f'apps/{name}']):
             raise ValueError(f'잘못된 소스 경로: {name}')
+        support = app.get('supportPaths', [])
+        if not isinstance(support, list):
+            raise ValueError(f'잘못된 배포 지원 경로: {name}')
+        for path in support:
+            parts = path.split('/') if isinstance(path, str) else []
+            if (len(parts) < 3 or parts[0] != 'deploy' or parts[1] not in apps
+                    or parts[2] not in ('scripts', 'k8s') or any(part in ('', '.', '..', 'env') for part in parts)):
+                raise ValueError(f'잘못된 배포 지원 경로: {name}')
     for name, members in groups.items():
         if name in apps or not members or len(set(members)) != len(members) or any(member not in apps for member in members):
             raise ValueError(f'잘못된 앱 그룹: {name}')
@@ -39,10 +47,11 @@ def main():
         names = [args.app] if args.app in catalog['apps'] else catalog['groups'].get(args.app)
         if not names:
             raise ValueError('지원하지 않는 서버 앱입니다.')
-        paths = ['deploy/shared', 'docs']
+        paths = ['deploy/shared']
         for name in names:
             app = catalog['apps'][name]
             paths.append(app['deployPath'])
+            paths.extend(app.get('supportPaths', []))
             if args.with_source:
                 paths.extend(app['sourcePaths'])
         print('\n'.join(names if args.names else paths))

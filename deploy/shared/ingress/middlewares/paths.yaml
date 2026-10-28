@@ -1,0 +1,17 @@
+# 운영·로컬 Traefik이 공유하는 하위 경로 처리입니다.
+http:
+  middlewares:
+    minio-console:
+      chain:
+        middlewares:
+          - minio-console-slash
+          - minio-console-strip
+    minio-console-slash:
+      redirectRegex:
+        regex: '^(https?://[^/]+/minio-console)(\?.*)?$'
+        replacement: '${1}/${2}'
+        permanent: true
+    minio-console-strip:
+      stripPrefix:
+        prefixes:
+          - /minio-console

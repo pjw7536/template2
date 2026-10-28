@@ -4,7 +4,8 @@
 
 ## 업데이트 — CP1
 
-현재 커밋·이미지·chart와 DB/파일 백업을 기록한 뒤 checkout 루트에서 확인합니다.
+업데이트 전 현재 커밋·이미지·chart 버전과 DB·파일 백업을 기록합니다.
+그다음 checkout 루트에서 아래 내용을 확인합니다.
 
 ```bash
 git status --short
@@ -55,7 +56,8 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-cont
 | 404 / 503 | Host·경로·IngressClass·namespace 감시 / Pod·Service endpoint |
 | 로그인 반복·callback 실패 | issuer·redirect URI·client secret·시간·HTTPS 전달 |
 
-원인을 해결한 뒤 실패한 단계부터 재검사합니다. init/reset·PVC 삭제·namespace 재생성을 기본 복구 방법으로 삼지 않습니다.
+원인을 해결한 뒤 실패한 단계부터 다시 검사합니다.
+클러스터 초기화(`init`·`reset`), PVC 삭제, namespace 재생성은 일반적인 복구 절차로 사용하지 않습니다.
 
 ## Worker 추가
 
@@ -72,8 +74,11 @@ APP VIP backend 전체 목록에서 기존 Worker를 빠뜨리지 않고 기존 
 | 업무 파일·MinIO | 영속 데이터·연결 설정 → 복원 후 업로드·다운로드 |
 | 운영 입력 | env·인증서·키·이미지/chart 버전 → 접근 제한된 외부 보관 |
 
-같은 Worker 디스크의 다른 폴더는 디스크 장애에 대비한 백업이 아닙니다.
-실행 중 PostgreSQL 디렉터리를 단순 복사하지 않습니다. DB migration·CRD 변경은 이미지나 Helm revision만 되돌려 복구되지 않을 수 있습니다.
+백업은 Worker의 원래 디스크와 다른 저장매체에도 보관합니다.
+같은 디스크의 다른 폴더에만 복사하면 디스크 장애 때 함께 잃을 수 있습니다.
+
+실행 중인 PostgreSQL 데이터 디렉터리를 단순 복사하지 않습니다.
+DB migration이나 CRD를 변경했다면 이미지·Helm revision만 되돌려서는 복구되지 않을 수 있습니다.
 
 **운영 인수 기준:** 백업 담당·보관 위치·주기·복구 목표·복구 시험 결과를 기록합니다.
 Keycloak DB·etcd의 환경별 백업 명령과 복구 검증은 아직 확정되지 않았습니다.

@@ -12,9 +12,9 @@ Portal의 환경 선택과 사내 배포 입력 순서는 [Portal 환경설정](
 | `local/portal/env/<service>.env` | 로컬 | API/Web/MinIO 설정, credential과 dummy 외부계 연결 |
 | `deploy/portal/env/test/api.env` | API test | 임시 PostgreSQL, 테스트 credential과 외부 호출 차단 설정 |
 | `local/portal/env/api-k8s.env` | 로컬 Kubernetes | local API 입력에 한 번만 적용하는 명시적 실행 차이 |
-| `deploy/portal/env/prod/api.env` | 사내 Kubernetes | Portal API 및 Keycloak client 등록 입력, Git 제외 |
-| `deploy/portal/env/prod/web.env`, `minio.env` | 사내 Kubernetes | 브라우저 공개 설정과 파일 저장소 계정, 각각의 `.example`에서 준비 |
-| `deploy/keycloak/env/prod.env` | 사내 Keycloak | 서버 기동 및 선택적인 사내 OIDC 설정, Git 제외 |
+| `deploy/portal/env/prod/api.env` | 사내 Kubernetes | Portal API 및 Keycloak client 등록 입력, Git 관리 |
+| `deploy/portal/env/prod/web.env`, `minio.env` | 사내 Kubernetes | 브라우저 공개 설정과 파일 저장소 계정, 해당 env에서 관리 |
+| `deploy/keycloak/env/prod.env` | 사내 Keycloak | 서버 기동 및 선택적인 사내 OIDC 설정, Git 관리 |
 | `deploy/airflow/env/k8s.env`, `local/shared/scripts/k8s_config.py` | Airflow | 앱별 실행 환경 설정 |
 | `deploy/monitoring/env/k8s.env` | Monitoring | Kubernetes 노드·local PV·이미지 미러·Grafana Secret 참조 |
 
@@ -36,7 +36,7 @@ Portal의 환경 선택과 사내 배포 입력 순서는 [Portal 환경설정](
 사내 서버와 로컬 앱은 Kubernetes를 사용합니다. 공통 정의는 `deploy`, 로컬 차이는 `local`에서 관리합니다.
 Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니다.
 
-- 실제 credential은 Git 제외 env에 두고 Kubernetes Secret으로 전달합니다. 공개 예시에 비밀값을 넣지 않습니다.
+- 현재 저장소 정책은 배포 env의 일반 설정과 credential을 함께 Git에서 관리하고 Kubernetes Secret으로 전달합니다. 인증서·개인키와 로컬 runtime 생성값은 Git에서 제외합니다. 실제 값을 문서에 복제하지 않습니다.
 - 로컬 API는 기본 env → `api-k8s.env` → runtime override → MinIO client credential 순서로 합성합니다.
 - 사내 Portal은 `deploy/portal/env/prod` 입력만 사용합니다. `make prod-profile-env-check`로 필수 입력을 검사합니다.
 - Airflow의 DB·관리자·Portal 연결은 `deploy/airflow/env/k8s.env`에 둡니다. API의 Airflow 사용자·비밀번호·trigger token을 함께 맞춥니다.
@@ -83,11 +83,34 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 | Spider 외부 링크 / Web | `VITE_DEFECT_SPIDER_URL` | `/spider` 허브의 Defect Spider 외부 링크. 비어 있으면 카드가 비활성 안내 상태로 표시 |
 | Account UI fixture / Web | `VITE_ACCOUNT_DEV_FIXTURES` | 로컬 계정 화면 예시 데이터. 명시적으로 `1`일 때만 활성화 |
 
-비-Spider Django 설정의 bool 값은 `1/0`, `true/false`, `yes/no`, `on/off`만 허용합니다. int 값은 정수여야 합니다. `EXTERNAL_APP_USAGE_API_URLS`와 `RAG_PERMISSION_GROUPS`는 JSON 배열, `OPENWEBUI_COMMON_HEADERS`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR`는 JSON 객체여야 합니다. 형식이 잘못되면 Django가 default로 대체하지 않고 시작 단계에서 실패합니다. DB 연결은 `DJANGO_DB_*`, OIDC client·issuer·redirect는 `OIDC_*` canonical 키만 사용합니다. `OIDC_PROVIDER`는 `keycloak`만 허용합니다. `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `ADFS_CER_PATH`는 제거해야 합니다. 앱 권한은 Keycloak client 역할만으로 판정합니다. `deptid`는 신원 정보이며 내부 부서 판정 env는 사용하지 않습니다. Keycloak은 공개 authorize/logout/issuer와 API 전용 내부 token/JWKS URL을 분리할 수 있습니다. 구형 `DB_*`, `ADFS_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `ADFS_ISSUER`, `ADFS_REDIRECT_URI` 별칭은 지원하지 않습니다. 외부 공개 API prefix는 `PUBLIC_API_BASE_URL`만 사용하며 `DJANGO_PUBLIC_API_BASE_URL`은 지원하지 않습니다.
+### 값 형식과 시작 단계 검증
+
+비-Spider Django 설정은 다음 형식을 사용합니다. 형식이 잘못되면 기본값으로 대체하지 않고 Django 시작 단계에서 실패합니다.
+
+| 설정 유형 | 허용 형식 |
+| --- | --- |
+| bool | `1/0`, `true/false`, `yes/no`, `on/off` |
+| int | 정수 |
+| `EXTERNAL_APP_USAGE_API_URLS`, `RAG_PERMISSION_GROUPS` | JSON 배열 |
+| `OPENWEBUI_COMMON_HEADERS`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR` | JSON 객체 |
+
+### 현재 설정 이름과 이전 설정 정리
+
+DB 연결은 `DJANGO_DB_*`, OIDC client·issuer·redirect는 `OIDC_*` 키만 사용합니다.
+`OIDC_PROVIDER`는 `keycloak`만 허용합니다. Keycloak은 공개 authorize/logout/issuer와
+API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
+
+앱 권한은 Keycloak client 역할만으로 판정합니다. `deptid`는 신원 정보이며 내부 부서 판정 env는 사용하지 않습니다.
+
+다음 구형 키는 지원하지 않으므로 설정에서 제거해야 합니다.
+
+- `ADFS_*`: `ADFS_AUTH_URL`, `ADFS_LOGOUT_URL`, `ADFS_CER_PATH`, `ADFS_CLIENT_ID`, `ADFS_ISSUER`, `ADFS_REDIRECT_URI` 등
+- `DB_*`, `GOOGLE_CLIENT_ID`
+- `DJANGO_PUBLIC_API_BASE_URL`: 외부 공개 API prefix에는 `PUBLIC_API_BASE_URL`을 사용합니다.
 
 ### Web profile 환경 변수
 
-- Web 설정은 `deploy/portal/env/<profile>/web.env`만 사용합니다.
+- Web 설정은 로컬에서 `local/portal/env/web.env`, 운영에서 `deploy/portal/env/prod/web.env`를 사용합니다.
 - 호스트 Vite dev server는 기존 `import.meta.env`를 사용하고, 운영 정적 Web은 컨테이너 시작 시 생성한 `/runtime-env.js`를 우선 사용합니다.
 - runtime config 생성 대상은 `VITE_*`와 Web이 사용하는 명시적 Backend/MinIO key로 제한합니다.
 - Airflow Basic Auth는 API profile의 `api.env`에만 두며 Web과 `/runtime-env.js`에 전달하지 않습니다.
@@ -104,7 +127,7 @@ chart·이미지·Grafana Secret을 준비합니다. 로컬 접속은 `make k8s-
 - 예: `[{"sourceName":"m-etch-dx","url":"https://example.test/get/usage"},{"sourceName":"other-system","url":"https://other.example.test/get/usage"}]`
 - 각 응답 row는 `date`, `appName`, `accessCount`를 사용하며, `appName`은 앞뒤 공백 제거 후 대문자로 정규화되어 앱 키와 표시명에 사용됩니다.
 - `EXTERNAL_APP_USAGE_API_URLS=[]`이면 외부 API 조회를 비활성화합니다.
-- 동기화 요청은 최근 365일을 적재하며 일반 사용자는 마지막 시도 후 6시간 동안 다시 실행할 수 없습니다. `access-stats` 관리자 역할은 이 제한을 우회할 수 있습니다.
+- 동기화 요청은 최근 365일을 적재하며 일반 사용자는 마지막 시도 후 6시간 동안 다시 실행할 수 없습니다. Keycloak `access-stats` 관리자 역할(Portal 관리자 포함)은 이 제한을 우회할 수 있습니다.
 - 각 source의 `appId`, 날짜, `sourceName` 조합을 갱신하므로 재시도해도 중복 row를 만들지 않습니다.
 
 ### L3 Spider 메일 링크 배포 체크
@@ -175,13 +198,13 @@ Kubernetes의 일반 기동은 데이터를 reset하지 않습니다.
 2. API endpoint와 credential은 해당 profile의 `api.env`에서 관리합니다.
 3. API가 Airflow를 조회할 때 쓰는 endpoint와 credential은 API profile에 두고, 실제 Airflow 초기 관리자 계정은 Airflow profile에 둡니다. 두 profile의 사용자 이름과 비밀번호는 같은 값으로 설정해야 합니다.
 4. `make prod-profile-env-check`는 K8s API의 DB·Keycloak·MinIO 필수 입력을 검사하며 선택적인 Airflow·RAG 연동은 별도 확인합니다.
-5. 모든 API profile은 자신의 `api.env` 하나만 적용합니다.
+5. 운영 API는 자신의 `api.env`를 적용합니다. 로컬 API는 앞 절의 기본 env·Kubernetes 차이·runtime override를 합성합니다.
 6. Web의 `VITE_BACKEND_URL`은 reverse proxy 구조에 맞춰 `/` 또는 API origin을 사용합니다.
-7. 운영 `deploy/portal/env/prod/*.env`는 Git에서 제외하고 공개 `.example`만 관리합니다. 실제 파일은 안전한 별도 경로로 전달합니다.
+7. 운영 `deploy/portal/env/prod/*.env`는 현재 `.gitignore`와 서버 문서에 따라 Git에서 관리합니다. `.example` 복사 절차는 없으며 인증서·개인키는 제외합니다.
 
 ## 변경 시 동기화 대상
 
-- Auth 계약 변경: `local/portal/env/api.env`, `deploy/portal/env/*/api.env`, `local/portal/env/web.env`, `deploy/portal/env/*/web.env`, `local/adfs_dummy`, `docs/integrations.md`, `docs/api/auth.md`
+- Auth 계약 변경: `local/portal/env/api.env`, `deploy/portal/env/*/api.env`, `local/portal/env/web.env`, `deploy/portal/env/*/web.env`, `local/keycloak`, `local/adfs_dummy`, `docs/integrations.md`, `docs/api/auth.md`
 - RAG 계약 변경: `local/portal/env/api.env`, `deploy/portal/env/*/api.env`, `local/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`
 - OpenWebUI 계약 변경: `local/portal/env/api.env`, `deploy/portal/env/*/api.env`, `local/adfs_dummy`, `docs/integrations.md`, `docs/modules/assistant.md`, `docs/api/assistant.md`, `docs/modules/observer.md`, `docs/api/observer.md`
 - Mail/Email 계약 변경: `local/portal/env/api.env`, `deploy/portal/env/*/api.env`, `local/adfs_dummy`, `docs/modules/emails.md`, `docs/api/emails.md`
@@ -194,7 +217,7 @@ Kubernetes의 일반 기동은 데이터를 reset하지 않습니다.
 - API migration 실행 전 대상 PostgreSQL DB에 `pg_trgm` 확장이 준비되어 있어야 합니다.
 - 개발 Compose는 `ensure_dev_database`가 개발 DB와 테스트 DB 생성 원본인 `template1`에 확장을 준비합니다.
 - 운영 신규 DB는 DB 관리자가 `CREATE EXTENSION IF NOT EXISTS pg_trgm`을 먼저 실행해야 합니다.
-# 테스트 전용 Compose
+## 테스트 전용 Compose
 
 PR CI와 로컬 전체 backend 검증은 `deploy/portal/compose/test.yml`을 사용합니다. 이 구성은 임시 PostgreSQL과 `api-test`만 실행하며 internal Docker network로 외부 ADFS, RAG, Mail, MinIO 연결을 차단합니다. 테스트 환경변수는 `deploy/portal/env/test/api.env`에 있습니다.
 

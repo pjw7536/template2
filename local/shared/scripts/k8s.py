@@ -93,7 +93,7 @@ def wait_job(name):
         raise
 
 
-def checks(config):
+def checks():
     """클러스터나 실제 env를 변경하지 않고 원본·도구·스토리지를 검사합니다."""
     for command in ('docker', 'kubectl', 'helm', KIND):
         if not shutil.which(command):
@@ -232,7 +232,7 @@ def preload_runtime_images():
         load_images([image])
 
 
-def portal_secrets(creds):
+def portal_secrets():
     """기동과 env 갱신이 같은 최종 API 설정을 사용합니다."""
     run(['bash', ROOT / 'local/portal/scripts/build-local-api-env.sh', RUNTIME / 'api.env'], sensitive=True)
     for name, values in [('api-env', read_env(RUNTIME / 'api.env')),
@@ -251,7 +251,7 @@ def keycloak_secrets(creds):
 
 def local_stack_up(creds, restart_mock=False):
     """앱별 원본을 집계하여 의존 서비스·migration·Portal 순서로 실행합니다."""
-    portal_secrets(creds)
+    portal_secrets()
     keycloak_secrets(creds)
     items = resources('local/shared/k8s')
     app_names = {'api', 'web', 'edge-nginx'}
@@ -384,9 +384,9 @@ def main():
     args = parser.parse_args()
     config = settings()
     if args.command == 'check':
-        checks(config)
+        checks()
     elif args.command in ('up', 'rebuild'):
-        checks(config)
+        checks()
         if not (RUNTIME / 'credentials.env').exists():
             existing_db = subprocess.run(['docker', 'volume', 'inspect', 'tailwind-local-db_postgres_data'], capture_output=True)
             if existing_db.returncode == 0:

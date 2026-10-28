@@ -43,6 +43,20 @@ require_url() {
   fi
 }
 
+# 운영 probe의 고정 Host를 Django가 허용하는 목록인지 확인합니다.
+require_portal_probe_host() {
+  local host
+  local -a allowed_hosts=()
+  IFS=',' read -r -a allowed_hosts <<< "${ENV_VALUES[DJANGO_ALLOWED_HOSTS]:-}"
+  for host in "${allowed_hosts[@]}"; do
+    host="${host#"${host%%[![:space:]]*}"}"
+    host="${host%"${host##*[![:space:]]}"}"
+    case "${host,,}" in localhost|.localhost|\*) return 0 ;; esac
+  done
+  echo 'DJANGO_ALLOWED_HOSTS에 운영 health probe의 Host인 localhost를 추가하세요.' >&2
+  return 1
+}
+
 # Keycloak discovery 입력을 기존 Job의 endpoint 계약으로 변환합니다.
 resolve_keycloak_discovery() {
   local root="$1" app="$2" component="$3" file="$4" resolved status=0
@@ -125,6 +139,7 @@ validate_portal_prod_env() {
     api)
       [[ "${ENV_VALUES[OIDC_PROVIDER]:-}" == keycloak ]] || { echo '운영 Portal은 OIDC_PROVIDER=keycloak을 사용합니다.' >&2; return 1; }
       require_env_keys DJANGO_DB_PORT DJANGO_CORS_ALLOWED_ORIGINS DJANGO_CSRF_TRUSTED_ORIGINS PUBLIC_API_BASE_URL ALLOWED_REDIRECT_HOSTS MINIO_ENDPOINT MINIO_ACCESS_KEY MINIO_SECRET_KEY || return
+      require_portal_probe_host || return
       for key in FRONTEND_BASE_URL PUBLIC_API_BASE_URL OIDC_ISSUER OIDC_REDIRECT_URI OIDC_AUTH_URL OIDC_LOGOUT_URL OIDC_TOKEN_URL OIDC_JWKS_URL MINIO_ENDPOINT; do
         require_url "$key" || return
       done ;;

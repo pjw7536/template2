@@ -74,7 +74,8 @@ These rules apply to `apps/portal/web/**`.
 - Layout core constraints:
   - one scroll container per axis per region
   - scrollable elements require `min-h-0`
-  - page skeleton: `h-screen flex flex-col` + fixed header + `flex-1 min-h-0 overflow-hidden`
+  - 앱 최상위 shell: `h-screen flex flex-col` + 고정 header + `flex-1 min-h-0 overflow-hidden`
+  - route 내부 page: `h-full min-h-0`로 부모 높이를 따르며 `h-screen`을 중복 사용하지 않는다.
 - Detailed layout recipes are in `compose-frontend-layout` skill.
 
 ## Verification

@@ -8,7 +8,7 @@ VOC API는 게시글과 답변을 관리합니다.
 
 ## 인증
 
-게시글 생성, 수정, 삭제, 답변 작성에는 Django session이 필요합니다.
+게시글 목록 조회를 포함한 모든 경로는 Django session과 Portal·`voc` 앱 접근이 필요합니다.
 
 ## Endpoint
 
@@ -81,4 +81,4 @@ VOC API는 게시글과 답변을 관리합니다.
 
 ## 관련 모듈 문서
 
-- `docs/modules/voc.md`
+- [VOC 모듈](../modules/voc.md)

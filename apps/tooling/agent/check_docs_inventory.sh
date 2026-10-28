@@ -35,10 +35,6 @@ require_text() {
   fi
 }
 
-normalize_django_path() {
-  sed -E 's#<[^:>/]+:([^>]+)>#<\1>#g; s#/$##'
-}
-
 DOCS_INDEX="docs/inventory.md"
 
 echo "== 필수 문서 =="
@@ -51,6 +47,10 @@ for path in \
   docs/data-model.md \
   docs/configuration.md \
   docs/api/README.md \
+  docs/api/l0-spider.md \
+  docs/api/pm-spider.md \
+  docs/api/tttm-spider.md \
+  docs/api/data-movement.md \
   docs/modules/README.md \
   docs/operations.md \
   docs/integrations.md \
@@ -80,16 +80,9 @@ require_text "apps/portal/web/README.md" "docs/inventory.md" "web README invento
 echo
 
 echo "== Backend API endpoint 색인 =="
-while IFS= read -r route; do
-  [[ -z "$route" ]] && continue
-  normalized="$(printf '%s' "$route" | normalize_django_path)"
-  [[ -z "$normalized" ]] && continue
-  require_text "$DOCS_INDEX" "$normalized" "endpoint $normalized"
-done < <(
-  rg -o 'path\("([^"]*)"' apps/portal/api/api/*/urls.py \
-    | sed -E 's#.*path\("([^"]*)"#\1#' \
-    | sort -u
-)
+if ! python3 apps/tooling/agent/check_docs_routes.py; then
+  status=1
+fi
 echo
 
 echo "== Frontend route 색인 =="
@@ -138,7 +131,6 @@ for env_group in \
   "DJANGO_*" \
   "DJANGO_DB_*" \
   "OIDC_*" \
-  "ADFS_*" \
   "AIRFLOW_TRIGGER_TOKEN" \
   "EMAIL_POP3_*" \
   "DRONE_*" \

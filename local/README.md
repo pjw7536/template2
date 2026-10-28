@@ -4,6 +4,15 @@
 control-plane과 worker는 Docker 컨테이너이며 별도 컴퓨터가 필요하지 않습니다.
 PostgreSQL 16만 `tailwind-local-db` Compose project로 분리합니다. 기존 개발 DB는 변경하지 않습니다.
 
+## 필요한 안내 찾기
+
+- 처음 실행: [준비와 실행](#준비와-실행)
+- 로그인 정보: [주소와 계정](#주소와-계정)
+- 기존 설치 갱신·재시작 문제: [기존 환경 갱신과 복구](#기존-환경-갱신과-복구)
+- 포트·저장 경로 변경과 백업: [로컬 설정과 파일 보존](#로컬-설정과-파일-보존)
+- env 적용 순서·앱별 파일 위치: [설정 합성과 앱 경계](#설정-합성과-앱-경계)
+- 서버로 옮기기·정적 검사: [서버 이전과 검사](#서버-이전과-검사)
+
 ## 준비와 실행
 
 Docker, Python 3 + PyYAML, kubectl, Helm 3.19.0 이상이 필요합니다.
@@ -38,20 +47,65 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 
 ## 주소와 계정
 
-`test-api`는 저장소의 표준 test env와 별도 Django 테스트 DB를 사용합니다.
-`check-api`·`makemigrations-check`는 실제 합성된 로컬 Kubernetes env를 검사합니다.
+| 서비스 | 접속 주소 | 로그인·계정 |
+| --- | --- | --- |
+| Portal | http://localhost:8080 | `90000001 / dummy-user-change-me` (내부 팀 계정) |
+| MinIO 콘솔 | http://localhost:8080/minio-console/ | `local/portal/env/minio.env`의 MinIO 계정 |
+| Keycloak | http://localhost:8180 | `local-keycloak-admin / local-keycloak-admin-change-me` |
+| Airflow | http://localhost:8080/airflow | Keycloak 로그인. Portal 테스트 계정과 동일 |
+| FTP | localhost:6380, passive 8076–8079 | 사용자 `ftpuser` |
+| Grafana | `make k8s-grafana` 실행 중 http://localhost:3000 | 사용자 `admin` |
+| PostgreSQL | localhost:55432 | DB/계정: `dashboard_keycloak/portal`, `airflow/airflow`, `keycloak/keycloak` |
 
-- Portal: http://localhost:8080 — `90000001 / dummy-user-change-me` (내부 팀 계정)
-- 다른 Portal 테스트 계정: `90000002` 메일 조회, `90000003` 전체 앱, `90000004` 전체 관리자, `90000005` 무권한. 비밀번호는 위와 같습니다.
-- Keycloak: http://localhost:8180 — `local-keycloak-admin / local-keycloak-admin-change-me`
-- Airflow: http://localhost:8080/airflow — Keycloak 로그인. `90000001` 관리자, `90000003` 일반 운영, 나머지 로그인 사용자는 기본 조회. 비밀번호는 Portal 테스트 계정과 동일합니다.
-- FTP: localhost:6380, passive 8076–8079 — 사용자 `ftpuser`
-- Grafana: `make k8s-grafana` 실행 중 http://localhost:3000 — 사용자 `admin`
-- PostgreSQL: localhost:55432 — dashboard_keycloak/portal, airflow/airflow, keycloak/keycloak DB/계정
+다른 Portal 테스트 계정은 `90000002`(메일 조회), `90000003`(전체 앱),
+`90000004`(전체 관리자), `90000005`(무권한)입니다. 비밀번호는 모두 `dummy-user-change-me`입니다.
+Airflow에서는 `90000001`이 관리자, `90000003`이 일반 운영 권한을 갖고 나머지 로그인 사용자는 기본 조회만 가능합니다.
+
+생성된 DB·Airflow API·Grafana·FTP 비밀번호는 `local/shared/runtime/credentials.env`에 있습니다.
+이 파일은 0600 권한으로 생성하고 Git에서 제외하며 재실행해도 덮어쓰지 않습니다.
 
 Portal은 EPID 인증용 `dashboard_keycloak` DB를 사용합니다. 로컬 기동은 최종 API env의
 DB가 없을 때만 생성하며, 이전 `dashboard` DB는 보존합니다. 기존 업무 데이터는 새 DB에
 자동 복사하지 않습니다. 테스트 데이터는 Portal seed 단계에서 준비합니다.
+
+### 역할 기반 Portal 표준 사용자
+
+신규 로컬 realm의 `90000001` 계정은 `portal-members` 그룹에서 `portal-all-apps`를 상속합니다.
+기존 realm은 import로 갱신되지 않습니다. 기존 환경은 Admin Console에서 `portal-members` 그룹을 생성하고,
+Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`을 가입시키고 재로그인합니다.
+부서 정보만으로 앱에 접근할 수 없으며, 기존 SDWT 그룹은 유지합니다. DB나 realm을 초기화할 필요는 없습니다.
+
+### Airflow Keycloak 로그인
+
+`make k8s-rebuild APP=airflow`는 기존 realm을 보존하면서 전용 client를 등록하고 이미지를 갱신합니다.
+새 환경의 `make dev`도 같은 등록 경로를 사용합니다. realm JSON의 재import에 의존하지 않습니다.
+누락된 Airflow client secret만 `local/shared/runtime/credentials.env`에 추가하며 기존 DB·Fernet 키는 유지합니다.
+
+로그인한 모든 사용자는 Viewer입니다. `airflow` client의 User·Admin 역할만 추가 권한으로 적용하고,
+Portal 역할·조직·SDWT 그룹은 사용하지 않습니다. 로컬 테스트 계정 90000001에는 Admin,
+90000003에는 User를 등록합니다. 서버 등록 도구는 사용자 역할을 자동 부여하지 않습니다.
+
+```bash
+make k8s-airflow-sso-check
+```
+
+이 검사는 실제 Keycloak 로그인·기본 조회·역할 회수 후 Viewer 복귀·기존 Basic API·Portal 조회를 확인합니다.
+90000003의 역할을 잠시 제거한 뒤 원래대로 복원하며 DAG를 실행하지 않습니다.
+Airflow 웹의 DB 비밀번호 로그인은 SSO로 대체되지만 기존 API 계정은 유지됩니다.
+
+## 기존 환경 갱신과 복구
+
+### MinIO 콘솔 경로 반영
+
+기존 환경에 MinIO 콘솔 경로를 반영하려면 아래 명령을 실행합니다.
+재빌드가 공용 middleware ConfigMap과 Traefik 설정을 반영하며, 전용 Ingress가 MinIO:9001로 직접 연결합니다.
+Secret 갱신만으로 실행 중인 MinIO의 콘솔 URL이 바뀌지 않으므로 재시작이 필요합니다.
+
+```bash
+make k8s-rebuild APP=portal
+kubectl --context kind-tailwind-local -n tailwind-local rollout restart deployment/minio
+kubectl --context kind-tailwind-local -n tailwind-local rollout status deployment/minio
+```
 
 ### Docker Desktop / WSL 재시작 후 복구
 
@@ -69,9 +123,6 @@ make k8s-rebuild APP=portal
 Portal 갱신은 Secret의 폐기된 설정 키도 제거하여 현재 env와 일치시킵니다.
 기존 Keycloak realm은 import로 덮어쓰지 않으므로, 이전 설치에서는 EPID 테스트 계정과
 현재 Portal claim mapper를 별도로 반영해야 합니다.
-
-생성된 DB·Airflow API·Grafana·FTP 비밀번호는 `local/shared/runtime/credentials.env`에 있습니다.
-이 파일은 0600 권한으로 생성하고 Git에서 제외하며 재실행해도 덮어쓰지 않습니다.
 
 ## 로컬 설정과 파일 보존
 
@@ -130,6 +181,9 @@ mock의 RAG·메일 샌드박스는 기존 구현처럼 메모리 저장소이�
 
 ## 서버 이전과 검사
 
+`test-api`는 저장소의 표준 test env와 별도 Django 테스트 DB를 사용합니다.
+`check-api`·`makemigrations-check`는 실제 합성된 로컬 Kubernetes env를 검사합니다.
+
 공통 정의는 deploy, 소스는 apps, 로컬 차이는 local에 둡니다.
 서버는 local 없이 `make server-check APP=all`로 검사할 수 있습니다.
 서버 이전 시 registry·도메인/TLS·DB·스토리지·실제 외부계 설정을 지정합니다.
@@ -144,28 +198,3 @@ python3 -m unittest discover -s apps/tooling/agent/tests -p test_local_k8s.py
 ```
 
 통합 검사는 테스트 대화·메일·파일 적재 이력·DAG 실행을 생성합니다. 기존 DB나 파일을 초기화하지 않습니다.
-
-### 역할 기반 Portal 표준 사용자
-
-신규 로컬 realm의 `90000001` 계정은 `portal-members` 그룹에서 `portal-all-apps`를 상속합니다.
-기존 realm은 import로 갱신되지 않습니다. 기존 환경은 Admin Console에서 `portal-members` 그룹을 생성하고,
-Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`을 가입시키고 재로그인합니다.
-부서 정보만으로 앱에 접근할 수 없으며, 기존 SDWT 그룹은 유지합니다. DB나 realm을 초기화할 필요는 없습니다.
-
-## Airflow Keycloak 로그인
-
-`make k8s-rebuild APP=airflow`는 기존 realm을 보존하면서 전용 client를 등록하고 이미지를 갱신합니다.
-새 환경의 `make dev`도 같은 등록 경로를 사용합니다. realm JSON의 재import에 의존하지 않습니다.
-누락된 Airflow client secret만 `local/shared/runtime/credentials.env`에 추가하며 기존 DB·Fernet 키는 유지합니다.
-
-로그인한 모든 사용자는 Viewer입니다. `airflow` client의 User·Admin 역할만 추가 권한으로 적용하고,
-Portal 역할·조직·SDWT 그룹은 사용하지 않습니다. 로컬 테스트 계정 90000001에는 Admin,
-90000003에는 User를 등록합니다. 서버 등록 도구는 사용자 역할을 자동 부여하지 않습니다.
-
-```bash
-make k8s-airflow-sso-check
-```
-
-이 검사는 실제 Keycloak 로그인·기본 조회·역할 회수 후 Viewer 복귀·기존 Basic API·Portal 조회를 확인합니다.
-90000003의 역할을 잠시 제거한 뒤 원래대로 복원하며 DAG를 실행하지 않습니다.
-Airflow 웹의 DB 비밀번호 로그인은 SSO로 대체되지만 기존 API 계정은 유지됩니다.

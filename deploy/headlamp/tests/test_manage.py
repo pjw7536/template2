@@ -220,10 +220,10 @@ class DeploymentTest(unittest.TestCase):
                 subprocess.CompletedProcess([], 0, json.dumps(current)),
             ]):
                 access, changes = manage.ingress_plan('prod', values)
-            self.assertEqual(changes[0]['op'], 'test')
             if watch_all:
-                self.assertEqual(len(changes), 1)
+                self.assertEqual(changes, [])
             else:
+                self.assertEqual(changes[0]['op'], 'test')
                 self.assertEqual(changes[1]['path'], '/spec/template/spec/containers/0/args')
                 self.assertIn('--providers.kubernetesingress.namespaces=etch-sso,airflow,headlamp', changes[1]['value'])
                 self.assertEqual(current, original)

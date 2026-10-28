@@ -20,13 +20,13 @@ description: |
 - feature app 경로: `apps/portal/api/api/<feature>`
 - Django app name: `api.<feature>`
 - 허용 파일/폴더만 생성한다.
-- 기본 폴더 깊이 최대 2를 지키고, `services/`, `migrations/`, `management/commands/`만 예외로 둔다.
+- 기본 폴더 깊이 최대 2를 지키고, `services/`, `selectors/`, `views/`, `serializers/`, `tests/`, `migrations/`, `management/commands/`의 예외는 API AGENTS.md를 따른다.
 - business logic: `services/`
 - read query: `selectors.py`
 - HTTP wiring: `views.py`
 - global routing: `apps/portal/api/api/urls.py`에서 `include()`만 사용
-- cross-feature import는 타 feature의 `services/__init__.py` facade 또는 `selectors.py`만 사용한다.
-- legacy root model(`apps/portal/api/api/models.py`)을 건드려야 하면 확장하지 말고 feature app으로 이전 + 신규 migration으로 처리한다.
+- cross-feature import는 타 feature의 `services/__init__.py` facade 또는 `selectors.py`/`selectors/__init__.py` 공개면만 사용한다.
+- 루트 공통 model 파일은 현재 존재하지 않는다. 도메인 모델은 각 feature app이 소유하며 루트 `api/models.py`를 새로 만들지 않는다.
 
 ## 생성 순서 (고정)
 순서를 바꾸지 않는다.
@@ -46,7 +46,7 @@ description: |
    - `db_table = "<feature>_<entity>"`
    - snake_case field, singular PascalCase model
    - 기본 PK: `id (BigAutoField)`
-   - UTC timezone-aware timestamp 사용 (`created_at` 권장)
+   - UTC timezone-aware timestamp 사용 (`created_at` 필수)
    - index/constraint 이름은 deterministic 규칙으로 작성
      - 기본 패턴: `idx_<table>_<cols>`, `uniq_<table>_<cols>`
      - 길이 제한: 30자 이하
@@ -63,10 +63,10 @@ description: |
    - read-only query만 허용
    - filtering/ordering/annotation 가능
    - side effect 금지
-8. `services/__init__.py` 작성
-   - public facade 역할
-   - create/update/delete, `transaction.atomic()`, 외부 연동, business orchestration 담당
-   - 길어지면 `services/*`로 분리
+8. `services/*` 구현과 공개 facade 작성
+   - create/update/delete, `transaction.atomic()`, 외부 연동, business orchestration은 구현 모듈이 담당
+   - `services/__init__.py`는 명시적 re-export만 포함하며 실행 로직을 두지 않음
+   - `selectors/`로 분리할 때도 `selectors/__init__.py`에는 명시적 re-export만 둠
 9. `views.py` 작성
    - HTTP 처리만 담당
    - auth/permission/serializer validation/service-selector 호출/response 반환
@@ -75,7 +75,7 @@ description: |
     - feature 내부는 relative path만 사용
     - feature 내부에서 global prefix를 중복 작성하지 않음
     - 예: `path("items/", SomeView.as_view())`
-    - 추가 URL 모듈이 필요하면 `<purpose>_urls.py`로 만들고 feature `urls.py`에서 include한다.
+    - 추가 URL 파일은 API AGENTS.md의 허용 목록을 확인한다. `callback_urls.py`는 auth 전용 예외이며 임의의 `<purpose>_urls.py`를 만들지 않는다.
 11. global api urls 등록
     - 수정 파일: `apps/portal/api/api/urls.py`
     - 예: `path("api/v1/<feature>/", include("api.<feature>.urls"))`
@@ -108,7 +108,7 @@ description: |
   - `selectors.py` -> models/api.common/타 feature selectors
 
 ## 금지사항
-- `apps/portal/api/api/models.py` 같은 root model 확장
+- 루트 `api/models.py` 생성 또는 도메인 모델의 루트 이동
 - cross-feature 내부 모듈 직접 import
 - view에서 ORM read 직접 수행
 - selector에서 write 수행

@@ -6,9 +6,9 @@
 
 | 항목 | 값 |
 | --- | --- |
-| Framework | Django 5.1, Django REST Framework |
+| Framework | Django 5.2 이상·6.0 미만, Django REST Framework |
 | 기본 API prefix | `/api/v1/` |
-| Auth callback 예외 | `/auth/google/callback/`, `/auth/keycloak/callback/` |
+| Auth callback 예외 | `/auth/keycloak/callback/` |
 | 기본 DB | `DJANGO_DB_*` PostgreSQL |
 | 로컬 실행 | `make dev` (전체 Kubernetes) |
 
@@ -17,16 +17,16 @@
 | App | 책임 | 주요 파일 |
 | --- | --- | --- |
 | `api.auth` | OIDC 인증, 로그인/로그아웃, 현재 사용자 | `views.py`, `callback_urls.py`, `services/oidc*.py` |
-| `api.account` | 사용자, 소속, 접근 권한, 외부 소속 동기화 | `models.py`, `selectors.py`, `services/*.py`, `views.py` |
+| `api.account` | 사용자 검색, Keycloak 세션 소속·접근 권한 조회 | `models.py`, `selectors/`, `services/*.py`, `views/` |
 | `api.emails` | 메일함, 메일 수집, asset, OCR, RAG Outbox | `models.py`, `permissions.py`, `services/*.py`, `management/commands/*.py` |
 | `api.data_movement` | 파일 기반 DB 적재 trigger와 테이블별 loader | `urls.py`, `views.py`, `<table_name>/models.py`, `<table_name>/services/*.py`, `<table_name>/management/commands/*.py` |
 | `api.assistant` | 대화방 영구 저장, RAG 검색, OpenWebUI/LLM 호출, 답변 조립 | `services/conversations.py`, `services/chat.py`, `services/rag.py`, `services/llm.py` |
 | `api.rag` | RAG 공통 client와 설정 | `services/client.py`, `services/config.py` |
-| `api.drone` | Drone SOP 수집, 알림 대상, dispatch/delivery, 라인 대시보드 | `models.py`, `selectors.py`, `services/*.py`, `management/commands/*.py` |
-| `api.observer` | 기본 DB 기준 정보/로그 조회 | `selectors.py`, `views.py` |
-| `api.appstore` | 내부 앱, 댓글, 좋아요, cover | `models.py`, `services/*.py`, `views.py` |
+| `api.drone` | Drone SOP 수집, 알림 대상, dispatch/delivery, 라인 대시보드 | `models.py`, `selectors/`, `services/*.py`, `management/commands/*.py` |
+| `api.observer` | 기본 DB 기준 정보/로그 조회 | `selectors/`, `views/` |
+| `api.appstore` | 내부 앱, 댓글, 좋아요, cover | `models.py`, `services/*.py`, `views/` |
 | `api.voc` | VOC 게시글과 답변 | `models.py`, `services/posts.py`, `views.py` |
-| `api.activity` | 사용자 활동 로그 조회 | `models.py`, `selectors.py`, `services/activity_logs.py` |
+| `api.activity` | 사용자 활동 로그 조회 | `models.py`, `selectors.py`, `services/recording.py` |
 | `api.health` | health check | `services/health_status.py`, `views.py` |
 | `api.common` | 공통 DB, storage, mail, messenger, request helper | `services/*.py` |
 
@@ -48,25 +48,28 @@
 
 | Prefix | App | 문서 |
 | --- | --- | --- |
-| `/api/v1/auth/` | `api.auth` | `docs/api/auth.md` |
-| `/api/v1/account/` | `api.account` | `docs/api/account.md` |
-| `/api/v1/emails/` | `api.emails` | `docs/api/emails.md` |
-| `/api/v1/data-movement/` | `api.data_movement` | `docs/api/data-movement.md` |
-| `/api/v1/assistant/` | `api.assistant` | `docs/api/assistant.md` |
-| `/api/v1/line-dashboard/` | `api.drone` | `docs/api/line-dashboard.md` |
-| `/api/v1/l3_spider/` | `api.l3_spider` | `docs/api/l3-spider.md` |
-| `/api/v1/observer/` | `api.observer` | `docs/api/observer.md` |
-| `/api/v1/appstore/` | `api.appstore` | `docs/api/appstore.md` |
-| `/api/v1/voc/` | `api.voc` | `docs/api/voc.md` |
-| `/api/v1/activity/` | `api.activity` | `docs/api/activity-health.md` |
-| `/api/v1/health/` | `api.health` | `docs/api/activity-health.md` |
+| `/api/v1/auth/` | `api.auth` | [Auth API](api/auth.md) |
+| `/api/v1/account/` | `api.account` | [Account API](api/account.md) |
+| `/api/v1/emails/` | `api.emails` | [Emails API](api/emails.md) |
+| `/api/v1/data-movement/` | `api.data_movement` | [Data Movement API](api/data-movement.md) |
+| `/api/v1/assistant/` | `api.assistant` | [Assistant API](api/assistant.md) |
+| `/api/v1/line-dashboard/` | `api.drone` | [Line Dashboard / Drone API](api/line-dashboard.md) |
+| `/api/v1/l3_spider/` | `api.l3_spider` | [L3 Spider API](api/l3-spider.md) |
+| `/api/v1/l0_spider/`, `/api/v1/fdc-trend/` | `api.l0_spider` | [L0 Spider API](api/l0-spider.md) |
+| `/api/v1/pm_spider/` | `api.pm_comparison` | [PM SPIDER API](api/pm-spider.md) |
+| `/api/v1/tttm_spider/` | `api.tttm_spider` | [TTTM Spider API](api/tttm-spider.md) |
+| `/api/v1/observer/` | `api.observer` | [Observer API](api/observer.md) |
+| `/api/v1/appstore/` | `api.appstore` | [AppStore API](api/appstore.md) |
+| `/api/v1/voc/` | `api.voc` | [VOC API](api/voc.md) |
+| `/api/v1/activity/` | `api.activity` | [Activity / Health API](api/activity-health.md) |
+| `/api/v1/health/` | `api.health` | [Activity / Health API](api/activity-health.md) |
 
 ## 인증과 권한 기준
 
 | 방식 | 사용 위치 | 확인 값 |
 | --- | --- | --- |
 | Django session | 일반 브라우저 API | 로그인 session cookie |
-| OIDC callback | `/auth/google/callback/`, `/auth/keycloak/callback/` | ADFS `form_post` id_token 또는 Keycloak query code |
+| OIDC callback | `/auth/keycloak/callback/` | Keycloak authorization code + PKCE, JWKS 검증 |
 | Airflow Bearer token | 수집/동기화 trigger | `Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>` |
 | Internal OCR token | OCR worker | `X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>` |
 | 공개/조건부 공개 | health, 일부 조회성 API | endpoint별 문서 확인 |
@@ -91,7 +94,7 @@
 | `load_station_master` | `api.data_movement.station_master` | `python manage.py load_station_master` |
 | `seed_drone_targets_from_file` | `api.drone` | `python manage.py seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run` |
 | `prune_drone_sop` | `api.drone` | `python manage.py prune_drone_sop` |
-| `purge_drone_sop` | `api.drone` | `python manage.py purge_drone_sop --dry-run` |
+| `purge_drone_sop` | `api.drone` | `python manage.py purge_drone_sop` |
 
 개발 backend command와 feature test는 Docker Compose `api` 컨테이너 기준으로 실행합니다. PR CI와 전체 회귀 검증은 외부 연결이 차단된 `deploy/portal/compose/test.yml`의 `api-test` 컨테이너를 사용합니다.
 

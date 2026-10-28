@@ -1,6 +1,7 @@
 # 00. Keycloak 최초 설치 안내
 
-Keycloak을 처음 설치하는 기준으로 설명합니다. **Keycloak 자체 설정과 사내 로그인 확인을 모두 마친 뒤 Portal·Headlamp를 연결합니다.**
+Keycloak을 처음 설치할 때 이 문서부터 읽습니다.
+Keycloak 자체 설정과 사내 로그인 확인을 마친 뒤 Portal·Headlamp를 연결합니다.
 대상은 Kubernetes namespace `etch-sso`, realm `etch`, 사내 Identity Provider alias `oidc`입니다.
 
 ## 설치 순서
@@ -15,6 +16,7 @@ Keycloak을 처음 설치하는 기준으로 설명합니다. **Keycloak 자체 
 
 명령은 각 실행 안내에만 둡니다. 같은 설정을 다른 문서에서 반복 실행할 필요가 없습니다.
 Keycloak 준비에는 Portal·Headlamp의 client ID·secret이 필요하지 않습니다.
+
 문서 번호는 파일 식별용이며 위 표가 실제 진행 순서입니다. 실행 파일의 숫자는 설치 순서와 별개입니다.
 
 등록용 CSV 양식은 [inputs](inputs/README.md)에 있습니다. 실제 값으로 작성한 파일을 초기 등록 도구에 전달합니다.

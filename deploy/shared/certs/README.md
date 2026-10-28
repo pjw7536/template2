@@ -1,21 +1,32 @@
 # 서버 인증서 보관 폴더
 
-실제 서버에 저장소를 준비한 뒤 **사이트에 맞는 하위 폴더에 파일을 넣습니다.**
+서버에 저장소를 준비한 뒤 사이트별 하위 폴더에 인증서 파일을 넣습니다.
 Keycloak과 Headlamp의 인증서·개인키는 도메인별로 구분하고 공용 CA는 `ca/`에 둡니다.
 `.gitignore`, 이 README와 폴더 유지용 `.gitkeep`만 Git으로 관리합니다. 실제 인증서 파일은 모두 제외합니다.
 
-처음에는 아래 순서로 읽습니다.
+작업은 원본 준비 → 추출·검증 → 서버 적용 순서로 진행합니다.
+
+## 작업별 바로가기
+
+| 지금 필요한 작업 | 실행할 순서 |
+| --- | --- |
+| PFX에서 새 인증서·개인키 추출 | [원본 배치](#사전-준비-원본-파일-배치) → [사이트 선택](#1-1-작업할-사이트-선택) → [추출·검증](#1-3-pfx에서-서버-인증서개인키-추출-검증-후-저장) |
+| 이미 추출한 파일 사용 | [사이트 선택](#1-1-작업할-사이트-선택) → [기존 파일 검증](#1-4-이미-추출한-파일-검증--추출을-생략했다면-실행) → [서버 적용](#2단계-서버-적용) |
+| 실행 중인 사이트 인증서 갱신 | 새 파일의 추출 또는 검증 → [대상 선택](#2-1-적용할-사이트와-대상-클러스터-선택) → [TLS Secret 갱신](#2-2-kubernetes-tls-secret에-등록-또는-갱신) → [실제 인증서 확인](#2-4-실제-제공되는-인증서-확인) |
+
+인증서 갱신 후 Airflow·Portal 등 다른 namespace로 복사한 TLS Secret도 각각 갱신합니다.
+Headlamp 최초 설치 중 파일 추출만 필요한 경우에는 1단계를 마친 뒤 [Headlamp TLS 안내](../../headlamp/03_TLS.md)로 돌아갑니다.
 
 - **사전 준비**: 원본 PFX/P7B와 공용 CA 파일 배치
 - **1단계. 인증서 추출**: 사이트 선택 → 추출·검증 → 결과 파일 저장
 - **2단계. 서버 적용**: 클러스터 선택 → TLS Secret 등록 → HTTPS 확인 및 OIDC용 CA 설정
 
-처음 진행하고 **PFX/P7B와 CA 원본만 있는 경우**에는 다음 순서를 따릅니다.
+PFX/P7B와 CA 원본만 있는 경우에는 다음 순서를 따릅니다.
 
 1. 사전 준비에서 원본 파일 위치를 확인합니다.
-2. **1-1 → 1-3**을 실행해 Keycloak 인증서를 추출합니다. 1-2는 선택 사항입니다.
-3. 1-1에서 Headlamp 도메인을 선택하고 **1-3을 다시 실행**합니다.
-4. 두 도메인 폴더에 결과 파일이 생겼으면 **2단계를 사이트별로 한 번씩** 진행합니다.
+2. 1-1 → 1-3을 실행해 Keycloak 인증서를 추출합니다. 1-2는 선택 사항입니다.
+3. 1-1에서 Headlamp 도메인을 선택하고 1-3을 다시 실행합니다.
+4. 두 도메인 폴더에 결과 파일이 생겼으면 2단계를 사이트별로 한 번씩 진행합니다.
 
 명령은 코드 블록 단위로 복사합니다. `(`로 시작하는 블록은 마지막 `)`까지 한 번에 실행합니다.
 오류가 나오면 그 단계에서 원인을 해결한 뒤 다시 실행합니다.
@@ -46,21 +57,24 @@ deploy/shared/certs/
     └── SECDS-T2RootCA.crt
 ```
 
-파일 이름은 위와 같이 유지합니다. 기존에 공용 폴더 바로 아래 넣었다면 위 구조에 맞춰 이동합니다. `fullchain.crt`와 `private.key`는 1단계에서 생성합니다. 이미 추출한 파일이 있다면 기존 파일 검증 후 서버 적용으로 진행합니다.
+파일 이름은 위와 같이 유지합니다. 기존에 공용 폴더 바로 아래 넣었다면 위 구조에 맞춰 이동합니다.
+
+`fullchain.crt`와 `private.key`는 1단계에서 생성합니다.
+이미 추출한 파일이 있다면 새로 추출하는 대신 기존 파일을 검증한 뒤 서버 적용으로 진행합니다.
 
 두 사이트 모두 인증서는 `fullchain.crt`, 개인키는 `private.key`입니다. 도메인은 상위 폴더로 구분합니다.
 원본 PFX/P7B와 CA 파일 이름은 변경하지 않습니다.
 
-| 파일 | 용도 |
-| --- | --- |
-| `etch-sso.samsungds.net.p7b`, `etch-sso.samsungds.net.pfx` | Keycloak 인증서 발급 원본 보관 |
-| `fullchain.crt` | Keycloak HTTPS 서버 인증서와 중간 인증서 체인 |
-| `private.key` | Keycloak 인증서와 짝인 개인키 |
-| `SECDS-T2IssuingCA.crt` | 중간 인증기관 인증서 |
-| `SECDS-T2RootCA.crt` | 루트 인증기관 인증서 |
-| `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | Headlamp 접속 도메인의 인증서 발급 원본 보관 |
-| `fullchain.crt` | Headlamp HTTPS 서버 인증서와 중간 인증서 체인 |
-| `private.key` | Headlamp 인증서와 짝인 개인키 |
+| 보관 폴더 | 파일 | 용도 |
+| --- | --- | --- |
+| `etch-sso.samsungds.net/` | `etch-sso.samsungds.net.p7b`, `etch-sso.samsungds.net.pfx` | Keycloak 인증서 발급 원본 |
+| `etch-sso.samsungds.net/` | `fullchain.crt` | Keycloak 서버 인증서와 중간 인증서 체인 |
+| `etch-sso.samsungds.net/` | `private.key` | Keycloak 인증서와 짝인 개인키 |
+| `ca/` | `SECDS-T2IssuingCA.crt` | 중간 인증기관 인증서 |
+| `ca/` | `SECDS-T2RootCA.crt` | 루트 인증기관 인증서 |
+| `etch.samsungds.net/` | `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | Headlamp 접속 도메인의 인증서 발급 원본 |
+| `etch.samsungds.net/` | `fullchain.crt` | Headlamp 서버 인증서와 중간 인증서 체인 |
+| `etch.samsungds.net/` | `private.key` | Headlamp 인증서와 짝인 개인키 |
 
 CA 파일은 나중에 Keycloak 인증서를 신뢰하기 위한 CA 묶음을 만들 때 사용합니다.
 확장자만으로 PEM/DER 형식을 확정할 수 없으므로 실제 파일을 넣은 뒤 형식과 체인을 확인합니다.
@@ -80,6 +94,7 @@ openssl version
 
 **확인할 결과:** `Makefile`, `deploy/shared/certs`와 OpenSSL 버전이 표시됩니다.
 경로를 찾지 못하면 저장소 위치를 먼저 확인합니다. `openssl: command not found`라면 서버의 OpenSSL 설치가 필요합니다.
+
 PFX 발급 시 받은 비밀번호도 준비합니다.
 
 ### 준비 B. 원본 파일 넣기
@@ -113,6 +128,7 @@ chmod 600 deploy/shared/certs/etch-sso.samsungds.net/etch-sso.samsungds.net.pfx 
 
 파일은 배포 명령을 실행하는 계정이 읽을 수 있어야 합니다.
 Git으로 실제 인증서가 전송되지는 않으므로 서버마다 필요한 파일은 별도로 넣습니다.
+
 **다음:** 원본에서 새로 추출하려면 1-1 → 1-3, 기존 결과 파일을 사용하려면 1-1 → 1-4로 진행합니다.
 
 ## 1단계. 인증서 추출
@@ -156,6 +172,7 @@ ls -l "$CERT_SITE_DIR/$CERT_SITE.pfx" \
 
 **확인할 결과:** 선택한 도메인과 파일 3개의 정보가 표시됩니다.
 `No such file or directory`가 나오면 파일 배치 또는 현재 터미널 위치를 확인합니다.
+
 **다음:** 바로 추출하려면 **1-3**으로 이동합니다. 원본에 든 공개 인증서를 살펴보고 싶을 때만 1-2를 실행합니다.
 
 ### 1-2. P7B에서 공개 인증서 묶음 확인 — 필요한 경우
@@ -199,6 +216,7 @@ openssl pkcs12 -in "$CERT_SITE_DIR/$CERT_SITE.pfx" \
 
 아래 블록 전체를 복사해 실행합니다. `Enter Import Password:`가 나오면 **선택한 사이트의 PFX 비밀번호**를 입력하고 Enter를 누릅니다.
 입력 중 글자나 별표가 보이지 않아도 정상입니다. 인증서와 개인키를 각각 꺼내므로 같은 비밀번호를 두 번 입력합니다.
+
 임시 폴더에서 추출·검증한 뒤에만 정식 파일로 저장합니다.
 기존 파일은 해당 사이트의 `backups/` 아래에 보관합니다.
 
@@ -308,7 +326,9 @@ openssl crl2pkcs7 -nocrl -certfile "$CERT_SITE_DIR/fullchain.crt" |
 ```
 
 현재 구성은 서버 인증서와 `SECDS-T2IssuingCA` 두 개가 순서대로 나와야 합니다.
+
 **성공 기준:** `인증서 체인·도메인·기간·개인키 일치 확인 완료`가 표시되고, 위 인증서 순서도 맞습니다.
+
 **다음:** 2-1로 이동합니다.
 
 ## 2단계. 서버 적용
@@ -451,7 +471,9 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
 **성공 기준:** `HTTPS 체인·도메인 검증 및 서버 인증서 일치 확인 완료`가 표시됩니다.
 성공 후 브라우저에서 해당 사이트를 확인합니다.
 다른 사이트에도 적용하려면 2-1로 돌아가 해당 도메인을 선택하고 반복합니다.
+
 지문이 다르면 반영 대기 여부·DNS 대상·Ingress의 TLS Secret 이름을 확인합니다.
+
 문제가 생겨 이전 인증서로 복구해야 한다면, 앞서 보관한 유효한 인증서·개인키 쌍을
 2-2의 `--cert`와 `--key`에 지정해 다시 등록합니다. 원본 PFX 파일은 계속 보관합니다.
 
@@ -460,6 +482,7 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
 HTTPS TLS Secret 등록과 Keycloak 로그인용 CA 등록은 별개입니다.
 Headlamp에서 Keycloak 로그인을 처음 설정하거나 CA가 바뀌었다면 아래 연결 문서를 이어서 진행합니다.
 CA가 그대로인 서버 인증서 갱신만 했다면 기존 OIDC용 CA 설정을 사용합니다.
+
 [Headlamp TLS 준비](../../headlamp/03_TLS.md)의 명령으로 다음을 준비합니다.
 
 - 입력: `ca/SECDS-T2RootCA.crt`, `ca/SECDS-T2IssuingCA.crt`

@@ -1,6 +1,17 @@
 # Assistant API
 
-Assistant API는 versioned Profile과 permission-aware memory를 사용해 Portal, Email RAG, Observer, Appstore, ESOP Dashboard 실행을 하나의 Turn 계약으로 제공합니다.
+Assistant API는 일반 대화, 메일 검색, Observer 분석과 Appstore·ESOP 화면 기반 답변을 제공합니다.
+모든 질문은 같은 Turn API로 실행하며, 사용 목적에 맞는 Profile과 현재 권한에 따라 사용할 데이터와 대화 기억을 결정합니다.
+
+## 주요 용어
+
+| 용어 | 의미 |
+| --- | --- |
+| Turn | 질문 전송·편집·재생성 등 한 번의 실행 요청 |
+| Profile | 사용할 도구, 대화 기억과 필요한 앱 권한을 정한 버전별 실행 규칙 |
+| Run | Turn의 진행 상태·결과를 기록하는 실행 단위 |
+| partition | 일반 대화와 앱별 대화 기억을 구분하는 저장 영역 |
+| SSE | 실행 상태와 답변을 서버가 순차적으로 전달하는 스트리밍 방식 |
 
 ## 호출자
 
@@ -8,7 +19,7 @@ Assistant API는 versioned Profile과 permission-aware memory를 사용해 Porta
 
 ## 인증
 
-Django session이 필요합니다. `knox_id`가 없는 사용자는 접근이 제한될 수 있습니다.
+Django session과 Portal·`assistant` 앱 접근이 필요합니다. Profile별 추가 앱 권한과 `knox_id`도 검사합니다.
 
 ## Endpoint
 
@@ -74,11 +85,33 @@ Profile 계약:
 
 `portal-default` v2는 `shared` partition만 읽고 기록합니다. 앱별 Profile의 scoped 메시지와 요약은 Provider에 전달하기 전에 저장 당시의 Account/data 권한을 현재 사용자 기준으로 다시 검증합니다.
 
-`action`은 `send`, `edit`, `regenerate`, `retry`를 지원합니다. `edit`/`regenerate`는 `targetMessageId`, `retry`는 `retryRunId`가 필요하고 모든 재실행은 새 `clientRequestId`와 user `clientId`를 사용합니다. regenerate/retry는 저장된 Profile 버전과 제한된 Tool 입력을 재사용하지만 현재 Profile/Tool 권한 하한을 다시 적용합니다.
+### 실행 유형과 재실행
+
+`action`은 다음 값을 지원합니다.
+
+| 값 | 동작 | 추가 필수 필드 |
+| --- | --- | --- |
+| `send` | 질문 전송 | 없음(기본 Turn 필드 사용) |
+| `edit` | 질문 편집 | `targetMessageId` |
+| `regenerate` | 답변 재생성 | `targetMessageId` |
+| `retry` | 실행 재시도 | `retryRunId` |
+
+모든 재실행은 새 `clientRequestId`와 user `clientId`를 사용합니다.
+regenerate/retry는 저장된 Profile 버전과 제한된 Tool 입력을 재사용하지만 현재 Profile/Tool 권한 하한을 다시 적용합니다.
+
+### 화면 출처와 도구 입력
 
 `appContextKey`는 prompt 출처이며 생략하거나 알 수 없는 앱으로 대신 실행할 수 없습니다. Portal은 `assistant:openwebui:<등록 앱>`, Email은 `assistant`, Observer는 현재 Tool 입력에서 계산한 `observer:v1:<sha256>`, Appstore는 `appstore:v1`, ESOP Dashboard는 `line-dashboard:v1`만 허용합니다. Appstore Tool 입력은 `query`, `category`, `selectedAppId`, ESOP Tool 입력은 `view`, `lineId`, `from`, `to`만 허용하며 서버가 다시 정규화합니다.
 
-표준 SSE event는 `run.started`, `tool.started`, `tool.completed`, `run.heartbeat`, `message.delta`, `message.completed`, `run.completed`, `run.failed`입니다. Portal 답변은 외부 OpenAI 호환 chunk가 도착하는 대로 `message.delta`로 전달합니다. 구조화 검증이 필요한 Email/Observer는 전체 JSON 검증을 통과한 뒤 표시 가능한 block을 전달합니다. 같은 `clientRequestId`와 동일 hash의 완료 Run은 현재 권한 재검증 뒤 저장된 `message.completed`만 replay합니다. branch, 메시지, summary는 변경하지 않습니다. 다른 hash 또는 미완료 Run은 409입니다.
+### 스트리밍과 완료 결과 재전달
+
+표준 SSE event는 `run.started`, `tool.started`, `tool.completed`, `run.heartbeat`, `message.delta`, `message.completed`, `run.completed`, `run.failed`입니다.
+
+Portal 답변은 외부 OpenAI 호환 chunk가 도착하는 대로 `message.delta`로 전달합니다.
+구조화 검증이 필요한 Email/Observer는 전체 JSON 검증을 통과한 뒤 표시 가능한 block을 전달합니다.
+
+같은 `clientRequestId`와 동일 hash의 완료 Run은 현재 권한 재검증 뒤 저장된 `message.completed`만 replay합니다.
+branch, 메시지, summary는 변경하지 않습니다. 다른 hash 또는 미완료 Run은 409입니다.
 
 ## RAG 인덱스 목록
 
@@ -178,6 +211,10 @@ legacy provenance는 `backfill_assistant_run_access --dry-run --batch-size N --c
 
 ## 오류
 
+Turn 연결 전 검증 오류는 JSON HTTP 응답으로 반환합니다. SSE 연결 후 실행 오류는
+HTTP 200 stream 안의 `run.failed` 등 종료 event로 전달되므로 HTTP status만으로 성공을 판단하지 않습니다.
+
+
 | Status | 상황 |
 | --- | --- |
 | 400 | 필수 Turn 필드 누락, 형식 오류 |
@@ -190,4 +227,4 @@ legacy provenance는 `backfill_assistant_run_access --dry-run --batch-size N --c
 
 ## 관련 모듈 문서
 
-- `docs/modules/assistant.md`
+- [Assistant / OpenWebUI / RAG 모듈](../modules/assistant.md)

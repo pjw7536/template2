@@ -108,22 +108,66 @@ def values(settings):
     return result
 
 
-def storage(settings):
+def rendered_components(content):
+    """고정 chart의 최상위 리소스 헤더만 읽어 활성 서비스와 실제 이름을 찾는다."""
+    result = {}
+    for document in re.split(r'^---[ \t]*(?:#.*)?$', content, flags=re.M):
+        kind = re.search(r'^kind:[ \t]*([A-Za-z]+)[ \t]*$', document, re.M)
+        if not kind:
+            continue
+        kind = kind[1]
+        component = {'Prometheus': 'prometheus', 'Alertmanager': 'alertmanager'}.get(kind)
+        grafana_source = re.search(
+            r'^# Source: kube-prometheus-stack/charts/grafana/templates/(?:deployment|statefulset)\.yaml[ \t]*$',
+            document, re.M)
+        if grafana_source:
+            require(kind in ('Deployment', 'StatefulSet'), 'Grafana 렌더의 workload 종류가 고정 chart 계약과 다릅니다.')
+            component = 'grafana'
+        if component is None:
+            continue
+        require(component not in result, '최종 렌더에 같은 Monitoring 서비스가 중복됐습니다.')
+        metadata = re.search(r'^metadata:[ \t]*\n(.*?)(?=^[^\s#]|\Z)', document, re.M | re.S)
+        require(metadata, 'Monitoring 렌더의 최상위 metadata가 없습니다.')
+        fields = {}
+        for key in ('name', 'namespace'):
+            matches = re.findall(r'^  ' + key + r':[ \t]*([^\n]+)$', metadata[1], re.M)
+            require(len(matches) <= 1 and (key != 'name' or matches), 'Monitoring 렌더의 metadata 이름이 없거나 중복됐습니다.')
+            if matches:
+                value = matches[0].strip()
+                if value[:1] in ('"', "'") and value[-1:] == value[:1]:
+                    value = value[1:-1]
+                require(len(value) <= 253 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', value),
+                        'Monitoring 렌더의 metadata 이름 형식이 올바르지 않습니다.')
+                fields[key] = value
+        result[component] = fields
+    return result
+
+
+def storage(settings, components=None):
     """단일 worker에 고정한 Retain local PV를 생성한다."""
     namespace = settings['NAMESPACE']
+    if components is None:
+        components = {name: {'name': 'monitoring-' + name} for name in VOLUMES}
     items = []
     for component, (size, claim) in VOLUMES.items():
+        if component not in components:
+            continue
+        resource = components[component]
+        target_namespace = resource.get('namespace', namespace)
+        if component in ('prometheus', 'alertmanager'):
+            workload = component + '-' + resource['name']
+            claim = f'{workload}-db-{workload}-0'
         name = f'{namespace}-monitoring-{component}'
         items.append({'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': name}, 'spec': {
             'capacity': {'storage': size}, 'volumeMode': 'Filesystem', 'accessModes': ['ReadWriteOnce'],
             'persistentVolumeReclaimPolicy': 'Retain', 'storageClassName': '',
-            'claimRef': {'namespace': namespace, 'name': claim},
+            'claimRef': {'namespace': target_namespace, 'name': claim},
             'local': {'path': settings['DATA_HOST_PATH'] + '/' + component},
             'nodeAffinity': {'required': {'nodeSelectorTerms': [{'matchExpressions': [
                 {'key': 'kubernetes.io/hostname', 'operator': 'In', 'values': [settings['NODE_NAME']]}]}]}}}})
         if component == 'grafana':
             items.append({'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim',
-                'metadata': {'name': claim, 'namespace': namespace}, 'spec': {
+                'metadata': {'name': claim, 'namespace': target_namespace}, 'spec': {
                     'storageClassName': '', 'volumeName': name, 'accessModes': ['ReadWriteOnce'],
                     'resources': {'requests': {'storage': size}}}})
     return {'apiVersion': 'v1', 'kind': 'List', 'items': items}
@@ -146,7 +190,7 @@ def render(settings, directory, chart, values_file=None):
     require(images and all(item.startswith(prefixes) for item in images), '미러를 거치지 않는 렌더 이미지가 있습니다. values의 모든 이미지 설정을 확인하세요.')
     (directory / 'monitoring.yaml').write_text(content)
     (directory / 'images.txt').write_text('\n'.join(sorted(images)) + '\n')
-    (directory / 'storage.json').write_text(json.dumps(storage(settings), indent=2) + '\n')
+    (directory / 'storage.json').write_text(json.dumps(storage(settings, rendered_components(content)), indent=2) + '\n')
     return flags
 
 
@@ -155,35 +199,44 @@ def deploy(settings, context, chart, values_file=None):
     require(context and context.strip(), 'deploy에는 --context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
-    actual = json.loads(run([*kube, 'version', '-o', 'json']))['serverVersion']['gitVersion']
-    require(version(actual) >= version(LOCK['kubernetesVersion']), 'Kubernetes 버전이 chart 요구사항보다 낮습니다.')
-    releases = json.loads(run(['helm', 'list', '--kube-context', context, '-n', namespace, '--all', '-o', 'json']))
-    release = next((item for item in releases if item['name'] == 'monitoring'), None)
-    if release:
-        require(release['chart'] == 'kube-prometheus-stack-' + LOCK['version'], '기존 chart 버전이 다릅니다. CRD upgrade 절차를 먼저 검토하세요.')
-    else:
-        existing = run([*kube, 'get', 'crd', 'prometheuses.monitoring.coreos.com', '--ignore-not-found', '-o', 'name'])
-        require(not existing.strip(), '기존 Prometheus Operator CRD가 있습니다. 공용 Monitoring 사용 여부를 먼저 확인하세요.')
-    nodes = json.loads(run([*kube, 'get', 'nodes', '-l', 'kubernetes.io/hostname=' + settings['NODE_NAME'], '-o', 'json']))['items']
-    require(len(nodes) == 1, 'NODE_NAME에 대응하는 노드가 정확히 하나여야 합니다.')
-    node = nodes[0]
-    require(not node['spec'].get('unschedulable') and any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions']), '대상 worker가 Ready·스케줄 가능 상태여야 합니다.')
-    require(not any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in node['spec'].get('taints', [])), '대상 worker의 차단 taint를 확인하세요.')
-    # Secret 값은 읽거나 출력하지 않고 필요한 키 이름만 조회합니다.
-    keys = run([*kube, '-n', namespace, 'get', 'secret', settings['GRAFANA_ADMIN_SECRET'],
-                '-o', 'go-template={{range $k, $v := .data}}{{printf "%s\\n" $k}}{{end}}']).splitlines()
-    require({'admin-user', 'admin-password'} <= set(keys), 'Grafana Secret에 admin-user·admin-password 키가 필요합니다.')
-    if settings['IMAGE_PULL_SECRET']:
-        run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
     with tempfile.TemporaryDirectory(prefix='monitoring-deploy-') as directory:
         flags = render(settings, directory, chart, values_file)
-        run([*kube, 'apply', '-f', Path(directory) / 'storage.json'])
+        components = rendered_components((Path(directory) / 'monitoring.yaml').read_text())
+        actual = json.loads(run([*kube, 'version', '-o', 'json']))['serverVersion']['gitVersion']
+        require(version(actual) >= version(LOCK['kubernetesVersion']), 'Kubernetes 버전이 chart 요구사항보다 낮습니다.')
+        releases = json.loads(run(['helm', 'list', '--kube-context', context, '-n', namespace, '--all', '-o', 'json']))
+        release = next((item for item in releases if item['name'] == 'monitoring'), None)
+        if release:
+            require(release['chart'] == 'kube-prometheus-stack-' + LOCK['version'], '기존 chart 버전이 다릅니다. CRD upgrade 절차를 먼저 검토하세요.')
+        else:
+            existing = run([*kube, 'get', 'crd', 'prometheuses.monitoring.coreos.com', '--ignore-not-found', '-o', 'name'])
+            require(not existing.strip(), '기존 Prometheus Operator CRD가 있습니다. 공용 Monitoring 사용 여부를 먼저 확인하세요.')
+        nodes = json.loads(run([*kube, 'get', 'nodes', '-l', 'kubernetes.io/hostname=' + settings['NODE_NAME'], '-o', 'json']))['items']
+        require(len(nodes) == 1, 'NODE_NAME에 대응하는 노드가 정확히 하나여야 합니다.')
+        node = nodes[0]
+        require(not node['spec'].get('unschedulable') and any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions']), '대상 worker가 Ready·스케줄 가능 상태여야 합니다.')
+        require(not any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in node['spec'].get('taints', [])), '대상 worker의 차단 taint를 확인하세요.')
+        # 비활성 Grafana에는 관리자 Secret을 요구하지 않으며 값 대신 키 이름만 조회한다.
+        if 'grafana' in components:
+            grafana_namespace = components['grafana'].get('namespace', namespace)
+            keys = run([*kube, '-n', grafana_namespace, 'get', 'secret', settings['GRAFANA_ADMIN_SECRET'],
+                        '-o', 'go-template={{range $k, $v := .data}}{{printf "%s\\n" $k}}{{end}}']).splitlines()
+            require({'admin-user', 'admin-password'} <= set(keys), 'Grafana Secret에 admin-user·admin-password 키가 필요합니다.')
+        if settings['IMAGE_PULL_SECRET']:
+            run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
+        if json.loads((Path(directory) / 'storage.json').read_text())['items']:
+            run([*kube, 'apply', '-f', Path(directory) / 'storage.json'])
         run(['helm', 'upgrade', '--install', 'monitoring', chart, '--kube-context', context, '--wait', '--timeout', '15m', *flags])
-        for workload in ('deployment/monitoring-grafana', 'statefulset/prometheus-monitoring-prometheus', 'statefulset/alertmanager-monitoring-alertmanager'):
+        for component in ('prometheus', 'alertmanager'):
+            if component not in components:
+                continue
+            resource = components[component]
+            target_namespace = resource.get('namespace', namespace)
+            workload = 'statefulset/' + component + '-' + resource['name']
             # Operator가 비동기로 만드는 StatefulSet의 생성부터 기다립니다.
-            run([*kube, '-n', namespace, 'wait', '--for=create', workload, '--timeout=600s'])
-            run([*kube, '-n', namespace, 'rollout', 'status', workload, '--timeout=600s'])
-    print('Monitoring 배포 완료. Grafana 접속과 Prometheus Targets를 확인하세요.')
+            run([*kube, '-n', target_namespace, 'wait', '--for=create', workload, '--timeout=600s'])
+            run([*kube, '-n', target_namespace, 'rollout', 'status', workload, '--timeout=600s'])
+    print('Monitoring 배포 완료. 활성화한 서비스의 접속·수집 상태를 확인하세요.')
 
 
 def main():

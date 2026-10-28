@@ -34,6 +34,12 @@ class FtpTests(unittest.TestCase):
         self.credentials.chmod(0o600)
         self.nodes = [worker()]
         self.secret = ''
+        self.namespace = ''
+        self.source = [
+            {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {
+                'name': 'etch-ftp', 'labels': {'operator.test/policy': 'initial'}}},
+            {'apiVersion': 'apps/v1', 'kind': 'DaemonSet', 'metadata': {'name': 'ftp', 'namespace': 'etch-ftp'}},
+        ]
         self.calls = []
         self.runner = patch.object(ftp, 'run', side_effect=self.run_command)
         self.runner.start()
@@ -43,6 +49,10 @@ class FtpTests(unittest.TestCase):
         self.calls.append((args, kwargs))
         if 'kustomize' in args:
             return 'rendered-stack'
+        if 'create' in args and '--dry-run=client' in args:
+            return json.dumps({'kind': 'List', 'items': self.source})
+        if 'get' in args and 'namespace' in args:
+            return self.namespace
         if 'get' in args and 'nodes' in args:
             return json.dumps({'items': self.nodes})
         if 'get' in args and 'secret' in args:
@@ -54,7 +64,7 @@ class FtpTests(unittest.TestCase):
 
     def writes(self):
         return [(args, kw) for args, kw in self.calls
-                if any(verb in args for verb in ('apply', 'create', 'label', 'delete'))]
+                if '--dry-run=client' not in args and any(verb in args for verb in ('apply', 'create', 'label', 'delete'))]
 
     def test_check_only_never_mutates_cluster(self):
         self.start(check_only=True)
@@ -63,20 +73,34 @@ class FtpTests(unittest.TestCase):
     def test_new_install_orders_secret_before_labels_and_stack(self):
         self.start()
         writes = self.writes()
-        self.assertEqual([args[3] for args, _ in writes], ['apply', 'create', 'label', 'apply'])
+        self.assertEqual([args[3] for args, _ in writes], ['create', 'create', 'label', 'apply'])
+        self.assertEqual(json.loads(writes[0][1]['data']), self.source[0])
         self.assertEqual(json.loads(writes[1][1]['data'])['metadata']['namespace'], 'etch-ftp')
         self.assertTrue(writes[1][1]['sensitive'])
-        self.assertEqual(writes[-1][1]['data'], 'rendered-stack')
+        self.assertEqual(json.loads(writes[-1][1]['data'])['items'], self.source[1:])
         for args, _ in self.calls:
             if 'kustomize' not in args:
                 self.assertEqual(args[:3], ['kubectl', '--context', 'test-context'])
             self.assertNotIn('test-password', ' '.join(map(str, args)))
 
     def test_existing_matching_secret_is_not_written(self):
+        self.namespace = 'namespace/etch-ftp'
         self.secret = json.dumps({'data': {key: base64.b64encode(value.encode()).decode()
                                           for key, value in ftp.read_credentials(self.credentials).items()}})
         self.start()
-        self.assertFalse(any('create' in args for args, _ in self.calls))
+        self.assertFalse(any('create' in args and '--dry-run=client' not in args for args, _ in self.calls))
+
+    def test_existing_namespace_is_never_written_or_included_in_stack(self):
+        """기존 Namespace에는 쓰지 않고 앱 리소스만 적용해 운영 metadata를 보존합니다."""
+        self.namespace = 'namespace/etch-ftp'
+        self.start()
+        self.assertTrue(any('get' in args and 'namespace' in args for args, _ in self.calls))
+        for _, kwargs in self.writes():
+            if 'data' not in kwargs:
+                continue
+            body = json.loads(kwargs['data'])
+            self.assertNotEqual(body.get('kind'), 'Namespace')
+            self.assertTrue(all(item.get('kind') != 'Namespace' for item in body.get('items', [])))
 
     def test_secret_mismatch_stops_before_any_write(self):
         self.secret = json.dumps({'data': {'FTP_PASS': 'different'}})

@@ -2,8 +2,8 @@
 
 [가이드 홈](README.md) · 다음: [현황 확인](01-baseline.md)
 
-Kubernetes는 여러 서버에 컨테이너를 배치하고 필요한 개수와 실행 상태를 유지합니다.
-이 환경의 관리 경로와 목표 사용자 접속 경로는 다음과 같습니다.
+Kubernetes는 여러 서버에서 컨테이너를 실행하고, 정해진 개수와 상태를 유지하는 도구입니다.
+아래 그림은 관리자가 배포할 때의 경로와 사용자가 앱에 접속할 때의 목표 경로를 보여 줍니다.
 
 ```mermaid
 flowchart LR
@@ -18,9 +18,11 @@ flowchart LR
     Pod --> Data[DB·영속 저장소]
 ```
 
-APP VIP에서 TCP를 전달하고 Traefik에서 TLS를 종료하는 것이 목표입니다.
-실제 LB 설정·양쪽 Worker 응답·Keycloak DNS 전환은 [현황](README.md#현재-서버-상황)의 미확인 항목입니다.
-Control Plane 3대나 Traefik 2대 구성이 앱 DB의 복제를 뜻하지는 않습니다.
+목표 구성에서는 APP VIP가 TCP 연결을 전달하고 Traefik이 HTTPS 인증서를 처리합니다(TLS 종료).
+실제 LB 설정, 두 Worker의 응답, Keycloak DNS 전환 여부는
+[현황](README.md#현재-서버-상황)에서 아직 확인이 필요한 항목입니다.
+
+Control Plane이나 Traefik이 여러 대여도 앱 DB가 자동으로 복제되는 것은 아닙니다.
 
 ## 배포할 때 필요한 용어
 

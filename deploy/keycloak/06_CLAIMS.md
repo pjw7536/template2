@@ -2,7 +2,8 @@
 
 [전체 설치 순서](README.md) · 실행: [Keycloak 자체 설정](04_SETUP_FLOW.md) · 발급 설정: [앱 연결](09_APP_CONNECTIONS.md)
 
-이 문서는 필드 계약의 기준입니다. 프로필·수신 mapper 명령은 자체 설정 문서에서 실행합니다.
+이 문서는 사내 사용자 정보가 Keycloak에 저장되고 앱 토큰으로 전달되는 규칙을 설명합니다.
+프로필·수신 mapper 명령은 자체 설정 문서에서 실행합니다.
 
 ## 수신·저장·발급
 
@@ -35,6 +36,7 @@
 Keycloak 기본 `username`은 로그인 식별자인 EPID(`userid`)입니다.
 사내 사람 이름 `username`은 충돌을 피하기 위해 `display_name`에 저장합니다.
 이메일·성·이름은 기본 `email`·`firstName`·`lastName`을 사용합니다.
+
 예를 들어 `userid=90000001`, `loginid=hong.gildong`, `username=홍길동`이면
 내부에는 `username=90000001`, `loginid=hong.gildong`, `display_name=홍길동`으로 저장합니다.
 
@@ -48,18 +50,19 @@ Keycloak 기본 `username`은 로그인 식별자인 EPID(`userid`)입니다.
 
 [수신 스크립트](k8s/claims/sync-oidc-claim-mappers.sh)는 일반 속성 15개와 EPID mapper 1개를 등록합니다.
 `epid-username`은 `${CLAIM.userid}`를 기본 username에 저장하는 Username Template Importer이며
-`target=LOCAL`, `syncMode=FORCE`를 사용합니다. EPID는 유일하고 변하지 않으며 재사용되지 않는 식별자여야 합니다.
-`Email as username`은 꺼야 합니다.
+`target=LOCAL`, `syncMode=FORCE`를 사용합니다.
+
+EPID는 유일하고 변하지 않으며 재사용되지 않는 식별자여야 합니다. `Email as username`은 꺼야 합니다.
 
 다른 수신 mapper도 `FORCE`를 사용하며 사내 인증을 거칠 때 값을 가져옵니다.
 프로필 정의만으로 값이 생성되지 않으며 사내 응답에 해당 claim이 있어야 합니다.
 
 ## 소속과 권한
 
-`user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 line입니다.
-관리자 또는 최초 CSV 등록으로 채우고 사내 IdP에서는 수신하지 않습니다.
-접근 가능한 SDWT는 별도 `/{SDWT}/admin`, `/{SDWT}/user`, `/{SDWT}/viewer` 그룹으로 관리합니다.
-소속이 바뀌었다고 그룹을 자동으로 부여하지 않습니다.
+소속 정보와 접근 권한은 각각 관리합니다.
+
+- 소속: `user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 line입니다. 관리자 또는 최초 CSV 등록으로 채우며 사내 IdP에서는 수신하지 않습니다.
+- 접근 권한: `/{SDWT}/admin`, `/{SDWT}/user`, `/{SDWT}/viewer` 그룹으로 관리합니다. 소속이 바뀌어도 그룹을 자동으로 부여하지 않습니다.
 
 초기 등록은 [07 SDWT 설정](07_SDWT_SETUP.md), 앱의 `groups` 발급 연결은 [09 앱 연결](09_APP_CONNECTIONS.md)에서 수행합니다.
 

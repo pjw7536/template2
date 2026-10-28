@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: etch-sso
 resources:
   - stack.yaml
+  - middlewares
 images:
   - name: traefik-internal
     newName: repository.samsungds.net/proxy-docker-registry-1.docker.io/traefik

@@ -1,6 +1,20 @@
-# 앱 문서 홈
+# 프로젝트 문서 홈
 
-이 `docs` 폴더는 코드를 열지 않아도 앱의 구조, 화면, API, 데이터, 환경 변수, 외부 연동, 운영 방법을 파악할 수 있게 정리한 문서입니다.
+이 폴더는 Portal의 기능·구조·API와 개발·운영 방법을 설명합니다.
+처음에는 아래에서 목적에 맞는 문서를 고르고, 구현 경로나 설정 이름이 필요할 때 상세 색인을 확인하세요.
+
+## 목적별 시작점
+
+| 하려는 일 | 먼저 읽을 문서 |
+| --- | --- |
+| 내 PC에서 실행하기 | [사용방법](usage.md) → [로컬 환경 준비](../local/README.md) |
+| 서버에 배포하기 | [서버 배포 안내](../deploy/README.md) |
+| 화면과 업무 기능 이해하기 | [모듈별 기능 안내](modules/README.md) |
+| API 호출하기 | [API 공통 규칙](api/README.md) → 해당 모듈 API |
+| 구조를 이해하고 개발하기 | [전체 아키텍처](architecture.md) → [프론트엔드](frontend.md) / [백엔드](backend.md) |
+| 설정·외부 연결 점검하기 | [환경 설정](configuration.md), [외부 연동](integrations.md) |
+| 오류를 점검하거나 관리 명령 실행하기 | [운영·개발 명령](operations.md) |
+| AI 작업 지침·변경 근거 찾기 | [에이전트 문서](agent/README.md) |
 
 ## 실행 진입 안내
 
@@ -12,47 +26,54 @@
 
 ## 먼저 읽는 순서
 
-1. 전체 그림: `docs/architecture.md`
-2. 실제 route/model/env 색인: `docs/inventory.md`
-3. 프론트 구조와 화면 흐름: `docs/frontend.md`
-4. 백엔드 구조와 책임 분리: `docs/backend.md`
-5. 데이터 모델과 저장소: `docs/data-model.md`
-6. API 공통 규칙과 모듈별 계약: `docs/api/README.md`, `docs/api/*.md`
-7. 모듈별 업무 흐름: `docs/modules/*.md`
-8. 환경 변수와 로컬/운영 설정: `docs/configuration.md`
-9. 외부 시스템 연동: `docs/integrations.md`
-10. 실행, 검증, management command: `docs/operations.md`
+전체 구조를 처음 살펴본다면 [아키텍처](architecture.md), [모듈별 기능](modules/README.md),
+담당 영역의 [프론트엔드](frontend.md) 또는 [백엔드 구조](backend.md)를 먼저 읽으세요.
+[인벤토리](inventory.md)는 실제 경로·모델·설정 이름을 찾을 때 사용하는 참고용 색인입니다.
+
+## 문서 배치 기준
+
+- `docs/`: 앱을 가로지르는 구조·설정·운영 설명
+- `docs/modules/`: 화면과 업무 흐름, 권한, 운영 시 확인할 사항
+- `docs/api/`: 요청·응답·오류 등 API 호출 계약
+- `docs/integrations/`, `docs/k8s/`: 외부 저장소 참고표와 Kubernetes 명령어 참고
+- `docs/agent/`: 에이전트 작업 지침과 과거 계획·결정 이력
+- `apps/<app>/README.md`, `deploy/<app>/README.md`, `local/README.md`: 각 영역의 소스 개발·서버 배포·로컬 실행 안내
 
 ## 문서 지도
 
 | 문서 | 설명 |
 | --- | --- |
-| `docs/architecture.md` | 전체 앱 구조, 모듈 경계, 핵심 데이터 흐름 |
-| `docs/inventory.md` | 실제 backend API route, frontend route, model, command, env 색인 |
-| `docs/frontend.md` | React SPA 구조, route tree, feature facade, 상태 관리 원칙 |
-| `docs/backend.md` | Django app 구조, view/selector/service 책임, URL prefix, command |
-| `docs/data-model.md` | 주요 DB 모델, 저장소, 파일 저장소 |
-| `docs/configuration.md` | env 파일, 설정 그룹, 로컬/운영 차이 |
-| `docs/api/README.md` | API 공통 호출 규칙, 인증 방식, 오류 규칙 |
-| `docs/api/*.md` | 모듈별 endpoint 계약 |
-| `docs/modules/*.md` | 모듈별 기능, 권한, 화면, 데이터, 동작 흐름 |
-| `docs/operations.md` | 로컬 실행, 테스트, 관리 명령, 점검 절차 |
-| `docs/integrations.md` | ADFS, RAG, LLM, Mail, Jira, Messenger, MinIO, Airflow 연동 |
-| `docs/agent/ai-feature-workflow.md` | 브랜치에서 AI가 작업할 때 지켜야 할 feature 독립성 지침 |
+| [전체 아키텍처](architecture.md) | 전체 앱 구조, 모듈 경계, 핵심 데이터 흐름 |
+| [앱 인벤토리](inventory.md) | 실제 API·화면 경로, 모델, 명령, 환경 변수 색인 |
+| [프론트엔드](frontend.md) | React SPA 구조, 화면 경로, feature 공개 진입점, 상태 관리 원칙 |
+| [백엔드](backend.md) | Django app 구조, view/selector/service 책임, URL prefix, 명령 |
+| [데이터 모델](data-model.md) | 주요 DB 모델과 저장소 |
+| [환경 설정](configuration.md) | env 파일, 설정 그룹, 로컬·운영 차이 |
+| [API 문서](api/README.md) | 공통 호출 규칙과 모듈별 API 계약 |
+| [모듈 문서](modules/README.md) | 모듈별 기능, 권한, 화면, 데이터, 동작 흐름 |
+| [운영·개발 명령](operations.md) | 로컬 실행, 테스트, 관리 명령, 점검 절차 |
+| [외부 연동](integrations.md) | Keycloak/OIDC, RAG, LLM, Mail, Jira, Messenger, MinIO, Airflow 연동 |
+| [Kubernetes 명령어](k8s/README.md) | 상태·로그 조회와 리소스 관리 명령 참고 |
+| [에이전트 문서](agent/README.md) | AI 작업 지침, 실행 계획, 결정 이력 |
 
 ## 모듈 목록
 
 | 모듈 | 기능 문서 | API 문서 | 주요 화면/route |
 | --- | --- | --- | --- |
-| Auth | `docs/modules/auth.md` | `docs/api/auth.md` | `/login`, OIDC callback |
-| Account | `docs/modules/account.md` | `docs/api/account.md` | `/settings/account`, `/settings/members` |
-| Emails | `docs/modules/emails.md` | `docs/api/emails.md` | `/emails/inbox`, `/emails/sent`, `/emails/members` |
-| Assistant/RAG | `docs/modules/assistant.md` | `docs/api/assistant.md` | `/assistant` |
-| Line Dashboard/Drone | `docs/modules/line-dashboard.md` | `docs/api/line-dashboard.md` | `/ESOP_Dashboard/**` |
-| Observer | `docs/modules/observer.md` | `docs/api/observer.md` | `/observer`, `/observer/:eqpId` |
-| AppStore | `docs/modules/appstore.md` | `docs/api/appstore.md` | `/appstore` |
-| VOC | `docs/modules/voc.md` | `docs/api/voc.md` | `/voc` |
-| Activity/Health | `docs/modules/activity-health.md` | `docs/api/activity-health.md` | API only |
+| Auth | [Auth 모듈](modules/auth.md) | [Auth API](api/auth.md) | `/login`, OIDC callback |
+| Account | [Account 모듈](modules/account.md) | [Account API](api/account.md) | `/settings/account`, `/settings/members` |
+| Emails | [Emails 모듈](modules/emails.md) | [Emails API](api/emails.md) | `/emails/inbox`, `/emails/sent`, `/emails/members` |
+| Assistant/RAG | [Assistant / OpenWebUI / RAG 모듈](modules/assistant.md) | [Assistant API](api/assistant.md) | `/assistant` |
+| Line Dashboard/Drone | [Line Dashboard / Drone 모듈](modules/line-dashboard.md) | [Line Dashboard / Drone API](api/line-dashboard.md) | `/ESOP_Dashboard/**` |
+| L3 Spider | [L3 Spider 모듈](modules/l3-spider.md) | [L3 Spider API](api/l3-spider.md) | `/l3_spider`, `/spider/l3` |
+| L0 Spider | [앱 인벤토리](inventory.md) | [L0 Spider API](api/l0-spider.md) | `/l0_spider/**`, `/spider/l0` |
+| PM SPIDER | [PM SPIDER 대시보드 데이터 연동 명세](modules/pm-comparison-dashboard-spec.md) | [PM SPIDER API](api/pm-spider.md) | `/pm_spider` |
+| TTTM Spider | [앱 인벤토리](inventory.md) | [TTTM Spider API](api/tttm-spider.md) | `/spider/tttm`, `/tttm_spider` |
+| Data Movement | [Data Movement 모듈](modules/data-movement.md) | [Data Movement API](api/data-movement.md) | 내부 API |
+| Observer | [Observer 모듈](modules/observer.md) | [Observer API](api/observer.md) | `/observer`, `/observer/:eqpId` |
+| AppStore | [AppStore 모듈](modules/appstore.md) | [AppStore API](api/appstore.md) | `/appstore` |
+| VOC | [VOC 모듈](modules/voc.md) | [VOC API](api/voc.md) | `/voc` |
+| Activity/Health | [Activity / Health 모듈](modules/activity-health.md) | [Activity / Health API](api/activity-health.md) | API only |
 
 ## 문서 완성 기준
 
@@ -68,3 +89,8 @@
 - 내부 파일 경로는 설명을 보강하는 색인으로 사용하고, 업무 개념 설명을 먼저 둡니다.
 - 외부 URL, token, credential은 env 이름과 역할만 문서화하고 실제 비밀값을 반복 기재하지 않습니다.
 - 새 API나 route를 추가하면 `docs/inventory.md`, 해당 `docs/api/*.md`, 해당 `docs/modules/*.md`를 함께 갱신합니다.
+
+## 과거 작업 기록
+
+[에이전트 문서](agent/README.md)에서 작업 당시의 계획·검증·결정 이력을 찾을 수 있습니다.
+완료된 기록의 경로와 명령은 이후 변경됐을 수 있으므로 현재 실행에는 위 운영·API 문서를 사용합니다.

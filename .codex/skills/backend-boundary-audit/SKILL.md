@@ -32,7 +32,7 @@ python3 apps/tooling/agent/check_backend_boundaries.py
 ## 해석 규칙
 - 출력은 우선 review 대상 후보로 본다.
 - legacy 예외가 있으면 수정하지 말고 파일 경로와 이유를 요약한다.
-- legacy 예외는 `apps/tooling/agent/backend-boundary-allowlist.txt`에 path + 구체 패턴으로만 둔다.
+- 필요한 legacy 예외는 선택 파일 `apps/tooling/agent/backend-boundary-allowlist.txt`의 줄별 정규식으로 구체적으로 한정한다. 현재 파일은 없으며 검사기는 이를 빈 예외 목록으로 처리한다. 경로와 위반 패턴을 정규식에 함께 포함한다.
 - 요청 범위 밖 구조 변경은 하지 않는다.
 - 이 audit은 현재 CI 신호를 안정적으로 유지하기 위해 service direct read ORM 후보를 실패 처리하지 않는다.
 

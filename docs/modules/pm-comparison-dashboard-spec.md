@@ -1,11 +1,14 @@
 # PM SPIDER 대시보드 데이터 연동 명세
 
+현재 HTTP 계약은 [PM SPIDER API](../api/pm-spider.md), 이 문서는 파일 생산자와 조회 코드가 공유하는 데이터 명세입니다.
+호스트 mount의 로컬 기본값은 저장소의 `data/pm_spider`이며 컨테이너 내부는 `PM_COMPARISON_DATA_ROOT`로 지정합니다.
+
 ## 1. 서버별 BASE 경로
 
 | 환경 | BASE_DATA | BASE_RESULT |
 |------|-----------|-------------|
 | 로컬/컨테이너 | `/data/pm_spider/data/` | `/data/pm_spider/result/` |
-| 호스트 기본값 | `../data/pm_spider/data/` | `../data/pm_spider/result/` |
+| 호스트 | `${PM_COMPARISON_DATA_HOST_PATH}/data/` | `${PM_COMPARISON_DATA_HOST_PATH}/result/` |
 
 > BASE 이후 하위 경로 구조는 양쪽 동일. BASE만 환경에 맞게 설정.
 

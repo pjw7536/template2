@@ -1,7 +1,7 @@
 # 00. FTP 시작 안내
 
 이 폴더는 Kubernetes Worker에서 파일을 받는 FTP 서버의 설치·운영을 관리합니다.
-**FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행되고, 업로드한 파일은 접속한 노드에 저장됩니다.**
+FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로드한 파일은 접속한 노드에 저장됩니다.
 
 ## 지금 필요한 작업
 
@@ -24,6 +24,7 @@
 
 라벨은 `etch.io/ftp-enabled=true`입니다. 모든 노드에 자동으로 설치하지 않습니다.
 배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 Worker는 달라도 됩니다.
+
 노드 간 파일은 자동 복제·이동되지 않으며 소비 앱이 다른 노드에 있으면 별도 전송 또는 공유 저장소가 필요합니다.
 
 ## 실행 명령
@@ -38,6 +39,6 @@
 | `make ftp-test` | 배포 스크립트 회귀 검사. 클러스터 불필요 |
 
 `ftp-check`와 `ftp-up`에는 `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 필요합니다.
-기존 Secret은 보존하며 입력 계정이 다르면 중단합니다. 모든 대상 노드는 같은 계정을 사용합니다.
+모든 대상 노드는 같은 계정을 사용합니다. 기존 Secret이 있으면 입력 계정과 비교하고, 다르면 중단합니다.
 
 [전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

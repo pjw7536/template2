@@ -141,6 +141,8 @@ spec:
             - --providers.kubernetesingress=true
             - --providers.kubernetesingress.ingressclass=traefik
             - --providers.kubernetesingress.namespaces=etch-sso
+            - --providers.file.directory=/etc/traefik/dynamic
+            - --providers.file.watch=true
             - --entrypoints.web.address=:8000
             - --entrypoints.websecure.address=:8443
             - --entrypoints.health.address=:9000
@@ -149,6 +151,10 @@ spec:
             - --api.dashboard=false
             - --accesslog=true
             - --log.level=INFO
+          volumeMounts:
+            - name: middlewares
+              mountPath: /etc/traefik/dynamic
+              readOnly: true
           ports:
             - name: web
               containerPort: 8000
@@ -182,6 +188,10 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: middlewares
+          configMap:
+            name: traefik-middlewares
 ---
 apiVersion: v1
 kind: Service

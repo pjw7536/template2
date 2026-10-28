@@ -166,7 +166,7 @@ route 내부 페이지는 `h-full`로 부모 높이를 따른다.
 
 ### 패턴 A) top-fixed / bottom-scroll
 ```jsx
-<div className="grid h-full min-h-0 grid-rows-[auto,1fr] gap-4">
+<div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-4">
   <div className="shrink-0">Fixed Area</div>
   <div className="min-h-0 overflow-y-auto">Scroll Area</div>
 </div>
@@ -183,9 +183,9 @@ route 내부 페이지는 `h-full`로 부모 높이를 따른다.
 
 ### 패턴 B) sticky toolbar + content
 ```jsx
-<div className="grid h-full min-h-0 grid-rows-[auto,1fr]">
+<div className="h-full min-h-0 overflow-y-auto">
   <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">Toolbar</div>
-  <div className="min-h-0 overflow-y-auto">Content</div>
+  <div>Content</div>
 </div>
 ```
 
@@ -195,8 +195,8 @@ route 내부 페이지는 `h-full`로 부모 높이를 따른다.
 
 ### 패턴 C) two-pane list-detail
 ```jsx
-<div className="grid h-full min-h-0 min-w-0 grid-cols-[360px,1fr] gap-4">
-  <section className="grid min-h-0 min-w-0 grid-rows-[auto,1fr] gap-3">
+<div className="grid h-full min-h-0 min-w-0 grid-cols-[360px_1fr] gap-4">
+  <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr] gap-3">
     <div className="shrink-0">Filters / Summary</div>
     <div className="min-h-0 overflow-y-auto">List</div>
   </section>
@@ -219,7 +219,7 @@ route 내부 페이지는 `h-full`로 부모 높이를 따른다.
 <div className="flex h-full min-h-0 flex-col gap-4">
   <section className="grid grid-cols-4 gap-4">KPI Cards</section>
 
-  <section className="grid flex-1 min-h-0 min-w-0 grid-cols-[2fr,1fr] gap-4">
+  <section className="grid flex-1 min-h-0 min-w-0 grid-cols-[2fr_1fr] gap-4">
     <div className="min-h-0 min-w-0 overflow-hidden rounded-2xl border bg-card">Main Panel</div>
     <div className="min-h-0 min-w-0 overflow-hidden rounded-2xl border bg-card">Side Panel</div>
   </section>
@@ -232,11 +232,11 @@ route 내부 페이지는 `h-full`로 부모 높이를 따른다.
 
 ### 패턴 E) table page
 ```jsx
-<div className="grid h-full min-h-0 grid-rows-[auto,1fr] gap-4">
+<div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-4">
   <div className="shrink-0">Page Header / Filters / Actions</div>
 
   <div className="min-h-0 min-w-0 overflow-hidden rounded-2xl border bg-card">
-    <div className="grid h-full min-h-0 grid-rows-[auto,1fr]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_1fr]">
       <div className="shrink-0 border-b px-4 py-3">Table Toolbar</div>
       <div className="min-h-0 min-w-0 overflow-auto">Table</div>
     </div>

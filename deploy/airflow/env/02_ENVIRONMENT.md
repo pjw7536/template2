@@ -10,9 +10,10 @@
 | `deploy/airflow/env/build.env` | build-image의 `--build-env` | 기본 이미지·APT/PIP mirror·ODBC 설치 입력 |
 | `deploy/airflow/helm/values.yaml` | check·render·deploy | 공통 자원·Executor·로그 보관 정책 |
 
-현재 저장소는 두 env 파일을 Git에서 관리합니다. 실제 비밀값을 문서나 Helm override에 복사하지 않습니다.
-env는 셸 스크립트가 아니라 데이터입니다. `source`로 읽지 말고 따옴표 없는 `KEY=값`을 사용합니다.
-값 안의 `$VAR`와 `$(...)`는 확장되지 않습니다.
+두 env 파일은 Git에서 관리합니다. 실제 비밀값은 env에만 넣고 문서나 Helm override에 복사하지 않습니다.
+
+한 줄에 하나씩, 따옴표 없는 `KEY=값`으로 적습니다.
+env는 데이터 파일이므로 `source`로 실행하지 않습니다. 값 안의 `$VAR`와 `$(...)`도 확장되지 않습니다.
 
 ## 2. 최초 설치의 키 생성
 
@@ -25,8 +26,11 @@ python3 deploy/airflow/scripts/manage.py init-secrets \
 chmod 600 deploy/airflow/env/k8s.env
 ```
 
-`init-secrets`는 `env/k8s.env`에 DB 비밀번호·관리자 비밀번호·Fernet 키·웹서버 키를 생성하고 파일 권한을 0600으로 설정합니다. 기존 키가 있으면 재생성을 거부하며 일반 설정은 보존합니다.
-다음 값을 실제 환경에 맞게 편집합니다.
+`init-secrets`는 `env/k8s.env`에 DB 비밀번호·관리자 비밀번호·Fernet 키·웹서버 키를 만들고
+파일 권한을 0600으로 설정합니다. 기존 키가 하나라도 있으면 재생성을 거부합니다.
+일반 설정은 그대로 보존합니다.
+
+키 준비 후에는 다음 값을 실제 환경에 맞게 편집합니다.
 
 - `NODE_NAME`: 노드의 `kubernetes.io/hostname` label 값. Airflow Pod와 내부 DB·local PV가 이 노드에 묶입니다.
 - `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`: 배포할 DAG 포함 이미지. 매 배포마다 고유 태그를 사용합니다.

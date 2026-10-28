@@ -2,10 +2,11 @@
 
 [전체 순서](README.md) · 이전: [03 TLS](03_TLS.md) · 다음: [05 API server](05_APISERVER_SETUP.md)
 
-`01`에서 선택한 env·context를 유지한 CP1 터미널과 Keycloak 관리자 화면을 사용합니다.
-`03`의 TLS Secret·OIDC CA·연결 검사를 완료한 뒤 진행합니다.
-새 터미널이면 [01 실행 입력](01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 준비합니다.
-Keycloak 자체 설정은 이미 완료한 상태이며 여기서는 Headlamp 전용 client만 등록합니다.
+03의 TLS Secret·OIDC CA 등록과 연결 검사를 마친 뒤 진행합니다.
+Keycloak 자체 설정은 완료되어 있어야 합니다. 이 단계에서는 Headlamp 전용 client를 등록합니다.
+
+01에서 사용한 env·context를 유지한 CP1 터미널과 Keycloak 관리자 화면을 준비합니다.
+새 터미널이면 [01 실행 입력](01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 설정합니다.
 
 **실행 위치:** 1~4번은 PC의 Keycloak 관리자 웹 화면, 5번은 CP1 터미널입니다.
 **목표:** Headlamp를 로그인 가능한 앱으로 등록하고, 사용할 사람에게 그룹을 부여한 뒤 비밀값을 Kubernetes에 전달합니다.
@@ -106,12 +107,17 @@ client ID를 변경했다면 dedicated 이름도 그 client에 맞게 표시됩�
 3. 그 사용자의 **Groups → Join Group**에서 `headlamp-admins`를 선택해 가입시킵니다.
 4. 허용할 사람마다 반복합니다. 모든 사용자의 기본 가입 그룹으로 지정하지 않습니다.
 
-현재 Keycloak의 기본 **username은 EPID(`userid`)**입니다. 사내 로그인 ID는 `loginid`,
-사람 이름은 `display_name`에 저장되므로 동명이인이나 별도 계정을 잘못 선택하지 않도록 함께 확인합니다.
-CSV로 미리 등록한 사람은 Account Console에서 첫 사내 로그인을 마친 뒤
-**Identity provider links → oidc**가 연결된 그 계정에 그룹을 부여합니다.
-Headlamp용 계정을 새로 만들거나 기존 EPID를 로그인 ID로 변경하지 않습니다.
-SDWT의 `/{SDWT}/admin` 그룹은 이 관리자 그룹을 대신하지 않습니다.
+사용자를 고를 때는 다음 세 값을 함께 확인합니다.
+
+- Keycloak username: EPID(`userid`)
+- 사내 로그인 ID: `loginid`
+- 표시 이름: `display_name`
+
+CSV로 미리 등록한 사용자는 Account Console에서 첫 사내 로그인을 마친 뒤 처리합니다.
+그 사용자의 Identity provider links에 `oidc`가 연결된 계정인지 확인하고 그룹을 부여합니다.
+
+Headlamp용 계정을 따로 만들거나 기존 EPID를 로그인 ID로 바꾸지 않습니다.
+SDWT의 `/{SDWT}/admin` 그룹은 Headlamp 관리자 그룹을 대신하지 않습니다.
 
 그룹 이름을 입력할 때 `/`는 넣지 않습니다. 2번에서 **Full group path**를 켰으므로
 로그인 정보에는 자동으로 `/headlamp-admins`라는 전체 경로가 들어갑니다.
@@ -178,9 +184,14 @@ make headlamp-oidc-client > /tmp/headlamp-client.json
 kubectl --context "$KUBE_CONTEXT" -n headlamp get secret "$HEADLAMP_OIDC_SECRET"
 ```
 
-TYPE은 `Opaque`, DATA는 `1`이어야 합니다. 등록 블록의 마지막 명령이 오류 없이 끝났는지도 확인하세요.
-`NotFound`면 같은 context·namespace에 등록했는지 확인합니다.
-이 조회는 Secret의 존재만 확인하므로 비밀값을 잘못 붙여 넣었다면 5번 블록을 다시 실행해 올바른 값으로 갱신합니다.
+정상 등록 여부는 다음 두 항목으로 확인합니다.
+
+- 등록 블록의 마지막 명령이 오류 없이 끝납니다.
+- 조회 결과의 TYPE은 `Opaque`, DATA는 `1`입니다.
+
+`NotFound`이면 등록할 때와 조회할 때의 context·namespace가 같은지 확인합니다.
+이 조회로는 비밀값의 정확성까지 알 수 없습니다.
+잘못 붙여 넣었다면 5번 블록을 다시 실행해 올바른 값으로 갱신합니다.
 
 기존 Secret에 다른 키가 있으면 배포 검사에서 거부합니다. 다른 앱의 Secret을 재사용하지 말고
 Headlamp 전용 Secret 이름을 env에 지정한 뒤 `01`의 입력을 다시 읽고 등록합니다.

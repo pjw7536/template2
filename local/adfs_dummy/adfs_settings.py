@@ -63,7 +63,6 @@ DEFAULT_INTCODE = os.getenv("DUMMY_ADFS_INTCODE", "INT000")
 DEFAULT_INTNAME = os.getenv("DUMMY_ADFS_INTNAME", "Internal")
 DEFAULT_ORIGINCOMP = os.getenv("DUMMY_ADFS_ORIGINCOMP", "LOCAL")
 DEFAULT_EMPLOYEETYPE = os.getenv("DUMMY_ADFS_EMPLOYEETYPE", "employee")
-DEFAULT_CLIENT_IP = os.getenv("DUMMY_ADFS_CLIENT_IP", "127.0.0.1")
 
 ISSUER = os.getenv("DUMMY_ADFS_ISSUER", "http://localhost:9000/adfs")
 PRIVATE_KEY_PATH = Path(os.getenv("DUMMY_ADFS_PRIVATE_KEY_PATH", "dummy_adfs_private.key")).resolve()

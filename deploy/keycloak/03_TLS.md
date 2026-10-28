@@ -2,7 +2,7 @@
 
 [시작 안내](README.md) · [서버 설치](01_SERVER_SETUP.md) · [공용 인증서 추출·검증·적용](../shared/certs/README.md)
 
-이 문서는 공개 Keycloak 사이트의 HTTPS 인증서와 접속하는 쪽의 CA 신뢰를 다룹니다.
+이 문서는 Keycloak 사이트의 HTTPS 인증서 준비와, 접속하는 PC·서버의 CA 신뢰 설정을 설명합니다.
 인증서를 배치해도 realm·IdP·mapper 설정이 만들어지는 것은 아닙니다.
 
 ## 현재 파일과 Secret
@@ -21,6 +21,7 @@
 
 [공용 인증서 안내](../shared/certs/README.md)의 **Keycloak 사이트 선택**을 사용합니다.
 PFX·P7B 추출, fullchain 구성과 검증을 한곳에서 관리합니다.
+
 Keycloak의 개인키는 TLS를 종료하는 Traefik이 사용하며 API server용 CA 파일과는 다릅니다.
 
 준비한 파일로 [서버 설치](01_SERVER_SETUP.md)를 진행하면 설치 도구가 TLS Secret을 생성합니다.
@@ -51,9 +52,10 @@ sudo update-ca-certificates
 curl -v https://etch-sso.samsungds.net/ -o /dev/null
 ```
 
-PEM 형식의 `.crt` 파일을 사용합니다. 신뢰가 필요한 CP1·Worker 각각에서 수행하며
-Worker에는 Root CA 공개 인증서만 전달하면 됩니다. 호스트 OS 신뢰 저장소 변경이
-컨테이너나 별도 Java/Python 저장소에 자동 적용되지는 않을 수 있습니다.
+PEM 형식의 `.crt` 파일을 사용합니다. 신뢰가 필요한 CP1·Worker 각각에서 수행합니다.
+Worker에는 Root CA 공개 인증서만 전달하면 됩니다.
+
+호스트 OS의 신뢰 설정이 컨테이너나 별도 Java/Python 신뢰 저장소에 자동 적용되지는 않을 수 있습니다.
 Pod 내부에서만 실패하면 해당 애플리케이션의 신뢰 저장소를 확인합니다.
 
 ## 클라이언트 신뢰: Windows 브라우저 경고 확인
@@ -71,6 +73,7 @@ IP 주소로 접속하면 이름 불일치 경고가 발생할 수 있습니다.
 
 서버가 Intermediate CA를 제공하면 PC에 중간 인증서를 반드시 따로 설치해야 하는 것은 아닙니다.
 Root CA가 없다면 회사 인증서 배포 정책에 따라 설치하고 관리 PC의 GPO 배포 여부도 확인합니다.
+
 서버 검증만으로 브라우저 경고 원인을 단정하지 말고 오류 코드와 실제 표시 인증서를 확인합니다.
 
 | 증상 | 확인 항목 |

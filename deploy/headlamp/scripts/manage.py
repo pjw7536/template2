@@ -219,13 +219,7 @@ def ingress_plan(context, values):
     spec = importlib.util.spec_from_file_location('routing', APP.parent / 'shared/ingress/routing.py')
     routing = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(routing)
-    desired = routing.preserve_namespaces(current, current, 'headlamp')
-    patch = [{'op': 'test', 'path': '/metadata/resourceVersion', 'value': current['metadata']['resourceVersion']}]
-    for index, container in enumerate(current['spec']['template']['spec']['containers']):
-        if container['name'] == 'traefik':
-            args = desired['spec']['template']['spec']['containers'][index]['args']
-            if args != container['args']:
-                patch.append({'op': 'replace', 'path': f'/spec/template/spec/containers/{index}/args', 'value': args})
+    patch = routing.namespace_patch(current, 'headlamp')
     access = {'apiVersion': 'v1', 'kind': 'List', 'items': routing.namespace_access('headlamp', current)}
     return access, patch
 

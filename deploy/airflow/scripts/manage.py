@@ -272,8 +272,92 @@ def render(settings, directory, chart, pause_new_dags=False, values_file=None):
     return flags
 
 
-def check_cluster_inputs(settings, context):
-    """배포 전 버전·노드·기존 DB와 Fernet 키의 일치 여부를 읽기 전용으로 검사한다."""
+def rendered_resources(context, rendered):
+    """최종 Helm 렌더를 클러스터에 적용하지 않고 JSON 리소스로 읽는다."""
+    stream = run(['kubectl', '--context', context, 'create', '--dry-run=client', '--validate=false',
+                  '-f', rendered, '-o', 'json'], sensitive=True)
+    resources = []
+    decoder = json.JSONDecoder()
+    while stream.strip():
+        stream = stream.lstrip()
+        item, consumed = decoder.raw_decode(stream)
+        resources.extend(item['items'] if item.get('kind') == 'List' else [item])
+        stream = stream[consumed:]
+    require(resources, 'Airflow 최종 렌더에서 리소스를 읽을 수 없습니다.')
+    return resources
+
+
+def rendered_workloads(context, rendered):
+    """최종 chart에 존재하며 재시작과 준비 대기를 지원하는 workload만 선택한다."""
+    return [f'{item["kind"].lower()}/{item["metadata"]["name"]}'
+            for item in rendered_resources(context, rendered)
+            if item['kind'] in ('Deployment', 'StatefulSet', 'DaemonSet')]
+
+
+def rendered_pods(settings, context, rendered):
+    """최종 Helm 렌더와 별도 PostgreSQL 원본에서 실제 Pod 설정을 읽는다."""
+    resources = rendered_resources(context, rendered)
+    resources.extend(manifests(settings)['postgres']['items'])
+    pods = []
+    for item in resources:
+        if item['kind'] in ('Deployment', 'StatefulSet', 'DaemonSet', 'Job'):
+            pods.append((item['metadata']['name'], item['spec']['template']['spec']))
+        elif item['kind'] == 'Pod':
+            pods.append((item['metadata']['name'], item['spec']))
+        elif item['kind'] == 'CronJob':
+            pods.append((item['metadata']['name'], item['spec']['jobTemplate']['spec']['template']['spec']))
+    require(pods, 'Airflow 최종 렌더에 검사할 Pod 설정이 없습니다.')
+    return pods
+
+
+def tolerates(taint, tolerations):
+    """Kubernetes의 effect·operator·key·value 규칙으로 taint 허용 여부를 판단한다."""
+    return any(
+        (not item.get('effect') or item['effect'] == taint['effect'])
+        and ((item.get('operator', 'Equal') == 'Exists' and (not item.get('key') or item['key'] == taint['key']))
+             or (item.get('operator', 'Equal') == 'Equal' and item.get('key') == taint['key']
+                 and item.get('value', '') == taint.get('value', '')))
+        for item in tolerations)
+
+
+def check_pod_taints(settings, context, rendered, default_nodes):
+    """override를 포함한 각 Pod의 배치 대상 노드와 toleration을 함께 확인한다."""
+    default_selector = (('kubernetes.io/hostname', settings['NODE_NAME']),)
+    cached = {default_selector: default_nodes}
+    for name, spec in rendered_pods(settings, context, rendered):
+        selector = tuple(sorted(spec.get('nodeSelector', {}).items()))
+        if selector not in cached:
+            args = ['kubectl', '--context', context, 'get', 'nodes', '-o', 'json']
+            if selector:
+                args += ['-l', ','.join(f'{key}={value}' for key, value in selector)]
+            cached[selector] = json.loads(run(args))['items']
+        candidates = [node for node in cached[selector] if not node['spec'].get('unschedulable')
+                      and any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions'])
+                      and (not spec.get('nodeName') or node['metadata']['name'] == spec['nodeName'])]
+        require(candidates, f'{name}: 최종 nodeSelector에 맞는 Ready·스케줄 가능 노드가 없습니다.')
+        require(any(all(tolerates(taint, spec.get('tolerations', []))
+                        for taint in node['spec'].get('taints', []) if taint.get('effect') in ('NoSchedule', 'NoExecute'))
+                    for node in candidates), f'{name}: 대상 노드에 Pod가 허용하지 않는 차단 taint가 있습니다.')
+
+
+def check_required_resources(settings, context, pending_tls=None):
+    """공용 리소스 변경 전에 외부 입력을 확인하며 검증된 생성 예정 TLS만 허용한다."""
+    kube = ['kubectl', '--context', context]
+    scoped = [*kube, '-n', settings['NAMESPACE']]
+    if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
+        run([*scoped, 'get', 'configmap', settings['AIRFLOW_OIDC_CA_CONFIGMAP'], '-o', 'name'])
+    for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'),
+                          ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
+        if not settings[key] or (key.startswith('INGRESS_') and settings['INGRESS_ENABLED'] != 'true'):
+            continue
+        if key == 'INGRESS_TLS_SECRET' and pending_tls and pending_tls.get('metadata') == {
+                'name': settings[key], 'namespace': settings['NAMESPACE']}:
+            continue
+        run([*(kube if resource == 'ingressclass' else scoped), 'get', resource, settings[key], '-o', 'name'])
+
+
+def check_cluster_inputs(settings, context, rendered=None):
+    """배포 전 버전·최종 Pod 배치·기존 DB와 Fernet 키를 읽기 전용으로 검사한다."""
     require(context and context.strip(), '대상 context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
@@ -283,6 +367,12 @@ def check_cluster_inputs(settings, context):
     nodes = json.loads(run([*kube, 'get', 'nodes', '-l', f'kubernetes.io/hostname={settings["NODE_NAME"]}', '-o', 'json']))['items']
     require(len(nodes) == 1, 'NODE_NAME에 대응하는 Kubernetes 노드는 정확히 하나여야 합니다.')
     require(not nodes[0]['spec'].get('unschedulable') and any(c['type'] == 'Ready' and c['status'] == 'True' for c in nodes[0]['status']['conditions']), '대상 노드가 Ready 상태가 아니거나 cordon 상태입니다.')
+    if rendered is None:
+        with tempfile.TemporaryDirectory(prefix='airflow-preflight-') as temporary:
+            render(settings, temporary, chart_path())
+            check_pod_taints(settings, context, Path(temporary) / 'airflow.yaml', nodes)
+    else:
+        check_pod_taints(settings, context, rendered, nodes)
     for name, key, setting in [('airflow-postgres', 'password', 'POSTGRES_PASSWORD'), ('airflow-fernet', 'fernet-key', 'AIRFLOW_FERNET_KEY')]:
         current = run([*scoped, 'get', 'secret', name, '--ignore-not-found', '-o', 'json'], sensitive=True)
         if current.strip():
@@ -291,22 +381,30 @@ def check_cluster_inputs(settings, context):
         elif name == 'airflow-postgres' and settings.get('POSTGRES_MODE', 'internal') == 'internal':
             pvc = run([*scoped, 'get', 'pvc', 'airflow-postgres', '--ignore-not-found', '-o', 'name'])
             require(not pvc.strip(), '기존 DB PVC가 있으나 airflow-postgres Secret이 없습니다. 실제 DB 비밀번호로 Secret을 먼저 복원하세요.')
+        elif name == 'airflow-fernet':
+            # 기존 설치 흔적이 있으면 env의 키를 새로 적용하지 않고 원래 Secret 복원을 요구한다.
+            for kind, resource in [('pvc', 'airflow-postgres'), ('secret', 'airflow-metadata'),
+                                   ('deployment', 'airflow-scheduler'), ('deployment', 'airflow-webserver'),
+                                   ('deployment', 'airflow-triggerer')]:
+                existing = run([*scoped, 'get', kind, resource, '--ignore-not-found', '-o', 'name'],
+                               sensitive=kind == 'secret')
+                require(not existing.strip(), '기존 Airflow 설치의 Fernet Secret이 없습니다. 원래 암호화 키로 airflow-fernet Secret을 먼저 복원하세요.')
 
 
 def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     """노드와 기존 Secret을 확인한 뒤 DB → Helm hook → Pod 순서로 배포한다."""
-    check_cluster_inputs(settings, context)
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
     scoped = [*kube, '-n', namespace]
-    if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
-        run([*scoped, 'get', 'configmap', settings['AIRFLOW_OIDC_CA_CONFIGMAP'], '-o', 'name'])
-    for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'), ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
-        if settings[key] and (key in ('IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME') or settings['INGRESS_ENABLED'] == 'true'):
-            run([*scoped, 'get', resource, settings[key], '-o', 'name'])
     with tempfile.TemporaryDirectory(prefix='airflow-deploy-') as temporary:
         flags = render(settings, temporary, chart, pause_new_dags, values_file)
-        run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': namespace}}))
+        check_cluster_inputs(settings, context, Path(temporary) / 'airflow.yaml')
+        check_required_resources(settings, context)
+        workloads = rendered_workloads(context, Path(temporary) / 'airflow.yaml')
+        existing_namespace = run([*kube, 'get', 'namespace', namespace, '--ignore-not-found', '-o', 'name'])
+        if not existing_namespace.strip():
+            # 기존 Namespace의 보안 정책과 운영 metadata는 수정하지 않는다.
+            run([*kube, 'create', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': namespace}}))
         run([*scoped, 'apply', '--server-side', '--field-manager=airflow-deploy', '-f', '-'], data=json.dumps(secret_manifest(settings)), sensitive=True)
         print('Secret 확인 완료. 스토리지와 PostgreSQL을 적용합니다.', flush=True)
         run([*kube, 'apply', '-f', Path(temporary) / 'storage.json'])
@@ -317,9 +415,10 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
         # post-install migration hook은 --wait와 함께 사용하면 Pod의 DB 대기와 교착한다.
         run(['helm', 'upgrade', '--install', 'airflow', chart, '--kube-context', context, '--timeout', '10m', *flags])
         # envFrom Secret 변경은 자동 rollout되지 않으므로 배포마다 명시적으로 재시작한다.
-        run([*scoped, 'rollout', 'restart', 'deployment/airflow-scheduler', 'deployment/airflow-webserver', 'deployment/airflow-triggerer'])
-        for component in ('scheduler', 'webserver', 'triggerer'):
-            run([*scoped, 'rollout', 'status', f'deployment/airflow-{component}', '--timeout=600s'])
+        if workloads:
+            run([*scoped, 'rollout', 'restart', *workloads])
+        for workload in workloads:
+            run([*scoped, 'rollout', 'status', workload, '--timeout=600s'])
     print('Airflow 배포 완료. DAG 활성 상태와 기존 scheduler의 중복 실행 여부를 확인하세요.')
 
 

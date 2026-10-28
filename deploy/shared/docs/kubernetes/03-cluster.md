@@ -2,8 +2,10 @@
 
 [가이드 홈](README.md) · 이전: [서버 준비](02-servers.md) · 다음: [앱 준비](04-prerequisites.md)
 
-**새 검증 환경의 구축 순서입니다.** 설치 도구·버전·CNI가 확정되지 않아 init/join 명령은 아직 제공하지 않습니다.
-기존 클러스터에서는 아래 상태 확인 후 04장으로 이동합니다.
+새 검증 환경에 클러스터를 만드는 순서입니다.
+설치 도구·버전·CNI가 확정되지 않았으므로 `init`·`join` 명령은 아직 제공하지 않습니다.
+
+기존 클러스터를 사용한다면 아래 상태만 확인하고 04장으로 이동합니다.
 
 ## 구축 순서 — 인프라 담당자
 
@@ -32,8 +34,11 @@ kubectl --context "$KUBE_CONTEXT" -n kube-system get pods -o wide
 kubectl --context "$KUBE_CONTEXT" -n kube-system get service kube-dns
 ```
 
-API의 `ok`, 노드의 `Ready`, 상시 실행 시스템 Pod의 준비 상태를 확인합니다. 권한 오류는 서비스 장애와 구별합니다.
-CNI 준비 전의 NotReady를 이유로 init을 반복하거나, 이미 등록된 노드에 join을 반복하지 않습니다.
+API 응답이 `ok`인지, 노드가 `Ready`인지, 상시 실행 시스템 Pod가 준비됐는지 확인합니다.
+권한 부족으로 조회가 실패한 경우와 서비스 자체의 장애를 구별합니다.
+
+CNI 설치 전에는 노드가 NotReady일 수 있습니다. 이를 이유로 초기화를 반복하지 않습니다.
+이미 등록된 노드에 `join`을 다시 실행하지도 않습니다.
 
 ## 인수 항목
 

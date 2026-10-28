@@ -79,6 +79,7 @@ k8s-render-local:
 	kubectl kustomize local/ftp/k8s >/dev/null
 
 k8s-render-server:
+	kubectl kustomize deploy/shared/ingress >/dev/null
 	kubectl kustomize deploy/keycloak/k8s >/dev/null
 	kubectl kustomize deploy/portal/k8s/jobs/keycloak-client >/dev/null
 	kubectl kustomize deploy/portal/k8s/overlays/prod >/dev/null
@@ -135,6 +136,18 @@ env-profile-key-check:
 # 선택한 서버 앱은 local 파일과 다른 앱의 env 없이 검사합니다.
 server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
+
+# 공용 진입점은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다.
+.PHONY: ingress-check ingress-up ingress-connect
+ingress-check:
+	python3 deploy/shared/ingress/manage.py check --context "$(KUBE_CONTEXT)" --vip-backends "$(VIP_BACKENDS)"
+
+ingress-up:
+	python3 deploy/shared/ingress/manage.py up --context "$(KUBE_CONTEXT)" --vip-backends "$(VIP_BACKENDS)"
+
+# Portal overlay의 namespace·권한을 먼저 적용한 뒤 감시 목록만 연결합니다.
+ingress-connect:
+	python3 deploy/shared/ingress/manage.py connect --context "$(KUBE_CONTEXT)" --app "$(APP)"
 
 # Kubernetes 운영 API의 필수값을 확인합니다. 선택 업무 연동은 별도 확인합니다.
 prod-profile-env-check:
