@@ -7,14 +7,14 @@ Portal 최초 배포라면 [Portal 입력 순서](../../../portal/README.md)부�
 
 ```text
 local/
-├── portal/env/               # 외부 PC API·Web·MinIO와 K8s 차이
+├── portal/env/               # 외부 PC API·Web과 K8s 차이
 └── shared/env/k8s.env        # 전체 로컬 실행 입력
 
 deploy/
 ├── keycloak/env/             # prod.env
 ├── portal/env/
 │   ├── test/                 # CI API 자동 테스트
-│   └── prod/                 # API·Web·MinIO 통합 .env
+│   └── prod/                 # API·Web 통합 .env
 ├── airflow/env/              # k8s.env·build.env 일반 설정
 └── monitoring/env/           # k8s.env 일반 설정
 ```
@@ -25,7 +25,7 @@ deploy/
 
 ## 무엇을 어디에 적나요?
 
-Keycloak·Portal API/MinIO·Airflow는 해당 env에 일반 설정과 비밀번호·토큰·서명 키·인증 헤더를
+Keycloak·Portal API·MinIO·Airflow는 해당 env에 일반 설정과 비밀번호·토큰·서명 키·인증 헤더를
 함께 넣고 비공개 Git 저장소에서 관리합니다. Portal Web 설정은 브라우저에 공개되므로 비밀값을 넣지 않습니다.
 도구는 지정한 파일만 읽으며 옆에 있는 다른 파일을 자동으로 합치지 않습니다.
 
@@ -45,14 +45,15 @@ env를 Secret으로 등록하는 배포 방식과 Headlamp·Monitoring의 기존
 
 | 설정 | 관리 위치 | 읽는 대상 |
 | --- | --- | --- |
-| 로컬 Portal | `local/portal/env/<서비스>.env` | 외부 PC API·Web·MinIO |
+| 로컬 Portal | `local/portal/env/<서비스>.env` | 외부 PC API·Web |
+| 로컬 MinIO | `local/minio/env/minio.env` | 공용 저장소와 개발용 client 입력 |
 | 로컬 Airflow | `local/shared/scripts/k8s_config.py` | 외부 PC Airflow |
 | Keycloak 관리자·주소·전용 DB | `deploy/keycloak/env/prod.env` 첫 부분 | Keycloak, 전용 PostgreSQL, 관리 Job |
 | 사내 OIDC 접속 정보 | 같은 파일의 `CORP_OIDC_*` 부분 | 사내 OIDC 설정 Job만 |
 | Portal 서버·DB·로그인 | `deploy/portal/env/<환경>/api.env` | API, migration, Django collectstatic |
 | Portal client 등록 정보 | 같은 API 파일의 `OIDC_*`와 `FRONTEND_BASE_URL` | client 등록 Job에 필요한 항목만 전달 |
 | 브라우저 공개 설정 | `deploy/portal/env/<환경>/web.env` | Web |
-| MinIO 설정 | `deploy/portal/env/<환경>/minio.env` | MinIO, 연결에 필요한 API 설정 |
+| MinIO 설정 | `deploy/minio/env/prod.env` | 독립 공용 MinIO 서버·이미지·노드·저장소·Ingress. 앱별 접근 키는 각 앱 env |
 | Airflow Kubernetes 설정 | `deploy/airflow/env/k8s.env` | 전용 배포 도구 → Airflow·PostgreSQL Secret |
 | Airflow 이미지 빌드 | `deploy/airflow/env/build.env` | 사내 의존성·DAG 이미지 빌드 |
 | Kubernetes Monitoring | `deploy/monitoring/env/k8s.env` | 노드·local PV·이미지 미러·Grafana Secret 참조 |
@@ -179,7 +180,7 @@ Pod YAML에서 같은 값을 다시 덮어쓰지 않습니다.
 ## 관리 규칙
 
 - 새로운 환경은 실제 필요할 때 추가하며, profile 사이에 숨은 상속을 만들지 않습니다.
-- Keycloak·Portal API/MinIO·Airflow credential은 해당 env에 함께 저장합니다. Headlamp·Monitoring·FTP는 위 별도 입력 방식을 따릅니다. 인증서·개인키 파일은 Git에서 제외합니다.
+- Keycloak·Portal API·MinIO·Airflow credential은 해당 env에 함께 저장합니다. Headlamp·Monitoring·FTP는 위 별도 입력 방식을 따릅니다. 인증서·개인키 파일은 Git에서 제외합니다.
 - 앱 설정을 바꿀 때 다른 앱 전체 Secret을 가져오지 말고 연결에 필요한 값만 전달합니다.
 - Secret 변경만으로 기존 PostgreSQL 비밀번호나 Keycloak 관리자 비밀번호가 변경되지는 않습니다.
 - 환경변수 검사 회귀 테스트는 `node --test apps/tooling/tests/environment.test.cjs`로 실행합니다.

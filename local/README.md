@@ -50,7 +50,7 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 | 서비스 | 접속 주소 | 로그인·계정 |
 | --- | --- | --- |
 | Portal | http://localhost:8080 | `90000001 / dummy-user-change-me` (내부 팀 계정) |
-| MinIO 콘솔 | http://localhost:8080/minio-console/ | `local/portal/env/minio.env`의 MinIO 계정 |
+| MinIO 콘솔 | http://localhost:8080/minio-console/ | `local/minio/env/minio.env`의 MinIO 계정 |
 | Keycloak | http://localhost:8180 | `local-keycloak-admin / local-keycloak-admin-change-me` |
 | Airflow | http://localhost:8080/airflow | Keycloak 로그인. Portal 테스트 계정과 동일 |
 | FTP | localhost:6380, passive 8076–8079 | 사용자 `ftpuser` |
@@ -149,11 +149,12 @@ DB 컨테이너가 재생성되어 IP가 바뀌면 `make dev`가 Service/Endpoin
 ## 설정 합성과 앱 경계
 
 로컬 Kustomize 집계 진입점은 [shared/k8s](shared/k8s/kustomization.yaml)입니다.
-`portal/k8s`를 직접 렌더하면 Portal과 MinIO만 포함됩니다. 전체 실행은 계속 `make dev`를 사용합니다.
+`portal/k8s`는 Portal만, `minio/k8s`는 공용 저장소만 포함합니다. 전체 실행은 계속 `make dev`를 사용합니다.
 
 | 소유 영역 | 배포 입력·도구 |
 | --- | --- |
-| `portal` | API·Web·MinIO·Ingress·migration·MinIO 스토리지 |
+| `portal` | API·Web·Ingress·migration |
+| `minio` | 공용 MinIO·Ingress·초기화 Job·MinIO 스토리지 |
 | `keycloak` | Keycloak Deployment·Service·realm ConfigMap |
 | `headlamp` | Headlamp 조회 UI·RBAC·`scripts/headlamp-ui.sh` |
 | `adfs_dummy` | mock 소스·이미지·Kubernetes Deployment·Service |

@@ -5,7 +5,6 @@ resources:
   - ../../base
   - namespace.yaml
   - ingress.yaml
-  - minio-console-ingress.yaml
   - traefik-rbac.yaml
 images:
   - name: portal-api

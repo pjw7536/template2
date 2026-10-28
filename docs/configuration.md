@@ -9,11 +9,13 @@ Portal의 환경 선택과 사내 배포 입력 순서는 [Portal 환경설정](
 
 | 파일 | 사용처 | 역할 |
 | --- | --- | --- |
-| `local/portal/env/<service>.env` | 로컬 | API/Web/MinIO 설정, credential과 dummy 외부계 연결 |
+| `local/portal/env/<service>.env` | 로컬 | API/Web 설정, credential과 dummy 외부계 연결 |
 | `deploy/portal/env/test/api.env` | API test | 임시 PostgreSQL, 테스트 credential과 외부 호출 차단 설정 |
 | `local/portal/env/api-k8s.env` | 로컬 Kubernetes | local API 입력에 한 번만 적용하는 명시적 실행 차이 |
 | `deploy/portal/env/prod/api.env` | 사내 Kubernetes | Portal API 및 Keycloak client 등록 입력, Git 관리 |
-| `deploy/portal/env/prod/web.env`, `minio.env` | 사내 Kubernetes | 브라우저 공개 설정과 파일 저장소 계정, 해당 env에서 관리 |
+| `deploy/portal/env/prod/web.env` | 사내 Kubernetes | Portal 브라우저 공개 설정 |
+| `deploy/minio/env/prod.env` | 사내 Kubernetes | 공용 저장소 이미지·노드·PVC·Ingress·서버 계정 |
+| `local/minio/env/minio.env` | 로컬 | 공용 저장소와 개발용 client 입력 |
 | `deploy/keycloak/env/prod.env` | 사내 Keycloak | 서버 기동 및 선택적인 사내 OIDC 설정, Git 관리 |
 | `deploy/airflow/env/k8s.env`, `local/shared/scripts/k8s_config.py` | Airflow | 앱별 실행 환경 설정 |
 | `deploy/monitoring/env/k8s.env` | Monitoring | Kubernetes 노드·local PV·이미지 미러·Grafana Secret·공용 Ingress 입력 |
@@ -77,7 +79,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 | 공용 RAG / Assistant | `RAG_SEARCH_URL`, `RAG_INSERT_URL`, `RAG_DELETE_URL`, `RAG_INDEX_INFO_URL`, `RAG_INDEX_DEFAULT`, `RAG_INDEX_EMAILS`, `RAG_INDEX_LIST`, `RAG_PERMISSION_GROUPS`, `RAG_PUBLIC_GROUP`, `RAG_HEADERS`, `RAG_CHUNK_FACTOR`, `RAG_TIMEOUT_SECONDS`, `RAG_NUM_DOCS`, `ASSISTANT_*` | Emails와 Assistant가 공용 `RAG_*` provider 계약을 사용하고, Assistant 자체 prompt/runtime만 `ASSISTANT_*`를 사용 |
 | OpenWebUI | `OPENWEBUI_*` | 일반 Assistant·Email RAG 답변, 대화방 제목, Observer 분석, `ct_process_comment` contents 요약 생성 |
 | `MAIL_API_*` / Mail API | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID` | 외부 Mail API 전송. 환경변수는 Django 시작 시 settings로 한 번 해석 |
-| MinIO | `MINIO_*` | 메일 asset storage |
+| MinIO | `MINIO_*` | 공용 객체 저장소. 운영 endpoint는 `http://minio.minio.svc.cluster.local:9000`, 앱별 키는 해당 앱 env |
 | `VITE_*` / Web | `VITE_BACKEND_URL`, `BACKEND_API_URL`, `VITE_SITE_URL` | 브라우저와 container 내부 Django API URL |
 | `VITE_PORTAL_*` / Web | `VITE_PORTAL_PMX_URL`, `VITE_PORTAL_MOSAIC_URL`, `VITE_PORTAL_CONFLUENCE_URL` | Portal 전역 네비게이션 외부 링크. 비어 있으면 메뉴 또는 화면에서 숨김/안내 |
 | Spider 외부 링크 / Web | `VITE_DEFECT_SPIDER_URL` | `/spider` 허브의 Defect Spider 외부 링크. 비어 있으면 카드가 비활성 안내 상태로 표시 |

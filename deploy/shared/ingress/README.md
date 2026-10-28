@@ -66,13 +66,15 @@ make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 | --- | --- | --- | --- |
 | etch-sso | keycloak | etch-sso.samsungds.net | keycloak-tls |
 | headlamp | headlamp | etch.samsungds.net | headlamp-tls |
-| tailwind-internal | portal, minio-console | etch.samsungds.net | portal-tls |
+| tailwind-internal | portal | etch.samsungds.net | portal-tls |
+| minio | minio-api, minio-console | etch.samsungds.net | minio-tls |
 | airflow | airflow-ingress | etch.samsungds.net | airflow-tls |
 | monitoring | monitoring-grafana, monitoring-prometheus, monitoring-alertmanager | etch.samsungds.net | monitoring-tls |
 
 Keycloak은 `https://etch-sso.samsungds.net`, Headlamp는 `https://etch.samsungds.net/headlamp/`로 접속합니다.
 Airflow 공개 주소는 `https://etch.samsungds.net/airflow`입니다.
-Portal은 `/`, API는 `/api`, 로그인 callback은 `/auth`, 파일은 `/minio`, MinIO 콘솔은 `/minio-console/`를 사용합니다.
+Portal은 `/`, API는 `/api`, 로그인 callback은 `/auth`를 사용합니다.
+독립 MinIO 앱은 `/minio/`와 `/minio-console/`를 자기 namespace의 Service로 연결합니다.
 Monitoring 화면은 `/grafana/`, `/prometheus/`, `/alertmanager/`이며 각 앱이 경로를 직접 처리합니다.
 인증만 `etch-sso.samsungds.net`으로 분리하고 나머지 웹 서비스는 같은 업무 도메인을 사용합니다.
 Airflow는 `headlamp/headlamp-tls`의 인증서를 자기 namespace의 `airflow-tls`로 최초 복사해 사용합니다.
@@ -131,16 +133,17 @@ MinIO 콘솔 전용 Ingress는 `minio-console@file`을 참조합니다.
 `/minio-console`을 `/minio-console/`로 리다이렉트하고, 요청 접두사를 제거해 MinIO:9001로 전달합니다.
 콘솔의 WebSocket도 Traefik이 처리합니다. Kubernetes CRD나 추가 RBAC는 필요하지 않습니다.
 
-기존 서버에 MinIO만 추가할 때는 [단독 설치의 Traefik 설정 단계](../../portal/MINIO_SETUP.md#5-공용-traefik에-minio-경로-설정)에 따라
-ConfigMap을 생성하고 실행 중인 controller의 file provider·volume·namespace 감시만 수정합니다.
-이 절차는 Keycloak·Portal 전체를 재배포하지 않습니다.
+MinIO만 설치할 때는 [독립 설치 안내](../../minio/README.md)를 따릅니다.
+`minio-up`은 Portal 없이 자기 namespace의 권한·감시 범위만 추가합니다.
+파일 경로 `/minio/`는 `minio-api@file` middleware로 접두사를 제거하고 MinIO:9000으로 전달합니다.
+두 경로 모두 Portal Nginx를 거치지 않습니다.
 
 정규 Keycloak 재배포가 필요한 경우에는 기존 운영 env·인증서·VIP 설정을 유지하는
 `make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT"`이 공용 controller와 ConfigMap도 함께 반영합니다.
 이 경우에는 [Keycloak 배포 절차](../../keycloak/README.md)를 따릅니다.
 공용 원본을 직접 apply하면 기존 namespace 감시·VIP 배치가 기본값으로 바뀔 수 있으므로 사용하지 않습니다.
 
-로컬은 `make k8s-rebuild APP=portal`이 공용 ConfigMap과 Traefik 설정을 함께 적용합니다.
+로컬은 `make k8s-rebuild APP=portal`이 공용 ConfigMap과 Traefik 설정을 함께 적용합니다. MinIO만 갱신할 때는 `APP=minio`를 사용합니다.
 
 ConfigMap 이름에는 내용 해시가 포함되어 설정 변경 시 Deployment가 새 ConfigMap을 마운트합니다.
 앱별 Ingress의 TLS·host와 namespace 감시 범위는 기존 앱 계약을 따릅니다.

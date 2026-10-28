@@ -64,7 +64,7 @@ def resources(relative):
     """저장소 원본 overlay를 렌더합니다."""
     result = [item for item in yaml.safe_load_all(run(['kubectl', 'kustomize', ROOT / relative], quiet=True)) if item]
     config = settings()
-    replacements = {'minio/minio:latest': config['LOCAL_MINIO_IMAGE'], 'minio/mc:latest': config['LOCAL_MINIO_CLIENT_IMAGE']}
+    replacements = {'bitnamilegacy/minio:2025.7.23-debian-12-r5': config['LOCAL_MINIO_IMAGE'], 'bitnamilegacy/minio-client:2025.7.21-debian-12-r3': config['LOCAL_MINIO_CLIENT_IMAGE']}
     def replace(value):
         if isinstance(value, dict):
             for key, item in value.items():
@@ -236,9 +236,30 @@ def portal_secrets():
     """기동과 env 갱신이 같은 최종 API 설정을 사용합니다."""
     run(['bash', ROOT / 'local/portal/scripts/build-local-api-env.sh', RUNTIME / 'api.env'], sensitive=True)
     for name, values in [('api-env', read_env(RUNTIME / 'api.env')),
-                         ('web-env', read_env(ROOT / 'local/portal/env/web.env')),
-                         ('minio-env', read_env(ROOT / 'local/portal/env/minio.env'))]:
+                         ('web-env', read_env(ROOT / 'local/portal/env/web.env'))]:
         secret('tailwind-local', name, values)
+
+
+def minio_secrets():
+    """공용 저장소의 로컬 서버 입력을 Portal Secret과 분리한다."""
+    secret('tailwind-local', 'minio-env', read_env(ROOT / 'local/minio/env/minio.env'))
+
+
+def minio_up():
+    """기존 PVC·데이터 경로를 유지하며 로컬 MinIO만 갱신한다."""
+    minio_secrets()
+    shared = resources('local/shared/k8s')
+    apply([item for item in shared if (item['kind'] == 'ConfigMap' and 'paths.yaml' in item.get('data', {})) or
+           (item['kind'] == 'Deployment' and item['metadata']['name'] == 'traefik')])
+    rollout('tailwind-local', 'deployment/traefik')
+    items = resources('local/minio/k8s')
+    apply([item for item in items if item['kind'] != 'Job'])
+    run([*KUBE, '-n', 'tailwind-local', 'rollout', 'restart', 'deployment/minio'])
+    rollout('tailwind-local', 'deployment/minio')
+    existing = run([*KUBE, '-n', 'tailwind-local', 'get', 'job', 'minio-init', '--ignore-not-found', '-o', 'name'], quiet=True)
+    if not existing.strip():
+        apply([item for item in items if item['kind'] == 'Job'])
+    wait_job('minio-init')
 
 
 def keycloak_secrets(creds):
@@ -252,6 +273,7 @@ def keycloak_secrets(creds):
 def local_stack_up(creds, restart_mock=False):
     """앱별 원본을 집계하여 의존 서비스·migration·Portal 순서로 실행합니다."""
     portal_secrets()
+    minio_secrets()
     keycloak_secrets(creds)
     items = resources('local/shared/k8s')
     app_names = {'api', 'web', 'edge-nginx'}
@@ -380,7 +402,7 @@ def main():
     os.environ['PATH'] = str(ROOT / '.tools/bin') + os.pathsep + os.environ['PATH']
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('check', 'up', 'rebuild', 'down', 'status', 'health', 'smoke', 'grafana', 'prometheus'))
-    parser.add_argument('--app', choices=('portal', 'mock', 'airflow', 'ftp', 'monitoring', 'keycloak'), default='portal')
+    parser.add_argument('--app', choices=('portal', 'mock', 'airflow', 'ftp', 'monitoring', 'keycloak', 'minio'), default='portal')
     args = parser.parse_args()
     config = settings()
     if args.command == 'check':
@@ -415,6 +437,8 @@ def main():
                 ftp_up(creds)
             elif args.app == 'monitoring':
                 monitoring_up(creds)
+            elif args.app == 'minio':
+                minio_up()
             else:
                 dependency_up(args.app)
     elif args.command == 'down':

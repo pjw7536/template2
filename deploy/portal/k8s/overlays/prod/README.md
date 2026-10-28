@@ -15,7 +15,7 @@ Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
 ### Portal worker 계획과 확인 필요 항목
 
 - 현재 등록된 Worker는 공통 현황의 `khplane01w09`, `khplanew01`입니다. Portal 배치 위치는 자원·스토리지 확인 후 정합니다.
-- MinIO와 초기화 Job은 `khplanew01`(`10.172.40.117`)에 고정합니다. `khplane01w09`는 Keycloak 전용으로 유지합니다. MinIO PVC/PV도 배포 대상 Worker에서 사용할 수 있어야 합니다.
+- MinIO는 [독립 앱](../../../../minio/README.md)으로 배포합니다. 이 overlay는 MinIO 리소스를 생성하지 않습니다.
 - `khinfow01`(12 vCPU, 72GiB memory, 1TB disk)은 과거 통합 시험 계획이며 2026-09-16 사용자 제공 노드 목록에는 없습니다.
 - 과거 예정 주소를 현재 배포 노드로 사용하지 않습니다. 사용할 Worker의 Ready·자원·스토리지·Pod/Service 통신을 확인합니다.
 - 업무 공개 DNS는 `etch.samsungds.net`으로 확정됐습니다. Portal 배포 범위, TLS 준비 상태, StorageClass 또는 local PV 경로와 용량은 아직 미확정입니다.
@@ -24,15 +24,11 @@ Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
 ## 반드시 확정할 값
 
 - `kustomization.yaml`: API/Web 내부 registry와 immutable image tag. `migrate/kustomization.yaml`도 같은 API 이미지로 맞춤
-- `deploy/portal/k8s/base/minio.yaml`: [고정 MinIO·mc 이미지](../../../MINIO_SETUP.md#1-대상과-저장소-확인)의 반입·Worker pull 가능 여부. 사내 registry를 사용하면 해당 image 주소도 맞춤
 - `ingress.yaml`: 설정된 `etch.samsungds.net`과 같은 도메인의 TLS Secret 준비
-- `minio-console-ingress.yaml`: 같은 DNS host·TLS Secret을 사용하는 MinIO 콘솔 직접 라우팅. [공용 middleware 준비](../../../../shared/ingress/README.md#하위-경로-middleware)가 필요합니다.
 - `deploy/keycloak/k8s/server/stack.yaml`: `etch-sso.samsungds.net` TLS Secret
 - `api-env` Secret: Portal용 외부 PostgreSQL, Keycloak OIDC, Django 보안과 외부 연동 설정
 - `keycloak-runtime` Secret: Keycloak 관리자, PostgreSQL과 Keycloak 공개 URL
 - `web-env` Secret: 브라우저에 공개 가능한 Portal URL과 runtime 설정
-- `minio-env` Secret: MinIO credential과 공개 URL
-- `minio-data` PVC: 사내 StorageClass와 용량
 - API 업무 파일 데이터: 사내 NFS/CSI 기준 read-only PVC와 `/data/<domain>` mount
 
 기본 API 원본의 업무 파일 볼륨은 `emptyDir`입니다. 영속 데이터가 필요한 경로는 실제 PVC로
@@ -124,7 +120,7 @@ Keycloak은 [전용 안내](../../../../keycloak/README.md)의 `keycloak-check/u
 기존 정상 스택을 Portal 배포 때문에 정적 YAML로 다시 적용하지 않습니다.
 
 Portal 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension을 DB 담당자에게 확인합니다.
-[Portal 입력 안내](../../../README.md)의 api/web/minio/client 검사를 모두 통과한 뒤
+[Portal 입력 안내](../../../README.md)의 api/web/client 검사를 모두 통과한 뒤
 [Portal client 등록](../../jobs/keycloak-client/README.md)을 수행합니다.
 
 ### 2. Namespace·Secret·TLS
@@ -133,7 +129,6 @@ Portal 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension을 DB 담�
 kubectl --context "$KUBE_CONTEXT" apply -f deploy/portal/k8s/overlays/prod/namespace.yaml
 make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
 make k8s-env APP=portal PROFILE=prod COMPONENT=web KUBE_CONTEXT="$KUBE_CONTEXT"
-make k8s-env APP=portal PROFILE=prod COMPONENT=minio KUBE_CONTEXT="$KUBE_CONTEXT"
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get secret portal-tls --ignore-not-found
 ```
 
@@ -171,17 +166,13 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal logs job/portal-migrate -
 
 ### 4. 앱과 라우팅 적용
 
-MinIO 최초 설치는 아래 overlay 적용으로 생성합니다. 이전 `minio-init`이 있고 초기화 명령을
-변경하거나 실패한 초기화를 다시 실행할 때는 먼저 [초기화 재시도 절차](../../../MINIO_SETUP.md#초기화-재시도와-명령-변경)로
-종료된 Job을 재생성한 뒤 진행합니다. Pod template 변경은 기존 Job에 직접 apply할 수 없습니다.
+공용 MinIO는 독립 설치·연결을 마친 상태에서 아래 Portal 리소스만 적용합니다.
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" apply -k deploy/portal/k8s/overlays/prod
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/api --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/web --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/edge-nginx --timeout=10m
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/minio --timeout=10m
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal wait --for=condition=complete job/minio-init --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get pods,pvc,ingress
 ```
 
@@ -201,7 +192,6 @@ Keycloak login/callback/logout, MinIO 시험 파일 업로드·다운로드를 �
 | --- | --- | --- | --- |
 | `api.env` | `api` | `api`, `edge-nginx` | API health·로그인, collectstatic 초기화 완료 |
 | `web.env` | `web` | `web` | 브라우저 runtime 설정·API 주소·화면 링크 |
-| `minio.env` | `minio` | `minio` | 콘솔 로그인·파일 업로드·다운로드 |
 
 각 파일에 대해 `make env-check APP=portal PROFILE=prod COMPONENT=<표의 값>`을 통과한 뒤
 같은 COMPONENT와 `KUBE_CONTEXT`로 `make k8s-env`를 실행합니다.
@@ -217,7 +207,7 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout restart deploymen
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/edge-nginx --timeout=10m
 ```
 
-Web 또는 MinIO 설정을 변경한 경우에는 해당 블록만 실행합니다.
+Web 설정을 변경한 경우에는 다음 블록만 실행합니다. MinIO 서버 설정은 독립 앱의 `make minio-up`을 사용합니다.
 
 ```bash
 make env-check APP=portal PROFILE=prod COMPONENT=web
@@ -226,12 +216,6 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout restart deploymen
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/web --timeout=10m
 ```
 
-```bash
-make env-check APP=portal PROFILE=prod COMPONENT=minio
-make k8s-env APP=portal PROFILE=prod COMPONENT=minio KUBE_CONTEXT="$KUBE_CONTEXT"
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout restart deployment/minio
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/minio --timeout=10m
-```
 
 DB·Keycloak client·MinIO API 계정의 비밀번호를 바꾼다면 해당 서비스의 실제 계정도 먼저 맞춥니다.
 Secret 등록과 Pod 재시작만으로 외부 계정이 변경되지는 않습니다.

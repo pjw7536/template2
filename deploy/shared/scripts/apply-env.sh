@@ -5,6 +5,7 @@ source "${ROOT_DIR}/deploy/shared/scripts/env-lib.sh"
 APP="${1:?사용법: apply-env.sh <keycloak|portal> <환경> [server|oidc|api|client|web|minio] [env 파일]}"
 PROFILE="${2:?환경 이름이 필요합니다.}"
 COMPONENT="${3:-server}"
+[[ "$APP/$COMPONENT" != portal/minio ]] || { echo 'MinIO는 독립 앱입니다. make minio-up을 사용하세요.' >&2; exit 1; }
 [[ "$APP/$COMPONENT" != portal/server ]] || COMPONENT=api
 case "$APP/$PROFILE" in
   keycloak/prod|portal/local|portal/prod) ;;
@@ -44,7 +45,7 @@ case "$APP/$COMPONENT" in
   portal/client)
     namespace=etch-sso; secret=portal-keycloak-client
     keys=(OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_ISSUER OIDC_REDIRECT_URI FRONTEND_BASE_URL) ;;
-  portal/api|portal/web|portal/minio)
+  portal/api|portal/web)
     namespace=tailwind-internal
     [[ "$PROFILE" != local ]] || namespace=tailwind-local
     secret="$COMPONENT-env"; keys=("${!ENV_VALUES[@]}") ;;

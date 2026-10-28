@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - api.yaml
   - web.yaml
-  - minio.yaml
   - edge-nginx.yaml
 configMapGenerator:
   - name: edge-nginx-config

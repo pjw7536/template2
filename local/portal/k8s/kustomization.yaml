@@ -4,13 +4,10 @@ namespace: tailwind-local
 resources:
   - ../../../deploy/portal/k8s/base
   - ingress.yaml
-  - minio-console-ingress.yaml
-  - storage.yaml
 patches:
   - path: api-local-patch.yaml
   - path: web-local-patch.yaml
   - path: edge-local-patch.yaml
-  - path: minio-local-patch.yaml
 images:
   - name: portal-api
     newName: tailwind-api

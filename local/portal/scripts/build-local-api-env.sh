@@ -17,7 +17,7 @@ for key in "${!ENV_VALUES[@]}"; do
   API_ENV_VALUES["$key"]="${ENV_VALUES[$key]}"
 done
 ENV_VALUES=()
-load_env "${ROOT_DIR}/local/portal/env/minio.env"
+load_env "${ROOT_DIR}/local/minio/env/minio.env"
 for key in MINIO_ACCESS_KEY MINIO_SECRET_KEY; do
   API_ENV_VALUES["$key"]="${ENV_VALUES[$key]:-}"
 done

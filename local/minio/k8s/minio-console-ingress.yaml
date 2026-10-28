@@ -4,7 +4,7 @@ metadata:
   name: minio-console
   labels:
     app.kubernetes.io/name: minio
-    app.kubernetes.io/part-of: tailwind-portal
+    app.kubernetes.io/part-of: shared-storage
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: minio-console@file
 spec:

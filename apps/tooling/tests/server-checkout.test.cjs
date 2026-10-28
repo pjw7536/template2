@@ -28,7 +28,7 @@ function fixture(t) {
   // 배포 env 경로를 보존하되 credential 값은 테스트 입력으로 대체합니다.
   for (const relative of ['airflow/env/k8s.env', 'airflow/env/build.env', 'monitoring/env/k8s.env',
     'headlamp/env/k8s.env', 'keycloak/env/prod.env', 'portal/env/prod/api.env',
-    'portal/env/prod/web.env', 'portal/env/prod/minio.env', 'portal/env/test/api.env']) {
+    'portal/env/prod/web.env', 'minio/env/prod.env', 'portal/env/test/api.env']) {
     const input = fs.readFileSync(path.join(root, 'deploy', relative), 'utf8');
     const sanitized = input.split('\n').map(line => {
       const key = line.split('=')[0];

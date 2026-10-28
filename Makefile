@@ -11,6 +11,7 @@ PROD_API_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/api.env
 KIND_BIN ?= $(CURDIR)/.tools/bin/kind
 APP ?= keycloak
 PROFILE ?= prod
+MINIO_ENV ?= $(CURDIR)/deploy/minio/env/prod.env
 COMPONENT ?= server
 ENV_APP ?= all
 ENV_PROFILE ?= all
@@ -71,6 +72,7 @@ k8s-render: k8s-render-local k8s-render-server
 
 k8s-render-local:
 	kubectl kustomize local/shared/k8s >/dev/null
+	kubectl kustomize local/minio/k8s >/dev/null
 	kubectl kustomize local/portal/k8s >/dev/null
 	kubectl kustomize local/keycloak/k8s >/dev/null
 	kubectl kustomize local/headlamp/k8s >/dev/null
@@ -80,6 +82,7 @@ k8s-render-local:
 
 k8s-render-server:
 	kubectl kustomize deploy/shared/ingress >/dev/null
+	kubectl kustomize deploy/minio/k8s >/dev/null
 	kubectl kustomize deploy/keycloak/k8s >/dev/null
 	kubectl kustomize deploy/portal/k8s/jobs/keycloak-client >/dev/null
 	kubectl kustomize deploy/portal/k8s/overlays/prod >/dev/null
@@ -136,6 +139,16 @@ env-profile-key-check:
 # 선택한 서버 앱은 local 파일과 다른 앱의 env 없이 검사합니다.
 server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
+
+.PHONY: minio-check minio-up minio-render
+minio-check:
+	python3 deploy/minio/scripts/manage.py check --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
+
+minio-up:
+	python3 deploy/minio/scripts/manage.py up --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
+
+minio-render:
+	python3 deploy/minio/scripts/manage.py render --env "$(MINIO_ENV)"
 
 # 공용 진입점은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다.
 .PHONY: ingress-check ingress-up ingress-connect

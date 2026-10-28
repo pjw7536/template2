@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minio
+resources:
+  - base
+  - namespace.yaml
+  - ingress.json
+images:
+  - name: bitnamilegacy/minio
+    newName: repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio
+    newTag: 2025.7.23-debian-12-r5
+  - name: bitnamilegacy/minio-client
+    newName: repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio-client
+    newTag: 2025.7.21-debian-12-r3

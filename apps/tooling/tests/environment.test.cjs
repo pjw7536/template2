@@ -27,8 +27,10 @@ function portalFixture(component) {
     web: { VITE_SITE_URL: 'https://portal.test', VITE_BACKEND_URL: 'https://portal.test',
       BACKEND_API_URL: 'http://api.test', VITE_MINIO_ENDPOINT: 'https://storage.test' },
     minio: { MINIO_ROOT_USER: 'private-marker', MINIO_ROOT_PASSWORD: 'private-marker',
-      MINIO_ACCESS_KEY: 'private-marker', MINIO_SECRET_KEY: 'private-marker',
-      MINIO_SERVER_URL: 'https://storage.test', MINIO_BROWSER_REDIRECT_URL: '' },
+      NODE_NAME: 'worker', MINIO_IMAGE: 'mirror.test/minio:release', MINIO_CLIENT_IMAGE: 'mirror.test/mc:release',
+      IMAGE_PULL_SECRET: '', STORAGE_CLASS_NAME: '', VOLUME_NAME: '', STORAGE_SIZE: '10Gi',
+      INGRESS_HOST: 'portal.test', INGRESS_TLS_SECRET: 'minio-tls', MINIO_BUCKETS: 'emails,profile',
+      MINIO_SERVER_URL: 'http://minio:9000', MINIO_BROWSER_REDIRECT_URL: 'https://portal.test/minio-console/' },
   };
   return Object.entries(inputs[component]).map(([key, value]) => `${key}=${value}\n`).join('');
 }
@@ -36,7 +38,7 @@ function portalFixture(component) {
 function checkPortal(t, component, content) {
   const input = path.join(sandbox(t), 'input.env');
   fs.writeFileSync(input, content, { mode: 0o600 });
-  const result = spawnSync('bash', ['deploy/shared/scripts/check-env.sh', 'portal', 'prod', component, input], { cwd: root, encoding: 'utf8' });
+  const result = spawnSync('bash', ['deploy/shared/scripts/check-env.sh', component === 'minio' ? 'minio' : 'portal', 'prod', component === 'minio' ? 'server' : component, input], { cwd: root, encoding: 'utf8' });
   assert.ok(!(result.stdout + result.stderr).includes('private-marker'));
   return result;
 }
@@ -123,7 +125,7 @@ test('앱별 설정 경로와 외부 env 검사는 실행 디렉터리에 의존
     ['monitoring', 'server', 'monitoring/env/k8s.env'],
     ['portal', 'client', 'portal/env/prod/api.env'],
     ['portal', 'web', 'portal/env/prod/web.env'],
-    ['portal', 'minio', 'portal/env/prod/minio.env'],
+    ['minio', 'server', 'minio/env/prod.env'],
     ['portal', 'api', '../local/portal/env/api.env', 'local'],
   ]) {
     const result = spawnSync('bash', ['-c', 'source "$1"; resolve_env_file "$2" "$3" "$5" "$4"', 'bash', library, root, app, component, profile], { cwd: dir, encoding: 'utf8' });
@@ -143,7 +145,7 @@ test('추적 중인 env로 저장소 profile 검사를 통과한다', t => {
   fs.mkdirSync(path.join(dir, 'deploy/shared/scripts'), { recursive: true });
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/validate_env_profile_keys.sh'), path.join(dir, 'deploy/shared/scripts/validate_env_profile_keys.sh'));
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/env-lib.sh'), path.join(dir, 'deploy/shared/scripts/env-lib.sh'));
-  for (const relative of ['local/portal/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env']) {
+  for (const relative of ['local/portal/env', 'local/minio/env', 'deploy/minio/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env']) {
     fs.cpSync(path.join(root, relative), path.join(dir, relative), {
       recursive: true,
     });
@@ -151,7 +153,7 @@ test('추적 중인 env로 저장소 profile 검사를 통과한다', t => {
   fs.mkdirSync(path.join(dir, 'deploy/portal/env/prod'));
   fs.mkdirSync(path.join(dir, 'deploy/keycloak/env'), { recursive: true });
   fs.copyFileSync(path.join(root, 'deploy/keycloak/env/prod.env'), path.join(dir, 'deploy/keycloak/env/prod.env'));
-  for (const component of ['api', 'web', 'minio']) {
+  for (const component of ['api', 'web']) {
     fs.copyFileSync(path.join(root, 'deploy/portal/env/prod', `${component}.env`), path.join(dir, 'deploy/portal/env/prod', `${component}.env`));
   }
   const result = spawnSync('bash', ['deploy/shared/scripts/validate_env_profile_keys.sh'], { cwd: dir, encoding: 'utf8' });
@@ -170,7 +172,7 @@ test('로컬 Makefile 진입점은 env를 합성하고 공통 도구에 전달�
   fs.mkdirSync(envDir);
   fs.writeFileSync(path.join(envDir, 'api.env'), portalFixture('api') + '\nLOCAL_BASE_MARKER=base\n');
   fs.writeFileSync(path.join(envDir, 'api-k8s.env'), 'LOCAL_BASE_MARKER=overlay\n');
-  fs.writeFileSync(path.join(envDir, 'minio.env'), 'MINIO_ACCESS_KEY=client\nMINIO_SECRET_KEY=private-marker\nMINIO_ROOT_PASSWORD=excluded\n');
+  writeMinioEnv(dir, 'MINIO_ACCESS_KEY=client\nMINIO_SECRET_KEY=private-marker\nMINIO_ROOT_PASSWORD=excluded\n');
   const capture = path.join(dir, 'capture.json');
   const kubectl = path.join(dir, 'kubectl.cjs');
   fs.writeFileSync(kubectl, `#!/usr/bin/env node
@@ -196,6 +198,12 @@ if(args[0]==='create'){
   assert.equal(fs.existsSync(prepared), false);
 });
 
+function writeMinioEnv(dir, content) {
+  const destination = path.join(dir, 'local/minio/env');
+  fs.mkdirSync(destination, { recursive: true });
+  fs.writeFileSync(path.join(destination, 'minio.env'), content);
+}
+
 function localApiBuilder(t, minio) {
   const dir = sandbox(t);
   for (const relative of ['deploy/shared/scripts/env-lib.sh', 'local/portal/scripts/build-local-api-env.sh']) {
@@ -209,7 +217,7 @@ function localApiBuilder(t, minio) {
   fs.writeFileSync(path.join(envDir, 'api-k8s.env'), 'LAYER=overlay\nOVERLAY_ONLY=overlay\nMINIO_ACCESS_KEY=overlay\n');
   const runtime = path.join(dir, 'runtime.env');
   fs.writeFileSync(runtime, 'LAYER=runtime\nMINIO_ACCESS_KEY=runtime\n');
-  fs.writeFileSync(path.join(envDir, 'minio.env'), minio);
+  writeMinioEnv(dir, minio);
   const output = path.join(dir, 'output.env');
   const result = spawnSync('bash', ['local/portal/scripts/build-local-api-env.sh', output], {
     cwd: dir, encoding: 'utf8', env: { ...process.env, LOCAL_K8S_API_OVERRIDES: runtime },
@@ -264,7 +272,7 @@ require('node:fs').appendFileSync(process.env.MOCK_CALLS, 'called\\n');
   for (const [app, component, content] of [
     ['keycloak', 'server', fixtures.server], ['keycloak', 'oidc', fixtures.oidc],
     ['portal', 'client', portalFixture('api')], ['portal', 'api', portalFixture('api')],
-    ['portal', 'web', portalFixture('web')], ['portal', 'minio', portalFixture('minio')],
+    ['portal', 'web', portalFixture('web')],
   ]) {
     fs.writeFileSync(input, content, { mode: 0o600 });
     for (const context of [undefined, '', ' \t ']) {

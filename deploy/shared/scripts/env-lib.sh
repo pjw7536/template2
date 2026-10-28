@@ -78,7 +78,7 @@ resolve_env_file() {
   if [[ "$profile" == local ]]; then
     case "$app" in
       portal)
-        [[ "$component" =~ ^(api|client|web|minio)$ ]] || return 1
+        [[ "$component" =~ ^(api|client|web)$ ]] || return 1
         [[ "$component" != client ]] || component=api
         printf '%s/local/portal/env/%s.env' "$root" "$component" ;;
       *) echo "지원하지 않는 로컬 앱: $app" >&2; return 1 ;;
@@ -87,11 +87,14 @@ resolve_env_file() {
   fi
   case "$app" in
     keycloak) printf '%s/deploy/keycloak/env/%s.env' "$root" "$profile" ;;
+    minio)
+      [[ "$profile/$component" == prod/server ]] || return 1
+      printf '%s/deploy/minio/env/prod.env' "$root" ;;
     airflow|monitoring|headlamp)
       [[ "$profile/$component" == prod/server ]] || { echo '이 앱은 prod/server Kubernetes 검사를 사용하세요.' >&2; return 1; }
       printf '%s/deploy/%s/env/k8s.env' "$root" "$app" ;;
     portal)
-      [[ "$component" =~ ^(api|client|web|minio)$ ]] || return 1
+      [[ "$component" =~ ^(api|client|web)$ ]] || return 1
       [[ "$component" != client ]] || component=api
       printf '%s/deploy/portal/env/%s/%s.env' "$root" "$profile" "$component" ;;
     *) echo "지원하지 않는 앱: $app" >&2; return 1 ;;
@@ -127,7 +130,6 @@ validate_app_env() {
       require_env_keys OIDC_CLIENT_SECRET OIDC_TOKEN_URL OIDC_JWKS_URL OIDC_LOGOUT_URL || return
       ;;
     portal/web) require_env_keys VITE_SITE_URL VITE_BACKEND_URL BACKEND_API_URL ;;
-    portal/minio) require_env_keys MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY ;;
     *) echo "지원하지 않는 설정 작업: $app/$component" >&2; return 1 ;;
   esac
 }
@@ -148,10 +150,6 @@ validate_portal_prod_env() {
       for key in VITE_SITE_URL VITE_BACKEND_URL BACKEND_API_URL VITE_MINIO_ENDPOINT; do
         require_url "$key" || return
       done ;;
-    minio)
-      require_env_keys MINIO_SERVER_URL || return
-      require_url MINIO_SERVER_URL || return
-      [[ -z "${ENV_VALUES[MINIO_BROWSER_REDIRECT_URL]:-}" ]] || require_url MINIO_BROWSER_REDIRECT_URL ;;
     client) return 0 ;;
   esac
 }

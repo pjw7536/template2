@@ -7,6 +7,12 @@ PROFILE="${2:?환경 이름이 필요합니다.}"
 COMPONENT="${3:-server}"
 [[ "$APP/$COMPONENT" != portal/server ]] || COMPONENT=api
 ENV_FILE="${4:-}"
+if [[ "$APP" == minio ]]; then
+  [[ "$PROFILE/$COMPONENT" == prod/server ]] || { echo 'MinIO는 APP=minio PROFILE=prod COMPONENT=server를 사용하세요.' >&2; exit 1; }
+  [[ -n "$ENV_FILE" ]] || ENV_FILE="$ROOT_DIR/deploy/minio/env/prod.env"
+  exec python3 "$ROOT_DIR/deploy/minio/scripts/manage.py" check --env "$ENV_FILE"
+fi
+[[ "$APP/$COMPONENT" != portal/minio ]] || { echo 'MinIO는 독립 앱입니다. APP=minio를 사용하세요.' >&2; exit 1; }
 [[ -n "$ENV_FILE" ]] || ENV_FILE="$(resolve_env_file "$ROOT_DIR" "$APP" "$PROFILE" "$COMPONENT")"
 # Helm 앱은 각 앱의 Kubernetes 입력·렌더 검사 계약을 재사용합니다.
 case "$APP" in

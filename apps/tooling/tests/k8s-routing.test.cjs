@@ -72,41 +72,45 @@ print(json.dumps(routing.namespace_patch(json.load(sys.stdin), 'tailwind-interna
   assert.ok(role.rules.some(rule => rule.resources.includes('ingresses/status') && rule.verbs.includes('update')));
 });
 
-test('Nginx가 API·callback·SSE·MinIO·Web에 원래 HTTPS 정보를 전달하고 직접 HTTP도 처리한다', t => {
+test('Nginx가 API·callback·SSE·Web에 원래 HTTPS 정보를 전달하고 직접 HTTP도 처리한다', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-proxy-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   // 실제 프록시 설정의 upstream 주소만 격리된 컨테이너 내부 검증 서버로 바꿉니다.
   const proxy = fs.readFileSync(path.join(root, 'deploy/portal/k8s/base/nginx.conf'), 'utf8')
     .replaceAll('http://api:8000', 'http://127.0.0.1:8000')
-    .replaceAll('http://minio:9000', 'http://127.0.0.1:8000')
     .replaceAll('http://web:3000', 'http://127.0.0.1:8000');
   const config = path.join(dir, 'nginx.conf');
   fs.writeFileSync(config, `events {}\nhttp { access_log off; ${proxy}\nserver { listen 8000; location / { return 200 "$http_x_forwarded_proto\\n"; } } }\n`);
   const script = `set -eu
 nginx -t
 nginx
-for route in /api/v1/health/ /api/v1/auth/login /auth/keycloak/callback/ /api/v1/assistant/turns/stream /minio/profile/test /; do
+for route in /api/v1/health/ /api/v1/auth/login /auth/keycloak/callback/ /api/v1/assistant/turns/stream /; do
   wget -qO- --header='X-Forwarded-Proto: https' "http://127.0.0.1$route"
   wget -qO- --header='X-Forwarded-Proto: http' "http://127.0.0.1$route"
   wget -qO- "http://127.0.0.1$route"
-done
-for host in portal.test:8443 localhost:8080; do
-  for protocol in https http missing; do
-    forwarded=''
-    if [ "$protocol" != missing ]; then forwarded="X-Forwarded-Proto: $protocol\\r\\n"; fi
-    response="$(printf 'GET /minio HTTP/1.0\\r\\nHost: %s\\r\\n%b\\r\\n' "$host" "$forwarded" | nc 127.0.0.1 80)"
-    printf '%s\\n' "$response" | sed -n '1p; /^Location:/p' | tr -d '\\r'
-  done
 done
 `;
   const result = spawnSync('docker', ['run', '--rm', '--pull=never', '--network', 'none', '--mount', `type=bind,source=${config},target=/etc/nginx/nginx.conf,readonly`, '--entrypoint', '/bin/sh', 'nginx:1.27-alpine', '-c', script], { encoding: 'utf8', timeout: 30000 });
   assert.equal(result.status, 0, result.stderr);
   const lines = result.stdout.trim().split('\n');
-  assert.deepEqual(lines.slice(0, 18), Array.from({ length: 6 }, () => ['https', 'http', 'http']).flat());
-  const redirects = lines.slice(18);
-  assert.equal(redirects.length, 12);
-  for (let index = 0; index < redirects.length; index += 2) {
-    assert.match(redirects[index], /^HTTP\/1\.[01] 301 /);
-    assert.equal(redirects[index + 1], 'Location: /minio/');
+  assert.deepEqual(lines, Array.from({ length: 5 }, () => ['https', 'http', 'http']).flat());
+});
+
+test('공용 MinIO의 파일·콘솔 경로는 Portal 없이 자기 namespace로 라우팅한다', () => {
+  const minio = render('deploy/minio/k8s');
+  const portal = render('deploy/portal/k8s/overlays/prod');
+  const paths = yaml.load(fs.readFileSync(path.join(root, 'deploy/shared/ingress/middlewares/paths.yaml'), 'utf8'));
+  for (const [name, prefix, port] of [['minio-api', '/minio', 'api'], ['minio-console', '/minio-console', 'console']]) {
+    const ingress = minio.find(item => item.kind === 'Ingress' && item.metadata.name === name);
+    assert.equal(ingress.metadata.namespace, 'minio');
+    assert.equal(ingress.spec.rules[0].host, 'etch.samsungds.net');
+    assert.deepEqual(ingress.spec.tls, [{hosts: ['etch.samsungds.net'], secretName: 'minio-tls'}]);
+    const route = ingress.spec.rules[0].http.paths[0];
+    assert.equal(route.path, prefix);
+    assert.equal(route.backend.service.port.name, port);
+    assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares'], `${name}@file`);
+    assert.deepEqual(paths.http.middlewares[`${name}-strip`].stripPrefix.prefixes, [prefix]);
+    assert.ok(!portal.some(item => item.kind === 'Ingress' && item.metadata.name === name));
   }
+  assert.ok(!fs.readFileSync(path.join(root, 'deploy/portal/k8s/base/nginx.conf'), 'utf8').includes('location /minio'));
 });

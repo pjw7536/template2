@@ -38,7 +38,7 @@ bash deploy/shared/scripts/checkout-server.sh platform
 
 | 인자 | 기본 배포 경로 |
 | --- | --- |
-| `platform` | Portal을 제외한 Keycloak·Airflow·FTP·Monitoring·Headlamp |
+| `platform` | Portal을 제외한 Keycloak·Airflow·FTP·Monitoring·Headlamp·MinIO |
 | `keycloak` | `deploy/keycloak` |
 | `keycloak-airflow` | `deploy/keycloak`, `deploy/airflow` |
 | `portal` | `deploy/portal` |
@@ -46,6 +46,7 @@ bash deploy/shared/scripts/checkout-server.sh platform
 | `monitoring` | `deploy/monitoring` |
 | `headlamp` | `deploy/headlamp` |
 | `ftp` | `deploy/ftp` |
+| `minio` | `deploy/minio` |
 | `all` | 위 앱 배포 정의 전체 |
 
 경로 목록의 원본은 [apps.json](shared/apps.json)입니다. 기본 checkout은 소스 없이 준비된 이미지로 배포합니다.

@@ -15,7 +15,7 @@ function render(directory) {
 }
 
 test('MinIO 초기화는 기존 버킷을 허용하고 버킷 생성 실패를 Job 실패로 전달한다', t => {
-  const resources = render('deploy/portal/k8s/overlays/prod');
+  const resources = render('deploy/minio/k8s');
   const job = resources.find(item => item.kind === 'Job' && item.metadata.name === 'minio-init');
   const command = job.spec.template.spec.containers[0].command;
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-minio-init-'));
@@ -36,7 +36,7 @@ exit 2
     const result = spawnSync(command[0], command.slice(1), {
       cwd: directory, encoding: 'utf8', timeout: 5000,
       env: { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`,
-        MINIO_ROOT_USER: 'fixture', MINIO_ROOT_PASSWORD: 'fixture', MC_SCENARIO: scenario },
+        MINIO_ROOT_USER: 'fixture', MINIO_ROOT_PASSWORD: 'fixture', MINIO_BUCKETS: 'emails,profile', MC_SCENARIO: scenario },
     });
     if (scenario === 'failure') assert.equal(result.status, 7, result.stderr);
     else assert.equal(result.status, 0, `${scenario}: ${result.stderr}`);

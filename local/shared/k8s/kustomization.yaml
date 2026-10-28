@@ -7,6 +7,7 @@ resources:
   - traefik.yaml
   - ../../../deploy/shared/ingress/middlewares
   - ../../portal/k8s
+  - ../../minio/k8s
   - ../../keycloak/k8s
   - ../../headlamp/k8s
   - ../../adfs_dummy/k8s

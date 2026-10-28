@@ -1,0 +1,213 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "minio-data",
+        "labels": {
+          "app.kubernetes.io/name": "minio",
+          "app.kubernetes.io/part-of": "shared-storage"
+        }
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "10Gi"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "minio",
+        "labels": {
+          "app.kubernetes.io/name": "minio",
+          "app.kubernetes.io/part-of": "shared-storage"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "minio"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "minio",
+              "app.kubernetes.io/part-of": "shared-storage"
+            }
+          },
+          "spec": {
+            "nodeSelector": {
+              "kubernetes.io/hostname": "khplanew01"
+            },
+            "containers": [
+              {
+                "name": "minio",
+                "image": "bitnamilegacy/minio:2025.7.23-debian-12-r5",
+                "imagePullPolicy": "IfNotPresent",
+                "args": [
+                  "server",
+                  "/data",
+                  "--console-address",
+                  ":9001"
+                ],
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "minio-env"
+                    }
+                  }
+                ],
+                "ports": [
+                  {
+                    "name": "api",
+                    "containerPort": 9000
+                  },
+                  {
+                    "name": "console",
+                    "containerPort": 9001
+                  }
+                ],
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/minio/health/ready",
+                    "port": "api"
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/minio/health/live",
+                    "port": "api"
+                  },
+                  "initialDelaySeconds": 20,
+                  "periodSeconds": 10
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "data",
+                    "mountPath": "/data"
+                  }
+                ],
+                "command": [
+                  "minio"
+                ],
+                "securityContext": {
+                  "runAsUser": 0
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "data",
+                "persistentVolumeClaim": {
+                  "claimName": "minio-data"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "minio",
+        "labels": {
+          "app.kubernetes.io/name": "minio",
+          "app.kubernetes.io/part-of": "shared-storage"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "minio"
+        },
+        "ports": [
+          {
+            "name": "api",
+            "port": 9000,
+            "targetPort": "api"
+          },
+          {
+            "name": "console",
+            "port": 9001,
+            "targetPort": "console"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "batch/v1",
+      "kind": "Job",
+      "metadata": {
+        "name": "minio-init",
+        "labels": {
+          "app.kubernetes.io/name": "minio-init",
+          "app.kubernetes.io/part-of": "shared-storage"
+        }
+      },
+      "spec": {
+        "backoffLimit": 6,
+        "activeDeadlineSeconds": 300,
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "minio-init"
+            }
+          },
+          "spec": {
+            "restartPolicy": "OnFailure",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "khplanew01"
+            },
+            "containers": [
+              {
+                "name": "minio-init",
+                "image": "bitnamilegacy/minio-client:2025.7.21-debian-12-r3",
+                "imagePullPolicy": "IfNotPresent",
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "minio-env"
+                    }
+                  }
+                ],
+                "command": [
+                  "/bin/sh",
+                  "-c",
+                  "set -eu\nuntil mc alias set local http://minio:9000 \"$MINIO_ROOT_USER\" \"$MINIO_ROOT_PASSWORD\"; do\n  sleep 2\ndone\nfor bucket in $(printf '%s' \"${MINIO_BUCKETS:-}\" | tr ',' ' '); do\n  mc mb -p \"local/$bucket\"\ndone\n"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

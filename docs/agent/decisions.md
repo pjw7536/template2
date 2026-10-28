@@ -432,3 +432,10 @@
 - Portal의 /minio 리다이렉트는 상대 Location으로 원래 scheme·host·port를 보존한다.
 - Monitoring은 최종 Helm 렌더에 존재하는 서비스에 맞춰 스토리지를 준비하고 실제 Operator workload를 기다린다. 비활성 Grafana에는 관리자 Secret 조회를 요구하지 않는다.
 - [실행·검증 기록](plans/deploy-review-recovery-and-routing.md)에 추가 리뷰 4건과 177개 검사 결과를 남긴다. 실제 클러스터에는 적용하지 않았다.
+
+## 2026-10-28: 공용 MinIO 독립 앱
+
+- MinIO는 `deploy/minio`와 운영 namespace `minio`가 소유한다. Portal은 공용 S3 Service를 소비하며 MinIO Deployment·PVC·Ingress를 생성하지 않는다.
+- 콘솔 `/minio-console/`와 파일 `/minio/`는 공용 Traefik에서 저장소 namespace로 직접 연결한다. 이미지·노드·볼륨·공개 주소는 MinIO env로 주입한다.
+- local은 독립 앱 원본을 사용하되 기존 namespace·PV/PVC·데이터 경로를 유지한다. 기존 운영 namespace의 데이터는 자동 이전·삭제하지 않는다.
+- [설치·이전 안내](../../deploy/minio/README.md), [실행 계획](plans/shared-minio-storage.md).

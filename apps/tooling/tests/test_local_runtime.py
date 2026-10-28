@@ -17,6 +17,23 @@ with patch.object(sys, 'path', [str(SCRIPTS), *sys.path]):
 
 
 class SecretTests(unittest.TestCase):
+    def test_minio_update_preserves_existing_job_and_only_applies_storage_and_routing(self):
+        """독립 갱신에서 Portal을 재배포하거나 기존 버킷·Job을 삭제하지 않습니다."""
+        shared = [{'kind': 'ConfigMap', 'metadata': {'name': 'paths'}, 'data': {'paths.yaml': 'content'}},
+                  {'kind': 'Deployment', 'metadata': {'name': 'traefik'}},
+                  {'kind': 'Deployment', 'metadata': {'name': 'api'}}]
+        storage = [{'kind': 'Deployment', 'metadata': {'name': 'minio'}},
+                   {'kind': 'PersistentVolumeClaim', 'metadata': {'name': 'minio-data'}},
+                   {'kind': 'Job', 'metadata': {'name': 'minio-init'}}]
+        with patch.object(runtime, 'minio_secrets'), patch.object(runtime, 'resources', side_effect=[shared, storage]), \
+                patch.object(runtime, 'apply') as apply, patch.object(runtime, 'run', return_value='job/minio-init') as run, \
+                patch.object(runtime, 'rollout'), patch.object(runtime, 'wait_job'):
+            runtime.minio_up()
+        items = [item for call in apply.call_args_list for item in call.args[0]]
+        self.assertNotIn('api', [item['metadata']['name'] for item in items])
+        self.assertFalse(any(item['kind'] == 'Job' for item in items))
+        self.assertFalse(any('delete' in call.args[0] for call in run.call_args_list))
+
     def test_update_replaces_old_keys_without_deleting_secret(self):
         state = {'ADFS_AUTH_URL': 'b2xk', 'OIDC_CLIENT_SECRET': 'b2xk'}
         calls = []

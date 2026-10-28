@@ -79,7 +79,7 @@ make server-check APP=portal PROFILE=prod
 [Portal 입력](../../../portal/README.md)과 [운영 overlay 절차](../../../portal/k8s/overlays/prod/README.md)를 따릅니다.
 현재 `make portal-up`은 없으며 상세 문서의 적용 명령을 사용합니다.
 
-1. 외부 PostgreSQL·extension, API/Web 이미지, MinIO·업무 파일 저장소를 준비합니다.
+1. 외부 PostgreSQL·extension, API/Web 이미지, [공용 MinIO](../../../minio/README.md)·업무 파일 저장소를 준비합니다.
 2. 입력 검사와 Keycloak [client 등록](../../../portal/k8s/jobs/keycloak-client/README.md)을 완료합니다.
 3. namespace·Secret·TLS·PVC를 준비합니다. `make k8s-env`에는 `KUBE_CONTEXT="$KUBE_CONTEXT"`를 전달합니다.
 4. 배포할 API 이미지로 migration Job을 실행하고 완료를 확인합니다.

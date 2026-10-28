@@ -937,6 +937,20 @@ data:
     # 운영·로컬 Traefik이 공유하는 하위 경로 처리입니다.
     http:
       middlewares:
+        minio-api:
+          chain:
+            middlewares:
+              - minio-api-slash
+              - minio-api-strip
+        minio-api-slash:
+          redirectRegex:
+            regex: '^(https?://[^/]+/minio)(\?.*)?$'
+            replacement: '${1}/${2}'
+            permanent: true
+        minio-api-strip:
+          stripPrefix:
+            prefixes:
+              - /minio
         minio-console:
           chain:
             middlewares:
@@ -953,7 +967,7 @@ data:
               - /minio-console
 kind: ConfigMap
 metadata:
-  name: traefik-middlewares-7h69688t92
+  name: traefik-middlewares-dm2bm92m49
   namespace: etch-sso
 ---
 apiVersion: v1
@@ -1258,7 +1272,7 @@ spec:
       serviceAccountName: traefik
       volumes:
       - configMap:
-          name: traefik-middlewares-7h69688t92
+          name: traefik-middlewares-dm2bm92m49
         name: middlewares
 ---
 apiVersion: apps/v1

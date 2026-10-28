@@ -20,7 +20,7 @@ test('로컬 집계는 앱별 리소스와 namespace·권한·ConfigMap 참조�
   const all = render('local/shared/k8s');
   const byId = new Map(all.map(item => [identity(item), item]));
   assert.equal(byId.size, all.length, '집계에 중복 리소스가 없어야 합니다.');
-  for (const app of ['portal', 'keycloak', 'headlamp', 'adfs_dummy']) {
+  for (const app of ['portal', 'minio', 'keycloak', 'headlamp', 'adfs_dummy']) {
     for (const item of render(`local/${app}/k8s`)) {
       assert.deepEqual(byId.get(identity(item)), item, identity(item));
     }
@@ -38,7 +38,7 @@ test('로컬 집계는 앱별 리소스와 namespace·권한·ConfigMap 참조�
 });
 
 test('앱별 렌더는 다른 앱 Deployment를 포함하지 않고 Keycloak realm 참조가 해석된다', () => {
-  const owners = { portal: ['api', 'edge-nginx', 'minio', 'web'], keycloak: ['keycloak'],
+  const owners = { portal: ['api', 'edge-nginx', 'web'], minio: ['minio'], keycloak: ['keycloak'],
     headlamp: ['headlamp'], adfs_dummy: ['adfs'] };
   for (const [app, names] of Object.entries(owners)) {
     const items = render(`local/${app}/k8s`);
@@ -51,4 +51,16 @@ test('앱별 렌더는 다른 앱 Deployment를 포함하지 않고 Keycloak rea
       assert.ok(items.some(item => item.kind === 'Service' && item.metadata.name === 'keycloak'));
     }
   }
+});
+
+test('MinIO 소유권 분리 후에도 기존 로컬 PVC·PV·데이터 경로는 유지한다', () => {
+  const items = render('local/minio/k8s');
+  const claim = items.find(item => item.kind === 'PersistentVolumeClaim');
+  const volume = items.find(item => item.kind === 'PersistentVolume');
+  assert.equal(claim.metadata.namespace, 'tailwind-local');
+  assert.equal(claim.metadata.name, 'minio-data');
+  assert.equal(claim.spec.volumeName, 'tailwind-local-minio');
+  assert.equal(volume.spec.local.path, '/data/local-runtime/minio');
+  assert.deepEqual(volume.spec.claimRef, {name: 'minio-data', namespace: 'tailwind-local'});
+  assert.equal(volume.spec.persistentVolumeReclaimPolicy, 'Retain');
 });

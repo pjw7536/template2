@@ -10,6 +10,7 @@ deploy/
 ├── README.md                 # 목적별 문서 색인
 ├── SERVER_CHECKOUT.md        # 서버에 필요한 앱만 받는 공통 진입 안내
 ├── keycloak/                 # Keycloak 배포·OIDC·TLS와 배포 원본
+├── minio/                    # 공용 객체 저장소·독립 설치
 ├── portal/                   # Portal 설정·운영 overlay·client 등록
 ├── airflow/                  # Airflow Helm 배포·이미지·백업
 ├── monitoring/               # kube-prometheus-stack Helm 배포
@@ -78,7 +79,7 @@ APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/VIP.md)를 
 | 앱 | 시작 문서 | 상세 작업 |
 | --- | --- | --- |
 | Keycloak | [서버 배포·사내 OIDC·사용자 claim](keycloak/README.md) | [TLS 인증서·Secret 운영](keycloak/03_TLS.md) |
-| Portal | [환경설정·배포 입력 순서](portal/README.md) | [운영 overlay·배포 순서](portal/k8s/overlays/prod/README.md), [Keycloak client 등록](portal/k8s/jobs/keycloak-client/README.md), [MinIO만 추가](portal/MINIO_SETUP.md) |
+| Portal | [환경설정·배포 입력 순서](portal/README.md) | [운영 overlay·배포 순서](portal/k8s/overlays/prod/README.md), [Keycloak client 등록](portal/k8s/jobs/keycloak-client/README.md), [공용 MinIO](minio/README.md) |
 | Airflow | [Helm 배포·이미지·스토리지](airflow/README.md) | 같은 문서에서 백업·데이터 이전·업데이트 안내 |
 | Monitoring | [Kubernetes 모니터링](monitoring/README.md) | kube-prometheus-stack·Grafana·지표 저장 |
 | Headlamp | [Kubernetes 운영 UI](headlamp/README.md) | Keycloak 로그인·그룹별 조회 권한·HTTPS 접속 |
@@ -109,7 +110,7 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 make k8s-export
 ```
 
-`server-check`는 Keycloak·Portal·Airflow·FTP·Monitoring·Headlamp의 prod Kubernetes 원본을 검사합니다.
+`server-check`는 Keycloak·Portal·Airflow·FTP·Monitoring·Headlamp·MinIO의 prod Kubernetes 원본을 검사합니다.
 Airflow는 먼저 [전용 안내](airflow/README.md)에 따라 Helm과 고정 chart를 준비해야 합니다.
 Monitoring도 [전용 안내](monitoring/README.md)에 따라 Helm과 고정 chart를 준비한 뒤 검사합니다.
 Headlamp도 [전용 안내](headlamp/README.md)에 따라 고정 chart를 준비한 뒤 검사합니다.

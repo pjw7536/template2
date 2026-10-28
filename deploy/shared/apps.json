@@ -39,6 +39,11 @@
       "sourcePaths": [],
       "deployPath": "deploy/headlamp",
       "localPath": "local/headlamp"
+    },
+    "minio": {
+      "sourcePaths": [],
+      "deployPath": "deploy/minio",
+      "localPath": "local/minio"
     }
   },
   "groups": {
@@ -47,7 +52,8 @@
       "airflow",
       "ftp",
       "monitoring",
-      "headlamp"
+      "headlamp",
+      "minio"
     ],
     "keycloak-airflow": [
       "keycloak",
@@ -59,7 +65,8 @@
       "airflow",
       "ftp",
       "monitoring",
-      "headlamp"
+      "headlamp",
+      "minio"
     ]
   }
 }

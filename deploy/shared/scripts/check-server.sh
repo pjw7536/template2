@@ -18,6 +18,10 @@ fi
 
 # Kubernetes 정의가 없는 앱을 Compose 검사로 대신 통과시키지 않습니다.
 case "$APP" in
+  minio)
+    python3 "$ROOT_DIR/deploy/minio/scripts/manage.py" check
+    kubectl kustomize deploy/minio/k8s >/dev/null
+    exit 0 ;;
   ftp)
     bash -n deploy/ftp/k8s/start.sh
     kubectl kustomize deploy/ftp/k8s >/dev/null
