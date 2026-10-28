@@ -139,6 +139,8 @@ spec:
         - --secure-port=10250
         - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
         - --kubelet-use-node-status-port
+        # 사용자 요청에 따라 수집 대상 kubelet의 서버 인증서 검증을 생략합니다.
+        - --kubelet-insecure-tls
         - --metric-resolution=15s
         image: repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0
         imagePullPolicy: IfNotPresent
