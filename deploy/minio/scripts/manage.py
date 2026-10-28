@@ -12,6 +12,10 @@ import subprocess
 import sys
 
 BASE = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
+tls = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tls)
+
 NAMESPACE = 'minio'
 SECRET_KEYS = ('MINIO_ROOT_USER', 'MINIO_ROOT_PASSWORD', 'MINIO_BROWSER_REDIRECT_URL',
                'MINIO_SERVER_URL', 'MINIO_BUCKETS')
@@ -44,7 +48,7 @@ def settings(path, example=False):
         require(separator and key in ENV_KEYS and key not in result, 'MinIO env 키 누락·중복·오타를 확인하세요.')
         result[key] = value
     require(result.keys() == ENV_KEYS, 'MinIO env 키가 설정 계약과 다릅니다.')
-    optional = {'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'MINIO_BUCKETS'}
+    optional = {'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'MINIO_BUCKETS', 'INGRESS_TLS_SECRET'}
     for key, value in result.items():
         require(key in optional or value, f'필수 설정 누락: {key}')
         require(not any(c.isspace() for c in value) and
@@ -86,7 +90,6 @@ def manifests(values):
             if values['VOLUME_NAME']:
                 item['spec']['volumeName'] = values['VOLUME_NAME']
         elif item['kind'] == 'Ingress':
-            item['spec']['tls'] = [{'hosts': [values['INGRESS_HOST']], 'secretName': values['INGRESS_TLS_SECRET']}]
             item['spec']['rules'][0]['host'] = values['INGRESS_HOST']
     return items
 
@@ -99,19 +102,18 @@ def apply(kube, items, sensitive=False, dry_run=False):
 
 def routing_plan(kube, values):
     """공용 middleware·TLS·controller를 검사하고 기존 감시 범위를 보존한다."""
-    summary = run([*kube, '-n', NAMESPACE, 'get', 'secret', values['INGRESS_TLS_SECRET'], '-o',
-                   'go-template={{.type}}{{range $key, $value := .data}} {{$key}}{{end}}']).split()
-    require(summary and summary[0] == 'kubernetes.io/tls' and {'tls.crt', 'tls.key'} <= set(summary[1:]),
-            'minio namespace에 업무 도메인의 TLS Secret을 먼저 등록하세요.')
     current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
+    tls.check(kube, values['INGRESS_HOST'], current)
     pod = current['spec']['template']['spec']
     controller = next(item for item in pod['containers'] if item['name'] == 'traefik')
     require('--providers.file.directory=/etc/traefik/dynamic' in controller.get('args', []),
             '공용 middleware가 필요합니다. make ingress-check/ingress-up을 먼저 실행하세요.')
     mount = next((item for item in controller.get('volumeMounts', []) if item['mountPath'] == '/etc/traefik/dynamic'), None)
     volume = next((item for item in pod.get('volumes', []) if mount and item['name'] == mount['name']), None)
-    require(volume and volume.get('configMap', {}).get('name'), '공용 middleware ConfigMap 마운트를 확인하세요.')
-    config = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'configmap', volume['configMap']['name'], '-o', 'json']))
+    sources = volume.get('projected', {}).get('sources', []) if volume else []
+    config_name = next((source['configMap']['name'] for source in sources if 'configMap' in source), None)
+    require(config_name, '공용 middleware ConfigMap 마운트를 확인하세요.')
+    config = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'configmap', config_name, '-o', 'json']))
     paths = '\n'.join(config.get('data', {}).values())
     require('minio-api:' in paths and 'minio-console:' in paths, '공용 middleware가 오래됐습니다. make ingress-up을 먼저 실행하세요.')
     spec = importlib.util.spec_from_file_location('minio_routing', BASE.parent / 'shared/ingress/routing.py')

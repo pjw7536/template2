@@ -14,7 +14,7 @@
 | 도메인 | `etch-sso.samsungds.net` |
 | 인증서 폴더 | `deploy/shared/certs/etch-sso.samsungds.net/` |
 | 인증서·개인키 | `fullchain.crt`, `private.key` |
-| TLS Secret | `etch-sso/keycloak-tls` |
+| TLS Secret | `etch-sso/traefik-tls` |
 | TLS 종료 | Traefik |
 
 ## 인증서 준비와 적용
@@ -24,7 +24,8 @@ PFX·P7B 추출, fullchain 구성과 검증을 한곳에서 관리합니다.
 
 Keycloak의 개인키는 TLS를 종료하는 Traefik이 사용하며 API server용 CA 파일과는 다릅니다.
 
-준비한 파일로 [서버 설치](01_SERVER_SETUP.md)를 진행하면 설치 도구가 TLS Secret을 생성합니다.
+준비한 파일을 공용 등록 명령으로 먼저 등록한 뒤 [서버 설치](01_SERVER_SETUP.md)를 진행합니다.
+Keycloak 배포는 공용 인증서를 검사하며 PEM 파일을 다시 준비할 필요가 없습니다.
 이 문서에서는 서버 배포 명령을 중복 실행하지 않습니다.
 
 ## 신뢰 설정의 구분
@@ -81,5 +82,5 @@ Root CA가 없다면 회사 인증서 배포 정책에 따라 설치하고 관�
 | `NET::ERR_CERT_AUTHORITY_INVALID` | Root CA 신뢰, Intermediate 누락, 보안 프록시 인증서 |
 | `NET::ERR_CERT_COMMON_NAME_INVALID` | URL과 SAN, IP 접속, 기본 인증서 노출 |
 | `NET::ERR_CERT_DATE_INVALID` | 유효기간, PC·서버 시간 |
-| Traefik 기본 인증서 표시 | Ingress 도메인·Secret 참조, 실제 endpoint |
+| Traefik 기본 인증서 표시 | Ingress 도메인·공용 인증서 등록과 마운트, 실제 endpoint |
 | 직접 IP 검증 성공, 브라우저만 실패 | PC DNS·LB·프록시 경로, 실제 인증서, 신뢰 정책 |

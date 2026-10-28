@@ -31,7 +31,7 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods
 별도 toleration으로 전용 노드를 허용할 수 있습니다. 내부 PostgreSQL은 자체 원본의 toleration을
 따로 검사하므로 Airflow만 허용해도 DB를 배치할 수 없으면 중단합니다.
 필수 image pull·ODBC Secret, OIDC CA ConfigMap과 IngressClass는 `airflow-check`에서도 확인하고,
-누락되면 공용 Traefik·권한을 변경하기 전에 중단합니다. TLS 최초 복사는 검증한 생성 예정 Secret을 허용합니다.
+누락되면 공용 Traefik·권한을 변경하기 전에 중단합니다. TLS 원본 입력은 공용 저장소에만 등록하며 앱 namespace에는 복제하지 않습니다.
 TLS 입력은 인증서의 도메인·만료와 개인키 일치를 모두 검사합니다.
 
 ## 1. DB와 설정 백업

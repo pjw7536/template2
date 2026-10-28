@@ -44,7 +44,7 @@ make airflow-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 기본 위치가 아닌 env는 `AIRFLOW_ENV`로 지정합니다.
-기존 namespace의 TLS 인증서를 처음 복사할 때는 `AIRFLOW_TLS_SOURCE`도 지정합니다.
+기존 namespace의 TLS 인증서를 공용 저장소로 가져올 때는 `AIRFLOW_TLS_SOURCE`도 지정할 수 있습니다.
 두 값은 검사 명령과 배포 명령에 동일하게 전달합니다.
 Airflow 전용 명령은 Keycloak·Keycloak DB를 재배포하지 않습니다.
 

@@ -289,10 +289,6 @@ metadata:
     app.kubernetes.io/part-of: etch-sso
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - etch-sso.samsungds.net
-      secretName: keycloak-tls
   rules:
     - host: etch-sso.samsungds.net
       http:

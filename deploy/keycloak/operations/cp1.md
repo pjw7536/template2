@@ -50,7 +50,7 @@ make keycloak-check KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_ENV="$KEYCLOA
 배포 시에도 `keycloak-up`에 같은 `KUBE_CONTEXT`, `KEYCLOAK_ENV`를 지정합니다.
 사내 IdP 단계는 `keycloak-idp-setup`에 같은 경로를 전달합니다.
 
-기본 인증서 위치와 다르면 서버 검사·배포 양쪽에 동일한 `KEYCLOAK_CERTS`를 추가합니다.
+사이트 인증서는 공용 TLS 등록 명령으로 관리합니다. `KEYCLOAK_CERTS`는 명시한 PEM을 공용 저장소에 가져오는 선택적 호환 입력입니다.
 
 ## 전달용 YAML
 

@@ -202,7 +202,7 @@ class DeploymentTest(unittest.TestCase):
             path.write_text('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV)
             values = manage.settings(path)
             self.assertEqual(values['config']['baseURL'], '/headlamp')
-            self.assertEqual(values['ingress']['tls'][0]['secretName'], 'headlamp-tls')
+            self.assertEqual(values['ingress']['tls'], [])
 
     def test_ingress_preserves_live_placement_and_namespaces(self):
         current = {'metadata': {'namespace': 'etch-sso', 'resourceVersion': '12'}, 'spec': {
@@ -211,14 +211,13 @@ class DeploymentTest(unittest.TestCase):
             'args': ['--providers.kubernetesingress=true', '--providers.kubernetesingress.namespaces=etch-sso,airflow',
                      '--entrypoints.websecure.address=:8443']}]}}}}
         original = copy.deepcopy(current)
-        values = {'ingress': {'tls': [{'secretName': 'headlamp-tls'}]}}
+        values = {'ingress': {'hosts': [{'host': 'portal.test'}], 'tls': []}}
         for watch_all in (False, True):
             if watch_all:
                 current['spec']['template']['spec']['containers'][0]['args'].pop(1)
             with patch.object(manage, 'run', side_effect=[
-                subprocess.CompletedProcess([], 0, 'kubernetes.io/tls tls.crt tls.key'),
                 subprocess.CompletedProcess([], 0, json.dumps(current)),
-            ]):
+            ]), patch.object(manage.tls, 'check') as check:
                 access, changes = manage.ingress_plan('prod', values)
             if watch_all:
                 self.assertEqual(changes, [])
@@ -230,11 +229,13 @@ class DeploymentTest(unittest.TestCase):
             self.assertTrue(all(x['metadata']['namespace'] == 'headlamp' for x in access['items']))
             self.assertEqual(access['items'][1]['subjects'][0]['namespace'], 'etch-sso')
 
-    def test_invalid_tls_stops_before_controller_access(self):
-        with patch.object(manage, 'run', return_value=subprocess.CompletedProcess([], 0, 'Opaque tls.crt tls.key')) as run:
-            with self.assertRaisesRegex(ValueError, 'TLS Secret'):
-                manage.ingress_plan('prod', {'ingress': {'tls': [{'secretName': 'headlamp-tls'}]}})
+    def test_invalid_common_tls_stops_before_mutation(self):
+        with patch.object(manage, 'run', return_value=subprocess.CompletedProcess([], 0, '{}')) as run, \
+                patch.object(manage.tls, 'check', side_effect=ValueError('공용 TLS 인증서 없음')) as check:
+            with self.assertRaisesRegex(ValueError, '공용 TLS'):
+                manage.ingress_plan('prod', {'ingress': {'hosts': [{'host': 'portal.test'}]}})
             self.assertEqual(run.call_count, 1)
+            check.assert_called_once_with(['kubectl', '--context', 'prod'], 'portal.test', {})
 
     def test_rbac_failure_prevents_controller_patch(self):
         with patch.object(manage, 'run', side_effect=subprocess.CalledProcessError(1, ['kubectl'])) as run:

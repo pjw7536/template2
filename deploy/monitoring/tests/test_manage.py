@@ -72,7 +72,7 @@ class MonitoringTests(unittest.TestCase):
 
     def test_ingress_requires_dns_and_tls_and_can_be_disabled_for_local(self):
         for changes in ({'INGRESS_HOST': 'https://portal.test/path'}, {'INGRESS_HOST': ''},
-                        {'INGRESS_TLS_SECRET': ''}, {'INGRESS_ENABLED': 'yes'}):
+                        {'INGRESS_ENABLED': 'yes'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 manage.validate({**settings(), **changes})
         data = {**settings(), 'INGRESS_ENABLED': 'false', 'INGRESS_HOST': '', 'INGRESS_TLS_SECRET': ''}
@@ -81,18 +81,19 @@ class MonitoringTests(unittest.TestCase):
 
     def test_ingress_connect_preserves_vip_placement_and_other_apps(self):
         content = ('kind: Ingress\nmetadata:\n  namespace: monitoring\nspec:\n'
-                   '  ingressClassName: traefik\n  tls:\n    - secretName: custom-tls\n')
+                   '  ingressClassName: traefik\n  rules:\n    - host: portal.test\n')
         current = {'metadata': {'namespace': 'etch-sso', 'resourceVersion': '20'}, 'spec': {
             'replicas': 2, 'template': {'spec': {'serviceAccountName': 'traefik',
             'affinity': {'existing': 'placement'}, 'containers': [{'name': 'traefik',
             'args': ['--providers.kubernetesingress.namespaces=etch-sso,airflow,headlamp,tailwind-internal']}]}}}}
         for dry_run in (True, False):
             with self.subTest(dry_run=dry_run), patch.object(manage, 'run', side_effect=[
-                    'kubernetes.io/tls tls.crt tls.key', json.dumps(current), '', '', '']) as run:
+                    json.dumps(current), '', '', '']) as run, patch.object(manage.tls, 'check') as check:
                 manage.connect_ingress(settings(), 'prod', content, dry_run=dry_run)
             calls = [call.args[0] for call in run.call_args_list]
             self.assertTrue(all('prod' in call for call in calls))
-            self.assertIn('custom-tls', calls[0])
+            check.assert_called_once_with(['kubectl', '--context', 'prod'], 'portal.test', current)
+            self.assertFalse(any('secret' in call for call in calls))
             patch_call = next(call for call in calls if 'patch' in call)
             changes = json.loads(patch_call[patch_call.index('--patch') + 1])
             self.assertEqual(changes[0], {'op': 'test', 'path': '/metadata/resourceVersion', 'value': '20'})
@@ -102,10 +103,11 @@ class MonitoringTests(unittest.TestCase):
             self.assertEqual('--dry-run=server' in patch_call, dry_run)
             self.assertEqual(any('rollout' in call for call in calls), not dry_run)
 
-    def test_missing_tls_stops_before_rbac_or_controller_mutation(self):
-        content = 'kind: Ingress\nspec:\n  ingressClassName: traefik\n  tls:\n    - secretName: missing\n'
-        with patch.object(manage, 'run', return_value='Opaque password') as run, \
-                self.assertRaisesRegex(ValueError, 'TLS Secret'):
+    def test_missing_common_tls_stops_before_rbac_or_controller_mutation(self):
+        content = 'kind: Ingress\nspec:\n  ingressClassName: traefik\n  rules:\n    - host: portal.test\n'
+        with patch.object(manage, 'run', return_value='{}') as run, \
+                patch.object(manage.tls, 'check', side_effect=ValueError('공용 TLS 인증서 없음')), \
+                self.assertRaisesRegex(ValueError, '공용 TLS'):
             manage.connect_ingress(settings(), 'prod', content)
         self.assertEqual(run.call_count, 1)
         self.assertNotIn('apply', run.call_args.args[0])
@@ -377,7 +379,7 @@ class MonitoringTests(unittest.TestCase):
             self.assertIn('volumeName: monitoring-monitoring-alertmanager', rendered)
             self.assertIn('name: registry-login', rendered)
             self.assertEqual(rendered.count('kind: Ingress\n'), 3)
-            self.assertEqual(manage.ingress_tls_names(data, rendered), {'monitoring-tls'})
+            self.assertEqual(manage.ingress_hosts(data, rendered), {data['INGRESS_HOST']})
             for component in manage.VOLUMES:
                 self.assertIn(f'path: /{component}', rendered)
             self.assertIn('root_url = https://etch.samsungds.net/grafana/', rendered)

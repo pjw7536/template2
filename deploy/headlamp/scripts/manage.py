@@ -15,6 +15,10 @@ import urllib.request
 from urllib.parse import urlsplit
 
 APP = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('shared_tls', APP.parent / 'shared/ingress/tls.py')
+tls = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tls)
+
 LOCK = json.loads((APP / 'helm/chart.lock.json').read_text())
 
 
@@ -46,14 +50,14 @@ def settings(path, example=False):
         raise ValueError('IMAGE_PULL_SECRET 이름이 올바르지 않습니다.')
     values = {'image': {'registry': registry}, 'imagePullSecrets': [{'name': secret}] if secret else []}
     host = result.get('HEADLAMP_HOST', '')
-    tls = result.get('HEADLAMP_TLS_SECRET', '')
-    if not host or not tls:
-        raise ValueError('Keycloak 로그인에는 HEADLAMP_HOST와 HEADLAMP_TLS_SECRET이 필요합니다.')
+    legacy_tls = result.get('HEADLAMP_TLS_SECRET', '')
+    if not host:
+        raise ValueError('Keycloak 로그인에는 HEADLAMP_HOST가 필요합니다.')
     if host:
         label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
         if len(host) > 253 or not re.fullmatch(rf'{label}(?:\.{label})+', host):
             raise ValueError('HEADLAMP_HOST에는 경로·scheme 없는 DNS 이름을 입력하세요.')
-        if len(tls) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', tls):
+        if legacy_tls and (len(legacy_tls) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', legacy_tls)):
             raise ValueError('HEADLAMP_TLS_SECRET 이름이 올바르지 않습니다.')
         values['config'] = {'baseURL': '/headlamp'}
         values['ingress'] = {
@@ -61,7 +65,7 @@ def settings(path, example=False):
             'annotations': {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
                             'traefik.ingress.kubernetes.io/router.tls': 'true'},
             'hosts': [{'host': host, 'paths': [{'path': '/headlamp', 'type': 'Prefix'}]}],
-            'tls': [{'hosts': [host], 'secretName': tls}],
+            'tls': [],
         }
     issuer = result.get('HEADLAMP_OIDC_ISSUER_URL', '')
     url = urlsplit(issuer)
@@ -176,7 +180,6 @@ def setup_env(values):
     env = {item['name']: item['value'] for item in values['env']}
     return {
         'HEADLAMP_HOST': values['ingress']['hosts'][0]['host'],
-        'HEADLAMP_TLS_SECRET': values['ingress']['tls'][0]['secretName'],
         'HEADLAMP_OIDC_ISSUER_URL': env['OIDC_ISSUER_URL'],
         'HEADLAMP_OIDC_CLIENT_ID': env['OIDC_CLIENT_ID'],
         'HEADLAMP_OIDC_SECRET': values['config']['oidc']['externalSecret']['name'],
@@ -207,15 +210,9 @@ def check_oidc_resources(context, values):
 def ingress_plan(context, values):
     """TLS와 기존 controller를 확인하고 namespace 추가 변경만 준비한다."""
     kubectl = ['kubectl', '--context', context]
-    secret = values['ingress']['tls'][0]['secretName']
-    # kubectl 출력은 타입·키 이름으로 제한해 개인키·인증서 내용을 노출하지 않는다.
-    summary = run(kubectl + ['-n', 'headlamp', 'get', 'secret', secret, '-o',
-                  'go-template={{.type}}{{range $key, $value := .data}} {{$key}}{{end}}'],
-                  capture_output=True).stdout.split()
-    if not summary or summary[0] != 'kubernetes.io/tls' or not {'tls.crt', 'tls.key'} <= set(summary[1:]):
-        raise ValueError('headlamp namespace에 tls.crt·tls.key가 있는 TLS Secret을 먼저 등록하세요.')
     current = json.loads(run(kubectl + ['-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json'],
                              capture_output=True).stdout)
+    tls.check(kubectl, values['ingress']['hosts'][0]['host'], current)
     spec = importlib.util.spec_from_file_location('routing', APP.parent / 'shared/ingress/routing.py')
     routing = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(routing)

@@ -7,6 +7,14 @@
 현재 실행 방법과 계약은 [전체 문서 안내](../README.md)에서 해당 앱의 안내로 이동해 확인합니다.
 작업별 검증 결과는 [실행 계획 목록](plans/README.md), 이 폴더의 용도는 [에이전트 문서 안내](README.md)를 참고합니다.
 
+## 2026-10-28: 공용 Traefik에서 사이트 인증서 관리
+
+- 업무 도메인과 SSO 도메인의 인증서는 `etch-sso/traefik-tls` 한 곳에서 관리하고 Traefik file provider가 SNI로 선택한다. 앱별 namespace에 TLS Secret을 복제하지 않는다.
+- 앱 Ingress는 HTTPS annotation만 선언한다. Keycloak도 기본 배포에서는 등록된 인증서를 검사하며 로컬 PEM으로 다시 갱신하지 않는다.
+- 등록 도구가 도메인·만료·키 일치를 검사하고 다른 도메인 및 metadata를 보존한다. resourceVersion으로 동시 갱신을 차단하며 등록 후 Traefik을 재시작한다.
+- 기존 namespace 인증서는 공용 등록 → controller 마운트 갱신 → 앱 Ingress 재배포 순서로 전환한다. 기존 Secret과 데이터는 자동 삭제하지 않는다.
+- 이전 앱별 TLS Secret 참조·복사 방침을 대체한다. OIDC와 API server의 CA 신뢰 설정은 유지한다. [계획과 검증](plans/shared-traefik-tls.md)을 참고한다.
+
 ## 2026-09-17: Kubernetes 기준 저장소·로컬 배포 소유권
 
 - 직접 개발하는 Portal·Airflow 소스는 apps, 설치형 제품의 서버 원본은 deploy, 개발 차이는 local이 소유한다. tooling과 mock은 각각 apps/tooling과 local/adfs_dummy에 유지한다.

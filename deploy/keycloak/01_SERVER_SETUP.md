@@ -67,7 +67,15 @@ deploy/shared/certs/etch-sso.samsungds.net/     # fullchain.crt, private.key
 공개 URL은 경로와 끝의 `/`가 없는 HTTPS URL이어야 하며 Ingress 도메인·인증서 SAN과 맞아야 합니다.
 DNS·APP VIP는 [인프라 현황](../shared/docs/infrastructure/cluster.md), 인증서 준비는 [TLS 안내](03_TLS.md)를 따릅니다.
 
-인증서 파일을 배치하는 것만으로 Secret이나 서버 설정이 바뀌지는 않습니다.
+인증서 파일을 배치한 뒤 [공용 TLS 등록](../shared/ingress/README.md#인증서-최초-등록과-갱신)을 수행합니다.
+
+```bash
+make ingress-tls-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" TLS_HOST=etch-sso.samsungds.net \
+  TLS_CERT_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/fullchain.crt" \
+  TLS_KEY_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/private.key"
+```
+
+Keycloak 배포는 등록된 인증서를 검사하며 기본적으로 인증서 파일을 다시 읽거나 갱신하지 않습니다.
 
 ```bash
 vi deploy/keycloak/env/prod.env
@@ -90,7 +98,7 @@ make keycloak-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 | 명령 | 처리 범위 |
 | --- | --- |
 | `keycloak-check` | env·인증서·manifest·기존 Secret·worker 상태를 조회하고 검사 |
-| `keycloak-up` | 없는 runtime/TLS Secret 준비, PostgreSQL·Keycloak·Traefik 적용 |
+| `keycloak-up` | 없는 runtime Secret 준비, 공용 TLS 확인, PostgreSQL·Keycloak·Traefik 적용 |
 
 최초 기동 시 관리자 계정을 만들고 이후 설정 Job도 같은 runtime Secret으로 로그인합니다.
 `etch-sso` namespace가 없을 때만 원본의 label·annotation을 포함해 생성하며, 이미 있으면 namespace 설정은 변경하지 않습니다.
@@ -98,7 +106,7 @@ make keycloak-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 | 선택 입력 | 사용하는 경우 |
 | --- | --- |
 | `KEYCLOAK_ENV=/절대/경로/prod.env` | 다른 env 파일 사용 |
-| `KEYCLOAK_CERTS=/인증서/폴더` | 다른 TLS 파일 위치 사용 |
+| `KEYCLOAK_CERTS=/인증서/폴더` | 해당 폴더의 PEM을 공용 TLS에 등록하는 선택적 호환 입력 |
 | `VIP_BACKENDS=...` | VIP 최초 배치 지정. 검사·배포 양쪽에 동일하게 전달 |
 
 현재 인프라의 VIP 최초 배치 예시는 `10.172.40.117,10.172.40.87`입니다. 실제 운영 대상과 일치하는지 확인합니다.

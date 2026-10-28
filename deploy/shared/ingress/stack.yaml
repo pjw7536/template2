@@ -190,8 +190,13 @@ spec:
                 - ALL
       volumes:
         - name: middlewares
-          configMap:
-            name: traefik-middlewares
+          projected:
+            sources:
+              - configMap:
+                  name: traefik-middlewares
+              - secret:
+                  name: traefik-tls
+                  optional: true
 ---
 apiVersion: v1
 kind: Service

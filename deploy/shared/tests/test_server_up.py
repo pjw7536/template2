@@ -28,7 +28,8 @@ airflow = load('airflow', 'deploy/airflow/scripts/manage.py')
 def controller(watched='etch-sso'):
     return {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'traefik', 'namespace': 'etch-sso'},
             'spec': {'replicas': 1, 'selector': {'matchLabels': {'app.kubernetes.io/name': 'traefik'}}, 'template': {'spec': {'serviceAccountName': 'traefik', 'nodeSelector': {'kubernetes.io/hostname': 'worker'},
-             'containers': [{'name': 'traefik', 'args': ['--providers.kubernetesingress=true', '--providers.kubernetesingress.ingressclass=traefik', routing.PREFIX + watched, '--entrypoints.websecure.address=:8443']}]}}}}
+             'volumes': [{'name': 'dynamic', 'projected': {'sources': [{'secret': {'name': 'traefik-tls'}}]}}],
+             'containers': [{'name': 'traefik', 'volumeMounts': [{'name': 'dynamic', 'mountPath': '/etc/traefik/dynamic'}], 'args': ['--providers.file.directory=/etc/traefik/dynamic', '--providers.kubernetesingress=true', '--providers.kubernetesingress.ingressclass=traefik', routing.PREFIX + watched, '--entrypoints.websecure.address=:8443']}]}}}}
 
 
 class RoutingTests(unittest.TestCase):
@@ -144,46 +145,6 @@ class ConversionTests(unittest.TestCase):
             self.assertIn('--dry-run=client', run.call_args[0][0])
 
 
-class CertificateTests(unittest.TestCase):
-    def test_real_openssl_rejects_mismatched_private_key_before_copying(self):
-        """기존 Secret과 복사할 Secret 모두 인증서·개인키가 일치해야 합니다."""
-        with tempfile.TemporaryDirectory() as directory:
-            certificate, key, wrong_key = [Path(directory) / name for name in ('cert.pem', 'key.pem', 'wrong.pem')]
-            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-                            '-subj', '/CN=portal.test', '-keyout', str(key), '-out', str(certificate)],
-                           check=True, capture_output=True)
-            subprocess.run(['openssl', 'genpkey', '-algorithm', 'EC', '-pkeyopt', 'ec_paramgen_curve:P-256',
-                            '-out', str(wrong_key)], check=True, capture_output=True)
-            secret = {'type': 'kubernetes.io/tls', 'data': {
-                'tls.crt': base64.b64encode(certificate.read_bytes()).decode(),
-                'tls.key': base64.b64encode(wrong_key.read_bytes()).decode()}}
-            settings = {'NAMESPACE': 'airflow', 'INGRESS_TLS_SECRET': 'airflow-tls',
-                        'AIRFLOW_WEBSERVER_BASE_URL': 'https://portal.test/airflow'}
-            for copy in (False, True):
-                def run(args, **kwargs):
-                    if args[0] == 'kubectl':
-                        return '' if copy and 'airflow-tls' in args else json.dumps(secret)
-                    return airflow.run(args, **kwargs)
-                with self.subTest(copy=copy), self.assertRaisesRegex(ValueError, '개인키.*일치'):
-                    server.tls_for_airflow(run, ['kubectl'], settings, 'source/tls')
-
-    def test_real_openssl_checks_hostname_before_copying(self):
-        with tempfile.TemporaryDirectory() as directory:
-            certificate = Path(directory) / 'cert.pem'
-            key = Path(directory) / 'key.pem'
-            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=portal.test', '-addext', 'subjectAltName=DNS:portal.test', '-keyout', str(key), '-out', str(certificate)], check=True, capture_output=True)
-            secret = {'type': 'kubernetes.io/tls', 'data': {'tls.crt': base64.b64encode(certificate.read_bytes()).decode(), 'tls.key': base64.b64encode(key.read_bytes()).decode()}}
-            def run(args, **kwargs):
-                if args[0] == 'kubectl':
-                    return json.dumps(secret)
-                return airflow.run(args, **kwargs)
-            settings = {'NAMESPACE': 'airflow', 'INGRESS_TLS_SECRET': 'airflow-tls', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://portal.test/airflow'}
-            self.assertIsNone(server.tls_for_airflow(run, ['kubectl'], settings, None))
-            settings['AIRFLOW_WEBSERVER_BASE_URL'] = 'https://different.test/airflow'
-            with self.assertRaisesRegex(ValueError, '도메인과 일치'):
-                server.tls_for_airflow(run, ['kubectl'], settings, None)
-
-
 class StartTests(unittest.TestCase):
     def setUp(self):
         self.calls = []
@@ -210,6 +171,12 @@ class StartTests(unittest.TestCase):
         self.api.run.side_effect = self.fake_run
         self.api.check_required_resources.side_effect = self.check_required_resources
         self.api.chart_path.return_value = Path('/chart.tgz')
+        self.addCleanup(patch.stopall)
+        patch.object(server.tls, 'run', side_effect=self.fake_run).start()
+        data = {f'portal.test.{suffix}': value for suffix, value in [('crt', 'ZmFrZS1jZXJ0'), ('key', 'ZmFrZS1rZXk=')]}
+        data['tls.yaml'] = base64.b64encode(server.tls.configuration(data).encode()).decode()
+        self.central = {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque', 'data': data,
+            'metadata': {'name': 'traefik-tls', 'namespace': 'etch-sso', 'resourceVersion': '1'}}
         self.nodes = [worker('worker', '192.0.2.10'), worker('second-worker', '192.0.2.20')]
 
     def check_required_resources(self, *args, **kwargs):
@@ -233,7 +200,7 @@ class StartTests(unittest.TestCase):
         if 'create' in args:
             if '--dry-run=client' in args:
                 return json.dumps({'kind': 'List', 'items': self.source})
-            self.assertEqual(json.loads(kwargs['data'])['kind'], 'Namespace')
+            self.assertIn(json.loads(kwargs['data'])['kind'], ('Namespace', 'Secret'))
             return ''
         if 'get' in args and 'namespace' in args:
             return self.namespace
@@ -253,8 +220,8 @@ class StartTests(unittest.TestCase):
         if 'get' in args and 'pods' in args:
             return json.dumps({'items': []})
         if 'get' in args and 'secret' in args and '-o' in args and args[-1] == 'json':
-            if 'airflow-tls' in args and self.missing_destination:
-                return ''
+            if 'traefik-tls' in args:
+                return '' if self.missing_destination else json.dumps(self.central)
             return json.dumps(self.tls)
         return ''
 
@@ -303,7 +270,7 @@ class StartTests(unittest.TestCase):
 
     def test_wrong_tls_domain_blocks_before_mutation(self):
         self.mismatch = True
-        with self.assertRaisesRegex(ValueError, '도메인과 일치'):
+        with self.assertRaisesRegex(ValueError, '공개 도메인'):
             server.start(self.api, routing, 'test-context', Path('/test.env'))
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
@@ -311,6 +278,13 @@ class StartTests(unittest.TestCase):
     def test_wrong_tls_private_key_blocks_before_mutation(self):
         self.key_mismatch = True
         with self.assertRaisesRegex(ValueError, '개인키.*일치'):
+            server.start(self.api, routing, 'test-context', Path('/test.env'))
+        self.assertFalse(any('apply' in args for args, _ in self.calls))
+        self.api.deploy.assert_not_called()
+
+    def test_legacy_stack_requires_sso_certificate_before_removing_its_secret_reference(self):
+        self.source.append({'kind': 'Ingress', 'spec': {'rules': [{'host': 'sso.test'}]}})
+        with self.assertRaisesRegex(ValueError, 'sso.test.*공용 TLS'):
             server.start(self.api, routing, 'test-context', Path('/test.env'))
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
@@ -349,12 +323,10 @@ class StartTests(unittest.TestCase):
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
 
-    def test_pending_tls_only_covers_the_exact_destination(self):
+    def test_legacy_tls_env_never_requires_an_app_namespace_copy(self):
         self.missing_resources = {('secret', 'airflow-tls')}
-        for metadata in [{'name': 'other-tls', 'namespace': 'airflow'},
-                         {'name': 'airflow-tls', 'namespace': 'other'}]:
-            with self.subTest(metadata=metadata), self.assertRaisesRegex(ValueError, '필수 리소스'):
-                self.check_required_resources(self.settings, 'test-context', pending_tls={'metadata': metadata})
+        self.check_required_resources(self.settings, 'test-context')
+        self.assertFalse(any('airflow-tls' in args for args, _ in self.calls))
 
     def test_airflow_only_preserves_vip_and_never_reads_or_applies_keycloak(self):
         self.live = routing.place_vip_backends(self.live, self.live, ['192.0.2.10', '192.0.2.20'], self.nodes, [])
@@ -381,7 +353,7 @@ class StartTests(unittest.TestCase):
 
         def run(args, **kwargs):
             if 'create' in args and '--dry-run=client' not in args and json.loads(kwargs['data']).get('kind') == 'Namespace':
-                self.live['spec']['template']['spec']['containers'][0]['args'][2] = (
+                self.live['spec']['template']['spec']['containers'][0]['args'][3] = (
                     routing.PREFIX + 'etch-sso,headlamp,tailwind-internal')
                 self.live['metadata']['resourceVersion'] = '18'
             return self.fake_run(args, **kwargs)
@@ -402,7 +374,7 @@ class StartTests(unittest.TestCase):
         """최신 조회 뒤의 동시 변경은 resourceVersion 검사로 막고 앱 배포도 중단합니다."""
         def run(args, **kwargs):
             if 'apply' in args and json.loads(kwargs['data']).get('kind') == 'List':
-                self.live['spec']['template']['spec']['containers'][0]['args'][2] = (
+                self.live['spec']['template']['spec']['containers'][0]['args'][3] = (
                     routing.PREFIX + 'etch-sso,tailwind-internal,headlamp')
                 self.live['metadata']['resourceVersion'] = '18'
             return self.fake_run(args, **kwargs)
@@ -431,18 +403,21 @@ class StartTests(unittest.TestCase):
 
     def test_missing_tls_requires_explicit_source(self):
         self.missing_destination = True
-        with self.assertRaisesRegex(ValueError, '--tls-source'):
+        with self.assertRaisesRegex(ValueError, 'ingress-tls-up'):
             server.start(self.api, routing, 'test-context', Path('/test.env'))
         self.assertFalse(any('apply' in args for args, _ in self.calls))
 
-    def test_tls_copy_is_only_for_new_destination_without_source_metadata(self):
+    def test_explicit_source_registers_only_the_common_store(self):
         self.missing_destination = True
         self.tls['metadata'] = {'name': 'original', 'namespace': 'etch-sso', 'uid': 'never-copy'}
         server.start(self.api, routing, 'test-context', Path('/test.env'), 'etch-sso/keycloak-tls')
-        copied = [json.loads(kwargs['data']) for args, kwargs in self.calls if 'apply' in args and kwargs.get('sensitive')]
-        self.assertEqual(len(copied), 1)
-        self.assertEqual(copied[0]['metadata'], {'name': 'airflow-tls', 'namespace': 'airflow'})
-        self.assertEqual(copied[0]['data'], self.tls['data'])
+        registered = [json.loads(kwargs['data']) for args, kwargs in self.calls
+                      if 'create' in args and '--dry-run=client' not in args and json.loads(kwargs.get('data', '{}')).get('kind') == 'Secret']
+        self.assertEqual(len(registered), 1)
+        self.assertEqual(registered[0]['metadata'], {'name': 'traefik-tls', 'namespace': 'etch-sso'})
+        self.assertEqual(registered[0]['data']['portal.test.crt'], self.tls['data']['tls.crt'])
+        self.assertNotIn('uid', registered[0]['metadata'])
+        self.assertFalse(any('airflow-tls' in args for args, _ in self.calls))
 
     def test_node_change_blocks_before_mutation(self):
         self.live['spec']['template']['spec']['nodeSelector']['kubernetes.io/hostname'] = 'another-worker'

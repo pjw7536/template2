@@ -14,7 +14,7 @@ Keycloak과 Headlamp의 인증서·개인키는 도메인별로 구분하고 공
 | 이미 추출한 파일 사용 | [사이트 선택](#1-1-작업할-사이트-선택) → [기존 파일 검증](#1-4-이미-추출한-파일-검증--추출을-생략했다면-실행) → [서버 적용](#2단계-서버-적용) |
 | 실행 중인 사이트 인증서 갱신 | 새 파일의 추출 또는 검증 → [대상 선택](#2-1-적용할-사이트와-대상-클러스터-선택) → [TLS Secret 갱신](#2-2-kubernetes-tls-secret에-등록-또는-갱신) → [실제 인증서 확인](#2-4-실제-제공되는-인증서-확인) |
 
-인증서 갱신 후 Airflow·Portal 등 다른 namespace로 복사한 TLS Secret도 각각 갱신합니다.
+인증서는 공용 `etch-sso/traefik-tls`에서 관리합니다. 앱 namespace에 복제하지 않습니다.
 Headlamp 최초 설치 중 파일 추출만 필요한 경우에는 1단계를 마친 뒤 [Headlamp TLS 안내](../../headlamp/03_TLS.md)로 돌아갑니다.
 
 - **사전 준비**: 원본 PFX/P7B와 공용 CA 파일 배치
@@ -349,15 +349,15 @@ Keycloak:
 ```bash
 CERT_SITE=etch-sso.samsungds.net
 TLS_NAMESPACE=etch-sso
-TLS_SECRET=keycloak-tls
+TLS_SECRET=traefik-tls
 ```
 
 Headlamp:
 
 ```bash
 CERT_SITE=etch.samsungds.net
-TLS_NAMESPACE=headlamp
-TLS_SECRET=headlamp-tls
+TLS_NAMESPACE=etch-sso
+TLS_SECRET=traefik-tls
 ```
 
 추출 때와 다른 터미널에서도 실행할 수 있도록 경로를 다시 설정합니다.
@@ -374,8 +374,7 @@ read -r -p '대상 context 이름: ' KUBE_CONTEXT
 export KUBE_CONTEXT
 ```
 
-Secret 이름은 현재 프로젝트 기본값입니다. 운영 중인 Ingress가 다른 Secret을 참조한다면
-실제 이름에 맞춰 `TLS_SECRET`을 바꾸고, Headlamp의 `HEADLAMP_TLS_SECRET`도 일치시킵니다.
+두 도메인 모두 같은 공용 Secret을 사용합니다. 각 앱 Ingress에는 Secret 이름을 지정하지 않습니다.
 
 등록 전에 선택한 대상과 파일 경로를 한 번 확인합니다.
 
@@ -391,37 +390,24 @@ ls -l "$CERT_SITE_DIR/fullchain.crt" "$CERT_SITE_DIR/private.key"
 ### 2-2. Kubernetes TLS Secret에 등록 또는 갱신
 
 **적용할 사이트가 1-3 또는 1-4 검증에 성공한 뒤에만 실행합니다.**
-아래 명령은 2-1에서 선택한 사이트의 TLS Secret을 실제로 생성하거나 갱신합니다.
-폴더에 파일을 넣는 것과 달리, 이 단계부터 서버에 반영됩니다.
+공용 등록 도구는 도메인·만료·개인키를 검사하고 다른 도메인의 인증서를 보존합니다.
 
 ```bash
-(
-  set -euo pipefail
-  test -n "$KUBE_CONTEXT"
-  kubectl --context "$KUBE_CONTEXT" create namespace "$TLS_NAMESPACE" --dry-run=client -o yaml |
-    kubectl --context "$KUBE_CONTEXT" apply -f -
-  kubectl --context "$KUBE_CONTEXT" -n "$TLS_NAMESPACE" create secret tls "$TLS_SECRET" \
-    --cert="$CERT_SITE_DIR/fullchain.crt" \
-    --key="$CERT_SITE_DIR/private.key" --dry-run=client -o yaml |
-    kubectl --context "$KUBE_CONTEXT" apply -f -
-)
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$CERT_SITE" \
+  TLS_CERT_FILE="$CERT_SITE_DIR/fullchain.crt" TLS_KEY_FILE="$CERT_SITE_DIR/private.key"
+make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
-**성공 기준:** `secret/keycloak-tls` 또는 `secret/headlamp-tls` 뒤에 `created`, `configured`, `unchanged` 중 하나가 표시됩니다.
-오류 없이 끝났는지 확인합니다. Secret 등록 성공과 실제 HTTPS 반영 여부는 2-4에서 함께 확인합니다.
-
-- Keycloak: `etch-sso/keycloak-tls`를 등록합니다.
-- Headlamp: `etch.samsungds.net`용 `headlamp/headlamp-tls`를 등록합니다.
-- Airflow: 같은 업무 도메인의 `/airflow`를 사용하며, [Airflow 배포](../../airflow/04_SETUP_FLOW.md)에서
-  `AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls`로 `airflow/airflow-tls`에 최초 복사합니다. 원본 갱신 시 복사본도 별도 갱신합니다.
-- namespace·Ingress 이름·host·TLS Secret은 [공용 Ingress 기준](../ingress/README.md#운영-ingress-기준)을 따릅니다.
-- 기존 Ingress가 이 Secret을 사용하면 Traefik이 변경을 반영합니다. 실제 접속 검증은 다음 단계에서 합니다.
+성공 시 `공용 TLS 등록 완료`가 표시됩니다. 기존 Traefik이 있으면 인증서를 다시 읽도록 재시작합니다.
+앱별 인증서는 추가 등록하지 않습니다. 처음 전환하는 기존 설치는
+[공용 TLS 이전 순서](../ingress/README.md#기존-설치에서-이전)를 따릅니다.
+실제 HTTPS 반영은 2-4에서 확인합니다.
 
 ### 2-3. 최초 배포 시 앱 설치
 
 **이미 서비스가 운영 중이고 인증서만 갱신했다면 이 단계는 건너뛰고 2-4로 이동합니다.**
 
-Keycloak 배포 도구는 `deploy/shared/certs/etch-sso.samsungds.net`을 기본으로 사용합니다.
+Keycloak 배포 도구는 2-2에서 등록한 공용 SSO 인증서를 검사합니다. PEM 파일을 다시 읽지 않습니다.
 Keycloak 최초 배포라면 기존 운영 env와 대상 context를 준비한 뒤 저장소 루트에서 실행합니다.
 
 ```bash
@@ -434,8 +420,7 @@ make keycloak-check KUBE_CONTEXT="$KUBE_CONTEXT"
 make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
-**갱신 시에는 위 Secret 등록을 먼저 수행합니다.** Keycloak 배포 도구는 기존 Secret과 파일이 다르면
-자동으로 덮어쓰지 않고 중단하기 때문입니다. TLS 갱신만 하는 경우 앱 전체를 다시 배포할 필요는 없습니다.
+**갱신은 2-2의 공용 등록 명령으로 수행합니다.** TLS 갱신만 하는 경우 앱 전체를 다시 배포할 필요는 없습니다.
 
 Headlamp 최초 설치 중이라면 [03 TLS 준비](../../headlamp/03_TLS.md)로 돌아갑니다.
 Headlamp 배포·접속 검사는 [06 배포와 검증](../../headlamp/06_DEPLOY_VERIFY.md)에서만 진행합니다.
@@ -472,10 +457,10 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
 성공 후 브라우저에서 해당 사이트를 확인합니다.
 다른 사이트에도 적용하려면 2-1로 돌아가 해당 도메인을 선택하고 반복합니다.
 
-지문이 다르면 반영 대기 여부·DNS 대상·Ingress의 TLS Secret 이름을 확인합니다.
+지문이 다르면 반영 대기 여부·DNS 대상·공용 TLS 등록과 Traefik 마운트을 확인합니다.
 
 문제가 생겨 이전 인증서로 복구해야 한다면, 앞서 보관한 유효한 인증서·개인키 쌍을
-2-2의 `--cert`와 `--key`에 지정해 다시 등록합니다. 원본 PFX 파일은 계속 보관합니다.
+2-2의 `TLS_CERT_FILE`과 `TLS_KEY_FILE`에 지정해 다시 등록합니다. 원본 PFX 파일은 계속 보관합니다.
 
 ### 2-5. Headlamp OIDC용 CA는 별도 등록
 

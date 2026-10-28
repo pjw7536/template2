@@ -2,7 +2,7 @@
 
 [전체 순서](README.md) · 이전: [03 TLS](03_TLS.md) · 다음: [05 API server](05_APISERVER_SETUP.md)
 
-03의 TLS Secret·OIDC CA 등록과 연결 검사를 마친 뒤 진행합니다.
+03의 공용 TLS·OIDC CA 등록과 연결 검사를 마친 뒤 진행합니다.
 Keycloak 자체 설정은 완료되어 있어야 합니다. 이 단계에서는 Headlamp 전용 client를 등록합니다.
 
 01에서 사용한 env·context를 유지한 CP1 터미널과 Keycloak 관리자 화면을 준비합니다.

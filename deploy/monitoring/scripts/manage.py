@@ -15,6 +15,10 @@ import tempfile
 from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
+tls = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tls)
+
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'INGRESS_HOST', 'INGRESS_TLS_SECRET'))
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
@@ -68,7 +72,6 @@ def validate(settings, example=False):
         host = settings['INGRESS_HOST']
         label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
         require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host), 'INGRESS_HOST에는 경로·scheme 없는 DNS 이름이 필요합니다.')
-        require(settings['INGRESS_TLS_SECRET'], 'HTTPS Ingress에는 INGRESS_TLS_SECRET이 필요합니다.')
 
 
 def version(value):
@@ -119,7 +122,7 @@ def values(settings):
         for component in VOLUMES:
             path = '/' + component
             ingress = {'enabled': True, 'ingressClassName': 'traefik', 'annotations': dict(annotations),
-                       'hosts': [host], 'tls': [{'hosts': [host], 'secretName': settings['INGRESS_TLS_SECRET']}],
+                       'hosts': [host], 'tls': [],
                        'pathType': 'Prefix'}
             if component == 'grafana':
                 ingress['path'] = path
@@ -219,36 +222,33 @@ def render(settings, directory, chart, values_file=None):
     return flags
 
 
-def ingress_tls_names(settings, content):
-    """최종 렌더에 남은 공용 Traefik Ingress의 TLS Secret만 찾는다."""
-    names = set()
+def ingress_hosts(settings, content):
+    """최종 렌더에 남은 공용 Traefik Ingress의 호스트를 찾는다."""
+    hosts = set()
     for document in re.split(r'^---[ \t]*(?:#.*)?$', content, flags=re.M):
         if not re.search(r'^kind: Ingress\s*$', document, re.M):
             continue
-        if not re.search(r'^  ingressClassName: [\"\']?traefik[\"\']?\s*$', document, re.M):
+        if not re.search(r"^  ingressClassName: [\"']?traefik[\"']?\s*$", document, re.M):
             continue
         namespace = re.search(r'^  namespace: ([^\n]+)', document, re.M)
         require(not namespace or namespace[1].strip(' \"\'') == settings['NAMESPACE'],
                 '공용 Monitoring Ingress는 지정한 NAMESPACE에 있어야 합니다.')
-        secrets = re.findall(r'^[ \t]+(?:-[ \t]+)?secretName: ([^\n]+)', document, re.M)
-        require(secrets, '공용 Monitoring Ingress에는 TLS Secret이 필요합니다.')
-        names.update(name.strip(' \"\'') for name in secrets)
-    return names
+        found = re.findall(r'^[ \t]+(?:-[ \t]+)?host: ([^\n]+)', document, re.M)
+        require(found, '공용 Monitoring Ingress에는 도메인이 필요합니다.')
+        hosts.update(host.strip(' \"\'') for host in found)
+    return hosts
 
 
 def connect_ingress(settings, context, content, dry_run=False):
     """TLS와 권한을 검사하고 기존 VIP·앱을 보존하며 감시 namespace만 추가한다."""
-    secrets = ingress_tls_names(settings, content)
-    if not secrets:
+    hosts = ingress_hosts(settings, content)
+    if not hosts:
         return
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
-    for name in sorted(secrets):
-        summary = run([*kube, '-n', namespace, 'get', 'secret', name, '-o',
-                       'go-template={{.type}}{{range $key, $value := .data}} {{$key}}{{end}}']).split()
-        require(summary and summary[0] == 'kubernetes.io/tls' and {'tls.crt', 'tls.key'} <= set(summary[1:]),
-                'Monitoring namespace에 tls.crt·tls.key를 가진 TLS Secret을 먼저 등록하세요.')
     current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
+    for host in sorted(hosts):
+        tls.check(kube, host, current)
     spec = importlib.util.spec_from_file_location('monitoring_routing', BASE.parent / 'shared/ingress/routing.py')
     routing = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(routing)

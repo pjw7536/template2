@@ -60,7 +60,7 @@ Keycloak과 Keycloak DB는 재배포하지 않습니다.
 | 선택 입력 | 사용하는 경우 |
 | --- | --- |
 | `AIRFLOW_ENV=/절대경로/k8s.env` | Makefile 명령에 다른 env 전달 |
-| `AIRFLOW_TLS_SOURCE=namespace/secret` | Airflow TLS Secret 최초 등록에 기존 인증서 사용 |
+| `AIRFLOW_TLS_SOURCE=namespace/secret` | 기존 인증서를 공용 Traefik 저장소에 등록하는 호환 입력 |
 | `AIRFLOW_CHART_FILE=/절대경로/airflow-1.22.0.tgz` | 별도 위치의 chart 지정, 셸에서 export |
 
 TLS 최초 등록 명령과 검사·배포별 영향은 [04 실행](04_SETUP_FLOW.md)에 있습니다.

@@ -1271,9 +1271,14 @@ spec:
         ingress: traefik
       serviceAccountName: traefik
       volumes:
-      - configMap:
-          name: traefik-middlewares-dm2bm92m49
-        name: middlewares
+      - name: middlewares
+        projected:
+          sources:
+          - configMap:
+              name: traefik-middlewares-dm2bm92m49
+          - secret:
+              name: traefik-tls
+              optional: true
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -1378,10 +1383,6 @@ spec:
               name: http
         path: /
         pathType: Prefix
-  tls:
-  - hosts:
-    - etch-sso.samsungds.net
-    secretName: keycloak-tls
 ---
 apiVersion: networking.k8s.io/v1
 kind: IngressClass

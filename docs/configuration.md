@@ -121,8 +121,8 @@ API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
 
 Kubernetes는 kube-prometheus-stack을 사용합니다. [Monitoring 안내](../deploy/monitoring/README.md)에 따라
 chart·이미지·Grafana Secret을 준비합니다. 로컬 접속은 `make k8s-grafana`·`make k8s-prometheus`를 사용합니다.
-운영은 `INGRESS_ENABLED=true`, `INGRESS_HOST=etch.samsungds.net`, `INGRESS_TLS_SECRET=monitoring-tls`를 기본으로
-`/grafana/`, `/prometheus/`, `/alertmanager/`를 제공합니다. TLS Secret은 Monitoring namespace에 등록하며,
+운영은 `INGRESS_ENABLED=true`, `INGRESS_HOST=etch.samsungds.net`, `INGRESS_TLS_SECRET=`을 기본으로
+`/grafana/`, `/prometheus/`, `/alertmanager/`를 제공합니다. 인증서는 공용 `etch-sso/traefik-tls`에 등록하며,
 배포 도구가 기존 공용 Traefik의 VIP·배치를 유지하고 감시 namespace만 추가합니다.
 기존 Compose 전용 대시보드·프록시 설정은 제거했습니다. 앱 내부 metric은 별도 instrumentation이 필요합니다.
 

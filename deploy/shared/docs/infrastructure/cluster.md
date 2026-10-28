@@ -98,7 +98,7 @@ VIP 연결은 인프라팀에서 설정했으며, 위 앱 라우팅은 저장소
 - Keycloak workload: Keycloak, 전용 PostgreSQL, 기존 Traefik (공용 진입점으로 확장하는 코드 준비 완료)
 - Keycloak PostgreSQL local PV: `/appdata/keycloak-postgres`, 50Gi
 - Keycloak 구동: 2026-09-10 사용자 확인 완료
-- Keycloak Ingress: `traefik` IngressClass, 기존 `keycloak-tls` Secret 사용
+- Keycloak Ingress: `traefik` IngressClass, 공용 `etch-sso/traefik-tls` 인증서 사용
 - StorageClass: 2026-09-08 확인 시 없음, Portal 배포 전 재확인 필요
 - Kubernetes version과 CNI: 문서 기준 미확인
 - Keycloak TLS 인증서의 브라우저 신뢰와 full chain: 최종 확인 필요

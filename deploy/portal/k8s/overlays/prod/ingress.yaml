@@ -2,15 +2,14 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: portal
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
   labels:
     app.kubernetes.io/name: portal
     app.kubernetes.io/part-of: tailwind-portal
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - etch.samsungds.net
-      secretName: portal-tls
   rules:
     - host: etch.samsungds.net
       http:

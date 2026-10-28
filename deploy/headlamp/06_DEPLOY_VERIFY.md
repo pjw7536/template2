@@ -12,7 +12,7 @@
 배포 전에 아래 항목이 끝났는지 확인하세요. 빠진 항목이 있으면 해당 문서로 돌아갑니다.
 
 - 01: context·env·chart 검사 완료, `headlamp` namespace와 필요한 이미지 인증 Secret 준비.
-- 03: Headlamp TLS Secret과 필요한 Keycloak CA ConfigMap 등록, OIDC 연결 검사 통과.
+- 03: 공용 Traefik 인증서와 필요한 Keycloak CA ConfigMap 등록, OIDC 연결 검사 통과.
 - 04: Headlamp client·S256·groups mapper·관리자 그룹 가입 완료, 새 client secret 등록.
 - 05: 모든 API server의 인증 설정과 기존 관리자 접속 확인 완료.
 
@@ -28,7 +28,7 @@ make headlamp-check
 make headlamp-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
-`headlamp-up`은 OIDC Secret의 필수 키·선택 CA·TLS Secret·기존 Traefik을 확인한 뒤
+`headlamp-up`은 OIDC Secret의 필수 키·선택 CA·공용 TLS 인증서·기존 Traefik을 확인한 뒤
 Helm release `headlamp`를 namespace `headlamp`에 설치하고 준비 상태를 기다립니다.
 기존 Traefik의 감시 namespace·배치를 보존하면서 Headlamp 접근을 연결합니다.
 Helm 성공 후 Traefik 단계만 실패했다면 원인을 해결하고 같은 명령을 다시 실행합니다.

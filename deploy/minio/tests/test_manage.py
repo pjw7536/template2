@@ -80,24 +80,26 @@ class MinioTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertNotIn('delete', run.call_args.args[0])
 
-    def test_missing_tls_stops_before_controller_or_secret_changes(self):
-        with patch.object(manage, 'run', return_value='Opaque password') as run, \
-                self.assertRaisesRegex(ValueError, 'TLS Secret'):
+    def test_missing_common_tls_stops_before_mutation(self):
+        with patch.object(manage, 'run', return_value='{}') as run, \
+                patch.object(manage.tls, 'check', side_effect=ValueError('공용 TLS 인증서 없음')) as check, \
+                self.assertRaisesRegex(ValueError, '공용 TLS'):
             manage.routing_plan(['kubectl', '--context', 'prod'], settings())
         self.assertEqual(run.call_count, 1)
+        check.assert_called_once_with(['kubectl', '--context', 'prod'], settings()['INGRESS_HOST'], {})
 
     def test_ingress_patch_only_adds_common_namespace_and_checks_resource_version(self):
         current = {'metadata': {'namespace': 'etch-sso', 'resourceVersion': '50'}, 'spec': {
             'replicas': 2, 'template': {'spec': {'serviceAccountName': 'traefik',
             'affinity': {'keep': 'vip-placement'},
-            'volumes': [{'name': 'middlewares', 'configMap': {'name': 'paths-hash'}}],
+            'volumes': [{'name': 'middlewares', 'projected': {'sources': [{'configMap': {'name': 'paths-hash'}}]}}],
             'containers': [{'name': 'traefik', 'args': ['--providers.file.directory=/etc/traefik/dynamic',
                 '--providers.kubernetesingress.namespaces=etch-sso,headlamp,tailwind-internal,airflow'],
                 'volumeMounts': [{'name': 'middlewares', 'mountPath': '/etc/traefik/dynamic'}]}]}}}}
         before = json.dumps(current)
-        responses = ['kubernetes.io/tls tls.crt tls.key', json.dumps(current),
+        responses = [json.dumps(current),
                      json.dumps({'data': {'paths.yaml': 'minio-api:\nminio-console:'}})]
-        with patch.object(manage, 'run', side_effect=responses):
+        with patch.object(manage, 'run', side_effect=responses), patch.object(manage.tls, 'check') as check:
             access, changes = manage.routing_plan(['kubectl', '--context', 'prod'], settings())
         self.assertEqual(json.dumps(current), before)
         self.assertTrue(all(item['metadata']['namespace'] == 'minio' for item in access))

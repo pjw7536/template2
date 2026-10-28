@@ -52,7 +52,7 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-cont
 | Pending / PVC Pending | Events·자원·taint·nodeSelector·StorageClass·PV affinity |
 | ImagePullBackOff | 이미지 tag·mirror·CA·imagePullSecret·노드 이미지 접근 |
 | CrashLoopBackOff | 이전 로그·종료 코드·env·DB 연결 |
-| TLS 오류 | SAN·만료·체인·CA·앱 namespace의 TLS Secret |
+| TLS 오류 | SAN·만료·체인·CA·공용 Traefik 인증서·마운트 |
 | 404 / 503 | Host·경로·IngressClass·namespace 감시 / Pod·Service endpoint |
 | 로그인 반복·callback 실패 | issuer·redirect URI·client secret·시간·HTTPS 전달 |
 

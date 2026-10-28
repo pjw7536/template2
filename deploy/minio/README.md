@@ -51,7 +51,8 @@ mc 기본값은 `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`를 사내 Do
 | `STORAGE_CLASS_NAME` | 동적 볼륨 공급자의 실제 이름, 비우면 정적 PV |
 | `VOLUME_NAME` | 정적 PV를 명시적으로 결합할 때 지정 |
 | `STORAGE_SIZE` | PVC 요청 용량 |
-| `INGRESS_HOST`, `INGRESS_TLS_SECRET` | 업무 도메인과 minio namespace의 TLS Secret |
+| `INGRESS_HOST` | 업무 도메인. 인증서는 공용 Traefik에서 관리 |
+| `INGRESS_TLS_SECRET` | 이전 env 호환용. 빈 값으로 유지 |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | 공용 서버 관리자 계정, 기존 운영값은 보존 |
 | `MINIO_BUCKETS` | 초기 생성할 버킷의 쉼표 구분 목록, 공용 코드는 특정 앱 이름을 고정하지 않음 |
 
@@ -72,16 +73,18 @@ StorageClass를 사용하지 않으면 PV를 먼저 준비합니다. PV의 용�
 local PV라면 실제 디스크 경로와 nodeAffinity는 `NODE_NAME`의 Worker를 가리켜야 합니다.
 기존 데이터 디스크를 새 빈 저장소로 초기화하거나 다른 namespace의 PVC를 삭제하지 않습니다.
 
-업무 도메인의 fullchain·개인키로 `minio-tls`를 등록합니다. 기존 유효한 Secret이 있으면 생략합니다.
+업무 도메인의 인증서는 [공용 Traefik](../shared/ingress/README.md#인증서-최초-등록과-갱신)에 한 번 등록합니다.
+이미 등록되어 있으면 이 단계는 생략합니다. `minio` namespace에는 TLS 인증서를 등록하지 않습니다.
 
 ```bash
 read -r -p '업무 도메인 fullchain PEM 경로: ' MINIO_TLS_CERT
 read -r -p '업무 도메인 개인키 PEM 경로: ' MINIO_TLS_KEY
-kubectl --context "$KUBE_CONTEXT" -n minio create secret tls minio-tls \
-  --cert="$MINIO_TLS_CERT" --key="$MINIO_TLS_KEY"
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_CERT_FILE="$MINIO_TLS_CERT" TLS_KEY_FILE="$MINIO_TLS_KEY"
 ```
 
-`INGRESS_TLS_SECRET`을 바꿨다면 Secret 이름도 맞춥니다. namespace별 Secret은 직접 공유할 수 없으므로 각각 등록·갱신합니다.
+기존 Secret만 있다면 파일 대신 `TLS_SOURCE=namespace/secret`으로 가져올 수 있습니다.
+인증서 갱신은 공용 등록 명령만 다시 실행합니다.
 
 ## 3. 공용 진입점과 MinIO 배포
 

@@ -8,6 +8,7 @@
 import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,9 @@ from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
+tls = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tls)
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_DB', 'NODE_NAME', 'POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'POSTGRES_IMAGE', 'POSTGRES_UID', 'POSTGRES_GID', 'AIRFLOW_IMAGE_REPOSITORY', 'AIRFLOW_IMAGE_TAG', 'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_ENABLED', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', 'AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'AIRFLOW_ADMIN_USERNAME', 'AIRFLOW_ADMIN_EMAIL', 'POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL', 'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS'))
 OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID',
@@ -110,7 +114,7 @@ def validate(values, example=False):
             require(url.path == '/airflow', 'AIRFLOW_WEBSERVER_BASE_URL 경로는 /airflow여야 합니다.')
     if values['INGRESS_ENABLED'] == 'true':
         require(values['INGRESS_CLASS_NAME'], 'Ingress 사용 시 INGRESS_CLASS_NAME이 필요합니다.')
-        if urlsplit(values['AIRFLOW_WEBSERVER_BASE_URL']).scheme == 'https':
+        if urlsplit(values['AIRFLOW_WEBSERVER_BASE_URL']).scheme == 'https' and values['INGRESS_CLASS_NAME'] != 'traefik':
             require(values['INGRESS_TLS_SECRET'], 'HTTPS Ingress에는 INGRESS_TLS_SECRET이 필요합니다.')
     require('@' in values['AIRFLOW_ADMIN_EMAIL'], 'AIRFLOW_ADMIN_EMAIL 형식 오류')
     if not example:
@@ -225,6 +229,7 @@ def helm_values(settings, pause_new_dags=False):
         result.setdefault('volumeMounts', []).append({'name': 'oidc-ca', 'mountPath': '/etc/airflow/oidc-ca', 'readOnly': True})
     if settings['INGRESS_ENABLED'] == 'true':
         url = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL'])
+        separate_tls = settings['INGRESS_CLASS_NAME'] != 'traefik'
         annotations = {}
         if settings['INGRESS_CLASS_NAME'] == 'traefik':
             annotations['traefik.ingress.kubernetes.io/router.entrypoints'] = 'websecure' if url.scheme == 'https' else 'web'
@@ -234,7 +239,10 @@ def helm_values(settings, pause_new_dags=False):
             'annotations': annotations,
             'enabled': True, 'path': '/airflow', 'pathType': 'Prefix',
             'ingressClassName': settings['INGRESS_CLASS_NAME'],
-            'hosts': [{'name': url.hostname, 'tls': {'enabled': url.scheme == 'https', 'secretName': settings['INGRESS_TLS_SECRET']}}],
+            'hosts': [{'name': url.hostname, 'tls': {
+                'enabled': url.scheme == 'https' and separate_tls,
+                'secretName': settings['INGRESS_TLS_SECRET'] if separate_tls else '',
+            }}],
         }}
     return result
 
@@ -350,6 +358,8 @@ def check_required_resources(settings, context, pending_tls=None):
                           ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
         if not settings[key] or (key.startswith('INGRESS_') and settings['INGRESS_ENABLED'] != 'true'):
             continue
+        if key == 'INGRESS_TLS_SECRET' and settings['INGRESS_CLASS_NAME'] == 'traefik':
+            continue
         if key == 'INGRESS_TLS_SECRET' and pending_tls and pending_tls.get('metadata') == {
                 'name': settings[key], 'namespace': settings['NAMESPACE']}:
             continue
@@ -391,6 +401,16 @@ def check_cluster_inputs(settings, context, rendered=None):
                 require(not existing.strip(), '기존 Airflow 설치의 Fernet Secret이 없습니다. 원래 암호화 키로 airflow-fernet Secret을 먼저 복원하세요.')
 
 
+def check_ingress_tls(settings, context):
+    """단독 Helm 배포에서도 공용 HTTPS 인증서와 controller 연결을 먼저 검사한다."""
+    kube = ['kubectl', '--context', context]
+    if settings['INGRESS_ENABLED'] == 'true' and settings['INGRESS_CLASS_NAME'] == 'traefik':
+        host = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL'])
+        if host.scheme == 'https':
+            current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
+            tls.check(kube, host.hostname, current)
+
+
 def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     """노드와 기존 Secret을 확인한 뒤 DB → Helm hook → Pod 순서로 배포한다."""
     kube = ['kubectl', '--context', context]
@@ -400,6 +420,7 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
         flags = render(settings, temporary, chart, pause_new_dags, values_file)
         check_cluster_inputs(settings, context, Path(temporary) / 'airflow.yaml')
         check_required_resources(settings, context)
+        check_ingress_tls(settings, context)
         workloads = rendered_workloads(context, Path(temporary) / 'airflow.yaml')
         existing_namespace = run([*kube, 'get', 'namespace', namespace, '--ignore-not-found', '-o', 'name'])
         if not existing_namespace.strip():

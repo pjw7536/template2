@@ -17,11 +17,17 @@ REAL_RUN = keycloak.run
 
 
 class KeycloakTests(unittest.TestCase):
-    def test_default_certificate_directory_uses_shared_site(self):
+    def test_default_deployment_uses_registered_certificate_without_local_files(self):
         with patch('sys.argv', ['up.py', '--context', 'test-context', '--check-only']), \
                 patch.object(keycloak, 'start') as start:
             keycloak.main()
-        self.assertEqual(start.call_args.args[2], keycloak.BASE.parent / 'shared/certs/etch-sso.samsungds.net')
+        self.assertIsNone(start.call_args.args[2])
+
+    def test_registered_certificate_needs_no_local_pem_or_rotation(self):
+        self.existing()
+        keycloak.start('test-context', Path('/env'), certs=None)
+        self.assertFalse(any('restart' in args for args, _ in self.calls))
+        self.assertEqual(len(self.mutations()), 1)
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -47,6 +53,7 @@ class KeycloakTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(keycloak, 'read_settings', return_value=self.settings).start()
         patch.object(keycloak, 'run', side_effect=self.fake_run).start()
+        patch.object(keycloak.tls, 'run', side_effect=lambda args, data=None: keycloak.run(args, data=data, sensitive=True)).start()
         patch.object(keycloak.runtime, 'render_json', side_effect=lambda *args: deepcopy(self.source)).start()
 
     def fake_run(self, args, **kwargs):
@@ -88,6 +95,11 @@ class KeycloakTests(unittest.TestCase):
         for name, values, kind in [('keycloak-runtime', self.settings, 'Opaque'),
                                    ('keycloak-tls', {'tls.crt': 'certificate', 'tls.key': 'private-key'}, 'kubernetes.io/tls')]:
             self.secrets[name] = {'type': kind, 'data': {key: base64.b64encode(value.encode()).decode() for key, value in values.items()}}
+        data = {f'sso.test.{suffix}': base64.b64encode(value.encode()).decode()
+                for suffix, value in [('crt', 'certificate'), ('key', 'private-key')]}
+        data['tls.yaml'] = base64.b64encode(keycloak.tls.configuration(data).encode()).decode()
+        self.secrets['traefik-tls'] = {'type': 'Opaque', 'metadata': {'name': 'traefik-tls',
+            'namespace': 'etch-sso', 'resourceVersion': '1'}, 'data': data}
         self.live = controller('etch-sso,airflow,tailwind-internal')
         self.live['metadata']['resourceVersion'] = 'existing-version'
         self.pvc = {'metadata': {'name': 'keycloak-postgres-data', 'namespace': 'etch-sso', 'uid': 'existing-claim'}}
@@ -230,12 +242,12 @@ class KeycloakTests(unittest.TestCase):
             self.start()
         self.assertEqual(self.mutations(), [])
 
-    def test_existing_tls_mismatch_is_not_overwritten(self):
+    def test_legacy_app_tls_is_no_longer_read_or_overwritten(self):
         self.existing()
         self.secrets['keycloak-tls']['data']['tls.crt'] = 'ZGlmZmVyZW50'
-        with self.assertRaisesRegex(ValueError, 'keycloak-tls'):
-            self.start()
-        self.assertEqual(self.mutations(), [])
+        self.start()
+        self.assertEqual(self.secrets['keycloak-tls']['data']['tls.crt'], 'ZGlmZmVyZW50')
+        self.assertFalse(any('keycloak-tls' in args for args, _ in self.calls))
 
     def test_certificate_mismatch_and_missing_runtime_with_pvc_stop(self):
         self.public_matches = False
@@ -259,7 +271,7 @@ class KeycloakTests(unittest.TestCase):
         keycloak.run.side_effect = lambda args, **kwargs: REAL_RUN(args, **kwargs) if args[0] == 'openssl' else self.fake_run(args, **kwargs)
         self.start(check_only=True)
         self.settings['keycloak-public-url'] = 'https://other.test'
-        with self.assertRaisesRegex(ValueError, '인증서 도메인'):
+        with self.assertRaisesRegex(ValueError, '공개 도메인'):
             self.start(check_only=True)
         self.assertEqual(self.mutations(), [])
 
@@ -285,7 +297,7 @@ class InputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/runtime.py',
-                             'deploy/shared/ingress/routing.py'):
+                             'deploy/shared/ingress/routing.py', 'deploy/shared/ingress/tls.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(keycloak.ROOT / relative, target)

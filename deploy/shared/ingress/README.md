@@ -59,39 +59,82 @@ make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 
 ## 운영 Ingress 기준
 
-프로젝트의 서버 가이드에서는 다음 값을 사용합니다. `name`은 Ingress 리소스 이름이며,
-`tls_secret`은 해당 행의 namespace에 있는 Secret 이름입니다.
+인증서는 `etch-sso/traefik-tls` Secret 한 곳에 보관합니다. 업무 도메인과 SSO 도메인의
+인증서를 함께 등록하면 Traefik이 접속 도메인(SNI)에 맞는 인증서를 선택합니다.
+앱 Ingress에는 `websecure`, `router.tls=true`만 선언하며 `spec.tls.secretName`을 지정하지 않습니다.
 
-| namespace | name | hosts | tls_secret |
-| --- | --- | --- | --- |
-| etch-sso | keycloak | etch-sso.samsungds.net | keycloak-tls |
-| headlamp | headlamp | etch.samsungds.net | headlamp-tls |
-| tailwind-internal | portal | etch.samsungds.net | portal-tls |
-| minio | minio-api, minio-console | etch.samsungds.net | minio-tls |
-| airflow | airflow-ingress | etch.samsungds.net | airflow-tls |
-| monitoring | monitoring-grafana, monitoring-prometheus, monitoring-alertmanager | etch.samsungds.net | monitoring-tls |
+| namespace | Ingress | 공개 주소 |
+| --- | --- | --- |
+| etch-sso | keycloak | etch-sso.samsungds.net/ |
+| tailwind-internal | portal | etch.samsungds.net/ (`/api`, `/auth` 포함) |
+| minio | minio-api, minio-console | etch.samsungds.net/minio/, /minio-console/ |
+| airflow | airflow-ingress | etch.samsungds.net/airflow |
+| headlamp | headlamp | etch.samsungds.net/headlamp/ |
+| monitoring | Grafana, Prometheus, Alertmanager | etch.samsungds.net/grafana/, /prometheus/, /alertmanager/ |
 
-Keycloak은 `https://etch-sso.samsungds.net`, Headlamp는 `https://etch.samsungds.net/headlamp/`로 접속합니다.
-Airflow 공개 주소는 `https://etch.samsungds.net/airflow`입니다.
-Portal은 `/`, API는 `/api`, 로그인 callback은 `/auth`를 사용합니다.
-독립 MinIO 앱은 `/minio/`와 `/minio-console/`를 자기 namespace의 Service로 연결합니다.
-Monitoring 화면은 `/grafana/`, `/prometheus/`, `/alertmanager/`이며 각 앱이 경로를 직접 처리합니다.
-인증만 `etch-sso.samsungds.net`으로 분리하고 나머지 웹 서비스는 같은 업무 도메인을 사용합니다.
-Airflow는 `headlamp/headlamp-tls`의 인증서를 자기 namespace의 `airflow-tls`로 최초 복사해 사용합니다.
-Secret은 namespace 간 직접 참조할 수 없으며, 원본 인증서 갱신 시 복사본도 별도로 갱신해야 합니다.
+### 인증서 최초 등록과 갱신
 
-배포 후 대상 context에서 다음 값과 대조합니다.
+저장소 루트에서 실행합니다. `TLS_HOST`는 앱의 공개 host와 같아야 합니다.
+서버 인증서가 먼저, 중간 CA가 뒤인 fullchain과 짝이 맞는 PEM 개인키를 사용합니다.
 
 ```bash
-kubectl --context "$KUBE_CONTEXT" get ingress -A \
-  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.tls[*].hosts,TLS_SECRET:.spec.tls[*].secretName'
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_CERT_FILE="$PWD/deploy/shared/certs/etch.samsungds.net/fullchain.crt" \
+  TLS_KEY_FILE="$PWD/deploy/shared/certs/etch.samsungds.net/private.key"
+
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch-sso.samsungds.net \
+  TLS_CERT_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/fullchain.crt" \
+  TLS_KEY_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/private.key"
+
+make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT"
+make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
+
+MinIO만 설치할 때는 업무 도메인 인증서만 등록해도 됩니다. SSO 설치 시 SSO 인증서를 추가합니다.
+갱신도 같은 명령에 새 파일을 전달합니다. 다른 도메인 인증서와 Secret metadata는 보존합니다.
+도구는 도메인·만료·키 일치를 검사하고 동시 변경이 있으면 덮어쓰지 않고 실패합니다.
+기존 Traefik이 있으면 재시작 후 rollout을 기다립니다. 앱별 인증서 복사·재배포는 필요하지 않습니다.
+새 인증서의 신뢰 체인과 실제 VIP 응답은 아래 절차로 별도 확인합니다.
+
+### 기존 설치에서 이전
+
+먼저 기존 유효한 인증서를 공용 저장소로 가져옵니다. 원본 Secret은 변경하지 않습니다.
+업무 도메인 원본은 `headlamp/headlamp-tls` 대신 기존 `minio/minio-tls`,
+`tailwind-internal/portal-tls`, `airflow/airflow-tls` 등 실제 보유한 것을 사용할 수 있습니다.
+
+```bash
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_SOURCE=headlamp/headlamp-tls
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch-sso.samsungds.net \
+  TLS_SOURCE=etch-sso/keycloak-tls
+make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
+```
+
+이후 사용하는 앱만 앱별 배포 명령으로 재배포해 기존 Ingress의 `spec.tls.secretName`을 제거합니다.
+Portal은 prod overlay를 다시 적용한 후 `make ingress-connect APP=portal`을 실행합니다.
+기존 앱별 TLS Secret은 자동 삭제하지 않습니다. 모든 Ingress 참조가 제거되고 HTTPS를 검증한 뒤
+운영자가 정리합니다. 이전을 마치기 전에는 기존 Secret도 유지해야 합니다.
+기존 Airflow `AIRFLOW_TLS_SOURCE` 입력도 지원하며 이제 공용 저장소에 등록합니다.
+앱별 `INGRESS_TLS_SECRET`·`HEADLAMP_TLS_SECRET`은 기존 env 호환용이며 공용 Traefik에서는 사용하지 않습니다.
+OIDC CA ConfigMap과 API server의 CA 신뢰 설정은 별도로 유지합니다.
+
+```bash
+kubectl --context "$KUBE_CONTEXT" -n etch-sso get secret traefik-tls
+kubectl --context "$KUBE_CONTEXT" get ingress -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host,LEGACY_TLS:.spec.tls[*].secretName'
+```
+
+인증서는 file provider로 로드하므로 Ingress의 TLS Secret 열이 비어 있는 것이 정상입니다.
+실제 인증서는 [인증서 응답 검증](../certs/README.md#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
+공식 계약: [Traefik 인증서와 SNI](https://doc.traefik.io/traefik/reference/routing-configuration/http/tls/tls-certificates/),
+[file provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/).
 
 | 파일 | 역할 |
 | --- | --- |
 | `stack.yaml` | 기존 Traefik ServiceAccount·RBAC·IngressClass·Deployment·Service |
 | `kustomization.yaml` | 기존 namespace와 사내 이미지 매핑 |
 | `routing.py` | namespace·운영 배치 보존, 정상 Worker 후보·실제 VIP 수용 범위 검사와 앱별 권한 |
+| `tls.py` | 공용 TLS 등록·검사·갱신 및 Traefik 재시작 |
 | `manage.py` | 앱과 독립적인 검사·적용 및 Portal 후속 연결 진입점 |
 | `middlewares` | file provider가 읽는 공용 경로 middleware ConfigMap. 로컬도 같은 정의를 재사용 |
 | `VIP.md` | 확정된 APP VIP·업무 DNS·인증서·서버 실행 및 접속 검증 절차 |
@@ -117,9 +160,9 @@ Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAM
 Backend 목록은 `deploy.tailwind.local/vip-backends` Deployment annotation에 기록하며 이후 인자를 생략해도 유지합니다.
 현재 단독 소스·이미지·hostPort는 그대로 사용하고 앱·DB의 nodeSelector는 변경하지 않습니다.
 
-Airflow는 자기 namespace의 Ingress·TLS Secret과 Helm 설정을 소유합니다.
+Airflow는 자기 namespace의 Ingress와 Helm 설정을 소유하며 인증서는 공용 Traefik이 관리합니다.
 Portal 전용 Nginx를 거치지 않고 같은 controller가 `/airflow`를 Airflow Service로 전달합니다.
-TLS는 사용 도메인에 맞는 인증서여야 하며 앱 namespace에 존재해야 합니다.
+TLS 인증서는 사용 도메인에 맞아야 하며 공용 `etch-sso/traefik-tls`에 등록되어 있어야 합니다.
 
 `kubectl apply -k deploy/shared/ingress`는 단독 기본값을 적용합니다. Keycloak 전달 YAML도 고정된 운영 설정을 적용합니다.
 공용 진입점만 갱신할 때는 `ingress-up`, 앱 배포에는 기존 설정을 보존하는 앱별 명령을 사용합니다.

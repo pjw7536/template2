@@ -17,6 +17,7 @@ spec = importlib.util.spec_from_file_location('deploy_runtime', ROOT / 'deploy/s
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 routing = runtime.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
+tls = runtime.module('shared_tls', ROOT / 'deploy/shared/ingress/tls.py')
 
 
 def run(args, data=None, sensitive=False):
@@ -51,7 +52,7 @@ def secret_if_missing(kube, name, values, secret_type='Opaque'):
             'type': secret_type, 'data': encoded}
 
 
-def start(context, env, certs, vip_backends=None, check_only=False):
+def start(context, env, certs=None, vip_backends=None, check_only=False):
     """입력을 먼저 검증하고 Keycloak 및 소유 ingress만 재적용한다."""
     if not context.strip():
         raise ValueError('--context를 명시하세요.')
@@ -60,16 +61,9 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     url = urlsplit(settings['keycloak-public-url'])
     if url.scheme != 'https' or not url.hostname or url.path or url.query or url.fragment:
         raise ValueError('keycloak-public-url은 경로 없는 HTTPS URL이어야 합니다.')
-    cert = Path(certs) / 'fullchain.crt'
-    key = Path(certs) / 'private.key'
-    checked = run(['openssl', 'x509', '-in', cert, '-noout', '-checkhost', url.hostname], sensitive=True)
-    if 'does match certificate' not in checked:
-        raise ValueError('인증서 도메인과 keycloak-public-url이 다릅니다.')
-    run(['openssl', 'x509', '-in', cert, '-noout', '-checkend', '0'], sensitive=True)
-    public = run(['openssl', 'x509', '-in', cert, '-pubkey', '-noout'], sensitive=True)
-    private_public = run(['openssl', 'pkey', '-in', key, '-passin', 'pass:', '-pubout'], sensitive=True)
-    if public.strip() != private_public.strip():
-        raise ValueError('인증서와 개인키가 일치하지 않습니다.')
+    cert = Path(certs) / 'fullchain.crt' if certs else None
+    key = Path(certs) / 'private.key' if certs else None
+    certificate = tls.prepare(kube, url.hostname, cert, key)
     desired = runtime.render_json(run, kube, BASE / 'k8s')
     namespaces = [item for item in desired if item['kind'] == 'Namespace']
     if len(namespaces) != 1 or namespaces[0]['metadata']['name'] != 'etch-sso':
@@ -79,8 +73,7 @@ def start(context, env, certs, vip_backends=None, check_only=False):
     hosts = [rule['host'] for item in desired if item['kind'] == 'Ingress' for rule in item['spec'].get('rules', [])]
     if url.hostname not in hosts:
         raise ValueError('공개 URL과 Keycloak Ingress 도메인이 다릅니다. 배포 원본을 먼저 맞추세요.')
-    pending = [secret_if_missing(kube, 'keycloak-runtime', settings),
-               secret_if_missing(kube, 'keycloak-tls', {'tls.crt': cert.read_text(), 'tls.key': key.read_text()}, 'kubernetes.io/tls')]
+    pending = [secret_if_missing(kube, 'keycloak-runtime', settings)]
     # namespace 삭제 후에도 Retain PV와 DB 파일은 남으므로 PVC 부재만으로 신규 설치라고 판단하지 않는다.
     pvc_raw = run([*kube, '-n', 'etch-sso', 'get', 'pvc', 'keycloak-postgres-data', '--ignore-not-found', '-o', 'json'])
     pv_raw = run([*kube, 'get', 'pv', 'keycloak-postgres-data', '--ignore-not-found', '-o', 'json'])
@@ -123,7 +116,10 @@ def start(context, env, certs, vip_backends=None, check_only=False):
         if secret:
             # create만 사용해 검사 이후 다른 운영자가 만든 Secret도 덮어쓰지 않는다.
             run([*kube, 'create', '-f', '-'], data=json.dumps(secret), sensitive=True)
+    tls.save(kube, certificate, restart=False)
     run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}))
+    if certs:
+        tls.reload_controller(kube)
     for workload in ('statefulset/keycloak-postgres', 'deployment/keycloak', 'deployment/traefik'):
         run([*kube, '-n', 'etch-sso', 'rollout', 'status', workload, '--timeout=600s'])
     print('Keycloak 배포 완료: ' + settings['keycloak-public-url'])
@@ -135,7 +131,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--context', required=True)
     parser.add_argument('--env', type=Path, default=BASE / 'env/prod.env')
-    parser.add_argument('--certs', type=Path, default=BASE.parent / 'shared/certs/etch-sso.samsungds.net')
+    parser.add_argument('--certs', type=Path, help='명시한 fullchain.crt·private.key를 공용 TLS에 등록하는 호환 입력')
     parser.add_argument('--vip-backends')
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()

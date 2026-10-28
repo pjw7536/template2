@@ -238,6 +238,8 @@ class DeploymentTests(unittest.TestCase):
         return ''
 
     def setUp(self):
+        self.addCleanup(patch.stopall)
+        patch.object(deploy, 'check_ingress_tls').start()
         self.calls = []
         self.changed_key = None
         self.node_spec = {}
@@ -255,6 +257,12 @@ class DeploymentTests(unittest.TestCase):
             patcher = patch.object(deploy, name, return_value=value)
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def test_missing_common_certificate_stops_before_application_writes(self):
+        deploy.check_ingress_tls.side_effect = ValueError('공용 TLS 인증서 없음')
+        with patch.object(deploy, 'run', self.fake_run), self.assertRaisesRegex(ValueError, '공용 TLS'):
+            deploy.deploy(settings(), 'test-context', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args or 'upgrade' in args for args, _ in self.calls))
 
     def test_missing_required_resources_stop_before_any_apply(self):
         for key, kind in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'),

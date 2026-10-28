@@ -13,6 +13,7 @@ spec = importlib.util.spec_from_file_location('deploy_runtime', BASE.parent / 's
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 routing = runtime.module('ingress_routing', BASE / 'routing.py')
+tls = runtime.module('shared_tls', BASE / 'tls.py')
 NAMESPACE = 'etch-sso'
 
 
@@ -93,6 +94,9 @@ def connect(context, app):
     if app != 'portal':
         raise ValueError('후속 Ingress 연결은 APP=portal을 지정하세요.')
     current = json.loads(run([*kube, '-n', NAMESPACE, 'get', 'deployment', 'traefik', '-o', 'json']))
+    ingress = json.loads(run([*kube, '-n', 'tailwind-internal', 'get', 'ingress', 'portal', '-o', 'json']))
+    for rule in ingress['spec']['rules']:
+        tls.check(kube, rule['host'], current)
     check_portal_access(kube, current)
     patch = routing.namespace_patch(current, 'tailwind-internal')
     if not patch:

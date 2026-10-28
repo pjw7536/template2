@@ -87,7 +87,7 @@ vi deploy/airflow/env/k8s.env
 | `ODBC_HOST_PATH` | worker에 있는 기존 ODBC 설정 디렉터리의 절대 경로 |
 | `INGRESS_ENABLED` | `true` |
 | `INGRESS_CLASS_NAME` | `traefik` |
-| `INGRESS_TLS_SECRET` | `airflow-tls` |
+| `INGRESS_TLS_SECRET` | 빈 값. 공용 Traefik 인증서를 사용 |
 | `AIRFLOW_WEBSERVER_BASE_URL` | 현재 확정 주소 `https://etch.samsungds.net/airflow` |
 | `AIRFLOW_API_BASE_URL` | 이후 Portal API 주소. 아직 서버가 없어도 이 단계의 UI 기동은 가능 |
 | `AIRFLOW_TRIGGER_TOKEN` | 기존 Portal 연동 토큰. 신규 환경이면 생성 후 나중에 Portal에도 같은 값을 입력 |
@@ -126,22 +126,16 @@ Kubernetes가 접근할 수 있는 이미지와 실제 tag를 `k8s.env`에 지�
 
 ## 4. TLS 연결 확인
 
-Airflow Ingress는 Airflow namespace의 TLS Secret을 사용합니다.
-기존 인증서가 선택한 도메인을 포함한다면 기존 Secret을 최초 한 번 복사할 수 있습니다.
-
-업무 도메인 `etch.samsungds.net`의 인증서 원본은 `headlamp/headlamp-tls`로 통일합니다.
-원본이 없다면 먼저 [Headlamp TLS 등록](../../../headlamp/03_TLS.md)을 완료합니다.
+Airflow는 `etch-sso/traefik-tls`의 업무 도메인 인증서를 사용합니다.
+[공용 TLS 등록](../../ingress/README.md#인증서-최초-등록과-갱신) 후 `make ingress-up`으로 마운트를 준비합니다.
+기존 Secret을 가져와야 하면 파일 대신 `TLS_SOURCE=headlamp/headlamp-tls` 등 실제 원본을 지정합니다.
+앱 namespace에는 인증서를 복제하지 않습니다.
 
 ```bash
-AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls
+AIRFLOW_TLS_SOURCE=
 ```
 
-대상은 `airflow/airflow-tls`입니다. Keycloak의 `etch-sso/keycloak-tls`는
-`etch-sso.samsungds.net`용이므로 이 복사의 원본으로 사용하지 않습니다.
-도구는 인증서 만료·도메인을 검사하고, Airflow TLS Secret이 없을 때만 복사합니다.
-대상 Secret이 이미 있으면 기존 값을 유지합니다. 원본 Secret·개인키·Keycloak 인증값은 변경하지 않습니다.
-
-Airflow namespace에 맞는 TLS Secret을 직접 준비했다면 `AIRFLOW_TLS_SOURCE`는 비워도 됩니다.
+공용 인증서가 이미 등록되어 있으면 위 호환 입력은 비워 둡니다.
 
 ## 5. 검사 후 한 명령으로 실행
 
@@ -162,7 +156,7 @@ make server-up \
 `server-up`은 다음 순서로 실행합니다.
 
 1. Airflow env·chart 렌더와 기존 Keycloak·Traefik·TLS 준비를 검사합니다.
-2. Airflow namespace, 필요한 TLS Secret, Traefik의 해당 namespace 읽기 권한을 준비합니다.
+2. Airflow namespace와 Traefik의 해당 namespace 읽기 권한을 준비합니다.
 3. 기존 Traefik 감시 목록에 Airflow를 추가한 Keycloak 스택을 적용합니다. 기존 Portal 등 감시 목록을 제거하지 않습니다.
 4. Keycloak·DB·Traefik 준비를 기다린 뒤 Airflow DB·Helm을 배포합니다.
 5. 이번 단계에만 신규 DAG를 일시정지로 생성하도록 override합니다.
@@ -193,7 +187,7 @@ git pull --ff-only
 make server-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_ENV="$PWD/deploy/airflow/env/k8s.env"
 ```
 
-새 shell에서는 context 변수를 다시 지정합니다. 이미 복사한 TLS Secret에는 원본 인자가 필요하지 않습니다.
+새 shell에서는 context 변수를 다시 지정합니다. 공용 인증서가 이미 등록되어 있으면 원본 인자가 필요하지 않습니다.
 DAG·이미지가 바뀌었다면 먼저 새 이미지 tag를 준비합니다.
 
 공용 라우팅을 연결한 이후에도 위 명령을 사용합니다.

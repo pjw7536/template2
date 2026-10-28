@@ -30,8 +30,8 @@ CA 설정을 쓰면 TLS 인증서 검증에 해당 bundle을 사용합니다. HT
 운영 Airflow 공개 URL은 `https://etch.samsungds.net/airflow`이며, callback은
 `https://etch.samsungds.net/airflow/oauth-authorized/keycloak`입니다.
 현재 realm issuer는 `https://etch-sso.samsungds.net/realms/etch`입니다.
-업무 도메인의 TLS 원본은 `headlamp/headlamp-tls`, Airflow 대상은 `airflow/airflow-tls`이며
-[배포 절차](../../../04_SETUP_FLOW.md)에 따라 최초 복사합니다.
+업무 도메인 인증서는 `etch-sso/traefik-tls`에서 관리하며
+[배포 절차](../../../04_SETUP_FLOW.md)에 따라 공용 저장소에 등록합니다.
 
 ## 2. client 등록
 

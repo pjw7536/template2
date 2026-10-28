@@ -17,7 +17,7 @@ ENV_APP ?= all
 ENV_PROFILE ?= all
 KUBE_CONTEXT ?=
 KEYCLOAK_ENV ?= $(CURDIR)/deploy/keycloak/env/prod.env
-KEYCLOAK_CERTS ?= $(CURDIR)/deploy/shared/certs/etch-sso.samsungds.net
+KEYCLOAK_CERTS ?=
 AIRFLOW_ENV ?= $(CURDIR)/deploy/airflow/env/k8s.env
 AIRFLOW_TLS_SOURCE ?=
 VIP_BACKENDS ?=
@@ -151,7 +151,10 @@ minio-render:
 	python3 deploy/minio/scripts/manage.py render --env "$(MINIO_ENV)"
 
 # 공용 진입점은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다.
-.PHONY: ingress-check ingress-up ingress-connect
+.PHONY: ingress-check ingress-up ingress-connect ingress-tls-up
+ingress-tls-up:
+	python3 deploy/shared/ingress/tls.py --context "$(KUBE_CONTEXT)" --host "$(TLS_HOST)" $(if $(TLS_SOURCE),--source "$(TLS_SOURCE)",--cert "$(TLS_CERT_FILE)" --key "$(TLS_KEY_FILE)")
+
 ingress-check:
 	python3 deploy/shared/ingress/manage.py check --context "$(KUBE_CONTEXT)" --vip-backends "$(VIP_BACKENDS)"
 
@@ -186,10 +189,10 @@ server-up:
 
 # 앱별 검사는 실제 입력과 기존 클러스터를 확인하되 변경하지 않습니다.
 keycloak-check:
-	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" --certs "$(KEYCLOAK_CERTS)" --vip-backends "$(VIP_BACKENDS)" --check-only
+	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)" --check-only
 
 keycloak-up:
-	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" --certs "$(KEYCLOAK_CERTS)" --vip-backends "$(VIP_BACKENDS)"
+	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)"
 
 # FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다.
 export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE

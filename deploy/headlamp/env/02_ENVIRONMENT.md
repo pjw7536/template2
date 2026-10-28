@@ -16,7 +16,7 @@ Keycloak 주소가 바뀌면 이 문서의 관련 값도 함께 맞춥니다.
 
 ```dotenv
 HEADLAMP_HOST=etch.samsungds.net
-HEADLAMP_TLS_SECRET=headlamp-tls
+HEADLAMP_TLS_SECRET=
 HEADLAMP_OIDC_ISSUER_URL=https://etch-sso.samsungds.net/realms/etch
 HEADLAMP_OIDC_SECRET=headlamp-oidc
 IMAGE_PULL_SECRET=
@@ -27,7 +27,7 @@ IMAGE_PULL_SECRET=
 | `HEADLAMP_HOST`와 issuer | 앞은 Headlamp 사이트, 뒤는 인증을 담당하는 Keycloak realm URL |
 | `HEADLAMP_OIDC_CLIENT_ID`와 `HEADLAMP_OIDC_SECRET` | 앞은 Keycloak에 등록한 앱 ID, 뒤는 Kubernetes에 만들 Secret의 이름 |
 | `HEADLAMP_OIDC_SECRET`와 Client secret | `headlamp-oidc`는 보관함 이름이며 비밀값이 아님. 실제 비밀값은 04의 숨김 입력으로 등록 |
-| `HEADLAMP_TLS_SECRET`과 인증서 파일 | 앞은 Kubernetes 보관 이름, 파일은 03에서 서버에 준비할 `fullchain.crt`·`private.key` |
+| `HEADLAMP_TLS_SECRET`과 인증서 파일 | env 키는 호환용이며, 파일은 공용 Traefik에 등록할 `fullchain.crt`·`private.key` |
 | CA ConfigMap과 CA 파일 | ConfigMap은 Pod가 읽는 보관함. 파일은 CP1 연결 검사·API server 등록에 쓰는 PEM |
 
 env를 저장한 뒤에는 [01의 실행 입력](../01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 읽어야
@@ -40,7 +40,7 @@ env를 저장한 뒤에는 [01의 실행 입력](../01_SERVER_SETUP.md#2-대상-
 | `HEADLAMP_REGISTRY` | Headlamp 이미지 미러. `https://` 없이 입력 |
 | `IMAGE_PULL_SECRET` | `headlamp` namespace의 이미지 인증 Secret. 불필요하면 빈 값 |
 | `HEADLAMP_HOST` | 브라우저 접속 DNS 이름. scheme·경로 제외 |
-| `HEADLAMP_TLS_SECRET` | 같은 namespace의 사이트 TLS Secret |
+| `HEADLAMP_TLS_SECRET` | 기존 env 호환용. 공용 Traefik에서는 사용하지 않음 |
 | `HEADLAMP_OIDC_ISSUER_URL` | Keycloak의 `keycloak-public-url` + `/realms/etch`. discovery issuer와 정확히 일치, 끝 `/` 제외 |
 | `HEADLAMP_OIDC_CLIENT_ID` | 전용 client ID. 기본 `headlamp`. API server audience도 동일하게 설정 |
 | `HEADLAMP_OIDC_SECRET` | 같은 namespace의 Secret 이름. 비어 있지 않은 `OIDC_CLIENT_SECRET` 키 하나만 등록 |

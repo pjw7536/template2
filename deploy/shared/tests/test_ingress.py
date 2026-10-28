@@ -67,6 +67,7 @@ class IngressFixtures(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(manage.runtime, 'render_json', side_effect=lambda *args: deepcopy(self.source)).start()
         patch.object(manage, 'run', side_effect=self.fake_run).start()
+        patch.object(manage.tls, 'check').start()
 
     def fake_run(self, args, data=None):
         """명령을 기록하고 입력 fixture만 반환해 실제 클러스터를 사용하지 않는다."""
@@ -74,6 +75,8 @@ class IngressFixtures(unittest.TestCase):
         self.calls.append((args, data))
         if 'patch' in args and self.patch_error:
             raise self.patch_error
+        if 'get' in args and 'ingress' in args:
+            return json.dumps({'spec': {'rules': [{'host': 'portal.test'}]}})
         if 'get' in args:
             resource = args[args.index('get') + 1]
             if resource == 'deployment':
@@ -339,7 +342,7 @@ class SparseCliTests(unittest.TestCase):
     def test_shared_only_cli_loads_and_empty_context_never_calls_kubectl(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in ('deploy/shared/ingress/manage.py', 'deploy/shared/ingress/routing.py',
+            for relative in ('deploy/shared/ingress/manage.py', 'deploy/shared/ingress/routing.py', 'deploy/shared/ingress/tls.py',
                              'deploy/shared/scripts/runtime.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)

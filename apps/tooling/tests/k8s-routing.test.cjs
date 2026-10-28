@@ -26,7 +26,13 @@ test('Keycloak 기본 스택과 전달 스택은 각 원본의 감시 범위와 
     const ingress = resources.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
     assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
     assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.tls'], 'true');
-    assert.deepEqual(ingress.spec.tls, [{ hosts: ['etch-sso.samsungds.net'], secretName: 'keycloak-tls' }]);
+    assert.equal(ingress.spec.tls, undefined);
+    const volume = controller.spec.template.spec.volumes.find(v => v.name === 'middlewares');
+    assert.deepEqual(volume.projected.sources.find(s => s.secret), {
+      secret: {name: 'traefik-tls', optional: true},
+    });
+    const configName = volume.projected.sources.find(s => s.configMap).configMap.name;
+    assert.ok(resources.some(r => r.kind === 'ConfigMap' && r.metadata.name === configName));
     assert.equal(controller.spec.template.spec.containers[0].ports.find(p => p.name === 'websecure').hostPort, 443);
     assert.ok(!resources.some(r => r.kind === 'Secret'));
   }
@@ -36,6 +42,8 @@ test('Portal 후속 연결은 기존 앱·배치를 보존하고 namespace 권�
   const keycloak = render('deploy/keycloak/k8s');
   const portal = render('deploy/portal/k8s/overlays/prod');
   const ingress = portal.find(r => r.kind === 'Ingress');
+  assert.equal(ingress.spec.tls, undefined);
+  assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.tls'], 'true');
   const original = keycloak.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
   original.metadata.resourceVersion = 'review-version';
   original.metadata.annotations = { 'deploy.tailwind.local/vip-backends': '192.0.2.10,192.0.2.20' };
@@ -104,7 +112,8 @@ test('공용 MinIO의 파일·콘솔 경로는 Portal 없이 자기 namespace로
     const ingress = minio.find(item => item.kind === 'Ingress' && item.metadata.name === name);
     assert.equal(ingress.metadata.namespace, 'minio');
     assert.equal(ingress.spec.rules[0].host, 'etch.samsungds.net');
-    assert.deepEqual(ingress.spec.tls, [{hosts: ['etch.samsungds.net'], secretName: 'minio-tls'}]);
+    assert.equal(ingress.spec.tls, undefined);
+    assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.tls'], 'true');
     const route = ingress.spec.rules[0].http.paths[0];
     assert.equal(route.path, prefix);
     assert.equal(route.backend.service.port.name, port);

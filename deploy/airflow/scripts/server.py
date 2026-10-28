@@ -6,7 +6,6 @@
 """
 
 import argparse
-import base64
 import importlib.util
 import json
 from pathlib import Path
@@ -24,35 +23,13 @@ module = runtime.module
 render_json = runtime.render_json
 
 
-def tls_for_airflow(run, kube, settings, source):
-    """기존 TLS Secret을 유지하고 명시한 원본에서만 새 namespace로 복사한다."""
-    namespace = settings['NAMESPACE']
-    name = settings['INGRESS_TLS_SECRET']
-    current = run([*kube, '-n', namespace, 'get', 'secret', name, '--ignore-not-found', '-o', 'json'], sensitive=True)
-    create = not current.strip()
-    if create:
-        if not source or len(source.split('/')) != 2 or not all(source.split('/')):
-            raise ValueError('Airflow TLS Secret이 없습니다. --tls-source namespace/secret을 지정하거나 해당 namespace에 인증서를 먼저 등록하세요.')
-        source_namespace, source_name = source.split('/')
-        current = run([*kube, '-n', source_namespace, 'get', 'secret', source_name, '-o', 'json'], sensitive=True)
-    secret = json.loads(current)
-    if secret.get('type') != 'kubernetes.io/tls' or not all(secret.get('data', {}).get(key) for key in ('tls.crt', 'tls.key')):
-        raise ValueError('지정 Secret에 Kubernetes TLS 인증서·키가 없습니다.')
-    certificate = base64.b64decode(secret['data']['tls.crt'], validate=True).decode()
+tls = module('shared_tls', ROOT / 'deploy/shared/ingress/tls.py')
+
+
+def tls_for_airflow(kube, settings, source):
+    """기존 입력의 원본을 공용 저장소에 등록하며 앱 namespace에는 복제하지 않는다."""
     host = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL']).hostname
-    checked = run(['openssl', 'x509', '-noout', '-checkhost', host], data=certificate, sensitive=True)
-    if 'does match certificate' not in checked:
-        raise ValueError('TLS 인증서가 Airflow 공개 URL의 도메인과 일치하지 않습니다.')
-    run(['openssl', 'x509', '-noout', '-checkend', '0'], data=certificate, sensitive=True)
-    private_key = base64.b64decode(secret['data']['tls.key'], validate=True).decode()
-    public = run(['openssl', 'x509', '-pubkey', '-noout'], data=certificate, sensitive=True)
-    private_public = run(['openssl', 'pkey', '-passin', 'pass:', '-pubout'], data=private_key, sensitive=True)
-    if not public.strip() or public.strip() != private_public.strip():
-        raise ValueError('TLS 인증서와 개인키가 일치하지 않습니다.')
-    if not create:
-        return None
-    return {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': namespace},
-            'type': 'kubernetes.io/tls', 'data': {key: secret['data'][key] for key in ('tls.crt', 'tls.key')}}
+    return tls.prepare(kube, host, source=source)
 
 
 def start(airflow, routing, context, env, tls_source=None, vip_backends=None, check_only=False, deploy_keycloak=True):
@@ -72,7 +49,7 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
     kube = ['kubectl', '--context', context]
     # 이미 구동 중인 Keycloak 전용 진입점이다. 자격증명 생성과 realm/mapper 변경은 실행하지 않는다.
     if deploy_keycloak:
-        for kind, name in [('deployment', 'keycloak'), ('statefulset', 'keycloak-postgres'), ('secret', 'keycloak-runtime'), ('secret', 'keycloak-tls')]:
+        for kind, name in [('deployment', 'keycloak'), ('statefulset', 'keycloak-postgres'), ('secret', 'keycloak-runtime')]:
             run([*kube, '-n', 'etch-sso', 'get', kind, name, '-o', 'name'])
     current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
     if deploy_keycloak:
@@ -98,8 +75,14 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
     else:
         # 단독 배포는 기존 Deployment 전체를 적용하지 않으며 패치의 입력만 먼저 검사한다.
         routing.namespace_patch(current, settings['NAMESPACE'])
-    certificate = tls_for_airflow(run, kube, settings, tls_source)
-    airflow.check_required_resources(settings, context, pending_tls=certificate)
+    certificate = tls_for_airflow(kube, settings, tls_source)
+    if deploy_keycloak:
+        for item in desired:
+            if item['kind'] == 'Ingress':
+                for rule in item['spec'].get('rules', []):
+                    tls.prepare(kube, rule['host'])
+    tls.check_mount(updated if deploy_keycloak else current)
+    airflow.check_required_resources(settings, context)
     if check_only:
         print('설정·차트·기존 리소스·TLS·배치 검사 통과. 클러스터를 변경하지 않았습니다. 실제 포트·VIP 접속은 별도 확인하세요.')
         return
@@ -109,8 +92,8 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
         # 기존 Namespace의 보안 정책과 운영 metadata는 수정하지 않는다.
         namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': settings['NAMESPACE']}}
         run([*kube, 'create', '-f', '-'], data=json.dumps(namespace))
-    if certificate:
-        run([*kube, 'apply', '--server-side', '--field-manager=airflow-tls', '-f', '-'], data=json.dumps(certificate), sensitive=True)
+    if tls_source:
+        tls.save(kube, certificate, restart=not deploy_keycloak)
     if not deploy_keycloak:
         # 사전 검사 중 다른 앱이 연결됐을 수 있으므로 최신 감시 목록에서 패치를 만든다.
         current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
@@ -121,6 +104,8 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
     print('Airflow 라우팅 권한 준비 완료. 배포 대상과 공용 Traefik을 적용합니다.', flush=True)
     if deploy_keycloak:
         run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}))
+        if tls_source:
+            tls.reload_controller(kube)
     elif changes:
         run([*kube, '-n', 'etch-sso', 'patch', 'deployment', 'traefik', '--type=json',
              '--patch', json.dumps(changes)])
@@ -138,7 +123,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--context', required=True)
     parser.add_argument('--airflow-env', type=Path, default=ROOT / 'deploy/airflow/env/k8s.env')
-    parser.add_argument('--tls-source', help='Airflow TLS Secret 최초 등록에 사용할 기존 namespace/secret')
+    parser.add_argument('--tls-source', help='공용 TLS 저장소에 등록할 기존 namespace/secret')
     parser.add_argument('--vip-backends', help='443으로 연결된 Worker IPv4 목록. 쉼표로 구분하며 이후 생략하면 기존 목록 유지')
     parser.add_argument('--check-only', action='store_true', help='입력과 기존 클러스터를 조회·검사하고 적용하지 않음')
     args = parser.parse_args()

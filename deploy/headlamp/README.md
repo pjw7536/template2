@@ -12,7 +12,7 @@ Ingress 설정은 [공용 Ingress 기준](../shared/ingress/README.md#운영-ing
 | namespace | `headlamp` |
 | Ingress 이름 | `headlamp` |
 | host | `etch.samsungds.net` |
-| TLS Secret 이름 | `headlamp-tls` |
+| 인증서 관리 | 공용 `etch-sso/traefik-tls` |
 
 ## 처음 시작하거나 초기화 후 다시 설치한다면
 
@@ -35,7 +35,7 @@ context를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치�
 초기화 후에는 다음 상태에서 시작하면 됩니다.
 
 - Keycloak의 `etch` realm·사내 IdP `oidc`·기존 사용자는 유지하고, Account Console 사내 로그인이 됩니다.
-- `headlamp` namespace가 없어도 됩니다. 01에서 만들고, 삭제된 이미지 인증·TLS·OIDC Secret과 CA ConfigMap은 다시 등록합니다.
+- `headlamp` namespace가 없어도 됩니다. 01에서 만들고, 삭제된 이미지 인증·OIDC Secret과 CA ConfigMap은 다시 등록합니다. 사이트 인증서는 공용 Traefik에서 유지합니다.
 - Keycloak의 Headlamp client·관리자 그룹이 없어도 됩니다. 04에서 새로 만듭니다. 남아 있다면 해당 단계에서 확인합니다.
 - API server의 OIDC 설정은 남아 있을 수 있습니다. 05에서 먼저 확인하고 중복 추가하거나 다른 앱의 인증 설정을 덮어쓰지 않습니다.
 - 인증서 원본·개인키·CA 파일은 준비되어 있어야 합니다. namespace를 삭제했다면 Kubernetes Secret도 없어졌으므로 파일로 다시 등록해야 합니다.
@@ -49,7 +49,7 @@ context를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치�
 | 순서 | 할 일 | 실행 안내 | 완료 기준 |
 | --- | --- | --- | --- |
 | 1 | 도구·context·env·chart·namespace 준비 | [01 서버 준비](01_SERVER_SETUP.md) | 입력·chart 검사와 이미지 인증 준비 |
-| 2 | 사이트 인증서·Keycloak CA 등록 | [03 TLS](03_TLS.md) | TLS Secret·CA ConfigMap·OIDC 연결 검사 정상 |
+| 2 | 사이트 인증서·Keycloak CA 등록 | [03 TLS](03_TLS.md) | 공용 TLS·CA ConfigMap·OIDC 연결 검사 정상 |
 | 3 | Headlamp client·그룹·Client secret 등록 | [04 Keycloak 설정](04_KEYCLOAK_SETUP.md) | S256·groups mapper·관리자 가입·Secret 완료 |
 | 4 | 모든 API server의 OIDC 인증 설정 | [05 API server](05_APISERVER_SETUP.md) | 인증 계약 반영, 기존 관리자 접속 정상 |
 | 5 | Headlamp 배포·브라우저 로그인·권한 검증 | [06 배포와 검증](06_DEPLOY_VERIFY.md) | 관리자 허용·비관리자 거부·갱신 확인 |

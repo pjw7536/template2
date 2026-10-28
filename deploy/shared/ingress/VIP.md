@@ -66,7 +66,7 @@ TCP 검사는 포트 연결만 검사하므로 실제 앱 확인은 아래 HTTPS
 ```dotenv
 INGRESS_ENABLED=true
 INGRESS_CLASS_NAME=traefik
-INGRESS_TLS_SECRET=airflow-tls
+INGRESS_TLS_SECRET=
 AIRFLOW_WEBSERVER_BASE_URL=https://etch.samsungds.net/airflow
 ```
 
@@ -82,18 +82,14 @@ read -r -p '인증서 개인키 파일: ' ETCH_KEY_PATH
 openssl x509 -in "$ETCH_CERT_PATH" -noout -checkhost etch.samsungds.net
 openssl x509 -in "$ETCH_CERT_PATH" -noout -checkend 0
 
-# 최초 namespace와 TLS Secret이 없을 때 실행합니다. NAMESPACE를 바꿨다면 명령에도 반영합니다.
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" create namespace airflow
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow create secret tls airflow-tls \
-  --cert="$ETCH_CERT_PATH" --key="$ETCH_KEY_PATH"
+# 업무 도메인 인증서는 앱 namespace 대신 공용 저장소에 등록합니다.
+make ingress-tls-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_CERT_FILE="$ETCH_CERT_PATH" TLS_KEY_FILE="$ETCH_KEY_PATH"
+make ingress-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 ```
 
-namespace가 이미 있으면 해당 create 명령은 건너뜁니다.
-기존 `airflow-tls`가 있다면 먼저 도메인을 확인하고 인증서 교체 절차를 별도로 수행합니다.
-
-기존 `headlamp/headlamp-tls`가 있다면 위 직접 생성 대신 [서버 기동 안내](../docs/operations/server-start.md)의
-`AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls` 복사 기능을 사용합니다. 아래 검사 명령에는
-`--tls-source headlamp/headlamp-tls`, 배포 명령에는 `AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls`를 추가합니다.
+기존 Secret만 있다면 위 파일 입력 대신 `TLS_SOURCE=headlamp/headlamp-tls` 등 실제 원본을 사용합니다.
+자세한 등록·갱신과 이전 순서는 [공용 TLS](README.md#인증서-최초-등록과-갱신)를 따릅니다.
 
 ## 3. 검사 후 배포
 

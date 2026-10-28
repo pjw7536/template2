@@ -88,19 +88,17 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 필요한 입력이 빠지면 공용 리소스를 적용하기 전에 중단합니다.
 검사를 통과한 뒤에도 실제 디스크 권한, 이미지 다운로드, 외부 DB 접속, Portal 연동은 따로 확인합니다.
 
-운영 URL은 `https://etch.samsungds.net/airflow`, `INGRESS_TLS_SECRET=airflow-tls`입니다.
-Airflow namespace에 TLS Secret이 아직 없다면 기존 `headlamp/headlamp-tls`를 원본으로 지정합니다.
-원본이 없다면 먼저 [Headlamp TLS 등록](../headlamp/03_TLS.md)을 완료합니다.
-Airflow 공개 도메인이 인증서에 포함되어 있어야 하며 실행 호스트에는 OpenSSL이 필요합니다.
+운영 URL은 `https://etch.samsungds.net/airflow`이며 `INGRESS_TLS_SECRET=`으로 둡니다.
+업무 도메인 인증서를 [공용 Traefik](../shared/ingress/README.md#인증서-최초-등록과-갱신)에 먼저 등록하고
+`make ingress-up`으로 공용 인증서 마운트를 반영합니다.
 
 ```bash
-AIRFLOW_TLS_SOURCE_REF=headlamp/headlamp-tls
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_TLS_SOURCE="$AIRFLOW_TLS_SOURCE_REF"
+make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 ```
 
-이 검사는 인증서를 복사하지 않습니다. 4단계 배포 시 동일한 `AIRFLOW_TLS_SOURCE`를 전달합니다.
-이미 대상 TLS Secret이 있으면 그 인증서를 검사하고 유지합니다. source 지정은 기존 인증서를 갱신하는 명령이 아닙니다.
-`INGRESS_ENABLED=false`이면 TLS source가 필요 없습니다.
+이전 설치의 인증서를 가져올 때는 `AIRFLOW_TLS_SOURCE=namespace/secret`도 사용할 수 있습니다.
+check는 원본을 검사하고 적용하지 않습니다. up에 같은 인자를 전달하면 공용 저장소에 등록하며
+Airflow namespace에 복제하지 않습니다. 이미 등록했다면 TLS source가 필요 없습니다.
 
 ## 4. 실제 배포
 
@@ -111,7 +109,7 @@ make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 3단계에서 TLS source를 지정했다면 위 명령 대신 다음 명령을 사용합니다.
 
 ```bash
-make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_TLS_SOURCE="$AIRFLOW_TLS_SOURCE_REF"
+make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls
 ```
 
 Ingress 사용 시 namespace·TLS·공용 Traefik의 감시 권한을 준비한 뒤 Airflow를 배포합니다.
@@ -166,7 +164,7 @@ Pod Ready와 실제 업무 성공은 별도 확인입니다. 실패 시 [문제 
 ## 6. 고급: 직접 deploy와 Helm override
 
 기본 운영 흐름은 위 Makefile 명령입니다. 별도 Ingress controller나 환경별 Helm override가 필요한 경우에만
-직접 명령을 사용합니다. 이 경로는 공용 Traefik 연결이나 TLS 복사를 하지 않으므로
+직접 명령을 사용합니다. 이 경로는 공용 Traefik 연결이나 인증서 등록을 하지 않으므로
 controller·라우팅·TLS Secret·imagePullSecret·ODBC Secret을 먼저 준비해야 합니다.
 
 ```bash

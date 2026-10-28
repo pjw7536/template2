@@ -76,7 +76,7 @@ DB 이전·기존 리소스 삭제를 자동으로 수행하지 않습니다. �
 | 방식 | env 설정 | 배포 전 준비 |
 | --- | --- | --- |
 | port-forward | `INGRESS_ENABLED=false`, `AIRFLOW_WEBSERVER_BASE_URL=http://localhost:8080/airflow` | 클러스터 접근 권한 |
-| 기존 공용 Traefik | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, HTTPS `/airflow` URL, `INGRESS_TLS_SECRET` | `etch-sso/traefik`, DNS, 해당 도메인의 TLS Secret |
+| 기존 공용 Traefik | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, HTTPS `/airflow` URL | `etch-sso/traefik`, DNS, 공용 저장소에 등록한 도메인 인증서 |
 
 `make airflow-up`의 Ingress 경로는 기존 공용 Traefik과 HTTPS를 전제로 합니다.
 다른 controller를 사용할 때는 [직접 실행](../04_SETUP_FLOW.md#6-고급-직접-deploy와-helm-override)의 준비 범위를 확인합니다.
@@ -88,13 +88,13 @@ URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습
 ```dotenv
 INGRESS_ENABLED=true
 INGRESS_CLASS_NAME=traefik
-INGRESS_TLS_SECRET=airflow-tls
+INGRESS_TLS_SECRET=
 AIRFLOW_WEBSERVER_BASE_URL=https://etch.samsungds.net/airflow
 ```
 
-인증서 원본은 `headlamp/headlamp-tls`이고 Airflow의 대상은 `airflow/airflow-tls`입니다.
-[공용 Ingress 기준](../../shared/ingress/README.md#운영-ingress-기준)과
-[최초 복사 절차](../04_SETUP_FLOW.md#3-클러스터-사전-검사)를 따릅니다.
+인증서는 `etch-sso/traefik-tls`에서 관리합니다. `INGRESS_TLS_SECRET`은 기존 env 호환용이며
+공용 Traefik에서는 사용하지 않습니다. 다른 Ingress controller의 HTTPS에는 앱별 Secret 이름이 필요합니다.
+[공용 TLS 등록](../../shared/ingress/README.md#인증서-최초-등록과-갱신)을 따릅니다.
 
 ## 5. 다른 env 파일 사용
 

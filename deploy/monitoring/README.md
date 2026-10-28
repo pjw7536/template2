@@ -66,7 +66,7 @@ Docker Hub 미러만으로는 충분하지 않습니다. 아래 렌더 결과의
 ```dotenv
 INGRESS_ENABLED=true
 INGRESS_HOST=etch.samsungds.net
-INGRESS_TLS_SECRET=monitoring-tls
+INGRESS_TLS_SECRET=
 ```
 
 공용 Traefik은 [공용 진입점 준비](../shared/ingress/README.md)에 따라 먼저 기동합니다.
@@ -145,18 +145,18 @@ Secret이 이미 있으면 생성 단계를 생략하며 임의로 덮어쓰지 
 Grafana DB가 생성된 후에는 Secret만 변경해도 기존 비밀번호가 바뀌지 않습니다. 계정 갱신은 Grafana에서 수행합니다.
 registry 인증용 Secret도 이 단계에 준비합니다.
 
-Ingress를 사용하면 같은 namespace에 업무 도메인의 TLS Secret도 준비합니다.
-기존 `headlamp-tls`와 같은 도메인의 인증서를 사용하되 Secret은 namespace마다 별도로 등록·갱신합니다.
+Ingress를 사용하면 업무 도메인의 인증서를 [공용 Traefik](../shared/ingress/README.md#인증서-최초-등록과-갱신)에 등록합니다.
+이미 업무 도메인을 등록했다면 추가 인증서는 필요하지 않습니다.
 
 ```bash
 read -r -p '업무 도메인 fullchain PEM 경로: ' MONITORING_TLS_CERT
 read -r -p '업무 도메인 개인키 PEM 경로: ' MONITORING_TLS_KEY
-kubectl --context "$MONITORING_CONTEXT" -n monitoring create secret tls monitoring-tls \
-  --cert="$MONITORING_TLS_CERT" --key="$MONITORING_TLS_KEY"
+make ingress-tls-up KUBE_CONTEXT="$MONITORING_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_CERT_FILE="$MONITORING_TLS_CERT" TLS_KEY_FILE="$MONITORING_TLS_KEY"
+make ingress-up KUBE_CONTEXT="$MONITORING_CONTEXT"
 ```
 
-Secret이 이미 있으면 생성 단계를 생략합니다. `NAMESPACE`·`INGRESS_TLS_SECRET`을 변경했다면 위 명령도 맞춥니다.
-배포는 최종 렌더의 TLS Secret과 공용 controller 변경 권한을 확인한 뒤 PV·Helm 변경을 시작합니다.
+배포는 최종 렌더에 남은 공개 host의 공용 인증서와 controller 변경 권한을 확인한 뒤 PV·Helm 변경을 시작합니다.
 
 ## 5. 배포와 확인
 

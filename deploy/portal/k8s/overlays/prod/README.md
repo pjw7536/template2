@@ -24,8 +24,8 @@ Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
 ## 반드시 확정할 값
 
 - `kustomization.yaml`: API/Web 내부 registry와 immutable image tag. `migrate/kustomization.yaml`도 같은 API 이미지로 맞춤
-- `ingress.yaml`: 설정된 `etch.samsungds.net`과 같은 도메인의 TLS Secret 준비
-- `deploy/keycloak/k8s/server/stack.yaml`: `etch-sso.samsungds.net` TLS Secret
+- `ingress.yaml`: `etch.samsungds.net` 인증서를 공용 Traefik에 등록
+- `deploy/keycloak/k8s/server/stack.yaml`: `etch-sso.samsungds.net` 인증서도 공용 Traefik에서 관리
 - `api-env` Secret: Portal용 외부 PostgreSQL, Keycloak OIDC, Django 보안과 외부 연동 설정
 - `keycloak-runtime` Secret: Keycloak 관리자, PostgreSQL과 Keycloak 공개 URL
 - `web-env` Secret: 브라우저에 공개 가능한 Portal URL과 runtime 설정
@@ -129,17 +129,18 @@ Portal 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension을 DB 담�
 kubectl --context "$KUBE_CONTEXT" apply -f deploy/portal/k8s/overlays/prod/namespace.yaml
 make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
 make k8s-env APP=portal PROFILE=prod COMPONENT=web KUBE_CONTEXT="$KUBE_CONTEXT"
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get secret portal-tls --ignore-not-found
+kubectl --context "$KUBE_CONTEXT" -n etch-sso get secret traefik-tls
 ```
 
-TLS Secret이 없을 때만 도메인이 검증된 인증서로 생성합니다. 기존 Secret의 교체는 별도 갱신 작업입니다.
-인증서 도메인은 이 overlay의 Ingress host와 같아야 합니다.
+Portal 도메인 인증서는 [공용 TLS 등록](../../../../shared/ingress/README.md#인증서-최초-등록과-갱신)을 사용합니다.
+이미 업무 도메인을 등록했다면 추가 인증서는 필요하지 않습니다.
 
 ```bash
-read -r -p 'Portal 인증서 full chain 파일: ' PORTAL_CERT_FILE
-read -r -p 'Portal 개인키 파일: ' PORTAL_KEY_FILE
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal create secret tls portal-tls \
-  --cert="$PORTAL_CERT_FILE" --key="$PORTAL_KEY_FILE"
+read -r -p '업무 도메인 full chain 파일: ' PORTAL_CERT_FILE
+read -r -p '업무 도메인 개인키 파일: ' PORTAL_KEY_FILE
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
+  TLS_CERT_FILE="$PORTAL_CERT_FILE" TLS_KEY_FILE="$PORTAL_KEY_FILE"
+make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 ### 3. Migration
