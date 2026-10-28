@@ -7,6 +7,13 @@
 현재 실행 방법과 계약은 [전체 문서 안내](../README.md)에서 해당 앱의 안내로 이동해 확인합니다.
 작업별 검증 결과는 [실행 계획 목록](plans/README.md), 이 폴더의 용도는 [에이전트 문서 안내](README.md)를 참고합니다.
 
+## 2026-10-28: MinIO 정적 저장소 자동 준비
+
+- `minio-up`은 StorageClass가 비어 있으면 env의 Worker·저장 경로로 폴더와 정적 PV를 준비한다. 기본 경로는 `/data/minio`이며 기존 PVC의 연결 이름을 우선 사용한다.
+- 신규 PV는 local·Retain으로 만들고 `minio/minio-data`에 예약한다. 기존 PV는 경로·노드·용량·claim UID를 검사하고 수정하지 않는다.
+- 일회성 Job이 신규 PV의 경로에만 `DirectoryOrCreate`를 사용한다. 기존 PV에는 `Directory`로 실제 경로를 확인해 사라진 저장소를 빈 폴더로 대체하지 않는다. 데이터·소유권·권한·디스크 마운트는 변경하지 않는다.
+- `minio-check`는 생성 계획과 가능한 사전 검사를 수행하며 클러스터를 변경하지 않는다. 기존 정적 PV 사전 생성 방침을 대체한다. [계획과 검증](plans/minio-automatic-storage.md)을 참고한다.
+
 ## 2026-10-28: 공용 Traefik에서 사이트 인증서 관리
 
 - 업무 도메인과 SSO 도메인의 인증서는 `etch-sso/traefik-tls` 한 곳에서 관리하고 Traefik file provider가 SNI로 선택한다. 앱별 namespace에 TLS Secret을 복제하지 않는다.

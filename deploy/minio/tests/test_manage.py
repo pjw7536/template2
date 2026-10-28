@@ -27,7 +27,7 @@ class MinioTests(unittest.TestCase):
     def test_public_render_uses_common_namespace_and_contains_no_credentials(self):
         values = settings()
         items = manage.manifests(values)
-        self.assertTrue(all(item['metadata']['namespace'] == 'minio' for item in items))
+        self.assertTrue(all(item['metadata'].get('namespace') == ('minio' if item['kind'] != 'PersistentVolume' else None) for item in items))
         rendered = json.dumps(items)
         self.assertNotIn(values['MINIO_ROOT_PASSWORD'], rendered)
         self.assertNotIn(values['MINIO_ROOT_USER'], rendered)
@@ -116,12 +116,22 @@ class MinioTests(unittest.TestCase):
             if '-n' in args and args[args.index('-n') + 1] == 'tailwind-internal':
                 return ''
             if 'nodes' in args:
-                return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
-            if 'pv' in args:
-                return json.dumps({'items': [{'metadata': {'name': 'data'}, 'spec': {'claimRef': {
-                    'namespace': 'minio', 'name': 'minio-data', 'uid': pv_uid}}, 'status': {'phase': pv_phase}}] if available_pv else []})
-            if 'pvc' in args:
-                return json.dumps({'metadata': {'uid': 'current-claim'}, 'spec': {'storageClassName': ''}})
+                return json.dumps({'items': [{'metadata': {'name': 'node-worker', 'labels': {'kubernetes.io/hostname': settings()['NODE_NAME']}}, 'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+            if 'get' in args and 'pv' in args:
+                if not available_pv:
+                    return ''
+                volume = manage.static_volume({**settings(), 'VOLUME_NAME': 'data'})
+                volume['spec']['claimRef']['uid'] = pv_uid
+                volume['status'] = {'phase': pv_phase}
+                return json.dumps(volume)
+            if 'get' in args and 'pvc' in args:
+                return json.dumps({'metadata': {'uid': 'current-claim'}, 'spec': {'storageClassName': '',
+                    'volumeName': 'data'}, 'status': {'phase': 'Bound'}})
+            if 'get' in args and 'namespace' in args:
+                return 'namespace/minio'
+            if 'create' in args and '--dry-run=server' not in args and data:
+                if json.loads(data).get('kind') == 'Job':
+                    return json.dumps({'metadata': {'name': 'minio-storage-prepare-test'}})
             if 'get' in args and 'deployment' in args:
                 return 'deployment.apps/minio' if existing else ''
             if 'get' in args and 'job' in args:
@@ -150,7 +160,7 @@ class MinioTests(unittest.TestCase):
         calls = self.deployment_calls()
         rollout = next(i for i, (args, _, _) in enumerate(calls) if 'rollout' in args)
         job_apply = next(i for i, (args, data, _) in enumerate(calls) if data and
-                         any(item['kind'] == 'Job' for item in json.loads(data)['items']))
+                         any(item['kind'] == 'Job' for item in json.loads(data).get('items', [])))
         self.assertLess(rollout, job_apply)
         self.assertTrue(all('prod' in args for args, _, _ in calls))
         self.assertFalse(any('delete' in args for args, _, _ in calls))
@@ -161,7 +171,7 @@ class MinioTests(unittest.TestCase):
     def test_redeploy_reuses_bound_volume_and_does_not_replace_existing_job(self):
         calls = self.deployment_calls(existing=True)
         self.assertTrue(any('restart' in args for args, _, _ in calls))
-        self.assertFalse(any(data and any(item['kind'] == 'Job' for item in json.loads(data)['items'])
+        self.assertFalse(any(data and any(item['kind'] == 'Job' for item in json.loads(data).get('items', []))
                              for _, data, _ in calls))
 
     def test_released_pv_and_previous_claim_uid_require_manual_recovery(self):
