@@ -187,7 +187,7 @@ kubectl -n etch-sso rollout status deployment/traefik --timeout=5m
 
 ## 6. 콘솔 Ingress와 접속
 
-`k8s/overlays/prod/minio-console-ingress.yaml`의 두 예시 도메인을 `etch.samsungds.net`으로 변경합니다.
+`k8s/overlays/prod/minio-console-ingress.yaml`의 host·TLS host는 `etch.samsungds.net`으로 설정되어 있습니다. 같은 도메인의 인증서를 `portal-tls`에 등록합니다.
 TLS Secret은 앞서 준비한 `portal-tls`를 사용합니다.
 
 ```bash

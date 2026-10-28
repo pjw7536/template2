@@ -70,6 +70,51 @@ class MonitoringTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             manage.validate(data)
 
+    def test_ingress_requires_dns_and_tls_and_can_be_disabled_for_local(self):
+        for changes in ({'INGRESS_HOST': 'https://portal.test/path'}, {'INGRESS_HOST': ''},
+                        {'INGRESS_TLS_SECRET': ''}, {'INGRESS_ENABLED': 'yes'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                manage.validate({**settings(), **changes})
+        data = {**settings(), 'INGRESS_ENABLED': 'false', 'INGRESS_HOST': '', 'INGRESS_TLS_SECRET': ''}
+        manage.validate(data)
+        self.assertTrue(all('ingress' not in manage.values(data)[name] for name in manage.VOLUMES))
+
+    def test_ingress_connect_preserves_vip_placement_and_other_apps(self):
+        content = ('kind: Ingress\nmetadata:\n  namespace: monitoring\nspec:\n'
+                   '  ingressClassName: traefik\n  tls:\n    - secretName: custom-tls\n')
+        current = {'metadata': {'namespace': 'etch-sso', 'resourceVersion': '20'}, 'spec': {
+            'replicas': 2, 'template': {'spec': {'serviceAccountName': 'traefik',
+            'affinity': {'existing': 'placement'}, 'containers': [{'name': 'traefik',
+            'args': ['--providers.kubernetesingress.namespaces=etch-sso,airflow,headlamp,tailwind-internal']}]}}}}
+        for dry_run in (True, False):
+            with self.subTest(dry_run=dry_run), patch.object(manage, 'run', side_effect=[
+                    'kubernetes.io/tls tls.crt tls.key', json.dumps(current), '', '', '']) as run:
+                manage.connect_ingress(settings(), 'prod', content, dry_run=dry_run)
+            calls = [call.args[0] for call in run.call_args_list]
+            self.assertTrue(all('prod' in call for call in calls))
+            self.assertIn('custom-tls', calls[0])
+            patch_call = next(call for call in calls if 'patch' in call)
+            changes = json.loads(patch_call[patch_call.index('--patch') + 1])
+            self.assertEqual(changes[0], {'op': 'test', 'path': '/metadata/resourceVersion', 'value': '20'})
+            self.assertEqual(changes[1]['path'], '/spec/template/spec/containers/0/args')
+            self.assertIn('--providers.kubernetesingress.namespaces=etch-sso,airflow,headlamp,tailwind-internal,monitoring',
+                          changes[1]['value'])
+            self.assertEqual('--dry-run=server' in patch_call, dry_run)
+            self.assertEqual(any('rollout' in call for call in calls), not dry_run)
+
+    def test_missing_tls_stops_before_rbac_or_controller_mutation(self):
+        content = 'kind: Ingress\nspec:\n  ingressClassName: traefik\n  tls:\n    - secretName: missing\n'
+        with patch.object(manage, 'run', return_value='Opaque password') as run, \
+                self.assertRaisesRegex(ValueError, 'TLS Secret'):
+            manage.connect_ingress(settings(), 'prod', content)
+        self.assertEqual(run.call_count, 1)
+        self.assertNotIn('apply', run.call_args.args[0])
+
+    def test_no_public_ingress_needs_no_controller_or_tls(self):
+        with patch.object(manage, 'run') as run:
+            manage.connect_ingress(settings(), 'prod', rendered_fixture())
+        run.assert_not_called()
+
     def test_local_volumes_bind_operator_claims_on_selected_worker(self):
         data = settings()
         data['NAMESPACE'] = 'observability'
@@ -242,6 +287,28 @@ class MonitoringTests(unittest.TestCase):
             manage.deploy(settings(), 'test-context', Path('/chart.tgz'))
         run.assert_not_called()
 
+    def test_ingress_preflight_failure_prevents_storage_and_helm_changes(self):
+        calls = []
+
+        def run(args, data=None):
+            calls.append(args)
+            if 'version' in args:
+                return json.dumps({'serverVersion': {'gitVersion': 'v1.30.13'}})
+            if 'list' in args:
+                return '[]'
+            if 'nodes' in args:
+                return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+            if 'secret' in args:
+                return 'admin-user\nadmin-password\n'
+            return ''
+
+        with patch.object(manage, 'run', run), patch.object(manage, 'render', fake_render), \
+                patch.object(manage, 'connect_ingress', side_effect=ValueError('TLS 준비 필요')) as ingress, \
+                self.assertRaisesRegex(ValueError, 'TLS 준비'):
+            manage.deploy(settings(), 'prod', Path('/chart.tgz'))
+        self.assertTrue(ingress.call_args.kwargs['dry_run'])
+        self.assertFalse(any('apply' in call or 'upgrade' in call for call in calls))
+
     @unittest.skipUnless(shutil.which('helm'), 'Helm 미설치: 실제 렌더 검사는 별도 실행')
     def test_real_chart_disables_each_optional_component_and_all_together(self):
         try:
@@ -309,7 +376,17 @@ class MonitoringTests(unittest.TestCase):
             self.assertIn('volumeName: monitoring-monitoring-prometheus', rendered)
             self.assertIn('volumeName: monitoring-monitoring-alertmanager', rendered)
             self.assertIn('name: registry-login', rendered)
-            self.assertNotIn('kind: Ingress\n', rendered)
+            self.assertEqual(rendered.count('kind: Ingress\n'), 3)
+            self.assertEqual(manage.ingress_tls_names(data, rendered), {'monitoring-tls'})
+            for component in manage.VOLUMES:
+                self.assertIn(f'path: /{component}', rendered)
+            self.assertIn('root_url = https://etch.samsungds.net/grafana/', rendered)
+            self.assertIn('serve_from_sub_path = true', rendered)
+            for component in ('prometheus', 'alertmanager'):
+                self.assertIn(f'routePrefix: "/{component}"', rendered)
+                self.assertIn(f'path: "/{component}/metrics"', rendered)
+                self.assertIn(f'url: http://monitoring-{component}.monitoring:', rendered)
+            self.assertIn('pathPrefix: "/alertmanager"', rendered)
             self.assertNotIn('admin-password:', rendered)
 
 

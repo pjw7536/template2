@@ -16,7 +16,7 @@ Portal의 환경 선택과 사내 배포 입력 순서는 [Portal 환경설정](
 | `deploy/portal/env/prod/web.env`, `minio.env` | 사내 Kubernetes | 브라우저 공개 설정과 파일 저장소 계정, 해당 env에서 관리 |
 | `deploy/keycloak/env/prod.env` | 사내 Keycloak | 서버 기동 및 선택적인 사내 OIDC 설정, Git 관리 |
 | `deploy/airflow/env/k8s.env`, `local/shared/scripts/k8s_config.py` | Airflow | 앱별 실행 환경 설정 |
-| `deploy/monitoring/env/k8s.env` | Monitoring | Kubernetes 노드·local PV·이미지 미러·Grafana Secret 참조 |
+| `deploy/monitoring/env/k8s.env` | Monitoring | Kubernetes 노드·local PV·이미지 미러·Grafana Secret·공용 Ingress 입력 |
 
 ## 환경별 dependency source 정책
 
@@ -119,6 +119,9 @@ API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
 
 Kubernetes는 kube-prometheus-stack을 사용합니다. [Monitoring 안내](../deploy/monitoring/README.md)에 따라
 chart·이미지·Grafana Secret을 준비합니다. 로컬 접속은 `make k8s-grafana`·`make k8s-prometheus`를 사용합니다.
+운영은 `INGRESS_ENABLED=true`, `INGRESS_HOST=etch.samsungds.net`, `INGRESS_TLS_SECRET=monitoring-tls`를 기본으로
+`/grafana/`, `/prometheus/`, `/alertmanager/`를 제공합니다. TLS Secret은 Monitoring namespace에 등록하며,
+배포 도구가 기존 공용 Traefik의 VIP·배치를 유지하고 감시 namespace만 추가합니다.
 기존 Compose 전용 대시보드·프록시 설정은 제거했습니다. 앱 내부 metric은 별도 instrumentation이 필요합니다.
 
 ### 외부 앱 사용량 API

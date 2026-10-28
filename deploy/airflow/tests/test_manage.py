@@ -26,6 +26,7 @@ def settings():
     result.update({
         'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow',
         'AIRFLOW_ADMIN_EMAIL': 'airflow@test.invalid',
+        'AIRFLOW_OIDC_CLIENT_SECRET': 'fixture-oidc-secret-0123456789',
         **{key: 'fixture-credential-0123456789' for key in deploy.SECRET_KEYS},
         'AIRFLOW_FERNET_KEY': base64.urlsafe_b64encode(b'x' * 32).decode(),
     })
@@ -99,7 +100,8 @@ class ConfigurationTests(unittest.TestCase):
                     deploy.validate({**settings(), **change})
 
     def test_ingress_requires_class_and_tls_and_preserves_prefix(self):
-        values = {**settings(), 'INGRESS_ENABLED': 'true', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://airflow.test/airflow'}
+        values = {**settings(), 'INGRESS_ENABLED': 'true', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://airflow.test/airflow',
+                  'INGRESS_CLASS_NAME': '', 'INGRESS_TLS_SECRET': ''}
         with self.assertRaisesRegex(ValueError, 'INGRESS_CLASS_NAME'):
             deploy.validate(values)
         values['INGRESS_CLASS_NAME'] = 'nginx'

@@ -66,9 +66,15 @@ make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 | --- | --- | --- | --- |
 | etch-sso | keycloak | etch-sso.samsungds.net | keycloak-tls |
 | headlamp | headlamp | etch.samsungds.net | headlamp-tls |
+| tailwind-internal | portal, minio-console | etch.samsungds.net | portal-tls |
+| airflow | airflow-ingress | etch.samsungds.net | airflow-tls |
+| monitoring | monitoring-grafana, monitoring-prometheus, monitoring-alertmanager | etch.samsungds.net | monitoring-tls |
 
 Keycloak은 `https://etch-sso.samsungds.net`, Headlamp는 `https://etch.samsungds.net/headlamp/`로 접속합니다.
 Airflow 공개 주소는 `https://etch.samsungds.net/airflow`입니다.
+Portal은 `/`, API는 `/api`, 로그인 callback은 `/auth`, 파일은 `/minio`, MinIO 콘솔은 `/minio-console/`를 사용합니다.
+Monitoring 화면은 `/grafana/`, `/prometheus/`, `/alertmanager/`이며 각 앱이 경로를 직접 처리합니다.
+인증만 `etch-sso.samsungds.net`으로 분리하고 나머지 웹 서비스는 같은 업무 도메인을 사용합니다.
 Airflow는 `headlamp/headlamp-tls`의 인증서를 자기 namespace의 `airflow-tls`로 최초 복사해 사용합니다.
 Secret은 namespace 간 직접 참조할 수 없으며, 원본 인증서 갱신 시 복사본도 별도로 갱신해야 합니다.
 
@@ -99,6 +105,7 @@ Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAM
 - `ingress-connect APP=portal`: Portal overlay 적용 후 해당 namespace의 감시만 추가합니다.
 - `keycloak-up`: 기존 namespace 감시 범위를 보존합니다.
 - `airflow-up`: 자기 namespace의 권한과 감시를 추가합니다.
+- `monitoring-up`: 최종 렌더에 공용 Ingress가 있으면 TLS·권한을 검사하고 자기 namespace의 감시를 추가합니다.
 - `make server-up`: [서버 기동 안내](../docs/operations/server-start.md)의 기존 통합 운용을 위한 호환 명령입니다.
 
 이 도구들은 기존 Portal 등 다른 namespace를 감시 목록에서 제거하지 않습니다.

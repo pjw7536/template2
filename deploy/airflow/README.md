@@ -72,9 +72,10 @@ TLS 최초 등록 명령과 검사·배포별 영향은 [04 실행](04_SETUP_FLO
 로그인에 성공한 사용자는 기본적으로 Viewer입니다.
 추가 권한이 필요하면 Keycloak의 `airflow` client에서 User 또는 Admin 역할을 부여합니다.
 
-저장소 env의 `AIRFLOW_AUTH_MODE=db`는 기존 배포와의 호환값입니다.
-서버를 전환할 때는 실제 OIDC 입력을 준비한 뒤 `keycloak`으로 바꿔 배포합니다.
-로컬에서는 실행 도구가 Keycloak 모드를 적용합니다.
+저장소 env는 `https://etch.samsungds.net/airflow`와 `AIRFLOW_AUTH_MODE=keycloak`을 기본으로 사용합니다.
+배포 전에 전용 client secret과 필요한 CA를 준비합니다. `replace-me`가 남으면 실제 입력 검사에서 중단합니다.
+기존 DB 로그인이 필요한 복구 상황에서만 `AIRFLOW_AUTH_MODE=db`로 명시적으로 바꿉니다.
+로컬에서는 실행 도구가 localhost 주소와 로컬 Keycloak 입력을 적용합니다.
 
 ## 파일과 설정 소유권
 

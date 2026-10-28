@@ -1,4 +1,4 @@
-# 클러스터 지표 수집용 신규 설치. 업무 앱과 OIDC·Ingress는 연결하지 않습니다.
+# 클러스터 지표 수집용 신규 설치. 공개 경로는 env 기반 override로 설정합니다.
 fullnameOverride: monitoring
 crds:
   enabled: true

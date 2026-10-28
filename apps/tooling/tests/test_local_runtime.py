@@ -51,6 +51,21 @@ class SecretTests(unittest.TestCase):
 
 
 class AirflowCredentialTests(unittest.TestCase):
+    def test_local_routes_do_not_inherit_production_host_or_tls(self):
+        """운영 기본 주소가 바뀌어도 로컬 인증·port-forward 계약을 유지합니다."""
+        import k8s_config
+        monitoring = k8s_config.monitoring_settings()
+        runtime.module('monitoring').validate(monitoring)
+        self.assertEqual(monitoring['INGRESS_ENABLED'], 'false')
+        self.assertEqual(monitoring['INGRESS_HOST'], '')
+        self.assertEqual(monitoring['INGRESS_TLS_SECRET'], '')
+        with patch.object(k8s_config, 'RUNTIME', Path('/nonexistent/local-web-routing-test')):
+            airflow = k8s_config.airflow_settings(k8s_config.credentials())
+        runtime.module('airflow').validate(airflow)
+        self.assertEqual(airflow['AIRFLOW_WEBSERVER_BASE_URL'], 'http://localhost:8080/airflow')
+        self.assertEqual(airflow['AIRFLOW_OIDC_ISSUER'], 'http://localhost:8180/realms/portal')
+        self.assertEqual(airflow['INGRESS_TLS_SECRET'], '')
+
     def test_upgrade_adds_only_client_secret_and_read_only_check_does_not_write(self):
         """기존 DB·Fernet 키를 유지하며 쓰기 실행에서만 누락 secret을 추가한다."""
         import tempfile

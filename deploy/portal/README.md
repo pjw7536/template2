@@ -3,7 +3,7 @@
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 사내 Kubernetes의 Portal 환경설정은 `env/prod/`에 작성합니다.
-이미지·Ingress·영속 저장소 placeholder는 [운영 overlay](k8s/overlays/prod/README.md)에서도 실제 값으로 준비합니다.
+이미지·영속 저장소 placeholder는 [운영 overlay](k8s/overlays/prod/README.md)에서도 실제 값으로 준비합니다.
 현재 운영 중인 Keycloak 설정은 `../keycloak/env/prod.env`에 그대로 둡니다.
 
 ## 작업별 시작점
@@ -54,7 +54,7 @@ Airflow 서버 자체의 설정은 `../airflow/env/`, API에서 Airflow에 연�
 `env/prod/api.env.pre-k8s.bak`, `env/prod/web.env.pre-k8s.bak`, `env/prod/minio.env.pre-k8s.bak`에
 복구용으로 보존했습니다. 사본은 Git 제외이며 배포 도구가 자동으로 읽지 않습니다.
 
-새 prod API는 준비한 Keycloak 입력과 기존 업무 연동값을 사용합니다. DNS·DB 미입력과
+새 prod API는 준비한 Keycloak 입력과 기존 업무 연동값을 사용합니다. DB 미입력과
 이전 Compose 전용 업무 주소는 실제 배포 전에 확인합니다. 배포 시점의 env 버전을 함께 기록합니다.
 
 사내 서버는 Kubernetes로 배포합니다.
@@ -70,7 +70,7 @@ chmod 600 deploy/portal/env/prod/api.env deploy/portal/env/prod/web.env deploy/p
 
 1. `api.env`의 **1~4번 구역**에 Portal DNS, DB, 로그인, HTTPS 설정을 작성합니다.
    DB 비밀번호·Django Secret Key·OIDC Client Secret은 `api.env`에 저장합니다.
-   Portal DB는 Keycloak 전용 DB와 별개입니다. `<Portal DNS>`는 실제 Portal 주소로 바꿉니다.
+   Portal DB는 Keycloak 전용 DB와 별개입니다. 공개 주소는 `etch.samsungds.net`으로 설정되어 있습니다.
 2. `web.env`에 같은 Portal 공개 주소와 파일 접근 주소를 작성합니다.
 3. `minio.env`에 실제 사용할 계정을 작성합니다. 접근 계정이 MinIO에 존재하고 필요한
    bucket 권한을 갖도록 별도 준비해야 합니다. env에 이름을 적는 것만으로 계정이 생성되지는 않습니다.
@@ -113,7 +113,7 @@ Web의 `VITE_*`, `BACKEND_API_URL`, `BACKEND_URL`, `MINIO_ENDPOINT`는
 공용 `minio-console@file` middleware가 마지막 슬래시 리다이렉트와 경로 접두사 제거를 담당합니다.
 파일 API `/minio/`는 기존 Portal 프록시를 사용합니다.
 
-`MINIO_BROWSER_REDIRECT_URL=https://<Portal DNS>/minio-console/`로 설정합니다.
+`MINIO_BROWSER_REDIRECT_URL=https://etch.samsungds.net/minio-console/`로 설정합니다.
 마지막 슬래시를 유지하며 실제 Portal Ingress 도메인과 일치시킵니다.
 콘솔은 MinIO 계정으로 로그인하며 Headlamp의 Keycloak 인증·권한을 상속하지 않습니다.
 
@@ -135,7 +135,7 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get ingress minio-console
 ```
 
-`https://<Portal DNS>/minio-console/`에서 로그인, 새로고침, 버킷 조회 및 파일 업로드·다운로드를 확인합니다.
+`https://etch.samsungds.net/minio-console/`에서 로그인, 새로고침, 버킷 조회 및 파일 업로드·다운로드를 확인합니다.
 
 ## 검사와 적용
 
@@ -224,5 +224,5 @@ API와 edge-nginx의 readiness/liveness probe는 `Host: localhost`,
 `X-Forwarded-Proto: https`를 전달합니다. 운영 HTTPS 강제 전환을 유지하면서
 `/api/v1/health/` handler의 응답을 검사하기 위한 설정입니다.
 운영 API의 `DJANGO_ALLOWED_HOSTS`에는 실제 Portal DNS와 함께 `localhost`를 포함합니다.
-예를 들어 `portal.example.com,localhost`로 지정합니다. 누락하면 입력 검사에서 중단하며,
+예를 들어 `etch.samsungds.net,api,localhost`로 지정합니다. 누락하면 입력 검사에서 중단하며,
 이미 실행 중인 환경에서는 Secret 등록과 API·edge-nginx 재시작 절차로 반영합니다.

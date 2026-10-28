@@ -9,10 +9,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - portal.internal.example.invalid
+        - etch.samsungds.net
       secretName: portal-tls
   rules:
-    - host: portal.internal.example.invalid
+    - host: etch.samsungds.net
       http:
         paths:
           - path: /

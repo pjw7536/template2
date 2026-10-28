@@ -13,7 +13,8 @@ Portal·Keycloak·Airflow의 기동 여부와 관계없이 설치할 수 있습�
 - 클러스터에 기존 Prometheus Operator가 있으면 먼저 기존 도구를 사용합니다. 배포 도구는 새 release 설치 시 기존 CRD를 발견하면 중단합니다.
 - Operator CRD·ClusterRole 설치 권한이 필요합니다. node-exporter는 노드별 hostNetwork·hostPath를 사용하므로 namespace 정책에서 허용되어야 합니다.
 - 선택 checkout은 `bash deploy/shared/scripts/checkout-server.sh monitoring`입니다. `deploy/monitoring`, `deploy/shared`, 루트 Makefile만으로 실행합니다.
-- 기본 접속은 **localhost port-forward**입니다. 공개 DNS·Ingress·SSO·외부 알림 전송은 설정하지 않습니다.
+- 기본 접속은 공용 Traefik의 HTTPS 하위 경로입니다. Grafana는 `/grafana/`, Prometheus는 `/prometheus/`, Alertmanager는 `/alertmanager/`를 사용합니다.
+- 공개 host·TLS Secret은 env로 지정합니다. 기존 Grafana 관리자 로그인을 유지하며 SSO·외부 알림 전송은 이 설정에서 추가하지 않습니다.
 - 노드·Pod·kubelet/cAdvisor·API server·CoreDNS 지표를 수집합니다. etcd·scheduler·controller-manager·kube-proxy는 endpoint·인증이 미확정이라 제외합니다.
 - 애플리케이션의 업무 지표·로그 수집·FTP 업로드 성공 여부는 기본 수집 범위에 포함되지 않습니다.
 
@@ -59,6 +60,19 @@ chmod 600 deploy/monitoring/env/k8s.env
 Docker Hub 미러만으로는 충분하지 않습니다. 아래 렌더 결과의 `images.txt`에 나오는 **모든 태그**가
 사내 미러에서 pull 가능한지 확인합니다. 미러에 없으면 승인된 경로에 동일 이미지를 반입합니다.
 인증이 필요하면 `IMAGE_PULL_SECRET`에 동일 namespace의 registry Secret 이름을 입력합니다.
+
+저장소의 운영 접속 기본값은 다음과 같습니다. 인증서에는 `etch.samsungds.net`이 포함되어야 합니다.
+
+```dotenv
+INGRESS_ENABLED=true
+INGRESS_HOST=etch.samsungds.net
+INGRESS_TLS_SECRET=monitoring-tls
+```
+
+공용 Traefik은 [공용 진입점 준비](../shared/ingress/README.md)에 따라 먼저 기동합니다.
+`monitoring-up`은 기존 VIP·배치를 보존하고 Monitoring namespace의 라우팅 권한과 감시만 추가합니다.
+최종 Helm override에서 모든 Ingress를 끄면 controller·TLS를 조회하지 않습니다.
+port-forward 전용 환경은 `INGRESS_ENABLED=false`, `INGRESS_HOST=`, `INGRESS_TLS_SECRET=`로 설정합니다.
 
 선택한 Worker에서 예시 경로의 디렉터리를 준비합니다. `DATA_HOST_PATH`를 바꿨다면 함께 바꿉니다.
 
@@ -131,23 +145,42 @@ Secret이 이미 있으면 생성 단계를 생략하며 임의로 덮어쓰지 
 Grafana DB가 생성된 후에는 Secret만 변경해도 기존 비밀번호가 바뀌지 않습니다. 계정 갱신은 Grafana에서 수행합니다.
 registry 인증용 Secret도 이 단계에 준비합니다.
 
+Ingress를 사용하면 같은 namespace에 업무 도메인의 TLS Secret도 준비합니다.
+기존 `headlamp-tls`와 같은 도메인의 인증서를 사용하되 Secret은 namespace마다 별도로 등록·갱신합니다.
+
+```bash
+read -r -p '업무 도메인 fullchain PEM 경로: ' MONITORING_TLS_CERT
+read -r -p '업무 도메인 개인키 PEM 경로: ' MONITORING_TLS_KEY
+kubectl --context "$MONITORING_CONTEXT" -n monitoring create secret tls monitoring-tls \
+  --cert="$MONITORING_TLS_CERT" --key="$MONITORING_TLS_KEY"
+```
+
+Secret이 이미 있으면 생성 단계를 생략합니다. `NAMESPACE`·`INGRESS_TLS_SECRET`을 변경했다면 위 명령도 맞춥니다.
+배포는 최종 렌더의 TLS Secret과 공용 controller 변경 권한을 확인한 뒤 PV·Helm 변경을 시작합니다.
+
 ## 5. 배포와 확인
 
 ```bash
 make monitoring-up KUBE_CONTEXT="$MONITORING_CONTEXT"
 kubectl --context "$MONITORING_CONTEXT" -n monitoring get pods,pvc
-kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitoring-grafana 3000:80
 ```
 
-명령을 실행한 컴퓨터의 `http://localhost:3000`에 접속합니다. 서버에서 실행했다면 SSH 터널을 사용합니다.
-Grafana의 Kubernetes / Compute Resources / Cluster·Node·Pod 대시보드에서 데이터가 들어오는지 확인합니다.
-Prometheus Targets는 다음 port-forward로 확인할 수 있습니다.
+`https://etch.samsungds.net/grafana/`에서 관리자 계정으로 로그인합니다.
+Kubernetes / Compute Resources / Cluster·Node·Pod 대시보드에서 데이터가 들어오는지 확인합니다.
+`https://etch.samsungds.net/prometheus/targets`에서 수집 대상이 `UP`인지 확인하고,
+`https://etch.samsungds.net/alertmanager/`에서 화면과 알림 설정을 확인합니다.
+Ingress host가 다르면 위 주소도 같은 host로 바꿉니다.
+
+port-forward 전용 설정에서는 다음 명령으로 접속할 수 있습니다.
 
 ```bash
+kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitoring-grafana 3000:80
+# 다른 터미널에서 실행합니다.
 kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitoring-prometheus 9090:9090
 ```
 
-`http://localhost:9090/targets`에서 기본 수집 대상의 `UP` 상태를 확인합니다.
+이 모드의 주소는 `http://localhost:3000`과 `http://localhost:9090/targets`입니다.
+운영 하위 경로 모드에서는 Grafana가 공개 HTTPS 주소로 리다이렉트하므로 공용 주소로 확인합니다.
 
 기존 node-exporter가 host port 9100을 사용하면 새 DaemonSet과 충돌합니다.
 이전 exporter를 정리하거나 기존 공용 Monitoring을 사용합니다.
@@ -163,5 +196,8 @@ kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitorin
 - 실패 시 DB·namespace를 자동 삭제하지 않습니다. 첫 설치가 일부만 완료되면 Helm release 상태와 CRD를 확인하며 CRD를 임의 삭제하지 않습니다.
 - Grafana DB·대시보드와 지표를 백업할 때는 별도 디스크에 보관합니다. 같은 노드의 데이터만으로 노드 장애를 복구할 수 없습니다.
 - `make env-check APP=monitoring`과 `make monitoring-check`는 Kubernetes 입력·렌더를 검사합니다.
+
+하위 경로 참고: [Grafana 프록시 설정](https://grafana.com/tutorials/run-grafana-behind-a-proxy/),
+[Prometheus external URL·route prefix](https://prometheus.io/docs/prometheus/latest/command-line/prometheus/).
 
 공식 근거: [kube-prometheus-stack 설치·CRD·업데이트](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-91.4.0/charts/kube-prometheus-stack).

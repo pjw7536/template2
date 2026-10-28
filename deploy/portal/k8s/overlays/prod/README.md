@@ -25,7 +25,7 @@ Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
 
 - `kustomization.yaml`: API/Web 내부 registry와 immutable image tag. `migrate/kustomization.yaml`도 같은 API 이미지로 맞춤
 - `deploy/portal/k8s/base/minio.yaml`: [고정 MinIO·mc 이미지](../../../MINIO_SETUP.md#1-대상과-저장소-확인)의 반입·Worker pull 가능 여부. 사내 registry를 사용하면 해당 image 주소도 맞춤
-- `ingress.yaml`: Portal DNS host와 TLS Secret
+- `ingress.yaml`: 설정된 `etch.samsungds.net`과 같은 도메인의 TLS Secret 준비
 - `minio-console-ingress.yaml`: 같은 DNS host·TLS Secret을 사용하는 MinIO 콘솔 직접 라우팅. [공용 middleware 준비](../../../../shared/ingress/README.md#하위-경로-middleware)가 필요합니다.
 - `deploy/keycloak/k8s/server/stack.yaml`: `etch-sso.samsungds.net` TLS Secret
 - `api-env` Secret: Portal용 외부 PostgreSQL, Keycloak OIDC, Django 보안과 외부 연동 설정
@@ -118,7 +118,7 @@ kubectl config use-context "$KUBE_CONTEXT"
 make server-check APP=portal PROFILE=prod
 ```
 
-이미지·DNS·TLS·영속 저장소의 미확정 값을 위 목록에 따라 준비합니다.
+이미지·TLS·영속 저장소의 미확정 값을 위 목록에 따라 준비합니다.
 
 Keycloak은 [전용 안내](../../../../keycloak/README.md)의 `keycloak-check/up`과 사내 OIDC·claim 작업을 먼저 완료합니다.
 기존 정상 스택을 Portal 배포 때문에 정적 YAML로 다시 적용하지 않습니다.

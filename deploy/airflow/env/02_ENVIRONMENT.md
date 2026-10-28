@@ -83,6 +83,7 @@ DB 이전·기존 리소스 삭제를 자동으로 수행하지 않습니다. �
 URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습니다.
 
 운영 HTTPS 설정은 다음 값으로 통일합니다. namespace는 `airflow`를 사용합니다.
+저장소 기본 env에도 이 값과 Keycloak 인증 모드가 설정되어 있습니다.
 
 ```dotenv
 INGRESS_ENABLED=true
@@ -109,7 +110,7 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_ENV="$AIRFLOW_EN
 
 ## Keycloak SSO 입력
 
-`AIRFLOW_AUTH_MODE=keycloak` 전환 시 issuer·전용 client ID/secret이 필요합니다.
+기본 `AIRFLOW_AUTH_MODE=keycloak`에는 issuer·전용 client ID/secret이 필요합니다.
 [SSO 등록 안내](../k8s/jobs/keycloak-client/README.md)의 설정표와 등록 순서를 따릅니다.
 서버는 HTTPS를 사용하고 사내 CA는 `AIRFLOW_OIDC_CA_CONFIGMAP`의 `ca.crt`를
 `AIRFLOW_OIDC_CA_BUNDLE=/etc/airflow/oidc-ca/ca.crt`로 마운트합니다.

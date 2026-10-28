@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,7 @@ from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
-ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET'))
+ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'INGRESS_HOST', 'INGRESS_TLS_SECRET'))
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
            'alertmanager': ('2Gi', 'alertmanager-monitoring-alertmanager-db-alertmanager-monitoring-alertmanager-0'),
            'grafana': ('5Gi', 'monitoring-grafana')}
@@ -50,11 +51,11 @@ def validate(settings, example=False):
     """서버별 경로와 registry·리소스 이름을 검증한다."""
     require(settings.keys() == ENV_KEYS, 'env 키가 설정 계약과 다릅니다.')
     for key, value in settings.items():
-        if key == 'IMAGE_PULL_SECRET' and not value:
+        if key in ('IMAGE_PULL_SECRET', 'INGRESS_HOST', 'INGRESS_TLS_SECRET') and not value:
             continue
         require(value and not any(c.isspace() for c in value), f'값 형식 오류: {key}')
         require(example or ('replace-me' not in value and 'example.invalid' not in value), f'실제 값 필요: {key}')
-    for key in ('NAMESPACE', 'NODE_NAME', 'GRAFANA_ADMIN_SECRET', 'IMAGE_PULL_SECRET'):
+    for key in ('NAMESPACE', 'NODE_NAME', 'GRAFANA_ADMIN_SECRET', 'IMAGE_PULL_SECRET', 'INGRESS_TLS_SECRET'):
         if settings[key]:
             require(len(settings[key]) <= 63 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', settings[key]), f'리소스 이름 오류: {key}')
     require(settings['NAMESPACE'] not in ('default', 'kube-system', 'etch-sso', 'tailwind-internal'), 'Monitoring 전용 namespace를 지정하세요.')
@@ -62,6 +63,12 @@ def validate(settings, example=False):
     require(path.startswith('/') and path != '/' and '..' not in path.split('/') and not path.endswith('/'), 'DATA_HOST_PATH는 전용 절대 경로여야 합니다.')
     for key in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'):
         require(re.fullmatch(r'[a-zA-Z0-9.-]+(?::[0-9]+)?(?:/[a-zA-Z0-9._-]+)*', settings[key]), f'registry 경로 오류: {key}')
+    require(settings['INGRESS_ENABLED'] in ('true', 'false'), 'INGRESS_ENABLED는 true 또는 false여야 합니다.')
+    if settings['INGRESS_ENABLED'] == 'true':
+        host = settings['INGRESS_HOST']
+        label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+        require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host), 'INGRESS_HOST에는 경로·scheme 없는 DNS 이름이 필요합니다.')
+        require(settings['INGRESS_TLS_SECRET'], 'HTTPS Ingress에는 INGRESS_TLS_SECRET이 필요합니다.')
 
 
 def version(value):
@@ -105,6 +112,24 @@ def values(settings):
             'resources': {'requests': {'storage': VOLUMES[component][0]}}}}}
         result[component] = {component + 'Spec': {'nodeSelector': node, 'image': image('quay'),
                            'imagePullSecrets': pull, 'storageSpec' if component == 'prometheus' else 'storage': storage}}
+    if settings['INGRESS_ENABLED'] == 'true':
+        host = settings['INGRESS_HOST']
+        annotations = {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
+                       'traefik.ingress.kubernetes.io/router.tls': 'true'}
+        for component in VOLUMES:
+            path = '/' + component
+            ingress = {'enabled': True, 'ingressClassName': 'traefik', 'annotations': dict(annotations),
+                       'hosts': [host], 'tls': [{'hosts': [host], 'secretName': settings['INGRESS_TLS_SECRET']}],
+                       'pathType': 'Prefix'}
+            if component == 'grafana':
+                ingress['path'] = path
+                result[component]['grafana.ini'] = {'server': {
+                    'root_url': f'https://{host}{path}/', 'serve_from_sub_path': True}}
+            else:
+                ingress['paths'] = [path]
+                result[component][component + 'Spec'].update(
+                    externalUrl=f'https://{host}{path}', routePrefix=path)
+            result[component]['ingress'] = ingress
     return result
 
 
@@ -194,6 +219,50 @@ def render(settings, directory, chart, values_file=None):
     return flags
 
 
+def ingress_tls_names(settings, content):
+    """최종 렌더에 남은 공용 Traefik Ingress의 TLS Secret만 찾는다."""
+    names = set()
+    for document in re.split(r'^---[ \t]*(?:#.*)?$', content, flags=re.M):
+        if not re.search(r'^kind: Ingress\s*$', document, re.M):
+            continue
+        if not re.search(r'^  ingressClassName: [\"\']?traefik[\"\']?\s*$', document, re.M):
+            continue
+        namespace = re.search(r'^  namespace: ([^\n]+)', document, re.M)
+        require(not namespace or namespace[1].strip(' \"\'') == settings['NAMESPACE'],
+                '공용 Monitoring Ingress는 지정한 NAMESPACE에 있어야 합니다.')
+        secrets = re.findall(r'^[ \t]+(?:-[ \t]+)?secretName: ([^\n]+)', document, re.M)
+        require(secrets, '공용 Monitoring Ingress에는 TLS Secret이 필요합니다.')
+        names.update(name.strip(' \"\'') for name in secrets)
+    return names
+
+
+def connect_ingress(settings, context, content, dry_run=False):
+    """TLS와 권한을 검사하고 기존 VIP·앱을 보존하며 감시 namespace만 추가한다."""
+    secrets = ingress_tls_names(settings, content)
+    if not secrets:
+        return
+    kube = ['kubectl', '--context', context]
+    namespace = settings['NAMESPACE']
+    for name in sorted(secrets):
+        summary = run([*kube, '-n', namespace, 'get', 'secret', name, '-o',
+                       'go-template={{.type}}{{range $key, $value := .data}} {{$key}}{{end}}']).split()
+        require(summary and summary[0] == 'kubernetes.io/tls' and {'tls.crt', 'tls.key'} <= set(summary[1:]),
+                'Monitoring namespace에 tls.crt·tls.key를 가진 TLS Secret을 먼저 등록하세요.')
+    current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
+    spec = importlib.util.spec_from_file_location('monitoring_routing', BASE.parent / 'shared/ingress/routing.py')
+    routing = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(routing)
+    changes = routing.namespace_patch(current, namespace)
+    access = {'apiVersion': 'v1', 'kind': 'List', 'items': routing.namespace_access(namespace, current)}
+    extra = ['--dry-run=server'] if dry_run else []
+    run([*kube, 'apply', '-f', '-', *extra], data=json.dumps(access))
+    if changes:
+        run([*kube, '-n', 'etch-sso', 'patch', 'deployment', 'traefik', '--type=json',
+             '--patch', json.dumps(changes), *extra])
+    if not dry_run:
+        run([*kube, '-n', 'etch-sso', 'rollout', 'status', 'deployment/traefik', '--timeout=300s'])
+
+
 def deploy(settings, context, chart, values_file=None):
     """기존 Operator 충돌·서버 입력 확인 후 PV와 Helm release를 적용한다."""
     require(context and context.strip(), 'deploy에는 --context를 명시하세요.')
@@ -201,7 +270,8 @@ def deploy(settings, context, chart, values_file=None):
     namespace = settings['NAMESPACE']
     with tempfile.TemporaryDirectory(prefix='monitoring-deploy-') as directory:
         flags = render(settings, directory, chart, values_file)
-        components = rendered_components((Path(directory) / 'monitoring.yaml').read_text())
+        content = (Path(directory) / 'monitoring.yaml').read_text()
+        components = rendered_components(content)
         actual = json.loads(run([*kube, 'version', '-o', 'json']))['serverVersion']['gitVersion']
         require(version(actual) >= version(LOCK['kubernetesVersion']), 'Kubernetes 버전이 chart 요구사항보다 낮습니다.')
         releases = json.loads(run(['helm', 'list', '--kube-context', context, '-n', namespace, '--all', '-o', 'json']))
@@ -224,6 +294,7 @@ def deploy(settings, context, chart, values_file=None):
             require({'admin-user', 'admin-password'} <= set(keys), 'Grafana Secret에 admin-user·admin-password 키가 필요합니다.')
         if settings['IMAGE_PULL_SECRET']:
             run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
+        connect_ingress(settings, context, content, dry_run=True)
         if json.loads((Path(directory) / 'storage.json').read_text())['items']:
             run([*kube, 'apply', '-f', Path(directory) / 'storage.json'])
         run(['helm', 'upgrade', '--install', 'monitoring', chart, '--kube-context', context, '--wait', '--timeout', '15m', *flags])
@@ -236,6 +307,8 @@ def deploy(settings, context, chart, values_file=None):
             # Operator가 비동기로 만드는 StatefulSet의 생성부터 기다립니다.
             run([*kube, '-n', target_namespace, 'wait', '--for=create', workload, '--timeout=600s'])
             run([*kube, '-n', target_namespace, 'rollout', 'status', workload, '--timeout=600s'])
+        # Helm 실행 중 연결된 다른 앱을 보존하도록 최신 Deployment에서 패치를 계산한다.
+        connect_ingress(settings, context, content)
     print('Monitoring 배포 완료. 활성화한 서비스의 접속·수집 상태를 확인하세요.')
 
 

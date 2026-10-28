@@ -150,7 +150,7 @@ def airflow_settings(creds):
                   AIRFLOW_OIDC_CLIENT_ID='airflow', AIRFLOW_OIDC_CLIENT_SECRET=creds['AIRFLOW_OIDC_CLIENT_SECRET'],
                   AIRFLOW_OIDC_BACKCHANNEL_BASE_URL='http://keycloak.tailwind-local.svc.cluster.local:8080/realms/portal',
                   AIRFLOW_OIDC_ALLOW_HTTP='true', AIRFLOW_OIDC_CA_BUNDLE='', AIRFLOW_OIDC_CA_CONFIGMAP='',
-                  AIRFLOW_WEBSERVER_BASE_URL='http://localhost:8080/airflow')
+                  AIRFLOW_WEBSERVER_BASE_URL='http://localhost:8080/airflow', INGRESS_TLS_SECRET='')
     for key in ('AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_TRIGGER_TOKEN'):
         result[key] = creds[key]
     return result
@@ -160,7 +160,8 @@ def monitoring_settings():
     """사내 registry 기본값을 가져오지 않는 로컬 모니터링 입력입니다."""
     return dict(NAMESPACE='monitoring', NODE_NAME=WORKER, DATA_HOST_PATH='/data/local-runtime/monitoring',
                 DOCKER_REGISTRY='docker.io', QUAY_REGISTRY='quay.io', GHCR_REGISTRY='ghcr.io',
-                K8S_REGISTRY='registry.k8s.io', IMAGE_PULL_SECRET='', GRAFANA_ADMIN_SECRET='monitoring-grafana-admin')
+                K8S_REGISTRY='registry.k8s.io', IMAGE_PULL_SECRET='', GRAFANA_ADMIN_SECRET='monitoring-grafana-admin',
+                INGRESS_ENABLED='false', INGRESS_HOST='', INGRESS_TLS_SECRET='')
 
 
 def api_overrides(creds):
