@@ -48,11 +48,50 @@ kubeadm은 런타임과 kubelet을 자동 설치하지 않습니다. 아래 2-1~
 **OS만 설치된 새 Ubuntu 22.04 amd64 Worker**에서 순서대로 실행합니다.
 `uname -m`이 `x86_64`인지 확인하며, 기존 Ready 노드에는 실행하지 않습니다.
 
-**외부 저장소 접근 조건:** Ubuntu 패키지 저장소, `download.docker.com`, `pkgs.k8s.io`와
-가입 후 사용할 이미지 저장소에 접근할 수 있어야 합니다.
-인터넷이 차단된 환경은 먼저 승인된 패키지·이미지 미러 또는 의존성까지 포함한 반입 파일을 준비합니다.
-패키지 버전·아키텍처·체크섬과 registry CA·인증을 확인하고, 아래 공개 저장소 등록 명령을 그대로 적용하지 않습니다.
-CNI 종류·통신 포트와 이미지 미러는 기존 클러스터의 실제 설정을 따릅니다.
+**사내 미러 사용:** Ubuntu·Docker·Kubernetes 패키지와 실행 이미지는 사내 미러에서 받습니다.
+아래 입력을 먼저 준비하며, 설치 명령에서 공개 저장소로 직접 접속하지 않습니다.
+미러 접근이 불가능하면 의존성까지 포함한 승인된 반입 패키지·이미지를 준비합니다.
+
+### 2-0. 사내 미러 입력 준비
+
+운영 환경의 실제 URL을 환경변수로 전달합니다. 아래 미러 이름은 저장소의 미러 참고표 기준이며,
+접속 scheme·호스트·인증·버전별 하위 경로는 운영 담당자에게 확인합니다.
+특히 Kubernetes URL은 **v1.36의 `deb` 저장소를 제공하는 최종 주소**를 입력하며 경로를 추측하지 않습니다.
+
+| 환경변수 | 입력값 | 사내 미러 이름 |
+| --- | --- | --- |
+| `UBUNTU_APT_MIRROR_URL` | Jammy·updates·security를 제공하는 Ubuntu APT base URL | `proxy-apt-archive.ubuntu.com-ubuntu` |
+| `DOCKER_APT_MIRROR_URL` | Ubuntu용 Docker APT base URL | `proxy-apt-download.docker.com-linux-ubuntu` |
+| `KUBERNETES_APT_MIRROR_URL` | Kubernetes v1.36 `deb` 저장소 URL | `proxy-apt-pkgs.k8s.io-core-stable` |
+| `DOCKER_APT_KEY_FILE` | 승인된 Docker 공개 서명키 파일 절대 경로, `.asc` 형식 | 별도 반입 |
+| `KUBERNETES_APT_KEYRING_FILE` | 승인된 Kubernetes 공개 서명키 파일 절대 경로, dearmor한 `.gpg` 형식 | 별도 반입 |
+| `CONTAINERD_REGISTRY_CONFIG_DIR` | 기존 CP1 기준으로 검증한 registry별 `hosts.toml`·CA를 담은 디렉터리 | 별도 전달 |
+
+Ubuntu 미러는 기존 Ubuntu archive 서명을 보존하는 구성을 기준으로 합니다.
+미러가 패키지를 재서명한다면 담당자가 승인한 키와 `signed-by` 경로를 사용합니다.
+서명키의 지문·반입 파일 체크섬을 승인된 원본과 대조하고,
+사내 CA·APT 인증이 필요하면 첫 `apt-get update` 전에 호스트 신뢰와 `auth.conf.d`를 준비합니다.
+인증값을 미러 URL에 넣거나 Git에 기록하지 않습니다.
+
+같은 Bash 터미널에서 승인된 값으로 환경변수를 설정한 뒤 아래 검사를 실행합니다.
+패키지 서명키·CA·registry 설정 파일을 받기 위해 공개 URL로 접속하지 않습니다.
+
+```bash
+: "${UBUNTU_APT_MIRROR_URL:?Ubuntu 사내 APT base URL을 설정하세요}"
+: "${DOCKER_APT_MIRROR_URL:?Docker 사내 APT base URL을 설정하세요}"
+: "${KUBERNETES_APT_MIRROR_URL:?Kubernetes v1.36 사내 APT URL을 설정하세요}"
+: "${DOCKER_APT_KEY_FILE:?승인된 Docker 공개 서명키 파일을 지정하세요}"
+: "${KUBERNETES_APT_KEYRING_FILE:?승인된 Kubernetes 공개 keyring 파일을 지정하세요}"
+: "${CONTAINERD_REGISTRY_CONFIG_DIR:?승인된 registry 설정 디렉터리를 지정하세요}"
+
+sudo test -r "$DOCKER_APT_KEY_FILE"
+sudo test -r "$KUBERNETES_APT_KEYRING_FILE"
+sudo test -d "$CONTAINERD_REGISTRY_CONFIG_DIR"
+```
+
+아래 설치 명령은 전용 source 파일·빈 추가 source 디렉터리·전용 패키지 색인을 사용합니다.
+각 `apt-get`·`apt-cache`에 `APT_MIRROR_OPTIONS`를 전달해 기존 공개 source나 오래된 색인을 사용하지 않습니다.
+새 터미널에서는 환경변수와 이 배열을 다시 설정합니다.
 
 ### 2-1. 기본 설정
 
@@ -71,28 +110,43 @@ printf 'net.ipv4.ip_forward=1\nnet.bridge.bridge-nf-call-iptables=1\nnet.bridge.
   sudo tee /etc/sysctl.d/99-kubernetes.conf
 sudo sysctl --system
 
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gpg
 sudo install -d -m 0755 /etc/apt/keyrings
+sudo install -d -m 0755 /etc/apt/worker-empty-sources
+
+APT_MIRROR_OPTIONS=(
+  -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/worker-mirrors.list
+  -o Dir::Etc::sourceparts=/etc/apt/worker-empty-sources
+  -o Dir::State::lists=/var/lib/apt/lists-worker-mirrors
+  -o APT::Update::Error-Mode=any
+)
+
+printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] %s %s main restricted universe multiverse\n' \
+  "${UBUNTU_APT_MIRROR_URL%/}" jammy \
+  "${UBUNTU_APT_MIRROR_URL%/}" jammy-updates \
+  "${UBUNTU_APT_MIRROR_URL%/}" jammy-security |
+  sudo tee /etc/apt/sources.list.d/worker-mirrors.list
+
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" update
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" install -y ca-certificates
 ```
 
 ### 2-2. containerd 2.2.1 설치
 
 [containerd 공식 안내](https://github.com/containerd/containerd/blob/release/2.2/docs/getting-started.md)의
-Docker 배포 패키지를 사용합니다. `containerd.io`에는 runc도 포함됩니다.
-[Ubuntu 저장소 등록 절차](https://docs.docker.com/engine/install/ubuntu/#install-using-the-apt-repository)를 따르며,
+Docker 배포 패키지를 사내 APT 미러에서 받습니다. `containerd.io`에는 runc도 포함됩니다.
+[Ubuntu 저장소 등록 절차](https://docs.docker.com/engine/install/ubuntu/#install-using-the-apt-repository)의
+패키지 서명 검증을 유지하며,
 패키지 버전은 `2.2.1-1~ubuntu.22.04~jammy`로 고정합니다.
 
 ```bash
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
+sudo install -m 0644 "$DOCKER_APT_KEY_FILE" /etc/apt/keyrings/worker-docker.asc
 
-echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable' |
-  sudo tee /etc/apt/sources.list.d/docker.list
+printf 'deb [arch=amd64 signed-by=/etc/apt/keyrings/worker-docker.asc] %s jammy stable\n' \
+  "${DOCKER_APT_MIRROR_URL%/}" |
+  sudo tee -a /etc/apt/sources.list.d/worker-mirrors.list
 
-sudo apt-get update
-sudo apt-get install -y containerd.io=2.2.1-1~ubuntu.22.04~jammy
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" update
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" install -y containerd.io=2.2.1-1~ubuntu.22.04~jammy
 sudo apt-mark hold containerd.io
 ```
 
@@ -108,6 +162,27 @@ sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 
+sudo install -d -m 0755 /etc/containerd/certs.d
+sudo cp -a "$CONTAINERD_REGISTRY_CONFIG_DIR/." /etc/containerd/certs.d/
+sudoedit /etc/containerd/config.toml
+```
+
+편집기에서 기존 registry 항목의 `config_path`를 다음과 같이 설정합니다. 같은 TOML 테이블을 중복 추가하지 않습니다.
+
+```toml
+[plugins.'io.containerd.cri.v1.images'.registry]
+  config_path = '/etc/containerd/certs.d'
+```
+
+`certs.d`에는 `registry.k8s.io`·`docker.io`와 기존 CNI 등이 사용하는 registry별 설정을 준비합니다.
+Kubernetes 이미지용 미러 이름은 `proxy-docker-registry.k8s.io`이며,
+실제 이미지 경로 변환과 인증은 기존 CP1에서 검증된 구성을 따릅니다.
+[containerd registry 설정](https://github.com/containerd/containerd/blob/release/2.2/docs/hosts.md)에 따라
+각 `hosts.toml`의 `server`도 사내 미러를 가리키게 해 공개 registry fallback을 방지합니다.
+`pull`·`resolve` 권한, `/v2`·미러 prefix 경로, CA·인증을 확인합니다.
+공개 registry를 `server`에 남기거나 TLS 검증을 끄지 않습니다.
+
+```bash
 sudo systemctl enable --now containerd
 sudo systemctl restart containerd
 ```
@@ -119,14 +194,14 @@ sudo systemctl restart containerd
 kubelet 의존성으로 기본 CNI 실행 파일도 설치됩니다. 클러스터 CNI 구성은 기존 운영 설정을 유지합니다.
 
 ```bash
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key |
-  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+sudo install -m 0644 "$KUBERNETES_APT_KEYRING_FILE" /etc/apt/keyrings/worker-kubernetes.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' |
-  sudo tee /etc/apt/sources.list.d/kubernetes.list
+printf 'deb [arch=amd64 signed-by=/etc/apt/keyrings/worker-kubernetes.gpg] %s /\n' \
+  "${KUBERNETES_APT_MIRROR_URL%/}" |
+  sudo tee -a /etc/apt/sources.list.d/worker-mirrors.list
 
-sudo apt-get update
-sudo apt-get install -y kubeadm=1.36.0-1.1 kubelet=1.36.0-1.1
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" update
+sudo apt-get "${APT_MIRROR_OPTIONS[@]}" install -y kubeadm=1.36.0-1.1 kubelet=1.36.0-1.1
 sudo apt-mark hold kubeadm kubelet
 sudo systemctl enable --now kubelet
 ```
@@ -139,6 +214,18 @@ kubelet --version
 containerd --version
 systemctl is-active containerd
 dpkg-query -W -f='${Package}\t${Version}\n' kubeadm kubelet containerd.io
+apt-cache "${APT_MIRROR_OPTIONS[@]}" policy containerd.io kubeadm kubelet
+```
+
+`apt-cache policy`의 공급 주소가 사내 미러인지 확인합니다. 의존 패키지인 `cri-tools`·`kubernetes-cni`도
+미러에 있어야 하며, 버전이나 패키지가 없으면 미러 동기화·반입을 요청합니다.
+승인된 이미지 한 개로 다음 CRI 조회·pull을 확인한 뒤 가입합니다.
+이미지 이름은 운영 환경에서 사용하는 원래 registry 이름을 포함해 `hosts.toml` 경로 변환까지 검사합니다.
+
+```bash
+read -r -p '미러로 받을 승인된 검사 이미지 이름과 tag: ' WORKER_CHECK_IMAGE
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock info >/dev/null
+sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock pull "$WORKER_CHECK_IMAGE"
 ```
 
 kubelet은 join 전에 설정이 없어 재시작을 반복할 수 있습니다. join 이후 상태를 다시 확인합니다.

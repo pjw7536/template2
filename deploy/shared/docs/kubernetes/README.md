@@ -19,7 +19,7 @@ CP1은 관리 명령을 실행하는 서버이고, Worker는 앱이 실행되는
 문서의 명령은 같은 터미널에서 이어서 실행하며, 새 터미널에서는 context 등 입력을 다시 지정합니다.
 
 확인된 CP1 기준은 Ubuntu 22.04.2 LTS·kubeadm/kubelet 1.36.0·containerd 2.2.1입니다.
-[Worker 추가](03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)에 같은 버전의 새 Worker 설치 명령이 있습니다.
+[Worker 추가](03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)에 사내 패키지·이미지 미러로 같은 버전의 새 Worker를 설치하는 명령이 있습니다.
 적용 조건과 CNI·미러 등 미확인 항목은 [서버 현황](../infrastructure/cluster.md#확인된-worker-설치-기준)에서 확인합니다.
 
 ## 앱 배포와 운영이 필요할 때

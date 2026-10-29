@@ -39,9 +39,9 @@ Worker의 OS도 CP1과 같다는 사용자 확인을 반영했습니다. 아래 
 | CP1 커널 | `5.15.0-60-generic` | 노드 조회; 새 Worker 커널의 고정 설치값은 아님 |
 
 [Worker 설치 절차](../kubernetes/03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)는
-새 Ubuntu 22.04 amd64 서버에서 Kubernetes 1.36.0과 containerd 2.2.1을 설치하도록 작성했습니다.
+새 Ubuntu 22.04 amd64 서버에서 사내 패키지·이미지 미러로 Kubernetes 1.36.0과 containerd 2.2.1을 설치하도록 작성했습니다.
 실제 Worker 아키텍처, CNI·MTU·통신 포트, 기존 cgroup 설정, 패키지·이미지 미러와 CA·인증,
-외부 저장소 접근 여부, 가입 endpoint와 API VIP의 관계는 인프라 담당자와 추가 확인합니다.
+사내 미러 접근 여부, 가입 endpoint와 API VIP의 관계는 인프라 담당자와 추가 확인합니다.
 확인한 담당자 이름은 제공되지 않았습니다. 네트워크 주소는 실제 가입 명령과 운영 설정을 기준으로 사용합니다.
 
 ## 현재 상태 조회
