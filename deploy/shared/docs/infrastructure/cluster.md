@@ -23,6 +23,27 @@
 노드 배치는 각 앱의 `nodeSelector`·affinity·env, 저장공간은 PV·PVC·Helm values와 비교합니다.
 공용 진입점이 여러 Worker에 있어도 앱·DB가 자동 복제되지는 않습니다.
 
+## 확인된 Worker 설치 기준
+
+확인일은 **2026-10-30**, 근거는 사용자가 제공한 CP1의 버전 명령과 `kubectl get nodes -o wide` 결과입니다.
+Worker의 OS도 CP1과 같다는 사용자 확인을 반영했습니다. 아래 값은 조회한 CP1 기준이며
+다른 제어면·Worker·API server의 버전까지 일괄 검증한 결과는 아닙니다.
+
+| 항목 | 확인값 | 근거 |
+| --- | --- | --- |
+| CP1 노드 | `khplane01w06`, `Ready`, `control-plane` | 노드 조회 |
+| OS | Ubuntu 22.04.2 LTS (Jammy) | CP1 `/etc/os-release`, Worker는 동일 OS라는 사용자 확인 |
+| CP1 아키텍처 | `x86_64` / amd64 | CP1 `uname -m` |
+| kubeadm·kubelet | `v1.36.0` | CP1 버전 명령과 노드 조회 |
+| containerd | `2.2.1` | CP1 버전 명령과 노드 조회 |
+| CP1 커널 | `5.15.0-60-generic` | 노드 조회; 새 Worker 커널의 고정 설치값은 아님 |
+
+[Worker 설치 절차](../kubernetes/03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)는
+새 Ubuntu 22.04 amd64 서버에서 Kubernetes 1.36.0과 containerd 2.2.1을 설치하도록 작성했습니다.
+실제 Worker 아키텍처, CNI·MTU·통신 포트, 기존 cgroup 설정, 패키지·이미지 미러와 CA·인증,
+외부 저장소 접근 여부, 가입 endpoint와 API VIP의 관계는 인프라 담당자와 추가 확인합니다.
+확인한 담당자 이름은 제공되지 않았습니다. 네트워크 주소는 실제 가입 명령과 운영 설정을 기준으로 사용합니다.
+
 ## 현재 상태 조회
 
 배포 호스트의 저장소 루트에서 대상 context를 명시합니다. 아래 명령은 조회만 수행합니다.
