@@ -1,10 +1,10 @@
 # 04. 앱 배포 준비
 
-[가이드 홈](README.md) · 이전: [현황 확인](01-baseline.md) · 다음: [앱 배포](05-applications.md)
+[가이드 홈](README.md) · 이전: [현황 확인](09-baseline.md) · 다음: [앱 배포](05-applications.md)
 
 ## 1. 저장소·배포 대상 — CP1
 
-[선택 checkout](../../../SERVER_CHECKOUT.md)으로 필요한 앱을 준비합니다.
+[선택 checkout](../../../01-SERVER_CHECKOUT.md)으로 필요한 앱을 준비합니다.
 Portal 외 서비스를 먼저 운영하려면 `platform`, Portal까지 함께 운영하려면 `all`을 선택합니다.
 Keycloak만 사용하면 `keycloak`, Keycloak·Airflow만 사용하면 `keycloak-airflow`를 선택할 수 있습니다.
 선택 명령은 기존 범위를 교체하며, 이미지 빌드 때만 `--with-source`를 추가합니다.
@@ -54,7 +54,7 @@ PV를 적용하는 것만으로 폴더가 생기거나 쓰기 권한이 설정�
 - 외부 env 파일은 앱 도구의 경로 인자로 지정합니다. env를 `source`로 실행하지 않습니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
 - [TLS 안내](../../../keycloak/03_TLS.md)로 도메인·SAN·만료·full chain·개인키를 확인하고 앱이 사용하는 namespace에 Secret을 준비합니다.
-- [VIP 안내](../../ingress/VIP.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
+- [VIP 안내](../../ingress/01-VIP.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
 
 **완료 기준:** 선택한 앱의 이미지·chart·디스크·env·TLS·배포 권한이 모두 준비되어야 합니다.
 예시값이 남아 있거나 PVC에 저장소를 공급할 방법이 정해지지 않았다면 먼저 해결합니다.

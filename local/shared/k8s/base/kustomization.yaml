@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tailwind-local
+resources:
+  - namespace.yaml
+  - external-postgres-service.yaml
+  - traefik.yaml
+  - ../../../../deploy/shared/ingress/middlewares

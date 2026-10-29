@@ -21,10 +21,10 @@ class AppLayoutTests(unittest.TestCase):
             (root / 'docker-compose.yml').write_text('services: {}')
             self.assertEqual(len(audit.check_root(root)), 3)
 
-    def test_current_source_and_historical_reference_are_distinguished(self):
+    def test_current_sources_and_documents_reject_obsolete_paths(self):
         old = 'apps/' + 'api/manage.py'
         self.assertTrue(audit.check_text('Makefile', old))
-        self.assertFalse(audit.check_text('docs/agent/plans/old.md', old))
+        self.assertTrue(audit.check_text('docs/agent/plans/current.md', old))
         self.assertFalse(audit.check_text('Dockerfile', 'apps/portal/api /opt/airflow/dags'))
         self.assertTrue(audit.check_text('Dockerfile', 'COPY ' + 'airflow/' + 'dags /dags'))
         self.assertTrue(audit.check_text('compose.yml', '../../../' + 'airflow/' + 'dags'))

@@ -1,12 +1,15 @@
-# Drone Management Commands
+# Drone 관리 명령
+
+[API 개발 안내](../../../../README.md) · [관리 명령 목록](../../../../../../../docs/reference/03-operations.md#django-관리-명령)
 
 이 폴더의 command는 일회성 Compose `api`에서 Django `manage.py`로 실행합니다.
 아래 명령은 저장소 루트 기준이며 `make dev`로 로컬 환경을 준비합니다.
 소스 변경 후에는 `make k8s-rebuild APP=portal`로 이미지를 갱신합니다.
-파일 입력 예시는 컨테이너 안에 해당 파일이 준비되어 있다고 가정합니다. 외부 파일을 연결할 때는 읽기 전용 마운트를 사용합니다.
+아래 각 명령은 개별 사용 예시입니다. 필요한 명령 하나를 선택해 실행합니다.
+먼저 도움말로 옵션을 확인할 수 있습니다.
 
 ```bash
-docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api <command> [options]
+docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api help seed_drone_targets_from_file
 ```
 
 ## `seed_drone_targets_from_file`
@@ -16,11 +19,9 @@ channel config, needtosend rule, recipient를 생성합니다.
 
 ### 사용법
 
-```bash
-docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_targets_from_file --file /app/config/drone_targets.json --dry-run
-docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_targets_from_file --file /app/config/drone_targets.json
-docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api seed_drone_targets_from_file --file /app/config/drone_targets.csv --dry-run
-```
+호스트 파일을 읽기 전용으로 연결하고 `--dry-run`으로 검사하는 명령은
+[Drone 입력 파일 연결 예시](../../../../../../../docs/reference/03-operations.md#입력-파일-연결과-미리-보기)를 따릅니다.
+삭제·생성 카운트를 확인한 뒤 실제 적용할 때만 `--dry-run`을 제거합니다.
 
 CSV에서 하나의 target에 mapping이 여러 개인 경우 target row는 하나만 작성하고 `mappings`
 컬럼에 JSON 배열을 넣습니다. 같은 `target_user_sdwt_prod`가 여러 행에 반복되면 command가

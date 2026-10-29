@@ -1,7 +1,20 @@
 # API 공통 호출 규칙
 
-이 문서는 API의 공통 인증·입력·응답 규칙을 설명합니다. 먼저 호출 규칙을 확인한 뒤
-아래 [모듈별 API 문서](#모듈별-api-문서)에서 필요한 요청·응답을 찾으세요.
+[문서 홈](../README.md) · [기능 안내](../modules/README.md) · [API 개발](../development/02-backend.md)
+
+API 호출을 작성하거나 기존 요청을 바꿀 때 사용하는 명세입니다.
+공통 인증·입력·응답 규칙을 읽은 뒤 [모듈별 API 문서](#모듈별-api-문서)에서 method·path·입출력을 확인합니다.
+업무의 목적과 화면 동작은 기능 안내에 있습니다.
+
+## 호출 전에 확인할 순서
+
+1. 호출할 환경의 주소와 해당 API의 method·path를 확인합니다.
+2. 세션·Bearer·Internal token 중 해당 endpoint의 인증 방식을 확인합니다.
+3. query·body의 필수값과 정확한 필드 표기를 따릅니다. API마다 입력·응답 형태가 다를 수 있습니다.
+4. 성공 응답뿐 아니라 권한 오류·실패 조건과 DB 변경·외부 발송 여부를 확인합니다.
+
+로그인 성공과 업무 권한 허용은 별도입니다. 브라우저 업무 API는 로그인 세션에 더해 앱 접근과
+해당 기능의 데이터 범위를 검사합니다. 세부 규칙은 [Account](../modules/02-account.md)를 확인합니다.
 
 ## Base URL
 
@@ -26,7 +39,7 @@ http://localhost:8080
 /auth/keycloak/callback/
 ```
 
-Keycloak이 authorization code와 state를 GET query로 전달하는 callback입니다. Portal의 직접 ADFS form_post callback은 제거됐습니다.
+Keycloak이 authorization code와 state를 GET query로 전달하는 callback입니다.
 
 ## 인증 방식
 
@@ -44,18 +57,9 @@ endpoint는 별도 인증을 적용합니다.
 
 ## API 문서 작성 단위
 
-각 endpoint는 다음 항목을 확인할 수 있어야 합니다.
-
-| 항목 | 설명 |
-| --- | --- |
-| Method/Path | 실제 `apps/portal/api/api/<feature>/urls.py` 기준 경로 |
-| Auth | Session, Bearer token, Internal token, 공개 여부 |
-| Query/Body | 필수/선택 입력, `snake_case`/`camelCase` 호환 여부 |
-| Response | 주요 field와 collection envelope |
-| Error | 400/401/403/404/409/5xx 조건 |
-| Side effect | DB write, 외부 호출, ActivityLog, RAG Outbox 같은 부작용 |
-
-실제 endpoint 전체 목록은 [앱 인벤토리](../inventory.md#백엔드-api-route)를 기준으로 확인합니다.
+각 endpoint에서 method·path·인증·입력·응답·오류·부작용을 확인할 수 있어야 합니다.
+[작성·유지보수 기준](../development/04-documentation.md#설명의-기본-순서)을 따르며,
+전체 endpoint 이름은 [API 경로 색인](../reference/02-inventory.md#백엔드-api-route)에서 찾습니다.
 
 ## 요청 형식
 
@@ -121,17 +125,17 @@ Spider API는 기존 `error` 계약을 유지하며 DRF 입력 검증 응답도 
 
 | 문서 | 제공 기능 |
 | --- | --- |
-| [Auth](auth.md) | 로그인·로그아웃·현재 세션 |
-| [Account](account.md) | 계정·권한 조회와 사용자 검색 |
-| [Emails](emails.md) | 메일함, 메일 처리, 수집, OCR |
-| [Assistant](assistant.md) | AI 대화, 스트리밍, 대화방 관리 |
-| [Line Dashboard / Drone](line-dashboard.md) | 라인 현황, SOP, 알림 대상·수신자 |
-| [L0 Spider](l0-spider.md) | FDC Hard Limit 추천 조회 |
-| [L3 Spider](l3-spider.md) | 이상감지 결과, 제외 조건, 메일 규칙 |
-| [PM SPIDER](pm-spider.md) | PM 주기 비교와 Trace/OES 조회 |
-| [TTTM Spider](tttm-spider.md) | 비교·참조 조건의 score와 파형 조회 |
-| [Observer](observer.md) | 설비 기준정보·로그·분석 근거 조회 |
-| [AppStore](appstore.md) | 내부 앱, 댓글, 좋아요 |
-| [VOC](voc.md) | 문의·개선 요청과 답변 |
-| [Activity / Health](activity-health.md) | 활동 로그, 접속 통계, 프로세스 상태 |
-| [Data Movement](data-movement.md) | 파일 적재와 공정 comment 요약 트리거 |
+| [Auth](01-auth.md) | 로그인·로그아웃·현재 세션 |
+| [Account](02-account.md) | 계정·권한 조회와 사용자 검색 |
+| [Emails](03-emails.md) | 메일함, 메일 처리, 수집, OCR |
+| [Assistant](04-assistant.md) | AI 대화, 스트리밍, 대화방 관리 |
+| [Line Dashboard / Drone](05-line-dashboard.md) | 라인 현황, SOP, 알림 대상·수신자 |
+| [Observer](06-observer.md) | 설비 기준정보·로그·분석 근거 조회 |
+| [L0 Spider](07-l0-spider.md) | FDC Hard Limit 추천 조회 |
+| [L3 Spider](08-l3-spider.md) | 이상감지 결과, 제외 조건, 메일 규칙 |
+| [PM SPIDER](09-pm-spider.md) | PM 주기 비교와 Trace/OES 조회 |
+| [TTTM Spider](10-tttm-spider.md) | 비교·참조 조건의 score와 파형 조회 |
+| [AppStore](11-appstore.md) | 내부 앱, 댓글, 좋아요 |
+| [VOC](12-voc.md) | 문의·개선 요청과 답변 |
+| [Activity / Health](13-activity-health.md) | 활동 로그, 접속 통계, 프로세스 상태 |
+| [Data Movement](14-data-movement.md) | 파일 적재와 공정 comment 요약 트리거 |

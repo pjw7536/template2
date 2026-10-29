@@ -23,4 +23,4 @@
 
 ## AI 작업 사용 여부
 
-- [ ] AI가 작업했다면 [AI 작업 안내](../docs/agent/ai-feature-workflow.md)의 기본 프롬프트·검증 절차를 따랐습니다.
+- [ ] AI가 작업했다면 [AI 작업 안내](../docs/agent/01-ai-feature-workflow.md)의 기본 프롬프트·검증 절차를 따랐습니다.

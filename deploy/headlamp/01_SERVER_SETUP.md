@@ -37,7 +37,7 @@ Keycloak의 realm·사내 IdP를 다시 만드는 단계는 수행하지 않습�
 Keycloak 준비가 안 됐다면 [Keycloak 자체 설정 완료 확인](../keycloak/04_SETUP_FLOW.md#설정-완료-확인)을 먼저 마칩니다.
 기존 realm을 재생성하거나 Portal용 등록 명령을 실행하지 않습니다.
 
-서버 선택 checkout이 필요하면 [서버 checkout 안내](../SERVER_CHECKOUT.md)에 따라
+서버 선택 checkout이 필요하면 [서버 checkout 안내](../01-SERVER_CHECKOUT.md)에 따라
 `bash deploy/shared/scripts/checkout-server.sh headlamp`를 사용합니다. Keycloak이 이미 실행 중이어야 합니다.
 
 ## 2. 대상 context와 실행 입력

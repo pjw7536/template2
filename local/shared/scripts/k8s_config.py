@@ -89,17 +89,23 @@ def credentials(create=False):
     path = RUNTIME / 'credentials.env'
     keys = ('POSTGRES_PASSWORD', 'PORTAL_DB_PASSWORD', 'AIRFLOW_DB_PASSWORD', 'KEYCLOAK_DB_PASSWORD',
             'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN',
-            'GRAFANA_PASSWORD', 'FTP_PASS', 'AIRFLOW_OIDC_CLIENT_SECRET')
+            'GRAFANA_PASSWORD', 'FTP_PASS', 'AIRFLOW_OIDC_CLIENT_SECRET',
+            'HEADLAMP_OIDC_CLIENT_SECRET', 'HEADLAMP_ADMIN_PASSWORD', 'HEADLAMP_VIEWER_PASSWORD')
     if path.exists():
         result = read_env(path)
         expected = {*keys, 'AIRFLOW_FERNET_KEY'}
-        if set(result) == expected - {'AIRFLOW_OIDC_CLIENT_SECRET'}:
-            result['AIRFLOW_OIDC_CLIENT_SECRET'] = secrets.token_urlsafe(32) if create else 'local-render-only-0123456789'
+        added = {'AIRFLOW_OIDC_CLIENT_SECRET', 'HEADLAMP_OIDC_CLIENT_SECRET',
+                 'HEADLAMP_ADMIN_PASSWORD', 'HEADLAMP_VIEWER_PASSWORD'}
+        expected.update(added)
+        missing = expected - result.keys()
+        if result.keys() - expected or not missing <= added:
+            raise ValueError('기존 credentials.env 키를 확인하세요. 자동으로 교체하지 않습니다.')
+        if missing:
+            result.update({key: secrets.token_urlsafe(32) if create else 'local-render-only-0123456789'
+                           for key in missing})
             if create:
                 write_env(path, result)
                 path.chmod(0o600)
-        if set(result) != expected:
-            raise ValueError('기존 credentials.env 키를 확인하세요. 자동으로 교체하지 않습니다.')
         return result
     if not create:
         # 렌더·검사는 실제 자격증명을 생성하거나 출력하지 않습니다.
@@ -174,7 +180,7 @@ def api_overrides(creds):
                 GUNICORN_WORKERS='2')
 
 
-def prepare(config):
+def prepare(config, include_portal=True):
     """초기 설정과 런타임 디렉터리를 준비하되 기존 데이터를 초기화하지 않습니다."""
     creds = credentials(create=True)
     RUNTIME.mkdir(parents=True, exist_ok=True)
@@ -187,7 +193,8 @@ def prepare(config):
         (base / sub).mkdir(parents=True, exist_ok=True)
     write_env(RUNTIME / 'db.env', {**{key: creds[key] for key in ('POSTGRES_PASSWORD', 'PORTAL_DB_PASSWORD', 'AIRFLOW_DB_PASSWORD', 'KEYCLOAK_DB_PASSWORD')},
                                  'LOCAL_DB_PORT': config['LOCAL_DB_PORT']})
-    write_env(RUNTIME / 'api-overrides.env', api_overrides(creds))
+    if include_portal:
+        write_env(RUNTIME / 'api-overrides.env', api_overrides(creds))
     write_env(RUNTIME / 'airflow.env', airflow_settings(creds))
     write_env(RUNTIME / 'monitoring.env', monitoring_settings())
     write_private(RUNTIME / 'kind.json', json.dumps(kind_config(config), indent=2) + '\n')

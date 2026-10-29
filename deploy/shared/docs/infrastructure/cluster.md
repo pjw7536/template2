@@ -1,126 +1,42 @@
-# 사내 운영 클러스터 현황
+# 클러스터 구성과 상태 확인
 
-[배포 문서 안내](../../../README.md) · [입문 가이드](../kubernetes/README.md) · [설치 기준 조회](../kubernetes/01-baseline.md)
+[배포 안내](../../../README.md) · [Kubernetes 셋업](../kubernetes/README.md) · [현재 환경 조회](../kubernetes/09-baseline.md)
 
-> 노드 현황 기준일: 2026-09-16 사용자 확인 / APP VIP·DNS 기록: 2026-09-15
-> Worker 용도·MinIO 배포 대상 지정: 2026-10-27 사용자 확인. 실제 MinIO 배포는 미실행입니다.
+이 문서는 현재 배포 원본에서 구성 정보를 찾고 대상 서버의 상태를 확인하는 방법을 설명합니다.
+노드 목록·Ready 상태·VIP·설치 버전은 대상 클러스터에서 조회합니다.
+저장소의 manifest·env는 배포 입력이며 실제 서버에 반영됐다는 증거는 아닙니다.
 
-이 문서는 사내 Kubernetes의 노드 구성과 앱 배치를 기록합니다.
-배포 전에는 `kubectl get nodes -o wide` 결과와 비교해 변경 여부를 확인합니다.
+## 구성별 원본
 
-아래 5대의 노드명·역할·IP·Ready 상태는 사용자가 제공한 정보입니다. 에이전트가 서버를 직접 조회한 결과는 아닙니다.
-VIP·DNS·앱 배포 여부는 노드 상태와 별도로 확인해야 하며, 각 항목의 확인 시점을 함께 읽습니다.
+| 확인할 구성 | 원본·시작 문서 |
+| --- | --- |
+| 설치할 앱·서버 선택 그룹 | `deploy/shared/apps.json`, [선택 checkout](../../../01-SERVER_CHECKOUT.md) |
+| 제어면·Worker·네트워크 설치 기준 | [현재 환경 조회](../kubernetes/09-baseline.md), [제어면 셋업](../kubernetes/01-control-plane.md), [Worker 추가](../kubernetes/03-worker.md) |
+| 외부 HTTPS·도메인·VIP 연결 | `deploy/shared/ingress/stack.yaml`, [공용 Ingress](../../ingress/README.md) |
+| Keycloak·전용 PostgreSQL | `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 설치](../../../keycloak/README.md) |
+| Portal API·Web·migration | `deploy/portal/k8s`, [Portal 배포](../../../portal/README.md) |
+| Airflow·로그·ODBC·DB | `deploy/airflow/helm`, [Airflow 배포](../../../airflow/README.md) |
+| MinIO 배치·스토리지 | `deploy/minio/k8s`, [MinIO 배포](../../../minio/README.md) |
+| 지표·운영 UI·FTP | [Monitoring](../../../monitoring/README.md), [Headlamp](../../../headlamp/README.md), [FTP](../../../ftp/README.md) |
+| 인증서·CA | [인증서 관리](../../certs/README.md) |
 
-```text
-                  Kubernetes API VIP
-                  10.172.26.148:6443
-                           |
-          ---------------------------------
-          |               |               |
-         CP1             CP2             CP3
-   khplane01w06     khplane01w07     khplane01w08
-    10.172.40.84     10.172.40.86     10.172.40.85
-          |               |               |
-          +---------------+---------------+
-                          |
-                   etcd 3-node HA
-                          |
-             -------------------------
-             |                       |
-            Worker                 Worker
-        khplane01w09             khplanew01
-        10.172.40.87           10.172.40.117
+노드 배치는 각 앱의 `nodeSelector`·affinity·env, 저장공간은 PV·PVC·Helm values와 비교합니다.
+공용 진입점이 여러 Worker에 있어도 앱·DB가 자동 복제되지는 않습니다.
+
+## 현재 상태 조회
+
+배포 호스트의 저장소 루트에서 대상 context를 명시합니다. 아래 명령은 조회만 수행합니다.
+
+```bash
+read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
+kubectl --context "$KUBE_CONTEXT" get nodes -o wide
+kubectl --context "$KUBE_CONTEXT" get pods -A -o wide
+kubectl --context "$KUBE_CONTEXT" get ingress -A
+kubectl --context "$KUBE_CONTEXT" get storageclass
+kubectl --context "$KUBE_CONTEXT" get pv
+kubectl --context "$KUBE_CONTEXT" get pvc -A
 ```
 
-| Node | IP | Role | CPU | Memory | Disk | Workload / Status |
-| --- | --- | --- | ---: | ---: | ---: | --- |
-| `khplane01w06` | `10.172.40.84` | control-plane | 미확인 | 미확인 | 미확인 | Kubernetes API, etcd / Ready |
-| `khplane01w07` | `10.172.40.86` | control-plane | 미확인 | 미확인 | 미확인 | Kubernetes API, etcd / Ready |
-| `khplane01w08` | `10.172.40.85` | control-plane | 미확인 | 미확인 | 미확인 | Kubernetes API, etcd / Ready |
-| `khplane01w09` | `10.172.40.87` | worker | 미확인 | 미확인 | 미확인 | Keycloak, PostgreSQL, Traefik / Ready |
-| `khplanew01` | `10.172.40.117` | worker | 미확인 | 미확인 | 미확인 | APP VIP Backend 등록 기록 있음 / Ready |
-
-위 표의 workload는 기존 배치 기록이며 2026-09-16 확인 범위는 노드 상태까지입니다.
-
-### 2026-10-27 Worker 용도와 MinIO 배치 지정
-
-- `khplane01w09`(`10.172.40.87`)는 사용자 지정 Keycloak 전용 Worker입니다.
-- 새 MinIO와 초기화 Job은 `khplanew01`(`10.172.40.117`)에 배치합니다. 운영 YAML에 nodeSelector를 반영했습니다.
-- MinIO 데이터 볼륨도 해당 Worker에서 사용할 수 있어야 합니다. 실제 디스크 경로·PV 준비와 서버 배포는 아직 확인하지 않았습니다.
-- 이 지정은 기존 Traefik·VIP·Keycloak의 배치를 이동하거나 변경하는 작업을 포함하지 않습니다. 아래 VIP 관련 설명은 과거 기록·배포 계획으로 유지합니다.
-
-### 과거 계획과 현재 목록의 구분
-
-`khinfow01`(`10.172.117.91`, 12 vCPU·72GiB·1TB)은 과거 Portal 통합 시험 예정 서버입니다.
-2026-09-16 제공된 현재 클러스터 목록에는 없어 위 현황에서 제외했습니다.
-`khplanew01`의 별칭으로 취급하거나 과거 사양을 현재 Worker에 대입하지 않습니다.
-
-## APP VIP·DNS·배포 현황 — 2026-09-15
-
-| 항목 | 값 / 상태 | 확인 근거 |
-| --- | --- | --- |
-| CP VIP | `10.172.26.148:6443` | 기존 Kubernetes API 기록 |
-| APP VIP | `10.172.26.150:443` | 사용자 확인: 인프라팀 발급, SSH 접근 불가 |
-| 업무 DNS | `etch.samsungds.net` → `10.172.26.150` | 사용자 확인: DNS 설정 완료 |
-| APP VIP Backend 1 | `10.172.40.117:443` | 2026-09-15 LB 연결 확인; 2026-09-16 Node `khplanew01` Ready 확인 |
-| APP VIP Backend 2 | `10.172.40.87:443` | 2026-09-15 LB 연결 확인; 2026-09-16 Node `khplane01w09` Ready 확인 |
-| Keycloak DNS | `etch-sso.samsungds.net` | 마지막 공유 상태는 Worker 직결, APP VIP로 변경 완료 여부 미확인 |
-| Keycloak 구동 | 기존 운영 중 | 사용자 보고, 최신 Pod 상태는 미조회 |
-| Traefik 두 Worker 배치 | 프로젝트 코드 준비 완료 | 실제 서버 적용·두 Backend 응답 여부 미확인 |
-| Airflow | 배포 코드 준비, 목표 URL `https://etch.samsungds.net/airflow` | 실제 배포·기동 여부 미확인 |
-| 업무 도메인 TLS | `etch.samsungds.net`을 포함하는 인증서 필요 | 발급·Kubernetes Secret 등록 여부 미확인 |
-| LB 동작 | TCP 전달·Traefik TLS 종료를 적용할 계획 | 실제 TLS offloading·Health Check 설정값 미확인 |
-
-현재 `10.172.40.117`의 Kubernetes 노드명은 `khplanew01`로 확인됐습니다.
-노드 등록과 Traefik의 해당 Worker 배치·HTTPS 응답은 별도로 검증합니다.
-
-```text
-etch.samsungds.net → APP VIP 10.172.26.150:443
-                          ├─ 10.172.40.117:443 → Traefik 배치 준비
-                          └─ 10.172.40.87:443  → 기존 Traefik 확장 준비
-                                                     │
-                                                     └─ /airflow → Airflow 배포 준비
-```
-
-VIP 연결은 인프라팀에서 설정했으며, 위 앱 라우팅은 저장소의 배포 계획입니다.
-이 기록의 배포 목표는 기존 Keycloak 유지와 Airflow 기동입니다.
-두 Worker에 Traefik을 배치해도 앱·DB가 복제되지는 않습니다.
-서버 적용과 확인은 [APP VIP 실행 절차](../../ingress/VIP.md)를 따릅니다.
-
-## 확정된 클러스터·Keycloak 정보
-
-- Kubernetes API endpoint: `10.172.26.148:6443`
-- Control Plane: 3개 노드, etcd 3-node HA
-- Keycloak namespace: `etch-sso`
-- Keycloak 공개 DNS: `etch-sso.samsungds.net`
-- Keycloak 접속 URL: `https://etch-sso.samsungds.net`
-- Keycloak worker: `khplane01w09`(`10.172.40.87`)
-- Keycloak workload: Keycloak, 전용 PostgreSQL, 기존 Traefik (공용 진입점으로 확장하는 코드 준비 완료)
-- Keycloak PostgreSQL local PV: `/appdata/keycloak-postgres`, 50Gi
-- Keycloak 구동: 2026-09-10 사용자 확인 완료
-- Keycloak Ingress: `traefik` IngressClass, 공용 `etch-sso/traefik-tls` 인증서 사용
-- StorageClass: 2026-09-08 확인 시 없음, Portal 배포 전 재확인 필요
-- Kubernetes version과 CNI: 문서 기준 미확인
-- Keycloak TLS 인증서의 브라우저 신뢰와 full chain: 최종 확인 필요
-- Keycloak을 통한 사내 OIDC 실제 로그인: 최종 확인 필요
-
-## 빈 서버 재현에 필요한 설치 기준
-
-| 항목 | 현재 기록 | 다음 확인 |
-| --- | --- | --- |
-| 노드 이름·IP·역할·Ready | 2026-09-16 사용자 확인, 위 5대 | 배포 전 nodes 조회 |
-| OS·커널·노드 사양 | 미확인 | 각 노드 OS·디스크·자원 조회 |
-| Kubernetes 설치 도구·버전 | 미확인 | version 조회와 인프라 구축 기록 |
-| 런타임·CRI·cgroup | 미확인 | 노드 서비스·설정 확인 |
-| CNI·Pod/Service CIDR·MTU | 미확인 | 시스템 Pod·설치 원본과 관리자 확인 |
-| API VIP·etcd 구성 | API VIP·etcd 3-node HA 기존 기록 | 실제 LB·etcd 설치 방식·상태 재확인 |
-| StorageClass·앱 PV·백업 | 과거 기록만 있음 | storageclass·pv·pvc와 Worker 마운트 조회 |
-
-[환경 조회와 기록 양식](../kubernetes/01-baseline.md)을 사용해 확인값·확인일·근거를 갱신합니다.
-앱 chart가 요구하는 최소 Kubernetes 버전을 현재 설치 버전 또는 새 서버 권장 버전으로 기록하지 않습니다.
-
-## 2026-09-22 인증서·Headlamp 후속 기록
-
-- 사용자가 Keycloak·업무 도메인의 PFX/P7B, 추출한 fullchain·개인키, SECDS-T2 루트·중간 CA 보유를 확인했습니다.
-- 보관 위치는 `deploy/shared/certs/`의 사이트별 폴더입니다. [추출·적용 안내](../../certs/README.md)를 따릅니다.
-- Headlamp의 운영 도메인·issuer·그룹 조회 권한 구성은 저장소에 반영되어 있습니다. 실제 서버의 Secret·로그인·제어면 OIDC 상태는 미조회입니다.
+기대한 노드 배치와 실제 Pod 위치, PV·PVC 연결을 비교합니다.
+Ingress·Pod 상태 확인 뒤 [접속·기능 검증](../kubernetes/06-verification.md)으로 실제 HTTPS·로그인·업무 동작을 확인합니다.
+설치 버전·OS·런타임·CNI·VIP는 [환경 조회 안내](../kubernetes/09-baseline.md)에서 별도로 확인합니다.

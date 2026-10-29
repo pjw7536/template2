@@ -8,18 +8,18 @@ Airflow를 처음 배포하거나 실행 Worker를 바꿀 때 읽습니다.
 ## 1. 실행 위치와 도구 확인
 
 명령은 저장소 루트에서 실행합니다. 서버 선택 checkout은
-[선택 체크아웃 안내](../SERVER_CHECKOUT.md)의 `airflow` 선택을 사용합니다.
+[선택 체크아웃 안내](../01-SERVER_CHECKOUT.md)의 `airflow` 선택을 사용합니다.
 기본 checkout은 `deploy/airflow`와 공통 도구·문서만 받습니다. 검사·렌더·배포에는 소스와 `local/`이 필요하지 않습니다.
 서버 이미지 빌드가 필요하면 `bash deploy/shared/scripts/checkout-server.sh airflow --with-source`로 소스를 추가합니다.
 
-기존 사내 Compose와 같은 이미지·패키지 설정이 `env/build.env`에 채워져 있습니다.
-APT/PIP mirror, BigDataQuery Python·ODBC 설치 옵션, versioned driver URL을 다시 옮길 필요가 없습니다.
+이미지·패키지 빌드 입력은 `env/build.env`에서 관리합니다.
+APT/PIP mirror, BigDataQuery Python·ODBC 설치 옵션과 버전이 지정된 driver URL을 확인합니다.
 
 실행 호스트에는 Python 3.10 이상, Helm 3.19.0 이상, kubectl이 필요합니다.
 chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
 이 숫자는 도구의 최소 요구사항이며, 현재 사내 설치 버전이나 신규 설치 권장 버전을 뜻하지 않습니다.
-사내 배포는 [현재 클러스터](../shared/docs/infrastructure/cluster.md)를 사용합니다. 빈 서버 구축은
-[설치 기준 조회](../shared/docs/kubernetes/01-baseline.md) 후 확인된 도구·버전으로 준비합니다.
+사내 배포는 [현재 클러스터](../shared/docs/infrastructure/cluster.md)를 사용합니다. 빈 서버를 새 Worker로 추가하려면
+[03. Worker 추가](../shared/docs/kubernetes/03-worker.md)의 준비·가입·검증을 먼저 진행합니다.
 이 도구는 Kubernetes 자체나 Ingress controller를 설치하지 않습니다.
 Ingress 없이도 port-forward로 UI에 접속할 수 있습니다.
 
@@ -39,16 +39,15 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" version
 
 완료 기준: 선택한 context의 노드를 조회할 수 있고 도구·클러스터가 위 최소 버전을 충족해야 합니다.
 `NODE_NAME`에는 노드 이름을 추측해서 넣지 말고 출력된 `kubernetes.io/hostname` 값을 사용합니다.
-현재 `khplane01w09`는 [Keycloak 전용 Worker](../shared/docs/infrastructure/cluster.md#2026-10-27-worker-용도와-minio-배치-지정)입니다.
-Airflow는 이 노드를 제외하고 자원·디스크·ODBC 접근을 확인한 Worker를 선택합니다.
-`khplanew01`에는 MinIO 배치가 지정되어 있으므로 함께 실행할 여유 자원과 저장소를 먼저 확인합니다.
+Keycloak·MinIO 등 다른 앱의 배포 원본과 실제 Pod 배치를 [클러스터 구성 안내](../shared/docs/infrastructure/cluster.md)에서 확인합니다.
+Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만족하는 Worker를 선택합니다.
 새 터미널에서는 context 변수를 다시 입력합니다.
 
 ## 2. 배포 설정 준비
 
 [02 환경변수](env/02_ENVIRONMENT.md)에서 최초 키 생성 여부를 판단하고 서버 값을 입력합니다.
-현재 설치는 새 DB이므로 기존 DB dump·계정·Fernet 키를 가져오지 않습니다.
-설치 후 재배포할 때는 이번에 생성한 DB 비밀번호·Fernet 키를 유지합니다.
+최초 설치는 새 DB와 전용 계정·Fernet 키를 준비합니다.
+재배포는 사용 중인 DB 비밀번호·Fernet 키를 유지합니다. 데이터 이전이 필요하면 [백업·이전 절차](05_OPERATIONS.md)를 따릅니다.
 이후 디스크 경로·UID/GID는 입력한 env와 일치시켜야 합니다.
 
 ## 3. Worker의 디스크 준비

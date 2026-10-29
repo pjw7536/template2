@@ -5,21 +5,19 @@
 이 overlay는 운영 환경에 맞게 값을 채운 뒤 배포하는 템플릿입니다.
 placeholder가 남아 있으면 먼저 실제 값으로 교체합니다. 운영 설정은 `deploy/portal/env/prod/`에서 관리합니다.
 
-이전 internal overlay에서 폴더 이름만 변경했습니다. `tailwind-internal` Namespace와 리소스 이름은 그대로 유지합니다.
+운영 namespace는 `tailwind-internal`입니다. 이미지·Secret·스토리지 입력을 실제 환경에 맞춥니다.
 
 ## 사내 운영 클러스터
 
-노드·VIP·DNS와 확인 시점은 [공통 클러스터 현황](../../../../shared/docs/infrastructure/cluster.md)을 참고합니다.
-Portal 전용 배포 계획과 입력값은 아래에서 관리합니다.
+노드·VIP·DNS·스토리지는 [클러스터 구성과 상태 확인](../../../../shared/docs/infrastructure/cluster.md)에 따라 조회합니다.
+Portal의 현재 배포 입력과 확인 사항은 아래에서 관리합니다.
 
-### Portal worker 계획과 확인 필요 항목
+### Portal Worker와 저장소 선택
 
-- 현재 등록된 Worker는 공통 현황의 `khplane01w09`, `khplanew01`입니다. Portal 배치 위치는 자원·스토리지 확인 후 정합니다.
+- 사용할 Worker의 Ready·자원·스토리지·Pod/Service 통신을 확인합니다.
 - MinIO는 [독립 앱](../../../../minio/README.md)으로 배포합니다. 이 overlay는 MinIO 리소스를 생성하지 않습니다.
-- `khinfow01`(12 vCPU, 72GiB memory, 1TB disk)은 과거 통합 시험 계획이며 2026-09-16 사용자 제공 노드 목록에는 없습니다.
-- 과거 예정 주소를 현재 배포 노드로 사용하지 않습니다. 사용할 Worker의 Ready·자원·스토리지·Pod/Service 통신을 확인합니다.
-- 업무 공개 DNS는 `etch.samsungds.net`으로 확정됐습니다. Portal 배포 범위, TLS 준비 상태, StorageClass 또는 local PV 경로와 용량은 아직 미확정입니다.
-- Portal API/Web image registry 경로, image tag와 pull 인증 방식은 아직 미확정입니다.
+- Ingress host·TLS·StorageClass 또는 local PV 경로·용량을 실제 대상 환경에 맞춥니다.
+- API/Web 이미지 registry·태그·pull 인증과 migration 이미지가 일치하는지 확인합니다.
 
 ## 반드시 확정할 값
 
@@ -53,7 +51,7 @@ Portal overlay를 적용해도 Keycloak은 배포되지 않습니다.
 
 Portal overlay는 `traefik-rbac.yaml`로 `etch-sso/traefik` ServiceAccount에 Portal namespace의
 라우팅 권한을 부여합니다. `platform` checkout으로 기반 앱을 먼저 운영했다면
-[선택 checkout](../../../../SERVER_CHECKOUT.md)을 `all`로 확장합니다. `portal` 단독 선택은 기존 범위를 교체합니다.
+[선택 checkout](../../../../01-SERVER_CHECKOUT.md)을 `all`로 확장합니다. `portal` 단독 선택은 기존 범위를 교체합니다.
 
 **배포 순서의 앱 overlay 적용 후** CP1에서 실행합니다. `KUBE_CONTEXT`는 배포 순서에서 선택한 context입니다.
 

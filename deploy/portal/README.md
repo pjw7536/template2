@@ -12,7 +12,7 @@
 | --- | --- |
 | Portal 최초 설치 | 이 문서의 [입력 순서](#사내-배포-입력-순서) → [운영 overlay 배포 순서](k8s/overlays/prod/README.md#배포-순서) |
 | 실행 중인 Portal의 설정 변경 | [설정 변경 반영](k8s/overlays/prod/README.md#5-설정-변경-반영) |
-| 기존 클러스터에 MinIO만 추가 | [MinIO 단독 최초 설치](MINIO_SETUP.md) |
+| 기존 클러스터에 MinIO만 추가 | [MinIO 단독 최초 설치](01-MINIO_SETUP.md) |
 | Portal 로그인 client 등록 | [Keycloak 연결](k8s/jobs/keycloak-client/README.md) |
 
 ## 폴더 구성
@@ -74,7 +74,7 @@ chmod 600 deploy/portal/env/prod/api.env deploy/portal/env/prod/web.env
 3. [공용 MinIO](../minio/README.md)를 별도로 준비하고 Portal의 `api.env`에 endpoint와 접근 키를 작성합니다. 실제 MinIO 계정·bucket 권한도 준비합니다.
 4. 업무 기능을 연결할 때 `api.env`에 해당 구역을 추가합니다.
    비밀번호·토큰·인증 헤더는 같은 `api.env`에 입력합니다.
-   [전체 설정 설명](../../docs/configuration.md)을 보고 필요한 값만 입력합니다.
+   [전체 설정 설명](../../docs/reference/01-configuration.md)을 보고 필요한 값만 입력합니다.
    기존 다른 환경 파일을 통째로 복사하면 dummy 주소나 다른 환경의 계정까지 가져올 수 있습니다.
 
 API 파일의 구역 번호는 모든 환경에서 같습니다. 설정이 없는 구역은 생략되므로

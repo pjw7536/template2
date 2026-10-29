@@ -46,7 +46,7 @@ mkdir -p "$HEADLAMP_CERT_DIR" "$(dirname "$HEADLAMP_OIDC_CA_FILE")" "$HEADLAMP_C
 표의 파일이 모두 준비되어 있으면 PFX·P7B 추출은 건너뜁니다.
 Keycloak 서버의 개인키는 가져오지 않아도 됩니다.
 
-PFX 원본만 있다면 [공용 인증서 추출](../shared/certs/README.md#1단계-인증서-추출)에서
+PFX 원본만 있다면 [공용 인증서 추출](../shared/certs/02-extract.md#1단계-인증서-추출)에서
 사이트 선택과 3번 추출까지만 수행한 뒤 이 문서로 돌아옵니다.
 그 문서의 앱 배포 단계까지 진행하지는 않습니다.
 사이트 도메인과 context는 01에서 정한 값과 같아야 합니다. 인증서는 공용 Secret에 등록합니다.

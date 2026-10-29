@@ -11,6 +11,16 @@ scheduler:
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: '2', memory: 2Gi}
+  # 업무 DAG 이미지는 유지하며 로컬 독립 검사 DAG 한 개만 추가합니다.
+  extraVolumes:
+    - name: local-platform-dag
+      configMap:
+        name: local-platform-dag
+  extraVolumeMounts:
+    - name: local-platform-dag
+      mountPath: /opt/airflow/dags/local_platform_smoke.py
+      subPath: local_platform_smoke.py
+      readOnly: true
 webserver:
   resources:
     requests: {cpu: 100m, memory: 512Mi}

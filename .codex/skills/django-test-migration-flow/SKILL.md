@@ -47,9 +47,10 @@ backend 변경 시 테스트와 migration 누락을 방지하고 container-first
 
 `make dev`로 이미지·외부 DB·runtime env를 준비합니다. 소스 수정 후에는 `make k8s-rebuild APP=portal`로 검사 이미지를 갱신합니다.
 전체 검사는 `make test-api check-api makemigrations-check`를 사용합니다. 특정 앱 테스트는 표준 test env를 명시합니다.
+아래 테스트는 `api.account` 예시이며, 다른 기능을 검사할 때는 `test` 뒤의 모듈 경로를 해당 앱으로 바꿉니다.
 
 ```bash
-K8S_API_ENV_FILE="$PWD/deploy/portal/env/test/api.env" docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api test api.<feature>
+K8S_API_ENV_FILE="$PWD/deploy/portal/env/test/api.env" docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T api test api.account
 
 # migration 생성 결과가 컨테이너 종료 후에도 소스에 남도록 소스를 연결합니다.
 docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime/db.env -f local/shared/compose/k8s-check.yml run --rm -T -v "$PWD/apps/portal/api:/app" api makemigrations

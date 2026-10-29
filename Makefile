@@ -29,6 +29,19 @@ VIP_BACKENDS ?=
 # 기본 개발 환경은 한 PC의 전체 Kubernetes 앱입니다.
 dev: k8s-up
 
+# Portal 없이 deploy의 platform 그룹 전체를 실행하고 검사합니다.
+.PHONY: dev-platform k8s-platform-check k8s-platform-smoke k8s-platform-status k8s-platform-rebuild
+dev-platform: k8s-tools
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s_platform.py up
+k8s-platform-check:
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s_platform.py check
+k8s-platform-smoke:
+	python3 local/shared/scripts/k8s_platform.py smoke
+k8s-platform-status:
+	python3 local/shared/scripts/k8s_platform.py status
+k8s-platform-rebuild:
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s_platform.py rebuild --app "$(APP)"
+
 .PHONY: register-reference-users
 register-reference-users:
 	@test -f "$(REFERENCE_USERS_CSV)" || { echo 'REFERENCE_USERS_CSV에 참조 CSV 파일 경로를 지정하세요.'; exit 1; }
@@ -72,6 +85,7 @@ k8s-render: k8s-render-local k8s-render-server
 
 k8s-render-local:
 	kubectl kustomize local/shared/k8s >/dev/null
+	kubectl kustomize local/shared/k8s/platform >/dev/null
 	kubectl kustomize local/minio/k8s >/dev/null
 	kubectl kustomize local/portal/k8s >/dev/null
 	kubectl kustomize local/keycloak/k8s >/dev/null

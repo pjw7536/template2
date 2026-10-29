@@ -16,12 +16,12 @@
 
 | 확인할 내용 | 시나리오 |
 | --- | --- |
-| UI 상태·디자인 토큰·접근성 | [프론트엔드 UI 일관성](frontend-ui-consistency.md) |
-| feature 간 import·공개 진입점·폴더 구조 | [프론트엔드 기능 경계](frontend-boundary.md) |
-| Django의 조회·변경·HTTP 처리 책임 분리 | [Service·Selector 경계](django-service-selector.md) |
-| 외부 연동 변경 시 로컬 mock·환경 설정 동기화 | [외부 PC 개발 계약](offsite-contract-sync.md) |
-| Observer의 프론트·백엔드 연동 변경 | [Observer 리팩터링 조율](observer-refactor-coordination.md) |
-| UI·API·인증 작업의 탐색 범위와 지침 분량 | [Portal 작업 범위](portal-agent-scope.md) |
+| UI 상태·디자인 토큰·접근성 | [프론트엔드 UI 일관성](01-frontend-ui-consistency.md) |
+| feature 간 import·공개 진입점·폴더 구조 | [프론트엔드 기능 경계](02-frontend-boundary.md) |
+| Django의 조회·변경·HTTP 처리 책임 분리 | [Service·Selector 경계](03-django-service-selector.md) |
+| 외부 연동 변경 시 로컬 mock·환경 설정 동기화 | [외부 PC 개발 계약](04-offsite-contract-sync.md) |
+| Observer의 프론트·백엔드 연동 변경 | [Observer 리팩터링 조율](05-observer-refactor-coordination.md) |
+| UI·API·인증 작업의 탐색 범위와 지침 분량 | [Portal 작업 범위](06-portal-agent-scope.md) |
 
 ## 작성 규칙
 
@@ -30,4 +30,4 @@
 - 가능한 경우 실행 명령을 포함합니다.
 - 에이전트가 수정하면 안 되는 파일과 범위를 명시합니다.
 
-전체 작업 방식과 과거 기록은 [에이전트 문서 안내](../README.md)를 참고합니다.
+현재 작업 방식은 [에이전트 문서 안내](../README.md)를 참고합니다.

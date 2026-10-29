@@ -1,5 +1,5 @@
 # 공식 metrics-server v0.9.0 구성의 이미지 주소를 프로젝트 사내 미러로 변경합니다.
-# 미러 기준: docs/integrations/proxy-mirrors.md의 Docker 주소 패턴과 registry.k8s.io 항목.
+# 미러 기준: docs/reference/integrations/proxy-mirrors.md의 Docker 주소 패턴과 registry.k8s.io 항목.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

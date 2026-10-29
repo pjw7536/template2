@@ -1,6 +1,6 @@
 # 로컬 공용 MinIO
 
-`deploy/minio/k8s/base`를 재사용합니다. 서버 입력은 `env/minio.env`에 있습니다.
+`deploy/minio/k8s/base`를 재사용합니다. 로컬 MinIO 서버와 client 입력은 `env/minio.env`에 있습니다.
 기존 개발 데이터 보존을 위해 namespace `tailwind-local`, PVC `minio-data`, PV `tailwind-local-minio`,
 호스트 마운트 `/data/local-runtime/minio`는 유지합니다.
 

@@ -9,23 +9,7 @@ React Web과 Django API로 구성된 업무 포털입니다. 업무 기능은 �
 | 소스·이미지 빌드 | [api](api/README.md), [web](web/README.md), 각 폴더의 Dockerfile |
 | 서버 배포·입력 | [deploy/portal](../../deploy/portal/README.md) |
 | 개발 env·실행 | [local/portal](../../local/README.md) |
-| 앱 목록·서버 checkout | [앱 목록](../../deploy/shared/apps.json), [선택 checkout](../../deploy/SERVER_CHECKOUT.md) |
-
-## AI 개발 시작점
-
-에디터·에이전트 작업 폴더를 `apps/portal`로 열고 [Portal 지침](AGENTS.md)을 적용합니다.
-Web 전용 작업은 `web`, API 전용 작업은 `api`에서 시작해도 됩니다. 각 수정 영역의 하위 지침도 확인합니다.
-대상 feature부터 찾고, 필요한 공개 facade·공통 코드·외부 계약 순서로 범위를 넓힙니다.
-
-| 작업 | 먼저 확인할 위치 | 범위를 넓히는 조건 |
-| --- | --- | --- |
-| 화면·상태·스타일 | `web/src/features/<feature>`와 [Web 지침](web/AGENTS.md) | 공통 UI·전역 라우팅에 실제 의존할 때 |
-| 업무 API·모델 | `api/api/<feature>`와 [API 지침](api/AGENTS.md) | 다른 도메인 공개 facade·공통 설정에 영향이 있을 때 |
-| 외부 인증·RAG·메일 | 해당 API 호출부 | 계약·env·mock 변경이면 [local 지침](../../local/AGENTS.md) |
-| 이미지·운영 env·파일 마운트 | 해당 Portal 계약 | [deploy 지침](../../deploy/AGENTS.md)과 관련 Portal 설정 |
-
-스킬·문서는 작업에 해당하는 항목만 읽습니다. 재현용 프롬프트와 탐색 평가 방법은
-[AI 작업 안내](../../docs/agent/ai-feature-workflow.md)에 있습니다.
+| 앱 목록·서버 checkout | [앱 목록](../../deploy/shared/apps.json), [선택 checkout](../../deploy/01-SERVER_CHECKOUT.md) |
 
 ## 개발·검증
 
@@ -62,9 +46,9 @@ Django 검사는 준비된 이미지·DB를 사용하는 일회성 Compose `api`
 
 API는 PostgreSQL·MinIO와 인증 서비스를 사용합니다. 개발 환경은 `local/adfs_dummy`로 외부계를 대체합니다.
 Airflow는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 직접 가져오지 않습니다.
-전체 계약은 [아키텍처](../../docs/architecture.md)와 [환경설정](../../docs/configuration.md)에 있습니다.
+전체 계약은 [아키텍처](../../docs/concepts/01-architecture.md)와 [환경설정](../../docs/reference/01-configuration.md)에 있습니다.
 
-## 경로 이전 후 준비
+## 의존성과 생성물 준비
 
 루트에서 `make install`을 실행하면 Web과 도구의 독립 lockfile로 각각 의존성을 설치합니다.
 기존 Python 가상환경·생성 산출물은 새 경로에서 재생성합니다. API 실행·검증은 Compose 컨테이너를 사용합니다.
@@ -87,3 +71,19 @@ Airflow는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 �
 `90000003`은 외부 전체 앱 사용자, `90000004`는 전체 관리자, `90000005`는 무권한 사용자입니다.
 로컬 테스트 비밀번호는 모두 `dummy-user-change-me`입니다. realm import는 기존 realm을
 덮어쓰지 않으므로 기존 로컬 설치를 자동 삭제하지 않습니다. 새 fixture 검증은 별도 환경에서 수행합니다.
+
+## AI 개발 시작점
+
+에디터·에이전트 작업 폴더를 `apps/portal`로 열고 [Portal 지침](AGENTS.md)을 적용합니다.
+Web 전용 작업은 `web`, API 전용 작업은 `api`에서 시작해도 됩니다. 각 수정 영역의 하위 지침도 확인합니다.
+대상 feature부터 찾고, 필요한 공개 facade·공통 코드·외부 계약 순서로 범위를 넓힙니다.
+
+| 작업 | 먼저 확인할 위치 | 범위를 넓히는 조건 |
+| --- | --- | --- |
+| 화면·상태·스타일 | `web/src/features/<feature>`와 [Web 지침](web/AGENTS.md) | 공통 UI·전역 라우팅에 실제 의존할 때 |
+| 업무 API·모델 | `api/api/<feature>`와 [API 지침](api/AGENTS.md) | 다른 도메인 공개 facade·공통 설정에 영향이 있을 때 |
+| 외부 인증·RAG·메일 | 해당 API 호출부 | 계약·env·mock 변경이면 [local 지침](../../local/AGENTS.md) |
+| 이미지·운영 env·파일 마운트 | 해당 Portal 계약 | [deploy 지침](../../deploy/AGENTS.md)과 관련 Portal 설정 |
+
+스킬·문서는 작업에 해당하는 항목만 읽습니다. 재현용 프롬프트와 탐색 평가 방법은
+[AI 작업 안내](../../docs/agent/01-ai-feature-workflow.md)에 있습니다.

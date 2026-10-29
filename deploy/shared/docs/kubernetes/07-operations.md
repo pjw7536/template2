@@ -61,8 +61,9 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-cont
 
 ## Worker 추가
 
-[Worker 추가 안내](../../ingress/ADD_WORKER.md)의 노드 등록 → Traefik 배치 → 직접 HTTPS 확인 → LB 활성화 순서로 진행합니다.
-APP VIP backend 전체 목록에서 기존 Worker를 빠뜨리지 않고 기존 경로도 다시 확인합니다.
+[03. Worker 추가](03-worker.md)에서 프로그램 준비 → 가입 → Ready·네트워크 확인 순서로 진행합니다.
+앱 실행용 Worker는 여기까지 진행합니다. 외부 HTTPS 진입점으로도 사용할 때만
+[02. Traefik 셋업](02-traefik.md)과 [VIP 확장 상세](../../ingress/02-ADD_WORKER.md)를 추가로 진행합니다.
 
 ## 백업·복구
 

@@ -1,10 +1,28 @@
+# 로컬 전용 Keycloak 실행 정의입니다. 운영 배포 파일은 변경하지 않습니다.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: etch-sso
+  name: keycloak
+spec:
+  ports:
+  - name: http
+    nodePort: 30180
+    port: 8080
+    targetPort: http
+  selector:
+    app.kubernetes.io/name: keycloak
+  type: NodePort
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: keycloak
   labels:
     app.kubernetes.io/name: keycloak
-    app.kubernetes.io/part-of: tailwind-portal
+    app.kubernetes.io/part-of: etch-sso
+  name: keycloak
 spec:
   replicas: 1
   selector:
@@ -17,86 +35,90 @@ spec:
         app.kubernetes.io/part-of: tailwind-portal
     spec:
       containers:
-        - name: keycloak
-          image: quay.io/keycloak/keycloak:26.7.1
-          imagePullPolicy: IfNotPresent
-          args:
-            - start-dev
-            - --import-realm
-          env:
-            - name: KC_DB
-              value: postgres
-            - name: KC_DB_URL
-              value: jdbc:postgresql://external-postgres:5432/keycloak
-            - name: KC_DB_USERNAME
-              value: keycloak
-            - name: KC_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: local-runtime
-                  key: keycloak-db-password
-            - name: KC_BOOTSTRAP_ADMIN_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: local-runtime
-                  key: keycloak-admin-username
-            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: local-runtime
-                  key: keycloak-admin-password
-            - name: KC_HOSTNAME
-              value: http://localhost:8180
-            - name: KC_HOSTNAME_STRICT
-              value: "false"
-            - name: KC_HTTP_ENABLED
-              value: "true"
-            - name: KC_HEALTH_ENABLED
-              value: "true"
-          ports:
-            - name: http
-              containerPort: 8080
-          readinessProbe:
-            tcpSocket:
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 30
-          livenessProbe:
-            tcpSocket:
-              port: http
-            initialDelaySeconds: 60
-            periodSeconds: 10
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: "2"
-              memory: 2Gi
-          volumeMounts:
-            - name: realm
-              mountPath: /opt/keycloak/data/import/realm-portal.json
-              subPath: realm-portal.json
-              readOnly: true
+      - args:
+        - start
+        - --import-realm
+        env:
+        - name: KC_DB
+          value: postgres
+        - name: KC_DB_URL
+          value: jdbc:postgresql://external-postgres:5432/keycloak
+        - name: KC_DB_USERNAME
+          value: keycloak
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: keycloak-db-password
+              name: local-runtime
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: keycloak-admin-username
+              name: local-runtime
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: keycloak-admin-password
+              name: local-runtime
+        - name: KC_HOSTNAME
+          value: http://localhost:8180
+        - name: KC_HOSTNAME_STRICT
+          value: 'false'
+        - name: KC_HTTP_ENABLED
+          value: 'true'
+        - name: KC_HEALTH_ENABLED
+          value: 'true'
+        - name: KC_PROXY_HEADERS
+          value: xforwarded
+        image: quay.io/keycloak/keycloak:26.7.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 6
+          httpGet:
+            path: /health/live
+            port: management
+          periodSeconds: 10
+          timeoutSeconds: 3
+        name: keycloak
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9000
+          name: management
+        readinessProbe:
+          failureThreshold: 12
+          httpGet:
+            path: /health/ready
+            port: management
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        startupProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /health/started
+            port: management
+          periodSeconds: 5
+          timeoutSeconds: 3
+        volumeMounts:
+        - mountPath: /opt/keycloak/data/import/realm-portal.json
+          name: realm
+          readOnly: true
+          subPath: realm-portal.json
+      initContainers: []
+      terminationGracePeriodSeconds: 60
       volumes:
-        - name: realm
-          configMap:
-            name: keycloak-realm
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: keycloak
-  labels:
-    app.kubernetes.io/name: keycloak
-    app.kubernetes.io/part-of: tailwind-portal
-spec:
-  type: NodePort
-  selector:
-    app.kubernetes.io/name: keycloak
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http
-      nodePort: 30180
+      - configMap:
+          name: keycloak-realm
+        name: realm

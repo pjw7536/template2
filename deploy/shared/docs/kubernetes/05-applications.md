@@ -20,22 +20,22 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 현재 controller가 있으면 기존 namespace 감시와 VIP 배치를 보존합니다.
-APP VIP의 Worker backend는 [VIP 안내](../../ingress/VIP.md)에 따라 확인합니다.
+APP VIP의 Worker backend는 [VIP 안내](../../ingress/01-VIP.md)에 따라 확인합니다.
 앱·DB·Secret은 이 단계에서 배포하지 않습니다.
 
 ## 2. Keycloak
 
 [Keycloak 최초 설치 안내](../../../keycloak/README.md)에서 서버 준비·배포 → 자체 설정·사내 로그인 확인까지 완료합니다.
 입력 파일·context 선택·검사·적용 명령은 Keycloak 문서에서 관리합니다.
-APP VIP의 Worker backend와 공용 경로는 [VIP 안내](../../ingress/VIP.md)를 함께 확인합니다.
+APP VIP의 Worker backend와 공용 경로는 [VIP 안내](../../ingress/01-VIP.md)를 함께 확인합니다.
 Portal·Headlamp client 연결은 Keycloak 준비를 마친 뒤 수행합니다.
 
 ## 3. Airflow
 
 [Airflow 상세 안내](../../../airflow/README.md)에 따라 env·chart·이미지·ODBC·DB/로그 디스크를 준비합니다.
-현재 설치는 기존 DB를 이전하지 않고 새 DB로 시작합니다. Keycloak 전용 Worker를 제외하고
-자원·저장소를 확인한 Worker를 `NODE_NAME`에 지정합니다.
-APP VIP 경로는 공용 Traefik과 Airflow namespace의 [업무 도메인 TLS](../../ingress/VIP.md)가 필요합니다.
+최초 설치는 새 DB·전용 계정을 준비하며 재배포는 사용 중인 DB와 키를 보존합니다.
+다른 앱의 배치 조건과 자원·저장소를 확인한 Worker를 `NODE_NAME`에 지정합니다.
+APP VIP 경로는 공용 Traefik과 Airflow namespace의 [업무 도메인 TLS](../../ingress/01-VIP.md)가 필요합니다.
 
 ```bash
 make server-check APP=airflow PROFILE=prod
@@ -87,8 +87,7 @@ make server-check APP=portal PROFILE=prod
 6. API health·로그인/callback/logout·파일 업로드/다운로드를 확인합니다.
 
 업무 파일을 보존해야 하는 `emptyDir` 경로는 실제 PVC 등으로 연결합니다.
-배치 노드는 현재 Worker 자원·스토리지를 보고 정하며 과거 예정 서버를 자동 사용하지 않습니다.
+배치 노드는 대상 클러스터의 Worker 자원·스토리지를 조회해 정합니다.
 
-`make server-up`은 기존 Keycloak+Airflow 통합 운용에 사용하는 명령입니다.
 공용 라우팅을 연결한 뒤에는 앱별 배포 도구를 사용합니다.
 Keycloak 정적 YAML을 직접 적용하면 namespace 감시 범위와 VIP 배치가 기본값으로 돌아갈 수 있습니다.

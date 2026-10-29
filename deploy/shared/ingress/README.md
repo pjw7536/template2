@@ -3,14 +3,17 @@
 [배포 문서 안내](../../README.md)
 
 이 폴더에서 여러 앱이 함께 사용하는 Traefik 설정을 관리합니다.
+처음 설치할 때는 [02. Traefik 셋업](../docs/kubernetes/02-traefik.md)의 실행 순서로 시작합니다.
+이 문서는 namespace 감시·TLS 이전·앱 연결 등 상세 참고입니다.
 기본 실행 위치는 기존 `etch-sso` namespace, `khplane01w09` worker이며 80/443을 사용합니다.
-현재 APP VIP 환경은 [두 Worker 443 연결 안내](VIP.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
-새 Worker를 추가하거나 앱 재배포 없이 Traefik만 확장할 때는 [Worker 추가 가이드](ADD_WORKER.md)를 따릅니다.
+현재 APP VIP 환경은 [두 Worker 443 연결 안내](01-VIP.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
+클러스터에 서버를 등록할 때는 [03. Worker 추가](../docs/kubernetes/03-worker.md),
+기존 ingress 배치를 백업하며 확장할 때는 [Traefik·VIP 확장](02-ADD_WORKER.md)을 따릅니다.
 
 ## 앱과 독립적으로 준비하기
 
 기존 클러스터에서 앱을 올리기 전에 공용 진입점만 준비할 수 있습니다.
-[선택 checkout](../../SERVER_CHECKOUT.md)의 `platform`으로 Portal 외 앱을 준비한 뒤 루트에서 실행합니다.
+[선택 checkout](../../01-SERVER_CHECKOUT.md)의 `platform`으로 Portal 외 앱을 준비한 뒤 루트에서 실행합니다.
 
 ```bash
 read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
@@ -125,7 +128,7 @@ kubectl --context "$KUBE_CONTEXT" get ingress -A \
 ```
 
 인증서는 file provider로 로드하므로 Ingress의 TLS Secret 열이 비어 있는 것이 정상입니다.
-실제 인증서는 [인증서 응답 검증](../certs/README.md#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
+실제 인증서는 [인증서 응답 검증](../certs/03-apply.md#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
 공식 계약: [Traefik 인증서와 SNI](https://doc.traefik.io/traefik/reference/routing-configuration/http/tls/tls-certificates/),
 [file provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/).
 
@@ -137,8 +140,8 @@ kubectl --context "$KUBE_CONTEXT" get ingress -A \
 | `tls.py` | 공용 TLS 등록·검사·갱신 및 Traefik 재시작 |
 | `manage.py` | 앱과 독립적인 검사·적용 및 Portal 후속 연결 진입점 |
 | `middlewares` | file provider가 읽는 공용 경로 middleware ConfigMap. 로컬도 같은 정의를 재사용 |
-| `VIP.md` | 확정된 APP VIP·업무 DNS·인증서·서버 실행 및 접속 검증 절차 |
-| `ADD_WORKER.md` | 새 Worker 등록·Traefik 단독 확장·LB 활성화·검증·복구 절차 |
+| `01-VIP.md` | 확정된 APP VIP·업무 DNS·인증서·서버 실행 및 접속 검증 절차 |
+| `02-ADD_WORKER.md` | 새 Worker 등록·Traefik 단독 확장·LB 활성화·검증·복구 절차 |
 
 Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAML은 `deploy/keycloak/export`에서
 운영 설정(2개 replica, RollingUpdate, `etch-sso,headlamp` 감시, `ingress: traefik` 노드 선택)을 추가합니다.
@@ -151,7 +154,6 @@ Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAM
 - `keycloak-up`: 기존 namespace 감시 범위를 보존합니다.
 - `airflow-up`: 자기 namespace의 권한과 감시를 추가합니다.
 - `monitoring-up`: 최종 렌더에 공용 Ingress가 있으면 TLS·권한을 검사하고 자기 namespace의 감시를 추가합니다.
-- `make server-up`: [서버 기동 안내](../docs/operations/server-start.md)의 기존 통합 운용을 위한 호환 명령입니다.
 
 이 도구들은 기존 Portal 등 다른 namespace를 감시 목록에서 제거하지 않습니다.
 이미 전체 namespace를 감시하고 있다면 범위를 좁히지 않습니다.

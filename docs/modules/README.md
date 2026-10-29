@@ -1,38 +1,30 @@
-# 모듈 문서 색인
+# 기능 안내
 
-모듈 문서는 기능의 목적, 화면 흐름, 권한과 운영 시 확인할 사항을 설명합니다.
-표의 모듈 이름을 누르면 기능 설명으로, API 링크를 누르면 호출 계약으로 이동합니다.
-실제 경로와 모델 이름은 [앱 인벤토리](../inventory.md)에서 찾으세요.
+[문서 홈](../README.md) · [전체 구조](../concepts/01-architecture.md) · [API 명세](../api/README.md)
 
-## 모듈별 추적표
+기능 설명에서 목적·화면·권한·처리 흐름을 읽고, 요청을 작성할 때 API 명세로 이동합니다.
+표의 Web 경로는 `apps/portal/web/src/features/` 기준입니다.
+실제 URL·모델·명령 이름은 [구현 색인](../reference/02-inventory.md)에 있습니다.
 
-| 모듈 | Frontend feature | Backend app | API 문서 | 주요 데이터/외부 연동 |
-| --- | --- | --- | --- | --- |
-| [Auth](auth.md) | `apps/portal/web/src/features/auth` | `api.auth`, `api.account` | [Auth API](../api/auth.md) | Keycloak/OIDC, Django session |
-| [Account](account.md) | `apps/portal/web/src/features/account` | `api.account` | [Account API](../api/account.md) | `User`, Keycloak 세션 앱 역할·SDWT 그룹 |
-| [Emails](emails.md) | `apps/portal/web/src/features/emails` | `api.emails` | [Emails API](../api/emails.md) | `Email`, `EmailAsset`, `EmailOutbox`, POP3, RAG, MinIO |
-| [Assistant/RAG](assistant.md) | `apps/portal/web/src/features/assistant` | `api.assistant`, `api.rag` | [Assistant API](../api/assistant.md) | PostgreSQL 대화 이력, OpenWebUI, RAG, LLM, Account permission group |
-| [Line Dashboard/Drone](line-dashboard.md) | `apps/portal/web/src/features/line-dashboard` | `api.drone` | [Line Dashboard API](../api/line-dashboard.md) | `DroneSOP`, target/channel/recipient/delivery, Jira/Mail/Messenger |
-| [L3 Spider](l3-spider.md) | `apps/portal/web/src/features/l3-spider` | `api.l3_spider` | [L3 Spider API](../api/l3-spider.md) | Parquet anomaly, index table, line name rule, Mail API |
-| [Observer](observer.md) | `apps/portal/web/src/features/observer` | `api.observer` | [Observer API](../api/observer.md) | 기본 DB 기준정보와 로그 |
-| L0 Spider | `apps/portal/web/src/features/l0-spider` | `api.l0_spider` | [L0 Spider API](../api/l0-spider.md) | FDC Hard Limit 추천 Parquet |
-| TTTM Spider | `apps/portal/web/src/features/tttm-spider` | `api.tttm_spider` | [TTTM Spider API](../api/tttm-spider.md) | 원시 파형·사전 계산 Parquet |
-| PM SPIDER | `apps/portal/web/src/features/pm-spider` | `api.pm_comparison` | [PM SPIDER API](../api/pm-spider.md) | [PM SPIDER raw/result Parquet 명세](pm-comparison-dashboard-spec.md) |
-| [AppStore](appstore.md) | `apps/portal/web/src/features/appstore` | `api.appstore` | [AppStore API](../api/appstore.md) | `AppStoreApp`, 댓글, 좋아요, cover image |
-| [VOC](voc.md) | `apps/portal/web/src/features/voc` | `api.voc` | [VOC API](../api/voc.md) | `VocPost`, `VocReply`, ActivityLog |
-| [Activity/Health](activity-health.md) | API only | `api.activity`, `api.health` | [Activity / Health API](../api/activity-health.md) | `ActivityLog`, runtime health |
-| [Common](common.md) | shared | `api.common` | [외부 연동](../integrations.md) | request helper, storage, mail, messenger, middleware |
+| 하려는 일 | 기능 설명 | Web feature | API app·명세 |
+| --- | --- | --- | --- |
+| 로그인·세션 확인 | [Auth](01-auth.md) | `auth` | `api.auth`, [Auth API](../api/01-auth.md) |
+| 계정·앱 접근·데이터 범위 확인 | [Account](02-account.md) | `account` | `api.account`, [Account API](../api/02-account.md) |
+| 메일 조회·분류·OCR·검색 자료 반영 | [Emails](03-emails.md) | `emails` | `api.emails`, [Emails API](../api/03-emails.md) |
+| 일반 대화·메일 검색·업무 화면 AI 분석 | [Assistant](04-assistant.md) | `assistant` | `api.assistant`, `api.rag`, [Assistant API](../api/04-assistant.md) |
+| 라인 현황·SOP 알림·수신자 관리 | [Line Dashboard / Drone](05-line-dashboard.md) | `line-dashboard` | `api.drone`, [Line Dashboard API](../api/05-line-dashboard.md) |
+| 설비 로그·타임라인·종합 분석 | [Observer](06-observer.md) | `observer` | `api.observer`, [Observer API](../api/06-observer.md) |
+| 분석 화면 선택·외부 분석 서비스 연결 | [Spider 화면 안내](07-spider.md) | `spider`, `l1-spider` | 외부 화면 연결, Portal 전용 API 없음 |
+| L0 분석·추천 값 조회 | [Spider 화면 안내](07-spider.md) | `l0-spider` | `api.l0_spider`, [L0 Spider API](../api/07-l0-spider.md) |
+| 이상감지·차트·예약 메일 | [L3 Spider](08-l3-spider.md) | `l3-spider` | `api.l3_spider`, [L3 Spider API](../api/08-l3-spider.md) |
+| PM 비교·TRACE/OES 분석 | [Spider 화면 안내](07-spider.md), [파일 명세](09-pm-comparison-dashboard-spec.md) | `pm-spider` | `api.pm_comparison`, [PM SPIDER API](../api/09-pm-spider.md) |
+| TTTM 대상·score·파형 조회 | [Spider 화면 안내](07-spider.md) | `tttm-spider` | `api.tttm_spider`, [TTTM Spider API](../api/10-tttm-spider.md) |
+| 내부 앱 공유·댓글·좋아요 | [AppStore](10-appstore.md) | `appstore` | `api.appstore`, [AppStore API](../api/11-appstore.md) |
+| 문의·개선 요청·답변 | [VOC](11-voc.md) | `voc` | `api.voc`, [VOC API](../api/12-voc.md) |
+| 활동·앱 접속 통계·서버 상태 확인 | [Activity / Health](12-activity-health.md) | `access-stats` | `api.activity`, `api.health`, [Activity / Health API](../api/13-activity-health.md) |
+| 원천 파일 적재·요약 자동화 | [Data Movement](13-data-movement.md) | 전용 화면 없음 | `api.data_movement`, [Data Movement API](../api/14-data-movement.md) |
+| 홈·팀 안내·오류 화면 | [앱 공통 화면](07-spider.md#앱-공통-화면) | `home`, `teamstaff`, `errors` | 전용 업무 API 없음 |
+| 요청·로그·파일·외부 전송 공통 처리 | [Common](14-common.md) | 공통 계층 | `api.common`, [외부 연동](../concepts/03-integrations.md) |
 
-Data Movement는 화면 없이 동작하는 파일 적재 기능입니다. [처리 흐름](data-movement.md)과
-[트리거 API](../api/data-movement.md)를 함께 확인하세요.
-L0·TTTM Spider의 조회 설명은 해당 API 문서에, PM SPIDER의 파일 구조는 데이터 명세에 모았습니다.
-
-## 각 모듈 문서의 필수 항목
-
-- 기능 목적과 사용자가 보는 화면
-- 주요 route와 endpoint
-- 인증/권한 기준
-- 핵심 데이터 모델 또는 외부 데이터 소스
-- 주요 흐름과 side effect
-- 운영/장애 확인 포인트
-- 관련 코드 경로
+새 화면이나 API를 추가하면 이 표와 구현 색인을 함께 갱신합니다.
+문서 작성 기준은 [작성·유지보수 안내](../development/04-documentation.md)를 따릅니다.

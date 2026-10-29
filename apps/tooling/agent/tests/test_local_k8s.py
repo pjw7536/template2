@@ -134,5 +134,82 @@ class LocalKubernetesTests(unittest.TestCase):
         self.assertEqual(api['KNOX_MESSENGER_API_BASE_URL'], '')
 
 
+
+class PlatformKubernetesTests(unittest.TestCase):
+    def test_platform_database_does_not_read_portal_env(self):
+        """독립 DB 연결에서 Portal 설정 합성·migration을 호출하지 않습니다."""
+        runner = runner_module()
+        def fake_run(args, **kwargs):
+            if 'inspect' in args:
+                return '172.28.0.9\n'
+            if 'ps' in args:
+                return 'database-container\n'
+            return ''
+        with patch.object(runner, 'run', side_effect=fake_run) as run, \
+                patch.object(runner, 'apply'), patch.object(runner, 'portal_database_up') as portal:
+            runner.database_up(include_portal=False)
+        portal.assert_not_called()
+        self.assertFalse(any('local/portal' in str(call) for call in run.call_args_list))
+
+    def test_platform_preparation_preserves_existing_portal_overrides(self):
+        """기존 API override는 platform 준비로 덮어쓰지 않습니다."""
+        with tempfile.TemporaryDirectory() as directory, patch.object(config, 'RUNTIME', Path(directory) / 'runtime'):
+            config.RUNTIME.mkdir()
+            overrides = config.RUNTIME / 'api-overrides.env'
+            overrides.write_text('EXISTING=value\n')
+            values = config.settings()
+            for key in values:
+                if key.endswith('_HOST_PATH'):
+                    values[key] = str(Path(directory) / key)
+            config.prepare(values, include_portal=False)
+            self.assertEqual(overrides.read_text(), 'EXISTING=value\n')
+            self.assertTrue((config.RUNTIME / 'airflow.env').exists())
+
+    def test_oidc_credentials_upgrade_preserves_all_existing_values(self):
+        """기존 DB·Fernet·Airflow client 값을 유지하고 새 키만 추가합니다."""
+        with tempfile.TemporaryDirectory() as directory, patch.object(config, 'RUNTIME', Path(directory)):
+            original = config.credentials(create=True)
+            old = {key: value for key, value in original.items() if not key.startswith('HEADLAMP_')}
+            path = config.RUNTIME / 'credentials.env'
+            config.write_env(path, old)
+            before = path.read_bytes()
+            self.assertTrue(config.credentials()['HEADLAMP_OIDC_CLIENT_SECRET'])
+            self.assertEqual(path.read_bytes(), before)
+            upgraded = config.credentials(create=True)
+            self.assertEqual({key: upgraded[key] for key in old}, old)
+            self.assertEqual(config.credentials(create=True), upgraded)
+
+    def test_apiserver_oidc_merge_is_idempotent_and_rejects_other_contract(self):
+        """로컬 인증은 반복 적용 가능하며 다른 issuer·구조화된 인증 설정은 거부합니다."""
+        import copy
+        with patch.object(sys, 'path', [str(ROOT / 'local/shared/scripts'), *sys.path]):
+            from k8s_platform import headlamp
+        source = {'spec': {'containers': [{'name': 'kube-apiserver', 'command': ['kube-apiserver'],
+                                           'volumeMounts': [{'name': 'existing', 'mountPath': '/existing'}]}],
+                           'volumes': [{'name': 'existing', 'hostPath': {'path': '/existing'}}]}}
+        merged = headlamp.apiserver_manifest(copy.deepcopy(source))
+        self.assertEqual(headlamp.apiserver_manifest(copy.deepcopy(merged)), merged)
+        self.assertEqual(merged['spec']['volumes'][0], source['spec']['volumes'][0])
+        self.assertIn('--oidc-groups-prefix=headlamp:', merged['spec']['containers'][0]['command'])
+        for flag in ('--oidc-issuer-url=https://other.test/realms/other', '--authentication-config=/other'):
+            other = copy.deepcopy(source)
+            other['spec']['containers'][0]['command'].append(flag)
+            with self.assertRaises(ValueError):
+                headlamp.apiserver_manifest(other)
+
+    def test_invalid_credentials_are_rejected_without_writing_upgrade(self):
+        """기존 키 오류가 있으면 새 OIDC 키 추가도 파일에 기록하지 않습니다."""
+        with tempfile.TemporaryDirectory() as directory, patch.object(config, 'RUNTIME', Path(directory)):
+            original = config.credentials(create=True)
+            original.pop('HEADLAMP_OIDC_CLIENT_SECRET')
+            original['UNKNOWN_KEY'] = 'existing-value'
+            path = config.RUNTIME / 'credentials.env'
+            config.write_env(path, original)
+            before = path.read_bytes()
+            with self.assertRaises(ValueError):
+                config.credentials(create=True)
+            self.assertEqual(path.read_bytes(), before)
+
+
 if __name__ == '__main__':
     unittest.main()

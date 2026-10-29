@@ -10,8 +10,8 @@
 
 구조 검사는 `deploy/shared/apps.json`과 apps·deploy·local의 소유 디렉터리를 대조합니다.
 tooling·shared·로컬 mock은 서비스 목록 밖의 지원 영역이며 runtime·chart·Node 생성물은 앱으로 취급하지 않습니다.
-문서 route 검사는 Python AST로 각 모듈의 urlpatterns와 `docs/inventory.md`의 endpoint 목록을 대조합니다.
-단일 따옴표·여러 줄 등록을 포함해 누락된 경로와 제거된 경로가 남은 경우를 검사합니다.
+문서 검사는 Python AST로 업무·callback API와 중첩 app의 모델을 구현 색인과 대조합니다.
+관리 명령의 실제 파일, Web feature의 구현 색인·기능 안내 연결도 확인해 누락·중복·삭제된 항목을 찾습니다.
 로컬 배포 회귀 검사는 앱별 독립 렌더와 전체 집계의 리소스·권한·realm 참조를 확인합니다.
 
 저장소 루트에서 변경 영역에 맞는 검사를 선택합니다.
@@ -26,7 +26,7 @@ tooling·shared·로컬 mock은 서비스 목록 밖의 지원 영역이며 runt
 
 배포 회귀 테스트는 Docker Compose·kubectl이 필요하며 실제 클러스터를 변경하지 않습니다.
 Helm이 준비되어 있으면 고정 chart 렌더 검사도 수행합니다. 기존 `.tools/bin/helm`을 사용하려면 PATH에 추가합니다.
-앱 실행은 루트 Makefile, [사용 안내](../../docs/usage.md), [개발 환경](../../local/README.md)을 참고합니다.
+앱 실행은 루트 Makefile, [사용 안내](../../docs/getting-started/02-usage.md), [개발 환경](../../local/README.md)을 참고합니다.
 
 Node 의존성은 이 폴더의 package.json·lockfile로 관리합니다. 루트에서 `make tooling-install` 후 `make tooling-test`를 사용합니다. Web 설치나 루트 node_modules에 의존하지 않습니다.
 

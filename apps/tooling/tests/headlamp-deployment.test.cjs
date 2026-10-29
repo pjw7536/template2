@@ -20,9 +20,12 @@ test('Headlamp 입력 오류와 context 누락은 클러스터 변경 전에 차
 test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 관리 권한을 연결한다', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'headlamp-server-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  fs.cpSync(path.join(root, 'deploy/headlamp'), path.join(directory, 'deploy/headlamp'), {
-    recursive: true, filter: file => !file.endsWith('.env') && !file.endsWith('.bak'),
-  });
+  // 앱 카탈로그의 선택 checkout과 같은 공통 도구·앱 원본을 준비합니다.
+  for (const relative of ['deploy/shared', 'deploy/headlamp']) {
+    fs.cpSync(path.join(root, relative), path.join(directory, relative), {
+      recursive: true, filter: file => !file.endsWith('.env') && !file.endsWith('.bak'),
+    });
+  }
   // 서버 단독 checkout에서도 OIDC Secret을 참조하고 비밀값을 렌더하지 않습니다.
   const env = path.join(directory, 'headlamp.env');
   fs.writeFileSync(env, [
@@ -67,6 +70,9 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
 
   const ingress = docs.find(doc => doc.kind === 'Ingress');
   assert.equal(ingress.spec.ingressClassName, 'traefik');
-  assert.deepEqual(ingress.spec.tls, [{ hosts: ['ui.example.test'], secretName: 'headlamp-tls' }]);
+  // HTTPS는 공용 Traefik 인증서를 사용하며 앱별 TLS Secret을 복제하지 않습니다.
+  assert.equal(ingress.spec.tls, undefined);
+  assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
+  assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.tls'], 'true');
   assert.equal(ingress.spec.rules[0].http.paths[0].path, '/headlamp');
 });

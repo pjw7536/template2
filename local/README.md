@@ -1,11 +1,17 @@
 # 한 PC의 로컬 Kubernetes 개발 환경
 
+[프로젝트 안내](../README.md) · [개발 시작 안내](../docs/getting-started/README.md) · [용어 안내](../docs/concepts/04-glossary.md)
+
 `make dev`는 같은 컴퓨터의 kind에 Portal·Keycloak·Airflow·FTP·MinIO·mock·모니터링을 실행합니다.
 control-plane과 worker는 Docker 컨테이너이며 별도 컴퓨터가 필요하지 않습니다.
 PostgreSQL 16만 `tailwind-local-db` Compose project로 분리합니다. 기존 개발 DB는 변경하지 않습니다.
 
+Portal을 제외한 6개 앱은 `make dev-platform` → `make k8s-platform-smoke`로 독립 실행·검사합니다.
+서버와의 공유 정의·Headlamp HTTPS 로그인·검사 범위는 [플랫폼 로컬 실행](01-PLATFORM.md)을 참고합니다.
+
 ## 필요한 안내 찾기
 
+- 준비 도구와 용어부터 확인: [첫 셋업 가이드](../docs/getting-started/01-setup.md)
 - 처음 실행: [준비와 실행](#준비와-실행)
 - 로그인 정보: [주소와 계정](#주소와-계정)
 - 기존 설치 갱신·재시작 문제: [기존 환경 갱신과 복구](#기존-환경-갱신과-복구)
@@ -15,17 +21,23 @@ PostgreSQL 16만 `tailwind-local-db` Compose project로 분리합니다. 기존 
 
 ## 준비와 실행
 
-Docker, Python 3 + PyYAML, kubectl, Helm 3.19.0 이상이 필요합니다.
-kind는 `make k8s-tools`가 준비하며 `.tools/bin/helm`도 자동으로 PATH에 포함합니다.
+Linux 또는 WSL2의 Bash에서 실행하며 Docker + Compose v2, Python 3 + PyYAML, kubectl, Helm 3.19.0 이상이 필요합니다.
+kind 설치에는 curl·sha256sum·install을 사용합니다. 도구별 확인법과 PyYAML 설치 예시는 [첫 셋업 가이드](../docs/getting-started/01-setup.md#2-저장소와-도구-준비)를 따릅니다.
+kind는 `make k8s-tools`가 준비하며 로컬 실행 도구는 `.tools/bin/helm`도 자동으로 PATH에 포함합니다.
 Airflow·Monitoring chart는 기존 lock의 SHA-256으로 검증합니다. chart가 없으면 다음 명령으로 준비합니다.
 
 ```bash
+make k8s-tools
 python3 deploy/airflow/scripts/manage.py fetch-chart
 python3 deploy/monitoring/scripts/manage.py fetch-chart
 make k8s-check
 make dev
+make k8s-health
 make k8s-smoke
 ```
+
+`make k8s-check`는 기동 전 검사, `make k8s-health`는 실행 중인 앱의 준비 상태 검사입니다.
+브라우저에서 Portal 로그인까지 확인하면 기본 셋업을 마친 것입니다.
 
 최초 이미지·패키지 다운로드에는 인터넷 연결이 필요합니다. 사내망은 사용하지 않습니다.
 기반 이미지는 현재 Docker 캐시를 우선 반입합니다. MinIO 공개 registry에서 pull이 거부되면 준비된 이미지 archive를
@@ -36,13 +48,13 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 | 명령 | 동작 |
 | --- | --- |
 | `make dev`, `make k8s-up` | 전체 이미지 빌드·DB 연결·앱 배포·상태 확인 |
-| `make k8s-rebuild APP=portal` | 선택 앱 갱신: portal, mock, airflow, keycloak, ftp, monitoring |
+| `make k8s-rebuild APP=portal` | 선택 앱 갱신: portal, mock, airflow, keycloak, ftp, minio, monitoring |
 | `make k8s-check` | Kustomize·Helm·도구·설정 검사, 클러스터 변경 없음 |
 | `make k8s-status`, `make k8s-health` | 상태·주소 표시, 준비 상태 확인 |
 | `make k8s-smoke` | 로그인·챗/RAG·메일·MinIO·FTP 적재·Airflow·모니터링 통합 검사 |
 | `make k8s-grafana`, `make k8s-prometheus` | localhost 3000·9090 port-forward |
 | `make k8s-ui` | localhost 4466 Headlamp 조회 UI |
-| `make down`, `make k8s-down` | kind와 새 DB 컨테이너 종료, 데이터 보존 |
+| `make down`, `make k8s-down` | kind 클러스터 삭제·로컬 DB 컨테이너 종료, DB 볼륨·호스트 데이터 보존 |
 | `make check-api`, `make makemigrations-check`, `make test-api` | 같은 이미지·새 DB를 사용하는 일회성 Compose api 검사 |
 
 ## 주소와 계정

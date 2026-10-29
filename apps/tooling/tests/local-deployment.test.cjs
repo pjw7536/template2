@@ -64,3 +64,15 @@ test('MinIO 소유권 분리 후에도 기존 로컬 PVC·PV·데이터 경로�
   assert.deepEqual(volume.spec.claimRef, {name: 'minio-data', namespace: 'tailwind-local'});
   assert.equal(volume.spec.persistentVolumeReclaimPolicy, 'Retain');
 });
+
+test('platform 집계는 Portal·mock·기존 token Headlamp 없이 공통 기반과 저장소·SSO만 포함한다', () => {
+  const items = render('local/shared/k8s/platform');
+  assert.deepEqual(items.filter(item => item.kind === 'Deployment').map(item => item.metadata.name).sort(),
+    ['keycloak', 'minio', 'traefik']);
+  assert.ok(!items.some(item => item.kind === 'Job' && item.metadata.name.startsWith('portal')));
+  const local = items.find(item => item.kind === 'Deployment' && item.metadata.name === 'keycloak');
+  const server = render('deploy/keycloak/k8s').find(item => item.kind === 'Deployment' && item.metadata.name === 'keycloak');
+  assert.deepEqual(local.spec.template.spec.containers[0].startupProbe,
+    server.spec.template.spec.containers[0].startupProbe);
+  assert.deepEqual(local.spec.template.spec.containers[0].args, ['start', '--import-realm']);
+});

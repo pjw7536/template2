@@ -42,6 +42,6 @@ Keycloak 준비에는 Portal·Headlamp의 client ID·secret이 필요하지 않�
 | Client / token mapper | 앱을 등록하고 사용자 정보를 앱 토큰으로 전달 |
 | SDWT 그룹 | 소속과 구분되는 업무 접근 등급 |
 
-설치 이후의 Git 반영·파일 관리와 과거 기록은 [Keycloak 운영 참고](operations/README.md)에 분리합니다.
+설치 이후의 Git 반영·파일 관리는 [Keycloak 운영 참고](operations/README.md)에 분리합니다.
 
 [전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

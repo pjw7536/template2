@@ -54,7 +54,7 @@ OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다.
 
 **성공 기준:** TLS 검증을 통과하고 health 응답 내용이 정상이어야 합니다.
 Airflow는 HTTP 200 외에 DB와 scheduler가 healthy인지도 확인합니다.
-Keycloak은 [VIP 문서](../../ingress/VIP.md)의 도메인 검사와 아래 로그인 검증을 수행합니다.
+Keycloak은 [VIP 문서](../../ingress/01-VIP.md)의 도메인 검사와 아래 로그인 검증을 수행합니다.
 
 ## 3. 실제 기능 확인
 

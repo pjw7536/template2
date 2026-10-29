@@ -2,6 +2,9 @@
 *
 !/.gitignore
 !/README.md
+!/01-prepare.md
+!/02-extract.md
+!/03-apply.md
 !/etch-sso.samsungds.net/
 !/etch.samsungds.net/
 !/ca/

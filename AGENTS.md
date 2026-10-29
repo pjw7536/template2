@@ -35,4 +35,4 @@
 - 현재 요청의 변경만 stage하고 기존 사용자 변경은 보존한다. 커밋 전 관련 검증을 실행하며 실행 불가 사유를 보고한다.
 - 검증 실패·충돌·인증·remote·브랜치 정책으로 Git 마무리가 막히면 중단하고 원인을 보고한다.
 - 커밋 형식은 `[scope] type: summary`, 여러 scope는 의존 순서로 연결한다. type은 feat/fix/refactor/test/docs/chore, summary는 목적을 짧게 쓴다.
-- scope 선택 시 [목록](docs/agent/git-scopes.md)을 읽는다. 예: `[api][web] feat: 앱 권한 동기화 추가`.
+- scope 선택 시 [목록](docs/agent/02-git-scopes.md)을 읽는다. 예: `[api][web] feat: 앱 권한 동기화 추가`.

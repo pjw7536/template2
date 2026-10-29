@@ -17,7 +17,7 @@
 | 최초 realm | `etch`. 사내 IdP·앱 client는 별도 설정 |
 
 실행 호스트에 Python 3.10+·Bash·kubectl·OpenSSL이 필요합니다. Keycloak 단독 배포에 Airflow·Helm·Docker는 필요하지 않습니다.
-서버 선택 checkout에는 루트 Makefile과 필요한 `deploy` 파일이 있어야 합니다. [서버 checkout](../SERVER_CHECKOUT.md)을 참고하세요.
+서버 선택 checkout에는 루트 Makefile과 필요한 `deploy` 파일이 있어야 합니다. [서버 checkout](../01-SERVER_CHECKOUT.md)을 참고하세요.
 
 이 구성은 단일 worker의 로컬 디스크에 의존하므로 HA가 아닙니다. PostgreSQL 외부 백업을 별도로 준비합니다.
 

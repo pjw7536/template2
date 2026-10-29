@@ -146,21 +146,11 @@ def cluster_up(config):
     run([*KUBE, 'apply', '-f', ROOT / 'local/airflow/k8s/ingress-access.yaml'])
 
 
-def database_up():
+def database_up(include_portal=True):
     """새 Compose DB만 실행하고 현재 주소를 namespace별 Service에 연결합니다."""
     run([*DB, 'up', '-d', '--wait'], sensitive=True)
-    # 새 인증용 DB도 기존 DB를 삭제하지 않고 최종 API env의 이름으로 준비합니다.
-    run(['bash', ROOT / 'local/portal/scripts/build-local-api-env.sh', RUNTIME / 'api.env'], sensitive=True)
-    api_env = read_env(RUNTIME / 'api.env')
-    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'postgres',
-         '-v', 'ON_ERROR_STOP=1', '-v', 'portal_db=' + api_env['DJANGO_DB_NAME'],
-         '-v', 'portal_owner=' + api_env['DJANGO_DB_USER']], data=r"""
-SELECT format('CREATE DATABASE %I OWNER %I', :'portal_db', :'portal_owner')
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'portal_db')
-\gexec
-""", sensitive=True)
-    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', api_env['DJANGO_DB_NAME'],
-         '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE EXTENSION IF NOT EXISTS pg_trgm'], sensitive=True)
+    if include_portal:
+        portal_database_up()
     identifier = run([*DB, 'ps', '-q', 'postgres'], quiet=True).strip()
     address = run(['docker', 'inspect', '--format', '{{(index .NetworkSettings.Networks "kind").IPAddress}}', identifier], quiet=True).strip()
     if not address:
@@ -173,6 +163,21 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'portal_db')
                              'labels': {'kubernetes.io/service-name': 'external-postgres'}},
                 'addressType': 'IPv4', 'ports': [{'name': 'postgres', 'protocol': 'TCP', 'port': 5432}],
                 'endpoints': [{'addresses': [address]}]}])
+
+
+def portal_database_up():
+    """Portal을 선택한 실행에서만 최종 API env의 데이터베이스를 준비합니다."""
+    run(['bash', ROOT / 'local/portal/scripts/build-local-api-env.sh', RUNTIME / 'api.env'], sensitive=True)
+    api_env = read_env(RUNTIME / 'api.env')
+    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'postgres',
+         '-v', 'ON_ERROR_STOP=1', '-v', 'portal_db=' + api_env['DJANGO_DB_NAME'],
+         '-v', 'portal_owner=' + api_env['DJANGO_DB_USER']], data=r"""
+SELECT format('CREATE DATABASE %I OWNER %I', :'portal_db', :'portal_owner')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'portal_db')
+\gexec
+""", sensitive=True)
+    run([*DB, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', api_env['DJANGO_DB_NAME'],
+         '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE EXTENSION IF NOT EXISTS pg_trgm'], sensitive=True)
 
 
 def build(app):
@@ -305,6 +310,9 @@ def airflow_up(creds):
     values = airflow_settings(creds)
     deploy.validate(values)
     airflow_client_up(values)
+    apply([{'apiVersion': 'v1', 'kind': 'ConfigMap',
+            'metadata': {'name': 'local-platform-dag', 'namespace': 'airflow'},
+            'data': {'local_platform_smoke.py': (ROOT / 'local/airflow/fixtures/local_platform_smoke.py').read_text()}}])
     deploy.deploy(values, CONTEXT, deploy.chart_path(), pause_new_dags=True,
                   values_file=ROOT / 'local/airflow/helm/values.yaml')
 

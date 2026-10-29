@@ -3,8 +3,7 @@
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
 기존 Kubernetes 클러스터의 Worker 한 대에 Airflow와 내부 PostgreSQL을 설치합니다.
-현재 설치는 **기존 Compose DB를 이전하지 않고 새 DB로 시작**합니다.
-DB 비밀번호·관리자 비밀번호·Fernet 키를 새로 생성하며 기존 DB 데이터 경로는 재사용하지 않습니다.
+최초 설치는 새 DB·전용 계정·Fernet 키를 준비합니다. 재배포는 사용 중인 DB·비밀번호·Fernet 키를 유지합니다.
 처음 설치할 때는 01~04를 순서대로 읽습니다. 운영 중인 서버는 아래 표에서 필요한 작업을 고릅니다.
 
 문서의 번호는 읽는 순서입니다. 실행할 스크립트나 명령의 번호를 뜻하지는 않습니다.
@@ -18,7 +17,7 @@ DB 비밀번호·관리자 비밀번호·Fernet 키를 새로 생성하며 기�
 | env·DB·URL·Secret 설정 확인 | [02 환경변수](env/02_ENVIRONMENT.md) |
 | DAG·플러그인 이미지 갱신 | [05 업데이트](05_OPERATIONS.md#3-dag이미지-업데이트) |
 | 설치 후 DB·설정 백업 | [05 운영](05_OPERATIONS.md#1-db와-설정-백업) |
-| 과거 Compose DB 이전 참고 | [05 이전 참고](05_OPERATIONS.md#2-기존-compose-db-이전). 현재 신규 설치에서는 생략 |
+| 데이터 이전이 필요한 경우 | [05 DB 이전 절차](05_OPERATIONS.md#2-기존-compose-db-이전) |
 | 배포·접속 실패 | [05 문제 해결](05_OPERATIONS.md#4-실패-단계-확인) |
 
 ## 현재 구성
@@ -97,4 +96,4 @@ TLS 최초 등록 명령과 검사·배포별 영향은 [04 실행](04_SETUP_FLO
 
 DAG·플러그인·Dockerfile은 [apps/airflow](../../apps/airflow/README.md)가 소유합니다.
 서버 검사·렌더·배포는 앱 소스와 local 파일 없이 실행할 수 있으며 이미지 빌드에만 앱 소스가 필요합니다.
-[서버 선택 checkout](../SERVER_CHECKOUT.md)을 사용하고 외부 PC 개발은 [local 안내](../../local/README.md)를 따릅니다.
+[서버 선택 checkout](../01-SERVER_CHECKOUT.md)을 사용하고 외부 PC 개발은 [local 안내](../../local/README.md)를 따릅니다.

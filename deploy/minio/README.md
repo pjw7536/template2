@@ -32,17 +32,11 @@ make server-check APP=minio PROFILE=prod
 기본 주소는 기존 Docker Hub 사내 proxy 경로를 사용합니다. 경로와 tag가 사내 서버에서 실제로 제공되는지는 별도 확인합니다.
 MinIO 서버 이미지는 Deployment, mc 이미지는 `minio-init` Job에서 사용합니다.
 서버 기본값은 `bitnamilegacy/minio:2025.7.23-debian-12-r5`이며 사내 Docker Hub proxy를 경유합니다.
-2026-10-28 linux/amd64에서 실제 pull·기동 후 live/ready 검사, 버킷 초기화·S3 업로드/다운로드,
-공용 Traefik middleware를 통한 콘솔 HTML/JS·로그인과 파일 경로, 재시작 후 파일 보존을 검증했습니다.
-서버 digest는 `sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20`입니다.
 컨테이너는 `minio` binary를 직접 실행하고 기존 `/data`·기동 인자를 유지합니다.
 기존 공식 이미지와 같은 UID 0을 명시해 기존 볼륨의 소유권을 자동 변경하지 않습니다.
 mc 기본값은 `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`를 사내 Docker Hub proxy로 가져오는 주소입니다.
-2026-10-28 외부 원본을 linux/amd64에서 실제 pull하고 셸·mc 실행·버킷 생성 도움말·기본 설정 읽기를 검증했습니다.
-확인한 digest는 `sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158`입니다.
-두 이미지는 추가 업데이트가 제공되지 않는 Bitnami 보관 이미지입니다. 사내 proxy의 접근·보유 여부는 운영 Worker에서 별도로 확인합니다.
-기존 `minio/mc` 이미지의 Docker Hub 태그 API는 404, manifest 조회는 인증 오류를 반환해 기본값에서 제외했습니다.
-기동·파일 검증은 빈 임시 볼륨으로 수행했습니다. 기존 데이터가 있으면 사용 중인 서버 버전과 호환성을 확인하고 백업·복원 검증을 먼저 수행합니다.
+두 이미지의 접근 가능 여부와 배포 대상 아키텍처를 실제 Worker에서 확인합니다.
+기존 데이터가 있으면 사용 중인 버전과의 호환성·백업·복원 절차를 확인한 뒤 갱신합니다.
 
 | 설정 | 의미 |
 | --- | --- |

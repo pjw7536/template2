@@ -15,9 +15,7 @@ OLD_AIRFLOW = re.compile(r'(?<!apps/)(?<!opt/)(?<!deploy/)(?<!\w)airflow/' + r'(
 
 
 def check_text(path, content):
-    """역사 기록을 제외하고 실제 사용 파일의 경로 위반을 찾는다."""
-    if path.startswith('docs/agent/plans/'):
-        return []
+    """현재 문서와 소스의 경로 위반을 예외 없이 검사합니다."""
     findings = []
     if OLD_PORTAL.search(content) or OLD_AIRFLOW.search(content):
         findings.append(f'{path}: 이전 소스 경로 참조')

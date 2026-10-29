@@ -1,6 +1,9 @@
 # Airflow
 
-Portal API를 호출하는 DAG와 Airflow 이미지 빌드 소스를 관리합니다.
+Airflow는 정해진 작업을 실행하고 선후 관계·성공·실패를 관리합니다.
+이 폴더에서는 작업 정의(DAG), 플러그인, Airflow 이미지 소스를 개발합니다.
+업무 처리는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 직접 가져오지 않습니다.
+처음 실행한다면 [첫 셋업](../../docs/getting-started/01-setup.md), 서비스 관계는 [아키텍처](../../docs/concepts/01-architecture.md)를 확인합니다.
 
 ## 파일 위치
 

@@ -69,7 +69,7 @@ API env는 서버·DB·로그인·HTTPS → 공용 연동 → 업무 기능 → 
 Emails·Assistant·Drone 설정도 같은 API env에 적습니다.
 
 prod env에는 서버·DB·로그인·파일 저장소의 필수값을 먼저 넣습니다.
-업무 연동을 사용할 때는 [설정 설명](../../../../docs/configuration.md)을 보고 필요한 값을 추가합니다.
+업무 연동을 사용할 때는 [설정 설명](../../../../docs/reference/01-configuration.md)을 보고 필요한 값을 추가합니다.
 timeout·cache 같은 선택값을 생략하면 코드 기본값을 사용합니다.
 
 local/test 설정은 유지하며 prod에는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다.
