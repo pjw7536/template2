@@ -1,0 +1,75 @@
+# 서비스·앱 배치·업무 연동
+
+[사내 인프라 정보](README.md) · [공통 배포 문서](../README.md)
+
+서비스 URL·namespace·배치 입력·스토리지 연결과 사내 업무 연동 주소의 관리 원본입니다.
+
+기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
+**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+
+## 서비스 접속 주소
+
+아래는 배포 선언 또는 앱 운영 안내의 주소입니다. 실제 DNS 응답·인증서·접속 성공은 별도 확인이 필요합니다.
+클러스터 내부 주소는 Pod 간 통신용이며 운영 PC에서의 직접 접속 주소가 아닙니다.
+
+| 서비스·용도 | 주소 | 근거 |
+| --- | --- | --- |
+| Portal·업무 서비스 기본 도메인 | `https://etch.samsungds.net/` | Portal prod Ingress |
+| Keycloak | `https://etch-sso.samsungds.net/` | Keycloak Ingress |
+| 업무 realm OIDC issuer | `https://etch-sso.samsungds.net/realms/etch` | Airflow·Headlamp OIDC env |
+| 사내 AD FS OIDC discovery | `https://stsds.secsso.net/adfs/.well-known/openid-configuration` | `deploy/keycloak/env/prod.env`의 `CORP_OIDC_DISCOVERY_URL` |
+| Airflow | `https://etch.samsungds.net/airflow` | Airflow `AIRFLOW_WEBSERVER_BASE_URL` |
+| MinIO 콘솔 | `https://etch.samsungds.net/minio-console/` | MinIO env·운영 안내 |
+| MinIO 파일 공개 경로 | `https://etch.samsungds.net/minio/` | MinIO 운영 안내 |
+| Grafana | `https://etch.samsungds.net/grafana/` | Monitoring 운영 안내 |
+| Prometheus 수집 대상 | `https://etch.samsungds.net/prometheus/targets` | Monitoring 운영 안내 |
+| Alertmanager | `https://etch.samsungds.net/alertmanager/` | Monitoring 운영 안내 |
+| Headlamp | `https://etch.samsungds.net/headlamp/` | Headlamp 운영 안내 |
+| MinIO S3·클러스터 내부 | `http://minio.minio.svc.cluster.local:9000` | MinIO 운영 안내 |
+| Portal API·클러스터 내부 | `http://api.tailwind-internal.svc.cluster.local:8000` | Airflow `AIRFLOW_API_BASE_URL` |
+| FTP·외부 PostgreSQL 등 추가 접속점 | 미확인 | FTP 대상 노드·포트와 Portal 운영 DB 주소 추가 확인 필요 |
+
+근거는 [Portal overlay](../../../portal/k8s/overlays/prod/README.md), [Keycloak](../../../keycloak/README.md),
+[Airflow](../../../airflow/README.md), [MinIO](../../../minio/README.md), [Monitoring](../../../monitoring/README.md), [Headlamp](../../../headlamp/README.md)의 원본·안내입니다.
+
+### 사내 업무 연동 주소
+
+아래는 `deploy/portal/env/prod/api.env`·`web.env`의 선언입니다. 대상 주소는 보존하되 접속 성공·계정 권한은 별도 확인합니다.
+
+| 연동·용도 | 주소 | 설정 키 |
+| --- | --- | --- |
+| RAG 검색 | `http://apigw.samsungds.net:8000/ds_llm_rag/2/dsllmrag/elastic/v2/retrieve-rrf` | `RAG_SEARCH_URL` |
+| RAG 문서 등록 | `http://apigw.samsungds.net:8000/ds_llm_rag/2/dsllmrag/elastic/v2/insert-doc` | `RAG_INSERT_URL` |
+| RAG 문서 삭제 | `http://apigw.samsungds.net:8000/ds_llm_rag/2/dsllmrag/elastic/v2/delete-doc` | `RAG_DELETE_URL` |
+| RAG 인덱스 정보 | `http://apigw.samsungds.net:8000/ds_llm_rag/2/dsllmrag/elastic/v2/index-info` | `RAG_INDEX_INFO_URL` |
+| Knox Messenger | `https://openapi.samsungds.net/messenger/` | `KNOX_MESSENGER_API_BASE_URL` |
+| SOP Defectmap | `http://10.172.114.185:30912/defectmap` | `DRONE_SOP_DEFECTMAP_URL` |
+| CTTTM | `https://ctttm.eqms.samsungds.net:7443/tttm/autoReport/qckLnk/mainInfo.do?wono=` | `DRONE_CTTTM_BASE_URL`. 뒤에 작업 번호를 연결하는 기본 주소 |
+| RACB 보고서 | `https://racb.eqms.samsungds.net:7443/racb/rpt/ReportPop.do` | `RACB_REPORT_BASE_URL` |
+| Defect Spider | `http://10.173.129.168:32600` | `VITE_DEFECT_SPIDER_URL` |
+
+## 앱별 배치와 스토리지 선언
+
+아래는 저장소에 선언된 값입니다. **실제 설치 여부·Pod 배치·PV 연결·백업 상태는 모두 별도 확인이 필요합니다.**
+외부 env를 지정하면 저장소 기본값과 다를 수 있습니다. 선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 원본을 확인합니다.
+노드 배치는 각 앱의 `nodeSelector`·affinity·env, 저장공간은 PV·PVC·Helm values와 대조합니다.
+
+| 앱·공통 구성 | namespace | 배치 입력 | 스토리지·설정 원본 |
+| --- | --- | --- | --- |
+| 공용 Traefik | `etch-sso` | 기본 `khplane01w09`. VIP 확장 시 기존 배치를 보존하고 backend별 배치 계산 | `deploy/shared/ingress/stack.yaml`, [Ingress 운영](../../ingress/README.md) |
+| Keycloak·전용 PostgreSQL | `etch-sso` | `khplane01w09` | 정적 local PV 50Gi, `/appdata/keycloak-postgres`. `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 안내](../../../keycloak/README.md) |
+| Portal | `tailwind-internal` | 운영 Worker·이미지 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) |
+| MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/data/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
+| Airflow·전용 PostgreSQL | `airflow` | `NODE_NAME=replace-me-node`로 미확정 | DB `/srv/airflow/postgres` 20Gi, 로그 `/srv/airflow/logs` 20Gi, ODBC `/srv/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) |
+| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/srv/monitoring` 아래 local PV. `deploy/monitoring/env/k8s.env`, [Monitoring 안내](../../../monitoring/README.md) |
+| Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) |
+| FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/data/data_movement`, 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
+
+공용 진입점의 확장과 앱·DB의 복제 여부를 구분합니다. 특히 local PV·hostPath는 해당 노드의 데이터이며
+다른 Worker로 옮길 때 별도 이전·복구가 필요합니다. 자원 용량·replica와 실제 여유는 앱 원본·클러스터에서 확인합니다.
+
+## 추가 확인·변경 연계
+
+서비스별 실제 설치 여부·Pod 배치·접속 성공일·담당자는 새 확인을 받을 때 해당 표에 반영합니다.
+외부 PostgreSQL·FTP 접속점은 미확인입니다. 앱의 실행 입력은 위 근거 파일에서 관리합니다.
+도메인·VIP는 [네트워크](network.md), 노드·버전은 [서버](servers.md), 데이터·백업 보관 위치는 [운영 위치](operations.md)를 함께 갱신합니다.

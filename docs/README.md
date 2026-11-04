@@ -26,7 +26,7 @@
 | 포트·계정·로컬 데이터 위치 확인하기 | [로컬 실행 상세](../local/README.md) |
 | 로그인 또는 접근 거부 원인 찾기 | [셋업 문제 해결](getting-started/01-setup.md#막히는-지점별-확인), [Auth](modules/01-auth.md), [Account](modules/02-account.md) |
 | 서버에 설치·배포하기 | [서버 배포 안내](../deploy/README.md) |
-| 사내 서버 환경·구성·미러 확인하기 | [사내 환경 요약](../deploy/shared/docs/infrastructure/README.md) |
+| 사내 서버 환경·구성·미러 확인하기 | [사내 인프라 정보](../deploy/shared/docs/infrastructure/README.md) |
 | AI 작업 규칙·검증 방법 찾기 | [에이전트 작업 안내](agent/README.md) |
 
 ## 문서 폴더 지도

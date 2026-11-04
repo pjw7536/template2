@@ -28,7 +28,7 @@ Traefik Service는 ClusterIP를 유지합니다. LB는 Worker의 hostPort 443으
 
 ## 1. 현재 값과 목표 확인 — CP1
 
-[클러스터 구성 확인](../docs/infrastructure/cluster.md)에 따라 현재 노드·VIP·Backend를 조회합니다.
+[클러스터 구성 확인](../docs/infrastructure/README.md)에 따라 현재 노드·VIP·Backend를 조회합니다.
 추가할 Worker의 실제 InternalIP를 확인하고 이미 등록된 노드에 join을 반복하지 않습니다.
 기존 Backend와 현재 Traefik 배치를 보존한 상태에서 추가할 범위를 정합니다.
 

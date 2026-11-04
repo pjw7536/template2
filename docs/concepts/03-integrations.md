@@ -27,7 +27,7 @@ mock은 개발용 응답을 제공하며 실제 사내 서비스의 모든 동�
 
 | 문서 | 용도 |
 | --- | --- |
-| [패키지 프록시 mirror 참고표](../../deploy/shared/docs/infrastructure/01-proxy-mirrors.md) | 외부 package repository public URL과 내부 proxy mirror 이름 매핑 |
+| [패키지 프록시 mirror 참고표](../../deploy/shared/docs/infrastructure/repositories.md) | 외부 package repository public URL과 내부 proxy mirror 이름 매핑 |
 
 ## 로컬 dummy 외부계
 

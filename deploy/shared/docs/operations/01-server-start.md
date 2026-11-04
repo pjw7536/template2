@@ -10,7 +10,7 @@
 | 순서 | 할 일 | 실행할 절차 |
 | --- | --- | --- |
 | 1 | 담당 앱의 배포 파일 받기 | [선택 checkout](../../../01-SERVER_CHECKOUT.md) |
-| 2 | 대상 노드·스토리지·진입점 확인 | [클러스터 구성과 상태 확인](../infrastructure/cluster.md), [Traefik 셋업](../kubernetes/02-traefik.md) |
+| 2 | 대상 노드·스토리지·진입점 확인 | [클러스터 구성과 상태 확인](../infrastructure/README.md), [Traefik 셋업](../kubernetes/02-traefik.md) |
 | 3 | 앱별 이미지·chart·DB·env·인증서 준비 | [환경설정](../configuration/environment.md), 각 앱의 설치 안내 |
 | 4 | 인증·저장소 등 의존 서비스 준비 | [Keycloak](../../../keycloak/README.md), [MinIO](../../../minio/README.md) |
 | 5 | 필요한 앱만 검사·기동 | 아래 앱별 실행 안내 |

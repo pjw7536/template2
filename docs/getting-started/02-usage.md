@@ -90,7 +90,7 @@ make server-check APP=portal PROFILE=prod
 `server-check`는 배포 파일을 검사하며 클러스터에 앱을 설치하지 않습니다.
 앱별 실제 입력·기동·검증은 [서버 배포 안내](../../deploy/README.md)를 따릅니다.
 로컬은 공개 이미지·패키지 저장소를, 서버는 내부 미러를 사용합니다.
-세부 정책은 [환경 설정](../reference/01-configuration.md#환경별-dependency-source-정책)과 [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/01-proxy-mirrors.md)에 있습니다.
+세부 정책은 [환경 설정](../reference/01-configuration.md#환경별-dependency-source-정책)과 [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)에 있습니다.
 
 ## 실행 파일 위치
 

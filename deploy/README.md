@@ -3,7 +3,7 @@
 이 폴더는 사내 Kubernetes 배포에 필요한 앱별 설정과 운영 문서를 모아 둔 곳입니다.
 사내 서버는 Kubernetes로만 배포하며, CI 검사에 쓰는 입력도 여기서 관리합니다.
 
-작업 전 [사내 서버 환경·구성 관리](shared/docs/infrastructure/README.md)에서 서버 현황·미러·운영 설정의 원본을 확인합니다.
+사내 서버·네트워크·서비스·저장소·운영 위치는 [사내 인프라 정보](shared/docs/infrastructure/README.md) 폴더를 원본으로 관리합니다. 작업 전 README의 분류에 따라 관련 문서의 실제 값과 확인 상태를 확인하고, 변경이 생기면 해당 원본을 갱신합니다.
 
 외부 PC의 개발 환경은 [local/](../local/README.md)을 사용합니다. 개발용 env·mock·kind·실행 도구는 그곳에 있습니다.
 
@@ -24,7 +24,7 @@ deploy/
     │   ├── kubernetes/       # CP1~3 셋업·Traefik 셋업·Worker 추가
     │   ├── configuration/    # 앱 공통 환경설정·Secret 입력 규칙
     │   ├── operations/       # 서버 최초 기동·CP1 갱신 절차
-    │   └── infrastructure/   # 사내 환경 요약·서버 현황·미러 원본
+    │   └── infrastructure/   # 사내 서버·네트워크·서비스·저장소·운영 정보
     ├── certs/                # 사이트별 인증서·공용 CA·추출과 적용 안내
     ├── ingress/              # 공용 Traefik 원본과 VIP 적용 절차
     └── scripts/              # 서버 기동·검사·체크아웃 도구
@@ -61,7 +61,7 @@ OS·설치 버전은 실제 서버 기준으로 확인하며 [전체 안내](sha
 
 기존 클러스터에 배포할 때는 다음 순서로 읽습니다.
 
-1. [사내 환경 요약](shared/docs/infrastructure/README.md)에서 서버 현황·미러 원본을 찾고 대상 노드·VIP를 조회합니다.
+1. [사내 인프라 정보](shared/docs/infrastructure/README.md)에서 서버 현황·미러 원본을 찾고 대상 노드·VIP를 조회합니다.
 2. [선택 체크아웃](01-SERVER_CHECKOUT.md)에서 `platform`으로 Portal 외 서비스를 받습니다.
 3. [환경설정](shared/docs/configuration/environment.md)에서 설정 소유권과 입력 위치를 확인합니다.
 4. [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)와 아래 앱 문서를 따라 검사·배포·접속 확인을 진행합니다.
@@ -73,7 +73,7 @@ APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/01-VIP.md)�
 
 | 카테고리 | 문서 | 목적·사용 시점 |
 | --- | --- | --- |
-| 사내 환경 원본 | [서버 환경·구성 관리](shared/docs/infrastructure/README.md) | 작업 전 서버 현황·미러·설정 위치와 확인 상태를 읽을 때 |
+| 사내 운영 정보 원본 | [운영 정보](shared/docs/infrastructure/README.md) | 사내 저장소·서버·VIP·서비스 주소·운영 파일 위치를 찾고 갱신할 때 |
 | 공통 설치·조회·운영 | [공통 배포 문서 색인](shared/docs/README.md) | 클러스터 구성·상태 조회·기동·장애 대응·kubectl 참고를 찾을 때 |
 | 저장소 준비 | [선택 체크아웃](01-SERVER_CHECKOUT.md) | 처음 clone하거나 서버가 관리하는 앱 범위를 바꿀 때 |
 | 인증서 | [사이트별 인증서 관리](shared/certs/README.md) | PFX/P7B 추출·검증·TLS Secret 갱신 |
@@ -94,7 +94,7 @@ APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/01-VIP.md)�
 ## 문서를 추가하거나 수정할 때
 
 - 여러 앱이 공유하는 설정 규칙·운영 절차·인프라 현황은 `shared/docs/`의 해당 카테고리에 둡니다. 이 경로는 모든 서버 선택 체크아웃에 포함됩니다.
-- 사내 서버 환경·구성과 미러 정보는 `shared/docs/infrastructure/`에서 관리합니다. 변경 시 확인 상태·근거·날짜를 갱신하며, 다른 안내에는 원본 링크를 둡니다.
+- 사내 운영 정보는 `shared/docs/infrastructure/README.md`의 분류에 따라 주제별 원본에서 관리합니다. 변경 시 값·확인 상태·기준일·근거·담당자·남은 확인을 갱신하며 다른 안내에는 원본 링크를 둡니다.
 - 입문 설명과 단계별 완료 기준은 `shared/docs/kubernetes/`에서 연결하고 앱별 실행 명령의 원본은 해당 앱 문서에 유지합니다.
 - 앱별 시작점은 `<app>/README.md`, 특정 Job·overlay·Ingress의 사용법은 해당 원본 옆에 둡니다.
 - 현재 배포 구성은 원본·env와 대조하고 앱별 안내에서 연결합니다. 실제 노드·서비스 상태는 대상 클러스터에서 조회합니다.

@@ -20,7 +20,7 @@ flowchart LR
 
 목표 구성에서는 APP VIP가 TCP 연결을 전달하고 Traefik이 HTTPS 인증서를 처리합니다(TLS 종료).
 실제 LB 설정, 두 Worker의 응답, Keycloak DNS 전환 여부는
-[서버 현황](../infrastructure/cluster.md)에서 아직 확인이 필요한 항목입니다.
+[서버 현황](../infrastructure/README.md)에서 아직 확인이 필요한 항목입니다.
 
 Control Plane이나 Traefik이 여러 대여도 앱 DB가 자동으로 복제되는 것은 아닙니다.
 

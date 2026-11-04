@@ -65,7 +65,7 @@ deploy/shared/certs/etch-sso.samsungds.net/     # fullchain.crt, private.key
 서버 기동에는 사내·Portal client secret이 필요하지 않습니다.
 
 공개 URL은 경로와 끝의 `/`가 없는 HTTPS URL이어야 하며 Ingress 도메인·인증서 SAN과 맞아야 합니다.
-DNS·APP VIP는 [인프라 현황](../shared/docs/infrastructure/cluster.md), 인증서 준비는 [TLS 안내](03_TLS.md)를 따릅니다.
+DNS·APP VIP는 [네트워크 정보](../shared/docs/infrastructure/network.md), 인증서 준비는 [TLS 안내](03_TLS.md)를 따릅니다.
 
 인증서 파일을 배치한 뒤 [공용 TLS 등록](../shared/ingress/README.md#인증서-최초-등록과-갱신)을 수행합니다.
 

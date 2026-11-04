@@ -17,7 +17,8 @@
 | API method·path·인증·입출력·오류·부작용 | `docs/api/` |
 | 앱 소스의 실행·빌드 | `apps/<app>/README.md` |
 | 서버 배포·운영·공통 인프라 | `deploy/<app>/`, `deploy/shared/` |
-| 사내 서버 환경·구성·전체 미러 목록 | `deploy/shared/docs/infrastructure/` |
+| 사내 운영 정보의 진입점·분류·기록 규칙 | `deploy/shared/docs/infrastructure/README.md` |
+| 서버·네트워크·서비스·저장소·운영 정보 | `deploy/shared/docs/infrastructure/`의 주제별 원본 |
 | Kubernetes 설치·운영·kubectl 공통 참고 | `deploy/shared/docs/kubernetes/`, 색인은 `deploy/shared/docs/README.md` |
 | 개발 PC 설정·mock·실행 상세 | `local/<app>/`, `local/README.md` |
 | 현재 작업 규칙·검증 방법·진행 중 계획 | `docs/agent/` |
@@ -26,8 +27,9 @@
 다른 안내에서는 같은 계정·설정·명령 표를 복사하기보다 해당 문서로 연결합니다.
 서버에 필요한 절차는 선택 checkout에 포함되는 `deploy` 안에 작성합니다.
 
-사내 환경·구성·미러는 [공통 관리 진입점](../../deploy/shared/docs/infrastructure/README.md)에서 찾습니다.
-현황은 값·확인 상태·확인일·근거를 함께 유지하고, 미러 전체 표는 그곳의 상세 원본에서만 갱신합니다.
+사내 운영 정보는 [사내 인프라 정보](../../deploy/shared/docs/infrastructure/README.md)의 분류에 따라 주제별 원본에서 찾고 갱신합니다.
+`servers.md`·`network.md`·`services.md`·`repositories.md`·`operations.md`가 각 정보를 소유합니다.
+값·용도·확인 상태·기준일·근거·담당자·남은 확인을 함께 유지하고, 과거 사용자 확인값을 최신 조회가 없다는 이유로 지우지 않습니다.
 
 ## 소유권 중심 재구성 권고
 

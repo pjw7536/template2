@@ -1,6 +1,6 @@
 # 처음 사용하는 Kubernetes 명령어 모음
 
-[공통 배포 문서](../README.md) · [Kubernetes 셋업](README.md) · [사내 환경 요약](../infrastructure/README.md)
+[공통 배포 문서](../README.md) · [Kubernetes 셋업](README.md) · [사내 인프라 정보](../infrastructure/README.md)
 
 Kubernetes(K8s)는 컨테이너로 실행하는 앱을 여러 서버에 배치하고 관리하는 도구입니다. 이 문서는 `kubectl`로 상태를 확인하고, 로그를 읽고, 앱을 관리할 때 참고하는 입문용 명령어 모음입니다.
 

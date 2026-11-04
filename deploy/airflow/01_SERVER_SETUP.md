@@ -18,7 +18,7 @@ APT/PIP mirror, BigDataQuery Python·ODBC 설치 옵션과 버전이 지정된 d
 실행 호스트에는 Python 3.10 이상, Helm 3.19.0 이상, kubectl이 필요합니다.
 chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
 이 숫자는 도구의 최소 요구사항이며, 현재 사내 설치 버전이나 신규 설치 권장 버전을 뜻하지 않습니다.
-사내 배포는 [현재 클러스터](../shared/docs/infrastructure/cluster.md)를 사용합니다. 빈 서버를 새 Worker로 추가하려면
+사내 배포는 [현재 클러스터](../shared/docs/infrastructure/README.md)를 사용합니다. 빈 서버를 새 Worker로 추가하려면
 [03. Worker 추가](../shared/docs/kubernetes/03-worker.md)의 준비·가입·검증을 먼저 진행합니다.
 이 도구는 Kubernetes 자체나 Ingress controller를 설치하지 않습니다.
 Ingress 없이도 port-forward로 UI에 접속할 수 있습니다.
@@ -39,7 +39,7 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" version
 
 완료 기준: 선택한 context의 노드를 조회할 수 있고 도구·클러스터가 위 최소 버전을 충족해야 합니다.
 `NODE_NAME`에는 노드 이름을 추측해서 넣지 말고 출력된 `kubernetes.io/hostname` 값을 사용합니다.
-Keycloak·MinIO 등 다른 앱의 배포 원본과 실제 Pod 배치를 [클러스터 구성 안내](../shared/docs/infrastructure/cluster.md)에서 확인합니다.
+Keycloak·MinIO 등 다른 앱의 배포 원본과 실제 Pod 배치를 [클러스터 구성 안내](../shared/docs/infrastructure/README.md)에서 확인합니다.
 Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만족하는 Worker를 선택합니다.
 새 터미널에서는 context 변수를 다시 입력합니다.
 

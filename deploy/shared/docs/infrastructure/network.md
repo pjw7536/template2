@@ -1,0 +1,39 @@
+# 네트워크·VIP·DNS
+
+[사내 인프라 정보](README.md) · [공통 배포 문서](../README.md)
+
+클러스터·업무 네트워크 주소와 연결 관계의 관리 원본입니다.
+
+기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
+**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+
+## VIP·DNS·접속 경로
+
+| 용도 | 주소·연결 | 근거·확인 상태 |
+| --- | --- | --- |
+| Kubernetes API VIP | `10.172.26.148:6443` | 2026-09-15 기존 API endpoint 기록. 실제 kubeconfig·가입 endpoint·현재 LB backend 확인 필요 |
+| 업무 서비스 APP VIP | `10.172.26.150:443` | 2026-09-15 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
+| 업무 DNS → APP VIP | `etch.samsungds.net` → `10.172.26.150` | 2026-09-15 사용자 확인: DNS 설정 완료. 최신 DNS 응답·인증서 확인 필요 |
+| APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 2026-09-15 LB 연결 확인, 2026-09-16 노드명·Ready 확인 기록. 현재 backend·Traefik 응답은 재조회 |
+| APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 2026-09-15 LB 연결 확인, 2026-09-16 노드명·Ready 확인 기록. 현재 backend·Traefik 응답은 재조회 |
+| HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../../ingress/01-VIP.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |
+
+VIP·DNS·backend 사용자 확인의 근거도 `ca96e3dc:deploy/shared/docs/infrastructure/cluster.md`입니다.
+Keycloak DNS는 당시 Worker 직결 기록이며 APP VIP 전환 완료 여부는 미확인입니다.
+새 검증 환경에는 운영 IP를 재사용하지 않습니다.
+
+## 클러스터 네트워크·실행 기반
+
+| 항목 | 확인 상태·근거 | 남은 확인 |
+| --- | --- | --- |
+| CNI·Pod/Service CIDR·MTU·DNS domain | 미확인. 구축 기록·각 노드·시스템 리소스 조회 필요 | 네트워크 담당자 확인, Worker 가입·Pod/Service 통신 검증 |
+
+## 추가 확인·변경 연계
+
+| 대상 | 확인할 정보 | 현재 상태 |
+| --- | --- | --- |
+| 네트워크 접근 | 방화벽 허용 방향·포트·접속 경유지·담당자 | 미확인 |
+| VIP·DNS | 기록된 backend·노드 대응·DNS의 최신 상태와 TLS 종료 위치 | 최신 조회 필요 |
+
+VIP backend 변경 시 [서버 목록](servers.md), 공개 URL 변경 시 [서비스 주소](services.md), TLS 입력 변경 시 [인증서 관리](../../certs/README.md)를 대조합니다.
+조회·실행 절차는 [현재 환경 확인](../kubernetes/09-baseline.md)과 [VIP 적용](../../ingress/01-VIP.md)을 따릅니다.

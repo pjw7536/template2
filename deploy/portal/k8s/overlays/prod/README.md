@@ -9,7 +9,7 @@ placeholder가 남아 있으면 먼저 실제 값으로 교체합니다. 운영 
 
 ## 사내 운영 클러스터
 
-노드·VIP·DNS·스토리지는 [클러스터 구성과 상태 확인](../../../../shared/docs/infrastructure/cluster.md)에 따라 조회합니다.
+노드·VIP·DNS·스토리지는 [클러스터 구성과 상태 확인](../../../../shared/docs/infrastructure/README.md)에 따라 조회합니다.
 Portal의 현재 배포 입력과 확인 사항은 아래에서 관리합니다.
 
 ### Portal Worker와 저장소 선택

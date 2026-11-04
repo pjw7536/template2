@@ -14,8 +14,8 @@
 | API 검사·Django 관리 명령 | [관리·검사 명령](03-operations.md) | 실행 전제·옵션·데이터 변경 여부 확인 |
 | 요청·응답·인증·오류 | [API 명세](../api/README.md) | 공통 규칙을 읽은 뒤 해당 API 선택 |
 | Kubernetes 상태·로그 조회 | [deploy의 Kubernetes 명령어](../../deploy/shared/docs/kubernetes/12-kubectl.md) | 실패한 Pod·이벤트·로그를 확인 |
-| 사내 서버 환경·구성 | [사내 환경 요약](../../deploy/shared/docs/infrastructure/README.md) | 서버 현황·미러·운영 설정의 원본 확인 |
-| 패키지 프록시·미러 매핑 | [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/01-proxy-mirrors.md) | 환경별 사용 정책을 확인한 뒤 이름·적용 사례 조회 |
+| 사내 서버 환경·구성 | [사내 인프라 정보](../../deploy/shared/docs/infrastructure/README.md) | 서버 현황·미러·운영 설정의 원본 확인 |
+| 패키지 프록시·미러 매핑 | [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/repositories.md) | 환경별 사용 정책을 확인한 뒤 이름·적용 사례 조회 |
 | 배포·렌더링 검사 종류 | [검사 도구 안내](../../apps/tooling/README.md) | 변경 영역에 맞는 검사 선택 |
 
 ## 설정과 명령의 원본

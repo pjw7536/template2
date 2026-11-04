@@ -1,66 +1,57 @@
-# 패키지 프록시·미러 참고표
+# 사내 저장소·이미지·패키지 미러
 
-[사내 환경 요약](README.md) · [서버 현황](cluster.md) · [앱별 환경설정](../configuration/environment.md)
+[사내 인프라 정보](README.md) · [공통 배포 문서](../README.md)
 
-이 문서는 외부 public 저장소와 내부 proxy mirror 이름을 빠르게 찾기 위한 참고표입니다.
-이 표는 패키지 저장소별 미러 이름을 정리한 참고 자료입니다. 같은 생태계·원본 URL·미러 이름 조합은 한 번씩 표시합니다.
-원본 URL이 같아도 미러 이름이 다르면 별도 항목으로 유지합니다.
-사내 서버는 승인된 미러 또는 반입 파일을 사용하고, 외부 PC 개발은 public source를 사용합니다.
-서버 선택 checkout에서도 전체 미러 목록을 읽을 수 있도록 이곳을 상세 원본으로 관리합니다.
+사내 Git·registry·패키지·artifact 주소와 전체 public/mirror 이름 매핑의 관리 원본입니다.
 
-자주 찾는 항목: [Docker](#docker) · [Helm](#helm) · [npm](#npm) · [PyPI](#pypi) · [apt](#apt) · [yum](#yum).
+기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
+**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
 
-## 사용 기준
+## 사내 저장소 주소
 
-- `type`: 저장소/패키지 생태계 종류입니다.
-- `public`: 원본 외부 저장소 URL입니다.
-- `mirror`: 내부 proxy mirror 저장소 이름입니다.
-- 실제 접속 URL, 인증, 권한 정책은 운영 환경 설정을 따릅니다.
-- 아래 전체 매핑은 미러 이름 목록이며 운영 접근 성공을 확인한 목록이 아닙니다. 이름만 보고 실제 URL·하위 경로·지원 버전을 확정하지 않습니다.
-- URL·이미지 경로는 앱별 빌드·배포 입력에서 관리합니다. 서버 설치 절차에 명시된 주소를 로컬 개발의 기본값으로 복제하지 않습니다.
+### 공통 주소와 경로 규칙
 
-## 저장소에서 확인한 적용 사례
-
-**저장소 대조일: 2026-10-30.** 아래는 env·배포 원본 또는 설치 절차에 주소가 사용된 사례입니다.
-현재 서버의 실제 사용 여부·접속 성공·CA·인증·권한은 미확인이고 확인 담당자 이름도 제공되지 않았습니다.
-적용 사례의 원본 앱이 선택 checkout에 없으면 해당 앱을 선택한 뒤 입력을 확인합니다.
-
-| 용도 | 기록된 주소·미러 | 근거·확인 상태 |
+| 용도 | 주소·패턴 | 근거·확인 상태 |
 | --- | --- | --- |
-| Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Airflow build env·MinIO env·Keycloak Kustomize·Monitoring env의 저장소 선언 |
-| Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env의 저장소 선언 |
-| GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env의 저장소 선언 |
-| Debian APT | `http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian` | Airflow `build.env`의 `APT_DEBIAN_REPOSITORY` 선언 |
-| PyPI | `http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple` | Airflow `build.env`의 `PIP_INDEX_URL` 선언 |
-| Ubuntu·Docker APT | `proxy-apt-archive.ubuntu.com-ubuntu`, `proxy-apt-download.docker.com-linux-ubuntu` | [Worker 설치](../kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)의 명령 입력 |
-| Kubernetes APT·서명키 | `proxy-apt-pkgs.k8s.io-core-stable/v1.36/deb/`, `proxy-raw-pkgs.k8s.io-core-stable/v1.36/deb/Release.key` | [Worker 설치](../kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)의 주소 조합. 실제 하위 경로·패키지 제공 여부는 확인 필요 |
-| Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | Worker 설치 절차의 이미지 입력 |
+| 사내 Git 서버·프로젝트 clone URL | 미확인 | 사내 Git 주소·프로젝트 경로·배포 브랜치 제공 필요 |
+| 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | Airflow build·MinIO·Monitoring·Headlamp env와 Keycloak Kustomize의 선언 |
+| Nexus 패키지·Raw 저장소 | `http://repository.samsungds.net/repository/<mirror>` | Airflow build env·Worker 설치 절차의 주소 패턴. 실제 하위 경로·CA·인증·권한 확인 필요 |
+| PyPI simple index | `http://repository.samsungds.net/repository/<mirror>/simple` | Airflow build env의 선언 |
+| 전체 public URL ↔ mirror 이름 | [패키지 미러 매핑](#전체-publicmirror-이름-매핑) | 생태계별 이름 목록. 실제 사용 주소는 아래 표에서 관리 |
 
-위 적용 사례의 원본은 `deploy/airflow/env/build.env`, `deploy/minio/env/prod.env`,
-`deploy/keycloak/k8s/kustomization.yaml`, `deploy/monitoring/env/k8s.env`, `deploy/headlamp/env/k8s.env`입니다.
-앱별 준비·입력 절차는 [배포 문서 홈](../../../README.md#앱별-배포와-상세-작업)에서 찾습니다.
+### 이미지·패키지별 사용 주소
 
-추가 사내 패키지 source로 Airflow `build.env`의 `PIP_EXTRA_INDEX_URL`에
-`http://nexus.adpaas.cloud.samsungds.net/repository/dataservice-pypi/simple`가 선언되어 있습니다.
-이는 아래 proxy 미러 이름 목록과 별도로 관리하는 저장소 선언이며 실제 접근은 미확인입니다.
-인증값은 문서에 기록하지 않습니다.
-
-## 베이스 주소 패턴
-
-저장소 설정·참고표의 내부 베이스 주소 패턴은 아래와 같습니다. URL의 scheme도 원본 입력을 따르며 임의로 바꾸지 않습니다.
-
-| 대상 | 패턴 | 예시 |
+| 용도 | 주소 | 근거 |
 | --- | --- | --- |
-| Docker image | `repository.samsungds.net/<mirror>/<image>:<tag>` | `repository.samsungds.net/proxy-docker-registry-1.docker.io/apache/airflow:2.11.0` |
-| Nexus repository 계열 | `http://repository.samsungds.net/repository/<mirror>` | `http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian` |
-| PyPI simple index | `http://repository.samsungds.net/repository/<mirror>/simple` | `http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple` |
-| Raw repository 계열 | `http://repository.samsungds.net/repository/<mirror>` | `http://repository.samsungds.net/repository/proxy-raw-dl-cdn.alpinelinux.org-alpine` |
+| Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Airflow build env·MinIO env·Monitoring env |
+| Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
+| GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
+| Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | Worker 설치 절차의 입력 |
+| Debian APT | `http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian` | Airflow `APT_DEBIAN_REPOSITORY` |
+| Ubuntu APT | `http://repository.samsungds.net/repository/proxy-apt-archive.ubuntu.com-ubuntu` | Worker 설치 절차의 입력 |
+| Docker APT | `http://repository.samsungds.net/repository/proxy-apt-download.docker.com-linux-ubuntu` | Worker 설치 절차의 입력 |
+| Kubernetes v1.36 APT | `http://repository.samsungds.net/repository/proxy-apt-pkgs.k8s.io-core-stable/v1.36/deb/` | Worker 설치 절차의 주소 조합. 실제 패키지 제공 여부 미확인 |
+| Kubernetes 공개 서명키 | `http://repository.samsungds.net/repository/proxy-raw-pkgs.k8s.io-core-stable/v1.36/deb/Release.key` | Worker 설치 절차의 주소 조합. 실제 하위 경로 미확인 |
+| Headlamp Helm chart 0.45.0 | `http://repository.samsungds.net/repository/proxy-raw-github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz` | `deploy/headlamp/helm/chart.lock.json`의 고정 다운로드 주소 |
+| 기본 PyPI | `http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple` | Airflow `PIP_INDEX_URL` |
+| 추가 사내 PyPI | `http://nexus.adpaas.cloud.samsungds.net/repository/dataservice-pypi/simple` | Airflow `PIP_EXTRA_INDEX_URL`. proxy 미러 매핑과 별도로 관리하는 저장소 |
+| Impala ODBC 2.8.3.1008 | `http://nexus.adpaas.cloud.samsungds.net/repository/dataservice/odbc/linux/debian/clouderaimpalaodbc_2.8.3.1008-2_amd64.deb` | Airflow `BIGDATAQUERY_ODBC_DEB_URL`의 서버 전용 artifact |
 
-실제 사용 주소는 해당 앱의 빌드·배포 env에서 확인합니다. 이 표는 미러 이름을 찾는 참고 자료입니다.
-`helm`, `maven2`, `conda`, `yum`, `cargo`, `conan`, `nuget`, `r`, `rubygems`와 적용 사례에 없는 항목은
-이 문서에서 미러 이름 목록으로 관리합니다. 운영 Nexus/Artifactory 설정에서 최종 베이스 주소·하위 경로를 확인해야 합니다.
+위 주소의 실제 운영 사용·접속 성공·CA·인증·권한은 미확인입니다. URL의 scheme은 원본 입력을 따릅니다.
+근거 파일은 `deploy/airflow/env/build.env`, `deploy/minio/env/prod.env`, `deploy/keycloak/k8s/kustomization.yaml`,
+`deploy/monitoring/env/k8s.env`, `deploy/headlamp/env/k8s.env`와 [Worker 설치 절차](../kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)입니다.
+선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 입력을 확인합니다.
 
-## apt
+## 전체 public/mirror 이름 매핑
+
+목록의 근거는 **2026-07-08 사용자 제공 자료**이며 Git의 `f55b1367:docs/integrations/proxy-mirrors.md`에서 확인할 수 있습니다.
+`type`은 아래 절로 구분한 패키지 생태계, `public`은 외부 원본 URL, `mirror`는 사내 저장소 이름입니다. 같은 생태계·원본 URL·이름 조합은 한 번씩 유지합니다.
+이름이 다르면 별도 항목이며 이름만으로 실제 URL·하위 경로·지원 버전·접속 성공을 확정하지 않습니다.
+실제 최종 사용 주소는 위 표에 기록하고, 전체 매핑은 아래에서 관리합니다.
+
+바로 찾기: [Docker](#docker) · [Helm](#helm) · [npm](#npm) · [PyPI](#pypi) · [apt](#apt) · [yum](#yum).
+
+### apt
 
 | public | mirror |
 | --- | --- |
@@ -97,13 +88,13 @@
 | `http://ports.ubuntu.com/` | `proxy-apt-ports.ubuntu.com` |
 | `https://repo.zabbix.com/zabbix/6.0/ubuntu` | `proxy-apt-repo.zabbix.com-zabbix-6.0-ubuntu` |
 
-## cargo
+### cargo
 
 | public | mirror |
 | --- | --- |
 | `https://index.crates.io/` | `proxy-cargo-index.crates.io` |
 
-## conan
+### conan
 
 | public | mirror |
 | --- | --- |
@@ -112,7 +103,7 @@
 | `https://milvus01.jfrog.io/artifactory/api/conan/default-conan-local2` | `proxy-conan-v1-milvus01.jfrog.io-default-conan-local2` |
 | `https://milvus01.jfrog.io/artifactory/api/conan/default-conan-local2` | `proxy-conan-v2-milvus01.jfrog.io-default-conan-local2` |
 
-## conda
+### conda
 
 | public | mirror |
 | --- | --- |
@@ -124,7 +115,7 @@
 | `https://conda.anaconda.org/ucb-bar` | `proxy-conda-conda.anaconda.org-ucb-bar` |
 | `https://repo.continuum.io/pkgs/free/` | `proxy-conda-repo.continuum.io-pkgs-free` |
 
-## docker
+### docker
 
 | public | mirror |
 | --- | --- |
@@ -149,20 +140,20 @@
 | `https://public.ecr.aws` | `proxy-docker-public.ecr.aws` |
 | `https://quay.io/` | `proxy-docker-quay.io` |
 
-## go
+### go
 
 | public | mirror |
 | --- | --- |
 | `https://proxy.golang.org` | `proxy-go-proxy.golang.org` |
 
-## helm
+### helm
 
 | public | mirror |
 | --- | --- |
 | `https://airflow.apache.org/` | `proxy-helm-airflow.apache.org` |
 | `https://charts.bitnami.com/bitnami` | `proxy-helm-charts.bitnami.com-bitnami` |
 
-## maven2
+### maven2
 
 | public | mirror |
 | --- | --- |
@@ -177,7 +168,7 @@
 | `https://repo.spring.io/plugins-release/` | `proxy-maven2-repo.spring.io-plugins-release` |
 | `https://maven.xwiki.org/releases/` | `proxy-maven2-maven.xwiki.org-releases` |
 
-## npm
+### npm
 
 | public | mirror |
 | --- | --- |
@@ -186,13 +177,13 @@
 | `https://registry.npmjs.org` | `proxy-npm-registry.npmjs.org` |
 | `https://registry.yarnpkg.com` | `proxy-npm-registry.yarnpkg.com` |
 
-## nuget
+### nuget
 
 | public | mirror |
 | --- | --- |
 | `https://www.nuget.org/` | `proxy-nuget-www.nuget.org` |
 
-## pypi
+### pypi
 
 | public | mirror |
 | --- | --- |
@@ -200,13 +191,13 @@
 | `https://files.pythonhosted.org` | `proxy-pypi-files.pythonhosted.org` |
 | `https://download.pytorch.org/whl/` | `proxy-pypi-download.pytorch.org-whl` |
 
-## r
+### r
 
 | public | mirror |
 | --- | --- |
 | `https://cran.r-project.org/` | `proxy-r-cran.r-project.org` |
 
-## raw
+### raw
 
 | public | mirror |
 | --- | --- |
@@ -239,13 +230,13 @@
 | `https://github.com/astral-sh/python-build-standalone/releases/download` | `proxy-raw-github.com-astral-sh-python-build-standalone-releases-download` |
 | `https://wp-content.vmware.com/` | `proxy-raw-wp-content.vmware.com` |
 
-## rubygems
+### rubygems
 
 | public | mirror |
 | --- | --- |
 | `https://rubygems.org/` | `proxy-rubygems-rubygems.org` |
 
-## yum
+### yum
 
 | public | mirror |
 | --- | --- |
@@ -316,3 +307,10 @@
 | `https://download.docker.com/linux/rhel` | `proxy-yum-download.docker.com-linux-rhel` |
 | `https://repo.zabbix.com/` | `proxy-yum-repo.zabbix.com` |
 | `https://repo.zabbix.com/zabbix/5.0/rhel/7/` | `proxy-yum-repo.zabbix.com-zabbix-5.0-rhel-7` |
+
+## 추가 확인·변경 연계
+
+- 사내 Git 서버·프로젝트 clone URL·배포 브랜치는 미확인입니다.
+- npm·Headlamp 외 Helm chart 등 실제 사용하는 사내 최종 URL·CA·권한 신청 절차는 추가 확인이 필요합니다.
+- 사내 서버는 승인된 미러 또는 반입 파일, 외부 PC 개발은 public source를 사용합니다.
+- 주소·버전을 바꾸면 소비 앱의 env·Kustomize·chart lock과 설치 문서도 대조합니다. 인증값은 기록하지 않습니다.

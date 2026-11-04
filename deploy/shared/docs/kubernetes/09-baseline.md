@@ -23,7 +23,7 @@ kubectl --context "$KUBE_CONTEXT" get ingressclass
 kubectl --context "$KUBE_CONTEXT" get ingress -A
 ```
 
-[현재 서버 목록](../infrastructure/cluster.md)과 노드명·IP·Ready를 비교합니다.
+[현재 서버 목록](../infrastructure/servers.md)과 노드명·IP·Ready를 비교합니다.
 Worker의 ROLES가 `<none>`이어도 그 자체로 이상은 아닙니다.
 StorageClass가 없으면 정적 PV 사용 여부를 확인합니다. 노드 Ready만으로 앱·접속 상태를 판단하지 않습니다.
 
@@ -60,7 +60,7 @@ systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 | PV 경로·마운트·백업·StorageClass | Worker·스토리지 담당자 |
 | SSH/sudo·Git·registry·배포 권한 | 각 관리자 |
 
-확인값은 `값 / 확인일 / 근거 / 담당자 / 미해결 항목`으로 [현황 원본](../infrastructure/cluster.md)에 기록합니다.
+확인값은 [공통 기록 규칙](../infrastructure/README.md#기록-규칙)에 따라 서버·네트워크·서비스 등 해당 주제의 원본에 반영합니다.
 비밀번호·토큰·kubeconfig 내용은 기록하지 않습니다.
 
 **다음 단계:** 확인한 기준으로 [CP1~3 셋업](01-control-plane.md) 또는 [Worker 추가](03-worker.md)를 진행합니다.
