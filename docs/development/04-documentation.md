@@ -12,17 +12,41 @@
 | 처음 실행하는 절차·일상 작업 | `docs/getting-started/` |
 | 전체 구조·데이터·외부 연동의 개념 | `docs/concepts/` |
 | 소스 수정·검증·DB 적용 방법 | `docs/development/` |
-| 설정·실제 경로·명령·미러 참고 | `docs/reference/` |
+| 설정·실제 경로·명령 참고와 소유 영역 연결 | `docs/reference/` |
 | 기능 목적·화면·권한·처리 흐름 | `docs/modules/` |
 | API method·path·인증·입출력·오류·부작용 | `docs/api/` |
 | 앱 소스의 실행·빌드 | `apps/<app>/README.md` |
 | 서버 배포·운영·공통 인프라 | `deploy/<app>/`, `deploy/shared/` |
+| 사내 서버 환경·구성·전체 미러 목록 | `deploy/shared/docs/infrastructure/` |
+| Kubernetes 설치·운영·kubectl 공통 참고 | `deploy/shared/docs/kubernetes/`, 색인은 `deploy/shared/docs/README.md` |
 | 개발 PC 설정·mock·실행 상세 | `local/<app>/`, `local/README.md` |
 | 현재 작업 규칙·검증 방법·진행 중 계획 | `docs/agent/` |
 
 공통 실행 명령은 루트 Makefile에, 절차의 상세 원본은 소유 문서에 유지합니다.
 다른 안내에서는 같은 계정·설정·명령 표를 복사하기보다 해당 문서로 연결합니다.
 서버에 필요한 절차는 선택 checkout에 포함되는 `deploy` 안에 작성합니다.
+
+사내 환경·구성·미러는 [공통 관리 진입점](../../deploy/shared/docs/infrastructure/README.md)에서 찾습니다.
+현황은 값·확인 상태·확인일·근거를 함께 유지하고, 미러 전체 표는 그곳의 상세 원본에서만 갱신합니다.
+
+## 소유권 중심 재구성 권고
+
+문서를 모두 루트로 옮기기보다 원본을 소유 영역에 두고 `docs/README.md`를 전체 문서 지도로 사용합니다.
+서버에서는 루트 `docs/` 없이 배포 문서만으로 작업할 수 있어야 합니다.
+
+| 영역 | 권장 역할·향후 위치 |
+| --- | --- |
+| 루트 `docs/` | 저장소 공통 입문·개념·문서 지도·에이전트 지침 |
+| `apps/<app>/` | 앱 실행·개발·기능·API 설명. Portal 상세 문서는 향후 `apps/portal/docs/`로 모으는 후보 |
+| `deploy/<app>/`, `deploy/shared/docs/` | 앱별 배포·운영과 공통 Kubernetes·사내 환경·미러 |
+| `local/<app>/`, `local/README.md` | 외부 PC 설정·mock·개발 환경 실행 |
+
+현재 루트 `docs/modules/`·`docs/api/`와 Portal 전용 개발·설정 설명은 기존 경로를 유지합니다.
+이 권고는 이후 별도 문서 재배치 작업을 위한 것으로, 아직 존재하지 않는 경로를 현재 원본으로 안내하지 않습니다.
+
+재배치한다면 Portal 전용 문서부터 내용의 실제 소유권을 분류하고 이동 전후 경로를 정합니다.
+관련 README·AGENTS·스킬의 링크와 검사 도구의 고정 경로를 같은 작업에서 갱신합니다.
+루트에는 공통 설명과 앱별 진입 링크를 남기고, 배포·개발 PC의 실행 절차는 각 소유 영역에 유지합니다.
 
 ## 설명의 기본 순서
 

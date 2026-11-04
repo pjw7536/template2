@@ -3,6 +3,8 @@
 이 폴더는 사내 Kubernetes 배포에 필요한 앱별 설정과 운영 문서를 모아 둔 곳입니다.
 사내 서버는 Kubernetes로만 배포하며, CI 검사에 쓰는 입력도 여기서 관리합니다.
 
+작업 전 [사내 서버 환경·구성 관리](shared/docs/infrastructure/README.md)에서 서버 현황·미러·운영 설정의 원본을 확인합니다.
+
 외부 PC의 개발 환경은 [local/](../local/README.md)을 사용합니다. 개발용 env·mock·kind·실행 도구는 그곳에 있습니다.
 
 ```text
@@ -18,10 +20,11 @@ deploy/
 ├── ftp/                      # 노드별 FTP 배포·스토리지
 └── shared/
     ├── docs/
+    │   ├── README.md         # 공통 문서의 목적별 색인·정보 소유 위치
     │   ├── kubernetes/       # CP1~3 셋업·Traefik 셋업·Worker 추가
     │   ├── configuration/    # 앱 공통 환경설정·Secret 입력 규칙
     │   ├── operations/       # 서버 최초 기동·CP1 갱신 절차
-    │   └── infrastructure/   # 클러스터·노드·VIP·DNS 현황
+    │   └── infrastructure/   # 사내 환경 요약·서버 현황·미러 원본
     ├── certs/                # 사이트별 인증서·공용 CA·추출과 적용 안내
     ├── ingress/              # 공용 Traefik 원본과 VIP 적용 절차
     └── scripts/              # 서버 기동·검사·체크아웃 도구
@@ -31,7 +34,7 @@ deploy/
 명령은 별도 안내가 없으면 저장소 루트에서 실행합니다.
 기존 Kubernetes에서 Portal 외 서비스를 먼저 운영하려면 `platform`을 선택합니다.
 서버에는 `deploy`와 루트 실행 파일을 받으며 `apps/`·`local/`·루트 `docs/`는 필요하지 않습니다.
-공통 운영 문서는 `deploy/shared/docs`에 포함됩니다.
+공통 운영 문서는 [공통 배포 문서 색인](shared/docs/README.md)에서 목적별로 찾습니다.
 Portal을 추가할 때는 `all`로 확장하고 앱별 입력·migration·라우팅 연결을 수행합니다.
 
 설정은 각 앱의 env 파일에서 관리합니다. 일반 설정과 비밀번호·토큰을 같은 파일에 넣고,
@@ -58,7 +61,7 @@ OS·설치 버전은 실제 서버 기준으로 확인하며 [전체 안내](sha
 
 기존 클러스터에 배포할 때는 다음 순서로 읽습니다.
 
-1. [클러스터 구성](shared/docs/infrastructure/cluster.md)에서 배포 원본을 찾고 대상 노드·VIP를 조회합니다.
+1. [사내 환경 요약](shared/docs/infrastructure/README.md)에서 서버 현황·미러 원본을 찾고 대상 노드·VIP를 조회합니다.
 2. [선택 체크아웃](01-SERVER_CHECKOUT.md)에서 `platform`으로 Portal 외 서비스를 받습니다.
 3. [환경설정](shared/docs/configuration/environment.md)에서 설정 소유권과 입력 위치를 확인합니다.
 4. [앱별 배포 순서](shared/docs/kubernetes/05-applications.md)와 아래 앱 문서를 따라 검사·배포·접속 확인을 진행합니다.
@@ -70,15 +73,12 @@ APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/01-VIP.md)�
 
 | 카테고리 | 문서 | 목적·사용 시점 |
 | --- | --- | --- |
-| 인프라 셋업 | [Kubernetes 가이드](shared/docs/kubernetes/README.md) | CP1~3 셋업·Traefik 셋업·Worker 추가 중 작업 선택 |
+| 사내 환경 원본 | [서버 환경·구성 관리](shared/docs/infrastructure/README.md) | 작업 전 서버 현황·미러·설정 위치와 확인 상태를 읽을 때 |
+| 공통 설치·조회·운영 | [공통 배포 문서 색인](shared/docs/README.md) | 클러스터 구성·상태 조회·기동·장애 대응·kubectl 참고를 찾을 때 |
 | 저장소 준비 | [선택 체크아웃](01-SERVER_CHECKOUT.md) | 처음 clone하거나 서버가 관리하는 앱 범위를 바꿀 때 |
 | 인증서 | [사이트별 인증서 관리](shared/certs/README.md) | PFX/P7B 추출·검증·TLS Secret 갱신 |
 | 설정 참고 | [환경설정](shared/docs/configuration/environment.md) | 앱별 env 위치·필수값 검사·Secret 등록 규칙을 확인할 때 |
-| 운영 절차 | [서버 기동](shared/docs/operations/01-server-start.md) | 공용 기반 준비 후 앱별 검사·기동·확인 |
-| 운영 절차 | [CP1 운영](shared/docs/operations/02-cp1.md) | 공통 Git·파일 관리와 앱별 반영 안내 |
-| 인프라 현황 | [클러스터 현황](shared/docs/infrastructure/cluster.md) | 배포 원본·노드 배치·현재 상태 확인 방법을 찾을 때 |
-| 인프라 구성 | [Traefik 셋업](shared/docs/kubernetes/02-traefik.md) | 공용 진입점 설치·TLS·VIP 접속 확인, 상세 원본은 [Ingress 참고](shared/ingress/README.md) |
-| 인프라 적용 | [APP VIP 실행](shared/ingress/01-VIP.md) | 두 Worker의 443 연결·인증서 준비·서버 적용과 접속 검증 |
+| 공용 라우팅 | [Ingress 안내](shared/ingress/README.md) | Traefik·VIP·TLS 등록·Worker 확장 절차를 찾을 때 |
 
 ## 앱별 배포와 상세 작업
 
@@ -94,6 +94,7 @@ APP VIP의 인증서와 접속 확인은 [VIP 절차](shared/ingress/01-VIP.md)�
 ## 문서를 추가하거나 수정할 때
 
 - 여러 앱이 공유하는 설정 규칙·운영 절차·인프라 현황은 `shared/docs/`의 해당 카테고리에 둡니다. 이 경로는 모든 서버 선택 체크아웃에 포함됩니다.
+- 사내 서버 환경·구성과 미러 정보는 `shared/docs/infrastructure/`에서 관리합니다. 변경 시 확인 상태·근거·날짜를 갱신하며, 다른 안내에는 원본 링크를 둡니다.
 - 입문 설명과 단계별 완료 기준은 `shared/docs/kubernetes/`에서 연결하고 앱별 실행 명령의 원본은 해당 앱 문서에 유지합니다.
 - 앱별 시작점은 `<app>/README.md`, 특정 Job·overlay·Ingress의 사용법은 해당 원본 옆에 둡니다.
 - 현재 배포 구성은 원본·env와 대조하고 앱별 안내에서 연결합니다. 실제 노드·서비스 상태는 대상 클러스터에서 조회합니다.

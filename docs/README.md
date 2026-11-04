@@ -26,6 +26,7 @@
 | 포트·계정·로컬 데이터 위치 확인하기 | [로컬 실행 상세](../local/README.md) |
 | 로그인 또는 접근 거부 원인 찾기 | [셋업 문제 해결](getting-started/01-setup.md#막히는-지점별-확인), [Auth](modules/01-auth.md), [Account](modules/02-account.md) |
 | 서버에 설치·배포하기 | [서버 배포 안내](../deploy/README.md) |
+| 사내 서버 환경·구성·미러 확인하기 | [사내 환경 요약](../deploy/shared/docs/infrastructure/README.md) |
 | AI 작업 규칙·검증 방법 찾기 | [에이전트 작업 안내](agent/README.md) |
 
 ## 문서 폴더 지도
@@ -35,7 +36,7 @@ docs/
 ├── getting-started/  처음 실행하는 절차와 일상 작업
 ├── concepts/         전체 구조·데이터·연동 개념과 용어
 ├── development/      소스 수정·검증·migration·문서 작성
-├── reference/        설정·경로·명령·미러·Kubernetes 참고
+├── reference/        설정·경로·명령·Kubernetes 참고와 소유 영역 연결
 ├── modules/          사용자 기능과 업무 흐름
 ├── api/              API 호출 계약
 ├── examples/         샘플 입력·HTML·이미지 자료
@@ -53,7 +54,12 @@ docs/
 | Airflow 소스 | [DAG·이미지 개발](../apps/airflow/README.md) |
 | 개발 PC | [로컬 실행](../local/README.md), [플랫폼만 실행](../local/01-PLATFORM.md) |
 | 서버 배포 | [배포 문서 홈](../deploy/README.md) |
+| 공통 인프라 설치·운영·명령어 | [공통 배포 문서 색인](../deploy/shared/docs/README.md) |
+| 사내 서버 현황·미러 | [공통 관리 진입점](../deploy/shared/docs/infrastructure/README.md) |
 | 저장소 검사 | [검사 도구](../apps/tooling/README.md) |
 
 문서는 최신 소스와 설정을 기준으로 유지합니다. 완료된 작업 기록은 남기지 않습니다.
 문서를 추가하거나 옮길 때는 [문서 작성 안내](development/04-documentation.md)를 따릅니다.
+
+문서 구조는 소유 영역별 원본을 유지하고 이 홈에서 연결하는 방식을 권장합니다.
+향후 Portal 전용 문서 이동 후보와 단계는 [소유권 중심 재구성 권고](development/04-documentation.md#소유권-중심-재구성-권고)에서 확인합니다.

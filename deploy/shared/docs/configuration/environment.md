@@ -1,6 +1,6 @@
 # 앱별 환경설정
 
-[배포 문서 안내](../../../README.md)
+[배포 문서 안내](../../../README.md) · [사내 환경 요약](../infrastructure/README.md) · [미러 원본](../infrastructure/01-proxy-mirrors.md)
 
 설정할 앱과 실행 환경을 먼저 고릅니다. 아래 명령은 저장소 루트에서 실행합니다.
 Portal 최초 배포라면 [Portal 입력 순서](../../../portal/README.md)부터 확인합니다.

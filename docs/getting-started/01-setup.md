@@ -181,7 +181,7 @@ kubectl --context kind-tailwind-local get pods -A
 kubectl --context kind-tailwind-local -n tailwind-local get events --sort-by=.metadata.creationTimestamp
 ```
 
-Pod 상세·로그를 읽는 방법은 [Kubernetes 명령어 안내](../reference/kubernetes/README.md#6-상세-상태와-로그-확인하기)를 참고합니다.
+Pod 상세·로그를 읽는 방법은 [Kubernetes 명령어 안내](../../deploy/shared/docs/kubernetes/12-kubectl.md#6-상세-상태와-로그-확인하기)를 참고합니다.
 
 ## 서버 셋업 순서
 

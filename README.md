@@ -18,6 +18,7 @@ Portal의 화면은 React, API는 Django로 개발합니다.
 | 기능과 화면 동작 이해하기 | [기능 안내](docs/modules/README.md) |
 | API·설정·관리 명령 찾기 | [참고 자료](docs/reference/README.md), [API 명세](docs/api/README.md) |
 | 서버에 설치·배포하기 | [서버 배포 안내](deploy/README.md) |
+| 사내 서버 환경·구성·미러 확인하기 | [사내 환경 요약](deploy/shared/docs/infrastructure/README.md) |
 | Portal 없이 플랫폼만 실행하기 | [플랫폼 로컬 실행](local/01-PLATFORM.md) |
 | AI 작업 규칙과 검증 방법 찾기 | [에이전트 문서](docs/agent/README.md) |
 

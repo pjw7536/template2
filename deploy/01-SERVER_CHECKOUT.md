@@ -29,6 +29,7 @@ bash deploy/shared/scripts/checkout-server.sh platform
 
 `--sparse`로 시작하므로 최초 작업 폴더에도 `apps/`·`local/`·`docs/`가 생성되지 않습니다.
 서버 운영 문서는 선택 경로에 포함된 `deploy/shared/docs/`를 사용합니다.
+[사내 환경 요약](shared/docs/infrastructure/README.md)과 서버 현황·전체 미러 목록도 이 경로에 포함됩니다.
 `--filter=blob:none`은 Git 서버가 partial clone을 지원할 때 파일 내용 다운로드를 줄입니다.
 서버가 지원하지 않으면 이 옵션을 생략할 수 있습니다. sparse checkout은 Git 이력 접근 권한을 제한하지 않습니다.
 [Git clone](https://git-scm.com/docs/git-clone)과

@@ -7,7 +7,9 @@
 - 공통 정의는 deploy/shared 또는 앱별 base에 두고 local은 이를 재사용한다. 앱별 설정을 다른 앱의 디렉터리에 복제하지 않는다.
 
 ## 탐색과 검사
-- 대상 앱 README → 관련 manifest/env/script → 필요한 shared 계약 순서로 읽는다. 전체 앱의 운영 문서를 선독하지 않는다.
+- 배포 작업 전 [사내 서버 환경 요약](shared/docs/infrastructure/README.md)과 [서버 현황](shared/docs/infrastructure/cluster.md)을 읽고, 이미지·패키지·설치 입력 변경 시 [미러 원본](shared/docs/infrastructure/01-proxy-mirrors.md)도 확인한다. 확인 상태·근거·확인일을 보고 저장소 선언이나 예시를 실제 서버 상태로 단정하지 않는다.
+- 공통 현황 확인 후 대상 앱 README → 관련 manifest/env/script → 필요한 shared 계약 순서로 읽는다. 전체 앱의 운영 문서를 선독하지 않는다.
+- 환경·노드·VIP·DNS·배치·스토리지·미러를 변경하거나 새로운 확인값을 받으면 위 현황·미러 원본도 갱신한다. 비밀값은 문서에 복제하지 않으며 실행 설정은 소유 앱의 원본에서 관리한다.
 - 앱 경로·그룹 원본은 shared/apps.json, 서버 선택 checkout은 01-SERVER_CHECKOUT.md를 따른다. 기본 checkout은 소스를 제외하며 빌드할 때만 --with-source로 추가한다.
 - 저장소 루트에서 `make server-check APP=<app> PROFILE=prod`로 대상 앱을 검증한다. 렌더·정적 검사와 실제 클러스터 배포 성공을 구분해 보고한다.
 - 공통 경로·도구 변경은 `node --test apps/tooling/tests/server-checkout.test.cjs`로 local 없는 서버 경계를 확인한다(전체 개발 checkout에서 실행).
