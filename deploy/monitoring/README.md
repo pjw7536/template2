@@ -152,18 +152,22 @@ kubectl --context "$KUBE_CONTEXT" -n monitoring get secret monitoring-grafana-ad
 ```
 
 `monitoring-grafana-admin`이 이미 있으면 기존 계정을 사용하고 **아래 생성 단계는 생략**합니다.
-처음 설치한다면 Git 저장소 밖의 계정 파일을 편집합니다.
+처음 설치한다면 [관리자 env 샘플](env/grafana-admin.env.example)을 Git 저장소 밖으로 복사하고 실제 계정으로 편집합니다.
 
 ```bash
 read -r -p 'Grafana 관리자 env 파일 절대 경로: ' GRAFANA_CREDENTIAL_FILE
 (
+  set -e
   umask 077
+  if [ ! -e "$GRAFANA_CREDENTIAL_FILE" ]; then
+    cp deploy/monitoring/env/grafana-admin.env.example "$GRAFANA_CREDENTIAL_FILE"
+  fi
   vi "$GRAFANA_CREDENTIAL_FILE"
 )
 chmod 600 "$GRAFANA_CREDENTIAL_FILE"
 ```
 
-파일에는 아래 두 키를 넣고 빈 값을 실제 로그인 계정으로 채웁니다. `export`나 값을 감싸는 따옴표는 넣지 않습니다.
+샘플의 아래 두 키를 실제 로그인 계정으로 채우고 예시 비밀번호를 교체합니다. `export`나 값을 감싸는 따옴표는 넣지 않습니다.
 
 ```dotenv
 admin-user=
