@@ -24,6 +24,7 @@ ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGIST
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
            'alertmanager': ('2Gi', 'alertmanager-monitoring-alertmanager-db-alertmanager-monitoring-alertmanager-0'),
            'grafana': ('5Gi', 'monitoring-grafana')}
+STORAGE_OWNERS = {'prometheus': (1000, 2000), 'alertmanager': (1000, 2000), 'grafana': (472, 472)}
 
 
 def require(condition, message):
@@ -201,6 +202,85 @@ def storage(settings, components=None):
     return {'apiVersion': 'v1', 'kind': 'List', 'items': items}
 
 
+def storage_job(settings, components, existing=()):
+    """활성 서비스의 없는 폴더만 만들고 기존 폴더와 하위 파일 권한은 보존한다."""
+    if not components:
+        return None
+    script = '''storage_root=$1
+check_directory() {
+    storage_path="$storage_root/$1"
+    if [ -L "$storage_path" ] || { [ -e "$storage_path" ] && [ ! -d "$storage_path" ]; }; then
+        printf '저장 경로가 디렉터리가 아니거나 심볼릭 링크입니다: %s\\n' "$storage_path" >&2
+        exit 1
+    fi
+    if [ "$2" = existing ] && [ ! -d "$storage_path" ]; then
+        printf '기존 PV의 저장 폴더가 없습니다. 디스크 마운트와 데이터를 확인하세요: %s\\n' "$storage_path" >&2
+        exit 1
+    fi
+}
+prepare_directory() {
+    storage_path="$storage_root/$1"
+    if [ ! -d "$storage_path" ]; then
+        mkdir -m 0700 "$storage_path"
+        chown "$2:$3" "$storage_path"
+        chmod 0770 "$storage_path"
+    fi
+}
+'''
+    active = [name for name in VOLUMES if name in components]
+    # 모든 기존 경로를 확인한 뒤 새 폴더 생성을 시작한다.
+    script += '\n'.join(f'check_directory {name} {"existing" if name in existing else "new"}' for name in active) + '\n'
+    script += '\n'.join(f'prepare_directory {name} {STORAGE_OWNERS[name][0]} {STORAGE_OWNERS[name][1]}' for name in active)
+    pod = {'restartPolicy': 'Never', 'automountServiceAccountToken': False,
+           'nodeSelector': {'kubernetes.io/hostname': settings['NODE_NAME']},
+           'containers': [{'name': 'prepare', 'image': settings['DOCKER_REGISTRY'] + '/library/busybox:1.37.0',
+                           'imagePullPolicy': 'IfNotPresent',
+                           'command': ['/bin/sh', '-ec', script, 'monitoring-storage-prepare', '/data'],
+                           'securityContext': {'runAsUser': 0, 'runAsGroup': 0, 'runAsNonRoot': False,
+                                               'allowPrivilegeEscalation': False, 'readOnlyRootFilesystem': True,
+                                               'capabilities': {'drop': ['ALL'], 'add': ['CHOWN', 'FOWNER', 'DAC_OVERRIDE']}},
+                           'volumeMounts': [{'name': 'data', 'mountPath': '/data'}],
+                           'resources': {'requests': {'cpu': '10m', 'memory': '16Mi'},
+                                         'limits': {'cpu': '100m', 'memory': '64Mi'}}}],
+           'volumes': [{'name': 'data', 'hostPath': {'path': settings['DATA_HOST_PATH'],
+                       'type': 'Directory' if existing else 'DirectoryOrCreate'}}]}
+    if settings['IMAGE_PULL_SECRET']:
+        pod['imagePullSecrets'] = [{'name': settings['IMAGE_PULL_SECRET']}]
+    return {'apiVersion': 'batch/v1', 'kind': 'Job',
+            'metadata': {'generateName': 'monitoring-storage-prepare-', 'namespace': settings['NAMESPACE'],
+                         'labels': {'app.kubernetes.io/name': 'monitoring-storage-prepare'}},
+            'spec': {'backoffLimit': 0, 'activeDeadlineSeconds': 240, 'ttlSecondsAfterFinished': 600,
+                     'template': {'spec': pod}}}
+
+
+def prepare_storage(kube, settings, components, resources):
+    """기존 PV의 위치를 확인하고 폴더 준비 Job 성공 후에만 배포를 계속한다."""
+    if not components:
+        return
+    existing = set()
+    for volume in resources['items']:
+        if volume['kind'] != 'PersistentVolume':
+            continue
+        name = volume['metadata']['name']
+        raw = run([*kube, 'get', 'pv', name, '--ignore-not-found', '-o', 'json'])
+        if not raw.strip():
+            continue
+        current = json.loads(raw)['spec']
+        expected = volume['spec']
+        require(current.get('local') == expected['local'] and current.get('nodeAffinity') == expected['nodeAffinity'],
+                '기존 Monitoring PV의 경로·노드가 다릅니다. 기존 DATA_HOST_PATH·NODE_NAME을 유지하세요.')
+        reference = current.get('claimRef', {})
+        require(not reference or all(reference.get(key) == expected['claimRef'][key] for key in ('namespace', 'name')),
+                '기존 Monitoring PV가 다른 PVC에 예약되어 있습니다. 저장소 연결을 확인하세요.')
+        existing.add(name.rsplit('-monitoring-', 1)[-1])
+    manifest = json.dumps(storage_job(settings, components, existing))
+    run([*kube, 'create', '--dry-run=server', '-f', '-'], data=manifest)
+    job = json.loads(run([*kube, 'create', '-f', '-', '-o', 'json'], data=manifest))
+    name = job['metadata']['name']
+    print(f'Monitoring 저장 폴더 준비 대기: job/{name}. 실패 시 해당 Job의 Pod Events와 로그를 확인하세요.', flush=True)
+    run([*kube, '-n', settings['NAMESPACE'], 'wait', '--for=condition=complete', f'job/{name}', '--timeout=300s'])
+
+
 def render(settings, directory, chart, values_file=None):
     """공식 chart를 렌더하고 Operator가 생성할 이미지까지 목록으로 기록한다."""
     directory = Path(directory)
@@ -214,11 +294,15 @@ def render(settings, directory, chart, values_file=None):
     content = run(['helm', 'template', 'monitoring', chart, '--include-crds', '--kube-version', LOCK['kubernetesVersion'], *flags])
     images = set(re.findall(r'^[ \t]*image:[ \t]*["\']?([^\s"\']+)', content, re.M))
     images.update(re.findall(r'--prometheus-config-reloader=([^\s"\']+)', content))
+    components = rendered_components(content)
+    job = storage_job(settings, components)
+    if job:
+        images.add(job['spec']['template']['spec']['containers'][0]['image'])
     prefixes = tuple(settings[key] + '/' for key in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'))
     require(images and all(item.startswith(prefixes) for item in images), '미러를 거치지 않는 렌더 이미지가 있습니다. values의 모든 이미지 설정을 확인하세요.')
     (directory / 'monitoring.yaml').write_text(content)
     (directory / 'images.txt').write_text('\n'.join(sorted(images)) + '\n')
-    (directory / 'storage.json').write_text(json.dumps(storage(settings, rendered_components(content)), indent=2) + '\n')
+    (directory / 'storage.json').write_text(json.dumps(storage(settings, components), indent=2) + '\n')
     return flags
 
 
@@ -264,7 +348,7 @@ def connect_ingress(settings, context, content, dry_run=False):
 
 
 def deploy(settings, context, chart, values_file=None):
-    """기존 Operator 충돌·서버 입력 확인 후 PV와 Helm release를 적용한다."""
+    """기존 Operator 충돌·서버 입력 확인 후 저장 폴더·PV·Helm release를 준비한다."""
     require(context and context.strip(), 'deploy에는 --context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
@@ -295,7 +379,9 @@ def deploy(settings, context, chart, values_file=None):
         if settings['IMAGE_PULL_SECRET']:
             run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
         connect_ingress(settings, context, content, dry_run=True)
-        if json.loads((Path(directory) / 'storage.json').read_text())['items']:
+        resources = json.loads((Path(directory) / 'storage.json').read_text())
+        prepare_storage(kube, settings, components, resources)
+        if resources['items']:
             run([*kube, 'apply', '-f', Path(directory) / 'storage.json'])
         run(['helm', 'upgrade', '--install', 'monitoring', chart, '--kube-context', context, '--wait', '--timeout', '15m', *flags])
         for component in ('prometheus', 'alertmanager'):

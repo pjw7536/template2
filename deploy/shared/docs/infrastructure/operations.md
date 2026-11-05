@@ -35,7 +35,7 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 | MinIO | `/data/minio` | `/appdata/minio` | `deploy/minio/env/prod.env`: `MINIO_DATA_HOST_PATH`, `scripts/manage.py` 기본값 |
 | FTP 수신 파일 | `/data/data_movement` | `/appdata/data_movement` | `deploy/ftp/k8s/stack.yaml`: `volumes[].hostPath.path` |
 | Airflow DB·로그·ODBC | `/srv/airflow/postgres`, `/srv/airflow/logs`, `/srv/airflow/odbc` | `/appdata/airflow/postgres`, `/appdata/airflow/logs`, `/appdata/airflow/odbc` | `deploy/airflow/env/k8s.env`: `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `ODBC_HOST_PATH` |
-| Monitoring | `/srv/monitoring` 아래 서비스별 폴더 | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH` |
+| Monitoring | `/srv/monitoring` 아래 서비스별 폴더 | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. 2026-11-05 저장소 선언: `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·생성 확인은 미실행 |
 | Keycloak DB | `/appdata/keycloak-postgres` | 동일 | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
 
 Portal의 운영 업무 파일은 아직 `emptyDir`이며 영구 저장소로 전환되지 않았습니다.

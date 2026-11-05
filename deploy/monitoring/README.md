@@ -11,7 +11,7 @@ Portal·Keycloak·Airflow의 기동 여부와 관계없이 설치할 수 있습�
 - 고정 chart: `helm/chart.lock.json`. 의존 chart를 포함하며 서버에서 dependency update하지 않습니다.
 - Python 3.10+, Helm 3.19+, kubectl, Kubernetes 1.25+가 필요합니다.
 - 클러스터에 기존 Prometheus Operator가 있으면 먼저 기존 도구를 사용합니다. 배포 도구는 새 release 설치 시 기존 CRD를 발견하면 중단합니다.
-- Operator CRD·ClusterRole 설치 권한이 필요합니다. node-exporter는 노드별 hostNetwork·hostPath를 사용하므로 namespace 정책에서 허용되어야 합니다.
+- Operator CRD·ClusterRole·저장 폴더 준비 Job 설치 권한이 필요합니다. 준비 Job의 root 실행·hostPath와 node-exporter의 hostNetwork·hostPath를 namespace 정책에서 허용해야 합니다.
 - 선택 checkout은 `bash deploy/shared/scripts/checkout-server.sh monitoring`입니다. `deploy/monitoring`, `deploy/shared`, 루트 Makefile만으로 실행합니다.
 - 기본 접속은 공용 Traefik의 HTTPS 하위 경로입니다. Grafana는 `/grafana/`, Prometheus는 `/prometheus/`, Alertmanager는 `/alertmanager/`를 사용합니다.
 - 공개 host·TLS Secret은 env로 지정합니다. 기존 Grafana 관리자 로그인을 유지하며 SSO·외부 알림 전송은 이 설정에서 추가하지 않습니다.
@@ -24,6 +24,7 @@ Portal·Keycloak·Airflow의 기동 여부와 관계없이 설치할 수 있습�
 이 values 파일에는 비밀값을 넣지 않습니다.
 검사와 배포에는 같은 override를 전달합니다. 최종 렌더에서 비활성화한 Grafana·Prometheus·Alertmanager는
 준비 대기와 신규 local PV 생성 대상에서 제외합니다. 기존 PV·PVC는 도구가 삭제하지 않습니다.
+저장 폴더 준비 Job도 활성 서비스의 폴더만 대상으로 합니다.
 Grafana가 비활성화돼 있으면 관리자 Secret도 조회하지 않습니다.
 
 Prometheus를 끌 때는 고정 chart의 ServiceMonitor 인증 입력도 함께 맞춥니다.
@@ -55,7 +56,7 @@ chmod 600 deploy/monitoring/env/k8s.env
 
 | 변수 | 원본 registry |
 | --- | --- |
-| `DOCKER_REGISTRY` | docker.io — Grafana |
+| `DOCKER_REGISTRY` | docker.io — Grafana·저장 폴더 준비용 `library/busybox:1.37.0` |
 | `QUAY_REGISTRY` | quay.io — Prometheus·Operator·Alertmanager·node-exporter·sidecar |
 | `GHCR_REGISTRY` | ghcr.io — webhook 인증서 초기화 이미지 |
 | `K8S_REGISTRY` | registry.k8s.io — kube-state-metrics |
@@ -77,12 +78,14 @@ INGRESS_TLS_SECRET=
 최종 Helm override에서 모든 Ingress를 끄면 controller·TLS를 조회하지 않습니다.
 port-forward 전용 환경은 `INGRESS_ENABLED=false`, `INGRESS_HOST=`, `INGRESS_TLS_SECRET=`로 설정합니다.
 
-선택한 Worker에서 예시 경로의 디렉터리를 준비합니다. `DATA_HOST_PATH`를 바꿨다면 함께 바꿉니다.
-
-```bash
-sudo install -d -o 1000 -g 2000 -m 0770 /appdata/monitoring/prometheus /appdata/monitoring/alertmanager
-sudo install -d -o 472 -g 472 -m 0770 /appdata/monitoring/grafana
-```
+`make monitoring-up`은 `NODE_NAME`으로 선택한 Worker에서 저장 폴더 준비 Job을 실행합니다.
+`DATA_HOST_PATH`와 활성 서비스의 하위 폴더가 없으면 자동 생성하므로 수동 `mkdir`은 필요하지 않습니다.
+신규 `prometheus`, `alertmanager` 폴더는 `1000:2000`, `grafana` 폴더는 `472:472` 소유권과 권한 `0770`으로 생성합니다.
+기존 폴더·하위 파일의 소유권·권한은 변경하지 않습니다. 사용자 지정 UID/GID를 사용하면 기존 폴더를 그 설정에 맞춰 준비합니다.
+심볼릭 링크·일반 파일이 저장 경로를 점유하면 중단합니다. 기존 PV의 경로·노드·PVC 예약이 다르거나
+기존 PV의 폴더가 사라졌으면 빈 저장소를 새로 만들지 않고 중단하므로 디스크 마운트·기존 데이터를 먼저 확인합니다.
+Job 완료 후 PV와 Helm release를 적용합니다. 준비 이미지 pull·폴더 생성·Job 정책 검사가 실패하면 Helm 설치를 진행하지 않습니다.
+데이터 디스크가 의도한 위치에 마운트됐는지는 배포 전에 확인합니다. 폴더 자동 생성은 디스크 마운트를 대신하지 않습니다.
 
 local PV로 다음 용량을 예약합니다. StorageClass는 필요하지 않습니다.
 
@@ -159,7 +162,7 @@ make ingress-tls-up KUBE_CONTEXT="$MONITORING_CONTEXT" TLS_HOST=etch.samsungds.n
 make ingress-up KUBE_CONTEXT="$MONITORING_CONTEXT"
 ```
 
-배포는 최종 렌더에 남은 공개 host의 공용 인증서와 controller 변경 권한을 확인한 뒤 PV·Helm 변경을 시작합니다.
+배포는 최종 렌더에 남은 공개 host의 공용 인증서와 controller 변경 권한을 확인한 뒤 저장 폴더 준비 Job·PV·Helm 변경을 시작합니다.
 
 ## 5. 배포와 확인
 
@@ -191,6 +194,8 @@ kubectl --context "$MONITORING_CONTEXT" -n monitoring port-forward svc/monitorin
 기본 구성의 Alertmanager는 수신자를 null로 두며 외부 메시지를 보내지 않습니다.
 최종 렌더의 일반 workload 준비는 Helm `--wait`로 확인합니다.
 활성 Prometheus·Alertmanager만 실제 CR 이름에 대응하는 StatefulSet의 생성과 준비를 추가로 기다립니다.
+저장 폴더 준비 실패 시 출력된 `monitoring-storage-prepare-*` Job의 Pod Events·로그를 확인합니다.
+준비 Job은 완료·실패 후 10분 뒤 자동 정리됩니다.
 
 ## 갱신·운영
 

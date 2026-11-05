@@ -69,7 +69,7 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 | Portal | `tailwind-internal` | 운영 Worker·이미지 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) |
 | MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
 | Airflow·전용 PostgreSQL | `airflow` | `NODE_NAME=replace-me-node`로 미확정 | DB `/appdata/airflow/postgres` 20Gi, 로그 `/appdata/airflow/logs` 20Gi, ODBC `/appdata/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) |
-| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. `deploy/monitoring/env/k8s.env`, [Monitoring 안내](../../../monitoring/README.md) |
+| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. 2026-11-05 저장소 선언: `monitoring-up`이 준비 Job으로 없는 폴더를 생성한 뒤 PV·Helm 적용. 실제 서버 검증 미실행. `deploy/monitoring/env/k8s.env`, [폴더 준비 계약](operations.md#worker-앱-데이터-경로와-이전), [Monitoring 안내](../../../monitoring/README.md) |
 | Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) |
 | FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/appdata/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
 

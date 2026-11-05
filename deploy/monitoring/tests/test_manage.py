@@ -2,8 +2,10 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -49,6 +51,109 @@ def fake_render(data, directory, chart, values_file=None, components=('prometheu
 
 class MonitoringTests(unittest.TestCase):
     """네트워크 호출 없이 필수 배포 경계를 확인한다."""
+
+    def run_storage_script(self, root, components, existing=()):
+        """실제 준비 셸을 임시 폴더에서 실행하고 소유권 변경 요청만 기록한다."""
+        tools = root.parent / 'bin'
+        tools.mkdir(exist_ok=True)
+        owner_log = root.parent / 'ownership.log'
+        chown = tools / 'chown'
+        chown.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$MONITORING_TEST_OWNER_LOG"\n')
+        chown.chmod(0o755)
+        job = manage.storage_job(settings(), components, existing)
+        command = job['spec']['template']['spec']['containers'][0]['command']
+        environment = {**os.environ, 'PATH': str(tools) + os.pathsep + os.environ.get('PATH', ''),
+                       'MONITORING_TEST_OWNER_LOG': str(owner_log)}
+        return subprocess.run([*command[:-1], str(root)], env=environment, capture_output=True, text=True), owner_log
+
+    def test_storage_script_creates_only_missing_active_directories_and_preserves_existing_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'data'
+            root.mkdir()
+            grafana = root / 'grafana'
+            grafana.mkdir(mode=0o751)
+            database = grafana / 'grafana.db'
+            database.write_text('existing-data')
+            database.chmod(0o640)
+            old_metadata = [(path.stat().st_uid, path.stat().st_gid, path.stat().st_mode) for path in (grafana, database)]
+            active = {'prometheus': {}, 'grafana': {}}
+            for _ in range(2):
+                result, owner_log = self.run_storage_script(root, active, {'grafana'})
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root / 'prometheus').stat().st_mode & 0o777, 0o770)
+            self.assertEqual(owner_log.read_text().splitlines(), [f'1000:2000 {root}/prometheus'])
+            self.assertEqual(database.read_text(), 'existing-data')
+            self.assertEqual([(path.stat().st_uid, path.stat().st_gid, path.stat().st_mode) for path in (grafana, database)], old_metadata)
+            self.assertFalse((root / 'alertmanager').exists())
+
+    def test_storage_script_blocks_symlinks_files_and_missing_existing_pv_before_creation(self):
+        for problem in ('symlink', 'file', 'missing-pv'):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'data'
+                root.mkdir()
+                if problem == 'symlink':
+                    (root / 'grafana').symlink_to(root, target_is_directory=True)
+                elif problem == 'file':
+                    (root / 'grafana').write_text('keep-this-file')
+                active = {'prometheus': {}, 'grafana': {}}
+                result, owner_log = self.run_storage_script(root, active, {'grafana'} if problem == 'missing-pv' else ())
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((root / 'prometheus').exists())
+                self.assertFalse(owner_log.exists())
+                if problem == 'file':
+                    self.assertEqual((root / 'grafana').read_text(), 'keep-this-file')
+
+    def test_storage_job_uses_selected_worker_mirror_and_pull_secret(self):
+        data = {**settings(), 'IMAGE_PULL_SECRET': 'registry-login'}
+        job = manage.storage_job(data, {'alertmanager': {}})
+        pod = job['spec']['template']['spec']
+        self.assertEqual(pod['nodeSelector'], {'kubernetes.io/hostname': data['NODE_NAME']})
+        self.assertEqual(pod['volumes'][0]['hostPath'], {'path': data['DATA_HOST_PATH'], 'type': 'DirectoryOrCreate'})
+        self.assertEqual(pod['imagePullSecrets'], [{'name': 'registry-login'}])
+        self.assertEqual(pod['containers'][0]['image'], data['DOCKER_REGISTRY'] + '/library/busybox:1.37.0')
+        self.assertIn('prepare_directory alertmanager 1000 2000', pod['containers'][0]['command'][2])
+        self.assertNotIn('prepare_directory grafana', pod['containers'][0]['command'][2])
+        self.assertEqual(job['metadata']['namespace'], data['NAMESPACE'])
+        self.assertEqual(job['spec']['backoffLimit'], 0)
+        self.assertGreater(job['spec']['ttlSecondsAfterFinished'], 0)
+        self.assertIsNone(manage.storage_job(data, {}))
+
+    def test_existing_pv_job_requires_existing_directory(self):
+        data = settings()
+        components = {'prometheus': {'name': 'monitoring-prometheus'}}
+        resources = manage.storage(data, components)
+        created = []
+
+        def run(args, data=None):
+            if 'get' in args:
+                return json.dumps(resources['items'][0])
+            if 'create' in args:
+                created.append(json.loads(data))
+                return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
+            return ''
+
+        with patch.object(manage, 'run', run):
+            manage.prepare_storage(['kubectl', '--context', 'prod'], data, components, resources)
+        pod = created[-1]['spec']['template']['spec']
+        self.assertEqual(pod['volumes'][0]['hostPath']['type'], 'Directory')
+        self.assertIn('check_directory prometheus existing', pod['containers'][0]['command'][2])
+
+    def test_existing_pv_location_or_claim_mismatch_stops_before_storage_job(self):
+        for problem in ('path', 'node', 'claim'):
+            with self.subTest(problem=problem):
+                data = settings()
+                components = {'prometheus': {'name': 'monitoring-prometheus'}}
+                resources = manage.storage(data, components)
+                current = json.loads(json.dumps(resources['items'][0]))
+                if problem == 'path':
+                    current['spec']['local']['path'] = '/old/location'
+                elif problem == 'node':
+                    current['spec']['nodeAffinity'] = {}
+                else:
+                    current['spec']['claimRef']['namespace'] = 'another-app'
+                with patch.object(manage, 'run', return_value=json.dumps(current)) as run, self.assertRaises(ValueError):
+                    manage.prepare_storage(['kubectl', '--context', 'prod'], data, components, resources)
+                self.assertTrue(all('get' in call.args[0] for call in run.call_args_list))
 
     def test_placeholder_and_unknown_keys_are_rejected(self):
         with self.assertRaisesRegex(ValueError, '실제 값'):
@@ -179,6 +284,8 @@ class MonitoringTests(unittest.TestCase):
                 return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
             if 'secret' in args:
                 return 'admin-user\nadmin-password\n'
+            if 'create' in args:
+                return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
             return ''
 
         with patch.object(manage, 'run', run), patch.object(manage, 'render', fake_render):
@@ -186,6 +293,8 @@ class MonitoringTests(unittest.TestCase):
         apply = next(i for i, call in enumerate(calls) if 'apply' in call)
         install = next(i for i, call in enumerate(calls) if 'upgrade' in call)
         self.assertLess(apply, install)
+        prepare = next(i for i, call in enumerate(calls) if 'job/monitoring-storage-prepare-test' in call)
+        self.assertLess(prepare, apply)
         self.assertTrue(all('test-context' in call for call in calls))
         self.assertFalse(any('delete' in call or '--atomic' in call for call in calls))
         waits = [call for call in calls if '--for=create' in call]
@@ -217,6 +326,8 @@ class MonitoringTests(unittest.TestCase):
                     if 'secret' in args:
                         self.assertNotIn('grafana', disabled)
                         return 'admin-user\nadmin-password\n'
+                    if 'create' in args:
+                        return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
                     if 'apply' in args:
                         applied.extend(json.loads(Path(args[-1]).read_text())['items'])
                     return ''
@@ -234,7 +345,8 @@ class MonitoringTests(unittest.TestCase):
                 upgrade = next(args for args in calls if 'upgrade' in args)
                 self.assertIn(Path('/override.yaml'), upgrade)
                 self.assertIn('--wait', upgrade)
-                self.assertFalse(any('delete' in args or 'create' in args for args in calls))
+                self.assertFalse(any('delete' in args for args in calls))
+                self.assertEqual(any('create' in args for args in calls), bool(active))
                 if not active:
                     self.assertFalse(any('apply' in args or 'rollout' in args for args in calls))
 
@@ -258,6 +370,8 @@ class MonitoringTests(unittest.TestCase):
                 return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
             if 'secret' in args:
                 return 'admin-user\nadmin-password\n'
+            if 'create' in args:
+                return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
             return ''
 
         with patch.object(manage, 'run', run), patch.object(
@@ -310,6 +424,30 @@ class MonitoringTests(unittest.TestCase):
             manage.deploy(settings(), 'prod', Path('/chart.tgz'))
         self.assertTrue(ingress.call_args.kwargs['dry_run'])
         self.assertFalse(any('apply' in call or 'upgrade' in call for call in calls))
+
+    def test_storage_job_failure_prevents_pv_and_helm_changes(self):
+        calls = []
+
+        def run(args, data=None):
+            calls.append(args)
+            if 'version' in args:
+                return json.dumps({'serverVersion': {'gitVersion': 'v1.30.13'}})
+            if 'list' in args:
+                return '[]'
+            if 'nodes' in args:
+                return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+            if 'secret' in args:
+                return 'admin-user\nadmin-password\n'
+            if 'create' in args:
+                return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
+            if '--for=condition=complete' in args:
+                raise ValueError('폴더 준비 실패')
+            return ''
+
+        with patch.object(manage, 'run', run), patch.object(manage, 'render', fake_render), \
+                self.assertRaisesRegex(ValueError, '폴더 준비 실패'):
+            manage.deploy(settings(), 'prod', Path('/chart.tgz'))
+        self.assertFalse(any('apply' in args or 'upgrade' in args for args in calls))
 
     @unittest.skipUnless(shutil.which('helm'), 'Helm 미설치: 실제 렌더 검사는 별도 실행')
     def test_real_chart_disables_each_optional_component_and_all_together(self):
@@ -373,6 +511,7 @@ class MonitoringTests(unittest.TestCase):
             self.assertTrue(all(image.startswith('mirror.test/') for image in images))
             self.assertTrue(any('prometheus-config-reloader' in image for image in images))
             self.assertTrue(any('kube-webhook-certgen' in image for image in images))
+            self.assertIn(data['DOCKER_REGISTRY'] + '/library/busybox:1.37.0', images)
             rendered = (Path(directory) / 'monitoring.yaml').read_text()
             self.assertIn('claimName: monitoring-grafana', rendered)
             self.assertIn('volumeName: monitoring-monitoring-prometheus', rendered)
