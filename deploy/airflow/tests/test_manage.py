@@ -87,12 +87,12 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_config_rejects_overlapping_storage_and_wrong_versions(self):
         for change in (
-            {'LOGS_HOST_PATH': '/srv/airflow/postgres/logs'},
+            {'LOGS_HOST_PATH': '/appdata/airflow/postgres/logs'},
             {'POSTGRES_IMAGE': 'postgres:17'},
             {'AIRFLOW_IMAGE_TAG': 'latest'},
             {'AIRFLOW_FERNET_KEY': 'wrong-key-value-0123456789'},
             {'ODBC_HOST_PATH': 'relative/odbc'},
-            {'ODBC_HOST_PATH': '/srv/airflow/postgres/odbc'},
+            {'ODBC_HOST_PATH': '/appdata/airflow/postgres/odbc'},
             {'ODBC_SECRET_NAME': 'odbc-with-default-host'},
         ):
             with self.subTest(change=list(change)):
@@ -150,7 +150,7 @@ class ConfigurationTests(unittest.TestCase):
         values = settings()
         deploy.validate(values)
         overlay = deploy.helm_values(values)
-        self.assertEqual(overlay['volumes'], [{'name': 'odbc', 'hostPath': {'path': '/srv/airflow/odbc', 'type': 'Directory'}}])
+        self.assertEqual(overlay['volumes'], [{'name': 'odbc', 'hostPath': {'path': '/appdata/airflow/odbc', 'type': 'Directory'}}])
         self.assertEqual(overlay['volumeMounts'], [{'name': 'odbc', 'mountPath': '/usr/local/odbc', 'readOnly': True}])
         self.assertEqual(overlay['nodeSelector'], {'kubernetes.io/hostname': 'test-node'})
 
@@ -541,7 +541,7 @@ class HelmIntegrationTests(unittest.TestCase):
             self.assertIn('max_active_runs_per_dag = 16', rendered)
             self.assertIn('workers = 4', rendered)
             self.assertNotIn('name: scheduler-log-groomer', rendered)
-            self.assertIn('path: /srv/airflow/odbc', rendered)
+            self.assertIn('path: /appdata/airflow/odbc', rendered)
             self.assertIn('mountPath: /usr/local/odbc', rendered)
             self.assertIn('path: /airflow/health', rendered)
             self.assertIn('/opt/airflow/bootstrap-user.py', rendered)

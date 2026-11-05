@@ -20,7 +20,7 @@ deploy/airflow/odbc/
 
 ## Worker에 반영
 
-현재 `env/k8s.env`의 `ODBC_HOST_PATH`는 `/srv/airflow/odbc`입니다.
+현재 `env/k8s.env`의 `ODBC_HOST_PATH`는 `/appdata/airflow/odbc`입니다.
 이 프로젝트 폴더에 파일을 넣는 것만으로 실행 중인 Airflow에 반영되지는 않습니다.
 입력 파일을 `NODE_NAME`으로 선택한 Worker에 전달하고 해당 경로에 배치합니다.
 
@@ -30,9 +30,9 @@ deploy/airflow/odbc/
 ```bash
 test -s deploy/airflow/odbc/odbc.ini && (
   set -euo pipefail
-  sudo install -d -o 50000 -g 0 -m 0750 /srv/airflow/odbc
+  sudo install -d -o 50000 -g 0 -m 0750 /appdata/airflow/odbc
   sudo tar -C deploy/airflow/odbc --exclude=./README.md --exclude=./.gitignore -cf - . |
-    sudo tar -C /srv/airflow/odbc -xf -
+    sudo tar -C /appdata/airflow/odbc -xf -
 )
 ```
 

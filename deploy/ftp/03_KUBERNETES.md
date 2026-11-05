@@ -16,7 +16,7 @@ Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 �
 | 접속 주소 | 대상 노드 InternalIP, TCP 6380 |
 | Passive 주소 | Downward API의 `status.hostIP` |
 | Passive 포트 | TCP 8076–8079 |
-| 노드 저장 폴더 | `/data/data_movement` |
+| 노드 저장 폴더 | `/appdata/data_movement` |
 | 컨테이너 저장 폴더 | `/data/data_movement` |
 | 로그인 후 업로드 경로 | `data_movement/` |
 | 계정 | `etch-ftp` namespace의 `ftp-credentials` Secret |
@@ -31,7 +31,7 @@ Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 �
 
 1. 선택 체크아웃이면 `bash deploy/shared/scripts/checkout-server.sh ftp`를 실행합니다.
 2. 각 대상 Worker에서 저장 디스크·기존 데이터·권한을 확인합니다.
-   `/data/data_movement`가 없으면 `DirectoryOrCreate` 설정으로 kubelet이 Pod 시작 전에 생성합니다. 수동 생성은 필수가 아닙니다.
+   `/appdata/data_movement`가 없으면 `DirectoryOrCreate` 설정으로 kubelet이 Pod 시작 전에 생성합니다. 수동 생성은 필수가 아닙니다.
    기존 데이터를 이관할 때는 해당 경로로 옮깁니다. 시작 스크립트는 최상위 폴더 소유자를 이미지의 `ftp` 사용자로 변경합니다.
    하위 파일의 소유권은 변경하지 않으므로 기존 데이터의 읽기·쓰기 권한을 별도로 맞춥니다.
 3. 기존 FTP가 해당 포트를 점유하고 있으면 중단합니다. 클라이언트에서 노드 InternalIP의
@@ -158,7 +158,7 @@ Namespace와 FTP 계정 Secret은 이 렌더에 포함되지 않습니다.
 
 [접속 확인과 운영](02_OPERATIONS.md#2-업로드다운로드-확인)에 따라 각 Worker IP의 6380으로 로그인하고
 Passive 모드로 `data_movement/`에 서로 다른 이름의 파일을 올려 다운로드합니다.
-접속한 Worker의 `/data/data_movement`에만 해당 파일이 생겼는지 확인합니다.
+접속한 Worker의 `/appdata/data_movement`에만 해당 파일이 생겼는지 확인합니다.
 Pod Ready·렌더 검사만으로 실제 전송 성공을 대신하지 않습니다.
 
 새 Worker를 추가할 때는 해당 서버의 디스크·기존 파일 권한·방화벽을 먼저 확인합니다. 없는 데이터 폴더는 자동 생성됩니다.

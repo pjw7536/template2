@@ -20,6 +20,6 @@
 - 새로 추가하거나 변경하는 API 업무 파일은 컨테이너의 /data/<domain> 아래에 마운트한다. domain은 lowercase snake_case다.
 - Django는 <DOMAIN>_DATA_ROOT로 컨테이너 경로를 노출한다. 개별 파일 경로가 원본 계약일 때만 <DOMAIN>_<NAME>_PATH를 쓴다.
 - 참고·원본 데이터는 Kubernetes readOnly: true로 마운트한다. 업로드·생성물·처리 큐 등 앱 소유 데이터만 쓰기를 허용한다.
-- 호스트 경로는 env 기반으로 유지하고 기존 공유 경로가 있으면 재사용한다. Compose 마운트를 추가할 경우 `${<DOMAIN>_DATA_HOST_PATH:-../../../data/<domain>}` 및 읽기 전용 `:ro` 규칙을 적용한다.
+- Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래로 통일한다. 설정 가능한 경로는 env 기반으로 유지하고 기존 공유 경로가 있으면 재사용한다. 기존 PV·데이터는 자동 이동하거나 삭제하지 않으며, 경로 변경 시 백업·이전·PV/PVC 전환을 별도로 준비한다. Compose 마운트를 추가할 경우 `${<DOMAIN>_DATA_HOST_PATH:-../../../data/<domain>}` 및 읽기 전용 `:ro` 규칙을 적용한다.
 - API 마운트 변경 시 portal/k8s의 base·운영 overlay, local/portal/k8s의 대응 overlay와 local/shared의 호스트 매핑, 양쪽 Portal env 및 docs/reference/01-configuration.md를 함께 맞춘다. 이는 개발 checkout의 동기화 규칙이며 서버 실행이 local 파일을 요구해서는 안 된다.
-- 새 /appdata 경로를 만들지 않는다. 기존 /appdata 계약을 수정할 때 /data/<domain>으로 이관한다.
+- 컨테이너 내부 API 업무 파일 경로는 `/data/<domain>` 계약을 유지한다. 호스트의 `/appdata` 통일과 구분하며 kubelet·container runtime·node-exporter의 시스템 경로와 동적 StorageClass의 저장 위치는 이 규칙으로 변경하지 않는다. 외부 PC의 kind 호스트 매핑은 local overlay에서 명시한다.

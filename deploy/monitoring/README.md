@@ -46,6 +46,9 @@ chmod 600 deploy/monitoring/env/k8s.env
 
 파일을 편집합니다. `NODE_NAME`은 Ready 상태이며 차단 taint가 없는 Worker의 hostname label입니다.
 `DATA_HOST_PATH`는 해당 노드의 전용 경로입니다. 기존 업무 데이터 경로를 지정하지 않습니다.
+새 설치 기본값은 `/appdata/monitoring`입니다. 기존 설치가 `/srv/monitoring`을 사용한다면 이전 완료 전까지
+외부 env의 기존 값을 유지합니다. 기존 PV의 경로는 일반 재배포로 바꿀 수 없으므로
+[Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 먼저 수행합니다.
 
 네 registry 설정에는 사내 미러의 upstream별 proxy 경로를 입력합니다. URL scheme 없이
 `사내레지스트리/proxy경로` 형식이며 실제 주소는 코드에 고정하지 않습니다.
@@ -77,8 +80,8 @@ port-forward 전용 환경은 `INGRESS_ENABLED=false`, `INGRESS_HOST=`, `INGRESS
 선택한 Worker에서 예시 경로의 디렉터리를 준비합니다. `DATA_HOST_PATH`를 바꿨다면 함께 바꿉니다.
 
 ```bash
-sudo install -d -o 1000 -g 2000 -m 0770 /srv/monitoring/prometheus /srv/monitoring/alertmanager
-sudo install -d -o 472 -g 472 -m 0770 /srv/monitoring/grafana
+sudo install -d -o 1000 -g 2000 -m 0770 /appdata/monitoring/prometheus /appdata/monitoring/alertmanager
+sudo install -d -o 472 -g 472 -m 0770 /appdata/monitoring/grafana
 ```
 
 local PV로 다음 용량을 예약합니다. StorageClass는 필요하지 않습니다.

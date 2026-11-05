@@ -51,8 +51,15 @@
 
 ## 앱별 배치와 스토리지 선언
 
-아래는 저장소에 선언된 값입니다. **실제 설치 여부·Pod 배치·PV 연결·백업 상태는 모두 별도 확인이 필요합니다.**
+**운영 현황 사용자 확인: 2026-11-05 / 근거: 사용자가 현재 서버에서 Keycloak·MinIO만 운영 중이며 MinIO에는 데이터가 없다고 확인 / 담당자: 미확인.**
+MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소로 재생성하는 방향입니다.
+실제 namespace·PV/PVC 이름·현재 호스트 경로와 재생성 완료 여부는 서버 조회·적용 후 확인해야 합니다.
+나머지 앱의 아래 값은 설치 완료 기록이 아닌 배포 입력입니다.
+
+아래는 저장소에 선언된 값입니다. **실제 Pod 배치·PV 연결·백업 상태는 서버 조회로 별도 확인이 필요합니다.**
 외부 env를 지정하면 저장소 기본값과 다를 수 있습니다. 선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 원본을 확인합니다.
+2026-11-05 사용자 요청으로 Worker 앱 호스트 경로의 저장소 선언을 `/appdata` 아래로 통일했습니다.
+이는 실제 서버 이전 완료 기록이 아닙니다. 이전 기본값과 기존 설치 전환은 [데이터 이전](operations.md#worker-앱-데이터-경로와-이전)을 따릅니다.
 노드 배치는 각 앱의 `nodeSelector`·affinity·env, 저장공간은 PV·PVC·Helm values와 대조합니다.
 
 | 앱·공통 구성 | namespace | 배치 입력 | 스토리지·설정 원본 |
@@ -60,11 +67,11 @@
 | 공용 Traefik | `etch-sso` | 기본 `khplane01w09`. VIP 확장 시 기존 배치를 보존하고 backend별 배치 계산 | `deploy/shared/ingress/stack.yaml`, [Ingress 운영](../../ingress/README.md) |
 | Keycloak·전용 PostgreSQL | `etch-sso` | `khplane01w09` | 정적 local PV 50Gi, `/appdata/keycloak-postgres`. `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 안내](../../../keycloak/README.md) |
 | Portal | `tailwind-internal` | 운영 Worker·이미지 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) |
-| MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/data/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
-| Airflow·전용 PostgreSQL | `airflow` | `NODE_NAME=replace-me-node`로 미확정 | DB `/srv/airflow/postgres` 20Gi, 로그 `/srv/airflow/logs` 20Gi, ODBC `/srv/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) |
-| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/srv/monitoring` 아래 local PV. `deploy/monitoring/env/k8s.env`, [Monitoring 안내](../../../monitoring/README.md) |
+| MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
+| Airflow·전용 PostgreSQL | `airflow` | `NODE_NAME=replace-me-node`로 미확정 | DB `/appdata/airflow/postgres` 20Gi, 로그 `/appdata/airflow/logs` 20Gi, ODBC `/appdata/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) |
+| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. `deploy/monitoring/env/k8s.env`, [Monitoring 안내](../../../monitoring/README.md) |
 | Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) |
-| FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/data/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
+| FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/appdata/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
 
 공용 진입점의 확장과 앱·DB의 복제 여부를 구분합니다. 특히 local PV·hostPath는 해당 노드의 데이터이며
 다른 Worker로 옮길 때 별도 이전·복구가 필요합니다. 자원 용량·replica와 실제 여유는 앱 원본·클러스터에서 확인합니다.
@@ -77,7 +84,7 @@
 | 구분 | 운영 방향·설정 | 확인 상태·남은 확인 |
 | --- | --- | --- |
 | 접속·배치 | FTP가 필요한 Linux Worker의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | Worker별 배포 절차 작성. 실제 대상 노드·기동 여부 미확인 |
-| 데이터 | 접속한 Worker의 `/data/data_movement`에 저장. 폴더가 없으면 kubelet이 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 2026-11-05 사용자 요청에 따라 `DirectoryOrCreate`로 저장소 선언 변경. 실제 서버 적용·자동 생성 검증은 미실행. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
+| 데이터 | 접속한 Worker의 `/appdata/data_movement`에 저장. 폴더가 없으면 kubelet이 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 2026-11-05 사용자 요청으로 `DirectoryOrCreate`를 유지하며 호스트 경로 선언을 `/data/data_movement`에서 `/appdata/data_movement`로 변경. 실제 서버 적용·자동 생성 검증은 미실행. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
 | 이미지·계정 | 승인된 사내 이미지·digest를 overlay로 지정. `etch-ftp/ftp-credentials` 공용 계정 사용 | 실제 사내 FTP 이미지 주소·digest·pull Secret 필요 여부 미확인 |
 | 완료 판정 | 각 Worker에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 아직 미실행. 노드별 성공 확인일·근거·담당자 기록 필요 |
 

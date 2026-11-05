@@ -36,7 +36,7 @@ chmod 600 deploy/airflow/env/k8s.env
 - `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`: 배포할 DAG 포함 이미지. 매 배포마다 고유 태그를 사용합니다.
 - `POSTGRES_IMAGE`: 기존 사내 PostgreSQL 16 이미지 주소가 기본 입력되어 있습니다. mirror가 바뀐 경우에만 수정합니다.
 - `POSTGRES_UID`, `POSTGRES_GID`: 해당 이미지 사용자 UID/GID. 공식 Debian 이미지 기본값은 999/999입니다.
-- `ODBC_HOST_PATH`: 서버의 ODBC 설정 디렉터리 절대 경로. 기본 예시는 `/srv/airflow/odbc`입니다.
+- `ODBC_HOST_PATH`: 서버의 ODBC 설정 디렉터리 절대 경로. 기본 예시는 `/appdata/airflow/odbc`입니다.
 - `AIRFLOW_ADMIN_EMAIL`: 실제 관리자 이메일. 생성된 관리자 비밀번호는 `k8s.env`에서 확인합니다.
 - `AIRFLOW_API_BASE_URL`: Airflow DAG가 호출하는 Portal API 주소. 다른 namespace라면 Service DNS를 수정합니다.
 - `AIRFLOW_TRIGGER_TOKEN`: `k8s.env`에 넣습니다. Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.

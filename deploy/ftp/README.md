@@ -18,16 +18,19 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 관리 PC / 클러스터 관리 서버
   └─ make ftp-up: 지정한 Worker에 FTP 라벨을 붙이고 DaemonSet 배포
        ├─ Worker A: FTP Pod 1개 ← 클라이언트가 A의 IP:6380으로 접속
-       │    └─ A의 /data/data_movement/파일
+       │    └─ A의 /appdata/data_movement/파일
        └─ Worker B: FTP Pod 1개 ← 클라이언트가 B의 IP:6380으로 접속
-            └─ B의 /data/data_movement/파일
+            └─ B의 /appdata/data_movement/파일
 ```
 
 라벨은 `etch.io/ftp-enabled=true`입니다. 모든 노드에 자동으로 설치하지 않습니다.
 배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 Worker는 달라도 됩니다.
 
 노드 간 파일은 자동 복제·이동되지 않으며 소비 앱이 다른 노드에 있으면 별도 전송 또는 공유 저장소가 필요합니다.
-`/data/data_movement`가 없는 Worker에서는 Pod 시작 전에 폴더를 자동 생성합니다. 기존 데이터는 유지하며 하위 파일의 소유권은 자동 변경하지 않습니다.
+`/appdata/data_movement`가 없는 Worker에서는 Pod 시작 전에 폴더를 자동 생성합니다. 기존 데이터는 유지하며 하위 파일의 소유권은 자동 변경하지 않습니다.
+컨테이너 내부 경로는 `/data/data_movement`, 외부 PC의 kind 매핑도 기존 경로를 유지합니다.
+기존 Worker의 `/data/data_movement` 파일은 자동으로 옮겨지지 않습니다. 재배포 전에
+[Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)에 따라 복사·검증합니다.
 
 ## 실행 명령
 

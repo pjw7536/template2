@@ -49,6 +49,8 @@ Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만�
 최초 설치는 새 DB와 전용 계정·Fernet 키를 준비합니다.
 재배포는 사용 중인 DB 비밀번호·Fernet 키를 유지합니다. 데이터 이전이 필요하면 [백업·이전 절차](05_OPERATIONS.md)를 따릅니다.
 이후 디스크 경로·UID/GID는 입력한 env와 일치시켜야 합니다.
+기존 Kubernetes 설치가 `/srv/airflow`를 사용한다면 이전 완료 전까지 외부 env의 기존 경로를 유지합니다.
+`/appdata/airflow`로 변경할 때는 [Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 따릅니다.
 
 ## 3. Worker의 디스크 준비
 
@@ -57,8 +59,8 @@ Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만�
 `POSTGRES_MODE=external`이면 아래 생성·검사 명령에서 PostgreSQL 경로를 제외합니다.
 
 ```bash
-sudo install -d -o 999 -g 999 -m 0700 /srv/airflow/postgres
-sudo install -d -o 50000 -g 0 -m 0770 /srv/airflow/logs
+sudo install -d -o 999 -g 999 -m 0700 /appdata/airflow/postgres
+sudo install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
 ```
 
 기존 Compose PostgreSQL 데이터 폴더를 바로 연결하지 않습니다.
@@ -74,8 +76,8 @@ DB·로그 디스크의 여유 공간을 따로 감시해야 합니다.
 Airflow와 내부 DB가 한 Worker에 있으므로 해당 Worker나 디스크에 장애가 나면 Airflow가 중단됩니다.
 
 ```bash
-df -h /srv/airflow/postgres /srv/airflow/logs
-sudo stat -c '%U:%G %a %n' /srv/airflow/postgres /srv/airflow/logs
+df -h /appdata/airflow/postgres /appdata/airflow/logs
+sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs
 ```
 
 `POSTGRES_MODE=external`이면 내부 DB 디렉터리는 준비하지 않고 로그 디렉터리만 준비합니다.

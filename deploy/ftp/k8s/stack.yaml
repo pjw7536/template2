@@ -96,7 +96,7 @@ spec:
       volumes:
         - name: data
           hostPath:
-            path: /data/data_movement
+            path: /appdata/data_movement
             type: DirectoryOrCreate
         - name: start
           configMap:

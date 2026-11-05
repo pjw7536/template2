@@ -29,7 +29,7 @@ FTP 클라이언트에 다음 값을 입력합니다.
 | 로그인 후 업로드 폴더 | `data_movement/` |
 
 구분 가능한 이름의 작은 테스트 파일을 업로드한 뒤 다운로드해서 내용이 같은지 확인합니다.
-**접속한 Worker에서** `/data/data_movement/<테스트파일>`이 생겼는지 확인합니다.
+**접속한 Worker에서** `/appdata/data_movement/<테스트파일>`이 생겼는지 확인합니다.
 
 다른 Worker에도 FTP가 있으면 해당 IP로 접속해 같은 검사를 반복합니다. 파일은 업로드한 노드에만 저장됩니다.
 기존 Compose의 `ftp` DNS 이름 대신 대상 Worker IP와 6380을 사용합니다.
@@ -37,7 +37,7 @@ FTP 클라이언트에 다음 값을 입력합니다.
 ## 3. 노드 추가·재배포
 
 추가 Worker의 디스크·기존 파일 권한·포트를 확인한 뒤 `FTP_NODES`를 기존 노드와 새 노드를 모두 포함하도록 갱신합니다.
-없는 `/data/data_movement`는 Pod 시작 전에 자동 생성됩니다.
+없는 `/appdata/data_movement`는 Pod 시작 전에 자동 생성됩니다.
 사내 이미지 overlay를 사용하는 환경은 [사내 배포 검사·적용](03_KUBERNETES.md#3-검사와-렌더-확인)을 반복합니다.
 아래 `ftp-up` 명령은 기본 원본을 사용하는 환경에만 적용합니다.
 
@@ -91,7 +91,7 @@ kubectl --context "$KUBE_CONTEXT" -n etch-ftp logs "$FTP_POD" --tail=100
 | 증상 | 확인할 내용 |
 | --- | --- |
 | Pod가 없음 | 대상 노드의 FTP 라벨·Linux 라벨 |
-| Pending / FailedMount | 노드 상태·taint, 디스크·경로 생성 권한, `/data/data_movement`가 파일로 점유됐는지, namespace 정책 |
+| Pending / FailedMount | 노드 상태·taint, 디스크·경로 생성 권한, `/appdata/data_movement`가 파일로 점유됐는지, namespace 정책 |
 | ImagePullBackOff | registry 접근·이미지 반입·imagePullSecrets |
 | 시작 실패 | 기존 6380 포트 점유, 계정 형식, 폴더 권한 |
 | 연결 시간 초과 | 접속 IP·6380 방화벽·노드 네트워크 |

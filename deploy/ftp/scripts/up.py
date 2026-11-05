@@ -75,7 +75,7 @@ def check_nodes(nodes, names):
                      if item['type'] == 'InternalIP']
         if not addresses or ipaddress.ip_address(addresses[0]).version != 4:
             raise ValueError('IPv4 InternalIP가 필요합니다: ' + name)
-        print(f'대상: {name} / {addresses[0]}:6380 / /data/data_movement')
+        print(f'대상: {name} / {addresses[0]}:6380 / /appdata/data_movement')
 
 
 def start(context, nodes, credential_file, check_only=False):

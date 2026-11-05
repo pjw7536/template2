@@ -44,7 +44,7 @@ mc 기본값은 `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`를 사내 Do
 | `IMAGE_PULL_SECRET` | minio namespace에 준비한 registry 인증 Secret, 불필요하면 빈 값 |
 | `STORAGE_CLASS_NAME` | 동적 볼륨 공급자의 실제 이름. 비우면 local PV와 폴더를 자동 준비 |
 | `VOLUME_NAME` | 사용할 PV 이름. 비우면 기존 PVC의 연결 이름 또는 신규 `minio-data-pv` |
-| `MINIO_DATA_HOST_PATH` | 정적 모드의 Worker 저장 경로. 기본 `/data/minio`, 기존 PV가 있으면 실제 경로와 일치 |
+| `MINIO_DATA_HOST_PATH` | 정적 모드의 Worker 저장 경로. 기본 `/appdata/minio`, 기존 PV가 있으면 실제 경로와 일치 |
 | `STORAGE_SIZE` | PVC 요청 용량 |
 | `INGRESS_HOST` | 업무 도메인. 인증서는 공용 Traefik에서 관리 |
 | `INGRESS_TLS_SECRET` | 이전 env 호환용. 빈 값으로 유지 |
@@ -70,7 +70,7 @@ PV가 없는 새 설치는 다음 설정으로 시작합니다. `MINIO_DATA_HOST
 ```dotenv
 NODE_NAME=khplanew01
 STORAGE_CLASS_NAME=
-MINIO_DATA_HOST_PATH=/data/minio
+MINIO_DATA_HOST_PATH=/appdata/minio
 VOLUME_NAME=
 STORAGE_SIZE=10Gi
 ```
@@ -90,11 +90,65 @@ hostPath `DirectoryOrCreate`를 사용하며 기존 PV에서는 `Directory`로 �
 기존 PV가 있으면 경로·노드·용량·PVC UID를 먼저 검사하고 기존 PV 자체는 갱신하지 않습니다.
 기존 PVC가 연결한 PV 이름을 우선 사용하므로 과거 PV 이름이 기본값과 달라도 유지됩니다.
 기존 PV가 `Released`이거나 이전 PVC UID를 참조하거나, 연결했던 PV가 사라졌으면 자동 대체하지 않고 중단합니다.
-기존 env에 새 경로 키가 없으면 `/data/minio`가 기본값입니다. 다른 경로로 운영 중이었다면
-`MINIO_DATA_HOST_PATH`를 기존 PV의 `spec.local.path`에 맞춰 추가하세요.
+경로 키가 없는 env에도 `/appdata/minio` 기본값을 적용합니다. 이전 기본값은 `/data/minio`였습니다.
+기존 설치를 아직 이전하지 않았다면 외부 env에 `MINIO_DATA_HOST_PATH=/data/minio` 또는 실제 PV의
+`spec.local.path`를 명시해 기존 저장소를 유지하세요. 경로가 다르면 배포 도구는 기존 PV를 변경하지 않고 중단합니다.
+새 경로로 전환할 때는 [Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 먼저 수행합니다.
+보존할 데이터·개별 계정·정책이 없는 설치는 아래 재생성 절차를 사용할 수 있습니다.
 
 Worker 디렉터리 준비는 [Kubernetes hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath),
 Job 정리는 [TTL-after-finished](https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/) 계약을 사용합니다.
+
+### 데이터가 없는 기존 MinIO를 새 경로로 재생성
+
+이 절차는 `minio` namespace의 정적 local PV 설치를 대상으로 합니다.
+기존 버킷·객체·개별 계정·정책을 보존하지 않고, env의 관리자 계정과 `MINIO_BUCKETS`로 초기화합니다.
+Keycloak DB·namespace·인증서·registry Secret과 기존 호스트 폴더는 삭제하지 않습니다.
+`tailwind-internal`에 설치돼 있다면 이 명령 대신 [기존 Portal namespace에서 이전](#6-기존-portal-namespace에서-이전)을 먼저 확인합니다.
+
+1. 운영 env의 `MINIO_DATA_HOST_PATH=/appdata/minio`, `STORAGE_CLASS_NAME=`, `VOLUME_NAME=`을 확인합니다.
+   `NODE_NAME`·이미지·관리자 credential은 실제 운영값을 유지합니다. 외부 env를 사용한다면
+   `export MINIO_ENV=/실제/절대경로/prod.env`로 지정합니다. Worker의 `/appdata` 디스크와 새 저장 폴더가 비어 있는지도 확인합니다.
+2. CP1 또는 관리 호스트의 저장소 루트에서 실제 연결을 확인합니다.
+
+```bash
+kubectl config get-contexts
+read -r -p '운영 context: ' KUBE_CONTEXT
+export KUBE_CONTEXT
+kubectl --context "$KUBE_CONTEXT" -n minio get deployment,pvc,job
+kubectl --context "$KUBE_CONTEXT" get pv \
+  -o custom-columns=NAME:.metadata.name,CLAIM_NAMESPACE:.spec.claimRef.namespace,CLAIM:.spec.claimRef.name,POLICY:.spec.persistentVolumeReclaimPolicy,LOCAL_PATH:.spec.local.path
+```
+
+3. 현재 PVC의 PV를 읽고, `minio/minio-data` 전용 local PV이며 `Retain`인 경우에만 정리합니다.
+   MinIO로 쓰는 작업이 없고 초기화를 진행할 설치인지 확인한 뒤 아래 블록을 실행합니다.
+
+```bash
+(
+  set -euo pipefail
+  : "${KUBE_CONTEXT:?운영 context를 지정하세요.}"
+  minio_previous_pv="$(kubectl --context "$KUBE_CONTEXT" -n minio get pvc minio-data -o jsonpath='{.spec.volumeName}')"
+  [[ -n "$minio_previous_pv" ]]
+  minio_previous_binding="$(kubectl --context "$KUBE_CONTEXT" get pv "$minio_previous_pv" -o jsonpath='{.spec.claimRef.namespace}/{.spec.claimRef.name}')"
+  minio_previous_policy="$(kubectl --context "$KUBE_CONTEXT" get pv "$minio_previous_pv" -o jsonpath='{.spec.persistentVolumeReclaimPolicy}')"
+  minio_previous_path="$(kubectl --context "$KUBE_CONTEXT" get pv "$minio_previous_pv" -o jsonpath='{.spec.local.path}')"
+  [[ "$minio_previous_binding" == minio/minio-data && "$minio_previous_policy" == Retain && "$minio_previous_path" == /* ]]
+  make server-check APP=minio PROFILE=prod
+  python3 deploy/minio/scripts/manage.py check --env "${MINIO_ENV:-deploy/minio/env/prod.env}"
+  kubectl --context "$KUBE_CONTEXT" -n minio delete deployment minio --wait=true
+  kubectl --context "$KUBE_CONTEXT" -n minio delete job minio-init --ignore-not-found --wait=true
+  kubectl --context "$KUBE_CONTEXT" -n minio delete pvc minio-data --wait=true
+  kubectl --context "$KUBE_CONTEXT" delete pv "$minio_previous_pv" --wait=true
+  make minio-check KUBE_CONTEXT="$KUBE_CONTEXT"
+  make minio-up KUBE_CONTEXT="$KUBE_CONTEXT"
+)
+```
+
+`minio-init`도 다시 실행해 새로운 저장소에 `MINIO_BUCKETS`를 생성합니다.
+신규 PV와 Worker 폴더는 `minio-up`이 준비합니다. `Retain`인 기존 호스트 폴더는 자동 삭제되지 않습니다.
+재생성 후 PVC `Bound`, PV의 `/appdata/minio`, 콘솔과 테스트 파일의 업로드·다운로드를 확인합니다.
+권한·이미지 다운로드 등으로 실패하면 원인을 해소하고 `minio-up`을 재실행합니다.
+실제 운영 현황과 재생성 완료 여부는 [서비스 원본](../shared/docs/infrastructure/services.md#앱별-배치와-스토리지-선언)에 기록합니다.
 
 ### 공용 HTTPS 인증서
 

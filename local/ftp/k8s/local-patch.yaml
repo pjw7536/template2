@@ -13,3 +13,8 @@ spec:
             - name: PASV_ADDRESS
               valueFrom: null
               value: '127.0.0.1'
+      volumes:
+        - name: data
+          hostPath:
+            # kind의 기존 호스트 데이터 매핑을 사용합니다.
+            path: /data/data_movement

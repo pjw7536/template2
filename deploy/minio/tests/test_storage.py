@@ -37,9 +37,9 @@ class StorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'input.env'
             path.write_text('\n'.join(line for line in original.splitlines() if not line.startswith('MINIO_DATA_HOST_PATH=')))
-            self.assertEqual(manage.settings(path)['MINIO_DATA_HOST_PATH'], '/data/minio')
-            for invalid in ('/', 'relative/path', '/data/../other', '/data/minio/'):
-                path.write_text(original.replace('MINIO_DATA_HOST_PATH=/data/minio', 'MINIO_DATA_HOST_PATH=' + invalid))
+            self.assertEqual(manage.settings(path)['MINIO_DATA_HOST_PATH'], '/appdata/minio')
+            for invalid in ('/', 'relative/path', '/data/../other', '/appdata/minio/'):
+                path.write_text(original.replace('MINIO_DATA_HOST_PATH=/appdata/minio', 'MINIO_DATA_HOST_PATH=' + invalid))
                 with self.subTest(path=invalid), self.assertRaisesRegex(ValueError, 'MINIO_DATA_HOST_PATH'):
                     manage.settings(path)
 
@@ -87,6 +87,7 @@ class StorageTests(unittest.TestCase):
             change(pv)
             cases.append(pv)
         changed(lambda pv: pv['spec']['local'].update(path='/data/other'))
+        changed(lambda pv: pv['spec']['local'].update(path='/data/minio'))
         changed(lambda pv: pv['spec']['capacity'].update(storage='1Gi'))
         changed(lambda pv: pv['spec'].update(storageClassName='other'))
         changed(lambda pv: pv['spec'].update(volumeMode='Block'))

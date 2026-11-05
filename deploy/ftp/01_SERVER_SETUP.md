@@ -49,8 +49,8 @@ export FTP_NODES
 
 | 선택 대상 | FTP 접속 예시 | 이 노드에서 사용할 폴더 |
 | --- | --- | --- |
-| `khplanew01` | `10.172.40.117:6380` | `/data/data_movement` |
-| `khplane01w09` | `10.172.40.87:6380` | `/data/data_movement` |
+| `khplanew01` | `10.172.40.117:6380` | `/appdata/data_movement` |
+| `khplane01w09` | `10.172.40.87:6380` | `/appdata/data_movement` |
 
 `khplanew01` 한 대만 선택하면 입력값은 `khplanew01`, 두 Worker 모두 선택하면 `khplanew01,khplane01w09`입니다.
 `khplane01w09`는 Keycloak 전용 Worker로 기록되어 있으므로 이곳에도 파일 수신이 필요할 때 포함합니다.
@@ -61,16 +61,18 @@ CP1~CP3는 관리·제어면 역할이며 현재 FTP 배포 도구의 대상에�
 ## 3. 각 Worker의 저장소와 포트 확인
 
 이 단계만 **선택한 각 Worker에 접속해서** 수행합니다.
+기존 `/data/data_movement`에서 경로를 바꾼다면 [Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 먼저 수행합니다.
+그대로 재배포하면 새 빈 폴더를 사용할 수 있으므로 파일 복사와 소비 앱의 호스트 경로 연결을 먼저 확인합니다.
 
 ```bash
 hostname
 ip -br address
-if [[ -d /data/data_movement ]]; then
-  df -h /data/data_movement
-  sudo stat -c '%U:%G %a %n' /data/data_movement
+if [[ -d /appdata/data_movement ]]; then
+  df -h /appdata/data_movement
+  sudo stat -c '%U:%G %a %n' /appdata/data_movement
 else
   # 저장 폴더는 Pod 배포 시 생성합니다. 사용할 디스크의 여유를 확인합니다.
-  df -h /data 2>/dev/null || df -h /
+  df -h /appdata 2>/dev/null || df -h /
 fi
 sudo ss -lntp | grep -E ':(6380|8076|8077|8078|8079)[[:space:]]' || true
 ```
@@ -78,10 +80,10 @@ sudo ss -lntp | grep -E ':(6380|8076|8077|8078|8079)[[:space:]]' || true
 예를 들어 `khplanew01`을 선택했다면 그 서버에 SSH 접속해 실행하고, `khplane01w09`도 선택했다면 그 서버에서도 같은 준비를 합니다.
 SSH 계정·포트는 운영 접속 정보를 사용합니다. Worker의 저장 디스크·기존 파일 권한·포트는 해당 서버에서 확인합니다.
 
-기존 파일이 있으면 해당 Worker의 `/data/data_movement`로 이관하고 읽기·쓰기 권한을 맞춥니다.
+기존 파일이 있으면 해당 Worker의 `/appdata/data_movement`로 이관하고 읽기·쓰기 권한을 맞춥니다.
 FTP 시작 시 최상위 폴더 소유자를 이미지의 `ftp` 사용자로 변경하며 하위 파일 소유권은 변경하지 않습니다.
 
-`hostPath.type=DirectoryOrCreate` 설정으로 kubelet이 Pod 시작 전에 없는 `/data/data_movement`를 자동 생성합니다.
+`hostPath.type=DirectoryOrCreate` 설정으로 kubelet이 Pod 시작 전에 없는 `/appdata/data_movement`를 자동 생성합니다.
 수동 `mkdir`은 필수가 아닙니다. 기존 폴더와 파일은 재생성하지 않으며 데이터 이관은 별도로 수행합니다.
 새 폴더는 kubelet이 0755 권한으로 생성하고, FTP 시작 시 최상위 폴더만 `ftp:ftp` 소유자로 설정합니다.
 

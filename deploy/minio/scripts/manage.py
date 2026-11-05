@@ -51,7 +51,7 @@ def settings(path, example=False):
         key, separator, value = line.partition('=')
         require(separator and key in ENV_KEYS and key not in result, 'MinIO env 키 누락·중복·오타를 확인하세요.')
         result[key] = value
-    result.setdefault('MINIO_DATA_HOST_PATH', '/data/minio')
+    result.setdefault('MINIO_DATA_HOST_PATH', '/appdata/minio')
     require(result.keys() == ENV_KEYS, 'MinIO env 키가 설정 계약과 다릅니다.')
     optional = {'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'MINIO_BUCKETS', 'INGRESS_TLS_SECRET'}
     for key, value in result.items():
