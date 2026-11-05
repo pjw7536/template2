@@ -24,7 +24,8 @@ OS·버전의 확인 범위는 [설치 기준](servers.md#확인된-worker-설�
 SSH 포트·접속 계정·관리망에서의 접근 가능 여부는 미확인입니다. 위 노드 IP를 SSH 접속 성공 기록으로 간주하지 않습니다.
 
 별도 서버 `khinfow01`(`10.172.117.91`, 12 vCPU·72GiB·1TB)은 `khplanew01`과 다른 서버입니다.
-사용자가 Airflow 배포 대상 Worker로 지정했습니다. `deploy/airflow/env/k8s.env`의 `NODE_NAME`에 반영하며,
+사용자가 Airflow·Monitoring 배포 대상 Worker로 지정했습니다.
+`deploy/airflow/env/k8s.env`와 `deploy/monitoring/env/k8s.env`의 `NODE_NAME`에 반영하며,
 위 클러스터의 실제 가입 여부·Ready·접속 상태는 배포 전에 확인해야 합니다. 접속 계정·담당자는 미확인입니다.
 
 ## 확인된 Worker 설치 기준

@@ -58,6 +58,7 @@ kubectl config get-contexts
 read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
 export KUBE_CONTEXT
 kubectl --context "$KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
+kubectl --context "$KUBE_CONTEXT" get node khinfow01 -o wide
 
 export MONITORING_ENV="$PWD/deploy/monitoring/env/k8s.env"
 chmod 600 "$MONITORING_ENV"
@@ -68,7 +69,7 @@ vi "$MONITORING_ENV"
 
 | 설정 | 무엇을 입력하나요? |
 | --- | --- |
-| `NODE_NAME` | 위 조회의 **kubernetes.io/hostname 값**. `replace-me-node`를 실제 Worker 값으로 반드시 변경 |
+| `NODE_NAME` | 기본값 `khinfow01`. Airflow와 함께 배포할 Worker이며 위 조회의 **kubernetes.io/hostname 값**과 Ready 상태를 확인 |
 | `DATA_HOST_PATH` | 해당 Worker의 전용 데이터 경로. 신규 설치 기본값은 `/appdata/monitoring` |
 | `DOCKER_REGISTRY`·`QUAY_REGISTRY`·`GHCR_REGISTRY`·`K8S_REGISTRY` | 사내 미러 경로. 저장소 기본값을 대조하고 [이미지 미러 설정](#이미지-미러-설정) 확인 |
 | `IMAGE_PULL_SECRET` | 미러 인증이 필요할 때 사용할 기존 Kubernetes Secret 이름. 인증이 없으면 빈 값 |
