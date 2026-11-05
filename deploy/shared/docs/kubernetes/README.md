@@ -14,6 +14,10 @@
 **기존 클러스터에 Airflow용 Worker 추가:** 03번만 진행한 뒤 Airflow 배포 문서로 이동합니다.
 기존 Traefik을 그대로 사용할 수 있으며 새 Worker를 APP VIP에 추가할 필요는 없습니다.
 
+현재 Airflow·Monitoring 대상 `khinfow01`의 Worker 추가는
+[서버 목록](../infrastructure/servers.md#서버-목록)에 사용자 확인으로 기록되어 있습니다.
+해당 노드는 [현재 환경 확인](09-baseline.md)으로 Ready·노드 상태를 조회한 뒤 앱 배포 문서로 이동합니다.
+
 CP1은 관리 명령을 실행하는 서버이고, Worker는 앱이 실행되는 서버입니다.
 각 문서의 실행 위치를 확인합니다. 기존 Ready 노드에 초기화·가입 명령을 반복하지 않습니다.
 문서의 명령은 같은 터미널에서 이어서 실행하며, 새 터미널에서는 context 등 입력을 다시 지정합니다.

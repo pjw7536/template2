@@ -69,9 +69,12 @@ control-plane·master 역할의 `NoSchedule` taint만 FTP Pod의 toleration으�
 | --- | --- | --- |
 | `khplanew01` | `10.172.40.117:6380` | `/appdata/data_movement` |
 | `khplane01w09` | `10.172.40.87:6380` | `/appdata/data_movement` |
+| `khinfow01` | `10.172.117.91:6380` | `/appdata/data_movement` |
 
-`khplanew01` 한 대만 선택하면 입력값은 `khplanew01`, 두 Worker 모두 선택하면 `khplanew01,khplane01w09`입니다.
+`khplanew01` 한 대만 선택하면 입력값은 `khplanew01`, 기존 두 Worker를 선택하면 `khplanew01,khplane01w09`입니다.
 `khplane01w09`는 Keycloak 전용 Worker로 기록되어 있으므로 이곳에도 파일 수신이 필요할 때 포함합니다.
+`khinfow01`은 Airflow·Monitoring 배포 대상이며 Worker 추가는 사용자 확인입니다.
+이 노드에서도 파일 수신이 필요할 때 `FTP_NODES`에 포함합니다. FTP 활성화·포트 접근·실제 배포는 미확인입니다.
 CP1~CP3는 관리·제어면 역할입니다. 이곳의 파일 수신이 필요하면 위 옵션을 켜고 실제 노드 이름을 명시적으로 추가합니다.
 
 배포는 노드별로 명령을 반복하지 않습니다. 선택한 전체 노드 이름을 `FTP_NODES`에 넣고 관리 호스트에서 한 번 적용합니다.

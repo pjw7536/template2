@@ -39,7 +39,9 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" get node khinfow01 -o wide
 
 현재 기본 context에 의존하지 않도록 이후 명령에도 context를 명시합니다.
 새 터미널을 열면 이 단계를 다시 수행합니다.
-Airflow 배포 대상은 `khinfow01`(`10.172.117.91`)입니다. 이 노드가 실제 클러스터에 가입하고 Ready인지 확인합니다.
+Airflow 배포 대상은 [서버 목록](../shared/docs/infrastructure/servers.md#서버-목록)의 `khinfow01`입니다.
+클러스터 Worker 추가는 사용자 확인이며, 위 조회로 선택한 context의 노드명·InternalIP·Ready를 대조합니다.
+Airflow의 실제 배포 적용은 별도 확인이 필요합니다.
 
 ## 1. 설정과 차트 검사
 

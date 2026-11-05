@@ -7,6 +7,8 @@
 이 문서는 구축 순서와 인수 항목을 확인하는 참고입니다.
 
 기존 클러스터를 사용한다면 아래 상태만 확인하고 04장으로 이동합니다.
+[현재 서버 목록](../infrastructure/servers.md#서버-목록)은 제어면 3대·Worker 3대이며,
+`khinfow01`의 Worker 추가는 사용자 확인입니다. Ready·시스템 Pod·앱 배치는 별도 조회합니다.
 
 ## 구축 순서 — 인프라 담당자
 
@@ -16,7 +18,7 @@
 | 2 | 새 CP1에 첫 제어면 생성 | API·제어면·etcd 정상 |
 | 3 | CNI 설치 | 승인된 버전·CIDR·MTU 적용, Pod 네트워크 정상 |
 | 4 | CP2·CP3를 한 대씩 연결 | 각 제어면과 API LB backend 정상 |
-| 5 | Worker 2대 연결 | 의도한 노드 모두 등록·Ready |
+| 5 | 대상 Worker 연결 | 해당 환경에서 의도한 노드 모두 등록·Ready |
 | 6 | DNS·노드 간 통신·스토리지 검증 | 아래 인수 항목 통과 |
 
 설치 입력에는 이미지 저장소·CRI socket·노드 주소·API endpoint·인증서 SAN·Pod/Service CIDR·DNS domain을 포함합니다.
@@ -45,7 +47,7 @@ CNI 설치 전에는 노드가 NotReady일 수 있습니다. 이를 이유로 �
 
 담당자가 승인된 진단 이미지와 별도 검증 namespace에서 확인합니다.
 
-- 양쪽 Worker의 Pod에서 `kubernetes.default.svc` 이름 해석 성공.
+- 각 Worker의 Pod에서 `kubernetes.default.svc` 이름 해석 성공.
 - 같은 노드·다른 노드의 Pod와 Service 사이 통신 성공.
 - 사용할 저장소의 PVC 연결·파일 쓰기/읽기 성공.
 - API LB 상태 검사·backend 전환과 etcd 상태 확인. 운영 노드 중지는 포함하지 않습니다.

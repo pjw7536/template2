@@ -53,6 +53,10 @@ node-exporter는 호스트 네트워크(`hostNetwork`)와 `hostPath`를 사용�
 **이후 명령은 관리 서버의 저장소 루트, 같은 Bash 세션에서 실행합니다.**
 먼저 접속할 클러스터와 모니터링 데이터를 저장할 Worker를 확인합니다.
 
+[현재 서버 목록](../shared/docs/infrastructure/servers.md#서버-목록)의 `khinfow01`은
+클러스터 Worker 추가가 사용자 확인된 Airflow·Monitoring 배포 대상입니다.
+Ready·실제 Monitoring 배포·지표 수집 상태는 아래 조회와 배포 후 확인 단계에서 별도로 확인합니다.
+
 ```bash
 kubectl config get-contexts
 read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
@@ -69,7 +73,7 @@ vi "$MONITORING_ENV"
 
 | 설정 | 무엇을 입력하나요? |
 | --- | --- |
-| `NODE_NAME` | 기본값 `khinfow01`. Airflow와 함께 배포할 Worker이며 위 조회의 **kubernetes.io/hostname 값**과 Ready 상태를 확인 |
+| `NODE_NAME` | 기본값 `khinfow01`. Worker 추가는 사용자 확인. 위 조회의 **kubernetes.io/hostname 값**과 Ready 상태를 확인 |
 | `DATA_HOST_PATH` | 해당 Worker의 전용 데이터 경로. 신규 설치 기본값은 `/appdata/monitoring` |
 | `DOCKER_REGISTRY`·`QUAY_REGISTRY`·`GHCR_REGISTRY`·`K8S_REGISTRY` | 사내 미러 경로. 저장소 기본값을 대조하고 [이미지 미러 설정](#이미지-미러-설정) 확인 |
 | `IMAGE_PULL_SECRET` | 미러 인증이 필요할 때 사용할 기존 Kubernetes Secret 이름. 인증이 없으면 빈 값 |

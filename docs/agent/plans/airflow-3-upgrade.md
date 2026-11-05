@@ -9,7 +9,7 @@
 - Keycloak SSO는 FAB provider와 사용자별 Viewer·User·Admin 역할을 사용한다.
 - Portal은 서버 계정으로 JWT를 발급받아 API v2를 조회한다.
 - 로컬 DB migration이 완료됐으며 기존 DAG 실행 이력 1,148건이 유지된다. DB·Secret은 local/shared/runtime/airflow-3-backup에 보관한다.
-- 운영 Worker는 사용자 지정 khinfow01(10.172.117.91)이며 실제 운영 배포는 사용자가 CP1에서 명령을 직접 실행한다.
+- 운영 대상은 [서버 목록](../../../deploy/shared/docs/infrastructure/servers.md#서버-목록)의 `khinfow01`이며 클러스터 Worker 추가는 사용자 확인이다. Ready·Airflow 배포 적용은 별도 확인이 필요하고, 실제 운영 배포는 사용자가 CP1에서 명령을 직접 실행한다.
 - 현재 환경은 로컬 kind만 접근할 수 있다. 사내 SSH·API는 연결 시간 초과다.
 
 ## 범위

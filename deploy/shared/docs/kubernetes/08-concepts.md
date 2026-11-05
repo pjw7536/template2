@@ -9,7 +9,7 @@ Kubernetes는 여러 서버에서 컨테이너를 실행하고, 정해진 개수
 flowchart LR
     Admin[CP1: kubectl·배포 도구] --> API[API VIP: 6443]
     API --> CP[Control Plane 3대]
-    CP --> Worker[Worker 2대]
+    CP --> Worker[Worker 3대]
     User[사용자 브라우저] --> DNS[업무 DNS]
     DNS --> VIP[APP VIP: 443]
     VIP --> Traefik[Worker의 Traefik]
@@ -18,9 +18,13 @@ flowchart LR
     Pod --> Data[DB·영속 저장소]
 ```
 
+현재 노드 구성은 [서버 목록](../infrastructure/servers.md#서버-목록)을 따릅니다.
+`khinfow01`의 Worker 추가는 사용자 확인이며, Ready·실제 앱 배치는 별도 조회가 필요합니다.
+
 목표 구성에서는 APP VIP가 TCP 연결을 전달하고 Traefik이 HTTPS 인증서를 처리합니다(TLS 종료).
-실제 LB 설정, 두 Worker의 응답, Keycloak DNS 전환 여부는
-[서버 현황](../infrastructure/README.md)에서 아직 확인이 필요한 항목입니다.
+APP VIP backend는 [네트워크 원본](../infrastructure/network.md#vipdns접속-경로)에 기록된 기존 두 Worker입니다.
+Worker 추가만으로 APP VIP backend가 늘어나는 것은 아닙니다.
+실제 LB 설정·backend 응답·Keycloak DNS 전환 여부는 별도 확인이 필요합니다.
 
 Control Plane이나 Traefik이 여러 대여도 앱 DB가 자동으로 복제되는 것은 아닙니다.
 

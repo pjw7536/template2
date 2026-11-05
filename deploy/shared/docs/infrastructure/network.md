@@ -14,6 +14,7 @@
 | Kubernetes API VIP | `10.172.26.148:6443` | API 접속점. 실제 kubeconfig·가입 endpoint·LB backend 확인 필요 |
 | 업무 서비스 APP VIP | `10.172.26.150:443` | 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
 | 업무 DNS → APP VIP | `etch.samsungds.net` → `10.172.26.150` | 사용자 확인: DNS 연결. 현재 DNS 응답·인증서 확인 필요 |
+| 업무 HTTPS 인증서 신청 | CN: `etch.samsungds.net`, SAN 신청값: `etch.samsungds.net`, `10.172.26.150` | 사용자 확인: 신청 범위. `stg.etch.samsungds.net`은 신청값에 없음. 실제 발급 여부·SAN의 DNS/IP 유형·유효기간·서버 적용은 미확인. 파일·등록 절차는 [인증서 관리](../../certs/README.md) 참조 |
 | APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../../ingress/01-VIP.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |

@@ -19,14 +19,29 @@ OS·버전의 확인 범위는 [설치 기준](servers.md#확인된-worker-설�
 | CP3 | `khplane01w08` | `10.172.40.85` | control-plane, Kubernetes API·etcd |
 | Keycloak 전용 Worker·공용 Traefik | `khplane01w09` | `10.172.40.87` | 사용자 지정 Worker 용도. 실제 Pod 배치는 별도 조회 |
 | MinIO 배치 대상 Worker·APP VIP backend | `khplanew01` | `10.172.40.117` | MinIO·초기화 Job 배치 대상. 실제 Pod·저장소 연결은 별도 조회 |
+| Airflow·Monitoring 배치 대상 Worker | `khinfow01` | `10.172.117.91` | 클러스터 Worker 추가는 사용자 확인. 12 vCPU·72GiB·1TB. Ready·실제 앱 배치는 별도 조회 |
 
-관리 대상 클러스터는 제어면 3대·Worker 2대, etcd 3-node HA 구성입니다. 최신 Ready·추가 노드·Pod 배치는 다시 조회합니다.
+관리 대상 클러스터는 제어면 3대·Worker 3대, etcd 3-node HA 구성입니다. 최신 Ready·추가 노드·Pod 배치는 다시 조회합니다.
 SSH 포트·접속 계정·관리망에서의 접근 가능 여부는 미확인입니다. 위 노드 IP를 SSH 접속 성공 기록으로 간주하지 않습니다.
 
-별도 서버 `khinfow01`(`10.172.117.91`, 12 vCPU·72GiB·1TB)은 `khplanew01`과 다른 서버입니다.
-사용자가 Airflow·Monitoring 배포 대상 Worker로 지정했습니다.
-`deploy/airflow/env/k8s.env`와 `deploy/monitoring/env/k8s.env`의 `NODE_NAME`에 반영하며,
-위 클러스터의 실제 가입 여부·Ready·접속 상태는 배포 전에 확인해야 합니다. 접속 계정·담당자는 미확인입니다.
+`khinfow01`은 `khplanew01`과 다른 서버이며, 클러스터 Worker로 추가한 상태는 사용자 확인값입니다.
+Airflow·Monitoring 배포 대상은 `deploy/airflow/env/k8s.env`와
+`deploy/monitoring/env/k8s.env`의 `NODE_NAME=khinfow01`로 선언되어 있습니다.
+Ready·접속 상태·실제 앱 배치는 배포 전에 확인해야 합니다. 접속 계정·담당자는 미확인입니다.
+
+### Portal Docker 환경
+
+사용자는 Portal 테스트와 운영을 서로 다른 서버에서 Docker 기반으로 실행했다고 확인했습니다.
+접속 용도와 배포 전달 방식은 [서비스 원본](services.md#portal-테스트운영-접속-구분)에서 관리합니다.
+아래 접속 구분을 실제 OS hostname이나 Kubernetes 노드명으로 간주하지 않습니다.
+두 환경 모두 현재 준비 중인 Kubernetes 클러스터로 옮기는 것은 사용자 확인 목표입니다.
+전환할 Worker·자원·스토리지와 실제 적용 여부는 미확인이며, 기존 Docker 서버를
+그대로 Worker로 가입시키거나 폐기한다는 결정은 아닙니다.
+
+| 역할·대상 | 서버 관계·실행 기반 | 확인 상태·근거 | 남은 확인 |
+| --- | --- | --- | --- |
+| Portal 테스트 서버 | 운영과 별도 서버, Docker 기반 | 사용자 확인 | 실제 hostname·IP·OS·아키텍처·SSH·현재 가동 상태·담당자, 전환할 Worker·자원·스토리지와 적용 여부 |
+| Portal 운영 서버 | 테스트와 별도 서버, Docker 기반 | 사용자 확인 | 실제 hostname·IP·OS·아키텍처·SSH·현재 가동 상태·담당자, 전환할 Worker·자원·스토리지와 적용 여부 |
 
 ## 확인된 Worker 설치 기준
 
@@ -53,8 +68,8 @@ Worker의 OS는 CP1과 같다는 사용자 확인값입니다. 아래 버전은 
 
 | 대상 | 확인할 정보 | 현재 상태 |
 | --- | --- | --- |
-| 클러스터 5대·별도 시험 서버 | SSH 포트·접속 계정 또는 발급 절차·관리망 경유지 | 미확인 |
-| 노드별 자원 | CPU·메모리·디스크·마운트·각 노드의 커널·런타임 버전 | CP1·별도 시험 서버의 위 기록 외 미확인 |
+| 클러스터 6대 | SSH 포트·접속 계정 또는 발급 절차·관리망 경유지 | 미확인 |
+| 노드별 자원 | CPU·메모리·디스크·마운트·각 노드의 커널·런타임 버전 | CP1·`khinfow01`의 위 기록 외 미확인 |
 | 실행 기반 | etcd 설치 방식·CRI socket·cgroup·노드 registry CA/인증 | 미확인. CP1 containerd 버전 확인과 별도로 실제 설정·인증서·권한 확인 필요 |
 | 최신 구성 | 추가·교체·퇴역 서버와 최신 Ready·역할 | 작업 전 노드 목록·주소·역할 대조 필요 |
 
