@@ -69,7 +69,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 - 로컬 API는 기본 env → `api-k8s.env` → runtime override → MinIO client credential 순서로 합성합니다.
 - 사내 Portal은 `deploy/portal/env/prod` 입력만 사용합니다. `make prod-profile-env-check`로 필수 입력을 검사합니다.
 - Airflow의 DB·관리자·Portal 연결은 `deploy/airflow/env/k8s.env`에 둡니다. API의 Airflow 사용자·비밀번호·trigger token을 함께 맞춥니다.
-- Airflow 웹 SSO는 `AIRFLOW_AUTH_MODE=keycloak`, `AIRFLOW_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET`을 사용합니다. 모든 인증 사용자는 Viewer, 전용 client의 User·Admin만 추가 적용합니다. Portal Basic API와 DAG trigger token 계약은 유지합니다. 상세 입력은 [Airflow SSO 안내](../../deploy/airflow/k8s/jobs/keycloak-client/README.md)를 따릅니다.
+- Airflow 웹 SSO는 `AIRFLOW_AUTH_MODE=keycloak`, `AIRFLOW_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET`을 사용합니다. 모든 인증 사용자는 Viewer, 전용 client의 User·Admin만 추가 적용합니다. Portal은 서버 계정으로 JWT를 발급받아 API v2를 호출하며, DAG trigger token은 Portal 업무 API 인증에 사용합니다. 상세 입력은 [Airflow SSO 안내](../../deploy/airflow/k8s/jobs/keycloak-client/README.md)를 따릅니다.
 - 로컬 Airflow와 API의 공용 credential은 실행 도구가 생성·재사용합니다. 로컬 개발은 사내망에 의존하지 않습니다.
 - Web 공개 설정에는 secret을 넣지 않습니다. 정적 Web은 시작 시 `/runtime-env.js`를 생성합니다.
 - 이미지 registry와 package mirror는 이미지 빌드·배포 입력으로 지정합니다. 전체 목록은 [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)을 봅니다. 서버 환경·구성은 [사내 인프라 정보](../../deploy/shared/docs/infrastructure/README.md)에서 함께 관리합니다.
@@ -100,7 +100,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 | 로컬 FTP 접속 | `LOCAL_FTP_PORT`, `LOCAL_FTP_PASSIVE_START` | `local/shared/env/k8s.env`의 호스트 접속 포트와 연속 4개 Passive 포트. 운영 제어 포트는 시작 스크립트·DaemonSet의 6380이며, Passive 포트는 manifest의 `PASV_MIN_PORT`·`PASV_MAX_PORT`, 주소는 `status.hostIP`로 주입 |
 | FTP 서버 배포 | `FTP_ENV`, `FTP_IMAGE`, `IMAGE_PULL_SECRET`, `FTP_ALLOW_CONTROL_PLANE` | `FTP_ENV`로 선택한 운영 env(기본 `deploy/ftp/env/prod.env`)에서 고정 tag/digest 이미지와 선택 pull Secret을 읽어 `make ftp-check`·`make ftp-up`에 적용. 사내 미러 기본값. `FTP_ALLOW_CONTROL_PLANE=true`일 때 선택한 control plane의 역할 NoSchedule을 허용하며 기본값·생략값은 false. 로그인 계정은 별도 `FTP_CREDENTIAL_FILE` |
 | `OIDC_*` / Auth/OIDC | `OIDC_PROVIDER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_AUTH_URL`, `OIDC_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `OIDC_TOKEN_URL`, `OIDC_JWKS_URL`, `OIDC_CONNECT_TIMEOUT_SECONDS`, `OIDC_READ_TIMEOUT_SECONDS`, `OIDC_JWKS_CACHE_SECONDS`, `ALLOWED_REDIRECT_HOSTS` | Keycloak code+PKCE/JWKS 로그인과 세션별 권한 |
-| Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 전용 Basic Auth |
+| Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 계정의 JWT 발급과 API v2 Bearer 인증 |
 | Airflow DAG env | `deploy/airflow/env/k8s.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 env에서 선택값을 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. 제목 제외값은 쉼표로 구분하며 `*`는 0글자 이상을 나타내는 wildcard입니다. |
@@ -143,7 +143,7 @@ API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
 - 호스트 Vite dev server는 `import.meta.env`를 사용하며 `local/portal/env/web.env`를 자동으로 읽지 않습니다. 실행 환경변수 또는 `apps/portal/web/.env.development.local`로 `VITE_*` 값을 전달합니다. API·로그인 연결 조건은 [Web 실행 안내](../../apps/portal/web/README.md#실행하기)를 따릅니다.
 - 정적 Web은 컨테이너 시작 시 생성한 `/runtime-env.js`를 우선 사용합니다. 설정 변경은 env 적용과 컨테이너 재시작이 필요합니다.
 - runtime config 생성 대상은 `VITE_*`와 Web이 사용하는 명시적 Backend/MinIO key로 제한합니다.
-- Airflow Basic Auth는 API profile의 `api.env`에만 두며 Web과 `/runtime-env.js`에 전달하지 않습니다.
+- Airflow 서버 계정은 API profile의 `api.env`에서 관리하고, 발급 token은 Django 서버 메모리에서만 사용합니다. 두 정보는 Web과 `/runtime-env.js`에 전달하지 않습니다.
 
 ### 모니터링 스택
 

@@ -185,7 +185,7 @@ def build(app):
     print(f'이미지 빌드·반입: {app}', flush=True)
     sources = {'portal': [('tailwind-api:k8s-local', 'apps/portal/api'), ('tailwind-web:k8s-local', 'apps/portal/web')],
                'mock': [('tailwind-adfs:k8s-local', 'local/adfs_dummy')],
-               'airflow': [('tailwind-airflow:2.11.0-local', 'apps/airflow')]}
+               'airflow': [('tailwind-airflow:3.3.2-local', 'apps/airflow')]}
     # 로컬 공개 이미지에는 데스크톱 전용 credential helper를 요구하지 않습니다.
     with tempfile.TemporaryDirectory(prefix='local-docker-') as directory:
         Path(directory, 'config.json').write_text('{"auths":{}}')
@@ -382,7 +382,7 @@ def health():
                 raise RuntimeError(f'준비되지 않은 Pod: {namespace}/{pod["metadata"]["name"]}')
     for address in ('http://localhost:8080/api/v1/health/',
                     'http://localhost:8180/realms/portal/.well-known/openid-configuration',
-                    'http://localhost:8080/airflow/health'):
+                    'http://localhost:8080/airflow/api/v2/monitor/health'):
         for attempt in range(30):
             try:
                 with urlopen(address, timeout=5) as response:

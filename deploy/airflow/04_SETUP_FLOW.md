@@ -34,10 +34,12 @@
 kubectl config get-contexts
 read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" get node khinfow01 -o wide
 ```
 
 현재 기본 context에 의존하지 않도록 이후 명령에도 context를 명시합니다.
 새 터미널을 열면 이 단계를 다시 수행합니다.
+Airflow 배포 대상은 `khinfow01`(`10.172.117.91`)입니다. 이 노드가 실제 클러스터에 가입하고 Ready인지 확인합니다.
 
 ## 1. 설정과 차트 검사
 
@@ -124,14 +126,14 @@ Keycloak과 Keycloak DB는 재배포하지 않습니다. 공용 Traefik의 설�
 
 **신규 DAG는 일시정지로 생성하고 기존 DB의 DAG 활성 상태는 유지합니다.**
 기존 scheduler가 있다면 전환 전에 작업을 정리하고 중지해야 합니다.
-완료 기준: migration·관리자 hook과 scheduler·webserver·triggerer rollout이 끝나야 합니다.
+완료 기준: migration·관리자 hook과 scheduler·API server·DAG processor·triggerer rollout이 끝나야 합니다.
 
 ## 5. 접속과 연동 확인
 
 ```bash
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods,pvc -o wide
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get ingress
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow port-forward svc/airflow-webserver 8080:8080
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow port-forward svc/airflow-api-server 8080:8080
 ```
 
 port-forward는 터미널을 점유하며 Ctrl+C로 종료합니다. 같은 컴퓨터의 브라우저에서
@@ -154,7 +156,7 @@ DNS는 실제 Ingress 진입 주소를 가리켜야 하며 `/airflow` 경로를 
 
 | Portal 설정 | 의미 |
 | --- | --- |
-| `AIRFLOW_BASE_URL` | 내부 호출 주소. 기본 namespace 예: `http://airflow-webserver.airflow.svc.cluster.local:8080/airflow` |
+| `AIRFLOW_BASE_URL` | 내부 호출 주소. 기본 namespace 예: `http://airflow-api-server.airflow.svc.cluster.local:8080/airflow` |
 | `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` | 실제 Airflow 계정과 일치 |
 | `AIRFLOW_PUBLIC_BASE_URL` | 브라우저에서 접근하는 Airflow 공개 URL |
 

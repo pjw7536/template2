@@ -41,6 +41,7 @@ chmod 600 deploy/airflow/env/k8s.env
 - `AIRFLOW_API_BASE_URL`: Airflow DAG가 호출하는 Portal API 주소. 다른 namespace라면 Service DNS를 수정합니다.
 - `AIRFLOW_TRIGGER_TOKEN`: `k8s.env`에 넣습니다. Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.
 - `AIRFLOW_WEBSERVER_BASE_URL`: `/airflow`로 끝나는 접속 URL. port-forward 접속 예시는 `http://localhost:8080/airflow`입니다.
+- `AIRFLOW_WEBSERVER_SECRET_KEY`: API server의 세션과 JWT 서명에 사용하는 고정 비밀값입니다. `airflow-api-key`·`airflow-api-jwt` Secret으로 전달하며 모든 구성 요소가 같은 값을 사용합니다.
 
 Knox 연결과 실패 알림이 필요하면 같은 파일의 `KNOX_*`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`를 채웁니다.
 단, `KNOX_MESSENGER_AUTHORIZATION`은 `k8s.env`에 저장합니다.
@@ -56,7 +57,7 @@ Knox 연결과 실패 알림이 필요하면 같은 파일의 `KNOX_*`, `AIRFLOW
 | 묶음 | 변수 | 설정 기준 |
 | --- | --- | --- |
 | 배치 | `NAMESPACE`, `NODE_NAME` | namespace 기본 예시는 airflow, 노드는 hostname label 값 |
-| 이미지 | `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`, `IMAGE_PULL_SECRET` | 태그는 `2.11.0-`으로 시작하는 고유값, 인증 Secret은 대상 namespace에 준비 |
+| 이미지 | `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`, `IMAGE_PULL_SECRET` | 태그는 `3.3.2-`으로 시작하는 고유값, 인증 Secret은 대상 namespace에 준비 |
 | 내부 DB | `POSTGRES_MODE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_DB` | internal, airflow-postgres, 5432, airflow, airflow 유지 |
 | 외부 DB | 위 DB 변수와 `POSTGRES_PASSWORD` | external로 지정하고 미리 준비한 DB 연결값 입력 |
 | 디스크 | `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `POSTGRES_STORAGE_SIZE`, `LOGS_STORAGE_SIZE` | 서로 겹치지 않는 Worker 절대 경로, Gi/Ti 용량 |

@@ -17,7 +17,7 @@ CONTEXT = 'kind-' + CLUSTER
 WORKER = CLUSTER + '-worker'
 NAMESPACES = ('tailwind-local', 'airflow', 'etch-ftp', 'monitoring')
 IMAGES = {'portal': ['tailwind-api:k8s-local', 'tailwind-web:k8s-local'],
-          'mock': ['tailwind-adfs:k8s-local'], 'airflow': ['tailwind-airflow:2.11.0-local']}
+          'mock': ['tailwind-adfs:k8s-local'], 'airflow': ['tailwind-airflow:3.3.2-local']}
 
 
 def read_env(path):
@@ -146,7 +146,7 @@ def airflow_settings(creds):
                   POSTGRES_HOST='external-postgres', POSTGRES_IMAGE='postgres:16',
                   POSTGRES_HOST_PATH='/data/local-runtime/unused-postgres',
                   LOGS_HOST_PATH='/data/local-runtime/airflow/logs', ODBC_HOST_PATH='',
-                  AIRFLOW_IMAGE_REPOSITORY='tailwind-airflow', AIRFLOW_IMAGE_TAG='2.11.0-local',
+                  AIRFLOW_IMAGE_REPOSITORY='tailwind-airflow', AIRFLOW_IMAGE_TAG='3.3.2-local',
                   AIRFLOW_ADMIN_EMAIL='airflow@localhost.test', INGRESS_ENABLED='true', INGRESS_CLASS_NAME='traefik',
                   AIRFLOW_API_BASE_URL='http://api.tailwind-local.svc.cluster.local:8000',
                   POSTGRES_PASSWORD=creds['AIRFLOW_DB_PASSWORD'],
@@ -173,7 +173,7 @@ def monitoring_settings():
 def api_overrides(creds):
     """공통 local API 설정에 최종 적용할 실행 연결값입니다."""
     return dict(DJANGO_DB_PASSWORD=creds['PORTAL_DB_PASSWORD'],
-                AIRFLOW_BASE_URL='http://airflow-webserver.airflow.svc.cluster.local:8080/airflow',
+                AIRFLOW_BASE_URL='http://airflow-api-server.airflow.svc.cluster.local:8080/airflow',
                 AIRFLOW_USERNAME='airflow', AIRFLOW_PASSWORD=creds['AIRFLOW_ADMIN_PASSWORD'],
                 AIRFLOW_TRIGGER_TOKEN=creds['AIRFLOW_TRIGGER_TOKEN'],
                 KNOX_MESSENGER_API_BASE_URL='', KNOX_MESSENGER_AUTHORIZATION='',

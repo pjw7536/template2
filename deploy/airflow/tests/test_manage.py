@@ -109,7 +109,7 @@ class ConfigurationTests(unittest.TestCase):
             deploy.validate(values)
         values['INGRESS_TLS_SECRET'] = 'airflow-tls'
         deploy.validate(values)
-        web = deploy.helm_values(values)['ingress']['web']
+        web = deploy.helm_values(values)['ingress']['apiServer']
         self.assertEqual(web['path'], '/airflow')
         self.assertEqual(web['hosts'][0]['tls']['secretName'], 'airflow-tls')
 
@@ -198,7 +198,7 @@ class InternalBuildParityTests(unittest.TestCase):
         for key, value in deploy.read_env(build_path).items():
             index = calls[0].index(f'{key}={value}')
             self.assertEqual(calls[0][index - 1], '--build-arg')
-        self.assertIn('AIRFLOW_DEPENDENCY_IMAGE=registry.test/airflow:2.11.0-release-1-dependencies', calls[1])
+        self.assertIn('AIRFLOW_DEPENDENCY_IMAGE=registry.test/airflow:3.3.2-release-1-dependencies', calls[1])
         self.assertNotIn('push', calls[0] + calls[1])
         source = deploy.BASE.parents[1] / 'apps/airflow'
         self.assertEqual(calls[1][-1], str(source))
@@ -435,20 +435,20 @@ class DeploymentTests(unittest.TestCase):
                 self.assertTrue(all(item.get('kind') != 'Namespace' for item in body.get('items', [])))
 
     def test_deploy_restarts_only_components_present_in_final_render(self):
-        """triggerer가 비활성화돼도 남은 scheduler·webserver는 재시작하고 준비를 기다립니다."""
-        webserver = deepcopy(self.pod_resources[0])
-        webserver['metadata']['name'] = 'airflow-webserver'
-        self.pod_resources += [webserver, {'kind': 'Job', 'metadata': {'name': 'airflow-migration'},
-                                          'spec': deepcopy(webserver['spec'])}]
+        """triggerer가 비활성화돼도 남은 scheduler·API server는 재시작하고 준비를 기다립니다."""
+        api_server = deepcopy(self.pod_resources[0])
+        api_server['metadata']['name'] = 'airflow-api-server'
+        self.pod_resources += [api_server, {'kind': 'Job', 'metadata': {'name': 'airflow-migration'},
+                                          'spec': deepcopy(api_server['spec'])}]
         with patch.object(deploy, 'run', self.fake_run):
             deploy.deploy(settings(), 'test-context', Path('/chart.tgz'), values_file=Path('/override.json'))
         commands = [args for args, _ in self.calls]
         restart = next(args for args in commands if 'restart' in args)
         self.assertEqual(restart[restart.index('restart') + 1:],
-                         ['deployment/airflow-scheduler', 'deployment/airflow-webserver'])
+                         ['deployment/airflow-scheduler', 'deployment/airflow-api-server'])
         waits = [args[args.index('status') + 1] for args in commands if 'rollout' in args and 'status' in args]
         self.assertEqual(waits, ['statefulset/airflow-postgres', 'deployment/airflow-scheduler',
-                                 'deployment/airflow-webserver'])
+                                 'deployment/airflow-api-server'])
         self.assertEqual(deploy.render.call_args.args[-1], Path('/override.json'))
 
     def test_deploy_uses_rendered_workload_kind_for_rollout(self):
@@ -507,7 +507,7 @@ class HelmIntegrationTests(unittest.TestCase):
             rendered = (Path(directory) / 'airflow.yaml').read_text()
             workloads = re.findall(r'^kind: (?:Deployment|StatefulSet|DaemonSet)\nmetadata:\n  name: (\S+)',
                                    rendered, re.M)
-            self.assertEqual(workloads, ['airflow-scheduler', 'airflow-webserver'])
+            self.assertEqual(workloads, ['airflow-api-server', 'airflow-dag-processor', 'airflow-scheduler'])
 
     def test_official_chart_applies_toleration_override_to_components_and_hooks(self):
         path = Path(os.environ.get('AIRFLOW_CHART_FILE', deploy.BASE / 'helm/vendor/airflow-1.22.0.tgz'))
@@ -520,18 +520,18 @@ class HelmIntegrationTests(unittest.TestCase):
             flags = deploy.render(settings(), directory, deploy.chart_path(), values_file=override)
             rendered = (Path(directory) / 'airflow.yaml').read_text()
             self.assertEqual(flags[-1], override)
-            self.assertEqual(rendered.count('key: dedicated'), 5)
-            self.assertEqual(rendered.count('value: airflow'), 5)
+            self.assertEqual(rendered.count('key: dedicated'), 6)
+            self.assertEqual(rendered.count('value: airflow'), 6)
             self.assertNotIn('key: node-role.kubernetes.io/control-plane', rendered)
 
-    def test_official_chart_renders_airflow2_localexecutor_without_extra_claims(self):
+    def test_official_chart_renders_airflow3_localexecutor_without_extra_claims(self):
         path = Path(os.environ.get('AIRFLOW_CHART_FILE', deploy.BASE / 'helm/vendor/airflow-1.22.0.tgz'))
         if not path.is_file() or not shutil.which('helm'):
             self.skipTest('공식 chart archive와 Helm 반입 후 실행 가능')
         with tempfile.TemporaryDirectory() as directory:
             deploy.render(settings(), directory, deploy.chart_path())
             rendered = (Path(directory) / 'airflow.yaml').read_text()
-            self.assertEqual(rendered.count('\nkind: Deployment\n'), 3)
+            self.assertEqual(rendered.count('\nkind: Deployment\n'), 4)
             self.assertNotIn('\nkind: StatefulSet\n', rendered)
             self.assertNotIn('\nkind: PersistentVolumeClaim\n', rendered)
             self.assertIn('executor = LocalExecutor', rendered)
@@ -541,9 +541,13 @@ class HelmIntegrationTests(unittest.TestCase):
             self.assertIn('max_active_runs_per_dag = 16', rendered)
             self.assertIn('workers = 4', rendered)
             self.assertNotIn('name: scheduler-log-groomer', rendered)
+            self.assertNotIn('name: dag-processor-log-groomer', rendered)
             self.assertIn('path: /appdata/airflow/odbc', rendered)
             self.assertIn('mountPath: /usr/local/odbc', rendered)
-            self.assertIn('path: /airflow/health', rendered)
+            self.assertIn('path: /api/v2/monitor/health', rendered)
+            self.assertIn('name: airflow-api-jwt', rendered)
+            self.assertIn('name: airflow-api-key', rendered)
+            self.assertIn('config_file = /opt/airflow/webserver_config.py', rendered)
             self.assertIn('/opt/airflow/bootstrap-user.py', rendered)
             self.assertIn('post-install,post-upgrade', rendered)
             self.assertIn('claimName: airflow-logs', rendered)

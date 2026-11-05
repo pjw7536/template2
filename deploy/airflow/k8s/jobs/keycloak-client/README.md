@@ -9,7 +9,7 @@
 
 ## 1. 실제 env와 이미지 준비
 
-SSO 코드를 포함한 Airflow 2.11.0 이미지를 새 고유 태그로 빌드합니다.
+SSO 코드를 포함한 Airflow 3.3.2 이미지를 새 고유 태그로 빌드합니다.
 Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값을 입력합니다. 실제 비밀값은 이 문서에 복사하지 않습니다.
 기존 DB·Fernet 키·관리자 API 계정은 유지합니다.
 
@@ -26,9 +26,9 @@ Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값�
 
 CA ConfigMap은 `ca.crt` 키에 필요한 신뢰 루트·중간 CA를 포함한 bundle을 넣습니다.
 CA 설정을 쓰면 TLS 인증서 검증에 해당 bundle을 사용합니다. HTTPS 검증 생략은 지원하지 않습니다.
-브라우저 callback은 `${AIRFLOW_WEBSERVER_BASE_URL}/oauth-authorized/keycloak` 하나만 등록합니다.
+브라우저 callback은 `${AIRFLOW_WEBSERVER_BASE_URL}/auth/oauth-authorized/keycloak` 하나만 등록합니다.
 운영 Airflow 공개 URL은 `https://etch.samsungds.net/airflow`이며, callback은
-`https://etch.samsungds.net/airflow/oauth-authorized/keycloak`입니다.
+`https://etch.samsungds.net/airflow/auth/oauth-authorized/keycloak`입니다.
 현재 realm issuer는 `https://etch-sso.samsungds.net/realms/etch`입니다.
 업무 도메인 인증서는 `etch-sso/traefik-tls`에서 관리하며
 [배포 절차](../../../04_SETUP_FLOW.md)에 따라 공용 저장소에 등록합니다.
@@ -74,7 +74,7 @@ Airflow 로그인 화면의 Keycloak 버튼으로 로그인합니다. 기본 사
 웹 로그인과 앱 간 호출은 각각 확인합니다.
 
 - 웹 로그인은 Keycloak SSO를 사용합니다.
-- Portal → Airflow 호출은 기존 DB 계정의 Basic 인증을 유지합니다.
+- Portal → Airflow 호출은 DB 계정으로 `/auth/token`에서 JWT를 발급받아 API v2에 Bearer 인증으로 전달합니다.
 - Airflow → Portal 호출은 기존 trigger token을 유지합니다.
 
 양방향 호출을 따로 검증합니다. 현재 Portal API가 쓰는 관리자 계정을 최소 권한의 전용 계정으로 바꾸는 일은 후속 작업입니다.

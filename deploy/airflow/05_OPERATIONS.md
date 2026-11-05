@@ -15,7 +15,7 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods
 
 ## Fernet Secret 복원과 배포 사전 검사
 
-기존 DB PVC, metadata Secret 또는 scheduler·webserver·triggerer Deployment가 남아 있는데
+기존 DB PVC, metadata Secret 또는 scheduler·API server·DAG processor·triggerer Deployment가 남아 있는데
 `airflow-fernet`이 없으면 배포를 중단합니다.
 
 복원할 때는 DB 백업 시점의 원래 Fernet 키를 사용합니다. 새 키를 생성하지 않습니다.
@@ -91,7 +91,15 @@ chmod 700 deploy/airflow/backups
 
 실패해도 리소스를 자동 삭제하거나 DB를 되돌리지 않습니다.
 Helm rollback은 DB schema까지 복구하지 않으므로 DB는 해당 버전의 복원 절차를 따릅니다.
-이 구성은 Airflow 2.11.0 전환용입니다. Airflow 3으로 올릴 때는 DAG·API·인증 호환성을 별도로 검증합니다.
+이 구성은 Airflow 3.3.2와 API v2를 사용합니다. API server·독립 DAG processor·JWT 인증과 DAG의 공개 SDK 사용을 함께 검증합니다.
+
+Airflow 2.x DB를 올리는 경우에는 지원되는 2.7 이상 버전에서 먼저 실행 중 작업을 정리하고,
+기존 scheduler·webserver·triggerer를 중지한 뒤 DB·Fernet 키·설정을 백업합니다.
+3.x migration은 DB schema를 변경하므로 되돌릴 때는 해당 DB 백업과 이전 이미지가 함께 필요합니다.
+API server·DAG processor가 준비되고 기존 Connection·Variable의 복호화와 시험 DAG 실행을 확인한 뒤 업무 DAG를 활성화합니다.
+Keycloak client의 callback은 `/airflow/auth/oauth-authorized/keycloak`로 맞춥니다.
+Portal에서 DAG 현황을 조회한다면 API v2·JWT client가 포함된 Portal API 이미지도 함께 배포하고,
+`AIRFLOW_BASE_URL`을 `http://airflow-api-server.airflow.svc.cluster.local:8080/airflow`로 지정합니다.
 
 DAG를 일시정지하고 실행 중 작업 완료·백업을 확인한 뒤 다음 순서로 진행합니다.
 `k8s.env`의 `AIRFLOW_IMAGE_TAG`를 새 고유 태그로 바꾸고, 소스가 있는 빌드 호스트에서 실행합니다.
@@ -120,7 +128,8 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods -o wide
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods,pvc,jobs
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get events --sort-by=.lastTimestamp
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-scheduler --tail=100
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-webserver --tail=100
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-api-server --tail=100
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-dag-processor --tail=100
 kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-triggerer --tail=100
 ```
 

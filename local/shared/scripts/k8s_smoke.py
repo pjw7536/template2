@@ -4,7 +4,6 @@
 테스트 전용 대화·메일·파일·DAG 실행을 만들며 기존 데이터나 활성 DAG 상태는 초기화하지 않습니다.
 """
 
-import base64
 from contextlib import contextmanager
 import ftplib
 from html.parser import HTMLParser
@@ -74,12 +73,12 @@ class Client:
             text = response.read().decode()
             return text if raw else json.loads(text)
 
-    def login(self):
+    def login(self, username='90000001'):
         form = LoginForm()
         form.feed(self.request(PORTAL + '/api/v1/auth/login', raw=True))
         if not form.action:
             raise AssertionError('Keycloak 로그인 form을 찾지 못했습니다.')
-        fields = {**form.fields, 'username': '90000001', 'password': 'dummy-user-change-me', 'credentialId': ''}
+        fields = {**form.fields, 'username': username, 'password': 'dummy-user-change-me', 'credentialId': ''}
         with self.opener.open(Request(form.action, data=urlencode(fields).encode()), timeout=60) as response:
             response.read()
         user = self.request(PORTAL + '/api/v1/auth/me')
@@ -199,13 +198,13 @@ def airflow(client, creds, marker):
             repr({'rag_doc_id': marker, 'index_name': 'rp-unclassified', 'permission_groups': ['rag-public']}) + ')')
     run(['docker', 'compose', '--project-name', 'tailwind-k8s-check', '--env-file', ROOT / 'local/shared/runtime/db.env',
          '-f', ROOT / 'local/shared/compose/k8s-check.yml', 'run', '--rm', '-T', 'api', 'shell', '-c', code], quiet=True)
-    auth = base64.b64encode(('airflow:' + creds['AIRFLOW_ADMIN_PASSWORD']).encode()).decode()
-    headers = {'Authorization': 'Basic ' + auth}
-    imports = client.request(PORTAL + '/airflow/api/v1/importErrors', headers=headers)
+    token = client.request(PORTAL + '/airflow/auth/token', {'username': 'airflow', 'password': creds['AIRFLOW_ADMIN_PASSWORD']})['access_token']
+    headers = {'Authorization': 'Bearer ' + token}
+    imports = client.request(PORTAL + '/airflow/api/v2/importErrors', headers=headers)
     assert imports['total_entries'] == 0, 'Airflow DAG import 오류가 있습니다.'
-    base = PORTAL + '/airflow/api/v1/dags/email_outbox_process'
+    base = PORTAL + '/airflow/api/v2/dags/email_outbox_process'
     original = client.request(base, headers=headers)
-    # Airflow의 JSON 수정 요청은 Basic 인증을 사용합니다.
+    # Airflow의 JSON 수정 요청은 Bearer token 인증을 사용합니다.
     def pause(value):
         request = Request(base, data=json.dumps({'is_paused': value}).encode(), method='PATCH',
                           headers={**headers, 'Content-Type': 'application/json'})
@@ -213,7 +212,7 @@ def airflow(client, creds, marker):
             response.read()
     try:
         pause(False)
-        client.request(base + '/dagRuns', {'dag_run_id': marker, 'conf': {}}, headers)
+        client.request(base + '/dagRuns', {'dag_run_id': marker, 'logical_date': None, 'conf': {}}, headers)
         for _ in range(120):
             state = client.request(base + '/dagRuns/' + marker, headers=headers)['state']
             if state == 'success':

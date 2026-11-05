@@ -51,7 +51,7 @@ class OidcDeploymentTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         client = module.client_definition(self.values())
-        self.assertEqual(client['redirectUris'], ['https://airflow.test/airflow/oauth-authorized/keycloak'])
+        self.assertEqual(client['redirectUris'], ['https://airflow.test/airflow/auth/oauth-authorized/keycloak'])
         self.assertEqual(client['attributes']['pkce.code.challenge.method'], 'S256')
         self.assertFalse(client['directAccessGrantsEnabled'])
         self.assertFalse(client['serviceAccountsEnabled'])

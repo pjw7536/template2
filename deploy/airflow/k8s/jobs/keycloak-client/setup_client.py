@@ -55,7 +55,7 @@ def client_definition(settings):
         'publicClient': False, 'clientAuthenticatorType': 'client-secret',
         'standardFlowEnabled': True, 'implicitFlowEnabled': False, 'directAccessGrantsEnabled': False,
         'serviceAccountsEnabled': False, 'fullScopeAllowed': False,
-        'redirectUris': [settings['AIRFLOW_WEBSERVER_BASE_URL'].rstrip('/') + '/oauth-authorized/keycloak'],
+        'redirectUris': [settings['AIRFLOW_WEBSERVER_BASE_URL'].rstrip('/') + '/auth/oauth-authorized/keycloak'],
         'webOrigins': [], 'defaultClientScopes': ['profile', 'email'], 'optionalClientScopes': [],
         'attributes': {'pkce.code.challenge.method': 'S256', 'id.token.signed.response.alg': 'RS256'},
     }

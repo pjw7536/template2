@@ -29,7 +29,7 @@ def _load_dag_module():
     airflow_module = types.ModuleType("airflow")
     airflow_module.DAG = _DummyDAG
     operators_module = types.ModuleType("airflow.operators")
-    python_operator_module = types.ModuleType("airflow.operators.python")
+    python_operator_module = types.ModuleType("airflow.providers.standard.operators.python")
     python_operator_module.PythonOperator = MagicMock
     utils_module = types.ModuleType("airflow.utils")
     dates_module = types.ModuleType("airflow.utils.dates")
@@ -46,8 +46,9 @@ def _load_dag_module():
         sys.modules,
         {
             "airflow": airflow_module,
+            "airflow.sdk": airflow_module,
             "airflow.operators": operators_module,
-            "airflow.operators.python": python_operator_module,
+            "airflow.providers.standard.operators.python": python_operator_module,
             "airflow.utils": utils_module,
             "airflow.utils.dates": dates_module,
             "failure_alerts": failure_alerts_module,

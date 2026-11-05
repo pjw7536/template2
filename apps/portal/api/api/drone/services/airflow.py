@@ -1,7 +1,7 @@
 # =============================================================================
 # 모듈: Line Dashboard Airflow 조회 client
 # 주요 기능: DAG 목록과 최근 실행을 Airflow REST API에서 조회·정규화
-# 핵심 전제: Airflow Basic Auth credential은 API 서버 환경변수에만 보관합니다.
+# 핵심 전제: Airflow 인증값과 발급 token은 API 서버에서만 사용합니다.
 # =============================================================================
 """Line Dashboard가 사용할 Airflow DAG overview를 서버에서 구성합니다."""
 
@@ -44,11 +44,40 @@ def _required_setting(name: str) -> str:
     return normalized
 
 
-def _request_json(url: str, *, params: dict[str, object] | None = None) -> dict[str, Any]:
-    """서버에 보관된 Basic Auth로 Airflow JSON object를 조회합니다.
+def _get_access_token(base_url: str) -> str:
+    """서버 계정으로 Airflow FAB의 단기 API token을 발급받습니다."""
+
+    username = _required_setting("AIRFLOW_USERNAME")
+    password = _required_setting("AIRFLOW_PASSWORD")
+    timeout = int(getattr(settings, "AIRFLOW_REQUEST_TIMEOUT_SECONDS", 10) or 10)
+    try:
+        response = requests.post(
+            f"{base_url}/auth/token",
+            json={"username": username, "password": password},
+            headers={"Accept": "application/json"},
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        raise AirflowUpstreamError("Airflow 인증 서버에 연결할 수 없습니다.") from exc
+    try:
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise AirflowUpstreamError("Airflow 인증에 실패했습니다.") from exc
+    finally:
+        response.close()
+    token = payload.get("access_token") if isinstance(payload, dict) else None
+    if not isinstance(token, str) or not token.strip():
+        raise AirflowUpstreamError("Airflow 인증 응답에 token이 없습니다.")
+    return token
+
+
+def _request_json(url: str, *, access_token: str, params: dict[str, object] | None = None) -> dict[str, Any]:
+    """서버에서 발급받은 Bearer token으로 Airflow JSON object를 조회합니다.
 
     인자:
         url: 호출할 Airflow REST API URL.
+        access_token: 서버 전용 API token.
         params: 선택 query parameter.
 
     반환:
@@ -62,16 +91,13 @@ def _request_json(url: str, *, params: dict[str, object] | None = None) -> dict[
         AirflowUpstreamError: 네트워크, HTTP status, JSON 형태가 잘못된 경우.
     """
 
-    username = _required_setting("AIRFLOW_USERNAME")
-    password = _required_setting("AIRFLOW_PASSWORD")
     timeout = int(getattr(settings, "AIRFLOW_REQUEST_TIMEOUT_SECONDS", 10) or 10)
 
     try:
         response = requests.get(
             url,
             params=params,
-            auth=(username, password),
-            headers={"Accept": "application/json"},
+            headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}"},
             timeout=timeout,
         )
     except requests.RequestException as exc:
@@ -113,33 +139,24 @@ def _normalize_owners(raw_owners: object) -> list[str]:
 
 
 def _timetable_description(dag: dict[str, Any]) -> str:
-    """Airflow timetable 또는 schedule interval을 표시 문자열로 변환합니다."""
+    """API v2의 timetable 설명 또는 요약을 표시 문자열로 반환합니다."""
 
-    description = dag.get("timetable_description")
-    if isinstance(description, str) and description:
-        return description
-
-    interval = dag.get("schedule_interval")
-    if isinstance(interval, str):
-        return interval
-    if not isinstance(interval, dict):
-        return ""
-
-    interval_type = interval.get("__type") or interval.get("type")
-    value = interval.get("value") or interval.get("days") or interval.get("seconds")
-    if interval_type and value:
-        return f"{interval_type} ({value})"
-    return str(value) if value else ""
+    for field in ("timetable_description", "timetable_summary"):
+        value = dag.get(field)
+        if isinstance(value, str) and value:
+            return value
+    return ""
 
 
-def _fetch_latest_run(base_url: str, dag_id: str) -> dict[str, Any] | None:
+def _fetch_latest_run(base_url: str, dag_id: str, access_token: str) -> dict[str, Any] | None:
     """단일 DAG의 최근 실행을 조회하며 실패를 해당 DAG에만 격리합니다."""
 
     encoded_dag_id = quote(dag_id, safe="")
     try:
         payload = _request_json(
-            f"{base_url}/api/v1/dags/{encoded_dag_id}/dagRuns",
-            params={"limit": 1, "order_by": "-execution_date"},
+            f"{base_url}/api/v2/dags/{encoded_dag_id}/dagRuns",
+            access_token=access_token,
+            params={"limit": 1, "order_by": "-run_after"},
         )
     except AirflowOverviewError:
         logger.warning("Airflow 최근 DAG 실행 조회에 실패했습니다: dag_id=%s", dag_id)
@@ -152,7 +169,7 @@ def _fetch_latest_run(base_url: str, dag_id: str) -> dict[str, Any] | None:
     return {
         "runId": latest.get("dag_run_id"),
         "state": latest.get("state"),
-        "executionDate": latest.get("execution_date"),
+        "executionDate": latest.get("logical_date"),
         "startDate": latest.get("start_date"),
         "endDate": latest.get("end_date"),
     }
@@ -162,8 +179,7 @@ def _normalize_dag(dag: dict[str, Any], latest_run: dict[str, Any] | None) -> di
     """Airflow DAG object를 기존 Web overview 계약으로 변환합니다."""
 
     is_paused = bool(dag.get("is_paused"))
-    raw_is_active = dag.get("is_active")
-    is_active = bool(raw_is_active) if raw_is_active is not None else not is_paused
+    is_active = not bool(dag.get("is_stale"))
     return {
         "dagId": str(dag.get("dag_id") or ""),
         "description": str(dag.get("description") or ""),
@@ -172,8 +188,8 @@ def _normalize_dag(dag: dict[str, Any], latest_run: dict[str, Any] | None) -> di
         "owners": _normalize_owners(dag.get("owners")),
         "tags": _normalize_tags(dag.get("tags")),
         "timetable": _timetable_description(dag),
-        "nextRun": dag.get("next_dagrun"),
-        "nextRunCreateAfter": dag.get("next_dagrun_create_after"),
+        "nextRun": dag.get("next_dagrun_logical_date"),
+        "nextRunCreateAfter": dag.get("next_dagrun_run_after"),
         "latestRun": latest_run,
     }
 
@@ -196,8 +212,10 @@ def get_airflow_dag_overview() -> dict[str, Any]:
     public_base_url = str(
         getattr(settings, "AIRFLOW_PUBLIC_BASE_URL", "/airflow") or "/airflow"
     ).rstrip("/")
+    access_token = _get_access_token(base_url)
     payload = _request_json(
-        f"{base_url}/api/v1/dags",
+        f"{base_url}/api/v2/dags",
+        access_token=access_token,
         params={"limit": AIRFLOW_DAG_LIMIT},
     )
     raw_dag_payload = payload.get("dags")
@@ -214,7 +232,7 @@ def get_airflow_dag_overview() -> dict[str, Any]:
         worker_count = min(AIRFLOW_LATEST_RUN_WORKERS, len(nonempty_dag_ids))
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = {
-                index: executor.submit(_fetch_latest_run, base_url, dag_id)
+                index: executor.submit(_fetch_latest_run, base_url, dag_id, access_token)
                 for index, dag_id in nonempty_dag_ids
             }
             for index, future in futures.items():

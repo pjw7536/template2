@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Portal 없이 플랫폼 6개 앱의 실제 로그인·권한·저장·task·지표를 검사합니다."""
 
-import base64
 import ftplib
 from http.cookiejar import CookieJar
 import io
@@ -46,21 +45,21 @@ def ftp(creds, marker):
 
 
 def airflow(creds, marker):
-    """SSO와 Basic API를 확인하고 독립 DAG를 실행한 뒤 원래 pause 상태를 복원합니다."""
+    """SSO와 JWT API를 확인하고 독립 DAG를 실행한 뒤 원래 pause 상태를 복원합니다."""
     base = 'http://localhost:8080/airflow'
     opener = build_opener(HTTPCookieProcessor(CookieJar(policy=LocalCookiePolicy())))
-    with opener.open(base + '/login/keycloak', timeout=30) as response:
+    with opener.open(base + '/auth/login/keycloak', timeout=30) as response:
         form = LoginForm()
         form.feed(response.read().decode())
     assert form.action, 'Airflow Keycloak 로그인 화면 누락'
     fields = {**form.fields, 'username': '90000001', 'password': 'dummy-user-change-me', 'credentialId': ''}
     with opener.open(Request(form.action, data=urlencode(fields).encode()), timeout=30) as response:
-        assert '/airflow/home' in response.url, 'Airflow 로그인 callback 실패'
-    auth = base64.b64encode(('airflow:' + creds['AIRFLOW_ADMIN_PASSWORD']).encode()).decode()
-    headers = {'Authorization': 'Basic ' + auth}
-    errors = request(base + '/api/v1/importErrors', headers=headers)
+        assert response.url.rstrip('/') == 'http://localhost:8080/airflow', 'Airflow 로그인 callback 실패'
+    token = request(base + '/auth/token', {'username': 'airflow', 'password': creds['AIRFLOW_ADMIN_PASSWORD']})['access_token']
+    headers = {'Authorization': 'Bearer ' + token}
+    errors = request(base + '/api/v2/importErrors', headers=headers)
     assert errors['total_entries'] == 0, 'Airflow DAG import 오류'
-    dag = base + '/api/v1/dags/local_platform_smoke'
+    dag = base + '/api/v2/dags/local_platform_smoke'
     for attempt in range(60):
         try:
             original = request(dag, headers=headers)
@@ -71,7 +70,7 @@ def airflow(creds, marker):
             time.sleep(2)
     try:
         request(dag, {'is_paused': False}, headers, 'PATCH')
-        request(dag + '/dagRuns', {'dag_run_id': marker}, headers)
+        request(dag + '/dagRuns', {'dag_run_id': marker, 'logical_date': None}, headers)
         for _ in range(90):
             state = request(dag + '/dagRuns/' + marker, headers=headers)['state']
             if state == 'success':
@@ -82,7 +81,7 @@ def airflow(creds, marker):
             raise AssertionError('로컬 독립 DAG 대기 초과')
     finally:
         request(dag, {'is_paused': original['is_paused']}, headers, 'PATCH')
-    print('PASS Keycloak → Airflow SSO·Basic API·LocalExecutor DAG 실행·DB 연결', flush=True)
+    print('PASS Keycloak → Airflow SSO·JWT API·LocalExecutor DAG 실행·Execution API·XCom', flush=True)
 
 
 def headlamp_login(username, password):

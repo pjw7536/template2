@@ -5,7 +5,8 @@ import os
 
 from authlib.oidc.core import UserInfo
 from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
-from flask import flash, redirect
+from flask import flash, g, session
+from airflow.providers.fab.www.views import redirect
 from flask_appbuilder import expose
 from flask_appbuilder.security.views import AuthOAuthView
 from flask_login import login_user
@@ -36,6 +37,9 @@ class KeycloakOAuthView(AuthOAuthView):
             if user is None:
                 raise ValueError('사용자 등록 또는 로그인 실패')
             login_user(user)
+            # FAB의 redirect가 Airflow UI·API용 HttpOnly JWT 쿠키를 발급한다.
+            g.user = user
+            session.modified = True
             return redirect(self.appbuilder.get_url_for_index)
         except Exception:
             # 외부 오류 문자열에는 code·토큰이 섞일 수 있으므로 상세 값을 기록하지 않는다.

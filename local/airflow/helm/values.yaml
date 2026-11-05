@@ -5,13 +5,13 @@ config:
     max_active_tasks_per_dag: '2'
     max_active_runs_per_dag: '1'
     dags_are_paused_at_creation: 'True'
-  webserver:
+  api:
     workers: '2'
 scheduler:
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: '2', memory: 2Gi}
-  # 업무 DAG 이미지는 유지하며 로컬 독립 검사 DAG 한 개만 추가합니다.
+  # LocalExecutor도 task 실행 시 DAG 원본을 읽습니다.
   extraVolumes:
     - name: local-platform-dag
       configMap:
@@ -21,7 +21,21 @@ scheduler:
       mountPath: /opt/airflow/dags/local_platform_smoke.py
       subPath: local_platform_smoke.py
       readOnly: true
-webserver:
+dagProcessor:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: '1', memory: 1Gi}
+  # 독립 DAG processor가 로컬 검증 DAG를 읽습니다.
+  extraVolumes:
+    - name: local-platform-dag
+      configMap:
+        name: local-platform-dag
+  extraVolumeMounts:
+    - name: local-platform-dag
+      mountPath: /opt/airflow/dags/local_platform_smoke.py
+      subPath: local_platform_smoke.py
+      readOnly: true
+apiServer:
   resources:
     requests: {cpu: 100m, memory: 512Mi}
     limits: {cpu: '1', memory: 1536Mi}

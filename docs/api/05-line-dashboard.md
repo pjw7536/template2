@@ -42,9 +42,9 @@ Line Dashboard API는 Drone SOP, 라인 테이블, 히스토리, 알림 설정�
 
 ## Airflow DAG 현황
 
-브라우저는 Airflow REST API와 Basic Auth credential에 직접 접근하지 않습니다. Django API가
-`AIRFLOW_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`를 사용해 DAG 목록과 최근 실행을
-조회하고, 화면에는 정규화된 결과만 반환합니다.
+브라우저는 Airflow REST API와 인증값에 직접 접근하지 않습니다. Django API가
+`AIRFLOW_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`를 사용해 `/auth/token`에서 JWT를 발급받고 API v2로 DAG 목록과 최근 실행을
+조회하며, 화면에는 정규화된 결과만 반환합니다.
 
 ```http
 GET /api/v1/line-dashboard/airflow/dag-overview

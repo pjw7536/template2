@@ -28,7 +28,7 @@ def _load_dag_module():
 
     airflow_module = types.ModuleType("airflow")
     airflow_module.DAG = _DummyDAG
-    python_operator_module = types.ModuleType("airflow.operators.python")
+    python_operator_module = types.ModuleType("airflow.providers.standard.operators.python")
     python_operator_module.PythonOperator = Mock
     dates_module = types.ModuleType("airflow.utils.dates")
     dates_module.days_ago = lambda _days: None
@@ -36,8 +36,11 @@ def _load_dag_module():
     failure_alerts_module.notify_airflow_task_failure = Mock()
     stubs = {
         "airflow": airflow_module,
-        "airflow.operators": types.ModuleType("airflow.operators"),
-        "airflow.operators.python": python_operator_module,
+        "airflow.providers": types.ModuleType("airflow.providers"),
+        "airflow.providers.standard": types.ModuleType("airflow.providers.standard"),
+        "airflow.providers.standard.operators": types.ModuleType("airflow.providers.standard.operators"),
+        "airflow.sdk": airflow_module,
+        "airflow.providers.standard.operators.python": python_operator_module,
         "airflow.utils": types.ModuleType("airflow.utils"),
         "airflow.utils.dates": dates_module,
         "failure_alerts": failure_alerts_module,

@@ -3,16 +3,15 @@
 import os
 import subprocess
 
-from airflow.www.app import cached_app
+from airflow.providers.fab.auth_manager.cli_commands.utils import get_application_builder
 
 
 def main():
     """동일 사용자 재생성을 피하고 생성 실패는 Job 실패로 전달한다."""
     # 기존 airflow-init와 같이 기본 pool의 slots를 무제한으로 맞춘다.
     subprocess.run(["airflow", "pools", "set", "default_pool", "-1", "기본 task pool 제한 없음"], check=True)
-    app = cached_app()
-    with app.app_context():
-        manager = app.appbuilder.sm
+    with get_application_builder() as appbuilder:
+        manager = appbuilder.sm
         username = os.environ["AIRFLOW_ADMIN_USERNAME"]
         if manager.find_user(username=username):
             print("기존 관리자 계정을 유지합니다.")

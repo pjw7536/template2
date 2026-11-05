@@ -102,7 +102,7 @@ Portal 역할·조직·SDWT 그룹은 사용하지 않습니다. 로컬 테스�
 make k8s-airflow-sso-check
 ```
 
-이 검사는 실제 Keycloak 로그인·기본 조회·역할 회수 후 Viewer 복귀·기존 Basic API·Portal 조회를 확인합니다.
+이 검사는 실제 Keycloak 로그인·기본 조회·역할 회수 후 Viewer 복귀·JWT API v2·Portal 조회를 확인합니다.
 90000003의 역할을 잠시 제거한 뒤 원래대로 복원하며 DAG를 실행하지 않습니다.
 Airflow 웹의 DB 비밀번호 로그인은 SSO로 대체되지만 기존 API 계정은 유지됩니다.
 

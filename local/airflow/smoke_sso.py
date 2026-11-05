@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """로컬 실제 Keycloak 로그인·역할 회수·API 인증을 검증하고 테스트 역할을 복원한다."""
 
-import base64
 from http.cookiejar import CookieJar
 import importlib.util
 import json
@@ -23,25 +22,25 @@ BASE = 'http://localhost:8080/airflow'
 def login(username):
     """브라우저와 같은 authorization code·쿠키·callback 경로를 통과한다."""
     opener = build_opener(HTTPCookieProcessor(CookieJar(policy=LocalCookiePolicy())))
-    with opener.open(BASE + '/login/keycloak', timeout=20) as response:
+    with opener.open(BASE + '/auth/login/keycloak', timeout=20) as response:
         form = LoginForm()
         form.feed(response.read().decode())
     assert form.action, 'Keycloak 로그인 화면이 없습니다.'
     fields = {**form.fields, 'username': username, 'password': 'dummy-user-change-me', 'credentialId': ''}
     with opener.open(Request(form.action, data=urlencode(fields).encode()), timeout=30) as response:
-        assert '/airflow/home' in response.url, 'Airflow 로그인 callback 실패'
+        assert response.url.rstrip('/') == 'http://localhost:8080/airflow', 'Airflow 로그인 callback 실패'
         response.read()
-    with opener.open(BASE + '/api/v1/dags?limit=1', timeout=20) as response:
+    with opener.open(BASE + '/api/v2/dags?limit=1', timeout=20) as response:
         assert response.status == 200
     return opener
 
 
 def stored_roles():
     """인증 결과는 FAB DB에 저장된 역할을 통해 직접 확인한다."""
-    code = ('import json; from airflow.www.app import cached_app; app=cached_app(); '
+    code = ('import json; from airflow.providers.fab.www.app import create_app; app=create_app(enable_plugins=False); '
             'ctx=app.app_context(); ctx.push(); '
             'print(json.dumps({u.username: sorted(r.name for r in u.roles) for u in app.appbuilder.sm.get_all_users()}))')
-    output = run([*KUBE, '-n', 'airflow', 'exec', 'deployment/airflow-webserver', '-c', 'webserver',
+    output = run([*KUBE, '-n', 'airflow', 'exec', 'deployment/airflow-api-server', '-c', 'api-server',
                   '--', 'python', '-c', code], quiet=True)
     return json.loads(output.strip().splitlines()[-1])
 
@@ -69,13 +68,13 @@ def main():
         assert set(stored_roles()[info['username']]) == expected, 'FAB 역할 동기화 실패'
         if expected == {'Viewer'}:
             try:
-                opener.open(BASE + '/api/v1/variables?limit=1', timeout=20)
+                opener.open(BASE + '/api/v2/variables?limit=1', timeout=20)
             except HTTPError as error:
                 assert error.code == 403
             else:
                 raise AssertionError('Viewer가 관리자 자원을 조회할 수 있습니다.')
             try:
-                opener.open(Request(BASE + '/api/v1/dags/oidc-permission-test-nonexistent',
+                opener.open(Request(BASE + '/api/v2/dags/oidc-permission-test-nonexistent',
                                     data=b'{"is_paused":true}', method='PATCH',
                                     headers={'Content-Type': 'application/json'}), timeout=20)
             except HTTPError as error:
@@ -95,19 +94,21 @@ def main():
     finally:
         admin.request('POST', path, original)
         login('90000003')
-    auth = base64.b64encode(('airflow:' + creds['AIRFLOW_ADMIN_PASSWORD']).encode()).decode()
-    with urlopen(Request(BASE + '/api/v1/dags?limit=1', headers={'Authorization': 'Basic ' + auth}), timeout=20) as response:
+    with urlopen(Request(BASE + '/auth/token', data=json.dumps({'username': 'airflow', 'password': creds['AIRFLOW_ADMIN_PASSWORD']}).encode(), headers={'Content-Type': 'application/json'}), timeout=20) as response:
+        token = json.load(response)['access_token']
+    with urlopen(Request(BASE + '/api/v2/dags?limit=1', headers={'Authorization': 'Bearer ' + token}), timeout=20) as response:
         assert response.status == 200
     try:
-        urlopen(BASE + '/api/v1/dags?limit=1', timeout=20)
+        urlopen(BASE + '/api/v2/dags?limit=1', timeout=20)
     except HTTPError as error:
         assert error.code in (401, 403)
     else:
         raise AssertionError('익명 API 접근이 허용되었습니다.')
     portal = Client()
-    portal.login()
+    # Portal 접근 권한이 있는 로컬 fixture 계정으로 앱 간 조회를 검사한다.
+    portal.login('90000003')
     assert portal.request('http://localhost:8080/api/v1/line-dashboard/airflow/dag-overview')
-    print('PASS 익명 접근 거부·기존 Basic API 인증·Portal 실제 Airflow 조회', flush=True)
+    print('PASS 익명 접근 거부·기존 JWT API 인증·Portal 실제 Airflow 조회', flush=True)
 
 
 if __name__ == '__main__':

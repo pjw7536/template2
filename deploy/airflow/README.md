@@ -24,7 +24,8 @@
 
 | 항목 | 저장소 원본 기준 |
 | --- | --- |
-| chart / Airflow | Apache 공식 Helm chart 1.22.0 / Airflow 2.11.0 |
+| chart / Airflow | Apache 공식 Helm chart 1.22.0 / Airflow 3.3.2 |
+| 구성 요소 | API server·scheduler·독립 DAG processor·triggerer |
 | 실행 방식 | LocalExecutor, Redis·Celery worker 없음 |
 | DB | 기본 PostgreSQL 16 StatefulSet, external 모드 선택 가능 |
 | 저장 | Worker local PV에 DB·로그 저장, Retain 정책 |

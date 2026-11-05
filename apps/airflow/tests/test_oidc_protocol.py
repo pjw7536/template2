@@ -55,6 +55,10 @@ class OidcProtocolTests(unittest.TestCase):
         self.login = patch('keycloak_security.login_user')
         self.login.start()
         self.addCleanup(self.login.stop)
+        from flask import redirect
+        self.redirect = patch('keycloak_security.redirect', side_effect=redirect)
+        self.redirect.start()
+        self.addCleanup(self.redirect.stop)
 
     def callback(self, overrides=None, bad_state=False, bad_signature=False, no_id_token=False):
         from authlib.jose import jwt

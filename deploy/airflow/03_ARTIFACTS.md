@@ -33,7 +33,8 @@ export AIRFLOW_CHART_FILE
 `env/build.env`를 사용하면 사내 의존성 이미지의 build arg가 적용됩니다.
 사내 base image·APT/PIP mirror·trusted hosts·ODBC artifact URL이 동일하며
 `INSTALL_BIGDATAQUERY_PYTHON=true`, `INSTALL_BIGDATAQUERY_ODBC=true`가 기본값입니다.
-기존에 공개 기본값으로 만든 `build.env`가 있으면 저장소의 최신 설정과 비교해 이 값을 갱신합니다.
+사내 미러에서 `apache/airflow:3.3.2-python3.12`를 가져올 수 있어야 합니다.
+BigDataQuery Python·ODBC는 사내 빌드 호스트에서 실제 설치·import·DSN 접속을 확인합니다.
 사내 주소는 env에서 변경할 수 있으며 Dockerfile·배포 Python 코드에는 고정하지 않습니다.
 빌드 인자에는 비밀번호·접근 토큰을 넣지 않습니다.
 

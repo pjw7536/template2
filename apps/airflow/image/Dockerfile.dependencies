@@ -1,4 +1,4 @@
-ARG AIRFLOW_BASE_IMAGE=apache/airflow:2.11.0
+ARG AIRFLOW_BASE_IMAGE=apache/airflow:3.3.2-python3.12
 FROM ${AIRFLOW_BASE_IMAGE}
 
 ARG APT_DEBIAN_REPOSITORY=
@@ -59,10 +59,6 @@ RUN if [ "$INSTALL_BIGDATAQUERY_ODBC" = "true" ]; then \
         rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN if [ "$INSTALL_BIGDATAQUERY_PYTHON" = "true" ]; then \
-        python -m pip install --no-cache-dir bigdataquery; \
-    fi
-
 RUN mkdir -p /opt/airflow/logs /usr/local/odbc \
     && chown -R airflow:0 /opt/airflow/logs \
     && chmod -R 770 /opt/airflow/logs
@@ -72,4 +68,9 @@ ENV ODBCINI=/usr/local/odbc/odbc.ini \
     CLOUDERAIMPALAINI=/etc/cloudera.impalaodbc.ini
 
 USER airflow
+RUN if [ "$INSTALL_BIGDATAQUERY_PYTHON" = "true" ]; then \
+        python -m pip install --no-cache-dir \
+            'apache-airflow==3.3.2' 'apache-airflow-providers-fab==3.9.0' \
+            'apache-airflow-providers-standard==1.19.0' 'Authlib==1.8.0' bigdataquery; \
+    fi
 WORKDIR /opt/airflow

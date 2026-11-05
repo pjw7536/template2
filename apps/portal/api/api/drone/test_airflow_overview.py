@@ -18,7 +18,7 @@ from api.drone.views import AirflowDagOverviewView
 
 
 @override_settings(
-    AIRFLOW_BASE_URL="http://airflow-webserver:8080",
+    AIRFLOW_BASE_URL="http://airflow-api-server:8080/airflow",
     AIRFLOW_PUBLIC_BASE_URL="/airflow",
     AIRFLOW_USERNAME="server-user",
     AIRFLOW_PASSWORD="server-password",
@@ -27,8 +27,9 @@ from api.drone.views import AirflowDagOverviewView
 class AirflowOverviewServiceTests(SimpleTestCase):
     """Airflow client가 서버 설정만 사용해 overview를 구성하는지 검증합니다."""
 
+    @patch("api.drone.services.airflow._get_access_token", return_value="server-token")
     @patch("api.drone.services.airflow._request_json")
-    def test_overview_normalizes_dags_and_latest_run(self, mock_request_json: Mock) -> None:
+    def test_overview_normalizes_dags_and_latest_run(self, mock_request_json: Mock, mock_token: Mock) -> None:
         """DAG 목록과 최근 실행을 기존 Web response shape로 변환합니다."""
 
         mock_request_json.side_effect = [
@@ -38,11 +39,12 @@ class AirflowOverviewServiceTests(SimpleTestCase):
                         "dag_id": "daily report",
                         "description": "Daily report",
                         "is_paused": False,
-                        "is_active": True,
+                        "is_stale": False,
                         "owners": ["owner", None],
                         "tags": [{"name": "daily"}],
                         "timetable_description": "0 1 * * *",
-                        "next_dagrun": "2026-08-30T01:00:00Z",
+                        "next_dagrun_logical_date": "2026-08-30T01:00:00Z",
+                        "next_dagrun_run_after": "2026-08-31T01:00:00Z",
                     }
                 ]
             },
@@ -51,7 +53,7 @@ class AirflowOverviewServiceTests(SimpleTestCase):
                     {
                         "dag_run_id": "scheduled__2026-08-29",
                         "state": "failed",
-                        "execution_date": "2026-08-29T01:00:00Z",
+                        "logical_date": "2026-08-29T01:00:00Z",
                         "start_date": "2026-08-29T01:00:01Z",
                         "end_date": "2026-08-29T01:00:02Z",
                     }
@@ -61,34 +63,74 @@ class AirflowOverviewServiceTests(SimpleTestCase):
 
         payload = services.get_airflow_dag_overview()
 
+        mock_token.assert_called_once_with("http://airflow-api-server:8080/airflow")
         self.assertEqual(payload["baseUrl"], "/airflow")
         self.assertEqual(payload["totals"], {"total": 1, "active": 1, "paused": 0, "failed": 1})
         self.assertEqual(payload["dags"][0]["dagId"], "daily report")
         self.assertEqual(payload["dags"][0]["owners"], ["owner"])
         self.assertEqual(payload["dags"][0]["tags"], ["daily"])
+        self.assertEqual(payload["dags"][0]["nextRun"], "2026-08-30T01:00:00Z")
+        self.assertEqual(payload["dags"][0]["nextRunCreateAfter"], "2026-08-31T01:00:00Z")
         self.assertEqual(payload["dags"][0]["latestRun"]["state"], "failed")
         latest_url = mock_request_json.call_args_list[1].args[0]
         self.assertIn("daily%20report", latest_url)
+        self.assertEqual(payload["dags"][0]["latestRun"]["executionDate"], "2026-08-29T01:00:00Z")
+        self.assertEqual(mock_request_json.call_args_list[1].kwargs, {"access_token": "server-token", "params": {"limit": 1, "order_by": "-run_after"}})
 
     @patch("api.drone.services.airflow.requests.get")
-    def test_request_uses_server_side_basic_auth(self, mock_get: Mock) -> None:
+    def test_request_uses_server_side_bearer_token(self, mock_get: Mock) -> None:
         """Airflow 요청이 Django settings의 credential을 사용하는지 확인합니다."""
 
         response = Mock()
         response.json.return_value = {"dags": []}
         mock_get.return_value = response
 
-        payload = airflow_client._request_json("http://airflow-webserver:8080/api/v1/dags")
+        payload = airflow_client._request_json("http://airflow-api-server:8080/airflow/api/v2/dags", access_token="server-token")
 
         self.assertEqual(payload, {"dags": []})
         mock_get.assert_called_once_with(
-            "http://airflow-webserver:8080/api/v1/dags",
+            "http://airflow-api-server:8080/airflow/api/v2/dags",
             params=None,
-            auth=("server-user", "server-password"),
-            headers={"Accept": "application/json"},
+            headers={"Accept": "application/json", "Authorization": "Bearer server-token"},
             timeout=7,
         )
         response.close.assert_called_once_with()
+
+    def test_stale_dag_and_timetable_summary(self) -> None:
+        """API v2에서 사라진 DAG는 비활성으로 표시하고 timetable 요약을 사용합니다."""
+        dag = airflow_client._normalize_dag(
+            {"dag_id": "removed", "is_stale": True, "is_paused": False, "timetable_summary": "@daily"}, None,
+        )
+        self.assertFalse(dag["isActive"])
+        self.assertEqual(dag["timetable"], "@daily")
+
+    @patch("api.drone.services.airflow.requests.post")
+    def test_token_uses_server_credentials(self, mock_post: Mock) -> None:
+        """인증값은 token 발급에만 사용하고 응답을 닫습니다."""
+        response = mock_post.return_value
+        response.json.return_value = {"access_token": "server-token"}
+        self.assertEqual(airflow_client._get_access_token("http://airflow/airflow"), "server-token")
+        mock_post.assert_called_once_with(
+            "http://airflow/airflow/auth/token",
+            json={"username": "server-user", "password": "server-password"},
+            headers={"Accept": "application/json"}, timeout=7,
+        )
+        response.close.assert_called_once_with()
+
+    @patch("api.drone.services.airflow.requests.post")
+    def test_invalid_token_response_is_rejected(self, mock_post: Mock) -> None:
+        """누락되거나 잘못된 token 응답은 API 요청으로 전달하지 않습니다."""
+        for payload in ({}, {"access_token": " "}, {"access_token": 1}, []):
+            with self.subTest(payload=payload):
+                mock_post.return_value.json.return_value = payload
+                with self.assertRaises(airflow_client.AirflowUpstreamError):
+                    airflow_client._get_access_token("http://airflow/airflow")
+
+    @patch("api.drone.services.airflow._request_json")
+    def test_latest_run_failure_is_isolated(self, mock_request: Mock) -> None:
+        """개별 DAG 실행 조회 실패는 전체 목록 조회를 막지 않습니다."""
+        mock_request.side_effect = airflow_client.AirflowUpstreamError("unavailable")
+        self.assertIsNone(airflow_client._fetch_latest_run("http://airflow", "daily", "token"))
 
 
 class AirflowDagOverviewViewTests(SimpleTestCase):

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import requests
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 from failure_alerts import notify_airflow_task_failure
 
@@ -46,7 +46,7 @@ with DAG(
     default_args=default_args,
     # 1분에 한 번 실행합니다.
     schedule="*/1 * * * *",
-    start_date=days_ago(1),
+    start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
     catchup=False,
     max_active_runs=1,
     tags=["email", "rag", "pop3"],

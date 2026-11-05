@@ -103,7 +103,7 @@ def validate(values, example=False):
         require(values[key].isdigit() and int(values[key]) > 0, f'양수 UID/GID 필요: {key}')
     require(re.search(r':16(?:[.-][a-zA-Z0-9_.-]+)?(?:@sha256:[a-f0-9]{64})?$', values['POSTGRES_IMAGE']), 'POSTGRES_IMAGE는 PostgreSQL 16 태그를 지정하세요.')
     require(re.fullmatch(r'[a-zA-Z0-9./:_-]+', values['AIRFLOW_IMAGE_REPOSITORY']), 'AIRFLOW_IMAGE_REPOSITORY 형식 오류')
-    require(re.fullmatch(r'2\.11\.0-[a-zA-Z0-9_.-]+', values['AIRFLOW_IMAGE_TAG']), 'AIRFLOW_IMAGE_TAG는 2.11.0-으로 시작하는 고유 태그가 필요합니다.')
+    require(re.fullmatch(r'3\.3\.2-[a-zA-Z0-9_.-]+', values['AIRFLOW_IMAGE_TAG']), 'AIRFLOW_IMAGE_TAG는 3.3.2-으로 시작하는 고유 태그가 필요합니다.')
     require(values['INGRESS_ENABLED'] in ('true', 'false'), 'INGRESS_ENABLED는 true 또는 false여야 합니다.')
     for key in ('AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'KNOX_MESSENGER_API_BASE_URL'):
         if not values[key]:
@@ -212,11 +212,16 @@ def helm_values(settings, pause_new_dags=False):
         'defaultAirflowRepository': settings['AIRFLOW_IMAGE_REPOSITORY'],
         'defaultAirflowTag': settings['AIRFLOW_IMAGE_TAG'],
         'nodeSelector': {'kubernetes.io/hostname': settings['NODE_NAME']},
-        'config': {'webserver': {'base_url': settings['AIRFLOW_WEBSERVER_BASE_URL']}},
+        'config': {
+            'api': {'base_url': settings['AIRFLOW_WEBSERVER_BASE_URL']},
+            'core': {'execution_api_server_url': (
+                f'http://airflow-api-server.{settings["NAMESPACE"]}.svc.cluster.local:8080/airflow/execution/'
+            )},
+        },
         'imagePullSecrets': [{'name': settings['IMAGE_PULL_SECRET']}] if settings['IMAGE_PULL_SECRET'] else [],
     }
     if pause_new_dags:
-        result['config']['core'] = {'dags_are_paused_at_creation': 'True'}
+        result['config']['core']['dags_are_paused_at_creation'] = 'True'
     if settings['ODBC_HOST_PATH']:
         # 기존 디렉터리 전체를 유지한다. 없는 경로를 빈 디렉터리로 자동 생성하지 않는다.
         result['volumes'] = [{'name': 'odbc', 'hostPath': {'path': settings['ODBC_HOST_PATH'], 'type': 'Directory'}}]
@@ -235,7 +240,7 @@ def helm_values(settings, pause_new_dags=False):
             annotations['traefik.ingress.kubernetes.io/router.entrypoints'] = 'websecure' if url.scheme == 'https' else 'web'
             if url.scheme == 'https':
                 annotations['traefik.ingress.kubernetes.io/router.tls'] = 'true'
-        result['ingress'] = {'web': {
+        result['ingress'] = {'apiServer': {
             'annotations': annotations,
             'enabled': True, 'path': '/airflow', 'pathType': 'Prefix',
             'ingressClassName': settings['INGRESS_CLASS_NAME'],
@@ -258,6 +263,8 @@ def secret_manifest(settings):
         secret('airflow-metadata', {'connection': f'postgresql://{db["POSTGRES_USER"]}:{password}@{db["POSTGRES_HOST"]}:{db["POSTGRES_PORT"]}/{db["POSTGRES_DB"]}'}),
         secret('airflow-fernet', {'fernet-key': settings['AIRFLOW_FERNET_KEY']}),
         secret('airflow-webserver-key', {'webserver-secret-key': settings['AIRFLOW_WEBSERVER_SECRET_KEY']}),
+        secret('airflow-api-jwt', {'jwt-secret': settings['AIRFLOW_WEBSERVER_SECRET_KEY']}),
+        secret('airflow-api-key', {'api-secret-key': settings['AIRFLOW_WEBSERVER_SECRET_KEY']}),
         secret('airflow-admin', {'username': settings['AIRFLOW_ADMIN_USERNAME'], 'password': settings['AIRFLOW_ADMIN_PASSWORD'], 'email': settings['AIRFLOW_ADMIN_EMAIL']}),
         secret('airflow-runtime', {key: settings[key] for key in RUNTIME_KEYS}),
     ]}
@@ -395,7 +402,7 @@ def check_cluster_inputs(settings, context, rendered=None):
             # 기존 설치 흔적이 있으면 env의 키를 새로 적용하지 않고 원래 Secret 복원을 요구한다.
             for kind, resource in [('pvc', 'airflow-postgres'), ('secret', 'airflow-metadata'),
                                    ('deployment', 'airflow-scheduler'), ('deployment', 'airflow-webserver'),
-                                   ('deployment', 'airflow-triggerer')]:
+                                   ('deployment', 'airflow-triggerer'), ('deployment', 'airflow-api-server'), ('deployment', 'airflow-dag-processor')]:
                 existing = run([*scoped, 'get', kind, resource, '--ignore-not-found', '-o', 'name'],
                                sensitive=kind == 'secret')
                 require(not existing.strip(), '기존 Airflow 설치의 Fernet Secret이 없습니다. 원래 암호화 키로 airflow-fernet Secret을 먼저 복원하세요.')
@@ -447,7 +454,7 @@ def build_image(settings, path):
     """기존 의존성 Dockerfile에 DAG를 추가하며 이미지는 자동 push하지 않는다."""
     build = read_env(path)
     require(build.keys() == {'APT_DEBIAN_CODENAME', 'APT_DEBIAN_ARCH', 'BIGDATAQUERY_ODBC_DEB_URL', 'INSTALL_BIGDATAQUERY_PYTHON', 'PIP_INDEX_URL', 'APT_DEBIAN_REPOSITORY', 'PIP_TRUSTED_HOST', 'INSTALL_BIGDATAQUERY_ODBC', 'AIRFLOW_BASE_IMAGE', 'PIP_EXTRA_INDEX_URL'}, 'build.env 설정 키가 계약과 다릅니다.')
-    require(re.search(r':2\.11\.0(?:@sha256:[a-f0-9]{64})?$', build['AIRFLOW_BASE_IMAGE']), '기본 이미지는 Airflow 2.11.0이어야 합니다.')
+    require(re.search(r':3\.3\.2-python3\.12(?:@sha256:[a-f0-9]{64})?$', build['AIRFLOW_BASE_IMAGE']), '기본 이미지는 Airflow 3.3.2 Python 3.12이어야 합니다.')
     for key in ('INSTALL_BIGDATAQUERY_PYTHON', 'INSTALL_BIGDATAQUERY_ODBC'):
         require(build[key] in ('true', 'false'), f'true 또는 false 필요: {key}')
     require(build['INSTALL_BIGDATAQUERY_ODBC'] != 'true' or build['BIGDATAQUERY_ODBC_DEB_URL'], 'ODBC 설치에는 BIGDATAQUERY_ODBC_DEB_URL이 필요합니다.')

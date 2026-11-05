@@ -2,18 +2,19 @@
 
 from datetime import datetime, timezone
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 
 def verify_runtime():
-    """실제 task 프로세스에서 metadata DB 연결을 확인합니다."""
-    from airflow.settings import engine
-    from sqlalchemy import text
+    """Task SDK로 실행 context와 XCom 왕복을 확인합니다."""
+    from airflow.sdk import get_current_context
 
-    with engine.connect() as connection:
-        assert connection.execute(text('SELECT 1')).scalar() == 1
-    print('로컬 플랫폼 task·metadata DB 확인 완료')
+    context = get_current_context()
+    task = context['ti']
+    task.xcom_push(key='runtime-check', value='airflow-3')
+    assert task.xcom_pull(task_ids='verify_runtime', key='runtime-check') == 'airflow-3'
+    print('로컬 플랫폼 task·Execution API·XCom 확인 완료')
 
 
 with DAG('local_platform_smoke', schedule=None, start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
