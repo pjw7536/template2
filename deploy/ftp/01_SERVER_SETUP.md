@@ -103,23 +103,18 @@ APP VIP의 443과 별도로 각 Worker에 위 포트를 개방합니다. 호스�
 
 ## 4. 관리 호스트의 계정 파일 준비
 
-Git 저장소 밖의 파일을 만들고 접근 권한을 제한합니다. 아래는 파일 내용을 출력하지 않고 입력받습니다.
+서버의 저장소 루트에서 [credentials.env.example](credentials.env.example)을 수정해 계정 파일로 사용합니다.
+`FTP_USER`, `FTP_PASS`는 빈칸이므로 실제 사용할 값으로 채웁니다.
 
 ```bash
-read -r -p 'FTP 계정 파일 절대 경로 (새 파일): ' FTP_CREDENTIAL_FILE
-export FTP_CREDENTIAL_FILE
-(
-  set -e
-  umask 077
-  set -o noclobber
-  read -r -p 'FTP 사용자 이름: ' ftp_login
-  read -r -s -p 'FTP 비밀번호: ' ftp_password
-  printf '\n'
-  printf 'FTP_USER=%s\nFTP_PASS=%s\n' "$ftp_login" "$ftp_password" > "$FTP_CREDENTIAL_FILE"
-)
+export FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/credentials.env.example"
+chmod 600 "$FTP_CREDENTIAL_FILE"
+vi "$FTP_CREDENTIAL_FILE"
 ```
 
-이미 계정 파일이 있으면 경로만 지정하고 재생성하지 않습니다. 기존 파일에는 `chmod 600`을 적용합니다.
+`vi` 대신 서버에서 사용하는 편집기로 수정해도 됩니다. 실제 계정 값을 입력한 파일은 커밋하지 않습니다.
+Git 밖에 복사해 사용하려면 복사본의 절대 경로를 `FTP_CREDENTIAL_FILE`로 지정하고 `chmod 600`을 적용합니다.
+이미 사용 중인 계정 파일이 있으면 그 경로를 지정하고 재생성하지 않습니다. 새 Bash 세션에서도 같은 경로를 다시 export합니다.
 
 계정 파일은 다음 규칙으로 작성합니다.
 

@@ -3,6 +3,9 @@
 [시작 안내](README.md) · [서버 설치](01_SERVER_SETUP.md) · [원본](03_KUBERNETES.md)
 
 모든 kubectl 명령에는 설치 때 선택한 `KUBE_CONTEXT`를 사용합니다.
+계정 파일은 [계정 파일 준비](01_SERVER_SETUP.md#4-관리-호스트의-계정-파일-준비)에서 수정한
+`credentials.env.example` 또는 별도로 보관한 파일입니다. 새 Bash 세션에서는 사용 중인 파일의 절대 경로를
+`FTP_CREDENTIAL_FILE`로 다시 export합니다.
 
 ## 1. Pod가 뜬 서버 확인
 
@@ -24,7 +27,7 @@ FTP 클라이언트에 다음 값을 입력합니다.
 | 프로토콜 | FTP |
 | 호스트 | 파일을 저장할 Worker의 InternalIP |
 | 포트 | 6380 |
-| 사용자·비밀번호 | 설치 시 계정 파일의 값 |
+| 사용자·비밀번호 | `FTP_CREDENTIAL_FILE`로 지정한 파일의 `FTP_USER`, `FTP_PASS` |
 | 전송 모드 | Passive |
 | 로그인 후 업로드 폴더 | `data_movement/` |
 
@@ -63,7 +66,8 @@ kubectl --context "$KUBE_CONTEXT" -n etch-ftp get pods -l app=ftp -o wide
 
 ## 5. 계정 변경
 
-`ftp-up`은 기존 계정을 자동 변경하지 않습니다. 계정을 바꾸려면 외부 계정 파일을 먼저 수정한 뒤 아래 명령을 실행합니다.
+`ftp-up`은 기존 계정을 자동 변경하지 않습니다. 계정을 바꾸려면 `FTP_CREDENTIAL_FILE`로 지정한 파일의
+`FTP_USER`, `FTP_PASS`를 수정하고 권한 `600`을 유지한 뒤 아래 명령을 실행합니다.
 모든 FTP 노드에 영향을 주므로 클라이언트 설정도 함께 갱신합니다.
 
 ```bash

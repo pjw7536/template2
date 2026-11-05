@@ -51,6 +51,9 @@ hostNetwork와 hostPath를 허용하는 namespace 정책이 필요합니다.
 
 이후 명령은 **CP1 또는 관리 호스트의 저장소 루트, 동일한 Bash 세션**에서 실행합니다.
 [서버 설치 1~4절](01_SERVER_SETUP.md)을 먼저 마쳐 `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`을 export합니다.
+계정 파일은 [계정 파일 준비](01_SERVER_SETUP.md#4-관리-호스트의-계정-파일-준비)에 따라 서버에서
+[credentials.env.example](credentials.env.example)을 수정하거나 기존 파일을 사용합니다.
+`FTP_CREDENTIAL_FILE`에는 실제 값이 입력되고 권한 `600`이 적용된 파일의 절대 경로를 지정합니다.
 각 Worker의 저장 디스크·기존 파일 권한·포트 확인도 끝나 있어야 합니다. 없는 데이터 폴더는 Pod 시작 전에 생성됩니다.
 기본 계정은 없고 모든 대상 노드는 같은 Secret을 사용합니다.
 

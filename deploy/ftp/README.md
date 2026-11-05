@@ -44,6 +44,8 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 | `make ftp-test` | 배포 스크립트 회귀 검사. 클러스터 불필요 |
 
 `ftp-check`와 `ftp-up`에는 `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 필요합니다.
+계정 파일은 서버에서 [credentials.env.example](credentials.env.example)의 `FTP_USER`, `FTP_PASS`를 입력해 사용합니다.
+권한 `600` 적용과 절대 경로 지정은 [계정 파일 준비](01_SERVER_SETUP.md#4-관리-호스트의-계정-파일-준비)를 따릅니다.
 모든 대상 노드는 같은 계정을 사용합니다. 기존 Secret이 있으면 입력 계정과 비교하고, 다르면 중단합니다.
 `ftp-up`은 기본 원본을 적용합니다. 사내 이미지 overlay를 사용할 때는 위 사내 배포 절차로 같은 overlay를 적용합니다.
 
