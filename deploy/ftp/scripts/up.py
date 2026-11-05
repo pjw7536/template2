@@ -70,12 +70,12 @@ def settings(path):
     label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
     if secret and (len(secret) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', secret)):
         raise ValueError('IMAGE_PULL_SECRET에는 Kubernetes Secret 이름을 지정하세요.')
-    if values.setdefault('FTP_ALLOW_CONTROL_PLANE', 'false') not in ('true', 'false'):
+    if values.setdefault('FTP_ALLOW_CONTROL_PLANE', 'true') not in ('true', 'false'):
         raise ValueError('FTP_ALLOW_CONTROL_PLANE에는 true 또는 false를 지정하세요.')
     return values
 
 
-def check_nodes(nodes, names, *, allow_control_plane=False):
+def check_nodes(nodes, names, *, allow_control_plane=True):
     """기존 배치 범위와 준비 상태를 검사하고 선택 허용한 control plane만 받는다."""
     by_name = {node['metadata']['name']: node for node in nodes}
     labeled = {name for name, node in by_name.items()

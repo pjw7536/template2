@@ -3,7 +3,7 @@
 [시작 안내](README.md) · 다음: [접속 확인과 운영](02_OPERATIONS.md)
 
 한 번의 DaemonSet 배포로 선택한 각 Linux 노드에 FTP Pod 하나씩 실행합니다.
-기본 대상은 Worker이며 control plane도 아래의 명시적 허용 절차로 추가할 수 있습니다.
+Worker와 control plane 모두 기본적으로 선택할 수 있으며, 아래 절차에 따라 대상 노드를 명시합니다.
 **각 대상 노드에서는 디스크·포트를 준비하고, CP1에서는 검사·배포를 한 번 실행**합니다.
 사내 미러 이미지는 이 문서의 5절에 따라 배포합니다. 별도 이미지·저장 경로 overlay를 운영하면
 1~4절을 마친 뒤 [수동 overlay 적용](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)을 진행합니다.
@@ -46,7 +46,7 @@ export FTP_NODES
 
 ### Control plane도 대상에 추가하기
 
-[env/prod.env](env/prod.env) 또는 사용 중인 `FTP_ENV` 파일에서 아래 값을 변경합니다.
+[env/prod.env](env/prod.env) 또는 사용 중인 `FTP_ENV` 파일에서 허용 여부를 확인합니다. 기본 설정은 다음과 같습니다.
 계정 파일에 넣는 설정은 아닙니다.
 
 ```dotenv
@@ -54,7 +54,8 @@ FTP_ALLOW_CONTROL_PLANE=true
 ```
 
 `FTP_NODES`에는 기존 FTP 노드 전체와 추가할 control plane의 실제 노드 이름을 함께 넣습니다.
-기본값과 기존 env에서 이 키를 생략한 값은 `false`입니다. true로 바꿔도 모든 control plane에 자동 설치하지 않습니다.
+기본값과 env에서 이 키를 생략한 값은 `true`입니다. control plane 선택을 막으려면 `false`로 지정합니다.
+실제 배포 대상은 `FTP_NODES`에 지정한 노드입니다.
 control-plane·master 역할의 `NoSchedule` taint만 FTP Pod의 toleration으로 허용합니다.
 역할 라벨·taint를 제거하지 않으며, 다른 `NoSchedule`·모든 `NoExecute`, cordon·NotReady는 계속 차단합니다.
 수동 overlay를 사용하면 [control plane toleration 패치](03_KUBERNETES.md#control-plane을-포함하는-수동-overlay)를 함께 추가합니다.

@@ -12,7 +12,7 @@
 FTP가 필요한 Linux 노드에 `etch.io/ftp-enabled=true` 라벨을 붙이면 DaemonSet이
 노드마다 Pod 하나를 실행합니다. `hostNetwork`로 해당 노드 IP에 직접 접속하며
 Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 않은 서버에는 배치되지 않습니다.
-기본 대상은 Worker이며 control plane은 [선택 허용](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)이 필요합니다.
+`ftp-check`·`ftp-up`은 Worker와 control plane 선택을 기본 허용합니다. [대상 선택](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)에 따라 노드를 지정합니다.
 
 | 항목 | 설정 |
 | --- | --- |
@@ -117,7 +117,7 @@ registry 인증이 필요하면 `etch-ftp` namespace에 준비한 pull Secret �
 
 #### Control plane을 포함하는 수동 overlay
 
-`FTP_ALLOW_CONTROL_PLANE=true`는 `ftp-check`의 노드 검사와 `ftp-up`의 적용에 사용합니다.
+기본값인 `FTP_ALLOW_CONTROL_PLANE=true`는 `ftp-check`의 노드 검사와 `ftp-up`의 적용에 사용합니다.
 수동 `kubectl apply -k`에는 env가 적용되지 않으므로 control plane을 포함한다면 위 `kustomization.yaml`의
 기존 `patches` 목록에 아래 항목도 추가합니다. 대상 노드의 역할 라벨·taint는 제거하지 않습니다.
 원본에 tolerations가 없는 기준의 패치이며, 이미 별도 tolerations가 있으면 기존 항목을 유지하고 두 역할 항목을 추가합니다.

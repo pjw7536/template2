@@ -83,7 +83,7 @@ Worker 앱 호스트 경로의 기본값은 `/appdata` 아래입니다.
 
 | 구분 | 운영 방향·설정 | 확인 상태·남은 확인 |
 | --- | --- | --- |
-| 접속·배치 | FTP가 필요한 Linux 노드의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | 기본 Worker, `FTP_ALLOW_CONTROL_PLANE=true`일 때 명시한 control plane과 역할 NoSchedule 허용. 기타 차단 taint는 유지. 실제 대상 노드·기동 여부 미확인 |
+| 접속·배치 | FTP가 필요한 Linux 노드의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | `FTP_ALLOW_CONTROL_PLANE` 기본값·생략값은 true로 Worker와 명시한 control plane의 역할 NoSchedule 허용. false를 명시하면 control plane 선택 거부. 기타 차단 taint는 유지. 실제 대상 노드·기동 여부 미확인 |
 | 데이터 | 접속한 노드의 `/appdata/data_movement`에 저장. `DirectoryOrCreate`로 없는 폴더를 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 실제 서버 적용·폴더 자동 생성 여부 미확인. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
 | 이미지·계정 | `deploy/ftp/env/prod.env`의 [FTP 미러 주소](repositories.md#이미지패키지별-사용-주소)·선택 pull Secret을 `ftp-up`이 적용. 추가 패치는 수동 overlay 사용. `etch-ftp/ftp-credentials` 공용 계정 사용 | 미러의 digest 제공·실제 pull·CA·인증·pull Secret 필요 여부 미확인 |
 | 완료 판정 | 각 대상 노드에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 전송 성공 여부 미확인. 대상 노드·접속 주소·검증 결과·담당자 확인 필요 |

@@ -40,8 +40,8 @@ FTP 클라이언트에 다음 값을 입력합니다.
 ## 3. 노드 추가·재배포
 
 추가 노드의 디스크·기존 파일 권한·포트를 확인한 뒤 `FTP_NODES`를 기존 노드와 새 노드를 모두 포함하도록 갱신합니다.
-control plane을 추가할 때는 [선택 허용 설정](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)을 유지합니다.
-이미 control plane에 배포했다면 재배포에도 같은 `FTP_ALLOW_CONTROL_PLANE=true` env를 사용합니다.
+control plane도 기본적으로 선택할 수 있습니다. [대상 선택 설정](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)을 확인합니다.
+사용 중인 env가 `FTP_ALLOW_CONTROL_PLANE=false`라면 control plane을 포함하기 전에 `true`로 변경합니다.
 없는 `/appdata/data_movement`는 Pod 시작 전에 자동 생성됩니다.
 사내 이미지 overlay를 사용하는 환경은 [사내 배포 검사·적용](03_KUBERNETES.md#3-검사와-렌더-확인)을 반복합니다.
 아래 `ftp-up` 명령은 `env/prod.env` 또는 지정한 `FTP_ENV`의 이미지·pull Secret을 사용하는 환경에 적용합니다.

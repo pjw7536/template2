@@ -74,7 +74,8 @@ class FtpTests(unittest.TestCase):
         self.start(check_only=True)
         self.assertEqual(self.writes(), [])
 
-    def test_control_plane_remains_blocked_without_explicit_option(self):
+    def test_explicit_false_blocks_control_plane(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE=false\n')
         for role in ftp.CONTROL_PLANE_ROLES:
             with self.subTest(role=role):
                 node = worker()
@@ -84,8 +85,7 @@ class FtpTests(unittest.TestCase):
                     self.start()
                 self.assertEqual(self.writes(), [])
 
-    def test_enabled_control_plane_applies_only_role_noschedule_tolerations(self):
-        self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE=true\n')
+    def test_default_control_plane_applies_only_role_noschedule_tolerations(self):
         for role in ftp.CONTROL_PLANE_ROLES:
             with self.subTest(role=role):
                 self.calls.clear()
@@ -129,8 +129,8 @@ class FtpTests(unittest.TestCase):
         self.start(check_only=True)
         self.assertEqual(self.writes(), [])
 
-    def test_control_plane_setting_is_strict_and_old_env_defaults_to_false(self):
-        self.assertEqual(ftp.settings(self.env)['FTP_ALLOW_CONTROL_PLANE'], 'false')
+    def test_control_plane_setting_is_strict_and_omitted_key_defaults_to_true(self):
+        self.assertEqual(ftp.settings(self.env)['FTP_ALLOW_CONTROL_PLANE'], 'true')
         for value in ('', 'yes', 'TRUE'):
             with self.subTest(value=value):
                 self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE={value}\n')
@@ -147,6 +147,9 @@ class FtpTests(unittest.TestCase):
 
     def test_default_env_uses_mirror_and_preserves_base_digest(self):
         """env를 따로 지정하지 않아도 운영 미러를 적용하고 기존 digest를 유지한다."""
+        role = ftp.CONTROL_PLANE_ROLES[0]
+        self.nodes[0]['metadata']['labels'][role] = ''
+        self.nodes[0]['spec']['taints'] = [{'key': role, 'effect': 'NoSchedule'}]
         ftp.start('test-context', 'worker-a', str(self.credentials))
         applied = json.loads(self.writes()[-1][1]['data'])['items'][0]
         image = applied['spec']['template']['spec']['containers'][0]['image']
@@ -193,6 +196,7 @@ class FtpTests(unittest.TestCase):
                 self.assertEqual(self.calls, [])
 
     def test_new_install_orders_secret_before_labels_and_stack(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE=false\n')
         self.start()
         writes = self.writes()
         self.assertEqual([args[3] for args, _ in writes], ['create', 'create', 'label', 'apply'])
@@ -237,7 +241,7 @@ class FtpTests(unittest.TestCase):
         self.assertEqual(self.writes(), [])
 
     def test_unusable_workers_are_rejected(self):
-        for problem in ('not-ready', 'cordon', 'taint', 'windows', 'control-plane', 'ipv6'):
+        for problem in ('not-ready', 'cordon', 'taint', 'windows', 'ipv6'):
             with self.subTest(problem=problem):
                 node = worker()
                 if problem == 'not-ready':
@@ -248,8 +252,6 @@ class FtpTests(unittest.TestCase):
                     node['spec']['taints'] = [{'effect': 'NoSchedule'}]
                 elif problem == 'windows':
                     node['metadata']['labels']['kubernetes.io/os'] = 'windows'
-                elif problem == 'control-plane':
-                    node['metadata']['labels']['node-role.kubernetes.io/control-plane'] = ''
                 else:
                     node['status']['addresses'][0]['address'] = '2001:db8::1'
                 with self.assertRaises(ValueError):

@@ -2,7 +2,8 @@
 
 이 폴더는 선택한 Kubernetes Linux 노드에서 파일을 받는 FTP 서버의 설치·운영을 관리합니다.
 FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로드한 파일은 접속한 노드에 저장됩니다.
-기본 대상은 Worker이며 control plane은 `FTP_ALLOW_CONTROL_PLANE=true`로 명시적으로 허용할 수 있습니다.
+Worker와 control plane 모두 선택할 수 있으며 `FTP_ALLOW_CONTROL_PLANE`의 기본값은 `true`입니다.
+control plane 선택을 막으려면 `false`로 지정합니다.
 
 ## 지금 필요한 작업
 

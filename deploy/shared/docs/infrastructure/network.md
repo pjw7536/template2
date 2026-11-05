@@ -33,7 +33,7 @@ Keycloak DNS의 실제 연결 대상과 APP VIP 적용 여부는 미확인입니
 
 FTP는 `hostNetwork`를 사용하고 Passive 주소에는 해당 노드의 `status.hostIP`를 전달합니다.
 업무 APP VIP·Traefik을 경유하지 않는 노드 직접 연결입니다. 현재 절차는 IPv4 InternalIP 직접 접근을 전제하며 NAT·TLS는 별도 설정이 필요합니다.
-control plane도 명시적 허용 후 FTP 대상에 포함할 수 있습니다. 접속 경로는 노드별 직접 수신입니다.
+`FTP_NODES`에 명시한 control plane도 기본적으로 FTP 대상에 포함할 수 있습니다. 접속 경로는 노드별 직접 수신입니다.
 노드명·IP는 [서버 목록](servers.md), 배치·데이터는 [FTP 서비스](services.md#ftp-노드별-파일-수신), 실행 방법은 [FTP 설치](../../../ftp/01_SERVER_SETUP.md)를 따릅니다.
 
 ## 클러스터 네트워크·실행 기반
