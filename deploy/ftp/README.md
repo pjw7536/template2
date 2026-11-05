@@ -1,7 +1,8 @@
 # 00. FTP 시작 안내
 
-이 폴더는 Kubernetes Worker에서 파일을 받는 FTP 서버의 설치·운영을 관리합니다.
+이 폴더는 선택한 Kubernetes Linux 노드에서 파일을 받는 FTP 서버의 설치·운영을 관리합니다.
 FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로드한 파일은 접속한 노드에 저장됩니다.
+기본 대상은 Worker이며 control plane은 `FTP_ALLOW_CONTROL_PLANE=true`로 명시적으로 허용할 수 있습니다.
 
 ## 지금 필요한 작업
 
@@ -24,7 +25,8 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 ```
 
 라벨은 `etch.io/ftp-enabled=true`입니다. 모든 노드에 자동으로 설치하지 않습니다.
-배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 Worker는 달라도 됩니다.
+배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 노드는 달라도 됩니다.
+control plane 추가는 [대상 선택](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)을 따릅니다.
 
 노드 간 파일은 자동 복제·이동되지 않으며 소비 앱이 다른 노드에 있으면 별도 전송 또는 공유 저장소가 필요합니다.
 `/appdata/data_movement`가 없는 Worker에서는 Pod 시작 전에 폴더를 자동 생성합니다. 기존 데이터는 유지하며 하위 파일의 소유권은 자동 변경하지 않습니다.

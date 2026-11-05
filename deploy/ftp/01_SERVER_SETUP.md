@@ -2,8 +2,9 @@
 
 [시작 안내](README.md) · 다음: [접속 확인과 운영](02_OPERATIONS.md)
 
-한 번의 DaemonSet 배포로 선택한 각 Worker에 FTP Pod 하나씩 실행합니다.
-**각 Worker에서는 디스크·포트를 준비하고, CP1에서는 검사·배포를 한 번 실행**합니다.
+한 번의 DaemonSet 배포로 선택한 각 Linux 노드에 FTP Pod 하나씩 실행합니다.
+기본 대상은 Worker이며 control plane도 아래의 명시적 허용 절차로 추가할 수 있습니다.
+**각 대상 노드에서는 디스크·포트를 준비하고, CP1에서는 검사·배포를 한 번 실행**합니다.
 사내 미러 이미지는 이 문서의 5절에 따라 배포합니다. 별도 이미지·저장 경로 overlay를 운영하면
 1~4절을 마친 뒤 [수동 overlay 적용](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)을 진행합니다.
 
@@ -12,7 +13,7 @@
 | 위치 | 필요한 작업 |
 | --- | --- |
 | 관리 PC 또는 클러스터 관리 서버 | 저장소 checkout, Python 3.10+·Make·Bash·kubectl, kubeconfig 준비, 검사·배포 실행 |
-| FTP를 실행할 각 Linux Worker | Kubernetes 등록, 저장 디스크·기존 파일 권한·포트 확인. 없는 데이터 폴더는 자동 생성 |
+| FTP를 실행할 각 Linux 노드 | Kubernetes 등록, 저장 디스크·기존 파일 권한·포트 확인. 없는 데이터 폴더는 자동 생성 |
 | FTP 클라이언트 PC | 대상 Worker IP로 접속할 네트워크·FTP 클라이언트 준비 |
 
 관리 호스트에는 루트 Makefile과 `deploy/ftp`, `deploy/shared`가 필요합니다.
@@ -32,7 +33,7 @@ export KUBE_CONTEXT
 kubectl --context "$KUBE_CONTEXT" get nodes -o wide
 kubectl --context "$KUBE_CONTEXT" get nodes -l etch.io/ftp-enabled=true -o wide
 
-read -r -p 'FTP Worker 이름 (여러 개는 쉼표 구분, 공백 없음): ' FTP_NODES
+read -r -p 'FTP 노드 이름 (여러 개는 쉼표 구분, 공백 없음): ' FTP_NODES
 export FTP_NODES
 ```
 
@@ -41,7 +42,22 @@ export FTP_NODES
 이미 FTP 라벨이 붙은 노드까지 포함한 전체 목록을 입력합니다. 기존 노드를 목록에서 빼면 검사에서 중단합니다.
 노드 제거는 [운영 문서](02_OPERATIONS.md)의 라벨 제거 절차를 먼저 수행합니다.
 
-검사는 Linux Worker, Ready 상태, cordon·차단 taint, IPv4 InternalIP를 확인합니다.
+검사는 Linux·Ready 상태, cordon·차단 taint, IPv4 InternalIP를 확인합니다.
+
+### Control plane도 대상에 추가하기
+
+[env/prod.env](env/prod.env) 또는 사용 중인 `FTP_ENV` 파일에서 아래 값을 변경합니다.
+계정 파일에 넣는 설정은 아닙니다.
+
+```dotenv
+FTP_ALLOW_CONTROL_PLANE=true
+```
+
+`FTP_NODES`에는 기존 FTP 노드 전체와 추가할 control plane의 실제 노드 이름을 함께 넣습니다.
+기본값과 기존 env에서 이 키를 생략한 값은 `false`입니다. true로 바꿔도 모든 control plane에 자동 설치하지 않습니다.
+control-plane·master 역할의 `NoSchedule` taint만 FTP Pod의 toleration으로 허용합니다.
+역할 라벨·taint를 제거하지 않으며, 다른 `NoSchedule`·모든 `NoExecute`, cordon·NotReady는 계속 차단합니다.
+수동 overlay를 사용하면 [control plane toleration 패치](03_KUBERNETES.md#control-plane을-포함하는-수동-overlay)를 함께 추가합니다.
 
 ### 현재 서버 기록을 사용한 대상 선택 예시
 
@@ -55,13 +71,13 @@ export FTP_NODES
 
 `khplanew01` 한 대만 선택하면 입력값은 `khplanew01`, 두 Worker 모두 선택하면 `khplanew01,khplane01w09`입니다.
 `khplane01w09`는 Keycloak 전용 Worker로 기록되어 있으므로 이곳에도 파일 수신이 필요할 때 포함합니다.
-CP1~CP3는 관리·제어면 역할이며 현재 FTP 배포 도구의 대상에서 제외됩니다.
+CP1~CP3는 관리·제어면 역할입니다. 이곳의 파일 수신이 필요하면 위 옵션을 켜고 실제 노드 이름을 명시적으로 추가합니다.
 
-배포는 노드별로 명령을 반복하지 않습니다. 선택한 전체 Worker 이름을 `FTP_NODES`에 넣고 관리 호스트에서 한 번 적용합니다.
+배포는 노드별로 명령을 반복하지 않습니다. 선택한 전체 노드 이름을 `FTP_NODES`에 넣고 관리 호스트에서 한 번 적용합니다.
 
 ## 3. 각 Worker의 저장소와 포트 확인
 
-이 단계만 **선택한 각 Worker에 접속해서** 수행합니다.
+이 단계만 **선택한 각 노드에 접속해서** 수행합니다. control plane을 포함했다면 해당 노드도 확인합니다.
 기존 `/data/data_movement`에서 경로를 바꾼다면 [Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 먼저 수행합니다.
 그대로 재배포하면 새 빈 폴더를 사용할 수 있으므로 파일 복사와 소비 앱의 호스트 경로 연결을 먼저 확인합니다.
 
@@ -92,7 +108,7 @@ FTP 시작 시 최상위 폴더 소유자를 이미지의 `ftp` 사용자로 변
 TCP **6380, 8076–8079**에 접근할 수 있도록 준비합니다. passive 전송 중에는 데이터 포트도 사용합니다.
 namespace 정책에서 hostNetwork와 hostPath를 허용해야 합니다.
 
-방화벽 요청은 **파일 전송 클라이언트의 허용 IP/CIDR → 선택한 각 Worker InternalIP**를 기준으로 합니다.
+방화벽 요청은 **파일 전송 클라이언트의 허용 IP/CIDR → 선택한 각 FTP 노드 InternalIP**를 기준으로 합니다.
 
 | 목적지 TCP 포트 | 용도 | 확인 |
 | --- | --- | --- |

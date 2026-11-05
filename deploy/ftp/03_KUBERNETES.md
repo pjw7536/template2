@@ -3,14 +3,16 @@
 [시작 안내](README.md) · [자동 배포](01_SERVER_SETUP.md)
 
 사내 미러 이미지를 사용하는 일반 설치는 [env/prod.env](env/prod.env)을 확인하고 `make ftp-check` → `make ftp-up` 순서로 진행합니다.
-두 명령은 운영 env의 `FTP_IMAGE`, `IMAGE_PULL_SECRET`을 적용합니다. 공통 원본을 직접 `kubectl apply -k deploy/ftp/k8s`로 적용하면 공개 이미지를 사용합니다.
+두 명령은 운영 env의 `FTP_IMAGE`, `IMAGE_PULL_SECRET`, `FTP_ALLOW_CONTROL_PLANE`을 적용합니다.
+공통 원본을 직접 `kubectl apply -k deploy/ftp/k8s`로 적용하면 공개 이미지를 사용하고 control plane 역할 toleration도 추가되지 않습니다.
 추가 패치가 필요한 수동 배포는 아래의 [사내 이미지 overlay 적용](#사내-이미지로-각-worker에-배포)을 따릅니다. 두 배포 방식을 중복 실행하지 않습니다.
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
-FTP가 필요한 Linux Worker에 `etch.io/ftp-enabled=true` 라벨을 붙이면 DaemonSet이
+FTP가 필요한 Linux 노드에 `etch.io/ftp-enabled=true` 라벨을 붙이면 DaemonSet이
 노드마다 Pod 하나를 실행합니다. `hostNetwork`로 해당 노드 IP에 직접 접속하며
 Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 않은 서버에는 배치되지 않습니다.
+기본 대상은 Worker이며 control plane은 [선택 허용](01_SERVER_SETUP.md#control-plane도-대상에-추가하기)이 필요합니다.
 
 | 항목 | 설정 |
 | --- | --- |
@@ -113,6 +115,29 @@ registry 인증이 필요하면 `etch-ftp` namespace에 준비한 pull Secret �
 `spec.template.spec.imagePullSecrets`에 연결하는 overlay 패치를 추가합니다.
 노드의 registry CA·접근 권한도 준비합니다. credential 내용은 문서나 Git에 기록하지 않습니다.
 
+#### Control plane을 포함하는 수동 overlay
+
+`FTP_ALLOW_CONTROL_PLANE=true`는 `ftp-check`의 노드 검사와 `ftp-up`의 적용에 사용합니다.
+수동 `kubectl apply -k`에는 env가 적용되지 않으므로 control plane을 포함한다면 위 `kustomization.yaml`의
+기존 `patches` 목록에 아래 항목도 추가합니다. 대상 노드의 역할 라벨·taint는 제거하지 않습니다.
+원본에 tolerations가 없는 기준의 패치이며, 이미 별도 tolerations가 있으면 기존 항목을 유지하고 두 역할 항목을 추가합니다.
+
+```yaml
+- target:
+    kind: DaemonSet
+    name: ftp
+  patch: |-
+    - op: add
+      path: /spec/template/spec/tolerations
+      value:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+```
+
 ### 3. 검사와 렌더 확인
 
 ```bash
@@ -131,7 +156,7 @@ Namespace와 FTP 계정 Secret은 이 렌더에 포함되지 않습니다.
 (
   set -euo pipefail
   : "${KUBE_CONTEXT:?context를 지정하세요.}"
-  : "${FTP_NODES:?대상 Worker 전체 목록을 지정하세요.}"
+  : "${FTP_NODES:?FTP 대상 노드 전체 목록을 지정하세요.}"
   : "${FTP_CREDENTIAL_FILE:?계정 파일을 지정하세요.}"
   : "${FTP_OVERLAY_DIR:?검증한 overlay 경로를 지정하세요.}"
   make ftp-check

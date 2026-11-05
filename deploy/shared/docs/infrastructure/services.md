@@ -27,7 +27,7 @@
 | Headlamp | `https://etch.samsungds.net/headlamp/` | Headlamp 운영 안내 |
 | MinIO S3·클러스터 내부 | `http://minio.minio.svc.cluster.local:9000` | MinIO 운영 안내 |
 | Portal API·클러스터 내부 | `http://api.tailwind-internal.svc.cluster.local:8000` | Airflow `AIRFLOW_API_BASE_URL` |
-| FTP | 선택한 Worker InternalIP의 TCP 6380 | [노드별 수신 운영 방향](#ftp-노드별-파일-수신). 실제 배포 대상·전송 성공은 미확인 |
+| FTP | 선택한 FTP 노드 InternalIP의 TCP 6380 | [노드별 수신 운영 방향](#ftp-노드별-파일-수신). 실제 배포 대상·전송 성공은 미확인 |
 | 외부 PostgreSQL 등 추가 접속점 | 미확인 | Portal 운영 DB 주소 추가 확인 필요 |
 
 근거는 [Portal overlay](../../../portal/k8s/overlays/prod/README.md), [Keycloak](../../../keycloak/README.md),
@@ -83,7 +83,7 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 
 | 구분 | 운영 방향·설정 | 확인 상태·남은 확인 |
 | --- | --- | --- |
-| 접속·배치 | FTP가 필요한 Linux Worker의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | Worker별 배포 절차 작성. 실제 대상 노드·기동 여부 미확인 |
+| 접속·배치 | FTP가 필요한 Linux 노드의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | 2026-11-05 사용자 요청: 기존 노드별 수신을 유지하고 control plane 선택 배포만 추가. 저장소 선언: 기본 Worker, `FTP_ALLOW_CONTROL_PLANE=true`일 때 명시한 control plane과 역할 NoSchedule 허용. 기타 차단 taint는 유지. 실제 대상 노드·기동 여부 미확인 |
 | 데이터 | 접속한 Worker의 `/appdata/data_movement`에 저장. 폴더가 없으면 kubelet이 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 2026-11-05 사용자 요청으로 `DirectoryOrCreate`를 유지하며 호스트 경로 선언을 `/data/data_movement`에서 `/appdata/data_movement`로 변경. 실제 서버 적용·자동 생성 검증은 미실행. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
 | 이미지·계정 | `deploy/ftp/env/prod.env`의 이미지·선택 pull Secret을 `ftp-up`이 적용. 추가 패치는 수동 overlay 사용. `etch-ftp/ftp-credentials` 공용 계정 사용 | 2026-11-05 공개 이미지 pull 실패 사용자 보고에 따라 운영 env에 [FTP 미러 주소](repositories.md#이미지패키지별-사용-주소) 선언. 미러의 digest 제공·실제 pull·CA·인증·pull Secret 필요 여부 미확인 |
 | 완료 판정 | 각 Worker에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 아직 미실행. 노드별 성공 확인일·근거·담당자 기록 필요 |

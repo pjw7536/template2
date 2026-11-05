@@ -58,7 +58,7 @@ env를 Secret으로 등록하는 배포 방식과 Headlamp·Monitoring의 기존
 | Airflow 이미지 빌드 | `deploy/airflow/env/build.env` | 사내 의존성·DAG 이미지 빌드 |
 | Kubernetes Monitoring | `deploy/monitoring/env/k8s.env` | 노드·local PV·이미지 미러·Grafana Secret 참조 |
 | Headlamp 공개 설정 | `deploy/headlamp/env/k8s.env` | 공개 주소·issuer·Secret/CA 이름. 실제 client secret 제외 |
-| FTP 이미지 설정 | `deploy/ftp/env/prod.env` | `FTP_IMAGE` 사내 미러 주소·고정 tag/digest, 선택 `IMAGE_PULL_SECRET`. `FTP_ENV`로 파일 변경. 로그인 계정 파일은 `FTP_CREDENTIAL_FILE`로 별도 지정 |
+| FTP 배포 설정 | `deploy/ftp/env/prod.env` | `FTP_IMAGE` 사내 미러 주소·고정 tag/digest, 선택 `IMAGE_PULL_SECRET`, control plane 선택 허용 `FTP_ALLOW_CONTROL_PLANE`(기본 false). `FTP_ENV`로 파일 변경. 로그인 계정 파일은 `FTP_CREDENTIAL_FILE`로 별도 지정 |
 
 Keycloak은 Portal 주소나 client secret 없이 기동합니다. Portal의 client secret과 사내
 OIDC에서 받은 secret은 서로 다른 값입니다. 서버 이미지, 실행 노드, CPU·메모리와 볼륨

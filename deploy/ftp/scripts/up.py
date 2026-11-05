@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""명시한 클러스터와 Worker에 FTP를 검사하거나 배포한다."""
+"""명시한 클러스터와 선택한 Linux 노드에 FTP를 검사하거나 배포한다."""
 
 import argparse
 import base64
@@ -15,6 +15,7 @@ import sys
 BASE = Path(__file__).resolve().parents[1]
 LABEL = 'etch.io/ftp-enabled'
 NAMESPACE = 'etch-ftp'
+CONTROL_PLANE_ROLES = ('node-role.kubernetes.io/control-plane', 'node-role.kubernetes.io/master')
 spec = importlib.util.spec_from_file_location('deploy_runtime', BASE.parent / 'shared/scripts/runtime.py')
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
@@ -50,14 +51,14 @@ def read_credentials(path):
 
 
 def settings(path):
-    """운영 이미지와 선택 pull Secret을 셸 실행 없이 읽고 검증한다."""
+    """운영 이미지·선택 pull Secret·control plane 허용 여부를 실행 없이 검증한다."""
     values = {}
     for line in Path(path).read_text().splitlines():
         if not line.strip() or line.lstrip().startswith('#'):
             continue
         key, separator, value = line.partition('=')
-        if not separator or key not in ('FTP_IMAGE', 'IMAGE_PULL_SECRET') or key in values:
-            raise ValueError('FTP env에는 FTP_IMAGE와 IMAGE_PULL_SECRET만 각각 한 번 지정하세요.')
+        if not separator or key not in ('FTP_IMAGE', 'IMAGE_PULL_SECRET', 'FTP_ALLOW_CONTROL_PLANE') or key in values:
+            raise ValueError('FTP env 키의 오타·중복을 확인하세요. FTP_IMAGE, IMAGE_PULL_SECRET, FTP_ALLOW_CONTROL_PLANE만 허용합니다.')
         values[key] = value
     image = values.get('FTP_IMAGE', '')
     if '://' in image or not re.fullmatch(r'[a-zA-Z0-9._:/@-]+', image) or not (
@@ -69,11 +70,13 @@ def settings(path):
     label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
     if secret and (len(secret) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', secret)):
         raise ValueError('IMAGE_PULL_SECRET에는 Kubernetes Secret 이름을 지정하세요.')
+    if values.setdefault('FTP_ALLOW_CONTROL_PLANE', 'false') not in ('true', 'false'):
+        raise ValueError('FTP_ALLOW_CONTROL_PLANE에는 true 또는 false를 지정하세요.')
     return values
 
 
-def check_nodes(nodes, names):
-    """기존 배치 범위를 빠뜨리지 않고 실행 가능한 Linux Worker만 선택한다."""
+def check_nodes(nodes, names, *, allow_control_plane=False):
+    """기존 배치 범위와 준비 상태를 검사하고 선택 허용한 control plane만 받는다."""
     by_name = {node['metadata']['name']: node for node in nodes}
     labeled = {name for name, node in by_name.items()
                if node['metadata'].get('labels', {}).get(LABEL) == 'true'}
@@ -88,11 +91,15 @@ def check_nodes(nodes, names):
         spec = node.get('spec', {})
         ready = any(item.get('type') == 'Ready' and item.get('status') == 'True'
                     for item in node.get('status', {}).get('conditions', []))
-        if labels.get('kubernetes.io/os') != 'linux' or any(
-                key in labels for key in ('node-role.kubernetes.io/control-plane', 'node-role.kubernetes.io/master')):
-            raise ValueError('Linux Worker를 선택하세요: ' + name)
+        control_plane = any(key in labels for key in CONTROL_PLANE_ROLES)
+        if labels.get('kubernetes.io/os') != 'linux':
+            raise ValueError('Linux 노드를 선택하세요: ' + name)
+        if control_plane and not allow_control_plane:
+            raise ValueError('Control plane 배포에는 FTP_ALLOW_CONTROL_PLANE=true가 필요합니다: ' + name)
         if not ready or spec.get('unschedulable') or any(
-                item.get('effect') in ('NoSchedule', 'NoExecute') for item in spec.get('taints', [])):
+                item.get('effect') in ('NoSchedule', 'NoExecute') and not (
+                    allow_control_plane and control_plane and item.get('key') in CONTROL_PLANE_ROLES
+                    and item.get('effect') == 'NoSchedule') for item in spec.get('taints', [])):
             raise ValueError('Ready·cordon·taint 상태를 확인하세요: ' + name)
         addresses = [item['address'] for item in node.get('status', {}).get('addresses', [])
                      if item['type'] == 'InternalIP']
@@ -114,13 +121,17 @@ def start(context, nodes, credential_file, check_only=False, *, env_file=None):
     source = runtime.render_json(run, kube, BASE / 'k8s')
     daemonset = next(item for item in source if item['kind'] == 'DaemonSet' and item['metadata']['name'] == 'ftp')
     pod = daemonset['spec']['template']['spec']
+    allow_control_plane = values['FTP_ALLOW_CONTROL_PLANE'] == 'true'
+    if allow_control_plane:
+        pod.setdefault('tolerations', []).extend(
+            {'key': key, 'operator': 'Exists', 'effect': 'NoSchedule'} for key in CONTROL_PLANE_ROLES)
     container = next(item for item in pod['containers'] if item['name'] == 'ftp')
     container['image'] = values['FTP_IMAGE']
     if values['IMAGE_PULL_SECRET']:
         run([*kube, '-n', NAMESPACE, 'get', 'secret', values['IMAGE_PULL_SECRET'], '-o', 'name'], sensitive=True)
         pod['imagePullSecrets'] = [{'name': values['IMAGE_PULL_SECRET']}]
     all_nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
-    check_nodes(all_nodes, names)
+    check_nodes(all_nodes, names, allow_control_plane=allow_control_plane)
     current = run([*kube, '-n', NAMESPACE, 'get', 'secret', 'ftp-credentials',
                    '--ignore-not-found', '-o', 'json'], sensitive=True)
     encoded = {key: base64.b64encode(value.encode()).decode() for key, value in credentials.items()}
@@ -130,6 +141,7 @@ def start(context, nodes, credential_file, check_only=False, *, env_file=None):
             raise ValueError('기존 FTP Secret과 계정 파일이 다릅니다. 기존 계정 파일을 사용하세요. 자동 변경하지 않습니다.')
     print('context: ' + context)
     print('FTP 이미지: ' + values['FTP_IMAGE'])
+    print('Control plane 선택 허용: ' + values['FTP_ALLOW_CONTROL_PLANE'])
     if check_only:
         print('입력·노드·기존 Secret·원본 렌더 검사 통과. 디스크·포트·FTP 전송은 별도 확인하세요.')
         return

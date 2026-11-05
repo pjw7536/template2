@@ -74,6 +74,70 @@ class FtpTests(unittest.TestCase):
         self.start(check_only=True)
         self.assertEqual(self.writes(), [])
 
+    def test_control_plane_remains_blocked_without_explicit_option(self):
+        for role in ftp.CONTROL_PLANE_ROLES:
+            with self.subTest(role=role):
+                node = worker()
+                node['metadata']['labels'][role] = ''
+                self.nodes = [node]
+                with self.assertRaisesRegex(ValueError, 'FTP_ALLOW_CONTROL_PLANE=true'):
+                    self.start()
+                self.assertEqual(self.writes(), [])
+
+    def test_enabled_control_plane_applies_only_role_noschedule_tolerations(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE=true\n')
+        for role in ftp.CONTROL_PLANE_ROLES:
+            with self.subTest(role=role):
+                self.calls.clear()
+                node = worker()
+                node['metadata']['labels'][role] = ''
+                taint = {'key': role, 'effect': 'NoSchedule'}
+                node['spec']['taints'] = [taint]
+                self.nodes = [node]
+                self.start()
+                applied = json.loads(self.writes()[-1][1]['data'])['items'][0]
+                self.assertEqual(applied['spec']['template']['spec']['tolerations'], [
+                    {'key': key, 'operator': 'Exists', 'effect': 'NoSchedule'} for key in ftp.CONTROL_PLANE_ROLES])
+                self.assertEqual(node['spec']['taints'], [taint])
+                self.assertFalse(any('taint' in args or 'patch' in args for args, _ in self.calls))
+
+    def test_control_plane_option_does_not_bypass_other_node_restrictions(self):
+        for problem in ('custom-taint', 'noexecute', 'cordon', 'not-ready', 'windows', 'worker-role-taint'):
+            with self.subTest(problem=problem):
+                node = worker()
+                role = ftp.CONTROL_PLANE_ROLES[0]
+                node['metadata']['labels'][role] = ''
+                node['spec']['taints'] = [{'key': role, 'effect': 'NoSchedule'}]
+                if problem == 'custom-taint':
+                    node['spec']['taints'].append({'key': 'dedicated', 'value': 'database', 'effect': 'NoSchedule'})
+                elif problem == 'noexecute':
+                    node['spec']['taints'][0]['effect'] = 'NoExecute'
+                elif problem == 'cordon':
+                    node['spec']['unschedulable'] = True
+                elif problem == 'not-ready':
+                    node['status']['conditions'][0]['status'] = 'False'
+                elif problem == 'windows':
+                    node['metadata']['labels']['kubernetes.io/os'] = 'windows'
+                else:
+                    del node['metadata']['labels'][role]
+                with self.assertRaises(ValueError):
+                    ftp.check_nodes([node], ['worker-a'], allow_control_plane=True)
+
+    def test_enabled_control_plane_check_only_does_not_mutate_cluster(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE=true\n')
+        self.nodes[0]['metadata']['labels'][ftp.CONTROL_PLANE_ROLES[0]] = ''
+        self.start(check_only=True)
+        self.assertEqual(self.writes(), [])
+
+    def test_control_plane_setting_is_strict_and_old_env_defaults_to_false(self):
+        self.assertEqual(ftp.settings(self.env)['FTP_ALLOW_CONTROL_PLANE'], 'false')
+        for value in ('', 'yes', 'TRUE'):
+            with self.subTest(value=value):
+                self.env.write_text(f'FTP_IMAGE={self.image}\nFTP_ALLOW_CONTROL_PLANE={value}\n')
+                with self.assertRaisesRegex(ValueError, 'true 또는 false'):
+                    self.start()
+                self.assertEqual(self.calls, [])
+
     def test_image_from_env_replaces_public_image_in_applied_stack(self):
         """공개 원본이 렌더되어도 실제 적용은 지정한 미러 이미지를 사용한다."""
         self.source[1]['spec']['template']['spec']['containers'][0]['image'] = 'fauria/vsftpd:old'
