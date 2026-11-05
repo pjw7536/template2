@@ -29,11 +29,11 @@ make server-check APP=minio PROFILE=prod
 ```
 
 `MINIO_IMAGE`, `MINIO_CLIENT_IMAGE`에는 Worker에서 실제로 받을 수 있는 사내 registry의 고정 tag 또는 digest를 입력합니다.
-기본 주소는 기존 Docker Hub 사내 proxy 경로를 사용합니다. 경로와 tag가 사내 서버에서 실제로 제공되는지는 별도 확인합니다.
+기본 주소는 Docker Hub 사내 proxy 경로를 사용합니다. 경로와 tag가 사내 서버에서 실제로 제공되는지는 별도 확인합니다.
 MinIO 서버 이미지는 Deployment, mc 이미지는 `minio-init` Job에서 사용합니다.
 서버 기본값은 `bitnamilegacy/minio:2025.7.23-debian-12-r5`이며 사내 Docker Hub proxy를 경유합니다.
-컨테이너는 `minio` binary를 직접 실행하고 기존 `/data`·기동 인자를 유지합니다.
-기존 공식 이미지와 같은 UID 0을 명시해 기존 볼륨의 소유권을 자동 변경하지 않습니다.
+컨테이너는 `minio` binary를 직접 실행하고 데이터 경로 `/data`와 기동 인자를 사용합니다.
+UID 0으로 실행하며 기존 볼륨의 소유권을 자동 변경하지 않습니다.
 mc 기본값은 `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`를 사내 Docker Hub proxy로 가져오는 주소입니다.
 두 이미지의 접근 가능 여부와 배포 대상 아키텍처를 실제 Worker에서 확인합니다.
 기존 데이터가 있으면 사용 중인 버전과의 호환성·백업·복원 절차를 확인한 뒤 갱신합니다.
@@ -88,10 +88,10 @@ hostPath `DirectoryOrCreate`를 사용하며 기존 PV에서는 `Directory`로 �
 동적 StorageClass를 지정하면 PVC만 요청하며 이 도구는 local PV나 폴더 준비 Job을 만들지 않습니다.
 
 기존 PV가 있으면 경로·노드·용량·PVC UID를 먼저 검사하고 기존 PV 자체는 갱신하지 않습니다.
-기존 PVC가 연결한 PV 이름을 우선 사용하므로 과거 PV 이름이 기본값과 달라도 유지됩니다.
+기존 PVC가 연결한 PV 이름을 우선 사용하므로 기본값과 다른 PV 이름도 유지됩니다.
 기존 PV가 `Released`이거나 이전 PVC UID를 참조하거나, 연결했던 PV가 사라졌으면 자동 대체하지 않고 중단합니다.
-경로 키가 없는 env에도 `/appdata/minio` 기본값을 적용합니다. 이전 기본값은 `/data/minio`였습니다.
-기존 설치를 아직 이전하지 않았다면 외부 env에 `MINIO_DATA_HOST_PATH=/data/minio` 또는 실제 PV의
+경로 키가 없는 env에도 `/appdata/minio` 기본값을 적용합니다.
+실제 저장소가 `/data/minio`라면 외부 env에 `MINIO_DATA_HOST_PATH=/data/minio` 또는 실제 PV의
 `spec.local.path`를 명시해 기존 저장소를 유지하세요. 경로가 다르면 배포 도구는 기존 PV를 변경하지 않고 중단합니다.
 새 경로로 전환할 때는 [Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 먼저 수행합니다.
 보존할 데이터·개별 계정·정책이 없는 설치는 아래 재생성 절차를 사용할 수 있습니다.

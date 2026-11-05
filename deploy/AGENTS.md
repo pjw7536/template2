@@ -7,9 +7,9 @@
 - 공통 정의는 deploy/shared 또는 앱별 base에 두고 local은 이를 재사용한다. 앱별 설정을 다른 앱의 디렉터리에 복제하지 않는다.
 
 ## 탐색과 검사
-- 배포 작업 전 [사내 인프라 정보](shared/docs/infrastructure/README.md)와 해당 주제의 원본을 읽는다. 서버·OS·버전은 servers.md, VIP·DNS는 network.md, 앱 배치·URL·스토리지는 services.md, 이미지·패키지·미러는 repositories.md, 운영 파일·백업·담당자는 operations.md에서 확인한다. 각 경로는 shared/docs/infrastructure/ 기준이다. 확인 상태·근거·기준일을 보고 저장소 선언이나 예시를 실제 서버 상태로 단정하지 않는다.
+- 배포 작업 전 [사내 인프라 정보](shared/docs/infrastructure/README.md)와 해당 주제의 원본을 읽는다. 서버·OS·버전은 servers.md, VIP·DNS는 network.md, 앱 배치·URL·스토리지는 services.md, 이미지·패키지·미러는 repositories.md, 운영 파일·백업·담당자는 operations.md에서 확인한다. 각 경로는 shared/docs/infrastructure/ 기준이다. 확인 상태와 설정 원본을 보고 저장소 선언이나 예시를 실제 서버 상태로 단정하지 않는다.
 - 공통 현황 확인 후 대상 앱 README → 관련 manifest/env/script → 필요한 shared 계약 순서로 읽는다. 전체 앱의 운영 문서를 선독하지 않는다.
-- 사내 운영 정보의 변경·확인값은 infrastructure/README.md의 기록 규칙과 해당 폴더 AGENTS.md에 따라 주제별 원본에 반영한다. 기존 사용자 확인값·주소는 기준일과 함께 보존하고 현재 재확인이 필요한 부분을 표시한다. 비밀값은 문서에 복제하지 않으며 실행 설정은 소유 앱의 원본에서 관리한다.
+- 사내 운영 정보의 변경·확인값은 infrastructure/README.md의 기록 규칙과 해당 폴더 AGENTS.md에 따라 주제별 원본의 현재 값·연결 관계·확인 상태에 반영한다. 확인 날짜·변경 경위·이전 값은 Git 이력으로 추적하고 현재 필요한 이전·복구 절차는 유지한다. 비밀값은 문서에 복제하지 않으며 실행 설정은 소유 앱의 원본에서 관리한다.
 - 앱 경로·그룹 원본은 shared/apps.json, 서버 선택 checkout은 01-SERVER_CHECKOUT.md를 따른다. 기본 checkout은 소스를 제외하며 빌드할 때만 --with-source로 추가한다.
 - 저장소 루트에서 `make server-check APP=<app> PROFILE=prod`로 대상 앱을 검증한다. 렌더·정적 검사와 실제 클러스터 배포 성공을 구분해 보고한다.
 - 공통 경로·도구 변경은 `node --test apps/tooling/tests/server-checkout.test.cjs`로 local 없는 서버 경계를 확인한다(전체 개발 checkout에서 실행).

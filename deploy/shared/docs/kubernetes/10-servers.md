@@ -1,11 +1,13 @@
-# 02. 새 서버 준비
+# 10. 새 서버 준비
 
 [가이드 홈](README.md) · [CP1~3 셋업](01-control-plane.md) · [Worker 추가](03-worker.md)
 
 공통 서버 준비·통신 조건을 확인하는 참고 문서입니다. 실행 순서는 위 작업별 문서에서 시작합니다.
 
 **OS가 설치된 새 서버용 준비 목록입니다. 현재 Ready 노드는 재설정하지 않습니다.**
-OS·설치 도구·버전·CNI가 미확인이라 배포판별 설치 명령은 아직 제공하지 않습니다.
+확인된 Worker 설치 기준은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)에 있습니다.
+Ubuntu 22.04 amd64·Kubernetes 1.36.0·containerd 2.2.1의 설치 명령은 [Worker 추가](03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)를 따릅니다.
+CNI·CIDR·MTU·실제 CRI 및 registry 설정과 제어면별 설치 기준은 대상 환경에서 별도로 확인합니다.
 
 ## 준비 순서 — 인프라 담당자·각 새 노드
 

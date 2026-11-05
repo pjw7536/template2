@@ -5,7 +5,7 @@
 서비스 URL·namespace·배치 입력·스토리지 연결과 사내 업무 연동 주소의 관리 원본입니다.
 
 기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+담당자는 미확인입니다. 설정 원본과 운영 적용 여부는 아래 항목을 따릅니다.
 
 ## 서비스 접속 주소
 
@@ -51,15 +51,15 @@
 
 ## 앱별 배치와 스토리지 선언
 
-**운영 현황 사용자 확인: 2026-11-05 / 근거: 사용자가 현재 서버에서 Keycloak·MinIO만 운영 중이며 MinIO에는 데이터가 없다고 확인 / 담당자: 미확인.**
-MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소로 재생성하는 방향입니다.
+사용자가 확인한 운영 앱은 Keycloak·MinIO이며 MinIO에는 데이터가 없습니다.
+MinIO는 데이터 이관 없이 `/appdata/minio` 저장소로 재생성할 예정입니다.
 실제 namespace·PV/PVC 이름·현재 호스트 경로와 재생성 완료 여부는 서버 조회·적용 후 확인해야 합니다.
 나머지 앱의 아래 값은 설치 완료 기록이 아닌 배포 입력입니다.
 
 아래는 저장소에 선언된 값입니다. **실제 Pod 배치·PV 연결·백업 상태는 서버 조회로 별도 확인이 필요합니다.**
 외부 env를 지정하면 저장소 기본값과 다를 수 있습니다. 선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 원본을 확인합니다.
-2026-11-05 사용자 요청으로 Worker 앱 호스트 경로의 저장소 선언을 `/appdata` 아래로 통일했습니다.
-이는 실제 서버 이전 완료 기록이 아닙니다. 이전 기본값과 기존 설치 전환은 [데이터 이전](operations.md#worker-앱-데이터-경로와-이전)을 따릅니다.
+Worker 앱 호스트 경로의 기본값은 `/appdata` 아래입니다.
+기존 설치의 경로가 다르면 [데이터 이전](operations.md#worker-앱-데이터-경로와-이전)을 따릅니다.
 노드 배치는 각 앱의 `nodeSelector`·affinity·env, 저장공간은 PV·PVC·Helm values와 대조합니다.
 
 | 앱·공통 구성 | namespace | 배치 입력 | 스토리지·설정 원본 |
@@ -69,7 +69,7 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 | Portal | `tailwind-internal` | 운영 Worker·이미지 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) |
 | MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
 | Airflow·전용 PostgreSQL | `airflow` | `NODE_NAME=replace-me-node`로 미확정 | DB `/appdata/airflow/postgres` 20Gi, 로그 `/appdata/airflow/logs` 20Gi, ODBC `/appdata/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) |
-| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. 2026-11-05 저장소 선언: `monitoring-up`이 준비 Job으로 없는 폴더를 생성한 뒤 PV·Helm 적용. 실제 서버 검증 미실행. `deploy/monitoring/env/k8s.env`, [폴더 준비 계약](operations.md#worker-앱-데이터-경로와-이전), [Monitoring 안내](../../../monitoring/README.md) |
+| Monitoring | `monitoring` | `NODE_NAME=replace-me-node`로 미확정 | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. `monitoring-up`이 준비 Job으로 없는 폴더를 생성한 뒤 PV·Helm 적용. 실제 서버 적용·폴더 생성 여부 미확인. `deploy/monitoring/env/k8s.env`, [폴더 준비 계약](operations.md#worker-앱-데이터-경로와-이전), [Monitoring 안내](../../../monitoring/README.md) |
 | Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) |
 | FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/appdata/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
 
@@ -78,15 +78,15 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 
 ## FTP 노드별 파일 수신
 
-**운영 방향 확인일: 2026-11-05 / 근거: 사용자와 노드별 IP:6380 직접 전송 방식 협의, `deploy/ftp/k8s/stack.yaml` 대조 / 담당자: 미확인.**
-배포 방법을 정리한 상태이며 실제 서버에 적용하거나 접속 검증한 결과는 아닙니다.
+아래는 `deploy/ftp/k8s/stack.yaml`과 `deploy/ftp/env/prod.env`의 배포 설정입니다.
+실제 서버 적용·접속 성공·담당자는 미확인입니다.
 
 | 구분 | 운영 방향·설정 | 확인 상태·남은 확인 |
 | --- | --- | --- |
-| 접속·배치 | FTP가 필요한 Linux 노드의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | 2026-11-05 사용자 요청: 기존 노드별 수신을 유지하고 control plane 선택 배포만 추가. 저장소 선언: 기본 Worker, `FTP_ALLOW_CONTROL_PLANE=true`일 때 명시한 control plane과 역할 NoSchedule 허용. 기타 차단 taint는 유지. 실제 대상 노드·기동 여부 미확인 |
-| 데이터 | 접속한 Worker의 `/appdata/data_movement`에 저장. 폴더가 없으면 kubelet이 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 2026-11-05 사용자 요청으로 `DirectoryOrCreate`를 유지하며 호스트 경로 선언을 `/data/data_movement`에서 `/appdata/data_movement`로 변경. 실제 서버 적용·자동 생성 검증은 미실행. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
-| 이미지·계정 | `deploy/ftp/env/prod.env`의 이미지·선택 pull Secret을 `ftp-up`이 적용. 추가 패치는 수동 overlay 사용. `etch-ftp/ftp-credentials` 공용 계정 사용 | 2026-11-05 공개 이미지 pull 실패 사용자 보고에 따라 운영 env에 [FTP 미러 주소](repositories.md#이미지패키지별-사용-주소) 선언. 미러의 digest 제공·실제 pull·CA·인증·pull Secret 필요 여부 미확인 |
-| 완료 판정 | 각 Worker에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 아직 미실행. 노드별 성공 확인일·근거·담당자 기록 필요 |
+| 접속·배치 | FTP가 필요한 Linux 노드의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | 기본 Worker, `FTP_ALLOW_CONTROL_PLANE=true`일 때 명시한 control plane과 역할 NoSchedule 허용. 기타 차단 taint는 유지. 실제 대상 노드·기동 여부 미확인 |
+| 데이터 | 접속한 노드의 `/appdata/data_movement`에 저장. `DirectoryOrCreate`로 없는 폴더를 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 실제 서버 적용·폴더 자동 생성 여부 미확인. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
+| 이미지·계정 | `deploy/ftp/env/prod.env`의 [FTP 미러 주소](repositories.md#이미지패키지별-사용-주소)·선택 pull Secret을 `ftp-up`이 적용. 추가 패치는 수동 overlay 사용. `etch-ftp/ftp-credentials` 공용 계정 사용 | 미러의 digest 제공·실제 pull·CA·인증·pull Secret 필요 여부 미확인 |
+| 완료 판정 | 각 대상 노드에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 전송 성공 여부 미확인. 대상 노드·접속 주소·검증 결과·담당자 확인 필요 |
 
 노드명·IP는 [서버 목록](servers.md), 포트·방화벽은 [FTP 네트워크](network.md#ftp-직접-접속)를 따릅니다.
 실행 순서는 [Worker별 준비](../../../ftp/01_SERVER_SETUP.md) → [운영 env 확인과 CP1 배포](../../../ftp/01_SERVER_SETUP.md#5-검사-후-배포) → [전송 확인](../../../ftp/02_OPERATIONS.md)입니다.
@@ -95,6 +95,6 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 
 ## 추가 확인·변경 연계
 
-서비스별 실제 설치 여부·Pod 배치·접속 성공일·담당자는 새 확인을 받을 때 해당 표에 반영합니다.
+서비스별 실제 설치 여부·Pod 배치·접속 상태·담당자는 새 확인을 받을 때 해당 표에 반영합니다.
 외부 PostgreSQL 접속점과 FTP 실제 배포 대상은 미확인입니다. 앱의 실행 입력은 위 근거 파일에서 관리합니다.
 도메인·VIP는 [네트워크](network.md), 노드·버전은 [서버](servers.md), 데이터·백업 보관 위치는 [운영 위치](operations.md)를 함께 갱신합니다.

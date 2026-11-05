@@ -55,7 +55,8 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 | `make k8s-grafana`, `make k8s-prometheus` | localhost 3000·9090 port-forward |
 | `make k8s-ui` | localhost 4466 Headlamp 조회 UI |
 | `make down`, `make k8s-down` | kind 클러스터 삭제·로컬 DB 컨테이너 종료, DB 볼륨·호스트 데이터 보존 |
-| `make check-api`, `make makemigrations-check`, `make test-api` | 같은 이미지·새 DB를 사용하는 일회성 Compose api 검사 |
+| `make check-api`, `make makemigrations-check` | Kubernetes와 같은 이미지·합성된 로컬 env·개발 DB를 사용하는 일회성 Compose api 검사 |
+| `make test-api` | 같은 이미지와 표준 test env를 사용하며 별도 Django 테스트 DB에서 실행 |
 
 ## 주소와 계정
 

@@ -143,8 +143,72 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 ### 3. Migration
 
-운영 DB가 있다면 먼저 DB 백업과 migration 호환성을 확인합니다.
+신규 DB는 `pg_trgm` extension을 준비한 뒤 앱 시작 전에 migration을 실행합니다.
+신규 설치에서는 같은 터미널에 남은 복원 입력을 사용하지 않도록 `unset PORTAL_API_REPLICAS`를 실행합니다.
+기존 DB 갱신은 적용할 migration의 SQL·데이터 변경과 관련 작업의 호환성을 검토하고,
+아래 쓰기 중지·백업·사전 검사부터 진행합니다. 작업 중 API와 쓰기 작업을 재개하지 않습니다.
 `migrate/kustomization.yaml`의 API 이미지가 앱 overlay와 동일해야 합니다.
+
+#### 검사 Job 준비
+
+같은 Bash 세션에서 아래 함수를 정의합니다. migration overlay를 읽어 동일 이미지·namespace·
+`api-env` Secret의 검사 Job을 만들며, `backoffLimit=0`으로 자동 재시도하지 않습니다.
+검사마다 사용하지 않은 Job 이름을 지정합니다. 같은 이름이 있으면 `create`가 중단하므로 먼저 기존 결과를 확인합니다.
+
+```bash
+portal_permission_check() (
+  set -euo pipefail
+  local check_name="$1" check_phase="$2"
+  case "$check_phase" in
+    pre-migration|post-migration) ;;
+    *) echo '검사 phase는 pre-migration 또는 post-migration이어야 합니다.' >&2; return 1 ;;
+  esac
+  kubectl --context "$KUBE_CONTEXT" create --dry-run=client \
+    -k deploy/portal/k8s/overlays/prod/migrate -o json |
+    python3 -c '
+import json
+import sys
+
+job = json.load(sys.stdin)
+job["metadata"]["name"] = sys.argv[1]
+job["spec"]["backoffLimit"] = 0
+container = next(item for item in job["spec"]["template"]["spec"]["containers"] if item["name"] == "migrate")
+container["command"] = ["python"]
+container["args"] = ["manage.py", "check_access_permission_integrity", "--phase", sys.argv[2]]
+json.dump(job, sys.stdout)
+' "$check_name" "$check_phase" |
+    kubectl --context "$KUBE_CONTEXT" create -f -
+  kubectl --context "$KUBE_CONTEXT" -n tailwind-internal wait \
+    --for=condition=complete "job/$check_name" --timeout=15m
+  kubectl --context "$KUBE_CONTEXT" -n tailwind-internal logs "job/$check_name" --tail=100
+)
+```
+
+wait가 실패하면 Job·Pod 상태와 로그를 확인하고 다음 단계로 넘어가지 않습니다.
+검사 명령은 DB를 읽으며, 위 함수는 검사 Job을 클러스터에 생성합니다.
+
+#### 기존 DB 갱신 전 쓰기 중지와 사전 검사
+
+**신규 DB는 이 절을 건너뜁니다.** 업무 테이블이 없으므로 `pre-migration` 검사를 실행하지 않습니다.
+기존 환경은 DB에 쓰는 worker·Airflow 작업을 중지하고 진행 중인 요청을 마친 뒤 API를 중지합니다.
+중지한 작업과 API replica 수는 쓰기 재개 때 복원할 입력입니다.
+
+```bash
+PORTAL_API_REPLICAS=$(kubectl --context "$KUBE_CONTEXT" -n tailwind-internal \
+  get deployment api -o jsonpath='{.spec.replicas}')
+kubectl --context "$KUBE_CONTEXT" -n tailwind-internal scale deployment/api --replicas=0
+kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/api --timeout=5m
+```
+
+API와 관련 쓰기가 모두 중지됐는지 확인한 뒤 DB 백업·복구 가능 여부·migration ledger·대상 테이블 row 수를 확인합니다.
+사전 검사가 실패하면 migration을 실행하지 않습니다.
+
+```bash
+read -r -p '사전 검사 Job의 고유 이름: ' PORTAL_PRECHECK_JOB
+portal_permission_check "$PORTAL_PRECHECK_JOB" pre-migration
+```
+
+#### Migration Job 실행
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get job portal-migrate --ignore-not-found
@@ -163,12 +227,28 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal logs job/portal-migrate -
 
 실패하면 앱 배포를 진행하지 않습니다. `describe job`·Job Pod 로그로 DB 연결과 migration 오류를 확인합니다.
 
+#### 사후 검사
+
+신규 설치와 기존 DB 갱신 모두 다음 검사를 통과해야 앱을 시작합니다.
+
+```bash
+read -r -p '사후 검사 Job의 고유 이름: ' PORTAL_POSTCHECK_JOB
+portal_permission_check "$PORTAL_POSTCHECK_JOB" post-migration
+```
+
+실패하면 API와 쓰기 작업을 시작하지 않습니다. 신규 설치는 오류를 해결한 뒤 다시 검사합니다.
+기존 DB는 백업·변경분을 확인하고 준비한 복구 절차를 따릅니다.
+
 ### 4. 앱과 라우팅 적용
 
-공용 MinIO는 독립 설치·연결을 마친 상태에서 아래 Portal 리소스만 적용합니다.
+공용 MinIO 독립 설치·연결과 위 사후 검사를 마친 상태에서 Portal 리소스를 적용합니다.
+기존 환경은 위에서 기록한 replica 수를 복원하고 신규 설치는 overlay의 replica 수로 시작합니다.
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" apply -k deploy/portal/k8s/overlays/prod
+if [[ -n "${PORTAL_API_REPLICAS:-}" ]]; then
+  kubectl --context "$KUBE_CONTEXT" -n tailwind-internal scale deployment/api --replicas="$PORTAL_API_REPLICAS"
+fi
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/api --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/web --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/edge-nginx --timeout=10m
@@ -180,6 +260,7 @@ PVC가 Pending이면 StorageClass/PV·노드 affinity를 먼저 확인합니다.
 
 [접속 검증](../../../../shared/docs/kubernetes/06-verification.md)에 따라 API health,
 Keycloak login/callback/logout, MinIO 시험 파일 업로드·다운로드를 확인해야 배포 완료입니다.
+API가 정상 동작하고 검증이 끝난 뒤 중지했던 worker·Airflow 작업을 재개합니다.
 
 ### 5. 설정 변경 반영
 

@@ -54,7 +54,8 @@ GET /api/v1/emails/inbox/?userSdwtProd=G-A&q=report&page=1&pageSize=20
 | `dateFrom`, `dateTo` | 날짜/시간 필터 |
 | `page`, `pageSize` | 페이지네이션 |
 
-목록 query와 쓰기 JSON은 camelCase만 허용하며 제거된 snake_case alias는 400 `invalid_request`로 거부합니다.
+브라우저 메일 목록 query와 이동·삭제 JSON은 camelCase를 사용하며 제거된 snake_case alias는 400 `invalid_request`로 거부합니다.
+내부 OCR claim·update 요청은 아래의 snake_case 계약을 사용합니다.
 
 ## 메일 이동
 
@@ -93,10 +94,40 @@ POST /api/v1/emails/assets/ocr/claim/
 X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>
 ```
 
+claim body는 선택이며 `limit`, `lease_seconds`, `worker_id`를 받습니다.
+
+```json
+{
+  "limit": 50,
+  "lease_seconds": 1800,
+  "worker_id": "ocr-worker-01"
+}
+```
+
+응답의 `tasks`에는 `asset_id`, `email_id`, `lock_token`, `lock_expires_at` 등 작업 정보가 포함됩니다.
+update 요청에는 claim에서 받은 `asset_id`와 `lock_token`을 그대로 전달합니다.
+
 ```http
 POST /api/v1/emails/assets/ocr/update/
 X-Internal-Token: <EMAIL_OCR_INTERNAL_TOKEN>
 ```
+
+```json
+{
+  "results": [
+    {
+      "asset_id": 1,
+      "lock_token": "<claim 응답의 토큰>",
+      "status": "DONE",
+      "text": "추출한 텍스트"
+    }
+  ]
+}
+```
+
+각 항목의 필수 필드는 `asset_id`, `lock_token`, `status`이며 status는 `DONE` 또는 `FAILED`입니다.
+선택 필드는 `text`, `error_code`, `error_message`, `ocr_model`, `ocr_duration_ms`, `processed_at`입니다.
+응답은 `updated`, `rejected`, `ragQueued`, `ragFailed`, `ragSkipped`를 반환합니다.
 
 ## 오류
 

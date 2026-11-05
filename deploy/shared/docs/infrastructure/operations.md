@@ -5,14 +5,14 @@
 checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임의 관리 원본입니다.
 
 기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+담당자는 미확인입니다. 설정 원본과 운영 적용 여부는 아래 항목을 따릅니다.
 
 ## 운영 파일과 데이터 위치
 
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
 | 서버 Git checkout | `/appdata/etchax` | [선택 checkout](../../../01-SERVER_CHECKOUT.md)의 설치 경로. 현재 서버 경로 확인 필요 |
-| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../../../README.md#소유권)의 기존 운영 기록. 앱 도구에 실제 외부 env 경로 명시 |
+| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../../../README.md#소유권)의 외부 설정 경로. 앱 도구에 실제 외부 env 경로 명시 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
 | kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 지정한 `KUBECONFIG` | [CP1 운영](../operations/02-cp1.md). 실제 파일 위치·계정·권한 확인 필요 |
 | 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../../certs/README.md). 실제 보관 경로·담당자 확인 필요 |
@@ -26,23 +26,22 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 
 ## Worker 앱 데이터 경로와 이전
 
-**설정 변경 요청일·저장소 대조일: 2026-11-05 / 근거: 사용자의 Worker 폴더 `/appdata` 통일 요청과 아래 배포 입력 / 담당자: 미확인.**
-아래는 신규 설치의 기본 선언입니다. 실제 서버의 현재 경로·데이터 이전·적용 여부는 조회하지 않았으며,
+아래는 신규 설치의 기본 선언입니다. 실제 서버의 현재 경로·데이터 이전·적용 여부는 미확인이며,
 운영 env의 사용자 지정 경로가 우선합니다. 기존 경로는 이전이 완료될 때까지 유지합니다.
 
-| 대상 | 이전 저장소 기본값 | 새 호스트 기본값 | 설정 원본 |
-| --- | --- | --- | --- |
-| MinIO | `/data/minio` | `/appdata/minio` | `deploy/minio/env/prod.env`: `MINIO_DATA_HOST_PATH`, `scripts/manage.py` 기본값 |
-| FTP 수신 파일 | `/data/data_movement` | `/appdata/data_movement` | `deploy/ftp/k8s/stack.yaml`: `volumes[].hostPath.path` |
-| Airflow DB·로그·ODBC | `/srv/airflow/postgres`, `/srv/airflow/logs`, `/srv/airflow/odbc` | `/appdata/airflow/postgres`, `/appdata/airflow/logs`, `/appdata/airflow/odbc` | `deploy/airflow/env/k8s.env`: `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `ODBC_HOST_PATH` |
-| Monitoring | `/srv/monitoring` 아래 서비스별 폴더 | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. 2026-11-05 저장소 선언: `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·생성 확인은 미실행 |
-| Keycloak DB | `/appdata/keycloak-postgres` | 동일 | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
+| 대상 | 호스트 기본값 | 설정 원본 |
+| --- | --- | --- |
+| MinIO | `/appdata/minio` | `deploy/minio/env/prod.env`: `MINIO_DATA_HOST_PATH`, `scripts/manage.py` 기본값 |
+| FTP 수신 파일 | `/appdata/data_movement` | `deploy/ftp/k8s/stack.yaml`: `volumes[].hostPath.path` |
+| Airflow DB·로그·ODBC | `/appdata/airflow/postgres`, `/appdata/airflow/logs`, `/appdata/airflow/odbc` | `deploy/airflow/env/k8s.env`: `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `ODBC_HOST_PATH` |
+| Monitoring | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·폴더 생성 여부 미확인 |
+| Keycloak DB | `/appdata/keycloak-postgres` | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
 
 Portal의 운영 업무 파일은 아직 `emptyDir`이며 영구 저장소로 전환되지 않았습니다.
 운영 PVC를 준비할 때 노드의 업무 파일 경로를 위 기준에 맞추고 API의 `/data/<domain>`에 연결합니다.
 FTP와 같은 파일을 읽는 앱은 같은 노드의 같은 데이터 또는 명시적으로 준비한 공유 저장소에 연결해야 합니다.
 동적 StorageClass의 실제 저장 위치, kubelet·container runtime, node-exporter가 읽는 시스템 볼륨,
-외부 PC의 kind 호스트 매핑은 이 변경에 포함하지 않습니다.
+외부 PC의 kind 호스트 매핑은 위 호스트 경로 기준의 적용 대상이 아닙니다.
 
 ### 방향과 디스크 확인
 
@@ -75,15 +74,15 @@ local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니�
 
 앱별 절차: [MinIO 저장소](../../../minio/README.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/05_OPERATIONS.md),
 [Monitoring 운영](../../../monitoring/README.md#갱신운영), [FTP 운영](../../../ftp/02_OPERATIONS.md).
-실제 적용 후에는 [서비스 배치·스토리지](services.md#앱별-배치와-스토리지-선언)에 대상 노드·현재 경로·검증일·담당자를 기록합니다.
+실제 적용 후에는 [서비스 배치·스토리지](services.md#앱별-배치와-스토리지-선언)에 대상 노드·현재 경로·검증 결과·담당자를 반영합니다.
 
 ## 운영 책임·백업·인증서
 
 | 대상 | 기록할 정보 | 현재 상태 |
 | --- | --- | --- |
 | 서비스별 운영 책임 | 담당자·장애 연락 경로·접근 권한 신청 절차 | 미확인 |
-| 데이터 백업 | 대상·보관 위치·주기·보존 기간·복구 담당자·마지막 복구 검증일 | 미확인 |
-| 인증서·공용 CA | 보관 위치·만료일·갱신 담당자·적용 Secret 이름·마지막 갱신 확인일 | 상세 절차는 [인증서 관리](../../certs/README.md), 실제 운영값은 추가 확인 필요 |
+| 데이터 백업 | 대상·보관 위치·주기·보존 기간·복구 담당자·복구 검증 결과 | 미확인 |
+| 인증서·공용 CA | 보관 위치·만료일·갱신 담당자·적용 Secret 이름·적용 상태 | 상세 절차는 [인증서 관리](../../certs/README.md), 실제 운영값은 추가 확인 필요 |
 
 ## 변경 연계와 조회
 

@@ -96,7 +96,8 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 | `PM_COMPARISON_*` / PM SPIDER 파일 데이터 | `PM_COMPARISON_DATA_ROOT`, `PM_COMPARISON_DATA_HOST_PATH`, `PM_COMPARISON_MAX_FILES`, `PM_COMPARISON_MAX_META_DIRS` | PM SPIDER raw/score Parquet 데이터의 host mount와 컨테이너 내부 경로, scan 제한 |
 | 외부 앱 사용량 API | `EXTERNAL_APP_USAGE_API_URLS`, `EXTERNAL_APP_USAGE_API_TIMEOUT_SECONDS` | 앱별 접속현황에서 수동 동기화할 외부 사용량 API source 목록(JSON)과 timeout |
 | `DATA_MOVEMENT_*` / 파일 적재 데이터 | `DATA_MOVEMENT_HOST_PATH`, `DATA_MOVEMENT_FILE_READY_MIN_AGE_SECONDS`, `DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS`, `DATA_MOVEMENT_M_TKIN_PREVENT_DIR`, `DATA_MOVEMENT_CTTTM_WORKORDER_LIST_DIR`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_DIR`, `DATA_MOVEMENT_EQP_STATUS_CHG_DIR`, `DATA_MOVEMENT_M_INTERLOCK_DIR`, `DATA_MOVEMENT_MI_TIP_UPDATE_HIST_DIR`, `DATA_MOVEMENT_RACB_LIST_DIR`, `DATA_MOVEMENT_MES_LINE_MAPPING_INFO_DIR`, `DATA_MOVEMENT_STATION_MASTER_DIR` | FTP 등으로 수신한 파일의 host mount와 테이블별 root 경로. 하위 `incoming/processing` 사용. 최근 수정 파일과 stat 값이 변하는 파일은 이번 적재에서 제외 |
-| `FTP_*` / Data Movement FTP | `FTP_USER`, `FTP_PASS`, `FTP_PORT`, `FTP_PASV_ADDRESS`, `FTP_PASV_MIN_PORT`, `FTP_PASV_MAX_PORT` | `data_movement` 업로드용 FTP 계정, 접속 port, passive mode address/port |
+| Data Movement FTP 계정 | `FTP_USER`, `FTP_PASS` | 운영은 `FTP_CREDENTIAL_FILE`로 선택한 계정 파일에서 Secret으로 전달. 로컬은 고정 사용자와 생성된 credential 사용 |
+| 로컬 FTP 접속 | `LOCAL_FTP_PORT`, `LOCAL_FTP_PASSIVE_START` | `local/shared/env/k8s.env`의 호스트 접속 포트와 연속 4개 Passive 포트. 운영 제어 포트는 시작 스크립트·DaemonSet의 6380이며, Passive 포트는 manifest의 `PASV_MIN_PORT`·`PASV_MAX_PORT`, 주소는 `status.hostIP`로 주입 |
 | FTP 서버 배포 | `FTP_ENV`, `FTP_IMAGE`, `IMAGE_PULL_SECRET`, `FTP_ALLOW_CONTROL_PLANE` | `FTP_ENV`로 선택한 운영 env(기본 `deploy/ftp/env/prod.env`)에서 고정 tag/digest 이미지와 선택 pull Secret을 읽어 `make ftp-check`·`make ftp-up`에 적용. 사내 미러 기본값. `FTP_ALLOW_CONTROL_PLANE=true`일 때 선택한 control plane의 역할 NoSchedule을 허용하며 기본값·생략값은 false. 로그인 계정은 별도 `FTP_CREDENTIAL_FILE` |
 | `OIDC_*` / Auth/OIDC | `OIDC_PROVIDER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_AUTH_URL`, `OIDC_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `OIDC_TOKEN_URL`, `OIDC_JWKS_URL`, `OIDC_CONNECT_TIMEOUT_SECONDS`, `OIDC_READ_TIMEOUT_SECONDS`, `OIDC_JWKS_CACHE_SECONDS`, `ALLOWED_REDIRECT_HOSTS` | Keycloak code+PKCE/JWKS 로그인과 세션별 권한 |
 | Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 전용 Basic Auth |
@@ -132,7 +133,9 @@ API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
 
 앱 권한은 Keycloak client 역할만으로 판정합니다. `deptid`는 신원 정보이며 내부 부서 판정 env는 사용하지 않습니다.
 
-외부 공개 API prefix는 `PUBLIC_API_BASE_URL`로 지정합니다.
+`PUBLIC_API_BASE_URL`은 Django 설정으로 읽고 운영 env 검사에서 URL 형식을 확인합니다.
+현재 API 라우팅이나 URL 생성에는 사용하지 않습니다. 업무 API 경로는 `api/urls.py`의 `/api/v1/`이며,
+브라우저의 API 접속 주소는 Web의 `VITE_BACKEND_URL`과 reverse proxy 설정으로 맞춥니다.
 
 ### Web profile 환경 변수
 
@@ -184,14 +187,18 @@ API가 직접 읽는 업무 파일 데이터는 신규/변경 시 아래 규칙�
 
 PM SPIDER는 단일 `/data/pm_spider` mount 아래에서 `/data/pm_spider/data`와 `/data/pm_spider/result` 구조만 지원합니다.
 
-TTTM Spider는 `${TTTM_SPIDER_DATA_HOST_PATH:-../../../data/tttm_spider}`를 `/data/tttm_spider:ro`로 mount하며 아래 구조를 사용합니다.
+로컬 kind는 `local/shared/env/k8s.env`의 `TTTM_SPIDER_DATA_HOST_PATH`로 호스트 디렉터리를 지정합니다.
+기본값은 저장소 루트의 `data/tttm_spider`이며 API의 `/data/tttm_spider`에 읽기 전용으로 연결합니다.
+운영 API 기본 볼륨은 `emptyDir`입니다. 운영에서는 해당 볼륨을 실제 데이터가 있는 PVC 등으로 교체하고
+`/data/tttm_spider`에 읽기 전용으로 연결합니다. 이 호스트 경로 변수를 운영 API env에 추가해도 마운트는 바뀌지 않습니다.
+두 환경의 데이터 디렉터리 구조는 다음과 같습니다.
 
 - `data/`: line/eqp/chamber/date 기준 원본 Parquet 트리
 - `result/`: 사전 계산된 `score_data`와 `decomp_data`
 - `reference/`: `sensor_catalog_map.txt`, `oes_wavelength_catalog.txt` 참조 데이터
 - `lotwf_index.parquet`: 설비·챔버별 lot/wafer 선택 인덱스
 
-운영에서 `TTTM_SPIDER_DATA_HOST_PATH`를 다른 경로로 override할 때도 `reference/`의 두 파일을 함께 제공해야 합니다.
+호스트 디렉터리나 운영 볼륨을 준비할 때 `reference/`의 두 파일도 함께 제공해야 합니다.
 
 ## 로컬 개발 기본 흐름
 

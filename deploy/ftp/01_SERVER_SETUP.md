@@ -183,5 +183,5 @@ make ftp-up
 현재 구성은 IPv4 직접 접속과 passive 모드용이며 Service·Ingress·VIP를 만들지 않습니다.
 TLS나 NAT 주소를 자동 설정하지 않습니다.
 
-검증 후에는 [서비스 기록](../shared/docs/infrastructure/services.md#ftp-노드별-파일-수신)에 대상 노드·접속 주소·확인일·결과를,
+검증 후에는 [서비스 기록](../shared/docs/infrastructure/services.md#ftp-노드별-파일-수신)에 대상 노드·접속 주소·검증 결과를,
 [네트워크 기록](../shared/docs/infrastructure/network.md#ftp-직접-접속)을 실제 방화벽 확인 결과와 함께 갱신합니다.

@@ -71,6 +71,7 @@ Content-Type: application/json
 
 일반 업무 API는 canonical camelCase를 사용하며 지원하지 않는 별칭은 허용하지 않습니다.
 L3 Spider 설정 CRUD는 snake_case 등 별도 계약이 있으므로 모듈별 표기를 따릅니다.
+Emails 내부 OCR claim·update도 snake_case 입력을 사용하므로 [OCR 작업 계약](03-emails.md#ocr-작업)을 따릅니다.
 
 ## 응답 형식
 

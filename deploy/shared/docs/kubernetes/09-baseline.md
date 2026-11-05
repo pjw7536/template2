@@ -1,4 +1,4 @@
-# 01. 현재 환경 확인
+# 09. 현재 환경 확인
 
 [가이드 홈](README.md) · 이전: [용어](08-concepts.md) · 다음: [앱 준비](04-prerequisites.md)
 

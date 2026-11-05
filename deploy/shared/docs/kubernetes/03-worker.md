@@ -54,8 +54,8 @@ kubeadm은 런타임과 kubelet을 자동 설치하지 않습니다. 아래 2-1~
 
 ### 2-0. 사용할 사내 미러와 준비 파일
 
-서버 checkout에 포함된 [미러 원본](../infrastructure/repositories.md)에 기록된 Nexus base와 미러 이름을
-아래 명령에 직접 반영했습니다. URL을 환경변수로 입력할 필요가 없습니다.
+아래 명령은 서버 checkout에 포함된 [미러 원본](../infrastructure/repositories.md)의 Nexus base와 미러 이름을
+직접 사용합니다. URL을 환경변수로 입력할 필요가 없습니다.
 Kubernetes 경로는 원본의 `v1.36/deb/` 상대 경로를 미러 base에 이어 붙인 구성입니다.
 사내 서버에서의 접속 성공 여부는 별도로 확인합니다.
 

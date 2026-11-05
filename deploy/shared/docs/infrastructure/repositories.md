@@ -5,7 +5,7 @@
 사내 Git·registry·패키지·artifact 주소와 전체 public/mirror 이름 매핑의 관리 원본입니다.
 
 기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+담당자는 미확인입니다. 설정 원본과 실제 사용·접속 여부는 아래 항목을 따릅니다.
 
 ## 사내 저장소 주소
 
@@ -24,7 +24,7 @@
 | 용도 | 주소 | 근거 |
 | --- | --- | --- |
 | Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Airflow build env·MinIO env·Monitoring env |
-| FTP 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | 2026-11-05 저장소 선언: `deploy/ftp/env/prod.env`의 `FTP_IMAGE`. 공통 미러 패턴과 기존 원본 digest를 조합. 사용자 보고: 공개 이미지 pull 실패. 미러의 digest 제공·실제 pull·CA·인증·담당자 미확인 |
+| FTP 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | `deploy/ftp/env/prod.env`의 `FTP_IMAGE` 선언. 미러의 digest 제공·실제 pull·CA·인증·담당자 미확인 |
 | Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
 | GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
 | Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | Worker 설치 절차의 입력 |
@@ -45,7 +45,7 @@
 
 ## 전체 public/mirror 이름 매핑
 
-목록의 근거는 **2026-07-08 사용자 제공 자료**이며 Git의 `f55b1367:docs/integrations/proxy-mirrors.md`에서 확인할 수 있습니다.
+아래는 사용자가 제공한 사내 미러 이름 매핑입니다. 실제 사용 주소와 접속 여부는 위 표를 따릅니다.
 `type`은 아래 절로 구분한 패키지 생태계, `public`은 외부 원본 URL, `mirror`는 사내 저장소 이름입니다. 같은 생태계·원본 URL·이름 조합은 한 번씩 유지합니다.
 이름이 다르면 별도 항목이며 이름만으로 실제 URL·하위 경로·지원 버전·접속 성공을 확정하지 않습니다.
 실제 최종 사용 주소는 위 표에 기록하고, 전체 매핑은 아래에서 관리합니다.

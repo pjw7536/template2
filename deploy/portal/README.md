@@ -49,12 +49,8 @@ Airflow 서버 자체의 설정은 `../airflow/env/`, API에서 Airflow에 연�
 환경끼리 자동 상속하지 않습니다. 로컬 Kubernetes만 `local/portal/env/api.env`에
 `local/portal/env/api-k8s.env`를 덮어쓰고 `local/minio/env/minio.env`의 API 접근 키를 선택해 합성합니다.
 
-`internal/`은 `env/prod/`로 통합했습니다. 이 작업 공간의 기존 Compose 입력은
-`env/prod/api.env.pre-k8s.bak`, `env/prod/web.env.pre-k8s.bak`, `env/prod/minio.env.pre-k8s.bak`에
-복구용으로 보존했습니다. 사본은 Git 제외이며 배포 도구가 자동으로 읽지 않습니다.
-
-새 prod API는 준비한 Keycloak 입력과 기존 업무 연동값을 사용합니다. DB 미입력과
-이전 Compose 전용 업무 주소는 실제 배포 전에 확인합니다. 배포 시점의 env 버전을 함께 기록합니다.
+운영 API 설정은 `env/prod/api.env`, Web 설정은 `env/prod/web.env`에서 관리합니다.
+실제 배포 전에 DB 연결값·Keycloak 입력·업무 연동 주소를 확인하고 대상 환경에 맞춥니다.
 
 사내 서버는 Kubernetes로 배포합니다.
 
@@ -78,15 +74,15 @@ chmod 600 deploy/portal/env/prod/api.env deploy/portal/env/prod/web.env
    기존 다른 환경 파일을 통째로 복사하면 dummy 주소나 다른 환경의 계정까지 가져올 수 있습니다.
 
 API 파일의 구역 번호는 모든 환경에서 같습니다. 설정이 없는 구역은 생략되므로
-`env/prod/api.env`에 모든 번호가 보이지 않아도 정상입니다. 기존 profile의 timeout,
-cache, 빈 값은 동작 보존을 위해 유지했습니다. 빈 값과 변수 생략은 의미가 다를 수 있습니다.
+`env/prod/api.env`에 모든 번호가 보이지 않아도 정상입니다. timeout·cache 같은 선택 설정은
+해당 profile의 입력값과 코드 기본값을 확인합니다. 빈 값과 변수 생략은 의미가 다를 수 있습니다.
 
 ## 서로 맞춰야 하는 값
 
 | 기준 | 함께 확인할 항목 |
 | --- | --- |
 | Portal 공개 주소 | API의 `FRONTEND_BASE_URL`, CORS·CSRF 주소, Web의 `VITE_SITE_URL`, Ingress host·TLS |
-| Portal API 주소 | `PUBLIC_API_BASE_URL`은 `/api/v1` 포함, Web의 `VITE_BACKEND_URL`은 Portal origin 사용 |
+| Portal API 주소 | Web의 `VITE_BACKEND_URL`은 Portal origin, reverse proxy는 `/api/v1/` 경로를 API로 전달. `PUBLIC_API_BASE_URL`은 운영 env 검사 대상이며 라우팅·URL 생성에는 사용하지 않음 |
 | Portal 로그인 | `OIDC_REDIRECT_URI`와 Keycloak Portal client의 허용 callback |
 | Portal client 계정 | API의 `OIDC_CLIENT_ID`·`OIDC_CLIENT_SECRET`과 Keycloak에 등록한 Portal client |
 | 파일 저장소 계정 | API의 `MINIO_ACCESS_KEY`·`MINIO_SECRET_KEY`와 실제 MinIO 접근 계정 |

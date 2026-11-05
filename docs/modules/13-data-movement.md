@@ -74,18 +74,21 @@ DB schema·데이터 변환은 저장소의 migration으로 관리하며 파일 
 ## FTP
 
 FTP 배포와 이미지·계정 입력은 [FTP 안내](../../deploy/ftp/README.md)를 따릅니다.
-FTP에서 보이는 `data_movement` 디렉터리는 API의 `/data/data_movement`와 같은 host path입니다.
+로컬 kind에서는 FTP의 `data_movement/`와 API의 `/data/data_movement`가 같은 호스트 디렉터리를 사용합니다.
+호스트 경로는 `local/shared/env/k8s.env`의 `DATA_MOVEMENT_HOST_PATH`로 지정하며 기본값은 `data/data_movement`입니다.
 
-기본 접속 설정은 env로 바꿀 수 있습니다.
+운영 FTP는 접속한 노드의 `/appdata/data_movement`에 저장합니다. 운영 API 기본 볼륨은 `emptyDir`이므로
+FTP 파일과 자동으로 연결되지 않습니다. API가 같은 노드의 해당 경로 또는 준비한 공유 저장소를
+`/data/data_movement`에 읽기·쓰기로 마운트하도록 운영 overlay와 배치를 구성해야 합니다.
+서로 다른 노드의 파일은 자동 복제되지 않습니다.
 
-```text
-FTP_USER=ftpuser
-FTP_PASS=<생성된 로컬 credential 또는 운영 Secret>
-FTP_PORT=6380
-FTP_PASV_ADDRESS=127.0.0.1
-FTP_PASV_MIN_PORT=8076
-FTP_PASV_MAX_PORT=8079
-DATA_MOVEMENT_HOST_PATH=./data/data_movement
-```
+| 설정 | 로컬 kind | 운영 Kubernetes |
+| --- | --- | --- |
+| 계정 | 사용자 `ftpuser`, 비밀번호는 생성된 `local/shared/runtime/credentials.env` | `FTP_CREDENTIAL_FILE`의 `FTP_USER`·`FTP_PASS`를 `ftp-credentials` Secret에 전달 |
+| 제어 포트 | 호스트 접속 포트는 `LOCAL_FTP_PORT`, 기본 6380 | 노드 IP의 6380. 시작 스크립트·DaemonSet에 선언 |
+| Passive 포트 | `LOCAL_FTP_PASSIVE_START`부터 연속 4개, 기본 8076–8079 | DaemonSet의 `PASV_MIN_PORT`·`PASV_MAX_PORT`와 포트 선언, 기본 8076–8079 |
+| Passive 주소 | 로컬 overlay의 `PASV_ADDRESS=127.0.0.1` | DaemonSet이 `status.hostIP`에서 노드 IP를 주입 |
 
-운영에서는 `FTP_PASS`와 `FTP_PASV_ADDRESS`를 반드시 배포 환경에 맞게 설정합니다.
+로컬 포트·호스트 경로 변경은 [로컬 설정과 파일 보존](../../local/README.md#로컬-설정과-파일-보존)을 따릅니다.
+운영 포트·Passive 주소를 바꾸려면 [수동 overlay](../../deploy/ftp/03_KUBERNETES.md)와 시작 스크립트·방화벽 설정을 함께 맞춥니다.
+`FTP_PORT`·`FTP_PASV_ADDRESS`·`FTP_PASV_MIN_PORT`·`FTP_PASV_MAX_PORT`는 배포 도구가 읽는 입력이 아닙니다.

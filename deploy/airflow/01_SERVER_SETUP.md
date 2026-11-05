@@ -69,7 +69,7 @@ sudo install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
 local PV는 폴더를 자동으로 만들지 않습니다. 또한 20Gi 선언은 실제 파일시스템 사용량을 제한하지 않으므로
 DB·로그 디스크의 여유 공간을 따로 감시해야 합니다.
 
-로그는 기존 Compose와 같이 자동 삭제하지 않습니다.
+로그는 자동 삭제하지 않습니다.
 자동 정리가 필요하면 보관 정책을 정한 뒤 `scheduler.logGroomerSidecar`를 설정합니다.
 
 여러 Pod가 RWO 로그 PVC를 함께 쓰도록 같은 노드에 고정합니다.

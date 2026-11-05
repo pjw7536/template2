@@ -194,7 +194,7 @@ Pod Ready·렌더 검사만으로 실제 전송 성공을 대신하지 않습니
 새 Worker를 추가할 때는 해당 서버의 디스크·기존 파일 권한·방화벽을 먼저 확인합니다. 없는 데이터 폴더는 자동 생성됩니다.
 `FTP_NODES`에 기존 대상과 새 노드를 모두 넣고 이 문서의 검사·적용 절차를 반복합니다.
 사내 이미지 주소·digest·배포 결과는 [저장소 원본](../shared/docs/infrastructure/repositories.md)과
-[FTP 서비스 원본](../shared/docs/infrastructure/services.md#ftp-노드별-파일-수신)에 확인일·근거와 함께 반영합니다.
+[FTP 서비스 원본](../shared/docs/infrastructure/services.md#ftp-노드별-파일-수신)의 현재 설정·적용 상태에 반영합니다.
 
 ## 중단
 

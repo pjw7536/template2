@@ -154,7 +154,8 @@ DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=1
 
 ### Data Movement FTP
 
-FTP와 API는 같은 호스트 데이터 폴더를 공유합니다. 파일 전달 규칙은 [Data Movement](../modules/13-data-movement.md#주의사항),
+로컬 kind의 FTP와 API는 같은 호스트 데이터 폴더를 공유합니다. 운영은 API 볼륨과 노드 배치 또는 공유 저장소를 별도로 구성해야 합니다.
+환경별 경로·연결 조건과 파일 전달 규칙은 [Data Movement](../modules/13-data-movement.md#ftp),
 접속 주소·계정은 [로컬 안내](../../local/README.md#주소와-계정), 서버 입력은 [FTP 배포](../../deploy/ftp/README.md)를 따릅니다.
 
 ## Drone JSON/CSV target seed

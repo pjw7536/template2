@@ -5,27 +5,26 @@
 클러스터·업무 네트워크 주소와 연결 관계의 관리 원본입니다.
 
 기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-**자료 대조일: 2026-11-05 / 담당자: 미확인.** 사용자 확인일과 실제 적용 여부는 각 항목의 근거를 따릅니다.
+담당자는 미확인입니다. 접속 경로의 확인 범위와 남은 확인은 아래 항목을 따릅니다.
 
 ## VIP·DNS·접속 경로
 
 | 용도 | 주소·연결 | 근거·확인 상태 |
 | --- | --- | --- |
-| Kubernetes API VIP | `10.172.26.148:6443` | 2026-09-15 기존 API endpoint 기록. 실제 kubeconfig·가입 endpoint·현재 LB backend 확인 필요 |
-| 업무 서비스 APP VIP | `10.172.26.150:443` | 2026-09-15 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
-| 업무 DNS → APP VIP | `etch.samsungds.net` → `10.172.26.150` | 2026-09-15 사용자 확인: DNS 설정 완료. 최신 DNS 응답·인증서 확인 필요 |
-| APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 2026-09-15 LB 연결 확인, 2026-09-16 노드명·Ready 확인 기록. 현재 backend·Traefik 응답은 재조회 |
-| APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 2026-09-15 LB 연결 확인, 2026-09-16 노드명·Ready 확인 기록. 현재 backend·Traefik 응답은 재조회 |
+| Kubernetes API VIP | `10.172.26.148:6443` | API 접속점. 실제 kubeconfig·가입 endpoint·LB backend 확인 필요 |
+| 업무 서비스 APP VIP | `10.172.26.150:443` | 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
+| 업무 DNS → APP VIP | `etch.samsungds.net` → `10.172.26.150` | 사용자 확인: DNS 연결. 현재 DNS 응답·인증서 확인 필요 |
+| APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
+| APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../../ingress/01-VIP.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |
 
-VIP·DNS·backend 사용자 확인의 근거도 `ca96e3dc:deploy/shared/docs/infrastructure/cluster.md`입니다.
-Keycloak DNS는 당시 Worker 직결 기록이며 APP VIP 전환 완료 여부는 미확인입니다.
+Keycloak DNS의 실제 연결 대상과 APP VIP 적용 여부는 미확인입니다. Worker 직결 여부와 함께 조회합니다.
 새 검증 환경에는 운영 IP를 재사용하지 않습니다.
 
 ## FTP 직접 접속
 
-**운영 방향 확인일: 2026-11-05 / 근거: 사용자와 노드별 IP:6380 직접 전송 방식 협의, `deploy/ftp/k8s/stack.yaml` 대조 / 담당자: 미확인.**
-아래는 필요한 연결 조건입니다. 실제 방화벽 개방·노드별 연결 성공은 미확인입니다.
+아래는 `deploy/ftp/k8s/stack.yaml`의 노드 직접 연결에 필요한 조건입니다.
+실제 방화벽 개방·노드별 연결 성공·담당자는 미확인입니다.
 
 | 출발지 | 목적지 | TCP 포트 | 용도·남은 확인 |
 | --- | --- | --- | --- |
@@ -34,7 +33,7 @@ Keycloak DNS는 당시 Worker 직결 기록이며 APP VIP 전환 완료 여부�
 
 FTP는 `hostNetwork`를 사용하고 Passive 주소에는 해당 노드의 `status.hostIP`를 전달합니다.
 업무 APP VIP·Traefik을 경유하지 않는 노드 직접 연결입니다. 현재 절차는 IPv4 InternalIP 직접 접근을 전제하며 NAT·TLS는 별도 설정이 필요합니다.
-2026-11-05 저장소 선언: control plane도 명시적 허용 후 FTP 대상에 포함할 수 있습니다. 기존 노드별 직접 수신 경로를 유지합니다.
+control plane도 명시적 허용 후 FTP 대상에 포함할 수 있습니다. 접속 경로는 노드별 직접 수신입니다.
 노드명·IP는 [서버 목록](servers.md), 배치·데이터는 [FTP 서비스](services.md#ftp-노드별-파일-수신), 실행 방법은 [FTP 설치](../../../ftp/01_SERVER_SETUP.md)를 따릅니다.
 
 ## 클러스터 네트워크·실행 기반

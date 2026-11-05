@@ -84,6 +84,4 @@ Portal client나 SDWT 업무 그룹은 Headlamp의 client·관리자 그룹을 �
 | [Keycloak 자체 설정](../keycloak/04_SETUP_FLOW.md) | 사내 로그인·기존 사용자 연결 |
 | [Keycloak 사용자 필드](../keycloak/06_CLAIMS.md) | EPID·loginid·표시 이름 계약 |
 
-`OIDC.md`와 `HTTPS_CERTIFICATE_GUIDE.md`의 절차는 03~06과 운영 참고에 통합했습니다.
-
 [전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

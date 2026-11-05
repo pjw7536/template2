@@ -73,8 +73,7 @@ prod env에는 서버·DB·로그인·파일 저장소의 필수값을 먼저 �
 업무 연동을 사용할 때는 [설정 설명](../../../../docs/reference/01-configuration.md)을 보고 필요한 값을 추가합니다.
 timeout·cache 같은 선택값을 생략하면 코드 기본값을 사용합니다.
 
-local/test 설정은 유지하며 prod에는 기존 업무 설정과 준비한 Keycloak 입력을 통합했습니다.
-이후 env 변경 이력도 Git에서 관리합니다.
+prod API env에는 업무 설정과 Keycloak 연결값을 함께 작성합니다. env 변경 이력은 Git에서 관리합니다.
 
 Keycloak의 `COMPONENT=oidc` 입력은 `CORP_OIDC_DISCOVERY_URL`이 있으면 endpoint를 자동 해석합니다.
 실행 호스트에 Python과 discovery 접속·TLS 신뢰가 필요합니다. env 검사·Secret 등록 명령은
@@ -162,8 +161,8 @@ KUBE_CONTEXT="$KUBE_CONTEXT" bash deploy/shared/scripts/apply-env.sh \
   keycloak prod server /root/keycloak-runtime.env
 ```
 
-기존 `client-secret`, `portal-public-url`은 자동 삭제하지 않지만
-더 이상 서버 기동 입력으로 사용하지 않습니다. 이 값은 Portal API 설정으로 옮겨 관리합니다.
+`client-secret`, `portal-public-url`이 서버 Secret에 남아 있어도 기동 입력으로 사용하거나 자동 삭제하지 않습니다.
+Portal client secret과 공개 URL은 Portal API env에서 관리합니다.
 
 ## 로컬 Kubernetes 입력 합성
 
@@ -174,9 +173,9 @@ MinIO 접근 계정을 선택해 최종 `api-env` Secret 하나를 만듭니다.
 API·migration·collectstatic은 이 결과를 함께 사용합니다.
 Pod YAML에서 같은 값을 다시 덮어쓰지 않습니다.
 
-`make k8s-up`이 합성을 수행합니다. 예전 `api-local-overrides` Secret은 더 이상 참조하지
-않지만 클러스터에서 자동 삭제하지는 않습니다. 기존 local-runtime의 Keycloak 테스트 계정도
-현재 로컬 Keycloak을 위한 값이므로 유지합니다.
+`make k8s-up`이 합성을 수행합니다. `api-local-overrides` Secret은 참조하지 않으며,
+클러스터에 남아 있어도 자동 삭제하지 않습니다. local-runtime의 Keycloak 테스트 계정은
+로컬 Keycloak에 사용하는 값이므로 유지합니다.
 
 ## 관리 규칙
 
