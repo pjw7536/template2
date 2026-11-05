@@ -54,6 +54,9 @@ def charts(fetch=False):
             if app == 'headlamp':
                 url = ('https://github.com/kubernetes-sigs/headlamp/releases/download/'
                        f'headlamp-helm-{lock["version"]}/headlamp-{lock["version"]}.tgz')
+            elif app == 'monitoring':
+                url = ('https://github.com/prometheus-community/helm-charts/releases/download/'
+                       f'kube-prometheus-stack-{lock["version"]}/kube-prometheus-stack-{lock["version"]}.tgz')
             print(f'공식 chart 준비: {app} {lock["version"]}', flush=True)
             with urlopen(url, timeout=120) as response:
                 data = response.read()

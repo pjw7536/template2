@@ -89,15 +89,18 @@ vi "$MONITORING_ENV"
 Helm chart는 설치할 Kubernetes 리소스를 묶은 패키지입니다.
 이 저장소는 `kube-prometheus-stack` **91.4.0**을 사용하며, 버전과 SHA-256은 [chart.lock.json](helm/chart.lock.json)에 고정되어 있습니다.
 
-외부 인터넷에 연결되는 PC 또는 관리 서버의 저장소 루트에서 실행합니다.
+사내 미러에 접근할 수 있는 CP1 등 관리 서버의 저장소 루트에서 실행합니다.
+`fetch-chart`는 chart lock에 지정한 `proxy-raw-github.com` 미러에서 다운로드하고 SHA-256을 검증합니다.
+미러의 실제 패키지 제공·다운로드 가능 여부는 CP1에서 확인해야 합니다.
 
 ```bash
 python3 deploy/monitoring/scripts/manage.py fetch-chart
 ```
 
 다운로드한 파일은 `deploy/monitoring/helm/vendor/kube-prometheus-stack-91.4.0.tgz`입니다.
-관리 서버가 인터넷에 연결되지 않으면, 외부 PC에서 받은 파일을 **관리 서버의 같은 경로에 복사**합니다.
-이미 파일이 준비되어 있으면 다시 다운로드하지 않습니다.
+미러에서 받을 수 없으면 외부 PC에서 같은 버전의 [공식 release 파일](https://github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-91.4.0/kube-prometheus-stack-91.4.0.tgz)을 받아 **관리 서버의 같은 경로에 복사**합니다.
+로컬 개발 도구는 공개 GitHub 경로에서 같은 버전을 받고 동일한 SHA-256을 검증합니다.
+이미 파일이 준비되어 있으면 `fetch-chart`를 생략합니다.
 
 다른 위치에 보관했다면 관리 서버에서 경로를 지정합니다.
 
