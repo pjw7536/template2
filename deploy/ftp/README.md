@@ -8,7 +8,7 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 | 현재 상태 | 다음 작업 | 문서 |
 | --- | --- | --- |
 | FTP 서버가 없음 | 노드·디스크·계정 준비 → 검사 → 배포 | [01. 서버 설치](01_SERVER_SETUP.md) |
-| 사내 Worker별 IP:6380으로 수신 | 각 Worker 준비 → CP1에서 사내 이미지 overlay 일괄 적용 | [01. 대상·노드 준비](01_SERVER_SETUP.md#2-클러스터와-worker-선택) → [03. 사내 배포](03_KUBERNETES.md#사내-이미지로-각-worker에-배포) |
+| 사내 Worker별 IP:6380으로 수신 | 각 Worker 준비 → 사내 미러 env 확인 → CP1에서 일괄 배포 | [01. 대상·노드 준비](01_SERVER_SETUP.md#2-클러스터와-worker-선택) → [01. 검사 후 배포](01_SERVER_SETUP.md#5-검사-후-배포) |
 | 서버가 실행 중 | 접속·저장 확인, 노드 추가·중단, 문제 해결 | [02. 운영](02_OPERATIONS.md) |
 | 이미지·저장 경로 변경 또는 수동 배포 필요 | Kubernetes 원본과 overlay 확인 | [03. 원본과 수동 배포](03_KUBERNETES.md) |
 
@@ -47,6 +47,9 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 계정 파일은 서버에서 [credentials.env.example](credentials.env.example)의 `FTP_USER`, `FTP_PASS`를 입력해 사용합니다.
 권한 `600` 적용과 절대 경로 지정은 [계정 파일 준비](01_SERVER_SETUP.md#4-관리-호스트의-계정-파일-준비)를 따릅니다.
 모든 대상 노드는 같은 계정을 사용합니다. 기존 Secret이 있으면 입력 계정과 비교하고, 다르면 중단합니다.
-`ftp-up`은 기본 원본을 적용합니다. 사내 이미지 overlay를 사용할 때는 위 사내 배포 절차로 같은 overlay를 적용합니다.
+`ftp-check`와 `ftp-up`은 [env/prod.env](env/prod.env)의 `FTP_IMAGE`를 적용하며 기본값은 사내 Docker Hub 미러입니다.
+registry 인증이 필요하면 같은 env의 `IMAGE_PULL_SECRET`에 `etch-ftp` namespace의 기존 Secret 이름을 지정합니다.
+다른 env는 `make ftp-check FTP_ENV=/절대/경로/ftp.env`, `make ftp-up FTP_ENV=/절대/경로/ftp.env`로 지정합니다.
+별도 overlay 운영 시에는 [수동 배포 절차](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)로 같은 overlay를 적용합니다.
 
 [전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

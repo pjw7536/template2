@@ -209,7 +209,7 @@ keycloak-up:
 	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)"
 
 # FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다.
-export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE
+export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE FTP_ENV
 .PHONY: ftp-check ftp-up ftp-test
 ftp-check:
 	python3 ./deploy/ftp/scripts/up.py --check-only

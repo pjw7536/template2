@@ -85,11 +85,12 @@ MinIO는 기존 데이터를 이관하지 않고 새 `/appdata/minio` 저장소�
 | --- | --- | --- |
 | 접속·배치 | FTP가 필요한 Linux Worker의 IP로 직접 접속. `etch.io/ftp-enabled=true` 라벨에 따라 노드당 DaemonSet Pod 1개 | Worker별 배포 절차 작성. 실제 대상 노드·기동 여부 미확인 |
 | 데이터 | 접속한 Worker의 `/appdata/data_movement`에 저장. 폴더가 없으면 kubelet이 생성하고 FTP 시작 시 최상위 소유자를 설정. 로그인 후 경로는 `data_movement/` | 2026-11-05 사용자 요청으로 `DirectoryOrCreate`를 유지하며 호스트 경로 선언을 `/data/data_movement`에서 `/appdata/data_movement`로 변경. 실제 서버 적용·자동 생성 검증은 미실행. 노드별 디스크·기존 파일 권한·소비 앱의 읽기 위치 확인 필요. 자동 복제 없음 |
-| 이미지·계정 | 승인된 사내 이미지·digest를 overlay로 지정. `etch-ftp/ftp-credentials` 공용 계정 사용 | 실제 사내 FTP 이미지 주소·digest·pull Secret 필요 여부 미확인 |
+| 이미지·계정 | `deploy/ftp/env/prod.env`의 이미지·선택 pull Secret을 `ftp-up`이 적용. 추가 패치는 수동 overlay 사용. `etch-ftp/ftp-credentials` 공용 계정 사용 | 2026-11-05 공개 이미지 pull 실패 사용자 보고에 따라 운영 env에 [FTP 미러 주소](repositories.md#이미지패키지별-사용-주소) 선언. 미러의 digest 제공·실제 pull·CA·인증·pull Secret 필요 여부 미확인 |
 | 완료 판정 | 각 Worker에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 아직 미실행. 노드별 성공 확인일·근거·담당자 기록 필요 |
 
 노드명·IP는 [서버 목록](servers.md), 포트·방화벽은 [FTP 네트워크](network.md#ftp-직접-접속)를 따릅니다.
-실행 순서는 [Worker별 준비](../../../ftp/01_SERVER_SETUP.md) → [CP1에서 사내 배포](../../../ftp/03_KUBERNETES.md#사내-이미지로-각-worker에-배포) → [전송 확인](../../../ftp/02_OPERATIONS.md)입니다.
+실행 순서는 [Worker별 준비](../../../ftp/01_SERVER_SETUP.md) → [운영 env 확인과 CP1 배포](../../../ftp/01_SERVER_SETUP.md#5-검사-후-배포) → [전송 확인](../../../ftp/02_OPERATIONS.md)입니다.
+별도 overlay 운영은 [수동 사내 배포](../../../ftp/03_KUBERNETES.md#사내-이미지로-각-worker에-배포)를 따릅니다.
 새 확인을 받으면 위 현재 값을 갱신하고 실제 배포 대상·주소·결과를 기록합니다.
 
 ## 추가 확인·변경 연계

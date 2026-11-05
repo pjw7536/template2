@@ -32,13 +32,17 @@ class FtpTests(unittest.TestCase):
         self.credentials = Path(self.directory.name) / 'ftp.env'
         self.credentials.write_text('FTP_USER=test-user\nFTP_PASS=test-password\n')
         self.credentials.chmod(0o600)
+        self.env = Path(self.directory.name) / 'prod.env'
+        self.image = 'registry.example.test/mirror/fauria/vsftpd@sha256:' + 'a' * 64
+        self.env.write_text(f'FTP_IMAGE={self.image}\nIMAGE_PULL_SECRET=\n')
         self.nodes = [worker()]
         self.secret = ''
         self.namespace = ''
         self.source = [
             {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {
                 'name': 'etch-ftp', 'labels': {'operator.test/policy': 'initial'}}},
-            {'apiVersion': 'apps/v1', 'kind': 'DaemonSet', 'metadata': {'name': 'ftp', 'namespace': 'etch-ftp'}},
+            {'apiVersion': 'apps/v1', 'kind': 'DaemonSet', 'metadata': {'name': 'ftp', 'namespace': 'etch-ftp'},
+             'spec': {'template': {'spec': {'containers': [{'name': 'ftp', 'image': self.image}]}}}},
         ]
         self.calls = []
         self.runner = patch.object(ftp, 'run', side_effect=self.run_command)
@@ -60,7 +64,7 @@ class FtpTests(unittest.TestCase):
         return ''
 
     def start(self, **kwargs):
-        ftp.start('test-context', 'worker-a', str(self.credentials), **kwargs)
+        ftp.start('test-context', 'worker-a', str(self.credentials), env_file=self.env, **kwargs)
 
     def writes(self):
         return [(args, kw) for args, kw in self.calls
@@ -69,6 +73,60 @@ class FtpTests(unittest.TestCase):
     def test_check_only_never_mutates_cluster(self):
         self.start(check_only=True)
         self.assertEqual(self.writes(), [])
+
+    def test_image_from_env_replaces_public_image_in_applied_stack(self):
+        """공개 원본이 렌더되어도 실제 적용은 지정한 미러 이미지를 사용한다."""
+        self.source[1]['spec']['template']['spec']['containers'][0]['image'] = 'fauria/vsftpd:old'
+        self.start()
+        applied = json.loads(self.writes()[-1][1]['data'])['items'][0]
+        self.assertEqual(applied['spec']['template']['spec']['containers'][0]['image'], self.image)
+
+    def test_default_env_uses_mirror_and_preserves_base_digest(self):
+        """env를 따로 지정하지 않아도 운영 미러를 적용하고 기존 digest를 유지한다."""
+        ftp.start('test-context', 'worker-a', str(self.credentials))
+        applied = json.loads(self.writes()[-1][1]['data'])['items'][0]
+        image = applied['spec']['template']['spec']['containers'][0]['image']
+        base = (ftp.BASE / 'k8s/stack.yaml').read_text()
+        self.assertNotEqual(image.split('/')[0], 'fauria')
+        self.assertIn('proxy-docker-registry-1.docker.io/fauria/vsftpd@', image)
+        self.assertIn(image.split('@')[1], base)
+
+    def test_pull_secret_is_checked_and_applied(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nIMAGE_PULL_SECRET=registry-auth\n')
+        self.start()
+        lookup = next(index for index, (args, _) in enumerate(self.calls)
+                      if 'get' in args and 'registry-auth' in args)
+        first_write = next(index for index, call in enumerate(self.calls) if call in self.writes())
+        self.assertLess(lookup, first_write)
+        applied = json.loads(self.writes()[-1][1]['data'])['items'][0]
+        self.assertEqual(applied['spec']['template']['spec']['imagePullSecrets'], [{'name': 'registry-auth'}])
+
+    def test_missing_pull_secret_stops_before_any_write(self):
+        self.env.write_text(f'FTP_IMAGE={self.image}\nIMAGE_PULL_SECRET=missing-auth\n')
+        original = self.run_command
+
+        def missing_secret(args, **kwargs):
+            if 'get' in args and 'missing-auth' in args:
+                raise ValueError('Secret 처리 실패')
+            return original(args, **kwargs)
+
+        self.runner.stop()
+        with patch.object(ftp, 'run', side_effect=missing_secret):
+            with self.assertRaisesRegex(ValueError, 'Secret 처리 실패'):
+                self.start()
+        self.assertEqual(self.writes(), [])
+
+    def test_invalid_image_settings_stop_before_commands(self):
+        for content in ('FTP_IMAGE=\n', 'FTP_IMAGE=fauria/vsftpd\n',
+                        'FTP_IMAGE=fauria/vsftpd:latest\n', 'FTP_IMAGE=fauria/vsftpd@sha256:bad\n',
+                        'FTP_IMAGE=https://registry.test/ftp:fixed\n',
+                        f'FTP_IMAGE={self.image}\nFTP_IMAGE={self.image}\n',
+                        f'FTP_IMAGE={self.image}\nIMAGE_PULL_SECRET=bad/name\n'):
+            with self.subTest(content=content):
+                self.env.write_text(content)
+                with self.assertRaises(ValueError):
+                    self.start()
+                self.assertEqual(self.calls, [])
 
     def test_new_install_orders_secret_before_labels_and_stack(self):
         self.start()

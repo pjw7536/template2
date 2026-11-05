@@ -2,8 +2,9 @@
 
 [시작 안내](README.md) · [자동 배포](01_SERVER_SETUP.md)
 
-기본 이미지를 사용하는 설치는 `make ftp-check` → `make ftp-up` 순서로 진행합니다.
-사내 Worker별 배포는 아래의 [사내 이미지 적용](#사내-이미지로-각-worker에-배포)을 따릅니다. 두 배포 방식을 중복 실행하지 않습니다.
+사내 미러 이미지를 사용하는 일반 설치는 [env/prod.env](env/prod.env)을 확인하고 `make ftp-check` → `make ftp-up` 순서로 진행합니다.
+두 명령은 운영 env의 `FTP_IMAGE`, `IMAGE_PULL_SECRET`을 적용합니다. 공통 원본을 직접 `kubectl apply -k deploy/ftp/k8s`로 적용하면 공개 이미지를 사용합니다.
+추가 패치가 필요한 수동 배포는 아래의 [사내 이미지 overlay 적용](#사내-이미지로-각-worker에-배포)을 따릅니다. 두 배포 방식을 중복 실행하지 않습니다.
 
 [배포 문서 안내](../README.md) · [Kubernetes 입문 가이드](../shared/docs/kubernetes/README.md)
 
@@ -37,7 +38,7 @@ Service·Ingress·VIP를 사용하지 않습니다. Kubernetes에 등록되지 �
 3. 기존 FTP가 해당 포트를 점유하고 있으면 중단합니다. 클라이언트에서 노드 InternalIP의
    TCP 6380과 8076–8079에 접근할 수 있도록 방화벽을 설정합니다.
    이 구성은 IPv4 직접 접속·passive 모드 기준이며 NAT 주소나 TLS를 자동 설정하지 않습니다.
-4. 기본 이미지는 기존 FTP와 같은 `fauria/vsftpd`이며 접속 검증한 digest로 고정합니다. 사내 반입 시 외부 overlay의
+4. 공통 원본 이미지는 기존 FTP와 같은 `fauria/vsftpd`이며 기존 digest로 고정합니다. `make ftp-up`은 운영 env로 사내 미러 주소를 적용합니다. 수동 배포 시 외부 overlay의
    Kustomize `images`로 승인된 registry 주소와 검증한 digest를 지정합니다.
    실제 배포도 동일한 overlay를 사용하고 필요한 imagePullSecrets를 추가합니다.
 
@@ -59,7 +60,8 @@ hostNetwork와 hostPath를 허용하는 namespace 정책이 필요합니다.
 
 승인된 사내 registry에 `fauria/vsftpd` 이미지를 반입하거나 미러로 제공하고 **실제로 확인한 경로와 digest**를 준비합니다.
 원본의 digest를 그대로 쓰려면 같은 이미지가 사내 registry에서도 그 digest로 조회되는지 확인해야 합니다.
-사내 최종 FTP 이미지 주소는 아직 기록돼 있지 않으므로 아래 입력으로 지정합니다.
+기본 미러 주소 선언은 [운영 env](env/prod.env)에 있으며 실제 pull 성공은 미확인입니다.
+수동 overlay에는 아래 입력으로 이미지 주소·digest를 별도로 지정합니다. env와 overlay는 자동으로 합쳐지지 않습니다.
 
 ### 2. Git 밖에 overlay 작성
 
@@ -155,7 +157,7 @@ Namespace와 FTP 계정 Secret은 이 렌더에 포함되지 않습니다.
 
 기존 Secret이 계정 파일과 다르면 `ftp-check`에서 중단합니다. 이 절차는 기존 계정을 덮어쓰지 않습니다.
 배포 후에는 각 대상 Worker에 Pod가 하나씩 있고 실제 이미지가 사내 주소인지 확인합니다.
-재배포할 때도 이 적용 블록과 같은 overlay를 사용합니다. `make ftp-up`은 기본 원본을 다시 적용하므로 사내 overlay 운영 중에는 사용하지 않습니다.
+재배포할 때도 이 적용 블록과 같은 overlay를 사용합니다. `make ftp-up`은 공통 원본과 운영 env만 적용하므로 별도 overlay 운영 중에는 사용하지 않습니다.
 
 ### 5. 노드별 파일 전송과 추가 노드
 

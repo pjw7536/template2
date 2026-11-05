@@ -49,6 +49,29 @@ def read_credentials(path):
     return values
 
 
+def settings(path):
+    """운영 이미지와 선택 pull Secret을 셸 실행 없이 읽고 검증한다."""
+    values = {}
+    for line in Path(path).read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        key, separator, value = line.partition('=')
+        if not separator or key not in ('FTP_IMAGE', 'IMAGE_PULL_SECRET') or key in values:
+            raise ValueError('FTP env에는 FTP_IMAGE와 IMAGE_PULL_SECRET만 각각 한 번 지정하세요.')
+        values[key] = value
+    image = values.get('FTP_IMAGE', '')
+    if '://' in image or not re.fullmatch(r'[a-zA-Z0-9._:/@-]+', image) or not (
+            re.fullmatch(r'[^@]+@sha256:[0-9a-f]{64}', image)
+            or '@' not in image and re.fullmatch(r'.+:[a-zA-Z0-9_][a-zA-Z0-9_.-]*', image.rsplit('/', 1)[-1])
+            and not image.endswith(':latest')):
+        raise ValueError('FTP_IMAGE에는 고정 tag 또는 sha256 digest가 포함된 이미지 주소를 지정하세요.')
+    secret = values.setdefault('IMAGE_PULL_SECRET', '')
+    label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+    if secret and (len(secret) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', secret)):
+        raise ValueError('IMAGE_PULL_SECRET에는 Kubernetes Secret 이름을 지정하세요.')
+    return values
+
+
 def check_nodes(nodes, names):
     """기존 배치 범위를 빠뜨리지 않고 실행 가능한 Linux Worker만 선택한다."""
     by_name = {node['metadata']['name']: node for node in nodes}
@@ -78,7 +101,7 @@ def check_nodes(nodes, names):
         print(f'대상: {name} / {addresses[0]}:6380 / /appdata/data_movement')
 
 
-def start(context, nodes, credential_file, check_only=False):
+def start(context, nodes, credential_file, check_only=False, *, env_file=None):
     """모든 입력을 검사한 뒤 기존 계정을 보존하면서 원본 스택을 적용한다."""
     if not context.strip() or not nodes.strip() or not credential_file:
         raise ValueError('KUBE_CONTEXT, FTP_NODES, FTP_CREDENTIAL_FILE을 모두 명시하세요.')
@@ -86,8 +109,16 @@ def start(context, nodes, credential_file, check_only=False):
     if any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', name) for name in names) or len(names) != len(set(names)):
         raise ValueError('FTP_NODES는 공백·중복 없이 쉼표로 구분한 노드 이름 목록이어야 합니다.')
     credentials = read_credentials(Path(credential_file))
+    values = settings(env_file or BASE / 'env/prod.env')
     kube = ['kubectl', '--context', context]
     source = runtime.render_json(run, kube, BASE / 'k8s')
+    daemonset = next(item for item in source if item['kind'] == 'DaemonSet' and item['metadata']['name'] == 'ftp')
+    pod = daemonset['spec']['template']['spec']
+    container = next(item for item in pod['containers'] if item['name'] == 'ftp')
+    container['image'] = values['FTP_IMAGE']
+    if values['IMAGE_PULL_SECRET']:
+        run([*kube, '-n', NAMESPACE, 'get', 'secret', values['IMAGE_PULL_SECRET'], '-o', 'name'], sensitive=True)
+        pod['imagePullSecrets'] = [{'name': values['IMAGE_PULL_SECRET']}]
     all_nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
     check_nodes(all_nodes, names)
     current = run([*kube, '-n', NAMESPACE, 'get', 'secret', 'ftp-credentials',
@@ -98,6 +129,7 @@ def start(context, nodes, credential_file, check_only=False):
         if any(existing.get('data', {}).get(key) != value for key, value in encoded.items()):
             raise ValueError('기존 FTP Secret과 계정 파일이 다릅니다. 기존 계정 파일을 사용하세요. 자동 변경하지 않습니다.')
     print('context: ' + context)
+    print('FTP 이미지: ' + values['FTP_IMAGE'])
     if check_only:
         print('입력·노드·기존 Secret·원본 렌더 검사 통과. 디스크·포트·FTP 전송은 별도 확인하세요.')
         return
@@ -126,9 +158,10 @@ def main():
     parser.add_argument('--context', default=os.environ.get('KUBE_CONTEXT', ''))
     parser.add_argument('--nodes', default=os.environ.get('FTP_NODES', ''))
     parser.add_argument('--credentials', default=os.environ.get('FTP_CREDENTIAL_FILE', ''))
+    parser.add_argument('--env', default=os.environ.get('FTP_ENV') or str(BASE / 'env/prod.env'))
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()
-    start(args.context, args.nodes, args.credentials, args.check_only)
+    start(args.context, args.nodes, args.credentials, args.check_only, env_file=args.env)
 
 
 if __name__ == '__main__':

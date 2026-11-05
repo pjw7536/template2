@@ -24,6 +24,7 @@
 | 용도 | 주소 | 근거 |
 | --- | --- | --- |
 | Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Airflow build env·MinIO env·Monitoring env |
+| FTP 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | 2026-11-05 저장소 선언: `deploy/ftp/env/prod.env`의 `FTP_IMAGE`. 공통 미러 패턴과 기존 원본 digest를 조합. 사용자 보고: 공개 이미지 pull 실패. 미러의 digest 제공·실제 pull·CA·인증·담당자 미확인 |
 | Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
 | GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
 | Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | Worker 설치 절차의 입력 |

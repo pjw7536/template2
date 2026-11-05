@@ -4,7 +4,8 @@
 
 한 번의 DaemonSet 배포로 선택한 각 Worker에 FTP Pod 하나씩 실행합니다.
 **각 Worker에서는 디스크·포트를 준비하고, CP1에서는 검사·배포를 한 번 실행**합니다.
-사내 이미지로 배포할 때는 이 문서의 1~4절을 마친 뒤 [사내 이미지 overlay 적용](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)을 진행합니다.
+사내 미러 이미지는 이 문서의 5절에 따라 배포합니다. 별도 이미지·저장 경로 overlay를 운영하면
+1~4절을 마친 뒤 [수동 overlay 적용](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)을 진행합니다.
 
 ## 1. 실행 위치와 준비물
 
@@ -127,8 +128,12 @@ Git 밖에 복사해 사용하려면 복사본의 절대 경로를 `FTP_CREDENTI
 ## 5. 검사 후 배포
 
 관리 호스트의 저장소 루트로 돌아옵니다. 앞서 export한 세 변수를 사용합니다.
-기본 원본은 공개 이미지이므로 **사내 registry·imagePullSecrets를 사용하는 운영 환경은 [사내 이미지 overlay 적용](03_KUBERNETES.md#사내-이미지로-각-worker에-배포)**으로 진행합니다.
-아래 자동 배포는 기본 이미지에 접근할 수 있는 환경에서 사용합니다. 두 경로 중 하나를 선택합니다.
+실행기는 [env/prod.env](env/prod.env)을 자동으로 읽어 `FTP_IMAGE`의 사내 Docker Hub 미러 이미지를 적용합니다.
+기존 공개 이미지 digest를 유지한 선언이며, 사내 미러의 해당 digest 제공 여부·접근·CA는 Worker에서 확인합니다.
+다른 경로 또는 digest가 필요하면 이 env의 `FTP_IMAGE`를 실제 주소로 바꿉니다. `http://`, `https://`는 붙이지 않습니다.
+registry 인증이 필요하면 `etch-ftp` namespace에 pull Secret을 미리 준비하고 같은 env의 `IMAGE_PULL_SECRET`에 이름을 입력합니다.
+빈 값이면 pull Secret을 추가하지 않습니다. FTP 로그인용 계정 파일과 이미지 설정 env는 별개입니다.
+별도 env는 `export FTP_ENV=/절대/경로/ftp.env`로 지정합니다. 별도 overlay 운영은 [수동 배포](03_KUBERNETES.md)를 사용합니다.
 
 ```bash
 make server-check APP=ftp PROFILE=prod
@@ -139,7 +144,7 @@ make ftp-up
 
 | 명령 | 처리 내용 |
 | --- | --- |
-| `ftp-check` | 계정 형식·권한, 원본 렌더, 대상 노드 상태, 기존 Secret 일치 여부 검사 |
+| `ftp-check` | 이미지 설정·선택 pull Secret 존재, 계정 형식·권한, 원본 렌더, 대상 노드 상태, 기존 Secret 일치 여부 검사 |
 | `ftp-up` | 같은 검사 → namespace 준비 → 없는 Secret 생성 → 노드 라벨 → 스택 적용 → 최대 5분 기동 대기 → Pod 위치 출력 |
 
 기존 Secret이 입력과 다르면 변경 전에 중단합니다. 동일 입력으로 재실행할 수 있고 파일 데이터를 삭제하지 않습니다.
@@ -148,8 +153,9 @@ make ftp-up
 스크립트는 `deploy/ftp/scripts/up.py`이며 Python 표준 라이브러리만 사용합니다.
 모든 클러스터 명령은 명시한 context를 사용합니다.
 
-이 실행기는 기본 `k8s/` 원본용입니다. 기본 이미지는 digest로 고정된 `fauria/vsftpd`입니다.
-사내 registry·imagePullSecrets나 다른 저장 경로가 필요하면 [수동 배포·overlay 절차](03_KUBERNETES.md)를 사용합니다.
+이 실행기는 `k8s/` 공통 원본에 운영 env의 이미지·pull Secret을 반영합니다.
+`kubectl apply -k deploy/ftp/k8s`를 직접 실행하면 env가 적용되지 않고 공개 이미지를 사용합니다.
+다른 저장 경로나 추가 패치가 필요하면 [수동 배포·overlay 절차](03_KUBERNETES.md)를 사용합니다.
 
 검사 통과는 이미지 pull·원격 디스크·방화벽·실제 FTP 인증 성공을 보장하지 않습니다.
 
