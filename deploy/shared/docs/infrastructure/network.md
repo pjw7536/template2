@@ -22,6 +22,20 @@ VIP·DNS·backend 사용자 확인의 근거도 `ca96e3dc:deploy/shared/docs/inf
 Keycloak DNS는 당시 Worker 직결 기록이며 APP VIP 전환 완료 여부는 미확인입니다.
 새 검증 환경에는 운영 IP를 재사용하지 않습니다.
 
+## FTP 직접 접속
+
+**운영 방향 확인일: 2026-11-05 / 근거: 사용자와 노드별 IP:6380 직접 전송 방식 협의, `deploy/ftp/k8s/stack.yaml` 대조 / 담당자: 미확인.**
+아래는 필요한 연결 조건입니다. 실제 방화벽 개방·노드별 연결 성공은 미확인입니다.
+
+| 출발지 | 목적지 | TCP 포트 | 용도·남은 확인 |
+| --- | --- | --- | --- |
+| 파일 전송 클라이언트의 허용 IP/CIDR | 선택한 FTP Worker의 InternalIP | `6380` | FTP 제어·로그인. 실제 출발지·대상 노드·방화벽 승인 확인 필요 |
+| 같은 허용 출발지 | 같은 Worker InternalIP | `8076–8079` | Passive 목록·업로드·다운로드. 호스트·중간 방화벽과 실제 전송 확인 필요 |
+
+FTP는 `hostNetwork`를 사용하고 Passive 주소에는 해당 노드의 `status.hostIP`를 전달합니다.
+업무 APP VIP·Traefik을 경유하지 않는 노드 직접 연결입니다. 현재 절차는 IPv4 InternalIP 직접 접근을 전제하며 NAT·TLS는 별도 설정이 필요합니다.
+노드명·IP는 [서버 목록](servers.md), 배치·데이터는 [FTP 서비스](services.md#ftp-노드별-파일-수신), 실행 방법은 [FTP 설치](../../../ftp/01_SERVER_SETUP.md)를 따릅니다.
+
 ## 클러스터 네트워크·실행 기반
 
 | 항목 | 확인 상태·근거 | 남은 확인 |

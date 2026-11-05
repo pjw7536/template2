@@ -36,7 +36,10 @@ FTP 클라이언트에 다음 값을 입력합니다.
 
 ## 3. 노드 추가·재배포
 
-추가 Worker의 폴더·포트를 준비한 뒤 `FTP_NODES`를 기존 노드와 새 노드를 모두 포함하도록 갱신합니다.
+추가 Worker의 디스크·기존 파일 권한·포트를 확인한 뒤 `FTP_NODES`를 기존 노드와 새 노드를 모두 포함하도록 갱신합니다.
+없는 `/data/data_movement`는 Pod 시작 전에 자동 생성됩니다.
+사내 이미지 overlay를 사용하는 환경은 [사내 배포 검사·적용](03_KUBERNETES.md#3-검사와-렌더-확인)을 반복합니다.
+아래 `ftp-up` 명령은 기본 원본을 사용하는 환경에만 적용합니다.
 
 ```bash
 export FTP_NODES=worker-a,worker-b
@@ -88,7 +91,7 @@ kubectl --context "$KUBE_CONTEXT" -n etch-ftp logs "$FTP_POD" --tail=100
 | 증상 | 확인할 내용 |
 | --- | --- |
 | Pod가 없음 | 대상 노드의 FTP 라벨·Linux 라벨 |
-| Pending / FailedMount | 노드 상태·taint, 해당 노드의 `/data/data_movement` 존재, namespace 정책 |
+| Pending / FailedMount | 노드 상태·taint, 디스크·경로 생성 권한, `/data/data_movement`가 파일로 점유됐는지, namespace 정책 |
 | ImagePullBackOff | registry 접근·이미지 반입·imagePullSecrets |
 | 시작 실패 | 기존 6380 포트 점유, 계정 형식, 폴더 권한 |
 | 연결 시간 초과 | 접속 IP·6380 방화벽·노드 네트워크 |

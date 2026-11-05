@@ -97,7 +97,7 @@ spec:
         - name: data
           hostPath:
             path: /data/data_movement
-            type: Directory
+            type: DirectoryOrCreate
         - name: start
           configMap:
             name: ftp-start

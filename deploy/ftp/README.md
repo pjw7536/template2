@@ -8,6 +8,7 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 | 현재 상태 | 다음 작업 | 문서 |
 | --- | --- | --- |
 | FTP 서버가 없음 | 노드·디스크·계정 준비 → 검사 → 배포 | [01. 서버 설치](01_SERVER_SETUP.md) |
+| 사내 Worker별 IP:6380으로 수신 | 각 Worker 준비 → CP1에서 사내 이미지 overlay 일괄 적용 | [01. 대상·노드 준비](01_SERVER_SETUP.md#2-클러스터와-worker-선택) → [03. 사내 배포](03_KUBERNETES.md#사내-이미지로-각-worker에-배포) |
 | 서버가 실행 중 | 접속·저장 확인, 노드 추가·중단, 문제 해결 | [02. 운영](02_OPERATIONS.md) |
 | 이미지·저장 경로 변경 또는 수동 배포 필요 | Kubernetes 원본과 overlay 확인 | [03. 원본과 수동 배포](03_KUBERNETES.md) |
 
@@ -26,6 +27,7 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 Worker는 달라도 됩니다.
 
 노드 간 파일은 자동 복제·이동되지 않으며 소비 앱이 다른 노드에 있으면 별도 전송 또는 공유 저장소가 필요합니다.
+`/data/data_movement`가 없는 Worker에서는 Pod 시작 전에 폴더를 자동 생성합니다. 기존 데이터는 유지하며 하위 파일의 소유권은 자동 변경하지 않습니다.
 
 ## 실행 명령
 
@@ -40,5 +42,6 @@ FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로
 
 `ftp-check`와 `ftp-up`에는 `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 필요합니다.
 모든 대상 노드는 같은 계정을 사용합니다. 기존 Secret이 있으면 입력 계정과 비교하고, 다르면 중단합니다.
+`ftp-up`은 기본 원본을 적용합니다. 사내 이미지 overlay를 사용할 때는 위 사내 배포 절차로 같은 overlay를 적용합니다.
 
 [전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)
