@@ -1,0 +1,541 @@
+{
+  "input_series": [
+    {
+      "series": "kube_node_info{node=\"alpha\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_node_status_condition{condition=\"Ready\",node=\"alpha\",status=\"true\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_node_info{node=\"beta\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_node_status_condition{condition=\"Ready\",node=\"beta\",status=\"true\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_node_info{node=\"gamma\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_node_status_condition{condition=\"Ready\",node=\"gamma\",status=\"true\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "kube_pod_info{namespace=\"monitoring\",node=\"alpha\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "up{instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+48x15"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"0\",instance=\"192.0.2.1:9100\",job=\"node-exporter-duplicate\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+48x15"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"1\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+48x15"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"1\",instance=\"192.0.2.1:9100\",job=\"node-exporter-duplicate\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+48x15"
+    },
+    {
+      "series": "node_memory_MemAvailable_bytes{instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "800+0x15"
+    },
+    {
+      "series": "node_memory_MemTotal_bytes{instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_network_receive_bytes_total{device=\"eth0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "100+600x15"
+    },
+    {
+      "series": "node_network_transmit_bytes_total{device=\"eth0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "100+1200x15"
+    },
+    {
+      "series": "node_network_receive_bytes_total{device=\"veth123\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_network_transmit_bytes_total{device=\"veth123\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"sda\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+6000x15"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"sda\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+12000x15"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"sda1\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"sda1\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"loop0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"loop0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"dm-0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"dm-0\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+600000x15"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "600+0x15"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "100+0x15"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "1000+0x15"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.1:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-alpha\"}",
+      "values": "0+0x15"
+    },
+    {
+      "series": "kube_pod_info{namespace=\"monitoring\",node=\"beta\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1+0x15"
+    },
+    {
+      "series": "up{instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1+0x6 0+0x8"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+12x6 stale _x7"
+    },
+    {
+      "series": "node_cpu_seconds_total{cpu=\"1\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mode=\"idle\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+12x6 stale _x7"
+    },
+    {
+      "series": "node_memory_MemAvailable_bytes{instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "100+0x6 stale _x7"
+    },
+    {
+      "series": "node_memory_MemTotal_bytes{instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_network_receive_bytes_total{device=\"eth0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "100+1800x6 stale _x7"
+    },
+    {
+      "series": "node_network_transmit_bytes_total{device=\"eth0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "100+2400x6 stale _x7"
+    },
+    {
+      "series": "node_network_receive_bytes_total{device=\"veth123\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_network_transmit_bytes_total{device=\"veth123\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"sda\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+6000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"sda\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+12000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"sda1\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"sda1\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"loop0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"loop0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_read_bytes_total{device=\"dm-0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_disk_written_bytes_total{device=\"dm-0\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+600000x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "900+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "900+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/appdata\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/appdata\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/tmp\",fstype=\"tmpfs\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/tmp\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/mnt/iso\",fstype=\"iso9660\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/mnt/iso\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_avail_bytes{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_size_bytes{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "1000+0x6 stale _x7"
+    },
+    {
+      "series": "node_filesystem_readonly{device=\"/var/lib/kubelet/pods/test\",fstype=\"ext4\",instance=\"192.0.2.2:9100\",job=\"node-exporter\",mountpoint=\"/var/lib/kubelet/pods/test\",namespace=\"monitoring\",pod=\"monitoring-node-exporter-beta\"}",
+      "values": "0+0x6 stale _x7"
+    }
+  ],
+  "checks": [
+    {
+      "panel": 1,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 3
+      }
+    },
+    {
+      "panel": 2,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 2
+      }
+    },
+    {
+      "panel": 3,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 1
+      }
+    },
+    {
+      "panel": 4,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 80
+      }
+    },
+    {
+      "panel": 5,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 90
+      }
+    },
+    {
+      "panel": 6,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "": 90
+      }
+    },
+    {
+      "panel": 10,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 20,
+        "beta": 80
+      }
+    },
+    {
+      "panel": 11,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 20,
+        "beta": 90
+      }
+    },
+    {
+      "panel": 12,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 90,
+        "beta": 10
+      }
+    },
+    {
+      "panel": 13,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 30,
+        "beta": 70
+      }
+    },
+    {
+      "panel": 30,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 100,
+        "beta": 100
+      }
+    },
+    {
+      "panel": 31,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 200,
+        "beta": 200
+      }
+    },
+    {
+      "panel": 32,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 10,
+        "beta": 30
+      }
+    },
+    {
+      "panel": 33,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 20,
+        "beta": 40
+      }
+    },
+    {
+      "panel": 20,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": ".*",
+      "expected": {
+        "alpha": 1,
+        "beta": 1,
+        "gamma": 0
+      }
+    },
+    {
+      "panel": 20,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 1,
+        "beta": 0,
+        "gamma": 0
+      }
+    },
+    {
+      "panel": 20,
+      "ref": "B",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 1,
+        "beta": 1,
+        "gamma": 1
+      }
+    },
+    {
+      "panel": 2,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "": 1
+      }
+    },
+    {
+      "panel": 3,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "": 2
+      }
+    },
+    {
+      "panel": 10,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 20
+      }
+    },
+    {
+      "panel": 11,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 20
+      }
+    },
+    {
+      "panel": 12,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 90
+      }
+    },
+    {
+      "panel": 13,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": ".*",
+      "expected": {
+        "alpha": 30
+      }
+    },
+    {
+      "panel": 10,
+      "ref": "A",
+      "eval_time": "6m",
+      "node": "beta",
+      "expected": {
+        "beta": 80
+      }
+    },
+    {
+      "panel": 20,
+      "ref": "A",
+      "eval_time": "12m",
+      "node": "gamma",
+      "expected": {
+        "gamma": 0
+      }
+    }
+  ]
+}

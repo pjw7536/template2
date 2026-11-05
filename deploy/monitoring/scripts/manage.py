@@ -109,6 +109,26 @@ def values(settings):
         'kube-state-metrics': {'nodeSelector': node, 'image': image('k8s')},
         'prometheus-node-exporter': {'image': image('quay')},
     }
+    dashboard = (BASE / 'dashboards/servers-overview.json').read_text()
+    # chart의 tpl 처리 후에도 Grafana 범례의 이중 중괄호를 그대로 전달한다.
+    dashboard_template = dashboard.replace('{{', '{{"{{"}}')
+    dashboard_configmap = '{{ include "grafana.fullname" . }}-servers-overview'
+    result['grafana'].update({
+        'extraObjects': [{
+            'apiVersion': 'v1', 'kind': 'ConfigMap',
+            'metadata': {'name': dashboard_configmap, 'namespace': '{{ include "grafana.namespace" . }}',
+                         'labels': {'grafana_dashboard': '1'}},
+            'data': {'servers-overview.json': dashboard_template},
+        }],
+        'extraConfigmapMounts': [{
+            'name': 'servers-overview-home', 'configMap': dashboard_configmap,
+            'mountPath': '/etc/grafana/servers-overview', 'readOnly': True,
+        }],
+        'podAnnotations': {'checksum/servers-overview': hashlib.sha256(dashboard.encode()).hexdigest()},
+        'grafana.ini': {'dashboards': {
+            'default_home_dashboard_path': '/etc/grafana/servers-overview/servers-overview.json',
+        }},
+    })
     for component in ('prometheus', 'alertmanager'):
         storage = {'volumeClaimTemplate': {'spec': {
             'storageClassName': '', 'accessModes': ['ReadWriteOnce'],
@@ -127,8 +147,8 @@ def values(settings):
                        'pathType': 'Prefix'}
             if component == 'grafana':
                 ingress['path'] = path
-                result[component]['grafana.ini'] = {'server': {
-                    'root_url': f'https://{host}{path}/', 'serve_from_sub_path': True}}
+                result[component]['grafana.ini']['server'] = {
+                    'root_url': f'https://{host}{path}/', 'serve_from_sub_path': True}
             else:
                 ingress['paths'] = [path]
                 result[component][component + 'Spec'].update(

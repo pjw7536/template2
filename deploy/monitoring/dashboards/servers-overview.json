@@ -1,0 +1,1735 @@
+{
+  "uid": "servers-overview",
+  "title": "전체 서버 · 리소스 추세",
+  "description": "클러스터에 등록된 전체 서버의 상태와 리소스 추세를 비교합니다. 서버 이름은 kube-state-metrics의 Pod·노드 정보로 연결합니다.",
+  "tags": [
+    "servers",
+    "infrastructure",
+    "overview"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "graphTooltip": 1,
+  "links": [],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "데이터 소스",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "refresh": 1,
+        "options": []
+      },
+      {
+        "name": "node",
+        "label": "서버",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(kube_node_info, node)",
+          "refId": "node-variable"
+        },
+        "definition": "label_values(kube_node_info, node)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": []
+      },
+      {
+        "name": "interface",
+        "label": "네트워크 인터페이스",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(node_network_receive_bytes_total{job=~\".*node-exporter.*\"}, device)",
+          "refId": "interface-variable"
+        },
+        "definition": "label_values(node_network_receive_bytes_total{job=~\".*node-exporter.*\"}, device)",
+        "regex": "/^(eth[0-9]+|en[a-zA-Z0-9_.:-]+|bond[0-9]+|team[0-9]+|wl[a-zA-Z0-9_.:-]+)$/",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "등록 서버",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(max by (node) (kube_node_info{node=~\"${node:regex}\"}))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "수집 정상",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum((max by (node) ((up{job=~\".*node-exporter.*\"}) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))) or on (node) (0 * (max by (node) (kube_node_info{node=~\"${node:regex}\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "수집 중단·미수집",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(max by (node) (kube_node_info{node=~\"${node:regex}\"})) - sum((max by (node) ((up{job=~\".*node-exporter.*\"}) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))) or on (node) (0 * (max by (node) (kube_node_info{node=~\"${node:regex}\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "CPU 최고 사용률",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max by (node) ((100 * (1 - avg by (instance, job, namespace, pod) (rate(node_cpu_seconds_total{job=~\".*node-exporter.*\", mode=\"idle\"}[$__rate_interval])))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "메모리 최고 사용률",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max by (node) ((100 * (1 - node_memory_MemAvailable_bytes{job=~\".*node-exporter.*\"} / node_memory_MemTotal_bytes{job=~\".*node-exporter.*\"})) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "디스크 최고 사용률",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max by (node) ((100 * (1 - node_filesystem_avail_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"} / node_filesystem_size_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"}) and on (instance, job, device, mountpoint) (node_filesystem_readonly{job=~\".*node-exporter.*\"} == 0)) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "orange",
+                  "text": "미수집"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "CPU 사용률 · 서버 비교",
+      "description": "CPU별 idle 비율을 평균한 사용률입니다. 여러 서버를 같은 축에서 비교합니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((100 * (1 - avg by (instance, job, namespace, pod) (rate(node_cpu_seconds_total{job=~\".*node-exporter.*\", mode=\"idle\"}[$__rate_interval])))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "메모리 사용률 · 서버 비교",
+      "description": "MemAvailable을 기준으로 계산하므로 회수 가능한 캐시는 사용량에서 제외합니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((100 * (1 - node_memory_MemAvailable_bytes{job=~\".*node-exporter.*\"} / node_memory_MemTotal_bytes{job=~\".*node-exporter.*\"})) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "디스크 사용률 · 서버별 최대",
+      "description": "쓰기 가능한 실제 파일시스템 중 사용률이 가장 높은 마운트를 서버별로 표시합니다. 가상 파일시스템과 Pod·컨테이너 마운트는 제외합니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((100 * (1 - node_filesystem_avail_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"} / node_filesystem_size_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"}) and on (instance, job, device, mountpoint) (node_filesystem_readonly{job=~\".*node-exporter.*\"} == 0)) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "네트워크 처리량 · 수신 + 송신",
+      "description": "선택 인터페이스의 수신·송신 합계입니다. bond와 하위 인터페이스의 중복 합산은 인터페이스 필터로 조정합니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_receive_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))) + (max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_transmit_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"}))))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "전체 서버 · 현재 상태",
+      "description": "등록된 Kubernetes 노드를 기준으로 표시합니다. exporter가 없거나 수집이 끊기면 수집 상태는 중단·미수집, 사용량은 빈 값으로 표시합니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(max by (node) ((up{job=~\".*node-exporter.*\"}) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))) or on (node) (0 * (max by (node) (kube_node_info{node=~\"${node:regex}\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (node) (kube_node_status_condition{node=~\"${node:regex}\", condition=\"Ready\", status=\"true\"})",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "C",
+          "expr": "max by (node) ((100 * (1 - avg by (instance, job, namespace, pod) (rate(node_cpu_seconds_total{job=~\".*node-exporter.*\", mode=\"idle\"}[$__rate_interval])))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "D",
+          "expr": "max by (node) ((100 * (1 - node_memory_MemAvailable_bytes{job=~\".*node-exporter.*\"} / node_memory_MemTotal_bytes{job=~\".*node-exporter.*\"})) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "E",
+          "expr": "max by (node) ((100 * (1 - node_filesystem_avail_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"} / node_filesystem_size_bytes{job=~\".*node-exporter.*\", fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|proc|sysfs|tracefs|cgroup.*|autofs|debugfs|fuse.*\", mountpoint!~\"/run(/.*)?|/var/lib/kubelet/pods/.*|/var/lib/(docker|containerd)/.*\"}) and on (instance, job, device, mountpoint) (node_filesystem_readonly{job=~\".*node-exporter.*\"} == 0)) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "F",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_receive_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "G",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_transmit_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "format": "table",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "node",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true,
+              "Time 8": true
+            },
+            "indexByName": {
+              "node": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7
+            },
+            "renameByName": {
+              "node": "서버",
+              "Value #A": "수집 상태",
+              "Value #B": "노드 Ready",
+              "Value #C": "CPU",
+              "Value #D": "메모리",
+              "Value #E": "디스크 최대",
+              "Value #F": "수신",
+              "Value #G": "송신"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "decimals": 1,
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "서버"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "수집 상태"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "중단·미수집",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "정상",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "노드 Ready"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "NotReady",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Ready",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "메모리"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "디스크 최대"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "수신"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "송신"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "서버",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "디스크 읽기 · 서버 비교",
+      "description": "파티션·loop·LVM 논리 장치를 제외한 물리 블록 장치의 읽기량 합계입니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_disk_read_bytes_total{job=~\".*node-exporter.*\", device=~\"sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+|dasd[a-z]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "디스크 쓰기 · 서버 비교",
+      "description": "파티션·loop·LVM 논리 장치를 제외한 물리 블록 장치의 쓰기량 합계입니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_disk_written_bytes_total{job=~\".*node-exporter.*\", device=~\"sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+|dasd[a-z]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "네트워크 수신 · 서버 비교",
+      "description": "선택 인터페이스의 초당 수신 바이트 합계입니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_receive_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "네트워크 송신 · 서버 비교",
+      "description": "선택 인터페이스의 초당 송신 바이트 합계입니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (node) ((sum by (instance, job, namespace, pod) (rate(node_network_transmit_bytes_total{job=~\".*node-exporter.*\", device=~\"${interface:regex}\", device!~\"lo|veth.*|cali.*|cni.*|flannel.*|docker.*|br.*|kube.*|tun.*|tap.*|virbr.*\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) (max by (namespace, pod, node) (kube_pod_info{node=~\"${node:regex}\", pod=~\".*node-exporter.*\"})))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "noValue": "미수집",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}

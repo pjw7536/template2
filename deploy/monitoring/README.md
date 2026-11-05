@@ -237,9 +237,38 @@ kubectl --context "$KUBE_CONTEXT" -n monitoring get pods,pvc -o wide
 | 확인할 곳 | 정상 기준 |
 | --- | --- |
 | `get pods,pvc` | 실행할 Pod가 Ready이고 데이터 PVC가 Bound |
-| Grafana | 4절의 관리자 계정으로 로그인. Kubernetes / Compute Resources / Cluster·Node·Pod 대시보드에 지표가 표시됨 |
+| Grafana | 4절의 관리자 계정으로 로그인. 기본 홈인 `전체 서버 · 리소스 추세`에서 서버별 그래프와 상태 표에 지표가 표시됨 |
 | Prometheus `/prometheus/targets` | 수집 대상이 `UP`. `DOWN`인 대상은 endpoint·권한·통신 확인 |
 | Alertmanager | 웹 화면과 현재 알림 설정 확인. 기본값은 외부 통지 없음 |
+
+### 전체 서버 추세 대시보드
+
+기본 홈은 **전체 서버 · 리소스 추세**입니다. `/grafana/d/servers-overview`로 직접 열거나 Dashboards에서 제목으로 찾을 수 있습니다.
+개인·조직에서 별도 홈 대시보드를 지정했다면 그 설정이 우선합니다.
+
+- 상단 요약: 등록 서버 수, 수집 정상·중단 수, CPU·메모리·디스크 최고 사용률.
+- 비교 추세: 모든 선택 서버의 CPU·메모리·디스크 사용률과 네트워크 처리량을 같은 시간축에서 비교. 범례에서 서버별 현재값·최댓값 확인.
+- 현재 상태 표: 서버별 수집 상태, Kubernetes Ready, CPU·메모리·디스크·네트워크 수치.
+- 상세 추세: 서버별 디스크 읽기·쓰기와 네트워크 수신·송신량.
+
+기본 조회 기간은 최근 6시간, 갱신은 30초입니다. `서버`에서 전체 또는 여러 서버를 선택할 수 있고,
+`네트워크 인터페이스`에서 필요한 장치를 고를 수 있습니다. bond와 하위 인터페이스를 함께 선택하면 네트워크가 중복 합산될 수 있습니다.
+
+서버 목록은 kube-state-metrics의 등록 노드이며, node-exporter 지표를 Pod의 실제 노드명에 연결합니다.
+수집 중단·exporter 미설치 서버도 상태 표에 남으며 사용량은 `미수집`으로 표시합니다.
+CPU는 idle을 제외한 사용률, 메모리는 MemAvailable 기준, 디스크는 쓰기 가능한 실제 파일시스템 중 가장 높은 사용률입니다.
+가상 파일시스템·Pod 마운트와 가상 네트워크 인터페이스를 제외하며, 디스크 I/O는 파티션·논리 장치를 제외한 물리 장치 합계입니다.
+
+대시보드 원본은 [servers-overview.json](dashboards/servers-overview.json)입니다.
+Git의 JSON을 변경하고 같은 env·context로 `make monitoring-check` → `make monitoring-up`을 실행하면
+Helm의 ConfigMap과 Grafana provisioning에 반영됩니다. 별도 이미지 빌드·인터넷 템플릿 다운로드가 필요하지 않습니다.
+기본 Kubernetes 대시보드도 계속 사용할 수 있습니다. 공급된 대시보드는 JSON 원본에서 관리하고,
+개인 화면은 Grafana에서 복사해 편집합니다.
+
+대시보드 공급 검증은 기존 Monitoring 회귀 검사에 포함됩니다. `promtool`이 PATH에 있으면
+`python3 -m unittest discover -s deploy/monitoring/tests -p 'test_dashboard.py'`에서
+실제 PromQL fixture로 사용률·중복 수집·장치 필터·수집 중단 계산까지 확인합니다.
+별도 실행 환경의 promtool은 `PROMTOOL_COMMAND`에 셸 실행 없는 명령 인자 문자열로 지정할 수 있습니다.
 
 ## 갱신·운영
 
@@ -398,6 +427,7 @@ kubernetesServiceMonitors:
 | [env/k8s.env](env/k8s.env) | 배치 노드·데이터 경로·이미지 미러·Secret 이름·웹 주소 |
 | [helm/chart.lock.json](helm/chart.lock.json) | 고정 chart 버전·다운로드 주소·SHA-256 |
 | [helm/values.yaml](helm/values.yaml) | 기본 보존 기간·자원 요청량·수집 범위 등 Helm 설정 |
+| [dashboards/servers-overview.json](dashboards/servers-overview.json) | 전체 서버 추세·상태 표·Grafana 기본 홈 |
 | [scripts/manage.py](scripts/manage.py) | 다운로드·검사·렌더·폴더 준비·배포 실행 |
 
 공식 참고: [kube-prometheus-stack 설치·CRD·업데이트](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-91.4.0/charts/kube-prometheus-stack),
