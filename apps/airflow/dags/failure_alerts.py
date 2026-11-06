@@ -1,7 +1,7 @@
 # =============================================================================
 # 모듈: Airflow 실패 알림 callback
-# 주요 기능: task 실패 시 Knox 메신저로 단순 장애 알림 전송
-# 주요 가정: Knox API 설정과 수신자 Knox ID는 Airflow 환경 변수로 주입합니다.
+# 주요 기능: task 실패 시 Knox 메신저와 메일로 독립적인 장애 알림 전송
+# 주요 가정: 각 채널의 API 설정과 수신자는 Airflow 환경 변수로 주입합니다.
 # =============================================================================
 """Airflow DAG에서 사용하는 실패 알림 callback입니다."""
 
@@ -13,8 +13,10 @@ import logging
 import os
 import time
 from hashlib import sha256
+from html import escape
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+from urllib.parse import parse_qsl, urlsplit
 
 import requests
 from cryptography.hazmat.primitives import padding
@@ -307,25 +309,73 @@ def _send_chat_message(*, chatroom_id: int, message: str, context: dict[str, Any
     _post_encrypted(context=context, path="message/api/v2.0/message/chatRequest", payload=payload)
 
 
-def notify_airflow_task_failure(context: dict[str, Any]) -> None:
-    """Airflow `on_failure_callback` 진입점입니다."""
+def _notify_messenger_failure(context: dict[str, Any]) -> None:
+    """수신자가 설정된 경우 Knox 메신저로 실패 요약을 전송합니다."""
 
     knox_ids = _split_csv(_env("AIRFLOW_FAILURE_ALERT_KNOX_IDS"))
     if not knox_ids:
         logger.info("Airflow 실패 알림 스킵: AIRFLOW_FAILURE_ALERT_KNOX_IDS 미설정")
         return
-    try:
-        knox_context = _prepare_knox_context()
-        if knox_context is None:
-            return
-        title = _env("AIRFLOW_FAILURE_ALERT_CHATROOM_TITLE", _DEFAULT_CHATROOM_TITLE)
-        chatroom_id = _get_or_create_chatroom_id(knox_ids=knox_ids, title=title, context=knox_context)
-        if chatroom_id is None:
-            return
-        _send_chat_message(
-            chatroom_id=chatroom_id,
-            message=_build_failure_message(context),
-            context=knox_context,
-        )
-    except Exception:
-        logger.exception("Airflow 실패 알림 전송 실패")
+    knox_context = _prepare_knox_context()
+    if knox_context is None:
+        return
+    title = _env("AIRFLOW_FAILURE_ALERT_CHATROOM_TITLE", _DEFAULT_CHATROOM_TITLE)
+    chatroom_id = _get_or_create_chatroom_id(knox_ids=knox_ids, title=title, context=knox_context)
+    if chatroom_id is None:
+        return
+    _send_chat_message(
+        chatroom_id=chatroom_id,
+        message=_build_failure_message(context),
+        context=knox_context,
+    )
+
+
+def _notify_email_failure(context: dict[str, Any]) -> None:
+    """수신자가 설정된 경우 기존 Knox Mail HTTP 계약으로 실패 메일을 보냅니다."""
+
+    receivers = _split_csv(_env("AIRFLOW_FAILURE_ALERT_EMAIL_TO"))
+    if not receivers:
+        logger.info("Airflow 메일 실패 알림 스킵: AIRFLOW_FAILURE_ALERT_EMAIL_TO 미설정")
+        return
+    required = ("MAIL_API_URL", "MAIL_API_KEY", "MAIL_API_SYSTEM_ID", "MAIL_API_KNOX_ID",
+                "AIRFLOW_FAILURE_ALERT_EMAIL_FROM")
+    config = {key: _env(key, "plane" if key == "MAIL_API_SYSTEM_ID" else "") for key in required}
+    missing = [key for key, value in config.items() if not value]
+    if missing:
+        logger.warning("Airflow 메일 실패 알림 스킵: 필수 설정 누락 %s", ", ".join(missing))
+        return
+
+    url = urlsplit(config["MAIL_API_URL"])
+    # 기존 query를 보존하되 인증 식별값은 env의 값 하나씩만 사용합니다.
+    identity = {"systemId": config["MAIL_API_SYSTEM_ID"], "loginUser.login": config["MAIL_API_KNOX_ID"]}
+    params = [(key, value) for key, value in parse_qsl(url.query, keep_blank_values=True) if key not in identity]
+    params.extend(identity.items())
+    message = _build_failure_message(context)
+    # 예외 문자열에 HTML이 있어도 메일 본문에서 코드로 해석되지 않도록 합니다.
+    response = requests.post(
+        url._replace(query="").geturl(),
+        params=params,
+        headers={"x-dep-ticket": config["MAIL_API_KEY"]},
+        json={
+            "receiverList": [{"email": email, "recipientType": "TO"} for email in receivers],
+            "title": "[Airflow 실패 알림]",
+            "content": f"<pre>{escape(message)}</pre>",
+            "senderMailAddress": config["AIRFLOW_FAILURE_ALERT_EMAIL_FROM"],
+        },
+        timeout=_DEFAULT_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+
+
+def notify_airflow_task_failure(context: dict[str, Any]) -> None:
+    """Task 실패 정보를 설정된 채널마다 전송하며 알림 오류는 로그에만 남깁니다.
+
+    입력은 Airflow callback context이며 반환값은 없습니다. 외부 API를 호출하지만
+    한 채널의 설정 누락이나 전송 실패로 다른 채널을 생략하거나 원래 실패를 덮어쓰지 않습니다.
+    """
+
+    for channel, notify in (("메신저", _notify_messenger_failure), ("메일", _notify_email_failure)):
+        try:
+            notify(context)
+        except Exception:
+            logger.exception("Airflow %s 실패 알림 전송 실패", channel)

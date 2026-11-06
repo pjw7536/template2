@@ -6,6 +6,36 @@ const yaml = require('js-yaml');
 
 const root = path.resolve(__dirname, '../../..');
 
+test('로컬 Airflow 메일은 운영 credential 대신 namespace를 보완한 sandbox와 로컬 수신자를 사용한다', () => {
+  const result = spawnSync('python3', ['-c', `
+import importlib.util
+import json
+from unittest.mock import patch
+spec = importlib.util.spec_from_file_location('local_config', 'local/shared/scripts/k8s_config.py')
+config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config)
+server = config.module('airflow')
+keys = ('MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_API_SYSTEM_ID', 'MAIL_API_KNOX_ID',
+        'AIRFLOW_FAILURE_ALERT_EMAIL_FROM', 'AIRFLOW_FAILURE_ALERT_EMAIL_TO')
+mail = dict(MAIL_API_URL='http://adfs:9000/mail/send', MAIL_API_KEY='dummy-ticket',
+            MAIL_API_SYSTEM_ID='plane', MAIL_API_KNOX_ID='dummy-knox-id')
+creds = {key: 'fixture' for key in ('AIRFLOW_DB_PASSWORD', 'AIRFLOW_OIDC_CLIENT_SECRET',
+         'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_TRIGGER_TOKEN')}
+with patch.object(config, 'module', return_value=server), \\
+     patch.object(server, 'read_env', return_value={key: 'server-only' for key in keys}), \\
+     patch.object(config, 'read_env', return_value=mail), \\
+     patch.object(config, 'settings', return_value={'LOCAL_AIRFLOW_FAILURE_ALERT_EMAIL_TO': 'operator@localhost.test'}):
+    settings = config.airflow_settings(creds)
+print(json.dumps({key: settings[key] for key in keys}))
+`], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    MAIL_API_URL: 'http://adfs.tailwind-local.svc.cluster.local:9000/mail/send',
+    MAIL_API_KEY: 'dummy-ticket', MAIL_API_SYSTEM_ID: 'plane', MAIL_API_KNOX_ID: 'dummy-knox-id',
+    AIRFLOW_FAILURE_ALERT_EMAIL_FROM: 'airflow@localhost.test', AIRFLOW_FAILURE_ALERT_EMAIL_TO: 'operator@localhost.test',
+  });
+});
+
 function render(directory) {
   const result = spawnSync('kubectl', ['kustomize', directory], { cwd: root, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

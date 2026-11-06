@@ -6,13 +6,16 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlsplit, unquote
+from uuid import uuid4
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/manage.py'
 SPEC = importlib.util.spec_from_file_location('airflow_deploy', SCRIPT)
@@ -27,6 +30,7 @@ def settings():
         'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow',
         'AIRFLOW_ADMIN_EMAIL': 'airflow@test.invalid',
         'AIRFLOW_OIDC_CLIENT_SECRET': 'fixture-oidc-secret-0123456789',
+        **deploy.MAIL_DEFAULTS,
         **{key: 'fixture-credential-0123456789' for key in deploy.SECRET_KEYS},
         'AIRFLOW_FERNET_KEY': base64.urlsafe_b64encode(b'x' * 32).decode(),
     })
@@ -84,6 +88,44 @@ class ConfigurationTests(unittest.TestCase):
         values['AIRFLOW_WEBSERVER_BASE_URL'] = 'https://{{lookup}}/airflow'
         with self.assertRaisesRegex(ValueError, '템플릿'):
             deploy.validate(values)
+
+    def test_legacy_env_defaults_to_disabled_mail_notifications(self):
+        values = {key: value for key, value in settings().items() if key not in deploy.MAIL_DEFAULTS}
+        deploy.validate(values)
+        self.assertEqual(values['AIRFLOW_FAILURE_ALERT_EMAIL_TO'], '')
+        self.assertEqual(values['MAIL_API_SYSTEM_ID'], 'plane')
+
+    def test_enabled_mail_requires_credentials_and_valid_addresses(self):
+        configured = {**settings(), 'MAIL_API_URL': 'https://mail.test/send',
+                      'MAIL_API_KEY': 'fixture-mail-ticket', 'MAIL_API_SYSTEM_ID': 'test',
+                      'MAIL_API_KNOX_ID': 'sender', 'AIRFLOW_FAILURE_ALERT_EMAIL_FROM': 'sender@example.test',
+                      'AIRFLOW_FAILURE_ALERT_EMAIL_TO': 'one@example.test, two@example.test'}
+        deploy.validate(configured)
+        for key in ('MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_API_SYSTEM_ID', 'MAIL_API_KNOX_ID', 'AIRFLOW_FAILURE_ALERT_EMAIL_FROM'):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, '메일 실패 알림 필수 설정 누락'):
+                deploy.validate({**configured, key: ''})
+        for change in ({'AIRFLOW_FAILURE_ALERT_EMAIL_TO': 'not-an-email'},
+                       {'AIRFLOW_FAILURE_ALERT_EMAIL_FROM': 'Name <sender@example.test>'},
+                       {'MAIL_API_URL': 'ftp://mail.test/send'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                deploy.validate({**configured, **change})
+
+    def test_mail_configuration_is_only_passed_via_runtime_secret(self):
+        values = {**settings(), 'MAIL_API_KEY': 'fixture-mail-ticket'}
+        secret = next(item for item in deploy.secret_manifest(values)['items']
+                      if item['metadata']['name'] == 'airflow-runtime')
+        for key in deploy.MAIL_DEFAULTS:
+            self.assertEqual(base64.b64decode(secret['data'][key]).decode(), values[key])
+        self.assertNotIn('fixture-mail-ticket', json.dumps(deploy.helm_values(values)))
+
+    def test_mail_url_accepts_existing_query_without_relaxing_other_url_checks(self):
+        deploy.validate({**settings(), 'MAIL_API_URL': 'https://mail.test/send?systemId=plane&loginUser.login=sender'})
+        for key, value in (('MAIL_API_URL', 'https://user:password@mail.test/send?systemId=plane'),
+                           ('MAIL_API_URL', 'https://mail.test/send?systemId=plane#fragment'),
+                           ('AIRFLOW_API_BASE_URL', 'https://portal.test?query=value'),
+                           ('KNOX_MESSENGER_API_BASE_URL', 'https://messenger.test?query=value')):
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'URL 형식 오류'):
+                deploy.validate({**settings(), key: value})
 
     def test_config_rejects_overlapping_storage_and_wrong_versions(self):
         for change in (
@@ -173,8 +215,9 @@ class InternalBuildParityTests(unittest.TestCase):
         """공개 빌드 입력이 이미지 인자와 일치하고 사내 의존성을 유지합니다."""
         actual = deploy.read_env(deploy.BASE / 'env/build.env')
         dockerfile = deploy.BASE.parents[1] / 'apps/airflow/image/Dockerfile.dependencies'
-        arguments = set(re.findall(r'^ARG ([A-Z_]+)', dockerfile.read_text(), re.M))
-        self.assertEqual(arguments, set(actual))
+        arguments = dict(shlex.split(line[4:])[0].split('=', 1)
+                         for line in dockerfile.read_text().splitlines() if line.startswith('ARG '))
+        self.assertEqual(arguments, actual)
         self.assertEqual(actual['INSTALL_BIGDATAQUERY_PYTHON'], 'true')
         self.assertEqual(actual['INSTALL_BIGDATAQUERY_ODBC'], 'true')
 
@@ -209,6 +252,84 @@ class InternalBuildParityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '--with-source'):
                 deploy.build_image(settings(), deploy.BASE / 'env/build.env')
             run.assert_not_called()
+
+
+@unittest.skipUnless(os.environ.get('AIRFLOW_DOCKER_TESTS') == '1', '명시적인 Docker 이미지 통합 검사에서 실행')
+class ImageBuildIntegrationTests(unittest.TestCase):
+    """사내망 접근 없이 실제 이미지의 pip 상속과 COPY 원본 포함을 검증합니다."""
+
+    def test_corporate_pip_defaults_survive_final_image_and_virtualenv(self):
+        base = 'apache/airflow:3.3.2-python3.12'
+        if not shutil.which('docker') or subprocess.run(
+            ['docker', 'image', 'inspect', base], capture_output=True
+        ).returncode:
+            self.skipTest('로컬 Docker daemon과 캐시된 Airflow 3.3.2 이미지가 필요합니다.')
+        tag = 'tailwind-airflow-image-check:3.3.2-check-' + uuid4().hex[:12]
+        self.addCleanup(subprocess.run, ['docker', 'image', 'rm', '-f', tag, tag + '-dependencies'], capture_output=True)
+        build = {**deploy.read_env(deploy.BASE / 'env/build.env'), 'AIRFLOW_BASE_IMAGE': base,
+                 'INSTALL_BIGDATAQUERY_PYTHON': 'false', 'INSTALL_BIGDATAQUERY_ODBC': 'false'}
+        expected = {key: build[key] for key in ('PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'PIP_TRUSTED_HOST')}
+        original_run = deploy.run
+
+        def offline_run(args, **kwargs):
+            args = list(map(str, args))
+            if args[:2] == ['docker', 'build']:
+                args.insert(2, '--network=none')
+            return original_run(args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            build_path = Path(directory) / 'build.env'
+            build_path.write_text(''.join(f'{key}={value}\n' for key, value in build.items()))
+            with patch.object(deploy, 'run', offline_run):
+                deploy.build_image({**settings(), 'AIRFLOW_IMAGE_REPOSITORY': tag.split(':')[0],
+                                    'AIRFLOW_IMAGE_TAG': tag.split(':')[1]}, build_path)
+        script = textwrap.dedent('''
+            import json
+            import os
+            from pathlib import Path
+            import subprocess
+            import sys
+            import failure_alerts
+            expected = json.loads(sys.argv[1])
+            from airflow.providers.standard.utils.python_virtualenv import _generate_pip_conf
+            for key in (*expected, 'PIP_CONFIG_FILE'):
+                assert not os.environ.get(key), key
+            assert os.environ['PIP_NO_INPUT'] == '1'
+            assert os.environ['PIP_DISABLE_PIP_VERSION_CHECK'] == '1'
+            for filename in ('bootstrap-user.py', 'webserver_config.py', 'keycloak_security.py', 'oidc_claims.py'):
+                assert Path('/opt/airflow', filename).is_file(), filename
+            subprocess.run([sys.executable, '-m', 'venv', '/tmp/airflow-check-venv'], check=True, capture_output=True)
+            inspect_options = (
+                'import json,sys; from pip._internal.commands import create_command; '
+                'options,args=create_command("install").parse_args(sys.argv[1:]); '
+                'print(json.dumps([options.index_url, options.extra_index_urls, options.no_index, options.trusted_hosts]))'
+            )
+            for python in (sys.executable, '/tmp/airflow-check-venv/bin/python'):
+                options = json.loads(subprocess.check_output([python, '-c', inspect_options], text=True))
+                assert options[:2] == [expected['PIP_INDEX_URL'], [expected['PIP_EXTRA_INDEX_URL']]], options
+                assert set(options[3]) == set(expected['PIP_TRUSTED_HOST'].split()), options
+                override = {**os.environ, 'PIP_INDEX_URL': 'https://override.test/simple'}
+                options = json.loads(subprocess.check_output([python, '-c', inspect_options], env=override, text=True))
+                assert options[0] == 'https://override.test/simple', options
+                options = json.loads(subprocess.check_output(
+                    [python, '-c', inspect_options, '--index-url', 'https://cli.test/simple'], env=override, text=True))
+                assert options[0] == 'https://cli.test/simple', options
+            conf = Path('/tmp/airflow-check-venv/pip.conf')
+            python = '/tmp/airflow-check-venv/bin/python'
+            for indexes in (['https://dag.test/simple'], ['https://dag.test/simple', 'https://dag-extra.test/simple'], []):
+                _generate_pip_conf(conf, indexes)
+                options = json.loads(subprocess.check_output([python, '-c', inspect_options], text=True))
+                if indexes:
+                    assert options[0] == indexes[0], options
+                    if len(indexes) > 1:
+                        assert options[1] == indexes[1:], options
+                else:
+                    assert options[2], options
+            print('기본 mirror·DAG별 index_urls·no-index·override와 이미지 코드 포함 검증 통과')
+        ''')
+        result = original_run(['docker', 'run', '--rm', '--network=none', '--entrypoint', 'python',
+                               tag, '-c', script, json.dumps(expected)])
+        self.assertIn('검증 통과', result)
 
 
 class DeploymentTests(unittest.TestCase):

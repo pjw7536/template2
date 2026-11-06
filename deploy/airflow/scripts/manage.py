@@ -30,13 +30,17 @@ ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_P
 OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID',
              'AIRFLOW_OIDC_CLIENT_SECRET', 'AIRFLOW_OIDC_BACKCHANNEL_BASE_URL',
              'AIRFLOW_OIDC_CA_BUNDLE', 'AIRFLOW_OIDC_CA_CONFIGMAP', 'AIRFLOW_OIDC_ALLOW_HTTP')
-ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS)
+MAIL_DEFAULTS = {'MAIL_API_URL': '', 'MAIL_API_KEY': '', 'MAIL_API_SYSTEM_ID': 'plane',
+                 'MAIL_API_KNOX_ID': '', 'AIRFLOW_FAILURE_ALERT_EMAIL_FROM': '',
+                 'AIRFLOW_FAILURE_ALERT_EMAIL_TO': ''}
+ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS)
 DEFAULT_ENV = BASE / 'env/k8s.env'
 RUNTIME_KEYS = (
     'AIRFLOW_API_BASE_URL', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL',
     'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS',
 )
 RUNTIME_KEYS += tuple(key for key in OIDC_KEYS if key != 'AIRFLOW_OIDC_CA_CONFIGMAP')
+RUNTIME_KEYS += tuple(MAIL_DEFAULTS)
 SECRET_KEYS = ('POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY',
                'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN')
 DB_DEFAULTS = {'POSTGRES_MODE': 'internal', 'POSTGRES_HOST': 'airflow-postgres',
@@ -64,7 +68,7 @@ def read_env(path):
 
 def validate(values, example=False):
     """서버 경로·버전·URL·비밀값을 검증하고 배포 시 예시값을 거부한다."""
-    for key, default in DB_DEFAULTS.items():
+    for key, default in {**DB_DEFAULTS, **MAIL_DEFAULTS}.items():
         values.setdefault(key, default)
     require(values['POSTGRES_MODE'] in ('internal', 'external'), 'POSTGRES_MODE는 internal 또는 external이어야 합니다.')
     require(re.fullmatch(r'[a-zA-Z0-9.-]+', values['POSTGRES_HOST']), 'POSTGRES_HOST 형식 오류')
@@ -105,11 +109,13 @@ def validate(values, example=False):
     require(re.fullmatch(r'[a-zA-Z0-9./:_-]+', values['AIRFLOW_IMAGE_REPOSITORY']), 'AIRFLOW_IMAGE_REPOSITORY 형식 오류')
     require(re.fullmatch(r'3\.3\.2-[a-zA-Z0-9_.-]+', values['AIRFLOW_IMAGE_TAG']), 'AIRFLOW_IMAGE_TAG는 3.3.2-으로 시작하는 고유 태그가 필요합니다.')
     require(values['INGRESS_ENABLED'] in ('true', 'false'), 'INGRESS_ENABLED는 true 또는 false여야 합니다.')
-    for key in ('AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'KNOX_MESSENGER_API_BASE_URL'):
+    for key in ('AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'KNOX_MESSENGER_API_BASE_URL', 'MAIL_API_URL'):
         if not values[key]:
             continue
         url = urlsplit(values[key])
-        require(url.scheme in ('http', 'https') and url.hostname and not url.username and not url.password and not url.query and not url.fragment and not any(c.isspace() for c in values[key]), f'HTTP(S) URL 형식 오류: {key}')
+        require(url.scheme in ('http', 'https') and url.hostname and not url.username and not url.password
+                and (key == 'MAIL_API_URL' or not url.query) and not url.fragment
+                and not any(c.isspace() for c in values[key]), f'HTTP(S) URL 형식 오류: {key}')
         if key == 'AIRFLOW_WEBSERVER_BASE_URL':
             require(url.path == '/airflow', 'AIRFLOW_WEBSERVER_BASE_URL 경로는 /airflow여야 합니다.')
     if values['INGRESS_ENABLED'] == 'true':
@@ -117,6 +123,12 @@ def validate(values, example=False):
         if urlsplit(values['AIRFLOW_WEBSERVER_BASE_URL']).scheme == 'https' and values['INGRESS_CLASS_NAME'] != 'traefik':
             require(values['INGRESS_TLS_SECRET'], 'HTTPS Ingress에는 INGRESS_TLS_SECRET이 필요합니다.')
     require('@' in values['AIRFLOW_ADMIN_EMAIL'], 'AIRFLOW_ADMIN_EMAIL 형식 오류')
+    receivers = [item.strip() for item in values['AIRFLOW_FAILURE_ALERT_EMAIL_TO'].split(',') if item.strip()]
+    if receivers:
+        for key in ('MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_API_SYSTEM_ID', 'MAIL_API_KNOX_ID', 'AIRFLOW_FAILURE_ALERT_EMAIL_FROM'):
+            require(values[key].strip(), f'메일 실패 알림 필수 설정 누락: {key}')
+        for address in [values['AIRFLOW_FAILURE_ALERT_EMAIL_FROM'], *receivers]:
+            require(re.fullmatch(r'[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+', address), '메일 실패 알림 이메일 형식 오류')
     if not example:
         for key in SECRET_KEYS:
             require(len(values[key]) >= 20, f'20자 이상 비밀값 필요: {key}')

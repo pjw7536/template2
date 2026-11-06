@@ -30,12 +30,13 @@ export AIRFLOW_CHART_FILE
 
 ## 2. DAG 포함 이미지 준비
 
-`env/build.env`를 사용하면 사내 의존성 이미지의 build arg가 적용됩니다.
-사내 base image·APT/PIP mirror·trusted hosts·ODBC artifact URL이 동일하며
+`apps/airflow/image/Dockerfile.dependencies`는 `env/build.env`와 동일한 사내 기본값을 사용합니다.
+빌드 도구는 `env/build.env`를 build arg로 전달하며 환경별 값은 이 파일에서 변경합니다.
+사내 base image·APT/PIP mirror·trusted hosts·ODBC artifact URL이 지정되어 있고
 `INSTALL_BIGDATAQUERY_PYTHON=true`, `INSTALL_BIGDATAQUERY_ODBC=true`가 기본값입니다.
 사내 미러에서 `apache/airflow:3.3.2-python3.12`를 가져올 수 있어야 합니다.
 BigDataQuery Python·ODBC는 사내 빌드 호스트에서 실제 설치·import·DSN 접속을 확인합니다.
-사내 주소는 env에서 변경할 수 있으며 Dockerfile·배포 Python 코드에는 고정하지 않습니다.
+Dockerfile을 직접 빌드할 때도 같은 기본값을 사용하며 필요하면 `--build-arg`로 변경할 수 있습니다.
 빌드 인자에는 비밀번호·접근 토큰을 넣지 않습니다.
 
 ```bash
@@ -50,6 +51,46 @@ Docker가 있는 빌드 호스트에서 실행합니다. 빌드는 다음 두 �
 
 최종 빌드 context는 `apps/airflow`입니다. 실제 env·로그·DSN 파일은 context에 보내지 않습니다.
 플러그인 소스는 `apps/airflow/plugins`에 두며 최종 이미지에 포함됩니다.
+
+### 사내 실행 기본값
+
+사내 공통 설정은 의존성 이미지에서 준비하고, DAG와 공통 알림 코드를 포함한 최종 이미지가 상속합니다.
+각 DAG에서 mirror 주소나 인증값을 반복 선언하지 않습니다.
+
+| 항목 | 적용 방식 |
+| --- | --- |
+| Python 패키지 | `build.env`의 `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`를 `/etc/pip.conf`의 기본값으로 반영 |
+| pip 공통 동작 | 버전 확인 생략, 비대화형 설치. 저장소·config 경로를 환경변수로 강제하지 않음 |
+| OS 패키지·ODBC | 사내 APT 입력과 driver artifact를 빌드 때 사용, 실제 DSN·인증서는 운영 마운트로 전달 |
+| DAG·실패 알림·SSO | 최종 이미지에 코드를 포함하고 발송 credential·수신자는 Kubernetes Secret으로 전달 |
+
+동일 이미지를 사용하는 DAG의 pip와 하위 Python·가상환경은 위 공통 설정을 기본으로 사용합니다.
+pip 기반 `PythonVirtualenvOperator(index_urls=...)`는 가상환경의 `pip.conf`로 지정한 index를 덮어쓸 수 있고,
+빈 목록이면 `no-index`가 적용됩니다. 별도 설정이 없는 항목은 pip의 설정 우선순위에 따라 공통값을 유지합니다.
+pip 명령 옵션·명시적인 Pod 환경변수도 기본값보다 우선합니다. 다른 Pod·서버·이미지에서 실행하는 작업과
+pip 외 패키지 설치 도구에는 이 설정이 자동 적용되지 않습니다.
+외부 PC의 `make dev` 빌드는 최종 Dockerfile의 공개 기본 이미지를 직접 사용하므로 사내 mirror에 연결할 필요가 없습니다.
+사내 기본값이 있는 의존성 Dockerfile을 직접 빌드하려면 사내망 또는 별도의 build arg 입력이 필요합니다.
+
+필요한 Python 패키지는 이미지 빌드 때 설치합니다. DAG 실행이나 컨테이너 시작 때마다
+패키지를 설치하는 방식은 기본 운영 흐름으로 사용하지 않습니다.
+추가 의존성이 생기면 의존성 Dockerfile에 추가하고 새 태그로 빌드·배포합니다.
+
+사내 CA·프록시가 필요한 환경은 실제 CA bundle·프록시·우회 대상을 확인해 적용합니다.
+현재의 `PIP_TRUSTED_HOST`는 pip 저장소 접근 설정이며 업무 API의 TLS 신뢰 설정을 대신하지 않습니다.
+OIDC CA는 [인증 설정](env/02_ENVIRONMENT.md#keycloak-sso-입력)의 별도 마운트를 사용합니다.
+mirror의 실제 패키지 제공·접근 권한·ODBC 접속은 사내 서버에서 검증해야 합니다.
+
+Docker daemon과 캐시된 `apache/airflow:3.3.2-python3.12`가 있으면 다음 검사로 최종 이미지의
+코드 포함과 기본 mirror·가상환경별 index·추가 index·no-index·명시적 override를 확인할 수 있습니다.
+검사용 빌드는 네트워크를 차단하고 BigDataQuery·ODBC 추가 설치를 생략하며 검사 이미지도 정리합니다.
+
+```bash
+AIRFLOW_DOCKER_TESTS=1 python3 -m unittest discover \
+  -s deploy/airflow/tests -p test_manage.py -k ImageBuildIntegrationTests -v
+```
+
+### 이미지 전달
 
 빌드한 이미지는 자동으로 push되지 않습니다. `k8s.env`의 이미지 이름으로 registry에 push하거나,
 `docker save`로 저장한 뒤 서버 containerd에 반입합니다.

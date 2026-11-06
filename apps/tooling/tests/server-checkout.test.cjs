@@ -32,7 +32,7 @@ function fixture(t) {
     const input = fs.readFileSync(path.join(root, 'deploy', relative), 'utf8');
     const sanitized = input.split('\n').map(line => {
       const key = line.split('=')[0];
-      return !key.startsWith('#') && /password|token|fernet|authorization|secret.key|client.secret|access.key/i.test(key)
+      return !key.startsWith('#') && /password|token|fernet|authorization|secret.key|client.secret|access.key|mail.api.key/i.test(key)
         ? `${key}=replace-me` : line;
     }).join('\n');
     fs.writeFileSync(path.join(source, 'deploy', relative), sanitized, { mode: 0o600 });

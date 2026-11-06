@@ -1,15 +1,20 @@
-ARG AIRFLOW_BASE_IMAGE=apache/airflow:3.3.2-python3.12
+# 사내 기본값은 deploy/airflow/env/build.env와 일치시킨다. build arg로 변경할 수 있다.
+ARG AIRFLOW_BASE_IMAGE=repository.samsungds.net/proxy-docker-registry-1.docker.io/apache/airflow:3.3.2-python3.12
 FROM ${AIRFLOW_BASE_IMAGE}
 
-ARG APT_DEBIAN_REPOSITORY=
+ARG APT_DEBIAN_REPOSITORY=http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian
 ARG APT_DEBIAN_CODENAME=bookworm
 ARG APT_DEBIAN_ARCH=amd64
-ARG PIP_INDEX_URL=
-ARG PIP_EXTRA_INDEX_URL=
-ARG PIP_TRUSTED_HOST=
-ARG INSTALL_BIGDATAQUERY_PYTHON=false
-ARG INSTALL_BIGDATAQUERY_ODBC=false
-ARG BIGDATAQUERY_ODBC_DEB_URL=
+ARG PIP_INDEX_URL=http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple
+ARG PIP_EXTRA_INDEX_URL=http://nexus.adpaas.cloud.samsungds.net/repository/dataservice-pypi/simple
+ARG PIP_TRUSTED_HOST="repository.samsungds.net repo.samsungds.net nexus.adpaas.cloud.samsungds.net"
+ARG INSTALL_BIGDATAQUERY_PYTHON=true
+ARG INSTALL_BIGDATAQUERY_ODBC=true
+ARG BIGDATAQUERY_ODBC_DEB_URL=http://nexus.adpaas.cloud.samsungds.net/repository/dataservice/odbc/linux/debian/clouderaimpalaodbc_2.8.3.1008-2_amd64.deb
+
+# 저장소 기본값은 /etc/pip.conf로 유지해 DAG별 가상환경 설정이 우선할 수 있게 한다.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_INPUT=1
 
 USER root
 

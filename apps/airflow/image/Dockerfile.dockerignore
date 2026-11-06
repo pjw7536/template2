@@ -6,6 +6,9 @@
 !plugins/**
 !image/
 !image/bootstrap-user.py
+!image/webserver_config.py
+!image/keycloak_security.py
+!image/oidc_claims.py
 **/__pycache__/
 **/*.pyc
 **/.env*

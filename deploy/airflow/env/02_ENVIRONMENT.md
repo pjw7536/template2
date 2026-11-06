@@ -43,8 +43,8 @@ chmod 600 deploy/airflow/env/k8s.env
 - `AIRFLOW_WEBSERVER_BASE_URL`: `/airflow`로 끝나는 접속 URL. port-forward 접속 예시는 `http://localhost:8080/airflow`입니다.
 - `AIRFLOW_WEBSERVER_SECRET_KEY`: API server의 세션과 JWT 서명에 사용하는 고정 비밀값입니다. `airflow-api-key`·`airflow-api-jwt` Secret으로 전달하며 모든 구성 요소가 같은 값을 사용합니다.
 
-Knox 연결과 실패 알림이 필요하면 같은 파일의 `KNOX_*`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`를 채웁니다.
-단, `KNOX_MESSENGER_AUTHORIZATION`은 `k8s.env`에 저장합니다.
+실패 알림은 아래 [메신저·메일 실패 알림](#메신저메일-실패-알림)에 따라 같은 파일의 채널별 입력을 채웁니다.
+실제 발송 credential은 `k8s.env`에 저장합니다.
 설정은 따옴표 없이 `KEY=값`으로 작성하며 `$VAR`, `$(...)`를 실행하거나 확장하지 않습니다.
 다른 설정 파일을 쓰는 방법은 아래 5단계를 따릅니다.
 
@@ -66,11 +66,41 @@ Knox 연결과 실패 알림이 필요하면 같은 파일의 `KNOX_*`, `AIRFLOW
 | 초기 관리자 | `AIRFLOW_ADMIN_USERNAME`, `AIRFLOW_ADMIN_PASSWORD`, `AIRFLOW_ADMIN_EMAIL` | 계정이 없을 때 생성, 기존 계정의 비밀번호는 바꾸지 않음 |
 | 암호화 | `AIRFLOW_FERNET_KEY`, `AIRFLOW_WEBSERVER_SECRET_KEY` | 기존 배포 값 보존, env 전체를 DB 백업과 함께 보관 |
 | Portal | `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN` | Airflow → Portal 호출 주소·공유 token |
-| 알림 | `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS` | Knox 연동 시 입력 |
+| 메신저 알림 | `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS` | 수신자 Knox ID는 쉼표로 구분 |
+| 메일 알림 | `MAIL_API_URL`, `MAIL_API_KEY`, `MAIL_API_SYSTEM_ID`, `MAIL_API_KNOX_ID`, `AIRFLOW_FAILURE_ALERT_EMAIL_FROM`, `AIRFLOW_FAILURE_ALERT_EMAIL_TO` | 기존 Knox Mail API 계약 사용, 수신자 이메일은 쉼표로 구분 |
 
 외부 DB 모드는 내부 PostgreSQL workload와 DB PV를 생성하지 않습니다. 로그 PV는 유지합니다.
 DB 이전·기존 리소스 삭제를 자동으로 수행하지 않습니다. 외부 모드에서도 현재 입력 검사에 필요한
 `POSTGRES_IMAGE`, 디스크 경로·용량·UID/GID 항목은 파일에서 제거하지 않습니다.
+
+### 메신저·메일 실패 알림
+
+업무 DAG에 연결된 `notify_airflow_task_failure`가 Task 실패 시 메신저·메일을 각각 시도합니다.
+두 채널의 수신자를 모두 설정하면 둘 다 전송하고, 한쪽이 누락되거나 실패해도 다른 쪽은 계속 시도합니다.
+수신자를 비운 채널은 생략합니다. 알림 실패는 callback 로그에 남기며 원래 Task 실패를 덮어쓰지 않습니다.
+Task 재시도로 최종 성공한 경우의 재시도 알림이나 클러스터·Pod 장애 감시는 이 callback의 범위가 아닙니다.
+
+| 채널 | 필요한 입력 |
+| --- | --- |
+| 메신저 | 기존 `KNOX_MESSENGER_*` 세 값과 `AIRFLOW_FAILURE_ALERT_KNOX_IDS` |
+| 메일 | `MAIL_API_URL`: 발송 API 전체 URL, `MAIL_API_KEY`: `x-dep-ticket`, `MAIL_API_SYSTEM_ID`: `systemId`, `MAIL_API_KNOX_ID`: `loginUser.login` |
+| 메일 발신·수신 | `AIRFLOW_FAILURE_ALERT_EMAIL_FROM`: 발송 권한이 있는 이메일, `AIRFLOW_FAILURE_ALERT_EMAIL_TO`: 쉼표로 구분한 이메일 목록 |
+
+메일은 SMTP 대신 기존 Knox Mail HTTP API를 직접 호출합니다. `MAIL_API_*`는 Portal과 같은 요청 형식이지만
+Airflow Pod에 별도로 주입하며 Portal의 env를 자동 상속하지 않습니다. 발송 계정·발신자 권한은 실제 API에서 확인합니다.
+`MAIL_API_URL`의 기존 query를 유지하며 `systemId`·`loginUser.login`은 각각
+`MAIL_API_SYSTEM_ID`·`MAIL_API_KNOX_ID`의 값으로 대체하여 중복 없이 전송합니다.
+메일 수신자를 설정하면 배포 도구가 필수 입력·URL·이메일 형식을 검사합니다.
+새 메일 키가 없는 기존 외부 env는 메일 미사용 기본값으로 처리합니다.
+
+`failure_alerts.py`는 DAG와 함께 이미지에 포함됩니다. 코드 변경 후 새 이미지 태그로 빌드·전달하고
+검사·배포해야 합니다. env 값은 `airflow-runtime` Secret을 통해 Pod 환경변수로 전달되며
+env만 편집하면 실행 중인 Pod에 반영되지 않습니다. [업데이트 절차](../05_OPERATIONS.md#3-dag이미지-업데이트)를 따릅니다.
+메일 본문에는 DAG·Task·실행 ID·오류·로그 링크가 포함됩니다. 두 API의 연결·발송 권한과 실제 수신은 서버에서 따로 확인합니다.
+
+로컬 실행 도구는 `local/portal/env/api.env`의 Mail sandbox 입력을 재사용하고 기본 수신자는 비웁니다.
+메일 알림을 로컬에서 시험할 때는 `local/shared/env/k8s.env`의 `LOCAL_AIRFLOW_FAILURE_ALERT_EMAIL_TO`에 수신자를 지정하고
+mock의 `/mail/messages`에서 결과를 확인합니다. 운영 credential을 로컬 입력에 복사하지 않습니다.
 
 ## 4. 접속 방식 선택
 

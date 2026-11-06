@@ -142,6 +142,13 @@ def kind_config(config):
 def airflow_settings(creds):
     """서버 공통 env 계약에 로컬 외부 DB·라우팅 입력을 적용합니다."""
     result = module('airflow').read_env(ROOT / 'deploy/airflow/env/k8s.env')
+    mail = read_env(ROOT / 'local/portal/env/api.env')
+    result.update({key: mail.get(key, '') for key in
+                   ('MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_API_SYSTEM_ID', 'MAIL_API_KNOX_ID')})
+    # Airflow와 mock의 namespace가 다르므로 기존 로컬 메일 URL의 Service 이름을 보완합니다.
+    result['MAIL_API_URL'] = result['MAIL_API_URL'].replace('://adfs:', '://adfs.tailwind-local.svc.cluster.local:')
+    result.update(AIRFLOW_FAILURE_ALERT_EMAIL_FROM='airflow@localhost.test',
+                  AIRFLOW_FAILURE_ALERT_EMAIL_TO=settings()['LOCAL_AIRFLOW_FAILURE_ALERT_EMAIL_TO'])
     result.update(NAMESPACE='airflow', NODE_NAME=WORKER, POSTGRES_MODE='external',
                   POSTGRES_HOST='external-postgres', POSTGRES_IMAGE='postgres:16',
                   POSTGRES_HOST_PATH='/data/local-runtime/unused-postgres',
