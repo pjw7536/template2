@@ -75,6 +75,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 - 이미지 registry와 package mirror는 이미지 빌드·배포 입력으로 지정합니다. 전체 목록은 [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)을 봅니다. 서버 환경·구성은 [사내 인프라 정보](../../deploy/shared/docs/infrastructure/README.md)에서 함께 관리합니다.
 - [Worker 초기 설치 가이드](../../deploy/shared/docs/kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)는 사내 서버 전용 절차로, 미러 참고표의 주소를 명령에 직접 표기합니다. Ubuntu 22.04·containerd 2.2.1·Kubernetes 1.36.0의 설치용이며 로컬 개발에는 적용하지 않습니다. 인증값·CA는 운영 환경에서 별도로 준비합니다.
 - Airflow 사내 의존성 이미지 빌드 입력은 `deploy/airflow/env/build.env`입니다. 승인된 버전 고정 ODBC artifact는 `BIGDATAQUERY_ODBC_DEB_URL`로 전달하며 로컬 개발 빌드에는 사용하지 않습니다.
+- Airflow 서버의 `fetch-chart`는 `deploy/airflow/helm/chart.lock.json`의 `repository`에 지정한 승인된 사내 Helm 미러를 사용합니다. chart 1.22.0과 SHA-256을 고정하며 `helm pull`로 미러 index의 패키지 경로를 해석합니다. lock의 `url`은 외부 PC의 로컬 준비·반입용 공개 주소입니다. 사용 주소·확인 상태는 [미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)을 따릅니다.
 - Airflow ODBC 설정은 서버 `ODBC_HOST_PATH`를 `/usr/local/odbc`에 read-only로 연결하거나 `ODBC_SECRET_NAME`을 사용합니다. 실제 설정을 이미지나 Git에 넣지 않습니다.
 - Kubernetes Airflow는 기존 실행 용량과 `default_pool=-1`을 유지합니다. 로컬 자원 제한은 별도 Helm values로 지정합니다.
 - `make env-profile-key-check`는 공개 입력·예시의 존재와 중복 키를 확인하며 실제 운영 env 없이도 동작합니다.

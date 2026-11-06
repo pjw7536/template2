@@ -19,7 +19,6 @@ import subprocess
 import sys
 import tempfile
 from urllib.parse import quote, urlsplit
-from urllib.request import urlopen
 
 BASE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
@@ -527,13 +526,19 @@ def main():
         print('env 초기 키 생성 완료. 같은 파일의 서버 정보와 Portal trigger token을 확인하세요.')
         return
     if args.command == 'fetch-chart':
+        require(shutil.which('helm'), 'Helm 실행 파일 준비 필요: Helm >= ' + LOCK['helmVersion'])
+        require(version_tuple(run(['helm', 'version', '--short'])) >= version_tuple(LOCK['helmVersion']), 'Helm 버전이 요구사항보다 낮습니다.')
+        filename = f'{LOCK["name"]}-{LOCK["version"]}.tgz'
+        # 미러 index의 실제 패키지 경로를 사용하고 검증 전에는 기존 캐시를 덮어쓰지 않습니다.
+        with tempfile.TemporaryDirectory(prefix='airflow-chart-') as temporary:
+            run(['helm', 'pull', LOCK['name'], '--repo', LOCK['repository'],
+                 '--version', LOCK['version'], '--destination', temporary])
+            content = (Path(temporary) / filename).read_bytes()
+        require(hashlib.sha256(content).hexdigest() == LOCK['sha256'], '다운로드 chart SHA-256 불일치')
         directory = BASE / 'helm/vendor'
         directory.mkdir(parents=True, exist_ok=True)
-        with urlopen(LOCK['url'], timeout=60) as response:
-            content = response.read()
-        require(hashlib.sha256(content).hexdigest() == LOCK['sha256'], '다운로드 chart SHA-256 불일치')
-        (directory / f'airflow-{LOCK["version"]}.tgz').write_bytes(content)
-        print('공식 Helm chart 다운로드·SHA-256 검사 완료')
+        (directory / filename).write_bytes(content)
+        print('사내 Helm 미러 chart 다운로드·SHA-256 검사 완료')
         return
     example = args.command == 'check' and args.env is None
     settings = read_env(args.env or DEFAULT_ENV)

@@ -8,13 +8,19 @@
 
 ## 1. 공식 chart 준비
 
-인터넷에 연결된 환경에서는 다음 명령으로 checksum까지 확인합니다.
+CP1의 저장소 루트에서 다음 명령으로 사내 Helm 미러의 chart를 받고 checksum까지 확인합니다.
+Python 3.10 이상과 Helm 3.19.0 이상이 필요하며 Kubernetes context는 사용하지 않습니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py fetch-chart
 ```
 
-사내망이 외부에 연결되지 않으면 외부 PC에서 받은
+`helm/chart.lock.json`의 `repository`에 지정된 사내 미러에서
+`helm pull --repo ... --version 1.22.0`으로 받습니다. 미러 index가 패키지 경로를 결정합니다.
+명령이 실패하면 CP1에서 미러 DNS·접근 권한·chart 제공 여부를 확인합니다.
+SHA-256이 일치할 때만 기본 캐시에 저장하며 기존 캐시는 검증 실패 시 보존합니다.
+
+미러에서 받을 수 없다면 외부 PC에서 lock의 `url`에 지정된 공개 주소로 받은
 `deploy/airflow/helm/vendor/airflow-1.22.0.tgz`를 서버의 같은 위치로 반입합니다.
 다른 위치의 파일은 `AIRFLOW_CHART_FILE=/절대경로/airflow-1.22.0.tgz` 환경변수로 지정합니다.
 검사·렌더·배포는 차트를 자동 다운로드하지 않으며 고정 SHA-256이 다르면 중단합니다.

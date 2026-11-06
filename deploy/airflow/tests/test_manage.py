@@ -2,6 +2,7 @@
 
 import base64
 from copy import deepcopy
+import hashlib
 import importlib.util
 import json
 import os
@@ -35,6 +36,46 @@ def settings():
         'AIRFLOW_FERNET_KEY': base64.urlsafe_b64encode(b'x' * 32).decode(),
     })
     return result
+
+
+class ChartDownloadTests(unittest.TestCase):
+    def test_fetch_uses_internal_repository_and_preserves_cache_on_bad_checksum(self):
+        """사내 미러에서 고정 버전을 받고 손상된 다운로드는 기존 캐시에 반영하지 않습니다."""
+        content = b'fixture-chart-archive'
+        filename = f'{deploy.LOCK["name"]}-{deploy.LOCK["version"]}.tgz'
+        self.assertEqual(deploy.LOCK['repository'],
+                         'http://repository.samsungds.net/repository/proxy-helm-airflow.apache.org')
+        for downloaded in (content, b'corrupt-chart'):
+            with self.subTest(downloaded=downloaded), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / 'helm/vendor' / filename
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b'existing-chart')
+                calls = []
+
+                def fake_run(args, **kwargs):
+                    calls.append(args)
+                    if args == ['helm', 'version', '--short']:
+                        return 'v3.19.0'
+                    self.assertEqual(args[:-1], [
+                        'helm', 'pull', 'airflow', '--repo', deploy.LOCK['repository'],
+                        '--version', '1.22.0', '--destination'])
+                    (Path(args[-1]) / filename).write_bytes(downloaded)
+                    return ''
+
+                with patch.object(deploy, 'BASE', Path(directory)), \
+                        patch.object(deploy, 'run', fake_run), \
+                        patch.object(deploy.shutil, 'which', return_value='/tools/helm'), \
+                        patch.dict(deploy.LOCK, {'sha256': hashlib.sha256(content).hexdigest()}), \
+                        patch('sys.argv', ['manage.py', 'fetch-chart']), patch('builtins.print'):
+                    if downloaded == content:
+                        deploy.main()
+                        self.assertEqual(target.read_bytes(), content)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'SHA-256'):
+                            deploy.main()
+                        self.assertEqual(target.read_bytes(), b'existing-chart')
+                self.assertEqual(len(calls), 2)
+                self.assertFalse(Path(calls[1][-1]).exists())
 
 
 class ConfigurationTests(unittest.TestCase):

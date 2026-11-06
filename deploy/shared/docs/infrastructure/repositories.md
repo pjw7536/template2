@@ -34,13 +34,14 @@
 | Kubernetes v1.36 APT | `http://repository.samsungds.net/repository/proxy-apt-pkgs.k8s.io-core-stable/v1.36/deb/` | Worker 설치 절차의 주소 조합. 실제 패키지 제공 여부 미확인 |
 | Kubernetes 공개 서명키 | `http://repository.samsungds.net/repository/proxy-raw-pkgs.k8s.io-core-stable/v1.36/deb/Release.key` | Worker 설치 절차의 주소 조합. 실제 하위 경로 미확인 |
 | Headlamp Helm chart 0.45.0 | `http://repository.samsungds.net/repository/proxy-raw-github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz` | `deploy/headlamp/helm/chart.lock.json`의 고정 다운로드 주소 |
+| Airflow Helm chart 1.22.0 | `http://repository.samsungds.net/repository/proxy-helm-airflow.apache.org` | `deploy/airflow/helm/chart.lock.json`의 `repository` 선언. `fetch-chart`가 Helm index에서 고정 버전 패키지를 선택. 실제 패키지 제공·다운로드 가능 여부는 CP1에서 확인 필요 |
 | Monitoring Helm chart 91.4.0 | `http://repository.samsungds.net/repository/proxy-raw-github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-91.4.0/kube-prometheus-stack-91.4.0.tgz` | `deploy/monitoring/helm/chart.lock.json`의 고정 다운로드 주소. 실제 패키지 제공·다운로드 가능 여부는 CP1에서 확인 필요 |
 | 기본 PyPI | `http://repository.samsungds.net/repository/proxy-pypi-files.pythonhosted.org/simple` | Airflow `PIP_INDEX_URL` |
 | 추가 사내 PyPI | `http://nexus.adpaas.cloud.samsungds.net/repository/dataservice-pypi/simple` | Airflow `PIP_EXTRA_INDEX_URL`. proxy 미러 매핑과 별도로 관리하는 저장소 |
 | Impala ODBC 2.8.3.1008 | `http://nexus.adpaas.cloud.samsungds.net/repository/dataservice/odbc/linux/debian/clouderaimpalaodbc_2.8.3.1008-2_amd64.deb` | Airflow `BIGDATAQUERY_ODBC_DEB_URL`의 서버 전용 artifact |
 
 위 주소의 실제 운영 사용·접속 성공·CA·인증·권한은 미확인입니다. URL의 scheme은 원본 입력을 따릅니다.
-근거 파일은 `deploy/airflow/env/build.env`, `deploy/minio/env/prod.env`, `deploy/keycloak/k8s/kustomization.yaml`,
+근거 파일은 `deploy/airflow/env/build.env`, `deploy/airflow/helm/chart.lock.json`, `deploy/minio/env/prod.env`, `deploy/keycloak/k8s/kustomization.yaml`,
 `deploy/monitoring/env/k8s.env`, `deploy/monitoring/helm/chart.lock.json`, `deploy/headlamp/env/k8s.env`와 [Worker 설치 절차](../kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)입니다.
 선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 입력을 확인합니다.
 
