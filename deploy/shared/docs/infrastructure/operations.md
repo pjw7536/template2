@@ -15,6 +15,7 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 | CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../../../README.md#소유권)의 외부 설정 경로. 앱 도구에 실제 외부 env 경로 명시 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
 | kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 지정한 `KUBECONFIG` | [CP1 운영](../operations/02-cp1.md). 실제 파일 위치·계정·권한 확인 필요 |
+| 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 실제 배포 계정의 kubeconfig 등록·현재 선택 상태는 서버에서 확인 필요 |
 | 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../../certs/README.md). 실제 보관 경로·담당자 확인 필요 |
 | 앱 데이터·로그·ODBC | [앱별 배치·스토리지 표](services.md#앱별-배치와-스토리지-선언) | 노드별 PV·PVC·hostPath 선언과 실제 연결을 구분 |
 | 백업·복구 파일 | 미확인 | 앱별 보관 위치·주기·보존 기간·복구 담당자 확인 필요 |
@@ -106,10 +107,28 @@ local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니�
 
 ## 현재 상태 조회
 
-배포 호스트의 저장소 루트에서 대상 context를 명시합니다. 아래 명령은 조회만 수행합니다.
+서버 배포용 Bash 계정의 `~/.bashrc`에 다음 줄을 한 번 등록하면 새 터미널에서도 기본 context를 재입력하지 않아도 됩니다.
 
 ```bash
-read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
+export KUBE_CONTEXT=kubernetes-admin@kubernetes
+```
+
+현재 터미널에도 위 명령을 실행하면 바로 적용됩니다. 루트 Makefile은 이 환경변수를 읽으므로
+`make ingress-check`처럼 `KUBE_CONTEXT=...`를 생략할 수 있습니다.
+다른 대상을 사용할 때는 `make ingress-check KUBE_CONTEXT=<대상-context>`로 덮어씁니다.
+이 환경변수는 저장소 배포 도구의 입력이며 일반 `kubectl`의 현재 context를 바꾸지는 않습니다.
+일반 `kubectl`에서도 서버 context를 기본으로 쓰려면 배포 호스트에서 다음 명령을 한 번 실행합니다.
+
+```bash
+kubectl config use-context "$KUBE_CONTEXT"
+```
+
+외부 PC의 로컬 개발 context와 서버 배포 계정의 설정은 구분합니다.
+배포 호스트의 저장소 루트에서 대상 context를 확인합니다. 아래 명령은 조회만 수행합니다.
+
+```bash
+kubectl config get-contexts
+printf '대상 Kubernetes context: %s\n' "$KUBE_CONTEXT"
 kubectl --context "$KUBE_CONTEXT" get nodes -o wide
 kubectl --context "$KUBE_CONTEXT" get pods -A -o wide
 kubectl --context "$KUBE_CONTEXT" get ingress -A
