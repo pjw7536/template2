@@ -269,16 +269,20 @@ class InternalBuildParityTests(unittest.TestCase):
         def fake_run(args, **kwargs):
             args = list(map(str, args))
             calls.append(args)
-            if len(calls) == 1:
+            if args == ['docker', 'info']:
+                return ''
+            if len(calls) == 2:
                 context = Path(args[-1])
                 self.assertEqual((context / 'Dockerfile').read_bytes(), original)
                 self.assertEqual([p.name for p in context.iterdir()], ['Dockerfile'])
             return ''
 
         build_path = deploy.BASE / 'env/build.env'
-        with patch.object(deploy, 'run', fake_run):
-            deploy.build_image(settings(), build_path)
-        self.assertEqual(len(calls), 2)
+        with patch.object(deploy, 'run', fake_run), \
+                patch.object(deploy.shutil, 'which', return_value='/tools/docker'):
+            deploy.build_image(settings(), build_path, builder='docker')
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls.pop(0), ['docker', 'info'])
         for key, value in deploy.read_env(build_path).items():
             index = calls[0].index(f'{key}={value}')
             self.assertEqual(calls[0][index - 1], '--build-arg')
@@ -288,11 +292,128 @@ class InternalBuildParityTests(unittest.TestCase):
         self.assertEqual(calls[1][-1], str(source))
         self.assertEqual(calls[1][calls[1].index('-f') + 1], str(source / 'image/Dockerfile'))
 
+    def test_missing_builder_stops_before_build_with_host_guidance(self):
+        """빌더가 없으면 containerd 빌드 도구와 Docker 선택 방법을 안내합니다."""
+        with patch.object(deploy.shutil, 'which', return_value=None), \
+                patch.object(deploy, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'nerdctl·BuildKit.*--builder docker'):
+                deploy.build_image(settings(), deploy.BASE / 'env/build.env')
+            run.assert_not_called()
+
+    def test_unavailable_daemon_stops_before_build_with_connection_guidance(self):
+        """daemon이나 소켓에 접근하지 못하면 이미지를 빌드하지 않습니다."""
+        with patch.object(deploy.shutil, 'which', return_value='/tools/docker'), \
+                patch.object(deploy, 'run', side_effect=ValueError('fixture-daemon-error')) as run:
+            with self.assertRaisesRegex(ValueError, 'Docker daemon.*docker info.*소켓 권한'):
+                deploy.build_image(settings(), deploy.BASE / 'env/build.env', builder='docker')
+            run.assert_called_once_with(['docker', 'info'])
+
     def test_missing_source_stops_before_docker_with_checkout_guidance(self):
         with patch.object(Path, 'exists', return_value=False), patch.object(deploy, 'run') as run:
             with self.assertRaisesRegex(ValueError, '--with-source'):
                 deploy.build_image(settings(), deploy.BASE / 'env/build.env')
             run.assert_not_called()
+
+
+class ContainerdBuildTests(unittest.TestCase):
+    def workers(self, namespace='default', executor='containerd'):
+        """실제 BuildKit worker 응답의 label 구조를 사용합니다."""
+        return [{'id': 'fixture-worker', 'labels': {
+            'org.mobyproject.buildkit.worker.executor': executor,
+            'org.mobyproject.buildkit.worker.containerd.namespace': namespace,
+        }}]
+
+    def test_auto_prefers_nerdctl_and_reuses_dependency_in_same_namespace(self):
+        """두 단계 모두 지정한 소켓·namespace·BuildKit을 쓰고 빌드 인자를 유지합니다."""
+        namespace = 'airflow-build'
+        address = '/run/custom/containerd.sock'
+        host = 'unix:///run/custom/buildkitd.sock'
+        prefix = ['nerdctl', '--address', address, '--namespace', namespace]
+        command = [*prefix, 'build', '--buildkit-host', host, '--pull=false']
+        calls = []
+
+        def fake_run(args, **kwargs):
+            args = list(map(str, args))
+            calls.append(args)
+            if args == [*prefix, 'info']:
+                return ''
+            if args == ['buildctl', '--addr', host, 'debug', 'workers', '--format', '{{json .}}']:
+                return json.dumps(self.workers(namespace))
+            self.assertEqual(args[:len(command)], command)
+            if len(calls) == 3:
+                context = Path(args[-1])
+                self.assertEqual([path.name for path in context.iterdir()], ['Dockerfile'])
+                self.assertEqual((context / 'Dockerfile').read_bytes(),
+                                 (deploy.BASE.parents[1] / 'apps/airflow/image/Dockerfile.dependencies').read_bytes())
+            return ''
+
+        build_path = deploy.BASE / 'env/build.env'
+        with patch.object(deploy.shutil, 'which', side_effect=lambda name: '/tools/' + name), \
+                patch.object(deploy, 'run', fake_run):
+            deploy.build_image(settings(), build_path, containerd_namespace=namespace,
+                               containerd_address=address, buildkit_host=host)
+        self.assertEqual(len(calls), 4)
+        for key, value in deploy.read_env(build_path).items():
+            index = calls[2].index(f'{key}={value}')
+            self.assertEqual(calls[2][index - 1], '--build-arg')
+        self.assertIn('registry.test/airflow:3.3.2-release-1-dependencies', calls[2])
+        self.assertIn('AIRFLOW_DEPENDENCY_IMAGE=registry.test/airflow:3.3.2-release-1-dependencies', calls[3])
+        self.assertEqual(calls[3][-1], str(deploy.BASE.parents[1] / 'apps/airflow'))
+        self.assertFalse(any(args[0] == 'docker' or 'push' in args for args in calls))
+
+    def test_auto_uses_docker_when_nerdctl_is_not_installed(self):
+        with patch.object(deploy.shutil, 'which', side_effect=lambda name: '/tools/docker' if name == 'docker' else None), \
+                patch.object(deploy, 'run', return_value='') as run:
+            command = deploy.image_build_command('auto', 'default', deploy.DEFAULT_CONTAINERD_ADDRESS,
+                                                 deploy.DEFAULT_BUILDKIT_HOST)
+        self.assertEqual(command, ['docker', 'build'])
+        run.assert_called_once_with(['docker', 'info'])
+
+    def test_missing_buildctl_stops_before_containerd_access(self):
+        with patch.object(deploy.shutil, 'which', side_effect=lambda name: '/tools/nerdctl' if name == 'nerdctl' else None), \
+                patch.object(deploy, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'buildctl'):
+                deploy.image_build_command('nerdctl', 'default', deploy.DEFAULT_CONTAINERD_ADDRESS,
+                                           deploy.DEFAULT_BUILDKIT_HOST)
+            run.assert_not_called()
+
+    def test_connection_errors_do_not_fall_back_to_docker(self):
+        for responses, message in (([ValueError('fixture-containerd-error')], 'containerd에'),
+                                   (['', ValueError('fixture-buildkit-error')], 'BuildKit worker'),
+                                   (['', 'not-json'], 'BuildKit worker')):
+            with self.subTest(message=message, responses=responses), \
+                    patch.object(deploy.shutil, 'which', side_effect=lambda name: '/tools/' + name), \
+                    patch.object(deploy, 'run', side_effect=responses) as run:
+                with self.assertRaisesRegex(ValueError, message):
+                    deploy.image_build_command('auto', 'default', deploy.DEFAULT_CONTAINERD_ADDRESS,
+                                               deploy.DEFAULT_BUILDKIT_HOST)
+                self.assertEqual(run.call_count, len(responses))
+                self.assertTrue(all(call.args[0][0] != 'docker' for call in run.call_args_list))
+
+    def test_rejects_oci_workers_mixed_workers_and_namespace_mismatch(self):
+        cases = [[], None, {}, [{}], self.workers(executor='oci'), self.workers(namespace='k8s.io'),
+                 self.workers() + self.workers(executor='oci')]
+        for workers in cases:
+            with self.subTest(workers=workers), \
+                    patch.object(deploy.shutil, 'which', return_value='/tools/fixture'), \
+                    patch.object(deploy, 'run', side_effect=['', json.dumps(workers)]):
+                with self.assertRaisesRegex(ValueError, '같은 containerd worker'):
+                    deploy.image_build_command('nerdctl', 'default', deploy.DEFAULT_CONTAINERD_ADDRESS,
+                                               deploy.DEFAULT_BUILDKIT_HOST)
+
+    def test_cli_forwards_explicit_builder_and_connection_options(self):
+        with patch('sys.argv', ['manage.py', 'build-image', '--build-env', '/build.env',
+                               '--builder', 'nerdctl', '--containerd-namespace', 'airflow-build',
+                               '--containerd-address', '/custom/containerd.sock',
+                               '--buildkit-host', 'unix:///custom/buildkitd.sock']), \
+                patch.object(deploy, 'read_env', return_value=settings()), \
+                patch.object(deploy, 'build_image') as build:
+            deploy.main()
+        self.assertEqual(build.call_args.args[1], Path('/build.env'))
+        self.assertEqual(build.call_args.kwargs, {
+            'builder': 'nerdctl', 'containerd_namespace': 'airflow-build',
+            'containerd_address': '/custom/containerd.sock', 'buildkit_host': 'unix:///custom/buildkitd.sock',
+        })
 
 
 @unittest.skipUnless(os.environ.get('AIRFLOW_DOCKER_TESTS') == '1', '명시적인 Docker 이미지 통합 검사에서 실행')
@@ -323,7 +444,7 @@ class ImageBuildIntegrationTests(unittest.TestCase):
             build_path.write_text(''.join(f'{key}={value}\n' for key, value in build.items()))
             with patch.object(deploy, 'run', offline_run):
                 deploy.build_image({**settings(), 'AIRFLOW_IMAGE_REPOSITORY': tag.split(':')[0],
-                                    'AIRFLOW_IMAGE_TAG': tag.split(':')[1]}, build_path)
+                                    'AIRFLOW_IMAGE_TAG': tag.split(':')[1]}, build_path, builder='docker')
         script = textwrap.dedent('''
             import json
             import os

@@ -1,65 +1,34 @@
-# 00. Headlamp 최초 설치 안내
+# Headlamp 배포 안내
 
-Headlamp는 Keycloak의 `etch` realm과 사내 IdP `oidc`로 로그인하는 Kubernetes 운영 화면입니다.
-먼저 Keycloak 설정을 마치고 Account Console에서 사내 로그인이 되는지 확인합니다.
-그다음 아래 순서로 Headlamp를 설치합니다.
+[전체 배포 안내](../README.md) · [공통 준비·운영](../shared/docs/README.md)
 
-운영 접속 주소는 `https://etch.samsungds.net/headlamp/`입니다.
-Ingress 설정은 [공용 Ingress 기준](../shared/ingress/README.md#운영-ingress-기준)을 따릅니다.
+Keycloak로 로그인한 사용자의 권한으로 Kubernetes를 관리하는 화면입니다.
+먼저 Keycloak의 `etch` realm·사내 IdP `oidc` 준비를 마치고 Account Console에서 사내 로그인을 확인합니다.
+공개 접속 경로는 [서비스 원본](../shared/docs/infrastructure/services.md), 공용 TLS는 [Ingress 기준](../shared/docs/ingress/operations.md#운영-ingress-기준)을 확인합니다.
 
-| 항목 | 값 |
+## 최초 설치 순서
+
+파일 번호는 권장 읽기 순서입니다. 실행 명령은 각 문서의 단계와 완료 기준을 따릅니다.
+
+| 순서 | 작업·실행 위치 | 완료 기준 |
+| --- | --- | --- |
+| 1 | [서버·설정 준비](docs/01-setup.md), CP1 | context·env·chart·namespace·이미지 인증 준비 |
+| 2 | [환경설정](docs/02-environment.md), CP1 | 입력 형식·변수 의미·env 선택과 검사 범위 확인 |
+| 3 | [사이트 TLS·Keycloak CA](docs/03-tls.md), CP1 | 공용 TLS·CA ConfigMap·OIDC 연결 검사 정상 |
+| 4 | [Keycloak client·관리자 그룹](docs/04-keycloak.md), 브라우저·CP1 | S256·groups mapper·그룹 가입·client Secret 준비 |
+| 5 | [API server 인증](docs/05-apiserver.md), 모든 제어면 서버 | OIDC 인증 반영과 기존 관리자 접속 확인 |
+| 6 | [배포·로그인·권한 검증](docs/06-deploy.md), CP1·브라우저 | 관리자 허용·별도 권한 없는 비관리자 거부·갱신 확인 |
+
+API server 설정은 필수입니다. 제어면을 직접 관리하지 않는다면 해당 절차를 담당자에게 전달하고 완료 확인을 받습니다.
+각 단계의 완료 기준을 통과한 뒤 다음으로 이동합니다. 새 터미널에서는 [실행 입력](docs/01-setup.md#2-대상-context와-실행-입력)을 다시 준비합니다.
+
+## 운영·참고
+
+| 하려는 일 | 문서 |
 | --- | --- |
-| namespace | `headlamp` |
-| Ingress 이름 | `headlamp` |
-| host | `etch.samsungds.net` |
-| 인증서 관리 | 공용 `etch-sso/traefik-tls` |
-
-## 처음 시작하거나 초기화 후 다시 설치한다면
-
-**먼저 [01 서버 준비](01_SERVER_SETUP.md)를 열고, 번호 순서대로 한 블록씩 실행하세요.**
-이 README는 순서를 설명하는 입구입니다. 여러 문서의 명령을 한꺼번에 붙여 넣지 않습니다.
-`01 → 03 → 04 → 05 → 06`이 실행 순서이며, `02`는 설정값을 찾을 때 여는 참고 문서입니다.
-
-작업할 곳은 세 군데입니다.
-
-| 작업할 곳 | 여기서 하는 일 |
-| --- | --- |
-| CP1의 Bash 터미널 | 저장소 루트에서 `make`·`kubectl` 실행, 인증서와 Secret 등록 |
-| PC의 웹 브라우저 | Keycloak 관리자 화면에서 client·그룹 등록, 마지막에 Headlamp 로그인 |
-| 각 제어면 서버의 터미널 | Kubernetes API server가 Keycloak 토큰을 받아들이도록 설정. 05에서만 사용 |
-
-`kubectl --context ...`는 선택한 클러스터에 명령을 보냅니다.
-`sudo vi /etc/kubernetes/...`는 현재 SSH로 접속한 서버의 파일을 편집합니다.
-context를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치를 구분합니다.
-
-초기화 후에는 다음 상태에서 시작하면 됩니다.
-
-- Keycloak의 `etch` realm·사내 IdP `oidc`·기존 사용자는 유지하고, Account Console 사내 로그인이 됩니다.
-- `headlamp` namespace가 없어도 됩니다. 01에서 만들고, 삭제된 이미지 인증·OIDC Secret과 CA ConfigMap은 다시 등록합니다. 사이트 인증서는 공용 Traefik에서 유지합니다.
-- Keycloak의 Headlamp client·관리자 그룹이 없어도 됩니다. 04에서 새로 만듭니다. 남아 있다면 해당 단계에서 확인합니다.
-- API server의 OIDC 설정은 남아 있을 수 있습니다. 05에서 먼저 확인하고 중복 추가하거나 다른 앱의 인증 설정을 덮어쓰지 않습니다.
-- 인증서 원본·개인키·CA 파일은 준비되어 있어야 합니다. namespace를 삭제했다면 Kubernetes Secret도 없어졌으므로 파일로 다시 등록해야 합니다.
-
-문서의 `read ...` 명령은 실행 후 값을 입력하고 Enter를 누릅니다. `Headlamp client secret:` 입력은 화면에 보이지 않습니다.
-`<...>` 형태의 설명용 값은 실제 값으로 바꿔야 하며 그대로 실행하지 않습니다.
-오류가 나오면 해당 단계의 확인 방법으로 해결한 뒤 진행합니다. 새 터미널을 열었다면 01의 실행 입력을 다시 준비합니다.
-
-## 설치 순서
-
-| 순서 | 할 일 | 실행 안내 | 완료 기준 |
-| --- | --- | --- | --- |
-| 1 | 도구·context·env·chart·namespace 준비 | [01 서버 준비](01_SERVER_SETUP.md) | 입력·chart 검사와 이미지 인증 준비 |
-| 2 | 사이트 인증서·Keycloak CA 등록 | [03 TLS](03_TLS.md) | 공용 TLS·CA ConfigMap·OIDC 연결 검사 정상 |
-| 3 | Headlamp client·그룹·Client secret 등록 | [04 Keycloak 설정](04_KEYCLOAK_SETUP.md) | S256·groups mapper·관리자 가입·Secret 완료 |
-| 4 | 모든 API server의 OIDC 인증 설정 | [05 API server](05_APISERVER_SETUP.md) | 인증 계약 반영, 기존 관리자 접속 정상 |
-| 5 | Headlamp 배포·브라우저 로그인·권한 검증 | [06 배포와 검증](06_DEPLOY_VERIFY.md) | 관리자 허용·비관리자 거부·갱신 확인 |
-
-명령은 각 단계의 실행 안내에서만 수행합니다. `02`는 필요할 때 읽는 변수 참고 문서입니다.
-같은 Bash 터미널에서 진행하고, 새 터미널이면 [01의 실행 입력](01_SERVER_SETUP.md#2-대상-context와-실행-입력)을 다시 준비합니다.
-각 문서 끝의 완료 기준을 통과한 뒤 다음으로 이동합니다.
-
-API server 설정은 필수입니다. 제어면을 직접 관리하지 않는다면 05를 담당자에게 전달하고 완료 확인을 받습니다.
-Keycloak client 등록이나 Headlamp Pod Ready만으로 전체 설정이 끝나지는 않습니다.
+| 변수 의미·외부 env·검사 범위 | [환경설정](docs/02-environment.md) |
+| Secret·CA 갱신, 장애 진단·복구 | [운영 안내](docs/07-operations.md) |
+| namespace 초기화 후 다시 설치 | [재설치 전제](docs/07-operations.md#초기화-후-재설치) → 위 설치 순서 |
 
 ## 로그인과 권한
 
@@ -74,14 +43,3 @@ Headlamp → Keycloak etch → 사내 IdP oidc → Keycloak ID Token
 
 다른 RBAC 권한이 있으면 함께 합산됩니다. Headlamp Pod 자체에는 사용자 조회·관리 권한을 주지 않습니다.
 Portal client나 SDWT 업무 그룹은 Headlamp의 client·관리자 그룹을 대신하지 않습니다.
-
-## 참고와 운영
-
-| 문서 | 용도 |
-| --- | --- |
-| [02 환경변수](env/02_ENVIRONMENT.md) | 변수 의미·외부 env·검사 범위 |
-| [운영 참고](operations/README.md) | 장애 진단·Secret/CA 갱신·기존 조회 그룹 전환·복구 |
-| [Keycloak 자체 설정](../keycloak/04_SETUP_FLOW.md) | 사내 로그인·기존 사용자 연결 |
-| [Keycloak 사용자 필드](../keycloak/06_CLAIMS.md) | EPID·loginid·표시 이름 계약 |
-
-[전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)

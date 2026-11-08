@@ -1,0 +1,59 @@
+# Portal 최초 Keycloak 연결
+
+[Portal 배포 안내](../README.md) · 선행 조건: [Keycloak 설정 완료](../../keycloak/docs/05-keycloak.md#설정-완료-확인)
+
+Keycloak 자체 설정과 사내 시험 로그인을 마친 뒤 Portal 전용 client·token mapper를 등록합니다.
+공개 Portal URL과 callback은 실제 사용할 값으로 정합니다.
+
+## 입력 준비
+
+저장소 루트의 Bash에서 실행합니다.
+
+```bash
+kubectl config current-context
+kubectl config get-contexts
+read -r -p 'Keycloak이 설치된 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
+vi deploy/portal/env/prod/api.env
+```
+
+`OIDC_PROVIDER=keycloak`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`,
+`OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`을 입력합니다.
+사내 AD FS client와 별개의 Portal 전용 ID·secret을 사용합니다.
+issuer는 Keycloak `etch` realm의 discovery에 나온 값과 같아야 합니다.
+
+## client 등록
+
+```bash
+make keycloak-portal-client-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_PORTAL_ENV="$PWD/deploy/portal/env/prod/api.env"
+kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/portal-keycloak-client
+```
+
+명령은 입력 검사·관리 ConfigMap·client Secret 준비 후 Job을 실행하고 완료를 기다립니다.
+사내 IdP·User Profile·수신 mapper는 이 단계에서 설정하지 않습니다.
+
+`checkout-server.sh portal`로 준비한 서버에도 필요한 Keycloak 등록 지원 코드가 포함됩니다.
+등록 입력은 Portal의 `api.env`만 사용하며 Keycloak env는 읽지 않습니다.
+
+사내 claim 16개와 소속 2개를 ID Token·Access Token·UserInfo에 발급합니다.
+전체 필드는 [claim 매핑 계약](../../keycloak/docs/10-claims.md)을 따릅니다.
+SDWT 그룹을 발급하려면 [앱 그룹 연결](../../keycloak/docs/07-app-connections.md#sdwt-그룹을-portal에-전달하는-경우)을 수행합니다.
+
+## Portal 배포와 확인
+
+같은 `api.env`를 사용해 [Portal 배포 안내](../README.md)에 따라 API Secret·앱을 배포합니다.
+이 client 등록 명령만으로 Portal API가 배포되지는 않습니다.
+시험 계정으로 로그인해 callback, 신원 claim, 필요한 소속·그룹과 앱 접근 판정을 확인합니다.
+Keycloak의 소속·그룹을 발급하는 것과 Portal의 실제 권한 판정 구현은 별개입니다.
+
+client 등록 도구는 신원·소속 claim 외에 다음 권한 설정을 준비합니다.
+
+- 앱 역할과 `resource_access.<client-id>.roles`, `groups` mapper
+- `portal-members` 그룹과 이 그룹의 `portal-all-apps` 역할 연결
+
+운영 사용자에게 역할을 자동으로 부여하지는 않습니다. 운영자가 조직 정책에 따라 그룹 구성원을 지정하고,
+제한 사용자에게는 개별 앱 역할을 부여합니다.
+
+Portal은 발급된 client 역할로 앱 접근을 판단합니다. `deptid`나 그룹 이름으로 앱 접근을 추정하지 않습니다.
+상세 정책과 최초 관리자 설정은 [Portal 배포 안내](04-access.md#keycloak-권한과-새-db-시작)를 따릅니다.
+
+그룹 역할 연결은 [Keycloak 공식 Admin CLI](https://www.keycloak.org/docs/latest/server_admin/#admin-cli)의 `add-roles --gname ... --cclientid ...`를 사용합니다.

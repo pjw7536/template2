@@ -42,7 +42,7 @@
 
 위 주소의 실제 운영 사용·접속 성공·CA·인증·권한은 미확인입니다. URL의 scheme은 원본 입력을 따릅니다.
 근거 파일은 `deploy/airflow/env/build.env`, `deploy/airflow/helm/chart.lock.json`, `deploy/minio/env/prod.env`, `deploy/keycloak/k8s/kustomization.yaml`,
-`deploy/monitoring/env/k8s.env`, `deploy/monitoring/helm/chart.lock.json`, `deploy/headlamp/env/k8s.env`와 [Worker 설치 절차](../kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)입니다.
+`deploy/monitoring/env/k8s.env`, `deploy/monitoring/helm/chart.lock.json`, `deploy/headlamp/env/k8s.env`와 [Worker 설치 절차](../kubernetes/worker.md#2-0-사용할-사내-미러와-준비-파일)입니다.
 선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 입력을 확인합니다.
 
 ## 전체 public/mirror 이름 매핑

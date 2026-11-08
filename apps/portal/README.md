@@ -9,7 +9,7 @@ React Web과 Django API로 구성된 업무 포털입니다. 업무 기능은 �
 | 소스·이미지 빌드 | [api](api/README.md), [web](web/README.md), 각 폴더의 Dockerfile |
 | 서버 배포·입력 | [deploy/portal](../../deploy/portal/README.md) |
 | 개발 env·실행 | [local/portal](../../local/README.md) |
-| 앱 목록·서버 checkout | [앱 목록](../../deploy/shared/apps.json), [선택 checkout](../../deploy/01-SERVER_CHECKOUT.md) |
+| 앱 목록·서버 checkout | [앱 목록](../../deploy/shared/apps.json), [선택 checkout](../../deploy/shared/docs/operations/checkout.md) |
 
 ## 개발·검증
 
@@ -65,7 +65,7 @@ Airflow는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 �
 
 소속·권한 수정은 Keycloak에서 수행하고 다음 로그인에 반영합니다. Portal은 조회만 제공합니다.
 전체 조직 CSV나 사용자 사전 등록은 필요하지 않습니다. 운영 절차는
-[Portal 배포 안내](../../deploy/portal/README.md#keycloak-권한과-새-db-시작)를 따릅니다.
+[Portal 배포 안내](../../deploy/portal/docs/04-access.md#keycloak-권한과-새-db-시작)를 따릅니다.
 
 로컬 Keycloak의 EPID `90000001`은 내부 사용자, `90000002`는 메일 viewer,
 `90000003`은 외부 전체 앱 사용자, `90000004`는 전체 관리자, `90000005`는 무권한 사용자입니다.

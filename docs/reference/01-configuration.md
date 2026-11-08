@@ -69,12 +69,13 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 - 로컬 API는 기본 env → `api-k8s.env` → runtime override → MinIO client credential 순서로 합성합니다.
 - 사내 Portal은 `deploy/portal/env/prod` 입력만 사용합니다. `make prod-profile-env-check`로 필수 입력을 검사합니다.
 - Airflow의 DB·관리자·Portal 연결은 `deploy/airflow/env/k8s.env`에 둡니다. API의 Airflow 사용자·비밀번호·trigger token을 함께 맞춥니다.
-- Airflow 웹 SSO는 `AIRFLOW_AUTH_MODE=keycloak`, `AIRFLOW_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET`을 사용합니다. 모든 인증 사용자는 Viewer, 전용 client의 User·Admin만 추가 적용합니다. Portal은 서버 계정으로 JWT를 발급받아 API v2를 호출하며, DAG trigger token은 Portal 업무 API 인증에 사용합니다. 상세 입력은 [Airflow SSO 안내](../../deploy/airflow/k8s/jobs/keycloak-client/README.md)를 따릅니다.
+- Airflow 웹 SSO는 `AIRFLOW_AUTH_MODE=keycloak`, `AIRFLOW_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET`을 사용합니다. 모든 인증 사용자는 Viewer, 전용 client의 User·Admin만 추가 적용합니다. Portal은 서버 계정으로 JWT를 발급받아 API v2를 호출하며, DAG trigger token은 Portal 업무 API 인증에 사용합니다. 상세 입력은 [Airflow SSO 안내](../../deploy/airflow/docs/04-sso.md)를 따릅니다.
 - 로컬 Airflow와 API의 공용 credential은 실행 도구가 생성·재사용합니다. 로컬 개발은 사내망에 의존하지 않습니다.
 - Web 공개 설정에는 secret을 넣지 않습니다. 정적 Web은 시작 시 `/runtime-env.js`를 생성합니다.
 - 이미지 registry와 package mirror는 이미지 빌드·배포 입력으로 지정합니다. 전체 목록은 [deploy의 미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)을 봅니다. 서버 환경·구성은 [사내 인프라 정보](../../deploy/shared/docs/infrastructure/README.md)에서 함께 관리합니다.
-- [Worker 초기 설치 가이드](../../deploy/shared/docs/kubernetes/03-worker.md#2-0-사용할-사내-미러와-준비-파일)는 사내 서버 전용 절차로, 미러 참고표의 주소를 명령에 직접 표기합니다. Ubuntu 22.04·containerd 2.2.1·Kubernetes 1.36.0의 설치용이며 로컬 개발에는 적용하지 않습니다. 인증값·CA는 운영 환경에서 별도로 준비합니다.
+- [Worker 초기 설치 가이드](../../deploy/shared/docs/kubernetes/worker.md#2-0-사용할-사내-미러와-준비-파일)는 사내 서버 전용 절차로, 미러 참고표의 주소를 명령에 직접 표기합니다. Ubuntu 22.04·containerd 2.2.1·Kubernetes 1.36.0의 설치용이며 로컬 개발에는 적용하지 않습니다. 인증값·CA는 운영 환경에서 별도로 준비합니다.
 - Airflow 사내 의존성 이미지 빌드 입력은 `deploy/airflow/env/build.env`입니다. 승인된 버전 고정 ODBC artifact는 `BIGDATAQUERY_ODBC_DEB_URL`로 전달하며 로컬 개발 빌드에는 사용하지 않습니다.
+- Airflow `build-image`의 `--builder auto`는 nerdctl을 우선 선택하며 Docker는 `--builder docker`로 고정할 수 있습니다. containerd 빌드는 nerdctl·BuildKit과 같은 namespace의 containerd worker가 필요합니다. `--containerd-address`, `--containerd-namespace`, `--buildkit-host`로 실제 daemon과 일치시키며 [이미지 준비](../../deploy/airflow/docs/03-artifacts.md#2-dag-포함-이미지-준비)를 따릅니다.
 - Airflow 서버의 `fetch-chart`는 `deploy/airflow/helm/chart.lock.json`의 `repository`에 지정한 승인된 사내 Helm 미러를 사용합니다. chart 1.22.0과 SHA-256을 고정하며 `helm pull`로 미러 index의 패키지 경로를 해석합니다. lock의 `url`은 외부 PC의 로컬 준비·반입용 공개 주소입니다. 사용 주소·확인 상태는 [미러 원본](../../deploy/shared/docs/infrastructure/repositories.md)을 따릅니다.
 - Airflow ODBC 설정은 서버 `ODBC_HOST_PATH`를 `/usr/local/odbc`에 read-only로 연결하거나 `ODBC_SECRET_NAME`을 사용합니다. 실제 설정을 이미지나 Git에 넣지 않습니다.
 - Kubernetes Airflow는 기존 실행 용량과 `default_pool=-1`을 유지합니다. 로컬 자원 제한은 별도 Helm values로 지정합니다.

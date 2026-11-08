@@ -1,6 +1,6 @@
 # Airflow ODBC 파일 넣는 곳
 
-[차트·이미지·ODBC 준비](../03_ARTIFACTS.md#3-odbc-설정-준비)
+[차트·이미지·ODBC 준비](../docs/03-artifacts.md#3-odbc-설정-준비)
 
 운영에 쓸 `odbc.ini`와 관련 파일을 이 폴더에 넣습니다.
 기존 ODBC 폴더를 가져온다면 하위 폴더 구조도 그대로 복사합니다.
@@ -46,4 +46,4 @@ INI 안에서 인증서 등의 절대 경로를 적을 때도 컨테이너 안�
 `CLOUDERAIMPALAINI`는 별도로 `/etc/cloudera.impalaodbc.ini`를 사용하므로 이 폴더에
 같은 이름의 파일을 넣어도 해당 경로의 설정을 덮어쓰지는 않습니다.
 
-파일과 권한을 준비한 뒤 [단계별 검사·배포](../04_SETUP_FLOW.md)를 진행합니다.
+파일과 권한을 준비한 뒤 [단계별 검사·배포](../docs/05-deploy.md)를 진행합니다.

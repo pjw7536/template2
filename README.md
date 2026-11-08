@@ -44,4 +44,4 @@ Keycloak·MinIO 등 설치형 제품의 설정은 `deploy`와 `local`에서 찾�
 
 [문서 홈](docs/README.md)에는 전체 분류와 목적별 안내가 있습니다.
 소스 수정 시에는 해당 폴더의 `AGENTS.md`도 확인합니다.
-서버에서 필요한 앱만 받는 방법은 [선택 체크아웃 안내](deploy/01-SERVER_CHECKOUT.md)를 따릅니다.
+서버에서 필요한 앱만 받는 방법은 [선택 체크아웃 안내](deploy/shared/docs/operations/checkout.md)를 따릅니다.

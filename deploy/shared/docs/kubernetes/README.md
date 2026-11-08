@@ -1,43 +1,28 @@
-# Kubernetes 셋업 가이드
+# Kubernetes 클러스터 준비와 조회
 
-[공통 배포 문서](../README.md) · [사내 인프라 정보](../infrastructure/README.md) · [서버](../infrastructure/servers.md) · [VIP·DNS](../infrastructure/network.md)
+[공통 문서](../README.md) · [배포 안내](../../../README.md) · [사내 인프라 정보](../infrastructure/README.md)
 
-필요한 작업 하나를 선택해서 진행합니다.
+클러스터 제어면·노드·네트워크를 준비하거나 실제 상태를 조회할 때 읽습니다.
+기존 Ready 노드에는 초기화·가입 명령을 반복하지 않습니다. 각 절차의 실행 위치와 현재 context를 확인합니다.
 
-| 작업 | 문서 | 완료 상태 |
+## 클러스터 설치와 확장
+
+| 작업 | 읽는 순서 | 완료 기준 |
 | --- | --- | --- |
-| CP1~3 셋업 | [01. CP1~3 셋업](01-control-plane.md) | 제어면 3대와 API endpoint 정상 |
-| Traefik 셋업 | [02. Traefik 셋업](02-traefik.md) | 선택한 Worker의 공용 HTTPS 진입점 정상 |
-| Worker 추가 | [03. Worker 추가](03-worker.md) | 새 Worker 등록·Ready·Pod 네트워크 정상 |
+| 새 클러스터 구성 | [공통 서버 준비](prerequisites.md) → [CP1~3 구성](control-plane.md) → [Worker 가입](worker.md) → [클러스터 인수 확인](control-plane.md#6-클러스터-인수-확인) | API·노드·시스템 Pod·DNS·Pod/Service 통신·저장소 확인 |
+| 기존 클러스터에 Worker 추가 | [설치 기준·프로그램·가입·검증](worker.md) | Ready와 Pod 네트워크 정상 |
+| 기존 서버·클러스터 상태 조회 | [현재 환경 확인](baseline.md) | 조회 대상·결과·남은 확인 구분 |
 
-**새 클러스터:** CP1~3 셋업 → Worker 최소 1대 추가 → Traefik 셋업 순서입니다.
-**기존 클러스터에 Airflow용 Worker 추가:** 03번만 진행한 뒤 Airflow 배포 문서로 이동합니다.
-기존 Traefik을 그대로 사용할 수 있으며 새 Worker를 APP VIP에 추가할 필요는 없습니다.
+실제 서버·OS·버전·주소는 [인프라 원본](../infrastructure/README.md)과 대상 서버 조회를 대조합니다.
+저장소 선언·설치 예시를 실제 운영 적용 상태로 단정하지 않습니다.
 
-현재 Airflow·Monitoring 대상 `khinfow01`의 Worker 추가는
-[서버 목록](../infrastructure/servers.md#서버-목록)에 사용자 확인으로 기록되어 있습니다.
-해당 노드는 [현재 환경 확인](09-baseline.md)으로 Ready·노드 상태를 조회한 뒤 앱 배포 문서로 이동합니다.
+## 관련 작업과 참고
 
-CP1은 관리 명령을 실행하는 서버이고, Worker는 앱이 실행되는 서버입니다.
-각 문서의 실행 위치를 확인합니다. 기존 Ready 노드에 초기화·가입 명령을 반복하지 않습니다.
-문서의 명령은 같은 터미널에서 이어서 실행하며, 새 터미널에서는 context 등 입력을 다시 지정합니다.
+| 찾는 내용 | 문서 |
+| --- | --- |
+| 공용 HTTPS·Traefik·VIP·Ingress 확장 | [공용 Ingress](../ingress/README.md) |
+| 앱별 배포 준비·의존 관계·접속 검증·운영 | [공통 앱 배포와 운영](../operations/README.md) |
+| Kubernetes 용어와 파일 구조 | [용어·전체 구조](concepts.md) |
+| 상태·로그·권한·적용 명령 | [kubectl 참고](kubectl.md) |
 
-확인된 OS·설치 버전과 CNI·미러 등 미확인 항목은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)에서 확인합니다.
-그 기준을 적용하는 고정 버전 설치 명령은 [Worker 추가](03-worker.md#2-빈-서버에-프로그램-설치설정--새-worker)에 있습니다.
-
-## 앱 배포와 운영이 필요할 때
-
-- [앱별 시작 문서](../../../README.md#앱별-배포와-상세-작업): Keycloak·Airflow·MinIO 등
-- [앱 배포 준비](04-prerequisites.md) → [앱 배포](05-applications.md) → [접속 검증](06-verification.md)
-- [업데이트·장애·백업](07-operations.md)
-
-<details>
-<summary>설치 기준·개념 참고</summary>
-
-- [Kubernetes 용어](08-concepts.md)
-- [현재 환경 조회 명령](09-baseline.md)
-- [서버 준비·통신 조건](10-servers.md)
-- [클러스터 인수 항목](11-cluster.md)
-- [kubectl 명령어 참고](12-kubectl.md)
-
-</details>
+새 클러스터는 Worker를 최소 한 대 준비한 뒤 공용 Ingress와 앱을 설치합니다.

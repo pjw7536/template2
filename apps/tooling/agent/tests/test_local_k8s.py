@@ -116,12 +116,13 @@ class LocalKubernetesTests(unittest.TestCase):
         self.assertIn('@external-postgres:5432/airflow', base64.b64decode(secret['data']['connection']).decode())
 
     def test_legacy_server_env_retains_internal_database_defaults(self):
+        """서버 비밀값과 무관하게 DB 키가 없는 이전 입력의 기본값을 검사합니다."""
         airflow = config.module('airflow')
-        values = airflow.read_env(airflow.DEFAULT_ENV)
+        values = config.airflow_settings(fixture_credentials())
         for key in airflow.DB_DEFAULTS:
             values.pop(key)
         airflow.validate(values, example=True)
-        self.assertEqual(values['POSTGRES_MODE'], 'internal')
+        self.assertEqual({key: values[key] for key in airflow.DB_DEFAULTS}, airflow.DB_DEFAULTS)
         self.assertTrue(airflow.manifests(values)['postgres']['items'])
 
     def test_shared_trigger_and_external_credentials_match(self):

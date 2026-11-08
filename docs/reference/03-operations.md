@@ -291,4 +291,4 @@ make audit-docs
 | Observer 조회 실패 | `OBSERVER_QUERY_DAYS`, data movement 적재 상태, 기준 정보 endpoint |
 | 파일/이미지 실패 | MinIO env, bucket 접근, asset sequence |
 
-사내 서버는 [선택 체크아웃](../../deploy/01-SERVER_CHECKOUT.md) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.
+사내 서버는 [선택 체크아웃](../../deploy/shared/docs/operations/checkout.md) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.

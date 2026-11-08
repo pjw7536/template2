@@ -15,10 +15,10 @@
 | 업무 서비스 APP VIP | `10.172.26.150:443` | 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
 | 업무 DNS → APP VIP | `etch.samsungds.net` → `10.172.26.150` | 사용자 확인: DNS 연결. 현재 DNS 응답·인증서 확인 필요 |
 | SSO DNS | `etch-sso.samsungds.net` → 업무 DNS와 다른 IP, 구체 값 미확인 | 사용자 확인: 업무 도메인과 IP가 다름. 실제 DNS 응답·연결 IP·LB backend·TLS 종료 위치 확인 필요 |
-| 업무 HTTPS 인증서 신청 | CN: `etch.samsungds.net`, SAN 신청값: `etch.samsungds.net`, `10.172.26.150` | 사용자 확인: 신청 범위. `stg.etch.samsungds.net`은 신청값에 없음. 실제 발급 여부·SAN의 DNS/IP 유형·유효기간·서버 적용은 미확인. 파일·등록 절차는 [인증서 관리](../../certs/README.md) 참조 |
+| 업무 HTTPS 인증서 신청 | CN: `etch.samsungds.net`, SAN 신청값: `etch.samsungds.net`, `10.172.26.150` | 사용자 확인: 신청 범위. `stg.etch.samsungds.net`은 신청값에 없음. 실제 발급 여부·SAN의 DNS/IP 유형·유효기간·서버 적용은 미확인. 파일·등록 절차는 [인증서 관리](../certificates/README.md) 참조 |
 | APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
-| HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../../ingress/01-VIP.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |
+| HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../ingress/vip.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |
 
 Keycloak DNS는 업무 도메인과 다른 IP에 연결된다는 사용자 확인이 있습니다.
 구체 연결 IP·APP VIP와의 관계·Worker 직결 여부·TLS 종료 위치는 별도 조회가 필요합니다.
@@ -235,7 +235,7 @@ Subject Alternative Name (SAN):
   [서비스 원본](services.md#테스트-환경과-예비-주소의-인증서-예약안)에서 관리하며,
   후보의 DNS 등록·Ingress 공개·서비스 설치·권한 부여를 승인하거나 수행한 상태를 뜻하지 않습니다.
 - 사용할 주소별 DNS와 Ingress는 별도로 등록하며, 공용 Traefik에서는 실제 사용할 host만 라우팅합니다.
-  발급 파일·개인키 보관과 등록은 [인증서 관리](../../certs/README.md)를 따릅니다.
+  발급 파일·개인키 보관과 등록은 [인증서 관리](../certificates/README.md)를 따릅니다.
 
 ## FTP 직접 접속
 
@@ -250,7 +250,7 @@ Subject Alternative Name (SAN):
 FTP는 `hostNetwork`를 사용하고 Passive 주소에는 해당 노드의 `status.hostIP`를 전달합니다.
 업무 APP VIP·Traefik을 경유하지 않는 노드 직접 연결입니다. 현재 절차는 IPv4 InternalIP 직접 접근을 전제하며 NAT·TLS는 별도 설정이 필요합니다.
 `FTP_NODES`에 명시한 control plane도 기본적으로 FTP 대상에 포함할 수 있습니다. 접속 경로는 노드별 직접 수신입니다.
-노드명·IP는 [서버 목록](servers.md), 배치·데이터는 [FTP 서비스](services.md#ftp-노드별-파일-수신), 실행 방법은 [FTP 설치](../../../ftp/01_SERVER_SETUP.md)를 따릅니다.
+노드명·IP는 [서버 목록](servers.md), 배치·데이터는 [FTP 서비스](services.md#ftp-노드별-파일-수신), 실행 방법은 [FTP 설치](../../../ftp/docs/01-setup.md)를 따릅니다.
 
 ## 클러스터 네트워크·실행 기반
 
@@ -265,5 +265,5 @@ FTP는 `hostNetwork`를 사용하고 Passive 주소에는 해당 노드의 `stat
 | 네트워크 접근 | 방화벽 허용 방향·포트·접속 경유지·담당자 | 미확인 |
 | VIP·DNS | 기록된 backend·노드 대응·DNS의 최신 상태와 TLS 종료 위치 | 최신 조회 필요 |
 
-VIP backend 변경 시 [서버 목록](servers.md), 공개 URL 변경 시 [서비스 주소](services.md), TLS 입력 변경 시 [인증서 관리](../../certs/README.md)를 대조합니다.
-조회·실행 절차는 [현재 환경 확인](../kubernetes/09-baseline.md)과 [VIP 적용](../../ingress/01-VIP.md)을 따릅니다.
+VIP backend 변경 시 [서버 목록](servers.md), 공개 URL 변경 시 [서비스 주소](services.md), TLS 입력 변경 시 [인증서 관리](../certificates/README.md)를 대조합니다.
+조회·실행 절차는 [현재 환경 확인](../kubernetes/baseline.md)과 [VIP 적용](../ingress/vip.md)을 따릅니다.

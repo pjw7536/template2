@@ -49,7 +49,12 @@ for path in \
   docs/development/04-documentation.md \
   docs/development/03-migration-guide.md \
   docs/reference/README.md \
-  docs/reference/kubernetes/README.md \
+  deploy/shared/docs/README.md \
+  deploy/shared/docs/kubernetes/README.md \
+  deploy/shared/docs/kubernetes/kubectl.md \
+  deploy/shared/docs/ingress/README.md \
+  deploy/shared/docs/certificates/README.md \
+  deploy/shared/docs/operations/README.md \
   docs/reference/integrations/proxy-mirrors.md \
   docs/concepts/01-architecture.md \
   docs/reference/02-inventory.md \

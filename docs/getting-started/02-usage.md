@@ -79,7 +79,7 @@ make makemigrations-ci-check
 
 ## 서버 작업
 
-서버는 [선택 checkout](../../deploy/01-SERVER_CHECKOUT.md) 후 앱별로 검사·배포합니다.
+서버는 [선택 checkout](../../deploy/shared/docs/operations/checkout.md) 후 앱별로 검사·배포합니다.
 로컬의 `make dev`를 서버 설치 명령으로 사용하지 않습니다.
 
 ```bash

@@ -193,7 +193,7 @@ Worker 앱 호스트 경로의 기본값은 `/appdata` 아래입니다.
 
 | 앱·공통 구성 | namespace | 배치 입력 | 스토리지·설정 원본 |
 | --- | --- | --- | --- |
-| 공용 Traefik | `etch-sso` | 기본 `khplane01w09`. VIP 확장 시 기존 배치를 보존하고 backend별 배치 계산 | `deploy/shared/ingress/stack.yaml`, [Ingress 운영](../../ingress/README.md) |
+| 공용 Traefik | `etch-sso` | 기본 `khplane01w09`. VIP 확장 시 기존 배치를 보존하고 backend별 배치 계산 | `deploy/shared/ingress/stack.yaml`, [Ingress 운영](../ingress/README.md) |
 | Keycloak·전용 PostgreSQL | `etch-sso` | `khplane01w09` | 정적 local PV 50Gi, `/appdata/keycloak-postgres`. `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 안내](../../../keycloak/README.md) |
 | Portal | `tailwind-internal` | 운영 Worker·이미지 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) |
 | MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) |
@@ -218,8 +218,8 @@ Worker 앱 호스트 경로의 기본값은 `/appdata` 아래입니다.
 | 완료 판정 | 각 대상 노드에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 전송 성공 여부 미확인. 대상 노드·접속 주소·검증 결과·담당자 확인 필요 |
 
 노드명·IP는 [서버 목록](servers.md), 포트·방화벽은 [FTP 네트워크](network.md#ftp-직접-접속)를 따릅니다.
-실행 순서는 [Worker별 준비](../../../ftp/01_SERVER_SETUP.md) → [운영 env 확인과 CP1 배포](../../../ftp/01_SERVER_SETUP.md#5-검사-후-배포) → [전송 확인](../../../ftp/02_OPERATIONS.md)입니다.
-별도 overlay 운영은 [수동 사내 배포](../../../ftp/03_KUBERNETES.md#사내-이미지로-각-worker에-배포)를 따릅니다.
+실행 순서는 [Worker별 준비](../../../ftp/docs/01-setup.md) → [운영 env 확인과 CP1 배포](../../../ftp/docs/02-deploy.md#5-검사-후-배포) → [전송 확인](../../../ftp/docs/03-operations.md)입니다.
+별도 overlay 운영은 [수동 사내 배포](../../../ftp/docs/04-kubernetes.md#사내-이미지로-각-worker에-배포)를 따릅니다.
 새 확인을 받으면 위 현재 값을 갱신하고 실제 배포 대상·주소·결과를 기록합니다.
 
 ## 추가 확인·변경 연계

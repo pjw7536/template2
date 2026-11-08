@@ -90,5 +90,5 @@ FTP 파일과 자동으로 연결되지 않습니다. API가 같은 노드의 �
 | Passive 주소 | 로컬 overlay의 `PASV_ADDRESS=127.0.0.1` | DaemonSet이 `status.hostIP`에서 노드 IP를 주입 |
 
 로컬 포트·호스트 경로 변경은 [로컬 설정과 파일 보존](../../local/README.md#로컬-설정과-파일-보존)을 따릅니다.
-운영 포트·Passive 주소를 바꾸려면 [수동 overlay](../../deploy/ftp/03_KUBERNETES.md)와 시작 스크립트·방화벽 설정을 함께 맞춥니다.
+운영 포트·Passive 주소를 바꾸려면 [수동 overlay](../../deploy/ftp/docs/04-kubernetes.md)와 시작 스크립트·방화벽 설정을 함께 맞춥니다.
 `FTP_PORT`·`FTP_PASV_ADDRESS`·`FTP_PASV_MIN_PORT`·`FTP_PASV_MAX_PORT`는 배포 도구가 읽는 입력이 아닙니다.

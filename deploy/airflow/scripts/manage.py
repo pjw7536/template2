@@ -34,6 +34,8 @@ MAIL_DEFAULTS = {'MAIL_API_URL': '', 'MAIL_API_KEY': '', 'MAIL_API_SYSTEM_ID': '
                  'AIRFLOW_FAILURE_ALERT_EMAIL_TO': ''}
 ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS)
 DEFAULT_ENV = BASE / 'env/k8s.env'
+DEFAULT_CONTAINERD_ADDRESS = '/run/containerd/containerd.sock'
+DEFAULT_BUILDKIT_HOST = 'unix:///run/buildkit/buildkitd.sock'
 RUNTIME_KEYS = (
     'AIRFLOW_API_BASE_URL', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL',
     'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS',
@@ -461,7 +463,52 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     print('Airflow 배포 완료. DAG 활성 상태와 기존 scheduler의 중복 실행 여부를 확인하세요.')
 
 
-def build_image(settings, path):
+def image_build_command(builder, namespace, address, buildkit_host):
+    """빌더 연결과 로컬 의존성 이미지 재사용 조건을 확인하고 빌드 명령을 반환한다."""
+    require(builder in ('auto', 'nerdctl', 'docker'), '지원하는 빌더는 auto, nerdctl, docker입니다.')
+    if builder == 'auto':
+        builder = 'nerdctl' if shutil.which('nerdctl') else 'docker'
+    require(shutil.which(builder),
+            f'이미지 빌더 {builder} 실행 파일을 찾을 수 없습니다. '
+            'containerd에는 nerdctl·BuildKit을 준비하거나 --builder docker로 Docker를 사용하세요. '
+            '준비 절차: deploy/airflow/docs/03-artifacts.md')
+    if builder == 'docker':
+        try:
+            run(['docker', 'info'])
+        except ValueError:
+            raise ValueError('Docker daemon에 연결할 수 없습니다. 같은 계정에서 docker info로 '
+                             'daemon 실행·접속 설정·소켓 권한을 확인하세요.') from None
+        return ['docker', 'build']
+
+    require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', namespace), 'containerd namespace 형식 오류')
+    require(address.strip() and buildkit_host.strip(), 'containerd 주소와 BuildKit 주소를 지정하세요.')
+    require(shutil.which('buildctl'), 'BuildKit의 buildctl 실행 파일을 준비하세요. 준비 절차: deploy/airflow/docs/03-artifacts.md')
+    command = ['nerdctl', '--address', address, '--namespace', namespace]
+    try:
+        run([*command, 'info'])
+    except ValueError:
+        raise ValueError('containerd에 연결할 수 없습니다. nerdctl info로 '
+                         'containerd 실행·주소·소켓 권한을 확인하세요.') from None
+    try:
+        workers = json.loads(run(['buildctl', '--addr', buildkit_host, 'debug', 'workers',
+                                  '--format', '{{json .}}']))
+    except ValueError:
+        raise ValueError('BuildKit worker를 조회할 수 없습니다. buildkitd 실행·주소·소켓 권한과 '
+                         'buildctl debug workers 출력을 확인하세요.') from None
+    # OCI worker나 다른 namespace는 첫 단계의 로컬 이미지를 다음 단계에서 읽을 수 없습니다.
+    require(isinstance(workers, list) and workers and all(
+        isinstance(worker, dict) and isinstance(worker.get('labels'), dict)
+        and worker['labels'].get('org.mobyproject.buildkit.worker.executor') == 'containerd'
+        and worker['labels'].get('org.mobyproject.buildkit.worker.containerd.namespace') == namespace
+        for worker in workers),
+        'BuildKit은 선택한 containerd namespace와 같은 containerd worker만 사용해야 합니다. '
+        '[worker.oci] enabled=false와 [worker.containerd] enabled=true, namespace를 확인하세요. '
+        '준비 절차: deploy/airflow/docs/03-artifacts.md')
+    return [*command, 'build', '--buildkit-host', buildkit_host, '--pull=false']
+
+
+def build_image(settings, path, *, builder='auto', containerd_namespace='default',
+                containerd_address=DEFAULT_CONTAINERD_ADDRESS, buildkit_host=DEFAULT_BUILDKIT_HOST):
     """기존 의존성 Dockerfile에 DAG를 추가하며 이미지는 자동 push하지 않는다."""
     build = read_env(path)
     require(build.keys() == {'APT_DEBIAN_CODENAME', 'APT_DEBIAN_ARCH', 'BIGDATAQUERY_ODBC_DEB_URL', 'INSTALL_BIGDATAQUERY_PYTHON', 'PIP_INDEX_URL', 'APT_DEBIAN_REPOSITORY', 'PIP_TRUSTED_HOST', 'INSTALL_BIGDATAQUERY_ODBC', 'AIRFLOW_BASE_IMAGE', 'PIP_EXTRA_INDEX_URL'}, 'build.env 설정 키가 계약과 다릅니다.')
@@ -473,16 +520,17 @@ def build_image(settings, path):
     source = root / 'apps/airflow'
     require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'dags', 'plugins')),
             '이미지 빌드 소스가 없습니다. bash deploy/shared/scripts/checkout-server.sh airflow --with-source 로 소스를 추가하세요.')
+    command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host)
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']
     dependency = final + '-dependencies'
     # 의존성 빌드 context에는 Dockerfile만 보내 로컬 로그·DSN·env 전송을 피한다.
     with tempfile.TemporaryDirectory(prefix='airflow-build-') as temporary:
         shutil.copyfile(source / 'image/Dockerfile.dependencies', Path(temporary) / 'Dockerfile')
-        args = ['docker', 'build', '-t', dependency]
+        args = [*command, '-t', dependency]
         for key, value in build.items():
             args += ['--build-arg', f'{key}={value}']
         run([*args, temporary])
-    run(['docker', 'build', '-f', source / 'image/Dockerfile', '--build-arg', f'AIRFLOW_DEPENDENCY_IMAGE={dependency}', '-t', final, source])
+    run([*command, '-f', source / 'image/Dockerfile', '--build-arg', f'AIRFLOW_DEPENDENCY_IMAGE={dependency}', '-t', final, source])
     print('Airflow 이미지 빌드 완료. registry push 또는 단일 노드 이미지 반입을 진행하세요.')
 
 
@@ -493,6 +541,11 @@ def main():
     parser.add_argument('--env', type=Path, help='실제 k8s.env 경로. check는 생략하면 저장소 env 구조만 검사')
     parser.add_argument('--pause-new-dags', action='store_true', help='Portal 연결 전 UI 기동용: 신규 DAG를 일시정지로 생성')
     parser.add_argument('--build-env', type=Path, help='build.env 경로. build-image에 필수')
+    parser.add_argument('--builder', choices=('auto', 'nerdctl', 'docker'), default='auto',
+                        help='이미지 빌더. auto는 nerdctl 우선, 없으면 Docker 사용')
+    parser.add_argument('--containerd-namespace', default='default', help='nerdctl·BuildKit의 공통 namespace')
+    parser.add_argument('--containerd-address', default=DEFAULT_CONTAINERD_ADDRESS, help='nerdctl의 containerd 소켓 주소')
+    parser.add_argument('--buildkit-host', default=DEFAULT_BUILDKIT_HOST, help='nerdctl·buildctl의 공통 BuildKit 주소')
     parser.add_argument('--output', type=Path, help='render 출력 디렉터리')
     parser.add_argument('--context', help='deploy 대상 kubectl context, 필수')
     parser.add_argument('--values', type=Path, help='환경별 비밀값 없는 Helm override')
@@ -545,7 +598,8 @@ def main():
     validate(settings, example=example)
     if args.command == 'build-image':
         require(args.build_env, 'build-image에는 --build-env를 명시하세요.')
-        build_image(settings, args.build_env)
+        build_image(settings, args.build_env, builder=args.builder, containerd_namespace=args.containerd_namespace,
+                    containerd_address=args.containerd_address, buildkit_host=args.buildkit_host)
     elif args.command == 'deploy':
         require(args.context, 'deploy에는 --context를 명시하세요.')
         deploy(settings, args.context, chart_path(), args.pause_new_dags, args.values)

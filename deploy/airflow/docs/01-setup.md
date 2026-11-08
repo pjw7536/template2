@@ -1,0 +1,98 @@
+# Airflow 서버 준비
+
+[시작 안내](../README.md) · 다음: [환경변수](02-environment.md)
+
+Airflow를 처음 배포하거나 실행 Worker를 바꿀 때 읽습니다.
+여기서는 클러스터와 디스크를 준비합니다. 실제 설치는 [단계별 실행](05-deploy.md)에서 진행합니다.
+
+## 1. 실행 위치와 도구 확인
+
+명령은 저장소 루트에서 실행합니다. 서버 선택 checkout은
+[선택 체크아웃 안내](../../shared/docs/operations/checkout.md)의 `airflow` 선택을 사용합니다.
+기본 checkout은 `deploy/airflow`와 공통 도구·문서만 받습니다. 검사·렌더·배포에는 소스와 `local/`이 필요하지 않습니다.
+서버 이미지 빌드가 필요하면 `bash deploy/shared/scripts/checkout-server.sh airflow --with-source`로 소스를 추가합니다.
+
+이미지·패키지 빌드 입력은 `env/build.env`에서 관리합니다.
+APT/PIP mirror, BigDataQuery Python·ODBC 설치 옵션과 버전이 지정된 driver URL을 확인합니다.
+
+실행 호스트에는 Python 3.10 이상, Helm 3.19.0 이상, kubectl이 필요합니다.
+이미지를 직접 빌드하는 호스트에는 `apps/airflow` 소스와 containerd·nerdctl·BuildKit 또는 Docker가 필요합니다.
+CP1의 기존 containerd를 사용하려면 nerdctl과 같은 namespace의 containerd worker를 사용하는 BuildKit을 준비합니다.
+별도 사내 빌드 호스트를 사용하면
+최종 이미지를 registry에 push하거나 Worker에 반입한 뒤 CP1에서 배포합니다.
+빌더 선택·도구 확인·소켓 권한은 [이미지 준비](03-artifacts.md#2-dag-포함-이미지-준비)를 따릅니다.
+chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
+이 숫자는 도구의 최소 요구사항이며, 현재 사내 설치 버전이나 신규 설치 권장 버전을 뜻하지 않습니다.
+사내 배포는 [현재 클러스터](../../shared/docs/infrastructure/README.md)를 사용합니다. 빈 서버를 새 Worker로 추가하려면
+[Worker 추가](../../shared/docs/kubernetes/worker.md)의 준비·가입·검증을 먼저 진행합니다.
+이 도구는 Kubernetes 자체나 Ingress controller를 설치하지 않습니다.
+Ingress 없이도 port-forward로 UI에 접속할 수 있습니다.
+
+```bash
+kubectl config get-contexts
+read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
+```
+
+다음 명령도 **저장소가 있는 실행 호스트**에서 수행합니다.
+
+```bash
+python3 --version
+helm version --short
+kubectl --context "$AIRFLOW_KUBE_CONTEXT" version
+```
+
+완료 기준: 선택한 context의 노드를 조회할 수 있고 도구·클러스터가 위 최소 버전을 충족해야 합니다.
+`NODE_NAME`에는 노드 이름을 추측해서 넣지 말고 출력된 `kubernetes.io/hostname` 값을 사용합니다.
+Keycloak·MinIO 등 다른 앱의 배포 원본과 실제 Pod 배치를 [클러스터 구성 안내](../../shared/docs/infrastructure/README.md)에서 확인합니다.
+Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만족하는 Worker를 선택합니다.
+새 터미널에서는 context 변수를 다시 입력합니다.
+
+## 2. 배포 설정 준비
+
+[환경변수](02-environment.md)에서 최초 키 생성 여부를 판단하고 서버 값을 입력합니다.
+최초 설치는 새 DB와 전용 계정·Fernet 키를 준비합니다.
+재배포는 사용 중인 DB 비밀번호·Fernet 키를 유지합니다. 데이터 이전이 필요하면 [백업·이전 절차](06-operations.md)를 따릅니다.
+이후 디스크 경로·UID/GID는 입력한 env와 일치시켜야 합니다.
+기존 Kubernetes 설치가 `/srv/airflow`를 사용한다면 이전 완료 전까지 외부 env의 기존 경로를 유지합니다.
+`/appdata/airflow`로 변경할 때는 [Worker 데이터 이전](../../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)을 따릅니다.
+
+## 3. Worker의 디스크 준비
+
+아래 명령은 kubectl 실행 호스트가 아니라 **NODE_NAME으로 선택한 Worker에 접속해서** 수행합니다.
+아래 경로와 UID/GID는 예시 설정 기준이며 실제 env에 맞게 바꿉니다.
+`POSTGRES_MODE=external`이면 아래 생성·검사 명령에서 PostgreSQL 경로를 제외합니다.
+
+```bash
+sudo install -d -o 999 -g 999 -m 0700 /appdata/airflow/postgres
+sudo install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
+```
+
+기존 Compose PostgreSQL 데이터 폴더를 바로 연결하지 않습니다.
+데이터를 옮길 때는 [기존 DB 이전](06-operations.md#2-기존-compose-db-이전)을 따릅니다.
+
+local PV는 폴더를 자동으로 만들지 않습니다. 또한 20Gi 선언은 실제 파일시스템 사용량을 제한하지 않으므로
+DB·로그 디스크의 여유 공간을 따로 감시해야 합니다.
+
+로그는 자동 삭제하지 않습니다.
+자동 정리가 필요하면 보관 정책을 정한 뒤 `scheduler.logGroomerSidecar`를 설정합니다.
+
+여러 Pod가 RWO 로그 PVC를 함께 쓰도록 같은 노드에 고정합니다.
+Airflow와 내부 DB가 한 Worker에 있으므로 해당 Worker나 디스크에 장애가 나면 Airflow가 중단됩니다.
+
+```bash
+df -h /appdata/airflow/postgres /appdata/airflow/logs
+sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs
+```
+
+`POSTGRES_MODE=external`이면 내부 DB 디렉터리는 준비하지 않고 로그 디렉터리만 준비합니다.
+외부 DB는 미리 생성한 DB·계정으로 Worker에서 접근할 수 있어야 합니다.
+ODBC 파일 준비는 [차트·이미지](03-artifacts.md#3-odbc-설정-준비)를 따릅니다.
+
+완료 기준: env에 지정한 Worker에 DB·로그 경로가 있고 컨테이너 UID/GID가 쓸 수 있어야 합니다.
+local PV의 용량 선언과 실제 디스크 여유 공간은 별도로 확인합니다.
+
+## 4. 다음 단계
+
+[차트·이미지](03-artifacts.md)를 준비한 뒤 [단계별 실행](05-deploy.md)으로 이동합니다.
+이미 준비된 서버에 DAG만 갱신할 때는 [운영](06-operations.md)의 업데이트 순서를 사용합니다.

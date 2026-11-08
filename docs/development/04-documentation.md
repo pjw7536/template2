@@ -27,7 +27,7 @@
 | 서버 배포·운영·공통 인프라 | `deploy/<app>/`, `deploy/shared/` |
 | 사내 운영 정보의 진입점·분류·기록 규칙 | `deploy/shared/docs/infrastructure/README.md` |
 | 서버·네트워크·서비스·저장소·운영 정보 | `deploy/shared/docs/infrastructure/`의 주제별 원본 |
-| Kubernetes 설치·운영·kubectl 공통 참고 | `deploy/shared/docs/kubernetes/`, 색인은 `deploy/shared/docs/README.md` |
+| 공통 배포 절차 | `deploy/shared/docs/`의 `kubernetes/`·`ingress/`·`certificates/`·`operations/`·`configuration/`, 색인은 해당 폴더 README |
 | 개발 PC 설정·mock·실행 상세 | `local/<app>/`, `local/README.md` |
 | 현재 작업 규칙·검증 방법·진행 중 계획 | `docs/agent/` |
 
@@ -86,12 +86,17 @@ API 문서는 method·path·auth·query/body·response·error·side effect를 �
 
 ## 문서를 옮기거나 나눌 때
 
-같은 폴더에 Markdown 문서가 여러 개라면 일반 안내 문서의 파일명 앞에 읽는 순서를 나타내는
-두 자리 번호를 붙입니다. 예: `01-setup.md`, `02-usage.md`.
-`README.md`는 폴더의 시작점으로 먼저 읽으며, 자동 탐색·작업 규칙의 고정 진입점인
-`AGENTS.md`·`SKILL.md`·`PLANS.md`와 진행 중 계획 파일은 기존 이름을 유지합니다.
-기존 배포 안내처럼 하위 폴더의 환경설정까지 이어지는 단계 번호는 유지합니다.
-같은 폴더에서는 번호를 중복하지 않으며, 선택해서 보는 참고 문서는 주요 절차 뒤에 배치합니다.
+앱별 배포 상세 절차는 `deploy/<app>/docs/`에 두고 `01-setup.md`, `02-environment.md`처럼
+두 자리 번호와 역할 이름을 조합합니다. 앱별 준비·설정·인증·배포·운영 순서에 맞춰 연속 번호를 붙이고
+참고 문서는 주요 절차 뒤에 배치합니다. 파일 번호와 README의 안내 순서를 함께 맞춥니다.
+공통 절차는 `deploy/shared/docs/<주제>/`에 두고 `setup.md`, `operations.md`처럼 역할 이름을 유지합니다.
+본문의 단계 번호는 각 문서 안의 실행 순서로 사용합니다.
+공통 Ingress·인증서의 실행 원본과 파일은 `deploy/shared/ingress/`, `deploy/shared/certs/`에 유지합니다.
+원본 옆 README에는 역할·입력·사용 조건과 상세 문서 링크를 둡니다.
+
+루트 `docs/`의 기존 기능·API·입문 문서는 분류별 번호 관례를 유지합니다.
+`README.md`는 폴더의 시작점이며 `AGENTS.md`·`SKILL.md`·`PLANS.md`와 진행 중 계획 파일은 고정 이름을 유지합니다.
+이전 경로의 호환 안내는 보존 요청이 있을 때만 둡니다.
 
 이동 전후 경로를 기록하고 상대 링크·이미지·제목 앵커·검사 도구의 경로 참조를 함께 갱신합니다.
 새 문서는 해당 분류 README에서 연결하며, 긴 절차를 나누면 준비 조건과 앞뒤 단계를 연결합니다.

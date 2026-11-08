@@ -33,9 +33,9 @@ Keycloak·Portal API·MinIO·Airflow는 해당 env에 일반 설정과 비밀번
 
 | 앱 | 실제 비밀값의 입력·보관 방식 | 상세 절차 |
 | --- | --- | --- |
-| Headlamp | client secret 숨김 입력 → 전용 Kubernetes Secret. env에는 Secret 이름 | [client secret 등록](../../../headlamp/04_KEYCLOAK_SETUP.md#5-cp1에서-client-secret-등록) |
-| Monitoring | Git 밖의 관리자 env 파일 → Grafana 관리자 Secret. env에는 Secret 이름 | [관리자 Secret 준비](../../../monitoring/README.md#4-namespace와-관리자-secret-준비) |
-| FTP | 서버에서 계정 예제 수정 또는 별도 계정 파일 → 공용 FTP 계정 Secret. 이미지 설정은 별도 운영 env | [계정 파일 준비](../../../ftp/01_SERVER_SETUP.md#4-관리-호스트의-계정-파일-준비) |
+| Headlamp | client secret 숨김 입력 → 전용 Kubernetes Secret. env에는 Secret 이름 | [client secret 등록](../../../headlamp/docs/04-keycloak.md#5-cp1에서-client-secret-등록) |
+| Monitoring | Git 밖의 관리자 env 파일 → Grafana 관리자 Secret. env에는 Secret 이름 | [관리자 Secret 준비](../../../monitoring/docs/03-deploy.md#2-namespace와-관리자-secret-준비) |
+| FTP | 서버에서 계정 예제 수정 또는 별도 계정 파일 → 공용 FTP 계정 Secret. 이미지 설정은 별도 운영 env | [계정 파일 준비](../../../ftp/docs/01-setup.md#4-관리-호스트의-계정-파일-준비) |
 
 Kubernetes Secret은 설정을 클러스터에 전달하는 리소스입니다.
 env를 Secret으로 등록하는 배포 방식과 Headlamp·Monitoring의 기존 Secret 참조는 유지합니다.
@@ -77,7 +77,7 @@ prod API env에는 업무 설정과 Keycloak 연결값을 함께 작성합니다
 
 Keycloak의 `COMPONENT=oidc` 입력은 `CORP_OIDC_DISCOVERY_URL`이 있으면 endpoint를 자동 해석합니다.
 실행 호스트에 Python과 discovery 접속·TLS 신뢰가 필요합니다. env 검사·Secret 등록 명령은
-Job을 실행하지 않으므로 전체 초기 설정은 [Keycloak 자체 설정 절차](../../../keycloak/04_SETUP_FLOW.md)를 사용합니다.
+Job을 실행하지 않으므로 전체 초기 설정은 [Keycloak 자체 설정 절차](../../../keycloak/docs/05-keycloak.md)를 사용합니다.
 
 ## 설정 검사
 
@@ -151,7 +151,7 @@ make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
 Secret 등록은 설정 저장까지만 수행합니다. 서버 기동값은 해당 Pod를 다시 기동할 때,
 OIDC·client 설정은 별도 Job을 실행할 때 반영됩니다. 상세 단계는
 [Keycloak 안내](../../../keycloak/README.md)와
-[Portal client 안내](../../../portal/k8s/jobs/keycloak-client/README.md)를 참고합니다.
+[Portal client 안내](../../../portal/docs/02-sso.md)를 참고합니다.
 
 기존 CP1의 `/root/keycloak-runtime.env`도 서버용 필수 key 4개를 유지하면 사용할 수 있습니다.
 위에서 내보낸 `KUBE_CONTEXT`를 유지한 상태에서 다음 명령이 필요한 key만 전달합니다.
