@@ -279,17 +279,22 @@ AIRFLOW_DOCKER_TESTS=1 python3 -m unittest discover \
 
 ### 이미지 전달
 
-빌드한 이미지는 자동으로 push되지 않습니다. `k8s.env`의 이미지 이름으로 registry에 push하거나,
-`nerdctl save` 또는 `docker save`로 저장한 뒤 해당 Worker의 containerd에 반입합니다.
+registry는 컨테이너 이미지를 보관하고 다른 서버가 내려받을 수 있게 제공하는 저장소 서버입니다.
+빌드한 이미지는 자동으로 push되지 않습니다. registry가 있으면 이미지를 업로드하고 Worker에서 내려받게 하며,
+registry가 없으면 `.tar` 파일로 저장해 Worker의 containerd에 직접 반입합니다.
 CP1의 빌드 namespace에만 이미지가 있어서는 다른 Worker의 Kubernetes가 사용할 수 없습니다.
 PostgreSQL 이미지도 같은 기준으로 준비합니다.
 
 DAG를 변경하면 이미지를 다시 빌드하고 `AIRFLOW_IMAGE_TAG`를 새 값으로 바꿔 배포합니다.
 
+#### Registry를 사용하는 경우
+
+빌드 호스트와 Worker에서 접근할 수 있고 업로드 권한이 있는 registry를 사용합니다.
+`k8s.env`의 이미지 repository에는 registry 주소를 포함하고, 빌드 이미지 이름도 같은 값으로 맞춥니다.
 private registry 인증이 필요하면 대상 namespace에 imagePullSecret을 미리 만들고
 `IMAGE_PULL_SECRET`에 이름을 입력합니다.
 
-빌드 완료 후 registry로 전달하는 예시입니다. env를 source하지 않고 이미지 이름을 직접 확인해 입력합니다.
+빌드 호스트에서 실행합니다. env를 source하지 않고 이미지 이름을 직접 확인해 입력합니다.
 
 ```bash
 read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
@@ -297,31 +302,89 @@ sudo nerdctl --address /run/containerd/containerd.sock --namespace default image
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default push "$AIRFLOW_IMAGE_REF"
 ```
 
-registry를 사용하지 않는 경우 위 push 대신 빌드 호스트에서 저장합니다.
+완료 기준: registry에 해당 태그가 존재하고, 선택한 Worker가 인증·CA·네트워크 설정으로 내려받을 수 있어야 합니다.
+
+#### Registry 없이 CP1에서 Worker로 직접 전달하는 경우
+
+아래 순서로 **CP1에서 저장 → Worker로 파일 복사 → Worker의 containerd에 등록**합니다.
+CP1에는 nerdctl과 SSH·SCP, Worker에는 containerd와 `ctr`이 필요하며 양쪽 계정에 필요한 sudo 권한이 있어야 합니다.
+Worker는 `k8s.env`의 `NODE_NAME`에 해당하는 서버를 선택합니다.
+노드와 주소는 [서버 원본](../../shared/docs/infrastructure/servers.md#서버-목록)에서 확인하고,
+SSH 계정·포트와 CP1에서의 접근 가능 여부는 별도로 확인합니다.
+
+**1. CP1에서 이미지 확인·저장**
+
+CP1의 같은 Bash 터미널에서 실행합니다.
+이미지 이름은 `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 일치해야 합니다.
 
 ```bash
+read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default image inspect "$AIRFLOW_IMAGE_REF"
+
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default save \
   -o /tmp/airflow-image.tar "$AIRFLOW_IMAGE_REF"
+sudo chown "$(id -u):$(id -g)" /tmp/airflow-image.tar
+ls -lh /tmp/airflow-image.tar
+```
+
+`inspect`가 성공하고 `.tar` 파일이 생성되어야 합니다. `chown`은 다음 단계의 SCP 실행 계정이 파일을 읽도록 합니다.
+이미지를 찾지 못하면 다음 명령으로 실제 빌드한 이름·태그를 확인합니다.
+
+```bash
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default images
 ```
 
 namespace·주소를 바꿔 빌드했다면 inspect·push·save에도 같은 값을 지정합니다.
 Docker로 빌드했다면 같은 빌드 계정에서 `docker image inspect`, `docker push` 또는 `docker save`를 사용합니다.
 
-파일을 선택한 Worker로 전송한 뒤 **해당 Worker에서** 실행합니다.
-아래는 일반 containerd의 소켓과 Kubernetes용 `k8s.io` namespace를 사용하는 예시입니다.
+**2. CP1에서 Worker로 파일 복사·접속**
+
+CP1의 같은 터미널에서 Worker SSH 주소를 `계정@호스트명` 또는 `계정@IP` 형식으로 입력합니다.
+포트는 실제 SSH 포트를 입력하며, 기본 포트를 쓰는 경우 Enter로 22를 선택합니다.
 
 ```bash
-sudo ctr --address /run/containerd/containerd.sock --namespace k8s.io images import /tmp/airflow-image.tar
+read -r -p 'Worker SSH 주소(user@host): ' AIRFLOW_WORKER_SSH
+read -r -p 'Worker SSH 포트 [22]: ' AIRFLOW_WORKER_PORT
+AIRFLOW_WORKER_PORT="${AIRFLOW_WORKER_PORT:-22}"
+
+scp -P "$AIRFLOW_WORKER_PORT" /tmp/airflow-image.tar \
+  "${AIRFLOW_WORKER_SSH}:/tmp/airflow-image.tar"
 ```
 
-K3s는 해당 배포판의 containerd를 사용합니다.
+전송이 성공한 뒤 해당 Worker에 접속합니다. SCP의 포트 옵션은 대문자 `-P`, SSH는 소문자 `-p`입니다.
+
+```bash
+ssh -p "$AIRFLOW_WORKER_PORT" "$AIRFLOW_WORKER_SSH"
+```
+
+SCP를 사용할 수 없는 환경에서는 승인된 전송 수단으로 같은 파일을 Worker에 복사합니다.
+
+**3. Worker에서 containerd에 등록·확인**
+
+아래 명령은 CP1이 아니라 **방금 접속한 Worker에서** 실행합니다.
+`hostname`으로 배포 대상 Worker가 맞는지 확인하고, 파일이 있을 때 등록합니다.
+
+```bash
+hostname
+ls -lh /tmp/airflow-image.tar
+sudo ctr --address /run/containerd/containerd.sock --namespace k8s.io images import /tmp/airflow-image.tar
+sudo ctr --address /run/containerd/containerd.sock --namespace k8s.io images ls
+```
+
+완료 기준: 목록에 배포할 이미지의 repository·tag가 있어야 합니다.
+짧은 이미지 이름은 `docker.io/library/`가 붙어 표시될 수 있습니다.
+**Worker에서는 Kubernetes용 `k8s.io` namespace에 등록해야 합니다.** CP1 빌드용 `default`와 구분합니다.
+
+K3s를 사용하는 Worker는 해당 배포판의 containerd에 아래 명령으로 등록·확인합니다.
 
 ```bash
 sudo k3s ctr images import /tmp/airflow-image.tar
+sudo k3s ctr images ls
 ```
 
-완료 기준: 최종 Airflow 이미지와 PostgreSQL 이미지가 선택한 Worker에서 사용 가능해야 합니다.
-빌드 완료만으로 클러스터에 이미지가 전달되지는 않습니다.
+PostgreSQL 이미지도 Worker에서 사용 가능해야 합니다. registry에서 내려받을 수 없다면 같은 저장·전송·등록 절차를 적용합니다.
+여기까지는 이미지 준비이며, 실행 중인 Airflow가 자동으로 갱신되지는 않습니다.
+[ODBC 준비](#3-odbc-설정-준비)와 [배포·검증](03-deploy.md#배포와-검증)을 이어서 진행합니다.
 
 ## 3. ODBC 설정 준비
 
