@@ -46,21 +46,91 @@ CP1에 빌드 도구를 준비하지 않는다면
 
 ### containerd 빌드 도구 준비
 
-containerd 외에 nerdctl과 BuildKit의 `buildctl`·`buildkitd`가 필요합니다.
-바이너리는 사내 승인 경로 또는 반입 파일로 준비하고 PATH에 둡니다.
-아래 예시는 rootful containerd의 `/run/containerd/containerd.sock`을 사용합니다.
-기존 실행 계정에 소켓 권한이 있으면 `sudo`를 생략할 수 있으며 빌드·인증·이미지 전달은 같은 계정으로 수행합니다.
+CP1에 nerdctl·BuildKit이 없으면 아래 1~5를 진행합니다.
+Ubuntu 22.04·amd64와 기존 containerd 2.2.1을 사용하는 최초 설치 기준입니다.
+이미 설치했다면 [서비스 실행과 연결 검증](#5-서비스-실행과-연결-검증)에서 현재 설정을 확인합니다.
+실제 설치 버전과 상태는 [서버 원본](../../shared/docs/infrastructure/servers.md#확인된-worker-설치-기준)을 따릅니다.
+
+명령은 **CP1 저장소 루트의 같은 Bash 터미널**에서 실행합니다. sudo·curl·tar·sha256sum·systemctl이 필요합니다.
+기존 실행 계정에 소켓 권한이 있으면 nerdctl·buildctl의 `sudo`를 생략할 수 있으며,
+빌드·registry 인증·이미지 전달은 같은 계정으로 수행합니다.
+
+#### 1. 설치 전 확인
 
 ```bash
+uname -m
+containerd --version
+sudo systemctl is-active containerd
+sudo test -S /run/containerd/containerd.sock
 command -v nerdctl buildctl buildkitd
-sudo nerdctl --address /run/containerd/containerd.sock --namespace default info
 ```
 
-`/etc/buildkit/buildkitd.toml`의 기존 설정을 보존하며 다음 항목을 반영합니다.
-BuildKit과 nerdctl은 같은 containerd 주소와 namespace를 사용해야 합니다.
-containerd namespace `default`는 Kubernetes namespace `airflow`와 별개입니다.
+아키텍처는 `x86_64`, containerd 서비스는 `active`여야 하며 소켓 검사는 출력 없이 성공해야 합니다.
+도구가 미설치라 마지막 명령에서 경로가 나오지 않으면 다음 단계에서 설치합니다.
+기존 containerd를 사용하고, containerd·runc·CNI까지 묶인 `nerdctl-full` 대신 **nerdctl 단독 패키지**를 받습니다.
 
-```toml
+#### 2. 설치 파일 다운로드와 검증
+
+예시 버전은 [nerdctl 2.4.2](https://github.com/containerd/nerdctl/releases/tag/v2.4.2)와
+[BuildKit 0.34.1](https://github.com/moby/buildkit/releases/tag/v0.34.1)입니다.
+[사내 저장소 원본](../../shared/docs/infrastructure/repositories.md#이미지패키지별-사용-주소)의 GitHub 미러에서 받습니다.
+
+```bash
+AIRFLOW_TOOLS_DIR="$HOME/airflow-build-tools"
+mkdir -p "$AIRFLOW_TOOLS_DIR"
+GITHUB_MIRROR="http://repository.samsungds.net/repository/proxy-raw-github.com"
+
+curl -fL \
+  "$GITHUB_MIRROR/containerd/nerdctl/releases/download/v2.4.2/nerdctl-2.4.2-linux-amd64.tar.gz" \
+  -o "$AIRFLOW_TOOLS_DIR/nerdctl-2.4.2-linux-amd64.tar.gz"
+curl -fL \
+  "$GITHUB_MIRROR/moby/buildkit/releases/download/v0.34.1/buildkit-v0.34.1.linux-amd64.tar.gz" \
+  -o "$AIRFLOW_TOOLS_DIR/buildkit-v0.34.1.linux-amd64.tar.gz"
+```
+
+사내 미러의 해당 파일 제공·접속 성공은 미확인입니다. 다운로드에 실패하면 외부 PC에서 위 공식 릴리스의
+동일한 파일 두 개를 받아 승인된 방식으로 CP1의 `$AIRFLOW_TOOLS_DIR`에 반입합니다.
+다음은 공식 릴리스 파일의 SHA-256이며, 버전을 바꾸면 파일 이름과 checksum을 함께 갱신합니다.
+
+```bash
+(
+  cd "$AIRFLOW_TOOLS_DIR" &&
+  sha256sum -c - <<'EOF'
+41a66995888043c0ba05f8061574eaba1b9e06b9b21c2a238215179df2728d3f  nerdctl-2.4.2-linux-amd64.tar.gz
+a59539daf547fe0958efe2d07e41c0a6944e1112a66d7e519ec1cf5b673ef15b  buildkit-v0.34.1.linux-amd64.tar.gz
+EOF
+)
+```
+
+**두 파일 모두 `OK`일 때만** 다음 단계로 진행합니다.
+
+#### 3. 바이너리 설치
+
+```bash
+sudo install -d -m 0755 /usr/local/bin
+sudo tar -xzf "$AIRFLOW_TOOLS_DIR/nerdctl-2.4.2-linux-amd64.tar.gz" \
+  -C /usr/local/bin nerdctl
+sudo tar -xzf "$AIRFLOW_TOOLS_DIR/buildkit-v0.34.1.linux-amd64.tar.gz" \
+  -C /usr/local
+
+/usr/local/bin/nerdctl --version
+/usr/local/bin/buildctl --version
+/usr/local/bin/buildkitd --version
+sudo sh -c 'command -v nerdctl buildctl buildkitd'
+```
+
+버전 출력이 선택한 배포판과 맞고, sudo 환경에서도 세 명령의 `/usr/local/bin/` 경로가 나와야 합니다.
+BuildKit 압축 파일은 `buildctl`·`buildkitd`와 빌드용 보조 바이너리를 설치합니다.
+
+#### 4. BuildKit 설정과 서비스 등록
+
+아래 파일 생성 명령은 **설정·서비스가 없는 최초 설치에만** 사용합니다.
+이미 `/etc/buildkit/buildkitd.toml`이나 BuildKit 서비스가 있으면 CA·registry·서비스 설정을 보존하며
+아래 주소·worker·namespace 항목을 병합합니다. 기존 서비스의 실제 `--config` 경로도 확인합니다.
+
+```bash
+sudo install -d -m 0755 /etc/buildkit
+sudo tee /etc/buildkit/buildkitd.toml >/dev/null <<'EOF'
 [worker.oci]
   enabled = false
 
@@ -68,27 +138,59 @@ containerd namespace `default`는 Kubernetes namespace `airflow`와 별개입니
   enabled = true
   address = "/run/containerd/containerd.sock"
   namespace = "default"
+  max-parallelism = 2
+EOF
+
+sudo tee /etc/systemd/system/buildkit.service >/dev/null <<'EOF'
+[Unit]
+Description=Airflow 이미지 빌드용 BuildKit
+Requires=containerd.service
+After=containerd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/buildkitd --config /etc/buildkit/buildkitd.toml --addr unix:///run/buildkit/buildkitd.sock
+Restart=on-failure
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
+BuildKit과 nerdctl은 같은 containerd 주소와 namespace를 사용해야 합니다.
+containerd namespace `default`는 Kubernetes namespace `airflow`와 별개입니다.
+`max-parallelism = 2`는 CP1에서 동시에 실행할 빌드 단계를 제한합니다.
 이 빌드는 첫 단계의 의존성 이미지를 두 번째 단계의 `FROM`으로 사용하므로 containerd worker가 필요합니다.
 OCI worker는 containerd의 로컬 이미지를 읽지 못합니다.
 nerdctl 빌드에는 `--pull=false`를 전달해 같은 namespace의 로컬 의존성 이미지를 우선 사용합니다.
-설정 원리는 [nerdctl 빌드 안내](https://github.com/containerd/nerdctl/blob/main/docs/build.md)를 따릅니다.
-사내 registry에 필요한 CA·미러 설정은 [BuildKit registry 설정](https://github.com/moby/buildkit/blob/master/docs/buildkitd.toml.md)에 반영합니다.
+설정 원리는 [nerdctl 빌드 안내](https://github.com/containerd/nerdctl/blob/v2.4.2/docs/build.md)를 따릅니다.
+사내 registry에 필요한 CA·미러 설정은 [BuildKit registry 설정](https://github.com/moby/buildkit/blob/v0.34.1/docs/buildkitd.toml.md)에 반영합니다.
 containerd의 CRI 설정이 BuildKit에 자동 적용되는 것으로 가정하지 않습니다.
 
-기존 BuildKit 서비스가 있으면 해당 서비스에 위 설정을 반영해 실행합니다.
-서비스가 없는 최초 확인에서는 별도 터미널에서 다음 명령으로 foreground 실행할 수 있습니다.
+#### 5. 서비스 실행과 연결 검증
 
 ```bash
-sudo buildkitd --config /etc/buildkit/buildkitd.toml
-```
-
-빌드할 터미널에서 worker를 확인합니다. executor는 containerd이고 namespace는 `default`여야 합니다.
-
-```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now buildkit
+sudo systemctl is-active buildkit
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default info
 sudo buildctl --addr unix:///run/buildkit/buildkitd.sock debug workers --verbose
 ```
+
+기존에 실행 중인 BuildKit의 설정을 변경했다면 해당 BuildKit 서비스를 재시작한 뒤 확인합니다.
+containerd 서비스 재시작은 필요하지 않습니다.
+완료 기준은 BuildKit 서비스 `active`, nerdctl 연결 성공, worker에 아래 두 label이 표시되는 것입니다.
+
+```text
+org.mobyproject.buildkit.worker.executor: containerd
+org.mobyproject.buildkit.worker.containerd.namespace: default
+```
+
+실패하면 `sudo journalctl -u buildkit -n 80 --no-pager`로 서비스 로그를 확인합니다.
+검증을 통과하면 [두 단계 이미지 빌드](#두-단계-이미지-빌드)로 진행합니다.
+
+#### 빌드 옵션과 실패 확인
 
 | 빌드 옵션 | 기본값·용도 |
 | --- | --- |
@@ -103,7 +205,7 @@ sudo buildctl --addr unix:///run/buildkit/buildkitd.sock debug workers --verbose
 | 증상 | 조치 |
 | --- | --- |
 | `docker` 실행 파일 없음 | containerd 빌드를 사용하려면 nerdctl·BuildKit을 준비하고 `--builder nerdctl`로 실행합니다. |
-| `nerdctl`·`buildctl` 실행 파일 없음 | 해당 도구 설치·PATH와 실행 계정을 확인합니다. |
+| `nerdctl`·`buildctl` 실행 파일 없음 | [다운로드·검증](#2-설치-파일-다운로드와-검증)과 [바이너리 설치](#3-바이너리-설치)를 진행하고 sudo의 PATH도 확인합니다. |
 | containerd 연결 오류 | nerdctl의 소켓 주소·실행 계정의 접근 권한·containerd 상태를 확인합니다. |
 | BuildKit worker 조회·namespace 오류 | buildkitd 실행·주소·권한과 containerd worker 설정을 확인합니다. OCI worker는 비활성화합니다. |
 | `--with-source` 안내 | 빌드 호스트에서 `bash deploy/shared/scripts/checkout-server.sh airflow --with-source`로 앱 소스를 추가합니다. |

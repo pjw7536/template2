@@ -202,6 +202,10 @@ Worker 앱 호스트 경로의 기본값은 `/appdata` 아래입니다.
 | Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) |
 | FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/appdata/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) |
 
+Airflow의 최종 배포 이미지 목표는 사용자 지정 `airflow:3.3.2-release-1`입니다.
+설정 원본은 `deploy/airflow/env/k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`이며,
+변경한 이름으로 CP1 재빌드·`khinfow01` 반입·실제 배포 적용은 미확인입니다.
+
 공용 진입점의 확장과 앱·DB의 복제 여부를 구분합니다. 특히 local PV·hostPath는 해당 노드의 데이터이며
 다른 Worker로 옮길 때 별도 이전·복구가 필요합니다. 자원 용량·replica와 실제 여유는 앱 원본·클러스터에서 확인합니다.
 

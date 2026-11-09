@@ -56,6 +56,7 @@ Worker의 OS는 CP1과 같다는 사용자 확인값입니다. 아래 버전은 
 | CP1 아키텍처 | `x86_64` / amd64 | CP1 `uname -m` |
 | kubeadm·kubelet | `v1.36.0` | CP1 버전 명령과 노드 조회 |
 | containerd | `2.2.1` | CP1 버전 명령과 노드 조회 |
+| CP1 Airflow 이미지 빌드 도구 | nerdctl·BuildKit으로 빌드 수행 | 사용자 확인. 설치 버전·실제 소켓·빌드 namespace·생성 이미지 존재 여부는 서버 조회 필요. 설정 기준은 [이미지 준비](../../../airflow/docs/02-artifacts.md#containerd-빌드-도구-준비) 참조 |
 | CP1 커널 | `5.15.0-60-generic` | 노드 조회; 새 Worker 커널의 고정 설치값은 아님 |
 
 [Worker 설치 절차](../kubernetes/worker.md#2-빈-서버에-프로그램-설치설정--새-worker)는
