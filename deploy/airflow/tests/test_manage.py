@@ -182,9 +182,18 @@ class ConfigurationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     deploy.validate({**settings(), **change})
 
+    def test_shared_traefik_uses_common_tls_without_app_secret(self):
+        """기본 env의 앱별 TLS Secret 없이 공용 Traefik 설정을 검증한다."""
+        values = settings()
+        self.assertNotIn('INGRESS_TLS_SECRET', values)
+        deploy.validate(values)
+        web = deploy.helm_values(values)['ingress']['apiServer']
+        self.assertEqual(web['annotations']['traefik.ingress.kubernetes.io/router.tls'], 'true')
+        self.assertEqual(web['hosts'][0]['tls'], {'enabled': False, 'secretName': ''})
+
     def test_ingress_requires_class_and_tls_and_preserves_prefix(self):
         values = {**settings(), 'INGRESS_ENABLED': 'true', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://airflow.test/airflow',
-                  'INGRESS_CLASS_NAME': '', 'INGRESS_TLS_SECRET': ''}
+                  'INGRESS_CLASS_NAME': ''}
         with self.assertRaisesRegex(ValueError, 'INGRESS_CLASS_NAME'):
             deploy.validate(values)
         values['INGRESS_CLASS_NAME'] = 'nginx'

@@ -201,7 +201,7 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 필요한 입력이 빠지면 공용 리소스를 적용하기 전에 중단합니다.
 검사를 통과한 뒤에도 실제 디스크 권한, 이미지 다운로드, 외부 DB 접속, Portal 연동은 따로 확인합니다.
 
-운영 URL은 `https://etch.samsungds.net/airflow`이며 `INGRESS_TLS_SECRET=`으로 둡니다.
+운영 URL은 `https://etch.samsungds.net/airflow`이며 앱별 TLS Secret 입력은 필요 없습니다.
 업무 도메인 인증서를 [공용 Traefik](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)에 먼저 등록하고
 `make ingress-up`으로 공용 인증서 마운트를 반영합니다.
 

@@ -69,6 +69,8 @@ def read_env(path):
 
 def validate(values, example=False):
     """서버 경로·버전·URL·비밀값을 검증하고 배포 시 예시값을 거부한다."""
+    # 공용 Traefik은 앱별 TLS Secret을 쓰지 않으므로 다른 controller를 쓸 때만 입력한다.
+    values.setdefault('INGRESS_TLS_SECRET', '')
     for key, default in {**DB_DEFAULTS, **MAIL_DEFAULTS}.items():
         values.setdefault(key, default)
     require(values['POSTGRES_MODE'] in ('internal', 'external'), 'POSTGRES_MODE는 internal 또는 external이어야 합니다.')
@@ -259,7 +261,7 @@ def helm_values(settings, pause_new_dags=False):
             'ingressClassName': settings['INGRESS_CLASS_NAME'],
             'hosts': [{'name': url.hostname, 'tls': {
                 'enabled': url.scheme == 'https' and separate_tls,
-                'secretName': settings['INGRESS_TLS_SECRET'] if separate_tls else '',
+                'secretName': settings.get('INGRESS_TLS_SECRET', '') if separate_tls else '',
             }}],
         }}
     return result
@@ -376,7 +378,7 @@ def check_required_resources(settings, context, pending_tls=None):
         run([*scoped, 'get', 'configmap', settings['AIRFLOW_OIDC_CA_CONFIGMAP'], '-o', 'name'])
     for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'),
                           ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
-        if not settings[key] or (key.startswith('INGRESS_') and settings['INGRESS_ENABLED'] != 'true'):
+        if not settings.get(key) or (key.startswith('INGRESS_') and settings['INGRESS_ENABLED'] != 'true'):
             continue
         if key == 'INGRESS_TLS_SECRET' and settings['INGRESS_CLASS_NAME'] == 'traefik':
             continue

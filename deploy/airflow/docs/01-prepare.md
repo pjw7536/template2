@@ -229,12 +229,12 @@ URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습
 ```dotenv
 INGRESS_ENABLED=true
 INGRESS_CLASS_NAME=traefik
-INGRESS_TLS_SECRET=
 AIRFLOW_WEBSERVER_BASE_URL=https://etch.samsungds.net/airflow
 ```
 
-인증서는 `etch-sso/traefik-tls`에서 관리합니다. `INGRESS_TLS_SECRET`은 기존 env 호환용이며
-공용 Traefik에서는 사용하지 않습니다. 다른 Ingress controller의 HTTPS에는 앱별 Secret 이름이 필요합니다.
+인증서는 `etch-sso/traefik-tls`에서 관리하므로 기본 env에 앱별 TLS Secret 입력은 없습니다.
+다른 Ingress controller의 HTTPS를 쓰는 경우에만 사용자 env에 `INGRESS_TLS_SECRET`을 추가하고
+같은 namespace에 준비한 앱별 TLS Secret 이름을 지정합니다.
 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)을 따릅니다.
 
 ### 5. 다른 env 파일 사용
