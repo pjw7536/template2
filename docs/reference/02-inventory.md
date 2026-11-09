@@ -7,7 +7,7 @@
 ## 이 색인 사용법
 
 이 문서는 실제 이름과 경로를 찾는 참고 자료입니다. 서비스가 왜 필요한지 이해하려면
-[아키텍처](../concepts/01-architecture.md), 업무 동작은 [기능 안내](../modules/README.md)를 먼저 읽습니다.
+[아키텍처](../concepts/01-architecture.md#서비스-구성), 업무 동작은 [기능 안내](../features/README.md#기능-찾기)를 먼저 읽습니다.
 
 화면 URL을 알고 있다면 프론트엔드 route 표에서 feature를, API를 알고 있다면 백엔드 API route 표에서
 `urls.py`를 찾습니다. 표에 있는 저장소 경로는 루트 기준입니다.
@@ -37,7 +37,7 @@
 | Health | `/api/v1/health/` | `apps/portal/api/api/health/urls.py` | 빈 경로 |
 
 Account의 소속 변경·권한 관리·외부 소속 동기화 경로는 등록만 유지하며 view에서 `410 managed_by_keycloak`을 반환합니다. 일부 경로는 공통 접근·신원 검사가 먼저 적용됩니다.
-`access/users`와 `access/matrix`는 현재 세션 정보만 제공합니다. 상세는 [Account API](../api/02-account.md)를 봅니다.
+`access/users`와 `access/matrix`는 현재 세션 정보만 제공합니다. 상세는 [Account API](../features/02-account.md#api)를 봅니다.
 
 ## 프론트엔드 route
 

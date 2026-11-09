@@ -1,6 +1,6 @@
 # 새 서버 준비
 
-[가이드 홈](README.md) · [CP1~3 셋업](control-plane.md) · [Worker 추가](worker.md)
+[가이드 홈](../README.md#클러스터) · [CP1~3 셋업](control-plane.md) · [Worker 추가](worker.md)
 
 공통 서버 준비·통신 조건을 확인하는 참고 문서입니다. 실행 순서는 위 작업별 문서에서 시작합니다.
 

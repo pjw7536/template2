@@ -8,7 +8,7 @@ mock은 개발용 응답을 제공하며 실제 사내 서비스의 모든 동�
 
 아래에서 서비스 역할과 사용하는 설정 이름을 찾을 수 있습니다.
 설정 파일의 소유 영역과 적용 순서는 [환경 설정](../reference/01-configuration.md),
-각 요청의 상세 입출력은 [API 명세](../api/README.md)를 확인합니다.
+각 요청의 상세 입출력은 [API 명세](../features/README.md#공통-api-호출-규칙)를 확인합니다.
 
 ## 연동 목록
 
@@ -171,11 +171,11 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 
 | 변경 | 함께 확인할 문서/파일 |
 | --- | --- |
-| OIDC provider 변경 | `deploy/portal/env/prod/api.env`, `local/portal/env/`, `local/keycloak/`, `local/adfs_dummy/adfs_oidc.py`, [Auth API](../api/01-auth.md) |
-| RAG endpoint/schema 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_rag.py`, [Assistant API](../api/04-assistant.md), [Emails 모듈](../modules/03-emails.md) |
-| LLM request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, [Assistant / OpenWebUI / RAG 모듈](../modules/04-assistant.md) |
-| OpenWebUI request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, [Assistant / OpenWebUI / RAG 모듈](../modules/04-assistant.md), [Assistant API](../api/04-assistant.md), [Observer 모듈](../modules/06-observer.md), [Observer API](../api/06-observer.md) |
-| Mail API 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_mail.py`, [Emails 모듈](../modules/03-emails.md), [Line Dashboard / Drone 모듈](../modules/05-line-dashboard.md) |
-| Jira 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_jira.py`, [Line Dashboard / Drone 모듈](../modules/05-line-dashboard.md) |
-| MinIO 변경 | `deploy/minio/env/prod.env`, `local/minio/env/minio.env`, Portal의 `api.env`에 있는 client 설정, [데이터 모델과 저장소](02-data-model.md), [Emails 모듈](../modules/03-emails.md) |
-| Airflow token/trigger 변경 | `deploy/portal/env/*/api.env`, `deploy/airflow/env/*.env`, 관련 `docs/api/*.md`, [운영/개발 명령](../reference/03-operations.md) |
+| OIDC provider 변경 | `deploy/portal/env/prod/api.env`, `local/portal/env/`, `local/keycloak/`, `local/adfs_dummy/adfs_oidc.py`, [Auth API](../features/01-auth.md#api) |
+| RAG endpoint/schema 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_rag.py`, [Assistant API](../features/04-assistant.md#api), [Emails 모듈](../features/03-emails.md#기능과-흐름) |
+| LLM request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, [Assistant / OpenWebUI / RAG 모듈](../features/04-assistant.md#기능과-흐름) |
+| OpenWebUI request/response 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_llm.py`, [Assistant / OpenWebUI / RAG 모듈](../features/04-assistant.md#기능과-흐름), [Assistant API](../features/04-assistant.md#api), [Observer 모듈](../features/06-observer.md#기능과-흐름), [Observer API](../features/06-observer.md#api) |
+| Mail API 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_mail.py`, [Emails 모듈](../features/03-emails.md#기능과-흐름), [Line Dashboard / Drone 모듈](../features/05-line-dashboard.md#기능과-흐름) |
+| Jira 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_jira.py`, [Line Dashboard / Drone 모듈](../features/05-line-dashboard.md#기능과-흐름) |
+| MinIO 변경 | `deploy/minio/env/prod.env`, `local/minio/env/minio.env`, Portal의 `api.env`에 있는 client 설정, [데이터 모델과 저장소](02-data-model.md), [Emails 모듈](../features/03-emails.md#기능과-흐름) |
+| Airflow token/trigger 변경 | `deploy/portal/env/*/api.env`, `deploy/airflow/env/*.env`, 관련 `docs/features/*.md`, [운영/개발 명령](../reference/03-operations.md) |

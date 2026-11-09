@@ -1,6 +1,6 @@
 # Traefik 셋업
 
-[Ingress 안내](README.md) · [CP1~3 셋업](../kubernetes/control-plane.md) · [Worker 추가](../kubernetes/worker.md)
+[Ingress 안내](../README.md#https인증서) · [CP1~3 셋업](../kubernetes/control-plane.md) · [Worker 추가](../kubernetes/worker.md)
 
 목표는 **앱들이 함께 사용하는 HTTPS 진입점**을 준비하는 것입니다.
 Traefik을 배치할 Ready Worker가 최소 한 대 있어야 합니다.
@@ -19,10 +19,14 @@ APP VIP는 외부 요청용입니다. Kubernetes 관리용 API VIP와 구분합�
 `ingress-up`은 공용 namespace·리소스를 준비하며 Keycloak·DB·다른 앱을 재배포하지 않습니다.
 OS 프로세스의 80/443 점유와 실제 VIP·HTTPS 응답은 별도로 확인합니다.
 
+
+APP VIP는 외부 요청을 Traefik Worker로 전달합니다. 앱·DB의 실행 Worker와 구분하며 backend 추가가 앱·DB 복제를 뜻하지 않습니다.
+LB가 TCP 443을 Worker에 전달하고 TLS는 Traefik에서 종료하는 구성을 기준으로 합니다. TLS offloading·PROXY protocol을 사용한다면 LB와 Traefik 입력을 함께 확인합니다.
+
 ## 1. 배포 대상·포트 확인 — CP1·선택한 Worker
 
 CP1 배포 계정에 Git·Bash·Make·Python 3.10+·kubectl·OpenSSL과 필요한 저장소 파일을 준비합니다.
-[선택 checkout](../operations/checkout.md)을 사용하며 아래 Make 명령은 저장소 루트에서 실행합니다.
+[선택 checkout](../operations/01-checkout.md#선택-checkout)을 사용하며 아래 Make 명령은 저장소 루트에서 실행합니다.
 
 ```bash
 kubectl config get-contexts

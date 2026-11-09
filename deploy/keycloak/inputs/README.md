@@ -11,4 +11,4 @@
 작성한 데이터가 있는 파일을 `KEYCLOAK_SDWTS_CSV`, `KEYCLOAK_USERS_CSV`로 전달합니다.
 빈 양식을 그대로 등록하지 않으며 실제 사용자 파일은 Git에 넣지 않습니다.
 
-입력 규칙과 실행 명령은 [SDWT 최초 등록](../docs/06-sdwt.md)에 있습니다.
+입력 규칙과 실행 명령은 [SDWT 최초 등록](../docs/03-configure.md#sdwt-그룹사용자)에 있습니다.

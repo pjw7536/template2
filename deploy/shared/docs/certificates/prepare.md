@@ -1,6 +1,6 @@
 # 인증서 원본과 파일 준비
 
-[인증서 안내](README.md) · [원본 준비](prepare.md) · [추출·검증](extract.md) · [서버 적용](apply.md)
+[공통 배포](../README.md#https인증서) · [원본 준비](prepare.md) · [추출·검증](extract.md) · [서버 적용](apply.md)
 
 ## 준비할 원본과 생성될 파일
 
@@ -102,3 +102,8 @@ Git으로 실제 인증서가 전송되지는 않으므로 서버마다 필요�
 **다음:** 원본에서 새로 추출하려면 1-1 → 1-3, 기존 결과 파일을 사용하려면 1-1 → 1-4로 진행합니다.
 
 다음은 [사이트 선택과 추출·검증](extract.md)입니다.
+
+## 보관과 적용
+
+인증서·개인키는 `deploy/shared/certs/<도메인>/`, 공용 CA 원본은 `deploy/shared/certs/ca/`에 보관합니다. 실제 파일은 Git에 넣지 않습니다.
+검증한 인증서는 공용 `etch-sso/traefik-tls`에 등록하며 앱 namespace에 복제하지 않습니다. OIDC CA 신뢰는 별도입니다.

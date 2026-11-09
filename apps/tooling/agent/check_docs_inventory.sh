@@ -37,41 +37,40 @@ require_text() {
 
 DOCS_INDEX="docs/reference/02-inventory.md"
 
-echo "== 필수 문서 =="
+echo "== 문서 원본 =="
 for path in \
   docs/README.md \
-  docs/getting-started/README.md \
   docs/getting-started/01-setup.md \
   docs/getting-started/02-usage.md \
-  docs/concepts/README.md \
-  docs/concepts/04-glossary.md \
-  docs/development/README.md \
-  docs/development/04-documentation.md \
-  docs/development/03-migration-guide.md \
-  docs/reference/README.md \
-  deploy/shared/docs/README.md \
-  deploy/shared/docs/kubernetes/README.md \
-  deploy/shared/docs/kubernetes/kubectl.md \
-  deploy/shared/docs/ingress/README.md \
-  deploy/shared/docs/certificates/README.md \
-  deploy/shared/docs/operations/README.md \
-  docs/reference/integrations/proxy-mirrors.md \
   docs/concepts/01-architecture.md \
-  docs/reference/02-inventory.md \
+  docs/concepts/02-data-model.md \
+  docs/concepts/03-integrations.md \
   docs/development/01-frontend.md \
   docs/development/02-backend.md \
-  docs/concepts/02-data-model.md \
+  docs/development/03-migration-guide.md \
+  docs/development/04-documentation.md \
   docs/reference/01-configuration.md \
-  docs/api/README.md \
-  docs/api/07-l0-spider.md \
-  docs/api/09-pm-spider.md \
-  docs/api/10-tttm-spider.md \
-  docs/api/14-data-movement.md \
-  docs/modules/README.md \
-  docs/modules/07-spider.md \
-  docs/examples/README.md \
+  docs/reference/02-inventory.md \
   docs/reference/03-operations.md \
-  docs/concepts/03-integrations.md \
+  docs/features/README.md \
+  docs/features/01-auth.md \
+  docs/features/02-account.md \
+  docs/features/03-emails.md \
+  docs/features/04-assistant.md \
+  docs/features/05-line-dashboard.md \
+  docs/features/06-observer.md \
+  docs/features/07-spider.md \
+  docs/features/08-l3-spider.md \
+  docs/features/09-pm-comparison.md \
+  docs/features/10-appstore.md \
+  docs/features/11-voc.md \
+  docs/features/12-activity-health.md \
+  docs/features/13-data-movement.md \
+  docs/features/14-common.md \
+  docs/examples/README.md \
+  deploy/README.md \
+  deploy/shared/docs/README.md \
+  deploy/shared/docs/infrastructure/README.md \
   README.md \
   apps/portal/api/README.md \
   apps/portal/web/README.md; do
@@ -79,32 +78,36 @@ for path in \
 done
 echo
 
-echo "== 목적별 문서 진입점 링크 =="
+echo "== 문서 진입점 =="
+require_text "docs/README.md" "getting-started/01-setup.md" "문서 홈 getting-started/01-setup.md"
+require_text "docs/README.md" "getting-started/02-usage.md" "문서 홈 getting-started/02-usage.md"
+require_text "docs/README.md" "concepts/01-architecture.md" "문서 홈 concepts/01-architecture.md"
+require_text "docs/README.md" "concepts/02-data-model.md" "문서 홈 concepts/02-data-model.md"
+require_text "docs/README.md" "concepts/03-integrations.md" "문서 홈 concepts/03-integrations.md"
+require_text "docs/README.md" "development/01-frontend.md" "문서 홈 development/01-frontend.md"
+require_text "docs/README.md" "development/02-backend.md" "문서 홈 development/02-backend.md"
+require_text "docs/README.md" "development/03-migration-guide.md" "문서 홈 development/03-migration-guide.md"
+require_text "docs/README.md" "reference/01-configuration.md" "문서 홈 reference/01-configuration.md"
+require_text "docs/README.md" "reference/02-inventory.md" "문서 홈 reference/02-inventory.md"
+require_text "docs/README.md" "reference/03-operations.md" "문서 홈 reference/03-operations.md"
+require_text "docs/README.md" "features/README.md" "문서 홈 features/README.md"
+require_text "docs/README.md" "examples/README.md" "문서 홈 examples/README.md"
+require_text "docs/features/README.md" "01-auth.md" "기능 01-auth"
+require_text "docs/features/README.md" "02-account.md" "기능 02-account"
+require_text "docs/features/README.md" "03-emails.md" "기능 03-emails"
+require_text "docs/features/README.md" "04-assistant.md" "기능 04-assistant"
+require_text "docs/features/README.md" "05-line-dashboard.md" "기능 05-line-dashboard"
+require_text "docs/features/README.md" "06-observer.md" "기능 06-observer"
+require_text "docs/features/README.md" "07-spider.md" "기능 07-spider"
+require_text "docs/features/README.md" "08-l3-spider.md" "기능 08-l3-spider"
+require_text "docs/features/README.md" "09-pm-comparison.md" "기능 09-pm-comparison"
+require_text "docs/features/README.md" "10-appstore.md" "기능 10-appstore"
+require_text "docs/features/README.md" "11-voc.md" "기능 11-voc"
+require_text "docs/features/README.md" "12-activity-health.md" "기능 12-activity-health"
+require_text "docs/features/README.md" "13-data-movement.md" "기능 13-data-movement"
+require_text "docs/features/README.md" "14-common.md" "기능 14-common"
 require_text "README.md" "docs/README.md" "root README docs link"
 require_text "README.md" "deploy/README.md" "root README deploy link"
-for section in getting-started concepts development reference; do
-  require_text "README.md" "docs/$section/README.md" "root README $section link"
-  require_text "docs/README.md" "$section/README.md" "docs home $section link"
-  require_text "docs/$section/README.md" "../README.md" "$section parent link"
-done
-for page in 01-setup 02-usage; do
-  require_text "docs/getting-started/README.md" "$page.md" "getting-started $page link"
-done
-for page in 01-architecture 02-data-model 03-integrations 04-glossary; do
-  require_text "docs/concepts/README.md" "$page.md" "concepts $page link"
-done
-for page in 01-frontend 02-backend 03-migration-guide 04-documentation; do
-  require_text "docs/development/README.md" "$page.md" "development $page link"
-done
-for page in 01-configuration 02-inventory 03-operations; do
-  require_text "docs/reference/README.md" "$page.md" "reference $page link"
-done
-require_text "docs/README.md" "modules/README.md" "docs home modules link"
-require_text "docs/README.md" "api/README.md" "docs home API link"
-require_text "apps/portal/api/README.md" "docs/development/02-backend.md" "api README backend link"
-require_text "apps/portal/api/README.md" "docs/reference/02-inventory.md" "api README inventory link"
-require_text "apps/portal/web/README.md" "docs/development/01-frontend.md" "web README frontend link"
-require_text "apps/portal/web/README.md" "docs/reference/02-inventory.md" "web README inventory link"
 echo
 
 echo "== 현재 코드와 문서 색인 =="

@@ -125,7 +125,7 @@ def check_frontend_features(root: Path) -> list[str]:
     """모든 화면 feature가 구현 색인과 기능 안내에서 한 번씩 연결되는지 확인합니다."""
 
     inventory = (root / "docs/reference/02-inventory.md").read_text(encoding="utf-8")
-    modules = (root / "docs/modules/README.md").read_text(encoding="utf-8")
+    modules = (root / "docs/features/README.md").read_text(encoding="utf-8")
     findings: list[str] = []
     for path in sorted((root / "apps/portal/web/src/features").glob("*/routes.jsx")):
         relative = path.relative_to(root).as_posix()

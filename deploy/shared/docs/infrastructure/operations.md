@@ -11,12 +11,12 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
-| 서버 Git checkout | `/appdata/etchax` | [선택 checkout](../operations/checkout.md)의 설치 경로. 현재 서버 경로 확인 필요 |
-| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../../../README.md#소유권)의 외부 설정 경로. 앱 도구에 실제 외부 env 경로 명시 |
+| 서버 Git checkout | `/appdata/etchax` | [선택 checkout](../operations/01-checkout.md#선택-checkout)의 설치 경로. 현재 서버 경로 확인 필요 |
+| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../operations/01-checkout.md#git운영-파일-관리)의 외부 설정 경로. 앱 도구에 실제 외부 env 경로 명시 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
-| kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 지정한 `KUBECONFIG` | [CP1 운영](../operations/files.md). 실제 파일 위치·계정·권한 확인 필요 |
+| kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 지정한 `KUBECONFIG` | [CP1 운영](../operations/01-checkout.md#git운영-파일-관리). 실제 파일 위치·계정·권한 확인 필요 |
 | 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 실제 배포 계정의 kubeconfig 등록·현재 선택 상태는 서버에서 확인 필요 |
-| 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../certificates/README.md). 실제 보관 경로·담당자 확인 필요 |
+| 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../certificates/prepare.md). 실제 보관 경로·담당자 확인 필요 |
 | 앱 데이터·로그·ODBC | [앱별 배치·스토리지 표](services.md#앱별-배치와-스토리지-선언) | 노드별 PV·PVC·hostPath 선언과 실제 연결을 구분 |
 | 백업·복구 파일 | 미확인 | 앱별 보관 위치·주기·보존 기간·복구 담당자 확인 필요 |
 
@@ -73,8 +73,8 @@ local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니�
 7. env·overlay를 새 경로로 맞춘 뒤 관련 `server-check`와 렌더 검사를 수행합니다. 재기동 후 Pod 노드·실제 마운트·PVC Bound, 기존 DB·파일·계정·대시보드·로그를 확인하고 업로드·다운로드·업무 동작을 검사한 후 쓰기를 재개합니다.
 8. 검증이 실패하면 쓰기를 중지한 상태에서 보관한 env·manifest·원본 PV/PVC 연결로 복귀합니다. 새 경로에서 쓰기를 재개한 뒤에는 변경분 정합성을 확인한 후 롤백합니다. 기존 데이터 정리는 정상 운영·복구 검증과 보존 기간 확인 후 별도로 수행합니다.
 
-앱별 절차: [MinIO 저장소](../../../minio/docs/02-deploy.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/docs/06-operations.md),
-[Monitoring 운영](../../../monitoring/docs/04-operations.md#갱신운영), [FTP 운영](../../../ftp/docs/03-operations.md).
+앱별 절차: [MinIO 저장소](../../../minio/docs/01-install.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/docs/04-operations.md),
+[Monitoring 운영](../../../monitoring/docs/02-operations.md#갱신운영), [FTP 운영](../../../ftp/docs/02-operations.md).
 실제 적용 후에는 [서비스 배치·스토리지](services.md#앱별-배치와-스토리지-선언)에 대상 노드·현재 경로·검증 결과·담당자를 반영합니다.
 
 ## 운영 책임·백업·인증서
@@ -83,27 +83,27 @@ local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니�
 | --- | --- | --- |
 | 서비스별 운영 책임 | 담당자·장애 연락 경로·접근 권한 신청 절차 | 미확인 |
 | 데이터 백업 | 대상·보관 위치·주기·보존 기간·복구 담당자·복구 검증 결과 | 미확인 |
-| 인증서·공용 CA | 보관 위치·만료일·갱신 담당자·적용 Secret 이름·적용 상태 | 상세 절차는 [인증서 관리](../certificates/README.md), 실제 운영값은 추가 확인 필요 |
+| 인증서·공용 CA | 보관 위치·만료일·갱신 담당자·적용 Secret 이름·적용 상태 | 상세 절차는 [인증서 관리](../certificates/prepare.md), 실제 운영값은 추가 확인 필요 |
 
 ## 변경 연계와 조회
 
 데이터를 옮기면 [서비스의 배치·스토리지](services.md#앱별-배치와-스토리지-선언), 대상 Worker는 [서버 목록](servers.md)을 함께 확인합니다.
 노드별 local PV·hostPath는 해당 노드의 데이터이며 다른 Worker로 이동할 때 별도 이전·복구가 필요합니다.
-실행 절차는 [CP1 운영](../operations/files.md), [서버 기동](../operations/README.md), [환경설정](../configuration/environment.md)을 따릅니다.
+실행 절차는 [CP1 운영](../operations/01-checkout.md#git운영-파일-관리), [서버 기동](../README.md#배포운영), [환경설정](../configuration/environment.md)을 따릅니다.
 
 ## 실행 설정의 원본
 
 | 확인할 구성 | 원본·시작 문서 |
 | --- | --- |
-| 설치할 앱·서버 선택 그룹 | `deploy/shared/apps.json`, [선택 checkout](../operations/checkout.md) |
+| 설치할 앱·서버 선택 그룹 | `deploy/shared/apps.json`, [선택 checkout](../operations/01-checkout.md#선택-checkout) |
 | 제어면·Worker·네트워크 설치 기준 | [현재 환경 조회](../kubernetes/baseline.md), [제어면 셋업](../kubernetes/control-plane.md), [Worker 추가](../kubernetes/worker.md) |
-| 외부 HTTPS·도메인·VIP 연결 | `deploy/shared/ingress/stack.yaml`, [공용 Ingress](../ingress/README.md) |
+| 외부 HTTPS·도메인·VIP 연결 | `deploy/shared/ingress/stack.yaml`, [공용 Ingress](../README.md#https인증서) |
 | Keycloak·전용 PostgreSQL | `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 설치](../../../keycloak/README.md) |
 | Portal API·Web·migration | `deploy/portal/k8s`, [Portal 배포](../../../portal/README.md) |
 | Airflow·로그·ODBC·DB | `deploy/airflow/helm`, [Airflow 배포](../../../airflow/README.md) |
 | MinIO 배치·스토리지 | `deploy/minio/k8s`, [MinIO 배포](../../../minio/README.md) |
 | 지표·운영 UI·FTP | [Monitoring](../../../monitoring/README.md), [Headlamp](../../../headlamp/README.md), [FTP](../../../ftp/README.md) |
-| 인증서·CA | [인증서 관리](../certificates/README.md) |
+| 인증서·CA | [인증서 관리](../certificates/prepare.md) |
 
 ## 현재 상태 조회
 
@@ -138,5 +138,5 @@ kubectl --context "$KUBE_CONTEXT" get pvc -A
 ```
 
 기대한 노드 배치와 실제 Pod 위치, PV·PVC 연결을 비교합니다.
-Ingress·Pod 상태 확인 뒤 [접속·기능 검증](../operations/verify.md)으로 실제 HTTPS·로그인·업무 동작을 확인합니다.
+Ingress·Pod 상태 확인 뒤 [접속·기능 검증](../operations/02-deploy.md#접속기능-검증)으로 실제 HTTPS·로그인·업무 동작을 확인합니다.
 설치 버전·OS·런타임·CNI·VIP는 [환경 조회 안내](../kubernetes/baseline.md)에서 별도로 확인합니다.

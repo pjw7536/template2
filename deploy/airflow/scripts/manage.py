@@ -471,7 +471,7 @@ def image_build_command(builder, namespace, address, buildkit_host):
     require(shutil.which(builder),
             f'이미지 빌더 {builder} 실행 파일을 찾을 수 없습니다. '
             'containerd에는 nerdctl·BuildKit을 준비하거나 --builder docker로 Docker를 사용하세요. '
-            '준비 절차: deploy/airflow/docs/03-artifacts.md')
+            '준비 절차: deploy/airflow/docs/02-artifacts.md')
     if builder == 'docker':
         try:
             run(['docker', 'info'])
@@ -482,7 +482,7 @@ def image_build_command(builder, namespace, address, buildkit_host):
 
     require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', namespace), 'containerd namespace 형식 오류')
     require(address.strip() and buildkit_host.strip(), 'containerd 주소와 BuildKit 주소를 지정하세요.')
-    require(shutil.which('buildctl'), 'BuildKit의 buildctl 실행 파일을 준비하세요. 준비 절차: deploy/airflow/docs/03-artifacts.md')
+    require(shutil.which('buildctl'), 'BuildKit의 buildctl 실행 파일을 준비하세요. 준비 절차: deploy/airflow/docs/02-artifacts.md')
     command = ['nerdctl', '--address', address, '--namespace', namespace]
     try:
         run([*command, 'info'])
@@ -503,7 +503,7 @@ def image_build_command(builder, namespace, address, buildkit_host):
         for worker in workers),
         'BuildKit은 선택한 containerd namespace와 같은 containerd worker만 사용해야 합니다. '
         '[worker.oci] enabled=false와 [worker.containerd] enabled=true, namespace를 확인하세요. '
-        '준비 절차: deploy/airflow/docs/03-artifacts.md')
+        '준비 절차: deploy/airflow/docs/02-artifacts.md')
     return [*command, 'build', '--buildkit-host', buildkit_host, '--pull=false']
 
 

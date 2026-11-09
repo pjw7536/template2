@@ -1,12 +1,12 @@
 # 공용 Ingress 운영 기준
 
-[Ingress 안내](README.md) · [배포 문서 안내](../../../README.md) · [실행 원본](../../ingress/README.md)
+[Ingress 안내](../README.md#https인증서) · [배포 문서 안내](../../../README.md) · [실행 원본](../../ingress/README.md)
 
 여러 앱이 함께 사용하는 Traefik 설정의 운영 계약을 설명합니다.
 처음 설치할 때는 [Traefik 셋업](setup.md)의 실행 순서로 시작합니다.
 이 문서는 namespace 감시·TLS 이전·앱 연결 등 상세 참고입니다.
 기본 실행 위치는 기존 `etch-sso` namespace, `khplane01w09` worker이며 80/443을 사용합니다.
-현재 APP VIP 환경은 [두 Worker 443 연결 안내](vip.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
+현재 APP VIP 환경은 [두 Worker 443 연결 안내](setup.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
 클러스터에 서버를 등록할 때는 [Worker 추가](../kubernetes/worker.md),
 기존 ingress 배치를 백업하며 확장할 때는 [Traefik·VIP 확장](expand.md)을 따릅니다.
 
@@ -61,7 +61,7 @@ Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAM
 운영 설정(2개 replica, RollingUpdate, `etch-sso,headlamp` 감시, `ingress: traefik` 노드 선택)을 추가합니다.
 정적 기본값은 `etch-sso` 단독 감시이며 기존 Keycloak 단독 설치와 호환됩니다.
 
-일반 배포에는 [앱별 배포](../operations/applications.md)의 명령을 사용합니다.
+일반 배포에는 [앱별 배포](../operations/02-deploy.md#앱-의존-관계)의 명령을 사용합니다.
 
 - `ingress-check/up`: 공용 진입점만 준비하고 기존 감시·배치를 보존합니다.
 - `ingress-connect APP=portal`: Portal overlay 적용 후 해당 namespace의 감시만 추가합니다.

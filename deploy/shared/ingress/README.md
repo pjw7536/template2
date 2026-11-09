@@ -1,7 +1,7 @@
 # 공용 Ingress 실행 원본
 
 여러 앱이 공유하는 Traefik 리소스와 검사·적용 도구를 관리합니다.
-설치·VIP 확장·운영 기준은 [공용 Ingress 안내](../docs/ingress/README.md)를 따릅니다.
+설치·VIP 확장·운영 기준은 [공용 Ingress 안내](../docs/README.md#https인증서)를 따릅니다.
 
 | 원본 | 역할 |
 | --- | --- |

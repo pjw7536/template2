@@ -1,6 +1,6 @@
 # Worker 추가
 
-[가이드 홈](README.md) · [CP1~3 셋업](control-plane.md) · [Traefik 셋업](../ingress/setup.md)
+[가이드 홈](../README.md#클러스터) · [CP1~3 셋업](control-plane.md) · [Traefik 셋업](../ingress/setup.md)
 
 목표는 **OS만 설치된 새 서버를 기존 클러스터의 Worker로 등록하는 것**입니다.
 기존 클러스터의 설치 방식과 버전을 먼저 확인합니다. 아래 가입 명령은 kubeadm 방식에 해당합니다.
@@ -274,7 +274,7 @@ CNI 상태를 확인합니다. 원인 확인 없이 reset·재가입하지 않�
 
 **완료:** 새 Worker Ready + 시스템 Pod·클러스터 네트워크 정상.
 
-Airflow를 설치하려면 [서버 준비](../../../airflow/docs/01-setup.md)에서 새 Worker의
+Airflow를 설치하려면 [서버 준비](../../../airflow/docs/01-prepare.md#서버-준비)에서 새 Worker의
 DB·로그 디렉터리를 준비하고 env의 `NODE_NAME`을 조회한 `kubernetes.io/hostname` 값으로 지정합니다.
 기존 Traefik은 그대로 사용하며 Worker 추가만으로 앱이나 DB가 자동 이동하지 않습니다.
 

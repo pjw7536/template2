@@ -1,6 +1,6 @@
 # Traefik·APP VIP의 Worker 확장 상세
 
-[공용 Ingress 안내](README.md) · [APP VIP와 앱 HTTPS 연결](vip.md)
+[공용 Ingress 안내](../README.md#https인증서) · [APP VIP와 앱 HTTPS 연결](setup.md)
 
 공통 진입점 설치는 [Traefik 셋업](setup.md),
 새 서버의 클러스터 가입은 [Worker 추가](../kubernetes/worker.md)에서 시작합니다.

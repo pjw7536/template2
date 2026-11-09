@@ -7,11 +7,11 @@ API는 화면·Airflow 등이 보낸 요청의 인증과 입력을 검사하고,
 각 app 안에서 HTTP 처리(view), 읽기(selector), 쓰기·외부 호출(service)의 책임을 나눕니다.
 
 소스는 `apps/portal/api`에 있으며, 전체 URL 연결은 `apps/portal/api/api/urls.py`가 담당합니다.
-처음 보는 용어는 [용어 안내](../concepts/04-glossary.md)를 참고하세요.
+처음 보는 용어는 [용어 안내](../concepts/01-architecture.md#용어)를 참고하세요.
 
 ## API 하나를 수정하는 순서
 
-1. [API 명세](../api/README.md)에서 입력·응답·권한·부작용을 확인합니다.
+1. [API 명세](../features/README.md#공통-api-호출-규칙)에서 입력·응답·권한·부작용을 확인합니다.
 2. [구현 색인](../reference/02-inventory.md#백엔드-api-route)에서 대상 app과 `urls.py`를 찾습니다.
 3. URL이 연결하는 view에서 selector·service·model을 따라가며 변경할 책임을 정합니다.
 4. 업무 로직을 수정하면 해당 service·selector 중심으로 검증하고 API 응답·권한을 확인합니다.
@@ -68,21 +68,21 @@ DB 구조가 바뀌면 migration을 추가합니다. 운영 DB 적용은 [migrat
 
 | Prefix | App | 문서 |
 | --- | --- | --- |
-| `/api/v1/auth/` | `api.auth` | [Auth API](../api/01-auth.md) |
-| `/api/v1/account/` | `api.account` | [Account API](../api/02-account.md) |
-| `/api/v1/emails/` | `api.emails` | [Emails API](../api/03-emails.md) |
-| `/api/v1/data-movement/` | `api.data_movement` | [Data Movement API](../api/14-data-movement.md) |
-| `/api/v1/assistant/` | `api.assistant` | [Assistant API](../api/04-assistant.md) |
-| `/api/v1/line-dashboard/` | `api.drone` | [Line Dashboard / Drone API](../api/05-line-dashboard.md) |
-| `/api/v1/l3_spider/` | `api.l3_spider` | [L3 Spider API](../api/08-l3-spider.md) |
-| `/api/v1/l0_spider/`, `/api/v1/fdc-trend/` | `api.l0_spider` | [L0 Spider API](../api/07-l0-spider.md) |
-| `/api/v1/pm_spider/` | `api.pm_comparison` | [PM SPIDER API](../api/09-pm-spider.md) |
-| `/api/v1/tttm_spider/` | `api.tttm_spider` | [TTTM Spider API](../api/10-tttm-spider.md) |
-| `/api/v1/observer/` | `api.observer` | [Observer API](../api/06-observer.md) |
-| `/api/v1/appstore/` | `api.appstore` | [AppStore API](../api/11-appstore.md) |
-| `/api/v1/voc/` | `api.voc` | [VOC API](../api/12-voc.md) |
-| `/api/v1/activity/` | `api.activity` | [Activity / Health API](../api/13-activity-health.md) |
-| `/api/v1/health/` | `api.health` | [Activity / Health API](../api/13-activity-health.md) |
+| `/api/v1/auth/` | `api.auth` | [Auth API](../features/01-auth.md#api) |
+| `/api/v1/account/` | `api.account` | [Account API](../features/02-account.md#api) |
+| `/api/v1/emails/` | `api.emails` | [Emails API](../features/03-emails.md#api) |
+| `/api/v1/data-movement/` | `api.data_movement` | [Data Movement API](../features/13-data-movement.md#api) |
+| `/api/v1/assistant/` | `api.assistant` | [Assistant API](../features/04-assistant.md#api) |
+| `/api/v1/line-dashboard/` | `api.drone` | [Line Dashboard / Drone API](../features/05-line-dashboard.md#api) |
+| `/api/v1/l3_spider/` | `api.l3_spider` | [L3 Spider API](../features/08-l3-spider.md#api) |
+| `/api/v1/l0_spider/`, `/api/v1/fdc-trend/` | `api.l0_spider` | [L0 Spider API](../features/07-spider.md#l0-api) |
+| `/api/v1/pm_spider/` | `api.pm_comparison` | [PM SPIDER API](../features/09-pm-comparison.md#api) |
+| `/api/v1/tttm_spider/` | `api.tttm_spider` | [TTTM Spider API](../features/07-spider.md#tttm-api) |
+| `/api/v1/observer/` | `api.observer` | [Observer API](../features/06-observer.md#api) |
+| `/api/v1/appstore/` | `api.appstore` | [AppStore API](../features/10-appstore.md#api) |
+| `/api/v1/voc/` | `api.voc` | [VOC API](../features/11-voc.md#api) |
+| `/api/v1/activity/` | `api.activity` | [Activity / Health API](../features/12-activity-health.md#api) |
+| `/api/v1/health/` | `api.health` | [Activity / Health API](../features/12-activity-health.md#api) |
 
 ## 인증과 권한 기준
 
@@ -106,7 +106,7 @@ PR CI와 전체 회귀 검증은 외부 연결이 차단된 `deploy/portal/compo
 
 ## 변경 시 갱신해야 하는 문서
 
-- route 추가/변경: `docs/reference/02-inventory.md`, `docs/api/*.md`, `docs/modules/*.md`
-- model/schema 변경: `docs/concepts/02-data-model.md`, 해당 `docs/modules/*.md`
+- route 추가/변경: `docs/reference/02-inventory.md`, `docs/features/*.md`
+- model/schema 변경: `docs/concepts/02-data-model.md`, 해당 `docs/features/*.md`
 - env contract 변경: `docs/reference/01-configuration.md`, `docs/concepts/03-integrations.md`, 필요 시 `local/adfs_dummy`
 - command 추가/변경: `docs/reference/02-inventory.md`, `docs/reference/03-operations.md`

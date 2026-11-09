@@ -1,68 +1,13 @@
-# FTP 배포 안내
+# FTP 배포
 
-[전체 배포 안내](../README.md) · [공통 준비·운영](../shared/docs/README.md)
+[전체 배포](../README.md) · [공통 준비](../shared/docs/README.md)
 
-이 폴더는 선택한 Kubernetes Linux 노드에서 파일을 받는 FTP 서버의 설치·운영을 관리합니다.
-FTP 라벨이 붙은 Linux 노드마다 Pod가 하나씩 실행됩니다. 업로드한 파일은 접속한 노드에 저장됩니다.
-Worker와 control plane 모두 선택할 수 있으며 `FTP_ALLOW_CONTROL_PLANE`의 기본값은 `true`입니다.
-control plane 선택을 막으려면 `false`로 지정합니다.
+선택한 Linux 노드마다 FTP Pod를 실행합니다. 파일은 접속한 노드에만 저장되며 노드 사이에 복제되지 않습니다.
 
-## 최초 설치 순서
-
-파일 번호는 권장 읽기 순서입니다. 실행 명령은 각 문서의 단계와 완료 기준을 따릅니다.
-
-| 순서 | 작업 | 완료 기준 |
-| --- | --- | --- |
-| 1 | [노드·저장소·계정 준비](docs/01-setup.md) | context·대상 노드·디스크·포트·계정 파일 준비 |
-| 2 | [검사·배포](docs/02-deploy.md) | 대상별 FTP Pod 기동과 노드·계정 확인 |
-| 3 | [접속·저장 확인](docs/03-operations.md#2-업로드다운로드-확인) | 노드 IP로 passive 접속·시험 파일 송수신 |
-
-## 운영·참고
-
-| 하려는 일 | 문서 |
+| 순서 | 작업 |
 | --- | --- |
-| 노드 추가·중단·계정 변경·장애 대응 | [운영 안내](docs/03-operations.md) |
-| 이미지·포트·저장 경로 변경과 수동 배포 | [Kubernetes 원본](docs/04-kubernetes.md) |
+| 1 | [노드·포트·계정 준비와 배포](docs/01-install.md) |
+| 2 | [송수신 확인·노드·계정 변경·장애 대응](docs/02-operations.md) |
+| 3 | [이미지·경로를 변경하는 수동 overlay](docs/03-kubernetes.md) |
 
-## 어디에 뜨고 어디에 저장되나요?
-
-```text
-관리 PC / 클러스터 관리 서버
-  └─ make ftp-up: 지정한 Worker에 FTP 라벨을 붙이고 DaemonSet 배포
-       ├─ Worker A: FTP Pod 1개 ← 클라이언트가 A의 IP:6380으로 접속
-       │    └─ A의 /appdata/data_movement/파일
-       └─ Worker B: FTP Pod 1개 ← 클라이언트가 B의 IP:6380으로 접속
-            └─ B의 /appdata/data_movement/파일
-```
-
-라벨은 `etch.io/ftp-enabled=true`입니다. 모든 노드에 자동으로 설치하지 않습니다.
-배포 명령을 실행하는 컴퓨터와 FTP가 실행되는 노드는 달라도 됩니다.
-control plane 추가는 [대상 선택](docs/01-setup.md#control-plane도-대상에-추가하기)을 따릅니다.
-
-노드 간 파일은 자동 복제·이동되지 않으며 소비 앱이 다른 노드에 있으면 별도 전송 또는 공유 저장소가 필요합니다.
-`/appdata/data_movement`가 없는 Worker에서는 Pod 시작 전에 폴더를 자동 생성합니다. 기존 데이터는 유지하며 하위 파일의 소유권은 자동 변경하지 않습니다.
-컨테이너 내부 경로는 `/data/data_movement`, 외부 PC의 kind 매핑도 기존 경로를 유지합니다.
-기존 Worker의 `/data/data_movement` 파일은 자동으로 옮겨지지 않습니다. 재배포 전에
-[Worker 데이터 이전](../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)에 따라 복사·검증합니다.
-
-## 실행 명령
-
-저장소 루트에서 실행합니다. 실제 입력 준비는 [서버 설치](docs/01-setup.md)를 따릅니다.
-
-| 명령 | 하는 일 |
-| --- | --- |
-| `make server-check APP=ftp PROFILE=prod` | 원본 셸 문법·Kustomize 렌더 검사 |
-| `make ftp-check` | 명시한 context의 대상 노드·계정·원본 검사. 클러스터 변경 없음 |
-| `make ftp-up` | 같은 검사 후 namespace·Secret·라벨·DaemonSet 적용, 기동 대기 |
-| `make ftp-test` | 배포 스크립트 회귀 검사. 클러스터 불필요 |
-
-`ftp-check`와 `ftp-up`에는 `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 필요합니다.
-계정 파일은 서버에서 [credentials.env.example](credentials.env.example)의 `FTP_USER`, `FTP_PASS`를 입력해 사용합니다.
-권한 `600` 적용과 절대 경로 지정은 [계정 파일 준비](docs/01-setup.md#4-관리-호스트의-계정-파일-준비)를 따릅니다.
-모든 대상 노드는 같은 계정을 사용합니다. 기존 Secret이 있으면 입력 계정과 비교하고, 다르면 중단합니다.
-`ftp-check`와 `ftp-up`은 [env/prod.env](env/prod.env)의 `FTP_IMAGE`를 적용하며 기본값은 사내 Docker Hub 미러입니다.
-registry 인증이 필요하면 같은 env의 `IMAGE_PULL_SECRET`에 `etch-ftp` namespace의 기존 Secret 이름을 지정합니다.
-다른 env는 `make ftp-check FTP_ENV=/절대/경로/ftp.env`, `make ftp-up FTP_ENV=/절대/경로/ftp.env`로 지정합니다.
-별도 overlay 운영 시에는 [수동 배포 절차](docs/04-kubernetes.md#사내-이미지로-각-worker에-배포)로 같은 overlay를 적용합니다.
-
-[전체 배포 안내](../README.md) · [Kubernetes 입문](../shared/docs/kubernetes/README.md)
+노드 IP의 6380과 passive 포트 8076–8079로 직접 접속합니다. control plane 선택은 `FTP_ALLOW_CONTROL_PLANE`로 제어합니다.

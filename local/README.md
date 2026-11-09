@@ -1,6 +1,6 @@
 # 한 PC의 로컬 Kubernetes 개발 환경
 
-[프로젝트 안내](../README.md) · [개발 시작 안내](../docs/getting-started/README.md) · [용어 안내](../docs/concepts/04-glossary.md)
+[프로젝트 안내](../README.md) · [개발 시작 안내](../docs/getting-started/01-setup.md) · [용어 안내](../docs/concepts/01-architecture.md#용어)
 
 `make dev`는 같은 컴퓨터의 kind에 Portal·Keycloak·Airflow·FTP·MinIO·mock·모니터링을 실행합니다.
 control-plane과 worker는 Docker 컨테이너이며 별도 컴퓨터가 필요하지 않습니다.

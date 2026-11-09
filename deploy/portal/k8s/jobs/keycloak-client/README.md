@@ -10,4 +10,4 @@ Keycloak 자체 realm·사내 IdP 준비를 마친 뒤 사용하며 실제 사�
 | `kustomization.yaml` | Job 적용 진입점 |
 
 운영 입력은 Portal `api.env`가 소유합니다. Secret 준비·Job 실행·검증은
-[Portal SSO 절차](../../../docs/02-sso.md)를 따릅니다.
+[Portal SSO 절차](../../../docs/01-install.md#keycloak-client-등록)를 따릅니다.

@@ -99,7 +99,7 @@ npm run preview
 | `home`, `errors`, `teamstaff` | 홈·오류·팀 구성원 화면 |
 
 소속 변경·권한 승인은 Keycloak에서 관리합니다. Portal 화면은 현재 세션 정보를 조회하며,
-세부 권한은 [Account 모듈](../../../docs/modules/02-account.md)을 따릅니다.
+세부 권한은 [Account 모듈](../../../docs/features/02-account.md#기능과-흐름)을 따릅니다.
 
 ## 개발 규칙 요약
 
@@ -113,5 +113,5 @@ npm run preview
 - [앱 문서 홈](../../../docs/README.md)
 - [프론트엔드 상세 구조](../../../docs/development/01-frontend.md)
 - [실제 route 색인](../../../docs/reference/02-inventory.md)
-- [API 호출 규칙](../../../docs/api/README.md)
-- [모듈별 업무 흐름](../../../docs/modules/README.md)
+- [API 호출 규칙](../../../docs/features/README.md#공통-api-호출-규칙)
+- [모듈별 업무 흐름](../../../docs/features/README.md#기능-찾기)

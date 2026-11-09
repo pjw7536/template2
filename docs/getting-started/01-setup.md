@@ -191,11 +191,11 @@ Pod 상세·로그를 읽는 방법은 [Kubernetes 명령어 안내](../../deplo
 | 순서 | 할 일 | 상세 안내·완료 기준 |
 | --- | --- | --- |
 | 1 | 클러스터 준비 또는 기존 상태 확인 | [제어면 준비](../../deploy/shared/docs/kubernetes/control-plane.md) → [Worker 추가](../../deploy/shared/docs/kubernetes/worker.md), 노드 Ready 확인 |
-| 2 | 서버에 필요한 배포 파일 받기 | [선택 checkout](../../deploy/shared/docs/operations/checkout.md), 담당 앱·그룹 선택 |
+| 2 | 서버에 필요한 배포 파일 받기 | [선택 checkout](../../deploy/shared/docs/operations/01-checkout.md#선택-checkout), 담당 앱·그룹 선택 |
 | 3 | 공용 HTTPS 진입점·TLS·VIP 준비 | [Traefik 셋업](../../deploy/shared/docs/ingress/setup.md), 진입점 접속 확인 |
 | 4 | 앱별 이미지·env·DB·저장소 준비 | [환경설정](../../deploy/shared/docs/configuration/environment.md), 앱별 필수 입력 검사 |
-| 5 | 앱별 검사·배포 | [앱별 설치 순서](../../deploy/shared/docs/operations/applications.md), Portal은 client·migration 준비 후 배포 |
-| 6 | 로그인·기능·운영 확인 | [접속 검증](../../deploy/shared/docs/operations/verify.md), 각 앱의 실제 접속과 로그 확인 |
+| 5 | 앱별 검사·배포 | [앱별 설치 순서](../../deploy/shared/docs/operations/02-deploy.md#앱-의존-관계), Portal은 client·migration 준비 후 배포 |
+| 6 | 로그인·기능·운영 확인 | [접속 검증](../../deploy/shared/docs/operations/02-deploy.md#접속기능-검증), 각 앱의 실제 접속과 로그 확인 |
 
 `make server-check APP=<앱> PROFILE=prod`는 배포 파일 검사입니다. 실제 설치와 서비스 접속 확인은 해당 앱의 절차로 이어서 진행합니다.
 앱별 문서 목록과 운영 안내는 [서버 배포 문서 홈](../../deploy/README.md)에서 찾습니다.

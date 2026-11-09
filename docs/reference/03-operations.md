@@ -1,6 +1,6 @@
 # 관리·검사 명령
 
-[참고 자료](README.md) · [문서 홈](../README.md)
+[참고 자료](../README.md#설정명령) · [문서 홈](../README.md)
 
 이 문서는 개발 검사와 Django 관리 명령의 실행 조건·옵션·데이터 변경을 설명합니다.
 처음 실행은 [셋업 가이드](../getting-started/01-setup.md), 평소 시작·수정·검사·종료는 [자주 쓰는 명령](../getting-started/02-usage.md)을 먼저 확인합니다.
@@ -121,7 +121,7 @@ POST /api/v1/data-movement/station_master/load/
 모든 Airflow DAG는 `max_active_runs=1`로 같은 DAG의 실행 회차가 겹치지 않게 합니다.
 task별 `max_active_tasks`와 공용 pool은 지정하지 않으며 `default_pool`은 무제한 slots인 `-1`로 초기화합니다.
 pool 외의 task 동시 실행 수는 Airflow 기본 전역 설정을 따릅니다.
-테이블별 파일 패턴·DB 반영 방식·원천 시각 해석은 [Data Movement 적재 규칙](../modules/13-data-movement.md#테이블별-적재-규칙)을 따릅니다.
+테이블별 파일 패턴·DB 반영 방식·원천 시각 해석은 [Data Movement 적재 규칙](../features/13-data-movement.md#테이블별-적재-규칙)을 따릅니다.
 파일 적재 DAG는 코드에 고정된 `*/1 * * * *` schedule과 1800초 HTTP timeout을 사용합니다.
 처리량 제한과 dry-run payload만 Airflow 환경 변수로 조정합니다.
 
@@ -155,7 +155,7 @@ DATA_MOVEMENT_FILE_READY_STABILITY_SECONDS=1
 ### Data Movement FTP
 
 로컬 kind의 FTP와 API는 같은 호스트 데이터 폴더를 공유합니다. 운영은 API 볼륨과 노드 배치 또는 공유 저장소를 별도로 구성해야 합니다.
-환경별 경로·연결 조건과 파일 전달 규칙은 [Data Movement](../modules/13-data-movement.md#ftp),
+환경별 경로·연결 조건과 파일 전달 규칙은 [Data Movement](../features/13-data-movement.md#ftp),
 접속 주소·계정은 [로컬 안내](../../local/README.md#주소와-계정), 서버 입력은 [FTP 배포](../../deploy/ftp/README.md)를 따릅니다.
 
 ## Drone JSON/CSV target seed
@@ -291,4 +291,4 @@ make audit-docs
 | Observer 조회 실패 | `OBSERVER_QUERY_DAYS`, data movement 적재 상태, 기준 정보 endpoint |
 | 파일/이미지 실패 | MinIO env, bucket 접근, asset sequence |
 
-사내 서버는 [선택 체크아웃](../../deploy/shared/docs/operations/checkout.md) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.
+사내 서버는 [선택 체크아웃](../../deploy/shared/docs/operations/01-checkout.md#선택-checkout) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.

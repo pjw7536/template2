@@ -1,65 +1,35 @@
-# 프로젝트 문서 홈
+# 프로젝트 문서
 
-이 문서는 처음 참여하는 개발자가 실행 방법과 구조를 이해하고, 필요한 개발·참고 문서를 찾는 출발점입니다.
-처음 실행한다면 **[개발 시작 안내](getting-started/README.md)**에서 시작하세요.
+개발 PC 실행과 코드 수정은 이 문서에서, 서버 설치·운영은 [배포 안내](../deploy/README.md)에서 시작합니다.
 
-## 읽는 목적에 따라 선택하기
+## 시작과 구조
 
-| 순서 | 안내 | 여기서 알 수 있는 것 |
-| --- | --- | --- |
-| 1 | [시작하기](getting-started/README.md) | 준비 도구, 첫 실행·로그인, 일상 개발 명령 |
-| 2 | [개념 이해하기](concepts/README.md) | 서비스 관계, 요청·데이터 흐름, 저장소와 외부 연동 |
-| 3 | [개발하기](development/README.md) | 수정할 소스 찾기, Web·API 개발과 검증, 문서 작성 |
-| 4 | [참고 자료 찾기](reference/README.md) | 설정 이름, 실제 경로, 관리 명령, Kubernetes 조회 방법 |
-
-개별 기능은 [기능 안내](modules/README.md), 요청·응답은 [API 명세](api/README.md)에서 찾습니다.
-예를 들어 로그인 권한을 이해하려면 Auth·Account 기능 설명을, 클라이언트를 작성하려면 해당 API 명세를 읽습니다.
-
-## 지금 필요한 안내
-
-| 할 일 | 바로가기 |
+| 작업 | 문서 |
 | --- | --- |
-| 처음 기동하고 로그인하기 | [첫 셋업](getting-started/01-setup.md) |
-| 코드 변경을 실행 환경에 반영하기 | [일상 개발 명령](getting-started/02-usage.md#소스-수정-반영) |
-| 화면을 수정하기 | [Web 개발](development/01-frontend.md) |
-| API와 업무 로직을 수정하기 | [API 개발](development/02-backend.md) |
-| 포트·계정·로컬 데이터 위치 확인하기 | [로컬 실행 상세](../local/README.md) |
-| 로그인 또는 접근 거부 원인 찾기 | [셋업 문제 해결](getting-started/01-setup.md#막히는-지점별-확인), [Auth](modules/01-auth.md), [Account](modules/02-account.md) |
-| 서버에 설치·배포하기 | [서버 배포 안내](../deploy/README.md) |
-| 사내 서버 환경·구성·미러 확인하기 | [사내 인프라 정보](../deploy/shared/docs/infrastructure/README.md) |
-| AI 작업 규칙·검증 방법 찾기 | [에이전트 작업 안내](agent/README.md) |
+| 처음 실행·로그인 | [셋업](getting-started/01-setup.md) |
+| 기동·종료·소스 반영·검사 | [일상 명령](getting-started/02-usage.md) |
+| 서비스 관계·용어 | [아키텍처](concepts/01-architecture.md) |
+| 데이터 모델·저장 위치 | [데이터 모델](concepts/02-data-model.md) |
+| 인증·메일·AI·업무 시스템 연결 | [외부 연동](concepts/03-integrations.md) |
+| 기능·권한·처리 흐름·API | [기능별 문서](features/README.md) |
 
-## 문서 폴더 지도
+## 개발
 
-```text
-docs/
-├── getting-started/  처음 실행하는 절차와 일상 작업
-├── concepts/         전체 구조·데이터·연동 개념과 용어
-├── development/      소스 수정·검증·migration·문서 작성
-├── reference/        설정·경로·명령·Kubernetes 참고와 소유 영역 연결
-├── modules/          사용자 기능과 업무 흐름
-├── api/              API 호출 계약
-├── examples/         샘플 입력·HTML·이미지 자료
-└── agent/            에이전트 지침·평가·진행 중 계획
-```
-
-## 상세 문서의 소유 위치
-
-공통 개념과 개발 설명은 이 폴더에 둡니다. 소스 실행·배포·로컬 설정의 상세 절차는
-해당 파일을 소유한 영역에서 관리합니다.
-
-| 영역 | 시작점 |
+| 작업 | 문서 |
 | --- | --- |
-| Portal 소스 | [Portal 개발](../apps/portal/README.md) → [Web](../apps/portal/web/README.md) / [API](../apps/portal/api/README.md) |
-| Airflow 소스 | [DAG·이미지 개발](../apps/airflow/README.md) |
-| 개발 PC | [로컬 실행](../local/README.md), [플랫폼만 실행](../local/01-PLATFORM.md) |
-| 서버 배포 | [배포 문서 홈](../deploy/README.md) |
-| 공통 인프라 설치·운영·명령어 | [공통 배포 문서 색인](../deploy/shared/docs/README.md) |
-| 사내 서버 현황·미러 | [공통 관리 진입점](../deploy/shared/docs/infrastructure/README.md) |
-| 저장소 검사 | [검사 도구](../apps/tooling/README.md) |
+| 화면 수정 | [프론트엔드](development/01-frontend.md) |
+| API·업무 로직 수정 | [백엔드](development/02-backend.md) |
+| DB migration | [DB 적용 절차](development/03-migration-guide.md) |
+| 문서 수정 | [작성 기준](development/04-documentation.md) |
+| AI 작업·평가·Git 규칙 | [에이전트 안내](agent/README.md) |
 
-문서는 최신 소스와 설정을 기준으로 유지합니다. 완료된 작업 기록은 남기지 않습니다.
-문서를 추가하거나 옮길 때는 [문서 작성 안내](development/04-documentation.md)를 따릅니다.
+## 설정·명령
 
-문서 구조는 소유 영역별 원본을 유지하고 이 홈에서 연결하는 방식을 권장합니다.
-향후 Portal 전용 문서 이동 후보와 단계는 [소유권 중심 재구성 권고](development/04-documentation.md#소유권-중심-재구성-권고)에서 확인합니다.
+| 찾는 내용 | 문서 |
+| --- | --- |
+| 환경변수·입력 파일 | [환경 설정](reference/01-configuration.md) |
+| route·모델·관리 명령의 실제 경로 | [구현 색인](reference/02-inventory.md) |
+| 관리 명령·검사 옵션·장애 조회 | [명령 참고](reference/03-operations.md) |
+| 개발 PC 주소·계정·mock·데이터 | [local 안내](../local/README.md) |
+| 서버·VIP·미러·운영 위치 | [인프라 원본](../deploy/shared/docs/infrastructure/README.md) |
+| 샘플 입력·화면 자료 | [예제](examples/README.md) |

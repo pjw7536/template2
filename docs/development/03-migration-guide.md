@@ -10,7 +10,7 @@ Account 무결성 명령은 DB 정합성을 검사합니다. 로그인 권한은
 운영 API entrypoint는 migration을 자동 실행하지 않습니다. 신규 설치는 앱 시작 전에,
 기존 환경 갱신은 API와 관련 쓰기 작업을 중지한 상태에서 같은 배포 이미지로 migration을 실행합니다.
 먼저 [Portal 운영 배포](../../deploy/portal/k8s/overlays/prod/README.md)의 DB·Secret·이미지 입력을 준비합니다.
-실행 명령과 검사 Job 준비 방법의 원본은 서버 checkout에 포함되는 [운영 Migration 절차](../../deploy/portal/docs/03-deploy.md#3-migration)입니다.
+실행 명령과 검사 Job 준비 방법의 원본은 서버 checkout에 포함되는 [운영 Migration 절차](../../deploy/portal/docs/01-install.md#3-migration)입니다.
 
 ## 적용 순서
 

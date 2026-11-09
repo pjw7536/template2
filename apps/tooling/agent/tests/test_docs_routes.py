@@ -112,7 +112,7 @@ example = path("unused-example", ExampleView.as_view())
             feature = root / 'apps/portal/web/src/features/example/routes.jsx'
             feature.parent.mkdir(parents=True)
             feature.write_text('export const routes = []')
-            modules = root / 'docs/modules/README.md'
+            modules = root / 'docs/features/README.md'
             modules.parent.mkdir(parents=True)
             modules.write_text('example')
             self.assertEqual(len(audit.check_frontend_features(root)), 2)

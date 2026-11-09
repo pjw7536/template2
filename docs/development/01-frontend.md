@@ -7,13 +7,13 @@ Web은 사용자가 보는 화면과 조작을 담당합니다. 화면별 코드
 서버 데이터는 React Query가, 선택 행·열린 패널 같은 UI 상태는 컴포넌트나 기능 내부 Zustand가 관리합니다.
 
 구현에는 React 19·React Router 7·Vite 6·Tailwind CSS 4를 사용합니다.
-처음 보는 용어는 [용어 안내](../concepts/04-glossary.md)를 참고하세요.
+처음 보는 용어는 [용어 안내](../concepts/01-architecture.md#용어)를 참고하세요.
 
 ## 화면 하나를 수정하는 순서
 
 1. [화면 색인](../reference/02-inventory.md#프론트엔드-route)에서 URL에 대응하는 기능을 찾습니다.
 2. `apps/portal/web/src/features/<feature>/routes.jsx`에서 page를 찾고 UI·hook·API 호출을 확인합니다.
-3. 서버 요청을 바꾼다면 [해당 API 명세](../api/README.md)를 확인합니다.
+3. 서버 요청을 바꾼다면 [해당 API 명세](../features/README.md#공통-api-호출-규칙)를 확인합니다.
 4. [Web 실행 안내](../../apps/portal/web/README.md#실행하기)에서 통합 환경 또는 Vite 개발 서버를 선택합니다.
 5. [영역별 검사](../getting-started/02-usage.md#변경-영역별-검사)를 실행한 뒤 로딩·빈 결과·오류와 권한별 동작을 확인합니다.
 
@@ -71,7 +71,7 @@ Vite는 화면 변경을 바로 반영하지만 API·로그인 연결 설정이 
 
 대표적으로 `/login`은 Auth, `/emails/**`는 Emails, `/observer`는 Observer가 담당합니다.
 ESOP 대시보드는 `line-dashboard`, `/pm_spider`는 `pm-spider`에 대응하므로 URL과 폴더명이 항상 같지는 않습니다.
-기능의 목적과 권한은 [기능 안내](../modules/README.md)를 확인합니다.
+기능의 목적과 권한은 [기능 안내](../features/README.md#기능-찾기)를 확인합니다.
 
 ## API 호출 흐름
 
@@ -104,8 +104,8 @@ ESOP 대시보드는 `line-dashboard`, `/pm_spider`는 `pm-spider`에 대응하�
 
 ## 변경 시 갱신해야 하는 문서
 
-- route 추가/변경: `docs/reference/02-inventory.md`, `docs/development/01-frontend.md`, 해당 `docs/modules/*.md`
-- API client 변경: 해당 `docs/api/*.md`, 해당 `docs/modules/*.md`
+- route 추가/변경: `docs/reference/02-inventory.md`, `docs/development/01-frontend.md`, 해당 `docs/features/*.md`
+- API client 변경: 해당 `docs/features/*.md`
 - feature facade 변경: `docs/development/01-frontend.md`, 필요 시 boundary audit 결과
 - feature 간 import 정책 변경: `apps/portal/web/AGENTS.md`, `docs/concepts/01-architecture.md`, boundary audit script
-- 주요 화면 흐름 변경: 해당 `docs/modules/*.md`
+- 주요 화면 흐름 변경: 해당 `docs/features/*.md`

@@ -1,6 +1,6 @@
 # 인증서 서버 적용과 갱신
 
-[인증서 안내](README.md) · [원본 준비](prepare.md) · [추출·검증](extract.md) · [서버 적용](apply.md)
+[공통 배포](../README.md#https인증서) · [원본 준비](prepare.md) · [추출·검증](extract.md) · [서버 적용](apply.md)
 
 ## 2단계. 서버 적용
 
@@ -73,7 +73,7 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 성공 시 `공용 TLS 등록 완료`가 표시됩니다. 기존 Traefik이 있으면 인증서를 다시 읽도록 재시작합니다.
 앱별 인증서는 추가 등록하지 않습니다. 처음 전환하는 기존 설치는
-[공용 TLS 이전 순서](apply.md#기존-설치에서-이전)를 따릅니다.
+[공용 TLS 이전 순서](#기존-설치에서-이전)를 따릅니다.
 실제 HTTPS 반영은 2-4에서 확인합니다.
 
 ### 2-3. 최초 배포 시 앱 설치
@@ -95,8 +95,8 @@ make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 **갱신은 2-2의 공용 등록 명령으로 수행합니다.** TLS 갱신만 하는 경우 앱 전체를 다시 배포할 필요는 없습니다.
 
-Headlamp 최초 설치 중이라면 [TLS 준비](../../../headlamp/docs/03-tls.md)로 돌아갑니다.
-Headlamp 배포·접속 검사는 [배포와 검증](../../../headlamp/docs/06-deploy.md)에서만 진행합니다.
+Headlamp 최초 설치 중이라면 [TLS 준비](../../../headlamp/docs/01-prepare.md#tlsca-준비)로 돌아갑니다.
+Headlamp 배포·접속 검사는 [배포와 검증](../../../headlamp/docs/03-deploy.md)에서만 진행합니다.
 
 ### 2-4. 실제 제공되는 인증서 확인
 
@@ -141,7 +141,7 @@ HTTPS TLS Secret 등록과 Keycloak 로그인용 CA 등록은 별개입니다.
 Headlamp에서 Keycloak 로그인을 처음 설정하거나 CA가 바뀌었다면 아래 연결 문서를 이어서 진행합니다.
 CA가 그대로인 서버 인증서 갱신만 했다면 기존 OIDC용 CA 설정을 사용합니다.
 
-[Headlamp TLS 준비](../../../headlamp/docs/03-tls.md)의 명령으로 다음을 준비합니다.
+[Headlamp TLS 준비](../../../headlamp/docs/01-prepare.md#tlsca-준비)의 명령으로 다음을 준비합니다.
 
 - 입력: `ca/SECDS-T2RootCA.crt`, `ca/SECDS-T2IssuingCA.crt`
 - 생성 파일: `etch-sso.samsungds.net/keycloak-ca-bundle.pem`
@@ -149,7 +149,7 @@ CA가 그대로인 서버 인증서 갱신만 했다면 기존 OIDC용 CA 설정
 - API server: 같은 CA 묶음을 각 제어면에 배치·마운트하고 OIDC 인증 설정에 연결
 
 CA 교체 시에는 Headlamp와 각 API server의 신뢰 설정도 갱신해야 합니다.
-Headlamp 재시작·로그인 확인은 [운영 참고](../../../headlamp/docs/07-operations.md#재시작과-복구)를 따릅니다.
+Headlamp 재시작·로그인 확인은 [운영 참고](../../../headlamp/docs/04-operations.md#재시작과-복구)를 따릅니다.
 
 ## 기존 설치에서 이전
 
@@ -180,6 +180,6 @@ kubectl --context "$KUBE_CONTEXT" get ingress -A \
 ```
 
 인증서는 file provider로 로드하므로 Ingress의 TLS Secret 열이 비어 있는 것이 정상입니다.
-실제 인증서는 [인증서 응답 검증](apply.md#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
+실제 인증서는 [인증서 응답 검증](#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
 공식 계약: [Traefik 인증서와 SNI](https://doc.traefik.io/traefik/reference/routing-configuration/http/tls/tls-certificates/),
 [file provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/).

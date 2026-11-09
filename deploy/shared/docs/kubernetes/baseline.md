@@ -1,6 +1,6 @@
 # 현재 환경 확인
 
-[가이드 홈](README.md) · 이전: [용어](concepts.md) · 다음: [앱 준비](../operations/prepare.md)
+[가이드 홈](../README.md#클러스터) · 이전: [용어](concepts.md) · 다음: [앱 준비](../operations/02-deploy.md#배포-준비)
 
 기존 서버의 상태를 조회하는 단계입니다. 아래 명령은 설정을 변경하지 않습니다.
 명령이 없거나 권한이 부족하면 오류를 기록하고 담당자에게 확인을 요청합니다.
@@ -64,4 +64,4 @@ systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 비밀번호·토큰·kubeconfig 내용은 기록하지 않습니다.
 
 **다음 단계:** 확인한 기준으로 [CP1~3 셋업](control-plane.md) 또는 [Worker 추가](worker.md)를 진행합니다.
-이미 Ready인 클러스터의 앱 배포는 [앱 준비](../operations/prepare.md)로 이동합니다.
+이미 Ready인 클러스터의 앱 배포는 [앱 준비](../operations/02-deploy.md#배포-준비)로 이동합니다.

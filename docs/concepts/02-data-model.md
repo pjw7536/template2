@@ -50,7 +50,7 @@
 
 Data Movement는 `m_tkin_prevent`, `ctttm_workorder_list`, `ct_process_comment`, `eqp_status_chg`,
 `m_interlock`, `mi_tip_update_hist`, `racb_list`, `mes_line_mapping_info`, `station_master`를 적재합니다.
-전체 교체·증분 갱신·기간 제한은 [테이블별 적재 규칙](../modules/13-data-movement.md#테이블별-적재-규칙)에 있습니다.
+전체 교체·증분 갱신·기간 제한은 [테이블별 적재 규칙](../features/13-data-movement.md#테이블별-적재-규칙)에 있습니다.
 
 ## 모델이 없는 app
 

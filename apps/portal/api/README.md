@@ -60,10 +60,10 @@ docker compose --project-name tailwind-k8s-check --env-file local/shared/runtime
 
 ## 더 읽을 문서
 
-- [전체 구조](../../../docs/concepts/01-architecture.md)
+- [전체 구조](../../../docs/concepts/01-architecture.md#서비스-구성)
 - [백엔드 상세 구조](../../../docs/development/02-backend.md)
 - [실제 API route·model·command 색인](../../../docs/reference/02-inventory.md)
 - [데이터 모델](../../../docs/concepts/02-data-model.md)과 [환경 설정](../../../docs/reference/01-configuration.md)
-- [API 공통 규칙과 모듈별 호출 계약](../../../docs/api/README.md)
-- [모듈별 기능과 동작](../../../docs/modules/README.md)
+- [API 공통 규칙과 모듈별 호출 계약](../../../docs/features/README.md#공통-api-호출-규칙)
+- [모듈별 기능과 동작](../../../docs/features/README.md#기능-찾기)
 - [운영 절차](../../../docs/reference/03-operations.md)와 [외부 연동](../../../docs/concepts/03-integrations.md)

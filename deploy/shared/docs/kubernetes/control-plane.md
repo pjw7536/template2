@@ -1,6 +1,6 @@
 # CP1~3 셋업
 
-[가이드 홈](README.md) · [Traefik 셋업](../ingress/setup.md) · [Worker 추가](worker.md)
+[가이드 홈](../README.md#클러스터) · [Traefik 셋업](../ingress/setup.md) · [Worker 추가](worker.md)
 
 목표는 **CP1에서 첫 제어면을 만들고 CP2·CP3를 같은 클러스터에 가입시키는 것**입니다.
 이미 CP1~3가 운영 중이면 아래 조회만 수행하고 필요한 작업 문서로 이동합니다.

@@ -1,6 +1,6 @@
 # 샘플 입력과 화면 참고
 
-[참고 자료](../reference/README.md) · [기능 안내](../modules/README.md)
+[참고 자료](../README.md#설정명령) · [기능 안내](../features/README.md#기능-찾기)
 
 | 자료 | 용도 |
 | --- | --- |
@@ -11,4 +11,4 @@
 
 Drone 샘플은 [관리 명령의 dry-run 예시](../reference/03-operations.md#drone-jsoncsv-target-seed)로 확인합니다.
 실제 사용에는 현재 대상 정보와 파일 경로를 적용합니다. L3의 현재 기능·권한·API 계약은
-[L3 기능 안내](../modules/08-l3-spider.md)와 [API 명세](../api/08-l3-spider.md)를 기준으로 확인합니다.
+[L3 기능 안내](../features/08-l3-spider.md#기능과-흐름)와 [API 명세](../features/08-l3-spider.md#api)를 기준으로 확인합니다.
