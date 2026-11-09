@@ -17,13 +17,13 @@
 ### 1. 실제 env와 이미지 준비
 
 SSO 코드를 포함한 Airflow 3.3.2 이미지를 새 고유 태그로 빌드합니다.
-Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값을 입력합니다. 실제 비밀값은 이 문서에 복사하지 않습니다.
+Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값을 입력합니다. Airflow의 DB·Fernet 키·OIDC client secret은 이 문서에 복사하지 않습니다.
 기존 DB·Fernet 키·관리자 API 계정은 유지합니다.
 
 | 키 | 입력 |
 | --- | --- |
 | `AIRFLOW_AUTH_MODE` | `keycloak` |
-| `AIRFLOW_OIDC_ISSUER` | 기존 realm의 공개 HTTPS issuer, 끝은 `/realms/<realm>` |
+| `AIRFLOW_OIDC_ISSUER` | `https://etch-sso.samsungds.net/realms/etch` |
 | `AIRFLOW_OIDC_CLIENT_ID` | `airflow` |
 | `AIRFLOW_OIDC_CLIENT_SECRET` | 신규 client용 강한 비밀값. 기존 client가 있으면 기존 secret |
 | `AIRFLOW_OIDC_BACKCHANNEL_BASE_URL` | Pod 접근용 realm URL, 비우면 issuer 사용 |
@@ -58,15 +58,23 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 기존 Client secret을 확인해 env에 입력합니다. 기존 client의 secret은 재생성하지 않습니다.
 
 저장소 루트에서 실행합니다. Python 표준 라이브러리와 기존 Keycloak 관리자 계정이 필요합니다.
-관리자 API URL은 HTTPS 주소 또는 명시적으로 준비한 localhost port-forward 주소입니다.
+기본 관리자 입력은 [Keycloak 서버 env](../../keycloak/env/prod.env)의 현재 선언을 사용합니다.
+
+| 실행 입력 | 현재 선언 | 설정 원본·확인 범위 |
+| --- | --- | --- |
+| `KEYCLOAK_ADMIN_URL` | `https://etch-sso.samsungds.net` | `keycloak-public-url`. 실제 CP1 접속·TLS 검증은 별도 확인 |
+| `KEYCLOAK_ADMIN_USERNAME` | `etch-admin` | `bootstrap-admin-username`. 초기 관리자 선언이며 기존 서버에서 계정을 변경했다면 실제 관리자 계정 사용 |
+| `KEYCLOAK_ADMIN_PASSWORD` | 아래 명령에 사용자 확인값 명시 | Keycloak 관리자 비밀번호. Airflow 관리자 비밀번호·OIDC client secret과 구분. 실제 서버 인증 성공은 별도 확인 |
+| `KEYCLOAK_ADMIN_CA_BUNDLE` | 필요한 경우에만 지정 | CP1의 실제 CA 파일 경로는 미확인. Airflow Pod 내부 CA 경로와 구분 |
+
+관리자 API URL은 위 HTTPS 주소 또는 명시적으로 준비한 localhost port-forward 주소입니다.
 base URL에는 `/realms/etch`나 `/admin`을 붙이지 않습니다.
-아래 환경변수는 실행 프로세스 입력이며 Git 추적 파일에 보관하지 않습니다.
+아래 환경변수는 실행 프로세스 입력입니다. 관리자 비밀번호는 사용자 확인값이며, 서버에서 변경했다면 해당 값을 사용합니다.
 
 ```bash
-read -r -p 'Keycloak 관리자 API base URL: ' KEYCLOAK_ADMIN_URL
-read -r -p 'Keycloak 관리자 계정: ' KEYCLOAK_ADMIN_USERNAME
-read -r -s -p 'Keycloak 관리자 비밀번호: ' KEYCLOAK_ADMIN_PASSWORD
-export KEYCLOAK_ADMIN_URL KEYCLOAK_ADMIN_USERNAME KEYCLOAK_ADMIN_PASSWORD
+export KEYCLOAK_ADMIN_URL=https://etch-sso.samsungds.net
+export KEYCLOAK_ADMIN_USERNAME=etch-admin
+export KEYCLOAK_ADMIN_PASSWORD='dkssud123!'
 # 실행 호스트에 사내 CA가 필요하면 KEYCLOAK_ADMIN_CA_BUNDLE에 실제 파일 경로를 export합니다.
 make airflow-keycloak-client
 unset KEYCLOAK_ADMIN_PASSWORD
@@ -88,9 +96,9 @@ Authorization Code + PKCE S256, RS256 ID Token, profile·email scope와 전용 c
 기존 [배포 흐름](#배포와-검증)에 같은 운영 env를 전달합니다.
 
 ```bash
-python3 deploy/airflow/scripts/manage.py check --env /절대경로/k8s.env --pause-new-dags
-make airflow-check AIRFLOW_ENV=/절대경로/k8s.env KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
-make airflow-up AIRFLOW_ENV=/절대경로/k8s.env KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
+python3 deploy/airflow/scripts/manage.py check --env deploy/airflow/env/k8s.env --pause-new-dags
+make airflow-check AIRFLOW_ENV=deploy/airflow/env/k8s.env KUBE_CONTEXT=kubernetes-admin@kubernetes
+make airflow-up AIRFLOW_ENV=deploy/airflow/env/k8s.env KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
 Airflow 로그인 화면의 Keycloak 버튼으로 로그인합니다. 기본 사용자의 DAG 조회·관리 작업 거부,
@@ -127,7 +135,7 @@ DB·Fernet 키·기존 API 계정을 초기화하지 않습니다. 서버 env·c
 
 | 단계 | 실행 목적 | 변경 대상 | 완료 기준 |
 | --- | --- | --- | --- |
-| 0 | 대상 context 선택 | 셸 변수 | 의도한 클러스터의 노드 조회 |
+| 0 | 대상 context 선택 | 없음 | 의도한 클러스터의 노드 조회 |
 | 1 | 설정·chart 검사 | 없음 | 정적 검사 통과 |
 | 2 | manifest 검토 | 로컬 rendered 파일 | 노드·이미지·디스크·Ingress가 의도와 일치 |
 | 3 | 클러스터 사전 검사 | 없음 | 버전·노드·기존 비밀값 검사 통과, Ingress 사용 시 Traefik·TLS 확인 |
@@ -139,15 +147,15 @@ DB·Fernet 키·기존 API 계정을 초기화하지 않습니다. 서버 env·c
 
 ### 0. 대상 context 선택
 
+가이드의 서버 context는 `kubernetes-admin@kubernetes`입니다. 다른 context를 쓰면 명령의 이름을 해당 값으로 바꿉니다.
+
 ```bash
 kubectl config get-contexts
-read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" get node khinfow01 -o wide
+kubectl --context kubernetes-admin@kubernetes get nodes -L kubernetes.io/hostname
+kubectl --context kubernetes-admin@kubernetes get node khinfow01 -o wide
 ```
 
 현재 기본 context에 의존하지 않도록 이후 명령에도 context를 명시합니다.
-새 터미널을 열면 이 단계를 다시 수행합니다.
 Airflow 배포 대상은 [서버 목록](../../shared/docs/infrastructure/servers.md#서버-목록)의 `khinfow01`입니다.
 클러스터 Worker 추가는 사용자 확인이며, 위 조회로 선택한 context의 노드명·InternalIP·Ready를 대조합니다.
 Airflow의 실제 배포 적용은 별도 확인이 필요합니다.
@@ -187,7 +195,7 @@ Secret 값은 출력에 포함하지 않습니다. **`airflow.yaml`을 직접 ku
 ### 3. 클러스터 사전 검사
 
 ```bash
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
+make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
 이 단계에서 확인하는 항목은 다음과 같습니다.
@@ -206,7 +214,7 @@ make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
 `make ingress-up`으로 공용 인증서 마운트를 반영합니다.
 
 ```bash
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
+make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
 이전 설치의 인증서를 가져올 때는 `AIRFLOW_TLS_SOURCE=namespace/secret`도 사용할 수 있습니다.
@@ -216,13 +224,13 @@ Airflow namespace에 복제하지 않습니다. 이미 등록했다면 TLS sourc
 ### 4. 실제 배포
 
 ```bash
-make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
+make airflow-up KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
 3단계에서 TLS source를 지정했다면 위 명령 대신 다음 명령을 사용합니다.
 
 ```bash
-make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls
+make airflow-up KUBE_CONTEXT=kubernetes-admin@kubernetes AIRFLOW_TLS_SOURCE=headlamp/headlamp-tls
 ```
 
 Ingress 사용 시 namespace·TLS·공용 Traefik의 감시 권한을 준비한 뒤 Airflow를 배포합니다.
@@ -242,9 +250,9 @@ Keycloak과 Keycloak DB는 재배포하지 않습니다. 공용 Traefik의 설�
 ### 5. 접속과 연동 확인
 
 ```bash
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods,pvc -o wide
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get ingress
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow port-forward svc/airflow-api-server 8080:8080
+kubectl --context kubernetes-admin@kubernetes -n airflow get pods,pvc -o wide
+kubectl --context kubernetes-admin@kubernetes -n airflow get ingress
+kubectl --context kubernetes-admin@kubernetes -n airflow port-forward svc/airflow-api-server 8080:8080
 ```
 
 port-forward는 터미널을 점유하며 Ctrl+C로 종료합니다. 같은 컴퓨터의 브라우저에서
@@ -282,7 +290,7 @@ controller·라우팅·TLS Secret·imagePullSecret·ODBC Secret을 먼저 준비
 
 ```bash
 python3 deploy/airflow/scripts/manage.py deploy \
-  --env deploy/airflow/env/k8s.env --context "$AIRFLOW_KUBE_CONTEXT" \
+  --env deploy/airflow/env/k8s.env --context kubernetes-admin@kubernetes \
   --pause-new-dags
 ```
 
@@ -304,9 +312,8 @@ CPU·메모리 제한은 실제 작업량과 서버 사양에 맞춰 조정합�
 저장소 루트의 Bash에서 실행합니다. 이 두 명령은 최초 env·chart·이미지·디스크 준비를 대신하지 않습니다.
 
 ```bash
-read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
-make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
+make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
+make airflow-up KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
 두 명령의 역할은 다음과 같습니다.

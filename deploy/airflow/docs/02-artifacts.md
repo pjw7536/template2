@@ -316,9 +316,10 @@ SSH 계정·포트와 CP1에서의 접근 가능 여부는 별도로 확인합�
 
 CP1의 같은 Bash 터미널에서 실행합니다.
 이미지 이름은 `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 일치해야 합니다.
+아래 이름은 [현재 서버 env](../env/k8s.env)의 선언이며, 빌드 태그를 바꿨다면 같은 값으로 수정합니다.
 
 ```bash
-read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
+AIRFLOW_IMAGE_REF=airflow:3.3.2-release-1
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default image inspect "$AIRFLOW_IMAGE_REF"
 
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default save \
@@ -339,22 +340,24 @@ Docker로 빌드했다면 같은 빌드 계정에서 `docker image inspect`, `do
 
 **2. CP1에서 Worker로 파일 복사·접속**
 
-CP1의 같은 터미널에서 Worker SSH 주소를 `계정@호스트명` 또는 `계정@IP` 형식으로 입력합니다.
+CP1의 같은 터미널에서 Worker SSH 계정을 입력합니다.
+아래 전송 대상은 [서버 목록](../../shared/docs/infrastructure/servers.md#서버-목록)의
+`khinfow01` 주소 `10.172.117.91`입니다. 배포 대상을 변경했다면 주소도 함께 수정합니다.
 포트는 실제 SSH 포트를 입력하며, 기본 포트를 쓰는 경우 Enter로 22를 선택합니다.
 
 ```bash
-read -r -p 'Worker SSH 주소(user@host): ' AIRFLOW_WORKER_SSH
+read -r -p 'Worker SSH 계정: ' AIRFLOW_WORKER_USER
 read -r -p 'Worker SSH 포트 [22]: ' AIRFLOW_WORKER_PORT
 AIRFLOW_WORKER_PORT="${AIRFLOW_WORKER_PORT:-22}"
 
 scp -P "$AIRFLOW_WORKER_PORT" /tmp/airflow-image.tar \
-  "${AIRFLOW_WORKER_SSH}:/tmp/airflow-image.tar"
+  "${AIRFLOW_WORKER_USER}@10.172.117.91:/tmp/airflow-image.tar"
 ```
 
 전송이 성공한 뒤 해당 Worker에 접속합니다. SCP의 포트 옵션은 대문자 `-P`, SSH는 소문자 `-p`입니다.
 
 ```bash
-ssh -p "$AIRFLOW_WORKER_PORT" "$AIRFLOW_WORKER_SSH"
+ssh -p "$AIRFLOW_WORKER_PORT" "${AIRFLOW_WORKER_USER}@10.172.117.91"
 ```
 
 SCP를 사용할 수 없는 환경에서는 승인된 전송 수단으로 같은 파일을 Worker에 복사합니다.
@@ -403,7 +406,7 @@ ODBC 기본 방식은 기존 디렉터리 전체를 같은 노드에서 읽기 �
 
 Secret 방식을 사용하려면 `ODBC_HOST_PATH=`로 비우고 기존 namespace Secret 이름을
 `ODBC_SECRET_NAME`에 지정합니다. 두 방식을 동시에 지정하면 설정 검사에서 중단합니다.
-namespace는 `kubectl --context "$AIRFLOW_KUBE_CONTEXT" create namespace airflow`로 미리 만들 수 있습니다.
+namespace는 `kubectl --context kubernetes-admin@kubernetes create namespace airflow`로 미리 만들 수 있습니다.
 
 완료 기준: `ODBC_HOST_PATH`를 사용하면 선택한 Worker에 실제 설정 파일이 있고 UID 50000이 읽을 수 있어야 합니다.
 Secret 방식이면 `NAMESPACE`와 동일한 namespace에 참조 Secret이 있어야 합니다.

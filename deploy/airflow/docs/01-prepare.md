@@ -32,11 +32,11 @@ chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
 [Worker 추가](../../shared/docs/kubernetes/worker.md)의 준비·가입·검증을 먼저 진행합니다.
 이 도구는 Kubernetes 자체나 Ingress controller를 설치하지 않습니다.
 Ingress 없이도 port-forward로 UI에 접속할 수 있습니다.
+가이드의 서버 context는 `kubernetes-admin@kubernetes`입니다. 다른 context를 쓰면 명령의 이름을 해당 값으로 바꿉니다.
 
 ```bash
 kubectl config get-contexts
-read -r -p '배포할 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
+kubectl --context kubernetes-admin@kubernetes get nodes -L kubernetes.io/hostname
 ```
 
 다음 명령도 **저장소가 있는 실행 호스트**에서 수행합니다.
@@ -44,14 +44,13 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" get nodes -L kubernetes.io/hostname
 ```bash
 python3 --version
 helm version --short
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" version
+kubectl --context kubernetes-admin@kubernetes version
 ```
 
 완료 기준: 선택한 context의 노드를 조회할 수 있고 도구·클러스터가 위 최소 버전을 충족해야 합니다.
 `NODE_NAME`에는 노드 이름을 추측해서 넣지 말고 출력된 `kubernetes.io/hostname` 값을 사용합니다.
 Keycloak·MinIO 등 다른 앱의 배포 원본과 실제 Pod 배치를 [클러스터 구성 안내](../../shared/docs/infrastructure/README.md)에서 확인합니다.
 Airflow는 자원·디스크·ODBC 접근과 다른 앱의 배치 조건을 만족하는 Worker를 선택합니다.
-새 터미널에서는 context 변수를 다시 입력합니다.
 
 ### 2. 배포 설정 준비
 
@@ -128,16 +127,18 @@ chmod 600 deploy/airflow/env/k8s.env
 일반 설정은 그대로 보존합니다.
 
 키 준비 후에는 다음 값을 실제 환경에 맞게 편집합니다.
+아래 현재 값은 [서버 env](../env/k8s.env)의 선언이며 실제 서버 적용·접속 확인과 구분합니다.
 
-- `NODE_NAME`: 노드의 `kubernetes.io/hostname` label 값. Airflow Pod와 내부 DB·local PV가 이 노드에 묶입니다.
-- `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`: 배포할 DAG 포함 이미지. 매 배포마다 고유 태그를 사용합니다.
+- `NODE_NAME`: 현재 `khinfow01`. 노드의 `kubernetes.io/hostname` label 값이며 Airflow Pod와 내부 DB·local PV가 이 노드에 묶입니다.
+- `AIRFLOW_IMAGE_REPOSITORY`, `AIRFLOW_IMAGE_TAG`: 현재 `airflow:3.3.2-release-1`. 배포할 DAG 포함 이미지이며 매 배포마다 고유 태그를 사용합니다.
 - `POSTGRES_IMAGE`: 기존 사내 PostgreSQL 16 이미지 주소가 기본 입력되어 있습니다. mirror가 바뀐 경우에만 수정합니다.
 - `POSTGRES_UID`, `POSTGRES_GID`: 해당 이미지 사용자 UID/GID. 공식 Debian 이미지 기본값은 999/999입니다.
 - `ODBC_HOST_PATH`: 서버의 ODBC 설정 디렉터리 절대 경로. 기본 예시는 `/appdata/airflow/odbc`입니다.
-- `AIRFLOW_ADMIN_EMAIL`: 실제 관리자 이메일. 생성된 관리자 비밀번호는 `k8s.env`에서 확인합니다.
-- `AIRFLOW_API_BASE_URL`: Airflow DAG가 호출하는 Portal API 주소. 다른 namespace라면 Service DNS를 수정합니다.
+- `AIRFLOW_ADMIN_USERNAME`: 현재 `airflow`. 초기 관리자·API 계정이며 Keycloak 관리자 `etch-admin`과 구분합니다.
+- `AIRFLOW_ADMIN_EMAIL`: 현재 `admin@admin.com`. 관리자 계정 식별용 선언이며 수신 가능한 실제 메일함인지 확인해 수정합니다. 생성된 관리자 비밀번호는 `k8s.env`에서 확인합니다.
+- `AIRFLOW_API_BASE_URL`: 현재 `http://api.tailwind-internal.svc.cluster.local:8000`. Airflow DAG가 호출하는 Portal API 주소이며 다른 namespace라면 Service DNS를 수정합니다.
 - `AIRFLOW_TRIGGER_TOKEN`: `k8s.env`에 넣습니다. Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.
-- `AIRFLOW_WEBSERVER_BASE_URL`: `/airflow`로 끝나는 접속 URL. port-forward 접속 예시는 `http://localhost:8080/airflow`입니다.
+- `AIRFLOW_WEBSERVER_BASE_URL`: 현재 `https://etch.samsungds.net/airflow`. `/airflow`로 끝나는 접속 URL이며 port-forward 접속 예시는 `http://localhost:8080/airflow`입니다.
 - `AIRFLOW_WEBSERVER_SECRET_KEY`: API server의 세션과 JWT 서명에 사용하는 고정 비밀값입니다. `airflow-api-key`·`airflow-api-jwt` Secret으로 전달하며 모든 구성 요소가 같은 값을 사용합니다.
 
 실패 알림은 아래 [메신저·메일 실패 알림](#메신저메일-실패-알림)에 따라 같은 파일의 채널별 입력을 채웁니다.
@@ -244,7 +245,7 @@ Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`를 매번 전달합니
 ```bash
 read -r -p '사용할 env 절대 경로: ' AIRFLOW_ENV_FILE
 python3 deploy/airflow/scripts/manage.py check --env "$AIRFLOW_ENV_FILE" --pause-new-dags
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT" AIRFLOW_ENV="$AIRFLOW_ENV_FILE"
+make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes AIRFLOW_ENV="$AIRFLOW_ENV_FILE"
 ```
 
 실제 값 검사는 [차트 준비](02-artifacts.md) 이후 실행합니다. 위 두 명령은 설정이나 클러스터를 변경하지 않습니다.

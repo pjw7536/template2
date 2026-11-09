@@ -2,15 +2,15 @@
 
 [시작 안내](../README.md) · 이전: [단계별 실행](03-deploy.md#배포와-검증)
 
-명령은 저장소 루트에서 실행합니다. 새 터미널에서는 context를 다시 입력합니다.
+명령은 저장소 루트에서 실행하며 서버 context는 `kubernetes-admin@kubernetes`입니다.
+다른 context를 쓰면 명령의 이름을 해당 값으로 바꿉니다.
 최초 설치는 새 DB를 준비하고, 운영 데이터를 옮겨야 하는 경우에만 2절의 DB 이전 절차를 사용합니다.
 최초 설치는 [서버 준비](01-prepare.md#서버-준비)부터 진행하고, 설치 후에는 이 문서의 백업·업데이트 절차를 사용합니다.
 아래 DB 백업과 이전 예시는 `POSTGRES_MODE=internal`, namespace·DB·사용자 `airflow` 기준입니다.
 외부 DB는 해당 DB 운영 절차로 백업·복원하고 내부 StatefulSet 명령을 사용하지 않습니다.
 
 ```bash
-read -r -p '운영 Kubernetes context: ' AIRFLOW_KUBE_CONTEXT
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods
+kubectl --context kubernetes-admin@kubernetes -n airflow get pods
 ```
 
 ## Fernet Secret 복원과 배포 사전 검사
@@ -55,7 +55,7 @@ chmod 700 deploy/airflow/backups
   set -eu
   umask 077
   backup_file="deploy/airflow/backups/airflow-$(date +%Y%m%d-%H%M%S).dump"
-  kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow exec airflow-postgres-0 -- \
+  kubectl --context kubernetes-admin@kubernetes -n airflow exec airflow-postgres-0 -- \
     sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h 127.0.0.1 -U airflow -d airflow -Fc' \
     > "$backup_file.partial"
   mv "$backup_file.partial" "$backup_file"
@@ -114,9 +114,9 @@ Docker를 쓰는 빌드 호스트에서는 `--builder docker`를 사용합니다
 다른 env 파일을 쓴다면 빌드와 Makefile 명령에도 같은 파일을 지정합니다.
 
 ```bash
-make airflow-check KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
-make airflow-up KUBE_CONTEXT="$AIRFLOW_KUBE_CONTEXT"
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods -o wide
+make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
+make airflow-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+kubectl --context kubernetes-admin@kubernetes -n airflow get pods -o wide
 ```
 
 완료 기준: 새 이미지의 Pod가 Ready이고 UI에서 DAG 로딩 오류·Portal 연동·기존 Connection을 확인해야 합니다.
@@ -127,18 +127,18 @@ kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods -o wide
 먼저 읽기 전용 명령으로 상태와 로그를 확인합니다.
 
 ```bash
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get pods,pvc,jobs
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow get events --sort-by=.lastTimestamp
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-scheduler --tail=100
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-api-server --tail=100
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-dag-processor --tail=100
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs deployment/airflow-triggerer --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow get pods,pvc,jobs
+kubectl --context kubernetes-admin@kubernetes -n airflow get events --sort-by=.lastTimestamp
+kubectl --context kubernetes-admin@kubernetes -n airflow logs deployment/airflow-scheduler --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow logs deployment/airflow-api-server --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow logs deployment/airflow-dag-processor --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow logs deployment/airflow-triggerer --tail=100
 ```
 
 내부 DB를 사용하면 추가로 확인합니다.
 
 ```bash
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs statefulset/airflow-postgres --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow logs statefulset/airflow-postgres --tail=100
 ```
 
 | 증상 | 확인할 항목 | 다음 조치 |
@@ -157,7 +157,7 @@ Job 상세 로그는 `get jobs`에서 확인한 이름으로 조회합니다.
 
 ```bash
 read -r -p '확인할 Job 이름: ' AIRFLOW_JOB_NAME
-kubectl --context "$AIRFLOW_KUBE_CONTEXT" -n airflow logs "job/$AIRFLOW_JOB_NAME" --all-containers=true --tail=100
+kubectl --context kubernetes-admin@kubernetes -n airflow logs "job/$AIRFLOW_JOB_NAME" --all-containers=true --tail=100
 ```
 
 실패 원인을 고친 뒤 check → up 순서로 재실행합니다. 배포 실패 시 자동 DB rollback은 수행되지 않습니다.
