@@ -31,6 +31,8 @@ def settings():
         'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow',
         'AIRFLOW_ADMIN_EMAIL': 'airflow@test.invalid',
         'AIRFLOW_OIDC_CLIENT_SECRET': 'fixture-oidc-secret-0123456789',
+        # 선택 CA 마운트는 개별 테스트에서 지정하며 운영 env의 기본값과 분리한다.
+        'AIRFLOW_OIDC_CA_BUNDLE': '', 'AIRFLOW_OIDC_CA_CONFIGMAP': '',
         **deploy.MAIL_DEFAULTS,
         **{key: 'fixture-credential-0123456789' for key in deploy.SECRET_KEYS},
         'AIRFLOW_FERNET_KEY': base64.urlsafe_b64encode(b'x' * 32).decode(),
