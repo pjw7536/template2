@@ -30,7 +30,7 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   const env = path.join(directory, 'headlamp.env');
   fs.writeFileSync(env, [
     'HEADLAMP_REGISTRY=mirror.example.test/ghcr',
-    'HEADLAMP_HOST=ui.example.test', 'HEADLAMP_TLS_SECRET=headlamp-tls',
+    'HEADLAMP_HOST=ui.example.test',
     'HEADLAMP_OIDC_ISSUER_URL=https://sso.example.test/realms/etch',
     'HEADLAMP_OIDC_CLIENT_ID=headlamp', 'HEADLAMP_OIDC_SECRET=headlamp-oidc',
     'HEADLAMP_OIDC_CA_CONFIGMAP=headlamp-ca', '',
@@ -46,7 +46,7 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   assert.doesNotMatch(JSON.stringify(pod), /unsafe-use-service-account-token/);
   assert.deepEqual(pod.containers[0].envFrom, [{ secretRef: { name: 'headlamp-oidc' } }]);
   const envMap = Object.fromEntries(pod.containers[0].env.map(item => [item.name, item.value]));
-  assert.equal(envMap.OIDC_CALLBACK_URL, 'https://ui.example.test/headlamp/oidc-callback');
+  assert.equal(envMap.OIDC_CALLBACK_URL, 'https://ui.example.test/oidc-callback');
   assert.equal(envMap.OIDC_ISSUER_URL, 'https://sso.example.test/realms/etch');
   assert.equal(envMap.OIDC_CLIENT_SECRET, undefined);
   assert.equal(envMap.OIDC_USE_PKCE, 'true');
@@ -74,5 +74,5 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   assert.equal(ingress.spec.tls, undefined);
   assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
   assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.tls'], 'true');
-  assert.equal(ingress.spec.rules[0].http.paths[0].path, '/headlamp');
+  assert.equal(ingress.spec.rules[0].http.paths[0].path, '/');
 });

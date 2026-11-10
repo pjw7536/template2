@@ -12,7 +12,7 @@ class OidcDeploymentTests(unittest.TestCase):
         result = settings()
         result.update(AIRFLOW_AUTH_MODE='keycloak', AIRFLOW_OIDC_ISSUER='https://sso.test/realms/main',
                       AIRFLOW_OIDC_CLIENT_SECRET='unique-client-secret-0123456789',
-                      AIRFLOW_WEBSERVER_BASE_URL='https://airflow.test/airflow')
+                      AIRFLOW_WEBSERVER_BASE_URL='https://airflow.test')
         return result
 
     def test_https_required_and_local_exception_is_explicit(self):
@@ -51,7 +51,7 @@ class OidcDeploymentTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         client = module.client_definition(self.values())
-        self.assertEqual(client['redirectUris'], ['https://airflow.test/airflow/auth/oauth-authorized/keycloak'])
+        self.assertEqual(client['redirectUris'], ['https://airflow.test/auth/oauth-authorized/keycloak'])
         self.assertEqual(client['attributes']['pkce.code.challenge.method'], 'S256')
         self.assertFalse(client['directAccessGrantsEnabled'])
         self.assertFalse(client['serviceAccountsEnabled'])

@@ -13,20 +13,23 @@ TLS Secret은 Kubernetes가 사용할 인증서와 개인키를 저장하는 리
 
 ### 2-1. 적용할 사이트와 대상 클러스터 선택
 
-다음 두 블록 중 **적용할 사이트 하나만** 실행합니다. 두 사이트에 적용하려면 2단계를 각각 실행합니다.
+사용할 인증서 원본 폴더를 선택하고 실제 등록할 공개 host를 지정합니다.
+하나의 SAN 인증서가 여러 앱을 포함해도 host별 등록을 반복합니다.
 
-Keycloak:
+별도 SSO 인증서를 사용하는 경우:
 
 ```bash
-CERT_SITE=etch-sso.samsungds.net
+CERT_SITE=sso.etch.samsungds.net
+TLS_HOST=sso.etch.samsungds.net
 TLS_NAMESPACE=etch-sso
 TLS_SECRET=traefik-tls
 ```
 
-Headlamp:
+공용 SAN 인증서를 사용하는 경우:
 
 ```bash
 CERT_SITE=etch.samsungds.net
+read -r -p '등록할 공개 host: ' TLS_HOST
 TLS_NAMESPACE=etch-sso
 TLS_SECRET=traefik-tls
 ```
@@ -45,14 +48,16 @@ read -r -p '대상 context 이름: ' KUBE_CONTEXT
 export KUBE_CONTEXT
 ```
 
-두 도메인 모두 같은 공용 Secret을 사용합니다. 각 앱 Ingress에는 Secret 이름을 지정하지 않습니다.
-MinIO만 설치하면 업무 도메인 인증서만 준비해도 됩니다. Keycloak을 연결할 때 SSO 도메인 인증서를 추가합니다.
+모든 앱은 같은 공용 Secret을 사용하며 Ingress에는 Secret 이름을 지정하지 않습니다.
+`CERT_SITE`는 인증서 원본 폴더, `TLS_HOST`는 SAN에 포함되어야 하는 실제 공개 host입니다.
+예를 들어 공용 SAN 인증서로 Headlamp를 제공할 때 `CERT_SITE=etch.samsungds.net`,
+`TLS_HOST=headlamp.etch.samsungds.net`을 사용합니다. 주소 목록은 [서비스 원본](../infrastructure/services.md#공개-도메인과-인증)을 따릅니다.
 
-등록 전에 선택한 대상과 파일 경로를 한 번 확인합니다.
+등록 전에 선택한 공개 host와 원본 파일 경로를 한 번 확인합니다.
 
 ```bash
 printf '도메인: %s\ncontext: %s\nnamespace: %s\nSecret: %s\n' \
-  "$CERT_SITE" "$KUBE_CONTEXT" "$TLS_NAMESPACE" "$TLS_SECRET"
+  "$TLS_HOST" "$KUBE_CONTEXT" "$TLS_NAMESPACE" "$TLS_SECRET"
 ls -l "$CERT_SITE_DIR/fullchain.crt" "$CERT_SITE_DIR/private.key"
 ```
 
@@ -66,14 +71,13 @@ ls -l "$CERT_SITE_DIR/fullchain.crt" "$CERT_SITE_DIR/private.key"
 기존 Secret metadata도 보존하며 동시 변경이 감지되면 덮어쓰지 않고 실패합니다.
 
 ```bash
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$CERT_SITE" \
+make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$TLS_HOST" \
   TLS_CERT_FILE="$CERT_SITE_DIR/fullchain.crt" TLS_KEY_FILE="$CERT_SITE_DIR/private.key"
 make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 성공 시 `공용 TLS 등록 완료`가 표시됩니다. 기존 Traefik이 있으면 인증서를 다시 읽도록 재시작합니다.
-앱별 인증서는 추가 등록하지 않습니다. 처음 전환하는 기존 설치는
-[공용 TLS 이전 순서](#기존-설치에서-이전)를 따릅니다.
+인증서를 앱 namespace에 복제하지 않습니다. 같은 SAN 인증서를 사용하는 다른 host도 2-1~2-2를 반복합니다.
 실제 HTTPS 반영은 2-4에서 확인합니다.
 
 ### 2-3. 최초 배포 시 앱 설치
@@ -114,8 +118,8 @@ CA가 DER일 수도 있으므로 임시 PEM으로 변환해 검사합니다.
     -out "$cert_work/root.pem" 2>/dev/null; then
     openssl x509 -inform DER -in "$CERT_CA_DIR/SECDS-T2RootCA.crt" -out "$cert_work/root.pem"
   fi
-  openssl s_client -connect "$CERT_SITE:443" -servername "$CERT_SITE" \
-    -verify_hostname "$CERT_SITE" -verify_return_error -CAfile "$cert_work/root.pem" \
+  openssl s_client -connect "$TLS_HOST:443" -servername "$TLS_HOST" \
+    -verify_hostname "$TLS_HOST" -verify_return_error -CAfile "$cert_work/root.pem" \
     -showcerts </dev/null > "$cert_work/live-chain.pem"
   openssl x509 -in "$CERT_SITE_DIR/fullchain.crt" \
     -noout -fingerprint -sha256 > "$cert_work/expected.txt"
@@ -144,42 +148,9 @@ CA가 그대로인 서버 인증서 갱신만 했다면 기존 OIDC용 CA 설정
 [Headlamp TLS 준비](../../../headlamp/docs/01-prepare.md#tlsca-준비)의 명령으로 다음을 준비합니다.
 
 - 입력: `ca/SECDS-T2RootCA.crt`, `ca/SECDS-T2IssuingCA.crt`
-- 생성 파일: `etch-sso.samsungds.net/keycloak-ca-bundle.pem`
+- 생성 파일: `sso.etch.samsungds.net/keycloak-ca-bundle.pem`
 - Headlamp 등록: `headlamp` namespace의 `headlamp-oidc-ca` ConfigMap
 - API server: 같은 CA 묶음을 각 제어면에 배치·마운트하고 OIDC 인증 설정에 연결
 
 CA 교체 시에는 Headlamp와 각 API server의 신뢰 설정도 갱신해야 합니다.
 Headlamp 재시작·로그인 확인은 [운영 참고](../../../headlamp/docs/04-operations.md#재시작과-복구)를 따릅니다.
-
-## 기존 설치에서 이전
-
-먼저 기존 유효한 인증서를 공용 저장소로 가져옵니다. 원본 Secret은 변경하지 않습니다.
-업무 도메인 원본은 `headlamp/headlamp-tls` 대신 기존 `minio/minio-tls`,
-`tailwind-internal/portal-tls`, `airflow/airflow-tls` 등 실제 보유한 것을 사용할 수 있습니다.
-
-```bash
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
-  TLS_SOURCE=headlamp/headlamp-tls
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch-sso.samsungds.net \
-  TLS_SOURCE=etch-sso/keycloak-tls
-make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-이후 사용하는 앱만 앱별 배포 명령으로 재배포해 기존 Ingress의 `spec.tls.secretName`을 제거합니다.
-Portal은 prod overlay를 다시 적용한 후 `make ingress-connect APP=portal`을 실행합니다.
-기존 앱별 TLS Secret은 자동 삭제하지 않습니다. 모든 Ingress 참조가 제거되고 HTTPS를 검증한 뒤
-운영자가 정리합니다. 이전을 마치기 전에는 기존 Secret도 유지해야 합니다.
-기존 Airflow `AIRFLOW_TLS_SOURCE` 입력도 지원하며 이제 공용 저장소에 등록합니다.
-앱별 `INGRESS_TLS_SECRET`·`HEADLAMP_TLS_SECRET`은 기존 env 호환용이며 공용 Traefik에서는 사용하지 않습니다.
-OIDC CA ConfigMap과 API server의 CA 신뢰 설정은 별도로 유지합니다.
-
-```bash
-kubectl --context "$KUBE_CONTEXT" -n etch-sso get secret traefik-tls
-kubectl --context "$KUBE_CONTEXT" get ingress -A \
-  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host,LEGACY_TLS:.spec.tls[*].secretName'
-```
-
-인증서는 file provider로 로드하므로 Ingress의 TLS Secret 열이 비어 있는 것이 정상입니다.
-실제 인증서는 [인증서 응답 검증](#2-4-실제-제공되는-인증서-확인)으로 확인합니다.
-공식 계약: [Traefik 인증서와 SNI](https://doc.traefik.io/traefik/reference/routing-configuration/http/tls/tls-certificates/),
-[file provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/).

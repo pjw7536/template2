@@ -102,7 +102,7 @@ Compose는 로컬 PostgreSQL·일회성 API 검사·독립 CI에만 사용합니
 | 로컬 FTP 접속 | `LOCAL_FTP_PORT`, `LOCAL_FTP_PASSIVE_START` | `local/shared/env/k8s.env`의 호스트 접속 포트와 연속 4개 Passive 포트. 운영 제어 포트는 시작 스크립트·DaemonSet의 6380이며, Passive 포트는 manifest의 `PASV_MIN_PORT`·`PASV_MAX_PORT`, 주소는 `status.hostIP`로 주입 |
 | FTP 서버 배포 | `FTP_ENV`, `FTP_IMAGE`, `IMAGE_PULL_SECRET`, `FTP_ALLOW_CONTROL_PLANE` | `FTP_ENV`로 선택한 운영 env(기본 `deploy/ftp/env/prod.env`)에서 고정 tag/digest 이미지와 선택 pull Secret을 읽어 `make ftp-check`·`make ftp-up`에 적용. 사내 미러 기본값. `FTP_ALLOW_CONTROL_PLANE`의 기본값·생략값은 true이며 선택한 control plane의 역할 NoSchedule을 허용. false를 명시하면 control plane 선택 거부. 로그인 계정은 별도 `FTP_CREDENTIAL_FILE` |
 | `OIDC_*` / Auth/OIDC | `OIDC_PROVIDER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_AUTH_URL`, `OIDC_LOGOUT_URL`, `OIDC_REDIRECT_URI`, `OIDC_TOKEN_URL`, `OIDC_JWKS_URL`, `OIDC_CONNECT_TIMEOUT_SECONDS`, `OIDC_READ_TIMEOUT_SECONDS`, `OIDC_JWKS_CACHE_SECONDS`, `ALLOWED_REDIRECT_HOSTS` | Keycloak code+PKCE/JWKS 로그인과 세션별 권한 |
-| Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 경로·서버 계정의 JWT 발급과 API v2 Bearer 인증 |
+| Airflow Web 조회 | `AIRFLOW_BASE_URL`, `AIRFLOW_PUBLIC_BASE_URL`, `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD`, `AIRFLOW_REQUEST_TIMEOUT_SECONDS` | Django가 Airflow REST API를 호출할 내부 URL·브라우저 링크용 공개 URL·서버 계정의 JWT 발급과 API v2 Bearer 인증 |
 | Airflow DAG env | `deploy/airflow/env/k8s.env`의 `AIRFLOW_API_BASE_URL`, `AIRFLOW_TRIGGER_TOKEN`, `AIRFLOW_FAILURE_ALERT_KNOX_IDS`, `KNOX_MESSENGER_API_BASE_URL`, `KNOX_MESSENGER_AUTHORIZATION`, `KNOX_MESSENGER_SYSTEM_ID` | DAG API trigger와 Airflow task 실패 callback용 환경 변수. callback 제목/메모 파일/TTL/timeout 기본값은 DAG 코드에서 관리하며 필요 시 env에서 선택값을 override |
 | Airflow DAG runtime options | `L3_SPIDER_MAIL_TRIGGER_LIMIT`, `DATA_MOVEMENT_LOAD_LIMIT`, `DATA_MOVEMENT_LOAD_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_LIMIT`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_SUMMARY_DRY_RUN`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_DURATION_SECONDS`, `DATA_MOVEMENT_CT_PROCESS_COMMENT_CONTINUOUS_IDLE_SECONDS` | 필요할 때만 외부 env injection으로 조정하는 DAG별 payload/연속 실행 옵션. 일반 schedule과 HTTP timeout은 DAG 코드에서 관리 |
 | Emails POP3/OCR | `EMAIL_POP3_*`, `EMAIL_OCR_INTERNAL_TOKEN`, `EMAIL_OCR_CLAIM_LIMIT`, `EMAIL_OCR_LEASE_SECONDS`, `EMAIL_OCR_MAX_ATTEMPTS`, `EMAIL_EXCLUDED_SUBJECT_PREFIXES` | 메일 수집과 OCR worker. dev는 `dummy-ocr-token`을 사용하며 POP3 연결값 미설정 시 수집 trigger가 안전하게 실패합니다. 제목 제외값은 쉼표로 구분하며 `*`는 0글자 이상을 나타내는 wildcard입니다. |
@@ -151,8 +151,8 @@ API 전용 내부 token/JWKS URL을 분리할 수 있습니다.
 
 Kubernetes는 kube-prometheus-stack을 사용합니다. [Monitoring 안내](../../deploy/monitoring/README.md)에 따라
 chart·이미지·Grafana Secret을 준비합니다. 로컬 접속은 `make k8s-grafana`·`make k8s-prometheus`를 사용합니다.
-운영은 `INGRESS_ENABLED=true`, `INGRESS_HOST=etch.samsungds.net`, `INGRESS_TLS_SECRET=`을 기본으로
-`/grafana/`, `/prometheus/`, `/alertmanager/`를 제공합니다. 인증서는 공용 `etch-sso/traefik-tls`에 등록하며,
+운영은 `INGRESS_ENABLED=true`와 `GRAFANA_HOST`·`PROMETHEUS_HOST`·`ALERTMANAGER_HOST`로
+서비스별 도메인의 루트 경로를 제공합니다. 공개 주소·입력은 [서비스 원본](../../deploy/shared/docs/infrastructure/services.md#공개-도메인과-인증)을 따릅니다. 인증서는 공용 `etch-sso/traefik-tls`에 등록하며,
 배포 도구가 기존 공용 Traefik의 VIP·배치를 유지하고 감시 namespace만 추가합니다.
 앱 내부 metric 수집에는 별도 instrumentation이 필요합니다.
 

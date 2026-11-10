@@ -184,7 +184,7 @@ rollout이 실패한 상태에서는 새 LB Backend를 활성화하지 않습니
 실제 realm이 다르면 경로를 바꾸고, 사내 CA가 PC/서버에 설치되지 않았다면 curl에 `--cacert /실제/사내-ca.pem`을 추가합니다.
 
 ```bash
-export INGRESS_HOST='etch-sso.samsungds.net'
+export INGRESS_HOST='sso.etch.samsungds.net'
 export CHECK_PATH='/realms/etch/.well-known/openid-configuration'
 
 curl --fail --show-error --connect-timeout 5 --max-time 20 \
@@ -240,7 +240,7 @@ VIP 배치 목록은 Deployment annotation에 남으며 기존 앱별 배포 도
 Headlamp를 사용하려면 VIP 연결에 더해 공개 도메인 또는 경로, TLS Secret, Ingress,
 Traefik의 `headlamp` namespace 감시·RBAC를 별도로 준비합니다.
 
-현재 Headlamp 배포 도구는 운영 env로 `/headlamp` HTTPS 경로와 Keycloak 로그인을 구성합니다.
+현재 Headlamp 배포 도구는 운영 env로 Headlamp 도메인의 `/` HTTPS 경로와 Keycloak 로그인을 구성합니다.
 [Headlamp 운영 안내](../../../headlamp/README.md)에 따라 TLS·OIDC Secret·CA와 제어면 인증을 준비하고 앱별 배포 명령을 사용합니다.
 
 ## 완료 기준

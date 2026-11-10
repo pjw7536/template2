@@ -8,14 +8,14 @@
 deploy/shared/certs/
 ├── README.md                   # 파일 역할·보관 조건과 상세 절차 링크
 ├── .gitignore
-├── etch-sso.samsungds.net/       # Keycloak
+├── sso.etch.samsungds.net/       # Keycloak
 │   ├── .gitkeep
-│   ├── etch-sso.samsungds.net.p7b
-│   ├── etch-sso.samsungds.net.pfx
+│   ├── sso.etch.samsungds.net.p7b
+│   ├── sso.etch.samsungds.net.pfx
 │   ├── fullchain.crt           # 1단계에서 생성
 │   ├── private.key             # 1단계에서 생성
 │   └── keycloak-ca-bundle.pem   # OIDC 가이드에서 나중에 생성
-├── etch.samsungds.net/           # Headlamp 접속 도메인
+├── etch.samsungds.net/           # 공용 SAN 인증서
 │   ├── .gitkeep
 │   ├── etch.samsungds.net.p7b
 │   ├── etch.samsungds.net.pfx
@@ -27,24 +27,24 @@ deploy/shared/certs/
     └── SECDS-T2RootCA.crt
 ```
 
-파일 이름은 위와 같이 유지합니다. 기존에 공용 폴더 바로 아래 넣었다면 위 구조에 맞춰 이동합니다.
+인증서 발급 원본의 이름과 보관 폴더를 맞춥니다. 공용 SAN 인증서를 사용하면 실제 공개 host는 서버 등록 단계의 `TLS_HOST`로 지정합니다.
 
 `fullchain.crt`와 `private.key`는 1단계에서 생성합니다.
 이미 추출한 파일이 있다면 새로 추출하는 대신 기존 파일을 검증한 뒤 서버 적용으로 진행합니다.
 
-두 사이트 모두 인증서는 `fullchain.crt`, 개인키는 `private.key`입니다. 도메인은 상위 폴더로 구분합니다.
+인증서 원본별로 서버 체인은 `fullchain.crt`, 개인키는 `private.key`입니다. 도메인은 상위 폴더로 구분합니다.
 원본 PFX/P7B와 CA 파일 이름은 변경하지 않습니다.
 
 | 보관 폴더 | 파일 | 용도 |
 | --- | --- | --- |
-| `etch-sso.samsungds.net/` | `etch-sso.samsungds.net.p7b`, `etch-sso.samsungds.net.pfx` | Keycloak 인증서 발급 원본 |
-| `etch-sso.samsungds.net/` | `fullchain.crt` | Keycloak 서버 인증서와 중간 인증서 체인 |
-| `etch-sso.samsungds.net/` | `private.key` | Keycloak 인증서와 짝인 개인키 |
+| `sso.etch.samsungds.net/` | `sso.etch.samsungds.net.p7b`, `sso.etch.samsungds.net.pfx` | Keycloak 인증서 발급 원본 |
+| `sso.etch.samsungds.net/` | `fullchain.crt` | Keycloak 서버 인증서와 중간 인증서 체인 |
+| `sso.etch.samsungds.net/` | `private.key` | Keycloak 인증서와 짝인 개인키 |
 | `ca/` | `SECDS-T2IssuingCA.crt` | 중간 인증기관 인증서 |
 | `ca/` | `SECDS-T2RootCA.crt` | 루트 인증기관 인증서 |
-| `etch.samsungds.net/` | `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | Headlamp 접속 도메인의 인증서 발급 원본 |
-| `etch.samsungds.net/` | `fullchain.crt` | Headlamp 서버 인증서와 중간 인증서 체인 |
-| `etch.samsungds.net/` | `private.key` | Headlamp 인증서와 짝인 개인키 |
+| `etch.samsungds.net/` | `etch.samsungds.net.p7b`, `etch.samsungds.net.pfx` | 공용 SAN 인증서 발급 원본 |
+| `etch.samsungds.net/` | `fullchain.crt` | 공용 서버 인증서와 중간 인증서 체인 |
+| `etch.samsungds.net/` | `private.key` | 공용 SAN 인증서와 짝인 개인키 |
 
 CA 파일은 나중에 Keycloak 인증서를 신뢰하기 위한 CA 묶음을 만들 때 사용합니다.
 확장자만으로 PEM/DER 형식을 확정할 수 없으므로 실제 파일을 넣은 뒤 형식과 체인을 확인합니다.
@@ -72,15 +72,15 @@ PFX 발급 시 받은 비밀번호도 준비합니다.
 먼저 보관 폴더를 준비합니다. 이미 폴더가 있어도 아래 명령을 실행할 수 있습니다.
 
 ```bash
-mkdir -p deploy/shared/certs/{etch-sso.samsungds.net,etch.samsungds.net,ca}
-chmod 700 deploy/shared/certs deploy/shared/certs/{etch-sso.samsungds.net,etch.samsungds.net,ca}
+mkdir -p deploy/shared/certs/{sso.etch.samsungds.net,etch.samsungds.net,ca}
+chmod 700 deploy/shared/certs deploy/shared/certs/{sso.etch.samsungds.net,etch.samsungds.net,ca}
 ```
 
 평소 사용하는 파일 전송 도구로 다음 파일을 넣습니다. 이미 배치했다면 이름과 위치만 확인합니다.
 
 | 넣을 폴더 | 넣을 원본 파일 |
 | --- | --- |
-| `deploy/shared/certs/etch-sso.samsungds.net/` | `etch-sso.samsungds.net.pfx`, `etch-sso.samsungds.net.p7b` |
+| `deploy/shared/certs/sso.etch.samsungds.net/` | `sso.etch.samsungds.net.pfx`, `sso.etch.samsungds.net.p7b` |
 | `deploy/shared/certs/etch.samsungds.net/` | `etch.samsungds.net.pfx`, `etch.samsungds.net.p7b` |
 | `deploy/shared/certs/ca/` | `SECDS-T2IssuingCA.crt`, `SECDS-T2RootCA.crt` |
 
@@ -92,7 +92,7 @@ chmod 700 deploy/shared/certs deploy/shared/certs/{etch-sso.samsungds.net,etch.s
 원본 파일을 넣은 뒤 PFX의 읽기 권한을 소유자로 제한합니다. 추출 시 개인키 권한은 자동으로 설정됩니다.
 
 ```bash
-chmod 600 deploy/shared/certs/etch-sso.samsungds.net/etch-sso.samsungds.net.pfx \
+chmod 600 deploy/shared/certs/sso.etch.samsungds.net/sso.etch.samsungds.net.pfx \
   deploy/shared/certs/etch.samsungds.net/etch.samsungds.net.pfx
 ```
 

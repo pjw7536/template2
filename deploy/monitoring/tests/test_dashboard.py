@@ -37,7 +37,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(json.loads(textwrap.dedent(match[1])), BOARD)
         self.assertIn('grafana_dashboard: "1"', document)
         self.assertIn('default_home_dashboard_path = /etc/grafana/servers-overview/servers-overview.json', rendered)
-        self.assertIn('root_url = https://etch.samsungds.net/grafana/', rendered)
+        self.assertIn('root_url = https://grafana.etch.samsungds.net/', rendered)
         self.assertIn('name: monitoring-k8s-resources-cluster', rendered)
         self.assertNotIn('download-dashboards', rendered)
 

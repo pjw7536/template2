@@ -6,6 +6,46 @@ const yaml = require('js-yaml');
 
 const root = path.resolve(__dirname, '../../..');
 
+test('로컬 Monitoring은 서버 env 계약을 만족하고 공개 Ingress를 생성하지 않는다', () => {
+  const result = spawnSync('python3', ['-c', `
+import json
+import sys
+sys.path.insert(0, 'local/shared/scripts')
+from k8s_config import module, monitoring_settings
+server = module('monitoring')
+settings = monitoring_settings()
+server.validate(settings)
+print(json.dumps(server.values(settings)))
+`], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const values = JSON.parse(result.stdout);
+  for (const component of ['grafana', 'prometheus', 'alertmanager']) {
+    assert.equal(values[component].ingress, undefined);
+  }
+});
+
+test('로컬 Headlamp는 서버 chart를 재사용하며 접두사와 OIDC callback을 유지한다', () => {
+  const result = spawnSync('python3', ['-c', `
+import json
+import sys
+sys.path.insert(0, 'local/headlamp')
+import local_oidc
+print(json.dumps(local_oidc.render()))
+`], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const resources = JSON.parse(result.stdout);
+  const pod = resources.find(item => item.kind === 'Deployment').spec.template.spec;
+  const container = pod.containers[0];
+  const env = Object.fromEntries(container.env.map(item => [item.name, item.value]));
+  assert.ok(container.args.includes('-base-url=/headlamp'));
+  assert.equal(env.OIDC_CALLBACK_URL, 'https://localhost:8443/headlamp/oidc-callback');
+  assert.equal(env.OIDC_ISSUER_URL, 'https://sso.localhost:8443/realms/local-platform');
+  const ingress = resources.find(item => item.kind === 'Ingress');
+  assert.equal(ingress.spec.rules[0].host, 'localhost');
+  assert.deepEqual(ingress.spec.rules[0].http.paths.map(item => item.path), ['/headlamp']);
+  assert.deepEqual(ingress.spec.tls, [{ secretName: 'headlamp-tls', hosts: ['localhost'] }]);
+});
+
 test('로컬 Airflow 메일은 운영 credential 대신 namespace를 보완한 sandbox와 로컬 수신자를 사용한다', () => {
   const result = spawnSync('python3', ['-c', `
 import importlib.util

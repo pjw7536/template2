@@ -50,7 +50,7 @@ kubectl --context "$KUBE_CONTEXT" -n monitoring get events --sort-by=.lastTimest
 | 기존 PV 경로·노드·PVC 오류 | env를 기존 저장소 설정과 대조. 기존 PV 폴더가 사라졌으면 마운트·데이터부터 복구 |
 | `Pending`·PVC 미결합 | 지정 Worker Ready·taint·자원 여유, PV/PVC 연결 상태 확인 |
 | Grafana 데이터 폴더 권한 오류 | 기존 폴더의 UID/GID 확인. 자동 생성은 기존 파일 권한을 변경하지 않음 |
-| 화면 접속 실패 | DNS/VIP·443 경로, 공용 Traefik·인증서·`INGRESS_HOST` 확인 |
+| 화면 접속 실패 | DNS/VIP·443 경로, 공용 Traefik·인증서·서비스별 HOST 입력 확인 |
 | 새 Worker 지표 없음 | 해당 노드의 node-exporter Pod, 미러 pull, `9100` 통신과 Prometheus target 확인 |
 
 폴더 준비 Job이 실패했다면 **출력된 실제 Job 이름**으로 확인합니다.

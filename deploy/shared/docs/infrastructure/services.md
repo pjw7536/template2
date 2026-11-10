@@ -15,16 +15,16 @@
 | 서비스·용도 | 주소 | 근거 |
 | --- | --- | --- |
 | Portal·업무 서비스 기본 도메인 | `https://etch.samsungds.net/` | Portal prod Ingress |
-| Keycloak | `https://etch-sso.samsungds.net/` | Keycloak Ingress |
-| 업무 realm OIDC issuer | `https://etch-sso.samsungds.net/realms/etch` | Airflow·Headlamp OIDC env |
+| Keycloak | `https://sso.etch.samsungds.net/` | Keycloak Ingress·공개 URL env. 저장소 선언이며 실제 DNS·서버 적용은 미확인 |
+| 업무 realm OIDC issuer | `https://sso.etch.samsungds.net/realms/etch` | Portal·Airflow·Headlamp OIDC env. 실제 Discovery·토큰 issuer는 서버 적용 후 확인 |
 | 사내 AD FS OIDC discovery | `https://stsds.secsso.net/adfs/.well-known/openid-configuration` | `deploy/keycloak/env/prod.env`의 `CORP_OIDC_DISCOVERY_URL` |
-| Airflow | `https://etch.samsungds.net/airflow` | Airflow `AIRFLOW_WEBSERVER_BASE_URL` |
-| MinIO 콘솔 | `https://etch.samsungds.net/minio-console/` | MinIO env·운영 안내 |
-| MinIO 파일 공개 경로 | `https://etch.samsungds.net/minio/` | MinIO 운영 안내 |
-| Grafana | `https://etch.samsungds.net/grafana/` | Monitoring 운영 안내 |
-| Prometheus 수집 대상 | `https://etch.samsungds.net/prometheus/targets` | Monitoring 운영 안내 |
-| Alertmanager | `https://etch.samsungds.net/alertmanager/` | Monitoring 운영 안내 |
-| Headlamp | `https://etch.samsungds.net/headlamp/` | Headlamp 운영 안내 |
+| Airflow | `https://airflow.etch.samsungds.net` | Airflow `AIRFLOW_WEBSERVER_BASE_URL` |
+| MinIO 콘솔 | `https://minio.etch.samsungds.net/` | MinIO env·운영 안내 |
+| MinIO 파일 공개 경로 | `https://s3.etch.samsungds.net/` | MinIO 운영 안내 |
+| Grafana | `https://grafana.etch.samsungds.net/` | Monitoring 운영 안내 |
+| Prometheus 수집 대상 | `https://prometheus.etch.samsungds.net/targets` | Monitoring 운영 안내 |
+| Alertmanager | `https://alert.etch.samsungds.net/` | Monitoring 운영 안내 |
+| Headlamp | `https://headlamp.etch.samsungds.net/` | Headlamp 운영 안내 |
 | MinIO S3·클러스터 내부 | `http://minio.minio.svc.cluster.local:9000` | MinIO 운영 안내 |
 | Portal API·클러스터 내부 | `http://api.tailwind-internal.svc.cluster.local:8000` | Airflow `AIRFLOW_API_BASE_URL` |
 | FTP | 선택한 FTP 노드 InternalIP의 TCP 6380 | [노드별 수신 운영 방향](#ftp-노드별-파일-수신). 실제 배포 대상·전송 성공은 미확인 |
@@ -33,132 +33,38 @@
 근거는 [Portal overlay](../../../portal/k8s/overlays/prod/README.md), [Keycloak](../../../keycloak/README.md),
 [Airflow](../../../airflow/README.md), [MinIO](../../../minio/README.md), [Monitoring](../../../monitoring/README.md), [Headlamp](../../../headlamp/README.md)의 원본·안내입니다.
 
-### 앱별 도메인 전환안
+### 공개 도메인과 인증
 
-하위 경로로 제공하는 앱을 개별 도메인으로 나누는 주소 계획입니다.
-사용자의 전체 SAN 목록 추가 요청을 기준으로 정리한 전환안이며, 위 현재 배포 선언을 대체하지 않습니다.
-DNS·인증서·Ingress·앱 실행 입력의 변경과 운영 적용은 미확인입니다. 담당자는 미확인입니다.
-인증서 CN·SAN 전체 신청 입력과 DNS 연결 계획은 [네트워크 원본](network.md#앱별-도메인-전환을-위한-인증서-추가-신청안)을 따릅니다.
-신규 서비스 주소는 향후 `etch.samsungds.net` 구역 위임을 고려해 `<service>.etch.samsungds.net`으로 통일합니다.
-테스트는 `<service>.stg.etch.samsungds.net`, Portal 테스트는 `stg.etch.samsungds.net`입니다.
-기존 SSO는 `etch-sso.samsungds.net`을 유지합니다. 예비 SSO 주소와 테스트 주소는 아래 예약안에 포함합니다.
-실제 위임 상태와 DNS 관리 범위는
-[명명·구역 위임 원본](network.md#dns-명명과-향후-구역-위임)을 따릅니다.
+운영 앱은 위 서비스 표의 개별 도메인에서 루트 경로(`/`)로 제공합니다.
+Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 Portal 하위 경로로 중계하지 않습니다.
+공용 APP VIP·DNS·인증서 SAN은 [네트워크 원본](network.md)에서 관리합니다.
+모든 주소는 저장소 선언이며 DNS·인증서·서버 적용과 실제 접속 성공은 별도 확인합니다.
 
-| 서비스·용도 | 전환할 공개 주소 | 준비·확인할 입력 |
-| --- | --- | --- |
-| Portal 운영 | `https://etch.samsungds.net/` | 기존 업무 도메인, API·Web·로그인 설정과 실제 운영 적용 |
-| Portal 테스트 | `https://stg.etch.samsungds.net/` | 테스트 namespace·DB·저장소·로그인 client, 기존 `stg.plane` 환경 전환 |
-| Airflow | `https://airflow.etch.samsungds.net/` | 공개·내부 base URL, 로그인 callback·기존 `/airflow` 경로 의존 |
-| MinIO S3 API·파일 접근 | `https://s3.etch.samsungds.net/` | S3 API Ingress, 브라우저 endpoint·서명 URL·CORS와 기존 `/minio/` 소비 앱 |
-| MinIO 관리 콘솔 | `https://minio.etch.samsungds.net/` | 콘솔 Ingress·redirect URL과 기존 `/minio-console/` 검사·라우팅 |
-| Grafana | `https://grafana.etch.samsungds.net/` | root URL·하위 경로 설정·Ingress·접근 권한 |
-| Prometheus | `https://prometheus.etch.samsungds.net/` | external URL·route prefix·Ingress·접근 권한 |
-| Alertmanager | `https://alertmanager.etch.samsungds.net/` | external URL·route prefix·Ingress·접근 권한 |
-| Headlamp | `https://headlamp.etch.samsungds.net/` | base URL·Ingress·Keycloak client callback |
-| SSO·Keycloak | `https://etch-sso.samsungds.net/` | 기존 공개 URL 유지. 업무 도메인과 다른 IP·TLS 종료 위치·인증서 통합 적용 위치 확인 |
+| 앱 | 공개 주소 관련 입력 |
+| --- | --- |
+| Keycloak | `keycloak-public-url`·Ingress host, Portal·Airflow·Headlamp issuer, AD FS 복귀 주소 |
+| Airflow | `AIRFLOW_WEBSERVER_BASE_URL`, Portal의 내부 `AIRFLOW_BASE_URL`·공개 `AIRFLOW_PUBLIC_BASE_URL` |
+| MinIO | `MINIO_API_HOST`·`MINIO_CONSOLE_HOST`·콘솔 redirect URL, Portal Web의 `VITE_MINIO_ENDPOINT` |
+| Monitoring | `GRAFANA_HOST`·`PROMETHEUS_HOST`·`ALERTMANAGER_HOST`, root URL·route prefix |
+| Headlamp | `HEADLAMP_HOST`, 루트 base URL·Keycloak `/oidc-callback` |
 
 ### 테스트 환경과 예비 주소의 인증서 예약안
 
-사용자가 인증서 재신청을 줄이기 위해 요청한 확장 SAN 후보입니다.
-아래는 주소 예약안이며 서비스 도입·배포·DNS 등록·공개 경로·계정 권한이 확정됐다는 뜻이 아닙니다.
-전체 신청 문자열과 IP는 [네트워크 원본](network.md#앱별-도메인-전환을-위한-인증서-추가-신청안)에서 관리합니다.
-현재 서비스별 테스트 환경은 Portal 외에는 실제 구성·배포가 미확인입니다.
-
-| 후보 용도 | 예약할 주소 | 상태·사용 기준 |
-| --- | --- | --- |
-| 기존 앱의 테스트 환경 | `airflow.stg.etch.samsungds.net`, `s3.stg.etch.samsungds.net`, `minio.stg.etch.samsungds.net`, `grafana.stg.etch.samsungds.net`, `prometheus.stg.etch.samsungds.net`, `alertmanager.stg.etch.samsungds.net`, `headlamp.stg.etch.samsungds.net` | 기존 앱 테스트용 예약 후보. 실제 테스트 배포·저장소·인증은 별도 준비 |
-| 독립 API | `api.etch.samsungds.net`, `api.stg.etch.samsungds.net` | 향후 API 공개 주소를 Portal과 분리할 경우의 후보. 현재 `/api` 계약은 유지 |
-| Git 서비스 | `git.etch.samsungds.net`, `git.stg.etch.samsungds.net` | 자체 Git 서비스 도입 시 후보. 기존 사내 Git 주소를 확인하거나 대체한 상태가 아님 |
-| 이미지 registry | `registry.etch.samsungds.net`, `registry.stg.etch.samsungds.net` | 자체 registry 도입 시 후보. 기존 사내 미러·push 대상 확정을 뜻하지 않음 |
-| CI | `ci.etch.samsungds.net`, `ci.stg.etch.samsungds.net` | CI 도구의 공개 UI·API가 필요한 경우의 후보. 제품·배포는 미정 |
-| 문서 | `docs.etch.samsungds.net`, `docs.stg.etch.samsungds.net` | 문서 사이트 후보 |
-| 상태 페이지 | `status.etch.samsungds.net`, `status.stg.etch.samsungds.net` | 상태·장애 안내 사이트 후보 |
-| 로그 조회 | `logs.etch.samsungds.net`, `logs.stg.etch.samsungds.net` | 로그 조회 도구 후보. 수집 backend를 그대로 공개하는 결정은 아님 |
-| 트레이스 조회 | `traces.etch.samsungds.net`, `traces.stg.etch.samsungds.net` | 분산 추적 조회 도구 후보. 제품·배포는 미정 |
-| 개발·미리보기 | `dev.etch.samsungds.net`, `preview.etch.samsungds.net` | 개발 검증·미리보기 후보. 브랜치별 임의 하위 도메인까지 포함하는 것은 아님 |
-| plane | `plane.etch.samsungds.net`, `plane.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 기존 plane 서버·공개 주소를 변경하는 작업은 아님 |
-| Spider | `spider.etch.samsungds.net`, `spider.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 기존 Spider 기능의 별도 서비스 분리는 미정 |
-| 게시판 | `board.etch.samsungds.net`, `board.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 별도 앱 도입·공개 여부는 미정 |
-| APC | `apc.etch.samsungds.net`, `apc.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동은 미정 |
-| EQP | `eqp.etch.samsungds.net`, `eqp.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동은 미정 |
-| 데이터레이크 | `datalake.etch.samsungds.net`, `datalake.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 원본 데이터·저장소를 직접 공개한다는 뜻은 아님 |
-| 대시보드 | `dashboard.etch.samsungds.net`, `dashboard.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| Observer | `observer.etch.samsungds.net`, `observer.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 보고서 | `report.etch.samsungds.net`, `report.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 분석 | `analytics.etch.samsungds.net`, `analytics.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 데이터 카탈로그 | `catalog.etch.samsungds.net`, `catalog.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 데이터 파이프라인 | `pipeline.etch.samsungds.net`, `pipeline.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 검색 | `search.etch.samsungds.net`, `search.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| RAG | `rag.etch.samsungds.net`, `rag.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| Assistant | `assistant.etch.samsungds.net`, `assistant.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 파일 서비스 | `files.etch.samsungds.net`, `files.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 노트북 | `notebook.etch.samsungds.net`, `notebook.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| 모델 서비스 | `model.etch.samsungds.net`, `model.stg.etch.samsungds.net` | 추가 예약 후보 제안. 별도 서비스 도입·공개·연동은 미정 |
-| WIO | `wio.etch.samsungds.net`, `wio.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| KPI | `kpi.etch.samsungds.net`, `kpi.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| Automation | `automation.etch.samsungds.net`, `automation.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| AX | `ax.etch.samsungds.net`, `ax.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| 향후 SSO | `sso.etch.samsungds.net`, `sso.stg.etch.samsungds.net` | 운영 주소는 사용자 지정 예비 후보, 테스트 주소도 동일 계층으로 예약. 현재 SSO·issuer의 변경이나 별도 테스트 배포를 뜻하지 않음 |
-| FDC | `fdc.etch.samsungds.net`, `fdc.stg.etch.samsungds.net` | FDC 관련 업무 화면·API를 별도 제공할 경우의 예약 후보. 현재 Portal 기능·API 경로는 유지 |
-| ESOP | `esop.etch.samsungds.net`, `esop.stg.etch.samsungds.net` | ESOP 관련 업무 화면을 별도 제공할 경우의 예약 후보. 현재 Portal 화면 경로는 유지 |
-| SOP | `sop.etch.samsungds.net`, `sop.stg.etch.samsungds.net` | 향후 SOP 업무 서비스용 예약 후보. 기존 사내 SOP 연동 주소를 교체하는 작업은 아님 |
-| Defectmap | `defectmap.etch.samsungds.net`, `defectmap.stg.etch.samsungds.net` | 향후 Defectmap 업무 서비스용 예약 후보. 기존 사내 Defectmap API를 교체하거나 공개하는 작업은 아님 |
-| VOC | `voc.etch.samsungds.net`, `voc.stg.etch.samsungds.net` | VOC 기능을 별도 제공할 경우의 예약 후보. 현재 Portal 기능·권한·API 계약은 유지 |
-| Teamstaff | `teamstaff.etch.samsungds.net`, `teamstaff.stg.etch.samsungds.net` | Teamstaff 기능을 별도 제공할 경우의 예약 후보. 현재 Portal 기능·권한·화면 경로는 유지 |
-| 메일 업무 | `mail.etch.samsungds.net`, `mail.stg.etch.samsungds.net` | 메일 업무 UI·API용 예약 후보. 기존 사내 메일 서비스·SMTP·POP3 설정 변경은 아님 |
-| LLM | `llm.etch.samsungds.net`, `llm.stg.etch.samsungds.net` | 향후 HTTPS 모델 gateway·API용 예약 후보. 제품·인증·배포는 미정 |
-| MCP | `mcp.etch.samsungds.net`, `mcp.stg.etch.samsungds.net` | 향후 HTTPS MCP 서비스용 예약 후보. 제품·인증·배포는 미정 |
-| OES | `oes.etch.samsungds.net`, `oes.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| IEQ | `ieq.etch.samsungds.net`, `ieq.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| AI | `ai.etch.samsungds.net`, `ai.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| Data | `data.etch.samsungds.net`, `data.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| Cowork | `cowork.etch.samsungds.net`, `cowork.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-| 워크스페이스 | `workspace.etch.samsungds.net`, `workspace.stg.etch.samsungds.net` | 추가 예약 후보 제안. 공동 작업 공간 후보. 도입·배포·접근 권한은 미정 |
-| 작업 관리 | `tasks.etch.samsungds.net`, `tasks.stg.etch.samsungds.net` | 추가 예약 후보 제안. 할 일·업무 요청 관리 후보. 도입·배포·접근 권한은 미정 |
-| 프로젝트 관리 | `projects.etch.samsungds.net`, `projects.stg.etch.samsungds.net` | 추가 예약 후보 제안. 프로젝트 현황·산출물 관리 후보. 도입·배포·접근 권한은 미정 |
-| 업무 흐름 | `workflow.etch.samsungds.net`, `workflow.stg.etch.samsungds.net` | 추가 예약 후보 제안. 업무 단계·처리 흐름 관리 후보. 도입·배포·접근 권한은 미정 |
-| 결재·승인 | `approval.etch.samsungds.net`, `approval.stg.etch.samsungds.net` | 추가 예약 후보 제안. 결재·승인 요청 화면 후보. 도입·배포·접근 권한은 미정 |
-| 신청서·설문 | `forms.etch.samsungds.net`, `forms.stg.etch.samsungds.net` | 추가 예약 후보 제안. 입력 양식·신청서·설문 서비스 후보. 도입·배포·접근 권한은 미정 |
-| 일정 | `calendar.etch.samsungds.net`, `calendar.stg.etch.samsungds.net` | 추가 예약 후보 제안. 팀·업무 일정 서비스 후보. 도입·배포·접근 권한은 미정 |
-| 위키 | `wiki.etch.samsungds.net`, `wiki.stg.etch.samsungds.net` | 추가 예약 후보 제안. 내부 위키 후보. 도입·배포·접근 권한은 미정 |
-| 지식 검색 | `knowledge.etch.samsungds.net`, `knowledge.stg.etch.samsungds.net` | 추가 예약 후보 제안. 지식 문서·업무 지식 탐색 후보. 도입·배포·접근 권한은 미정 |
-| 자산 관리 | `assets.etch.samsungds.net`, `assets.stg.etch.samsungds.net` | 추가 예약 후보 제안. 업무 자산·첨부 자산 관리 후보. 도입·배포·접근 권한은 미정 |
-| 재고·보유 현황 | `inventory.etch.samsungds.net`, `inventory.stg.etch.samsungds.net` | 추가 예약 후보 제안. 재고·보유 현황 관리 후보. 도입·배포·접근 권한은 미정 |
-| 품질 | `quality.etch.samsungds.net`, `quality.stg.etch.samsungds.net` | 추가 예약 후보 제안. 품질 지표·검증 결과 조회 후보. 도입·배포·접근 권한은 미정 |
-| 수율 | `yield.etch.samsungds.net`, `yield.stg.etch.samsungds.net` | 추가 예약 후보 제안. 수율 지표 조회·분석 후보. 도입·배포·접근 권한은 미정 |
-| 공정 | `process.etch.samsungds.net`, `process.stg.etch.samsungds.net` | 추가 예약 후보 제안. 공정 정보·업무 현황 조회 후보. 도입·배포·접근 권한은 미정 |
-| 레시피 | `recipe.etch.samsungds.net`, `recipe.stg.etch.samsungds.net` | 추가 예약 후보 제안. 레시피 정보·버전 조회 후보. 실제 장비 쓰기·제어 권한을 뜻하지 않음. 도입·배포·접근 권한은 미정 |
-| 계측 | `metrology.etch.samsungds.net`, `metrology.stg.etch.samsungds.net` | 추가 예약 후보 제안. 계측 정보·분석 결과 조회 후보. 도입·배포·접근 권한은 미정 |
-| 유지보수 | `maintenance.etch.samsungds.net`, `maintenance.stg.etch.samsungds.net` | 추가 예약 후보 제안. 점검·보전 업무 관리 후보. 도입·배포·접근 권한은 미정 |
-| 업무 알람 | `alarm.etch.samsungds.net`, `alarm.stg.etch.samsungds.net` | 추가 예약 후보 제안. 업무 알람 조회·처리 화면 후보. 도입·배포·접근 권한은 미정 |
-| 이벤트 | `events.etch.samsungds.net`, `events.stg.etch.samsungds.net` | 추가 예약 후보 제안. 업무 이벤트 조회·관리 후보. 도입·배포·접근 권한은 미정 |
-| 감사 조회 | `audit.etch.samsungds.net`, `audit.stg.etch.samsungds.net` | 추가 예약 후보 제안. 감사 이력 조회 화면 후보. 원본 로그·수집 backend의 직접 공개는 미정. 도입·배포·접근 권한은 미정 |
-| Store | `store.etch.samsungds.net`, `store.stg.etch.samsungds.net` | 사용자 지정 예약 후보. 실제 서비스 구성·연동·공개 여부는 미정 |
-
-현재 SSO는 기존 `etch-sso.samsungds.net`과 issuer를 유지합니다.
-예비 SAN `sso.etch.samsungds.net`·`sso.stg.etch.samsungds.net`은 향후 사용 후보이며,
-DNS 등록·Keycloak hostname·issuer·client·로그인 설정은 변경하지 않습니다.
-후보를 실제 사용할 때는 DNS·Ingress·TLS 적용·앱 설정·접근 권한을 함께 준비합니다.
+테스트 명명은 `<service>.stg.etch.samsungds.net`, Portal은 `stg.etch.samsungds.net`입니다.
+SSO 테스트 주소는 `sso.stg.etch.samsungds.net`이며 별도 테스트 Keycloak·DB·realm·issuer는 구성하지 않습니다.
+테스트 서비스와 추가 업무 서비스는 주소 예약만으로 배포하지 않습니다.
+실제 SAN 신청 범위는 [네트워크 목록](network.md#앱별-도메인-전환을-위한-인증서-추가-신청안)을 기준으로 하며,
+새 서비스를 공개할 때 DNS·SAN·Ingress·앱 설정·접근 권한을 함께 준비합니다.
 
 ### Portal 테스트·운영 접속 구분
 
-사용자가 확인한 Portal 구성은 서로 다른 서버의 Docker 기반 테스트·운영 환경입니다.
-기존 전달 방식은 `stg.plane`에서 확인한 뒤 `plane` 서버에서 재빌드하여 운영에 반영하는 방식입니다.
-전환 목표는 테스트·운영 모두 현재 준비 중인 Kubernetes 클러스터에서 실행하는 것입니다.
-공개 주소는 테스트 `stg.etch.samsungds.net`과 운영 `etch.samsungds.net`을 사용하는
-[앱별 도메인 전환안](#앱별-도메인-전환안)을 따릅니다.
-Argo 없이 검증한 이미지를 운영으로 승격하는 도구의 구현·운영 적용은 미확인입니다.
-담당자는 미확인입니다.
+| 환경 | 공개 주소 | 남은 준비 |
+| --- | --- | --- |
+| 운영 | `https://etch.samsungds.net/` | prod overlay의 실제 이미지·노드·DB·영속 저장소·로그인 client와 서버 적용 |
+| 테스트 | `https://stg.etch.samsungds.net/` | 전용 namespace·DB·저장소·로그인 client와 배포 입력. 별도 Kubernetes 테스트 배포는 미확인 |
 
-| 환경·대상 | 현재 값·용도 | 확인 상태·설정 근거 | 남은 확인 |
-| --- | --- | --- | --- |
-| Portal 테스트 | `stg.plane`에서 테스트. 별도 Docker 서버에서 현재 준비 중인 Kubernetes 클러스터로 전환 예정, 목표 공개 주소는 위 전환안 참조 | 사용자 확인. `apps/portal/web/vite.config.mjs`에는 `stg.plane.samsungds.net`의 Vite 개발 서버 host·HMR 설정이 있고 `local/portal/env/`에도 해당 도메인 참조가 있음 | [서버 원본](servers.md#portal-docker-환경)·DNS/TLS 전환·DB/스토리지 분리 여부, 전환할 context/namespace·노드·이미지와 실제 적용 |
-| Portal 운영 | `plane`에서 운영. Docker 서버 재빌드 방식에서 같은 Kubernetes 클러스터로 전환 예정, 목표 공개 주소는 위 전환안 참조 | 사용자 확인. 현재 `deploy/portal/k8s/overlays/prod/ingress.yaml`은 위 서비스 표의 `etch.samsungds.net`을 선언 | [서버 원본](servers.md#portal-docker-환경)·DNS/TLS 전환·데이터 이전·배포 원본, 전환할 context/namespace·노드와 실제 적용 |
-
-`stg.plane`의 개발 서버 설정만으로 운영과 같은 빌드 이미지가 배포되어 있다고 판단하지 않습니다.
-테스트·운영의 DNS 연결 대상·VIP·TLS는 [네트워크 원본](network.md)과 대조하고,
-접속 관계가 확정되기 전에는 기존 Ingress·env의 도메인을 자동 교체하지 않습니다.
+서비스 운영 시작 전이라는 사용자 확인을 기준으로 기록합니다. 서버·데이터의 현재 위치는
+[서버 원본](servers.md#portal-docker-환경), 네트워크는 [DNS·VIP 원본](network.md)과 대조합니다.
 
 ### 사내 업무 연동 주소
 
@@ -178,7 +84,8 @@ Argo 없이 검증한 이미지를 운영으로 승격하는 도구의 구현·�
 
 ## 앱별 배치와 스토리지 선언
 
-이 Kubernetes 구성에서 사용자가 확인한 운영 앱은 Keycloak·MinIO이며 MinIO에는 데이터가 없습니다.
+이 Kubernetes 구성은 서비스 운영 시작 전이라는 사용자 확인이 있습니다.
+Keycloak·MinIO의 준비·설치 상태와 실제 Pod·접속 상태는 서버 조회가 필요하며, MinIO에는 데이터가 없다는 사용자 확인이 있습니다.
 Portal의 [테스트·운영 환경](#portal-테스트운영-접속-구분)은 별도 Docker 서버에서 이 클러스터로
 함께 전환할 예정입니다. namespace·노드·스토리지 선택과 실제 전환 적용은 미확인입니다.
 MinIO는 데이터 이관 없이 `/appdata/minio` 저장소로 재생성할 예정입니다.

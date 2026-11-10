@@ -40,6 +40,27 @@ def settings():
     return result
 
 
+class PublicRoutingTests(unittest.TestCase):
+    def test_root_url_aligns_ingress_and_internal_execution_api(self):
+        """공개 접두사를 없애면 태스크 실행 API도 같은 루트에서 호출한다."""
+        values = {**settings(), 'AIRFLOW_WEBSERVER_BASE_URL': 'https://airflow.example.test'}
+        deploy.validate(values)
+        rendered = deploy.helm_values(values)
+        self.assertEqual(rendered['ingress']['apiServer']['path'], '/')
+        self.assertEqual(rendered['config']['api']['base_url'], values['AIRFLOW_WEBSERVER_BASE_URL'])
+        self.assertEqual(rendered['config']['core']['execution_api_server_url'],
+                         f'http://airflow-api-server.{values["NAMESPACE"]}.svc.cluster.local:8080/execution/')
+
+    def test_local_prefix_is_preserved_for_execution_api(self):
+        """서버 라우팅 변경 후에도 로컬의 공유 배포 도구는 기존 접두사를 유지한다."""
+        values = {**settings(), 'AIRFLOW_WEBSERVER_BASE_URL': 'http://localhost:8080/airflow',
+                  'AIRFLOW_OIDC_ALLOW_HTTP': 'true'}
+        deploy.validate(values)
+        rendered = deploy.helm_values(values)
+        self.assertEqual(rendered['ingress']['apiServer']['path'], '/airflow')
+        self.assertTrue(rendered['config']['core']['execution_api_server_url'].endswith('/airflow/execution/'))
+
+
 class ChartDownloadTests(unittest.TestCase):
     def test_fetch_uses_internal_repository_and_preserves_cache_on_bad_checksum(self):
         """사내 미러에서 고정 버전을 받고 손상된 다운로드는 기존 캐시에 반영하지 않습니다."""

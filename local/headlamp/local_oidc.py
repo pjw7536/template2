@@ -22,20 +22,22 @@ CONTROL_PLANE = CLUSTER + '-control-plane'
 
 
 def values(address='127.0.0.1'):
-    """서버의 OIDC 설정 검사를 재사용하고 callback의 로컬 포트만 보정합니다."""
+    """서버의 OIDC 설정 검사를 재사용하고 로컬 접두사와 callback을 보정합니다."""
     env = dict(HEADLAMP_REGISTRY='ghcr.io', IMAGE_PULL_SECRET='', HEADLAMP_HOST='headlamp.localhost',
-               HEADLAMP_TLS_SECRET='', HEADLAMP_OIDC_ISSUER_URL=ISSUER,
+               HEADLAMP_OIDC_ISSUER_URL=ISSUER,
                HEADLAMP_OIDC_CLIENT_ID='headlamp', HEADLAMP_OIDC_SECRET='headlamp-oidc',
                HEADLAMP_OIDC_CA_CONFIGMAP='headlamp-ca')
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'headlamp.env'
         path.write_text(''.join(f'{key}={value}\n' for key, value in env.items()))
         result = module('headlamp').settings(path)
+    result['config']['baseURL'] = '/headlamp'
     for entry in result['env']:
         if entry['name'] == 'OIDC_CALLBACK_URL':
             entry['value'] = URL + 'oidc-callback'
     result['hostAliases'] = [{'ip': address, 'hostnames': ['sso.localhost']}]
     result['ingress']['hosts'][0]['host'] = 'localhost'
+    result['ingress']['hosts'][0]['paths'][0]['path'] = '/headlamp'
     result['ingress']['tls'] = [{'secretName': 'headlamp-tls', 'hosts': ['localhost']}]
     # 서버 원본의 관리자 Group binding 이름과 분리해 기존 서버 리소스와 충돌하지 않습니다.
     result['extraManifests'] = [yaml.safe_dump({

@@ -37,7 +37,11 @@ class MinioTests(unittest.TestCase):
                 self.assertEqual(pod['imagePullSecrets'], [{'name': 'registry-login'}])
                 self.assertTrue(pod['containers'][0]['image'].startswith('mirror.test/'))
         self.assertEqual({item['spec']['rules'][0]['http']['paths'][0]['path']
-                          for item in items if item['kind'] == 'Ingress'}, {'/minio', '/minio-console'})
+                          for item in items if item['kind'] == 'Ingress'}, {'/'})
+        routes = {item['metadata']['name']: item for item in items if item['kind'] == 'Ingress'}
+        for name, key in [('minio-api', 'MINIO_API_HOST'), ('minio-console', 'MINIO_CONSOLE_HOST')]:
+            self.assertEqual(routes[name]['spec']['rules'][0]['host'], values[key])
+            self.assertNotIn('traefik.ingress.kubernetes.io/router.middlewares', routes[name]['metadata']['annotations'])
 
     def test_portal_overlay_no_longer_owns_storage_or_minio_ingress(self):
         root = manage.BASE.parents[1]
@@ -86,7 +90,7 @@ class MinioTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, '공용 TLS'):
             manage.routing_plan(['kubectl', '--context', 'prod'], settings())
         self.assertEqual(run.call_count, 1)
-        check.assert_called_once_with(['kubectl', '--context', 'prod'], settings()['INGRESS_HOST'], {})
+        check.assert_called_once_with(['kubectl', '--context', 'prod'], settings()['MINIO_API_HOST'], {})
 
     def test_ingress_patch_only_adds_common_namespace_and_checks_resource_version(self):
         current = {'metadata': {'namespace': 'etch-sso', 'resourceVersion': '50'}, 'spec': {
@@ -102,10 +106,20 @@ class MinioTests(unittest.TestCase):
         with patch.object(manage, 'run', side_effect=responses), patch.object(manage.tls, 'check') as check:
             access, changes = manage.routing_plan(['kubectl', '--context', 'prod'], settings())
         self.assertEqual(json.dumps(current), before)
+        self.assertEqual([item.args[1] for item in check.call_args_list],
+                         [settings()['MINIO_API_HOST'], settings()['MINIO_CONSOLE_HOST']])
         self.assertTrue(all(item['metadata']['namespace'] == 'minio' for item in access))
         self.assertEqual(changes[0], {'op': 'test', 'path': '/metadata/resourceVersion', 'value': '50'})
         self.assertEqual(changes[1]['path'], '/spec/template/spec/containers/0/args')
         self.assertIn('--providers.kubernetesingress.namespaces=etch-sso,headlamp,tailwind-internal,airflow,minio', changes[1]['value'])
+
+    def test_console_tls_failure_stops_before_any_routing_mutation(self):
+        """S3 인증서가 있어도 콘솔 인증서가 없으면 라우팅을 적용하지 않는다."""
+        with patch.object(manage, 'run', return_value='{}') as run, \
+                patch.object(manage.tls, 'check', side_effect=[None, ValueError('콘솔 TLS 없음')]), \
+                self.assertRaisesRegex(ValueError, '콘솔 TLS'):
+            manage.routing_plan(['kubectl', '--context', 'prod'], settings())
+        self.assertEqual(run.call_count, 1)
 
     def deployment_calls(self, *, existing=False, fail_preflight=False, check_only=False, available_pv=True,
                          pv_phase='Bound', pv_uid='current-claim'):

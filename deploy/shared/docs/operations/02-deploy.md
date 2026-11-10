@@ -60,7 +60,7 @@ PV를 적용하는 것만으로 폴더가 생기거나 쓰기 권한이 설정�
 - [환경설정 규칙](../configuration/environment.md)에 따라 실제 env를 준비합니다. 기존 파일은 보존하고 권한은 600으로 관리합니다.
 - 외부 env 파일은 앱 도구의 경로 인자로 지정합니다. env를 `source`로 실행하지 않습니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
-- [TLS 안내](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 도메인·SAN·만료·full chain·개인키를 확인하고 앱이 사용하는 namespace에 Secret을 준비합니다.
+- [TLS 안내](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 도메인·SAN·만료·full chain·개인키를 확인하고 사용하는 host별로 공용 `etch-sso/traefik-tls`에 등록합니다. OIDC용 CA ConfigMap은 소비 앱 namespace에 별도로 준비합니다.
 - [VIP 안내](../ingress/setup.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
 
 **완료 기준:** 선택한 앱의 이미지·chart·디스크·env·TLS·배포 권한이 모두 준비되어야 합니다.
@@ -152,7 +152,7 @@ Pod가 Running이라는 이유만으로 앱이 준비됐다고 판단하지 않�
 ### 2. HTTPS 확인 — 접근 가능한 PC
 
 APP VIP를 사용하는 앱의 정상 health 경로로 확인합니다.
-Portal은 `/api/v1/health/`, Airflow는 `/airflow/health`입니다.
+Portal은 `/api/v1/health/`, Airflow는 `/api/v2/monitor/health`입니다.
 
 ```bash
 read -r -p '앱 인증서 도메인: ' APP_HOST

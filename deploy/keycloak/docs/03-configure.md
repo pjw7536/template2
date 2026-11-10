@@ -43,6 +43,8 @@ Admin Console에 서버 설치 때 입력한 관리자 계정으로 접속하고
 [환경변수 안내](01-prepare.md#사내-identity-provider용-값)에 따라
 `deploy/keycloak/env/prod.env`의 사내 client ID·secret을 입력합니다.
 AD FS의 redirect URI는 `<공개 Keycloak URL>/realms/etch/broker/oidc/endpoint`입니다.
+운영 기본 주소의 등록값은 `https://sso.etch.samsungds.net/realms/etch/broker/oidc/endpoint`입니다.
+AD FS에 이 주소가 등록되어 있어야 사내 로그인 결과를 Keycloak에서 받을 수 있습니다.
 
 ```bash
 vi deploy/keycloak/env/prod.env

@@ -97,9 +97,9 @@ Airflow 2.x DB를 올리는 경우에는 지원되는 2.7 이상 버전에서 �
 기존 scheduler·webserver·triggerer를 중지한 뒤 DB·Fernet 키·설정을 백업합니다.
 3.x migration은 DB schema를 변경하므로 되돌릴 때는 해당 DB 백업과 이전 이미지가 함께 필요합니다.
 API server·DAG processor가 준비되고 기존 Connection·Variable의 복호화와 시험 DAG 실행을 확인한 뒤 업무 DAG를 활성화합니다.
-Keycloak client의 callback은 `/airflow/auth/oauth-authorized/keycloak`로 맞춥니다.
+Keycloak client의 callback은 `/auth/oauth-authorized/keycloak`로 맞춥니다.
 Portal에서 DAG 현황을 조회한다면 API v2·JWT client가 포함된 Portal API 이미지도 함께 배포하고,
-`AIRFLOW_BASE_URL`을 `http://airflow-api-server.airflow.svc.cluster.local:8080/airflow`로 지정합니다.
+`AIRFLOW_BASE_URL`을 `http://airflow-api-server.airflow.svc.cluster.local:8080`로 지정합니다.
 
 DAG를 일시정지하고 실행 중 작업 완료·백업을 확인한 뒤 다음 순서로 진행합니다.
 `k8s.env`의 `AIRFLOW_IMAGE_TAG`를 새 고유 태그로 바꾸고, 소스와 nerdctl·BuildKit이 준비된 빌드 호스트에서 실행합니다.

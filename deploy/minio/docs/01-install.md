@@ -53,8 +53,9 @@ mc 기본값은 `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`를 사내 Do
 | `VOLUME_NAME` | 사용할 PV 이름. 비우면 기존 PVC의 연결 이름 또는 신규 `minio-data-pv` |
 | `MINIO_DATA_HOST_PATH` | 정적 모드의 Worker 저장 경로. 기본 `/appdata/minio`, 기존 PV가 있으면 실제 경로와 일치 |
 | `STORAGE_SIZE` | PVC 요청 용량 |
-| `INGRESS_HOST` | 업무 도메인. 인증서는 공용 Traefik에서 관리 |
-| `INGRESS_TLS_SECRET` | 이전 env 호환용. 빈 값으로 유지 |
+| `MINIO_API_HOST` | S3 API 도메인. 기본 `s3.etch.samsungds.net` |
+| `MINIO_CONSOLE_HOST` | 콘솔 도메인. 기본 `minio.etch.samsungds.net` |
+| `MINIO_BROWSER_REDIRECT_URL` | 콘솔 도메인의 HTTPS 루트 URL. 끝에 `/` 포함 |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | 공용 서버 관리자 계정, 기존 운영값은 보존 |
 | `MINIO_BUCKETS` | 초기 생성할 버킷의 쉼표 구분 목록, 공용 코드는 특정 앱 이름을 고정하지 않음 |
 
@@ -114,14 +115,16 @@ Job 정리는 [TTL-after-finished](https://kubernetes.io/docs/concepts/workloads
 
 #### 공용 HTTPS 인증서
 
-업무 도메인의 인증서는 [공용 Traefik](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)에 한 번 등록합니다.
+S3·콘솔 host를 포함한 인증서는 [공용 Traefik](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)에 두 host 각각 등록합니다.
 이미 등록되어 있으면 이 단계는 생략합니다. `minio` namespace에는 TLS 인증서를 등록하지 않습니다.
 
 ```bash
 read -r -p '업무 도메인 fullchain PEM 경로: ' MINIO_TLS_CERT
 read -r -p '업무 도메인 개인키 PEM 경로: ' MINIO_TLS_KEY
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
-  TLS_CERT_FILE="$MINIO_TLS_CERT" TLS_KEY_FILE="$MINIO_TLS_KEY"
+for MINIO_TLS_HOST in s3.etch.samsungds.net minio.etch.samsungds.net; do
+  make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$MINIO_TLS_HOST" \
+    TLS_CERT_FILE="$MINIO_TLS_CERT" TLS_KEY_FILE="$MINIO_TLS_KEY"
+done
 ```
 
 기존 Secret만 있다면 파일 대신 `TLS_SOURCE=namespace/secret`으로 가져올 수 있습니다.

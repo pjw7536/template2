@@ -290,7 +290,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: etch-sso.samsungds.net
+    - host: sso.etch.samsungds.net
       http:
         paths:
           - path: /

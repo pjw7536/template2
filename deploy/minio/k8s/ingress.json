@@ -13,19 +13,18 @@
         },
         "annotations": {
           "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
-          "traefik.ingress.kubernetes.io/router.tls": "true",
-          "traefik.ingress.kubernetes.io/router.middlewares": "minio-api@file"
+          "traefik.ingress.kubernetes.io/router.tls": "true"
         }
       },
       "spec": {
         "ingressClassName": "traefik",
         "rules": [
           {
-            "host": "etch.samsungds.net",
+            "host": "s3.etch.samsungds.net",
             "http": {
               "paths": [
                 {
-                  "path": "/minio",
+                  "path": "/",
                   "pathType": "Prefix",
                   "backend": {
                     "service": {
@@ -53,19 +52,18 @@
         },
         "annotations": {
           "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
-          "traefik.ingress.kubernetes.io/router.tls": "true",
-          "traefik.ingress.kubernetes.io/router.middlewares": "minio-console@file"
+          "traefik.ingress.kubernetes.io/router.tls": "true"
         }
       },
       "spec": {
         "ingressClassName": "traefik",
         "rules": [
           {
-            "host": "etch.samsungds.net",
+            "host": "minio.etch.samsungds.net",
             "http": {
               "paths": [
                 {
-                  "path": "/minio-console",
+                  "path": "/",
                   "pathType": "Prefix",
                   "backend": {
                     "service": {

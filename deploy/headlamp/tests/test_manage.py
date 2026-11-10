@@ -15,7 +15,7 @@ manage = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manage)
 
 
-OIDC_ENV = ('\nHEADLAMP_HOST=ui.example.test\nHEADLAMP_TLS_SECRET=headlamp-tls'
+OIDC_ENV = ('\nHEADLAMP_HOST=ui.example.test'
             '\nHEADLAMP_OIDC_ISSUER_URL=https://sso.example.test/realms/etch'
             '\nHEADLAMP_OIDC_CLIENT_ID=headlamp\nHEADLAMP_OIDC_SECRET=headlamp-oidc')
 
@@ -75,7 +75,7 @@ class DeploymentTest(unittest.TestCase):
     def test_default_profile_is_valid_production_input(self):
         values = manage.settings(manage.APP / 'env/k8s.env')
         env = {entry['name']: entry['value'] for entry in values['env']}
-        self.assertEqual(env['OIDC_ISSUER_URL'], 'https://etch-sso.samsungds.net/realms/etch')
+        self.assertEqual(env['OIDC_ISSUER_URL'], 'https://sso.etch.samsungds.net/realms/etch')
         self.assertEqual(values['volumes'][0]['configMap']['name'], 'headlamp-oidc-ca')
         self.assertNotIn('OIDC_CLIENT_SECRET', env)
 
@@ -90,7 +90,7 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(exported['HEADLAMP_OIDC_SECRET'], 'custom-oidc')
             self.assertEqual(exported['HEADLAMP_OIDC_CA_CONFIGMAP'], '')
             self.assertEqual(exported['HEADLAMP_SSO_HOST'], 'sso.example.test')
-            self.assertEqual(exported['HEADLAMP_CALLBACK_URL'], 'https://ui.example.test/headlamp/oidc-callback')
+            self.assertEqual(exported['HEADLAMP_CALLBACK_URL'], 'https://ui.example.test/oidc-callback')
             self.assertNotIn('OIDC_CLIENT_SECRET', exported)
 
     def test_env_validation(self):
@@ -133,7 +133,7 @@ class DeploymentTest(unittest.TestCase):
             path.write_text(valid + '\nHEADLAMP_OIDC_CA_CONFIGMAP=headlamp-ca')
             values = manage.settings(path)
             env = {item['name']: item['value'] for item in values['env']}
-            self.assertEqual(env['OIDC_CALLBACK_URL'], 'https://ui.example.test/headlamp/oidc-callback')
+            self.assertEqual(env['OIDC_CALLBACK_URL'], 'https://ui.example.test/oidc-callback')
             self.assertEqual(env['SSL_CERT_FILE'], '/etc/headlamp-ca/ca.crt')
             self.assertEqual(env['OIDC_USE_ACCESS_TOKEN'], 'false')
             self.assertNotIn('OIDC_CLIENT_SECRET', env)
@@ -167,13 +167,13 @@ class DeploymentTest(unittest.TestCase):
 
     def test_ui_prints_sso_url_without_minting_token(self):
         deployment = {'spec': {'template': {'spec': {'containers': [{'env': [
-            {'name': 'OIDC_CALLBACK_URL', 'value': 'https://ui.example.test/headlamp/oidc-callback'}]}]}}}}
+            {'name': 'OIDC_CALLBACK_URL', 'value': 'https://ui.example.test/oidc-callback'}]}]}}}}
         with patch('sys.argv', ['manage.py', 'ui', '--context', 'prod']), patch.object(manage, 'run', side_effect=[
                 subprocess.CompletedProcess([], 0, ''), subprocess.CompletedProcess([], 0, json.dumps(deployment))
         ]) as run, patch('builtins.print') as output:
             manage.main()
         self.assertEqual(run.call_count, 2)
-        self.assertIn('https://ui.example.test/headlamp/', output.call_args.args[0])
+        self.assertIn('https://ui.example.test/', output.call_args.args[0])
 
     def test_missing_oidc_secret_prevents_helm_upgrade(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -195,13 +195,13 @@ class DeploymentTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'input.env'
             for extra in ['HEADLAMP_HOST=etch.example.test', 'HEADLAMP_TLS_SECRET=headlamp-tls',
-                          'HEADLAMP_HOST=https://etch.example.test\nHEADLAMP_TLS_SECRET=headlamp-tls']:
+                          'HEADLAMP_HOST=https://etch.example.test']:
                 path.write_text('HEADLAMP_REGISTRY=mirror.test\n' + extra)
                 with self.assertRaises(ValueError):
                     manage.settings(path)
             path.write_text('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV)
             values = manage.settings(path)
-            self.assertEqual(values['config']['baseURL'], '/headlamp')
+            self.assertEqual(values['config']['baseURL'], '')
             self.assertEqual(values['ingress']['tls'], [])
 
     def test_ingress_preserves_live_placement_and_namespaces(self):

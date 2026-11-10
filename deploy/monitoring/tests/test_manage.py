@@ -176,11 +176,11 @@ class MonitoringTests(unittest.TestCase):
             manage.validate(data)
 
     def test_ingress_requires_dns_and_tls_and_can_be_disabled_for_local(self):
-        for changes in ({'INGRESS_HOST': 'https://portal.test/path'}, {'INGRESS_HOST': ''},
+        for changes in ({'GRAFANA_HOST': 'https://portal.test/path'}, {'PROMETHEUS_HOST': ''}, {'ALERTMANAGER_HOST': 'invalid'}, {'GRAFANA_HOST': settings()['PROMETHEUS_HOST']},
                         {'INGRESS_ENABLED': 'yes'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 manage.validate({**settings(), **changes})
-        data = {**settings(), 'INGRESS_ENABLED': 'false', 'INGRESS_HOST': '', 'INGRESS_TLS_SECRET': ''}
+        data = {**settings(), 'INGRESS_ENABLED': 'false', 'GRAFANA_HOST': '', 'PROMETHEUS_HOST': '', 'ALERTMANAGER_HOST': ''}
         manage.validate(data)
         self.assertTrue(all('ingress' not in manage.values(data)[name] for name in manage.VOLUMES))
 
@@ -518,16 +518,16 @@ class MonitoringTests(unittest.TestCase):
             self.assertIn('volumeName: monitoring-monitoring-alertmanager', rendered)
             self.assertIn('name: registry-login', rendered)
             self.assertEqual(rendered.count('kind: Ingress\n'), 3)
-            self.assertEqual(manage.ingress_hosts(data, rendered), {data['INGRESS_HOST']})
+            self.assertEqual(manage.ingress_hosts(data, rendered), {data[key] for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST')})
             for component in manage.VOLUMES:
-                self.assertIn(f'path: /{component}', rendered)
-            self.assertIn('root_url = https://etch.samsungds.net/grafana/', rendered)
-            self.assertIn('serve_from_sub_path = true', rendered)
+                self.assertIn('path: /', rendered)
+            self.assertIn('root_url = https://grafana.etch.samsungds.net/', rendered)
+            self.assertIn('serve_from_sub_path = false', rendered)
             for component in ('prometheus', 'alertmanager'):
-                self.assertIn(f'routePrefix: "/{component}"', rendered)
-                self.assertIn(f'path: "/{component}/metrics"', rendered)
+                self.assertIn('routePrefix: "/"', rendered)
+                self.assertIn('path: "/metrics"', rendered)
                 self.assertIn(f'url: http://monitoring-{component}.monitoring:', rendered)
-            self.assertIn('pathPrefix: "/alertmanager"', rendered)
+            self.assertIn('pathPrefix: "/"', rendered)
             self.assertNotIn('admin-password:', rendered)
 
 

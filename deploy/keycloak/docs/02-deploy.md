@@ -73,7 +73,7 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get ingress
 - 외부 DNS/TLS 준비 후 공개 주소에서 로그인 화면과 realm discovery 응답을 확인할 수 있습니다.
 
 ```bash
-curl -fsS https://etch-sso.samsungds.net/realms/etch/.well-known/openid-configuration
+curl -fsS https://sso.etch.samsungds.net/realms/etch/.well-known/openid-configuration
 ```
 
 실패하면 event·로그로 원인을 확인합니다. 이미지 pull, worker 파일 권한·디스크, 실제 외부 접속은 서버에서 확인해야 합니다.

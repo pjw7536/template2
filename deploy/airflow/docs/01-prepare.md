@@ -138,7 +138,7 @@ chmod 600 deploy/airflow/env/k8s.env
 - `AIRFLOW_ADMIN_EMAIL`: 현재 `admin@admin.com`. 관리자 계정 식별용 선언이며 수신 가능한 실제 메일함인지 확인해 수정합니다. 생성된 관리자 비밀번호는 `k8s.env`에서 확인합니다.
 - `AIRFLOW_API_BASE_URL`: 현재 `http://api.tailwind-internal.svc.cluster.local:8000`. Airflow DAG가 호출하는 Portal API 주소이며 다른 namespace라면 Service DNS를 수정합니다.
 - `AIRFLOW_TRIGGER_TOKEN`: `k8s.env`에 넣습니다. Portal API의 동일 변수와 일치시키며 새로 임의 생성하지 않습니다.
-- `AIRFLOW_WEBSERVER_BASE_URL`: 현재 `https://etch.samsungds.net/airflow`. `/airflow`로 끝나는 접속 URL이며 port-forward 접속 예시는 `http://localhost:8080/airflow`입니다.
+- `AIRFLOW_WEBSERVER_BASE_URL`: 현재 `https://airflow.etch.samsungds.net`. 서비스 도메인의 루트 접속 URL이며 port-forward 접속 예시는 `http://localhost:8080`입니다.
 - `AIRFLOW_WEBSERVER_SECRET_KEY`: API server의 세션과 JWT 서명에 사용하는 고정 비밀값입니다. `airflow-api-key`·`airflow-api-jwt` Secret으로 전달하며 모든 구성 요소가 같은 값을 사용합니다.
 
 실패 알림은 아래 [메신저·메일 실패 알림](#메신저메일-실패-알림)에 따라 같은 파일의 채널별 입력을 채웁니다.
@@ -217,12 +217,12 @@ mock의 `/mail/messages`에서 결과를 확인합니다. 운영 credential을 �
 
 | 방식 | env 설정 | 배포 전 준비 |
 | --- | --- | --- |
-| port-forward | `INGRESS_ENABLED=false`, `AIRFLOW_WEBSERVER_BASE_URL=http://localhost:8080/airflow` | 클러스터 접근 권한 |
-| 기존 공용 Traefik | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, HTTPS `/airflow` URL | `etch-sso/traefik`, DNS, 공용 저장소에 등록한 도메인 인증서 |
+| port-forward | `INGRESS_ENABLED=false`, `AIRFLOW_WEBSERVER_BASE_URL=http://localhost:8080` | 클러스터 접근 권한 |
+| 기존 공용 Traefik | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, HTTPS 루트 URL | `etch-sso/traefik`, DNS, 공용 저장소에 등록한 도메인 인증서 |
 
 `make airflow-up`의 Ingress 경로는 기존 공용 Traefik과 HTTPS를 전제로 합니다.
 다른 controller를 사용할 때는 [직접 실행](03-deploy.md#6-고급-직접-deploy와-helm-override)의 준비 범위를 확인합니다.
-URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습니다.
+운영 공개 URL에는 앱 접두사를 붙이지 않습니다. Ingress와 앱은 루트 경로(`/`)를 사용합니다.
 
 운영 HTTPS 설정은 다음 값으로 통일합니다. namespace는 `airflow`를 사용합니다.
 저장소 기본 env에도 이 값과 Keycloak 인증 모드가 설정되어 있습니다.
@@ -230,7 +230,7 @@ URL 경로는 정확히 `/airflow`이며 마지막에 `/`를 덧붙이지 않습
 ```dotenv
 INGRESS_ENABLED=true
 INGRESS_CLASS_NAME=traefik
-AIRFLOW_WEBSERVER_BASE_URL=https://etch.samsungds.net/airflow
+AIRFLOW_WEBSERVER_BASE_URL=https://airflow.etch.samsungds.net
 ```
 
 인증서는 `etch-sso/traefik-tls`에서 관리하므로 기본 env에 앱별 TLS Secret 입력은 없습니다.
@@ -264,7 +264,7 @@ make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes AIRFLOW_ENV="$AIRFLO
 로그인에 성공한 사용자는 기본적으로 Viewer입니다.
 추가 권한이 필요하면 Keycloak의 `airflow` client에서 User 또는 Admin 역할을 부여합니다.
 
-저장소 env는 `https://etch.samsungds.net/airflow`와 `AIRFLOW_AUTH_MODE=keycloak`을 기본으로 사용합니다.
+저장소 env는 `https://airflow.etch.samsungds.net`와 `AIRFLOW_AUTH_MODE=keycloak`을 기본으로 사용합니다.
 배포 전에 전용 client secret과 필요한 CA를 준비합니다. `replace-me`가 남으면 실제 입력 검사에서 중단합니다.
 기존 DB 로그인이 필요한 복구 상황에서만 `AIRFLOW_AUTH_MODE=db`로 명시적으로 바꿉니다.
 로컬에서는 실행 도구가 localhost 주소와 로컬 Keycloak 입력을 적용합니다.

@@ -66,7 +66,7 @@ sudo ss -lntp | grep -E ':(80|443)[[:space:]]' || true
 
 ```text
 deploy/keycloak/env/prod.env                   # 서버 설정·credential
-deploy/shared/certs/etch-sso.samsungds.net/     # fullchain.crt, private.key
+deploy/shared/certs/sso.etch.samsungds.net/     # fullchain.crt, private.key
 ```
 
 [env 안내](#환경설정)의 서버 기동용 네 항목을 입력합니다.
@@ -78,9 +78,9 @@ DNS·APP VIP는 [네트워크 정보](../../shared/docs/infrastructure/network.m
 인증서 파일을 배치한 뒤 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)을 수행합니다.
 
 ```bash
-make ingress-tls-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" TLS_HOST=etch-sso.samsungds.net \
-  TLS_CERT_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/fullchain.crt" \
-  TLS_KEY_FILE="$PWD/deploy/shared/certs/etch-sso.samsungds.net/private.key"
+make ingress-tls-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" TLS_HOST=sso.etch.samsungds.net \
+  TLS_CERT_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/fullchain.crt" \
+  TLS_KEY_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/private.key"
 ```
 
 Keycloak 배포는 등록된 인증서를 검사하며 기본적으로 인증서 파일을 다시 읽거나 갱신하지 않습니다.
@@ -161,8 +161,8 @@ Portal은 `deploy/portal/env/prod/api.env`, Headlamp는 `deploy/headlamp/env/k8s
 | --- | --- |
 | namespace | `etch-sso` |
 | Ingress 이름 | `keycloak` |
-| 도메인 | `etch-sso.samsungds.net` |
-| 인증서 폴더 | `deploy/shared/certs/etch-sso.samsungds.net/` |
+| 도메인 | `sso.etch.samsungds.net` |
+| 인증서 폴더 | `deploy/shared/certs/sso.etch.samsungds.net/` |
 | 인증서·개인키 | `fullchain.crt`, `private.key` |
 | TLS Secret | `etch-sso/traefik-tls` |
 | TLS 종료 | Traefik |
@@ -189,7 +189,7 @@ Headlamp와 API server의 신뢰 설정은 [Headlamp TLS](../../headlamp/docs/01
 해당 서버가 HTTPS 클라이언트로 요청할 때 기본 신뢰 검증이 실패하는 경우에만 진행합니다.
 
 ```bash
-curl -v https://etch-sso.samsungds.net/ -o /dev/null
+curl -v https://sso.etch.samsungds.net/ -o /dev/null
 ```
 
 `--cacert`를 지정하면 성공하고 위 요청은 신뢰 오류로 실패한다면 해당 노드에 Root CA를 등록합니다.
@@ -200,7 +200,7 @@ sudo install -m 0644 deploy/shared/certs/ca/SECDS-T2RootCA.crt \
 
 sudo update-ca-certificates
 
-curl -v https://etch-sso.samsungds.net/ -o /dev/null
+curl -v https://sso.etch.samsungds.net/ -o /dev/null
 ```
 
 PEM 형식의 `.crt` 파일을 사용합니다. 신뢰가 필요한 CP1·Worker 각각에서 수행합니다.
@@ -211,7 +211,7 @@ Pod 내부에서만 실패하면 해당 애플리케이션의 신뢰 저장소�
 
 ### 클라이언트 신뢰: Windows 브라우저 경고 확인
 
-`https://etch-sso.samsungds.net` 도메인으로 접속합니다. IP SAN이 없는 인증서에서
+`https://sso.etch.samsungds.net` 도메인으로 접속합니다. IP SAN이 없는 인증서에서
 IP 주소로 접속하면 이름 불일치 경고가 발생할 수 있습니다.
 
 - 현재 사용자 저장소: `Win + R` → `certmgr.msc`

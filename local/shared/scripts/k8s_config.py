@@ -174,7 +174,7 @@ def monitoring_settings():
     return dict(NAMESPACE='monitoring', NODE_NAME=WORKER, DATA_HOST_PATH='/data/local-runtime/monitoring',
                 DOCKER_REGISTRY='docker.io', QUAY_REGISTRY='quay.io', GHCR_REGISTRY='ghcr.io',
                 K8S_REGISTRY='registry.k8s.io', IMAGE_PULL_SECRET='', GRAFANA_ADMIN_SECRET='monitoring-grafana-admin',
-                INGRESS_ENABLED='false', INGRESS_HOST='', INGRESS_TLS_SECRET='')
+                INGRESS_ENABLED='false', GRAFANA_HOST='', PROMETHEUS_HOST='', ALERTMANAGER_HOST='')
 
 
 def api_overrides(creds):

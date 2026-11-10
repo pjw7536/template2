@@ -39,7 +39,7 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp get deployment,pods,svc,ingress
 ```
 
 Deployment가 Ready이고 HTTPS 주소가 출력돼야 합니다.
-Ingress 경로는 `/headlamp`이며 StripPrefix를 적용하지 않습니다.
+Ingress 경로는 `/`이며 StripPrefix를 적용하지 않습니다.
 
 `make headlamp-up`은 최대 5분 동안 준비 상태를 기다리고, 성공하면 접속 주소를 출력합니다.
 조회 결과는 다음과 같아야 합니다.
@@ -81,7 +81,7 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp logs deployment/headlamp --tail=10
   openssl x509 -in "$HEADLAMP_CERT_DIR/fullchain.crt" -noout -fingerprint -sha256 > "$work/expected"
   openssl x509 -in "$work/live.pem" -noout -fingerprint -sha256 > "$work/actual"
   cmp "$work/expected" "$work/actual"
-  curl --fail --silent --show-error --cacert "$work/root.pem" "https://$HEADLAMP_HOST/headlamp/" -o /dev/null
+  curl --fail --silent --show-error --cacert "$work/root.pem" "https://$HEADLAMP_HOST/" -o /dev/null
   echo '실제 HTTPS 인증서·Headlamp 응답 확인 완료'
 )
 ```

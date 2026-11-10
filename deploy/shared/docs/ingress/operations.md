@@ -4,14 +4,14 @@
 
 여러 앱이 함께 사용하는 Traefik 설정의 운영 계약을 설명합니다.
 처음 설치할 때는 [Traefik 셋업](setup.md)의 실행 순서로 시작합니다.
-이 문서는 namespace 감시·TLS 이전·앱 연결 등 상세 참고입니다.
+이 문서는 namespace 감시·TLS·앱 연결 등 상세 참고입니다.
 기본 실행 위치는 기존 `etch-sso` namespace, `khplane01w09` worker이며 80/443을 사용합니다.
 현재 APP VIP 환경은 [두 Worker 443 연결 안내](setup.md)에 따라 동일 Deployment를 두 replica로 확장합니다.
 클러스터에 서버를 등록할 때는 [Worker 추가](../kubernetes/worker.md),
 기존 ingress 배치를 백업하며 확장할 때는 [Traefik·VIP 확장](expand.md)을 따릅니다.
 
 공용 진입점의 최초 설치·대상 선택·검사·적용은 [Traefik 설치](setup.md)를 따릅니다.
-이 문서는 기존 운영 배치의 보존 규칙·namespace 감시·middleware 동작을 설명합니다.
+이 문서는 controller 배치 보존·namespace 감시·서비스별 도메인 라우팅을 설명합니다.
 
 ## 기존 배치를 보존하는 방법과 검사 범위
 
@@ -46,15 +46,15 @@ make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 
 | namespace | Ingress | 공개 주소 |
 | --- | --- | --- |
-| etch-sso | keycloak | etch-sso.samsungds.net/ |
+| etch-sso | keycloak | sso.etch.samsungds.net/ |
 | tailwind-internal | portal | etch.samsungds.net/ (`/api`, `/auth` 포함) |
-| minio | minio-api, minio-console | etch.samsungds.net/minio/, /minio-console/ |
-| airflow | airflow-ingress | etch.samsungds.net/airflow |
-| headlamp | headlamp | etch.samsungds.net/headlamp/ |
-| monitoring | Grafana, Prometheus, Alertmanager | etch.samsungds.net/grafana/, /prometheus/, /alertmanager/ |
+| minio | minio-api, minio-console | s3.etch.samsungds.net/, minio.etch.samsungds.net/ |
+| airflow | airflow-ingress | airflow.etch.samsungds.net/ |
+| headlamp | headlamp | headlamp.etch.samsungds.net/ |
+| monitoring | Grafana, Prometheus, Alertmanager | grafana.etch.samsungds.net/, prometheus.etch.samsungds.net/, alert.etch.samsungds.net/ |
 
-공용 TLS의 [등록·갱신](../certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)과
-[기존 앱 Secret에서 이전](../certificates/apply.md#기존-설치에서-이전)은 인증서 적용 절차를 따릅니다.
+공용 TLS는 [등록·갱신](../certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신) 절차를 따릅니다.
+하나의 SAN 인증서를 공유하더라도 실제 사용하는 host별로 등록합니다.
 manifest·도구·middleware 파일의 역할은 [실행 원본](../../ingress/README.md)에서 확인합니다.
 
 Keycloak Kustomize 진입점도 이 원본을 참조합니다. 정적 전달 YAML은 `deploy/keycloak/export`에서
@@ -77,7 +77,7 @@ Backend 목록은 `deploy.tailwind.local/vip-backends` Deployment annotation에 
 현재 단독 소스·이미지·hostPort는 그대로 사용하고 앱·DB의 nodeSelector는 변경하지 않습니다.
 
 Airflow는 자기 namespace의 Ingress와 Helm 설정을 소유하며 인증서는 공용 Traefik이 관리합니다.
-Portal 전용 Nginx를 거치지 않고 같은 controller가 `/airflow`를 Airflow Service로 전달합니다.
+Portal 전용 Nginx를 거치지 않고 같은 controller가 Airflow 도메인의 `/`를 Airflow Service로 전달합니다.
 TLS 인증서는 사용 도메인에 맞아야 하며 공용 `etch-sso/traefik-tls`에 등록되어 있어야 합니다.
 
 `kubectl apply -k deploy/shared/ingress`는 단독 기본값을 적용합니다. Keycloak 전달 YAML도 고정된 운영 설정을 적용합니다.
@@ -87,26 +87,12 @@ TLS 인증서는 사용 도메인에 맞아야 하며 공용 `etch-sso/traefik-t
 
 ## 하위 경로 middleware
 
-MinIO 콘솔 전용 Ingress는 `minio-console@file`을 참조합니다.
-공용 Traefik의 file provider가 `/etc/traefik/dynamic`에 마운트한 ConfigMap을 읽어
-`/minio-console`을 `/minio-console/`로 리다이렉트하고, 요청 접두사를 제거해 MinIO:9001로 전달합니다.
-콘솔의 WebSocket도 Traefik이 처리합니다. Kubernetes CRD나 추가 RBAC는 필요하지 않습니다.
+운영 앱은 서비스별 도메인의 `/`를 그대로 전달하며 StripPrefix나 하위 경로 리다이렉트를 사용하지 않습니다.
+MinIO는 S3 도메인에서 9000, 콘솔 도메인에서 9001 포트로 전달합니다. 콘솔 WebSocket도 Traefik이 처리합니다.
+`minio-up`은 두 host의 TLS를 검사하고 자기 namespace의 권한·감시 범위만 추가합니다.
 
-MinIO만 설치할 때는 [독립 설치 안내](../../../minio/README.md)를 따릅니다.
-`minio-up`은 Portal 없이 자기 namespace의 권한·감시 범위만 추가합니다.
-파일 경로 `/minio/`는 `minio-api@file` middleware로 접두사를 제거하고 MinIO:9000으로 전달합니다.
-두 경로 모두 Portal Nginx를 거치지 않습니다.
+`middlewares/paths.yaml`은 외부 PC 개발의 localhost 하위 경로를 위해 유지합니다.
+운영 MinIO Ingress는 해당 middleware를 참조하지 않습니다. 공용 file provider는 TLS 인증서 로딩에도 사용합니다.
 
-정규 Keycloak 재배포가 필요한 경우에는 기존 운영 env·인증서·VIP 설정을 유지하는
-`make keycloak-up KUBE_CONTEXT="$KUBE_CONTEXT"`이 공용 controller와 ConfigMap도 함께 반영합니다.
-이 경우에는 [Keycloak 배포 절차](../../../keycloak/README.md)를 따릅니다.
-공용 원본을 직접 apply하면 기존 namespace 감시·VIP 배치가 기본값으로 바뀔 수 있으므로 사용하지 않습니다.
-
-로컬은 `make k8s-rebuild APP=portal`이 공용 ConfigMap과 Traefik 설정을 함께 적용합니다. MinIO만 갱신할 때는 `APP=minio`를 사용합니다.
-
-ConfigMap 이름에는 내용 해시가 포함되어 설정 변경 시 Deployment가 새 ConfigMap을 마운트합니다.
-앱별 Ingress의 TLS·host와 namespace 감시 범위는 기존 앱 계약을 따릅니다.
-로그에 `middleware ... does not exist`가 나오면 file provider 인자와 ConfigMap 마운트 반영 여부를 확인합니다.
-
-공식 참고: [File provider](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/),
-[StripPrefix](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/stripprefix/).
+ConfigMap·TLS를 포함한 공용 설정 변경은 `make ingress-up`으로 적용합니다.
+앱 연결·controller 배치를 보존하기 위해 공용 원본을 직접 apply하지 않습니다.

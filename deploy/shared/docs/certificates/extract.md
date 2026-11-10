@@ -18,10 +18,10 @@
 Keycloak 인증서를 작업할 때:
 
 ```bash
-CERT_SITE=etch-sso.samsungds.net
+CERT_SITE=sso.etch.samsungds.net
 ```
 
-Headlamp 인증서를 작업할 때:
+공용 SAN 인증서를 작업할 때:
 
 ```bash
 CERT_SITE=etch.samsungds.net

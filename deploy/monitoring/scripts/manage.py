@@ -20,7 +20,7 @@ tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
 
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
-ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'INGRESS_HOST', 'INGRESS_TLS_SECRET'))
+ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'))
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
            'alertmanager': ('2Gi', 'alertmanager-monitoring-alertmanager-db-alertmanager-monitoring-alertmanager-0'),
            'grafana': ('5Gi', 'monitoring-grafana')}
@@ -56,11 +56,11 @@ def validate(settings, example=False):
     """서버별 경로와 registry·리소스 이름을 검증한다."""
     require(settings.keys() == ENV_KEYS, 'env 키가 설정 계약과 다릅니다.')
     for key, value in settings.items():
-        if key in ('IMAGE_PULL_SECRET', 'INGRESS_HOST', 'INGRESS_TLS_SECRET') and not value:
+        if key in ('IMAGE_PULL_SECRET', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST') and not value:
             continue
         require(value and not any(c.isspace() for c in value), f'값 형식 오류: {key}')
         require(example or ('replace-me' not in value and 'example.invalid' not in value), f'실제 값 필요: {key}')
-    for key in ('NAMESPACE', 'NODE_NAME', 'GRAFANA_ADMIN_SECRET', 'IMAGE_PULL_SECRET', 'INGRESS_TLS_SECRET'):
+    for key in ('NAMESPACE', 'NODE_NAME', 'GRAFANA_ADMIN_SECRET', 'IMAGE_PULL_SECRET'):
         if settings[key]:
             require(len(settings[key]) <= 63 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', settings[key]), f'리소스 이름 오류: {key}')
     require(settings['NAMESPACE'] not in ('default', 'kube-system', 'etch-sso', 'tailwind-internal'), 'Monitoring 전용 namespace를 지정하세요.')
@@ -70,9 +70,11 @@ def validate(settings, example=False):
         require(re.fullmatch(r'[a-zA-Z0-9.-]+(?::[0-9]+)?(?:/[a-zA-Z0-9._-]+)*', settings[key]), f'registry 경로 오류: {key}')
     require(settings['INGRESS_ENABLED'] in ('true', 'false'), 'INGRESS_ENABLED는 true 또는 false여야 합니다.')
     if settings['INGRESS_ENABLED'] == 'true':
-        host = settings['INGRESS_HOST']
-        label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
-        require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host), 'INGRESS_HOST에는 경로·scheme 없는 DNS 이름이 필요합니다.')
+        for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'):
+            host = settings[key]
+            label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+            require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host), f'{key}에는 경로·scheme 없는 DNS 이름이 필요합니다.')
+        require(len({settings[key] for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST')}) == 3, 'Monitoring 서비스별 도메인은 서로 달라야 합니다.')
 
 
 def version(value):
@@ -137,22 +139,22 @@ def values(settings):
         result[component] = {component + 'Spec': {'nodeSelector': node, 'image': image('quay'),
                            'imagePullSecrets': pull, 'storageSpec' if component == 'prometheus' else 'storage': storage}}
     if settings['INGRESS_ENABLED'] == 'true':
-        host = settings['INGRESS_HOST']
         annotations = {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
                        'traefik.ingress.kubernetes.io/router.tls': 'true'}
         for component in VOLUMES:
-            path = '/' + component
+            host = settings[component.upper() + '_HOST']
+            path = '/'
             ingress = {'enabled': True, 'ingressClassName': 'traefik', 'annotations': dict(annotations),
                        'hosts': [host], 'tls': [],
                        'pathType': 'Prefix'}
             if component == 'grafana':
                 ingress['path'] = path
                 result[component]['grafana.ini']['server'] = {
-                    'root_url': f'https://{host}{path}/', 'serve_from_sub_path': True}
+                    'root_url': f'https://{host}/', 'serve_from_sub_path': False}
             else:
                 ingress['paths'] = [path]
                 result[component][component + 'Spec'].update(
-                    externalUrl=f'https://{host}{path}', routePrefix=path)
+                    externalUrl=f'https://{host}/', routePrefix=path)
             result[component]['ingress'] = ingress
     return result
 

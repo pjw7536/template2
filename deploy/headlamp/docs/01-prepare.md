@@ -101,8 +101,7 @@ vi "$HEADLAMP_ENV"
 
 | 확인할 항목 | 무엇을 입력하나요? |
 | --- | --- |
-| `HEADLAMP_HOST` | `etch.samsungds.net`. DNS가 기존 Traefik HTTPS 진입 주소를 가리켜야 함 |
-| `HEADLAMP_TLS_SECRET` | 기존 env 호환용. 빈 값으로 유지 |
+| `HEADLAMP_HOST` | `headlamp.etch.samsungds.net`. DNS가 기존 Traefik HTTPS 진입 주소를 가리켜야 함 |
 | `HEADLAMP_OIDC_ISSUER_URL` | 현재 정상 작동하는 Keycloak 공개 주소 뒤에 `/realms/etch`를 붙인 값. 사내 AD FS 주소가 아님 |
 | `HEADLAMP_REGISTRY` | 노드에서 이미지를 받을 수 있는 registry 미러 경로. `https://` 제외 |
 | `IMAGE_PULL_SECRET` | registry 인증이 필요하면 새로 등록할 Secret 이름, 필요 없으면 `=` 뒤를 비움 |
@@ -121,13 +120,13 @@ if HEADLAMP_SETUP_VALUES=$(make -s headlamp-setup-env); then
     export "$headlamp_name=$headlamp_value"
   done <<< "$HEADLAMP_SETUP_VALUES"
   unset HEADLAMP_SETUP_VALUES headlamp_name headlamp_value
-  export HEADLAMP_CERT_DIR="$PWD/deploy/shared/certs/$HEADLAMP_HOST"
+  export HEADLAMP_CERT_DIR="$PWD/deploy/shared/certs/etch.samsungds.net"
   export HEADLAMP_CA_DIR="$PWD/deploy/shared/certs/ca"
   export HEADLAMP_OIDC_CA_FILE=
   if [ -n "$HEADLAMP_OIDC_CA_CONFIGMAP" ]; then
     export HEADLAMP_OIDC_CA_FILE="$PWD/deploy/shared/certs/$HEADLAMP_SSO_HOST/keycloak-ca-bundle.pem"
   fi
-  printf '접속 주소: https://%s/headlamp/\nCallback: %s\nIssuer: %s\n' \
+  printf '접속 주소: https://%s/\nCallback: %s\nIssuer: %s\n' \
     "$HEADLAMP_HOST" "$HEADLAMP_CALLBACK_URL" "$HEADLAMP_OIDC_ISSUER_URL"
 else
   echo '입력 검증 실패: env를 수정한 뒤 이 블록을 다시 실행하세요. 다음 단계로 진행하지 마세요.' >&2
@@ -140,8 +139,8 @@ Callback은 이후 Keycloak client 등록 화면에 그대로 입력합니다.
 
 성공하면 `접속 주소`, `Callback`, `Issuer` 세 줄이 출력됩니다. 공개 주소이므로 작업 메모에 남겨 둡니다.
 
-- 브라우저에서 열 주소: `/headlamp/`
-- Keycloak에 등록할 callback: `/headlamp/oidc-callback`
+- 브라우저에서 열 주소: `https://headlamp.etch.samsungds.net/`
+- Keycloak에 등록할 callback: `/oidc-callback`
 
 `입력 검증 실패`가 나오면 env를 고친 뒤 위 if 블록 전체를 다시 실행합니다.
 
@@ -222,9 +221,8 @@ Keycloak 주소가 바뀌면 이 문서의 관련 값도 함께 맞춥니다.
 아래는 이 프로젝트의 운영값입니다. namespace와 Ingress 이름은 모두 `headlamp`입니다.
 
 ```dotenv
-HEADLAMP_HOST=etch.samsungds.net
-HEADLAMP_TLS_SECRET=
-HEADLAMP_OIDC_ISSUER_URL=https://etch-sso.samsungds.net/realms/etch
+HEADLAMP_HOST=headlamp.etch.samsungds.net
+HEADLAMP_OIDC_ISSUER_URL=https://sso.etch.samsungds.net/realms/etch
 HEADLAMP_OIDC_SECRET=headlamp-oidc
 IMAGE_PULL_SECRET=
 ```
@@ -234,7 +232,6 @@ IMAGE_PULL_SECRET=
 | `HEADLAMP_HOST`와 issuer | 앞은 Headlamp 사이트, 뒤는 인증을 담당하는 Keycloak realm URL |
 | `HEADLAMP_OIDC_CLIENT_ID`와 `HEADLAMP_OIDC_SECRET` | 앞은 Keycloak에 등록한 앱 ID, 뒤는 Kubernetes에 만들 Secret의 이름 |
 | `HEADLAMP_OIDC_SECRET`와 Client secret | `headlamp-oidc`는 보관함 이름이며 비밀값이 아님. 실제 비밀값은 [Keycloak 설정](02-authentication.md#keycloak-client와-관리자)의 숨김 입력으로 등록 |
-| `HEADLAMP_TLS_SECRET`과 인증서 파일 | env 키는 호환용이며, 파일은 공용 Traefik에 등록할 `fullchain.crt`·`private.key` |
 | CA ConfigMap과 CA 파일 | ConfigMap은 Pod가 읽는 보관함. 파일은 CP1 연결 검사·API server 등록에 쓰는 PEM |
 
 env를 저장한 뒤에는 [서버 준비의 실행 입력](#2-대상-context와-실행-입력)을 다시 읽어야
@@ -247,7 +244,6 @@ env를 저장한 뒤에는 [서버 준비의 실행 입력](#2-대상-context와
 | `HEADLAMP_REGISTRY` | Headlamp 이미지 미러. `https://` 없이 입력 |
 | `IMAGE_PULL_SECRET` | `headlamp` namespace의 이미지 인증 Secret. 불필요하면 빈 값 |
 | `HEADLAMP_HOST` | 브라우저 접속 DNS 이름. scheme·경로 제외 |
-| `HEADLAMP_TLS_SECRET` | 기존 env 호환용. 공용 Traefik에서는 사용하지 않음 |
 | `HEADLAMP_OIDC_ISSUER_URL` | Keycloak의 `keycloak-public-url` + `/realms/etch`. discovery issuer와 정확히 일치, 끝 `/` 제외 |
 | `HEADLAMP_OIDC_CLIENT_ID` | 전용 client ID. 기본 `headlamp`. API server audience도 동일하게 설정 |
 | `HEADLAMP_OIDC_SECRET` | 같은 namespace의 Secret 이름. 비어 있지 않은 `OIDC_CLIENT_SECRET` 키 하나만 등록 |
@@ -290,7 +286,7 @@ Keycloak 인증서 갱신으로 CA가 바뀌면 세 곳을 함께 갱신합니�
 
 ### 고정 계약과 파일 역할
 
-namespace·Helm release는 `headlamp`, baseURL은 `/headlamp`, 관리 그룹은 `/headlamp-admins`입니다.
+namespace·Helm release는 `headlamp`, baseURL은 빈 값(루트 경로), 관리 그룹은 `/headlamp-admins`입니다.
 설치 명령은 기존 `etch-sso/traefik`을 사용합니다. 이 이름들은 env로 변경하는 항목이 아닙니다.
 `HEADLAMP_OIDC_CLIENT_ID`를 바꾸면 Keycloak client와 API server audience도 함께 맞춥니다.
 
@@ -314,8 +310,8 @@ namespace·Helm release는 `headlamp`, baseURL은 `/headlamp`, 관리 그룹은 
 
 **실행 위치:** [서버 준비](#서버실행-입력)에서 사용하던 CP1 Bash 터미널, 저장소 루트.
 **목표:** 사이트 인증서는 공용 Traefik에, Keycloak을 신뢰할 CA는 `headlamp` namespace에 등록합니다.
-운영 도메인은 `etch.samsungds.net`, 공용 인증서 저장소는 `etch-sso/traefik-tls`입니다.
-Keycloak의 `etch-sso.samsungds.net` 인증서와 구분해 준비합니다.
+운영 도메인은 `headlamp.etch.samsungds.net`, 공용 인증서 저장소는 `etch-sso/traefik-tls`입니다.
+Keycloak의 `sso.etch.samsungds.net` 인증서와 구분해 준비합니다.
 
 먼저 아래에서 사용할 경로가 준비됐는지 확인합니다. 출력값이 비어 있으면 [서버 준비](#서버실행-입력)의 실행 입력부터 다시 수행하세요.
 단, 공인 CA 분기에서는 `HEADLAMP_OIDC_CA_FILE`이 빈 값인 것이 정상입니다.
@@ -366,7 +362,7 @@ ls -l "$HEADLAMP_CERT_DIR/fullchain.crt" "$HEADLAMP_CERT_DIR/private.key" \
 ```
 
 네 파일 모두 조회되어야 합니다. `No such file`이면 아직 검증 명령을 실행하지 말고 경로·파일명을 맞춥니다.
-`fullchain.crt`는 Headlamp 도메인에 유효한 인증서여야 하며, Keycloak 사이트 인증서를 이름만 바꿔 사용하지 않습니다.
+`fullchain.crt`의 SAN에 Headlamp 도메인이 포함되어 있어야 합니다. 공용 SAN 인증서를 사용하면 같은 원본을 host별로 등록할 수 있습니다.
 
 ### 2. 인증서 검증과 CA 묶음 생성
 

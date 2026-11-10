@@ -1,4 +1,4 @@
-# 운영·로컬 Traefik이 공유하는 하위 경로 처리입니다.
+# 로컬 Traefik의 localhost 하위 경로 처리입니다. 운영 Ingress는 참조하지 않습니다.
 http:
   middlewares:
     minio-api:

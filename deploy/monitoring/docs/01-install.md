@@ -91,9 +91,11 @@ vi "$MONITORING_ENV"
 | `DATA_HOST_PATH` | 해당 Worker의 전용 데이터 경로. 신규 설치 기본값은 `/appdata/monitoring` |
 | `DOCKER_REGISTRY`·`QUAY_REGISTRY`·`GHCR_REGISTRY`·`K8S_REGISTRY` | 사내 미러 경로. 저장소 기본값을 대조하고 [이미지 미러 설정](#이미지-미러-설정) 확인 |
 | `IMAGE_PULL_SECRET` | 미러 인증이 필요할 때 사용할 기존 Kubernetes Secret 이름. 인증이 없으면 빈 값 |
-| `INGRESS_ENABLED`·`INGRESS_HOST` | 기본값은 `true`, `etch.samsungds.net`. 이 도메인으로 웹 화면에 접속 |
+| `INGRESS_ENABLED` | 기본값 `true`. 서비스별 도메인으로 HTTPS 접속 |
+| `GRAFANA_HOST` | Grafana 도메인. 기본 `grafana.etch.samsungds.net` |
+| `PROMETHEUS_HOST` | Prometheus 도메인. 기본 `prometheus.etch.samsungds.net` |
+| `ALERTMANAGER_HOST` | Alertmanager 도메인. 기본 `alert.etch.samsungds.net` |
 | `NAMESPACE`·`GRAFANA_ADMIN_SECRET` | 기본값은 `monitoring`, `monitoring-grafana-admin`. [계정 준비](#2-namespace와-관리자-secret-준비)에서 이 영역과 관리자 계정을 준비 |
-| `INGRESS_TLS_SECRET` | 이전 설정 호환용. 기본값인 빈 값을 유지하고 인증서는 공용 Traefik에서 관리 |
 
 이 문서의 명령은 기본 namespace와 Secret 이름을 사용합니다. 이름을 변경하면 명령에서도 함께 바꿉니다.
 다른 env 파일을 쓰려면 `MONITORING_ENV`에 그 파일의 절대 경로를 export합니다.
@@ -152,8 +154,9 @@ Docker Hub 미러 하나만으로는 모든 이미지를 받을 수 없습니다
 
 ```dotenv
 INGRESS_ENABLED=false
-INGRESS_HOST=
-INGRESS_TLS_SECRET=
+GRAFANA_HOST=
+PROMETHEUS_HOST=
+ALERTMANAGER_HOST=
 ```
 
 설치 후 접속할 PC에서 kubeconfig를 준비하고, 같은 클러스터의 context를 지정해 실행합니다.
@@ -280,12 +283,13 @@ Grafana를 [선택 설정](#선택-설정)에서 비활성화했다면 namespace
 
 | 화면 | 기본 주소 |
 | --- | --- |
-| Grafana | `https://etch.samsungds.net/grafana/` |
-| Prometheus 수집 상태 | `https://etch.samsungds.net/prometheus/targets` |
-| Alertmanager | `https://etch.samsungds.net/alertmanager/` |
+| Grafana | `https://grafana.etch.samsungds.net/` |
+| Prometheus 수집 상태 | `https://prometheus.etch.samsungds.net/targets` |
+| Alertmanager | `https://alert.etch.samsungds.net/` |
 
 접속 PC에서 이 도메인이 공용 진입점으로 연결되어야 하며, 인증서에도 도메인이 포함되어야 합니다.
-`INGRESS_HOST`를 바꿨다면 주소와 아래 `TLS_HOST`도 같은 도메인으로 바꿉니다.
+서비스별 HOST 입력을 바꿨다면 공개 주소와 아래 TLS 등록 대상도 함께 맞춥니다.
+하나의 SAN 인증서를 공유해도 세 host 모두 등록해야 합니다.
 
 **공용 Traefik과 도메인 인증서가 이미 준비되어 있으면 다음 등록 명령은 생략합니다.**
 처음 준비한다면 [공용 진입점 준비](../../shared/docs/README.md#https인증서)에 따라 설정한 뒤 실행합니다.
@@ -293,8 +297,10 @@ Grafana를 [선택 설정](#선택-설정)에서 비활성화했다면 namespace
 ```bash
 read -r -p '업무 도메인 fullchain PEM 경로: ' MONITORING_TLS_CERT
 read -r -p '업무 도메인 개인키 PEM 경로: ' MONITORING_TLS_KEY
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
-  TLS_CERT_FILE="$MONITORING_TLS_CERT" TLS_KEY_FILE="$MONITORING_TLS_KEY"
+for MONITORING_TLS_HOST in grafana.etch.samsungds.net prometheus.etch.samsungds.net alert.etch.samsungds.net; do
+  make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$MONITORING_TLS_HOST" \
+    TLS_CERT_FILE="$MONITORING_TLS_CERT" TLS_KEY_FILE="$MONITORING_TLS_KEY"
+done
 make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
@@ -327,12 +333,12 @@ kubectl --context "$KUBE_CONTEXT" -n monitoring get pods,pvc -o wide
 | --- | --- |
 | `get pods,pvc` | 실행할 Pod가 Ready이고 데이터 PVC가 Bound |
 | Grafana | [앞에서 등록한 관리자 계정](#grafana-로그인-계정-등록)으로 로그인. 기본 홈인 `전체 서버 · 리소스 추세`에서 서버별 그래프와 상태 표에 지표가 표시됨 |
-| Prometheus `/prometheus/targets` | 수집 대상이 `UP`. `DOWN`인 대상은 endpoint·권한·통신 확인 |
+| Prometheus `/targets` | 수집 대상이 `UP`. `DOWN`인 대상은 endpoint·권한·통신 확인 |
 | Alertmanager | 웹 화면과 현재 알림 설정 확인. 기본값은 외부 통지 없음 |
 
 #### 전체 서버 추세 대시보드
 
-기본 홈은 **전체 서버 · 리소스 추세**입니다. `/grafana/d/servers-overview`로 직접 열거나 Dashboards에서 제목으로 찾을 수 있습니다.
+기본 홈은 **전체 서버 · 리소스 추세**입니다. `/d/servers-overview`로 직접 열거나 Dashboards에서 제목으로 찾을 수 있습니다.
 개인·조직에서 별도 홈 대시보드를 지정했다면 그 설정이 우선합니다.
 
 - 상단 요약: 등록 서버 수, 수집 정상·중단 수, CPU·메모리·디스크 최고 사용률.

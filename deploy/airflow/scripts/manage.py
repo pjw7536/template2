@@ -120,7 +120,7 @@ def validate(values, example=False):
                 and (key == 'MAIL_API_URL' or not url.query) and not url.fragment
                 and not any(c.isspace() for c in values[key]), f'HTTP(S) URL 형식 오류: {key}')
         if key == 'AIRFLOW_WEBSERVER_BASE_URL':
-            require(url.path == '/airflow', 'AIRFLOW_WEBSERVER_BASE_URL 경로는 /airflow여야 합니다.')
+            require(url.path in ('', '/', '/airflow'), '공개 URL은 루트 경로를 사용합니다. 로컬 개발에서는 /airflow를 사용할 수 있습니다.')
     if values['INGRESS_ENABLED'] == 'true':
         require(values['INGRESS_CLASS_NAME'], 'Ingress 사용 시 INGRESS_CLASS_NAME이 필요합니다.')
         if urlsplit(values['AIRFLOW_WEBSERVER_BASE_URL']).scheme == 'https' and values['INGRESS_CLASS_NAME'] != 'traefik':
@@ -230,7 +230,8 @@ def helm_values(settings, pause_new_dags=False):
         'config': {
             'api': {'base_url': settings['AIRFLOW_WEBSERVER_BASE_URL']},
             'core': {'execution_api_server_url': (
-                f'http://airflow-api-server.{settings["NAMESPACE"]}.svc.cluster.local:8080/airflow/execution/'
+                f'http://airflow-api-server.{settings["NAMESPACE"]}.svc.cluster.local:8080'
+                f'{urlsplit(settings["AIRFLOW_WEBSERVER_BASE_URL"]).path.rstrip("/")}/execution/'
             )},
         },
         'imagePullSecrets': [{'name': settings['IMAGE_PULL_SECRET']}] if settings['IMAGE_PULL_SECRET'] else [],
@@ -257,7 +258,7 @@ def helm_values(settings, pause_new_dags=False):
                 annotations['traefik.ingress.kubernetes.io/router.tls'] = 'true'
         result['ingress'] = {'apiServer': {
             'annotations': annotations,
-            'enabled': True, 'path': '/airflow', 'pathType': 'Prefix',
+            'enabled': True, 'path': url.path.rstrip('/') or '/', 'pathType': 'Prefix',
             'ingressClassName': settings['INGRESS_CLASS_NAME'],
             'hosts': [{'name': url.hostname, 'tls': {
                 'enabled': url.scheme == 'https' and separate_tls,

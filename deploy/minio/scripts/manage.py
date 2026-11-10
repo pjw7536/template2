@@ -25,7 +25,7 @@ SECRET_KEYS = ('MINIO_ROOT_USER', 'MINIO_ROOT_PASSWORD', 'MINIO_BROWSER_REDIRECT
                'MINIO_SERVER_URL', 'MINIO_BUCKETS')
 ENV_KEYS = set(SECRET_KEYS) | {'NODE_NAME', 'MINIO_IMAGE', 'MINIO_CLIENT_IMAGE', 'IMAGE_PULL_SECRET',
                              'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'STORAGE_SIZE', 'MINIO_DATA_HOST_PATH',
-                             'INGRESS_HOST', 'INGRESS_TLS_SECRET'}
+                             'MINIO_API_HOST', 'MINIO_CONSOLE_HOST'}
 
 
 def require(condition, message):
@@ -53,17 +53,19 @@ def settings(path, example=False):
         result[key] = value
     result.setdefault('MINIO_DATA_HOST_PATH', '/appdata/minio')
     require(result.keys() == ENV_KEYS, 'MinIO env 키가 설정 계약과 다릅니다.')
-    optional = {'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'MINIO_BUCKETS', 'INGRESS_TLS_SECRET'}
+    optional = {'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'MINIO_BUCKETS'}
     for key, value in result.items():
         require(key in optional or value, f'필수 설정 누락: {key}')
         require(not any(c.isspace() for c in value) and
                 (example or not any(s in value for s in ('replace-me', 'example.invalid', '<', '>'))),
                 f'실제 값 또는 형식 확인 필요: {key}')
     label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
-    for key in ('NODE_NAME', 'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME', 'INGRESS_TLS_SECRET'):
+    for key in ('NODE_NAME', 'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME'):
         require(not result[key] or (len(result[key]) <= 253 and re.fullmatch(rf'{label}(?:\.{label})*', result[key])),
                 f'Kubernetes 이름 오류: {key}')
-    require(re.fullmatch(rf'{label}(?:\.{label})+', result['INGRESS_HOST']), 'INGRESS_HOST에는 DNS 이름이 필요합니다.')
+    for key in ('MINIO_API_HOST', 'MINIO_CONSOLE_HOST'):
+        require(len(result[key]) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', result[key]), f'{key}에는 DNS 이름이 필요합니다.')
+    require(result['MINIO_API_HOST'] != result['MINIO_CONSOLE_HOST'], 'S3 API와 콘솔은 서로 다른 도메인을 사용합니다.')
     require(re.fullmatch(r'[1-9][0-9]*(Gi|Ti)', result['STORAGE_SIZE']), 'STORAGE_SIZE에는 Gi 또는 Ti 용량이 필요합니다.')
     path = result['MINIO_DATA_HOST_PATH']
     require(path.startswith('/') and path != '/' and '..' not in path.split('/') and not path.endswith('/'),
@@ -72,8 +74,8 @@ def settings(path, example=False):
         require(re.fullmatch(r'[a-zA-Z0-9._:/@-]+', result[key]) and
                 (':' in result[key].rsplit('/', 1)[-1] or '@sha256:' in result[key]) and not result[key].endswith(':latest'),
                 f'고정 tag 또는 digest 이미지가 필요합니다: {key}')
-    expected = f'https://{result["INGRESS_HOST"]}/minio-console/'
-    require(result['MINIO_BROWSER_REDIRECT_URL'] == expected, '콘솔 공개 주소는 HTTPS host와 /minio-console/ 경로가 일치해야 합니다.')
+    expected = f'https://{result["MINIO_CONSOLE_HOST"]}/'
+    require(result['MINIO_BROWSER_REDIRECT_URL'] == expected, '콘솔 공개 주소는 MINIO_CONSOLE_HOST의 HTTPS 루트 URL이어야 합니다.')
     require(result['MINIO_SERVER_URL'] == 'http://minio:9000', '내부 S3 주소는 http://minio:9000을 사용하세요.')
     require(not result['MINIO_BUCKETS'] or all(re.fullmatch(r'[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]', name)
                                             for name in result['MINIO_BUCKETS'].split(',')), 'MINIO_BUCKETS에는 쉼표로 구분한 버킷 이름이 필요합니다.')
@@ -211,7 +213,8 @@ def manifests(values):
             if values['VOLUME_NAME'] or not values['STORAGE_CLASS_NAME']:
                 item['spec']['volumeName'] = volume_name(values)
         elif item['kind'] == 'Ingress':
-            item['spec']['rules'][0]['host'] = values['INGRESS_HOST']
+            key = 'MINIO_API_HOST' if item['metadata']['name'] == 'minio-api' else 'MINIO_CONSOLE_HOST'
+            item['spec']['rules'][0]['host'] = values[key]
     return ([static_volume(values)] if not values['STORAGE_CLASS_NAME'] else []) + items
 
 
@@ -222,21 +225,10 @@ def apply(kube, items, sensitive=False, dry_run=False):
 
 
 def routing_plan(kube, values):
-    """공용 middleware·TLS·controller를 검사하고 기존 감시 범위를 보존한다."""
+    """S3·콘솔의 공용 TLS를 검사하고 기존 controller 감시 범위를 보존한다."""
     current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
-    tls.check(kube, values['INGRESS_HOST'], current)
-    pod = current['spec']['template']['spec']
-    controller = next(item for item in pod['containers'] if item['name'] == 'traefik')
-    require('--providers.file.directory=/etc/traefik/dynamic' in controller.get('args', []),
-            '공용 middleware가 필요합니다. make ingress-check/ingress-up을 먼저 실행하세요.')
-    mount = next((item for item in controller.get('volumeMounts', []) if item['mountPath'] == '/etc/traefik/dynamic'), None)
-    volume = next((item for item in pod.get('volumes', []) if mount and item['name'] == mount['name']), None)
-    sources = volume.get('projected', {}).get('sources', []) if volume else []
-    config_name = next((source['configMap']['name'] for source in sources if 'configMap' in source), None)
-    require(config_name, '공용 middleware ConfigMap 마운트를 확인하세요.')
-    config = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'configmap', config_name, '-o', 'json']))
-    paths = '\n'.join(config.get('data', {}).values())
-    require('minio-api:' in paths and 'minio-console:' in paths, '공용 middleware가 오래됐습니다. make ingress-up을 먼저 실행하세요.')
+    for key in ('MINIO_API_HOST', 'MINIO_CONSOLE_HOST'):
+        tls.check(kube, values[key], current)
     return routing.namespace_access(NAMESPACE, current), routing.namespace_patch(current, NAMESPACE)
 
 

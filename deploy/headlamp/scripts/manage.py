@@ -35,7 +35,7 @@ def settings(path, example=False):
         if not line or line.startswith('#'):
             continue
         key, separator, value = line.partition('=')
-        if not separator or key not in {'HEADLAMP_REGISTRY', 'IMAGE_PULL_SECRET', 'HEADLAMP_HOST', 'HEADLAMP_TLS_SECRET',
+        if not separator or key not in {'HEADLAMP_REGISTRY', 'IMAGE_PULL_SECRET', 'HEADLAMP_HOST',
                                         'HEADLAMP_OIDC_ISSUER_URL', 'HEADLAMP_OIDC_CLIENT_ID',
                                         'HEADLAMP_OIDC_SECRET', 'HEADLAMP_OIDC_CA_CONFIGMAP'} or key in result:
             raise ValueError('알 수 없거나 중복된 env 항목입니다.')
@@ -50,21 +50,18 @@ def settings(path, example=False):
         raise ValueError('IMAGE_PULL_SECRET 이름이 올바르지 않습니다.')
     values = {'image': {'registry': registry}, 'imagePullSecrets': [{'name': secret}] if secret else []}
     host = result.get('HEADLAMP_HOST', '')
-    legacy_tls = result.get('HEADLAMP_TLS_SECRET', '')
     if not host:
         raise ValueError('Keycloak 로그인에는 HEADLAMP_HOST가 필요합니다.')
     if host:
         label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
         if len(host) > 253 or not re.fullmatch(rf'{label}(?:\.{label})+', host):
             raise ValueError('HEADLAMP_HOST에는 경로·scheme 없는 DNS 이름을 입력하세요.')
-        if legacy_tls and (len(legacy_tls) > 253 or not re.fullmatch(rf'{label}(?:\.{label})*', legacy_tls)):
-            raise ValueError('HEADLAMP_TLS_SECRET 이름이 올바르지 않습니다.')
-        values['config'] = {'baseURL': '/headlamp'}
+        values['config'] = {'baseURL': ''}
         values['ingress'] = {
             'enabled': True, 'ingressClassName': 'traefik',
             'annotations': {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
                             'traefik.ingress.kubernetes.io/router.tls': 'true'},
-            'hosts': [{'host': host, 'paths': [{'path': '/headlamp', 'type': 'Prefix'}]}],
+            'hosts': [{'host': host, 'paths': [{'path': '/', 'type': 'Prefix'}]}],
             'tls': [],
         }
     issuer = result.get('HEADLAMP_OIDC_ISSUER_URL', '')
@@ -87,7 +84,7 @@ def settings(path, example=False):
         {'name': 'OIDC_CLIENT_ID', 'value': client},
         {'name': 'OIDC_ISSUER_URL', 'value': issuer},
         {'name': 'OIDC_SCOPES', 'value': 'profile,email'},
-        {'name': 'OIDC_CALLBACK_URL', 'value': f'https://{host}/headlamp/oidc-callback'},
+        {'name': 'OIDC_CALLBACK_URL', 'value': f'https://{host}/oidc-callback'},
         {'name': 'OIDC_USE_PKCE', 'value': 'true'},
         {'name': 'OIDC_USE_ACCESS_TOKEN', 'value': 'false'},
     ]
@@ -313,7 +310,7 @@ def main():
                     access, patch = ingress_plan(args.context, values)
                     connect_ingress(args.context, access, patch)
                     host = values['ingress']['hosts'][0]['host']
-                    print(f'접속 주소: https://{host}/headlamp/')
+                    print(f'접속 주소: https://{host}/')
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         detail = error.stderr if isinstance(error, subprocess.CalledProcessError) and error.stderr else str(error)
         parser.exit(1, f'Headlamp 실행 실패: {detail}\n')

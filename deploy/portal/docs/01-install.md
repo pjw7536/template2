@@ -104,8 +104,8 @@ Web의 `VITE_*`, `BACKEND_API_URL`, `BACKEND_URL`, `MINIO_ENDPOINT`는
 MinIO의 설치·credential·Ingress·PVC는 [독립 MinIO 앱](../../minio/README.md)이 소유합니다.
 Portal overlay는 MinIO 리소스를 생성하지 않습니다.
 API는 `MINIO_ENDPOINT=http://minio.minio.svc.cluster.local:9000`과 Portal 접근 키를 사용합니다.
-Web은 기존 `VITE_MINIO_ENDPOINT=https://etch.samsungds.net/minio`를 사용합니다.
-`/minio/`와 `/minio-console/`은 공용 Traefik이 MinIO namespace로 직접 전달합니다.
+Web은 `VITE_MINIO_ENDPOINT=https://s3.etch.samsungds.net`를 사용합니다.
+공용 Traefik은 S3·콘솔 도메인을 MinIO namespace의 9000·9001 포트로 각각 전달합니다. 브라우저 파일 읽기·업로드와 필요한 CORS를 실제 Portal origin에서 확인합니다.
 
 ### 검사와 적용
 

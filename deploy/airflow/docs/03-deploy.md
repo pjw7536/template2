@@ -23,7 +23,7 @@ Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값�
 | 키 | 입력 |
 | --- | --- |
 | `AIRFLOW_AUTH_MODE` | `keycloak` |
-| `AIRFLOW_OIDC_ISSUER` | `https://etch-sso.samsungds.net/realms/etch` |
+| `AIRFLOW_OIDC_ISSUER` | `https://sso.etch.samsungds.net/realms/etch` |
 | `AIRFLOW_OIDC_CLIENT_ID` | `airflow` |
 | `AIRFLOW_OIDC_CLIENT_SECRET` | 신규 client용 강한 비밀값. 기존 client가 있으면 기존 secret |
 | `AIRFLOW_OIDC_BACKCHANNEL_BASE_URL` | Pod 접근용 realm URL, 비우면 issuer 사용 |
@@ -34,9 +34,9 @@ Git에서 관리하는 `deploy/airflow/env/k8s.env`를 사용하고 아래 값�
 CA ConfigMap은 `ca.crt` 키에 필요한 신뢰 루트·중간 CA를 포함한 bundle을 넣습니다.
 CA 설정을 쓰면 TLS 인증서 검증에 해당 bundle을 사용합니다. HTTPS 검증 생략은 지원하지 않습니다.
 브라우저 callback은 `${AIRFLOW_WEBSERVER_BASE_URL}/auth/oauth-authorized/keycloak` 하나만 등록합니다.
-운영 Airflow 공개 URL은 `https://etch.samsungds.net/airflow`이며, callback은
-`https://etch.samsungds.net/airflow/auth/oauth-authorized/keycloak`입니다.
-현재 realm issuer는 `https://etch-sso.samsungds.net/realms/etch`입니다.
+운영 Airflow 공개 URL은 `https://airflow.etch.samsungds.net`이며, callback은
+`https://airflow.etch.samsungds.net/auth/oauth-authorized/keycloak`입니다.
+현재 realm issuer는 `https://sso.etch.samsungds.net/realms/etch`입니다.
 업무 도메인 인증서는 `etch-sso/traefik-tls`에서 관리하며
 [배포 절차](#배포와-검증)에 따라 공용 저장소에 등록합니다.
 
@@ -62,7 +62,7 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 | 실행 입력 | 현재 선언 | 설정 원본·확인 범위 |
 | --- | --- | --- |
-| `KEYCLOAK_ADMIN_URL` | `https://etch-sso.samsungds.net` | `keycloak-public-url`. 실제 CP1 접속·TLS 검증은 별도 확인 |
+| `KEYCLOAK_ADMIN_URL` | `https://sso.etch.samsungds.net` | `keycloak-public-url`. 실제 CP1 접속·TLS 검증은 별도 확인 |
 | `KEYCLOAK_ADMIN_USERNAME` | `etch-admin` | `bootstrap-admin-username`. 초기 관리자 선언이며 기존 서버에서 계정을 변경했다면 실제 관리자 계정 사용 |
 | `KEYCLOAK_ADMIN_PASSWORD` | 아래 명령에 사용자 확인값 명시 | Keycloak 관리자 비밀번호. Airflow 관리자 비밀번호·OIDC client secret과 구분. 실제 서버 인증 성공은 별도 확인 |
 | `KEYCLOAK_ADMIN_CA_BUNDLE` | 필요한 경우에만 지정 | CP1의 실제 CA 파일 경로는 미확인. Airflow Pod 내부 CA 경로와 구분 |
@@ -72,7 +72,7 @@ base URL에는 `/realms/etch`나 `/admin`을 붙이지 않습니다.
 아래 환경변수는 실행 프로세스 입력입니다. 관리자 비밀번호는 사용자 확인값이며, 서버에서 변경했다면 해당 값을 사용합니다.
 
 ```bash
-export KEYCLOAK_ADMIN_URL=https://etch-sso.samsungds.net
+export KEYCLOAK_ADMIN_URL=https://sso.etch.samsungds.net
 export KEYCLOAK_ADMIN_USERNAME=etch-admin
 export KEYCLOAK_ADMIN_PASSWORD='dkssud123!'
 # 실행 호스트에 사내 CA가 필요하면 KEYCLOAK_ADMIN_CA_BUNDLE에 실제 파일 경로를 export합니다.
@@ -209,7 +209,7 @@ make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
 필요한 입력이 빠지면 공용 리소스를 적용하기 전에 중단합니다.
 검사를 통과한 뒤에도 실제 디스크 권한, 이미지 다운로드, 외부 DB 접속, Portal 연동은 따로 확인합니다.
 
-운영 URL은 `https://etch.samsungds.net/airflow`이며 앱별 TLS Secret 입력은 필요 없습니다.
+운영 URL은 `https://airflow.etch.samsungds.net`이며 앱별 TLS Secret 입력은 필요 없습니다.
 업무 도메인 인증서를 [공용 Traefik](../../shared/docs/certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신)에 먼저 등록하고
 `make ingress-up`으로 공용 인증서 마운트를 반영합니다.
 
@@ -256,7 +256,7 @@ kubectl --context kubernetes-admin@kubernetes -n airflow port-forward svc/airflo
 ```
 
 port-forward는 터미널을 점유하며 Ctrl+C로 종료합니다. 같은 컴퓨터의 브라우저에서
-`http://localhost:8080/airflow`에 접속합니다. 원격 서버에서 실행했다면 PC에서 별도 SSH 터널을 연결합니다.
+`http://localhost:8080`에 접속합니다. 원격 서버에서 실행했다면 PC에서 별도 SSH 터널을 연결합니다.
 
 ```bash
 read -r -p 'port-forward 실행 서버 user@host: ' AIRFLOW_SSH_TARGET
@@ -264,7 +264,7 @@ ssh -N -L 8080:127.0.0.1:8080 "$AIRFLOW_SSH_TARGET"
 ```
 
 HTTPS를 사용하면 `AIRFLOW_WEBSERVER_BASE_URL`의 주소로도 접속합니다.
-DNS는 실제 Ingress 진입 주소를 가리켜야 하며 `/airflow` 경로를 rewrite하지 않습니다.
+DNS는 실제 Ingress 진입 주소를 가리켜야 하며 루트 경로(`/`)를 앱에 그대로 전달합니다.
 
 1. 최초 관리자 또는 기존 계정으로 로그인합니다.
 2. DAG가 보이고 import 오류가 없는지 확인합니다.
@@ -275,7 +275,7 @@ DNS는 실제 Ingress 진입 주소를 가리켜야 하며 `/airflow` 경로를 
 
 | Portal 설정 | 의미 |
 | --- | --- |
-| `AIRFLOW_BASE_URL` | 내부 호출 주소. 기본 namespace 예: `http://airflow-api-server.airflow.svc.cluster.local:8080/airflow` |
+| `AIRFLOW_BASE_URL` | 내부 호출 주소. 기본 namespace 예: `http://airflow-api-server.airflow.svc.cluster.local:8080` |
 | `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` | 실제 Airflow 계정과 일치 |
 | `AIRFLOW_PUBLIC_BASE_URL` | 브라우저에서 접근하는 Airflow 공개 URL |
 

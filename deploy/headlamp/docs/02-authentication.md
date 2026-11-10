@@ -60,7 +60,7 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 | 화면 항목 | 입력값 |
 | --- | --- |
 | Root URL / Home URL | 비워 둠 |
-| Valid redirect URIs | `https://etch.samsungds.net/headlamp/oidc-callback` |
+| Valid redirect URIs | `https://headlamp.etch.samsungds.net/oidc-callback` |
 | Valid post logout redirect URIs / Web origins | 비워 둠 |
 
 [서버 준비](01-prepare.md#서버실행-입력)에서 출력한 `HEADLAMP_CALLBACK_URL`을 그대로 입력합니다. 위 주소는 기본 env의 예입니다.
@@ -72,7 +72,7 @@ Keycloak 관리자 화면에서 **etch** realm을 선택한 뒤 **Clients → Cr
 
 여기까지 저장한 뒤 client의 **Settings**를 다시 열어 Client authentication이 On이고,
 Standard flow가 켜져 있으며 redirect URI가 CP1 출력과 정확히 같은지 확인합니다.
-redirect URI는 Headlamp 첫 화면 주소가 아니라 로그인 결과를 받는 `/headlamp/oidc-callback` 주소입니다.
+redirect URI는 Headlamp 첫 화면 주소가 아니라 로그인 결과를 받는 `/oidc-callback` 주소입니다.
 
 client의 서명 알고리즘은 RS256이어야 합니다. `Clients → 해당 client → Advanced`의
 ID Token Signature Algorithm을 RS256으로 맞춥니다. 미설정 시 realm 기본값이 사용되므로 확인합니다.
@@ -211,6 +211,9 @@ Headlamp 전용 Secret 이름을 env에 지정한 뒤 [서버 준비](01-prepare
 Headlamp 로그인에 사용하는 Keycloak 토큰을 Kubernetes API server가 받아들이도록 설정하는 필수 단계입니다.
 Keycloak은 사용자를 인증하고, API server는 그 토큰을 신뢰할지 판단합니다.
 API server에 issuer와 client ID가 등록되지 않으면 로그인 후에도 자원 조회가 실패합니다.
+운영 issuer는 `https://sso.etch.samsungds.net/realms/etch`입니다. 이미 OIDC 인증을 구성한 경우
+SSO 주소를 바꿀 때 Headlamp env와 모든 API server의 issuer·CA를 함께 맞춥니다.
+다른 인증 공급자 설정은 보존하고, 반영 후 로그인과 Kubernetes 자원 조회를 확인합니다.
 
 작업은 제어면 담당자가 수행합니다. 위임할 때는 아래 인증 계약과 [TLS 준비](01-prepare.md#tlsca-준비)의 CA 묶음을 전달합니다.
 모든 API server에 반영됐다는 확인을 받은 뒤 [배포·검증](03-deploy.md)으로 이동합니다.

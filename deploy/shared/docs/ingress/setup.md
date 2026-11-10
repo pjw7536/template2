@@ -97,7 +97,7 @@ VIP 요청을 검사합니다. 사내 CA가 신뢰 저장소에 없으면 curl�
 
 **완료:** 대상 Traefik Ready → 각 Worker의 실제 앱 HTTPS 정상 → LB Backend UP → VIP·DNS로 앱 접속 정상.
 
-문제 해결·namespace 감시는 [공용 Ingress 상세](operations.md), 기존 TLS 이전은 [인증서 적용](../certificates/apply.md#기존-설치에서-이전),
+문제 해결·namespace 감시는 [공용 Ingress 상세](operations.md), TLS 등록·갱신은 [인증서 적용](../certificates/apply.md#2-2-kubernetes-tls-secret에-등록-또는-갱신),
 백업·복구와 ingress Worker 확장은 [Traefik·VIP 확장](expand.md)을 참고합니다.
 
 ## 대상 변경 없는 갱신
