@@ -52,13 +52,15 @@ DNS 위임과 서버 인증서 발급은 별도입니다. 와일드카드 미지
 CN은 `etch.samsungds.net`이며 운영 기본 도메인도 SAN에 함께 넣습니다.
 아래 신청안에는 기존에 요청한 SSO 통합·IP 직접 접속 항목을 함께 유지하며,
 기존 신청 범위·실제 발급·DNS·서버 적용 상태와 구분합니다.
-재신청을 줄이기 위해 현재 서비스·서비스별 테스트 주소와 향후 용도별 예약 후보까지 포함한 확장안입니다.
-전체 신청안은 DNS SAN 151개·IP SAN 1개이며, 사내 발급 시스템의 SAN 개수 제한은 미확인입니다.
-사용자가 지정한 plane·spider·board·apc·eqp·datalake·wio·kpi·automation·ax와 관련 업무·데이터 서비스의 예약 후보를 포함합니다.
+사내 발급 시스템의 DNS 대체 이름 입력 한도는 100개라는 사용자 확인을 반영한 신청안입니다.
+IP SAN도 한도에 포함하는 기준으로 전체 신청안은 DNS SAN 93개·IP SAN 1개, 총 94개입니다.
+현재 서비스·사용자 지정 후보와 해당 테스트 주소를 우선하고, 도입이 미정인 범용 예약 후보는 제외합니다.
+사용자가 지정한 plane·spider·board·apc·eqp·datalake·wio·kpi·ax와 관련 업무·데이터 서비스의 예약 후보를 포함합니다.
 테스트 주소는 `서비스.stg.etch.samsungds.net` 규칙을 사용하며 Portal 테스트는 `stg.etch.samsungds.net`입니다.
 기존 SSO 주소·issuer는 유지합니다. `sso.etch.samsungds.net`과 `sso.stg.etch.samsungds.net`은
 향후 사용할 수 있는 예비 SAN으로만 포함하며 SSO 이전·별도 테스트 SSO 배포를 수행한 상태가 아닙니다.
 서비스별 주소 용도는 [앱별 도메인 전환안](services.md#앱별-도메인-전환안)에서 관리합니다.
+서비스 문서의 예약 후보 전체가 이번 신청에 포함되는 것은 아니며, 실제 SAN 신청 범위는 아래 목록을 기준으로 합니다.
 인증서 신청 제출·발급·적용과 신규 DNS 등록은 미확인입니다. 담당자는 미확인입니다.
 
 ```text
@@ -71,18 +73,11 @@ Subject Alternative Name (SAN):
   DNS: minio.etch.samsungds.net
   DNS: grafana.etch.samsungds.net
   DNS: prometheus.etch.samsungds.net
-  DNS: alertmanager.etch.samsungds.net
+  DNS: alert.etch.samsungds.net
   DNS: headlamp.etch.samsungds.net
   DNS: api.etch.samsungds.net
-  DNS: git.etch.samsungds.net
-  DNS: registry.etch.samsungds.net
-  DNS: ci.etch.samsungds.net
   DNS: docs.etch.samsungds.net
-  DNS: status.etch.samsungds.net
   DNS: logs.etch.samsungds.net
-  DNS: traces.etch.samsungds.net
-  DNS: dev.etch.samsungds.net
-  DNS: preview.etch.samsungds.net
   DNS: plane.etch.samsungds.net
   DNS: spider.etch.samsungds.net
   DNS: board.etch.samsungds.net
@@ -93,17 +88,11 @@ Subject Alternative Name (SAN):
   DNS: observer.etch.samsungds.net
   DNS: report.etch.samsungds.net
   DNS: analytics.etch.samsungds.net
-  DNS: catalog.etch.samsungds.net
-  DNS: pipeline.etch.samsungds.net
   DNS: search.etch.samsungds.net
   DNS: rag.etch.samsungds.net
   DNS: assistant.etch.samsungds.net
-  DNS: files.etch.samsungds.net
-  DNS: notebook.etch.samsungds.net
-  DNS: model.etch.samsungds.net
   DNS: wio.etch.samsungds.net
   DNS: kpi.etch.samsungds.net
-  DNS: automation.etch.samsungds.net
   DNS: ax.etch.samsungds.net
   DNS: sso.etch.samsungds.net
   DNS: fdc.etch.samsungds.net
@@ -113,50 +102,26 @@ Subject Alternative Name (SAN):
   DNS: voc.etch.samsungds.net
   DNS: teamstaff.etch.samsungds.net
   DNS: mail.etch.samsungds.net
-  DNS: llm.etch.samsungds.net
-  DNS: mcp.etch.samsungds.net
+  DNS: members.etch.samsungds.net
   DNS: oes.etch.samsungds.net
   DNS: ieq.etch.samsungds.net
   DNS: ai.etch.samsungds.net
   DNS: data.etch.samsungds.net
   DNS: cowork.etch.samsungds.net
   DNS: workspace.etch.samsungds.net
-  DNS: tasks.etch.samsungds.net
-  DNS: projects.etch.samsungds.net
-  DNS: workflow.etch.samsungds.net
-  DNS: approval.etch.samsungds.net
-  DNS: forms.etch.samsungds.net
-  DNS: calendar.etch.samsungds.net
   DNS: wiki.etch.samsungds.net
-  DNS: knowledge.etch.samsungds.net
-  DNS: assets.etch.samsungds.net
-  DNS: inventory.etch.samsungds.net
   DNS: quality.etch.samsungds.net
-  DNS: yield.etch.samsungds.net
-  DNS: process.etch.samsungds.net
   DNS: recipe.etch.samsungds.net
-  DNS: metrology.etch.samsungds.net
   DNS: maintenance.etch.samsungds.net
   DNS: alarm.etch.samsungds.net
-  DNS: events.etch.samsungds.net
-  DNS: audit.etch.samsungds.net
   DNS: store.etch.samsungds.net
   DNS: stg.etch.samsungds.net
   DNS: airflow.stg.etch.samsungds.net
   DNS: s3.stg.etch.samsungds.net
   DNS: minio.stg.etch.samsungds.net
-  DNS: grafana.stg.etch.samsungds.net
-  DNS: prometheus.stg.etch.samsungds.net
-  DNS: alertmanager.stg.etch.samsungds.net
-  DNS: headlamp.stg.etch.samsungds.net
   DNS: api.stg.etch.samsungds.net
-  DNS: git.stg.etch.samsungds.net
-  DNS: registry.stg.etch.samsungds.net
-  DNS: ci.stg.etch.samsungds.net
   DNS: docs.stg.etch.samsungds.net
-  DNS: status.stg.etch.samsungds.net
   DNS: logs.stg.etch.samsungds.net
-  DNS: traces.stg.etch.samsungds.net
   DNS: plane.stg.etch.samsungds.net
   DNS: spider.stg.etch.samsungds.net
   DNS: board.stg.etch.samsungds.net
@@ -167,17 +132,11 @@ Subject Alternative Name (SAN):
   DNS: observer.stg.etch.samsungds.net
   DNS: report.stg.etch.samsungds.net
   DNS: analytics.stg.etch.samsungds.net
-  DNS: catalog.stg.etch.samsungds.net
-  DNS: pipeline.stg.etch.samsungds.net
   DNS: search.stg.etch.samsungds.net
   DNS: rag.stg.etch.samsungds.net
   DNS: assistant.stg.etch.samsungds.net
-  DNS: files.stg.etch.samsungds.net
-  DNS: notebook.stg.etch.samsungds.net
-  DNS: model.stg.etch.samsungds.net
   DNS: wio.stg.etch.samsungds.net
   DNS: kpi.stg.etch.samsungds.net
-  DNS: automation.stg.etch.samsungds.net
   DNS: ax.stg.etch.samsungds.net
   DNS: sso.stg.etch.samsungds.net
   DNS: fdc.stg.etch.samsungds.net
@@ -187,33 +146,18 @@ Subject Alternative Name (SAN):
   DNS: voc.stg.etch.samsungds.net
   DNS: teamstaff.stg.etch.samsungds.net
   DNS: mail.stg.etch.samsungds.net
-  DNS: llm.stg.etch.samsungds.net
-  DNS: mcp.stg.etch.samsungds.net
+  DNS: members.stg.etch.samsungds.net
   DNS: oes.stg.etch.samsungds.net
   DNS: ieq.stg.etch.samsungds.net
   DNS: ai.stg.etch.samsungds.net
   DNS: data.stg.etch.samsungds.net
   DNS: cowork.stg.etch.samsungds.net
   DNS: workspace.stg.etch.samsungds.net
-  DNS: tasks.stg.etch.samsungds.net
-  DNS: projects.stg.etch.samsungds.net
-  DNS: workflow.stg.etch.samsungds.net
-  DNS: approval.stg.etch.samsungds.net
-  DNS: forms.stg.etch.samsungds.net
-  DNS: calendar.stg.etch.samsungds.net
   DNS: wiki.stg.etch.samsungds.net
-  DNS: knowledge.stg.etch.samsungds.net
-  DNS: assets.stg.etch.samsungds.net
-  DNS: inventory.stg.etch.samsungds.net
   DNS: quality.stg.etch.samsungds.net
-  DNS: yield.stg.etch.samsungds.net
-  DNS: process.stg.etch.samsungds.net
   DNS: recipe.stg.etch.samsungds.net
-  DNS: metrology.stg.etch.samsungds.net
   DNS: maintenance.stg.etch.samsungds.net
   DNS: alarm.stg.etch.samsungds.net
-  DNS: events.stg.etch.samsungds.net
-  DNS: audit.stg.etch.samsungds.net
   DNS: store.stg.etch.samsungds.net
   DNS: etch-sso.samsungds.net
   IP Address: 10.172.26.150
