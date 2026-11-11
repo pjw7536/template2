@@ -5,7 +5,7 @@
 
 ## 실행하기
 
-전체 앱을 처음 실행한다면 [첫 셋업 가이드](../../../docs/getting-started/01-setup.md)를 따릅니다.
+전체 앱을 처음 실행한다면 [로컬 실행](../../../local/README.md)을 따릅니다.
 `make dev`로 실행한 Portal의 기본 주소는 **http://localhost:8080**입니다.
 이 환경에 Web 소스 변경을 반영하려면 `make k8s-rebuild APP=portal`을 실행합니다.
 

@@ -1,6 +1,6 @@
 # 백엔드 상세 구조
 
-[문서 홈](../README.md) · [첫 셋업](../getting-started/01-setup.md) · [자주 쓰는 명령](../getting-started/02-usage.md)
+[문서 홈](../README.md) · [처음 시작하기](../getting-started/01-setup.md) · [개발 작업 흐름](../getting-started/02-usage.md)
 
 API는 화면·Airflow 등이 보낸 요청의 인증과 입력을 검사하고, 업무 데이터를 조회하거나 변경합니다.
 메일·계정 같은 업무는 `api.<feature>` Django app으로 묶습니다.
@@ -17,8 +17,7 @@ API는 화면·Airflow 등이 보낸 요청의 인증과 입력을 검사하고,
 4. 업무 로직을 수정하면 해당 service·selector 중심으로 검증하고 API 응답·권한을 확인합니다.
 5. [API 실행 안내](../../apps/portal/api/README.md#실행하기)에 따라 소스가 포함된 검사 이미지를 갱신하고 검사를 실행합니다.
 
-DB 구조가 바뀌면 migration을 추가합니다. 운영 DB 적용은 [migration 안내](03-migration-guide.md)를 따릅니다.
-개발 명령은 [테스트·migration 스킬](../../.codex/skills/django-test-migration-flow/SKILL.md)에 있는 Compose `api` 실행 절차를 사용합니다.
+DB 구조가 바뀌면 [migration 안내](03-migration-guide.md)에 따라 migration을 만들고 검증합니다.
 
 ## 실행 단위
 

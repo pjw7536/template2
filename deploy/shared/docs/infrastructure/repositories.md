@@ -2,10 +2,7 @@
 
 [사내 인프라 정보](README.md) · [공통 배포 문서](../README.md)
 
-사내 Git·registry·패키지·artifact 주소와 전체 public/mirror 이름 매핑의 관리 원본입니다.
-
-기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-담당자는 미확인입니다. 설정 원본과 실제 사용·접속 여부는 아래 항목을 따릅니다.
+사내 Git·registry·패키지·artifact 주소와 전체 public/mirror 이름 매핑의 관리 원본입니다. 기록 형식은 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
 
 ## 사내 저장소 주소
 
@@ -14,20 +11,43 @@
 | 용도 | 주소·패턴 | 근거·확인 상태 |
 | --- | --- | --- |
 | 사내 Git 서버·프로젝트 clone URL | 미확인 | 사내 Git 주소·프로젝트 경로·배포 브랜치 제공 필요 |
-| 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | Airflow build·MinIO·Monitoring·Headlamp env와 Keycloak Kustomize의 선언 |
+| 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | 아래 [서버가 받는 이미지](#서버가-받는-이미지)의 선언 |
+| Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Traefik·Keycloak DB·Airflow·MinIO·FTP·Monitoring·Portal edge-nginx 선언. 공식 이미지의 `library/` 접두사는 선언마다 다름(postgres·traefik·nginx는 생략, Monitoring busybox는 포함). 두 형식의 실제 pull 확인 필요 |
+| Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
+| GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
+| Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | metrics-server·Monitoring env·Worker 설치 절차 |
 | Nexus 패키지·Raw 저장소 | `http://repository.samsungds.net/repository/<mirror>` | Airflow build env·Worker 설치 절차의 주소 패턴. 실제 하위 경로·CA·인증·권한 확인 필요 |
 | PyPI simple index | `http://repository.samsungds.net/repository/<mirror>/simple` | Airflow build env의 선언 |
+| pip 신뢰 호스트 | `repository.samsungds.net`, `repo.samsungds.net`, `nexus.adpaas.cloud.samsungds.net` | `deploy/airflow/env/build.env`의 `PIP_TRUSTED_HOST`. `repo.samsungds.net`은 다른 주소 선언에 쓰이지 않으며 용도 미확인 |
 | 전체 public URL ↔ mirror 이름 | [패키지 미러 매핑](#전체-publicmirror-이름-매핑) | 생태계별 이름 목록. 실제 사용 주소는 아래 표에서 관리 |
 
-### 이미지·패키지별 사용 주소
+### 서버가 받는 이미지
+
+사내 서버의 Pod·빌드가 실제로 pull하는 이미지 전체 목록입니다. 값의 원본은 설정 원본 열의 파일이며, 이미지·tag를 바꾸면 이 표도 함께 갱신합니다.
+모든 이미지의 미러 제공·실제 pull·CA·인증·pull Secret 필요 여부는 미확인입니다. 배포 전 대상 노드에서 pull을 확인합니다.
+
+| 앱·용도 | 이미지 | 설정 원본 | 남은 확인 |
+| --- | --- | --- | --- |
+| 공용 Traefik | `repository.samsungds.net/proxy-docker-registry-1.docker.io/traefik:v3.7.1` | `deploy/shared/ingress/kustomization.yaml`: `images` | 없음 |
+| Keycloak·설정 Job | `repository.samsungds.net/proxy-docker-quay.io/keycloak/keycloak:26.7.1` | `deploy/keycloak/k8s/kustomization.yaml`: `images`, Job YAML의 `image`(`deploy/keycloak/k8s/oidc/oidc-setup-job.yaml`, `deploy/keycloak/k8s/claims/claim-mappers-job.yaml`, `deploy/portal/k8s/jobs/keycloak-client/job.yaml`) | Job YAML은 tag를 직접 고정하므로 버전 변경 시 4곳을 함께 수정 |
+| Keycloak DB | `repository.samsungds.net/proxy-docker-registry-1.docker.io/postgres:16` | `deploy/keycloak/k8s/kustomization.yaml`: `images` | 없음 |
+| Airflow DB | `repository.samsungds.net/proxy-docker-registry-1.docker.io/postgres:16` | `deploy/airflow/env/k8s.env`: `POSTGRES_IMAGE` | 없음 |
+| Airflow 빌드 기반(CP1) | `repository.samsungds.net/proxy-docker-registry-1.docker.io/apache/airflow:3.3.2-python3.12` | `deploy/airflow/env/build.env`: `AIRFLOW_BASE_IMAGE` | CP1 빌드 시에만 사용 |
+| Airflow 실행 | `airflow:3.3.2-release-1`(registry 없음) | `deploy/airflow/env/k8s.env`: `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG` | CP1 빌드 후 [이미지 전달](../../../airflow/docs/02-artifacts.md#이미지-전달). 사내 registry push 여부 미정 |
+| MinIO | `repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5` | `deploy/minio/env/prod.env`: `MINIO_IMAGE` | `deploy/minio/k8s/kustomization.yaml`의 렌더 검사용 사본과 함께 수정 |
+| MinIO 초기화·폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio-client:2025.7.21-debian-12-r3` | `deploy/minio/env/prod.env`: `MINIO_CLIENT_IMAGE` | 위와 같음 |
+| FTP | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | `deploy/ftp/env/prod.env`: `FTP_IMAGE` | 미러의 digest 제공 여부 |
+| Headlamp | `repository.samsungds.net/proxy-docker-ghcr.io/headlamp-k8s/headlamp:v0.45.0` | `deploy/headlamp/env/k8s.env`: `HEADLAMP_REGISTRY`, `deploy/headlamp/helm/values.yaml`: `image.tag`, chart 기본 repository `headlamp-k8s/headlamp` | 없음 |
+| Monitoring | Docker Hub: `grafana/grafana:13.2.1-distroless`. Quay: `prometheus-operator/prometheus-operator:v0.94.0`, `prometheus-operator/prometheus-config-reloader:v0.94.0`, `prometheus/prometheus:v3.14.0-distroless`, `prometheus/alertmanager:v0.34.0`, `prometheus/node-exporter:v1.12.1`, `kiwigrid/k8s-sidecar:2.11.2`. GHCR: `jkroepke/kube-webhook-certgen:1.8.8`. registry.k8s.io: `kube-state-metrics/kube-state-metrics:v2.20.0` | `deploy/monitoring/env/k8s.env`: `DOCKER_REGISTRY`·`QUAY_REGISTRY`·`GHCR_REGISTRY`·`K8S_REGISTRY`, chart `kube-prometheus-stack` 91.4.0 기본 tag | 위 목록은 chart 기본값 기준이며 렌더 검증 전입니다. 확정 목록은 `deploy/monitoring/scripts/manage.py render`가 만드는 `images.txt` |
+| Monitoring 폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/library/busybox:1.37.0` | `deploy/monitoring/scripts/manage.py`의 준비 Job | 없음 |
+| metrics-server | `repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0` | `deploy/shared/metrics-server/components.yaml` | 없음 |
+| Portal API·Web·migrate | 미확정(`registry.internal.example.invalid/tailwind/api`·`web`, tag `replace-me`) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | Portal 이미지 registry·빌드·tag 결정 필요 |
+| Portal edge-nginx | `repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx:1.27-alpine` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`: `images`(base `nginx:1.27-alpine`의 이름만 변경) | 없음 |
+
+### 패키지·chart·artifact 주소
 
 | 용도 | 주소 | 근거 |
 | --- | --- | --- |
-| Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Airflow build env·MinIO env·Monitoring env |
-| FTP 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | `deploy/ftp/env/prod.env`의 `FTP_IMAGE` 선언. 미러의 digest 제공·실제 pull·CA·인증·담당자 미확인 |
-| Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
-| GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
-| Kubernetes 이미지 | `repository.samsungds.net/proxy-docker-registry.k8s.io/<image>:<tag>` | Worker 설치 절차의 입력 |
 | Debian APT | `http://repository.samsungds.net/repository/proxy-apt-mirror.kakao.com-debian` | Airflow `APT_DEBIAN_REPOSITORY` |
 | Ubuntu APT | `http://repository.samsungds.net/repository/proxy-apt-archive.ubuntu.com-ubuntu` | Worker 설치 절차의 입력 |
 | Docker APT | `http://repository.samsungds.net/repository/proxy-apt-download.docker.com-linux-ubuntu` | Worker 설치 절차의 입력 |
@@ -43,18 +63,16 @@
 | Impala ODBC 2.8.3.1008 | `http://nexus.adpaas.cloud.samsungds.net/repository/dataservice/odbc/linux/debian/clouderaimpalaodbc_2.8.3.1008-2_amd64.deb` | Airflow `BIGDATAQUERY_ODBC_DEB_URL`의 서버 전용 artifact |
 
 위 주소의 실제 운영 사용·접속 성공·CA·인증·권한은 미확인입니다. URL의 scheme은 원본 입력을 따릅니다.
-근거 파일은 `deploy/airflow/env/build.env`, `deploy/airflow/helm/chart.lock.json`, `deploy/minio/env/prod.env`, `deploy/keycloak/k8s/kustomization.yaml`,
-`deploy/monitoring/env/k8s.env`, `deploy/monitoring/helm/chart.lock.json`, `deploy/headlamp/env/k8s.env`와 [Worker 설치 절차](../kubernetes/worker.md#2-0-사용할-사내-미러와-준비-파일)입니다.
-선택 checkout에 없는 앱은 해당 앱을 선택한 뒤 입력을 확인합니다.
+근거 파일은 `deploy/airflow/env/build.env`, `deploy/airflow/helm/chart.lock.json`, `deploy/monitoring/helm/chart.lock.json`,
+`deploy/headlamp/helm/chart.lock.json`과 [Worker 설치 절차](../kubernetes/worker.md#2-0-사용할-사내-미러와-준비-파일)입니다. 이미지의 근거는 [서버가 받는 이미지](#서버가-받는-이미지)의 설정 원본 열을 따릅니다.
 
 ## 전체 public/mirror 이름 매핑
 
-아래는 사용자가 제공한 사내 미러 이름 매핑입니다. 실제 사용 주소와 접속 여부는 위 표를 따릅니다.
-`type`은 아래 절로 구분한 패키지 생태계, `public`은 외부 원본 URL, `mirror`는 사내 저장소 이름입니다. 같은 생태계·원본 URL·이름 조합은 한 번씩 유지합니다.
+아래는 사용자가 제공한 사내 미러 이름 매핑입니다. 실제 최종 사용 주소와 접속 여부는 [서버가 받는 이미지](#서버가-받는-이미지)·[패키지 주소](#패키지chartartifact-주소)에서 관리합니다.
+절 이름은 패키지 생태계, `public`은 외부 원본 URL, `mirror`는 사내 저장소 이름입니다. 같은 생태계·mirror 이름은 한 번씩 유지합니다.
 이름이 다르면 별도 항목이며 이름만으로 실제 URL·하위 경로·지원 버전·접속 성공을 확정하지 않습니다.
-실제 최종 사용 주소는 위 표에 기록하고, 전체 매핑은 아래에서 관리합니다.
 
-바로 찾기: [Docker](#docker) · [Helm](#helm) · [npm](#npm) · [PyPI](#pypi) · [apt](#apt) · [yum](#yum).
+바로 찾기: [apt](#apt) · [cargo](#cargo) · [conan](#conan) · [conda](#conda) · [docker](#docker) · [go](#go) · [helm](#helm) · [maven2](#maven2) · [npm](#npm) · [nuget](#nuget) · [pypi](#pypi) · [r](#r) · [raw](#raw) · [rubygems](#rubygems) · [yum](#yum)
 
 ### apt
 
@@ -142,7 +160,6 @@
 | `https://mcr.microsoft.com` | `proxy-docker-mcr.microsoft.com` |
 | `https://nvcr.io/` | `proxy-docker-nvcr.io` |
 | `https://registry-1.docker.io/` | `proxy-docker-registry-1.docker.io-proteantecs` |
-| `https://public.ecr.aws` | `proxy-docker-public.ecr.aws` |
 | `https://quay.io/` | `proxy-docker-quay.io` |
 
 ### go
@@ -317,5 +334,4 @@
 
 - 사내 Git 서버·프로젝트 clone URL·배포 브랜치는 미확인입니다.
 - npm의 사내 최종 URL과 Helm chart의 실제 패키지 제공 여부·CA·권한 신청 절차는 추가 확인이 필요합니다.
-- 사내 서버는 승인된 미러 또는 반입 파일, 외부 PC 개발은 public source를 사용합니다.
 - 주소·버전을 바꾸면 소비 앱의 env·Kustomize·chart lock과 설치 문서도 대조합니다. 인증값은 기록하지 않습니다.

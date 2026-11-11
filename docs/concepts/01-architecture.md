@@ -57,8 +57,8 @@ flowchart LR
 | `deploy/<app>` | 서버 배포·공통 정의·CI 입력 | [서버 배포 안내](../../deploy/README.md) |
 | `local/<app>` | 개발 PC의 차이·mock·실행 도구 | [로컬 실행 안내](../../local/README.md) |
 
-공통 정의를 `deploy`에 두고 `local`에서 재사용합니다. 앱·서버 선택 그룹의 원본은 `deploy/shared/apps.json`입니다.
-서버는 준비된 이미지와 배포 파일만으로 동작하며, 소스 빌드가 필요할 때만 `--with-source`로 소스를 추가합니다.
+공통 정의를 `deploy`에 두고 `local`에서 재사용합니다. 앱 목록과 서버 검사 그룹의 원본은 `deploy/shared/apps.json`입니다.
+서버 검사·배포 도구는 준비된 이미지와 `deploy`의 배포 파일만 사용하며 `local`에 의존하지 않습니다.
 
 ### 요청 흐름
 
@@ -172,4 +172,3 @@ Web의 허용된 기능 간 의존 방향과 API 계층별 책임은 각각 [Web
 | MinIO / Parquet | MinIO는 파일을 객체로 저장하는 서비스, Parquet은 분석용 참고 데이터를 저장하는 파일 형식 |
 | Airflow / DAG | Airflow는 정해진 작업을 실행·관리하는 서비스, DAG는 실행할 작업과 선후 관계를 나타내는 정의 |
 | smoke 검사 | 로그인·메일 등 대표 기능을 연결해 동작을 확인하는 통합 검사. 테스트 데이터·실행 이력이 생성될 수 있음 |
-| 선택 checkout | 서버에서 담당 앱의 배포 파일과 공통 파일만 내려받는 방식. 기본적으로 앱 소스·local·루트 docs를 제외 |

@@ -3,54 +3,25 @@
 [참고 자료](../README.md#설정명령) · [문서 홈](../README.md)
 
 이 문서는 개발 검사와 Django 관리 명령의 실행 조건·옵션·데이터 변경을 설명합니다.
-처음 실행은 [셋업 가이드](../getting-started/01-setup.md), 평소 시작·수정·검사·종료는 [자주 쓰는 명령](../getting-started/02-usage.md)을 먼저 확인합니다.
+로컬 실행은 [로컬 실행](../../local/README.md), 수정·검사 순서는 [개발 작업 흐름](../getting-started/02-usage.md)을 먼저 확인합니다.
 아래에서는 검사와 관리 명령의 상세 내용을 찾을 수 있습니다.
 
 ## 필요한 명령 찾기
 
 | 작업 | 바로가기 |
 | --- | --- |
-| 로컬 앱·화면 실행 | [로컬 전체 앱](#로컬-전체-앱-실행), [프론트 명령](#프론트-명령) |
+| 로컬 앱·화면 실행 | [실행 위치](#실행-위치), [프론트 명령](#프론트-명령) |
 | API 테스트·관리 명령 | [백엔드 검증](#백엔드-검증), [Django 관리 명령](#django-관리-명령) |
-| DB migration | [현재 적용 절차](../development/03-migration-guide.md) |
+| DB migration | [작성·검증](../development/03-migration-guide.md), 서버 적용은 [운영 Migration](../../deploy/portal/docs/01-install.md#3-migration) |
 | 파일 적재·요약·FTP | [Data Movement](#data-movement-airflow-dag) |
 | Drone 대상 초기 데이터 | [입력과 dry-run](#drone-jsoncsv-target-seed) |
 | 설정·문서 검사·장애 대응 | [환경 변수](#환경-변수-파일), [문서 검증](#문서-검증), [장애 확인](#장애-확인-순서) |
 
-## 실행 진입점
+## 실행 위치
 
-일반 작업에서는 저장소 루트의 `make` 명령을 사용합니다.
-Kubernetes 정의는 `deploy/<app>`과 `local/<app>`에서 관리합니다. Compose는 로컬 DB·API 검사·CI에만 사용합니다.
-
-| 환경 | 기본 명령 | 용도 | dependency source |
-| --- | --- | --- | --- |
-| `dev` | `make dev` | 로컬 개발 전용 | public registry/package source |
-| `prod` | [운영 배포 안내](../../deploy/portal/k8s/overlays/prod/README.md) | 사내 Kubernetes | internal mirror |
-
-`dev`는 로컬 PC에서만 사용하는 개발 환경입니다.
-사내 서버는 Kubernetes만 사용합니다. Portal 입력은 `deploy/portal/env/prod`입니다.
-`make down`은 로컬 kind 클러스터를 삭제하고 외부 DB 컨테이너를 종료하며 DB 볼륨과 호스트 데이터를 보존합니다.
-
-## 로컬 전체 앱 실행
-
-기동·상태 확인·종료 명령은 [일상 개발 안내](../getting-started/02-usage.md#시작확인종료)를 따릅니다.
-한 PC의 kind에서 앱을 실행하고 PostgreSQL은 별도 Docker 컨테이너를 사용합니다.
-주소·계정·설정·데이터 보존의 원본은 [로컬 실행 안내](../../local/README.md)입니다.
-
-기동 도구는 DB·스토리지·Secret, 인증·mock, migration·seed, 앱과 후속 서비스를 준비합니다.
-준비 상태 검사와 대표 기능 통합 검사는 확인하는 범위가 다르며, 통합 검사는 테스트 데이터를 만듭니다.
-정상 종료는 DB 볼륨·호스트 파일·자격증명을 보존합니다. 포트·마운트 변경으로 클러스터 재생성이 필요하면
-로컬 안내의 순서를 확인합니다.
-
-## 사내 Kubernetes
-
-`make server-check APP=all`은 local 파일 없이 모든 앱의 원본을 검사합니다.
-서버는 registry·DNS/TLS·DB·스토리지·실제 외부계 입력을 별도로 준비합니다.
-Portal migration은 운영 앱보다 먼저 실행하고, 여러 노드에서 FTP와 API 파일을 공유할 방식을 명시합니다.
-
-배포 파일의 서비스별 역할은 [Kubernetes 배포 안내](../../deploy/README.md)를 참고합니다.
-`make k8s-export`로 Keycloak 기동 YAML과 claim 등록 Job YAML을 각각 생성합니다.
-claim 등록 Job은 Keycloak 기동과 사내 OIDC 설정을 완료한 뒤 별도로 실행합니다.
+일반 작업은 저장소 루트의 `make` 명령을 사용합니다. 로컬 앱 기동·상태 확인·종료는 [로컬 실행](../../local/README.md#준비와-실행),
+주소·계정·데이터 보존은 [로컬 실행 안내](../../local/README.md)가 원본입니다.
+사내 서버의 검사·배포·운영은 [배포 안내](../../deploy/README.md)를 따릅니다.
 
 ## 프론트 명령
 
@@ -92,8 +63,8 @@ DB 쓰기·외부 발송·삭제 여부와 dry-run 지원은 해당 명령의 �
 
 ### DB migration
 
-현재 배포 이미지·API Secret을 사용한 사전 검사·API 중지·migration·사후 확인은
-[migration 적용 안내](../development/03-migration-guide.md)를 따릅니다.
+작성·로컬 검증은 [migration 안내](../development/03-migration-guide.md), 서버의 사전 검사·API 중지·migration·사후 확인은
+[운영 Migration 절차](../../deploy/portal/docs/01-install.md#3-migration)를 따릅니다.
 
 ### Assistant 데이터 보강 명령
 
@@ -291,4 +262,4 @@ make audit-docs
 | Observer 조회 실패 | `OBSERVER_QUERY_DAYS`, data movement 적재 상태, 기준 정보 endpoint |
 | 파일/이미지 실패 | MinIO env, bucket 접근, asset sequence |
 
-사내 서버는 [선택 체크아웃](../../deploy/shared/docs/operations/01-checkout.md#선택-checkout) 후 `make server-check APP=<앱>`을 사용합니다. 전체 env·로컬 렌더링 검사는 개발 PC에서 수행합니다.
+사내 서버의 배포 원본 검사는 [배포 안내](../../deploy/README.md)의 `make server-check APP=<앱>`을 사용합니다.

@@ -8,7 +8,9 @@
 | --- | --- |
 | 현재 환경 조회 | [서버·노드·네트워크 확인](kubernetes/baseline.md) |
 | 새 서버 준비·제어면 구성 | [준비 조건](kubernetes/prerequisites.md) → [CP1~3](kubernetes/control-plane.md) |
+| metrics-server 설치 | [metrics-server 설치](kubernetes/control-plane.md#metrics-server-설치) |
 | Worker 가입 | [설치·가입·검증](kubernetes/worker.md) |
+| API server OIDC 인증 | [API server OIDC](kubernetes/oidc.md) |
 | 용어·명령 조회 | [구성 개념](kubernetes/concepts.md), [kubectl](kubernetes/kubectl.md) |
 
 ## HTTPS·인증서
@@ -24,10 +26,9 @@
 
 | 작업 | 절차 |
 | --- | --- |
-| checkout·앱 선택·Git·입력 파일 관리 | [서버 파일 관리](operations/01-checkout.md) |
-| 앱 준비·의존 관계·접속 검증 | [배포 절차](operations/02-deploy.md) |
-| 갱신·로그·장애·백업 | [운영 절차](operations/03-operations.md) |
-| env·Secret 작성·검사·등록 | [환경설정 계약](configuration/environment.md) |
+| 저장소 clone·Git 갱신 | [서버 파일 받기](operations/01-checkout.md) |
+| 공통 준비·앱 의존 관계·접속 검증 | [배포 준비와 검증](operations/02-deploy.md) |
+| 갱신·장애·백업 | [운영과 문제 해결](operations/03-operations.md) |
+| env·Secret 작성·검사·등록 | [앱별 환경설정](configuration/environment.md) |
 
-현재 서버·VIP·서비스·미러·데이터 위치는 인프라 원본에서 관리합니다.
 실행 원본은 `deploy/shared/ingress`, 인증서 파일은 `deploy/shared/certs`, 앱 설정은 각 앱의 manifest·env·Helm values가 소유합니다.

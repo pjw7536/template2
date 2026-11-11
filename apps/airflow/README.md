@@ -3,7 +3,7 @@
 Airflow는 정해진 작업을 실행하고 선후 관계·성공·실패를 관리합니다.
 이 폴더에서는 작업 정의(DAG), 플러그인, Airflow 이미지 소스를 개발합니다.
 업무 처리는 Portal의 공개 API를 호출하며 Portal 내부 Python 코드를 직접 가져오지 않습니다.
-처음 실행한다면 [첫 셋업](../../docs/getting-started/01-setup.md), 서비스 관계는 [아키텍처](../../docs/concepts/01-architecture.md#서비스-구성)를 확인합니다.
+처음 실행한다면 [로컬 실행](../../local/README.md), 서비스 관계는 [아키텍처](../../docs/concepts/01-architecture.md#서비스-구성)를 확인합니다.
 
 ## 파일 위치
 
@@ -28,14 +28,23 @@ DAG·이미지를 변경하면 `make k8s-rebuild APP=airflow`로 반영합니다
 | DAG·플러그인 동작 | `python3 -m unittest discover -s apps/airflow/tests -v` |
 | 이미지·배포 경로와 앱 구조 | `node --test apps/tooling/tests/airflow-deployment.test.cjs apps/tooling/tests/app-layout.test.cjs` |
 
+## DAG의 Python 패키지
+
+필요한 패키지는 의존성 Dockerfile에 추가하고 새 태그로 빌드합니다. DAG 실행·컨테이너 시작 때마다 설치하지 않습니다.
+각 DAG에서 미러 주소나 인증값을 반복 선언하지 않습니다.
+
+- 사내 이미지는 `deploy/airflow/env/build.env`의 `PIP_INDEX_URL`·`PIP_EXTRA_INDEX_URL`·`PIP_TRUSTED_HOST`를 `/etc/pip.conf` 기본값으로 반영합니다. 같은 이미지의 DAG pip와 하위 Python·가상환경은 이 값을 기본으로 사용합니다.
+- pip 기반 `PythonVirtualenvOperator(index_urls=...)`는 가상환경의 `pip.conf`로 지정한 index를 덮어쓸 수 있고, 빈 목록이면 `no-index`가 적용됩니다. pip 명령 옵션·명시적인 Pod 환경변수도 기본값보다 우선합니다.
+- 다른 Pod·서버·이미지에서 실행하는 작업과 pip 외 설치 도구에는 이 설정이 자동 적용되지 않습니다.
+- `PIP_TRUSTED_HOST`는 pip 저장소 접근 설정이며 업무 API의 TLS 신뢰 설정을 대신하지 않습니다.
+- 외부 PC의 `make dev` 빌드는 최종 Dockerfile의 공개 기본 이미지를 사용하므로 사내 미러가 필요 없습니다. 사내 기본값이 있는 의존성 Dockerfile을 직접 빌드하려면 사내망 또는 별도의 build arg가 필요합니다.
+
 ## 빌드·배포
 
 `python3 deploy/airflow/scripts/manage.py build-image --build-env deploy/airflow/env/build.env`를 사용합니다.
 의존성 이미지에는 Dockerfile만 전달하고, 최종 이미지 context는 `apps/airflow`입니다.
 최종 이미지에는 DAG·플러그인·관리자 초기화 코드가 포함됩니다. 실제 설정·로그는 제외합니다.
 
-기본 서버 checkout은 소스를 제외합니다. 빌드가 필요한 경우
-`bash deploy/shared/scripts/checkout-server.sh airflow --with-source`로 소스를 추가합니다.
 `check`, `render`, `deploy`는 준비된 이미지·chart·env와 배포 파일만 사용합니다.
 이미지 자동 push는 하지 않으며, registry 또는 이미지 파일로 서버에 반입합니다.
 

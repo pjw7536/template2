@@ -6,7 +6,7 @@
 - 사내 서버의 지원 배포 방식은 Kubernetes뿐이다. 정의가 없으면 전환 미완료로 표시하며 Compose 검증으로 대신하지 않는다.
 - CI Compose·test 입력은 `deploy`, 외부 PC 설정·mock·실행 도구는 `local`이 소유한다. 서버 검사·렌더·배포는 `local`·앱 소스·루트 `docs` 없이 실행할 수 있어야 한다.
 - 공통 정의는 `deploy/shared` 또는 앱별 base에 둔다. local은 이를 재사용하며 앱별 설정을 다른 앱에 복제하지 않는다.
-- 실행 진입점은 루트 Makefile이다. 앱 경로·그룹 원본은 [apps.json](shared/apps.json), 서버 파일 준비는 [선택 checkout](shared/docs/operations/01-checkout.md#선택-checkout)을 따른다. 소스는 빌드에 필요한 경우에만 `--with-source`로 추가한다.
+- 실행 진입점은 루트 Makefile이다. 앱 경로·그룹 원본은 [apps.json](shared/apps.json), 서버 파일 준비는 [서버 파일 받기](shared/docs/operations/01-checkout.md)를 따른다.
 
 ## 탐색과 운영 정보
 

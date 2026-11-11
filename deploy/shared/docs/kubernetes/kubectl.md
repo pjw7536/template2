@@ -2,7 +2,7 @@
 
 [공통 배포 문서](../README.md) · [Kubernetes 셋업](../README.md#클러스터) · [사내 인프라 정보](../infrastructure/README.md)
 
-Kubernetes(K8s)는 컨테이너로 실행하는 앱을 여러 서버에 배치하고 관리하는 도구입니다. 이 문서는 `kubectl`로 상태를 확인하고, 로그를 읽고, 앱을 관리할 때 참고하는 입문용 명령어 모음입니다.
+`kubectl`로 상태 확인·로그 조회·앱 관리를 할 때 참고하는 일반 명령어 모음입니다. 용어의 뜻은 [용어와 전체 구조](concepts.md#용어)를 참고합니다.
 
 ## 1. 시작 전 준비와 예시 읽는 법
 
@@ -11,25 +11,24 @@ Kubernetes(K8s)는 컨테이너로 실행하는 앱을 여러 서버에 배치�
 - 아래 `demo`, `web`, `web-abc123`, `app.yaml`은 예시입니다. 실제 Namespace, Deployment, Pod, 파일 이름으로 바꾸세요. 예시 리소스는 자동으로 생성되지 않습니다.
 - 코드 블록은 필요한 명령어를 골라 실행하세요. 특히 **변경**·**삭제** 절은 한꺼번에 실행하는 실습 스크립트가 아닙니다.
 
-아래는 개발 PC와 서버에서 참고하는 일반 명령어입니다. 사내 작업에서는 [현재 환경 확인](baseline.md)에서 대상 context를 먼저 확인합니다.
+사내 작업에서는 [현재 환경 확인](baseline.md)에서 대상 context를 먼저 확인합니다.
 이 저장소의 서버 설치·배포는 [서버 배포 안내](../../../README.md)의 Makefile 진입점과 앱별 절차를 따릅니다.
 
-## 2. 꼭 알아둘 용어
+## 2. 리소스 조회 이름
 
-| 용어 | 의미 | 조회할 때 쓰는 이름 / 약어 |
-| --- | --- | --- |
-| Cluster | Kubernetes가 관리하는 서버와 제어 시스템 전체 | 현재 접속 대상은 `config current-context`로 확인 |
-| Context | 클러스터·사용자·기본 Namespace를 묶은 접속 설정 | `config get-contexts` |
-| Node | Pod가 실행되는 서버 | `nodes` / `no` |
-| Namespace | 리소스를 나눠 관리하는 논리적 공간 | `namespaces` / `ns` |
-| Pod | 컨테이너 하나 이상을 함께 실행하는 기본 단위 | `pods` / `po` |
-| Deployment | 앱의 Pod 개수와 배포 버전을 관리 | `deployments` / `deploy` |
-| StatefulSet | 고정된 식별자와 저장소가 필요한 앱의 Pod 관리 | `statefulsets` / `sts` |
-| Service | Pod에 접근하는 일정한 주소와 포트 제공 | `services` / `svc` |
-| Ingress | HTTP/HTTPS 요청의 호스트·경로별 연결 규칙 | `ingresses` / `ing` |
-| ConfigMap / Secret | 앱 설정 / 비밀번호 등 민감한 설정 | `configmaps` / `cm`, `secrets` |
-| PVC | 앱이 사용할 영구 저장소 요청 | `persistentvolumeclaims` / `pvc` |
-| Job / CronJob | 완료되는 작업 / 주기적으로 실행할 작업 | `jobs`, `cronjobs` / `cj` |
+| 리소스 | 조회할 때 쓰는 이름 / 약어 |
+| --- | --- |
+| Cluster / Context | `config current-context` / `config get-contexts` |
+| Node | `nodes` / `no` |
+| Namespace | `namespaces` / `ns` |
+| Pod | `pods` / `po` |
+| Deployment | `deployments` / `deploy` |
+| StatefulSet | `statefulsets` / `sts` |
+| Service | `services` / `svc` |
+| Ingress | `ingresses` / `ing` |
+| ConfigMap / Secret | `configmaps` / `cm`, `secrets` |
+| PVC | `persistentvolumeclaims` / `pvc` |
+| Job / CronJob | `jobs`, `cronjobs` / `cj` |
 
 Ingress 규칙이 실제로 동작하려면 해당 규칙을 처리하는 Ingress Controller가 필요합니다.
 

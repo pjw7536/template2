@@ -4,17 +4,21 @@
 
 ## 위치
 
-| 내용 | 원본 |
-| --- | --- |
-| 개발 PC 실행·일상 명령 | `docs/getting-started/` |
-| 구조·모델·외부 연동 | `docs/concepts/` |
-| 소스 수정·migration | `docs/development/` |
-| 기능·화면·권한·API 계약 | `docs/features/` |
-| 설정·구현 색인·관리 명령 | `docs/reference/` |
-| 서버 설치·운영 | `deploy/<app>/docs/`, `deploy/shared/docs/` |
-| 현재 사내 운영 정보 | `deploy/shared/docs/infrastructure/` |
-| 개발 PC 설정·mock | `local/` |
-| 에이전트 작업 규칙 | `AGENTS.md`, `docs/agent/` |
+문서는 읽는 사람과 작업 단위를 기준으로 배치하고, 같은 정보는 한 곳만 원본으로 둡니다. CP1은 저장소 전체를 사용하지만, 서버 검사·배포 도구는 `deploy`와 루트 Makefile만으로 동작해야 하므로([배포 지침](../../deploy/AGENTS.md)) 서버 절차도 `deploy` 안에서 끝나야 합니다.
+
+| 읽는 사람·상황 | 원본 | 담는 내용 |
+| --- | --- | --- |
+| 서버 운영자(CP1, 서버 checkout) | `deploy/<app>/docs/`, `deploy/shared/docs/` | 설치·배포·운영 절차, 서버 env 작성·검사·Secret 등록, 클러스터·인증서·Ingress |
+| 서버 운영자·에이전트 | `deploy/shared/docs/infrastructure/` | 현재 서버·네트워크·서비스·미러·운영 위치와 서버 적용 대기 작업 |
+| 개발자(개발 PC 실행) | `docs/getting-started/`, `local/` | 로컬 실행·일상 명령(`docs`), 로컬 주소·계정·mock·데이터 보존(`local`) |
+| 개발자(코드 수정) | `docs/concepts/`, `docs/development/`, `docs/features/` | 구조·데이터 모델·외부 연동, 소스 수정·migration 작성, 기능·권한·API 계약 |
+| 개발자·운영자 공통 계약 | `docs/reference/` | env 키의 의미·형식, 데이터 마운트 계약, 구현 색인, 관리 명령 |
+| 에이전트 | `AGENTS.md`, `docs/agent/` | 작업 규칙·평가·Git 규칙 |
+
+- 서버에서 실행하는 절차는 `deploy`에만 둡니다. `docs`에는 해당 deploy 문서로 가는 링크 한 줄만 둡니다.
+- 코드·기능·env 키의 의미는 `docs`에만 둡니다. `deploy`는 서버 값과 절차만 적고 의미는 `docs`로 링크합니다.
+- 개발 PC 고유의 값·절차는 `local`에 두고 `docs/getting-started`는 순서와 링크만 제공합니다.
+- 같은 정보가 두 곳에 필요하면 한쪽을 원본으로 정하고 다른 쪽은 링크합니다.
 
 ## 내용
 

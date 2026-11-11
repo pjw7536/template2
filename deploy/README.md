@@ -1,13 +1,18 @@
 # 서버 배포
 
-명령은 관리 호스트의 저장소 루트에서 실행합니다.
-처음 준비할 때는 [서버 파일 받기](shared/docs/operations/01-checkout.md) → [공통 준비·배포](shared/docs/operations/02-deploy.md) → 앱 안내 순서로 진행합니다.
-대상 서버·주소·적용 상태는 [인프라 원본](shared/docs/infrastructure/README.md)과 실제 조회를 대조합니다.
+사내 Kubernetes 클러스터에 준비된 이미지·chart로 앱을 설치·운영하는 안내입니다.
+명령은 관리 호스트(CP1)의 저장소 루트에서 실행합니다.
 
-운영 HTTPS 앱은 `<service>.etch.samsungds.net`의 루트 경로로 제공합니다.
-Portal은 `etch.samsungds.net`, 테스트 명명은 `<service>.stg.etch.samsungds.net`을 사용합니다.
-[서비스 주소·입력](shared/docs/infrastructure/services.md#공개-도메인과-인증)과
-[DNS·VIP·인증서](shared/docs/infrastructure/network.md)를 기준으로 준비하며 DNS 변경은 사용자가 수행합니다.
+## 처음 준비하는 순서
+
+1. [서버 파일 받기](shared/docs/operations/01-checkout.md): CP1에 저장소를 clone하고 갱신합니다.
+2. [배포 준비와 검증](shared/docs/operations/02-deploy.md): context·공용 Ingress·env·TLS를 준비하고 앱 순서를 확인합니다.
+3. 아래 앱별 안내에서 설치를 진행합니다.
+4. [운영과 문제 해결](shared/docs/operations/03-operations.md)으로 갱신·장애·백업을 관리합니다.
+
+대상 서버·주소·적용 상태는 [사내 인프라 정보](shared/docs/infrastructure/README.md)와 실제 조회를 대조합니다.
+서버에서 아직 적용·확인해야 하는 작업은 [서버 적용 대기 작업](shared/docs/infrastructure/pending.md)에 모여 있습니다.
+공개 도메인은 [서비스 주소](shared/docs/infrastructure/services.md#공개-도메인과-인증), DNS·VIP·인증서는 [네트워크](shared/docs/infrastructure/network.md)가 원본입니다. DNS 변경은 사용자가 수행합니다.
 
 ## 앱별 배포와 상세 작업
 
@@ -23,8 +28,4 @@ Portal은 `etch.samsungds.net`, 테스트 명명은 `<service>.stg.etch.samsungd
 
 ## 공통 작업
 
-[클러스터·HTTPS·인증서·배포·운영 절차](shared/docs/README.md)에서 필요한 작업을 선택합니다.
-설치 후에는 rollout뿐 아니라 실제 접속·로그인·업무 동작을 확인합니다.
-
-서버 실행에는 선택한 `deploy/<app>`과 `deploy/shared`, 루트 Makefile을 사용합니다.
-이미지를 직접 빌드할 때만 앱 소스를 추가합니다. 외부 PC 개발은 [local 안내](../local/README.md)를 따릅니다.
+클러스터·HTTPS·인증서·배포·운영 절차는 [공통 배포 절차](shared/docs/README.md)에서 선택합니다.

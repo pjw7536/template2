@@ -1,29 +1,71 @@
 # 한 PC의 로컬 Kubernetes 개발 환경
 
-[프로젝트 안내](../README.md) · [개발 시작 안내](../docs/getting-started/01-setup.md) · [용어 안내](../docs/concepts/01-architecture.md#용어)
+[프로젝트 안내](../README.md) · [처음 시작하기](../docs/getting-started/01-setup.md) · [용어 안내](../docs/concepts/01-architecture.md#용어)
 
 `make dev`는 같은 컴퓨터의 kind에 Portal·Keycloak·Airflow·FTP·MinIO·mock·모니터링을 실행합니다.
 control-plane과 worker는 Docker 컨테이너이며 별도 컴퓨터가 필요하지 않습니다.
 PostgreSQL 16만 `tailwind-local-db` Compose project로 분리합니다. 기존 개발 DB는 변경하지 않습니다.
+
+```text
+내 PC
+├── Docker
+│   ├── kind: Docker 안에서 실행되는 개발용 Kubernetes
+│   │   └── Portal(Web/API), Keycloak, Airflow, MinIO, FTP, 모니터링, mock
+│   └── PostgreSQL: 별도 컨테이너와 DB 볼륨
+└── 저장소의 data/와 local/shared/runtime/: 데이터·생성 설정
+```
+
+로그인은 Keycloak이 담당하고, mock은 RAG·LLM·메일·Jira 등의 외부 서비스를 대신합니다.
 
 Portal을 제외한 6개 앱은 `make dev-platform` → `make k8s-platform-smoke`로 독립 실행·검사합니다.
 서버와의 공유 정의·Headlamp HTTPS 로그인·검사 범위는 [플랫폼 로컬 실행](01-PLATFORM.md)을 참고합니다.
 
 ## 필요한 안내 찾기
 
-- 준비 도구와 용어부터 확인: [첫 셋업 가이드](../docs/getting-started/01-setup.md)
-- 처음 실행: [준비와 실행](#준비와-실행)
+- 처음 실행: [준비](#준비) → [준비와 실행](#준비와-실행) → [로그인과 확인](#로그인과-확인)
+- 실행이 막힐 때: [문제 해결](#문제-해결)
 - 로그인 정보: [주소와 계정](#주소와-계정)
 - 기존 설치 갱신·재시작 문제: [기존 환경 갱신과 복구](#기존-환경-갱신과-복구)
 - 포트·저장 경로 변경과 백업: [로컬 설정과 파일 보존](#로컬-설정과-파일-보존)
 - env 적용 순서·앱별 파일 위치: [설정 합성과 앱 경계](#설정-합성과-앱-경계)
-- 서버로 옮기기·정적 검사: [서버 이전과 검사](#서버-이전과-검사)
+- 로컬 정의 정적 검사: [로컬 정적 검사](#로컬-정적-검사)
+
+## 준비
+
+개발 PC에는 전체 저장소가 필요합니다. 이미 내려받았다면 그 폴더를 사용하고, 새로 받을 때는 접근 가능한 Git 주소를 입력합니다.
+
+```bash
+read -r -p 'Git 저장소 URL: ' TAILWIND_REPO_URL
+git clone "$TAILWIND_REPO_URL" tailwind
+cd tailwind
+```
+
+명령은 별도 표시가 없으면 저장소 루트에서 실행합니다. kind 설치 도구는 Linux 실행 파일을 받으므로 Linux 또는 Windows WSL2의 Bash에서 실행합니다.
+WSL2에서는 같은 터미널에서 Docker에 연결할 수 있도록 Docker Desktop의 WSL 연결을 준비합니다.
+
+| 준비 항목 | 필요한 이유·기준 | 확인 명령 |
+| --- | --- | --- |
+| Git, Bash, Make | 저장소 받기와 공통 실행 명령 | `git --version`, `bash --version`, `make --version` |
+| Docker와 Compose v2 | kind 노드·이미지 빌드·로컬 DB 실행 | `docker info`, `docker compose version` |
+| Python 3와 PyYAML | 로컬 실행 도구와 YAML 처리 | `python3 --version`, `python3 -c "import yaml; print(yaml.__version__)"` |
+| kubectl | Kubernetes 설정과 상태 확인 | `kubectl version --client` |
+| Helm 3.19.0 이상 | Airflow·Monitoring chart 처리 | `helm version --short` |
+| curl, sha256sum, install | kind 다운로드·검증·설치 | `command -v curl sha256sum install` |
+| Node.js 22.13 이상인 22.x와 npm | 호스트에서 Web 개발·검사 시 사용(lockfile 요구사항) | `node --version`, `npm --version` |
+
+`make dev`의 컨테이너 빌드만 사용한다면 호스트의 Node.js 설치와 `make install`은 필수가 아닙니다.
+PyYAML이 없다면 가상환경에 설치할 수 있습니다. 이 환경을 사용했다면 이후 실행도 활성화된 터미널에서 진행합니다.
+`venv` 명령 자체가 없다면 OS의 Python 가상환경 패키지를 먼저 설치합니다.
+
+```bash
+python3 -m venv .tools/setup-venv
+source .tools/setup-venv/bin/activate
+python3 -m pip install PyYAML
+```
 
 ## 준비와 실행
 
-Linux 또는 WSL2의 Bash에서 실행하며 Docker + Compose v2, Python 3 + PyYAML, kubectl, Helm 3.19.0 이상이 필요합니다.
-kind 설치에는 curl·sha256sum·install을 사용합니다. 도구별 확인법과 PyYAML 설치 예시는 [첫 셋업 가이드](../docs/getting-started/01-setup.md#2-저장소와-도구-준비)를 따릅니다.
-kind는 `make k8s-tools`가 준비하며 로컬 실행 도구는 `.tools/bin/helm`도 자동으로 PATH에 포함합니다.
+kind는 `make k8s-tools`가 저장소의 `.tools/bin/kind`에 설치하며 로컬 실행 도구는 `.tools/bin/helm`도 자동으로 PATH에 포함합니다.
 Airflow·Monitoring chart는 기존 lock의 SHA-256으로 검증합니다. chart가 없으면 다음 명령으로 준비합니다.
 
 ```bash
@@ -37,7 +79,12 @@ make k8s-smoke
 ```
 
 `make k8s-check`는 기동 전 검사, `make k8s-health`는 실행 중인 앱의 준비 상태 검사입니다.
-브라우저에서 Portal 로그인까지 확인하면 기본 셋업을 마친 것입니다.
+`.tools/bin/helm`을 직접 실행 명령(`python3 deploy/.../manage.py`)에서도 쓰려면 `export PATH="$PWD/.tools/bin:$PATH"`를 실행합니다.
+기본 포트·데이터 경로로 실행할 때 별도 env 복사는 필요하지 않습니다. 포트가 사용 중이면 시작 전에 [로컬 설정](#로컬-설정과-파일-보존)을 작성합니다.
+
+`make dev`는 DB 준비, 이미지 빌드, 클러스터 생성, 앱 배포, Portal migration과 개발 데이터 준비까지 수행합니다.
+첫 실행은 다운로드와 이미지 빌드 때문에 오래 걸릴 수 있습니다. 마지막에 접속 주소가 표시되고
+`make k8s-health`에서 `전체 앱 준비 상태·공개 진입점 정상`이 나오면 [로그인과 확인](#로그인과-확인)으로 진행합니다.
 
 최초 이미지·패키지 다운로드에는 인터넷 연결이 필요합니다. 사내망은 사용하지 않습니다.
 기반 이미지는 현재 Docker 캐시를 우선 반입합니다. MinIO 공개 registry에서 pull이 거부되면 준비된 이미지 archive를
@@ -58,6 +105,17 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 | `make check-api`, `make makemigrations-check` | Kubernetes와 같은 이미지·합성된 로컬 env·개발 DB를 사용하는 일회성 Compose api 검사 |
 | `make test-api` | 같은 이미지와 표준 test env를 사용하며 별도 Django 테스트 DB에서 실행 |
 
+## 로그인과 확인
+
+1. 브라우저에서 **http://localhost:8080**을 엽니다. 상태 확인 주소는 `/api/v1/health/`입니다.
+2. 아래 [주소와 계정](#주소와-계정)의 Portal 테스트 계정으로 로그인합니다. 계정에 따라 접근 권한이 다릅니다.
+3. 홈과 업무 화면이 열리는지 확인한 뒤 `make k8s-smoke`로 대표 기능을 검사합니다.
+
+`make k8s-smoke`는 로그인·채팅/RAG·메일·파일 적재·Airflow·저장소·모니터링을 확인하며 테스트 대화·메일·적재 이력·DAG 실행 기록을 만듭니다.
+준비 상태 검사와 통합 검사가 성공하고 브라우저 로그인이 되면 기본 셋업을 마친 것입니다.
+port-forward 명령(`k8s-grafana`·`k8s-prometheus`·`k8s-ui`)은 터미널을 유지하는 동안 동작하며 `Ctrl+C`로 종료합니다.
+Grafana와 `make web-dev`는 기본 3000 포트를 공유하므로 동시에 실행할 때 충돌을 확인합니다.
+
 ## 주소와 계정
 
 | 서비스 | 접속 주소 | 로그인·계정 |
@@ -68,6 +126,8 @@ Docker 메모리는 최소 10GiB, 전체 PC는 16GB 이상을 기준으로 합�
 | Airflow | http://localhost:8080/airflow | Keycloak 로그인. Portal 테스트 계정과 동일 |
 | FTP | localhost:6380, passive 8076–8079 | 사용자 `ftpuser` |
 | Grafana | `make k8s-grafana` 실행 중 http://localhost:3000 | 사용자 `admin` |
+| Prometheus | `make k8s-prometheus` 실행 중 http://localhost:9090 | 없음 |
+| Headlamp 조회 UI | `make k8s-ui` 실행 중 http://localhost:4466 | 없음. 플랫폼 전용 실행의 HTTPS 로그인은 [플랫폼 접속](01-PLATFORM.md#접속과-계정) |
 | PostgreSQL | localhost:55432 | DB/계정: `dashboard_keycloak/portal`, `airflow/airflow`, `keycloak/keycloak` |
 
 다른 Portal 테스트 계정은 `90000002`(메일 조회), `90000003`(전체 앱),
@@ -96,7 +156,7 @@ Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`
 
 로그인한 모든 사용자는 Viewer입니다. `airflow` client의 User·Admin 역할만 추가 권한으로 적용하고,
 Portal 역할·조직·SDWT 그룹은 사용하지 않습니다. 로컬 테스트 계정 90000001에는 Admin,
-90000003에는 User를 등록합니다. 서버 등록 도구는 사용자 역할을 자동 부여하지 않습니다.
+90000003에는 User를 등록합니다.
 
 ```bash
 make k8s-airflow-sso-check
@@ -106,7 +166,40 @@ make k8s-airflow-sso-check
 90000003의 역할을 잠시 제거한 뒤 원래대로 복원하며 DAG를 실행하지 않습니다.
 Airflow 웹의 DB 비밀번호 로그인은 SSO로 대체되지만 기존 API 계정은 유지됩니다.
 
+### Airflow 실패 알림 메일 시험
+
+로컬 실행 도구는 `local/portal/env/api.env`의 Mail sandbox 입력을 재사용하고 기본 수신자는 비웁니다.
+메일 알림을 시험할 때는 `local/shared/env/k8s.env`의 `LOCAL_AIRFLOW_FAILURE_ALERT_EMAIL_TO`에 수신자를 지정하고
+mock의 `/mail/messages`에서 결과를 확인합니다. 운영 credential을 로컬 입력에 복사하지 않습니다.
+
+## 문제 해결
+
+| 증상 | 먼저 할 일 |
+| --- | --- |
+| `No module named yaml` | PyYAML을 설치한 Python 환경이 활성화되어 있는지 확인 |
+| `docker info` 실패 | Docker 기동·현재 사용자 접근 권한·WSL 연결 확인 |
+| kind·Helm·chart 준비 오류 | [준비](#준비)의 도구 확인 후 [준비와 실행](#준비와-실행)의 chart 명령 실행 |
+| 메모리·디스크 검사 실패 | Docker 메모리와 저장소 디스크 여유 확인 |
+| `ImagePullBackOff` 또는 MinIO 이미지 다운로드 거부 | [준비와 실행](#준비와-실행)의 이미지 반입 안내에 따라 이미지 접근 확인 |
+| 포트 사용 중 | 충돌 프로그램을 확인하고 [로컬 설정](#로컬-설정과-파일-보존)에서 지원하는 포트 변경 |
+| kind 설정 변경 메시지 | 포트·마운트 변경 내용을 확인하고 `make down` 후 `make dev` 실행 |
+| DB 볼륨은 있는데 자격증명 파일이 없다는 오류 | 백업한 `local/shared/runtime/credentials.env` 복구 |
+| Docker Desktop·WSL 재시작 뒤 파일 마운트 오류 | [재시작 후 복구](#docker-desktop--wsl-재시작-후-복구) 순서 확인 |
+| 로그인되지만 화면 접근이 거부됨 | [주소와 계정](#주소와-계정)의 계정별 권한과 [표준 사용자](#역할-기반-portal-표준-사용자)의 기존 realm 갱신 확인 |
+
+기동 이후 상태가 이상하면 먼저 실패한 앱을 찾습니다.
+
+```bash
+make k8s-status
+kubectl --context kind-tailwind-local get pods -A
+kubectl --context kind-tailwind-local -n tailwind-local get events --sort-by=.metadata.creationTimestamp
+```
+
+Pod 상세·로그를 읽는 방법은 [Kubernetes 명령어 안내](../deploy/shared/docs/kubernetes/kubectl.md#6-상세-상태와-로그-확인하기)를 참고합니다.
+
 ## 기존 환경 갱신과 복구
+
+`make k8s-up`이 API 설정을 합성하며 `api-local-overrides` Secret은 참조하지 않습니다. 클러스터에 남아 있어도 자동 삭제하지 않습니다.
 
 ### MinIO 콘솔 경로 반영
 
@@ -193,15 +286,11 @@ POP3·사내 메신저 같은 실제 사내 연동은 기본 검증 범위에 �
 mock의 RAG·메일 샌드박스는 기존 구현처럼 메모리 저장소이며 mock Pod 재시작 시 기본 seed로 돌아갑니다.
 업무 DB와 MinIO 파일·FTP 원본은 별도 영속 저장소에 유지됩니다.
 
-## 서버 이전과 검사
+## 로컬 정적 검사
 
 `test-api`는 저장소의 표준 test env와 별도 Django 테스트 DB를 사용합니다.
 `check-api`·`makemigrations-check`는 실제 합성된 로컬 Kubernetes env를 검사합니다.
-
-공통 정의는 deploy, 소스는 apps, 로컬 차이는 local에 둡니다.
-서버는 local 없이 `make server-check APP=all`로 검사할 수 있습니다.
-서버 이전 시 registry·도메인/TLS·DB·스토리지·실제 외부계 설정을 지정합니다.
-FTP와 API를 다른 노드에 두면 공유 저장소 또는 명시적인 노드 배치가 필요합니다.
+공통 정의는 `deploy`, 소스는 `apps`, 로컬 차이는 `local`에 둡니다. 아래 명령은 클러스터를 변경하지 않습니다.
 
 ```bash
 make env-profile-key-check

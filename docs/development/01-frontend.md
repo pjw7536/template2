@@ -1,6 +1,6 @@
 # 프론트엔드 상세 구조
 
-[문서 홈](../README.md) · [첫 셋업](../getting-started/01-setup.md) · [자주 쓰는 명령](../getting-started/02-usage.md)
+[문서 홈](../README.md) · [처음 시작하기](../getting-started/01-setup.md) · [개발 작업 흐름](../getting-started/02-usage.md)
 
 Web은 사용자가 보는 화면과 조작을 담당합니다. 화면별 코드는 메일·계정 같은 업무 기능(feature)으로 묶습니다.
 화면을 바꿀 때는 해당 기능의 page에서 시작해 필요한 component·hook·API client를 따라갑니다.

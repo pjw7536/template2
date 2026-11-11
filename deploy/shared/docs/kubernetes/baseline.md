@@ -1,11 +1,11 @@
 # 현재 환경 확인
 
-[가이드 홈](../README.md#클러스터) · 이전: [용어](concepts.md) · 다음: [앱 준비](../operations/02-deploy.md#배포-준비)
+[가이드 홈](../README.md#클러스터) · 이전: [용어](concepts.md)
 
-기존 서버의 상태를 조회하는 단계입니다. 아래 명령은 설정을 변경하지 않습니다.
-명령이 없거나 권한이 부족하면 오류를 기록하고 담당자에게 확인을 요청합니다.
+**목적:** 기존 클러스터와 노드의 상태를 조회해 설치·배포 기준을 확인합니다. 아래 명령은 설정을 변경하지 않습니다.
+**준비물:** 대상 클러스터의 kubeconfig와 조회 권한, 각 노드의 SSH 접근(2단계).
 
-## CP1에서 클러스터 조회
+## 1. 클러스터 조회 — CP1
 
 ```bash
 kubectl config get-contexts
@@ -23,13 +23,17 @@ kubectl --context "$KUBE_CONTEXT" get ingressclass
 kubectl --context "$KUBE_CONTEXT" get ingress -A
 ```
 
-[현재 서버 목록](../infrastructure/servers.md)과 노드명·IP·Ready를 비교합니다.
-Worker의 ROLES가 `<none>`이어도 그 자체로 이상은 아닙니다.
-StorageClass가 없으면 정적 PV 사용 여부를 확인합니다. 노드 Ready만으로 앱·접속 상태를 판단하지 않습니다.
+**기대 결과:** 노드명·IP·Ready가 [서버 목록](../infrastructure/servers.md)과 일치합니다. Worker의 ROLES는 `<none>`일 수 있습니다.
 
-## 설치 기준이 필요하면 각 노드에서 조회
+**실패 확인:**
 
-새 서버를 구축하거나 기존 환경의 미확인 정보를 채울 때 사용합니다.
+- 명령이 없거나 권한이 부족하면 오류를 기록하고 담당자에게 확인을 요청합니다.
+- StorageClass가 없으면 정적 PV 사용 여부를 확인합니다.
+- 노드 Ready만으로 앱·접속 상태를 판단하지 않습니다.
+
+## 2. 설치 기준 조회 — 각 노드
+
+새 서버를 구축하거나 기존 환경의 미확인 정보를 채울 때만 실행합니다.
 
 ```bash
 hostname
@@ -48,8 +52,7 @@ command -v kubeadm kubelet kubectl containerd crictl k3s rke2
 systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 ```
 
-후보 명령이나 서비스가 설치되지 않아 생기는 오류도 기록합니다.
-명령 하나가 있다는 이유만으로 클러스터 구축 방식을 확정하지 않습니다.
+설치되지 않은 후보 명령·서비스의 오류도 기록합니다. 명령 하나가 있다는 이유만으로 클러스터 구축 방식을 확정하지 않습니다.
 
 | 확인할 정보 | 근거·담당 |
 | --- | --- |
@@ -60,8 +63,10 @@ systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 | PV 경로·마운트·백업·StorageClass | Worker·스토리지 담당자 |
 | SSH/sudo·Git·registry·배포 권한 | 각 관리자 |
 
-확인값은 [공통 기록 규칙](../infrastructure/README.md#기록-규칙)에 따라 서버·네트워크·서비스 등 해당 주제의 원본에 반영합니다.
+확인값은 [기록 규칙](../infrastructure/README.md#기록-규칙)에 따라 해당 주제의 원본에 반영합니다.
 비밀번호·토큰·kubeconfig 내용은 기록하지 않습니다.
 
-**다음 단계:** 확인한 기준으로 [CP1~3 셋업](control-plane.md) 또는 [Worker 추가](worker.md)를 진행합니다.
-이미 Ready인 클러스터의 앱 배포는 [앱 준비](../operations/02-deploy.md#배포-준비)로 이동합니다.
+## 다음 단계
+
+- 새 노드 구축: [새 서버 준비](prerequisites.md) → [CP1~3 셋업](control-plane.md) 또는 [Worker 추가](worker.md)
+- 이미 Ready인 클러스터의 앱 배포: [앱 준비](../operations/02-deploy.md#배포-준비)

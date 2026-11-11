@@ -2,7 +2,9 @@
 
 [앱 안내](../README.md) · [전체 배포 안내](../../README.md)
 
-신규 DB의 migration과 [client 등록](01-install.md#keycloak-client-등록)을 준비한 운영자가 읽습니다. 실제 권한은 Keycloak에서 부여하고 브라우저의 새 로그인으로 확인합니다.
+**목적:** 최초 운영자와 앱·데이터 권한을 Keycloak에서 부여하고 새 로그인으로 확인합니다.
+
+**준비물:** [Migration·배포·검증](01-install.md#migration배포검증)과 [client 등록](01-install.md#keycloak-client-등록) 완료, Keycloak Admin Console 관리자 계정.
 
 ## Keycloak 권한과 새 DB 시작
 
@@ -31,6 +33,8 @@ ID Token 만료와 Portal 세션 만료는 다르며 세션은 `SESSION_COOKIE_A
 
 ### 기존 부서 기반 권한에서 전환
 
+부서 claim으로 앱 접근을 허용하던 DB·세션을 역할 기반으로 옮길 때 수행합니다.
+
 1. Portal client 등록 명령을 실행하여 `portal-members` 그룹과 역할 연결을 준비합니다.
 2. 기존 내부 사용자 중 전체 앱 사용 대상자를 EPID로 확인하여 그룹에 가입시킵니다. 부서 claim만으로 자동 가입하지 않습니다.
 3. 새 로그인 토큰에 `resource_access.<client-id>.roles`의 `portal-all-apps`가 포함되는지 확인합니다.
@@ -39,4 +43,6 @@ ID Token 만료와 Portal 세션 만료는 다르며 세션은 `SESSION_COOKIE_A
 
 그룹 탈퇴 시 사용자에게 직접 부여한 `portal-all-apps`나 다른 그룹에서 상속한 동일 역할도 확인합니다.
 `portal-all-apps`는 앞으로 추가되는 활성 앱에도 적용되며, SDWT 데이터 권한은 별도로 지정합니다.
-현재 응답의 `hasAllAppsAccess`는 역할 기반 전체 앱 사용 여부입니다. 이전 `isInternalMember` 필드는 제거합니다.
+응답의 `hasAllAppsAccess`는 역할 기반 전체 앱 사용 여부입니다.
+
+**다음 단계:** 운영 중 설정 변경은 [설정 변경 반영](03-operations.md#설정-변경-반영)을 따릅니다.

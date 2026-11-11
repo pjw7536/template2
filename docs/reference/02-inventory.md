@@ -1,6 +1,6 @@
 # 구현 색인: 경로·모델·설정·명령
 
-[문서 홈](../README.md) · [첫 셋업](../getting-started/01-setup.md) · [자주 쓰는 명령](../getting-started/02-usage.md)
+[문서 홈](../README.md) · [처음 시작하기](../getting-started/01-setup.md) · [개발 작업 흐름](../getting-started/02-usage.md)
 
 이 문서는 실제 코드 경로를 기준으로 앱의 route, model, command, env 계약을 한 곳에 모은 색인입니다. 상세 설명은 각 주제 문서와 모듈 문서를 봅니다.
 

@@ -1,13 +1,13 @@
 # 외부 연동 계약
 
-[문서 홈](../README.md) · [첫 셋업](../getting-started/01-setup.md) · [자주 쓰는 명령](../getting-started/02-usage.md)
+[문서 홈](../README.md) · [처음 시작하기](../getting-started/01-setup.md) · [개발 작업 흐름](../getting-started/02-usage.md)
 
 Portal은 로그인, 검색·답변 생성, 메일·알림 전송 등에 별도 서비스를 사용합니다.
 개발 PC에서는 실제 사내 연결 대신 Keycloak·MinIO·Airflow와 `local/adfs_dummy`를 사용합니다.
 mock은 개발용 응답을 제공하며 실제 사내 서비스의 모든 동작을 검증하는 것은 아닙니다.
 
 아래에서 서비스 역할과 사용하는 설정 이름을 찾을 수 있습니다.
-설정 파일의 소유 영역과 적용 순서는 [환경 설정](../reference/01-configuration.md),
+각 연동의 설정 키 의미·형식은 [환경 설정](../reference/01-configuration.md#주요-설정-그룹),
 각 요청의 상세 입출력은 [API 명세](../features/README.md#공통-api-호출-규칙)를 확인합니다.
 
 ## 연동 목록
@@ -22,12 +22,6 @@ mock은 개발용 응답을 제공하며 실제 사내 서비스의 모든 동�
 | Knox Messenger | Drone/Common | 설정 기반 |
 | MinIO | Emails/Common | `minio` service |
 | Airflow | Emails/Drone/Data Movement/L3 예약 작업 | 로컬 Airflow와 공유 Bearer token |
-
-## 참고 문서
-
-| 문서 | 용도 |
-| --- | --- |
-| [패키지 프록시 mirror 참고표](../../deploy/shared/docs/infrastructure/repositories.md) | 외부 package repository public URL과 내부 proxy mirror 이름 매핑 |
 
 ## 로컬 dummy 외부계
 
@@ -49,18 +43,7 @@ Portal은 Keycloak에 authorization code + PKCE로 로그인합니다. 로컬 Ke
 `local/adfs_dummy`는 Keycloak의 upstream IdP와 업무 외부계를 대체합니다. 앱 역할과 SDWT 그룹은
 검증된 Keycloak 토큰에서 세션에 저장하며, DB 권한 행으로 대체하지 않습니다.
 
-주요 설정:
-
-- `OIDC_PROVIDER`
-- `OIDC_CLIENT_ID`
-- `OIDC_CLIENT_SECRET`
-- `OIDC_ISSUER`
-- `OIDC_AUTH_URL`
-- `OIDC_LOGOUT_URL`
-- `OIDC_REDIRECT_URI`
-- `OIDC_TOKEN_URL`
-- `OIDC_JWKS_URL`
-- `ALLOWED_REDIRECT_HOSTS`
+설정: `OIDC_*`, `ALLOWED_REDIRECT_HOSTS` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## RAG
 
@@ -71,35 +54,19 @@ Portal은 Keycloak에 authorization code + PKCE로 로그인합니다. 로컬 Ke
 
 provider endpoint와 인증 header는 운영의 `deploy/portal/env/prod/api.env`에서 주입합니다. 로컬은 `local/portal/env/api.env`와 Kubernetes override를 합성합니다.
 
-주요 설정:
-
-- `RAG_SEARCH_URL`, `RAG_INSERT_URL`, `RAG_DELETE_URL`, `RAG_INDEX_INFO_URL`
-- `RAG_INDEX_DEFAULT`, `RAG_INDEX_EMAILS`, `RAG_INDEX_LIST`
-- `RAG_PERMISSION_GROUPS`, `RAG_PUBLIC_GROUP`
-- `RAG_HEADERS`, `RAG_CHUNK_FACTOR`, `RAG_TIMEOUT_SECONDS`, `RAG_NUM_DOCS`
-- `ASSISTANT_REQUEST_TIMEOUT`
+설정: `RAG_*`, `ASSISTANT_REQUEST_TIMEOUT` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## Email RAG 답변 prompt
 
 Assistant가 RAG 검색 결과를 OpenWebUI에 전달할 때 Email 구조화 답변 prompt를 적용합니다.
 
-주요 설정:
-
-- `ASSISTANT_LLM_TEMPERATURE`
-- `ASSISTANT_LLM_SYSTEM_MESSAGE`
+설정: `ASSISTANT_LLM_TEMPERATURE`, `ASSISTANT_LLM_SYSTEM_MESSAGE` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## OpenWebUI
 
 일반 Assistant와 Email RAG 답변, Observer 분석 및 `ct_process_comment` 요약 배치는 OpenWebUI의 OpenAI 호환 chat completions API를 사용합니다.
 
-주요 설정:
-
-- `OPENWEBUI_URL`
-- `OPENWEBUI_API_TOKEN`
-- `OPENWEBUI_MODEL`
-- `OPENWEBUI_COMMON_HEADERS`
-- `OPENWEBUI_TIMEOUT_SECONDS`
-- `OPENWEBUI_SUMMARY_BATCH_SIZE`
+설정: `OPENWEBUI_*` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 사용처:
 
@@ -116,37 +83,19 @@ Assistant Runtime은 외부 OpenAI 호환 요청에 `stream: true`를 보내고 
 
 Emails와 Drone이 Knox Mail API를 호출할 수 있습니다.
 
-주요 설정:
-
-- `MAIL_API_URL`
-- `MAIL_API_KEY`
-- `MAIL_API_SYSTEM_ID`
-- `MAIL_API_KNOX_ID`
-- `DRONE_MAIL_*`
+설정: `MAIL_API_*`, `DRONE_MAIL_*` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## Jira
 
 Drone SOP 알림에서 Jira issue 생성 또는 업데이트에 사용합니다.
 
-주요 설정:
-
-- `DRONE_JIRA_BASE_URL`
-- `DRONE_JIRA_TOKEN`
-- `DRONE_JIRA_ISSUE_TYPE`
-- `DRONE_JIRA_USE_BULK_API`
-- `DRONE_JIRA_BULK_SIZE`
+설정: `DRONE_JIRA_*` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## MinIO
 
 메일 asset 저장/조회에 사용합니다.
 
-주요 설정:
-
-- `MINIO_ENDPOINT`
-- `MINIO_BUCKET`
-- `MINIO_REGION`
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
+설정: `MINIO_ENDPOINT`, `MINIO_BUCKET`, `MINIO_REGION`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 위 값은 Portal API의 S3 client 입력입니다. MinIO 서버·초기화 Job은 별도의
 `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`를 사용하며 두 입력의 역할을 혼동하지 않습니다.
@@ -178,4 +127,6 @@ Authorization: Bearer <AIRFLOW_TRIGGER_TOKEN>
 | Mail API 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_mail.py`, [Emails 모듈](../features/03-emails.md#기능과-흐름), [Line Dashboard / Drone 모듈](../features/05-line-dashboard.md#기능과-흐름) |
 | Jira 변경 | `deploy/portal/env/*/api.env`, `local/adfs_dummy/adfs_jira.py`, [Line Dashboard / Drone 모듈](../features/05-line-dashboard.md#기능과-흐름) |
 | MinIO 변경 | `deploy/minio/env/prod.env`, `local/minio/env/minio.env`, Portal의 `api.env`에 있는 client 설정, [데이터 모델과 저장소](02-data-model.md), [Emails 모듈](../features/03-emails.md#기능과-흐름) |
+| Observer 기준정보·로그 계약 변경 | `deploy/portal/env/*/api.env`, `local/portal/env/api.env`, [Observer 모듈](../features/06-observer.md#기능과-흐름), [데이터 모델](02-data-model.md) |
+| L3 Spider 데이터 경로 변경 | [파일 데이터 마운트 규칙](../reference/01-configuration.md#파일-데이터-마운트-규칙)의 동기화 파일, [L3 Spider](../features/08-l3-spider.md), [구현 색인](../reference/02-inventory.md) |
 | Airflow token/trigger 변경 | `deploy/portal/env/*/api.env`, `deploy/airflow/env/*.env`, 관련 `docs/features/*.md`, [운영/개발 명령](../reference/03-operations.md) |

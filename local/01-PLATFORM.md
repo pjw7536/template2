@@ -1,6 +1,6 @@
 # Portal을 제외한 플랫폼 로컬 실행
 
-[로컬 환경 안내](README.md) · [첫 셋업](../docs/getting-started/01-setup.md) · [서버 배포 안내](../deploy/README.md)
+[로컬 환경 안내](README.md) · [처음 시작하기](../docs/getting-started/01-setup.md)
 
 `deploy/shared/apps.json`의 `platform` 그룹인 Keycloak·Airflow·FTP·Monitoring·Headlamp·MinIO를
 같은 PC의 kind에서 실행합니다. Portal 이미지 빌드·env 합성·migration·seed·API 호출이 필요하지 않습니다.

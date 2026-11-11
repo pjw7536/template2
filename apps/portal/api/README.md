@@ -2,7 +2,7 @@
 
 `apps/portal/api`는 웹앱이 사용하는 Django API 서버입니다. 인증, 소속/권한, 메일, RAG/Assistant, Drone SOP, AppStore, VOC 같은 업무 API가 이 안에 있습니다.
 
-처음 실행한다면 [첫 셋업 가이드](../../../docs/getting-started/01-setup.md)에서 도구·chart를 먼저 준비합니다.
+처음 실행한다면 [로컬 실행](../../../local/README.md)에서 도구·chart를 먼저 준비합니다.
 
 ## 실행하기
 

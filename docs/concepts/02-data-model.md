@@ -1,6 +1,6 @@
 # 데이터 모델과 저장소
 
-[문서 홈](../README.md) · [첫 셋업](../getting-started/01-setup.md) · [자주 쓰는 명령](../getting-started/02-usage.md)
+[문서 홈](../README.md) · [처음 시작하기](../getting-started/01-setup.md) · [개발 작업 흐름](../getting-started/02-usage.md)
 
 업무 데이터와 처리 이력은 PostgreSQL에, 메일 첨부·이미지는 MinIO에 저장합니다.
 일부 분석 화면은 컨테이너에 읽기 전용으로 연결한 Parquet 참고 파일을 조회합니다.

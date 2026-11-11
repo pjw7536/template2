@@ -2,31 +2,26 @@
 
 [사내 인프라 정보](README.md) · [공통 배포 문서](../README.md)
 
-checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임의 관리 원본입니다.
-
-기록 형식과 갱신 절차는 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
-담당자는 미확인입니다. 설정 원본과 운영 적용 여부는 아래 항목을 따릅니다.
+checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임의 관리 원본입니다. 기록 형식은 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
 
 ## 운영 파일과 데이터 위치
 
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
-| 서버 Git checkout | `/appdata/etchax` | [선택 checkout](../operations/01-checkout.md#선택-checkout)의 설치 경로. 현재 서버 경로 확인 필요 |
-| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | [배포 안내](../operations/01-checkout.md#git운영-파일-관리)의 외부 설정 경로. 앱 도구에 실제 외부 env 경로 명시 |
+| CP1 저장소 | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
+| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env 검사 예시](../operations/02-deploy.md#4-실제-envtlsvip-준비). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
-| kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 지정한 `KUBECONFIG` | [CP1 운영](../operations/01-checkout.md#git운영-파일-관리). 실제 파일 위치·계정·권한 확인 필요 |
-| 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 실제 배포 계정의 kubeconfig 등록·현재 선택 상태는 서버에서 확인 필요 |
-| 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../certificates/prepare.md). 실제 보관 경로·담당자 확인 필요 |
-| 앱 데이터·로그·ODBC | [앱별 배치·스토리지 표](services.md#앱별-배치와-스토리지-선언) | 노드별 PV·PVC·hostPath 선언과 실제 연결을 구분 |
+| kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 조직이 지정한 `KUBECONFIG`. Git에 넣지 않음 | 실제 파일 위치·계정·권한 확인 필요 |
+| 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 배포 명령에는 `KUBE_CONTEXT`로 명시하며 kubectl 현재 context에 의존하지 않음. 실제 배포 계정의 kubeconfig 등록 상태는 서버에서 확인 필요 |
+| 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../certificates/prepare.md)의 경로·권한·Git 제외 규칙. 실제 보관 경로·담당자 확인 필요 |
+| 앱 데이터·로그·ODBC | [앱별 배치·스토리지 표](services.md#앱별-배치와-스토리지-선언) | 노드별 PV·PVC·hostPath 선언과 실제 연결을 구분. checkout 복사로 백업되지 않음 |
 | 백업·복구 파일 | 미확인 | 앱별 보관 위치·주기·보존 기간·복구 담당자 확인 필요 |
 
-Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래로 통일합니다.
-컨테이너 내부 API 업무 파일은 `/data/<domain>` 계약을 유지합니다.
-실행 설정은 앱별 manifest·env·Helm values에서 관리하고 이 문서의 운영 정보와 대조합니다.
 비밀번호·토큰·개인키·kubeconfig 내용은 이 문서에 기록하지 않습니다.
 
 ## Worker 앱 데이터 경로와 이전
 
+Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래로 통일하고, 컨테이너 내부 API 업무 파일은 `/data/<domain>` 계약을 유지합니다([배포 지침](../../../AGENTS.md#환경과-데이터-계약)).
 아래는 신규 설치의 기본 선언입니다. 실제 서버의 현재 경로·데이터 이전·적용 여부는 미확인이며,
 운영 env의 사용자 지정 경로가 우선합니다. 기존 경로는 이전이 완료될 때까지 유지합니다.
 
@@ -38,31 +33,25 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 | Monitoring | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·폴더 생성 여부 미확인 |
 | Keycloak DB | `/appdata/keycloak-postgres` | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
 
-Portal의 운영 업무 파일은 아직 `emptyDir`이며 영구 저장소로 전환되지 않았습니다.
-운영 PVC를 준비할 때 노드의 업무 파일 경로를 위 기준에 맞추고 API의 `/data/<domain>`에 연결합니다.
-FTP와 같은 파일을 읽는 앱은 같은 노드의 같은 데이터 또는 명시적으로 준비한 공유 저장소에 연결해야 합니다.
-동적 StorageClass의 실제 저장 위치, kubelet·container runtime, node-exporter가 읽는 시스템 볼륨,
-외부 PC의 kind 호스트 매핑은 위 호스트 경로 기준의 적용 대상이 아닙니다.
+- Portal의 운영 업무 파일은 아직 `emptyDir`이며 영구 저장소로 전환되지 않았습니다. 운영 PVC를 준비할 때 노드의 업무 파일 경로를 위 기준에 맞추고 API의 `/data/<domain>`에 연결합니다.
+- FTP와 같은 파일을 읽는 앱은 같은 노드의 같은 데이터 또는 명시적으로 준비한 공유 저장소에 연결해야 합니다.
+- 동적 StorageClass의 실제 저장 위치, kubelet·container runtime, node-exporter가 읽는 시스템 볼륨은 이 기준의 적용 대상이 아닙니다.
+- `/appdata`라는 이름에 Kubernetes의 특별한 동작은 없으며 local PV·hostPath의 노드 종속성과 장애 복구 요구는 그대로입니다. 앱마다 필요한 UID/GID와 권한은 유지하고 `/appdata` 전체에 재귀 `chown`을 적용하지 않습니다.
 
-### 방향과 디스크 확인
+### 1. 디스크 확인 — 각 Worker
 
-호스트의 앱 데이터·로그·설정 파일을 한 루트에 모으면 디스크 사용량·권한·백업 대상을 관리하기 쉽습니다.
-`/appdata`라는 이름 자체에 Kubernetes의 특별한 동작은 없으며, local PV·hostPath의 노드 종속성과 장애 복구 요구는 그대로입니다.
-앱마다 필요한 UID/GID와 권한은 유지하고 `/appdata` 전체에 재귀 `chown`을 적용하지 않습니다.
-
-각 Worker에서 `/appdata`가 의도한 데이터 파일시스템에 있는지 확인합니다. 전용 디스크를 사용할 계획이면
-부팅 시 마운트가 준비된 뒤 Pod가 시작되게 노드에서 구성합니다. 마운트 누락 상태에서 자동 폴더 생성에 의존하면
-OS 디스크에 기록될 수 있습니다. 다음 명령은 조회만 수행합니다.
+`/appdata`가 의도한 데이터 파일시스템에 있는지 확인합니다. 다음 명령은 조회만 수행합니다.
 
 ```bash
 findmnt -T /appdata
 df -hT /appdata
 ```
 
-`/appdata`가 아직 없다면 부모 파일시스템·마운트 계획을 먼저 확인합니다.
-local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니므로 실제 여유 공간도 별도로 확인합니다.
+**기대 결과:** `/appdata`가 계획한 데이터 디스크에 마운트되어 있고 여유 공간이 충분합니다.
+전용 디스크를 사용할 계획이면 부팅 시 마운트가 준비된 뒤 Pod가 시작되게 노드에서 구성합니다. 마운트 누락 상태에서 자동 폴더 생성에 의존하면 OS 디스크에 기록될 수 있습니다.
+`/appdata`가 아직 없다면 부모 파일시스템·마운트 계획을 먼저 확인합니다. local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니므로 실제 여유 공간도 별도로 확인합니다.
 
-### 기존 설치 전환 순서
+### 2. 기존 설치 전환 순서
 
 1. 대상 context·Worker·외부 env, Pod의 volumeMount·hostPath, PVC와 PV의 `spec.local.path`·nodeAffinity·claimRef·reclaim policy를 기록합니다. 원본 manifest와 앱 설정을 보관하고 실제 데이터 디스크·백업 복구 가능 여부를 확인합니다.
 2. 이전 전까지 외부 env에 현재 경로를 명시합니다. MinIO의 경로 키가 없는 env도 새 기본값을 사용하므로 기존 `/data/minio` 설치에는 `MINIO_DATA_HOST_PATH=/data/minio`가 필요합니다. Airflow·Monitoring도 현재 경로를 유지합니다. FTP를 먼저 재배포해야 한다면 외부 overlay의 hostPath를 현재 경로로 유지합니다.
@@ -75,68 +64,16 @@ local PV의 용량 선언은 디스크 할당이나 사용량 제한이 아니�
 
 앱별 절차: [MinIO 저장소](../../../minio/docs/01-install.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/docs/04-operations.md),
 [Monitoring 운영](../../../monitoring/docs/02-operations.md#갱신운영), [FTP 운영](../../../ftp/docs/02-operations.md).
-실제 적용 후에는 [서비스 배치·스토리지](services.md#앱별-배치와-스토리지-선언)에 대상 노드·현재 경로·검증 결과·담당자를 반영합니다.
+
+### 3. 다음 단계
+
+실제 적용 후 [서비스 배치·스토리지](services.md#앱별-배치와-스토리지-선언)에 대상 노드·현재 경로·검증 결과·담당자를 반영하고, 대상 Worker는 [서버 목록](servers.md)과 대조합니다.
 
 ## 운영 책임·백업·인증서
 
 | 대상 | 기록할 정보 | 현재 상태 |
 | --- | --- | --- |
 | 서비스별 운영 책임 | 담당자·장애 연락 경로·접근 권한 신청 절차 | 미확인 |
-| 데이터 백업 | 대상·보관 위치·주기·보존 기간·복구 담당자·복구 검증 결과 | 미확인 |
+| 데이터 백업 | 대상·보관 위치·주기·보존 기간·복구 담당자·복구 검증 결과 | 미확인. 백업 원칙은 [운영 절차의 백업·복구](../operations/03-operations.md#백업복구) |
+| Keycloak DB·etcd 백업 | 환경별 백업 명령·복구 검증 절차 | 미확정 |
 | 인증서·공용 CA | 보관 위치·만료일·갱신 담당자·적용 Secret 이름·적용 상태 | 상세 절차는 [인증서 관리](../certificates/prepare.md), 실제 운영값은 추가 확인 필요 |
-
-## 변경 연계와 조회
-
-데이터를 옮기면 [서비스의 배치·스토리지](services.md#앱별-배치와-스토리지-선언), 대상 Worker는 [서버 목록](servers.md)을 함께 확인합니다.
-노드별 local PV·hostPath는 해당 노드의 데이터이며 다른 Worker로 이동할 때 별도 이전·복구가 필요합니다.
-실행 절차는 [CP1 운영](../operations/01-checkout.md#git운영-파일-관리), [서버 기동](../README.md#배포운영), [환경설정](../configuration/environment.md)을 따릅니다.
-
-## 실행 설정의 원본
-
-| 확인할 구성 | 원본·시작 문서 |
-| --- | --- |
-| 설치할 앱·서버 선택 그룹 | `deploy/shared/apps.json`, [선택 checkout](../operations/01-checkout.md#선택-checkout) |
-| 제어면·Worker·네트워크 설치 기준 | [현재 환경 조회](../kubernetes/baseline.md), [제어면 셋업](../kubernetes/control-plane.md), [Worker 추가](../kubernetes/worker.md) |
-| 외부 HTTPS·도메인·VIP 연결 | `deploy/shared/ingress/stack.yaml`, [공용 Ingress](../README.md#https인증서) |
-| Keycloak·전용 PostgreSQL | `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 설치](../../../keycloak/README.md) |
-| Portal API·Web·migration | `deploy/portal/k8s`, [Portal 배포](../../../portal/README.md) |
-| Airflow·로그·ODBC·DB | `deploy/airflow/helm`, [Airflow 배포](../../../airflow/README.md) |
-| MinIO 배치·스토리지 | `deploy/minio/k8s`, [MinIO 배포](../../../minio/README.md) |
-| 지표·운영 UI·FTP | [Monitoring](../../../monitoring/README.md), [Headlamp](../../../headlamp/README.md), [FTP](../../../ftp/README.md) |
-| 인증서·CA | [인증서 관리](../certificates/prepare.md) |
-
-## 현재 상태 조회
-
-서버 배포용 Bash 계정의 `~/.bashrc`에 다음 줄을 한 번 등록하면 새 터미널에서도 기본 context를 재입력하지 않아도 됩니다.
-
-```bash
-export KUBE_CONTEXT=kubernetes-admin@kubernetes
-```
-
-현재 터미널에도 위 명령을 실행하면 바로 적용됩니다. 루트 Makefile은 이 환경변수를 읽으므로
-`make ingress-check`처럼 `KUBE_CONTEXT=...`를 생략할 수 있습니다.
-다른 대상을 사용할 때는 `make ingress-check KUBE_CONTEXT=<대상-context>`로 덮어씁니다.
-이 환경변수는 저장소 배포 도구의 입력이며 일반 `kubectl`의 현재 context를 바꾸지는 않습니다.
-일반 `kubectl`에서도 서버 context를 기본으로 쓰려면 배포 호스트에서 다음 명령을 한 번 실행합니다.
-
-```bash
-kubectl config use-context "$KUBE_CONTEXT"
-```
-
-외부 PC의 로컬 개발 context와 서버 배포 계정의 설정은 구분합니다.
-배포 호스트의 저장소 루트에서 대상 context를 확인합니다. 아래 명령은 조회만 수행합니다.
-
-```bash
-kubectl config get-contexts
-printf '대상 Kubernetes context: %s\n' "$KUBE_CONTEXT"
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
-kubectl --context "$KUBE_CONTEXT" get pods -A -o wide
-kubectl --context "$KUBE_CONTEXT" get ingress -A
-kubectl --context "$KUBE_CONTEXT" get storageclass
-kubectl --context "$KUBE_CONTEXT" get pv
-kubectl --context "$KUBE_CONTEXT" get pvc -A
-```
-
-기대한 노드 배치와 실제 Pod 위치, PV·PVC 연결을 비교합니다.
-Ingress·Pod 상태 확인 뒤 [접속·기능 검증](../operations/02-deploy.md#접속기능-검증)으로 실제 HTTPS·로그인·업무 동작을 확인합니다.
-설치 버전·OS·런타임·CNI·VIP는 [환경 조회 안내](../kubernetes/baseline.md)에서 별도로 확인합니다.

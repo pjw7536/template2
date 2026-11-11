@@ -1,35 +1,54 @@
 # 운영과 문제 해결
 
-[운영 안내](../README.md#배포운영) · 이전: [검증](02-deploy.md#접속기능-검증)
+[공통 안내](../README.md#배포운영) · 이전: [배포 준비와 검증](02-deploy.md)
 
 ## 업데이트 — CP1
 
-업데이트 전 현재 커밋·이미지·chart 버전과 DB·파일 백업을 기록합니다.
-그다음 checkout 루트에서 아래 내용을 확인합니다.
+### 1. 준비
 
-```bash
-git status --short
-git branch --show-current
-git rev-parse HEAD
-```
+현재 커밋·이미지·chart 버전과 DB·파일 백업을 기록합니다.
 
-로컬 변경을 보존하고 배포 브랜치가 맞으면 `git pull --ff-only`를 실행합니다.
+### 2. 파일 갱신
+
+[Git 갱신 절차](01-checkout.md#git운영-파일-관리)로 배포 checkout을 갱신합니다.
+Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않으므로 아래 반영 단계를 수행합니다.
+
+### 3. 변경 유형별 반영
 
 | 변경 | 반영 순서 |
 | --- | --- |
 | 문서 | 클러스터 적용 불필요 |
 | 앱 코드·DAG | 이미지 빌드·반입 → 고유 tag/digest → 앱별 검사·배포 |
-| manifest·chart 설정 | 앱별 검사·배포 |
-| env | 실제 입력 검사 → Secret 갱신 → 필요한 재시작·Job |
-| TLS | [TLS 절차](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 해당 namespace의 Secret 갱신 |
+| manifest·chart 설정 | `make server-check` → 앱별 배포 |
+| env | 실제 입력 검사 → Secret 갱신 → 필요한 Pod 재시작·Job 재실행. Secret 변경만으로 이를 env로 읽는 Pod가 재시작되지 않음 |
+| 외부 DB·OIDC·MinIO 계정 | 실제 서비스 계정과 앱 설정을 함께 변경 |
+| TLS·CA | [TLS 절차](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 공용 TLS Secret 또는 해당 namespace의 CA 갱신 |
 | Portal DB schema | 백업·호환성 확인 → 같은 API 이미지로 migration → 배포 |
 | chart·Kubernetes·CNI 버전 | 별도 호환성·업그레이드·복구 검증 후 수행 |
 
-적용 후 [접속·기능 검증](02-deploy.md#접속기능-검증)을 반복합니다.
+앱별 반영 명령은 각 앱 안내가 원본입니다.
+
+| 앱 | 원본 안내 |
+| --- | --- |
+| Keycloak | [운영](../../../keycloak/docs/04-operations.md), [최초 설치](../../../keycloak/README.md) |
+| Airflow | [단계별 실행](../../../airflow/docs/03-deploy.md#배포와-검증) |
+| Portal | [배포 안내](../../../portal/README.md) |
+| MinIO | [배포 안내](../../../minio/README.md) |
+| FTP | [배포 안내](../../../ftp/README.md) |
+| Headlamp | [배포 안내](../../../headlamp/README.md) |
+| Monitoring | [배포 안내](../../../monitoring/README.md) |
+
+여러 앱이 공유하는 Traefik·VIP·DNS는 [네트워크 정보](../infrastructure/network.md)와 [VIP 안내](../ingress/setup.md)를 따릅니다.
 Keycloak은 기존 Secret과 입력이 다르면 중단하므로 명시적인 갱신이 먼저 필요합니다.
-Secret 변경만으로 이를 env로 읽는 Pod가 재시작되지는 않습니다.
+
+### 4. 확인
+
+[접속·기능 검증](02-deploy.md#접속기능-검증)을 반복합니다.
+실패하면 해당 단계의 로그와 완료 기준을 확인하고, 원인 해결 후 같은 입력으로 재검사합니다.
 
 ## 장애 조회 — CP1
+
+모두 조회 명령입니다.
 
 ```bash
 kubectl config get-contexts
@@ -62,8 +81,7 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-cont
 ## Worker 추가
 
 [Worker 추가](../kubernetes/worker.md)에서 프로그램 준비 → 가입 → Ready·네트워크 확인 순서로 진행합니다.
-앱 실행용 Worker는 여기까지 진행합니다. 외부 HTTPS 진입점으로도 사용할 때만
-[Traefik 셋업](../ingress/setup.md)과 [VIP 확장 상세](../ingress/expand.md)를 추가로 진행합니다.
+외부 HTTPS 진입점으로도 사용할 때만 [Traefik 셋업](../ingress/setup.md)과 [VIP 확장](../ingress/expand.md)을 추가로 진행합니다.
 
 ## 백업·복구
 
@@ -75,20 +93,10 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-cont
 | 업무 파일·MinIO | 영속 데이터·연결 설정 → 복원 후 업로드·다운로드 |
 | 운영 입력 | env·인증서·키·이미지/chart 버전 → 접근 제한된 외부 보관 |
 
-백업은 Worker의 원래 디스크와 다른 저장매체에도 보관합니다.
-같은 디스크의 다른 폴더에만 복사하면 디스크 장애 때 함께 잃을 수 있습니다.
+- 백업은 Worker의 원래 디스크와 다른 저장매체에도 보관합니다. 같은 디스크의 다른 폴더에만 복사하면 디스크 장애 때 함께 잃을 수 있습니다.
+- 실행 중인 PostgreSQL 데이터 디렉터리를 단순 복사하지 않습니다.
+- DB migration이나 CRD를 변경했다면 이미지·Helm revision만 되돌려서는 복구되지 않을 수 있습니다.
+- Worker 데이터 경로를 옮길 때는 [데이터 이전 절차](../infrastructure/operations.md#worker-앱-데이터-경로와-이전)를 따릅니다.
 
-실행 중인 PostgreSQL 데이터 디렉터리를 단순 복사하지 않습니다.
-DB migration이나 CRD를 변경했다면 이미지·Helm revision만 되돌려서는 복구되지 않을 수 있습니다.
-
-**운영 인수 기준:** 백업 담당·보관 위치·주기·복구 목표·복구 시험 결과를 기록합니다.
-Keycloak DB·etcd의 환경별 백업 명령과 복구 검증은 아직 확정되지 않았습니다.
-
-## 설정 변경 반영
-
-
-Git 갱신만으로 실행 중인 앱이 바뀌지는 않습니다.
-이미지 변경은 해당 앱의 새 태그·배포, env 변경은 검사·Secret 등록·필요한 Pod 재시작,
-인증서 변경은 공용 TLS 또는 CA 갱신 절차를 따릅니다. DB schema 변경은 해당 migration 절차를 수행합니다.
-외부 DB·OIDC·MinIO 계정은 실제 서비스 계정과 앱 설정을 함께 맞춥니다.
-실패하면 해당 단계의 로그와 완료 기준을 확인하고, 원인 해결 후 같은 입력으로 재검사합니다.
+**운영 인수 기준:** 백업 담당·보관 위치·주기·복구 목표·복구 시험 결과를 [운영 책임·백업](../infrastructure/operations.md#운영-책임백업인증서)에 기록합니다.
+환경별 백업 명령·복구 검증의 미확정 항목도 같은 표에서 관리합니다.

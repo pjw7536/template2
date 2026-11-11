@@ -9,7 +9,7 @@ React Web과 Django API로 구성된 업무 포털입니다. 업무 기능은 �
 | 소스·이미지 빌드 | [api](api/README.md), [web](web/README.md), 각 폴더의 Dockerfile |
 | 서버 배포·입력 | [deploy/portal](../../deploy/portal/README.md) |
 | 개발 env·실행 | [local/portal](../../local/README.md) |
-| 앱 목록·서버 checkout | [앱 목록](../../deploy/shared/apps.json), [선택 checkout](../../deploy/shared/docs/operations/01-checkout.md#선택-checkout) |
+| 앱 목록·서버 파일 받기 | [앱 목록](../../deploy/shared/apps.json), [서버 파일 받기](../../deploy/shared/docs/operations/01-checkout.md) |
 
 ## 개발·검증
 
@@ -40,7 +40,6 @@ Django 검사는 준비된 이미지·DB를 사용하는 일회성 Compose `api`
 
 빌드 context는 `apps/portal/api`, `apps/portal/web`입니다. 이미지 이름·빌드 인자·운영 env 계약은 유지합니다.
 준비된 이미지 배포는 `deploy/portal`과 공통 배포 도구만 필요합니다.
-서버에서 소스를 빌드하려면 `bash deploy/shared/scripts/checkout-server.sh portal --with-source`를 사용합니다.
 
 ## 서비스 의존성
 
