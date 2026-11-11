@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import ssl
 import subprocess
 import tempfile
@@ -52,18 +53,17 @@ def settings(path, example=False):
     host = result.get('HEADLAMP_HOST', '')
     if not host:
         raise ValueError('Keycloak 로그인에는 HEADLAMP_HOST가 필요합니다.')
-    if host:
-        label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
-        if len(host) > 253 or not re.fullmatch(rf'{label}(?:\.{label})+', host):
-            raise ValueError('HEADLAMP_HOST에는 경로·scheme 없는 DNS 이름을 입력하세요.')
-        values['config'] = {'baseURL': ''}
-        values['ingress'] = {
-            'enabled': True, 'ingressClassName': 'traefik',
-            'annotations': {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
-                            'traefik.ingress.kubernetes.io/router.tls': 'true'},
-            'hosts': [{'host': host, 'paths': [{'path': '/', 'type': 'Prefix'}]}],
-            'tls': [],
-        }
+    label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+    if len(host) > 253 or not re.fullmatch(rf'{label}(?:\.{label})+', host):
+        raise ValueError('HEADLAMP_HOST에는 경로·scheme 없는 DNS 이름을 입력하세요.')
+    values['config'] = {'baseURL': ''}
+    values['ingress'] = {
+        'enabled': True, 'ingressClassName': 'traefik',
+        'annotations': {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
+                        'traefik.ingress.kubernetes.io/router.tls': 'true'},
+        'hosts': [{'host': host, 'paths': [{'path': '/', 'type': 'Prefix'}]}],
+        'tls': [],
+    }
     issuer = result.get('HEADLAMP_OIDC_ISSUER_URL', '')
     url = urlsplit(issuer)
     if (url.scheme != 'https' or not url.hostname or url.username or url.password
@@ -237,6 +237,8 @@ def chart_path():
 
 def verify_chart(path):
     """손상되거나 버전이 다른 chart를 사용하지 않는다."""
+    if not path.is_file():
+        raise ValueError(f'Helm chart 준비 필요: make headlamp-fetch-chart 또는 HEADLAMP_CHART_FILE을 사용하세요. ({path})')
     if hashlib.sha256(path.read_bytes()).hexdigest() != LOCK['sha256']:
         raise ValueError('Headlamp chart SHA-256 불일치')
 
@@ -288,6 +290,8 @@ def main():
             return
         verify_chart(chart)
         helm = os.environ.get('HELM_BIN', 'helm')
+        if not shutil.which(helm):
+            raise ValueError(f'Helm 실행 파일 준비 필요: {helm}을 설치하거나 HELM_BIN을 지정하세요.')
         with tempfile.TemporaryDirectory() as directory:
             override = Path(directory) / 'values.json'
             override.write_text(json.dumps(values))

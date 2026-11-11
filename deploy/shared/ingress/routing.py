@@ -168,6 +168,7 @@ def place_vip_backends(desired, current, ips, nodes, pods):
     노드 OS 프로세스의 포트 점유는 Kubernetes 조회로 확인할 수 없어 서버 점검이 필요하다.
     """
     selected = []
+    tolerations = desired['spec']['template']['spec'].get('tolerations', [])
     for ip in ips:
         matches = [node for node in nodes if any(address.get('type') == 'InternalIP' and address.get('address') == ip
                    for address in node.get('status', {}).get('addresses', []))]
@@ -177,7 +178,9 @@ def place_vip_backends(desired, current, ips, nodes, pods):
         spec, status = node.get('spec', {}), node.get('status', {})
         if spec.get('unschedulable') or not any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in status.get('conditions', [])):
             raise ValueError(f'VIP Backend {ip}: Ready이며 스케줄 가능한 Worker가 필요합니다.')
-        if any(taint.get('effect') in ('NoSchedule', 'NoExecute') for taint in spec.get('taints', [])):
+        # eligible_nodes와 같이 Traefik이 허용하는 taint는 차단 조건에서 제외한다.
+        if any(taint.get('effect') in ('NoSchedule', 'NoExecute') and not tolerates(taint, tolerations)
+               for taint in spec.get('taints', [])):
             raise ValueError(f'VIP Backend {ip}: 스케줄링을 차단하는 taint를 먼저 확인하세요.')
         if not node['metadata'].get('labels', {}).get('kubernetes.io/hostname'):
             raise ValueError(f'VIP Backend {ip}: hostname label이 없습니다.')

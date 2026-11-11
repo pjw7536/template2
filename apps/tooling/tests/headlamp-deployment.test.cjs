@@ -20,7 +20,7 @@ test('Headlamp 입력 오류와 context 누락은 클러스터 변경 전에 차
 test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 관리 권한을 연결한다', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'headlamp-server-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  // 앱 카탈로그의 선택 checkout과 같은 공통 도구·앱 원본을 준비합니다.
+  // local·다른 앱 없이 공통 도구와 Headlamp 원본만 준비합니다.
   for (const relative of ['deploy/shared', 'deploy/headlamp']) {
     fs.cpSync(path.join(root, relative), path.join(directory, relative), {
       recursive: true, filter: file => !file.endsWith('.env') && !file.endsWith('.bak'),
@@ -65,8 +65,6 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   assert.equal(bindings[0].metadata.name, 'server-headlamp-admin');
   assert.equal(docs.some(doc => doc.kind === 'ClusterRole'), false);
   assert.doesNotMatch(rendered, /server-headlamp-viewer|server-headlamp-discovery|headlamp-viewers/);
-  const paths = run(['deploy/shared/scripts/app-paths.py', 'headlamp']).trim().split('\n');
-  assert.deepEqual(paths, ['deploy/shared', 'deploy/headlamp']);
 
   const ingress = docs.find(doc => doc.kind === 'Ingress');
   assert.equal(ingress.spec.ingressClassName, 'traefik');

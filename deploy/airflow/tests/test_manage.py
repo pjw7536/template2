@@ -143,6 +143,20 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '실제 값으로 교체'):
             deploy.validate({**settings(), 'POSTGRES_PASSWORD': 'replace-me'})
 
+    def test_replace_here_and_short_oidc_secret_are_rejected_but_example_check_passes(self):
+        for key, value in [('AIRFLOW_ADMIN_PASSWORD', 'replace-here-before-deploy'),
+                           ('AIRFLOW_OIDC_CLIENT_SECRET', 'replace-here'),
+                           ('AIRFLOW_OIDC_CLIENT_SECRET', '<client-secret>')]:
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, '실제 값으로 교체'):
+                deploy.validate({**settings(), key: value})
+        with self.assertRaisesRegex(ValueError, 'AIRFLOW_OIDC_CLIENT_SECRET'):
+            deploy.validate({**settings(), 'AIRFLOW_OIDC_CLIENT_SECRET': 'short-secret'})
+        # 짝이 맞는 <...>는 자리표시자로 거부하고, 짝이 없는 <·> 문자는 비밀번호로 허용한다.
+        with self.assertRaisesRegex(ValueError, '실제 값으로 교체'):
+            deploy.validate({**settings(), 'AIRFLOW_ADMIN_PASSWORD': 'fixture<credential>0123456789'})
+        deploy.validate({**settings(), 'AIRFLOW_ADMIN_PASSWORD': 'fixture<credential0123456789!'})
+        deploy.validate(deploy.read_env(deploy.DEFAULT_ENV), example=True)
+
     def test_config_rejects_typos_and_helm_template_execution(self):
         values = settings()
         values['TYPO'] = 'test'
@@ -340,9 +354,9 @@ class InternalBuildParityTests(unittest.TestCase):
                 deploy.build_image(settings(), deploy.BASE / 'env/build.env', builder='docker')
             run.assert_called_once_with(['docker', 'info'])
 
-    def test_missing_source_stops_before_docker_with_checkout_guidance(self):
+    def test_missing_source_stops_before_docker(self):
         with patch.object(Path, 'exists', return_value=False), patch.object(deploy, 'run') as run:
-            with self.assertRaisesRegex(ValueError, '--with-source'):
+            with self.assertRaisesRegex(ValueError, '빌드 소스'):
                 deploy.build_image(settings(), deploy.BASE / 'env/build.env')
             run.assert_not_called()
 

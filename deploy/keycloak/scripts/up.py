@@ -30,7 +30,8 @@ def run(args, data=None, sensitive=False):
 
 def read_settings(path):
     """기존 env 검증기를 사용하고 값을 shell로 실행하지 않는다."""
-    run(['bash', ROOT / 'deploy/shared/scripts/check-env.sh', 'keycloak', 'prod', 'server', path], sensitive=True)
+    # check-env.sh는 값 없이 키 이름만 출력하므로 검사 실패 원인을 그대로 전달한다.
+    run(['bash', ROOT / 'deploy/shared/scripts/check-env.sh', 'keycloak', 'prod', 'server', path])
     values = {}
     for line in Path(path).read_text().splitlines():
         if line.strip() and not line.lstrip().startswith('#'):

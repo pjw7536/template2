@@ -24,6 +24,9 @@ BASE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
 tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
+spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 'shared/scripts/runtime.py')
+RUNTIME = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(RUNTIME)
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_DB', 'NODE_NAME', 'POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'POSTGRES_IMAGE', 'POSTGRES_UID', 'POSTGRES_GID', 'AIRFLOW_IMAGE_REPOSITORY', 'AIRFLOW_IMAGE_TAG', 'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_ENABLED', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', 'AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'AIRFLOW_ADMIN_USERNAME', 'AIRFLOW_ADMIN_EMAIL', 'POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL', 'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS'))
 OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID',
@@ -86,7 +89,7 @@ def validate(values, example=False):
         if key not in optional:
             require(bool(value.strip()), f'필수 설정 누락: {key}')
         if not example and value:
-            require(not any(marker in value for marker in ('replace-me', 'example.invalid', '<', '>')), f'실제 값으로 교체하세요: {key}')
+            require(not RUNTIME.is_placeholder(value), f'실제 값으로 교체하세요: {key}')
         # Helm은 일부 문자열을 템플릿으로 평가하므로 설정 입력의 템플릿 실행을 막는다.
         require('{{' not in value and '}}' not in value, f'템플릿 표현식 금지: {key}')
     validate_oidc(values)
@@ -135,6 +138,9 @@ def validate(values, example=False):
     if not example:
         for key in SECRET_KEYS:
             require(len(values[key]) >= 20, f'20자 이상 비밀값 필요: {key}')
+        if values['AIRFLOW_AUTH_MODE'] == 'keycloak':
+            # Keycloak client 등록과 로그인에 자리표시자 secret이 쓰이지 않도록 길이를 확인한다.
+            require(len(values['AIRFLOW_OIDC_CLIENT_SECRET']) >= 20, '20자 이상 비밀값 필요: AIRFLOW_OIDC_CLIENT_SECRET')
         try:
             decoded = base64.b64decode(values['AIRFLOW_FERNET_KEY'], altchars=b'-_', validate=True)
         except ValueError:
@@ -522,7 +528,7 @@ def build_image(settings, path, *, builder='auto', containerd_namespace='default
     root = BASE.parents[1]
     source = root / 'apps/airflow'
     require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'dags', 'plugins')),
-            '이미지 빌드 소스가 없습니다. bash deploy/shared/scripts/checkout-server.sh airflow --with-source 로 소스를 추가하세요.')
+            '이미지 빌드 소스(apps/airflow)가 없습니다. 저장소 전체 checkout에서 실행하세요.')
     command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host)
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']
     dependency = final + '-dependencies'
@@ -564,7 +570,8 @@ def main():
         else:
             content = DEFAULT_ENV.read_text()
         generated = {}
-        for key in SECRET_KEYS[:-1]:
+        # Portal trigger token은 Portal에서 받은 값을 넣으므로 생성 대상에서 제외한다.
+        for key in (name for name in SECRET_KEYS if name != 'AIRFLOW_TRIGGER_TOKEN'):
             generated[key] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if key == 'AIRFLOW_FERNET_KEY' else secrets.token_urlsafe(32)
         generated['AIRFLOW_TRIGGER_TOKEN'] = ''
         lines = []

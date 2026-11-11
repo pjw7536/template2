@@ -13,3 +13,6 @@ images:
   - name: portal-web
     newName: registry.internal.example.invalid/tailwind/web
     newTag: replace-me
+  # edge-nginx도 사내 Docker Hub 미러를 거치도록 이름만 바꾸고 base의 tag를 유지합니다.
+  - name: nginx
+    newName: repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx

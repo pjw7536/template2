@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: portal-migrate
     app.kubernetes.io/part-of: tailwind-portal
 spec:
-  backoffLimit: 3
+  backoffLimit: 0
   template:
     metadata:
       labels:

@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "$ROOT_DIR/deploy/shared/scripts/env-lib.sh"
 SELECT_APP="${1:-all}"
 SELECT_PROFILE="${2:-all}"
-case "$SELECT_APP" in all|portal|keycloak|airflow|monitoring|headlamp|minio|shared) ;; *) echo '지원하지 않는 앱입니다.' >&2; exit 1 ;; esac
+case "$SELECT_APP" in all|portal|keycloak|airflow|monitoring|headlamp|minio|ftp|shared) ;; *) echo '지원하지 않는 앱입니다.' >&2; exit 1 ;; esac
 case "$SELECT_PROFILE" in all|local|prod|test) ;; *) echo '지원하지 않는 환경입니다.' >&2; exit 1 ;; esac
 
 # 선택한 앱·환경의 추적 env를 필수로 요구하고 형식을 검사합니다.
@@ -23,6 +23,7 @@ required_files=(
   "airflow prod deploy/airflow/env/build.env"
   "monitoring prod deploy/monitoring/env/k8s.env"
   "headlamp prod deploy/headlamp/env/k8s.env"
+  "ftp prod deploy/ftp/env/prod.env"
   "portal test deploy/portal/env/test/api.env"
 )
 selected_count=0

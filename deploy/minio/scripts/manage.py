@@ -16,6 +16,9 @@ BASE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
 tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
+spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 'shared/scripts/runtime.py')
+RUNTIME = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(RUNTIME)
 spec = importlib.util.spec_from_file_location('minio_routing', BASE.parent / 'shared/ingress/routing.py')
 routing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(routing)
@@ -57,7 +60,7 @@ def settings(path, example=False):
     for key, value in result.items():
         require(key in optional or value, f'필수 설정 누락: {key}')
         require(not any(c.isspace() for c in value) and
-                (example or not any(s in value for s in ('replace-me', 'example.invalid', '<', '>'))),
+                (example or not RUNTIME.is_placeholder(value)),
                 f'실제 값 또는 형식 확인 필요: {key}')
     label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
     for key in ('NODE_NAME', 'IMAGE_PULL_SECRET', 'STORAGE_CLASS_NAME', 'VOLUME_NAME'):
@@ -248,7 +251,7 @@ def deploy(values, context, check_only=False, allow_legacy=False):
     kube = ['kubectl', '--context', context]
     for kind, name in (('deployment', 'minio'), ('pvc', 'minio-data')):
         legacy = run([*kube, '-n', 'tailwind-internal', 'get', kind, name, '--ignore-not-found', '-o', 'name'])
-        require(not legacy.strip() or allow_legacy, '기존 tailwind-internal MinIO가 있습니다. 데이터·설정을 보존하고 deploy/minio/README.md의 이전 절차를 먼저 확인하세요.')
+        require(not legacy.strip() or allow_legacy, '기존 tailwind-internal MinIO가 있습니다. 데이터·설정을 보존하고 deploy/minio/docs/02-operations.md의 이전 절차를 먼저 확인하세요.')
     node = json.loads(run([*kube, 'get', 'nodes', '-l', 'kubernetes.io/hostname=' + values['NODE_NAME'], '-o', 'json']))['items']
     require(len(node) == 1 and not node[0]['spec'].get('unschedulable') and
             any(item['type'] == 'Ready' and item['status'] == 'True' for item in node[0]['status']['conditions']),

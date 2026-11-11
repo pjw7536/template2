@@ -22,13 +22,25 @@ load_env() {
 
 }
 
+# runtime.py의 PLACEHOLDER_MARKERS·PLACEHOLDER_TOKEN과 같은 규칙을 유지합니다(test_placeholders.py가 대조).
+PLACEHOLDER_MARKERS=(replace-me replace-here change-me example.invalid)
+PLACEHOLDER_TOKEN='[<][^<>]+[>]'
+
+is_placeholder() {
+  local value="$1" marker
+  for marker in "${PLACEHOLDER_MARKERS[@]}"; do
+    [[ "$value" == *"$marker"* ]] && return 0
+  done
+  [[ "$value" =~ $PLACEHOLDER_TOKEN ]]
+}
+
 require_env_keys() {
   local key value failed=0
   for key in "$@"; do
     value="${ENV_VALUES[$key]:-}"
     if [[ -z "${value//[[:space:]]/}" ]]; then
       echo "누락된 필수 설정: $key" >&2; failed=1
-    elif [[ "$value" == *'<'* || "$value" == *example.invalid* || "$value" == *replace-me* || "$value" == *change-me* ]]; then
+    elif is_placeholder "$value"; then
       echo "실제 값으로 교체할 설정: $key" >&2; failed=1
     fi
   done
@@ -73,31 +85,31 @@ resolve_keycloak_discovery() {
 
 resolve_env_file() {
   local root="$1" app="$2" profile="$3" component="$4"
-  [[ "$profile" =~ ^[a-z0-9_-]+$ ]] || { echo '환경 이름 형식 오류' >&2; return 1; }
+  [[ "$profile" =~ ^[a-z0-9_-]+$ ]] || { echo '환경 이름 형식 오류: 소문자·숫자·_·-만 사용하세요.' >&2; return 1; }
   case "$profile" in local|prod|test) ;; *) echo '지원하지 않는 환경입니다. local 또는 prod, CI test를 사용하세요.' >&2; return 1 ;; esac
   if [[ "$profile" == local ]]; then
     case "$app" in
       portal)
-        [[ "$component" =~ ^(api|client|web)$ ]] || return 1
+        [[ "$component" =~ ^(api|client|web)$ ]] || { echo "지원하지 않는 Portal 작업: $component (api, client, web 중 선택)" >&2; return 1; }
         [[ "$component" != client ]] || component=api
         printf '%s/local/portal/env/%s.env' "$root" "$component" ;;
-      *) echo "지원하지 않는 로컬 앱: $app" >&2; return 1 ;;
+      *) echo "지원하지 않는 로컬 앱: $app (local 환경은 portal만 지원)" >&2; return 1 ;;
     esac
     return
   fi
   case "$app" in
     keycloak) printf '%s/deploy/keycloak/env/%s.env' "$root" "$profile" ;;
     minio)
-      [[ "$profile/$component" == prod/server ]] || return 1
+      [[ "$profile/$component" == prod/server ]] || { echo 'MinIO는 prod/server 입력만 지원합니다.' >&2; return 1; }
       printf '%s/deploy/minio/env/prod.env' "$root" ;;
     airflow|monitoring|headlamp)
       [[ "$profile/$component" == prod/server ]] || { echo '이 앱은 prod/server Kubernetes 검사를 사용하세요.' >&2; return 1; }
       printf '%s/deploy/%s/env/k8s.env' "$root" "$app" ;;
     portal)
-      [[ "$component" =~ ^(api|client|web)$ ]] || return 1
+      [[ "$component" =~ ^(api|client|web)$ ]] || { echo "지원하지 않는 Portal 작업: $component (api, client, web 중 선택)" >&2; return 1; }
       [[ "$component" != client ]] || component=api
       printf '%s/deploy/portal/env/%s/%s.env' "$root" "$profile" "$component" ;;
-    *) echo "지원하지 않는 앱: $app" >&2; return 1 ;;
+    *) echo "지원하지 않는 앱: $app (keycloak, portal, airflow, monitoring, headlamp, minio 중 선택)" >&2; return 1 ;;
   esac
 }
 

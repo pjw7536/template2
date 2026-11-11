@@ -181,6 +181,7 @@ class DeploymentTest(unittest.TestCase):
             path.write_text('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV)
             with patch('sys.argv', ['manage.py', 'deploy', '--context', 'prod', '--env', str(path)]), \
                     patch.object(manage, 'verify_chart'), \
+                    patch.object(manage.shutil, 'which', return_value='/usr/bin/helm'), \
                     patch.object(manage, 'run', side_effect=[
                         subprocess.CompletedProcess([], 0, 'rendered'),
                         subprocess.CalledProcessError(1, ['kubectl'], stderr='Secret not found'),
@@ -190,6 +191,20 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(run.call_count, 2)
             self.assertEqual(run.call_args_list[0].args[0][1], 'template')
             self.assertIn('secret', run.call_args_list[1].args[0])
+
+    def test_missing_helm_or_chart_reports_preparation_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'input.env'
+            path.write_text('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV)
+            with self.assertRaisesRegex(ValueError, 'headlamp-fetch-chart'):
+                manage.verify_chart(Path(directory) / 'missing.tgz')
+            with patch('sys.argv', ['manage.py', 'check', '--env', str(path)]), \
+                    patch.object(manage, 'verify_chart'), \
+                    patch.object(manage.shutil, 'which', return_value=None), \
+                    patch.object(manage, 'run') as run, patch('sys.stderr'):
+                with self.assertRaises(SystemExit):
+                    manage.main()
+            run.assert_not_called()
 
     def test_https_settings(self):
         with tempfile.TemporaryDirectory() as directory:

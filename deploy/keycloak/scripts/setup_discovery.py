@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
@@ -160,7 +161,7 @@ def setup(action, context, env_path, portal_env=None, step="all"):
             run(["bash", SHARED / "check-env.sh", "keycloak", "prod", "oidc", resolved])
         if portal_env and step in ("all", "portal"):
             run(["bash", SHARED / "check-env.sh", "portal", "prod", "client", portal_env])
-        # 서버 소스만 선택 checkout한 환경에서도 적용 전에 필요한 파일을 확인합니다.
+        # 적용 전에 Job이 사용할 원본 파일이 모두 있는지 확인합니다.
         files = [BASE / "k8s/claims/sync-oidc-claim-mappers.sh", BASE / "k8s/claims/account-user-profile.json",
                  BASE / "k8s/oidc/admin-common.sh", BASE / "k8s/oidc/setup-oidc.sh",
                  BASE / "k8s/oidc/setup-realm.sh", BASE / "k8s/server/etch-realm.json"]
@@ -192,7 +193,35 @@ def setup(action, context, env_path, portal_env=None, step="all"):
                 run(kube + ["apply", "-f", "-"], input=json.dumps(payload))
             else:
                 run(kube + ["apply", "-k" if kustomize else "-f", manifest])
-            run(kube + ["wait", "--for=condition=complete", f"job/{name}", "--timeout=15m"])
+            wait_job(name)
+
+        def wait_job(name, limit=900, interval=10, lookup_retries=3):
+            # 완료 또는 실패 중 먼저 오는 상태로 끝내며 실패 Job은 15분 대기 없이 바로 중단한다.
+            deadline = time.monotonic() + limit
+            lookup_failures = 0
+            while True:
+                started = time.monotonic()
+                try:
+                    run(kube + ["wait", "--for=condition=complete", f"job/{name}", f"--timeout={interval}s"])
+                    return
+                except ValueError:
+                    pass
+                try:
+                    status = json.loads(run(kube + ["get", "job", name, "-o", "json"])).get("status", {})
+                    lookup_failures = 0
+                except (ValueError, AttributeError):
+                    # API의 일시적인 응답 실패는 몇 번 다시 조회하고, 계속 실패하면 context·권한 문제로 보고 중단한다.
+                    status, lookup_failures = {}, lookup_failures + 1
+                    if lookup_failures >= lookup_retries:
+                        raise ValueError(f"Job 상태 조회 실패: {name}. context·권한·API 접속과 kubectl --context {context} -n etch-sso describe job/{name}을 확인하세요.") from None
+                failed = any(item.get("type") == "Failed" and item.get("status") == "True"
+                             for item in status.get("conditions", []))
+                if failed:
+                    raise ValueError(f"Job 실패: {name}. kubectl --context {context} -n etch-sso logs job/{name}로 원인을 확인하세요.")
+                if time.monotonic() >= deadline:
+                    raise ValueError(f"Job 완료 대기 시간 초과: {name}. kubectl --context {context} -n etch-sso logs job/{name}로 진행 상태를 확인하세요.")
+                # context·인증 오류로 wait가 즉시 끝나도 API를 연속 호출하지 않도록 주기를 지킨다.
+                time.sleep(max(0, interval - (time.monotonic() - started)))
 
         if step == "realm":
             job("keycloak-realm-setup", BASE / "k8s/oidc/oidc-setup-job.yaml", variant=step)

@@ -51,8 +51,19 @@ for role in "${roles[@]}"; do
   fi
 done
 
+# SDWT 공통 scope(sdwt-access-v1)가 연결되어 있으면 그 scope가 groups를 발급하므로 client mapper를 만들지 않습니다.
+default_scopes="$(kc get "clients/$client_id/default-client-scopes" -r "$KEYCLOAK_TARGET_REALM" --fields name --format csv --noquotes)"
+mappers=(portal-app-roles)
+obsolete=(portal-sdwt-groups)
+if grep -Fxq sdwt-access-v1 <<< "${default_scopes//$'\r'/}"; then
+  obsolete+=(sdwt-groups)
+else
+  mappers+=(sdwt-groups)
+fi
+
 # 같은 이름의 mapper만 upsert하여 기존 client 설정을 보존합니다.
-for mapper in portal-app-roles portal-sdwt-groups; do
+# sdwt-groups는 init_sdwt.py가 공통 scope로 이전할 수 있도록 sdwt-access-scope.json의 mapper와 같은 계약을 사용합니다.
+for mapper in "${mappers[@]}"; do
   mapper_rows="$(kc get "clients/$client_id/protocol-mappers/models" -r "$KEYCLOAK_TARGET_REALM" --fields id,name --format csv --noquotes)"
   mapper_id=""
   while IFS=, read -r candidate_id candidate_name; do
@@ -61,7 +72,6 @@ for mapper in portal-app-roles portal-sdwt-groups; do
       mapper_id="$candidate_id"
     fi
   done <<< "$mapper_rows"
-  [[ "$mapper_id" != *$'\n'* ]] || { echo '중복 Portal mapper' >&2; exit 1; }
   mapper_args=(-s "name=$(json_string "$mapper")" -s protocol=openid-connect
     -s 'config."id.token.claim"="true"' -s 'config."access.token.claim"="true"'
     -s 'config."userinfo.token.claim"="true"')
@@ -71,7 +81,7 @@ for mapper in portal-app-roles portal-sdwt-groups; do
       -s "config.\"claim.name\"=$(json_string "resource_access.$OIDC_CLIENT_ID.roles")"
       -s 'config."jsonType.label"="String"' -s 'config.multivalued="true"')
   else
-    mapper_args+=(-s protocolMapper=oidc-group-membership-mapper
+    mapper_args+=(-s protocolMapper=oidc-group-membership-mapper -s consentRequired=false
       -s 'config."claim.name"="groups"' -s 'config."full.path"="true"')
   fi
   if [[ -n "$mapper_id" ]]; then
@@ -80,6 +90,17 @@ for mapper in portal-app-roles portal-sdwt-groups; do
     kc create "clients/$client_id/protocol-mappers/models" -r "$KEYCLOAK_TARGET_REALM" "${mapper_args[@]}" >/dev/null
   fi
 done
+
+# 새 mapper를 먼저 준비한 뒤 같은 groups claim을 중복 발급하는 mapper를 제거합니다. 중간에 실패해도 groups가 빠지지 않습니다.
+mapper_rows="$(kc get "clients/$client_id/protocol-mappers/models" -r "$KEYCLOAK_TARGET_REALM" --fields id,name --format csv --noquotes)"
+while IFS=, read -r candidate_id candidate_name; do
+  candidate_name="${candidate_name%$'\r'}"
+  for name in "${obsolete[@]}"; do
+    if [[ "$candidate_name" == "$name" ]]; then
+      kc delete "clients/$client_id/protocol-mappers/models/$candidate_id" -r "$KEYCLOAK_TARGET_REALM" >/dev/null
+    fi
+  done
+done <<< "$mapper_rows"
 echo 'Portal 앱 역할과 SDWT 그룹 발급 설정 완료. 사용자 역할은 관리자가 지정하세요.'
 
 # 조직 정책에 따른 구성원 지정은 운영자가 수행하고 Portal에는 그룹의 client 역할을 발급합니다.

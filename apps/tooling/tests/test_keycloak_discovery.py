@@ -92,7 +92,8 @@ class FlowTests(unittest.TestCase):
 
         with patch.object(setup, "discover", return_value=setup.resolve_metadata(VALUES, METADATA)), \
                 patch.object(setup, "read_env", return_value=VALUES), \
-                patch.object(setup, "run", side_effect=command):
+                patch.object(setup, "run", side_effect=command), \
+                patch.object(setup.time, "sleep"):
             if fail:
                 with self.assertRaises(ValueError):
                     setup.setup(action, "test-context", Path("unused"), Path("portal.env") if portal else None, step)
@@ -115,6 +116,55 @@ class FlowTests(unittest.TestCase):
     def test_idp_failure_prevents_mapper_and_client_jobs(self):
         calls = self.execute(fail="job/keycloak-oidc-setup")
         self.assertFalse(any("keycloak-oidc-claim-mappers" in call or "portal-keycloak-client" in call for call in calls))
+
+    def test_failed_job_stops_without_waiting_for_timeout(self):
+        calls = []
+
+        def command(args, **kwargs):
+            args = [str(arg) for arg in args]
+            calls.append(args)
+            if "wait" in args:
+                raise ValueError("시험 대기 실패")
+            if "get" in args and "job" in args:
+                return json.dumps({"status": {"conditions": [{"type": "Failed", "status": "True"}]}})
+            if "create" in args and "configmap" in args:
+                return json.dumps({"kind": "ConfigMap"})
+            return ""
+
+        with patch.object(setup, "discover", return_value=setup.resolve_metadata(VALUES, METADATA)), \
+                patch.object(setup, "read_env", return_value=VALUES), \
+                patch.object(setup, "run", side_effect=command):
+            with self.assertRaisesRegex(ValueError, "logs job/keycloak-oidc-setup"):
+                setup.setup("apply", "test-context", Path("unused"), None, "idp")
+        self.assertEqual(len([call for call in calls if "wait" in call]), 1)
+
+    def test_job_wait_retries_lookup_and_keeps_interval(self):
+        calls, sleeps = [], []
+        responses = iter([ValueError("일시 응답 실패"), json.dumps({"status": {}})])
+
+        def command(args, **kwargs):
+            args = [str(arg) for arg in args]
+            calls.append(args)
+            if "wait" in args:
+                if len([call for call in calls if "wait" in call]) < 3:
+                    raise ValueError("즉시 실패")
+                return ""
+            if "get" in args and "job" in args:
+                response = next(responses)
+                if isinstance(response, Exception):
+                    raise response
+                return response
+            if "create" in args and "configmap" in args:
+                return json.dumps({"kind": "ConfigMap"})
+            return ""
+
+        with patch.object(setup, "discover", return_value=setup.resolve_metadata(VALUES, METADATA)), \
+                patch.object(setup, "read_env", return_value=VALUES), \
+                patch.object(setup, "run", side_effect=command), \
+                patch.object(setup.time, "sleep", side_effect=sleeps.append):
+            setup.setup("apply", "test-context", Path("unused"), None, "idp")
+        self.assertEqual(len(sleeps), 2)
+        self.assertTrue(all(delay > 0 for delay in sleeps))
 
     def test_portal_is_optional(self):
         calls = self.execute(portal=False)

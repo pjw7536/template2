@@ -62,15 +62,14 @@ def start(airflow, routing, context, env, tls_source=None, vip_backends=None, ch
         if not ips:
             airflow.require(source_node == live_node and current['spec'].get('replicas', 1) == 1, '저장소와 기존 Traefik의 nodeSelector 또는 replicas가 다릅니다. 서버 배치 설정을 먼저 맞추세요.')
         airflow.require(settings['NODE_NAME'] == source_node.get('kubernetes.io/hostname'), 'Airflow NODE_NAME을 기존 앱 Worker로 유지하세요.')
-        updated = routing.preserve_namespaces(original, current, settings['NAMESPACE'])
+        airflow.require(current['metadata'].get('resourceVersion'), '동시 변경 검사에 필요한 Traefik resourceVersion이 없습니다.')
+        nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
+        pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
+        # Keycloak·공용 Ingress와 같은 계획 함수로 운영 배치·metadata·포트 검사를 유지한다.
+        updated = routing.plan_controller(original, current, vip_backends, nodes, pods)
+        updated = routing.preserve_namespaces(updated, updated, settings['NAMESPACE'])
         if ips:
-            nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
-            pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
-            updated = routing.place_vip_backends(updated, current, ips, nodes, pods)
             print('VIP Backend 배치: ' + ', '.join(ip + ':443' for ip in ips), flush=True)
-        version = current['metadata'].get('resourceVersion')
-        airflow.require(version, '동시 변경 검사에 필요한 Traefik resourceVersion이 없습니다.')
-        updated['metadata']['resourceVersion'] = version
         desired = [updated if item is original else item for item in desired if item['kind'] != 'Namespace']
     else:
         # 단독 배포는 기존 Deployment 전체를 적용하지 않으며 패치의 입력만 먼저 검사한다.

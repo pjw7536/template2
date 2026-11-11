@@ -29,8 +29,9 @@ function portalFixture(component) {
     minio: { MINIO_ROOT_USER: 'private-marker', MINIO_ROOT_PASSWORD: 'private-marker',
       NODE_NAME: 'worker', MINIO_IMAGE: 'mirror.test/minio:release', MINIO_CLIENT_IMAGE: 'mirror.test/mc:release',
       IMAGE_PULL_SECRET: '', STORAGE_CLASS_NAME: '', VOLUME_NAME: '', STORAGE_SIZE: '10Gi',
-      INGRESS_HOST: 'portal.test', INGRESS_TLS_SECRET: 'minio-tls', MINIO_BUCKETS: 'emails,profile',
-      MINIO_SERVER_URL: 'http://minio:9000', MINIO_BROWSER_REDIRECT_URL: 'https://portal.test/minio-console/' },
+      MINIO_DATA_HOST_PATH: '/appdata/minio', MINIO_API_HOST: 's3.portal.test', MINIO_CONSOLE_HOST: 'console.portal.test',
+      MINIO_BUCKETS: 'emails,profile',
+      MINIO_SERVER_URL: 'http://minio:9000', MINIO_BROWSER_REDIRECT_URL: 'https://console.portal.test/' },
   };
   return Object.entries(inputs[component]).map(([key, value]) => `${key}=${value}\n`).join('');
 }
@@ -145,7 +146,7 @@ test('추적 중인 env로 저장소 profile 검사를 통과한다', t => {
   fs.mkdirSync(path.join(dir, 'deploy/shared/scripts'), { recursive: true });
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/validate_env_profile_keys.sh'), path.join(dir, 'deploy/shared/scripts/validate_env_profile_keys.sh'));
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/env-lib.sh'), path.join(dir, 'deploy/shared/scripts/env-lib.sh'));
-  for (const relative of ['local/portal/env', 'local/minio/env', 'deploy/minio/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env']) {
+  for (const relative of ['local/portal/env', 'local/minio/env', 'deploy/minio/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env', 'deploy/ftp/env']) {
     fs.cpSync(path.join(root, relative), path.join(dir, relative), {
       recursive: true,
     });
@@ -378,6 +379,8 @@ if(a[0]==='get') {
  else if(a[1]==='realms/etch') console.log(process.env.MOCK_EMAIL_AS_USERNAME || 'false');
  else if(a[1]==='groups') console.log(process.env.MOCK_EXISTING==='true'?'portal-members':'');
  else if(a[1]==='clients') console.log(fs.existsSync(process.env.MOCK_STATE)?'client-uuid':'');
+ else if(a[1].endsWith('/default-client-scopes')) console.log(process.env.MOCK_SDWT_SCOPE==='1'?'profile\\nsdwt-access-v1':'profile');
+ else if(process.env.MOCK_SDWT_MAPPERS==='1'&&a[1].endsWith('/protocol-mappers/models')) console.log('old-sdwt,portal-sdwt-groups\\nclient-sdwt,sdwt-groups');
  else if(a[1].endsWith('/mappers')||a[1].endsWith('/models')) console.log(process.env.MOCK_RETIRED==='1'?'old-grade,grdName\\nold-origin,origincomp\\nold-first,first_name\\nold-last,last_name\\nold-userid,userid':process.env.MOCK_EPID_EXISTING==='1'?'existing-epid,epid-username\\nexisting-sabun,sabun':'existing-sabun,sabun');
  else console.log('{}');
 }
@@ -404,6 +407,21 @@ if(a[0]==='create'&&a[1]==='clients')fs.writeFileSync(process.env.MOCK_STATE,'ex
     },
     calls() { return fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse); },
   };
+}
+
+for (const scope of [false, true]) {
+  test(`Portal groups mapper는 ${scope ? '공통 scope가 있으면 만들지 않고' : '새로 준비한 뒤'} 중복 mapper를 나중에 지운다`, t => {
+    const mock = mockAdmin(t);
+    const result = mock.run('deploy/portal/k8s/jobs/keycloak-client/setup-client.sh', { MOCK_SDWT_MAPPERS: '1', MOCK_SDWT_SCOPE: scope ? '1' : '' });
+    assert.equal(result.status, 0, result.stderr);
+    const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]) && a[1].includes('/protocol-mappers/'));
+    const deletes = writes.filter(a => a[0] === 'delete').map(a => a[1].split('/').pop());
+    assert.deepEqual(deletes.sort(), scope ? ['client-sdwt', 'old-sdwt'] : ['old-sdwt']);
+    const groupsWrite = writes.findIndex(a => a[0] !== 'delete' && a.includes('name="sdwt-groups"'));
+    assert.equal(groupsWrite === -1, scope);
+    const firstDelete = writes.findIndex(a => a[0] === 'delete');
+    assert.ok(writes.slice(firstDelete).every(a => a[0] === 'delete'));
+  });
 }
 
 for (const existing of [false, true]) {

@@ -104,21 +104,20 @@ done
   assert.deepEqual(lines, Array.from({ length: 5 }, () => ['https', 'http', 'http']).flat());
 });
 
-test('공용 MinIO의 파일·콘솔 경로는 Portal 없이 자기 namespace로 라우팅한다', () => {
+test('공용 MinIO의 S3·콘솔 도메인은 Portal 없이 자기 namespace로 라우팅한다', () => {
   const minio = render('deploy/minio/k8s');
   const portal = render('deploy/portal/k8s/overlays/prod');
-  const paths = yaml.load(fs.readFileSync(path.join(root, 'deploy/shared/ingress/middlewares/paths.yaml'), 'utf8'));
-  for (const [name, prefix, port] of [['minio-api', '/minio', 'api'], ['minio-console', '/minio-console', 'console']]) {
+  // 운영은 서비스별 도메인 루트를 사용하며 localhost 하위 경로 middleware는 local overlay만 참조한다.
+  for (const [name, host, port] of [['minio-api', 's3.etch.samsungds.net', 'api'], ['minio-console', 'minio.etch.samsungds.net', 'console']]) {
     const ingress = minio.find(item => item.kind === 'Ingress' && item.metadata.name === name);
     assert.equal(ingress.metadata.namespace, 'minio');
-    assert.equal(ingress.spec.rules[0].host, 'etch.samsungds.net');
+    assert.equal(ingress.spec.rules[0].host, host);
     assert.equal(ingress.spec.tls, undefined);
     assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.tls'], 'true');
+    assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares'], undefined);
     const route = ingress.spec.rules[0].http.paths[0];
-    assert.equal(route.path, prefix);
+    assert.equal(route.path, '/');
     assert.equal(route.backend.service.port.name, port);
-    assert.equal(ingress.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares'], `${name}@file`);
-    assert.deepEqual(paths.http.middlewares[`${name}-strip`].stripPrefix.prefixes, [prefix]);
     assert.ok(!portal.some(item => item.kind === 'Ingress' && item.metadata.name === name));
   }
   assert.ok(!fs.readFileSync(path.join(root, 'deploy/portal/k8s/base/nginx.conf'), 'utf8').includes('location /minio'));

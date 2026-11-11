@@ -113,6 +113,17 @@ class VipTests(unittest.TestCase):
             with self.subTest(nodes=nodes), self.assertRaises(ValueError):
                 routing.place_vip_backends(controller(), controller(), self.ips, nodes, [])
 
+    def test_tolerated_taint_allows_backend_but_other_taint_blocks(self):
+        nodes = deepcopy(self.nodes)
+        nodes[1]['spec']['taints'] = [{'key': 'dedicated', 'value': 'ingress', 'effect': 'NoSchedule'}]
+        tolerant = controller()
+        tolerant['spec']['template']['spec']['tolerations'] = [
+            {'key': 'dedicated', 'operator': 'Equal', 'value': 'ingress', 'effect': 'NoSchedule'}]
+        result = routing.place_vip_backends(tolerant, tolerant, self.ips, nodes, [])
+        self.assertEqual(result['spec']['replicas'], 2)
+        with self.assertRaisesRegex(ValueError, 'taint'):
+            routing.place_vip_backends(controller(), controller(), self.ips, nodes, [])
+
     def test_existing_entry_worker_must_be_retained(self):
         live = controller()
         live['spec']['template']['spec']['nodeSelector']['kubernetes.io/hostname'] = 'outside'
@@ -447,12 +458,12 @@ class StartTests(unittest.TestCase):
 
 
 class PauseTests(unittest.TestCase):
-    def test_first_start_override_does_not_change_normal_compose_parity(self):
+    def test_new_dag_pause_is_set_only_for_first_start_override(self):
         settings = airflow.read_env(airflow.DEFAULT_ENV)
-        self.assertNotIn('core', airflow.helm_values(settings)['config'])
+        self.assertNotIn('dags_are_paused_at_creation', airflow.helm_values(settings)['config'].get('core', {}))
         self.assertEqual(airflow.helm_values(settings, pause_new_dags=True)['config']['core']['dags_are_paused_at_creation'], 'True')
         settings.update({'INGRESS_ENABLED': 'true', 'INGRESS_CLASS_NAME': 'traefik', 'AIRFLOW_WEBSERVER_BASE_URL': 'https://portal.test/airflow'})
-        route = airflow.helm_values(settings)['ingress']['web']
+        route = airflow.helm_values(settings)['ingress']['apiServer']
         self.assertEqual(route['annotations']['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure')
         self.assertEqual(route['annotations']['traefik.ingress.kubernetes.io/router.tls'], 'true')
         self.assertEqual(route['path'], '/airflow')
