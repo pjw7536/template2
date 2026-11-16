@@ -1,114 +1,50 @@
 # Portal API 개발 지침
 
-## 적용 범위
+## 작업별 진입점
 
-이 지침은 `apps/portal/api/**`에 적용합니다. 상위 [Portal 지침](../AGENTS.md)도 함께 따릅니다.
-
-## 작업별 스킬
-
-아래 경로는 저장소 루트 기준입니다. 현재 작업에 해당하는 스킬만 읽습니다.
+`apps/portal/api/**`에 적용한다. 스킬 경로는 저장소 루트의 `.codex/skills/<name>/SKILL.md`다.
 
 | 작업 | 스킬 |
 | --- | --- |
-| 새 도메인 생성 | `.codex/skills/create-django-feature/SKILL.md` |
-| 업무 로직 테스트·migration | `.codex/skills/django-test-migration-flow/SKILL.md` |
-| 도메인 경계 검사 | `.codex/skills/backend-boundary-audit/SKILL.md` |
-| Python 설명·주석 작성 | `.codex/skills/write-commented-python/SKILL.md` |
+| 새 도메인·인덱스/제약 이름 | `create-django-feature` |
+| 업무 로직 테스트·migration | `django-test-migration-flow` |
+| 도메인·조회/변경 경계 | `backend-boundary-audit` |
+| 비자명한 Python 로직 설명 | `write-commented-python` |
 
-## 도메인 앱 구조
+## 허용 구조
 
-도메인 앱은 `apps/portal/api/api/<feature>`에 두며 Python 경로는 `api.<feature>`입니다.
-다음 파일·폴더만 허용합니다.
+- 도메인은 `api/<feature>` (`api.<feature>`)에 둔다. 허용 파일은 `__init__.py`, `apps.py`, `models.py`, `urls.py`, `views.py`, `serializers.py`, `selectors.py`, `permissions.py`, `admin.py`, `tests.py`다. `callback_urls.py`는 Auth 전용이다.
+- 허용 폴더는 `services/`, `selectors/`, `views/`, `serializers/`, `tests/`, `migrations/`, `management/commands/`다. 기본 최대 깊이는 2이며 이 폴더들은 예외다. 승인되지 않은 백엔드 폴더를 새로 만들지 않는다.
+- 공통·인프라 패키지는 `api.common`, `api.data_movement.common`, `api.auth`, `api.rag`, `api.management`만 사용한다.
+- Data Movement의 테이블별 앱만 `api/data_movement/<table_name>` (`api.data_movement.<table_name>`) 중첩을 허용한다. 이름은 실제 테이블과 일치시키고 해당 테이블의 모델·migration·적재 서비스·테스트·명령만 소유한다. 공통 적재 도구는 `api/data_movement/common`에 둔다.
 
-- `apps.py`, `models.py`, `urls.py`, `callback_urls.py`(Auth 전용)
-- `views.py`, `serializers.py`, `selectors.py`, `permissions.py`, `admin.py`, `tests.py`
-- `services/`, `selectors/`, `views/`, `serializers/`, `tests/`, `migrations/`, `management/commands/`
+## 공개 경계와 책임
 
-승인된 경로 밖에 새 백엔드 폴더를 만들지 않습니다. 기본 최대 깊이는 2이며,
-위의 `services/`·`selectors/`·`views/`·`serializers/`·`tests/`·`migrations/`·`management/commands/`는 예외입니다.
+다른 도메인은 `services/__init__.py` facade 또는 `selectors.py`/`selectors/__init__.py` 공개면으로만 사용한다. 두 `__init__.py` 공개면에는 실행 로직 없이 명시적 re-export만 둔다. 테스트와 공통 명령도 다른 도메인 내부를 직접 import하지 않는다.
 
-### Data Movement 예외
-
-테이블별 앱만 중첩 도메인을 허용합니다.
-
-- 경로: `apps/portal/api/api/data_movement/<table_name>` (`api.data_movement.<table_name>`)
-- `<table_name>`은 실제 대상 테이블 이름과 일치해야 합니다.
-- 각 앱은 해당 테이블의 모델·migration·적재 서비스·테스트·관리 명령만 소유합니다.
-- 공통 적재 도구는 `apps/portal/api/api/data_movement/common`에 둡니다.
-
-### 공통·인프라 패키지
-
-다음 패키지만 공통·인프라 영역으로 사용합니다.
-
-- `api.common`
-- `api.data_movement.common`
-- `api.auth`
-- `api.rag`
-- `api.management`
-
-위 Python 경로는 모두 `apps/portal/api/api/` 아래에 대응합니다.
-
-## 도메인 간 의존과 책임
-
-다른 도메인은 해당 도메인의 `services/__init__.py` 공개 facade 또는 `selectors.py`로만 사용합니다.
-`services/__init__.py`와 `selectors/__init__.py`에는 실행 로직 없이 명시적 re-export만 둡니다.
-
-| 위치 | 담당하는 책임 |
+| 위치 | 책임 |
 | --- | --- |
-| `views.py` | HTTP 처리만 수행 |
-| `serializers.py` | 스키마와 입력 검증 |
-| `permissions.py` | DRF 권한 검사 |
-| `services/*` | 업무 로직·쓰기·트랜잭션·외부 호출 |
-| `selectors.py` | 읽기 전용 ORM 조회 |
-| `models.py` | 스키마와 순수 도메인 규칙 |
+| views | HTTP·인증/권한·serializer·service/selector 호출·응답 |
+| serializers / permissions | 스키마·입력 검증 / DRF 권한 검사 |
+| services | 업무 로직·쓰기·트랜잭션·외부 호출 |
+| selectors | 읽기 전용 ORM |
+| models | 스키마·순수 도메인 규칙 |
 
-View와 service의 읽기 ORM 조회는 selector를 사용합니다. Selector와 model에는 쓰기를 두지 않습니다.
+- View·service의 읽기 ORM은 selector를 사용한다. Selector·model에는 쓰기를 두지 않는다.
+- 여러 단계의 쓰기는 `transaction.atomic()`으로 묶는다. 공개 service·selector에는 타입 힌트와 한국어 docstring을 작성하고 단일 책임·선형 흐름을 유지한다.
+- 도메인 전용 명령은 해당 앱에, 공통 명령은 공개 service·selector를 사용하는 공통 영역에 둔다.
 
-## 라우팅과 API 형식
+## 라우팅과 DB
 
-- 업무 API는 `/api/v1/<route-scope>/...` prefix를 사용합니다.
-- Auth callback만 `/auth/`를 사용합니다(`api.auth.callback_urls`).
-- 전역 라우팅은 `apps/portal/api/api/urls.py`의 include 목록으로만 조립합니다.
-- 각 feature의 `urls.py`는 상대 경로만 선언하며 업무 로직을 포함하지 않습니다.
+- 업무 API는 `/api/v1/<route-scope>/...`, Auth callback만 `/auth/` (`api.auth.callback_urls`)를 사용한다. 전역 `api/urls.py`는 include 목록만, feature `urls.py`는 상대 경로만 선언한다.
+- 필드는 snake_case, 모델은 단수 PascalCase다. `db_table = "<feature>_<entity>"`, 기본키는 `id` (`BigAutoField`)를 사용한다. 외부 계약상 필요한 경우만 UUID를 쓴다.
+- 시간은 시간대가 있는 UTC이며 `created_at` 필수, `updated_at`·`deleted_at`은 선택이다.
+- 인덱스는 `idx_<table>_<cols>`, 제약은 `uniq_<table>_<cols>`를 기본으로 30자 이내에서 일관되게 축약한다. 약어·충돌 접미사 전체 규칙은 생성 스킬을 따른다.
+- Data Movement 주 적재 모델의 `db_table`은 정확히 `<table_name>`이다. 보조 테이블은 `<table_name>_load_job`처럼 용도 접미사를 허용한다.
 
-## 모델과 DB 규칙
+## 검증과 외부 연동
 
-| 항목 | 규칙 |
-| --- | --- |
-| 필드 | `snake_case` |
-| 모델 | 단수형 `PascalCase` |
-| 테이블 | 모든 모델에 `db_table = "<feature>_<entity>"` 지정 |
-| 기본키 | `id` (`BigAutoField`), 외부 계약상 필요한 경우에만 UUID |
-| 시각 | 시간대가 있는 UTC. `created_at` 필수, `updated_at`·`deleted_at` 선택 |
-| 인덱스 이름 | `idx_<table>_<cols>` |
-| 제약 이름 | `uniq_<table>_<cols>` |
-
-인덱스·제약 이름은 30자 이내로 만들고 일관된 축약·접미사 규칙을 적용합니다.
-전체 명명 규칙은 `create-django-feature` 스킬을 따릅니다.
-Data Movement의 주 적재 모델은 `db_table`을 정확히 `<table_name>`으로 지정하며,
-보조 테이블에는 `<table_name>_load_job`처럼 용도를 나타내는 접미사를 붙일 수 있습니다.
-
-## 안전성과 가독성
-
-- 여러 단계의 쓰기는 `transaction.atomic()`으로 묶습니다.
-- 명시적이고 선형적인 단일 책임 코드를 작성합니다.
-- 함수·클래스는 실용적인 범위에서 작게 유지합니다(약 30~50줄).
-- 공개 service·selector에는 타입 힌트와 한국어 docstring을 작성합니다.
-
-## 테스트와 migration
-
-- 업무 로직을 바꾸면 테스트를 추가하거나 갱신합니다. Service·selector 테스트를 우선하고 view 테스트는 최소화합니다.
-- 적용된 migration은 수정하지 않습니다.
-- 테스트에서 다른 도메인의 내부 모듈을 직접 import하지 않습니다.
-- 도메인 전용 명령은 해당 앱에 두고, 공통 명령은 service·selector facade만 사용합니다.
-- 백엔드 테스트·명령은 Docker Compose `api` 컨테이너에서 실행합니다.
-- Django 런타임을 실행하지 않는 정적 에이전트 감사 스크립트는 호스트에서 실행할 수 있습니다.
-- 도메인 경계·import·view·selector를 바꾸면 `make audit-api-boundary`를 실행하거나 권고합니다.
-
-실행 순서와 명령은 `django-test-migration-flow` 스킬을 따릅니다.
-
-## 외부 PC 개발
-
-사내망 연결을 전제하지 않습니다. 사내 URL을 하드코딩하지 않고 외부 서비스 URL은 env로 주입합니다.
-Auth·RAG·Assistant·Mail 계약 변경 시 로컬 mock·개발 연결도 실행 가능한 상태로 유지합니다.
-세부 절차는 `offsite-dev-contract-sync` 스킬을 따릅니다.
+- 업무 로직 변경에는 테스트를 추가·갱신한다. Service·selector를 우선하고 view 테스트는 최소화한다. 적용된 migration을 수정하지 않는다.
+- Django 테스트·명령은 Docker Compose `api` 컨테이너에서 실행한다. 이미지 갱신·test env·migration 파일 보존과 명령은 테스트 스킬을 따른다. Django를 실행하지 않는 정적 감사는 호스트에서 실행할 수 있다.
+- 도메인 경계·import·view·selector 변경에는 `make audit-api-boundary`를 실행하거나 권고한다.
+- Auth·RAG·Assistant·Mail 계약 변경은 상위 Portal 지침의 local 연결 조건과 `offsite-dev-contract-sync`를 따른다. 로컬 mock·개발 연결을 실행 가능한 상태로 유지한다.

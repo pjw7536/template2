@@ -1,87 +1,35 @@
 ---
 name: safe-file-edit-output
-description: |
-  파일 생성/수정 시 경로, 변경 요약, import 정합성, 변경 범위 통제를
-  일관되게 적용하는 스킬.
+description: 파일 생성·수정 시 요청 범위, 기존 사용자 변경, 실제 import·공개 facade를 보존하고 변경 경로와 검증 결과를 간결하게 보고한다.
 ---
 
-# safe-file-edit-output
+# 파일 수정과 결과 보고
 
-## 목적
-파일 생성/수정 시 출력 형식과 변경 범위를 안정적으로 유지한다.
+## 수정 기준
 
-## 사용할 때
-- 새 파일을 생성할 때
-- 여러 파일을 함께 수정할 때
-- import 경로와 export surface를 함께 맞춰야 할 때
+- 사용자 지시를 우선하고 루트와 수정 영역의 `AGENTS.md`, feature 공개 facade 계약, 기존 파일 관례 순으로 적용한다. 이 스킬이 상위 지침의 우선순위를 바꾸지 않는다.
+- 기존 사용자 변경을 먼저 확인하고 이번 요청의 수정만 수행한다. 자동 stage·commit·push 여부는 루트 Git 규칙과 사용자 요청을 따른다.
+- 요청 밖 rename·move·리팩터링·새 추상화를 추가하지 않는다.
+- 문법, 실제 import 경로, 명시적 export와 호출부의 정합성을 확인한다. 존재하지 않는 모듈이나 미설치 컴포넌트를 import하지 않는다.
+- 주석·docstring 언어와 Markdown 관리 방식은 루트 지침을 따른다.
 
-## 핵심 원칙
-- 항상 실제 경로 기준으로 설명한다.
-- 응답에서 전체 파일 내용을 출력하지 않는다(사용자 명시 요청 시 예외).
-- 수정 파일은 기존 구조와 공개 export surface를 보존한다.
-- 요청 범위 밖 리팩터링을 하지 않는다.
-- 모든 import는 실제 파일로 resolve 가능해야 한다.
-- `AGENTS.md`와 다른 skill의 출력 규칙이 충돌하면 이 skill의 “전체 파일 미출력” 원칙을 우선한다.
+## 영역별 확인
 
-## 새 파일 생성 규칙
-항상 아래를 포함한다.
+경계 규칙을 이 문서에 복제하지 않고 다음 원본을 확인한다. 경로는 저장소 루트 기준이다.
 
-1. 전체 파일 경로
-2. 파일 역할 한 줄 설명
-3. 변경/구성 요약
-4. 핵심 부분 스니펫(필요할 때만)
+| 변경 | 확인할 원본·스킬 |
+| --- | --- |
+| Portal 프론트엔드 | `apps/portal/web/AGENTS.md`: alias·`.jsx`·feature facade·`components/ui/**` 수정 제한 |
+| Portal 백엔드 | `apps/portal/api/AGENTS.md`: 도메인 공개면·service/selector/view 책임 |
+| 프론트엔드 컴포넌트·상태 | `shadcn`, `product-ui-design-system` |
+| 높이·스크롤·pane 구조 | `compose-frontend-layout` |
+| import·export·구조 경계 | 해당 frontend/backend boundary audit |
 
-## 기존 파일 수정 규칙
-- 기존 공개 export를 함부로 바꾸지 않는다.
-- 기존 alias style을 유지한다.
-- 불필요한 rename/move/refactor 금지
-- 요청과 직접 관련 없는 코드 정리는 하지 않는다.
-- 변경된 핵심 부분만 간결히 보여준다.
+스킬·문서는 실제 변경에 필요한 것만 읽는다. 경로·명명만 고치는 작업에 UI·백엔드 전체 검사를 일괄 적용하지 않는다.
 
-## import/export 점검 규칙
-Frontend:
-- project-internal absolute import 허용 범위:
-  - `@/components/ui/*` 또는 `components/ui/*`
-  - `@/components/layout/*` 또는 `components/layout/*`
-  - `@/components/common/*` 또는 `components/common/*`
-  - `@/lib/*`
-  - `@/features/<otherFeature>` (facade only)
-- cross-feature import는 `@/features/<feature>` 형식만 사용
-- `@/features/<feature>/index.js` 명시 import 금지(항상 facade 경로만 사용)
-- `@/features/<feature>/components/*`, `pages/*`, `api/*` 직접 import 금지
-- `index.js`에서 `export *` 금지
-- JSX 파일은 `.jsx`
-- `components/ui/**`는 shadcn CLI 흐름 또는 명시 요청 없이 직접 수정하지 않는다.
-- frontend UI 변경은 `product-ui-design-system`과 `compose-frontend-layout`의 적용 여부를 함께 점검한다.
+## 검증과 보고
 
-Backend:
-- cross-feature import는 facade 또는 selector 경유
-- `views.py`에 business logic 금지
-- `selectors.py`에 side effect 금지
-
-## 출력 형식 예시
-```text
-Path: apps/portal/api/api/emails/services/__init__.py
-Role: 이메일 도메인의 쓰기/오케스트레이션 파사드
-
-Changes:
-- 핵심 변경 요약 1
-- 핵심 변경 요약 2
-
-Snippet:
-<changed snippet only>
-```
-
-여러 파일이면 파일별로 같은 형식을 반복한다.
-
-## 변경 범위 통제 체크
-- 요청한 파일만 수정했는가
-- public surface가 불필요하게 바뀌지 않았는가
-- folder structure 규칙을 어기지 않았는가
-- naming rule을 지켰는가
-
-## 금지사항
-- "이 부분도 같이 리팩터링" 같은 확장 작업
-- unresolved import
-- facade 우회 import
-- 사용자 요청 없이 전체 파일 내용을 출력
+- 변경한 동작에 맞는 검사를 실행한다. 단순 문서 수정은 참조·구문 검사로 검증하고 앱 테스트를 새로 만들지 않는다.
+- 실패가 기존 문제인지 이번 변경에서 생겼는지 구분한다. 실행하지 못한 검사는 이유를 밝힌다.
+- 실제 파일 경로, 핵심 변경과 목적, 검증 결과, 남은 제약을 보고한다. 같은 목적의 여러 파일은 묶어서 설명한다.
+- 파일 전체나 파일별 고정 템플릿을 반복 출력하지 않는다. 사용자가 전체 내용을 요청했을 때만 제공하며 필요한 스니펫은 짧게 제시한다.

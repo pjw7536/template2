@@ -1,171 +1,82 @@
 ---
 name: product-ui-design-system
-description: |
-  React/Tailwind/shadcn 업무형 프론트엔드 화면을 일관된 제품 UI로 만드는 스킬.
-  색상 토큰, 타이포그래피, density, 상태 표현, table/form/card/dialog 패턴,
-  접근성, dark mode를 현재 프로젝트 규칙에 맞게 적용한다.
+description: Portal 업무형 UI의 디자인 토큰·타이포·간격·컴포넌트 위계·상태·접근성을 통일한다. 새 화면이나 시각·상태 수정에 적용하며, 컴포넌트 API는 공식 shadcn 스킬과 기존 코드를 따른다.
 ---
 
-# product-ui-design-system
+# 제품 UI 디자인
 
-## 목적
-이 스킬은 화면이 같은 제품처럼 보이도록 시각 규칙과 상호작용 상태를 통일한다.
+## 범위와 역할
 
-대상:
-- `apps/portal/web/src`의 React JSX 화면
-- shadcn/Radix 기반 컴포넌트 조합
-- dashboard, admin, table, settings, list-detail, assistant/workbench UI
+`apps/portal/web/src`의 업무형 화면·form·table·dialog에 적용한다.
+브랜드·마케팅 페이지, SVG·차트 라이브러리 내부 구현은 기본 대상이 아니다.
 
-비대상:
-- `apps/portal/web/src/components/ui/**` 직접 수정
-- 브랜드/마케팅 landing page
-- SVG 일러스트/차트 라이브러리 내부 구현
+- 컴포넌트 API·조회·조합: [공식 shadcn](../shadcn/SKILL.md). 실행 위치와 기존 API 호환 기준은 `apps/portal/web/AGENTS.md`를 따른다.
+- 높이·스크롤·pane 구성: [레이아웃 스킬](../compose-frontend-layout/SKILL.md). 해당 구조를 바꿀 때 읽는다.
+- 이 스킬: 제품의 시각 위계·밀도·상태·상호작용. 기존 테마와 semantic token을 유지한다.
 
-## 사용할 때
-- 새 page/component/dialog/form/table/card를 만들 때
-- 기존 화면의 “제각각인 느낌”을 정리할 때
-- empty/loading/error/disabled/selected 상태가 빠진 UI를 보완할 때
-- 색상/간격/타이포그래피/버튼 위계가 불명확할 때
-- `compose-frontend-layout` 적용 후 시각 디자인을 마무리할 때
+기존 shadcn/Radix 컴포넌트와 내장 variant를 먼저 조합한다. 컴포넌트의 색상·타이포를 호출부에서 임의로 덮어쓰지 않는다. `components/ui/**` 수정 제한은 Web 지침을 따른다.
 
-## 기본 원칙
-1. shadcn/Radix primitive를 먼저 조합한다.
-2. Tailwind semantic token을 우선 사용한다.
-3. 화면 구조는 `compose-frontend-layout`이 소유하고, 이 skill은 시각/상태/상호작용을 소유한다.
-4. 업무형 UI는 절제된 대비, 명확한 계층, 낮은 장식 밀도를 기본값으로 둔다.
-5. 사용자에게 필요한 상태 정보를 색상만으로 전달하지 않는다.
+## 색상과 표면
 
-## 토큰 규칙
-우선 사용:
-- Surface: `bg-background`, `bg-card`, `bg-popover`, `bg-muted`
-- Text: `text-foreground`, `text-muted-foreground`, `text-card-foreground`
-- Border/Input: `border-border`, `border-input`, `ring-ring`
-- Action: `bg-primary`, `text-primary-foreground`, `text-destructive`
-- State: `bg-accent`, `text-accent-foreground`, `bg-secondary`, `text-secondary-foreground`
+| 용도 | 기본 토큰 |
+| --- | --- |
+| 표면 | `bg-background`, `bg-card`, `bg-popover`, `bg-muted` |
+| 본문·보조 텍스트 | `text-foreground`, `text-muted-foreground`, `text-card-foreground` |
+| 경계·입력·focus | `border-border`, `border-input`, `ring-ring` |
+| 주요 동작·위험 | `bg-primary`, `text-primary-foreground`, `text-destructive` |
+| 선택·보조 동작 | `bg-accent`, `text-accent-foreground`, `bg-secondary`, `text-secondary-foreground` |
 
-금지:
-- 임의 HEX 색상
-- `text-gray-*`, `bg-slate-*` 같은 raw palette 남발
-- 토큰으로 표현 가능한 inline color style
-- dark mode에서 대비를 확인하지 않은 커스텀 색상
+- 임의 HEX·raw palette·토큰으로 대체할 수 있는 inline 색상을 추가하지 않는다.
+- light/dark는 토큰으로 함께 처리한다. 차트·상태 색은 `--chart-*`, `--primary`, `--destructive` 등을 먼저 사용한다.
+- 측정된 pane·외부 라이브러리의 동적 크기·색상·SVG API 요구는 Web 지침의 예외 범위에서 처리한다.
+- 업무형 UI는 절제된 대비와 낮은 장식 밀도를 유지한다. 구획은 간격·경계·muted 표면을 사용하고 큰 shadow와 카드 중첩을 피한다.
 
-예외:
-- 외부 라이브러리 차트/타임라인/테이블 column width
-- CSS variable 기반 split pane, measured layout, library integration
-- SVG mask/path 같은 브라우저 API 요구사항
+## 타이포와 밀도
 
-## 타이포그래피
-- Page title: `text-2xl font-semibold tracking-tight`
-- Section title: `text-base font-semibold`
-- Card title: `text-sm font-semibold`
-- Body: `text-sm text-foreground`
-- Secondary text: `text-sm text-muted-foreground`
-- Metadata: `text-xs text-muted-foreground`
-- Numeric/KPI: `tabular-nums`, 필요 시 `font-mono`
+| 역할 | 기본값 |
+| --- | --- |
+| 페이지 제목 | `text-2xl font-semibold tracking-tight` |
+| 섹션 제목 | `text-base font-semibold` |
+| 카드 제목 | `text-sm font-semibold` |
+| 본문·보조 설명 | `text-sm` + foreground/muted-foreground |
+| 메타데이터 | `text-xs text-muted-foreground` |
+| 수치 | `tabular-nums`, 필요한 경우 `font-mono` |
+| 페이지 여백 | `px-6 py-4`, 작업 영역 하단 `pb-6` |
+| 섹션 간격 | `gap-4`, 큰 구획 `gap-6` |
+| 필드·내부 간격 | `gap-2`, 필요한 경우 `gap-3` |
+| 카드 내부 여백 | `p-4`, 큰 form은 `p-6` |
+| 기본 control | `h-9`에 해당하는 기존 size variant |
 
-규칙:
-- 한 화면에서 heading depth를 3단계 이하로 유지한다.
-- label과 helper text를 분리한다.
-- 긴 설명은 `text-muted-foreground`와 `leading-6`으로 읽기성을 확보한다.
+- 같은 깊이의 요소는 같은 padding·radius·border를 사용한다. 기존 컴포넌트가 토큰·variant로 소유하는 값은 그 정의를 우선한다.
+- heading 깊이는 3단계 이하를 기본으로 한다. label과 helper text를 분리하고 긴 설명은 `leading-6`을 사용한다.
+- 아이콘은 `components.json`과 기존 파일의 라이브러리를 따른다. 독립 아이콘은 `size-4`를 기본으로 하고, Button 등 내부 아이콘은 컴포넌트가 크기를 소유하면 별도로 덮어쓰지 않는다.
+- 애니메이션은 상태 전환을 이해하는 데 필요한 범위로 제한한다.
 
-## Density와 Spacing
-기본 density:
-- Page padding: `px-6 py-4`
-- Card padding: `p-4` 또는 큰 form에서 `p-6`
-- Toolbar height: compact한 `h-9` control 기준
-- Form field gap: `gap-2`
-- Section gap: `gap-4`, 큰 구획은 `gap-6`
+## 컴포넌트별 판단
 
-규칙:
-- 같은 depth의 card는 같은 radius/padding/border를 사용한다.
-- `rounded-lg`, `rounded-xl`, `rounded-2xl`을 한 영역에서 섞지 않는다.
-- 업무형 화면은 큰 shadow보다 `border bg-card`를 우선한다.
-- 시각 구획은 border, spacing, muted surface 순서로 해결하고 과한 배경색을 피한다.
+| 요소 | 제품 규칙 |
+| --- | --- |
+| Button | 영역별 주요 동작 하나. 보조는 `outline`/`secondary`, 위험 동작은 `destructive`. 내장 size·variant 우선 |
+| Card | 기존 `Card`와 header/content/footer 조합 우선. 새 정보 묶음의 기본 표면은 `rounded-2xl border bg-card`, header `px-4 py-3`, body `p-4`. 기존 Card 정의를 무조건 덮어쓰지 않음 |
+| Table/List | 행 hover는 `hover:bg-muted/50`, 선택은 accent와 border/icon 등 보조 단서. 숫자·날짜·상태의 정렬·폭 통일 |
+| Form | 설치된 `Field` 계열로 label·control·설명·오류를 묶음. 저장·취소는 한 곳에 모으고 위험 설정은 분리 |
+| Dialog/Sheet | 하나의 결정·짧은 form은 Dialog, 긴 편집·탐색은 page/Sheet. footer는 보조 왼쪽·주요 동작 오른쪽 |
 
-## 컴포넌트 패턴
-### Button
-- Primary action: 한 영역에 하나만 둔다.
-- Secondary action: `variant="outline"` 또는 `variant="secondary"`를 우선한다.
-- Destructive action: `variant="destructive"` 또는 별도 destructive section으로 분리한다.
-- Icon-only button: accessible label을 제공한다.
+새 컴포넌트가 필요하면 설치 여부와 공개 API를 먼저 확인한다. 일관성을 이유로 새 primitive를 직접 만들거나 전체 UI를 갱신하지 않는다.
 
-### Card
-- 정보 묶음의 기본 surface는 `rounded-2xl border bg-card`.
-- card header/body가 있으면 header는 `border-b px-4 py-3`, body는 `p-4`.
-- card 안에 card를 중첩하기보다 section/divider/list row를 사용한다.
+## 상태와 접근성
 
-### Table/List
-- Header는 compact하고 sticky가 필요하면 배경과 border를 반드시 둔다.
-- Row hover는 `hover:bg-muted/50`.
-- 선택 상태는 `bg-accent text-accent-foreground` 또는 명확한 left border/icon을 함께 사용한다.
-- 숫자/날짜/상태 column은 정렬과 폭을 일관되게 유지한다.
+변경한 화면에 필요한 상태를 구현하고, 기존 상태를 보존한다.
 
-### Form
-- Label, input, helper/error text를 한 field group으로 둔다.
-- Validation error는 `text-destructive`와 설명 텍스트를 함께 제공한다.
-- 저장/취소 action은 form 하단 또는 sticky action bar에 모은다.
-- 위험한 설정은 별도 section으로 분리한다.
-
-### Dialog/Sheet
-- Dialog는 하나의 의사결정 또는 짧은 form에만 사용한다.
-- 긴 편집/탐색은 page 또는 sheet를 우선한다.
-- Footer action 순서는 cancel/secondary 왼쪽, primary/destructive 오른쪽을 기본으로 한다.
-
-## 상태 UX
-모든 데이터 UI는 아래 상태를 고려한다.
-
-- Loading: skeleton/spinner와 현재 작업 문구
-- Empty: 원인 + 다음 행동 1개
-- Error: 실패 원인 요약 + 재시도/복구 행동
-- Disabled: 비활성 이유가 불명확하면 helper text 제공
-- Selected: 색상 외에 border/icon/font weight 등 보조 단서 제공
-- Pending mutation: 중복 클릭 방지와 진행 중 label 제공
-
-금지:
-- loading 중 빈 흰 화면
-- empty와 error를 같은 문구로 처리
-- toast만 띄우고 화면 상태를 갱신하지 않는 처리
-
-## 접근성
-- interactive element는 keyboard focus가 보여야 한다.
-- icon-only action은 `aria-label` 또는 screen reader text를 둔다.
-- form input은 label과 연결한다.
-- 색상만으로 상태를 구분하지 않는다.
-- modal/dialog는 제목과 설명을 제공한다.
-- hover-only 정보는 keyboard/focus에서도 접근 가능해야 한다.
-
-## Dark Mode
-- 새 UI는 `dark:`를 직접 남발하기보다 semantic token으로 먼저 해결한다.
-- 커스텀 surface를 만들면 light/dark 대비를 함께 확인한다.
-- chart/status 색은 `--chart-*`, `--primary`, `--destructive` 등 토큰 기반을 우선한다.
-
-## 아이콘과 시각 장식
-- 기본 아이콘은 `lucide-react` 또는 기존 파일의 icon library를 유지한다.
-- 한 화면에서 icon size는 `size-4`를 기본으로 하고, 주요 KPI/empty state만 크게 쓴다.
-- decorative icon은 정보 계층을 방해하지 않게 `text-muted-foreground`를 우선한다.
-- 애니메이션은 상태 전환 이해를 돕는 경우에만 사용한다.
-
-## 작업 순서
-1. 화면 목적과 primary action을 식별한다.
-2. `compose-frontend-layout`으로 layout/scroll owner를 먼저 확정한다.
-3. surface/card/table/form/dialog 패턴을 고른다.
-4. token, typography, spacing, state UX를 적용한다.
-5. accessibility와 dark mode를 점검한다.
-6. import/export 경계는 `safe-file-edit-output` 기준으로 확인한다.
-
-## 최종 점검 체크리스트
-- shadcn/Radix primitive를 우선 사용했는가?
-- raw color/inline style 없이 token으로 표현 가능한가?
-- primary action이 명확하고 과도하게 많지 않은가?
-- loading/empty/error/disabled/selected 상태가 있는가?
-- 같은 depth의 card/table/form spacing이 일관적인가?
-- keyboard focus와 accessible label이 유지되는가?
-- dark mode에서 대비가 무너지지 않는가?
-- layout/scroll 문제를 시각 patch로 우회하지 않았는가?
+- Loading: Skeleton/Spinner와 작업 문구. 빈 화면으로 남기지 않는다.
+- Empty: 원인과 다음 행동 하나. Error와 구분한다.
+- Error: 원인 요약과 재시도·복구 동작. toast만 띄우고 화면 상태를 그대로 두지 않는다.
+- Disabled: 이유가 불명확하면 설명한다. 변경 중에는 중복 클릭을 막고 진행 label을 제공한다.
+- Selected: 색상 외 border·icon·font weight로도 표현한다.
+- 입력 label 연결, 키보드 focus, icon-only action의 접근 가능한 이름, Dialog 제목·설명, focus로도 접근 가능한 보조 정보를 제공한다.
+- 커스텀 표면·색상이 있으면 light/dark 대비를 함께 확인한다.
 
 ## 검증
-UI 변경 후 가능하면 `ui-consistency-audit` skill을 사용해 아래 명령을 실행한다.
 
-```bash
-apps/tooling/agent/check_ui_consistency.sh
-```
+변경 화면의 위계·밀도·상태·키보드 접근·dark mode를 확인한다.
+저장소 루트에서 `make audit-ui`를 실행한다. 감사 결과는 검토 후보이며 관련 예외와 기존 문제를 이번 변경과 구분한다.

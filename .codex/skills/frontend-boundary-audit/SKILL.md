@@ -18,10 +18,10 @@ description: |
 - 큰 frontend 리팩터링 후 boundary 회귀를 점검할 때
 
 ## 실행
-아래 명령을 실행한다.
+저장소 루트에서 아래 명령을 실행한다. 하위 폴더에서는 해당 영역 지침의 `make -C` 경로를 사용한다.
 
 ```bash
-apps/tooling/agent/check_frontend_boundaries.sh
+make audit-web-boundary
 ```
 
 ## 해석 규칙

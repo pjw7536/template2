@@ -45,8 +45,8 @@ backend 변경 시 테스트와 migration 누락을 방지하고 container-first
 
 아래 명령은 저장소 루트 기준이다. Portal에서 Makefile을 호출할 때는 `make -C ../.. <target>`을 사용한다.
 
-`make dev`로 이미지·외부 DB·runtime env를 준비합니다. 소스 수정 후에는 `make k8s-rebuild APP=portal`로 검사 이미지를 갱신합니다.
-전체 검사는 `make test-api check-api makemigrations-check`를 사용합니다. 특정 앱 테스트는 표준 test env를 명시합니다.
+먼저 기존 검사 이미지·외부 DB·runtime env가 준비되어 있는지 확인합니다. 초기 환경 구성이 필요한 경우에만 `make dev`를 사용하며, 준비된 환경에서 소스 수정 후에는 `make k8s-rebuild APP=portal`로 검사 이미지를 갱신합니다.
+변경 영역의 테스트를 먼저 실행합니다. 모델·설정·여러 도메인에 영향이 있을 때 필요한 범위에서 `make test-api check-api makemigrations-check`를 선택합니다. 특정 앱 테스트는 표준 test env를 명시합니다.
 아래 테스트는 `api.account` 예시이며, 다른 기능을 검사할 때는 `test` 뒤의 모듈 경로를 해당 앱으로 바꿉니다.
 
 ```bash

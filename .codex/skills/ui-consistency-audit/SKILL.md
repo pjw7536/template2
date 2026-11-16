@@ -17,10 +17,10 @@ React/Tailwind/shadcn UI 작업 후 일관성 위반 후보를 빠르게 찾는�
 - `product-ui-design-system` 또는 `compose-frontend-layout` 적용 여부를 검증할 때
 
 ## 실행
-아래 명령을 실행한다.
+저장소 루트에서 아래 명령을 실행한다. 하위 폴더에서는 해당 영역 지침의 `make -C` 경로를 사용한다.
 
 ```bash
-apps/tooling/agent/check_ui_consistency.sh
+make audit-ui
 ```
 
 ## 해석 규칙

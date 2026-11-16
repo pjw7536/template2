@@ -1,109 +1,58 @@
 # Portal Web 개발 지침
 
-## 적용 범위
+## 작업별 진입점
 
-이 지침은 `apps/portal/web/**`에 적용합니다. 상위 [Portal 지침](../AGENTS.md)도 함께 따릅니다.
-
-## 작업별 스킬과 명명
-
-아래 경로는 저장소 루트 기준입니다. 현재 작업에 해당하는 스킬만 읽습니다.
+`apps/portal/web/**`에 적용한다. 아래 스킬 경로는 저장소 루트의 `.codex/skills/<name>/SKILL.md`다. 해당 작업에 필요한 것만 읽는다.
 
 | 작업 | 스킬 |
 | --- | --- |
-| UI 구성 | `.codex/skills/product-ui-design-system/SKILL.md` |
-| 레이아웃 구성 | `.codex/skills/compose-frontend-layout/SKILL.md` |
-| UI 일관성 검사 | `.codex/skills/ui-consistency-audit/SKILL.md` |
-| Feature 경계 검사 | `.codex/skills/frontend-boundary-audit/SKILL.md` |
+| 컴포넌트 API·조합 | `shadcn` |
+| 시각 디자인·상태·접근성 | `product-ui-design-system` |
+| 높이·스크롤·pane 구조 | `compose-frontend-layout` |
+| UI 정적 검사 | `ui-consistency-audit` |
+| feature 구조·공개 경계 | `frontend-boundary-audit` |
+| 실제 브라우저 검증 | `playwright` |
+| 요청된 UI·접근성·UX 리뷰 | `web-design-guidelines` |
 
-`src`의 JSX 파일은 `.jsx`, 비 JSX 모듈은 `.js`를 사용합니다.
-컴포넌트는 PascalCase, hook·util·store는 명시된 예외 외에는 camelCase를 사용합니다.
+shadcn 조회는 이 폴더에서 실행한다. 스킬이 자동 주입하는 컨텍스트는 세션 시작 폴더 기준이라 저장소 루트에서는 실패하거나 다른 설정을 보여줄 수 있다. 주입 결과가 없거나 오류이거나 이 폴더의 `components.json` 기준이 아니면 이 폴더에서 `npx --yes shadcn@latest info --json`을 다시 실행한다. 최신 예시보다 기존 primitive import·export·props를 확인하고, 미설치 컴포넌트를 import하거나 테마·컴포넌트를 일괄 갱신하지 않는다.
 
-## Feature 구조
+## 구조와 공개 경계
 
-Feature는 `apps/portal/web/src/features/<feature>`에 두며 다음 하위 경로만 허용합니다.
+- JSX는 `.jsx`, 그 외 모듈은 `.js`다. 컴포넌트는 PascalCase, hook·util·store는 명시된 예외 외 camelCase를 사용한다.
+- Feature는 `src/features/<feature>`에 두고 `pages/`, `components/`, `hooks/`, `api/`, `store/`, `utils/`, `routes.jsx`, `index.js`만 허용한다. 각각 경로 화면·내부 UI·hook·API/query key·클라이언트 상태·도우미·라우팅·공개 facade를 담당한다.
+- 기본 최대 깊이는 2다. `components/`만 기존 파일 12개 이상이거나 사용자가 그룹 구성을 명시한 경우 한 단계 더 나눌 수 있다. 그룹명은 `list`, `detail`, `form`, `dialog`, `table`, `chart`, `filters`, `cards`, `sections`이며 추가 중첩은 금지한다. 다른 그룹명은 먼저 질문한다.
+- 외부 공개 진입점은 feature의 `index.js`다. Named export만 허용하고 `export *`는 금지한다.
+- Feature 간 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`만 허용하며 `@/features/<feature>` facade로 사용한다. 다른 feature 내부 경로와 `/index.js` 명시 import는 금지한다.
+- `routes/*`, `components/layout/*`, `components/common/*`, `lib/*` 조립 계층은 feature facade를 사용할 수 있다. `lib/*`에는 shell context·프레임워크 어댑터·범용 도우미만 두고 도메인 HTTP client·React Query hook·업무 UI를 두지 않는다.
 
-| 경로 | 역할 |
-| --- | --- |
-| `pages/` | 경로에 대응하는 화면 |
-| `components/` | Feature 내부 UI |
-| `hooks/` | Query·상태·상호작용 hook |
-| `api/` | API 호출과 query key |
-| `store/` | Feature 내부 UI 상태 |
-| `utils/` | 내부 도우미 |
-| `routes.jsx` | Feature 라우팅 |
-| `index.js` | 외부 공개 facade |
+## Import·라우팅·데이터
 
-기본 최대 깊이는 2입니다. `components/`에서만 다음 조건을 모두 만족하면 한 단계 더 나눌 수 있습니다.
+- 내부 절대 경로는 `@/`를 우선한다. 기존 `components/...` alias는 유지할 수 있으나 한 파일에서 `@/components/...`와 혼용하지 않는다.
+- 절대 import 대상은 `components/ui/*`, `components/layout/*`, `components/common/*`, `lib/*`와 위 규칙에 따른 feature facade다.
+- 명시적으로 요청된 shadcn CLI 작업 외에는 `src/components/ui/**`를 직접 수정하지 않는다.
+- 모든 feature는 `routes.jsx`를 공개하고 전역 라우팅은 `src/routes/*`에서만 조립한다. Route는 layout을 조합하되 레이아웃 정의·업무 로직·데이터 처리·파생 UI 로직을 넣지 않는다.
+- 서버 데이터는 React Query로 관리한다. query key는 배열로 만들고 중복을 피하며 최소 범위만 invalidate한다. Zustand는 feature 내부 UI·상호작용 상태에만 쓰고 서버 데이터를 복제하지 않는다.
 
-- 기존 컴포넌트 파일이 12개 이상이거나 사용자가 그룹 구성을 명시적으로 요청했습니다.
-- 하위 폴더 이름은 `list`, `detail`, `form`, `dialog`, `table`, `chart`, `filters`, `cards`, `sections` 중 하나입니다.
-- 그 아래에 추가 중첩 폴더를 만들지 않습니다.
+## UI 기준
 
-다른 하위 폴더 이름이 필요하면 먼저 질문합니다.
-
-## 공개 facade와 의존 방향
-
-`apps/portal/web/src/features/<feature>/index.js`만 외부 공개 진입점입니다.
-Named export만 사용하고 `export *`는 금지합니다.
-
-Feature 간 의존은 `auth -> account`, `emails -> account`, `line-dashboard -> account`만 허용합니다.
-허용된 의존도 반드시 `@/features/<feature>` facade로 사용합니다.
-
-- `@/features/<otherFeature>/index.js`처럼 파일명을 직접 지정하지 않습니다.
-- 다른 feature의 `components/*`, `pages/*`, `api/*` 등 내부 경로를 직접 import하지 않습니다.
-- Feature 외부 조립 계층인 `routes/*`, `components/layout/*`, `components/common/*`, `lib/*`는 feature facade를 조합할 수 있습니다.
-- `lib/*`에는 앱 shell context·프레임워크 어댑터·범용 도우미만 둡니다. 도메인 HTTP client·React Query hook·업무 UI를 두지 않습니다.
-
-## Import 규칙
-
-프로젝트 내부 절대 경로는 `@/`를 우선 사용합니다. `components/*` alias는 `components/...` 경로에서만 허용합니다.
-한 파일에서 `@/components/...`와 `components/...`를 혼용하지 않고 기존 파일의 alias 방식을 유지합니다.
-
-허용하는 절대 import 대상은 다음과 같습니다.
-
-- `apps/portal/web/src/components/ui/*`
-- `apps/portal/web/src/components/layout/*`
-- `apps/portal/web/src/components/common/*`
-- `apps/portal/web/src/lib/*`
-- `apps/portal/web/src/features/<otherFeature>`의 facade: 위 의존 방향 또는 feature 외부 조립 규칙에 따릅니다.
-
-## UI·라우팅·데이터
-
-- 명시적으로 요청된 shadcn CLI 작업 외에는 `apps/portal/web/src/components/ui/**`를 직접 수정하지 않습니다.
-- 모든 feature는 `routes.jsx`를 공개합니다. 전역 라우팅은 `apps/portal/web/src/routes/*`에서만 조립합니다.
-- Route는 `components/layout/*`를 조합할 수 있지만 route 파일 안에 레이아웃 컴포넌트를 정의하지 않습니다.
-- Route에 업무 로직·데이터 처리·파생 UI 로직을 넣지 않습니다.
-- 서버 데이터의 기준은 React Query입니다. 배열 query key를 사용하고 중복 key를 피하며 최소 범위만 invalidate합니다.
-- 서버 데이터를 Zustand에 복제하지 않습니다. Zustand는 feature 내부 UI·상호작용 흐름 상태에만 사용합니다.
-
-## 스타일·React·레이아웃
-
-- Tailwind만 사용하고 디자인 토큰과 `dark:`를 적용합니다.
-- 새 UI 기본 요소를 만들기 전에 `apps/portal/web/src/components/ui/*`의 shadcn/Radix 요소를 먼저 사용합니다.
-- 제품 UI 판단은 `product-ui-design-system` 스킬을 따릅니다.
-- `bg-card`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-primary` 등 의미 기반 토큰을 우선 사용합니다.
-- 꼭 필요한 경우 외에는 임의 HEX와 inline style을 금지합니다. 라이브러리 연결에 필요한 CSS 변수 기반 동적 크기·색상은 허용합니다.
-- `useMemo`, `useCallback`, `React.memo`는 필요한 경우에만 사용합니다.
-- 해당 화면의 loading·empty·error·disabled·selected·hover/focus·dark mode 상태를 명시합니다.
-- 조작 요소에는 접근 가능한 레이블, 키보드 접근, 눈에 보이는 focus 상태를 제공합니다.
-
-레이아웃의 높이와 스크롤은 다음 규칙을 따릅니다.
-
-| 영역 | 규칙 |
-| --- | --- |
-| 각 화면 영역 | 축별 스크롤 컨테이너 하나 |
-| 스크롤 요소 | `min-h-0` 필수 |
-| 앱 최상위 shell | `h-screen flex flex-col` + 고정 header + `flex-1 min-h-0 overflow-hidden` |
-| Route 내부 page | `h-full min-h-0`으로 부모 높이를 따르고 `h-screen`을 중복 사용하지 않음 |
-
-세부 패턴은 `compose-frontend-layout` 스킬을 따릅니다.
+- 스타일은 Tailwind로 작성한다. Semantic token과 설치된 shadcn/Radix 요소·내장 variant를 우선한다. 임의 HEX·inline style은 꼭 필요한 경우 외 금지하며 라이브러리 연결용 CSS 변수 기반 동적 크기·색상은 허용한다.
+- 시각 값·loading/empty/error/disabled/selected·hover/focus·dark mode·접근성은 제품 UI 스킬을 따른다. 별도 화면별 테마를 만들지 않는다.
+- 같은 영역·축의 스크롤 소유자는 하나다. 스크롤 요소는 `min-h-0`, 줄어드는 pane은 `min-w-0`를 사용한다. 앱 root는 `h-screen flex flex-col`과 고정 header·`flex-1 min-h-0 overflow-hidden` main을 소유하고 route page는 `h-screen` 없이 `h-full min-h-0`로 따른다. 상세 구조는 레이아웃 스킬을 따른다.
+- `useMemo`, `useCallback`, `React.memo`는 필요한 경우에만 사용한다.
 
 ## 검증
 
-| 변경 영역 | 실행하거나 권고할 검사 |
+| 변경 | 검사 |
 | --- | --- |
-| Frontend UI | `make audit-ui` |
-| Feature import·export·라우팅 | `make audit-web-boundary` |
-| 광범위한 frontend 변경 | `make audit` |
+| UI | 관련 테스트·린트·빌드 중 필요한 검사와 `make audit-ui` |
+| import·export·라우팅·feature 구조 | `make audit-web-boundary` |
+| 광범위한 frontend | 관련 테스트·린트·빌드와 `make audit-ui audit-web-boundary audit-hotspots`. API·배포·문서에도 영향이 있으면 `make audit` |
 
-감사 결과는 검토 후보입니다. 요청 범위 밖의 기존 문제까지 수정하지 않습니다.
+감사 결과는 검토 후보이며 요청 밖 기존 문제를 함께 수정하지 않는다.
+
+### 브라우저 검증과 UI 리뷰
+
+- 실제 렌더링·입력·스크롤·흐름 확인이 필요할 때 `playwright`를 사용한다. 작은 문구 수정마다 기동하지 않는다.
+- 프로젝트 wrapper·산출물·세션 실행법은 [브라우저 검증 안내](../../../docs/agent/README.md#브라우저-검증과-ui-리뷰)를 따른다. 원문의 전역 경로·루트 `output/` 예시를 그대로 적용하지 않는다.
+- `web-design-guidelines`는 리뷰 요청에 적용한다. 대상이 요청·diff로 명확하면 범위를 다시 묻지 않고 현재 웹 조회 도구로 원본 가이드를 읽는다.
+- 일반 권고는 검토 후보로 다룬다. 저장소 지침·기존 API·제품 디자인·한국어 locale·desktop-first 요구를 우선하고 영어 문구·모바일 권고를 일괄 적용하지 않는다. 확인하지 못한 가이드·브라우저 동작은 제약으로 보고한다.

@@ -1,6 +1,6 @@
 ---
 name: branch-merge-routine
-description: Merge a source branch into `main` or another target branch with repository boundary checks, cross-feature impact review, validation, and optional push. Use when the user asks to merge, reflect, sync, or push branch changes, especially wording such as "y5 변경사항 merge", "feature 브랜치 main 반영", "이 브랜치 메인에 푸시", or "브랜치 병합 루틴".
+description: 사용자가 요청한 브랜치를 main 또는 지정 브랜치에 병합하고 영향·충돌·검증을 확인한다. 브랜치 병합·반영·동기화와 그에 따른 push 요청에 적용하며, 일반 파일 수정에는 적용하지 않는다.
 ---
 
 # branch-merge-routine
@@ -12,11 +12,11 @@ source branch 변경사항을 target branch에 반영할 때 변경 의도를 �
 - 항상 `request-intake-gate`를 먼저 적용한다.
 - source branch를 사용자 요청에서 식별한다. 명확하지 않으면 Hard-Block으로 묻는다.
 - target branch는 명시가 없으면 `main`으로 본다.
-- 현재 브랜치가 target branch인지 확인한다. 아니면 사용자에게 현재 브랜치와 진행 의도를 짧게 확인한다.
+- 병합은 항상 target branch가 checkout된 작업트리에서 실행한다. 전환 방법은 절차 1을 따르며, 현재 브랜치가 target과 다르다는 이유만으로 재승인을 요청하지 않는다.
 - 병합 대상은 최신 `origin/<source_branch>`를 기본으로 한다.
 - source branch 변경은 기본적으로 존중한다. 단, 다른 앱을 깨거나 기존 공개 contract를 훼손할 가능성이 있으면 자동으로 덮어쓰지 않고 원인과 선택지를 보고한다.
 - 사용자가 명시적으로 push를 요청한 경우에만 `origin/<target_branch>`에 push한다.
-- 자동 commit은 push/PR/릴리즈 finalization 요청이 있거나, 검증 통과 후 push를 위해 필요한 경우에만 한다.
+- 추가 수정의 commit·push 권한과 메시지 형식은 루트 `AGENTS.md`와 사용자의 기존 요청을 따른다. 이미 요청된 Git 마무리를 다시 승인받지 않는다.
 
 ## 절차
 1. 상태 확인
@@ -24,6 +24,11 @@ source branch 변경사항을 target branch에 반영할 때 변경 의도를 �
    - `git fetch origin <source_branch>`
    - `git branch -vv --list <target_branch> <source_branch>`
    - dirty worktree가 있으면 변경 파일이 이번 요청과 무관한지 확인하고, 무관한 변경은 건드리지 않는다.
+   - 현재 브랜치가 target이 아니면 병합 전에 target 작업트리로 옮긴다.
+     - 작업트리가 깨끗하면 `git switch <target_branch>`를 사용한다.
+     - 무관한 변경이 있으면 stash·reset으로 치우지 않는다. `git worktree list`에 target worktree가 있으면 그 경로를, 없으면 저장소 밖 경로에 `git worktree add ../<저장소명>-<target_branch> <target_branch>`로 만든 경로를 사용한다.
+     - 기존 target worktree에도 무관한 변경이 있으면 멈추고 보고한다.
+   - 다음 단계 전에 `git branch --show-current`가 target인지 확인한다.
 
 2. 영향도 확인
    - `git diff --stat <target_branch>...origin/<source_branch>`
