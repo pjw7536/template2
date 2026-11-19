@@ -24,6 +24,7 @@
 
 | 작업 | 목표 | 현재 상태 | 절차·원본 | 주체 |
 | --- | --- | --- | --- | --- |
+| khinfow01 점검 환경 준비 | kubeconfig·checkout·kubectl·helm·chart·env 준비 후 `make drift-check` 실행 | 미확인 | [Worker에서 점검](../operations/04-drift.md#worker에서-점검) | 운영자 |
 | 공용 Traefik·APP VIP backend | backend 2대에서 Traefik이 443 응답 | 저장소 기본 배치는 `khplane01w09` 1대. 실제 배치·LB 응답 미확인 | [VIP와 backend](network.md#vip와-backend), [backend 확장](../ingress/expand.md) | 운영자 |
 | 사내 미러 pull 확인 | 서버가 받는 모든 이미지·패키지를 대상 노드에서 받을 수 있음 | 미확인 | [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [패키지 주소](repositories.md#패키지chartartifact-주소) | 운영자 |
 | API server 버전 확인 | 실제 버전을 서버 현황에 반영 | CP1 확인값 `v1.36.0`, metrics-server 안내에는 1.36.4로 기록되어 충돌 | [설치 기준](servers.md#확인된-worker-설치-기준), [metrics-server](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |

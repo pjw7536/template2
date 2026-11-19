@@ -8,6 +8,7 @@ CP1의 현재 checkout에 있는 배포 정의가 실제 클러스터에 그대�
 
 - [무엇을 비교하나요?](#무엇을-비교하나요)
 - [대조 실행](#대조-실행)
+- [Worker에서 점검](#worker에서-점검)
 - [배포 기록 남기기](#배포-기록-남기기)
 - [결과 해석과 조치](#결과-해석과-조치)
 
@@ -43,7 +44,7 @@ CP1의 현재 checkout에 있는 배포 정의가 실제 클러스터에 그대�
 
 ## 대조 실행
 
-CP1 저장소 루트에서 실행합니다. 조회 명령입니다. 배포할 때와 같은 env 변수를 지정합니다.
+CP1 저장소 루트에서 실행합니다. 조회 명령입니다. 배포할 때와 같은 env 변수를 지정합니다. Worker에서 실행하는 방법은 [Worker에서 점검](#worker에서-점검)을 따릅니다.
 
 ```bash
 make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes                                 # 전체 앱
@@ -61,6 +62,19 @@ make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes DRIFT_SKIP_MANIFEST=1 
 **기대 결과:** 앱마다 `OK manifest 리소스 N/N개 일치`가 표시되고 종료 코드가 `0`입니다.
 
 **실패 확인:** `UNKNOWN manifest 현재 코드 렌더 실패`면 표시된 오류를 해당 앱의 `*-check`로 재현합니다. env 경로·Helm·chart 파일·공용 TLS 등록이 흔한 원인입니다.
+
+## Worker에서 점검
+
+Worker `khinfow01`에서 opencode `ops-check` agent로 같은 대조를 실행합니다. 배포·배포 기록은 CP1에서 합니다.
+
+1. **kubeconfig:** CP1의 admin kubeconfig를 승인된 수단으로 khinfow01 실행 계정의 `~/.kube/config`(권한 `0600`)에 둡니다. context는 `kubernetes-admin@kubernetes`입니다.
+2. **저장소:** 사내 GitHub에서 clone하고 `git sparse-checkout set --no-cone '/*' '!/.claude/' '!/.codex/'`로 개발 agent 폴더를 제외합니다. 갱신은 사용자가 CP1과 같은 commit으로 맞춥니다.
+3. **도구:** `kubectl`, `python3`, 각 chart lock의 버전 이상인 `helm`. kubeconfig의 API server 주소 6443 포트에 접근할 수 있어야 합니다.
+4. **chart:** Git에서 제외된 `deploy/<app>/helm/vendor/*.tgz`를 준비합니다. 사내 미러에 접근되면 `python3 deploy/airflow/scripts/manage.py fetch-chart`, `python3 deploy/monitoring/scripts/manage.py fetch-chart`, `make headlamp-fetch-chart`, 아니면 CP1의 같은 파일을 복사합니다.
+5. **env:** CP1 배포에 쓰는 외부 env를 같은 권한(`0600`)으로 두고 경로를 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 기록합니다.
+6. **확인:** `kubectl --context kubernetes-admin@kubernetes get nodes`가 성공하면 `make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes`를 실행합니다.
+
+admin kubeconfig는 클러스터 전체 권한이며 kubeadm 인증서는 개별 폐기가 어렵습니다. khinfow01에서는 클러스터 변경 명령을 거부하는 `ops-check` agent만 사용하고, 파일을 다른 위치로 복사하지 않습니다.
 
 ## 배포 기록 남기기
 

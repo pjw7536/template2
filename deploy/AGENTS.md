@@ -36,11 +36,12 @@
 - 코드·manifest·env 원본·스크립트·스킬·지침을 수정하지 않는다. 원인이 저장소에 있으면 보고하고 중단한다. 수정 가능 범위는 `shared/docs/infrastructure/`의 운영값·확인 상태·pending이며 커밋은 사람이 한다.
 - 배포·갱신은 `server-deploy-routine`, 저장소와 서버 상태 대조는 `deploy-drift-check` 스킬(원본 `.opencode/skills/`)을 따른다. 판정 원본은 [배포 상태 대조](shared/docs/operations/04-drift.md)와 `shared/scripts/deploy_state.py`다.
 - 클러스터 변경 명령은 승인 후 실행하고 `KUBE_CONTEXT`를 명시한다. Secret·env 값을 조회·출력하지 않는다.
+- Worker(khinfow01)의 `ops-check` agent([정의](../.opencode/agents/ops-check.md))는 대조만 하며 클러스터 변경 명령을 실행하지 않는다. 배포는 CP1의 `ops` agent가 한다.
 - 현재 checkout과 클러스터의 일치는 `make drift-check`(렌더 결과와 실제 리소스 비교)로 판정한다. 배포 후 `make drift-check APP=<app>`이 `0`인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record`로 기록한다.
 
 ## 검증
 
-- 배포 기록·대조 도구: `python3 -m unittest discover -s deploy/shared/tests -p 'test_deploy_state.py'`. 앱을 추가하면 `apps.json`의 `runtime.namespace`(공유 namespace는 `selector`)를 함께 정한다.
+- 배포 기록·대조 도구: `python3 -m unittest discover -s deploy/shared/tests -p 'test_d*.py'`(deploy_state·drift_checker). 앱을 추가하면 `apps.json`의 `runtime.namespace`(공유 namespace는 `selector`)를 함께 정한다.
 - 배포 정의: 루트 `make server-check APP=<app> PROFILE=prod`. 실제 입력·클러스터 조회·적용·접속은 별도로 보고한다.
 - 문서: 상대 링크·앵커, `git diff --check`, `make audit-docs`. 이동 시 삭제 경로·앵커 참조와 정보 보존을 확인한다.
 - 공통 경로·도구 변경과 문서 이동: 전체 개발 checkout에서 `node --test apps/tooling/tests/server-checkout.test.cjs`로 서버 독립 실행을 확인한다.
