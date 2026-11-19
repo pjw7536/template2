@@ -113,6 +113,7 @@ apps/portal/api/logs/rag_errors.log
 # Claude Code는 .codex/skills를 가리키는 skills 심볼릭 링크만 공유
 .claude/*
 !.claude/skills/
+.playwright-cli/
 apps/portal/web/test-results/
 
 # Windows Zone.Identifier sidecar files
