@@ -114,6 +114,7 @@ namespace를 바꾸면 kubectl의 `-n airflow`를, env를 바꾸면 Python `--en
 최초 설치는 새 DB로 진행하며 Worker의 DB 디렉터리가 기존 PostgreSQL 데이터 경로가 아닌지 확인합니다.
 Airflow PVC·Secret이 남아 있다면 새 설치로 간주하지 말고 연결된 저장소부터 확인합니다. 기존 리소스나 데이터는 자동 삭제하지 않습니다.
 재배포는 [백업·업데이트](04-operations.md)를 먼저 확인합니다. 검사가 실패하면 다음 단계로 넘어가지 말고 원인을 고친 뒤 다시 실행합니다.
+`DAGS_HOST_PATH`를 사용한다면 처음 배포하기 전에 [공유 폴더 전환](04-operations.md#공유-폴더-전환)에서 DAG 파일과 준비 표식을 먼저 배치합니다.
 
 | 단계 | 목적 | 변경 대상 | 완료 기준 |
 | --- | --- | --- | --- |
@@ -157,7 +158,7 @@ python3 deploy/airflow/scripts/manage.py render \
 
 | 출력 | 검토할 내용 |
 | --- | --- |
-| `storage.json` | Worker hostname, DB·로그 경로와 용량, Retain 정책 |
+| `storage.json` | Worker hostname, DB·로그·DAG 경로와 용량, Retain 정책 |
 | `postgres.json` | 내부 DB 이미지·권한·Service, external 모드에서는 빈 목록 |
 | `values.json` | 이미지 태그·노드·ODBC·OIDC CA·URL·신규 DAG 일시정지 설정 |
 | `airflow.yaml` | Airflow workload·Ingress·migration 및 관리자 Job |

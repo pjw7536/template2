@@ -39,7 +39,7 @@ class OidcDeploymentTests(unittest.TestCase):
         values.update(AIRFLOW_OIDC_CA_CONFIGMAP='airflow-oidc-ca', AIRFLOW_OIDC_CA_BUNDLE='/etc/airflow/oidc-ca/ca.crt')
         deploy.validate(values)
         mounts = deploy.helm_values(values)['volumeMounts']
-        self.assertEqual({m['name'] for m in mounts}, {'odbc', 'oidc-ca'})
+        self.assertEqual({m['name'] for m in mounts}, {'odbc', 'oidc-ca', 'shared-dags'})
         self.assertTrue(all(m['readOnly'] for m in mounts))
         values['AIRFLOW_OIDC_CA_CONFIGMAP'] = ''
         with self.assertRaises(ValueError):

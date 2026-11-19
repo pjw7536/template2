@@ -26,6 +26,7 @@ class AppLayoutTests(unittest.TestCase):
         self.assertTrue(audit.check_text('Makefile', old))
         self.assertTrue(audit.check_text('docs/agent/plans/current.md', old))
         self.assertFalse(audit.check_text('Dockerfile', 'apps/portal/api /opt/airflow/dags'))
+        self.assertFalse(audit.check_text('deploy/airflow/env/k8s.env', 'DAGS_HOST_PATH=/appdata/airflow/dags'))
         self.assertTrue(audit.check_text('Dockerfile', 'COPY ' + 'airflow/' + 'dags /dags'))
         self.assertTrue(audit.check_text('compose.yml', '../../../' + 'airflow/' + 'dags'))
         self.assertFalse(audit.check_text('Makefile', 'deploy/airflow/tests'))

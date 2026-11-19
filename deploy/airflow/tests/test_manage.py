@@ -208,6 +208,8 @@ class ConfigurationTests(unittest.TestCase):
     def test_config_rejects_overlapping_storage_and_wrong_versions(self):
         for change in (
             {'LOGS_HOST_PATH': '/appdata/airflow/postgres/logs'},
+            {'DAGS_HOST_PATH': '/appdata/airflow/logs/dags'},
+            {'DAGS_STORAGE_SIZE': '0Gi'},
             {'POSTGRES_IMAGE': 'postgres:17'},
             {'AIRFLOW_IMAGE_TAG': 'latest'},
             {'AIRFLOW_FERNET_KEY': 'wrong-key-value-0123456789'},
@@ -279,14 +281,34 @@ class ConfigurationTests(unittest.TestCase):
         values = settings()
         deploy.validate(values)
         overlay = deploy.helm_values(values)
-        self.assertEqual(overlay['volumes'], [{'name': 'odbc', 'hostPath': {'path': '/appdata/airflow/odbc', 'type': 'Directory'}}])
-        self.assertEqual(overlay['volumeMounts'], [{'name': 'odbc', 'mountPath': '/usr/local/odbc', 'readOnly': True}])
+        self.assertIn({'name': 'odbc', 'hostPath': {'path': '/appdata/airflow/odbc', 'type': 'Directory'}}, overlay['volumes'])
+        self.assertIn({'name': 'odbc', 'mountPath': '/usr/local/odbc', 'readOnly': True}, overlay['volumeMounts'])
         self.assertEqual(overlay['nodeSelector'], {'kubernetes.io/hostname': 'test-node'})
 
     def test_no_odbc_mount_when_both_inputs_are_empty(self):
         values = {**settings(), 'ODBC_HOST_PATH': '', 'ODBC_SECRET_NAME': ''}
         deploy.validate(values)
-        self.assertNotIn('volumes', deploy.helm_values(values))
+        self.assertNotIn('odbc', {volume['name'] for volume in deploy.helm_values(values)['volumes']})
+
+    def test_shared_dag_storage_is_optional_and_separate_from_database(self):
+        values = {**settings(), 'POSTGRES_MODE': 'external', 'POSTGRES_HOST': 'external-postgres'}
+        deploy.validate(values)
+        storage = deploy.manifests(values)['storage']['items']
+        pvc = next(item for item in storage if item['metadata']['name'] == 'airflow-dags')
+        pv = next(item for item in storage if item['metadata']['name'] == pvc['spec']['volumeName'])
+        self.assertEqual(pv['spec']['local']['path'], '/appdata/airflow/dags')
+        self.assertEqual(pv['spec']['capacity']['storage'], pvc['spec']['resources']['requests']['storage'])
+        self.assertNotIn('airflow-postgres', {item['metadata']['name'] for item in storage})
+
+        for key in deploy.DAGS_DEFAULTS:
+            values.pop(key)
+        deploy.validate(values)
+        self.assertEqual(values['DAGS_HOST_PATH'], '')
+        self.assertNotIn('airflow-dags', {item['metadata']['name'] for item in deploy.manifests(values)['storage']['items']})
+        overlay = deploy.helm_values(values)
+        self.assertNotIn('scheduler', overlay)
+        self.assertNotIn('dagProcessor', overlay)
+        self.assertNotIn('shared-dags', {volume['name'] for volume in overlay['volumes']})
 
     def test_corrupt_chart_is_rejected_without_cluster_access(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -880,6 +902,14 @@ class HelmIntegrationTests(unittest.TestCase):
             self.assertIn('/opt/airflow/bootstrap-user.py', rendered)
             self.assertIn('post-install,post-upgrade', rendered)
             self.assertIn('claimName: airflow-logs', rendered)
+            for workload in ('airflow-scheduler', 'airflow-dag-processor'):
+                component = next(document for document in rendered.split('\n---\n')
+                                 if '\nkind: Deployment\n' in document and f'\n  name: {workload}\n' in document)
+                self.assertIn('claimName: airflow-dags', component)
+                self.assertIn('mountPath: /opt/airflow/dags', component)
+                self.assertIn('readOnly: true', component)
+                self.assertIn('name: check-shared-dags', component)
+                self.assertIn('/opt/airflow/dags/.airflow-dags-initialized', component)
             for key in deploy.SECRET_KEYS:
                 self.assertNotIn(settings()[key], rendered)
 

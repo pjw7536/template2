@@ -11,7 +11,10 @@ SPEC = importlib.util.spec_from_file_location('app_paths', ROOT / 'deploy/shared
 APP_PATHS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(APP_PATHS)
 OLD_PORTAL = re.compile(r'\bapps/' + r'(?:api|web)(?:/|\b)')
-OLD_AIRFLOW = re.compile(r'(?<!apps/)(?<!opt/)(?<!deploy/)(?<!\w)airflow/' + r'(?:dags|plugins|tests|Dockerfile)(?:/|\b)')
+OLD_AIRFLOW = re.compile(
+    r'(?<!apps/)(?<!opt/)(?<!deploy/)(?<!/appdata/)(?<!\w)airflow/'
+    r'(?:dags|plugins|tests|Dockerfile)(?:/|\b)'
+)
 
 
 def check_text(path, content):

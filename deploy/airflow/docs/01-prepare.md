@@ -12,7 +12,7 @@
 
 ### 1. 실행 위치와 도구 확인
 
-**실행 위치:** CP1의 저장소 루트. 이미지 빌드는 `apps/airflow` 소스를 사용합니다.
+**실행 위치:** CP1의 저장소 루트. 이미지 빌드는 CP1이 아닌 `khinfow01`에서 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)로 수행합니다.
 
 가이드의 서버 context는 `kubernetes-admin@kubernetes`입니다. 다른 context를 쓰면 모든 명령의 이름을 해당 값으로 바꿉니다.
 
@@ -48,13 +48,14 @@ Airflow Pod·내부 DB·local PV가 이 노드에 묶이므로 자원·디스크
 ```bash
 sudo install -d -o 999 -g 999 -m 0700 /appdata/airflow/postgres
 sudo install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
-df -h /appdata/airflow/postgres /appdata/airflow/logs
-sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs
+sudo install -d -o root -g root -m 0755 /appdata/airflow/dags
+df -h /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
+sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
 ```
 
-**기대 결과:** 두 경로가 있고 소유자가 `999:999`(DB), `50000:0`(로그)입니다.
+**기대 결과:** 각 경로의 소유자는 DB `999:999`, 로그 `50000:0`, DAG `root:root`입니다. DAG 디렉터리는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)에서 파일을 준비합니다.
 
-- local PV는 폴더를 자동으로 만들지 않고, 20Gi 선언은 실제 사용량을 제한하지 않습니다. 디스크 여유 공간을 따로 감시합니다.
+- local PV는 폴더를 미리 준비해야 합니다. PV에 선언한 용량과 실제 디스크 여유는 별도로 확인합니다.
 - 로그는 자동 삭제하지 않습니다. 보관 정책을 정한 뒤 필요하면 `scheduler.logGroomerSidecar`를 설정합니다.
 - 기존 Compose PostgreSQL 데이터 폴더를 바로 연결하지 않습니다. [기존 DB 이전](04-operations.md#3-기존-compose-db-이전)을 따릅니다.
 - 외부 DB는 미리 생성한 DB·계정으로 Worker에서 접근할 수 있어야 합니다.
@@ -103,6 +104,7 @@ chmod 600 deploy/airflow/env/k8s.env
 | 내부 DB | `POSTGRES_MODE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_DB` | internal, airflow-postgres, 5432, airflow, airflow 유지 |
 | 외부 DB | 위 DB 변수와 `POSTGRES_PASSWORD` | external로 지정하고 미리 준비한 DB 연결값 입력 |
 | 디스크 | `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `POSTGRES_STORAGE_SIZE`, `LOGS_STORAGE_SIZE` | 서로 겹치지 않는 Worker 절대 경로, Gi/Ti 용량 |
+| DAG 공유 | `DAGS_HOST_PATH`, `DAGS_STORAGE_SIZE` | 운영 선언은 `/appdata/airflow/dags`·`1Gi`. 별도 경로를 사용하고 파일과 준비 표식을 먼저 배치합니다. 경로를 비우면 이미지의 DAG를 읽습니다. |
 | DB 권한 | `POSTGRES_IMAGE`, `POSTGRES_UID`, `POSTGRES_GID` | 사내 mirror의 PostgreSQL 16 이미지, Debian 이미지 기본 999/999 |
 | ODBC | `ODBC_HOST_PATH`, `ODBC_SECRET_NAME` | 둘 중 하나만 사용. 현재 `/appdata/airflow/odbc` |
 | 초기 관리자 | `AIRFLOW_ADMIN_USERNAME`, `AIRFLOW_ADMIN_PASSWORD`, `AIRFLOW_ADMIN_EMAIL` | 현재 `airflow`·`admin@admin.com`. 계정이 없을 때만 생성, 기존 계정의 비밀번호는 바꾸지 않음. Keycloak 관리자 `etch-admin`과 구분 |

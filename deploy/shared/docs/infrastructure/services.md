@@ -97,8 +97,10 @@ Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 
 | 사내 이미지 저장소(Zot) | `registry` | `NODE_NAME=khplanew01` (`khinfow01`보다 디스크가 크다는 사용자 확인) | 정적 local PV 100Gi, `/appdata/registry`. `deploy/registry/env/k8s.env`, [registry 안내](../../../registry/README.md) | 배포·노드 HTTP 허용·push/pull 미확인 |
 | FTP | `etch-ftp` | `etch.io/ftp-enabled=true`인 Linux 노드별 DaemonSet | hostPath `/appdata/data_movement`, 없으면 `DirectoryOrCreate`로 생성. 노드 간 자동 복제 없음. `deploy/ftp/k8s/stack.yaml`, [FTP 안내](../../../ftp/README.md) | [FTP 노드별 파일 수신](#ftp-노드별-파일-수신) 참조 |
 
+Airflow DAG 공유 폴더는 기존 Airflow 배치 노드의 `airflow-dags` PVC를 사용하도록 저장소에 선언돼 있습니다. 운영 폴더 준비와 적용은 미확인입니다. [DAG 공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환)
+
 Airflow의 최종 배포 이미지 목표는 사용자 지정 `airflow:3.3.2-release-1`입니다.
-설정 원본은 `deploy/airflow/env/k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`이며, 이 이름으로 CP1 재빌드·`khinfow01` 반입·실제 배포 적용은 미확인입니다.
+설정 원본은 `deploy/airflow/env/k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`이며, 이 이름으로 `khinfow01` 빌드·등록·실제 배포 적용은 미확인입니다.
 
 공용 진입점의 확장과 앱·DB의 복제 여부를 구분합니다. local PV·hostPath는 해당 노드의 데이터이며
 다른 Worker로 옮길 때 별도 이전·복구가 필요합니다. 자원 용량·replica와 실제 여유는 앱 원본·클러스터에서 확인합니다.

@@ -30,6 +30,7 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 | MinIO | `/appdata/minio` | `deploy/minio/env/prod.env`: `MINIO_DATA_HOST_PATH`, `scripts/manage.py` 기본값 |
 | FTP 수신 파일 | `/appdata/data_movement` | `deploy/ftp/k8s/stack.yaml`: `volumes[].hostPath.path` |
 | Airflow DB·로그·ODBC | `/appdata/airflow/postgres`, `/appdata/airflow/logs`, `/appdata/airflow/odbc` | `deploy/airflow/env/k8s.env`: `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `ODBC_HOST_PATH` |
+| Airflow DAG 공유 | `/appdata/airflow/dags` (저장소 선언, 서버 적용 미확인) | `deploy/airflow/env/k8s.env`의 `DAGS_HOST_PATH`, [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) |
 | Monitoring | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·폴더 생성 여부 미확인 |
 | Keycloak DB | `/appdata/keycloak-postgres` | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
 

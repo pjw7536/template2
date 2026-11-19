@@ -35,7 +35,8 @@ OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID
 MAIL_DEFAULTS = {'MAIL_API_URL': '', 'MAIL_API_KEY': '', 'MAIL_API_SYSTEM_ID': 'plane',
                  'MAIL_API_KNOX_ID': '', 'AIRFLOW_FAILURE_ALERT_EMAIL_FROM': '',
                  'AIRFLOW_FAILURE_ALERT_EMAIL_TO': ''}
-ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS)
+DAGS_DEFAULTS = {'DAGS_HOST_PATH': '', 'DAGS_STORAGE_SIZE': '1Gi'}
+ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS) | frozenset(DAGS_DEFAULTS)
 DEFAULT_ENV = BASE / 'env/k8s.env'
 DEFAULT_CONTAINERD_ADDRESS = '/run/containerd/containerd.sock'
 DEFAULT_BUILDKIT_HOST = 'unix:///run/buildkit/buildkitd.sock'
@@ -74,7 +75,7 @@ def validate(values, example=False):
     """서버 경로·버전·URL·비밀값을 검증하고 배포 시 예시값을 거부한다."""
     # 공용 Traefik은 앱별 TLS Secret을 쓰지 않으므로 다른 controller를 쓸 때만 입력한다.
     values.setdefault('INGRESS_TLS_SECRET', '')
-    for key, default in {**DB_DEFAULTS, **MAIL_DEFAULTS}.items():
+    for key, default in {**DB_DEFAULTS, **MAIL_DEFAULTS, **DAGS_DEFAULTS}.items():
         values.setdefault(key, default)
     require(values['POSTGRES_MODE'] in ('internal', 'external'), 'POSTGRES_MODE는 internal 또는 external이어야 합니다.')
     require(re.fullmatch(r'[a-zA-Z0-9.-]+', values['POSTGRES_HOST']), 'POSTGRES_HOST 형식 오류')
@@ -84,7 +85,7 @@ def validate(values, example=False):
     if values['POSTGRES_MODE'] == 'internal':
         require(all(values[key] == default for key, default in DB_DEFAULTS.items()), '내부 PostgreSQL 연결 설정은 기본값을 유지하세요.')
     require(values.keys() == ENV_KEYS, 'k8s.env 설정 키가 계약과 다릅니다. 누락·오타를 확인하세요.')
-    optional = {'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:], *OIDC_KEYS}
+    optional = {'IMAGE_PULL_SECRET', 'DAGS_HOST_PATH', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:], *OIDC_KEYS}
     for key, value in values.items():
         if key not in optional:
             require(bool(value.strip()), f'필수 설정 누락: {key}')
@@ -96,18 +97,18 @@ def validate(values, example=False):
     for key in ('NAMESPACE', 'AIRFLOW_OIDC_CA_CONFIGMAP', 'NODE_NAME', 'IMAGE_PULL_SECRET', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET'):
         require(not values[key] or (len(values[key]) <= 253 and re.fullmatch(r'[a-z0-9]([a-z0-9.-]*[a-z0-9])?', values[key])), f'Kubernetes 이름 형식 오류: {key}')
     require(len(values['NAMESPACE']) <= 40 and '.' not in values['NAMESPACE'], 'NAMESPACE는 40자 이하 DNS label이어야 합니다.')
-    paths = []
-    for key in ('POSTGRES_HOST_PATH', 'LOGS_HOST_PATH'):
+    paths = {}
+    for key in ('POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'DAGS_HOST_PATH', 'ODBC_HOST_PATH'):
+        if not values[key]:
+            continue
         path = Path(values[key])
         require(path.is_absolute() and len(path.parts) >= 4 and '..' not in path.parts, f'명시적인 절대 디렉터리 필요: {key}')
-        paths.append(path)
+        for other_key, other_path in paths.items():
+            require(path != other_path and path not in other_path.parents and other_path not in path.parents,
+                    f'{key}와 {other_key} 경로는 서로 겹치면 안 됩니다.')
+        paths[key] = path
     require(not (values['ODBC_HOST_PATH'] and values['ODBC_SECRET_NAME']), 'ODBC_HOST_PATH와 ODBC_SECRET_NAME은 하나만 지정하세요.')
-    if values['ODBC_HOST_PATH']:
-        odbc = Path(values['ODBC_HOST_PATH'])
-        require(odbc.is_absolute() and len(odbc.parts) >= 4 and '..' not in odbc.parts, 'ODBC_HOST_PATH는 명시적인 절대 디렉터리여야 합니다.')
-        require(all(odbc != path and odbc not in path.parents and path not in odbc.parents for path in paths), 'ODBC와 DB·로그 경로는 서로 겹치면 안 됩니다.')
-    require(paths[0] != paths[1] and paths[0] not in paths[1].parents and paths[1] not in paths[0].parents, 'DB와 로그 경로는 서로 겹치면 안 됩니다.')
-    for key in ('POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE'):
+    for key in ('POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'DAGS_STORAGE_SIZE'):
         require(re.fullmatch(r'[1-9][0-9]*(Gi|Ti)', values[key]), f'Gi 또는 Ti 용량 필요: {key}')
     for key in ('POSTGRES_UID', 'POSTGRES_GID'):
         require(values[key].isdigit() and int(values[key]) > 0, f'양수 UID/GID 필요: {key}')
@@ -224,6 +225,9 @@ def manifests(settings):
         result['postgres']['items'] = []
         result['storage']['items'] = [item for item in result['storage']['items']
                                       if not item['metadata']['name'].endswith('airflow-postgres')]
+    if not settings.get('DAGS_HOST_PATH'):
+        result['storage']['items'] = [item for item in result['storage']['items']
+                                      if not item['metadata']['name'].endswith('airflow-dags')]
     return result
 
 
@@ -254,6 +258,22 @@ def helm_values(settings, pause_new_dags=False):
     if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
         result.setdefault('volumes', []).append({'name': 'oidc-ca', 'configMap': {'name': settings['AIRFLOW_OIDC_CA_CONFIGMAP']}})
         result.setdefault('volumeMounts', []).append({'name': 'oidc-ca', 'mountPath': '/etc/airflow/oidc-ca', 'readOnly': True})
+    if settings.get('DAGS_HOST_PATH'):
+        mount = {'name': 'shared-dags', 'mountPath': '/opt/airflow/dags', 'readOnly': True}
+        result.setdefault('volumes', []).append({'name': 'shared-dags', 'persistentVolumeClaim': {'claimName': 'airflow-dags', 'readOnly': True}})
+        result.setdefault('volumeMounts', []).append(mount)
+        result['config']['core']['dags_folder'] = mount['mountPath']
+        # 준비되지 않은 볼륨이 이미지의 DAG를 가린 상태에서 파싱하거나 실행하지 않습니다.
+        check_dags = {
+            'name': 'check-shared-dags',
+            'image': settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG'],
+            'imagePullPolicy': 'IfNotPresent',
+            'command': ['sh', '-ec', 'test -f /opt/airflow/dags/.airflow-dags-initialized || '
+                        '{ echo "Airflow DAG 공유 폴더를 준비하세요." >&2; exit 1; }'],
+            'volumeMounts': [mount],
+        }
+        for component in ('scheduler', 'dagProcessor'):
+            result[component] = {'extraInitContainers': [check_dags]}
     if settings['INGRESS_ENABLED'] == 'true':
         url = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL'])
         separate_tls = settings['INGRESS_CLASS_NAME'] != 'traefik'

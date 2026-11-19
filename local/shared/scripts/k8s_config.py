@@ -152,7 +152,7 @@ def airflow_settings(creds):
     result.update(NAMESPACE='airflow', NODE_NAME=WORKER, POSTGRES_MODE='external',
                   POSTGRES_HOST='external-postgres', POSTGRES_IMAGE='postgres:16',
                   POSTGRES_HOST_PATH='/data/local-runtime/unused-postgres',
-                  LOGS_HOST_PATH='/data/local-runtime/airflow/logs', ODBC_HOST_PATH='',
+                  LOGS_HOST_PATH='/data/local-runtime/airflow/logs', DAGS_HOST_PATH='', ODBC_HOST_PATH='',
                   AIRFLOW_IMAGE_REPOSITORY='tailwind-airflow', AIRFLOW_IMAGE_TAG='3.3.2-local',
                   AIRFLOW_ADMIN_EMAIL='airflow@localhost.test', INGRESS_ENABLED='true', INGRESS_CLASS_NAME='traefik',
                   AIRFLOW_API_BASE_URL='http://api.tailwind-local.svc.cluster.local:8000',

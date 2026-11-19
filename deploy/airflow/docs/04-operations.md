@@ -89,9 +89,55 @@ DB 비밀번호는 같은 블록에서 프롬프트를 `실제 DB 비밀번호`�
 
 ## 4. DAG·이미지 업데이트
 
-**준비:** DAG 일시정지 → 실행 중 작업 완료 → [DB 백업](#1-db와-설정-백업) → `k8s.env`의 `AIRFLOW_IMAGE_TAG`를 새 고유 태그로 변경.
+### 공유 폴더 전환
 
-**1. 빌드:** 소스와 빌더가 준비된 빌드 호스트에서 실행합니다. containerd worker·namespace·소켓 설정은 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)와 일치시킵니다.
+Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/airflow/dags`에서 읽습니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 일시정지하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
+
+1. CP1에서 현재 DAG Processor의 파일을 백업합니다. 최초 설치라면 새로 빌드한 Airflow 이미지의 `/opt/airflow/dags`를 같은 구조의 tar 파일로 준비합니다.
+
+   ```bash
+   (
+     set -eu
+     umask 077
+     backup_dir="$HOME/airflow-backups"
+     mkdir -p "$backup_dir"
+     archive="$backup_dir/dags-$(date +%Y%m%d-%H%M%S).tar"
+     kubectl --context kubernetes-admin@kubernetes -n airflow \
+       exec deployment/airflow-dag-processor -c dag-processor -- \
+       tar --exclude=__pycache__ -C /opt/airflow/dags -cf - . > "$archive.partial"
+     tar -tf "$archive.partial" >/dev/null
+     mv "$archive.partial" "$archive"
+     printf '%s\n' "$archive"
+   )
+   ```
+
+2. 완료된 tar를 `NODE_NAME` 워커에 반입합니다. 해당 워커에서 tar를 실제 경로로 지정한 뒤 아래를 실행합니다. 대상 디렉터리에 파일이 이미 있으면 우선 보존합니다. 전환과 함께 업데이트할 DAG 파일은 **준비 표식을 만들기 전에** 필요한 버전으로 복사합니다.
+
+   ```bash
+   read -r -p 'DAG 백업 tar 절대 경로: ' AIRFLOW_DAG_ARCHIVE
+   sudo install -d -o root -g root -m 0755 /appdata/airflow/dags
+   sudo tar --extract --skip-old-files --no-same-owner --no-same-permissions \
+     --file "$AIRFLOW_DAG_ARCHIVE" --directory /appdata/airflow/dags
+   ls -la /appdata/airflow/dags
+   ```
+
+3. DAG와 공통 Python 파일을 옮겼고 Airflow가 읽을 수 있는지 확인한 뒤 준비 표식을 만듭니다. `DAGS_HOST_PATH`를 실제 경로로 설정하고 CP1에서 [배포 검사·반영](#검사와-배포)을 진행합니다. 스케줄러와 DAG Processor는 준비 표식이 있는 볼륨에서 시작합니다.
+
+   ```bash
+   sudo install -o root -g root -m 0644 /dev/null /appdata/airflow/dags/.airflow-dags-initialized
+   ```
+
+4. `airflow-dags` PVC가 `Bound`이고 스케줄러·DAG Processor가 `Ready`인지 확인합니다. UI에서 기존 업무 DAG 목록과 import 오류를 확인한 뒤 테스트할 DAG를 활성화합니다. 문제가 있으면 `DAGS_HOST_PATH`를 비우고 이전 이미지 태그로 검사·배포해 이미지 기반으로 복구합니다. 공유 경로의 파일과 PV/PVC는 복구용으로 보관합니다.
+
+### DAG 파일 추가·수정·삭제
+
+워커의 `DAGS_HOST_PATH`에서 파일을 관리합니다. 추가·수정은 같은 디렉터리의 `.tmp` 파일에 복사한 뒤 최종 `.py` 이름으로 이동합니다. 삭제·교체는 DAG를 일시정지하고 실행 중인 작업이 끝난 뒤 합니다. Airflow가 다음 스캔에서 반영하면 UI의 DAG 목록과 import 오류를 확인합니다. 폴더 쓰기 권한은 배포 운영자에게 부여합니다.
+
+### 이미지 업데이트
+
+플러그인, Python 패키지 또는 ODBC를 바꿀 때는 DAG를 일시정지하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다. `k8s.env`의 `AIRFLOW_IMAGE_TAG`를 새 고유 태그로 바꿉니다.
+
+**1. 빌드:** 빌드 host `khinfow01`의 저장소 루트에서 배포할 커밋으로 갱신한 뒤 실행합니다. containerd worker·namespace·소켓 설정은 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)와 일치시킵니다.
 
 ```bash
 sudo python3 deploy/airflow/scripts/manage.py build-image --builder nerdctl --build-env deploy/airflow/env/build.env
@@ -101,7 +147,9 @@ Docker 빌드 호스트는 `--builder docker`를 사용합니다. 다른 env를 
 
 **2. 전달:** [이미지 전달](02-artifacts.md#이미지-전달)로 Worker가 새 이미지를 사용할 수 있게 합니다.
 
-**3. 검사·배포:** 배포 실행 호스트에서 실행합니다.
+### 검사와 배포
+
+배포 실행 호스트에서 실행합니다. 이미지를 변경할 때는 새 태그를 워커에서 사용할 수 있게 한 뒤 진행합니다.
 
 ```bash
 make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
@@ -109,7 +157,7 @@ make airflow-up KUBE_CONTEXT=kubernetes-admin@kubernetes
 kubectl --context kubernetes-admin@kubernetes -n airflow get pods -o wide
 ```
 
-**기대 결과:** 새 이미지의 Pod가 Ready이고 UI에서 DAG 로딩 오류·Portal 연동·기존 Connection을 확인합니다. 기존 DAG의 일시정지 상태는 유지되므로 필요한 DAG를 직접 활성화합니다.
+**기대 결과:** Pod가 Ready이고 UI에서 DAG 로딩 오류·Portal 연동·기존 Connection을 확인할 수 있습니다. 필요한 DAG를 직접 활성화합니다. 공유 폴더의 DAG는 재배포 후에도 같은 볼륨에서 읽습니다.
 
 배포 도구는 Helm의 `--wait`·`--atomic`을 사용하지 않습니다. 공식 chart의 post-install migration hook과 Pod의 migration 대기가 서로 기다리는 상황을 피하고, hook이 끝난 뒤 rollout을 따로 확인합니다.
 실패해도 리소스를 자동 삭제하거나 DB를 되돌리지 않습니다. Helm rollback은 DB schema를 복구하지 않으므로 DB는 해당 버전의 백업으로 복원합니다.
@@ -159,3 +207,56 @@ kubectl --context kubernetes-admin@kubernetes -n airflow logs "job/$AIRFLOW_JOB_
 ```
 
 원인을 고친 뒤 check → up 순서로 재실행합니다. 배포 실패 시 자동 DB rollback은 수행되지 않습니다.
+
+## 6. CPU·메모리 부하 테스트
+
+`scheduler_resource_load_test` DAG의 **Trigger DAG**에서 `target`과 `duration_seconds`를 설정합니다.
+
+| `target` | 부하 대상 | 기본 시간 | 입력 범위 |
+| --- | --- | --- | --- |
+| `scheduler` (기본) | Airflow 스케줄러 컨테이너 | 120초 | 1~900초 |
+| `workers` | `khinfow01`, `khplanew01`의 테스트 Pod | 3,600초 | 10~86,400초 |
+
+워커 모드에서는 각 노드에 Pod를 하나씩 띄워 낮은 우선순위로 PBKDF2 연산을 반복합니다. 메모리는 노드의 `MemAvailable`과 Pod의 cgroup 한도에 따라 조정하며, 4GiB와 전체 메모리의 10% 중 큰 값을 노드 여유로 남깁니다.
+
+### DAG 반영
+
+[공유 폴더 관리](#dag-파일-추가수정삭제)에 따라 `scheduler_resource_load_test.py`를 반영합니다. 이미지 기반 배포에서 한 번만 테스트할 경우 스케줄러와 DAG Processor 양쪽의 `/opt/airflow/dags/`에 임시로 복사할 수 있습니다. Pod가 재생성되면 임시 파일이 사라집니다.
+
+별도 `worker_node_resource_load_test.py`를 이미 추가한 환경은 해당 테스트가 끝난 뒤 운영 DAG 폴더에서 그 파일을 제거합니다.
+
+### 워커 모드 준비와 시작
+
+1. CP1에서 두 노드의 Ready 상태와 `Allocatable`을 확인합니다.
+
+   ```bash
+   kubectl --context kubernetes-admin@kubernetes get nodes khinfow01 khplanew01
+   kubectl --context kubernetes-admin@kubernetes describe nodes khinfow01 khplanew01
+   ```
+
+2. 에어갭 배포라면 스케줄러의 Airflow 이미지 태그를 두 워커 모두의 containerd에 반입합니다. 이미지 pull Secret을 사용하는 환경은 같은 이름의 Secret을 테스트 namespace에도 준비합니다. [이미지 전달](02-artifacts.md#이미지-전달)
+3. CP1에서 테스트 전용 namespace와 권한을 적용합니다. 아래 manifest는 `airflow` namespace의 `airflow-scheduler` 서비스 계정을 사용합니다.
+
+   ```bash
+   kubectl --context kubernetes-admin@kubernetes apply -f deploy/airflow/k8s/node-load-test.yaml
+   ```
+
+4. Airflow UI에서 DAG를 활성화한 다음 **Trigger DAG**의 `target`을 `workers`로 선택합니다. 처음 배치와 지표를 확인할 때는 `duration_seconds`를 60초로 설정할 수 있습니다.
+
+### 확인과 종료
+
+```bash
+kubectl --context kubernetes-admin@kubernetes -n airflow-node-load-test get pods -o wide
+kubectl --context kubernetes-admin@kubernetes top nodes khinfow01 khplanew01
+```
+
+두 Pod가 각각 지정된 노드에서 `Running`이고 Airflow 태스크 로그에 CPU 스레드 수와 메모리 목표가 표시되는지 확인합니다. `kubectl top`은 metrics-server가 구성된 환경에서 사용할 수 있습니다. Pod가 `Pending`이면 테스트 namespace의 events에서 노드 배치와 이미지 pull 오류를 확인합니다.
+
+조기에 중단하려면 DagRun을 실패로 표시합니다. 노드 부하를 즉시 종료해야 할 때는 테스트 라벨의 Pod를 삭제합니다.
+
+```bash
+kubectl --context kubernetes-admin@kubernetes -n airflow-node-load-test \
+  delete pods -l app.kubernetes.io/name=airflow-node-load-test
+```
+
+태스크 종료 시 Airflow가 테스트 Pod를 정리하며 Pod에도 실행 기한이 설정됩니다.
