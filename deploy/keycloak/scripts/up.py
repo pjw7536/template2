@@ -53,7 +53,7 @@ def secret_if_missing(kube, name, values, secret_type='Opaque'):
             'type': secret_type, 'data': encoded}
 
 
-def start(context, env, certs=None, vip_backends=None, check_only=False):
+def start(context, env, certs=None, vip_backends=None, check_only=False, render_output=None):
     """입력을 먼저 검증하고 Keycloak 및 소유 ingress만 재적용한다."""
     if not context.strip():
         raise ValueError('--context를 명시하세요.')
@@ -106,6 +106,10 @@ def start(context, env, certs=None, vip_backends=None, check_only=False):
     pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
     updated = routing.plan_controller(original, current, vip_backends, nodes, pods)
     desired = [updated if item is original else item for item in desired]
+    if render_output:
+        # 배포 상태 대조용: 검사를 모두 통과한 적용 대상만 파일로 남기고 클러스터는 변경하지 않는다.
+        Path(render_output).write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}, indent=2))
+        return
     if check_only:
         print('Keycloak 입력·원본·기존 Secret·worker 검사 통과. 클러스터를 변경하지 않았습니다.')
         return
@@ -135,8 +139,9 @@ def main():
     parser.add_argument('--certs', type=Path, help='명시한 fullchain.crt·private.key를 공용 TLS에 등록하는 호환 입력')
     parser.add_argument('--vip-backends')
     parser.add_argument('--check-only', action='store_true')
+    parser.add_argument('--render-output', type=Path, help='적용 대상 리소스 JSON을 저장하고 클러스터는 변경하지 않음')
     args = parser.parse_args()
-    start(args.context, args.env, args.certs, args.vip_backends, args.check_only)
+    start(args.context, args.env, args.certs, args.vip_backends, args.check_only, args.render_output)
 
 
 if __name__ == '__main__':

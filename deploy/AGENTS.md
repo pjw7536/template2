@@ -31,6 +31,7 @@
 
 ## 검증
 
+- 배포 기록·대조 도구: `python3 -m unittest discover -s deploy/shared/tests -p 'test_deploy_state.py'`. 앱을 추가하면 `apps.json`의 `runtime.namespace`(공유 namespace는 `selector`)를 함께 정한다.
 - 배포 정의: 루트 `make server-check APP=<app> PROFILE=prod`. 실제 입력·클러스터 조회·적용·접속은 별도로 보고한다.
 - 문서: 상대 링크·앵커, `git diff --check`, `make audit-docs`. 이동 시 삭제 경로·앵커 참조와 정보 보존을 확인한다.
 - 공통 경로·도구 변경과 문서 이동: 전체 개발 checkout에서 `node --test apps/tooling/tests/server-checkout.test.cjs`로 서버 독립 실행을 확인한다.

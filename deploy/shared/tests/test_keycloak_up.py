@@ -23,6 +23,15 @@ class KeycloakTests(unittest.TestCase):
             keycloak.main()
         self.assertIsNone(start.call_args.args[2])
 
+    def test_render_output_writes_desired_without_mutation(self):
+        self.existing()
+        output = Path(self.directory.name) / 'desired.json'
+        keycloak.start('test-context', Path('/env'), render_output=output)
+        self.assertEqual(self.mutations(), [])
+        kinds = [item['kind'] for item in json.loads(output.read_text())['items']]
+        self.assertNotIn('Namespace', kinds)
+        self.assertIn('Ingress', kinds)
+
     def test_registered_certificate_needs_no_local_pem_or_rotation(self):
         self.existing()
         keycloak.start('test-context', Path('/env'), certs=None)

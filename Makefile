@@ -184,12 +184,28 @@ env-profile-key-check:
 server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
 
+# 배포 직후 적용 commit·입력 파일 SHA-256·워크로드를 앱 namespace의 ConfigMap에 기록합니다.
+# 각 *-up 타깃은 성공 후 자동으로 기록하며, 직접 실행한 배포 명령 뒤에는 이 타깃을 실행합니다.
+deploy_record = python3 deploy/shared/scripts/deploy_state.py record $(1) --context "$(KUBE_CONTEXT)" $(foreach f,$(2),--input "$(f)")
+.PHONY: deploy-record drift-check
+deploy-record:
+	$(call deploy_record,$(APP),$(RECORD_INPUTS))
+
+# 현재 checkout의 배포 정의와 클러스터 상태를 조회 전용으로 대조합니다. APP 생략 시 all, 종료 코드 0 일치·1 불일치·2 판정 불가.
+# 렌더에는 *-up과 같은 env 변수를 사용합니다. DRIFT_SKIP_MANIFEST=1이면 리소스 비교 없이 기록·상태만 봅니다.
+drift-check:
+	python3 deploy/shared/scripts/deploy_state.py check "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
+	  --env keycloak="$(KEYCLOAK_ENV)" --env minio="$(MINIO_ENV)" --env registry="$(REGISTRY_ENV)" --env airflow="$(AIRFLOW_ENV)" \
+	  --env monitoring="$(MONITORING_ENV)" --env headlamp="$(HEADLAMP_ENV)" --env ftp="$(FTP_ENV)" --vip-backends "$(VIP_BACKENDS)" \
+	  $(if $(filter 1,$(DRIFT_SKIP_MANIFEST)),--skip-manifest) $(if $(filter 1,$(DRIFT_JSON)),--json)
+
 .PHONY: minio-check minio-up minio-render
 minio-check:
 	python3 deploy/minio/scripts/manage.py check --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
 
 minio-up:
 	python3 deploy/minio/scripts/manage.py up --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
+	$(call deploy_record,minio,$(MINIO_ENV))
 
 minio-render:
 	python3 deploy/minio/scripts/manage.py render --env "$(MINIO_ENV)"
@@ -201,6 +217,7 @@ registry-check:
 
 registry-up:
 	python3 deploy/registry/scripts/manage.py up --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)"
+	$(call deploy_record,registry,$(REGISTRY_ENV))
 
 registry-render:
 	python3 deploy/registry/scripts/manage.py render --env "$(REGISTRY_ENV)"
@@ -248,6 +265,7 @@ keycloak-check:
 
 keycloak-up:
 	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)"
+	$(call deploy_record,keycloak,$(KEYCLOAK_ENV))
 
 # FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다.
 export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE FTP_ENV
@@ -257,6 +275,7 @@ ftp-check:
 
 ftp-up:
 	python3 ./deploy/ftp/scripts/up.py
+	$(call deploy_record,ftp,$(FTP_ENV))
 
 ftp-test:
 	python3 -m unittest discover -s deploy/shared/tests -p 'test_ftp_up.py'
@@ -266,6 +285,7 @@ airflow-check:
 
 airflow-up:
 	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)"
+	$(call deploy_record,airflow,$(AIRFLOW_ENV))
 
 # Kubernetes 클러스터 모니터링을 독립적으로 검사·배포합니다.
 MONITORING_ENV ?= $(CURDIR)/deploy/monitoring/env/k8s.env
@@ -275,6 +295,7 @@ monitoring-check:
 
 monitoring-up:
 	python3 ./deploy/monitoring/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(MONITORING_ENV)"
+	$(call deploy_record,monitoring,$(MONITORING_ENV))
 
 # 로컬 보조 Compose와 CI 검사의 실행 진입점입니다.
 .PHONY: compose-check build-ci-api test-ci-api check-ci-api makemigrations-ci-check
@@ -347,6 +368,7 @@ headlamp-check:
 	python3 ./deploy/headlamp/scripts/manage.py check --env "$(HEADLAMP_ENV)"
 headlamp-up:
 	python3 ./deploy/headlamp/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)"
+	$(call deploy_record,headlamp,$(HEADLAMP_ENV))
 headlamp-ui:
 	python3 ./deploy/headlamp/scripts/manage.py ui --context "$(KUBE_CONTEXT)"
 

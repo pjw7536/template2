@@ -70,6 +70,14 @@ class FtpTests(unittest.TestCase):
         return [(args, kw) for args, kw in self.calls
                 if '--dry-run=client' not in args and any(verb in args for verb in ('apply', 'create', 'label', 'delete'))]
 
+    def test_render_writes_desired_without_nodes_or_mutation(self):
+        output = Path(self.directory.name) / 'desired.json'
+        ftp.render('test-context', output, env_file=self.env)
+        self.assertEqual(self.writes(), [])
+        items = json.loads(output.read_text())['items']
+        self.assertEqual([item['kind'] for item in items], ['DaemonSet'])
+        self.assertEqual(items[0]['spec']['template']['spec']['containers'][0]['image'], self.image)
+
     def test_check_only_never_mutates_cluster(self):
         self.start(check_only=True)
         self.assertEqual(self.writes(), [])

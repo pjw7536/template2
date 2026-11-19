@@ -29,6 +29,7 @@
 | 저장소 clone·Git 갱신 | [서버 파일 받기](operations/01-checkout.md) |
 | 공통 준비·앱 의존 관계·접속 검증 | [배포 준비와 검증](operations/02-deploy.md) |
 | 갱신·장애·백업 | [운영과 문제 해결](operations/03-operations.md) |
+| checkout과 실제 배포 상태 대조·배포 기록 | [배포 상태 대조](operations/04-drift.md) |
 | env·Secret 작성·검사·등록 | [앱별 환경설정](configuration/environment.md) |
 
 실행 원본은 `deploy/shared/ingress`, 인증서 파일은 `deploy/shared/certs`, 앱 설정은 각 앱의 manifest·env·Helm values가 소유합니다.

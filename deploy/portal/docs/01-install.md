@@ -305,6 +305,7 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/web --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/edge-nginx --timeout=10m
 kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get pods,pvc,ingress
+make deploy-record APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 **실패 확인:** PVC가 Pending이면 StorageClass/PV·노드 affinity를 먼저 확인합니다. rollout이 끝나지 않으면 `get events`와 Pod 로그를 확인합니다.

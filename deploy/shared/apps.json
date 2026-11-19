@@ -3,46 +3,71 @@
     "keycloak": {
       "sourcePaths": [],
       "deployPath": "deploy/keycloak",
-      "localPath": "local/keycloak"
+      "localPath": "local/keycloak",
+      "runtime": {
+        "namespace": "etch-sso",
+        "selector": "app.kubernetes.io/name in (keycloak,keycloak-postgres)"
+      }
     },
     "portal": {
       "sourcePaths": [
         "apps/portal"
       ],
       "deployPath": "deploy/portal",
-      "localPath": "local/portal"
+      "localPath": "local/portal",
+      "runtime": {
+        "namespace": "tailwind-internal"
+      }
     },
     "airflow": {
       "sourcePaths": [
         "apps/airflow"
       ],
       "deployPath": "deploy/airflow",
-      "localPath": "local/airflow"
+      "localPath": "local/airflow",
+      "runtime": {
+        "namespace": "airflow"
+      }
     },
     "ftp": {
       "sourcePaths": [],
       "deployPath": "deploy/ftp",
-      "localPath": "local/ftp"
+      "localPath": "local/ftp",
+      "runtime": {
+        "namespace": "etch-ftp"
+      }
     },
     "monitoring": {
       "sourcePaths": [],
       "deployPath": "deploy/monitoring",
-      "localPath": "local/monitoring"
+      "localPath": "local/monitoring",
+      "runtime": {
+        "namespace": "monitoring"
+      }
     },
     "headlamp": {
       "sourcePaths": [],
       "deployPath": "deploy/headlamp",
-      "localPath": "local/headlamp"
+      "localPath": "local/headlamp",
+      "runtime": {
+        "namespace": "headlamp"
+      }
     },
     "minio": {
       "sourcePaths": [],
       "deployPath": "deploy/minio",
-      "localPath": "local/minio"
+      "localPath": "local/minio",
+      "runtime": {
+        "namespace": "minio"
+      }
     },
     "registry": {
       "sourcePaths": [],
       "deployPath": "deploy/registry",
-      "localPath": null
+      "localPath": null,
+      "runtime": {
+        "namespace": "registry"
+      }
     }
   },
   "groups": {

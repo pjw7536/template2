@@ -108,6 +108,32 @@ def check_nodes(nodes, names, *, allow_control_plane=True):
         print(f'대상: {name} / {addresses[0]}:6380 / /appdata/data_movement')
 
 
+def desired_source(kube, values):
+    """원본 스택에 env의 이미지·control plane 허용·pull Secret을 반영한 적용 대상을 만든다. 조회만 한다."""
+    source = runtime.render_json(run, kube, BASE / 'k8s')
+    daemonset = next(item for item in source if item['kind'] == 'DaemonSet' and item['metadata']['name'] == 'ftp')
+    pod = daemonset['spec']['template']['spec']
+    if values['FTP_ALLOW_CONTROL_PLANE'] == 'true':
+        pod.setdefault('tolerations', []).extend(
+            {'key': key, 'operator': 'Exists', 'effect': 'NoSchedule'} for key in CONTROL_PLANE_ROLES)
+    container = next(item for item in pod['containers'] if item['name'] == 'ftp')
+    container['image'] = values['FTP_IMAGE']
+    if values['IMAGE_PULL_SECRET']:
+        run([*kube, '-n', NAMESPACE, 'get', 'secret', values['IMAGE_PULL_SECRET'], '-o', 'name'], sensitive=True)
+        pod['imagePullSecrets'] = [{'name': values['IMAGE_PULL_SECRET']}]
+    return source
+
+
+def render(context, output, *, env_file=None):
+    """배포 상태 대조용: 적용 대상(Namespace 제외)을 파일로 남기고 노드·계정·클러스터는 변경하지 않는다."""
+    if not context.strip():
+        raise ValueError('KUBE_CONTEXT를 명시하세요.')
+    values = settings(env_file or BASE / 'env/prod.env')
+    source = desired_source(['kubectl', '--context', context], values)
+    Path(output).write_text(json.dumps(
+        {'apiVersion': 'v1', 'kind': 'List', 'items': [item for item in source if item['kind'] != 'Namespace']}, indent=2))
+
+
 def start(context, nodes, credential_file, check_only=False, *, env_file=None):
     """모든 입력을 검사한 뒤 기존 계정을 보존하면서 원본 스택을 적용한다."""
     if not context.strip() or not nodes.strip() or not credential_file:
@@ -118,18 +144,8 @@ def start(context, nodes, credential_file, check_only=False, *, env_file=None):
     credentials = read_credentials(Path(credential_file))
     values = settings(env_file or BASE / 'env/prod.env')
     kube = ['kubectl', '--context', context]
-    source = runtime.render_json(run, kube, BASE / 'k8s')
-    daemonset = next(item for item in source if item['kind'] == 'DaemonSet' and item['metadata']['name'] == 'ftp')
-    pod = daemonset['spec']['template']['spec']
+    source = desired_source(kube, values)
     allow_control_plane = values['FTP_ALLOW_CONTROL_PLANE'] == 'true'
-    if allow_control_plane:
-        pod.setdefault('tolerations', []).extend(
-            {'key': key, 'operator': 'Exists', 'effect': 'NoSchedule'} for key in CONTROL_PLANE_ROLES)
-    container = next(item for item in pod['containers'] if item['name'] == 'ftp')
-    container['image'] = values['FTP_IMAGE']
-    if values['IMAGE_PULL_SECRET']:
-        run([*kube, '-n', NAMESPACE, 'get', 'secret', values['IMAGE_PULL_SECRET'], '-o', 'name'], sensitive=True)
-        pod['imagePullSecrets'] = [{'name': values['IMAGE_PULL_SECRET']}]
     all_nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
     check_nodes(all_nodes, names, allow_control_plane=allow_control_plane)
     current = run([*kube, '-n', NAMESPACE, 'get', 'secret', 'ftp-credentials',
@@ -172,7 +188,11 @@ def main():
     parser.add_argument('--credentials', default=os.environ.get('FTP_CREDENTIAL_FILE', ''))
     parser.add_argument('--env', default=os.environ.get('FTP_ENV') or str(BASE / 'env/prod.env'))
     parser.add_argument('--check-only', action='store_true')
+    parser.add_argument('--render-output', help='적용 대상 리소스 JSON을 저장하고 클러스터는 변경하지 않음. 노드·계정 입력 불필요')
     args = parser.parse_args()
+    if args.render_output:
+        render(args.context, args.render_output, env_file=args.env)
+        return
     start(args.context, args.nodes, args.credentials, args.check_only, env_file=args.env)
 
 
