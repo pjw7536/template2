@@ -29,7 +29,7 @@ def write_env(values):
 
 
 class RegistryTests(unittest.TestCase):
-    def test_render_pins_node_storage_and_http_ingress(self):
+    def test_render_pins_node_storage_and_https_ingress(self):
         values = settings(IMAGE_PULL_SECRET='mirror-login')
         items = manage.manifests(values)
         kinds = {item['kind']: item for item in items}
@@ -40,9 +40,11 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(pod['imagePullSecrets'], [{'name': 'mirror-login'}])
         self.assertEqual(pod['containers'][0]['image'], values['REGISTRY_IMAGE'])
         ingress = kinds['Ingress']
-        self.assertEqual(ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.entrypoints'], 'web')
+        annotations = ingress['metadata']['annotations']
+        self.assertEqual(annotations['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure')
+        self.assertEqual(annotations['traefik.ingress.kubernetes.io/router.tls'], 'true')
         self.assertNotIn('tls', ingress['spec'])
-        self.assertEqual(ingress['spec']['rules'][0]['host'], 'registry.etch.samsungds.net')
+        self.assertEqual(ingress['spec']['rules'][0]['host'], 'store.etch.samsungds.net')
         self.assertTrue(all(item['metadata'].get('namespace') == 'registry'
                             for item in items if item['kind'] != 'PersistentVolume'))
         self.assertNotIn('__', json.dumps(items))
@@ -57,8 +59,8 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(config['storage']['rootDirectory'], '/var/lib/registry')
 
     def test_settings_reject_invalid_inputs(self):
-        for key, value in (('REGISTRY_HOST', 'http://registry.etch.samsungds.net'),
-                           ('REGISTRY_HOST', 'registry.etch.samsungds.net:5000'),
+        for key, value in (('REGISTRY_HOST', 'https://store.etch.samsungds.net'),
+                           ('REGISTRY_HOST', 'store.etch.samsungds.net:5000'),
                            ('REGISTRY_IMAGE', 'mirror.test/zot:latest'),
                            ('REGISTRY_IMAGE', 'mirror.test/zot'),
                            ('DATA_HOST_PATH', 'relative/registry'),
@@ -79,6 +81,19 @@ class RegistryTests(unittest.TestCase):
             manage.volume_plan(['kubectl'], moved)
         with patch.object(manage, 'run', return_value=''):
             self.assertEqual(manage.volume_plan(['kubectl'], values)['metadata']['name'], 'registry-data')
+
+    def test_cluster_operations_stop_before_writes_without_registry_tls(self):
+        values = settings(REGISTRY_HOST='zot.example.test')
+        for check_only in (True, False):
+            with self.subTest(check_only=check_only), \
+                    patch.object(manage, 'check_node'), patch.object(manage, 'volume_plan'), \
+                    patch.object(manage, 'run', return_value='{}') as run, \
+                    patch.object(manage.tls, 'check', side_effect=ValueError('공용 TLS 인증서가 없습니다.')) as check_tls:
+                with self.assertRaisesRegex(ValueError, '공용 TLS 인증서가 없습니다'):
+                    manage.deploy(values, 'prod', check_only=check_only)
+                kube = ['kubectl', '--context', 'prod']
+                check_tls.assert_called_once_with(kube, 'zot.example.test', {})
+                run.assert_called_once_with([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json'])
 
 
 if __name__ == '__main__':

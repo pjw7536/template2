@@ -151,8 +151,8 @@ spec:
             - --api.dashboard=false
             - --accesslog=true
             - --log.level=INFO
-            # HTTP entrypoint는 사내 registry의 큰 이미지 레이어 업로드를 받습니다.
-            - --entrypoints.web.transport.respondingTimeouts.readTimeout=600s
+            # HTTPS entrypoint에서 사내 이미지 저장소의 큰 레이어 업로드를 받습니다.
+            - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
           volumeMounts:
             - name: middlewares
               mountPath: /etc/traefik/dynamic

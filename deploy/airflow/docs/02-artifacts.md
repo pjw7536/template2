@@ -237,20 +237,18 @@ registry가 있으면 push하고, 없으면 `.tar`로 저장해 Worker에 반입
 빌드 호스트와 Worker가 접근할 수 있고 업로드 권한이 있는 registry를 사용합니다. `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`에 registry 주소를 포함하고 같은 이름으로 빌드합니다.
 private registry 인증이 필요하면 대상 namespace에 imagePullSecret을 만들고 `IMAGE_PULL_SECRET`에 이름을 입력합니다.
 
-사내 이미지 저장소를 사용하면 `AIRFLOW_IMAGE_REPOSITORY=registry.etch.samsungds.net/airflow`로 지정합니다. 익명 pull이므로 `IMAGE_PULL_SECRET`은 필요하지 않습니다.
-HTTP registry이므로 push에 `--insecure-registry`를 추가하고, 빌드 호스트와 Worker의 HTTP 허용·로그인은 [registry 설치](../../registry/docs/01-install.md#7-노드와-빌드-host의-http-허용)를 따릅니다.
+사내 이미지 저장소를 사용하면 `AIRFLOW_IMAGE_REPOSITORY=store.etch.samsungds.net/airflow`로 지정합니다. 익명 pull이므로 `IMAGE_PULL_SECRET`은 비워 둡니다.
+빌드 호스트와 Worker의 HTTPS 인증서 신뢰 설정은 [registry 설치](../../registry/docs/01-install.md#7-노드와-빌드-호스트의-ca-신뢰)를 따릅니다.
 
 **실행 위치:** `khinfow01`. env를 source하지 않고 이미지 이름을 직접 입력합니다.
 
 ```bash
 read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default image inspect "$AIRFLOW_IMAGE_REF"
-# 사내 이미지 저장소(HTTP)는 처음 한 번 push 계정으로 로그인합니다.
-sudo nerdctl --address /run/containerd/containerd.sock --namespace default --insecure-registry login registry.etch.samsungds.net
-sudo nerdctl --address /run/containerd/containerd.sock --namespace default --insecure-registry push "$AIRFLOW_IMAGE_REF"
+# 사내 이미지 저장소의 push 계정으로 로그인합니다.
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default login store.etch.samsungds.net
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default push "$AIRFLOW_IMAGE_REF"
 ```
-
-HTTPS·인증 registry를 쓰면 `--insecure-registry`를 빼고 해당 registry에 로그인합니다.
 
 **기대 결과:** registry에 태그가 있고 선택한 Worker가 인증·CA·네트워크 설정으로 내려받을 수 있습니다.
 

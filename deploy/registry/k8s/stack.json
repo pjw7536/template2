@@ -193,7 +193,8 @@
           "app.kubernetes.io/name": "registry"
         },
         "annotations": {
-          "traefik.ingress.kubernetes.io/router.entrypoints": "web"
+          "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+          "traefik.ingress.kubernetes.io/router.tls": "true"
         }
       },
       "spec": {

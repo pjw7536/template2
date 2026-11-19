@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 사내 Git 서버·프로젝트 clone URL | GitHub Enterprise `https://github.samsungds.net` (사용자 확인). CI는 self-hosted runner만 제공(사용자 확인). 컨테이너 이미지 저장소(GitHub Packages)는 없는 것으로 보임(사용자 추정) | 프로젝트 경로·배포 브랜치·runner 설치 호스트·GitHub Packages 미제공 확정 필요 |
 | 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | 아래 [서버가 받는 이미지](#서버가-받는-이미지)의 선언. 외부 이미지 미러 전용이며 사내 빌드 이미지 push 저장소는 없음 |
-| 사내 빌드 이미지 저장소 | `registry.etch.samsungds.net/<이름>:<tag>` (HTTP) | 저장소 선언: [registry 안내](../../../registry/README.md). 배포·서버 적용 미확인 |
+| 사내 빌드 이미지 저장소 | `store.etch.samsungds.net/<이름>:<tag>` (HTTPS) | 저장소 선언: [registry 안내](../../../registry/README.md). 배포·서버 적용 미확인 |
 | Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Traefik·Keycloak DB·Airflow·MinIO·FTP·Monitoring·Portal edge-nginx 선언. 공식 이미지의 `library/` 접두사는 선언마다 다름(postgres·traefik·nginx는 생략, Monitoring busybox는 포함). 두 형식의 실제 pull 확인 필요 |
 | Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
 | GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
@@ -34,7 +34,7 @@
 | Keycloak DB | `repository.samsungds.net/proxy-docker-registry-1.docker.io/postgres:16` | `deploy/keycloak/k8s/kustomization.yaml`: `images` | 없음 |
 | Airflow DB | `repository.samsungds.net/proxy-docker-registry-1.docker.io/postgres:16` | `deploy/airflow/env/k8s.env`: `POSTGRES_IMAGE` | 없음 |
 | Airflow 빌드 기반(빌드 host `khinfow01`) | `repository.samsungds.net/proxy-docker-registry-1.docker.io/apache/airflow:3.3.2-python3.12` | `deploy/airflow/env/build.env`: `AIRFLOW_BASE_IMAGE` | 빌드 시에만 사용 |
-| Airflow 실행 | `airflow:3.3.2-release-1`(registry 없음) | `deploy/airflow/env/k8s.env`: `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG` | `khinfow01` 빌드 후 [이미지 전달](../../../airflow/docs/02-artifacts.md#이미지-전달). 사내 이미지 저장소(`registry.etch.samsungds.net/airflow`) 전환은 registry 운영 확인 후 |
+| Airflow 실행 | `airflow:3.3.2-release-1`(registry 없음) | `deploy/airflow/env/k8s.env`: `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG` | `khinfow01` 빌드 후 [이미지 전달](../../../airflow/docs/02-artifacts.md#이미지-전달). 사내 이미지 저장소(`store.etch.samsungds.net/airflow`) 전환은 registry 운영 확인 후 |
 | MinIO | `repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5` | `deploy/minio/env/prod.env`: `MINIO_IMAGE` | `deploy/minio/k8s/kustomization.yaml`의 렌더 검사용 사본과 함께 수정 |
 | MinIO 초기화·폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/bitnamilegacy/minio-client:2025.7.21-debian-12-r3` | `deploy/minio/env/prod.env`: `MINIO_CLIENT_IMAGE` | 위와 같음 |
 | FTP | `repository.samsungds.net/proxy-docker-registry-1.docker.io/fauria/vsftpd@sha256:6d71d7c7f1b0ab2844ec7dc7999a30aef6d758b6d8179cf5967513f87c79c177` | `deploy/ftp/env/prod.env`: `FTP_IMAGE` | 미러의 digest 제공 여부 |
@@ -43,7 +43,7 @@
 | Monitoring 폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/library/busybox:1.37.0` | `deploy/monitoring/scripts/manage.py`의 준비 Job | 없음 |
 | 사내 이미지 저장소(Zot) | `repository.samsungds.net/proxy-docker-ghcr.io/project-zot/zot-linux-amd64:v2.1.20` | `deploy/registry/env/k8s.env`: `REGISTRY_IMAGE` | 없음 |
 | metrics-server | `repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0` | `deploy/shared/metrics-server/components.yaml` | 없음 |
-| Portal API·Web·migrate | 사내 빌드 registry의 `registry.etch.samsungds.net/tailwind/api`·`tailwind/web` (저장소 선언) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | 실제 API·Web 이미지 빌드·push, 고유 배포 tag 반영 필요 |
+| Portal API·Web·migrate | 사내 빌드 registry의 `store.etch.samsungds.net/tailwind/api`·`tailwind/web` (저장소 선언) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | 실제 API·Web 이미지 빌드·push, 고유 배포 tag 반영 필요 |
 | Portal edge-nginx | `repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx:1.27-alpine` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`: `images`(base `nginx:1.27-alpine`의 이름만 변경) | 없음 |
 
 ### 패키지·chart·artifact 주소

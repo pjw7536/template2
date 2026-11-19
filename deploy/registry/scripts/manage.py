@@ -17,6 +17,7 @@ spec.loader.exec_module(RUNTIME)
 spec = importlib.util.spec_from_file_location('registry_routing', BASE.parent / 'shared/ingress/routing.py')
 routing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(routing)
+tls = RUNTIME.module('shared_tls', BASE.parent / 'shared/ingress/tls.py')
 
 NAMESPACE = 'registry'
 VOLUME = 'registry-data'
@@ -134,9 +135,10 @@ def volume_plan(kube, values):
     return None
 
 
-def routing_plan(kube):
-    """기존 controller 감시 범위를 보존하며 registry namespace 연결 변경을 계산한다."""
+def routing_plan(kube, host):
+    """공용 TLS와 기존 controller 감시 범위를 확인해 연결 변경을 계산한다."""
     current = json.loads(run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json']))
+    tls.check(kube, host, current)
     return routing.namespace_access(NAMESPACE, current), routing.namespace_patch(current, NAMESPACE)
 
 
@@ -156,7 +158,7 @@ def deploy(values, context, check_only=False):
     kube = ['kubectl', '--context', context]
     check_node(kube, values['NODE_NAME'])
     pending = volume_plan(kube, values)
-    access, changes = routing_plan(kube)
+    access, changes = routing_plan(kube, values['REGISTRY_HOST'])
     namespace_exists = run([*kube, 'get', 'namespace', NAMESPACE, '--ignore-not-found', '-o', 'name']).strip()
     secret_names = [AUTH_SECRET, *([values['IMAGE_PULL_SECRET']] if values['IMAGE_PULL_SECRET'] else [])]
     if namespace_exists:
@@ -186,7 +188,7 @@ def deploy(values, context, check_only=False):
     run([*kube, '-n', NAMESPACE, 'rollout', 'status', 'deployment/registry', '--timeout=300s'])
     connect(kube, access, changes)
     apply(kube, [item for item in items if item['kind'] == 'Ingress'])
-    print(f'registry 배포 완료: http://{values["REGISTRY_HOST"]}/v2/')
+    print(f'registry 배포 완료: https://{values["REGISTRY_HOST"]}/v2/')
 
 
 def main():

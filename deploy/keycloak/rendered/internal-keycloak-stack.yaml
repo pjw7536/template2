@@ -1246,7 +1246,7 @@ spec:
         - --api.dashboard=false
         - --accesslog=true
         - --log.level=INFO
-        - --entrypoints.web.transport.respondingTimeouts.readTimeout=600s
+        - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
         image: repository.samsungds.net/proxy-docker-registry-1.docker.io/traefik:v3.7.1
         imagePullPolicy: IfNotPresent
         livenessProbe:

@@ -38,6 +38,7 @@
 | airflow | airflow-ingress | airflow.etch.samsungds.net/ |
 | headlamp | headlamp | headlamp.etch.samsungds.net/ |
 | monitoring | Grafana, Prometheus, Alertmanager | grafana.etch.samsungds.net/, prometheus.etch.samsungds.net/, alert.etch.samsungds.net/ |
+| registry | registry | store.etch.samsungds.net/ |
 
 위 표는 저장소 Ingress 선언입니다. 실제 DNS·인증서 적용 상태는 [서비스 원본](../infrastructure/services.md)을 따릅니다.
 

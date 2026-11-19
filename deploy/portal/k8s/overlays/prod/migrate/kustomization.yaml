@@ -5,5 +5,5 @@ resources:
   - ../../../jobs/migrate
 images:
   - name: portal-api
-    newName: registry.etch.samsungds.net/tailwind/api
+    newName: store.etch.samsungds.net/tailwind/api
     newTag: replace-me
