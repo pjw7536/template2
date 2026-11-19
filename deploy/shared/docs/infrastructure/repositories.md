@@ -43,7 +43,7 @@
 | Monitoring 폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/library/busybox:1.37.0` | `deploy/monitoring/scripts/manage.py`의 준비 Job | 없음 |
 | 사내 이미지 저장소(Zot) | `repository.samsungds.net/proxy-docker-ghcr.io/project-zot/zot-linux-amd64:v2.1.20` | `deploy/registry/env/k8s.env`: `REGISTRY_IMAGE` | 없음 |
 | metrics-server | `repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0` | `deploy/shared/metrics-server/components.yaml` | 없음 |
-| Portal API·Web·migrate | 미확정(`registry.internal.example.invalid/tailwind/api`·`web`, tag `replace-me`) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | Portal 이미지 registry·빌드·tag 결정 필요 |
+| Portal API·Web·migrate | 사내 빌드 registry의 `registry.etch.samsungds.net/tailwind/api`·`tailwind/web` (저장소 선언) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | 실제 API·Web 이미지 빌드·push, 고유 배포 tag 반영 필요 |
 | Portal edge-nginx | `repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx:1.27-alpine` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`: `images`(base `nginx:1.27-alpine`의 이름만 변경) | 없음 |
 
 ### 패키지·chart·artifact 주소

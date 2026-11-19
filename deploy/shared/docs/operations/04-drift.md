@@ -53,7 +53,9 @@ make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes DRIFT_JSON=1          
 make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes DRIFT_SKIP_MANIFEST=1           # 리소스 비교 생략
 ```
 
-| 종료 코드 | 의미 |
+JSON의 `resultCode`와 Python 직접 실행의 종료 코드는 다음과 같습니다. 앱별 근거는 `apps[].findings`에 있습니다. Make는 하위 명령의 1과 2를 모두 실패로 반환하므로 자동화는 checkout 루트에서 stdout의 JSON을 읽습니다. 다른 디렉터리에서 `make -C`로 호출하면 `--no-print-directory`를 함께 지정합니다. JSON이 없거나 해석할 수 없으면 조회 실패로 처리합니다.
+
+| 판정 코드 | 의미 |
 | --- | --- |
 | `0` | 모든 대상이 현재 코드와 일치하고 Ready |
 | `1` | `DRIFT` 또는 `WARN`이 하나 이상 있음 |
@@ -68,7 +70,7 @@ make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes DRIFT_SKIP_MANIFEST=1 
 관리 호스트 `khplanew01`(10.172.40.117)에서 배포·대조를 모두 실행합니다. 처음 한 번 준비합니다.
 
 1. **kubeconfig:** CP1의 `/etc/kubernetes/admin.conf`(또는 CP1 배포 계정의 `~/.kube/config`)를 승인된 수단으로 관리 호스트 배포 계정의 `~/.kube/config`(권한 `0600`)에 둡니다. `super-admin.conf`는 쓰지 않습니다. context는 `kubernetes-admin@kubernetes`입니다.
-2. **저장소:** 사내 GitHub에서 clone하고 `git sparse-checkout set --no-cone '/*' '!/.claude/' '!/.codex/'`로 개발 agent 폴더를 제외합니다. 갱신은 사용자가 합니다.
+2. **저장소:** 사람이 [ops 전용 checkout](01-checkout.md#ops-전용-checkout)을 준비·갱신하고 그 루트에서 운영 세션을 엽니다.
 3. **도구:** `kubectl`, `python3`, 각 chart lock의 버전 이상인 `helm`. kubeconfig의 API server 주소 6443 포트에 접근할 수 있어야 합니다. 설치 기준은 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--관리-호스트)입니다.
 4. **chart:** Git에서 제외된 `deploy/<app>/helm/vendor/*.tgz`를 준비합니다. 사내 미러에 접근되면 `python3 deploy/airflow/scripts/manage.py fetch-chart`, `python3 deploy/monitoring/scripts/manage.py fetch-chart`, `make headlamp-fetch-chart`, 아니면 기존 위치의 같은 파일을 복사합니다.
 5. **env·인증서:** 배포에 쓰는 외부 env와 인증서 원본을 권한 `0600`으로 두고 경로를 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 기록합니다.

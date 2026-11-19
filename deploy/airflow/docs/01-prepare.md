@@ -54,6 +54,7 @@ sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appd
 ```
 
 **기대 결과:** 각 경로의 소유자는 DB `999:999`, 로그 `50000:0`, DAG `root:root`입니다. DAG 디렉터리는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)에서 파일을 준비합니다.
+ODBC 폴더 `/appdata/airflow/odbc`(`50000:0`, `0750`)는 실제 설정 파일과 함께 [ODBC 파일 안내](../odbc/README.md#worker에-반영)로 만듭니다.
 
 - local PV는 폴더를 미리 준비해야 합니다. PV에 선언한 용량과 실제 디스크 여유는 별도로 확인합니다.
 - 로그는 자동 삭제하지 않습니다. 보관 정책을 정한 뒤 필요하면 `scheduler.logGroomerSidecar`를 설정합니다.
@@ -80,7 +81,9 @@ sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appd
 
 ### 2. 최초 설치의 키 생성
 
-**새 DB를 사용하는 최초 설치이며 비밀값이 모두 비어 있을 때만** 실행합니다. 기존 배포의 env가 있으면 건너뛰고 기존 값을 유지합니다.
+저장소 기본 env에는 신규 설치에 쓸 관리자 비밀번호와 OIDC client secret이 준비되어 있습니다. 기본 env로 설치할 때는 이 생성 단계를 건너뜁니다.
+
+**별도로 준비한 env에서 새 DB를 사용하는 최초 설치이며 비밀값이 모두 비어 있을 때만** 실행합니다. 기존 배포의 env가 있으면 건너뛰고 기존 값을 유지합니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py init-secrets \
@@ -92,6 +95,18 @@ chmod 600 deploy/airflow/env/k8s.env
 기존 비밀값이 하나라도 있으면 재생성을 거부하며 일반 설정은 보존합니다.
 `AIRFLOW_TRIGGER_TOKEN`과 `AIRFLOW_OIDC_CLIENT_SECRET`은 생성하지 않습니다. 각각 Portal API의 실제 값,
 [Keycloak client 등록](03-deploy.md#3-client-등록)의 값을 입력합니다.
+
+**일부 비밀값만 비어 있거나 자리표시자인 경우:** `init-secrets`는 거부되므로 해당 키만 직접 생성해 입력합니다. 이미 값이 있는 키는 바꾸지 않습니다.
+비밀값은 20자 이상이어야 하며 `AIRFLOW_FERNET_KEY`만 32바이트 URL-safe base64 형식입니다. 출력값은 화면 기록에 남지 않게 바로 env에 붙여 넣습니다.
+
+```bash
+# AIRFLOW_ADMIN_PASSWORD·POSTGRES_PASSWORD·AIRFLOW_WEBSERVER_SECRET_KEY용
+python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
+# AIRFLOW_FERNET_KEY용(최초 설치에서 비어 있을 때만. 기존 키는 절대 바꾸지 않음)
+python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+```
+
+입력 후 [실제 입력 검사](#6-다른-env-파일-사용)의 `manage.py check`로 `실제 값으로 교체하세요`가 없어졌는지 확인합니다.
 
 ### 3. 설정 묶음별 확인
 
@@ -140,14 +155,16 @@ chmod 600 deploy/airflow/env/k8s.env
 
 ### 6. 다른 env 파일 사용
 
-Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`로 같은 파일을 매번 전달합니다. 아래 두 명령은 설정이나 클러스터를 변경하지 않으며
-[chart 준비](02-artifacts.md#1-공식-chart-준비) 후에 실행합니다.
+Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`로 같은 파일을 매번 전달합니다. 아래 명령은 설정이나 클러스터를 변경하지 않으며
+[chart 준비](02-artifacts.md#1-공식-chart-준비) 후에 실행합니다. 저장소 env를 쓰면 `--env deploy/airflow/env/k8s.env`입니다.
 
 ```bash
 read -r -p '사용할 env 절대 경로: ' AIRFLOW_ENV_FILE
 python3 deploy/airflow/scripts/manage.py check --env "$AIRFLOW_ENV_FILE" --pause-new-dags
-make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes AIRFLOW_ENV="$AIRFLOW_ENV_FILE"
 ```
+
+**기대 결과:** `Airflow Helm·PostgreSQL 원본 검사 통과 (실제 설정; 클러스터 적용 없음)`.
+클러스터 사전 검사(`make airflow-check`)는 OIDC CA ConfigMap과 공용 TLS 등록이 끝난 뒤 [배포 4단계](03-deploy.md#4-클러스터-사전-검사)에서 같은 `AIRFLOW_ENV`로 실행합니다. 그 전에는 해당 항목 때문에 실패합니다.
 
 **완료 기준:** 초기 비밀값·Portal trigger token·OIDC client secret이 준비되고 자리표시자가 실제 입력으로 바뀌었습니다.
 **다음 단계:** [chart·이미지·ODBC 준비](02-artifacts.md).

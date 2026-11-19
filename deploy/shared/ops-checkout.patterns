@@ -1,0 +1,8 @@
+/Makefile
+/.gitignore
+/.opencode/agents/ops.md
+/.opencode/skills/server-deploy-routine/
+/.opencode/skills/deploy-drift-check/
+/deploy/
+!/deploy/**/*.md
+/deploy/shared/docs/infrastructure/*.md

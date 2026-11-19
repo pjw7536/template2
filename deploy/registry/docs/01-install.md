@@ -69,18 +69,24 @@ make registry-up KUBE_CONTEXT=kubernetes-admin@kubernetes
 
 **기대 결과:** `registry namespace를 만들었습니다. Secret registry-htpasswd을 만든 뒤 up을 다시 실행하세요.`와 make 오류 종료. 배포 기록은 남지 않습니다.
 
-push 계정은 bcrypt htpasswd로 만듭니다. 비밀번호를 두 번 입력하므로 사람이 실행합니다. `htpasswd`가 없으면 사내 Ubuntu 미러에서 `apache2-utils`를 설치합니다.
+처음 생성할 때는 준비된 push 계정 파일로 bcrypt htpasswd를 만듭니다. 기존 Secret이 있으면 이 단계를 건너뜁니다. `htpasswd`는 사내 Ubuntu 미러의 `apache2-utils`가 제공합니다. Bash에서 실행합니다.
 
 ```bash
-read -r -p 'push 계정 이름: ' REGISTRY_USER
-htpasswd -nB "$REGISTRY_USER" > /tmp/registry-htpasswd
-kubectl --context kubernetes-admin@kubernetes -n registry create secret generic registry-htpasswd \
-  --from-file=htpasswd=/tmp/registry-htpasswd
-shred -u /tmp/registry-htpasswd
-kubectl --context kubernetes-admin@kubernetes -n registry get secret registry-htpasswd
+(
+  set -euo pipefail
+  source deploy/shared/scripts/env-lib.sh
+  load_env deploy/registry/env/push-initial.env
+  require_env_keys REGISTRY_USER REGISTRY_PASSWORD
+  umask 077
+  account_file=$(mktemp)
+  trap 'rm -f -- "$account_file"' EXIT
+  printf '%s\n' "${ENV_VALUES[REGISTRY_PASSWORD]}" |
+    htpasswd -niB "${ENV_VALUES[REGISTRY_USER]}" > "$account_file"
+  kubectl --context kubernetes-admin@kubernetes -n registry create secret generic registry-htpasswd --from-file="htpasswd=$account_file"
+)
 ```
 
-**기대 결과:** `registry-htpasswd   Opaque   1`. 비밀번호는 문서·저장소에 기록하지 않고 운영자 보관 위치에만 둡니다.
+**기대 결과:** `secret/registry-htpasswd created`. 빌드 호스트는 같은 push 계정을 사용합니다.
 
 ## 5. 배포
 

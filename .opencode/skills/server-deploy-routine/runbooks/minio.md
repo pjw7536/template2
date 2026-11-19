@@ -1,7 +1,6 @@
 # MinIO 배포 런북
 
 공통 규칙은 [00-common.md](00-common.md)를 먼저 따릅니다. 명령은 관리 호스트 저장소 루트에서 실행합니다.
-원본 문서: [README](../../../../deploy/minio/README.md) · [설치](../../../../deploy/minio/docs/01-install.md) · [운영](../../../../deploy/minio/docs/02-operations.md). 이 런북과 다르면 원본이 우선입니다.
 
 ## 한눈에 보기
 
@@ -31,31 +30,27 @@
 ## A. 최초 설치
 
 1. [사람] root 계정 값·인증서 파일·DNS 준비를 사용자에게 확인합니다.
-2. [검사] 원본 검사
-   ```bash
-   make server-check APP=minio PROFILE=prod
-   ```
-   성공: `공용 MinIO 원본·env 검사 통과`.
+2. [검사] 공통 사전 검사의 실제 env·원본 결과를 확인합니다. 준비 중 파일이 바뀌었으면 같은 입력으로 재검사합니다.
 3. [조회] 노드·저장소 확인
    ```bash
-   kubectl --context kubernetes-admin@kubernetes get node khplanew01 -o wide
-   kubectl --context kubernetes-admin@kubernetes get storageclass
-   kubectl --context kubernetes-admin@kubernetes get pv
+   kubectl --context "<context>" get node khplanew01 -o wide
+   kubectl --context "<context>" get storageclass
+   kubectl --context "<context>" get pv
    ```
    기존 MinIO PV가 있으면 그 `spec.local.path`가 env의 `MINIO_DATA_HOST_PATH`와 같은지 사용자에게 확인합니다.
 4. [변경] 공용 TLS 등록: `s3.etch.samsungds.net`, `minio.etch.samsungds.net` 두 host를 각각 [공통 TLS 등록](00-common.md#공용-tls-등록)으로 등록합니다. 이미 등록돼 있으면 생략합니다.
 5. [검사] 공용 진입점 검사
    ```bash
-   make ingress-check KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make ingress-check KUBE_CONTEXT="<context>"
    ```
 6. [검사] 배포 전 검사(server dry-run, 변경 없음)
    ```bash
-   make minio-check KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make minio-check KUBE_CONTEXT="<context>"
    ```
    성공: `MinIO 입력·노드·저장소·TLS·라우팅 검사 통과. 클러스터를 변경하지 않았습니다.` 신규 설치면 PV·namespace 생성 예정 안내가 함께 나옵니다.
 7. [변경] 배포(승인 필요). namespace·폴더 준비 Job·PV·Secret·Deployment·초기화 Job·Ingress를 만들고 Traefik 감시 범위를 바꿉니다.
    ```bash
-   make minio-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make minio-up KUBE_CONTEXT="<context>"
    ```
    성공: `공용 MinIO 배포 완료: https://minio.etch.samsungds.net/`과 `배포 기록 저장: minio/deploy-record-minio`.
 8. [조회] [C. 배포 후 확인](#c-배포-후-확인)을 실행합니다.
@@ -73,9 +68,9 @@
 [변경] 버킷 초기화 재시도: Job이 `Complete` 또는 `Failed`이고 실행 중 Pod가 없을 때만 실행합니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n minio get job minio-init
-kubectl --context kubernetes-admin@kubernetes -n minio delete job minio-init
-make minio-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+kubectl --context "<context>" -n minio get job minio-init
+kubectl --context "<context>" -n minio delete job minio-init
+make minio-up KUBE_CONTEXT="<context>"
 ```
 
 ## C. 배포 후 확인
@@ -83,20 +78,19 @@ make minio-up KUBE_CONTEXT=kubernetes-admin@kubernetes
 모두 [조회]입니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n minio get pods,pvc,ingress -o wide
-kubectl --context kubernetes-admin@kubernetes -n minio get jobs
-kubectl --context kubernetes-admin@kubernetes -n minio logs job/minio-init
-make drift-check APP=minio KUBE_CONTEXT=kubernetes-admin@kubernetes
+kubectl --context "<context>" -n minio get pods,pvc,ingress -o wide
+kubectl --context "<context>" -n minio get jobs
+kubectl --context "<context>" -n minio logs job/minio-init
 ```
 
-성공: Pod Running(노드 `khplanew01`), PVC Bound, `minio-init` Complete, drift-check 종료 코드 `0`.
+성공: Pod Running(노드 `khplanew01`), PVC Bound, `minio-init` Complete, 공통 마무리의 JSON 판정 `0`.
 
 실패하면 조회합니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n minio describe pods -l app.kubernetes.io/name=minio
-kubectl --context kubernetes-admin@kubernetes -n minio describe pvc minio-data
-kubectl --context kubernetes-admin@kubernetes -n minio get events --sort-by=.lastTimestamp
+kubectl --context "<context>" -n minio describe pods -l app.kubernetes.io/name=minio
+kubectl --context "<context>" -n minio describe pvc minio-data
+kubectl --context "<context>" -n minio get events --sort-by=.lastTimestamp
 ```
 
 ## 멈추고 사람에게 묻는 조건

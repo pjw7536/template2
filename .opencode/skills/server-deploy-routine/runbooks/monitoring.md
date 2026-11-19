@@ -1,7 +1,6 @@
 # Monitoring 배포 런북
 
 공통 규칙은 [00-common.md](00-common.md)를 먼저 따릅니다. 명령은 관리 호스트 저장소 루트에서 실행합니다.
-원본 문서: [README](../../../../deploy/monitoring/README.md) · [설치](../../../../deploy/monitoring/docs/01-install.md) · [운영](../../../../deploy/monitoring/docs/02-operations.md). 이 런북과 다르면 원본이 우선입니다.
 
 ## 한눈에 보기
 
@@ -16,7 +15,7 @@
 
 ## 사람이 해야 하는 일
 
-- [사람] Grafana 관리자 계정 파일 작성(Git 밖, 키 `admin-user`, `admin-password`)
+- [사람] 기존 Grafana 계정 사용 여부 확인. 신규 계정 파일은 `deploy/monitoring/env/grafana-initial.env`에 준비되어 있음
 - [사람] DNS·인증서 파일, 미러에 없는 이미지 반입
 - [사람] khinfow01 데이터 디스크 확인
 - [사람] Grafana·Prometheus 화면 확인
@@ -32,33 +31,23 @@
 ## A. 최초 설치
 
 1. [사람] 계정 파일·DNS·인증서 준비를 사용자에게 확인합니다.
-2. [변경] chart 준비(로컬 파일). 이미 있으면 생략합니다.
-   ```bash
-   ls -l deploy/monitoring/helm/vendor/kube-prometheus-stack-91.4.0.tgz || python3 deploy/monitoring/scripts/manage.py fetch-chart
-   ```
-   성공: 파일이 있거나 `고정 chart 다운로드·SHA-256 검사 통과`. SHA-256 불일치면 멈춥니다.
+2. [검사] 공통 사전 검사에서 선택한 chart가 통과했는지 확인합니다. 차단 상태면 관리 호스트 준비 (사람용 `deploy/shared/docs/operations/04-drift.md#관리-호스트-준비`)에 따라 담당자가 chart를 준비한 뒤 같은 입력으로 재검사합니다.
 3. [조회] 노드 확인
    ```bash
-   kubectl --context kubernetes-admin@kubernetes get node khinfow01 -o wide
+   kubectl --context "<context>" get node khinfow01 -o wide
    ```
-4. [검사] 원본·실제 설정 검사(클러스터 접속 없음)
+4. [검사] 공통 사전 검사의 실제 env·원본 결과를 확인합니다. 준비 중 파일이 바뀌었으면 같은 입력으로 재검사합니다.
+5. [변경] namespace와 Grafana 관리자 Secret(승인 필요). [사람]에게 monitoring-grafana-admin 등록 여부를 확인하고 이미 있으면 Secret 생성은 생략합니다. 별도 입력을 지정한 경우에만 아래 기본 파일 경로를 바꿉니다. 파일 내용은 읽지 않습니다.
    ```bash
-   make server-check APP=monitoring PROFILE=prod
-   make monitoring-check
-   ```
-   성공: `Monitoring Helm 원본 검사 통과`. `실제 값 필요: <키>`면 [사람]에게 env 입력을 요청하고 멈춥니다.
-5. [변경] namespace와 Grafana 관리자 Secret(승인 필요). Secret이 이미 있으면 두 번째 명령은 생략합니다. 계정 파일 경로는 사용자에게 받습니다. 파일 내용은 읽지 않습니다.
-   ```bash
-   kubectl --context kubernetes-admin@kubernetes create namespace monitoring --dry-run=client -o yaml | kubectl --context kubernetes-admin@kubernetes apply -f -
-   kubectl --context kubernetes-admin@kubernetes -n monitoring get secret monitoring-grafana-admin --ignore-not-found
+   kubectl --context "<context>" create namespace monitoring --dry-run=client -o yaml | kubectl --context "<context>" apply -f -
    ```
    ```bash
-   kubectl --context kubernetes-admin@kubernetes -n monitoring create secret generic monitoring-grafana-admin --from-env-file=<Grafana 계정 파일 절대 경로>
+   kubectl --context "<context>" -n monitoring create secret generic monitoring-grafana-admin --from-env-file=deploy/monitoring/env/grafana-initial.env
    ```
 6. [변경] 공용 TLS: `grafana.etch.samsungds.net`, `prometheus.etch.samsungds.net`, `alert.etch.samsungds.net`을 각각 [공통 TLS 등록](00-common.md#공용-tls-등록)으로 등록한 뒤 [공통 Traefik 갱신](00-common.md#공용-traefik-검사갱신)의 `ingress-up`을 합니다. 이미 등록돼 있으면 생략합니다.
 7. [변경] 배포(승인 필요). 폴더 준비 Job, local PV, Helm 설치(`--wait`)를 수행합니다.
    ```bash
-   make monitoring-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make monitoring-up KUBE_CONTEXT="<context>"
    ```
    성공: 오류 없이 끝나고 `배포 기록 저장: monitoring/deploy-record-monitoring`.
 8. [조회] [C. 배포 후 확인](#c-배포-후-확인)을 실행합니다.
@@ -79,13 +68,12 @@
 모두 [조회]입니다.
 
 ```bash
-helm --kube-context kubernetes-admin@kubernetes -n monitoring list --all
-kubectl --context kubernetes-admin@kubernetes -n monitoring get pods,pvc,jobs -o wide
-kubectl --context kubernetes-admin@kubernetes -n monitoring get events --sort-by=.lastTimestamp
-make drift-check APP=monitoring KUBE_CONTEXT=kubernetes-admin@kubernetes
+helm --kube-context "<context>" -n monitoring list --all
+kubectl --context "<context>" -n monitoring get pods,pvc,jobs -o wide
+kubectl --context "<context>" -n monitoring get events --sort-by=.lastTimestamp
 ```
 
-성공: release `deployed`, Pod Ready, PVC Bound, 폴더 준비 Job `Completed`(10분 뒤 자동 정리), drift-check 종료 코드 `0`.
+성공: release `deployed`, Pod Ready, PVC Bound, 폴더 준비 Job `Completed`(10분 뒤 자동 정리), 공통 마무리의 JSON 판정 `0`.
 
 ## 멈추고 사람에게 묻는 조건
 

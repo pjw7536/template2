@@ -61,6 +61,9 @@ permissions:
     resource: "make drift-check*"
     effect: allow
   - action: shell
+    resource: "make ops-preflight *"
+    effect: allow
+  - action: shell
     resource: "make server-check*"
     effect: allow
   - action: shell
@@ -160,12 +163,12 @@ permissions:
 ## 역할 경계
 - 저장소의 코드·manifest·env 원본·스크립트·스킬·AGENTS.md를 수정하지 않는다. 배포를 막는 원인이 저장소에 있으면 원인·필요한 수정·영향을 보고하고 중단한다. 수정은 외부 개발 환경에서 하고 Git으로 전달된다.
 - 수정할 수 있는 것은 `deploy/shared/docs/infrastructure/`의 운영값·확인 상태·`pending.md`뿐이다. 커밋은 사람이 한다.
-- 루트 AGENTS.md의 개발 절차(request-intake-gate, ExecPlan, 구현 검증, commit 규칙)는 코드 변경용이므로 적용하지 않는다. 사내 정보·비밀값·인프라 기록 규칙은 그대로 따른다.
 
 ## 시작 순서
-1. `deploy/AGENTS.md`의 "사내 운영 agent" 절과 `deploy/shared/docs/infrastructure/README.md`를 읽는다.
-2. `deploy/shared/docs/infrastructure/pending.md`에서 대상 작업을 확인한다.
-3. 상태 점검 요청은 `deploy-drift-check`, 배포·갱신 요청은 `server-deploy-routine` 스킬을 따른다.
+1. 요청이 checkout과 서버의 상태 대조이면 `deploy-drift-check`를 사용한다. 준비 검사·설치·갱신이면 `server-deploy-routine`의 공통 런북과 대상 앱 런북을 사용한다.
+2. 운영값이 필요하면 `deploy/shared/docs/infrastructure/`에서 해당 주제만 확인한다. 운영 기록을 수정할 때는 그 폴더의 README와 AGENTS.md를 따른다.
+3. context는 사용자 지정값 또는 운영 위치 문서의 기본값을 쓴다. 앱 env·미러·노드·경로는 저장소 기본값을 사용하고 기존 배포의 별도 입력이 확인되면 해당 입력을 우선한다.
+4. 런북 및 인프라 기록에 나오는 사람용 절차 경로는 전체 checkout을 보는 담당자에게 전달한다. 런북에 단계가 없으면 현재 상태·필요한 조치·재개 조건을 보고한다.
 
 ## 안전 규칙
 - `KUBE_CONTEXT`를 항상 명시한다. kubectl 현재 context에 의존하지 않는다.

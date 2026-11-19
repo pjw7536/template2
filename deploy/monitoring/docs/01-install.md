@@ -181,29 +181,15 @@ kubectl --context "$KUBE_CONTEXT" create namespace monitoring --dry-run=client -
 kubectl --context "$KUBE_CONTEXT" -n monitoring get secret monitoring-grafana-admin --ignore-not-found
 ```
 
-`monitoring-grafana-admin`이 이미 있으면 기존 계정을 사용하고 아래 생성은 생략합니다. 처음 설치한다면 [관리자 env 샘플](../env/grafana-admin.env.example)을 Git 밖으로 복사해 편집합니다.
+`monitoring-grafana-admin`이 이미 있으면 기존 계정을 사용하고 아래 생성은 생략합니다. 신규 설치에는 준비된 초기 계정 파일을 사용합니다. 별도 계정 파일이 있으면 그 경로를 지정합니다.
 
 ```bash
-read -r -p 'Grafana 관리자 env 파일 절대 경로: ' GRAFANA_CREDENTIAL_FILE
-(
-  set -e
-  umask 077
-  if [ ! -e "$GRAFANA_CREDENTIAL_FILE" ]; then
-    cp deploy/monitoring/env/grafana-admin.env.example "$GRAFANA_CREDENTIAL_FILE"
-  fi
-  vi "$GRAFANA_CREDENTIAL_FILE"
-)
-chmod 600 "$GRAFANA_CREDENTIAL_FILE"
-```
-
-`admin-user=`, `admin-password=` 두 키를 실제 계정으로 채우고 예시 비밀번호를 교체합니다. `export`나 값을 감싸는 따옴표는 넣지 않습니다.
-
-```bash
+GRAFANA_CREDENTIAL_FILE="$PWD/deploy/monitoring/env/grafana-initial.env"
 kubectl --context "$KUBE_CONTEXT" -n monitoring create secret generic monitoring-grafana-admin \
   --from-env-file="$GRAFANA_CREDENTIAL_FILE"
 ```
 
-- 관리자 비밀번호는 Helm values나 Git에 넣지 않습니다.
+- Helm은 Secret 이름을 참조합니다. 기존 Grafana 계정의 변경은 운영 절차를 따릅니다.
 - Grafana를 [선택 설정](#선택-설정)에서 비활성화했다면 namespace만 준비합니다.
 - `IMAGE_PULL_SECRET`을 지정했다면 registry 인증용 Secret도 이 namespace에 미리 등록합니다.
 

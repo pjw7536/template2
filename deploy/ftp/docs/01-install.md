@@ -88,26 +88,15 @@ sudo ss -lntp | grep -E ':(6380|8076|8077|8078|8079)[[:space:]]' || true
 
 **실행 위치:** 관리 호스트의 저장소 루트, 2단계와 같은 Bash 세션.
 
-[credentials.env.example](../credentials.env.example)을 **Git 밖**의 파일로 복사해 실제 계정을 입력합니다. 이미 사용 중인 계정 파일이 있으면 그 절대 경로를 입력하며 파일을 다시 만들지 않습니다.
+새 설치는 준비된 계정 파일을 사용합니다. 이미 FTP가 운영 중이면 아래 경로에 기존 계정 파일의 절대 경로를 지정합니다.
 
 ```bash
-read -r -p 'FTP 계정 파일 절대 경로 (Git 밖): ' FTP_CREDENTIAL_FILE
-export FTP_CREDENTIAL_FILE
-(
-  set -euo pipefail
-  [[ "$FTP_CREDENTIAL_FILE" = /* ]]
-  umask 077
-  if [[ ! -e "$FTP_CREDENTIAL_FILE" ]]; then
-    cp deploy/ftp/credentials.env.example "$FTP_CREDENTIAL_FILE"
-  fi
-)
+export FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/env/initial-account.env"
 chmod 600 "$FTP_CREDENTIAL_FILE"
-vi "$FTP_CREDENTIAL_FILE"
 ```
 
-- `FTP_USER=값`, `FTP_PASS=값` 두 줄을 입력합니다. `export`나 값을 감싸는 따옴표는 넣지 않습니다.
 - 사용자 이름에는 영문·숫자·밑줄·하이픈만 사용합니다. 비밀번호는 비워 두지 않으며 줄바꿈·역슬래시를 넣지 않습니다.
-- 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다. 기본 계정은 없습니다.
+- 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다.
 - 새 Bash 세션에서는 같은 경로를 `FTP_CREDENTIAL_FILE`로 다시 export합니다.
 
 **완료 기준:** `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 export되어 있고 각 노드의 디스크·포트·방화벽 요청을 확인했습니다. 기본 배포는 [5단계](#5-검사-후-배포), 별도 overlay 운영은 [별도 overlay 배포](#별도-overlay-배포)로 진행합니다.

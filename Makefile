@@ -7,6 +7,7 @@ REGISTER_REFERENCE_USERS_APPLY ?= 0
 # 값을 shell 코드에 삽입하지 않고 초기 설정 스크립트에 환경변수로 전달합니다.
 export KEYCLOAK_SDWTS_CSV KEYCLOAK_USERS_CSV KEYCLOAK_SDWT_CLIENTS KEYCLOAK_SDWT_APPLY KEYCLOAK_SDWT_VALIDATE_ONLY
 
+PROD_WEB_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/web.env
 PROD_API_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/api.env
 KIND_BIN ?= $(CURDIR)/.tools/bin/kind
 APP ?= keycloak
@@ -141,12 +142,15 @@ k8s-env:
 ifeq ($(APP)/$(PROFILE),portal/local)
 	bash ./local/portal/scripts/apply-env.sh "$(COMPONENT)"
 else
-	bash ./deploy/shared/scripts/apply-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)"
+	bash ./deploy/shared/scripts/apply-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)" "$(portal_component_env)"
 endif
+
+# 운영 Portal 검사와 Secret 등록은 같은 입력 파일을 사용합니다.
+portal_component_env = $(if $(filter portal/prod,$(APP)/$(PROFILE)),$(if $(filter web,$(COMPONENT)),$(PROD_WEB_ENV_FILE),$(PROD_API_ENV_FILE)))
 
 # 값은 출력하지 않고 선택한 앱의 필수 입력을 검사합니다.
 env-check:
-	bash ./deploy/shared/scripts/check-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)"
+	bash ./deploy/shared/scripts/check-env.sh "$(APP)" "$(PROFILE)" "$(COMPONENT)" "$(portal_component_env)"
 
 # 모든 앱은 고정 local context에 적용하고 기존 Docker DB는 건드리지 않습니다.
 k8s-up: k8s-tools
@@ -184,6 +188,22 @@ env-profile-key-check:
 server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
 
+# 준비 검사는 앱 하나의 실제 입력을 검사하고 반입·현장 확인 항목을 보고합니다.
+.PHONY: ops-preflight portal-migrate portal-precheck portal-postcheck
+ops-preflight: export PROD_API_ENV_FILE := $(PROD_API_ENV_FILE)
+ops-preflight: export PROD_WEB_ENV_FILE := $(PROD_WEB_ENV_FILE)
+ops-preflight:
+	@python3 deploy/shared/scripts/ops_preflight.py
+
+portal-migrate:
+	@bash deploy/portal/scripts/migration-job.sh migrate
+
+portal-precheck:
+	@bash deploy/portal/scripts/migration-job.sh pre-migration
+
+portal-postcheck:
+	@bash deploy/portal/scripts/migration-job.sh post-migration
+
 # 배포 직후 적용 commit·입력 파일 SHA-256·워크로드를 앱 namespace의 ConfigMap에 기록합니다.
 # 각 *-up 타깃은 성공 후 자동으로 기록하며, 직접 실행한 배포 명령 뒤에는 이 타깃을 실행합니다.
 deploy_record = python3 deploy/shared/scripts/deploy_state.py record $(1) --context "$(KUBE_CONTEXT)" $(foreach f,$(2),--input "$(f)")
@@ -191,10 +211,10 @@ deploy_record = python3 deploy/shared/scripts/deploy_state.py record $(1) --cont
 deploy-record:
 	$(call deploy_record,$(APP),$(RECORD_INPUTS))
 
-# 현재 checkout의 배포 정의와 클러스터 상태를 조회 전용으로 대조합니다. APP 생략 시 all, 종료 코드 0 일치·1 불일치·2 판정 불가.
+# 현재 checkout의 배포 정의와 클러스터 상태를 조회 전용으로 대조합니다. APP 생략 시 all, JSON resultCode 0 일치·1 불일치·2 판정 불가.
 # 렌더에는 *-up과 같은 env 변수를 사용합니다. DRIFT_SKIP_MANIFEST=1이면 리소스 비교 없이 기록·상태만 봅니다.
 drift-check:
-	python3 deploy/shared/scripts/deploy_state.py check "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
+	@python3 deploy/shared/scripts/deploy_state.py check "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
 	  --env keycloak="$(KEYCLOAK_ENV)" --env minio="$(MINIO_ENV)" --env registry="$(REGISTRY_ENV)" --env airflow="$(AIRFLOW_ENV)" \
 	  --env monitoring="$(MONITORING_ENV)" --env headlamp="$(HEADLAMP_ENV)" --env ftp="$(FTP_ENV)" --vip-backends "$(VIP_BACKENDS)" \
 	  $(if $(filter 1,$(DRIFT_SKIP_MANIFEST)),--skip-manifest) $(if $(filter 1,$(DRIFT_JSON)),--json)

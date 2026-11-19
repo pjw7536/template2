@@ -1,7 +1,6 @@
 # FTP 배포 런북
 
 공통 규칙은 [00-common.md](00-common.md)를 먼저 따릅니다. 명령은 관리 호스트 저장소 루트에서 실행합니다.
-원본 문서: [README](../../../../deploy/ftp/README.md) · [설치](../../../../deploy/ftp/docs/01-install.md) · [운영](../../../../deploy/ftp/docs/02-operations.md). 이 런북과 다르면 원본이 우선입니다.
 
 ## 한눈에 보기
 
@@ -17,9 +16,9 @@
 ## 사람이 해야 하는 일
 
 - [사람] 대상 노드 결정. `FTP_NODES`는 이미 FTP가 있는 노드까지 포함한 전체 목록
-- [사람] 각 노드에서 디스크·포트 확인([3. 각 노드의 저장 폴더와 포트 확인](../../../../deploy/ftp/docs/01-install.md#3-각-노드의-저장-폴더와-포트-확인))
+- [사람] 각 노드에서 디스크·포트 확인(3. 각 노드의 저장 폴더와 포트 확인 (사람용 `deploy/ftp/docs/01-install.md#3-각-노드의-저장-폴더와-포트-확인`))
 - [사람] 방화벽 개방: 허용 출발지 → 각 노드 TCP 6380, 8076–8079
-- [사람] 계정 파일 작성(Git 밖 절대 경로, 권한 600, 키 `FTP_USER`·`FTP_PASS`). 기존 파일이 있으면 그 경로를 사용
+- [사람] 신규 계정 파일에 `chmod 600 deploy/ftp/env/initial-account.env` 적용. 기존 FTP는 사용 중인 계정 파일 사용
 - [사람] PC에서 전송 시험
 
 ## 입력
@@ -27,27 +26,26 @@
 | 이름 | 의미 | 기본값 |
 | --- | --- | --- |
 | `FTP_NODES` | 쉼표로 구분한 전체 노드 이름(공백·중복 없음) | 없음. 사용자에게 받음 |
-| `FTP_CREDENTIAL_FILE` | 계정 파일 절대 경로 | 없음. 사용자에게 받음 |
+| `FTP_CREDENTIAL_FILE` | 계정 파일 절대 경로 | 신규는 `$PWD/deploy/ftp/env/initial-account.env`, 기존은 운영 파일 |
 | `FTP_ENV` | FTP env 경로 | `deploy/ftp/env/prod.env` |
 
 ## A. 최초 설치
 
-1. [사람] 노드 목록·계정 파일 경로·노드 확인·방화벽 요청이 끝났는지 사용자에게 확인하고 `FTP_NODES`·`FTP_CREDENTIAL_FILE` 값을 받습니다.
+1. [사람] 노드 목록·계정 파일 경로·노드 확인·방화벽 요청이 끝났는지 사용자에게 확인하고 실제 `FTP_NODES`를 받습니다. 기존 FTP만 아래 기본 계정 파일을 운영 파일 경로로 바꿉니다.
 2. [조회] 노드와 기존 FTP 노드 확인
    ```bash
-   kubectl --context kubernetes-admin@kubernetes get nodes -o wide
-   kubectl --context kubernetes-admin@kubernetes get nodes -l etch.io/ftp-enabled=true -o wide
+   kubectl --context "<context>" get nodes -o wide
+   kubectl --context "<context>" get nodes -l etch.io/ftp-enabled=true -o wide
    ```
    이미 라벨이 있는 노드가 `FTP_NODES`에 모두 포함됐는지 확인합니다.
 3. [검사] 원본·입력 검사
    ```bash
-   make server-check APP=ftp PROFILE=prod
-   make ftp-check KUBE_CONTEXT=kubernetes-admin@kubernetes FTP_NODES=<노드1,노드2> FTP_CREDENTIAL_FILE=<계정 파일 절대 경로>
+   make ftp-check KUBE_CONTEXT="<context>" FTP_NODES=<노드1,노드2> FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/env/initial-account.env"
    ```
    성공: `입력·노드·기존 Secret·원본 렌더 검사 통과`. 출력된 context·노드·IP가 사용자가 의도한 값인지 보여 주고 확인받습니다.
 4. [변경] 배포(승인 필요). namespace·Secret을 없을 때만 만들고 노드에 라벨을 붙인 뒤 적용합니다.
    ```bash
-   make ftp-up KUBE_CONTEXT=kubernetes-admin@kubernetes FTP_NODES=<노드1,노드2> FTP_CREDENTIAL_FILE=<계정 파일 절대 경로>
+   make ftp-up KUBE_CONTEXT="<context>" FTP_NODES=<노드1,노드2> FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/env/initial-account.env"
    ```
    성공: 노드별 Pod 위치 출력, `FTP 배포 완료`, `배포 기록 저장: etch-ftp/deploy-record-ftp`.
 5. [조회] [C. 배포 후 확인](#c-배포-후-확인)을 실행합니다.
@@ -67,14 +65,13 @@
 모두 [조회]입니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes get nodes -l etch.io/ftp-enabled=true -o wide
-kubectl --context kubernetes-admin@kubernetes -n etch-ftp get daemonset ftp
-kubectl --context kubernetes-admin@kubernetes -n etch-ftp get pods -l app=ftp -o wide
-kubectl --context kubernetes-admin@kubernetes -n etch-ftp get events --sort-by=.lastTimestamp
-make drift-check APP=ftp KUBE_CONTEXT=kubernetes-admin@kubernetes
+kubectl --context "<context>" get nodes -l etch.io/ftp-enabled=true -o wide
+kubectl --context "<context>" -n etch-ftp get daemonset ftp
+kubectl --context "<context>" -n etch-ftp get pods -l app=ftp -o wide
+kubectl --context "<context>" -n etch-ftp get events --sort-by=.lastTimestamp
 ```
 
-성공: DaemonSet DESIRED·CURRENT·READY가 대상 노드 수와 같음, drift-check 종료 코드 `0`.
+성공: DaemonSet DESIRED·CURRENT·READY가 대상 노드 수와 같음, 공통 마무리의 JSON 판정 `0`.
 
 ## 멈추고 사람에게 묻는 조건
 

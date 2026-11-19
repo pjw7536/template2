@@ -1,7 +1,6 @@
 # Headlamp 배포 런북
 
 공통 규칙은 [00-common.md](00-common.md)를 먼저 따릅니다. 명령은 관리 호스트 저장소 루트에서 실행합니다.
-원본 문서: [README](../../../../deploy/headlamp/README.md) · [준비](../../../../deploy/headlamp/docs/01-prepare.md) · [인증](../../../../deploy/headlamp/docs/02-authentication.md) · [배포](../../../../deploy/headlamp/docs/03-deploy.md) · [운영](../../../../deploy/headlamp/docs/04-operations.md). 이 런북과 다르면 원본이 우선입니다.
 
 ## 한눈에 보기
 
@@ -19,8 +18,8 @@
 
 - [사람] 인증서 파일 배치: `deploy/shared/certs/etch.samsungds.net/fullchain.crt`·`private.key`, `deploy/shared/certs/ca/SECDS-T2RootCA.crt`·`SECDS-T2IssuingCA.crt`
 - [사람] Keycloak Admin Console: client 가져오기·대조, `headlamp-admins` 그룹과 가입자, Credentials의 secret 확인(Regenerate 금지)
-- [사람] client secret 입력([client secret 등록](../../../../deploy/headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록))
-- [사람] 모든 제어면의 API server OIDC 설정([API server OIDC](../../../../deploy/shared/docs/kubernetes/oidc.md), 제어면 담당자)
+- [사람] client secret 입력(client secret 등록 (사람용 `deploy/headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록`))
+- [사람] 모든 제어면의 API server OIDC 설정(API server OIDC (사람용 `deploy/shared/docs/kubernetes/oidc.md`), 제어면 담당자)
 - [사람] DNS·방화벽, 브라우저 로그인 확인(관리자 계정·그룹 밖 계정)
 
 ## 입력
@@ -34,8 +33,8 @@
 
 1. [조회] Keycloak·Traefik 확인
    ```bash
-   kubectl --context kubernetes-admin@kubernetes -n etch-sso get deployment keycloak traefik
-   kubectl --context kubernetes-admin@kubernetes get ingressclass traefik
+   kubectl --context "<context>" -n etch-sso get deployment keycloak traefik
+   kubectl --context "<context>" get ingressclass traefik
    ```
    성공: 두 Deployment READY가 같은 숫자, IngressClass 조회됨.
 2. [검사] env 계산값 확인
@@ -43,16 +42,11 @@
    make -s headlamp-setup-env
    ```
    성공: `HEADLAMP_SSO_HOST=sso.etch.samsungds.net`과 `HEADLAMP_CALLBACK_URL=https://headlamp.etch.samsungds.net/oidc-callback`이 출력됨. 다르면 이 런북의 고정 경로가 맞지 않으므로 멈추고 보고합니다.
-3. [변경] chart 준비(로컬 파일)와 [검사] 원본 검사
-   ```bash
-   make headlamp-fetch-chart
-   make headlamp-check
-   ```
-   성공: `chart 준비 완료:`, `서버 원본 검사 통과: headlamp/prod`. SHA-256 불일치면 멈춥니다.
+3. [검사] 공통 사전 검사에서 선택한 chart가 통과했는지 확인합니다. 차단 상태면 관리 호스트 준비 (사람용 `deploy/shared/docs/operations/04-drift.md#관리-호스트-준비`)에 따라 담당자가 chart를 준비한 뒤 같은 입력으로 재검사합니다.
 4. [변경] namespace(승인 필요)
    ```bash
-   kubectl --context kubernetes-admin@kubernetes create namespace headlamp --dry-run=client -o yaml | kubectl --context kubernetes-admin@kubernetes apply -f -
-   kubectl --context kubernetes-admin@kubernetes get namespace headlamp
+   kubectl --context "<context>" create namespace headlamp --dry-run=client -o yaml | kubectl --context "<context>" apply -f -
+   kubectl --context "<context>" get namespace headlamp
    ```
    성공: `Active`. `Terminating`이면 멈춥니다.
 5. [조회] 인증서 파일 확인
@@ -69,7 +63,7 @@
 7. [변경] 공용 TLS: `headlamp.etch.samsungds.net`을 사이트 폴더 `etch.samsungds.net`으로 [공통 TLS 등록](00-common.md#공용-tls-등록)한 뒤 [공통 Traefik 갱신](00-common.md#공용-traefik-검사갱신)의 `ingress-up`을 합니다.
 8. [변경] CA ConfigMap(승인 필요)과 [검사] OIDC 연결 검사
    ```bash
-   kubectl --context kubernetes-admin@kubernetes -n headlamp create configmap headlamp-oidc-ca --from-file=ca.crt=deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem --dry-run=client -o yaml | kubectl --context kubernetes-admin@kubernetes apply -f -
+   kubectl --context "<context>" -n headlamp create configmap headlamp-oidc-ca --from-file=ca.crt=deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem --dry-run=client -o yaml | kubectl --context "<context>" apply -f -
    make headlamp-oidc-check HEADLAMP_OIDC_CA_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem"
    ```
    성공: `OIDC 연결 검사 통과`. 실패하면 DNS·방화벽·CA·issuer 문제이므로 멈춥니다.
@@ -77,21 +71,17 @@
    ```bash
    make -s headlamp-oidc-client > /tmp/headlamp-client.json
    ```
-   [사람] 이 파일로 Keycloak client 가져오기·그룹·secret 확인을 요청합니다([Keycloak client와 관리자](../../../../deploy/headlamp/docs/02-authentication.md#keycloak-client와-관리자)).
-10. [사람] client secret 등록을 요청합니다. 완료 후 확인합니다.
-    ```bash
-    kubectl --context kubernetes-admin@kubernetes -n headlamp get secret headlamp-oidc
-    ```
-    성공: `Opaque`, DATA `1`.
+   [사람] 이 파일로 Keycloak client 가져오기·그룹·secret 확인을 요청합니다(Keycloak client와 관리자 (사람용 `deploy/headlamp/docs/02-authentication.md#keycloak-client와-관리자`)).
+10. [사람] client secret 등록과 이름 확인을 요청합니다. 완료 답을 받은 뒤 진행합니다.
 11. [사람] 제어면 API server OIDC 반영을 요청합니다. 완료 답을 받으면 확인합니다.
     ```bash
-    kubectl --context kubernetes-admin@kubernetes get --raw=/readyz
+    kubectl --context "<context>" get --raw=/readyz
     ```
     성공: `ok`.
 12. [변경] 배포(승인 필요)
     ```bash
     make headlamp-check
-    make headlamp-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+    make headlamp-up KUBE_CONTEXT="<context>"
     ```
     성공: `접속 주소: https://headlamp.etch.samsungds.net/`와 `배포 기록 저장: headlamp/deploy-record-headlamp`.
 13. [조회] [C. 배포 후 확인](#c-배포-후-확인)을 실행합니다.
@@ -109,8 +99,8 @@
 [변경] 재시작(승인 필요). 설정이 같으면 `headlamp-up`만으로는 Pod가 다시 만들어지지 않습니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n headlamp rollout restart deployment/headlamp
-kubectl --context kubernetes-admin@kubernetes -n headlamp rollout status deployment/headlamp --timeout=180s
+kubectl --context "<context>" -n headlamp rollout restart deployment/headlamp
+kubectl --context "<context>" -n headlamp rollout status deployment/headlamp --timeout=180s
 ```
 
 ## C. 배포 후 확인
@@ -118,14 +108,13 @@ kubectl --context kubernetes-admin@kubernetes -n headlamp rollout status deploym
 모두 [조회]입니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n headlamp get deployment,pods,svc,ingress
-kubectl --context kubernetes-admin@kubernetes auth can-i list nodes --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
-kubectl --context kubernetes-admin@kubernetes auth can-i list nodes --as=headlamp:rbac-outsider --as-group=system:authenticated
+kubectl --context "<context>" -n headlamp get deployment,pods,svc,ingress
+kubectl --context "<context>" auth can-i list nodes --as=headlamp:rbac-probe --as-group=headlamp:/headlamp-admins --as-group=system:authenticated
+kubectl --context "<context>" auth can-i list nodes --as=headlamp:rbac-outsider --as-group=system:authenticated
 curl --fail --silent --show-error --cacert deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem https://headlamp.etch.samsungds.net/ -o /dev/null && echo 'Headlamp HTTPS 응답 확인 완료'
-make drift-check APP=headlamp KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
-성공: Deployment `1/1`, 첫 `auth can-i`는 `yes`, 두 번째는 `no`, HTTPS 응답 확인, drift-check 종료 코드 `0`. 404면 Ingress·Traefik 감시, 503이면 Pod·Service 문제입니다.
+성공: Deployment `1/1`, 첫 `auth can-i`는 `yes`, 두 번째는 `no`, HTTPS 응답 확인, 공통 마무리의 JSON 판정 `0`. 404면 Ingress·Traefik 감시, 503이면 Pod·Service 문제입니다.
 
 ## 멈추고 사람에게 묻는 조건
 

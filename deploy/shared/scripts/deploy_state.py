@@ -570,9 +570,10 @@ def main():
         checkout = checkout_state(git)
         results = [check_app(name, catalog['apps'][name], git, kube, checkout, options)
                    for name in resolve_apps(catalog, args.target)]
-        print(json.dumps({'checkout': checkout, 'apps': results}, ensure_ascii=False, indent=2)
+        code = exit_code(results)
+        print(json.dumps({'resultCode': code, 'checkout': checkout, 'apps': results}, ensure_ascii=False, indent=2)
               if args.json else render_text(checkout, results))
-        return exit_code(results)
+        return code
     except (ValueError, KeyError, OSError) as error:
         print(f'오류: {error}', file=sys.stderr)
         return 2

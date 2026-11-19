@@ -93,7 +93,21 @@ DB 비밀번호는 같은 블록에서 프롬프트를 `실제 DB 비밀번호`�
 
 Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/airflow/dags`에서 읽습니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 일시정지하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
 
-1. 관리 호스트에서 현재 DAG Processor의 파일을 백업합니다. 최초 설치라면 새로 빌드한 Airflow 이미지의 `/opt/airflow/dags`를 같은 구조의 tar 파일로 준비합니다.
+**최초 설치(실행 중인 Airflow 없음):** 1·2단계 대신 `NODE_NAME` 워커(`khinfow01`)의 저장소에서 이미지와 같은 commit의 `apps/airflow/dags`를 복사합니다. 이미지의 `/opt/airflow/dags`는 이 폴더를 그대로 복사한 것입니다. 그다음 3단계로 갑니다.
+
+```bash
+git log -1 --oneline
+sudo install -d -o root -g root -m 0755 /appdata/airflow/dags
+sudo tar -C apps/airflow/dags --exclude=__pycache__ -cf - . |
+  sudo tar --extract --skip-old-files --no-same-owner --no-same-permissions --directory /appdata/airflow/dags --file -
+ls -la /appdata/airflow/dags
+```
+
+**기대 결과:** commit이 이미지를 빌드한 commit과 같고, `/appdata/airflow/dags`에 DAG `.py` 파일이 보입니다. 기존 파일은 덮어쓰지 않습니다.
+
+**기존 설치에서 전환:**
+
+1. 관리 호스트에서 현재 DAG Processor의 파일을 백업합니다.
 
    ```bash
    (

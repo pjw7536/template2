@@ -23,7 +23,7 @@
 | `AIRFLOW_AUTH_MODE` | `keycloak` |
 | `AIRFLOW_OIDC_ISSUER` | `https://sso.etch.samsungds.net/realms/etch` |
 | `AIRFLOW_OIDC_CLIENT_ID` | `airflow` |
-| `AIRFLOW_OIDC_CLIENT_SECRET` | 신규 client는 3단계에서 생성한 값, 기존 client는 기존 secret |
+| `AIRFLOW_OIDC_CLIENT_SECRET` | 신규 client는 기본 env에 준비된 값, 기존 client는 기존 secret |
 | `AIRFLOW_OIDC_BACKCHANNEL_BASE_URL` | Pod 접근용 realm URL, 비우면 issuer 사용 |
 | `AIRFLOW_OIDC_CA_CONFIGMAP` | 사내 CA를 쓰면 `airflow-oidc-ca`(현재 선언), 공인 CA면 빈 값 |
 | `AIRFLOW_OIDC_CA_BUNDLE` | CA 사용 시 `/etc/airflow/oidc-ca/ca.crt`, 아니면 빈 값 |
@@ -58,11 +58,7 @@ CA가 바뀌면 같은 명령으로 갱신한 뒤 [배포](#5-실제-배포)를 
 
 `airflow` client는 기존 `portal` client와 별도로 관리합니다. 아래 등록 명령이 client를 만들므로 관리자 화면에서 미리 만들 필요는 없습니다.
 
-**신규 client일 때만** 비밀값을 생성해 env의 `AIRFLOW_OIDC_CLIENT_SECRET=`에 따옴표 없이 입력합니다. `init-secrets`는 이 값을 만들지 않습니다.
-
-```bash
-python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
-```
+신규 client는 `deploy/airflow/env/k8s.env`에 준비된 `AIRFLOW_OIDC_CLIENT_SECRET`으로 등록합니다.
 
 이미 client가 있으면 Keycloak 관리자 화면의 realm → Clients → airflow → Credentials에서 기존 Client secret을 확인해 env에 입력하며 재생성하지 않습니다.
 
@@ -114,7 +110,7 @@ namespace를 바꾸면 kubectl의 `-n airflow`를, env를 바꾸면 Python `--en
 최초 설치는 새 DB로 진행하며 Worker의 DB 디렉터리가 기존 PostgreSQL 데이터 경로가 아닌지 확인합니다.
 Airflow PVC·Secret이 남아 있다면 새 설치로 간주하지 말고 연결된 저장소부터 확인합니다. 기존 리소스나 데이터는 자동 삭제하지 않습니다.
 재배포는 [백업·업데이트](04-operations.md)를 먼저 확인합니다. 검사가 실패하면 다음 단계로 넘어가지 말고 원인을 고친 뒤 다시 실행합니다.
-`DAGS_HOST_PATH`를 사용한다면 처음 배포하기 전에 [공유 폴더 전환](04-operations.md#공유-폴더-전환)에서 DAG 파일과 준비 표식을 먼저 배치합니다.
+`DAGS_HOST_PATH`를 사용한다면 처음 배포하기 전에 [공유 폴더 전환](04-operations.md#공유-폴더-전환)에서 DAG 파일과 준비 표식을 먼저 배치합니다. 실행 중인 Airflow가 없는 최초 설치는 같은 절의 "최초 설치" 방법으로 저장소의 DAG를 복사합니다.
 
 | 단계 | 목적 | 변경 대상 | 완료 기준 |
 | --- | --- | --- | --- |

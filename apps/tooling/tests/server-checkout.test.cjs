@@ -159,3 +159,28 @@ test('서버 그룹 검사는 카탈로그에 추가한 그룹의 앱만 실행�
   assert.match(output, /서버 원본 검사 통과: ftp\/prod/);
   assert.doesNotMatch(output, /portal\/prod/);
 });
+
+test('ops-preflight는 서버 checkout에서 선택한 context와 외부 Keycloak env만 검사한다', t => {
+  const checkout = fixture(t);
+  const kubectl = path.join(checkout, 'kubectl');
+  fs.writeFileSync(kubectl, `#!/bin/sh
+case "$1" in
+  kustomize) exit 0 ;;
+  --context) [ "$2" = 'review-context' ] && [ "$4" = get ] && [ "$5" = nodes ] ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o700 });
+  const envFile = path.join(checkout, 'fixture external.env');
+  fs.writeFileSync(envFile, [
+    'postgres-password=fixture-private-value', 'bootstrap-admin-username=admin',
+    'bootstrap-admin-password=fixture-private-value', 'keycloak-public-url=https://sso.test',
+  ].join('\n'), { mode: 0o600 });
+  const result = spawnSync('make', ['ops-preflight', 'APP=keycloak', 'PROFILE=prod',
+    'KUBE_CONTEXT=review-context', `KEYCLOAK_ENV=${envFile}`], {
+    cwd: checkout, encoding: 'utf8', env: { ...process.env, PATH: checkout + path.delimiter + process.env.PATH },
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /\[통과\] KEYCLOAK_ENV=/);
+  assert.match(result.stdout, /현장 확인 필요/);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-private-value/);
+});

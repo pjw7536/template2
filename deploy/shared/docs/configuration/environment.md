@@ -33,8 +33,9 @@ deploy/
 | --- | --- | --- |
 | env에 일반 설정과 비밀번호·토큰·서명 키·인증 헤더를 함께 넣고 비공개 Git 저장소에서 관리 | Keycloak·Portal API·MinIO·Airflow | 아래 3절 |
 | 실제 비밀값은 별도 Secret으로 등록하고 env에는 Secret 이름만 기록 | Headlamp | client secret 숨김 입력 → 전용 Secret. [client secret 등록](../../../headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록) |
-| 〃 | Monitoring | Git 밖의 관리자 env 파일 → Grafana 관리자 Secret. [관리자 Secret 준비](../../../monitoring/docs/01-install.md#5-namespace와-관리자-secret-준비) |
-| 〃 | FTP | 계정 예제 수정 또는 별도 계정 파일 → 공용 FTP 계정 Secret. [계정 파일 준비](../../../ftp/docs/01-install.md#4-관리-호스트의-계정-파일-준비) |
+| 신규 설치용 계정 파일, 기존 서비스는 운영 계정 유지 | Monitoring | `deploy/monitoring/env/grafana-initial.env` → Grafana 관리자 Secret. [관리자 Secret 준비](../../../monitoring/docs/01-install.md#5-namespace와-관리자-secret-준비) |
+| 〃 | FTP | `deploy/ftp/env/initial-account.env` (권한 600) → 공용 FTP 계정 Secret. [계정 파일 준비](../../../ftp/docs/01-install.md#4-관리-호스트의-계정-파일-준비) |
+| 〃 | Registry | `deploy/registry/env/push-initial.env` → bcrypt htpasswd → push 계정 Secret. [push 계정 준비](../../../registry/docs/01-install.md#4-namespace와-push-계정-준비) |
 
 - Portal Web 설정은 브라우저에 공개되므로 비밀값을 넣지 않습니다.
 - 인증서·개인키 파일은 Git에서 제외하고 [인증서 안내](../certificates/prepare.md)에 따라 준비합니다.
@@ -62,6 +63,18 @@ deploy/
 - Portal API env는 서버·DB·로그인·HTTPS → 공용 연동 → 업무 기능(Emails·Assistant·Drone 포함) → 조정·개발 설정 순서로 구성하며 Keycloak 연결값도 함께 적습니다. prod에는 서버·DB·로그인·파일 저장소의 필수값을 먼저 넣고, timeout·cache 같은 선택값을 생략하면 코드 기본값을 사용합니다. 업무 연동 키의 의미·형식은 [환경 설정](../../../../docs/reference/01-configuration.md#주요-설정-그룹)에 있습니다.
 - Portal 운영 API의 `DJANGO_ALLOWED_HOSTS`에는 공개 DNS와 함께 `localhost`를 포함합니다. API·edge-nginx의 health probe가 `Host: localhost`로 요청하므로 공개 DNS만 넣으면 준비 상태 검사가 실패합니다.
 - Keycloak의 `COMPONENT=oidc` 입력은 `CORP_OIDC_DISCOVERY_URL`이 있으면 endpoint를 자동 해석합니다. 실행 호스트에 Python과 discovery 접속·TLS 신뢰가 필요합니다.
+
+### 반입 후 입력할 값
+
+| 사용 단계 | 사내에서 확정할 입력 |
+| --- | --- |
+| Portal 신규 배포·이전 | 외부 DB 접속 네 키(`DJANGO_DB_HOST`, `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`), 실제 push한 API·Web 태그, 운영 Worker·업무 데이터 PVC. 기존 Portal이면 사용 중인 서명 키와 연결 계정도 유지 |
+| Keycloak 사내 IdP 연결 | AD FS에서 발급한 `CORP_OIDC_CLIENT_ID`와 `CORP_OIDC_CLIENT_SECRET` |
+| Headlamp 로그인 | Keycloak에 등록된 Headlamp client secret과 실제 CA |
+| FTP 배치 | 방화벽·저장 폴더가 준비된 실제 대상 노드 목록 `FTP_NODES` |
+| HTTPS·선택 업무 연동 | 발급 인증서·개인키·CA 파일. 메일·메신저·POP3·Jira 등은 해당 기능에 필요한 실제 계정과 수신처 |
+
+신규 Airflow와 신규 Keycloak의 Airflow client 등록은 같은 Airflow env를 사용합니다. 기존 DB·client·Secret이 있는 환경에서는 설치 당시 입력을 사용합니다. 미러 URL, 이미지 이름, namespace, 서비스 주소와 파일 경로는 각 앱에 작성된 기본값을 사용합니다.
 
 ### 작성 형식
 

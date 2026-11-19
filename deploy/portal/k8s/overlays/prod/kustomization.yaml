@@ -8,10 +8,10 @@ resources:
   - traefik-rbac.yaml
 images:
   - name: portal-api
-    newName: registry.internal.example.invalid/tailwind/api
+    newName: registry.etch.samsungds.net/tailwind/api
     newTag: replace-me
   - name: portal-web
-    newName: registry.internal.example.invalid/tailwind/web
+    newName: registry.etch.samsungds.net/tailwind/web
     newTag: replace-me
   # edge-nginx도 사내 Docker Hub 미러를 거치도록 이름만 바꾸고 base의 tag를 유지합니다.
   - name: nginx

@@ -38,7 +38,7 @@ Portal은 [Portal 지침](../../apps/portal/AGENTS.md)에서 시작해
 사내 관리 호스트 `khplanew01`에서는 opencode의 `ops` agent가 배포·운영만 담당합니다. 정의는 `.opencode/agents/ops.md`이며 역할·권한 규칙은 [운영 agent 지침](../../deploy/AGENTS.md#사내-운영-agent)이 원본입니다.
 
 - 운영 스킬의 원본은 `.opencode/skills/<name>/SKILL.md`입니다. 사내에서는 Claude Code·Codex를 쓰지 않으므로 `.codex/skills`·`.claude/skills`와 연결하지 않고, 개발용 스킬은 이 폴더에 복사하지 않습니다.
-- opencode는 `AGENTS.md`를 루트부터 읽고 호환 경로인 `.claude/skills`의 개발용 스킬도 탐색합니다. `ops` agent의 `skill` 권한이 운영 스킬 외에는 거부합니다.
+- 사내 세션은 [ops 전용 checkout](../../deploy/shared/docs/operations/01-checkout.md#ops-전용-checkout)에서 시작합니다. 작업 트리에는 개발용 AGENTS.md·스킬과 사람용 설치 문서가 없고 운영 스킬과 인프라 기록이 있습니다.
 - `ops` agent는 `deploy-drift-check`, `server-deploy-routine` 스킬만 사용할 수 있으며 저장소 수정·commit·push·Secret 조회를 막거나 승인받습니다.
 - 배포 절차는 `server-deploy-routine` 스킬의 앱별 런북(`runbooks/<app>.md`)을 따릅니다. 저성능 모델도 따라가도록 단계마다 명령 하나와 [조회]/[검사]/[변경]/[사람] 표시, 성공 문구, 멈춤 조건을 둡니다.
 - 관리 호스트 준비는 [관리 호스트 준비](../../deploy/shared/docs/operations/04-drift.md#관리-호스트-준비)를 따릅니다.

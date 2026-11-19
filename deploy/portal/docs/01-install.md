@@ -43,7 +43,7 @@ Airflow 서버 자체의 설정은 `deploy/airflow/env/`, API에서 Airflow에 �
 | `env/prod/` | 사내 Kubernetes 운영 Portal |
 | `env/test/` | API 자동 테스트 |
 
-환경끼리 자동 상속하지 않습니다. 운영 Portal은 `env/prod/`의 파일만 사용합니다.
+환경끼리 자동 상속하지 않습니다. 기본 운영 입력은 `env/prod/`입니다. 관리 호스트의 외부 env를 사용하면 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`에 실제 경로를 지정하고 사전 검사, client 등록, Secret 등록에 같은 경로를 전달합니다.
 
 ```bash
 chmod 600 deploy/portal/env/prod/api.env deploy/portal/env/prod/web.env
@@ -57,6 +57,8 @@ vi deploy/portal/env/prod/web.env
 4. 연결할 업무 기능의 구역만 [전체 설정 설명](../../../docs/reference/01-configuration.md)을 보고 `api.env`에 추가합니다. 다른 환경 파일을 통째로 복사하면 dummy 주소나 다른 환경의 계정까지 가져옵니다.
 
 API 파일의 구역 번호는 모든 환경에서 같고 설정이 없는 구역은 생략됩니다. timeout·cache 같은 선택 설정은 입력값과 코드 기본값을 확인하며, 빈 값과 변수 생략은 의미가 다를 수 있습니다.
+
+신규 설치용 Django 서명 키는 기본 API env에 있습니다. 기존 Portal 이전 시 운영 서명 키를 유지합니다. 외부 DB의 `DJANGO_DB_HOST`·`DJANGO_DB_NAME`·`DJANGO_DB_USER`·`DJANGO_DB_PASSWORD`는 실제 접속 정보를 입력합니다. API·Web 이미지는 사내 registry의 overlay 경로에 push하고 두 overlay에 실제 태그를 지정합니다.
 
 ### 2. 서로 맞춰야 하는 값
 
@@ -121,7 +123,7 @@ read -r -p 'Keycloak이 설치된 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
 ### 2. client 등록
 
 ```bash
-make keycloak-portal-client-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_PORTAL_ENV="$PWD/deploy/portal/env/prod/api.env"
+make keycloak-portal-client-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/portal-keycloak-client
 ```
 
@@ -195,56 +197,7 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 #### 검사 Job 준비
 
-같은 Bash 세션에서 아래 함수를 정의합니다. `portal_wait_job`은 Job의 성공·실패를 감지하고 로그를 출력하며 최대 15분 기다립니다.
-`portal_permission_check`는 migration overlay에서 동일 이미지·namespace·`api-env` Secret의 검사 Job을 만들며 `backoffLimit=0`으로 자동 재시도하지 않습니다.
-검사마다 사용하지 않은 Job 이름을 지정합니다. 같은 이름이 있으면 `create`가 중단하므로 먼저 기존 결과를 확인합니다.
-
-```bash
-portal_wait_job() (
-  set -euo pipefail
-  local name="$1" status
-  for _ in $(seq 180); do
-    status="$(kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get job "$name" \
-      -o jsonpath='{.status.succeeded}/{.status.failed}')"
-    case "$status" in
-      1/*) kubectl --context "$KUBE_CONTEXT" -n tailwind-internal logs "job/$name" --tail=100; return 0 ;;
-      */[1-9]*)
-        kubectl --context "$KUBE_CONTEXT" -n tailwind-internal logs "job/$name" --tail=100 >&2 || true
-        echo "Job 실패: $name" >&2; return 1 ;;
-    esac
-    sleep 5
-  done
-  echo "Job 대기 시간 초과: $name" >&2
-  return 1
-)
-
-portal_permission_check() (
-  set -euo pipefail
-  local check_name="$1" check_phase="$2"
-  case "$check_phase" in
-    pre-migration|post-migration) ;;
-    *) echo '검사 phase는 pre-migration 또는 post-migration이어야 합니다.' >&2; return 1 ;;
-  esac
-  kubectl --context "$KUBE_CONTEXT" create --dry-run=client \
-    -k deploy/portal/k8s/overlays/prod/migrate -o json |
-    python3 -c '
-import json
-import sys
-
-job = json.load(sys.stdin)
-job["metadata"]["name"] = sys.argv[1]
-job["spec"]["backoffLimit"] = 0
-container = next(item for item in job["spec"]["template"]["spec"]["containers"] if item["name"] == "migrate")
-container["command"] = ["python"]
-container["args"] = ["manage.py", "check_access_permission_integrity", "--phase", sys.argv[2]]
-json.dump(job, sys.stdout)
-' "$check_name" "$check_phase" |
-    kubectl --context "$KUBE_CONTEXT" create -f -
-  portal_wait_job "$check_name"
-)
-```
-
-검사 명령은 DB를 읽기만 하며, 함수는 검사 Job을 클러스터에 생성합니다. 함수가 실패하면 `kubectl --context "$KUBE_CONTEXT" -n tailwind-internal describe job <이름>`으로 Pod 상태를 확인하고 다음 단계로 넘어가지 않습니다.
+아래 Make 타깃은 지정한 context에 Job 하나를 생성하고 최대 15분 동안 결과를 기다립니다. 검사 Job은 migration overlay와 같은 이미지와 Secret을 사용합니다. 단계마다 사용하지 않은 검사 Job 이름을 지정합니다. 기존 Job이 있으면 생성이 실패하며 이전 결과를 보존합니다.
 
 #### 기존 DB 갱신 전 쓰기 중지와 사전 검사
 
@@ -262,7 +215,7 @@ API와 관련 쓰기가 모두 중지됐는지 확인한 뒤 DB 백업·복구 �
 
 ```bash
 read -r -p '사전 검사 Job의 고유 이름: ' PORTAL_PRECHECK_JOB
-portal_permission_check "$PORTAL_PRECHECK_JOB" pre-migration
+make portal-precheck KUBE_CONTEXT="$KUBE_CONTEXT" PORTAL_CHECK_JOB="$PORTAL_PRECHECK_JOB"
 ```
 
 #### Migration Job 실행
@@ -275,8 +228,7 @@ kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get job portal-migrate --
 진행 중이거나 실패한 Job이면 로그·DB 원인부터 확인하고 중복 실행하지 않습니다.
 
 ```bash
-kubectl --context "$KUBE_CONTEXT" apply -k deploy/portal/k8s/overlays/prod/migrate
-portal_wait_job portal-migrate
+make portal-migrate KUBE_CONTEXT="$KUBE_CONTEXT"
 ```
 
 `portal-migrate`는 자동 재시도하지 않습니다(`backoffLimit: 0`). 실패하면 앱 배포를 진행하지 않고 `describe job`·Job Pod 로그로 DB 연결과 migration 오류를 확인합니다.
@@ -287,7 +239,7 @@ portal_wait_job portal-migrate
 
 ```bash
 read -r -p '사후 검사 Job의 고유 이름: ' PORTAL_POSTCHECK_JOB
-portal_permission_check "$PORTAL_POSTCHECK_JOB" post-migration
+make portal-postcheck KUBE_CONTEXT="$KUBE_CONTEXT" PORTAL_CHECK_JOB="$PORTAL_POSTCHECK_JOB"
 ```
 
 실패하면 API와 쓰기 작업을 시작하지 않습니다. 신규 설치는 오류를 해결한 뒤 다시 검사하고, 기존 DB는 백업·변경분을 확인해 준비한 복구 절차를 따릅니다.

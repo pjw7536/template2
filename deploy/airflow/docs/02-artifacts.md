@@ -245,8 +245,12 @@ HTTP registry이므로 push에 `--insecure-registry`를 추가하고, 빌드 호
 ```bash
 read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default image inspect "$AIRFLOW_IMAGE_REF"
-sudo nerdctl --address /run/containerd/containerd.sock --namespace default push "$AIRFLOW_IMAGE_REF"
+# 사내 이미지 저장소(HTTP)는 처음 한 번 push 계정으로 로그인합니다.
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default --insecure-registry login registry.etch.samsungds.net
+sudo nerdctl --address /run/containerd/containerd.sock --namespace default --insecure-registry push "$AIRFLOW_IMAGE_REF"
 ```
+
+HTTPS·인증 registry를 쓰면 `--insecure-registry`를 빼고 해당 registry에 로그인합니다.
 
 **기대 결과:** registry에 태그가 있고 선택한 Worker가 인증·CA·네트워크 설정으로 내려받을 수 있습니다.
 

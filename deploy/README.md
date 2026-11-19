@@ -5,9 +5,9 @@
 
 ## 처음 준비하는 순서
 
-1. [서버 파일 받기](shared/docs/operations/01-checkout.md): 관리 호스트에 저장소를 clone하고 갱신합니다.
+1. [서버 파일 받기](shared/docs/operations/01-checkout.md): 관리 호스트에 사람용 전체 checkout과 [ops 전용 checkout](shared/docs/operations/01-checkout.md#ops-전용-checkout)을 준비합니다.
 2. [배포 준비와 검증](shared/docs/operations/02-deploy.md): context·공용 Ingress·env·TLS를 준비하고 앱 순서를 확인합니다.
-3. 아래 앱별 안내에서 설치를 진행합니다.
+3. `make ops-preflight APP=<앱> PROFILE=prod KUBE_CONTEXT="<context>"`로 반입물·배포 입력을 검사하고, 현장 확인을 마친 뒤 아래 앱별 안내에서 설치합니다. 사내 [ops 에이전트](../.opencode/agents/ops.md)는 승인된 변경을 앱별 런북에 따라 실행합니다.
 4. [운영과 문제 해결](shared/docs/operations/03-operations.md)으로 갱신·장애·백업을 관리합니다.
 
 대상 서버·주소·적용 상태는 [사내 인프라 정보](shared/docs/infrastructure/README.md)와 실제 조회를 대조합니다.

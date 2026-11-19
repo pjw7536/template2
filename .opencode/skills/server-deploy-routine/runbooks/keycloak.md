@@ -1,7 +1,6 @@
 # Keycloak 배포 런북
 
 공통 규칙은 [00-common.md](00-common.md)를 먼저 따릅니다. 명령은 관리 호스트 저장소 루트에서 실행합니다.
-원본 문서: [README](../../../../deploy/keycloak/README.md) · [준비](../../../../deploy/keycloak/docs/01-prepare.md) · [배포](../../../../deploy/keycloak/docs/02-deploy.md) · [설정](../../../../deploy/keycloak/docs/03-configure.md) · [운영](../../../../deploy/keycloak/docs/04-operations.md). 이 런북과 다르면 원본이 우선입니다.
 
 ## 한눈에 보기
 
@@ -22,7 +21,7 @@ agent는 아래 일을 직접 하지 않습니다. 필요하면 사용자에게 
 - [사람] 인증서 발급과 `deploy/shared/certs/sso.etch.samsungds.net/fullchain.crt`·`private.key` 배치
 - [사람] DNS `sso.etch.samsungds.net` → APP VIP 등록
 - [사람] 사내 AD FS client 발급과 redirect URI `https://sso.etch.samsungds.net/realms/etch/broker/oidc/endpoint` 등록
-- [사람] env 파일 작성(비밀번호 입력)
+- [사람] 사내 IdP 연동 단계에서 AD FS 발급값 `CORP_OIDC_CLIENT_ID`·`CORP_OIDC_CLIENT_SECRET` 입력. 기존 DB·관리자 계정은 사용 중인 env 유지
 - [사람] Admin Console에서 `Email as username`이 꺼져 있는지 확인, Account Console 시험 로그인
 - [사람] 관리 API 단계(SDWT·소속 역할·앱 역할)의 관리자 비밀번호 입력
 
@@ -36,68 +35,63 @@ agent는 아래 일을 직접 하지 않습니다. 필요하면 사용자에게 
 
 ## A. 최초 설치
 
-각 단계가 성공해야 다음 단계로 갑니다. 실패하면 [멈추고 사람에게 묻는 조건](#멈추고-사람에게-묻는-조건)과 원본 문서를 확인하고 보고합니다.
+각 단계가 성공해야 다음 단계로 갑니다. 실패하면 [멈추고 사람에게 묻는 조건](#멈추고-사람에게-묻는-조건)을 확인하고 보고합니다.
 
 1. [조회] 사람 작업 완료 확인: 위 [사람이 해야 하는 일](#사람이-해야-하는-일)의 Worker 폴더·인증서 배치·AD FS·env 작성이 끝났는지 사용자에게 확인합니다.
-2. [검사] env 형식 검사
-   ```bash
-   make env-check APP=keycloak PROFILE=prod COMPONENT=server
-   make server-check APP=keycloak PROFILE=prod
-   ```
-   성공: `설정 검사 통과`, `서버 원본 검사 통과: keycloak/prod`. 이 검사는 기본 경로 env만 봅니다.
+2. [검사] 공통 사전 검사의 실제 env·원본 결과를 확인합니다. 준비 중 파일이 바뀌었으면 같은 입력으로 재검사합니다.
 3. [변경] 공용 TLS 등록(승인 필요)
    ```bash
-   make ingress-tls-up KUBE_CONTEXT=kubernetes-admin@kubernetes TLS_HOST=sso.etch.samsungds.net TLS_CERT_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/fullchain.crt" TLS_KEY_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/private.key"
+   make ingress-tls-up KUBE_CONTEXT="<context>" TLS_HOST=sso.etch.samsungds.net TLS_CERT_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/fullchain.crt" TLS_KEY_FILE="$PWD/deploy/shared/certs/sso.etch.samsungds.net/private.key"
    ```
-   실패: SAN·체인·만료 오류면 멈추고 보고합니다([인증서 준비](../../../../deploy/shared/docs/certificates/prepare.md)).
+   실패: SAN·체인·만료 오류면 멈추고 보고합니다(인증서 준비 (사람용 `deploy/shared/docs/certificates/prepare.md`)).
 4. [검사] 배포 전 검사(클러스터 변경 없음)
    ```bash
-   make keycloak-check KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make keycloak-check KUBE_CONTEXT="<context>"
    ```
    성공: `Keycloak 입력·원본·기존 Secret·worker 검사 통과`. 실패하면 5단계로 가지 않습니다.
 5. [변경] 배포(승인 필요)
    ```bash
-   make keycloak-up KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make keycloak-up KUBE_CONTEXT="<context>"
    ```
    성공: `Keycloak 배포 완료: https://sso.etch.samsungds.net`과 `배포 기록 저장: etch-sso/deploy-record-keycloak`.
-6. [조회] 기동 확인: [C. 배포 후 확인](#c-배포-후-확인)의 명령을 실행합니다.
+6. [조회] `kubectl --context "<context>" -n etch-sso rollout status deployment/keycloak --timeout=10m`으로 기동을 확인합니다. C의 realm 접속 검사는 realm 설정 후 실행합니다.
 7. [변경] realm 생성(승인 필요). Job이 최대 15분 걸립니다.
    ```bash
-   make keycloak-realm-setup KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make keycloak-realm-setup KUBE_CONTEXT="<context>"
    ```
 8. [검사] IdP 사전 검사
    ```bash
-   python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context kubernetes-admin@kubernetes --env deploy/keycloak/env/prod.env
+   python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "<context>" --env "<선택한 Keycloak env 경로>"
    ```
    성공: `사전 검사 통과`. 실패하면 AD FS·Discovery URL·CA 문제이므로 멈추고 보고합니다.
 9. [변경] 사내 IdP 등록(승인 필요)
    ```bash
-   make keycloak-idp-setup KUBE_CONTEXT=kubernetes-admin@kubernetes
+   make keycloak-idp-setup KUBE_CONTEXT="<context>"
    ```
 10. [변경] 사용자 프로필 등록(승인 필요)
     ```bash
-    make keycloak-profile-setup KUBE_CONTEXT=kubernetes-admin@kubernetes
+    make keycloak-profile-setup KUBE_CONTEXT="<context>"
     ```
 11. [사람] Admin Console에서 `Email as username`이 꺼져 있는지 사용자에게 확인받습니다.
 12. [변경] IdP mapper 등록(승인 필요)
     ```bash
-    make keycloak-idp-mappers-setup KUBE_CONTEXT=kubernetes-admin@kubernetes
+    make keycloak-idp-mappers-setup KUBE_CONTEXT="<context>"
     ```
 13. [사람] Account Console(`https://sso.etch.samsungds.net/realms/etch/account/`) 사내 로그인과 Admin Console의 사용자 claim 값 확인을 요청합니다. 확인 전에는 다른 앱을 연결하지 않습니다.
 
 7~12단계 중 하나가 실패하면 Job 로그를 확인합니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n etch-sso get jobs
-kubectl --context kubernetes-admin@kubernetes -n etch-sso logs job/<실패한 Job 이름>
-kubectl --context kubernetes-admin@kubernetes -n etch-sso describe job <실패한 Job 이름>
+kubectl --context "<context>" -n etch-sso get jobs
+kubectl --context "<context>" -n etch-sso logs job/<실패한 Job 이름>
+kubectl --context "<context>" -n etch-sso describe job <실패한 Job 이름>
 ```
 
 Job 이름: `keycloak-realm-setup`, `keycloak-oidc-setup`, `keycloak-user-profile-setup`, `keycloak-idp-mappers-setup`.
 
 ### 선택: SDWT 소속·역할 (관리 API)
 
-SDWT 권한을 쓸 때만 실행합니다. 관리자 비밀번호는 사람이 입력해야 하므로 사용자에게 실행을 요청하거나 함께 진행합니다. CSV는 저장소 밖에 둡니다. 절차는 [SDWT 그룹·사용자](../../../../deploy/keycloak/docs/03-configure.md#sdwt-그룹사용자)를 따릅니다.
+SDWT 권한을 쓸 때만 실행합니다. 관리자 비밀번호는 사람이 입력해야 하므로 사용자에게 실행을 요청하거나 함께 진행합니다. CSV는 저장소 밖에 둡니다. 담당자에게 SDWT 그룹·사용자 (사람용 `deploy/keycloak/docs/03-configure.md#sdwt-그룹사용자`) 경로를 전달합니다.
 
 | 순서 | 구분 | 명령 |
 | --- | --- | --- |
@@ -111,7 +105,7 @@ dry-run 결과를 사용자에게 보여 주고 승인을 받은 뒤 적용합�
 
 ## B. 업데이트
 
-변경된 파일에 맞는 행만 실행합니다. 변경 파일은 `make drift-check APP=keycloak KUBE_CONTEXT=kubernetes-admin@kubernetes`의 `record` 항목으로 확인합니다.
+변경된 파일에 맞는 행만 실행합니다. 변경 파일은 `make drift-check APP=keycloak KUBE_CONTEXT="<context>" DRIFT_JSON=1`의 `record` 항목으로 확인합니다.
 
 | 변경 | 실행 |
 | --- | --- |
@@ -121,13 +115,13 @@ dry-run 결과를 사용자에게 보여 주고 승인을 받은 뒤 적용합�
 | 인증서 갱신 | A-3 `ingress-tls-up` |
 | `deploy/keycloak/access/catalog.json` | 선택 절의 4·5단계(dry-run 후 승인) |
 | env의 DB·관리자 비밀번호 | 멈추고 사람에게 묻기. env만 바꿔서는 실제 서비스 값이 바뀌지 않고 `keycloak-up`이 중단함 |
-| 공개 주소 변경 | 멈추고 사람에게 묻기. [공개 인증 주소 변경](../../../../deploy/keycloak/docs/04-operations.md#공개-인증-주소-변경) 절차 |
+| 공개 주소 변경 | 멈추고 사람에게 묻기. 공개 인증 주소 변경 (사람용 `deploy/keycloak/docs/04-operations.md#공개-인증-주소-변경`) 절차 |
 
 외부 env를 쓰는 환경에서는 검사·배포·IdP 단계에 같은 경로를 붙입니다.
 
 ```bash
-make keycloak-check KUBE_CONTEXT=kubernetes-admin@kubernetes KEYCLOAK_ENV=<env 절대 경로>
-make keycloak-up KUBE_CONTEXT=kubernetes-admin@kubernetes KEYCLOAK_ENV=<env 절대 경로>
+make keycloak-check KUBE_CONTEXT="<context>" KEYCLOAK_ENV=<env 절대 경로>
+make keycloak-up KUBE_CONTEXT="<context>" KEYCLOAK_ENV=<env 절대 경로>
 ```
 
 ## C. 배포 후 확인
@@ -135,25 +129,24 @@ make keycloak-up KUBE_CONTEXT=kubernetes-admin@kubernetes KEYCLOAK_ENV=<env 절�
 모두 [조회]입니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes get pv keycloak-postgres-data
-kubectl --context kubernetes-admin@kubernetes -n etch-sso get pvc keycloak-postgres-data
-kubectl --context kubernetes-admin@kubernetes -n etch-sso rollout status statefulset/keycloak-postgres --timeout=5m
-kubectl --context kubernetes-admin@kubernetes -n etch-sso rollout status deployment/keycloak --timeout=10m
-kubectl --context kubernetes-admin@kubernetes -n etch-sso rollout status deployment/traefik --timeout=5m
-kubectl --context kubernetes-admin@kubernetes -n etch-sso get pods -o wide
+kubectl --context "<context>" get pv keycloak-postgres-data
+kubectl --context "<context>" -n etch-sso get pvc keycloak-postgres-data
+kubectl --context "<context>" -n etch-sso rollout status statefulset/keycloak-postgres --timeout=5m
+kubectl --context "<context>" -n etch-sso rollout status deployment/keycloak --timeout=10m
+kubectl --context "<context>" -n etch-sso rollout status deployment/traefik --timeout=5m
+kubectl --context "<context>" -n etch-sso get pods -o wide
 curl -fsS https://sso.etch.samsungds.net/realms/etch/.well-known/openid-configuration
-make drift-check APP=keycloak KUBE_CONTEXT=kubernetes-admin@kubernetes
 ```
 
-성공: PV·PVC `Bound`, keycloak·postgres Pod가 `khplane01w09`에서 Running, curl 결과의 `issuer`가 `https://sso.etch.samsungds.net/realms/etch`, drift-check 종료 코드 `0`.
+성공: PV·PVC `Bound`, keycloak·postgres Pod가 `khplane01w09`에서 Running, curl 결과의 `issuer`가 `https://sso.etch.samsungds.net/realms/etch`, 공통 마무리의 JSON 판정 `0`.
 curl은 DNS 전환 전에는 실패할 수 있습니다. 이때는 DNS 상태를 [인프라 정보](../../../../deploy/shared/docs/infrastructure/pending.md)에서 확인하고 보고합니다.
 
 실패하면 조회합니다.
 
 ```bash
-kubectl --context kubernetes-admin@kubernetes -n etch-sso get events --sort-by=.lastTimestamp
-kubectl --context kubernetes-admin@kubernetes -n etch-sso logs statefulset/keycloak-postgres --tail=100
-kubectl --context kubernetes-admin@kubernetes -n etch-sso logs deployment/keycloak --tail=100
+kubectl --context "<context>" -n etch-sso get events --sort-by=.lastTimestamp
+kubectl --context "<context>" -n etch-sso logs statefulset/keycloak-postgres --tail=100
+kubectl --context "<context>" -n etch-sso logs deployment/keycloak --tail=100
 ```
 
 ## 멈추고 사람에게 묻는 조건

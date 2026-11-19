@@ -9,6 +9,7 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
 | 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
+| 사내 ops 작업 루트 | 사람이 준비한 별도 sparse checkout | 저장소 선언: [ops 전용 checkout](../operations/01-checkout.md#ops-전용-checkout). 실제 서버 경로·준비 여부 미확인 |
 | 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env 검사 예시](../operations/02-deploy.md#4-실제-envtlsvip-준비). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
 | kubeconfig | 관리 호스트 배포 계정의 `$HOME/.kube/config`(CP1의 `/etc/kubernetes/admin.conf`를 복사, 권한 0600). Git에 넣지 않음 | 사용자 확정: 관리 호스트에서 admin kubeconfig 사용. 실제 파일 위치·계정은 서버 확인 필요 |

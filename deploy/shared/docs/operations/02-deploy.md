@@ -44,6 +44,22 @@ kubectl --context "$KUBE_CONTEXT" get nodes -o wide
 
 ### 3. 저장소 원본 검사 — 관리 호스트
 
+배포할 앱이 정해지면 checkout 루트에서 다음과 같이 검사합니다.
+
+```bash
+make ops-preflight APP=airflow PROFILE=prod KUBE_CONTEXT="$KUBE_CONTEXT" AIRFLOW_ENV="/appdata/etchax-config/airflow/k8s.env"
+```
+
+앱 하나를 명시합니다. 실제 env는 배포 타깃과 같은 `<APP>_ENV`를 사용하며 Portal은 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`을 사용합니다. Helm chart를 따로 반입했으면 `<APP>_CHART_FILE`도 지정합니다. 파일을 받는 절차는 [관리 호스트 준비](04-drift.md#관리-호스트-준비)를 따릅니다.
+
+| 결과 | 다음 작업 |
+| --- | --- |
+| 통과 | 해당 context 조회 또는 표시된 입력 검사가 성공했습니다. |
+| 배포 차단 | 담당자가 표시된 설정·도구·반입물을 준비하고 출력된 재검사 명령을 실행합니다. |
+| 현장 확인 필요 | 배치 Worker의 미러 접근·반입 이미지·디스크 등은 앱별 담당자가 확인합니다. 사전 검사는 파일 다운로드, pull, 클러스터 적용을 수행하지 않습니다. |
+
+차단이 있으면 명령이 실패합니다. 종료 성공 후에도 현장 확인과 앱별 클러스터 검사를 진행합니다. 그룹 전체의 저장소 원본만 검사할 때는 아래 명령을 사용합니다.
+
 ```bash
 make server-check APP=platform PROFILE=prod
 ```

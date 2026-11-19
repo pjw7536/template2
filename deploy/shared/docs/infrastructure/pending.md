@@ -25,7 +25,7 @@
 
 | 작업 | 목표 | 현재 상태 | 절차·원본 | 주체 |
 | --- | --- | --- | --- | --- |
-| 관리 호스트 준비 | `khplanew01`에 admin kubeconfig·저장소 checkout·kubectl·helm·chart·외부 env를 두고 `make drift-check` 실행 | 미확인 | [관리 호스트 준비](../operations/04-drift.md#관리-호스트-준비) | 운영자 |
+| 관리 호스트 준비 | `khplanew01`에 admin kubeconfig·사람용·ops 전용 checkout과 kubectl·helm·chart·외부 env를 두고 `make drift-check` 실행 | 미확인 | [관리 호스트 준비](../operations/04-drift.md#관리-호스트-준비) | 운영자 |
 | 공용 Traefik·APP VIP backend | backend 2대에서 Traefik이 443 응답 | 저장소 기본 배치는 `khplane01w09` 1대. 실제 배치·LB 응답 미확인 | [VIP와 backend](network.md#vip와-backend), [backend 확장](../ingress/expand.md) | 운영자 |
 | 사내 미러 pull 확인 | 서버가 받는 모든 이미지·패키지를 대상 노드에서 받을 수 있음 | 미확인 | [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [패키지 주소](repositories.md#패키지chartartifact-주소) | 운영자 |
 | API server 버전 확인 | 실제 버전을 서버 현황에 반영 | CP1 확인값 `v1.36.0`, metrics-server 안내에는 1.36.4로 기록되어 충돌 | [설치 기준](servers.md#확인된-worker-설치-기준), [metrics-server](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |
@@ -42,13 +42,13 @@
 | MinIO 재생성 | `/appdata/minio` 저장소로 새로 설치 | 데이터 없음은 사용자 확인. 재생성 완료 미확인 | [MinIO 설치](../../../minio/README.md), [서비스 배치](services.md#앱별-배치와-스토리지-선언) | 운영자 |
 | Airflow 빌드 host 이전 | `khinfow01`에 사내 GitHub 저장소·nerdctl·BuildKit 준비 | 현재 빌드는 CP1. `khinfow01` 설치 미확인 | [빌드 도구 준비](../../../airflow/docs/02-artifacts.md#containerd-빌드-도구-준비) | 운영자 |
 | Airflow 이미지 준비 | `airflow:3.3.2-release-1`을 `khinfow01`에서 사내 ODBC artifact 포함으로 빌드해 `k8s.io`에 등록 | 로컬 Airflow 3 검증은 완료. 사내 의존성·ODBC 빌드는 미확인 | [이미지 준비](../../../airflow/docs/02-artifacts.md) | 운영자 |
-| Airflow 운영 입력 | 외부 env에 관리자 비밀번호·OIDC client secret 실제 값 입력, `airflow-oidc-ca` ConfigMap 생성 | 저장소 `deploy/airflow/env/k8s.env`는 `replace-here` 값이라 실제 값 검사에서 중단됨 | [Airflow 준비](../../../airflow/docs/01-prepare.md), [Airflow 배포](../../../airflow/docs/03-deploy.md) | 운영자 |
+| Airflow 운영 입력 | 기존 Airflow 계정·client가 있으면 운영 env 일치 확인, `airflow-oidc-ca` ConfigMap 생성 | 신규 설치값은 서버 env에 선언. 기존 계정·CA 등록 여부 미확인 | [Airflow 준비](../../../airflow/docs/01-prepare.md), [Airflow 배포](../../../airflow/docs/03-deploy.md) | 운영자 |
 | Airflow 배포 | `https://airflow.etch.samsungds.net` 로그인 | 노드 Ready·배포 미확인 | [Airflow 배포](../../../airflow/docs/03-deploy.md) | 운영자 |
 | Airflow DAG 공유 폴더 전환 | `khinfow01`의 공유 디렉터리를 스케줄러와 DAG Processor에 마운트 | 저장소 선언. 기존 DAG 백업·파일 이관·운영 재배포 및 목록 확인 필요 | [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) | 운영자 |
 | Monitoring 배포 | Grafana·Prometheus·Alertmanager 접속과 지표 수집 | 저장 폴더 준비는 사용자 확인. 배포·접속 미확인 | [Monitoring 설치](../../../monitoring/README.md) | 운영자 |
 | Headlamp 배포 | `https://headlamp.etch.samsungds.net` 로그인 | 배치 노드·배포 미확인 | [Headlamp 설치](../../../headlamp/README.md) | 운영자 |
 | FTP 배포 | 대상 노드에 `etch.io/ftp-enabled=true` 라벨과 송수신 성공 | 대상 노드·배포 미확인 | [FTP 설치](../../../ftp/docs/01-install.md) | 운영자 |
-| Portal Kubernetes 전환 | 테스트·운영 Portal을 Docker 서버에서 이 클러스터로 이전 | 이미지 registry·tag, 운영 Worker, 외부 DB, 업무 파일 PVC, 로그인 client 미확정 | [Portal 접속 구분](services.md#portal-테스트운영-접속-구분), [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [Portal 설치](../../../portal/README.md) | 미확인 |
+| Portal Kubernetes 전환 | 테스트·운영 Portal을 Docker 서버에서 이 클러스터로 이전 | 이미지 push·배포 tag, 운영 Worker, 외부 DB, 업무 파일 PVC, 로그인 client 적용 미확인 | [Portal 접속 구분](services.md#portal-테스트운영-접속-구분), [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [Portal 설치](../../../portal/README.md) | 미확인 |
 
 ## 4. 보안·운영 체계
 

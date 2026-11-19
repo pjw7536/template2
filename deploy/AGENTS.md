@@ -35,9 +35,9 @@
 
 - 코드·manifest·env 원본·스크립트·스킬·지침을 수정하지 않는다. 원인이 저장소에 있으면 보고하고 중단한다. 수정 가능 범위는 `shared/docs/infrastructure/`의 운영값·확인 상태·pending이며 커밋은 사람이 한다.
 - 배포·갱신은 `server-deploy-routine`, 저장소와 서버 상태 대조는 `deploy-drift-check` 스킬(원본 `.opencode/skills/`)을 따른다. 판정 원본은 [배포 상태 대조](shared/docs/operations/04-drift.md)와 `shared/scripts/deploy_state.py`다.
-- 사내 agent용 앱별 단계 런북은 `.opencode/skills/server-deploy-routine/runbooks/`에 있다. 앱의 배포 명령·순서·성공 문구·사람 작업을 바꾸면 같은 변경에서 해당 런북도 갱신한다. 원본은 사람용 문서이며 런북은 명령 순서만 요약한다.
+- 사내 agent용 앱별 단계 런북은 `.opencode/skills/server-deploy-routine/runbooks/`에 있다. 앱의 배포 명령·순서·성공 문구·사람 작업을 바꾸면 같은 변경에서 해당 런북도 갱신한다. 사람 문서와 런북은 같은 실행 타깃을 사용한다. 운영 checkout의 런북은 단독으로 실행할 수 있게 쓰고, 사람용 경로는 담당자 인계에만 사용한다.
 - 클러스터 변경 명령은 승인 후 실행하고 `KUBE_CONTEXT`를 명시한다. Secret·env 값을 조회·출력하지 않는다.
-- 현재 checkout과 클러스터의 일치는 `make drift-check`(렌더 결과와 실제 리소스 비교)로 판정한다. 배포 후 `make drift-check APP=<app>`이 `0`인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record`로 기록한다.
+- 현재 checkout과 클러스터의 일치는 `make drift-check`(렌더 결과와 실제 리소스 비교)로 판정한다. 배포 전 `make ops-preflight`로 선택한 앱·context·외부 입력을 검사한다. 배포 후 같은 입력의 `make drift-check DRIFT_JSON=1`에서 `resultCode`가 0인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record`로 기록한다.
 
 ## 검증
 
