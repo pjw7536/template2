@@ -332,6 +332,25 @@ data:
           }
         },
         {
+          "name": "job_title",
+          "displayName": "직책",
+          "permissions": {
+            "view": [
+              "admin",
+              "user"
+            ],
+            "edit": [
+              "admin"
+            ]
+          },
+          "multivalued": false,
+          "validations": {
+            "length": {
+              "max": 80
+            }
+          }
+        },
+        {
           "name": "grdname_en",
           "displayName": "grdname_en",
           "permissions": {
@@ -1227,6 +1246,7 @@ spec:
         - --api.dashboard=false
         - --accesslog=true
         - --log.level=INFO
+        - --entrypoints.web.transport.respondingTimeouts.readTimeout=600s
         image: repository.samsungds.net/proxy-docker-registry-1.docker.io/traefik:v3.7.1
         imagePullPolicy: IfNotPresent
         livenessProbe:

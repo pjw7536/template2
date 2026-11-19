@@ -213,6 +213,25 @@
       }
     },
     {
+      "name": "job_title",
+      "displayName": "직책",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 80
+        }
+      }
+    },
+    {
       "name": "grdname_en",
       "displayName": "grdname_en",
       "permissions": {

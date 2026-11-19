@@ -317,6 +317,34 @@
         "phone",
         "offline_access"
       ]
+    },
+    {
+      "clientId": "iam",
+      "name": "권한관리 local",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "rootUrl": "http://localhost:5174",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:5174/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5174"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5174/*"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "roles"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "users": [
@@ -363,6 +391,9 @@
           "value": "dummy-user-change-me",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "default-roles-portal"
       ]
     },
     {
@@ -409,6 +440,9 @@
           "value": "dummy-user-change-me",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "default-roles-portal"
       ]
     },
     {
@@ -455,6 +489,9 @@
           "value": "dummy-user-change-me",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "default-roles-portal"
       ]
     },
     {
@@ -492,13 +529,18 @@
           "portal-admin"
         ]
       },
-      "groups": [],
+      "groups": [
+        "/iam/platform-admins"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "dummy-user-change-me",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "default-roles-portal"
       ]
     },
     {
@@ -541,6 +583,9 @@
           "value": "dummy-user-change-me",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "default-roles-portal"
       ]
     }
   ],
@@ -649,6 +694,37 @@
           "portal-all-apps"
         ]
       }
+    },
+    {
+      "name": "iam",
+      "subGroups": [
+        {
+          "name": "platform-admins",
+          "clientRoles": {
+            "realm-management": [
+              "view-users",
+              "query-users",
+              "query-groups",
+              "manage-users"
+            ]
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "iam",
+        "roles": [
+          "view-users",
+          "query-users",
+          "query-groups",
+          "manage-users"
+        ]
+      }
+    ]
+  },
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true
 }

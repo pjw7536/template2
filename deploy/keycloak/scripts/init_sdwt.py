@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""SDWT 그룹·앱 claim·신규 사용자를 기본 dry-run으로 초기 설정합니다."""
+"""소속 그룹(/org/<팀>/<라인>/<SDWT>)·앱 claim·신규 사용자를 기본 dry-run으로 초기 설정합니다.
+
+소속 그룹에는 역할 하위 그룹이 없습니다. 소속별 역할은 org_sync.py가 client `org` 역할로 만듭니다(적용 시 함께 실행).
+팀은 사내 부서명(deptname)과 같은 값입니다. 같은 라인 이름이 여러 팀에 있을 수 있고 SDWT 이름은 전체에서 유일합니다.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,8 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 
 
 BASE = Path(__file__).resolve().parents[1]
-ROLES = ("admin", "user", "viewer")
+# 예전 관리자 그룹 이름과 혼동을 막고 역할 이름(<SDWT>:<등급>)과 겹치지 않게 라인·SDWT 이름으로 쓰지 않습니다.
+ORG_ROOT = "org"
 PAGE_SIZE = 100
 # CSV는 사내 claim 이름을 사용하고 기본 필드 충돌이 없는 커스텀 속성은 같은 이름으로 저장합니다.
 CSV_ATTRIBUTES = {
@@ -62,14 +67,19 @@ def read_csv(path: Path, required: set[str], optional: set[str]) -> list[dict]:
     return rows
 
 
+def valid_group_name(name: str) -> bool:
+    """소속 그룹 경로 한 단계로 쓸 수 있는 이름인지 확인합니다. ':'는 소속별 역할 이름(<SDWT>:<등급>)의 구분자입니다."""
+    return bool(name) and "/" not in name and ":" not in name and name not in {".", ".."}
+
+
 def load_inputs(sdwts_path: Path, users_path: Path | None) -> tuple[dict, list]:
-    """참조 목록 전체를 검증한 뒤 SDWT별 line과 사용자 입력을 반환합니다."""
+    """참조 목록 전체를 검증한 뒤 SDWT별 {department(팀=사내 부서명), line}과 사용자 입력을 반환합니다."""
     sdwts = {}
-    for number, row in enumerate(read_csv(sdwts_path, {"user_sdwt_prod", "line_id"}, set()), 2):
-        name, line = row["user_sdwt_prod"], row["line_id"]
-        if not name or not line or "/" in name or name in {".", ".."} or name in sdwts:
-            raise SetupError(f"SDWT CSV {number}행: 빈 값·중복 SDWT·잘못된 경로 이름입니다.")
-        sdwts[name] = line
+    for number, row in enumerate(read_csv(sdwts_path, {"user_sdwt_prod", "line_id", "department"}, set()), 2):
+        name, line, team = row["user_sdwt_prod"], row["line_id"], row["department"]
+        if not all(map(valid_group_name, (name, line, team))) or name in sdwts:
+            raise SetupError(f"SDWT CSV {number}행: 빈 값·중복 SDWT·'/'·':'가 들어간 이름입니다.")
+        sdwts[name] = {"department": team, "line": line}
     users = read_csv(users_path, {"userid", "user_sdwt_prod"},
                      set(CSV_ATTRIBUTES) | {"mail"}) if users_path else []
     seen = {key: set() for key in ("userid", "sabun", "loginid", "mail")}
@@ -78,6 +88,8 @@ def load_inputs(sdwts_path: Path, users_path: Path | None) -> tuple[dict, list]:
         if (not epid or len(epid) > 255 or any(char in epid for char in '/\\<>"&?#')
                 or row["user_sdwt_prod"] and row["user_sdwt_prod"] not in sdwts):
             raise SetupError(f"사용자 CSV {number}행: EPID 또는 SDWT가 올바르지 않습니다.")
+        if row.get("deptname") and row["user_sdwt_prod"] and row["deptname"] != sdwts[row["user_sdwt_prod"]]["department"]:
+            raise SetupError(f"사용자 CSV {number}행: deptname이 SDWT의 팀(department)과 다릅니다.")
         for key, values in seen.items():
             value = row.get(key, "").casefold()
             if value and value in values:
@@ -212,8 +224,8 @@ class Setup:
         self.scope_definition = json.loads((BASE / "k8s/claims/sdwt-access-scope.json").read_text())
         self.scope = None
         self.clients = []
-        self.parents = {}
-        self.children = {}
+        self.existing = {}
+        self.creates = []
         self.new_users = []
         self.existing_count = 0
         self.profile = None
@@ -231,21 +243,45 @@ class Setup:
         if self.users and self.api.call("GET", "default-groups"):
             raise SetupError("realm 기본 그룹이 있습니다. 신규 사용자의 자동 권한을 검토한 뒤 별도 정리하세요.")
         self.inspect_profile()
-        roots = self.api.pages("groups", populateHierarchy="false")
-        for name in self.sdwts:
-            parent = one(roots, "name", name)
-            self.parents[name] = parent
-            children = []
-            if parent:
-                check_clean_group(self.api, parent)
-                children = self.api.pages(f"groups/{segment(parent['id'])}/children", briefRepresentation="false")
-                for child in children:
-                    if child["name"] in ROLES:
-                        check_clean_group(self.api, child)
-            self.children[name] = {role: one(children, "name", role) for role in ROLES}
+        self.inspect_groups()
         if self.client_names:
             self.inspect_clients()
         self.inspect_users()
+
+    @staticmethod
+    def sdwt_path(sdwt: str, value: dict) -> str:
+        return f"/{ORG_ROOT}/{value['department']}/{value['line']}/{sdwt}"
+
+    def desired_paths(self) -> list[str]:
+        """만들어야 할 소속 그룹 경로를 상위부터 순서대로 돌려줍니다."""
+        paths = [f"/{ORG_ROOT}"]
+        for sdwt, value in self.sdwts.items():
+            team = f"/{ORG_ROOT}/{value['department']}"
+            for path in (team, f"{team}/{value['line']}", self.sdwt_path(sdwt, value)):
+                if path not in paths:
+                    paths.append(path)
+        return paths
+
+    def load_tree(self):
+        """최상위부터 네 단계까지 기존 그룹을 경로별로 읽습니다(/org/팀/라인/SDWT)."""
+        def walk(groups, prefix, depth):
+            for group in groups:
+                path = f"{prefix}/{group['name']}"
+                self.existing[path] = group
+                if depth < 4:
+                    walk(self.api.pages(f"groups/{segment(group['id'])}/children", briefRepresentation="false"), path, depth + 1)
+        walk(self.api.pages("groups", populateHierarchy="false"), "", 1)
+
+    def inspect_groups(self):
+        """소속 트리를 확인하고 같은 이름의 SDWT가 다른 위치에 있으면 쓰기 전에 중단합니다."""
+        self.load_tree()
+        wanted = {self.sdwt_path(sdwt, value) for sdwt, value in self.sdwts.items()}
+        for path in self.existing:
+            name = path.rsplit("/", 1)[-1]
+            if name in self.sdwts and path not in wanted:
+                raise SetupError(f"SDWT {name}이 CSV와 다른 위치({path})에 있습니다. 관리 화면에서 옮긴 뒤 실행하세요.")
+        # 소속 그룹에는 자기 SDWT 역할·SDWT 앱 역할 연결이 정상적으로 있으므로 정리 여부를 검사하지 않습니다.
+        self.creates = [path for path in self.desired_paths() if path not in self.existing]
 
     def inspect_profile(self):
         """다른 프로필 정의는 보존하고 등록에 필요한 관리 속성만 준비합니다."""
@@ -359,9 +395,10 @@ class Setup:
 
     def report(self):
         """개인정보 대신 작업별 건수를 출력합니다."""
-        parent_count = sum(value is None for value in self.parents.values())
-        child_count = sum(child is None for children in self.children.values() for child in children.values())
-        print(f"계획: SDWT 부모 {parent_count}개 생성, 등급 하위 그룹 {child_count}개 생성")
+        # /org(1단계) 아래 팀(2)·라인(3)·SDWT(4) 단계별 생성 수입니다.
+        count = lambda depth: sum(path.count("/") == depth for path in self.creates)
+        print(f"계획: 소속 그룹 생성 - 팀 {count(2)}개, 라인 {count(3)}개, SDWT {count(4)}개")
+        print("계획: 적용 후 org_sync로 소속별 역할(client org)과 토큰 scope를 맞춤")
         print(f"계획: client {len(self.clients)}개 연결, 신규 사용자 {len(self.new_users)}명, 기존 사용자 {self.existing_count}명 보존")
         print(f"계획: 사용자 프로필 {'보완' if self.profile_changed else '유지'}, 선택 client 토큰 수명 300초")
         print(f"계획: 충돌하는 선택 microprofile-jwt 연결 {sum(len(ids) for ids in self.optional_detach.values())}개 해제")
@@ -371,16 +408,20 @@ class Setup:
         """설정은 멱등적으로 준비하고 신규 사용자는 단일 요청으로 등록합니다."""
         if self.profile_changed:
             self.api.call("PUT", "users/profile", self.profile)
-        for name in self.sdwts:
-            if self.parents[name] is None:
+        for path in self.creates:
+            parent, name = path.rsplit("/", 1)
+            if parent:
+                group = self.existing.get(parent)
+                if group is None:
+                    raise SetupError(f"상위 그룹 {parent}를 찾지 못했습니다. 재실행하세요.")
+                self.api.call("POST", f"groups/{segment(group['id'])}/children", {"name": name})
+                created = self.api.pages(f"groups/{segment(group['id'])}/children")
+            else:
                 self.api.call("POST", "groups", {"name": name})
-                self.parents[name] = one(self.api.pages("groups", populateHierarchy="false"), "name", name)
-            parent = self.parents[name]
-            if not parent:
-                raise SetupError("생성한 SDWT 그룹을 찾지 못했습니다. 재실행하세요.")
-            for role in ROLES:
-                if self.children[name][role] is None:
-                    self.api.call("POST", f"groups/{segment(parent['id'])}/children", {"name": role})
+                created = self.api.pages("groups", populateHierarchy="false")
+            self.existing[path] = one(created, "name", name)
+            if not self.existing[path]:
+                raise SetupError(f"생성한 그룹 {path}를 찾지 못했습니다. 재실행하세요.")
         if self.clients:
             self.apply_clients()
         for number, row in self.new_users:
@@ -388,8 +429,10 @@ class Setup:
             name = row["user_sdwt_prod"]
             groups = []
             if name:
-                attributes.update(user_sdwt_prod=[name], line_id=[self.sdwts[name]])
-                groups = [f"/{name}/user"]
+                value = self.sdwts[name]
+                # 팀은 사내 부서(deptname)와 같은 값입니다. 사내 로그인 때 인사 값으로 다시 맞춰집니다.
+                attributes.update(user_sdwt_prod=[name], line_id=[value["line"]], deptname=[value["department"]])
+                groups = [self.sdwt_path(name, value)]
             body = {"username": row["userid"], "enabled": True, "attributes": attributes, "groups": groups}
             if row.get("mail"):
                 body["email"] = row["mail"]
@@ -426,7 +469,7 @@ class Setup:
 def main() -> int:
     """명시 apply가 없으면 관리 API는 조회만 수행합니다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sdwts", type=Path, default=os.environ.get("KEYCLOAK_SDWTS_CSV") or None, help="user_sdwt_prod,line_id CSV")
+    parser.add_argument("--sdwts", type=Path, default=os.environ.get("KEYCLOAK_SDWTS_CSV") or None, help="user_sdwt_prod,line_id,department CSV")
     parser.add_argument("--users", type=Path, default=os.environ.get("KEYCLOAK_USERS_CSV") or None, help="userid,user_sdwt_prod CSV, 생략하면 설정만 수행")
     parser.add_argument("--client", action="append", default=[], help="공통 권한을 연결할 기존 OIDC client, 반복 가능")
     parser.add_argument("--realm", default=os.environ.get("KEYCLOAK_TARGET_REALM", "etch"))
@@ -451,6 +494,12 @@ def main() -> int:
         setup.report()
         if args.apply:
             setup.apply()
+            # 새 SDWT의 소속별 역할·라인/팀 묶음·토큰 scope를 맞춥니다.
+            from org_sync import OrgSync
+            sync = OrgSync(setup.api)
+            sync.inspect()
+            sync.apply()
+            print("소속별 역할 반영 완료: " + ("; ".join(sync.plan) or "변경 없음"))
         else:
             print("dry-run 완료. 서버 설정·사용자는 변경하지 않았습니다. 적용하려면 --apply를 지정하세요.")
         return 0

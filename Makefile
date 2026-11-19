@@ -48,6 +48,25 @@ register-reference-users:
 	@test -f "$(REFERENCE_USERS_CSV)" || { echo 'REFERENCE_USERS_CSV에 참조 CSV 파일 경로를 지정하세요.'; exit 1; }
 	$(COMPOSE_K8S_CHECK) run --rm -T -v "$(CURDIR)/apps/portal/api:/app" -v "$(abspath $(REFERENCE_USERS_CSV)):/data/account/reference-users.csv:ro" api register_reference_users /data/account/reference-users.csv $(if $(filter 1,$(REGISTER_REFERENCE_USERS_APPLY)),--apply,)
 
+.PHONY: keycloak-org-sync keycloak-org-test
+# 소속 그룹(/org) 트리에 맞춰 소속별 역할(client org)·라인/팀 묶음·토큰 scope를 반영합니다. 기본은 dry-run입니다.
+keycloak-org-sync:
+	python3 deploy/keycloak/scripts/org_sync.py $(if $(filter 1,$(KEYCLOAK_ORG_APPLY)),--apply,)
+keycloak-org-test:
+	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_org.py'
+
+.PHONY: keycloak-access-apply keycloak-access-test
+# 앱 역할 카탈로그(deploy/keycloak/access/catalog.json)를 Keycloak에 반영합니다. 기본은 dry-run입니다.
+keycloak-access-apply:
+	python3 deploy/keycloak/scripts/access_apply.py $(if $(filter 1,$(KEYCLOAK_ACCESS_APPLY)),--apply,)
+keycloak-access-test:
+	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_access.py'
+
+.PHONY: local-keycloak-dummy
+# DUMMY_LINES를 지정하면 전체 라인·인원 규모를 맞춥니다. DUMMY_REMOVE=1이면 더미 사용자만 지웁니다.
+local-keycloak-dummy:
+	python3 local/keycloak/scripts/seed_org_dummy.py $(if $(filter 1,$(DUMMY_REMOVE)),--remove,$(if $(DUMMY_LINES),--lines $(DUMMY_LINES) --total-users $(or $(DUMMY_TOTAL_USERS),2000),))
+
 .PHONY: keycloak-sdwt-init keycloak-sdwt-test
 keycloak-sdwt-init:
 	bash ./deploy/keycloak/scripts/05-setup-sdwt.sh

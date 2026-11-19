@@ -5,6 +5,7 @@
 - [Realm과 사내 로그인](#realm과-사내-로그인)
 - [SDWT 그룹·사용자](#sdwt-그룹사용자)
 - [앱 연결](#앱-연결)
+- [앱 역할](#앱-역할)
 - [사용자 필드와 claim](#사용자-필드와-claim)
 
 ## Realm과 사내 로그인
@@ -140,7 +141,17 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job "$KEYCLOAK_J
 
 ## SDWT 그룹·사용자
 
-**목적:** SDWT별 `admin`·`user`·`viewer` 그룹과 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다.
+**목적:** 소속 그룹 트리(팀 → 라인 → SDWT)와 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다.
+
+```text
+/org
+  /<팀>
+    /<라인>
+      /<SDWT>                 소속 그룹. 한 사람당 SDWT 하나에만 가입
+```
+
+같은 라인 이름이 여러 팀에 있을 수 있으므로 라인은 항상 `팀/라인`으로 구분합니다. SDWT 이름은 전체에서 유일합니다.
+그룹 아래에 역할 그룹을 두지 않습니다. 등급(조회·일반·관리자)은 [소속별 역할](#소속별-역할)로 관리합니다.
 
 **준비물:** Realm·User Profile·IdP mapper 완료, 저장소 밖에 작성한 CSV, Keycloak 관리자 계정.
 관리자 API를 직접 사용하며 Kubernetes Job이나 runtime Secret을 사용하지 않습니다. 실제 사용자 CSV와 인증정보는 Git에 넣지 않습니다.
@@ -150,12 +161,14 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job "$KEYCLOAK_J
 [SDWT 템플릿](../inputs/sdwts.template.csv)과 [사용자 템플릿](../inputs/users.template.csv)을 저장소 밖 작업 경로에 복사합니다.
 UTF-8 CSV로 저장하고 EPID·사번은 텍스트로 입력해 선행 0을 유지합니다. 헤더만 있는 파일은 사용할 수 없습니다.
 
-SDWT–line CSV의 필수 헤더는 `user_sdwt_prod,line_id`입니다. SDWT 이름은 유일해야 하며 `/`를 포함할 수 없습니다.
+SDWT 목록 CSV의 필수 헤더는 `user_sdwt_prod,line_id,department`이며 `department`가 팀입니다. 팀은 사내 부서명(`deptname`)과 같은 값으로 씁니다.
+팀·라인·SDWT 이름에는 `/`와 `:`(역할 이름 구분자)를 쓸 수 없고, SDWT 이름은 전체에서 유일해야 합니다.
 
 ```csv
-user_sdwt_prod,line_id
-SDWT-A,LINE-1
-SDWT-B,LINE-1
+user_sdwt_prod,line_id,department
+SDWT-A,LINE-1,TEAM-1
+SDWT-B,LINE-1,TEAM-1
+SDWT-C,LINE-1,TEAM-2
 ```
 
 사용자 CSV의 필수 헤더는 `userid,user_sdwt_prod`입니다. `userid`는 EPID이고 소속이 없으면 SDWT 칸을 비웁니다.
@@ -209,18 +222,40 @@ make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SD
 make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
 ```
 
-각 SDWT 아래에 `admin`, `user`, `viewer` 그룹을 생성합니다. 사용자 CSV를 지정하면 EPID를 기본 username으로 등록하고,
-소속 SDWT·line을 저장하며, 본인 SDWT의 `user` 그룹에 가입시킵니다.
-`admin`이나 다른 SDWT 권한은 자동 부여하지 않으며 관리자가 필요한 그룹 가입으로 지정합니다.
+`/org` 아래 없는 팀·라인·SDWT 그룹을 생성하고, 이어서 [소속별 역할](#소속별-역할) 반영을 함께 실행합니다.
+이미 있는 그룹과 가입 관계는 바꾸지 않으므로 CSV에 행을 추가해 다시 실행하면 새 팀·라인·SDWT만 추가됩니다.
+사용자 CSV를 지정하면 EPID를 기본 username으로 등록하고, 소속 SDWT·line과 팀을 `deptname`으로 저장하며, `/org/<팀>/<라인>/<SDWT>`에 가입시킵니다. 사용자 CSV의 `deptname`은 SDWT의 팀과 같아야 합니다.
+관리자나 다른 SDWT 역할은 자동 부여하지 않으며 권한관리 웹에서 지정합니다.
 
-**실패 확인:** realm 기본 그룹에 의한 의도하지 않은 권한 부여, 중복 신원, 기존 그룹의 속성·역할 매핑이 발견되면 쓰기 전에 중단합니다. 사용자 등록 중 중단되면 완료된 행은 유지되므로 원인을 해결하고 재실행합니다.
+**실패 확인:** realm 기본 그룹에 의한 의도하지 않은 권한 부여, 중복 신원, 기존 그룹의 속성·역할 매핑이 발견되면 쓰기 전에 중단합니다.
+SDWT가 CSV와 다른 위치(다른 팀·라인)에 이미 있어도 중단합니다. 옮기려면 권한관리 웹의 라인 이동을 쓰고 CSV를 맞춥니다. Admin Console에서 옮겼다면 `make keycloak-org-sync KEYCLOAK_ORG_APPLY=1`로 라인 역할을 맞춥니다. 사용자 등록 중 중단되면 완료된 행은 유지되므로 원인을 해결하고 재실행합니다.
 
 ### 4. 등록 확인
 
-Admin Console의 `Groups`에서 `/{SDWT}/admin|user|viewer`를, `Users`에서 시험 사용자의 EPID·소속·그룹 가입을 확인합니다.
+Admin Console의 `Groups`에서 `/org/{팀}/{라인}/{SDWT}`를, `Clients` → `org` → `Roles`에서 `sdwt:{SDWT}:viewer`·`user`·`admin`을, `Users`에서 시험 사용자의 EPID·소속·그룹 가입을 확인합니다.
 대량 등록 전에 시험 계정의 최초 사내 로그인·계정 연결을 확인합니다.
 
 **다음 단계:** [설정 완료 확인](#설정-완료-확인). Portal client가 등록돼 있다면 [SDWT 공통 scope 연결](#sdwt-공통-scope-연결)도 수행합니다.
+
+## 소속별 역할
+
+**목적:** 소속 그룹 트리(`/org`)에 맞춰 SDWT별 등급 역할과 라인·팀 전체 역할, 토큰 claim(`affiliation`, `org_roles`)을 Keycloak에 맞춥니다.
+권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
+
+| 반영 대상 | 내용 |
+| --- | --- |
+| client `org` | 역할 보관용 public client. 로그인에 쓰지 않습니다 |
+| 역할 | `sdwt:{SDWT}:{등급}`, `team:{팀}:line:{라인}:{등급}`(그 라인 SDWT 역할 포함), `team:{팀}:{등급}`(그 팀 SDWT 역할 포함), 토큰 묶음 `org-all`(SDWT 역할만 포함. 토큰 `org_roles`에는 `sdwt:…` 값만 나감) |
+| SDWT 그룹 | `sdwt:{SDWT}:user` 연결. 소속하면 자기 SDWT 일반 역할을 자동으로 받습니다 |
+| client scope `org-claims` | `affiliation.team`·`line`·`sdwt`(속성 `deptname`·`line_id`·`user_sdwt_prod`)와 `org_roles` 발급. realm 기본 scope이며 카탈로그 앱 client에 연결합니다 |
+
+```bash
+make keycloak-org-sync                           # dry-run, 계획만 출력
+make keycloak-org-sync KEYCLOAK_ORG_APPLY=1      # 적용
+```
+
+**기대 결과:** 다시 실행하면 `계획: 변경 없음`입니다. 라인·팀 역할의 하위 역할은 트리와 정확히 맞추므로 Admin Console에서 SDWT를 옮긴 뒤 실행하면 라인 역할도 바뀝니다.
+**경고:** 트리에 없는 `org` 역할(삭제된 SDWT 등)은 지우지 않고 경고만 출력합니다. 권한관리 웹의 SDWT 추가·라인 이동은 이 명령과 같은 결과를 바로 만듭니다.
 
 ## 앱 연결
 
@@ -256,6 +291,11 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_
 기존 realm에 전용 `airflow` client를 등록하며 기본 조회는 정상 로그인한 모두에게 허용합니다.
 운영 담당자에게만 해당 client의 `User` 또는 `Admin`을 직접 부여합니다. Portal의 앱 역할·SDWT 그룹·조직 mapper는 Airflow 권한에 사용하지 않습니다.
 
+### 권한관리 웹
+
+라인·SDWT 추가, 사용자 소속 변경, 앱 역할 부여는 [권한관리 웹](../../../apps/iam/README.md)에서 할 수 있습니다.
+Keycloak 준비는 [deploy/iam](../../iam/README.md#keycloak-준비)을 따르고, 앱 역할은 아래 [앱 역할](#앱-역할)로 반영합니다.
+
 ### 앱별 완료 기준
 
 | 앱 | 확인할 결과 |
@@ -266,6 +306,36 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_
 | 추가 OIDC 앱 | 전용 client·redirect URI·issuer/JWKS·필요한 claim·권한 판정 확인 |
 
 새 client를 만드는 것만으로 Portal의 mapper가 다른 앱에 복제되지 않습니다. claim 이름·대소문자·자료형·발급 위치와 실제 값을 앱에서 확인합니다.
+
+## 앱 역할
+
+**목적:** [카탈로그](../access/catalog.json)에 적은 앱·기능의 역할, 포함 관계, realm 기본 역할을 Keycloak에 맞추고 권한관리 웹용 카탈로그를 저장합니다.
+권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
+
+**준비물:** 대상 앱의 로그인 client(앱 배포에서 생성), `/iam` 그룹([deploy/iam](../../iam/README.md#keycloak-준비)), [관리자 인증 입력](#2-관리자-인증-입력)과 같은 환경변수.
+
+카탈로그 항목은 다음과 같습니다.
+
+| 항목 | 값 | 만들어지는 역할 |
+| --- | --- | --- |
+| 단일 앱 `{ "client", "name", "default" }` | `default`: `open`·`closed` | `viewer` ⊂ `user` ⊂ `admin` |
+| 기능이 여러 개인 앱 `{ "client", "name", "features": [...] }` | 기능마다 `key`·`name`·`default` | `<key>:viewer` ⊂ `<key>:user` ⊂ `<key>:admin`, 묶음 `all:viewer`·`all:user`·`all:admin` |
+| 그룹 앱 `{ "group", "name", "infra" }` | Kubernetes처럼 그룹만 읽는 앱 | 없음(권한관리 웹 열만 생성) |
+
+`open`인 앱·기능의 `viewer`는 realm 기본 역할에 들어가 모든 사용자가 받습니다. `closed`로 바꾸면 기본 역할에서 뺍니다.
+SDWT별 데이터 범위는 앱 역할로 두지 않고 [소속별 역할](#소속별-역할)로 정합니다. 권한관리 웹이 쓰도록 `org` client id도 카탈로그에 함께 저장하므로 `make keycloak-org-sync`를 먼저 실행합니다.
+
+```bash
+python3 deploy/keycloak/scripts/access_apply.py --validate-only   # 서버 연결 없이 카탈로그 검사
+make keycloak-access-apply                                         # dry-run, 계획만 출력
+make keycloak-access-apply KEYCLOAK_ACCESS_APPLY=1                 # 적용
+```
+
+realm은 `KEYCLOAK_TARGET_REALM`(기본 `etch`)으로 바꿉니다.
+
+**기대 결과:** 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 `계획: 변경 없음`입니다. 권한관리 웹을 새로고침하면 매트릭스에 앱 열이 보입니다.
+**경고:** 카탈로그에 없는 역할·포함 관계는 지우지 않고 경고만 출력합니다. 앱이 새 역할로 전환된 뒤 이전 역할은 Admin Console에서 삭제합니다.
+client가 없는 앱은 건너뛰며, `/iam` 그룹이 없으면 권한관리 웹용 카탈로그를 저장하지 않습니다.
 
 ## 사용자 필드와 claim
 
@@ -303,6 +373,8 @@ Keycloak 기본 `username`은 EPID(`userid`)이고, 사내 사람 이름 `userna
 프로필 필드는 본인·관리자가 조회하고 관리자만 편집합니다. 미정의 속성 정책은 `ADMIN_EDIT`입니다.
 비밀번호·권한·로그인 시각은 커스텀 프로필에 복제하지 않습니다.
 
+`job_title`은 IAM에서 관리자가 입력하는 직책(예: `PL`, `파트장`)입니다. PL은 현재 소속 라인의 대표, 파트장은 현재 소속 SDWT의 대표를 뜻합니다. 직급 `grdName`과 구분하는 단일 문자열 속성이며 최대 80자입니다. 빈 값이면 직책을 해제합니다. 사내 IdP 수신 mapper와 앱 발급 mapper에는 포함하지 않으며 권한 역할을 부여하지 않습니다. 정의 변경은 위 User Profile 설정 명령으로 반영합니다. 미정의 속성 정책 `ADMIN_EDIT`을 사용하는 기존 realm에서도 관리자 저장은 가능하지만 명시한 프로필 제한을 적용하려면 정의를 반영해야 합니다.
+
 ### IdP mapper
 
 [수신 스크립트](../k8s/claims/sync-oidc-claim-mappers.sh)는 일반 속성 15개와 EPID mapper 1개를 등록합니다.
@@ -312,8 +384,10 @@ EPID는 유일하고 변하지 않으며 재사용되지 않는 식별자여야 
 
 ### 소속과 권한
 
-- 소속: `user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 line입니다. 관리자 또는 최초 CSV 등록으로 채우며 사내 IdP에서 수신하지 않습니다.
-- 접근 권한: `/{SDWT}/admin`, `/{SDWT}/user`, `/{SDWT}/viewer` 그룹으로 관리합니다. 소속이 바뀌어도 그룹을 자동으로 부여하지 않습니다.
+- 소속: `user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 라인입니다. 관리자, 권한관리 웹 또는 최초 CSV 등록으로 채우며 사내 IdP에서 수신하지 않습니다. 팀은 사내 부서 `deptname`(IdP 수신)과 같은 값입니다. 권한 판단에는 쓰지 않습니다.
+- 소속 그룹: `/org/{팀}/{라인}/{SDWT}` 하나에 가입합니다. 속성과 그룹은 권한관리 웹의 소속 변경이 함께 바꾸며, 토큰에는 `affiliation: {team, line, sdwt}`로 나갑니다.
+- 소속별 역할: client `org`의 `sdwt:{SDWT}:{등급}`, 라인 전체 `team:{팀}:line:{라인}:{등급}`, 팀 전체 `team:{팀}:{등급}`입니다. 등급은 `viewer`·`user`·`admin`입니다. 토큰에는 펼쳐진 목록 `org_roles`로 나갑니다. [소속별 역할](#소속별-역할)을 참고합니다.
+- 앱 기능 권한: 앱 client 역할로 관리합니다. [앱 역할](#앱-역할)을 참고합니다.
 
 ### 앱 토큰 계약
 

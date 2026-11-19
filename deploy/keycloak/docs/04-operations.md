@@ -25,8 +25,9 @@ CP1은 배포 명령을 실행하는 호스트이며 Keycloak·PostgreSQL은 man
 | `k8s/claims/account-user-profile.json` | 사용자 필드·조회/편집 권한 |
 | `k8s/claims/sync-oidc-claim-mappers.sh` | 수신·발급 mapper 등록 |
 | `k8s/claims/claim-mappers-job.yaml` | 프로필·mapper Job 원본 |
-| `k8s/claims/sdwt-access-scope.json` | SDWT groups 공통 scope |
+| `k8s/claims/sdwt-access-scope.json` | 라인·SDWT groups 공통 scope |
 | `inputs/` | SDWT·사용자 등록 CSV 양식 |
+| `access/catalog.json` | 앱 역할 카탈로그. [앱 역할](03-configure.md#앱-역할) |
 | `deploy/shared/certs/sso.etch.samsungds.net/` | 사이트 인증서. Git에 포함하지 않음 |
 | Worker `/appdata/keycloak-postgres` | PostgreSQL 실제 데이터. Git checkout에 포함되지 않음 |
 
@@ -35,7 +36,9 @@ CP1은 배포 명령을 실행하는 호스트이며 Keycloak·PostgreSQL은 man
 | `scripts/up.py` | `keycloak-check`·`keycloak-up`의 서버 검사·배포 |
 | `scripts/setup_discovery.py` | 설정 Job 실행과 Discovery 해석. `keycloak-oidc-check`·`keycloak-oidc-setup`은 IdP·mapper·선택 Portal client를 한 번에 실행 |
 | `scripts/00`~`05` 실행 파일 | Make 단계별 명령의 진입점 |
-| `scripts/init_sdwt.py` | SDWT 그룹·사용자 등록과 공통 scope 연결 |
+| `scripts/init_sdwt.py` | `/org` 소속 그룹·사용자 등록과 공통 scope 연결. 적용 시 `org_sync.py`도 실행 |
+| `scripts/org_sync.py` | `keycloak-org-sync`의 소속별 역할·라인/팀 묶음·`org-claims` scope 반영. [소속별 역할](03-configure.md#소속별-역할) |
+| `scripts/access_apply.py` | `keycloak-access-apply`의 앱 역할·기본 역할·권한관리 웹 카탈로그 반영 |
 | `scripts/render.sh` | `make k8s-export`의 전달 YAML 생성 |
 | `scripts/migrate_claim_attributes.py` | [사내 claim 속성 이전](#사내-claim-속성-이전) |
 

@@ -4,7 +4,7 @@
 
 | 파일 | 작성할 내용 |
 | --- | --- |
-| [sdwts.template.csv](sdwts.template.csv) | SDWT 이름과 line ID |
+| [sdwts.template.csv](sdwts.template.csv) | SDWT 이름, 라인(line_id), 팀(department, 사내 부서명과 같은 값) |
 | [users.template.csv](users.template.csv) | 사용자 EPID·소속·선택 신원 필드 |
 
 두 파일은 헤더만 있는 빈 양식입니다. 저장소 밖 경로에 복사해 실제 값을 작성합니다.

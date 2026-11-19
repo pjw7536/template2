@@ -1,0 +1,85 @@
+{
+  "apps": [
+    {
+      "client": "portal",
+      "name": "Portal",
+      "features": [
+        {
+          "key": "appstore",
+          "name": "Appstore",
+          "default": "open"
+        },
+        {
+          "key": "line-dashboard",
+          "name": "ESOP Dashboard",
+          "default": "open"
+        },
+        {
+          "key": "observer",
+          "name": "Observer",
+          "default": "open"
+        },
+        {
+          "key": "emails",
+          "name": "Emails",
+          "default": "open"
+        },
+        {
+          "key": "l0-spider",
+          "name": "L0 Spider",
+          "default": "open"
+        },
+        {
+          "key": "l1-spider",
+          "name": "L1 Spider",
+          "default": "open"
+        },
+        {
+          "key": "l3-spider",
+          "name": "L3 Spider",
+          "default": "open"
+        },
+        {
+          "key": "pm-spider",
+          "name": "PM Spider",
+          "default": "open"
+        },
+        {
+          "key": "tttm-spider",
+          "name": "TTTM Spider",
+          "default": "open"
+        },
+        {
+          "key": "teamstaff",
+          "name": "Teamstaff",
+          "default": "open"
+        },
+        {
+          "key": "voc",
+          "name": "VoE",
+          "default": "open"
+        },
+        {
+          "key": "assistant",
+          "name": "Assistant",
+          "default": "open"
+        },
+        {
+          "key": "access-stats",
+          "name": "접속 현황",
+          "default": "open"
+        }
+      ]
+    },
+    {
+      "client": "airflow",
+      "name": "Airflow",
+      "default": "open"
+    },
+    {
+      "group": "/headlamp-admins",
+      "name": "Headlamp",
+      "infra": true
+    }
+  ]
+}

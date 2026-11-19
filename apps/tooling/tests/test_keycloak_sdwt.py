@@ -33,10 +33,10 @@ class InputTests(unittest.TestCase):
         return path
 
     def test_reference_and_unaffiliated(self):
-        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id\nA,L\nB,L\n")
+        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id,department\nA,L,T\nB,L,T2\n")
         users = self.file("users.csv", "userid,user_sdwt_prod\n001,A\n002,\n")
         result, people = setup.load_inputs(sdwts, users)
-        self.assertEqual(result, {"A": "L", "B": "L"})
+        self.assertEqual(result, {"A": {"department": "T", "line": "L"}, "B": {"department": "T2", "line": "L"}})
         self.assertEqual(people[1]["user_sdwt_prod"], "")
         self.assertEqual(people[0]["userid"], "001")
 
@@ -51,9 +51,30 @@ class InputTests(unittest.TestCase):
         self.assertEqual(len(groups), 2)
         self.assertEqual(len(users), 3)
 
-    def test_initial_setup_without_clients_never_reads_or_writes_client_api(self):
+    def fake_api(self, paths=()):
+        """그룹 트리만 메모리에 두는 관리 API 대역입니다. paths는 미리 만들 그룹 경로 목록입니다."""
         profile = json.loads((ROOT / "deploy/keycloak/k8s/claims/account-user-profile.json").read_text())
-        calls, groups = [], []
+        groups, calls = {}, []
+
+        def add(name, parent=None):
+            group_id = f"g{len(groups) + 1}"
+            groups[group_id] = {"id": group_id, "name": name, "parent": parent}
+            return group_id
+
+        by_path = {}
+        for path in paths:
+            parts = path.strip("/").split("/")
+            for size in range(1, len(parts) + 1):
+                key = "/" + "/".join(parts[:size])
+                if key not in by_path:
+                    by_path[key] = add(parts[size - 1], by_path.get("/" + "/".join(parts[:size - 1])) if size > 1 else None)
+
+        def path_of(group_id):
+            group = groups[group_id]
+            return (path_of(group["parent"]) if group["parent"] else "") + "/" + group["name"]
+
+        def listing(parent):
+            return [{"id": g["id"], "name": g["name"]} for g in groups.values() if g["parent"] == parent]
 
         class Api:
             def call(self, method, path="", data=None, query=None):
@@ -66,42 +87,93 @@ class InputTests(unittest.TestCase):
                     return []
                 if path == "users/profile":
                     return copy.deepcopy(profile)
-                if method == "POST":
-                    if path == "groups":
-                        groups.append({"id": "g1", **data})
+                if method == "GET" and path.startswith("groups/"):
+                    return {}
+                if method == "POST" and path == "groups":
+                    add(data["name"])
+                    return None
+                if method == "POST" and path.startswith("groups/") and path.endswith("/children"):
+                    add(data["name"], path.split("/")[1])
+                    return None
+                if method == "POST" and path == "users":
                     return None
                 raise AssertionError((method, path))
 
             def pages(self, path, **query):
                 if path == "groups":
-                    return copy.deepcopy(groups)
+                    return listing(None)
+                if path.startswith("groups/") and path.endswith("/children"):
+                    return listing(path.split("/")[1])
                 if path == "users":
                     return []
                 raise AssertionError(path)
 
-        task = setup.Setup(Api(), {"SDWT-A": "LINE-1"}, [{"userid": "001", "user_sdwt_prod": "SDWT-A", "loginid": "test.user"}], [])
+        api = Api()
+        api.calls = calls
+        api.paths = lambda: sorted(path_of(group_id) for group_id in groups)
+        return api
+
+    def test_initial_setup_without_clients_never_reads_or_writes_client_api(self):
+        api = self.fake_api()
+        task = setup.Setup(api, {"SDWT-A": {"department": "TEAM-1", "line": "LINE-1"}}, [{"userid": "001", "user_sdwt_prod": "SDWT-A", "loginid": "test.user"}], [])
         task.inspect()
         with redirect_stdout(io.StringIO()):
             task.apply()
-        created = next(data for method, path, data in calls if method == "POST" and path == "users")
-        self.assertEqual(created["groups"], ["/SDWT-A/user"])
+        created = next(data for method, path, data in api.calls if method == "POST" and path == "users")
+        self.assertEqual(created["groups"], ["/org/TEAM-1/LINE-1/SDWT-A"])
         self.assertEqual(created["attributes"]["loginid"], ["test.user"])
         self.assertEqual(created["attributes"]["line_id"], ["LINE-1"])
+        self.assertEqual(created["attributes"]["deptname"], ["TEAM-1"])
+        self.assertNotIn("department", created["attributes"])
+        self.assertEqual(api.paths(), [
+            "/org", "/org/TEAM-1", "/org/TEAM-1/LINE-1", "/org/TEAM-1/LINE-1/SDWT-A",
+        ])
+
+    def test_repeat_adds_only_new_line_and_sdwt(self):
+        api = self.fake_api(["/org/TEAM-1/LINE-1/SDWT-A", "/portal-members"])
+        sdwts = {"SDWT-A": {"department": "TEAM-1", "line": "LINE-1"}, "SDWT-B": {"department": "TEAM-1", "line": "LINE-1"},
+                 "SDWT-C": {"department": "TEAM-2", "line": "LINE-1"}}
+        for _ in range(2):
+            task = setup.Setup(api, sdwts, [], [])
+            task.inspect()
+            with redirect_stdout(io.StringIO()):
+                task.apply()
+        paths = api.paths()
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertIn("/org/TEAM-1/LINE-1/SDWT-A", paths)
+        self.assertIn("/org/TEAM-1/LINE-1/SDWT-B", paths)
+        # 소속 그룹에는 역할 하위 그룹을 만들지 않습니다.
+        self.assertFalse([path for path in paths if path.endswith(("/admin", "/user", "/viewer"))])
+        # 같은 라인 이름이 다른 팀에도 있을 수 있습니다.
+        self.assertIn("/org/TEAM-2/LINE-1/SDWT-C", paths)
+        self.assertIn("/portal-members", paths)
+
+    def test_misplaced_sdwt_fails_before_writes(self):
+        for paths in (["/SDWT-A/user"], ["/LINE-1/SDWT-A"], ["/org/TEAM-2/LINE-1/SDWT-A"], ["/org/TEAM-1/LINE-2/SDWT-A"]):
+            with self.subTest(paths=paths):
+                api = self.fake_api(paths)
+                with self.assertRaises(setup.SetupError):
+                    setup.Setup(api, {"SDWT-A": {"department": "TEAM-1", "line": "LINE-1"}}, [], []).inspect()
+                self.assertFalse([call for call in api.calls if call[0] != "GET"])
 
     def test_invalid_csv(self):
         for content in [
-            "user_sdwt_prod,line_id\nA,L\nA,L2\n",
-            "user_sdwt_prod,line_id\nA/user,L\n",
-            "user_sdwt_prod,line_id\n A,L\n",
-            "user_sdwt_prod,line_id\nA,\n",
-            "user_sdwt_prod,line_id\nA\n",
-            "user_sdwt_prod,line_id,line_id\nA,L,L\n",
+            "user_sdwt_prod,line_id,department\nA,L,T\nA,L2,T\n",
+            "user_sdwt_prod,line_id,department\nA/user,L,T\n",
+            "user_sdwt_prod,line_id,department\n A,L,T\n",
+            "user_sdwt_prod,line_id,department\nA,,T\n",
+            "user_sdwt_prod,line_id,department\nA,L,\n",
+            "user_sdwt_prod,line_id\nA,L\n",
+            "user_sdwt_prod,line_id,department,line_id\nA,L,T,L\n",
+            "user_sdwt_prod,line_id,department\nA:x,L,T\n",
+            "user_sdwt_prod,line_id,department\nA,L:x,T\n",
+            "user_sdwt_prod,line_id,department\nA,L/1,T\n",
         ]:
             with self.subTest(content=content), self.assertRaises(setup.SetupError):
                 setup.load_inputs(self.file("sdwts.csv", content), None)
 
     def test_optional_oidc_grade(self):
-        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id\nA,L\n")
+        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id,department\nA,L,T\n")
         users = self.file("users.csv", "userid,user_sdwt_prod,grdname_en\n001,A,CL3\n002,A,\n")
         _, people = setup.load_inputs(sdwts, users)
         self.assertEqual(people[0]["grdname_en"], "CL3")
@@ -110,8 +182,15 @@ class InputTests(unittest.TestCase):
             with self.subTest(retired=retired), self.assertRaises(setup.SetupError):
                 setup.load_inputs(sdwts, self.file("old.csv", f"userid,user_sdwt_prod,{retired}\n001,A,CL3\n"))
 
+    def test_user_deptname_must_match_team(self):
+        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id,department\nA,L,T\n")
+        _, people = setup.load_inputs(sdwts, self.file("ok.csv", "userid,user_sdwt_prod,deptname\n001,A,T\n"))
+        self.assertEqual(people[0]["deptname"], "T")
+        with self.assertRaises(setup.SetupError):
+            setup.load_inputs(sdwts, self.file("bad.csv", "userid,user_sdwt_prod,deptname\n001,A,OTHER\n"))
+
     def test_invalid_users(self):
-        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id\nA,L\n")
+        sdwts = self.file("sdwts.csv", "user_sdwt_prod,line_id,department\nA,L,T\n")
         for content in [
             "userid,user_sdwt_prod\n001,B\n",
             "userid,user_sdwt_prod\n001,A\n001,A\n",
@@ -158,7 +237,7 @@ class KeycloakTests(unittest.TestCase):
                 "clientId": client, "protocol": "openid-connect", "publicClient": True,
                 "directAccessGrantsEnabled": True, "attributes": {"unrelated": "preserve"},
             })
-        self.sdwts = {"SDWT-A": "LINE-1", "SDWT-B": "LINE-1"}
+        self.sdwts = {"SDWT-A": {"department": "TEAM-1", "line": "LINE-1"}, "SDWT-B": {"department": "TEAM-1", "line": "LINE-1"}}
         self.users = [{"userid": "001", "user_sdwt_prod": "SDWT-A", "sabun": "S001"},
                       {"userid": "002", "user_sdwt_prod": ""}]
 
@@ -174,9 +253,9 @@ class KeycloakTests(unittest.TestCase):
     def user(self, name):
         return self.api.call("GET", "users", query={"username": name, "exact": "true"})[0]
 
-    def group(self, sdwt, role):
-        parent = setup.one(self.api.pages("groups", populateHierarchy="false"), "name", sdwt)
-        return setup.one(self.api.pages(f"groups/{parent['id']}/children"), "name", role)
+    def group(self, sdwt):
+        value = self.sdwts[sdwt]
+        return self.api.call("GET", f"group-by-path/org/{value['department']}/{value['line']}/{sdwt}")
 
     def test_dry_run_and_repeat_preserve_existing(self):
         plan = self.run_setup(apply=False)
@@ -186,7 +265,7 @@ class KeycloakTests(unittest.TestCase):
         self.run_setup()
         user = self.user("001")
         self.assertEqual(user["attributes"]["line_id"], ["LINE-1"])
-        group = self.group("SDWT-A", "user")
+        group = self.group("SDWT-A")
         self.api.call("DELETE", f"users/{user['id']}/groups/{group['id']}")
         changed = copy.deepcopy(self.users)
         changed[0]["user_sdwt_prod"] = "SDWT-B"
@@ -205,9 +284,6 @@ class KeycloakTests(unittest.TestCase):
             "firstName": "Test", "lastName": "User", "email": "test@example.invalid", "emailVerified": True,
         })
         self.api.call("PUT", f"users/{user['id']}/reset-password", {"type": "password", "value": "test-password", "temporary": False})
-        for sdwt, role in [("SDWT-A", "admin"), ("SDWT-B", "viewer")]:
-            group = self.group(sdwt, role)
-            self.api.call("PUT", f"users/{user['id']}/groups/{group['id']}")
         token_path = f"/realms/{self.realm}/protocol/openid-connect/token"
         token = self.api._send("POST", token_path, {
             "grant_type": "password", "client_id": "portal", "username": "001", "password": "test-password", "scope": "openid",
@@ -218,15 +294,15 @@ class KeycloakTests(unittest.TestCase):
             claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
             self.assertEqual(claims["userid"], "001")
             self.assertEqual(claims["user_sdwt_prod"], "SDWT-A")
-            self.assertEqual(set(claims["groups"]), {"/SDWT-A/user", "/SDWT-A/admin", "/SDWT-B/viewer"})
-        group = self.group("SDWT-A", "admin")
+            self.assertEqual(set(claims["groups"]), {"/org/TEAM-1/LINE-1/SDWT-A"})
+        group = self.group("SDWT-A")
         self.api.call("DELETE", f"users/{user['id']}/groups/{group['id']}")
         token = self.api._send("POST", token_path, {
             "grant_type": "refresh_token", "client_id": "portal", "refresh_token": token["refresh_token"],
         }, form=True, auth=False)
         payload = token["access_token"].split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        self.assertNotIn("/SDWT-A/admin", claims["groups"])
+        self.assertNotIn("/org/TEAM-1/LINE-1/SDWT-A", claims.get("groups", []))
 
     def test_oidc_grade_persists_without_overwriting_existing(self):
         users = copy.deepcopy(self.users)
@@ -288,7 +364,7 @@ class KeycloakTests(unittest.TestCase):
         plan = self.run_setup()
         self.assertEqual(plan.existing_count, 1)
         self.assertEqual(len(self.api.pages("users")), 2)
-        self.assertEqual([g["path"] for g in self.api.pages(f"users/{self.user('001')['id']}/groups")], ["/SDWT-A/user"])
+        self.assertEqual([g["path"] for g in self.api.pages(f"users/{self.user('001')['id']}/groups")], ["/org/TEAM-1/LINE-1/SDWT-A"])
 
     def test_scope_collision_fails_before_writes(self):
         client = self.api.call("GET", "clients", query={"clientId": "portal"})[0]
@@ -311,7 +387,7 @@ class KeycloakTests(unittest.TestCase):
         with patch.object(setup, "PAGE_SIZE", 1):
             self.run_setup()
             self.assertEqual(len(self.api.pages("users")), 2)
-            self.assertEqual(len(self.api.pages("groups", populateHierarchy="false")), 2)
+            self.assertEqual(len(self.api.pages("groups", populateHierarchy="false")), 1)
 
     def test_local_import_preserves_standard_claims_and_migrates_mapper(self):
         local_realm = "sdwt-test-" + uuid.uuid4().hex

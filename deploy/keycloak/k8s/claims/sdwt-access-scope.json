@@ -1,6 +1,6 @@
 {
   "name": "sdwt-access-v1",
-  "description": "SDWT별 공통 업무 권한: /SDWT/admin|user|viewer",
+  "description": "팀·라인·SDWT 공통 업무 권한: /TEAM/admin, /TEAM/LINE/admin, /TEAM/LINE/SDWT/admin|user|viewer",
   "protocol": "openid-connect",
   "attributes": {
     "include.in.token.scope": "true",

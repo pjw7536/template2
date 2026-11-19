@@ -548,7 +548,7 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
   const byName = Object.fromEntries(profile.attributes.map(a => [a.name, a]));
   const mapping = { loginid: 'loginid', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'deptname', deptid: 'deptid', mail: 'email', grdName: 'grdName', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype', user_sdwt_prod: 'user_sdwt_prod', line_id: 'line_id' };
-  assert.deepEqual(new Set(Object.keys(byName)), new Set(['username', 'firstName', 'lastName', ...Object.values(mapping)]));
+  assert.deepEqual(new Set(Object.keys(byName)), new Set(['username', 'firstName', 'lastName', 'job_title', ...Object.values(mapping)]));
   assert.ok(!byName.career_level);
   // 활성 필드는 본인 조회만 허용하고 신원 정보 수정은 관리자에게 제한합니다.
   for (const attribute of profile.attributes) {
@@ -560,6 +560,9 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   }
   assert.equal(byName.deptname.validations.length.max, 128);
   assert.equal(byName.sabun.validations.length.max, 50);
+  assert.equal(byName.job_title.multivalued, false);
+  assert.equal(byName.job_title.validations.length.max, 80);
+  assert.ok(!Object.values(mapping).includes('job_title'));
   assert.ok(!byName.password && !byName.is_superuser);
   assert.ok(!byName.first_name && !byName.last_name && !byName.avatarid);
   assert.ok(!byName.givenname && !byName.surname);
