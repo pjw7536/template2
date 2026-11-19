@@ -20,6 +20,7 @@
 | --- | --- |
 | Keycloak | [인증 서버·사내 로그인](keycloak/README.md) |
 | MinIO | [공용 객체 저장소](minio/README.md) |
+| Registry | [사내 이미지 저장소(Zot)](registry/README.md) |
 | Airflow | [워크플로 실행](airflow/README.md) |
 | Monitoring | [지표 수집·Grafana](monitoring/README.md) |
 | Headlamp | [Kubernetes 관리 화면](headlamp/README.md) |

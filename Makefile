@@ -12,6 +12,7 @@ KIND_BIN ?= $(CURDIR)/.tools/bin/kind
 APP ?= keycloak
 PROFILE ?= prod
 MINIO_ENV ?= $(CURDIR)/deploy/minio/env/prod.env
+REGISTRY_ENV ?= $(CURDIR)/deploy/registry/env/k8s.env
 COMPONENT ?= server
 ENV_APP ?= all
 ENV_PROFILE ?= all
@@ -163,6 +164,17 @@ minio-up:
 
 minio-render:
 	python3 deploy/minio/scripts/manage.py render --env "$(MINIO_ENV)"
+
+# 사내 이미지 저장소(Zot)는 앱 env 없이 독립 배포합니다.
+.PHONY: registry-check registry-up registry-render
+registry-check:
+	python3 deploy/registry/scripts/manage.py check --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)"
+
+registry-up:
+	python3 deploy/registry/scripts/manage.py up --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)"
+
+registry-render:
+	python3 deploy/registry/scripts/manage.py render --env "$(REGISTRY_ENV)"
 
 # 공용 진입점은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다.
 .PHONY: ingress-check ingress-up ingress-connect ingress-tls-up

@@ -10,8 +10,9 @@
 
 | 용도 | 주소·패턴 | 근거·확인 상태 |
 | --- | --- | --- |
-| 사내 Git 서버·프로젝트 clone URL | 미확인 | 사내 Git 주소·프로젝트 경로·배포 브랜치 제공 필요 |
-| 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | 아래 [서버가 받는 이미지](#서버가-받는-이미지)의 선언 |
+| 사내 Git 서버·프로젝트 clone URL | GitHub Enterprise `https://github.samsungds.net` (사용자 확인). CI는 self-hosted runner만 제공(사용자 확인). 컨테이너 이미지 저장소(GitHub Packages)는 없는 것으로 보임(사용자 추정) | 프로젝트 경로·배포 브랜치·runner 설치 호스트·GitHub Packages 미제공 확정 필요 |
+| 이미지 registry | `repository.samsungds.net/<mirror>/<image>:<tag>` | 아래 [서버가 받는 이미지](#서버가-받는-이미지)의 선언. 외부 이미지 미러 전용이며 사내 빌드 이미지 push 저장소는 없음 |
+| 사내 빌드 이미지 저장소 | `registry.etch.samsungds.net/<이름>:<tag>` (HTTP) | 저장소 선언: [registry 안내](../../../registry/README.md). 배포·서버 적용 미확인 |
 | Docker Hub 이미지 | `repository.samsungds.net/proxy-docker-registry-1.docker.io/<image>:<tag>` | Traefik·Keycloak DB·Airflow·MinIO·FTP·Monitoring·Portal edge-nginx 선언. 공식 이미지의 `library/` 접두사는 선언마다 다름(postgres·traefik·nginx는 생략, Monitoring busybox는 포함). 두 형식의 실제 pull 확인 필요 |
 | Quay 이미지 | `repository.samsungds.net/proxy-docker-quay.io/<image>:<tag>` | Keycloak Kustomize·Monitoring env |
 | GHCR 이미지 | `repository.samsungds.net/proxy-docker-ghcr.io/<image>:<tag>` | Monitoring·Headlamp env |
@@ -40,6 +41,7 @@
 | Headlamp | `repository.samsungds.net/proxy-docker-ghcr.io/headlamp-k8s/headlamp:v0.45.0` | `deploy/headlamp/env/k8s.env`: `HEADLAMP_REGISTRY`, `deploy/headlamp/helm/values.yaml`: `image.tag`, chart 기본 repository `headlamp-k8s/headlamp` | 없음 |
 | Monitoring | Docker Hub: `grafana/grafana:13.2.1-distroless`. Quay: `prometheus-operator/prometheus-operator:v0.94.0`, `prometheus-operator/prometheus-config-reloader:v0.94.0`, `prometheus/prometheus:v3.14.0-distroless`, `prometheus/alertmanager:v0.34.0`, `prometheus/node-exporter:v1.12.1`, `kiwigrid/k8s-sidecar:2.11.2`. GHCR: `jkroepke/kube-webhook-certgen:1.8.8`. registry.k8s.io: `kube-state-metrics/kube-state-metrics:v2.20.0` | `deploy/monitoring/env/k8s.env`: `DOCKER_REGISTRY`·`QUAY_REGISTRY`·`GHCR_REGISTRY`·`K8S_REGISTRY`, chart `kube-prometheus-stack` 91.4.0 기본 tag | 위 목록은 chart 기본값 기준이며 렌더 검증 전입니다. 확정 목록은 `deploy/monitoring/scripts/manage.py render`가 만드는 `images.txt` |
 | Monitoring 폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/library/busybox:1.37.0` | `deploy/monitoring/scripts/manage.py`의 준비 Job | 없음 |
+| 사내 이미지 저장소(Zot) | `repository.samsungds.net/proxy-docker-ghcr.io/project-zot/zot-linux-amd64:v2.1.20` | `deploy/registry/env/k8s.env`: `REGISTRY_IMAGE` | 없음 |
 | metrics-server | `repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0` | `deploy/shared/metrics-server/components.yaml` | 없음 |
 | Portal API·Web·migrate | 미확정(`registry.internal.example.invalid/tailwind/api`·`web`, tag `replace-me`) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | Portal 이미지 registry·빌드·tag 결정 필요 |
 | Portal edge-nginx | `repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx:1.27-alpine` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`: `images`(base `nginx:1.27-alpine`의 이름만 변경) | 없음 |
@@ -332,6 +334,6 @@
 
 ## 추가 확인·변경 연계
 
-- 사내 Git 서버·프로젝트 clone URL·배포 브랜치는 미확인입니다.
+- 사내 Git은 GitHub Enterprise `https://github.samsungds.net`이며 self-hosted runner만 제공됩니다(사용자 확인). 프로젝트 clone URL·배포 브랜치·runner 설치 호스트와 GitHub Packages 미제공 여부는 확인이 필요합니다.
 - npm의 사내 최종 URL과 Helm chart의 실제 패키지 제공 여부·CA·권한 신청 절차는 추가 확인이 필요합니다.
 - 주소·버전을 바꾸면 소비 앱의 env·Kustomize·chart lock과 설치 문서도 대조합니다. 인증값은 기록하지 않습니다.

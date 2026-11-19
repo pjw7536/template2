@@ -30,6 +30,9 @@ case "$APP" in
   airflow)
     python3 "$ROOT_DIR/deploy/airflow/scripts/manage.py" check
     exit 0 ;;
+  registry)
+    python3 "$ROOT_DIR/deploy/registry/scripts/manage.py" check
+    exit 0 ;;
   headlamp)
     python3 "$ROOT_DIR/deploy/headlamp/scripts/manage.py" check
     exit 0 ;;

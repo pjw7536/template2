@@ -17,6 +17,7 @@
 | 앱별 DNS 등록 | 서비스 주소 표의 앱 도메인 → APP VIP | 미확인 | [서비스 접속 주소](services.md#서비스-접속-주소), [DNS 명명](network.md#dns-명명과-향후-구역-위임) | 사용자 |
 | 업무 인증서 추가 신청·발급 | DNS SAN 92개·IP SAN 1개 | 신청안 작성. 제출·발급 미확인 | [업무 HTTPS 인증서](network.md#업무-https-인증서) | 미확인 |
 | 공용 TLS 등록 | 발급 인증서를 공용 Traefik 저장소에 등록 | 미확인 | [인증서 적용](../certificates/apply.md) | 운영자 |
+| 사내 이미지 저장소 DNS 등록 | `registry.etch.samsungds.net` → APP VIP | 미확인 | [전환·계획 주소](network.md#전환계획-주소) | 사용자 |
 | FTP 방화벽 개방 | 허용 출발지 → FTP 노드 TCP `6380`, `8076–8079` | 미확인 | [FTP 직접 접속](network.md#ftp-직접-접속) | 미확인 |
 
 ## 2. 클러스터·공통 구성
@@ -26,6 +27,7 @@
 | 공용 Traefik·APP VIP backend | backend 2대에서 Traefik이 443 응답 | 저장소 기본 배치는 `khplane01w09` 1대. 실제 배치·LB 응답 미확인 | [VIP와 backend](network.md#vip와-backend), [backend 확장](../ingress/expand.md) | 운영자 |
 | 사내 미러 pull 확인 | 서버가 받는 모든 이미지·패키지를 대상 노드에서 받을 수 있음 | 미확인 | [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [패키지 주소](repositories.md#패키지chartartifact-주소) | 운영자 |
 | API server 버전 확인 | 실제 버전을 서버 현황에 반영 | CP1 확인값 `v1.36.0`, metrics-server 안내에는 1.36.4로 기록되어 충돌 | [설치 기준](servers.md#확인된-worker-설치-기준), [metrics-server](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |
+| 사내 이미지 저장소 배포 | Zot `Running`, 모든 노드·빌드 host HTTP 허용, push·pull 성공, Traefik web readTimeout 반영 | 미확인 | [registry 설치](../../../registry/docs/01-install.md) | 운영자 |
 | metrics-server 설치 | `kubectl top` 동작 | 미확인 | [metrics-server 설치](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |
 | API server OIDC 인증 | Headlamp 사용자 토큰으로 Kubernetes API 인증 | 미확인 | [API server OIDC](../kubernetes/oidc.md) | 운영자 |
 

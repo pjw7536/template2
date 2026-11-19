@@ -31,6 +31,7 @@
 | 용도 | 주소·연결 | 근거·확인 상태 |
 | --- | --- | --- |
 | 운영 SSO DNS 전환 목표 | `sso.etch.samsungds.net` → APP VIP `10.172.26.150` → 공용 Traefik → Keycloak Service | 사용자 확정: 새 인증 주소와 공용 VIP 사용. DNS 등록·변경은 사용자가 직접 수행. 저장소 Ingress·공개 URL은 새 주소를 선언하며 실제 DNS 변경·HTTPS 전달 경로·TLS·서버 적용은 미확인 |
+| 사내 이미지 저장소 DNS | `registry.etch.samsungds.net` → APP VIP `10.172.26.150` → 공용 Traefik HTTP(80) → Zot | 사용자 확정: 인증서 없이 HTTP로 시작. 업무 인증서 SAN에 포함되지 않음. DNS 등록·서버 적용 미확인 |
 | 테스트 SSO 주소 계획 | `sso.stg.etch.samsungds.net` | 사용자 확정: 명명·DNS·인증서 계획만 반영. 별도 테스트 Keycloak·DB·realm·issuer는 구성하지 않음. DNS 등록·연결 대상·서버 적용은 미확인 |
 
 ### DNS 명명과 향후 구역 위임

@@ -38,6 +38,11 @@
       "sourcePaths": [],
       "deployPath": "deploy/minio",
       "localPath": "local/minio"
+    },
+    "registry": {
+      "sourcePaths": [],
+      "deployPath": "deploy/registry",
+      "localPath": null
     }
   },
   "groups": {
@@ -47,7 +52,8 @@
       "ftp",
       "monitoring",
       "headlamp",
-      "minio"
+      "minio",
+      "registry"
     ],
     "keycloak-airflow": [
       "keycloak",
@@ -60,7 +66,8 @@
       "ftp",
       "monitoring",
       "headlamp",
-      "minio"
+      "minio",
+      "registry"
     ]
   }
 }
