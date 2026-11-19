@@ -3,6 +3,7 @@
 # dependencies
 /node_modules
 /apps/portal/web/node_modules
+/apps/iam/web/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -24,6 +25,7 @@ pm_spider/
 /build
 /dist
 /apps/portal/web/dist
+/apps/iam/web/dist
 
 # vendor
 vendor/
@@ -91,6 +93,7 @@ __pycache__/
 /data/data_movement/
 /data/l3_spider/daily_anomaly/
 /data/postgres/
+/data/iam/
 
 */logs/
 apps/portal/api/logs/rag_errors.log

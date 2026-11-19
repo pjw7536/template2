@@ -67,6 +67,16 @@ keycloak-access-test:
 local-keycloak-dummy:
 	python3 local/keycloak/scripts/seed_org_dummy.py $(if $(filter 1,$(DUMMY_REMOVE)),--remove,$(if $(DUMMY_LINES),--lines $(DUMMY_LINES) --total-users $(or $(DUMMY_TOTAL_USERS),2000),))
 
+.PHONY: iam-keycloak-setup
+iam-keycloak-setup:
+	python3 deploy/iam/scripts/setup_keycloak.py $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),--apply,)
+
+.PHONY: iam-workload-dev
+iam-workload-dev:
+	IAM_WORKLOAD_DB="$${IAM_WORKLOAD_DB:-$(CURDIR)/data/iam/workload.sqlite3}" \
+	IAM_KEYCLOAK_ISSUER="$${IAM_KEYCLOAK_ISSUER:-http://localhost:8180/realms/portal}" \
+	"$${IAM_WORKLOAD_PYTHON:-python3}" apps/iam/api/workload.py
+
 .PHONY: keycloak-sdwt-init keycloak-sdwt-test
 keycloak-sdwt-init:
 	bash ./deploy/keycloak/scripts/05-setup-sdwt.sh

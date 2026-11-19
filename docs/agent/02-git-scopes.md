@@ -14,6 +14,7 @@
 - `[fdc-trend]`: FDC trend domain changes
 - `[voc]`: VOC domain changes
 - `[auth]`: auth domain changes
+- `[iam]`: `apps/iam`, `deploy/iam` 권한관리 웹과 Keycloak 준비
 - `[access-stats]`: access stats domain changes
 - `[home]`: home shell or portal entry changes
 - `[teamstaff]`: teamstaff domain changes

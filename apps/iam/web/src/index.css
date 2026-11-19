@@ -1,0 +1,22 @@
+/* Portal(apps/portal/web/src/styles/globals.css)과 같은 글꼴·토큰·기본 스타일입니다. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css");
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  * {
+    scrollbar-width: normal;
+    scrollbar-color: var(--border) transparent;
+  }
+}
