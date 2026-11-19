@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | Kubernetes API VIP | `10.172.26.148:6443` | API 접속점. 실제 kubeconfig·가입 endpoint·LB backend 확인 필요 |
 | 업무 서비스 APP VIP | `10.172.26.150:443` | 사용자 확인: 인프라팀 발급, SSH 접근 대상 아님. 현재 LB·HTTPS 응답 확인 필요 |
+| APP VIP HTTP(80) | `10.172.26.150:80` → Traefik backend hostPort 80 | 미확인: 사내 이미지 저장소(HTTP)에 필요. 기록된 VIP 설정은 443뿐이며 80 listener·backend 전달 여부를 인프라 담당자에게 확인 필요 |
 | APP VIP backend 1 | `10.172.40.117:443` → `khplanew01` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | APP VIP backend 2 | `10.172.40.87:443` → `khplane01w09` | 사용자 확인: LB backend·노드 대응. 현재 backend·Traefik 응답은 재조회 |
 | HTTPS 연결 | APP VIP → Worker hostPort 443 → 공용 Traefik → 앱 Service | [VIP 절차](../ingress/setup.md)의 목표 구성. TLS는 Traefik에서 종료하며 실제 LB 전달 방식·PROXY protocol 사용 여부 확인 필요 |

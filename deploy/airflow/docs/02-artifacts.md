@@ -238,7 +238,7 @@ registry가 있으면 push하고, 없으면 `.tar`로 저장해 Worker에 반입
 private registry 인증이 필요하면 대상 namespace에 imagePullSecret을 만들고 `IMAGE_PULL_SECRET`에 이름을 입력합니다.
 
 사내 이미지 저장소를 사용하면 `AIRFLOW_IMAGE_REPOSITORY=registry.etch.samsungds.net/airflow`로 지정합니다. 익명 pull이므로 `IMAGE_PULL_SECRET`은 필요하지 않습니다.
-HTTP registry이므로 push에 `--insecure-registry`를 추가하고, 빌드 호스트와 Worker의 HTTP 허용·로그인은 [registry 설치](../../registry/docs/01-install.md#6-노드와-빌드-host의-http-허용)를 따릅니다.
+HTTP registry이므로 push에 `--insecure-registry`를 추가하고, 빌드 호스트와 Worker의 HTTP 허용·로그인은 [registry 설치](../../registry/docs/01-install.md#7-노드와-빌드-host의-http-허용)를 따릅니다.
 
 **실행 위치:** `khinfow01`. env를 source하지 않고 이미지 이름을 직접 입력합니다.
 
