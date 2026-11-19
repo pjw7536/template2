@@ -3,7 +3,7 @@
 [앱 안내](../README.md) · 다음: [운영](02-operations.md)
 
 **목적:** Zot registry를 지정 Worker에 배포하고, 빌드 host의 push와 각 노드의 pull을 확인합니다.
-**실행 위치:** 절마다 표시한 호스트. `kubectl` 명령은 CP1 저장소 루트에서 운영 context로 실행합니다.
+**실행 위치:** 절마다 표시한 호스트. `kubectl` 명령은 관리 호스트 저장소 루트에서 운영 context로 실행합니다.
 
 ## 1. 입력 확인
 

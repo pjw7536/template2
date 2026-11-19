@@ -2,7 +2,7 @@
 
 [앱 안내](../README.md) · [설치](01-install.md)
 
-**실행 위치:** 관리 호스트(CP1 등)의 저장소 루트입니다. [서버 입력](01-install.md#2-서버-입력과-이미지)의 `KUBE_CONTEXT`와 `MINIO_ENV`를 export한 Bash 세션을 사용합니다.
+**실행 위치:** 관리 호스트의 저장소 루트입니다. [서버 입력](01-install.md#2-서버-입력과-이미지)의 `KUBE_CONTEXT`와 `MINIO_ENV`를 export한 Bash 세션을 사용합니다.
 이전과 재생성은 대상과 보존할 데이터를 확인한 경우에만 수행합니다.
 
 ## 1. 버킷 초기화 재시도

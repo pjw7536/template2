@@ -4,7 +4,7 @@
 
 **목적:** 검증한 인증서를 공용 Traefik의 `etch-sso/traefik-tls` Secret에 등록·갱신하고, 실제로 제공되는 인증서를 확인합니다.
 **준비물:** [추출·검증](extract.md)에 성공한 `fullchain.crt`·`private.key` 또는 기존 `kubernetes.io/tls` Secret, 대상 클러스터 context와 TLS Secret 등록 권한.
-**실행 위치:** CP1의 저장소 루트에서 Bash. 폴더에 파일을 넣는 것만으로 서버 인증서나 Secret은 바뀌지 않습니다.
+**실행 위치:** 관리 호스트의 저장소 루트에서 Bash. 폴더에 파일을 넣는 것만으로 서버 인증서나 Secret은 바뀌지 않습니다.
 
 - 모든 앱은 같은 공용 Secret을 사용하며 Ingress에는 Secret 이름을 지정하지 않습니다. 인증서를 앱 namespace에 복제하지 않습니다.
 - 하나의 SAN 인증서가 여러 host를 포함해도 host별로 1~3단계를 반복합니다.
@@ -43,7 +43,7 @@ ls -l "$CERT_SITE_DIR/fullchain.crt" "$CERT_SITE_DIR/private.key"
 **기대 결과:** 적용하려는 도메인·클러스터와 결과 파일 2개가 표시됩니다.
 **실패 확인:** 다른 대상이 표시되면 이 단계의 값을 다시 설정합니다.
 
-## 2. 공용 TLS Secret 등록·갱신 — CP1
+## 2. 공용 TLS Secret 등록·갱신 — 관리 호스트
 
 인증서 파일로 등록합니다.
 
@@ -67,9 +67,9 @@ make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$TLS_HOST" TLS_SOURCE
 **기대 결과:** `공용 TLS 등록 완료: <host>`가 표시됩니다.
 **실패 확인:** `공용 TLS 처리 실패`는 인증서·개인키·클러스터 권한·동시 변경을 확인합니다. 메시지에 민감값은 표시되지 않습니다.
 
-## 3. 실제 제공 인증서 확인 — CP1
+## 3. 실제 제공 인증서 확인 — 관리 호스트
 
-서비스가 배포되어 있고 CP1에서 대상 IP의 443에 접속할 수 있을 때 실행합니다.
+서비스가 배포되어 있고 관리 호스트에서 대상 IP의 443에 접속할 수 있을 때 실행합니다.
 DNS 대신 지정한 IP에 SNI로 접속하므로 DNS 전환 전에도 확인할 수 있습니다. 주소는 [네트워크 원본](../infrastructure/network.md#vipdns접속-경로)의 APP VIP 또는 Traefik Worker IP를 사용합니다.
 파일의 서버 인증서와 실제 제공 인증서의 SHA-256 지문을 비교하며, CA가 DER일 수도 있으므로 임시 PEM으로 변환합니다.
 
@@ -115,11 +115,11 @@ read -r -p '접속할 APP VIP 또는 Worker IP: ' CHECK_IP
 ## 클라이언트 PC 신뢰 등록
 
 서버는 중간 CA를 포함한 fullchain을 제공하고, 접속하는 PC·서버는 루트 CA를 신뢰해야 합니다.
-CP1의 신뢰 설정은 PC·앱 Pod·Kubernetes API server에 자동으로 전달되지 않습니다. 앱 Pod와 API server의 신뢰는 위 5단계의 문서를 따릅니다.
+관리 호스트의 신뢰 설정은 PC·앱 Pod·Kubernetes API server에 자동으로 전달되지 않습니다. 앱 Pod와 API server의 신뢰는 위 5단계의 문서를 따릅니다.
 
 ### Ubuntu 서버·클라이언트
 
-해당 호스트가 HTTPS 클라이언트로 요청할 때 기본 신뢰 검증이 실패하는 경우에만 진행합니다. 신뢰가 필요한 CP1·Worker 각각에서 수행하며, Root CA 공개 인증서만 전달합니다.
+해당 호스트가 HTTPS 클라이언트로 요청할 때 기본 신뢰 검증이 실패하는 경우에만 진행합니다. 신뢰가 필요한 관리 호스트·Worker 각각에서 수행하며, Root CA 공개 인증서만 전달합니다.
 
 ```bash
 read -r -p '확인할 공개 도메인: ' TRUST_HOST

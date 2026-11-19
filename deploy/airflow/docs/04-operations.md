@@ -93,7 +93,7 @@ DB 비밀번호는 같은 블록에서 프롬프트를 `실제 DB 비밀번호`�
 
 Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/airflow/dags`에서 읽습니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 일시정지하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
 
-1. CP1에서 현재 DAG Processor의 파일을 백업합니다. 최초 설치라면 새로 빌드한 Airflow 이미지의 `/opt/airflow/dags`를 같은 구조의 tar 파일로 준비합니다.
+1. 관리 호스트에서 현재 DAG Processor의 파일을 백업합니다. 최초 설치라면 새로 빌드한 Airflow 이미지의 `/opt/airflow/dags`를 같은 구조의 tar 파일로 준비합니다.
 
    ```bash
    (
@@ -121,7 +121,7 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
    ls -la /appdata/airflow/dags
    ```
 
-3. DAG와 공통 Python 파일을 옮겼고 Airflow가 읽을 수 있는지 확인한 뒤 준비 표식을 만듭니다. `DAGS_HOST_PATH`를 실제 경로로 설정하고 CP1에서 [배포 검사·반영](#검사와-배포)을 진행합니다. 스케줄러와 DAG Processor는 준비 표식이 있는 볼륨에서 시작합니다.
+3. DAG와 공통 Python 파일을 옮겼고 Airflow가 읽을 수 있는지 확인한 뒤 준비 표식을 만듭니다. `DAGS_HOST_PATH`를 실제 경로로 설정하고 관리 호스트에서 [배포 검사·반영](#검사와-배포)을 진행합니다. 스케줄러와 DAG Processor는 준비 표식이 있는 볼륨에서 시작합니다.
 
    ```bash
    sudo install -o root -g root -m 0644 /dev/null /appdata/airflow/dags/.airflow-dags-initialized
@@ -227,7 +227,7 @@ kubectl --context kubernetes-admin@kubernetes -n airflow logs "job/$AIRFLOW_JOB_
 
 ### 워커 모드 준비와 시작
 
-1. CP1에서 두 노드의 Ready 상태와 `Allocatable`을 확인합니다.
+1. 관리 호스트에서 두 노드의 Ready 상태와 `Allocatable`을 확인합니다.
 
    ```bash
    kubectl --context kubernetes-admin@kubernetes get nodes khinfow01 khplanew01
@@ -235,7 +235,7 @@ kubectl --context kubernetes-admin@kubernetes -n airflow logs "job/$AIRFLOW_JOB_
    ```
 
 2. 에어갭 배포라면 스케줄러의 Airflow 이미지 태그를 두 워커 모두의 containerd에 반입합니다. 이미지 pull Secret을 사용하는 환경은 같은 이름의 Secret을 테스트 namespace에도 준비합니다. [이미지 전달](02-artifacts.md#이미지-전달)
-3. CP1에서 테스트 전용 namespace와 권한을 적용합니다. 아래 manifest는 `airflow` namespace의 `airflow-scheduler` 서비스 계정을 사용합니다.
+3. 관리 호스트에서 테스트 전용 namespace와 권한을 적용합니다. 아래 manifest는 `airflow` namespace의 `airflow-scheduler` 서비스 계정을 사용합니다.
 
    ```bash
    kubectl --context kubernetes-admin@kubernetes apply -f deploy/airflow/k8s/node-load-test.yaml

@@ -11,14 +11,15 @@ OS·버전의 확인 범위는 [설치 기준](#확인된-worker-설치-기준)�
 
 | 역할·용도 | 서버·노드명 | 노드 IP | 구성·확인 상태 |
 | --- | --- | --- | --- |
-| CP1·배포 관리 명령 실행 | `khplane01w06` | `10.172.40.84` | control-plane, Kubernetes API·etcd |
+| CP1 | `khplane01w06` | `10.172.40.84` | control-plane, Kubernetes API·etcd |
 | CP2 | `khplane01w07` | `10.172.40.86` | control-plane, Kubernetes API·etcd |
 | CP3 | `khplane01w08` | `10.172.40.85` | control-plane, Kubernetes API·etcd |
 | Keycloak 전용 Worker·공용 Traefik | `khplane01w09` | `10.172.40.87` | 사용자 지정 Worker 용도 |
-| MinIO 배치 대상 Worker·APP VIP backend | `khplanew01` | `10.172.40.117` | MinIO·초기화 Job 배치 대상. 저장소 연결은 별도 조회 |
+| 관리 호스트·MinIO 배치 대상 Worker·APP VIP backend | `khplanew01` | `10.172.40.117` | 관리 호스트: 저장소 checkout·admin kubeconfig로 배포·운영·점검 명령과 opencode `ops` agent 실행(사용자 확정, 서버 준비 미확인). MinIO·초기화 Job 배치 대상. 저장소 연결은 별도 조회 |
 | Airflow·Monitoring 배치 대상 Worker | `khinfow01` | `10.172.117.91` | `khplanew01`과 다른 서버. 클러스터 Worker 추가는 사용자 확인. 12 vCPU·72GiB·1TB. 배포 대상은 `deploy/airflow/env/k8s.env`·`deploy/monitoring/env/k8s.env`의 `NODE_NAME=khinfow01` 선언 |
 
 관리 대상 클러스터는 제어면 3대·Worker 3대, etcd 3-node HA 구성입니다.
+관리 호스트는 현재 `khplanew01`입니다. 목표(사용자 확정)는 클러스터에 가입하지 않은 관리·이미지 빌드 전용 서버를 추가해 관리 호스트와 빌드 host를 옮기는 것이며, 서버는 아직 미정입니다. 옮기면 빌드 이미지는 [사내 이미지 저장소](../../../registry/README.md)에 push해 전달합니다.
 위 노드 IP를 SSH 접속 성공 기록으로 간주하지 않습니다. SSH 포트·접속 계정·관리망 접근 가능 여부는 [추가 확인](#추가-확인접속-정보)에 있습니다.
 
 ### Portal Docker 환경

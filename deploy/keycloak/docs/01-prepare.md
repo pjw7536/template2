@@ -75,7 +75,7 @@ make server-check APP=keycloak PROFILE=prod
 공개 URL은 경로와 끝의 `/`가 없는 HTTPS URL이며 Ingress 도메인·인증서 SAN과 맞아야 합니다.
 DNS·APP VIP는 [네트워크 정보](../../shared/docs/infrastructure/network.md)를 따릅니다.
 
-`deploy/shared/certs/sso.etch.samsungds.net/`에 `fullchain.crt`, `private.key`를 배치한 뒤 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)을 수행합니다.
+`deploy/shared/certs/sso.etch.samsungds.net/`에 `fullchain.crt`, `private.key`를 배치한 뒤 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 수행합니다.
 
 ```bash
 make ingress-tls-up KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" TLS_HOST=sso.etch.samsungds.net \
@@ -138,7 +138,7 @@ PFX·P7B 추출, fullchain 구성·검증은 [공용 인증서 준비](../../sha
 Keycloak의 개인키는 TLS를 종료하는 Traefik이 사용하며 API server용 CA 파일과는 다릅니다. 인증서를 배치해도 realm·IdP·mapper 설정은 만들어지지 않습니다.
 
 서버는 중간 인증서를 포함한 fullchain을 제공하고, 접속하는 PC·서버가 루트 CA를 신뢰해야 합니다.
-CP1의 신뢰 설정은 PC·Headlamp Pod·Kubernetes API server에 자동으로 전달되지 않습니다.
+관리 호스트의 신뢰 설정은 PC·Headlamp Pod·Kubernetes API server에 자동으로 전달되지 않습니다.
 
 | 대상 | 안내 |
 | --- | --- |

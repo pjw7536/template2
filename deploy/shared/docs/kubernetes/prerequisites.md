@@ -36,7 +36,7 @@ Docker에 넣은 이미지는 Kubernetes가 사용하는 containerd에 별도로
 
 포트·OS 설정은 확정된 설치 버전과 CNI 요구사항으로 결정합니다. 검증 환경에 운영 IP를 재사용하지 않습니다.
 
-## 3. 배포 도구 — CP1
+## 3. 배포 도구 — 관리 호스트
 
 Git·Bash·Make·Python 3.10+·kubectl·OpenSSL을 준비합니다.
 Helm 앱은 각 앱의 README와 `helm/chart.lock.json`에 맞는 Helm·chart가 필요합니다. 이미지 빌드는 별도 환경에서 수행할 수 있습니다.

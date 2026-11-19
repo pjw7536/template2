@@ -2,7 +2,7 @@
 
 [공통 안내](../README.md) · 다음: [배포 준비와 검증](02-deploy.md)
 
-CP1에 저장소를 clone하고 Git으로 갱신하는 방법입니다. CP1은 저장소 전체를 사용합니다([운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)).
+관리 호스트에 저장소를 clone하고 Git으로 갱신하는 방법입니다. 관리 호스트는 저장소 전체를 사용합니다([운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)).
 
 - [저장소 clone](#저장소-clone)
 - [Git·운영 파일 관리](#git운영-파일-관리)
@@ -13,7 +13,7 @@ CP1에 저장소를 clone하고 Git으로 갱신하는 방법입니다. CP1은 �
 
 | 항목 | 내용 |
 | --- | --- |
-| 실행 위치 | CP1(관리 호스트). 앱 Pod와 데이터가 놓이는 Worker는 앱별 배포 정의가 정합니다 |
+| 실행 위치 | 관리 호스트. 앱 Pod와 데이터가 놓이는 Worker는 앱별 배포 정의가 정합니다 |
 | checkout 경로 | 예시 `/appdata/etchax`. 실제 경로는 [운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)가 원본입니다 |
 | 입력 | 사내 Git 저장소 URL·배포 브랜치. 현재 값은 [저장소 원본](../infrastructure/repositories.md#공통-주소와-경로-규칙)에서 확인합니다 |
 | 전제 | 변경사항이 Git에 반영된 상태. 인증서와 DB 데이터는 기존 서버 경로에 유지합니다 |
@@ -41,7 +41,7 @@ checkout·env·인증서·kubeconfig·데이터 위치는
 [운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)가 원본입니다.
 실제 DB·업무 데이터는 PV/PVC·Worker·외부 저장소에 있어 checkout 복사로 백업되지 않습니다.
 
-### 1. 갱신 전 확인 — CP1
+### 1. 갱신 전 확인 — 관리 호스트
 
 배포 checkout 루트에서 실행합니다. 모두 조회 명령입니다.
 
@@ -69,4 +69,4 @@ Git 갱신은 파일만 바꾸며 Kubernetes 리소스·Secret·DB·실행 중�
 
 ### 3. 다음 단계
 
-변경 유형별 검사·적용은 [운영 절차의 업데이트](03-operations.md#업데이트--cp1)를 따릅니다.
+변경 유형별 검사·적용은 [운영 절차의 업데이트](03-operations.md#업데이트--관리-호스트)를 따릅니다.

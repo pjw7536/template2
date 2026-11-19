@@ -9,7 +9,7 @@
 
 **목적:** 기존 Keycloak realm에 Airflow 전용 비공개 클라이언트(confidential client)를 등록하고 배포 입력을 맞춥니다.
 **준비물:** 기존 Keycloak 관리자 계정, `etch` realm, 사내 CA가 필요하면 Keycloak CA 묶음 PEM.
-**실행 위치:** CP1 저장소 루트. 이미지는 SSO 코드를 포함한 Airflow 3.3.2 이미지를 고유 태그로 준비합니다.
+**실행 위치:** 관리 호스트 저장소 루트. 이미지는 SSO 코드를 포함한 Airflow 3.3.2 이미지를 고유 태그로 준비합니다.
 
 로그인한 사용자는 기본적으로 Viewer입니다. 추가 권한이 필요한 운영자에게만 Keycloak의 `airflow` client 역할 User 또는 Admin을 부여합니다.
 조직별 그룹은 사용하지 않으며 역할을 제거하면 다음 로그인부터 Viewer로 돌아갑니다. 기존 세션 이관과 통합 로그아웃은 지원 범위가 아닙니다.
@@ -71,7 +71,7 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 | `KEYCLOAK_ADMIN_URL` | `https://sso.etch.samsungds.net` | `/realms/etch`·`/admin`을 붙이지 않음. 명시적 localhost port-forward 주소도 허용 |
 | `KEYCLOAK_ADMIN_USERNAME` | `etch-admin` | 초기 관리자 선언. 서버에서 바꿨다면 실제 관리자 계정 사용 |
 | `KEYCLOAK_ADMIN_PASSWORD` | 실행 시 숨김 입력 | Airflow 관리자 비밀번호·OIDC client secret과 구분 |
-| `KEYCLOAK_ADMIN_CA_BUNDLE` | 필요할 때만 | CP1의 CA 파일 경로. Airflow Pod 내부 CA 경로와 구분 |
+| `KEYCLOAK_ADMIN_CA_BUNDLE` | 필요할 때만 | 관리 호스트의 CA 파일 경로. Airflow Pod 내부 CA 경로와 구분 |
 
 ```bash
 export KEYCLOAK_ADMIN_URL=https://sso.etch.samsungds.net
@@ -181,7 +181,7 @@ make airflow-check KUBE_CONTEXT=kubernetes-admin@kubernetes
 - Ingress를 쓸 때 `etch-sso/traefik`과 공용 TLS 인증서의 도메인·만료·개인키 일치
 
 운영 URL `https://airflow.etch.samsungds.net`은 앱별 TLS Secret이 필요 없습니다. 업무 도메인 인증서를
-[공용 Traefik 저장소](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)에 먼저 등록합니다. 등록 도구가 Traefik을 다시 시작하므로 별도 반영은 필요 없고, check가 `공용 TLS 마운트가 없습니다`로 멈출 때만 `make ingress-up`을 실행합니다.
+[공용 Traefik 저장소](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)에 먼저 등록합니다. 등록 도구가 Traefik을 다시 시작하므로 별도 반영은 필요 없고, check가 `공용 TLS 마운트가 없습니다`로 멈출 때만 `make ingress-up`을 실행합니다.
 다른 namespace의 기존 인증서를 공용 저장소로 가져올 때만 `AIRFLOW_TLS_SOURCE=<namespace>/<secret>`을 check와 up에 함께 전달합니다.
 check는 원본을 검사만 하고, up은 공용 저장소에 등록하며 Airflow namespace에 복제하지 않습니다.
 

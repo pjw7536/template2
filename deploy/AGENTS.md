@@ -31,12 +31,11 @@
 
 ## 사내 운영 agent
 
-사내 CP1의 opencode `ops` agent([정의](../.opencode/agents/ops.md))는 사용자가 최신화한 checkout을 배포·운영하며 저장소를 개발하거나 Git으로 갱신하지 않는다.
+사내 관리 호스트의 opencode `ops` agent([정의](../.opencode/agents/ops.md))는 사용자가 최신화한 checkout을 배포·운영하며 저장소를 개발하거나 Git으로 갱신하지 않는다.
 
 - 코드·manifest·env 원본·스크립트·스킬·지침을 수정하지 않는다. 원인이 저장소에 있으면 보고하고 중단한다. 수정 가능 범위는 `shared/docs/infrastructure/`의 운영값·확인 상태·pending이며 커밋은 사람이 한다.
 - 배포·갱신은 `server-deploy-routine`, 저장소와 서버 상태 대조는 `deploy-drift-check` 스킬(원본 `.opencode/skills/`)을 따른다. 판정 원본은 [배포 상태 대조](shared/docs/operations/04-drift.md)와 `shared/scripts/deploy_state.py`다.
 - 클러스터 변경 명령은 승인 후 실행하고 `KUBE_CONTEXT`를 명시한다. Secret·env 값을 조회·출력하지 않는다.
-- Worker(khinfow01)의 `ops-check` agent([정의](../.opencode/agents/ops-check.md))는 대조만 하며 클러스터 변경 명령을 실행하지 않는다. 배포는 CP1의 `ops` agent가 한다.
 - 현재 checkout과 클러스터의 일치는 `make drift-check`(렌더 결과와 실제 리소스 비교)로 판정한다. 배포 후 `make drift-check APP=<app>`이 `0`인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record`로 기록한다.
 
 ## 검증

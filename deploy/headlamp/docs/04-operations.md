@@ -3,15 +3,15 @@
 [앱 안내](../README.md) · 이전: [배포와 로그인 검증](03-deploy.md)
 
 **목적:** 설치 후 설정 갱신·장애 확인·재시작·복구·재설치를 수행합니다. 처음 설치한다면 [앱 안내](../README.md)의 순서를 따릅니다.
-**실행 위치:** CP1 저장소 루트. 새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 준비합니다.
+**실행 위치:** 관리 호스트 저장소 루트. 새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 준비합니다.
 
 ## 변경 종류별 반영
 
 | 변경 | 실행할 절차 |
 | --- | --- |
 | env·chart·이미지 설정 | [배포](03-deploy.md)의 검사·적용·로그인 검증 |
-| 사이트 TLS 인증서 | [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1) 후 [실제 HTTPS 확인](03-deploy.md#2-실제-https-확인) |
-| client secret | [Secret 등록](02-authentication.md#5-cp1에서-client-secret-등록) 후 [재시작](#재시작과-복구) |
+| 사이트 TLS 인증서 | [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트) 후 [실제 HTTPS 확인](03-deploy.md#2-실제-https-확인) |
+| client secret | [Secret 등록](02-authentication.md#5-관리-호스트에서-client-secret-등록) 후 [재시작](#재시작과-복구) |
 | Keycloak CA | [TLS·CA 준비](01-prepare.md#tlsca-준비)의 CA 재등록·연결 검사, [API server](02-authentication.md#api-server-인증)의 모든 제어면 신뢰 갱신 후 [재시작](#재시작과-복구) |
 | 관리자 추가·제거 | [그룹 가입](02-authentication.md#3-사용할-사람을-그룹에-넣기) 변경 후 새 토큰으로 [권한 확인](03-deploy.md#3-kubernetes-rbac-확인) |
 | CPU·메모리 수치 없음 | [metrics-server 설치](../../shared/docs/kubernetes/control-plane.md#metrics-server-설치) 후 Headlamp 새로고침 |
@@ -70,7 +70,7 @@ namespace나 Keycloak client를 삭제한 뒤 다시 설치할 때 다음 상태
 - `headlamp` namespace가 없으면 다시 만들고 이미지 인증·OIDC Secret과 CA ConfigMap을 다시 등록합니다. 사이트 인증서는 공용 Traefik에 유지됩니다.
 - Headlamp client·관리자 그룹이 없으면 [Keycloak 설정](02-authentication.md#keycloak-client와-관리자)에서 새로 만들고, 있으면 값을 대조합니다. 새 client는 새 secret을 사용합니다.
 - API server의 OIDC 설정은 남아 있을 수 있으므로 [API server 인증](02-authentication.md#api-server-인증)의 계약과 대조하고 중복 추가하지 않습니다.
-- 인증서 원본·개인키·CA 파일은 CP1에 준비되어 있어야 합니다.
+- 인증서 원본·개인키·CA 파일은 관리 호스트에 준비되어 있어야 합니다.
 
 ## 기존 조회 그룹에서 전환
 

@@ -2,13 +2,13 @@
 
 [공통 안내](../README.md#배포운영) · 이전: [운영과 문제 해결](03-operations.md)
 
-CP1의 현재 checkout에 있는 배포 정의가 실제 클러스터에 그대로 적용되어 있는지 확인하는 방법입니다.
+관리 호스트의 현재 checkout에 있는 배포 정의가 실제 클러스터에 그대로 적용되어 있는지 확인하는 방법입니다.
 비교 기준은 지금 checkout된 파일이며 원격 저장소와는 비교하지 않습니다. checkout 갱신은 [서버 파일 받기](01-checkout.md#git운영-파일-관리)에서 따로 합니다.
 대조는 조회 전용이며 클러스터·Git을 변경하지 않습니다. 원본 스크립트는 `deploy/shared/scripts/deploy_state.py`입니다.
 
 - [무엇을 비교하나요?](#무엇을-비교하나요)
 - [대조 실행](#대조-실행)
-- [Worker에서 점검](#worker에서-점검)
+- [관리 호스트 준비](#관리-호스트-준비)
 - [배포 기록 남기기](#배포-기록-남기기)
 - [결과 해석과 조치](#결과-해석과-조치)
 
@@ -44,7 +44,7 @@ CP1의 현재 checkout에 있는 배포 정의가 실제 클러스터에 그대�
 
 ## 대조 실행
 
-CP1 저장소 루트에서 실행합니다. 조회 명령입니다. 배포할 때와 같은 env 변수를 지정합니다. Worker에서 실행하는 방법은 [Worker에서 점검](#worker에서-점검)을 따릅니다.
+관리 호스트 저장소 루트에서 실행합니다. 조회 명령입니다. 배포할 때와 같은 env 변수를 지정합니다. 처음 사용하는 관리 호스트는 [관리 호스트 준비](#관리-호스트-준비)를 먼저 합니다.
 
 ```bash
 make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes                                 # 전체 앱
@@ -63,18 +63,18 @@ make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes DRIFT_SKIP_MANIFEST=1 
 
 **실패 확인:** `UNKNOWN manifest 현재 코드 렌더 실패`면 표시된 오류를 해당 앱의 `*-check`로 재현합니다. env 경로·Helm·chart 파일·공용 TLS 등록이 흔한 원인입니다.
 
-## Worker에서 점검
+## 관리 호스트 준비
 
-Worker `khinfow01`에서 opencode `ops-check` agent로 같은 대조를 실행합니다. 배포·배포 기록은 CP1에서 합니다.
+관리 호스트 `khplanew01`(10.172.40.117)에서 배포·대조를 모두 실행합니다. 처음 한 번 준비합니다.
 
-1. **kubeconfig:** CP1의 admin kubeconfig를 승인된 수단으로 khinfow01 실행 계정의 `~/.kube/config`(권한 `0600`)에 둡니다. context는 `kubernetes-admin@kubernetes`입니다.
-2. **저장소:** 사내 GitHub에서 clone하고 `git sparse-checkout set --no-cone '/*' '!/.claude/' '!/.codex/'`로 개발 agent 폴더를 제외합니다. 갱신은 사용자가 CP1과 같은 commit으로 맞춥니다.
-3. **도구:** `kubectl`, `python3`, 각 chart lock의 버전 이상인 `helm`. kubeconfig의 API server 주소 6443 포트에 접근할 수 있어야 합니다.
-4. **chart:** Git에서 제외된 `deploy/<app>/helm/vendor/*.tgz`를 준비합니다. 사내 미러에 접근되면 `python3 deploy/airflow/scripts/manage.py fetch-chart`, `python3 deploy/monitoring/scripts/manage.py fetch-chart`, `make headlamp-fetch-chart`, 아니면 CP1의 같은 파일을 복사합니다.
-5. **env:** CP1 배포에 쓰는 외부 env를 같은 권한(`0600`)으로 두고 경로를 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 기록합니다.
+1. **kubeconfig:** CP1의 `/etc/kubernetes/admin.conf`(또는 CP1 배포 계정의 `~/.kube/config`)를 승인된 수단으로 관리 호스트 배포 계정의 `~/.kube/config`(권한 `0600`)에 둡니다. `super-admin.conf`는 쓰지 않습니다. context는 `kubernetes-admin@kubernetes`입니다.
+2. **저장소:** 사내 GitHub에서 clone하고 `git sparse-checkout set --no-cone '/*' '!/.claude/' '!/.codex/'`로 개발 agent 폴더를 제외합니다. 갱신은 사용자가 합니다.
+3. **도구:** `kubectl`, `python3`, 각 chart lock의 버전 이상인 `helm`. kubeconfig의 API server 주소 6443 포트에 접근할 수 있어야 합니다. 설치 기준은 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--관리-호스트)입니다.
+4. **chart:** Git에서 제외된 `deploy/<app>/helm/vendor/*.tgz`를 준비합니다. 사내 미러에 접근되면 `python3 deploy/airflow/scripts/manage.py fetch-chart`, `python3 deploy/monitoring/scripts/manage.py fetch-chart`, `make headlamp-fetch-chart`, 아니면 기존 위치의 같은 파일을 복사합니다.
+5. **env·인증서:** 배포에 쓰는 외부 env와 인증서 원본을 권한 `0600`으로 두고 경로를 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 기록합니다.
 6. **확인:** `kubectl --context kubernetes-admin@kubernetes get nodes`가 성공하면 `make drift-check KUBE_CONTEXT=kubernetes-admin@kubernetes`를 실행합니다.
 
-admin kubeconfig는 클러스터 전체 권한이며 kubeadm 인증서는 개별 폐기가 어렵습니다. khinfow01에서는 클러스터 변경 명령을 거부하는 `ops-check` agent만 사용하고, 파일을 다른 위치로 복사하지 않습니다.
+admin kubeconfig는 클러스터 전체 권한이며 kubeadm 인증서는 개별 폐기가 어렵습니다. 관리 호스트 배포 계정에만 두고 다른 위치로 복사하지 않습니다.
 
 ## 배포 기록 남기기
 
@@ -103,11 +103,11 @@ make deploy-record APP=portal KUBE_CONTEXT=kubernetes-admin@kubernetes RECORD_IN
 | `DRIFT manifest ... 클러스터에 없음` | 코드에 있는 리소스가 배포되지 않았거나 namespace가 없음 | 앱 설치·배포 여부 확인 |
 | `DRIFT manifest ... 적용할 수 없음` | 변경 불가 필드(StatefulSet volumeClaimTemplates, PVC 용량 축소 등) 차이 | 앱 문서의 재생성·이전 절차 확인. 자동으로 삭제·재생성하지 않음 |
 | `WARN manifest replica 수` | 실제 replica가 코드와 다름 | 의도한 운영 조정인지 확인 |
-| `WARN checkout 미커밋 변경` | CP1에서 앱 파일을 직접 수정함. 이 내용이 비교 기준에 포함됨 | 내용을 확인하고 저장소에 반영하거나 담당자와 정리. 강제 초기화하지 않음 |
+| `WARN checkout 미커밋 변경` | 관리 호스트에서 앱 파일을 직접 수정함. 이 내용이 비교 기준에 포함됨 | 내용을 확인하고 저장소에 반영하거나 담당자와 정리. 강제 초기화하지 않음 |
 | `DRIFT record 앱 정의가 바뀜` | 마지막 배포 이후 checkout의 앱 실행 파일이 바뀜 | `manifest` 결과와 함께 판단. manifest가 일치하면 렌더 결과에 영향 없는 변경 |
 | `DRIFT input` | 배포 후 외부 env·입력 파일이 바뀜 | 의도한 변경이면 env 검사 → Secret 갱신 → 앱 재배포 |
 | `DRIFT workload` | 기록 이후 클러스터에서 이미지·template이 바뀌었거나 워크로드가 사라짐 | `kubectl rollout history`·events로 수동 변경 여부 확인 |
-| `WARN health` | Ready 부족·rollout 진행·이미지 pull·반복 재시작 | [장애 조회](03-operations.md#장애-조회--cp1) |
+| `WARN health` | Ready 부족·rollout 진행·이미지 pull·반복 재시작 | [장애 조회](03-operations.md#장애-조회--관리-호스트) |
 | `UNKNOWN record 배포 기록 없음` | 기록 기능 이전 배포이거나 미배포 | manifest가 일치하면 `make deploy-record`로 기준을 남김 |
 | `UNKNOWN manifest`·`query` | 렌더·context·권한·kubectl 오류 | 표시된 오류와 `kubectl --context "$KUBE_CONTEXT" get ns`로 접근 확인 |
 

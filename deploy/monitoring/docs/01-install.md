@@ -2,7 +2,7 @@
 
 [앱 안내](../README.md) · 다음: [갱신·운영](02-operations.md)
 
-고정 chart로 Monitoring을 설치합니다. 모든 명령은 관리 호스트(CP1 등)의 저장소 루트, 같은 Bash 세션에서 실행하며 각 Worker에서 반복하지 않습니다.
+고정 chart로 Monitoring을 설치합니다. 모든 명령은 관리 호스트의 저장소 루트, 같은 Bash 세션에서 실행하며 각 Worker에서 반복하지 않습니다.
 새 Bash 세션에서는 3단계의 `KUBE_CONTEXT`, `MONITORING_ENV`와, 다른 chart 경로를 쓰면 `MONITORING_CHART_FILE`을 다시 export합니다.
 
 ## 1. 준비물

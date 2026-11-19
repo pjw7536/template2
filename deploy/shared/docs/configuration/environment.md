@@ -32,7 +32,7 @@ deploy/
 | 방식 | 앱 | 상세 |
 | --- | --- | --- |
 | env에 일반 설정과 비밀번호·토큰·서명 키·인증 헤더를 함께 넣고 비공개 Git 저장소에서 관리 | Keycloak·Portal API·MinIO·Airflow | 아래 3절 |
-| 실제 비밀값은 별도 Secret으로 등록하고 env에는 Secret 이름만 기록 | Headlamp | client secret 숨김 입력 → 전용 Secret. [client secret 등록](../../../headlamp/docs/02-authentication.md#5-cp1에서-client-secret-등록) |
+| 실제 비밀값은 별도 Secret으로 등록하고 env에는 Secret 이름만 기록 | Headlamp | client secret 숨김 입력 → 전용 Secret. [client secret 등록](../../../headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록) |
 | 〃 | Monitoring | Git 밖의 관리자 env 파일 → Grafana 관리자 Secret. [관리자 Secret 준비](../../../monitoring/docs/01-install.md#5-namespace와-관리자-secret-준비) |
 | 〃 | FTP | 계정 예제 수정 또는 별도 계정 파일 → 공용 FTP 계정 Secret. [계정 파일 준비](../../../ftp/docs/01-install.md#4-관리-호스트의-계정-파일-준비) |
 

@@ -12,7 +12,7 @@
 
 ### 1. 실행 위치와 도구 확인
 
-**실행 위치:** CP1의 저장소 루트. 이미지 빌드는 CP1이 아닌 `khinfow01`에서 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)로 수행합니다.
+**실행 위치:** 관리 호스트의 저장소 루트. 이미지 빌드는 관리 호스트가 아닌 `khinfow01`에서 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)로 수행합니다.
 
 가이드의 서버 context는 `kubernetes-admin@kubernetes`입니다. 다른 context를 쓰면 모든 명령의 이름을 해당 값으로 바꿉니다.
 
@@ -128,7 +128,7 @@ chmod 600 deploy/airflow/env/k8s.env
 인증서는 `etch-sso/traefik-tls`에서 관리하므로 기본 env에 앱별 TLS Secret 입력은 없습니다.
 `make airflow-up`은 공용 Traefik과 HTTPS를 전제로 합니다. 다른 Ingress controller를 쓰는 경우에만 env에 `INGRESS_TLS_SECRET`을 추가하고
 같은 namespace의 TLS Secret을 준비한 뒤 [직접 deploy](03-deploy.md#7-고급-직접-deploy와-helm-override)를 사용합니다.
-공용 인증서 등록은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)을 따릅니다.
+공용 인증서 등록은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 따릅니다.
 
 ### 5. Keycloak SSO 입력
 

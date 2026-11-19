@@ -2,9 +2,9 @@
 
 [가이드 홈](../README.md#https인증서) · 다음: [추출·검증](extract.md) → [서버 적용](apply.md)
 
-**목적:** 발급받은 인증서 원본과 사내 CA를 CP1의 정해진 폴더에 배치합니다.
-**준비물:** 사이트별 PFX·P7B 파일과 PFX 비밀번호, `SECDS-T2IssuingCA.crt`·`SECDS-T2RootCA.crt`, CP1의 저장소 checkout과 OpenSSL.
-**실행 위치:** CP1의 Bash, `Makefile`과 `deploy/`가 있는 저장소 루트.
+**목적:** 발급받은 인증서 원본과 사내 CA를 관리 호스트의 정해진 폴더에 배치합니다.
+**준비물:** 사이트별 PFX·P7B 파일과 PFX 비밀번호, `SECDS-T2IssuingCA.crt`·`SECDS-T2RootCA.crt`, 관리 호스트의 저장소 checkout과 OpenSSL.
+**실행 위치:** 관리 호스트의 Bash, `Makefile`과 `deploy/`가 있는 저장소 루트.
 
 ## 파일 구조
 

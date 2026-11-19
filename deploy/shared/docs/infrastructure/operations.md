@@ -8,12 +8,11 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
-| CP1 저장소 | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
-| CP1 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env 검사 예시](../operations/02-deploy.md#4-실제-envtlsvip-준비). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
+| 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
+| 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env 검사 예시](../operations/02-deploy.md#4-실제-envtlsvip-준비). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
-| kubeconfig | 배포 계정의 `$HOME/.kube/config` 또는 조직이 지정한 `KUBECONFIG`. Git에 넣지 않음 | 실제 파일 위치·계정·권한 확인 필요 |
+| kubeconfig | 관리 호스트 배포 계정의 `$HOME/.kube/config`(CP1의 `/etc/kubernetes/admin.conf`를 복사, 권한 0600). Git에 넣지 않음 | 사용자 확정: 관리 호스트에서 admin kubeconfig 사용. 실제 파일 위치·계정은 서버 확인 필요 |
 | 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 배포 명령에는 `KUBE_CONTEXT`로 명시하며 kubectl 현재 context에 의존하지 않음. 실제 배포 계정의 kubeconfig 등록 상태는 서버에서 확인 필요 |
-| 배포 점검 위치 | Worker `khinfow01`에서 opencode `ops-check` agent로 `make drift-check`만 실행. CP1의 admin kubeconfig를 실행 계정 `~/.kube/config`에 둠 | 사용자 확정: khinfow01에서 점검만 수행, admin kubeconfig 사용. 실행 계정·checkout 경로·서버 적용 미확인. 절차는 [Worker에서 점검](../operations/04-drift.md#worker에서-점검) |
 | 인증서·개인키·공용 CA | Git 밖의 서버 파일 | [인증서 관리](../certificates/prepare.md)의 경로·권한·Git 제외 규칙. 실제 보관 경로·담당자 확인 필요 |
 | 앱 데이터·로그·ODBC | [앱별 배치·스토리지 표](services.md#앱별-배치와-스토리지-선언) | 노드별 PV·PVC·hostPath 선언과 실제 연결을 구분. checkout 복사로 백업되지 않음 |
 | 백업·복구 파일 | 미확인 | 앱별 보관 위치·주기·보존 기간·복구 담당자 확인 필요 |

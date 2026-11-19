@@ -10,7 +10,7 @@
 - [Keycloak 설정](02-authentication.md#keycloak-client와-관리자): client·S256·groups mapper·관리자 그룹 가입, client secret 등록
 - [API server 인증](02-authentication.md#api-server-인증): 모든 API server 적용과 기존 관리자 접속
 
-**실행 위치:** 1~3단계는 CP1 저장소 루트의 같은 Bash 터미널(새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 실행), 4단계는 PC 브라우저입니다.
+**실행 위치:** 1~3단계는 관리 호스트 저장소 루트의 같은 Bash 터미널(새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 실행), 4단계는 PC 브라우저입니다.
 
 ## 1. 검사와 적용
 
@@ -41,7 +41,7 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp logs deployment/headlamp --tail=10
 
 ## 2. 실제 HTTPS 확인
 
-제공 중인 인증서와 로컬 fullchain의 일치는 [실제 제공되는 인증서 확인](../../shared/docs/certificates/apply.md#3-실제-제공-인증서-확인--cp1)으로 검사합니다.
+제공 중인 인증서와 로컬 fullchain의 일치는 [실제 제공되는 인증서 확인](../../shared/docs/certificates/apply.md#3-실제-제공-인증서-확인--관리-호스트)으로 검사합니다.
 그 문서의 입력은 이 터미널 변수로 지정합니다.
 
 ```bash
@@ -56,7 +56,7 @@ curl --fail --silent --show-error --cacert "$HEADLAMP_OIDC_CA_FILE" "https://$HE
 
 **기대 결과:** 공통 검사의 완료 메시지와 `Headlamp HTTPS 응답 확인 완료`.
 **실패 확인:** `404`면 Ingress host/path와 Traefik 감시 namespace, `503`이면 Pod 준비 상태와 Service 연결, 인증서 오류면 DNS·Traefik·TLS Secret·fullchain을 확인합니다.
-공인·다른 CA 사이트는 해당 신뢰 체인을 `--cacert`에 지정합니다. CP1에서 성공해도 PC 브라우저에 경고가 뜨면 PC의 CA 신뢰와 DNS를 확인합니다.
+공인·다른 CA 사이트는 해당 신뢰 체인을 `--cacert`에 지정합니다. 관리 호스트에서 성공해도 PC 브라우저에 경고가 뜨면 PC의 CA 신뢰와 DNS를 확인합니다.
 
 ## 3. Kubernetes RBAC 확인
 

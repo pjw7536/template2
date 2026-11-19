@@ -4,11 +4,11 @@
 
 ## 위치
 
-문서는 읽는 사람과 작업 단위를 기준으로 배치하고, 같은 정보는 한 곳만 원본으로 둡니다. CP1은 저장소 전체를 사용하지만, 서버 검사·배포 도구는 `deploy`와 루트 Makefile만으로 동작해야 하므로([배포 지침](../../deploy/AGENTS.md)) 서버 절차도 `deploy` 안에서 끝나야 합니다.
+문서는 읽는 사람과 작업 단위를 기준으로 배치하고, 같은 정보는 한 곳만 원본으로 둡니다. 관리 호스트는 저장소 전체를 사용하지만, 서버 검사·배포 도구는 `deploy`와 루트 Makefile만으로 동작해야 하므로([배포 지침](../../deploy/AGENTS.md)) 서버 절차도 `deploy` 안에서 끝나야 합니다.
 
 | 읽는 사람·상황 | 원본 | 담는 내용 |
 | --- | --- | --- |
-| 서버 운영자(CP1, 서버 checkout) | `deploy/<app>/docs/`, `deploy/shared/docs/` | 설치·배포·운영 절차, 서버 env 작성·검사·Secret 등록, 클러스터·인증서·Ingress |
+| 서버 운영자(관리 호스트, 서버 checkout) | `deploy/<app>/docs/`, `deploy/shared/docs/` | 설치·배포·운영 절차, 서버 env 작성·검사·Secret 등록, 클러스터·인증서·Ingress |
 | 서버 운영자·에이전트 | `deploy/shared/docs/infrastructure/` | 현재 서버·네트워크·서비스·미러·운영 위치와 서버 적용 대기 작업 |
 | 개발자(개발 PC 실행) | `docs/getting-started/`, `local/` | 로컬 실행·일상 명령(`docs`), 로컬 주소·계정·mock·데이터 보존(`local`) |
 | 개발자(코드 수정) | `docs/concepts/`, `docs/development/`, `docs/features/` | 구조·데이터 모델·외부 연동, 소스 수정·migration 작성, 기능·권한·API 계약 |

@@ -12,7 +12,7 @@ Keycloak은 사용자를 인증하고 API server는 그 토큰을 신뢰할지 �
 - 사내 CA 묶음 PEM 한 파일: [Headlamp TLS 준비](../../../headlamp/docs/01-prepare.md)에서 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`으로 생성합니다. PFX·사이트 개인키는 전달하지 않습니다.
 - 각 제어면의 SSH/sudo 권한. 작업은 제어면 담당자가 수행하며, 위임할 때는 위 계약과 CA 묶음을 전달합니다.
 
-**실행 위치:** `kubectl` 조회는 CP1 터미널, `/etc/kubernetes` 파일 편집과 `sudo` 명령은 설정할 각 제어면의 SSH 터미널입니다.
+**실행 위치:** `kubectl` 조회는 관리 호스트 터미널, `/etc/kubernetes` 파일 편집과 `sudo` 명령은 설정할 각 제어면의 SSH 터미널입니다.
 
 SSO 주소를 바꿀 때는 앱 env와 모든 API server의 issuer·CA를 함께 맞춥니다. 다른 인증 공급자 설정은 보존합니다.
 
@@ -28,7 +28,7 @@ SSO 주소를 바꿀 때는 앱 env와 모든 API server의 issuer·CA를 함께
 
 ## 1. 계약과 기존 인증 확인
 
-CP1에서 버전과 API server Pod를 조회합니다.
+관리 호스트에서 버전과 API server Pod를 조회합니다.
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" version
@@ -53,7 +53,7 @@ sudo grep -nE -- '--(oidc-|authentication-config)' /etc/kubernetes/manifests/kub
 
 ## 2. 모든 제어면에 CA 파일 배치
 
-각 제어면에서 **현재 접속한 서버에 복사해 둔 CA PEM 파일 경로**를 입력합니다. CP1의 환경변수나 파일은 다른 서버에 자동으로 전달되지 않습니다.
+각 제어면에서 **현재 접속한 서버에 복사해 둔 CA PEM 파일 경로**를 입력합니다. 관리 호스트의 환경변수나 파일은 다른 서버에 자동으로 전달되지 않습니다.
 
 ```bash
 read -r -p '전달받은 Keycloak CA PEM 파일의 절대 경로: ' APISERVER_CA_SOURCE
@@ -169,7 +169,7 @@ claimMappings:
 - 인증 파일과 CA 내용은 모든 API server에 적용하며, 4단계와 같이 한 대씩 재시작·검증합니다.
 - 세부 스키마는 [공식 인증 설정](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#authentication-configuration-from-a-file)을 따릅니다.
 
-## 6. 완료 확인 — CP1·각 제어면
+## 6. 완료 확인 — 관리 호스트·각 제어면
 
 각 제어면이 다시 기동된 뒤 관리자 kubeconfig로 확인합니다.
 

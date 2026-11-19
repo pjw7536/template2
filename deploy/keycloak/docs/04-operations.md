@@ -1,8 +1,8 @@
 # Keycloak 운영과 원본 관리
 
-[앱 안내](../README.md) · [CP1 공통 Git·파일 관리](../../shared/docs/operations/01-checkout.md#git운영-파일-관리)
+[앱 안내](../README.md) · [관리 호스트 공통 Git·파일 관리](../../shared/docs/operations/01-checkout.md#git운영-파일-관리)
 
-CP1은 배포 명령을 실행하는 호스트이며 Keycloak·PostgreSQL은 manifest에 지정한 Worker에서 실행됩니다.
+관리 호스트는 배포 명령을 실행하는 호스트이며 Keycloak·PostgreSQL은 manifest에 지정한 Worker에서 실행됩니다.
 저장소 갱신과 Kubernetes·사용자 설정 적용은 별개의 작업입니다. 최초 설치는 [README](../README.md)의 순서를 따릅니다.
 
 - [원본 위치와 도구](#원본-위치와-도구)
@@ -48,14 +48,14 @@ Portal client Job은 `deploy/portal/k8s/jobs/keycloak-client`가 소유합니다
 
 ## 저장소 갱신 후 반영
 
-[CP1 공통 안내](../../shared/docs/operations/01-checkout.md#git운영-파일-관리)에 따라 브랜치·변경사항을 확인하고 pull한 뒤 변경 종류에 맞는 절차를 사용합니다.
+[관리 호스트 공통 안내](../../shared/docs/operations/01-checkout.md#git운영-파일-관리)에 따라 브랜치·변경사항을 확인하고 pull한 뒤 변경 종류에 맞는 절차를 사용합니다.
 
 | 변경 내용 | 반영 절차 |
 | --- | --- |
 | 문서만 변경 | 서버 적용 불필요 |
 | 서버 manifest | [검사 후 서버 배포](02-deploy.md#1-검사-후-서버-배포) |
 | IdP·프로필·수신 mapper | [Realm과 사내 로그인](03-configure.md#realm과-사내-로그인)의 해당 단계 |
-| 인증서 | [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1) |
+| 인증서 | [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트) |
 | Portal·Headlamp client | [앱 연결](03-configure.md#앱-연결) 및 해당 앱의 소유 문서 |
 
 DB·관리자 비밀번호는 env와 Secret만 바꾼다고 실제 서비스의 값이 바뀌지 않습니다. 불일치가 발견되면 실제 값과 원본을 먼저 확인합니다.
@@ -80,7 +80,7 @@ make keycloak-idp-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT" KEYCLOAK_ENV="$KEY
 **준비물:** 새 이름의 DNS·VIP 경로(DNS 변경은 사용자가 직접 수행), SAN·CA 체인·만료를 확인한 인증서, 기존 credential과 일치하고 `keycloak-public-url`만 새 주소인 env.
 앱 callback 경로·client ID·secret·계정·권한·realm·DB·namespace와 내부 Service 주소는 유지합니다.
 
-**실행 위치:** CP1의 저장소 루트입니다.
+**실행 위치:** 관리 호스트의 저장소 루트입니다.
 
 ### 1. 인증서와 AD FS 준비
 

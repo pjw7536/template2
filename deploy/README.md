@@ -1,11 +1,11 @@
 # 서버 배포
 
 사내 Kubernetes 클러스터에 준비된 이미지·chart로 앱을 설치·운영하는 안내입니다.
-명령은 관리 호스트(CP1)의 저장소 루트에서 실행합니다.
+명령은 관리 호스트 `khplanew01`(10.172.40.117)의 저장소 루트에서 실행합니다. 준비는 [관리 호스트 준비](shared/docs/operations/04-drift.md#관리-호스트-준비)를 따릅니다.
 
 ## 처음 준비하는 순서
 
-1. [서버 파일 받기](shared/docs/operations/01-checkout.md): CP1에 저장소를 clone하고 갱신합니다.
+1. [서버 파일 받기](shared/docs/operations/01-checkout.md): 관리 호스트에 저장소를 clone하고 갱신합니다.
 2. [배포 준비와 검증](shared/docs/operations/02-deploy.md): context·공용 Ingress·env·TLS를 준비하고 앱 순서를 확인합니다.
 3. 아래 앱별 안내에서 설치를 진행합니다.
 4. [운영과 문제 해결](shared/docs/operations/03-operations.md)으로 갱신·장애·백업을 관리합니다.

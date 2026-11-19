@@ -4,12 +4,12 @@
 
 여러 앱이 함께 사용하는 공용 Traefik의 배치 보존·TLS·도메인 라우팅·namespace 감시 계약입니다.
 설치·갱신은 [Traefik 셋업](setup.md), 운영 중 backend 추가는 [Traefik·VIP 확장](expand.md)을 따릅니다.
-아래 Make 명령은 CP1의 저장소 루트에서 `KUBE_CONTEXT`를 지정해 실행합니다.
+아래 Make 명령은 관리 호스트의 저장소 루트에서 `KUBE_CONTEXT`를 지정해 실행합니다.
 
 ## 현재 선언
 
 - 저장소 기본값([`stack.yaml`](../../ingress/stack.yaml)): `etch-sso` namespace, `traefik` Deployment 1 replica, `khplane01w09` 노드, hostPort 80/443.
-- VIP backend별 배치는 저장소가 아닌 Deployment의 `deploy.tailwind.local/vip-backends` annotation에 기록됩니다. 실제 replica·배치는 [확장 절차](expand.md#1-현재-배치-조회--cp1)로 조회합니다.
+- VIP backend별 배치는 저장소가 아닌 Deployment의 `deploy.tailwind.local/vip-backends` annotation에 기록됩니다. 실제 replica·배치는 [확장 절차](expand.md#1-현재-배치-조회--관리-호스트)로 조회합니다.
 - APP VIP와 backend·노드 대응은 [네트워크 원본](../infrastructure/network.md#vipdns접속-경로)을 따릅니다.
 
 ## 배치 보존과 검사 범위
@@ -28,7 +28,7 @@
 
 인증서는 `etch-sso/traefik-tls` Secret 한 곳에 보관하며 Traefik이 접속 도메인(SNI)에 맞는 인증서를 선택합니다.
 앱 Ingress에는 `websecure`, `router.tls=true`만 선언하고 `spec.tls.secretName`을 지정하지 않습니다.
-하나의 SAN 인증서를 공유하더라도 실제 사용하는 host별로 [등록·갱신](../certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)합니다.
+하나의 SAN 인증서를 공유하더라도 실제 사용하는 host별로 [등록·갱신](../certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)합니다.
 
 | namespace | Ingress | 공개 주소 |
 | --- | --- | --- |

@@ -9,7 +9,7 @@
 
 **목적:** `etch` realm에 Headlamp 전용 client를 등록하고, 사용할 사람을 관리자 그룹에 넣은 뒤 client secret을 Kubernetes에 전달합니다.
 **준비물:** [TLS·CA 준비](01-prepare.md#tlsca-준비) 완료, Keycloak 관리자 화면 접근.
-**실행 위치:** 1·5단계는 CP1 터미널(새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 실행), 2~4단계는 PC의 Keycloak 관리자 화면입니다.
+**실행 위치:** 1·5단계는 관리 호스트 터미널(새 터미널이면 [실행 입력](01-prepare.md#2-대상-context와-실행-입력)을 다시 실행), 2~4단계는 PC의 Keycloak 관리자 화면입니다.
 관리자 화면에서는 왼쪽 위 realm을 **etch**로 맞추며 `master` realm에서 client를 만들지 않습니다. Keycloak 26.x 기준이며 화면 언어에 따라 메뉴 이름이 다를 수 있습니다.
 
 ### 1. client 등록 파일 생성과 가져오기
@@ -44,7 +44,7 @@ printf 'Client ID: %s\nValid redirect URIs: %s\nKubernetes Secret 이름: %s\n' 
 ### 2. 등록 결과 확인
 
 client의 **Settings**·**Advanced**·**Client scopes**를 다시 열어 위 표와 같은지 확인합니다.
-특히 Client authentication On, redirect URI가 CP1 출력과 정확히 같음, PKCE S256, `headlamp-groups` mapper의 `groups`·Full group path On·Add to ID token On을 확인합니다.
+특히 Client authentication On, redirect URI가 관리 호스트 출력과 정확히 같음, PKCE S256, `headlamp-groups` mapper의 `groups`·Full group path On·Add to ID token On을 확인합니다.
 mapper 세 값이 맞아야 API server가 관리자 그룹을 알아봅니다.
 
 ### 3. 사용할 사람을 그룹에 넣기
@@ -64,7 +64,7 @@ Headlamp용 계정을 따로 만들거나 EPID를 바꾸지 않으며, SDWT의 `
 Credentials 탭이 없으면 Client authentication이 On인지 확인합니다. client를 새로 만들었다면 새 client의 값을 사용합니다.
 `headlamp`, `headlamp-oidc` 같은 이름은 비밀값이 아닙니다.
 
-### 5. CP1에서 Client secret 등록
+### 5. 관리 호스트에서 Client secret 등록
 
 `Headlamp client secret:`이 나오면 4단계의 값을 붙여 넣습니다. 입력 글자는 보이지 않습니다.
 
@@ -97,13 +97,13 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp get secret "$HEADLAMP_OIDC_SECRET"
 ## API server 인증
 
 **목적:** Headlamp 로그인 토큰을 Kubernetes API server가 받아들이게 합니다. 등록되지 않으면 로그인 후에도 자원 조회가 실패합니다.
-**실행 위치:** 계약 출력은 CP1, 적용은 각 제어면 서버(제어면 담당자). 적용 절차는 [API server OIDC 설정](../../shared/docs/kubernetes/oidc.md)을 따르며
+**실행 위치:** 계약 출력은 관리 호스트, 적용은 각 제어면 서버(제어면 담당자). 적용 절차는 [API server OIDC 설정](../../shared/docs/kubernetes/oidc.md)을 따르며
 아래 계약과 [TLS 준비](01-prepare.md#tlsca-준비)의 CA 묶음을 전달합니다.
 
 ### 1. 적용할 계약
 
 ```bash
-printf 'issuer: %s\naudience / client ID: %s\nCP1의 CA 원본 파일: %s\n' \
+printf 'issuer: %s\naudience / client ID: %s\n관리 호스트의 CA 원본 파일: %s\n' \
   "$HEADLAMP_OIDC_ISSUER_URL" "$HEADLAMP_OIDC_CLIENT_ID" "$HEADLAMP_OIDC_CA_FILE"
 ```
 
@@ -147,7 +147,7 @@ claimMappings:
 
 ### 2. 완료 확인
 
-모든 제어면에 적용한 뒤 CP1의 관리자 kubeconfig로 확인합니다.
+모든 제어면에 적용한 뒤 관리 호스트의 관리자 kubeconfig로 확인합니다.
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" get --raw=/readyz

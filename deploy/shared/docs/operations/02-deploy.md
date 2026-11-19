@@ -10,7 +10,7 @@
 
 ### 1. 준비물
 
-- [CP1에 clone한 저장소](01-checkout.md#저장소-clone)와 대상 클러스터의 kubeconfig
+- [관리 호스트에 clone한 저장소](01-checkout.md#저장소-clone)와 대상 클러스터의 kubeconfig
 - 앱별 준비물
 
 | 앱 | 준비물·상세 안내 |
@@ -24,7 +24,7 @@
 데이터 폴더는 앱이 실행될 Worker에 직접 준비합니다. PV 적용만으로 폴더가 생기거나 쓰기 권한이 설정되지는 않습니다.
 같은 Worker의 컨테이너 런타임에서 이미지를 가져올 수 있는지도 확인합니다.
 
-### 2. 대상 context 확인 — CP1
+### 2. 대상 context 확인 — 관리 호스트
 
 checkout 루트에서 실행합니다. 모두 조회 명령입니다.
 
@@ -40,7 +40,7 @@ kubectl --context "$KUBE_CONTEXT" get nodes -o wide
 공용 Ingress·앱 배포·Secret 등록 명령에는 `KUBE_CONTEXT`를 전달하며 kubectl의 현재 context를 암묵적으로 사용하지 않습니다.
 루트 Makefile은 export한 `KUBE_CONTEXT`를 읽으므로 같은 터미널에서는 다시 입력하지 않아도 됩니다.
 
-### 3. 저장소 원본 검사 — CP1
+### 3. 저장소 원본 검사 — 관리 호스트
 
 ```bash
 make server-check APP=platform PROFILE=prod
@@ -61,7 +61,7 @@ Airflow·Monitoring·Headlamp는 각 안내에 따라 Helm·고정 chart를 준�
   외부 env 파일은 앱 도구의 경로 인자로 지정하며 `source`로 실행하지 않습니다.
 
   ```bash
-  # CP1 외부 Keycloak env 검사 예시
+  # 관리 호스트 외부 Keycloak env 검사 예시
   bash deploy/shared/scripts/check-env.sh keycloak prod server \
     /appdata/etchax-config/keycloak/prod.env
   ```
@@ -70,7 +70,7 @@ Airflow·Monitoring·Headlamp는 각 안내에 따라 Helm·고정 chart를 준�
 - [TLS 안내](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 도메인·SAN·만료·full chain·개인키를 확인하고 host별로 공용 `etch-sso/traefik-tls`에 등록합니다. OIDC용 CA ConfigMap은 소비 앱 namespace에 별도로 준비합니다.
 - [VIP 안내](../ingress/setup.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
 
-### 5. 공용 Ingress 검사·적용 — CP1
+### 5. 공용 Ingress 검사·적용 — 관리 호스트
 
 ```bash
 # 클러스터를 조회·검사합니다. 변경하지 않습니다.
@@ -91,7 +91,7 @@ make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
 
 ### 1. 공용 Traefik
 
-[배포 준비](#5-공용-ingress-검사적용--cp1)에서 적용합니다.
+[배포 준비](#5-공용-ingress-검사적용--관리-호스트)에서 적용합니다.
 [APP VIP](../ingress/setup.md)의 Worker backend·인증서와 실제 HTTPS 연결을 확인합니다.
 공용 Ingress만으로 앱·DB·앱 Secret은 설치되지 않습니다.
 
@@ -153,9 +153,9 @@ make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
 
 클러스터 상태 → Worker 직접 접속 → VIP → DNS → 실제 기능 순서로 확인합니다. 배포하지 않은 앱은 `미배포`로 기록합니다.
 
-### 1. 리소스 확인 — CP1
+### 1. 리소스 확인 — 관리 호스트
 
-[배포 준비](#2-대상-context-확인--cp1)에서 `KUBE_CONTEXT`를 지정한 터미널에서 실행합니다. 모두 조회 명령입니다.
+[배포 준비](#2-대상-context-확인--관리-호스트)에서 `KUBE_CONTEXT`를 지정한 터미널에서 실행합니다. 모두 조회 명령입니다.
 
 ```bash
 read -r -p '확인할 앱 namespace: ' APP_NAMESPACE
@@ -167,7 +167,7 @@ kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get service,ingress,endpoi
 ```
 
 **기대 결과:** 필요한 replica와 Pod READY 충족, PVC Bound, 일회성 Job Completed, Service에 준비된 endpoint가 있습니다.
-Pod가 Running이라는 이유만으로 앱이 준비됐다고 판단하지 않습니다. 실패하면 [장애 조회](03-operations.md#장애-조회--cp1)를 따릅니다.
+Pod가 Running이라는 이유만으로 앱이 준비됐다고 판단하지 않습니다. 실패하면 [장애 조회](03-operations.md#장애-조회--관리-호스트)를 따릅니다.
 
 클러스터 전체의 배치와 저장소 연결은 다음 조회로 [서비스 배치 선언](../infrastructure/services.md#앱별-배치와-스토리지-선언)과 비교합니다.
 설치 버전·OS·런타임·CNI·VIP는 [환경 조회 안내](../kubernetes/baseline.md)에서 확인합니다.
@@ -205,7 +205,7 @@ OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다. 인증
 
 **기대 결과:** TLS 검증을 통과하고 health 응답이 정상입니다. Airflow는 HTTP 200 외에 DB와 scheduler가 healthy인지도 확인합니다.
 Keycloak은 [VIP 문서](../ingress/setup.md)의 도메인 검사와 아래 로그인 검증을 수행합니다.
-TLS·404·503 오류는 [증상별 확인](03-operations.md#장애-조회--cp1)을 따릅니다.
+TLS·404·503 오류는 [증상별 확인](03-operations.md#장애-조회--관리-호스트)을 따릅니다.
 
 ### 3. 실제 기능 확인
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# 원본에서 CP1 전달용 파일을 생성하며 클러스터에 연결하거나 적용하지 않습니다.
+# 원본에서 관리 호스트 전달용 파일을 생성하며 클러스터에 연결하거나 적용하지 않습니다.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KUBECTL_BIN="${KUBECTL_BIN:-kubectl}"
 OUTPUT_DIR="${ROOT_DIR}/deploy/keycloak/rendered"

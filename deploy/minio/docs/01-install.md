@@ -2,14 +2,14 @@
 
 [앱 안내](../README.md) · 다음: [운영·이전·재생성](02-operations.md)
 
-공용 MinIO를 `minio` namespace에 설치합니다. 모든 명령은 관리 호스트(CP1 등)의 저장소 루트, 같은 Bash 세션에서 실행합니다.
+공용 MinIO를 `minio` namespace에 설치합니다. 모든 명령은 관리 호스트의 저장소 루트, 같은 Bash 세션에서 실행합니다.
 이미 배포된 MinIO를 옮기거나 다시 만들려면 [운영·이전·재생성](02-operations.md)을 먼저 읽습니다.
 
 ## 1. 준비 조건
 
 | 대상 | 확인할 내용 |
 | --- | --- |
-| 관리 호스트 | CP1의 저장소 루트, Bash·Make·Python 3·kubectl과 관리자 kubeconfig |
+| 관리 호스트 | 관리 호스트의 저장소 루트, Bash·Make·Python 3·kubectl과 관리자 kubeconfig |
 | Worker | Ready·hostname label·데이터 디스크 마운트·여유 공간·MinIO와 mc 이미지 pull 가능 여부 |
 | 저장소 | 신규 local PV 또는 실제 동적 StorageClass. 기존 설치는 PV/PVC 연결·데이터 위치·계정 보존 |
 | 접속 | 공용 Traefik·DNS/VIP·업무 도메인 인증서 |
@@ -99,7 +99,7 @@ PV가 없는 새 설치는 `STORAGE_CLASS_NAME=`, `VOLUME_NAME=`으로 두고 `M
 
 ## 4. 공용 HTTPS 인증서
 
-**목적:** `MINIO_API_HOST`·`MINIO_CONSOLE_HOST` 두 host의 인증서를 [공용 Traefik](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)에 각각 등록합니다.
+**목적:** `MINIO_API_HOST`·`MINIO_CONSOLE_HOST` 두 host의 인증서를 [공용 Traefik](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)에 각각 등록합니다.
 이미 등록되어 있으면 생략합니다. `minio` namespace에는 TLS 인증서를 등록하지 않습니다.
 
 ```bash

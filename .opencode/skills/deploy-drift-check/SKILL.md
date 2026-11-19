@@ -1,6 +1,6 @@
 ---
 name: deploy-drift-check
-description: 사내 CP1의 현재 checkout 코드와 실제 Kubernetes 배포 상태가 같은지 조회 전용으로 대조하고 결과를 해석·보고한다. "서버가 레포와 같은지", "설정이 다 적용됐는지", "drift·불일치 점검", 정기 운영 점검 요청에 적용하며 배포 실행 자체에는 server-deploy-routine을 쓴다.
+description: 사내 관리 호스트(khplanew01)의 현재 checkout 코드와 실제 Kubernetes 배포 상태가 같은지 조회 전용으로 대조하고 결과를 해석·보고한다. "서버가 레포와 같은지", "설정이 다 적용됐는지", "drift·불일치 점검", 정기 운영 점검 요청에 적용하며 배포 실행 자체에는 server-deploy-routine을 쓴다.
 ---
 
 # deploy-drift-check
@@ -16,7 +16,7 @@ description: 사내 CP1의 현재 checkout 코드와 실제 Kubernetes 배포 �
 
 ## 절차
 1. 대상 확인: 앱·그룹 이름은 `deploy/shared/apps.json`에서 확인한다. 지정이 없으면 `all`.
-2. 실행(CP1 저장소 루트):
+2. 실행(관리 호스트 저장소 루트):
    - `make drift-check APP=<app|group> KUBE_CONTEXT=<context> DRIFT_JSON=1`
    - 저장소 밖 env로 배포하는 앱은 배포 때와 같은 `<APP>_ENV=<경로>`를 함께 지정한다. 경로는 사용자 또는 인프라 운영 위치 문서에서 확인한다.
    - Helm·chart 미준비 등으로 렌더가 안 되면 `UNKNOWN manifest`로 남기고, 원인을 보고한 뒤 필요하면 `DRIFT_SKIP_MANIFEST=1`로 나머지만 확인한다.

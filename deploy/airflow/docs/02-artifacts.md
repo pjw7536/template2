@@ -7,7 +7,7 @@
 
 ## 1. 공식 chart 준비
 
-**실행 위치:** CP1 저장소 루트. Python 3.10 이상과 Helm 3.19.0 이상이 필요하며 Kubernetes context는 사용하지 않습니다.
+**실행 위치:** 관리 호스트 저장소 루트. Python 3.10 이상과 Helm 3.19.0 이상이 필요하며 Kubernetes context는 사용하지 않습니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py fetch-chart
@@ -15,7 +15,7 @@ python3 deploy/airflow/scripts/manage.py fetch-chart
 
 `helm/chart.lock.json`의 `repository`(사내 Helm 미러)에서 `helm pull --repo ... --version 1.22.0`으로 받습니다.
 **기대 결과:** `사내 Helm 미러 chart 다운로드·SHA-256 검사 완료`. SHA-256이 일치할 때만 `deploy/airflow/helm/vendor/airflow-1.22.0.tgz`에 저장하며 검증 실패 시 기존 캐시를 보존합니다.
-**실패 확인:** CP1에서 미러 DNS·접근 권한·chart 제공 여부를 확인합니다.
+**실패 확인:** 관리 호스트에서 미러 DNS·접근 권한·chart 제공 여부를 확인합니다.
 
 미러에서 받을 수 없으면 외부 PC에서 lock의 `url`(공개 주소)로 받은 `airflow-1.22.0.tgz`를 서버의 같은 위치로 반입합니다.
 다른 위치의 파일은 검사·렌더·배포를 실행하는 같은 셸에서 지정합니다.
@@ -30,7 +30,7 @@ export AIRFLOW_CHART_FILE
 ## 2. DAG 포함 이미지 준비
 
 **실행 위치:** 빌드 host인 `khinfow01`(Airflow 실행 Worker)의 저장소 루트. 기존 containerd에 nerdctl·BuildKit을 연결해 Docker Engine 없이 빌드합니다.
-control plane(CP1)에서는 빌드하지 않습니다. 빌드의 CPU·디스크 사용이 Kubernetes API·etcd에 영향을 주기 때문입니다. CP1은 검사·배포만 실행합니다.
+control plane과 관리 호스트에서는 빌드하지 않습니다. 빌드의 CPU·디스크 사용이 Kubernetes API·etcd와 관리 호스트의 다른 앱에 영향을 주기 때문입니다. 관리 호스트는 검사·배포만 실행합니다.
 
 빌드 host에는 사내 GitHub에서 받은 저장소, nerdctl·BuildKit, 사내 미러·ODBC artifact 접근, registry push 계정이 필요합니다. 클러스터 kubeconfig는 두지 않습니다.
 저장소는 빌드 전에 배포할 커밋으로 갱신합니다.

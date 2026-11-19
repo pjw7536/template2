@@ -11,15 +11,15 @@ LB 변경을 수행할 인프라 담당자, 검사할 기존 Ingress의 도메�
 
 | 위치 | 작업 |
 | --- | --- |
-| CP1 (저장소 루트) | 현재 배치 조회, 백업·변경 파일 생성, 적용·검증·복구 |
+| 관리 호스트 (저장소 루트) | 현재 배치 조회, 백업·변경 파일 생성, 적용·검증·복구 |
 | 새 Worker | 80/443 점유 확인, Traefik 이미지 접근 준비 |
 | 인프라팀의 LB | 새 Worker IP:443 backend 추가·활성화 |
 | 내 PC | 서비스 도메인 HTTPS·로그인 확인 |
 
-Traefik Service는 ClusterIP를 유지하고 LB는 Worker의 hostPort 443으로 연결합니다. 사용자 접속은 CP1이나 port-forward를 거치지 않습니다.
+Traefik Service는 ClusterIP를 유지하고 LB는 Worker의 hostPort 443으로 연결합니다. 사용자 접속은 관리 호스트나 port-forward를 거치지 않습니다.
 이 절차는 Traefik Deployment만 변경하며 Keycloak·Airflow·Headlamp·DB를 재배포하지 않습니다.
 
-## 1. 현재 배치 조회 — CP1
+## 1. 현재 배치 조회 — 관리 호스트
 
 ```bash
 kubectl config get-contexts
@@ -49,7 +49,7 @@ sudo ss -lntp '( sport = :80 or sport = :443 )'
 - 인프라팀에는 `새 Worker IP:443`을 backend로 준비하되 직접 접속 검증이 끝날 때까지 트래픽을 보내지 않도록 요청합니다.
   이미 등록했다면 새 대상만 비활성화하고 기존 정상 backend는 유지합니다. TCP 443 Health Check와 실패 backend 제외를 설정하며 TLS는 Traefik에서 종료합니다.
 
-## 3. 백업과 변경 파일 생성 — CP1
+## 3. 백업과 변경 파일 생성 — 관리 호스트
 
 `VIP_BACKENDS`에는 **유지할 기존 backend IP 전부와 새 Worker IP**를 쉼표로 구분해 넣습니다.
 
@@ -116,7 +116,7 @@ diff -u "$VIP_WORKDIR/before.json" "$VIP_WORKDIR/desired.json"
 
 **실패 확인:** 검사 오류가 나면 표시된 노드·IP·포트 문제를 해결하고 3단계를 새 작업 디렉터리로 다시 실행합니다.
 
-## 4. Traefik만 적용 — CP1
+## 4. Traefik만 적용 — 관리 호스트
 
 한 대에서 확장할 때는 기존 Pod 교체로 짧은 접속 중단이 생길 수 있으므로 작업 시간을 잡습니다. 무중단을 보장하지 않습니다.
 별도의 자동 배포가 같은 Deployment를 수정 중이면 먼저 작업을 조정합니다.
@@ -138,7 +138,7 @@ kubectl --context "$VIP_CONTEXT" -n etch-sso get pods \
 **실패 확인:**
 
 - dry-run이 실패하면 실제 적용하지 않습니다. resourceVersion 검사 실패는 조회 이후 리소스가 바뀌었다는 뜻이며, 기존 백업을 보존한 채 3단계를 새 작업 디렉터리로 다시 실행합니다. 검사 항목을 삭제해 강행하지 않습니다.
-- Pod 상태별 확인은 [Traefik 셋업](setup.md#3-traefik-설치갱신--cp1)의 표를 따릅니다.
+- Pod 상태별 확인은 [Traefik 셋업](setup.md#3-traefik-설치갱신--관리-호스트)의 표를 따릅니다.
 - rollout이 실패한 상태에서는 새 LB backend를 활성화하지 않습니다.
 
 ## 5. Worker 직접 접속 → VIP 순서로 검증
@@ -171,7 +171,7 @@ Ingress가 없는 `/`의 404는 VIP 장애의 근거가 아닙니다.
 서비스 도메인의 DNS가 APP VIP를 가리키는지 확인한 뒤 PC 브라우저에서 실제 로그인까지 검사합니다.
 Keycloak DNS 변경은 별도 전환 작업이며 이 절차에서 변경하지 않습니다.
 
-## 6. 실패 시 복구 — 인프라 담당자·CP1
+## 6. 실패 시 복구 — 인프라 담당자·관리 호스트
 
 새 backend를 이미 활성화했다면 인프라팀에서 **추가한 대상만 비활성화**하고 기존 정상 backend를 유지합니다.
 Traefik 배치를 되돌려야 하면 3단계의 복구 파일을 사용합니다. 복구 파일은 다른 운영자의 spec 변경을 덮어쓰지 않으며 VIP annotation을 이전 값으로 되돌립니다.

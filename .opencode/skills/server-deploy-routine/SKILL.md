@@ -1,6 +1,6 @@
 ---
 name: server-deploy-routine
-description: 사내 CP1에서 저장소의 확정 커밋을 Kubernetes에 배포·갱신하는 운영 절차. 앱 설치·업데이트·재배포·env/Secret 갱신 요청에 적용한다. 코드·manifest 수정은 하지 않으며 상태 점검만 필요하면 deploy-drift-check를 쓴다.
+description: 사내 관리 호스트(khplanew01)에서 저장소의 확정 커밋을 Kubernetes에 배포·갱신하는 운영 절차. 앱 설치·업데이트·재배포·env/Secret 갱신 요청에 적용한다. 코드·manifest 수정은 하지 않으며 상태 점검만 필요하면 deploy-drift-check를 쓴다.
 ---
 
 # server-deploy-routine

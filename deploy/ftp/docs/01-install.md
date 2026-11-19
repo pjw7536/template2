@@ -15,7 +15,7 @@
 
 | 위치 | 필요한 작업 |
 | --- | --- |
-| 관리 호스트(CP1 등) | 저장소 checkout, Python 3.10+·Make·Bash·kubectl, kubeconfig. 검사·배포 실행 |
+| 관리 호스트 | 저장소 checkout, Python 3.10+·Make·Bash·kubectl, kubeconfig. 검사·배포 실행 |
 | FTP를 실행할 각 Linux 노드 | Kubernetes 등록, 저장 디스크·기존 파일 권한·포트 확인 |
 | FTP 클라이언트 PC | 대상 노드 IP로 접속할 네트워크·FTP 클라이언트 |
 

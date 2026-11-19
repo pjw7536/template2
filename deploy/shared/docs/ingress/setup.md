@@ -23,12 +23,12 @@
 **준비물:**
 
 - Traefik을 배치할 Ready Worker 최소 한 대. 없으면 [Worker 추가](../kubernetes/worker.md)를 먼저 진행합니다.
-- CP1 배포 계정의 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--cp1)와 [CP1 저장소](../operations/01-checkout.md#저장소-clone)
+- 관리 호스트 배포 계정의 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--관리-호스트)와 [관리 호스트 저장소](../operations/01-checkout.md#저장소-clone)
 - 사용할 공개 도메인의 fullchain PEM과 짝이 맞는 개인키, 또는 기존 TLS Secret
 
-**실행 위치:** CP1의 저장소 루트. 이 명령은 `deploy/shared`와 루트 Makefile만 사용하며 앱 env·소스·local 파일을 읽지 않습니다.
+**실행 위치:** 관리 호스트의 저장소 루트. 이 명령은 `deploy/shared`와 루트 Makefile만 사용하며 앱 env·소스·local 파일을 읽지 않습니다.
 
-## 1. 배포 대상·포트 검사 — CP1·선택한 Worker
+## 1. 배포 대상·포트 검사 — 관리 호스트·선택한 Worker
 
 ```bash
 kubectl config get-contexts
@@ -57,7 +57,7 @@ sudo ss -lntp '( sport = :80 or sport = :443 )'
 Nginx 등 다른 프로세스가 점유 중이면 담당자와 조정하며 자동으로 종료하지 않습니다.
 hostPort는 네트워크 규칙으로 구현될 수 있으므로 ss 출력이 비어 있어도 Traefik이 실행 중일 수 있습니다.
 
-## 2. TLS 인증서 등록 — CP1
+## 2. TLS 인증서 등록 — 관리 호스트
 
 필요한 공개 도메인마다 반복합니다. 파일 준비·추출은 [인증서 원본 준비](../certificates/prepare.md)부터 시작합니다.
 
@@ -69,12 +69,12 @@ make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$TLS_HOST" \
   TLS_CERT_FILE="$TLS_CERT_FILE" TLS_KEY_FILE="$TLS_KEY_FILE"
 ```
 
-기존 TLS Secret에서 가져올 때는 [인증서 적용](../certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)의 `TLS_SOURCE` 방식을 사용합니다.
+기존 TLS Secret에서 가져올 때는 [인증서 적용](../certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)의 `TLS_SOURCE` 방식을 사용합니다.
 
 **기대 결과:** `공용 TLS 등록 완료`가 표시되고 인증서가 공용 `etch-sso/traefik-tls`에 등록됩니다.
 도구가 도메인·만료·키 일치를 검사하며 다른 도메인의 인증서는 유지합니다.
 
-## 3. Traefik 설치·갱신 — CP1
+## 3. Traefik 설치·갱신 — 관리 호스트
 
 ```bash
 make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
@@ -95,7 +95,7 @@ kubectl --context "$KUBE_CONTEXT" -n etch-sso get pods \
 | ImagePullBackOff | 해당 노드의 이미지 미러·인증 |
 | Ready 실패 | Pod 로그와 CNI 연결 |
 
-## 4. Worker 직접 → APP VIP 검증 — CP1·인프라 담당자
+## 4. Worker 직접 → APP VIP 검증 — 관리 호스트·인프라 담당자
 
 처음 설치했다면 앱 Ingress를 연결한 뒤 실제 앱의 정상 경로를 사용합니다. 기존 서비스가 있으면 그 경로로 바로 검사합니다.
 사내 CA가 신뢰 저장소에 없으면 curl에 `--cacert`를 추가합니다.
@@ -128,7 +128,7 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
 
 ## 대상 변경 없는 갱신
 
-기존 공용 진입점의 namespace 감시·배치·VIP backend를 유지하며 원본만 갱신합니다. 실행 위치는 CP1의 저장소 루트입니다.
+기존 공용 진입점의 namespace 감시·배치·VIP backend를 유지하며 원본만 갱신합니다. 실행 위치는 관리 호스트의 저장소 루트입니다.
 
 ```bash
 read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT

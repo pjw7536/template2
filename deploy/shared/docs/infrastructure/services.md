@@ -117,7 +117,7 @@ Airflow의 최종 배포 이미지 목표는 사용자 지정 `airflow:3.3.2-rel
 | 완료 판정 | 각 대상 노드에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 전송 성공 여부 미확인. 대상 노드·접속 주소·검증 결과·담당자 확인 필요 |
 
 노드명·IP는 [서버 목록](servers.md), 포트·방화벽은 [FTP 네트워크](network.md#ftp-직접-접속)를 따릅니다.
-실행 순서는 [Worker별 준비](../../../ftp/docs/01-install.md#노드계정-준비) → [운영 env 확인과 CP1 배포](../../../ftp/docs/01-install.md#5-검사-후-배포) → [전송 확인](../../../ftp/docs/02-operations.md)입니다.
+실행 순서는 [Worker별 준비](../../../ftp/docs/01-install.md#노드계정-준비) → [운영 env 확인과 관리 호스트 배포](../../../ftp/docs/01-install.md#5-검사-후-배포) → [전송 확인](../../../ftp/docs/02-operations.md)입니다.
 별도 overlay 운영도 [FTP 설치](../../../ftp/docs/01-install.md)를 따릅니다.
 
 ## 추가 확인·변경 연계

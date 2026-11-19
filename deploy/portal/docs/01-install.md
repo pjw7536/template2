@@ -11,7 +11,7 @@
 
 | 대상 | 확인할 내용 |
 | --- | --- |
-| 배포 파일 | CP1의 [저장소 checkout](../../shared/docs/operations/01-checkout.md#저장소-clone) |
+| 배포 파일 | 관리 호스트의 [저장소 checkout](../../shared/docs/operations/01-checkout.md#저장소-clone) |
 | 관리 도구 | Bash·Make·kubectl·Python 3, 대상 클러스터 kubeconfig와 namespace·Secret·Job·앱 리소스 적용 권한 |
 | 이미지 | 실제 registry의 API·Web 고유 태그와 pull 인증. migration도 같은 API 이미지 사용 |
 | DB | Portal 전용 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension. Keycloak DB와 별개 |
@@ -26,7 +26,7 @@
 
 **목적:** API·Web 운영 입력을 작성하고 검사합니다. 이 단계는 클러스터를 변경하지 않습니다.
 
-**실행 위치:** 관리 호스트의 저장소 루트입니다. 운영 입력은 `deploy/portal/env/prod/`가 소유하며 Git으로 전달됩니다. 인증서·개인키 파일은 CP1에 별도로 준비합니다.
+**실행 위치:** 관리 호스트의 저장소 루트입니다. 운영 입력은 `deploy/portal/env/prod/`가 소유하며 Git으로 전달됩니다. 인증서·개인키 파일은 관리 호스트에 별도로 준비합니다.
 
 ### 1. env 파일 작성
 
@@ -151,7 +151,7 @@ SDWT CSV가 준비되면 [SDWT 공통 scope 연결](../../keycloak/docs/03-confi
 
 **준비물:** [환경설정](#환경설정)·[Keycloak client 등록](#keycloak-client-등록) 완료, [overlay 입력](../k8s/overlays/prod/README.md#원본과-입력)의 실제 이미지·저장소 값, [공통 배포 준비](../../shared/docs/operations/02-deploy.md#배포-준비).
 
-**실행 위치:** CP1의 checkout 루트입니다. 각 명령이 성공한 뒤 다음 명령을 실행합니다.
+**실행 위치:** 관리 호스트의 checkout 루트입니다. 각 명령이 성공한 뒤 다음 명령을 실행합니다.
 
 ### 1. 대상과 입력 확인
 
@@ -175,7 +175,7 @@ make k8s-env APP=portal PROFILE=prod COMPONENT=web KUBE_CONTEXT="$KUBE_CONTEXT"
 kubectl --context "$KUBE_CONTEXT" -n etch-sso get secret traefik-tls
 ```
 
-Portal 도메인 인증서는 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)을 사용합니다. 업무 도메인을 이미 등록했다면 이 블록은 생략합니다.
+Portal 도메인 인증서는 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 사용합니다. 업무 도메인을 이미 등록했다면 이 블록은 생략합니다.
 
 ```bash
 read -r -p '업무 도메인 full chain 파일: ' PORTAL_CERT_FILE

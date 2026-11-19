@@ -9,11 +9,11 @@
 ## 서버·실행 입력
 
 **목적:** 대상 클러스터·사이트 주소를 정하고 chart와 `headlamp` namespace를 준비합니다. 이 단계에서는 Headlamp 화면이 열리지 않는 것이 정상입니다.
-**실행 위치:** 배포 서버(CP1)의 저장소 루트, 같은 Bash 터미널. 새 터미널을 열면 [2. 대상 context와 실행 입력](#2-대상-context와-실행-입력)을 다시 실행합니다.
+**실행 위치:** 관리 호스트의 저장소 루트, 같은 Bash 터미널. 새 터미널을 열면 [2. 대상 context와 실행 입력](#2-대상-context와-실행-입력)을 다시 실행합니다.
 
 | 실행 위치 | 하는 일 |
 | --- | --- |
-| CP1 Bash 터미널 | 저장소 루트에서 `make`·`kubectl` 실행, 인증서와 Secret 등록 |
+| 관리 호스트 Bash 터미널 | 저장소 루트에서 `make`·`kubectl` 실행, 인증서와 Secret 등록 |
 | PC 웹 브라우저 | Keycloak 관리자 화면의 client·그룹 확인, 마지막 Headlamp 로그인 |
 | 각 제어면 서버 터미널 | API server OIDC 설정. [API server 인증](02-authentication.md#api-server-인증)에서만 사용 |
 
@@ -144,7 +144,7 @@ Headlamp는 Keycloak env를 자동으로 읽지 않으므로 Keycloak 주소가 
 | `HEADLAMP_OIDC_SECRET` | `headlamp-oidc` | client secret을 담을 Kubernetes Secret의 **이름**. 비밀값이 아니며 `OIDC_CLIENT_SECRET` 키 하나만 등록 |
 | `HEADLAMP_OIDC_CA_CONFIGMAP` | `headlamp-oidc-ca` | Pod가 Keycloak HTTPS를 신뢰할 CA ConfigMap 이름(`ca.crt` 키). 공인 CA이면 빈 값 |
 
-CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 CP1의 연결 검사·API server 등록에 쓰는 PEM 파일입니다.
+CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리 호스트의 연결 검사·API server 등록에 쓰는 PEM 파일입니다.
 `HEADLAMP_SSO_HOST`·`HEADLAMP_CALLBACK_URL`은 setup-env가 계산하는 값이며 env에 추가하지 않습니다.
 
 다음은 env에 넣지 않고 Make 인자 또는 프로세스 환경변수로 전달합니다.
@@ -174,7 +174,7 @@ CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 CP1의
 ## TLS·CA 준비
 
 **목적:** 사이트 인증서는 공용 Traefik(`etch-sso/traefik-tls`)에, Keycloak을 신뢰할 CA는 `headlamp` namespace에 등록합니다.
-**실행 위치:** [서버·실행 입력](#서버실행-입력)의 CP1 터미널과 변수. 새 터미널이면 [실행 입력](#2-대상-context와-실행-입력)을 먼저 실행합니다.
+**실행 위치:** [서버·실행 입력](#서버실행-입력)의 관리 호스트 터미널과 변수. 새 터미널이면 [실행 입력](#2-대상-context와-실행-입력)을 먼저 실행합니다.
 아래는 현재 사내 루트·중간 CA 기준입니다. 다른 인증기관이나 공인 CA라면 **실행 전에** [다른 인증기관인 경우](#공개-ca-또는-다른-인증기관인-경우)를 확인합니다.
 
 | 구성 | 용도 | 적용 위치 |
@@ -192,7 +192,7 @@ mkdir -p "$HEADLAMP_CERT_DIR" "$(dirname "$HEADLAMP_OIDC_CA_FILE")" "$HEADLAMP_C
 ```
 
 출력이 비어 있으면 실행 입력을 다시 수행합니다. 공인 CA 분기에서는 `HEADLAMP_OIDC_CA_FILE`이 빈 값인 것이 정상입니다.
-다음 파일을 **CP1의 위 경로**에 둡니다. 인증서·개인키 파일은 Git으로 전송되지 않으며 Keycloak 서버의 개인키는 필요 없습니다.
+다음 파일을 **관리 호스트의 위 경로**에 둡니다. 인증서·개인키 파일은 Git으로 전송되지 않으며 Keycloak 서버의 개인키는 필요 없습니다.
 
 | 파일 | 준비 방법 |
 | --- | --- |
@@ -250,13 +250,13 @@ kubectl --context "$KUBE_CONTEXT" -n headlamp get configmap "$HEADLAMP_OIDC_CA_C
 make headlamp-oidc-check HEADLAMP_OIDC_CA_FILE="$HEADLAMP_OIDC_CA_FILE"
 ```
 
-공용 등록 도구의 동작은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--cp1)을 따릅니다.
+공용 등록 도구의 동작은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 따릅니다.
 **기대 결과:** `공용 TLS 등록 완료`, ConfigMap `created`·`configured`·`unchanged`, 마지막에 `OIDC 연결 검사 통과: TLS·issuer·code flow·PKCE S256·RS256 공개키`.
 
 | 실패 | 확인할 것 |
 | --- | --- |
 | Secret·ConfigMap `NotFound` | 등록 성공 여부, context, 공용 TLS는 `etch-sso`, OIDC CA는 `headlamp` namespace와 실행 입력의 이름 |
-| 이름을 찾지 못함·연결 시간 초과 | CP1에서 Keycloak 도메인의 DNS·방화벽·HTTPS 접근 |
+| 이름을 찾지 못함·연결 시간 초과 | 관리 호스트에서 Keycloak 도메인의 DNS·방화벽·HTTPS 접근 |
 | TLS 인증서 검증 실패 | Keycloak의 실제 발급 CA가 준비한 루트·중간 CA와 같은지, 인증서 유효기간 |
 | issuer 불일치 | env의 issuer가 Keycloak 공개 URL + `/realms/etch`와 정확히 같은지 |
 

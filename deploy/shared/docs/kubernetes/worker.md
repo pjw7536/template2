@@ -3,12 +3,12 @@
 [가이드 홈](../README.md#클러스터) · [새 서버 준비](prerequisites.md) · [CP1~3 셋업](control-plane.md) · [Traefik 셋업](../ingress/setup.md)
 
 **목적:** OS만 설치된 새 서버를 기존 kubeadm 클러스터의 Worker로 등록합니다. Airflow용 Worker도 이 문서로 등록합니다.
-**준비물:** CP1 관리자 kubeconfig, 새 서버의 SSH/sudo, 사내 미러 접근, 기존 CP1에서 검증된 registry 설정.
+**준비물:** 관리 호스트의 관리자 kubeconfig, 새 서버의 SSH/sudo, 사내 미러 접근, 기존 CP1에서 검증된 registry 설정.
 
 확인된 설치 기준은 **Ubuntu 22.04.2 LTS · Kubernetes 1.36.0 · containerd 2.2.1**입니다.
 조회 근거와 남은 확인은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)에 있습니다.
 
-## 1. 기존 설치 기준 확인 — CP1
+## 1. 기존 설치 기준 확인 — 관리 호스트
 
 [현재 환경 확인](baseline.md)의 1단계로 `KUBE_CONTEXT`를 설정하고 버전·노드·시스템 Pod를 조회합니다. 설치 도구 후보도 확인합니다.
 
@@ -218,7 +218,7 @@ endpoint·CA hash를 임의로 바꾸지 않습니다. 기록된 API VIP와 출�
 CP1이 출력한 `kubeadm join ...` 전체를 sudo로 실행합니다. Worker용 명령에는 `--control-plane`이 없습니다.
 기존 Ready 노드에 다시 join하지 않으며 새 Worker에서 `kubeadm init`을 실행하지 않습니다.
 
-## 5. 등록·네트워크 확인 — CP1
+## 5. 등록·네트워크 확인 — 관리 호스트
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" get nodes -o wide
@@ -234,7 +234,7 @@ kubectl --context "$KUBE_CONTEXT" -n kube-system get pods -o wide \
 **실패 확인:** NotReady이면 새 Worker의 `journalctl -u kubelet -u containerd --since '15 min ago'`와 CNI 상태를 확인합니다.
 원인 확인 없이 reset·재가입하지 않습니다.
 
-## 6. 클러스터 인수 확인 — CP1
+## 6. 클러스터 인수 확인 — 관리 호스트
 
 새 클러스터를 구성했거나 새 Worker를 추가한 뒤 수행합니다.
 

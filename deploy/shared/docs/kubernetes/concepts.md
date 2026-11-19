@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart LR
-    Admin[CP1: kubectl·배포 도구] --> API[API VIP: 6443]
+    Admin[관리 호스트: kubectl·배포 도구] --> API[API VIP: 6443]
     API --> CP[Control Plane 3대]
     CP --> Worker[Worker 3대]
     User[사용자 브라우저] --> DNS[업무 DNS]

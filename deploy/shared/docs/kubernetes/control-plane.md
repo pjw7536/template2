@@ -84,7 +84,7 @@ Worker가 아직 없다면 CoreDNS 같은 일반 Pod는 Worker 등록 후 확인
 
 ## 다음 단계
 
-1. [Worker 추가](worker.md)로 최소 한 대를 등록하고 [클러스터 인수 확인](worker.md#6-클러스터-인수-확인--cp1)을 수행합니다.
+1. [Worker 추가](worker.md)로 최소 한 대를 등록하고 [클러스터 인수 확인](worker.md#6-클러스터-인수-확인--관리-호스트)을 수행합니다.
 2. [Traefik 셋업](../ingress/setup.md)을 진행합니다.
 3. 필요하면 아래 [metrics-server 설치](#metrics-server-설치)와 [API server OIDC 인증](oidc.md)을 진행합니다.
 
