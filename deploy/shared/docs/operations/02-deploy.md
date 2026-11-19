@@ -20,6 +20,8 @@
 | [Portal](../../../portal/k8s/overlays/prod/README.md) | API/Web 이미지, 외부 DB, MinIO·업무 파일 저장소, env·TLS |
 | [Monitoring](../../../monitoring/README.md) / [Headlamp](../../../headlamp/README.md) | 고정 chart·Helm·이미지·앱별 권한과 설정 |
 | [FTP](../../../ftp/README.md) | 선택 Worker의 폴더·사용자 권한·직접 접속 포트 |
+| [MinIO](../../../minio/README.md) | 이미지, Worker의 데이터 디스크, root 계정 env·TLS |
+| [Registry](../../../registry/README.md) | 이미지, Worker의 데이터 폴더, DNS, push 계정 Secret, 노드 containerd HTTP 허용 |
 
 데이터 폴더는 앱이 실행될 Worker에 직접 준비합니다. PV 적용만으로 폴더가 생기거나 쓰기 권한이 설정되지는 않습니다.
 같은 Worker의 컨테이너 런타임에서 이미지를 가져올 수 있는지도 확인합니다.
@@ -121,6 +123,7 @@ Portal·Headlamp·기본 Airflow SSO는 이 단계 뒤에 각 앱의 client를 �
 | [Monitoring](../../../monitoring/README.md) | chart·저장소·Grafana 계정. 기본 HTTPS에는 공용 Traefik 필요, port-forward는 선택 설정. Keycloak 불필요 | Grafana 로그인·노드 지표·Prometheus target |
 | [Headlamp](../../../headlamp/README.md) | Keycloak·TLS/CA·client·관리자 그룹과 모든 API server의 [OIDC 인증](../kubernetes/oidc.md) | 관리자 접근 허용·별도 권한 없는 비관리자 거부. Pod Ready·client 등록만으로 판단하지 않음 |
 | [FTP](../../../ftp/README.md) | 선택 노드·폴더·포트·계정 파일. 노드 IP로 직접 접속. Keycloak 불필요 | passive 접속·파일 송수신·저장 노드 확인 |
+| [Registry](../../../registry/README.md) | 공용 Traefik·DNS·저장 폴더·push 계정. Keycloak 불필요. 클러스터 밖 빌드 host가 이미지를 전달하려면 먼저 준비 | PVC Bound·빌드 host push·다른 노드 pull |
 
 ### 5. Portal — 나중에 추가
 

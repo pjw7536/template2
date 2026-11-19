@@ -197,9 +197,16 @@ org.mobyproject.buildkit.worker.containerd.namespace: default
 `INSTALL_BIGDATAQUERY_PYTHON=true`, `INSTALL_BIGDATAQUERY_ODBC=true`가 기본값이며 `apps/airflow/image/Dockerfile.dependencies`의 기본값과 같습니다.
 환경별 값은 `build.env`에서 바꾸고 비밀번호·접근 토큰은 넣지 않습니다.
 
+빌드 도구는 이미지 이름(`AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`)을 읽으려고 배포용 `k8s.env` 전체를 먼저 검사합니다.
+그래서 빌드 host에도 배포와 같은 실제 값의 `k8s.env`가 필요하며, 자리표시자가 남아 있으면 `실제 값으로 교체하세요`로 중단합니다.
+저장소 밖 env를 쓰면 관리 호스트에서 배포에 쓰는 파일과 같은 내용을 권한 `0600`으로 두고 `--env`로 지정합니다. kubeconfig는 두지 않습니다.
+
 ```bash
 sudo python3 deploy/airflow/scripts/manage.py build-image --builder nerdctl \
   --build-env deploy/airflow/env/build.env
+# 저장소 밖 env를 쓰는 경우
+sudo python3 deploy/airflow/scripts/manage.py build-image --builder nerdctl \
+  --build-env deploy/airflow/env/build.env --env <k8s.env 절대 경로>
 ```
 
 Docker 빌드는 `--builder docker`를 사용합니다. 도구는 소스·빌더·daemon 접속을 먼저 확인한 뒤 다음 순서로 빌드합니다.

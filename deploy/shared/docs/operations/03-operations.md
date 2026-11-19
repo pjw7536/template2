@@ -35,6 +35,7 @@ Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않으므로 아�
 | Airflow | [단계별 실행](../../../airflow/docs/03-deploy.md#배포와-검증) |
 | Portal | [배포 안내](../../../portal/README.md) |
 | MinIO | [배포 안내](../../../minio/README.md) |
+| Registry | [배포 안내](../../../registry/README.md) |
 | FTP | [배포 안내](../../../ftp/README.md) |
 | Headlamp | [배포 안내](../../../headlamp/README.md) |
 | Monitoring | [배포 안내](../../../monitoring/README.md) |

@@ -101,19 +101,18 @@ bash deploy/shared/scripts/check-env.sh keycloak prod server /root/keycloak-runt
 
 ## 5. Kubernetes Secret 등록
 
-Secret 등록은 Keycloak `prod`와 Portal `local`·`prod`만 지원합니다. Airflow는 전용 deploy 명령이 DB·Airflow Secret을 나누어 등록합니다.
-Namespace를 먼저 준비하고 필요한 작업의 입력만 등록합니다. 서버 등록에는 대상 `KUBE_CONTEXT`가 필수이며 외부 env 파일을 지정해도 같습니다.
+Secret 등록은 Portal `local`·`prod`에 사용합니다. Keycloak과 Airflow는 각 앱의 배포 명령이 Secret을 관리합니다.
+
+- Keycloak `keycloak-runtime`: `make keycloak-up`이 Secret이 없을 때만 만들고, 기존 Secret과 env가 다르면 중단합니다. `make k8s-env APP=keycloak ...`은 기존 Secret을 덮어써 실제 DB·관리자 비밀번호와 어긋나게 만들 수 있으므로 사용하지 않습니다. 값 변경은 [Keycloak 운영](../../../keycloak/docs/04-operations.md#저장소-갱신-후-반영)을 따릅니다.
+- Keycloak `keycloak-oidc-settings`: [사내 IdP 등록](../../../keycloak/docs/03-configure.md#realm과-사내-로그인) 단계가 env를 해석해 등록합니다.
+- Airflow: 전용 deploy 명령이 DB·Airflow Secret을 나누어 등록합니다.
+
+Namespace를 먼저 준비하고 필요한 작업의 입력만 등록합니다. 서버 등록에는 대상 `KUBE_CONTEXT`가 필수이며 외부 env 파일을 지정해도 같습니다. 같은 이름의 Secret이 있으면 env 내용으로 교체합니다.
 
 ```bash
 kubectl config get-contexts
 read -r -p '설정을 등록할 Kubernetes context: ' KUBE_CONTEXT
 export KUBE_CONTEXT
-
-# etch-sso namespace에 서버 기동용 Secret을 등록합니다.
-make k8s-env APP=keycloak PROFILE=prod COMPONENT=server KUBE_CONTEXT="$KUBE_CONTEXT"
-
-# 사내 OIDC 설정을 env에서 갱신할 때만 실행합니다.
-make k8s-env APP=keycloak PROFILE=prod COMPONENT=oidc KUBE_CONTEXT="$KUBE_CONTEXT"
 
 # etch-sso namespace에 Portal client 등록용 입력만 전달합니다.
 make k8s-env APP=portal PROFILE=prod COMPONENT=client KUBE_CONTEXT="$KUBE_CONTEXT"
@@ -132,11 +131,10 @@ client 등록은 [Portal client 안내](../../../portal/docs/01-install.md#keycl
 ## 6. 기존 설치 호환
 
 - 설정을 여러 파일로 나누어 쓰던 서버는 현재 통합 env(`api.env`·`web.env`)에 기존 값이 보존됐는지 확인합니다. 이전 파일(`*.pre-k8s.bak`)은 Git에서 제외되며 checkout 전환 도구가 보호합니다.
-- 기존 CP1의 `/root/keycloak-runtime.env`도 서버용 필수 key 4개를 유지하면 사용할 수 있습니다. 5절에서 export한 `KUBE_CONTEXT`를 유지한 상태에서 필요한 key만 전달합니다.
+- 기존 CP1의 `/root/keycloak-runtime.env`도 서버용 필수 key 4개를 유지하면 Keycloak env로 사용할 수 있습니다. 관리 호스트로 옮긴 뒤 검사·배포에 같은 경로를 지정합니다. 배포 도구는 기존 Secret과 비교만 하고 덮어쓰지 않습니다.
 
   ```bash
-  KUBE_CONTEXT="$KUBE_CONTEXT" bash deploy/shared/scripts/apply-env.sh \
-    keycloak prod server /root/keycloak-runtime.env
+  make keycloak-check KUBE_CONTEXT="$KUBE_CONTEXT" KEYCLOAK_ENV=<옮긴 keycloak-runtime.env 절대 경로>
   ```
 
 - `client-secret`, `portal-public-url`이 Keycloak 서버 Secret에 남아 있어도 기동 입력으로 사용하거나 자동 삭제하지 않습니다. Portal client secret과 공개 URL은 Portal API env에서 관리합니다.

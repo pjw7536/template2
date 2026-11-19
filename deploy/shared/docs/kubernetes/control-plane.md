@@ -80,7 +80,7 @@ Worker가 아직 없다면 CoreDNS 같은 일반 Pod는 Worker 등록 후 확인
 
 **실패 확인:** 권한 부족으로 조회가 실패한 경우와 서비스 자체의 장애를 구별합니다.
 
-관리용 kubeconfig·context는 CP1 배포 계정에도 해당 권한 정책에 맞춰 준비합니다.
+관리용 kubeconfig·context는 [관리 호스트](../infrastructure/servers.md#서버-목록) 배포 계정에도 해당 권한 정책에 맞춰 준비합니다.
 
 ## 다음 단계
 
@@ -101,7 +101,7 @@ Worker가 아직 없다면 CoreDNS 같은 일반 Pod는 Worker 등록 후 확인
 - **남은 확인:** 대상 API server 버전은 1.36.4와 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)의 확인값 v1.36.0이 일치하지 않습니다. 1단계 `version` 출력으로 실제 버전을 확인해 서버 현황에 반영합니다. 두 값 모두 지원 범위입니다.
 - 설치 YAML은 `--kubelet-insecure-tls`를 사용합니다. 노드 인증서의 IP SAN 누락으로 수집이 실패하는 환경에서 모든 kubelet 서버 인증서 검증을 생략합니다. 노드 인증서를 정상화한 뒤에는 이 옵션을 제거하고 같은 명령으로 재적용합니다.
 
-### 1. 기존 설치 확인 — CP1
+### 1. 기존 설치 확인 — 관리 호스트
 
 ```bash
 kubectl --context "$KUBE_CONTEXT" version
@@ -113,7 +113,7 @@ APIService와 Deployment가 모두 `NotFound`이면 2단계로 진행합니다.
 기존 리소스가 있으면 현재 설치 도구와 상태를 먼저 확인합니다. 이 저장소 YAML로 설치한 경우 2단계를 다시 실행하면 변경된 설정이 반영되고 Pod가 교체됩니다.
 미러 인증이 필요하면 `kube-system`의 이미지 인증 Secret을 준비하고 설치 YAML의 Deployment에 `spec.template.spec.imagePullSecrets`로 연결합니다.
 
-### 2. 설치·재적용 — CP1의 저장소 루트
+### 2. 설치·재적용 — 관리 호스트의 저장소 루트
 
 ```bash
 make metrics-server-up KUBE_CONTEXT="$KUBE_CONTEXT"
