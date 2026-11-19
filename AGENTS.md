@@ -16,6 +16,7 @@
 | Airflow DAG·플러그인·이미지 | [Airflow 지침](apps/airflow/AGENTS.md) |
 | 서버 배포·공통 정의 | [deploy 지침](deploy/AGENTS.md) |
 | 외부 PC 설정·mock·실행 도구 | [local 지침](local/AGENTS.md) |
+| 사내 서버 운영·배포 agent(opencode `ops`) | [운영 agent 지침](deploy/AGENTS.md#사내-운영-agent) |
 
 - 소스는 `apps/<app>`, 서버 정의는 `deploy/<app>`, 개발 PC 설정은 `local/<app>`이 소유한다. local은 공통 정의를 복제하지 않고 deploy를 참조한다.
 - 앱 경로·서버 선택 그룹의 원본은 `deploy/shared/apps.json`이다. 서버 검사·배포는 local·앱 소스 없이 실행 가능해야 한다.
@@ -29,7 +30,7 @@
 - 대상 feature → 관련 공통 코드·공개 facade → 필요한 외부 계약 순서로 탐색한다. `rg`에 대상 경로를 명시하고 좁은 검색으로 해결되지 않을 때만 이유를 설명하고 확대한다.
 - 문서·스킬은 해당 작업에 필요한 것만 읽는다. 영역 밖을 수정하면 그 지침도 확인한다. 탐색 범위는 필요한 연동 확인을 금지하는 경계가 아니다.
 - 구현 전 `.codex/skills/request-intake-gate/SKILL.md`를 적용한다. API·DB·권한·업무 규칙·의존 방향의 정확성에 필요한 정보만 번호로 질문하고, 사소한 UX는 되돌릴 수 있는 기본값으로 진행한다.
-- 파일 수정은 `safe-file-edit-output`, 브랜치 병합은 `branch-merge-routine` 스킬을 따른다. 스킬 원본은 `.codex/skills/<name>/SKILL.md`이며 Claude Code는 `.claude/skills` 링크로 같은 원본을 읽는다. 스킬을 추가·삭제·이름 변경하면 [링크 규칙](docs/agent/README.md#codex-설정과-스킬)도 따른다.
+- 파일 수정은 `safe-file-edit-output`, 브랜치 병합은 `branch-merge-routine` 스킬을 따른다. 스킬 원본은 `.codex/skills/<name>/SKILL.md`이며 Claude Code는 `.claude/skills` 링크로 같은 원본을 읽는다. 사내 opencode 운영 스킬만 `.opencode/skills/<name>/SKILL.md`가 원본이며 개발용 스킬과 연결하지 않는다. 스킬을 추가·삭제·이름 변경하면 [링크 규칙](docs/agent/README.md#codex-설정과-스킬)도 따른다.
 - 3개 이상 파일, API/DB/auth/env 계약, frontend/backend 동시 변경, 중요한 리팩터링은 [ExecPlan 규칙](docs/agent/PLANS.md)을 따른다. 작은 단일 수정·명확한 정리는 제외한다.
 - 변경 영역에 맞는 검사를 실행하고 에이전트 규칙·스킬·스크립트 변경도 검증 결과를 보고한다. 평가가 필요하면 `docs/agent/evals`의 해당 시나리오만 사용한다.
 - 응답은 경로·핵심 변경·검증 결과 중심으로 작성하고 요청 없이 파일 전체를 출력하지 않는다.

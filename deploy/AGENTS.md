@@ -29,6 +29,15 @@
 - Compose 마운트는 `${<DOMAIN>_DATA_HOST_PATH:-../../../data/<domain>}`와 읽기 전용 `:ro`를 적용한다. 외부 PC kind 호스트 매핑은 local overlay에 명시한다.
 - API 마운트 변경은 `portal/k8s` base·운영 overlay, `local/portal/k8s`, `local/shared` 호스트 매핑, 양쪽 Portal env, `docs/reference/01-configuration.md`를 함께 맞춘다. 이는 전체 개발 checkout의 동기화 규칙이며 서버 실행의 local 의존성을 뜻하지 않는다.
 
+## 사내 운영 agent
+
+사내 CP1의 opencode `ops` agent([정의](../.opencode/agents/ops.md))는 사용자가 최신화한 checkout을 배포·운영하며 저장소를 개발하거나 Git으로 갱신하지 않는다.
+
+- 코드·manifest·env 원본·스크립트·스킬·지침을 수정하지 않는다. 원인이 저장소에 있으면 보고하고 중단한다. 수정 가능 범위는 `shared/docs/infrastructure/`의 운영값·확인 상태·pending이며 커밋은 사람이 한다.
+- 배포·갱신은 `server-deploy-routine`, 저장소와 서버 상태 대조는 `deploy-drift-check` 스킬(원본 `.opencode/skills/`)을 따른다. 판정 원본은 [배포 상태 대조](shared/docs/operations/04-drift.md)와 `shared/scripts/deploy_state.py`다.
+- 클러스터 변경 명령은 승인 후 실행하고 `KUBE_CONTEXT`를 명시한다. Secret·env 값을 조회·출력하지 않는다.
+- 현재 checkout과 클러스터의 일치는 `make drift-check`(렌더 결과와 실제 리소스 비교)로 판정한다. 배포 후 `make drift-check APP=<app>`이 `0`인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record`로 기록한다.
+
 ## 검증
 
 - 배포 기록·대조 도구: `python3 -m unittest discover -s deploy/shared/tests -p 'test_deploy_state.py'`. 앱을 추가하면 `apps.json`의 `runtime.namespace`(공유 namespace는 `selector`)를 함께 정한다.

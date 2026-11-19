@@ -21,7 +21,7 @@ Portal은 [Portal 지침](../../apps/portal/AGENTS.md)에서 시작해
 
 ## Codex 설정과 스킬
 
-- 공유 작업 절차의 원본은 `.codex/skills/<name>/SKILL.md`입니다. 현재 로컬 CLI는 이 경로의 스킬을 읽습니다. 같은 스킬을 다른 탐색 경로에 복사해 중복 등록하지 않습니다.
+- 개발 PC에서 쓰는 공유 작업 절차의 원본은 `.codex/skills/<name>/SKILL.md`입니다. 현재 로컬 CLI는 이 경로의 스킬을 읽습니다. 사내 운영 스킬은 아래 [사내 운영 agent](#사내-운영-agentopencode) 절을 따릅니다. 같은 스킬을 다른 탐색 경로에 복사해 중복 등록하지 않습니다.
 - `.codex/config.toml`은 Git에서 제외한 로컬 실행 설정입니다. 모델·추론 강도·권한·프로젝트 신뢰는 사용하는 환경에서 관리하며, 스킬 최적화를 이유로 일괄 변경하지 않습니다.
 - `.codex/auth.json`, history·sessions·log·tmp는 로컬 자격증명·실행 데이터입니다. 설정 공유나 리뷰를 위해 내용을 복사하거나 Git에 추가하지 않습니다.
 - 스킬은 현재 작업에 필요한 것만 읽습니다. 요청 분류는 필요한 결정만 확인하고, 파일 수정은 영역별 지침을 참조하며, 레이아웃 예시는 해당 패턴이 필요할 때 읽습니다.
@@ -32,6 +32,17 @@ Portal은 [Portal 지침](../../apps/portal/AGENTS.md)에서 시작해
 - `.specify` 실행 스크립트가 없는 Spec Kit 프롬프트는 `.codex/prompts-disabled/spec-kit/`에 원문을 보관합니다. 사용하려면 필수 스크립트와 현재 저장소의 폴더·계획 규칙을 먼저 맞춘 뒤 필요한 프롬프트만 `.codex/prompts/`로 복원합니다.
 
 공식 문서는 [스킬의 선택·탐색](https://developers.openai.com/codex/skills/)과 [설정 우선순위](https://developers.openai.com/codex/config-basic/)에서 확인합니다. Claude Code의 지침·스킬 탐색은 [Claude Code 메모리](https://docs.claude.com/en/docs/claude-code/memory)와 [스킬](https://docs.claude.com/en/docs/claude-code/skills) 문서를 따릅니다. `.agents/skills`가 필요한 다른 클라이언트에서는 기존 원본을 가리키는 symlink를 검토하되 실제 스킬 목록에서 중복이 없는지 확인합니다. 모델·권한의 실제 적용 상태는 설정 파일만으로 단정하지 않고 사용하는 클라이언트에서 확인합니다.
+
+### 사내 운영 agent(opencode)
+
+사내 CP1에서는 opencode의 `ops` agent가 배포·운영만 담당합니다. 정의는 `.opencode/agents/ops.md`이며 역할·권한 규칙은 [운영 agent 지침](../../deploy/AGENTS.md#사내-운영-agent)이 원본입니다.
+
+- 운영 스킬의 원본은 `.opencode/skills/<name>/SKILL.md`입니다. 사내에서는 Claude Code·Codex를 쓰지 않으므로 `.codex/skills`·`.claude/skills`와 연결하지 않고, 개발용 스킬은 이 폴더에 복사하지 않습니다.
+- opencode는 `AGENTS.md`를 루트부터 읽고 호환 경로인 `.claude/skills`의 개발용 스킬도 탐색합니다. `ops` agent의 `skill` 권한이 운영 스킬 외에는 거부합니다.
+- `ops` agent는 `deploy-drift-check`, `server-deploy-routine` 스킬만 사용할 수 있으며 저장소 수정·commit·push·Secret 조회를 막거나 승인받습니다.
+- 사내 opencode 2.0의 V2 `permissions` 형식(`shell`·`subagent` action, 마지막 일치 규칙 우선, `*`는 `/` 포함)을 사용합니다. 1.x의 `permission`·`bash`·`task` 키를 쓰지 않습니다.
+- 저장소 밖 env·인증서·kubeconfig 읽기와 하위 agent 실행을 거부합니다. 하위 agent는 부모 권한을 물려받지 않기 때문입니다. 프로젝트·전역 `opencode.json`의 규칙은 agent 규칙 앞에 적용되므로 사내 설정이 이를 덮지 않는지 확인합니다.
+- `.opencode/`는 `agents/`·`skills/`만 Git으로 관리합니다.
 
 ### 브라우저 검증과 UI 리뷰
 

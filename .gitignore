@@ -50,6 +50,11 @@ vendor/
 .codex/**/secrets*
 .specify/
 
+# opencode는 공유 agent 정의만 추적하고 plugin 설치물·로컬 설정은 제외합니다.
+.opencode/*
+!.opencode/agents/
+!.opencode/skills/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

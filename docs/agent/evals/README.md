@@ -22,6 +22,7 @@
 | 외부 연동 변경 시 로컬 mock·환경 설정 동기화 | [외부 PC 개발 계약](04-offsite-contract-sync.md) |
 | Observer의 프론트·백엔드 연동 변경 | [Observer 리팩터링 조율](05-observer-refactor-coordination.md) |
 | UI·API·인증 작업의 탐색 범위와 지침 분량 | [Portal 작업 범위](06-portal-agent-scope.md) |
+| 사내 opencode 운영 agent의 대조·배포·수정 금지 경계 | [사내 운영 agent 경계](07-ops-agent-boundary.md) |
 
 ## 작성 규칙
 
