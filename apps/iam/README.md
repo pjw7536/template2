@@ -61,7 +61,7 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 
 직책은 `편집`을 켠 뒤 사용자 상세의 입력란에서 최대 80자로 입력하고 `직책 저장`을 누릅니다. `PL`·`파트장`을 제안하며 다른 직책도 입력할 수 있습니다. 비우고 저장하면 직책을 해제합니다. 저장 결과는 조직도·구성원 목록·직책별 담당자에 바로 반영됩니다. 화면을 연 뒤 다른 관리자가 직책을 바꿨으면 저장을 중단하므로 창을 닫고 다시 열어 확인합니다. 저장 중에는 창 닫기와 중복 저장을 막습니다.
 
-직책은 [Keycloak User Profile](../../deploy/keycloak/k8s/claims/account-user-profile.json)의 단일 속성 `job_title`이며 관리자만 수정합니다. 사내 IdP에서 수신하거나 앱 토큰에 발급하지 않으며 로그인 때 덮어쓰지 않습니다. 직급·소속·권한 역할을 변경하지 않습니다. 프로필 반영 방법은 [User Profile 설정](../../deploy/keycloak/docs/03-configure.md#3-user-profile-등록)을 따릅니다.
+직책은 [Keycloak User Profile](../../deploy/keycloak/k8s/claims/account-user-profile.json)의 단일 속성 `job_title`이며 관리자만 수정합니다. 사내 IdP에서 수신하거나 앱 토큰에 발급하지 않으며 로그인 때 덮어쓰지 않습니다. 직급·소속·권한 역할을 변경하지 않습니다. 프로필 반영 방법은 [User Profile 설정](../../deploy/keycloak/docs/02-configure.md#user-profile과-수신-mapper)을 따릅니다.
 
 한 번에 한 사람의 소속을 옮깁니다. 드래그 대상은 현재 트리에 표시된 팀·라인 범위입니다. 핸들을 클릭하거나 키보드로 초점을 맞추고 Enter/Space를 누르면 같은 이동창이 열리며, 다른 팀·라인도 선택할 수 있습니다. `편집` 토글이 켜져 있어야 합니다.
 
@@ -73,7 +73,7 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 ## 사용 조건
 
 - Keycloak에 `iam` client, `/iam/platform-admins` 그룹, `org` client 관리 권한이 있어야 합니다. 준비 도구는 [deploy/iam](../../deploy/iam/README.md)에 있습니다.
-- 소속별 역할 client `org`는 `make keycloak-org-sync`가 만듭니다. 앱 열과 `org` client id는 `/iam` 그룹의 카탈로그에서 읽으므로 그 뒤 [앱 역할 반영](../../deploy/keycloak/docs/03-configure.md#앱-역할)(`make keycloak-access-apply`)을 실행합니다.
+- 소속별 역할 client `org`는 `make keycloak-org-sync`가 만듭니다. 앱 열과 `org` client id는 `/iam` 그룹의 카탈로그에서 읽으므로 그 뒤 [앱 역할 반영](../../deploy/keycloak/docs/02-configure.md#앱-역할)(`make keycloak-access-apply`)을 실행합니다.
 - `/iam/platform-admins`에 가입한 사용자만 사용할 수 있습니다. 가입은 Keycloak Admin Console에서 지정합니다.
 - 사용자는 사내 로그인을 한 번 이상 해야 Keycloak에 존재하므로 검색·업로드 대상이 됩니다.
 

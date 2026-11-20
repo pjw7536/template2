@@ -35,15 +35,15 @@ Portal은 [Portal 지침](../../apps/portal/AGENTS.md)에서 시작해
 
 ### 사내 운영 agent(opencode)
 
-사내 관리 호스트 `khplanew01`에서는 opencode의 `ops` agent가 배포·운영만 담당합니다. 정의는 `.opencode/agents/ops.md`이며 역할·권한 규칙은 [운영 agent 지침](../../deploy/AGENTS.md#사내-운영-agent)이 원본입니다.
+사내 관리 호스트에서는 opencode의 `ops` agent가 배포·운영만 담당합니다. 정의는 `.opencode/agents/ops.md`이며 역할·권한 규칙은 [운영 agent 지침](../../deploy/AGENTS.md#사내-운영-agent)이 원본입니다.
 
 - 운영 스킬의 원본은 `.opencode/skills/<name>/SKILL.md`입니다. 사내에서는 Claude Code·Codex를 쓰지 않으므로 `.codex/skills`·`.claude/skills`와 연결하지 않고, 개발용 스킬은 이 폴더에 복사하지 않습니다.
-- 사내 세션은 [ops 전용 checkout](../../deploy/shared/docs/operations/01-checkout.md#ops-전용-checkout)에서 시작합니다. 작업 트리에는 개발용 AGENTS.md·스킬과 사람용 설치 문서가 없고 운영 스킬과 인프라 기록이 있습니다.
-- `ops` agent는 `deploy-drift-check`, `server-deploy-routine` 스킬만 사용할 수 있으며 저장소 수정·commit·push·Secret 조회를 막거나 승인받습니다.
-- 배포 절차는 `server-deploy-routine` 스킬의 앱별 런북(`runbooks/<app>.md`)을 따릅니다. 저성능 모델도 따라가도록 단계마다 명령 하나와 [조회]/[검사]/[변경]/[사람] 표시, 성공 문구, 멈춤 조건을 둡니다.
+- 사내 세션은 관리 호스트의 [저장소 전체 checkout](../../deploy/shared/docs/operations/01-checkout.md#운영-agent-작업-루트) 루트에서 시작합니다. 작업 트리에 개발용 지침·스킬이 함께 있으므로 루트 `AGENTS.md`가 `ops` agent에게 개발 규칙을 적용하지 않도록 먼저 안내합니다.
+- `ops` agent는 `.opencode/skills/`의 운영 스킬(`server-deploy-routine`, `incident-triage`, `server-readiness-check`, `deploy-drift-check`, `server-state-report`, `infra-record-sync`)만 사용합니다. 요청 종류와 스킬의 대응은 agent 정의의 표에 있습니다. shell은 기본 허용이며 저장소 파일 수정, commit·push, namespace·PV 삭제는 거부합니다. 승인 대기(`ask`) 규칙은 두지 않습니다.
+- 배포 절차의 원본은 사람과 함께 보는 `deploy/README.md`(공통 가이드)와 `deploy/<app>/README.md`(앱 가이드)입니다. 스킬은 읽는 순서와 보고 형식만 둡니다. 저성능 모델도 따라가도록 `make ops-deploy APP=<app>` 한 명령을 중심으로 [조회]/[검사]/[변경]/[승인]/[사람] 표시, 성공 문구, 멈춤 조건을 둡니다.
 - 관리 호스트 준비는 [관리 호스트 준비](../../deploy/shared/docs/operations/04-drift.md#관리-호스트-준비)를 따릅니다.
 - 사내 opencode 2.0의 V2 `permissions` 형식(`shell`·`subagent` action, 마지막 일치 규칙 우선, `*`는 `/` 포함)을 사용합니다. 1.x의 `permission`·`bash`·`task` 키를 쓰지 않습니다.
-- 저장소 밖 env·인증서·kubeconfig 읽기와 하위 agent 실행을 거부합니다. 하위 agent는 부모 권한을 물려받지 않기 때문입니다. 프로젝트·전역 `opencode.json`의 규칙은 agent 규칙 앞에 적용되므로 사내 설정이 이를 덮지 않는지 확인합니다.
+- 하위 agent 실행을 거부합니다. 하위 agent는 부모 권한을 물려받지 않기 때문입니다. env·Secret 읽기는 허용하며, 외부로 전달하는 내용은 `server-state-report`가 서버명·IP·사내 도메인을 별칭으로 바꿉니다. 프로젝트·전역 `opencode.json`의 규칙은 agent 규칙 앞에 적용되므로 사내 설정이 이를 덮지 않는지 확인합니다.
 - `.opencode/`는 `agents/`·`skills/`만 Git으로 관리합니다.
 
 ### 브라우저 검증과 UI 리뷰

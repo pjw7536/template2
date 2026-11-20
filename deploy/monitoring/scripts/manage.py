@@ -18,6 +18,9 @@ BASE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('shared_tls', BASE.parent / 'shared/ingress/tls.py')
 tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
+spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 'shared/scripts/runtime.py')
+RUNTIME = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(RUNTIME)
 
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'))
@@ -59,7 +62,7 @@ def validate(settings, example=False):
         if key in ('IMAGE_PULL_SECRET', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST') and not value:
             continue
         require(value and not any(c.isspace() for c in value), f'값 형식 오류: {key}')
-        require(example or ('replace-me' not in value and 'example.invalid' not in value), f'실제 값 필요: {key}')
+        require(example or not RUNTIME.is_placeholder(value), f'실제 값 필요: {key}')
     for key in ('NAMESPACE', 'NODE_NAME', 'GRAFANA_ADMIN_SECRET', 'IMAGE_PULL_SECRET'):
         if settings[key]:
             require(len(settings[key]) <= 63 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', settings[key]), f'리소스 이름 오류: {key}')
@@ -369,7 +372,38 @@ def connect_ingress(settings, context, content, dry_run=False):
         run([*kube, '-n', 'etch-sso', 'rollout', 'status', 'deployment/traefik', '--timeout=300s'])
 
 
-def deploy(settings, context, chart, values_file=None):
+def ensure_grafana_admin(kube, namespace, name, account_file):
+    """Grafana 관리자 Secret이 없을 때만 계정 파일의 admin-user·admin-password로 만든다."""
+    found = run([*kube, '-n', namespace, 'get', 'secret', name, '--ignore-not-found',
+                 '-o', 'go-template={{range $k, $v := .data}}{{printf "%s\\n" $k}}{{end}}'])
+    if found.strip():
+        require({'admin-user', 'admin-password'} <= set(found.split()), 'Grafana Secret에 admin-user·admin-password 키가 필요합니다.')
+        return
+    require(account_file and Path(account_file).is_file(),
+            f'Secret {name}이 없습니다. MONITORING_GRAFANA_ENV에 Grafana 계정 파일을 지정하세요.')
+    account = read_account(account_file)
+    run([*kube, 'create', '-f', '-'], data=json.dumps({
+        'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': namespace},
+        'type': 'Opaque', 'stringData': account}))
+    print(f'Grafana 관리자 Secret 생성: {namespace}/{name}')
+
+
+def read_account(path):
+    """계정 파일에서 admin-user·admin-password만 읽는다."""
+    values = {}
+    for line in Path(path).read_text().splitlines():
+        if line.strip() and not line.lstrip().startswith('#'):
+            key, separator, value = line.partition('=')
+            require(separator and key in ('admin-user', 'admin-password') and key not in values,
+                    'Grafana 계정 파일에는 admin-user와 admin-password를 각각 한 번만 기록하세요.')
+            values[key] = value
+    require(values.get('admin-user') and values.get('admin-password')
+            and not any(RUNTIME.is_placeholder(value) for value in values.values()),
+            'Grafana 계정 파일의 admin-user·admin-password를 확인하세요.')
+    return values
+
+
+def deploy(settings, context, chart, values_file=None, grafana_env=None):
     """기존 Operator 충돌·서버 입력 확인 후 저장 폴더·PV·Helm release를 준비한다."""
     require(context and context.strip(), 'deploy에는 --context를 명시하세요.')
     kube = ['kubectl', '--context', context]
@@ -392,12 +426,14 @@ def deploy(settings, context, chart, values_file=None):
         node = nodes[0]
         require(not node['spec'].get('unschedulable') and any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions']), '대상 worker가 Ready·스케줄 가능 상태여야 합니다.')
         require(not any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in node['spec'].get('taints', [])), '대상 worker의 차단 taint를 확인하세요.')
-        # 비활성 Grafana에는 관리자 Secret을 요구하지 않으며 값 대신 키 이름만 조회한다.
+        existing_namespace = run([*kube, 'get', 'namespace', namespace, '--ignore-not-found', '-o', 'name'])
+        if not existing_namespace.strip():
+            run([*kube, 'create', '-f', '-'], data=json.dumps(
+                {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': namespace}}))
+        # 비활성 Grafana에는 관리자 Secret을 요구하지 않는다. 없으면 계정 파일로 만들고 기존 Secret은 바꾸지 않는다.
         if 'grafana' in components:
-            grafana_namespace = components['grafana'].get('namespace', namespace)
-            keys = run([*kube, '-n', grafana_namespace, 'get', 'secret', settings['GRAFANA_ADMIN_SECRET'],
-                        '-o', 'go-template={{range $k, $v := .data}}{{printf "%s\\n" $k}}{{end}}']).splitlines()
-            require({'admin-user', 'admin-password'} <= set(keys), 'Grafana Secret에 admin-user·admin-password 키가 필요합니다.')
+            ensure_grafana_admin(kube, components['grafana'].get('namespace', namespace),
+                                 settings['GRAFANA_ADMIN_SECRET'], grafana_env)
         if settings['IMAGE_PULL_SECRET']:
             run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
         connect_ingress(settings, context, content, dry_run=True)
@@ -428,6 +464,8 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--context')
     parser.add_argument('--values', type=Path, help='환경별 비밀값 없는 Helm override')
+    parser.add_argument('--grafana-env', type=Path, default=BASE / 'env/grafana-initial.env',
+                        help='Grafana 관리자 Secret이 없을 때만 사용하는 계정 파일')
     args = parser.parse_args()
     if args.command == 'fetch-chart':
         with urlopen(LOCK['url'], timeout=60) as response:
@@ -443,7 +481,7 @@ def main():
     validate(settings, example)
     chart = chart_path()
     if args.command == 'deploy':
-        deploy(settings, args.context, chart, args.values)
+        deploy(settings, args.context, chart, args.values, args.grafana_env)
     elif args.command == 'render':
         require(args.output, 'render에는 --output이 필요합니다.')
         render(settings, args.output, chart, args.values)

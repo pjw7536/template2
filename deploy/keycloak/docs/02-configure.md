@@ -1,58 +1,71 @@
 # Keycloak 로그인·그룹·앱 연결
 
-[앱 안내](../README.md)
+[Keycloak 가이드](../README.md)
+
+설치·업데이트 절차는 [Keycloak 가이드](../README.md)에 있습니다. 이 문서는 설정 단계의 구조와 확인 방법, SDWT·역할 입력, 앱 연결, 사용자 필드와 claim 계약입니다.
 
 - [Realm과 사내 로그인](#realm과-사내-로그인)
 - [SDWT 그룹·사용자](#sdwt-그룹사용자)
+- [소속별 역할](#소속별-역할)
 - [앱 연결](#앱-연결)
 - [앱 역할](#앱-역할)
 - [사용자 필드와 claim](#사용자-필드와-claim)
 
 ## Realm과 사내 로그인
 
-**목적:** Realm → 사내 IdP → User Profile → IdP mapper 순서로 사내 로그인을 준비합니다. 앱 client는 [앱 연결](#앱-연결)에서 만듭니다.
+`make keycloak-setup`(`make ops-deploy APP=keycloak`의 한 단계)이 Realm → 사내 IdP 사전 검사 → 사내 IdP → User Profile → IdP mapper를 순서대로 실행해 사내 로그인을 준비합니다.
+각 단계는 설정 Job을 생성하고 완료될 때까지 최대 15분 기다립니다. Job을 별도로 apply하지 않습니다. 앱 client는 [앱 연결](#앱-연결)에서 만듭니다.
 
-**준비물:** [서버 기동 확인](02-deploy.md#2-서버-기동-확인) 완료, `keycloak-runtime` Secret, 사내 AD FS client ID·secret.
+### 설정 단계와 Job
 
-### 실행 위치와 입력
+| 작업 | 단독 실행 Make 명령 | 실행 파일 | Job 이름 |
+| --- | --- | --- | --- |
+| Realm | `keycloak-realm-setup` | `scripts/00-create-realm.sh` | `keycloak-realm-setup` |
+| IdP | `keycloak-idp-setup` | `scripts/01-create-idp.sh` | `keycloak-oidc-setup` |
+| User Profile | `keycloak-profile-setup` | `scripts/02-register-user-profile.sh` | `keycloak-user-profile-setup` |
+| IdP mapper | `keycloak-idp-mappers-setup` | `scripts/03-sync-idp-mappers.sh` | `keycloak-idp-mappers-setup` |
+| Portal client | `keycloak-portal-client-setup` | `scripts/04-setup-portal-client.sh` | `portal-keycloak-client` |
+| SDWT | `keycloak-sdwt-init` | `scripts/05-setup-sdwt.sh` | Job 없이 관리자 API 사용 |
 
-서버 설치 때 사용한 저장소 루트의 Bash에서 실행합니다. 새 터미널이라면 context를 다시 선택합니다.
+위 네 단계는 `keycloak-setup`이 실행하고, Portal client는 Portal 배포가, SDWT는 [SDWT 그룹·사용자](#sdwt-그룹사용자)가 실행합니다.
 
-```bash
-kubectl config get-contexts
-read -r -p '설정할 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get deployment keycloak
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get secret keycloak-runtime
-```
-
-각 Make 명령은 해당 설정 Job을 생성하고 완료될 때까지 최대 15분 기다립니다. Job을 별도로 apply하지 않습니다.
-명령 하나가 성공한 것을 확인한 뒤 다음 단계로 넘어가며, 실패하면 [Job 결과 확인](#job-결과-확인)으로 원인을 해결합니다.
-
-### 1. Realm 준비
+[변경] 한 단계만 다시 실행할 때는 그 단계의 Make 명령을 씁니다. 같은 명령을 다시 실행하면 기존 Job을 삭제하고 새로 만듭니다. IdP 단계에 다른 env 파일을 쓰면 `KEYCLOAK_ENV="<env 절대 경로>"`를 붙입니다.
 
 ```bash
-make keycloak-realm-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
+make keycloak-profile-setup KUBE_CONTEXT="<context>"
 ```
 
-**기대 결과:** 서버 최초 import가 `etch`를 이미 만들었다면 존재 여부만 확인하고 기존 설정을 유지합니다.
-Admin Console에 서버 설치 때의 관리자 계정으로 접속해 `etch` realm을 선택합니다. 이후 관리 화면 설정은 `master`가 아닌 `etch`에서 확인합니다.
-
-### 2. 사내 Identity Provider 생성
-
-[사내 IdP 입력](01-prepare.md#사내-identity-provider용-값)을 `deploy/keycloak/env/prod.env`에 작성합니다.
-AD FS에는 `https://sso.etch.samsungds.net/realms/etch/broker/oidc/endpoint`가 redirect URI로 등록되어 있어야 합니다.
+[조회] Job 결과를 확인합니다. 원인을 해결하기 전에는 다음 단계로 넘어가지 않습니다.
 
 ```bash
-vi deploy/keycloak/env/prod.env
-python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "$KEYCLOAK_KUBE_CONTEXT" --env deploy/keycloak/env/prod.env
-make keycloak-idp-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
+kubectl --context "<context>" -n etch-sso get jobs
+kubectl --context "<context>" -n etch-sso logs job/<Job 이름>
+kubectl --context "<context>" -n etch-sso describe job <Job 이름>
 ```
 
-다른 env 파일을 쓰면 두 명령에 같은 경로를 전달합니다(`--env`, `KEYCLOAK_ENV=`).
+[사람] 단계별 결과는 Admin Console에서 확인합니다. 서버 설치 때의 관리자 계정으로 접속해 `etch` realm을 선택하며, 관리 화면 설정은 `master`가 아닌 `etch`에서 확인합니다.
 
-**기대 결과:** 검사가 `사전 검사 통과`를 출력하고, `Identity providers → oidc` 연결이 생성됩니다.
+| 작업 | 결과 |
+| --- | --- |
+| Realm | 서버 최초 import가 `etch`를 이미 만들었다면 존재 여부만 확인하고 기존 설정을 유지 |
+| IdP | `Identity providers → oidc` 연결 생성 |
+| User Profile | `Realm settings → User profile`에 `loginid`, `deptname`, `grdName`, `display_name`, `sabun` 등 |
+| IdP mapper | `Identity providers → oidc → Mappers`에 일반 속성 mapper 15개와 `epid-username` 1개 |
 
-#### Discovery 해석 규칙
+### 사내 IdP 사전 검사
+
+[사내 IdP 입력](01-prepare.md#사내-identity-provider용-값)이 env에 있고 AD FS에 `https://sso.etch.samsungds.net/realms/etch/broker/oidc/endpoint`가 redirect URI로 등록되어 있어야 합니다.
+`keycloak-setup`은 IdP 등록 전에 아래 검사를 실행합니다.
+
+[검사] 사전 검사만 따로 실행합니다. 다른 env 파일을 쓰면 `--env`에 같은 경로를 전달합니다.
+
+```bash
+python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "<context>" --env deploy/keycloak/env/prod.env
+```
+
+성공: `사전 검사 통과`.
+
+### Discovery 해석 규칙
 
 실행 호스트가 `CORP_OIDC_DISCOVERY_URL`의 JSON을 조회해 아래 값을 IdP Job에 전달합니다.
 해석 결과는 임시 env와 `keycloak-oidc-settings` Secret으로 전달하며 원본 `prod.env`를 덮어쓰지 않습니다.
@@ -81,32 +94,17 @@ make keycloak-idp-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
 호스트의 CA 신뢰는 Pod에 자동 전달되지 않습니다. [TLS·CA 준비](01-prepare.md#tlsca-준비)를 참고합니다.
 참고: [OpenID Connect Discovery](https://openid.net/specs/openid-connect-discovery-1_0.html).
 
-### 3. User Profile 등록
+### User Profile과 수신 mapper
 
-```bash
-make keycloak-profile-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
-```
+필드 정의는 [사용자 필드와 claim](#사용자-필드와-claim)에 있습니다. 정의를 바꾸면 `make keycloak-profile-setup` 또는 가이드의 업데이트로 반영합니다.
 
-**기대 결과:** `Realm settings → User profile`에 `loginid`, `deptname`, `grdName`, `display_name`, `sabun` 등이 있습니다. 필드 정의는 [사용자 필드와 claim](#사용자-필드와-claim)에 있습니다.
+Admin Console의 `Realm settings`에서 `Email as username`이 꺼져 있는지 확인합니다. 켜져 있으면 IdP mapper Job이 중단됩니다.
 
-### 4. 사내 claim 수신 mapper 설정
-
-`Realm settings`에서 `Email as username`이 꺼져 있는지 확인한 뒤 실행합니다. 켜져 있으면 Job이 중단됩니다.
-
-```bash
-make keycloak-idp-mappers-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
-```
-
-**기대 결과:** `Identity providers → oidc → Mappers`에 일반 속성 mapper 15개와 `epid-username` 1개가 있습니다.
 mapper 생성만으로 사용자 값이 채워지지 않으며 사내 로그인을 거쳐야 수신합니다.
-
-### 5. SDWT 그룹 등록
-
-SDWT 권한을 사용하면 [SDWT 그룹·사용자](#sdwt-그룹사용자)를 완료한 뒤 아래 완료 확인으로 돌아옵니다. 사용하지 않으면 생략합니다.
 
 ### 설정 완료 확인
 
-브라우저에서 `<공개 Keycloak URL>/realms/etch/account/`를 열고 사내 provider를 선택해 시험 계정으로 로그인합니다.
+브라우저에서 `<공개 Keycloak URL>/realms/etch/account/`를 열고 사내 provider를 선택해 시험 계정으로 로그인합니다. SDWT 권한을 사용하면 [SDWT 그룹·사용자](#sdwt-그룹사용자)를 완료한 뒤 확인합니다.
 
 | 확인 위치 | 완료 기준 |
 | --- | --- |
@@ -116,32 +114,11 @@ SDWT 권한을 사용하면 [SDWT 그룹·사용자](#sdwt-그룹사용자)를 �
 | Groups / Users → Groups | SDWT 사용 시 준비한 그룹과 시험 사용자의 가입 확인 |
 
 CSV로 사전 등록한 계정은 첫 사내 로그인에서 계정 연결 확인이 필요할 수 있습니다. EPID가 같다는 이유만으로 자동 연결을 가정하지 않습니다.
-
-**다음 단계:** [앱 연결](#앱-연결). 앱의 토큰·로그인·권한 검증은 각 앱 연결 단계에서 수행합니다.
-
-### Job 결과 확인
-
-```bash
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso get jobs
-read -r -p '로그를 확인할 Job 이름: ' KEYCLOAK_JOB_NAME
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs "job/$KEYCLOAK_JOB_NAME"
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job "$KEYCLOAK_JOB_NAME"
-```
-
-| 작업 | Make 명령 | 실행 파일 | Job 이름 |
-| --- | --- | --- | --- |
-| Realm | `keycloak-realm-setup` | `scripts/00-create-realm.sh` | `keycloak-realm-setup` |
-| IdP | `keycloak-idp-setup` | `scripts/01-create-idp.sh` | `keycloak-oidc-setup` |
-| User Profile | `keycloak-profile-setup` | `scripts/02-register-user-profile.sh` | `keycloak-user-profile-setup` |
-| IdP mapper | `keycloak-idp-mappers-setup` | `scripts/03-sync-idp-mappers.sh` | `keycloak-idp-mappers-setup` |
-| Portal client | `keycloak-portal-client-setup` | `scripts/04-setup-portal-client.sh` | `portal-keycloak-client` |
-| SDWT | `keycloak-sdwt-init` | `scripts/05-setup-sdwt.sh` | Job 없이 관리자 API 사용 |
-
-같은 Make 명령을 다시 실행하면 기존 Job을 삭제하고 새로 만듭니다. 원인을 해결하기 전에는 다음 단계로 넘어가지 않습니다.
+시험 로그인을 확인하기 전에는 앱을 연결하지 않습니다. 앱의 토큰·로그인·권한 검증은 각 [앱 연결](#앱-연결) 단계에서 수행합니다.
 
 ## SDWT 그룹·사용자
 
-**목적:** 소속 그룹 트리(팀 → 라인 → SDWT)와 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다.
+소속 그룹 트리(팀 → 라인 → SDWT)와 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다. 실행 순서는 [가이드의 선택 절](../README.md#선택-sdwt-소속역할-관리-api)과 같습니다.
 
 ```text
 /org
@@ -153,12 +130,12 @@ kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job "$KEYCLOAK_J
 같은 라인 이름이 여러 팀에 있을 수 있으므로 라인은 항상 `팀/라인`으로 구분합니다. SDWT 이름은 전체에서 유일합니다.
 그룹 아래에 역할 그룹을 두지 않습니다. 등급(조회·일반·관리자)은 [소속별 역할](#소속별-역할)로 관리합니다.
 
-**준비물:** Realm·User Profile·IdP mapper 완료, 저장소 밖에 작성한 CSV, Keycloak 관리자 계정.
+준비물은 Realm·User Profile·IdP mapper 완료, 저장소 밖에 작성한 CSV, Keycloak 관리자 계정입니다.
 관리자 API를 직접 사용하며 Kubernetes Job이나 runtime Secret을 사용하지 않습니다. 실제 사용자 CSV와 인증정보는 Git에 넣지 않습니다.
 
 ### 1. 입력 파일 검사
 
-[SDWT 템플릿](../inputs/sdwts.template.csv)과 [사용자 템플릿](../inputs/users.template.csv)을 저장소 밖 작업 경로에 복사합니다.
+[사람] [SDWT 템플릿](../inputs/sdwts.template.csv)과 [사용자 템플릿](../inputs/users.template.csv)을 저장소 밖 작업 경로에 복사해 작성합니다.
 UTF-8 CSV로 저장하고 EPID·사번은 텍스트로 입력해 선행 0을 유지합니다. 헤더만 있는 파일은 사용할 수 없습니다.
 
 SDWT 목록 CSV의 필수 헤더는 `user_sdwt_prod,line_id,department`이며 `department`가 팀입니다. 팀은 사내 부서명(`deptname`)과 같은 값으로 씁니다.
@@ -180,46 +157,54 @@ userid,user_sdwt_prod,sabun,loginid,username,mail
 90000001,SDWT-A,100001,example.user,예시사용자,user@example.invalid
 ```
 
-예시는 가상 데이터입니다. 그룹만 준비한다면 사용자 CSV 경로는 비워 둡니다. 저장소 루트에서 서버 접속 없이 검사합니다.
+예시는 가상 데이터입니다.
+
+[검사] 저장소 루트에서 서버 접속 없이 검사합니다. CSV 경로는 명령마다 `KEYCLOAK_SDWTS_CSV`·`KEYCLOAK_USERS_CSV`로 전달하고, 그룹만 준비한다면 `KEYCLOAK_USERS_CSV=`로 비워 둡니다.
 
 ```bash
-read -r -p 'SDWT CSV 절대 경로: ' KEYCLOAK_SDWTS_CSV
-read -r -p '사용자 CSV 절대 경로 (그룹만 만들면 Enter): ' KEYCLOAK_USERS_CSV
-export KEYCLOAK_SDWTS_CSV KEYCLOAK_USERS_CSV
-make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=1
+make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_USERS_CSV="<사용자 CSV 절대 경로>" KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=1
 ```
 
-**기대 결과:** `CSV 검증 완료: SDWT <n>개, 사용자 <n>명 (서버 연결 없음)`.
+성공: `CSV 검증 완료: SDWT <n>개, 사용자 <n>명 (서버 연결 없음)`.
 
 ### 2. 관리자 인증 입력
 
+`make keycloak-sdwt-init`·`keycloak-org-sync`·`keycloak-access-apply`는 `KEYCLOAK_ENV`(기본 `deploy/keycloak/env/prod.env`)의 `keycloak-public-url`·`bootstrap-admin-username`·`bootstrap-admin-password`를 관리자 접속 변수로 자동 전달합니다. 관리자 realm은 `master`가 기본이며, `deploy/shared/certs/<공개 host>/keycloak-ca-bundle.pem`([사내 CA 묶음](../../README.md#사내-ca-묶음))이 있으면 CA로 사용합니다.
+
+다른 관리자 계정이나 주소를 쓸 때만 아래처럼 직접 지정합니다. 주소·계정·비밀번호 중 하나라도 지정하면 env의 값을 채우지 않으므로 세 값을 모두 지정합니다.
 URL은 realm 경로를 제외한 공개 HTTPS 주소입니다. 비밀번호는 입력 중 표시되지 않습니다.
 
 ```bash
-read -r -p 'Keycloak 관리 접속 URL: ' KEYCLOAK_ADMIN_URL
-read -r -p '관리자 계정: ' KEYCLOAK_ADMIN_USERNAME
+export KEYCLOAK_ADMIN_URL="<Keycloak 관리 접속 URL>"
+export KEYCLOAK_ADMIN_USERNAME="<관리자 계정>"
 read -r -s -p '관리자 비밀번호: ' KEYCLOAK_ADMIN_PASSWORD
-export KEYCLOAK_ADMIN_URL KEYCLOAK_ADMIN_USERNAME KEYCLOAK_ADMIN_PASSWORD
+export KEYCLOAK_ADMIN_PASSWORD
 export KEYCLOAK_ADMIN_REALM=master
 export KEYCLOAK_TARGET_REALM=etch
 ```
 
-OS가 Keycloak 인증서를 신뢰하지 않으면 CA 파일을 지정합니다. 인증서 검증은 생략하지 않습니다.
+OS가 Keycloak 인증서를 신뢰하지 않고 CA 묶음도 없으면 CA 파일을 지정합니다. 인증서 검증은 생략하지 않습니다.
 
 ```bash
-read -r -p '관리 API를 신뢰할 CA PEM 절대 경로: ' KEYCLOAK_CA_FILE
-export KEYCLOAK_CA_FILE
+export KEYCLOAK_CA_FILE="<관리 API를 신뢰할 CA PEM 절대 경로>"
 ```
 
-서비스 계정을 사용하면 `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_ADMIN_REALM`으로 인증하며 client secret이 사용자 비밀번호보다 우선합니다.
+서비스 계정을 사용하면 `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_ADMIN_REALM`으로 인증하며 client secret이 사용자 비밀번호보다 우선합니다. 이때도 env의 관리자 계정은 채우지 않으므로 `KEYCLOAK_ADMIN_URL`을 함께 지정합니다.
 
 ### 3. 계획 확인과 적용
 
 client를 지정하지 않으므로 앱 연결을 요구하지 않습니다. 먼저 dry-run으로 계획을 확인한 뒤 적용합니다.
 
+[조회] dry-run:
+
 ```bash
-make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=0
-make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
+make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_USERS_CSV="<사용자 CSV 절대 경로>" KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=0
+```
+
+[변경] 적용:
+
+```bash
+make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_USERS_CSV="<사용자 CSV 절대 경로>" KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
 ```
 
 `/org` 아래 없는 팀·라인·SDWT 그룹을 생성하고, 이어서 [소속별 역할](#소속별-역할) 반영을 함께 실행합니다.
@@ -227,7 +212,7 @@ make keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SD
 사용자 CSV를 지정하면 EPID를 기본 username으로 등록하고, 소속 SDWT·line과 팀을 `deptname`으로 저장하며, `/org/<팀>/<라인>/<SDWT>`에 가입시킵니다. 사용자 CSV의 `deptname`은 SDWT의 팀과 같아야 합니다.
 관리자나 다른 SDWT 역할은 자동 부여하지 않으며 권한관리 웹에서 지정합니다.
 
-**실패 확인:** realm 기본 그룹에 의한 의도하지 않은 권한 부여, 중복 신원, 기존 그룹의 속성·역할 매핑이 발견되면 쓰기 전에 중단합니다.
+실패: realm 기본 그룹에 의한 의도하지 않은 권한 부여, 중복 신원, 기존 그룹의 속성·역할 매핑이 발견되면 쓰기 전에 중단합니다.
 SDWT가 CSV와 다른 위치(다른 팀·라인)에 이미 있어도 중단합니다. 옮기려면 권한관리 웹의 라인 이동을 쓰고 CSV를 맞춥니다. Admin Console에서 옮겼다면 `make keycloak-org-sync KEYCLOAK_ORG_APPLY=1`로 라인 역할을 맞춥니다. 사용자 등록 중 중단되면 완료된 행은 유지되므로 원인을 해결하고 재실행합니다.
 
 ### 4. 등록 확인
@@ -235,11 +220,11 @@ SDWT가 CSV와 다른 위치(다른 팀·라인)에 이미 있어도 중단합�
 Admin Console의 `Groups`에서 `/org/{팀}/{라인}/{SDWT}`를, `Clients` → `org` → `Roles`에서 `sdwt:{SDWT}:viewer`·`user`·`admin`을, `Users`에서 시험 사용자의 EPID·소속·그룹 가입을 확인합니다.
 대량 등록 전에 시험 계정의 최초 사내 로그인·계정 연결을 확인합니다.
 
-**다음 단계:** [설정 완료 확인](#설정-완료-확인). Portal client가 등록돼 있다면 [SDWT 공통 scope 연결](#sdwt-공통-scope-연결)도 수행합니다.
+다음은 [설정 완료 확인](#설정-완료-확인)입니다. Portal client가 등록돼 있다면 [SDWT 공통 scope 연결](#sdwt-공통-scope-연결)도 수행합니다.
 
 ## 소속별 역할
 
-**목적:** 소속 그룹 트리(`/org`)에 맞춰 SDWT별 등급 역할과 라인·팀 전체 역할, 토큰 claim(`affiliation`, `org_roles`)을 Keycloak에 맞춥니다.
+소속 그룹 트리(`/org`)에 맞춰 SDWT별 등급 역할과 라인·팀 전체 역할, 토큰 claim(`affiliation`, `org_roles`)을 Keycloak에 맞춥니다.
 권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
 
 | 반영 대상 | 내용 |
@@ -249,13 +234,20 @@ Admin Console의 `Groups`에서 `/org/{팀}/{라인}/{SDWT}`를, `Clients` → `
 | SDWT 그룹 | `sdwt:{SDWT}:user` 연결. 소속하면 자기 SDWT 일반 역할을 자동으로 받습니다 |
 | client scope `org-claims` | `affiliation.team`·`line`·`sdwt`(속성 `deptname`·`line_id`·`user_sdwt_prod`)와 `org_roles` 발급. realm 기본 scope이며 카탈로그 앱 client에 연결합니다 |
 
+[조회] dry-run으로 계획만 출력합니다. 관리자 인증은 [관리자 인증 입력](#2-관리자-인증-입력)과 같습니다.
+
 ```bash
-make keycloak-org-sync                           # dry-run, 계획만 출력
-make keycloak-org-sync KEYCLOAK_ORG_APPLY=1      # 적용
+make keycloak-org-sync
 ```
 
-**기대 결과:** 다시 실행하면 `계획: 변경 없음`입니다. 라인·팀 역할의 하위 역할은 트리와 정확히 맞추므로 Admin Console에서 SDWT를 옮긴 뒤 실행하면 라인 역할도 바뀝니다.
-**경고:** 트리에 없는 `org` 역할(삭제된 SDWT 등)은 지우지 않고 경고만 출력합니다. 권한관리 웹의 SDWT 추가·라인 이동은 이 명령과 같은 결과를 바로 만듭니다.
+[변경] 적용:
+
+```bash
+make keycloak-org-sync KEYCLOAK_ORG_APPLY=1
+```
+
+성공: 다시 실행하면 `계획: 변경 없음`입니다. 라인·팀 역할의 하위 역할은 트리와 정확히 맞추므로 Admin Console에서 SDWT를 옮긴 뒤 실행하면 라인 역할도 바뀝니다.
+경고: 트리에 없는 `org` 역할(삭제된 SDWT 등)은 지우지 않고 경고만 출력합니다. 권한관리 웹의 SDWT 추가·라인 이동은 이 명령과 같은 결과를 바로 만듭니다.
 
 ## 앱 연결
 
@@ -272,17 +264,24 @@ Portal과 Headlamp는 서로의 설치를 요구하지 않으므로 사용할 �
 
 SDWT CSV와 [관리자 인증 입력](#2-관리자-인증-입력)이 준비되면 Portal client 등록 후 실행합니다. `portal`은 실제 Portal client ID로 맞추며 사용자 CSV는 전달하지 않습니다.
 
+[조회] dry-run:
+
 ```bash
-make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_CSV= KEYCLOAK_SDWT_CLIENTS=portal KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=0
-make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="$KEYCLOAK_SDWTS_CSV" KEYCLOAK_USERS_CSV= KEYCLOAK_SDWT_CLIENTS=portal KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
+make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_USERS_CSV= KEYCLOAK_SDWT_CLIENTS=portal KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=0
 ```
 
-**기대 결과:** client의 `sdwt-groups` mapper가 공통 `sdwt-access-v1` 기본 scope로 이전되고, 해당 client의 Access Token 수명이 300초가 됩니다. `groups` claim의 내용은 바뀌지 않습니다.
+[변경] 적용:
+
+```bash
+make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_USERS_CSV= KEYCLOAK_SDWT_CLIENTS=portal KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0
+```
+
+성공: client의 `sdwt-groups` mapper가 공통 `sdwt-access-v1` 기본 scope로 이전되고, 해당 client의 Access Token 수명이 300초가 됩니다. `groups` claim의 내용은 바뀌지 않습니다.
 앱이 실제 자원의 SDWT와 그룹 등급을 검사하는지는 앱에서 확인합니다.
 
 ### Headlamp
 
-[Headlamp 최초 설치 안내](../../headlamp/README.md)를 따릅니다. Keycloak의 Headlamp client 등록만으로는 Kubernetes에 접근할 수 없으며 API server의 OIDC 신뢰 설정과 RBAC까지 완료해야 합니다.
+[Headlamp 가이드](../../headlamp/README.md)를 따릅니다. Keycloak의 Headlamp client 등록만으로는 Kubernetes에 접근할 수 없으며 API server의 OIDC 신뢰 설정과 RBAC까지 완료해야 합니다.
 `headlamp-admins`는 클러스터 전체 관리 권한용 전용 그룹이며 SDWT 업무 그룹·Portal 권한이나 Portal 등록 명령을 사용하지 않습니다.
 
 ### Airflow
@@ -309,10 +308,10 @@ Keycloak 준비는 [deploy/iam](../../iam/README.md#keycloak-준비)을 따르�
 
 ## 앱 역할
 
-**목적:** [카탈로그](../access/catalog.json)에 적은 앱·기능의 역할, 포함 관계, realm 기본 역할을 Keycloak에 맞추고 권한관리 웹용 카탈로그를 저장합니다.
+[카탈로그](../access/catalog.json)에 적은 앱·기능의 역할, 포함 관계, realm 기본 역할을 Keycloak에 맞추고 권한관리 웹용 카탈로그를 저장합니다.
 권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
 
-**준비물:** 대상 앱의 로그인 client(앱 배포에서 생성), `/iam` 그룹([deploy/iam](../../iam/README.md#keycloak-준비)), [관리자 인증 입력](#2-관리자-인증-입력)과 같은 환경변수.
+준비물은 대상 앱의 로그인 client(앱 배포에서 생성), `/iam` 그룹([deploy/iam](../../iam/README.md#keycloak-준비))이며 관리자 인증은 [관리자 인증 입력](#2-관리자-인증-입력)과 같습니다.
 
 카탈로그 항목은 다음과 같습니다.
 
@@ -325,16 +324,28 @@ Keycloak 준비는 [deploy/iam](../../iam/README.md#keycloak-준비)을 따르�
 `open`인 앱·기능의 `viewer`는 realm 기본 역할에 들어가 모든 사용자가 받습니다. `closed`로 바꾸면 기본 역할에서 뺍니다.
 SDWT별 데이터 범위는 앱 역할로 두지 않고 [소속별 역할](#소속별-역할)로 정합니다. 권한관리 웹이 쓰도록 `org` client id도 카탈로그에 함께 저장하므로 `make keycloak-org-sync`를 먼저 실행합니다.
 
+[검사] 서버 연결 없이 카탈로그만 검사합니다.
+
 ```bash
-python3 deploy/keycloak/scripts/access_apply.py --validate-only   # 서버 연결 없이 카탈로그 검사
-make keycloak-access-apply                                         # dry-run, 계획만 출력
-make keycloak-access-apply KEYCLOAK_ACCESS_APPLY=1                 # 적용
+python3 deploy/keycloak/scripts/access_apply.py --validate-only
+```
+
+[조회] dry-run으로 계획만 출력합니다.
+
+```bash
+make keycloak-access-apply
+```
+
+[변경] 적용:
+
+```bash
+make keycloak-access-apply KEYCLOAK_ACCESS_APPLY=1
 ```
 
 realm은 `KEYCLOAK_TARGET_REALM`(기본 `etch`)으로 바꿉니다.
 
-**기대 결과:** 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 `계획: 변경 없음`입니다. 권한관리 웹을 새로고침하면 매트릭스에 앱 열이 보입니다.
-**경고:** 카탈로그에 없는 역할·포함 관계는 지우지 않고 경고만 출력합니다. 앱이 새 역할로 전환된 뒤 이전 역할은 Admin Console에서 삭제합니다.
+성공: 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 `계획: 변경 없음`입니다. 권한관리 웹을 새로고침하면 매트릭스에 앱 열이 보입니다.
+경고: 카탈로그에 없는 역할·포함 관계는 지우지 않고 경고만 출력합니다. 앱이 새 역할로 전환된 뒤 이전 역할은 Admin Console에서 삭제합니다.
 client가 없는 앱은 건너뛰며, `/iam` 그룹이 없으면 권한관리 웹용 카탈로그를 저장하지 않습니다.
 
 ## 사용자 필드와 claim
@@ -373,7 +384,7 @@ Keycloak 기본 `username`은 EPID(`userid`)이고, 사내 사람 이름 `userna
 프로필 필드는 본인·관리자가 조회하고 관리자만 편집합니다. 미정의 속성 정책은 `ADMIN_EDIT`입니다.
 비밀번호·권한·로그인 시각은 커스텀 프로필에 복제하지 않습니다.
 
-`job_title`은 IAM에서 관리자가 입력하는 직책(예: `PL`, `파트장`)입니다. PL은 현재 소속 라인의 대표, 파트장은 현재 소속 SDWT의 대표를 뜻합니다. 직급 `grdName`과 구분하는 단일 문자열 속성이며 최대 80자입니다. 빈 값이면 직책을 해제합니다. 사내 IdP 수신 mapper와 앱 발급 mapper에는 포함하지 않으며 권한 역할을 부여하지 않습니다. 정의 변경은 위 User Profile 설정 명령으로 반영합니다. 미정의 속성 정책 `ADMIN_EDIT`을 사용하는 기존 realm에서도 관리자 저장은 가능하지만 명시한 프로필 제한을 적용하려면 정의를 반영해야 합니다.
+`job_title`은 IAM에서 관리자가 입력하는 직책(예: `PL`, `파트장`)입니다. PL은 현재 소속 라인의 대표, 파트장은 현재 소속 SDWT의 대표를 뜻합니다. 직급 `grdName`과 구분하는 단일 문자열 속성이며 최대 80자입니다. 빈 값이면 직책을 해제합니다. 사내 IdP 수신 mapper와 앱 발급 mapper에는 포함하지 않으며 권한 역할을 부여하지 않습니다. 정의 변경은 [User Profile 단계](#user-profile과-수신-mapper)로 반영합니다. 미정의 속성 정책 `ADMIN_EDIT`을 사용하는 기존 realm에서도 관리자 저장은 가능하지만 명시한 프로필 제한을 적용하려면 정의를 반영해야 합니다.
 
 ### IdP mapper
 

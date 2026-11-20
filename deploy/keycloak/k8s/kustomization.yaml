@@ -3,7 +3,7 @@ kind: Kustomization
 namespace: etch-sso
 resources:
   - server/stack.yaml
-  # 기존 단독 배포 호환성을 위해 공용 ingress도 함께 렌더합니다.
+  # Keycloak 배포가 공용 Traefik을 함께 적용하므로 공용 ingress도 렌더합니다.
   - ../../shared/ingress
 images:
   - name: keycloak-internal

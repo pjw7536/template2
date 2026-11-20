@@ -1,4 +1,4 @@
-"""관리 호스트의 Make 공개 진입점에서 판정·입력 전달·중단 동작을 검증한다."""
+"""관리 호스트의 Make 공개 진입점과 Portal Job 스크립트의 판정·입력 전달·중단 동작을 검증한다."""
 
 import json
 import os
@@ -36,6 +36,11 @@ class OpsCommandsTest(unittest.TestCase):
     def make(self, target, *args):
         return subprocess.run(['make', '--no-print-directory', '-C', str(ROOT), target, 'KUBE_CONTEXT=ops-fixture', *args],
                               cwd=ROOT, env=self.env, capture_output=True, text=True, timeout=20)
+
+    def portal_job(self, phase, **extra):
+        """`portal-up`이 호출하는 방식 그대로 Job 스크립트를 실행한다."""
+        return subprocess.run(['bash', 'deploy/portal/scripts/migration-job.sh', phase], cwd=ROOT,
+                              env={**self.env, 'KUBE_CONTEXT': 'ops-fixture', **extra}, capture_output=True, text=True, timeout=20)
 
     def test_make_preserves_json_for_both_nonzero_drift_results(self):
         self.executable('git', '''
@@ -116,25 +121,39 @@ class OpsCommandsTest(unittest.TestCase):
 
     def test_failed_migration_stops_and_preserves_existing_job(self):
         self.kubectl('''
-            if "create" in args:
-                assert "-k" in args and args[-1].endswith("/migrate")
+            if args[0] == "kustomize":
+                print(args[-1])
+            elif "--dry-run=client" in args:
+                assert sys.stdin.read().strip().endswith("/migrate")
+                print(json.dumps({"kind": "Job", "metadata": {"name": "portal-migrate"}, "spec": {"template": {"spec": {
+                    "containers": [{"name": "migrate", "image": "store.test/tailwind/api:auto"}]}}}}))
+            elif "create" in args:
+                job = json.load(sys.stdin)
+                # overlay의 tag auto는 소스 내용으로 정한 tag로 바뀌어 생성된다.
+                image = job["spec"]["template"]["spec"]["containers"][0]["image"]
+                assert image.startswith("store.test/tailwind/api:") and not image.endswith(":auto"), image
                 sys.exit(int(os.getenv("COLLISION", "0")))
-            assert "get" in args and "portal-migrate" in args
-            print("/1")
+            else:
+                assert "get" in args and "portal-migrate" in args
+                print("/1")
         ''')
-        result = self.make('portal-migrate')
+        created = lambda: [line for line in self.calls.read_text().splitlines() if '"create", "-f"' in line]
+        result = self.portal_job('migrate')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Job 실패: portal-migrate', result.stderr)
-        self.assertEqual(len(self.calls.read_text().splitlines()), 2)
+        self.assertEqual(len(created()), 1)
         self.env['COLLISION'] = '1'
-        result = self.make('portal-migrate')
+        result = self.portal_job('migrate')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(self.calls.read_text().splitlines()), 3)
+        self.assertNotIn('Job 실패', result.stderr)
+        self.assertEqual(len(created()), 2)
 
     def test_checks_create_one_named_job_with_selected_phase(self):
         self.kubectl('''
-            if "--dry-run=client" in args:
-                print(json.dumps({"metadata": {}, "spec": {"template": {"spec": {
+            if args[0] == "kustomize":
+                print(args[-1])
+            elif "--dry-run=client" in args:
+                print(json.dumps({"kind": "Job", "metadata": {}, "spec": {"template": {"spec": {
                     "containers": [{"name": "migrate", "image": "test:1"}]}}}}))
             elif "create" in args:
                 job = json.load(sys.stdin)
@@ -148,7 +167,7 @@ class OpsCommandsTest(unittest.TestCase):
         ''')
         for phase in ['pre', 'post']:
             self.env['PHASE'] = phase + '-migration'
-            result = self.make(f'portal-{phase}check', 'PORTAL_CHECK_JOB=access-fixture')
+            result = self.portal_job(f'{phase}-migration', PORTAL_CHECK_JOB='access-fixture')
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('Job 완료: access-fixture', result.stdout)
 

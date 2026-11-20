@@ -266,11 +266,19 @@ class FtpTests(unittest.TestCase):
                     ftp.check_nodes([node], ['worker-a'])
 
     def test_missing_inputs_rejected_without_commands(self):
-        for context, nodes, path in (('', 'worker-a', str(self.credentials)),
-                                     ('test', '', str(self.credentials)), ('test', 'worker-a', '')):
-            with self.assertRaises(ValueError):
-                ftp.start(context, nodes, path)
+        with self.assertRaises(ValueError):
+            ftp.start('', 'worker-a', str(self.credentials))
         self.assertEqual(self.calls, [])
+
+    def test_empty_nodes_reuse_labeled_nodes_and_first_install_requires_them(self):
+        with self.assertRaisesRegex(ValueError, 'FTP_NODES'):
+            ftp.start('test-context', '', str(self.credentials), env_file=self.env)
+        self.assertEqual(self.writes(), [])
+        self.nodes = [worker(labeled=True)]
+        ftp.start('test-context', '', str(self.credentials), env_file=self.env)
+        labels = [args for args, _ in self.writes() if 'label' in args]
+        self.assertEqual(len(labels), 1)
+        self.assertIn('worker-a', labels[0])
 
     def test_invalid_credentials_rejected_without_exposing_values(self):
         for content in ('FTP_USER=test\nFTP_PASS=secret\\bad', 'FTP_USER=test\nFTP_PASS=',
@@ -281,10 +289,10 @@ class FtpTests(unittest.TestCase):
                 ftp.read_credentials(self.credentials)
             self.assertNotIn('secret', str(caught.exception))
 
-    def test_world_readable_file_rejected(self):
+    def test_world_readable_file_is_narrowed_to_owner(self):
         self.credentials.chmod(0o644)
-        with self.assertRaisesRegex(ValueError, 'chmod 600'):
-            ftp.read_credentials(self.credentials)
+        ftp.read_credentials(self.credentials)
+        self.assertEqual(self.credentials.stat().st_mode & 0o777, 0o600)
 
     def test_sensitive_subprocess_errors_are_redacted(self):
         self.runner.stop()

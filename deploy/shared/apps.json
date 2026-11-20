@@ -4,6 +4,22 @@
       "sourcePaths": [],
       "deployPath": "deploy/keycloak",
       "localPath": "local/keycloak",
+      "dependsOn": [],
+      "env": {
+        "variable": "KEYCLOAK_ENV",
+        "default": "deploy/keycloak/env/prod.env"
+      },
+      "steps": [
+        "keycloak-check",
+        "keycloak-up",
+        "keycloak-setup",
+        "keycloak-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/realms/etch/.well-known/openid-configuration"
+        ]
+      },
       "runtime": {
         "namespace": "etch-sso",
         "selector": "app.kubernetes.io/name in (keycloak,keycloak-postgres)"
@@ -15,6 +31,27 @@
       ],
       "deployPath": "deploy/portal",
       "localPath": "local/portal",
+      "dependsOn": [
+        "keycloak",
+        "minio",
+        "registry"
+      ],
+      "env": {
+        "variable": "PROD_API_ENV_FILE",
+        "default": "deploy/portal/env/prod/api.env"
+      },
+      "steps": [
+        "portal-image",
+        "keycloak-portal-client-setup",
+        "portal-check",
+        "portal-up",
+        "portal-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/api/v1/health/"
+        ]
+      },
       "runtime": {
         "namespace": "tailwind-internal"
       }
@@ -25,6 +62,26 @@
       ],
       "deployPath": "deploy/airflow",
       "localPath": "local/airflow",
+      "dependsOn": [
+        "keycloak",
+        "registry"
+      ],
+      "env": {
+        "variable": "AIRFLOW_ENV",
+        "default": "deploy/airflow/env/k8s.env"
+      },
+      "steps": [
+        "airflow-image",
+        "airflow-keycloak-client",
+        "airflow-check",
+        "airflow-up",
+        "airflow-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/api/v2/monitor/health"
+        ]
+      },
       "runtime": {
         "namespace": "airflow"
       }
@@ -33,6 +90,22 @@
       "sourcePaths": [],
       "deployPath": "deploy/ftp",
       "localPath": "local/ftp",
+      "dependsOn": [],
+      "env": {
+        "variable": "FTP_ENV",
+        "default": "deploy/ftp/env/prod.env"
+      },
+      "steps": [
+        "ftp-check",
+        "ftp-up",
+        "ftp-smoke"
+      ],
+      "smoke": {
+        "paths": [],
+        "hostPorts": [
+          "ftp"
+        ]
+      },
       "runtime": {
         "namespace": "etch-ftp"
       }
@@ -41,6 +114,22 @@
       "sourcePaths": [],
       "deployPath": "deploy/monitoring",
       "localPath": "local/monitoring",
+      "dependsOn": [],
+      "env": {
+        "variable": "MONITORING_ENV",
+        "default": "deploy/monitoring/env/k8s.env"
+      },
+      "steps": [
+        "monitoring-check",
+        "monitoring-up",
+        "monitoring-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/api/health",
+          "/-/healthy"
+        ]
+      },
       "runtime": {
         "namespace": "monitoring"
       }
@@ -49,6 +138,24 @@
       "sourcePaths": [],
       "deployPath": "deploy/headlamp",
       "localPath": "local/headlamp",
+      "dependsOn": [
+        "keycloak"
+      ],
+      "env": {
+        "variable": "HEADLAMP_ENV",
+        "default": "deploy/headlamp/env/k8s.env"
+      },
+      "steps": [
+        "headlamp-oidc-setup",
+        "headlamp-check",
+        "headlamp-up",
+        "headlamp-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/"
+        ]
+      },
       "runtime": {
         "namespace": "headlamp"
       }
@@ -57,6 +164,22 @@
       "sourcePaths": [],
       "deployPath": "deploy/minio",
       "localPath": "local/minio",
+      "dependsOn": [],
+      "env": {
+        "variable": "MINIO_ENV",
+        "default": "deploy/minio/env/prod.env"
+      },
+      "steps": [
+        "minio-check",
+        "minio-up",
+        "minio-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/minio/health/live",
+          "/"
+        ]
+      },
       "runtime": {
         "namespace": "minio"
       }
@@ -65,6 +188,24 @@
       "sourcePaths": [],
       "deployPath": "deploy/registry",
       "localPath": null,
+      "dependsOn": [],
+      "env": {
+        "variable": "REGISTRY_ENV",
+        "default": "deploy/registry/env/k8s.env"
+      },
+      "steps": [
+        "registry-check",
+        "registry-up",
+        "registry-smoke"
+      ],
+      "smoke": {
+        "paths": [
+          "/v2/"
+        ],
+        "accept": [
+          401
+        ]
+      },
       "runtime": {
         "namespace": "registry"
       }

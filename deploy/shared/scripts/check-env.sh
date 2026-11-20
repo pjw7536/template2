@@ -20,8 +20,8 @@ case "$APP" in
     [[ "$PROFILE/$COMPONENT" == prod/server ]] || { echo '이 앱은 prod/server Kubernetes 검사를 사용하세요.' >&2; exit 1; }
     exec python3 "$ROOT_DIR/deploy/$APP/scripts/manage.py" check --env "$ENV_FILE" ;;
 esac
-# 명시한 env 파일이 있어도 폐기된 환경은 파일을 읽기 전에 거부합니다.
-[[ "$PROFILE" != oidc ]] || { echo '폐기된 oidc 환경입니다. prod를 사용하세요.' >&2; exit 1; }
+# env 파일을 직접 지정해도 지원하지 않는 환경은 파일을 읽기 전에 거부합니다.
+case "$PROFILE" in local|prod|test) ;; *) echo '지원하지 않는 환경입니다. local 또는 prod, CI test를 사용하세요.' >&2; exit 1 ;; esac
 echo "선택한 앱: $APP / 환경: $PROFILE / 작업: $COMPONENT"
 echo "읽는 설정: $ENV_FILE"
 load_env "$ENV_FILE"

@@ -240,18 +240,6 @@ sync_client_mapper() {
   echo "Portal token mapper 생성: $claim"
 }
 
-# 이전 배포에서 생성한 폐기 mapper만 이름으로 찾아 제거합니다.
-remove_retired_mapper() {
-  local endpoint="$1" name="$2" mapper_id
-  if mapper_id="$(find_mapper_id "$endpoint" "$name")"; then
-    kcadm delete "${endpoint}/${mapper_id}" -r "$KEYCLOAK_TARGET_REALM" >/dev/null
-    echo "폐기 mapper 삭제: $name"
-  else
-    # 조회 실패를 이미 삭제된 상태로 처리하지 않습니다.
-    [[ "$?" == 1 ]] || return 1
-  fi
-}
-
 require_value KEYCLOAK_ADMIN_USERNAME "${KEYCLOAK_ADMIN_USERNAME:-}"
 require_value KEYCLOAK_ADMIN_PASSWORD "${KEYCLOAK_ADMIN_PASSWORD:-}"
 case "$KEYCLOAK_MAPPING_TARGET" in
@@ -306,20 +294,6 @@ if [[ "$KEYCLOAK_MAPPING_TARGET" != client && "$KEYCLOAK_SKIP_PROFILE" != true ]
     -r "$KEYCLOAK_TARGET_REALM" \
     -n -f "${KEYCLOAK_CONFIG_DIR:-/opt/keycloak-config}/account-user-profile.json" >/dev/null
   echo "사내 claim 기준 User Profile 등록 완료"
-fi
-
-for retired_claim in origincomp first_name last_name; do
-  if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
-    remove_retired_mapper "identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers" "$retired_claim"
-  fi
-  if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]]; then
-    remove_retired_mapper "clients/${client_uuid}/protocol-mappers/models" "$retired_claim"
-  fi
-done
-
-# EPID는 기본 username에만 저장하므로 이전 avatarid 수집 mapper를 제거합니다.
-if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
-  remove_retired_mapper "identity-provider/instances/${KEYCLOAK_IDP_ALIAS}/mappers" userid
 fi
 
 for claim in "${CLAIMS[@]}"; do

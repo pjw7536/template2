@@ -18,6 +18,7 @@ runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 routing = runtime.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
 tls = runtime.module('shared_tls', ROOT / 'deploy/shared/ingress/tls.py')
+host_dirs = runtime.module('shared_host_dirs', ROOT / 'deploy/shared/scripts/host_dirs.py')
 
 
 def run(args, data=None, sensitive=False):
@@ -51,6 +52,15 @@ def secret_if_missing(kube, name, values, secret_type='Opaque'):
         return None
     return {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': 'etch-sso'},
             'type': secret_type, 'data': encoded}
+
+
+def storage_target(desired):
+    """렌더 결과에서 DB 폴더 준비 Job의 노드·이미지·경로를 찾는다. PostgreSQL 이미지가 root로 시작해 소유권을 직접 맞춘다."""
+    volume = next(item for item in desired if item['kind'] == 'PersistentVolume' and item['metadata']['name'] == 'keycloak-postgres-data')
+    database = next(item for item in desired if item['kind'] == 'StatefulSet' and item['metadata']['name'] == 'keycloak-postgres')
+    node = volume['spec']['nodeAffinity']['required']['nodeSelectorTerms'][0]['matchExpressions'][0]['values'][0]
+    image = database['spec']['template']['spec']['containers'][0]['image']
+    return node, image, [(volume['spec']['local']['path'], 0, 0, '0700')]
 
 
 def start(context, env, certs=None, vip_backends=None, check_only=False, render_output=None):
@@ -122,6 +132,9 @@ def start(context, env, certs=None, vip_backends=None, check_only=False, render_
             # create만 사용해 검사 이후 다른 운영자가 만든 Secret도 덮어쓰지 않는다.
             run([*kube, 'create', '-f', '-'], data=json.dumps(secret), sensitive=True)
     tls.save(kube, certificate, restart=False)
+    if pv is None:
+        # 새 PV일 때만 DB 폴더를 준비한다. 기존 PV의 폴더와 DB 파일은 건드리지 않는다.
+        host_dirs.prepare(run, kube, 'keycloak-storage-prepare', 'etch-sso', *storage_target(desired))
     run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}))
     if certs:
         tls.reload_controller(kube)
@@ -136,7 +149,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--context', required=True)
     parser.add_argument('--env', type=Path, default=BASE / 'env/prod.env')
-    parser.add_argument('--certs', type=Path, help='명시한 fullchain.crt·private.key를 공용 TLS에 등록하는 호환 입력')
+    parser.add_argument('--certs', type=Path, help='이 폴더의 fullchain.crt·private.key를 공용 TLS에 함께 등록')
     parser.add_argument('--vip-backends')
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--render-output', type=Path, help='적용 대상 리소스 JSON을 저장하고 클러스터는 변경하지 않음')

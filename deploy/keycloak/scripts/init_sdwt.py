@@ -22,7 +22,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 
 
 BASE = Path(__file__).resolve().parents[1]
-# 예전 관리자 그룹 이름과 혼동을 막고 역할 이름(<SDWT>:<등급>)과 겹치지 않게 라인·SDWT 이름으로 쓰지 않습니다.
+# 소속 그룹 트리의 최상위 그룹 이름입니다. 역할 이름(<SDWT>:<등급>)과 겹치지 않게 라인·SDWT 이름으로는 쓰지 않습니다.
 ORG_ROOT = "org"
 PAGE_SIZE = 100
 # CSV는 사내 claim 이름을 사용하고 기본 필드 충돌이 없는 커스텀 속성은 같은 이름으로 저장합니다.
@@ -188,14 +188,6 @@ def one(items: list, field: str, value: str):
     if len(matches) > 1:
         raise SetupError("Keycloak 객체가 중복되어 하나로 식별되지 않습니다.")
     return matches[0] if matches else None
-
-
-def check_clean_group(api: Admin, group: dict):
-    """기존 그룹의 역할·소속 상속을 업무 권한과 섞지 않습니다."""
-    detail = api.call("GET", f"groups/{segment(group['id'])}")
-    mappings = api.call("GET", f"groups/{segment(group['id'])}/role-mappings")
-    if detail.get("attributes") or mappings.get("realmMappings") or mappings.get("clientMappings"):
-        raise SetupError("대상 SDWT 그룹에 속성 또는 역할 매핑이 있습니다. 별도 검토 후 실행하세요.")
 
 
 def mapper_equal(current: dict, desired: dict) -> bool:
@@ -367,7 +359,7 @@ class Setup:
         # custom attribute 검색 문법에 입력을 끼워 넣지 않고 정확한 값을 비교합니다.
         existing = self.api.pages("users", briefRepresentation="false")
         by_id = {user["id"]: user for user in existing}
-        indexes = {key: {} for key in ("username", "email", "sabun", "loginid", "knox_id")}
+        indexes = {key: {} for key in ("username", "email", "sabun", "loginid")}
         for user in existing:
             for key, index in indexes.items():
                 values = [user.get(key)] if key in {"username", "email"} else user.get("attributes", {}).get(key, [])
@@ -377,7 +369,7 @@ class Setup:
         for number, row in enumerate(self.users, 2):
             username_ids = indexes["username"].get(row["userid"].casefold(), set())
             matches = set(username_ids)
-            for claim, key in (("mail", "email"), ("sabun", "sabun"), ("loginid", "loginid"), ("loginid", "knox_id")):
+            for claim, key in (("mail", "email"), ("sabun", "sabun"), ("loginid", "loginid")):
                 value = row.get(claim, "")
                 if value:
                     matches |= indexes[key].get(value.casefold(), set())
@@ -385,7 +377,7 @@ class Setup:
                 raise SetupError(f"사용자 CSV {number}행: 기존 계정 신원이 충돌합니다.")
             if username_ids:
                 current = by_id[next(iter(username_ids))]
-                for claim, key in (("sabun", "sabun"), ("loginid", "loginid"), ("loginid", "knox_id")):
+                for claim, key in (("sabun", "sabun"), ("loginid", "loginid")):
                     values = current.get("attributes", {}).get(key, [])
                     if row.get(claim) and values and row[claim] not in values:
                         raise SetupError(f"사용자 CSV {number}행: 기존 계정의 {claim}와 다릅니다.")

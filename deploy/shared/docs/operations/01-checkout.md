@@ -2,7 +2,7 @@
 
 [공통 안내](../README.md) · 다음: [배포 준비와 검증](02-deploy.md)
 
-관리 호스트에 저장소를 clone하고 Git으로 갱신하는 방법입니다. 사람용 전체 checkout과 사내 `ops` 전용 checkout은 별도 디렉터리에서 같은 Git 브랜치를 사용합니다([운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)).
+관리 호스트에 저장소 전체를 clone하고 Git으로 갱신하는 방법입니다. 사람과 사내 `ops` agent가 같은 checkout을 사용합니다([운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)).
 
 - [저장소 clone](#저장소-clone)
 - [Git·운영 파일 관리](#git운영-파일-관리)
@@ -33,23 +33,11 @@ git log -1 --oneline
 
 **실패 확인:** 인증·네트워크 오류면 사내 Git 접근 권한과 URL을 확인합니다. Git에 없는 파일(인증서·외부 env·개인키)은 clone으로 전달되지 않습니다.
 
-### ops 전용 checkout
+### 운영 agent 작업 루트
 
-관리 호스트에서 사람이 한 번 준비합니다. 아래 경로는 새 checkout의 예시입니다. 기존 전체 checkout은 운영 파일·로컬 변경·반입물이 있으므로 그대로 둡니다. 이미지 빌드는 소스가 있는 전체 checkout에서 진행합니다.
-
-```bash
-(
-  set -e
-  git clone --branch "$ETCHAX_DEPLOY_BRANCH" "$ETCHAX_REPO_URL" /appdata/etchax-ops
-  cd /appdata/etchax-ops
-  ./deploy/shared/scripts/apply-ops-checkout.sh
-  git rev-parse HEAD
-)
-```
-
-위 [실행 파일](../../scripts/apply-ops-checkout.sh)은 전용 checkout에 배포 파일 선택 목록을 적용하고 루트의 `.claude`·`.chatgpt`가 사라졌는지 확인합니다. 두 폴더에 Git 미추적 파일이 있으면 해당 폴더를 Git 내부 보관 경로로 이동하고 위치를 출력합니다. 추적 파일에 로컬 변경이 있으면 적용 전에 멈춥니다.
-
-이 디렉터리를 사내 opencode의 작업 루트로 열고 `ops`를 선택합니다. [선택 목록](../../ops-checkout.patterns)은 루트 Makefile, 배포 실행 파일, 운영 에이전트·스킬, 공유 인프라 기록을 포함합니다. 사람용 가이드는 전체 checkout에서 봅니다. 두 checkout의 배포 커밋을 맞추고, Git 밖의 chart·인증서·외부 env는 기존 입력 경로를 지정하거나 앱의 정해진 위치에 준비합니다.
+이 checkout 하나를 사람과 사내 opencode `ops` agent가 함께 씁니다. checkout 루트를 opencode의 작업 루트로 열고 `ops`를 선택합니다.
+`ops` agent는 루트 `AGENTS.md`의 개발 규칙 대신 [agent 정의](../../../../.opencode/agents/ops.md)와 [운영 agent 지침](../../../AGENTS.md#사내-운영-agent)을 따르고, 작업 시작 때 `git pull --ff-only`로 갱신합니다.
+이미지 빌드도 이 checkout에서 합니다. 빌드 도구는 [빌드 도구 준비](../../../airflow/docs/02-artifacts.md#containerd-빌드-도구-준비)의 `make build-tools-install`로 설치합니다.
 
 **다음 단계:** [배포 준비와 검증](02-deploy.md#배포-준비)
 
@@ -84,12 +72,6 @@ git log -1 --oneline
 Git 갱신은 파일만 바꾸며 Kubernetes 리소스·Secret·DB·실행 중인 Pod를 변경하지 않습니다.
 
 **실패 확인:** fast-forward가 불가능하면 로컬 커밋·변경을 확인하고 담당자와 정리합니다.
-
-`ops` checkout에서는 갱신 후 다음 명령으로 해당 커밋의 파일 선택 목록도 반영합니다.
-
-```bash
-./deploy/shared/scripts/apply-ops-checkout.sh
-```
 
 ### 3. 다음 단계
 

@@ -115,8 +115,8 @@ class LocalKubernetesTests(unittest.TestCase):
         secret = next(item for item in airflow.secret_manifest(values)['items'] if item['metadata']['name'] == 'airflow-metadata')
         self.assertIn('@external-postgres:5432/airflow', base64.b64decode(secret['data']['connection']).decode())
 
-    def test_legacy_server_env_retains_internal_database_defaults(self):
-        """서버 비밀값과 무관하게 DB 키가 없는 이전 입력의 기본값을 검사합니다."""
+    def test_server_env_without_db_keys_uses_internal_database_defaults(self):
+        """서버 비밀값과 무관하게 DB 키가 없는 입력의 기본값을 검사합니다."""
         airflow = config.module('airflow')
         values = config.airflow_settings(fixture_credentials())
         for key in airflow.DB_DEFAULTS:

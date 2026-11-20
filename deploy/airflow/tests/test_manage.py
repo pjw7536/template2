@@ -28,7 +28,7 @@ def settings():
     """실제 자격증명 없이 운영 형식에 맞는 독립 입력을 만든다."""
     result = deploy.read_env(deploy.DEFAULT_ENV)
     result.update({
-        'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow',
+        'NODE_NAME': 'test-node', 'AIRFLOW_IMAGE_REPOSITORY': 'registry.test/airflow', 'AIRFLOW_IMAGE_TAG': '3.3.2-release-1',
         'AIRFLOW_ADMIN_EMAIL': 'airflow@test.invalid',
         'AIRFLOW_OIDC_CLIENT_SECRET': 'fixture-oidc-secret-0123456789',
         # 선택 CA 마운트는 개별 테스트에서 지정하며 운영 env의 기본값과 분리한다.
@@ -167,7 +167,7 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '템플릿'):
             deploy.validate(values)
 
-    def test_legacy_env_defaults_to_disabled_mail_notifications(self):
+    def test_env_without_mail_keys_defaults_to_disabled_notifications(self):
         values = {key: value for key, value in settings().items() if key not in deploy.MAIL_DEFAULTS}
         deploy.validate(values)
         self.assertEqual(values['AIRFLOW_FAILURE_ALERT_EMAIL_TO'], '')

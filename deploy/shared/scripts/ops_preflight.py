@@ -11,7 +11,6 @@ import sys
 import tempfile
 
 from deploy_state import DEFAULT_ENV, read_catalog
-from runtime import is_placeholder, render_json
 
 OVERLAY = Path('deploy/portal/k8s/overlays/prod')
 
@@ -26,21 +25,13 @@ def run_check(command, *, data=None):
 
 
 def portal_images(context):
-    """최종 렌더에서 이미지 자리표시자와 migration·서비스 이미지 일치를 검사한다."""
-    kube = ['kubectl', '--context', context]
-    images = {}
-    for overlay in (OVERLAY, OVERLAY / 'migrate'):
-        for item in render_json(run_check, kube, overlay):
-            if item['kind'] not in ('Deployment', 'Job'):
-                continue
-            pod = item['spec']['template']['spec']
-            for container in pod.get('initContainers', []) + pod['containers']:
-                image = container['image']
-                if is_placeholder(image):
-                    raise InputProblem(f'{overlay}/kustomization.yaml images의 자리표시자를 교체하세요.')
-                images[(item['metadata']['name'], container['name'])] = image
-    if images['api', 'api'] != images['portal-migrate', 'migrate']:
-        raise InputProblem('prod와 prod/migrate의 images에서 portal-api 버전을 일치시키세요.')
+    """배포 도구와 같은 렌더로 이미지 자리표시자와 migration·서비스 이미지 일치를 검사한다."""
+    from runtime import module
+    portal = module('portal_up', 'deploy/portal/scripts/up.py')
+    try:
+        portal.rendered_images(['kubectl', '--context', context])
+    except ValueError as error:
+        raise InputProblem(str(error)) from None
 
 
 def checked(label, remedy, action, *, keys=()):
@@ -98,9 +89,7 @@ def main():
         return 1
 
     base = Path(catalog['apps'][app]['deployPath'])
-    guide = Path('.opencode/skills/server-deploy-routine/runbooks') / f'{app}.md'
-    if not guide.is_file():
-        guide = base / 'README.md'
+    guide = base / 'README.md'
     retry = ['make', 'ops-preflight', f'APP={app}', 'PROFILE=prod', f'KUBE_CONTEXT={context}']
     results = []
     chart_lock = base / 'helm/chart.lock.json'
@@ -125,7 +114,7 @@ def main():
                   ('client', 'PROD_API_ENV_FILE', 'deploy/portal/env/prod/api.env'),
                   ('web', 'PROD_WEB_ENV_FILE', 'deploy/portal/env/prod/web.env')]
     else:
-        inputs = [('server', app.upper() + '_ENV', DEFAULT_ENV[app])]
+        inputs = [('server', catalog['apps'][app]['env']['variable'], DEFAULT_ENV[app])]
 
     with tempfile.TemporaryDirectory(prefix='ops-preflight-') as directory:
         for component, key, default in inputs:

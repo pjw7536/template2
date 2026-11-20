@@ -49,7 +49,7 @@
 
 ## 앱 namespace 연결
 
-일반 배포에는 [앱별 배포](../operations/02-deploy.md#앱-의존-관계)의 명령을 사용합니다. 이 도구들은 다른 namespace를 감시 목록에서 제거하지 않으며, 이미 전체 namespace를 감시하면 범위를 좁히지 않습니다.
+일반 배포에는 [앱별 배포](../../../README.md#앱-설치-순서)의 명령을 사용합니다. 이 도구들은 다른 namespace를 감시 목록에서 제거하지 않으며, 이미 전체 namespace를 감시하면 범위를 좁히지 않습니다.
 
 | 명령 | 공용 Ingress에 주는 영향 |
 | --- | --- |
@@ -74,6 +74,4 @@ namespace 감시와 IngressClass 동작은 [Traefik Kubernetes Ingress 설정](h
 
 - ConfigMap·TLS를 포함한 공용 설정 변경은 `make ingress-up`, 인증서는 `make ingress-tls-up`, 앱 배포는 기존 설정을 보존하는 앱별 명령으로 적용합니다.
 - `kubectl apply -k deploy/shared/ingress`를 사용하지 않습니다. 단일 Worker·`etch-sso` 단독 감시 기본값이 적용되어 앱 연결·VIP 배치가 바뀝니다.
-- Keycloak 정적 전달 YAML(`deploy/keycloak/export`)은 이 원본에 운영 설정(2 replica, RollingUpdate `maxSurge=0`/`maxUnavailable=1`, `etch-sso,headlamp` 감시, `ingress: traefik` 노드 선택)을 고정해 추가합니다.
-  VIP annotation 배치와 다른 감시 목록을 덮어쓸 수 있으므로 공유 클러스터에는 직접 적용하지 않습니다. Keycloak Kustomize 기본값은 `etch-sso` 단독 감시이며 기존 Keycloak 단독 설치와 호환됩니다.
-- `make server-up`은 Airflow까지 배포하므로 공용 진입점만 바꿀 때는 사용하지 않습니다.
+- Keycloak Kustomize 원본(`deploy/keycloak/k8s`)의 Traefik 기본값은 `etch-sso` 단독 감시입니다. `make keycloak-up`은 실행 중인 Traefik의 감시 목록·VIP 배치를 보존해 적용합니다.

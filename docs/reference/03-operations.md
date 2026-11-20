@@ -12,7 +12,7 @@
 | --- | --- |
 | 로컬 앱·화면 실행 | [실행 위치](#실행-위치), [프론트 명령](#프론트-명령) |
 | API 테스트·관리 명령 | [백엔드 검증](#백엔드-검증), [Django 관리 명령](#django-관리-명령) |
-| DB migration | [작성·검증](../development/03-migration-guide.md), 서버 적용은 [운영 Migration](../../deploy/portal/docs/01-install.md#3-migration) |
+| DB migration | [작성·검증](../development/03-migration-guide.md), 서버 적용은 [운영 Migration](../../deploy/portal/docs/01-install.md#migration) |
 | 파일 적재·요약·FTP | [Data Movement](#data-movement-airflow-dag) |
 | Drone 대상 초기 데이터 | [입력과 dry-run](#drone-jsoncsv-target-seed) |
 | 설정·문서 검사·장애 대응 | [환경 변수](#환경-변수-파일), [문서 검증](#문서-검증), [장애 확인](#장애-확인-순서) |
@@ -64,7 +64,7 @@ DB 쓰기·외부 발송·삭제 여부와 dry-run 지원은 해당 명령의 �
 ### DB migration
 
 작성·로컬 검증은 [migration 안내](../development/03-migration-guide.md), 서버의 사전 검사·API 중지·migration·사후 확인은
-[운영 Migration 절차](../../deploy/portal/docs/01-install.md#3-migration)를 따릅니다.
+[운영 Migration 절차](../../deploy/portal/docs/01-install.md#migration)를 따릅니다.
 
 ### Assistant 데이터 보강 명령
 

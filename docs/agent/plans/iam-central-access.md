@@ -45,7 +45,7 @@
 - `deploy/keycloak/access/catalog.json`, `deploy/keycloak/scripts/access_apply.py`, `make keycloak-access-apply`·`keycloak-access-test`
 - `apps/iam/web`(신규): Vite + React + Tailwind, 런타임 설정 `config.js`
 - `local/keycloak/k8s/realm-portal.json`: 개발용 `iam` client·관리자 그룹, 사용자 기본 역할
-- 문서: `apps/iam/README.md`, `deploy/keycloak/docs/03-configure.md` 링크, `docs/agent/02-git-scopes.md`(`[iam]`)
+- 문서: `apps/iam/README.md`, `deploy/keycloak/docs/02-configure.md` 링크, `docs/agent/02-git-scopes.md`(`[iam]`)
 
 수정하지 않을 영역(다음 단계)
 

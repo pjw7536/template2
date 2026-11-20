@@ -30,6 +30,6 @@ realm은 `KEYCLOAK_TARGET_REALM`(기본 `etch`)으로 바꿉니다. Keycloak 인
 개발 Keycloak에는 `KEYCLOAK_ADMIN_URL=http://localhost:8180`, `KEYCLOAK_TARGET_REALM=portal`, `IAM_PUBLIC_URL=http://localhost:5174`로 실행합니다.
 
 **기대 결과:** 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 client 갱신·role 연결만 계획에 남습니다.
-**다음 단계:** [앱 역할 반영](../keycloak/docs/03-configure.md#앱-역할)(`make keycloak-access-apply`)으로 매트릭스 앱 목록을 저장하고,
+**다음 단계:** [앱 역할 반영](../keycloak/docs/02-configure.md#앱-역할)(`make keycloak-access-apply`)으로 매트릭스 앱 목록을 저장하고,
 Admin Console의 `Groups → iam → platform-admins → Members`에 관리자를 추가한 뒤 권한관리 웹에 로그인합니다.
 **실패 확인:** 기존 `iam` client가 confidential이면 중단합니다. HTTP 상태가 출력되면 관리자 계정·URL·realm을 확인합니다.

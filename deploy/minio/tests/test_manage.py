@@ -43,7 +43,7 @@ class MinioTests(unittest.TestCase):
             self.assertEqual(routes[name]['spec']['rules'][0]['host'], values[key])
             self.assertNotIn('traefik.ingress.kubernetes.io/router.middlewares', routes[name]['metadata']['annotations'])
 
-    def test_portal_overlay_no_longer_owns_storage_or_minio_ingress(self):
+    def test_portal_overlay_does_not_own_storage_or_minio_ingress(self):
         root = manage.BASE.parents[1]
         portal = subprocess.check_output(['kubectl', 'kustomize', 'deploy/portal/k8s/overlays/prod'], cwd=root, text=True)
         self.assertNotIn('name: minio\n', portal)
@@ -76,13 +76,6 @@ class MinioTests(unittest.TestCase):
         self.assertEqual(container['securityContext']['runAsUser'], 0)
         self.assertEqual(container['volumeMounts'], [{'name': 'data', 'mountPath': '/data'}])
         self.assertEqual(item['spec']['template']['spec']['volumes'][0]['persistentVolumeClaim']['claimName'], 'minio-data')
-
-    def test_legacy_deployment_blocks_changes_and_preserves_old_data(self):
-        with patch.object(manage, 'run', return_value='deployment.apps/minio') as run, \
-                self.assertRaisesRegex(ValueError, '기존 tailwind-internal'):
-            manage.deploy(settings(), 'prod')
-        self.assertEqual(run.call_count, 1)
-        self.assertNotIn('delete', run.call_args.args[0])
 
     def test_missing_common_tls_stops_before_mutation(self):
         with patch.object(manage, 'run', return_value='{}') as run, \
@@ -127,8 +120,6 @@ class MinioTests(unittest.TestCase):
 
         def run(args, data=None, sensitive=False):
             calls.append((args, data, sensitive))
-            if '-n' in args and args[args.index('-n') + 1] == 'tailwind-internal':
-                return ''
             if 'nodes' in args:
                 return json.dumps({'items': [{'metadata': {'name': 'node-worker', 'labels': {'kubernetes.io/hostname': settings()['NODE_NAME']}}, 'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
             if 'get' in args and 'pv' in args:

@@ -34,13 +34,9 @@ SKIPPED_KINDS = {'Secret', 'Job', 'Pod', 'Namespace', 'CustomResourceDefinition'
 VOLATILE_METADATA = ('managedFields', 'resourceVersion', 'uid', 'generation', 'creationTimestamp', 'selfLink')
 VOLATILE_ANNOTATIONS = ('kubectl.kubernetes.io/last-applied-configuration', 'deployment.kubernetes.io/revision',
                         'deprecated.daemonset.template.generation')
-# 앱별 기본 env. Makefile의 *_ENV 기본값과 같다. drift-check에 --env app=경로로 바꿀 수 있다.
-DEFAULT_ENV = {
-    'keycloak': 'deploy/keycloak/env/prod.env', 'minio': 'deploy/minio/env/prod.env',
-    'registry': 'deploy/registry/env/k8s.env', 'airflow': 'deploy/airflow/env/k8s.env',
-    'monitoring': 'deploy/monitoring/env/k8s.env', 'headlamp': 'deploy/headlamp/env/k8s.env',
-    'ftp': 'deploy/ftp/env/prod.env',
-}
+# 앱별 기본 env는 apps.json의 env.default가 원본이다. Makefile의 *_ENV 기본값과 같다.
+DEFAULT_ENV = {name: app['env']['default'] for name, app in json.loads(CATALOG.read_text())['apps'].items()
+               if app.get('env', {}).get('default')}
 
 
 class QueryError(Exception):
@@ -66,6 +62,9 @@ def read_catalog(path=CATALOG):
         runtime = app.get('runtime')
         if not isinstance(runtime, dict) or not runtime.get('namespace'):
             raise ValueError(f'apps.json의 {name}.runtime.namespace가 필요합니다.')
+        unknown = [item for item in app.get('dependsOn', []) if item not in catalog['apps']]
+        if unknown or not app.get('steps') or not app.get('env', {}).get('variable'):
+            raise ValueError(f'apps.json의 {name}에 dependsOn(등록된 앱)·env.variable·steps가 필요합니다.')
     return catalog
 
 
@@ -101,10 +100,19 @@ def dirty_paths(git, paths):
     return sorted({line[3:].split(' -> ')[-1] for line in status.splitlines() if relevant(line[3:].split(' -> ')[-1])})
 
 
-def file_digest(path):
-    """입력 파일의 SHA-256을 반환하고 없으면 None을 반환한다."""
+def input_key(path):
+    """저장소 안의 입력은 루트 기준 상대 경로로, 저장소 밖 입력은 절대 경로로 식별한다."""
+    resolved = Path(path).resolve()
     try:
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        return resolved.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def file_digest(path):
+    """입력 파일의 SHA-256을 반환하고 없으면 None을 반환한다. 상대 경로는 저장소 루트 기준이다."""
+    try:
+        return hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
     except OSError:
         return None
 
@@ -156,7 +164,8 @@ def render_plan(app_name, env, context, vip_backends, directory):
     out = Path(directory)
     python = sys.executable or 'python3'
     if app_name == 'portal':
-        return ['kubectl', 'kustomize', 'deploy/portal/k8s/overlays/prod'], 'portal.yaml', ['portal.yaml']
+        # Portal은 이미지 tag를 소스 내용으로 정하므로 배포 도구의 렌더를 그대로 쓴다.
+        return [python, 'deploy/portal/scripts/up.py', '--context', context, '--render', 'app'], 'portal.json', ['portal.json']
     if app_name == 'keycloak':
         return ([python, 'deploy/keycloak/scripts/up.py', '--context', context, '--env', env,
                  '--vip-backends', vip_backends, '--render-output', out / 'keycloak.json'], None, ['keycloak.json'])
@@ -392,7 +401,7 @@ def build_record(app_name, app, git, kube, inputs, namespace, now=None, user=Non
         'branch': git(['rev-parse', '--abbrev-ref', 'HEAD']).strip(),
         'contentId': content_id(git, paths),
         'dirtyPaths': dirty_paths(git, paths),
-        'inputs': {str(Path(path).resolve()): file_digest(path) for path in inputs},
+        'inputs': {input_key(path): file_digest(input_key(path)) for path in inputs},
         'workloads': {key: {'templateHash': value['templateHash'], 'images': value['images']}
                       for key, value in workload_snapshot(kube, namespace, selector).items()},
         'appliedAt': now or datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -541,7 +550,7 @@ def main():
     record = sub.add_parser('record', help='배포 직후 배포 기록 ConfigMap 작성')
     record.add_argument('app')
     record.add_argument('--context', required=True)
-    record.add_argument('--namespace', help='env로 namespace를 바꾼 설치에만 지정')
+    record.add_argument('--namespace', help='입력 env의 NAMESPACE보다 우선할 namespace')
     record.add_argument('--input', action='append', default=[], help='배포에 사용한 외부 env·입력 파일. SHA-256만 기록')
     check = sub.add_parser('check', help='현재 checkout과 클러스터 대조(조회 전용)')
     check.add_argument('target', nargs='?', default='all')
@@ -558,8 +567,10 @@ def main():
             if args.app not in catalog['apps']:
                 raise ValueError(f'지원하지 않는 앱: {args.app}')
             app = catalog['apps'][args.app]
-            data = build_record(args.app, app, git, kube, [p for p in args.input if p],
-                                args.namespace or app['runtime']['namespace'])
+            inputs = [p for p in args.input if p]
+            declared = next((value for value in (env_value(path, 'NAMESPACE') for path in inputs) if value), None)
+            data = build_record(args.app, app, git, kube, inputs,
+                                args.namespace or declared or app['runtime']['namespace'])
             kube(['apply', '-f', '-'], data=json.dumps(record_manifest(data)))
             print(f'배포 기록 저장: {data["namespace"]}/deploy-record-{args.app} commit={data["commit"][:12]}'
                   + (' (미커밋 변경 포함)' if data['dirtyPaths'] else ''))

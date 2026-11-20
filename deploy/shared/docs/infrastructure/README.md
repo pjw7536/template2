@@ -15,6 +15,7 @@
 | 사내 Git·registry·APT·PyPI·Helm·artifact·미러 이름 | [저장소·미러](repositories.md) | 소비 앱의 빌드·배포 입력, 설치 절차 |
 | checkout·env·인증서·kubeconfig·데이터·백업 위치·담당자 | [운영 위치·책임](operations.md) | 서비스 배치, 노드, 인증서·복구 절차 |
 | 서버에서 아직 적용·확인해야 하는 작업 | [서버 적용 대기 작업](pending.md) | 각 작업 행의 원본 문서 |
+| 외부 전달용 별칭(서버명·IP·사내 도메인 ↔ 별칭) | [별칭 표](aliases.json) | 서버·노드, 네트워크의 주소. `test_ops_tools.py`가 대조 |
 
 각 값의 원본은 위 표에서 지정한 문서 하나이며 다른 문서에는 원본 링크를 둡니다.
 앱 실행 설정의 원본은 해당 앱의 manifest·env·Helm values이며 이 폴더는 그 입력을 자동 변경하지 않습니다.
@@ -38,6 +39,7 @@
 7. 비밀번호·토큰·개인키·kubeconfig 내용은 기록하지 않습니다. 보관 위치·Secret 이름·발급 절차처럼 운영에 필요한 참조만 적습니다.
 8. 확인되지 않은 담당자·접속 정보는 `미확인`으로 둡니다.
 9. 정보 기록 요청은 실제 서버 적용 요청이 아닙니다. 문서 수정과 서버 적용·접속 검증을 구분합니다.
+10. 서버·VIP·사내 host를 추가·변경하면 [별칭 표](aliases.json)에도 같은 값을 반영합니다. 사내망 밖으로 전달하는 내용에는 별칭만 쓰며 [서버 상태 보고](../operations/04-drift.md#서버-상태-보고)의 출력만 전달합니다. 별칭 표 자체는 전달하지 않습니다.
 
 ### 확인 상태를 기록하는 방법
 
@@ -48,6 +50,24 @@
 | 저장소 선언 | manifest·env·Helm values·chart lock의 배포 입력 | 원본 경로·설정 키·운영 적용 여부 |
 | 안내·예시 | 설치 절차의 기준값·예시 | 현재 안내 문서 경로·사용 조건. 운영 적용 여부는 별도 |
 | 미확인·충돌 | 값이 없거나 근거가 충돌함 | 후보 값·추가로 확인할 대상·질문·확인 주체 |
+
+### 대기 작업을 서버 조회로 확인하는 방법
+
+[서버 적용 대기 작업](pending.md)과 각 원본의 `미확인` 항목은 관리 호스트에서 조회해 확인 상태를 바꿉니다. 조회 명령은 [배포 가이드](../../../README.md)의 것을 쓰고 클러스터를 바꾸지 않습니다.
+
+| 작업·항목의 종류 | 확인 방법([조회]) | 확인되면 |
+| --- | --- | --- |
+| DNS 등록 | `getent hosts <host>` 결과가 목표 주소인지 | 원본의 주소 행을 `서버 조회`로 바꾸고 pending 행 삭제 |
+| 앱 배포·접속 | `make drift-check APP=<app> KUBE_CONTEXT="<context>" DRIFT_JSON=1`의 `resultCode` 0과 `make <app>-smoke KUBE_CONTEXT="<context>"` 통과 | 서비스 원본의 배치·주소를 `서버 조회`로 바꾸고 pending 행 삭제 |
+| 공용 TLS 등록·Traefik 배치 | `make ingress-check KUBE_CONTEXT="<context>"`, smoke의 TLS 결과 | 네트워크 원본 갱신 |
+| 노드·버전·Ready | `kubectl --context "<context>" get nodes -o wide`, `kubectl --context "<context>" version` | 서버 원본의 설치 기준·충돌 항목 갱신 |
+| metrics-server, API server OIDC | `kubectl --context "<context>" top nodes`, [서버 상태 보고](../operations/04-drift.md#서버-상태-보고)의 `1. 클러스터` 절 | pending 행 삭제 |
+| 관리 호스트 준비·빌드 도구 | `make build-tools-check`, `helm version --short`, checkout 경로(`pwd`) | 운영 위치 원본 갱신 |
+| 방화벽, 인증서 신청·발급, 담당자, 백업 체계, 다른 서버의 SSH 정보 | 조회로 확인할 수 없음 | 상태를 바꾸지 않고 `확인 필요`로 보고 |
+
+- 조회 결과가 목표와 다르면 pending 행의 `현재 상태`만 관측값으로 고치고 행은 남깁니다.
+- 조회하지 않은 항목의 상태를 바꾸지 않습니다. 변동하는 상태(Ready·접속 여부)는 값을 쓰지 않고 조회 명령과 결과 요약만 근거에 적습니다.
+- 새로 발견한 서버·주소는 [별칭 표](aliases.json)에도 추가합니다.
 
 ### 새 정보 입력 양식
 

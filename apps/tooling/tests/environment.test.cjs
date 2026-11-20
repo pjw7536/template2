@@ -380,8 +380,8 @@ if(a[0]==='get') {
  else if(a[1]==='groups') console.log(process.env.MOCK_EXISTING==='true'?'portal-members':'');
  else if(a[1]==='clients') console.log(fs.existsSync(process.env.MOCK_STATE)?'client-uuid':'');
  else if(a[1].endsWith('/default-client-scopes')) console.log(process.env.MOCK_SDWT_SCOPE==='1'?'profile\\nsdwt-access-v1':'profile');
- else if(process.env.MOCK_SDWT_MAPPERS==='1'&&a[1].endsWith('/protocol-mappers/models')) console.log('old-sdwt,portal-sdwt-groups\\nclient-sdwt,sdwt-groups');
- else if(a[1].endsWith('/mappers')||a[1].endsWith('/models')) console.log(process.env.MOCK_RETIRED==='1'?'old-grade,grdName\\nold-origin,origincomp\\nold-first,first_name\\nold-last,last_name\\nold-userid,userid':process.env.MOCK_EPID_EXISTING==='1'?'existing-epid,epid-username\\nexisting-sabun,sabun':'existing-sabun,sabun');
+ else if(process.env.MOCK_SDWT_MAPPERS==='1'&&a[1].endsWith('/protocol-mappers/models')) console.log('client-sdwt,sdwt-groups');
+ else if(a[1].endsWith('/mappers')||a[1].endsWith('/models')) console.log(process.env.MOCK_GRADE_EXISTING==='1'?'old-grade,grdName':process.env.MOCK_EPID_EXISTING==='1'?'existing-epid,epid-username\\nexisting-sabun,sabun':'existing-sabun,sabun');
  else console.log('{}');
 }
 if(a[0]==='create'&&a[1]==='clients')fs.writeFileSync(process.env.MOCK_STATE,'exists');
@@ -410,17 +410,17 @@ if(a[0]==='create'&&a[1]==='clients')fs.writeFileSync(process.env.MOCK_STATE,'ex
 }
 
 for (const scope of [false, true]) {
-  test(`Portal groups mapper는 ${scope ? '공통 scope가 있으면 만들지 않고' : '새로 준비한 뒤'} 중복 mapper를 나중에 지운다`, t => {
+  test(`Portal groups mapper는 ${scope ? '공통 scope가 있으면 만들지 않고 중복 mapper를 지운다' : '공통 scope가 없으면 갱신하고 지우지 않는다'}`, t => {
     const mock = mockAdmin(t);
     const result = mock.run('deploy/portal/k8s/jobs/keycloak-client/setup-client.sh', { MOCK_SDWT_MAPPERS: '1', MOCK_SDWT_SCOPE: scope ? '1' : '' });
     assert.equal(result.status, 0, result.stderr);
     const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]) && a[1].includes('/protocol-mappers/'));
     const deletes = writes.filter(a => a[0] === 'delete').map(a => a[1].split('/').pop());
-    assert.deepEqual(deletes.sort(), scope ? ['client-sdwt', 'old-sdwt'] : ['old-sdwt']);
+    assert.deepEqual(deletes, scope ? ['client-sdwt'] : []);
     const groupsWrite = writes.findIndex(a => a[0] !== 'delete' && a.includes('name="sdwt-groups"'));
     assert.equal(groupsWrite === -1, scope);
     const firstDelete = writes.findIndex(a => a[0] === 'delete');
-    assert.ok(writes.slice(firstDelete).every(a => a[0] === 'delete'));
+    assert.ok(firstDelete === -1 || writes.slice(firstDelete).every(a => a[0] === 'delete'));
   });
 }
 
@@ -472,7 +472,7 @@ test('IdP mapper는 Portal client 없이 15개 속성과 EPID username을 설정
 });
 
 test('claim Job은 ConfigMap 원본을 직접 실행하고 IdP만 설정한다', t => {
-  for (const relative of ['deploy/keycloak/k8s/claims/claim-mappers-job.yaml', 'deploy/keycloak/rendered/internal-keycloak-claim-mappers.yaml']) {
+  for (const relative of ['deploy/keycloak/k8s/claims/claim-mappers-job.yaml']) {
     const mock = mockAdmin(t);
     const job = require('js-yaml').loadAll(fs.readFileSync(path.join(root, relative), 'utf8')).find(r => r.kind === 'Job');
     const container = job.spec.template.spec.containers[0];
@@ -617,12 +617,14 @@ test('소속 속성은 본인 수정과 사내 IdP 갱신을 막고 앱에만 �
   }
 });
 
-test('mapper 전달 YAML은 서버 변경 없이 프로필·스크립트와 실패 로그 보존 Job을 적용한다', () => {
+test('mapper 설정 ConfigMap은 원본 프로필·스크립트를 그대로 담고 Job은 재시도 없이 실행한다', () => {
   const yaml = require('js-yaml');
-  const resources = yaml.loadAll(fs.readFileSync(path.join(root, 'deploy/keycloak/rendered/internal-keycloak-claim-mappers.yaml'), 'utf8'));
-  assert.deepEqual(resources.map(r => r.kind), ['ConfigMap', 'Job']);
-  const [config, job] = resources;
-  assert.equal(config.metadata.name, job.spec.template.spec.volumes.find(v => v.name === 'config').configMap.name);
+  const rendered = spawnSync('kubectl', ['kustomize', 'deploy/keycloak/k8s'], { cwd: root, encoding: 'utf8' });
+  assert.equal(rendered.status, 0, rendered.stderr);
+  const job = yaml.loadAll(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/claim-mappers-job.yaml'), 'utf8')).find(r => r.kind === 'Job');
+  const configName = job.spec.template.spec.volumes.find(v => v.name === 'config').configMap.name;
+  const config = yaml.loadAll(rendered.stdout).find(r => r.kind === 'ConfigMap' && r.metadata.name === configName);
+  assert.ok(config, configName);
   const sources = {
     'account-user-profile.json': 'claims/account-user-profile.json',
     'sync-oidc-claim-mappers.sh': 'claims/sync-oidc-claim-mappers.sh',
@@ -639,22 +641,18 @@ test('mapper 전달 YAML은 서버 변경 없이 프로필·스크립트와 실�
   assert.equal(job.spec.template.spec.restartPolicy, 'Never');
 });
 
-test('폐기한 mapper를 삭제하되 Portal userid 출력은 보존한다', t => {
+test('이미 있는 mapper는 이름으로 찾아 갱신하고 다른 mapper를 삭제하지 않는다', t => {
   for (const target of ['idp', 'client']) {
     const mock = mockAdmin(t);
-    const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', { KEYCLOAK_MAPPING_TARGET: target, MOCK_RETIRED: '1' });
+    const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', { KEYCLOAK_MAPPING_TARGET: target, MOCK_GRADE_EXISTING: '1' });
     assert.equal(result.status, 0, result.stderr);
     const gradeUpdate = mock.calls().find(a => a[0] === 'update' && a[1].endsWith('/old-grade'));
     assert.ok(gradeUpdate);
     assert.ok(gradeUpdate.includes('name=grdName'));
     assert.equal(JSON.parse(gradeUpdate.find(a => a.startsWith('config=')).slice(7))['user.attribute'], 'grdName');
-    const deleted = mock.calls().filter(a => a[0] === 'delete');
-    assert.equal(deleted.length, target === 'idp' ? 4 : 3);
-    assert.ok(deleted.every(a => a[1].startsWith(target === 'idp' ? 'identity-provider/' : 'clients/')));
-    assert.deepEqual(deleted.map(a => a[1].split('/').at(-1)).sort(), target === 'idp' ? ['old-first', 'old-last', 'old-origin', 'old-userid'] : ['old-first', 'old-last', 'old-origin']);
+    assert.equal(mock.calls().filter(a => a[0] === 'delete').length, 0);
   }
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
-  assert.ok(!profile.attributes.some(a => a.name === 'origincomp'));
   assert.ok(profile.attributes.some(a => a.name === 'grdName'));
   assert.ok(profile.attributes.some(a => a.name === 'grdname_en'));
 });
@@ -702,7 +700,7 @@ test('기본 개발·종료는 Kubernetes를 사용하며 검사는 실제 클�
   }
 });
 
-test('폐기된 oidc profile 검사는 실제 파일을 읽기 전에 실패한다', () => {
+test('지원하지 않는 profile 검사는 실제 파일을 읽기 전에 실패한다', () => {
   for (const args of [
     ['deploy/shared/scripts/validate_env_profile_keys.sh', 'all', 'oidc'],
     ['deploy/shared/scripts/check-env.sh', 'portal', 'oidc', 'api', '/not-a-real-input'],

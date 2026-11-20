@@ -32,8 +32,14 @@ def run(args, *, data=None, sensitive=False):
 
 def read_credentials(path):
     """두 개의 credential 키만 읽고 셸 치환이나 따옴표 해석을 하지 않는다."""
-    if not path.is_file() or path.stat().st_mode & 0o077:
-        raise ValueError('FTP_CREDENTIAL_FILE은 소유자만 접근 가능한 파일이어야 합니다. chmod 600을 적용하세요.')
+    if not path.is_file():
+        raise ValueError('FTP_CREDENTIAL_FILE에 계정 파일 경로를 지정하세요.')
+    if path.stat().st_mode & 0o077:
+        # Git checkout은 0600을 보존하지 않으므로 도구가 소유자 전용으로 좁힌다.
+        try:
+            path.chmod(0o600)
+        except OSError:
+            raise ValueError('FTP_CREDENTIAL_FILE을 소유자 전용(0600)으로 바꿀 수 없습니다. 파일 소유자를 확인하세요.') from None
     values = {}
     for line in path.read_text().split('\n'):
         if not line.strip() or line.lstrip().startswith('#'):
@@ -135,18 +141,24 @@ def render(context, output, *, env_file=None):
 
 
 def start(context, nodes, credential_file, check_only=False, *, env_file=None):
-    """모든 입력을 검사한 뒤 기존 계정을 보존하면서 원본 스택을 적용한다."""
-    if not context.strip() or not nodes.strip() or not credential_file:
-        raise ValueError('KUBE_CONTEXT, FTP_NODES, FTP_CREDENTIAL_FILE을 모두 명시하세요.')
-    names = nodes.split(',')
-    if any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', name) for name in names) or len(names) != len(set(names)):
-        raise ValueError('FTP_NODES는 공백·중복 없이 쉼표로 구분한 노드 이름 목록이어야 합니다.')
-    credentials = read_credentials(Path(credential_file))
+    """모든 입력을 검사한 뒤 기존 계정을 보존하면서 원본 스택을 적용한다. 노드를 비우면 기존 FTP 노드를 사용한다."""
+    if not context.strip():
+        raise ValueError('KUBE_CONTEXT를 명시하세요.')
+    credentials = read_credentials(Path(credential_file or BASE / 'env/initial-account.env'))
     values = settings(env_file or BASE / 'env/prod.env')
     kube = ['kubectl', '--context', context]
     source = desired_source(kube, values)
     allow_control_plane = values['FTP_ALLOW_CONTROL_PLANE'] == 'true'
     all_nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
+    if not nodes.strip():
+        # 갱신은 이미 FTP 라벨이 있는 노드를 그대로 사용한다. 최초 설치만 대상 노드를 받아야 한다.
+        nodes = ','.join(sorted(node['metadata']['name'] for node in all_nodes
+                                if node['metadata'].get('labels', {}).get(LABEL) == 'true'))
+        if not nodes:
+            raise ValueError('FTP 라벨이 있는 노드가 없습니다. 최초 설치는 FTP_NODES에 대상 노드 이름을 쉼표로 지정하세요.')
+    names = nodes.split(',')
+    if any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', name) for name in names) or len(names) != len(set(names)):
+        raise ValueError('FTP_NODES는 공백·중복 없이 쉼표로 구분한 노드 이름 목록이어야 합니다.')
     check_nodes(all_nodes, names, allow_control_plane=allow_control_plane)
     current = run([*kube, '-n', NAMESPACE, 'get', 'secret', 'ftp-credentials',
                    '--ignore-not-found', '-o', 'json'], sensitive=True)

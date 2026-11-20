@@ -54,9 +54,9 @@ done
 # SDWT 공통 scope(sdwt-access-v1)가 연결되어 있으면 그 scope가 groups를 발급하므로 client mapper를 만들지 않습니다.
 default_scopes="$(kc get "clients/$client_id/default-client-scopes" -r "$KEYCLOAK_TARGET_REALM" --fields name --format csv --noquotes)"
 mappers=(portal-app-roles)
-obsolete=(portal-sdwt-groups)
+duplicates=()
 if grep -Fxq sdwt-access-v1 <<< "${default_scopes//$'\r'/}"; then
-  obsolete+=(sdwt-groups)
+  duplicates+=(sdwt-groups)
 else
   mappers+=(sdwt-groups)
 fi
@@ -91,11 +91,11 @@ for mapper in "${mappers[@]}"; do
   fi
 done
 
-# 새 mapper를 먼저 준비한 뒤 같은 groups claim을 중복 발급하는 mapper를 제거합니다. 중간에 실패해도 groups가 빠지지 않습니다.
+# 공통 scope가 groups를 발급하면 같은 claim을 중복 발급하는 client mapper를 제거합니다.
 mapper_rows="$(kc get "clients/$client_id/protocol-mappers/models" -r "$KEYCLOAK_TARGET_REALM" --fields id,name --format csv --noquotes)"
 while IFS=, read -r candidate_id candidate_name; do
   candidate_name="${candidate_name%$'\r'}"
-  for name in "${obsolete[@]}"; do
+  for name in ${duplicates[@]+"${duplicates[@]}"}; do
     if [[ "$candidate_name" == "$name" ]]; then
       kc delete "clients/$client_id/protocol-mappers/models/$candidate_id" -r "$KEYCLOAK_TARGET_REALM" >/dev/null
     fi

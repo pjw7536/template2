@@ -266,5 +266,49 @@ class DeploymentTest(unittest.TestCase):
             self.assertIn('KUBE_CONTEXT', result.stderr)
 
 
+class FakeAdmin:
+    """등록 여부에 따라 관리 API 응답을 흉내 낸다."""
+
+    def __init__(self, client=False, group=False, users=('alice',)):
+        self.client, self.group, self.users, self.calls = client, group, users, []
+
+    def call(self, method, path, data=None, query=None):
+        self.calls.append((method, path))
+        if (method, path) == ('GET', 'clients'):
+            return [{'id': 'cid'}] if self.client else []
+        if (method, path) == ('POST', 'clients'):
+            self.client = True
+        if (method, path) == ('GET', 'groups'):
+            return [{'id': 'gid', 'name': 'headlamp-admins'}] if self.group else []
+        if (method, path) == ('POST', 'groups'):
+            self.group = True
+        if (method, path) == ('GET', 'users'):
+            return [{'id': 'uid'}] if query['username'] in self.users else []
+        if path == 'clients/cid/client-secret':
+            return {'value': 'generated-secret'}
+        return None
+
+
+class OidcSetupTest(unittest.TestCase):
+    def setUp(self):
+        self.values = manage.settings(manage.APP / 'env/k8s.env')
+
+    def test_registers_missing_client_and_group_and_joins_admins(self):
+        admin = FakeAdmin()
+        self.assertEqual(manage.register_client(admin, self.values, ['alice']), 'generated-secret')
+        self.assertIn(('POST', 'clients'), admin.calls)
+        self.assertIn(('POST', 'groups'), admin.calls)
+        self.assertIn(('PUT', 'users/uid/groups/gid'), admin.calls)
+
+    def test_existing_client_and_group_are_not_modified(self):
+        admin = FakeAdmin(client=True, group=True)
+        manage.register_client(admin, self.values)
+        self.assertFalse(any(method in ('POST', 'PUT', 'DELETE') for method, _ in admin.calls))
+
+    def test_unknown_admin_user_stops(self):
+        with self.assertRaisesRegex(ValueError, 'bob'):
+            manage.register_client(FakeAdmin(client=True, group=True), self.values, ['bob'])
+
+
 if __name__ == '__main__':
     unittest.main()

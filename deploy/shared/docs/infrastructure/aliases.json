@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "nodes": {
+    "N-CP1": {
+      "name": "khplane01w06",
+      "ip": "10.172.40.84",
+      "role": "제어면 1"
+    },
+    "N-CP2": {
+      "name": "khplane01w07",
+      "ip": "10.172.40.86",
+      "role": "제어면 2"
+    },
+    "N-CP3": {
+      "name": "khplane01w08",
+      "ip": "10.172.40.85",
+      "role": "제어면 3"
+    },
+    "N-W1": {
+      "name": "khplane01w09",
+      "ip": "10.172.40.87",
+      "role": "Keycloak·공용 Traefik Worker, APP VIP backend 2"
+    },
+    "N-M1": {
+      "name": "khplanew01",
+      "ip": "10.172.40.117",
+      "role": "관리 호스트, MinIO·Registry Worker, APP VIP backend 1"
+    },
+    "N-W2": {
+      "name": "khinfow01",
+      "ip": "10.172.117.91",
+      "role": "Airflow·Monitoring Worker"
+    }
+  },
+  "addresses": {
+    "VIP-API": {
+      "ip": "10.172.26.148",
+      "role": "Kubernetes API VIP"
+    },
+    "VIP-APP": {
+      "ip": "10.172.26.150",
+      "role": "업무 서비스 APP VIP"
+    },
+    "EXT-DEFECTMAP": {
+      "ip": "10.172.114.185",
+      "role": "SOP Defectmap 업무 API 서버"
+    },
+    "EXT-SPIDER": {
+      "ip": "10.173.129.168",
+      "role": "Defect Spider 업무 서비스 서버"
+    }
+  },
+  "domains": {
+    "ZONE-A": {
+      "value": "etch.samsungds.net",
+      "role": "서비스 DNS 구역. 서비스 주소는 <서비스>.ZONE-A"
+    },
+    "ZONE-OLD": {
+      "value": "etch-sso.samsungds.net",
+      "role": "전환 전 SSO 주소"
+    },
+    "MIRROR-A": {
+      "value": "repository.samsungds.net",
+      "role": "사내 이미지·패키지 미러"
+    },
+    "GIT-A": {
+      "value": "github.samsungds.net",
+      "role": "사내 Git 저장소"
+    },
+    "CORP": {
+      "value": "samsungds.net",
+      "role": "위 항목에 없는 사내 도메인의 공통 접미사"
+    }
+  },
+  "otherSuffixes": [
+    "samsung.net",
+    "samsung.com"
+  ]
+}

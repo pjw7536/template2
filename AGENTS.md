@@ -1,5 +1,7 @@
 # 저장소 공통 지침
 
+사내 관리 호스트의 opencode `ops` agent로 실행 중이면 이 문서의 개발 규칙(구현 전 요청 분류, ExecPlan, 개발용 스킬, 파일 수정 절차)을 적용하지 않는다. [agent 정의](.opencode/agents/ops.md)와 [운영 agent 지침](deploy/AGENTS.md#사내-운영-agent), `.opencode/skills/`의 운영 스킬만 따른다.
+
 ## 우선순위와 작성
 
 - 직접 사용자 지시 > 해당 경로의 AGENTS.md > feature 공개 facade 계약 > 기존 파일 관례 순으로 적용한다. 수정 경로의 하위 지침도 확인한다.
@@ -19,7 +21,7 @@
 | 사내 서버 운영·배포 agent(opencode `ops`) | [운영 agent 지침](deploy/AGENTS.md#사내-운영-agent) |
 
 - 소스는 `apps/<app>`, 서버 정의는 `deploy/<app>`, 개발 PC 설정은 `local/<app>`이 소유한다. local은 공통 정의를 복제하지 않고 deploy를 참조한다.
-- 앱 경로·서버 선택 그룹의 원본은 `deploy/shared/apps.json`이다. 서버 검사·배포는 local·앱 소스 없이 실행 가능해야 한다.
+- 앱 경로·서버 선택 그룹의 원본은 `deploy/shared/apps.json`이다. 서버 정적 검사는 local·앱 소스 없이 실행 가능해야 하고, 이미지 빌드와 배포는 저장소 전체 checkout에서 실행한다.
 - 최상위 관리 폴더는 `apps`, `data`, `deploy`, `docs`, `local`만 허용한다. 도구 필수 숨김 폴더는 예외다.
 - Node package·lockfile·node_modules는 `apps/portal/web`, `apps/tooling`에서 개별 관리한다. 루트 npm workspace를 만들지 않는다.
 - 검사 도구는 `apps/tooling`, 개발용 Compose는 `local`, CI Compose는 `deploy`에 둔다. 실행 진입점은 루트 Makefile이며 중복 정의·호환 Compose를 루트에 만들지 않는다.

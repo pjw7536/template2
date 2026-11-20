@@ -1,13 +1,12 @@
-# FTP 설치
+# FTP 설치 준비와 별도 overlay 배포
 
-[앱 안내](../README.md) · 다음: [접속 확인과 운영](02-operations.md)
+[FTP 가이드](../README.md) · [접속 확인과 운영](02-operations.md)
 
-선택한 Linux 노드에 FTP DaemonSet을 한 번 배포합니다. 각 대상 노드에서는 디스크·포트만 확인하고, 검사·배포는 관리 호스트에서 한 번 실행합니다.
+설치·업데이트 절차는 [FTP 가이드](../README.md)에 있습니다. 이 문서는 배포 전에 확인하는 노드·계정·env 입력의 상세와, 가이드의 배포 명령 대신 쓰는 별도 overlay 배포 방법입니다.
 
-- [노드·계정 준비](#노드계정-준비): 1~4단계
-- [검사와 배포](#검사와-배포): 5단계 기본 배포
-- [별도 overlay 배포](#별도-overlay-배포): 이미지·경로·패치를 직접 관리할 때 5단계 대신 사용
-- [완료 확인](#6-완료-확인)
+- [노드·계정 준비](#노드계정-준비): 대상 노드 선택, 각 노드의 디스크·포트·방화벽, 계정 파일
+- [배포 env와 도구 동작](#배포-env와-도구-동작): env 키, 각 타깃이 하는 일
+- [별도 overlay 배포](#별도-overlay-배포): 이미지·경로·패치를 직접 관리할 때 가이드의 배포 명령 대신 사용
 
 ## 노드·계정 준비
 
@@ -20,25 +19,24 @@
 | FTP 클라이언트 PC | 대상 노드 IP로 접속할 네트워크·FTP 클라이언트 |
 
 kubectl에는 노드 조회·라벨 변경, namespace·Secret·DaemonSet·ConfigMap 적용과 Pod 조회 권한이 필요합니다.
+각 대상 노드에서는 디스크·포트만 확인하고, 검사·배포는 관리 호스트에서 한 번 실행합니다.
 
 ### 2. 클러스터와 대상 노드 선택
 
-**실행 위치:** 관리 호스트의 저장소 루트. 이후 명령은 같은 Bash 세션에서 실행합니다.
+[조회] 관리 호스트의 저장소 루트에서 후보 노드와 이미 FTP 라벨이 붙은 노드를 확인합니다.
 
 ```bash
 kubectl config get-contexts
-read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
-kubectl --context "$KUBE_CONTEXT" get nodes -l etch.io/ftp-enabled=true -o wide
-
-read -r -p 'FTP 노드 이름 (여러 개는 쉼표 구분, 공백 없음): ' FTP_NODES
-export FTP_NODES
+kubectl --context "<context>" get nodes -o wide
+kubectl --context "<context>" get nodes -l etch.io/ftp-enabled=true -o wide
 ```
 
-`FTP_NODES`에는 노드 목록의 `NAME` 값을 `worker-a` 또는 `worker-a,worker-b`처럼 넣습니다. 노드별로 명령을 반복하지 않습니다.
-이미 FTP 라벨이 붙은 노드까지 포함한 **전체 목록**을 입력합니다. 기존 노드를 빼면 검사에서 중단하므로, 노드 제거는 [특정 노드에서 중단](02-operations.md#4-특정-노드에서-중단)을 먼저 수행합니다.
-후보 노드의 이름·IP·용도는 [서버 목록](../../shared/docs/infrastructure/servers.md#서버-목록)에서 확인하고 위 조회 결과와 대조합니다. 서버 목록은 FTP 배포 완료 목록이 아닙니다.
+[사람] 대상 노드를 정해 `FTP_NODES` 값으로 전달합니다.
+
+- `FTP_NODES`에는 노드 목록의 `NAME` 값을 `worker-a` 또는 `worker-a,worker-b`처럼 넣습니다. 노드별로 명령을 반복하지 않습니다.
+- 값을 지정할 때는 이미 FTP 라벨이 붙은 노드까지 포함한 **전체 목록**을 넣습니다. 기존 노드를 빼면 검사에서 중단하므로, 노드 제거는 [특정 노드에서 중단](02-operations.md#4-특정-노드에서-중단)을 먼저 수행합니다.
+- `FTP_NODES`를 비우면 이미 `etch.io/ftp-enabled=true` 라벨이 있는 노드를 그대로 사용합니다. 라벨이 있는 노드가 없는 최초 설치에는 대상 노드를 지정해야 합니다.
+- 후보 노드의 이름·IP·용도는 [서버 목록](../../shared/docs/infrastructure/servers.md#서버-목록)에서 확인하고 위 조회 결과와 대조합니다. 서버 목록은 FTP 배포 완료 목록이 아닙니다.
 
 검사는 Linux·Ready 상태, cordon·차단 taint, IPv4 InternalIP를 확인합니다.
 
@@ -49,11 +47,9 @@ export FTP_NODES
 FTP Pod는 control-plane·master 역할의 `NoSchedule` taint만 허용합니다. 역할 라벨·taint를 제거하지 않으며, 다른 `NoSchedule`·모든 `NoExecute`, cordon·NotReady는 계속 차단합니다.
 [별도 overlay 배포](#별도-overlay-배포)에서는 [control plane toleration 패치](#control-plane을-포함하는-수동-overlay)를 함께 추가합니다.
 
-**기대 결과:** `KUBE_CONTEXT`, `FTP_NODES`가 export되어 있습니다.
-
 ### 3. 각 노드의 저장 폴더와 포트 확인
 
-**실행 위치:** 선택한 **각 노드**에 SSH로 접속해 실행합니다. control plane을 포함했다면 해당 노드도 확인합니다.
+선택한 **각 노드**에 SSH로 접속해 실행합니다. control plane을 포함했다면 해당 노드도 확인합니다.
 
 ```bash
 hostname
@@ -86,78 +82,57 @@ sudo ss -lntp | grep -E ':(6380|8076|8077|8078|8079)[[:space:]]' || true
 
 ### 4. 관리 호스트의 계정 파일 준비
 
-**실행 위치:** 관리 호스트의 저장소 루트, 2단계와 같은 Bash 세션.
+새 설치는 준비된 계정 파일 `deploy/ftp/env/initial-account.env`를 그대로 사용하므로 따로 할 일이 없습니다. `FTP_CREDENTIAL_FILE`을 지정하지 않으면 이 파일을 사용합니다.
+이미 FTP가 운영 중이어서 계정이 다르거나 다른 파일을 쓸 때만 아래 형식으로 준비하고, 배포·검사 명령에 `FTP_CREDENTIAL_FILE=<계정 파일 절대 경로>`를 붙입니다.
 
-새 설치는 준비된 계정 파일을 사용합니다. 이미 FTP가 운영 중이면 아래 경로에 기존 계정 파일의 절대 경로를 지정합니다.
-
-```bash
-export FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/env/initial-account.env"
-chmod 600 "$FTP_CREDENTIAL_FILE"
-```
-
+- 파일에는 `FTP_USER`와 `FTP_PASS`를 각각 한 번만 `KEY=value`로 기록합니다. 값에 `export`나 감싸는 따옴표를 넣지 않습니다. 형식 예제는 [credentials.env.example](../credentials.env.example)입니다.
 - 사용자 이름에는 영문·숫자·밑줄·하이픈만 사용합니다. 비밀번호는 비워 두지 않으며 줄바꿈·역슬래시를 넣지 않습니다.
-- 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다.
-- 새 Bash 세션에서는 같은 경로를 `FTP_CREDENTIAL_FILE`로 다시 export합니다.
+- 파일 권한이 넓으면 도구가 소유자 전용(0600)으로 좁힙니다. 좁힐 수 없으면 오류로 멈추므로 파일 소유자를 확인합니다.
+- 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다. `ftp-up`은 Secret이 없을 때만 이 파일로 만듭니다.
+- 기존 Secret이 계정 파일과 다르면 검사가 변경 전에 중단합니다. 기존 계정 파일을 사용하거나 [계정 변경](02-operations.md#5-계정-변경)을 따릅니다.
 
-**완료 기준:** `KUBE_CONTEXT`, `FTP_NODES`, `FTP_CREDENTIAL_FILE`이 export되어 있고 각 노드의 디스크·포트·방화벽 요청을 확인했습니다. 기본 배포는 [5단계](#5-검사-후-배포), 별도 overlay 운영은 [별도 overlay 배포](#별도-overlay-배포)로 진행합니다.
+## 배포 env와 도구 동작
 
-## 검사와 배포
+`ftp-check`·`ftp-up`은 [env/prod.env](../env/prod.env)를 읽어 아래 키를 적용합니다. 다른 키나 중복 키가 있으면 검사가 멈춥니다.
 
-### 5. 검사 후 배포
+| 키 | 의미와 형식 |
+| --- | --- |
+| `FTP_IMAGE` | 사내 Docker Hub 미러의 이미지 주소(원본 digest 고정). 고정 tag 또는 sha256 digest가 있어야 하고 `latest`와 `http://`·`https://` 접두는 쓸 수 없음. 다른 경로·digest가 필요하면 실제 주소로 바꾸고, 사내 미러의 해당 digest 제공 여부·접근·CA는 Worker에서 확인 |
+| `IMAGE_PULL_SECRET` | registry 인증이 필요할 때 `etch-ftp` namespace에 미리 만든 pull Secret 이름. 빈 값이면 추가하지 않음 |
+| `FTP_ALLOW_CONTROL_PLANE` | `true` 또는 `false`. [Control plane 선택](#control-plane도-대상에-추가하기) 참조 |
 
-**실행 위치:** 관리 호스트의 저장소 루트, 1~4단계의 세 변수를 export한 Bash 세션.
+별도 env 파일은 각 명령에 `FTP_ENV=/절대/경로/ftp.env`를 붙여 지정합니다. 이미지 설정 env와 FTP 로그인 계정 파일은 별개입니다.
 
-**입력:** 실행기는 [env/prod.env](../env/prod.env)를 읽어 `FTP_IMAGE`(사내 Docker Hub 미러, 원본 digest 고정), `IMAGE_PULL_SECRET`, `FTP_ALLOW_CONTROL_PLANE`을 적용합니다.
+각 타깃이 하는 일입니다. 실행 순서와 명령은 [가이드](../README.md#a-최초-설치)에 있습니다.
 
-- 다른 경로·digest가 필요하면 env의 `FTP_IMAGE`를 실제 주소로 바꿉니다. `http://`, `https://`는 붙이지 않습니다. 사내 미러의 해당 digest 제공 여부·접근·CA는 Worker에서 확인합니다.
-- registry 인증이 필요하면 `etch-ftp` namespace에 pull Secret을 미리 만들고 `IMAGE_PULL_SECRET`에 이름을 입력합니다. 빈 값이면 추가하지 않습니다.
-- 별도 env는 `export FTP_ENV=/절대/경로/ftp.env`로 지정합니다. 이미지 설정 env와 FTP 로그인 계정 파일은 별개입니다.
-
-```bash
-make server-check APP=ftp PROFILE=prod
-make ftp-check
-
-# 위 검사가 통과하고 출력된 context·노드·IP가 맞으면 실행합니다.
-make ftp-up
-```
-
-| 명령 | 영향 | 처리 내용 |
+| 타깃 | 영향 | 처리 내용 |
 | --- | --- | --- |
-| `server-check` | 조회 없음 | `k8s/start.sh` 문법과 Kustomize 원본 렌더 |
+| `server-check` | 조회 없음 | `k8s/start.sh` 문법과 Kustomize 원본 렌더. `make server-check APP=ftp PROFILE=prod`로 실행 |
 | `ftp-check` | 클러스터 조회만 | 이미지 설정·선택 pull Secret 존재, 계정 형식·권한, 원본 렌더, 대상 노드 상태, 기존 Secret 일치 여부 |
-| `ftp-up` | 적용 | 같은 검사 → 없는 namespace 생성 → 없는 Secret 생성 → 노드 라벨 → 스택 적용 → 최대 5분 기동 대기 → Pod 위치 출력 |
+| `ftp-up` | 적용 | 같은 검사 → 없는 namespace 생성 → 없는 Secret 생성 → 노드 라벨 → 스택 적용 → 최대 5분 기동 대기 → Pod 위치 출력. `FTP 배포 완료`로 끝남 |
+| `ftp-smoke` | 클러스터 조회와 연결 시험 | 관리 호스트에서 FTP Pod가 실행 중인 각 노드의 6380 연결. 전송 요청이 있을 때만 열리는 passive 포트는 보지 않음 |
 
-**기대 결과:** `ftp-up`이 대상 노드별 Pod 위치를 출력하고 `FTP 배포 완료`로 끝납니다.
-
-**실패 확인:**
-
-- 기존 Secret이 계정 파일과 다르면 변경 전에 중단합니다. 기존 계정 파일을 사용하거나 [계정 변경](02-operations.md#5-계정-변경)을 따릅니다.
-- 배포 중 실패하면 이미 적용된 리소스는 남습니다. 원인을 해결하고 같은 입력으로 재실행합니다. 재실행은 파일 데이터를 삭제하지 않습니다.
 - 검사 통과는 이미지 pull·원격 디스크·방화벽·실제 FTP 인증 성공을 보장하지 않습니다. [문제 해결](02-operations.md#6-문제-해결)을 확인합니다.
-
-`kubectl apply -k deploy/ftp/k8s`를 직접 실행하면 env가 적용되지 않아 공개 이미지를 사용하고 control plane toleration도 추가되지 않습니다. 직접 적용이 필요하면 아래 별도 overlay 배포를 사용합니다.
-
-**다음 단계:** [6. 완료 확인](#6-완료-확인)
+- 배포 중 실패하면 이미 적용된 리소스는 남습니다. 원인을 해결하고 같은 입력으로 재실행합니다. 재실행은 파일 데이터를 삭제하지 않습니다.
+- `kubectl apply -k deploy/ftp/k8s`를 직접 실행하면 env가 적용되지 않아 공개 이미지를 사용하고 control plane toleration도 추가되지 않습니다. 직접 적용이 필요하면 아래 별도 overlay 배포를 사용합니다.
 
 ## 별도 overlay 배포
 
-이미지·저장 경로·추가 패치를 Git 밖 overlay로 관리할 때 [5단계](#5-검사-후-배포) 대신 사용합니다. 두 배포 방식을 함께 실행하지 않으며, overlay 운영 중에는 `make ftp-up`을 사용하지 않습니다.
-env와 overlay는 자동으로 합쳐지지 않습니다. overlay의 이미지·pull Secret·toleration은 아래 입력으로 직접 지정합니다.
+이미지·저장 경로·추가 패치를 Git 밖 overlay로 관리할 때 가이드의 배포 명령 대신 사용합니다. 두 배포 방식을 함께 실행하지 않으며, overlay 운영 중에는 `make ftp-up`을 사용하지 않습니다.
+env와 overlay는 자동으로 합쳐지지 않습니다. overlay의 이미지·pull Secret·toleration은 아래 입력으로 직접 지정합니다. overlay 작성 → 검사와 렌더 확인 → 적용 순서로 진행합니다.
 
-**준비물:** 1~4단계 완료, 승인된 사내 registry에서 **실제로 확인한** `fauria/vsftpd` 이미지 경로와 digest. 원본 digest를 그대로 쓰려면 사내 registry에서도 같은 digest로 조회되는지 확인합니다.
+**준비물:** [노드·계정 준비](#노드계정-준비) 완료, 승인된 사내 registry에서 **실제로 확인한** `fauria/vsftpd` 이미지 경로와 digest. 원본 digest를 그대로 쓰려면 사내 registry에서도 같은 digest로 조회되는지 확인합니다.
 
 기본 경로가 다른 서버는 같은 목적의 경로를 준비하거나, 별도 overlay에서 hostPath와 노드 선택 라벨·DaemonSet 이름을 함께 변경해 서로 겹치지 않는 노드 그룹으로 배포합니다.
 
-### 5-1. Git 밖에 overlay 작성
+### Git 밖에 overlay 작성
 
-**실행 위치:** 관리 호스트의 저장소 루트, 1~4단계와 같은 Bash 세션.
-**입력:** `FTP_IMAGE_REPOSITORY`는 태그·digest 없는 registry/이미지 경로, `FTP_IMAGE_DIGEST`는 `sha256:...`, `FTP_OVERLAY_DIR`는 Git 밖의 **새 디렉터리 절대 경로**입니다. 기존 overlay가 있으면 이 단계를 반복하지 않고 저장된 경로를 export합니다.
+관리 호스트의 저장소 루트에서 실행합니다. `FTP_IMAGE_REPOSITORY`는 태그·digest 없는 registry/이미지 경로, `FTP_IMAGE_DIGEST`는 `sha256:...`, `FTP_OVERLAY_DIR`는 Git 밖의 **새 디렉터리 절대 경로**입니다. 기존 overlay가 있으면 이 단계를 반복하지 않고 저장된 경로를 사용합니다.
 
 ```bash
-read -r -p '사내 FTP 이미지 경로 (태그·digest 제외): ' FTP_IMAGE_REPOSITORY
-read -r -p '사내에서 확인한 이미지 digest (sha256:...): ' FTP_IMAGE_DIGEST
-read -r -p '새 FTP overlay 디렉터리 절대 경로: ' FTP_OVERLAY_DIR
-export FTP_OVERLAY_DIR
+FTP_IMAGE_REPOSITORY="<사내 FTP 이미지 경로(태그·digest 제외)>"
+FTP_IMAGE_DIGEST="<사내에서 확인한 이미지 digest(sha256:...)>"
+FTP_OVERLAY_DIR="<새 FTP overlay 디렉터리 절대 경로>"
 FTP_BASE_DIR="$(pwd)/deploy/ftp/k8s"
 (
   set -euo pipefail
@@ -214,54 +189,50 @@ EOF
           effect: NoSchedule
 ```
 
-### 5-2. 검사와 렌더 확인
+### 검사와 렌더 확인
+
+[검사] 관리 호스트의 저장소 루트에서 실행합니다. 다른 계정 파일·env를 쓰면 `ftp-check`에 `FTP_CREDENTIAL_FILE`·`FTP_ENV`를 함께 붙입니다.
 
 ```bash
 make server-check APP=ftp PROFILE=prod
-make ftp-check
-kubectl kustomize "$FTP_OVERLAY_DIR"
+make ftp-check KUBE_CONTEXT="<context>" FTP_NODES=<노드1,노드2>
+kubectl kustomize "<overlay 디렉터리 절대 경로>"
 ```
 
 **기대 결과:** 모든 명령이 성공합니다. `ftp-check`는 기존 계정 일치와 전체 대상 노드를 검사하며, 출력하는 `FTP 이미지`는 env 값이므로 overlay 이미지는 렌더 결과로 확인합니다.
 렌더 결과의 이미지가 입력한 사내 주소·digest이고 노드 선택 라벨·포트·저장 경로가 원본과 같은지 확인합니다. Namespace와 FTP 계정 Secret은 렌더에 포함되지 않습니다.
 
-### 5-3. 선택한 노드 전체에 한 번 적용
+### 선택한 노드 전체에 한 번 적용
+
+[변경] 사람이 검증한 overlay 경로를 전달했을 때 관리 호스트의 저장소 루트에서 실행합니다. `FTP_NODES`에는 FTP 대상 노드 전체 목록, `FTP_OVERLAY_DIR`에는 검증한 overlay 경로, `FTP_CREDENTIAL_FILE`에는 사용하는 계정 파일을 넣습니다.
 
 ```bash
 (
   set -euo pipefail
-  : "${KUBE_CONTEXT:?context를 지정하세요.}"
-  : "${FTP_NODES:?FTP 대상 노드 전체 목록을 지정하세요.}"
-  : "${FTP_CREDENTIAL_FILE:?계정 파일을 지정하세요.}"
-  : "${FTP_OVERLAY_DIR:?검증한 overlay 경로를 지정하세요.}"
-  make ftp-check
+  FTP_NODES="<노드1,노드2>"
+  FTP_OVERLAY_DIR="<검증한 overlay 디렉터리 절대 경로>"
+  FTP_CREDENTIAL_FILE="$PWD/deploy/ftp/env/initial-account.env"
+  make ftp-check KUBE_CONTEXT="<context>" FTP_NODES="$FTP_NODES" FTP_CREDENTIAL_FILE="$FTP_CREDENTIAL_FILE"
   kubectl kustomize "$FTP_OVERLAY_DIR" >/dev/null
 
-  ftp_namespace="$(kubectl --context "$KUBE_CONTEXT" get namespace etch-ftp --ignore-not-found -o name)"
+  ftp_namespace="$(kubectl --context "<context>" get namespace etch-ftp --ignore-not-found -o name)"
   if [[ -z "$ftp_namespace" ]]; then
-    kubectl --context "$KUBE_CONTEXT" create namespace etch-ftp
+    kubectl --context "<context>" create namespace etch-ftp
   fi
-  ftp_secret="$(kubectl --context "$KUBE_CONTEXT" -n etch-ftp get secret ftp-credentials --ignore-not-found -o name)"
+  ftp_secret="$(kubectl --context "<context>" -n etch-ftp get secret ftp-credentials --ignore-not-found -o name)"
   if [[ -z "$ftp_secret" ]]; then
-    kubectl --context "$KUBE_CONTEXT" -n etch-ftp create secret generic ftp-credentials \
+    kubectl --context "<context>" -n etch-ftp create secret generic ftp-credentials \
       --from-env-file="$FTP_CREDENTIAL_FILE"
   fi
 
   IFS=',' read -r -a ftp_target_nodes <<< "$FTP_NODES"
-  kubectl --context "$KUBE_CONTEXT" label node "${ftp_target_nodes[@]}" etch.io/ftp-enabled=true --overwrite
-  kubectl --context "$KUBE_CONTEXT" apply -k "$FTP_OVERLAY_DIR"
-  kubectl --context "$KUBE_CONTEXT" -n etch-ftp rollout status daemonset/ftp --timeout=300s
-  kubectl --context "$KUBE_CONTEXT" -n etch-ftp get pods -l app=ftp -o wide
+  kubectl --context "<context>" label node "${ftp_target_nodes[@]}" etch.io/ftp-enabled=true --overwrite
+  kubectl --context "<context>" apply -k "$FTP_OVERLAY_DIR"
+  kubectl --context "<context>" -n etch-ftp rollout status daemonset/ftp --timeout=300s
+  kubectl --context "<context>" -n etch-ftp get pods -l app=ftp -o wide
 )
 ```
 
 **기대 결과:** 각 대상 노드에 Pod가 하나씩 Ready이고 실제 이미지가 사내 주소입니다. 기존 Secret이 계정 파일과 다르면 `ftp-check`에서 중단하며 기존 계정을 덮어쓰지 않습니다.
-재배포·노드 추가도 같은 overlay로 5-2~5-3을 반복합니다. 사내 이미지 주소·digest는 [저장소 원본](../../shared/docs/infrastructure/repositories.md#서버가-받는-이미지)에 반영합니다.
-
-## 6. 완료 확인
-
-[접속 확인과 운영](02-operations.md)의 1~2단계로 각 노드의 Pod `NODE`, 실제 접속 IP, 업로드·다운로드와 호스트 파일 위치를 확인하면 설치가 완료됩니다.
-다른 노드의 저장 폴더에 테스트 파일이 생기지 않는 것도 확인합니다. Pod Ready·렌더 검사만으로 실제 전송 성공을 대신하지 않습니다.
-현재 구성은 IPv4 직접 접속과 passive 모드용이며 TLS나 NAT 주소를 자동 설정하지 않습니다.
-
-검증 후 [FTP 서비스 기록](../../shared/docs/infrastructure/services.md#ftp-노드별-파일-수신)에 대상 노드·접속 주소·검증 결과를, [FTP 네트워크 기록](../../shared/docs/infrastructure/network.md#ftp-직접-접속)에 실제 방화벽 확인 결과를 갱신합니다.
+재배포·노드 추가도 같은 overlay로 [검사와 렌더 확인](#검사와-렌더-확인)과 이 단계를 반복합니다. 사내 이미지 주소·digest는 [저장소 원본](../../shared/docs/infrastructure/repositories.md#서버가-받는-이미지)에 반영합니다.
+적용 후 [접속 확인과 운영](02-operations.md)의 1~2단계로 Pod 위치와 업로드·다운로드를 확인합니다.

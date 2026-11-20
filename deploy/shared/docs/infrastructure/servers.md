@@ -45,7 +45,7 @@ Portal 테스트와 운영은 서로 다른 서버에서 Docker 기반으로 실
 | CP1 아키텍처 | `x86_64` / amd64 | CP1 `uname -m` |
 | kubeadm·kubelet | `v1.36.0` | CP1 버전 명령과 노드 조회 |
 | containerd | `2.2.1` | CP1 버전 명령과 노드 조회 |
-| Airflow 이미지 빌드 도구 | 현재: CP1에서 nerdctl·BuildKit으로 빌드 수행(사용자 확인). 목표: 빌드 host를 `khinfow01`로 이전(사용자 확정) | CP1 설치 버전·실제 소켓·빌드 namespace는 서버 조회 필요. `khinfow01` 설치는 미확인. 설정 기준은 [이미지 준비](../../../airflow/docs/02-artifacts.md#containerd-빌드-도구-준비) 참조 |
+| 이미지 빌드 도구 | 사용자 확정: 관리 호스트의 저장소 전체 checkout에서 nerdctl·BuildKit으로 Airflow·Portal 이미지를 빌드해 사내 이미지 저장소로 push. 설치는 `make build-tools-install` | 설치 여부·실제 소켓·빌드 namespace는 서버 조회 필요. 설정 기준은 [빌드 도구 준비](../../../airflow/docs/02-artifacts.md#containerd-빌드-도구-준비) 참조 |
 | CP1 커널 | `5.15.0-60-generic` | 노드 조회. 새 Worker 커널의 고정 설치값은 아님 |
 
 [Worker 설치 절차](../kubernetes/worker.md#2-빈-서버에-프로그램-설치설정--새-worker)는 새 Ubuntu 22.04 amd64 서버에

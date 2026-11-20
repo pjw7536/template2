@@ -9,8 +9,8 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
 | 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
-| 사내 ops 작업 루트 | 사람이 준비한 별도 sparse checkout | 저장소 선언: [ops 전용 checkout](../operations/01-checkout.md#ops-전용-checkout). 실제 서버 경로·준비 여부 미확인 |
-| 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env 검사 예시](../operations/02-deploy.md#4-실제-envtlsvip-준비). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
+| 사내 ops 작업 루트·이미지 빌드 위치 | 위 관리 호스트 저장소와 같은 checkout | 사용자 확정: 전체 저장소를 그대로 사용. [운영 agent 작업 루트](../operations/01-checkout.md#운영-agent-작업-루트). 실제 서버 경로·빌드 도구 설치 여부 미확인 |
+| 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env를 쓰는 경우](../operations/02-deploy.md#외부-env를-쓰는-경우). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
 | kubeconfig | 관리 호스트 배포 계정의 `$HOME/.kube/config`(CP1의 `/etc/kubernetes/admin.conf`를 복사, 권한 0600). Git에 넣지 않음 | 사용자 확정: 관리 호스트에서 admin kubeconfig 사용. 실제 파일 위치·계정은 서버 확인 필요 |
 | 서버 기본 Kubernetes context | `kubernetes-admin@kubernetes` | 사용자 확인. 배포 명령에는 `KUBE_CONTEXT`로 명시하며 kubectl 현재 context에 의존하지 않음. 실제 배포 계정의 kubeconfig 등록 상태는 서버에서 확인 필요 |
@@ -64,7 +64,7 @@ df -hT /appdata
 7. env·overlay를 새 경로로 맞춘 뒤 관련 `server-check`와 렌더 검사를 수행합니다. 재기동 후 Pod 노드·실제 마운트·PVC Bound, 기존 DB·파일·계정·대시보드·로그를 확인하고 업로드·다운로드·업무 동작을 검사한 후 쓰기를 재개합니다.
 8. 검증이 실패하면 쓰기를 중지한 상태에서 보관한 env·manifest·원본 PV/PVC 연결로 복귀합니다. 새 경로에서 쓰기를 재개한 뒤에는 변경분 정합성을 확인한 후 롤백합니다. 기존 데이터 정리는 정상 운영·복구 검증과 보존 기간 확인 후 별도로 수행합니다.
 
-앱별 절차: [MinIO 저장소](../../../minio/docs/01-install.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/docs/04-operations.md),
+앱별 절차: [MinIO 저장소](../../../minio/docs/01-configuration.md#저장소-자동-준비), [Airflow 백업·이전](../../../airflow/docs/04-operations.md),
 [Monitoring 운영](../../../monitoring/docs/02-operations.md#갱신운영), [FTP 운영](../../../ftp/docs/02-operations.md).
 
 ### 3. 다음 단계

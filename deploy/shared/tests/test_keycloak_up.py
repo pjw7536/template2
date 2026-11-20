@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test_server_up import controller, load, worker
+from test_airflow_server import controller, load, worker
 
 keycloak = load('keycloak_up', 'deploy/keycloak/scripts/up.py')
 REAL_RUN = keycloak.run
@@ -57,7 +57,12 @@ class KeycloakTests(unittest.TestCase):
                             'name': 'etch-sso', 'labels': {'app.kubernetes.io/part-of': 'etch-sso'},
                             'annotations': {'source.test/policy': 'configured'}}},
                        controller(), {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress',
-                                      'metadata': {'name': 'keycloak'}, 'spec': {'rules': [{'host': 'sso.test'}]}}]
+                                      'metadata': {'name': 'keycloak'}, 'spec': {'rules': [{'host': 'sso.test'}]}},
+                       {'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': 'keycloak-postgres-data'},
+                        'spec': {'local': {'path': '/appdata/keycloak-postgres'}, 'nodeAffinity': {'required': {
+                            'nodeSelectorTerms': [{'matchExpressions': [{'key': 'kubernetes.io/hostname', 'values': ['worker']}]}]}}}},
+                       {'apiVersion': 'apps/v1', 'kind': 'StatefulSet', 'metadata': {'name': 'keycloak-postgres'},
+                        'spec': {'template': {'spec': {'containers': [{'name': 'postgres', 'image': 'mirror/postgres:16'}]}}}}]
         self.nodes = [worker('worker', '192.0.2.10'), worker('second-worker', '192.0.2.20')]
         self.addCleanup(patch.stopall)
         patch.object(keycloak, 'read_settings', return_value=self.settings).start()
@@ -77,6 +82,8 @@ class KeycloakTests(unittest.TestCase):
                 return 'public-key' if self.public_matches else 'wrong-key'
             return ''
         if 'get' in args:
+            if 'job' in args:
+                return json.dumps({'status': {'succeeded': 1}})
             if 'secret' in args:
                 secret = self.secrets.get(args[args.index('secret') + 1])
                 return json.dumps(secret) if secret else ''
@@ -92,6 +99,8 @@ class KeycloakTests(unittest.TestCase):
                 return json.dumps({'items': self.nodes})
             if 'pods' in args:
                 return json.dumps({'items': self.pods})
+        if 'create' in args and '-o' in args:
+            return json.dumps({'metadata': {'name': 'keycloak-storage-prepare-test'}})
         return ''
 
     def start(self, **kwargs):
@@ -121,7 +130,11 @@ class KeycloakTests(unittest.TestCase):
     def test_fresh_install_creates_secrets_before_stack_and_never_deletes(self):
         self.start()
         writes = self.mutations()
-        self.assertEqual([json.loads(kw['data'])['kind'] for _, kw in writes], ['Namespace', 'Secret', 'Secret', 'List'])
+        self.assertEqual([json.loads(kw['data'])['kind'] for _, kw in writes], ['Namespace', 'Secret', 'Secret', 'Job', 'Job', 'List'])
+        job = json.loads(writes[4][1]['data'])['spec']['template']['spec']
+        self.assertEqual(job['nodeSelector'], {'kubernetes.io/hostname': 'worker'})
+        self.assertEqual(job['containers'][0]['image'], 'mirror/postgres:16')
+        self.assertIn("prepare '/host/0/keycloak-postgres' 0 0 0700", job['containers'][0]['command'][2])
         self.assertIn('create', writes[0][0])
         self.assertEqual(json.loads(writes[0][1]['data']), self.source[0])
         self.assertFalse(any(item['kind'] == 'Namespace' for item in json.loads(writes[-1][1]['data'])['items']))
@@ -251,7 +264,7 @@ class KeycloakTests(unittest.TestCase):
             self.start()
         self.assertEqual(self.mutations(), [])
 
-    def test_legacy_app_tls_is_no_longer_read_or_overwritten(self):
+    def test_app_namespace_tls_secret_is_never_read_or_overwritten(self):
         self.existing()
         self.secrets['keycloak-tls']['data']['tls.crt'] = 'ZGlmZmVyZW50'
         self.start()
@@ -305,7 +318,7 @@ class InputTests(unittest.TestCase):
     def test_keycloak_cli_loads_without_airflow_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/runtime.py',
+            for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/runtime.py', 'deploy/shared/scripts/host_dirs.py',
                              'deploy/shared/ingress/routing.py', 'deploy/shared/ingress/tls.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -313,7 +326,6 @@ class InputTests(unittest.TestCase):
             result = subprocess.run(['python3', root / 'deploy/keycloak/scripts/up.py', '--help'], text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / 'deploy/airflow').exists())
-            self.assertFalse((root / 'deploy/shared/scripts/server-up.py').exists())
 
     def test_reads_credentials_only_from_selected_env(self):
         with tempfile.TemporaryDirectory() as directory:

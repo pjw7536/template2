@@ -14,6 +14,7 @@ APP ?= keycloak
 PROFILE ?= prod
 MINIO_ENV ?= $(CURDIR)/deploy/minio/env/prod.env
 REGISTRY_ENV ?= $(CURDIR)/deploy/registry/env/k8s.env
+REGISTRY_PUSH_ENV ?= $(CURDIR)/deploy/registry/env/push-initial.env
 COMPONENT ?= server
 ENV_APP ?= all
 ENV_PROFILE ?= all
@@ -23,9 +24,11 @@ KEYCLOAK_CERTS ?=
 AIRFLOW_ENV ?= $(CURDIR)/deploy/airflow/env/k8s.env
 AIRFLOW_TLS_SOURCE ?=
 VIP_BACKENDS ?=
+# 관리 API 도구에 Keycloak env의 관리자 접속 정보를 환경변수로 넘깁니다. KEYCLOAK_ADMIN_URL·USERNAME·PASSWORD 중 하나라도 직접 지정하면 채우지 않습니다.
+KEYCLOAK_ADMIN = python3 deploy/keycloak/scripts/admin_env.py --env "$(KEYCLOAK_ENV)" --
 
 .PHONY: dev down env-check env-profile-key-check prod-profile-env-check \
- k8s-tools k8s-render k8s-render-local k8s-render-server k8s-export k8s-env k8s-up k8s-down k8s-ui server-check server-up \
+ k8s-tools k8s-render k8s-render-local k8s-render-server k8s-env k8s-up k8s-down k8s-ui server-check \
  test-api check-api makemigrations-check keycloak-check keycloak-up airflow-check airflow-up
 
 # 기본 개발 환경은 한 PC의 전체 Kubernetes 앱입니다.
@@ -52,14 +55,14 @@ register-reference-users:
 .PHONY: keycloak-org-sync keycloak-org-test
 # 소속 그룹(/org) 트리에 맞춰 소속별 역할(client org)·라인/팀 묶음·토큰 scope를 반영합니다. 기본은 dry-run입니다.
 keycloak-org-sync:
-	python3 deploy/keycloak/scripts/org_sync.py $(if $(filter 1,$(KEYCLOAK_ORG_APPLY)),--apply,)
+	$(KEYCLOAK_ADMIN) python3 deploy/keycloak/scripts/org_sync.py $(if $(filter 1,$(KEYCLOAK_ORG_APPLY)),--apply,)
 keycloak-org-test:
 	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_org.py'
 
 .PHONY: keycloak-access-apply keycloak-access-test
 # 앱 역할 카탈로그(deploy/keycloak/access/catalog.json)를 Keycloak에 반영합니다. 기본은 dry-run입니다.
 keycloak-access-apply:
-	python3 deploy/keycloak/scripts/access_apply.py $(if $(filter 1,$(KEYCLOAK_ACCESS_APPLY)),--apply,)
+	$(KEYCLOAK_ADMIN) python3 deploy/keycloak/scripts/access_apply.py $(if $(filter 1,$(KEYCLOAK_ACCESS_APPLY)),--apply,)
 keycloak-access-test:
 	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_access.py'
 
@@ -80,7 +83,7 @@ iam-workload-dev:
 
 .PHONY: keycloak-sdwt-init keycloak-sdwt-test
 keycloak-sdwt-init:
-	bash ./deploy/keycloak/scripts/05-setup-sdwt.sh
+	$(KEYCLOAK_ADMIN) bash ./deploy/keycloak/scripts/05-setup-sdwt.sh
 
 keycloak-sdwt-test:
 	python3 -m unittest discover -s apps/tooling/tests -p 'test_keycloak_sdwt.py'
@@ -97,6 +100,15 @@ keycloak-idp-mappers-setup:
 	bash deploy/keycloak/scripts/03-sync-idp-mappers.sh --context "$(KUBE_CONTEXT)"
 keycloak-portal-client-setup:
 	bash deploy/keycloak/scripts/04-setup-portal-client.sh --context "$(KUBE_CONTEXT)" --portal-env "$(if $(KEYCLOAK_PORTAL_ENV),$(KEYCLOAK_PORTAL_ENV),$(PROD_API_ENV_FILE))"
+
+# realm → 사내 IdP → 사용자 프로필 → IdP mapper를 순서대로 실행합니다. 각 단계는 다시 실행해도 같은 결과입니다.
+.PHONY: keycloak-setup
+keycloak-setup:
+	bash deploy/keycloak/scripts/00-create-realm.sh --context "$(KUBE_CONTEXT)"
+	python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)"
+	bash deploy/keycloak/scripts/01-create-idp.sh --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)"
+	bash deploy/keycloak/scripts/02-register-user-profile.sh --context "$(KUBE_CONTEXT)"
+	bash deploy/keycloak/scripts/03-sync-idp-mappers.sh --context "$(KUBE_CONTEXT)"
 
 .PHONY: keycloak-oidc-check keycloak-oidc-setup
 keycloak-oidc-check:
@@ -132,10 +144,6 @@ k8s-render-server:
 	kubectl kustomize deploy/portal/k8s/jobs/keycloak-client >/dev/null
 	kubectl kustomize deploy/portal/k8s/overlays/prod >/dev/null
 	kubectl kustomize deploy/portal/k8s/overlays/prod/migrate >/dev/null
-
-# CP1 전달용 Keycloak 스택과 별도 claim 등록 Job 파일을 생성합니다.
-k8s-export:
-	bash ./deploy/keycloak/scripts/render.sh
 
 # 앱·작업에 필요한 입력만 검사하고 Secret에 등록합니다.
 k8s-env:
@@ -189,20 +197,84 @@ server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
 
 # 준비 검사는 앱 하나의 실제 입력을 검사하고 반입·현장 확인 항목을 보고합니다.
-.PHONY: ops-preflight portal-migrate portal-precheck portal-postcheck
+.PHONY: ops-preflight
 ops-preflight: export PROD_API_ENV_FILE := $(PROD_API_ENV_FILE)
 ops-preflight: export PROD_WEB_ENV_FILE := $(PROD_WEB_ENV_FILE)
 ops-preflight:
 	@python3 deploy/shared/scripts/ops_preflight.py
 
-portal-migrate:
-	@bash deploy/portal/scripts/migration-job.sh migrate
+# Portal은 입력 검사·Secret·migration·앱 적용·Traefik 연결을 한 타깃으로 수행합니다.
+.PHONY: portal-check portal-up
+portal-check:
+	python3 deploy/portal/scripts/up.py --context "$(KUBE_CONTEXT)" --api-env "$(PROD_API_ENV_FILE)" --web-env "$(PROD_WEB_ENV_FILE)" --check-only
 
-portal-precheck:
-	@bash deploy/portal/scripts/migration-job.sh pre-migration
+portal-up:
+	python3 deploy/portal/scripts/up.py --context "$(KUBE_CONTEXT)" --api-env "$(PROD_API_ENV_FILE)" --web-env "$(PROD_WEB_ENV_FILE)" $(if $(filter 1,$(PORTAL_MIGRATE)),--migrate) $(if $(filter 1,$(PORTAL_RETRY_MIGRATE)),--retry-failed)
+	$(call deploy_record,portal,$(PROD_API_ENV_FILE) $(PROD_WEB_ENV_FILE))
 
-portal-postcheck:
-	@bash deploy/portal/scripts/migration-job.sh post-migration
+# 이미지 빌드 도구(nerdctl·BuildKit)를 확인·설치합니다. 설치는 비밀번호 없는 sudo가 필요하며 containerd를 재시작하지 않습니다.
+.PHONY: build-tools-check build-tools-install
+build-tools-check:
+	@bash deploy/shared/scripts/build-tools.sh check
+build-tools-install:
+	@bash deploy/shared/scripts/build-tools.sh install
+
+# 사내 이미지 저장소에 같은 tag가 없을 때만 빌드해 push합니다. tag는 소스 내용으로 자동으로 정해집니다.
+AIRFLOW_BUILD_ENV ?= $(CURDIR)/deploy/airflow/env/build.env
+export AIRFLOW_BUILD_ENV
+PORTAL_BUILD_ENV ?= $(CURDIR)/deploy/portal/env/prod/build.env
+PORTAL_IMAGE_TAG ?=
+export PORTAL_BUILD_ENV PORTAL_IMAGE_TAG
+.PHONY: airflow-image portal-image
+airflow-image:
+	python3 deploy/airflow/scripts/manage.py publish-image --env "$(AIRFLOW_ENV)" --build-env "$(AIRFLOW_BUILD_ENV)" --push-env "$(REGISTRY_PUSH_ENV)"
+portal-image:
+	python3 deploy/portal/scripts/image.py --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
+
+# 사내 CA 폴더(deploy/shared/certs/ca)로 host의 OIDC·HTTPS 검증용 PEM 묶음을 만듭니다.
+CA_HOST ?= sso.etch.samsungds.net
+.PHONY: ca-bundle
+ca-bundle:
+	@python3 deploy/shared/scripts/ca_bundle.py "$(CA_HOST)"
+
+# 앱별 smoke: 워크로드 Ready와 공개 주소 응답을 조회 전용으로 확인합니다. SMOKE_CONNECT로 DNS 등록 전 접속 주소를 지정합니다.
+smoke = @python3 deploy/shared/scripts/smoke.py $(1) --context "$(KUBE_CONTEXT)" $(if $(2),--env "$(2)") $(if $(filter 1,$(SMOKE_JSON)),--json)
+.PHONY: keycloak-smoke minio-smoke registry-smoke airflow-smoke monitoring-smoke headlamp-smoke ftp-smoke portal-smoke
+keycloak-smoke:
+	$(call smoke,keycloak)
+minio-smoke:
+	$(call smoke,minio)
+registry-smoke:
+	$(call smoke,registry)
+airflow-smoke:
+	$(call smoke,airflow,$(AIRFLOW_ENV))
+monitoring-smoke:
+	$(call smoke,monitoring,$(MONITORING_ENV))
+headlamp-smoke:
+	$(call smoke,headlamp)
+ftp-smoke:
+	$(call smoke,ftp)
+portal-smoke:
+	$(call smoke,portal)
+
+# 앱 하나의 장애 상태(smoke·Pod·PVC·Warning 이벤트·로그 끝)를 한 번에 조회하고 가이드에서 볼 행을 알려 줍니다.
+.PHONY: ops-diagnose
+ops-diagnose:
+	@python3 deploy/shared/scripts/ops_diagnose.py "$(if $(filter command line environment,$(origin APP)),$(APP))" --context "$(KUBE_CONTEXT)"
+
+# apps.json의 steps를 순서대로 실행하고 배포 상태 대조까지 한 번에 수행합니다. 첫 실패에서 멈추고 JSON 요약을 출력합니다.
+.PHONY: ops-deploy ops-report ops-redact
+ops-deploy:
+	@python3 deploy/shared/scripts/ops_deploy.py "$(if $(filter command line environment,$(origin APP)),$(APP))" --context "$(KUBE_CONTEXT)"
+
+# 서버 상태를 별칭(deploy/shared/docs/infrastructure/aliases.json)으로 바꾼 고정 양식 보고서를 출력합니다. 서버명·IP·도메인은 포함하지 않습니다.
+ops-report:
+	@python3 deploy/shared/scripts/ops_report.py "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
+	  $(if $(OPS_REPORT_OUT),--output "$(OPS_REPORT_OUT)") $(if $(filter 1,$(OPS_REPORT_SKIP_DRIFT)),--skip-drift)
+
+# 표준 입력의 텍스트를 같은 별칭 규칙으로 바꿉니다. 추가 확인 결과를 외부로 전달하기 전에 통과시킵니다.
+ops-redact:
+	@python3 deploy/shared/scripts/ops_report.py redact
 
 # 배포 직후 적용 commit·입력 파일 SHA-256·워크로드를 앱 namespace의 ConfigMap에 기록합니다.
 # 각 *-up 타깃은 성공 후 자동으로 기록하며, 직접 실행한 배포 명령 뒤에는 이 타깃을 실행합니다.
@@ -233,11 +305,16 @@ minio-render:
 # 사내 이미지 저장소(Zot)는 앱 env 없이 독립 배포합니다.
 .PHONY: registry-check registry-up registry-render
 registry-check:
-	python3 deploy/registry/scripts/manage.py check --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)"
+	python3 deploy/registry/scripts/manage.py check --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
 
 registry-up:
-	python3 deploy/registry/scripts/manage.py up --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)"
+	python3 deploy/registry/scripts/manage.py up --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
 	$(call deploy_record,registry,$(REGISTRY_ENV))
+
+# push 계정 Secret을 REGISTRY_PUSH_ENV의 계정으로 바꾸고 registry를 다시 시작합니다.
+.PHONY: registry-account-rotate
+registry-account-rotate:
+	python3 deploy/registry/scripts/manage.py rotate-account --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
 
 registry-render:
 	python3 deploy/registry/scripts/manage.py render --env "$(REGISTRY_ENV)"
@@ -275,10 +352,6 @@ check-api:
 makemigrations-check:
 	$(COMPOSE_K8S_CHECK) run --rm -T api makemigrations --check --dry-run
 
-# 기존 Keycloak과 Airflow UI를 같은 서버 진입점에 연결합니다.
-server-up:
-	python3 ./deploy/shared/scripts/server-up.py --context "$(KUBE_CONTEXT)" --airflow-env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)" --vip-backends "$(VIP_BACKENDS)"
-
 # 앱별 검사는 실제 입력과 기존 클러스터를 확인하되 변경하지 않습니다.
 keycloak-check:
 	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)" --check-only
@@ -287,8 +360,10 @@ keycloak-up:
 	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)"
 	$(call deploy_record,keycloak,$(KEYCLOAK_ENV))
 
-# FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다.
-export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE FTP_ENV
+# FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다. FTP_NODES를 비우면 이미 FTP 라벨이 있는 노드를 사용합니다.
+FTP_ENV ?= $(CURDIR)/deploy/ftp/env/prod.env
+FTP_CREDENTIAL_FILE ?= $(CURDIR)/deploy/ftp/env/initial-account.env
+export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE FTP_ENV AIRFLOW_OIDC_CA_FILE
 .PHONY: ftp-check ftp-up ftp-test
 ftp-check:
 	python3 ./deploy/ftp/scripts/up.py --check-only
@@ -307,14 +382,26 @@ airflow-up:
 	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)"
 	$(call deploy_record,airflow,$(AIRFLOW_ENV))
 
+# 고정 chart를 사내 미러에서 받아 SHA-256을 검증합니다. 이미 있는 파일은 같은 내용으로 다시 씁니다.
+.PHONY: airflow-fetch-chart monitoring-fetch-chart airflow-secret-restore
+airflow-fetch-chart:
+	python3 ./deploy/airflow/scripts/manage.py fetch-chart
+monitoring-fetch-chart:
+	python3 ./deploy/monitoring/scripts/manage.py fetch-chart
+
+# DB나 설치 흔적은 남았는데 사라진 airflow-postgres·airflow-fernet Secret을 env 값으로 다시 만듭니다. 있는 Secret은 바꾸지 않습니다.
+airflow-secret-restore:
+	python3 ./deploy/airflow/scripts/manage.py restore-secrets --env "$(AIRFLOW_ENV)" --context "$(KUBE_CONTEXT)"
+
 # Kubernetes 클러스터 모니터링을 독립적으로 검사·배포합니다.
 MONITORING_ENV ?= $(CURDIR)/deploy/monitoring/env/k8s.env
+MONITORING_GRAFANA_ENV ?= $(CURDIR)/deploy/monitoring/env/grafana-initial.env
 .PHONY: monitoring-check monitoring-up
 monitoring-check:
 	python3 ./deploy/monitoring/scripts/manage.py check --env "$(MONITORING_ENV)"
 
 monitoring-up:
-	python3 ./deploy/monitoring/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(MONITORING_ENV)"
+	python3 ./deploy/monitoring/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(MONITORING_ENV)" --grafana-env "$(MONITORING_GRAFANA_ENV)"
 	$(call deploy_record,monitoring,$(MONITORING_ENV))
 
 # 로컬 보조 Compose와 CI 검사의 실행 진입점입니다.
@@ -375,7 +462,10 @@ audit-docs:
 
 # Keycloak 로그인 방식의 서버 Headlamp를 독립적으로 운영합니다.
 HEADLAMP_ENV ?= $(CURDIR)/deploy/headlamp/env/k8s.env
-.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-setup-env
+.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-oidc-setup headlamp-setup-env
+# Keycloak client·관리자 그룹과 Headlamp namespace의 client secret·CA ConfigMap을 준비합니다. HEADLAMP_ADMINS로 관리자 username을 지정합니다.
+headlamp-oidc-setup:
+	$(KEYCLOAK_ADMIN) python3 ./deploy/headlamp/scripts/manage.py oidc-setup --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)" $(if $(HEADLAMP_OIDC_CA_FILE),--ca-file "$(HEADLAMP_OIDC_CA_FILE)") $(if $(HEADLAMP_ADMINS),--admins "$(HEADLAMP_ADMINS)")
 headlamp-setup-env:
 	@python3 ./deploy/headlamp/scripts/manage.py setup-env --env "$(HEADLAMP_ENV)"
 headlamp-oidc-check:
@@ -400,14 +490,11 @@ metrics-server-up:
 	kubectl --context "$(KUBE_CONTEXT)" -n kube-system rollout status deployment/metrics-server --timeout=180s
 	kubectl --context "$(KUBE_CONTEXT)" wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
 
-.PHONY: keycloak-claim-attributes-migrate
-keycloak-claim-attributes-migrate:
-	python3 deploy/keycloak/scripts/migrate_claim_attributes.py $(if $(filter 1,$(KEYCLOAK_CLAIM_MIGRATION_APPLY)),--apply,)
 
 # 기존 realm을 유지하며 Airflow 전용 client만 등록합니다.
 .PHONY: airflow-keycloak-client
 airflow-keycloak-client:
-	python3 deploy/airflow/k8s/jobs/keycloak-client/setup_client.py --env "$(AIRFLOW_ENV)"
+	$(KEYCLOAK_ADMIN) python3 deploy/airflow/k8s/jobs/keycloak-client/setup_client.py --env "$(AIRFLOW_ENV)"
 
 .PHONY: k8s-airflow-sso-check
 k8s-airflow-sso-check:

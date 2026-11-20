@@ -21,6 +21,15 @@ tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
 
 LOCK = json.loads((APP / 'helm/chart.lock.json').read_text())
+ADMIN_GROUP = 'headlamp-admins'
+
+
+def shared(name):
+    """공통 스크립트 모듈을 경로로 읽는다."""
+    spec = importlib.util.spec_from_file_location('shared_' + name, APP.parent / f'shared/scripts/{name}.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run(command, **kwargs):
@@ -204,6 +213,61 @@ def check_oidc_resources(context, values):
             raise ValueError('OIDC CA ConfigMap에 비어 있지 않은 ca.crt가 필요합니다.')
 
 
+def register_client(admin, values, admins=()):
+    """realm에 client와 관리자 그룹이 없으면 만들고 client secret을 반환한다. 기존 client 설정은 바꾸지 않는다."""
+    definition = oidc_client(values)
+    found = admin.call('GET', 'clients', query={'clientId': definition['clientId']})
+    if not found:
+        admin.call('POST', 'clients', definition)
+        found = admin.call('GET', 'clients', query={'clientId': definition['clientId']})
+        print(f"Keycloak client 등록: {definition['clientId']}")
+    else:
+        print(f"Keycloak client가 이미 있어 설정을 바꾸지 않았습니다: {definition['clientId']}")
+    lookup = lambda: [group for group in admin.call('GET', 'groups', query={'search': ADMIN_GROUP, 'exact': 'true'}) or []
+                      if group.get('name') == ADMIN_GROUP]
+    groups = lookup()
+    if not groups:
+        admin.call('POST', 'groups', {'name': ADMIN_GROUP})
+        groups = lookup()
+        print(f'Keycloak 그룹 생성: /{ADMIN_GROUP}')
+    for username in admins:
+        users = admin.call('GET', 'users', query={'username': username, 'exact': 'true'}) or []
+        if len(users) != 1:
+            raise ValueError(f'관리자로 지정한 Keycloak 사용자를 찾을 수 없습니다: {username}')
+        admin.call('PUT', f"users/{users[0]['id']}/groups/{groups[0]['id']}")
+        print(f'관리자 그룹 가입: {username}')
+    secret = (admin.call('GET', f"clients/{found[0]['id']}/client-secret") or {}).get('value')
+    if not secret:
+        raise ValueError('Keycloak client secret을 읽지 못했습니다. Client authentication이 켜져 있는지 확인하세요.')
+    return secret
+
+
+def oidc_setup(context, values, ca_file=None, admins=()):
+    """Keycloak client 등록부터 Headlamp namespace의 Secret·CA ConfigMap 준비까지 한 번에 수행한다."""
+    env = {item['name']: item['value'] for item in values['env']}
+    issuer = urlsplit(env['OIDC_ISSUER_URL'])
+    bundle = Path(ca_file) if ca_file else shared('ca_bundle').ensure(issuer.hostname)
+    configmap = values.get('volumes', [{}])[0].get('configMap', {}).get('name', '')
+    if configmap and (bundle is None or not bundle.is_file()):
+        raise ValueError('OIDC CA 묶음이 없습니다. deploy/shared/certs/ca에 사내 CA 파일을 두거나 HEADLAMP_OIDC_CA_FILE을 지정하세요.')
+    admin_module = shared('keycloak_admin')
+    environment = dict(os.environ)
+    if bundle and bundle.is_file():
+        environment.setdefault('KEYCLOAK_CA_FILE', str(bundle))
+    secret = register_client(admin_module.Admin.from_environment(issuer.path.rstrip('/').split('/')[-1], environment), values, admins)
+    kubectl = ['kubectl', '--context', context]
+    resources = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': 'headlamp'}},
+                 {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
+                  'metadata': {'name': values['config']['oidc']['externalSecret']['name'], 'namespace': 'headlamp'},
+                  'stringData': {'OIDC_CLIENT_SECRET': secret}}]
+    if configmap:
+        resources.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': configmap, 'namespace': 'headlamp'},
+                          'data': {'ca.crt': bundle.read_text()}})
+    run(kubectl + ['apply', '-f', '-'], input=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': resources}),
+        capture_output=True)
+    print('Headlamp OIDC 준비 완료: Keycloak client·관리자 그룹, namespace, client secret' + (', CA ConfigMap' if configmap else ''))
+
+
 def ingress_plan(context, values):
     """TLS와 기존 controller를 확인하고 namespace 추가 변경만 준비한다."""
     kubectl = ['kubectl', '--context', context]
@@ -246,13 +310,14 @@ def verify_chart(path):
 def main():
     """정적 검사·온라인 OIDC 검사를 분리하고 클러스터 작업에는 context를 요구한다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['fetch-chart', 'check', 'render', 'deploy', 'ui', 'oidc-client', 'oidc-check', 'setup-env'])
+    parser.add_argument('action', choices=['fetch-chart', 'check', 'render', 'deploy', 'ui', 'oidc-client', 'oidc-check', 'oidc-setup', 'setup-env'])
     parser.add_argument('--env', type=Path)
     parser.add_argument('--ca-file', type=Path, help='OIDC 연결 검사에 사용할 로컬 PEM CA 묶음')
     parser.add_argument('--context', default='')
+    parser.add_argument('--admins', default='', help='headlamp-admins 그룹에 가입시킬 Keycloak username 목록(쉼표 구분)')
     args = parser.parse_args()
     try:
-        if args.action in {'deploy', 'ui'} and not args.context.strip():
+        if args.action in {'deploy', 'ui', 'oidc-setup'} and not args.context.strip():
             raise ValueError('KUBE_CONTEXT를 명시하세요.')
         kubectl = ['kubectl', '--context', args.context, '-n', 'headlamp']
         if args.action == 'ui':
@@ -275,7 +340,7 @@ def main():
             print(f'chart 준비 완료: {chart}')
             return
         env = args.env or APP / 'env/k8s.env'
-        if args.action == 'deploy' and args.env is None:
+        if args.action in {'deploy', 'oidc-setup'} and args.env is None:
             raise ValueError('배포에는 실제 --env 파일이 필요합니다.')
         values = settings(env, example=args.env is None)
         if args.action == 'setup-env':
@@ -284,6 +349,9 @@ def main():
             return
         if args.action == 'oidc-check':
             check_oidc_provider(values, args.ca_file)
+            return
+        if args.action == 'oidc-setup':
+            oidc_setup(args.context, values, args.ca_file, [name.strip() for name in args.admins.split(',') if name.strip()])
             return
         if args.action == 'oidc-client':
             print(json.dumps(oidc_client(values), ensure_ascii=False, indent=2))

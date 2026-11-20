@@ -282,6 +282,8 @@ class MonitoringTests(unittest.TestCase):
                 return ''
             if 'nodes' in args:
                 return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+            if 'namespace' in args:
+                return 'namespace/monitoring'
             if 'secret' in args:
                 return 'admin-user\nadmin-password\n'
             if 'create' in args:
@@ -304,6 +306,27 @@ class MonitoringTests(unittest.TestCase):
         self.assertIn('--wait', calls[install])
         self.assertTrue(any(settings()['GRAFANA_ADMIN_SECRET'] in call for call in calls))
 
+    def test_missing_grafana_secret_is_created_from_account_file_only_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            account = Path(directory) / 'grafana.env'
+            account.write_text('# 계정\nadmin-user=ops\nadmin-password=s3cret-value\n')
+            calls = []
+
+            def run(args, data=None):
+                calls.append((args, data))
+                return ''
+
+            with patch.object(manage, 'run', run):
+                manage.ensure_grafana_admin(['kubectl'], 'monitoring', 'monitoring-grafana-admin', account)
+            created = json.loads(calls[-1][1])
+            self.assertEqual(created['stringData'], {'admin-user': 'ops', 'admin-password': 's3cret-value'})
+            self.assertEqual(created['metadata'], {'name': 'monitoring-grafana-admin', 'namespace': 'monitoring'})
+            with patch.object(manage, 'run', return_value='admin-user\nadmin-password\n') as existing:
+                manage.ensure_grafana_admin(['kubectl'], 'monitoring', 'monitoring-grafana-admin', account)
+            existing.assert_called_once()
+            with patch.object(manage, 'run', return_value=''), self.assertRaisesRegex(ValueError, 'MONITORING_GRAFANA_ENV'):
+                manage.ensure_grafana_admin(['kubectl'], 'monitoring', 'monitoring-grafana-admin', None)
+
     def test_disabled_services_skip_waits_secret_and_new_storage(self):
         for disabled in ({'alertmanager'}, {'prometheus'}, {'grafana'}, set(manage.VOLUMES)):
             with self.subTest(disabled=disabled):
@@ -323,6 +346,8 @@ class MonitoringTests(unittest.TestCase):
                         return ''
                     if 'nodes' in args:
                         return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
+                    if 'namespace' in args:
+                        return 'namespace/monitoring'
                     if 'secret' in args:
                         self.assertNotIn('grafana', disabled)
                         return 'admin-user\nadmin-password\n'

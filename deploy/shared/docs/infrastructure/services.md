@@ -90,7 +90,7 @@ Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 
 | 공용 Traefik | `etch-sso` | 기본 `khplane01w09`. VIP 확장 시 기존 배치를 보존하고 backend별 배치 계산 | `deploy/shared/ingress/stack.yaml`, [Ingress 운영](../README.md#https인증서) | 실제 Pod 배치 서버 조회 필요 |
 | Keycloak·전용 PostgreSQL | `etch-sso` | `khplane01w09` | 정적 local PV 50Gi, `/appdata/keycloak-postgres`. `deploy/keycloak/k8s/server/stack.yaml`, [Keycloak 안내](../../../keycloak/README.md) | 준비·설치 상태와 실제 Pod·접속 상태는 서버 조회 필요 |
 | Portal | `tailwind-internal` | 운영 Worker·실제 배포 이미지 태그 미확정 | 외부 PostgreSQL, 공용 MinIO 사용. 업무 파일 기본 `emptyDir`는 운영 PVC로 교체 필요. [prod overlay](../../../portal/k8s/overlays/prod/README.md) | [테스트·운영 환경](#portal-테스트운영-접속-구분)을 별도 Docker 서버에서 이 클러스터로 함께 전환할 예정. namespace·노드·스토리지 선택과 실제 전환은 미확인 |
-| MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) | 데이터가 없다는 사용자 확인. 데이터 이관 없이 `/appdata/minio` 저장소로 재생성 예정. 실제 namespace·PV/PVC 이름·현재 호스트 경로·재생성 완료 여부는 서버 조회 필요 |
+| MinIO | `minio` | `NODE_NAME=khplanew01` | PVC 10Gi, 기본 정적 모드 `/appdata/minio`. `deploy/minio/env/prod.env`, [MinIO 안내](../../../minio/README.md) | 배포 미확인. 실제 namespace·PV/PVC 이름·호스트 경로는 서버 조회 필요 |
 | Airflow·전용 PostgreSQL | `airflow` | `khinfow01` 배포 대상(사용자 확인) | DB `/appdata/airflow/postgres` 20Gi, 로그 `/appdata/airflow/logs` 20Gi, ODBC `/appdata/airflow/odbc`. `deploy/airflow/env/k8s.env`, [Airflow 안내](../../../airflow/README.md) | 노드 Ready·배포 적용 미확인. [Worker 상태](servers.md#서버-목록) 참조 |
 | Monitoring | `monitoring` | Airflow와 같은 `khinfow01` 배포 대상(사용자 확인) | `DATA_HOST_PATH=/appdata/monitoring` 아래 local PV. `deploy/monitoring/env/k8s.env`, [폴더 준비 계약](operations.md#worker-앱-데이터-경로와-이전), [Monitoring 안내](../../../monitoring/README.md) | 저장 폴더 준비 완료는 사용자 확인. 노드 Ready·Pod·PVC·웹 접속·지표 수집은 추가 확인 필요 |
 | Headlamp | `headlamp` | 실제 배치 노드 미확인 | Helm values·`deploy/headlamp/env/k8s.env`로 관리. [Headlamp 안내](../../../headlamp/README.md) | 배치 노드 확인 필요 |
@@ -99,8 +99,8 @@ Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 
 
 Airflow DAG 공유 폴더는 기존 Airflow 배치 노드의 `airflow-dags` PVC를 사용하도록 저장소에 선언돼 있습니다. 운영 폴더 준비와 적용은 미확인입니다. [DAG 공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환)
 
-Airflow의 최종 배포 이미지 목표는 사용자 지정 `airflow:3.3.2-release-1`입니다.
-설정 원본은 `deploy/airflow/env/k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`이며, 이 이름으로 `khinfow01` 빌드·등록·실제 배포 적용은 미확인입니다.
+Airflow 배포 이미지는 `store.etch.samsungds.net/airflow:3.3.2-<소스 해시>`입니다(저장소 선언).
+설정 원본은 `deploy/airflow/env/k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`·`AIRFLOW_IMAGE_TAG`이며, 관리 호스트의 빌드·push와 실제 배포 적용은 미확인입니다.
 
 공용 진입점의 확장과 앱·DB의 복제 여부를 구분합니다. local PV·hostPath는 해당 노드의 데이터이며
 다른 Worker로 옮길 때 별도 이전·복구가 필요합니다. 자원 용량·replica와 실제 여유는 앱 원본·클러스터에서 확인합니다.
@@ -117,7 +117,7 @@ Airflow의 최종 배포 이미지 목표는 사용자 지정 `airflow:3.3.2-rel
 | 완료 판정 | 각 대상 노드에서 로그인·목록·업로드·다운로드와 호스트 파일 확인 | 전송 성공 여부 미확인. 대상 노드·접속 주소·검증 결과·담당자 확인 필요 |
 
 노드명·IP는 [서버 목록](servers.md), 포트·방화벽은 [FTP 네트워크](network.md#ftp-직접-접속)를 따릅니다.
-실행 순서는 [Worker별 준비](../../../ftp/docs/01-install.md#노드계정-준비) → [운영 env 확인과 관리 호스트 배포](../../../ftp/docs/01-install.md#5-검사-후-배포) → [전송 확인](../../../ftp/docs/02-operations.md)입니다.
+실행 순서는 [Worker별 준비](../../../ftp/docs/01-install.md#노드계정-준비) → [운영 env 확인과 관리 호스트 배포](../../../ftp/README.md#a-최초-설치) → [전송 확인](../../../ftp/docs/02-operations.md)입니다.
 별도 overlay 운영도 [FTP 설치](../../../ftp/docs/01-install.md)를 따릅니다.
 
 ## 추가 확인·변경 연계

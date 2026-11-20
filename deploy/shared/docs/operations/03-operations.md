@@ -4,81 +4,22 @@
 
 ## 업데이트 — 관리 호스트
 
-### 1. 준비
+절차의 원본은 [배포 가이드](../../../README.md)와 각 앱 가이드의 `B. 업데이트`입니다. 기본 명령은 `make ops-deploy APP=<app> KUBE_CONTEXT="<context>"`이며 checkout 갱신부터 대조까지 수행합니다.
+Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않습니다. 변경 종류에 따라 반영 방식이 다릅니다.
 
-현재 커밋·이미지·chart 버전과 DB·파일 백업을 기록합니다.
-[배포 상태 대조](04-drift.md#대조-실행)로 현재 서버가 마지막 배포 기록과 같은지 먼저 확인합니다.
-
-### 2. 파일 갱신
-
-[Git 갱신 절차](01-checkout.md#git운영-파일-관리)로 배포 checkout을 갱신합니다.
-Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않으므로 아래 반영 단계를 수행합니다.
-
-### 3. 변경 유형별 반영
-
-| 변경 | 반영 순서 |
+| 변경 | 반영 |
 | --- | --- |
 | 문서 | 클러스터 적용 불필요 |
-| 앱 코드·DAG | 이미지 빌드·반입 → 고유 tag/digest → 앱별 검사·배포 |
-| manifest·chart 설정 | `make server-check` → 앱별 배포 |
-| env | 실제 입력 검사 → Secret 갱신 → 필요한 Pod 재시작·Job 재실행. Secret 변경만으로 이를 env로 읽는 Pod가 재시작되지 않음 |
-| 외부 DB·OIDC·MinIO 계정 | 실제 서비스 계정과 앱 설정을 함께 변경 |
-| TLS·CA | [TLS 절차](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 공용 TLS Secret 또는 해당 namespace의 CA 갱신 |
-| Portal DB schema | 백업·호환성 확인 → 같은 API 이미지로 migration → 배포 |
+| 앱 코드(Airflow·Portal) | 이미지 tag가 소스 내용으로 자동으로 바뀜 → `ops-deploy`가 빌드·push·배포 |
+| Airflow DAG 파일만(공유 폴더 사용) | 재배포 없이 공유 폴더에 반영. [Airflow 가이드](../../../airflow/README.md) |
+| manifest·chart 설정·env | `ops-deploy`. Secret 변경은 Pod 재시작이 있어야 반영되며 각 앱의 `up`이 처리 |
+| 외부 DB·OIDC·MinIO 계정 | 실제 서비스 계정과 앱 설정을 함께 변경. 앱 가이드의 멈춤 조건 |
+| TLS·CA | [공용 TLS 등록](../../../README.md#공용-tls-등록) 또는 해당 앱의 CA 갱신 |
+| Portal DB schema | API 이미지가 바뀌면 `portal-up`이 API를 멈추고 migration. 백업 확인 후 승인 |
 | chart·Kubernetes·CNI 버전 | 별도 호환성·업그레이드·복구 검증 후 수행 |
 
-앱별 반영 명령은 각 앱 안내가 원본입니다. `make <app>-up`이 아닌 명령으로 배포했다면 완료 직후 [배포 기록](04-drift.md#배포-기록-남기기)을 남깁니다.
-
-| 앱 | 원본 안내 |
-| --- | --- |
-| Keycloak | [운영](../../../keycloak/docs/04-operations.md), [최초 설치](../../../keycloak/README.md) |
-| Airflow | [단계별 실행](../../../airflow/docs/03-deploy.md#배포와-검증) |
-| Portal | [배포 안내](../../../portal/README.md) |
-| MinIO | [배포 안내](../../../minio/README.md) |
-| Registry | [배포 안내](../../../registry/README.md) |
-| FTP | [배포 안내](../../../ftp/README.md) |
-| Headlamp | [배포 안내](../../../headlamp/README.md) |
-| Monitoring | [배포 안내](../../../monitoring/README.md) |
-
 여러 앱이 공유하는 Traefik·VIP·DNS는 [네트워크 정보](../infrastructure/network.md)와 [VIP 안내](../ingress/setup.md)를 따릅니다.
-Keycloak은 기존 Secret과 입력이 다르면 중단하므로 명시적인 갱신이 먼저 필요합니다.
-
-### 4. 확인
-
-[접속·기능 검증](02-deploy.md#접속기능-검증)을 반복하고 `make drift-check APP=<app>`이 `0`으로 끝나는지 확인합니다.
-실패하면 해당 단계의 로그와 완료 기준을 확인하고, 원인 해결 후 같은 입력으로 재검사합니다.
-
-## 장애 조회 — 관리 호스트
-
-모두 조회 명령입니다.
-
-```bash
-kubectl config get-contexts
-read -r -p '확인할 Kubernetes context: ' KUBE_CONTEXT
-read -r -p '앱 namespace: ' APP_NAMESPACE
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get pods -o wide
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get events --sort-by=.metadata.creationTimestamp
-read -r -p '문제 Pod 이름: ' APP_POD
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" describe pod "$APP_POD"
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" logs "$APP_POD" --all-containers --tail=100
-```
-
-재시작 전 로그는 `logs ... -c 컨테이너이름 --previous --tail=100`으로 확인합니다.
-공유 전 describe·events·로그의 비밀값을 마스킹합니다.
-
-| 증상 | 먼저 확인할 것 |
-| --- | --- |
-| kubectl timeout / Forbidden | API VIP·인증서·context / 계정 권한 |
-| Node NotReady | 런타임·kubelet·CNI·디스크·시간, 해당 서비스 로그 |
-| Pending / PVC Pending | Events·자원·taint·nodeSelector·StorageClass·PV affinity |
-| ImagePullBackOff | 이미지 tag·mirror·CA·imagePullSecret·노드 이미지 접근 |
-| CrashLoopBackOff | 이전 로그·종료 코드·env·DB 연결 |
-| TLS 오류 | SAN·만료·체인·CA·공용 Traefik 인증서·마운트 |
-| 404 / 503 | Host·경로·IngressClass·namespace 감시 / Pod·Service endpoint |
-| 로그인 반복·callback 실패 | issuer·redirect URI·client secret·시간·HTTPS 전달 |
-
-원인을 해결한 뒤 실패한 단계부터 다시 검사합니다.
-클러스터 초기화(`init`·`reset`), PVC 삭제, namespace 재생성은 일반적인 복구 절차로 사용하지 않습니다.
+`make <app>-up`이 아닌 명령으로 배포했다면 완료 직후 [배포 기록](04-drift.md#배포-기록-남기기)을 남깁니다. 장애는 [장애 조회](../../../README.md#장애-조회)로 확인합니다.
 
 ## Worker 추가
 

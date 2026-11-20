@@ -95,6 +95,85 @@ class RegistryTests(unittest.TestCase):
                 check_tls.assert_called_once_with(kube, 'zot.example.test', {})
                 run.assert_called_once_with([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '-o', 'json'])
 
+    def test_first_up_creates_namespace_secret_folder_and_recomputes_routing(self):
+        values = settings()
+        with tempfile.TemporaryDirectory() as directory:
+            account = Path(directory) / 'push.env'
+            account.write_text('# 계정\nREGISTRY_USER=publisher\nREGISTRY_PASSWORD=push-secret-value\n')
+            calls = []
+
+            def run(args, data=None):
+                calls.append((args, data))
+                if 'create' in args and '-o' in args:
+                    return json.dumps({'metadata': {'name': 'registry-storage-prepare-x'}})
+                if 'job' in args and 'get' in args:
+                    return json.dumps({'status': {'succeeded': 1}})
+                return ''
+
+            plans = [(['access-1'], ['patch-1']), (['access-2'], ['patch-2'])]
+            with patch.object(manage, 'run', run), patch.object(manage, 'check_node'), \
+                    patch.object(manage, 'volume_plan', return_value=manage.static_volume(values)), \
+                    patch.object(manage, 'routing_plan', side_effect=plans), \
+                    patch.object(manage, 'htpasswd_line', return_value='publisher:$2y$05$hash'), \
+                    patch.object(manage, 'connect') as connect, patch.object(manage, 'apply'):
+                manage.deploy(values, 'prod', push_env=account)
+            created = [json.loads(data) for args, data in calls if 'create' in args and '--dry-run=server' not in args and data]
+            kinds = [item['kind'] for item in created]
+            self.assertEqual(kinds, ['Namespace', 'Secret', 'Job', 'PersistentVolume'])
+            self.assertEqual(created[1]['stringData'], {'htpasswd': 'publisher:$2y$05$hash\n'})
+            job = created[2]['spec']['template']['spec']
+            self.assertEqual(job['volumes'][0]['hostPath']['path'], '/appdata')
+            self.assertIn("prepare '/host/0/registry' 1000 1000 0750", job['containers'][0]['command'][2])
+            # rollout 대기 뒤 다시 계산한 패치를 적용한다.
+            connect.assert_called_once_with(['kubectl', '--context', 'prod'], ['access-2'], ['patch-2'])
+
+    def test_existing_secret_and_volume_are_left_untouched(self):
+        values = settings()
+
+        def run(args, data=None):
+            if 'namespace' in args:
+                return 'namespace/registry'
+            if 'secret' in args:
+                return 'secret/registry-htpasswd'
+            return ''
+
+        calls = []
+        recorder = lambda args, data=None: calls.append(args) or run(args, data)
+        with patch.object(manage, 'run', recorder), patch.object(manage, 'check_node'), \
+                patch.object(manage, 'volume_plan', return_value=None), \
+                patch.object(manage, 'routing_plan', return_value=([], [])), \
+                patch.object(manage, 'connect'), patch.object(manage, 'apply'):
+            manage.deploy(values, 'prod', push_env=None)
+        self.assertFalse(any('create' in args for args in calls))
+
+    def test_push_account_rejects_placeholder_and_extra_keys(self):
+        for content in ('REGISTRY_USER=publisher\nREGISTRY_PASSWORD=replace-me\n',
+                        'REGISTRY_USER=publisher\nREGISTRY_PASSWORD=x\nOTHER=1\n', 'REGISTRY_USER=publisher\n'):
+            path = write_env({})
+            path.write_text(content)
+            self.addCleanup(path.unlink)
+            with self.subTest(content=content), self.assertRaises(ValueError):
+                manage.push_account(path)
+
+    def test_rotate_account_replaces_secret_and_restarts_without_touching_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            account = Path(directory) / 'new.env'
+            account.write_text('REGISTRY_USER=builder\nREGISTRY_PASSWORD=new-secret-value\n')
+            calls, applied = [], []
+
+            def run(args, data=None):
+                calls.append(args)
+                return 'deployment.apps/registry' if 'get' in args else ''
+
+            with patch.object(manage, 'run', run), patch.object(manage, 'htpasswd_line', return_value='builder:$2y$05$new'), \
+                    patch.object(manage, 'apply', side_effect=lambda kube, items, dry_run=False: applied.extend(items)):
+                manage.rotate_account('prod', account)
+            self.assertEqual(applied[0]['stringData'], {'htpasswd': 'builder:$2y$05$new\n'})
+            self.assertTrue(any('restart' in call for call in calls))
+            self.assertFalse(any('delete' in call or 'pv' in call or 'pvc' in call for call in calls))
+            with patch.object(manage, 'run', return_value=''), self.assertRaisesRegex(ValueError, '설치돼 있지 않습니다'):
+                manage.rotate_account('prod', account)
+
 
 if __name__ == '__main__':
     unittest.main()

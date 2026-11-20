@@ -27,6 +27,8 @@ spec.loader.exec_module(tls)
 spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 'shared/scripts/runtime.py')
 RUNTIME = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(RUNTIME)
+image_registry = RUNTIME.module('shared_image_registry', BASE.parent / 'shared/scripts/image_registry.py')
+ca_bundle = RUNTIME.module('shared_ca_bundle', BASE.parent / 'shared/scripts/ca_bundle.py')
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'POSTGRES_MODE', 'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_DB', 'NODE_NAME', 'POSTGRES_HOST_PATH', 'LOGS_HOST_PATH', 'POSTGRES_STORAGE_SIZE', 'LOGS_STORAGE_SIZE', 'POSTGRES_IMAGE', 'POSTGRES_UID', 'POSTGRES_GID', 'AIRFLOW_IMAGE_REPOSITORY', 'AIRFLOW_IMAGE_TAG', 'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_ENABLED', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', 'AIRFLOW_WEBSERVER_BASE_URL', 'AIRFLOW_API_BASE_URL', 'AIRFLOW_ADMIN_USERNAME', 'AIRFLOW_ADMIN_EMAIL', 'POSTGRES_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY', 'AIRFLOW_TRIGGER_TOKEN', 'KNOX_MESSENGER_API_BASE_URL', 'KNOX_MESSENGER_AUTHORIZATION', 'KNOX_MESSENGER_SYSTEM_ID', 'AIRFLOW_FAILURE_ALERT_KNOX_IDS'))
 OIDC_KEYS = ('AIRFLOW_AUTH_MODE', 'AIRFLOW_OIDC_ISSUER', 'AIRFLOW_OIDC_CLIENT_ID',
@@ -38,6 +40,8 @@ MAIL_DEFAULTS = {'MAIL_API_URL': '', 'MAIL_API_KEY': '', 'MAIL_API_SYSTEM_ID': '
 DAGS_DEFAULTS = {'DAGS_HOST_PATH': '', 'DAGS_STORAGE_SIZE': '1Gi'}
 ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS) | frozenset(DAGS_DEFAULTS)
 DEFAULT_ENV = BASE / 'env/k8s.env'
+# 이 값이면 소스 내용으로 tag를 자동으로 정한다. 고정하려면 env에 실제 tag를 쓴다.
+AUTO_IMAGE_TAG = '3.3.2-auto'
 DEFAULT_CONTAINERD_ADDRESS = '/run/containerd/containerd.sock'
 DEFAULT_BUILDKIT_HOST = 'unix:///run/buildkit/buildkitd.sock'
 RUNTIME_KEYS = (
@@ -68,7 +72,30 @@ def read_env(path):
         require(separator and re.fullmatch(r'[A-Z][A-Z0-9_]*', key), f'설정 형식 오류: 줄 {number}')
         require(key not in values, f'중복 설정: {key}')
         values[key] = value
+    if values.get('AIRFLOW_IMAGE_TAG') == AUTO_IMAGE_TAG:
+        try:
+            values['AIRFLOW_IMAGE_TAG'] = auto_image_tag(bool(values.get('DAGS_HOST_PATH')))
+        except ValueError:
+            # 앱 소스가 없는 정적 검사는 자리표시 tag로 계속하고, 빌드·배포는 require_image_tag가 막는다.
+            pass
     return values
+
+
+def require_image_tag(settings):
+    """자동 tag를 정하지 못한 상태로 빌드·배포하지 않는다."""
+    require(settings['AIRFLOW_IMAGE_TAG'] != AUTO_IMAGE_TAG,
+            'apps/airflow 소스가 Git에 없어 이미지 tag를 정할 수 없습니다. 저장소 전체 checkout에서 실행하거나 AIRFLOW_IMAGE_TAG를 직접 지정하세요.')
+
+
+def auto_image_tag(shared_dags):
+    """`apps/airflow` 소스와 build env(`AIRFLOW_BUILD_ENV`, 기본 env/build.env)로 이미지 tag를 정한다. 소스가 바뀌면 tag가 바뀌어 새로 빌드·배포된다.
+
+    DAG를 공유 폴더로 읽는 설치는 DAG 파일만 바뀐 경우 이미지를 다시 만들지 않도록 `dags`를 제외한다.
+    """
+    root = BASE.parents[1]
+    build_env = os.environ.get('AIRFLOW_BUILD_ENV') or BASE / 'env/build.env'
+    return '3.3.2-' + image_registry.source_tag(root, ['apps/airflow'], [build_env],
+                                                 exclude=('dags',) if shared_dags else ())
 
 
 def validate(values, example=False):
@@ -397,11 +424,11 @@ def check_pod_taints(settings, context, rendered, default_nodes):
                     for node in candidates), f'{name}: 대상 노드에 Pod가 허용하지 않는 차단 taint가 있습니다.')
 
 
-def check_required_resources(settings, context, pending_tls=None):
-    """공용 리소스 변경 전에 외부 입력을 확인하며 검증된 생성 예정 TLS만 허용한다."""
+def check_required_resources(settings, context, pending_tls=None, pending_configmaps=()):
+    """공용 리소스 변경 전에 외부 입력을 확인한다. 이번 실행에서 만들 TLS·ConfigMap은 아직 없어도 허용한다."""
     kube = ['kubectl', '--context', context]
     scoped = [*kube, '-n', settings['NAMESPACE']]
-    if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
+    if settings['AIRFLOW_OIDC_CA_CONFIGMAP'] and settings['AIRFLOW_OIDC_CA_CONFIGMAP'] not in pending_configmaps:
         run([*scoped, 'get', 'configmap', settings['AIRFLOW_OIDC_CA_CONFIGMAP'], '-o', 'name'])
     for key, resource in [('IMAGE_PULL_SECRET', 'secret'), ('ODBC_SECRET_NAME', 'secret'),
                           ('INGRESS_TLS_SECRET', 'secret'), ('INGRESS_CLASS_NAME', 'ingressclass')]:
@@ -462,6 +489,7 @@ def check_ingress_tls(settings, context):
 
 def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     """노드와 기존 Secret을 확인한 뒤 DB → Helm hook → Pod 순서로 배포한다."""
+    require_image_tag(settings)
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
     scoped = [*kube, '-n', namespace]
@@ -492,7 +520,7 @@ def deploy(settings, context, chart, pause_new_dags=False, values_file=None):
     print('Airflow 배포 완료. DAG 활성 상태와 기존 scheduler의 중복 실행 여부를 확인하세요.')
 
 
-def image_build_command(builder, namespace, address, buildkit_host):
+def image_build_command(builder, namespace, address, buildkit_host, prefix=()):
     """빌더 연결과 로컬 의존성 이미지 재사용 조건을 확인하고 빌드 명령을 반환한다."""
     require(builder in ('auto', 'nerdctl', 'docker'), '지원하는 빌더는 auto, nerdctl, docker입니다.')
     if builder == 'auto':
@@ -512,14 +540,14 @@ def image_build_command(builder, namespace, address, buildkit_host):
     require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', namespace), 'containerd namespace 형식 오류')
     require(address.strip() and buildkit_host.strip(), 'containerd 주소와 BuildKit 주소를 지정하세요.')
     require(shutil.which('buildctl'), 'BuildKit의 buildctl 실행 파일을 준비하세요. 준비 절차: deploy/airflow/docs/02-artifacts.md')
-    command = ['nerdctl', '--address', address, '--namespace', namespace]
+    command = [*prefix, 'nerdctl', '--address', address, '--namespace', namespace]
     try:
         run([*command, 'info'])
     except ValueError:
         raise ValueError('containerd에 연결할 수 없습니다. nerdctl info로 '
                          'containerd 실행·주소·소켓 권한을 확인하세요.') from None
     try:
-        workers = json.loads(run(['buildctl', '--addr', buildkit_host, 'debug', 'workers',
+        workers = json.loads(run([*prefix, 'buildctl', '--addr', buildkit_host, 'debug', 'workers',
                                   '--format', '{{json .}}']))
     except ValueError:
         raise ValueError('BuildKit worker를 조회할 수 없습니다. buildkitd 실행·주소·소켓 권한과 '
@@ -537,8 +565,9 @@ def image_build_command(builder, namespace, address, buildkit_host):
 
 
 def build_image(settings, path, *, builder='auto', containerd_namespace='default',
-                containerd_address=DEFAULT_CONTAINERD_ADDRESS, buildkit_host=DEFAULT_BUILDKIT_HOST):
-    """기존 의존성 Dockerfile에 DAG를 추가하며 이미지는 자동 push하지 않는다."""
+                containerd_address=DEFAULT_CONTAINERD_ADDRESS, buildkit_host=DEFAULT_BUILDKIT_HOST, prefix=()):
+    """기존 의존성 Dockerfile에 DAG를 추가한다. push는 publish_image가 한다."""
+    require_image_tag(settings)
     build = read_env(path)
     require(build.keys() == {'APT_DEBIAN_CODENAME', 'APT_DEBIAN_ARCH', 'BIGDATAQUERY_ODBC_DEB_URL', 'INSTALL_BIGDATAQUERY_PYTHON', 'PIP_INDEX_URL', 'APT_DEBIAN_REPOSITORY', 'PIP_TRUSTED_HOST', 'INSTALL_BIGDATAQUERY_ODBC', 'AIRFLOW_BASE_IMAGE', 'PIP_EXTRA_INDEX_URL'}, 'build.env 설정 키가 계약과 다릅니다.')
     require(re.search(r':3\.3\.2-python3\.12(?:@sha256:[a-f0-9]{64})?$', build['AIRFLOW_BASE_IMAGE']), '기본 이미지는 Airflow 3.3.2 Python 3.12이어야 합니다.')
@@ -549,7 +578,7 @@ def build_image(settings, path, *, builder='auto', containerd_namespace='default
     source = root / 'apps/airflow'
     require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'dags', 'plugins')),
             '이미지 빌드 소스(apps/airflow)가 없습니다. 저장소 전체 checkout에서 실행하세요.')
-    command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host)
+    command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host, prefix)
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']
     dependency = final + '-dependencies'
     # 의존성 빌드 context에는 Dockerfile만 보내 로컬 로그·DSN·env 전송을 피한다.
@@ -563,13 +592,52 @@ def build_image(settings, path, *, builder='auto', containerd_namespace='default
     print('Airflow 이미지 빌드 완료. registry push 또는 단일 노드 이미지 반입을 진행하세요.')
 
 
+def restore_secrets(settings, context):
+    """DB나 설치 흔적은 남았는데 사라진 DB·Fernet Secret을 env 값으로 다시 만든다. 이미 있는 Secret은 바꾸지 않는다.
+
+    env의 값이 DB를 만들 때의 원래 값이어야 한다. 다른 값으로 만들면 DB 접속과 저장된 Connection 복호화가 실패한다.
+    """
+    require(context and context.strip(), '대상 context를 명시하세요.')
+    scoped = ['kubectl', '--context', context, '-n', settings['NAMESPACE']]
+    created = []
+    for name, key, setting in [('airflow-postgres', 'password', 'POSTGRES_PASSWORD'), ('airflow-fernet', 'fernet-key', 'AIRFLOW_FERNET_KEY')]:
+        if run([*scoped, 'get', 'secret', name, '--ignore-not-found', '-o', 'name'], sensitive=True).strip():
+            continue
+        require(settings.get(setting), f'env에 {setting} 값이 필요합니다.')
+        run([*scoped, 'create', '-f', '-'], sensitive=True, data=json.dumps({
+            'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
+            'metadata': {'name': name, 'namespace': settings['NAMESPACE']}, 'stringData': {key: settings[setting]}}))
+        created.append(name)
+    print('Secret 복원: ' + (', '.join(created) if created else '없음(두 Secret이 이미 있습니다)'))
+
+
+def publish_image(settings, build_env, push_env, *, containerd_namespace='default',
+                  containerd_address=DEFAULT_CONTAINERD_ADDRESS, buildkit_host=DEFAULT_BUILDKIT_HOST):
+    """사내 이미지 저장소에 같은 tag가 없을 때만 빌드해 push한다. 같은 tag를 다시 올리지 않는다."""
+    require_image_tag(settings)
+    reference = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']
+    require(image_registry.split(reference)[0],
+            'AIRFLOW_IMAGE_REPOSITORY에 registry 주소가 필요합니다. 예: store.etch.samsungds.net/airflow')
+    if image_registry.remote_exists(reference, ca_bundle.bundle_text() or None):
+        print(f'registry에 이미 있는 tag라 빌드하지 않았습니다: {reference}')
+        return
+    prefix = image_registry.privilege(containerd_address)
+    build_image(settings, build_env, builder='nerdctl', containerd_namespace=containerd_namespace,
+                containerd_address=containerd_address, buildkit_host=buildkit_host, prefix=prefix)
+    image_registry.push(run, [*prefix, 'nerdctl', '--address', containerd_address, '--namespace', containerd_namespace],
+                        reference, push_env)
+    print(f'Airflow 이미지 push 완료: {reference}')
+
+
 def main():
     """독립 실행 명령을 처리하며 기본 검사는 추적 중인 env의 구조를 확인한다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('init-secrets', 'fetch-chart', 'build-image', 'check', 'render', 'deploy'))
+    parser.add_argument('command', choices=('init-secrets', 'fetch-chart', 'build-image', 'publish-image', 'restore-secrets', 'check', 'render', 'deploy'))
     parser.add_argument('--env', type=Path, help='실제 k8s.env 경로. check는 생략하면 저장소 env 구조만 검사')
     parser.add_argument('--pause-new-dags', action='store_true', help='Portal 연결 전 UI 기동용: 신규 DAG를 일시정지로 생성')
-    parser.add_argument('--build-env', type=Path, help='build.env 경로. build-image에 필수')
+    parser.add_argument('--build-env', type=Path, help='build.env 경로. build-image·publish-image에 필수')
+    parser.add_argument('--push-env', type=Path, default=BASE.parent / 'registry/env/push-initial.env',
+                        help='publish-image가 쓰는 사내 이미지 저장소 push 계정 파일')
     parser.add_argument('--builder', choices=('auto', 'nerdctl', 'docker'), default='auto',
                         help='이미지 빌더. auto는 nerdctl 우선, 없으면 Docker 사용')
     parser.add_argument('--containerd-namespace', default='default', help='nerdctl·BuildKit의 공통 namespace')
@@ -630,6 +698,12 @@ def main():
         require(args.build_env, 'build-image에는 --build-env를 명시하세요.')
         build_image(settings, args.build_env, builder=args.builder, containerd_namespace=args.containerd_namespace,
                     containerd_address=args.containerd_address, buildkit_host=args.buildkit_host)
+    elif args.command == 'restore-secrets':
+        restore_secrets(settings, args.context)
+    elif args.command == 'publish-image':
+        require(args.build_env, 'publish-image에는 --build-env를 명시하세요.')
+        publish_image(settings, args.build_env, args.push_env, containerd_namespace=args.containerd_namespace,
+                      containerd_address=args.containerd_address, buildkit_host=args.buildkit_host)
     elif args.command == 'deploy':
         require(args.context, 'deploy에는 --context를 명시하세요.')
         deploy(settings, args.context, chart_path(), args.pause_new_dags, args.values)

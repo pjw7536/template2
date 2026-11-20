@@ -14,28 +14,24 @@ function render(relative) {
   return yaml.loadAll(result.stdout);
 }
 
-test('Keycloak 기본 스택과 전달 스택은 각 원본의 감시 범위와 TLS를 유지한다', () => {
-  const exported = render('deploy/keycloak/export');
-  const generated = yaml.loadAll(fs.readFileSync(path.join(root, 'deploy/keycloak/rendered/internal-keycloak-stack.yaml'), 'utf8'));
-  assert.deepEqual(generated, exported);
-  for (const [resources, namespaces, replicas] of [[render('deploy/keycloak/k8s'), 'etch-sso', 1], [generated, 'etch-sso,headlamp', 2]]) {
-    const controller = resources.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
-    assert.ok(controller.spec.template.spec.containers[0].args.includes(`--providers.kubernetesingress.namespaces=${namespaces}`));
-    assert.equal(controller.spec.replicas, replicas);
-    assert.ok(!controller.spec.template.spec.containers[0].args.some(a => a.includes('tailwind-internal')));
-    const ingress = resources.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
-    assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
-    assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.tls'], 'true');
-    assert.equal(ingress.spec.tls, undefined);
-    const volume = controller.spec.template.spec.volumes.find(v => v.name === 'middlewares');
-    assert.deepEqual(volume.projected.sources.find(s => s.secret), {
-      secret: {name: 'traefik-tls', optional: true},
-    });
-    const configName = volume.projected.sources.find(s => s.configMap).configMap.name;
-    assert.ok(resources.some(r => r.kind === 'ConfigMap' && r.metadata.name === configName));
-    assert.equal(controller.spec.template.spec.containers[0].ports.find(p => p.name === 'websecure').hostPort, 443);
-    assert.ok(!resources.some(r => r.kind === 'Secret'));
-  }
+test('Keycloak 스택 원본은 Keycloak 단독 감시 범위와 공용 TLS 저장소를 사용한다', () => {
+  const resources = render('deploy/keycloak/k8s');
+  const controller = resources.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
+  assert.ok(controller.spec.template.spec.containers[0].args.includes('--providers.kubernetesingress.namespaces=etch-sso'));
+  assert.equal(controller.spec.replicas, 1);
+  assert.ok(!controller.spec.template.spec.containers[0].args.some(a => a.includes('tailwind-internal')));
+  const ingress = resources.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
+  assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
+  assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.tls'], 'true');
+  assert.equal(ingress.spec.tls, undefined);
+  const volume = controller.spec.template.spec.volumes.find(v => v.name === 'middlewares');
+  assert.deepEqual(volume.projected.sources.find(s => s.secret), {
+    secret: {name: 'traefik-tls', optional: true},
+  });
+  const configName = volume.projected.sources.find(s => s.configMap).configMap.name;
+  assert.ok(resources.some(r => r.kind === 'ConfigMap' && r.metadata.name === configName));
+  assert.equal(controller.spec.template.spec.containers[0].ports.find(p => p.name === 'websecure').hostPort, 443);
+  assert.ok(!resources.some(r => r.kind === 'Secret'));
 });
 
 test('Portal 후속 연결은 기존 앱·배치를 보존하고 namespace 권한과 일치한다', () => {

@@ -107,7 +107,7 @@ read -r -p '접속할 APP VIP 또는 Worker IP: ' CHECK_IP
 
 ## 5. 앱별 후속 작업
 
-- 최초 배포: 공용 인증서를 등록한 뒤 각 앱의 배포 문서를 진행합니다. Keycloak은 [배포](../../../keycloak/docs/02-deploy.md)입니다.
+- 최초 배포: 공용 인증서를 등록한 뒤 각 앱의 배포 문서를 진행합니다. Keycloak은 [배포](../../../keycloak/README.md)입니다.
 - Headlamp TLS와 Keycloak 로그인용 CA 묶음(`keycloak-ca-bundle.pem`, `headlamp-oidc-ca` ConfigMap): [Headlamp 준비](../../../headlamp/docs/01-prepare.md).
 - API server의 OIDC CA: [API server OIDC 인증](../kubernetes/oidc.md). CA를 교체하면 앱과 모든 API server의 신뢰 설정을 함께 갱신합니다. CA가 그대로인 서버 인증서 갱신은 기존 CA 설정을 사용합니다.
 - 사용자 PC·노드의 신뢰: 아래 [클라이언트 PC 신뢰 등록](#클라이언트-pc-신뢰-등록).

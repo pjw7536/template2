@@ -245,13 +245,10 @@ def connect(kube, access, changes, dry_run=False):
         run([*kube, '-n', 'etch-sso', 'rollout', 'status', 'deployment/traefik', '--timeout=300s'])
 
 
-def deploy(values, context, check_only=False, allow_legacy=False):
-    """기존 Portal 설치·스토리지·라우팅을 검사하고 폴더·PV를 준비한 뒤 독립 MinIO를 배포한다."""
+def deploy(values, context, check_only=False):
+    """노드·스토리지·라우팅을 검사하고 폴더·PV를 준비한 뒤 MinIO를 배포한다."""
     require(context and context.strip(), '운영 context를 명시하세요.')
     kube = ['kubectl', '--context', context]
-    for kind, name in (('deployment', 'minio'), ('pvc', 'minio-data')):
-        legacy = run([*kube, '-n', 'tailwind-internal', 'get', kind, name, '--ignore-not-found', '-o', 'name'])
-        require(not legacy.strip() or allow_legacy, '기존 tailwind-internal MinIO가 있습니다. 데이터·설정을 보존하고 deploy/minio/docs/02-operations.md의 이전 절차를 먼저 확인하세요.')
     node = json.loads(run([*kube, 'get', 'nodes', '-l', 'kubernetes.io/hostname=' + values['NODE_NAME'], '-o', 'json']))['items']
     require(len(node) == 1 and not node[0]['spec'].get('unschedulable') and
             any(item['type'] == 'Ready' and item['status'] == 'True' for item in node[0]['status']['conditions']),
@@ -315,13 +312,12 @@ def main():
     parser.add_argument('action', choices=('check', 'render', 'up'))
     parser.add_argument('--env', type=Path)
     parser.add_argument('--context', default='')
-    parser.add_argument('--allow-legacy', action='store_true', help='백업·기존 Ingress 전환을 준비한 수동 이전에만 사용')
     args = parser.parse_args()
     values = settings(args.env or BASE / 'env/prod.env', example=args.action == 'check' and args.env is None)
     if args.action == 'render':
         print(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': manifests(values)}, indent=2))
     elif args.action == 'up' or args.context:
-        deploy(values, args.context, check_only=args.action == 'check', allow_legacy=args.allow_legacy)
+        deploy(values, args.context, check_only=args.action == 'check')
     else:
         manifests(values)
         print('공용 MinIO 원본·env 검사 통과. 클러스터 적용·이미지 다운로드 검사는 별도입니다.')

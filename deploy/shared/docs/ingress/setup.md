@@ -122,7 +122,7 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
 
 대상 Traefik Ready → 각 Worker의 실제 앱 HTTPS 정상 → LB backend UP → VIP·DNS로 앱 접속 정상.
 
-- 앱 배포: [앱별 문서](../../../README.md#앱별-배포와-상세-작업)
+- 앱 배포: [앱별 문서](../../../README.md#앱-설치-순서)
 - namespace 감시·배치 보존: [운영 기준](operations.md)
 - 실제 제공 인증서 확인·갱신: [인증서 적용](../certificates/apply.md)
 

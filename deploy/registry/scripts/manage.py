@@ -7,6 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -18,12 +19,16 @@ spec = importlib.util.spec_from_file_location('registry_routing', BASE.parent / 
 routing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(routing)
 tls = RUNTIME.module('shared_tls', BASE.parent / 'shared/ingress/tls.py')
+host_dirs = RUNTIME.module('shared_host_dirs', BASE.parent / 'shared/scripts/host_dirs.py')
+image_registry = RUNTIME.module('shared_image_registry', BASE.parent / 'shared/scripts/image_registry.py')
 
 NAMESPACE = 'registry'
 VOLUME = 'registry-data'
 AUTH_SECRET = 'registry-htpasswd'
-ENV_KEYS = frozenset(('NODE_NAME', 'REGISTRY_IMAGE', 'IMAGE_PULL_SECRET', 'REGISTRY_HOST',
+ENV_KEYS = frozenset(('NODE_NAME', 'REGISTRY_IMAGE', 'PREPARE_IMAGE', 'IMAGE_PULL_SECRET', 'REGISTRY_HOST',
                       'DATA_HOST_PATH', 'STORAGE_SIZE'))
+# Zot 컨테이너의 실행 계정. 저장 폴더 소유자와 같아야 한다.
+DATA_OWNER = (1000, 1000, '0750')
 LABEL = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
 
 
@@ -63,11 +68,42 @@ def settings(path, example=False):
     require(path.is_absolute() and len(path.parts) >= 3 and '..' not in path.parts and not result['DATA_HOST_PATH'].endswith('/'),
             'DATA_HOST_PATH에는 이미지 저장 전용 절대 디렉터리를 지정하세요.')
     require(re.fullmatch(r'[1-9][0-9]*(Gi|Ti)', result['STORAGE_SIZE']), 'STORAGE_SIZE에는 Gi 또는 Ti 용량이 필요합니다.')
-    image = result['REGISTRY_IMAGE']
-    require(re.fullmatch(r'[a-zA-Z0-9._:/@-]+', image) and
-            (':' in image.rsplit('/', 1)[-1] or '@sha256:' in image) and not image.endswith(':latest'),
-            'REGISTRY_IMAGE에는 고정 tag 또는 digest 이미지가 필요합니다.')
+    for key in ('REGISTRY_IMAGE', 'PREPARE_IMAGE'):
+        image = result[key]
+        require(re.fullmatch(r'[a-zA-Z0-9._:/@-]+', image) and
+                (':' in image.rsplit('/', 1)[-1] or '@sha256:' in image) and not image.endswith(':latest'),
+                f'{key}에는 고정 tag 또는 digest 이미지가 필요합니다.')
     return result
+
+
+def push_account(path):
+    """push 계정 파일에서 사용자와 비밀번호만 읽는다. 이미지 push 도구와 같은 해석기를 쓴다."""
+    return image_registry.read_account(path, RUNTIME.is_placeholder)
+
+
+def htpasswd_line(user, password):
+    """Zot이 읽는 bcrypt htpasswd 한 줄을 만든다. htpasswd가 없으면 Python crypt를 사용한다."""
+    if shutil.which('htpasswd'):
+        return run(['htpasswd', '-niB', user], data=password + '\n').strip()
+    try:
+        import crypt
+        hashed = crypt.crypt(password, crypt.mksalt(crypt.METHOD_BLOWFISH))
+    except (ImportError, AttributeError, OSError):
+        hashed = None
+    require(hashed and hashed.startswith('$2'),
+            'bcrypt htpasswd를 만들 수 없습니다. 관리 호스트에 apache2-utils(htpasswd)를 설치하세요.')
+    return f'{user}:{hashed}'
+
+
+def auth_secret(kube, push_env):
+    """push 계정 Secret이 없을 때만 계정 파일로 만들 manifest를 반환한다. 기존 Secret은 바꾸지 않는다."""
+    found = run([*kube, '-n', NAMESPACE, 'get', 'secret', AUTH_SECRET, '--ignore-not-found', '-o', 'name'])
+    if found.strip():
+        return None
+    require(push_env and Path(push_env).is_file(),
+            f'Secret {AUTH_SECRET}이 없습니다. REGISTRY_PUSH_ENV에 push 계정 파일을 지정하세요.')
+    return {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': AUTH_SECRET, 'namespace': NAMESPACE},
+            'type': 'Opaque', 'stringData': {'htpasswd': htpasswd_line(*push_account(push_env)) + '\n'}}
 
 
 def static_volume(values):
@@ -152,57 +188,93 @@ def connect(kube, access, changes, dry_run=False):
             run([*kube, '-n', 'etch-sso', 'rollout', 'status', 'deployment/traefik', '--timeout=300s'])
 
 
-def deploy(values, context, check_only=False):
-    """노드·저장소·Secret·라우팅을 검사하고 registry를 배포한다."""
+def deploy(values, context, check_only=False, push_env=None):
+    """노드·저장소·Secret·라우팅을 검사하고 registry를 배포한다. 없는 namespace·계정 Secret·저장 폴더는 직접 만든다."""
     require(context and context.strip(), '운영 context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     check_node(kube, values['NODE_NAME'])
     pending = volume_plan(kube, values)
     access, changes = routing_plan(kube, values['REGISTRY_HOST'])
     namespace_exists = run([*kube, 'get', 'namespace', NAMESPACE, '--ignore-not-found', '-o', 'name']).strip()
-    secret_names = [AUTH_SECRET, *([values['IMAGE_PULL_SECRET']] if values['IMAGE_PULL_SECRET'] else [])]
+    secret = auth_secret(kube, push_env) if namespace_exists else None
+    if not namespace_exists:
+        require(push_env and Path(push_env).is_file(), 'REGISTRY_PUSH_ENV에 push 계정 파일을 지정하세요.')
+        push_account(push_env)
     if namespace_exists:
-        for name in secret_names:
-            found = run([*kube, '-n', NAMESPACE, 'get', 'secret', name, '--ignore-not-found', '-o', 'name'])
-            require(found.strip(), f'registry namespace에 Secret {name}을 먼저 만드세요. deploy/registry/docs/01-install.md 참조')
+        if values['IMAGE_PULL_SECRET']:
+            found = run([*kube, '-n', NAMESPACE, 'get', 'secret', values['IMAGE_PULL_SECRET'], '--ignore-not-found', '-o', 'name'])
+            require(found.strip(), f'registry namespace에 Secret {values["IMAGE_PULL_SECRET"]}을 먼저 만드세요.')
         connect(kube, access, changes, dry_run=True)
     if pending:
         run([*kube, 'create', '--dry-run=server', '-f', '-'], data=json.dumps(pending))
     if check_only:
         if pending:
-            print(f'신규 정적 PV 생성 예정: {VOLUME} ({values["DATA_HOST_PATH"]})')
+            print(f'신규 정적 PV·저장 폴더 생성 예정: {VOLUME} ({values["DATA_HOST_PATH"]})')
         if not namespace_exists:
-            print(f'registry namespace는 up에서 생성합니다. 생성 후 Secret {AUTH_SECRET}을 만들고 up을 다시 실행합니다.')
+            print('registry namespace와 push 계정 Secret은 up에서 생성합니다.')
+        elif secret:
+            print(f'Secret {AUTH_SECRET}은 up에서 push 계정 파일로 생성합니다.')
         print('registry 입력·노드·저장소·라우팅 검사 통과. 클러스터를 변경하지 않았습니다.')
         return
     if not namespace_exists:
         run([*kube, 'create', '-f', '-'], data=json.dumps(
             {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NAMESPACE}}))
-        raise ValueError(f'registry namespace를 만들었습니다. Secret {AUTH_SECRET}을 만든 뒤 up을 다시 실행하세요.')
+        require(not values['IMAGE_PULL_SECRET'],
+                f'registry namespace를 만들었습니다. Secret {values["IMAGE_PULL_SECRET"]}을 만든 뒤 up을 다시 실행하세요.')
+        secret = auth_secret(kube, push_env)
+    if secret:
+        # create만 사용해 검사 이후 다른 운영자가 만든 Secret을 덮어쓰지 않는다.
+        run([*kube, 'create', '-f', '-'], data=json.dumps(secret))
+        print(f'push 계정 Secret 생성: {NAMESPACE}/{AUTH_SECRET}')
     if pending:
+        # 새 PV일 때만 폴더를 준비한다. 기존 PV의 폴더와 이미지 데이터는 건드리지 않는다.
+        host_dirs.prepare(run, kube, 'registry-storage-prepare', NAMESPACE, values['NODE_NAME'], values['PREPARE_IMAGE'],
+                          [(values['DATA_HOST_PATH'], *DATA_OWNER)], values['IMAGE_PULL_SECRET'])
         run([*kube, 'create', '-f', '-'], data=json.dumps(pending))
     items = manifests(values)
     apply(kube, [item for item in items if item['kind'] not in ('PersistentVolume', 'Ingress')])
     run([*kube, '-n', NAMESPACE, 'rollout', 'restart', 'deployment/registry'])
     print('registry 기동 대기: 실패하면 Pod Events·로그와 저장 폴더 권한을 확인하세요.', flush=True)
     run([*kube, '-n', NAMESPACE, 'rollout', 'status', 'deployment/registry', '--timeout=300s'])
+    # rollout 대기 중 다른 앱이 Traefik을 바꿨을 수 있으므로 최신 상태에서 패치를 다시 계산한다.
+    access, changes = routing_plan(kube, values['REGISTRY_HOST'])
     connect(kube, access, changes)
     apply(kube, [item for item in items if item['kind'] == 'Ingress'])
     print(f'registry 배포 완료: https://{values["REGISTRY_HOST"]}/v2/')
 
 
+def rotate_account(context, push_env):
+    """push 계정 Secret을 계정 파일의 계정으로 바꾸고 registry를 다시 시작한다. 이미지 데이터는 건드리지 않는다."""
+    require(context and context.strip(), '운영 context를 명시하세요.')
+    kube = ['kubectl', '--context', context]
+    found = run([*kube, '-n', NAMESPACE, 'get', 'deployment', 'registry', '--ignore-not-found', '-o', 'name'])
+    require(found.strip(), 'registry가 설치돼 있지 않습니다. 계정은 registry-up이 처음 만듭니다.')
+    require(push_env and Path(push_env).is_file(), 'REGISTRY_PUSH_ENV에 새 push 계정 파일을 지정하세요.')
+    user, password = push_account(push_env)
+    apply(kube, [{'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': AUTH_SECRET, 'namespace': NAMESPACE},
+                  'type': 'Opaque', 'stringData': {'htpasswd': htpasswd_line(user, password) + '\n'}}])
+    run([*kube, '-n', NAMESPACE, 'rollout', 'restart', 'deployment/registry'])
+    run([*kube, '-n', NAMESPACE, 'rollout', 'status', 'deployment/registry', '--timeout=300s'])
+    print(f'push 계정 교체 완료: {NAMESPACE}/{AUTH_SECRET} (계정 {user}). 이미지 push에는 같은 계정 파일을 사용하세요.')
+
+
 def main():
     """정적 검사와 context를 사용하는 운영 검사를 구분한다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('check', 'render', 'up'))
+    parser.add_argument('action', choices=('check', 'render', 'up', 'rotate-account'))
     parser.add_argument('--env', type=Path)
     parser.add_argument('--context', default='')
+    parser.add_argument('--push-env', type=Path, default=BASE / 'env/push-initial.env',
+                        help='Secret이 없을 때만 사용하는 push 계정 파일')
     args = parser.parse_args()
+    if args.action == 'rotate-account':
+        rotate_account(args.context, args.push_env)
+        return
     values = settings(args.env or BASE / 'env/k8s.env', example=args.action == 'check' and args.env is None)
     if args.action == 'render':
         print(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': manifests(values)}, indent=2))
     elif args.action == 'up' or args.context:
-        deploy(values, args.context, check_only=args.action == 'check')
+        deploy(values, args.context, check_only=args.action == 'check', push_env=args.push_env)
     else:
         manifests(values)
         print('registry 원본·env 검사 통과. 클러스터 적용·이미지 다운로드 검사는 별도입니다.')

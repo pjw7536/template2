@@ -1,12 +1,10 @@
-"""기존 Keycloak·Traefik 보존과 Airflow 첫 기동 연결을 검증한다."""
+"""공용 Traefik 연결 계산과 Airflow 배포 진입점을 검증한다."""
 
 from copy import deepcopy
 import importlib.util
 import json
 import base64
-import subprocess
 from pathlib import Path
-import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -140,19 +138,12 @@ class VipTests(unittest.TestCase):
 
 
 class ConversionTests(unittest.TestCase):
-    def test_legacy_server_cli_preserves_airflow_arguments(self):
-        result = subprocess.run(['python3', ROOT / 'deploy/shared/scripts/server-up.py', '--help'],
-                                text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for flag in ('--context', '--airflow-env', '--tls-source', '--vip-backends', '--check-only'):
-            self.assertIn(flag, result.stdout)
-
     def test_kubectl_json_stream_and_list_are_both_supported(self):
         first = controller()
         second = {'kind': 'Service', 'metadata': {'name': 'traefik'}}
         for output in (json.dumps({'kind': 'List', 'items': [first, second]}), json.dumps(first) + '\n' + json.dumps(second)):
             run = Mock(side_effect=['yaml-source', output])
-            self.assertEqual(server.render_json(run, ['kubectl', '--context', 'test'], '/source'), [first, second])
+            self.assertEqual(server.runtime.render_json(run, ['kubectl', '--context', 'test'], '/source'), [first, second])
             self.assertIn('--dry-run=client', run.call_args[0][0])
 
 
@@ -168,9 +159,6 @@ class StartTests(unittest.TestCase):
                     'data': {'tls.crt': 'ZmFrZS1jZXJ0', 'tls.key': 'ZmFrZS1rZXk='}}
         self.live = controller('etch-sso,tailwind-internal')
         self.live['metadata']['resourceVersion'] = '17'
-        self.source = [controller(), {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {
-            'name': 'etch-sso', 'labels': {'operator.test/policy': 'initial'}}},
-            {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'keycloak', 'namespace': 'etch-sso'}}]
         self.namespace = ''
         self.mismatch = False
         self.key_mismatch = False
@@ -206,11 +194,7 @@ class StartTests(unittest.TestCase):
             if '-pubout' in args:
                 return 'wrong-key' if self.key_mismatch else 'public-key'
             return 'Hostname portal.test does NOT match certificate' if self.mismatch else 'Hostname portal.test does match certificate'
-        if 'kustomize' in args:
-            return 'rendered-source'
         if 'create' in args:
-            if '--dry-run=client' in args:
-                return json.dumps({'kind': 'List', 'items': self.source})
             self.assertIn(json.loads(kwargs['data'])['kind'], ('Namespace', 'Secret'))
             return ''
         if 'get' in args and 'namespace' in args:
@@ -236,48 +220,35 @@ class StartTests(unittest.TestCase):
             return json.dumps(self.tls)
         return ''
 
-    def test_preflight_then_rbac_then_stack_and_paused_airflow(self):
+    def test_preflight_then_rbac_then_watch_patch_and_paused_airflow(self):
         server.start(self.api, routing, 'test-context', Path('/test.env'))
-        applies = [(args, json.loads(kwargs['data'])) for args, kwargs in self.calls if 'apply' in args]
-        created = [(args, json.loads(kwargs['data'])) for args, kwargs in self.calls
-                   if 'create' in args and '--dry-run=client' not in args]
-        self.assertEqual(created[0][1], {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': 'airflow'}})
-        namespace_created = next(index for index, (args, _) in enumerate(self.calls)
-                                 if 'create' in args and '--dry-run=client' not in args)
-        first_apply = next(index for index, (args, _) in enumerate(self.calls) if 'apply' in args)
-        self.assertLess(namespace_created, first_apply)
-        self.assertEqual(applies[0][1]['items'][0]['kind'], 'Role')
-        resources = applies[1][1]['items']
-        args = routing.controller(resources)['spec']['template']['spec']['containers'][0]['args']
-        self.assertIn(routing.PREFIX + 'etch-sso,tailwind-internal,airflow', args)
-        self.assertEqual(routing.controller(resources)['metadata']['resourceVersion'], '17')
-        self.assertFalse(any(item['kind'] == 'Secret' for item in resources))
-        self.assertFalse(any(item['kind'] == 'Namespace' for item in resources))
-        self.assertFalse(any(item['kind'] == 'Secret' for _, item in applies))
+        created = [json.loads(kwargs['data']) for args, kwargs in self.calls if 'create' in args]
+        self.assertEqual(created[0], {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': 'airflow'}})
+        order = {verb: next(index for index, (args, _) in enumerate(self.calls) if verb in args) for verb in ('create', 'apply', 'patch')}
+        self.assertLess(order['create'], order['apply'])
+        self.assertLess(order['apply'], order['patch'])
+        applies = [json.loads(kwargs['data']) for args, kwargs in self.calls if 'apply' in args]
+        self.assertEqual(applies[0]['items'][0]['kind'], 'Role')
+        # 공용 Deployment·Secret·Namespace는 적용하지 않고 감시 범위만 패치한다.
+        self.assertTrue(all(item['kind'] not in ('Deployment', 'Secret', 'Namespace') for body in applies for item in body['items']))
+        self.assertIn(routing.PREFIX + 'etch-sso,tailwind-internal,airflow', self.live['spec']['template']['spec']['containers'][0]['args'])
         self.api.deploy.assert_called_once_with(self.settings, 'test-context', Path('/chart.tgz'), pause_new_dags=True)
         self.api.render.assert_called_once()
         for args, _ in self.calls:
-            if args[0] == 'kubectl' and 'kustomize' not in args:
+            if args[0] == 'kubectl':
                 self.assertEqual(args[1:3], ['--context', 'test-context'])
             self.assertNotIn('delete', args)
+            self.assertNotIn('kustomize', args)
 
-    def test_existing_namespaces_are_never_written_in_standalone_or_legacy_stack(self):
-        """기존 Airflow Namespace와 legacy 목록의 Keycloak Namespace를 모두 보존합니다."""
+    def test_existing_namespace_is_never_written(self):
         self.namespace = 'namespace/airflow'
-        for deploy_keycloak in (False, True):
-            with self.subTest(deploy_keycloak=deploy_keycloak):
-                self.calls.clear()
-                self.live = controller('etch-sso,tailwind-internal')
-                self.live['metadata']['resourceVersion'] = '17'
-                server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=deploy_keycloak)
-                self.assertTrue(any('get' in args and 'namespace' in args for args, _ in self.calls))
-                for args, kwargs in self.calls:
-                    if '--dry-run=client' in args or not any(verb in args for verb in ('apply', 'create', 'patch')):
-                        continue
-                    if 'data' in kwargs:
-                        body = json.loads(kwargs['data'])
-                        self.assertNotEqual(body.get('kind'), 'Namespace')
-                        self.assertTrue(all(item.get('kind') != 'Namespace' for item in body.get('items', [])))
+        server.start(self.api, routing, 'test-context', Path('/test.env'))
+        self.assertTrue(any('get' in args and 'namespace' in args for args, _ in self.calls))
+        for args, kwargs in self.calls:
+            if 'data' in kwargs and any(verb in args for verb in ('apply', 'create')):
+                body = json.loads(kwargs['data'])
+                self.assertNotEqual(body.get('kind'), 'Namespace')
+                self.assertTrue(all(item.get('kind') != 'Namespace' for item in body.get('items', [])))
 
     def test_wrong_tls_domain_blocks_before_mutation(self):
         self.mismatch = True
@@ -289,13 +260,6 @@ class StartTests(unittest.TestCase):
     def test_wrong_tls_private_key_blocks_before_mutation(self):
         self.key_mismatch = True
         with self.assertRaisesRegex(ValueError, '개인키.*일치'):
-            server.start(self.api, routing, 'test-context', Path('/test.env'))
-        self.assertFalse(any('apply' in args for args, _ in self.calls))
-        self.api.deploy.assert_not_called()
-
-    def test_legacy_stack_requires_sso_certificate_before_removing_its_secret_reference(self):
-        self.source.append({'kind': 'Ingress', 'spec': {'rules': [{'host': 'sso.test'}]}})
-        with self.assertRaisesRegex(ValueError, 'sso.test.*공용 TLS'):
             server.start(self.api, routing, 'test-context', Path('/test.env'))
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
@@ -313,17 +277,15 @@ class StartTests(unittest.TestCase):
                                 ('AIRFLOW_OIDC_CA_CONFIGMAP', 'configmap', 'missing-ca'),
                                 ('INGRESS_CLASS_NAME', 'ingressclass', 'traefik')]:
             for check_only in (False, True):
-                for deploy_keycloak in (False, True):
-                    with self.subTest(key=key, check_only=check_only, deploy_keycloak=deploy_keycloak):
-                        self.settings.update({'IMAGE_PULL_SECRET': '', 'ODBC_SECRET_NAME': '',
-                                              'AIRFLOW_OIDC_CA_CONFIGMAP': '', key: name})
-                        self.missing_resources = {(kind, name)}
-                        self.calls.clear()
-                        with self.assertRaisesRegex(ValueError, '필수 리소스'):
-                            server.start(self.api, routing, 'test-context', Path('/test.env'),
-                                         check_only=check_only, deploy_keycloak=deploy_keycloak)
-                        self.assertFalse(any('apply' in args for args, _ in self.calls))
-                        self.api.deploy.assert_not_called()
+                with self.subTest(key=key, check_only=check_only):
+                    self.settings.update({'IMAGE_PULL_SECRET': '', 'ODBC_SECRET_NAME': '',
+                                          'AIRFLOW_OIDC_CA_CONFIGMAP': '', key: name})
+                    self.missing_resources = {(kind, name)}
+                    self.calls.clear()
+                    with self.assertRaisesRegex(ValueError, '필수 리소스'):
+                        server.start(self.api, routing, 'test-context', Path('/test.env'), check_only=check_only)
+                    self.assertFalse(any('apply' in args for args, _ in self.calls))
+                    self.api.deploy.assert_not_called()
 
     def test_pending_tls_does_not_skip_other_required_secrets(self):
         self.missing_destination = True
@@ -334,17 +296,17 @@ class StartTests(unittest.TestCase):
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
 
-    def test_legacy_tls_env_never_requires_an_app_namespace_copy(self):
+    def test_tls_secret_env_never_requires_an_app_namespace_copy(self):
         self.missing_resources = {('secret', 'airflow-tls')}
         self.check_required_resources(self.settings, 'test-context')
         self.assertFalse(any('airflow-tls' in args for args, _ in self.calls))
 
-    def test_airflow_only_preserves_vip_and_never_reads_or_applies_keycloak(self):
+    def test_preserves_vip_placement_and_never_reads_or_applies_keycloak(self):
         self.live = routing.place_vip_backends(self.live, self.live, ['192.0.2.10', '192.0.2.20'], self.nodes, [])
         self.live['status'] = {'readyReplicas': 2}
         self.live['metadata']['resourceVersion'] = '123'
         original = deepcopy(self.live)
-        server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=False)
+        server.start(self.api, routing, 'test-context', Path('/test.env'))
         applies = [json.loads(kwargs['data']) for args, kwargs in self.calls if 'apply' in args]
         self.assertTrue(all(item.get('kind') != 'Deployment' for body in applies
                             for item in body.get('items', [body])))
@@ -357,7 +319,7 @@ class StartTests(unittest.TestCase):
             self.assertFalse(any('keycloak' in arg for arg in args))
         self.api.deploy.assert_called_once()
 
-    def test_airflow_only_preserves_portal_connected_during_preflight(self):
+    def test_preserves_portal_connected_during_preflight(self):
         """사전 검사 후 추가된 Portal과 기존 Headlamp 감시를 최신 패치에 함께 보존합니다."""
         self.live = controller('etch-sso,headlamp')
         self.live['metadata']['resourceVersion'] = '17'
@@ -370,7 +332,7 @@ class StartTests(unittest.TestCase):
             return self.fake_run(args, **kwargs)
 
         self.api.run.side_effect = run
-        server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=False)
+        server.start(self.api, routing, 'test-context', Path('/test.env'))
         args = self.live['spec']['template']['spec']['containers'][0]['args']
         self.assertIn(routing.PREFIX + 'etch-sso,headlamp,tailwind-internal,airflow', args)
         changes = [json.loads(args[args.index('--patch') + 1]) for args, _ in self.calls if 'patch' in args]
@@ -381,7 +343,7 @@ class StartTests(unittest.TestCase):
         self.assertLess(rbac, patched)
         self.api.deploy.assert_called_once()
 
-    def test_airflow_only_conflict_keeps_new_portal_watch_and_stops_airflow(self):
+    def test_conflict_keeps_new_portal_watch_and_stops_airflow(self):
         """최신 조회 뒤의 동시 변경은 resourceVersion 검사로 막고 앱 배포도 중단합니다."""
         def run(args, **kwargs):
             if 'apply' in args and json.loads(kwargs['data']).get('kind') == 'List':
@@ -392,23 +354,23 @@ class StartTests(unittest.TestCase):
 
         self.api.run.side_effect = run
         with self.assertRaisesRegex(ValueError, '동시에 변경'):
-            server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=False)
+            server.start(self.api, routing, 'test-context', Path('/test.env'))
         self.assertIn(routing.PREFIX + 'etch-sso,tailwind-internal,headlamp',
                       self.live['spec']['template']['spec']['containers'][0]['args'])
         self.api.deploy.assert_not_called()
         self.assertFalse(any('rollout' in args for args, _ in self.calls))
 
-    def test_airflow_only_existing_or_all_namespace_watch_never_patches_controller(self):
+    def test_existing_or_all_namespace_watch_never_patches_controller(self):
         for watched in ('etch-sso,airflow', ''):
             with self.subTest(watched=watched):
                 self.calls.clear()
                 self.live = controller(watched)
                 self.live['metadata']['resourceVersion'] = '17'
-                server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=False)
+                server.start(self.api, routing, 'test-context', Path('/test.env'))
                 self.assertFalse(any('patch' in args for args, _ in self.calls))
 
-    def test_airflow_only_check_does_not_apply_or_deploy(self):
-        server.start(self.api, routing, 'test-context', Path('/test.env'), deploy_keycloak=False, check_only=True)
+    def test_check_does_not_apply_or_deploy(self):
+        server.start(self.api, routing, 'test-context', Path('/test.env'), check_only=True)
         self.assertFalse(any('apply' in args for args, _ in self.calls))
         self.api.deploy.assert_not_called()
 
@@ -429,32 +391,6 @@ class StartTests(unittest.TestCase):
         self.assertEqual(registered[0]['data']['portal.test.crt'], self.tls['data']['tls.crt'])
         self.assertNotIn('uid', registered[0]['metadata'])
         self.assertFalse(any('airflow-tls' in args for args, _ in self.calls))
-
-    def test_node_change_blocks_before_mutation(self):
-        self.live['spec']['template']['spec']['nodeSelector']['kubernetes.io/hostname'] = 'another-worker'
-        with self.assertRaisesRegex(ValueError, 'nodeSelector'):
-            server.start(self.api, routing, 'test-context', Path('/test.env'))
-        self.assertFalse(any('apply' in args for args, _ in self.calls))
-
-    def test_vip_first_apply_and_repeat_keep_two_workers_and_app_placement(self):
-        server.start(self.api, routing, 'test-context', Path('/test.env'), vip_backends='192.0.2.20,192.0.2.10')
-        def applied_controller():
-            lists = [json.loads(kwargs['data'])['items'] for args, kwargs in self.calls if 'apply' in args and json.loads(kwargs['data']).get('kind') == 'List']
-            return routing.controller(lists[-1])
-        first = applied_controller()
-        self.live = first
-        self.calls.clear()
-        server.start(self.api, routing, 'test-context', Path('/test.env'))
-        self.assertEqual(first, applied_controller())
-        self.assertEqual(first['spec']['replicas'], 2)
-        self.assertEqual(self.settings['NODE_NAME'], 'worker')
-
-    def test_vip_unknown_node_and_check_only_never_write(self):
-        with self.assertRaisesRegex(ValueError, 'InternalIP'):
-            server.start(self.api, routing, 'test-context', Path('/test.env'), vip_backends='192.0.2.10,192.0.2.99')
-        server.start(self.api, routing, 'test-context', Path('/test.env'), vip_backends='192.0.2.10,192.0.2.20', check_only=True)
-        self.assertFalse(any('apply' in args for args, _ in self.calls))
-        self.api.deploy.assert_not_called()
 
 
 class PauseTests(unittest.TestCase):

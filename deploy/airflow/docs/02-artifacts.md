@@ -1,44 +1,59 @@
 # 차트·이미지·ODBC 준비
 
-[앱 안내](../README.md) · 이전: [환경설정](01-prepare.md#환경설정) · 다음: [Keycloak 로그인](03-deploy.md#keycloak-로그인)
+[Airflow 가이드](../README.md)
 
-**목적:** 고정 chart, DAG 포함 이미지, ODBC 설정을 배포 실행 호스트와 Worker에 준비합니다.
-**실행 위치:** 각 절에 표시한 호스트의 저장소 루트. 배포할 이미지가 이미 registry에 있으면 빌드를 생략하고 Worker에서 가져올 수 있는지만 확인합니다.
+설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 고정 chart, DAG 포함 이미지, 빌드 도구, ODBC 설정을 준비하는 방법과 원리입니다.
+실행 위치는 각 절에 표시한 호스트의 저장소 루트입니다.
+
+- [1. 공식 chart 준비](#1-공식-chart-준비)
+- [2. DAG 포함 이미지 준비](#2-dag-포함-이미지-준비): [containerd 빌드 도구 준비](#containerd-빌드-도구-준비) · [두 단계 이미지 빌드](#두-단계-이미지-빌드) · [이미지 전달](#이미지-전달)
+- [3. ODBC 설정 준비](#3-odbc-설정-준비)
 
 ## 1. 공식 chart 준비
 
-**실행 위치:** 관리 호스트 저장소 루트. Python 3.10 이상과 Helm 3.19.0 이상이 필요하며 Kubernetes context는 사용하지 않습니다.
+[사람] 관리 호스트 저장소 루트에서 실행합니다. Python 3.10 이상과 Helm 3.19.0 이상이 필요하며 Kubernetes context는 사용하지 않습니다. 운영 agent는 chart 파일이 없으면 멈추고 반입을 요청합니다.
 
 ```bash
-python3 deploy/airflow/scripts/manage.py fetch-chart
+make airflow-fetch-chart
 ```
 
 `helm/chart.lock.json`의 `repository`(사내 Helm 미러)에서 `helm pull --repo ... --version 1.22.0`으로 받습니다.
-**기대 결과:** `사내 Helm 미러 chart 다운로드·SHA-256 검사 완료`. SHA-256이 일치할 때만 `deploy/airflow/helm/vendor/airflow-1.22.0.tgz`에 저장하며 검증 실패 시 기존 캐시를 보존합니다.
-**실패 확인:** 관리 호스트에서 미러 DNS·접근 권한·chart 제공 여부를 확인합니다.
+성공: `사내 Helm 미러 chart 다운로드·SHA-256 검사 완료`. SHA-256이 일치할 때만 `deploy/airflow/helm/vendor/airflow-1.22.0.tgz`에 저장하며 검증 실패 시 기존 캐시를 보존합니다.
+실패: 관리 호스트에서 미러 DNS·접근 권한·chart 제공 여부를 확인합니다.
 
 미러에서 받을 수 없으면 외부 PC에서 lock의 `url`(공개 주소)로 받은 `airflow-1.22.0.tgz`를 서버의 같은 위치로 반입합니다.
-다른 위치의 파일은 검사·렌더·배포를 실행하는 같은 셸에서 지정합니다.
+다른 위치의 파일은 환경변수 `AIRFLOW_CHART_FILE`로 지정합니다. 명령마다 새 셸이 열릴 수 있으므로 검사·렌더·배포의 각 명령 앞에 같은 값을 붙입니다. 아래는 [검사] 명령의 예입니다.
 
 ```bash
-read -r -p '반입한 chart의 절대 경로: ' AIRFLOW_CHART_FILE
-export AIRFLOW_CHART_FILE
+AIRFLOW_CHART_FILE=<반입한 chart의 절대 경로> make airflow-check KUBE_CONTEXT="<context>"
 ```
 
 검사·렌더·배포는 chart를 자동 다운로드하지 않으며 고정 SHA-256이 다르면 중단합니다. dependency가 압축 파일에 포함되어 `helm dependency update`가 필요하지 않습니다.
 
 ## 2. DAG 포함 이미지 준비
 
-**실행 위치:** 빌드 host인 `khinfow01`(Airflow 실행 Worker)의 저장소 루트. 기존 containerd에 nerdctl·BuildKit을 연결해 Docker Engine 없이 빌드합니다.
-control plane과 관리 호스트에서는 빌드하지 않습니다. 빌드의 CPU·디스크 사용이 Kubernetes API·etcd와 관리 호스트의 다른 앱에 영향을 주기 때문입니다. 관리 호스트는 검사·배포만 실행합니다.
+실행 위치는 관리 호스트의 저장소 전체 checkout 루트(운영 agent가 실행되는 곳)입니다. 기존 containerd에 nerdctl·BuildKit을 연결해 Docker Engine 없이 빌드합니다.
+control plane에서는 빌드하지 않습니다. 관리 호스트는 MinIO·Registry도 실행하므로 BuildKit의 동시 빌드 단계를 2로 제한합니다(`max-parallelism`).
 
-빌드 host에는 사내 GitHub에서 받은 저장소, nerdctl·BuildKit, 사내 미러·ODBC artifact 접근, registry push 계정이 필요합니다. 클러스터 kubeconfig는 두지 않습니다.
-저장소는 빌드 전에 배포할 커밋으로 갱신합니다.
+한 타깃이 빌드와 사내 이미지 저장소 push를 수행합니다. `make ops-deploy APP=airflow`의 첫 단계이기도 합니다.
 
+[검사]
 ```bash
-git -C <저장소 경로> pull --ff-only
-git -C <저장소 경로> log -1 --oneline
+make build-tools-check
 ```
+
+[변경] 클러스터는 바꾸지 않고 사내 이미지 저장소에 이미지를 올립니다.
+```bash
+make airflow-image
+```
+
+- 이미지 이름은 `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`(`store.etch.samsungds.net/airflow`)와 `AIRFLOW_IMAGE_TAG`입니다. tag `3.3.2-auto`는 `apps/airflow` 소스(DAG 공유 폴더를 쓰면 `dags` 제외)와 `build.env` 내용으로 `3.3.2-<12자리>`가 됩니다. 소스가 바뀌면 tag가 바뀌므로 env를 고칠 필요가 없습니다. 고정하려면 `3.3.2-<이름>`을 직접 씁니다.
+- registry에 같은 tag가 있으면 `registry에 이미 있는 tag라 빌드하지 않았습니다`를 출력하고 끝납니다. 없으면 빌드 후 push 계정(`REGISTRY_PUSH_ENV`, 기본 `deploy/registry/env/push-initial.env`)으로 로그인해 올립니다.
+- 관리 호스트와 각 노드는 저장소 인증서를 신뢰해야 합니다([노드와 관리 호스트의 CA 신뢰](../../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)).
+
+성공: `빌드 도구 준비 완료`, `Airflow 이미지 push 완료: store.etch.samsungds.net/airflow:3.3.2-<12자리>`.
+
+아래는 빌드 단계만 따로 실행하거나 옵션을 바꿀 때의 설명입니다.
 
 | 빌드 옵션 | 기본값·용도 |
 | --- | --- |
@@ -53,10 +68,11 @@ Docker를 쓰는 빌드 호스트는 `command -v docker`, `docker info`가 성�
 
 ### containerd 빌드 도구 준비
 
-`khinfow01`에 nerdctl·BuildKit이 없을 때 아래 1~5를 진행합니다. Ubuntu 22.04·amd64와 기존 containerd 2.2.1 기준의 최초 설치이며, 1단계에서 Worker의 실제 버전을 확인합니다.
+관리 호스트에 nerdctl·BuildKit이 없으면 `make build-tools-install`이 아래 1~5를 수행합니다(비밀번호 없는 sudo 필요, 기존 설정·서비스 파일은 덮어쓰지 않음). `make build-tools-check`는 설치·서비스·worker 상태만 조회합니다.
+아래는 같은 절차의 수동 실행과 문제 해결용 설명입니다. Ubuntu 22.04·amd64와 기존 containerd 2.2.1 기준의 최초 설치이며, 1단계에서 서버의 실제 버전을 확인합니다.
 이미 설치했다면 [5. 서비스 실행과 연결 검증](#5-서비스-실행과-연결-검증)만 실행합니다. 실제 설치 상태는 [서버 원본](../../shared/docs/infrastructure/servers.md#확인된-worker-설치-기준)을 따릅니다.
 
-**실행 위치:** `khinfow01` 저장소 루트의 같은 Bash 터미널. sudo·curl·tar·sha256sum·systemctl이 필요합니다.
+실행 위치는 관리 호스트 저장소 루트의 같은 Bash 터미널입니다. sudo·curl·tar·sha256sum·systemctl이 필요합니다.
 실행 계정에 소켓 권한이 있으면 nerdctl·buildctl의 `sudo`를 생략할 수 있으며, 빌드·registry 인증·이미지 전달은 같은 계정으로 수행합니다.
 
 #### 1. 설치 전 확인
@@ -69,7 +85,7 @@ sudo test -S /run/containerd/containerd.sock
 command -v nerdctl buildctl buildkitd
 ```
 
-**기대 결과:** `x86_64`, containerd `active`, 소켓 검사는 출력 없이 성공. 마지막 명령에 경로가 없으면 다음 단계에서 설치합니다.
+성공: `x86_64`, containerd `active`, 소켓 검사는 출력 없이 성공. 마지막 명령에 경로가 없으면 다음 단계에서 설치합니다.
 기존 containerd를 사용하므로 `nerdctl-full`이 아닌 **nerdctl 단독 패키지**를 받습니다.
 
 #### 2. 설치 파일 다운로드와 검증
@@ -103,7 +119,7 @@ EOF
 )
 ```
 
-**기대 결과:** 두 파일 모두 `OK`. 하나라도 실패하면 진행하지 않습니다.
+성공: 두 파일 모두 `OK`. 하나라도 실패하면 진행하지 않습니다.
 
 #### 3. 바이너리 설치
 
@@ -120,7 +136,7 @@ sudo tar -xzf "$AIRFLOW_TOOLS_DIR/buildkit-v0.34.1.linux-amd64.tar.gz" \
 sudo sh -c 'command -v nerdctl buildctl buildkitd'
 ```
 
-**기대 결과:** 선택한 버전이 출력되고 sudo 환경에서도 세 명령이 `/usr/local/bin/` 경로로 조회됩니다.
+성공: 선택한 버전이 출력되고 sudo 환경에서도 세 명령이 `/usr/local/bin/` 경로로 조회됩니다.
 
 #### 4. BuildKit 설정과 서비스 등록
 
@@ -173,7 +189,7 @@ sudo buildctl --addr unix:///run/buildkit/buildkitd.sock debug workers --verbose
 ```
 
 기존 BuildKit 설정을 바꿨다면 BuildKit 서비스만 재시작한 뒤 확인합니다. containerd 재시작은 필요하지 않습니다.
-**기대 결과:** BuildKit `active`, nerdctl 연결 성공, worker에 다음 두 label이 표시됩니다.
+성공: BuildKit `active`, nerdctl 연결 성공, worker에 다음 두 label이 표시됩니다.
 
 ```text
 org.mobyproject.buildkit.worker.executor: containerd
@@ -191,7 +207,7 @@ org.mobyproject.buildkit.worker.containerd.namespace: default
 
 ### 두 단계 이미지 빌드
 
-**실행 위치:** `khinfow01` 저장소 루트.
+`make airflow-image`가 내부에서 같은 빌드를 실행합니다. [변경] 아래 명령은 push 없이 빌드 단계만 따로 확인할 때 관리 호스트 저장소 루트에서 씁니다.
 
 빌드 도구는 `env/build.env`를 build arg로 전달합니다. 사내 base image(`apache/airflow:3.3.2-python3.12` 미러)·APT/PIP mirror·trusted hosts·ODBC artifact URL과
 `INSTALL_BIGDATAQUERY_PYTHON=true`, `INSTALL_BIGDATAQUERY_ODBC=true`가 기본값이며 `apps/airflow/image/Dockerfile.dependencies`의 기본값과 같습니다.
@@ -214,12 +230,12 @@ Docker 빌드는 `--builder docker`를 사용합니다. 도구는 소스·빌더
 1. `apps/airflow/image/Dockerfile.dependencies`로 의존성 이미지(`<repository>:<tag>-dependencies`)를 만듭니다.
 2. `apps/airflow/image/Dockerfile`로 DAG·플러그인을 추가합니다. 빌드 context는 `apps/airflow`이며 실제 env·로그·DSN 파일은 보내지 않습니다.
 
-**기대 결과:** `Airflow 이미지 빌드 완료`. 이미지는 자동 push하지 않습니다.
+성공: `Airflow 이미지 빌드 완료`. 이 명령은 이미지를 push하지 않습니다.
 BigDataQuery Python·ODBC의 설치·import·DSN 접속과 mirror의 패키지 제공은 사내 빌드 호스트·서버에서 확인합니다.
-`PIP_TRUSTED_HOST`는 pip 저장소 접근 설정이며 업무 API의 TLS 신뢰를 대신하지 않습니다. OIDC CA는 [별도 마운트](03-deploy.md#2-oidc-ca-configmap-준비)를 사용합니다.
+`PIP_TRUSTED_HOST`는 pip 저장소 접근 설정이며 업무 API의 TLS 신뢰를 대신하지 않습니다. OIDC CA는 [별도 마운트](03-deploy.md#oidc-ca-configmap)를 사용합니다.
 추가 Python 의존성은 의존성 Dockerfile에 넣고 새 태그로 빌드합니다. DAG의 pip·가상환경 동작 등 개발 안내는 [Airflow 개발 안내](../../../apps/airflow/README.md)를 따릅니다.
 
-Docker daemon과 캐시된 `apache/airflow:3.3.2-python3.12`가 있으면 네트워크를 차단한 검사용 빌드로 최종 이미지의 코드 포함과 pip 기본값을 확인할 수 있습니다.
+[검사] Docker daemon과 캐시된 `apache/airflow:3.3.2-python3.12`가 있으면 네트워크를 차단한 검사용 빌드로 최종 이미지의 코드 포함과 pip 기본값을 확인할 수 있습니다.
 
 ```bash
 AIRFLOW_DOCKER_TESTS=1 python3 -m unittest discover \
@@ -228,8 +244,8 @@ AIRFLOW_DOCKER_TESTS=1 python3 -m unittest discover \
 
 ### 이미지 전달
 
-빌드한 이미지는 `khinfow01` containerd의 빌드용 `default` namespace에 저장됩니다. Kubernetes는 `k8s.io` namespace만 사용하므로 같은 Worker에서도 등록이 필요하고, 다른 Worker는 이미지를 따로 받아야 합니다.
-registry가 있으면 push하고, 없으면 `.tar`로 저장해 Worker에 반입합니다. PostgreSQL 이미지도 같은 기준으로 준비합니다.
+빌드한 이미지는 빌드 서버 containerd의 빌드용 `default` namespace에 저장됩니다. `make airflow-image`는 사내 이미지 저장소로 push하고 각 노드가 거기서 내려받습니다.
+registry를 쓸 수 없을 때만 아래처럼 `.tar`로 저장해 Worker에 반입하고, 이 경우 `AIRFLOW_IMAGE_REPOSITORY`에 registry 주소 없는 이름을 씁니다. PostgreSQL 이미지도 같은 기준으로 준비합니다.
 공유 폴더의 DAG 변경은 [공유 폴더 관리](04-operations.md#dag-파일-추가수정삭제)를 따릅니다. 플러그인, 패키지, ODBC가 바뀌면 새 이미지 태그로 빌드하고 배포합니다. 이미지에 포함된 DAG는 로컬 개발과 최초 공유 폴더 준비에 사용할 수 있습니다.
 
 #### Registry를 사용하는 경우
@@ -238,26 +254,26 @@ registry가 있으면 push하고, 없으면 `.tar`로 저장해 Worker에 반입
 private registry 인증이 필요하면 대상 namespace에 imagePullSecret을 만들고 `IMAGE_PULL_SECRET`에 이름을 입력합니다.
 
 사내 이미지 저장소를 사용하면 `AIRFLOW_IMAGE_REPOSITORY=store.etch.samsungds.net/airflow`로 지정합니다. 익명 pull이므로 `IMAGE_PULL_SECRET`은 비워 둡니다.
-빌드 호스트와 Worker의 HTTPS 인증서 신뢰 설정은 [registry 설치](../../registry/docs/01-install.md#7-노드와-빌드-호스트의-ca-신뢰)를 따릅니다.
+빌드 호스트와 Worker의 HTTPS 인증서 신뢰 설정은 [노드와 관리 호스트의 CA 신뢰](../../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)를 따릅니다.
 
-**실행 위치:** `khinfow01`. env를 source하지 않고 이미지 이름을 직접 입력합니다.
+`make airflow-image`가 아래 로그인과 push를 수행합니다. 사람이 빌드한 서버에서 직접 실행할 때만 사용합니다. env를 source하지 않고 이미지 이름을 직접 입력합니다.
 
 ```bash
-read -r -p 'env와 동일한 repository:tag: ' AIRFLOW_IMAGE_REF
+AIRFLOW_IMAGE_REF=<env와 동일한 repository:tag>
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default image inspect "$AIRFLOW_IMAGE_REF"
 # 사내 이미지 저장소의 push 계정으로 로그인합니다.
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default login store.etch.samsungds.net
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default push "$AIRFLOW_IMAGE_REF"
 ```
 
-**기대 결과:** registry에 태그가 있고 선택한 Worker가 인증·CA·네트워크 설정으로 내려받을 수 있습니다.
+성공: registry에 태그가 있고 선택한 Worker가 인증·CA·네트워크 설정으로 내려받을 수 있습니다.
 
 #### Registry 없이 전달하는 경우
 
-**1. `khinfow01` 자신에 등록**
+**1. 빌드한 Worker 자신에 등록**
 
-**실행 위치:** `khinfow01`. 빌드한 이미지를 파일 복사 없이 Kubernetes용 `k8s.io` namespace에 등록합니다.
-이미지 이름은 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 같아야 합니다. 아래 값은 [현재 서버 env](../env/k8s.env)의 선언입니다.
+이미지를 빌드한 Worker에서 실행합니다. 빌드한 이미지를 파일 복사 없이 Kubernetes용 `k8s.io` namespace에 등록합니다.
+이미지 이름은 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 같아야 합니다. 아래 값은 registry 없이 쓸 때의 예시입니다.
 
 ```bash
 AIRFLOW_IMAGE_REF=airflow:3.3.2-release-1
@@ -267,7 +283,7 @@ sudo nerdctl --address /run/containerd/containerd.sock --namespace default save 
 sudo ctr --address /run/containerd/containerd.sock --namespace k8s.io images ls | grep airflow
 ```
 
-**기대 결과:** `inspect`가 성공하고 `k8s.io` 목록에 배포할 repository·tag가 있습니다. 짧은 이름은 `docker.io/library/`가 붙어 표시될 수 있습니다.
+성공: `inspect`가 성공하고 `k8s.io` 목록에 배포할 repository·tag가 있습니다. 짧은 이름은 `docker.io/library/`가 붙어 표시될 수 있습니다.
 이미지를 찾지 못하면 `sudo nerdctl --address /run/containerd/containerd.sock --namespace default images`로 실제 이름·태그를 확인합니다.
 다른 namespace·주소로 빌드했다면 같은 값을 지정하고, Docker로 빌드했다면 `docker save`를 사용합니다.
 
@@ -280,12 +296,8 @@ Airflow Pod는 `khinfow01`에서만 실행하므로 보통 필요하지 않습�
 sudo nerdctl --address /run/containerd/containerd.sock --namespace default save \
   -o /tmp/airflow-image.tar "$AIRFLOW_IMAGE_REF"
 sudo chown "$(id -u):$(id -g)" /tmp/airflow-image.tar
-read -r -p '대상 Worker 주소: ' AIRFLOW_TARGET_HOST
-read -r -p '대상 Worker SSH 계정: ' AIRFLOW_TARGET_USER
-read -r -p '대상 Worker SSH 포트 [22]: ' AIRFLOW_TARGET_PORT
-AIRFLOW_TARGET_PORT="${AIRFLOW_TARGET_PORT:-22}"
-scp -P "$AIRFLOW_TARGET_PORT" /tmp/airflow-image.tar "${AIRFLOW_TARGET_USER}@${AIRFLOW_TARGET_HOST}:/tmp/airflow-image.tar"
-ssh -p "$AIRFLOW_TARGET_PORT" "${AIRFLOW_TARGET_USER}@${AIRFLOW_TARGET_HOST}"
+scp -P <SSH 포트> /tmp/airflow-image.tar <SSH 계정>@<대상 Worker 주소>:/tmp/airflow-image.tar
+ssh -p <SSH 포트> <SSH 계정>@<대상 Worker 주소>
 ```
 
 SCP를 쓸 수 없으면 승인된 전송 수단으로 같은 파일을 복사합니다. 접속한 Worker에서 `k8s.io` namespace에 등록합니다.
@@ -301,9 +313,9 @@ K3s Worker는 `sudo k3s ctr images import /tmp/airflow-image.tar`, `sudo k3s ctr
 
 ## 3. ODBC 설정 준비
 
-**목적:** 기존 ODBC 디렉터리 전체를 같은 노드에서 읽기 전용으로 마운트합니다.
-`ODBC_HOST_PATH`(현재 `/appdata/airflow/odbc`)에 INI·인증서·하위 파일을 두며, 파일 배치 명령은 [ODBC 파일 안내](../odbc/README.md)를 따릅니다.
-이 저장소에는 실제 DSN·인증서가 없으므로 빈 파일로 대신하지 않습니다. 경로가 없으면 Kubernetes가 Pod 기동을 차단합니다.
+기존 ODBC 디렉터리 전체를 같은 노드에서 읽기 전용으로 마운트합니다.
+`ODBC_HOST_PATH`(현재 `/appdata/airflow/odbc`)에 INI·인증서·하위 파일을 두며, 파일 배치 명령은 [ODBC 파일 안내](../odbc/README.md)를 따릅니다. 폴더 자체는 없으면 `airflow-up`이 `50000:0`·`0750`으로 만듭니다.
+이 저장소에는 실제 DSN·인증서가 없으므로 빈 파일로 대신하지 않습니다. `airflow-up`을 거치지 않는 [직접 deploy](03-deploy.md#직접-deploy와-helm-override)에서 경로가 없으면 Kubernetes가 Pod 기동을 차단합니다.
 
 | 기존 컨테이너 설정 | Kubernetes 유지 값 |
 | --- | --- |
@@ -314,5 +326,4 @@ K3s Worker는 `sudo k3s ctr images import /tmp/airflow-image.tar`, `sudo k3s ctr
 
 Secret 방식은 `ODBC_HOST_PATH=`로 비우고 `NAMESPACE`와 같은 namespace의 기존 Secret 이름을 `ODBC_SECRET_NAME`에 지정합니다. 두 방식을 함께 지정하면 검사에서 중단합니다.
 
-**완료 기준:** 선택한 Worker에 실제 설정 파일이 있고 UID 50000이 읽을 수 있거나, 참조 Secret이 대상 namespace에 있습니다.
-**다음 단계:** [Keycloak 로그인](03-deploy.md#keycloak-로그인).
+준비가 끝난 상태는 선택한 Worker에 실제 설정 파일이 있고 UID 50000이 읽을 수 있거나, 참조 Secret이 대상 namespace에 있는 것입니다.

@@ -193,7 +193,7 @@ LB 뒤의 한 서버만 정상일 수 있으므로 담당자는 각 API server�
 
 ## 다음 단계
 
-앱 문서에서 실제 브라우저 로그인과 그룹별 권한을 확인합니다. Headlamp는 [배포와 검증](../../../headlamp/docs/03-deploy.md)입니다.
+앱 문서에서 실제 브라우저 로그인과 그룹별 권한을 확인합니다. Headlamp는 [로그인 검증](../../../headlamp/docs/03-deploy.md#실제-사용자-로그인)입니다.
 CA를 교체하면 이 문서의 2~6단계와 앱 쪽 CA 설정을 함께 갱신합니다.
 
 공식 참고: [Kubernetes OIDC](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#openid-connect-tokens),

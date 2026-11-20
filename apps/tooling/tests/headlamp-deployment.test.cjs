@@ -55,7 +55,6 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   assert.ok(pod.containers[0].args.includes('-oidc-use-pkce=$(OIDC_USE_PKCE)'));
   assert.equal(envMap.SSL_CERT_FILE, '/etc/headlamp-ca/ca.crt');
   assert.ok(pod.volumes.some(volume => volume.configMap?.name === 'headlamp-ca'));
-  assert.equal(docs.some(doc => doc.kind === 'ServiceAccount' && doc.metadata.name === 'headlamp-viewer'), false);
   assert.equal(docs.find(doc => doc.kind === 'Service').spec.type, 'ClusterIP');
   const bindings = docs.filter(doc => doc.kind === 'ClusterRoleBinding');
   assert.deepEqual(bindings.map(doc => doc.roleRef.name).sort(), ['cluster-admin']);
@@ -64,7 +63,6 @@ test('Headlamp 서버 단독 구성은 Keycloak 관리자 그룹에만 전체 �
   }
   assert.equal(bindings[0].metadata.name, 'server-headlamp-admin');
   assert.equal(docs.some(doc => doc.kind === 'ClusterRole'), false);
-  assert.doesNotMatch(rendered, /server-headlamp-viewer|server-headlamp-discovery|headlamp-viewers/);
 
   const ingress = docs.find(doc => doc.kind === 'Ingress');
   assert.equal(ingress.spec.ingressClassName, 'traefik');

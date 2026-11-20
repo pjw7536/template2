@@ -13,6 +13,7 @@ deploy/
 ├── portal/env/
 │   ├── prod/api.env               # API·migration·collectstatic·client 등록
 │   ├── prod/web.env               # 브라우저 공개 설정
+│   ├── prod/build.env             # API·Web 이미지 빌드
 │   └── test/api.env               # CI API 자동 테스트
 ├── minio/env/prod.env             # 독립 공용 MinIO
 ├── airflow/env/
@@ -32,10 +33,10 @@ deploy/
 | 방식 | 앱 | 상세 |
 | --- | --- | --- |
 | env에 일반 설정과 비밀번호·토큰·서명 키·인증 헤더를 함께 넣고 비공개 Git 저장소에서 관리 | Keycloak·Portal API·MinIO·Airflow | 아래 3절 |
-| 실제 비밀값은 별도 Secret으로 등록하고 env에는 Secret 이름만 기록 | Headlamp | client secret 숨김 입력 → 전용 Secret. [client secret 등록](../../../headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록) |
-| 신규 설치용 계정 파일, 기존 서비스는 운영 계정 유지 | Monitoring | `deploy/monitoring/env/grafana-initial.env` → Grafana 관리자 Secret. [관리자 Secret 준비](../../../monitoring/docs/01-install.md#5-namespace와-관리자-secret-준비) |
+| 실제 비밀값은 별도 Secret으로 등록하고 env에는 Secret 이름만 기록 | Headlamp | `make headlamp-oidc-setup`이 Keycloak의 client secret을 전용 Secret으로 등록. 수동 등록은 [client secret 등록](../../../headlamp/docs/02-authentication.md#5-관리-호스트에서-client-secret-등록) |
+| 신규 설치용 계정 파일, 기존 서비스는 운영 계정 유지 | Monitoring | `deploy/monitoring/env/grafana-initial.env` → Grafana 관리자 Secret. [관리자 Secret 준비](../../../monitoring/docs/01-prepare.md#grafana-관리자-계정) |
 | 〃 | FTP | `deploy/ftp/env/initial-account.env` (권한 600) → 공용 FTP 계정 Secret. [계정 파일 준비](../../../ftp/docs/01-install.md#4-관리-호스트의-계정-파일-준비) |
-| 〃 | Registry | `deploy/registry/env/push-initial.env` → bcrypt htpasswd → push 계정 Secret. [push 계정 준비](../../../registry/docs/01-install.md#4-namespace와-push-계정-준비) |
+| 〃 | Registry | `deploy/registry/env/push-initial.env` → bcrypt htpasswd → push 계정 Secret. [push 계정 준비](../../../registry/README.md#입력) |
 
 - Portal Web 설정은 브라우저에 공개되므로 비밀값을 넣지 않습니다.
 - 인증서·개인키 파일은 Git에서 제외하고 [인증서 안내](../certificates/prepare.md)에 따라 준비합니다.
@@ -54,6 +55,7 @@ deploy/
 | MinIO 설정 | `deploy/minio/env/prod.env` | 독립 공용 MinIO 서버·이미지·노드·저장소·Ingress. 앱별 접근 키는 각 앱 env |
 | Airflow Kubernetes 설정 | `deploy/airflow/env/k8s.env` | 전용 배포 도구 → Airflow·PostgreSQL Secret |
 | Airflow 이미지 빌드 | `deploy/airflow/env/build.env` | 사내 의존성·DAG 이미지 빌드 |
+| Portal 이미지 빌드 | `deploy/portal/env/prod/build.env` | API·Web 이미지의 사내 기반 이미지·패키지 미러. `make portal-image`가 build arg로 전달하고 이미지 tag 계산에도 포함 |
 | Kubernetes Monitoring | `deploy/monitoring/env/k8s.env` | 노드·local PV·이미지 미러·Grafana Secret 참조 |
 | Headlamp 공개 설정 | `deploy/headlamp/env/k8s.env` | 공개 주소·issuer·Secret/CA 이름. 실제 client secret 제외 |
 | FTP 배포 설정 | `deploy/ftp/env/prod.env` | `FTP_IMAGE` 사내 미러 주소·고정 tag/digest, 선택 `IMAGE_PULL_SECRET`, control plane 선택 허용 `FTP_ALLOW_CONTROL_PLANE`(생략 시 true, false면 control plane 선택 거부). `FTP_ENV`로 파일 변경. 로그인 계정 파일은 `FTP_CREDENTIAL_FILE`로 별도 지정 |
@@ -105,7 +107,7 @@ python3 deploy/airflow/scripts/manage.py check --env deploy/airflow/env/k8s.env
 다른 경로의 파일은 마지막 인자로 지정합니다.
 
 ```bash
-bash deploy/shared/scripts/check-env.sh keycloak prod server /root/keycloak-runtime.env
+bash deploy/shared/scripts/check-env.sh keycloak prod server /절대/경로/prod.env
 ```
 
 **기대 결과:** `설정 검사 통과 (설정값은 출력하지 않습니다.)`가 출력됩니다.
@@ -116,8 +118,8 @@ bash deploy/shared/scripts/check-env.sh keycloak prod server /root/keycloak-runt
 
 Secret 등록은 Portal `local`·`prod`에 사용합니다. Keycloak과 Airflow는 각 앱의 배포 명령이 Secret을 관리합니다.
 
-- Keycloak `keycloak-runtime`: `make keycloak-up`이 Secret이 없을 때만 만들고, 기존 Secret과 env가 다르면 중단합니다. `make k8s-env APP=keycloak ...`은 기존 Secret을 덮어써 실제 DB·관리자 비밀번호와 어긋나게 만들 수 있으므로 사용하지 않습니다. 값 변경은 [Keycloak 운영](../../../keycloak/docs/04-operations.md#저장소-갱신-후-반영)을 따릅니다.
-- Keycloak `keycloak-oidc-settings`: [사내 IdP 등록](../../../keycloak/docs/03-configure.md#realm과-사내-로그인) 단계가 env를 해석해 등록합니다.
+- Keycloak `keycloak-runtime`: `make keycloak-up`이 Secret이 없을 때만 만들고, 기존 Secret과 env가 다르면 중단합니다. `make k8s-env APP=keycloak ...`은 기존 Secret을 덮어써 실제 DB·관리자 비밀번호와 어긋나게 만들 수 있으므로 사용하지 않습니다. 값 변경은 [Keycloak 운영](../../../keycloak/README.md#b-업데이트)을 따릅니다.
+- Keycloak `keycloak-oidc-settings`: [사내 IdP 등록](../../../keycloak/docs/02-configure.md#realm과-사내-로그인) 단계가 env를 해석해 등록합니다.
 - Airflow: 전용 deploy 명령이 DB·Airflow Secret을 나누어 등록합니다.
 
 Namespace를 먼저 준비하고 필요한 작업의 입력만 등록합니다. 서버 등록에는 대상 `KUBE_CONTEXT`가 필수이며 외부 env 파일을 지정해도 같습니다. 같은 이름의 Secret이 있으면 env 내용으로 교체합니다.
@@ -136,7 +138,7 @@ make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
 
 **기대 결과:** `설정 등록 완료: <namespace> / <secret>`이 출력됩니다. 등록은 설정 저장까지만 수행합니다.
 서버 기동값은 해당 Pod를 다시 기동할 때, OIDC·client 설정은 별도 Job을 실행할 때 반영됩니다.
-env 검사·Secret 등록 명령은 Job을 실행하지 않으므로 초기 설정은 [Keycloak 자체 설정 절차](../../../keycloak/docs/03-configure.md#realm과-사내-로그인),
+env 검사·Secret 등록 명령은 Job을 실행하지 않으므로 초기 설정은 [Keycloak 자체 설정 절차](../../../keycloak/docs/02-configure.md#realm과-사내-로그인),
 client 등록은 [Portal client 안내](../../../portal/docs/01-install.md#keycloak-client-등록)를 따릅니다.
 
 **실패 확인:** `KUBE_CONTEXT`가 비어 있거나 지원하지 않는 앱·환경이면 등록 전에 중단합니다.
@@ -144,13 +146,6 @@ client 등록은 [Portal client 안내](../../../portal/docs/01-install.md#keycl
 ## 6. 기존 설치 호환
 
 - 설정을 여러 파일로 나누어 쓰던 서버는 현재 통합 env(`api.env`·`web.env`)에 기존 값이 보존됐는지 확인합니다. 이전 파일(`*.pre-k8s.bak`)은 Git에서 제외되며 checkout 전환 도구가 보호합니다.
-- 기존 CP1의 `/root/keycloak-runtime.env`도 서버용 필수 key 4개를 유지하면 Keycloak env로 사용할 수 있습니다. 관리 호스트로 옮긴 뒤 검사·배포에 같은 경로를 지정합니다. 배포 도구는 기존 Secret과 비교만 하고 덮어쓰지 않습니다.
-
-  ```bash
-  make keycloak-check KUBE_CONTEXT="$KUBE_CONTEXT" KEYCLOAK_ENV=<옮긴 keycloak-runtime.env 절대 경로>
-  ```
-
-- `client-secret`, `portal-public-url`이 Keycloak 서버 Secret에 남아 있어도 기동 입력으로 사용하거나 자동 삭제하지 않습니다. Portal client secret과 공개 URL은 Portal API env에서 관리합니다.
 - env를 Secret으로 등록하는 배포 방식과 Headlamp·Monitoring의 기존 Secret 참조는 유지합니다.
 
 ## 7. 회귀 테스트

@@ -2,6 +2,7 @@
 """Keycloak 설정 Job을 단계별 또는 통합 실행하며 IdP 입력은 discovery로 해석합니다."""
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,9 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[3]
 SHARED = ROOT / "deploy/shared/scripts"
 BASE = ROOT / "deploy/keycloak"
+_spec = importlib.util.spec_from_file_location("deploy_runtime", SHARED / "runtime.py")
+RUNTIME = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(RUNTIME)
 ENDPOINTS = {
     "authorization_endpoint": "CORP_OIDC_AUTH_URL",
     "token_endpoint": "CORP_OIDC_TOKEN_URL",
@@ -98,7 +102,7 @@ def discover(values):
     missing = [key for key in required if not values.get(key, "").strip()]
     if missing:
         raise ValueError("필수 설정 누락: " + ", ".join(missing))
-    placeholders = [key for key in required if any(marker in values[key] for marker in ("<", "example.invalid", "replace-me", "change-me"))]
+    placeholders = [key for key in required if RUNTIME.is_placeholder(values[key])]
     if placeholders:
         raise ValueError("실제 값으로 교체할 설정: " + ", ".join(placeholders))
     if values["CORP_OIDC_CLIENT_AUTH_METHOD"] not in ("client_secret_basic", "client_secret_post"):

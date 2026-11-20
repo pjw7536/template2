@@ -69,7 +69,6 @@ for (const app of appNames) {
     const oidc = spawnSync('make', ['server-check', `APP=${app}`, 'PROFILE=oidc'], { cwd: checkout, encoding: 'utf8' });
     assert.notEqual(oidc.status, 0);
     assert.match(oidc.stderr, /Kubernetes 정의가 없습니다/);
-    if (app === 'keycloak') run(checkout, 'make', ['k8s-export']);
     assert.equal(fs.existsSync(path.join(checkout, 'local')), false);
   });
 }
@@ -131,14 +130,6 @@ test('서버 검사는 미지원 환경과 선택 앱의 누락된 env를 차단
   const result = spawnSync('bash', [...args, 'prod'], { cwd: checkout, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /설정 파일이 없습니다/);
-});
-
-test('서버 일괄 배포는 대상 context 없이 실행하지 않는다', t => {
-  const checkout = fixture(t);
-  run(checkout, 'kubectl', ['kustomize', 'deploy/keycloak/k8s']);
-  const result = spawnSync('make', ['server-up'], { cwd: checkout, encoding: 'utf8' });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /--context/);
 });
 
 test('platform 그룹은 Portal을 제외한 앱을 검사 대상으로 해석한다', t => {

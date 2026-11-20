@@ -4,7 +4,7 @@
 
 Portal API의 DB 구조를 바꿀 때 개발 PC에서 migration을 만들고 검증하는 기준입니다.
 사내 서버의 적용 절차(쓰기 중지·백업·사전/사후 무결성 검사·migrate Job·서비스 재개)는
-[운영 Migration 절차](../../deploy/portal/docs/01-install.md#3-migration)가 원본입니다.
+[운영 Migration 절차](../../deploy/portal/docs/01-install.md#migration)가 원본입니다.
 
 ## 1. 생성
 

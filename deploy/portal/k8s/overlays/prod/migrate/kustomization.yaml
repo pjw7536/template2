@@ -3,7 +3,8 @@ kind: Kustomization
 namespace: tailwind-internal
 resources:
   - ../../../jobs/migrate
+# newTag auto는 배포 도구가 apps/portal 소스 내용으로 정한 tag로 바꿉니다. 고정하려면 실제 tag를 씁니다.
 images:
   - name: portal-api
     newName: store.etch.samsungds.net/tailwind/api
-    newTag: replace-me
+    newTag: auto

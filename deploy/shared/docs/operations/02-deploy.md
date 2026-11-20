@@ -2,231 +2,77 @@
 
 [공통 안내](../README.md) · 이전: [서버 파일 받기](01-checkout.md) · 다음: [운영](03-operations.md)
 
+배포 절차의 원본은 [배포 가이드](../../../README.md)와 각 앱 가이드(`deploy/<app>/README.md`)입니다.
+이 문서는 그 절차에 없는 준비 확인과, 사람이 직접 하는 접속·기능 검증을 다룹니다.
+
 - [배포 준비](#배포-준비)
-- [앱 의존 관계](#앱-의존-관계)
 - [접속·기능 검증](#접속기능-검증)
 
 ## 배포 준비
 
-### 1. 준비물
+앱별 준비물은 각 앱 가이드의 `사람이 하는 일`과 `입력`에 있고, 배포 전 검사는 [공통 시작](../../../README.md#모든-작업-공통-시작)의 `make ops-preflight`가 수행합니다. 아래는 그 밖의 확인입니다.
 
-- [관리 호스트에 clone한 저장소](01-checkout.md#저장소-clone)와 대상 클러스터의 kubeconfig
-- 앱별 준비물
+### 대상 context 확인
 
-| 앱 | 준비물·상세 안내 |
-| --- | --- |
-| [Keycloak](../../../keycloak/README.md) | 이미지, Worker의 DB 경로·권한, 80/443, env·TLS |
-| [Airflow](../../../airflow/README.md) | 이미지·ODBC, DB/로그 경로, 고정 chart·Helm, env·TLS |
-| [Portal](../../../portal/k8s/overlays/prod/README.md) | API/Web 이미지, 외부 DB, MinIO·업무 파일 저장소, env·TLS |
-| [Monitoring](../../../monitoring/README.md) / [Headlamp](../../../headlamp/README.md) | 고정 chart·Helm·이미지·앱별 권한과 설정 |
-| [FTP](../../../ftp/README.md) | 선택 Worker의 폴더·사용자 권한·직접 접속 포트 |
-| [MinIO](../../../minio/README.md) | 이미지, Worker의 데이터 디스크, root 계정 env·TLS |
-| [Registry](../../../registry/README.md) | 이미지, Worker의 데이터 폴더, DNS, push 계정 Secret, 노드 containerd HTTP 허용 |
-
-데이터 폴더는 앱이 실행될 Worker에 직접 준비합니다. PV 적용만으로 폴더가 생기거나 쓰기 권한이 설정되지는 않습니다.
-같은 Worker의 컨테이너 런타임에서 이미지를 가져올 수 있는지도 확인합니다.
-
-### 2. 대상 context 확인 — 관리 호스트
-
-checkout 루트에서 실행합니다. 모두 조회 명령입니다.
+[조회] 배포할 커밋·context·노드가 맞는지 확인합니다. 서버 기본 context 값은 [운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 있습니다.
 
 ```bash
 git rev-parse HEAD
 kubectl config get-contexts
-read -r -p '배포할 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
+kubectl --context "<context>" get nodes -o wide
 ```
 
-배포할 커밋·context·노드가 맞는지 확인합니다. 서버 기본 context 값은 [운영 파일 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)에 있습니다.
-공용 Ingress·앱 배포·Secret 등록 명령에는 `KUBE_CONTEXT`를 전달하며 kubectl의 현재 context를 암묵적으로 사용하지 않습니다.
-루트 Makefile은 export한 `KUBE_CONTEXT`를 읽으므로 같은 터미널에서는 다시 입력하지 않아도 됩니다.
+### 저장소 원본만 검사
 
-### 3. 저장소 원본 검사 — 관리 호스트
-
-배포할 앱이 정해지면 checkout 루트에서 다음과 같이 검사합니다.
-
-```bash
-make ops-preflight APP=airflow PROFILE=prod KUBE_CONTEXT="$KUBE_CONTEXT" AIRFLOW_ENV="/appdata/etchax-config/airflow/k8s.env"
-```
-
-앱 하나를 명시합니다. 실제 env는 배포 타깃과 같은 `<APP>_ENV`를 사용하며 Portal은 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`을 사용합니다. Helm chart를 따로 반입했으면 `<APP>_CHART_FILE`도 지정합니다. 파일을 받는 절차는 [관리 호스트 준비](04-drift.md#관리-호스트-준비)를 따릅니다.
-
-| 결과 | 다음 작업 |
-| --- | --- |
-| 통과 | 해당 context 조회 또는 표시된 입력 검사가 성공했습니다. |
-| 배포 차단 | 담당자가 표시된 설정·도구·반입물을 준비하고 출력된 재검사 명령을 실행합니다. |
-| 현장 확인 필요 | 배치 Worker의 미러 접근·반입 이미지·디스크 등은 앱별 담당자가 확인합니다. 사전 검사는 파일 다운로드, pull, 클러스터 적용을 수행하지 않습니다. |
-
-차단이 있으면 명령이 실패합니다. 종료 성공 후에도 현장 확인과 앱별 클러스터 검사를 진행합니다. 그룹 전체의 저장소 원본만 검사할 때는 아래 명령을 사용합니다.
+[검사] 클러스터에 접속하지 않고 앱 또는 그룹의 env 형식과 Kubernetes 원본만 검사합니다. `APP`에는 [apps.json](../../apps.json)의 앱·그룹 이름을 쓰고 PROFILE은 `prod`뿐입니다.
 
 ```bash
 make server-check APP=platform PROFILE=prod
 ```
 
-`APP`에는 앱 또는 그룹 이름을 씁니다. 현재 지원 PROFILE은 `prod`뿐입니다.
-Airflow·Monitoring·Headlamp는 각 안내에 따라 Helm·고정 chart를 준비한 뒤 검사합니다.
+성공: 앱마다 `서버 원본 검사 통과`. Airflow·Monitoring·Headlamp는 Helm과 고정 chart가 있어야 합니다.
+개발 PC 전용인 `make env-profile-key-check`(인자 없음)와 `make k8s-render`는 local 입력까지 검사하므로 서버에서는 쓰지 않습니다.
 
-**기대 결과:** 앱마다 `서버 원본 검사 통과`가 출력됩니다. 저장소의 env 형식과 Kubernetes 원본만 검사하며
-클러스터 적용·Secret 갱신·서비스 연결 확인은 하지 않습니다.
+### 외부 env를 쓰는 경우
 
-개발 PC 전용인 `make env-profile-key-check`(인자 없음)와 `make k8s-render`는 local 입력까지 검사하므로 서버에서는 사용하지 않습니다.
-설정 파일 구조만 검사하려면 `make env-profile-key-check ENV_APP=portal ENV_PROFILE=prod`처럼 범위를 지정합니다.
+저장소 밖의 env 파일은 앱 도구의 경로 인자로 지정하며 `source`로 실행하지 않습니다. 검사·배포·대조에 같은 경로를 붙입니다.
+작성과 검사는 [환경설정](../configuration/environment.md)을 따릅니다.
 
-### 4. 실제 env·TLS·VIP 준비
+```bash
+make ops-preflight APP=airflow PROFILE=prod KUBE_CONTEXT="<context>" AIRFLOW_ENV=/appdata/etchax-config/airflow/k8s.env
+```
 
-- [환경설정](../configuration/environment.md)에 따라 실제 env를 준비하고 검사합니다. 기존 파일은 보존하고 권한은 600으로 관리합니다.
-  외부 env 파일은 앱 도구의 경로 인자로 지정하며 `source`로 실행하지 않습니다.
-
-  ```bash
-  # 관리 호스트 외부 Keycloak env 검사 예시
-  bash deploy/shared/scripts/check-env.sh keycloak prod server \
-    /appdata/etchax-config/keycloak/prod.env
-  ```
-
+- 변수 이름은 [apps.json](../../apps.json)의 `env.variable`입니다. Portal은 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`, 따로 반입한 Helm chart는 `<APP>_CHART_FILE`입니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
-- [TLS 안내](../../../keycloak/docs/01-prepare.md#tlsca-준비)로 도메인·SAN·만료·full chain·개인키를 확인하고 host별로 공용 `etch-sso/traefik-tls`에 등록합니다. OIDC용 CA ConfigMap은 소비 앱 namespace에 별도로 준비합니다.
-- [VIP 안내](../ingress/setup.md)로 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌을 확인합니다.
 
-### 5. 공용 Ingress 검사·적용 — 관리 호스트
+### VIP와 진입점
 
-```bash
-# 클러스터를 조회·검사합니다. 변경하지 않습니다.
-make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT"
-# 공용 Traefik만 적용합니다.
-make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-공용 Ingress는 앱 env·앱 소스·Portal 이미지 없이 실행하며 기존 감시 namespace와 VIP 배치를 보존합니다.
-상세 입력과 실패 확인은 [Traefik 셋업](../ingress/setup.md)을 따릅니다.
-
-**완료 기준:** 선택한 앱의 이미지·chart·디스크·env·TLS·배포 권한이 준비되고 공용 Ingress가 적용되어야 합니다.
-예시값이 남아 있거나 PVC에 저장소를 공급할 방법이 정해지지 않았다면 먼저 해결합니다.
-
-## 앱 의존 관계
-
-아래 순서로 각 앱 README의 설치 절차를 진행합니다. 실행 명령과 입력은 각 앱 문서가 원본입니다.
-
-### 1. 공용 Traefik
-
-[배포 준비](#5-공용-ingress-검사적용--관리-호스트)에서 적용합니다.
-[APP VIP](../ingress/setup.md)의 Worker backend·인증서와 실제 HTTPS 연결을 확인합니다.
-공용 Ingress만으로 앱·DB·앱 Secret은 설치되지 않습니다.
-
-### 2. Keycloak
-
-[Keycloak 설치 순서](../../../keycloak/README.md)에 따라 `make keycloak-up`으로 서버 배포 → 자체 설정 → 사내 로그인을 확인합니다.
-`make k8s-export`는 전달용 YAML을 만드는 별도 경로이며 최초 설치에는 사용하지 않습니다.
-Keycloak 정적 YAML을 직접 적용하면 공용 Traefik의 namespace 감시와 VIP 배치가 기본값으로 돌아갈 수 있으므로 공유 클러스터에서는 앱 배포 도구를 사용합니다.
-Portal·Headlamp·기본 Airflow SSO는 이 단계 뒤에 각 앱의 client를 연결합니다.
-
-**완료 기준:** DB·Keycloak 정상, 사내 로그인과 사용자 필드 확인. client 등록만으로 사내 로그인 검증을 대신하지 않습니다.
-
-### 3. Airflow
-
-[Airflow 설치 순서](../../../airflow/README.md)에 따라 env·chart·이미지·ODBC·DB/로그 디스크와 기본 Keycloak 로그인을 준비합니다.
-`NODE_NAME`은 실제 Worker의 자원·디스크·ODBC 접근과 다른 앱 배치 조건을 확인해 선택합니다.
-최초 설치는 새 DB·계정을 준비하고 재배포는 기존 DB 비밀번호·Fernet 키를 보존합니다.
-
-**완료 기준:** DB·scheduler health, UI 로그인. Portal 연동을 사용하면 토큰·API·시험 DAG 결과까지 확인합니다.
-신규 DAG는 필요한 것만 검증 후 활성화합니다.
-
-### 4. 운영 도구
-
-| 앱 | 의존 관계와 설치 안내 | 완료 기준 |
-| --- | --- | --- |
-| [MinIO](../../../minio/README.md) | 공용 Traefik·저장소·이미지·계정. 다른 제품 앱 없이 설치 가능. Portal 파일 기능보다 먼저 준비 | PVC Bound·초기화 Job Complete·콘솔·시험 파일 송수신 |
-| [Monitoring](../../../monitoring/README.md) | chart·저장소·Grafana 계정. 기본 HTTPS에는 공용 Traefik 필요, port-forward는 선택 설정. Keycloak 불필요 | Grafana 로그인·노드 지표·Prometheus target |
-| [Headlamp](../../../headlamp/README.md) | Keycloak·TLS/CA·client·관리자 그룹과 모든 API server의 [OIDC 인증](../kubernetes/oidc.md) | 관리자 접근 허용·별도 권한 없는 비관리자 거부. Pod Ready·client 등록만으로 판단하지 않음 |
-| [FTP](../../../ftp/README.md) | 선택 노드·폴더·포트·계정 파일. 노드 IP로 직접 접속. Keycloak 불필요 | passive 접속·파일 송수신·저장 노드 확인 |
-| [Registry](../../../registry/README.md) | 공용 Traefik·DNS·저장 폴더·push 계정. Keycloak 불필요. 클러스터 밖 빌드 host가 이미지를 전달하려면 먼저 준비 | PVC Bound·빌드 host push·다른 노드 pull |
-
-### 5. Portal — 나중에 추가
-
-원본을 검사합니다.
-
-```bash
-make server-check APP=portal PROFILE=prod
-```
-
-[Portal 설치 순서](../../../portal/README.md)에 따라 외부 PostgreSQL·extension, Keycloak, 공용 MinIO·파일 저장소, API/Web·migration 이미지를 준비합니다.
-client 등록 → namespace·Secret·TLS → migration → 앱 → 공용 Traefik 연결 순서는 [배포 절차](../../../portal/docs/01-install.md#migration배포검증)를 따릅니다.
-`make portal-up`은 없으며 안내된 적용 명령을 사용합니다. Secret 등록 예는 다음과 같습니다.
-
-```bash
-make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-overlay가 Portal namespace의 `portal-traefik` 권한을 만든 뒤 공용 Traefik 감시 범위를 연결합니다.
-
-```bash
-make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-이 명령은 Portal 권한을 확인하고 감시 namespace만 확장합니다. Keycloak·Airflow·DB를 재배포하지 않으며 이미 연결된 경우 유지합니다.
-
-**완료 기준:** migration 사후 검사·API health·로그인/callback/logout·파일 업로드/다운로드 확인.
-보존할 업무 파일은 `emptyDir` 대신 실제 PVC 등에 연결하고 참고·원본 데이터는 readOnly로 마운트합니다.
+APP VIP의 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌은 [VIP 안내](../ingress/setup.md)로 확인합니다. 공용 Traefik의 검사·적용은 [배포 가이드](../../../README.md#공용-traefik-검사갱신)에 있습니다.
 
 ## 접속·기능 검증
 
-클러스터 상태 → Worker 직접 접속 → VIP → DNS → 실제 기능 순서로 확인합니다. 배포하지 않은 앱은 `미배포`로 기록합니다.
+`make <app>-smoke KUBE_CONTEXT="<context>"`가 워크로드 Ready, Ingress host별 HTTPS 응답, hostPort 연결을 조회 전용으로 확인합니다.
+DNS 등록 전에는 `SMOKE_CONNECT=<APP VIP 주소>`로 접속 주소를 지정합니다. 인증서는 시스템 신뢰 목록과 `deploy/shared/certs/ca`의 사내 CA로 검증하며 다른 CA 파일은 `SMOKE_CA_FILE`로 더합니다.
+FTP passive 포트처럼 요청이 있을 때만 열리는 hostPort는 `apps.json`의 `smoke.hostPorts`에서 제외합니다.
 
-### 1. 리소스 확인 — 관리 호스트
+smoke가 확인하지 않는 것은 아래처럼 사람이 확인합니다. 배포하지 않은 앱은 `미배포`로 기록합니다.
 
-[배포 준비](#2-대상-context-확인--관리-호스트)에서 `KUBE_CONTEXT`를 지정한 터미널에서 실행합니다. 모두 조회 명령입니다.
+### 1. 경로별 HTTPS 확인
 
-```bash
-read -r -p '확인할 앱 namespace: ' APP_NAMESPACE
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get deployment,statefulset,daemonset
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get pods -o wide
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get jobs,pvc
-kubectl --context "$KUBE_CONTEXT" -n "$APP_NAMESPACE" get service,ingress,endpointslices
-```
-
-**기대 결과:** 필요한 replica와 Pod READY 충족, PVC Bound, 일회성 Job Completed, Service에 준비된 endpoint가 있습니다.
-Pod가 Running이라는 이유만으로 앱이 준비됐다고 판단하지 않습니다. 실패하면 [장애 조회](03-operations.md#장애-조회--관리-호스트)를 따릅니다.
-
-클러스터 전체의 배치와 저장소 연결은 다음 조회로 [서비스 배치 선언](../infrastructure/services.md#앱별-배치와-스토리지-선언)과 비교합니다.
-설치 버전·OS·런타임·CNI·VIP는 [환경 조회 안내](../kubernetes/baseline.md)에서 확인합니다.
+접근 가능한 PC에서 backend Worker → APP VIP → DNS 순서로 같은 도메인·경로를 확인하면 어느 구간이 막혔는지 알 수 있습니다. Portal은 `/api/v1/health/`, Airflow는 `/api/v2/monitor/health`입니다.
 
 ```bash
-kubectl --context "$KUBE_CONTEXT" get pods -A -o wide
-kubectl --context "$KUBE_CONTEXT" get ingress -A
-kubectl --context "$KUBE_CONTEXT" get storageclass
-kubectl --context "$KUBE_CONTEXT" get pv
-kubectl --context "$KUBE_CONTEXT" get pvc -A
+curl --fail --show-error --connect-timeout 5 --max-time 20 --cacert <CA PEM 파일> \
+  --resolve "<도메인>:443:<Worker 또는 VIP 주소>" "https://<도메인><health 경로>"
+curl --fail --show-error --connect-timeout 5 --max-time 20 --cacert <CA PEM 파일> "https://<도메인><health 경로>"
 ```
 
-### 2. HTTPS 확인 — 접근 가능한 PC
+OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다. 인증서 검증을 건너뛰는 `-k`는 쓰지 않습니다.
+성공: TLS 검증을 통과하고 health 응답이 정상입니다. Airflow는 HTTP 200 외에 DB와 scheduler가 healthy인지도 봅니다. TLS·404·503 오류는 [장애 조회](../../../README.md#장애-조회)를 따릅니다.
 
-APP VIP를 사용하는 앱의 health 경로로 확인합니다. Portal은 `/api/v1/health/`, Airflow는 `/api/v2/monitor/health`입니다.
+### 2. 실제 기능 확인
 
-```bash
-read -r -p '앱 인증서 도메인: ' APP_HOST
-read -r -p 'health 경로(/로 시작): ' APP_HEALTH_PATH
-read -r -p '확인할 Worker 또는 VIP IP: ' TARGET_IP
-read -r -p '신뢰할 CA PEM 파일 절대 경로: ' CA_FILE
-curl --fail --show-error --connect-timeout 5 --max-time 20 \
-  --cacert "$CA_FILE" --resolve "$APP_HOST:443:$TARGET_IP" \
-  "https://$APP_HOST$APP_HEALTH_PATH"
-```
-
-같은 도메인·경로로 `TARGET_IP`를 각 backend → APP VIP 순서로 바꿔 실행하고, 마지막에 DNS로 확인합니다.
-
-```bash
-curl --fail --show-error --connect-timeout 5 --max-time 20 \
-  --cacert "$CA_FILE" "https://$APP_HOST$APP_HEALTH_PATH"
-```
-
-OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다. 인증서 검증을 건너뛰는 `-k`는 사용하지 않습니다.
-
-**기대 결과:** TLS 검증을 통과하고 health 응답이 정상입니다. Airflow는 HTTP 200 외에 DB와 scheduler가 healthy인지도 확인합니다.
-Keycloak은 [VIP 문서](../ingress/setup.md)의 도메인 검사와 아래 로그인 검증을 수행합니다.
-TLS·404·503 오류는 [증상별 확인](03-operations.md#장애-조회--관리-호스트)을 따릅니다.
-
-### 3. 실제 기능 확인
+브라우저와 클라이언트로 확인합니다. 시험 데이터는 정상 삭제 절차로 정리합니다.
 
 | 앱 | 시나리오 |
 | --- | --- |
@@ -235,13 +81,11 @@ TLS·404·503 오류는 [증상별 확인](03-operations.md#장애-조회--관�
 | Airflow | UI 로그인·health, Portal 연동 시 시험 DAG 트리거·결과 |
 | Monitoring / Headlamp | Grafana 지표·target / Keycloak 로그인·그룹별 리소스 조회 |
 | FTP | 노드 passive 접속·시험 파일 송수신·저장 위치 |
+| Registry | 다른 노드에서 사내 빌드 이미지 pull |
 
-시험 데이터는 정상 삭제 절차로 정리합니다.
+### 3. 결과 기록
 
-### 4. 결과 기록
+context·namespace, 커밋·이미지·chart 버전과 함께 정적 검사, 리소스 상태, 접속·기능 검증의 결과를 나누어 적고 미완료 항목과 다음 조치를 덧붙입니다.
+비밀값은 기록하지 않으며 접근하지 못했거나 확인 대기 중인 항목은 성공으로 표시하지 않습니다. 운영값이 바뀌었으면 [인프라 정보](../infrastructure/README.md)를 갱신합니다.
 
-수행일·담당자, context·namespace, 커밋·이미지·chart 버전을 남깁니다.
-정적 검사, 리소스 상태, 접속·기능 검증의 결과를 나누어 적고 미완료 항목과 다음 조치를 덧붙입니다.
-비밀값은 기록하지 않으며 접근하지 못했거나 확인 대기 중인 항목은 성공으로 표시하지 않습니다.
-
-**다음 단계:** [운영과 문제 해결](03-operations.md)
+**다음 단계:** [운영](03-operations.md)

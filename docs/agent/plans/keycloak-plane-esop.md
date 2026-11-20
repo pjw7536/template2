@@ -31,7 +31,7 @@
 - Portal 화면 권한은 이미 로그인 토큰의 `groups`와 앱 역할로 판단한다: `apps/portal/api/api/account/services/keycloak_access.py`.
   현재 그룹 형식은 `/<SDWT>/<role>`이고 라인은 사용자 속성 `line_id`다.
 - Keycloak 그룹 발급 scope는 `deploy/keycloak/k8s/claims/sdwt-access-scope.json`(`sdwt-access-v1`, claim `groups`, 전체 경로)이다.
-  소속 속성 `user_sdwt_prod`·`line_id`는 관리자·최초 CSV로 채우며 소속 변경 시 그룹을 자동 부여하지 않는다: `deploy/keycloak/docs/03-configure.md`.
+  소속 속성 `user_sdwt_prod`·`line_id`는 관리자·최초 CSV로 채우며 소속 변경 시 그룹을 자동 부여하지 않는다: `deploy/keycloak/docs/02-configure.md`.
 - 계정 앱 DB에는 소속·권한 모델이 남아 있다: `Affiliation`, `UserCurrentAffiliation`, `UserSdwtProdAccess`, `AccessScope`, `AccessPolicyRule`, `UserAccess`, `UserScopeAffiliationGrant`, `AccessAuditLog`, `UserSdwtProdChange`, `ExternalAffiliationSnapshot`.
   사용처는 대부분 `api/account` 내부이며 외부 사용은 `emails/services/mutations.py`(`UserSdwtProdChange`)와 Drone target source 값이다.
   `AccessScope`는 앱 카탈로그로 Keycloak 판정에서도 사용한다.

@@ -205,6 +205,19 @@ class InputTests(unittest.TestCase):
             with self.subTest(content=content), self.assertRaises(setup.SetupError):
                 setup.load_inputs(sdwts, self.file("users.csv", content))
 
+    def test_registration_rejects_identity_collision_with_existing_account(self):
+        class Users:
+            def pages(self, path, **query):
+                return [{"id": "1", "username": "001", "attributes": {"loginid": ["login"]}}]
+
+        task = setup.Setup(Users(), {}, [{"userid": "002", "loginid": "login"}], [])
+        with self.assertRaises(setup.SetupError):
+            task.inspect_users()
+        task = setup.Setup(Users(), {}, [{"userid": "001", "loginid": "login"}], [])
+        task.inspect_users()
+        self.assertEqual(task.existing_count, 1)
+        self.assertEqual(task.new_users, [])
+
     def test_credentials_only_use_https_or_loopback(self):
         for url in ["http://sso.example.invalid", "https://user:pass@sso.example.invalid", "https://sso.example.invalid?token=secret"]:
             with patch.dict(os.environ, {"KEYCLOAK_ADMIN_URL": url}), self.assertRaises(setup.SetupError):

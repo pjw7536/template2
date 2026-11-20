@@ -1,32 +1,18 @@
-# Portal 설치
+# Portal 설치 입력과 배포 동작
 
-[앱 안내](../README.md)
+[Portal 가이드](../README.md)
 
-- [준비 조건](#준비-조건)
+설치·업데이트 절차는 [Portal 가이드](../README.md)에 있습니다. 이 문서는 env 입력의 의미, Keycloak client 등록 결과, 배포 도구가 단계마다 하는 일과 migration 준비·실패 대응입니다.
+
 - [환경설정](#환경설정)
 - [Keycloak client 등록](#keycloak-client-등록)
-- [Migration·배포·검증](#migration배포검증)
-
-## 준비 조건
-
-| 대상 | 확인할 내용 |
-| --- | --- |
-| 배포 파일 | 관리 호스트의 [저장소 checkout](../../shared/docs/operations/01-checkout.md#저장소-clone) |
-| 관리 도구 | Bash·Make·kubectl·Python 3, 대상 클러스터 kubeconfig와 namespace·Secret·Job·앱 리소스 적용 권한 |
-| 이미지 | 실제 registry의 API·Web 고유 태그와 pull 인증. migration도 같은 API 이미지 사용 |
-| DB | Portal 전용 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension. Keycloak DB와 별개 |
-| 로그인 | Keycloak의 [설정 완료 확인](../../keycloak/docs/03-configure.md#설정-완료-확인)까지 완료 |
-| 파일 저장소 | [공용 MinIO](../../minio/README.md)의 실제 접근 계정·bucket 권한과 필요한 업무 파일 PVC |
-| 공개 접속 | 공용 Traefik·DNS/VIP·Portal 도메인 인증서 |
-
-노드·연결 경로는 [사내 인프라 정보](../../shared/docs/infrastructure/README.md)에서 찾고 실제 클러스터를 조회합니다.
-[overlay 입력](../k8s/overlays/prod/README.md#원본과-입력)의 이미지·스토리지 placeholder를 실제 값으로 바꿔야 합니다.
+- [배포 단계와 도구 동작](#배포-단계와-도구-동작)
+- [Migration](#migration)
+- [공용 Traefik 연결](#공용-traefik-연결)
 
 ## 환경설정
 
-**목적:** API·Web 운영 입력을 작성하고 검사합니다. 이 단계는 클러스터를 변경하지 않습니다.
-
-**실행 위치:** 관리 호스트의 저장소 루트입니다. 운영 입력은 `deploy/portal/env/prod/`가 소유하며 Git으로 전달됩니다. 인증서·개인키 파일은 관리 호스트에 별도로 준비합니다.
+API·Web 운영 입력을 작성합니다. 운영 입력은 `deploy/portal/env/prod/`가 소유하며 Git으로 전달됩니다. 작성과 검사는 클러스터를 변경하지 않고, Secret `api-env`·`web-env` 등록은 `portal-up`이 합니다.
 
 ### 1. env 파일 작성
 
@@ -34,6 +20,7 @@
 | --- | --- | --- |
 | `env/prod/api.env` | Portal 서버, DB·로그인·MinIO·업무 연동 설정과 비밀번호·토큰·인증 헤더 | API Secret `api-env`의 유일한 입력 |
 | `env/prod/web.env` | 브라우저에서 사용할 Portal·API·파일 주소와 화면 링크 | 브라우저에 공개되므로 비밀번호·토큰을 입력하지 않음 |
+| `env/prod/build.env` | `make portal-image`가 쓰는 사내 미러의 base image·패키지 저장소 | 각 Dockerfile이 선언한 ARG에만 build arg로 전달. 비밀번호·토큰을 넣지 않음 |
 
 API는 Django 업무 기능이 함께 실행되는 하나의 서버이므로 Assistant·Emails·Drone 등도 `api.env`의 기능별 구역으로 관리합니다.
 Airflow 서버 자체의 설정은 `deploy/airflow/env/`, API에서 Airflow에 연결하는 설정은 `api.env`에 둡니다.
@@ -43,7 +30,7 @@ Airflow 서버 자체의 설정은 `deploy/airflow/env/`, API에서 Airflow에 �
 | `env/prod/` | 사내 Kubernetes 운영 Portal |
 | `env/test/` | API 자동 테스트 |
 
-환경끼리 자동 상속하지 않습니다. 기본 운영 입력은 `env/prod/`입니다. 관리 호스트의 외부 env를 사용하면 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`에 실제 경로를 지정하고 사전 검사, client 등록, Secret 등록에 같은 경로를 전달합니다.
+환경끼리 자동 상속하지 않습니다. 기본 운영 입력은 `env/prod/`입니다. 관리 호스트의 외부 env를 사용하면 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`에 실제 경로를 지정하고 검사·배포·대조의 모든 명령에 같은 경로를 전달합니다.
 
 ```bash
 chmod 600 deploy/portal/env/prod/api.env deploy/portal/env/prod/web.env
@@ -58,7 +45,7 @@ vi deploy/portal/env/prod/web.env
 
 API 파일의 구역 번호는 모든 환경에서 같고 설정이 없는 구역은 생략됩니다. timeout·cache 같은 선택 설정은 입력값과 코드 기본값을 확인하며, 빈 값과 변수 생략은 의미가 다를 수 있습니다.
 
-신규 설치용 Django 서명 키는 기본 API env에 있습니다. 기존 Portal 이전 시 운영 서명 키를 유지합니다. 외부 DB의 `DJANGO_DB_HOST`·`DJANGO_DB_NAME`·`DJANGO_DB_USER`·`DJANGO_DB_PASSWORD`는 실제 접속 정보를 입력합니다. API·Web 이미지는 사내 registry의 overlay 경로에 push하고 두 overlay에 실제 태그를 지정합니다.
+신규 설치용 Django 서명 키는 기본 API env에 있습니다. 기존 Portal 이전 시 운영 서명 키를 유지합니다. 외부 DB의 `DJANGO_DB_HOST`·`DJANGO_DB_NAME`·`DJANGO_DB_USER`·`DJANGO_DB_PASSWORD`는 실제 접속 정보를 입력합니다. DB·계정과 `pg_trgm` extension은 DB 담당자가 준비하며 Keycloak DB와 별개입니다.
 
 ### 2. 서로 맞춰야 하는 값
 
@@ -93,195 +80,158 @@ API는 `MINIO_ENDPOINT=http://minio.minio.svc.cluster.local:9000`과 Portal 접�
 
 ### 3. 입력 검사
 
+[검사] `portal-check`와 `portal-up`이 같은 검사를 먼저 실행합니다. 파일만 따로 확인할 때 씁니다.
+
 ```bash
 make env-check APP=portal PROFILE=prod COMPONENT=api
 make env-check APP=portal PROFILE=prod COMPONENT=web
 make env-check APP=portal PROFILE=prod COMPONENT=client
 ```
 
-**기대 결과:** 세 검사가 통과합니다. 필수값이 비어 있거나 임시값이면 실패합니다.
+성공: 세 검사가 통과합니다. 필수값이 비어 있거나 임시값이면 실패합니다.
 검사 통과는 필수 입력 확인이며 DB 접속이나 로그인 성공을 보장하지 않습니다. Airflow·RAG 등 선택 업무 연동은 필수로 검사하지 않으므로 사용할 때 endpoint와 계정을 별도로 확인합니다.
-
-**다음 단계:** [Keycloak client 등록](#keycloak-client-등록). Secret 등록은 namespace를 만든 뒤 [배포 단계](#2-namespacesecrettls)에서 수행합니다.
 
 ## Keycloak client 등록
 
-**목적:** Portal 전용 client·token mapper·앱 역할을 Keycloak에 등록합니다. 사내 IdP·User Profile·수신 mapper는 변경하지 않습니다.
+Portal 전용 client·token mapper·앱 역할을 Keycloak에 등록합니다. 사내 IdP·User Profile·수신 mapper는 변경하지 않습니다. `make ops-deploy APP=portal`의 두 번째 단계(`keycloak-portal-client-setup`)가 수행하며 Keycloak의 [설정 완료 확인](../../keycloak/docs/02-configure.md#설정-완료-확인)이 끝나 있어야 합니다. client 등록만으로 Portal API가 배포되지는 않습니다.
 
-**준비물:** [입력 검사](#3-입력-검사) 통과, Keycloak [설정 완료 확인](../../keycloak/docs/03-configure.md#설정-완료-확인).
+### 입력
 
-### 1. 실행 위치와 입력
+등록 입력은 Portal `api.env`의 [로그인 입력](#2-서로-맞춰야-하는-값) 중 `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`만 사용하며 Keycloak env는 읽지 않습니다.
 
-저장소 루트의 Bash에서 Keycloak이 설치된 context를 선택합니다. 등록 입력은 Portal `api.env`의 [로그인 입력](#2-서로-맞춰야-하는-값) 중 `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`, `FRONTEND_BASE_URL`만 사용하며 Keycloak env는 읽지 않습니다.
+### 실행과 확인
 
-```bash
-kubectl config get-contexts
-read -r -p 'Keycloak이 설치된 Kubernetes context: ' KEYCLOAK_KUBE_CONTEXT
-```
-
-
-### 2. client 등록
+[변경] 등록만 다시 실행할 때 씁니다. `<context>`는 Keycloak이 설치된 context입니다.
 
 ```bash
-make keycloak-portal-client-setup KUBE_CONTEXT="$KEYCLOAK_KUBE_CONTEXT"
-kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso logs job/portal-keycloak-client
+make keycloak-portal-client-setup KUBE_CONTEXT="<context>"
 ```
 
 명령은 입력 검사 → 관리 ConfigMap·`portal-keycloak-client` Secret 준비 → Job 실행 순서로 진행하고 완료를 기다립니다.
 
-**기대 결과:** 로그 끝에 `portal-members 표준 그룹 준비 완료`가 있습니다. 실패하면 위 로그와 `kubectl --context "$KEYCLOAK_KUBE_CONTEXT" -n etch-sso describe job portal-keycloak-client`로 원인을 확인합니다. issuer가 Keycloak 공개 URL의 `etch` realm과 다르면 Job이 중단됩니다.
+[조회]
 
-### 3. 등록 결과
+```bash
+kubectl --context "<context>" -n etch-sso logs job/portal-keycloak-client
+kubectl --context "<context>" -n etch-sso describe job portal-keycloak-client
+```
+
+성공: 로그 끝에 `portal-members 표준 그룹 준비 완료`가 있습니다. issuer가 Keycloak 공개 URL의 `etch` realm과 다르면 Job이 중단됩니다.
+
+### 등록 결과
 
 | 항목 | 내용 |
 | --- | --- |
-| 신원·소속 claim | 사내 claim 16개와 소속 2개를 ID Token·Access Token·UserInfo에 발급. [사용자 필드와 claim](../../keycloak/docs/03-configure.md#사용자-필드와-claim) |
+| 신원·소속 claim | 사내 claim 16개와 소속 2개를 ID Token·Access Token·UserInfo에 발급. [사용자 필드와 claim](../../keycloak/docs/02-configure.md#사용자-필드와-claim) |
 | `groups` | `sdwt-groups` mapper가 SDWT 그룹 전체 경로 배열을 발급 |
 | 앱 역할 | client 역할과 `resource_access.<client-id>.roles` mapper |
 | 기본 그룹 | `portal-members` 그룹과 `portal-all-apps` 역할 연결 |
 
-사용자에게 역할을 자동 부여하지 않습니다. 운영자가 조직 정책에 따라 그룹 구성원을 지정하고 제한 사용자에게는 개별 앱 역할을 부여합니다.
+사용자에게 역할을 자동 부여하지 않습니다. 운영자가 조직 정책에 따라 그룹 구성원을 지정하고 제한 사용자에게는 개별 앱 역할을 부여합니다([최초 권한 설정](02-access.md)).
 Portal은 발급된 client 역할로 앱 접근을 판단하며 `deptid`나 그룹 이름으로 앱 접근을 추정하지 않습니다.
 
-SDWT CSV가 준비되면 [SDWT 공통 scope 연결](../../keycloak/docs/03-configure.md#sdwt-공통-scope-연결)로 `sdwt-groups` mapper를 공통 scope로 옮기고 Access Token 수명을 300초로 설정합니다.
+SDWT CSV가 준비되면 [SDWT 공통 scope 연결](../../keycloak/docs/02-configure.md#sdwt-공통-scope-연결)로 `sdwt-groups` mapper를 공통 scope로 옮기고 Access Token 수명을 300초로 설정합니다.
 
-**다음 단계:** [Migration·배포·검증](#migration배포검증). client 등록만으로 Portal API가 배포되지는 않습니다.
+## 배포 단계와 도구 동작
 
-## Migration·배포·검증
+`make ops-deploy APP=portal KUBE_CONTEXT="<context>"`는 아래 타깃을 순서대로 실행하고 [배포 상태 대조](../../shared/docs/operations/04-drift.md)까지 수행합니다. 관리 호스트에는 Bash·Make·kubectl·Python 3과 대상 클러스터의 namespace·Secret·Job·앱 리소스 적용 권한이 있는 kubeconfig가 필요합니다.
 
-**목적:** namespace·Secret·TLS 준비, DB migration, 앱·라우팅 적용, 실제 기능 검증을 수행합니다. 아래 명령은 실제 클러스터를 변경합니다.
+| 순서 | 타깃 | 하는 일 |
+| --- | --- | --- |
+| 1 | `portal-image` | API·Web 이미지 중 사내 이미지 저장소에 없는 tag만 이 checkout에서 빌드해 push |
+| 2 | `keycloak-portal-client-setup` | [Keycloak client 등록](#keycloak-client-등록) Job 실행 |
+| 3 | `portal-check` | env(api·client·web) 검사, overlay 이미지의 자리표시자와 앱·migration의 API 이미지 일치, 노드 조회, 이전 `portal-migrate` Job 상태 확인. 클러스터를 변경하지 않고 `migration: 실행 예정` 또는 `migration: API 이미지가 같아 생략`을 출력 |
+| 4 | `portal-up` | 같은 검사 → namespace 적용 → Secret `api-env`·`web-env` 등록 → 필요하면 [migration](#migration) → 렌더한 overlay 적용 → 기존 설치는 Deployment 재시작 → 세 Deployment rollout 대기(각 10분) → [공용 Traefik 연결](#공용-traefik-연결) → 배포 기록 |
+| 5 | `portal-smoke` | 워크로드 Ready와 `/api/v1/health/`의 HTTPS 응답을 조회 전용으로 확인 |
 
-**준비물:** [환경설정](#환경설정)·[Keycloak client 등록](#keycloak-client-등록) 완료, [overlay 입력](../k8s/overlays/prod/README.md#원본과-입력)의 실제 이미지·저장소 값, [공통 배포 준비](../../shared/docs/operations/02-deploy.md#배포-준비).
-
-**실행 위치:** 관리 호스트의 checkout 루트입니다. 각 명령이 성공한 뒤 다음 명령을 실행합니다.
-
-### 1. 대상과 입력 확인
+[변경] 한 단계만 다시 실행할 때는 같은 입력을 붙여 타깃을 직접 실행합니다.
 
 ```bash
-kubectl config get-contexts
-read -r -p '배포할 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
-make server-check APP=portal PROFILE=prod
+make portal-up KUBE_CONTEXT="<context>"
 ```
 
-**기대 결과:** 대상 노드가 조회되고 `server-check`가 통과합니다. Keycloak 정상 스택을 Portal 배포 때문에 정적 YAML로 다시 적용하지 않습니다.
-Portal 외부 PostgreSQL의 DB·계정·접속과 `pg_trgm` extension은 DB 담당자에게 확인합니다.
+성공: `Portal 배포 완료. 로그인·파일 송수신은 사용자가 확인합니다.`
 
-### 2. Namespace·Secret·TLS
+**이미지 tag:** overlay의 `newTag: auto`를 배포 도구가 실제 tag로 바꿉니다. tag는 각 소스 폴더(`apps/portal/api`, `apps/portal/web`)와 [build.env](../env/prod/build.env) 내용으로 정해지므로 소스가 바뀌면 자동으로 새 tag가 됩니다. `PORTAL_IMAGE_TAG=<tag>`로 직접 지정할 수 있고, 이 경우 이미지·검사·배포·대조 명령에 같은 값을 붙입니다.
+migration·검사 Job과 대조(`make drift-check`)도 같은 tag로 렌더합니다. `kubectl apply -k`로 overlay를 직접 적용하면 tag가 `auto`로 남으므로 사용하지 않습니다.
+
+[조회] 적용될 리소스와 tag는 아래 명령으로 봅니다. 클러스터를 변경하지 않으며 출력은 확인용입니다.
 
 ```bash
-kubectl --context "$KUBE_CONTEXT" apply -f deploy/portal/k8s/overlays/prod/namespace.yaml
-make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
-make k8s-env APP=portal PROFILE=prod COMPONENT=web KUBE_CONTEXT="$KUBE_CONTEXT"
-kubectl --context "$KUBE_CONTEXT" -n etch-sso get secret traefik-tls
+python3 deploy/portal/scripts/up.py --context "<context>" --render app
 ```
 
-Portal 도메인 인증서는 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 사용합니다. 업무 도메인을 이미 등록했다면 이 블록은 생략합니다.
+**Secret과 재시작:** Secret 변경은 Pod에 자동 반영되지 않으므로 `portal-up`은 기존 설치를 배포마다 다시 시작합니다. API 이미지가 같으면 migration 없이 Secret 재등록과 세 Deployment 재시작만 합니다.
+
+## Migration
+
+`portal-up`은 아래 중 하나일 때만 migration을 실행합니다.
+
+- 처음 설치(API Deployment가 없음)
+- 실제 API 이미지와 overlay로 정한 API 이미지가 다름
+- 이전 실행이 API를 멈춘 채 끝남
+- `PORTAL_MIGRATE=1`을 붙임(이미지가 같아도 실행)
+
+실행 순서와 Job입니다.
+
+| 순서 | 동작 | 내용 |
+| --- | --- | --- |
+| 1 | API 중지 | 실행 중인 API가 있으면 replica 수를 Deployment annotation `deploy.etch/replicas-before-migration`에 기록하고 0으로 줄인 뒤 API Pod가 모두 사라질 때까지 대기 |
+| 2 | 사전 검사 Job `portal-precheck-<시각>` | 기존 설치에서만 실행. 신규 DB는 업무 테이블이 없어 생략 |
+| 3 | 이전 Job 정리 | 완료된 이전 `portal-migrate` Job만 삭제. 실패한 Job은 `PORTAL_RETRY_MIGRATE=1`일 때만 삭제. DB·PVC는 삭제하지 않음 |
+| 4 | Job `portal-migrate` | `manage.py migrate --noinput`. 자동 재시도 없음(`backoffLimit: 0`) |
+| 5 | 사후 검사 Job `portal-postcheck-<시각>` | 신규 설치와 기존 DB 갱신 모두 통과해야 앱을 적용 |
+| 6 | 앱 적용과 복원 | overlay 적용 뒤 API를 기록한 replica 수로 되돌리고 annotation을 지움 |
+
+검사 Job은 migration overlay와 같은 이미지와 Secret으로 `manage.py check_access_permission_integrity --phase pre-migration|post-migration`을 실행합니다. 각 Job은 최대 15분 동안 결과를 기다리고, 끝난 검사 Job은 1시간 뒤 자동으로 삭제됩니다(`ttlSecondsAfterFinished`). Job이 실패하면 로그 끝 30줄이 배포 오류 출력에 함께 나옵니다. `portal-migrate` Job은 다음 migration까지 남습니다.
+migration을 실행해야 하는데 진행 중인 `portal-migrate` Job이 있으면 `portal-check`와 `portal-up`이 중단합니다. 검사·migration Job은 `portal-up`이 `scripts/migration-job.sh`로 만듭니다.
+
+### 기존 DB 갱신 전 준비
+
+API 이미지가 바뀌는 업데이트 전에 수행합니다. API 중지와 복원은 `portal-up`이 하지만 아래는 도구가 하지 않습니다.
+
+1. 적용할 migration의 SQL·데이터 변경과 관련 작업의 호환성을 검토합니다.
+2. DB에 쓰는 worker·Airflow 작업을 중지하고 진행 중인 요청을 마칩니다. 중지한 작업은 쓰기 재개 때 복원할 입력입니다.
+3. DB 백업·복구 가능 여부·migration ledger·대상 테이블 row 수를 확인합니다.
+4. 배포와 [접속·기능 검증](../../shared/docs/operations/02-deploy.md#접속기능-검증)이 끝난 뒤 중지했던 worker·Airflow 작업을 재개합니다. 그 전에는 쓰기 작업을 재개하지 않습니다.
+
+신규 DB는 `pg_trgm` extension을 준비한 뒤 배포합니다.
+
+### 실패했을 때
+
+[조회]
 
 ```bash
-read -r -p '업무 도메인 full chain 파일: ' PORTAL_CERT_FILE
-read -r -p '업무 도메인 개인키 파일: ' PORTAL_KEY_FILE
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST=etch.samsungds.net \
-  TLS_CERT_FILE="$PORTAL_CERT_FILE" TLS_KEY_FILE="$PORTAL_KEY_FILE"
-make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
+kubectl --context "<context>" -n tailwind-internal get jobs
+kubectl --context "<context>" -n tailwind-internal describe job portal-migrate
+kubectl --context "<context>" -n tailwind-internal logs job/portal-migrate --tail=100
 ```
 
-**기대 결과:** `tailwind-internal`에 `api-env`·`web-env` Secret이 있고 `etch-sso/traefik-tls`가 조회됩니다.
-
-### 3. Migration
-
-신규 DB는 `pg_trgm` extension을 준비한 뒤 앱 시작 전에 migration을 실행합니다. 같은 터미널에 남은 복원 입력을 쓰지 않도록 신규 설치에서는 `unset PORTAL_API_REPLICAS`를 실행합니다.
-기존 DB 갱신은 적용할 migration의 SQL·데이터 변경과 관련 작업의 호환성을 검토하고, 아래 쓰기 중지·백업·사전 검사부터 진행합니다. 작업 중 API와 쓰기 작업을 재개하지 않습니다.
-`migrate/kustomization.yaml`의 API 이미지가 앱 overlay와 동일해야 합니다.
-
-#### 검사 Job 준비
-
-아래 Make 타깃은 지정한 context에 Job 하나를 생성하고 최대 15분 동안 결과를 기다립니다. 검사 Job은 migration overlay와 같은 이미지와 Secret을 사용합니다. 단계마다 사용하지 않은 검사 Job 이름을 지정합니다. 기존 Job이 있으면 생성이 실패하며 이전 결과를 보존합니다.
-
-#### 기존 DB 갱신 전 쓰기 중지와 사전 검사
-
-**신규 DB는 이 절을 건너뜁니다.** 업무 테이블이 없으므로 `pre-migration` 검사를 실행하지 않습니다.
-기존 환경은 DB에 쓰는 worker·Airflow 작업을 중지하고 진행 중인 요청을 마친 뒤 API를 중지합니다. 중지한 작업과 API replica 수는 쓰기 재개 때 복원할 입력입니다.
+- `migration 전 단계 실패`: API 중지·사전 검사·이전 Job 정리에서 멈춘 경우입니다. migration을 시작하지 않았으므로 DB는 그대로이고 `portal-up`이 API를 원래 replica 수로 되돌립니다. 원인을 해결한 뒤 `PORTAL_RETRY_MIGRATE` 없이 같은 명령을 다시 실행합니다. 이전 migration이 실패한 뒤의 재시도에서 멈추면 DB 상태를 알 수 없으므로 API를 되돌리지 않고 아래 `migration 단계 실패`로 처리합니다.
+- `migration 단계 실패`: migration이나 사후 검사가 실패한 경우이며 앱을 적용하지 않습니다. 오류 문구에 `API는 중지 상태입니다`가 있으면 API는 0인 채로 남아 있습니다.
+- 신규 설치는 오류를 해결한 뒤 다시 실행합니다. 기존 DB는 백업·변경분을 확인해 준비한 복구 절차를 따릅니다.
+- [승인] 원인을 해결한 뒤 `PORTAL_RETRY_MIGRATE=1`을 붙여 다시 실행합니다. 실패한 Job을 지우고 migration을 이어서 진행하며 API를 원래 replica 수로 복원합니다. Job을 직접 지우지 않습니다.
 
 ```bash
-PORTAL_API_REPLICAS=$(kubectl --context "$KUBE_CONTEXT" -n tailwind-internal \
-  get deployment api -o jsonpath='{.spec.replicas}')
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal scale deployment/api --replicas=0
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/api --timeout=5m
+make ops-deploy APP=portal KUBE_CONTEXT="<context>" PORTAL_RETRY_MIGRATE=1
 ```
 
-API와 관련 쓰기가 모두 중지됐는지 확인한 뒤 DB 백업·복구 가능 여부·migration ledger·대상 테이블 row 수를 확인합니다. 사전 검사가 실패하면 migration을 실행하지 않습니다.
+## 공용 Traefik 연결
+
+`portal-up`의 마지막 단계입니다. Portal overlay의 `traefik-rbac.yaml`이 `etch-sso/traefik` ServiceAccount에 Portal namespace의 라우팅 권한을 부여하고, 연결 단계가 `portal-traefik` Role·RoleBinding과 공용 ServiceAccount 연결을 확인한 뒤 감시 목록에 `tailwind-internal`만 추가합니다.
+기존 감시 목록과 replica·nodeSelector·affinity·VIP annotation은 보존하며 RBAC를 생성·삭제하거나 다른 앱을 재배포하지 않습니다. 이미 연결됐거나 전체 namespace를 감시하면 변경하지 않습니다.
+
+[조회]
 
 ```bash
-read -r -p '사전 검사 Job의 고유 이름: ' PORTAL_PRECHECK_JOB
-make portal-precheck KUBE_CONTEXT="$KUBE_CONTEXT" PORTAL_CHECK_JOB="$PORTAL_PRECHECK_JOB"
-```
-
-#### Migration Job 실행
-
-```bash
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get job portal-migrate --ignore-not-found
-```
-
-최초 설치라면 Job이 없습니다. 이전 완료 Job이 있고 새 migration을 수행할 때는 완료 상태와 백업을 확인한 뒤 해당 Job만 삭제하고 아래 블록으로 재생성합니다. DB·PVC는 삭제하지 않습니다.
-진행 중이거나 실패한 Job이면 로그·DB 원인부터 확인하고 중복 실행하지 않습니다.
-
-```bash
-make portal-migrate KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-`portal-migrate`는 자동 재시도하지 않습니다(`backoffLimit: 0`). 실패하면 앱 배포를 진행하지 않고 `describe job`·Job Pod 로그로 DB 연결과 migration 오류를 확인합니다.
-
-#### 사후 검사
-
-신규 설치와 기존 DB 갱신 모두 다음 검사를 통과해야 앱을 시작합니다.
-
-```bash
-read -r -p '사후 검사 Job의 고유 이름: ' PORTAL_POSTCHECK_JOB
-make portal-postcheck KUBE_CONTEXT="$KUBE_CONTEXT" PORTAL_CHECK_JOB="$PORTAL_POSTCHECK_JOB"
-```
-
-실패하면 API와 쓰기 작업을 시작하지 않습니다. 신규 설치는 오류를 해결한 뒤 다시 검사하고, 기존 DB는 백업·변경분을 확인해 준비한 복구 절차를 따릅니다.
-
-### 4. 앱 적용
-
-사후 검사를 통과한 상태에서 Portal 리소스를 적용합니다. 기존 환경은 위에서 기록한 replica 수를 복원하고 신규 설치는 overlay의 replica 수로 시작합니다.
-
-```bash
-kubectl --context "$KUBE_CONTEXT" apply -k deploy/portal/k8s/overlays/prod
-if [[ -n "${PORTAL_API_REPLICAS:-}" ]]; then
-  kubectl --context "$KUBE_CONTEXT" -n tailwind-internal scale deployment/api --replicas="$PORTAL_API_REPLICAS"
-fi
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/api --timeout=10m
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/web --timeout=10m
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal rollout status deployment/edge-nginx --timeout=10m
-kubectl --context "$KUBE_CONTEXT" -n tailwind-internal get pods,pvc,ingress
-make deploy-record APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-**실패 확인:** PVC가 Pending이면 StorageClass/PV·노드 affinity를 먼저 확인합니다. rollout이 끝나지 않으면 `get events`와 Pod 로그를 확인합니다.
-
-### 5. 공용 Traefik에 Portal 연결
-
-Portal overlay의 `traefik-rbac.yaml`이 `etch-sso/traefik` ServiceAccount에 Portal namespace의 라우팅 권한을 부여합니다.
-
-```bash
-make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
-kubectl --context "$KUBE_CONTEXT" rollout status deployment/traefik -n etch-sso --timeout=3m
-kubectl --context "$KUBE_CONTEXT" -n etch-sso get deployment traefik \
+kubectl --context "<context>" -n etch-sso get deployment traefik \
   -o jsonpath='{.spec.template.spec.containers[?(@.name=="traefik")].args}{"\n"}'
 ```
 
-이 명령은 `portal-traefik` Role·RoleBinding과 공용 ServiceAccount 연결을 확인하고 감시 목록에 `tailwind-internal`만 추가합니다.
-기존 감시 목록과 replica·nodeSelector·affinity·VIP annotation은 보존하며 RBAC를 생성·삭제하거나 다른 앱을 재배포하지 않습니다. 이미 연결됐거나 전체 namespace를 감시하면 변경하지 않습니다.
+성공: Traefik args의 감시 namespace에 `tailwind-internal`이 포함됩니다.
 
-**기대 결과:** Traefik args의 감시 namespace에 `tailwind-internal`이 포함됩니다.
-**실패 확인:** controller·권한이 없거나 실행 중 동시 변경이 감지되면 실패합니다. 원인을 확인한 뒤 같은 명령으로 다시 검사합니다. Traefik 재기동 중 개별 연결은 재시도가 필요할 수 있습니다.
+[변경] controller·권한이 없거나 실행 중 동시 변경이 감지되면 연결이 실패합니다. 원인을 확인한 뒤 연결만 다시 실행합니다. Traefik 재기동 중 개별 연결은 재시도가 필요할 수 있습니다.
 
-### 6. 접속 검증
-
-[접속 검증](../../shared/docs/operations/02-deploy.md#접속기능-검증)에 따라 API health, Keycloak login/callback/logout, MinIO 시험 파일 업로드·다운로드를 확인해야 배포 완료입니다.
-시험 계정으로 신원 claim, 필요한 소속·그룹과 앱 접근 판정을 확인합니다. 기존 환경은 검증이 끝난 뒤 중지했던 worker·Airflow 작업을 재개합니다.
-
-**다음 단계:** [최초 운영자 권한](02-access.md). 이후 설정만 바꾸는 경우에는 [설정 변경 반영](03-operations.md#설정-변경-반영)을 따릅니다.
+```bash
+make ingress-connect APP=portal KUBE_CONTEXT="<context>"
+```
