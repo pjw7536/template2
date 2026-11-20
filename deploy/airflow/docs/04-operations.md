@@ -262,7 +262,12 @@ kubectl --context "<context>" -n airflow logs "job/<확인할 Job 이름>" --all
 | `scheduler` (기본) | Airflow 스케줄러 컨테이너 | 120초 | 1~900초 |
 | `workers` | `khinfow01`, `khplanew01`의 테스트 Pod | 3,600초 | 10~86,400초 |
 
-워커 모드에서는 각 노드에 Pod를 하나씩 띄워 낮은 우선순위로 PBKDF2 연산을 반복합니다. 메모리는 노드의 `MemAvailable`과 Pod의 cgroup 한도에 따라 조정하며, 4GiB와 전체 메모리의 10% 중 큰 값을 노드 여유로 남깁니다.
+워커 모드에서는 각 노드에 Pod를 하나씩 띄워 코어마다 프로세스 하나가 결과를 검증하는 계산(해시 대조, 압축 왕복, 정렬, 행렬 곱, 소수 계산, 메모리 다시 쓰기)을 지정한 시간 동안 쉬지 않고 수행합니다. CPU를 양보하지 않는 일반 우선순위이므로 노드의 CPU 사용률이 계속 100%에 가깝게 유지됩니다.
+
+- 메모리는 테스트 Pod가 밀려나지 않는 한도까지 채웁니다. 노드가 시스템용으로 남겨 둔 몫(전체 메모리 - Pod 한도)과 여유(512MiB와 전체 메모리의 1% 중 큰 값)만 남기며, 다른 Pod가 메모리를 더 쓰면 그만큼 돌려줍니다.
+- 같은 노드의 다른 Pod는 느려질 수 있습니다. CPU가 부족하면 Pod의 CPU 요청량 비율로 나뉘는데 테스트 Pod의 요청량은 10m이므로, 요청량을 선언한 운영 Pod가 먼저 CPU를 받습니다.
+- 테스트 Pod의 우선순위는 -1000입니다. 노드 메모리가 부족해지면 운영 Pod보다 먼저 밀려납니다. 메모리 한도에 걸려 종료된 계산 프로세스는 다시 띄워 부하를 이어 갑니다.
+- 계산 결과가 기대와 다르면 끝까지 실행한 뒤 태스크를 실패로 끝냅니다(`계산 검증 실패 <n>건`). 메모리나 CPU 오류 가능성이 있으므로 그 노드와 건수를 보고합니다.
 
 ### DAG 반영
 
@@ -307,7 +312,7 @@ kubectl --context "<context>" -n airflow-node-load-test get pods -o wide
 kubectl --context "<context>" top nodes khinfow01 khplanew01
 ```
 
-두 Pod가 각각 지정된 노드에서 `Running`이고 Airflow 태스크 로그에 CPU 스레드 수와 메모리 목표가 표시되는지 확인합니다. `kubectl top`은 metrics-server가 구성된 환경에서 사용할 수 있습니다. Pod가 `Pending`이면 테스트 namespace의 events에서 노드 배치와 이미지 pull 오류를 확인합니다.
+두 Pod가 각각 지정된 노드에서 `Running`이고 Airflow 태스크 로그에 `최대 부하 시작 · … · 계산 프로세스 <코어 수>개`와 1분마다의 `진행 · 경과 … · 평균 CPU <n>코어 · 메모리 <n> MiB · 계산 <n>건 · 검증 실패 0건`이 표시되는지 확인합니다. 끝나면 `최대 부하 종료` 줄에 전체 계산 건수가 남습니다. `kubectl top`은 metrics-server가 구성된 환경에서 사용할 수 있습니다. Pod가 `Pending`이면 테스트 namespace의 events에서 노드 배치와 이미지 pull 오류를 확인합니다.
 
 조기에 중단하려면 Airflow 화면에서 DagRun을 실패로 표시합니다([화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인)).
 
