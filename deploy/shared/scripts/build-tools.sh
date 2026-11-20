@@ -40,8 +40,9 @@ check() {
   local workers
   workers="$("${SUDO[@]}" buildctl --addr "$BUILDKIT_HOST" debug workers --verbose 2>/dev/null)" ||
     { echo '[실패] BuildKit worker를 조회하지 못합니다. sudo systemctl status buildkit을 확인하세요.'; return 1; }
-  grep -q 'org.mobyproject.buildkit.worker.executor: containerd' <<<"$workers" &&
-    grep -q "org.mobyproject.buildkit.worker.containerd.namespace: $CONTAINERD_NAMESPACE" <<<"$workers" ||
+  # buildctl은 이름과 값 사이를 탭으로 맞춰 출력한다. 공백 종류와 개수에 묶이지 않게 비교한다.
+  grep -Eq 'org\.mobyproject\.buildkit\.worker\.executor:[[:space:]]+containerd([[:space:]]|$)' <<<"$workers" &&
+    grep -Eq "org\.mobyproject\.buildkit\.worker\.containerd\.namespace:[[:space:]]+${CONTAINERD_NAMESPACE//./\\.}([[:space:]]|\$)" <<<"$workers" ||
     { echo "[실패] BuildKit worker가 containerd($CONTAINERD_NAMESPACE)가 아닙니다. /etc/buildkit/buildkitd.toml을 확인하세요."; return 1; }
   echo "[통과] BuildKit containerd worker(namespace $CONTAINERD_NAMESPACE)"
   echo '빌드 도구 준비 완료'

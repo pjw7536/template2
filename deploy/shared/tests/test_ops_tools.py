@@ -774,6 +774,40 @@ class ImageRegistryTests(unittest.TestCase):
             self.assertIn('make build-tools-install', result.stdout)
         self.assertEqual(subprocess.run(['bash', script, 'unknown'], capture_output=True).returncode, 2)
 
+    def test_build_tools_check_reads_buildkit_worker_labels_with_any_spacing(self):
+        # buildctl은 이름과 값 사이를 탭으로 맞춰 출력한다. 공백 한 칸만 기대하면 정상 worker도 실패로 판정해
+        # 준비 검사가 이미지를 빌드하는 앱의 배포를 막는다.
+        import subprocess
+        script = SCRIPTS / 'build-tools.sh'
+
+        def check(separator, executor='containerd', namespace='default'):
+            with tempfile.TemporaryDirectory() as directory:
+                tools = Path(directory)
+                labels = (f'ID:{separator}abc\\nLabels:\\n'
+                          f'\\torg.mobyproject.buildkit.worker.containerd.namespace:{separator}{namespace}\\n'
+                          f'\\torg.mobyproject.buildkit.worker.executor:{separator}{executor}\\n'
+                          f'\\torg.mobyproject.buildkit.worker.snapshotter:{separator}overlayfs\\n')
+                sources = {'sudo': '[ "$1" = -n ] && shift\nexec "$@"\n',
+                           'nerdctl': 'echo "nerdctl version 2"\n', 'buildkitd': 'echo "buildkitd v0"\n',
+                           'buildctl': f'case "$*" in *workers*) printf "{labels}";; *) echo "buildctl v0";; esac\n'}
+                for name, body in sources.items():
+                    (tools / name).write_text('#!/bin/sh\n' + body)
+                    (tools / name).chmod(0o700)
+                return subprocess.run(['/bin/bash', script, 'check'], capture_output=True, text=True,
+                                      env={'PATH': f'{directory}:/usr/bin:/bin', 'HOME': directory})
+
+        for separator in ('\\t', '\\t\\t', ' ', '   '):
+            with self.subTest(separator=separator):
+                result = check(separator)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn('빌드 도구 준비 완료', result.stdout)
+        # containerd worker가 아니거나 namespace가 다르면 여전히 실패한다. 이름이 앞부분만 같은 값도 통과시키지 않는다.
+        for kwargs in ({'executor': 'oci'}, {'namespace': 'k8s.io'}, {'namespace': 'default2'}, {'executor': 'containerd-other'}):
+            with self.subTest(**kwargs):
+                result = check('\\t', **kwargs)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn('BuildKit worker가 containerd(default)가 아닙니다', result.stdout)
+
 
 class PortalImageTests(unittest.TestCase):
     def setUp(self):
