@@ -226,13 +226,30 @@ class Setup:
             api.call("PUT", f"{base}/permission/scope/{current['id']}", {**current, **definition})
 
 
+def read_env(path: str) -> dict:
+    """env 파일의 `키=값` 줄을 읽습니다. 값을 셸로 실행하지 않습니다."""
+    values = {}
+    for line in open(path, encoding="utf-8").read().splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            key, _, value = line.partition("=")
+            values[key.strip()] = value.strip()
+    return values
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--realm", default=os.environ.get("KEYCLOAK_TARGET_REALM", "etch"))
-    parser.add_argument("--public-url", default=os.environ.get("IAM_PUBLIC_URL", ""), help="권한관리 웹 공개 주소")
+    parser.add_argument("--env", help="IAM_PUBLIC_URL·KEYCLOAK_TARGET_REALM을 담은 env 파일. 같은 이름의 환경변수가 우선합니다.")
+    parser.add_argument("--realm", default="")
+    parser.add_argument("--public-url", default="", help="권한관리 웹 공개 주소")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:
+        try:
+            declared = read_env(args.env) if args.env else {}
+        except OSError:
+            raise SetupError(f"env 파일을 읽을 수 없습니다: {args.env}") from None
+        args.realm = args.realm or os.environ.get("KEYCLOAK_TARGET_REALM") or declared.get("KEYCLOAK_TARGET_REALM") or "etch"
+        args.public_url = args.public_url or os.environ.get("IAM_PUBLIC_URL") or declared.get("IAM_PUBLIC_URL", "")
         if not args.realm or args.realm == "master":
             raise SetupError("업무 realm을 지정하세요. master에는 적용하지 않습니다.")
         public_url = check_url(args.public_url, "IAM_PUBLIC_URL")

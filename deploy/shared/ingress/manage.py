@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""앱과 독립적으로 공용 Traefik을 준비하고 Portal 감시 범위를 연결한다."""
+"""공용 Traefik(앱 ingress)을 다른 앱과 독립적으로 검사·렌더·배포하고 Portal 감시 범위를 연결한다."""
 
 import argparse
 import importlib.util
@@ -45,10 +45,14 @@ def prepare(context, vip_backends=None):
     return [updated if item is original else item for item in items]
 
 
-def start(context, vip_backends=None, check_only=False):
+def start(context, vip_backends=None, check_only=False, render_output=None):
     """모든 검사를 마친 뒤 공용 리소스만 적용하고 Traefik 기동을 확인한다."""
     kube = kubectl(context)
     items = prepare(context, vip_backends)
+    if render_output:
+        # 배포 상태 대조용: 현재 감시 namespace와 VIP 배치를 보존한 적용 대상을 남기고 클러스터는 바꾸지 않는다.
+        Path(render_output).write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': items}, indent=2))
+        return
     if check_only:
         print('공용 Ingress 원본·배치 검사 통과. 클러스터를 변경하지 않았습니다.')
         return
@@ -111,15 +115,20 @@ def connect(context, app):
 def main():
     """공용 준비와 앱 연결을 분리하며 모든 실행에 context를 요구한다."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['check', 'up', 'connect'])
+    parser.add_argument('action', choices=['check', 'up', 'render', 'connect'])
     parser.add_argument('--context', required=True)
     parser.add_argument('--vip-backends')
+    parser.add_argument('--output', type=Path, help='render 결과 JSON을 쓸 파일')
     parser.add_argument('--app', default='')
     args = parser.parse_args()
     if args.action == 'connect':
         if args.vip_backends:
             parser.error('connect는 VIP 배치를 변경하지 않습니다.')
         connect(args.context, args.app)
+    elif args.action == 'render':
+        if not args.output:
+            parser.error('render에는 --output 파일이 필요합니다.')
+        start(args.context, args.vip_backends, render_output=args.output)
     else:
         start(args.context, args.vip_backends, check_only=args.action == 'check')
 

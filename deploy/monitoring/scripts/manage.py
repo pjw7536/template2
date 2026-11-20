@@ -21,6 +21,7 @@ spec.loader.exec_module(tls)
 spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 'shared/scripts/runtime.py')
 RUNTIME = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(RUNTIME)
+host_dirs = RUNTIME.module('shared_host_dirs', BASE.parent / 'shared/scripts/host_dirs.py')
 
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
 ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'))
@@ -302,8 +303,8 @@ def prepare_storage(kube, settings, components, resources):
     run([*kube, 'create', '--dry-run=server', '-f', '-'], data=manifest)
     job = json.loads(run([*kube, 'create', '-f', '-', '-o', 'json'], data=manifest))
     name = job['metadata']['name']
-    print(f'Monitoring 저장 폴더 준비 대기: job/{name}. 실패 시 해당 Job의 Pod Events와 로그를 확인하세요.', flush=True)
-    run([*kube, '-n', settings['NAMESPACE'], 'wait', '--for=condition=complete', f'job/{name}', '--timeout=300s'])
+    print(f'Monitoring 저장 폴더 준비 대기: job/{name}', flush=True)
+    host_dirs.wait_job(run, kube, settings['NAMESPACE'], name)
 
 
 def render(settings, directory, chart, values_file=None):

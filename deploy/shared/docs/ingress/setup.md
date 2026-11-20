@@ -1,8 +1,9 @@
 # Traefik 셋업
 
-[가이드 홈](../README.md#https인증서) · [Worker 추가](../kubernetes/worker.md) · [운영 기준](operations.md) · [Traefik·VIP 확장](expand.md)
+[가이드 홈](../README.md#https인증서) · [ingress 가이드](../../ingress/README.md) · [Worker 추가](../kubernetes/worker.md) · [운영 기준](operations.md) · [Traefik·VIP 확장](expand.md)
 
-**목적:** 앱들이 함께 사용하는 HTTPS 진입점(공용 Traefik)을 저장소 원본으로 설치하거나 갱신합니다.
+**목적:** 앱들이 함께 사용하는 HTTPS 진입점(공용 Traefik, 카탈로그 앱 `ingress`)의 VIP 구성과, backend Worker를 지정한 설치·검증을 다룹니다.
+backend를 지정하지 않는 설치·갱신·확인은 [ingress 가이드](../../ingress/README.md)를 따릅니다.
 
 ```text
 브라우저 → APP VIP:443 → Traefik이 있는 Worker:443 → 앱 Service → 앱 Pod
@@ -16,29 +17,36 @@
 
 | 상황 | 절차 |
 | --- | --- |
-| 최초 설치, 저장소 원본(이미지·인자)으로 갱신하면서 backend 지정 | 이 문서 1~5 |
-| backend 변경 없이 원본만 갱신 | [대상 변경 없는 갱신](#대상-변경-없는-갱신) |
-| 운영 중인 Traefik의 이미지·인자를 유지한 채 backend만 추가하고 복구 파일이 필요 | [Traefik·VIP 확장](expand.md) |
+| 최초 설치, backend 변경 없이 저장소 원본(이미지·인자)으로 갱신 | [ingress 가이드](../../ingress/README.md)의 `A. 최초 설치`·`B. 업데이트` |
+| Traefik이 아직 없는 클러스터에 backend Worker를 지정해 설치 | 이 문서 1~5 |
+| 운영 중인 Traefik의 backend 추가(백업·복구 포함) | [Traefik·VIP 확장](expand.md) |
 
 **준비물:**
 
-- Traefik을 배치할 Ready Worker 최소 한 대. 없으면 [Worker 추가](../kubernetes/worker.md)를 먼저 진행합니다.
+- Traefik을 배치할 Ready Worker. `VIP_BACKENDS`에는 서로 다른 Worker 주소를 두 개 이상 지정합니다. Worker가 없으면 [Worker 추가](../kubernetes/worker.md)를 먼저 진행합니다.
 - 관리 호스트 배포 계정의 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--관리-호스트)와 [관리 호스트 저장소](../operations/01-checkout.md#저장소-clone)
-- 사용할 공개 도메인의 fullchain PEM과 짝이 맞는 개인키, 또는 기존 TLS Secret
+- backend Worker의 주소. [VIP와 backend](../infrastructure/network.md#vip와-backend)의 기록과 1단계 노드 조회의 `INTERNAL-IP`를 대조합니다.
 
-**실행 위치:** 관리 호스트의 저장소 루트. 이 명령은 `deploy/shared`와 루트 Makefile만 사용하며 앱 env·소스·local 파일을 읽지 않습니다.
+**실행 위치:** 관리 호스트의 저장소 루트. Worker에서 하는 조회는 그 단계에 적습니다. `ingress` 명령은 `deploy/shared`와 루트 Makefile만 사용하며 앱 env·소스·local 파일을 읽지 않습니다.
+
+**자리표시:** `<IP 목록>`은 LB에 연결할 Worker의 InternalIP 전체를 쉼표로 이은 값, `<공개 host>`와 `<경로>`는 이미 배포된 앱의 공개 host와 정상 응답 경로(예: Keycloak realm `etch`는 `/realms/etch/.well-known/openid-configuration`), `<CA PEM 파일>`은 [사내 CA 묶음](../../../README.md#사내-ca-묶음)의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
 
 ## 1. 배포 대상·포트 검사 — 관리 호스트·선택한 Worker
 
+[조회] 노드와 현재 Traefik을 조회합니다.
+
 ```bash
 kubectl config get-contexts
-read -r -p '서버 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-kubectl --context "$KUBE_CONTEXT" get nodes -o wide
-kubectl --context "$KUBE_CONTEXT" -n etch-sso get deployment traefik --ignore-not-found
-read -r -p 'Traefik을 배치할 전체 Worker IP 목록(쉼표 구분): ' VIP_BACKENDS
-export VIP_BACKENDS
-make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
+kubectl --context "<context>" get nodes -o wide
+kubectl --context "<context>" -n etch-sso get deployment traefik --ignore-not-found
+```
+
+마지막 명령의 출력이 있으면 Traefik이 이미 운영 중입니다. backend를 바꾸는 것은 [승인] 단계이므로 이 문서 대신 [Traefik·VIP 확장](expand.md)을 따릅니다.
+
+[검사] 지정할 배치를 검사합니다. 클러스터를 변경하지 않습니다.
+
+```bash
+make ingress-check KUBE_CONTEXT="<context>" VIP_BACKENDS=<IP 목록>
 ```
 
 - `VIP_BACKENDS`에는 LB에 연결할 **기존 Worker와 새 Worker IP 전체**를 넣습니다. 기존 backend를 빼고 적용하지 않습니다.
@@ -48,46 +56,45 @@ make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
 
 **실패 확인:** 표시된 노드·IP·포트 충돌 또는 기존 backend 누락을 해결한 뒤 다시 검사합니다. 검사 실패 상태로 2단계 이후를 진행하지 않습니다.
 
-선택한 각 Worker에서 OS 프로세스의 포트 점유도 확인합니다.
+[조회] 선택한 각 Worker에서 OS 프로세스의 포트 점유도 확인합니다. 실행 위치는 그 Worker이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
 
 ```bash
 sudo ss -lntp '( sport = :80 or sport = :443 )'
 ```
 
-Nginx 등 다른 프로세스가 점유 중이면 담당자와 조정하며 자동으로 종료하지 않습니다.
+Nginx 등 다른 프로세스가 점유 중이면 그 Worker를 backend에 넣지 않습니다. 프로세스를 종료하지 않고 출력과 함께 보고합니다.
 hostPort는 네트워크 규칙으로 구현될 수 있으므로 ss 출력이 비어 있어도 Traefik이 실행 중일 수 있습니다.
 
 ## 2. TLS 인증서 등록 — 관리 호스트
 
-필요한 공개 도메인마다 반복합니다. 파일 준비·추출은 [인증서 원본 준비](../certificates/prepare.md)부터 시작합니다.
+공개 host의 인증서는 그 host를 쓰는 앱의 `make ops-deploy`가 준비 검사에서 자동으로 등록합니다. 직접 등록하거나 갱신할 때는 [공용 TLS 등록](../../../README.md#공용-tls-등록)의 `make ingress-tls-up`을 host마다 실행합니다.
+파일 준비·추출은 [인증서 원본 준비](../certificates/prepare.md)부터 시작하고, 기존 TLS Secret에서 가져오는 `TLS_SOURCE` 방식과 등록 뒤 확인은 [인증서 적용](../certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)에 있습니다.
 
-```bash
-read -r -p '공개 도메인: ' TLS_HOST
-read -r -p 'fullchain PEM 절대 경로: ' TLS_CERT_FILE
-read -r -p 'PEM 개인키 절대 경로: ' TLS_KEY_FILE
-make ingress-tls-up KUBE_CONTEXT="$KUBE_CONTEXT" TLS_HOST="$TLS_HOST" \
-  TLS_CERT_FILE="$TLS_CERT_FILE" TLS_KEY_FILE="$TLS_KEY_FILE"
-```
-
-기존 TLS Secret에서 가져올 때는 [인증서 적용](../certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)의 `TLS_SOURCE` 방식을 사용합니다.
-
-**기대 결과:** `공용 TLS 등록 완료`가 표시되고 인증서가 공용 `etch-sso/traefik-tls`에 등록됩니다.
-도구가 도메인·만료·키 일치를 검사하며 다른 도메인의 인증서는 유지합니다.
+인증서는 공용 `etch-sso/traefik-tls`에 등록됩니다. 도구가 도메인·만료·키 일치를 검사하며 다른 도메인의 인증서는 유지합니다.
 
 ## 3. Traefik 설치·갱신 — 관리 호스트
 
+[변경] Traefik이 아직 없는 클러스터의 설치입니다. 준비 검사 → `ingress-check` → `ingress-up` → `ingress-smoke` → 대조를 수행합니다.
+
 ```bash
-make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
-make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT" VIP_BACKENDS="$VIP_BACKENDS"
-kubectl --context "$KUBE_CONTEXT" -n etch-sso get pods \
+make ops-deploy APP=ingress KUBE_CONTEXT="<context>" VIP_BACKENDS=<IP 목록>
+```
+
+성공: `{"app":`으로 시작하는 JSON 줄의 `"failedStep": null`, `"driftResultCode": 0`. 출력에 `공용 Ingress 준비 완료`가 있습니다.
+
+[조회] 배치를 확인합니다.
+
+```bash
+kubectl --context "<context>" -n etch-sso get pods \
   -l app.kubernetes.io/name=traefik -o wide
 ```
 
+**기대 결과:** 대상 Worker마다 Traefik이 하나씩 `1/1 Running`입니다.
+
 `ingress-up`은 `etch-sso` namespace와 공용 리소스를 준비하며 Keycloak·DB·다른 앱을 재배포하지 않습니다.
+지정한 배치는 Deployment의 `deploy.tailwind.local/vip-backends` annotation에 기록되어, 이후 `VIP_BACKENDS` 없이 실행하는 `make ops-deploy APP=ingress`와 앱 배포가 그대로 보존합니다.
 
-**기대 결과:** `공용 Ingress 준비 완료`가 표시되고 대상 Worker마다 Traefik이 하나씩 `1/1 Running`입니다.
-
-**실패 확인:**
+**실패 확인:** 아래 표와 [ingress 가이드의 문제 해결](../../ingress/README.md#문제-해결과-멈춤-조건)을 봅니다.
 
 | 상태 | 먼저 확인할 내용 |
 | --- | --- |
@@ -95,25 +102,28 @@ kubectl --context "$KUBE_CONTEXT" -n etch-sso get pods \
 | ImagePullBackOff | 해당 노드의 이미지 미러·인증 |
 | Ready 실패 | Pod 로그와 CNI 연결 |
 
-## 4. Worker 직접 → APP VIP 검증 — 관리 호스트·인프라 담당자
+## 4. Worker 직접 → APP VIP 검증 — 관리 호스트
 
-처음 설치했다면 앱 Ingress를 연결한 뒤 실제 앱의 정상 경로를 사용합니다. 기존 서비스가 있으면 그 경로로 바로 검사합니다.
-사내 CA가 신뢰 저장소에 없으면 curl에 `--cacert`를 추가합니다.
+처음 설치했다면 앱 Ingress를 연결한 뒤(앱 배포 뒤) 실제 앱의 정상 경로를 사용합니다. 기존 서비스가 있으면 그 경로로 바로 검사합니다.
+OS가 사내 CA를 신뢰하면 `--cacert <CA PEM 파일>`을 생략할 수 있습니다. 인증서 검증을 건너뛰는 `-k`는 쓰지 않습니다.
+
+[조회] 각 Traefik 노드의 443 연결을 확인하고, `<Worker IP>`를 바꿔 가며 모든 대상 Worker에 직접 요청합니다.
 
 ```bash
-read -r -p '검사할 공개 도메인: ' CHECK_HOST
-read -r -p '정상 응답을 확인할 앱 경로(/로 시작): ' CHECK_PATH
-read -r -p '직접 검사할 Worker IP: ' CHECK_WORKER_IP
-curl --fail --show-error --connect-timeout 5 --max-time 20 \
-  --resolve "$CHECK_HOST:443:$CHECK_WORKER_IP" "https://$CHECK_HOST$CHECK_PATH"
+make ingress-smoke KUBE_CONTEXT="<context>"
+curl --fail --show-error --connect-timeout 5 --max-time 20 --cacert <CA PEM 파일> \
+  --resolve "<공개 host>:443:<Worker IP>" "https://<공개 host><경로>"
 ```
 
-모든 대상 Worker의 직접 요청이 성공한 뒤 인프라 담당자가 새 LB backend를 활성화하고 Health Check가 UP인지 확인합니다. 그다음 VIP를 검사합니다.
+성공: `smoke 통과: ingress`와 Worker마다 정상 응답.
+
+[변경] 모든 대상 Worker의 직접 요청이 성공한 뒤 LB에서 새 backend를 활성화하고 Health Check가 UP인지 확인합니다. LB 작업은 [APP VIP와 LB](../infrastructure/access.md#app-vip와-lb) 절의 방법으로 합니다.
+
+[조회] 그다음 APP VIP를 검사합니다. `<APP VIP 주소>`는 [별칭 표](../infrastructure/aliases.json)의 `VIP-APP`입니다.
 
 ```bash
-read -r -p 'APP VIP: ' APP_VIP
-curl --fail --show-error --connect-timeout 5 --max-time 20 \
-  --resolve "$CHECK_HOST:443:$APP_VIP" "https://$CHECK_HOST$CHECK_PATH"
+curl --fail --show-error --connect-timeout 5 --max-time 20 --cacert <CA PEM 파일> \
+  --resolve "<공개 host>:443:<APP VIP 주소>" "https://<공개 host><경로>"
 ```
 
 **실패 확인:** 앱이 아직 없는 `/`의 404만으로 Traefik 장애라고 판단하지 않습니다. 한 번의 VIP 성공만으로 모든 backend가 정상이라고 판단하지 않습니다.
@@ -121,6 +131,7 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
 ## 5. 완료 기준과 다음 단계
 
 대상 Traefik Ready → 각 Worker의 실제 앱 HTTPS 정상 → LB backend UP → VIP·DNS로 앱 접속 정상.
+확인한 backend와 노드 대응은 [VIP와 backend](../infrastructure/network.md#vip와-backend)에 반영합니다.
 
 - 앱 배포: [앱별 문서](../../../README.md#앱-설치-순서)
 - namespace 감시·배치 보존: [운영 기준](operations.md)
@@ -128,14 +139,5 @@ curl --fail --show-error --connect-timeout 5 --max-time 20 \
 
 ## 대상 변경 없는 갱신
 
-기존 공용 진입점의 namespace 감시·배치·VIP backend를 유지하며 원본만 갱신합니다. 실행 위치는 관리 호스트의 저장소 루트입니다.
-
-```bash
-read -r -p '대상 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-make ingress-check KUBE_CONTEXT="$KUBE_CONTEXT"
-make ingress-up KUBE_CONTEXT="$KUBE_CONTEXT"
-```
-
-`VIP_BACKENDS`를 생략하면 기존 배치를 다시 계산하지 않고 보존 가능한지만 검사합니다.
-**기대 결과:** 검사 통과 후 적용되고 rollout이 완료됩니다. 기존 앱 접속을 다시 확인합니다. 앱·DB·앱 Secret은 재배포하지 않습니다.
+기존 공용 진입점의 namespace 감시·배치·VIP backend를 유지하며 원본만 갱신하는 절차는 [ingress 가이드의 B. 업데이트](../../ingress/README.md#b-업데이트)입니다.
+`VIP_BACKENDS`를 생략하면 기존 배치를 다시 계산하지 않고 보존 가능한지만 검사합니다. 앱·DB·앱 Secret은 재배포하지 않습니다.

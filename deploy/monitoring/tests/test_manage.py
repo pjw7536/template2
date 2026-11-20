@@ -125,6 +125,8 @@ class MonitoringTests(unittest.TestCase):
         created = []
 
         def run(args, data=None):
+            if 'get' in args and 'job' in args:
+                return json.dumps({'status': {'succeeded': 1}})
             if 'get' in args:
                 return json.dumps(resources['items'][0])
             if 'create' in args:
@@ -286,6 +288,8 @@ class MonitoringTests(unittest.TestCase):
                 return 'namespace/monitoring'
             if 'secret' in args:
                 return 'admin-user\nadmin-password\n'
+            if 'get' in args and 'job' in args:
+                return json.dumps({'status': {'succeeded': 1}})
             if 'create' in args:
                 return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
             return ''
@@ -295,7 +299,7 @@ class MonitoringTests(unittest.TestCase):
         apply = next(i for i, call in enumerate(calls) if 'apply' in call)
         install = next(i for i, call in enumerate(calls) if 'upgrade' in call)
         self.assertLess(apply, install)
-        prepare = next(i for i, call in enumerate(calls) if 'job/monitoring-storage-prepare-test' in call)
+        prepare = next(i for i, call in enumerate(calls) if 'job' in call and 'monitoring-storage-prepare-test' in call)
         self.assertLess(prepare, apply)
         self.assertTrue(all('test-context' in call for call in calls))
         self.assertFalse(any('delete' in call or '--atomic' in call for call in calls))
@@ -351,6 +355,8 @@ class MonitoringTests(unittest.TestCase):
                     if 'secret' in args:
                         self.assertNotIn('grafana', disabled)
                         return 'admin-user\nadmin-password\n'
+                    if 'get' in args and 'job' in args:
+                        return json.dumps({'status': {'succeeded': 1}})
                     if 'create' in args:
                         return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
                     if 'apply' in args:
@@ -395,6 +401,8 @@ class MonitoringTests(unittest.TestCase):
                 return json.dumps({'items': [{'spec': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}]})
             if 'secret' in args:
                 return 'admin-user\nadmin-password\n'
+            if 'get' in args and 'job' in args:
+                return json.dumps({'status': {'succeeded': 1}})
             if 'create' in args:
                 return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
             return ''
@@ -465,7 +473,7 @@ class MonitoringTests(unittest.TestCase):
                 return 'admin-user\nadmin-password\n'
             if 'create' in args:
                 return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
-            if '--for=condition=complete' in args:
+            if 'get' in args and 'job' in args:
                 raise ValueError('폴더 준비 실패')
             return ''
 

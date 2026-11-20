@@ -196,7 +196,7 @@ def start(context, api_env, web_env, check_only=False, force_migrate=False, now=
     for workload in WORKLOADS:
         run([*scoped, 'rollout', 'status', workload, '--timeout=10m'])
     run([sys.executable, ROOT / 'deploy/shared/ingress/manage.py', 'connect', '--context', context, '--app', 'portal'])
-    print('Portal 배포 완료. 로그인·파일 송수신은 사용자가 확인합니다.')
+    print('Portal 배포 완료. 배포 후 확인 절차에서 로그인·파일 송수신을 검증하세요.')
 
 
 def main():
@@ -206,8 +206,10 @@ def main():
     parser.add_argument('--api-env', type=Path, default=BASE / 'env/prod/api.env')
     parser.add_argument('--web-env', type=Path, default=BASE / 'env/prod/web.env')
     parser.add_argument('--check-only', action='store_true')
-    parser.add_argument('--migrate', action='store_true', help='API 이미지가 같아도 migration을 실행')
-    parser.add_argument('--retry-failed', action='store_true', help='실패한 이전 portal-migrate Job을 지우고 다시 실행')
+    parser.add_argument('--migrate', action='store_true', default=os.environ.get('PORTAL_MIGRATE') == '1',
+                        help='API 이미지가 같아도 migration을 실행. PORTAL_MIGRATE=1과 같음')
+    parser.add_argument('--retry-failed', action='store_true', default=os.environ.get('PORTAL_RETRY_MIGRATE') == '1',
+                        help='실패한 이전 portal-migrate Job을 지우고 다시 실행. PORTAL_RETRY_MIGRATE=1과 같음')
     parser.add_argument('--render', choices=('app', 'migrate'), help='적용 대상 JSON만 출력하고 클러스터는 변경하지 않음')
     args = parser.parse_args()
     if args.render:

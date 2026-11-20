@@ -21,7 +21,9 @@ from k8s_config import (ROOT, RUNTIME, airflow_settings, credentials, module,
 spec = importlib.util.spec_from_file_location('local_headlamp_oidc', ROOT / 'local/headlamp/local_oidc.py')
 headlamp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(headlamp)
-PLATFORM = tuple(json.loads((ROOT / 'deploy/shared/apps.json').read_text())['groups']['platform'])
+CATALOG = json.loads((ROOT / 'deploy/shared/apps.json').read_text())
+# 서버 platform 그룹 중 외부 PC 정의(localPath)가 있는 앱만 로컬에서 실행한다. 사내 이미지 저장소·공용 ingress는 서버 전용이다.
+PLATFORM = tuple(name for name in CATALOG['groups']['platform'] if CATALOG['apps'][name].get('localPath'))
 
 WORKLOADS = (
     ('tailwind-local', 'deployment/keycloak'),

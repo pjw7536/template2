@@ -2,28 +2,24 @@
 """공통 앱 목록에서 서버 검사 대상 앱 이름을 조회한다."""
 
 import argparse
-import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import catalog as registry  # noqa: E402
 
 
 def read_catalog(path):
-    """경로 소유권과 그룹 구성을 검사하고 앱 목록을 반환한다."""
-    catalog = json.loads(path.read_text())
-    apps, groups = catalog['apps'], catalog['groups']
-    for name, app in apps.items():
-        if not name.replace('-', '').isalnum() or not name.islower():
-            raise ValueError(f'잘못된 앱 이름: {name}')
-        if app['deployPath'] != f'deploy/{name}':
+    """카탈로그 구조에 더해 경로 소유권을 검사하고 앱 목록을 반환한다."""
+    catalog = registry.read_catalog(path)
+    for name, app in catalog['apps'].items():
+        # 앱 정의는 deploy/<app>이 소유한다. 여러 앱이 함께 쓰는 공용 구성만 deploy/shared 아래에 둔다.
+        if app['deployPath'] != f'deploy/{name}' and not app['deployPath'].startswith('deploy/shared/'):
             raise ValueError(f'잘못된 배포 경로: {name}')
         if app['localPath'] not in (None, f'local/{name}'):
             raise ValueError(f'잘못된 로컬 경로: {name}')
         if app['sourcePaths'] not in ([], [f'apps/{name}']):
             raise ValueError(f'잘못된 소스 경로: {name}')
-    for name, members in groups.items():
-        if name in apps or not members or len(set(members)) != len(members) or any(member not in apps for member in members):
-            raise ValueError(f'잘못된 앱 그룹: {name}')
-    if set(groups['all']) != set(apps):
-        raise ValueError('all 그룹은 모든 앱을 포함해야 합니다.')
     return catalog
 
 

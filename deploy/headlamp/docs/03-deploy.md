@@ -12,14 +12,15 @@
 
 ## 배포 도구의 동작
 
-`make ops-deploy APP=headlamp`가 실행하는 단계입니다.
+`make ops-deploy APP=headlamp`가 순서대로 실행하는 단계입니다. 마지막에 [배포 상태 대조](../../shared/docs/operations/04-drift.md)를 수행합니다.
 
-| 단계 | 하는 일 |
-| --- | --- |
-| `headlamp-oidc-setup` | Keycloak client·관리자 그룹과 `headlamp` namespace·client secret Secret·CA ConfigMap 준비. [상세](02-authentication.md#keycloak-client와-관리자) |
-| `headlamp-check` | env·chart 해시·Helm 렌더 검사. 클러스터를 바꾸지 않음 |
-| `headlamp-up` | 아래 설명 |
-| `headlamp-smoke` | 워크로드 준비 상태와 공개 주소의 HTTPS 응답을 조회. 로그인·권한은 확인하지 않음 |
+| 순서 | 단계 | 하는 일 |
+| --- | --- | --- |
+| 1 | 준비 검사 | 접속, 저장소 원본, 먼저 필요한 앱(ingress·keycloak), env, chart, 사내 CA 묶음, 공용 TLS, DNS 확인. chart 받기·CA 묶음 만들기·공용 TLS 등록은 필요한 파일이 있으면 자동 실행 |
+| 2 | `headlamp-check` | env·chart 해시·Helm 렌더 검사. 클러스터를 바꾸지 않음 |
+| 3 | `headlamp-oidc-setup` | Keycloak client·관리자 그룹과 `headlamp` namespace·client secret Secret·CA ConfigMap 준비. [상세](02-authentication.md#keycloak-client와-관리자) |
+| 4 | `headlamp-up` | 아래 설명 |
+| 5 | `headlamp-smoke` | 워크로드 준비 상태와 공개 주소의 HTTPS 응답을 조회. DNS에 없는 host는 APP VIP로 다시 확인. 로그인·권한은 확인하지 않음 |
 
 `headlamp-up`은 OIDC Secret의 필수 키·선택 CA·공용 TLS 인증서·기존 Traefik을 확인한 뒤 Helm release `headlamp`를 namespace `headlamp`에 설치하고 최대 5분 동안 준비를 기다립니다.
 이후 기존 Traefik의 감시 namespace·배치를 보존하면서 `headlamp` namespace를 추가합니다. Ingress 경로는 `/`이며 StripPrefix를 적용하지 않습니다.
@@ -32,7 +33,7 @@ make headlamp-ui KUBE_CONTEXT="<context>"
 kubectl --context "<context>" -n headlamp get deployment,pods,svc,ingress
 ```
 
-성공: Deployment READY `1/1`, Pod `Running` READY `1/1`, Service `ClusterIP`. Service 내부 IP는 브라우저 접속 주소가 아닙니다.
+성공: `접속 주소: https://headlamp.etch.samsungds.net/ (Keycloak 로그인)`, Deployment READY `1/1`, Pod `Running` READY `1/1`, Service `ClusterIP`. Service 내부 IP는 브라우저 접속 주소가 아닙니다.
 단계별 실패의 조치는 [가이드의 문제 해결](../README.md#문제-해결과-멈춤-조건)에 있습니다.
 
 ## 실제 HTTPS 확인
@@ -44,15 +45,16 @@ curl --fail --silent --show-error --cacert deploy/shared/certs/sso.etch.samsungd
 ```
 
 성공: `Headlamp HTTPS 응답 확인 완료`.
+DNS에 host가 아직 없으면 이 명령은 이름을 찾지 못해 실패합니다. 이때는 [가이드 C](../README.md#c-배포-후-확인)의 smoke가 APP VIP로 확인한 `DNS 미등록. APP VIP 직접 접속:` 줄로 대신하고 [DNS](../../shared/docs/infrastructure/access.md#dns) 절로 등록합니다.
 `404`면 Ingress host/path와 Traefik 감시 namespace, `503`이면 Pod 준비 상태와 Service 연결, 인증서 오류면 DNS·Traefik·TLS Secret·fullchain을 확인합니다.
 공인·다른 CA 사이트는 해당 신뢰 체인을 `--cacert`에 지정합니다. 관리 호스트에서 성공해도 PC 브라우저에 경고가 뜨면 PC의 CA 신뢰와 DNS를 확인합니다.
 
-[사람] 제공 중인 인증서와 로컬 fullchain의 일치는 [실제 제공되는 인증서 확인](../../shared/docs/certificates/apply.md#3-실제-제공-인증서-확인--관리-호스트)으로 검사합니다. 그 문서의 입력은 공개 host `headlamp.etch.samsungds.net`, 사이트 폴더 `deploy/shared/certs/etch.samsungds.net`, CA 폴더 `deploy/shared/certs/ca`입니다.
+[검사] 제공 중인 인증서와 로컬 fullchain의 일치는 [실제 제공되는 인증서 확인](../../shared/docs/certificates/apply.md#3-실제-제공-인증서-확인--관리-호스트)으로 검사합니다. 그 문서의 입력은 공개 host `headlamp.etch.samsungds.net`, 사이트 폴더 `deploy/shared/certs/etch.samsungds.net`, CA 폴더 `deploy/shared/certs/ca`입니다.
 
 ## Kubernetes RBAC 확인
 
 관리자 kubeconfig로 사용자 권한을 흉내 내는 **권한 검사**이며 실제 OIDC 검사는 아닙니다. 검사용 사용자는 Keycloak에 만들 필요가 없습니다.
-`cannot impersonate`가 나오면 그룹 문제로 판정하지 말고 현재 kubeconfig가 관리자 권한인지 확인합니다.
+`cannot impersonate`가 나오면 그룹 문제로 판정하지 말고 현재 kubeconfig가 관리자 권한인지 [Kubernetes API](../../shared/docs/infrastructure/access.md#kubernetes-api) 절로 확인합니다.
 
 [조회] 가이드 C의 두 검사에 더해 관리자 그룹의 전체 권한과 그룹 밖 사용자의 거부를 확인합니다.
 
@@ -74,11 +76,12 @@ kubectl --context "<context>" auth can-i list nodes \
 # 기대: no
 ```
 
-Kubernetes 권한은 합산되므로 `headlamp:` 접두사 그룹·사용자에 연결된 다른 RBAC 바인딩이 없는지도 확인합니다.
+성공: 앞의 네 명령은 `yes`, 마지막 명령은 `no`입니다.
+Kubernetes 권한은 합산되므로 `headlamp:` 접두사 그룹·사용자에 연결된 다른 RBAC 바인딩이 없는지도 확인합니다. 마지막 명령이 `yes`이면 [가이드의 멈춤 조건](../README.md#문제-해결과-멈춤-조건)을 따릅니다.
 
 ## 실제 사용자 로그인
 
-PC 브라우저에서 확인합니다.
+브라우저가 필요한 확인입니다. [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 수행하고, 확인하지 못한 항목은 완료로 적지 않습니다.
 
 1. `https://headlamp.etch.samsungds.net/`에서 **Sign in**을 누르고 `etch` realm의 사내 `oidc` provider를 선택합니다. 기존 SSO 세션이 있으면 인증 화면이 생략될 수 있습니다.
 2. `headlamp-admins` 가입 계정으로 클러스터를 선택하고 노드 목록, namespace별 Pod 목록, 실행 중인 Pod의 Logs가 조회되는지 확인합니다. 자원을 삭제할 필요는 없습니다.

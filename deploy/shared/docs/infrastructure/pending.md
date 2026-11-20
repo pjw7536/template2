@@ -7,6 +7,7 @@
 
 - 작업을 서버에 적용하고 확인하면 원본 문서의 현재 값을 갱신하고 이 문서의 행을 삭제합니다. 완료 기록은 남기지 않습니다.
 - 새 작업은 해당 분류에 행을 추가합니다. 주체가 정해지지 않았으면 `미확인`으로 둡니다.
+- 주체는 운영 책임의 참조입니다. 요청받은 작업은 운영 agent가 [접근 경로](access.md)의 방법으로 직접 수행하고, 접근이 실제로 막혔을 때만 그 절의 `막히면 요청할 것`을 요청합니다.
 - 상태의 `미확인`은 서버 조회·사용자 확인이 없다는 뜻이며 미적용으로 단정하지 않습니다. 작업 전 실제 상태를 조회합니다.
 
 ## 1. 네트워크·DNS·인증서
@@ -16,9 +17,9 @@
 | 운영 SSO DNS 전환 | `sso.etch.samsungds.net` → APP VIP | 현재 DNS는 `etch-sso.samsungds.net` → `khplane01w09` 주소. 새 주소 등록 미확인 | [전환·계획 주소](network.md#전환계획-주소) | 사용자 |
 | 앱별 DNS 등록 | 서비스 주소 표의 앱 도메인 → APP VIP | 미확인 | [서비스 접속 주소](services.md#서비스-접속-주소), [DNS 명명](network.md#dns-명명과-향후-구역-위임) | 사용자 |
 | 업무 인증서 추가 신청·발급 | DNS SAN 92개·IP SAN 1개 | 신청안 작성. 제출·발급 미확인 | [업무 HTTPS 인증서](network.md#업무-https-인증서) | 미확인 |
-| 공용 TLS 등록 | 발급 인증서를 공용 Traefik 저장소에 등록 | 미확인 | [인증서 적용](../certificates/apply.md) | 운영자 |
+| 공용 TLS 등록 | 발급 인증서를 공용 Traefik 저장소에 등록(앱 배포의 준비 검사가 host별로 등록) | 미확인 | [공용 TLS 등록](../../../README.md#공용-tls-등록) | 운영자 |
 | 사내 이미지 저장소 DNS 등록 | `store.etch.samsungds.net` → APP VIP | 미확인 | [전환·계획 주소](network.md#전환계획-주소) | 사용자 |
-| 사내 이미지 저장소 공용 TLS 등록 | `store.etch.samsungds.net`용 인증서를 공용 Traefik에 등록 | 등록·VIP 제공 미확인 | [registry 설치 0절](../../../registry/README.md#사람이-하는-일) | 운영자 |
+| 사내 이미지 저장소 공용 TLS 등록 | `store.etch.samsungds.net`용 인증서를 공용 Traefik에 등록(Registry 배포의 준비 검사가 인증서 파일이 있으면 등록) | 등록·VIP 제공 미확인 | [Registry 사전 준비](../../../registry/README.md#사전-준비) | 운영자 |
 | FTP 방화벽 개방 | 허용 출발지 → FTP 노드 TCP `6380`, `8076–8079` | 미확인 | [FTP 직접 접속](network.md#ftp-직접-접속) | 미확인 |
 
 ## 2. 클러스터·공통 구성
@@ -26,10 +27,11 @@
 | 작업 | 목표 | 현재 상태 | 절차·원본 | 주체 |
 | --- | --- | --- | --- | --- |
 | 관리 호스트 준비 | `khplanew01`에 admin kubeconfig·저장소 전체 checkout과 kubectl·helm·chart·외부 env를 두고 `make drift-check` 실행. 이미지 빌드용 nerdctl·BuildKit은 `make build-tools-install`로 설치 | 미확인 | [관리 호스트 준비](../operations/04-drift.md#관리-호스트-준비) | 운영자 |
+| 공용 Traefik(`ingress`) 배포 기록 | `make ops-deploy APP=ingress`로 배포 기록 생성. 이미 Traefik이 있으면 [전환 런북](../operations/05-transition.md) | 미확인 | [ingress 가이드](../../ingress/README.md) | 운영자 |
 | 공용 Traefik·APP VIP backend | backend 2대에서 Traefik이 443 응답 | 저장소 기본 배치는 `khplane01w09` 1대. 실제 배치·LB 응답 미확인 | [VIP와 backend](network.md#vip와-backend), [backend 확장](../ingress/expand.md) | 운영자 |
 | 사내 미러 pull 확인 | 서버가 받는 모든 이미지·패키지를 대상 노드에서 받을 수 있음 | 미확인 | [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [패키지 주소](repositories.md#패키지chartartifact-주소) | 운영자 |
 | API server 버전 확인 | 실제 버전을 서버 현황에 반영 | CP1 확인값 `v1.36.0`, metrics-server 안내에는 1.36.4로 기록되어 충돌 | [설치 기준](servers.md#확인된-worker-설치-기준), [metrics-server](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |
-| 사내 이미지 저장소 배포 | Zot `Running`, Traefik `websecure` 읽기 제한 600초 적용(`ingress-up`), 노드·빌드 호스트의 사내 CA 신뢰와 HTTPS push·pull 성공 | 미확인 | [registry 설치](../../../registry/README.md) | 운영자 |
+| 사내 이미지 저장소 배포 | Zot `Running`, Traefik `websecure` 읽기 제한 600초 적용(`make ops-deploy APP=ingress`), 노드·빌드 호스트의 사내 CA 신뢰와 HTTPS push·pull 성공 | 미확인 | [registry 설치](../../../registry/README.md) | 운영자 |
 | metrics-server 설치 | `kubectl top` 동작 | 미확인 | [metrics-server 설치](../kubernetes/control-plane.md#metrics-server-설치) | 운영자 |
 | API server OIDC 인증 | Headlamp 사용자 토큰으로 Kubernetes API 인증 | 미확인 | [API server OIDC](../kubernetes/oidc.md) | 운영자 |
 
@@ -57,4 +59,6 @@
 | 백업 체계 | 앱 데이터·Keycloak DB·etcd의 백업 위치·주기·복구 검증 | 미확정 | [운영 책임·백업](operations.md#운영-책임백업인증서) | 미확인 |
 | 서버 checkout·Git | 사내 Git 주소·배포 브랜치·서버 checkout 경로 확정 | 미확인 | [사내 저장소 주소](repositories.md#공통-주소와-경로-규칙), [운영 파일 위치](operations.md#운영-파일과-데이터-위치) | 미확인 |
 | 접속·담당자 | 노드 SSH·관리망 경유지·서비스 담당자 | 미확인 | [추가 확인](servers.md#추가-확인접속-정보) | 미확인 |
+| 접근 경로 기록 | DNS·방화벽·LB·인증서 발급·노드 SSH·외부 DB의 접근 방법과 계정 위치를 처음 사용할 때 기록 | 모든 절 미확인 | [접근 경로](access.md) | 운영자 |
+| 권한관리(IAM) Keycloak 설정 | `IAM_PUBLIC_URL` 확정 뒤 `make ops-deploy APP=iam`. 권한관리 웹의 Kubernetes 배포 정의는 없음(전환 미완료) | 미확인 | [IAM 가이드](../../../iam/README.md) | 미확인 |
 | 서버 상태 보고서 전달 | 운영 agent가 `make ops-report`로 만든 별칭 보고서를 외부 개발 환경에 전달하고, 그 결과로 이 문서의 `미확인` 행을 정리 | 미확인. 보고서 생성 도구는 서버에서 실행된 적 없음 | [서버 상태 보고](../operations/04-drift.md#서버-상태-보고), [별칭 표](aliases.json) | 사용자 |

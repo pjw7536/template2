@@ -3,7 +3,8 @@
 
 - workload: 앱 namespace의 Deployment·StatefulSet·DaemonSet이 모두 Ready인지 본다.
 - http: 앱 namespace의 Ingress host마다 apps.json `smoke.paths`를 순서대로 요청해 하나라도 정상 응답인지 본다.
-- tcp: hostPort를 여는 Pod는 노드 주소의 포트 연결을 본다(FTP).
+- tcp: hostPort를 여는 Pod는 노드 주소의 포트 연결을 본다(FTP·공용 Traefik).
+- DNS에 없는 host는 별칭 표의 APP VIP로 한 번 더 접속한다. 서비스는 정상인데 DNS만 없으면 통과로 보고 그 사실을 적는다.
 
 종료 코드: 0 모두 통과, 1 실패 있음, 2 조회 불가. 로그인·파일 송수신 같은 사용자 기능은 확인하지 않는다.
 """
@@ -12,14 +13,26 @@ import argparse
 import http.client
 import json
 import os
+from pathlib import Path
 import socket
 import ssl
 import sys
 
 import ca_bundle
+import catalog as registry
 from deploy_state import QueryError, env_value, kube_runner, pod_problems, read_catalog, workload_snapshot
 
 TIMEOUT = 8
+ALIASES = registry.ROOT / 'deploy/shared/docs/infrastructure/aliases.json'
+DNS_FAILURE = 'DNS 조회 실패'
+
+
+def app_vip(path=ALIASES):
+    """별칭 표의 APP VIP 주소. 표가 없거나 항목이 없으면 None."""
+    try:
+        return json.loads(Path(path).read_text())['addresses']['VIP-APP']['ip']
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def request_status(host, path, connect=None, ca_file=None):
@@ -49,7 +62,7 @@ def http_check(host, paths, accept, connect=None, ca_file=None, fetch=request_st
         try:
             status = fetch(host, path, connect, ca_file)
         except socket.gaierror:
-            return {'kind': 'http', 'target': host, 'ok': False, 'detail': 'DNS 조회 실패'}
+            return {'kind': 'http', 'target': host, 'ok': False, 'detail': DNS_FAILURE}
         except ssl.SSLError as error:
             return {'kind': 'http', 'target': host, 'ok': False, 'detail': f'TLS 검증 실패: {getattr(error, "verify_message", "") or getattr(error, "reason", "") or type(error).__name__}'}
         except (OSError, http.client.HTTPException) as error:
@@ -86,8 +99,8 @@ def host_ports(pods, names=None):
     return sorted(result)
 
 
-def smoke(app_name, app, kube, namespace, connect=None, ca_file=None, fetch=request_status, tcp=tcp_check):
-    """한 앱의 확인 결과 목록을 만든다."""
+def smoke(app_name, app, kube, namespace, connect=None, ca_file=None, fetch=request_status, tcp=tcp_check, vip=None):
+    """한 앱의 확인 결과 목록을 만든다. vip를 주면 DNS에 없는 host를 그 주소로 다시 확인한다."""
     selector = app['runtime'].get('selector', '')
     checks = []
     workloads = workload_snapshot(kube, namespace, selector)
@@ -99,10 +112,20 @@ def smoke(app_name, app, kube, namespace, connect=None, ca_file=None, fetch=requ
     for problem in pod_problems(kube, namespace, selector):
         checks.append({'kind': 'workload', 'target': namespace, 'ok': False, 'detail': problem})
     settings = app.get('smoke', {})
-    ingresses = json.loads(kube(['-n', namespace, 'get', 'ingress', '-o', 'json']))['items']
+    # 여러 앱이 함께 쓰는 namespace에서는 앱의 selector로 그 앱의 Ingress만 본다.
+    label = ['-l', selector] if selector else []
+    ingresses = json.loads(kube(['-n', namespace, 'get', 'ingress', '-o', 'json', *label]))['items']
     hosts = sorted({rule['host'] for item in ingresses for rule in item['spec'].get('rules', []) if rule.get('host')})
     for host in hosts:
-        checks.append(http_check(host, settings.get('paths'), settings.get('accept', []), connect, ca_file, fetch))
+        result = http_check(host, settings.get('paths'), settings.get('accept', []), connect, ca_file, fetch)
+        if not result['ok'] and result['detail'] == DNS_FAILURE and vip and not connect:
+            direct = http_check(host, settings.get('paths'), settings.get('accept', []), vip, ca_file, fetch)
+            if direct['ok']:
+                # 서비스는 응답하므로 배포는 끝난 상태다. 남은 일은 DNS 등록뿐이라 통과로 보고 사실을 남긴다.
+                result = {**direct, 'dnsMissing': True, 'detail': f'DNS 미등록. APP VIP 직접 접속: {direct["detail"]}'}
+            else:
+                result['detail'] = f'{DNS_FAILURE}, APP VIP 직접 접속도 실패: {direct["detail"]}'
+        checks.append(result)
     pods = json.loads(kube(['-n', namespace, 'get', 'pods', '-o', 'json', *(['-l', selector] if selector else [])]))['items']
     for address, port in host_ports(pods, settings.get('hostPorts')):
         checks.append(tcp(address, port))
@@ -114,7 +137,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('app')
     parser.add_argument('--context', required=True)
-    parser.add_argument('--env', default='', help='NAMESPACE를 바꾼 설치의 env 파일')
+    parser.add_argument('--env', default='', help='NAMESPACE를 바꾼 설치의 env 파일. 생략하면 배포와 같은 환경변수 또는 기본 파일')
     parser.add_argument('--connect', default=os.environ.get('SMOKE_CONNECT', ''), help='DNS 등록 전 대신 접속할 주소(APP VIP 등)')
     parser.add_argument('--ca-file', default=os.environ.get('SMOKE_CA_FILE', ''), help='사내 CA 묶음 PEM')
     parser.add_argument('--json', action='store_true')
@@ -124,8 +147,11 @@ def main():
         if args.app not in catalog['apps']:
             raise ValueError(f'지원하지 않는 앱: {args.app}')
         app = catalog['apps'][args.app]
-        namespace = (env_value(args.env, 'NAMESPACE') if args.env else None) or app['runtime']['namespace']
-        checks = smoke(args.app, app, kube_runner(args.context), namespace, args.connect or None, args.ca_file or None)
+        if app.get('runtime') is None:
+            raise ValueError(f'{args.app}은 클러스터 워크로드가 없는 설정 전용 앱입니다.')
+        namespace = (env_value(args.env, 'NAMESPACE') if args.env else None) or registry.namespace(app)
+        checks = smoke(args.app, app, kube_runner(args.context), namespace, args.connect or None, args.ca_file or None,
+                       vip=app_vip())
     except (ValueError, KeyError, OSError, QueryError) as error:
         print(f'smoke 조회 불가: {error}', file=sys.stderr)
         return 2
@@ -135,7 +161,8 @@ def main():
     else:
         for item in checks:
             print(f'[{"통과" if item["ok"] else "실패"}] {item["kind"]} {item["target"]} — {item["detail"]}')
-        print(f'smoke {"통과" if code == 0 else "실패"}: {args.app}')
+        missing = sum(1 for item in checks if item.get('dnsMissing'))
+        print(f'smoke {"통과" if code == 0 else "실패"}: {args.app}' + (f' (DNS 미등록 host {missing}개)' if missing else ''))
     return code
 
 

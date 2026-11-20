@@ -64,60 +64,67 @@ class OpsCommandsTest(unittest.TestCase):
             self.assertEqual(report['apps'][0]['app'], 'ftp')
             self.assertIn('record', [item['area'] for item in report['apps'][0]['findings']])
 
-    def test_missing_chart_passes_context_and_keeps_external_input_private(self):
-        self.kubectl('assert "nodes" in args')
-        env = self.bin / 'airflow external.env'
-        env.write_text('INVALID=fixture-private-value\n')
-        result = self.make('ops-preflight', 'APP=airflow', f'AIRFLOW_ENV={env}',
-                           f'AIRFLOW_CHART_FILE={self.bin}/missing.tgz')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('[통과] KUBE_CONTEXT=ops-fixture', result.stdout)
-        self.assertIn('missing.tgz', result.stdout)
-        self.assertIn('chart.lock.json', result.stdout)
-        self.assertIn(str(env), result.stdout.split('재검사:')[1])
-        self.assertNotIn('fixture-private-value', result.stdout + result.stderr)
-        self.assertEqual(len(self.calls.read_text().splitlines()), 1)
-
-    def test_each_catalog_app_checks_the_selected_external_file(self):
+    def preflight_kubectl(self):
+        """노드 조회와 정적 렌더만 성공하고 나머지 조회는 빈 결과를 주는 클러스터."""
         self.kubectl('''
             if args[0] == "kustomize":
                 print("kind: List")
             elif "--dry-run=client" in args:
                 print(json.dumps({"kind": "List", "items": []}))
-            else:
-                assert "get" in args and "nodes" in args
         ''')
+
+    def test_missing_chart_is_offered_as_an_automatic_step_and_inputs_stay_private(self):
+        self.preflight_kubectl()
+        env = self.bin / 'airflow-external.env'
+        env.write_text('INVALID=fixture-private-value\n')
+        result = self.make('ops-preflight', 'APP=airflow', f'AIRFLOW_ENV={env}', f'AIRFLOW_CHART_FILE={self.bin}/missing.tgz')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[통과] 클러스터 접속', result.stdout)
+        self.assertIn('[자동 준비] chart', result.stdout)
+        self.assertIn('make airflow-fetch-chart', result.stdout)
+        self.assertIn(f'[통과] 입력 AIRFLOW_ENV — {env}', result.stdout)
+        self.assertIn('준비 검사 결과: 남은 항목', result.stdout)
+        self.assertNotIn('fixture-private-value', result.stdout + result.stderr)
+        # 준비 검사는 조회만 한다.
+        calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
+        self.assertFalse(any(verb in call for call in calls for verb in ('apply', 'patch', 'delete', 'replace')))
+        self.assertFalse(any('create' in call and not any(part.startswith('--dry-run') for part in call) for call in calls))
+
+    def test_each_catalog_app_reports_a_missing_selected_input_by_variable_name(self):
+        self.preflight_kubectl()
         missing = self.bin / 'missing.env'
         catalog = json.loads((ROOT / 'deploy/shared/apps.json').read_text())
-        for app in catalog['apps']:
-            with self.subTest(app=app):
-                key = 'PROD_API_ENV_FILE' if app == 'portal' else app.upper() + '_ENV'
-                result = self.make('ops-preflight', f'APP={app}', f'{key}={missing}')
+        for name, app in catalog['apps'].items():
+            if not app['inputs']:
+                continue
+            with self.subTest(app=name):
+                key = app['inputs'][0]['variable']
+                result = self.make('ops-preflight', f'APP={name}', f'{key}={missing}')
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn(f'[배포 차단] {key}={missing}', result.stdout)
-                self.assertIn('재검사:', result.stdout)
+                self.assertIn(f'[배포 차단] 입력 {key} — 파일이 없습니다: {missing}', result.stdout)
+                self.assertIn('access.md#운영-입력-파일', result.stdout)
                 self.assertNotIn('Traceback', result.stderr)
 
-    def test_portal_rendered_images_are_checked(self):
-        self.kubectl('''
-            if args[0] == "kustomize":
-                print(args[-1])
-            elif "create" in args:
-                assert "--dry-run=client" in args
-                migration = sys.stdin.read().strip().endswith("/migrate")
-                name, container = ("portal-migrate", "migrate") if migration else ("api", "api")
-                image = os.environ["TEST_IMAGE"] if migration else "mirror.test/api:1"
-                print(json.dumps({"kind": "Job" if migration else "Deployment", "metadata": {"name": name},
-                    "spec": {"template": {"spec": {"containers": [{"name": container, "image": image}]}}}}))
-            else:
-                assert "nodes" in args
-        ''')
-        for image, expectation in [('example.invalid/api:replace-me', '자리표시자'),
-                                   ('mirror.test/api:2', '버전을 일치'), ('mirror.test/api:1', '[통과] deploy/portal/k8s/overlays/prod')]:
-            self.env['TEST_IMAGE'] = image
-            result = self.make('ops-preflight', 'APP=portal', f'PROD_API_ENV_FILE={self.bin}/absent')
-            self.assertIn(expectation, result.stdout)
-            self.assertIn('[배포 차단] PROD_API_ENV_FILE=', result.stdout)
+    def test_app_that_needs_another_app_first_is_blocked_with_the_command_to_run(self):
+        self.preflight_kubectl()
+        result = self.make('ops-preflight', 'APP=minio')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[배포 차단] 먼저 필요한 앱 ingress', result.stdout)
+        self.assertIn('make ops-deploy APP=ingress', result.stdout)
+        # 공용 TLS 저장소는 공용 Traefik과 함께 생기므로 host 확인은 그 뒤로 미룬다.
+        self.assertNotIn('공용 TLS', result.stdout)
+
+    def test_missing_app_or_context_is_rejected_before_any_lookup(self):
+        self.preflight_kubectl()
+        for arguments in (('APP=',), ('APP=unknown',)):
+            result = self.make('ops-preflight', *arguments)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('[배포 차단] 준비 검사', result.stdout)
+        self.assertFalse(self.calls.exists())
+        for target in ('deploy-record', 'ops-deploy', 'ops-diagnose', 'server-check'):
+            result = self.make(target)
+            self.assertNotEqual(result.returncode, 0, target)
+        self.assertFalse(self.calls.exists())
 
     def test_failed_migration_stops_and_preserves_existing_job(self):
         self.kubectl('''

@@ -2,6 +2,8 @@
 
 [공통 배포 문서](../README.md) · [Kubernetes 셋업](../README.md#클러스터) · [사내 인프라 정보](../infrastructure/README.md)
 
+참고 문서입니다. 운영 agent가 실행하는 절차가 아닙니다.
+
 `kubectl`로 상태 확인·로그 조회·앱 관리를 할 때 참고하는 일반 명령어 모음입니다. 용어의 뜻은 [용어와 전체 구조](concepts.md#용어)를 참고합니다.
 
 ## 1. 시작 전 준비와 예시 읽는 법
@@ -13,7 +15,6 @@
 
 사내 작업에서는 [현재 환경 확인](baseline.md)에서 대상 context를 먼저 확인합니다.
 이 저장소의 서버 설치·배포는 [서버 배포 안내](../../../README.md)의 Makefile 진입점과 앱별 절차를 따릅니다.
-
 ## 2. 리소스 조회 이름
 
 | 리소스 | 조회할 때 쓰는 이름 / 약어 |
@@ -81,6 +82,7 @@ kubectl config use-context dev
 kubectl config set-context --current --namespace=demo
 ```
 
+사내 서버의 운영 절차에서는 `kubectl config use-context`로 접속 대상을 바꾸지 않고 명령마다 `--context "<context>"`를 지정합니다([실행 규칙](../../../README.md#실행-규칙)).
 기본 Namespace가 지정되지 않으면 보통 `default`를 사용합니다. 이 문서는 대상을 알아보기 쉽도록 `-n demo`를 명시합니다. Node처럼 클러스터 전체에 속하는 리소스는 Namespace로 나뉘지 않습니다.
 
 ## 5. 앱 상태 조회하기

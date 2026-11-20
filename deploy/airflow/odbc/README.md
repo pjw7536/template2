@@ -6,7 +6,7 @@
 기존 ODBC 폴더를 가져온다면 하위 폴더 구조도 그대로 복사합니다.
 
 실제 설정 파일은 `.gitignore`로 Git 추적에서 제외됩니다.
-다른 PC나 서버에서 저장소를 받아도 이 파일들은 내려오지 않으므로 별도로 전달해야 합니다.
+다른 PC나 서버에서 저장소를 받아도 이 파일들은 내려오지 않으므로 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 관리 호스트의 이 폴더에 따로 둡니다.
 
 배치 예시입니다. 필요한 실제 파일만 넣고 빈 INI나 인증서를 대신 만들지 않습니다.
 
@@ -22,23 +22,42 @@ deploy/airflow/odbc/
 
 현재 `env/k8s.env`의 `ODBC_HOST_PATH`는 `/appdata/airflow/odbc`입니다.
 이 프로젝트 폴더에 파일을 넣는 것만으로 실행 중인 Airflow에 반영되지는 않습니다.
-입력 파일을 `NODE_NAME`으로 선택한 Worker에 전달하고 해당 경로에 배치합니다.
+입력 파일을 `NODE_NAME`으로 선택한 Worker(`khinfow01`)에 전달하고 해당 경로에 배치합니다. Worker에서 실행하는 명령은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+Worker의 그 경로에 운영 파일이 이미 있고 바꿀 내용이 없으면 3번의 확인만 합니다.
 
-저장소가 해당 Worker에 있고 파일을 채워 두었다면, 저장소 루트에서 실행합니다.
-아래 명령은 같은 이름의 기존 파일을 덮어쓰므로 운영 파일은 먼저 백업합니다.
+1. [변경] 관리 호스트의 저장소 루트에서 이 폴더의 실제 파일을 tar로 묶습니다. 클러스터와 Worker는 바꾸지 않습니다. `odbc.ini`가 없거나 비어 있으면 묶지 않습니다.
 
-```bash
-test -s deploy/airflow/odbc/odbc.ini && (
-  set -euo pipefail
-  sudo install -d -o 50000 -g 0 -m 0750 /appdata/airflow/odbc
-  sudo tar -C deploy/airflow/odbc --exclude=./README.md --exclude=./.gitignore -cf - . |
-    sudo tar -C /appdata/airflow/odbc -xf -
-)
-```
+   ```bash
+   test -s deploy/airflow/odbc/odbc.ini && (
+     umask 077
+     tar -C deploy/airflow/odbc --exclude=./README.md --exclude=./.gitignore -cf "$HOME/airflow-odbc.tar" .
+     tar -tf "$HOME/airflow-odbc.tar"
+   )
+   ```
 
-복사 후 디렉터리 탐색 권한과 파일 읽기 권한을 확인합니다. Airflow UID 50000이
-INI·인증서와 필요한 모든 하위 파일을 읽을 수 있어야 합니다.
-다른 실행 호스트에 저장소가 있다면 실제 파일을 Worker로 먼저 전송하고 같은 기준으로 배치합니다.
+   성공: `./odbc.ini`가 들어 있는 파일 목록이 출력됩니다. 출력이 없으면 `odbc.ini`가 준비되지 않은 것이므로 위의 파일 반입부터 합니다.
+
+2. [변경] `$HOME/airflow-odbc.tar`를 노드 SSH의 파일 전송 형식으로 `khinfow01`의 `/tmp/airflow-odbc.tar`에 복사한 뒤 `khinfow01`에서 아래를 실행합니다. 같은 이름의 기존 파일을 덮어쓰므로 기존 폴더를 먼저 tar로 백업하고, 풀어 놓은 파일의 소유자를 Airflow 실행 계정(UID 50000, GID 0)으로 맞춥니다.
+
+   ```bash
+   backup="/appdata/airflow/odbc-backup-$(date +%Y%m%d-%H%M%S).tar"
+   sudo -n install -d -o 50000 -g 0 -m 0750 /appdata/airflow/odbc
+   sudo -n install -o root -g root -m 0600 /dev/null "$backup"
+   sudo -n tar -C /appdata/airflow -cf "$backup" odbc
+   sudo -n tar -C /appdata/airflow/odbc -xf /tmp/airflow-odbc.tar
+   sudo -n chown -R 50000:0 /appdata/airflow/odbc
+   rm /tmp/airflow-odbc.tar
+   ```
+
+   복사가 끝나면 관리 호스트의 `$HOME/airflow-odbc.tar`도 지웁니다.
+
+3. [조회] `khinfow01`에서 디렉터리 탐색 권한과 파일 읽기 권한을 확인합니다.
+
+   ```bash
+   sudo -n ls -lnR /appdata/airflow/odbc
+   ```
+
+   성공: `odbc.ini`와 INI가 참조하는 인증서·하위 파일이 모두 있고 소유자가 `50000 0`입니다. Airflow UID 50000이 INI·인증서와 필요한 모든 하위 파일을 읽을 수 있어야 합니다.
 
 컨테이너에서는 이 폴더 전체를 `/usr/local/odbc`에 읽기 전용으로 연결합니다.
 INI 안에서 인증서 등의 절대 경로를 적을 때도 컨테이너 안의 경로를 사용합니다.

@@ -29,7 +29,8 @@ function fixture(t) {
   // 배포 env 경로를 보존하되 credential 값은 테스트 입력으로 대체합니다.
   for (const relative of ['airflow/env/k8s.env', 'airflow/env/build.env', 'monitoring/env/k8s.env',
     'headlamp/env/k8s.env', 'keycloak/env/prod.env', 'portal/env/prod/api.env',
-    'portal/env/prod/web.env', 'minio/env/prod.env', 'portal/env/test/api.env', 'ftp/env/prod.env', 'registry/env/k8s.env']) {
+    'portal/env/prod/web.env', 'minio/env/prod.env', 'portal/env/test/api.env', 'ftp/env/prod.env', 'registry/env/k8s.env',
+    'iam/env/prod.env']) {
     const input = fs.readFileSync(path.join(root, 'deploy', relative), 'utf8');
     const sanitized = input.split('\n').map(line => {
       const key = line.split('=')[0];
@@ -132,10 +133,12 @@ test('서버 검사는 미지원 환경과 선택 앱의 누락된 env를 차단
   assert.match(result.stderr, /설정 파일이 없습니다/);
 });
 
-test('platform 그룹은 Portal을 제외한 앱을 검사 대상으로 해석한다', t => {
+test('platform 그룹은 Portal과 그 위의 앱을 제외한 기반 앱을 검사 대상으로 해석한다', t => {
   const checkout = fixture(t);
-  assert.deepEqual(run(checkout, 'python3', ['deploy/shared/scripts/app-paths.py', 'platform']).trim().split('\n'),
-    appNames.filter(app => app !== 'portal'));
+  const platform = run(checkout, 'python3', ['deploy/shared/scripts/app-paths.py', 'platform']).trim().split('\n');
+  assert.deepEqual(platform, catalog.groups.platform);
+  assert.equal(platform.includes('portal'), false);
+  assert.equal(platform.includes('ingress'), true);
   assert.notEqual(spawnSync('python3', ['deploy/shared/scripts/app-paths.py', 'unknown'], { cwd: checkout }).status, 0);
 });
 
@@ -146,32 +149,37 @@ test('서버 그룹 검사는 카탈로그에 추가한 그룹의 앱만 실행�
   selectedCatalog.groups['custom-platform'] = ['keycloak', 'ftp'];
   fs.writeFileSync(catalogFile, JSON.stringify(selectedCatalog));
   const output = run(checkout, 'make', ['server-check', 'APP=custom-platform']);
-  assert.match(output, /서버 원본 검사 통과: keycloak\/prod/);
-  assert.match(output, /서버 원본 검사 통과: ftp\/prod/);
-  assert.doesNotMatch(output, /portal\/prod/);
+  assert.match(output, /서버 원본 검사 통과: keycloak /);
+  assert.match(output, /서버 원본 검사 통과: ftp /);
+  assert.doesNotMatch(output, /검사 통과: portal/);
 });
 
 test('ops-preflight는 서버 checkout에서 선택한 context와 외부 Keycloak env만 검사한다', t => {
   const checkout = fixture(t);
   const kubectl = path.join(checkout, 'kubectl');
+  // 선택한 context의 조회만 성공한다. 워크로드 조회는 빈 결과라 먼저 필요한 앱이 없는 클러스터다.
   fs.writeFileSync(kubectl, `#!/bin/sh
 case "$1" in
   kustomize) exit 0 ;;
-  --context) [ "$2" = 'review-context' ] && [ "$4" = get ] && [ "$5" = nodes ] ;;
+  --context) [ "$2" = 'review-context' ] || exit 1 ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o700 });
-  const envFile = path.join(checkout, 'fixture external.env');
+  const envFile = path.join(checkout, 'fixture-external.env');
   fs.writeFileSync(envFile, [
     'postgres-password=fixture-private-value', 'bootstrap-admin-username=admin',
     'bootstrap-admin-password=fixture-private-value', 'keycloak-public-url=https://sso.test',
   ].join('\n'), { mode: 0o600 });
-  const result = spawnSync('make', ['ops-preflight', 'APP=keycloak', 'PROFILE=prod',
+  const result = spawnSync('make', ['ops-preflight', 'APP=keycloak',
     'KUBE_CONTEXT=review-context', `KEYCLOAK_ENV=${envFile}`], {
     cwd: checkout, encoding: 'utf8', env: { ...process.env, PATH: checkout + path.delimiter + process.env.PATH },
   });
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /\[통과\] KEYCLOAK_ENV=/);
-  assert.match(result.stdout, /현장 확인 필요/);
-  assert.doesNotMatch(result.stdout + result.stderr, /fixture-private-value/);
+  // 공용 Traefik이 아직 없으므로 배포 가능은 아니다. 무엇이 먼저 필요한지와 실행할 명령을 알려 준다.
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stdout, /\[통과\] 클러스터 접속/);
+  assert.match(result.stdout, /\[통과\] 저장소 원본/);
+  assert.match(result.stdout, /\[통과\] 입력 KEYCLOAK_ENV — .*fixture-external\.env/);
+  assert.match(result.stdout, /\[배포 차단\] 먼저 필요한 앱 ingress .*make ops-deploy APP=ingress/);
+  assert.match(result.stdout, /준비 검사 결과: 남은 항목/);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-private-value|Traceback/);
 });

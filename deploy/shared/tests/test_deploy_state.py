@@ -161,19 +161,41 @@ class ManifestTest(unittest.TestCase):
             if args[0] == 'get':
                 return json.dumps({'kind': 'List', 'items': [deployment(image='web:0')]})
             raise AssertionError(args)
-        # 렌더 명령은 실행하지 않고 stdout만 흉내 낸다.
-        with unittest.mock.patch.object(state, 'render_plan', return_value=(['true'], 'demo.yaml', ['demo.yaml'])), \
-                unittest.mock.patch.object(state, 'run', return_value='kind: List'):
-            findings = state.manifest_findings(kube, 'demo', APP, None, 'ctx', '', set())
+        # 렌더 명령은 실행하지 않고 결과 파일만 흉내 낸다.
+        def render(app, context, directory, environ=None):
+            path = Path(directory) / 'demo.yaml'
+            path.write_text('kind: List')
+            return [path]
+
+        with unittest.mock.patch.object(state.app_commands, 'render', side_effect=render):
+            findings = state.manifest_findings(kube, APP, 'ctx', set())
         self.assertEqual(findings[0][0], 'drift')
         self.assertEqual(findings[-1][0], 'info')
         self.assertIn('리소스 0/1개 일치 (비교 제외: Secret 1)', findings[-1][1])
         self.assertFalse(any(a[0] == 'apply' and '--dry-run=server' not in a for a in calls))
 
-    def test_render_plan_covers_every_app(self):
-        for name in state.read_catalog()['apps']:
-            command, _, files = state.render_plan(name, 'env', 'ctx', '', '/tmp/x')
-            self.assertTrue(command and files, name)
+    def test_render_failure_is_reported_as_unknown_not_as_a_crash(self):
+        with unittest.mock.patch.object(state.app_commands, 'render', side_effect=ValueError('helm 실행 실패')):
+            findings = state.manifest_findings(lambda args, data=None: '', APP, 'ctx', set())
+        self.assertEqual(findings, [('unknown', '현재 코드 렌더 실패: helm 실행 실패')])
+
+    def test_app_without_workload_is_not_compared(self):
+        result = state.check_app('settings-only', {**APP, 'runtime': None}, None, None, CHECKOUT, {})
+        self.assertEqual(state.exit_code([result]), 0)
+        self.assertIn('설정 전용', result['findings'][0]['message'])
+
+    def test_env_and_vip_overrides_become_the_same_variables_deploy_uses(self):
+        app = {**APP, 'inputs': [{'variable': 'DEMO_ENV', 'default': 'deploy/demo/env/prod.env'}]}
+        environ = state.app_environment(app, {'env': '/outside/demo.env', 'vip_backends': '192.0.2.1,192.0.2.2'})
+        self.assertEqual(environ['DEMO_ENV'], '/outside/demo.env')
+        self.assertEqual(environ['VIP_BACKENDS'], '192.0.2.1,192.0.2.2')
+
+    def test_clip_never_cuts_inside_a_word(self):
+        # 잘린 주소·이름 조각은 별칭 치환이 알아보지 못하므로 공백에서만 자른다.
+        clipped = state.clip('failed to pull from 192.0.2.123 after timeout', 30)
+        self.assertNotRegex(clipped, r'192\.0\.2\.1(?!23)')
+        self.assertTrue(clipped.endswith('…'))
+        self.assertEqual(state.clip(' short ', 30), 'short')
 
 
 class CollectTest(unittest.TestCase):

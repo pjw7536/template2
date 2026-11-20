@@ -12,7 +12,7 @@
 ### 필요 도구와 버전
 
 관리 호스트에 Python 3.10 이상, Helm 3.19.0 이상, kubectl, 클러스터 관리자 kubeconfig가 필요합니다. chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
-이미지 빌드와 사내 이미지 저장소 push도 같은 checkout에서 수행하므로 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)의 빌더가 필요합니다.
+이미지 빌드와 사내 이미지 저장소 push도 같은 checkout에서 수행하므로 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)의 빌더가 필요합니다. 빌더는 `make ops-deploy`의 준비 검사가 확인하고 없으면 설치합니다.
 
 [조회]
 ```bash
@@ -52,18 +52,25 @@ Airflow Pod·내부 DB·local PV가 이 노드에 묶이므로 자원·디스크
 최초 설치에서 DAG 폴더가 비어 있으면 이미지의 DAG와 준비 표식(`.airflow-dags-initialized`)을 복사합니다. 이미 설치된 환경의 DAG 폴더는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)으로 준비합니다.
 ODBC 폴더의 실제 설정 파일은 [ODBC 파일 안내](../odbc/README.md#worker에-반영)로 배치합니다.
 
-폴더를 직접 준비하거나 디스크 여유·권한을 확인할 때만 **`NODE_NAME`으로 선택한 Worker**에서 실행합니다.
+아래 명령은 `airflow-up`을 거치지 않고 폴더를 직접 준비하거나 디스크 여유·권한을 확인할 때만 씁니다. 실행 위치는 **`NODE_NAME`으로 선택한 Worker**(`khinfow01`)이며 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
 경로와 UID/GID는 현재 env 선언 기준이며 실제 env와 일치시킵니다. `POSTGRES_MODE=external`이면 PostgreSQL 경로를 제외합니다.
 
+[변경] 없는 폴더를 만듭니다. 이미 있는 폴더는 소유자와 권한만 아래 값으로 맞춰지므로, 데이터가 든 기존 폴더에는 실행하지 않습니다.
+
 ```bash
-sudo install -d -o 999 -g 999 -m 0700 /appdata/airflow/postgres
-sudo install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
-sudo install -d -o root -g root -m 0755 /appdata/airflow/dags
-df -h /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
-sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
+sudo -n install -d -o 999 -g 999 -m 0700 /appdata/airflow/postgres
+sudo -n install -d -o 50000 -g 0 -m 0770 /appdata/airflow/logs
+sudo -n install -d -o root -g root -m 0755 /appdata/airflow/dags
 ```
 
-성공: 각 경로의 소유자는 DB `999:999`, 로그 `50000:0`, DAG `root:root`입니다.
+[조회] 디스크 여유와 소유자·권한을 확인합니다.
+
+```bash
+df -h /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
+sudo -n stat -c '%u:%g %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appdata/airflow/dags
+```
+
+성공: 각 경로의 소유자와 권한이 DB `999:999`·`700`, 로그 `50000:0`·`770`, DAG `0:0`·`755`입니다.
 
 - PV에 선언한 용량과 실제 디스크 여유는 별도로 확인합니다.
 - 로그는 자동 삭제하지 않습니다. 보관 정책을 정한 뒤 필요하면 `scheduler.logGroomerSidecar`를 설정합니다.
@@ -87,7 +94,7 @@ sudo stat -c '%U:%G %a %n' /appdata/airflow/postgres /appdata/airflow/logs /appd
 
 저장소 기본 env에는 신규 설치에 쓸 관리자 비밀번호와 OIDC client secret이 준비되어 있습니다. 기본 env로 설치할 때는 이 절이 필요하지 않습니다.
 
-[변경] **저장소 밖에 별도로 준비한 env에서 새 DB를 사용하는 최초 설치이며 비밀값이 모두 비어 있을 때만** 실행합니다. 저장소의 기본 env에는 실행하지 않습니다. 기존 배포의 env가 있으면 기존 값을 유지합니다. 운영 agent는 실행하지 않습니다.
+[변경] **저장소 밖에 별도로 준비한 env에서 새 DB를 사용하는 최초 설치이며 비밀값이 모두 비어 있을 때만** 실행합니다. 저장소의 기본 env와 기존 배포의 비밀값은 유지합니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py init-secrets \
@@ -97,20 +104,25 @@ chmod 600 <env 절대 경로>
 
 성공: `env 초기 키 생성 완료`. DB 비밀번호·관리자 비밀번호·Fernet 키·웹서버 키가 생성되고 파일 권한이 0600이 됩니다.
 기존 비밀값이 하나라도 있으면 재생성을 거부하며 일반 설정은 보존합니다.
-`AIRFLOW_TRIGGER_TOKEN`과 `AIRFLOW_OIDC_CLIENT_SECRET`은 생성하지 않습니다. 각각 Portal API의 실제 값,
-[Keycloak client 등록](03-deploy.md#client-등록)의 값을 입력합니다.
+`AIRFLOW_TRIGGER_TOKEN`과 `AIRFLOW_OIDC_CLIENT_SECRET`은 생성하지 않습니다. `AIRFLOW_TRIGGER_TOKEN`에는 Portal API env의 같은 키 값을,
+`AIRFLOW_OIDC_CLIENT_SECRET`에는 [Keycloak client 등록](03-deploy.md#client-등록)의 값을 env 파일의 해당 줄에 넣습니다.
 
-[사람] **일부 비밀값만 비어 있거나 자리표시자인 경우:** `init-secrets`는 거부되므로 해당 키만 직접 생성해 입력합니다. 이미 값이 있는 키는 바꾸지 않습니다.
-비밀값은 20자 이상이어야 하며 `AIRFLOW_FERNET_KEY`만 32바이트 URL-safe base64 형식입니다. 출력값은 화면 기록에 남지 않게 바로 env에 붙여 넣습니다.
+**신규 설치의 외부 env에서 일부 비밀값만 비어 있거나 자리표시자인 경우:** `init-secrets`는 거부되므로 해당 키만 생성합니다.
+비밀값은 20자 이상이어야 하며 `AIRFLOW_FERNET_KEY`만 32바이트 URL-safe base64 형식입니다. 아래 명령은 생성값을 화면에 출력하지 않고 env 파일의 그 키 줄에 바로 기록합니다. 값이 비어 있거나 자리표시자(`replace-me`·`replace-here`·`change-me`)일 때만 바꾸고, 이미 값이 있는 키는 그대로 둡니다.
+
+[변경] `<키>`를 `AIRFLOW_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `AIRFLOW_WEBSERVER_SECRET_KEY` 중 비어 있는 키 이름 하나로 바꿔 키마다 한 번씩 실행합니다.
 
 ```bash
-# AIRFLOW_ADMIN_PASSWORD·POSTGRES_PASSWORD·AIRFLOW_WEBSERVER_SECRET_KEY용
-python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
-# AIRFLOW_FERNET_KEY용(최초 설치에서 비어 있을 때만. 기존 키는 절대 바꾸지 않음)
-python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+sed -i -E "s,^(<키>)=(.*(replace-me|replace-here|change-me).*)?\$,\1=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')," <env 절대 경로>
 ```
 
-입력 후 [실제 입력 검사](#다른-env-파일과-입력-검사)의 `manage.py check`로 `실제 값으로 교체하세요`가 없어졌는지 확인합니다.
+[변경] `AIRFLOW_FERNET_KEY`가 비어 있을 때만 실행합니다. 새 DB의 최초 설치 전용이며, DB가 이미 있는 환경의 키는 절대 바꾸지 않습니다.
+
+```bash
+sed -i -E "s,^(AIRFLOW_FERNET_KEY)=(.*(replace-me|replace-here|change-me).*)?\$,\1=$(python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())')," <env 절대 경로>
+```
+
+실행 후 [실제 입력 검사](#다른-env-파일과-입력-검사)의 `manage.py check`로 `실제 값으로 교체하세요`가 없어졌는지 확인합니다.
 
 ### 설정 묶음
 
@@ -140,14 +152,14 @@ python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token
 
 | 방식 | env 설정 | 배포 전 준비 |
 | --- | --- | --- |
-| 기존 공용 Traefik(운영 기본) | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, `AIRFLOW_WEBSERVER_BASE_URL=https://airflow.etch.samsungds.net` | `etch-sso/traefik`, DNS, 공용 저장소에 등록한 도메인 인증서 |
+| 기존 공용 Traefik(운영 기본) | `INGRESS_ENABLED=true`, `INGRESS_CLASS_NAME=traefik`, `AIRFLOW_WEBSERVER_BASE_URL=https://airflow.etch.samsungds.net` | `etch-sso/traefik`, 공용 저장소에 등록한 도메인 인증서. DNS는 없어도 배포되며 등록이 남은 일로 표시됨 |
 | port-forward | `INGRESS_ENABLED=false`, `AIRFLOW_WEBSERVER_BASE_URL=http://localhost:8080` | 클러스터 접근 권한 |
 
 운영 공개 URL에는 앱 접두사를 붙이지 않으며 Ingress와 앱은 루트 경로(`/`)를 사용합니다.
 인증서는 `etch-sso/traefik-tls`에서 관리하므로 기본 env에 앱별 TLS Secret 입력은 없습니다.
 `INGRESS_ENABLED=true`인 `make airflow-up`은 공용 Traefik(`INGRESS_CLASS_NAME=traefik`)과 HTTPS 공개 URL을 전제로 합니다. 다른 Ingress controller를 쓰는 경우에만 env에 `INGRESS_TLS_SECRET`을 추가하고
 같은 namespace의 TLS Secret을 준비한 뒤 [직접 deploy](03-deploy.md#직접-deploy와-helm-override)를 사용합니다.
-공용 인증서 등록은 [공용 TLS 등록](../../README.md#공용-tls-등록)을 따릅니다.
+공용 인증서는 `make ops-deploy`의 준비 검사가 인증서 파일이 있으면 등록합니다. 직접 등록하거나 갱신할 때는 [공용 TLS 등록](../../README.md#공용-tls-등록)을 따릅니다.
 
 ### Keycloak SSO 입력
 
@@ -159,7 +171,7 @@ python3 -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token
 
 ### 다른 env 파일과 입력 검사
 
-Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`로 같은 파일을 매번 전달합니다. 아래 명령은 설정이나 클러스터를 변경하지 않으며
+Makefile에는 `AIRFLOW_ENV`, Python 도구에는 `--env`로 같은 파일을 매번 전달합니다. 저장소 밖 env의 위치와 권한은 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)을 따릅니다. 아래 명령은 설정이나 클러스터를 변경하지 않으며
 [chart 준비](02-artifacts.md#1-공식-chart-준비) 후에 실행합니다. 저장소 env를 쓰면 `--env deploy/airflow/env/k8s.env`입니다.
 
 [검사]
@@ -186,6 +198,6 @@ python3 deploy/airflow/scripts/manage.py check --env <env 절대 경로> --pause
 `MAIL_API_URL`의 기존 query는 유지하고 `systemId`·`loginUser.login`은 env 값으로 대체합니다.
 메일 수신자를 설정하면 배포 도구가 필수 입력·URL·이메일 형식을 검사합니다. 메일 키가 없는 외부 env는 메일 미사용으로 처리합니다.
 
-env 값은 `airflow-runtime` Secret을 통해 Pod 환경변수로 전달되므로 편집 후 재배포해야 반영됩니다.
+env 값은 `airflow-runtime` Secret을 통해 Pod 환경변수로 전달되므로 값을 바꾼 뒤 [가이드 B](../README.md#b-업데이트)의 env 행으로 재배포해야 반영됩니다.
 `failure_alerts.py` 코드 변경은 새 이미지 태그가 필요합니다([이미지 업데이트](04-operations.md#이미지-업데이트)).
 API 연결·발송 권한과 실제 수신은 서버에서 따로 확인합니다.

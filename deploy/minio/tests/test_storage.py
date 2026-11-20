@@ -164,10 +164,10 @@ class StorageTests(unittest.TestCase):
             calls = []
             def run(args, data=None, sensitive=False):
                 calls.append((args, data))
-                if 'wait' in args:
+                if 'get' in args and 'job' in args:
                     if failed_stage == 'wait':
                         raise ValueError('폴더 준비 실패')
-                    return ''
+                    return json.dumps({'status': {'succeeded': 1}})
                 body = json.loads(data)
                 if body['kind'] == 'Job':
                     return json.dumps({'metadata': {'name': 'prepare-test'}})
@@ -190,12 +190,14 @@ class DeploymentStorageTests(unittest.TestCase):
                     return json.dumps({'items': [node(values)]})
                 if 'namespace' in args:
                     return 'namespace/minio' if namespace_exists else ''
+                if 'job' in args:
+                    if 'prepare-test' in args and fail_job:
+                        raise ValueError('폴더 준비 실패')
+                    return json.dumps({'status': {'succeeded': 1}})
                 return ''
             if 'create' in args and '--dry-run=server' not in args and data:
                 if json.loads(data)['kind'] == 'Job':
                     return json.dumps({'metadata': {'name': 'prepare-test'}})
-            if 'wait' in args and 'job/prepare-test' in args and fail_job:
-                raise ValueError('폴더 준비 실패')
             return ''
         with patch.object(manage, 'run', side_effect=run), patch.object(manage, 'connect'), \
                 patch.object(manage, 'routing_plan', side_effect=ValueError('공용 TLS 없음') if fail_tls else None,
@@ -220,7 +222,7 @@ class DeploymentStorageTests(unittest.TestCase):
         self.assertEqual([item['kind'] for item in written[:3]], ['Namespace', 'Job', 'PersistentVolume'])
         self.assertEqual(written[3]['items'][0]['kind'], 'Secret')
         self.assertTrue(all(item['kind'] != 'PersistentVolume' for body in written if body['kind'] == 'List' for item in body['items']))
-        self.assertFalse(any('delete' in args for args, _ in calls))
+        self.assertTrue(all('minio-init' in args for args, _ in calls if 'delete' in args))
 
     def test_failed_directory_or_tls_check_never_applies_minio(self):
         for failure in ({'fail_job': True}, {'fail_tls': True}):

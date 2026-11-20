@@ -14,6 +14,7 @@
 | 서비스 URL·namespace·앱 배치·스토리지 연결·사내 업무 API | [서비스·업무 연동](services.md) | 네트워크, 서버, 앱 실행 입력 |
 | 사내 Git·registry·APT·PyPI·Helm·artifact·미러 이름 | [저장소·미러](repositories.md) | 소비 앱의 빌드·배포 입력, 설치 절차 |
 | checkout·env·인증서·kubeconfig·데이터·백업 위치·담당자 | [운영 위치·책임](operations.md) | 서비스 배치, 노드, 인증서·복구 절차 |
+| 클러스터 밖 작업의 접근 방법(노드 SSH·DNS·방화벽·LB·인증서 발급·관리 API)과 계정 위치 | [접근 경로](access.md) | 서버·노드, 네트워크, 운영 위치 |
 | 서버에서 아직 적용·확인해야 하는 작업 | [서버 적용 대기 작업](pending.md) | 각 작업 행의 원본 문서 |
 | 외부 전달용 별칭(서버명·IP·사내 도메인 ↔ 별칭) | [별칭 표](aliases.json) | 서버·노드, 네트워크의 주소. `test_ops_tools.py`가 대조 |
 
@@ -25,7 +26,7 @@
 ## 작업 전 공통 전제
 
 - 사내 서버 배포는 Kubernetes를 사용합니다. 배포·운영 명령은 [관리 호스트](servers.md#서버-목록)(`khplanew01`)에서 실행하며 앱 실행 노드는 별도 배치 입력으로 정합니다. 제어면 자체 작업(kubeadm·API server 설정)은 해당 제어면에서 합니다.
-- 사내 서버는 승인된 미러 또는 반입 파일만 사용하며 외부 public 저장소에 직접 접속하지 않습니다.
+- 사내 서버는 [저장소·미러](repositories.md)의 사내 미러와 [파일 반입](access.md#파일-반입)으로 가져온 파일만 사용하며 외부 public 저장소에 직접 접속하지 않습니다.
 - 파일 검사·렌더 성공은 실제 서버 적용·접속 성공을 뜻하지 않습니다. 노드 Ready와 앱·DNS·VIP·TLS 정상 동작도 따로 확인합니다.
 
 ## 기록 규칙
@@ -63,7 +64,8 @@
 | 노드·버전·Ready | `kubectl --context "<context>" get nodes -o wide`, `kubectl --context "<context>" version` | 서버 원본의 설치 기준·충돌 항목 갱신 |
 | metrics-server, API server OIDC | `kubectl --context "<context>" top nodes`, [서버 상태 보고](../operations/04-drift.md#서버-상태-보고)의 `1. 클러스터` 절 | pending 행 삭제 |
 | 관리 호스트 준비·빌드 도구 | `make build-tools-check`, `helm version --short`, checkout 경로(`pwd`) | 운영 위치 원본 갱신 |
-| 방화벽, 인증서 신청·발급, 담당자, 백업 체계, 다른 서버의 SSH 정보 | 조회로 확인할 수 없음 | 상태를 바꾸지 않고 `확인 필요`로 보고 |
+| 방화벽, 인증서 신청·발급, LB, 다른 서버의 SSH 정보 | [접근 경로](access.md)의 해당 절에 적힌 `찾는 방법` | 확인한 근거로 원본과 접근 경로 표를 갱신. 접근이 막히면 시도한 명령을 근거에 적고 `확인 필요`로 둠 |
+| 담당자, 백업 체계 | 사용자가 알려 준 값만 기록 | 사용자 확인으로 갱신 |
 
 - 조회 결과가 목표와 다르면 pending 행의 `현재 상태`만 관측값으로 고치고 행은 남깁니다.
 - 조회하지 않은 항목의 상태를 바꾸지 않습니다. 변동하는 상태(Ready·접속 여부)는 값을 쓰지 않고 조회 명령과 결과 요약만 근거에 적습니다.

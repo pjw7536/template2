@@ -5,6 +5,8 @@
 사내 서버 앱의 env를 작성·검사하고 Kubernetes Secret으로 등록하는 계약입니다.
 명령은 저장소 루트에서 실행합니다. Portal 최초 배포라면 [Portal 입력 순서](../../../portal/README.md)부터 확인합니다.
 
+저장소의 env 파일은 저장소를 개발할 때 고칩니다. 서버에서 다른 값이 필요하면 저장소 파일을 고치지 않고 [저장소 밖 env 사본](#저장소-밖-env-사본)을 씁니다.
+
 ## 1. 파일 위치
 
 ```text
@@ -16,17 +18,25 @@ deploy/
 │   ├── prod/build.env             # API·Web 이미지 빌드
 │   └── test/api.env               # CI API 자동 테스트
 ├── minio/env/prod.env             # 독립 공용 MinIO
+├── registry/env/
+│   ├── k8s.env                    # Kubernetes 배포
+│   └── push-initial.env           # push 계정 Secret이 없을 때만 쓰는 초기 계정
 ├── airflow/env/
 │   ├── k8s.env                    # Kubernetes 배포
 │   └── build.env                  # 이미지 빌드
 ├── monitoring/env/
 │   ├── k8s.env                    # Kubernetes 배포
+│   ├── grafana-initial.env        # 관리자 Secret이 없을 때만 쓰는 초기 계정
 │   └── grafana-admin.env.example  # Git 밖 관리자 env 예제
 ├── headlamp/env/k8s.env           # 공개 설정·Secret 이름
-└── ftp/env/prod.env               # 이미지·배치 설정
+├── ftp/env/
+│   ├── prod.env                   # 이미지·배치 설정
+│   └── initial-account.env        # 계정 Secret이 없을 때만 쓰는 초기 계정
+└── iam/env/prod.env               # Keycloak에 등록할 권한관리 client 설정
 ```
 
 사내 서버와 CI는 `deploy/`의 파일을 사용합니다. 사내 배포는 Kubernetes 전용이며 env 도구는 지정한 파일만 읽고 옆 파일을 합치지 않습니다.
+앱이 읽는 파일과 그 경로를 바꾸는 변수 이름은 [apps.json](../../apps.json)의 `inputs`와 각 앱 가이드의 `입력` 표에 있습니다.
 
 ## 2. 비밀값 관리 방식
 
@@ -42,6 +52,7 @@ deploy/
 - 인증서·개인키 파일은 Git에서 제외하고 [인증서 안내](../certificates/prepare.md)에 따라 준비합니다.
 - 앱 설정을 바꿀 때 다른 앱 전체 Secret을 가져오지 말고 연결에 필요한 값만 전달합니다.
 - Secret 변경만으로 기존 PostgreSQL 비밀번호나 Keycloak 관리자 비밀번호가 변경되지는 않습니다.
+- 비밀값은 응답·운영 기록·보고서에 옮겨 적지 않습니다.
 
 ## 3. 앱별 env 내용
 
@@ -70,12 +81,13 @@ deploy/
 
 | 사용 단계 | 사내에서 확정할 입력 |
 | --- | --- |
-| Portal 신규 배포·이전 | 외부 DB 접속 네 키(`DJANGO_DB_HOST`, `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`), 실제 push한 API·Web 태그, 운영 Worker·업무 데이터 PVC. 기존 Portal이면 사용 중인 서명 키와 연결 계정도 유지 |
+| Portal 신규 배포·이전 | 외부 DB 접속 네 키(`DJANGO_DB_HOST`, `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`), 운영 Worker·업무 데이터 PVC. 기존 Portal이면 사용 중인 서명 키와 연결 계정도 유지. 이미지 tag는 `make portal-image`가 소스 내용으로 정하므로 입력하지 않음 |
 | Keycloak 사내 IdP 연결 | AD FS에서 발급한 `CORP_OIDC_CLIENT_ID`와 `CORP_OIDC_CLIENT_SECRET` |
-| Headlamp 로그인 | Keycloak에 등록된 Headlamp client secret과 실제 CA |
+| Headlamp 로그인 | Keycloak에 등록된 Headlamp client secret과 실제 CA. `make headlamp-oidc-setup`이 등록 |
 | FTP 배치 | 방화벽·저장 폴더가 준비된 실제 대상 노드 목록 `FTP_NODES` |
 | HTTPS·선택 업무 연동 | 발급 인증서·개인키·CA 파일. 메일·메신저·POP3·Jira 등은 해당 기능에 필요한 실제 계정과 수신처 |
 
+값을 받는 방법은 [접근 경로](../infrastructure/access.md)의 절을 따릅니다: 외부 DB는 [외부 DB](../infrastructure/access.md#외부-db), AD FS 값은 [AD FS](../infrastructure/access.md#ad-fs), 방화벽은 [방화벽](../infrastructure/access.md#방화벽), 인증서는 [인증서 발급](../infrastructure/access.md#인증서-발급)입니다.
 신규 Airflow와 신규 Keycloak의 Airflow client 등록은 같은 Airflow env를 사용합니다. 기존 DB·client·Secret이 있는 환경에서는 설치 당시 입력을 사용합니다. 미러 URL, 이미지 이름, namespace, 서비스 주소와 파일 경로는 각 앱에 작성된 기본값을 사용합니다.
 
 ### 작성 형식
@@ -84,9 +96,30 @@ deploy/
 - 값은 shell 명령으로 실행하거나 치환하지 않습니다. Kubernetes에서도 같은 값이 되도록 값 전체를 불필요한 따옴표로 감싸지 않습니다. JSON 값 내부의 따옴표는 유지합니다.
 - 새로운 환경은 실제 필요할 때 추가하며 profile 사이에 숨은 상속을 만들지 않습니다.
 
+### 저장소 밖 env 사본
+
+서버에서 저장소의 기본 env와 다른 값을 써야 할 때의 방법입니다. 위치와 요청 기준은 [운영 입력 파일](../infrastructure/access.md#운영-입력-파일)이 원본입니다.
+
+[변경] 기본 파일을 저장소 밖 폴더에 권한 `0600`으로 복사합니다. `<외부 env 폴더>`는 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)의 `관리 호스트 외부 앱 설정` 경로, `<기본 env>`는 위 표의 파일입니다.
+
+```bash
+install -d -m 0700 "<외부 env 폴더>"
+install -m 0600 "<기본 env>" "<외부 env 폴더>/"
+ls -l "<외부 env 폴더>"
+```
+
+성공: 사본 파일이 권한 `-rw-------`로 표시됩니다.
+
+- 사본에서 바꿀 키의 줄만 `KEY=값` 형식으로 비대화형으로 고칩니다. 비밀값은 명령줄이나 응답에 쓰지 않고 [운영 입력 파일](../infrastructure/access.md#운영-입력-파일) 절의 방법으로 파일에 직접 입력받습니다.
+- 사본의 경로를 앱의 env 변수(예: `AIRFLOW_ENV=<경로>`)로 검사·배포·대조·진단의 각 명령에 같게 붙입니다. 처음 만든 경로는 운영 위치에 기록합니다.
+- 저장소의 기본 파일이 갱신돼도 사본에는 반영되지 않습니다. checkout을 갱신한 뒤 `diff <(cut -d= -f1 "<기본 env>" | sort) <(cut -d= -f1 "<사본>" | sort)`로 키 이름의 차이를 [조회]합니다. 값은 출력되지 않습니다.
+
 ## 4. 설정 검사
 
 검사는 앱·환경·파일 경로와 누락된 키만 표시하며 실제 값은 출력하지 않습니다. 클러스터를 변경하지 않습니다.
+배포할 때는 `make ops-deploy`의 첫 단계(`<app>-check`)가 입력과 클러스터를 함께 검사하므로 아래 명령을 따로 실행할 필요가 없습니다. 파일만 확인할 때 씁니다.
+
+[검사] 필요한 줄만 실행합니다. 클러스터에 접속하지 않습니다.
 
 ```bash
 make env-check APP=keycloak PROFILE=prod COMPONENT=server   # Keycloak 기동 입력. 사내 OIDC 없이도 검사 가능
@@ -97,43 +130,47 @@ make env-check APP=portal PROFILE=prod COMPONENT=web
 make env-profile-key-check ENV_APP=portal ENV_PROFILE=prod  # 파일 구조만 검사
 ```
 
-Airflow·Monitoring·Headlamp의 `make env-check APP=<앱>`은 각 앱의 Kubernetes 검사 도구를 사용합니다.
-Helm·chart 준비는 [Airflow](../../../airflow/README.md)·[Monitoring](../../../monitoring/README.md) 안내를 따르며, Monitoring은 `make monitoring-check`로도 검사합니다.
+Airflow·Monitoring·Headlamp·MinIO의 `make env-check APP=<앱>`은 각 앱의 Kubernetes 검사 도구를 사용합니다.
+Helm·chart 준비는 [Airflow](../../../airflow/README.md)·[Monitoring](../../../monitoring/README.md) 가이드를 따릅니다. 클러스터까지 포함한 검사는 모든 앱이 `make <app>-check KUBE_CONTEXT="<context>"`입니다.
+
+[검사] 앱 도구를 직접 실행하는 예입니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py check --env deploy/airflow/env/k8s.env
 ```
 
-다른 경로의 파일은 마지막 인자로 지정합니다.
+[검사] 다른 경로의 파일은 마지막 인자로 지정합니다.
 
 ```bash
-bash deploy/shared/scripts/check-env.sh keycloak prod server /절대/경로/prod.env
+bash deploy/shared/scripts/check-env.sh keycloak prod server "<env 파일 절대 경로>"
 ```
 
-**기대 결과:** `설정 검사 통과 (설정값은 출력하지 않습니다.)`가 출력됩니다.
+**기대 결과:** `설정 검사 통과 (설정값은 출력하지 않습니다.)`가 출력됩니다. Airflow·Monitoring·Headlamp·MinIO는 각 앱 검사 도구의 통과 문구가 출력됩니다.
 `make env-profile-key-check`를 인자 없이 실행하면 local을 포함한 전체 입력을 검사하므로 서버에서는 앱·환경을 지정하거나 `make server-check APP=<앱>`을 사용합니다.
 검사 통과 후에도 업무 연동의 실제 연결은 따로 확인합니다.
 
 ## 5. Kubernetes Secret 등록
 
-Secret 등록은 Portal `local`·`prod`에 사용합니다. Keycloak과 Airflow는 각 앱의 배포 명령이 Secret을 관리합니다.
+운영 Secret은 배포 도구가 등록합니다. `make ops-deploy`의 단계에 들어 있으므로 따로 등록하지 않습니다.
 
-- Keycloak `keycloak-runtime`: `make keycloak-up`이 Secret이 없을 때만 만들고, 기존 Secret과 env가 다르면 중단합니다. `make k8s-env APP=keycloak ...`은 기존 Secret을 덮어써 실제 DB·관리자 비밀번호와 어긋나게 만들 수 있으므로 사용하지 않습니다. 값 변경은 [Keycloak 운영](../../../keycloak/README.md#b-업데이트)을 따릅니다.
-- Keycloak `keycloak-oidc-settings`: [사내 IdP 등록](../../../keycloak/docs/02-configure.md#realm과-사내-로그인) 단계가 env를 해석해 등록합니다.
-- Airflow: 전용 deploy 명령이 DB·Airflow Secret을 나누어 등록합니다.
+| Secret | 등록하는 단계 | 동작 |
+| --- | --- | --- |
+| Keycloak `etch-sso/keycloak-runtime` | `keycloak-up` | Secret이 없을 때만 만들고, 기존 Secret과 env가 다르면 중단. 값 변경은 [Keycloak 가이드](../../../keycloak/README.md#b-업데이트) |
+| Keycloak `etch-sso/keycloak-oidc-settings` | `keycloak-setup` | env를 해석해 등록([사내 IdP 등록](../../../keycloak/docs/02-configure.md#realm과-사내-로그인)) |
+| Portal `etch-sso/portal-keycloak-client` | `keycloak-portal-client-setup` | client 등록 Job에 필요한 키만 전달([Portal client 안내](../../../portal/docs/01-install.md#keycloak-client-등록)) |
+| Portal `tailwind-internal/api-env`·`web-env` | `portal-up` | 배포마다 env 내용으로 교체하고 Pod를 다시 시작 |
+| Airflow DB·Airflow Secret | `airflow-up` | 전용 배포 도구가 나누어 등록 |
 
-Namespace를 먼저 준비하고 필요한 작업의 입력만 등록합니다. 서버 등록에는 대상 `KUBE_CONTEXT`가 필수이며 외부 env 파일을 지정해도 같습니다. 같은 이름의 Secret이 있으면 env 내용으로 교체합니다.
+`make k8s-env APP=keycloak ...`은 기존 `keycloak-runtime` Secret을 덮어써 실제 DB·관리자 비밀번호와 어긋나게 만들 수 있으므로 실행하지 않습니다.
+
+[변경] 배포 없이 Portal의 Secret만 다시 등록해야 할 때 씁니다. 같은 이름의 Secret을 env 내용으로 교체하며, 대상 `KUBE_CONTEXT`가 필수입니다. Portal namespace가 먼저 있어야 합니다. 저장소 밖 env를 쓰면 `PROD_API_ENV_FILE=<경로>`·`PROD_WEB_ENV_FILE=<경로>`를 붙입니다. 개발 PC의 kind는 `PROFILE=local`을 씁니다.
 
 ```bash
-kubectl config get-contexts
-read -r -p '설정을 등록할 Kubernetes context: ' KUBE_CONTEXT
-export KUBE_CONTEXT
-
 # etch-sso namespace에 Portal client 등록용 입력만 전달합니다.
-make k8s-env APP=portal PROFILE=prod COMPONENT=client KUBE_CONTEXT="$KUBE_CONTEXT"
+make k8s-env APP=portal PROFILE=prod COMPONENT=client KUBE_CONTEXT="<context>"
 
 # Portal namespace와 DB 준비 후 전체 API 설정을 등록합니다.
-make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="$KUBE_CONTEXT"
+make k8s-env APP=portal PROFILE=prod COMPONENT=api KUBE_CONTEXT="<context>"
 ```
 
 **기대 결과:** `설정 등록 완료: <namespace> / <secret>`이 출력됩니다. 등록은 설정 저장까지만 수행합니다.
@@ -145,7 +182,7 @@ client 등록은 [Portal client 안내](../../../portal/docs/01-install.md#keycl
 
 ## 6. 기존 설치 호환
 
-- 설정을 여러 파일로 나누어 쓰던 서버는 현재 통합 env(`api.env`·`web.env`)에 기존 값이 보존됐는지 확인합니다. 이전 파일(`*.pre-k8s.bak`)은 Git에서 제외되며 checkout 전환 도구가 보호합니다.
+- 설정을 여러 파일로 나누어 쓰던 서버는 현재 통합 env(`api.env`·`web.env`)에 기존 값이 보존됐는지 확인합니다. 이전 파일(`*.pre-k8s.bak`)은 Git에서 제외되며 도구가 읽지 않습니다.
 - env를 Secret으로 등록하는 배포 방식과 Headlamp·Monitoring의 기존 Secret 참조는 유지합니다.
 
 ## 7. 회귀 테스트

@@ -1,184 +1,87 @@
 {
   "apps": {
+    "ingress": {
+      "sourcePaths": [],
+      "deployPath": "deploy/shared/ingress",
+      "localPath": null,
+      "dependsOn": [],
+      "inputs": [],
+      "options": ["VIP_BACKENDS"],
+      "commands": {
+        "static": [
+          ["kubectl", "kustomize", "deploy/shared/ingress"]
+        ],
+        "check": ["python3", "deploy/shared/ingress/manage.py", "check", "--context", "{context}", "--vip-backends", "{VIP_BACKENDS}"],
+        "up": ["python3", "deploy/shared/ingress/manage.py", "up", "--context", "{context}", "--vip-backends", "{VIP_BACKENDS}"],
+        "render": ["python3", "deploy/shared/ingress/manage.py", "render", "--context", "{context}", "--vip-backends", "{VIP_BACKENDS}", "--output", "{out}/ingress.json"]
+      },
+      "render": {
+        "files": ["ingress.json"]
+      },
+      "steps": ["ingress-check", "ingress-up", "ingress-smoke"],
+      "smoke": {
+        "paths": [],
+        "hostPorts": ["websecure"]
+      },
+      "runtime": {
+        "namespace": "etch-sso",
+        "selector": "app.kubernetes.io/name=traefik"
+      }
+    },
     "keycloak": {
       "sourcePaths": [],
       "deployPath": "deploy/keycloak",
       "localPath": "local/keycloak",
-      "dependsOn": [],
-      "env": {
-        "variable": "KEYCLOAK_ENV",
-        "default": "deploy/keycloak/env/prod.env"
-      },
-      "steps": [
-        "keycloak-check",
-        "keycloak-up",
-        "keycloak-setup",
-        "keycloak-smoke"
+      "dependsOn": ["ingress"],
+      "inputs": [
+        {"variable": "KEYCLOAK_ENV", "default": "deploy/keycloak/env/prod.env"}
       ],
+      "hosts": ["keycloak-public-url"],
+      "commands": {
+        "static": [
+          ["bash", "deploy/shared/scripts/validate_env_profile_keys.sh", "keycloak", "prod"],
+          ["kubectl", "kustomize", "deploy/keycloak/k8s"]
+        ],
+        "check": ["python3", "deploy/keycloak/scripts/up.py", "--context", "{context}", "--env", "{KEYCLOAK_ENV}", "--check-only"],
+        "up": ["python3", "deploy/keycloak/scripts/up.py", "--context", "{context}", "--env", "{KEYCLOAK_ENV}"],
+        "render": ["python3", "deploy/keycloak/scripts/up.py", "--context", "{context}", "--env", "{KEYCLOAK_ENV}", "--render-output", "{out}/keycloak.json"]
+      },
+      "render": {
+        "files": ["keycloak.json"]
+      },
+      "steps": ["keycloak-check", "keycloak-up", "keycloak-setup", "keycloak-smoke"],
       "smoke": {
-        "paths": [
-          "/realms/etch/.well-known/openid-configuration"
-        ]
+        "paths": ["/realms/etch/.well-known/openid-configuration"]
       },
       "runtime": {
         "namespace": "etch-sso",
         "selector": "app.kubernetes.io/name in (keycloak,keycloak-postgres)"
       }
     },
-    "portal": {
-      "sourcePaths": [
-        "apps/portal"
-      ],
-      "deployPath": "deploy/portal",
-      "localPath": "local/portal",
-      "dependsOn": [
-        "keycloak",
-        "minio",
-        "registry"
-      ],
-      "env": {
-        "variable": "PROD_API_ENV_FILE",
-        "default": "deploy/portal/env/prod/api.env"
-      },
-      "steps": [
-        "portal-image",
-        "keycloak-portal-client-setup",
-        "portal-check",
-        "portal-up",
-        "portal-smoke"
-      ],
-      "smoke": {
-        "paths": [
-          "/api/v1/health/"
-        ]
-      },
-      "runtime": {
-        "namespace": "tailwind-internal"
-      }
-    },
-    "airflow": {
-      "sourcePaths": [
-        "apps/airflow"
-      ],
-      "deployPath": "deploy/airflow",
-      "localPath": "local/airflow",
-      "dependsOn": [
-        "keycloak",
-        "registry"
-      ],
-      "env": {
-        "variable": "AIRFLOW_ENV",
-        "default": "deploy/airflow/env/k8s.env"
-      },
-      "steps": [
-        "airflow-image",
-        "airflow-keycloak-client",
-        "airflow-check",
-        "airflow-up",
-        "airflow-smoke"
-      ],
-      "smoke": {
-        "paths": [
-          "/api/v2/monitor/health"
-        ]
-      },
-      "runtime": {
-        "namespace": "airflow"
-      }
-    },
-    "ftp": {
-      "sourcePaths": [],
-      "deployPath": "deploy/ftp",
-      "localPath": "local/ftp",
-      "dependsOn": [],
-      "env": {
-        "variable": "FTP_ENV",
-        "default": "deploy/ftp/env/prod.env"
-      },
-      "steps": [
-        "ftp-check",
-        "ftp-up",
-        "ftp-smoke"
-      ],
-      "smoke": {
-        "paths": [],
-        "hostPorts": [
-          "ftp"
-        ]
-      },
-      "runtime": {
-        "namespace": "etch-ftp"
-      }
-    },
-    "monitoring": {
-      "sourcePaths": [],
-      "deployPath": "deploy/monitoring",
-      "localPath": "local/monitoring",
-      "dependsOn": [],
-      "env": {
-        "variable": "MONITORING_ENV",
-        "default": "deploy/monitoring/env/k8s.env"
-      },
-      "steps": [
-        "monitoring-check",
-        "monitoring-up",
-        "monitoring-smoke"
-      ],
-      "smoke": {
-        "paths": [
-          "/api/health",
-          "/-/healthy"
-        ]
-      },
-      "runtime": {
-        "namespace": "monitoring"
-      }
-    },
-    "headlamp": {
-      "sourcePaths": [],
-      "deployPath": "deploy/headlamp",
-      "localPath": "local/headlamp",
-      "dependsOn": [
-        "keycloak"
-      ],
-      "env": {
-        "variable": "HEADLAMP_ENV",
-        "default": "deploy/headlamp/env/k8s.env"
-      },
-      "steps": [
-        "headlamp-oidc-setup",
-        "headlamp-check",
-        "headlamp-up",
-        "headlamp-smoke"
-      ],
-      "smoke": {
-        "paths": [
-          "/"
-        ]
-      },
-      "runtime": {
-        "namespace": "headlamp"
-      }
-    },
     "minio": {
       "sourcePaths": [],
       "deployPath": "deploy/minio",
       "localPath": "local/minio",
-      "dependsOn": [],
-      "env": {
-        "variable": "MINIO_ENV",
-        "default": "deploy/minio/env/prod.env"
-      },
-      "steps": [
-        "minio-check",
-        "minio-up",
-        "minio-smoke"
+      "dependsOn": ["ingress"],
+      "inputs": [
+        {"variable": "MINIO_ENV", "default": "deploy/minio/env/prod.env"}
       ],
+      "hosts": ["MINIO_API_HOST", "MINIO_CONSOLE_HOST"],
+      "commands": {
+        "static": [
+          ["python3", "deploy/minio/scripts/manage.py", "check"],
+          ["kubectl", "kustomize", "deploy/minio/k8s"]
+        ],
+        "check": ["python3", "deploy/minio/scripts/manage.py", "check", "--env", "{MINIO_ENV}", "--context", "{context}"],
+        "up": ["python3", "deploy/minio/scripts/manage.py", "up", "--env", "{MINIO_ENV}", "--context", "{context}"],
+        "render": ["python3", "deploy/minio/scripts/manage.py", "render", "--env", "{MINIO_ENV}"]
+      },
+      "render": {
+        "stdout": "minio.json"
+      },
+      "steps": ["minio-check", "minio-up", "minio-smoke"],
       "smoke": {
-        "paths": [
-          "/minio/health/live",
-          "/"
-        ]
+        "paths": ["/minio/health/live", "/"]
       },
       "runtime": {
         "namespace": "minio"
@@ -188,52 +91,210 @@
       "sourcePaths": [],
       "deployPath": "deploy/registry",
       "localPath": null,
-      "dependsOn": [],
-      "env": {
-        "variable": "REGISTRY_ENV",
-        "default": "deploy/registry/env/k8s.env"
-      },
-      "steps": [
-        "registry-check",
-        "registry-up",
-        "registry-smoke"
+      "dependsOn": ["ingress"],
+      "inputs": [
+        {"variable": "REGISTRY_ENV", "default": "deploy/registry/env/k8s.env"},
+        {"variable": "REGISTRY_PUSH_ENV", "default": "deploy/registry/env/push-initial.env", "record": false}
       ],
-      "smoke": {
-        "paths": [
-          "/v2/"
+      "hosts": ["REGISTRY_HOST"],
+      "commands": {
+        "static": [
+          ["python3", "deploy/registry/scripts/manage.py", "check"]
         ],
-        "accept": [
-          401
-        ]
+        "check": ["python3", "deploy/registry/scripts/manage.py", "check", "--env", "{REGISTRY_ENV}", "--context", "{context}", "--push-env", "{REGISTRY_PUSH_ENV}"],
+        "up": ["python3", "deploy/registry/scripts/manage.py", "up", "--env", "{REGISTRY_ENV}", "--context", "{context}", "--push-env", "{REGISTRY_PUSH_ENV}"],
+        "render": ["python3", "deploy/registry/scripts/manage.py", "render", "--env", "{REGISTRY_ENV}"]
+      },
+      "render": {
+        "stdout": "registry.json"
+      },
+      "steps": ["registry-check", "registry-up", "registry-smoke"],
+      "smoke": {
+        "paths": ["/v2/"],
+        "accept": [401]
       },
       "runtime": {
         "namespace": "registry"
       }
+    },
+    "airflow": {
+      "sourcePaths": ["apps/airflow"],
+      "deployPath": "deploy/airflow",
+      "localPath": "local/airflow",
+      "dependsOn": ["ingress", "keycloak", "registry"],
+      "inputs": [
+        {"variable": "AIRFLOW_ENV", "default": "deploy/airflow/env/k8s.env"}
+      ],
+      "options": ["AIRFLOW_TLS_SOURCE"],
+      "hosts": ["AIRFLOW_WEBSERVER_BASE_URL"],
+      "chart": "deploy/airflow/helm/chart.lock.json",
+      "caBundle": "keycloak",
+      "buildsImage": true,
+      "commands": {
+        "static": [
+          ["python3", "deploy/airflow/scripts/manage.py", "check"]
+        ],
+        "check": ["python3", "deploy/airflow/scripts/up.py", "--context", "{context}", "--env", "{AIRFLOW_ENV}", "--tls-source", "{AIRFLOW_TLS_SOURCE}", "--check-only"],
+        "up": ["python3", "deploy/airflow/scripts/up.py", "--context", "{context}", "--env", "{AIRFLOW_ENV}", "--tls-source", "{AIRFLOW_TLS_SOURCE}"],
+        "render": ["python3", "deploy/airflow/scripts/manage.py", "render", "--env", "{AIRFLOW_ENV}", "--pause-new-dags", "--output", "{out}/airflow"]
+      },
+      "render": {
+        "files": ["airflow/airflow.yaml", "airflow/storage.json", "airflow/postgres.json"]
+      },
+      "steps": ["airflow-check", "airflow-image", "airflow-keycloak-client", "airflow-up", "airflow-smoke"],
+      "smoke": {
+        "paths": ["/api/v2/monitor/health"]
+      },
+      "runtime": {
+        "namespace": "airflow"
+      }
+    },
+    "monitoring": {
+      "sourcePaths": [],
+      "deployPath": "deploy/monitoring",
+      "localPath": "local/monitoring",
+      "dependsOn": ["ingress"],
+      "inputs": [
+        {"variable": "MONITORING_ENV", "default": "deploy/monitoring/env/k8s.env"},
+        {"variable": "MONITORING_GRAFANA_ENV", "default": "deploy/monitoring/env/grafana-initial.env", "record": false}
+      ],
+      "hosts": ["GRAFANA_HOST", "PROMETHEUS_HOST", "ALERTMANAGER_HOST"],
+      "chart": "deploy/monitoring/helm/chart.lock.json",
+      "commands": {
+        "static": [
+          ["python3", "deploy/monitoring/scripts/manage.py", "check"]
+        ],
+        "check": ["python3", "deploy/monitoring/scripts/manage.py", "check", "--env", "{MONITORING_ENV}"],
+        "up": ["python3", "deploy/monitoring/scripts/manage.py", "deploy", "--context", "{context}", "--env", "{MONITORING_ENV}", "--grafana-env", "{MONITORING_GRAFANA_ENV}"],
+        "render": ["python3", "deploy/monitoring/scripts/manage.py", "render", "--env", "{MONITORING_ENV}", "--output", "{out}/monitoring"]
+      },
+      "render": {
+        "files": ["monitoring/monitoring.yaml", "monitoring/storage.json"]
+      },
+      "steps": ["monitoring-check", "monitoring-up", "monitoring-smoke"],
+      "smoke": {
+        "paths": ["/api/health", "/-/healthy"]
+      },
+      "runtime": {
+        "namespace": "monitoring"
+      }
+    },
+    "headlamp": {
+      "sourcePaths": [],
+      "deployPath": "deploy/headlamp",
+      "localPath": "local/headlamp",
+      "dependsOn": ["ingress", "keycloak"],
+      "inputs": [
+        {"variable": "HEADLAMP_ENV", "default": "deploy/headlamp/env/k8s.env"}
+      ],
+      "hosts": ["HEADLAMP_HOST"],
+      "chart": "deploy/headlamp/helm/chart.lock.json",
+      "caBundle": "keycloak",
+      "commands": {
+        "static": [
+          ["python3", "deploy/headlamp/scripts/manage.py", "check"]
+        ],
+        "check": ["python3", "deploy/headlamp/scripts/manage.py", "check", "--env", "{HEADLAMP_ENV}"],
+        "up": ["python3", "deploy/headlamp/scripts/manage.py", "deploy", "--context", "{context}", "--env", "{HEADLAMP_ENV}"],
+        "render": ["python3", "deploy/headlamp/scripts/manage.py", "render", "--env", "{HEADLAMP_ENV}"]
+      },
+      "render": {
+        "stdout": "headlamp.yaml"
+      },
+      "steps": ["headlamp-check", "headlamp-oidc-setup", "headlamp-up", "headlamp-smoke"],
+      "smoke": {
+        "paths": ["/"]
+      },
+      "runtime": {
+        "namespace": "headlamp"
+      }
+    },
+    "ftp": {
+      "sourcePaths": [],
+      "deployPath": "deploy/ftp",
+      "localPath": "local/ftp",
+      "dependsOn": [],
+      "inputs": [
+        {"variable": "FTP_ENV", "default": "deploy/ftp/env/prod.env"},
+        {"variable": "FTP_CREDENTIAL_FILE", "default": "deploy/ftp/env/initial-account.env", "record": false}
+      ],
+      "options": ["FTP_NODES"],
+      "commands": {
+        "static": [
+          ["bash", "-n", "deploy/ftp/k8s/start.sh"],
+          ["kubectl", "kustomize", "deploy/ftp/k8s"]
+        ],
+        "check": ["python3", "deploy/ftp/scripts/up.py", "--check-only"],
+        "up": ["python3", "deploy/ftp/scripts/up.py"],
+        "render": ["python3", "deploy/ftp/scripts/up.py", "--context", "{context}", "--env", "{FTP_ENV}", "--render-output", "{out}/ftp.json"]
+      },
+      "render": {
+        "files": ["ftp.json"]
+      },
+      "steps": ["ftp-check", "ftp-up", "ftp-smoke"],
+      "smoke": {
+        "paths": [],
+        "hostPorts": ["ftp"]
+      },
+      "runtime": {
+        "namespace": "etch-ftp"
+      }
+    },
+    "portal": {
+      "sourcePaths": ["apps/portal"],
+      "deployPath": "deploy/portal",
+      "localPath": "local/portal",
+      "dependsOn": ["ingress", "keycloak", "minio", "registry"],
+      "inputs": [
+        {"variable": "PROD_API_ENV_FILE", "default": "deploy/portal/env/prod/api.env"},
+        {"variable": "PROD_WEB_ENV_FILE", "default": "deploy/portal/env/prod/web.env"}
+      ],
+      "hosts": ["FRONTEND_BASE_URL"],
+      "buildsImage": true,
+      "commands": {
+        "static": [
+          ["bash", "deploy/shared/scripts/validate_env_profile_keys.sh", "portal", "prod"],
+          ["kubectl", "kustomize", "deploy/portal/k8s/overlays/prod"],
+          ["kubectl", "kustomize", "deploy/portal/k8s/overlays/prod/migrate"],
+          ["kubectl", "kustomize", "deploy/portal/k8s/jobs/keycloak-client"]
+        ],
+        "check": ["python3", "deploy/portal/scripts/up.py", "--context", "{context}", "--api-env", "{PROD_API_ENV_FILE}", "--web-env", "{PROD_WEB_ENV_FILE}", "--check-only"],
+        "up": ["python3", "deploy/portal/scripts/up.py", "--context", "{context}", "--api-env", "{PROD_API_ENV_FILE}", "--web-env", "{PROD_WEB_ENV_FILE}"],
+        "render": ["python3", "deploy/portal/scripts/up.py", "--context", "{context}", "--render", "app"]
+      },
+      "render": {
+        "stdout": "portal.json"
+      },
+      "steps": ["portal-check", "portal-image", "keycloak-portal-client-setup", "portal-up", "portal-smoke"],
+      "smoke": {
+        "paths": ["/api/v1/health/"]
+      },
+      "runtime": {
+        "namespace": "tailwind-internal"
+      }
+    },
+    "iam": {
+      "sourcePaths": ["apps/iam"],
+      "deployPath": "deploy/iam",
+      "localPath": null,
+      "dependsOn": ["keycloak"],
+      "inputs": [
+        {"variable": "IAM_ENV", "default": "deploy/iam/env/prod.env"},
+        {"variable": "KEYCLOAK_ENV", "default": "deploy/keycloak/env/prod.env", "record": false}
+      ],
+      "commands": {
+        "static": [
+          ["python3", "-m", "py_compile", "deploy/iam/scripts/setup_keycloak.py"]
+        ],
+        "check": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}"],
+        "up": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}", "--apply"]
+      },
+      "steps": ["iam-check", "iam-up"],
+      "runtime": null
     }
   },
   "groups": {
-    "platform": [
-      "keycloak",
-      "airflow",
-      "ftp",
-      "monitoring",
-      "headlamp",
-      "minio",
-      "registry"
-    ],
-    "keycloak-airflow": [
-      "keycloak",
-      "airflow"
-    ],
-    "all": [
-      "keycloak",
-      "portal",
-      "airflow",
-      "ftp",
-      "monitoring",
-      "headlamp",
-      "minio",
-      "registry"
-    ]
+    "platform": ["ingress", "keycloak", "minio", "registry", "airflow", "monitoring", "headlamp", "ftp"],
+    "all": ["ingress", "keycloak", "minio", "registry", "airflow", "monitoring", "headlamp", "ftp", "portal", "iam"]
   }
 }

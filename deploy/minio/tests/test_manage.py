@@ -140,7 +140,7 @@ class MinioTests(unittest.TestCase):
             if 'get' in args and 'deployment' in args:
                 return 'deployment.apps/minio' if existing else ''
             if 'get' in args and 'job' in args:
-                return 'job.batch/minio-init' if existing else ''
+                return json.dumps({'status': {'succeeded': 1}})
             return ''
 
         def connect(*args, **kwargs):
@@ -168,16 +168,22 @@ class MinioTests(unittest.TestCase):
                          any(item['kind'] == 'Job' for item in json.loads(data).get('items', [])))
         self.assertLess(rollout, job_apply)
         self.assertTrue(all('prod' in args for args, _, _ in calls))
-        self.assertFalse(any('delete' in args for args, _, _ in calls))
+        # 지우는 것은 이전 초기화 Job뿐이다. PVC·PV·namespace는 지우지 않는다.
+        deletes = [args for args, _, _ in calls if 'delete' in args]
+        self.assertTrue(all(args[args.index('delete') + 1:args.index('delete') + 3] == ['job', 'minio-init'] for args in deletes))
         secrets = [data for _, data, sensitive in calls if sensitive]
         self.assertEqual(len(secrets), 1)
         self.assertTrue(all('fixture-password' not in ' '.join(args) for args, _, _ in calls))
 
-    def test_redeploy_reuses_bound_volume_and_does_not_replace_existing_job(self):
+    def test_redeploy_reuses_bound_volume_and_reruns_bucket_init_job(self):
+        # MINIO_BUCKETS에 추가한 버킷이 반영되도록 재배포마다 초기화 Job을 지우고 다시 만든다.
         calls = self.deployment_calls(existing=True)
         self.assertTrue(any('restart' in args for args, _, _ in calls))
-        self.assertFalse(any(data and any(item['kind'] == 'Job' for item in json.loads(data).get('items', []))
-                             for _, data, _ in calls))
+        removed = next(i for i, (args, _, _) in enumerate(calls) if 'delete' in args and 'minio-init' in args)
+        created = next(i for i, (_, data, _) in enumerate(calls) if data and
+                       any(item['kind'] == 'Job' for item in json.loads(data).get('items', [])))
+        self.assertLess(removed, created)
+        self.assertIn('--ignore-not-found', calls[removed][0])
 
     def test_released_pv_and_previous_claim_uid_require_manual_recovery(self):
         for kwargs in ({'pv_phase': 'Released'}, {'pv_uid': 'previous-claim'}):

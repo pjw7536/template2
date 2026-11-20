@@ -21,15 +21,15 @@
 | 기존 Ingress | `etch-sso/traefik`의 HTTPS 진입점 `websecure`와 ingressClass `traefik` |
 | DNS·네트워크 | Headlamp host가 Traefik HTTPS 진입 주소를 가리킴. 브라우저·Headlamp Pod·모든 API server에서 Keycloak 공개 URL 접근 가능 |
 | 인증서 | Headlamp fullchain·개인키, 사내 루트·중간 CA |
-| API server 담당자 | [API server 인증](02-authentication.md#api-server-인증)의 계약을 모든 제어면에 반영 가능 |
+| API server OIDC | [API server 인증](02-authentication.md#api-server-인증)의 계약을 모든 제어면에 반영 |
 
 Keycloak realm을 재생성하거나 Portal용 등록 명령을 실행하지 않습니다.
 
-| 실행 위치 | 하는 일 |
-| --- | --- |
-| 관리 호스트 터미널 | 저장소 루트에서 `make`·`kubectl` 실행 |
-| PC 웹 브라우저 | Keycloak 관리자 화면의 client·그룹 확인, Headlamp 로그인 |
-| 각 제어면 서버 터미널 | API server OIDC 설정. [API server 인증](02-authentication.md#api-server-인증)에서만 사용 |
+| 실행 위치 | 하는 일 | 접근 방법 |
+| --- | --- | --- |
+| 관리 호스트의 저장소 루트 | `make`·`kubectl` 실행, Keycloak client·그룹 등록과 조회 | [Kubernetes API](../../shared/docs/infrastructure/access.md#kubernetes-api), [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) |
+| 각 제어면 | API server OIDC 설정. [API server 인증](02-authentication.md#api-server-인증)에서만 사용 | [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh) |
+| 브라우저 | Headlamp 로그인 확인 | [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) |
 
 `kubectl --context`를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치를 구분합니다.
 
@@ -44,13 +44,13 @@ curl --version
 kubectl --context "<context>" get ingressclass traefik
 ```
 
-성공: 각 버전과 `traefik` IngressClass가 조회됩니다. `command not found`는 도구 설치, 목록 없음·권한 오류는 관리자 kubeconfig를 확인합니다.
+성공: 각 버전과 `traefik` IngressClass가 조회됩니다. `command not found`면 [관리 호스트 준비](../../shared/docs/operations/04-drift.md#관리-호스트-준비)의 도구를 설치합니다. IngressClass가 없으면 [공용 Traefik(ingress)](../../shared/ingress/README.md)을 먼저 배포하고, 권한 오류면 [Kubernetes API](../../shared/docs/infrastructure/access.md#kubernetes-api) 절로 kubeconfig를 확인합니다.
 
 ## 환경설정
 
-검사·배포·client 등록은 모두 `env/k8s.env`(또는 `HEADLAMP_ENV`)를 읽습니다. 일반 설정과 Kubernetes 리소스 이름만 넣고 Git으로 전달합니다.
-`=` 오른쪽만 바꾸며 `export`·따옴표·변수 치환을 넣지 않습니다. 알 수 없는 키(예: client secret 값)를 추가하면 검사에서 거부합니다.
-Headlamp는 Keycloak env를 자동으로 읽지 않으므로 Keycloak 주소가 바뀌면 이 값도 함께 맞춥니다. 다른 파일을 쓰면 그 경로를 `HEADLAMP_ENV`로 지정하고 기존 env를 예시로 덮어쓰지 않습니다.
+검사·배포·client 등록은 모두 `env/k8s.env`(또는 `HEADLAMP_ENV`)를 읽습니다. 일반 설정과 Kubernetes 리소스 이름만 들어 있고 Git으로 전달됩니다.
+값은 `=` 오른쪽에만 쓰며 `export`·따옴표·변수 치환을 넣지 않습니다. 알 수 없는 키(예: client secret 값)를 추가하면 검사에서 거부합니다.
+Headlamp는 Keycloak env를 자동으로 읽지 않으므로 Keycloak 주소가 바뀌면 이 값도 함께 맞춥니다. 저장소 기본값과 다른 값이 필요하면 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 위치에 사본을 두고 그 경로를 모든 명령에 `HEADLAMP_ENV=<경로>`로 지정합니다. 저장소의 env를 고치지 않습니다.
 
 | 변수 | 현재 값 | 의미 |
 | --- | --- | --- |
@@ -71,7 +71,7 @@ CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리
 | --- | --- |
 | `HEADLAMP_ENV` | 다른 일반 설정 파일 경로 |
 | `KUBE_CONTEXT` | `headlamp-oidc-setup`, `headlamp-up`, `headlamp-ui`의 대상. 필수 |
-| `HEADLAMP_ADMINS` | `headlamp-oidc-setup`이 `headlamp-admins`에 가입시킬 Keycloak username(쉼표 구분) |
+| `HEADLAMP_ADMINS` | `headlamp-oidc-setup`이 `headlamp-admins`에 가입시킬 Keycloak username(쉼표 구분). 요청에 주어지는 선택 입력이며 비우면 그룹만 만듦 |
 | `KEYCLOAK_ENV` | `headlamp-oidc-setup`이 Keycloak 관리자 계정을 읽는 env. 기본 `deploy/keycloak/env/prod.env` |
 | `HEADLAMP_CHART_FILE` | 반입한 고정 chart 경로. 같은 SHA-256 검사 |
 | `HEADLAMP_OIDC_CA_FILE` | `headlamp-oidc-check`·`headlamp-oidc-setup`이 실행 서버에서 읽을 PEM CA 파일 |
@@ -80,7 +80,7 @@ CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리
 | 명령 | 확인 범위 |
 | --- | --- |
 | `make headlamp-setup-env` | [조회] env 검증 후 공개 설정을 `이름=값`으로 출력(접속 host·issuer·client ID·Secret 이름·Callback). chart·클러스터 불필요 |
-| `make headlamp-check` | [검사] 선택한 env·chart 해시·Helm 렌더. 클러스터 접속 없음 |
+| `make headlamp-check KUBE_CONTEXT="<context>"` | [검사] 선택한 env·chart 해시·Helm 렌더. 클러스터에 접속하지 않지만 `KUBE_CONTEXT`는 지정해야 함. 성공: `서버 원본 검사 통과: headlamp/prod` |
 | `make server-check APP=headlamp PROFILE=prod` | [검사] 저장소 기본 env의 정적 검사 |
 | `make headlamp-oidc-client` | [조회] 비밀값 없는 client JSON 출력. Keycloak에 등록하지 않음 |
 | `make headlamp-oidc-check HEADLAMP_OIDC_CA_FILE=/경로/ca.pem` | [검사] 실행 서버에서 Keycloak TLS·discovery·issuer·code flow·S256·RS256 공개키 검사. client secret·로그인·RBAC는 검사하지 않음 |
@@ -94,22 +94,26 @@ CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리
 
 ## chart와 이미지
 
-[변경] 고정 chart `deploy/headlamp/helm/vendor/headlamp-0.45.0.tgz`를 준비합니다. 이미 있으면 생략합니다. 사내 미러에 접근할 수 있는 관리 호스트에서는 아래 명령이 내려받아 해시를 확인한 뒤 같은 경로에 둡니다.
+고정 chart는 `deploy/headlamp/helm/vendor/headlamp-0.45.0.tgz`입니다. `make ops-deploy APP=headlamp`의 준비 검사가 없으면 아래 명령을 자동으로 실행하므로 보통은 따로 할 일이 없습니다.
+
+[변경] 직접 받을 때 씁니다. 사내 미러에서 내려받아 해시를 확인한 뒤 같은 경로에 둡니다. 이미 있는 파일은 같은 내용으로 다시 씁니다.
 
 ```bash
 make headlamp-fetch-chart
 ```
 
 성공: `chart 준비 완료:`와 파일 경로.
-미러를 쓸 수 없으면 사람이 [공식 0.45.0 chart](https://github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz)를 같은 경로로 반입하거나 `HEADLAMP_CHART_FILE=/절대경로/headlamp-0.45.0.tgz`로 지정합니다.
-`SHA-256 불일치`이면 반입한 chart를 확인하며 `helm/chart.lock.json`의 해시를 바꾸지 않습니다.
+미러에서 받을 수 없으면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 [공식 0.45.0 chart](https://github.com/kubernetes-sigs/headlamp/releases/download/headlamp-helm-0.45.0/headlamp-0.45.0.tgz)를 가져와 같은 경로에 두거나 모든 명령에 `HEADLAMP_CHART_FILE=/절대경로/headlamp-0.45.0.tgz`를 붙입니다.
+`SHA-256 불일치`이면 가져온 chart가 고정한 파일과 다른 것입니다. `helm/chart.lock.json`의 해시를 바꾸지 않습니다.
 
 이미지는 `HEADLAMP_REGISTRY/headlamp-k8s/headlamp:v0.45.0`이며 노드에서 내려받을 수 있어야 합니다.
 
 ## 이미지 인증 Secret
 
 `IMAGE_PULL_SECRET`이 비어 있으면 필요 없습니다. 값이 있을 때만 수행하며 배포 도구는 이 Secret을 만들지 않습니다.
-[변경] 사람이 전달한 해당 registry용 Docker 인증 JSON 파일을 `headlamp` namespace에 등록합니다. 파일이 없으면 요청합니다. 이미 올바른 Secret이 있으면 다시 등록하지 않으며 노드의 registry CA 신뢰는 별도로 필요합니다.
+해당 registry용 Docker 인증 JSON 파일은 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 위치(관리 호스트의 외부 앱 설정 폴더)에 둔 것을 씁니다. 올바른 Secret이 이미 있으면 유지하며 노드의 registry CA 신뢰는 별도로 확인합니다.
+
+[변경] namespace가 없으면 만들고 인증 JSON 파일을 Secret으로 등록한 뒤 결과를 조회합니다.
 
 ```bash
 kubectl --context "<context>" create namespace headlamp --dry-run=client -o yaml |
@@ -130,13 +134,13 @@ kubectl --context "<context>" -n headlamp get secret <IMAGE_PULL_SECRET 값>
 
 | 구성 | 용도 | 적용 위치 | 등록 |
 | --- | --- | --- | --- |
-| Headlamp fullchain·개인키 | 브라우저에 Headlamp 사이트 증명 | `etch-sso` namespace의 공용 Secret | [가이드 A-3](../README.md#a-최초-설치) |
+| Headlamp fullchain·개인키 | 브라우저에 Headlamp 사이트 증명 | `etch-sso` namespace의 공용 Secret | `make ops-deploy APP=headlamp`의 준비 검사가 등록. 직접 등록은 [공용 TLS 등록](../../README.md#공용-tls-등록) |
 | Keycloak CA 묶음 | Headlamp가 Keycloak HTTPS 신뢰 | `headlamp` namespace의 ConfigMap `headlamp-oidc-ca` | `headlamp-oidc-setup`이 등록 |
 | 같은 Keycloak CA 묶음 | API server가 Keycloak 토큰 서명키 조회 | 모든 API server | [API server 인증](02-authentication.md#api-server-인증) |
 
 ### 1. 필요한 파일 준비
 
-[사람] 다음 파일을 관리 호스트의 저장소 checkout 아래에 둡니다. 인증서·개인키 파일은 Git으로 전송되지 않으며 Keycloak 서버의 개인키는 필요 없습니다.
+[변경] 다음 파일을 관리 호스트의 저장소 checkout 아래에 둡니다. 발급받은 파일을 가져오는 방법은 [인증서 발급](../../shared/docs/infrastructure/access.md#인증서-발급) 절에 있습니다. 이 작업에 Keycloak 서버의 개인키는 필요 없습니다.
 
 | 파일 | 준비 방법 |
 | --- | --- |
@@ -154,7 +158,11 @@ PFX·P7B 원본만 있으면 [인증서 추출](../../shared/docs/certificates/e
 ls -l deploy/shared/certs/etch.samsungds.net/fullchain.crt deploy/shared/certs/etch.samsungds.net/private.key deploy/shared/certs/ca/
 ```
 
+성공: 네 파일이 모두 보입니다.
+
 ### 2. Keycloak CA 묶음 생성
+
+`make ops-deploy APP=headlamp`의 준비 검사가 묶음이 없으면 아래 명령을 자동으로 실행합니다. CA를 교체했을 때는 직접 실행합니다.
 
 [변경] `deploy/shared/certs/ca/`의 `.crt`·`.pem`·`.cer` 인증서(PEM·DER 모두 가능)를 이름순으로 이어 붙여 PEM 묶음을 만듭니다. 원본 파일은 바꾸지 않습니다.
 
@@ -162,7 +170,7 @@ ls -l deploy/shared/certs/etch.samsungds.net/fullchain.crt deploy/shared/certs/e
 make ca-bundle CA_HOST=sso.etch.samsungds.net
 ```
 
-성공: `CA 묶음 준비 완료: deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`. `CA 인증서가 없습니다`면 1번의 CA 파일 배치를 요청합니다.
+성공: `CA 묶음 준비 완료: deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`. `CA 인증서가 없습니다`면 1번의 CA 파일을 [인증서 발급](../../shared/docs/infrastructure/access.md#인증서-발급) 절로 준비합니다.
 `make ca-bundle`은 실행할 때마다 CA 폴더의 현재 파일로 묶음을 다시 만듭니다. `headlamp-oidc-setup`은 `HEADLAMP_OIDC_CA_FILE`을 지정하지 않으면 같은 경로의 묶음을 그대로 사용하고, 없을 때만 같은 방식으로 만듭니다. CA를 교체했으면 `make ca-bundle`을 다시 실행한 뒤 `headlamp-oidc-setup`으로 ConfigMap을 갱신합니다.
 같은 파일을 Airflow OIDC CA와 API server에도 사용할 수 있습니다.
 
@@ -176,7 +184,7 @@ openssl crl2pkcs7 -nocrl -certfile deploy/shared/certs/sso.etch.samsungds.net/ke
 
 ### 3. 등록과 연결 검사
 
-사이트 인증서의 공용 TLS 등록, OIDC 연결 검사, CA ConfigMap 등록은 [가이드 A](../README.md#a-최초-설치)의 3~5단계가 수행합니다. 공용 등록 도구의 동작은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 따릅니다.
+사이트 인증서의 공용 TLS 등록과 CA ConfigMap 등록은 [가이드 A](../README.md#a-최초-설치)의 배포 명령이 수행하고, OIDC 연결 검사는 [가이드 C](../README.md#c-배포-후-확인)에 있습니다. 공용 등록 도구의 동작은 [공용 TLS 등록](../../shared/docs/certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)을 따릅니다.
 
 [조회] 등록 결과:
 
@@ -185,18 +193,20 @@ kubectl --context "<context>" -n etch-sso get secret traefik-tls
 kubectl --context "<context>" -n headlamp get configmap headlamp-oidc-ca
 ```
 
+성공: 두 리소스가 조회됩니다.
+
 OIDC 연결 검사의 성공 문구는 `OIDC 연결 검사 통과: TLS·issuer·code flow·PKCE S256·RS256 공개키`입니다. 실패하면 다음을 확인합니다.
 
 | 실패 | 확인할 것 |
 | --- | --- |
 | Secret·ConfigMap `NotFound` | 등록 성공 여부, context, 공용 TLS는 `etch-sso`, OIDC CA는 `headlamp` namespace와 env의 이름 |
-| 이름을 찾지 못함·연결 시간 초과 | 관리 호스트에서 Keycloak 도메인의 DNS·방화벽·HTTPS 접근 |
+| 이름을 찾지 못함·연결 시간 초과 | 관리 호스트에서 Keycloak 도메인까지의 경로. [DNS](../../shared/docs/infrastructure/access.md#dns)와 [방화벽](../../shared/docs/infrastructure/access.md#방화벽) 절의 `찾는 방법`으로 확인 |
 | TLS 인증서 검증 실패 | Keycloak의 실제 발급 CA가 준비한 루트·중간 CA와 같은지, 인증서 유효기간 |
 | issuer 불일치 | env의 issuer가 Keycloak 공개 URL + `/realms/etch`와 정확히 같은지 |
 | `사내 CA 설정에는 HEADLAMP_OIDC_CA_FILE로 로컬 CA 묶음을 지정하세요` | `HEADLAMP_OIDC_CA_CONFIGMAP`이 있는 env에서 `HEADLAMP_OIDC_CA_FILE` 없이 검사함 |
 
 실행 서버에서 성공해도 Pod·API server의 네트워크·CA 신뢰는 각각 준비해야 합니다. 브라우저 PC의 CA 신뢰는 [클라이언트 PC 신뢰 등록](../../shared/docs/certificates/apply.md#클라이언트-pc-신뢰-등록)을 참고합니다.
-CA가 바뀌면 관리 호스트의 CA 파일과 묶음, Headlamp ConfigMap, 모든 API server의 CA를 함께 갱신하고 [재시작](04-operations.md#재시작과-복구)합니다.
+CA가 바뀌면 관리 호스트의 CA 파일과 묶음, Headlamp ConfigMap, 모든 API server의 CA를 함께 갱신하고 [재시작](04-operations.md#재시작과-복구)합니다. 순서는 [Keycloak CA 변경](04-operations.md#변경-종류별-반영)에 있습니다.
 
 ### 공개 CA 또는 다른 인증기관인 경우
 

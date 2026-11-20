@@ -9,10 +9,12 @@
 """
 
 import argparse
+import functools
 import json
 import os
 import sys
 
+import catalog as registry
 import deploy_state as state
 import smoke as smoke_checks
 
@@ -93,7 +95,7 @@ def diagnose(app_name, app, kube, namespace, checker=smoke_checks.smoke):
     grouped = {}
     for event in events:
         key = (event.get('reason', ''), event.get('involvedObject', {}).get('kind', ''), event.get('involvedObject', {}).get('name', ''))
-        entry = grouped.setdefault(key, {'count': 0, 'message': event.get('message', '')[:200]})
+        entry = grouped.setdefault(key, {'count': 0, 'message': state.clip(event.get('message', ''), 200)})
         entry['count'] += event.get('count') or 1
     lines += ['', '## 최근 Warning 이벤트(상위 5)']
     lines += [f'{reason} {kind}/{name} x{entry["count"]}: {entry["message"]}'
@@ -131,10 +133,12 @@ def main():
         if args.app not in catalog['apps']:
             raise ValueError('apps.json의 앱 하나를 지정하세요.')
         app = catalog['apps'][args.app]
-        # 배포와 같은 env 변수(예: AIRFLOW_ENV)를 지정했으면 그 파일의 NAMESPACE를 따른다.
-        env_file = os.environ.get(app['env']['variable']) or state.ROOT / app['env']['default']
-        namespace = state.env_value(env_file, 'NAMESPACE') or app['runtime']['namespace']
-        lines, problems = diagnose(args.app, app, state.kube_runner(args.context), namespace)
+        if app.get('runtime') is None:
+            raise ValueError(f'{args.app}은 클러스터 워크로드가 없는 설정 전용 앱입니다. make {args.app}-check로 확인하세요.')
+        # 배포와 같은 env 변수(예: AIRFLOW_ENV)를 지정했으면 그 파일의 NAMESPACE를 따른다. smoke 입력도 같은 환경변수를 쓴다.
+        checker = functools.partial(smoke_checks.smoke, connect=os.environ.get('SMOKE_CONNECT') or None,
+                                    ca_file=os.environ.get('SMOKE_CA_FILE') or None, vip=smoke_checks.app_vip())
+        lines, problems = diagnose(args.app, app, state.kube_runner(args.context), registry.namespace(app), checker)
     except (ValueError, KeyError, OSError, state.QueryError) as error:
         print(f'진단 결과: 조회 불가 — {error}', file=sys.stderr)
         return 2

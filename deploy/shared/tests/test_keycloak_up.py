@@ -23,6 +23,13 @@ class KeycloakTests(unittest.TestCase):
             keycloak.main()
         self.assertIsNone(start.call_args.args[2])
 
+    def test_certificate_folder_can_come_from_the_environment(self):
+        # make keycloak-up KEYCLOAK_CERTS=<폴더>는 환경변수로 전달된다.
+        with patch('sys.argv', ['up.py', '--context', 'test-context']), patch.dict('os.environ', {'KEYCLOAK_CERTS': '/certs/sso'}), \
+                patch.object(keycloak, 'start') as start:
+            keycloak.main()
+        self.assertEqual(start.call_args.args[2], Path('/certs/sso'))
+
     def test_render_output_writes_desired_without_mutation(self):
         self.existing()
         output = Path(self.directory.name) / 'desired.json'
@@ -50,14 +57,18 @@ class KeycloakTests(unittest.TestCase):
         self.pvc = None
         self.pv = None
         self.namespace = None
-        self.live = None
+        # 공용 Traefik은 ingress 앱이 먼저 배포한다. Keycloak 배포는 읽기만 한다.
+        self.live = controller()
         self.pods = []
         self.public_matches = True
         self.source = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {
                             'name': 'etch-sso', 'labels': {'app.kubernetes.io/part-of': 'etch-sso'},
                             'annotations': {'source.test/policy': 'configured'}}},
-                       controller(), {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress',
-                                      'metadata': {'name': 'keycloak'}, 'spec': {'rules': [{'host': 'sso.test'}]}},
+                       {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'keycloak'},
+                        'spec': {'template': {'spec': {'nodeSelector': {'kubernetes.io/hostname': 'worker'},
+                                                       'containers': [{'name': 'keycloak', 'image': 'mirror/keycloak:1'}]}}}},
+                       {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress',
+                        'metadata': {'name': 'keycloak'}, 'spec': {'rules': [{'host': 'sso.test'}]}},
                        {'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': 'keycloak-postgres-data'},
                         'spec': {'local': {'path': '/appdata/keycloak-postgres'}, 'nodeAffinity': {'required': {
                             'nodeSelectorTerms': [{'matchExpressions': [{'key': 'kubernetes.io/hostname', 'values': ['worker']}]}]}}}},
@@ -192,75 +203,38 @@ class KeycloakTests(unittest.TestCase):
                     self.start()
                 self.assertEqual(self.mutations(), [])
 
-    def test_reapply_preserves_secrets_namespaces_and_vip(self):
+    def test_reapply_never_writes_the_shared_ingress(self):
+        """공용 Traefik의 감시 namespace·VIP 배치는 ingress 앱이 관리한다. Keycloak 재배포는 건드리지 않는다."""
         self.existing()
-        self.live = keycloak.routing.place_vip_backends(self.live, self.live, ['192.0.2.10', '192.0.2.20'], self.nodes, [])
-        self.start()
+        before = deepcopy(self.live)
+        keycloak.start('test-context', Path('/env'))
         writes = self.mutations()
         self.assertFalse(any('create' in args for args, _ in writes))
-        updated = keycloak.routing.controller(json.loads(writes[-1][1]['data'])['items'])
-        self.assertEqual(updated['spec']['replicas'], 2)
-        args = updated['spec']['template']['spec']['containers'][0]['args']
-        self.assertIn(keycloak.routing.PREFIX + 'etch-sso,airflow,tailwind-internal', args)
+        applied = json.loads(writes[-1][1]['data'])['items']
+        self.assertFalse(any(item['metadata']['name'] == 'traefik' for item in applied))
+        self.assertEqual(self.live, before)
+        # 등록된 인증서를 그대로 쓰면 Traefik을 patch하거나 다시 시작하지 않는다.
+        self.assertFalse(any('patch' in args or 'deployment/traefik' in args for args, _ in self.calls))
+
+    def test_missing_shared_ingress_stops_before_any_write_and_names_the_next_command(self):
+        for check_only in (True, False):
+            with self.subTest(check_only=check_only):
+                self.calls.clear()
+                self.live = None
+                with self.assertRaisesRegex(ValueError, 'make ops-deploy APP=ingress'):
+                    self.start(check_only=check_only)
+                self.assertEqual(self.mutations(), [])
+
+    def test_shared_ingress_without_tls_mount_stops_before_any_write(self):
+        self.live['spec']['template']['spec']['volumes'] = []
+        with self.assertRaisesRegex(ValueError, 'ingress-up'):
+            self.start()
+        self.assertEqual(self.mutations(), [])
 
     def test_credential_mismatch_stops_before_mutation(self):
         self.existing()
         self.secrets['keycloak-runtime']['data']['postgres-password'] = 'ZGlmZmVyZW50'
         with self.assertRaisesRegex(ValueError, '기존 Secret과 입력'):
-            self.start()
-        self.assertEqual(self.mutations(), [])
-
-    def test_operator_worker_pool_is_preserved_by_check_and_deploy(self):
-        """공용 Ingress가 허용한 pool을 Keycloak 재배포에서도 유지한다."""
-        self.existing()
-        self.live['metadata']['resourceVersion'] = 'operator-version'
-        self.live['metadata']['annotations'] = {'operator.test/owner': 'keep'}
-        template = self.live['spec']['template']
-        template['metadata'] = {'labels': {'operator.test/controller': 'ingress'}}
-        placement = template['spec']
-        placement['nodeSelector'] = {'operator.test/pool': 'ingress'}
-        placement['affinity'] = {'nodeAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': {
-            'nodeSelectorTerms': [{'matchExpressions': [{'key': 'operator.test/pool', 'operator': 'In', 'values': ['ingress']}]}]}}}
-        placement['tolerations'] = [{'key': 'operator.test/dedicated', 'operator': 'Exists'}]
-        for node in self.nodes:
-            node['metadata']['labels']['operator.test/pool'] = 'ingress'
-        # pool의 다른 Worker가 cordon 상태여도 앱 Worker와 남은 후보가 정상이면 배포한다.
-        self.nodes[1]['spec']['unschedulable'] = True
-        original = deepcopy(self.live)
-        self.start(check_only=True)
-        self.assertEqual(self.mutations(), [])
-        self.start()
-        updated = keycloak.routing.controller(json.loads(self.mutations()[-1][1]['data'])['items'])
-        for key in ('nodeSelector', 'affinity', 'tolerations'):
-            self.assertEqual(updated['spec']['template']['spec'][key], placement[key])
-        self.assertEqual(updated['spec']['template']['metadata']['labels']['operator.test/controller'], 'ingress')
-        self.assertEqual(updated['metadata']['resourceVersion'], 'operator-version')
-        self.assertEqual(updated['metadata']['annotations'], original['metadata']['annotations'])
-        self.assertIn(keycloak.routing.PREFIX + 'etch-sso,airflow,tailwind-internal',
-                      updated['spec']['template']['spec']['containers'][0]['args'])
-        self.assertEqual(self.live, original)
-        self.assertFalse(any('create' in args for args, _ in self.mutations()))
-
-    def test_invalid_recorded_vip_stops_before_any_keycloak_or_secret_write(self):
-        """이미 기록된 VIP의 실제 배치 오류를 공통 검사로 차단한다."""
-        self.existing()
-        self.live = keycloak.routing.place_vip_backends(self.live, self.live,
-                           ['192.0.2.10', '192.0.2.20'], self.nodes, [])
-        self.live['spec']['replicas'] = 1
-        with self.assertRaises(ValueError):
-            self.start()
-        self.assertEqual(self.mutations(), [])
-
-    def test_worker_pool_port_conflict_stops_before_any_write(self):
-        """모든 pool 후보의 80/443이 충돌하면 앱에도 적용하지 않는다."""
-        self.existing()
-        self.live['spec']['template']['spec']['nodeSelector'] = {'operator.test/pool': 'ingress'}
-        for node in self.nodes:
-            node['metadata']['labels']['operator.test/pool'] = 'ingress'
-            self.pods.append({'metadata': {'name': 'other-proxy', 'namespace': 'other'},
-                              'spec': {'nodeName': node['metadata']['name'],
-                                       'containers': [{'ports': [{'hostPort': 443}]}]}})
-        with self.assertRaises(ValueError):
             self.start()
         self.assertEqual(self.mutations(), [])
 
@@ -319,7 +293,7 @@ class InputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in ('deploy/keycloak/scripts/up.py', 'deploy/shared/scripts/runtime.py', 'deploy/shared/scripts/host_dirs.py',
-                             'deploy/shared/ingress/routing.py', 'deploy/shared/ingress/tls.py'):
+                             'deploy/shared/ingress/tls.py'):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(keycloak.ROOT / relative, target)

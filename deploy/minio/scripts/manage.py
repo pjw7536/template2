@@ -22,6 +22,7 @@ spec.loader.exec_module(RUNTIME)
 spec = importlib.util.spec_from_file_location('minio_routing', BASE.parent / 'shared/ingress/routing.py')
 routing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(routing)
+host_dirs = RUNTIME.module('shared_host_dirs', BASE.parent / 'shared/scripts/host_dirs.py')
 
 NAMESPACE = 'minio'
 SECRET_KEYS = ('MINIO_ROOT_USER', 'MINIO_ROOT_PASSWORD', 'MINIO_BROWSER_REDIRECT_URL',
@@ -192,8 +193,8 @@ def prepare_storage(kube, values, pending):
     job = json.loads(run([*kube, 'create', '-f', '-', '-o', 'json'],
                          data=json.dumps(storage_job(values, create_directory=pending is not None))))
     name = job['metadata']['name']
-    print(f'MinIO 저장 폴더 준비 대기: job/{name}. 실패 시 해당 Job의 Pod Events와 로그를 확인하세요.', flush=True)
-    run([*kube, '-n', NAMESPACE, 'wait', '--for=condition=complete', f'job/{name}', '--timeout=300s'])
+    print(f'MinIO 저장 폴더 준비 대기: job/{name}', flush=True)
+    host_dirs.wait_job(run, kube, NAMESPACE, name)
     if pending:
         run([*kube, 'create', '-f', '-'], data=json.dumps(pending))
 
@@ -296,10 +297,11 @@ def deploy(values, context, check_only=False):
         run([*kube, '-n', NAMESPACE, 'rollout', 'restart', 'deployment/minio'])
     print('MinIO 기동 대기: 실패하면 Pod Events와 PVC 상태를 확인하세요.', flush=True)
     run([*kube, '-n', NAMESPACE, 'rollout', 'status', 'deployment/minio', '--timeout=300s'])
-    existing = run([*kube, '-n', NAMESPACE, 'get', 'job', 'minio-init', '--ignore-not-found', '-o', 'name'])
-    if not existing.strip():
-        apply(kube, [item for item in items if item['kind'] == 'Job'])
-    run([*kube, '-n', NAMESPACE, 'wait', '--for=condition=complete', 'job/minio-init', '--timeout=300s'])
+    # MINIO_BUCKETS 변경이 반영되도록 이전 초기화 Job을 지우고 다시 실행한다. 이미 있는 버킷은 그대로 둔다(mc mb -p).
+    run([*kube, '-n', NAMESPACE, 'delete', 'job', 'minio-init', '--ignore-not-found', '--wait=true'])
+    apply(kube, [item for item in items if item['kind'] == 'Job'])
+    print('MinIO 버킷 초기화 대기: job/minio-init', flush=True)
+    host_dirs.wait_job(run, kube, NAMESPACE, 'minio-init', timeout=330)
     access, changes = routing_plan(kube, values)
     connect(kube, access, changes)
     apply(kube, [item for item in items if item['kind'] == 'Ingress'])

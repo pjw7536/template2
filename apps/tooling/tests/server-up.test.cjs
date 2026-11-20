@@ -11,9 +11,9 @@ test('Keycloak·Airflow 기동은 기존 진입점과 Secret을 보존하고 nam
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
-test('실제 Keycloak 렌더에서 VIP 배치 변경은 Traefik에만 적용되고 443 직결을 유지한다', () => {
+test('실제 공용 ingress 렌더에서 VIP 배치 변경은 Traefik에만 적용되고 443 직결을 유지한다', () => {
   const root = path.resolve(__dirname, '../../..');
-  const rendered = spawnSync('kubectl', ['kustomize', 'deploy/keycloak/k8s'], { cwd: root, encoding: 'utf8' });
+  const rendered = spawnSync('kubectl', ['kustomize', 'deploy/shared/ingress'], { cwd: root, encoding: 'utf8' });
   assert.equal(rendered.status, 0, rendered.stderr);
   const resources = yaml.loadAll(rendered.stdout);
   const source = resources.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');

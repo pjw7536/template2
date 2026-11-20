@@ -11,6 +11,7 @@ Secret·env 값, Pod IP, 사용자 계정은 수집하지 않는다.
 
 import argparse
 import datetime
+import ipaddress
 import json
 from pathlib import Path
 import re
@@ -20,6 +21,7 @@ import subprocess
 import sys
 
 import ca_bundle
+import catalog as registry
 import deploy_state as state
 import smoke as smoke_checks
 
@@ -27,7 +29,17 @@ ALIASES = state.ROOT / 'deploy/shared/docs/infrastructure/aliases.json'
 LAYOUT_VERSION = 1
 # 문장 끝의 마침표가 뒤따라도 주소로 본다. 뒤에 숫자가 더 이어질 때만 주소가 아니다.
 IPV4 = re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d)(?!\.\d)')
+# IPv6 후보: 16진수 묶음과 콜론이 두 개 이상인 토큰. 시각(12:34:56)은 주소로 해석되지 않아 그대로 남는다.
+IPV6_CANDIDATE = re.compile(r'(?<![0-9A-Za-z:.])(?=[0-9A-Fa-f:]*:[0-9A-Fa-f:]*:)[0-9A-Fa-f:]{3,39}(?![0-9A-Za-z:])')
 TIMEOUT = 8
+
+
+def is_ipv6(value):
+    try:
+        ipaddress.IPv6Address(value)
+        return True
+    except ValueError:
+        return False
 
 
 class Redactor:
@@ -44,6 +56,10 @@ class Redactor:
             self.literals[item['ip']] = alias
         self.domains = {item['value']: alias for alias, item in table['domains'].items()}
         self.suffix = min(self.domains, key=len)
+        # 가장 짧은 도메인을 공통 접미사로 쓴다. 그 밖의 사내 도메인은 otherSuffixes에 둔다.
+        outside = sorted(alias for value, alias in self.domains.items() if not value.endswith(self.suffix))
+        if outside:
+            raise ValueError(f'aliases.json의 domains는 공통 접미사로 끝나야 합니다: {", ".join(outside)}')
         # 별칭 표의 `otherSuffixes`: 위 접미사 밖의 사내 도메인. 그 아래의 host는 이름 전체를 가린다.
         self.other_suffixes = list(table.get('otherSuffixes', []))
         self.unmapped = {}
@@ -79,7 +95,8 @@ class Redactor:
         for suffix in self.other_suffixes:
             other = re.compile(r'(?:[A-Za-z0-9-]+\.)*' + re.escape(suffix), re.IGNORECASE)
             value = other.sub(lambda match: self._unknown('HOST', match[0].lower()), value)
-        return IPV4.sub(lambda match: self._unknown('IP', match[0]), value)
+        value = IPV4.sub(lambda match: self._unknown('IP', match[0]), value)
+        return IPV6_CANDIDATE.sub(lambda match: self._unknown('IP', match[0].lower()) if is_ipv6(match[0]) else match[0], value)
 
     def short(self, value, limit):
         """치환한 뒤에 자른다. 먼저 자르면 주소·이름의 일부가 남을 수 있다."""
@@ -207,8 +224,11 @@ def ingress_section(kube, cadata, vip, errors):
 def app_section(name, app, kube, git, checkout, options, cadata, vip, errors, redactor):
     """한 앱의 배포 기록·대조·워크로드·저장소·공개 주소 상태를 모은다."""
     lines = [f'### {name}', '']
+    if app.get('runtime') is None:
+        return lines + ['클러스터 워크로드가 없는 설정 전용 앱입니다.', '']
     result = state.check_app(name, app, git, kube, checkout, options) if options else None
-    namespace = (result or {}).get('namespace') or app['runtime']['namespace']
+    # 배포와 같은 환경변수로 env를 바꿨으면 그 파일의 NAMESPACE를 따른다.
+    namespace = (result or {}).get('namespace') or registry.namespace(app)
     selector = app['runtime'].get('selector', '')
     exists = attempt(errors, f'{name} namespace 조회',
                      lambda: bool(kube(['get', 'namespace', namespace, '--ignore-not-found', '-o', 'name']).strip()), False)
@@ -247,7 +267,7 @@ def app_section(name, app, kube, git, checkout, options, cadata, vip, errors, re
         storage.append([claim['metadata']['name'], claim['status'].get('phase', ''), claim['status'].get('capacity', {}).get('storage', ''),
                         (volume.get('local') or volume.get('hostPath') or {}).get('path', volume.get('storageClassName', '') or '-'), nodes or '-'])
     lines += ['저장소:'] + table(['PVC', '상태', '용량', '경로·StorageClass', '노드'], storage) + ['']
-    ingresses = attempt(errors, f'{name} Ingress 조회', lambda: json.loads(kube(['-n', namespace, 'get', 'ingress', '-o', 'json']))['items'], [])
+    ingresses = attempt(errors, f'{name} Ingress 조회', lambda: json.loads(kube(['-n', namespace, 'get', 'ingress', '-o', 'json', *label]))['items'], [])
     hosts = sorted({rule['host'] for item in ingresses for rule in item['spec'].get('rules', []) if rule.get('host')})
     settings = app.get('smoke', {})
     address_rows = []
@@ -348,6 +368,13 @@ def main():
     try:
         aliases = load_aliases()
         if args.target == 'redact':
+            if args.context:
+                # 별칭 표에 없는 노드 이름도 가리도록 클러스터의 노드 목록을 등록한다. 조회에 실패하면 표의 값만 바꾼다.
+                try:
+                    names = state.kube_runner(args.context)(['get', 'nodes', '-o', 'name'])
+                    aliases.register_nodes(line.split('/', 1)[-1] for line in names.split())
+                except state.QueryError:
+                    print('노드 목록을 조회하지 못해 별칭 표의 값만 바꿉니다.', file=sys.stderr)
             sys.stdout.write(finish(sys.stdin.read(), aliases))
             return 0
         text = finish(build(args.target, args.context, aliases, args.skip_drift), aliases)

@@ -15,13 +15,18 @@ import datetime
 import getpass
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-CATALOG = ROOT / 'deploy/shared/apps.json'
+# 다른 도구가 파일 경로로 이 모듈을 읽어도 같은 폴더의 공용 모듈을 찾게 한다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import app as app_commands  # noqa: E402
+import catalog as registry  # noqa: E402
+from catalog import ROOT, env_value, read_catalog, resolve_apps  # noqa: E402 (다른 도구가 이 모듈 이름으로 쓰는 공개 함수)
+
 RECORD_LABEL = 'deploy-record'
 WORKLOAD_KINDS = 'deployments,statefulsets,daemonsets'
 # 실행 결과에 영향이 없는 문서·테스트 변경은 배포 내용 비교에서 제외한다.
@@ -34,13 +39,18 @@ SKIPPED_KINDS = {'Secret', 'Job', 'Pod', 'Namespace', 'CustomResourceDefinition'
 VOLATILE_METADATA = ('managedFields', 'resourceVersion', 'uid', 'generation', 'creationTimestamp', 'selfLink')
 VOLATILE_ANNOTATIONS = ('kubectl.kubernetes.io/last-applied-configuration', 'deployment.kubernetes.io/revision',
                         'deprecated.daemonset.template.generation')
-# 앱별 기본 env는 apps.json의 env.default가 원본이다. Makefile의 *_ENV 기본값과 같다.
-DEFAULT_ENV = {name: app['env']['default'] for name, app in json.loads(CATALOG.read_text())['apps'].items()
-               if app.get('env', {}).get('default')}
 
 
 class QueryError(Exception):
     """Git·kubectl·렌더 실패를 판정 불가로 구분한다."""
+
+
+def clip(text, limit):
+    """공백에서 잘라 주소·이름이 중간에 끊기지 않게 한다. 끊긴 조각은 별칭 치환이 알아보지 못한다."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit + 1].rsplit(None, 1)[0][:limit] + ' …'
 
 
 def run(command, data=None):
@@ -51,30 +61,8 @@ def run(command, data=None):
     except OSError as error:
         raise QueryError(f'{command[0]} 실행 불가: {error}') from error
     if result.returncode != 0:
-        raise QueryError(f'{" ".join(map(str, command[:4]))} 실패: {result.stderr.strip()[:300]}')
+        raise QueryError(f'{" ".join(map(str, command[:4]))} 실패: {clip(result.stderr, 300)}')
     return result.stdout
-
-
-def read_catalog(path=CATALOG):
-    """앱 카탈로그에서 앱·그룹과 runtime 대조 설정을 읽는다."""
-    catalog = json.loads(path.read_text())
-    for name, app in catalog['apps'].items():
-        runtime = app.get('runtime')
-        if not isinstance(runtime, dict) or not runtime.get('namespace'):
-            raise ValueError(f'apps.json의 {name}.runtime.namespace가 필요합니다.')
-        unknown = [item for item in app.get('dependsOn', []) if item not in catalog['apps']]
-        if unknown or not app.get('steps') or not app.get('env', {}).get('variable'):
-            raise ValueError(f'apps.json의 {name}에 dependsOn(등록된 앱)·env.variable·steps가 필요합니다.')
-    return catalog
-
-
-def resolve_apps(catalog, target):
-    """앱 이름 또는 그룹 이름을 앱 목록으로 해석한다."""
-    if target in catalog['apps']:
-        return [target]
-    if target in catalog['groups']:
-        return list(catalog['groups'][target])
-    raise ValueError(f'지원하지 않는 앱·그룹: {target}')
 
 
 def app_paths(app):
@@ -117,18 +105,6 @@ def file_digest(path):
         return None
 
 
-def env_value(path, key):
-    """env 파일에서 비밀값이 아닌 설정 하나(namespace 등)만 읽는다."""
-    try:
-        for line in Path(path).read_text().splitlines():
-            name, separator, value = line.partition('=')
-            if separator and name.strip() == key:
-                return value.strip().strip('"\'')
-    except OSError:
-        pass
-    return None
-
-
 def git_runner():
     """저장소 루트에서 git을 실행하는 함수를 만든다."""
     return lambda args: run(['git', '-C', str(ROOT), *args])
@@ -157,44 +133,15 @@ def decode_stream(text):
     return items
 
 
-# 앱별 렌더: 각 앱의 기존 배포 도구가 적용 대상을 만드는 명령을 그대로 사용한다.
-# 반환값은 (명령, stdout 저장 파일 이름 또는 None, 결과 파일 목록)이다.
-def render_plan(app_name, env, context, vip_backends, directory):
-    """앱의 렌더 명령과 생성 파일을 정한다. 명령은 클러스터를 변경하지 않는다."""
-    out = Path(directory)
-    python = sys.executable or 'python3'
-    if app_name == 'portal':
-        # Portal은 이미지 tag를 소스 내용으로 정하므로 배포 도구의 렌더를 그대로 쓴다.
-        return [python, 'deploy/portal/scripts/up.py', '--context', context, '--render', 'app'], 'portal.json', ['portal.json']
-    if app_name == 'keycloak':
-        return ([python, 'deploy/keycloak/scripts/up.py', '--context', context, '--env', env,
-                 '--vip-backends', vip_backends, '--render-output', out / 'keycloak.json'], None, ['keycloak.json'])
-    if app_name == 'ftp':
-        return ([python, 'deploy/ftp/scripts/up.py', '--context', context, '--env', env,
-                 '--render-output', out / 'ftp.json'], None, ['ftp.json'])
-    if app_name in ('minio', 'registry'):
-        return [python, f'deploy/{app_name}/scripts/manage.py', 'render', '--env', env], f'{app_name}.json', [f'{app_name}.json']
-    if app_name == 'headlamp':
-        return [python, 'deploy/headlamp/scripts/manage.py', 'render', '--env', env], 'headlamp.yaml', ['headlamp.yaml']
-    if app_name == 'airflow':
-        return ([python, 'deploy/airflow/scripts/manage.py', 'render', '--env', env, '--output', out / 'airflow'],
-                None, ['airflow/airflow.yaml', 'airflow/storage.json', 'airflow/postgres.json'])
-    if app_name == 'monitoring':
-        return ([python, 'deploy/monitoring/scripts/manage.py', 'render', '--env', env, '--output', out / 'monitoring'],
-                None, ['monitoring/monitoring.yaml', 'monitoring/storage.json'])
-    raise ValueError(f'렌더 방법이 정의되지 않은 앱: {app_name}')
-
-
-def render_desired(kube, app_name, env, context, vip_backends):
-    """현재 checkout으로 앱의 적용 대상 리소스 목록을 만든다."""
-    with tempfile.TemporaryDirectory(prefix=f'deploy-state-{app_name}-') as directory:
-        command, stdout_name, files = render_plan(app_name, env, context, vip_backends, directory)
-        output = run(command)
-        if stdout_name:
-            (Path(directory) / stdout_name).write_text(output)
+def render_desired(kube, app, context, environ=None):
+    """현재 checkout으로 앱의 적용 대상 리소스 목록을 만든다. 렌더 명령은 카탈로그가 선언하며 클러스터를 변경하지 않는다."""
+    with tempfile.TemporaryDirectory(prefix='deploy-state-') as directory:
+        try:
+            files = app_commands.render(app, context, directory, environ)
+        except (ValueError, OSError) as error:
+            raise QueryError(clip(str(error), 300)) from error
         items = []
-        for name in files:
-            path = Path(directory) / name
+        for path in files:
             if path.exists() and path.read_text().strip():
                 # YAML·JSON을 추가 패키지 없이 JSON 객체로 바꾼다.
                 items.extend(decode_stream(kube(['create', '--dry-run=client', '--validate=false', '-o', 'json', '-f', path])))
@@ -329,11 +276,11 @@ def compare_manifests(desired, applied, live, errors):
     return findings, matched
 
 
-def manifest_findings(kube, app_name, app, env, context, vip_backends, cluster_kinds):
+def manifest_findings(kube, app, context, cluster_kinds, environ=None):
     """한 앱의 리소스 비교를 수행한다. 렌더·조회 실패는 판정 불가로 남긴다."""
-    namespace = (env_value(env, 'NAMESPACE') if env else None) or app['runtime']['namespace']
+    namespace = registry.namespace(app, environ)
     try:
-        items = render_desired(kube, app_name, env, context, vip_backends)
+        items = render_desired(kube, app, context, environ)
     except QueryError as error:
         return [('unknown', f'현재 코드 렌더 실패: {error}')]
     desired, skipped = select_desired(items, namespace, cluster_kinds)
@@ -482,8 +429,22 @@ def compare(app_name, app, record, checkout, current_content, current_dirty, cha
             'findings': findings}
 
 
+def app_environment(app, options):
+    """대조에 쓸 환경. `--env app=경로`와 `--vip-backends`를 배포와 같은 환경변수로 바꿔 넣는다."""
+    environ = dict(os.environ)
+    override = options.get('env')
+    if override and app.get('inputs'):
+        environ[app['inputs'][0]['variable']] = override
+    if options.get('vip_backends'):
+        environ['VIP_BACKENDS'] = options['vip_backends']
+    return environ
+
+
 def check_app(app_name, app, git, kube, checkout, options):
     """한 앱의 사실을 수집해 판정한다. 조회 실패는 판정 불가로 기록한다."""
+    if app.get('runtime') is None:
+        return {'app': app_name, 'namespace': None, 'deployedCommit': None, 'appliedAt': None,
+                'findings': [{'level': 'info', 'area': 'record', 'message': '클러스터 워크로드가 없는 설정 전용 앱이라 대조하지 않음'}]}
     paths = app_paths(app)
     try:
         record = read_record(kube, app_name)
@@ -501,9 +462,8 @@ def check_app(app_name, app, git, kube, checkout, options):
         digests = {path: file_digest(path) for path in (record or {}).get('inputs', {})}
         manifest = []
         if options['manifest']:
-            env = options['envs'].get(app_name) or DEFAULT_ENV.get(app_name)
-            manifest = manifest_findings(kube, app_name, app, env, options['context'], options['vip_backends'],
-                                         options['cluster_kinds'])
+            environ = app_environment(app, {'env': options['envs'].get(app_name), 'vip_backends': options.get('vip_backends')})
+            manifest = manifest_findings(kube, app, options['context'], options['cluster_kinds'], environ)
         return compare(app_name, app, record, checkout, current_content, dirty_paths(git, paths), changed,
                        workloads, problems, digests, manifest)
     except QueryError as error:
@@ -555,8 +515,8 @@ def main():
     check = sub.add_parser('check', help='현재 checkout과 클러스터 대조(조회 전용)')
     check.add_argument('target', nargs='?', default='all')
     check.add_argument('--context', required=True)
-    check.add_argument('--env', action='append', default=[], help='렌더에 사용할 env. app=경로, 반복 가능')
-    check.add_argument('--vip-backends', default='', help='Keycloak 렌더에 전달할 VIP backend. 생략 시 현재 배치 보존')
+    check.add_argument('--env', action='append', default=[], help='렌더에 사용할 env. app=경로, 반복 가능. 생략하면 배포와 같은 환경변수(예: AIRFLOW_ENV) 또는 기본 파일')
+    check.add_argument('--vip-backends', default='', help='공용 ingress 렌더에 전달할 VIP backend. 생략 시 VIP_BACKENDS 환경변수 또는 현재 배치 보존')
     check.add_argument('--skip-manifest', action='store_true', help='리소스 비교를 생략하고 기록·상태만 확인')
     check.add_argument('--json', action='store_true')
     args = parser.parse_args()
@@ -567,6 +527,9 @@ def main():
             if args.app not in catalog['apps']:
                 raise ValueError(f'지원하지 않는 앱: {args.app}')
             app = catalog['apps'][args.app]
+            if app.get('runtime') is None:
+                print(f'배포 기록 생략: {args.app}은 클러스터 워크로드가 없는 설정 전용 앱입니다.')
+                return 0
             inputs = [p for p in args.input if p]
             declared = next((value for value in (env_value(path, 'NAMESPACE') for path in inputs) if value), None)
             data = build_record(args.app, app, git, kube, inputs,

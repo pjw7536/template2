@@ -2,54 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-APP="${1:-keycloak}"
+APP="${1:-}"
 PROFILE="${2:-prod}"
+[[ -n "$APP" ]] || { echo 'APP에 앱 또는 그룹 이름을 지정하세요. 예: make server-check APP=all' >&2; exit 1; }
 [[ "$PROFILE" == prod ]] || { echo "사내 서버는 Kubernetes 전용입니다. $PROFILE 환경의 Kubernetes 정의가 없습니다." >&2; exit 1; }
 cd "$ROOT_DIR"
 
-# 앱과 그룹 이름은 공통 앱 카탈로그에서 해석합니다.
-selected_apps="$(python3 deploy/shared/scripts/app-paths.py "$APP")"
-if [[ "$selected_apps" != "$APP" ]]; then
-  while IFS= read -r app; do
-    bash "$ROOT_DIR/deploy/shared/scripts/check-server.sh" "$app" "$PROFILE"
-  done <<< "$selected_apps"
-  exit 0
-fi
-
-# Kubernetes 정의가 없는 앱을 Compose 검사로 대신 통과시키지 않습니다.
-case "$APP" in
-  minio)
-    python3 "$ROOT_DIR/deploy/minio/scripts/manage.py" check
-    kubectl kustomize deploy/minio/k8s >/dev/null
-    exit 0 ;;
-  ftp)
-    bash -n deploy/ftp/k8s/start.sh
-    kubectl kustomize deploy/ftp/k8s >/dev/null
-    echo '서버 원본 검사 통과: ftp/prod (노드·Secret·포트·접속 검사는 별도)'
-    exit 0 ;;
-  airflow)
-    python3 "$ROOT_DIR/deploy/airflow/scripts/manage.py" check
-    exit 0 ;;
-  registry)
-    python3 "$ROOT_DIR/deploy/registry/scripts/manage.py" check
-    exit 0 ;;
-  headlamp)
-    python3 "$ROOT_DIR/deploy/headlamp/scripts/manage.py" check
-    exit 0 ;;
-  monitoring)
-    python3 "$ROOT_DIR/deploy/monitoring/scripts/manage.py" check
-    exit 0 ;;
-esac
-
-# 추적 env 형식과 Kubernetes 원본만 검사하며 클러스터에는 적용하지 않습니다.
-bash deploy/shared/scripts/validate_env_profile_keys.sh "$APP" "$PROFILE"
-case "$APP/$PROFILE" in
-  keycloak/prod)
-    kubectl kustomize deploy/keycloak/k8s >/dev/null ;;
-  portal/prod)
-    for directory in overlays/prod overlays/prod/migrate jobs/keycloak-client; do
-      kubectl kustomize "deploy/portal/k8s/$directory" >/dev/null
-    done ;;
-  *) echo "지원하지 않는 서버 앱·환경: $APP/$PROFILE" >&2; exit 1 ;;
-esac
-echo "서버 원본 검사 통과: $APP/$PROFILE (실제 credential·서비스 연결 검사는 별도)"
+# 앱·그룹 이름과 앱별 정적 검사 명령은 공통 앱 카탈로그(commands.static)가 원본입니다.
+# 클러스터와 실제 credential은 확인하지 않습니다. Kubernetes 정의가 없는 앱을 Compose 검사로 대신 통과시키지 않습니다.
+while IFS= read -r app; do
+  python3 deploy/shared/scripts/app.py static "$app"
+done < <(python3 deploy/shared/scripts/app-paths.py "$APP")

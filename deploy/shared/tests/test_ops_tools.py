@@ -15,12 +15,15 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / 'deploy/shared/scripts'
 sys.path.insert(0, str(SCRIPTS))
 
+import app as app_commands  # noqa: E402
 import ca_bundle  # noqa: E402
+import catalog as registry  # noqa: E402
 import deploy_state as state  # noqa: E402
 import host_dirs  # noqa: E402
 import image_registry  # noqa: E402
 import ops_deploy  # noqa: E402
 import ops_diagnose  # noqa: E402
+import ops_preflight  # noqa: E402
 import ops_report  # noqa: E402
 import smoke  # noqa: E402
 
@@ -70,6 +73,23 @@ class HostDirectoryTests(unittest.TestCase):
         self.assertEqual(len(sleeps), 1)
         with self.assertRaisesRegex(ValueError, '대기 시간 초과'):
             host_dirs.wait_job(lambda args, data=None: '{}', ['kubectl'], 'demo', 'job-x', timeout=6, interval=3, sleep=sleeps.append)
+
+    def test_wait_job_with_retries_waits_for_the_failed_condition(self):
+        # 재시도하는 Job(minio-init)은 Pod 실패 한 번으로 끝내지 않고 Failed 조건(재시도 소진·기한 초과)에서 멈춘다.
+        retrying = {'spec': {'backoffLimit': 6}, 'status': {'failed': 1, 'active': 1}}
+        failed = {'spec': {'backoffLimit': 6}, 'status': {'failed': 7, 'conditions': [{'type': 'Failed', 'status': 'True'}]}}
+        states = iter([retrying, failed])
+        sleeps = []
+
+        def run(args, data=None):
+            return 'mc: 연결 실패' if 'logs' in args else json.dumps(next(states))
+
+        with self.assertRaisesRegex(ValueError, 'Job 실패: demo/init. mc: 연결 실패'):
+            host_dirs.wait_job(run, ['kubectl'], 'demo', 'init', sleep=sleeps.append)
+        self.assertEqual(len(sleeps), 1)
+        done = {'spec': {'backoffLimit': 6}, 'status': {'conditions': [{'type': 'Complete', 'status': 'True'}]}}
+        host_dirs.wait_job(lambda args, data=None: json.dumps(done), ['kubectl'], 'demo', 'init', sleep=sleeps.append)
+        self.assertEqual(len(sleeps), 1)
 
 
 class AdminEnvironmentTests(unittest.TestCase):
@@ -154,6 +174,33 @@ class SmokeTests(unittest.TestCase):
         self.assertEqual([(item['kind'], item['ok']) for item in checks], [('workload', True), ('http', True), ('tcp', True)])
         self.assertEqual(checks[2]['target'], '192.0.2.5:6380')
 
+    def test_missing_dns_falls_back_to_app_vip_and_passes_when_service_answers(self):
+        app = {'runtime': {'namespace': 'demo'}, 'smoke': {'paths': ['/health']}}
+
+        def kube(args, data=None):
+            if 'ingress' in args:
+                return json.dumps({'items': [{'spec': {'rules': [{'host': 'demo.test'}]}}]})
+            if 'pods' in args:
+                return json.dumps({'items': []})
+            return json.dumps({'items': [{'kind': 'Deployment', 'metadata': {'name': 'web', 'generation': 1},
+                                          'spec': {'replicas': 1, 'template': {'spec': {'containers': [{'image': 'web:1'}]}}},
+                                          'status': {'readyReplicas': 1, 'observedGeneration': 1}}]})
+
+        def fetch(host, path, connect, ca_file):
+            if connect is None:
+                raise socket.gaierror()
+            return 200 if connect == '192.0.2.9' else 503
+
+        checks = smoke.smoke('demo', app, kube, 'demo', fetch=fetch, vip='192.0.2.9')
+        http = next(item for item in checks if item['kind'] == 'http')
+        self.assertTrue(http['ok'] and http['dnsMissing'])
+        self.assertIn('DNS 미등록', http['detail'])
+        failing = smoke.smoke('demo', app, kube, 'demo', fetch=fetch, vip='192.0.2.10')
+        self.assertFalse(next(item for item in failing if item['kind'] == 'http')['ok'])
+        # VIP를 모르면 기존처럼 DNS 실패로 남긴다.
+        unknown = smoke.smoke('demo', app, kube, 'demo', fetch=fetch)
+        self.assertEqual(next(item for item in unknown if item['kind'] == 'http')['detail'], 'DNS 조회 실패')
+
     def test_host_ports_can_be_limited_to_always_listening_ports(self):
         pods = [{'status': {'phase': 'Running', 'hostIP': '192.0.2.5'}, 'spec': {'containers': [{'ports': [
             {'name': 'ftp', 'hostPort': 6380}, {'name': 'passive-0', 'hostPort': 8076}]}]}}]
@@ -162,24 +209,279 @@ class SmokeTests(unittest.TestCase):
         self.assertEqual(state.read_catalog()['apps']['ftp']['smoke']['hostPorts'], ['ftp'])
 
 
+# 변경 전 Makefile이 앱마다 실행하던 명령. 디스패처가 같은 인자를 만드는지 고정한다.
+EXPECTED_COMMANDS = {
+    ('ingress', 'check'): 'deploy/shared/ingress/manage.py check --context ctx --vip-backends ',
+    ('ingress', 'up'): 'deploy/shared/ingress/manage.py up --context ctx --vip-backends ',
+    ('keycloak', 'check'): 'deploy/keycloak/scripts/up.py --context ctx --env R/deploy/keycloak/env/prod.env --check-only',
+    ('keycloak', 'up'): 'deploy/keycloak/scripts/up.py --context ctx --env R/deploy/keycloak/env/prod.env',
+    ('minio', 'check'): 'deploy/minio/scripts/manage.py check --env R/deploy/minio/env/prod.env --context ctx',
+    ('minio', 'up'): 'deploy/minio/scripts/manage.py up --env R/deploy/minio/env/prod.env --context ctx',
+    ('registry', 'check'): 'deploy/registry/scripts/manage.py check --env R/deploy/registry/env/k8s.env --context ctx '
+                           '--push-env R/deploy/registry/env/push-initial.env',
+    ('registry', 'up'): 'deploy/registry/scripts/manage.py up --env R/deploy/registry/env/k8s.env --context ctx '
+                        '--push-env R/deploy/registry/env/push-initial.env',
+    ('airflow', 'check'): 'deploy/airflow/scripts/up.py --context ctx --env R/deploy/airflow/env/k8s.env --tls-source  --check-only',
+    ('airflow', 'up'): 'deploy/airflow/scripts/up.py --context ctx --env R/deploy/airflow/env/k8s.env --tls-source ',
+    ('monitoring', 'check'): 'deploy/monitoring/scripts/manage.py check --env R/deploy/monitoring/env/k8s.env',
+    ('monitoring', 'up'): 'deploy/monitoring/scripts/manage.py deploy --context ctx --env R/deploy/monitoring/env/k8s.env '
+                          '--grafana-env R/deploy/monitoring/env/grafana-initial.env',
+    ('headlamp', 'check'): 'deploy/headlamp/scripts/manage.py check --env R/deploy/headlamp/env/k8s.env',
+    ('headlamp', 'up'): 'deploy/headlamp/scripts/manage.py deploy --context ctx --env R/deploy/headlamp/env/k8s.env',
+    ('ftp', 'check'): 'deploy/ftp/scripts/up.py --check-only',
+    ('ftp', 'up'): 'deploy/ftp/scripts/up.py',
+    ('portal', 'check'): 'deploy/portal/scripts/up.py --context ctx --api-env R/deploy/portal/env/prod/api.env '
+                         '--web-env R/deploy/portal/env/prod/web.env --check-only',
+    ('portal', 'up'): 'deploy/portal/scripts/up.py --context ctx --api-env R/deploy/portal/env/prod/api.env '
+                      '--web-env R/deploy/portal/env/prod/web.env',
+}
+
+
+def make_targets():
+    """Makefile의 명시적 타깃과, 패턴 규칙이 카탈로그의 앱마다 제공하는 타깃."""
+    text = (ROOT / 'Makefile').read_text()
+    targets = set(re.findall(r'^([A-Za-z0-9_.-]+):(?!=)', text, re.M))
+    for suffix in re.findall(r'^%-([a-z]+):', text, re.M):
+        targets.update(f'{name}-{suffix}' for name in registry.read_catalog()['apps'])
+    return targets
+
+
 class CatalogTests(unittest.TestCase):
     def test_every_app_declares_steps_that_exist_and_known_dependencies(self):
-        catalog = state.read_catalog()
-        targets = set(re.findall(r'^([A-Za-z0-9_.-]+):(?!=)', (ROOT / 'Makefile').read_text(), re.M))
+        catalog = registry.read_catalog()
+        targets = make_targets()
         for name, app in catalog['apps'].items():
             with self.subTest(app=name):
                 self.assertTrue(set(app['steps']) <= targets, f'Makefile에 없는 단계: {set(app["steps"]) - targets}')
-                for suffix in ('check', 'up', 'smoke'):
+                required = ('check', 'up', 'smoke') if app['runtime'] else ('check', 'up')
+                for suffix in required:
                     self.assertIn(f'{name}-{suffix}', targets)
                     self.assertIn(f'{name}-{suffix}', app['steps'])
                 self.assertTrue(set(app['dependsOn']) <= set(catalog['apps']) - {name})
-                self.assertTrue((ROOT / app['env']['default']).is_file())
-                self.assertTrue(re.search(rf'(?m)^{app["env"]["variable"]} \?=', (ROOT / 'Makefile').read_text()),
-                                f'Makefile에 기본값이 없는 env 변수: {app["env"]["variable"]}')
+                for path in registry.inputs(app, {}).values():
+                    self.assertTrue(Path(path).is_file(), f'기본 입력 파일 없음: {path}')
+                for command in registry.static_commands(app):
+                    for part in command:
+                        if part.startswith(('deploy/', 'apps/')):
+                            self.assertTrue((ROOT / part).exists(), f'정적 검사 대상 없음: {part}')
 
-    def test_default_env_matches_catalog(self):
-        self.assertEqual(state.DEFAULT_ENV['keycloak'], 'deploy/keycloak/env/prod.env')
-        self.assertEqual(set(state.DEFAULT_ENV), set(state.read_catalog()['apps']))
+    def test_check_runs_before_any_step_that_changes_the_cluster(self):
+        # 이미지 빌드·Keycloak client 등록 같은 변경 단계가 검사보다 먼저 실행되지 않는다.
+        for name, app in registry.read_catalog()['apps'].items():
+            self.assertEqual(app['steps'][0], f'{name}-check', name)
+
+    def test_dispatcher_builds_the_same_commands_the_makefile_used(self):
+        catalog = registry.read_catalog()
+        for (name, action), expected in EXPECTED_COMMANDS.items():
+            with self.subTest(app=name, action=action):
+                command = registry.command(catalog['apps'][name], action, 'ctx', environ={})
+                self.assertEqual(command[0], 'python3')
+                self.assertEqual(' '.join(command[1:]).replace(str(ROOT), 'R'), expected)
+
+    def test_environment_variables_select_inputs_for_every_tool(self):
+        app = registry.read_catalog()['apps']['portal']
+        environ = {'PROD_API_ENV_FILE': '/outside/api.env'}
+        command = registry.command(app, 'up', 'ctx', environ=environ)
+        self.assertEqual(command[command.index('--api-env') + 1], '/outside/api.env')
+        self.assertEqual(registry.primary_env(app, environ), '/outside/api.env')
+        self.assertEqual(registry.record_inputs(app, environ), ['/outside/api.env', str(ROOT / 'deploy/portal/env/prod/web.env')])
+        child = registry.child_environment(app, 'ctx', environ)
+        self.assertEqual((child['KUBE_CONTEXT'], child['PROD_API_ENV_FILE']), ('ctx', '/outside/api.env'))
+
+    def test_initial_account_files_are_not_recorded_as_deploy_inputs(self):
+        # Secret이 없을 때만 쓰는 초기 계정 파일을 기록하면, 나중에 파일만 바뀌어도 불일치로 보인다.
+        apps = registry.read_catalog()['apps']
+        self.assertEqual(registry.record_inputs(apps['registry'], {}), [str(ROOT / 'deploy/registry/env/k8s.env')])
+        self.assertEqual(registry.record_inputs(apps['ftp'], {}), [str(ROOT / 'deploy/ftp/env/prod.env')])
+
+    def test_drift_renders_airflow_with_the_flag_deploy_uses(self):
+        # airflow-up은 신규 DAG를 일시정지로 배포한다. 대조 렌더가 다르면 정상 배포도 항상 불일치가 된다.
+        render = registry.command(registry.read_catalog()['apps']['airflow'], 'render', 'ctx', '/out', environ={})
+        self.assertIn('--pause-new-dags', render)
+        for script in ('deploy/airflow/scripts/up.py', 'deploy/airflow/scripts/server.py'):
+            self.assertIn('pause_new_dags=True', (ROOT / script).read_text(), script)
+
+    def test_hosts_come_from_the_selected_env_as_host_or_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / 'demo.env'
+            env.write_text('WEB_URL=https://web.demo.test/path\nAPI_HOST=api.demo.test\nEMPTY=\n')
+            app = {'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}], 'hosts': ['WEB_URL', 'API_HOST', 'EMPTY', 'MISSING']}
+            self.assertEqual(registry.hosts(app, {'DEMO_ENV': str(env)}), ['web.demo.test', 'api.demo.test'])
+
+    def test_catalog_rejects_undeclared_command_variables_and_missing_render(self):
+        base = json.loads((ROOT / 'deploy/shared/apps.json').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'apps.json'
+            broken = json.loads(json.dumps(base))
+            broken['apps']['minio']['commands']['up'].append('{UNDECLARED}')
+            path.write_text(json.dumps(broken))
+            with self.assertRaisesRegex(ValueError, 'UNDECLARED'):
+                registry.read_catalog(path)
+            broken = json.loads(json.dumps(base))
+            del broken['apps']['minio']['commands']['render']
+            path.write_text(json.dumps(broken))
+            with self.assertRaisesRegex(ValueError, 'commands.render'):
+                registry.read_catalog(path)
+
+    def test_no_shared_tool_branches_on_an_app_name(self):
+        # 앱을 추가할 때 공용 도구를 고치지 않도록, 카탈로그를 읽는 도구에는 앱 이름 문자열을 두지 않는다.
+        names = [name for name in registry.read_catalog()['apps'] if name != 'ingress']
+        for script in ('catalog.py', 'app.py', 'deploy_state.py', 'ops_deploy.py', 'ops_preflight.py', 'ops_diagnose.py', 'smoke.py'):
+            code = re.sub(r'"""(?:.|\n)*?"""|#.*', '', (SCRIPTS / script).read_text())
+            found = [name for name in names if re.search(rf"['\"/]{name}['\"/]", code)]
+            self.assertEqual(found, [], f'{script}: 앱 이름 분기')
+
+
+class AppDispatcherTests(unittest.TestCase):
+    def result(self, code=0, stdout=''):
+        return type('Result', (), {'returncode': code, 'stdout': stdout, 'stderr': ''})()
+
+    def test_up_records_the_deploy_only_after_success(self):
+        for code, recorded in ((0, True), (1, False)):
+            calls = []
+
+            def run(argv, **kwargs):
+                calls.append(list(map(str, argv)))
+                return self.result(code if 'record' not in argv else 0)
+
+            self.assertEqual(app_commands.main(['up', 'minio', '--context', 'ctx'], run=run), code)
+            self.assertEqual(any('record' in call for call in calls), recorded)
+            if recorded:
+                record = next(call for call in calls if 'record' in call)
+                self.assertEqual(record[record.index('--input') + 1], str(ROOT / 'deploy/minio/env/prod.env'))
+
+    def test_check_never_records_and_missing_context_stops_before_running(self):
+        calls = []
+        run = lambda argv, **kwargs: calls.append(argv) or self.result()
+        self.assertEqual(app_commands.main(['check', 'minio', '--context', 'ctx'], run=run), 0)
+        self.assertEqual(len(calls), 1)
+        calls.clear()
+        with patch.dict('os.environ', {'KUBE_CONTEXT': ''}):
+            self.assertEqual(app_commands.main(['up', 'minio', '--context', ''], run=run), 1)
+        self.assertEqual(calls, [])
+
+    def test_unknown_app_is_rejected(self):
+        self.assertEqual(app_commands.main(['up', 'unknown', '--context', 'ctx'], run=lambda *a, **k: self.result()), 1)
+
+    def test_render_saves_stdout_or_returns_declared_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = lambda argv, **kwargs: self.result(stdout='{"kind": "List", "items": []}')
+            apps = registry.read_catalog()['apps']
+            files = app_commands.render(apps['minio'], 'ctx', directory, {}, run)
+            self.assertEqual([path.name for path in files], ['minio.json'])
+            self.assertIn('"List"', files[0].read_text())
+            files = app_commands.render(apps['airflow'], 'ctx', directory, {}, run)
+            self.assertEqual([path.relative_to(directory).as_posix() for path in files],
+                             ['airflow/airflow.yaml', 'airflow/storage.json', 'airflow/postgres.json'])
+
+    def test_settings_only_app_has_no_smoke_or_record(self):
+        calls = []
+        run = lambda argv, **kwargs: calls.append(argv) or self.result()
+        self.assertEqual(app_commands.main(['smoke', 'iam', '--context', 'ctx'], run=run), 0)
+        self.assertEqual(app_commands.record('iam', 'ctx', {}, run), 0)
+        self.assertEqual(calls, [])
+
+
+class PreflightTests(unittest.TestCase):
+    def test_registered_host_passes_and_missing_dns_does_not_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / 'demo.env'
+            env.write_text('WEB_HOST=web.demo.test\n')
+            app = {'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}], 'hosts': ['WEB_HOST']}
+            with patch.dict('os.environ', {'DEMO_ENV': str(env)}):
+                found = ops_preflight.check_hosts(app, ['kubectl'], 'ctx', registered=lambda host: True, lookup=lambda host: False)
+        self.assertEqual([entry['state'] for entry in found], [ops_preflight.OK, ops_preflight.INFO])
+        self.assertEqual(ops_preflight.blocking(found), [])
+        self.assertIn('#dns', found[1]['reference'])
+
+    def test_unregistered_host_with_matching_files_becomes_a_register_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / 'demo.env'
+            env.write_text('WEB_HOST=web.demo.test\n')
+            app = {'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}], 'hosts': ['WEB_HOST']}
+            files = (Path(directory) / 'site/fullchain.crt', Path(directory) / 'site/private.key')
+            with patch.dict('os.environ', {'DEMO_ENV': str(env)}):
+                ready = ops_preflight.check_hosts(app, ['kubectl'], 'ctx', registered=lambda host: False,
+                                                  lookup=lambda host: True, find=lambda host: files)
+                missing = ops_preflight.check_hosts(app, ['kubectl'], 'ctx', registered=lambda host: False,
+                                                    lookup=lambda host: True, find=lambda host: None)
+        self.assertEqual(ready[0]['state'], ops_preflight.ACTION)
+        self.assertEqual(ready[0]['command'][:4], ['make', 'ingress-tls-up', 'KUBE_CONTEXT=ctx', 'TLS_HOST=web.demo.test'])
+        self.assertEqual(missing[0]['state'], ops_preflight.BLOCKED)
+        self.assertIn('#인증서-발급', missing[0]['reference'])
+
+    def test_certificate_files_are_matched_by_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for site in ('a.test', 'b.test'):
+                (Path(directory) / site).mkdir()
+                (Path(directory) / site / 'fullchain.crt').write_text(site)
+                (Path(directory) / site / 'private.key').write_text('key')
+            (Path(directory) / 'ca').mkdir()
+
+            def validate(host, certificate, key):
+                if certificate != 'b.test':
+                    raise ValueError('다른 인증서')
+
+            found = ops_preflight.certificate_files('x.b.test', validate, directory)
+            self.assertEqual(found[0].parent.name, 'b.test')
+            self.assertIsNone(ops_preflight.certificate_files('x.b.test', lambda *a: (_ for _ in ()).throw(ValueError()), directory))
+
+    def test_prepare_runs_actions_and_turns_failures_into_blockers(self):
+        results = [ops_preflight.item('chart', ops_preflight.ACTION, '없음', command=['make', 'demo-fetch-chart']),
+                   ops_preflight.item('공용 TLS', ops_preflight.ACTION, '등록', command=['make', 'ingress-tls-up']),
+                   ops_preflight.item('DNS', ops_preflight.INFO, '없음')]
+        executed = []
+
+        def execute(command):
+            executed.append(command)
+            return ('fetch-chart' in command[1], 'chart 준비 완료' if 'fetch-chart' in command[1] else '오류: 인증서와 공개 도메인이 다릅니다.')
+
+        with patch('builtins.print'):
+            ops_preflight.prepare(results, execute)
+        self.assertEqual(len(executed), 2)
+        self.assertEqual([entry['state'] for entry in results], [ops_preflight.OK, ops_preflight.BLOCKED, ops_preflight.INFO])
+        self.assertIn('공개 도메인이 다릅니다', results[1]['detail'])
+        self.assertEqual(len(ops_preflight.blocking(results)), 1)
+
+    def test_successful_preparation_is_followed_by_a_fresh_evaluation(self):
+        # chart를 받은 뒤에야 할 수 있는 검사(정적 검사·앱 검사)가 준비 뒤에 다시 평가된다.
+        first = [ops_preflight.item('저장소 원본', ops_preflight.INFO, 'chart를 받은 뒤 검사합니다.'),
+                 ops_preflight.item('chart', ops_preflight.ACTION, '없음', command=['make', 'demo-fetch-chart'])]
+        second = [ops_preflight.item('저장소 원본', ops_preflight.OK, '통과'), ops_preflight.item('chart', ops_preflight.OK, '있음'),
+                  ops_preflight.item('앱 검사', ops_preflight.OK, '통과')]
+        with patch.object(ops_preflight, 'collect', side_effect=[first, second]) as collect, \
+                patch.object(ops_preflight, 'run_quiet', return_value=(True, 'chart 준비 완료')), patch('builtins.print'):
+            results = ops_preflight.evaluate('demo', {}, 'ctx', run_prepare=True)
+        self.assertEqual(collect.call_count, 2)
+        self.assertEqual(ops_preflight.blocking(results), [])
+
+    def test_failed_preparation_keeps_its_reason_and_is_not_reevaluated(self):
+        first = [ops_preflight.item('chart', ops_preflight.ACTION, '없음', command=['make', 'demo-fetch-chart'])]
+        with patch.object(ops_preflight, 'collect', return_value=first) as collect, \
+                patch.object(ops_preflight, 'run_quiet', return_value=(False, '오류: 미러에 chart가 없습니다')), patch('builtins.print'):
+            results = ops_preflight.evaluate('demo', {}, 'ctx', run_prepare=True)
+        self.assertEqual(collect.call_count, 1)
+        self.assertIn('자동 준비 실패: 오류: 미러에 chart가 없습니다', results[0]['detail'])
+        # 조회만 요청하면 준비 명령을 실행하지 않는다.
+        with patch.object(ops_preflight, 'collect', return_value=[ops_preflight.item('chart', ops_preflight.ACTION, '없음', command=['x'])]), \
+                patch.object(ops_preflight, 'run_quiet') as execute:
+            ops_preflight.evaluate('demo', {}, 'ctx')
+        execute.assert_not_called()
+
+    def test_app_check_failure_reports_the_tool_error_not_the_make_error(self):
+        output = '검사 시작\n오류: keycloak-runtime: 기존 Secret과 입력이 다릅니다.\n\n'
+        with patch.object(ops_preflight, 'run_quiet', return_value=(False, output)) as execute:
+            entry = ops_preflight.check_app('keycloak', 'ctx')
+        self.assertEqual(entry['state'], ops_preflight.BLOCKED)
+        self.assertIn('기존 Secret과 입력이 다릅니다', entry['detail'])
+        self.assertNotIn('make', execute.call_args.args[0][0])
+
+    def test_references_point_to_sections_of_the_access_table(self):
+        access = (ROOT / ops_preflight.ACCESS).read_text()
+        slugs = {re.sub(r'[^\w\- ]', '', heading.strip().lower()).replace(' ', '-') for heading in re.findall(r'(?m)^#+\s+(.*)$', access)}
+        source = (SCRIPTS / 'ops_preflight.py').read_text()
+        for anchor in re.findall(r"\{ACCESS\}#([^'\"]+)", source):
+            self.assertIn(anchor, slugs, f'접근 경로 표에 없는 절: {anchor}')
 
 
 class DeployStateInputTests(unittest.TestCase):
@@ -211,7 +513,7 @@ class DeployStateInputTests(unittest.TestCase):
 
 class OpsDeployTests(unittest.TestCase):
     def test_stops_at_first_failed_step_without_drift_check(self):
-        catalog = {'apps': {'demo': {'steps': ['demo-check', 'demo-up', 'demo-smoke'], 'dependsOn': []}}}
+        catalog = {'apps': {'demo': {'steps': ['demo-check', 'demo-up', 'demo-smoke'], 'dependsOn': [], 'runtime': {'namespace': 'demo'}}}}
         calls = []
 
         def run(command, **kwargs):
@@ -225,9 +527,40 @@ class OpsDeployTests(unittest.TestCase):
         self.assertTrue(all('KUBE_CONTEXT=ctx' in call for call in calls))
 
     def test_reports_drift_result_after_all_steps(self):
-        catalog = {'apps': {'demo': {'steps': ['demo-up'], 'dependsOn': []}}}
+        catalog = {'apps': {'demo': {'steps': ['demo-up'], 'dependsOn': [], 'runtime': {'namespace': 'demo'}}}}
         run = lambda command, **kwargs: type('Result', (), {'returncode': 0, 'stdout': '{"resultCode": 1}'})()
         self.assertEqual(ops_deploy.deploy('demo', catalog, 'ctx', run)['driftResultCode'], 1)
+
+    def test_settings_only_app_skips_drift_check(self):
+        catalog = {'apps': {'demo': {'steps': ['demo-check', 'demo-up'], 'dependsOn': [], 'runtime': None}}}
+        calls = []
+        run = lambda command, **kwargs: calls.append(command) or type('Result', (), {'returncode': 0, 'stdout': ''})()
+        summary = ops_deploy.deploy('demo', catalog, 'ctx', run)
+        self.assertEqual((summary['failedStep'], summary['driftResultCode']), (None, 0))
+        self.assertFalse(any('drift-check' in call for call in calls))
+
+    def test_blocked_preflight_stops_before_any_step_and_lists_what_is_needed(self):
+        blocked = ops_preflight.item('공용 TLS demo.test', ops_preflight.BLOCKED, '인증서 파일 필요', reference='access.md#인증서-발급')
+        pending = ops_preflight.item('DNS demo.test', ops_preflight.INFO, 'DNS에 없습니다.', reference='access.md#dns')
+        output = []
+        with patch.object(ops_deploy.preflight, 'evaluate', return_value=[blocked, pending]), \
+                patch.object(ops_deploy, 'deploy') as deploy, patch('builtins.print', side_effect=lambda *a, **k: output.append(a[0])):
+            code = ops_deploy.main(['keycloak', '--context', 'ctx'])
+        deploy.assert_not_called()
+        summary = json.loads(output[-1])
+        self.assertEqual((code, summary['failedStep']), (1, 'preflight'))
+        self.assertEqual(summary['blocked'][0]['reference'], 'access.md#인증서-발급')
+        self.assertEqual(summary['pending'][0]['item'], 'DNS demo.test')
+
+    def test_ready_preflight_runs_steps_and_keeps_pending_items_in_summary(self):
+        pending = ops_preflight.item('DNS demo.test', ops_preflight.INFO, 'DNS에 없습니다.')
+        done = {'app': 'keycloak', 'blocked': [], 'pending': [], 'steps': [], 'failedStep': None, 'driftResultCode': 0}
+        output = []
+        with patch.object(ops_deploy.preflight, 'evaluate', return_value=[pending]), \
+                patch.object(ops_deploy, 'deploy', return_value=done), patch('builtins.print', side_effect=lambda *a, **k: output.append(a[0])):
+            code = ops_deploy.main(['keycloak', '--context', 'ctx'])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output[-1])['pending'][0]['item'], 'DNS demo.test')
 
 
 class ReportRedactionTests(unittest.TestCase):

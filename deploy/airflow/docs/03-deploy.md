@@ -2,7 +2,7 @@
 
 [Airflow 가이드](../README.md)
 
-설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 Keycloak 로그인 입력과 사람이 하는 확인, 검사·배포 도구의 동작 범위, 도구를 직접 실행하는 방법입니다.
+설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 Keycloak 로그인 입력과 검증, 검사·배포 도구의 동작과 직접 실행 방법을 다룹니다.
 
 - [Keycloak 로그인](#keycloak-로그인)
 - [배포 도구 상세](#배포-도구-상세)
@@ -36,11 +36,11 @@ CA 두 값은 함께 지정하거나 함께 비웁니다. HTTPS 인증서 검증
 ### OIDC CA ConfigMap
 
 `AIRFLOW_OIDC_CA_CONFIGMAP`을 지정한 경우에만 필요합니다. `airflow-up`은 ConfigMap이 없으면 CA 묶음 파일(`AIRFLOW_OIDC_CA_FILE`, 기본 `deploy/shared/certs/<issuer host>/keycloak-ca-bundle.pem`)로 namespace와 ConfigMap을 만듭니다. 기존 ConfigMap은 바꾸지 않습니다.
-CA 묶음은 Keycloak 인증서의 루트·중간 CA를 포함한 PEM이며 [사내 CA 묶음](../../README.md#사내-ca-묶음)의 `make ca-bundle CA_HOST=sso.etch.samsungds.net`이 `deploy/shared/certs/ca/`의 사내 CA로 만듭니다.
+CA 묶음은 Keycloak 인증서의 루트·중간 CA를 포함한 PEM이며 [사내 CA 묶음](../../README.md#사내-ca-묶음)의 `make ca-bundle CA_HOST=sso.etch.samsungds.net`이 `deploy/shared/certs/ca/`의 사내 CA로 만듭니다. 묶음이 없으면 `make ops-deploy`의 준비 검사가 같은 명령으로 만듭니다.
 ConfigMap과 CA 파일이 모두 없으면 사전 검사가 중단합니다.
 ConfigMap의 `ca.crt` 키가 Pod의 `/etc/airflow/oidc-ca/ca.crt`로 읽기 전용 마운트됩니다.
 
-[변경] CA를 교체하거나 [직접 deploy](#직접-deploy와-helm-override) 전에 ConfigMap을 미리 만들 때만 아래 명령을 씁니다.
+[변경] CA를 교체하거나 [직접 deploy](#직접-deploy와-helm-override) 전에 ConfigMap을 미리 만들 때만 아래 명령을 씁니다. `<Keycloak CA 묶음 PEM 절대 경로>`의 기본 파일은 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
 
 ```bash
 openssl crl2pkcs7 -nocrl -certfile <Keycloak CA 묶음 PEM 절대 경로> | openssl pkcs7 -print_certs -noout
@@ -57,42 +57,53 @@ CA를 갱신한 뒤 [가이드 B](../README.md#b-업데이트)의 env 변경과 
 
 ### client 등록
 
-`airflow` client는 기존 `portal` client와 별도로 관리합니다. `make airflow-keycloak-client`(`make ops-deploy APP=airflow`의 한 단계)가 client를 만들므로 관리자 화면에서 미리 만들 필요는 없습니다.
+`airflow` client는 기존 `portal` client와 별도로 관리합니다. `make ops-deploy APP=airflow`의 `airflow-keycloak-client` 단계가 client를 만들므로 관리자 화면에서 미리 만들 필요는 없습니다.
+
+[변경] 등록만 따로 실행할 때 관리 호스트 저장소 루트에서 실행합니다. 클러스터에는 접속하지 않고 Keycloak 공개 주소의 관리 API만 호출합니다.
+
+```bash
+make airflow-keycloak-client
+```
+
+성공: `Airflow client·역할·mapper 등록 완료`. 다시 실행해도 같은 결과입니다.
+실패: `Airflow client 등록 실패. 관리자 접속·입력·기존 client secret 일치를 확인하세요.`만 출력되고 세부 원인은 나오지 않습니다. 아래 순서로 원인을 가립니다.
+
+1. [조회] `getent hosts sso.etch.samsungds.net`에 출력이 없으면 관리 호스트가 Keycloak 공개 주소를 찾지 못한 것입니다. [DNS](../../shared/docs/infrastructure/access.md#dns) 절로 등록한 뒤 다시 실행합니다.
+2. [조회] `make keycloak-smoke KUBE_CONTEXT="<context>"`가 실패하면 Keycloak이나 인증서 문제입니다. [Keycloak 가이드](../../keycloak/README.md#문제-해결과-멈춤-조건)를 따릅니다. 사내 CA 묶음이 없으면 [사내 CA 묶음](../../README.md#사내-ca-묶음)을 만듭니다.
+3. 둘 다 정상이면 관리자 계정이 `KEYCLOAK_ENV`와 다르거나 기존 client의 secret이 env와 다른 것입니다. 아래 설명으로 대조합니다.
 
 - 신규 client는 `deploy/airflow/env/k8s.env`에 준비된 `AIRFLOW_OIDC_CLIENT_SECRET`으로 등록합니다.
-- [사람] 이미 client가 있으면 Keycloak 관리자 화면의 realm → Clients → airflow → Credentials에서 기존 Client secret을 확인해 env에 입력하며 재생성하지 않습니다.
+- 이미 client가 있으면 기존 Client secret을 유지합니다. env의 `AIRFLOW_OIDC_CLIENT_SECRET`이 기존 값과 다르면 등록이 중단됩니다. [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 기존 secret을 확인하고(관리자 화면에서는 realm → Clients → airflow → Credentials), [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 env에 같은 값을 넣습니다. secret을 회전하거나 client를 지우지 않습니다.
 - 기본 입력은 `deploy/airflow/env/k8s.env`이며 다른 파일은 `AIRFLOW_ENV=/절대경로/k8s.env`로 등록·검사·배포에 같게 전달합니다.
 
-성공: `Airflow client·역할·mapper 등록 완료`.
 등록기는 master realm의 admin-cli로 인증한 뒤 대상 realm의 전용 client만 관리합니다. Authorization Code + PKCE S256, RS256 ID Token,
 profile·email scope, Viewer·User·Admin client 역할과 역할 mapper를 설정합니다. 기존 client secret이 env와 다르면 중단하며 회전하지 않습니다.
 사용자 역할·다른 앱 client는 유지하고 운영 사용자에게 권한을 자동 부여하지 않습니다.
 
-등록 명령은 `KEYCLOAK_ENV`(기본 `deploy/keycloak/env/prod.env`)의 공개 주소와 관리자 계정을 자동으로 사용합니다. 실행 입력의 의미는 다음과 같습니다.
+등록 명령은 `KEYCLOAK_ENV`(기본 `deploy/keycloak/env/prod.env`)의 공개 주소와 관리자 계정을 읽어 등록기에 아래 환경변수로 넘깁니다. 비밀번호는 env 파일에서 읽으며 명령줄에 쓰지 않습니다.
 
 | 실행 입력 | 현재 선언 | 확인 범위 |
 | --- | --- | --- |
-| `KEYCLOAK_ADMIN_URL` | `https://sso.etch.samsungds.net` | `/realms/etch`·`/admin`을 붙이지 않음. 명시적 localhost port-forward 주소도 허용 |
-| `KEYCLOAK_ADMIN_USERNAME` | `etch-admin` | 초기 관리자 선언. 서버에서 바꿨다면 실제 관리자 계정 사용 |
-| `KEYCLOAK_ADMIN_PASSWORD` | 세 값을 모두 지정하지 않으면 `KEYCLOAK_ENV`의 `bootstrap-admin-password` | Airflow 관리자 비밀번호·OIDC client secret과 구분 |
-| `KEYCLOAK_ADMIN_CA_BUNDLE` | 필요할 때만 | 관리 호스트의 CA 파일 경로. Airflow Pod 내부 CA 경로와 구분 |
+| `KEYCLOAK_ADMIN_URL` | `KEYCLOAK_ENV`의 `keycloak-public-url`(`https://sso.etch.samsungds.net`) | `/realms/etch`·`/admin`을 붙이지 않음. 명시적 localhost port-forward 주소도 허용 |
+| `KEYCLOAK_ADMIN_USERNAME` | `KEYCLOAK_ENV`의 `bootstrap-admin-username`(`etch-admin`) | 초기 관리자 선언. 서버에서 바꿨다면 실제 관리자 계정 사용 |
+| `KEYCLOAK_ADMIN_PASSWORD` | `KEYCLOAK_ENV`의 `bootstrap-admin-password` | Airflow 관리자 비밀번호·OIDC client secret과 구분 |
+| `KEYCLOAK_ADMIN_CA_BUNDLE` | `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`이 있으면 자동 지정 | 관리 호스트의 CA 파일 경로. Airflow Pod 내부 CA 경로와 구분 |
 
-[사람] 다른 관리자 계정을 쓸 때만 아래처럼 주소·계정·비밀번호를 모두 직접 지정합니다. 하나라도 지정하면 `KEYCLOAK_ENV`의 값은 쓰지 않습니다.
+`KEYCLOAK_ADMIN_URL`·`KEYCLOAK_ADMIN_USERNAME`·`KEYCLOAK_ADMIN_PASSWORD` 중 하나라도 환경변수로 지정돼 있으면 `KEYCLOAK_ENV`의 값은 쓰지 않습니다. 이 세 변수를 명령에 직접 붙이지 않습니다.
+
+[변경] 실제 관리자 계정이 `deploy/keycloak/env/prod.env`와 다를 때만 씁니다. 그 계정의 `keycloak-public-url`·`bootstrap-admin-username`·`bootstrap-admin-password` 세 키를 `키=값` 형식으로 담은 파일을 저장소 밖에 권한 0600으로 두고([Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api)의 계정 위치), 그 경로를 `KEYCLOAK_ENV`로 지정합니다. 다른 CA 파일이 필요하면 같은 명령에 `KEYCLOAK_ADMIN_CA_BUNDLE=<CA 파일 절대 경로>`를 붙입니다.
 
 ```bash
-export KEYCLOAK_ADMIN_URL=https://sso.etch.samsungds.net
-export KEYCLOAK_ADMIN_USERNAME=etch-admin
-read -r -s -p 'Keycloak 관리자 비밀번호: ' KEYCLOAK_ADMIN_PASSWORD; echo; export KEYCLOAK_ADMIN_PASSWORD
-# 실행 호스트에 사내 CA가 필요하면 KEYCLOAK_ADMIN_CA_BUNDLE에 실제 파일 경로를 export합니다.
-make airflow-keycloak-client
-unset KEYCLOAK_ADMIN_PASSWORD
+make airflow-keycloak-client KEYCLOAK_ENV=<관리자 계정 env의 절대 경로>
 ```
 
-[사람] 관리자 UI에서 필요한 사용자에게 `airflow`의 `Admin` 또는 `User`를 부여합니다. 조회 사용자는 별도 할당이 필요 없으며 `portal` client의 역할은 Airflow 권한이 아닙니다.
+성공: `Airflow client·역할·mapper 등록 완료`. `make ops-deploy`로 배포할 때도 같은 `KEYCLOAK_ENV=<경로>`를 붙입니다.
+
+[변경] 권한 부여가 요청 범위에 있을 때 [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 대상 사용자에게 `airflow` client의 `Admin` 또는 `User` 역할을 부여합니다. 역할 부여용 Make 타깃은 없으므로 그 절의 Admin REST API 호출 방식을 씁니다. 조회 사용자는 별도 할당이 필요 없으며 `portal` client의 역할은 Airflow 권한이 아닙니다. 부여 결과는 대상 사용자의 다음 로그인에서 [로그인 확인](#로그인과-앱-간-호출-확인)으로 검증합니다.
 
 ### 로그인과 앱 간 호출 확인
 
-배포를 마친 뒤 Airflow 로그인 화면의 Keycloak 버튼으로 확인합니다.
+배포를 마친 뒤 Airflow 로그인 화면의 Keycloak 버튼으로 확인합니다. 브라우저가 필요한 항목은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법을 따릅니다.
 
 - 기본 사용자는 DAG 조회만 되고 관리 작업은 거부됩니다. 관리자는 관리 화면에 접근합니다.
 - User·Admin 역할 제거 후 새 로그인에서 Viewer로 돌아갑니다.
@@ -114,13 +125,14 @@ Airflow PVC·Secret이 남아 있다면 새 설치로 간주하지 말고 연결
 
 ### 검사 범위
 
-모두 [검사]이며 클러스터를 변경하지 않고 chart를 자동 다운로드하지 않습니다.
+모두 [검사]이며 클러스터를 변경하지 않고 chart를 내려받지 않습니다. chart가 없으면 준비 검사가 `[자동 준비]`로 표시하고 `make ops-deploy`가 받습니다.
 
 | 명령 | 범위 | 성공 문구 |
 | --- | --- | --- |
-| `make server-check APP=airflow PROFILE=prod` | 저장소 env 구조와 고정 chart의 렌더. 클러스터에 연결하지 않음 | `Airflow Helm·PostgreSQL 원본 검사 통과` |
+| `make ops-preflight APP=airflow KUBE_CONTEXT="<context>"` | 접속, 저장소 원본, 먼저 필요한 앱, 입력 파일, chart, CA 묶음, 빌드 도구, 공용 TLS, DNS와 아래 `airflow-check` | `준비 검사 결과: 배포 가능` |
+| `make server-check APP=airflow PROFILE=prod` | 저장소 env 구조와 고정 chart의 렌더. 클러스터에 연결하지 않음 | `서버 원본 검사 통과: airflow` |
 | `python3 deploy/airflow/scripts/manage.py check --env deploy/airflow/env/k8s.env --pause-new-dags` | 실제 입력의 자리표시자·비밀값 길이·URL·Fernet 키 형식. 클러스터에 연결하지 않음 | `Airflow Helm·PostgreSQL 원본 검사 통과` |
-| `make airflow-check KUBE_CONTEXT="<context>"` | 아래 클러스터 사전 검사 | `설정·차트·기존 리소스·TLS·배치 검사 통과` |
+| `make airflow-check KUBE_CONTEXT="<context>"` | 아래 클러스터 사전 검사 | `설정·차트·기존 리소스·TLS·배치 검사 통과`와 `이미지 변경:` 줄 |
 
 오류에 표시된 env 키는 [환경설정](01-prepare.md#환경설정)에서 보완합니다. `airflow-check`의 확인 항목은 다음과 같습니다.
 
@@ -129,24 +141,25 @@ Airflow PVC·Secret이 남아 있다면 새 설치로 간주하지 말고 연결
 - 기존 `airflow-postgres`·`airflow-fernet` Secret과 env의 일치, 기존 설치 흔적이 있는데 Secret이 없는 경우
 - image pull·ODBC Secret, OIDC CA ConfigMap(없으면 CA 묶음 파일), IngressClass
 - Ingress를 쓸 때 `etch-sso/traefik`과 공용 TLS 인증서의 도메인·만료·개인키 일치
+- 실행 중인 scheduler 이미지와 배포할 이미지의 비교(`이미지 변경:` 줄). [가이드 B](../README.md#b-업데이트)가 이 줄로 승인 필요 여부를 정합니다.
 
-운영 URL `https://airflow.etch.samsungds.net`은 앱별 TLS Secret이 필요 없습니다. 업무 도메인 인증서를
-[공용 TLS 등록](../../README.md#공용-tls-등록)으로 먼저 등록합니다. 등록 도구가 Traefik을 다시 시작하므로 별도 반영은 필요 없고, check가 `공용 TLS 마운트가 없습니다`로 멈출 때만 `make ingress-up`을 실행합니다.
+운영 URL `https://airflow.etch.samsungds.net`은 앱별 TLS Secret이 필요 없습니다. 업무 도메인 인증서는 `make ops-deploy`의 준비 검사가 인증서 파일이 있으면 등록하며, 직접 등록할 때는
+[공용 TLS 등록](../../README.md#공용-tls-등록)을 따릅니다. 등록 도구가 Traefik을 다시 시작하므로 별도 반영은 필요 없고, check가 `공용 TLS 마운트가 없습니다`로 멈출 때만 [공용 Traefik 검사·갱신](../../README.md#공용-traefik-검사갱신)의 `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"`를 실행합니다.
 
 Secret 불일치·누락은 [Secret 복원](04-operations.md#2-secret-복원)을 따릅니다.
 검사 통과 후에도 실제 디스크 권한, 이미지 다운로드, 외부 DB 접속, Portal 연동은 따로 확인합니다.
 
 ### 배포 내용 미리 보기
 
-[검사] 클러스터를 바꾸지 않고 로컬 `deploy/airflow/rendered`에 결과를 씁니다.
+[검사] 클러스터를 바꾸지 않고 현재 checkout과 env로 적용 대상을 파일로 만듭니다. 출력 폴더를 지정하지 않으면 Git이 추적하지 않는 `.tools/render/airflow` 아래에 씁니다.
 
 ```bash
-python3 deploy/airflow/scripts/manage.py render \
-  --env deploy/airflow/env/k8s.env --pause-new-dags \
-  --output deploy/airflow/rendered
+make airflow-render KUBE_CONTEXT="<context>"
 ```
 
-성공: `렌더 완료: Secret 값은 출력 파일에 포함하지 않았습니다.`
+성공: 만든 파일 경로(`.tools/render/airflow/airflow/` 아래의 `airflow.yaml`, `storage.json`, `postgres.json`)가 출력됩니다. 다른 폴더에 쓰려면 `RENDER_OUTPUT=<폴더>`, 저장소 밖 env는 `AIRFLOW_ENV=<경로>`를 같은 명령에 붙입니다.
+`deploy/airflow` 아래에는 출력하지 않습니다. 추적되지 않는 파일이 생기면 배포 상태 대조가 `앱 경로의 미커밋 변경` 경고를 냅니다.
+이 타깃은 `python3 deploy/airflow/scripts/manage.py render --env <env 경로> --pause-new-dags --output <폴더>`를 실행합니다. Helm override를 함께 볼 때는 이 명령에 `--values`를 붙여 직접 실행하며 성공 문구는 `렌더 완료: Secret 값은 출력 파일에 포함하지 않았습니다.`입니다.
 
 | 출력 | 검토할 내용 |
 | --- | --- |
@@ -192,27 +205,32 @@ kubectl --context "<context>" -n airflow get pods,pvc -o wide
 kubectl --context "<context>" -n airflow get ingress
 ```
 
-[사람] 브라우저 접속과 업무 연동은 사람이 확인합니다. Ingress 없이 앱 접속만 분리해 볼 때는 port-forward를 씁니다. 터미널을 점유하는 명령이므로 운영 agent는 실행하지 않습니다.
+[조회] Ingress의 영향을 분리할 때는 API server가 Service로 전달하는 경로로 앱의 health를 직접 조회합니다. 터미널을 점유하지 않고 바로 끝납니다.
 
 ```bash
-kubectl --context "<context>" -n airflow port-forward svc/airflow-api-server 8080:8080
+kubectl --context "<context>" get --raw "/api/v1/namespaces/airflow/services/airflow-api-server:8080/proxy/api/v2/monitor/health"
 ```
 
-port-forward는 터미널을 점유하며 Ctrl+C로 종료합니다. 같은 컴퓨터의 브라우저에서 `http://localhost:8080`에 접속하고,
-원격 서버에서 실행했다면 [사람]이 PC에서 SSH 터널을 연결합니다.
+성공: JSON이 출력되고 DB(`metadatabase`)와 `scheduler`의 `status`가 `healthy`입니다. 이 조회는 성공하는데 `make airflow-smoke KUBE_CONTEXT="<context>"`가 실패하면 원인은 Ingress·공용 Traefik·TLS·DNS 쪽입니다.
 
-```bash
+아래는 PC 브라우저로 같은 Service를 볼 때의 참고입니다. port-forward는 터미널을 점유하고 Ctrl+C로 종료해야 하므로 운영 agent의 절차에는 쓰지 않습니다.
+
+```text
+kubectl --context "<context>" -n airflow port-forward svc/airflow-api-server 8080:8080
 ssh -N -L 8080:127.0.0.1:8080 <port-forward 실행 서버 user@host>
 ```
 
+첫 줄을 실행한 컴퓨터의 브라우저에서 `http://localhost:8080`에 접속하고, 원격 서버에서 실행했다면 접속을 확인할 PC에서 둘째 줄의 SSH 터널을 연결합니다.
+
 HTTPS는 `AIRFLOW_WEBSERVER_BASE_URL`로도 접속합니다. DNS는 Ingress 진입 주소를 가리키며 루트 경로(`/`)를 앱에 그대로 전달합니다.
+화면에서 확인할 항목은 다음과 같으며 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 확인합니다.
 
 1. Keycloak 또는 관리자 계정으로 로그인합니다([로그인 확인](#로그인과-앱-간-호출-확인)).
-2. DAG가 보이고 import 오류가 없는지 확인합니다.
+2. DAG가 보이고 import 오류가 없는지 확인합니다. 클러스터 안에서 조회하는 명령은 [DAG 목록 확인과 활성화](04-operations.md#dag-목록-확인과-활성화)에 있습니다.
 3. 기존 Connection·Variable 복호화와 ODBC 설정을 확인합니다.
 4. Airflow → Portal API 주소와 trigger token을 양쪽에서 맞추고 시험 작업으로 확인합니다.
 5. Portal → Airflow 호출을 쓴다면 아래 Portal 설정을 확인합니다.
-6. 기존 scheduler의 중복 실행이 없는지 확인한 뒤 필요한 DAG만 활성화합니다.
+6. 기존 scheduler의 중복 실행이 없는지 확인한 뒤 필요한 DAG만 [활성화](04-operations.md#dag-목록-확인과-활성화)합니다.
 
 | Portal 설정 | 의미 |
 | --- | --- |
@@ -227,13 +245,23 @@ HTTPS는 `AIRFLOW_WEBSERVER_BASE_URL`로도 접속합니다. DNS는 Ingress 진�
 별도 Ingress controller나 환경별 Helm override가 필요한 경우에만 사용합니다. 이 경로는 공용 Traefik 연결, 인증서 등록, OIDC CA ConfigMap·Worker 폴더·DAG 초기 파일 준비를 하지 않으므로
 controller·라우팅·TLS Secret·imagePullSecret·ODBC Secret, [OIDC CA ConfigMap](#oidc-ca-configmap), [Worker 폴더](01-prepare.md#worker-폴더-직접-준비)를 먼저 준비합니다.
 
-[승인] DB migration을 실행하고 Airflow를 재시작합니다.
+[승인] 이미 운영 중인 Airflow에서는 실행 중 작업이 중단되고 운영 중인 DB에 migration이 실행됩니다. 새 DB의 최초 설치일 때만 [변경]입니다.
 
 ```bash
 python3 deploy/airflow/scripts/manage.py deploy \
   --env deploy/airflow/env/k8s.env --context "<context>" \
   --pause-new-dags
 ```
+
+성공: `Airflow 배포 완료`.
+
+[변경] `make airflow-up`이 아닌 명령으로 배포했으므로 [배포 기록](../../shared/docs/operations/04-drift.md#배포-기록-남기기)을 남깁니다. 저장소 밖 env로 배포했으면 같은 `AIRFLOW_ENV=<경로>`를 붙입니다.
+
+```bash
+make deploy-record APP=airflow KUBE_CONTEXT="<context>"
+```
+
+성공: `배포 기록 저장: airflow/deploy-record-airflow commit=<12자리>`.
 
 `--pause-new-dags`를 생략하면 `helm/values.yaml` 기본값에 따라 **신규 DAG가 활성 상태로 생성**됩니다. 기존 DAG의 일시정지 상태는 어느 경로에서도 유지합니다.
 비밀값 없는 override는 `check`, `render`, `deploy`에 같은 `--values /절대경로/values.yaml`을 전달합니다. Makefile의 airflow-check/up은 override를 전달하지 않습니다.

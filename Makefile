@@ -10,7 +10,8 @@ export KEYCLOAK_SDWTS_CSV KEYCLOAK_USERS_CSV KEYCLOAK_SDWT_CLIENTS KEYCLOAK_SDWT
 PROD_WEB_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/web.env
 PROD_API_ENV_FILE ?= $(CURDIR)/deploy/portal/env/prod/api.env
 KIND_BIN ?= $(CURDIR)/.tools/bin/kind
-APP ?= keycloak
+# 앱을 고르는 타깃은 APP을 명시해야 합니다. 기본값을 두면 지정을 잊은 명령이 한 앱을 바꿉니다.
+APP ?=
 PROFILE ?= prod
 MINIO_ENV ?= $(CURDIR)/deploy/minio/env/prod.env
 REGISTRY_ENV ?= $(CURDIR)/deploy/registry/env/k8s.env
@@ -27,9 +28,9 @@ VIP_BACKENDS ?=
 # 관리 API 도구에 Keycloak env의 관리자 접속 정보를 환경변수로 넘깁니다. KEYCLOAK_ADMIN_URL·USERNAME·PASSWORD 중 하나라도 직접 지정하면 채우지 않습니다.
 KEYCLOAK_ADMIN = python3 deploy/keycloak/scripts/admin_env.py --env "$(KEYCLOAK_ENV)" --
 
-.PHONY: dev down env-check env-profile-key-check prod-profile-env-check \
+.PHONY: dev down env-check env-profile-key-check \
  k8s-tools k8s-render k8s-render-local k8s-render-server k8s-env k8s-up k8s-down k8s-ui server-check \
- test-api check-api makemigrations-check keycloak-check keycloak-up airflow-check airflow-up
+ test-api check-api makemigrations-check
 
 # 기본 개발 환경은 한 PC의 전체 Kubernetes 앱입니다.
 dev: k8s-up
@@ -45,7 +46,7 @@ k8s-platform-smoke:
 k8s-platform-status:
 	python3 local/shared/scripts/k8s_platform.py status
 k8s-platform-rebuild:
-	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s_platform.py rebuild --app "$(APP)"
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s_platform.py rebuild $(if $(APP),--app "$(APP)")
 
 .PHONY: register-reference-users
 register-reference-users:
@@ -71,9 +72,10 @@ keycloak-access-test:
 local-keycloak-dummy:
 	python3 local/keycloak/scripts/seed_org_dummy.py $(if $(filter 1,$(DUMMY_REMOVE)),--remove,$(if $(DUMMY_LINES),--lines $(DUMMY_LINES) --total-users $(or $(DUMMY_TOTAL_USERS),2000),))
 
+# 권한관리 웹용 Keycloak client·그룹 준비. 기본은 dry-run(iam-check)이며 IAM_KEYCLOAK_APPLY=1이면 적용(iam-up)합니다.
 .PHONY: iam-keycloak-setup
 iam-keycloak-setup:
-	python3 deploy/iam/scripts/setup_keycloak.py $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),--apply,)
+	@$(MAKE) --no-print-directory $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),iam-up,iam-check)
 
 .PHONY: iam-workload-dev
 iam-workload-dev:
@@ -172,7 +174,7 @@ k8s-down:
 k8s-check:
 	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py check
 k8s-rebuild:
-	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py rebuild --app "$(APP)"
+	KIND_BIN="$(KIND_BIN)" python3 local/shared/scripts/k8s.py rebuild $(if $(APP),--app "$(APP)")
 k8s-status:
 	python3 local/shared/scripts/k8s.py status
 k8s-health:
@@ -196,21 +198,30 @@ env-profile-key-check:
 server-check:
 	bash ./deploy/shared/scripts/check-server.sh "$(APP)" "$(PROFILE)"
 
-# 준비 검사는 앱 하나의 실제 입력을 검사하고 반입·현장 확인 항목을 보고합니다.
+# 준비 검사는 앱 하나의 배포 준비 상태(접속·원본·선행 앱·입력·chart·CA·빌드 도구·공용 TLS·DNS)를 조회합니다.
+# PREFLIGHT_PREPARE=1이면 저장소 도구로 끝낼 수 있는 준비(chart 받기·CA 묶음·공용 TLS 등록 등)를 실행합니다.
 .PHONY: ops-preflight
-ops-preflight: export PROD_API_ENV_FILE := $(PROD_API_ENV_FILE)
-ops-preflight: export PROD_WEB_ENV_FILE := $(PROD_WEB_ENV_FILE)
 ops-preflight:
-	@python3 deploy/shared/scripts/ops_preflight.py
+	@python3 deploy/shared/scripts/ops_preflight.py "$(APP)" --context "$(KUBE_CONTEXT)" $(if $(filter 1,$(PREFLIGHT_PREPARE)),--prepare) $(if $(filter 1,$(PREFLIGHT_JSON)),--json)
 
-# Portal은 입력 검사·Secret·migration·앱 적용·Traefik 연결을 한 타깃으로 수행합니다.
-.PHONY: portal-check portal-up
-portal-check:
-	python3 deploy/portal/scripts/up.py --context "$(KUBE_CONTEXT)" --api-env "$(PROD_API_ENV_FILE)" --web-env "$(PROD_WEB_ENV_FILE)" --check-only
-
-portal-up:
-	python3 deploy/portal/scripts/up.py --context "$(KUBE_CONTEXT)" --api-env "$(PROD_API_ENV_FILE)" --web-env "$(PROD_WEB_ENV_FILE)" $(if $(filter 1,$(PORTAL_MIGRATE)),--migrate) $(if $(filter 1,$(PORTAL_RETRY_MIGRATE)),--retry-failed)
-	$(call deploy_record,portal,$(PROD_API_ENV_FILE) $(PROD_WEB_ENV_FILE))
+# 앱 공통 타깃: 명령·입력 파일·기록 대상은 deploy/shared/apps.json이 원본이고 deploy/shared/scripts/app.py가 실행합니다.
+#   make <app>-check   입력과 클러스터를 검사하고 변경하지 않음
+#   make <app>-up      배포하고 성공하면 배포 기록을 남김
+#   make <app>-smoke   워크로드 Ready와 공개 주소 응답을 조회. DNS에 없는 host는 APP VIP로 다시 확인
+#   make <app>-render  현재 checkout의 적용 대상을 RENDER_OUTPUT 폴더에 생성
+# 입력 파일은 환경변수(예: AIRFLOW_ENV=/경로)로 바꾸며 같은 값을 검사·배포·대조 명령에 붙입니다.
+# 이름이 같은 명시적 타깃(k8s-up, env-check 등)이 먼저 적용됩니다.
+app = @python3 deploy/shared/scripts/app.py $(1) "$*" --context "$(KUBE_CONTEXT)"
+%-check: FORCE
+	$(call app,check)
+%-up: FORCE
+	$(call app,up)
+%-smoke: FORCE
+	$(call app,smoke) $(if $(filter 1,$(SMOKE_JSON)),--json)
+%-render: FORCE
+	$(call app,render) --output "$(or $(RENDER_OUTPUT),$(CURDIR)/.tools/render/$*)"
+.PHONY: FORCE
+FORCE:
 
 # 이미지 빌드 도구(nerdctl·BuildKit)를 확인·설치합니다. 설치는 비밀번호 없는 sudo가 필요하며 containerd를 재시작하지 않습니다.
 .PHONY: build-tools-check build-tools-install
@@ -237,107 +248,52 @@ CA_HOST ?= sso.etch.samsungds.net
 ca-bundle:
 	@python3 deploy/shared/scripts/ca_bundle.py "$(CA_HOST)"
 
-# 앱별 smoke: 워크로드 Ready와 공개 주소 응답을 조회 전용으로 확인합니다. SMOKE_CONNECT로 DNS 등록 전 접속 주소를 지정합니다.
-smoke = @python3 deploy/shared/scripts/smoke.py $(1) --context "$(KUBE_CONTEXT)" $(if $(2),--env "$(2)") $(if $(filter 1,$(SMOKE_JSON)),--json)
-.PHONY: keycloak-smoke minio-smoke registry-smoke airflow-smoke monitoring-smoke headlamp-smoke ftp-smoke portal-smoke
-keycloak-smoke:
-	$(call smoke,keycloak)
-minio-smoke:
-	$(call smoke,minio)
-registry-smoke:
-	$(call smoke,registry)
-airflow-smoke:
-	$(call smoke,airflow,$(AIRFLOW_ENV))
-monitoring-smoke:
-	$(call smoke,monitoring,$(MONITORING_ENV))
-headlamp-smoke:
-	$(call smoke,headlamp)
-ftp-smoke:
-	$(call smoke,ftp)
-portal-smoke:
-	$(call smoke,portal)
-
 # 앱 하나의 장애 상태(smoke·Pod·PVC·Warning 이벤트·로그 끝)를 한 번에 조회하고 가이드에서 볼 행을 알려 줍니다.
 .PHONY: ops-diagnose
 ops-diagnose:
-	@python3 deploy/shared/scripts/ops_diagnose.py "$(if $(filter command line environment,$(origin APP)),$(APP))" --context "$(KUBE_CONTEXT)"
+	@python3 deploy/shared/scripts/ops_diagnose.py "$(APP)" --context "$(KUBE_CONTEXT)"
 
-# apps.json의 steps를 순서대로 실행하고 배포 상태 대조까지 한 번에 수행합니다. 첫 실패에서 멈추고 JSON 요약을 출력합니다.
+# 준비 검사(자동 준비 포함) → apps.json의 steps → 배포 상태 대조를 한 번에 수행합니다. 첫 실패에서 멈추고 JSON 요약을 출력합니다.
 .PHONY: ops-deploy ops-report ops-redact
 ops-deploy:
-	@python3 deploy/shared/scripts/ops_deploy.py "$(if $(filter command line environment,$(origin APP)),$(APP))" --context "$(KUBE_CONTEXT)"
+	@python3 deploy/shared/scripts/ops_deploy.py "$(APP)" --context "$(KUBE_CONTEXT)" $(if $(filter 1,$(OPS_SKIP_PREFLIGHT)),--skip-preflight)
 
 # 서버 상태를 별칭(deploy/shared/docs/infrastructure/aliases.json)으로 바꾼 고정 양식 보고서를 출력합니다. 서버명·IP·도메인은 포함하지 않습니다.
 ops-report:
-	@python3 deploy/shared/scripts/ops_report.py "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
+	@python3 deploy/shared/scripts/ops_report.py "$(or $(APP),all)" --context "$(KUBE_CONTEXT)" \
 	  $(if $(OPS_REPORT_OUT),--output "$(OPS_REPORT_OUT)") $(if $(filter 1,$(OPS_REPORT_SKIP_DRIFT)),--skip-drift)
 
 # 표준 입력의 텍스트를 같은 별칭 규칙으로 바꿉니다. 추가 확인 결과를 외부로 전달하기 전에 통과시킵니다.
+# KUBE_CONTEXT를 주면 별칭 표에 없는 노드 이름도 가립니다.
 ops-redact:
-	@python3 deploy/shared/scripts/ops_report.py redact
+	@python3 deploy/shared/scripts/ops_report.py redact --context "$(KUBE_CONTEXT)"
 
 # 배포 직후 적용 commit·입력 파일 SHA-256·워크로드를 앱 namespace의 ConfigMap에 기록합니다.
-# 각 *-up 타깃은 성공 후 자동으로 기록하며, 직접 실행한 배포 명령 뒤에는 이 타깃을 실행합니다.
-deploy_record = python3 deploy/shared/scripts/deploy_state.py record $(1) --context "$(KUBE_CONTEXT)" $(foreach f,$(2),--input "$(f)")
+# <app>-up은 성공 후 자동으로 기록합니다. 다른 명령으로 배포했을 때만 실행하며 배포에 쓴 env 변수를 같게 붙입니다.
 .PHONY: deploy-record drift-check
 deploy-record:
-	$(call deploy_record,$(APP),$(RECORD_INPUTS))
+	@python3 deploy/shared/scripts/app.py record "$(APP)" --context "$(KUBE_CONTEXT)"
 
 # 현재 checkout의 배포 정의와 클러스터 상태를 조회 전용으로 대조합니다. APP 생략 시 all, JSON resultCode 0 일치·1 불일치·2 판정 불가.
-# 렌더에는 *-up과 같은 env 변수를 사용합니다. DRIFT_SKIP_MANIFEST=1이면 리소스 비교 없이 기록·상태만 봅니다.
+# 렌더에는 <app>-up과 같은 env 변수를 사용합니다. DRIFT_SKIP_MANIFEST=1이면 리소스 비교 없이 기록·상태만 봅니다.
 drift-check:
-	@python3 deploy/shared/scripts/deploy_state.py check "$(if $(filter command line environment,$(origin APP)),$(APP),all)" --context "$(KUBE_CONTEXT)" \
-	  --env keycloak="$(KEYCLOAK_ENV)" --env minio="$(MINIO_ENV)" --env registry="$(REGISTRY_ENV)" --env airflow="$(AIRFLOW_ENV)" \
-	  --env monitoring="$(MONITORING_ENV)" --env headlamp="$(HEADLAMP_ENV)" --env ftp="$(FTP_ENV)" --vip-backends "$(VIP_BACKENDS)" \
+	@python3 deploy/shared/scripts/deploy_state.py check "$(or $(APP),all)" --context "$(KUBE_CONTEXT)" \
 	  $(if $(filter 1,$(DRIFT_SKIP_MANIFEST)),--skip-manifest) $(if $(filter 1,$(DRIFT_JSON)),--json)
-
-.PHONY: minio-check minio-up minio-render
-minio-check:
-	python3 deploy/minio/scripts/manage.py check --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
-
-minio-up:
-	python3 deploy/minio/scripts/manage.py up --env "$(MINIO_ENV)" --context "$(KUBE_CONTEXT)"
-	$(call deploy_record,minio,$(MINIO_ENV))
-
-minio-render:
-	python3 deploy/minio/scripts/manage.py render --env "$(MINIO_ENV)"
-
-# 사내 이미지 저장소(Zot)는 앱 env 없이 독립 배포합니다.
-.PHONY: registry-check registry-up registry-render
-registry-check:
-	python3 deploy/registry/scripts/manage.py check --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
-
-registry-up:
-	python3 deploy/registry/scripts/manage.py up --env "$(REGISTRY_ENV)" --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
-	$(call deploy_record,registry,$(REGISTRY_ENV))
 
 # push 계정 Secret을 REGISTRY_PUSH_ENV의 계정으로 바꾸고 registry를 다시 시작합니다.
 .PHONY: registry-account-rotate
 registry-account-rotate:
 	python3 deploy/registry/scripts/manage.py rotate-account --context "$(KUBE_CONTEXT)" --push-env "$(REGISTRY_PUSH_ENV)"
+	@python3 deploy/shared/scripts/app.py record registry --context "$(KUBE_CONTEXT)"
 
-registry-render:
-	python3 deploy/registry/scripts/manage.py render --env "$(REGISTRY_ENV)"
-
-# 공용 진입점은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다.
-.PHONY: ingress-check ingress-up ingress-connect ingress-tls-up
+# 공용 진입점(앱 ingress)은 앱 env·앱 소스 없이 준비하고 기존 라우팅·VIP 배치를 보존합니다. 검사·배포는 ingress-check·ingress-up입니다.
+.PHONY: ingress-connect ingress-tls-up
 ingress-tls-up:
 	python3 deploy/shared/ingress/tls.py --context "$(KUBE_CONTEXT)" --host "$(TLS_HOST)" $(if $(TLS_SOURCE),--source "$(TLS_SOURCE)",--cert "$(TLS_CERT_FILE)" --key "$(TLS_KEY_FILE)")
-
-ingress-check:
-	python3 deploy/shared/ingress/manage.py check --context "$(KUBE_CONTEXT)" --vip-backends "$(VIP_BACKENDS)"
-
-ingress-up:
-	python3 deploy/shared/ingress/manage.py up --context "$(KUBE_CONTEXT)" --vip-backends "$(VIP_BACKENDS)"
 
 # Portal overlay의 namespace·권한을 먼저 적용한 뒤 감시 목록만 연결합니다.
 ingress-connect:
 	python3 deploy/shared/ingress/manage.py connect --context "$(KUBE_CONTEXT)" --app "$(APP)"
-
-# Kubernetes 운영 API의 필수값을 확인합니다. 선택 업무 연동은 별도 확인합니다.
-prod-profile-env-check:
-	bash ./deploy/shared/scripts/validate_env_profile_keys.sh portal prod
-	bash ./deploy/shared/scripts/check-env.sh portal prod api "$(PROD_API_ENV_FILE)"
 
 # 로컬 Kubernetes와 새 DB만 종료하며 모든 영속 데이터를 보존합니다.
 down: k8s-down
@@ -352,36 +308,10 @@ check-api:
 makemigrations-check:
 	$(COMPOSE_K8S_CHECK) run --rm -T api makemigrations --check --dry-run
 
-# 앱별 검사는 실제 입력과 기존 클러스터를 확인하되 변경하지 않습니다.
-keycloak-check:
-	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)" --check-only
-
-keycloak-up:
-	python3 ./deploy/keycloak/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)" $(if $(KEYCLOAK_CERTS),--certs "$(KEYCLOAK_CERTS)") --vip-backends "$(VIP_BACKENDS)"
-	$(call deploy_record,keycloak,$(KEYCLOAK_ENV))
-
 # FTP 입력은 셸 코드로 삽입하지 않고 환경변수로 전달합니다. FTP_NODES를 비우면 이미 FTP 라벨이 있는 노드를 사용합니다.
 FTP_ENV ?= $(CURDIR)/deploy/ftp/env/prod.env
 FTP_CREDENTIAL_FILE ?= $(CURDIR)/deploy/ftp/env/initial-account.env
 export KUBE_CONTEXT FTP_NODES FTP_CREDENTIAL_FILE FTP_ENV AIRFLOW_OIDC_CA_FILE
-.PHONY: ftp-check ftp-up ftp-test
-ftp-check:
-	python3 ./deploy/ftp/scripts/up.py --check-only
-
-ftp-up:
-	python3 ./deploy/ftp/scripts/up.py
-	$(call deploy_record,ftp,$(FTP_ENV))
-
-ftp-test:
-	python3 -m unittest discover -s deploy/shared/tests -p 'test_ftp_up.py'
-
-airflow-check:
-	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)" --check-only
-
-airflow-up:
-	python3 ./deploy/airflow/scripts/up.py --context "$(KUBE_CONTEXT)" --env "$(AIRFLOW_ENV)" --tls-source "$(AIRFLOW_TLS_SOURCE)"
-	$(call deploy_record,airflow,$(AIRFLOW_ENV))
-
 # 고정 chart를 사내 미러에서 받아 SHA-256을 검증합니다. 이미 있는 파일은 같은 내용으로 다시 씁니다.
 .PHONY: airflow-fetch-chart monitoring-fetch-chart airflow-secret-restore
 airflow-fetch-chart:
@@ -396,13 +326,10 @@ airflow-secret-restore:
 # Kubernetes 클러스터 모니터링을 독립적으로 검사·배포합니다.
 MONITORING_ENV ?= $(CURDIR)/deploy/monitoring/env/k8s.env
 MONITORING_GRAFANA_ENV ?= $(CURDIR)/deploy/monitoring/env/grafana-initial.env
-.PHONY: monitoring-check monitoring-up
-monitoring-check:
-	python3 ./deploy/monitoring/scripts/manage.py check --env "$(MONITORING_ENV)"
-
-monitoring-up:
-	python3 ./deploy/monitoring/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(MONITORING_ENV)" --grafana-env "$(MONITORING_GRAFANA_ENV)"
-	$(call deploy_record,monitoring,$(MONITORING_ENV))
+# 배포 도구·문서 검사를 한 번에 실행합니다. 클러스터에 접속하지 않습니다.
+.PHONY: deploy-test
+deploy-test:
+	@python3 deploy/shared/scripts/run_tests.py
 
 # 로컬 보조 Compose와 CI 검사의 실행 진입점입니다.
 .PHONY: compose-check build-ci-api test-ci-api check-ci-api makemigrations-ci-check
@@ -462,7 +389,7 @@ audit-docs:
 
 # Keycloak 로그인 방식의 서버 Headlamp를 독립적으로 운영합니다.
 HEADLAMP_ENV ?= $(CURDIR)/deploy/headlamp/env/k8s.env
-.PHONY: headlamp-check headlamp-up headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-oidc-setup headlamp-setup-env
+.PHONY: headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-oidc-setup headlamp-setup-env
 # Keycloak client·관리자 그룹과 Headlamp namespace의 client secret·CA ConfigMap을 준비합니다. HEADLAMP_ADMINS로 관리자 username을 지정합니다.
 headlamp-oidc-setup:
 	$(KEYCLOAK_ADMIN) python3 ./deploy/headlamp/scripts/manage.py oidc-setup --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)" $(if $(HEADLAMP_OIDC_CA_FILE),--ca-file "$(HEADLAMP_OIDC_CA_FILE)") $(if $(HEADLAMP_ADMINS),--admins "$(HEADLAMP_ADMINS)")
@@ -474,11 +401,6 @@ headlamp-oidc-client:
 	@python3 ./deploy/headlamp/scripts/manage.py oidc-client --env "$(HEADLAMP_ENV)"
 headlamp-fetch-chart:
 	python3 ./deploy/headlamp/scripts/manage.py fetch-chart
-headlamp-check:
-	python3 ./deploy/headlamp/scripts/manage.py check --env "$(HEADLAMP_ENV)"
-headlamp-up:
-	python3 ./deploy/headlamp/scripts/manage.py deploy --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)"
-	$(call deploy_record,headlamp,$(HEADLAMP_ENV))
 headlamp-ui:
 	python3 ./deploy/headlamp/scripts/manage.py ui --context "$(KUBE_CONTEXT)"
 

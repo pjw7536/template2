@@ -14,13 +14,17 @@ function render(relative) {
   return yaml.loadAll(result.stdout);
 }
 
-test('Keycloak 스택 원본은 Keycloak 단독 감시 범위와 공용 TLS 저장소를 사용한다', () => {
-  const resources = render('deploy/keycloak/k8s');
+test('공용 ingress 원본은 자기 namespace만 감시하고 공용 TLS 저장소를 사용하며 Keycloak 원본과 분리돼 있다', () => {
+  const resources = render('deploy/shared/ingress');
+  const keycloak = render('deploy/keycloak/k8s');
+  // 공용 Traefik은 ingress 앱만 적용한다. Keycloak 원본에는 Traefik 리소스가 없다.
+  assert.ok(!keycloak.some(r => r.metadata.name === 'traefik' || r.kind === 'IngressClass'));
+  assert.ok(!resources.some(r => r.metadata.name.startsWith('keycloak')));
   const controller = resources.find(r => r.kind === 'Deployment' && r.metadata.name === 'traefik');
   assert.ok(controller.spec.template.spec.containers[0].args.includes('--providers.kubernetesingress.namespaces=etch-sso'));
   assert.equal(controller.spec.replicas, 1);
   assert.ok(!controller.spec.template.spec.containers[0].args.some(a => a.includes('tailwind-internal')));
-  const ingress = resources.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
+  const ingress = keycloak.find(r => r.kind === 'Ingress' && r.metadata.name === 'keycloak');
   assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure');
   assert.equal(ingress.metadata.annotations?.['traefik.ingress.kubernetes.io/router.tls'], 'true');
   assert.equal(ingress.spec.tls, undefined);
@@ -31,11 +35,11 @@ test('Keycloak 스택 원본은 Keycloak 단독 감시 범위와 공용 TLS 저�
   const configName = volume.projected.sources.find(s => s.configMap).configMap.name;
   assert.ok(resources.some(r => r.kind === 'ConfigMap' && r.metadata.name === configName));
   assert.equal(controller.spec.template.spec.containers[0].ports.find(p => p.name === 'websecure').hostPort, 443);
-  assert.ok(!resources.some(r => r.kind === 'Secret'));
+  assert.ok(!resources.some(r => r.kind === 'Secret') && !keycloak.some(r => r.kind === 'Secret'));
 });
 
 test('Portal 후속 연결은 기존 앱·배치를 보존하고 namespace 권한과 일치한다', () => {
-  const keycloak = render('deploy/keycloak/k8s');
+  const keycloak = render('deploy/shared/ingress');
   const portal = render('deploy/portal/k8s/overlays/prod');
   const ingress = portal.find(r => r.kind === 'Ingress');
   assert.equal(ingress.spec.tls, undefined);

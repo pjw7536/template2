@@ -10,12 +10,14 @@ ROOT = Path(__file__).resolve().parents[3]
 SKILLS = ROOT / '.opencode/skills'
 AGENT = ROOT / '.opencode/agents/ops.md'
 COMMON = ROOT / 'deploy/README.md'
+ACCESS = ROOT / 'deploy/shared/docs/infrastructure/access.md'
 # 사람과 저성능 agent가 같은 순서로 찾도록 고정한 앱 가이드의 절 제목.
-REQUIRED_SECTIONS = ('## 한눈에 보기', '## 구성', '## 사람이 하는 일', '## 입력', '## A. 최초 설치', '## B. 업데이트',
+REQUIRED_SECTIONS = ('## 한눈에 보기', '## 구성', '## 사전 준비', '## 입력', '## A. 최초 설치', '## B. 업데이트',
                      '## C. 배포 후 확인', '## 문제 해결과 멈춤 조건', '## 상세 문서')
 # 공통 가이드에서 앱 가이드가 가리키는 절.
 COMMON_SECTIONS = ('### 단계 표시', '## 실행 규칙', '## 앱 설치 순서', '## 모든 작업 공통 시작', '## 공용 TLS 등록', '## 사내 CA 묶음',
-                   '## 공용 Traefik 검사·갱신', '## 이미지 빌드 도구', '## 배포 후 공통 마무리', '## 장애 조회')
+                   '## 공용 Traefik 검사·갱신', '## 이미지 빌드 도구', '## 이미지 빌드와 발행', '## 설치 준비 점검',
+                   '## 배포 후 공통 마무리', '## 장애 조회')
 # 운영 agent가 쓰는 스킬과 각 스킬이 절차의 원본으로 가리켜야 하는 문서 위치.
 SKILL_SOURCES = {
     'server-deploy-routine': 'deploy/README.md',
@@ -26,6 +28,16 @@ SKILL_SOURCES = {
     'infra-record-sync': 'infrastructure/README.md',
 }
 IPV4 = re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])')
+MARKER = re.compile(r'\[(조회|검사|변경|승인)\]')
+# 절차가 아닌 문서는 이 문장으로 표시한다. 운영 agent는 이 문서의 명령을 실행하지 않는다.
+REFERENCE_NOTE = '참고 문서입니다. 운영 agent가 실행하는 절차가 아닙니다.'
+# 접근 방법은 접근 경로 표 한 곳에 적는다. 정의가 없는 표현으로 단계를 쓰지 않는다.
+UNDEFINED_ACCESS = re.compile(r'승인된 [^\n|]{0,24}(경로|입력|계정|파일|수단|세션|채널|위치|데이터|기록|env|값)|관리 경로|보안 입력|입력 채널'
+                              r'|접근 가능한 관리자 세션|허용된 클라이언트 경로')
+# 역할을 나눠 쓰던 표현. 요청 조건은 실행 규칙과 접근 경로 표로 통일한다.
+OLD_ROLES = ('[사람]', '사람이 하는 일', '#사람이-하는-일', '사용자 보고', '사람에게', '사람이 직접', '담당자가', '담당자에게', '담당자는',
+             '운영자가 판단', '운영 agent는 실행하지 않습니다', '현장 확인 필요')
+INTERACTIVE = re.compile(r'(^|[\s;(|])read -[a-z]|(^|[\s;(|])(sudo )?(vi|vim|nano) |\$KUBE_CONTEXT|\$\{KUBE_CONTEXT')
 
 
 def slug(heading):
@@ -38,9 +50,17 @@ def prose(path):
     return re.sub(r'```.*?```', '', path.read_text(), flags=re.S)
 
 
+def catalog():
+    return json.loads((ROOT / 'deploy/shared/apps.json').read_text())['apps']
+
+
 def make_targets():
-    """Makefile에 정의된 타깃 이름을 모은다."""
-    return set(re.findall(r'^([A-Za-z0-9_.-]+):(?!=)', (ROOT / 'Makefile').read_text(), re.M))
+    """Makefile의 명시적 타깃과, 패턴 규칙이 카탈로그의 앱마다 제공하는 타깃."""
+    text = (ROOT / 'Makefile').read_text()
+    targets = set(re.findall(r'^([A-Za-z0-9_.-]+):(?!=)', text, re.M))
+    for suffix in re.findall(r'^%-([a-z]+):', text, re.M):
+        targets.update(f'{name}-{suffix}' for name in catalog())
+    return targets
 
 
 def markdown_files(*folders):
@@ -49,12 +69,42 @@ def markdown_files(*folders):
     return [ROOT / name for name in listed.stdout.split() if name.endswith('.md') and (ROOT / name).is_file()]
 
 
+def procedure_files():
+    """운영 agent가 절차로 읽는 배포 문서. 참고 문서와 개발 agent 지침은 제외한다."""
+    return [path for path in markdown_files('deploy')
+            if path.name != 'AGENTS.md' and REFERENCE_NOTE not in path.read_text()]
+
+
+def bash_blocks(path):
+    """(시작 줄 번호, 블록 앞 문맥, 블록 내용, 절 전체 표시 여부)를 차례로 낸다. 문맥은 같은 절에서 앞 블록 뒤의 본문이다."""
+    whole_section, context, block, start = False, '', None, 0
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            if block is None:
+                block, start, language = [], number, stripped[3:]
+            else:
+                if language in ('bash', 'sh', 'shell', ''):
+                    yield start, context, '\n'.join(block), whole_section
+                block, context = None, ''
+            continue
+        if block is not None:
+            block.append(line)
+        elif line.startswith('#'):
+            whole_section, context = False, ''
+        elif re.search(r'모두 \[(조회|검사)\]입니다', line):
+            whole_section = True
+        else:
+            context += line + '\n'
+
+
 class DeployGuideTests(unittest.TestCase):
     def setUp(self):
-        self.apps = json.loads((ROOT / 'deploy/shared/apps.json').read_text())['apps']
+        self.apps = catalog()
 
     def guide(self, app):
-        return ROOT / f'deploy/{app}/README.md'
+        """앱 가이드는 카탈로그 deployPath의 README다."""
+        return ROOT / self.apps[app]['deployPath'] / 'README.md'
 
     def test_every_app_guide_has_fixed_sections_in_order(self):
         skill = (SKILLS / 'server-deploy-routine/SKILL.md').read_text()
@@ -64,81 +114,87 @@ class DeployGuideTests(unittest.TestCase):
             missing = [section for section, position in zip(REQUIRED_SECTIONS, positions) if position == -1]
             self.assertEqual(missing, [], f'{app}: 가이드 절 누락')
             self.assertEqual(positions, sorted(positions), f'{app}: 가이드 절 순서')
-            self.assertIn(f'deploy/{app}/README.md', skill, f'스킬의 앱 가이드 색인 누락: {app}')
+            self.assertIn(self.guide(app).relative_to(ROOT).as_posix(), skill, f'스킬의 앱 가이드 색인 누락: {app}')
+            self.assertIn(self.guide(app).relative_to(ROOT / 'deploy').as_posix(), COMMON.read_text(), f'공통 가이드의 설치 순서 표 누락: {app}')
 
     def test_common_guide_has_sections_that_app_guides_reference(self):
         text = COMMON.read_text()
         for section in COMMON_SECTIONS:
             self.assertIn('\n' + section + '\n', text, f'공통 가이드 절 누락: {section}')
-        for mark in ('[조회]', '[검사]', '[변경]', '[승인]', '[사람]'):
+        for mark in ('[조회]', '[검사]', '[변경]', '[승인]'):
             self.assertIn(f'| {mark} |', text, f'단계 표시 설명 누락: {mark}')
         self.assertIn('| [변경] | 클러스터·서버를 바꿈 | 바로 실행', text)
+        self.assertIn('표시가 없는 명령 블록은 실행하지 않습니다', text)
         for target in ('make build-tools-check', 'make build-tools-install', 'make ops-preflight ', 'make drift-check '):
             self.assertIn(target, text)
+        # ops-deploy 요약의 필드를 가이드가 모두 설명한다.
+        for field in ('failedStep', 'driftResultCode', 'blocked', 'pending'):
+            self.assertIn(f'`{field}`', text, f'ops-deploy 요약 필드 설명 누락: {field}')
 
     def test_guides_use_single_deploy_entry_and_no_host_specific_values(self):
         for app, entry in self.apps.items():
             text = self.guide(app).read_text()
             self.assertIn(f'make ops-deploy APP={app} KUBE_CONTEXT="<context>"', text, f'{app}: 일괄 배포 명령 누락')
-            self.assertIn(f'make {app}-smoke KUBE_CONTEXT="<context>"', text, f'{app}: smoke 확인 누락')
+            if entry['runtime']:
+                self.assertIn(f'make {app}-smoke KUBE_CONTEXT="<context>"', text, f'{app}: smoke 확인 누락')
             self.assertIsNone(IPV4.search(text), f'{app}: 가이드에 IP 주소')
-            for word in ('kubernetes-admin@kubernetes', '$KUBE_CONTEXT', 'read -r'):
+            for word in ('kubernetes-admin@kubernetes', 'read -r'):
                 self.assertNotIn(word, text, f'{app}: 가이드에 실행 환경에 묶인 표현 {word}')
             # 가이드의 배포 명령 설명은 apps.json의 단계와 같아야 한다.
             for step in entry['steps']:
                 self.assertIn(f'`{step}`', text, f'{app}: 가이드에 없는 배포 단계 {step}')
+            # 저장소 밖 env를 쓰는 변수 이름을 입력 표가 알려 준다.
+            for declared in entry['inputs'][:1]:
+                self.assertIn(f'`{declared["variable"]}`', text, f'{app}: 입력 표에 없는 env 변수 {declared["variable"]}')
         self.assertIsNone(IPV4.search(COMMON.read_text()), '공통 가이드에 IP 주소')
 
-    def test_every_command_block_in_guides_says_who_runs_it(self):
-        # 운영 agent는 표시가 있는 명령만 실행한다. 가이드의 모든 명령 블록은 바로 앞 설명에 단계 표시가 있어야 한다.
-        marker = re.compile(r'\[(조회|검사|변경|승인|사람)\]')
-        for path in (COMMON, *(self.guide(app) for app in self.apps)):
-            whole_section, context = False, ''
-            in_block = False
-            for number, line in enumerate(path.read_text().splitlines(), 1):
-                if line.lstrip().startswith('```'):
-                    if not in_block and line.strip() != '```text':
-                        self.assertTrue(whole_section or marker.search(context),
-                                        f'{path.relative_to(ROOT)}:{number}: 명령 블록 앞에 단계 표시가 없음')
-                    in_block = not in_block
-                    if not in_block:
-                        context = ''
-                    continue
-                if in_block:
-                    continue
-                if line.startswith('#'):
-                    whole_section, context = False, ''
-                elif re.search(r'모두 \[(조회|검사)\]입니다', line):
-                    whole_section = True
-                else:
-                    context += line + '\n'
+    def test_every_command_block_in_procedures_declares_its_effect(self):
+        # 운영 agent는 표시가 없는 명령 블록을 실행하지 않는다. 절차 문서의 모든 명령 블록은 바로 앞 설명에 단계 표시가 있어야 한다.
+        for path in procedure_files():
+            for number, context, _, whole_section in bash_blocks(path):
+                self.assertTrue(whole_section or MARKER.search(context),
+                                f'{path.relative_to(ROOT)}:{number}: 명령 블록 앞에 단계 표시가 없음')
 
-    def test_human_marker_is_used_only_where_agent_must_stop(self):
-        # 사람이 하는 작업은 표시가 없는 것이 기본이다. [사람]은 agent가 멈춰야 하는 자리에만 남긴다.
-        agent_marker = re.compile(r'\[(조회|검사|변경|승인)\]')
-        host_command = re.compile(r'kubectl --context|(^|\s|\|\s*)make [a-z-]|python3 deploy/', re.M)
-        rules = {ROOT / 'deploy/AGENTS.md', COMMON}
-        for path in markdown_files('deploy'):
-            if path in rules:
+    def test_procedures_can_run_without_a_terminal_session(self):
+        # 명령마다 새 셸이 열린다. 입력을 기다리거나 앞 블록에서 정한 변수에 의존하는 명령은 agent가 실행할 수 없다.
+        for path in procedure_files():
+            for number, _, block, _ in bash_blocks(path):
+                found = INTERACTIVE.search(block)
+                self.assertIsNone(found, f'{path.relative_to(ROOT)}:{number}: 대화형 명령 또는 셸 상태 의존 `{found[0].strip() if found else ""}`')
+
+    def test_off_cluster_steps_point_to_the_access_table(self):
+        for path in procedure_files():
+            if path == ACCESS:
                 continue
-            guide = path.name == 'README.md' and path.parent.parent == ROOT / 'deploy'
-            for section in re.split(r'(?m)^(?=#{1,6} )', re.sub(r'```.*?```', lambda m: '\x00' + m[0].replace('\n#', '\n\x01#'), path.read_text(), flags=re.S)):
-                if '[사람]' not in re.sub(r'\x00```.*?```', '', section, flags=re.S):
+            for number, line in enumerate(prose(path).splitlines(), 1):
+                found = UNDEFINED_ACCESS.search(line)
+                self.assertTrue(found is None or 'access.md' in line,
+                                f'{path.relative_to(ROOT)}: 접근 경로 표를 가리키지 않는 표현 `{found[0] if found else ""}`')
+
+    def test_procedures_have_no_stages_reserved_for_people(self):
+        for path in markdown_files('deploy', '.opencode', 'docs/agent'):
+            contents = path.read_text()
+            records = 'deploy/shared/docs/infrastructure' in path.as_posix()
+            for marker in OLD_ROLES:
+                # 인프라 기록의 `담당자` 열과 책임 기록은 운영 정보다.
+                if records and marker.startswith('담당자'):
                     continue
-                title = section.split('\n', 1)[0].strip('# ').strip()
-                where = f'{path.relative_to(ROOT)} "{title}"'
-                if guide:
-                    if title == '사람이 하는 일':
-                        self.assertNotRegex(section, r'(?m)^\| \[사람\] ', f'{where}: 표의 행에 [사람]이 중복됨')
-                    continue
-                prose = re.sub(r'\x00```.*?```', '', section, flags=re.S)
-                blocks = ''.join(re.findall(r'\x00```.*?```', section, flags=re.S))
-                self.assertTrue(agent_marker.search(prose) or host_command.search(blocks),
-                                f'{where}: 사람 작업만 있는 절에는 [사람]을 붙이지 않는다')
+                self.assertNotIn(marker, contents, f'{path.relative_to(ROOT)}: 이전 역할 구분 {marker}')
+
+    def test_prerequisite_rows_say_how_to_confirm_completion(self):
+        # 사전 준비 표의 완료 확인 칸은 실행할 명령이거나 접근 경로·상세 절의 링크다.
+        for app in self.apps:
+            text = self.guide(app).read_text()
+            section = text.split('\n## 사전 준비\n', 1)[1].split('\n## ', 1)[0]
+            rows = [line for line in section.splitlines() if line.startswith('|') and not re.match(r'^\|\s*(-|준비 작업)', line)]
+            for row in rows:
+                cells = [cell.strip() for cell in re.split(r'(?<!\\)\|', row.strip().strip('|'))]
+                self.assertGreaterEqual(len(cells), 2, f'{app}: 사전 준비 행 형식 {row[:40]}')
+                self.assertRegex(cells[-1], r'`[^`]+`|\]\(', f'{app}: 완료 확인에 명령이나 링크가 없음 — {cells[0][:40]}')
 
     def test_app_docs_are_numbered_consecutively(self):
-        for app in self.apps:
-            names = sorted(path.name for path in (ROOT / f'deploy/{app}/docs').glob('*.md'))
+        for app, entry in self.apps.items():
+            names = sorted(path.name for path in (ROOT / entry['deployPath'] / 'docs').glob('*.md'))
             self.assertEqual([name[:3] for name in names], [f'{index:02d}-' for index in range(1, len(names) + 1)], f'{app}: {names}')
 
     def test_make_targets_in_deploy_docs_exist(self):
@@ -180,9 +236,14 @@ class DeployGuideTests(unittest.TestCase):
         for path in (*SKILLS.glob('*/SKILL.md'), AGENT):
             self.assertNotIn('kubernetes-admin@kubernetes', path.read_text(), path.name)
 
-    def test_image_build_is_first_deploy_step_for_built_apps(self):
-        for app in ('airflow', 'portal'):
-            self.assertEqual(self.apps[app]['steps'][0], f'{app}-image')
+    def test_transition_runbook_is_reachable_from_the_start_of_every_task(self):
+        # 이미 배포된 서버가 새 checkout을 받으면 공통 시작에서 전환 런북으로 간다.
+        runbook = ROOT / 'deploy/shared/docs/operations/05-transition.md'
+        self.assertTrue(runbook.is_file())
+        start = COMMON.read_text().split('\n## 모든 작업 공통 시작\n', 1)[1].split('\n## ', 1)[0]
+        self.assertIn('05-transition.md', start)
+        self.assertIn('05-transition.md', (SKILLS / 'server-deploy-routine/SKILL.md').read_text())
+        self.assertIn('## 적용 여부 확인', runbook.read_text())
 
     def test_agent_never_waits_for_approval_by_default(self):
         definition = AGENT.read_text()
@@ -193,8 +254,8 @@ class DeployGuideTests(unittest.TestCase):
         for denied in ('*delete namespace*', '*delete pv*', '*helm*uninstall*', 'git push*', 'git reset*'):
             block = definition.split(f'resource: "{denied}"')[1].split('- action')[0]
             self.assertIn('effect: deny', block, denied)
-        # 같은 문서를 사람도 보므로, agent는 표시가 있는 단계만 실행한다는 경계를 정의에 둔다.
-        self.assertIn('[사람] 단계와 표시가 없는 명령 블록은 실행하지 않는다', definition)
+        self.assertIn('표시가 없는 명령 블록은 실행하지 않는다', definition)
+        self.assertIn('deploy/shared/docs/infrastructure/access.md', definition)
 
     def test_agent_definition_and_skills_use_aliases_only(self):
         table = json.loads((ROOT / 'deploy/shared/docs/infrastructure/aliases.json').read_text())

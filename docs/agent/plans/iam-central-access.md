@@ -49,7 +49,7 @@
 
 수정하지 않을 영역(다음 단계)
 
-- 컨테이너 이미지·`deploy/iam` Kubernetes 정의·`apps.json`·서버 검사·`local/iam` kind 배포
+- 컨테이너 이미지·`deploy/iam` Kubernetes 정의·`local/iam` kind 배포
 - 인사 동기화, 위임 관리, Airflow·Portal 코드 전환과 이전 역할 삭제
 
 ## 설계
@@ -75,8 +75,9 @@
 - [x] 5-2. 소속을 팀 → 라인 → SDWT 계층으로 변경(준비 도구·개발 realm·권한관리 웹), 드롭다운은 팀 → 라인 → SDWT 연결 선택
 - [x] 5-3. 소속·소속별 역할·앱 역할 세 구분으로 확정: `/org` 소속 그룹, client `org` 역할과 `org-claims` scope, FGAP, 웹 전환, `data-all` 제거
 
-- [ ] 6. 배포: 이미지(정적 파일 + env로 만드는 `config.js`), `deploy/iam/k8s`, `apps.json`·`all` 그룹 등록, `check-server.sh` 지원
-  - 등록 전까지 `make audit-layout`이 `apps/iam`·`deploy/iam`을 앱 목록 밖 디렉터리로 보고한다.
+- [ ] 6. 배포: 이미지(정적 파일 + env로 만드는 `config.js`), `deploy/iam/k8s`, `local/iam` kind 배포
+  - 카탈로그 등록은 끝났다: `apps.json`의 `iam`은 Keycloak 설정만 배포하는 설정 전용 앱(`runtime: null`)이며 `make ops-deploy APP=iam`이 `iam-check` → `iam-up`을 실행한다.
+  - 워크로드를 추가할 때 카탈로그의 `runtime`·`commands.render`·`render`·`hosts`·`smoke`와 `steps`의 `iam-smoke`, 가이드(`deploy/iam/README.md`)를 함께 채운다.
 
 후속: Airflow 전환(`oidc_claims.py` 역할 이름)과 이전 역할 삭제, Portal 전환(새 역할·`affiliation`·`org_roles` 해석, 로그인 시점 고정 제거, client `fullScopeAllowed=false`), 인사 동기화, 위임
 

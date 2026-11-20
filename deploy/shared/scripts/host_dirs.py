@@ -70,10 +70,14 @@ def wait_job(run, kube, namespace, name, timeout=300, interval=3, sleep=time.sle
     """Job의 완료 또는 실패 중 먼저 오는 쪽을 기다린다. 실패하면 Pod 로그 끝을 오류에 담아 바로 중단한다."""
     scoped = [*kube, '-n', namespace]
     for _ in range(max(1, timeout // interval)):
-        status = json.loads(run([*scoped, 'get', 'job', name, '-o', 'json'])).get('status', {})
-        if status.get('succeeded'):
+        current = json.loads(run([*scoped, 'get', 'job', name, '-o', 'json']))
+        status = current.get('status', {})
+        conditions = {item.get('type') for item in status.get('conditions', []) if item.get('status') == 'True'}
+        if status.get('succeeded') or 'Complete' in conditions:
             return
-        if status.get('failed'):
+        # 재시도하지 않는 Job은 첫 실패로, 재시도하는 Job은 Failed 조건(재시도 소진·기한 초과)으로 판단한다.
+        retries = current.get('spec', {}).get('backoffLimit', 0)
+        if 'Failed' in conditions or (status.get('failed') and not retries and not status.get('active')):
             try:
                 detail = run([*scoped, 'logs', f'job/{name}', '--tail=20']).strip()
             except ValueError:

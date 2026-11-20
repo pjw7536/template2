@@ -1,10 +1,10 @@
 # 공용 Ingress 운영 기준
 
-[가이드 홈](../README.md#https인증서) · [Traefik 셋업](setup.md) · [Traefik·VIP 확장](expand.md) · [실행 원본](../../ingress/README.md)
+[가이드 홈](../README.md#https인증서) · [ingress 가이드](../../ingress/README.md) · [Traefik 셋업](setup.md) · [Traefik·VIP 확장](expand.md)
 
-여러 앱이 함께 사용하는 공용 Traefik의 배치 보존·TLS·도메인 라우팅·namespace 감시 계약입니다.
-설치·갱신은 [Traefik 셋업](setup.md), 운영 중 backend 추가는 [Traefik·VIP 확장](expand.md)을 따릅니다.
-아래 Make 명령은 관리 호스트의 저장소 루트에서 `KUBE_CONTEXT`를 지정해 실행합니다.
+여러 앱이 함께 사용하는 공용 Traefik(카탈로그 앱 `ingress`)의 배치 보존·TLS·도메인 라우팅·namespace 감시 계약입니다.
+설치·갱신·확인은 [ingress 가이드](../../ingress/README.md), backend를 지정한 설치는 [Traefik 셋업](setup.md), 운영 중 backend 추가는 [Traefik·VIP 확장](expand.md)을 따릅니다.
+아래 Make 명령은 관리 호스트의 저장소 루트에서 `KUBE_CONTEXT="<context>"`를 지정해 실행합니다.
 
 ## 현재 선언
 
@@ -28,7 +28,7 @@
 
 인증서는 `etch-sso/traefik-tls` Secret 한 곳에 보관하며 Traefik이 접속 도메인(SNI)에 맞는 인증서를 선택합니다.
 앱 Ingress에는 `websecure`, `router.tls=true`만 선언하고 `spec.tls.secretName`을 지정하지 않습니다.
-하나의 SAN 인증서를 공유하더라도 실제 사용하는 host별로 [등록·갱신](../certificates/apply.md#2-공용-tls-secret-등록갱신--관리-호스트)합니다.
+하나의 SAN 인증서를 공유하더라도 실제 사용하는 host별로 등록합니다. 앱의 `make ops-deploy`가 준비 검사에서 host마다 자동으로 등록하고, 직접 등록·갱신은 [공용 TLS 등록](../../../README.md#공용-tls-등록)을 따릅니다.
 
 | namespace | Ingress | 공개 주소 |
 | --- | --- | --- |
@@ -49,29 +49,35 @@
 
 ## 앱 namespace 연결
 
-일반 배포에는 [앱별 배포](../../../README.md#앱-설치-순서)의 명령을 사용합니다. 이 도구들은 다른 namespace를 감시 목록에서 제거하지 않으며, 이미 전체 namespace를 감시하면 범위를 좁히지 않습니다.
+일반 배포에는 [앱별 배포](../../../README.md#앱-설치-순서)의 `make ops-deploy APP=<app> KUBE_CONTEXT="<context>"`를 사용합니다. 앱은 자기 `<app>-up` 안에서 자기 namespace를 감시 목록에 더합니다. 이 도구들은 다른 namespace를 감시 목록에서 제거하지 않으며, 이미 전체 namespace를 감시하면 범위를 좁히지 않습니다.
 
 | 명령 | 공용 Ingress에 주는 영향 |
 | --- | --- |
 | `ingress-check` / `ingress-up` | 공용 진입점만 검사·준비. 기존 감시·배치 보존 |
-| `ingress-connect APP=portal` | Portal overlay 적용 후 해당 namespace 감시만 추가 |
-| `keycloak-up` | 기존 namespace 감시 범위 보존 |
-| `airflow-up` | 자기 namespace의 권한과 감시 추가 |
+| `ingress-connect APP=portal` | Portal overlay가 만든 권한을 확인한 뒤 Portal namespace 감시만 추가. `portal-up`이 배포의 마지막에 같은 연결을 수행 |
+| `keycloak-up` | Traefik을 적용하거나 바꾸지 않음. Traefik이 있는지와 공용 TLS를 읽는지만 확인. `KEYCLOAK_CERTS=<폴더>`로 인증서를 함께 등록할 때만 Traefik이 인증서를 다시 읽도록 재시작 |
+| `airflow-up`, `headlamp-up`, `registry-up` | 공용 TLS 검사, 자기 namespace의 권한과 감시 추가 |
 | `minio-up` | 두 host의 TLS 검사, 자기 namespace의 권한·감시 추가 |
 | `monitoring-up` | 최종 렌더에 공용 Ingress가 있으면 TLS·권한 검사, 자기 namespace 감시 추가 |
 
-Portal은 checkout을 `all`로 확장하고 [Portal overlay](../../../portal/k8s/overlays/prod/README.md)를 적용한 뒤 연결합니다.
+감시 연결은 Portal만 별도 명령이 있습니다. Portal의 감시 연결만 다시 해야 할 때 씁니다.
+
+[변경] Portal namespace의 감시를 연결합니다. 감시 인자가 바뀌면 Traefik Pod가 다시 시작됩니다.
 
 ```bash
-make ingress-connect APP=portal KUBE_CONTEXT="$KUBE_CONTEXT"
+make ingress-connect APP=portal KUBE_CONTEXT="<context>"
 ```
 
-**기대 결과:** Portal이 소유한 기존 RBAC를 확인하고 감시 인자만 JSON Patch로 확장합니다. 동시 변경은 resourceVersion으로 검사하며, 이미 연결됐거나 전체 namespace를 감시하면 변경하지 않습니다.
+**기대 결과:** `Portal Ingress 연결 완료. 기존 앱과 Portal 접속을 확인하세요.` 또는 `Portal namespace를 이미 감시합니다. 변경하지 않았습니다.`가 출력됩니다.
+Portal이 소유한 기존 RBAC를 확인하고 감시 인자만 JSON Patch로 확장합니다. 동시 변경은 resourceVersion으로 검사하며, 이미 연결됐거나 전체 namespace를 감시하면 변경하지 않습니다.
+`Portal 라우팅 권한이 부족합니다. Portal overlay를 먼저 적용하세요.`로 끝나면 Portal이 아직 배포되지 않은 것이므로 [Portal 가이드](../../../portal/README.md)의 배포를 먼저 수행합니다.
 
 namespace 감시와 IngressClass 동작은 [Traefik Kubernetes Ingress 설정](https://doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-ingress/)을 참고합니다.
 
 ## 적용 명령과 주의
 
-- ConfigMap·TLS를 포함한 공용 설정 변경은 `make ingress-up`, 인증서는 `make ingress-tls-up`, 앱 배포는 기존 설정을 보존하는 앱별 명령으로 적용합니다.
+- [변경] ConfigMap·TLS 마운트를 포함한 공용 설정의 설치·갱신은 `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"`입니다(준비 검사 → `ingress-check` → `ingress-up` → `ingress-smoke` → 대조). 감시 namespace와 현재 배치를 보존합니다.
+- [승인] backend 노드의 추가·변경은 같은 명령과 `make ingress-check`에 `VIP_BACKENDS=<IP 목록>`을 붙이며 [Traefik·VIP 확장](expand.md)의 백업·검증 순서를 따릅니다. `VIP_BACKENDS`는 `ingress`에만 쓰는 입력입니다.
+- [변경] 인증서는 `make ingress-tls-up`([공용 TLS 등록](../../../README.md#공용-tls-등록)) 또는 앱 배포의 자동 등록으로 적용하고, 앱 배포는 기존 설정을 보존하는 앱별 명령으로 적용합니다.
 - `kubectl apply -k deploy/shared/ingress`를 사용하지 않습니다. 단일 Worker·`etch-sso` 단독 감시 기본값이 적용되어 앱 연결·VIP 배치가 바뀝니다.
-- Keycloak Kustomize 원본(`deploy/keycloak/k8s`)의 Traefik 기본값은 `etch-sso` 단독 감시입니다. `make keycloak-up`은 실행 중인 Traefik의 감시 목록·VIP 배치를 보존해 적용합니다.
+- `make keycloak-up`은 공용 Traefik을 배포하지 않습니다. Traefik이 없으면 `공용 Traefik이 없습니다. make ops-deploy APP=ingress를 먼저 실행하세요.`로 멈춥니다.

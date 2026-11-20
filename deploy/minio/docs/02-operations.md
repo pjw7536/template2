@@ -9,20 +9,28 @@
 
 ## 버킷 초기화 재시도
 
-`minio-init` Job은 300초 안에 완료되어야 하며 이미 있는 버킷은 유지합니다. 기존 Job은 재배포에서 덮어쓰지 않습니다.
+`minio-init` Job은 env의 `MINIO_BUCKETS`를 만들며 이미 있는 버킷은 유지합니다. Job은 300초 안에 완료되어야 하고 `minio-up`은 완료를 330초까지 기다립니다.
+`minio-up`은 실행할 때마다 이전 `minio-init` Job을 지우고 새로 실행합니다(출력 `MinIO 버킷 초기화 대기: job/minio-init`). 버킷 목록을 바꿨거나 초기화가 실패했을 때 Job을 직접 지우지 않고 다시 배포하면 됩니다.
 
-1. 버킷 목록 변경·실패 원인을 해결합니다.
-2. [조회] Job이 Complete 또는 Failed이고 활성 Pod가 없는지 확인합니다. 실행 중인 Job을 중복 실행하지 않습니다.
-   ```bash
-   kubectl --context "<context>" -n minio get job minio-init
-   ```
-3. [변경] 해당 Job만 삭제하고 다시 배포합니다.
-   ```bash
-   kubectl --context "<context>" -n minio delete job minio-init
-   make minio-up KUBE_CONTEXT="<context>"
-   ```
+초기화가 실패하면 `minio-up`이 `Job 실패: minio/minio-init`(뒤에 Job 로그 끝) 또는 `Job 대기 시간 초과: minio/minio-init`으로 끝납니다.
 
-성공: 새 `minio-init`이 `Complete`이며 PVC·버킷 데이터는 삭제되지 않습니다.
+[조회] 원인을 확인합니다.
+
+```bash
+kubectl --context "<context>" -n minio get job minio-init
+kubectl --context "<context>" -n minio logs job/minio-init --tail=50
+kubectl --context "<context>" -n minio describe job minio-init
+```
+
+| 확인 결과 | 조치 |
+| --- | --- |
+| Pod가 `ErrImagePull`·`ImagePullBackOff` | mc 이미지(`MINIO_CLIENT_IMAGE`) 문제. [rollout 진단](#rollout-진단)의 이미지 행 |
+| Job이 기한(300초)을 넘겼고 로그가 `mc alias set` 단계에서 반복 | Job이 `http://minio:9000`에 root 계정으로 접속하지 못함. MinIO Pod가 `Running`인지 [rollout 진단](#rollout-진단)으로 확인 |
+| 로그에 `mc mb`의 오류 | 버킷 생성 실패. 로그의 오류 줄을 그대로 보고에 담음 |
+
+원인을 해결한 뒤 [가이드 B](../README.md#b-업데이트)의 `버킷 초기화 재시도` 행으로 다시 배포합니다.
+
+성공: `공용 MinIO 배포 완료`가 출력되고 새 `minio-init`이 `Complete`입니다. PVC·버킷 데이터는 삭제되지 않습니다.
 
 ## rollout 진단
 
@@ -48,3 +56,4 @@ kubectl --context "<context>" -n minio get events --sort-by=.metadata.creationTi
 | `CrashLoopBackOff` | MinIO Pod 로그·쓰기 권한·디스크 상태 |
 
 mc 이미지 오류는 초기화·폴더 준비 Job 문제이며 서버 Deployment rollout 대기와 구분합니다.
+PVC `Pending`이 풀리지 않거나 PV 재생성이 필요해 보이면 [가이드의 멈춤 조건](../README.md#문제-해결과-멈춤-조건)을 따릅니다.

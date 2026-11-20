@@ -5,6 +5,7 @@ import argparse
 import base64
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -16,7 +17,6 @@ KEYS = ('postgres-password', 'bootstrap-admin-username', 'bootstrap-admin-passwo
 spec = importlib.util.spec_from_file_location('deploy_runtime', ROOT / 'deploy/shared/scripts/runtime.py')
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
-routing = runtime.module('routing', ROOT / 'deploy/shared/ingress/routing.py')
 tls = runtime.module('shared_tls', ROOT / 'deploy/shared/ingress/tls.py')
 host_dirs = runtime.module('shared_host_dirs', ROOT / 'deploy/shared/scripts/host_dirs.py')
 
@@ -63,8 +63,8 @@ def storage_target(desired):
     return node, image, [(volume['spec']['local']['path'], 0, 0, '0700')]
 
 
-def start(context, env, certs=None, vip_backends=None, check_only=False, render_output=None):
-    """입력을 먼저 검증하고 Keycloak 및 소유 ingress만 재적용한다."""
+def start(context, env, certs=None, check_only=False, render_output=None):
+    """입력을 먼저 검증하고 Keycloak 리소스만 재적용한다. 공용 Traefik은 ingress 앱이 소유한다."""
     if not context.strip():
         raise ValueError('--context를 명시하세요.')
     kube = ['kubectl', '--context', context]
@@ -102,20 +102,20 @@ def start(context, env, certs=None, vip_backends=None, check_only=False, render_
                 or reference and (reference.get('name') != 'keycloak-postgres-data'
                                   or reference.get('namespace') != 'etch-sso')):
             raise ValueError('기존 PV가 Released 상태이거나 이전 PVC를 참조합니다. DB·Secret과 PV/PVC 복구 상태를 확인하세요. 도구는 claimRef나 데이터를 변경하지 않습니다.')
-    original = routing.controller(desired)
+    # 공용 Traefik은 `make ops-deploy APP=ingress`가 배포한다. 여기서는 있는지와 공용 TLS를 읽는지만 확인하고 바꾸지 않는다.
     current_json = run([*kube, '-n', 'etch-sso', 'get', 'deployment', 'traefik', '--ignore-not-found', '-o', 'json'])
-    current = json.loads(current_json) if current_json.strip() else None
+    if not current_json.strip():
+        raise ValueError('공용 Traefik이 없습니다. make ops-deploy APP=ingress를 먼저 실행하세요.')
+    tls.check_mount(json.loads(current_json))
     nodes = json.loads(run([*kube, 'get', 'nodes', '-o', 'json']))['items']
-    hostname = original['spec']['template']['spec'].get('nodeSelector', {}).get('kubernetes.io/hostname')
+    server = next(item for item in desired if item['kind'] == 'Deployment' and item['metadata']['name'] == 'keycloak')
+    hostname = server['spec']['template']['spec'].get('nodeSelector', {}).get('kubernetes.io/hostname')
     matches = [node for node in nodes if node['metadata'].get('labels', {}).get('kubernetes.io/hostname') == hostname]
     if len(matches) != 1 or not any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in matches[0].get('status', {}).get('conditions', [])):
         raise ValueError('Keycloak 원본에 지정한 worker가 없거나 Ready가 아닙니다.')
     worker_spec = matches[0].get('spec', {})
     if worker_spec.get('unschedulable') or any(t.get('effect') in ('NoSchedule', 'NoExecute') for t in worker_spec.get('taints', [])):
         raise ValueError('Keycloak worker가 cordon 상태이거나 차단 taint가 있습니다. 배치 가능 여부를 확인하세요.')
-    pods = json.loads(run([*kube, 'get', 'pods', '-A', '-o', 'json']))['items']
-    updated = routing.plan_controller(original, current, vip_backends, nodes, pods)
-    desired = [updated if item is original else item for item in desired]
     if render_output:
         # 배포 상태 대조용: 검사를 모두 통과한 적용 대상만 파일로 남기고 클러스터는 변경하지 않는다.
         Path(render_output).write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}, indent=2))
@@ -138,7 +138,7 @@ def start(context, env, certs=None, vip_backends=None, check_only=False, render_
     run([*kube, 'apply', '-f', '-'], data=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': desired}))
     if certs:
         tls.reload_controller(kube)
-    for workload in ('statefulset/keycloak-postgres', 'deployment/keycloak', 'deployment/traefik'):
+    for workload in ('statefulset/keycloak-postgres', 'deployment/keycloak'):
         run([*kube, '-n', 'etch-sso', 'rollout', 'status', workload, '--timeout=600s'])
     print('Keycloak 배포 완료: ' + settings['keycloak-public-url'])
     print('사내 OIDC 연결과 claim 등록은 별도 Job으로 실행하세요.')
@@ -149,12 +149,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--context', required=True)
     parser.add_argument('--env', type=Path, default=BASE / 'env/prod.env')
-    parser.add_argument('--certs', type=Path, help='이 폴더의 fullchain.crt·private.key를 공용 TLS에 함께 등록')
-    parser.add_argument('--vip-backends')
+    parser.add_argument('--certs', type=Path, default=os.environ.get('KEYCLOAK_CERTS') or None,
+                        help='이 폴더의 fullchain.crt·private.key를 공용 TLS에 함께 등록. 기본은 KEYCLOAK_CERTS 환경변수')
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--render-output', type=Path, help='적용 대상 리소스 JSON을 저장하고 클러스터는 변경하지 않음')
     args = parser.parse_args()
-    start(args.context, args.env, args.certs, args.vip_backends, args.check_only, args.render_output)
+    start(args.context, args.env, args.certs, args.check_only, args.render_output)
 
 
 if __name__ == '__main__':
