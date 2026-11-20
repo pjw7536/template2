@@ -1,4 +1,3 @@
-// 파일 경로: src/components/layout/AppLayout.jsx
 import { useLocation } from "react-router-dom"
 
 import { SidebarLayout } from "./SidebarLayout"

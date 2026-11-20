@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/getLineIds.js
 import { buildBackendUrl } from "@/lib/api"
 
 /* ============================================================================

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/l3-spider/api/l3SpiderApi.js
 // L3 Spider 백엔드 API 요청 유틸입니다.
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

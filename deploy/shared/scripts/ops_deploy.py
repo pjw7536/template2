@@ -39,10 +39,17 @@ def deploy(app_name, catalog, context, run=subprocess.run):
     print('==> make drift-check', flush=True)
     result = run(['make', '--no-print-directory', 'drift-check', f'APP={app_name}', f'KUBE_CONTEXT={context}', 'DRIFT_JSON=1'],
                  cwd=ROOT, capture_output=True, text=True)
+    diagnostic = (result.stderr or result.stdout).strip()
     try:
-        summary['driftResultCode'] = json.loads(result.stdout)['resultCode']
+        code = json.loads(result.stdout)['resultCode']
+        if type(code) is not int or code not in (0, 1, 2) or (code == 0 and result.returncode):
+            raise ValueError('대조 종료 코드와 JSON 결과를 확인할 수 없습니다.')
+        summary['driftResultCode'] = code
+        diagnostic = result.stdout.strip()
     except (ValueError, KeyError, TypeError):
         summary['driftResultCode'] = 2
+    if summary['driftResultCode'] and diagnostic:
+        print(diagnostic, file=sys.stderr, flush=True)
     return summary
 
 

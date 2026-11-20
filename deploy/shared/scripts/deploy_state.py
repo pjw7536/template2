@@ -386,9 +386,10 @@ def read_record(kube, app_name):
 
 
 def compare(app_name, app, record, checkout, current_content, current_dirty, changed_files, workloads, problems,
-            input_digests, manifest=()):
+            input_digests, manifest=(), *, namespace=None):
     """수집한 사실만으로 판정한다. 입출력이 없어 단위 테스트로 검증한다."""
     findings = []
+    namespace = namespace or (record or {}).get('namespace') or app['runtime']['namespace']
 
     def add(level, area, message):
         findings.append({'level': level, 'area': area, 'message': message})
@@ -406,11 +407,15 @@ def compare(app_name, app, record, checkout, current_content, current_dirty, cha
         if record['contentId'] != current_content:
             detail = ', '.join(changed_files[:MAX_LISTED]) if changed_files else '변경 파일 목록 조회 불가(기록 commit이 checkout에 없음)'
             add('drift', 'record', f'마지막 배포 이후 앱 정의가 바뀜(배포 {record["commit"][:12]} → HEAD {checkout["commit"][:12]}): {detail}')
-        for path, digest in sorted(record.get('inputs', {}).items()):
-            now = input_digests.get(path)
-            if now is None:
+        recorded_inputs = record.get('inputs', {})
+        for path in sorted(recorded_inputs.keys() | input_digests.keys()):
+            if path not in input_digests:
+                add('drift', 'input', f'배포에 사용했던 입력 경로가 현재 선택에 없음: {path}')
+            elif input_digests[path] is None:
                 add('unknown', 'input', f'배포 입력 파일을 찾을 수 없음: {path}')
-            elif now != digest:
+            elif path not in recorded_inputs:
+                add('drift', 'input', f'배포 기록에 없는 입력 경로가 선택됨: {path}')
+            elif input_digests[path] != recorded_inputs[path]:
                 add('drift', 'input', f'배포 후 입력 파일이 바뀜: {path}')
         recorded = record.get('workloads', {})
         for key in sorted(set(recorded) - set(workloads)):
@@ -425,7 +430,7 @@ def compare(app_name, app, record, checkout, current_content, current_dirty, cha
                 add('drift', 'workload', f'{key} Pod template이 배포 후 변경됨(수동 수정·env 변경·rollout restart 등)')
 
     if not workloads:
-        add('unknown', 'health', f'{app["runtime"]["namespace"]}에 대상 워크로드 없음')
+        add('unknown', 'health', f'{namespace}에 대상 워크로드 없음')
     for key, value in sorted(workloads.items()):
         if value['observedGeneration'] is not None and value['generation'] != value['observedGeneration']:
             add('warn', 'health', f'{key} rollout 반영 중')
@@ -434,7 +439,7 @@ def compare(app_name, app, record, checkout, current_content, current_dirty, cha
     for problem in problems:
         add('warn', 'health', problem)
 
-    return {'app': app_name, 'namespace': (record or {}).get('namespace', app['runtime']['namespace']),
+    return {'app': app_name, 'namespace': namespace,
             'deployedCommit': (record or {}).get('commit'), 'appliedAt': (record or {}).get('appliedAt'),
             'findings': findings}
 
@@ -456,9 +461,11 @@ def check_app(app_name, app, git, kube, checkout, options):
         return {'app': app_name, 'namespace': None, 'deployedCommit': None, 'appliedAt': None,
                 'findings': [{'level': 'info', 'area': 'record', 'message': '클러스터 워크로드가 없는 설정 전용 앱이라 대조하지 않음'}]}
     paths = app_paths(app)
+    environ = app_environment(app, {'env': options['envs'].get(app_name), 'vip_backends': options.get('vip_backends')})
+    namespace = registry.namespace(app, environ)
     try:
         record = read_record(kube, app_name)
-        namespace = (record or {}).get('namespace', app['runtime']['namespace'])
+        namespace = (record or {}).get('namespace') or namespace
         selector = app['runtime'].get('selector', '')
         workloads = workload_snapshot(kube, namespace, selector)
         problems = pod_problems(kube, namespace, selector)
@@ -469,15 +476,13 @@ def check_app(app_name, app, git, kube, checkout, options):
                 changed = [p for p in git(['diff', '--name-only', record['commit'], 'HEAD', '--', *paths]).split() if relevant(p)]
             except QueryError:
                 changed = []
-        digests = {path: file_digest(path) for path in (record or {}).get('inputs', {})}
-        manifest = []
-        if options['manifest']:
-            environ = app_environment(app, {'env': options['envs'].get(app_name), 'vip_backends': options.get('vip_backends')})
-            manifest = manifest_findings(kube, app, options['context'], options['cluster_kinds'], environ)
+        selected_inputs = (input_key(path) for path in registry.record_inputs(app, environ))
+        digests = {path: file_digest(path) for path in selected_inputs}
+        manifest = manifest_findings(kube, app, options['context'], options['cluster_kinds'], environ) if options['manifest'] else []
         return compare(app_name, app, record, checkout, current_content, dirty_paths(git, paths), changed,
-                       workloads, problems, digests, manifest)
+                       workloads, problems, digests, manifest, namespace=namespace)
     except QueryError as error:
-        return {'app': app_name, 'namespace': app['runtime']['namespace'], 'deployedCommit': None, 'appliedAt': None,
+        return {'app': app_name, 'namespace': namespace, 'deployedCommit': None, 'appliedAt': None,
                 'findings': [{'level': 'unknown', 'area': 'query', 'message': str(error)}]}
 
 

@@ -1,4 +1,3 @@
-// src/features/line-dashboard/hooks/useQuickFilterFavorites.js
 import * as React from "react"
 
 import {

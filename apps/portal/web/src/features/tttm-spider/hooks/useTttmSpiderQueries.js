@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/hooks/useTttmSpiderQueries.js
 import { useQuery } from "@tanstack/react-query"
 
 import {

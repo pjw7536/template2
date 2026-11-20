@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/pages/LineDashboardRecipientSettingsPage.jsx
 // 라인별 E-SOP 수신인 설정 페이지입니다.
 import { useParams } from "react-router-dom"
 

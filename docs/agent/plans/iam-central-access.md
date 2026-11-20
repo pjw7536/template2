@@ -33,7 +33,7 @@
 
 - 소속 트리 `/org/<팀>/<라인>/<SDWT>`와 CSV 도구 `deploy/keycloak/scripts/init_sdwt.py`, 소속별 역할 도구 `deploy/keycloak/scripts/org_sync.py`가 있다.
 - 개발 Keycloak은 `/org` 트리·`org` client·FGAP·카탈로그가 적용돼 있다. realm JSON에는 Portal 개발용 이전 그룹(`/SDWT-A/…`)만 있고 `/org` 트리는 도구로 만든다.
-- Portal은 아직 이전 경로 `/<SDWT>/<role>`만 해석한다. `affiliation`·`org_roles` 해석은 Portal 작업(Plane ESOP 계획 2단계)에서 한다. 이 계획은 Portal을 수정하지 않는다.
+- Portal은 아직 이전 경로 `/<SDWT>/<role>`만 해석한다. `affiliation`·`org_roles` 해석은 아래 `후속`의 Portal 전환에서 한다. 이 계획은 Portal을 수정하지 않는다.
 - 개발 Keycloak: `local/keycloak`(realm `portal`, `http://localhost:8180`). 운영 realm은 `etch`.
 
 ## 범위

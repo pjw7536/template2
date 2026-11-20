@@ -1,4 +1,3 @@
-// 파일 경로: src/components/layout/HomeLayout.jsx
 import { ContentLayout } from "./ContentLayout"
 
 export function HomeLayout({

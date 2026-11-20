@@ -3,18 +3,18 @@
 `dags.py`가 이 파일 내용을 `python3 -c`로 전달한다. Airflow 이미지의 표준 라이브러리만 사용한다.
 - 저장소에 있는 파일: 폴더에 없으면 추가, 내용이 다르면 덮어쓰기, 같으면 그대로 둔다.
 - 폴더에만 있는 파일: 지우지 않고 목록으로만 알린다.
-- 파일마다 `<이름>.dags-sync.tmp`에 쓴 뒤 이름을 바꿔, Airflow가 쓰는 도중의 파일을 읽지 않게 한다.
+- 파일마다 같은 폴더의 고유 임시 파일에 쓴 뒤 이름을 바꿔, Airflow가 쓰는 도중의 파일을 읽지 않게 한다.
 
 사용법: python3 -c <이 파일 내용> <DAG 폴더> check|apply  (표준 입력: tar)
 결과는 표준 출력 마지막 줄의 JSON이다.
 """
 
-import hashlib
 import io
 import json
 import os
 import sys
 import tarfile
+import tempfile
 from pathlib import Path, PurePosixPath
 
 TEMP_SUFFIX = '.dags-sync.tmp'
@@ -33,7 +33,7 @@ def read_archive(data):
     with tarfile.open(fileobj=io.BytesIO(data), mode='r:') as archive:
         for member in archive.getmembers():
             path = PurePosixPath(member.name)
-            if path.is_absolute() or '..' in path.parts:
+            if not path.parts or path.is_absolute() or '..' in path.parts:
                 raise ValueError(f'허용하지 않는 경로: {member.name}')
             if member.isdir():
                 continue
@@ -63,27 +63,46 @@ def plan(files, target):
     existing = current_files(target)
     result = {'added': [], 'updated': [], 'unchanged': [], 'serverOnly': sorted(existing - set(files))}
     for relative in sorted(files):
+        path = destination(target, relative)
         if relative not in existing:
             result['added'].append(relative)
-        elif hashlib.sha256((Path(target) / relative).read_bytes()).digest() != hashlib.sha256(files[relative]).digest():
+        elif path.read_bytes() != files[relative]:
             result['updated'].append(relative)
         else:
             result['unchanged'].append(relative)
     return result
 
 
+def destination(target, relative):
+    """대상 경로의 링크와 파일·폴더 충돌을 검사한다."""
+    path = Path(target)
+    parts = PurePosixPath(relative).parts
+    for part in parts[:-1]:
+        path /= part
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise ValueError(f'DAG 하위 폴더로 쓸 수 없습니다: {path}')
+    path /= parts[-1]
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise ValueError(f'DAG 파일로 쓸 수 없습니다: {path}')
+    return path
+
+
 def apply(files, target, result):
     """추가·덮어쓸 파일만 임시 이름으로 쓰고 이름을 바꿔 반영한다."""
     for relative in [*result['added'], *result['updated']]:
-        path = Path(target) / relative
+        path = destination(target, relative)
         path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + TEMP_SUFFIX)
-        with open(temporary, 'wb') as handle:
-            handle.write(files[relative])
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o644)
-        os.replace(temporary, path)
+        handle = tempfile.NamedTemporaryFile(dir=path.parent, suffix=TEMP_SUFFIX, delete=False)
+        temporary = Path(handle.name)
+        try:
+            with handle:
+                handle.write(files[relative])
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.chmod(0o644)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def main(argv):

@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/statusLabels.js
 // 공통 Status 라벨/순서/색상 정의
 export const STATUS_SEQUENCE = ["ESOP_STARTED", "MAIN_COMPLETE", "PARTIAL_COMPLETE", "COMPLETE"]
 

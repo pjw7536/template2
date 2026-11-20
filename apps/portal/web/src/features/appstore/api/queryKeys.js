@@ -1,4 +1,3 @@
-// 파일 경로: src/features/appstore/api/queryKeys.js
 // Appstore React Query 키 정의
 
 export const appstoreQueryKeys = {

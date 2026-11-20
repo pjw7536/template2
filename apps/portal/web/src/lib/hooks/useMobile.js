@@ -1,4 +1,3 @@
-// 파일 경로: src/lib/hooks/useMobile.js
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768

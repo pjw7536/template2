@@ -1,4 +1,3 @@
-// 파일 경로: src/features/voc/pages/VocBoardPage.jsx
 // VOC 게시판: 새 글 작성, 답변, 상태 관리, 권한 기반 삭제를 제공하는 클라이언트 사이드 UI
 import * as React from "react"
 import { useOutletContext } from "react-router-dom"

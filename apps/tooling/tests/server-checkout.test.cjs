@@ -133,6 +133,17 @@ test('서버 검사는 미지원 환경과 선택 앱의 누락된 env를 차단
   assert.match(result.stderr, /설정 파일이 없습니다/);
 });
 
+test('서버 검사는 앱이나 카탈로그를 읽지 못하면 실패한다', t => {
+  const checkout = fixture(t);
+  const unknown = spawnSync('make', ['server-check', 'APP=unknown'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /지원하지 않는 앱·그룹/);
+  fs.writeFileSync(path.join(checkout, 'deploy/shared/apps.json'), '{}');
+  const invalid = spawnSync('make', ['server-check', 'APP=all'], { cwd: checkout, encoding: 'utf8' });
+  assert.notEqual(invalid.status, 0);
+  assert.doesNotMatch(invalid.stdout, /서버 원본 검사 통과/);
+});
+
 test('platform 그룹은 Portal과 그 위의 앱을 제외한 기반 앱을 검사 대상으로 해석한다', t => {
   const checkout = fixture(t);
   const platform = run(checkout, 'python3', ['deploy/shared/scripts/app-paths.py', 'platform']).trim().split('\n');

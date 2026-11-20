@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/DateRangeCalendar.jsx
 import { Calendar } from "@/components/ui/calendar"
 
 export function DateRangeCalendar({

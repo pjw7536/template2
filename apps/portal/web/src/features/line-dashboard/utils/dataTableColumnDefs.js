@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/dataTableColumnDefs.js
 import { mergeConfig } from "./dataTableColumnConfig"
 import { renderCellByKey } from "../components/DataTableColumnRenderers"
 import { renderMetroStepFlow } from "./dataTableFormatters"

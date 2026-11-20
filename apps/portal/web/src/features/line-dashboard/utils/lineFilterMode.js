@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/utils/lineFilterMode.js
 // 라인 필터 모드 상수/옵션/정규화 규칙을 한 곳에서 관리합니다.
 
 export const LINE_FILTER_MODE_TARGET_USER_SDWT = "target_user_sdwt_prod"

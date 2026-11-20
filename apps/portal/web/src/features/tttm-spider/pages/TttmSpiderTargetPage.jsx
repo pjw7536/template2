@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/pages/TttmSpiderTargetPage.jsx
 // 3열(열 드래그 리사이즈): 1열 설비선택(행 모델·카드별 datepicker) · 2열 선택카드 lotwf · 3열 Score Summary.
 // 셀 = {eqp,chamber,from,to}. 날짜 범위 안의 lotwf만 표시. 전역 datepicker는 새 카드 기본 범위.
 import { useId, useRef, useState } from "react"

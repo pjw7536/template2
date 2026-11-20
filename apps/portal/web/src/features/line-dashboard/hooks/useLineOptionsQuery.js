@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useLineOptionsQuery.js
 // 라인 선택 드롭다운에서 사용할 옵션을 React Query로 관리합니다.
 
 import { useQuery } from "@tanstack/react-query"

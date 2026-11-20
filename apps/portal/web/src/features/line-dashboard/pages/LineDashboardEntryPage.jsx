@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/pages/LineDashboardEntryPage.jsx
 import { useEffect, useMemo } from "react"
 import { AlertCircle, Loader2 } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"

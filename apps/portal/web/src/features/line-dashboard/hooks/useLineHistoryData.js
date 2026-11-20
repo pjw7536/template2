@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useLineHistoryData.js
 import { useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 

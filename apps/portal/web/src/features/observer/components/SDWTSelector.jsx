@@ -1,4 +1,3 @@
-// src/features/observer/components/drilldown/SDWTSelector.jsx
 import React from "react";
 import { useSDWT } from "../hooks/useLineQueries";
 import { LoadingSpinner } from "./Loaders";

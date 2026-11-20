@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/notificationRecipients.js
 // Drone SOP 채널 수신인 및 권한 컨텍스트 API 래퍼입니다.
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/DataTableToolbar.jsx
 import { IconDatabase, IconRefresh } from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"

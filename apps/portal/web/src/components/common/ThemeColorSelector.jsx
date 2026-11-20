@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/ThemeColorSelector.jsx
 import { Palette, Check } from "lucide-react"
 
 import { Button } from "components/ui/button"

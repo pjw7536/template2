@@ -1,11 +1,14 @@
 """운영 자동화 도구(폴더 준비·관리자 인증·smoke·일괄 배포·상태 보고)의 계약을 검증한다."""
 
+from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
+import io
 import json
 from pathlib import Path
 import re
 import socket
 import ssl
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -308,7 +311,7 @@ class CatalogTests(unittest.TestCase):
             app = {'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}], 'hosts': ['WEB_URL', 'API_HOST', 'EMPTY', 'MISSING']}
             self.assertEqual(registry.hosts(app, {'DEMO_ENV': str(env)}), ['web.demo.test', 'api.demo.test'])
 
-    def test_catalog_rejects_undeclared_command_variables_and_missing_render(self):
+    def test_catalog_rejects_undeclared_command_variables_and_missing_commands(self):
         base = json.loads((ROOT / 'deploy/shared/apps.json').read_text())
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'apps.json'
@@ -321,6 +324,11 @@ class CatalogTests(unittest.TestCase):
             del broken['apps']['minio']['commands']['render']
             path.write_text(json.dumps(broken))
             with self.assertRaisesRegex(ValueError, 'commands.render'):
+                registry.read_catalog(path)
+            broken = json.loads(json.dumps(base))
+            del broken['apps']['minio']['commands']['static']
+            path.write_text(json.dumps(broken))
+            with self.assertRaisesRegex(ValueError, 'commands.static'):
                 registry.read_catalog(path)
 
     def test_no_shared_tool_branches_on_an_app_name(self):
@@ -468,6 +476,18 @@ class PreflightTests(unittest.TestCase):
             ops_preflight.evaluate('demo', {}, 'ctx')
         execute.assert_not_called()
 
+    def test_json_stdout_stays_parseable_during_preparation(self):
+        first = [ops_preflight.item('chart', ops_preflight.ACTION, '없음', command=['make', 'keycloak-fetch-chart'])]
+        second = [ops_preflight.item('chart', ops_preflight.OK, '통과')]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(ops_preflight, 'collect', side_effect=[first, second]), \
+                patch.object(ops_preflight, 'run_quiet', return_value=(True, 'chart 준비 완료')), \
+                redirect_stdout(stdout), redirect_stderr(stderr):
+            code = ops_preflight.main(['keycloak', '--context', 'ctx', '--prepare', '--json'])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(stdout.getvalue())['ready'])
+        self.assertIn('make keycloak-fetch-chart', stderr.getvalue())
+
     def test_app_check_failure_reports_the_tool_error_not_the_make_error(self):
         output = '검사 시작\n오류: keycloak-runtime: 기존 Secret과 입력이 다릅니다.\n\n'
         with patch.object(ops_preflight, 'run_quiet', return_value=(False, output)) as execute:
@@ -528,8 +548,26 @@ class OpsDeployTests(unittest.TestCase):
 
     def test_reports_drift_result_after_all_steps(self):
         catalog = {'apps': {'demo': {'steps': ['demo-up'], 'dependsOn': [], 'runtime': {'namespace': 'demo'}}}}
-        run = lambda command, **kwargs: type('Result', (), {'returncode': 0, 'stdout': '{"resultCode": 1}'})()
-        self.assertEqual(ops_deploy.deploy('demo', catalog, 'ctx', run)['driftResultCode'], 1)
+
+        def run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 2 if 'drift-check' in command else 0,
+                                               stdout='{"resultCode": 1}', stderr='')
+
+        with patch('builtins.print') as output:
+            self.assertEqual(ops_deploy.deploy('demo', catalog, 'ctx', run)['driftResultCode'], 1)
+        output.assert_any_call('{"resultCode": 1}', file=sys.stderr, flush=True)
+
+    def test_failed_drift_command_cannot_report_success(self):
+        catalog = {'apps': {'demo': {'steps': ['demo-up'], 'runtime': {'namespace': 'demo'}}}}
+
+        def run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 2 if 'drift-check' in command else 0,
+                                               stdout='{"resultCode": 0}', stderr='대조 명령 실패')
+
+        with patch('builtins.print') as output:
+            summary = ops_deploy.deploy('demo', catalog, 'ctx', run)
+        self.assertEqual(summary['driftResultCode'], 2)
+        output.assert_any_call('대조 명령 실패', file=sys.stderr, flush=True)
 
     def test_settings_only_app_skips_drift_check(self):
         catalog = {'apps': {'demo': {'steps': ['demo-check', 'demo-up'], 'dependsOn': [], 'runtime': None}}}
@@ -630,7 +668,7 @@ class ReportRedactionTests(unittest.TestCase):
         redactor = ops_report.Redactor(self.table)
         with patch.object(state, 'git_runner', return_value=git), patch.object(state, 'kube_runner', return_value=kube), \
                 patch.object(ops_report, 'endpoint', return_value=('10.172.26.150', '검증 통과, 만료 Jan  1 00:00:00 2027 GMT')), \
-                patch.object(ops_report, 'fetch_status', return_value=200), \
+                patch.object(ops_report.smoke_checks, 'http_check', return_value={'ok': True, 'detail': '/ 200'}), \
                 patch.object(ops_report.smoke_checks, 'tcp_check', return_value={'detail': '연결 성공', 'target': 'x', 'ok': True}), \
                 patch.object(ops_report, 'command_version', return_value='v1'):
             text = ops_report.finish(ops_report.build('keycloak', 'ctx', redactor, skip_drift=True), redactor)

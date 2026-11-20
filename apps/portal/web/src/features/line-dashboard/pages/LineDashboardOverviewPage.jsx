@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/pages/LineDashboardOverviewPage.jsx
 // 공정 요약을 붙일 개요 페이지입니다.
 import {
   useEffect,

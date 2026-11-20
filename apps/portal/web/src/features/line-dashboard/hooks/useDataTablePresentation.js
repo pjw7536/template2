@@ -1,4 +1,3 @@
-// src/features/line-dashboard/hooks/useDataTablePresentation.js
 import * as React from "react"
 
 import { timeFormatter } from "../utils/dataTableConstants"

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/auth/utils/fetchJson.js
 // fetch 호출을 공통으로 다루기 위한 헬퍼입니다.
 // - JSON 응답과 일반 텍스트 응답을 모두 안전하게 처리합니다.
 // - AuthProvider뿐 아니라 향후 인증 관련 API 호출에서도 재사용할 수 있습니다.

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/l3-spider/utils/selection.js
 // L3 Spider 선택/필터 상태 유틸입니다.
 
 export const EMPTY_META = {

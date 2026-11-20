@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/toast.js
 // Shadcn Studio sonner 팝업의 outline 스타일을 재사용합니다.
 export const TOAST_BASE_STYLE = {
   "--normal-bg": "var(--background)",

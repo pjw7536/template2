@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/QuickFilterSections.jsx
 import { IconChevronDown } from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"

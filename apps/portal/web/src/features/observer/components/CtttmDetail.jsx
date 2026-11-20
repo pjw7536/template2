@@ -1,4 +1,3 @@
-// 파일 경로: src/features/observer/components/logDetail/CtttmDetail.jsx
 import React, { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import Field from "./Field";

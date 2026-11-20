@@ -20,7 +20,7 @@
 | `manifest` | 현재 코드로 만든 적용 대상 리소스와 클러스터의 실제 리소스 | 앱의 렌더 명령 → 배포와 같은 `kubectl apply`를 서버 dry-run으로 계산 → 실제 리소스와 필드 단위 비교 |
 | `checkout` | 앱 경로의 미커밋 변경 | `git status`. 미커밋 변경도 비교 기준에 포함되므로 경고로 표시 |
 | `record` | 마지막 배포 이후 앱 실행 파일이 바뀌었는지 | 앱 namespace의 ConfigMap `deploy-record-<app>` |
-| `input` | 배포에 사용한 외부 env·입력 파일의 SHA-256 | 같은 ConfigMap. 파일 내용은 기록하지 않음 |
+| `input` | 현재 선택한 env·입력 파일의 경로와 SHA-256 | 같은 ConfigMap에 기록된 경로·해시와 비교. 파일 내용은 기록하지 않음 |
 | `workload` | 기록 시점과 현재의 워크로드 목록·이미지·Pod template 해시 | `kubectl get` |
 | `health` | Ready 수, rollout 진행, CrashLoopBackOff·ImagePullBackOff 등 | `kubectl get` |
 
@@ -125,7 +125,7 @@ make deploy-record APP=<app> KUBE_CONTEXT="<context>"
 | `WARN manifest replica 수` | 실제 replica가 코드와 다름 | 의도한 운영 조정인지 확인 |
 | `WARN checkout 미커밋 변경` | 관리 호스트에서 앱 파일을 직접 수정함. 이 내용이 비교 기준에 포함됨 | 변경 파일과 내용을 보고. 강제 초기화하지 않음 |
 | `DRIFT record 앱 정의가 바뀜` | 마지막 배포 이후 checkout의 앱 실행 파일이 바뀜 | `manifest` 결과와 함께 판단. manifest가 일치하면 렌더 결과에 영향 없는 변경이므로 `make deploy-record`로 기준을 갱신 |
-| `DRIFT input` | 배포 후 외부 env·입력 파일이 바뀜 | 의도한 변경이면 `make ops-deploy APP=<app> KUBE_CONTEXT="<context>"`로 재배포 |
+| `DRIFT input` | 선택한 입력 경로나 내용이 배포 기록과 다름 | 배포 때의 env 변수를 지정했는지 확인합니다. 의도한 변경이면 같은 입력으로 `make ops-deploy APP=<app> KUBE_CONTEXT="<context>"`를 실행합니다 |
 | `DRIFT workload` | 기록 이후 클러스터에서 이미지·template이 바뀌었거나 워크로드가 사라짐 | `kubectl rollout history`·events로 수동 변경 여부 확인 |
 | `WARN health` | Ready 부족·rollout 진행·이미지 pull·반복 재시작 | [장애 조회](../../../README.md#장애-조회) |
 | `UNKNOWN record 배포 기록 없음` | 기록 기능 이전 배포이거나 미배포 | manifest가 일치하면 `make deploy-record`로 기준을 남김 |

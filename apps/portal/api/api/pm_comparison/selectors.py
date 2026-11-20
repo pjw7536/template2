@@ -408,32 +408,6 @@ def iter_decomp_files(
                 return
 
 
-def _scan_partition_dirs(root: Path, keys: list[str], max_dirs: int) -> dict[str, set[str]]:
-    """디렉터리 트리에서 key=value partition 값을 수집합니다."""
-
-    options: dict[str, set[str]] = {key: set() for key in keys}
-    queue: deque[tuple[Path, int]] = deque([(root, 0)])
-    visited = 0
-    while queue and visited < max_dirs:
-        current, depth = queue.popleft()
-        if depth >= len(keys):
-            continue
-        try:
-            children = sorted(path for path in current.iterdir() if path.is_dir() and not _is_ignored_path(path))
-        except OSError:
-            continue
-        visited += len(children)
-        for child in children:
-            partition = parse_partition_values(child)
-            for key, value in partition.items():
-                if key in options:
-                    options[key].add(value)
-            queue.append((child, depth + 1))
-            if visited >= max_dirs:
-                break
-    return options
-
-
 def date_partition_candidates(value: object) -> list[str]:
     """날짜 선택값과 raw partition 폴더명 후보를 함께 반환합니다."""
 

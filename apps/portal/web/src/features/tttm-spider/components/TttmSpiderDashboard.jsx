@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderDashboard.jsx
 // 선택된 (ref,comp) entries + dataType → 챔버 칩 + 카드 + 레이더 드릴다운 + 센서 상세.
 import { useMemo, useState } from "react"
 import { useQueries } from "@tanstack/react-query"

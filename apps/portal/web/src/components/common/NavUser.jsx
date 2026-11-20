@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/NavUser.jsx
 import { useNavigate } from "react-router-dom"
 import { BadgeCheck, Bell, ChevronsUpDown, LogOut, MessageSquare } from "lucide-react"
 

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/observer/components/logDetail/EqpDetail.jsx
 import React from "react";
 import Field from "./Field";
 import { formatDuration } from "../utils/logs";

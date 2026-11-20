@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/QuickFilterFavorites.jsx
 import * as React from "react"
 import { IconChevronDown } from "@tabler/icons-react"
 import { BookmarkCheck, BookmarkPlus, BookmarkX } from "lucide-react"

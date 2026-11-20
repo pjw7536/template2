@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/api/tttmSpiderApi.js
 // TTTM Spider 백엔드 API 요청 유틸입니다. (fetch 래퍼, l3-spider 패턴 미러)
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

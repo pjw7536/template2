@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderLotwfSelector.jsx
 // lotwf 선택 패널(카드 꽉 채움, 내부 스크롤). 날짜 범위는 카드/전역 datepicker에서 이미 필터되어 items로 들어온다.
 // - 드래그로 여러 행 선택/해제. - REF·COMP 동일 설비면 COMP선택=빨강/REF선택=파랑 배지·테두리.
 import { useEffect, useMemo, useRef, useState } from "react"

@@ -15,8 +15,6 @@ from django.db import connection
 from django.db.models import Q
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.dataset as pa_ds
 
 
 def get_data_root() -> Path:
@@ -387,47 +385,6 @@ def iter_date_files(date: str) -> list[Path]:
     return iter_date_files_legacy(date)
 
 
-# {date}/{line_id}/{process_id}/{eds_step}/{file} — 디렉토리 3단계를 파티션 컬럼으로 매핑
-_DATE_PARTITIONING = pa_ds.DirectoryPartitioning(
-    pa.schema([("line_id", pa.string()), ("process_id", pa.string()), ("eds_step", pa.string())])
-)
-
-
-def read_date_dataset(date: str, columns: Sequence[str]) -> pd.DataFrame:
-    """특정 날짜 디렉토리를 pyarrow.dataset 단일 스캔으로 읽습니다.
-
-    파일별 개별 read_parquet(수백~수천 개) 대신 한 번의 스캔으로 필요한 컬럼만 로드하고,
-    line/process/eds는 디렉토리 경로에서 파티션 컬럼으로 자동 매핑합니다. 작은 파일이 많을수록 큰 이점.
-    step_seq/ppid는 파일명에만 있어 포함되지 않습니다(호출부에서 필요 시 파일별 경로 사용).
-    주의: 쓰는 중인 부분 파일을 만나면 예외가 날 수 있음 → 호출부에서 파일별 읽기로 폴백하세요.
-    """
-    ensure_data_root()
-    root = get_data_root()
-    root_resolved = root.resolve()
-    date_dir = root / date
-    try:
-        date_dir.resolve().relative_to(root_resolved)
-    except ValueError as exc:
-        raise ValueError("데이터 경로가 루트 밖으로 벗어났습니다.") from exc
-    if not date_dir.exists() or not date_dir.is_dir():
-        return pd.DataFrame()
-
-    dataset = pa_ds.dataset(str(date_dir), format="parquet", partitioning=_DATE_PARTITIONING)
-    available = set(dataset.schema.names)
-    want: list[str] = []
-    for col in columns:
-        if col in available:
-            want.append(col)
-        elif col == "display_status" and "display status" in available:
-            want.append("display status")  # 공백 변형 컬럼도 수용 (호출부에서 정규화)
-    for part_col in ("line_id", "process_id", "eds_step"):
-        if part_col in available and part_col not in want:
-            want.append(part_col)
-    if not want:
-        return pd.DataFrame()
-    return dataset.to_table(columns=want).to_pandas()
-
-
 def iter_filter_candidate_files(
     dates: list[str],
     line_ids: list[str],
@@ -455,25 +412,6 @@ def iter_filter_candidate_files(
                 for path in dir_path.iterdir():
                     if path.is_file() and path.name.startswith(prefix):
                         yield path
-
-
-def _query_all_line_process_step_legacy() -> list[tuple[str, str, str]]:
-    """인덱스 미사용: 파일명 스캔으로 (line_id, process_id, step_seq) 조합을 수집합니다."""
-    root = get_data_root()
-    if not root.exists():
-        return []
-    combos: set[tuple[str, str, str]] = set()
-    for path in root.glob("*/*/*/*/*"):  # 날짜/line_id/process_id/eds_step/파일
-        if not path.is_file():
-            continue
-        parts = path.relative_to(root).parts
-        if len(parts) < 5:
-            continue
-        line_id, process_id = parts[1], parts[2]
-        name = parts[4]
-        step_seq = name.split("#", 1)[0] if "#" in name else ""
-        combos.add((line_id, process_id, step_seq))
-    return sorted(combos)
 
 
 def query_date_line_process_eds_step(date: str) -> list[tuple[str, str, str, str, str]]:
@@ -628,18 +566,6 @@ def query_completed_dates() -> Optional[set[str]]:
     return {str(row[0]) for row in rows}
 
 
-def query_all_line_process_step() -> list[tuple[str, str, str]]:
-    """활성 daily_run_stats source의 모든 line/process/step 조합을 반환합니다.
-
-    규칙 기반 line_name 매핑(lineGroups)용입니다.
-    """
-    rows = _fetch_index_all(
-        "SELECT DISTINCT line_id, process_id, step_seq "
-        f"FROM {_index_table(_DAILY_RUN_STATS_NAME)}"
-    )
-    return [(str(row[0]), str(row[1]), str(row[2])) for row in rows]
-
-
 def query_line_rule_candidates() -> list[dict[str, object]]:
     """daily_run_stats의 line name 규칙 점검용 분석 조합을 반환합니다."""
 
@@ -694,22 +620,6 @@ def list_configured_line_names() -> list[str]:
     )
 
 
-def iter_all_data_files_legacy() -> list[Path]:
-    """glob 직접 스캔 방식 (인덱스 미사용) — iter_all_data_files의 폴백."""
-    ensure_data_root()
-    root = get_data_root()
-    return [path for path in root.glob("*/*/*/*/*") if path.is_file()]
-
-
-def iter_all_data_files() -> list[Path]:
-    """데이터 루트 아래의 모든 일반 파일 목록을 반환합니다.
-
-    인덱스 조회 결과가 비어 있으면 기존 glob 스캔으로 폴백합니다.
-    """
-    found = query_indexed_files()  # 필터 없음 = 전체
-    return found if found else iter_all_data_files_legacy()
-
-
 def read_parquet_columns(path: Path, columns: Sequence[str]) -> pd.DataFrame:
     """필요 컬럼만 우선 읽고, 누락 컬럼이 있으면 가능한 컬럼만 반환합니다."""
 
@@ -745,26 +655,6 @@ def get_mail_rule_for_user(*, rule_id: int, user_id: int):
         L3SpiderMailRule.objects.select_related("created_by")
         .prefetch_related("permissions__user")
         .filter(Q(created_by_id=user_id) | Q(permissions__user_id=user_id))
-        .distinct()
-        .get(pk=rule_id)
-    )
-
-
-def get_writable_mail_rule_for_user(*, rule_id: int, user_id: int):
-    """사용자가 수정할 수 있는 L3 Spider 메일 rule 단건을 조회합니다."""
-
-    from .models import L3SpiderMailRule, L3SpiderMailRulePermission
-
-    return (
-        L3SpiderMailRule.objects.select_related("created_by")
-        .prefetch_related("permissions__user")
-        .filter(
-            Q(created_by_id=user_id)
-            | Q(
-                permissions__user_id=user_id,
-                permissions__access_level=L3SpiderMailRulePermission.AccessLevels.WRITE,
-            )
-        )
         .distinct()
         .get(pk=rule_id)
     )

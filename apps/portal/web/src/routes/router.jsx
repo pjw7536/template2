@@ -1,4 +1,3 @@
-// 파일 경로: src/routes/router.jsx
 import { createBrowserRouter, Outlet, useLocation } from "react-router-dom"
 
 import { PortalGlobalShell } from "@/components/layout"

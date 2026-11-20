@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/utils/dataTableFormatters.jsx
 // 테이블 셀 표시/검색/스텝 렌더링에 필요한 포맷터 모음입니다.
 
 import { useCallback, useEffect, useRef } from "react"

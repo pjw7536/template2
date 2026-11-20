@@ -1,4 +1,3 @@
-// src/features/auth/utils/url.js
 // 로그인/리다이렉트 관련 URL을 안전하게 만들기 위한 유틸 모음입니다.
 
 /**

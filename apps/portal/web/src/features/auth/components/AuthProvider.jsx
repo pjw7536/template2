@@ -1,4 +1,3 @@
-// 파일 경로: src/features/auth/components/AuthProvider.jsx
 // 인증 전역 상태를 제공하는 React Context와 Provider입니다.
 // - 여기서는 상태/비즈니스 로직만 담당하고,
 // - 공용 가드 UI(RequireAuth 등)는 components 폴더, 페이지 전용 UI는 각 page 폴더에 둡니다.

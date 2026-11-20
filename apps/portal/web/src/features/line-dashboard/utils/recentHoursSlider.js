@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/recentHoursSlider.js
 // 퀵 필터의 "최근시간" 슬라이더 포지션을 시간 범위와 변환하는 유틸입니다.
 import {
   RECENT_HOURS_DAY_MODE_MAX_DAYS,

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/l3-spider/api/index.js
 // L3 Spider API public module입니다.
 export {
   createExclusionFilter,

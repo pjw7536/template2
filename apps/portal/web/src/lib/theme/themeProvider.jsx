@@ -1,4 +1,3 @@
-// 파일 경로: src/lib/theme/themeProvider.jsx
 // 프레임워크 의존을 없앤 커스텀 ThemeProvider (라이트/다크 + 포인트 컬러 모두 관리)
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/droneTargetAdmin.js
 // Line Dashboard 관리자 전용 drone_sop_target 관리 API 래퍼입니다.
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

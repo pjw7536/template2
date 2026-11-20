@@ -1,4 +1,3 @@
-// src/features/observer/components/drilldown/PrcGroupSelector.jsx
 import React from "react";
 import { usePrcGroups } from "../hooks/useLineQueries";
 import { LoadingSpinner } from "./Loaders";

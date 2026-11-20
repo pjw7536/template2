@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/api/queryKeys.js
 // TTTM Spider React Query 키 정의
 
 export const tttmSpiderQueryKeys = {

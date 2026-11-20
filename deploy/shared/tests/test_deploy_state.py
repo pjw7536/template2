@@ -266,6 +266,43 @@ spec:
 
 
 class CollectTest(unittest.TestCase):
+    def test_check_uses_selected_env_path_even_without_manifest_comparison(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old = Path(directory) / 'old.env'
+            current = Path(directory) / 'current.env'
+            old.write_text('APP_MODE=old\n')
+            current.write_text('APP_MODE=new\n')
+            app = {**APP, 'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}]}
+            options = {'manifest': False, 'envs': {'demo': str(current)}}
+            saved = record(inputs={str(old): state.file_digest(old)})
+
+            def kube(args):
+                return json.dumps({'items': []})
+
+            with unittest.mock.patch.object(state, 'read_record', return_value=saved):
+                result = state.check_app('demo', app, lambda args: '', kube, CHECKOUT, options)
+            inputs = [item for item in result['findings'] if item['area'] == 'input']
+            self.assertEqual([item['level'] for item in inputs], ['drift', 'drift'])
+            self.assertIn(str(current), inputs[0]['message'])
+            self.assertIn(str(old), inputs[1]['message'])
+
+    def test_missing_record_uses_namespace_from_selected_env(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / 'demo.env'
+            env.write_text('NAMESPACE=demo-custom\n')
+            app = {**APP, 'inputs': [{'variable': 'DEMO_ENV', 'default': 'unused'}]}
+            options = {'manifest': False, 'envs': {'demo': str(env)}}
+            calls = []
+
+            def kube(args):
+                calls.append(args)
+                return json.dumps({'items': []})
+
+            result = state.check_app('demo', app, lambda args: '', kube, CHECKOUT, options)
+            self.assertEqual(result['namespace'], 'demo-custom')
+            self.assertTrue(all(args[:2] == ['-n', 'demo-custom'] for args in calls[1:]))
+            self.assertIn('demo-custom', result['findings'][-1]['message'])
+
     def test_relevant_skips_docs_and_tests(self):
         self.assertFalse(state.relevant('deploy/demo/README.md'))
         self.assertFalse(state.relevant('deploy/demo/docs/01-install.md'))

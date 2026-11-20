@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/lineJiraKey.js
 // 알림 target 기반 Jira project key 조회/저장 API 래퍼
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

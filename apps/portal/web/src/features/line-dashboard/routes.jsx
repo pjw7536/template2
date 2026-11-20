@@ -1,4 +1,3 @@
-// src/features/line-dashboard/routes.jsx
 // 라인 대시보드에서 제공하는 페이지 라우트 정의를 모아둡니다.
 import { lazyNamed } from "@/lib/react/lazyNamed"
 

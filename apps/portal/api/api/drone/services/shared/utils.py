@@ -196,25 +196,3 @@ def _truncate_text(value: str, max_len: int) -> str:
     if max_len <= 3:
         return value[:max_len]
     return value[: max_len - 3] + "..."
-
-
-def _first_defined(*values: Any) -> Any:
-    """None이 아닌 첫 번째 값을 반환합니다.
-
-    인자:
-        values: 후보 값들.
-
-    반환:
-        None이 아닌 첫 번째 값 또는 None.
-
-    부작용:
-        없음. 순수 유틸입니다.
-    """
-
-    # -----------------------------------------------------------------------------
-    # 1) 순서대로 값 확인
-    # -----------------------------------------------------------------------------
-    for value in values:
-        if value is not None:
-            return value
-    return None

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/voc/utils/constants.js
 // VOC 화면에서 공유하는 상태 상수
 
 export const STATUS_OPTIONS = [

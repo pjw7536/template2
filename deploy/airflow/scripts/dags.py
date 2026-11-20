@@ -50,6 +50,8 @@ def archive(source):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode='w', format=tarfile.PAX_FORMAT) as bundle:
         for path in files:
+            if path.is_symlink():
+                raise ValueError(f'DAG 원본은 일반 파일이어야 합니다: {path}')
             info = tarfile.TarInfo(path.relative_to(source).as_posix())
             content = path.read_bytes()
             info.size, info.mode, info.mtime = len(content), 0o644, 0

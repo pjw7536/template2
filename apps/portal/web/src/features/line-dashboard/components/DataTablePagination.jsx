@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/DataTablePagination.jsx
 import {
   IconChevronLeft,
   IconChevronRight,

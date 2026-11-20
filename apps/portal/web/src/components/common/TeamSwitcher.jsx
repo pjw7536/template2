@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/TeamSwitcher.jsx
 import * as React from "react"
 import { ChevronsUpDown, Plus } from "lucide-react"
 

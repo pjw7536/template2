@@ -1,4 +1,3 @@
-// src/features/line-dashboard/pages/LineDashboardStatusPage.jsx
 // 라인 별 현재 상태를 요약할 페이지입니다.
 import { useParams } from "react-router-dom"
 

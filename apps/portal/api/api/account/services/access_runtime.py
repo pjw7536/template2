@@ -1,6 +1,6 @@
 # =============================================================================
 # 모듈 설명: scope 접근 상태를 조회하고 최종 권한 payload로 판정합니다.
-# - 주요 대상: 요청 단위 역할 resolver, 정책 판정, 접근 상태 직렬화
+# - 주요 대상: 접근 정책 판정과 접근 상태 직렬화
 # - 불변 조건: 이 모듈은 접근 권한 모델을 변경하지 않습니다.
 # =============================================================================
 
@@ -22,92 +22,10 @@ from ..models import (
 )
 
 
-_SCOPE_ROLE_RESOLVER_CACHE_ATTRIBUTE = "_account_scope_role_resolvers"
-
-
 def _requires_portal_access(*, scope: AccessScope) -> bool:
     """canonical Portal key 이외의 모든 scope가 Portal 접근을 선행 조건으로 사용하는지 반환합니다."""
 
     return scope.key != ACCESS_SCOPE_PORTAL
-
-
-class _ScopeRoleResolver:
-    """한 사용자의 전체 scope 역할을 일괄 조회하고 메모리에서 판정합니다."""
-
-    def __init__(self, *, user: Any) -> None:
-        """scope, 정책, 명시 권한을 각각 한 번씩 조회합니다."""
-
-        self.user = user
-        department = _get_user_department(user=user)
-        self.scopes = selectors.list_access_scopes()
-        self.scopes_by_key = {scope.key: scope for scope in self.scopes}
-        policy_rules = selectors.list_active_access_policy_rules_for_scopes(
-            scopes=self.scopes,
-            department=department,
-        )
-        self.policy_rules_by_scope: dict[int, list[AccessPolicyRule]] = {
-            scope.id: [] for scope in self.scopes
-        }
-        for rule in policy_rules:
-            self.policy_rules_by_scope.setdefault(rule.scope_id, []).append(rule)
-
-        access_rows = selectors.list_user_access_rows_for_scopes_and_users(
-            scopes=self.scopes,
-            user_ids=[getattr(user, "id", 0)],
-        )
-        self.access_by_scope_id = {
-            access.scope_id: access for access in access_rows
-        }
-        self.payload_by_scope_key: dict[str, dict[str, object]] = {}
-
-    def get_payload(self, *, scope_key: str) -> dict[str, object]:
-        """scope별 최종 접근 payload를 요청 생명주기 동안 재사용합니다."""
-
-        cached = self.payload_by_scope_key.get(scope_key)
-        if cached is not None:
-            return cached
-
-        scope = self.scopes_by_key.get(scope_key)
-        if scope is None:
-            payload = _build_missing_scope_payload(
-                user=self.user,
-                scope_key=scope_key,
-            )
-        else:
-            payload = _build_access_payload(
-                user=self.user,
-                scope=scope,
-                user_access=self.access_by_scope_id.get(scope.id),
-                policy_rules=self.policy_rules_by_scope.get(scope.id, []),
-            )
-            if _requires_portal_access(scope=scope):
-                payload = _apply_portal_access_requirement(
-                    scope_access=payload,
-                    portal_access=self.get_payload(scope_key=ACCESS_SCOPE_PORTAL),
-                )
-
-        self.payload_by_scope_key[scope_key] = payload
-        return payload
-
-
-def _get_scope_role_resolver(*, user: Any, request: Any | None) -> _ScopeRoleResolver:
-    """요청이 있으면 사용자별 resolver를 요청 객체에 캐시해 반환합니다."""
-
-    if request is None:
-        return _ScopeRoleResolver(user=user)
-
-    base_request = getattr(request, "_request", request)
-    cached = getattr(base_request, _SCOPE_ROLE_RESOLVER_CACHE_ATTRIBUTE, None)
-    if not isinstance(cached, dict):
-        cached = {}
-        setattr(base_request, _SCOPE_ROLE_RESOLVER_CACHE_ATTRIBUTE, cached)
-
-    user_key = getattr(user, "pk", None) or id(user)
-    resolver = cached.get(user_key)
-    if not isinstance(resolver, _ScopeRoleResolver):
-        resolver = _ScopeRoleResolver(user=user)
-        cached[user_key] = resolver
-    return resolver
 
 
 def can_manage_access(*, user: Any, request: Any | None = None) -> bool:

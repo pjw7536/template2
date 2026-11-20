@@ -1,4 +1,3 @@
-// src/features/observer/components/drilldown/LineSelector.jsx
 import React from "react";
 import { useLines } from "../hooks/useLineQueries";
 import { LoadingSpinner } from "./Loaders";

@@ -1,4 +1,3 @@
-// 파일 경로: src/components/layout/index.js
 export { AppLayout } from "./AppLayout"
 export { AppShellLayout } from "./AppShellLayout"
 export { AppSidebar } from "./AppSidebar"

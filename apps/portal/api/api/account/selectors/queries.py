@@ -72,18 +72,6 @@ def _normalize_text_list(values: Iterable[Any]) -> list[str]:
     return normalized
 
 
-def _collapse_text_values(values: Iterable[Any]) -> list[str]:
-    """표시값을 유지하면서 대소문자 비구분 중복을 제거합니다."""
-
-    display_by_key: dict[str, str] = {}
-    for value in values:
-        normalized = _normalize_text(value)
-        if not normalized:
-            continue
-        display_by_key.setdefault(normalized.casefold(), normalized)
-    return sorted(display_by_key.values())
-
-
 def _normalize_positive_int_set(values: Iterable[Any], *, allow_cast: bool = False) -> set[int]:
     """양의 정수 ID 집합을 중복 없이 정규화합니다."""
 
@@ -377,29 +365,6 @@ def list_distinct_active_departments(*, include_external_snapshots: bool = False
                    .values_list("department", flat=True) if v})
 
 
-def _build_external_snapshot_email(*, knox_id: str) -> str:
-    """외부 스냅샷 사용자의 표준 Samsung 메일 주소를 생성합니다."""
-
-    return f"{knox_id}@samsung.com"
-
-
-def _list_active_user_knox_lookup_keys() -> set[str]:
-    """활성 account_user의 knox_id lookup key 집합을 반환합니다."""
-
-    User = get_user_model()
-    return {
-        str(value or "").strip().lower()
-        for value in (
-            User.objects.filter(is_active=True)
-            .exclude(knox_id__isnull=True)
-            .exclude(knox_id__exact="")
-            .annotate(knox_lookup=Lower("knox_id"))
-            .values_list("knox_lookup", flat=True)
-        )
-        if str(value or "").strip()
-    }
-
-
 def get_active_users_by_knox_lookup_keys(*, knox_ids: list[str]) -> dict[str, Any]:
     """입력 knox_id 중 활성 account_user 매핑을 lookup key 기준으로 반환합니다."""
 
@@ -422,65 +387,6 @@ def get_active_users_by_knox_lookup_keys(*, knox_ids: list[str]) -> dict[str, An
         if lookup_key and lookup_key not in users:
             users[lookup_key] = user
     return users
-
-
-def _list_external_affiliation_pool(
-    *,
-    search: str = "",
-    department: str = "",
-    user_sdwt_prod: str = "",
-    limit: int | None = 50,
-) -> list[dict[str, object]]:
-    """수신인 선택 UI에 표시할 미가입 외부 스냅샷 사용자 목록을 조회합니다."""
-
-    safe_limit = None if limit is None else max(1, min(int(limit or 50), 500))
-    normalized_search = _normalize_text(search) or ""
-    normalized_department = _normalize_text(department) or ""
-    normalized_user_sdwt = _normalize_text(user_sdwt_prod) or ""
-    active_knox_lookup_keys = _list_active_user_knox_lookup_keys()
-
-    queryset = ExternalAffiliationSnapshot.objects.all()
-    if normalized_department:
-        queryset = queryset.filter(department__iexact=normalized_department)
-    if normalized_user_sdwt:
-        queryset = queryset.filter(predicted_user_sdwt_prod__iexact=normalized_user_sdwt)
-    if normalized_search:
-        queryset = queryset.filter(
-            Q(knox_id__icontains=normalized_search)
-            | Q(username__icontains=normalized_search)
-            | Q(department__icontains=normalized_search)
-            | Q(predicted_user_sdwt_prod__icontains=normalized_search)
-        )
-
-    rows = queryset.order_by("predicted_user_sdwt_prod", "username", "knox_id")
-    if safe_limit is not None:
-        rows = rows[:safe_limit]
-
-    results: list[dict[str, object]] = []
-    for snapshot in rows:
-        knox_id = _normalize_text(snapshot.knox_id) or ""
-        knox_lookup_key = knox_id.lower()
-        if not knox_id or knox_lookup_key in active_knox_lookup_keys:
-            continue
-        recipient_key = f"external:{knox_lookup_key}"
-        results.append(
-            {
-                "id": recipient_key,
-                "userId": None,
-                "recipientType": "external",
-                "recipientKey": recipient_key,
-                "externalKnoxId": knox_id,
-                "username": snapshot.username or "",
-                "displayName": snapshot.username or knox_id,
-                "sabun": "",
-                "knoxId": knox_id,
-                "email": _build_external_snapshot_email(knox_id=knox_id),
-                "department": snapshot.department or "",
-                "line": "",
-                "userSdwtProd": snapshot.predicted_user_sdwt_prod or "",
-            }
-        )
-    return results
 
 
 def list_active_user_pool(*, search: str = "", department: str = "", user_sdwt_prod: str = "",

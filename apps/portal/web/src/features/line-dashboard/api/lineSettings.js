@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/lineSettings.js
 // 라인 조기 알림 설정 CRUD API 래퍼
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

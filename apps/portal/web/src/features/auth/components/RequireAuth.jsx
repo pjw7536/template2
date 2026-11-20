@@ -1,4 +1,3 @@
-// 파일 경로: src/features/auth/components/RequireAuth.jsx
 // 보호된 페이지를 렌더링하기 전에 인증 여부를 확인하는 가드 컴포넌트입니다.
 // - 인증 상태는 useAuth 훅에서 가져오고,
 // - 로딩/비인증 상태일 때는 CenteredPage 레이아웃으로 안내 메시지를 보여줍니다.

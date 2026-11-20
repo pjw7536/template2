@@ -1,4 +1,3 @@
-// src/lib/api.js
 import { readEnvValue } from "@/lib/runtimeEnv"
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000/"

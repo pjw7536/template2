@@ -1,4 +1,3 @@
-// src/features/observer/utils/observerUtils.js
 // observer 범위와 옵션 계산 유틸만 제공합니다.
 import { getEndOfSeoulDay, getStartOfSeoulDay } from "./dateUtils";
 

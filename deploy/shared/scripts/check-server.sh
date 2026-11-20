@@ -10,6 +10,7 @@ cd "$ROOT_DIR"
 
 # 앱·그룹 이름과 앱별 정적 검사 명령은 공통 앱 카탈로그(commands.static)가 원본입니다.
 # 클러스터와 실제 credential은 확인하지 않습니다. Kubernetes 정의가 없는 앱을 Compose 검사로 대신 통과시키지 않습니다.
+apps="$(python3 deploy/shared/scripts/app-paths.py "$APP")"
 while IFS= read -r app; do
   python3 deploy/shared/scripts/app.py static "$app"
-done < <(python3 deploy/shared/scripts/app-paths.py "$APP")
+done <<< "$apps"

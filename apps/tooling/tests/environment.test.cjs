@@ -146,7 +146,9 @@ test('추적 중인 env로 저장소 profile 검사를 통과한다', t => {
   fs.mkdirSync(path.join(dir, 'deploy/shared/scripts'), { recursive: true });
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/validate_env_profile_keys.sh'), path.join(dir, 'deploy/shared/scripts/validate_env_profile_keys.sh'));
   fs.copyFileSync(path.join(root, 'deploy/shared/scripts/env-lib.sh'), path.join(dir, 'deploy/shared/scripts/env-lib.sh'));
-  for (const relative of ['local/portal/env', 'local/minio/env', 'deploy/minio/env', 'local/shared/env', 'deploy/portal/env/test', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env', 'deploy/ftp/env']) {
+  for (const relative of ['local/portal/env', 'local/minio/env', 'local/shared/env', 'deploy/portal/env/test',
+    'deploy/minio/env', 'deploy/airflow/env', 'deploy/monitoring/env', 'deploy/headlamp/env', 'deploy/ftp/env',
+    'deploy/registry/env', 'deploy/iam/env', 'deploy/shared/env']) {
     fs.cpSync(path.join(root, relative), path.join(dir, relative), {
       recursive: true,
     });

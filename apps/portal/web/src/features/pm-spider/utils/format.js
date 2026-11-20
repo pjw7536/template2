@@ -1,4 +1,3 @@
-// 파일 경로: src/features/pm-spider/utils/format.js
 // PM SPIDER 화면 표시와 요청 payload 변환 유틸입니다.
 
 export const DEFAULT_PM_FORM = {

@@ -1,4 +1,3 @@
-// src/features/auth/hooks/useAuth.js
 // AuthContext를 안전하게 꺼내 쓰기 위한 커스텀 훅입니다.
 
 import { useContext } from "react"

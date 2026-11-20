@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useTableQuery.js
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 

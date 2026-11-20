@@ -1,4 +1,3 @@
-// src/features/voc/utils/index.js
 // VOC 화면 전용 헬퍼
 import DOMPurify from "dompurify"
 

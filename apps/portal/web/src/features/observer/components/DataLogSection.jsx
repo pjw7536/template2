@@ -1,4 +1,3 @@
-// src/features/observer/components/DataLogSection.jsx
 import React from "react";
 import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react";
 import ObserverDataTable from "./ObserverDataTable";

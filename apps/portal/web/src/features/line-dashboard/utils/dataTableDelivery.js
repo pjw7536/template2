@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/utils/dataTableDelivery.js
 // Delivery row 정규화와 채널별 상태 요약을 담당하는 순수 유틸입니다.
 import { deriveFlagState } from "./dataTableFlagState"
 

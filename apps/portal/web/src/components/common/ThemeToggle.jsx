@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/ThemeToggle.jsx
 import { useEffect, useState } from "react"
 import { MoonIcon, SunIcon } from "lucide-react"
 

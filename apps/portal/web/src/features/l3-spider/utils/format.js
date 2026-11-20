@@ -1,4 +1,3 @@
-// 파일 경로: src/features/l3-spider/utils/format.js
 // L3 Spider 표시 형식 유틸입니다.
 
 export function formatNumber(value) {

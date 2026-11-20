@@ -1,4 +1,3 @@
-// src/features/observer/utils/tipTreeUtils.js
 import { getTipGroupKey } from "./tipUtils";
 
 export function buildTipGroupTree(tipLogs) {

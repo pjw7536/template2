@@ -1,4 +1,3 @@
-// src/features/observer/components/drilldown/EqpSelector.jsx
 import React from "react";
 import { useEquipments } from "../hooks/useLineQueries";
 import { LoadingSpinner } from "./Loaders";

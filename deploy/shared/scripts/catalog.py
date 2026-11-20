@@ -35,9 +35,11 @@ def read_catalog(path=CATALOG):
             raise ValueError(f'apps.json의 {name}.inputs는 서로 다른 variable과 default를 가져야 합니다.')
         known = {*BUILTIN, *variables, *app.get('options', [])}
         commands = app.get('commands', {})
-        for action in ('check', 'up'):
+        for action in ('static', 'check', 'up'):
             if not commands.get(action):
                 raise ValueError(f'apps.json의 {name}.commands.{action}이 필요합니다.')
+        if any(not argv for argv in commands['static']):
+            raise ValueError(f'apps.json의 {name}.commands.static에 빈 명령이 있습니다.')
         for action, command in commands.items():
             for argv in (command if action == 'static' else [command]):
                 undeclared = sorted({key for part in argv for key in PLACEHOLDER.findall(part)} - known)
@@ -100,7 +102,7 @@ def command(app, action, context, out=None, environ=None):
 
 def static_commands(app):
     """클러스터·실제 입력 없이 저장소 원본만 검사하는 명령 목록."""
-    return [list(argv) for argv in app.get('commands', {}).get('static', [])]
+    return [list(argv) for argv in app['commands']['static']]
 
 
 def child_environment(app, context, environ=None):

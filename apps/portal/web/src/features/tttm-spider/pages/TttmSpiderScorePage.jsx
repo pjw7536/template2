@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/pages/TttmSpiderScorePage.jsx
 // 선택된 행(rows) → (ref,comp) entries → TTTM Score 대시보드.
 import { useNavigate, useOutletContext } from "react-router-dom"
 

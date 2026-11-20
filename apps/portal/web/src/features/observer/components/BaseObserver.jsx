@@ -1,4 +1,3 @@
-// src/features/observer/components/BaseObserver.jsx
 import React, { useRef } from "react";
 import moment from "moment";
 import "moment/locale/ko";

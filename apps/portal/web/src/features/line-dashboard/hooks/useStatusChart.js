@@ -1,4 +1,3 @@
-// src/features/line-dashboard/hooks/useStatusChart.js
 import * as React from "react"
 
 import { STATUS_COLORS, STATUS_LABELS, STATUS_SEQUENCE } from "../utils/statusLabels"

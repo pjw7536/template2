@@ -1,4 +1,3 @@
-// 파일 경로: src/features/l3-spider/routes.jsx
 // L3 Spider feature 라우트 정의입니다.
 import { lazyNamed } from "@/lib/react/lazyNamed"
 

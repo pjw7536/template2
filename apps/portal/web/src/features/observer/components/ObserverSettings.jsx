@@ -1,4 +1,3 @@
-// src/features/observer/components/ObserverSettings.jsx
 import React from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import LegendToggle from "./LegendToggle";

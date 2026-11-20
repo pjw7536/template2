@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/getJiraUserSdwtProds.js
 // Jira 템플릿에 등록된 user_sdwt_prod 목록을 가져오는 API 래퍼입니다.
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

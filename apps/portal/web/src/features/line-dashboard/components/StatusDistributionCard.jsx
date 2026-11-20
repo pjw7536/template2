@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/data-table/StatusDistributionCard.jsx
 import * as React from "react"
 import { Label, Pie, PieChart, ResponsiveContainer } from "recharts"
 

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/routes.jsx
 // TTTM Spider feature 라우트: Target 선택 페이지 + Score 페이지(선택 상태 공유 레이아웃).
 import { lazyNamed } from "@/lib/react/lazyNamed"
 

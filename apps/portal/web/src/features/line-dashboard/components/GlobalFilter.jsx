@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/GlobalFilter.jsx
 import { Input } from "components/ui/input.jsx"
 
 import { searchableValue } from "../utils/dataTableFormatters"

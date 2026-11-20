@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/pages/LineDashboardDroneTargetAdminPage.jsx
 // Line Dashboard 관리자 전용 drone_sop_target 관리 화면입니다.
 import * as React from "react"
 import {

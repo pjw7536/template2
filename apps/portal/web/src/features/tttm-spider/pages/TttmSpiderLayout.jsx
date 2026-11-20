@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/pages/TttmSpiderLayout.jsx
 // Target 선택 페이지와 Score 페이지가 선택 상태를 공유하는 레이아웃(Outlet context).
 import { useState } from "react"
 import { Outlet } from "react-router-dom"

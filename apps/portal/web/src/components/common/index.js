@@ -1,4 +1,3 @@
-// 파일 경로: src/components/common/index.js
 // 여러 기능에서 재사용되는 조합형 UI 컴포넌트를 모아 export합니다.
 export { DateRangeCalendar } from "./DateRangeCalendar"
 export { ThemeToggle } from "./ThemeToggle"

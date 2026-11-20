@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/components/LineDashboardShell.jsx
 import { useEffect, useState } from "react"
 import { ServerCrash } from "lucide-react"
 import { Outlet } from "react-router-dom"

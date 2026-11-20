@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/pages/LineDashboardNotificationSettingsPage.jsx
 // 라인별 E-SOP 알림 설정 페이지입니다.
 import { useParams } from "react-router-dom"
 

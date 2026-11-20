@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/components/DataTableColumnRenderers.jsx
 // 컬럼별로 서로 다른 UI 표현을 담당하는 렌더러 모음입니다.
 import * as React from "react"
 import { createPortal } from "react-dom"

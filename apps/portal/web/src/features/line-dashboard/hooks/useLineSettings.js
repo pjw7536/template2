@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useLineSettings.js
 // 라인 조기 알림 설정 데이터를 관리하는 전용 훅 (비동기 로딩 + CRUD 포함)
 import * as React from "react"
 

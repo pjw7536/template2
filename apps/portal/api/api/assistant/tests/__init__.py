@@ -99,13 +99,9 @@ def _set_current_affiliation(user, *, user_sdwt_prod: str) -> None:
 def _allow_test_scope_access(test_case: TestCase) -> None:
     """도메인 endpoint 테스트에서 공통 portal/app 권한 경계를 격리합니다."""
 
-    for target in (
-        "api.account.services.get_access_payload",
-        "api.account.services.data_scope.get_access_payload",
-    ):
-        patcher = patch(target, return_value={"allowed": True})
-        patcher.start()
-        test_case.addCleanup(patcher.stop)
+    patcher = patch("api.account.services.get_access_payload", return_value={"allowed": True})
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 def _append_assistant_messages(

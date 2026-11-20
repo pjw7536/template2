@@ -1,4 +1,3 @@
-// src/features/observer/components/EqpObserver.jsx
 import React from "react";
 import BaseObserver from "./BaseObserver";
 import ObserverLegend from "./ObserverLegend";

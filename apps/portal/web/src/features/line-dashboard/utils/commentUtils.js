@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/commentUtils.js
 // Comment 문자열에서 보이는 부분과 숨김 마커를 안전하게 다루기 위한 유틸입니다.
 
 export const COMMENT_MARK = "$@$"

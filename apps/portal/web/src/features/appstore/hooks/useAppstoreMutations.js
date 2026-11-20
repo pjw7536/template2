@@ -1,4 +1,3 @@
-// 파일 경로: src/features/appstore/hooks/useAppstoreMutations.js
 // Appstore 전용 React Query mutation 훅
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"

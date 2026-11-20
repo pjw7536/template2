@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/utils/lineSettings.js
 // 라인 설정(조기 알림) 화면에서 공유하는 정규화/포맷 유틸 모음
 
 export function normalizeUserSdwt(values) {

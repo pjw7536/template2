@@ -1,4 +1,3 @@
-// src/features/line-dashboard/hooks/useCellIndicators.js
 import * as React from "react"
 
 import { MIN_SAVING_VISIBLE_MS, SAVED_VISIBLE_MS, SAVING_DELAY_MS } from "../utils/dataTableConstants"

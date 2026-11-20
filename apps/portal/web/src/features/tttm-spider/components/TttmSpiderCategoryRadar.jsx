@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderCategoryRadar.jsx
 // 카테고리/스텝 레이더 (top→sub 드릴다운 지원). 축·칩 클릭 시 onSelect.
 import {
   PolarAngleAxis,

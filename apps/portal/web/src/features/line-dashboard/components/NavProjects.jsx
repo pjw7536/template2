@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/components/NavProjects.jsx
 import { Folder, Forward, MoreHorizontal, Trash2 } from "lucide-react"
 
 import {

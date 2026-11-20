@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useDataTable.js
 import * as React from "react"
 
 import { buildBackendUrl } from "@/lib/api"

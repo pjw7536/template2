@@ -1,4 +1,3 @@
-// 파일 경로: src/lib/config/navigationConfig.js
 import {
   Activity,
   BarChart3,

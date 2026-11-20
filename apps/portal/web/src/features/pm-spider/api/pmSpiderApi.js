@@ -1,4 +1,3 @@
-// 파일 경로: src/features/pm-spider/api/pmSpiderApi.js
 // PM SPIDER 백엔드 API 요청 유틸입니다.
 import { buildBackendUrl, safeParseJson } from "@/lib/api"
 

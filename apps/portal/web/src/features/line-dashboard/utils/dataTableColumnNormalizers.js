@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/dataTableColumnNormalizers.js
 // 셀 렌더러에서 공통으로 쓰는 값 정규화 유틸입니다.
 import { deriveFlagState, toTinyIntFlag } from "./dataTableFlagState"
 

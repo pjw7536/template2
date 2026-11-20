@@ -1,4 +1,3 @@
-// src/features/observer/components/LegendToggle.jsx
 import React from "react";
 
 export default function LegendToggle({ showLegend, onToggle }) {

@@ -236,7 +236,7 @@ def prepare(results, execute=None):
     for entry in results:
         if entry['state'] != ACTION:
             continue
-        print(f'==> {shlex.join(entry["command"])}', flush=True)
+        print(f'==> {shlex.join(entry["command"])}', file=sys.stderr, flush=True)
         ok, output = execute(entry['command'])
         tail = (output.strip().splitlines() or [''])[-1]
         entry['state'] = OK if ok else BLOCKED
@@ -288,7 +288,7 @@ def main(argv=None):
             raise ValueError('apps.json의 앱 하나와 KUBE_CONTEXT를 명시하세요.')
         results = evaluate(args.app, catalog, args.context.strip(), args.prepare)
     except (ValueError, KeyError, OSError) as error:
-        print(f'[배포 차단] 준비 검사 — {error}')
+        print(f'[배포 차단] 준비 검사 — {error}', file=sys.stderr if args.json else sys.stdout)
         return 1
     blocked = blocking(results)
     if args.json:

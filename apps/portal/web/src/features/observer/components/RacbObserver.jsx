@@ -1,4 +1,3 @@
-// src/features/observer/components/RacbObserver.jsx
 import React from "react";
 import BaseObserver from "./BaseObserver";
 import ObserverLegend from "./ObserverLegend";

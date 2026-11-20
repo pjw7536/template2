@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderSensorTable.jsx
 // 센서 랭킹 테이블(own_score 내림차순)입니다. 선택 카테고리로 필터링.
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

@@ -22,19 +22,7 @@ from ..models import (
     UserScopeAffiliationGrant,
 )
 from .access_control import create_access_audit_log
-from .access_runtime import can_manage_access, get_access_payload
-
-
-def _serialize_affiliation(affiliation: Any) -> dict[str, object]:
-    """소속 모델을 권한 API의 고정 응답 형태로 변환합니다."""
-
-    return {
-        "id": affiliation.id,
-        "department": affiliation.department,
-        "line": affiliation.line,
-        "userSdwtProd": affiliation.user_sdwt_prod,
-        "isActive": affiliation.is_active,
-    }
+from .access_runtime import can_manage_access
 
 
 def _serialize_grant(grant: UserScopeAffiliationGrant) -> dict[str, object]:
@@ -46,97 +34,6 @@ def _serialize_grant(grant: UserScopeAffiliationGrant) -> dict[str, object]:
         "source": grant.source,
         "isActive": grant.is_active,
         "expiresAt": grant.expires_at.isoformat() if grant.expires_at else None,
-    }
-
-
-def _resolve_affiliation_scope_state(
-    *,
-    user: Any,
-    scope_key: str,
-    request: Any | None = None,
-) -> dict[str, object]:
-    """상세 응답과 경량 판정이 공유하는 소속 범위 상태를 계산합니다."""
-
-    access = get_access_payload(
-        user=user,
-        scope_key=scope_key,
-        request=request,
-    )
-    scope = selectors.get_access_scope_by_key(scope_key=scope_key)
-    if scope is None or not access.get("allowed"):
-        return {
-            "allowed": False,
-            "scope": scope_key,
-            "type": getattr(scope, "data_scope_type", None),
-            "mode": "denied",
-            "all": False,
-            "affiliationIds": [],
-            "_affiliations": [],
-            "_sourceById": {},
-        }
-
-    if scope.data_scope_type == AccessScope.DataScopeTypes.NONE:
-        return {
-            "allowed": True,
-            "scope": scope.key,
-            "type": AccessScope.DataScopeTypes.NONE,
-            "mode": "not_applicable",
-            "all": False,
-            "affiliationIds": [],
-            "_affiliations": [],
-            "_sourceById": {},
-        }
-
-    user_access = selectors.get_user_access_for_scope(user=user, scope=scope)
-    has_all_scope = bool(
-        getattr(user, "is_superuser", False)
-        or (
-            user_access
-            and user_access.status == UserAccess.Status.ALLOWED
-            and user_access.data_scope_mode == UserAccess.DataScopeModes.ALL
-        )
-    )
-    if has_all_scope:
-        return {
-            "allowed": True,
-            "scope": scope.key,
-            "type": AccessScope.DataScopeTypes.AFFILIATION,
-            "mode": "all",
-            "all": True,
-            "affiliationIds": [],
-            "_affiliations": [],
-            "_sourceById": {},
-        }
-
-    affiliation_by_id: dict[int, Any] = {}
-    source_by_id: dict[int, str] = {}
-
-    # 소속 정보와 무관하게 명시된 활성·미만료 권한만 합산합니다.
-    for grant in selectors.list_active_scope_affiliation_grants(
-        user=user,
-        scope=scope,
-    ):
-        affiliation_by_id[grant.affiliation_id] = grant.affiliation
-        source_by_id.setdefault(grant.affiliation_id, grant.source)
-
-    affiliations = sorted(
-        affiliation_by_id.values(),
-        key=lambda affiliation: (
-            affiliation.department,
-            affiliation.line,
-            affiliation.user_sdwt_prod,
-            affiliation.id,
-        ),
-    )
-    return {
-        "allowed": True,
-        "scope": scope.key,
-        "type": AccessScope.DataScopeTypes.AFFILIATION,
-        "mode": "selected",
-        "all": False,
-        "affiliationIds": [affiliation.id for affiliation in affiliations],
-        "_affiliations": affiliations,
-        "_sourceById": source_by_id,
     }
 
 

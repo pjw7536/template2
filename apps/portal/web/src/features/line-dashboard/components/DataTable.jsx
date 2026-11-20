@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/DataTable.jsx
 /** 
  * DataTable.jsx (React 19 최적화 버전)
  * ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/components/LineSettingsPage.jsx
 import * as React from "react"
 import { useSearchParams } from "react-router-dom"
 

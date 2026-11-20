@@ -1,4 +1,3 @@
-// src/features/auth/routes.jsx
 // 인증 관련 라우트를 정의합니다.
 import { lazyNamed } from "@/lib/react/lazyNamed"
 

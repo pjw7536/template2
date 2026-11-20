@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderSensorDetail.jsx
 // 센서 드릴다운: REF vs COMP 원파형 / Level / Shape / Noise 탭.
 import { useMemo } from "react"
 import {

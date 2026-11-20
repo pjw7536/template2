@@ -1,4 +1,3 @@
-// src/features/auth/components/AuthAutoLoginGate.jsx
 // 전역적으로 "로그인되지 않았다면 즉시 SSO 로그인"을 시도하는 가드 레이아웃입니다.
 // - 모든 라우트 위에 배치해 어디서 진입해도 동일한 경험을 제공합니다.
 

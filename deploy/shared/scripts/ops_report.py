@@ -273,12 +273,10 @@ def app_section(name, app, kube, git, checkout, options, cadata, vip, errors, re
     address_rows = []
     for host in hosts:
         dns, certificate = endpoint(host, cadata, vip if vip else None)
-        http = smoke_checks.http_check(host, settings.get('paths'), settings.get('accept', []), None, None,
-                                       lambda h, p, c, f: fetch_status(h, p, cadata))
+        http = smoke_checks.http_check(host, settings.get('paths'), settings.get('accept', []))
         fallback = ''
         if not http['ok'] and vip:
-            via = smoke_checks.http_check(host, settings.get('paths'), settings.get('accept', []), None, None,
-                                          lambda h, p, c, f: fetch_status(h, p, cadata, vip))
+            via = smoke_checks.http_check(host, settings.get('paths'), settings.get('accept', []), connect=vip)
             fallback = f' / APP VIP 직접: {via["detail"]}'
         address_rows.append([host, dns, certificate, http['detail'] + fallback])
     lines += ['공개 주소:'] + table(['host', 'DNS 결과', '인증서(APP VIP 기준)' if vip else '인증서', 'HTTPS 응답'], address_rows) + ['']
@@ -296,11 +294,6 @@ def app_section(name, app, kube, git, checkout, options, cadata, vip, errors, re
     lines += ['최근 Warning 이벤트(상위 5):'] + table(['사유', '대상', '횟수', '메시지'], [
         [reason, f'{kind}/{target}', entry['count'], entry['message']] for (reason, kind, target), entry in top]) + ['']
     return lines
-
-
-def fetch_status(host, path, cadata, connect=None):
-    """smoke와 같은 요청 함수로 HTTPS 상태 코드를 얻는다. 사내 CA 폴더는 그 함수가 신뢰 목록에 더한다."""
-    return smoke_checks.request_status(host, path, connect)
 
 
 def build(target, context, aliases, skip_drift=False, now=None):

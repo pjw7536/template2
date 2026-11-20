@@ -1,4 +1,3 @@
-// 파일 경로: src/features/observer/components/logDetail/RacbDetail.jsx
 import React from "react";
 import Field from "./Field";
 

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/utils/dataTableQuickFilters.js
 // 퀵 필터 섹션을 생성하고 적용하는 로직입니다.
 import { STATUS_LABELS, STATUS_SEQUENCE } from "./statusLabels"
 import { deriveFlagState } from "./dataTableFlagState"

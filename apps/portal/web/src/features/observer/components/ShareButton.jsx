@@ -1,4 +1,3 @@
-// src/features/observer/components/ShareButton.jsx
 import React, { useState } from "react";
 
 export default function ShareButton() {

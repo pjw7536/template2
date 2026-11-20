@@ -5,8 +5,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "$ROOT_DIR/deploy/shared/scripts/env-lib.sh"
 SELECT_APP="${1:-all}"
 SELECT_PROFILE="${2:-all}"
-case "$SELECT_APP" in all|portal|keycloak|airflow|monitoring|headlamp|minio|ftp|shared) ;; *) echo '지원하지 않는 앱입니다.' >&2; exit 1 ;; esac
-case "$SELECT_PROFILE" in all|local|prod|test) ;; *) echo '지원하지 않는 환경입니다.' >&2; exit 1 ;; esac
 
 # 선택한 앱·환경의 추적 env를 필수로 요구하고 형식을 검사합니다.
 required_files=(
@@ -24,6 +22,9 @@ required_files=(
   "monitoring prod deploy/monitoring/env/k8s.env"
   "headlamp prod deploy/headlamp/env/k8s.env"
   "ftp prod deploy/ftp/env/prod.env"
+  "registry prod deploy/registry/env/k8s.env"
+  "iam prod deploy/iam/env/prod.env"
+  "shared prod deploy/shared/env/node-exec.env"
   "portal test deploy/portal/env/test/api.env"
 )
 selected_count=0
@@ -38,14 +39,6 @@ for entry in "${required_files[@]}"; do
   if [[ "$file" == *.example && -f "${file%.example}" ]]; then
     ENV_VALUES=()
     load_env "${file%.example}"
-  fi
-  legacy_file="$(
-    find "${file%/*}" -maxdepth 1 -type f \
-      \( -name '*.config.env' -o -name '*.secret.env' \) -print -quit
-  )"
-  if [[ -n "$legacy_file" ]]; then
-    echo "이전 config/secret 환경변수 파일을 단일 env로 통합해야 합니다: $legacy_file" >&2
-    exit 1
   fi
 done
 [[ "$selected_count" -gt 0 ]] || { echo "지원하지 않는 앱·환경 조합: $SELECT_APP/$SELECT_PROFILE" >&2; exit 1; }

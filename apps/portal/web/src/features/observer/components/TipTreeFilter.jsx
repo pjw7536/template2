@@ -1,4 +1,3 @@
-// src/features/observer/components/TipTreeFilter.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import TipTreeNode from "./filters/TipTreeNode";
 import { buildTipGroupTree } from "../utils/tipTreeUtils";

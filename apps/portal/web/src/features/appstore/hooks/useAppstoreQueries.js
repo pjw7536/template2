@@ -1,4 +1,3 @@
-// 파일 경로: src/features/appstore/hooks/useAppstoreQueries.js
 // Appstore 전용 React Query 훅 모음
 
 import { useQuery } from "@tanstack/react-query"

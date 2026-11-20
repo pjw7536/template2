@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/components/TttmSpiderChamberChips.jsx
 // 조회된 COMP 챔버들을 칩으로 나열. 클릭 → 상세 선택, ×로 제거.
 import { Button } from "@/components/ui/button"
 

@@ -1,4 +1,3 @@
-// src/features/line-dashboard/components/LineHistoryDashboard.jsx
 import * as React from "react"
 import { IconAlertCircle } from "@tabler/icons-react"
 

@@ -1,4 +1,3 @@
-// 파일 경로: src/features/pm-spider/hooks/usePmSpiderQueries.js
 // PM SPIDER 서버 데이터 조회 훅입니다.
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query"
 

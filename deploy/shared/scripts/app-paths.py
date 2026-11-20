@@ -30,10 +30,7 @@ def main():
     args = parser.parse_args()
     try:
         catalog = read_catalog(Path(__file__).resolve().parents[1] / 'apps.json')
-        names = [args.app] if args.app in catalog['apps'] else catalog['groups'].get(args.app)
-        if not names:
-            raise ValueError('지원하지 않는 서버 앱입니다.')
-        print('\n'.join(names))
+        print('\n'.join(registry.resolve_apps(catalog, args.app)))
     except (ValueError, KeyError, TypeError, OSError) as error:
         parser.error(str(error))
 

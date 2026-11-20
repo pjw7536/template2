@@ -89,6 +89,15 @@ class PodScriptTests(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(first)) as bundle:
             self.assertEqual(bundle.getnames(), ['added.py', 'changed.py', 'common/util.py', 'same.py'])
 
+    def test_check_reports_destination_conflicts_before_writing(self):
+        write(self.target, {'common': '기존 파일'})
+        for mode in ('check', 'apply'):
+            result = run_pod_script(self.target, mode, dags.archive(self.source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('DAG 하위 폴더로 쓸 수 없습니다', result.stderr.decode())
+            self.assertFalse((self.target / 'added.py').exists())
+            self.assertEqual((self.target / 'changed.py').read_text(), 'old')
+
 
 class SyncFlowTests(unittest.TestCase):
     def fake(self, image='store.test/airflow:3.3.2-abc', fail_exec=False):

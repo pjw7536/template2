@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/hooks/useDroneTargetAdmin.js
 // Line Dashboard 관리자 target 관리 화면의 서버 상태와 mutation을 관리합니다.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 

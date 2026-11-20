@@ -1,4 +1,3 @@
-// 파일 경로: src/features/assistant/routes.jsx
 // LLM 어시스턴트 전체 화면 페이지 라우트
 import { lazyNamed } from "@/lib/react/lazyNamed"
 

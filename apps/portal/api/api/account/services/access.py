@@ -256,57 +256,6 @@ def ensure_self_access(
     return access
 
 
-def downgrade_member_access(
-    *,
-    user: Any,
-    user_sdwt_prod: str,
-    audit_actor: Any | None = None,
-    audit_reason: str | None = None,
-) -> None:
-    """특정 소속의 member 역할을 viewer로 강등합니다.
-
-    입력:
-    - user: Django 사용자 객체
-    - user_sdwt_prod: 대상 소속
-    - audit_actor: 자동 역할 변경을 기록할 행위자
-    - audit_reason: 자동 역할 변경 사유
-
-    반환:
-    - 없음
-
-    부작용:
-    - UserSdwtProdAccess role 업데이트
-    - audit_actor가 있으면 AccessAuditLog 생성
-
-    오류:
-    - 없음
-    """
-
-    with transaction.atomic():
-        access = selectors.get_access_row_for_user_and_prod_for_update(
-            user=user,
-            user_sdwt_prod=user_sdwt_prod,
-        )
-        if access is None or access.role != UserSdwtProdAccess.Roles.MEMBER:
-            return
-
-        before = _serialize_affiliation_role_audit(access)
-        access.role = UserSdwtProdAccess.Roles.VIEWER
-        access.save(update_fields=["role"])
-        if audit_actor is not None:
-            create_access_audit_log(
-                scope=None,
-                actor=audit_actor,
-                target_user=user,
-                policy_rule=None,
-                affiliation=access.affiliation,
-                action=AccessAuditLog.Actions.AFFILIATION_ROLE_CHANGE,
-                before=before,
-                after=_serialize_affiliation_role_audit(access),
-                reason=audit_reason,
-            )
-
-
 def grant_or_revoke_access(
     *,
     grantor: Any,
@@ -618,37 +567,6 @@ def _serialize_access(access: UserSdwtProdAccess, source: str) -> Dict[str, obje
         "source": source,
         "grantedBy": access.granted_by_id,
         "grantedAt": access.created_at.isoformat(),
-    }
-
-
-def _serialize_access_fallback(
-    *,
-    user_sdwt_prod: str,
-    source: str,
-    role: str,
-) -> Dict[str, object]:
-    """DB row가 없는 경우를 위한 접근 권한 기본값을 생성합니다.
-
-    입력:
-    - user_sdwt_prod: 소속 식별자
-    - source: 권한 출처 문자열
-
-    반환:
-    - Dict[str, object]: 기본값 응답
-
-    부작용:
-    - 없음
-
-    오류:
-    - 없음
-    """
-
-    return {
-        "userSdwtProd": user_sdwt_prod,
-        "role": role,
-        "source": source,
-        "grantedBy": None,
-        "grantedAt": None,
     }
 
 

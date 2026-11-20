@@ -1,4 +1,3 @@
-// src/features/line-dashboard/utils/dataTableCellState.js
 // 셀 상태 관리를 위한 공통 유틸입니다.
 
 /**

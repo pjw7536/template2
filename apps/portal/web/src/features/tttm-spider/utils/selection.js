@@ -1,4 +1,3 @@
-// 파일 경로: src/features/tttm-spider/utils/selection.js
 // TTTM Spider REF/COMP 선택 상태 유틸입니다.
 
 export function createEmptyChamber() {

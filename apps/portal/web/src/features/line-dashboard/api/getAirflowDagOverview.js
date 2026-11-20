@@ -1,4 +1,3 @@
-// 파일 경로: src/features/line-dashboard/api/getAirflowDagOverview.js
 import { buildBackendUrl } from "@/lib/api"
 
 const DEFAULT_PUBLIC_BASE_URL = "/airflow"
