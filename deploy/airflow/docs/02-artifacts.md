@@ -2,11 +2,11 @@
 
 [Airflow 가이드](../README.md)
 
-설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 고정 chart, DAG 포함 이미지, 빌드 도구, ODBC 설정을 준비하는 방법과 원리입니다.
+설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 고정 chart, Airflow 이미지, 빌드 도구, ODBC 설정을 준비하는 방법과 원리입니다.
 실행 위치는 각 절에 표시한 호스트의 저장소 루트입니다. chart 받기·빌드 도구 설치·이미지 빌드와 push는 `make ops-deploy APP=airflow`가 수행하므로, 아래 명령은 그 단계만 따로 실행하거나 실패 원인을 확인할 때 씁니다.
 
 - [1. 공식 chart 준비](#1-공식-chart-준비)
-- [2. DAG 포함 이미지 준비](#2-dag-포함-이미지-준비): [containerd 빌드 도구 준비](#containerd-빌드-도구-준비) · [두 단계 이미지 빌드](#두-단계-이미지-빌드) · [이미지 전달](#이미지-전달)
+- [2. 이미지 준비](#2-이미지-준비): [containerd 빌드 도구 준비](#containerd-빌드-도구-준비) · [두 단계 이미지 빌드](#두-단계-이미지-빌드) · [이미지 전달](#이미지-전달)
 - [3. ODBC 설정 준비](#3-odbc-설정-준비)
 
 ## 1. 공식 chart 준비
@@ -42,7 +42,9 @@ AIRFLOW_CHART_FILE=<반입한 chart의 절대 경로> make airflow-check KUBE_CO
 
 `airflow-check`·`airflow-up`·렌더는 chart를 내려받지 않으며 고정 SHA-256이 다르면 중단합니다. dependency가 압축 파일에 포함되어 `helm dependency update`가 필요하지 않습니다.
 
-## 2. DAG 포함 이미지 준비
+## 2. 이미지 준비
+
+이미지에는 플러그인·Python 패키지·ODBC 드라이버·인증 설정이 들어갑니다. DAG는 넣지 않으며 [DAG 폴더](04-operations.md#dag-폴더)로 전달합니다.
 
 실행 위치는 관리 호스트의 저장소 전체 checkout 루트(운영 agent가 실행되는 곳)입니다. 기존 containerd에 nerdctl·BuildKit을 연결해 Docker Engine 없이 빌드합니다.
 control plane에서는 빌드하지 않습니다. 관리 호스트는 MinIO·Registry도 실행하므로 BuildKit의 동시 빌드 단계를 2로 제한합니다(`max-parallelism`).
@@ -63,7 +65,7 @@ make airflow-image KUBE_CONTEXT="<context>"
 
 성공: `Airflow 이미지 push 완료: store.etch.samsungds.net/airflow:3.3.2-<12자리>` 또는 `registry에 이미 있는 tag라 빌드하지 않았습니다: <이미지>`.
 
-- 이미지 이름은 `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`(`store.etch.samsungds.net/airflow`)와 `AIRFLOW_IMAGE_TAG`입니다. tag `3.3.2-auto`는 `apps/airflow` 소스(DAG 공유 폴더를 쓰면 `dags` 제외)와 `build.env` 내용으로 `3.3.2-<12자리>`가 됩니다. 소스가 바뀌면 tag가 바뀌므로 env를 고칠 필요가 없습니다. 고정하려면 `3.3.2-<이름>`을 직접 씁니다.
+- 이미지 이름은 `k8s.env`의 `AIRFLOW_IMAGE_REPOSITORY`(`store.etch.samsungds.net/airflow`)와 `AIRFLOW_IMAGE_TAG`입니다. tag `3.3.2-auto`는 이미지에 들어가는 소스(`apps/airflow/image`·`apps/airflow/plugins`)와 `build.env` 내용으로 `3.3.2-<12자리>`가 됩니다. 이 내용이 바뀔 때만 tag가 바뀌므로 env를 고칠 필요가 없고, DAG·테스트·문서만 바뀐 커밋은 tag가 같아 다시 빌드하지 않습니다. 고정하려면 `3.3.2-<이름>`을 직접 씁니다.
 - registry에 같은 tag가 있으면 빌드하지 않고 끝납니다. 없으면 빌드 후 push 계정(`REGISTRY_PUSH_ENV`, 기본 `deploy/registry/env/push-initial.env`)으로 로그인해 올립니다.
 - 로그인은 계정 파일의 `REGISTRY_USER`·`REGISTRY_PASSWORD`를 읽어 비밀번호를 표준 입력(`--password-stdin`)으로 전달하므로 입력을 기다리지 않습니다. containerd 소켓에 쓸 수 없는 계정은 nerdctl을 `sudo -n`으로 실행하므로 비밀번호 없는 sudo가 필요합니다([관리 호스트 sudo](../../shared/docs/infrastructure/access.md#관리-호스트-sudo)).
 - 관리 호스트와 각 노드는 저장소 인증서를 신뢰해야 합니다([노드와 관리 호스트의 CA 신뢰](../../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)).
@@ -207,7 +209,7 @@ python3 deploy/airflow/scripts/manage.py build-image --builder nerdctl \
 도구는 소스·빌더·daemon 접속을 먼저 확인한 뒤 다음 순서로 빌드합니다.
 
 1. `apps/airflow/image/Dockerfile.dependencies`로 의존성 이미지(`<repository>:<tag>-dependencies`)를 만듭니다.
-2. `apps/airflow/image/Dockerfile`로 DAG·플러그인을 추가합니다. 빌드 context는 `apps/airflow`이며 실제 env·로그·DSN 파일은 보내지 않습니다.
+2. `apps/airflow/image/Dockerfile`로 플러그인과 인증 설정을 추가합니다. 빌드 context는 `apps/airflow`이며 `image/`와 `plugins/`만 보냅니다. DAG·테스트와 실제 env·로그·DSN 파일은 보내지 않습니다.
 
 빌드 단계가 끝나면 `Airflow 이미지 빌드 완료`가 출력됩니다. `build-image`는 이미지를 push하지 않고, `make airflow-image`는 이어서 push합니다.
 BigDataQuery Python·ODBC의 설치·import·DSN 접속과 mirror의 패키지 제공은 사내 빌드 호스트·서버에서 확인합니다.
@@ -225,7 +227,7 @@ AIRFLOW_DOCKER_TESTS=1 python3 -m unittest discover \
 
 빌드한 이미지는 빌드 서버 containerd의 빌드용 `default` namespace에 저장됩니다. `make airflow-image`는 사내 이미지 저장소로 push하고 각 노드가 거기서 내려받습니다.
 registry를 쓸 수 없을 때만 아래처럼 `.tar`로 저장해 Worker에 반입하고, 이 경우 `AIRFLOW_IMAGE_REPOSITORY`에 registry 주소 없는 이름을 씁니다. PostgreSQL 이미지도 같은 기준으로 준비합니다.
-공유 폴더의 DAG 변경은 [공유 폴더 관리](04-operations.md#dag-파일-추가수정삭제)를 따릅니다. 플러그인, 패키지, ODBC가 바뀌면 새 이미지 태그로 빌드하고 배포합니다. 이미지에 포함된 DAG는 로컬 개발과 최초 공유 폴더 준비에 사용할 수 있습니다.
+DAG 변경은 이미지와 무관하며 [DAG 파일 추가·수정·삭제](04-operations.md#dag-파일-추가수정삭제)를 따릅니다. 플러그인, 패키지, ODBC가 바뀌면 새 이미지 태그로 빌드하고 배포합니다.
 
 #### Registry를 사용하는 경우
 

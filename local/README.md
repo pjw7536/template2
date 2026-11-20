@@ -151,6 +151,7 @@ Role mapping에 `portal` client의 `portal-all-apps`를 지정한 뒤 `90000001`
 ### Airflow Keycloak 로그인
 
 `make k8s-rebuild APP=airflow`는 기존 realm을 보존하면서 전용 client를 등록하고 이미지를 갱신합니다.
+Airflow 이미지에는 DAG가 없으므로 같은 명령이 저장소의 `apps/airflow/dags`와 로컬 검증 DAG를 `data/k8s-local/airflow-dags`에 맞춰 복사하고, Airflow는 그 폴더를 읽기 전용으로 읽습니다.
 새 환경의 `make dev`도 같은 등록 경로를 사용합니다. realm JSON의 재import에 의존하지 않습니다.
 누락된 Airflow client secret만 `local/shared/runtime/credentials.env`에 추가하며 기존 DB·Fernet 키는 유지합니다.
 

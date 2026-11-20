@@ -11,30 +11,10 @@ scheduler:
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: '2', memory: 2Gi}
-  # LocalExecutor도 task 실행 시 DAG 원본을 읽습니다.
-  extraVolumes:
-    - name: local-platform-dag
-      configMap:
-        name: local-platform-dag
-  extraVolumeMounts:
-    - name: local-platform-dag
-      mountPath: /opt/airflow/dags/local_platform_smoke.py
-      subPath: local_platform_smoke.py
-      readOnly: true
 dagProcessor:
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {cpu: '1', memory: 1Gi}
-  # 독립 DAG processor가 로컬 검증 DAG를 읽습니다.
-  extraVolumes:
-    - name: local-platform-dag
-      configMap:
-        name: local-platform-dag
-  extraVolumeMounts:
-    - name: local-platform-dag
-      mountPath: /opt/airflow/dags/local_platform_smoke.py
-      subPath: local_platform_smoke.py
-      readOnly: true
 apiServer:
   resources:
     requests: {cpu: 100m, memory: 512Mi}

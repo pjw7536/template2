@@ -18,6 +18,7 @@
 | Airflow 대조가 배포와 같은 설정으로 렌더 | 정상 배포인데 `driftResultCode` 1이던 문제가 사라짐 | [2. 배포된 앱의 기록 갱신](#2-배포된-앱의-기록-갱신) |
 | 명령 인자 변경 | 아래 [바뀐 명령](#바뀐-명령) 표 | — |
 | 클러스터 밖 작업의 접근 방법을 [접근 경로](../infrastructure/access.md) 한 곳에 기록 | 처음 쓰는 접근 방법을 그 표에 적음 | [5. 접근 경로 기록](#5-접근-경로-기록) |
+| Airflow 이미지에 DAG를 넣지 않고 Worker의 DAG 폴더에서만 읽음. 이미지 tag는 이미지에 들어가는 소스로만 계산 | 이미지 tag가 한 번 바뀜. DAG가 든 이미지로 실행 중인 설치는 배포 전에 DAG 파일을 폴더로 옮겨야 함 | [7. Airflow 이미지에서 DAG 분리](#7-airflow-이미지에서-dag-분리) |
 
 타깃 이름(`make <app>-check`·`-up`·`-smoke`, `ops-deploy`, `drift-check`)과 env 파일 경로, 배포 기록의 형식은 그대로입니다.
 
@@ -45,8 +46,8 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
 | 결과 | 판단 |
 | --- | --- |
 | 목록이 비어 있고 `kubectl --context "<context>" -n etch-sso get deployment traefik --ignore-not-found`도 비어 있음 | 배포된 앱이 없습니다. 이 문서를 건너뜁니다 |
-| `deploy-record-ingress`가 있음 | `적용됨`. 이 문서를 건너뜁니다 |
-| 그 밖(Traefik이나 다른 앱의 기록은 있는데 `deploy-record-ingress`가 없음) | 미적용. 아래 0~6을 순서대로 수행합니다 |
+| `deploy-record-ingress`가 있음 | 0~6은 `적용됨`. 건너뛰고 [7](#7-airflow-이미지에서-dag-분리)의 확인만 수행합니다 |
+| 그 밖(Traefik이나 다른 앱의 기록은 있는데 `deploy-record-ingress`가 없음) | 미적용. 아래 0~7을 순서대로 수행합니다 |
 
 ## 0. 시작 전 검사
 
@@ -175,9 +176,45 @@ Portal이 배포돼 있을 때만 수행합니다.
 2. [조회] `적용 여부 확인`의 명령에 `deploy-record-ingress`가 나오는지 확인합니다.
 3. [변경] [대기 작업](../infrastructure/pending.md)에서 확인된 행을 정리하고, 남은 일(막힌 단계와 필요한 것)을 행으로 남깁니다.
 
+## 7. Airflow 이미지에서 DAG 분리
+
+Airflow가 배포돼 있을 때만 수행합니다. 0~6의 적용 여부와 따로 확인합니다.
+
+1. [검사] 현재 checkout이 이미지를 바꾸는지와 DAG 폴더 사용 여부를 확인합니다. 클러스터를 바꾸지 않습니다.
+   ```bash
+   make airflow-check KUBE_CONTEXT="<context>"
+   kubectl --context "<context>" -n airflow get pvc airflow-dags --ignore-not-found
+   ```
+
+   | 결과 | 판단 |
+   | --- | --- |
+   | `이미지 변경: 없음` | `적용됨`. 이 절을 건너뜁니다 |
+   | `이미지 변경: 최초 설치(…)` | Airflow가 배포돼 있지 않습니다. 이 절을 건너뛰고 [Airflow 가이드](../../../airflow/README.md#a-최초-설치)로 설치합니다 |
+   | `이미지 변경: 있음(…)`이고 `airflow-dags`가 `Bound` | DAG 폴더를 이미 쓰는 설치입니다. 폴더의 파일을 그대로 쓰므로 3번으로 갑니다 |
+   | `이미지 변경: 있음(…)`이고 `airflow-dags` 줄이 없음 | 이미지의 DAG로 실행 중입니다. 2번부터 수행합니다 |
+   | `오류: DAGS_HOST_PATH가 필요합니다` | 저장소 밖 env에 DAG 폴더 경로가 없습니다. [운영 입력 파일](../infrastructure/access.md#운영-입력-파일)의 방법으로 `DAGS_HOST_PATH=/appdata/airflow/dags`와 `DAGS_STORAGE_SIZE=1Gi`를 넣고 이 단계를 다시 실행합니다 |
+
+2. [변경] 실행 중인 DAG 파일을 DAG 폴더로 옮깁니다. 새 이미지에는 DAG가 없으므로 배포보다 먼저 합니다. [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환)의 1~2번을 수행합니다.
+   성공: 그 절 2번의 목록에 기존 DAG 파일이 보입니다.
+3. [승인] 새 이미지로 배포합니다. 이미지가 바뀌어 실행 중 작업이 중단되므로 [Airflow 가이드 B](../../../airflow/README.md#b-업데이트)의 `이미지 변경: 있음` 행을 따릅니다.
+   ```bash
+   make ops-deploy APP=airflow KUBE_CONTEXT="<context>"
+   ```
+   성공: `{"app":`으로 시작하는 JSON 줄의 `"failedStep": null`, `"driftResultCode": 0`.
+4. [조회] DAG가 그대로 보이는지 확인합니다.
+   ```bash
+   kubectl --context "<context>" -n airflow get pods,pvc
+   kubectl --context "<context>" -n airflow exec deployment/airflow-scheduler -- airflow dags list
+   kubectl --context "<context>" -n airflow exec deployment/airflow-scheduler -- airflow dags list-import-errors
+   ```
+   성공: 모든 Pod가 Ready, `airflow-dags`가 `Bound`, 배포 전과 같은 DAG가 목록에 있고 import 오류가 없습니다. 빠진 DAG는 `make airflow-dags-sync KUBE_CONTEXT="<context>"`([방법](../../../airflow/docs/04-operations.md#dag-파일-추가수정삭제))로 넣습니다. 폴더에 남아 있는 `.airflow-dags-initialized` 파일은 더 쓰지 않으며 그대로 두어도 됩니다.
+
+이 뒤로 DAG·테스트만 바뀐 커밋은 이미지 tag가 같으므로 `make airflow-check`가 `이미지 변경: 없음`을 출력하고, DAG는 `make airflow-dags-sync`로만 반영합니다.
+
 ## 실패했을 때
 
 - 0단계에서 실패하면 클러스터는 바뀌지 않았습니다. 실패한 검사와 오류 마지막 줄을 보고합니다.
 - 1단계의 `ops-deploy`가 실패하면 `failedStep`과 [ingress 가이드](../../ingress/README.md#문제-해결과-멈춤-조건)의 표를 봅니다. Traefik을 지우거나 `kubectl apply -k`로 다시 만들지 않습니다.
 - 2·3단계에서 한 앱이 실패하면 그 앱만 멈추고 다음 앱을 계속합니다. 앱 가이드의 `문제 해결과 멈춤 조건`을 따릅니다.
+- 7단계의 배포 뒤 DAG 목록이 비어 있으면 DAG 폴더가 비어 있는 것입니다. Airflow를 되돌리지 않고 `make airflow-dags-sync KUBE_CONTEXT="<context>"`로 저장소의 DAG를 넣습니다. 저장소에 없던 서버 전용 DAG는 7-2번에서 만든 백업 tar로 [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환)의 2번을 다시 합니다.
 - checkout을 이전 commit으로 되돌리지 않습니다. 저장소 수정이 필요하면 원인과 필요한 수정을 보고합니다.

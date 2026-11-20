@@ -304,15 +304,34 @@ def local_stack_up(creds, restart_mock=False):
         rollout('tailwind-local', 'deployment/' + name)
 
 
+def sync_airflow_dags():
+    """저장소의 DAG와 로컬 검증 DAG를 kind worker가 보는 DAG 폴더에 맞춰 복사합니다.
+
+    Airflow 이미지에는 DAG가 없습니다. 서버에서는 운영자가 DAG 폴더를 직접 관리하고, 로컬에서는 실행할 때마다 저장소 내용으로 맞춥니다.
+    실행 중인 Pod가 폴더를 연결하고 있으므로 폴더 자체는 지우지 않고 안의 파일만 맞춥니다.
+    """
+    target = Path(settings()['LOCAL_RUNTIME_DATA_HOST_PATH']) / 'airflow-dags'
+    target.mkdir(parents=True, exist_ok=True)
+    sources = {path.name: path for path in (ROOT / 'apps/airflow/dags').iterdir() if path.name != '__pycache__'}
+    fixture = ROOT / 'local/airflow/fixtures/local_platform_smoke.py'
+    sources[fixture.name] = fixture
+    for stale in target.iterdir():
+        if stale.name not in sources:
+            shutil.rmtree(stale) if stale.is_dir() else stale.unlink()
+    for name, source in sources.items():
+        if source.is_dir():
+            shutil.copytree(source, target / name, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
+        else:
+            shutil.copyfile(source, target / name)
+
+
 def airflow_up(creds):
     """공통 Helm 배포로 외부 DB를 사용하는 Airflow를 실행합니다."""
     deploy = module('airflow')
     values = airflow_settings(creds)
     deploy.validate(values)
     airflow_client_up(values)
-    apply([{'apiVersion': 'v1', 'kind': 'ConfigMap',
-            'metadata': {'name': 'local-platform-dag', 'namespace': 'airflow'},
-            'data': {'local_platform_smoke.py': (ROOT / 'local/airflow/fixtures/local_platform_smoke.py').read_text()}}])
+    sync_airflow_dags()
     deploy.deploy(values, CONTEXT, deploy.chart_path(), pause_new_dags=True,
                   values_file=ROOT / 'local/airflow/helm/values.yaml')
 

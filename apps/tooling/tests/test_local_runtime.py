@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +15,32 @@ with patch.object(sys, 'path', [str(SCRIPTS), *sys.path]):
     SPEC = importlib.util.spec_from_file_location('local_runtime', SCRIPTS / 'k8s.py')
     runtime = importlib.util.module_from_spec(SPEC)
     SPEC.loader.exec_module(runtime)
+
+
+class AirflowDagFolderTests(unittest.TestCase):
+    def test_local_dag_folder_mirrors_repository_dags_and_the_smoke_dag(self):
+        """Airflow 이미지에는 DAG가 없으므로 로컬 DAG 폴더를 저장소 내용으로 맞춥니다."""
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'airflow-dags'
+            target.mkdir(parents=True)
+            (target / 'removed_dag.py').write_text('저장소에서 지운 파일')
+            (target / 'scheduler_resource_load_test.py').write_text('이전 내용')
+            folder = target.stat().st_ino
+            with patch.object(runtime, 'settings', return_value={'LOCAL_RUNTIME_DATA_HOST_PATH': directory}):
+                runtime.sync_airflow_dags()
+            source = runtime.ROOT / 'apps/airflow/dags'
+            expected = {item.name for item in source.iterdir() if item.name != '__pycache__'} | {'local_platform_smoke.py'}
+            self.assertEqual({item.name for item in target.iterdir()}, expected)
+            self.assertEqual((target / 'scheduler_resource_load_test.py').read_text(),
+                             (source / 'scheduler_resource_load_test.py').read_text())
+            # 실행 중인 Pod가 연결한 폴더이므로 폴더 자체는 다시 만들지 않습니다.
+            self.assertEqual(target.stat().st_ino, folder)
+
+    def test_local_airflow_reads_dags_from_the_runtime_folder(self):
+        settings = runtime.airflow_settings({key: 'x' for key in (
+            'AIRFLOW_DB_PASSWORD', 'AIRFLOW_ADMIN_PASSWORD', 'AIRFLOW_FERNET_KEY', 'AIRFLOW_WEBSERVER_SECRET_KEY',
+            'AIRFLOW_TRIGGER_TOKEN', 'AIRFLOW_OIDC_CLIENT_SECRET')})
+        self.assertEqual(settings['DAGS_HOST_PATH'], '/data/local-runtime/airflow-dags')
 
 
 class SecretTests(unittest.TestCase):

@@ -290,7 +290,7 @@ class ConfigurationTests(unittest.TestCase):
         deploy.validate(values)
         self.assertNotIn('odbc', {volume['name'] for volume in deploy.helm_values(values)['volumes']})
 
-    def test_shared_dag_storage_is_optional_and_separate_from_database(self):
+    def test_dag_folder_is_required_and_separate_from_database(self):
         values = {**settings(), 'POSTGRES_MODE': 'external', 'POSTGRES_HOST': 'external-postgres'}
         deploy.validate(values)
         storage = deploy.manifests(values)['storage']['items']
@@ -300,15 +300,18 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(pv['spec']['capacity']['storage'], pvc['spec']['resources']['requests']['storage'])
         self.assertNotIn('airflow-postgres', {item['metadata']['name'] for item in storage})
 
-        for key in deploy.DAGS_DEFAULTS:
-            values.pop(key)
-        deploy.validate(values)
-        self.assertEqual(values['DAGS_HOST_PATH'], '')
-        self.assertNotIn('airflow-dags', {item['metadata']['name'] for item in deploy.manifests(values)['storage']['items']})
+        # 이미지에는 DAG가 없으므로 모든 Airflow 컨테이너가 DAG 폴더를 읽기 전용으로 연결한다. 준비 표식 검사는 두지 않는다.
         overlay = deploy.helm_values(values)
+        self.assertIn({'name': 'shared-dags', 'persistentVolumeClaim': {'claimName': 'airflow-dags', 'readOnly': True}}, overlay['volumes'])
+        self.assertIn({'name': 'shared-dags', 'mountPath': '/opt/airflow/dags', 'readOnly': True}, overlay['volumeMounts'])
+        self.assertEqual(overlay['config']['core']['dags_folder'], '/opt/airflow/dags')
         self.assertNotIn('scheduler', overlay)
         self.assertNotIn('dagProcessor', overlay)
-        self.assertNotIn('shared-dags', {volume['name'] for volume in overlay['volumes']})
+
+        # 폴더를 지정하지 않으면 DAG 없는 Airflow가 뜨므로 검증에서 멈춘다. 키가 없는 이전 env도 같다.
+        for missing in ({**values, 'DAGS_HOST_PATH': ''}, {key: value for key, value in values.items() if key != 'DAGS_HOST_PATH'}):
+            with self.assertRaisesRegex(ValueError, 'DAGS_HOST_PATH가 필요합니다'):
+                deploy.validate(missing)
 
     def test_corrupt_chart_is_rejected_without_cluster_access(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -908,8 +911,9 @@ class HelmIntegrationTests(unittest.TestCase):
                 self.assertIn('claimName: airflow-dags', component)
                 self.assertIn('mountPath: /opt/airflow/dags', component)
                 self.assertIn('readOnly: true', component)
-                self.assertIn('name: check-shared-dags', component)
-                self.assertIn('/opt/airflow/dags/.airflow-dags-initialized', component)
+                # 폴더의 파일은 운영자가 관리한다. 준비 표식을 검사하는 init container는 두지 않는다.
+                self.assertNotIn('check-shared-dags', component)
+            self.assertNotIn('.airflow-dags-initialized', rendered)
             for key in deploy.SECRET_KEYS:
                 self.assertNotIn(settings()[key], rendered)
 

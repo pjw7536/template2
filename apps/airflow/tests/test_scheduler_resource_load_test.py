@@ -1,4 +1,4 @@
-"""부하 테스트 DAG의 워커 모드가 검증 가능한 계산을 계속 수행하고 메모리 배정을 한도 안에서 조정하는지 확인합니다."""
+"""부하 테스트 DAG의 계산 검증, 메모리 배정과 반복 예약을 확인합니다."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,6 +31,7 @@ def _stub_modules() -> dict[str, types.ModuleType]:
     class Dag:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.dag_id = kwargs["dag_id"]
 
         def __enter__(self):
             return self
@@ -41,12 +43,15 @@ def _stub_modules() -> dict[str, types.ModuleType]:
         "airflow", "airflow.providers", "airflow.providers.cncf", "airflow.providers.cncf.kubernetes",
         "airflow.providers.cncf.kubernetes.operators", "airflow.providers.cncf.kubernetes.operators.pod",
         "airflow.providers.standard", "airflow.providers.standard.operators", "airflow.providers.standard.operators.python",
-        "airflow.sdk", "kubernetes", "kubernetes.client")}
+        "airflow.providers.standard.operators.trigger_dagrun",
+        "airflow.sdk", "airflow.sdk.exceptions", "kubernetes", "kubernetes.client")}
     modules["airflow.providers.cncf.kubernetes.operators.pod"].KubernetesPodOperator = Operator
     modules["airflow.providers.standard.operators.python"].BranchPythonOperator = Operator
     modules["airflow.providers.standard.operators.python"].PythonOperator = Operator
+    modules["airflow.providers.standard.operators.trigger_dagrun"].TriggerDagRunOperator = Operator
     modules["airflow.sdk"].DAG = Dag
     modules["airflow.sdk"].Param = lambda *args, **kwargs: (args, kwargs)
+    modules["airflow.sdk.exceptions"].AirflowSkipException = type("AirflowSkipException", (Exception,), {})
     modules["kubernetes.client"].AppsV1Api = object
     modules["kubernetes.client"].V1ResourceRequirements = dict
     return modules
@@ -174,17 +179,68 @@ class WorkerLoadRunTests(unittest.TestCase):
 
 class TargetSelectionTests(unittest.TestCase):
     def test_workers_target_runs_one_task_per_fixed_node(self):
-        selected = load._select_target({"target": "workers", "duration_seconds": 60})
+        selected = load._select_target({"target": "workers", "duration_seconds": 60}, "workers-run")
         self.assertEqual(selected, [f"load_{node}" for node in load.TEST_NODES])
         self.assertEqual(len(load.TEST_NODES), 2)
-        self.assertEqual(load._select_target({"target": "scheduler"}), "load_cpu_and_memory")
+        self.assertEqual(load._select_target({"target": "scheduler"}, "scheduler-run"), "load_cpu_and_memory")
 
     def test_duration_defaults_and_limits_depend_on_the_target(self):
-        self.assertEqual(load._load_duration({"target": "workers"}), 3600)
-        self.assertEqual(load._load_duration({"target": "scheduler"}), 120)
-        for params in ({"target": "workers", "duration_seconds": 5}, {"target": "scheduler", "duration_seconds": 901}):
+        run_id = "single-run"
+        self.assertEqual(load._load_duration({"target": "workers"}, run_id), 3600)
+        self.assertEqual(load._load_duration({"target": "scheduler"}, run_id), 120)
+        self.assertEqual(load._load_duration({"target": "scheduler", "duration_seconds": 1980}, run_id), 1980)
+        for params in ({"target": "workers", "duration_seconds": 5}, {"target": "scheduler", "duration_seconds": 1981}):
             with self.assertRaises(ValueError):
-                load._load_duration(params)
+                load._load_duration(params, run_id)
+
+    def test_first_repeating_duration_is_shared_by_tasks_and_can_be_overridden(self):
+        params = {"target": "workers", "repeat": True}
+        durations = []
+        for run_id in ("first-repeat-a", "first-repeat-b"):
+            duration = load._load_duration(params, run_id)
+            self.assertIn(duration, range(1620, 1981))
+            self.assertEqual(load._load_duration(params, run_id), duration)
+            durations.append(duration)
+        self.assertNotEqual(*durations)
+        self.assertEqual(load._load_duration({**params, "duration_seconds": 60}, "first-repeat"), 60)
+
+
+class RepeatScheduleTests(unittest.TestCase):
+    def test_one_off_execution_skips_next_run(self):
+        with patch.object(load.TriggerDagRunOperator, "execute") as trigger:
+            with self.assertRaises(load.AirflowSkipException):
+                load.schedule_next.execute({"params": {"target": "scheduler", "repeat": False}})
+        trigger.assert_not_called()
+
+    def test_followup_has_independent_rest_and_load_times_and_stable_id(self):
+        operator = load.ScheduleNextLoadOperator(task_id="schedule_next_load")
+        context = {
+            "params": {"target": "workers", "repeat": True, "duration_seconds": 60},
+            "run_id": "current-run",
+        }
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with patch.object(load, "datetime") as clock, \
+                patch.object(load.random, "randint", side_effect=[480, 1980, 720, 1620]) as sample, \
+                patch.object(load.TriggerDagRunOperator, "execute") as trigger:
+            clock.now.return_value = now
+            operator.execute(context)
+            first_id = operator.trigger_run_id
+            self.assertEqual(operator.run_after, now + timedelta(seconds=480))
+            self.assertEqual(operator.conf, {"target": "workers", "repeat": True, "duration_seconds": 1980})
+            operator.execute(context)
+            self.assertEqual(operator.trigger_run_id, first_id)
+            self.assertEqual(operator.run_after, now + timedelta(seconds=720))
+            self.assertEqual(operator.conf, {"target": "workers", "repeat": True, "duration_seconds": 1620})
+        self.assertEqual([call.args for call in sample.call_args_list], [(480, 720), (1620, 1980)] * 2)
+        self.assertEqual(trigger.call_count, 2)
+
+    def test_followup_is_configured_to_join_successful_branches(self):
+        self.assertEqual(load.schedule_next.kwargs["trigger_dag_id"], load.dag.dag_id)
+        self.assertEqual(load.schedule_next.kwargs["trigger_rule"], "none_failed_min_one_success")
+        self.assertFalse(load.schedule_next.kwargs["wait_for_completion"])
+        self.assertTrue(load.schedule_next.kwargs["skip_when_already_exists"])
+        self.assertTrue(load.schedule_next.kwargs["fail_when_dag_is_paused"])
+        self.assertEqual(load.dag.kwargs["max_active_runs"], 1)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""스케줄러 또는 두 워커에 CPU와 메모리 부하를 거는 수동 DAG입니다.
+"""스케줄러 또는 두 워커에 CPU와 메모리 부하를 거는 DAG입니다.
 
 **Trigger DAG**의 `target`에서 대상을 선택합니다. `scheduler`는 스케줄러의 cgroup 한도 안에서
 기본 120초 실행합니다. `workers`는 두 워커에서 기본 1시간 동안 코어마다 프로세스를 띄워
@@ -6,6 +6,10 @@
 테스트 Pod가 밀려나지 않는 한도까지 메모리를 채웁니다. CPU를 양보하지 않는 일반 우선순위로 실행합니다.
 워커 테스트에는 전용 Kubernetes namespace와 스케줄러 접근 권한이 필요합니다.
 실행 로그에서 평균 CPU 코어 수, 사용 메모리, 계산 건수와 검증 실패 수를 확인할 수 있습니다.
+
+**Trigger DAG**에서 `repeat`를 켜면 27~33분 동안 부하를 걸고 성공할 때마다
+8~12분 뒤에 같은 대상으로 다음 실행을 예약합니다. 두 시간은 매회 초 단위로 따로 뽑습니다.
+`duration_seconds`를 직접 입력하면 첫 회차에만 적용합니다.
 """
 
 from __future__ import annotations
@@ -27,7 +31,9 @@ from threading import Event
 
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.standard.operators.python import BranchPythonOperator, PythonOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import DAG, Param
+from airflow.sdk.exceptions import AirflowSkipException
 from kubernetes.client import AppsV1Api, V1ResourceRequirements
 
 MIB = 1024 * 1024
@@ -41,7 +47,9 @@ PRIME_LIMIT = 2_000_000
 PRIME_COUNT = 148_933
 MATRIX_SIZE = 96
 SORT_SIZE = 200_000
-MAX_SCHEDULER_DURATION_SECONDS = 900
+REPEAT_LOAD_RANGE_SECONDS = (27 * 60, 33 * 60)
+REPEAT_REST_RANGE_SECONDS = (8 * 60, 12 * 60)
+MAX_SCHEDULER_DURATION_SECONDS = REPEAT_LOAD_RANGE_SECONDS[1]
 MAX_WORKER_DURATION_SECONDS = 24 * 60 * 60
 START_TIMEOUT_SECONDS = 180
 TEST_NAMESPACE = "airflow-node-load-test"
@@ -401,7 +409,7 @@ def _run_worker_load(duration: int) -> None:
         raise RuntimeError(f"계산 검증 실패 {sum(failures)}건: 메모리 또는 CPU 오류 가능성이 있습니다.")
 
 
-def _load_duration(params: dict[str, int | str | None]) -> int:
+def _load_duration(params: dict[str, int | str | None], run_id: str) -> int:
     target = params.get("target", "scheduler")
     if target == "workers":
         default, minimum, maximum = 3600, 10, MAX_WORKER_DURATION_SECONDS
@@ -409,24 +417,53 @@ def _load_duration(params: dict[str, int | str | None]) -> int:
         default, minimum, maximum = 120, 1, MAX_SCHEDULER_DURATION_SECONDS
 
     configured_duration = params.get("duration_seconds")
-    duration = default if configured_duration is None else int(configured_duration)
+    if configured_duration is not None:
+        duration = int(configured_duration)
+    elif params.get("repeat"):
+        # 첫 실행의 분기와 두 워커가 동일한 실행 시간을 사용합니다.
+        duration = random.Random(run_id).randint(*REPEAT_LOAD_RANGE_SECONDS)
+    else:
+        duration = default
     if not minimum <= duration <= maximum:
         raise ValueError(f"{target}의 duration_seconds는 {minimum}~{maximum}초여야 합니다.")
     return duration
 
 
-def _select_target(params: dict[str, int | str | None]) -> str | list[str]:
+def _select_target(params: dict[str, int | str | None], run_id: str) -> str | list[str]:
     # 테스트 Pod를 생성하기 전에 대상별 실행 시간 제약을 검사합니다.
-    _load_duration(params)
+    _load_duration(params, run_id)
     if params.get("target") == "workers":
         return [f"load_{node_name}" for node_name in TEST_NODES]
     return "load_cpu_and_memory"
 
 
-def run_resource_load(params: dict[str, int | str | None]) -> None:
+def run_resource_load(params: dict[str, int | str | None], run_id: str) -> None:
     """스케줄러 컨테이너의 CPU와 메모리를 테스트합니다."""
 
-    _run_resource_load(_load_duration(params))
+    _run_resource_load(_load_duration(params, run_id))
+
+
+class ScheduleNextLoadOperator(TriggerDagRunOperator):
+    """부하 태스크들이 성공하면 휴식 시간을 두고 다음 실행을 등록합니다."""
+
+    def execute(self, context):
+        params = context["params"]
+        if not params.get("repeat"):
+            raise AirflowSkipException("반복 실행을 선택하지 않았습니다.")
+
+        rest_seconds = random.randint(*REPEAT_REST_RANGE_SECONDS)
+        load_seconds = random.randint(*REPEAT_LOAD_RANGE_SECONDS)
+        self.run_after = datetime.now(timezone.utc) + timedelta(seconds=rest_seconds)
+        self.conf = {"target": params["target"], "repeat": True, "duration_seconds": load_seconds}
+        # 예약 태스크를 다시 실행해도 현재 DagRun의 후속 실행은 한 번만 등록합니다.
+        self.trigger_run_id = f"repeat__{hashlib.sha256(context['run_id'].encode()).hexdigest()}"
+        LOGGER.info(
+            "다음 부하 예약 요청 · 휴식 %d초 · 부하 %d초 · 시작 가능 시각 %s",
+            rest_seconds,
+            load_seconds,
+            self.run_after,
+        )
+        return super().execute(context)
 
 
 class WorkerNodeLoadOperator(KubernetesPodOperator):
@@ -437,7 +474,7 @@ class WorkerNodeLoadOperator(KubernetesPodOperator):
         self.node_name = node_name
 
     def execute(self, context):
-        duration = _load_duration(context["params"])
+        duration = _load_duration(context["params"], context["run_id"])
         node = self.client.read_node(self.node_name)
         ready = any(condition.type == "Ready" and condition.status == "True" for condition in node.status.conditions)
         if not ready or node.spec.unschedulable:
@@ -478,22 +515,39 @@ else:
         default_args={"owner": "airflow", "retries": 0},
         params={
             "target": Param("scheduler", type="string", enum=["scheduler", "workers"], title="부하 대상"),
+            "repeat": Param(
+                False,
+                type="boolean",
+                title="반복 실행",
+                description="성공할 때마다 8~12분 뒤 같은 대상으로 다음 실행을 예약합니다.",
+            ),
             "duration_seconds": Param(
                 None,
                 type=["null", "integer"],
                 minimum=1,
                 maximum=MAX_WORKER_DURATION_SECONDS,
-                description="비워 두면 scheduler는 120초, workers는 3,600초로 실행합니다. workers는 그 시간 동안 두 노드의 모든 코어와 가능한 메모리를 계속 사용합니다.",
+                description=(
+                    "비워 두면 반복 실행은 27~33분, 단발 실행은 scheduler 120초 또는 workers 3,600초입니다. "
+                    "반복 실행에서 입력한 값은 첫 회차에만 적용합니다."
+                ),
             ),
         },
     ) as dag:
         select_target = BranchPythonOperator(task_id="select_target", python_callable=_select_target)
+        schedule_next = ScheduleNextLoadOperator(
+            task_id="schedule_next_load",
+            trigger_dag_id=dag.dag_id,
+            trigger_rule="none_failed_min_one_success",
+            wait_for_completion=False,
+            skip_when_already_exists=True,
+            fail_when_dag_is_paused=True,
+        )
         select_target >> PythonOperator(
             task_id="load_cpu_and_memory",
             python_callable=run_resource_load,
             execution_timeout=timedelta(seconds=MAX_SCHEDULER_DURATION_SECONDS + 30),
             do_xcom_push=False,
-        )
+        ) >> schedule_next
 
         for node_name in TEST_NODES:
             select_target >> WorkerNodeLoadOperator(
@@ -518,4 +572,4 @@ else:
                 on_kill_action="delete_pod",
                 get_logs=True,
                 do_xcom_push=False,
-            )
+            ) >> schedule_next

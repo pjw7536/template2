@@ -323,6 +323,14 @@ monitoring-fetch-chart:
 airflow-secret-restore:
 	python3 ./deploy/airflow/scripts/manage.py restore-secrets --env "$(AIRFLOW_ENV)" --context "$(KUBE_CONTEXT)"
 
+# checkout의 apps/airflow/dags를 Worker의 DAG 폴더에 맞춥니다. 같은 이름은 덮어쓰고 폴더에만 있는 파일은 남깁니다.
+# check는 바뀔 목록만 보여 주며 폴더를 바꾸지 않습니다. 둘 다 임시 Pod를 만들고 끝나면 지웁니다.
+.PHONY: airflow-dags-check airflow-dags-sync
+airflow-dags-check:
+	python3 ./deploy/airflow/scripts/dags.py --env "$(AIRFLOW_ENV)" --context "$(KUBE_CONTEXT)" --check
+airflow-dags-sync:
+	python3 ./deploy/airflow/scripts/dags.py --env "$(AIRFLOW_ENV)" --context "$(KUBE_CONTEXT)"
+
 # Kubernetes 클러스터 모니터링을 독립적으로 검사·배포합니다.
 MONITORING_ENV ?= $(CURDIR)/deploy/monitoring/env/k8s.env
 MONITORING_GRAFANA_ENV ?= $(CURDIR)/deploy/monitoring/env/grafana-initial.env

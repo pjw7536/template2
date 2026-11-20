@@ -1,10 +1,13 @@
-"""Airflow 배포 진입점의 사전 준비(namespace·OIDC CA·Worker 폴더·DAG 초기 파일)를 검증한다."""
+"""Airflow 배포 진입점의 사전 준비(namespace·OIDC CA·Worker 폴더)와 이미지 tag를 검증한다."""
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 BASE = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('airflow_up', BASE / 'scripts/up.py')
@@ -63,29 +66,23 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual(up.storage_directories(SETTINGS), [
             ('/appdata/airflow/postgres', '999', '999', '0700'), ('/appdata/airflow/logs', 50000, 0, '0770'),
             ('/appdata/airflow/dags', 0, 0, '0755'), ('/appdata/airflow/odbc', 50000, 0, '0750')])
-        external = {**SETTINGS, 'POSTGRES_MODE': 'external', 'DAGS_HOST_PATH': '', 'ODBC_HOST_PATH': ''}
-        self.assertEqual(up.storage_directories(external), [('/appdata/airflow/logs', 50000, 0, '0770')])
+        external = {**SETTINGS, 'POSTGRES_MODE': 'external', 'ODBC_HOST_PATH': ''}
+        self.assertEqual(up.storage_directories(external), [
+            ('/appdata/airflow/logs', 50000, 0, '0770'), ('/appdata/airflow/dags', 0, 0, '0755')])
 
-    def test_fresh_install_creates_namespace_ca_folders_and_seeds_empty_dags(self):
+    def test_fresh_install_creates_namespace_ca_and_folders_without_copying_dags(self):
         airflow, dirs = FakeAirflow(), HostDirs()
         up.prepare(airflow, dirs, SETTINGS, 'ctx', self.ca, check_only=False)
         created = [json.loads(data) for args, data in airflow.calls if 'create' in args]
-        self.assertEqual([item['kind'] for item in created], ['Namespace', 'ConfigMap', 'Job'])
+        # DAG 폴더는 만들기만 한다. 이미지에서 파일을 복사하는 Job은 없다.
+        self.assertEqual([item['kind'] for item in created], ['Namespace', 'ConfigMap'])
         self.assertEqual(created[1]['data'], {'ca.crt': 'PEM'})
-        seed = created[2]['spec']['template']['spec']['containers'][0]
-        self.assertEqual(seed['image'], 'airflow:3.3.2-release-1')
-        self.assertIn('[ -z "$(ls -A /seed)" ]', seed['command'][2])
         self.assertEqual(dirs.prepared[0][2:4], ('worker-a', 'mirror/postgres:16'))
 
-    def test_existing_resources_are_not_recreated_and_installed_airflow_is_not_reseeded(self):
-        airflow = FakeAirflow(existing=('namespace', 'configmap'))
-        up.prepare(airflow, HostDirs(), SETTINGS, 'ctx', Path('/missing'), check_only=False)
-        created = [json.loads(data)['kind'] for args, data in airflow.calls if 'create' in args]
-        self.assertEqual(created, ['Job'])
-        installed = FakeAirflow(existing=('namespace', 'configmap', 'scheduler'))
-        dirs = HostDirs()
-        up.prepare(installed, dirs, SETTINGS, 'ctx', Path('/missing'), check_only=False)
-        self.assertFalse(any('create' in args for args, data in installed.calls))
+    def test_existing_resources_are_not_recreated(self):
+        airflow, dirs = FakeAirflow(existing=('namespace', 'configmap')), HostDirs()
+        up.prepare(airflow, dirs, SETTINGS, 'ctx', Path('/missing'), check_only=False)
+        self.assertFalse(any('create' in args for args, data in airflow.calls))
         self.assertEqual(len(dirs.prepared), 1)
 
     def test_check_only_marks_pending_configmap_and_requires_ca_file(self):
@@ -156,6 +153,39 @@ class PublishImageTests(unittest.TestCase):
         self.manage = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.manage)
         self.settings = {'AIRFLOW_IMAGE_REPOSITORY': 'store.test/airflow', 'AIRFLOW_IMAGE_TAG': '3.3.2-abc'}
+
+    def test_auto_tag_changes_only_with_what_goes_into_the_image(self):
+        # 이미지 내용이 같은데 tag가 바뀌면 같은 이미지를 다시 빌드·배포하게 된다.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('apps/airflow/image/Dockerfile', 'apps/airflow/plugins/.gitkeep', 'apps/airflow/dags/sample.py',
+                         'apps/airflow/tests/test_sample.py', 'apps/airflow/README.md', 'deploy/airflow/env/build.env'):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text('처음\n')
+            for args in (['init', '-q'], ['add', '.'], ['-c', 'user.name=test', '-c', 'user.email=test@example.test', 'commit', '-q', '-m', 'init']):
+                subprocess.run(['git', '-C', directory, *args], check=True, capture_output=True)
+            with patch.object(self.manage, 'BASE', root / 'deploy/airflow'), patch.dict(os.environ, {'AIRFLOW_BUILD_ENV': ''}):
+                base = self.manage.auto_image_tag()
+                for name in ('apps/airflow/dags/sample.py', 'apps/airflow/dags/added.py', 'apps/airflow/tests/test_sample.py', 'apps/airflow/README.md'):
+                    (root / name).write_text('변경\n')
+                self.assertEqual(self.manage.auto_image_tag(), base)
+                (root / 'apps/airflow/plugins/listener.py').write_text('변경\n')
+                with_plugin = self.manage.auto_image_tag()
+                self.assertNotEqual(with_plugin, base)
+                (root / 'apps/airflow/image/Dockerfile').write_text('변경\n')
+                with_image = self.manage.auto_image_tag()
+                self.assertNotEqual(with_image, with_plugin)
+                (root / 'deploy/airflow/env/build.env').write_text('변경\n')
+                self.assertNotEqual(self.manage.auto_image_tag(), with_image)
+
+    def test_image_never_contains_dags_or_tests(self):
+        source = self.manage.BASE.parents[1] / 'apps/airflow/image'
+        copies = [line for line in (source / 'Dockerfile').read_text().splitlines() if line.startswith('COPY')]
+        self.assertTrue(copies)
+        self.assertFalse([line for line in copies if 'dags' in line or 'tests' in line])
+        allowed = [line for line in (source / 'Dockerfile.dockerignore').read_text().splitlines() if line.startswith('!')]
+        self.assertFalse([line for line in allowed if 'dags' in line or 'tests' in line])
+        self.assertEqual(self.manage.IMAGE_SOURCES, ('apps/airflow/image', 'apps/airflow/plugins'))
 
     def test_default_env_resolves_auto_tag_and_targets_internal_registry(self):
         values = self.manage.read_env(self.manage.DEFAULT_ENV)

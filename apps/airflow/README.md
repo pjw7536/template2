@@ -18,7 +18,7 @@ Airflow는 정해진 작업을 실행하고 선후 관계·성공·실패를 관
 ## 개발·검증
 
 저장소 루트에서 `make dev`로 전체 로컬 Kubernetes를 실행합니다.
-DAG·이미지를 변경하면 `make k8s-rebuild APP=airflow`로 반영합니다.
+DAG·이미지를 변경하면 `make k8s-rebuild APP=airflow`로 반영합니다. 이 명령이 저장소의 DAG를 로컬 DAG 폴더(`data/k8s-local/airflow-dags`)에 맞춰 복사합니다.
 계정과 DB 연결은 공통 로컬 실행 도구가 생성하며 기존 데이터를 보존합니다.
 
 검사도 저장소 루트에서 실행합니다.
@@ -43,7 +43,8 @@ DAG·이미지를 변경하면 `make k8s-rebuild APP=airflow`로 반영합니다
 
 `python3 deploy/airflow/scripts/manage.py build-image --build-env deploy/airflow/env/build.env`를 사용합니다.
 의존성 이미지에는 Dockerfile만 전달하고, 최종 이미지 context는 `apps/airflow`입니다.
-최종 이미지에는 DAG·플러그인·관리자 초기화 코드가 포함됩니다. 실제 설정·로그는 제외합니다.
+최종 이미지에는 플러그인·관리자 초기화 코드·인증 설정(`image/`, `plugins/`)만 포함됩니다. DAG와 테스트, 실제 설정·로그는 넣지 않습니다.
+DAG는 배포가 `/opt/airflow/dags`에 읽기 전용으로 연결하는 DAG 폴더로 전달하며(서버 반영은 `make airflow-dags-sync`), 이미지 tag도 `image/`·`plugins/`와 `build.env` 내용으로만 정해집니다.
 
 `check`, `render`, `deploy`는 준비된 이미지·chart·env와 배포 파일만 사용합니다.
 이미지 자동 push는 하지 않으며, registry 또는 이미지 파일로 서버에 반입합니다.

@@ -91,13 +91,25 @@ make airflow-check KUBE_CONTEXT="<context>"
 
 ## 4. DAG·이미지 업데이트
 
+### DAG 폴더
+
+Airflow 이미지에는 DAG가 없습니다. 워커(`khinfow01`)의 `DAGS_HOST_PATH`(현재 `/appdata/airflow/dags`)를 `airflow-dags` PVC로 연결해 모든 Airflow 컨테이너가 `/opt/airflow/dags`에서 읽기 전용으로 읽으며, 이 폴더에 있는 파일만 Airflow에 나타납니다.
+
+- `airflow-up`은 폴더를 만들기만 하고 파일을 넣거나 바꾸지 않습니다. 최초 설치 직후의 폴더는 비어 있으므로 `make airflow-dags-sync`([DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제))로 운영할 DAG를 넣습니다.
+- DAG 원본은 저장소의 `apps/airflow/dags`입니다. DAG 파일을 바꿔도 이미지 tag는 바뀌지 않고 재배포도 필요 없습니다.
+- 폴더가 비어 있어도 Airflow는 정상 기동하며 DAG 목록만 비어 있습니다.
+
 ### 공유 폴더 전환
 
-Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/airflow/dags`에서 읽습니다. 스케줄러와 DAG Processor는 준비 표식(`.airflow-dags-initialized`)이 있는 볼륨에서 시작합니다.
+DAG가 들어 있던 이전 이미지로 실행 중이고 `airflow-dags` PVC가 없는 설치에만 필요합니다. 새 이미지에는 DAG가 없으므로 **새 이미지를 배포하기 전에** 실행 중인 DAG Processor의 파일을 DAG 폴더로 옮깁니다. 2번의 블록은 `NODE_NAME` 워커(`khinfow01`)에서 실행하며 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 시작하기 전에 기존 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
 
-**최초 설치(실행 중인 Airflow 없음):** `airflow-up`이 `NODE_NAME` 워커(`khinfow01`)의 폴더를 만들고, 폴더가 비어 있으면 이미지의 `/opt/airflow/dags`와 준비 표식을 복사합니다. 이미지의 `/opt/airflow/dags`는 빌드한 commit의 `apps/airflow/dags`를 그대로 복사한 것입니다. 폴더에 파일이나 준비 표식이 이미 있으면 바꾸지 않습니다.
+[조회] 전환이 필요한지 확인합니다.
 
-**기존 설치에서 전환:** `airflow-scheduler`가 이미 배포된 환경에는 `airflow-up`이 DAG를 복사하지 않으므로 아래 순서로 준비합니다. 2·3번의 블록은 `NODE_NAME` 워커(`khinfow01`)에서 실행하며 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
+```bash
+kubectl --context "<context>" -n airflow get pvc airflow-dags --ignore-not-found
+```
+
+`Bound`인 줄이 나오면 이미 DAG 폴더를 쓰고 있으므로 이 절을 건너뜁니다. 출력이 없으면 아래 순서로 옮깁니다.
 
 1. [변경] 관리 호스트에서 현재 DAG Processor의 파일을 백업합니다. 클러스터는 바꾸지 않고 백업 파일을 만듭니다. 마지막 줄에 나온 파일 경로를 보고에 남깁니다.
 
@@ -117,7 +129,7 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
    )
    ```
 
-2. [변경] 1번에서 만든 tar를 `khinfow01`의 `/tmp/node-exec/airflow-dags.tar`로 옮깁니다. tar가 64KiB 이하이면 아래 블록을 실행하는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) 명령에 `--copy <1번의 tar 경로>:/tmp/node-exec/airflow-dags.tar`를 함께 지정하고, 더 크면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 옮깁니다. 이어서 `khinfow01`에서 tar의 실제 경로를 넣어 아래를 실행합니다. 대상 디렉터리에 파일이 이미 있으면 우선 보존합니다. 전환과 함께 업데이트할 DAG 파일은 **준비 표식을 만들기 전에** [DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제)의 방법으로 필요한 버전을 복사합니다.
+2. [변경] 1번에서 만든 tar를 `khinfow01`의 `/tmp/node-exec/airflow-dags.tar`로 옮깁니다. tar가 64KiB 이하이면 아래 블록을 실행하는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) 명령에 `--copy <1번의 tar 경로>:/tmp/node-exec/airflow-dags.tar`를 함께 지정하고, 더 크면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 옮깁니다. 이어서 `khinfow01`에서 tar의 실제 경로를 넣어 아래를 실행합니다. 대상 디렉터리에 파일이 이미 있으면 우선 보존합니다.
 
    ```bash
    sudo -n install -d -o root -g root -m 0755 /appdata/airflow/dags
@@ -126,16 +138,9 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
    ls -la /appdata/airflow/dags
    ```
 
-   성공: 목록에 기존 DAG 파일과 공통 Python 파일이 보입니다.
+   성공: 목록에 기존 DAG 파일과 공통 Python 파일이 보이고 Airflow(UID 50000)가 읽을 수 있는 권한입니다.
 
-3. [변경] DAG와 공통 Python 파일이 옮겨졌고 Airflow(UID 50000)가 읽을 수 있는 권한인지 2번의 목록으로 확인한 뒤 `khinfow01`에서 준비 표식을 만듭니다.
-
-   ```bash
-   sudo -n install -o root -g root -m 0644 /dev/null /appdata/airflow/dags/.airflow-dags-initialized
-   ls -l /appdata/airflow/dags/.airflow-dags-initialized
-   ```
-
-   이어서 env의 `DAGS_HOST_PATH`를 실제 경로로 두고 관리 호스트에서 [가이드 B](../README.md#b-업데이트)의 순서로 배포합니다. `DAGS_HOST_PATH`를 처음 지정하면 이미지 tag 계산에서 `dags`가 빠져 tag가 바뀌므로, `make airflow-check`의 `이미지 변경:` 줄이 `있음`이면 가이드 B의 [승인] 행을 따릅니다.
+3. [승인] env의 `DAGS_HOST_PATH`를 실제 경로로 두고 관리 호스트에서 [가이드 B](../README.md#b-업데이트)의 순서로 배포합니다. 이미지가 바뀌므로 `make airflow-check`의 `이미지 변경:` 줄이 `있음`이며 가이드 B의 [승인] 행을 따릅니다.
 
 4. [조회] `airflow-dags` PVC가 `Bound`이고 스케줄러·DAG Processor가 `Ready`인지 확인합니다.
 
@@ -143,28 +148,44 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
    kubectl --context "<context>" -n airflow get pvc,pods
    ```
 
-   이어서 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 기존 업무 DAG 목록과 import 오류를 확인한 뒤 테스트할 DAG를 활성화합니다. 문제가 있으면 `DAGS_HOST_PATH`를 비우고 이전 이미지 태그로 검사·배포해 이미지 기반으로 복구합니다. 공유 경로의 파일과 PV/PVC는 복구용으로 보관합니다.
+   이어서 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 기존 업무 DAG 목록과 import 오류를 확인한 뒤 테스트할 DAG를 활성화합니다. 목록에 빠진 DAG가 있으면 2번의 목록과 권한을 다시 확인하고 [DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제)의 동기화로 넣습니다. 1번의 백업 tar는 복구용으로 보관합니다.
 
 ### DAG 파일 추가·수정·삭제
 
-워커(`khinfow01`)의 `DAGS_HOST_PATH`(현재 `/appdata/airflow/dags`)에서 파일을 관리합니다. 폴더 소유자는 `root:root`·`0755`이므로 쓰기는 sudo로 합니다. 재배포는 필요 없으며 Airflow가 다음 스캔에서 반영합니다. 아래 블록은 `khinfow01`에서 실행하며 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
+DAG 원본은 관리 호스트 checkout의 `apps/airflow/dags`입니다. 노드에 접속하지 않고 관리 호스트에서 아래 명령으로 워커(`khinfow01`)의 `DAGS_HOST_PATH`(현재 `/appdata/airflow/dags`)에 반영합니다. 재배포는 필요 없으며 Airflow가 다음 스캔에서 반영합니다.
 
-1. [변경] 추가·수정. 관리 호스트 checkout의 `apps/airflow/dags/<파일>.py`를 `khinfow01`의 `/tmp/node-exec/<파일>.py`로 보낸 뒤, 같은 디렉터리의 `.tmp` 파일에 복사하고 최종 `.py` 이름으로 이동합니다. Airflow가 쓰는 도중의 파일을 읽지 않게 하는 순서입니다. 아래 블록을 저장한 파일로 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --copy apps/airflow/dags/<파일>.py:/tmp/node-exec/<파일>.py --script <블록 파일>`을 실행합니다.
+| 폴더의 파일 | 동기화 후 |
+| --- | --- |
+| 저장소에 같은 이름이 있음 | 저장소 내용으로 덮어씀. 내용이 같으면 그대로 |
+| 저장소에만 있음 | 추가 |
+| 폴더에만 있음 | 남김. `폴더에만 있음(유지)` 줄에 목록만 표시 |
+
+두 명령 모두 실행 중인 scheduler 이미지로 그 워커에 임시 Pod(`airflow-dags-sync-…`)를 만들어 폴더를 연결하고, 끝나면 지웁니다. 파일은 임시 이름으로 쓴 뒤 바꾸므로 Airflow가 쓰는 도중의 파일을 읽지 않습니다. 저장소 밖 env를 쓰면 같은 명령에 `AIRFLOW_ENV=<경로>`를 붙입니다.
+
+1. [검사] 바뀔 파일을 확인합니다. 폴더는 읽기 전용으로 연결하며 바꾸지 않습니다.
 
    ```bash
-   sudo -n install -o root -g root -m 0644 /tmp/node-exec/<파일>.py /appdata/airflow/dags/<파일>.py.tmp
-   sudo -n mv /appdata/airflow/dags/<파일>.py.tmp /appdata/airflow/dags/<파일>.py
-   ls -l /appdata/airflow/dags/<파일>.py
+   make airflow-dags-check KUBE_CONTEXT="<context>"
    ```
 
-2. [변경] 삭제·교체. 먼저 그 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업이 끝난 뒤 합니다. 실행 중인 작업은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 Airflow 화면의 DAG Run 상태에서 확인합니다. 교체는 1번과 같고 삭제는 아래 명령입니다.
+   성공: 마지막 줄이 `DAG 폴더 검사 완료(폴더는 바꾸지 않음): 추가 <n> · 덮어씀 <n> · 같음 <n> · 폴더에만 있음 <n>`입니다. 그 위에 `추가 예정`·`덮어쓸 예정` 목록이 나옵니다.
+
+2. [변경] 반영합니다. 덮어쓸 DAG가 지금 실행 중이면 먼저 그 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업이 끝난 뒤 합니다. 실행 중인 작업은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 Airflow 화면의 DAG Run 상태에서 확인합니다.
+
+   ```bash
+   make airflow-dags-sync KUBE_CONTEXT="<context>"
+   ```
+
+   성공: 마지막 줄이 `DAG 폴더 동기화 완료: 추가 <n> · 덮어씀 <n> · 같음 <n> · 폴더에만 있음 <n>`입니다. `airflow-scheduler가 없어`로 실패하면 Airflow가 배포되지 않은 것이므로 [가이드 A](../README.md#a-최초-설치)를 먼저 합니다.
+
+3. [변경] 삭제는 동기화가 하지 않습니다. 저장소에서 지운 DAG를 폴더에서도 지우려면 먼저 그 DAG를 일시정지하고, 아래 블록을 `khinfow01`에서 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 실행합니다. 지울 이름은 1번의 `폴더에만 있음(유지)` 목록에서 고릅니다.
 
    ```bash
    sudo -n rm /appdata/airflow/dags/<파일>.py
    ls -l /appdata/airflow/dags
    ```
 
-3. [조회] 반영된 뒤 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 DAG 목록과 import 오류를 확인합니다.
+4. [조회] 반영된 뒤 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 DAG 목록과 import 오류를 확인합니다.
 
 ### DAG 목록 확인과 활성화
 
@@ -198,11 +219,11 @@ kubectl --context "<context>" -n airflow exec deployment/airflow-scheduler -- ai
 플러그인, Python 패키지 또는 ODBC를 바꿀 때의 배포 명령은 [가이드 B](../README.md#b-업데이트)에 있습니다. `make ops-deploy`에서 검사 다음 단계인 `airflow-image`가 빌드와 사내 이미지 저장소 push를 수행하고, 같은 태그가 이미 있으면 빌드하지 않습니다.
 
 - 배포 전에 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
-- `AIRFLOW_IMAGE_TAG=3.3.2-auto`이면 소스 변경에 따라 태그가 자동으로 바뀌므로 env를 고치지 않습니다. 태그를 직접 쓰는 환경만 새 고유 태그로 바꿉니다.
-- 관리 호스트의 저장소 루트를 배포할 커밋으로 갱신한 뒤 실행합니다. containerd worker·namespace·소켓 설정은 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)와 일치시킵니다.
+- `AIRFLOW_IMAGE_TAG=3.3.2-auto`이면 이미지 소스(`apps/airflow/image`·`apps/airflow/plugins`)나 `build.env`가 바뀔 때 태그가 자동으로 바뀌므로 env를 고치지 않습니다. DAG·테스트만 바뀐 커밋은 태그가 그대로입니다. 태그를 직접 쓰는 환경만 새 고유 태그로 바꿉니다.
+- 관리 호스트의 저장소 루트를 배포할 커밋으로 갱신한 뒤 실행합니다. containerd worker·namespace·소켓 설정은 [이미지 준비](02-artifacts.md#2-이미지-준비)와 일치시킵니다.
 - Docker 빌드 호스트는 `--builder docker`를 사용합니다. 다른 env를 쓴다면 빌드와 Makefile 명령에 같은 파일을 지정합니다.
 - registry를 쓰지 않는 환경만 [이미지 전달](02-artifacts.md#이미지-전달)로 Worker에 반입합니다.
-- 배포 후 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 DAG 로딩 오류를 확인하고 일시정지했던 DAG를 다시 활성화합니다. Portal 연동·기존 Connection은 [접속과 연동 확인](03-deploy.md#접속과-연동-확인)의 항목으로 확인합니다. 공유 폴더의 DAG는 재배포 후에도 같은 볼륨에서 읽습니다.
+- 배포 후 [DAG 목록 확인과 활성화](#dag-목록-확인과-활성화)의 명령으로 DAG 로딩 오류를 확인하고 일시정지했던 DAG를 다시 활성화합니다. Portal 연동·기존 Connection은 [접속과 연동 확인](03-deploy.md#접속과-연동-확인)의 항목으로 확인합니다. DAG 폴더의 파일은 재배포 후에도 같은 볼륨에서 읽습니다.
 
 배포 도구는 Helm의 `--wait`·`--atomic`을 사용하지 않습니다. 공식 chart의 post-install migration hook과 Pod의 migration 대기가 서로 기다리는 상황을 피하고, hook이 끝난 뒤 rollout을 따로 확인합니다.
 실패해도 리소스를 자동 삭제하거나 DB를 되돌리지 않습니다. Helm rollback은 DB schema를 복구하지 않으므로 DB는 해당 버전의 백업으로 복원합니다.
@@ -255,12 +276,16 @@ kubectl --context "<context>" -n airflow logs "job/<확인할 Job 이름>" --all
 
 ## 6. CPU·메모리 부하 테스트
 
-`scheduler_resource_load_test` DAG를 실행할 때 `target`과 `duration_seconds`를 지정합니다. Airflow 화면에서는 **Trigger DAG**의 입력란이고, 명령으로는 `airflow dags trigger`의 `--conf`입니다.
+`scheduler_resource_load_test` DAG의 **Trigger DAG** 화면 또는 `airflow dags trigger`의 `--conf`에서 `target`, `duration_seconds`, `repeat`를 지정할 수 있습니다.
 
-| `target` | 부하 대상 | 기본 시간 | 입력 범위 |
+| `target` | 부하 대상 | 단발 기본 시간 | 입력 범위 |
 | --- | --- | --- | --- |
-| `scheduler` (기본) | Airflow 스케줄러 컨테이너 | 120초 | 1~900초 |
+| `scheduler` (기본) | Airflow 스케줄러 컨테이너 | 120초 | 1~1,980초 |
 | `workers` | `khinfow01`, `khplanew01`의 테스트 Pod | 3,600초 | 10~86,400초 |
+
+`repeat`의 기본값은 `false`입니다. 반복 테스트는 `repeat=true`로 한 번 실행합니다. 워커 모드는 아래 준비 절차를 먼저 따릅니다.
+매회 부하 시간 27~33분과 휴식 시간 8~12분을 각각 초 단위로 뽑습니다. `duration_seconds`를 지정하면 첫 회차에 그 값을 사용합니다.
+선택된 부하 태스크가 모두 성공하면 `schedule_next_load` 로그에 다음 실행의 부하 시간과 시작 가능 시각이 표시됩니다. 부하 태스크가 실패하면 반복이 종료됩니다.
 
 워커 모드에서는 각 노드에 Pod를 하나씩 띄워 코어마다 프로세스 하나가 결과를 검증하는 계산(해시 대조, 압축 왕복, 정렬, 행렬 곱, 소수 계산, 메모리 다시 쓰기)을 지정한 시간 동안 쉬지 않고 수행합니다. CPU를 양보하지 않는 일반 우선순위이므로 노드의 CPU 사용률이 계속 100%에 가깝게 유지됩니다.
 
@@ -271,7 +296,7 @@ kubectl --context "<context>" -n airflow logs "job/<확인할 Job 이름>" --all
 
 ### DAG 반영
 
-[공유 폴더 관리](#dag-파일-추가수정삭제)에 따라 `scheduler_resource_load_test.py`를 반영합니다. 이미지 기반 배포에서 한 번만 테스트할 경우 스케줄러와 DAG Processor 양쪽의 `/opt/airflow/dags/`에 임시로 복사할 수 있습니다. Pod가 재생성되면 임시 파일이 사라집니다.
+[DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제)에 따라 `scheduler_resource_load_test.py`를 DAG 폴더에 반영합니다.
 
 별도 `worker_node_resource_load_test.py`를 이미 추가한 환경은 해당 테스트가 끝난 뒤 운영 DAG 폴더에서 그 파일을 제거합니다.
 
@@ -315,6 +340,7 @@ kubectl --context "<context>" top nodes khinfow01 khplanew01
 두 Pod가 각각 지정된 노드에서 `Running`이고 Airflow 태스크 로그에 `최대 부하 시작 · … · 계산 프로세스 <코어 수>개`와 1분마다의 `진행 · 경과 … · 평균 CPU <n>코어 · 메모리 <n> MiB · 계산 <n>건 · 검증 실패 0건`이 표시되는지 확인합니다. 끝나면 `최대 부하 종료` 줄에 전체 계산 건수가 남습니다. `kubectl top`은 metrics-server가 구성된 환경에서 사용할 수 있습니다. Pod가 `Pending`이면 테스트 namespace의 events에서 노드 배치와 이미지 pull 오류를 확인합니다.
 
 조기에 중단하려면 Airflow 화면에서 DagRun을 실패로 표시합니다([화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인)).
+휴식 중 일시정지하면 예약된 실행이 대기합니다. 반복을 종료하려면 일시정지 상태에서 그 DagRun을 실패로 표시합니다.
 
 [변경] 노드 부하를 즉시 종료해야 할 때만 테스트 라벨의 Pod를 삭제합니다. 대상은 테스트 namespace의 Pod뿐입니다. 삭제 뒤 위 [조회] 명령으로 Pod가 없어졌는지 확인합니다.
 

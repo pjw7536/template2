@@ -42,6 +42,8 @@ ENV_KEYS = ENV_KEYS | frozenset(OIDC_KEYS) | frozenset(MAIL_DEFAULTS) | frozense
 DEFAULT_ENV = BASE / 'env/k8s.env'
 # 이 값이면 소스 내용으로 tag를 자동으로 정한다. 고정하려면 env에 실제 tag를 쓴다.
 AUTO_IMAGE_TAG = '3.3.2-auto'
+# 이미지에 들어가는 소스. DAG는 공유 폴더로 전달하므로 이미지와 tag 계산에 넣지 않는다.
+IMAGE_SOURCES = ('apps/airflow/image', 'apps/airflow/plugins')
 DEFAULT_CONTAINERD_ADDRESS = '/run/containerd/containerd.sock'
 DEFAULT_BUILDKIT_HOST = 'unix:///run/buildkit/buildkitd.sock'
 RUNTIME_KEYS = (
@@ -74,7 +76,7 @@ def read_env(path):
         values[key] = value
     if values.get('AIRFLOW_IMAGE_TAG') == AUTO_IMAGE_TAG:
         try:
-            values['AIRFLOW_IMAGE_TAG'] = auto_image_tag(bool(values.get('DAGS_HOST_PATH')))
+            values['AIRFLOW_IMAGE_TAG'] = auto_image_tag()
         except ValueError:
             # 앱 소스가 없는 정적 검사는 자리표시 tag로 계속하고, 빌드·배포는 require_image_tag가 막는다.
             pass
@@ -87,15 +89,14 @@ def require_image_tag(settings):
             'apps/airflow 소스가 Git에 없어 이미지 tag를 정할 수 없습니다. 저장소 전체 checkout에서 실행하거나 AIRFLOW_IMAGE_TAG를 직접 지정하세요.')
 
 
-def auto_image_tag(shared_dags):
-    """`apps/airflow` 소스와 build env(`AIRFLOW_BUILD_ENV`, 기본 env/build.env)로 이미지 tag를 정한다. 소스가 바뀌면 tag가 바뀌어 새로 빌드·배포된다.
+def auto_image_tag():
+    """이미지에 들어가는 소스(`IMAGE_SOURCES`)와 build env(`AIRFLOW_BUILD_ENV`, 기본 env/build.env)로 이미지 tag를 정한다.
 
-    DAG를 공유 폴더로 읽는 설치는 DAG 파일만 바뀐 경우 이미지를 다시 만들지 않도록 `dags`를 제외한다.
+    이미지 내용이 같으면 tag도 같다. DAG·테스트·문서만 바뀐 커밋은 tag가 그대로여서 이미지를 다시 만들지 않는다.
     """
     root = BASE.parents[1]
     build_env = os.environ.get('AIRFLOW_BUILD_ENV') or BASE / 'env/build.env'
-    return '3.3.2-' + image_registry.source_tag(root, ['apps/airflow'], [build_env],
-                                                 exclude=('dags',) if shared_dags else ())
+    return '3.3.2-' + image_registry.source_tag(root, IMAGE_SOURCES, [build_env])
 
 
 def validate(values, example=False):
@@ -112,7 +113,8 @@ def validate(values, example=False):
     if values['POSTGRES_MODE'] == 'internal':
         require(all(values[key] == default for key, default in DB_DEFAULTS.items()), '내부 PostgreSQL 연결 설정은 기본값을 유지하세요.')
     require(values.keys() == ENV_KEYS, 'k8s.env 설정 키가 계약과 다릅니다. 누락·오타를 확인하세요.')
-    optional = {'IMAGE_PULL_SECRET', 'DAGS_HOST_PATH', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:], *OIDC_KEYS}
+    require(values['DAGS_HOST_PATH'].strip(), 'DAGS_HOST_PATH가 필요합니다. 이미지에는 DAG가 없으므로 DAG 파일을 둘 Worker 폴더를 지정하세요.')
+    optional = {'IMAGE_PULL_SECRET', 'ODBC_HOST_PATH', 'ODBC_SECRET_NAME', 'INGRESS_CLASS_NAME', 'INGRESS_TLS_SECRET', *RUNTIME_KEYS[2:], *OIDC_KEYS}
     for key, value in values.items():
         if key not in optional:
             require(bool(value.strip()), f'필수 설정 누락: {key}')
@@ -252,9 +254,6 @@ def manifests(settings):
         result['postgres']['items'] = []
         result['storage']['items'] = [item for item in result['storage']['items']
                                       if not item['metadata']['name'].endswith('airflow-postgres')]
-    if not settings.get('DAGS_HOST_PATH'):
-        result['storage']['items'] = [item for item in result['storage']['items']
-                                      if not item['metadata']['name'].endswith('airflow-dags')]
     return result
 
 
@@ -285,22 +284,11 @@ def helm_values(settings, pause_new_dags=False):
     if settings['AIRFLOW_OIDC_CA_CONFIGMAP']:
         result.setdefault('volumes', []).append({'name': 'oidc-ca', 'configMap': {'name': settings['AIRFLOW_OIDC_CA_CONFIGMAP']}})
         result.setdefault('volumeMounts', []).append({'name': 'oidc-ca', 'mountPath': '/etc/airflow/oidc-ca', 'readOnly': True})
-    if settings.get('DAGS_HOST_PATH'):
-        mount = {'name': 'shared-dags', 'mountPath': '/opt/airflow/dags', 'readOnly': True}
-        result.setdefault('volumes', []).append({'name': 'shared-dags', 'persistentVolumeClaim': {'claimName': 'airflow-dags', 'readOnly': True}})
-        result.setdefault('volumeMounts', []).append(mount)
-        result['config']['core']['dags_folder'] = mount['mountPath']
-        # 준비되지 않은 볼륨이 이미지의 DAG를 가린 상태에서 파싱하거나 실행하지 않습니다.
-        check_dags = {
-            'name': 'check-shared-dags',
-            'image': settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG'],
-            'imagePullPolicy': 'IfNotPresent',
-            'command': ['sh', '-ec', 'test -f /opt/airflow/dags/.airflow-dags-initialized || '
-                        '{ echo "Airflow DAG 공유 폴더를 준비하세요." >&2; exit 1; }'],
-            'volumeMounts': [mount],
-        }
-        for component in ('scheduler', 'dagProcessor'):
-            result[component] = {'extraInitContainers': [check_dags]}
+    # 이미지에는 DAG가 없다. Worker의 DAG 폴더를 읽기 전용으로 연결하며 폴더의 파일은 운영자가 관리한다.
+    mount = {'name': 'shared-dags', 'mountPath': '/opt/airflow/dags', 'readOnly': True}
+    result.setdefault('volumes', []).append({'name': 'shared-dags', 'persistentVolumeClaim': {'claimName': 'airflow-dags', 'readOnly': True}})
+    result.setdefault('volumeMounts', []).append(mount)
+    result['config']['core']['dags_folder'] = mount['mountPath']
     if settings['INGRESS_ENABLED'] == 'true':
         url = urlsplit(settings['AIRFLOW_WEBSERVER_BASE_URL'])
         separate_tls = settings['INGRESS_CLASS_NAME'] != 'traefik'
@@ -566,7 +554,7 @@ def image_build_command(builder, namespace, address, buildkit_host, prefix=()):
 
 def build_image(settings, path, *, builder='auto', containerd_namespace='default',
                 containerd_address=DEFAULT_CONTAINERD_ADDRESS, buildkit_host=DEFAULT_BUILDKIT_HOST, prefix=()):
-    """기존 의존성 Dockerfile에 DAG를 추가한다. push는 publish_image가 한다."""
+    """의존성 이미지에 플러그인과 인증 설정을 더해 실행 이미지를 만든다. DAG는 넣지 않는다. push는 publish_image가 한다."""
     require_image_tag(settings)
     build = read_env(path)
     require(build.keys() == {'APT_DEBIAN_CODENAME', 'APT_DEBIAN_ARCH', 'BIGDATAQUERY_ODBC_DEB_URL', 'INSTALL_BIGDATAQUERY_PYTHON', 'PIP_INDEX_URL', 'APT_DEBIAN_REPOSITORY', 'PIP_TRUSTED_HOST', 'INSTALL_BIGDATAQUERY_ODBC', 'AIRFLOW_BASE_IMAGE', 'PIP_EXTRA_INDEX_URL'}, 'build.env 설정 키가 계약과 다릅니다.')
@@ -576,7 +564,7 @@ def build_image(settings, path, *, builder='auto', containerd_namespace='default
     require(build['INSTALL_BIGDATAQUERY_ODBC'] != 'true' or build['BIGDATAQUERY_ODBC_DEB_URL'], 'ODBC 설치에는 BIGDATAQUERY_ODBC_DEB_URL이 필요합니다.')
     root = BASE.parents[1]
     source = root / 'apps/airflow'
-    require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'dags', 'plugins')),
+    require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'plugins')),
             '이미지 빌드 소스(apps/airflow)가 없습니다. 저장소 전체 checkout에서 실행하세요.')
     command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host, prefix)
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']

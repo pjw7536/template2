@@ -20,8 +20,8 @@ Airflow를 설치·운영하는 문서입니다. 단계 표시([조회]·[검사
 ## 구성
 
 - 실행: scheduler·API server·DAG processor·triggerer와 내부 PostgreSQL이 `NODE_NAME` Worker 한 대에 묶입니다. 단일 Worker 구성이므로 해당 Worker나 디스크에 장애가 나면 Airflow가 중단됩니다.
-- 이미지: 플러그인·Python 패키지·ODBC 드라이버·DAG를 넣은 이미지를 관리 호스트에서 빌드해 [Registry](../registry/README.md)로 push합니다. chart는 고정 버전(1.22.0) 파일을 사용합니다. 파일이 없으면 `ops-deploy`의 준비 검사가 사내 미러에서 받으며, `airflow-check`·`airflow-up`은 chart를 내려받지 않습니다.
-- DAG: Worker의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/airflow/dags`에서 읽습니다. 경로를 비우면 이미지의 DAG를 읽습니다.
+- 이미지: 플러그인·Python 패키지·ODBC 드라이버를 넣은 이미지를 관리 호스트에서 빌드해 [Registry](../registry/README.md)로 push합니다. chart는 고정 버전(1.22.0) 파일을 사용합니다. 파일이 없으면 `ops-deploy`의 준비 검사가 사내 미러에서 받으며, `airflow-check`·`airflow-up`은 chart를 내려받지 않습니다.
+- DAG: 이미지에는 DAG가 없습니다. Worker의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 연결해 `/opt/airflow/dags`에서 읽기 전용으로 읽으며, 이 폴더에 넣은 파일만 Airflow에 나타납니다. 관리 호스트에서 `make airflow-dags-sync`로 checkout의 `apps/airflow/dags`를 이 폴더에 맞추며(같은 이름은 덮어쓰고 폴더에만 있는 파일은 남김), 재배포는 필요 없습니다. 노드에 접속하지 않습니다.
 - 로그인: [Keycloak](../keycloak/README.md) `etch` realm의 전용 client `airflow`를 사용합니다. 로그인한 사용자는 기본 Viewer이며 `airflow` client 역할 User·Admin으로 권한을 올립니다.
 - 접속: 공용 Traefik의 HTTPS entrypoint로 들어옵니다. 인증서는 `etch-sso/traefik-tls`에서 관리하므로 앱별 TLS Secret이 없고, `airflow` namespace 감시는 `airflow-up`이 추가합니다.
 - 저장: DB·로그·DAG는 지정 Worker의 local PV(`Retain`)입니다. ODBC 설정 폴더는 `/usr/local/odbc`에 읽기 전용으로 마운트합니다.
@@ -46,7 +46,7 @@ Airflow를 설치·운영하는 문서입니다. 단계 표시([조회]·[검사
 | DNS `airflow.etch.samsungds.net` → APP VIP. 없어도 배포는 진행하며 smoke가 `DNS 미등록`으로 표시 | `getent hosts airflow.etch.samsungds.net`. 출력이 없으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
 | ODBC를 쓰면 `khinfow01`의 `/appdata/airflow/odbc`에 실제 드라이버 파일 배치([방법](odbc/README.md#worker에-반영)) | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --command 'sudo -n ls -lnR /appdata/airflow/odbc'`. 기준은 [Worker에 반영](odbc/README.md#worker에-반영) |
 
-DAG 공유 폴더가 비어 있으면 `airflow-up`이 이미지에 들어 있는 DAG와 준비 표식을 복사합니다. 파일이 이미 있으면 바꾸지 않습니다.
+`airflow-up`은 DAG 폴더를 만들기만 하고 안의 파일을 넣거나 바꾸지 않습니다.
 
 ## 입력
 
@@ -67,7 +67,7 @@ env 파일의 키와 입력 파일은 [환경설정](docs/01-prepare.md#환경�
    kubectl --context "<context>" get node khinfow01
    ```
    성공: `Ready`.
-2. [변경] 배포. 준비 검사(chart 받기·CA 묶음 생성·빌드 도구 설치·공용 TLS 등록을 자동 실행) → 검사 → 이미지 빌드·push → Keycloak client 등록 → namespace·OIDC CA ConfigMap·Worker 폴더·DAG 초기 파일 준비와 DB migration을 포함한 Helm 배포 → smoke → 대조 순서로 진행합니다. 최초 설치는 새 DB에 migration을 실행하므로 [변경]입니다. 첫 빌드는 의존성 설치로 오래 걸립니다.
+2. [변경] 배포. 준비 검사(chart 받기·CA 묶음 생성·빌드 도구 설치·공용 TLS 등록을 자동 실행) → 검사 → 이미지 빌드·push → Keycloak client 등록 → namespace·OIDC CA ConfigMap·Worker 폴더 준비와 DB migration을 포함한 Helm 배포 → smoke → 대조 순서로 진행합니다. 최초 설치는 새 DB에 migration을 실행하므로 [변경]입니다. 첫 빌드는 의존성 설치로 오래 걸립니다.
    ```bash
    make ops-deploy APP=airflow KUBE_CONTEXT="<context>"
    ```
@@ -79,7 +79,12 @@ env 파일의 키와 입력 파일은 [환경설정](docs/01-prepare.md#환경�
    - `airflow-keycloak-client`: 관리 호스트가 Keycloak 공개 주소 `sso.etch.samsungds.net`을 DNS로 찾지 못하면 실패합니다. `getent hosts sso.etch.samsungds.net`에 출력이 없으면 [DNS](../shared/docs/infrastructure/access.md#dns) 절로 등록합니다. 그 밖의 원인은 문제 해결 표의 `Airflow client 등록 실패` 행을 따릅니다.
    - `airflow-up`: `공용 TLS 마운트가 없습니다`면 [공용 Traefik 검사·갱신](../README.md#공용-traefik-검사갱신)의 `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"`를 실행합니다. migration·관리자 Job 실패는 멈춤 조건입니다.
    - `airflow-smoke`: `DNS 미등록`만 표시되고 `smoke 통과: airflow`로 끝나면 성공입니다. DNS 등록은 JSON의 `pending`에 남으며 [DNS](../shared/docs/infrastructure/access.md#dns) 절로 수행합니다.
-3. [조회] [C. 배포 후 확인](#c-배포-후-확인)
+3. [변경] DAG 반입. 최초 설치 직후의 DAG 폴더는 비어 있어 Airflow에 DAG가 없습니다. checkout의 `apps/airflow/dags`를 폴더에 넣습니다.
+   ```bash
+   make airflow-dags-sync KUBE_CONTEXT="<context>"
+   ```
+   성공: 마지막 줄이 `DAG 폴더 동기화 완료: …`이고, [DAG 목록 확인과 활성화](docs/04-operations.md#dag-목록-확인과-활성화)의 [조회]에서 넣은 DAG가 보이고 import 오류가 없습니다.
+4. [조회] [C. 배포 후 확인](#c-배포-후-확인)
 
 ## B. 업데이트
 
@@ -100,8 +105,8 @@ make airflow-check KUBE_CONTEXT="<context>"
 
 | 변경 | 실행 |
 | --- | --- |
-| DAG 파일만(공유 폴더 사용 중) | [변경] [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 `khinfow01`의 `/appdata/airflow/dags`에 반영([방법](docs/04-operations.md#dag-파일-추가수정삭제)). 재배포 없음 |
-| `apps/airflow` 소스(플러그인·패키지·ODBC, `dags` 제외) | [승인] tag가 자동으로 바뀌어 실행 중 작업이 중단되고 운영 중인 DB에 migration이 실행됩니다. [배포 전 준비](docs/04-operations.md#이미지-업데이트)를 마치고 승인받은 뒤 `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"` |
+| DAG 파일만 | [검사] `make airflow-dags-check KUBE_CONTEXT="<context>"`로 바뀔 파일을 본 뒤 [변경] `make airflow-dags-sync KUBE_CONTEXT="<context>"`. 같은 이름은 덮어쓰고 폴더에만 있는 파일은 남김. 재배포 없음. 덮어쓸 DAG가 실행 중이면 먼저 일시정지([방법](docs/04-operations.md#dag-파일-추가수정삭제)) |
+| 이미지 소스(`apps/airflow/image`·`apps/airflow/plugins`의 플러그인·패키지·ODBC, `build.env`) | [승인] tag가 자동으로 바뀌어 실행 중 작업이 중단되고 운영 중인 DB에 migration이 실행됩니다. [배포 전 준비](docs/04-operations.md#이미지-업데이트)를 마치고 승인받은 뒤 `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"` |
 | env(알림·OIDC·runtime 값) | [변경] `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"`. Pod는 배포 마지막에 재시작됨. 저장소 밖 env는 같은 명령에 `AIRFLOW_ENV=<경로>`를 붙임 |
 | 인증서 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령으로 `airflow.etch.samsungds.net`을 다시 등록 |
 | 사내 CA 교체 | [변경] [사내 CA 묶음](../README.md#사내-ca-묶음)을 다시 만들고 [OIDC CA ConfigMap](docs/03-deploy.md#oidc-ca-configmap)을 갱신한 뒤 env 행의 배포를 실행 |

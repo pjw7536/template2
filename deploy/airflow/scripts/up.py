@@ -16,50 +16,21 @@ server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
 
-SEED_DAGS = '''if [ ! -f /seed/.airflow-dags-initialized ] && [ -z "$(ls -A /seed)" ]; then
-    cp -R /opt/airflow/dags/. /seed/
-    touch /seed/.airflow-dags-initialized
-    echo "이미지의 DAG를 공유 폴더로 복사했습니다."
-else
-    echo "공유 폴더에 파일 또는 준비 표식이 있어 변경하지 않았습니다."
-fi
-'''
-
-
 def storage_directories(settings):
     """env에 선언한 Worker 폴더와 컨테이너 실행 계정에 맞는 소유자·권한 목록을 만든다."""
     directories = []
     if settings.get('POSTGRES_MODE', 'internal') == 'internal':
         directories.append((settings['POSTGRES_HOST_PATH'], settings['POSTGRES_UID'], settings['POSTGRES_GID'], '0700'))
     directories.append((settings['LOGS_HOST_PATH'], 50000, 0, '0770'))
-    if settings.get('DAGS_HOST_PATH'):
-        directories.append((settings['DAGS_HOST_PATH'], 0, 0, '0755'))
+    # DAG 폴더는 만들기만 한다. 안의 파일은 운영자가 넣고 Airflow는 읽기 전용으로 본다.
+    directories.append((settings['DAGS_HOST_PATH'], 0, 0, '0755'))
     if settings.get('ODBC_HOST_PATH'):
         directories.append((settings['ODBC_HOST_PATH'], 50000, 0, '0750'))
     return directories
 
 
-def seed_job(settings):
-    """비어 있는 DAG 공유 폴더에만 이미지의 DAG와 준비 표식을 복사하는 Job을 만든다."""
-    pod = {'restartPolicy': 'Never', 'automountServiceAccountToken': False,
-           'nodeSelector': {'kubernetes.io/hostname': settings['NODE_NAME']},
-           'containers': [{'name': 'seed', 'image': settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG'],
-                           'imagePullPolicy': 'IfNotPresent', 'command': ['sh', '-ec', SEED_DAGS],
-                           'securityContext': {'runAsUser': 0, 'runAsGroup': 0, 'runAsNonRoot': False,
-                                               'allowPrivilegeEscalation': False},
-                           'volumeMounts': [{'name': 'dags', 'mountPath': '/seed'}]}],
-           'volumes': [{'name': 'dags', 'hostPath': {'path': settings['DAGS_HOST_PATH'], 'type': 'Directory'}}]}
-    if settings['IMAGE_PULL_SECRET']:
-        pod['imagePullSecrets'] = [{'name': settings['IMAGE_PULL_SECRET']}]
-    return {'apiVersion': 'batch/v1', 'kind': 'Job',
-            'metadata': {'generateName': 'airflow-dags-seed-', 'namespace': settings['NAMESPACE'],
-                         'labels': {'app.kubernetes.io/name': 'airflow-dags-seed'}},
-            'spec': {'backoffLimit': 0, 'activeDeadlineSeconds': 300, 'ttlSecondsAfterFinished': 600,
-                     'template': {'spec': pod}}}
-
-
 def prepare(airflow, host_dirs, settings, context, ca_file, check_only):
-    """배포 전에 필요한 namespace·OIDC CA ConfigMap·Worker 폴더·DAG 초기 파일을 준비한다. 기존 것은 바꾸지 않는다.
+    """배포 전에 필요한 namespace·OIDC CA ConfigMap·Worker 폴더를 준비한다. 기존 것은 바꾸지 않는다.
 
     check_only이면 아무것도 만들지 않고, 배포 때 만들 ConfigMap 이름 집합을 반환한다.
     """
@@ -87,12 +58,6 @@ def prepare(airflow, host_dirs, settings, context, ca_file, check_only):
         print(f'OIDC CA ConfigMap 생성: {namespace}/{configmap}')
     host_dirs.prepare(run, kube, 'airflow-storage-prepare', namespace, settings['NODE_NAME'], settings['POSTGRES_IMAGE'],
                       storage_directories(settings), settings['IMAGE_PULL_SECRET'])
-    # 이미 설치된 환경의 DAG 폴더는 운영자가 관리하므로 최초 설치에만 이미지의 DAG를 복사한다.
-    installed = exists and run([*scoped, 'get', 'deployment', 'airflow-scheduler', '--ignore-not-found', '-o', 'name']).strip()
-    if settings.get('DAGS_HOST_PATH') and not installed:
-        created = json.loads(run([*kube, 'create', '-f', '-', '-o', 'json'], data=json.dumps(seed_job(settings))))['metadata']['name']
-        print(f'DAG 공유 폴더 확인 대기: {namespace}/job/{created}', flush=True)
-        host_dirs.wait_job(run, kube, namespace, created)
 
 
 def image_change(airflow, settings, context):

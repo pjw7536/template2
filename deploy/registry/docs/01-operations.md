@@ -92,7 +92,7 @@ sudo -n crictl pull store.etch.samsungds.net/test/busybox:1.37.0
 
 - 이미지 이름은 `store.etch.samsungds.net/<앱>:<고유 tag>`입니다. 같은 tag를 다시 push하지 않습니다.
 - 이미지에 env·인증서·개인키·ODBC 설정 같은 비밀값을 넣지 않습니다. 노드는 익명으로 이미지를 내려받을 수 있습니다.
-- 앱 이미지는 `make airflow-image`, `make portal-image`가 빌드해 push합니다. tag는 소스 내용으로 정해지고 이미 있는 tag는 건너뜁니다([Airflow 이미지 준비](../../airflow/docs/02-artifacts.md#2-dag-포함-이미지-준비), [Portal 가이드](../../portal/README.md)).
+- 앱 이미지는 `make airflow-image`, `make portal-image`가 빌드해 push합니다. tag는 소스 내용으로 정해지고 이미 있는 tag는 건너뜁니다([Airflow 이미지 준비](../../airflow/docs/02-artifacts.md#2-이미지-준비), [Portal 가이드](../../portal/README.md)).
 
 ## 이미지 삭제와 용량 정리
 

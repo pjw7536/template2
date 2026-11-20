@@ -152,7 +152,7 @@ def airflow_settings(creds):
     result.update(NAMESPACE='airflow', NODE_NAME=WORKER, POSTGRES_MODE='external',
                   POSTGRES_HOST='external-postgres', POSTGRES_IMAGE='postgres:16',
                   POSTGRES_HOST_PATH='/data/local-runtime/unused-postgres',
-                  LOGS_HOST_PATH='/data/local-runtime/airflow/logs', DAGS_HOST_PATH='', ODBC_HOST_PATH='',
+                  LOGS_HOST_PATH='/data/local-runtime/airflow/logs', DAGS_HOST_PATH='/data/local-runtime/airflow-dags', ODBC_HOST_PATH='',
                   AIRFLOW_IMAGE_REPOSITORY='tailwind-airflow', AIRFLOW_IMAGE_TAG='3.3.2-local',
                   AIRFLOW_ADMIN_EMAIL='airflow@localhost.test', INGRESS_ENABLED='true', INGRESS_CLASS_NAME='traefik',
                   AIRFLOW_API_BASE_URL='http://api.tailwind-local.svc.cluster.local:8000',
@@ -196,7 +196,7 @@ def prepare(config, include_portal=True):
         if key.endswith('_HOST_PATH'):
             Path(value).mkdir(parents=True, exist_ok=True)
     base = Path(config['LOCAL_RUNTIME_DATA_HOST_PATH'])
-    for sub in ('api', 'minio', 'airflow/logs', 'monitoring/prometheus', 'monitoring/alertmanager', 'monitoring/grafana'):
+    for sub in ('api', 'minio', 'airflow/logs', 'airflow-dags', 'monitoring/prometheus', 'monitoring/alertmanager', 'monitoring/grafana'):
         (base / sub).mkdir(parents=True, exist_ok=True)
     write_env(RUNTIME / 'db.env', {**{key: creds[key] for key in ('POSTGRES_PASSWORD', 'PORTAL_DB_PASSWORD', 'AIRFLOW_DB_PASSWORD', 'KEYCLOAK_DB_PASSWORD')},
                                  'LOCAL_DB_PORT': config['LOCAL_DB_PORT']})

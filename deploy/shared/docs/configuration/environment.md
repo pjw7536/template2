@@ -64,7 +64,7 @@ deploy/
 | 브라우저 공개 설정 | `deploy/portal/env/<환경>/web.env` | Web |
 | MinIO 설정 | `deploy/minio/env/prod.env` | 독립 공용 MinIO 서버·이미지·노드·저장소·Ingress. 앱별 접근 키는 각 앱 env |
 | Airflow Kubernetes 설정 | `deploy/airflow/env/k8s.env` | 전용 배포 도구 → Airflow·PostgreSQL Secret |
-| Airflow 이미지 빌드 | `deploy/airflow/env/build.env` | 사내 의존성·DAG 이미지 빌드 |
+| Airflow 이미지 빌드 | `deploy/airflow/env/build.env` | 사내 의존성·Airflow 이미지 빌드 |
 | Portal 이미지 빌드 | `deploy/portal/env/prod/build.env` | API·Web 이미지의 사내 기반 이미지·패키지 미러. `make portal-image`가 build arg로 전달하고 이미지 tag 계산에도 포함 |
 | Kubernetes Monitoring | `deploy/monitoring/env/k8s.env` | 노드·local PV·이미지 미러·Grafana Secret 참조 |
 | Headlamp 공개 설정 | `deploy/headlamp/env/k8s.env` | 공개 주소·issuer·Secret/CA 이름. 실제 client secret 제외 |

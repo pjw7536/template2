@@ -11,7 +11,7 @@ Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않습니다. 변
 | --- | --- |
 | 문서 | 클러스터 적용 불필요 |
 | 앱 코드(Airflow·Portal) | [변경] 이미지 tag가 소스 내용으로 자동으로 바뀜 → `ops-deploy`가 `<app>-image` 단계에서 빌드·push한 뒤 배포 |
-| Airflow DAG 파일만(공유 폴더 사용) | 재배포 없이 공유 폴더에 반영. [Airflow 가이드](../../../airflow/README.md) |
+| Airflow DAG 파일만 | 재배포 없이 DAG 폴더에 반영. [Airflow 가이드](../../../airflow/README.md) |
 | manifest·chart 설정·env | [변경] `ops-deploy`. Secret 변경은 Pod 재시작이 있어야 반영되며 각 앱의 `up`이 처리 |
 | 저장소 밖 env의 값 | [변경] [운영 입력 파일](../infrastructure/access.md#운영-입력-파일)을 고친 뒤 같은 env 변수(예: `AIRFLOW_ENV=<경로>`)를 붙여 `ops-deploy` |
 | 공용 Traefik의 이미지·인자 | [변경] `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"`([ingress 가이드](../../ingress/README.md)). 감시 namespace와 배치는 보존 |

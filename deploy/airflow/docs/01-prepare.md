@@ -12,7 +12,7 @@
 ### 필요 도구와 버전
 
 관리 호스트에 Python 3.10 이상, Helm 3.19.0 이상, kubectl, 클러스터 관리자 kubeconfig가 필요합니다. chart가 요구하는 Kubernetes 최소 버전은 1.30.13입니다.
-이미지 빌드와 사내 이미지 저장소 push도 같은 checkout에서 수행하므로 [이미지 준비](02-artifacts.md#2-dag-포함-이미지-준비)의 빌더가 필요합니다. 빌더는 `make ops-deploy`의 준비 검사가 확인하고 없으면 설치합니다.
+이미지 빌드와 사내 이미지 저장소 push도 같은 checkout에서 수행하므로 [이미지 준비](02-artifacts.md#2-이미지-준비)의 빌더가 필요합니다. 빌더는 `make ops-deploy`의 준비 검사가 확인하고 없으면 설치합니다.
 
 [조회]
 ```bash
@@ -49,7 +49,7 @@ Airflow Pod·내부 DB·local PV가 이 노드에 묶이므로 자원·디스크
 | `/appdata/airflow/dags` | `root:root` | `0755` |
 | `/appdata/airflow/odbc` | `50000:0` | `0750` |
 
-최초 설치에서 DAG 폴더가 비어 있으면 이미지의 DAG와 준비 표식(`.airflow-dags-initialized`)을 복사합니다. 이미 설치된 환경의 DAG 폴더는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)으로 준비합니다.
+DAG 폴더는 비어 있는 상태로 만들어지며 파일은 [DAG 파일 추가·수정·삭제](04-operations.md#dag-파일-추가수정삭제)로 넣습니다. DAG가 든 이전 이미지로 실행 중인 설치는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)으로 옮깁니다.
 ODBC 폴더의 실제 설정 파일은 [ODBC 파일 안내](../odbc/README.md#worker에-반영)로 배치합니다.
 
 아래 명령은 `airflow-up`을 거치지 않고 폴더를 직접 준비하거나 디스크 여유·권한을 확인할 때만 씁니다. 실행 위치는 **`NODE_NAME`으로 선택한 Worker**(`khinfow01`)이며, 블록을 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
@@ -135,7 +135,7 @@ sed -i -E "s,^(AIRFLOW_FERNET_KEY)=(.*(replace-me|replace-here|change-me).*)?\$,
 | 내부 DB | `POSTGRES_MODE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_DB` | internal, airflow-postgres, 5432, airflow, airflow 유지 |
 | 외부 DB | 위 DB 변수와 `POSTGRES_PASSWORD` | external로 지정하고 미리 준비한 DB 연결값 입력 |
 | 디스크 | `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `POSTGRES_STORAGE_SIZE`, `LOGS_STORAGE_SIZE` | 서로 겹치지 않는 Worker 절대 경로, Gi/Ti 용량 |
-| DAG 공유 | `DAGS_HOST_PATH`, `DAGS_STORAGE_SIZE` | 운영 선언은 `/appdata/airflow/dags`·`1Gi`. 최초 설치에서 폴더가 비어 있으면 `airflow-up`이 이미지의 DAG와 준비 표식을 복사합니다. 이미 설치된 환경은 파일과 준비 표식을 먼저 배치합니다. 경로를 비우면 이미지의 DAG를 읽습니다. |
+| DAG 공유 | `DAGS_HOST_PATH`, `DAGS_STORAGE_SIZE` | 필수. 운영 선언은 `/appdata/airflow/dags`·`1Gi`. 이미지에는 DAG가 없으므로 Airflow는 이 폴더의 파일만 읽습니다. `airflow-up`은 폴더를 만들기만 하고 파일은 운영자가 관리합니다. 경로를 비우면 검사에서 `DAGS_HOST_PATH가 필요합니다`로 멈춥니다. |
 | DB 권한 | `POSTGRES_IMAGE`, `POSTGRES_UID`, `POSTGRES_GID` | 사내 mirror의 PostgreSQL 16 이미지, Debian 이미지 기본 999/999 |
 | ODBC | `ODBC_HOST_PATH`, `ODBC_SECRET_NAME` | 둘 중 하나만 사용. 현재 `/appdata/airflow/odbc` |
 | 초기 관리자 | `AIRFLOW_ADMIN_USERNAME`, `AIRFLOW_ADMIN_PASSWORD`, `AIRFLOW_ADMIN_EMAIL` | 현재 `airflow`·`admin@admin.com`. 계정이 없을 때만 생성, 기존 계정의 비밀번호는 바꾸지 않음. Keycloak 관리자 `etch-admin`과 구분 |
